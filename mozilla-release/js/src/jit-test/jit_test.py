@@ -253,9 +253,6 @@ def main(argv):
     # This part is equivalent to:
     # skip-if = coverage
     if os.getenv('GCOV_PREFIX') is not None:
-        # GCOV errors.
-        options.exclude += [os.path.join('asm.js', 'testSIMD.js')]               # Bug 1347245
-
         # JSVM errors.
         options.exclude += [os.path.join('basic', 'functionnames.js')]           # Bug 1369783
         options.exclude += [os.path.join('debug', 'Debugger-findScripts-23.js')]
@@ -268,6 +265,11 @@ def main(argv):
         # Prevent code coverage test that expects coverage
         # to be off when it starts.
         options.exclude += [os.path.join('debug', 'Script-getOffsetsCoverage-02.js')]
+
+        # These tests expect functions to be parsed lazily, but lazy parsing
+        # is disabled on coverage build.
+        options.exclude += [os.path.join('debug', 'Debugger-findScripts-uncompleted-01.js')]
+        options.exclude += [os.path.join('debug', 'Debugger-findScripts-uncompleted-02.js')]
 
     if options.exclude_from:
         with open(options.exclude_from) as fh:

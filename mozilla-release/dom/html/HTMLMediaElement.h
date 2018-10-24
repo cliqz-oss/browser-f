@@ -154,8 +154,7 @@ public:
                               nsAttrValue& aResult) override;
 
   virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
-                              nsIContent* aBindingParent,
-                              bool aCompileEventHandlers) override;
+                              nsIContent* aBindingParent) override;
   virtual void UnbindFromTree(bool aDeep = true,
                               bool aNullParent = true) override;
   virtual void DoneCreatingElement() override;
@@ -398,7 +397,7 @@ public:
    */
   bool GetPlayedOrSeeked() const { return mHasPlayedOrSeeked; }
 
-  nsresult CopyInnerTo(Element* aDest, bool aPreallocateChildren);
+  nsresult CopyInnerTo(Element* aDest);
 
   /**
    * Sets the Accept header on the HTTP channel to the required
@@ -641,6 +640,12 @@ public:
     mIsCasting = aShow;
   }
 
+  // Returns whether a call to Play() would be rejected with NotAllowedError.
+  // This assumes "worst case" for unknowns. So if prompting for permission is
+  // enabled and no permission is stored, this behaves as if the user would
+  // opt to block.
+  bool AllowedToPlay() const;
+
   already_AddRefed<MediaSource> GetMozMediaSourceObject() const;
   // Returns a string describing the state of the media player internal
   // data. Used for debugging purposes.
@@ -863,7 +868,7 @@ protected:
     nsTArray<Pair<nsString, RefPtr<MediaInputPort>>> mTrackPorts;
   };
 
-  already_AddRefed<Promise> PlayInternal(ErrorResult& aRv);
+  void PlayInternal(bool aHandlingUserInput);
 
   /** Use this method to change the mReadyState member, so required
    * events can be fired.
@@ -1283,7 +1288,7 @@ protected:
   void AudioCaptureStreamChange(bool aCapture);
 
   // A method to check whether the media element is allowed to start playback.
-  bool IsAllowedToPlay();
+  bool AudioChannelAgentBlockedPlay();
 
   // If the network state is empty and then we would trigger DoLoad().
   void MaybeDoLoad();
@@ -1304,10 +1309,6 @@ protected:
   using nsGenericHTMLElement::DispatchEvent;
   // For nsAsyncEventRunner.
   nsresult DispatchEvent(const nsAString& aName);
-
-  // Open unsupported types media with the external app when the media element
-  // triggers play() after loaded fail. eg. preload the data before start play.
-  void OpenUnsupportedMediaWithExternalAppIfNeeded() const;
 
   // This method moves the mPendingPlayPromises into a temperate object. So the
   // mPendingPlayPromises is cleared after this method call.
@@ -1355,6 +1356,35 @@ protected:
   void PauseIfShouldNotBePlaying();
 
   WatchManager<HTMLMediaElement> mWatchManager;
+
+  // If the media element's tab has never been in the foreground, this
+  // registers as with the AudioChannelAgent to notify us when the tab
+  // is put in the foreground, whereupon we will begin playback.
+  bool AudioChannelAgentDelayingPlayback();
+
+  // Ensures we're prompting the user for permission to autoplay.
+  void EnsureAutoplayRequested(bool aHandlingUserInput);
+
+  // Update the silence range of the audio track when the audible status of
+  // silent audio track changes or seeking to the new position where the audio
+  // track is silent.
+  void UpdateAudioTrackSilenceRange(bool aAudible);
+
+  // When silent audio track becomes audible or seeking to new place, we would
+  // end the current silence range and accumulate it to the total silence
+  // proportion of audio track and update current silence range.
+  void AccumulateAudioTrackSilence();
+
+  // True when the media element's audio track is containing silence now.
+  bool IsAudioTrackCurrentlySilent() const;
+
+  // Calculate the audio track silence proportion and then report the telemetry
+  // result. we would report the result when decoder is destroyed.
+  void ReportAudioTrackSilenceProportionTelemetry();
+
+  // When the play is not allowed, dispatch related events which are used for
+  // testing or changing control UI.
+  void DispatchEventsWhenPlayWasNotAllowed();
 
   // The current decoder. Load() has been called on this decoder.
   // At most one of mDecoder and mSrcStream can be non-null.
@@ -1444,8 +1474,8 @@ protected:
 
   // Media loading flags. See:
   //   http://www.whatwg.org/specs/web-apps/current-work/#video)
-  nsMediaNetworkState mNetworkState = HTMLMediaElementBinding::NETWORK_EMPTY;
-  nsMediaReadyState mReadyState = HTMLMediaElementBinding::HAVE_NOTHING;
+  nsMediaNetworkState mNetworkState = HTMLMediaElement_Binding::NETWORK_EMPTY;
+  nsMediaReadyState mReadyState = HTMLMediaElement_Binding::HAVE_NOTHING;
 
   enum LoadAlgorithmState {
     // No load algorithm instance is waiting for a source to be added to the
@@ -1473,6 +1503,17 @@ protected:
 
   // True if the audio track is not silent.
   bool mIsAudioTrackAudible = false;
+
+  // Used to mark the start of the silence range of audio track.
+  double mAudioTrackSilenceStartedTime = 0.0;
+
+  // Save all the silence ranges, all ranges would be normalized. That means
+  // intervals won't overlap or touch each other.
+  media::TimeIntervals mSilenceTimeRanges;
+
+  // True if we have calculated silence range before SeekEnd(). This attribute
+  // would be reset after seeking completed.
+  bool mHasAccumulatedSilenceRangeBeforeSeekEnd = false;
 
   enum MutedReasons {
     MUTED_BY_CONTENT               = 0x01,
@@ -1563,6 +1604,9 @@ protected:
   // Used to indicate if the MediaKeys attaching operation is on-going or not.
   bool mAttachingMediaKey = false;
   MozPromiseRequestHolder<SetCDMPromise> mSetCDMRequest;
+  // Request holder for permission prompt to autoplay. Non-null if we're
+  // currently showing a prompt for permission to autoplay.
+  MozPromiseRequestHolder<GenericPromise> mAutoplayPermissionRequest;
 
   // Stores the time at the start of the current 'played' range.
   double mCurrentPlayRangeStart = 1.0;
@@ -1717,6 +1761,9 @@ protected:
   // before attaching to the DOM tree.
   bool mUnboundFromTree = false;
 
+  // True if the autoplay media was blocked because it hadn't loaded metadata yet.
+  bool mBlockedAsWithoutMetadata = false;
+
 public:
   // Helper class to measure times for MSE telemetry stats
   class TimeDurationAccumulator
@@ -1769,6 +1816,8 @@ public:
 private:
 
   already_AddRefed<PlayPromise> CreatePlayPromise(ErrorResult& aRv) const;
+
+  void UpdateHadAudibleAutoplayState();
 
   /**
    * This function is called by AfterSetAttr and OnAttrSetButNotChanged.
@@ -1840,6 +1889,9 @@ private:
 
   // For debugging bug 1407148.
   void AssertReadyStateIsNothing();
+
+  // Attach UA Shadow Root if it is not attached.
+  void AttachAndSetUAShadowRoot();
 };
 
 // Check if the context is chrome or has the debugger or tabs permission

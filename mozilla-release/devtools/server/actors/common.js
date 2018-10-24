@@ -115,14 +115,14 @@ exports.ObservedActorFactory = ObservedActorFactory;
  * |pool|.
  *
  * The root actor and the target actor use this to instantiate actors that other
- * parts of the browser have specified with DebuggerServer.addTabActor and
+ * parts of the browser have specified with DebuggerServer.addTargetScopedActor and
  * DebuggerServer.addGlobalActor.
  *
  * @param factories
  *     An object whose own property names are the names of properties to add to
  *     some reply packet (say, a target actor grip or the "listTabs" response
  *     form), and whose own property values are actor constructor functions, as
- *     documented for addTabActor and addGlobalActor.
+ *     documented for addTargetScopedActor and addGlobalActor.
  *
  * @param this
  *     The RootActor or BrowsingContextTargetActor with which the new actors
@@ -216,9 +216,10 @@ ActorPool.prototype = {
     actor.conn = this.conn;
     if (!actor.actorID) {
       // Older style actors use actorPrefix, while protocol.js-based actors use typeName
-      let prefix = actor.actorPrefix || actor.typeName;
-      if (!prefix && typeof actor == "function") {
-        prefix = actor.prototype.actorPrefix || actor.prototype.typeName;
+      const prefix = actor.actorPrefix || actor.typeName;
+      if (!prefix) {
+        throw new Error("Actor should precify either `actorPrefix` or `typeName` " +
+                        "attribute");
       }
       actor.actorID = this.conn.allocID(prefix || undefined);
     }

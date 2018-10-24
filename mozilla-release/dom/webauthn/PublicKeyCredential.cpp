@@ -48,7 +48,7 @@ JSObject*
 PublicKeyCredential::WrapObject(JSContext* aCx,
                                 JS::Handle<JSObject*> aGivenProto)
 {
-  return PublicKeyCredentialBinding::Wrap(aCx, this, aGivenProto);
+  return PublicKeyCredential_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void
@@ -86,8 +86,7 @@ PublicKeyCredential::SetResponse(RefPtr<AuthenticatorResponse> aResponse)
 /* static */ already_AddRefed<Promise>
 PublicKeyCredential::IsUserVerifyingPlatformAuthenticatorAvailable(GlobalObject& aGlobal)
 {
-  nsIGlobalObject* globalObject =
-    xpc::NativeGlobal(JS::CurrentGlobalOrNull(aGlobal.Context()));
+  nsIGlobalObject* globalObject = xpc::CurrentNativeGlobal(aGlobal.Context());
   if (NS_WARN_IF(!globalObject)) {
     return nullptr;
   }

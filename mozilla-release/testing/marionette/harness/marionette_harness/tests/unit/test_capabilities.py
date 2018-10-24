@@ -21,8 +21,17 @@ class TestCapabilities(MarionetteTestCase):
                   processID: Services.appinfo.processID,
                 }
                 """)
-            self.os_name = self.marionette.execute_script(
-                "return Services.sysinfo.getProperty('name')").lower()
+            self.os_name = self.marionette.execute_script("""
+                let name = Services.sysinfo.getProperty("name");
+                switch (name) {
+                  case "Windows_NT":
+                    return "windows";
+                  case "Darwin":
+                    return "mac";
+                  default:
+                    return name.toLowerCase();
+                }
+                """)
             self.os_version = self.marionette.execute_script(
                 "return Services.sysinfo.getProperty('version')")
 
@@ -51,6 +60,7 @@ class TestCapabilities(MarionetteTestCase):
         self.assertIn("platformName", self.caps)
         self.assertIn("platformVersion", self.caps)
         self.assertIn("acceptInsecureCerts", self.caps)
+        self.assertIn("setWindowRect", self.caps)
         self.assertIn("timeouts", self.caps)
 
         self.assertEqual(self.caps["browserName"], self.appinfo["name"].lower())
@@ -58,6 +68,10 @@ class TestCapabilities(MarionetteTestCase):
         self.assertEqual(self.caps["platformName"], self.os_name)
         self.assertEqual(self.caps["platformVersion"], self.os_version)
         self.assertFalse(self.caps["acceptInsecureCerts"])
+        if self.appinfo["name"] == "Firefox":
+            self.assertTrue(self.caps["setWindowRect"])
+        else:
+            self.assertFalse(self.caps["setWindowRect"])
         self.assertDictEqual(self.caps["timeouts"],
                              {"implicit": 0,
                               "pageLoad": 300000,
@@ -111,6 +125,7 @@ class TestCapabilityMatching(MarionetteTestCase):
 
     def setUp(self):
         MarionetteTestCase.setUp(self)
+        self.browser_name = self.marionette.session_capabilities["browserName"]
         self.delete_session()
 
     def delete_session(self):
@@ -134,20 +149,63 @@ class TestCapabilityMatching(MarionetteTestCase):
             self.marionette.start_session({"pageLoadStrategy": strategy})
             self.assertEqual(self.marionette.session_capabilities["pageLoadStrategy"], strategy)
 
-        # A null value should be treatend as "normal"
-        self.delete_session()
-        self.marionette.start_session({"pageLoadStrategy": None})
-        self.assertEqual(self.marionette.session_capabilities["pageLoadStrategy"], "normal")
-
-        for value in ["", "EAGER", True, 42, {}, []]:
+        for value in ["", "EAGER", True, 42, {}, [], None]:
             print("invalid strategy {}".format(value))
             with self.assertRaisesRegexp(SessionNotCreatedException, "InvalidArgumentError"):
                 self.marionette.start_session({"pageLoadStrategy": value})
 
+    def test_set_window_rect(self):
+        if self.browser_name == "firefox":
+            self.marionette.start_session({"setWindowRect": True})
+            self.delete_session()
+            with self.assertRaisesRegexp(SessionNotCreatedException, "InvalidArgumentError"):
+                self.marionette.start_session({"setWindowRect": False})
+        else:
+            self.marionette.start_session({"setWindowRect": False})
+            self.delete_session()
+            with self.assertRaisesRegexp(SessionNotCreatedException, "InvalidArgumentError"):
+                self.marionette.start_session({"setWindowRect": True})
+
     def test_timeouts(self):
-        timeouts = {u"implicit": 123, u"pageLoad": 456, u"script": 789}
-        caps = {"timeouts": timeouts}
-        self.marionette.start_session(caps)
+        for value in ["", 2.5, {}, []]:
+            print("  type {}".format(type(value)))
+            with self.assertRaises(SessionNotCreatedException):
+                self.marionette.start_session({"timeouts": {"pageLoad": value}})
+
+        self.delete_session()
+
+        timeouts = {"implicit": 0, "pageLoad": 2.0, "script": 2**53 - 1}
+        self.marionette.start_session({"timeouts": timeouts})
         self.assertIn("timeouts", self.marionette.session_capabilities)
         self.assertDictEqual(self.marionette.session_capabilities["timeouts"], timeouts)
-        self.assertDictEqual(self.marionette._send_message("getTimeouts"), timeouts)
+        self.assertDictEqual(self.marionette._send_message("WebDriver:GetTimeouts"), timeouts)
+
+    def test_unhandled_prompt_behavior(self):
+        behaviors = [
+            "accept",
+            "accept and notify",
+            "dismiss",
+            "dismiss and notify",
+            "ignore"
+        ]
+
+        for behavior in behaviors:
+            print("valid unhandled prompt behavior {}".format(behavior))
+            self.delete_session()
+            self.marionette.start_session({"unhandledPromptBehavior": behavior})
+            self.assertEqual(self.marionette.session_capabilities["unhandledPromptBehavior"],
+                             behavior)
+
+        # Default value
+        self.delete_session()
+        self.marionette.start_session()
+        self.assertEqual(self.marionette.session_capabilities["unhandledPromptBehavior"],
+                         "dismiss and notify")
+
+        # Invalid values
+        self.delete_session()
+        for behavior in [None, "", "ACCEPT", True, 42, {}, []]:
+            print("invalid unhandled prompt behavior {}".format(behavior))
+            with self.assertRaisesRegexp(SessionNotCreatedException, "InvalidArgumentError"):
+                self.marionette.start_session({"unhandledPromptBehavior": behavior})
+

@@ -63,22 +63,25 @@ interface Document : Node {
   [Pure]
   Element? getElementById(DOMString elementId);
 
-  [CEReactions, NewObject, Throws]
+  // These DOM methods cannot be accessed by UA Widget scripts
+  // because the DOM element reflectors will be in the content scope,
+  // instead of the desired UA Widget scope.
+  [CEReactions, NewObject, Throws, Func="IsNotUAWidget"]
   Element createElement(DOMString localName, optional (ElementCreationOptions or DOMString) options);
-  [CEReactions, NewObject, Throws]
+  [CEReactions, NewObject, Throws, Func="IsNotUAWidget"]
   Element createElementNS(DOMString? namespace, DOMString qualifiedName, optional (ElementCreationOptions or DOMString) options);
   [NewObject]
   DocumentFragment createDocumentFragment();
-  [NewObject]
+  [NewObject, Func="IsNotUAWidget"]
   Text createTextNode(DOMString data);
-  [NewObject]
+  [NewObject, Func="IsNotUAWidget"]
   Comment createComment(DOMString data);
   [NewObject, Throws]
   ProcessingInstruction createProcessingInstruction(DOMString target, DOMString data);
 
-  [CEReactions, Throws]
+  [CEReactions, Throws, Func="IsNotUAWidget"]
   Node importNode(Node node, optional boolean deep = false);
-  [CEReactions, Throws]
+  [CEReactions, Throws, Func="IsNotUAWidget"]
   Node adoptNode(Node node);
 
   [NewObject, Throws, NeedsCallerType]
@@ -174,7 +177,9 @@ partial interface Document {
    * True if this document is synthetic : stand alone image, video, audio file,
    * etc.
    */
-  [Func="IsChromeOrXBL"] readonly attribute boolean mozSyntheticDocument;
+  [Func="IsChromeOrXBLOrUAWidget"] readonly attribute boolean mozSyntheticDocument;
+  [Throws, Func="IsChromeOrXBL"]
+  BoxObject? getBoxObjectFor(Element? element);
   /**
    * Returns the script element whose script is currently being processed.
    *
@@ -323,9 +328,9 @@ partial interface Document {
 
 // https://drafts.csswg.org/web-animations/#extensions-to-the-document-interface
 partial interface Document {
-  [Func="nsDocument::IsWebAnimationsEnabled"]
+  [Func="nsDocument::AreWebAnimationsTimelinesEnabled"]
   readonly attribute DocumentTimeline timeline;
-  [Func="nsDocument::IsWebAnimationsEnabled"]
+  [Func="nsDocument::IsWebAnimationsGetAnimationsEnabled"]
   sequence<Animation> getAnimations();
 };
 
@@ -348,6 +353,9 @@ partial interface Document {
   Element? getBindingParent(Node node);
   [Throws, Func="IsChromeOrXBL", NeedsSubjectPrincipal]
   void loadBindingDocument(DOMString documentURL);
+  // Creates a new XUL element regardless of the document's default type.
+  [CEReactions, NewObject, Throws, Func="IsChromeOrXBL"]
+  Element createXULElement(DOMString localName, optional (ElementCreationOptions or DOMString) options);
 
   // Touch bits
   // XXXbz I can't find the sane spec for this stuff, so just cribbing
@@ -383,13 +391,6 @@ partial interface Document {
   [ChromeOnly]
   attribute boolean styleSheetChangeEventsEnabled;
 
-  [ChromeOnly, Throws]
-  void obsoleteSheet(URI sheetURI);
-  [ChromeOnly, Throws]
-  void obsoleteSheet(DOMString sheetURI);
-
-  [ChromeOnly] readonly attribute nsIDocShell? docShell;
-
   [ChromeOnly] readonly attribute DOMString contentLanguage;
 
   [ChromeOnly] readonly attribute nsILoadGroup? documentLoadGroup;
@@ -408,6 +409,26 @@ partial interface Document {
   // "document_idle" webextension script injection point.
   [ChromeOnly, Throws]
   readonly attribute Promise<Document> documentReadyForIdle;
+
+  // Lazily created command dispatcher, returns null if the document is not
+  // chrome privileged.
+  [ChromeOnly]
+  readonly attribute XULCommandDispatcher? commandDispatcher;
+
+  [ChromeOnly]
+  attribute Node? popupNode;
+
+  /**
+   * These attributes correspond to rangeParent and rangeOffset. They will help
+   * you find where in the DOM the popup is happening. Can be accessed only
+   * during a popup event. Accessing any other time will be an error.
+   */
+  [Throws, ChromeOnly]
+  readonly attribute Node? popupRangeParent;
+  [Throws, ChromeOnly]
+  readonly attribute long  popupRangeOffset;
+  [ChromeOnly]
+  attribute Node? tooltipNode;
 };
 
 dictionary BlockParsingOptions {
@@ -472,7 +493,7 @@ partial interface Document {
 // by user gesture.
 partial interface Document {
   [ChromeOnly]
-  void notifyUserActivation();
+  void notifyUserGestureActivation();
 };
 
 // Extension to give chrome and XBL JS the ability to determine whether
@@ -495,6 +516,13 @@ enum FlashClassification {
 partial interface Document {
   [ChromeOnly]
   readonly attribute FlashClassification documentFlashClassification;
+};
+
+// Extension to obtain the number of trackers are detected and blocked in the
+// Document (and it's corresponding docshell sub-tree)
+partial interface Document {
+  [ChromeOnly] readonly attribute unsigned long numTrackersFound;
+  [ChromeOnly] readonly attribute unsigned long numTrackersBlocked;
 };
 
 Document implements XPathEvaluator;

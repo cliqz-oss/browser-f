@@ -131,7 +131,7 @@ ComputedStyle::CalcStyleDifference(ComputedStyle* aNewContext,
   DO_STRUCT_DIFFERENCE(XUL);
   DO_STRUCT_DIFFERENCE(Column);
   DO_STRUCT_DIFFERENCE(Content);
-  DO_STRUCT_DIFFERENCE(UserInterface);
+  DO_STRUCT_DIFFERENCE(UI);
   DO_STRUCT_DIFFERENCE(Visibility);
   DO_STRUCT_DIFFERENCE(Outline);
   DO_STRUCT_DIFFERENCE(TableBorder);
@@ -232,21 +232,43 @@ ComputedStyle::CalcStyleDifference(ComputedStyle* aNewContext,
     // only need to return the hint if the overall computation of
     // whether we establish a containing block has changed.
 
-    // This depends on data in nsStyleDisplay, nsStyleEffects and
-    // nsStyleSVGReset, so we do it here.
+    // This depends on data in nsStyleDisplay and nsStyleEffects, so we do it
+    // here
 
     // Note that it's perhaps good for this test to be last because it
     // doesn't use Peek* functions to get the structs on the old
     // context.  But this isn't a big concern because these struct
     // getters should be called during frame construction anyway.
-    if (ThreadsafeStyleDisplay()->IsAbsPosContainingBlockForAppropriateFrame(*this) ==
-        aNewContext->ThreadsafeStyleDisplay()->
-          IsAbsPosContainingBlockForAppropriateFrame(*aNewContext) &&
-        ThreadsafeStyleDisplay()->IsFixedPosContainingBlockForAppropriateFrame(*this) ==
-        aNewContext->ThreadsafeStyleDisplay()->
-          IsFixedPosContainingBlockForAppropriateFrame(*aNewContext)) {
+    const nsStyleDisplay* oldDisp = ThreadsafeStyleDisplay();
+    const nsStyleDisplay* newDisp = aNewContext->ThreadsafeStyleDisplay();
+    bool isFixedCB;
+    if (oldDisp->IsAbsPosContainingBlockForNonSVGTextFrames() ==
+        newDisp->IsAbsPosContainingBlockForNonSVGTextFrames() &&
+        (isFixedCB =
+           oldDisp->IsFixedPosContainingBlockForNonSVGTextFrames(*this)) ==
+        newDisp->IsFixedPosContainingBlockForNonSVGTextFrames(*aNewContext) &&
+        // transform-supporting frames are a subcategory of non-SVG-text
+        // frames, so no need to test this if isFixedCB is true (both
+        // before and after the change)
+        (isFixedCB ||
+         oldDisp->IsFixedPosContainingBlockForTransformSupportingFrames() ==
+         newDisp->IsFixedPosContainingBlockForTransformSupportingFrames()) &&
+        // contain-layout-and-paint-supporting frames are a subset of
+        // non-SVG-text frames, so no need to test this if isFixedCB is true
+        // (both before and after the change).
+        //
+        // Note, however, that neither of these last two sets is a
+        // subset of the other, because table frames support contain:
+        // layout/paint but not transforms (which are instead inherited
+        // to the table wrapper), and quite a few frame types support
+        // transforms but not contain: layout/paint (e.g., table rows
+        // and row groups, many SVG frames).
+        (isFixedCB ||
+         oldDisp->IsFixedPosContainingBlockForContainLayoutAndPaintSupportingFrames() ==
+         newDisp->IsFixedPosContainingBlockForContainLayoutAndPaintSupportingFrames())) {
       // While some styles that cause the frame to be a containing block
-      // has changed, the overall result hasn't.
+      // has changed, the overall result cannot have changed (no matter
+      // what the frame type is).
       hint &= ~nsChangeHint_UpdateContainingBlock;
     }
   }
@@ -317,7 +339,7 @@ static nscolor
 ExtractColor(ComputedStyle* aStyle, const nsStyleSVGPaint& aPaintServer)
 {
   return aPaintServer.Type() == eStyleSVGPaintType_Color
-    ? aPaintServer.GetColor() : NS_RGBA(0, 0, 0, 0);
+    ? aPaintServer.GetColor(aStyle) : NS_RGBA(0, 0, 0, 0);
 }
 
 #define STYLE_FIELD(struct_, field_) aField == &struct_::field_ ||

@@ -1,12 +1,16 @@
 trust-domain: gecko
 project-repo-param-prefix: ''
+product-dir: 'browser'
 treeherder:
     group-names:
         'cram': 'Cram tests'
-        'js-bench': 'JavaScript shell benchmarks'
+        'js-bench-sm': 'JavaScript shell benchmarks with Spidermonkey'
+        'js-bench-v8': 'JavaScript shell benchmarks with Google V8'
         'mocha': 'Mocha unit tests'
-        'py': 'Python unit tests'
+        'py2': 'Python 2 unit tests'
+        'py3': 'Python 3 unit tests'
         'A': 'Android Gradle tests'
+        'Fetch-URL': 'Fetch and store content'
         'Fxfn-l': 'Firefox functional tests (local)'
         'Fxfn-l-e10s': 'Firefox functional tests (local) with e10s'
         'Fxfn-r': 'Firefox functional tests (remote)'
@@ -70,6 +74,7 @@ treeherder:
         'langpack': 'Langpack sigatures and uploads'
         'TPS': 'Sync tests'
         'UV': 'Update verify'
+        'pipfu': 'pipfile update'
 
 index:
     products:
@@ -184,9 +189,11 @@ scriptworker:
             - 'project:releng:beetmover:bucket:release'
             - 'project:releng:beetmover:bucket:nightly'
             - 'project:releng:beetmover:bucket:partner'
+            - 'project:releng:beetmover:bucket:maven-production'
         'scriptworker-prov-v1/beetmoverworker-dev':
             - 'project:releng:beetmover:bucket:dep'
             - 'project:releng:beetmover:bucket:dep-partner'
+            - 'project:releng:beetmover:bucket:maven-staging'
         'scriptworker-prov-v1/balrogworker-v1':
             - 'project:releng:balrog:server:nightly'
             - 'project:releng:balrog:server:aurora'

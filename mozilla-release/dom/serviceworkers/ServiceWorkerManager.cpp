@@ -8,7 +8,6 @@
 
 #include "nsAutoPtr.h"
 #include "nsIConsoleService.h"
-#include "nsIDocument.h"
 #include "nsIEffectiveTLDService.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsIStreamLoader.h"
@@ -22,7 +21,6 @@
 #include "nsISimpleEnumerator.h"
 #include "nsITimer.h"
 #include "nsIUploadChannel2.h"
-#include "nsPIDOMWindow.h"
 #include "nsServiceManagerUtils.h"
 #include "nsDebug.h"
 #include "nsISupportsPrimitives.h"
@@ -49,7 +47,6 @@
 #include "mozilla/dom/Navigator.h"
 #include "mozilla/dom/NotificationEvent.h"
 #include "mozilla/dom/PromiseNativeHandler.h"
-#include "mozilla/dom/PromiseWindowProxy.h"
 #include "mozilla/dom/Request.h"
 #include "mozilla/dom/RootedDictionary.h"
 #include "mozilla/dom/TypedArray.h"
@@ -79,7 +76,6 @@
 #include "ServiceWorkerRegisterJob.h"
 #include "ServiceWorkerRegistrar.h"
 #include "ServiceWorkerRegistration.h"
-#include "ServiceWorkerRegistrationListener.h"
 #include "ServiceWorkerScriptCache.h"
 #include "ServiceWorkerEvents.h"
 #include "ServiceWorkerUnregisterJob.h"
@@ -1236,26 +1232,6 @@ ServiceWorkerManager::GetActiveWorkerInfoForScope(const OriginAttributes& aOrigi
   return registration->GetActive();
 }
 
-ServiceWorkerInfo*
-ServiceWorkerManager::GetActiveWorkerInfoForDocument(nsIDocument* aDocument)
-{
-  MOZ_ASSERT(NS_IsMainThread());
-
-  Maybe<ClientInfo> clientInfo(aDocument->GetClientInfo());
-  if (clientInfo.isNothing()) {
-    return nullptr;
-  }
-
-  RefPtr<ServiceWorkerRegistrationInfo> registration;
-  GetClientRegistration(clientInfo.ref(), getter_AddRefs(registration));
-
-  if (!registration) {
-    return nullptr;
-  }
-
-  return registration->GetActive();
-}
-
 namespace {
 
 class UnregisterJobCallback final : public ServiceWorkerJob::Callback
@@ -1583,6 +1559,8 @@ ServiceWorkerManager::LoadRegistration(
     registration->SetActive(
       new ServiceWorkerInfo(registration->Principal(),
                             registration->Scope(),
+                            registration->Id(),
+                            registration->Version(),
                             currentWorkerURL,
                             aRegistration.cacheName(),
                             importsLoadFlags));
@@ -1628,31 +1606,6 @@ ServiceWorkerManager::StoreRegistration(
   }
 
   mActor->SendRegister(data);
-}
-
-already_AddRefed<ServiceWorkerRegistrationInfo>
-ServiceWorkerManager::GetServiceWorkerRegistrationInfo(nsPIDOMWindowInner* aWindow) const
-{
-  MOZ_ASSERT(aWindow);
-  nsCOMPtr<nsIDocument> document = aWindow->GetExtantDoc();
-  return GetServiceWorkerRegistrationInfo(document);
-}
-
-already_AddRefed<ServiceWorkerRegistrationInfo>
-ServiceWorkerManager::GetServiceWorkerRegistrationInfo(nsIDocument* aDoc) const
-{
-  MOZ_ASSERT(aDoc);
-  nsCOMPtr<nsIURI> documentURI = aDoc->GetDocumentURI();
-  nsCOMPtr<nsIPrincipal> principal = aDoc->NodePrincipal();
-  RefPtr<ServiceWorkerRegistrationInfo> reg =
-    GetServiceWorkerRegistrationInfo(principal, documentURI);
-  if (reg) {
-    auto storageAllowed = nsContentUtils::StorageAllowedForDocument(aDoc);
-    if (storageAllowed != nsContentUtils::StorageAccess::eAllow) {
-      reg = nullptr;
-    }
-  }
-  return reg.forget();
 }
 
 already_AddRefed<ServiceWorkerRegistrationInfo>
@@ -1906,7 +1859,7 @@ ServiceWorkerManager::RemoveScopeAndRegistration(ServiceWorkerRegistrationInfo* 
   swm->NotifyListenersOnUnregister(info);
 
   swm->MaybeRemoveRegistrationInfo(scopeKey);
-  swm->NotifyServiceWorkerRegistrationRemoved(aRegistration);
+  aRegistration->NotifyRemoved();
 }
 
 void
@@ -2004,64 +1957,6 @@ ServiceWorkerManager::GetScopeForUrl(nsIPrincipal* aPrincipal,
 
   aScope = NS_ConvertUTF8toUTF16(r->Scope());
   return NS_OK;
-}
-
-NS_IMETHODIMP
-ServiceWorkerManager::AddRegistrationEventListener(const nsAString& aScope,
-                                                   ServiceWorkerRegistrationListener* aListener)
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(aListener);
-#ifdef DEBUG
-  // Ensure a registration is only listening for it's own scope.
-  nsAutoString regScope;
-  aListener->GetScope(regScope);
-  MOZ_ASSERT(!regScope.IsEmpty());
-  MOZ_ASSERT(aScope.Equals(regScope));
-#endif
-
-  MOZ_ASSERT(!mServiceWorkerRegistrationListeners.Contains(aListener));
-  mServiceWorkerRegistrationListeners.AppendElement(aListener);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-ServiceWorkerManager::RemoveRegistrationEventListener(const nsAString& aScope,
-                                                      ServiceWorkerRegistrationListener* aListener)
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(aListener);
-#ifdef DEBUG
-  // Ensure a registration is unregistering for it's own scope.
-  nsAutoString regScope;
-  aListener->GetScope(regScope);
-  MOZ_ASSERT(!regScope.IsEmpty());
-  MOZ_ASSERT(aScope.Equals(regScope));
-#endif
-
-  MOZ_ASSERT(mServiceWorkerRegistrationListeners.Contains(aListener));
-  mServiceWorkerRegistrationListeners.RemoveElement(aListener);
-  return NS_OK;
-}
-
-void
-ServiceWorkerManager::FireUpdateFoundOnServiceWorkerRegistrations(
-  ServiceWorkerRegistrationInfo* aRegistration)
-{
-  MOZ_ASSERT(NS_IsMainThread());
-
-  nsTObserverArray<ServiceWorkerRegistrationListener*>::ForwardIterator it(mServiceWorkerRegistrationListeners);
-  while (it.HasMore()) {
-    RefPtr<ServiceWorkerRegistrationListener> target = it.GetNext();
-    nsAutoString regScope;
-    target->GetScope(regScope);
-    MOZ_ASSERT(!regScope.IsEmpty());
-
-    NS_ConvertUTF16toUTF8 utf8Scope(regScope);
-    if (utf8Scope.Equals(aRegistration->Scope())) {
-      target->UpdateFound();
-    }
-  }
 }
 
 namespace {
@@ -2366,44 +2261,17 @@ ServiceWorkerManager::GetClientRegistration(const ClientInfo& aClientInfo,
 }
 
 void
-ServiceWorkerManager::UpdateRegistrationListeners(ServiceWorkerRegistrationInfo* aReg)
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  nsTObserverArray<ServiceWorkerRegistrationListener*>::ForwardIterator it(mServiceWorkerRegistrationListeners);
-  while (it.HasMore()) {
-    RefPtr<ServiceWorkerRegistrationListener> target = it.GetNext();
-    if (target->MatchesDescriptor(aReg->Descriptor())) {
-      target->UpdateState(aReg->Descriptor());
-    }
-  }
-}
-
-void
-ServiceWorkerManager::NotifyServiceWorkerRegistrationRemoved(ServiceWorkerRegistrationInfo* aRegistration)
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  nsTObserverArray<ServiceWorkerRegistrationListener*>::ForwardIterator it(mServiceWorkerRegistrationListeners);
-  while (it.HasMore()) {
-    RefPtr<ServiceWorkerRegistrationListener> target = it.GetNext();
-    nsAutoString regScope;
-    target->GetScope(regScope);
-    MOZ_ASSERT(!regScope.IsEmpty());
-
-    NS_ConvertUTF16toUTF8 utf8Scope(regScope);
-
-    if (utf8Scope.Equals(aRegistration->Scope())) {
-      target->RegistrationRemoved();
-    }
-  }
-}
-
-void
 ServiceWorkerManager::SoftUpdate(const OriginAttributes& aOriginAttributes,
                                  const nsACString& aScope)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
   if (mShuttingDown) {
+    return;
+  }
+
+  if (ServiceWorkerParentInterceptEnabled()) {
+    SoftUpdateInternal(aOriginAttributes, aScope, nullptr);
     return;
   }
 
@@ -2468,7 +2336,6 @@ ServiceWorkerManager::SoftUpdateInternal(const OriginAttributes& aOriginAttribut
                                          ServiceWorkerUpdateFinishCallback* aCallback)
 {
   MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(aCallback);
 
   if (mShuttingDown) {
     return;
@@ -2528,8 +2395,10 @@ ServiceWorkerManager::SoftUpdateInternal(const OriginAttributes& aOriginAttribut
                                newest->ScriptSpec(), nullptr,
                                registration->GetUpdateViaCache());
 
-  RefPtr<UpdateJobCallback> cb = new UpdateJobCallback(aCallback);
-  job->AppendResultCallback(cb);
+  if (aCallback) {
+    RefPtr<UpdateJobCallback> cb = new UpdateJobCallback(aCallback);
+    job->AppendResultCallback(cb);
+  }
 
   queue->ScheduleJob(job);
 }
@@ -2540,6 +2409,11 @@ ServiceWorkerManager::Update(nsIPrincipal* aPrincipal,
                              ServiceWorkerUpdateFinishCallback* aCallback)
 {
   MOZ_ASSERT(NS_IsMainThread());
+
+  if (ServiceWorkerParentInterceptEnabled()) {
+    UpdateInternal(aPrincipal, aScope, aCallback);
+    return;
+  }
 
   RefPtr<GenericPromise::Private> promise =
     new GenericPromise::Private(__func__);

@@ -59,6 +59,7 @@ def filter_beta_release_tasks(task, parameters, ignore_kinds=None, allow_l10n=Fa
             'win32-pgo', 'win64-pgo',
             # ASAN is central-only
             'linux64-asan-reporter-nightly',
+            'win64-asan-reporter-nightly',
             ):
         return False
     if str(platform).startswith('android') and 'nightly' in str(platform):
@@ -533,7 +534,7 @@ def target_tasks_nightly_asan(full_task_graph, parameters, graph_config):
     """Select the set of tasks required for a nightly build of asan. The
     nightly build process involves a pipeline of builds, signing,
     and, eventually, uploading the tasks to balrog."""
-    filter = make_nightly_filter({'linux64-asan-reporter-nightly'})
+    filter = make_nightly_filter({'linux64-asan-reporter-nightly', 'win64-asan-reporter-nightly'})
     return [l for l, t in full_task_graph.tasks.iteritems() if filter(t, parameters)]
 
 
@@ -565,9 +566,20 @@ def target_tasks_dmd(full_task_graph, parameters, graph_config):
 @_target_task('searchfox_index')
 def target_tasks_searchfox(full_task_graph, parameters, graph_config):
     """Select tasks required for indexing Firefox for Searchfox web site each day"""
-    # For now we only do Linux debug builds. Windows and Mac builds
+    # For now we only do Linux and Mac debug builds. Windows builds
     # are currently broken (bug 1418415).
-    return ['searchfox-linux64-searchfox/debug']
+    return ['searchfox-linux64-searchfox/debug',
+            'searchfox-macosx64-searchfox/debug']
+
+
+@_target_task('pipfile_update')
+def target_tasks_pipfile_update(full_task_graph, parameters, graph_config):
+    """Select the set of tasks required to perform nightly in-tree pipfile updates
+    """
+    def filter(task):
+        # For now any task in the repo-update kind is ok
+        return task.kind in ['pipfile-update']
+    return [l for l, t in full_task_graph.tasks.iteritems() if filter(t)]
 
 
 @_target_task('file_update')
@@ -577,4 +589,14 @@ def target_tasks_file_update(full_task_graph, parameters, graph_config):
     def filter(task):
         # For now any task in the repo-update kind is ok
         return task.kind in ['repo-update']
+    return [l for l, t in full_task_graph.tasks.iteritems() if filter(t)]
+
+
+@_target_task('cron_bouncer_check')
+def target_tasks_bouncer_check(full_task_graph, parameters, graph_config):
+    """Select the set of tasks required to perform bouncer version verification.
+    """
+    def filter(task):
+        # For now any task in the repo-update kind is ok
+        return task.kind in ['cron-bouncer-check']
     return [l for l, t in full_task_graph.tasks.iteritems() if filter(t)]

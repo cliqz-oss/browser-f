@@ -86,11 +86,11 @@ BaselineCompiler::addPCMappingEntry(bool addIndexEntry)
 MethodStatus
 BaselineCompiler::compile()
 {
-    JitSpew(JitSpew_BaselineScripts, "Baseline compiling script %s:%u (%p)",
-            script->filename(), script->lineno(), script);
+    JitSpew(JitSpew_BaselineScripts, "Baseline compiling script %s:%u:%u (%p)",
+            script->filename(), script->lineno(), script->column(), script);
 
-    JitSpew(JitSpew_Codegen, "# Emitting baseline code for script %s:%u",
-            script->filename(), script->lineno());
+    JitSpew(JitSpew_Codegen, "# Emitting baseline code for script %s:%u:%u",
+            script->filename(), script->lineno(), script->column());
 
     TraceLoggerThread* logger = TraceLoggerForCurrentThread(cx);
     TraceLoggerEvent scriptEvent(TraceLogger_AnnotateScripts, script);
@@ -222,9 +222,9 @@ BaselineCompiler::compile()
     baselineScript->setMethod(code);
     baselineScript->setTemplateEnvironment(templateEnv);
 
-    JitSpew(JitSpew_BaselineScripts, "Created BaselineScript %p (raw %p) for %s:%u",
+    JitSpew(JitSpew_BaselineScripts, "Created BaselineScript %p (raw %p) for %s:%u:%u",
             (void*) baselineScript.get(), (void*) code->raw(),
-            script->filename(), script->lineno());
+            script->filename(), script->lineno(), script->column());
 
     MOZ_ASSERT(pcMappingIndexEntries.length() > 0);
     baselineScript->copyPCMappingIndexEntries(&pcMappingIndexEntries[0]);
@@ -247,7 +247,7 @@ BaselineCompiler::compile()
     for (size_t i = 0; i < icLoadLabels_.length(); i++) {
         CodeOffset label = icLoadLabels_[i].label;
         size_t icEntry = icLoadLabels_[i].icEntry;
-        BaselineICEntry* entryAddr = &(baselineScript->icEntry(icEntry));
+        ICEntry* entryAddr = &(baselineScript->icEntry(icEntry));
         Assembler::PatchDataWithValueCheck(CodeLocationLabel(code, label),
                                            ImmPtr(entryAddr),
                                            ImmPtr((void*)-1));
@@ -278,8 +278,8 @@ BaselineCompiler::compile()
     // Always register a native => bytecode mapping entry, since profiler can be
     // turned on with baseline jitcode on stack, and baseline jitcode cannot be invalidated.
     {
-        JitSpew(JitSpew_Profiling, "Added JitcodeGlobalEntry for baseline script %s:%u (%p)",
-                    script->filename(), script->lineno(), baselineScript.get());
+        JitSpew(JitSpew_Profiling, "Added JitcodeGlobalEntry for baseline script %s:%u:%u (%p)",
+                    script->filename(), script->lineno(), script->column(), baselineScript.get());
 
         // Generate profiling string.
         char* str = JitcodeGlobalEntry::createScriptString(cx, script);
@@ -361,6 +361,9 @@ BaselineCompiler::emitPrologue()
 #endif
     emitProfilerEnterFrame();
 
+    if (script->trackRecordReplayProgress())
+        masm.inc64(AbsoluteAddress(mozilla::recordreplay::ExecutionProgressCounter()));
+
     masm.push(BaselineFrameReg);
     masm.moveStackPtrTo(BaselineFrameReg);
     masm.subFromStackPtr(Imm32(BaselineFrame::Size()));
@@ -427,6 +430,9 @@ BaselineCompiler::emitPrologue()
     // call into the VM and trigger a GC.
     if (!initEnvironmentChain())
         return false;
+
+    frame.assertSyncedStack();
+    masm.debugAssertContextRealm(script->realm(), R1.scratchReg());
 
     if (!emitStackCheck())
         return false;
@@ -506,7 +512,7 @@ BaselineCompiler::emitOutOfLinePostBarrierSlot()
 bool
 BaselineCompiler::emitIC(ICStub* stub, ICEntry::Kind kind)
 {
-    BaselineICEntry* entry = allocateICEntry(stub, kind);
+    ICEntry* entry = allocateICEntry(stub, kind);
     if (!entry)
         return false;
 
@@ -1026,7 +1032,6 @@ BaselineCompiler::emitBody()
             // Run-once opcode during self-hosting initialization.
           case JSOP_UNUSED126:
           case JSOP_UNUSED206:
-          case JSOP_UNUSED223:
           case JSOP_LIMIT:
             // === !! WARNING WARNING WARNING !! ===
             // Do you really want to sacrifice performance by not implementing
@@ -1353,7 +1358,11 @@ BaselineCompiler::emit_JSOP_LOOPENTRY()
     if (!emit_JSOP_JUMPTARGET())
         return false;
     frame.syncStack(0);
-    return emitWarmUpCounterIncrement(LoopEntryCanIonOsr(pc));
+    if (!emitWarmUpCounterIncrement(LoopEntryCanIonOsr(pc)))
+        return false;
+    if (script->trackRecordReplayProgress())
+        masm.inc64(AbsoluteAddress(mozilla::recordreplay::ExecutionProgressCounter()));
+    return true;
 }
 
 bool
@@ -1917,7 +1926,7 @@ BaselineCompiler::emitBinaryArith()
     frame.popRegsAndSync(2);
 
     // Call IC
-    ICBinaryArith_Fallback::Compiler stubCompiler(cx, ICStubCompiler::Engine::Baseline);
+    ICBinaryArith_Fallback::Compiler stubCompiler(cx);
     if (!emitOpIC(stubCompiler.getStub(&stubSpace_)))
         return false;
 
@@ -1999,7 +2008,7 @@ BaselineCompiler::emitCompare()
     frame.popRegsAndSync(2);
 
     // Call IC.
-    ICCompare_Fallback::Compiler stubCompiler(cx, ICStubCompiler::Engine::Baseline);
+    ICCompare_Fallback::Compiler stubCompiler(cx);
     if (!emitOpIC(stubCompiler.getStub(&stubSpace_)))
         return false;
 
@@ -2034,7 +2043,7 @@ BaselineCompiler::emit_JSOP_CASE()
     frame.syncStack(0);
 
     // Call IC.
-    ICCompare_Fallback::Compiler stubCompiler(cx, ICStubCompiler::Engine::Baseline);
+    ICCompare_Fallback::Compiler stubCompiler(cx);
     if (!emitOpIC(stubCompiler.getStub(&stubSpace_)))
         return false;
 
@@ -2082,7 +2091,7 @@ BaselineCompiler::emit_JSOP_NEWARRAY()
     if (!group)
         return false;
 
-    ICNewArray_Fallback::Compiler stubCompiler(cx, group, ICStubCompiler::Engine::Baseline);
+    ICNewArray_Fallback::Compiler stubCompiler(cx, group);
     if (!emitOpIC(stubCompiler.getStub(&stubSpace_)))
         return false;
 
@@ -2146,7 +2155,7 @@ BaselineCompiler::emit_JSOP_NEWOBJECT()
 {
     frame.syncStack(0);
 
-    ICNewObject_Fallback::Compiler stubCompiler(cx, ICStubCompiler::Engine::Baseline);
+    ICNewObject_Fallback::Compiler stubCompiler(cx);
     if (!emitOpIC(stubCompiler.getStub(&stubSpace_)))
         return false;
 
@@ -2158,26 +2167,10 @@ bool
 BaselineCompiler::emit_JSOP_NEWINIT()
 {
     frame.syncStack(0);
-    JSProtoKey key = JSProtoKey(GET_UINT8(pc));
 
-    if (key == JSProto_Array) {
-        // Pass length in R0.
-        masm.move32(Imm32(0), R0.scratchReg());
-
-        ObjectGroup* group = ObjectGroup::allocationSiteGroup(cx, script, pc, JSProto_Array);
-        if (!group)
-            return false;
-
-        ICNewArray_Fallback::Compiler stubCompiler(cx, group, ICStubCompiler::Engine::Baseline);
-        if (!emitOpIC(stubCompiler.getStub(&stubSpace_)))
-            return false;
-    } else {
-        MOZ_ASSERT(key == JSProto_Object);
-
-        ICNewObject_Fallback::Compiler stubCompiler(cx, ICStubCompiler::Engine::Baseline);
-        if (!emitOpIC(stubCompiler.getStub(&stubSpace_)))
-            return false;
-    }
+    ICNewObject_Fallback::Compiler stubCompiler(cx);
+    if (!emitOpIC(stubCompiler.getStub(&stubSpace_)))
+        return false;
 
     frame.push(R0);
     return true;
@@ -2294,7 +2287,7 @@ BaselineCompiler::emit_JSOP_GETELEM_SUPER()
     storeValue(frame.peek(-1), frame.addressOfScratchValue(), R2);
     frame.pop();
 
-    // Keep index and receiver in R0 and R1.
+    // Keep receiver and index in R0 and R1.
     frame.popRegsAndSync(2);
 
     // Keep obj on the stack.
@@ -2347,10 +2340,10 @@ BaselineCompiler::emit_JSOP_SETELEM_SUPER()
 {
     bool strict = IsCheckStrictOp(JSOp(*pc));
 
-    // Incoming stack is |propval, receiver, obj, rval|. We need to shuffle
+    // Incoming stack is |receiver, propval, obj, rval|. We need to shuffle
     // stack to leave rval when operation is complete.
 
-    // Pop rval into R0, then load propval into R1 and replace with rval.
+    // Pop rval into R0, then load receiver into R1 and replace with rval.
     frame.popRegsAndSync(1);
     masm.loadValue(frame.addressOfStackValue(frame.peek(-3)), R1);
     masm.storeValue(R0, frame.addressOfStackValue(frame.peek(-3)));
@@ -2358,10 +2351,10 @@ BaselineCompiler::emit_JSOP_SETELEM_SUPER()
     prepareVMCall();
 
     pushArg(Imm32(strict));
-    masm.loadValue(frame.addressOfStackValue(frame.peek(-2)), R2);
-    pushArg(R2); // receiver
+    pushArg(R1); // receiver
     pushArg(R0); // rval
-    pushArg(R1); // propval
+    masm.loadValue(frame.addressOfStackValue(frame.peek(-2)), R0);
+    pushArg(R0); // propval
     masm.unboxObject(frame.addressOfStackValue(frame.peek(-1)), R0.scratchReg());
     pushArg(R0.scratchReg()); // obj
 
@@ -2623,7 +2616,7 @@ BaselineCompiler::emit_JSOP_GETPROP()
     frame.popRegsAndSync(1);
 
     // Call IC.
-    ICGetProp_Fallback::Compiler compiler(cx, ICStubCompiler::Engine::Baseline);
+    ICGetProp_Fallback::Compiler compiler(cx);
     if (!emitOpIC(compiler.getStub(&stubSpace_)))
         return false;
 
@@ -2658,8 +2651,7 @@ BaselineCompiler::emit_JSOP_GETPROP_SUPER()
     masm.loadValue(frame.addressOfStackValue(frame.peek(-1)), R1);
     frame.pop();
 
-    ICGetProp_Fallback::Compiler compiler(cx, ICStubCompiler::Engine::Baseline,
-                                          /* hasReceiver = */ true);
+    ICGetProp_Fallback::Compiler compiler(cx, /* hasReceiver = */ true);
     if (!emitOpIC(compiler.getStub(&stubSpace_)))
         return false;
 
@@ -2718,7 +2710,6 @@ BaselineCompiler::getEnvironmentCoordinateAddressFromObject(Register objReg, Reg
     EnvironmentCoordinate ec(pc);
     Shape* shape = EnvironmentCoordinateToEnvironmentShape(script, pc);
 
-    Address addr;
     if (shape->numFixedSlots() <= ec.slot()) {
         masm.loadPtr(Address(objReg, NativeObject::offsetOfSlots()), reg);
         return Address(reg, (ec.slot() - shape->numFixedSlots()) * sizeof(Value));
@@ -4112,6 +4103,38 @@ BaselineCompiler::emit_JSOP_TOASYNCITER()
     return true;
 }
 
+typedef bool (*TrySkipAwaitFn)(JSContext*, HandleValue, MutableHandleValue);
+static const VMFunction TrySkipAwaitInfo = FunctionInfo<TrySkipAwaitFn>(jit::TrySkipAwait, "TrySkipAwait");
+
+bool
+BaselineCompiler::emit_JSOP_TRYSKIPAWAIT()
+{
+    frame.syncStack(0);
+    masm.loadValue(frame.addressOfStackValue(frame.peek(-1)), R0);
+
+    prepareVMCall();
+    pushArg(R0);
+
+    if (!callVM(TrySkipAwaitInfo))
+        return false;
+
+    Label cannotSkip, done;
+    masm.branchTestMagicValue(Assembler::Equal, R0, JS_CANNOT_SKIP_AWAIT, &cannotSkip);
+    masm.moveValue(BooleanValue(true), R1);
+    masm.jump(&done);
+
+    masm.bind(&cannotSkip);
+    masm.loadValue(frame.addressOfStackValue(frame.peek(-1)), R0);
+    masm.moveValue(BooleanValue(false), R1);
+
+    masm.bind(&done);
+
+    frame.pop();
+    frame.push(R0);
+    frame.push(R1);
+    return true;
+}
+
 typedef bool (*ThrowObjectCoercibleFn)(JSContext*, HandleValue);
 static const VMFunction ThrowObjectCoercibleInfo =
     FunctionInfo<ThrowObjectCoercibleFn>(ThrowObjectCoercible, "ThrowObjectCoercible");
@@ -4623,7 +4646,7 @@ BaselineCompiler::emit_JSOP_AWAIT()
     return emit_JSOP_YIELD();
 }
 
-typedef bool (*DebugAfterYieldFn)(JSContext*, BaselineFrame*);
+typedef bool (*DebugAfterYieldFn)(JSContext*, BaselineFrame*, jsbytecode*, bool*);
 static const VMFunction DebugAfterYieldInfo =
     FunctionInfo<DebugAfterYieldFn>(jit::DebugAfterYield, "DebugAfterYield");
 
@@ -4636,8 +4659,21 @@ BaselineCompiler::emit_JSOP_DEBUGAFTERYIELD()
     frame.assertSyncedStack();
     masm.loadBaselineFramePtr(BaselineFrameReg, R0.scratchReg());
     prepareVMCall();
+    pushArg(ImmPtr(pc));
     pushArg(R0.scratchReg());
-    return callVM(DebugAfterYieldInfo);
+    if (!callVM(DebugAfterYieldInfo))
+        return false;
+
+    icEntries_.back().setFakeKind(ICEntry::Kind_DebugAfterYield);
+
+    Label done;
+    masm.branchTest32(Assembler::Zero, ReturnReg, ReturnReg, &done);
+    {
+        masm.loadValue(frame.addressOfReturnValue(), JSReturnOperand);
+        masm.jump(&return_);
+    }
+    masm.bind(&done);
+    return true;
 }
 
 typedef bool (*FinalSuspendFn)(JSContext*, HandleObject, jsbytecode*);
@@ -4669,7 +4705,7 @@ static const VMFunction InterpretResumeInfo =
 
 typedef bool (*GeneratorThrowFn)(JSContext*, BaselineFrame*, Handle<GeneratorObject*>,
                                  HandleValue, uint32_t);
-static const VMFunction GeneratorThrowInfo =
+static const VMFunction GeneratorThrowOrReturnInfo =
     FunctionInfo<GeneratorThrowFn>(jit::GeneratorThrowOrReturn, "GeneratorThrowOrReturn", TailCall);
 
 bool
@@ -4727,7 +4763,7 @@ BaselineCompiler::emit_JSOP_RESUME()
                                  scratch2);
     masm.subStackPtrFrom(scratch2);
     masm.store32(scratch2, Address(BaselineFrameReg, BaselineFrame::reverseOffsetOfFrameSize()));
-    masm.makeFrameDescriptor(scratch2, JitFrame_BaselineJS, JitFrameLayout::Size());
+    masm.makeFrameDescriptor(scratch2, FrameType::BaselineJS, JitFrameLayout::Size());
 
     masm.Push(Imm32(0)); // actual argc
     masm.PushCalleeToken(callee, /* constructing = */ false);
@@ -4822,6 +4858,8 @@ BaselineCompiler::emit_JSOP_RESUME()
     masm.bind(&noExprStack);
     masm.pushValue(retVal);
 
+    masm.switchToObjectRealm(genObj, scratch2);
+
     if (resumeKind == GeneratorObject::NEXT) {
         // Determine the resume address based on the yieldAndAwaitIndex and the
         // yieldAndAwaitIndex -> native table in the BaselineScript.
@@ -4852,11 +4890,11 @@ BaselineCompiler::emit_JSOP_RESUME()
         pushArg(genObj);
         pushArg(scratch2);
 
-        TrampolinePtr code = cx->runtime()->jitRuntime()->getVMWrapper(GeneratorThrowInfo);
+        TrampolinePtr code = cx->runtime()->jitRuntime()->getVMWrapper(GeneratorThrowOrReturnInfo);
 
         // Create the frame descriptor.
         masm.subStackPtrFrom(scratch1);
-        masm.makeFrameDescriptor(scratch1, JitFrame_BaselineJS, ExitFrameLayout::Size());
+        masm.makeFrameDescriptor(scratch1, FrameType::BaselineJS, ExitFrameLayout::Size());
 
         // Push the frame descriptor and a dummy return address (it doesn't
         // matter what we push here, frame iterators will use the frame pc
@@ -4890,10 +4928,11 @@ BaselineCompiler::emit_JSOP_RESUME()
     if (!callVM(InterpretResumeInfo))
         return false;
 
-    // After the generator returns, we restore the stack pointer, push the
-    // return value and we're done.
+    // After the generator returns, we restore the stack pointer, switch back to
+    // the current realm, push the return value, and we're done.
     masm.bind(&returnTarget);
     masm.computeEffectiveAddress(frame.addressOfStackValue(frame.peek(-1)), masm.getStackPointer());
+    masm.switchToRealm(script->realm(), R2.scratchReg());
     frame.popn(2);
     frame.push(R0);
     return true;
@@ -5095,7 +5134,8 @@ BaselineCompiler::emit_JSOP_IMPORTMETA()
     RootedModuleObject module(cx, GetModuleObjectForScript(script));
     MOZ_ASSERT(module);
 
-    JSObject* metaObject = GetOrCreateModuleMetaObject(cx, module);
+    RootedScript moduleScript(cx, module->script());
+    JSObject* metaObject = GetOrCreateModuleMetaObject(cx, moduleScript);
     if (!metaObject)
         return false;
 

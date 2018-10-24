@@ -525,7 +525,7 @@ nsStorageInputStream::Seek(int32_t aWhence, int64_t aOffset)
       pos += mStorageStream->mLogicalLength;
       break;
     default:
-      NS_NOTREACHED("unexpected whence value");
+      MOZ_ASSERT_UNREACHABLE("unexpected whence value");
       return NS_ERROR_UNEXPECTED;
   }
   if (pos == int64_t(mLogicalCursor)) {
@@ -549,7 +549,7 @@ nsStorageInputStream::Tell(int64_t* aResult)
 NS_IMETHODIMP
 nsStorageInputStream::SetEOF()
 {
-  NS_NOTREACHED("nsStorageInputStream::SetEOF");
+  MOZ_ASSERT_UNREACHABLE("nsStorageInputStream::SetEOF");
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -578,20 +578,23 @@ nsStorageInputStream::Serialize(InputStreamParams& aParams, FileDescriptorArray&
 {
   nsCString combined;
   int64_t offset;
-  mozilla::DebugOnly<nsresult> rv = Tell(&offset);
+  nsresult rv = Tell(&offset);
   MOZ_ASSERT(NS_SUCCEEDED(rv));
 
   uint64_t remaining;
   rv = Available(&remaining);
   MOZ_ASSERT(NS_SUCCEEDED(rv));
 
-  combined.SetCapacity(remaining);
+  auto handle = combined.BulkWrite(remaining, 0, false, rv);
+  MOZ_ASSERT(NS_SUCCEEDED(rv));
+
   uint32_t numRead = 0;
 
-  rv = Read(combined.BeginWriting(), remaining, &numRead);
+  rv = Read(handle.Elements(), remaining, &numRead);
   MOZ_ASSERT(NS_SUCCEEDED(rv));
+
   MOZ_ASSERT(numRead == remaining);
-  combined.SetLength(numRead);
+  handle.Finish(numRead, false);
 
   rv = Seek(NS_SEEK_SET, offset);
   MOZ_ASSERT(NS_SUCCEEDED(rv));
@@ -614,7 +617,8 @@ bool
 nsStorageInputStream::Deserialize(const InputStreamParams& aParams,
                                   const FileDescriptorArray&)
 {
-  NS_NOTREACHED("We should never attempt to deserialize a storage input stream.");
+  MOZ_ASSERT_UNREACHABLE("We should never attempt to deserialize a storage "
+                         "input stream.");
   return false;
 }
 

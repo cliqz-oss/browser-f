@@ -28,6 +28,7 @@ const MAX_VERTICAL_OFFSET = 3;
 // line in text selection.
 const RE_SCRATCHPAD_ERROR = /(?:@Scratchpad\/\d+:|\()(\d+):?(\d+)?(?:\)|\n)/;
 const RE_JUMP_TO_LINE = /^(\d+):?(\d+)?/;
+const AUTOCOMPLETE_MARK_CLASSNAME = "cm-auto-complete-shadow-text";
 
 const Services = require("Services");
 const EventEmitter = require("devtools/shared/event-emitter");
@@ -58,27 +59,30 @@ const CM_SCRIPTS = [
 const CM_IFRAME = "chrome://devtools/content/sourceeditor/codemirror/cmiframe.html";
 
 const CM_MAPPING = [
+  "clearHistory",
+  "defaultCharWidth",
+  "extendSelection",
   "focus",
+  "getCursor",
+  "getLine",
+  "getScrollInfo",
+  "getSelection",
+  "getViewport",
   "hasFocus",
   "lineCount",
-  "somethingSelected",
-  "getCursor",
-  "setSelection",
-  "getSelection",
-  "replaceSelection",
-  "extendSelection",
-  "undo",
-  "redo",
-  "clearHistory",
   "openDialog",
+  "redo",
   "refresh",
-  "getScrollInfo",
-  "getViewport"
+  "replaceSelection",
+  "setSelection",
+  "somethingSelected",
+  "undo",
 ];
 
 const editors = new WeakMap();
 
 Editor.modes = {
+  cljs: { name: "text/x-clojure" },
   css: { name: "css" },
   fs: { name: "x-shader/x-fragment" },
   haxe: { name: "haxe" },
@@ -147,6 +151,12 @@ function Editor(config) {
   this.config.extraKeys[Editor.keyFor("indentLess")] = false;
   this.config.extraKeys[Editor.keyFor("indentMore")] = false;
 
+  // Disable Alt-B and Alt-F to navigate groups (respectively previous and next) since:
+  // - it's not standard in input fields
+  // - it also inserts a character which feels weird
+  this.config.extraKeys["Alt-B"] = false;
+  this.config.extraKeys["Alt-F"] = false;
+
   // Overwrite default config with user-provided, if needed.
   Object.keys(config).forEach(k => {
     if (k != "extraKeys") {
@@ -179,6 +189,16 @@ function Editor(config) {
   // indenting with tabs, insert one tab. Otherwise insert N
   // whitespaces where N == indentUnit option.
   this.config.extraKeys.Tab = cm => {
+    if (config.extraKeys && config.extraKeys.Tab) {
+      // If a consumer registers its own extraKeys.Tab, we execute it before doing
+      // anything else. If it returns false, that mean that all the key handling work is
+      // done, so we can do an early return.
+      const res = config.extraKeys.Tab(cm);
+      if (res === false) {
+        return;
+      }
+    }
+
     if (cm.somethingSelected()) {
       cm.indentSelection("add");
       return;
@@ -391,6 +411,7 @@ Editor.prototype = {
         this.emit("dirty-change");
       }
     });
+    cm.on("changes", () => this.emit("changes"));
     cm.on("cursorActivity", () => this.emit("cursorActivity"));
 
     cm.on("gutterClick", (cmArg, line, gutter, ev) => {
@@ -1259,6 +1280,32 @@ Editor.prototype = {
       this.initializeAutoCompletion(this.config.autocompleteOpts);
     } else {
       this.destroyAutoCompletion();
+    }
+  },
+
+  getAutoCompletionText() {
+    const cm = editors.get(this);
+    const mark = cm.getAllMarks().find(m => m.className === AUTOCOMPLETE_MARK_CLASSNAME);
+    if (!mark) {
+      return "";
+    }
+
+    return mark.title || "";
+  },
+
+  setAutoCompletionText: function(text) {
+    const cursor = this.getCursor();
+    const cm = editors.get(this);
+    const className = AUTOCOMPLETE_MARK_CLASSNAME;
+
+    cm.getAllMarks().forEach(mark => {
+      if (mark.className === className) {
+        mark.clear();
+      }
+    });
+
+    if (text) {
+      cm.markText({...cursor, ch: cursor.ch - 1}, cursor, { className, title: text });
     }
   },
 

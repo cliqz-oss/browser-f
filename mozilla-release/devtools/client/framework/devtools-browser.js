@@ -113,6 +113,16 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
 
     // Enable DevTools connection screen, if the preference allows this.
     toggleMenuItem("menu_devtools_connect", devtoolsRemoteEnabled);
+
+    // Enable record/replay menu items?
+    try {
+      const recordReplayEnabled = Services.prefs.getBoolPref("devtools.recordreplay.enabled");
+      toggleMenuItem("menu_devtools_recordExecution", recordReplayEnabled);
+      toggleMenuItem("menu_devtools_saveRecording", recordReplayEnabled);
+      toggleMenuItem("menu_devtools_replayExecution", recordReplayEnabled);
+    } catch (e) {
+      // devtools.recordreplay.enabled only exists on certain platforms.
+    }
   },
 
   /**
@@ -275,7 +285,7 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
    // Used by browser-sets.inc, command
   openAboutDebugging(gBrowser, hash) {
     const url = "about:debugging" + (hash ? "#" + hash : "");
-    gBrowser.selectedTab = gBrowser.addTab(url);
+    gBrowser.selectedTab = gBrowser.addTrustedTab(url);
   },
 
   /**
@@ -283,7 +293,7 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
    */
    // Used by browser-sets.inc, command
   openConnectScreen(gBrowser) {
-    gBrowser.selectedTab = gBrowser.addTab("chrome://devtools/content/framework/connect/connect.xhtml");
+    gBrowser.selectedTab = gBrowser.addTrustedTab("chrome://devtools/content/framework/connect/connect.xhtml");
   },
 
   /**
@@ -309,30 +319,29 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
     const transport = DebuggerServer.connectPipe();
     const client = new DebuggerClient(transport);
 
-    const deferred = defer();
-    client.connect().then(() => {
-      client.getProcess(processId)
-            .then(response => {
-              const options = {
-                form: response.form,
-                client: client,
-                chrome: true,
-                isBrowsingContext: false
-              };
-              return TargetFactory.forRemoteTab(options);
-            })
-            .then(target => {
-              // Ensure closing the connection in order to cleanup
-              // the debugger client and also the server created in the
-              // content process
-              target.on("close", () => {
-                client.close();
+    return new Promise(resolve => {
+      client.connect().then(() => {
+        client.getProcess(processId)
+              .then(response => {
+                const options = {
+                  form: response.form,
+                  client: client,
+                  chrome: true,
+                  isBrowsingContext: false
+                };
+                return TargetFactory.forRemoteTab(options);
+              })
+              .then(target => {
+                // Ensure closing the connection in order to cleanup
+                // the debugger client and also the server created in the
+                // content process
+                target.on("close", () => {
+                  client.close();
+                });
+                resolve(target);
               });
-              deferred.resolve(target);
-            });
+      });
     });
-
-    return deferred.promise;
   },
 
   /**
@@ -510,13 +519,7 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
     }
 
     debugService.activationHandler = function(window) {
-      const chromeWindow = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                                .getInterface(Ci.nsIWebNavigation)
-                                .QueryInterface(Ci.nsIDocShellTreeItem)
-                                .rootTreeItem
-                                .QueryInterface(Ci.nsIInterfaceRequestor)
-                                .getInterface(Ci.nsIDOMWindow)
-                                .QueryInterface(Ci.nsIDOMChromeWindow);
+      const chromeWindow = window.docShell.rootTreeItem.domWindow;
 
       let setupFinished = false;
       slowScriptDebugHandler(chromeWindow.gBrowser.selectedTab,
@@ -526,8 +529,7 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
 
       // Don't return from the interrupt handler until the debugger is brought
       // up; no reason to continue executing the slow script.
-      const utils = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIDOMWindowUtils);
+      const utils = window.windowUtils;
       utils.enterModalState();
       Services.tm.spinEventLoopUntil(() => {
         return setupFinished;
@@ -741,9 +743,7 @@ Services.obs.addObserver(gDevToolsBrowser, "devtools:loader:destroy");
 
 // Fake end of browser window load event for all already opened windows
 // that is already fully loaded.
-const enumerator = Services.wm.getEnumerator(gDevTools.chromeWindowType);
-while (enumerator.hasMoreElements()) {
-  const win = enumerator.getNext();
+for (const win of Services.wm.getEnumerator(gDevTools.chromeWindowType)) {
   if (win.gBrowserInit && win.gBrowserInit.delayedStartupFinished) {
     gDevToolsBrowser._registerBrowserWindow(win);
   }

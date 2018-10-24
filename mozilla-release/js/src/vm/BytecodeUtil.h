@@ -35,7 +35,7 @@ FOR_EACH_OPCODE(ENUMERATE_OPCODE)
 } JSOp;
 
 /*
- * JS bytecode formats.
+ * [SMDOC] Bytecode Format flags (JOF_*)
  */
 enum {
     JOF_BYTE            = 0,        /* single bytecode, no immediates */
@@ -394,8 +394,7 @@ struct JSCodeSpec {
 namespace js {
 
 extern const JSCodeSpec CodeSpec[];
-extern const unsigned   NumCodeSpecs;
-extern const char       * const CodeName[];
+extern const char* const CodeName[];
 
 /* Shorthand for type from opcode. */
 
@@ -453,82 +452,6 @@ BytecodeIsJumpTarget(JSOp op)
     }
 }
 
-class SrcNoteLineScanner
-{
-    /* offset of the current JSOp in the bytecode */
-    ptrdiff_t offset;
-
-    /* next src note to process */
-    jssrcnote* sn;
-
-    /* line number of the current JSOp */
-    uint32_t lineno;
-
-    /*
-     * Is the current op the first one after a line change directive? Note that
-     * multiple ops may be "first" if a line directive is used to return to a
-     * previous line (eg, with a for loop increment expression.)
-     */
-    bool lineHeader;
-
-  public:
-    SrcNoteLineScanner(jssrcnote* sn, uint32_t lineno)
-        : offset(0), sn(sn), lineno(lineno), lineHeader(false)
-    {
-    }
-
-    /*
-     * This is called repeatedly with always-advancing relpc values. The src
-     * notes are tuples of <PC offset from prev src note, type, args>. Scan
-     * through, updating the lineno, until the next src note is for a later
-     * bytecode.
-     *
-     * When looking at the desired PC offset ('relpc'), the op is first in that
-     * line iff there is a SRC_SETLINE or SRC_NEWLINE src note for that exact
-     * bytecode.
-     *
-     * Note that a single bytecode may have multiple line-modifying notes (even
-     * though only one should ever be needed.)
-     */
-    void advanceTo(ptrdiff_t relpc) {
-        // Must always advance! If the same or an earlier PC is erroneously
-        // passed in, we will already be past the relevant src notes
-        MOZ_ASSERT_IF(offset > 0, relpc > offset);
-
-        // Next src note should be for after the current offset
-        MOZ_ASSERT_IF(offset > 0, SN_IS_TERMINATOR(sn) || SN_DELTA(sn) > 0);
-
-        // The first PC requested is always considered to be a line header
-        lineHeader = (offset == 0);
-
-        if (SN_IS_TERMINATOR(sn))
-            return;
-
-        ptrdiff_t nextOffset;
-        while ((nextOffset = offset + SN_DELTA(sn)) <= relpc && !SN_IS_TERMINATOR(sn)) {
-            offset = nextOffset;
-            SrcNoteType type = SN_TYPE(sn);
-            if (type == SRC_SETLINE || type == SRC_NEWLINE) {
-                if (type == SRC_SETLINE)
-                    lineno = GetSrcNoteOffset(sn, 0);
-                else
-                    lineno++;
-
-                if (offset == relpc)
-                    lineHeader = true;
-            }
-
-            sn = SN_NEXT(sn);
-        }
-    }
-
-    bool isLineHeader() const {
-        return lineHeader;
-    }
-
-    uint32_t getLine() const { return lineno; }
-};
-
 MOZ_ALWAYS_INLINE unsigned
 StackUses(jsbytecode* pc)
 {
@@ -561,7 +484,7 @@ StackDefs(jsbytecode* pc)
     return ndefs;
 }
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(JS_JITSPEW)
 /*
  * Given bytecode address pc in script's main program code, compute the operand
  * stack depth just before (JSOp) *pc executes.  If *pc is not reachable, return
@@ -611,20 +534,6 @@ DecompileValueGenerator(JSContext* cx, int spindex, HandleValue v,
  */
 UniqueChars
 DecompileArgument(JSContext* cx, int formalIndex, HandleValue v);
-
-extern bool
-CallResultEscapes(jsbytecode* pc);
-
-static inline unsigned
-GetDecomposeLength(jsbytecode* pc, size_t len)
-{
-    /*
-     * The last byte of a DECOMPOSE op stores the decomposed length.  This is a
-     * constant: perhaps we should just hardcode values instead?
-     */
-    MOZ_ASSERT(size_t(CodeSpec[*pc].length) == len);
-    return (unsigned) pc[len - 1];
-}
 
 static inline unsigned
 GetBytecodeLength(jsbytecode* pc)
@@ -903,7 +812,7 @@ class PCCounts
         return numExec_;
     }
 
-    static const char* numExecName;
+    static const char numExecName[];
 };
 
 static inline jsbytecode*
@@ -912,7 +821,12 @@ GetNextPc(jsbytecode* pc)
     return pc + GetBytecodeLength(pc);
 }
 
-#if defined(DEBUG)
+typedef Vector<jsbytecode*, 4, SystemAllocPolicy> PcVector;
+
+bool GetSuccessorBytecodes(jsbytecode* pc, PcVector& successors);
+bool GetPredecessorBytecodes(JSScript* script, jsbytecode* pc, PcVector& predecessors);
+
+#if defined(DEBUG) || defined(JS_JITSPEW)
 /*
  * Disassemblers, for debugging only.
  */

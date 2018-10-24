@@ -51,9 +51,9 @@ class nsIWidget;
 class nsRange;
 
 namespace mozilla {
-class AddStyleSheetTransaction;
 class AutoSelectionRestorer;
 class AutoTopLevelEditSubActionNotifier;
+class AutoTransactionBatch;
 class AutoTransactionsConserveSelection;
 class AutoUpdateViewBatch;
 class ChangeAttributeTransaction;
@@ -61,6 +61,7 @@ class CompositionTransaction;
 class CreateElementTransaction;
 class CSSEditUtils;
 class DeleteNodeTransaction;
+class DeleteRangeTransaction;
 class DeleteTextTransaction;
 class EditAggregateTransaction;
 class EditorEventListener;
@@ -73,7 +74,6 @@ class InsertNodeTransaction;
 class InsertTextTransaction;
 class JoinNodeTransaction;
 class PlaceholderTransaction;
-class RemoveStyleSheetTransaction;
 class SplitNodeResult;
 class SplitNodeTransaction;
 class TextComposition;
@@ -293,10 +293,10 @@ public:
   }
 
   nsresult GetSelection(SelectionType aSelectionType,
-                        Selection** aSelection);
+                        Selection** aSelection) const;
 
   Selection* GetSelection(SelectionType aSelectionType =
-                                          SelectionType::eNormal)
+                                          SelectionType::eNormal) const
   {
     nsISelectionController* sc = GetSelectionController();
     if (!sc) {
@@ -391,11 +391,21 @@ public:
   }
 
   /**
+   * Returns number of maximum undo/redo transactions.
+   */
+  int32_t NumberOfMaximumTransactions() const
+  {
+    return mTransactionManager ?
+             mTransactionManager->NumberOfMaximumTransactions() : 0;
+  }
+
+  /**
    * Returns true if this editor can store transactions for undo/redo.
    */
   bool IsUndoRedoEnabled() const
   {
-    return !!mTransactionManager;
+    return mTransactionManager &&
+           mTransactionManager->NumberOfMaximumTransactions();
   }
 
   /**
@@ -426,8 +436,6 @@ public:
     if (!mTransactionManager) {
       return true;
     }
-    // XXX Even we clear the transaction manager, IsUndoRedoEnabled() keep
-    //     returning true...
     return mTransactionManager->DisableUndoRedo();
   }
   bool ClearUndoRedo()
@@ -1038,7 +1046,7 @@ protected: // May be called by friends.
    *
    * @param aTag        Tag you want.
    */
-  already_AddRefed<Element> CreateHTMLContent(nsAtom* aTag);
+  already_AddRefed<Element> CreateHTMLContent(const nsAtom* aTag);
 
   /**
    * Creates text node which is marked as "maybe modified frequently".
@@ -1415,14 +1423,14 @@ protected: // May be called by friends.
   /**
    * Returns true if aNode is our root node.
    */
-  bool IsRoot(nsINode* inNode);
-  bool IsEditorRoot(nsINode* aNode);
+  bool IsRoot(nsINode* inNode) const;
+  bool IsEditorRoot(nsINode* aNode) const;
 
   /**
    * Returns true if aNode is a descendant of our root node.
    */
-  bool IsDescendantOfRoot(nsINode* inNode);
-  bool IsDescendantOfEditorRoot(nsINode* aNode);
+  bool IsDescendantOfRoot(nsINode* inNode) const;
+  bool IsDescendantOfEditorRoot(nsINode* aNode) const;
 
   /**
    * Returns true if aNode is a container.
@@ -1434,10 +1442,12 @@ protected: // May be called by friends.
    */
   bool IsEditable(nsINode* aNode)
   {
-    NS_ENSURE_TRUE(aNode, false);
+    if (NS_WARN_IF(!aNode)) {
+      return false;
+    }
 
     if (!aNode->IsContent() || IsMozEditorBogusNode(aNode) ||
-        !IsModifiableNode(aNode)) {
+        !IsModifiableNode(*aNode)) {
       return false;
     }
 
@@ -1495,16 +1505,22 @@ protected: // May be called by friends.
   bool ShouldHandleIMEComposition() const;
 
   /**
-   * From html rules code - migration in progress.
+   * AreNodesSameType() returns true if aNode1 and aNode2 are same type.
+   * If the instance is TextEditor, only their names are checked.
+   * If the instance is HTMLEditor in CSS mode and both of them are <span>
+   * element, their styles are also checked.
    */
-  virtual bool AreNodesSameType(nsIContent* aNode1, nsIContent* aNode2);
+  bool AreNodesSameType(nsIContent& aNode1, nsIContent& aNode2) const;
 
   static bool IsTextNode(nsINode* aNode)
   {
     return aNode->NodeType() == nsINode::TEXT_NODE;
   }
 
-  virtual bool IsModifiableNode(nsINode* aNode);
+  /**
+   * IsModifiableNode() checks whether the node is editable or not.
+   */
+  bool IsModifiableNode(const nsINode& aNode) const;
 
   /**
    * GetNodeAtRangeOffsetPoint() returns the node at this position in a range,
@@ -1539,7 +1555,25 @@ protected: // May be called by friends.
 
   static bool IsPreformatted(nsINode* aNode);
 
-  bool GetShouldTxnSetSelection();
+  /**
+   * AllowsTransactionsToChangeSelection() returns true if editor allows any
+   * transactions to change Selection.  Otherwise, transactions shouldn't
+   * change Selection.
+   */
+  inline bool AllowsTransactionsToChangeSelection() const
+  {
+    return mAllowsTransactionsToChangeSelection;
+  }
+
+  /**
+   * MakeThisAllowTransactionsToChangeSelection() with true makes this editor
+   * allow transactions to change Selection.  Otherwise, i.e., with false,
+   * makes this editor not allow transactions to change Selection.
+   */
+  inline void MakeThisAllowTransactionsToChangeSelection(bool aAllow)
+  {
+    mAllowsTransactionsToChangeSelection = aAllow;
+  }
 
   nsresult HandleInlineSpellCheck(EditSubAction aEditSubAction,
                                   Selection& aSelection,
@@ -1554,13 +1588,13 @@ protected: // May be called by friends.
    * Likewise, but gets the editor's root instead, which is different for HTML
    * editors.
    */
-  virtual Element* GetEditorRoot();
+  virtual Element* GetEditorRoot() const;
 
   /**
    * Likewise, but gets the text control element instead of the root for
    * plaintext editors.
    */
-  Element* GetExposedRoot();
+  Element* GetExposedRoot() const;
 
   /**
    * Whether the editor is active on the DOM window.  Note that when this
@@ -1635,7 +1669,17 @@ protected: // Called by helper classes.
   void EndPlaceholderTransaction();
 
   void BeginUpdateViewBatch();
-  virtual nsresult EndUpdateViewBatch();
+  void EndUpdateViewBatch();
+
+  /**
+   * Used by AutoTransactionBatch.  After calling BeginTransactionInternal(),
+   * all transactions will be treated as an atomic transaction.  I.e.,
+   * two or more transactions are undid once.
+   * XXX What's the difference with PlaceholderTransaction? Should we always
+   *     use it instead?
+   */
+  void BeginTransactionInternal();
+  void EndTransactionInternal();
 
 protected: // Shouldn't be used by friend classes
   /**
@@ -1643,6 +1687,11 @@ protected: // Shouldn't be used by friend classes
    * for someone to derive from the EditorBase later? I don't believe so.
    */
   virtual ~EditorBase();
+
+  /**
+   * GetDocumentCharsetInternal() returns charset of the document.
+   */
+  nsresult GetDocumentCharsetInternal(nsACString& aCharset) const;
 
   /**
    * SelectAllInternal() should be used instead of SelectAll() in editor
@@ -1935,8 +1984,9 @@ protected:
   // A Tristate value.
   uint8_t mSpellcheckCheckboxState;
 
-  // Turn off for conservative selection adjustment by transactions.
-  bool mShouldTxnSetSelection;
+  // If false, transactions should not change Selection even after modifying
+  // the DOM tree.
+  bool mAllowsTransactionsToChangeSelection;
   // Whether PreDestroy has been called.
   bool mDidPreDestroy;
   // Whether PostCreate has been called.
@@ -1954,12 +2004,14 @@ protected:
   friend class AutoPlaceholderBatch;
   friend class AutoSelectionRestorer;
   friend class AutoTopLevelEditSubActionNotifier;
+  friend class AutoTransactionBatch;
   friend class AutoTransactionsConserveSelection;
   friend class AutoUpdateViewBatch;
   friend class CompositionTransaction;
   friend class CreateElementTransaction;
   friend class CSSEditUtils;
   friend class DeleteNodeTransaction;
+  friend class DeleteRangeTransaction;
   friend class DeleteTextTransaction;
   friend class HTMLEditRules;
   friend class HTMLEditUtils;

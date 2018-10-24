@@ -8,27 +8,40 @@
 "use strict";
 
 /* import-globals-from MozillaLogger.js */
-/* globals XPCNativeWrapper, content */
+/* globals XPCNativeWrapper */
 
-var global = this;
+var EXPORTED_SYMBOLS = ["SpecialPowersAPI", "bindDOMWindowUtils"];
 
-ChromeUtils.import("chrome://specialpowers/content/MockFilePicker.jsm");
-ChromeUtils.import("chrome://specialpowers/content/MockColorPicker.jsm");
-ChromeUtils.import("chrome://specialpowers/content/MockPermissionPrompt.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
-ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-ChromeUtils.import("resource://gre/modules/ServiceWorkerCleanUp.jsm");
 
-// We're loaded with "this" not set to the global in some cases, so we
-// have to play some games to get at the global object here.  Normally
-// we'd try "this" from a function called with undefined this value,
-// but this whole file is in strict mode.  So instead fall back on
-// returning "this" from indirect eval, which returns the global.
-if (!(function() { var e = eval; return e("this"); })().File) { // eslint-disable-line no-eval
+Services.scriptloader.loadSubScript("resource://specialpowers/MozillaLogger.js", this);
+
+ChromeUtils.defineModuleGetter(this, "setTimeout",
+                               "resource://gre/modules/Timer.jsm");
+ChromeUtils.defineModuleGetter(this, "MockFilePicker",
+                               "resource://specialpowers/MockFilePicker.jsm");
+ChromeUtils.defineModuleGetter(this, "MockColorPicker",
+                               "resource://specialpowers/MockColorPicker.jsm");
+ChromeUtils.defineModuleGetter(this, "MockPermissionPrompt",
+                               "resource://specialpowers/MockPermissionPrompt.jsm");
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
+                               "resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "NetUtil",
+                               "resource://gre/modules/NetUtil.jsm");
+ChromeUtils.defineModuleGetter(this, "AppConstants",
+                               "resource://gre/modules/AppConstants.jsm");
+ChromeUtils.defineModuleGetter(this, "ServiceWorkerCleanUp",
+                               "resource://gre/modules/ServiceWorkerCleanUp.jsm");
+
+ChromeUtils.defineModuleGetter(this, "PerTestCoverageUtils",
+  "resource://testing-common/PerTestCoverageUtils.jsm");
+
+try {
     Cu.importGlobalProperties(["DOMParser", "File", "InspectorUtils", "NodeFilter"]);
+} catch (e) {
+ // We are in window scope hence DOMParser, File, InspectorUtils and NodeFilter
+ // are already defined, So do nothing.
 }
 
 // Allow stuff from this scope to be accessed from non-privileged scopes. This
@@ -54,8 +67,7 @@ function bindDOMWindowUtils(aWindow) {
   if (!aWindow)
     return undefined;
 
-  var util = aWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                    .getInterface(Ci.nsIDOMWindowUtils);
+  var util = aWindow.windowUtils;
   return wrapPrivileged(util);
 }
 
@@ -572,6 +584,9 @@ SpecialPowersAPI.prototype = {
         let messageId = aMessage.json.id;
         let name = aMessage.json.name;
         let message = aMessage.json.message;
+        if (this.mm) {
+          message = new StructuredCloneHolder(message).deserialize(this.mm.content);
+        }
         // Ignore message from other chrome script
         if (messageId != id)
           return;
@@ -744,12 +759,12 @@ SpecialPowersAPI.prototype = {
       setTimeout(callback, 0);
     // for mochitest-plain
     else
-      content.window.setTimeout(callback, 0);
+      this.mm.content.setTimeout(callback, 0);
   },
 
   _delayCallbackTwice(callback) {
-     function delayedCallback() {
-       function delayAgain(aCallback) {
+     let delayedCallback = () => {
+       let delayAgain = (aCallback) => {
          // Using this._setTimeout doesn't work here
          // It causes failures in mochtests that use
          // multiple pushPrefEnv calls
@@ -758,10 +773,10 @@ SpecialPowersAPI.prototype = {
            setTimeout(aCallback, 0);
          // For mochitest-plain
          else
-           content.window.setTimeout(aCallback, 0);
-       }
-       delayAgain(delayAgain(callback));
-     }
+           this.mm.content.setTimeout(aCallback, 0);
+       };
+       delayAgain(delayAgain.bind(this, callback));
+     };
      return delayedCallback;
   },
 
@@ -1403,9 +1418,7 @@ SpecialPowersAPI.prototype = {
   },
 
   _getDocShell(window) {
-    return window.QueryInterface(Ci.nsIInterfaceRequestor)
-                 .getInterface(Ci.nsIWebNavigation)
-                 .QueryInterface(Ci.nsIDocShell);
+    return window.docShell;
   },
   _getMUDV(window) {
     return this._getDocShell(window).contentViewer;
@@ -1413,12 +1426,7 @@ SpecialPowersAPI.prototype = {
   // XXX: these APIs really ought to be removed, they're not e10s-safe.
   // (also they're pretty Firefox-specific)
   _getTopChromeWindow(window) {
-    return window.QueryInterface(Ci.nsIInterfaceRequestor)
-                 .getInterface(Ci.nsIWebNavigation)
-                 .QueryInterface(Ci.nsIDocShellTreeItem)
-                 .rootTreeItem
-                 .QueryInterface(Ci.nsIInterfaceRequestor)
-                 .getInterface(Ci.nsIDOMWindow)
+    return window.docShell.rootTreeItem.domWindow
                  .QueryInterface(Ci.nsIDOMChromeWindow);
   },
   _getAutoCompletePopup(window) {
@@ -1458,10 +1466,10 @@ SpecialPowersAPI.prototype = {
   // XXX end of problematic APIs
 
   addChromeEventListener(type, listener, capture, allowUntrusted) {
-    addEventListener(type, listener, capture, allowUntrusted);
+    this.mm.addEventListener(type, listener, capture, allowUntrusted);
   },
   removeChromeEventListener(type, listener, capture) {
-    removeEventListener(type, listener, capture);
+    this.mm.removeEventListener(type, listener, capture);
   },
 
   // Note: each call to registerConsoleListener MUST be paired with a
@@ -1691,15 +1699,13 @@ SpecialPowersAPI.prototype = {
   },
 
   addCategoryEntry(category, entry, value, persists, replace) {
-    Cc["@mozilla.org/categorymanager;1"].
-      getService(Ci.nsICategoryManager).
-      addCategoryEntry(category, entry, value, persists, replace);
+    Services.catMan
+      .addCategoryEntry(category, entry, value, persists, replace);
   },
 
   deleteCategoryEntry(category, entry, persists) {
-    Cc["@mozilla.org/categorymanager;1"].
-      getService(Ci.nsICategoryManager).
-      deleteCategoryEntry(category, entry, persists);
+    Services.catMan
+      .deleteCategoryEntry(category, entry, persists);
   },
   openDialog(win, args) {
     return win.openDialog.apply(win, args);
@@ -1749,17 +1755,16 @@ SpecialPowersAPI.prototype = {
     // With aWindow, it is called in SimpleTest.waitForFocus to allow popup window opener focus switching
     if (aWindow)
       aWindow.focus();
-    var mm = global;
+    var mm = this.mm;
     if (aWindow) {
-      try {
-        mm = aWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                                    .getInterface(Ci.nsIDocShell)
-                                    .QueryInterface(Ci.nsIInterfaceRequestor)
-                                    .getInterface(Ci.nsIContentFrameMessageManager);
-      } catch (ex) {
-        /* Ignore exceptions for e.g. XUL chrome windows from mochitest-chrome
-         * which won't have a message manager */
+      let windowMM = aWindow.docShell.messageManager;
+      if (windowMM) {
+        mm = windowMM;
       }
+      /*
+       * Otherwise (e.g. XUL chrome windows from mochitest-chrome which won't
+       * have a message manager) just stick with "global".
+       */
     }
     mm.sendAsyncMessage("SpecialPowers.Focus", {});
   },
@@ -1773,7 +1778,7 @@ SpecialPowersAPI.prototype = {
     // in e10s b-c tests |content.window| is a CPOW whereas |window| works fine.
     // for some non-e10s mochi tests, |window| is null whereas |content.window|
     // works fine.  So we take whatever is non-null!
-    xferable.init(this._getDocShell(typeof(window) == "undefined" ? content.window : window)
+    xferable.init(this._getDocShell(typeof(window) == "undefined" ? this.mm.content.window : window)
                       .QueryInterface(Ci.nsILoadContext));
     xferable.addDataFlavor(flavor);
     Services.clipboard.getData(xferable, whichClipboard);
@@ -1982,12 +1987,38 @@ SpecialPowersAPI.prototype = {
     return this._sendSyncMessage("SPCleanUpSTSData", {origin, flags: flags || 0});
   },
 
-  requestDumpCoverageCounters() {
-    this._sendSyncMessage("SPRequestDumpCoverageCounters", {});
+  requestDumpCoverageCounters(cb) {
+    // We want to avoid a roundtrip between child and parent.
+    if (!PerTestCoverageUtils.enabled) {
+      return Promise.resolve();
+    }
+
+    return new Promise(resolve => {
+      let messageListener = _ => {
+        this._removeMessageListener("SPRequestDumpCoverageCounters", messageListener);
+        resolve();
+      };
+
+      this._addMessageListener("SPRequestDumpCoverageCounters", messageListener);
+      this._sendAsyncMessage("SPRequestDumpCoverageCounters", {});
+    });
   },
 
-  requestResetCoverageCounters() {
-    this._sendSyncMessage("SPRequestResetCoverageCounters", {});
+  requestResetCoverageCounters(cb) {
+    // We want to avoid a roundtrip between child and parent.
+    if (!PerTestCoverageUtils.enabled) {
+      return Promise.resolve();
+    }
+
+    return new Promise(resolve => {
+      let messageListener = _ => {
+        this._removeMessageListener("SPRequestResetCoverageCounters", messageListener);
+        resolve();
+      };
+
+      this._addMessageListener("SPRequestResetCoverageCounters", messageListener);
+      this._sendAsyncMessage("SPRequestResetCoverageCounters", {});
+    });
   },
 
   _nextExtensionID: 0,
@@ -2067,7 +2098,7 @@ SpecialPowersAPI.prototype = {
           state = "unloaded";
           resolveUnload();
         } else if (msg.data.type in handler) {
-          handler[msg.data.type](...msg.data.args);
+          handler[msg.data.type](...Cu.cloneInto(msg.data.args, this.window));
         } else {
           dump(`Unexpected: ${msg.data.type}\n`);
         }
@@ -2088,7 +2119,7 @@ SpecialPowersAPI.prototype = {
 
   createChromeCache(name, url) {
     let principal = this._getPrincipalFromArg(url);
-    return wrapIfUnwrapped(new content.window.CacheStorage(name, principal));
+    return wrapIfUnwrapped(new this.mm.content.CacheStorage(name, principal));
   },
 
   loadChannelAndReturnStatus(url, loadUsingSystemPrincipal) {
@@ -2226,7 +2257,7 @@ SpecialPowersAPI.prototype = {
     };
 
     return classifierService.asyncClassifyLocalWithTables(unwrapIfWrapped(uri),
-                                                          tables,
+                                                          tables, [], [],
                                                           wrapCallback);
   },
 

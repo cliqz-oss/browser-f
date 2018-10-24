@@ -397,8 +397,20 @@ public:
   // such as changes made through the Web Animations API.
   void IncrementAnimationGeneration();
 
+  // Apply change hints for animations on the compositor.
+  //
+  // There are some cases where we forcibly apply change hints for animations
+  // even if there is no change hint produced in order to synchronize with
+  // animations running on the compositor.
+  //
+  // For example:
+  //
+  // a) Pausing animations via the Web Animations API
+  // b) When the style before sending the animation to the compositor exactly
+  // the same as the current style
   static void AddLayerChangesForAnimation(nsIFrame* aFrame,
                                           nsIContent* aContent,
+                                          nsChangeHint aHintForThisFrame,
                                           nsStyleChangeList&
                                             aChangeListToProcess);
 
@@ -460,7 +472,9 @@ protected:
   void RestyleForEmptyChange(Element* aContainer);
   void MaybeRestyleForEdgeChildChange(Element* aContainer, nsIContent* aChangedChild);
 
-  void ContentStateChangedInternal(Element* aElement,
+  // TODO(emilio): there's no good reason this isn't part of ContentStateChanged
+  // now, or the change hint isn't returned instead of via an out-param, really.
+  void ContentStateChangedInternal(const Element&,
                                    EventStates aStateMask,
                                    nsChangeHint* aOutChangeHint);
 
@@ -517,8 +531,8 @@ protected:
 
   const SnapshotTable& Snapshots() const { return mSnapshots; }
   void ClearSnapshots();
-  ServoElementSnapshot& SnapshotFor(mozilla::dom::Element* aElement);
-  void TakeSnapshotForAttributeChange(mozilla::dom::Element* aElement,
+  ServoElementSnapshot& SnapshotFor(Element&);
+  void TakeSnapshotForAttributeChange(Element&,
                                       int32_t aNameSpaceID,
                                       nsAtom* aAttribute);
 

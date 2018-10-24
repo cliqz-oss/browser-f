@@ -70,7 +70,7 @@ function _imageFromURI(uri, privateMode, callback) {
   let channel = NetUtil.newChannel({
     uri,
     loadUsingSystemPrincipal: true,
-    contentPolicyType: Ci.nsIContentPolicy.TYPE_INTERNAL_IMAGE
+    contentPolicyType: Ci.nsIContentPolicy.TYPE_INTERNAL_IMAGE,
   });
 
   try {
@@ -96,7 +96,7 @@ function _imageFromURI(uri, privateMode, callback) {
         }
 
         callback(image);
-      }
+      },
     };
 
     try {
@@ -195,7 +195,7 @@ PreviewController.prototype = {
 
   get screenPixelsPerCSSPixel() {
     let chromeWin = this.tab.ownerGlobal;
-    let windowUtils = chromeWin.getInterface(Ci.nsIDOMWindowUtils);
+    let windowUtils = chromeWin.windowUtils;
     return windowUtils.screenPixelsPerCSSPixel;
   },
 
@@ -339,7 +339,7 @@ PreviewController.prototype = {
         this.updateTitleAndTooltip();
         break;
     }
-  }
+  },
 };
 
 // TabWindow
@@ -429,15 +429,12 @@ TabWindow.prototype = {
   },
 
   createTabPreview(controller) {
-    let docShell = this.win
-                  .QueryInterface(Ci.nsIInterfaceRequestor)
-                  .getInterface(Ci.nsIWebNavigation)
-                  .QueryInterface(Ci.nsIDocShell);
+    let docShell = this.win.docShell;
     let preview = AeroPeek.taskbar.createTaskbarTabPreview(docShell, controller);
     preview.visible = AeroPeek.enabled;
-    preview.active = this.tabbrowser.selectedTab == controller.tab;
-    this.onLinkIconAvailable(controller.tab.linkedBrowser,
-                             controller.tab.getAttribute("image"));
+    let {tab} = controller;
+    preview.active = this.tabbrowser.selectedTab == tab;
+    this.updateFavicon(tab, tab.getAttribute("image"));
     return preview;
   },
 
@@ -585,9 +582,13 @@ TabWindow.prototype = {
   },
 
   directRequestProtocols: new Set([
-    "file", "chrome", "resource", "about"
+    "file", "chrome", "resource", "about", "data",
   ]),
   onLinkIconAvailable(aBrowser, aIconURL) {
+    let tab = this.win.gBrowser.getTabForBrowser(aBrowser);
+    this.updateFavicon(tab, aIconURL);
+  },
+  updateFavicon(aTab, aIconURL) {
     let requestURL = null;
     if (aIconURL) {
       let shouldRequestFaviconURL = true;
@@ -606,21 +607,26 @@ TabWindow.prototype = {
       requestURL,
       PrivateBrowsingUtils.isWindowPrivate(this.win),
       img => {
-        let index = this.tabbrowser.browsers.indexOf(aBrowser);
-        // Only add it if we've found the index and the URI is still the same.
         // The tab could have closed, and there's no guarantee the icons
         // will have finished fetching 'in order'.
-        if (index != -1) {
-          let tab = this.tabbrowser.tabs[index];
-          let preview = this.previews.get(tab);
-          if (tab.getAttribute("image") == aIconURL ||
-              (!preview.icon && isDefaultFavicon)) {
-            preview.icon = img;
-          }
+        if (this.win.closed || aTab.closing || !aTab.linkedBrowser) {
+          return;
+        }
+        // Note that bizarrely, we can get to updateFavicon via a sync codepath
+        // where the new preview controller hasn't yet been added to the
+        // window's map of previews. So `preview` would be null here - except
+        // getFaviconAsImage is async so that should never happen, as we add
+        // the controller to the preview collection straight after creating it.
+        // However, if any of this code ever tries to access this
+        // synchronously, that won't work.
+        let preview = this.previews.get(aTab);
+        if (aTab.getAttribute("image") == aIconURL ||
+            (!preview.icon && isDefaultFavicon)) {
+          preview.icon = img;
         }
       }
     );
-  }
+  },
 };
 
 // AeroPeek
@@ -723,9 +729,7 @@ var AeroPeek = {
     // (rather than this code running on startup because the pref was
     // already set to true), we must initialize previews for open windows:
     if (this.initialized) {
-      let browserWindows = Services.wm.getEnumerator("navigator:browser");
-      while (browserWindows.hasMoreElements()) {
-        let win = browserWindows.getNext();
+      for (let win of Services.wm.getEnumerator("navigator:browser")) {
         if (!win.closed) {
           this.onOpenWindow(win);
         }
@@ -816,7 +820,6 @@ var AeroPeek = {
   /* nsINavHistoryObserver implementation */
   onBeginUpdateBatch() {},
   onEndUpdateBatch() {},
-  onVisits() {},
   onTitleChanged() {},
   onFrecencyChanged() {},
   onManyFrecenciesChanged() {},
@@ -826,9 +829,9 @@ var AeroPeek = {
   onPageChanged(uri, changedConst, newValue) {
     if (this.enabled && changedConst == Ci.nsINavHistoryObserver.ATTRIBUTE_FAVICON) {
       for (let win of this.windows) {
-        for (let [tab, ] of win.previews) {
+        for (let [tab ] of win.previews) {
           if (tab.getAttribute("image") == newValue) {
-            win.onLinkIconAvailable(tab.linkedBrowser, newValue);
+            win.updateFavicon(tab, newValue);
           }
         }
       }
@@ -838,7 +841,7 @@ var AeroPeek = {
   QueryInterface: ChromeUtils.generateQI([
     Ci.nsISupportsWeakReference,
     Ci.nsINavHistoryObserver,
-    Ci.nsIObserver
+    Ci.nsIObserver,
   ]),
 };
 

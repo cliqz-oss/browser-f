@@ -143,7 +143,7 @@ InlineSpellChecker.prototype = {
         break;
       this.mSpellSuggestions.push(suggestion);
 
-      var item = menu.ownerDocument.createElement("menuitem");
+      var item = menu.ownerDocument.createXULElement("menuitem");
       this.mSuggestionItems.push(item);
       item.setAttribute("label", suggestion);
       item.setAttribute("value", suggestion);
@@ -213,7 +213,7 @@ InlineSpellChecker.prototype = {
 
     for (var i = 0; i < sortedList.length; i++) {
       this.mDictionaryNames.push(sortedList[i].id);
-      var item = menu.ownerDocument.createElement("menuitem");
+      var item = menu.ownerDocument.createXULElement("menuitem");
       item.setAttribute("id", "spell-check-dictionary-" + sortedList[i].id);
       item.setAttribute("label", sortedList[i].label);
       item.setAttribute("type", "radio");
@@ -318,7 +318,7 @@ InlineSpellChecker.prototype = {
       this.mRemote.ignoreWord();
     else
       this.mInlineSpellChecker.ignoreWord(this.mMisspelling);
-  }
+  },
 };
 
 var SpellCheckHelper = {
@@ -419,10 +419,7 @@ var SpellCheckHelper = {
       if (win) {
         var isSpellcheckable = false;
         try {
-          var editingSession = win.QueryInterface(Ci.nsIInterfaceRequestor)
-                                  .getInterface(Ci.nsIWebNavigation)
-                                  .QueryInterface(Ci.nsIInterfaceRequestor)
-                                  .getInterface(Ci.nsIEditingSession);
+          var editingSession = win.docShell.editingSession;
           if (editingSession.windowIsEditable(win) &&
               this.getComputedStyle(element, "-moz-user-modify") == "read-write") {
             isSpellcheckable = true;
@@ -492,14 +489,14 @@ RemoteSpellChecker.prototype = {
 
     let dictionary = Cc["@mozilla.org/spellchecker/personaldictionary;1"]
                        .getService(Ci.mozIPersonalDictionary);
-    dictionary.addWord(this._spellInfo.misspelling, "");
+    dictionary.addWord(this._spellInfo.misspelling);
 
     this._spellInfo.target.sendAsyncMessage("InlineSpellChecker:recheck", {});
   },
   undoAddToDictionary(word) {
     let dictionary = Cc["@mozilla.org/spellchecker/personaldictionary;1"]
                        .getService(Ci.mozIPersonalDictionary);
-    dictionary.removeWord(word, "");
+    dictionary.removeWord(word);
 
     this._spellInfo.target.sendAsyncMessage("InlineSpellChecker:recheck", {});
   },
@@ -510,5 +507,5 @@ RemoteSpellChecker.prototype = {
 
     this._spellInfo.target.sendAsyncMessage("InlineSpellChecker:recheck", {});
   },
-  uninit() { this._spellInfo.target.sendAsyncMessage("InlineSpellChecker:uninit", {}); }
+  uninit() { this._spellInfo.target.sendAsyncMessage("InlineSpellChecker:uninit", {}); },
 };

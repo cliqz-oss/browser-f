@@ -7,7 +7,7 @@ const TEST_URL = "about:buildconfig";
 const titleAfterFirstUpdate = "BookmarkStar title";
 
 function getToolbarNodeForItemGuid(aItemGuid) {
-  var children = document.getElementById("PlacesToolbarItems").childNodes;
+  var children = document.getElementById("PlacesToolbarItems").children;
   for (let child of children) {
     if (aItemGuid == child._placesNode.bookmarkGuid) {
       return child;
@@ -39,13 +39,13 @@ add_task(async function test_change_title_from_BookmarkStar() {
   let originalBm = await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.unfiledGuid,
     url: TEST_URL,
-    title: "Before Edit"
+    title: "Before Edit",
   });
 
   let tab = await BrowserTestUtils.openNewForegroundTab({
     gBrowser,
     opening: TEST_URL,
-    waitForStateStop: true
+    waitForStateStop: true,
   });
 
   registerCleanupFunction(async () => {
@@ -81,7 +81,7 @@ add_task(async function test_change_title_from_Toolbar() {
   let toolbarBookmark = await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.toolbarGuid,
     title: titleAfterFirstUpdate,
-    url: TEST_URL
+    url: TEST_URL,
   });
 
   let toolbarNode = getToolbarNodeForItemGuid(toolbarBookmark.guid);
@@ -93,7 +93,7 @@ add_task(async function test_change_title_from_Toolbar() {
       let promisePopup = BrowserTestUtils.waitForEvent(placesContext, "popupshown");
       EventUtils.synthesizeMouseAtCenter(toolbarNode, {
         button: 2,
-        type: "contextmenu"
+        type: "contextmenu",
       });
       await promisePopup;
 

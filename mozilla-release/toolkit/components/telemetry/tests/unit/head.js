@@ -141,7 +141,7 @@ function decodeRequestPayload(request) {
         for (let offset = 0; offset < result.length; offset += chunkSize) {
           this.buffer += String.fromCharCode.apply(String, result.slice(offset, offset + chunkSize));
         }
-      }
+      },
     };
 
     let scs = Cc["@mozilla.org/streamConverters;1"]
@@ -164,6 +164,9 @@ function decodeRequestPayload(request) {
     let bytes = NetUtil.readInputStream(s, s.available());
     payload = JSON.parse((new TextDecoder()).decode(bytes));
   }
+
+  // Check for canary value
+  Assert.notEqual(TelemetryUtils.knownClientID, payload.clientId, "Known clientId should never appear in a ping on the server");
 
   return payload;
 }

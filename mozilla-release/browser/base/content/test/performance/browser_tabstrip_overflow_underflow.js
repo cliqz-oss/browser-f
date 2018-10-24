@@ -39,7 +39,7 @@ add_task(async function() {
 
   let tabStripRect = gBrowser.tabContainer.arrowScrollbox.getBoundingClientRect();
   let textBoxRect = document.getAnonymousElementByAttribute(gURLBar,
-    "anonid", "textbox-input-box").getBoundingClientRect();
+    "anonid", "moz-input-box").getBoundingClientRect();
   let ignoreTabstripRects = {
     filter: rects => rects.filter(r => !(
       // We expect plenty of changed rects within the tab strip.
@@ -50,15 +50,15 @@ add_task(async function() {
       {name: "the urlbar placeolder moves up and down by a few pixels",
        condition: r =>
          r.x1 >= textBoxRect.left && r.x2 <= textBoxRect.right &&
-         r.y1 >= textBoxRect.top && r.y2 <= textBoxRect.bottom
+         r.y1 >= textBoxRect.top && r.y2 <= textBoxRect.bottom,
       },
       {name: "bug 1446449 - spurious tab switch spinner",
        condition: r =>
          AppConstants.DEBUG &&
          // In the content area
-         r.y1 >= document.getElementById("appcontent").getBoundingClientRect().top
+         r.y1 >= document.getElementById("appcontent").getBoundingClientRect().top,
       },
-    ]
+    ],
   };
 
   await withPerfObserver(async function() {
@@ -105,7 +105,7 @@ add_task(async function() {
 
   // Now switch to the first tab. We shouldn't flush layout at all.
   await withPerfObserver(async function() {
-    let firstTab = gBrowser.tabContainer.firstChild;
+    let firstTab = gBrowser.tabContainer.firstElementChild;
     await BrowserTestUtils.switchTab(gBrowser, firstTab);
     await BrowserTestUtils.waitForCondition(() => {
       return gBrowser.tabContainer.arrowScrollbox.hasAttribute("scrolledtostart");

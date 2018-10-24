@@ -267,6 +267,7 @@ table {
   /* XXXldb do we want this if we're border-collapse:collapse ? */
   box-sizing: border-box;
   text-indent: 0;
+  overflow-wrap: normal;
 }
 
 table[align="left"] {
@@ -819,8 +820,8 @@ details > summary:first-of-type > *|* {
 
 dialog {
   position: absolute;
-  offset-inline-start: 0;
-  offset-inline-end: 0;
+  inset-inline-start: 0;
+  inset-inline-end: 0;
   color: black;
   margin: auto;
   border-width: initial;

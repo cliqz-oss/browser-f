@@ -288,10 +288,8 @@ var PromptUtilsTemp = {
 
             // Get the chrome window for the content window we're using.
             // (Unwrap because we need a non-IDL property below.)
-            var chromeWin = promptWin.QueryInterface(Ci.nsIInterfaceRequestor)
-                                     .getInterface(Ci.nsIWebNavigation)
-                                     .QueryInterface(Ci.nsIDocShell)
-                                     .chromeEventHandler.ownerGlobal.wrappedJSObject;
+            var chromeWin =
+                promptWin.docShell.chromeEventHandler.ownerGlobal.wrappedJSObject;
 
             if (chromeWin.getTabModalPromptBox)
                 promptBox = chromeWin.getTabModalPromptBox(promptWin);
@@ -333,8 +331,7 @@ function openModalWindow(domWin, uri, args) {
     // See bug 875157 comment 30 for more...
     if (domWin) {
         // a domWin was passed, so we can apply the check for it being hidden.
-        let winUtils = domWin.QueryInterface(Ci.nsIInterfaceRequestor)
-                             .getInterface(Ci.nsIDOMWindowUtils);
+        let winUtils = domWin.windowUtils;
 
         if (winUtils && !winUtils.isParentWindowMainWidgetVisible) {
             throw Components.Exception("Cannot call openModalWindow on a hidden window",
@@ -354,18 +351,15 @@ function openModalWindow(domWin, uri, args) {
 }
 
 function openTabPrompt(domWin, tabPrompt, args) {
-    let docShell = domWin.QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIDocShell);
+    let docShell = domWin.docShell;
     let inPermitUnload = docShell.contentViewer && docShell.contentViewer.inPermitUnload;
     let eventDetail = Cu.cloneInto({tabPrompt: true, inPermitUnload}, domWin);
     PromptUtils.fireDialogEvent(domWin, "DOMWillOpenModalDialog", null, eventDetail);
 
-    let winUtils = domWin.QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIDOMWindowUtils);
+    let winUtils = domWin.windowUtils;
     winUtils.enterModalState();
 
-    let frameMM = docShell.QueryInterface(Ci.nsIInterfaceRequestor)
-                          .getInterface(Ci.nsIContentFrameMessageManager);
+    let frameMM = docShell.messageManager;
 
     // We provide a callback so the prompt can close itself. We don't want to
     // wait for this event loop to return... Otherwise the presence of other
@@ -430,8 +424,7 @@ function openTabPrompt(domWin, tabPrompt, args) {
 }
 
 function openRemotePrompt(domWin, args, tabPrompt) {
-    let docShell = domWin.QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIDocShell);
+    let docShell = domWin.docShell;
     let messageManager = docShell.QueryInterface(Ci.nsIInterfaceRequestor)
                                  .getInterface(Ci.nsITabChild)
                                  .messageManager;
@@ -445,12 +438,11 @@ function openRemotePrompt(domWin, args, tabPrompt) {
     // it impossible to reach its scriptable top,
     // a.k.a. window.top. To prevent this, make sure to enter/exit
     // modal state beginning from top.
-    let winUtils = domWin.top.QueryInterface(Ci.nsIInterfaceRequestor)
-                             .getInterface(Ci.nsIDOMWindowUtils);
+    let winUtils = domWin.top.windowUtils;
     winUtils.enterModalState();
     let closed = false;
 
-    let frameMM = docShell.getInterface(Ci.nsIContentFrameMessageManager);
+    let frameMM = docShell.messageManager;
 
     // It should be hard or impossible to cause a window to create multiple
     // prompts, but just in case, give our prompt an ID.
@@ -893,7 +885,7 @@ AuthPromptAdapterFactory.prototype = {
 
     createAdapter(oldPrompter) {
         return new AuthPromptAdapter(oldPrompter);
-    }
+    },
 };
 
 
@@ -930,7 +922,7 @@ AuthPromptAdapter.prototype = {
 
     asyncPromptAuth(channel, callback, context, level, authInfo, checkLabel, checkValue) {
         throw Cr.NS_ERROR_NOT_IMPLEMENTED;
-    }
+    },
 };
 
 

@@ -56,6 +56,7 @@
 #include "mozilla/Mutex.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/ServoElementSnapshot.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/RestyleManager.h"
 #include "mozilla/SizeOfState.h"
 #include "mozilla/StyleAnimationValue.h"
@@ -147,6 +148,12 @@ Gecko_GetLastChild(RawGeckoNodeBorrowed aNode)
 }
 
 RawGeckoNodeBorrowedOrNull
+Gecko_GetPreviousSibling(RawGeckoNodeBorrowed aNode)
+{
+  return aNode->GetPreviousSibling();
+}
+
+RawGeckoNodeBorrowedOrNull
 Gecko_GetFlattenedTreeParentNode(RawGeckoNodeBorrowed aNode)
 {
   return aNode->GetFlattenedTreeParentNodeForStyle();
@@ -191,13 +198,11 @@ Gecko_GetAssignedNodes(RawGeckoElementBorrowed aElement)
 }
 
 void
-Gecko_ComputedStyle_Init(
-    mozilla::ComputedStyle* aStyle,
-    const mozilla::ComputedStyle* aParentContext,
-    RawGeckoPresContextBorrowed aPresContext,
-    const ServoComputedData* aValues,
-    mozilla::CSSPseudoElementType aPseudoType,
-    nsAtom* aPseudoTag)
+Gecko_ComputedStyle_Init(mozilla::ComputedStyle* aStyle,
+                         RawGeckoPresContextBorrowed aPresContext,
+                         const ServoComputedData* aValues,
+                         mozilla::CSSPseudoElementType aPseudoType,
+                         nsAtom* aPseudoTag)
 {
   auto* presContext = const_cast<nsPresContext*>(aPresContext);
   new (KnownNotNull, aStyle) mozilla::ComputedStyle(
@@ -278,13 +283,25 @@ Gecko_GetNextStyleChild(RawGeckoStyleChildrenIteratorBorrowedMut aIterator)
 }
 
 bool
-Gecko_IsPrivateBrowsingEnabled(const nsIDocument* aDoc)
+Gecko_VisitedStylesEnabled(const nsIDocument* aDoc)
 {
   MOZ_ASSERT(aDoc);
   MOZ_ASSERT(NS_IsMainThread());
 
+  if (!StaticPrefs::layout_css_visited_links_enabled()) {
+    return false;
+  }
+
+  if (aDoc->IsBeingUsedAsImage()) {
+    return false;
+  }
+
   nsILoadContext* loadContext = aDoc->GetLoadContext();
-  return loadContext && loadContext->UsePrivateBrowsing();
+  if (loadContext && loadContext->UsePrivateBrowsing()) {
+    return false;
+  }
+
+  return true;
 }
 
 EventStates::ServoType
@@ -901,14 +918,6 @@ Gecko_IsBrowserFrame(RawGeckoElementBorrowed aElement)
 
 template <typename Implementor>
 static nsAtom*
-AtomAttrValue(Implementor* aElement, nsAtom* aName)
-{
-  const nsAttrValue* attr = aElement->GetParsedAttr(aName);
-  return attr ? attr->GetAtomValue() : nullptr;
-}
-
-template <typename Implementor>
-static nsAtom*
 LangValue(Implementor* aElement)
 {
   // TODO(emilio): Deduplicate a bit with nsIContent::GetLang().
@@ -1057,94 +1066,7 @@ AttrHasSuffix(Implementor* aElement, nsAtom* aNS, nsAtom* aName,
   return DoMatch(aElement, aNS, aName, match);
 }
 
-/**
- * Returns whether an element contains a class in its class list or not.
- */
-template <typename Implementor>
-static bool
-HasClass(Implementor* aElement, nsAtom* aClass, bool aIgnoreCase)
-{
-  const nsAttrValue* attr = aElement->DoGetClasses();
-  if (!attr) {
-    return false;
-  }
-
-  return attr->Contains(aClass, aIgnoreCase ? eIgnoreCase : eCaseMatters);
-}
-
-/**
- * Gets the class or class list (if any) of the implementor. The calling
- * convention here is rather hairy, and is optimized for getting Servo the
- * information it needs for hot calls.
- *
- * The return value indicates the number of classes. If zero, neither outparam
- * is valid. If one, the class_ outparam is filled with the atom of the class.
- * If two or more, the classList outparam is set to point to an array of atoms
- * representing the class list.
- *
- * The array is borrowed and the atoms are not addrefed. These values can be
- * invalidated by any DOM mutation. Use them in a tight scope.
- */
-template <typename Implementor>
-static uint32_t
-ClassOrClassList(Implementor* aElement, nsAtom** aClass, nsAtom*** aClassList)
-{
-  const nsAttrValue* attr = aElement->DoGetClasses();
-  if (!attr) {
-    return 0;
-  }
-
-  // For class values with only whitespace, Gecko just stores a string. For the
-  // purposes of the style system, there is no class in this case.
-  nsAttrValue::ValueType type = attr->Type();
-  if (MOZ_UNLIKELY(type == nsAttrValue::eString)) {
-    MOZ_ASSERT(nsContentUtils::TrimWhitespace<nsContentUtils::IsHTMLWhitespace>(
-                 attr->GetStringValue()).IsEmpty());
-    return 0;
-  }
-
-  // Single tokens are generally stored as an atom. Check that case.
-  if (type == nsAttrValue::eAtom) {
-    *aClass = attr->GetAtomValue();
-    return 1;
-  }
-
-  // At this point we should have an atom array. It is likely, but not
-  // guaranteed, that we have two or more elements in the array.
-  MOZ_ASSERT(type == nsAttrValue::eAtomArray);
-  nsTArray<RefPtr<nsAtom>>* atomArray = attr->GetAtomArrayValue();
-  uint32_t length = atomArray->Length();
-
-  // Special case: zero elements.
-  if (length == 0) {
-    return 0;
-  }
-
-  // Special case: one element.
-  if (length == 1) {
-    *aClass = atomArray->ElementAt(0);
-    return 1;
-  }
-
-  // General case: Two or more elements.
-  //
-  // Note: We could also expose this array as an array of nsCOMPtrs, since
-  // bindgen knows what those look like, and eliminate the reinterpret_cast.
-  // But it's not obvious that that would be preferable.
-  static_assert(sizeof(RefPtr<nsAtom>) == sizeof(nsAtom*), "Bad simplification");
-  static_assert(alignof(RefPtr<nsAtom>) == alignof(nsAtom*), "Bad simplification");
-
-  RefPtr<nsAtom>* elements = atomArray->Elements();
-  nsAtom** rawElements = reinterpret_cast<nsAtom**>(elements);
-  *aClassList = rawElements;
-  return atomArray->Length();
-}
-
 #define SERVO_IMPL_ELEMENT_ATTR_MATCHING_FUNCTIONS(prefix_, implementor_)        \
-  nsAtom* prefix_##AtomAttrValue(implementor_ aElement, nsAtom* aName)           \
-  {                                                                              \
-    return AtomAttrValue(aElement, aName);                                       \
-  }                                                                              \
   nsAtom* prefix_##LangValue(implementor_ aElement)                              \
   {                                                                              \
     return LangValue(aElement);                                                  \
@@ -1182,16 +1104,7 @@ ClassOrClassList(Implementor* aElement, nsAtom** aClass, nsAtom*** aClassList)
                               nsAtom* aName, nsAtom* aStr, bool aIgnoreCase)     \
   {                                                                              \
     return AttrHasSuffix(aElement, aNS, aName, aStr, aIgnoreCase);               \
-  }                                                                              \
-  uint32_t prefix_##ClassOrClassList(implementor_ aElement, nsAtom** aClass,     \
-                                     nsAtom*** aClassList)                       \
-  {                                                                              \
-    return ClassOrClassList(aElement, aClass, aClassList);                       \
-  }                                                                              \
-  bool prefix_##HasClass(implementor_ aElement, nsAtom* aClass, bool aIgnoreCase)\
-  {                                                                              \
-    return HasClass(aElement, aClass, aIgnoreCase);                              \
-  }                                                                              \
+  }
 
 
 SERVO_IMPL_ELEMENT_ATTR_MATCHING_FUNCTIONS(Gecko_, RawGeckoElementBorrowed)
@@ -1425,27 +1338,6 @@ Gecko_CopyAlternateValuesFrom(nsFont* aDest, const nsFont* aSrc)
 }
 
 void
-Gecko_SetImageOrientation(nsStyleVisibility* aVisibility,
-                          uint8_t aOrientation, bool aFlip)
-{
-  aVisibility->mImageOrientation =
-    nsStyleImageOrientation::CreateAsOrientationAndFlip(aOrientation, aFlip);
-}
-
-void
-Gecko_SetImageOrientationAsFromImage(nsStyleVisibility* aVisibility)
-{
-  aVisibility->mImageOrientation = nsStyleImageOrientation::CreateAsFromImage();
-}
-
-void
-Gecko_CopyImageOrientationFrom(nsStyleVisibility* aDst,
-                               const nsStyleVisibility* aSrc)
-{
-  aDst->mImageOrientation = aSrc->mImageOrientation;
-}
-
-void
 Gecko_SetCounterStyleToName(CounterStylePtr* aPtr, nsAtom* aName,
                             RawGeckoPresContextBorrowed aPresContext)
 {
@@ -1544,10 +1436,9 @@ CreateStyleImageRequest(nsStyleImageRequest::Mode aModeFlags,
 }
 
 mozilla::css::ImageValue*
-Gecko_ImageValue_Create(ServoBundledURI aURI)
+Gecko_ImageValue_Create(ServoBundledURI aURI, mozilla::CORSMode aCORSMode)
 {
-  // Bug 1434963: Change this to accept a CORS mode from the caller.
-  return aURI.IntoCssImage(mozilla::CORSMode::CORS_NONE).take();
+  return aURI.IntoCssImage(aCORSMode).take();
 }
 
 MOZ_DEFINE_MALLOC_SIZE_OF(GeckoImageValueMallocSizeOf)
@@ -1593,7 +1484,7 @@ Gecko_InitializeImageCropRect(nsStyleImage* aImage)
 }
 
 void
-Gecko_SetCursorArrayLength(nsStyleUserInterface* aStyleUI, size_t aLen)
+Gecko_SetCursorArrayLength(nsStyleUI* aStyleUI, size_t aLen)
 {
   aStyleUI->mCursorImages.Clear();
   aStyleUI->mCursorImages.SetLength(aLen);
@@ -1610,8 +1501,7 @@ Gecko_SetCursorImageValue(nsCursorImage* aCursor,
 }
 
 void
-Gecko_CopyCursorArrayFrom(nsStyleUserInterface* aDest,
-                          const nsStyleUserInterface* aSrc)
+Gecko_CopyCursorArrayFrom(nsStyleUI* aDest, const nsStyleUI* aSrc)
 {
   aDest->mCursorImages = aSrc->mCursorImages;
 }
@@ -1628,11 +1518,10 @@ Gecko_SetContentDataImageValue(nsStyleContentData* aContent,
 }
 
 nsStyleContentData::CounterFunction*
-Gecko_SetCounterFunction(nsStyleContentData* aContent, nsStyleContentType aType)
+Gecko_SetCounterFunction(nsStyleContentData* aContent, StyleContentType aType)
 {
-  RefPtr<nsStyleContentData::CounterFunction>
-    counterFunc = new nsStyleContentData::CounterFunction();
-  nsStyleContentData::CounterFunction* ptr = counterFunc;
+  auto counterFunc = MakeRefPtr<nsStyleContentData::CounterFunction>();
+  auto* ptr = counterFunc.get();
   aContent->SetCounters(aType, counterFunc.forget());
   return ptr;
 }
@@ -1661,7 +1550,7 @@ Gecko_CreateGradient(uint8_t aShape,
 
   nsStyleGradientStop dummyStop = {
     nsStyleCoord(eStyleUnit_None),
-    StyleComplexColor::FromColor(NS_RGB(0, 0, 0)),
+    StyleComplexColor::Black(),
     0
   };
 
@@ -2000,7 +1889,9 @@ Gecko_AppendPropertyValuePair(nsTArray<PropertyValuePair>* aProperties,
                               nsCSSPropertyID aProperty)
 {
   MOZ_ASSERT(aProperties);
-  return aProperties->AppendElement(PropertyValuePair {aProperty});
+  MOZ_ASSERT(aProperty == eCSSPropertyExtra_variable ||
+             !nsCSSProps::PropHasFlags(aProperty, CSSPropFlags::IsLogical));
+  return aProperties->AppendElement(PropertyValuePair { aProperty });
 }
 
 void
@@ -2056,6 +1947,35 @@ void
 Gecko_NewShapeImage(mozilla::StyleShapeSource* aShape)
 {
   aShape->SetShapeImage(MakeUnique<nsStyleImage>());
+}
+
+void
+Gecko_NewStyleSVGPath(mozilla::StyleShapeSource* aShape)
+{
+  MOZ_ASSERT(aShape);
+  aShape->SetPath(MakeUnique<mozilla::StyleSVGPath>());
+}
+
+void
+Gecko_SetStyleMotion(UniquePtr<mozilla::StyleMotion>* aMotion,
+                     mozilla::StyleMotion* aValue)
+{
+  MOZ_ASSERT(aMotion);
+  aMotion->reset(aValue);
+}
+
+mozilla::StyleMotion*
+Gecko_NewStyleMotion()
+{
+  return new StyleMotion();
+}
+
+void
+Gecko_CopyStyleMotions(mozilla::UniquePtr<mozilla::StyleMotion>* aMotion,
+                       const mozilla::StyleMotion* aOther)
+{
+  MOZ_ASSERT(aMotion);
+  *aMotion = aOther ? MakeUnique<StyleMotion>(*aOther) : nullptr;
 }
 
 void
@@ -2164,6 +2084,49 @@ Gecko_nsIURI_Debug(nsIURI* aURI, nsCString* aOut)
   if (aURI) {
     *aOut = aURI->GetSpecOrDefault();
   }
+}
+
+template <typename ElementLike>
+void
+DebugListAttributes(const ElementLike& aElement, nsCString& aOut)
+{
+  const uint32_t kMaxAttributeLength = 40;
+
+  uint32_t i = 0;
+  while (BorrowedAttrInfo info = aElement.GetAttrInfoAt(i++)) {
+    aOut.AppendLiteral(" ");
+    if (nsAtom* prefix = info.mName->GetPrefix()) {
+      aOut.Append(NS_ConvertUTF16toUTF8(nsDependentAtomString(prefix)));
+      aOut.AppendLiteral(":");
+    }
+    aOut.Append(
+        NS_ConvertUTF16toUTF8(nsDependentAtomString(info.mName->LocalName())));
+    if (!info.mValue) {
+      continue;
+    }
+    aOut.AppendLiteral("=\"");
+    nsAutoString value;
+    info.mValue->ToString(value);
+    if (value.Length() > kMaxAttributeLength) {
+      value.Truncate(kMaxAttributeLength - 3);
+      value.AppendLiteral("...");
+    }
+    aOut.Append(NS_ConvertUTF16toUTF8(value));
+    aOut.AppendLiteral("\"");
+  }
+}
+
+void
+Gecko_Element_DebugListAttributes(RawGeckoElementBorrowed aElement, nsCString* aOut)
+{
+  DebugListAttributes(*aElement, *aOut);
+}
+
+void
+Gecko_Snapshot_DebugListAttributes(const ServoElementSnapshot* aSnapshot,
+                                   nsCString* aOut)
+{
+  DebugListAttributes(*aSnapshot, *aOut);
 }
 
 NS_IMPL_THREADSAFE_FFI_REFCOUNTING(css::URLValue, CSSURLValue);
@@ -2614,15 +2577,24 @@ NS_IMPL_THREADSAFE_FFI_REFCOUNTING(SheetLoadDataHolder, SheetLoadDataHolder);
 
 void
 Gecko_StyleSheet_FinishAsyncParse(SheetLoadDataHolder* aData,
-                                  RawServoStyleSheetContentsStrong aSheetContents)
+                                  RawServoStyleSheetContentsStrong aSheetContents,
+                                  StyleUseCountersOwned aUseCounters)
 {
+  UniquePtr<StyleUseCounters> useCounters(aUseCounters);
   RefPtr<SheetLoadDataHolder> loadData = aData;
   RefPtr<RawServoStyleSheetContents> sheetContents = aSheetContents.Consume();
   NS_DispatchToMainThread(NS_NewRunnableFunction(__func__,
                                                  [d = std::move(loadData),
-                                                  s = std::move(sheetContents)]() mutable {
+                                                  contents = std::move(sheetContents),
+                                                  counters = std::move(useCounters)]() mutable {
     MOZ_ASSERT(NS_IsMainThread());
-    d->get()->mSheet->FinishAsyncParse(s.forget());
+    SheetLoadData* data = d->get();
+    if (nsIDocument* doc = data->mLoader->GetDocument()) {
+      if (const StyleUseCounters* docCounters = doc->GetStyleUseCounters()) {
+        Servo_UseCounters_Merge(docCounters, counters.get());
+      }
+    }
+    data->mSheet->FinishAsyncParse(contents.forget());
   }));
 }
 
@@ -2776,7 +2748,7 @@ Gecko_UnregisterProfilerThread()
 bool
 Gecko_DocumentRule_UseForPresentation(RawGeckoPresContextBorrowed aPresContext,
                                       const nsACString* aPattern,
-                                      css::URLMatchingFunction aURLMatchingFunction)
+                                      css::DocumentMatchingFunction aMatchingFunction)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -2790,7 +2762,7 @@ Gecko_DocumentRule_UseForPresentation(RawGeckoPresContextBorrowed aPresContext,
   }
 
   return CSSMozDocumentRule::Match(doc, docURI, docURISpec, *aPattern,
-                                   aURLMatchingFunction);
+                                   aMatchingFunction);
 }
 
 void
@@ -2929,4 +2901,23 @@ bool
 Gecko_IsMainThread()
 {
   return NS_IsMainThread();
+}
+
+const nsAttrValue*
+Gecko_GetSVGAnimatedClass(RawGeckoElementBorrowed aElement)
+{
+  MOZ_ASSERT(aElement->IsSVGElement());
+  return static_cast<const nsSVGElement*>(aElement)->GetAnimatedClassName();
+}
+
+bool
+Gecko_AssertClassAttrValueIsSane(const nsAttrValue* aValue)
+{
+  MOZ_ASSERT(aValue->Type() == nsAttrValue::eAtom ||
+             aValue->Type() == nsAttrValue::eString ||
+             aValue->Type() == nsAttrValue::eAtomArray);
+  MOZ_ASSERT_IF(aValue->Type() == nsAttrValue::eString,
+                nsContentUtils::TrimWhitespace<nsContentUtils::IsHTMLWhitespace>(
+                  aValue->GetStringValue()).IsEmpty());
+  return true;
 }

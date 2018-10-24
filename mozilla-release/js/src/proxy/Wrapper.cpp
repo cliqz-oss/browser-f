@@ -329,13 +329,6 @@ Wrapper::Renew(JSObject* existing, JSObject* obj, const Wrapper* handler)
     return existing;
 }
 
-const Wrapper*
-Wrapper::wrapperHandler(const JSObject* wrapper)
-{
-    MOZ_ASSERT(wrapper->is<WrapperObject>());
-    return static_cast<const Wrapper*>(wrapper->as<ProxyObject>().handler());
-}
-
 JSObject*
 Wrapper::wrappedObject(JSObject* wrapper)
 {
@@ -347,6 +340,11 @@ Wrapper::wrappedObject(JSObject* wrapper)
     // of black wrappers black but while it is in progress we can observe gray
     // targets. Expose rather than returning a gray object in this case.
     if (target) {
+        // A cross-compartment wrapper should never wrap a CCW. We rely on this
+        // in the wrapper handlers (we use AutoRealm on our return value, and
+        // AutoRealm cannot be used with CCWs).
+        MOZ_ASSERT_IF(IsCrossCompartmentWrapper(wrapper),
+                      !IsCrossCompartmentWrapper(target));
         if (wrapper->isMarkedBlack())
             MOZ_ASSERT(JS::ObjectIsNotGray(target));
         if (!wrapper->isMarkedGray())
@@ -456,9 +454,10 @@ ErrorCopier::~ErrorCopier()
             cx->clearPendingException();
             ar.reset();
             Rooted<ErrorObject*> errObj(cx, &exc.toObject().as<ErrorObject>());
-            JSObject* copyobj = CopyErrorObject(cx, errObj);
-            if (copyobj)
-                cx->setPendingException(ObjectValue(*copyobj));
+            if (JSObject* copyobj = CopyErrorObject(cx, errObj)) {
+                RootedValue rootedCopy(cx, ObjectValue(*copyobj));
+                cx->setPendingException(rootedCopy);
+            }
         }
     }
 }

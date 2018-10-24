@@ -17,10 +17,12 @@
 #include "nsIURI.h"
 class nsPresContext;
 class nsIPresShell;
+class nsDocShellLoadInfo;
 namespace mozilla {
 class Encoding;
 class HTMLEditor;
 namespace dom {
+class BrowsingContext;
 class ClientSource;
 } // namespace dom
 }
@@ -61,7 +63,10 @@ interface nsICommandManager;
 interface nsICommandParams;
 interface nsILoadURIDelegate;
 native TabChildRef(already_AddRefed<nsITabChild>);
+native nsDocShellLoadInfoPtr(nsDocShellLoadInfo*);
 
+webidl BrowsingContext;
+webidl ContentFrameMessageManager;
 webidl EventTarget;
 
 [scriptable, builtinclass, uuid(049234fe-da10-478b-bc5d-bc6f9a1ba63d)]
@@ -87,7 +92,7 @@ interface nsIDocShell : nsIDocShellTreeItem
    *                     be allowed.  Use at your own risk.
    */
   [noscript]void loadURI(in nsIURI uri,
-                         in nsIDocShellLoadInfo loadInfo,
+                         in nsDocShellLoadInfoPtr loadInfo,
                          in unsigned long aLoadFlags,
                          in boolean firstParty);
 
@@ -213,12 +218,6 @@ interface nsIDocShell : nsIDocShellTreeItem
   [implicit_jscontext]
   void addState(in jsval aData, in DOMString aTitle,
                 in DOMString aURL, in boolean aReplace);
-
-  /**
-   * Creates a DocShellLoadInfo object that you can manipulate and then pass
-   * to loadURI.
-   */
-  void createLoadInfo(out nsIDocShellLoadInfo loadInfo);
 
   /**
    * Reset state to a new content model within the current document and the document
@@ -622,6 +621,36 @@ interface nsIDocShell : nsIDocShellTreeItem
    * loaded (or is about to load) on the page.
    */
   [infallible] readonly attribute boolean hasTrackingContentLoaded;
+
+   /**
+   * This attribute determines whether a document has Slow Tracking Content
+   * that has been blocked from loading.
+   */
+   [infallible] readonly attribute boolean hasSlowTrackingContentBlocked;
+
+   /**
+   * This attribute determines whether a document seen cookies or storage
+   * blocked due to a site permission being denied.
+   */
+   [infallible] readonly attribute boolean hasCookiesBlockedByPermission;
+
+   /**
+   * This attribute determines whether a document seen cookies or storage
+   * blocked due to a the request being made by a tracker.
+   */
+   [infallible] readonly attribute boolean hasCookiesBlockedDueToTrackers;
+
+   /**
+   * This attribute determines whether a document seen cookies or storage
+   * blocked due to cookie behavior settings blocking all cookies.
+   */
+   [infallible] readonly attribute boolean hasAllCookiesBeenBlocked;
+
+   /**
+   * This attribute determines whether a document seen cookies or storage
+   * blocked due to cookie behavior settings blocking all third-party cookies.
+   */
+   [infallible] readonly attribute boolean hasForeignCookiesBeenBlocked;
 
   /**
    * Disconnects this docshell's editor from its window, and stores the
@@ -1184,7 +1213,15 @@ interface nsIDocShell : nsIDocShellTreeItem
    */
   mozilla::HTMLEditor* GetHTMLEditor();
   nsresult SetHTMLEditor(mozilla::HTMLEditor* aHTMLEditor);
+
+  void AttachBrowsingContext(nsIDocShell* aParentDocShell);
+  void DetachBrowsingContext();
 %}
+
+  /**
+   * BrowsingContext associated with the DocShell.
+   */
+  readonly attribute BrowsingContext browsingContext;
 
   /**
    * Allowed CSS display modes. This needs to be kept in
@@ -1200,4 +1237,10 @@ interface nsIDocShell : nsIDocShellTreeItem
    * Media queries only look at the value in the top-most docshell.
    */
   attribute unsigned long displayMode;
+
+  /**
+   * The message manager for this docshell.  This does not throw, but
+   * can return null if the docshell has no message manager.
+   */
+  [infallible] readonly attribute ContentFrameMessageManager messageManager;
 };

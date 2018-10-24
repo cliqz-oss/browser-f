@@ -143,13 +143,11 @@ HTMLSourceElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
 nsresult
 HTMLSourceElement::BindToTree(nsIDocument *aDocument,
                               nsIContent *aParent,
-                              nsIContent *aBindingParent,
-                              bool aCompileEventHandlers)
+                              nsIContent *aBindingParent)
 {
   nsresult rv = nsGenericHTMLElement::BindToTree(aDocument,
                                                  aParent,
-                                                 aBindingParent,
-                                                 aCompileEventHandlers);
+                                                 aBindingParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (auto* media = HTMLMediaElement::FromNodeOrNull(aParent)) {
@@ -162,7 +160,7 @@ HTMLSourceElement::BindToTree(nsIDocument *aDocument,
 JSObject*
 HTMLSourceElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return HTMLSourceElementBinding::Wrap(aCx, this, aGivenProto);
+  return HTMLSourceElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 } // namespace dom

@@ -219,8 +219,7 @@ BrowserElementParent.prototype = {
   },
 
   get _windowUtils() {
-    return this._window.QueryInterface(Ci.nsIInterfaceRequestor)
-                       .getInterface(Ci.nsIDOMWindowUtils);
+    return this._window.windowUtils;
   },
 
   promptAuth: function(authDetail, callback) {
@@ -797,7 +796,7 @@ BrowserElementParent.prototype = {
     this._nextPaintListeners = [];
     for (let listener of listeners) {
       try {
-        listener.recvNextPaint();
+        listener();
       } catch (e) {
         // If a listener throws we'll continue.
       }

@@ -16,6 +16,7 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Scoped.h"
 #include "mozilla/ThreadLocal.h"
+#include "mozilla/TimeStamp.h"
 #include "mozilla/Vector.h"
 
 #include <algorithm>
@@ -36,12 +37,12 @@
 # include "js/Proxy.h" // For AutoEnterPolicy
 #endif
 #include "js/UniquePtr.h"
+#include "js/Utility.h"
 #include "js/Vector.h"
 #include "threading/Thread.h"
 #include "vm/Caches.h"
 #include "vm/CodeCoverage.h"
 #include "vm/CommonPropertyNames.h"
-#include "vm/DateTime.h"
 #include "vm/GeckoProfiler.h"
 #include "vm/JSAtom.h"
 #include "vm/JSScript.h"
@@ -68,6 +69,7 @@ class AutoHeapSession;
 } // namespace js
 
 struct DtoaState;
+struct JSLocaleCallbacks;
 
 #ifdef JS_SIMULATOR_ARM64
 namespace vixl {
@@ -107,7 +109,7 @@ class Simulator;
 #endif
 } // namespace jit
 
-// JS Engine Threading
+// [SMDOC] JS Engine Threading
 //
 // Threads interacting with a runtime are divided into two categories:
 //
@@ -201,7 +203,6 @@ AtomStateOffsetToName(const JSAtomState& atomState, size_t offset)
 // per-runtime or per-process. When acquiring more than one of these locks,
 // the acquisition must be done in the order below to avoid deadlocks.
 enum RuntimeLock {
-    ExclusiveAccessLock,
     HelperThreadStateLock,
     GCLock
 };
@@ -217,7 +218,6 @@ void DisableExtraThreads();
 
 using ScriptAndCountsVector = GCVector<ScriptAndCounts, 0, SystemAllocPolicy>;
 
-class AutoLockForExclusiveAccess;
 class AutoLockScriptData;
 
 } // namespace js
@@ -292,7 +292,8 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
      * considered inaccessible, and those JitcodeGlobalTable entry can be
      * disposed of.
      */
-    mozilla::Atomic<uint64_t, mozilla::ReleaseAcquire> profilerSampleBufferRangeStart_;
+    mozilla::Atomic<uint64_t, mozilla::ReleaseAcquire,
+                    mozilla::recordreplay::Behavior::DontPreserve> profilerSampleBufferRangeStart_;
 
     mozilla::Maybe<uint64_t> profilerSampleBufferRangeStart() {
         if (beingDestroyed_ || !geckoProfiler().enabled()) {
@@ -330,9 +331,9 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     js::UnprotectedData<js::OffThreadPromiseRuntimeState> offThreadPromiseState;
     js::UnprotectedData<JS::ConsumeStreamCallback> consumeStreamCallback;
 
-    JSObject* getIncumbentGlobal(JSContext* cx);
+    js::GlobalObject* getIncumbentGlobal(JSContext* cx);
     bool enqueuePromiseJob(JSContext* cx, js::HandleFunction job, js::HandleObject promise,
-                           js::HandleObject incumbentGlobal);
+                           js::Handle<js::GlobalObject*> incumbentGlobal);
     void addUnhandledRejectedPromise(JSContext* cx, js::HandleObject promise);
     void removeUnhandledRejectedPromise(JSContext* cx, js::HandleObject promise);
 
@@ -344,7 +345,8 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     js::UnprotectedData<JS::ReadableStreamFinalizeCallback> readableStreamFinalizeCallback;
 
     /* Had an out-of-memory error which did not populate an exception. */
-    mozilla::Atomic<bool> hadOutOfMemory;
+    mozilla::Atomic<bool, mozilla::SequentiallyConsistent,
+                    mozilla::recordreplay::Behavior::DontPreserve> hadOutOfMemory;
 
     /*
      * Allow relazifying functions in compartments that are active. This is
@@ -357,6 +359,11 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
 
     /* Compartment memory reporting callback. */
     js::MainThreadData<JSSizeOfIncludingThisCompartmentCallback> sizeOfIncludingThisCompartmentCallback;
+
+    /* Callback for creating ubi::Nodes representing DOM node objects. Set by
+     * JS::ubi::SetConstructUbiNodeForDOMObjectCallback. Refer to js/public/UbiNode.h.
+     */
+    void (*constructUbiNodeForDOMObjectCallback) (void*, JSObject*) = nullptr;
 
     /* Realm destroy callback. */
     js::MainThreadData<JS::DestroyRealmCallback> destroyRealmCallback;
@@ -459,18 +466,6 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
 
   private:
     /*
-     * Lock taken when using per-runtime or per-zone data that could otherwise
-     * be accessed simultaneously by multiple threads.
-     *
-     * Locking this only occurs if there is actually a thread other than the
-     * main thread which could access such data.
-     */
-    js::Mutex exclusiveAccessLock;
-#ifdef DEBUG
-    bool activeThreadHasExclusiveAccess;
-#endif
-
-    /*
      * Lock used to protect the script data table, which can be used by
      * off-thread parsing.
      *
@@ -483,12 +478,13 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
 #endif
 
     // Number of zones which may be operated on by helper threads.
-    mozilla::Atomic<size_t> numActiveHelperThreadZones;
+    mozilla::Atomic<size_t, mozilla::SequentiallyConsistent,
+                    mozilla::recordreplay::Behavior::DontPreserve> numActiveHelperThreadZones;
 
-    // Any GC activity affecting the heap.
-    mozilla::Atomic<JS::HeapState> heapState_;
+    // Any activity affecting the heap.
+    mozilla::Atomic<JS::HeapState, mozilla::SequentiallyConsistent,
+                    mozilla::recordreplay::Behavior::DontPreserve> heapState_;
 
-    friend class js::AutoLockForExclusiveAccess;
     friend class js::AutoLockScriptData;
 
   public:
@@ -500,18 +496,15 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     }
 
 #ifdef DEBUG
-    bool currentThreadHasExclusiveAccess() const {
-        if (!hasHelperThreadZones())
-            return CurrentThreadCanAccessRuntime(this) && activeThreadHasExclusiveAccess;
-
-        return exclusiveAccessLock.ownedByCurrentThread();
-    }
-
     bool currentThreadHasScriptDataAccess() const {
         if (!hasHelperThreadZones())
             return CurrentThreadCanAccessRuntime(this) && activeThreadHasScriptDataAccess;
 
         return scriptDataLock.ownedByCurrentThread();
+    }
+
+    bool currentThreadHasAtomsTableAccess() const {
+        return CurrentThreadCanAccessRuntime(this) && atoms_->mainThreadHasAllLocks();
     }
 #endif
 
@@ -528,7 +521,7 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     js::MainThreadData<const JSLocaleCallbacks*> localeCallbacks;
 
     /* Default locale for Internationalization API */
-    js::MainThreadData<char*> defaultLocale;
+    js::MainThreadData<js::UniqueChars> defaultLocale;
 
     /* If true, new scripts must be created with PC counter information. */
     js::MainThreadOrIonCompileData<bool> profilingScripts;
@@ -704,42 +697,30 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     friend class js::AutoAssertNoContentJS;
 
   private:
-    // Set of all atoms other than those in permanentAtoms and staticStrings.
-    // Reading or writing this set requires the calling thread to use
-    // AutoAccessAtomsZone.
-    js::ExclusiveAccessLockOrGCTaskData<js::AtomSet*> atoms_;
-
-    // Set of all atoms added while the main atoms table is being swept.
-    js::ExclusiveAccessLockOrGCTaskData<js::AtomSet*> atomsAddedWhileSweeping_;
+    // Table of all atoms other than those in permanentAtoms and staticStrings.
+    js::WriteOnceData<js::AtomsTable*> atoms_;
 
     // Set of all live symbols produced by Symbol.for(). All such symbols are
     // allocated in the atoms zone. Reading or writing the symbol registry
-    // requires the calling thread to use AutoAccessAtomsZone.
-    js::ExclusiveAccessLockOrGCTaskData<js::SymbolRegistry> symbolRegistry_;
+    // can only be done from the main thread.
+    js::MainThreadOrGCTaskData<js::SymbolRegistry> symbolRegistry_;
+
+    js::WriteOnceData<js::AtomSet*> permanentAtomsDuringInit_;
+    js::WriteOnceData<js::FrozenAtomSet*> permanentAtoms_;
 
   public:
     bool initializeAtoms(JSContext* cx);
     void finishAtoms();
-    bool atomsAreFinished() const { return !atoms_; }
+    bool atomsAreFinished() const { return !atoms_ && !permanentAtomsDuringInit_; }
 
-    js::AtomSet* atomsForSweeping() {
+    js::AtomsTable* atomsForSweeping() {
         MOZ_ASSERT(JS::RuntimeHeapIsCollecting());
         return atoms_;
     }
 
-    js::AtomSet& atoms(const js::AutoAccessAtomsZone& access) {
+    js::AtomsTable& atoms() {
         MOZ_ASSERT(atoms_);
         return *atoms_;
-    }
-    js::AtomSet& unsafeAtoms() {
-        MOZ_ASSERT(atoms_);
-        return *atoms_;
-    }
-
-    bool createAtomsAddedWhileSweepingTable();
-    void destroyAtomsAddedWhileSweepingTable();
-    js::AtomSet* atomsAddedWhileSweeping() {
-        return atomsAddedWhileSweeping_;
     }
 
     const JS::Zone* atomsZone(const js::AutoAccessAtomsZone& access) const {
@@ -758,10 +739,7 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
 
     bool activeGCInAtomsZone();
 
-    js::SymbolRegistry& symbolRegistry(const js::AutoAccessAtomsZone& access) {
-        return symbolRegistry_.ref();
-    }
-    js::SymbolRegistry& unsafeSymbolRegistry() {
+    js::SymbolRegistry& symbolRegistry() {
         return symbolRegistry_.ref();
     }
 
@@ -777,11 +755,27 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     js::WriteOnceData<JSAtomState*> commonNames;
 
     // All permanent atoms in the runtime, other than those in staticStrings.
-    // Unlike |atoms_|, access to this does not require
-    // AutoLockForExclusiveAccess because it is frozen and thus read-only.
-    js::WriteOnceData<js::FrozenAtomSet*> permanentAtoms;
+    // Access to this does not require a lock because it is frozen and thus
+    // read-only.
+    const js::FrozenAtomSet* permanentAtoms() const {
+        MOZ_ASSERT(permanentAtomsPopulated());
+        return permanentAtoms_.ref();
+    }
 
-    bool transformToPermanentAtoms(JSContext* cx);
+    // The permanent atoms table is populated during initialization.
+    bool permanentAtomsPopulated() const {
+        return permanentAtoms_;
+    }
+
+    // For internal use, return the permanent atoms table while it is being
+    // populated.
+    js::AtomSet* permanentAtomsDuringInit() const {
+        MOZ_ASSERT(!permanentAtoms_);
+        return permanentAtomsDuringInit_.ref();
+    }
+
+    bool initMainAtomsTables(JSContext* cx);
+    void tracePermanentAtoms(JSTracer* trc);
 
     // Cached well-known symbols (ES6 rev 24 6.1.5.1). Like permanent atoms,
     // these are shared with the parentRuntime, if any.
@@ -794,7 +788,7 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
 
     // Table of bytecode and other data that may be shared across scripts
     // within the runtime. This may be modified by threads using
-    // AutoLockForExclusiveAccess.
+    // AutoLockScriptData.
   private:
     js::ScriptDataLockData<js::ScriptDataTable> scriptDataTable_;
   public:
@@ -858,8 +852,10 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
 
   private:
     // Settings for how helper threads can be used.
-    mozilla::Atomic<bool> offthreadIonCompilationEnabled_;
-    mozilla::Atomic<bool> parallelParsingEnabled_;
+    mozilla::Atomic<bool, mozilla::SequentiallyConsistent,
+                    mozilla::recordreplay::Behavior::DontPreserve> offthreadIonCompilationEnabled_;
+    mozilla::Atomic<bool, mozilla::SequentiallyConsistent,
+                    mozilla::recordreplay::Behavior::DontPreserve> parallelParsingEnabled_;
 
 #ifdef DEBUG
     mozilla::Atomic<uint32_t> offThreadParsesRunning_;
@@ -887,10 +883,6 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
 
 #ifdef DEBUG
 
-    bool isOffThreadParseRunning() const {
-        return offThreadParsesRunning_;
-    }
-
     void incOffThreadParsesRunning() {
         MOZ_ASSERT(!isOffThreadParsingBlocked());
         offThreadParsesRunning_++;
@@ -901,6 +893,10 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
         offThreadParsesRunning_--;
     }
 
+    bool isOffThreadParseRunning() const {
+        return offThreadParsesRunning_;
+    }
+
     bool isOffThreadParsingBlocked() const {
         return offThreadParsingBlocked_;
     }
@@ -909,11 +905,6 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
         MOZ_ASSERT(!isOffThreadParseRunning());
         offThreadParsingBlocked_ = blocked;
     }
-
-#else
-
-    void incOffThreadParsesRunning() {}
-    void decOffThreadParsesRunning() {}
 
 #endif
 
@@ -933,7 +924,7 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     js::MainThreadData<mozilla::MallocSizeOf> debuggerMallocSizeOf;
 
     /* Last time at which an animation was played for this runtime. */
-    mozilla::Atomic<int64_t> lastAnimationTime;
+    js::MainThreadData<mozilla::TimeStamp> lastAnimationTime;
 
   private:
     js::MainThreadData<js::PerformanceMonitoring> performanceMonitoring_;
@@ -1088,7 +1079,7 @@ class MOZ_RAII AutoLockGCBgAlloc : public AutoLockGC
          * the GC lock.
          */
         if (startBgAlloc)
-            runtime()->gc.startBackgroundAllocTaskIfIdle();
+            runtime()->gc.startBackgroundAllocTaskIfIdle(); // Ignore failure.
     }
 
     /*

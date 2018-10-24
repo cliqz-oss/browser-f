@@ -16,12 +16,7 @@
 
 <script class="testbody" type="text/javascript">
 
-var mainWindow = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                    .getInterface(Ci.nsIWebNavigation)
-                    .QueryInterface(Ci.nsIDocShellTreeItem)
-                    .rootTreeItem
-                    .QueryInterface(Ci.nsIInterfaceRequestor)
-                    .getInterface(Ci.nsIDOMWindow);
+var mainWindow = window.docShell.rootTreeItem.domWindow;
 var contentPage = "chrome://mochitests/content/chrome/toolkit/components/url-classifier/tests/mochitest/classifiedAnnotatedPBFrame.html";
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
@@ -51,7 +46,7 @@ function testOnWindow(aCallback) {
 }
 
 var badids = [
-  "badscript"
+  "badscript",
 ];
 
 function checkLoads(aWindow, aBlocked) {
@@ -62,6 +57,7 @@ function checkLoads(aWindow, aBlocked) {
 SpecialPowers.pushPrefEnv(
   {"set": [["urlclassifier.trackingTable", "test-track-simple"],
            ["privacy.trackingprotection.enabled", true],
+           ["browser.contentblocking.enabled", true],
            ["browser.safebrowsing.malware.enabled", false],
            ["browser.safebrowsing.phishing.enabled", false],
            ["channelclassifier.allowlist_example", true]]},

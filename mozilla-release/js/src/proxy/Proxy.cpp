@@ -12,6 +12,7 @@
 
 #include "jsapi.h"
 
+#include "js/StableStringChars.h"
 #include "js/Wrapper.h"
 #include "proxy/DeadObjectProxy.h"
 #include "proxy/ScriptedProxyHandler.h"
@@ -26,6 +27,8 @@
 
 using namespace js;
 using namespace js::gc;
+
+using JS::AutoStableStringChars;
 
 void
 js::AutoEnterPolicy::reportErrorIfExceptionIsNotPending(JSContext* cx, jsid id)
@@ -467,7 +470,7 @@ Proxy::enumerate(JSContext* cx, HandleObject proxy)
             return nullptr;
         if (!proto)
             return EnumeratedIdVectorToIterator(cx, proxy, props);
-        assertSameCompartment(cx, proxy, proto);
+        cx->check(proxy, proto);
 
         AutoIdVector protoProps(cx);
         if (!GetPropertyKeys(cx, proto, 0, &protoProps))
@@ -758,24 +761,6 @@ js::proxy_ObjectMoved(JSObject* obj, JSObject* old)
     }
 
     return proxy.handler()->objectMoved(obj, old);
-}
-
-bool
-js::proxy_Call(JSContext* cx, unsigned argc, Value* vp)
-{
-    CallArgs args = CallArgsFromVp(argc, vp);
-    RootedObject proxy(cx, &args.callee());
-    MOZ_ASSERT(proxy->is<ProxyObject>());
-    return Proxy::call(cx, proxy, args);
-}
-
-bool
-js::proxy_Construct(JSContext* cx, unsigned argc, Value* vp)
-{
-    CallArgs args = CallArgsFromVp(argc, vp);
-    RootedObject proxy(cx, &args.callee());
-    MOZ_ASSERT(proxy->is<ProxyObject>());
-    return Proxy::construct(cx, proxy, args);
 }
 
 const ClassOps js::ProxyClassOps = {

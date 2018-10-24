@@ -2,12 +2,30 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-.permission-icon {
-  height: 20px;
+/* Permissions */
+
+.content-blocking-icon,
+.permission-icon,
+.content-blocking-checkbox {
   width: 20px;
+  height: 20px;
   vertical-align: middle;
+}
+
+.content-blocking-checkbox .checkbox-icon {
+  margin-inline-end: 8px;
+  margin-inline-start: 4px;
+  width: 16px;
+}
+
+.content-blocking-icon,
+.permission-icon {
   -moz-context-properties: fill;
   fill: currentColor;
+}
+
+.content-blocking-icon[disabled] {
+  fill: GrayText;
 }
 
 .geo-icon {
@@ -28,4 +46,122 @@
 
 .midi-icon {
   list-style-image: url(chrome://browser/skin/notification-icons/midi.svg);
+}
+
+/* Content Blocking */
+
+#contentBlockingLearnMore {
+  margin-top: 4px !important;
+}
+
+#contentBlockingCategories,
+#contentBlockingCheckboxContainer {
+  margin-top: 16px;
+}
+
+#contentBlockingToggleLabel {
+  line-height: 34px;
+}
+
+#contentBlockingCheckbox {
+  visibility: collapse;
+}
+
+/* If shown, the button-box takes up some space that results
+ * in unwanted changes in right-hand margin when toggling
+ * this button. We just hide it since we don't need it. */
+#contentBlockingToggle > .button-box {
+  display: none;
+}
+
+#contentBlockingToggle {
+  -moz-appearance: none;
+  box-sizing: border-box;
+  min-width: 48px;
+  max-width: 48px;
+  min-height: 30px;
+  max-height: 30px;
+  border-radius: 20px;
+  background-color: #d7d7db;
+  border: 1px solid transparent;
+  margin-top: 2px;
+  margin-bottom: 2px;
+  margin-inline-start: 1px;
+  margin-inline-end: 7px;
+  padding: 5px;
+  transition: padding .2s ease;
+}
+
+#contentBlockingToggle::before {
+  position: relative;
+  display: block;
+  content: "";
+  width: 18px;
+  height: 18px;
+  border-radius: 10px;
+  background: white;
+}
+
+#contentBlockingCheckbox[checked="true"] + #contentBlockingToggle {
+  background-color: #2292d0;
+  border: 1px solid #2292d0;
+  /* Push the toggle to the right. */
+  padding-inline-start: 23px;
+}
+
+#contentBlockingToggle:hover,
+#contentBlockingToggle:-moz-focusring {
+  border: 1px solid #b1b1b3;
+}
+
+#contentBlockingCheckbox[checked] + #contentBlockingToggle:hover,
+#contentBlockingCheckbox[checked] + #contentBlockingToggle:-moz-focusring {
+  background-color: #0a84ff;
+}
+
+.content-blocking-category {
+  margin: 16px 0;
+}
+
+.content-blocking-category-labels {
+  padding-inline-start: 4px;
+  margin-inline-start: 25px !important;
+}
+
+#trackingProtectionMenu,
+#blockCookiesCB {
+  margin-top: 0.75em;
+}
+
+#blockCookiesCBDeck[selectedIndex]:not([selectedIndex="0"]) {
+  max-width: 444px;
+}
+
+#changeBlockListLink {
+  font-size: 90%;
+  /* In order to override the margins set in preferences.inc.css, we have to use !important. */
+  margin-top: 1em !important;
+}
+
+.content-blocking-category-description {
+  font-size: 90%;
+  opacity: 0.6;
+}
+
+.warning-description {
+  background: url(chrome://browser/skin/controlcenter/warning.svg) no-repeat 0 5px;
+  opacity: 0.6;
+  -moz-context-properties: fill, stroke;
+  fill: #d7b600;
+  stroke: white;
+  padding-inline-start: 20px;
+}
+
+.reject-trackers-warning-icon:-moz-locale-dir(rtl) {
+  background-position-x: right 0;
+}
+
+#contentBlockingChangeCookieSettings {
+  padding: 0.25em 0.75em;
+  margin: 4px 8px;
 }

@@ -14,7 +14,6 @@ XPCOMUtils.defineLazyServiceGetter(this, "env",
 
 const {
   PREF_BOOL,
-  PREF_COMPLEX,
   PREF_INT,
   PREF_INVALID,
   PREF_STRING,
@@ -60,9 +59,6 @@ class Branch {
 
       case PREF_INT:
         return this._branch.getIntPref(pref);
-
-      case PREF_COMPLEX:
-        throw new TypeError(`Unsupported complex preference: ${pref}`);
 
       case PREF_INVALID:
       default:
@@ -192,6 +188,8 @@ class MarionetteBranch extends Branch {
    * @return {Log.Level}
    */
   get logLevel() {
+    // TODO: when geckodriver's minimum supported Firefox version reaches 62,
+    // the lower-casing here can be dropped (https://bugzil.la/1482829)
     switch (this.get("log.level", "info").toLowerCase()) {
       case "fatal":
         return Log.Level.Fatal;
@@ -209,6 +207,17 @@ class MarionetteBranch extends Branch {
       default:
         return Log.Level.Info;
     }
+  }
+
+  /**
+   * Certain log messages that are known to be long are truncated
+   * before they are dumped to stdout.  The `marionette.log.truncate`
+   * preference indicates that the values should not be truncated.
+   *
+   * @return {boolean}
+   */
+  get truncateLog() {
+    return this.get("log.truncate");
   }
 
   /**

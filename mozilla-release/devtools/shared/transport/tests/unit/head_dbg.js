@@ -3,7 +3,7 @@
 
 "use strict";
 
-/* exported Cr, CC, NetUtil, defer, errorCount, initTestDebuggerServer,
+/* exported Cr, CC, NetUtil, errorCount, initTestDebuggerServer,
             writeTestTempFile, socket_transport, local_transport, really_long
 */
 
@@ -12,7 +12,6 @@ var CC = Components.Constructor;
 const { require } =
   ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const { NetUtil } = require("resource://gre/modules/NetUtil.jsm");
-const promise = require("promise");
 const defer = require("devtools/shared/defer");
 
 const Services = require("Services");
@@ -94,9 +93,10 @@ function initTestDebuggerServer() {
   DebuggerServer.registerModule("devtools/server/actors/thread", {
     prefix: "script",
     constructor: "ScriptActor",
-    type: { global: true, tab: true }
+    type: { global: true, target: true }
   });
-  DebuggerServer.registerModule("xpcshell-test/testactors");
+  const { createRootActor } = require("xpcshell-test/testactors");
+  DebuggerServer.setRootActor(createRootActor);
   // Allow incoming connections.
   DebuggerServer.init();
 }
@@ -147,7 +147,7 @@ var socket_transport = async function() {
 };
 
 function local_transport() {
-  return promise.resolve(DebuggerServer.connectPipe());
+  return Promise.resolve(DebuggerServer.connectPipe());
 }
 
 /** * Sample Data ***/

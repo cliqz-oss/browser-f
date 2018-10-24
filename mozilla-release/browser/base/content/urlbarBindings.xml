@@ -26,16 +26,20 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
     <content sizetopopup="pref">
       <xul:hbox flex="1" class="urlbar-textbox-container">
         <children includes="image|deck|stack|box"/>
-        <xul:hbox anonid="textbox-input-box"
-                  class="textbox-input-box urlbar-input-box"
-                  flex="1" xbl:inherits="tooltiptext=inputtooltiptext">
+        <xul:moz-input-box anonid="moz-input-box"
+                  class="urlbar-input-box"
+                  flex="1">
           <children/>
+          <html:input anonid="scheme"
+                      class="urlbar-scheme textbox-input"
+                      required="required"
+                      xbl:inherits="textoverflow,focused"/>
           <html:input anonid="input"
                       class="autocomplete-textbox urlbar-input textbox-input"
                       allowevents="true"
                       inputmode="mozAwesomebar"
-                      xbl:inherits="tooltiptext=inputtooltiptext,value,maxlength,disabled,size,readonly,placeholder,tabindex,accesskey,focused,textoverflow"/>
-        </xul:hbox>
+                      xbl:inherits="value,maxlength,disabled,size,readonly,placeholder,tabindex,accesskey,focused,textoverflow"/>
+        </xul:moz-input-box>
         <xul:image anonid="urlbar-go-button"
                    class="urlbar-go-button urlbar-icon"
                    onclick="gURLBar.handleCommand(event);"
@@ -88,11 +92,14 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
         this.inputField.addEventListener("mouseout", this);
         this.inputField.addEventListener("overflow", this);
         this.inputField.addEventListener("underflow", this);
+        this.inputField.addEventListener("scrollend", this);
+        window.addEventListener("resize", this);
 
         var textBox = document.getAnonymousElementByAttribute(this,
-                                                "anonid", "textbox-input-box");
-        var cxmenu = document.getAnonymousElementByAttribute(textBox,
-                                            "anonid", "input-box-contextmenu");
+                                                "anonid", "moz-input-box");
+        // Force the Custom Element to upgrade until Bug 1470242 handles this:
+        customElements.upgrade(textBox);
+        var cxmenu = textBox.menupopup;
         var pasteAndGo;
         cxmenu.addEventListener("popupshowing", function() {
           if (!pasteAndGo)
@@ -105,24 +112,24 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
             pasteAndGo.setAttribute("disabled", "true");
         });
 
-        var insertLocation = cxmenu.firstChild;
-        while (insertLocation.nextSibling &&
+        var insertLocation = cxmenu.firstElementChild;
+        while (insertLocation.nextElementSibling &&
                insertLocation.getAttribute("cmd") != "cmd_paste")
-          insertLocation = insertLocation.nextSibling;
+          insertLocation = insertLocation.nextElementSibling;
         if (insertLocation) {
-          pasteAndGo = document.createElement("menuitem");
+          pasteAndGo = document.createXULElement("menuitem");
           let label = Services.strings.createBundle("chrome://browser/locale/browser.properties").
                                    GetStringFromName("pasteAndGo.label");
           pasteAndGo.setAttribute("label", label);
           pasteAndGo.setAttribute("anonid", "paste-and-go");
           pasteAndGo.setAttribute("oncommand",
               "gURLBar.select(); goDoCommand('cmd_paste'); gURLBar.handleCommand();");
-          cxmenu.insertBefore(pasteAndGo, insertLocation.nextSibling);
+          cxmenu.insertBefore(pasteAndGo, insertLocation.nextElementSibling);
         }
 
         this.popup.addEventListener("popupshowing", () => {
           this._enableOrDisableOneOffSearches();
-        }, {capturing: true, once: true});
+        }, {capture: true, once: true});
 
         // history dropmarker open state
         this.popup.addEventListener("popupshowing", () => {
@@ -151,6 +158,8 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
         this.inputField.removeEventListener("mouseout", this);
         this.inputField.removeEventListener("overflow", this);
         this.inputField.removeEventListener("underflow", this);
+        this.inputField.removeEventListener("scrollend", this);
+        window.removeEventListener("resize", this);
 
         if (this._deferredKeyEventTimeout) {
           clearTimeout(this._deferredKeyEventTimeout);
@@ -163,6 +172,10 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
         this.popup.oneOffSearchButtons.popup = null;
         this.popup.oneOffSearchButtons.textbox = null;
       ]]></destructor>
+
+      <field name="scheme" readonly="true">
+        document.getAnonymousElementByAttribute(this, "anonid", "scheme");
+      </field>
 
       <field name="goButton">
         document.getAnonymousElementByAttribute(this, "anonid", "urlbar-go-button");
@@ -500,25 +513,78 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
       </method>
 
       <field name="_formattingEnabled">true</field>
+
+      <!--
+        This is used only as an optimization to avoid removing formatting in
+        the _remove* format methods when no formatting is actually applied.
+      -->
+      <field name="_formattingApplied">false</field>
+
+      <!--
+        This method tries to apply styling to the text in the input, depending
+        on the text.  See the _format* methods.
+      -->
       <method name="formatValue">
         <body><![CDATA[
-          if (!this._formattingEnabled || !this.editor)
+          if (!this.editor || !this.editor.rootElement.firstChild.textContent) {
             return;
+          }
 
+          // Remove the current formatting.
+          this._removeURLFormat();
+          this._removeSearchAliasFormat();
+          this._formattingApplied = false;
+
+          // Apply new formatting.  Formatter methods should return true if they
+          // successfully formatted the value and false if not.  We apply only
+          // one formatter at a time, so we stop at the first successful one.
+          let formatterMethods = [
+            "_formatURL",
+            "_formatSearchAlias",
+          ];
+          this._formattingApplied = formatterMethods.some(m => this[m]());
+        ]]></body>
+      </method>
+
+      <method name="_removeURLFormat">
+        <body><![CDATA[
+          this.scheme.value = "";
+          if (!this._formattingApplied) {
+            return;
+          }
           let controller = this.editor.selectionController;
-          let strikeOut = controller.getSelection(controller.SELECTION_URLSTRIKEOUT);
+          let strikeOut =
+            controller.getSelection(controller.SELECTION_URLSTRIKEOUT);
           strikeOut.removeAllRanges();
-
-          let selection = controller.getSelection(controller.SELECTION_URLSECONDARY);
+          let selection =
+            controller.getSelection(controller.SELECTION_URLSECONDARY);
           selection.removeAllRanges();
+          this._formatScheme(controller.SELECTION_URLSTRIKEOUT, true);
+          this._formatScheme(controller.SELECTION_URLSECONDARY, true);
+          this.inputField.style.setProperty("--urlbar-scheme-size", "0px");
+        ]]></body>
+      </method>
 
-          if (this.focused)
-            return;
+      <!--
+        If the input value is a URL and the input is not focused, this
+        formatter method highlights the domain, and if mixed content is present,
+        it crosses out the https scheme.  It also ensures that the host is
+        visible (not scrolled out of sight).
+
+        @param  onlyEnsureFormattedHostVisible
+                Pass true to skip formatting and instead only ensure that the
+                host is visible.
+        @return True if formatting was applied and false if not.
+      -->
+      <method name="_formatURL">
+        <parameter name="onlyEnsureFormattedHostVisible"/>
+        <body><![CDATA[
+          if (this.focused) {
+            return false;
+          }
 
           let textNode = this.editor.rootElement.firstChild;
           let value = textNode.textContent;
-          if (!value)
-            return;
 
           // Get the URL from the fixup service:
           let flags = Services.uriFixup.FIXUP_FLAG_FIX_SCHEME_TYPOS |
@@ -533,7 +599,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
               !uriInfo.fixedURI ||
               uriInfo.keywordProviderName ||
               !["http", "https", "ftp"].includes(uriInfo.fixedURI.scheme)) {
-            return;
+            return false;
           }
 
           // If we trimmed off the http scheme, ensure we stick it back on before
@@ -547,9 +613,49 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
             trimmedLength = "http://".length;
           }
 
-          let matchedURL = value.match(/^((?:[a-z]+:\/\/)(?:[^\/#?]+@)?)(\S+?)(?::\d+)?\s*(?:[\/#?]|$)/);
-          if (!matchedURL)
-            return;
+          let matchedURL = value.match(/^(([a-z]+:\/\/)(?:[^\/#?]+@)?)(\S+?)(?::\d+)?\s*(?:[\/#?]|$)/);
+          if (!matchedURL) {
+            return false;
+          }
+
+          let [, preDomain, schemeWSlashes, domain] = matchedURL;
+          // We strip http, so we should not show the scheme box for it.
+          if (!this._mayTrimURLs || schemeWSlashes != "http://") {
+            this.scheme.value = schemeWSlashes;
+            this.inputField.style.setProperty("--urlbar-scheme-size",
+                                              schemeWSlashes.length + "ch");
+          }
+
+          // Used to avoid re-entrance in the requestAnimationFrame callback.
+          let instance = this._formatURLInstance = {};
+
+          // Make sure the host is always visible. Since it is aligned on
+          // the first strong directional character, we set scrollLeft
+          // appropriately to ensure the domain stays visible in case of an
+          // overflow.
+          window.requestAnimationFrame(() => {
+            // Check for re-entrance. On focus change this formatting code is
+            // invoked regardless, thus this should be enough.
+            if (this._formatURLInstance != instance) {
+              return;
+            }
+            let directionality = window.windowUtils.getDirectionFromText(domain);
+            // In the future, for example in bug 525831, we may add a forceRTL
+            // char just after the domain, and in such a case we should not
+            // scroll to the left.
+            if (directionality == window.windowUtils.DIRECTION_RTL &&
+                value[preDomain.length + domain.length] != "\u200E") {
+              this.inputField.scrollLeft = this.inputField.scrollLeftMax;
+            }
+          });
+
+          if (onlyEnsureFormattedHostVisible || !this._formattingEnabled) {
+            return false;
+          }
+
+          let controller = this.editor.selectionController;
+
+          this._formatScheme(controller.SELECTION_URLSECONDARY);
 
           // Strike out the "https" part if mixed active content is loaded.
           if (this.getAttribute("pageproxystate") == "valid" &&
@@ -559,10 +665,12 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
             let range = document.createRange();
             range.setStart(textNode, 0);
             range.setEnd(textNode, 5);
+            let strikeOut =
+              controller.getSelection(controller.SELECTION_URLSTRIKEOUT);
             strikeOut.addRange(range);
+            this._formatScheme(controller.SELECTION_URLSTRIKEOUT);
           }
 
-          let [, preDomain, domain] = matchedURL;
           let baseDomain = domain;
           let subDomain = "";
           try {
@@ -577,6 +685,9 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
           if (baseDomain != domain) {
             subDomain = domain.slice(0, -baseDomain.length);
           }
+
+          let selection =
+            controller.getSelection(controller.SELECTION_URLSECONDARY);
 
           let rangeLength = preDomain.length + subDomain.length - trimmedLength;
           if (rangeLength) {
@@ -593,6 +704,105 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
             range.setEnd(textNode, value.length - trimmedLength);
             selection.addRange(range);
           }
+
+          return true;
+        ]]></body>
+      </method>
+
+      <method name="_formatScheme">
+        <parameter name="selectionType"/>
+        <parameter name="clear"/>
+        <body><![CDATA[
+          let editor = this.scheme.editor;
+          let controller = editor.selectionController;
+          let textNode = editor.rootElement.firstChild;
+          let selection = controller.getSelection(selectionType);
+          if (clear) {
+            selection.removeAllRanges();
+          } else {
+            let r = document.createRange();
+            r.setStart(textNode, 0);
+            r.setEnd(textNode, textNode.textContent.length);
+            selection.addRange(r);
+          }
+        ]]></body>
+      </method>
+
+      <method name="_removeSearchAliasFormat">
+        <body><![CDATA[
+          if (!this._formattingApplied) {
+            return;
+          }
+          let selection = this.editor.selectionController.getSelection(
+            Ci.nsISelectionController.SELECTION_FIND
+          );
+          selection.removeAllRanges();
+        ]]></body>
+      </method>
+
+      <!--
+        If the input value starts with a search alias, this formatter method
+        highlights it.
+
+        @return True if formatting was applied and false if not.
+      -->
+      <method name="_formatSearchAlias">
+        <body><![CDATA[
+          if (!this._formattingEnabled) {
+            return false;
+          }
+
+          let textNode = this.editor.rootElement.firstChild;
+          let value = textNode.textContent;
+          let trimmedValue = value.trimStart();
+
+          // If there's no alias in the results or the first word in the input
+          // value is not that alias, then there's no formatting to do.
+          if (!this.popup.searchAlias ||
+              (trimmedValue.length != this.popup.searchAlias.length &&
+               trimmedValue[this.popup.searchAlias.length] != " ") ||
+              !trimmedValue.startsWith(this.popup.searchAlias)) {
+            return false;
+          }
+
+          let index = value.indexOf(this.popup.searchAlias);
+
+          // We abuse the SELECTION_FIND selection type to do our highlighting.
+          // It's the only type that works with Selection.setColors().
+          let selection = this.editor.selectionController.getSelection(
+            Ci.nsISelectionController.SELECTION_FIND
+          );
+
+          let range = document.createRange();
+          range.setStart(textNode, index);
+          range.setEnd(textNode, index + this.popup.searchAlias.length);
+          selection.addRange(range);
+
+          let fg = "#2362d7";
+          let bg = "#d2e6fd";
+
+          // Selection.setColors() will swap the given foreground and background
+          // colors if it detects that the contrast between the background
+          // color and the frame color is too low.  Normally we don't want that
+          // to happen; we want it to use our colors as given (even if setColors
+          // thinks the contrast is too low).  But it's a nice feature for non-
+          // default themes, where the contrast between our background color and
+          // the input's frame color might actually be too low.  We can
+          // (hackily) force setColors to use our colors as given by passing
+          // them as the alternate colors.  Otherwise, allow setColors to swap
+          // them, which we can do by passing "currentColor".  See
+          // nsTextPaintStyle::GetHighlightColors for details.
+          if (this.querySelector(":-moz-lwtheme") ||
+              (AppConstants.platform == "win" &&
+               window.matchMedia("(-moz-windows-default-theme: 0)").matches)) {
+            // non-default theme(s)
+            selection.setColors(fg, bg, "currentColor", "currentColor");
+          } else {
+            // default themes
+            selection.setColors(fg, bg, fg, bg);
+          }
+
+          return true;
         ]]></body>
       </method>
 
@@ -605,7 +815,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
           // don't revert to last valid url unless page is NOT loading
           // and user is NOT key-scrolling through autocomplete list
           if (!XULBrowserWindow.isBusy && !isScrolling) {
-            URLBarSetURI();
+            URLBarSetURI(null, true);
 
             // If the value isn't empty and the urlbar has focus, select the value.
             if (this.value && this.hasAttribute("focused"))
@@ -767,7 +977,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
                 }
                 const actionDetails = {
                   isSuggestion: !!action.params.searchSuggestion,
-                  isAlias: !!action.params.alias
+                  isAlias: !!action.params.alias,
                 };
                 [url, postData] = this._parseAndRecordSearchEngineLoad(
                   action.params.engineName,
@@ -861,7 +1071,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
             params.targetBrowser = browser;
             params.indicateErrorPageLoad = true;
             params.allowPinnedTabHostChange = true;
-            params.disallowInheritPrincipal = !mayInheritPrincipal;
+            params.allowInheritPrincipal = mayInheritPrincipal;
             params.allowPopups = url.startsWith("javascript:");
           } else {
             params.initiatingDoc = document;
@@ -892,10 +1102,8 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
             }
           }
 
-          if (openUILinkWhere == "current") {
-            // Ensure the start of the URL is visible for usability reasons.
-            this.selectionStart = this.selectionEnd = 0;
-          }
+          // Ensure the start of the URL is visible for usability reasons.
+          this.selectionStart = this.selectionEnd = 0;
         ]]></body>
       </method>
 
@@ -989,15 +1197,19 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
       <method name="_initURLTooltip">
         <body><![CDATA[
-          if (this.focused || !this.hasAttribute("textoverflow"))
+          if (this.focused || !this._inOverflow)
             return;
-          this.inputField.setAttribute("tooltiptext", this.value);
+          // We set the tooltip text on the parent node instead of the input
+          // field because XUL tooltips only work on XUL elements.
+          //
+          // FIXME(bug 1486716): title should work on chrome documents instead.
+          this.inputField.parentNode.setAttribute("tooltiptext", this.value);
         ]]></body>
       </method>
 
       <method name="_hideURLTooltip">
         <body><![CDATA[
-          this.inputField.removeAttribute("tooltiptext");
+          this.inputField.parentNode.removeAttribute("tooltiptext");
         ]]></body>
       </method>
 
@@ -1075,7 +1287,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
             this.handleCommand(null, undefined, undefined, triggeringPrincipal);
             // Force not showing the dropped URI immediately.
             gBrowser.userTypedValue = null;
-            URLBarSetURI();
+            URLBarSetURI(null, true);
           }
         ]]></body>
       </method>
@@ -1214,7 +1426,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
                    (aCommand != "cmd_cut" || !this.urlbar.readOnly) &&
                    this.urlbar.selectionStart < this.urlbar.selectionEnd;
           },
-          onEvent(aEventName) {}
+          onEvent(aEventName) {},
         })
       ]]></field>
 
@@ -1329,17 +1541,33 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
             case "mouseout":
               this._hideURLTooltip();
               break;
-            case "overflow":
-              if (!this.value) {
-                // We initially get a spurious overflow event from the
-                // anonymous div containing the placeholder text; bail out.
+            case "overflow": {
+              const targetIsPlaceholder =
+                !aEvent.originalTarget.classList.contains("anonymous-div");
+              // We only care about the non-placeholder text.
+              // This shouldn't be needed, see bug 1487036.
+              if (targetIsPlaceholder) {
                 break;
               }
-              this.setAttribute("textoverflow", "true");
+              this._inOverflow = true;
+              this.updateTextOverflow();
               break;
-            case "underflow":
-              this.removeAttribute("textoverflow");
+            }
+            case "underflow": {
+              const targetIsPlaceholder =
+                !aEvent.originalTarget.classList.contains("anonymous-div");
+              // We only care about the non-placeholder text.
+              // This shouldn't be needed, see bug 1487036.
+              if (targetIsPlaceholder) {
+                break;
+              }
+              this._inOverflow = false;
+              this.updateTextOverflow();
               this._hideURLTooltip();
+              break;
+            }
+            case "scrollend":
+              this.updateTextOverflow();
               break;
             case "TabSelect":
               // The autocomplete controller uses heuristic on some internal caches
@@ -1347,12 +1575,50 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
               // Ensure to clear those internal caches when switching tabs.
               this.controller.resetInternalState();
               break;
+            case "resize":
+              if (aEvent.target == window) {
+                // Close the popup since it would be wrongly sized, we'll
+                // recalculate a proper size on reopening. For example, this may
+                // happen when using special OS resize functions like Win+Arrow.
+                this.closePopup();
+
+                // Make sure the host remains visible in the input field (via
+                // _formatURL) when the window is resized.  We don't want to
+                // hurt resize performance though, so do this only after resize
+                // events have stopped and a small timeout has elapsed.
+                if (this._resizeThrottleTimeout) {
+                  clearTimeout(this._resizeThrottleTimeout);
+                }
+                this._resizeThrottleTimeout = setTimeout(() => {
+                  this._resizeThrottleTimeout = null;
+                  this._formatURL(true);
+                }, 100);
+              }
+              break;
+          }
+        ]]></body>
+      </method>
+
+      <method name="updateTextOverflow">
+        <body><![CDATA[
+          if (this._inOverflow) {
+            window.promiseDocumentFlushed(() => {
+              // Check overflow again to ensure it didn't change in the meanwhile.
+              let input = this.inputField;
+              if (input && this._inOverflow) {
+                let side = input.scrollLeft &&
+                           input.scrollLeft == input.scrollLeftMax ? "start" : "end";
+                this.setAttribute("textoverflow", side);
+              }
+            });
+          } else {
+            this.removeAttribute("textoverflow");
           }
         ]]></body>
       </method>
 
       <!--
-        onBeforeTextValueSet is called by the base-binding's .textValue getter.
+        onBeforeTextValueGet is called by the base-binding's .textValue getter.
         It should return the value that the getter should use.
       -->
       <method name="onBeforeTextValueGet">
@@ -1467,7 +1733,8 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
             // Only wait for a result when we are sure to get one.  In some
             // cases, like when pasting the same exact text, we may not fire
             // a new search and we won't get a result.
-            if (this.mController.handleText()) {
+            this._onInputHandledText = this.mController.handleText();
+            if (this._onInputHandledText) {
               this.gotResultForCurrentQuery = false;
               this._searchStartDate = Cu.now();
               this._deferredKeyEventQueue = [];
@@ -1626,11 +1893,6 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
         <parameter name="value"/>
         <parameter name="options"/>
         <body><![CDATA[
-          this.focus();
-          this.textValue = value;
-          // Avoid selecting the url bar text if `search` is called twice in a row
-          this.selectionStart = -1;
-
           options = options || {};
 
           if (options.disableOneOffButtons) {
@@ -1653,83 +1915,30 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
             }, {once: true});
           }
 
-          this.gotResultForCurrentQuery = false;
-          this.controller.startSearch(value);
-        ]]></body>
-      </method>
+          // We want the value to be treated as text that the user typed.  It
+          // should go through the controller.handleText() path in onInput() so
+          // that gBrowser.userTypedValue, this.valueIsTyped, etc. are set and
+          // nsAutoCompleteController::HandleText() is called.  Set this.value
+          // and fire an input event to do that.  (If we set this.textValue we'd
+          // get an input event for free, but it would also set mIgnoreInput,
+          // skipping all of the above requirements.)
+          this.focus();
+          this.value = value;
 
-      <!--
-        Highlights the search alias in the input, or clears the highlight if
-        there is no alias.  To determine in an efficient manner whether the
-        input contains an alias, this method looks at the first (heuristic)
-        result.  If it's a searchengine result with an alias, then it looks for
-        that alias in the input.  Otherwise it clears the highlight.  That means
-        that if the input contains an alias but the alias result is not first,
-        the alias will not be highlighted.
-      -->
-      <method name="highlightSearchAlias">
-        <body><![CDATA[
-          if (!this.editor) {
-            return;
-          }
+          // Avoid selecting the text if this method is called twice in a row.
+          this.selectionStart = -1;
 
-          // We abuse the SELECTION_FIND selection type to do our highlighting.
-          // It's the only type that works with Selection.setColors().
-          let selection = this.editor.selectionController.getSelection(
-            Ci.nsISelectionController.SELECTION_FIND
-          );
-          selection.removeAllRanges();
+          let event = document.createEvent("Events");
+          event.initEvent("input", true, true);
+          this.dispatchEvent(event);
 
-          let textNode = this.editor.rootElement.firstChild;
-          let value = textNode.textContent;
-          if (!value) {
-            return;
-          }
-
-          // Alias results have the searchengine style.  Check that first to
-          // avoid the more expensive regexp in _parseActionUrl when possible
-          // since this method is called by the popup every time you start a
-          // search.
-          let alias =
-            this.mController.matchCount &&
-            this.mController.getStyleAt(0).includes("searchengine") &&
-            this._parseActionUrl(this.mController.getFinalCompleteValueAt(0)).params.alias;
-          if (!alias) {
-            return;
-          }
-
-          let index = value.indexOf(alias);
-          if (index < 0) {
-            return;
-          }
-
-          let range = document.createRange();
-          range.setStart(textNode, index);
-          range.setEnd(textNode, index + alias.length);
-          selection.addRange(range);
-
-          let fg = "#2362d7";
-          let bg = "#d2e6fd";
-
-          // Selection.setColors() will swap the given foreground and background
-          // colors if it detects that the contrast between the background
-          // color and the frame color is too low.  Normally we don't want that
-          // to happen; we want it to use our colors as given (even if setColors
-          // thinks the contrast is too low).  But it's a nice feature for non-
-          // default themes, where the contrast between our background color and
-          // the input's frame color might actually be too low.  We can
-          // (hackily) force setColors to use our colors as given by passing
-          // them as the alternate colors.  Otherwise, allow setColors to swap
-          // them, which we can do by passing "currentColor".  See
-          // nsTextPaintStyle::GetHighlightColors for details.
-          if (this.querySelector(":-moz-lwtheme") ||
-              (AppConstants.platform == "win" &&
-               window.matchMedia("(-moz-windows-default-theme: 0)").matches)) {
-            // non-default theme(s)
-            selection.setColors(fg, bg, "currentColor", "currentColor");
-          } else {
-            // default themes
-            selection.setColors(fg, bg, fg, bg);
+          // handleText() ignores the value if it's the same as the previous
+          // value, but we want consecutive searches with the same value to be
+          // possible.  If handleText() returned false, then manually start a
+          // new search here.
+          if (!this._onInputHandledText) {
+            this.gotResultForCurrentQuery = false;
+            this.controller.startSearch(value);
           }
         ]]></body>
       </method>
@@ -1854,9 +2063,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
                .supportsSelectionClipboard())
           return;
 
-        if (!window.QueryInterface(Ci.nsIInterfaceRequestor)
-                   .getInterface(Ci.nsIDOMWindowUtils)
-                   .isHandlingUserInput)
+        if (!window.windowUtils.isHandlingUserInput)
           return;
 
         var val = this._getSelectedValueForClipboard();
@@ -1925,11 +2132,6 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
       -->
       <field name="textRunsMaxLen">255</field>
 
-      <field name="DOMWindowUtils">
-        window.QueryInterface(Ci.nsIInterfaceRequestor)
-              .getInterface(Ci.nsIDOMWindowUtils);
-      </field>
-
       <field name="_maxResults">0</field>
 
       <field name="_bundle" readonly="true">
@@ -1946,6 +2148,10 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
       <field name="footer" readonly="true">
         document.getAnonymousElementByAttribute(this, "anonid", "footer");
+      </field>
+
+      <field name="shrinkDelay" readonly="true">
+        250
       </field>
 
       <field name="oneOffSearchButtons" readonly="true">
@@ -2131,7 +2337,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
           // Make the popup span the width of the window.  First, set its width.
           let documentRect =
-            this.DOMWindowUtils
+            window.windowUtils
                 .getBoundsWithoutFlushing(window.document.documentElement);
           let width = documentRect.right - documentRect.left;
           this.setAttribute("width", width);
@@ -2139,7 +2345,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
           // Now make its starting margin negative so that its leading edge
           // aligns with the window border.
           let elementRect =
-            this.DOMWindowUtils.getBoundsWithoutFlushing(aElement);
+            window.windowUtils.getBoundsWithoutFlushing(aElement);
           if (popupDirection == "rtl") {
             let offset = elementRect.right - documentRect.right;
             this.style.marginRight = offset + "px";
@@ -2156,7 +2362,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
           // and underflow must be handled for each item already in the popup.
           let needsHandleOverUnderflow = false;
           let boundToCheck = popupDirection == "rtl" ? "right" : "left";
-          let inputRect = this.DOMWindowUtils.getBoundsWithoutFlushing(aInput);
+          let inputRect = window.windowUtils.getBoundsWithoutFlushing(aInput);
           let startOffset = Math.abs(inputRect[boundToCheck] - documentRect[boundToCheck]);
           let alignSiteIcons = startOffset / width <= 0.3 || startOffset <= 250;
           if (alignSiteIcons) {
@@ -2172,7 +2378,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
             }
             let identityIcon = document.getElementById("identity-icon");
             let identityRect =
-              this.DOMWindowUtils.getBoundsWithoutFlushing(identityIcon);
+              window.windowUtils.getBoundsWithoutFlushing(identityIcon);
             let start = popupDirection == "rtl" ?
                         documentRect.right - identityRect.right :
                         identityRect.left;
@@ -2220,19 +2426,96 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
           // which is an offset from the bottom of the input, subtract the
           // bottom of the navbar from the buttom of the input.
           let yOffset = Math.round(
-            this.DOMWindowUtils.getBoundsWithoutFlushing(document.getElementById("nav-bar")).bottom -
-            this.DOMWindowUtils.getBoundsWithoutFlushing(aInput).bottom);
+            window.windowUtils.getBoundsWithoutFlushing(document.getElementById("nav-bar")).bottom -
+            window.windowUtils.getBoundsWithoutFlushing(aInput).bottom);
 
           this.openPopup(aElement, "after_start", 0, yOffset, false, false);
 
           // Do this immediately after we've requested the popup to open. This
           // will cause sync reflows but prevents flickering.
           if (needsHandleOverUnderflow) {
-            for (let item of this.richlistbox.childNodes) {
+            for (let item of this.richlistbox.children) {
               item.handleOverUnderflow();
             }
           }
         ]]></body>
+      </method>
+
+      <method name="adjustHeight">
+        <body>
+          <![CDATA[
+          // If we were going to shrink later, cancel that for now:
+          if (this._shrinkTimeout) {
+            clearTimeout(this._shrinkTimeout);
+            this._shrinkTimeout = null;
+          }
+          let lastRowCount = this._lastRowCount;
+          // Figure out how many rows to show
+          let rows = this.richlistbox.children;
+          this._lastRowCount = rows.length;
+          let numRows = Math.min(this.matchCount, this.maxRows, rows.length);
+
+          // If we're going from 0 to non-0 rows, we might need to remove
+          // the height attribute to allow the popup to size. The attribute
+          // is set from XUL popup management code.
+          if (!lastRowCount && rows.length) {
+            this.removeAttribute("height");
+          }
+
+          // Default the height to 0 if we have no rows to show
+          let height = 0;
+          if (numRows) {
+            if (!this._rowHeight) {
+              window.promiseDocumentFlushed(() => {
+                if (window.closed) {
+                  return;
+                }
+                this._rowHeight = rows[0].getBoundingClientRect().height;
+                let style = window.getComputedStyle(this.richlistbox);
+
+                let paddingTop = parseInt(style.paddingTop) || 0;
+                let paddingBottom = parseInt(style.paddingBottom) || 0;
+                this._rlbPadding = paddingTop + paddingBottom;
+                // Then re-run - but don't dirty layout from inside this callback.
+                window.requestAnimationFrame(() => this.adjustHeight());
+              });
+              return;
+            }
+
+            // Calculate the height to have the first row to last row shown
+            height = (this._rowHeight * numRows) + this._rlbPadding;
+          }
+
+          let animate = this.getAttribute("dontanimate") != "true";
+          let currentHeight =
+            parseFloat(this.richlistbox.getAttribute("height"), 10) ||
+            parseFloat(this.richlistbox.style.height, 10) ||
+            0; // It's possible we get here when we haven't set height on the richlistbox
+               // yet, which means parseFloat will return NaN. It should return 0 instead.
+          if (height > currentHeight) {
+            // Grow immediately.
+            if (animate) {
+              this.richlistbox.removeAttribute("height");
+              this.richlistbox.style.height = height + "px";
+            } else {
+              this.richlistbox.style.removeProperty("height");
+              this.richlistbox.height = height;
+            }
+          } else if (height < currentHeight) { // Don't shrink if height matches exactly
+            // Delay shrinking to avoid flicker.
+            this._shrinkTimeout = setTimeout(() => {
+              this._collapseUnusedItems();
+              if (animate) {
+                this.richlistbox.removeAttribute("height");
+                this.richlistbox.style.height = height + "px";
+              } else {
+                this.richlistbox.style.removeProperty("height");
+                this.richlistbox.height = height;
+              }
+            }, this.shrinkDelay);
+          }
+          ]]>
+        </body>
       </method>
 
       <method name="_showSearchSuggestionsNotification">
@@ -2307,7 +2590,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
         <body><![CDATA[
           // Update all searchengine result items to use the newly selected
           // engine.
-          for (let item of this.richlistbox.childNodes) {
+          for (let item of this.richlistbox.children) {
             if (item.collapsed) {
               break;
             }
@@ -2408,15 +2691,31 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
         ]]></body>
       </method>
 
+      <!--
+        The search alias of the first (heuristic) result in the popup, if any.
+      -->
+      <field name="searchAlias">null</field>
+
       <method name="onResultsAdded">
         <body>
           <![CDATA[
-            // Highlight the search alias in the input if one is present, or
-            // clear the highlight otherwise.  highlightSearchAlias examines
-            // only the first result, so as an optimzation, call it only when
-            // this is the first result.
             if (!this.input.gotResultForCurrentQuery) {
-              this.input.highlightSearchAlias();
+              // This is the first result of a new search.  Cache its search
+              // alias, if any.  Do this now, when we get the first result, so
+              // that the cached alias remains available between the time the
+              // previous search ended and now.
+              //
+              // Calling _parseActionUrl and getting params.alias would be
+              // sufficient here, but as an optimization, first check whether
+              // the result is a searchengine result, which is a simple
+              // substring check, to avoid the more expensive _parseActionUrl.
+              let alias =
+                this.input.mController.getStyleAt(0).includes("searchengine") &&
+                this.input._parseActionUrl(this.input.mController.getFinalCompleteValueAt(0)).params.alias;
+              this.searchAlias = alias || null;
+
+              // Format the alias or remove the formatting of the previous alias.
+              this.input.formatValue();
             }
 
             // If nothing is selected yet, select the first result if it is a
@@ -2566,9 +2865,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
               child.style.display;
             child.style.display = "none";
           }
-          let XUL_NS =
-            "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-          let iframe = document.createElementNS(XUL_NS, "iframe");
+          let iframe = document.createXULElement("iframe");
           iframe.setAttribute("type", "content");
           iframe.setAttribute("flex", "1");
           iframe.style.transition = "height 100ms";
@@ -2683,7 +2980,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
             configurable: true,
             enumerable: true,
             writable: true,
-            value: module.DownloadUtils
+            value: module.DownloadUtils,
           });
           return module.DownloadUtils;
         ]]></getter>

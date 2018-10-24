@@ -257,8 +257,8 @@ class OSXBootstrapper(BaseBootstrapper):
             if b'license' in e.output:
                 xcodebuild = self.which('xcodebuild')
                 try:
-                    subprocess.check_call([xcodebuild, '-license'],
-                                          stderr=subprocess.STDOUT)
+                    self.check_output([xcodebuild, '-license'],
+                                      stderr=subprocess.STDOUT)
                 except subprocess.CalledProcessError as e:
                     if b'requires admin privileges' in e.output:
                         self.run_as_root([xcodebuild, '-license'])
@@ -503,8 +503,13 @@ class OSXBootstrapper(BaseBootstrapper):
         return active_name.lower()
 
     def ensure_stylo_packages(self, state_dir, checkout_root):
-        # We installed these via homebrew earlier.
-        pass
+        # We installed clang via homebrew earlier.
+        self.ensure_rust_package('cbindgen')
+
+    def ensure_node_packages(self, state_dir, checkout_root):
+        # XXX from necessary?
+        from mozboot import node
+        self.install_toolchain_artifact(state_dir, checkout_root, node.OSX)
 
     def install_homebrew(self):
         print(PACKAGE_MANAGER_INSTALL % ('Homebrew', 'Homebrew', 'Homebrew', 'brew'))

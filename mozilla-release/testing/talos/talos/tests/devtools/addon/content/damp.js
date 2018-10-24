@@ -87,7 +87,7 @@ Damp.prototype = {
     // as it slow down next executions almost like a cold start.
 
     // See minimizeMemoryUsage code to justify the 3 iterations and the setTimeout:
-    // https://searchfox.org/mozilla-central/source/xpcom/base/nsMemoryReporterManager.cpp#2574-2585
+    // https://searchfox.org/mozilla-central/rev/33c21c060b7f3a52477a73d06ebcb2bf313c4431/xpcom/base/nsMemoryReporterManager.cpp#2574-2585,2591-2594
     for (let i = 0; i < 3; i++) {
       // See minimizeMemoryUsage code here to justify the GC+CC+GC:
       // https://searchfox.org/mozilla-central/rev/be78e6ea9b10b1f5b2b3b013f01d86e1062abb2b/dom/base/nsJSEnvironment.cpp#341-349
@@ -108,12 +108,16 @@ Damp.prototype = {
    *
    * @param label String
    *        Test title, displayed everywhere in PerfHerder, DevTools Perf Dashboard, ...
+   * @param record Boolean
+   *        Optional, if passed false, the test won't be recorded. It won't appear in
+   *        PerfHerder. Instead we will record perf-html markers and only print the
+   *        timings on stdout.
    *
    * @return object
    *         With a `done` method, to be called whenever the test is finished running
    *         and we should record its duration.
    */
-  runTest(label) {
+  runTest(label, record = true) {
     if (DEBUG_ALLOCATIONS) {
       if (!this.allocationTracker) {
         this.allocationTracker = this.startAllocationTracker();
@@ -131,12 +135,16 @@ Damp.prototype = {
         let end = performance.now();
         let duration = end - start;
         performance.measure(label, startLabel);
-        this._results.push({
-          name: label,
-          value: duration
-        });
+        if (record) {
+          this._results.push({
+            name: label,
+            value: duration
+          });
+        } else {
+          dump(`'${label}' took ${duration}ms.\n`);
+        }
 
-        if (DEBUG_ALLOCATIONS == "normal") {
+        if (DEBUG_ALLOCATIONS == "normal" && record) {
           this._results.push({
             name: label + ".allocations",
             value: this.allocationTracker.countAllocations()
@@ -149,15 +157,14 @@ Damp.prototype = {
   },
 
   async addTab(url) {
-    let tab = this._win.gBrowser.selectedTab = this._win.gBrowser.addTab(url);
+    let tab = this._win.gBrowser.selectedTab = this._win.gBrowser.addTrustedTab(url);
     let browser = tab.linkedBrowser;
     await awaitBrowserLoaded(browser);
     return tab;
   },
 
   async waitForPendingPaints(window) {
-    let utils = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                      .getInterface(Ci.nsIDOMWindowUtils);
+    let utils = window.windowUtils;
     window.performance.mark("pending paints.start");
     while (utils.isMozAfterPaintPending) {
       await new Promise(done => {

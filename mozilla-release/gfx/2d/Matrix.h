@@ -1650,7 +1650,7 @@ public:
     if (!vector.Length()) {
       return;
     }
-    vector.Normalize();
+    vector.RobustNormalize();
 
     double x = vector.x;
     double y = vector.y;
@@ -1907,7 +1907,9 @@ public:
                                                    const RectTyped<TargetUnits, F>& aClip) const
   {
     if (mType == MatrixType::Identity) {
-      return aRect;
+      const RectTyped<SourceUnits, F>& clipped = aRect.Intersect(aClip);
+      return RectTyped<TargetUnits, F>(clipped.X(), clipped.Y(),
+                                       clipped.Width(), clipped.Height());
     }
 
     if (mType == MatrixType::Simple) {

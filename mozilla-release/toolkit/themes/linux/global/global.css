@@ -8,6 +8,7 @@
 
 /* all localizable skin settings shall live here */
 @import url("chrome://global/locale/intl.css");
+@import url("chrome://global/content/widgets.css");
 
 @namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
 
@@ -29,10 +30,13 @@ progressmeter[mode="undetermined"] {
 
 /* ::::: Variables ::::: */
 :root {
+  --default-arrowpanel-background: -moz-field;
+  --default-arrowpanel-color: -moz-fieldText;
+  --default-arrowpanel-border-color: ThreeDShadow;
+  --arrowpanel-background: var(--default-arrowpanel-background);
+  --arrowpanel-color: var(--default-arrowpanel-color);
+  --arrowpanel-border-color: var(--default-arrowpanel-border-color);
   --arrowpanel-padding: 10px;
-  --arrowpanel-background: -moz-field;
-  --arrowpanel-color: -moz-fieldText;
-  --arrowpanel-border-color: ThreeDShadow;
   --panel-disabled-color: GrayText;
 }
 
@@ -108,13 +112,32 @@ sidebarheader > label {
   padding-inline-start: 4px;
 }
 
-.toolbar-focustarget {
-  -moz-user-focus: ignore !important;
-}
-
 toolbar[mode="text"] .toolbarbutton-text {
   padding: 0 !important;
   margin: 3px 5px !important;
+}
+
+/* ::::: print preview ::::: */
+
+.print-preview-navigate-button {
+  min-width: 1.9em;
+}
+
+.print-preview-navigate-button > .toolbarbutton-icon {
+  display: none;
+}
+
+#print-preview-portrait-button {
+  list-style-image: url("moz-icon://stock/gtk-orientation-portrait?size=button");
+}
+
+#print-preview-landscape-button {
+  list-style-image: url("moz-icon://stock/gtk-orientation-landscape?size=button");
+}
+
+#print-preview-pageNumber {
+  /* 3 chars + 4px padding left + 2px padding right + 2*6px border */
+  width: calc(18px + 3ch);
 }
 
 /* ::::: miscellaneous formatting ::::: */

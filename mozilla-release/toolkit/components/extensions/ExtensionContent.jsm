@@ -24,6 +24,9 @@ XPCOMUtils.defineLazyServiceGetter(this, "styleSheetService",
                                    "@mozilla.org/content/style-sheet-service;1",
                                    "nsIStyleSheetService");
 
+XPCOMUtils.defineLazyServiceGetter(this, "processScript",
+                                   "@mozilla.org/webextensions/extension-process-script;1");
+
 const DocumentEncoder = Components.Constructor(
   "@mozilla.org/layout/documentEncoder;1?type=text/plain",
   "nsIDocumentEncoder", "init");
@@ -39,19 +42,19 @@ XPCOMUtils.defineLazyGlobalGetters(this, ["crypto", "TextEncoder"]);
 const {
   DefaultMap,
   DefaultWeakMap,
-  defineLazyGetter,
   getInnerWindowID,
   getWinUtils,
   promiseDocumentIdle,
   promiseDocumentLoaded,
   promiseDocumentReady,
-  runSafeSyncWithoutClone,
 } = ExtensionUtils;
 
 const {
   BaseContext,
   CanOfAPIs,
   SchemaAPIManager,
+  defineLazyGetter,
+  runSafeSyncWithoutClone,
 } = ExtensionCommon;
 
 const {
@@ -60,7 +63,7 @@ const {
   Messenger,
 } = ExtensionChild;
 
-XPCOMUtils.defineLazyGetter(this, "console", ExtensionUtils.getConsole);
+XPCOMUtils.defineLazyGetter(this, "console", ExtensionCommon.getConsole);
 
 
 var DocumentManager;
@@ -78,7 +81,7 @@ var apiManager = new class extends SchemaAPIManager {
     if (!this.initialized) {
       this.initialized = true;
       this.initGlobal();
-      for (let [/* name */, value] of XPCOMUtils.enumerateCategoryEntries(CATEGORY_EXTENSION_SCRIPTS_CONTENT)) {
+      for (let {value} of Services.catMan.enumerateCategory(CATEGORY_EXTENSION_SCRIPTS_CONTENT)) {
         this.loadScript(value);
       }
     }
@@ -274,6 +277,15 @@ defineLazyGetter(BrowserExtensionContent.prototype, "authorCSSCode", function() 
 
 // Represents a content script.
 class Script {
+  /**
+   * @param {BrowserExtensionContent} extension
+   * @param {WebExtensionContentScript|object} matcher
+   *        An object with a "matchesWindow" method and content script execution
+   *        details. This is usually a plain WebExtensionContentScript object,
+   *        except when the script is run via `tabs.executeScript`. In this
+   *        case, the object may have some extra properties:
+   *        wantReturnValue, removeCSS, cssOrigin, jsCode
+   */
   constructor(extension, matcher) {
     this.extension = extension;
     this.matcher = matcher;
@@ -501,6 +513,10 @@ class Script {
   }
 }
 
+var contentScripts = new DefaultWeakMap(matcher => {
+  return new Script(processScript.extensions.get(matcher.extension), matcher);
+});
+
 /**
  * An execution context for semi-privileged extension content scripts.
  *
@@ -528,17 +544,6 @@ class ContentScriptContextChild extends BaseContext {
 
     this.isExtensionPage = contentPrincipal.equals(extensionPrincipal);
 
-    let principal;
-    if (ssm.isSystemPrincipal(contentPrincipal)) {
-      // Make sure we don't hand out the system principal by accident.
-      // also make sure that the null principal has the right origin attributes
-      principal = ssm.createNullPrincipal(attrs);
-    } else if (this.isExtensionPage) {
-      principal = contentPrincipal;
-    } else {
-      principal = [contentPrincipal, extensionPrincipal];
-    }
-
     if (this.isExtensionPage) {
       // This is an iframe with content script API enabled and its principal
       // should be the contentWindow itself. We create a sandbox with the
@@ -553,6 +558,14 @@ class ContentScriptContextChild extends BaseContext {
         isWebExtensionContentScript: true,
       });
     } else {
+      let principal;
+      if (ssm.isSystemPrincipal(contentPrincipal)) {
+        // Make sure we don't hand out the system principal by accident.
+        // Also make sure that the null principal has the right origin attributes.
+        principal = ssm.createNullPrincipal(attrs);
+      } else {
+        principal = [contentPrincipal, extensionPrincipal];
+      }
       // This metadata is required by the Developer Tools, in order for
       // the content script to be associated with both the extension and
       // the tab holding the content page.
@@ -776,7 +789,8 @@ DocumentManager = {
 
 var ExtensionContent = {
   BrowserExtensionContent,
-  Script,
+
+  contentScripts,
 
   shutdownExtension(extension) {
     DocumentManager.shutdownExtension(extension);
@@ -874,14 +888,14 @@ var ExtensionContent = {
     }
 
     if (!promises.length) {
-      if (options.frame_id) {
+      if (options.frameID) {
         return Promise.reject({message: `Frame not found, or missing host permission`});
       }
 
-      let frames = options.all_frames ? ", and any iframes" : "";
+      let frames = options.allFrames ? ", and any iframes" : "";
       return Promise.reject({message: `Missing host permission for the tab${frames}`});
     }
-    if (!options.all_frames && promises.length > 1) {
+    if (!options.allFrames && promises.length > 1) {
       return Promise.reject({message: `Internal error: Script matched multiple windows`});
     }
 
@@ -892,8 +906,8 @@ var ExtensionContent = {
       // we try to send it back over the message manager.
       Cu.cloneInto(result, target);
     } catch (e) {
-      const {js} = options;
-      const fileName = js.length ? js[js.length - 1] : "<anonymous code>";
+      const {jsPaths} = options;
+      const fileName = jsPaths.length ? jsPaths[jsPaths.length - 1] : "<anonymous code>";
       const message = `Script '${fileName}' result is non-structured-clonable data`;
       return Promise.reject({message, fileName});
     }
@@ -909,15 +923,48 @@ var ExtensionContent = {
     return WebNavigationFrames.getAllFrames(global.docShell);
   },
 
+  async receiveMessage(global, name, target, data, recipient) {
+    switch (name) {
+      case "Extension:Capture":
+        return this.handleExtensionCapture(global, data.width, data.height, data.options);
+      case "Extension:DetectLanguage":
+        return this.handleDetectLanguage(global, target);
+      case "Extension:Execute":
+        let policy = WebExtensionPolicy.getByID(recipient.extensionId);
+
+        let matcher = new WebExtensionContentScript(policy, data.options);
+
+        Object.assign(matcher, {
+          wantReturnValue: data.options.wantReturnValue,
+          removeCSS: data.options.removeCSS,
+          cssOrigin: data.options.cssOrigin,
+          jsCode: data.options.jsCode,
+        });
+
+        let script = contentScripts.get(matcher);
+
+        // Add the cssCode to the script, so that it can be converted into a cached URL.
+        await script.addCSSCode(data.options.cssCode);
+        delete data.options.cssCode;
+
+        return this.handleExtensionExecute(global, target, data.options, script);
+      case "WebNavigation:GetFrame":
+        return this.handleWebNavigationGetFrame(global, data.options);
+      case "WebNavigation:GetAllFrames":
+        return this.handleWebNavigationGetAllFrames(global);
+    }
+    return null;
+  },
+
   // Helpers
 
   * enumerateWindows(docShell) {
     let enum_ = docShell.getDocShellEnumerator(docShell.typeContent,
                                                docShell.ENUMERATE_FORWARDS);
 
-    for (let docShell of XPCOMUtils.IterSimpleEnumerator(enum_, Ci.nsIInterfaceRequestor)) {
+    for (let docShell of enum_) {
       try {
-        yield docShell.getInterface(Ci.nsIDOMWindow);
+        yield docShell.domWindow;
       } catch (e) {
         // This can fail if the docShell is being destroyed, so just
         // ignore the error.

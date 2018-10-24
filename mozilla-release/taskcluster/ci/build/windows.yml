@@ -3,6 +3,8 @@ win32/debug:
     index:
         product: firefox
         job-name: win32-debug
+    attributes:
+        enable-full-crashsymbols: true
     treeherder:
         platform: windows2012-32/debug
         symbol: B
@@ -25,13 +27,17 @@ win32/debug:
         - win64-clang-cl
         - win64-rust
         - win64-rust-size
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
 
 win32/opt:
     description: "Win32 Opt"
     index:
         product: firefox
         job-name: win32-opt
+    attributes:
+        enable-full-crashsymbols: true
     treeherder:
         platform: windows2012-32/opt
         symbol: B
@@ -60,7 +66,9 @@ win32/opt:
         - win64-clang-cl
         - win64-rust
         - win64-rust-size
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
 
 win32-dmd/opt:
     description: "Win32 DMD Opt"
@@ -92,13 +100,17 @@ win32-dmd/opt:
         - win64-clang-cl
         - win64-rust
         - win64-rust-size
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
 
 win32/pgo:
     description: "Win32 Opt PGO"
     index:
         product: firefox
         job-name: win32-pgo
+    attributes:
+        enable-full-crashsymbols: true
     treeherder:
         platform: windows2012-32/pgo
         symbol: B
@@ -121,13 +133,17 @@ win32/pgo:
         - win64-clang-cl
         - win64-rust
         - win64-rust-size
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
 
 win64/debug:
     description: "Win64 Debug"
     index:
         product: firefox
         job-name: win64-debug
+    attributes:
+        enable-full-crashsymbols: true
     treeherder:
         platform: windows2012-64/debug
         symbol: B
@@ -150,7 +166,9 @@ win64/debug:
         - win64-clang-cl
         - win64-rust
         - win64-rust-size
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
 
 win64-plain/debug:
     description: "Win64 Debug Plain"
@@ -180,12 +198,16 @@ win64-plain/debug:
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-node
+        - win64-cbindgen
 
 win64/opt:
     description: "Win64 Opt"
     index:
         product: firefox
         job-name: win64-opt
+    attributes:
+        enable-full-crashsymbols: true
     treeherder:
         platform: windows2012-64/opt
         symbol: B
@@ -208,7 +230,9 @@ win64/opt:
         - win64-clang-cl
         - win64-rust
         - win64-rust-size
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
 
 win64-plain/opt:
     description: "Win64 Opt Plain"
@@ -238,6 +262,8 @@ win64-plain/opt:
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-node
+        - win64-cbindgen
 
 win64-dmd/opt:
     description: "Win64 DMD Opt"
@@ -269,7 +295,9 @@ win64-dmd/opt:
         - win64-clang-cl
         - win64-rust
         - win64-rust-size
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
 
 win32-nightly/opt:
     description: "Win32 Nightly"
@@ -279,6 +307,7 @@ win32-nightly/opt:
         type: nightly
     attributes:
         nightly: true
+        enable-full-crashsymbols: true
     stub-installer:
         by-project:
             default: false
@@ -312,7 +341,9 @@ win32-nightly/opt:
         - win64-clang-cl
         - win64-rust
         - win64-rust-size
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
 
 win64-nightly/opt:
     description: "Win64 Nightly"
@@ -322,6 +353,7 @@ win64-nightly/opt:
         type: nightly
     attributes:
         nightly: true
+        enable-full-crashsymbols: true
     shipping-phase: build
     shipping-product: firefox
     treeherder:
@@ -348,13 +380,17 @@ win64-nightly/opt:
         - win64-clang-cl
         - win64-rust
         - win64-rust-size
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
 
 win64/pgo:
     description: "Win64 Opt PGO"
     index:
         product: firefox
         job-name: win64-pgo
+    attributes:
+        enable-full-crashsymbols: true
     treeherder:
         platform: windows2012-64/pgo
         symbol: B
@@ -377,7 +413,9 @@ win64/pgo:
         - win64-clang-cl
         - win64-rust
         - win64-rust-size
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
 
 win32-add-on-devel/opt:
     description: "Windows32 add-on-devel"
@@ -407,7 +445,9 @@ win32-add-on-devel/opt:
         - win64-clang-cl
         - win64-rust
         - win64-rust-size
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
 
 win64-add-on-devel/opt:
     description: "Windows64 add-on-devel"
@@ -437,7 +477,9 @@ win64-add-on-devel/opt:
         - win64-clang-cl
         - win64-rust
         - win64-rust-size
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
 
 win64-noopt/debug:
     description: "Win64 No-optimize Debug"
@@ -467,7 +509,9 @@ win64-noopt/debug:
         - win64-clang-cl
         - win64-rust
         - win64-rust-size
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
 
 win32-noopt/debug:
     description: "Win32 No-optimize Debug"
@@ -497,7 +541,9 @@ win32-noopt/debug:
         - win64-clang-cl
         - win64-rust
         - win64-rust-size
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
 
 win32-rusttests/opt:
     description: "Win32 Opt Rust tests"
@@ -527,7 +573,9 @@ win32-rusttests/opt:
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
 
 win64-rusttests/opt:
     description: "Win64 Opt Rust tests"
@@ -557,7 +605,9 @@ win64-rusttests/opt:
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
 
 win64-ccov/debug:
     description: "Win64 Debug Code Coverage"
@@ -585,9 +635,11 @@ win64-ccov/debug:
     run-on-projects: ['mozilla-central', 'try']
     toolchains:
         - win64-clang-cl
-        - win64-rust
+        - win64-rust-nightly
         - win64-rust-size
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
 
 win64-asan/debug:
     description: "Win64 Debug ASAN"
@@ -618,7 +670,9 @@ win64-asan/debug:
         - win64-clang-cl
         - win64-rust
         - win64-rust-size
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
 
 win64-asan/opt:
     description: "Win64 Opt ASAN"
@@ -649,7 +703,45 @@ win64-asan/opt:
         - win64-clang-cl
         - win64-rust
         - win64-rust-size
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
+
+win64-asan-reporter-nightly/opt:
+    description: "Win64 Opt ASAN Reporter Nightly"
+    attributes:
+        nightly: true
+    index:
+        product: firefox
+        job-name: win64-asan-reporter-opt
+        type: nightly
+    treeherder:
+        platform: win64-asan-reporter/opt
+        symbol: BoR
+    worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
+    worker:
+        max-run-time: 7200
+        env:
+            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
+            PERFHERDER_EXTRA_OPTIONS: "asan-reporter"
+    run:
+        using: mozharness
+        options: [append-env-variables-from-configs]
+        script: mozharness/scripts/fx_desktop_build.py
+        config:
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win64.py
+            - builds/taskcluster_sub_win64/asan_reporter_opt.py
+            - taskcluster_nightly.py
+    run-on-projects: ['mozilla-central']
+    toolchains:
+        - win64-clang-cl
+        - win64-rust
+        - win64-rust-size
+        - win64-cbindgen
+        - win64-sccache
+        - win64-node
 
 win32-devedition-nightly/opt:
     description: "Win32 Dev Edition Nightly"
@@ -659,6 +751,7 @@ win32-devedition-nightly/opt:
         type: nightly
     attributes:
         nightly: true
+        enable-full-crashsymbols: true
     stub-installer:
         by-project:
             default: false
@@ -693,7 +786,9 @@ win32-devedition-nightly/opt:
         - win64-clang-cl
         - win64-rust
         - win64-rust-size
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
 
 win64-devedition-nightly/opt:
     description: "Win64 Dev Edition Nightly"
@@ -703,6 +798,7 @@ win64-devedition-nightly/opt:
         type: nightly
     attributes:
         nightly: true
+        enable-full-crashsymbols: true
     shipping-phase: build
     shipping-product: devedition
     treeherder:
@@ -730,7 +826,9 @@ win64-devedition-nightly/opt:
         - win64-clang-cl
         - win64-rust
         - win64-rust-size
+        - win64-cbindgen
         - win64-sccache
+        - win64-node
 
 win32-mingw32/opt:
     description: "Win32 MinGW Opt"
@@ -760,10 +858,154 @@ win32-mingw32/opt:
         - mingw32-rust
         - linux64-upx
         - linux64-wine
+        - win64-cbindgen
         - linux64-sccache
         - linux64-mingw32-gcc
         - linux64-mingw32-nsis
         - linux64-mingw32-fxc2
+        - linux64-node
+
+win32-msvc/debug:
+    description: "Win32 MSVC Debug"
+    index:
+        product: firefox
+        job-name: win32-msvc-debug
+    treeherder:
+        platform: windows2012-32/debug
+        symbol: Bmsvc
+        tier: 2
+    worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
+    worker:
+        max-run-time: 7200
+        env:
+            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win32/releng.manifest"
+            PERFHERDER_EXTRA_OPTIONS: msvc
+    run:
+        using: mozharness
+        options: [append-env-variables-from-configs]
+        script: mozharness/scripts/fx_desktop_build.py
+        config:
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win32.py
+            - builds/taskcluster_sub_win32/debug.py
+        extra-config:
+            mozconfig_variant: 'debug-msvc'
+    run-on-projects: ['mozilla-central']
+    toolchains:
+        - win64-clang-cl
+        - win64-rust
+        - win64-cbindgen
+        - win64-sccache
+        - win64-node
+
+win32-msvc/opt:
+    description: "Win32 MSVC PGO"
+    index:
+        product: firefox
+        job-name: win32-msvc-pgo
+    treeherder:
+        platform: windows2012-32/pgo
+        symbol: Bmsvc
+        tier: 2
+    stub-installer:
+        # Beta and release use a stub-requiring update channel
+        by-project:
+            default: false
+            mozilla-beta: true
+            mozilla-release: true
+    worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
+    worker:
+        max-run-time: 7200
+        env:
+            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win32/releng.manifest"
+            PERFHERDER_EXTRA_OPTIONS: msvc
+    run:
+        using: mozharness
+        options: [enable-pgo, append-env-variables-from-configs]
+        script: mozharness/scripts/fx_desktop_build.py
+        config:
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win32.py
+            - builds/taskcluster_sub_win32/opt.py
+        extra-config:
+            mozconfig_variant: 'opt-msvc'
+    run-on-projects: ['mozilla-central']
+    toolchains:
+        - win64-clang-cl
+        - win64-rust
+        - win64-cbindgen
+        - win64-sccache
+        - win64-node
+
+win64-msvc/debug:
+    description: "Win64 MSVC Debug"
+    index:
+        product: firefox
+        job-name: win64-msvc-debug
+    treeherder:
+        platform: windows2012-64/debug
+        symbol: Bmsvc
+        tier: 2
+    worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
+    worker:
+        max-run-time: 7200
+        env:
+            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
+            PERFHERDER_EXTRA_OPTIONS: msvc
+    run:
+        using: mozharness
+        options: [append-env-variables-from-configs]
+        script: mozharness/scripts/fx_desktop_build.py
+        config:
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win64.py
+            - builds/taskcluster_sub_win64/debug.py
+        extra-config:
+            mozconfig_variant: 'debug-msvc'
+    run-on-projects: ['mozilla-central']
+    toolchains:
+        - win64-clang-cl
+        - win64-rust
+        - win64-cbindgen
+        - win64-sccache
+        - win64-node
+
+win64-msvc/opt:
+    description: "Win64 MSVC PGO"
+    index:
+        product: firefox
+        job-name: win64-msvc-pgo
+    treeherder:
+        platform: windows2012-64/pgo
+        symbol: Bmsvc
+        tier: 2
+    worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
+    worker:
+        max-run-time: 7200
+        env:
+            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
+            PERFHERDER_EXTRA_OPTIONS: msvc
+    run:
+        using: mozharness
+        options: [enable-pgo, append-env-variables-from-configs]
+        script: mozharness/scripts/fx_desktop_build.py
+        config:
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win64.py
+            - builds/taskcluster_sub_win64/opt.py
+        extra-config:
+            mozconfig_variant: 'opt-msvc'
+    run-on-projects: ['mozilla-central']
+    toolchains:
+        - win64-clang-cl
+        - win64-rust
+        - win64-cbindgen
+        - win64-sccache
+        - win64-node
 
 win32-mingw32/debug:
     description: "Win32 MinGW Debug"
@@ -794,7 +1036,9 @@ win32-mingw32/debug:
         - mingw32-rust
         - linux64-upx
         - linux64-wine
+        - linux64-cbindgen
         - linux64-sccache
         - linux64-mingw32-gcc
         - linux64-mingw32-nsis
         - linux64-mingw32-fxc2
+        - linux64-node

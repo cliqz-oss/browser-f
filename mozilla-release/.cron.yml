@@ -102,6 +102,27 @@ jobs:
               mozilla-central: [{hour: 10, minute: 30}]
               # No default
 
+    - name: bouncer-check
+      job:
+          type: decision-task
+          treeherder-symbol: Rel
+          target-tasks-method: cron_bouncer_check
+      run-on-projects:
+          - mozilla-beta
+          - mozilla-release
+      when:
+          by-project:
+              # No default branch
+              mozilla-beta:
+                  - {hour: 7, minute: 0}
+                  - {hour: 19, minute: 0}
+              mozilla-release:
+                  - {hour: 7, minute: 0}
+                  - {hour: 19, minute: 0}
+              mozilla-esr60:
+                  - {hour: 7, minute: 0}
+                  - {hour: 19, minute: 0}
+
     - name: periodic-update
       job:
           type: decision-task
@@ -127,3 +148,16 @@ jobs:
               mozilla-esr60:
                   - {weekday: 'Monday', hour: 10, minute: 0}
                   - {weekday: 'Thursday', hour: 10, minute: 0}
+
+    - name: pipfile-update
+      job:
+          type: decision-task
+          treeherder-symbol: Nfile
+          target-tasks-method: pipfile_update
+      run-on-projects:
+          - mozilla-central
+      when:
+          by-project:
+              # No default branch
+              mozilla-central:
+                  - {weekday: 'Monday', hour: 10, minute: 0}

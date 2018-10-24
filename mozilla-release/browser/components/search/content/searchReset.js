@@ -11,7 +11,7 @@ const TELEMETRY_RESULT_ENUM = {
   KEPT_CURRENT: 1,
   CHANGED_ENGINE: 2,
   CLOSED_PAGE: 3,
-  OPENED_SETTINGS: 4
+  OPENED_SETTINGS: 4,
 };
 
 window.onload = function() {
@@ -46,12 +46,7 @@ function doSearch() {
 
   window.removeEventListener("unload", recordPageClosed);
 
-  let win = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                  .getInterface(Ci.nsIWebNavigation)
-                  .QueryInterface(Ci.nsIDocShellTreeItem)
-                  .rootTreeItem
-                  .QueryInterface(Ci.nsIInterfaceRequestor)
-                  .getInterface(Ci.nsIDOMWindow);
+  let win = window.docShell.rootTreeItem.domWindow;
   win.openTrustedLinkIn(submission.uri.spec, "current", {
     allowThirdPartyFixup: false,
     postData: submission.postData,
@@ -77,6 +72,7 @@ function record(result) {
 function keepCurrentEngine() {
   // Calling the currentEngine setter will force a correct loadPathHash to be
   // written for this engine, so that we don't prompt the user again.
+  // eslint-disable-next-line no-self-assign
   Services.search.currentEngine = Services.search.currentEngine;
   record(TELEMETRY_RESULT_ENUM.KEPT_CURRENT);
   savePref("declined");

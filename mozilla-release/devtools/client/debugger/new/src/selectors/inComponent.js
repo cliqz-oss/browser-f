@@ -16,7 +16,17 @@ var _ast2 = require("../reducers/ast");
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 function inComponent(state) {
   const selectedFrame = (0, _.getSelectedFrame)(state);
+
+  if (!selectedFrame) {
+    return;
+  }
+
   const source = (0, _.getSource)(state, selectedFrame.location.sourceId);
+
+  if (!source) {
+    return;
+  }
+
   const symbols = (0, _.getSymbols)(state, source);
 
   if (!symbols) {
@@ -36,7 +46,10 @@ function inComponent(state) {
   }
 
   const inReactFile = sourceMetaData.framework == "React";
-  const isComponent = closestClass.parent && ["Component", "PureComponent"].includes(closestClass.parent.name);
+  const {
+    parent
+  } = closestClass;
+  const isComponent = parent && parent.name.includes("Component");
 
   if (inReactFile && isComponent) {
     return closestClass.name;

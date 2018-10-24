@@ -262,6 +262,14 @@ class JSFunction : public js::NativeObject
     }
     bool isLambda()                 const { return flags() & LAMBDA; }
     bool isInterpretedLazy()        const { return flags() & INTERPRETED_LAZY; }
+
+    // This method doesn't check the non-nullness of u.scripted.s.script_,
+    // because it's guaranteed to be non-null when this has INTERPRETED flag,
+    // for live JSFunctions.
+    //
+    // When this JSFunction instance is reached via GC iteration, the above
+    // doesn't hold, and hasUncompletedScript should also be checked.
+    // (see the comment above hasUncompletedScript for more details).
     bool hasScript()                const { return flags() & INTERPRETED; }
 
     bool infallibleIsDefaultClassConstructor(JSContext* cx) const;
@@ -564,6 +572,9 @@ class JSFunction : public js::NativeObject
     // The state of a JSFunction whose script errored out during bytecode
     // compilation. Such JSFunctions are only reachable via GC iteration and
     // not from script.
+    // If u.scripted.s.script_ is non-null, the pointed JSScript is guaranteed
+    // to be complete (see the comment above JSScript::initFromFunctionBox
+    // callsite in JSScript::fullyInitFromEmitter).
     bool hasUncompletedScript() const {
         MOZ_ASSERT(hasScript());
         return !u.scripted.s.script_;

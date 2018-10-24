@@ -6,6 +6,7 @@
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
+  ActorManagerParent: "resource://gre/modules/ActorManagerParent.jsm",
   AppConstants: "resource://gre/modules/AppConstants.jsm",
   DelayedInit: "resource://gre/modules/DelayedInit.jsm",
   GeckoViewUtils: "resource://gre/modules/GeckoViewUtils.jsm",
@@ -40,6 +41,8 @@ BrowserCLH.prototype = {
 
         Services.obs.addObserver(this, "chrome-document-interactive");
         Services.obs.addObserver(this, "content-document-interactive");
+
+        ActorManagerParent.flush();
 
         GeckoViewUtils.addLazyGetter(this, "DownloadNotifications", {
           module: "resource://gre/modules/DownloadNotifications.jsm",
@@ -180,24 +183,44 @@ BrowserCLH.prototype = {
       return;
     }
 
+    function shouldIgnoreLoginManagerEvent(event) {
+      // If we have a null principal then prevent any more password manager code from running and
+      // incorrectly using the document `location`.
+      return event.target.nodePrincipal.isNullPrincipal;
+    }
+
     let options = {
       capture: true,
       mozSystemGroup: true,
     };
 
+    // NOTE: Much of this logic is duplicated in browser/base/content/content.js
+    // for desktop.
     aWindow.addEventListener("DOMFormHasPassword", event => {
+      if (shouldIgnoreLoginManagerEvent(event)) {
+        return;
+      }
       this.LoginManagerContent.onDOMFormHasPassword(event, event.target.ownerGlobal.top);
     }, options);
 
     aWindow.addEventListener("DOMInputPasswordAdded", event => {
+      if (shouldIgnoreLoginManagerEvent(event)) {
+        return;
+      }
       this.LoginManagerContent.onDOMInputPasswordAdded(event, event.target.ownerGlobal.top);
     }, options);
 
     aWindow.addEventListener("DOMAutoComplete", event => {
+      if (shouldIgnoreLoginManagerEvent(event)) {
+        return;
+      }
       this.LoginManagerContent.onUsernameInput(event);
     }, options);
 
     aWindow.addEventListener("blur", event => {
+      if (shouldIgnoreLoginManagerEvent(event)) {
+        return;
+      }
       if (ChromeUtils.getClassName(event.target) === "HTMLInputElement") {
         this.LoginManagerContent.onUsernameInput(event);
       }

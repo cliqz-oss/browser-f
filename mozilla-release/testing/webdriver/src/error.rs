@@ -1,8 +1,8 @@
-use hyper::status::StatusCode;
-use rustc_serialize::base64::FromBase64Error;
-use rustc_serialize::json::{DecoderError, Json, ParserError, ToJson};
+use base64::DecodeError;
+use hyper::StatusCode;
+use serde::ser::{Serialize, Serializer};
+use serde_json;
 use std::borrow::Cow;
-use std::collections::BTreeMap;
 use std::convert::From;
 use std::error::Error;
 use std::fmt;
@@ -140,6 +140,15 @@ pub enum ErrorStatus {
     UnsupportedOperation,
 }
 
+impl Serialize for ErrorStatus {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.error_code().serialize(serializer)
+    }
+}
+
 impl ErrorStatus {
     /// Returns the string serialisation of the error type.
     pub fn error_code(&self) -> &'static str {
@@ -169,8 +178,7 @@ impl ErrorStatus {
             UnableToCaptureScreen => "unable to capture screen",
             UnableToSetCookie => "unable to set cookie",
             UnexpectedAlertOpen => "unexpected alert open",
-            UnknownCommand |
-            UnknownError => "unknown error",
+            UnknownCommand | UnknownError => "unknown error",
             UnknownMethod => "unknown method",
             UnknownPath => "unknown command",
             UnsupportedOperation => "unsupported operation",
@@ -180,37 +188,36 @@ impl ErrorStatus {
     /// Returns the correct HTTP status code associated with the error type.
     pub fn http_status(&self) -> StatusCode {
         use self::ErrorStatus::*;
-        use self::StatusCode::*;
         match *self {
-            ElementClickIntercepted => BadRequest,
-            ElementNotInteractable => BadRequest,
-            ElementNotSelectable => BadRequest,
-            InsecureCertificate => BadRequest,
-            InvalidArgument => BadRequest,
-            InvalidCookieDomain => BadRequest,
-            InvalidCoordinates => BadRequest,
-            InvalidElementState => BadRequest,
-            InvalidSelector => BadRequest,
-            InvalidSessionId => NotFound,
-            JavascriptError => InternalServerError,
-            MoveTargetOutOfBounds => InternalServerError,
-            NoSuchAlert => NotFound,
-            NoSuchCookie => NotFound,
-            NoSuchElement => NotFound,
-            NoSuchFrame => NotFound,
-            NoSuchWindow => NotFound,
-            ScriptTimeout => RequestTimeout,
-            SessionNotCreated => InternalServerError,
-            StaleElementReference => NotFound,
-            Timeout => RequestTimeout,
-            UnableToCaptureScreen => BadRequest,
-            UnableToSetCookie => InternalServerError,
-            UnexpectedAlertOpen => InternalServerError,
-            UnknownCommand => NotFound,
-            UnknownError => InternalServerError,
-            UnknownMethod => MethodNotAllowed,
-            UnknownPath => NotFound,
-            UnsupportedOperation => InternalServerError,
+            ElementClickIntercepted => StatusCode::BAD_REQUEST,
+            ElementNotInteractable => StatusCode::BAD_REQUEST,
+            ElementNotSelectable => StatusCode::BAD_REQUEST,
+            InsecureCertificate => StatusCode::BAD_REQUEST,
+            InvalidArgument => StatusCode::BAD_REQUEST,
+            InvalidCookieDomain => StatusCode::BAD_REQUEST,
+            InvalidCoordinates => StatusCode::BAD_REQUEST,
+            InvalidElementState => StatusCode::BAD_REQUEST,
+            InvalidSelector => StatusCode::BAD_REQUEST,
+            InvalidSessionId => StatusCode::NOT_FOUND,
+            JavascriptError => StatusCode::INTERNAL_SERVER_ERROR,
+            MoveTargetOutOfBounds => StatusCode::INTERNAL_SERVER_ERROR,
+            NoSuchAlert => StatusCode::NOT_FOUND,
+            NoSuchCookie => StatusCode::NOT_FOUND,
+            NoSuchElement => StatusCode::NOT_FOUND,
+            NoSuchFrame => StatusCode::NOT_FOUND,
+            NoSuchWindow => StatusCode::NOT_FOUND,
+            ScriptTimeout => StatusCode::INTERNAL_SERVER_ERROR,
+            SessionNotCreated => StatusCode::INTERNAL_SERVER_ERROR,
+            StaleElementReference => StatusCode::NOT_FOUND,
+            Timeout => StatusCode::INTERNAL_SERVER_ERROR,
+            UnableToCaptureScreen => StatusCode::BAD_REQUEST,
+            UnableToSetCookie => StatusCode::INTERNAL_SERVER_ERROR,
+            UnexpectedAlertOpen => StatusCode::INTERNAL_SERVER_ERROR,
+            UnknownCommand => StatusCode::NOT_FOUND,
+            UnknownError => StatusCode::INTERNAL_SERVER_ERROR,
+            UnknownMethod => StatusCode::METHOD_NOT_ALLOWED,
+            UnknownPath => StatusCode::NOT_FOUND,
+            UnsupportedOperation => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -253,20 +260,39 @@ impl From<String> for ErrorStatus {
 
 pub type WebDriverResult<T> = Result<T, WebDriverError>;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(remote = "Self")]
 pub struct WebDriverError {
     pub error: ErrorStatus,
     pub message: Cow<'static, str>,
+    #[serde(rename = "stacktrace")]
     pub stack: Cow<'static, str>,
+    #[serde(skip)]
     pub delete_session: bool,
+}
+
+impl Serialize for WebDriverError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        #[derive(Serialize)]
+        struct Wrapper<'a> {
+            #[serde(with = "WebDriverError")]
+            value: &'a WebDriverError,
+        }
+
+        Wrapper { value: self }.serialize(serializer)
+    }
 }
 
 impl WebDriverError {
     pub fn new<S>(error: ErrorStatus, message: S) -> WebDriverError
-        where S: Into<Cow<'static, str>>
+    where
+        S: Into<Cow<'static, str>>,
     {
         WebDriverError {
-            error: error,
+            error,
             message: message.into(),
             stack: "".into(),
             delete_session: false,
@@ -274,10 +300,11 @@ impl WebDriverError {
     }
 
     pub fn new_with_stack<S>(error: ErrorStatus, message: S, stack: S) -> WebDriverError
-        where S: Into<Cow<'static, str>>
+    where
+        S: Into<Cow<'static, str>>,
     {
         WebDriverError {
-            error: error,
+            error,
             message: message.into(),
             stack: stack.into(),
             delete_session: false,
@@ -290,23 +317,6 @@ impl WebDriverError {
 
     pub fn http_status(&self) -> StatusCode {
         self.error.http_status()
-    }
-
-    pub fn to_json_string(&self) -> String {
-        self.to_json().to_string()
-    }
-}
-
-impl ToJson for WebDriverError {
-    fn to_json(&self) -> Json {
-        let mut data = BTreeMap::new();
-        data.insert("error".into(), self.error_code().to_json());
-        data.insert("message".into(), self.message.to_json());
-        data.insert("stacktrace".into(), self.stack.to_json());
-
-        let mut wrapper = BTreeMap::new();
-        wrapper.insert("value".into(), Json::Object(data));
-        Json::Object(wrapper)
     }
 }
 
@@ -326,9 +336,9 @@ impl fmt::Display for WebDriverError {
     }
 }
 
-impl From<ParserError> for WebDriverError {
-    fn from(err: ParserError) -> WebDriverError {
-        WebDriverError::new(ErrorStatus::UnknownError, err.description().to_string())
+impl From<serde_json::Error> for WebDriverError {
+    fn from(err: serde_json::Error) -> WebDriverError {
+        WebDriverError::new(ErrorStatus::InvalidArgument, err.to_string())
     }
 }
 
@@ -338,14 +348,8 @@ impl From<io::Error> for WebDriverError {
     }
 }
 
-impl From<DecoderError> for WebDriverError {
-    fn from(err: DecoderError) -> WebDriverError {
-        WebDriverError::new(ErrorStatus::UnknownError, err.description().to_string())
-    }
-}
-
-impl From<FromBase64Error> for WebDriverError {
-    fn from(err: FromBase64Error) -> WebDriverError {
+impl From<DecodeError> for WebDriverError {
+    fn from(err: DecodeError) -> WebDriverError {
         WebDriverError::new(ErrorStatus::UnknownError, err.description().to_string())
     }
 }
@@ -353,5 +357,36 @@ impl From<FromBase64Error> for WebDriverError {
 impl From<Box<Error>> for WebDriverError {
     fn from(err: Box<Error>) -> WebDriverError {
         WebDriverError::new(ErrorStatus::UnknownError, err.description().to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test::check_serialize;
+
+    #[test]
+    fn test_json_webdriver_error() {
+        let json = r#"{"value":{
+            "error":"unknown error",
+            "message":"foo bar",
+            "stacktrace":"foo\nbar"
+        }}"#;
+        let data = WebDriverError {
+            error: ErrorStatus::UnknownError,
+            message: "foo bar".into(),
+            stack: "foo\nbar".into(),
+            delete_session: true,
+        };
+
+        check_serialize(&json, &data);
+    }
+
+    #[test]
+    fn test_json_error_status() {
+        let json = format!(r#""unknown error""#);
+        let data = ErrorStatus::UnknownError;
+
+        check_serialize(&json, &data);
     }
 }

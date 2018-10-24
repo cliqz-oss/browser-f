@@ -213,9 +213,9 @@
   height: 30px;
 }
 
-:not(#pageActionSeparator):not([hidden]) ~ #pageActionSeparator {
+#page-action-buttons > :not([hidden]) ~ #pageActionSeparator {
   /* Show the separator between the page actions and other elements when at
-     least of the latter is shown. */
+     least one of the latter is shown. */
   visibility: visible;
   margin-left: 6px;
   margin-right: 6px;
@@ -298,7 +298,7 @@
   opacity: 0;
 }
 
-#pageActionButton {
+#pageActionButton, .share-more-button {
   list-style-image: url("chrome://browser/skin/page-action.svg");
 }
 
@@ -376,6 +376,118 @@
 
 #star-button-box[animationsenabled] > #star-button[starred][animate]:-moz-locale-dir(rtl) + #star-button-animatable-box > #star-button-animatable-image {
   animation-name: bookmark-animation-rtl;
+}
+
+/**
+ * Contextual Feature Recommendation
+ *
+ * Animate the recommendation icon to expand outwards and display a text label.
+ * Fake the effect of a smoothly expanding width without animating any widths
+ * by (continuously) animating only `mask-position-x` and `transform`.
+ *
+ * In a few places, transition a property using the timing-function `step-start`
+ * while collapsed and `step-end` while expanded in order to (discretely) modify
+ * the value while expanded and while transitioning in either direction.
+ *
+ * This UI is part of an experiment launching in LTR locales only. Fixing the
+ * RTL issues is tracked by Bug 1485725.
+ */
+
+:root {
+  --cfr-animation-duration: 0.35s;
+  --cfr-button-icon: url(resource://activity-stream/data/content/assets/glyph-webextension-16.svg);
+  --cfr-active-color: #0060df;
+}
+
+#contextual-feature-recommendation {
+  width: 28px;
+  margin-left: 0;
+  transition: margin-left step-end var(--cfr-animation-duration);
+}
+#urlbar[cfr-recommendation-state="expanded"] #contextual-feature-recommendation {
+  margin-left: calc(var(--cfr-label-width) * -1);
+  transition: margin-left step-start var(--cfr-animation-duration);
+}
+
+#cfr-button {
+  list-style-image: var(--cfr-button-icon);
+  margin: -2px 0;
+  transition-property: fill, fill-opacity, transform;
+  transition-timing-function: ease-in-out;
+  transition-duration: var(--cfr-animation-duration);
+}
+#urlbar[cfr-recommendation-state="expanded"] #cfr-button {
+  fill: white;
+  fill-opacity: 1;
+  background-color: transparent; /* Override hover background-color */
+  transform: translateX(calc(var(--cfr-label-width) * -1));
+}
+@keyframes cfr-button-fade-through-active-color {
+  33% {
+    fill-opacity: 1;
+    fill: var(--cfr-active-color);
+  }
+  67% {
+    fill-opacity: 1;
+    fill: var(--cfr-active-color);
+  }
+}
+#urlbar[cfr-recommendation-state="collapsed"] #cfr-button {
+  animation: cfr-button-fade-through-active-color calc(3 * var(--cfr-animation-duration));
+}
+
+#cfr-label-container {
+  width: 0;
+  overflow: hidden;
+  border-radius: 5px;
+  padding-left: 28px;
+  mask-image: linear-gradient(to right, transparent 0, black 0);
+  mask-position-x: var(--cfr-label-width);
+  mask-repeat: no-repeat;
+  transition-property: background-color, mask-position-x, width, margin-right;
+  transition-timing-function: ease-in-out, ease-in-out, step-end, step-end;
+  transition-duration: var(--cfr-animation-duration);
+}
+#urlbar[cfr-recommendation-state="expanded"] #cfr-label-container {
+  width: calc(var(--cfr-label-width) + 28px);
+  background-color: var(--cfr-active-color);
+  margin-right: -28px;
+  mask-position-x: 0;
+  transition-timing-function: ease-in-out, ease-in-out, step-start, step-start;
+}
+
+#cfr-label {
+  margin: 0;
+  padding: 3px 5px 3px 0;
+  color: white;
+  mask-image: linear-gradient(to right, transparent 0, black 0);
+  mask-position-x: var(--cfr-label-width);
+  mask-repeat: no-repeat;
+  transition: mask-position-x ease-in-out var(--cfr-animation-duration);
+}
+#urlbar[cfr-recommendation-state="expanded"] #cfr-label {
+  mask-position-x: 0;
+}
+
+/* Translate the dropmarker to give illusion of increasing width of the recommendation  */
+#urlbar[cfr-recommendation-state] .urlbar-history-dropmarker {
+  transition: transform ease-in-out var(--cfr-animation-duration);
+}
+#urlbar[cfr-recommendation-state="expanded"] .urlbar-history-dropmarker {
+  transform: translateX(calc(var(--cfr-label-width) * -1));
+}
+
+/* Shift the url-bar text fading to stop the recommendation overlapping */
+#urlbar[cfr-recommendation-state] html|input.urlbar-input {
+  /* A mask-image is usually only defined for the url bar when text overflows.
+     We need to re-define the mask image here so that it shows up correctly when
+     we transition to or from an `expanded` state (in which the right end of the
+     url bar may be obscured without overflow). */
+  mask-image: linear-gradient(to left, transparent, black 3ch);
+  transition: mask-position-x ease-in-out var(--cfr-animation-duration);
+}
+#urlbar[cfr-recommendation-state="expanded"] html|input.urlbar-input {
+  mask-position-x: calc(var(--cfr-label-width) * -1);
 }
 
 /* Reader mode icon */

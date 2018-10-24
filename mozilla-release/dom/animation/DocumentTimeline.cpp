@@ -45,7 +45,7 @@ NS_IMPL_RELEASE_INHERITED(DocumentTimeline, AnimationTimeline)
 JSObject*
 DocumentTimeline::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return DocumentTimelineBinding::Wrap(aCx, this, aGivenProto);
+  return DocumentTimeline_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 /* static */ already_AddRefed<DocumentTimeline>
@@ -91,17 +91,22 @@ DocumentTimeline::GetCurrentTimeStamp() const
                      ? refreshTime
                      : mLastRefreshDriverTime;
 
+  nsDOMNavigationTiming* timing = mDocument->GetNavigationTiming();
   // If we don't have a refresh driver and we've never had one use the
   // timeline's zero time.
-  if (result.IsNull()) {
-    nsDOMNavigationTiming* timing = mDocument->GetNavigationTiming();
-    if (timing) {
-      result = timing->GetNavigationStartTimeStamp();
-      // Also, let this time represent the current refresh time. This way
-      // we'll save it as the last refresh time and skip looking up
-      // navigation timing each time.
-      refreshTime = result;
-    }
+  // In addition, it's possible that our refresh driver's timestamp is behind
+  // from the navigation start time because the refresh driver timestamp is
+  // sent through an IPC call whereas the navigation time is set by calling
+  // TimeStamp::Now() directly. In such cases we also use the timeline's zero
+  // time.
+  if (timing &&
+      (result.IsNull() ||
+       result < timing->GetNavigationStartTimeStamp())) {
+    result = timing->GetNavigationStartTimeStamp();
+    // Also, let this time represent the current refresh time. This way
+    // we'll save it as the last refresh time and skip looking up
+    // navigation start time each time.
+    refreshTime = result;
   }
 
   if (!refreshTime.IsNull()) {
@@ -242,6 +247,11 @@ DocumentTimeline::NotifyRefreshDriverCreated(nsRefreshDriver* aDriver)
                "We should not register with the refresh driver if we are not"
                " in the document's list of timelines");
     ObserveRefreshDriver(aDriver);
+    // Although we have started observing the refresh driver, it's possible we
+    // could perform a paint before the first refresh driver tick happens.  To
+    // ensure we're in a consistent state in that case we run the first tick
+    // manually.
+    MostRecentRefreshTimeUpdated();
   }
 }
 
@@ -279,7 +289,7 @@ TimeStamp
 DocumentTimeline::ToTimeStamp(const TimeDuration& aTimeDuration) const
 {
   TimeStamp result;
-  RefPtr<nsDOMNavigationTiming> timing = mDocument->GetNavigationTiming();
+  nsDOMNavigationTiming* timing = mDocument->GetNavigationTiming();
   if (MOZ_UNLIKELY(!timing)) {
     return result;
   }

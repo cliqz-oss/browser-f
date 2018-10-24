@@ -36,7 +36,7 @@ NS_IMPL_ELEMENT_CLONE(HTMLTitleElement)
 JSObject*
 HTMLTitleElement::WrapNode(JSContext* cx, JS::Handle<JSObject*> aGivenProto)
 {
-  return HTMLTitleElementBinding::Wrap(cx, this, aGivenProto);
+  return HTMLTitleElement_Binding::Wrap(cx, this, aGivenProto);
 }
 
 void
@@ -82,13 +82,11 @@ HTMLTitleElement::ContentRemoved(nsIContent* aChild,
 nsresult
 HTMLTitleElement::BindToTree(nsIDocument *aDocument,
                              nsIContent *aParent,
-                             nsIContent *aBindingParent,
-                             bool aCompileEventHandlers)
+                             nsIContent *aBindingParent)
 {
   // Let this fall through.
   nsresult rv = nsGenericHTMLElement::BindToTree(aDocument, aParent,
-                                                 aBindingParent,
-                                                 aCompileEventHandlers);
+                                                 aBindingParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
   SendTitleChangeEvent(true);

@@ -25,6 +25,7 @@
 #include "frontend/ParseNode.h"
 #include "frontend/SharedContext.h"
 
+#include "js/CompileOptions.h"
 #include "js/GCHashTable.h"
 #include "js/GCVector.h"
 #include "js/Result.h"
@@ -74,16 +75,15 @@ class BinASTParserBase: private JS::AutoGCRooter
     LifoAlloc::Mark tempPoolMark_;
     ParseNodeAllocator nodeAlloc_;
 
+    // ---- Parsing-related stuff
+  protected:
     // Root atoms and objects allocated for the parse tree.
     AutoKeepAtoms keepAtoms_;
 
-    // ---- Parsing-related stuff
-  protected:
     ParseContext* parseContext_;
     FullParseHandler factory_;
 
     friend class BinParseContext;
-
 };
 
 /**
@@ -187,9 +187,9 @@ class BinASTParser : public BinASTParserBase, public ErrorReporter, public BCEPa
         ParseNode* directives);
 
   private: // Implement ErrorReporter
-    const ReadOnlyCompileOptions& options_;
+    const JS::ReadOnlyCompileOptions& options_;
 
-    const ReadOnlyCompileOptions& options() const override {
+    const JS::ReadOnlyCompileOptions& options() const override {
         return this->options_;
     }
 

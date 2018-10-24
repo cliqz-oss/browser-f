@@ -29,6 +29,7 @@
 #include "hb-ot.h"
 
 #include "hb-font-private.hh"
+#include "hb-machinery-private.hh"
 
 #include "hb-ot-cmap-table.hh"
 #include "hb-ot-glyf-table.hh"
@@ -41,13 +42,39 @@
 
 struct hb_ot_font_t
 {
+  inline void init (hb_face_t *face)
+  {
+    cmap.init (face);
+    h_metrics.init (face);
+    v_metrics.init (face, h_metrics.ascender - h_metrics.descender); /* TODO Can we do this lazily? */
+
+    this->face = face;
+    glyf.init ();
+    cbdt.init ();
+    post.init ();
+    kern.init ();
+  }
+  inline void fini (void)
+  {
+    cmap.fini ();
+    h_metrics.fini ();
+    v_metrics.fini ();
+
+    glyf.fini ();
+    cbdt.fini ();
+    post.fini ();
+    kern.fini ();
+  }
+
   OT::cmap::accelerator_t cmap;
   OT::hmtx::accelerator_t h_metrics;
   OT::vmtx::accelerator_t v_metrics;
-  OT::hb_lazy_loader_t<OT::glyf::accelerator_t> glyf;
-  OT::hb_lazy_loader_t<OT::CBDT::accelerator_t> cbdt;
-  OT::hb_lazy_loader_t<OT::post::accelerator_t> post;
-  OT::hb_lazy_loader_t<OT::kern::accelerator_t> kern;
+
+  hb_face_t *face; /* MUST be JUST before the lazy loaders. */
+  hb_face_lazy_loader_t<1, OT::glyf::accelerator_t> glyf;
+  hb_face_lazy_loader_t<2, OT::CBDT::accelerator_t> cbdt;
+  hb_face_lazy_loader_t<3, OT::post::accelerator_t> post;
+  hb_face_lazy_loader_t<4, OT::kern::accelerator_t> kern;
 };
 
 
@@ -59,13 +86,7 @@ _hb_ot_font_create (hb_face_t *face)
   if (unlikely (!ot_font))
     return nullptr;
 
-  ot_font->cmap.init (face);
-  ot_font->h_metrics.init (face);
-  ot_font->v_metrics.init (face, ot_font->h_metrics.ascender - ot_font->h_metrics.descender); /* TODO Can we do this lazily? */
-  ot_font->glyf.init (face);
-  ot_font->cbdt.init (face);
-  ot_font->post.init (face);
-  ot_font->kern.init (face);
+  ot_font->init (face);
 
   return ot_font;
 }
@@ -75,13 +96,7 @@ _hb_ot_font_destroy (void *data)
 {
   hb_ot_font_t *ot_font = (hb_ot_font_t *) data;
 
-  ot_font->cmap.fini ();
-  ot_font->h_metrics.fini ();
-  ot_font->v_metrics.fini ();
-  ot_font->glyf.fini ();
-  ot_font->cbdt.fini ();
-  ot_font->post.fini ();
-  ot_font->kern.fini ();
+  ot_font->fini ();
 
   free (ot_font);
 }
@@ -143,7 +158,7 @@ hb_ot_get_glyph_h_kerning (hb_font_t *font,
 }
 
 static hb_bool_t
-hb_ot_get_glyph_extents (hb_font_t *font HB_UNUSED,
+hb_ot_get_glyph_extents (hb_font_t *font,
 			 void *font_data,
 			 hb_codepoint_t glyph,
 			 hb_glyph_extents_t *extents,
@@ -184,7 +199,7 @@ hb_ot_get_glyph_from_name (hb_font_t *font HB_UNUSED,
 }
 
 static hb_bool_t
-hb_ot_get_font_h_extents (hb_font_t *font HB_UNUSED,
+hb_ot_get_font_h_extents (hb_font_t *font,
 			  void *font_data,
 			  hb_font_extents_t *metrics,
 			  void *user_data HB_UNUSED)
@@ -198,7 +213,7 @@ hb_ot_get_font_h_extents (hb_font_t *font HB_UNUSED,
 }
 
 static hb_bool_t
-hb_ot_get_font_v_extents (hb_font_t *font HB_UNUSED,
+hb_ot_get_font_v_extents (hb_font_t *font,
 			  void *font_data,
 			  hb_font_extents_t *metrics,
 			  void *user_data HB_UNUSED)
@@ -211,25 +226,14 @@ hb_ot_get_font_v_extents (hb_font_t *font HB_UNUSED,
   return ot_font->v_metrics.has_font_extents;
 }
 
-static hb_font_funcs_t *static_ot_funcs = nullptr;
 
-#ifdef HB_USE_ATEXIT
-static
-void free_static_ot_funcs (void)
+static void free_static_ot_funcs (void);
+
+static struct hb_ot_font_funcs_lazy_loader_t : hb_font_funcs_lazy_loader_t<hb_ot_font_funcs_lazy_loader_t>
 {
-  hb_font_funcs_destroy (static_ot_funcs);
-}
-#endif
-
-static hb_font_funcs_t *
-_hb_ot_get_font_funcs (void)
-{
-retry:
-  hb_font_funcs_t *funcs = (hb_font_funcs_t *) hb_atomic_ptr_get (&static_ot_funcs);
-
-  if (unlikely (!funcs))
+  static inline hb_font_funcs_t *create (void)
   {
-    funcs = hb_font_funcs_create ();
+    hb_font_funcs_t *funcs = hb_font_funcs_create ();
 
     hb_font_funcs_set_font_h_extents_func (funcs, hb_ot_get_font_h_extents, nullptr, nullptr);
     hb_font_funcs_set_font_v_extents_func (funcs, hb_ot_get_font_v_extents, nullptr, nullptr);
@@ -248,17 +252,26 @@ retry:
 
     hb_font_funcs_make_immutable (funcs);
 
-    if (!hb_atomic_ptr_cmpexch (&static_ot_funcs, nullptr, funcs)) {
-      hb_font_funcs_destroy (funcs);
-      goto retry;
-    }
+#ifdef HB_USE_ATEXIT
+    atexit (free_static_ot_funcs);
+#endif
+
+    return funcs;
+  }
+} static_ot_funcs;
 
 #ifdef HB_USE_ATEXIT
-    atexit (free_static_ot_funcs); /* First person registers atexit() callback. */
+static
+void free_static_ot_funcs (void)
+{
+  static_ot_funcs.free_instance ();
+}
 #endif
-  };
 
-  return funcs;
+static hb_font_funcs_t *
+_hb_ot_get_font_funcs (void)
+{
+  return static_ot_funcs.get_unconst ();
 }
 
 

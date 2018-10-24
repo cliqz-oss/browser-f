@@ -8,10 +8,10 @@ include('../templates.mozbuild')
 
 DIRS += [
     'aboutdebugging',
+    'aboutdebugging-new',
     'accessibility',
     'application',
     'canvasdebugger',
-    'commandline',
     'debugger',
     'dom',
     'framework',

@@ -44,7 +44,7 @@
 
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/EventStates.h"
-#include "mozilla/GenericSpecifiedValuesInlines.h"
+#include "mozilla/MappedDeclarations.h"
 #include "mozilla/net/ReferrerPolicy.h"
 
 #include "nsLayoutUtils.h"
@@ -222,6 +222,12 @@ HTMLImageElement::Y()
   return GetXY().y;
 }
 
+void
+HTMLImageElement::GetDecoding(nsAString& aValue)
+{
+  GetEnumAttr(nsGkAtoms::decoding, kDecodingTableDefault->tag, aValue);
+}
+
 bool
 HTMLImageElement::ParseAttribute(int32_t aNamespaceID,
                                  nsAtom* aAttribute,
@@ -237,6 +243,10 @@ HTMLImageElement::ParseAttribute(int32_t aNamespaceID,
       ParseCORSValue(aValue, aResult);
       return true;
     }
+    if (aAttribute == nsGkAtoms::decoding) {
+      return aResult.ParseEnumValue(aValue, kDecodingTable, false,
+                                    kDecodingTableDefault);
+    }
     if (ParseImageAttribute(aAttribute, aValue, aResult)) {
       return true;
     }
@@ -248,13 +258,13 @@ HTMLImageElement::ParseAttribute(int32_t aNamespaceID,
 
 void
 HTMLImageElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
-                                        GenericSpecifiedValues* aData)
+                                        MappedDeclarations& aDecls)
 {
-  nsGenericHTMLElement::MapImageAlignAttributeInto(aAttributes, aData);
-  nsGenericHTMLElement::MapImageBorderAttributeInto(aAttributes, aData);
-  nsGenericHTMLElement::MapImageMarginAttributeInto(aAttributes, aData);
-  nsGenericHTMLElement::MapImageSizeAttributesInto(aAttributes, aData);
-  nsGenericHTMLElement::MapCommonAttributesInto(aAttributes, aData);
+  nsGenericHTMLElement::MapImageAlignAttributeInto(aAttributes, aDecls);
+  nsGenericHTMLElement::MapImageBorderAttributeInto(aAttributes, aDecls);
+  nsGenericHTMLElement::MapImageMarginAttributeInto(aAttributes, aDecls);
+  nsGenericHTMLElement::MapImageSizeAttributesInto(aAttributes, aDecls);
+  nsGenericHTMLElement::MapCommonAttributesInto(aAttributes, aDecls);
 }
 
 nsChangeHint
@@ -267,8 +277,8 @@ HTMLImageElement::GetAttributeChangeHint(const nsAtom* aAttribute,
       aAttribute == nsGkAtoms::ismap) {
     retval |= nsChangeHint_ReconstructFrame;
   } else if (aAttribute == nsGkAtoms::alt) {
-    if (aModType == MutationEventBinding::ADDITION ||
-        aModType == MutationEventBinding::REMOVAL) {
+    if (aModType == MutationEvent_Binding::ADDITION ||
+        aModType == MutationEvent_Binding::REMOVAL) {
       retval |= nsChangeHint_ReconstructFrame;
     }
   }
@@ -378,6 +388,12 @@ HTMLImageElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
     mUseUrgentStartForChannel = EventStateManager::IsHandlingUserInput();
 
     PictureSourceSizesChanged(this, attrVal.String(), aNotify);
+  } else if (aName == nsGkAtoms::decoding &&
+             aNameSpaceID == kNameSpaceID_None) {
+    // Request sync or async image decoding.
+    SetSyncDecodingHint(aValue &&
+                        static_cast<ImageDecodingType>(aValue->GetEnumValue()) ==
+                          ImageDecodingType::Sync);
   }
 
   return nsGenericHTMLElement::AfterSetAttr(aNameSpaceID, aName,
@@ -520,23 +536,16 @@ HTMLImageElement::IsHTMLFocusable(bool aWithMouse,
 {
   int32_t tabIndex = TabIndex();
 
-  if (IsInUncomposedDoc()) {
-    nsAutoString usemap;
-    GetUseMap(usemap);
-    // XXXbz which document should this be using?  sXBL/XBL2 issue!  I
-    // think that OwnerDoc() is right, since we don't want to
-    // assume stuff about the document we're bound to.
-    if (OwnerDoc()->FindImageMap(usemap)) {
-      if (aTabIndex) {
-        // Use tab index on individual map areas
-        *aTabIndex = (sTabFocusModel & eTabFocus_linksMask)? 0 : -1;
-      }
-      // Image map is not focusable itself, but flag as tabbable
-      // so that image map areas get walked into.
-      *aIsFocusable = false;
-
-      return false;
+  if (IsInComposedDoc() && FindImageMap()) {
+    if (aTabIndex) {
+      // Use tab index on individual map areas
+      *aTabIndex = (sTabFocusModel & eTabFocus_linksMask)? 0 : -1;
     }
+    // Image map is not focusable itself, but flag as tabbable
+    // so that image map areas get walked into.
+    *aIsFocusable = false;
+
+    return false;
   }
 
   if (aTabIndex) {
@@ -555,16 +564,13 @@ HTMLImageElement::IsHTMLFocusable(bool aWithMouse,
 
 nsresult
 HTMLImageElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
-                             nsIContent* aBindingParent,
-                             bool aCompileEventHandlers)
+                             nsIContent* aBindingParent)
 {
   nsresult rv = nsGenericHTMLElement::BindToTree(aDocument, aParent,
-                                                 aBindingParent,
-                                                 aCompileEventHandlers);
+                                                 aBindingParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsImageLoadingContent::BindToTree(aDocument, aParent, aBindingParent,
-                                    aCompileEventHandlers);
+  nsImageLoadingContent::BindToTree(aDocument, aParent, aBindingParent);
 
   if (aParent) {
     UpdateFormOwner();
@@ -807,34 +813,33 @@ HTMLImageElement::NaturalWidth()
 }
 
 nsresult
-HTMLImageElement::CopyInnerTo(Element* aDest, bool aPreallocateChildren)
+HTMLImageElement::CopyInnerTo(HTMLImageElement* aDest)
 {
   bool destIsStatic = aDest->OwnerDoc()->IsStaticDocument();
-  auto dest = static_cast<HTMLImageElement*>(aDest);
   if (destIsStatic) {
-    CreateStaticImageClone(dest);
+    CreateStaticImageClone(aDest);
   }
 
-  nsresult rv = nsGenericHTMLElement::CopyInnerTo(aDest, aPreallocateChildren);
+  nsresult rv = nsGenericHTMLElement::CopyInnerTo(aDest);
   if (NS_FAILED(rv)) {
     return rv;
   }
 
   if (!destIsStatic) {
-    // In SetAttr (called from nsGenericHTMLElement::CopyInnerTo), dest skipped
+    // In SetAttr (called from nsGenericHTMLElement::CopyInnerTo), aDest skipped
     // doing the image load because we passed in false for aNotify.  But we
     // really do want it to do the load, so set it up to happen once the cloning
     // reaches a stable state.
-    if (!dest->InResponsiveMode() &&
-        dest->HasAttr(kNameSpaceID_None, nsGkAtoms::src) &&
-        dest->OwnerDoc()->ShouldLoadImages()) {
+    if (!aDest->InResponsiveMode() &&
+        aDest->HasAttr(kNameSpaceID_None, nsGkAtoms::src) &&
+        aDest->OwnerDoc()->ShouldLoadImages()) {
       // Mark channel as urgent-start before load image if the image load is
       // initaiated by a user interaction.
       mUseUrgentStartForChannel = EventStateManager::IsHandlingUserInput();
 
       nsContentUtils::AddScriptRunner(
         NewRunnableMethod<bool>("dom::HTMLImageElement::MaybeLoadImage",
-                                dest,
+                                aDest,
                                 &HTMLImageElement::MaybeLoadImage,
                                 false));
     }
@@ -852,7 +857,7 @@ HTMLImageElement::GetCORSMode()
 JSObject*
 HTMLImageElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return HTMLImageElementBinding::Wrap(aCx, this, aGivenProto);
+  return HTMLImageElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 #ifdef DEBUG

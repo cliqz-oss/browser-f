@@ -22,7 +22,7 @@ use webrender;
 use webrender::api::*;
 use webrender::{DebugFlags, RendererStats};
 use yaml_frame_writer::YamlFrameWriterReceiver;
-use {WindowWrapper, NotifierEvent, BLACK_COLOR, WHITE_COLOR};
+use {WindowWrapper, NotifierEvent};
 
 // TODO(gw): This descriptor matches what we currently support for fonts
 //           but is quite a mess. We should at least document and
@@ -109,7 +109,10 @@ impl RenderNotifier for Notifier {
         self.update(false);
     }
 
-    fn new_frame_ready(&self, _: DocumentId, scrolled: bool, _composite_needed: bool) {
+    fn new_frame_ready(&self, _: DocumentId,
+                       scrolled: bool,
+                       _composite_needed: bool,
+                       _render_time: Option<u64>) {
         self.update(!scrolled);
     }
 }
@@ -180,6 +183,7 @@ impl Wrench {
         precache_shaders: bool,
         disable_dual_source_blending: bool,
         zoom_factor: f32,
+        chase_primitive: webrender::ChasePrimitive,
         notifier: Option<Box<RenderNotifier>>,
     ) -> Self {
         println!("Shader override path: {:?}", shader_override_path);
@@ -210,8 +214,9 @@ impl Wrench {
             enable_clear_scissor: !no_scissor,
             max_recorded_profiles: 16,
             precache_shaders,
-            blob_image_renderer: Some(Box::new(blob::CheckerboardRenderer::new(callbacks.clone()))),
+            blob_image_handler: Some(Box::new(blob::CheckerboardRenderer::new(callbacks.clone()))),
             disable_dual_source_blending,
+            chase_primitive,
             ..Default::default()
         };
 
@@ -455,6 +460,7 @@ impl Wrench {
         flags: FontInstanceFlags,
         render_mode: Option<FontRenderMode>,
         bg_color: Option<ColorU>,
+        synthetic_italics: SyntheticItalics,
     ) -> FontInstanceKey {
         let key = self.api.generate_font_instance_key();
         let mut txn = Transaction::new();
@@ -466,6 +472,7 @@ impl Wrench {
         if let Some(bg_color) = bg_color {
             options.bg_color = bg_color;
         }
+        options.synthetic_italics = synthetic_italics;
         txn.add_font_instance(key, font_key, size, Some(options), None, Vec::new());
         self.api.update_resources(txn.resource_updates);
         key
@@ -545,6 +552,7 @@ impl Wrench {
             "O - Toggle showing intermediate targets",
             "I - Toggle showing texture caches",
             "B - Toggle showing alpha primitive rects",
+            "V - Toggle showing overdraw",
             "S - Toggle compact profiler",
             "Q - Toggle GPU queries for time and samples",
             "M - Trigger memory pressure event",
@@ -553,8 +561,8 @@ impl Wrench {
             "X - Do a hit test at the current cursor position",
         ];
 
-        let color_and_offset = [(*BLACK_COLOR, 2.0), (*WHITE_COLOR, 0.0)];
-        let dr = self.renderer.debug_renderer();
+        let color_and_offset = [(ColorF::BLACK, 2.0), (ColorF::WHITE, 0.0)];
+        let dr = self.renderer.debug_renderer().unwrap();
 
         for ref co in &color_and_offset {
             let x = self.device_pixel_ratio * (15.0 + co.1);

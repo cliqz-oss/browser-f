@@ -80,7 +80,8 @@ Http2Stream::Http2Stream(nsAHttpTransaction *httpTransaction,
 {
   MOZ_ASSERT(OnSocketThread(), "not on socket thread");
 
-  LOG3(("Http2Stream::Http2Stream %p", this));
+  nsHttpTransaction *trans = mTransaction->QueryHttpTransaction();
+  LOG3(("Http2Stream::Http2Stream %p trans=%p atrans=%p", this, trans, httpTransaction));
 
   mServerReceiveWindow = session->GetServerInitialStreamWindow();
   mClientReceiveWindow = session->PushAllowance();
@@ -104,7 +105,6 @@ Http2Stream::Http2Stream(nsAHttpTransaction *httpTransaction,
   MOZ_ASSERT(httpPriority >= 0);
   SetPriority(static_cast<uint32_t>(httpPriority));
 
-  nsHttpTransaction *trans = mTransaction->QueryHttpTransaction();
   if (trans) {
     mTransactionTabId = trans->TopLevelOuterContentWindowId();
   }
@@ -508,6 +508,13 @@ Http2Stream::ParseHttpRequestHeaders(const char *buf,
       // as we can't rely on future network events to do it
       mSession->ConnectPushedStream(this);
       mOpenGenerated = 1;
+
+      // if the "mother stream" had TRR, this one is a TRR stream too!
+      RefPtr<nsHttpConnectionInfo> ci(Transaction()->ConnectionInfo());
+      if (ci && ci->GetTrrUsed()) {
+        mSession->IncrementTrrCounter();
+      }
+
       return NS_OK;
     }
   }
@@ -1373,7 +1380,9 @@ Http2Stream::TopLevelOuterContentWindowIdChanged(uint64_t windowId)
           "depends on stream 0x%X\n", this, mPriorityDependency));
   }
 
-  mSession->SendPriorityFrame(mStreamID, mPriorityDependency, mPriorityWeight);
+  if (mStreamID) {
+    mSession->SendPriorityFrame(mStreamID, mPriorityDependency, mPriorityWeight);
+  }
 }
 
 void

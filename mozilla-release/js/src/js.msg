@@ -151,7 +151,7 @@ MSG_DEF(JSMSG_PARAMETER_AFTER_REST,    0, JSEXN_SYNTAXERR, "parameter after rest
 MSG_DEF(JSMSG_TOO_MANY_ARGUMENTS,      0, JSEXN_RANGEERR, "too many arguments provided for a function call")
 
 // CSP
-MSG_DEF(JSMSG_CSP_BLOCKED_EVAL,        0, JSEXN_ERR, "call to eval() blocked by CSP")
+MSG_DEF(JSMSG_CSP_BLOCKED_EVAL,        0, JSEXN_EVALERR, "call to eval() blocked by CSP")
 MSG_DEF(JSMSG_CSP_BLOCKED_FUNCTION,    0, JSEXN_ERR, "call to Function() blocked by CSP")
 
 // Wrappers
@@ -321,7 +321,6 @@ MSG_DEF(JSMSG_STMT_AFTER_RETURN,       0, JSEXN_WARN, "unreachable code after re
 MSG_DEF(JSMSG_STRICT_CODE_WITH,        0, JSEXN_SYNTAXERR, "strict mode code may not contain 'with' statements")
 MSG_DEF(JSMSG_STRICT_NON_SIMPLE_PARAMS, 1, JSEXN_SYNTAXERR, "\"use strict\" not allowed in function with {0} parameter")
 MSG_DEF(JSMSG_TEMPLSTR_UNTERM_EXPR,    0, JSEXN_SYNTAXERR, "missing } in template string")
-MSG_DEF(JSMSG_SIMD_NOT_A_VECTOR,       2, JSEXN_TYPEERR, "expecting a SIMD {0} object as argument {1}")
 MSG_DEF(JSMSG_TOO_MANY_CASES,          0, JSEXN_INTERNALERR, "too many switch cases")
 MSG_DEF(JSMSG_TOO_MANY_CATCH_VARS,     0, JSEXN_SYNTAXERR, "too many catch variables")
 MSG_DEF(JSMSG_TOO_MANY_CON_ARGS,       0, JSEXN_SYNTAXERR, "too many constructor arguments")
@@ -351,6 +350,13 @@ MSG_DEF(JSMSG_COMPUTED_NAME_IN_PATTERN,0, JSEXN_SYNTAXERR, "computed property na
 MSG_DEF(JSMSG_DEFAULT_IN_PATTERN,      0, JSEXN_SYNTAXERR, "destructuring defaults aren't supported in this destructuring declaration")
 MSG_DEF(JSMSG_BAD_NEWTARGET,           0, JSEXN_SYNTAXERR, "new.target only allowed within functions")
 MSG_DEF(JSMSG_ESCAPED_KEYWORD,         0, JSEXN_SYNTAXERR, "keywords must be written literally, without embedded escapes")
+
+// UTF-8 source text encoding errors
+MSG_DEF(JSMSG_BAD_LEADING_UTF8_UNIT,   1, JSEXN_SYNTAXERR, "{0} byte doesn't begin a valid UTF-8 code point")
+MSG_DEF(JSMSG_NOT_ENOUGH_CODE_UNITS,   4, JSEXN_SYNTAXERR, "{0} byte in UTF-8 must be followed by {1} bytes, but {2} byte{3} present")
+MSG_DEF(JSMSG_BAD_TRAILING_UTF8_UNIT,  1, JSEXN_SYNTAXERR, "bad trailing UTF-8 byte {0} doesn't match the pattern 0b10xxxxxx")
+MSG_DEF(JSMSG_FORBIDDEN_UTF8_CODE_POINT,2,JSEXN_SYNTAXERR, "{0} isn't a valid code point because {1}")
+MSG_DEF(JSMSG_BAD_CODE_UNITS,          1, JSEXN_NOTE, "the code units comprising this invalid code point were: {0}")
 
 // asm.js
 MSG_DEF(JSMSG_USE_ASM_TYPE_FAIL,       1, JSEXN_TYPEERR, "asm.js type error: {0}")
@@ -455,6 +461,7 @@ MSG_DEF(JSMSG_DEBUG_BAD_REFERENT,      2, JSEXN_TYPEERR, "{0} does not refer to 
 MSG_DEF(JSMSG_DEBUG_BAD_RESUMPTION,    0, JSEXN_TYPEERR, "debugger resumption value must be undefined, {throw: val}, {return: val}, or null")
 MSG_DEF(JSMSG_DEBUG_BAD_YIELD,         0, JSEXN_TYPEERR, "generator yielded invalid value")
 MSG_DEF(JSMSG_DEBUG_CANT_DEBUG_GLOBAL, 0, JSEXN_TYPEERR, "passing non-debuggable global to addDebuggee")
+MSG_DEF(JSMSG_DEBUG_SAME_COMPARTMENT,  0, JSEXN_TYPEERR, "debugger and debuggee must be in different compartments")
 MSG_DEF(JSMSG_DEBUG_CCW_REQUIRED,      1, JSEXN_TYPEERR, "{0}: argument must be an object from a different compartment")
 MSG_DEF(JSMSG_DEBUG_COMPARTMENT_MISMATCH, 2, JSEXN_TYPEERR, "{0}: descriptor .{1} property is an object in a different compartment than the target object")
 MSG_DEF(JSMSG_DEBUG_LOOP,              0, JSEXN_TYPEERR, "cannot debug an object in same compartment as debugger or a compartment that is already debugging the debugger")
@@ -466,6 +473,7 @@ MSG_DEF(JSMSG_DEBUG_NO_ENV_OBJECT,     0, JSEXN_TYPEERR, "declarative Environmen
 MSG_DEF(JSMSG_DEBUG_PROTO,             2, JSEXN_TYPEERR, "{0}.prototype is not a valid {1} instance")
 MSG_DEF(JSMSG_DEBUG_WRONG_OWNER,       1, JSEXN_TYPEERR, "{0} belongs to a different Debugger")
 MSG_DEF(JSMSG_DEBUG_OPTIMIZED_OUT,     1, JSEXN_ERR, "variable `{0}' has been optimized out")
+MSG_DEF(JSMSG_DEBUG_OPTIMIZED_OUT_FUN, 0, JSEXN_ERR, "function is optimized out")
 MSG_DEF(JSMSG_DEBUG_RESUMPTION_VALUE_DISALLOWED, 0, JSEXN_TYPEERR, "resumption values are disallowed in this hook")
 MSG_DEF(JSMSG_DEBUG_VARIABLE_NOT_FOUND,0, JSEXN_TYPEERR, "variable not found in environment")
 MSG_DEF(JSMSG_DEBUG_WRAPPER_IN_WAY,    3, JSEXN_TYPEERR, "{0} is {1}{2}a global object, but a direct reference is required")
@@ -529,15 +537,16 @@ MSG_DEF(JSMSG_UNTERM_CLASS,            0, JSEXN_SYNTAXERR, "unterminated charact
 MSG_DEF(JSMSG_DEFAULT_LOCALE_ERROR,    0, JSEXN_ERR, "internal error getting the default locale")
 MSG_DEF(JSMSG_NO_SUCH_SELF_HOSTED_PROP,1, JSEXN_ERR, "No such property on self-hosted object: {0}")
 
-// Typed object / SIMD
+// Typed object
 MSG_DEF(JSMSG_INVALID_PROTOTYPE,       0, JSEXN_TYPEERR, "prototype field is not an object")
 MSG_DEF(JSMSG_TYPEDOBJECT_BAD_ARGS,    0, JSEXN_TYPEERR, "invalid arguments")
 MSG_DEF(JSMSG_TYPEDOBJECT_BINARYARRAY_BAD_INDEX, 0, JSEXN_RANGEERR, "invalid or out-of-range index")
 MSG_DEF(JSMSG_TYPEDOBJECT_HANDLE_UNATTACHED, 0, JSEXN_TYPEERR, "handle unattached")
 MSG_DEF(JSMSG_TYPEDOBJECT_STRUCTTYPE_BAD_ARGS, 0, JSEXN_RANGEERR, "invalid field descriptor")
+MSG_DEF(JSMSG_TYPEDOBJECT_STRUCTTYPE_NOT_CALLABLE, 0, JSEXN_TYPEERR, "not callable")
 MSG_DEF(JSMSG_TYPEDOBJECT_TOO_BIG,     0, JSEXN_ERR, "Type is too large to allocate")
-MSG_DEF(JSMSG_SIMD_FAILED_CONVERSION,  0, JSEXN_RANGEERR, "SIMD conversion loses precision")
-MSG_DEF(JSMSG_SIMD_TO_NUMBER,          0, JSEXN_TYPEERR, "can't convert SIMD value to number")
+MSG_DEF(JSMSG_TYPEDOBJECT_SETTING_IMMUTABLE, 0, JSEXN_ERR, "setting immutable field")
+MSG_DEF(JSMSG_TYPEDOBJECT_NOT_CONSTRUCTIBLE, 0, JSEXN_TYPEERR, "not constructible")
 
 // Array
 MSG_DEF(JSMSG_TOO_LONG_ARRAY,         0, JSEXN_TYPEERR, "Too long array")
@@ -581,6 +590,7 @@ MSG_DEF(JSMSG_CANT_DELETE_WINDOW_NAMED_PROPERTY, 1, JSEXN_TYPEERR, "can't delete
 MSG_DEF(JSMSG_CANT_PREVENT_EXTENSIONS,   0, JSEXN_TYPEERR, "can't prevent extensions on this proxy object")
 MSG_DEF(JSMSG_NO_NAMED_SETTER,           2, JSEXN_TYPEERR, "{0} doesn't have a named property setter for '{1}'")
 MSG_DEF(JSMSG_NO_INDEXED_SETTER,         2, JSEXN_TYPEERR, "{0} doesn't have an indexed property setter for '{1}'")
+MSG_DEF(JSMSG_NOT_DATA_DESCRIPTOR,       2, JSEXN_TYPEERR, "can't define a getter/setter for element '{1}' of {0} object")
 
 // Super
 MSG_DEF(JSMSG_CANT_DELETE_SUPER, 0, JSEXN_REFERENCEERR, "invalid delete involving 'super'")
@@ -652,6 +662,7 @@ MSG_DEF(JSMSG_RESPONSE_ALREADY_CONSUMED,                 0, JSEXN_TYPEERR,  "Res
 // BigInt
 MSG_DEF(JSMSG_BIGINT_TO_NUMBER, 0, JSEXN_TYPEERR, "can't convert BigInt to number")
 MSG_DEF(JSMSG_NUMBER_TO_BIGINT, 0, JSEXN_RANGEERR, "can't convert non-finite number to BigInt")
+MSG_DEF(JSMSG_BIGINT_TOO_LARGE, 0, JSEXN_RANGEERR, "BigInt is too large to allocate")
 MSG_DEF(JSMSG_BIGINT_DIVISION_BY_ZERO, 0, JSEXN_RANGEERR, "BigInt division by zero")
 MSG_DEF(JSMSG_BIGINT_NEGATIVE_EXPONENT, 0, JSEXN_RANGEERR, "BigInt negative exponent")
 MSG_DEF(JSMSG_BIGINT_INVALID_SYNTAX, 0, JSEXN_SYNTAXERR, "invalid BigInt syntax")

@@ -237,6 +237,8 @@ function runSubtestsSeriallyInFreshWindows(aSubtests) {
         return;
       }
 
+      SimpleTest.ok(true, "Starting subtest " + test.file);
+
       if (typeof test.dp_suppression != 'undefined') {
         // Normally during a test, the displayport will get suppressed during page
         // load, and unsuppressed at a non-deterministic time during the test. The
@@ -307,9 +309,11 @@ async function waitUntilApzStable() {
     function parentProcessFlush() {
       addMessageListener("apz-flush", function() {
         ChromeUtils.import("resource://gre/modules/Services.jsm");
-        var topWin = Services.wm.getMostRecentWindow("navigator:browser");
-        var topUtils = topWin.QueryInterface(Ci.nsIInterfaceRequestor)
-                             .getInterface(Ci.nsIDOMWindowUtils);
+        var topWin = Services.wm.getMostRecentWindow('navigator:browser');
+        if (!topWin) {
+          topWin = Services.wm.getMostRecentWindow('navigator:geckoview');
+        }
+        var topUtils = topWin.windowUtils;
 
         var repaintDone = function() {
           Services.obs.removeObserver(repaintDone, "apz-repaints-flushed");
@@ -445,6 +449,9 @@ function getSnapshot(rect) {
     addMessageListener('snapshot', function(rect) {
       ChromeUtils.import('resource://gre/modules/Services.jsm');
       var topWin = Services.wm.getMostRecentWindow('navigator:browser');
+      if (!topWin) {
+        topWin = Services.wm.getMostRecentWindow('navigator:geckoview');
+      }
 
       // reposition the rect relative to the top-level browser window
       rect = JSON.parse(rect);

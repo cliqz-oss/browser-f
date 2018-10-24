@@ -12,6 +12,7 @@
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/PromiseNativeHandler.h"
 #include "mozilla/ErrorResult.h"
+#include "nsIDocumentActivity.h"
 #include "nsWrapperCache.h"
 #include "PaymentRequestUpdateEvent.h"
 
@@ -25,11 +26,12 @@ class PaymentResponse;
 
 class PaymentRequest final : public DOMEventTargetHelper
                            , public PromiseNativeHandler
+			   , public nsIDocumentActivity
 {
 public:
   NS_DECL_ISUPPORTS_INHERITED
-
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(PaymentRequest, DOMEventTargetHelper)
+  NS_DECL_NSIDOCUMENTACTIVITY
 
   virtual JSObject* WrapObject(JSContext* aCx,
                                JS::Handle<JSObject*> aGivenProto) override;
@@ -126,7 +128,6 @@ public:
                                  const nsAString& aDependentLocality,
                                  const nsAString& aPostalCode,
                                  const nsAString& aSortingCode,
-                                 const nsAString& aLanguageCode,
                                  const nsAString& aOrganization,
                                  const nsAString& aRecipient,
                                  const nsAString& aPhone);
@@ -155,6 +156,7 @@ public:
 
   IMPL_EVENT_HANDLER(shippingaddresschange);
   IMPL_EVENT_HANDLER(shippingoptionchange);
+  IMPL_EVENT_HANDLER(paymentmethodchange);
 
   void SetIPC(PaymentRequestChild* aChild)
   {
@@ -168,6 +170,9 @@ public:
 
 protected:
   ~PaymentRequest();
+
+  void RegisterActivityObserver();
+  void UnregisterActivityObserver();
 
   nsresult DispatchUpdateEvent(const nsAString& aType);
 

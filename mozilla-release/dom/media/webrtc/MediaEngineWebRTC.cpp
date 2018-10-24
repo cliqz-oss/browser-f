@@ -12,6 +12,7 @@
 #include "MediaEngineTabVideoSource.h"
 #include "MediaEngineRemoteVideoSource.h"
 #include "MediaTrackConstraints.h"
+#include "mozilla/dom/MediaDeviceInfo.h"
 #include "mozilla/Logging.h"
 #include "nsIComponentRegistrar.h"
 #include "nsIPrefService.h"
@@ -25,84 +26,13 @@ static mozilla::LazyLogModule sGetUserMediaLog("GetUserMedia");
 
 namespace mozilla {
 
-// statics from AudioInputCubeb
-nsTArray<int>* AudioInputCubeb::mDeviceIndexes;
-int AudioInputCubeb::mDefaultDevice = -1;
-nsTArray<nsCString>* AudioInputCubeb::mDeviceNames;
-cubeb_device_collection AudioInputCubeb::mDevices = { nullptr, 0 };
-bool AudioInputCubeb::mAnyInUse = false;
-StaticMutex AudioInputCubeb::sMutex;
-uint32_t AudioInputCubeb::sUserChannelCount = 0;
-
-// AudioDeviceID is an annoying opaque value that's really a string
-// pointer, and is freed when the cubeb_device_collection is destroyed
-
-void AudioInputCubeb::UpdateDeviceList()
-{
-  // We keep all the device names, but wipe the mappings and rebuild them.
-  // Do this first so that if cubeb has failed we've unmapped our devices
-  // before we early return. Otherwise we'd keep the old list.
-  for (auto& device_index : (*mDeviceIndexes)) {
-    device_index = -1; // unmapped
-  }
-
-  cubeb* cubebContext = CubebUtils::GetCubebContext();
-  if (!cubebContext) {
-    return;
-  }
-
-  cubeb_device_collection devices = { nullptr, 0 };
-
-  if (CUBEB_OK != cubeb_enumerate_devices(cubebContext,
-                                          CUBEB_DEVICE_TYPE_INPUT,
-                                          &devices)) {
-    return;
-  }
-
-  // Calculate translation from existing mDevices to new devices. Note we
-  // never end up with less devices than before, since people have
-  // stashed indexes.
-  // For some reason the "fake" device for automation is marked as DISABLED,
-  // so white-list it.
-  mDefaultDevice = -1;
-  for (uint32_t i = 0; i < devices.count; i++) {
-    LOG(("Cubeb device %u: type 0x%x, state 0x%x, name %s, id %p",
-         i, devices.device[i].type, devices.device[i].state,
-         devices.device[i].friendly_name, devices.device[i].device_id));
-    if (devices.device[i].type == CUBEB_DEVICE_TYPE_INPUT && // paranoia
-        devices.device[i].state == CUBEB_DEVICE_STATE_ENABLED )
-    {
-      auto j = mDeviceNames->IndexOf(devices.device[i].device_id);
-      if (j != nsTArray<nsCString>::NoIndex) {
-        // match! update the mapping
-        (*mDeviceIndexes)[j] = i;
-      } else {
-        // new device, add to the array
-        mDeviceIndexes->AppendElement(i);
-        mDeviceNames->AppendElement(devices.device[i].device_id);
-        j = mDeviceIndexes->Length()-1;
-      }
-      if (devices.device[i].preferred & CUBEB_DEVICE_PREF_VOICE) {
-        // There can be only one... we hope
-        NS_ASSERTION(mDefaultDevice == -1, "multiple default cubeb input devices!");
-        mDefaultDevice = j;
-      }
-    }
-  }
-  LOG(("Cubeb default input device %d", mDefaultDevice));
-  StaticMutexAutoLock lock(sMutex);
-  // swap state
-  cubeb_device_collection_destroy(cubebContext, &mDevices);
-  mDevices = devices;
-}
+using namespace CubebUtils;
 
 MediaEngineWebRTC::MediaEngineWebRTC(MediaEnginePrefs &aPrefs)
-  : mMutex("MediaEngineWebRTC::mMutex"),
-    mAudioInput(nullptr),
-    mFullDuplex(aPrefs.mFullDuplex),
-    mDelayAgnostic(aPrefs.mDelayAgnostic),
-    mExtendedFilter(aPrefs.mExtendedFilter),
-    mHasTabVideoSource(false)
+  : mMutex("mozilla::MediaEngineWebRTC")
+  , mDelayAgnostic(aPrefs.mDelayAgnostic)
+  , mExtendedFilter(aPrefs.mExtendedFilter)
+  , mHasTabVideoSource(false)
 {
   nsCOMPtr<nsIComponentRegistrar> compMgr;
   NS_GetComponentRegistrar(getter_AddRefs(compMgr));
@@ -125,7 +55,7 @@ MediaEngineWebRTC::SetFakeDeviceChangeEvents()
 void
 MediaEngineWebRTC::EnumerateVideoDevices(uint64_t aWindowId,
                                          dom::MediaSourceEnum aMediaSource,
-                                         nsTArray<RefPtr<MediaEngineSource> >* aSources)
+                                         nsTArray<RefPtr<MediaDevice> >* aDevices)
 {
   mMutex.AssertCurrentThreadOwns();
 
@@ -228,106 +158,135 @@ MediaEngineWebRTC::EnumerateVideoDevices(uint64_t aWindowId,
         vSource->RequiresSharing()) {
       // We've already seen this shared device, just refresh and append.
       static_cast<MediaEngineRemoteVideoSource*>(vSource.get())->Refresh(i);
-      aSources->AppendElement(vSource.get());
     } else {
       vSource = new MediaEngineRemoteVideoSource(i, capEngine, aMediaSource,
                                                  scaryKind || scarySource);
       devicesForThisWindow->Put(uuid, vSource);
-      aSources->AppendElement(vSource);
     }
+    aDevices->AppendElement(MakeRefPtr<MediaDevice>(
+                              vSource,
+                              vSource->GetName(),
+                              NS_ConvertUTF8toUTF16(vSource->GetUUID())));
   }
 
   if (mHasTabVideoSource || dom::MediaSourceEnum::Browser == aMediaSource) {
-    aSources->AppendElement(new MediaEngineTabVideoSource());
+    RefPtr<MediaEngineSource> tabVideoSource = new MediaEngineTabVideoSource();
+    aDevices->AppendElement(MakeRefPtr<MediaDevice>(
+                              tabVideoSource,
+                              tabVideoSource->GetName(),
+                              NS_ConvertUTF8toUTF16(tabVideoSource->GetUUID())));
   }
 }
 
 void
 MediaEngineWebRTC::EnumerateMicrophoneDevices(uint64_t aWindowId,
-                                              nsTArray<RefPtr<MediaEngineSource> >* aSources)
+                                              nsTArray<RefPtr<MediaDevice> >* aDevices)
 {
   mMutex.AssertCurrentThreadOwns();
 
-  if (!mAudioInput) {
-    if (!SupportsDuplex()) {
-      return;
-    }
-    mAudioInput = new mozilla::AudioInputCubeb();
+  if (!mEnumerator) {
+    mEnumerator.reset(new CubebDeviceEnumerator());
   }
 
-  int nDevices = 0;
-  mAudioInput->GetNumOfRecordingDevices(nDevices);
-  int i;
-#if defined(MOZ_WIDGET_ANDROID)
-  i = 0; // Bug 1037025 - let the OS handle defaulting for now on android/b2g
-#else
-  // -1 is "default communications device" depending on OS in webrtc.org code
-  i = -1;
+  nsTArray<RefPtr<AudioDeviceInfo>> devices;
+  mEnumerator->EnumerateAudioInputDevices(devices);
+
+  DebugOnly<bool> foundPreferredDevice = false;
+
+  for (uint32_t i = 0; i < devices.Length(); i++) {
+#ifndef ANDROID
+    MOZ_ASSERT(devices[i]->DeviceID());
 #endif
-  for (; i < nDevices; i++) {
-    // We use constants here because GetRecordingDeviceName takes char[128].
-    char deviceName[128];
-    char uniqueId[128];
-    // paranoia; jingle doesn't bother with this
-    deviceName[0] = '\0';
-    uniqueId[0] = '\0';
+    LOG(("Cubeb device %u: type 0x%x, state 0x%x, name %s, id %p",
+          i,
+          devices[i]->Type(),
+          devices[i]->State(),
+          NS_ConvertUTF16toUTF8(devices[i]->Name()).get(),
+          devices[i]->DeviceID()));
 
-    int error = mAudioInput->GetRecordingDeviceName(i, deviceName, uniqueId);
-    if (error) {
-      LOG((" AudioInput::GetRecordingDeviceName: Failed %d", error));
-      continue;
-    }
-
-    if (uniqueId[0] == '\0') {
-      // Mac and Linux don't set uniqueId!
-      strcpy(uniqueId, deviceName); // safe given assert and initialization/error-check
-    }
-
-
-    RefPtr<MediaEngineSource> aSource;
-    NS_ConvertUTF8toUTF16 uuid(uniqueId);
-
-    nsRefPtrHashtable<nsStringHashKey, MediaEngineSource>*
-      devicesForThisWindow = mAudioSources.LookupOrAdd(aWindowId);
-
-    if (devicesForThisWindow->Get(uuid, getter_AddRefs(aSource)) &&
-        aSource->RequiresSharing()) {
-      // We've already seen this device, just append.
-      aSources->AppendElement(aSource.get());
-    } else {
-      aSource = new MediaEngineWebRTCMicrophoneSource(
-          new mozilla::AudioInputCubeb(i),
-          i, deviceName, uniqueId,
-          mDelayAgnostic, mExtendedFilter);
-      devicesForThisWindow->Put(uuid, aSource);
-      aSources->AppendElement(aSource);
+    if (devices[i]->State() == CUBEB_DEVICE_STATE_ENABLED) {
+      MOZ_ASSERT(devices[i]->Type() == CUBEB_DEVICE_TYPE_INPUT);
+      RefPtr<MediaEngineSource> source =
+        new MediaEngineWebRTCMicrophoneSource(
+            devices[i],
+            devices[i]->Name(),
+            // Lie and provide the name as UUID
+            NS_ConvertUTF16toUTF8(devices[i]->Name()),
+            devices[i]->MaxChannels(),
+            mDelayAgnostic,
+            mExtendedFilter);
+      RefPtr<MediaDevice> device = MakeRefPtr<MediaDevice>(
+                                     source,
+                                     source->GetName(),
+                                     NS_ConvertUTF8toUTF16(source->GetUUID()));
+      if (devices[i]->Preferred()) {
+#ifdef DEBUG
+        if (!foundPreferredDevice) {
+          foundPreferredDevice = true;
+        } else {
+          MOZ_ASSERT(!foundPreferredDevice,
+              "Found more than one preferred audio input device"
+              "while enumerating");
+        }
+#endif
+        aDevices->InsertElementAt(0, device);
+      } else {
+        aDevices->AppendElement(device);
+      }
     }
   }
 }
 
 void
-MediaEngineWebRTC::EnumerateDevices(uint64_t aWindowId,
-                                    dom::MediaSourceEnum aMediaSource,
-                                    nsTArray<RefPtr<MediaEngineSource> >* aSources)
+MediaEngineWebRTC::EnumerateSpeakerDevices(uint64_t aWindowId,
+                                           nsTArray<RefPtr<MediaDevice> >* aDevices)
 {
-  // We spawn threads to handle gUM runnables, so we must protect the member vars
-  MutexAutoLock lock(mMutex);
-  if (MediaEngineSource::IsVideo(aMediaSource)) {
-    EnumerateVideoDevices(aWindowId, aMediaSource, aSources);
-  } else if (aMediaSource == dom::MediaSourceEnum::AudioCapture) {
-    RefPtr<MediaEngineWebRTCAudioCaptureSource> audioCaptureSource =
-      new MediaEngineWebRTCAudioCaptureSource(nullptr);
-    aSources->AppendElement(audioCaptureSource);
-  } else {
-    MOZ_ASSERT(aMediaSource == dom::MediaSourceEnum::Microphone);
-    EnumerateMicrophoneDevices(aWindowId, aSources);
+  nsTArray<RefPtr<AudioDeviceInfo>> devices;
+  CubebUtils::GetDeviceCollection(devices, CubebUtils::Output);
+  for (auto& device : devices) {
+    if (device->State() == CUBEB_DEVICE_STATE_ENABLED) {
+      MOZ_ASSERT(device->Type() == CUBEB_DEVICE_TYPE_OUTPUT);
+      nsString uuid(device->Name());
+      // If, for example, input and output are in the same device, uuid
+      // would be the same for both which ends up to create the same
+      // deviceIDs (in JS).
+      uuid.Append(NS_LITERAL_STRING("_Speaker"));
+      aDevices->AppendElement(MakeRefPtr<MediaDevice>(
+                                device->Name(),
+                                dom::MediaDeviceKind::Audiooutput,
+                                uuid));
+    }
   }
 }
 
-bool
-MediaEngineWebRTC::SupportsDuplex()
+
+void
+MediaEngineWebRTC::EnumerateDevices(uint64_t aWindowId,
+                                    dom::MediaSourceEnum aMediaSource,
+                                    MediaSinkEnum aMediaSink,
+                                    nsTArray<RefPtr<MediaDevice>>* aDevices)
 {
-  return mFullDuplex;
+  MOZ_ASSERT(aMediaSource != dom::MediaSourceEnum::Other ||
+             aMediaSink != MediaSinkEnum::Other);
+  // We spawn threads to handle gUM runnables, so we must protect the member vars
+  MutexAutoLock lock(mMutex);
+  if (MediaEngineSource::IsVideo(aMediaSource)) {
+    EnumerateVideoDevices(aWindowId, aMediaSource, aDevices);
+  } else if (aMediaSource == dom::MediaSourceEnum::AudioCapture) {
+    RefPtr<MediaEngineWebRTCAudioCaptureSource> audioCaptureSource =
+      new MediaEngineWebRTCAudioCaptureSource(nullptr);
+    aDevices->AppendElement(MakeRefPtr<MediaDevice>(
+                              audioCaptureSource,
+                              audioCaptureSource->GetName(),
+                              NS_ConvertUTF8toUTF16(audioCaptureSource->GetUUID())));
+  } else if (aMediaSource == dom::MediaSourceEnum::Microphone) {
+    MOZ_ASSERT(aMediaSource == dom::MediaSourceEnum::Microphone);
+    EnumerateMicrophoneDevices(aWindowId, aDevices);
+  }
+
+  if (aMediaSink == MediaSinkEnum::Speaker) {
+    EnumerateSpeakerDevices(aWindowId, aDevices);
+  }
 }
 
 void
@@ -394,8 +353,110 @@ MediaEngineWebRTC::Shutdown()
   ShutdownSources(mVideoSources);
   ShutdownSources(mAudioSources);
 
+  mEnumerator = nullptr;
+
   mozilla::camera::Shutdown();
-  AudioInputCubeb::CleanupGlobalData();
+}
+
+CubebDeviceEnumerator::CubebDeviceEnumerator()
+  : mMutex("CubebDeviceListMutex")
+  , mManualInvalidation(false)
+{
+  int rv = cubeb_register_device_collection_changed(GetCubebContext(),
+     CUBEB_DEVICE_TYPE_INPUT,
+     &mozilla::CubebDeviceEnumerator::AudioDeviceListChanged_s,
+     this);
+
+  if (rv != CUBEB_OK) {
+    NS_WARNING("Could not register the audio input"
+               " device collection changed callback.");
+    mManualInvalidation = true;
+  }
+}
+
+CubebDeviceEnumerator::~CubebDeviceEnumerator()
+{
+  int rv = cubeb_register_device_collection_changed(GetCubebContext(),
+                                                    CUBEB_DEVICE_TYPE_INPUT,
+                                                    nullptr,
+                                                    this);
+  if (rv != CUBEB_OK) {
+    NS_WARNING("Could not unregister the audio input"
+               " device collection changed callback.");
+  }
+}
+
+void
+CubebDeviceEnumerator::EnumerateAudioInputDevices(nsTArray<RefPtr<AudioDeviceInfo>>& aOutDevices)
+{
+  aOutDevices.Clear();
+
+  cubeb* context = GetCubebContext();
+  if (!context) {
+    return;
+  }
+
+  MutexAutoLock lock(mMutex);
+
+#ifdef ANDROID
+  if (mDevices.IsEmpty()) {
+    // Bug 1473346: enumerating devices is not supported on Android in cubeb,
+    // simply state that there is a single mic, that it is the default, and has a
+    // single channel. All the other values are made up and are not to be used.
+    RefPtr<AudioDeviceInfo> info = new AudioDeviceInfo(nullptr,
+                                                       NS_ConvertUTF8toUTF16(""),
+                                                       NS_ConvertUTF8toUTF16(""),
+                                                       NS_ConvertUTF8toUTF16(""),
+                                                       CUBEB_DEVICE_TYPE_INPUT,
+                                                       CUBEB_DEVICE_STATE_ENABLED,
+                                                       CUBEB_DEVICE_PREF_ALL,
+                                                       CUBEB_DEVICE_FMT_ALL,
+                                                       CUBEB_DEVICE_FMT_S16NE,
+                                                       1,
+                                                       44100,
+                                                       44100,
+                                                       41000,
+                                                       410,
+                                                       128);
+    mDevices.AppendElement(info);
+  }
+#else
+  if (mDevices.IsEmpty() || mManualInvalidation) {
+    mDevices.Clear();
+    CubebUtils::GetDeviceCollection(mDevices, CubebUtils::Input);
+  }
+#endif
+
+  aOutDevices.AppendElements(mDevices);
+}
+
+already_AddRefed<AudioDeviceInfo>
+CubebDeviceEnumerator::DeviceInfoFromID(CubebUtils::AudioDeviceID aID)
+{
+  MutexAutoLock lock(mMutex);
+
+  for (uint32_t i  = 0; i < mDevices.Length(); i++) {
+    if (mDevices[i]->DeviceID() == aID) {
+      RefPtr<AudioDeviceInfo> other = mDevices[i];
+      return other.forget();
+    }
+  }
+  return nullptr;
+}
+
+void
+CubebDeviceEnumerator::AudioDeviceListChanged_s(cubeb* aContext, void* aUser)
+{
+  CubebDeviceEnumerator* self = reinterpret_cast<CubebDeviceEnumerator*>(aUser);
+  self->AudioDeviceListChanged();
+}
+
+void
+CubebDeviceEnumerator::AudioDeviceListChanged()
+{
+  MutexAutoLock lock(mMutex);
+
+  mDevices.Clear();
 }
 
 }

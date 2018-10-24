@@ -179,9 +179,11 @@ nsresult nsJSThunk::EvaluateScript(nsIChannel *aChannel,
         bool allowsInlineScript = true;
         rv = csp->GetAllowsInline(nsIContentPolicy::TYPE_SCRIPT,
                                   EmptyString(), // aNonce
-                                  true,         // aParserCreated
-                                  nullptr, // aContent
+                                  true,          // aParserCreated
+                                  nullptr,       // aElement,
+                                  EmptyString(), // aContent
                                   0,             // aLineNumber
+                                  0,             // aColumnNumber
                                   &allowsInlineScript);
 
         //return early if inline scripts are not allowed
@@ -1288,7 +1290,7 @@ NS_INTERFACE_MAP_END_INHERITING(mozilla::net::nsSimpleURI)
 NS_IMETHODIMP
 nsJSURI::Read(nsIObjectInputStream *aStream)
 {
-    NS_NOTREACHED("Use nsIURIMutator.read() instead");
+    MOZ_ASSERT_UNREACHABLE("Use nsIURIMutator.read() instead");
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 

@@ -6,17 +6,10 @@
 
 #include "mozilla/dom/CSSFontFeatureValuesRule.h"
 #include "mozilla/dom/CSSFontFeatureValuesRuleBinding.h"
+#include "mozilla/ServoBindings.h"
 
 namespace mozilla {
 namespace dom {
-
-CSSFontFeatureValuesRule::CSSFontFeatureValuesRule(
-  RefPtr<RawServoFontFeatureValuesRule> aRawRule,
-  uint32_t aLine, uint32_t aColumn)
-  : Rule(aLine, aColumn)
-  , mRawRule(std::move(aRawRule))
-{
-}
 
 size_t
 CSSFontFeatureValuesRule::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
@@ -87,7 +80,7 @@ CSSFontFeatureValuesRule::IsCCLeaf() const
 CSSFontFeatureValuesRule::WrapObject(JSContext* aCx,
                                      JS::Handle<JSObject*> aGivenProto)
 {
-  return CSSFontFeatureValuesRuleBinding::Wrap(aCx, this, aGivenProto);
+  return CSSFontFeatureValuesRule_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 } // namespace dom

@@ -14,7 +14,7 @@ import sys
 # We need the NDK version in multiple different places, and it's inconvenient
 # to pass down the NDK version to all relevant places, so we have this global
 # variable.
-NDK_VERSION = 'r15c'
+NDK_VERSION = 'r17b'
 
 ANDROID_NDK_EXISTS = '''
 Looks like you have the Android NDK installed at:
@@ -43,9 +43,10 @@ output as packages are downloaded and installed.
 '''
 
 MOBILE_ANDROID_MOZCONFIG_TEMPLATE = '''
-Paste the lines between the chevrons (>>> and <<<) into your mozconfig file:
+Paste the lines between the chevrons (>>> and <<<) into your
+$topsrcdir/mozconfig file, or create the file if it does not exist:
 
-<<<
+>>>
 # Build Firefox for Android:
 ac_add_options --enable-application=mobile/android
 ac_add_options --target=arm-linux-androideabi
@@ -54,13 +55,14 @@ ac_add_options --target=arm-linux-androideabi
 # With the following Android SDK and NDK:
 ac_add_options --with-android-sdk="{sdk_path}"
 ac_add_options --with-android-ndk="{ndk_path}"
->>>
+<<<
 '''
 
 MOBILE_ANDROID_ARTIFACT_MODE_MOZCONFIG_TEMPLATE = '''
-Paste the lines between the chevrons (>>> and <<<) into your mozconfig file:
+Paste the lines between the chevrons (>>> and <<<) into your
+$topsrcdir/mozconfig file, or create the file if it does not exist:
 
-<<<
+>>>
 # Build Firefox for Android Artifact Mode:
 ac_add_options --enable-application=mobile/android
 ac_add_options --target=arm-linux-androideabi
@@ -72,7 +74,7 @@ ac_add_options --with-android-sdk="{sdk_path}"
 
 # Write build artifacts to:
 mk_add_options MOZ_OBJDIR=./objdir-frontend
->>>
+<<<
 '''
 
 
@@ -227,7 +229,27 @@ def ensure_android_sdk_and_ndk(mozbuild_path, os_name, sdk_path, sdk_url, ndk_pa
         # preserve the old convention to smooth detecting existing SDK
         # installations.
         install_mobile_android_sdk_or_ndk(sdk_url, os.path.join(mozbuild_path,
-                                          'android-sdk-{0}'.format(os_name)))
+                                                                'android-sdk-{0}'.format(os_name)))
+
+
+def get_packages_to_install(packages_file_name):
+    """
+    sdkmanager version 26.1.1 (current) and some versions below have a bug that makes
+    the following command fail:
+        args = [sdkmanager_tool, '--package_file={0}'.format(package_file_name)]
+        subprocess.check_call(args)
+    The error is in the sdkmanager, where the --package_file param isn't recognized.
+        The error is being tracked here https://issuetracker.google.com/issues/66465833
+    Meanwhile, this workaround achives installing all required Android packages by reading
+    them out of the same file that --package_file would have used, and passing them as strings.
+    So from here: https://developer.android.com/studio/command-line/sdkmanager
+    Instead of:
+        sdkmanager --package_file=package_file [options]
+    We're doing:
+        sdkmanager "platform-tools" "platforms;android-26"
+    """
+    with open(packages_file_name) as package_file:
+        return map(lambda package: package.strip(), package_file.readlines())
 
 
 def ensure_android_packages(sdkmanager_tool, packages=None, no_interactive=False):
@@ -239,10 +261,12 @@ def ensure_android_packages(sdkmanager_tool, packages=None, no_interactive=False
     # This tries to install all the required Android packages.  The user
     # may be prompted to agree to the Android license.
     package_file_name = os.path.abspath(os.path.join(os.path.dirname(__file__),
-                                        'android-packages.txt'))
+                                                     'android-packages.txt'))
     print(INSTALLING_ANDROID_PACKAGES % open(package_file_name, 'rt').read())
 
-    args = [sdkmanager_tool, '--package_file={0}'.format(package_file_name)]
+    args = [sdkmanager_tool]
+    args.extend(get_packages_to_install(package_file_name))
+
     if not no_interactive:
         subprocess.check_call(args)
         return

@@ -127,14 +127,12 @@ HTMLLinkElement::HasDeferredDNSPrefetchRequest()
 nsresult
 HTMLLinkElement::BindToTree(nsIDocument* aDocument,
                             nsIContent* aParent,
-                            nsIContent* aBindingParent,
-                            bool aCompileEventHandlers)
+                            nsIContent* aBindingParent)
 {
   Link::ResetLinkState(false, Link::ElementHasHref());
 
   nsresult rv = nsGenericHTMLElement::BindToTree(aDocument, aParent,
-                                                 aBindingParent,
-                                                 aCompileEventHandlers);
+                                                 aBindingParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (nsIDocument* doc = GetComposedDoc()) {
@@ -244,7 +242,10 @@ HTMLLinkElement::CreateAndDispatchEvent(nsIDocument* aDoc,
     return;
 
   RefPtr<AsyncEventDispatcher> asyncDispatcher =
-    new AsyncEventDispatcher(this, aEventName, true, true);
+    new AsyncEventDispatcher(this,
+                             aEventName,
+                             CanBubble::eYes,
+                             ChromeOnlyDispatch::eYes);
   // Always run async in order to avoid running script when the content
   // sink isn't expecting it.
   asyncDispatcher->PostDOMEvent();
@@ -476,7 +477,7 @@ HTMLLinkElement::AddSizeOfExcludingThis(nsWindowSizes& aSizes,
 JSObject*
 HTMLLinkElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return HTMLLinkElementBinding::Wrap(aCx, this, aGivenProto);
+  return HTMLLinkElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void

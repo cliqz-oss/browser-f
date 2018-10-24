@@ -4,9 +4,6 @@
 
 "use strict";
 
-ChromeUtils.import("resource:///modules/CustomizableUI.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-
 var gManagers = new WeakMap();
 
 const kPaletteId = "customization-palette";
@@ -22,7 +19,7 @@ function AreaPositionManager(aContainer) {
     left: containerRect.left,
     right: containerRect.right,
     top: containerRect.top,
-    width: containerRect.width
+    width: containerRect.width,
   };
   this._horizontalDistance = null;
   this.update(aContainer);
@@ -94,7 +91,7 @@ AreaPositionManager.prototype = {
       if (aY > targetBounds.top && aY < targetBounds.bottom) {
         if ((this._dir == "ltr" && aX > outsideX) ||
             (this._dir == "rtl" && aX < outsideX)) {
-          return closest.nextSibling || aContainer;
+          return closest.nextElementSibling || aContainer;
         }
       }
     }
@@ -131,10 +128,10 @@ AreaPositionManager.prototype = {
         child.style.transform = "";
       }
     }
-    if (aContainer.lastChild && aIsFromThisArea &&
+    if (aContainer.lastElementChild && aIsFromThisArea &&
         !this._lastPlaceholderInsertion) {
       // Flush layout:
-      aContainer.lastChild.getBoundingClientRect();
+      aContainer.lastElementChild.getBoundingClientRect();
       // then remove all the [notransition]
       for (let child of aContainer.children) {
         child.removeAttribute("notransition");
@@ -289,7 +286,7 @@ AreaPositionManager.prototype = {
       rv = rv[aDirection + "Sibling"];
     } while (rv && rv.getAttribute("hidden") == "true");
     return rv;
-  }
+  },
 };
 
 var DragPositionManager = {
@@ -311,7 +308,7 @@ var DragPositionManager = {
 
   getManagerForArea(aArea) {
     return gManagers.get(aArea);
-  }
+  },
 };
 
 Object.freeze(DragPositionManager);

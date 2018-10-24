@@ -12,7 +12,7 @@
 #define mozilla_dom_Attr_h
 
 #include "mozilla/Attributes.h"
-#include "nsIAttribute.h"
+#include "nsINode.h"
 #include "nsString.h"
 #include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
@@ -26,13 +26,13 @@ namespace dom {
 
 // Attribute helper class used to wrap up an attribute with a dom
 // object that implements the DOM Attr interface.
-class Attr final : public nsIAttribute
+class Attr final : public nsINode
 {
   virtual ~Attr() {}
 
 public:
   Attr(nsDOMAttributeMap* aAttrMap,
-       already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo,
+       already_AddRefed<dom::NodeInfo>&& aNodeInfo,
        const nsAString& aValue);
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -51,28 +51,32 @@ public:
 
   void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
 
-  // nsIAttribute interface
-  void SetMap(nsDOMAttributeMap *aMap) override;
+  void ConstructUbiNode(void* storage) override;
+
+  nsDOMAttributeMap* GetMap()
+  {
+    return mAttrMap;
+  }
+
+  void SetMap(nsDOMAttributeMap *aMap);
+
   Element* GetElement() const;
-  nsresult SetOwnerDocument(nsIDocument* aDocument) override;
+
+  /**
+   * Called when our ownerElement is moved into a new document.
+   * Updates the nodeinfo of this node.
+   */
+  nsresult SetOwnerDocument(nsIDocument* aDocument);
 
   // nsINode interface
   virtual bool IsNodeOfType(uint32_t aFlags) const override;
-  virtual uint32_t GetChildCount() const override;
-  virtual nsIContent *GetChildAt_Deprecated(uint32_t aIndex) const override;
-  virtual int32_t ComputeIndexOf(const nsINode* aPossibleChild) const override;
-  virtual nsresult InsertChildBefore(nsIContent* aKid, nsIContent* aBeforeThis,
-                                     bool aNotify) override;
-  virtual void RemoveChildNode(nsIContent* aKid, bool aNotify) override;
-  virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
-                         bool aPreallocateChildren) const override;
+  virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
   virtual already_AddRefed<nsIURI> GetBaseURI(bool aTryUseXHRDocBaseURI = false) const override;
 
   static void Initialize();
   static void Shutdown();
 
-  NS_DECL_CYCLE_COLLECTION_SKIPPABLE_SCRIPT_HOLDER_CLASS_AMBIGUOUS(Attr,
-                                                                   nsIAttribute)
+  NS_DECL_CYCLE_COLLECTION_SKIPPABLE_SCRIPT_HOLDER_CLASS(Attr)
 
   // WebIDL
   virtual JSObject* WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
@@ -100,6 +104,7 @@ protected:
   static bool sInitialized;
 
 private:
+  RefPtr<nsDOMAttributeMap> mAttrMap;
   nsString mValue;
 };
 

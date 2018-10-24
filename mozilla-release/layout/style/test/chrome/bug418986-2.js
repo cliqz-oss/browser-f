@@ -70,18 +70,6 @@ var windows_versions = [
   "windows-win10",
 ];
 
-// Possible values for '-moz-windows-theme'
-var windows_themes = [
-  "aero",
-  "aero-lite",
-  "luna-blue",
-  "luna-olive",
-  "luna-silver",
-  "royale",
-  "generic",
-  "zune"
-];
-
 // Read the current OS.
 var OS = SpecialPowers.Services.appinfo.OS;
 
@@ -116,10 +104,13 @@ var testToggles = function (resisting) {
   suppressed_toggles.forEach(
     function (key) {
       var exists = keyValMatches(key, 0) || keyValMatches(key, 1);
-      if (resisting || (!toggles_enabled_in_content.includes(key) && !is_chrome_window)) {
+      if (!toggles_enabled_in_content.includes(key) && !is_chrome_window) {
          ok(!exists, key + " should not exist.");
       } else {
          ok(exists, key + " should exist.");
+        if (resisting) {
+          ok(keyValMatches(key, 0) && !keyValMatches(key, 1), "Should always match as false");
+        }
       }
     });
 };
@@ -167,14 +158,11 @@ var generateHtmlLines = function (resisting) {
       fragment.appendChild(div);
     });
   if (OS === "WINNT") {
-    let ids = ["-moz-os-version", "-moz-windows-theme"];
-    for (let id of ids) {
-      let div = document.createElement("div");
-      div.setAttribute("class", "windows");
-      div.setAttribute("id", id);
-      div.textContent = id;
-      fragment.appendChild(div);
-    }
+    let div = document.createElement("div");
+    div.setAttribute("class", "windows");
+    div.setAttribute("id", "-moz-os-version");
+    div.textContent = "-moz-os-version";
+    fragment.appendChild(div);
   }
   return fragment;
 };
@@ -229,15 +217,13 @@ var generateCSSLines = function (resisting) {
       if (!toggles_enabled_in_content.includes(key) && !resisting && !is_chrome_window) {
         lines += "#" + key + " { background-color: green; }\n";
       } else {
-        lines += suppressedMediaQueryCSSLine(key, resisting ? "red" : "green");
+        lines += suppressedMediaQueryCSSLine(key, "green");
       }
     });
   if (OS === "WINNT") {
     lines += ".windows { background-color: " + (resisting ? "green" : "red") + ";}\n";
     lines += windows_versions.map(val => "(-moz-os-version: " + val + ")").join(", ") +
              " { #-moz-os-version { background-color: " + (resisting ? "red" : "green") + ";} }\n";
-    lines += windows_themes.map(val => "(-moz-windows-theme: " + val + ")").join(",") +
-             " { #-moz-windows-theme { background-color: " + (resisting ? "red" : "green") + ";} }\n";
   }
   return lines;
 };
@@ -338,7 +324,6 @@ var test = async function(isContent) {
     testToggles(resisting);
     if (OS === "WINNT") {
       testWindowsSpecific(resisting, "-moz-os-version", windows_versions);
-      testWindowsSpecific(resisting, "-moz-windows-theme", windows_themes);
     }
     testCSS(resisting);
     if (OS === "Darwin") {

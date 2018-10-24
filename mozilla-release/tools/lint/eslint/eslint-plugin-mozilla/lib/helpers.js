@@ -11,6 +11,7 @@ const estraverse = require("estraverse");
 const path = require("path");
 const fs = require("fs");
 const ini = require("ini-parser");
+const recommendedConfig = require("./configs/recommended");
 
 var gModules = null;
 var gRootDir = null;
@@ -67,14 +68,17 @@ module.exports = {
    *
    * @param  {String} sourceText
    *         Text containing valid JavaScript.
+   * @param  {Object} astOptions
+   *         Extra configuration to pass to the espree parser, these will override
+   *         the configuration from getPermissiveConfig().
    *
    * @return {Object}
    *         The resulting AST.
    */
-  getAST(sourceText) {
+  getAST(sourceText, astOptions = {}) {
     // Use a permissive config file to allow parsing of anything that Espree
     // can parse.
-    var config = this.getPermissiveConfig();
+    let config = {...this.getPermissiveConfig(), ...astOptions};
 
     return espree.parse(sourceText, config);
   },
@@ -288,10 +292,17 @@ module.exports = {
         let globalModules = this.modulesGlobalData;
 
         if (match[1] in globalModules) {
-          return globalModules[match[1]].map(name => ({ name, writable: true }));
+          // XXX We mark as explicit when there is only one exported symbol from
+          // the module. For now this avoids no-unused-vars complaining in the
+          // cases where we import everything from a module but only use one
+          // of them.
+          let explicit = globalModules[match[1]].length == 1;
+          return globalModules[match[1]].map(name => ({
+            name, writable: true, explicit
+          }));
         }
 
-        return [{ name: match[2], writable: true }];
+        return [{ name: match[2], writable: true, explicit: true }];
       }
     }
 
@@ -404,9 +415,18 @@ module.exports = {
       loc: true,
       comment: true,
       attachComment: true,
-      ecmaVersion: 9,
+      ecmaVersion: this.getECMAVersion(),
       sourceType: "script"
     };
+  },
+
+  /**
+   * Returns the ECMA version of the recommended config.
+   *
+   * @return {Number} The ECMA version of the recommended config.
+   */
+  getECMAVersion() {
+    return recommendedConfig.parserOptions.ecmaVersion;
   },
 
   /**

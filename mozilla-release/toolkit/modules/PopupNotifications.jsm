@@ -238,7 +238,7 @@ function PopupNotifications(tabbrowser, panel,
     }
 
     // Esc key cancels the topmost notification, if there is one.
-    let notification = this.panel.firstChild;
+    let notification = this.panel.firstElementChild;
     if (!notification) {
       return;
     }
@@ -253,7 +253,7 @@ function PopupNotifications(tabbrowser, panel,
         // Ignore focused elements inside the notification.
         getNotificationFromElement(focusedElement) == notification ||
         notification.contains(focusedElement)) {
-      this._onButtonEvent(aEvent, "secondarybuttoncommand", notification);
+      this._onButtonEvent(aEvent, "secondarybuttoncommand", "esc-press", notification);
     }
   };
 
@@ -345,6 +345,11 @@ PopupNotifications.prototype = {
    *          - callback (function): a callback to be invoked when the button is
    *            pressed, is passed an object that contains the following fields:
    *              - checkboxChecked: (boolean) If the optional checkbox is checked.
+   *              - source: (string): the source of the action that initiated the
+   *                callback, either:
+   *                - "button" if popup buttons were directly activated, or
+   *                - "esc-press" if the user pressed the escape key, or
+   *                - "menucommand" if a menu was activated.
    *          - [optional] dismiss (boolean): If this is true, the notification
    *            will be dismissed instead of removed after running the callback.
    *          - [optional] disableHighlight (boolean): If this is true, the button
@@ -695,8 +700,8 @@ PopupNotifications.prototype = {
       }
     }
 
-    let browser = this.panel.firstChild &&
-                  this.panel.firstChild.notification.browser;
+    let browser = this.panel.firstElementChild &&
+                  this.panel.firstElementChild.notification.browser;
     this.panel.hidePopup();
     if (browser)
       browser.focus();
@@ -723,7 +728,7 @@ PopupNotifications.prototype = {
    */
   _clearPanel() {
     let popupnotification;
-    while ((popupnotification = this.panel.lastChild)) {
+    while ((popupnotification = this.panel.lastElementChild)) {
       this.panel.removeChild(popupnotification);
 
       // If this notification was provided by the chrome document rather than
@@ -734,9 +739,9 @@ PopupNotifications.prototype = {
 
         // Remove nodes dynamically added to the notification's menu button
         // in _refreshPanel.
-        let contentNode = popupnotification.lastChild;
+        let contentNode = popupnotification.lastElementChild;
         while (contentNode) {
-          let previousSibling = contentNode.previousSibling;
+          let previousSibling = contentNode.previousElementSibling;
           if (contentNode.nodeName == "menuitem" ||
               contentNode.nodeName == "menuseparator")
             popupnotification.removeChild(contentNode);
@@ -782,8 +787,6 @@ PopupNotifications.prototype = {
   _refreshPanel: function PopupNotifications_refreshPanel(notificationsToShow) {
     this._clearPanel();
 
-    const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-
     notificationsToShow.forEach(function(n) {
       let doc = this.window.document;
 
@@ -797,7 +800,7 @@ PopupNotifications.prototype = {
       if (popupnotification)
         gNotificationParents.set(popupnotification, popupnotification.parentNode);
       else
-        popupnotification = doc.createElementNS(XUL_NS, "popupnotification");
+        popupnotification = doc.createXULElement("popupnotification");
 
       // Create the notification description element.
       let desc = this._formatDescriptionMessage(n);
@@ -809,7 +812,7 @@ PopupNotifications.prototype = {
       popupnotification.setAttribute("popupid", n.id);
       popupnotification.setAttribute("oncommand", "PopupNotifications._onCommand(event);");
       if (Services.prefs.getBoolPref("privacy.permissionPrompts.showCloseButton")) {
-        popupnotification.setAttribute("closebuttoncommand", "PopupNotifications._onButtonEvent(event, 'secondarybuttoncommand');");
+        popupnotification.setAttribute("closebuttoncommand", "PopupNotifications._onButtonEvent(event, 'secondarybuttoncommand', 'esc-press');");
       } else {
         popupnotification.setAttribute("closebuttoncommand", `PopupNotifications._dismiss(event, ${TELEMETRY_STAT_DISMISSAL_CLOSE_BUTTON});`);
       }
@@ -879,7 +882,7 @@ PopupNotifications.prototype = {
 
         for (let i = 1; i < n.secondaryActions.length; i++) {
           let action = n.secondaryActions[i];
-          let item = doc.createElementNS(XUL_NS, "menuitem");
+          let item = doc.createXULElement("menuitem");
           item.setAttribute("label", action.label);
           item.setAttribute("accesskey", action.accessKey);
           item.notification = n;
@@ -1022,7 +1025,7 @@ PopupNotifications.prototype = {
 
       // On OS X and Linux we need a different panel arrow color for
       // click-to-play plugins, so copy the popupid and use css.
-      this.panel.setAttribute("popupid", this.panel.firstChild.getAttribute("popupid"));
+      this.panel.setAttribute("popupid", this.panel.firstElementChild.getAttribute("popupid"));
       notificationsToShow.forEach(function(n) {
         // Record that the notification was actually displayed on screen.
         // Notifications that were opened a second time or that were originally
@@ -1410,14 +1413,14 @@ PopupNotifications.prototype = {
   },
 
   _dismissOrRemoveCurrentNotifications() {
-    let browser = this.panel.firstChild &&
-                  this.panel.firstChild.notification.browser;
+    let browser = this.panel.firstElementChild &&
+                  this.panel.firstElementChild.notification.browser;
     if (!browser)
       return;
 
     let notifications = this._getNotificationsForBrowser(browser);
     // Mark notifications as dismissed and call dismissal callbacks
-    Array.forEach(this.panel.childNodes, function(nEl) {
+    Array.forEach(this.panel.children, function(nEl) {
       let notificationObj = nEl.notification;
       // Never call a dismissal handler on a notification that's been removed.
       if (!notifications.includes(notificationObj))
@@ -1477,7 +1480,7 @@ PopupNotifications.prototype = {
     this._setNotificationUIState(notificationEl);
   },
 
-  _onButtonEvent(event, type, notificationEl = null) {
+  _onButtonEvent(event, type, source = "button", notificationEl = null) {
     if (!notificationEl) {
       notificationEl = getNotificationFromElement(event.originalTarget);
     }
@@ -1541,7 +1544,8 @@ PopupNotifications.prototype = {
     if (action) {
       try {
         action.callback.call(undefined, {
-          checkboxChecked: notificationEl.checkbox.checked
+          checkboxChecked: notificationEl.checkbox.checked,
+          source,
         });
       } catch (error) {
         Cu.reportError(error);
@@ -1569,7 +1573,8 @@ PopupNotifications.prototype = {
 
     try {
       target.action.callback.call(undefined, {
-        checkboxChecked: notificationEl.checkbox.checked
+        checkboxChecked: notificationEl.checkbox.checked,
+        source: "menucommand",
       });
     } catch (error) {
       Cu.reportError(error);

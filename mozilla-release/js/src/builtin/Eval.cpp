@@ -11,6 +11,8 @@
 
 #include "frontend/BytecodeCompiler.h"
 #include "gc/HashUtil.h"
+#include "js/SourceBufferHolder.h"
+#include "js/StableStringChars.h"
 #include "vm/Debugger.h"
 #include "vm/GlobalObject.h"
 #include "vm/JSContext.h"
@@ -25,6 +27,9 @@ using mozilla::HashString;
 using mozilla::RangedPtr;
 
 using JS::AutoCheckCannotGC;
+using JS::AutoStableStringChars;
+using JS::CompileOptions;
+using JS::SourceBufferHolder;
 
 // We should be able to assert this for *any* fp->environmentChain().
 static void
@@ -222,7 +227,7 @@ EvalKernel(JSContext* cx, HandleValue v, EvalType evalType, AbstractFramePtr cal
     MOZ_ASSERT_IF(evalType == INDIRECT_EVAL, IsGlobalLexicalEnvironment(env));
     AssertInnerizedEnvironmentChain(cx, *env);
 
-    if (!GlobalObject::isRuntimeCodeGenEnabled(cx, cx->global())) {
+    if (!GlobalObject::isRuntimeCodeGenEnabled(cx, v, cx->global())) {
         JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_CSP_BLOCKED_EVAL);
         return false;
     }
@@ -327,7 +332,8 @@ js::DirectEvalStringFromIon(JSContext* cx,
 {
     AssertInnerizedEnvironmentChain(cx, *env);
 
-    if (!GlobalObject::isRuntimeCodeGenEnabled(cx, cx->global())) {
+    RootedValue v(cx, StringValue(str));
+    if (!GlobalObject::isRuntimeCodeGenEnabled(cx, v, cx->global())) {
         JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_CSP_BLOCKED_EVAL);
         return false;
     }
@@ -437,7 +443,7 @@ static bool
 ExecuteInExtensibleLexicalEnvironment(JSContext* cx, HandleScript scriptArg, HandleObject env)
 {
     CHECK_REQUEST(cx);
-    assertSameCompartment(cx, env);
+    cx->check(env);
     MOZ_ASSERT(IsExtensibleLexicalEnvironment(env));
     MOZ_RELEASE_ASSERT(scriptArg->hasNonSyntacticScope());
 
@@ -456,23 +462,35 @@ ExecuteInExtensibleLexicalEnvironment(JSContext* cx, HandleScript scriptArg, Han
 }
 
 JS_FRIEND_API(bool)
-js::ExecuteInGlobalAndReturnScope(JSContext* cx, HandleObject global, HandleScript scriptArg,
-                                  MutableHandleObject envArg)
+js::ExecuteInFrameScriptEnvironment(JSContext* cx, HandleObject objArg, HandleScript scriptArg,
+                                    MutableHandleObject envArg)
 {
     RootedObject varEnv(cx, NonSyntacticVariablesObject::create(cx));
     if (!varEnv)
         return false;
 
-    // Create lexical environment with |this| == global.
-    // NOTE: This is required behavior for Gecko FrameScriptLoader
-    RootedObject lexEnv(cx, LexicalEnvironmentObject::createNonSyntactic(cx, varEnv, global));
-    if (!lexEnv)
+    AutoObjectVector envChain(cx);
+    if (!envChain.append(objArg))
         return false;
 
-    if (!ExecuteInExtensibleLexicalEnvironment(cx, scriptArg, lexEnv))
+    RootedObject env(cx);
+    if (!js::CreateObjectsForEnvironmentChain(cx, envChain, varEnv, &env))
         return false;
 
-    envArg.set(lexEnv);
+    // Create lexical environment with |this| == objArg, which should be a Gecko
+    // MessageManager.
+    // NOTE: This is required behavior for Gecko FrameScriptLoader, where some
+    // callers try to bind methods from the message manager in their scope chain
+    // to |this|, and will fail if it is not bound to a message manager.
+    ObjectRealm& realm = ObjectRealm::get(varEnv);
+    env = realm.getOrCreateNonSyntacticLexicalEnvironment(cx, env, varEnv, objArg);
+    if (!env)
+        return false;
+
+    if (!ExecuteInExtensibleLexicalEnvironment(cx, scriptArg, env))
+        return false;
+
+    envArg.set(env);
     return true;
 }
 
@@ -503,7 +521,7 @@ JS_FRIEND_API(bool)
 js::ExecuteInJSMEnvironment(JSContext* cx, HandleScript scriptArg, HandleObject varEnv,
                             AutoObjectVector& targetObj)
 {
-    assertSameCompartment(cx, varEnv);
+    cx->check(varEnv);
     MOZ_ASSERT(ObjectRealm::get(varEnv).getNonSyntacticLexicalEnvironment(varEnv));
     MOZ_DIAGNOSTIC_ASSERT(scriptArg->noScriptRval());
 

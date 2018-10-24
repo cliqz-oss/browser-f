@@ -658,6 +658,8 @@ class LSafepoint;
 class LInstruction;
 class LElementVisitor;
 
+constexpr size_t MaxNumLInstructionOperands = 63;
+
 // The common base class for LPhi and LInstruction.
 class LNode
 {
@@ -672,9 +674,12 @@ class LNode
     // Bitfields below are all uint32_t to make sure MSVC packs them correctly.
     uint32_t op_ : 10;
     uint32_t isCall_ : 1;
+
     // LPhi::numOperands() may not fit in this bitfield, so we only use this
     // field for LInstruction.
     uint32_t nonPhiNumOperands_ : 6;
+    static_assert((1 << 6) - 1 == MaxNumLInstructionOperands, "packing constraints");
+
     // For LInstruction, the first operand is stored at offset
     // sizeof(LInstruction) + nonPhiOperandsOffset_ * sizeof(uintptr_t).
     uint32_t nonPhiOperandsOffset_ : 5;
@@ -1898,7 +1903,7 @@ class LIRGraph
     explicit LIRGraph(MIRGraph* mir);
 
     MOZ_MUST_USE bool init() {
-        return constantPoolMap_.init() && blocks_.init(mir_.alloc(), mir_.numBlocks());
+        return blocks_.init(mir_.alloc(), mir_.numBlocks());
     }
     MIRGraph& mir() const {
         return mir_;

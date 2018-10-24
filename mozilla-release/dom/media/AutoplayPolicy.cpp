@@ -7,55 +7,155 @@
 #include "AutoplayPolicy.h"
 
 #include "mozilla/EventStateManager.h"
+#include "mozilla/Logging.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/AudioContext.h"
+#include "mozilla/AutoplayPermissionManager.h"
 #include "mozilla/dom/HTMLMediaElement.h"
 #include "mozilla/dom/HTMLMediaElementBinding.h"
+#include "nsIAutoplay.h"
 #include "nsContentUtils.h"
 #include "nsIDocument.h"
 #include "MediaManager.h"
+#include "nsIDocShell.h"
+#include "nsIDocShellTreeItem.h"
+#include "nsPIDOMWindow.h"
+
+mozilla::LazyLogModule gAutoplayPermissionLog("Autoplay");
+
+#define AUTOPLAY_LOG(msg, ...)                                             \
+  MOZ_LOG(gAutoplayPermissionLog, LogLevel::Debug, (msg, ##__VA_ARGS__))
+
+static const char*
+AllowAutoplayToStr(const uint32_t state)
+{
+  switch (state) {
+    case nsIAutoplay::ALLOWED:
+      return "allowed";
+    case nsIAutoplay::BLOCKED:
+      return "blocked";
+    case nsIAutoplay::PROMPT:
+      return "prompt";
+    default:
+      return "unknown";
+  }
+}
 
 namespace mozilla {
 namespace dom {
 
-/* static */ bool
-AutoplayPolicy::IsMediaElementAllowedToPlay(NotNull<HTMLMediaElement*> aElement)
+static nsIDocument*
+ApproverDocOf(const nsIDocument& aDocument)
 {
-  if (Preferences::GetBool("media.autoplay.enabled")) {
-    return true;
+  nsCOMPtr<nsIDocShell> ds = aDocument.GetDocShell();
+  if (!ds) {
+    return nullptr;
   }
 
-  // TODO : this old way would be removed when user-gestures-needed becomes
-  // as a default option to block autoplay.
-  if (!Preferences::GetBool("media.autoplay.enabled.user-gestures-needed", false)) {
-    // If elelement is blessed, it would always be allowed to play().
-    return aElement->IsBlessed() ||
-           EventStateManager::IsHandlingUserInput();
+  nsCOMPtr<nsIDocShellTreeItem> rootTreeItem;
+  ds->GetSameTypeRootTreeItem(getter_AddRefs(rootTreeItem));
+  if (!rootTreeItem) {
+    return nullptr;
+  }
+
+  return rootTreeItem->GetDocument();
+}
+
+static bool
+IsWindowAllowedToPlay(nsPIDOMWindowInner* aWindow)
+{
+  if (!aWindow) {
+    return false;
   }
 
   // Pages which have been granted permission to capture WebRTC camera or
   // microphone are assumed to be trusted, and are allowed to autoplay.
   MediaManager* manager = MediaManager::GetIfExists();
-  if (manager) {
-    nsCOMPtr<nsPIDOMWindowInner> window = aElement->OwnerDoc()->GetInnerWindow();
-    if (window && manager->IsActivelyCapturingOrHasAPermission(window->WindowID())) {
-      return true;
-    }
-  }
-
-  // Muted content
-  if (aElement->Volume() == 0.0 || aElement->Muted()) {
+  if (manager &&
+      manager->IsActivelyCapturingOrHasAPermission(aWindow->WindowID())) {
     return true;
   }
 
-  // Whitelisted.
-  if (nsContentUtils::IsExactSitePermAllow(
-        aElement->NodePrincipal(), "autoplay-media")) {
+  if (!aWindow->GetExtantDoc()) {
+    return false;
+  }
+
+  nsIDocument* approver = ApproverDocOf(*aWindow->GetExtantDoc());
+  if (nsContentUtils::IsExactSitePermAllow(approver->NodePrincipal(),
+                                           "autoplay-media")) {
+    AUTOPLAY_LOG("Allow autoplay as document has autoplay permission.");
     return true;
   }
 
-  // Activated by user gesture.
-  if (aElement->OwnerDoc()->HasBeenUserActivated()) {
+  if (approver->HasBeenUserGestureActivated()) {
+    AUTOPLAY_LOG("Allow autoplay as document activated by user gesture.");
+    return true;
+  }
+
+  if (approver->IsExtensionPage()) {
+    AUTOPLAY_LOG("Allow autoplay as in extension document.");
+    return true;
+  }
+
+  return false;
+}
+
+/* static */
+already_AddRefed<AutoplayPermissionManager>
+AutoplayPolicy::RequestFor(const nsIDocument& aDocument)
+{
+  nsIDocument* document = ApproverDocOf(aDocument);
+  if (!document) {
+    return nullptr;
+  }
+  nsPIDOMWindowInner* window = document->GetInnerWindow();
+  if (!window) {
+    return nullptr;
+  }
+  return window->GetAutoplayPermissionManager();
+}
+
+static uint32_t
+DefaultAutoplayBehaviour()
+{
+  int prefValue = Preferences::GetInt("media.autoplay.default", nsIAutoplay::ALLOWED);
+  if (prefValue < nsIAutoplay::ALLOWED || prefValue > nsIAutoplay::PROMPT) {
+    // Invalid pref values are just converted to ALLOWED.
+    return nsIAutoplay::ALLOWED;
+  }
+  return prefValue;
+}
+
+static bool
+IsMediaElementAllowedToPlay(const HTMLMediaElement& aElement)
+{
+  if ((aElement.Volume() == 0.0 || aElement.Muted()) &&
+       Preferences::GetBool("media.autoplay.allow-muted", true)) {
+    AUTOPLAY_LOG("Allow muted media %p to autoplay.", &aElement);
+    return true;
+  }
+
+  if (IsWindowAllowedToPlay(aElement.OwnerDoc()->GetInnerWindow())) {
+    AUTOPLAY_LOG("Autoplay allowed as activated/whitelisted window, media %p.", &aElement);
+    return true;
+  }
+
+  nsIDocument* topDocument = ApproverDocOf(*aElement.OwnerDoc());
+  if (topDocument &&
+      topDocument->MediaDocumentKind() == nsIDocument::MediaDocumentKind::Video) {
+    AUTOPLAY_LOG("Allow video document %p to autoplay", &aElement);
+    return true;
+  }
+
+  if (!aElement.HasAudio() &&
+      aElement.ReadyState() >= HTMLMediaElement_Binding::HAVE_METADATA) {
+    AUTOPLAY_LOG("Allow media %p without audio track to autoplay", &aElement);
+    return true;
+  }
+
+  if (!aElement.HasAudio() &&
+      aElement.ReadyState() >= HTMLMediaElement_Binding::HAVE_METADATA) {
+    AUTOPLAY_LOG("Allow media without audio track %p to autoplay\n", &aElement);
     return true;
   }
 
@@ -63,9 +163,45 @@ AutoplayPolicy::IsMediaElementAllowedToPlay(NotNull<HTMLMediaElement*> aElement)
 }
 
 /* static */ bool
+AutoplayPolicy::WouldBeAllowedToPlayIfAutoplayDisabled(const HTMLMediaElement& aElement)
+{
+  return IsMediaElementAllowedToPlay(aElement);
+}
+
+/* static */ bool
+AutoplayPolicy::IsAllowedToPlay(const HTMLMediaElement& aElement)
+{
+  const uint32_t autoplayDefault = DefaultAutoplayBehaviour();
+  // TODO : this old way would be removed when user-gestures-needed becomes
+  // as a default option to block autoplay.
+  if (!Preferences::GetBool("media.autoplay.enabled.user-gestures-needed", false)) {
+    // If element is blessed, it would always be allowed to play().
+    return (autoplayDefault == nsIAutoplay::ALLOWED ||
+            aElement.IsBlessed() ||
+            EventStateManager::IsHandlingUserInput());
+  }
+
+  if (IsMediaElementAllowedToPlay(aElement)) {
+    return true;
+  }
+
+  const bool result = IsMediaElementAllowedToPlay(aElement) ||
+    autoplayDefault == nsIAutoplay::ALLOWED;
+
+  AUTOPLAY_LOG("IsAllowedToPlay, mediaElement=%p, isAllowToPlay=%s",
+                &aElement, AllowAutoplayToStr(result));
+
+  return result;
+}
+
+/* static */ bool
 AutoplayPolicy::IsAudioContextAllowedToPlay(NotNull<AudioContext*> aContext)
 {
-  if (Preferences::GetBool("media.autoplay.enabled")) {
+  if (!Preferences::GetBool("media.autoplay.block-webaudio", false)) {
+    return true;
+  }
+
+  if (DefaultAutoplayBehaviour() == nsIAutoplay::ALLOWED) {
     return true;
   }
 
@@ -78,30 +214,7 @@ AutoplayPolicy::IsAudioContextAllowedToPlay(NotNull<AudioContext*> aContext)
     return true;
   }
 
-  nsPIDOMWindowInner* window = aContext->GetOwner();
-  if (!window) {
-    return false;
-  }
-
-  // Pages which have been granted permission to capture WebRTC camera or
-  // microphone are assumed to be trusted, and are allowed to autoplay.
-  MediaManager* manager = MediaManager::GetIfExists();
-  if (manager) {
-    if (manager->IsActivelyCapturingOrHasAPermission(window->WindowID())) {
-      return true;
-    }
-  }
-
-  nsCOMPtr<nsIPrincipal> principal = aContext->GetParentObject()->AsGlobal()->PrincipalOrNull();
-
-  // Whitelisted.
-  if (principal &&
-      nsContentUtils::IsExactSitePermAllow(principal, "autoplay-media")) {
-    return true;
-  }
-
-  // Activated by user gesture.
-  if (window->GetExtantDoc()->HasBeenUserActivated()) {
+  if (IsWindowAllowedToPlay(aContext->GetOwner())) {
     return true;
   }
 

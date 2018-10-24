@@ -280,9 +280,9 @@ struct ParamTraits<mozilla::dom::RTCIceComponentStats>
   }
 };
 
-static void WriteRTCRTPStreamStats(
+static void WriteRTCRtpStreamStats(
               Message* aMsg,
-              const mozilla::dom::RTCRTPStreamStats& aParam)
+              const mozilla::dom::RTCRtpStreamStats& aParam)
 {
     WriteParam(aMsg, aParam.mBitrateMean);
     WriteParam(aMsg, aParam.mBitrateStdDev);
@@ -292,14 +292,15 @@ static void WriteRTCRTPStreamStats(
     WriteParam(aMsg, aParam.mIsRemote);
     WriteParam(aMsg, aParam.mMediaTrackId);
     WriteParam(aMsg, aParam.mMediaType);
+    WriteParam(aMsg, aParam.mKind);
     WriteParam(aMsg, aParam.mRemoteId);
     WriteParam(aMsg, aParam.mSsrc);
     WriteParam(aMsg, aParam.mTransportId);
 }
 
-static bool ReadRTCRTPStreamStats(
+static bool ReadRTCRtpStreamStats(
               const Message* aMsg, PickleIterator* aIter,
-              mozilla::dom::RTCRTPStreamStats* aResult)
+              mozilla::dom::RTCRtpStreamStats* aResult)
 {
   if (!ReadParam(aMsg, aIter, &(aResult->mBitrateMean)) ||
       !ReadParam(aMsg, aIter, &(aResult->mBitrateStdDev)) ||
@@ -309,6 +310,7 @@ static bool ReadRTCRTPStreamStats(
       !ReadParam(aMsg, aIter, &(aResult->mIsRemote)) ||
       !ReadParam(aMsg, aIter, &(aResult->mMediaTrackId)) ||
       !ReadParam(aMsg, aIter, &(aResult->mMediaType)) ||
+      !ReadParam(aMsg, aIter, &(aResult->mKind)) ||
       !ReadParam(aMsg, aIter, &(aResult->mRemoteId)) ||
       !ReadParam(aMsg, aIter, &(aResult->mSsrc)) ||
       !ReadParam(aMsg, aIter, &(aResult->mTransportId))) {
@@ -334,7 +336,7 @@ struct ParamTraits<mozilla::dom::RTCInboundRTPStreamStats>
     WriteParam(aMsg, aParam.mRoundTripTime);
     WriteParam(aMsg, aParam.mPacketsLost);
     WriteParam(aMsg, aParam.mPacketsReceived);
-    WriteRTCRTPStreamStats(aMsg, aParam);
+    WriteRTCRtpStreamStats(aMsg, aParam);
     WriteRTCStats(aMsg, aParam);
   }
 
@@ -349,7 +351,7 @@ struct ParamTraits<mozilla::dom::RTCInboundRTPStreamStats>
         !ReadParam(aMsg, aIter, &(aResult->mRoundTripTime)) ||
         !ReadParam(aMsg, aIter, &(aResult->mPacketsLost)) ||
         !ReadParam(aMsg, aIter, &(aResult->mPacketsReceived)) ||
-        !ReadRTCRTPStreamStats(aMsg, aIter, aResult) ||
+        !ReadRTCRtpStreamStats(aMsg, aIter, aResult) ||
         !ReadRTCStats(aMsg, aIter, aResult)) {
       return false;
     }
@@ -373,7 +375,7 @@ struct ParamTraits<mozilla::dom::RTCOutboundRTPStreamStats>
     WriteParam(aMsg, aParam.mFirCount);
     WriteParam(aMsg, aParam.mNackCount);
     WriteParam(aMsg, aParam.mPliCount);
-    WriteRTCRTPStreamStats(aMsg, aParam);
+    WriteRTCRtpStreamStats(aMsg, aParam);
     WriteRTCStats(aMsg, aParam);
   }
 
@@ -387,7 +389,7 @@ struct ParamTraits<mozilla::dom::RTCOutboundRTPStreamStats>
         !ReadParam(aMsg, aIter, &(aResult->mFirCount)) ||
         !ReadParam(aMsg, aIter, &(aResult->mNackCount)) ||
         !ReadParam(aMsg, aIter, &(aResult->mPliCount)) ||
-        !ReadRTCRTPStreamStats(aMsg, aIter, aResult) ||
+        !ReadRTCRtpStreamStats(aMsg, aIter, aResult) ||
         !ReadRTCStats(aMsg, aIter, aResult)) {
       return false;
     }

@@ -70,7 +70,7 @@ function makeTest(id, expectedJSON, useReportOnlyPolicy, callback) {
   // set up a new CSP instance for each test.
   var csp = Cc["@mozilla.org/cspcontext;1"]
               .createInstance(Ci.nsIContentSecurityPolicy);
-  var policy = "default-src 'none'; " +
+  var policy = "default-src 'none' 'report-sample'; " +
                "report-uri " + REPORT_SERVER_URI +
                                ":" + REPORT_SERVER_PORT +
                                "/test" + id;
@@ -102,27 +102,28 @@ function run_test() {
                                ":" + REPORT_SERVER_PORT +
                                "/foo/self");
 
-  let content = Cc["@mozilla.org/supports-string;1"].
-                   createInstance(Ci.nsISupportsString);
-  content.data = "";
   // test that inline script violations cause a report.
-  makeTest(0, {"blocked-uri": ""}, false,
+  makeTest(0, {"blocked-uri": "inline"}, false,
       function(csp) {
         let inlineOK = true;
         inlineOK = csp.getAllowsInline(Ci.nsIContentPolicy.TYPE_SCRIPT,
                                        "", // aNonce
                                        false, // aParserCreated
-                                       content, // aContent
-                                       0); // aLineNumber
+                                       null, // aTriggeringElement
+                                       "", // aContentOfPseudoScript
+                                       0, // aLineNumber
+                                       0); // aColumnNumber
 
         // this is not a report only policy, so it better block inline scripts
         Assert.ok(!inlineOK);
       });
 
   // test that eval violations cause a report.
-  makeTest(1, {"blocked-uri": "",
+  makeTest(1, {"blocked-uri": "eval",
                // JSON script-sample is UTF8 encoded
-               "script-sample" : "\xc2\xa3\xc2\xa5\xc2\xb5\xe5\x8c\x97\xf0\xa0\x9d\xb9"}, false,
+               "script-sample" : "\xc2\xa3\xc2\xa5\xc2\xb5\xe5\x8c\x97\xf0\xa0\x9d\xb9",
+               "line-number": 1,
+               "column-number": 2}, false,
       function(csp) {
         let evalOK = true, oReportViolation = {'value': false};
         evalOK = csp.getAllowsEval(oReportViolation);
@@ -135,42 +136,43 @@ function run_test() {
         if (oReportViolation.value) {
           // force the logging, since the getter doesn't.
           csp.logViolationDetails(Ci.nsIContentSecurityPolicy.VIOLATION_TYPE_EVAL,
+                                  null, // aTriggeringElement
                                   selfuri.asciiSpec,
                                   // sending UTF-16 script sample to make sure
                                   // csp report in JSON is not cut-off, please
                                   // note that JSON is UTF8 encoded.
                                   "\u00a3\u00a5\u00b5\u5317\ud841\udf79",
-                                  1);
+                                  1, // line number
+                                  2); // column number
         }
       });
 
-  makeTest(2, {"blocked-uri": "http://blocked.test"}, false,
+  makeTest(2, {"blocked-uri": "http://blocked.test/foo.js"}, false,
       function(csp) {
         // shouldLoad creates and sends out the report here.
         csp.shouldLoad(Ci.nsIContentPolicy.TYPE_SCRIPT,
                       NetUtil.newURI("http://blocked.test/foo.js"),
-                      null, null, null, null);
+                      null, null, null, null, true);
       });
 
   // test that inline script violations cause a report in report-only policy
-  makeTest(3, {"blocked-uri": ""}, true,
+  makeTest(3, {"blocked-uri": "inline"}, true,
       function(csp) {
         let inlineOK = true;
-        let content = Cc["@mozilla.org/supports-string;1"].
-                         createInstance(Ci.nsISupportsString);
-        content.data = "";
         inlineOK = csp.getAllowsInline(Ci.nsIContentPolicy.TYPE_SCRIPT,
                                        "", // aNonce
                                        false, // aParserCreated
-                                       content, // aContent
-                                       0); // aLineNumber
+                                       null, // aTriggeringElement
+                                       "", // aContentOfPseudoScript
+                                       0, // aLineNumber
+                                       0); // aColumnNumber
 
         // this is a report only policy, so it better allow inline scripts
         Assert.ok(inlineOK);
       });
 
   // test that eval violations cause a report in report-only policy
-  makeTest(4, {"blocked-uri": ""}, true,
+  makeTest(4, {"blocked-uri": "inline"}, true,
       function(csp) {
         let evalOK = true, oReportViolation = {'value': false};
         evalOK = csp.getAllowsEval(oReportViolation);
@@ -183,9 +185,11 @@ function run_test() {
         if (oReportViolation.value) {
           // force the logging, since the getter doesn't.
           csp.logViolationDetails(Ci.nsIContentSecurityPolicy.VIOLATION_TYPE_INLINE_SCRIPT,
+                                  null, // aTriggeringElement
                                   selfuri.asciiSpec,
                                   "script sample",
-                                  4);
+                                  4, // line number
+                                  5); // column number
         }
       });
 
@@ -198,7 +202,7 @@ function run_test() {
       // shouldLoad creates and sends out the report here.
       csp.shouldLoad(Ci.nsIContentPolicy.TYPE_IMAGE,
                      NetUtil.newURI("data:image/png;base64," + base64data),
-                     null, null, null, null);
+                     null, null, null, null, true);
       });
 
   // test that only the uri's scheme is reported for globally unique identifiers
@@ -207,7 +211,7 @@ function run_test() {
       // shouldLoad creates and sends out the report here.
       csp.shouldLoad(Ci.nsIContentPolicy.TYPE_SUBDOCUMENT,
                      NetUtil.newURI("intent://mymaps.com/maps?um=1&ie=UTF-8&fb=1&sll"),
-                     null, null, null, null);
+                     null, null, null, null, true);
       });
 
   // test fragment removal
@@ -218,15 +222,15 @@ function run_test() {
       // shouldLoad creates and sends out the report here.
       csp.shouldLoad(Ci.nsIContentPolicy.TYPE_SCRIPT,
                      NetUtil.newURI(selfSpec + "#bar"),
-                     null, null, null, null);
+                     null, null, null, null, true);
       });
 
   // test scheme of ftp:
-  makeTest(8, {"blocked-uri": "ftp://blocked.test"}, false,
+  makeTest(8, {"blocked-uri": "ftp://blocked.test/profile.png"}, false,
     function(csp) {
       // shouldLoad creates and sends out the report here.
       csp.shouldLoad(Ci.nsIContentPolicy.TYPE_SCRIPT,
                     NetUtil.newURI("ftp://blocked.test/profile.png"),
-                    null, null, null, null);
+                    null, null, null, null, true);
     });
 }

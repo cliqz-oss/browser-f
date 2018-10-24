@@ -12,6 +12,9 @@ import logging
 import requests
 from redo import retry
 from mozpack.path import match as mozpackmatch, join as join_path
+from mozversioncontrol import get_repository_object, InvalidRepoPath
+from subprocess import CalledProcessError
+from mozbuild.util import memoize
 
 logger = logging.getLogger(__name__)
 _cache = {}
@@ -28,7 +31,7 @@ def get_changed_files(repository, revision):
         logger.debug("Querying version control for metadata: %s", url)
 
         def get_automationrelevance():
-            response = requests.get(url, timeout=5)
+            response = requests.get(url, timeout=30)
             return response.json()
         contents = retry(get_automationrelevance, attempts=10, sleeptime=10)
 
@@ -76,3 +79,12 @@ def check(params, file_patterns):
                 return True
 
     return False
+
+
+@memoize
+def get_locally_changed_files(repo):
+    try:
+        vcs = get_repository_object(repo)
+        return set(vcs.get_outgoing_files('AM'))
+    except (InvalidRepoPath, CalledProcessError):
+        return set()

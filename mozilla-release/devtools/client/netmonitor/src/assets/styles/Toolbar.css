@@ -33,10 +33,6 @@
   align-items: center;
 }
 
-.devtools-toolbar-group .devtools-separator {
-  height: 24px;
-}
-
 .devtools-toolbar-two-rows-1,
 .devtools-toolbar-two-rows-2,
 .devtools-toolbar-single-row {
@@ -73,31 +69,25 @@
   background-image: var(--play-icon-url);
 }
 
-.devtools-button.devtools-har-button {
-  margin: 0 0 0 2px;
-  padding: 0;
-}
+/* HAR button */
 
-.network-monitor .devtools-button.devtools-har-button:hover {
-  background: var(--toolbarbutton-hover-background);
-  border-color: var(--toolbarbutton-hover-border-color);
-}
-
-/* HAR button has label and icon, so make sure they don't overlap */
-.devtools-button.devtools-har-button::before {
-  content: "HAR";
-  color: var(--theme-body-color);
-  width: 21px;
-  padding-right: 12px;
-  background-image: var(--drop-down-icon-url);
+#devtools-har-button {
+  width: 35px;
+  margin-inline-start: 2px;
+  padding-inline-start: 0;
+  padding-inline-end: 12px;
   background-position: right center;
-  fill: var(--theme-toolbar-photon-icon-color);
-  height: 17px;
 }
 
-/* Make sure the HAR button label is vertically centered on Mac */
-:root[platform="mac"] .devtools-button.devtools-har-button::before {
-  height: 14px;
+/* Make sure spacing between text and icon is uniform */
+#devtools-har-button .title {
+  width: 24px;
+}
+
+/* Throttling Button */
+
+#network-throttling-menu {
+  margin-inline-start: 6px;
 }
 
 .devtools-checkbox {
@@ -118,36 +108,6 @@
 
 .devtools-checkbox-label.devtools-cache-checkbox {
   margin-inline-end: 7px;
-}
-
-/* Throttling Button */
-
-#global-network-throttling-selector:not(:hover) {
-  background-color: transparent;
-}
-
-#global-network-throttling-selector {
-  width: 92px;
-  padding-right: 12px;
-  background-image: var(--drop-down-icon-url);
-  background-position: right 6px;
-  background-repeat: no-repeat;
-  fill: var(--theme-toolbar-photon-icon-color);
-  margin-inline-start: 6px;
-  padding-left: 0;
-  -moz-context-properties: fill;
-}
-
-#global-network-throttling-selector > option.divider {
-  border-top: 1px solid var(--theme-splitter-color);
-  height: 0px;
-  padding: 0;
-  font-size: 0px;
-}
-
-/* Make sure the Throttle button icon is vertically centered on Mac */
-:root[platform="mac"] #global-network-throttling-selector {
-  background-position-y: 5px;
 }
 
 /* Filter input within the Toolbar */

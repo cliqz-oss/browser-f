@@ -153,30 +153,6 @@ interface nsIHTMLEditor : nsISupports
   void rebuildDocumentFromSource(in AString aSourceString);
 
   /**
-   * Insert some HTML source, interpreting
-   * the string argument according to the given context.
-   *
-   * @param aInputString   the string to be inserted
-   * @param aContextStr    Context of insertion
-   * @param aInfoStr       Related info to aInputString
-   * @param aFlavor        Transferable flavor, can be ""
-   * @param aSourceDoc          document where input was dragged from (may be null)
-   * @param aDestinationNode    location for insertion (such as when dropped)
-   * @param aDestinationOffset  used with aDestNode to determine insert location
-   * @param aDeleteSelection    used with aDestNode during drag&drop
-   * @param aCollapseSelection  used with aDestNode during drag&drop
-   */
-  void insertHTMLWithContext(in AString aInputString,
-                             in AString aContextStr,
-                             in AString aInfoStr,
-                             in AString aFlavor,
-                             in Document aSourceDoc,
-                             in Node aDestinationNode,
-                             in long aDestinationOffset,
-                             in boolean aDeleteSelection);
-
-
-  /**
     * Insert an element, which may have child nodes, at the selection
     * Used primarily to insert a new element for various insert element dialogs,
     *   but it enforces the HTML 4.0 DTD "CanContain" rules, so it should
@@ -248,14 +224,7 @@ interface nsIHTMLEditor : nsISupports
   AString getFontFaceState(out boolean aMixed);
 
   /**
-   * getFontColorState returns what font face is in the selection.
-   * @param aMixed     True if there is more than one font color
-   * @return           Color string. "" is returned for none.
-   */
-  AString getFontColorState(out boolean aMixed);
-
-  /**
-   * getFontColorState returns what font face is in the selection.
+   * getBackgroundColorState returns what the background color of the selection.
    * @param aMixed     True if there is more than one font color
    * @return           Color string. "" is returned for none.
    */
@@ -304,18 +273,14 @@ interface nsIHTMLEditor : nsISupports
    * Document me!
    *
    */
-  void getIndentState(out boolean aCanIndent, out boolean aCanOutdent);
-
-  /**
-   * Document me!
-   *
-   */
   void makeOrChangeList(in AString aListType, in boolean entireList,
                         in AString aBulletType);
 
   /**
-   * Document me!
+   * removeList removes list items (<li>, <dd>, and <dt>) and list structures
+   * (<ul>, <ol>, and <dl>).
    *
+   * @param aListType  Unused.
    */
   void removeList(in AString aListType);
 
@@ -332,24 +297,23 @@ interface nsIHTMLEditor : nsISupports
   void  align(in AString aAlign);
 
   /**
-   * Return the input node or a parent matching the given aTagName,
-   *   starting the search at the supplied node.
-   * An example of use is for testing if a node is in a table cell
-   *   given a selection anchor node.
+   * GetElementOrParentByTagName() looks for an element node whose name matches
+   * aTagName from aNode or anchor node of Selection to <body> element.
    *
-   * @param aTagName  The HTML tagname
-   *  Special input values:
-   *    Use "href" to get a link node
-   *      (an "A" tag with the "href" attribute set)
-   *    Use "anchor" or "namedanchor" to get a named anchor node
-   *      (an "A" tag with the "name" attribute set)
-   *    Use "list" to get an OL, UL, or DL list node
-   *    Use "td" to get either a TD or TH cell node
-   *
-   * @param aNode    The node in the document to start the search.
-   *     If it is null, the anchor node of the current selection is used.
-   * @return         NS_EDITOR_ELEMENT_NOT_FOUND if an element is not found
-   *                 (passes NS_SUCCEEDED macro)
+   * @param aTagName        The tag name which you want to look for.
+   *                        Must not be empty string.
+   *                        If "list", the result may be <ul>, <ol> or <dl>
+   *                        element.
+   *                        If "td", the result may be <td> or <th>.
+   *                        If "href", the result may be <a> element
+   *                        which has "href" attribute with non-empty value.
+   *                        If "anchor", the result may be <a> which has
+   *                        "name" attribute with non-empty value.
+   * @param aNode           If non-null, this starts to look for the result
+   *                        from it.  Otherwise, i.e., null, starts from
+   *                        anchor node of Selection.
+   * @return                If an element which matches aTagName, returns
+   *                        an Element.  Otherwise, nullptr.
    */
   Element getElementOrParentByTagName(in AString aTagName,
                                       in Node aNode);
@@ -376,11 +340,6 @@ interface nsIHTMLEditor : nsISupports
    * @return the element as described above
    */
   nsISupports getSelectedElement(in AString aTagName);
-
-  /**
-   * Replace all children of <HEAD> with string of HTML source
-   */
-  void replaceHeadContentsWithHTML(in AString aSourceToInsert);
 
   /**
    * Return a new element with default attribute values
@@ -415,18 +374,6 @@ interface nsIHTMLEditor : nsISupports
    */
   void setBackgroundColor(in AString aColor);
 
-
-  /**
-   * Set an attribute on the document's <body> element
-   *    such as text, link, background colors
-   *
-   * 8/31/00 THIS ISN'T BEING USED? SHOULD WE DROP IT?
-   *
-   * @param aAttr   The attribute to be set
-   * @param aValue  The value of the attribute
-   */
-  void setBodyAttribute(in AString aAttr, in AString aValue);
-
   /**
    * Find all the nodes in the document which contain references
    * to outside URIs (e.g. a href, img src, script src, etc.)
@@ -445,15 +392,14 @@ interface nsIHTMLEditor : nsISupports
   attribute boolean isCSSEnabled;
 
   /**
-   * returns the deepest container of the selection
-   * @return a DOM Element
-   */
-  Element getSelectionContainer();
-
-  /**
-   * Checks if the anonymous nodes created by the HTML editor have to be
-   * refreshed or hidden depending on a possible new state of the selection
-   * @param aSelection [IN] a selection
+   * checkSelectionStateForAnonymousButtons() may refresh editing UI such as
+   * resizers, inline-table-editing UI, absolute positioning UI for current
+   * Selection and focus state.  When this method shows or hides UI, the
+   * editor (and/or its document/window) could be broken by mutation observers.
+   * FYI: Current user in script is only BlueGriffon.
+   *
+   * @param aSelection  Selection instance for the normal selection of the
+   *                    document.
    */
   void checkSelectionStateForAnonymousButtons(in Selection aSelection);
 

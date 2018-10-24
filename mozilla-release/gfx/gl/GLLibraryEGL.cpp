@@ -68,7 +68,8 @@ static const char* sEGLExtensionNames[] = {
     "EGL_ANGLE_stream_producer_d3d_texture",
     "EGL_ANGLE_device_creation",
     "EGL_ANGLE_device_creation_d3d11",
-    "EGL_KHR_surfaceless_context"
+    "EGL_KHR_surfaceless_context",
+    "EGL_KHR_create_context_no_error"
 };
 
 #if defined(ANDROID)
@@ -247,6 +248,7 @@ GetAndInitDisplay(GLLibraryEGL& egl, void* displayType)
 class AngleErrorReporting {
 public:
     AngleErrorReporting()
+      : mFailureId(nullptr)
     {
       // No static constructor
     }

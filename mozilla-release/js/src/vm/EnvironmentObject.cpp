@@ -8,6 +8,7 @@
 
 #include "builtin/ModuleObject.h"
 #include "gc/Policy.h"
+#include "js/AutoByteString.h"
 #include "vm/ArgumentsObject.h"
 #include "vm/AsyncFunction.h"
 #include "vm/GlobalObject.h"
@@ -58,8 +59,7 @@ void
 EnvironmentCoordinateNameCache::purge()
 {
     shape = nullptr;
-    if (map.initialized())
-        map.finish();
+    map.clearAndCompact();
 }
 
 PropertyName*
@@ -69,14 +69,11 @@ js::EnvironmentCoordinateName(EnvironmentCoordinateNameCache& cache, JSScript* s
     Shape* shape = EnvironmentCoordinateToEnvironmentShape(script, pc);
     if (shape != cache.shape && shape->slot() >= ENV_COORDINATE_NAME_THRESHOLD) {
         cache.purge();
-        if (cache.map.init(shape->slot())) {
+        if (cache.map.reserve(shape->slot())) {
             cache.shape = shape;
             Shape::Range<NoGC> r(shape);
             while (!r.empty()) {
-                if (!cache.map.putNew(r.front().slot(), r.front().propid())) {
-                    cache.purge();
-                    break;
-                }
+                cache.map.putNewInfallible(r.front().slot(), r.front().propid());
                 r.popFront();
             }
         }
@@ -145,9 +142,8 @@ CallObject::createSingleton(JSContext* cx, HandleShape shape)
     MOZ_ASSERT(CanBeFinalizedInBackground(kind, &CallObject::class_));
     kind = gc::GetBackgroundAllocKind(kind);
 
-    ObjectGroupRealm& realm = ObjectGroupRealm::getForNewObject(cx);
-    RootedObjectGroup group(cx, ObjectGroup::lazySingletonGroup(cx, realm, &class_,
-                                                                TaggedProto(nullptr)));
+    RootedObjectGroup group(cx, ObjectGroup::lazySingletonGroup(cx, /* oldGroup = */ nullptr,
+                                                                &class_, TaggedProto(nullptr)));
     if (!group)
         return nullptr;
 
@@ -231,7 +227,7 @@ CallObject*
 CallObject::create(JSContext* cx, AbstractFramePtr frame)
 {
     MOZ_ASSERT(frame.isFunctionFrame());
-    assertSameCompartment(cx, frame);
+    cx->check(frame);
 
     RootedObject envChain(cx, frame.environmentChain());
     RootedFunction callee(cx, frame.callee());
@@ -917,7 +913,7 @@ LexicalEnvironmentObject::createTemplateObject(JSContext* cx, HandleShape shape,
 LexicalEnvironmentObject::create(JSContext* cx, Handle<LexicalScope*> scope,
                                  HandleObject enclosing, gc::InitialHeap heap)
 {
-    assertSameCompartment(cx, enclosing);
+    cx->check(enclosing);
     MOZ_ASSERT(scope->hasEnvironment());
 
     RootedShape shape(cx, scope->environmentShape());
@@ -1253,7 +1249,7 @@ EnvironmentIter::EnvironmentIter(JSContext* cx, AbstractFramePtr frame, jsbyteco
     env_(cx, frame.environmentChain()),
     frame_(frame)
 {
-    assertSameCompartment(cx, frame);
+    cx->check(frame);
     settle();
     MOZ_GUARD_OBJECT_NOTIFIER_INIT;
 }
@@ -1264,7 +1260,7 @@ EnvironmentIter::EnvironmentIter(JSContext* cx, JSObject* env, Scope* scope, Abs
     env_(cx, env),
     frame_(frame)
 {
-    assertSameCompartment(cx, frame);
+    cx->check(frame);
     settle();
     MOZ_GUARD_OBJECT_NOTIFIER_INIT;
 }
@@ -2415,13 +2411,7 @@ DebugEnvironments::DebugEnvironments(JSContext* cx, Zone* zone)
 
 DebugEnvironments::~DebugEnvironments()
 {
-    MOZ_ASSERT_IF(missingEnvs.initialized(), missingEnvs.empty());
-}
-
-bool
-DebugEnvironments::init()
-{
-    return proxiedEnvs.init() && missingEnvs.init() && liveEnvs.init();
+    MOZ_ASSERT(missingEnvs.empty());
 }
 
 void
@@ -2523,10 +2513,8 @@ DebugEnvironments::ensureRealmData(JSContext* cx)
         return debugEnvs;
 
     auto debugEnvs = cx->make_unique<DebugEnvironments>(cx, cx->zone());
-    if (!debugEnvs || !debugEnvs->init()) {
-        ReportOutOfMemory(cx);
+    if (!debugEnvs)
         return nullptr;
-    }
 
     realm->debugEnvsRef() = std::move(debugEnvs);
     return realm->debugEnvs();
@@ -2717,7 +2705,7 @@ DebugEnvironments::takeFrameSnapshot(JSContext* cx, Handle<DebugEnvironmentProxy
 /* static */ void
 DebugEnvironments::onPopCall(JSContext* cx, AbstractFramePtr frame)
 {
-    assertSameCompartment(cx, frame);
+    cx->check(frame);
 
     DebugEnvironments* envs = cx->realm()->debugEnvs();
     if (!envs)
@@ -2759,7 +2747,7 @@ DebugEnvironments::onPopCall(JSContext* cx, AbstractFramePtr frame)
 void
 DebugEnvironments::onPopLexical(JSContext* cx, AbstractFramePtr frame, jsbytecode* pc)
 {
-    assertSameCompartment(cx, frame);
+    cx->check(frame);
 
     DebugEnvironments* envs = cx->realm()->debugEnvs();
     if (!envs)
@@ -2807,7 +2795,7 @@ DebugEnvironments::onPopLexical(JSContext* cx, const EnvironmentIter& ei)
 void
 DebugEnvironments::onPopVar(JSContext* cx, AbstractFramePtr frame, jsbytecode* pc)
 {
-    assertSameCompartment(cx, frame);
+    cx->check(frame);
 
     DebugEnvironments* envs = cx->realm()->debugEnvs();
     if (!envs)
@@ -3127,7 +3115,7 @@ GetDebugEnvironment(JSContext* cx, const EnvironmentIter& ei)
 JSObject*
 js::GetDebugEnvironmentForFunction(JSContext* cx, HandleFunction fun)
 {
-    assertSameCompartment(cx, fun);
+    cx->check(fun);
     MOZ_ASSERT(CanUseDebugEnvironmentMaps(cx));
     if (!DebugEnvironments::updateLiveEnvironments(cx))
         return nullptr;
@@ -3141,7 +3129,7 @@ js::GetDebugEnvironmentForFunction(JSContext* cx, HandleFunction fun)
 JSObject*
 js::GetDebugEnvironmentForFrame(JSContext* cx, AbstractFramePtr frame, jsbytecode* pc)
 {
-    assertSameCompartment(cx, frame);
+    cx->check(frame);
     if (CanUseDebugEnvironmentMaps(cx) && !DebugEnvironments::updateLiveEnvironments(cx))
         return nullptr;
 
@@ -3167,7 +3155,7 @@ js::CreateObjectsForEnvironmentChain(JSContext* cx, AutoObjectVector& chain,
 {
 #ifdef DEBUG
     for (size_t i = 0; i < chain.length(); ++i) {
-        assertSameCompartment(cx, chain[i]);
+        cx->check(chain[i]);
         MOZ_ASSERT(!chain[i]->is<GlobalObject>() &&
                    !chain[i]->is<NonSyntacticVariablesObject>());
     }
@@ -3685,8 +3673,6 @@ static bool
 AnalyzeEntrainedVariablesInScript(JSContext* cx, HandleScript script, HandleScript innerScript)
 {
     PropertyNameSet remainingNames(cx);
-    if (!remainingNames.init())
-        return false;
 
     for (BindingIter bi(script); bi; bi++) {
         if (bi.closedOver()) {

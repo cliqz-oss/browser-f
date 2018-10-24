@@ -1241,7 +1241,7 @@ moz_gtk_entry_paint(cairo_t *cr, GdkRectangle* rect,
                     GtkStyleContext* style)
 {
     gint x = rect->x, y = rect->y, width = rect->width, height = rect->height;
-    int draw_focus_outline_only = state->depressed; // NS_THEME_FOCUS_OUTLINE
+    int draw_focus_outline_only = state->depressed; // StyleAppearance::FocusOutline
 
     if (draw_focus_outline_only) {
         // Inflate the given 'rect' with the focus outline size.
@@ -1389,6 +1389,13 @@ moz_gtk_treeview_expander_paint(cairo_t *cr, GdkRectangle* rect,
      * event state of one expander, thus rendering hover and active feedback useless. */
     GtkStateFlags state_flags = state->disabled ? GTK_STATE_FLAG_INSENSITIVE :
                                                   GTK_STATE_FLAG_NORMAL;
+
+    if (state->inHover)
+        state_flags =
+            static_cast<GtkStateFlags>(state_flags|GTK_STATE_FLAG_PRELIGHT);
+    if (state->selected)
+        state_flags =
+            static_cast<GtkStateFlags>(state_flags|GTK_STATE_FLAG_SELECTED);
 
     /* GTK_STATE_FLAG_ACTIVE controls expanded/colapsed state rendering
      * in gtk_render_expander()

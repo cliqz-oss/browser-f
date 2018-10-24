@@ -61,6 +61,9 @@ const enableAnimationFeatures = function() {
   return new Promise(resolve => {
     SpecialPowers.pushPrefEnv({"set": [
       ["dom.animations-api.core.enabled", true],
+      ["dom.animations-api.getAnimations.enabled", true],
+      ["dom.animations-api.implicit-keyframes.enabled", true],
+      ["dom.animations-api.timelines.enabled", true],
       ["layout.css.frames-timing.enabled", true],
     ]}, resolve);
   });
@@ -188,8 +191,7 @@ const clickOnRewindButton = async function(animationInspector, panel) {
  */
 const clickOnCurrentTimeScrubberController = async function(animationInspector,
                                                             panel,
-                                                            mouseDownPosition,
-                                                            mouseMovePosition) {
+                                                            mouseDownPosition) {
   const controllerEl = panel.querySelector(".current-time-scrubber-area");
   const bounds = controllerEl.getBoundingClientRect();
   const mousedonwX = bounds.width * mouseDownPosition;
@@ -289,34 +291,23 @@ const clickOnTargetNode = async function(animationInspector, panel, index) {
  *
  * @param {DOMElement} panel
  *        #animation-container element.
- * @param {Number} mouseDownPosition
- *        rate on scrubber controller pane.
- *        This method calculates
- *        `mouseDownPosition * offsetWidth + offsetLeft of scrubber controller pane`
- *        as the clientX of MouseEvent.
- * @param {Number} mouseMovePosition
+ * @param {Number} mouseMovePixel
  *        Dispatch mousemove event with mouseMovePosition after mousedown.
- *        Calculation for clinetX is same to above.
  * @param {Number} mouseYPixel
  *        Y of mouse in pixel.
  */
 const dragOnCurrentTimeScrubber = async function(animationInspector,
                                                  panel,
-                                                 mouseDownPosition,
-                                                 mouseMovePosition,
+                                                 mouseMovePixel,
                                                  mouseYPixel) {
   const controllerEl = panel.querySelector(".current-time-scrubber");
-  const bounds = controllerEl.getBoundingClientRect();
-  const mousedonwX = bounds.width * mouseDownPosition;
-  const mousemoveX = bounds.width * mouseMovePosition;
-
-  info(`Drag on scrubber from ${ mousedonwX } to ${ mousemoveX }`);
-  EventUtils.synthesizeMouse(controllerEl, mousedonwX, mouseYPixel,
+  info(`Drag scrubber to X ${ mouseMovePixel }`);
+  EventUtils.synthesizeMouse(controllerEl, 0, mouseYPixel,
                              { type: "mousedown" }, controllerEl.ownerGlobal);
   await waitForSummaryAndDetail(animationInspector);
-  EventUtils.synthesizeMouse(controllerEl, mousemoveX, mouseYPixel,
+  EventUtils.synthesizeMouse(controllerEl, mouseMovePixel, mouseYPixel,
                              { type: "mousemove" }, controllerEl.ownerGlobal);
-  EventUtils.synthesizeMouse(controllerEl, mousemoveX, mouseYPixel,
+  EventUtils.synthesizeMouse(controllerEl, mouseMovePixel, mouseYPixel,
                              { type: "mouseup" }, controllerEl.ownerGlobal);
   await waitForSummaryAndDetail(animationInspector);
 };
@@ -450,12 +441,11 @@ const selectNodeAndWaitForAnimations = async function(data, inspector, reason = 
  * Send keyboard event of space to given panel.
  *
  * @param {AnimationInspector} animationInspector
- * @param {DOMElement} panel
- *        #animation-container element.
+ * @param {DOMElement} target element.
  */
-const sendSpaceKeyEvent = async function(animationInspector, panel) {
-  panel.focus();
-  EventUtils.sendKey("SPACE", panel.ownerGlobal);
+const sendSpaceKeyEvent = async function(animationInspector, element) {
+  element.focus();
+  EventUtils.sendKey("SPACE", element.ownerGlobal);
   await waitForSummaryAndDetail(animationInspector);
 };
 
@@ -474,6 +464,28 @@ const setClassAttribute = async function(animationInspector, selector, cls) {
     selector,
   };
   await executeInContent("devtools:test:setAttribute", options);
+  await waitForSummaryAndDetail(animationInspector);
+};
+
+/**
+ * Set a new style properties to the node for the given selector.
+ *
+ * @param {AnimationInspector} animationInspector
+ * @param {String} selector
+ * @param {Object} properties
+ *        e.g. {
+ *               animationDuration: "1000ms",
+ *               animationTimingFunction: "linear",
+ *             }
+ */
+const setEffectTimingAndPlayback = async function(animationInspector,
+                                                  selector, effectTiming, playbackRate) {
+  const options = {
+    effectTiming,
+    playbackRate,
+    selector,
+  };
+  await executeInContent("Test:SetEffectTimingAndPlayback", options);
   await waitForSummaryAndDetail(animationInspector);
 };
 
@@ -510,6 +522,26 @@ const setStyle = async function(animationInspector,
     selector,
   };
   await executeInContent("devtools:test:setStyle", options);
+  await waitForSummaryAndDetail(animationInspector);
+};
+
+/**
+ * Set a new style properties to the node for the given selector.
+ *
+ * @param {AnimationInspector} animationInspector
+ * @param {String} selector
+ * @param {Object} properties
+ *        e.g. {
+ *               animationDuration: "1000ms",
+ *               animationTimingFunction: "linear",
+ *             }
+ */
+const setStyles = async function(animationInspector, selector, properties) {
+  const options = {
+    properties,
+    selector,
+  };
+  await executeInContent("devtools:test:setMultipleStyles", options);
   await waitForSummaryAndDetail(animationInspector);
 };
 
@@ -600,22 +632,18 @@ function assertAnimationsCurrentTime(animationInspector, time) {
  * Check whether the animations are pausing.
  *
  * @param {AnimationInspector} animationInspector
- * @param {DOMElement} panel
- *        #animation-container element.
  */
-function assertAnimationsPausing(animationInspector, panel) {
-  assertAnimationsPausingOrRunning(animationInspector, panel, true);
+function assertAnimationsPausing(animationInspector) {
+  assertAnimationsPausingOrRunning(animationInspector, true);
 }
 
 /**
  * Check whether the animations are pausing/running.
  *
  * @param {AnimationInspector} animationInspector
- * @param {DOMElement} panel
- *        #animation-container element.
  * @param {boolean} shouldPause
  */
-function assertAnimationsPausingOrRunning(animationInspector, panel, shouldPause) {
+function assertAnimationsPausingOrRunning(animationInspector, shouldPause) {
   const hasRunningAnimation =
     animationInspector.state.animations.some(({state}) => state.playState === "running");
 
@@ -630,11 +658,9 @@ function assertAnimationsPausingOrRunning(animationInspector, panel, shouldPause
  * Check whether the animations are running.
  *
  * @param {AnimationInspector} animationInspector
- * @param {DOMElement} panel
- *        #animation-container element.
  */
-function assertAnimationsRunning(animationInspector, panel) {
-  assertAnimationsPausingOrRunning(animationInspector, panel, false);
+function assertAnimationsRunning(animationInspector) {
+  assertAnimationsPausingOrRunning(animationInspector, false);
 }
 
 /**

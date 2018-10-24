@@ -18,6 +18,9 @@ const MENUS_L10N = new LocalizationHelper("devtools/client/locales/menus.propert
 
 loader.lazyRequireGetter(this, "gDevTools", "devtools/client/framework/devtools", true);
 loader.lazyRequireGetter(this, "gDevToolsBrowser", "devtools/client/framework/devtools-browser", true);
+loader.lazyRequireGetter(this, "Telemetry", "devtools/client/shared/telemetry");
+
+let telemetry = null;
 
 // Keep list of inserted DOM Elements in order to remove them on unload
 // Maps browser xul document => list of DOM Elements
@@ -45,7 +48,7 @@ function l10n(key) {
  * @return XULMenuItemElement
  */
 function createMenuItem({ doc, id, label, accesskey, isCheckbox }) {
-  const menuitem = doc.createElement("menuitem");
+  const menuitem = doc.createXULElement("menuitem");
   menuitem.id = id;
   menuitem.setAttribute("label", label);
   if (accesskey) {
@@ -78,6 +81,7 @@ function createToolMenuElements(toolDefinition, doc) {
   const oncommand = function(id, event) {
     const window = event.target.ownerDocument.defaultView;
     gDevToolsBrowser.selectToolCommand(window.gBrowser, id, Cu.now());
+    sendEntryPointTelemetry();
   }.bind(null, id);
 
   const menuitem = createMenuItem({
@@ -94,6 +98,26 @@ function createToolMenuElements(toolDefinition, doc) {
   return {
     menuitem
   };
+}
+
+/**
+ * Send entry point telemetry explaining how the devtools were launched when
+ * launched from the System Menu.. This functionality also lives inside
+ * `devtools/startup/devtools-startup.js` but that codepath is only used the
+ * first time a toolbox is opened for a tab.
+ */
+function sendEntryPointTelemetry() {
+  if (!telemetry) {
+    telemetry = new Telemetry();
+  }
+
+  telemetry.addEventProperty(
+    "devtools.main", "open", "tools", null, "shortcut", ""
+  );
+
+  telemetry.addEventProperty(
+    "devtools.main", "open", "tools", null, "entrypoint", "SystemMenu"
+  );
 }
 
 /**
@@ -190,7 +214,7 @@ function addTopLevelItems(doc) {
   const { menuitems } = require("../menus");
   for (const item of menuitems) {
     if (item.separator) {
-      const separator = doc.createElement("menuseparator");
+      const separator = doc.createXULElement("menuseparator");
       separator.id = item.id;
       menuItems.appendChild(separator);
     } else {

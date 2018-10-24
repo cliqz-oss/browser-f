@@ -25,19 +25,17 @@
   @media not all and (-moz-os-version: windows-win7) {
     @media not all and (-moz-os-version: windows-win8) {
       @media (-moz-windows-default-theme) {
-        :root[sizemode=normal][tabsintitlebar] {
-          border-top: 1px solid -moz-win-accentcolor;
-        }
-
-        :root[sizemode=normal][tabsintitlebar]:-moz-window-inactive {
-          border-top-color: rgba(0,0,0,.2);
-        }
-
         :root:not(:-moz-lwtheme) {
           background-color: hsl(0, 0%, 78%);
         }
 
         @media (-moz-windows-accent-color-in-titlebar: 0) {
+          :root[sizemode=normal][tabsintitlebar] {
+            border-top: 1px solid rgba(0,0,0,.7);
+          }
+          :root[sizemode=normal][tabsintitlebar][always-use-accent-color-for-window-border]:not(:-moz-window-inactive) {
+            border-top-color: -moz-win-accentcolor;
+          }
           :root[tabsintitlebar]:not(:-moz-lwtheme) {
             background-color: hsl(235,33%,19%);
           }
@@ -47,12 +45,19 @@
         }
 
         @media (-moz-windows-accent-color-in-titlebar) {
+          :root[sizemode=normal][tabsintitlebar] {
+            border-top: 1px solid -moz-win-accentcolor;
+          }
           :root[tabsintitlebar]:not(:-moz-window-inactive):not(:-moz-lwtheme) {
             background-color: -moz-win-accentcolor;
           }
           :root[tabsintitlebar] .titlebar-color:not(:-moz-window-inactive):not(:-moz-lwtheme) {
             color: -moz-win-accentcolortext;
           }
+        }
+
+        :root[sizemode=normal][tabsintitlebar]:-moz-window-inactive {
+          border-top-color: rgba(0,0,0,.3);
         }
 
         :root[tabsintitlebar] .tab-label:-moz-window-inactive {
@@ -173,7 +178,7 @@
       }
 
       @media (-moz-windows-default-theme) {
-        #main-menubar > menu {
+        #main-menubar > menu[_moz-menuactive="true"] {
           color: inherit;
         }
 
@@ -275,8 +280,8 @@
   @media (-moz-os-version: windows-win7),
          (-moz-os-version: windows-win8) {
     /* Vertical toolbar border */
-    #main-window[sizemode=normal] #navigator-toolbox > toolbar:not(#toolbar-menubar):not(#TabsToolbar):not(:-moz-lwtheme),
-    #main-window[sizemode=normal] #navigator-toolbox > toolbar:-moz-lwtheme {
+    #main-window[sizemode=normal] .browser-toolbar:not(.titlebar-color):not(:-moz-lwtheme),
+    #main-window[sizemode=normal] .browser-toolbar:-moz-lwtheme {
       border-left: 1px solid @glassShadowColor@;
       border-right: 1px solid @glassShadowColor@;
       background-clip: padding-box;

@@ -96,7 +96,7 @@ Getting the code, running tests
          just calls code in runtests.py).
 
      * Configure Mercurial with helpful extensions for Mozilla
-       development by running `./mach mercurial-setup`.
+       development by running `./mach vcs-setup`.
 
        * It should install extensions like firefox-trees and set
          you up to be able to use MozReview, our code-review tool.
@@ -117,21 +117,7 @@ Getting the code, running tests
 Work on bugs and get code review
 --------------------------------
 
-Once you've completed the above basics, find a bug to work on
-at [Bugs Ahoy](https://www.joshmatthews.net/bugsahoy/?automation=1). If
-you don't find any, ask :whimboo, :maja_zf
-or :ato in #ateam for a good first bug to work on.
-
-To work on the bug that is suggested to you and push a patch up
-for review, follow the [Firefox Workflow] in hg.
-
-After testing your code locally, you will push your patch to be
-reviewed in MozReview.  To set up MozReview, see this [configuration]
-page.  (Note: the only kind of account you need for MozReview is
-Bugzilla (not LDAP) and you can only use HTTPS, not SSH.)
-
-[Firefox Workflow]: https://mozilla-version-control-tools.readthedocs.org/en/latest/hgmozilla/firefoxworkflow.html
-[configuration]: https://mozilla-version-control-tools.readthedocs.org/en/latest/mozreview/install-mercurial.html#configuring-mercurial-to-use-mozreview
+See <Patches.md> on how to submit patches.
 
 
 Resources

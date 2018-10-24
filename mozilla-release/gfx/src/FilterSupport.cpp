@@ -9,6 +9,7 @@
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/Filters.h"
 #include "mozilla/gfx/Logging.h"
+#include "mozilla/ArrayUtils.h"
 #include "mozilla/PodOperations.h"
 
 #include "gfxContext.h"
@@ -763,7 +764,7 @@ FilterNodeFromPrimitiveDescription(const FilterPrimitiveDescription& aDescriptio
       uint32_t type = atts.GetUint(eColorMatrixType);
       const nsTArray<float>& values = atts.GetFloats(eColorMatrixValues);
       if (NS_FAILED(ComputeColorMatrix(type, values, colorMatrix)) ||
-          PodEqual(colorMatrix, identityMatrix)) {
+          ArrayEqual(colorMatrix, identityMatrix)) {
         RefPtr<FilterNode> filter(aSources[0]);
         return filter.forget();
       }
@@ -860,6 +861,17 @@ FilterNodeFromPrimitiveDescription(const FilterPrimitiveDescription& aDescriptio
       }
 
       return lastFilter.forget();
+    }
+
+    case PrimitiveType::Opacity:
+    {
+      RefPtr<FilterNode> filter = aDT->CreateFilter(FilterType::OPACITY);
+      if (!filter) {
+        return nullptr;
+      }
+      filter->SetAttribute(ATT_OPACITY_VALUE, atts.GetFloat(eOpacityOpacity));
+      filter->SetInput(IN_OPACITY_IN, aSources[0]);
+      return filter.forget();
     }
 
     case PrimitiveType::ConvolveMatrix:
@@ -963,7 +975,7 @@ FilterNodeFromPrimitiveDescription(const FilterPrimitiveDescription& aDescriptio
         // All-zero coefficients sometimes occur in junk filters.
         if (!filter ||
             (coefficients.Length() == ArrayLength(allZero) &&
-             PodEqual(coefficients.Elements(), allZero, ArrayLength(allZero)))) {
+             ArrayEqual(coefficients.Elements(), allZero, ArrayLength(allZero)))) {
           return nullptr;
         }
         filter->SetAttribute(ATT_ARITHMETIC_COMBINE_COEFFICIENTS,
@@ -1394,6 +1406,7 @@ ResultChangeRegionForPrimitive(const FilterPrimitiveDescription& aDescription,
     case PrimitiveType::Blend:
     case PrimitiveType::Composite:
     case PrimitiveType::Merge:
+    case PrimitiveType::Opacity:
       return UnionOfRegions(aInputChangeRegions);
 
     case PrimitiveType::ColorMatrix:
@@ -1614,6 +1627,14 @@ FilterSupport::PostFilterExtentsForPrimitive(const FilterPrimitiveDescription& a
       return aInputExtents[0];
     }
 
+    case PrimitiveType::Opacity:
+    {
+      if (atts.GetFloat(eOpacityOpacity) == 0.0f) {
+        return IntRect();
+      }
+      return ResultChangeRegionForPrimitive(aDescription, aInputExtents);
+    }
+
     case PrimitiveType::Turbulence:
     case PrimitiveType::Image:
     case PrimitiveType::DiffuseLighting:
@@ -1692,6 +1713,7 @@ SourceNeededRegionForPrimitive(const FilterPrimitiveDescription& aDescription,
     case PrimitiveType::ColorMatrix:
     case PrimitiveType::ComponentTransfer:
     case PrimitiveType::ToAlpha:
+    case PrimitiveType::Opacity:
       return aResultNeededRegion;
 
     case PrimitiveType::Morphology:

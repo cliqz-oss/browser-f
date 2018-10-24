@@ -26,7 +26,7 @@
 #include "nsIComponentManager.h"
 #include "nsBoxLayoutState.h"
 #include "nsIScrollableFrame.h"
-#include "nsIRootBox.h"
+#include "nsIPopupContainer.h"
 #include "nsIDocShell.h"
 #include "nsReadableUtils.h"
 #include "nsUnicharUtils.h"
@@ -41,7 +41,7 @@
 #include "nsISound.h"
 #include "nsIScreenManager.h"
 #include "nsIServiceManager.h"
-#include "nsThemeConstants.h"
+#include "nsStyleConsts.h"
 #include "nsTransitionManager.h"
 #include "nsDisplayList.h"
 #include "nsIDOMXULSelectCntrlItemEl.h"
@@ -71,7 +71,7 @@ DOMTimeStamp nsMenuPopupFrame::sLastKeyTime = 0;
 //  if someone changes one, please also change the other.
 uint32_t nsMenuPopupFrame::sTimeoutOfIncrementalSearch = 1000;
 
-const char* kPrefIncrementalSearchTimeout =
+const char kPrefIncrementalSearchTimeout[] =
   "ui.menu.incremental_search.timeout";
 
 // NS_NewMenuPopupFrame
@@ -176,10 +176,10 @@ nsMenuPopupFrame::Init(nsIContent*       aContent,
   if (aContent->NodeInfo()->Equals(nsGkAtoms::tooltip, kNameSpaceID_XUL) &&
       aContent->AsElement()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::_default,
                                          nsGkAtoms::_true, eIgnoreCase)) {
-    nsIRootBox* rootBox =
-      nsIRootBox::GetRootBox(PresContext()->GetPresShell());
-    if (rootBox) {
-      rootBox->SetDefaultTooltip(aContent->AsElement());
+    nsIPopupContainer* popupContainer =
+      nsIPopupContainer::GetPopupContainer(PresContext()->GetPresShell());
+    if (popupContainer) {
+      popupContainer->SetDefaultTooltip(aContent->AsElement());
     }
   }
 
@@ -306,17 +306,6 @@ nsMenuPopupFrame::CreateWidgetForView(nsView* aView)
   bool remote = HasRemoteContent();
 
   nsTransparencyMode mode = nsLayoutUtils::GetFrameTransparency(this, this);
-#ifdef MOZ_WIDGET_GTK
-  if (remote) {
-    // Paradoxically, on Linux, setting the transparency mode to opaque will
-    // give us proper transparency for composited popups. The shape-mask-based
-    // pseudo-transparency that we use otherwise will render transparent areas
-    // as opaque black when compositing is enabled.
-    // See bug 630346.
-    mode = eTransparencyOpaque;
-  }
-#endif
-
   nsIContent* parentContent = GetContent()->GetParent();
   nsAtom *tag = nullptr;
   if (parentContent && parentContent->IsXULElement())
@@ -370,12 +359,13 @@ nsMenuPopupFrame::GetShadowStyle()
     return shadow;
 
   switch (StyleDisplay()->mAppearance) {
-    case NS_THEME_TOOLTIP:
+    case StyleAppearance::Tooltip:
       return NS_STYLE_WINDOW_SHADOW_TOOLTIP;
-    case NS_THEME_MENUPOPUP:
+    case StyleAppearance::Menupopup:
       return NS_STYLE_WINDOW_SHADOW_MENU;
+    default:
+      return NS_STYLE_WINDOW_SHADOW_DEFAULT;
   }
-  return NS_STYLE_WINDOW_SHADOW_DEFAULT;
 }
 
 NS_IMETHODIMP nsXULPopupShownEvent::Run()
@@ -1392,7 +1382,7 @@ nsMenuPopupFrame::SetPopupPosition(nsIFrame* aAnchorFrame, bool aIsMove, bool aS
     // If anchored to a rectangle, use that rectangle. Otherwise, determine the
     // rectangle from the anchor.
     if (mAnchorType == MenuPopupAnchorType_Rect) {
-      anchorRect = ToAppUnits(mScreenRect, nsPresContext::AppUnitsPerCSSPixel());
+      anchorRect = ToAppUnits(mScreenRect, AppUnitsPerCSSPixel());
     }
     else {
       // if the frame is not specified, use the anchor node passed to OpenPopup. If
@@ -1799,14 +1789,10 @@ ConsumeOutsideClicksResult nsMenuPopupFrame::ConsumeOutsideClicks()
         ni->Equals(nsGkAtoms::popupset, kNameSpaceID_XUL) ||
         ((ni->Equals(nsGkAtoms::button, kNameSpaceID_XUL) ||
           ni->Equals(nsGkAtoms::toolbarbutton, kNameSpaceID_XUL)) &&
-         (parentContent->AsElement()->AttrValueIs(kNameSpaceID_None,
-                                                  nsGkAtoms::type,
-                                                  nsGkAtoms::menu,
-                                                  eCaseMatters) ||
-          parentContent->AsElement()->AttrValueIs(kNameSpaceID_None,
-                                                  nsGkAtoms::type,
-                                                  nsGkAtoms::menuButton,
-                                                  eCaseMatters)))) {
+         parentContent->AsElement()->AttrValueIs(kNameSpaceID_None,
+                                                 nsGkAtoms::type,
+                                                 nsGkAtoms::menu,
+                                                 eCaseMatters))) {
       return ConsumeOutsideClicks_Never;
     }
 #endif
@@ -2055,7 +2041,7 @@ nsMenuPopupFrame::FindMenuWithShortcut(KeyboardEvent* aKeyEvent, bool& doAction)
   DOMTimeStamp keyTime = aKeyEvent->TimeStamp();
 
   if (charCode == 0) {
-    if (keyCode == dom::KeyboardEventBinding::DOM_VK_BACK_SPACE) {
+    if (keyCode == dom::KeyboardEvent_Binding::DOM_VK_BACK_SPACE) {
       if (!isMenu && !mIncrementalString.IsEmpty()) {
         mIncrementalString.SetLength(mIncrementalString.Length() - 1);
         return nullptr;
@@ -2319,10 +2305,10 @@ nsMenuPopupFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDes
   if (pm)
     pm->PopupDestroyed(this);
 
-  nsIRootBox* rootBox =
-    nsIRootBox::GetRootBox(PresContext()->GetPresShell());
-  if (rootBox && rootBox->GetDefaultTooltip() == mContent) {
-    rootBox->SetDefaultTooltip(nullptr);
+  nsIPopupContainer* popupContainer =
+    nsIPopupContainer::GetPopupContainer(PresContext()->GetPresShell());
+  if (popupContainer && popupContainer->GetDefaultTooltip() == mContent) {
+    popupContainer->SetDefaultTooltip(nullptr);
   }
 
   nsBoxFrame::DestroyFrom(aDestructRoot, aPostDestroyData);

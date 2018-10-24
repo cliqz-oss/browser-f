@@ -23,13 +23,27 @@ DrawTargetCaptureImpl::~DrawTargetCaptureImpl()
   }
 }
 
+DrawTargetCaptureImpl::DrawTargetCaptureImpl(gfx::DrawTarget* aTarget, size_t aFlushBytes)
+  : mSnapshot(nullptr),
+    mStride(0),
+    mSurfaceAllocationSize(0),
+    mFlushBytes(aFlushBytes)
+{
+  mSize = aTarget->GetSize();
+  mFormat = aTarget->GetFormat();
+  SetPermitSubpixelAA(aTarget->GetPermitSubpixelAA());
+
+  mRefDT = aTarget;
+}
+
 DrawTargetCaptureImpl::DrawTargetCaptureImpl(BackendType aBackend,
                                              const IntSize& aSize,
                                              SurfaceFormat aFormat)
   : mSize(aSize),
     mSnapshot(nullptr),
     mStride(0),
-    mSurfaceAllocationSize(0)
+    mSurfaceAllocationSize(0),
+    mFlushBytes(0)
 {
   RefPtr<DrawTarget> screenRefDT =
       gfxPlatform::GetPlatform()->ScreenReferenceDrawTarget();
@@ -75,6 +89,7 @@ DrawTargetCaptureImpl::Init(const IntSize& aSize, DrawTarget* aRefDT)
 void
 DrawTargetCaptureImpl::InitForData(int32_t aStride, size_t aSurfaceAllocationSize)
 {
+  MOZ_ASSERT(!mFlushBytes);
   mStride = aStride;
   mSurfaceAllocationSize = aSurfaceAllocationSize;
 }
@@ -191,6 +206,13 @@ DrawTargetCaptureImpl::CopySurface(SourceSurface* aSurface,
 {
   aSurface->GuaranteePersistance();
   AppendCommand(CopySurfaceCommand)(aSurface, aSourceRect, aDestination);
+}
+
+void
+DrawTargetCaptureImpl::CopyRect(const IntRect &aSourceRect,
+                                const IntPoint &aDestination)
+{
+  AppendCommand(CopyRectCommand)(aSourceRect, aDestination);
 }
 
 void
@@ -344,68 +366,18 @@ DrawTargetCaptureImpl::Blur(const AlphaBoxBlur& aBlur)
 }
 
 void
+DrawTargetCaptureImpl::PadEdges(const IntRegion& aRegion)
+{
+  AppendCommand(PadEdgesCommand)(aRegion);
+}
+
+void
 DrawTargetCaptureImpl::ReplayToDrawTarget(DrawTarget* aDT, const Matrix& aTransform)
 {
   for (CaptureCommandList::iterator iter(mCommands); !iter.Done(); iter.Next()) {
     DrawingCommand* cmd = iter.Get();
     cmd->ExecuteOnDT(aDT, &aTransform);
   }
-}
-
-bool
-DrawTargetCaptureImpl::ContainsOnlyColoredGlyphs(RefPtr<ScaledFont>& aScaledFont,
-                                                 Color& aColor,
-                                                 std::vector<Glyph>& aGlyphs)
-{
-  bool result = false;
-
-  for (CaptureCommandList::iterator iter(mCommands); !iter.Done(); iter.Next()) {
-    DrawingCommand* command = iter.Get();
-
-    if (command->GetType() != CommandType::FILLGLYPHS &&
-        command->GetType() != CommandType::SETTRANSFORM) {
-      return false;
-    }
-
-    if (command->GetType() == CommandType::SETTRANSFORM) {
-      SetTransformCommand* transform = static_cast<SetTransformCommand*>(command);
-      if (!transform->mTransform.IsIdentity()) {
-        return false;
-      }
-      continue;
-    }
-
-    FillGlyphsCommand* fillGlyphs = static_cast<FillGlyphsCommand*>(command);
-    if (aScaledFont && fillGlyphs->mFont != aScaledFont) {
-      return false;
-    }
-    aScaledFont = fillGlyphs->mFont;
-
-    Pattern& pat = fillGlyphs->mPattern;
-
-    if (pat.GetType() != PatternType::COLOR) {
-      return false;
-    }
-
-    ColorPattern* colorPat = static_cast<ColorPattern*>(&pat);
-    if (aColor != Color() && colorPat->mColor != aColor) {
-      return false;
-    }
-    aColor = colorPat->mColor;
-
-    if (fillGlyphs->mOptions.mCompositionOp != CompositionOp::OP_OVER ||
-        fillGlyphs->mOptions.mAlpha != 1.0f) {
-      return false;
-    }
-
-    //TODO: Deal with AA on the DrawOptions
-
-    aGlyphs.insert(aGlyphs.end(),
-                   fillGlyphs->mGlyphs.begin(),
-                   fillGlyphs->mGlyphs.end());
-    result = true;
-  }
-  return result;
 }
 
 void
@@ -445,6 +417,12 @@ DrawTargetCaptureImpl::CreateFilter(FilterType aType)
   } else {
     return mRefDT->CreateFilter(aType);
   }
+}
+
+bool
+DrawTargetCaptureImpl::IsEmpty() const
+{
+  return mCommands.IsEmpty();
 }
 
 void

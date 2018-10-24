@@ -41,7 +41,7 @@ binaries::
 # Carefully avoid $(eval) type of rule generation, which makes pymake slower
 # than necessary.
 # Get current tier and corresponding subtiers from the data in root.mk.
-CURRENT_TIER := $(filter $(foreach tier,$(TIERS),recurse_$(tier) $(tier)-deps),$(MAKECMDGOALS))
+CURRENT_TIER := $(filter $(foreach tier,$(TIERS) $(non_default_tiers),recurse_$(tier) $(tier)-deps),$(MAKECMDGOALS))
 ifneq (,$(filter-out 0 1,$(words $(CURRENT_TIER))))
 $(error $(CURRENT_TIER) not supported on the same make command line)
 endif
@@ -182,8 +182,8 @@ xpcom/xpidl/export: xpcom/idl-parser/xpidl/export
 dom/bindings/export: layout/style/export
 
 ifdef ENABLE_CLANG_PLUGIN
-$(filter-out config/host build/unix/stdc++compat/% build/clang-plugin/%,$(compile_targets)): build/clang-plugin/target build/clang-plugin/tests/target
-build/clang-plugin/tests/target: build/clang-plugin/target
+$(filter-out config/host build/unix/stdc++compat/% build/clang-plugin/%,$(compile_targets)): build/clang-plugin/host build/clang-plugin/tests/target
+build/clang-plugin/tests/target: build/clang-plugin/host
 endif
 
 # Interdependencies that moz.build world don't know about yet for compilation.
@@ -198,4 +198,4 @@ endif
 endif
 # Most things are built during compile (target/host), but some things happen during export
 # Those need to depend on config/export for system wrappers.
-$(addprefix build/unix/stdc++compat/,target host) build/clang-plugin/target: config/export
+$(addprefix build/unix/stdc++compat/,target host) build/clang-plugin/host: config/export

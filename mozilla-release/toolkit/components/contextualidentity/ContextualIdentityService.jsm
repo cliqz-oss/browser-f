@@ -57,7 +57,7 @@ _TabRemovalObserver.prototype = {
         this._resolver();
       }
     }
-  }
+  },
 };
 
 function _ContextualIdentityService(path) {
@@ -230,7 +230,7 @@ _ContextualIdentityService.prototype = {
     let object = {
       version: LAST_CONTAINERS_JSON_VERSION,
       lastUserContextId: this._lastUserContextId,
-      identities: this._identities
+      identities: this._identities,
     };
 
     let bytes = gTextEncoder.encode(JSON.stringify(object));
@@ -256,7 +256,7 @@ _ContextualIdentityService.prototype = {
       public: true,
       icon,
       color,
-      name
+      name,
     };
 
     this._identities.push(identity);
@@ -473,17 +473,14 @@ _ContextualIdentityService.prototype = {
   },
 
   _forEachContainerTab(callback, userContextId = 0) {
-    let windowList = Services.wm.getEnumerator("navigator:browser");
-    while (windowList.hasMoreElements()) {
-      let win = windowList.getNext();
-
+    for (let win of Services.wm.getEnumerator("navigator:browser")) {
       if (win.closed || !win.gBrowser) {
         continue;
       }
 
       let tabbrowser = win.gBrowser;
-      for (let i = tabbrowser.tabContainer.childNodes.length - 1; i >= 0; --i) {
-        let tab = tabbrowser.tabContainer.childNodes[i];
+      for (let i = tabbrowser.tabContainer.children.length - 1; i >= 0; --i) {
+        let tab = tabbrowser.tabContainer.children[i];
         if (tab.hasAttribute("usercontextid") &&
                   (!userContextId ||
                    parseInt(tab.getAttribute("usercontextid"), 10) == userContextId)) {
@@ -530,10 +527,7 @@ _ContextualIdentityService.prototype = {
     // Collect the userContextIds currently used by any stored cookie.
     let cookiesUserContextIds = new Set();
 
-    const enumerator = Services.cookies.enumerator;
-    while (enumerator.hasMoreElements()) {
-      const cookie = enumerator.getNext().QueryInterface(Ci.nsICookie);
-
+    for (let cookie of Services.cookies.enumerator) {
       // Skip any userContextIds that should not be cleared.
       if (cookie.originAttributes.userContextId >= minUserContextId &&
           !keepDataContextIds.includes(cookie.originAttributes.userContextId)) {

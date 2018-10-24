@@ -15,6 +15,7 @@
 #include "mozilla/BinarySearch.h"
 #include "mozilla/CheckedInt.h"
 #include "mozilla/fallible.h"
+#include "mozilla/FunctionTypeTraits.h"
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Move.h"
@@ -395,6 +396,17 @@ protected:
   typename ActualAlloc::ResultTypeProxy EnsureCapacity(size_type aCapacity,
                                                        size_type aElemSize);
 
+  // Extend the storage to accommodate aCount extra elements.
+  // @param aLength The current size of the array.
+  // @param aCount The number of elements to add.
+  // @param aElemSize The size of an array element.
+  // @return False if insufficient memory is available or the new length
+  //   would overflow; true otherwise.
+  template<typename ActualAlloc>
+  typename ActualAlloc::ResultTypeProxy ExtendCapacity(size_type aLength,
+                                                       size_type aCount,
+                                                       size_type aElemSize);
+
   // Tries to resize the storage to the minimum required amount. If this fails,
   // the array is left as-is.
   // @param aElemSize  The size of an array element.
@@ -447,8 +459,9 @@ protected:
   // @param aElementSize the size of an array element.
   // @param aElemAlign the alignment in bytes of an array element.
   template<typename ActualAlloc>
-  bool InsertSlotsAt(index_type aIndex, size_type aCount,
-                     size_type aElementSize, size_t aElemAlign);
+  typename ActualAlloc::ResultTypeProxy
+  InsertSlotsAt(index_type aIndex, size_type aCount,
+                size_type aElementSize, size_t aElemAlign);
 
   template<typename ActualAlloc, class Allocator>
   typename ActualAlloc::ResultTypeProxy
@@ -772,43 +785,100 @@ struct nsTArray_TypedBase<JS::Heap<E>, Derived>
 
 namespace detail {
 
-template<class Item, class Comparator>
-struct ItemComparatorEq
-{
-  const Item& mItem;
-  const Comparator& mComp;
-  ItemComparatorEq(const Item& aItem, const Comparator& aComp)
-    : mItem(aItem)
-    , mComp(aComp)
-  {}
-  template<class T>
-  int operator()(const T& aElement) const {
-    if (mComp.Equals(aElement, mItem)) {
-      return 0;
-    }
+// These helpers allow us to differentiate between tri-state comparator
+// functions and classes with LessThan() and Equal() methods. If an object, when
+// called as a function with two instances of our element type, returns an int,
+// we treat it as a tri-state comparator.
+//
+// T is the type of the comparator object we want to check. U is the array
+// element type that we'll be comparing.
+//
+// V is never passed, and is only used to allow us to specialize on the return
+// value of the comparator function.
+template <typename T, typename U, typename V = int>
+struct IsCompareMethod : mozilla::FalseType {};
 
-    return mComp.LessThan(aElement, mItem) ? 1 : -1;
+template <typename T, typename U>
+struct IsCompareMethod<T, U, decltype(mozilla::DeclVal<T>()(mozilla::DeclVal<U>(), mozilla::DeclVal<U>()))>
+  : mozilla::TrueType {};
+
+// These two wrappers allow us to use either a tri-state comparator, or an
+// object with Equals() and LessThan() methods interchangeably. They provide a
+// tri-state Compare() method, and Equals() method, and a LessThan() method.
+//
+// Depending on the type of the underlying comparator, they either pass these
+// through directly, or synthesize them from the methods available on the
+// comparator.
+//
+// Callers should always use the most-specific of these methods that match their
+// purpose.
+
+// Comparator wrapper for a tri-state comparator function
+template <typename T, typename U, bool IsCompare = IsCompareMethod<T, U>::value>
+struct CompareWrapper
+{
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable:4180) /* Silence "qualifier applied to function type has no meaning" warning */
+#endif
+  MOZ_IMPLICIT CompareWrapper(const T& aComparator)
+    : mComparator(aComparator)
+  {}
+
+  template <typename A, typename B>
+  int Compare(A& aLeft, B& aRight) const
+  {
+    return mComparator(aLeft, aRight);
   }
+
+  template <typename A, typename B>
+  bool Equals(A& aLeft, B& aRight) const
+  {
+    return Compare(aLeft, aRight) == 0;
+  }
+
+  template <typename A, typename B>
+  bool LessThan(A& aLeft, B& aRight) const
+  {
+    return Compare(aLeft, aRight) < 0;
+  }
+
+  const T& mComparator;
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 };
 
-template<class Item, class Comparator>
-struct ItemComparatorFirstElementGT
+// Comparator wrapper for a class with Equals() and LessThan() methods.
+template <typename T, typename U>
+struct CompareWrapper<T, U, false>
 {
-  const Item& mItem;
-  const Comparator& mComp;
-  ItemComparatorFirstElementGT(const Item& aItem, const Comparator& aComp)
-    : mItem(aItem)
-    , mComp(aComp)
+  MOZ_IMPLICIT CompareWrapper(const T& aComparator)
+    : mComparator(aComparator)
   {}
-  template<class T>
-  int operator()(const T& aElement) const {
-    if (mComp.LessThan(aElement, mItem) ||
-        mComp.Equals(aElement, mItem)) {
-      return 1;
-    } else {
-      return -1;
+
+  template <typename A, typename B>
+  int Compare(A& aLeft, B& aRight) const
+  {
+    if (Equals(aLeft, aRight)) {
+      return 0;
     }
+    return LessThan(aLeft, aRight) ? -1 : 1;
   }
+
+  template <typename A, typename B>
+  bool Equals(A& aLeft, B& aRight) const
+  {
+    return mComparator.Equals(aLeft, aRight);
+  }
+
+  template <typename A, typename B>
+  bool LessThan(A& aLeft, B& aRight) const
+  {
+    return mComparator.LessThan(aLeft, aRight);
+  }
+
+  const T& mComparator;
 };
 
 } // namespace detail
@@ -1129,7 +1199,9 @@ public:
   template<class Item, class Comparator>
   bool Contains(const Item& aItem, const Comparator& aComp) const
   {
-    return IndexOf(aItem, 0, aComp) != NoIndex;
+    return ApplyIf(aItem, 0, aComp,
+                   []() { return true; },
+                   []() { return false; });
   }
 
   // Like Contains(), but assumes a sorted array.
@@ -1147,7 +1219,7 @@ public:
   template<class Item>
   bool Contains(const Item& aItem) const
   {
-    return IndexOf(aItem) != NoIndex;
+    return Contains(aItem, nsDefaultComparator<elem_type, Item>());
   }
 
   // Like Contains(), but assumes a sorted array.
@@ -1167,10 +1239,12 @@ public:
   index_type IndexOf(const Item& aItem, index_type aStart,
                      const Comparator& aComp) const
   {
+    ::detail::CompareWrapper<Comparator, Item> comp(aComp);
+
     const elem_type* iter = Elements() + aStart;
     const elem_type* iend = Elements() + Length();
     for (; iter != iend; ++iter) {
-      if (aComp.Equals(*iter, aItem)) {
+      if (comp.Equals(*iter, aItem)) {
         return index_type(iter - Elements());
       }
     }
@@ -1200,11 +1274,13 @@ public:
   index_type LastIndexOf(const Item& aItem, index_type aStart,
                          const Comparator& aComp) const
   {
+    ::detail::CompareWrapper<Comparator, Item> comp(aComp);
+
     size_type endOffset = aStart >= Length() ? Length() : aStart + 1;
     const elem_type* iend = Elements() - 1;
     const elem_type* iter = iend + endOffset;
     for (; iter != iend; --iter) {
-      if (aComp.Equals(*iter, aItem)) {
+      if (comp.Equals(*iter, aItem)) {
         return index_type(iter - Elements());
       }
     }
@@ -1236,10 +1312,20 @@ public:
   index_type BinaryIndexOf(const Item& aItem, const Comparator& aComp) const
   {
     using mozilla::BinarySearchIf;
-    typedef ::detail::ItemComparatorEq<Item, Comparator> Cmp;
+    ::detail::CompareWrapper<Comparator, Item> comp(aComp);
 
     size_t index;
-    bool found = BinarySearchIf(*this, 0, Length(), Cmp(aItem, aComp), &index);
+    bool found = BinarySearchIf(
+      *this, 0, Length(),
+      // Note: We pass the Compare() args here in reverse order and negate the
+      // results for compatibility reasons. Some existing callers use Equals()
+      // functions with first arguments which match aElement but not aItem, or
+      // second arguments that match aItem but not aElement. To accommodate
+      // those callers, we preserve the argument order of the older version of
+      // this API. These callers, however, should be fixed, and this special
+      // case removed.
+      [&] (const elem_type& aElement) { return -comp.Compare(aElement, aItem); },
+      &index);
     return found ? index : NoIndex;
   }
 
@@ -1534,10 +1620,12 @@ public:
                                    const Comparator& aComp) const
   {
     using mozilla::BinarySearchIf;
-    typedef ::detail::ItemComparatorFirstElementGT<Item, Comparator> Cmp;
+    ::detail::CompareWrapper<Comparator, Item> comp(aComp);
 
     size_t index;
-    BinarySearchIf(*this, 0, Length(), Cmp(aItem, aComp), &index);
+    BinarySearchIf(*this, 0, Length(),
+                   [&] (const elem_type& aElement) { return comp.Compare(aElement, aItem) <= 0 ? 1 : -1; },
+                   &index);
     return index;
   }
 
@@ -1685,8 +1773,8 @@ public:
 protected:
   template<typename ActualAlloc = Alloc>
   elem_type* AppendElements(size_type aCount) {
-    if (!ActualAlloc::Successful(this->template EnsureCapacity<ActualAlloc>(
-          Length() + aCount, sizeof(elem_type)))) {
+    if (!ActualAlloc::Successful(this->template ExtendCapacity<ActualAlloc>(
+          Length(), aCount, sizeof(elem_type)))) {
       return nullptr;
     }
     elem_type* elems = Elements() + Length();
@@ -1728,6 +1816,14 @@ public:
   // @param aCount The number of elements to remove.
   void RemoveElementsAt(index_type aStart, size_type aCount);
 
+private:
+  // Remove a range of elements from this array, but do not check that
+  // the range is in bounds.
+  // @param aStart The starting index of the elements to remove.
+  // @param aCount The number of elements to remove.
+  void RemoveElementsAtUnsafe(index_type aStart, size_type aCount);
+
+public:
   // A variation on the RemoveElementsAt method defined above.
   void RemoveElementAt(index_type aIndex) { RemoveElementsAt(aIndex, 1); }
 
@@ -1821,7 +1917,7 @@ public:
       return false;
     }
 
-    RemoveElementAt(i);
+    RemoveElementsAtUnsafe(i, 1);
     return true;
   }
 
@@ -1844,7 +1940,7 @@ public:
   {
     index_type index = IndexOfFirstElementGt(aItem, aComp);
     if (index > 0 && aComp.Equals(ElementAt(index - 1), aItem)) {
-      RemoveElementAt(index - 1);
+      RemoveElementsAtUnsafe(index - 1, 1);
       return true;
     }
     return false;
@@ -1864,6 +1960,184 @@ public:
   {
     return Alloc::Result(this->template SwapArrayElements<Alloc>(
       aOther, sizeof(elem_type), MOZ_ALIGNOF(elem_type)));
+  }
+
+private:
+  // Used by ApplyIf functions to invoke a callable that takes either:
+  // - Nothing: F(void)
+  // - Index only: F(size_t)
+  // - Reference to element only: F(maybe-const elem_type&)
+  // - Both index and reference: F(size_t, maybe-const elem_type&)
+  // `elem_type` must be const when called from const method.
+  template<typename T, typename Param0, typename Param1>
+  struct InvokeWithIndexAndOrReferenceHelper
+  {
+    static constexpr bool valid = false;
+  };
+  template<typename T>
+  struct InvokeWithIndexAndOrReferenceHelper<T, void, void>
+  {
+    static constexpr bool valid = true;
+    template<typename F>
+    static auto Invoke(F&& f, size_t, T&) { return f(); }
+  };
+  template<typename T>
+  struct InvokeWithIndexAndOrReferenceHelper<T, size_t, void>
+  {
+    static constexpr bool valid = true;
+    template<typename F>
+    static auto Invoke(F&& f, size_t i, T&) { return f(i); }
+  };
+  template<typename T>
+  struct InvokeWithIndexAndOrReferenceHelper<T, T&, void>
+  {
+    static constexpr bool valid = true;
+    template<typename F>
+    static auto Invoke(F&& f, size_t, T& e) { return f(e); }
+  };
+  template<typename T>
+  struct InvokeWithIndexAndOrReferenceHelper<T, const T&, void>
+  {
+    static constexpr bool valid = true;
+    template<typename F>
+    static auto Invoke(F&& f, size_t, T& e) { return f(e); }
+  };
+  template<typename T>
+  struct InvokeWithIndexAndOrReferenceHelper<T, size_t, T&>
+  {
+    static constexpr bool valid = true;
+    template<typename F>
+    static auto Invoke(F&& f, size_t i, T& e) { return f(i, e); }
+  };
+  template<typename T>
+  struct InvokeWithIndexAndOrReferenceHelper<T, size_t, const T&>
+  {
+    static constexpr bool valid = true;
+    template<typename F>
+    static auto Invoke(F&& f, size_t i, T& e) { return f(i, e); }
+  };
+  template<typename T, typename F>
+  static auto InvokeWithIndexAndOrReference(F&& f, size_t i, T& e)
+  {
+    using Invoker =
+      InvokeWithIndexAndOrReferenceHelper<
+        T,
+        typename mozilla::FunctionTypeTraits<F>::template ParameterType<0>,
+        typename mozilla::FunctionTypeTraits<F>::template ParameterType<1>>;
+    static_assert(Invoker::valid,
+                  "ApplyIf's Function parameters must match either: (void), "
+                  "(size_t), (maybe-const elem_type&), or "
+                  "(size_t, maybe-const elem_type&)");
+    return Invoker::Invoke(std::forward<F>(f), i, e);
+  }
+
+public:
+  // 'Apply' family of methods.
+  //
+  // The advantages of using Apply methods with lambdas include:
+  // - Safety of accessing elements from within the call, when the array cannot
+  //   have been modified between the iteration and the subsequent access.
+  // - Avoiding moot conversions: pointer->index during a search, followed by
+  //   index->pointer after the search when accessing the element.
+  // - Embedding your code into the algorithm, giving the compiler more chances
+  //   to optimize.
+
+  // Search for the first element comparing equal to aItem with the given
+  // comparator (`==` by default).
+  // If such an element exists, return the result of evaluating either:
+  // - `aFunction()`
+  // - `aFunction(index_type)`
+  // - `aFunction(maybe-const? elem_type&)`
+  // - `aFunction(index_type, maybe-const? elem_type&)`
+  // (`aFunction` must have one of the above signatures with these exact types,
+  //  including references; implicit conversions or generic types not allowed.
+  //  If `this` array is const, the referenced `elem_type` must be const too;
+  //  otherwise it may be either const or non-const.)
+  // But if the element is not found, return the result of evaluating
+  // `aFunctionElse()`.
+  template<class Item, class Comparator, class Function, class FunctionElse>
+  auto ApplyIf(const Item& aItem, index_type aStart,
+               const Comparator& aComp,
+               Function&& aFunction, FunctionElse&& aFunctionElse) const
+  {
+    static_assert(
+      mozilla::IsSame<
+        typename mozilla::FunctionTypeTraits<Function>::ReturnType,
+        typename mozilla::FunctionTypeTraits<FunctionElse>::ReturnType>::value,
+      "ApplyIf's `Function` and `FunctionElse` must return the same type.");
+
+    ::detail::CompareWrapper<Comparator, Item> comp(aComp);
+
+    const elem_type* const elements = Elements();
+    const elem_type* const iend = elements + Length();
+    for (const elem_type* iter = elements + aStart; iter != iend; ++iter) {
+      if (comp.Equals(*iter, aItem)) {
+        return InvokeWithIndexAndOrReference<const elem_type>(
+                 std::forward<Function>(aFunction), iter - elements, *iter);
+      }
+    }
+    return aFunctionElse();
+  }
+  template<class Item, class Comparator, class Function, class FunctionElse>
+  auto ApplyIf(const Item& aItem, index_type aStart,
+               const Comparator& aComp,
+               Function&& aFunction, FunctionElse&& aFunctionElse)
+  {
+    static_assert(
+      mozilla::IsSame<
+        typename mozilla::FunctionTypeTraits<Function>::ReturnType,
+        typename mozilla::FunctionTypeTraits<FunctionElse>::ReturnType>::value,
+      "ApplyIf's `Function` and `FunctionElse` must return the same type.");
+
+    ::detail::CompareWrapper<Comparator, Item> comp(aComp);
+
+    elem_type* const elements = Elements();
+    elem_type* const iend = elements + Length();
+    for (elem_type* iter = elements + aStart; iter != iend; ++iter) {
+      if (comp.Equals(*iter, aItem)) {
+        return InvokeWithIndexAndOrReference<elem_type>(
+                 std::forward<Function>(aFunction), iter - elements, *iter);
+      }
+    }
+    return aFunctionElse();
+  }
+  template<class Item, class Function, class FunctionElse>
+  auto ApplyIf(const Item& aItem, index_type aStart,
+               Function&& aFunction, FunctionElse&& aFunctionElse) const
+  {
+    return ApplyIf(aItem,
+                   aStart,
+                   nsDefaultComparator<elem_type, Item>(),
+                   std::forward<Function>(aFunction),
+                   std::forward<FunctionElse>(aFunctionElse));
+  }
+  template<class Item, class Function, class FunctionElse>
+  auto ApplyIf(const Item& aItem, index_type aStart,
+               Function&& aFunction, FunctionElse&& aFunctionElse)
+  {
+    return ApplyIf(aItem,
+                   aStart,
+                   nsDefaultComparator<elem_type, Item>(),
+                   std::forward<Function>(aFunction),
+                   std::forward<FunctionElse>(aFunctionElse));
+  }
+  template<class Item, class Function, class FunctionElse>
+  auto ApplyIf(const Item& aItem,
+               Function&& aFunction, FunctionElse&& aFunctionElse) const
+  {
+    return ApplyIf(aItem,
+                   0,
+                   std::forward<Function>(aFunction),
+                   std::forward<FunctionElse>(aFunctionElse));
+  }
+  template<class Item, class Function, class FunctionElse>
+  auto ApplyIf(const Item& aItem,
+               Function&& aFunction, FunctionElse&& aFunctionElse)
+  {
+    return ApplyIf(aItem,
+                   0,
+                   std::forward<Function>(aFunction),
+                   std::forward<FunctionElse>(aFunctionElse));
   }
 
   //
@@ -1968,9 +2242,8 @@ protected:
   template<typename ActualAlloc = Alloc>
   elem_type* InsertElementsAt(index_type aIndex, size_type aCount)
   {
-    if (!base_type::template InsertSlotsAt<ActualAlloc>(aIndex, aCount,
-                                                        sizeof(elem_type),
-                                                        MOZ_ALIGNOF(elem_type))) {
+    if (!ActualAlloc::Successful(this->template InsertSlotsAt<ActualAlloc>(
+          aIndex, aCount, sizeof(elem_type), MOZ_ALIGNOF(elem_type)))) {
       return nullptr;
     }
 
@@ -2033,7 +2306,7 @@ public:
     const Comparator* c = reinterpret_cast<const Comparator*>(aData);
     const elem_type* a = static_cast<const elem_type*>(aE1);
     const elem_type* b = static_cast<const elem_type*>(aE2);
-    return c->LessThan(*a, *b) ? -1 : (c->Equals(*a, *b) ? 0 : 1);
+    return c->Compare(*a, *b);
   }
 
   // This method sorts the elements of the array.  It uses the LessThan
@@ -2042,8 +2315,10 @@ public:
   template<class Comparator>
   void Sort(const Comparator& aComp)
   {
+    ::detail::CompareWrapper<Comparator, elem_type> comp(aComp);
+
     NS_QuickSort(Elements(), Length(), sizeof(elem_type),
-                 Compare<Comparator>, const_cast<Comparator*>(&aComp));
+                 Compare<decltype(comp)>, &comp);
   }
 
   // A variation on the Sort method defined above that assumes that
@@ -2125,6 +2400,13 @@ nsTArray_Impl<E, Alloc>::RemoveElementsAt(index_type aStart, size_type aCount)
     InvalidArrayIndex_CRASH(aStart, Length());
   }
 
+  RemoveElementsAtUnsafe(aStart, aCount);
+}
+
+template<typename E, class Alloc>
+void
+nsTArray_Impl<E, Alloc>::RemoveElementsAtUnsafe(index_type aStart, size_type aCount)
+{
   DestructRange(aStart, aCount);
   this->template ShiftData<InfallibleAlloc>(aStart, aCount, 0,
                                             sizeof(elem_type),
@@ -2184,9 +2466,8 @@ auto
 nsTArray_Impl<E, Alloc>::InsertElementsAt(index_type aIndex, size_type aCount,
                                           const Item& aItem) -> elem_type*
 {
-  if (!base_type::template InsertSlotsAt<ActualAlloc>(aIndex, aCount,
-                                                      sizeof(elem_type),
-                                                      MOZ_ALIGNOF(elem_type))) {
+  if (!ActualAlloc::Successful(this->template InsertSlotsAt<ActualAlloc>(
+        aIndex, aCount, sizeof(elem_type), MOZ_ALIGNOF(elem_type)))) {
     return nullptr;
   }
 
@@ -2209,6 +2490,7 @@ nsTArray_Impl<E, Alloc>::InsertElementAt(index_type aIndex) -> elem_type*
     InvalidArrayIndex_CRASH(aIndex, Length());
   }
 
+  // Length() + 1 is guaranteed to not overflow, so EnsureCapacity is OK.
   if (!ActualAlloc::Successful(this->template EnsureCapacity<ActualAlloc>(
         Length() + 1, sizeof(elem_type)))) {
     return nullptr;
@@ -2229,6 +2511,7 @@ nsTArray_Impl<E, Alloc>::InsertElementAt(index_type aIndex, Item&& aItem) -> ele
     InvalidArrayIndex_CRASH(aIndex, Length());
   }
 
+  // Length() + 1 is guaranteed to not overflow, so EnsureCapacity is OK.
   if (!ActualAlloc::Successful(this->template EnsureCapacity<ActualAlloc>(
          Length() + 1, sizeof(elem_type)))) {
     return nullptr;
@@ -2245,8 +2528,8 @@ template<class Item, typename ActualAlloc>
 auto
 nsTArray_Impl<E, Alloc>::AppendElements(const Item* aArray, size_type aArrayLen) -> elem_type*
 {
-  if (!ActualAlloc::Successful(this->template EnsureCapacity<ActualAlloc>(
-        Length() + aArrayLen, sizeof(elem_type)))) {
+  if (!ActualAlloc::Successful(this->template ExtendCapacity<ActualAlloc>(
+        Length(), aArrayLen, sizeof(elem_type)))) {
     return nullptr;
   }
   index_type len = Length();
@@ -2268,8 +2551,8 @@ nsTArray_Impl<E, Alloc>::AppendElements(nsTArray_Impl<Item, Allocator>&& aArray)
 
   index_type len = Length();
   index_type otherLen = aArray.Length();
-  if (!Alloc::Successful(this->template EnsureCapacity<Alloc>(
-        len + otherLen, sizeof(elem_type)))) {
+  if (!Alloc::Successful(this->template ExtendCapacity<Alloc>(
+        len, otherLen, sizeof(elem_type)))) {
     return nullptr;
   }
   copy_type::MoveNonOverlappingRegion(Elements() + len, aArray.Elements(), otherLen,
@@ -2285,6 +2568,7 @@ template<class Item, typename ActualAlloc>
 auto
 nsTArray_Impl<E, Alloc>::AppendElement(Item&& aItem) -> elem_type*
 {
+  // Length() + 1 is guaranteed to not overflow, so EnsureCapacity is OK.
   if (!ActualAlloc::Successful(this->template EnsureCapacity<ActualAlloc>(
          Length() + 1, sizeof(elem_type)))) {
     return nullptr;
@@ -2460,6 +2744,13 @@ public:
     this->AppendElements(aOther);
   }
 
+  AutoTArray(self_type&& aOther)
+    : nsTArray<E>()
+  {
+    Init();
+    this->SwapElements(aOther);
+  }
+
   explicit AutoTArray(const base_type& aOther)
     : mAlign()
   {
@@ -2491,6 +2782,12 @@ public:
   self_type& operator=(const self_type& aOther)
   {
     base_type::operator=(aOther);
+    return *this;
+  }
+
+  self_type& operator=(self_type&& aOther)
+  {
+    base_type::operator=(std::move(aOther));
     return *this;
   }
 

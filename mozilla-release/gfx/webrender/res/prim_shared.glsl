@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include rect,clip_scroll,render_task,resource_cache,snap,transform
+#include rect,render_task,resource_cache,snap,transform
 
 #define EXTEND_MODE_CLAMP  0
 #define EXTEND_MODE_REPEAT 1
@@ -27,15 +27,11 @@ vec2 clamp_rect(vec2 pt, RectWithSize rect) {
 
 // TODO: convert back to RectWithEndPoint if driver issues are resolved, if ever.
 flat varying vec4 vClipMaskUvBounds;
-varying vec3 vClipMaskUv;
+// XY and W are homogeneous coordinates, Z is the layer index
+varying vec4 vClipMaskUv;
 
 
 #ifdef WR_VERTEX_SHADER
-
-#define VECS_PER_LOCAL_CLIP_RECT    1
-#define VECS_PER_PRIM_HEADER        2
-#define VECS_PER_TEXT_RUN           3
-#define VECS_PER_GRADIENT_STOP      2
 
 #define COLOR_MODE_FROM_PASS          0
 #define COLOR_MODE_ALPHA              1
@@ -46,30 +42,65 @@ varying vec3 vClipMaskUv;
 #define COLOR_MODE_SUBPX_DUAL_SOURCE  6
 #define COLOR_MODE_BITMAP             7
 #define COLOR_MODE_COLOR_BITMAP       8
+#define COLOR_MODE_IMAGE              9
 
-uniform HIGHP_SAMPLER_FLOAT sampler2D sLocalClipRects;
+uniform HIGHP_SAMPLER_FLOAT sampler2D sPrimitiveHeadersF;
+uniform HIGHP_SAMPLER_FLOAT isampler2D sPrimitiveHeadersI;
 
 // Instanced attributes
-in ivec4 aData0;
-in ivec4 aData1;
+in ivec4 aData;
 
-RectWithSize fetch_clip_chain_rect(int index) {
-    ivec2 uv = get_fetch_uv(index, VECS_PER_LOCAL_CLIP_RECT);
-    vec4 rect = TEXEL_FETCH(sLocalClipRects, uv, 0, ivec2(0, 0));
-    return RectWithSize(rect.xy, rect.zw);
+#define VECS_PER_PRIM_HEADER_F 2
+#define VECS_PER_PRIM_HEADER_I 2
+
+struct PrimitiveHeader {
+    RectWithSize local_rect;
+    RectWithSize local_clip_rect;
+    float z;
+    int specific_prim_address;
+    int render_task_index;
+    int clip_task_index;
+    int transform_id;
+    ivec3 user_data;
+};
+
+PrimitiveHeader fetch_prim_header(int index) {
+    PrimitiveHeader ph;
+
+    ivec2 uv_f = get_fetch_uv(index, VECS_PER_PRIM_HEADER_F);
+    vec4 local_rect = TEXEL_FETCH(sPrimitiveHeadersF, uv_f, 0, ivec2(0, 0));
+    vec4 local_clip_rect = TEXEL_FETCH(sPrimitiveHeadersF, uv_f, 0, ivec2(1, 0));
+    ph.local_rect = RectWithSize(local_rect.xy, local_rect.zw);
+    ph.local_clip_rect = RectWithSize(local_clip_rect.xy, local_clip_rect.zw);
+
+    ivec2 uv_i = get_fetch_uv(index, VECS_PER_PRIM_HEADER_I);
+    ivec4 data0 = TEXEL_FETCH(sPrimitiveHeadersI, uv_i, 0, ivec2(0, 0));
+    ivec4 data1 = TEXEL_FETCH(sPrimitiveHeadersI, uv_i, 0, ivec2(1, 0));
+    ph.z = float(data0.x);
+    ph.render_task_index = data0.y;
+    ph.specific_prim_address = data0.z;
+    ph.clip_task_index = data0.w;
+    ph.transform_id = data1.x;
+    ph.user_data = data1.yzw;
+
+    return ph;
 }
 
 struct VertexInfo {
     vec2 local_pos;
-    vec2 screen_pos;
-    float w;
-    vec2 snapped_device_pos;
+    vec2 snap_offset;
+    vec4 world_pos;
 };
+
+//Note: this function is unsafe for `vi.world_pos.w <= 0.0`
+vec2 snap_device_pos(VertexInfo vi) {
+    return vi.world_pos.xy * uDevicePixelRatio / max(0.0, vi.world_pos.w) + vi.snap_offset;
+}
 
 VertexInfo write_vertex(RectWithSize instance_rect,
                         RectWithSize local_clip_rect,
                         float z,
-                        ClipScrollNode scroll_node,
+                        Transform transform,
                         PictureTask task,
                         RectWithSize snap_rect) {
 
@@ -82,20 +113,19 @@ VertexInfo write_vertex(RectWithSize instance_rect,
     /// Compute the snapping offset.
     vec2 snap_offset = compute_snap_offset(
         clamped_local_pos,
-        scroll_node.transform,
+        transform.m,
         snap_rect,
         vec2(0.5)
     );
 
     // Transform the current vertex to world space.
-    vec4 world_pos = scroll_node.transform * vec4(clamped_local_pos, 0.0, 1.0);
+    vec4 world_pos = transform.m * vec4(clamped_local_pos, 0.0, 1.0);
 
     // Convert the world positions to device pixel space.
     vec2 device_pos = world_pos.xy / world_pos.w * uDevicePixelRatio;
 
     // Apply offsets for the render task to get correct screen location.
-    vec2 snapped_device_pos = device_pos + snap_offset;
-    vec2 final_pos = snapped_device_pos -
+    vec2 final_pos = device_pos + snap_offset -
                      task.content_origin +
                      task.common_data.task_rect.p0;
 
@@ -103,9 +133,8 @@ VertexInfo write_vertex(RectWithSize instance_rect,
 
     VertexInfo vi = VertexInfo(
         clamped_local_pos,
-        device_pos,
-        world_pos.w,
-        snapped_device_pos
+        snap_offset,
+        world_pos
     );
 
     return vi;
@@ -135,9 +164,8 @@ VertexInfo write_transform_vertex(RectWithSize local_segment_rect,
                                   RectWithSize local_clip_rect,
                                   vec4 clip_edge_mask,
                                   float z,
-                                  ClipScrollNode scroll_node,
-                                  PictureTask task,
-                                  bool do_perspective_interpolation) {
+                                  Transform transform,
+                                  PictureTask task) {
     // Calculate a clip rect from local_rect + local clip
     RectWithEndpoint clip_rect = to_rect_with_endpoint(local_clip_rect);
     RectWithEndpoint segment_rect = to_rect_with_endpoint(local_segment_rect);
@@ -167,23 +195,17 @@ VertexInfo write_transform_vertex(RectWithSize local_segment_rect,
     // Select the corner of the local rect that we are processing.
     vec2 local_pos = local_segment_rect.p0 + local_segment_rect.size * aPosition.xy;
 
-    // Transform the current vertex to the world cpace.
-    vec4 world_pos = scroll_node.transform * vec4(local_pos, 0.0, 1.0);
-
     // Convert the world positions to device pixel space.
-    vec2 device_pos = world_pos.xy / world_pos.w * uDevicePixelRatio;
     vec2 task_offset = task.common_data.task_rect.p0 - task.content_origin;
 
-    // Force w = 1, if we don't want perspective interpolation (for
-    // example, drawing a screen-space quad on an element with a
-    // perspective transform).
-    world_pos.w = mix(1.0, world_pos.w, do_perspective_interpolation);
+    // Transform the current vertex to the world cpace.
+    vec4 world_pos = transform.m * vec4(local_pos, 0.0, 1.0);
+    vec4 final_pos = vec4(
+        world_pos.xy * uDevicePixelRatio + task_offset * world_pos.w,
+        z * world_pos.w,
+        world_pos.w
+    );
 
-    // We want the world space coords to be perspective divided by W.
-    // We also want that to apply to any interpolators. However, we
-    // want a constant Z across the primitive, since we're using it
-    // for draw ordering - so scale by the W coord to ensure this.
-    vec4 final_pos = vec4(device_pos + task_offset, z, 1.0) * world_pos.w;
     gl_Position = uTransform * final_pos;
 
     init_transform_vs(mix(
@@ -194,36 +216,44 @@ VertexInfo write_transform_vertex(RectWithSize local_segment_rect,
 
     VertexInfo vi = VertexInfo(
         local_pos,
-        device_pos,
-        world_pos.w,
-        device_pos
+        vec2(0.0),
+        world_pos
     );
 
     return vi;
 }
 
-void write_clip(vec2 global_pos, ClipArea area) {
-    vec2 uv = global_pos +
-              area.common_data.task_rect.p0 -
-              area.screen_origin;
+void write_clip(vec4 world_pos, ClipArea area) {
+    vec2 uv = world_pos.xy * uDevicePixelRatio +
+        world_pos.w * (area.common_data.task_rect.p0 - area.screen_origin);
     vClipMaskUvBounds = vec4(
         area.common_data.task_rect.p0,
         area.common_data.task_rect.p0 + area.common_data.task_rect.size
     );
-    vClipMaskUv = vec3(uv, area.common_data.texture_layer_index);
+    vClipMaskUv = vec4(uv, area.common_data.texture_layer_index, world_pos.w);
 }
 #endif //WR_VERTEX_SHADER
 
 #ifdef WR_FRAGMENT_SHADER
 
 float do_clip() {
-    // anything outside of the mask is considered transparent
-    bvec4 inside = lessThanEqual(
-        vec4(vClipMaskUvBounds.xy, vClipMaskUv.xy),
-        vec4(vClipMaskUv.xy, vClipMaskUvBounds.zw));
     // check for the dummy bounds, which are given to the opaque objects
-    return vClipMaskUvBounds.xy == vClipMaskUvBounds.zw ? 1.0:
-        all(inside) ? texelFetch(sCacheA8, ivec3(vClipMaskUv), 0).r : 0.0;
+    if (vClipMaskUvBounds.xy == vClipMaskUvBounds.zw) {
+        return 1.0;
+    }
+    // anything outside of the mask is considered transparent
+    //Note: we assume gl_FragCoord.w == interpolated(1 / vClipMaskUv.w)
+    vec2 mask_uv = vClipMaskUv.xy * gl_FragCoord.w;
+    bvec4 inside = lessThanEqual(
+        vec4(vClipMaskUvBounds.xy, mask_uv),
+        vec4(mask_uv, vClipMaskUvBounds.zw));
+    // bail out if the pixel is outside the valid bounds
+    if (!all(inside)) {
+        return 0.0;
+    }
+    // finally, the slow path - fetch the mask value from an image
+    ivec3 tc = ivec3(mask_uv, vClipMaskUv.z);
+    return texelFetch(sCacheA8, tc, 0).r;
 }
 
 #ifdef WR_FEATURE_DITHERING

@@ -33,7 +33,7 @@ var tests = [
     },
     async onShown(popup) {
       checkPopup(popup, this.notifyObj);
-      let notification = popup.childNodes[0];
+      let notification = popup.children[0];
       notification.setAttribute("invalidselection", true);
       await promiseElementVisible(notification.checkbox);
       EventUtils.synthesizeMouseAtCenter(notification.checkbox, {});
@@ -43,6 +43,6 @@ var tests = [
       ok(!notification.button.disabled, "should not be disabled when invalidselection is not present");
       triggerMainCommand(popup);
     },
-    onHidden() { }
+    onHidden() { },
   },
 ];

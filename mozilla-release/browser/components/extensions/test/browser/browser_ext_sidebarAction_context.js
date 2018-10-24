@@ -4,11 +4,6 @@
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-SpecialPowers.pushPrefEnv({
-  // Ignore toolbarbutton stuff, other test covers it.
-  set: [["extensions.sidebar-button.shown", true]],
-});
-
 async function runTests(options) {
   async function background(getTests) {
     async function checkDetails(expecting, details) {
@@ -92,9 +87,6 @@ async function runTests(options) {
     if (!sidebarActionId) {
       sidebarActionId = `${makeWidgetId(extension.id)}-sidebar-action`;
     }
-
-    let command = document.getElementById(sidebarActionId);
-    ok(command, "command exists");
 
     let menuId = `menu_${sidebarActionId}`;
     let menu = document.getElementById(menuId);

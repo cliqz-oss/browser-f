@@ -117,9 +117,11 @@ public:
 
   void InsertResourceEntry(PerformanceEntry* aEntry);
 
+  virtual void QueueNavigationTimingEntry() = 0;
+
 protected:
-  Performance();
-  explicit Performance(nsPIDOMWindowInner* aWindow);
+  explicit Performance(bool aSystemPrincipal);
+  Performance(nsPIDOMWindowInner* aWindow, bool aSystemPrincipal);
 
   virtual ~Performance();
 

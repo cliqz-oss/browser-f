@@ -509,14 +509,17 @@ private:
   union Extra {
     // mMessage is set by ThrowErrorWithMessage and reported (and deallocated)
     // by SetPendingExceptionWithMessage.
+    MOZ_INIT_OUTSIDE_CTOR
     Message* mMessage; // valid when IsErrorWithMessage()
 
     // mJSException is set (and rooted) by ThrowJSException and reported (and
     // unrooted) by SetPendingJSException.
+    MOZ_INIT_OUTSIDE_CTOR
     JS::Value mJSException; // valid when IsJSException()
 
     // mDOMExceptionInfo is set by ThrowDOMException and reported (and
     // deallocated) by SetPendingDOMException.
+    MOZ_INIT_OUTSIDE_CTOR
     DOMExceptionInfo* mDOMExceptionInfo; // valid when IsDOMException()
 
     // |mJSException| has a non-trivial constructor and therefore MUST be
@@ -644,32 +647,6 @@ binding_danger::TErrorResult<CleanupPolicy>::operator const ErrorResult&() const
 {
   return *static_cast<const ErrorResult*>(
      reinterpret_cast<const TErrorResult<AssertAndSuppressCleanupPolicy>*>(this));
-}
-
-template<typename CleanupPolicy>
-bool
-binding_danger::TErrorResult<CleanupPolicy>::operator==(const ErrorResult& aRight) const
-{
-  auto right = reinterpret_cast<const TErrorResult<CleanupPolicy>*>(&aRight);
-
-  if (mResult != right->mResult) {
-    return false;
-  }
-
-  if (IsJSException()) {
-    // js exceptions are always non-equal
-    return false;
-  }
-
-  if (IsErrorWithMessage()) {
-    return *mExtra.mMessage == *right->mExtra.mMessage;
-  }
-
-  if (IsDOMException()) {
-    return *mExtra.mDOMExceptionInfo == *right->mExtra.mDOMExceptionInfo;
-  }
-
-  return true;
 }
 
 // A class for use when an ErrorResult should just automatically be ignored.

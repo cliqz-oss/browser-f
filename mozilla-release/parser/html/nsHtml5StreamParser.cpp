@@ -219,6 +219,9 @@ nsHtml5StreamParser::~nsHtml5StreamParser()
 {
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
   mTokenizer->end();
+  if (recordreplay::IsRecordingOrReplaying()) {
+    recordreplay::EndContentParse(this);
+  }
 #ifdef DEBUG
   {
     mozilla::MutexAutoLock flushTimerLock(mFlushTimerMutex);
@@ -284,6 +287,12 @@ nsHtml5StreamParser::Notify(const char* aCharset, nsDetectionConfident aConf)
 void
 nsHtml5StreamParser::SetViewSourceTitle(nsIURI* aURL)
 {
+  if (recordreplay::IsRecordingOrReplaying()) {
+    nsAutoCString spec;
+    aURL->GetSpec(spec);
+    recordreplay::BeginContentParse(this, spec.get(), "text/html");
+  }
+
   if (aURL) {
     nsCOMPtr<nsIURI> temp;
     bool isViewSource;
@@ -336,7 +345,7 @@ nsHtml5StreamParser::SetupDecodingFromBom(NotNull<const Encoding*> aEncoding)
 {
   NS_ASSERTION(IsParserThread(), "Wrong thread!");
   mEncoding = aEncoding;
-  mUnicodeDecoder = mEncoding->NewDecoderWithBOMRemoval();
+  mUnicodeDecoder = mEncoding->NewDecoderWithoutBOMHandling();
   mCharsetSource = kCharsetFromByteOrderMark;
   mFeedChardet = false;
   mTreeBuilder->SetDocumentCharset(mEncoding, mCharsetSource);
@@ -835,6 +844,9 @@ nsHtml5StreamParser::WriteStreamBytes(const uint8_t* aFromSegment,
     bool hadErrors;
     Tie(result, read, written, hadErrors) =
       mUnicodeDecoder->DecodeToUTF16(src, dst, false);
+    if (recordreplay::IsRecordingOrReplaying()) {
+      recordreplay::AddContentParseData(this, dst.data(), written);
+    }
     if (hadErrors && !mHasHadErrors) {
       mHasHadErrors = true;
       if (mEncoding == UTF_8_ENCODING) {
@@ -1091,6 +1103,9 @@ nsHtml5StreamParser::DoStopRequest()
     bool hadErrors;
     Tie(result, read, written, hadErrors) =
       mUnicodeDecoder->DecodeToUTF16(src, dst, true);
+    if (recordreplay::IsRecordingOrReplaying()) {
+      recordreplay::AddContentParseData(this, dst.data(), written);
+    }
     if (hadErrors && !mHasHadErrors) {
       mHasHadErrors = true;
       if (mEncoding == UTF_8_ENCODING) {
@@ -1484,7 +1499,7 @@ nsHtml5StreamParser::ParseAvailableData()
             FlushTreeOpsAndDisarmTimer();
             return; // no more data and not expecting more
           default:
-            NS_NOTREACHED("It should be impossible to reach this.");
+            MOZ_ASSERT_UNREACHABLE("It should be impossible to reach this.");
             return;
         }
       }
@@ -1572,9 +1587,11 @@ nsHtml5StreamParser::ContinueAfterScripts(nsHtml5Tokenizer* aTokenizer,
   {
     mozilla::MutexAutoLock speculationAutoLock(mSpeculationMutex);
     if (mSpeculations.IsEmpty()) {
-      NS_NOTREACHED("ContinueAfterScripts called without speculations.");
+      MOZ_ASSERT_UNREACHABLE("ContinueAfterScripts called without "
+                             "speculations.");
       return;
     }
+
     nsHtml5Speculation* speculation = mSpeculations.ElementAt(0);
     if (aLastWasCR || !aTokenizer->isInDataState() ||
         !aTreeBuilder->snapshotMatches(speculation->GetSnapshot())) {

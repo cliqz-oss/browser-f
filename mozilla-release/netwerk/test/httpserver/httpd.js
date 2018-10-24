@@ -38,8 +38,6 @@ var EXPORTED_SYMBOLS = [
   "HttpServer",
 ];
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-
 const CC = Components.Constructor;
 
 const PR_UINT32_MAX = Math.pow(2, 32) - 1;
@@ -390,8 +388,6 @@ function nsHttpServer()
 }
 nsHttpServer.prototype =
 {
-  classID: Components.ID("{54ef6f81-30af-4b1d-ac55-8ba811293e41}"),
-
   // NSISERVERSOCKETLISTENER
 
   /**
@@ -5130,6 +5126,9 @@ nsSimpleEnumerator.prototype =
 
     return this._items[this._nextIndex++];
   },
+  [Symbol.iterator]() {
+    return this._items.values();
+  },
   QueryInterface: function(aIID)
   {
     if (Ci.nsISimpleEnumerator.equals(aIID) ||
@@ -5325,11 +5324,6 @@ Request.prototype =
       this._bag = new WritablePropertyBag();
   }
 };
-
-
-// XPCOM trappings
-
-var NSGetFactory = XPCOMUtils.generateNSGetFactory([nsHttpServer]);
 
 /**
  * Creates a new HTTP server listening for loopback traffic on the given port,

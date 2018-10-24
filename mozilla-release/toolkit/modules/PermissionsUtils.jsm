@@ -5,7 +5,6 @@
 var EXPORTED_SYMBOLS = ["PermissionsUtils"];
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/BrowserUtils.jsm");
 
 
 var gImportedPrefBranches = new Set();
@@ -35,7 +34,7 @@ function importPrefBranch(aPrefBranch, aPermission, aAction) {
 
           principals = [
             Services.scriptSecurityManager.createCodebasePrincipal(httpURI, {}),
-            Services.scriptSecurityManager.createCodebasePrincipal(httpsURI, {})
+            Services.scriptSecurityManager.createCodebasePrincipal(httpsURI, {}),
           ];
         } catch (e2) {}
       }
@@ -90,5 +89,5 @@ var PermissionsUtils = {
                      Services.perms.DENY_ACTION);
 
     gImportedPrefBranches.add(aPrefBranch);
-  }
+  },
 };

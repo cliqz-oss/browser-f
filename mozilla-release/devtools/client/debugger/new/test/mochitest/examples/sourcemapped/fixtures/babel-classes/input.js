@@ -1,15 +1,13 @@
 export default function root() {
-  let one = 1;
-
-  class Thing {}
-
   class Another {
+    bound = () => {
+      return this;
+    }
+
     method() {
       let two = 2;
 
-      const three = 3;
-
-      console.log("pause here", Another, one, Thing, root);
+      console.log("pause here", Another, root);
     }
   }
 

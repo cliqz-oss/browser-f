@@ -177,6 +177,12 @@ SdpFingerprintAttributeList::ParseFingerprint(const std::string& str)
   return fp;
 }
 
+bool
+SdpFmtpAttributeList::operator==(const SdpFmtpAttributeList& other) const
+{
+  return mFmtps == other.mFmtps;
+}
+
 void
 SdpFmtpAttributeList::Serialize(std::ostream& os) const
 {
@@ -861,6 +867,7 @@ SdpRemoteCandidatesAttribute::Serialize(std::ostream& os) const
   os << CRLF;
 }
 
+// Remove this function. See Bug 1469702
 bool
 SdpRidAttributeList::Rid::ParseParameters(std::istream& is, std::string* error)
 {
@@ -923,6 +930,7 @@ SdpRidAttributeList::Rid::ParseParameters(std::istream& is, std::string* error)
   return true;
 }
 
+// Remove this function. See Bug 1469702
 bool
 SdpRidAttributeList::Rid::ParseDepend(
     std::istream& is,
@@ -939,6 +947,7 @@ SdpRidAttributeList::Rid::ParseDepend(
   return true;
 }
 
+// Remove this function. See Bug 1469702
 bool
 SdpRidAttributeList::Rid::ParseFormats(
     std::istream& is,
@@ -1007,6 +1016,7 @@ SdpRidAttributeList::Rid::SerializeParameters(std::ostream& os) const
   }
 }
 
+// Remove this function. See Bug 1469702
 bool
 SdpRidAttributeList::Rid::Parse(std::istream& is, std::string* error)
 {
@@ -1062,6 +1072,7 @@ SdpRidAttributeList::Serialize(std::ostream& os) const
   }
 }
 
+// Remove this function. See Bug 1469702
 bool
 SdpRidAttributeList::PushEntry(const std::string& raw,
                                std::string* error,
@@ -1078,6 +1089,23 @@ SdpRidAttributeList::PushEntry(const std::string& raw,
 
   mRids.push_back(rid);
   return true;
+}
+
+void
+SdpRidAttributeList::PushEntry(const std::string& id, sdp::Direction dir,
+                               const std::vector<uint16_t>& formats,
+                               const EncodingConstraints& constraints,
+                               const std::vector<std::string>& dependIds)
+{
+  SdpRidAttributeList::Rid rid;
+
+  rid.id = id;
+  rid.direction = dir;
+  rid.formats = formats;
+  rid.constraints = constraints;
+  rid.dependIds = dependIds;
+
+  mRids.push_back(std::move(rid));
 }
 
 void

@@ -1,14 +1,11 @@
-const LOAD_IN_SIDEBAR_ANNO = "bookmarkProperties/loadInSidebar";
-const DESCRIPTION_ANNO = "bookmarkProperties/description";
-
 var tagData = [
   { uri: uri("http://slint.us"), tags: ["indie", "kentucky", "music"] },
-  { uri: uri("http://en.wikipedia.org/wiki/Diplodocus"), tags: ["dinosaur", "dj", "rad word"] }
+  { uri: uri("http://en.wikipedia.org/wiki/Diplodocus"), tags: ["dinosaur", "dj", "rad word"] },
 ];
 
 var bookmarkData = [
   { uri: uri("http://slint.us"), title: "indie, kentucky, music" },
-  { uri: uri("http://en.wikipedia.org/wiki/Diplodocus"), title: "dinosaur, dj, rad word" }
+  { uri: uri("http://en.wikipedia.org/wiki/Diplodocus"), title: "dinosaur, dj, rad word" },
 ];
 
 /*
@@ -94,10 +91,6 @@ async function testMenuBookmarks() {
 
   Assert.equal(PlacesUtils.asQuery(folderNode).hasChildren, true);
 
-  Assert.equal("folder test comment",
-              PlacesUtils.annotations.getItemAnnotation(folderNode.itemId,
-                                                        DESCRIPTION_ANNO));
-
   // open test folder, and test the children
   folderNode.containerOpen = true;
   Assert.equal(folderNode.childCount, 1);
@@ -105,19 +98,15 @@ async function testMenuBookmarks() {
   let bookmarkNode = folderNode.getChild(0);
   Assert.equal("http://test/post", bookmarkNode.uri);
   Assert.equal("test post keyword", bookmarkNode.title);
-  Assert.ok(PlacesUtils.annotations.itemHasAnnotation(bookmarkNode.itemId,
-                                                      LOAD_IN_SIDEBAR_ANNO));
   Assert.equal(bookmarkNode.dateAdded, 1177375336000000);
 
   let entry = await PlacesUtils.keywords.fetch({ url: bookmarkNode.uri });
   Assert.equal("test", entry.keyword);
   Assert.equal("hidden1%3Dbar&text1%3D%25s", entry.postData);
 
-  Assert.equal("ISO-8859-1",
-               (await PlacesUtils.getCharsetForURI(NetUtil.newURI(bookmarkNode.uri))));
-  Assert.equal("item description",
-              PlacesUtils.annotations.getItemAnnotation(bookmarkNode.itemId,
-                                                        DESCRIPTION_ANNO));
+  let pageInfo = await PlacesUtils.history.fetch(bookmarkNode.uri, {includeAnnotations: true});
+  Assert.equal(pageInfo.annotations.get(PlacesUtils.CHARSET_ANNO), "ISO-8859-1",
+    "Should have the correct charset");
 
   folderNode.containerOpen = false;
   root.containerOpen = false;

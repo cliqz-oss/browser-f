@@ -31,7 +31,6 @@ class AutoSetInstantiatingToFalse;
 class nsIPrincipal;
 class nsFrameLoader;
 class nsPluginFrame;
-class nsXULElement;
 class nsPluginInstanceOwner;
 
 namespace mozilla {
@@ -39,6 +38,7 @@ namespace dom {
 template<typename T> class Sequence;
 struct MozPluginParameter;
 class HTMLIFrameElement;
+class XULFrameElement;
 } // namespace dom
 } // namespace mozilla
 
@@ -239,7 +239,7 @@ class nsObjectLoadingContent : public nsImageLoadingContent
     {
       aRv.Throw(NS_ERROR_NOT_IMPLEMENTED);
     }
-    void SwapFrameLoaders(nsXULElement& aOtherLoaderOwner,
+    void SwapFrameLoaders(mozilla::dom::XULFrameElement& aOtherLoaderOwner,
                           mozilla::ErrorResult& aRv)
     {
       aRv.Throw(NS_ERROR_NOT_IMPLEMENTED);
@@ -337,9 +337,9 @@ class nsObjectLoadingContent : public nsImageLoadingContent
 
     void DoStopPlugin(nsPluginInstanceOwner* aInstanceOwner);
 
-    nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
-                        nsIContent* aBindingParent,
-                        bool aCompileEventHandler);
+    nsresult BindToTree(nsIDocument* aDocument,
+                        nsIContent* aParent,
+                        nsIContent* aBindingParent);
     void UnbindFromTree(bool aDeep = true,
                         bool aNullParent = true);
 

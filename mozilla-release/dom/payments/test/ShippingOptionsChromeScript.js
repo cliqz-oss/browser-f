@@ -74,6 +74,8 @@ const TestingUIService = {
     paymentSrv.respondPayment(completeResponse.QueryInterface(Ci.nsIPaymentActionResponse));
   },
   updatePayment: updateRequest,
+  closePayment: function(requestId) {
+  },
   QueryInterface: ChromeUtils.generateQI([Ci.nsIPaymentUIService]),
 };
 
@@ -86,7 +88,6 @@ addMessageListener("set-expected-results", function(results) {
 });
 
 addMessageListener("teardown", function() {
-  paymentSrv.cleanup();
   paymentSrv.setTestingUIService(null);
   sendAsyncMessage('teardown-complete');
 });

@@ -16,7 +16,6 @@
 #include "nsITimedChannel.h"
 
 class nsIHttpChannel;
-class nsITimedChannel;
 
 namespace mozilla {
 namespace dom {
@@ -41,7 +40,8 @@ public:
                         DOMHighResTimeStamp aZeroTime);
 
   void
-  SetPropertiesFromHttpChannel(nsIHttpChannel* aHttpChannel);
+  SetPropertiesFromHttpChannel(nsIHttpChannel* aHttpChannel,
+                               nsITimedChannel* aChannel);
 
   bool IsInitialized() const
   {

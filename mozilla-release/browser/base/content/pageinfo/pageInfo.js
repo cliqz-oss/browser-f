@@ -135,7 +135,7 @@ pageInfoTreeView.prototype = {
   isEditable(row, column) { return false; },
   isSelectable(row, column) { return false; },
   performAction(action) { },
-  performActionOnCell(action, row, column) { }
+  performActionOnCell(action, row, column) { },
 };
 
 // mmm, yummy. global variables.
@@ -238,9 +238,7 @@ const nsICacheStorage = Ci.nsICacheStorage;
 const cacheService = Cc["@mozilla.org/netwerk/cache-storage-service;1"].getService(nsICacheStorageService);
 
 var loadContextInfo = Services.loadContextInfo.fromLoadContext(
-  window.QueryInterface(Ci.nsIInterfaceRequestor)
-        .getInterface(Ci.nsIWebNavigation)
-        .QueryInterface(Ci.nsILoadContext), false);
+  window.docShell.QueryInterface(Ci.nsILoadContext), false);
 var diskStorage = cacheService.diskCacheStorage(loadContextInfo, false);
 
 const nsICookiePermission  = Ci.nsICookiePermission;
@@ -354,7 +352,7 @@ function loadPageInfo(frameOuterWindowID, imageElement, browser) {
     pageInfoData = message.data;
     let docInfo = pageInfoData.docInfo;
     let windowInfo = pageInfoData.windowInfo;
-    let uri = makeURI(docInfo.documentURIObject.spec);
+    let uri = Services.io.newURI(docInfo.documentURIObject.spec);
     let principal = docInfo.principal;
     gDocInfo = docInfo;
 
@@ -439,7 +437,7 @@ function doHelpButton() {
     "mediaPanel":    "pageinfo_media",
     "feedPanel":     "pageinfo_feed",
     "permPanel":     "pageinfo_permissions",
-    "securityPanel": "pageinfo_security"
+    "securityPanel": "pageinfo_security",
   };
 
   var deck  = document.getElementById("mainDeck");
@@ -478,7 +476,7 @@ function openCacheEntry(key, cb) {
     },
     onCacheEntryAvailable(entry, isNew, appCache, status) {
       cb(entry);
-    }
+    },
   };
   diskStorage.asyncOpenURI(Services.io.newURI(key), "", nsICacheStorage.OPEN_READONLY, checkCacheListener);
 }
@@ -680,8 +678,8 @@ function saveMedia() {
       else if (item instanceof HTMLAudioElement)
         titleKey = "SaveAudioTitle";
 
-      saveURL(url, null, titleKey, false, false, makeURI(item.baseURI),
-              null, gDocInfo.isContentWindowPrivate);
+      saveURL(url, null, titleKey, false, false, Services.io.newURI(item.baseURI),
+              null, gDocInfo.isContentWindowPrivate, gDocInfo.principal);
     }
   } else {
     selectSaveFolder(function(aDirectory) {
@@ -689,7 +687,8 @@ function saveMedia() {
         var saveAnImage = function(aURIString, aChosenData, aBaseURI) {
           uniqueFile(aChosenData.file);
           internalSave(aURIString, null, null, null, null, false, "SaveImageTitle",
-                       aChosenData, aBaseURI, null, false, null, gDocInfo.isContentWindowPrivate);
+                       aChosenData, aBaseURI, null, false, null,
+                       gDocInfo.isContentWindowPrivate, gDocInfo.principal);
         };
 
         for (var i = 0; i < rowArray.length; i++) {
@@ -697,7 +696,7 @@ function saveMedia() {
           let dir = aDirectory.clone();
           let item = gImageView.data[v][COL_IMAGE_NODE];
           let uriString = gImageView.data[v][COL_IMAGE_ADDRESS];
-          let uri = makeURI(uriString);
+          let uri = Services.io.newURI(uriString);
 
           try {
             uri.QueryInterface(Ci.nsIURL);
@@ -710,12 +709,12 @@ function saveMedia() {
           }
 
           if (i == 0) {
-            saveAnImage(uriString, new AutoChosen(dir, uri), makeURI(item.baseURI));
+            saveAnImage(uriString, new AutoChosen(dir, uri), Services.io.newURI(item.baseURI));
           } else {
             // This delay is a hack which prevents the download manager
             // from opening many times. See bug 377339.
             setTimeout(saveAnImage, 200, uriString, new AutoChosen(dir, uri),
-                       makeURI(item.baseURI));
+                       Services.io.newURI(item.baseURI));
           }
         }
       }
@@ -728,7 +727,7 @@ function onBlockImage() {
                             .getService(nsIPermissionManager);
 
   var checkbox = document.getElementById("blockImage");
-  var uri = makeURI(document.getElementById("imageurltext").value);
+  var uri = Services.io.newURI(document.getElementById("imageurltext").value);
   if (checkbox.checked)
     permissionManager.add(uri, "image", nsIPermissionManager.DENY_ACTION);
   else
@@ -939,7 +938,7 @@ function makeBlockImage(url) {
     // for http(s) or we don't load images at all
     checkbox.hidden = true;
   else {
-    var uri = makeURI(url);
+    var uri = Services.io.newURI(url);
     if (uri.host) {
       checkbox.hidden = false;
       checkbox.label = gBundle.getFormattedString("mediaBlockImage", [uri.host]);
@@ -961,12 +960,12 @@ var imagePermissionObserver = {
         var imageTree = document.getElementById("imagetree");
         var row = getSelectedRow(imageTree);
         var url = gImageView.data[row][COL_IMAGE_ADDRESS];
-        if (permission.matchesURI(makeURI(url), true)) {
+        if (permission.matchesURI(Services.io.newURI(url), true)) {
           makeBlockImage(url);
         }
       }
     }
-  }
+  },
 };
 
 function getContentTypeFromHeaders(cacheEntryDescriptor) {
@@ -997,7 +996,7 @@ function formatDate(datestr, unknown) {
     return unknown;
 
   const dateTimeFormatter = new Services.intl.DateTimeFormat(undefined, {
-    dateStyle: "long", timeStyle: "long"
+    dateStyle: "long", timeStyle: "long",
   });
   return dateTimeFormatter.format(date);
 }

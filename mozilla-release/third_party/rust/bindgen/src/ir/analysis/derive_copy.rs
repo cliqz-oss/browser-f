@@ -167,6 +167,7 @@ impl<'ctx> MonotoneFramework for CannotDeriveCopy<'ctx> {
             TypeKind::NullPtr |
             TypeKind::Int(..) |
             TypeKind::Float(..) |
+            TypeKind::Vector(..) |
             TypeKind::Complex(..) |
             TypeKind::Function(..) |
             TypeKind::Enum(..) |
@@ -234,7 +235,7 @@ impl<'ctx> MonotoneFramework for CannotDeriveCopy<'ctx> {
                 }
 
                 if info.kind() == CompKind::Union {
-                    if !self.ctx.options().rust_features().untagged_union() {
+                    if !self.ctx.options().rust_features().untagged_union {
                         // NOTE: If there's no template parameters we can derive
                         // copy unconditionally, since arrays are magical for
                         // rustc, and __BindgenUnionField always implements
@@ -246,8 +247,8 @@ impl<'ctx> MonotoneFramework for CannotDeriveCopy<'ctx> {
                     }
 
                     // https://github.com/rust-lang/rust/issues/36640
-                    if info.self_template_params(self.ctx).is_some() ||
-                        item.used_template_params(self.ctx).is_some()
+                    if !info.self_template_params(self.ctx).is_empty() ||
+                        !item.all_template_params(self.ctx).is_empty()
                     {
                         trace!(
                             "    comp cannot derive copy because issue 36640"

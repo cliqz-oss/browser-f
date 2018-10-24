@@ -17,7 +17,6 @@
 #include "mozilla/RefPtr.h"
 #include "mozilla/Variant.h"
 
-#include <iterator>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -29,15 +28,20 @@
 #include "js/CallArgs.h"
 #include "js/CharacterEncoding.h"
 #include "js/Class.h"
+#include "js/CompileOptions.h"
+#include "js/ErrorReport.h"
 #include "js/GCVector.h"
 #include "js/HashTable.h"
 #include "js/Id.h"
+#include "js/MemoryFunctions.h"
+#include "js/OffThreadScriptCompilation.h"
 #include "js/Principals.h"
 #include "js/Realm.h"
 #include "js/RefCounted.h"
 #include "js/RootingAPI.h"
 #include "js/Stream.h"
 #include "js/TracingAPI.h"
+#include "js/Transcoding.h"
 #include "js/UniquePtr.h"
 #include "js/Utility.h"
 #include "js/Value.h"
@@ -47,6 +51,7 @@
 
 namespace JS {
 
+class SourceBufferHolder;
 class TwoByteChars;
 
 #ifdef JS_DEBUG
@@ -223,64 +228,6 @@ typedef void
                                       void* data);
 
 /**
- * Possible exception types. These types are part of a JSErrorFormatString
- * structure. They define which error to throw in case of a runtime error.
- *
- * JSEXN_WARN is used for warnings in js.msg files (for instance because we
- * don't want to prepend 'Error:' to warning messages). This value can go away
- * if we ever decide to use an entirely separate mechanism for warnings.
- */
-typedef enum JSExnType {
-    JSEXN_ERR,
-    JSEXN_FIRST = JSEXN_ERR,
-        JSEXN_INTERNALERR,
-        JSEXN_EVALERR,
-        JSEXN_RANGEERR,
-        JSEXN_REFERENCEERR,
-        JSEXN_SYNTAXERR,
-        JSEXN_TYPEERR,
-        JSEXN_URIERR,
-        JSEXN_DEBUGGEEWOULDRUN,
-        JSEXN_WASMCOMPILEERROR,
-        JSEXN_WASMLINKERROR,
-        JSEXN_WASMRUNTIMEERROR,
-    JSEXN_ERROR_LIMIT,
-    JSEXN_WARN = JSEXN_ERROR_LIMIT,
-    JSEXN_NOTE,
-    JSEXN_LIMIT
-} JSExnType;
-
-struct JSErrorFormatString {
-     /** The error message name in ASCII. */
-    const char* name;
-
-    /** The error format string in ASCII. */
-    const char* format;
-
-    /** The number of arguments to expand in the formatted error message. */
-    uint16_t argCount;
-
-    /** One of the JSExnType constants above. */
-    int16_t exnType;
-};
-
-typedef const JSErrorFormatString*
-(* JSErrorCallback)(void* userRef, const unsigned errorNumber);
-
-typedef bool
-(* JSLocaleToUpperCase)(JSContext* cx, JS::HandleString src, JS::MutableHandleValue rval);
-
-typedef bool
-(* JSLocaleToLowerCase)(JSContext* cx, JS::HandleString src, JS::MutableHandleValue rval);
-
-typedef bool
-(* JSLocaleCompare)(JSContext* cx, JS::HandleString src1, JS::HandleString src2,
-                    JS::MutableHandleValue rval);
-
-typedef bool
-(* JSLocaleToUnicode)(JSContext* cx, const char* src, JS::MutableHandleValue rval);
-
-/**
  * Callback used to ask the embedding for the cross compartment wrapper handler
  * that implements the desired prolicy for this kind of object in the
  * destination compartment. |obj| is the object to be wrapped. If |existing| is
@@ -354,108 +301,6 @@ JS_NumberValue(double d)
 
 JS_PUBLIC_API(bool)
 JS_StringHasBeenPinned(JSContext* cx, JSString* str);
-
-namespace JS {
-
-/**
- * Container class for passing in script source buffers to the JS engine.  This
- * not only groups the buffer and length values, it also provides a way to
- * optionally pass ownership of the buffer to the JS engine without copying.
- * Rules for use:
- *
- *  1) The data array must be allocated with js_malloc() or js_realloc() if
- *     ownership is being granted to the SourceBufferHolder.
- *  2) If ownership is not given to the SourceBufferHolder, then the memory
- *     must be kept alive until the JS compilation is complete.
- *  3) Any code calling SourceBufferHolder::take() must guarantee to keep the
- *     memory alive until JS compilation completes.  Normally only the JS
- *     engine should be calling take().
- *
- * Example use:
- *
- *    size_t length = 512;
- *    char16_t* chars = static_cast<char16_t*>(js_malloc(sizeof(char16_t) * length));
- *    JS::SourceBufferHolder srcBuf(chars, length, JS::SourceBufferHolder::GiveOwnership);
- *    JS::Compile(cx, options, srcBuf);
- */
-class MOZ_STACK_CLASS SourceBufferHolder final
-{
-  public:
-    enum Ownership {
-      NoOwnership,
-      GiveOwnership
-    };
-
-    SourceBufferHolder(const char16_t* data, size_t dataLength, Ownership ownership)
-      : data_(data),
-        length_(dataLength),
-        ownsChars_(ownership == GiveOwnership)
-    {
-        // Ensure that null buffers properly return an unowned, empty,
-        // null-terminated string.
-        static const char16_t NullChar_ = 0;
-        if (!get()) {
-            data_ = &NullChar_;
-            length_ = 0;
-            ownsChars_ = false;
-        }
-    }
-
-    SourceBufferHolder(SourceBufferHolder&& other)
-      : data_(other.data_),
-        length_(other.length_),
-        ownsChars_(other.ownsChars_)
-    {
-        other.data_ = nullptr;
-        other.length_ = 0;
-        other.ownsChars_ = false;
-    }
-
-    ~SourceBufferHolder() {
-        if (ownsChars_)
-            js_free(const_cast<char16_t*>(data_));
-    }
-
-    // Access the underlying source buffer without affecting ownership.
-    const char16_t* get() const { return data_; }
-
-    // Length of the source buffer in char16_t code units (not bytes)
-    size_t length() const { return length_; }
-
-    // Returns true if the SourceBufferHolder owns the buffer and will free
-    // it upon destruction.  If true, it is legal to call take().
-    bool ownsChars() const { return ownsChars_; }
-
-    // Retrieve and take ownership of the underlying data buffer.  The caller
-    // is now responsible for calling js_free() on the returned value, *but only
-    // after JS script compilation has completed*.
-    //
-    // After the buffer has been taken the SourceBufferHolder functions as if
-    // it had been constructed on an unowned buffer;  get() and length() still
-    // work.  In order for this to be safe the taken buffer must be kept alive
-    // until after JS script compilation completes as noted above.
-    //
-    // Note, it's the caller's responsibility to check ownsChars() before taking
-    // the buffer.  Taking and then free'ing an unowned buffer will have dire
-    // consequences.
-    char16_t* take() {
-        MOZ_ASSERT(ownsChars_);
-        ownsChars_ = false;
-        return const_cast<char16_t*>(data_);
-    }
-
-  private:
-    SourceBufferHolder(SourceBufferHolder&) = delete;
-    SourceBufferHolder& operator=(SourceBufferHolder&) = delete;
-
-    const char16_t* data_;
-    size_t length_;
-    bool ownsChars_;
-};
-
-struct TranscodeSource;
-
-} /* namespace JS */
 
 /************************************************************************/
 
@@ -1013,9 +858,12 @@ JS_RefreshCrossCompartmentWrappers(JSContext* cx, JS::Handle<JSObject*> obj);
  *     {
  *       JSAutoRealm ar(cx, obj);  // constructor enters
  *       // in the realm of 'obj'
- *     }                                 // destructor leaves
+ *     }                           // destructor leaves
  *     // back in realm 'r'
  *   }
+ *
+ * The object passed to JSAutoRealm must *not* be a cross-compartment wrapper,
+ * because CCWs are not associated with a single realm.
  *
  * For more complicated uses that don't neatly fit in a C++ stack frame, the
  * realm can be entered and left using separate function calls:
@@ -1064,6 +912,9 @@ class MOZ_RAII JS_PUBLIC_API(JSAutoNullableRealm)
 namespace JS {
 
 /** NB: This API is infallible; a nullptr return value does not indicate error.
+ *
+ * |target| must not be a cross-compartment wrapper because CCWs are not
+ * associated with a single realm.
  *
  * Entering a realm roots the realm and its global object until the matching
  * JS::LeaveRealm() call.
@@ -1180,9 +1031,6 @@ ProtoKeyToId(JSContext* cx, JSProtoKey key, JS::MutableHandleId idp);
 extern JS_PUBLIC_API(JSProtoKey)
 JS_IdToProtoKey(JSContext* cx, JS::HandleId id);
 
-extern JS_PUBLIC_API(JSObject*)
-JS_GetGlobalForObject(JSContext* cx, JSObject* obj);
-
 extern JS_PUBLIC_API(bool)
 JS_IsGlobalObject(JSObject* obj);
 
@@ -1197,8 +1045,26 @@ JS_ExtensibleLexicalEnvironment(JSObject* obj);
 
 namespace JS {
 
+/**
+ * Get the current realm's global. Returns nullptr if no realm has been
+ * entered.
+ */
 extern JS_PUBLIC_API(JSObject*)
 CurrentGlobalOrNull(JSContext* cx);
+
+/**
+ * Get the global object associated with an object's realm. The object must not
+ * be a cross-compartment wrapper (because CCWs are shared by all realms in the
+ * compartment).
+ */
+extern JS_PUBLIC_API(JSObject*)
+GetNonCCWObjectGlobal(JSObject* obj);
+
+/**
+ * Get the global object associated with a script's realm.
+ */
+extern JS_PUBLIC_API(JSObject*)
+GetScriptGlobal(JSScript* script);
 
 } // namespace JS
 
@@ -1271,29 +1137,23 @@ extern JS_PUBLIC_API(void)
 JS_SetCTypesCallbacks(JSObject* ctypesObj, const JSCTypesCallbacks* callbacks);
 #endif
 
-extern JS_PUBLIC_API(void*)
-JS_malloc(JSContext* cx, size_t nbytes);
-
-extern JS_PUBLIC_API(void*)
-JS_realloc(JSContext* cx, void* p, size_t oldBytes, size_t newBytes);
-
-/**
- * A wrapper for js_free(p) that may delay js_free(p) invocation as a
- * performance optimization.
- * cx may be nullptr.
+/*
+ * A replacement for MallocAllocPolicy that allocates in the JS heap and adds no
+ * extra behaviours.
+ *
+ * This is currently used for allocating source buffers for parsing. Since these
+ * are temporary and will not be freed by GC, the memory is not tracked by the
+ * usual accounting.
  */
-extern JS_PUBLIC_API(void)
-JS_free(JSContext* cx, void* p);
+class JS_PUBLIC_API(JSMallocAllocPolicy) : public js::AllocPolicyBase
+{
+public:
+    void reportAllocOverflow() const {}
 
-/**
- * A wrapper for js_free(p) that may delay js_free(p) invocation as a
- * performance optimization as specified by the given JSFreeOp instance.
- */
-extern JS_PUBLIC_API(void)
-JS_freeop(JSFreeOp* fop, void* p);
-
-extern JS_PUBLIC_API(void)
-JS_updateMallocCounter(JSContext* cx, size_t nbytes);
+    MOZ_MUST_USE bool checkSimulatedOOM() const {
+        return true;
+    }
+};
 
 /**
  * Set the size of the native stack that should not be exceed. To disable
@@ -2345,7 +2205,7 @@ JS_GetOwnPropertyDescriptor(JSContext* cx, JS::HandleObject obj, const char* nam
                             JS::MutableHandle<JS::PropertyDescriptor> desc);
 
 extern JS_PUBLIC_API(bool)
-JS_GetOwnUCPropertyDescriptor(JSContext* cx, JS::HandleObject obj, const char16_t* name,
+JS_GetOwnUCPropertyDescriptor(JSContext* cx, JS::HandleObject obj, const char16_t* name, size_t namelen,
                               JS::MutableHandle<JS::PropertyDescriptor> desc);
 
 /**
@@ -2361,6 +2221,10 @@ JS_GetPropertyDescriptorById(JSContext* cx, JS::HandleObject obj, JS::HandleId i
 extern JS_PUBLIC_API(bool)
 JS_GetPropertyDescriptor(JSContext* cx, JS::HandleObject obj, const char* name,
                          JS::MutableHandle<JS::PropertyDescriptor> desc);
+
+extern JS_PUBLIC_API(bool)
+JS_GetUCPropertyDescriptor(JSContext* cx, JS::HandleObject obj, const char16_t* name, size_t namelen,
+                           JS::MutableHandle<JS::PropertyDescriptor> desc);
 
 /**
  * Define a property on obj.
@@ -3079,10 +2943,17 @@ extern JS_PUBLIC_API(JSString*)
 JS_GetFunctionDisplayId(JSFunction* fun);
 
 /*
- * Return the arity (length) of fun.
+ * Return the arity of fun, which includes default parameters and rest
+ * parameter.  This can be used as `nargs` parameter for other functions.
  */
 extern JS_PUBLIC_API(uint16_t)
 JS_GetFunctionArity(JSFunction* fun);
+
+/*
+ * Return the length of fun, which is the original value of .length property.
+ */
+JS_PUBLIC_API(bool)
+JS_GetFunctionLength(JSContext* cx, JS::HandleFunction fun, uint16_t* length);
 
 /**
  * Infallible predicate to test whether obj is a function object (faster than
@@ -3141,33 +3012,6 @@ CloneFunctionObject(JSContext* cx, HandleObject funobj, AutoObjectVector& scopeC
 
 } // namespace JS
 
-/**
- * Given a buffer, return false if the buffer might become a valid
- * javascript statement with the addition of more lines.  Otherwise return
- * true.  The intent is to support interactive compilation - accumulate
- * lines in a buffer until JS_BufferIsCompilableUnit is true, then pass it to
- * the compiler.
- */
-extern JS_PUBLIC_API(bool)
-JS_BufferIsCompilableUnit(JSContext* cx, JS::Handle<JSObject*> obj, const char* utf8,
-                          size_t length);
-
-/**
- * |script| will always be set. On failure, it will be set to nullptr.
- */
-extern JS_PUBLIC_API(bool)
-JS_CompileScript(JSContext* cx, const char* ascii, size_t length,
-                 const JS::CompileOptions& options,
-                 JS::MutableHandleScript script);
-
-/**
- * |script| will always be set. On failure, it will be set to nullptr.
- */
-extern JS_PUBLIC_API(bool)
-JS_CompileUCScript(JSContext* cx, const char16_t* chars, size_t length,
-                   const JS::CompileOptions& options,
-                   JS::MutableHandleScript script);
-
 extern JS_PUBLIC_API(JSObject*)
 JS_GetGlobalFromScript(JSScript* script);
 
@@ -3180,557 +3024,6 @@ JS_GetScriptBaseLineNumber(JSContext* cx, JSScript* script);
 extern JS_PUBLIC_API(JSScript*)
 JS_GetFunctionScript(JSContext* cx, JS::HandleFunction fun);
 
-namespace JS {
-
-/* Options for JavaScript compilation. */
-
-/*
- * In the most common use case, a CompileOptions instance is allocated on the
- * stack, and holds non-owning references to non-POD option values: strings;
- * principals; objects; and so on. The code declaring the instance guarantees
- * that such option values will outlive the CompileOptions itself: objects are
- * otherwise rooted; principals have had their reference counts bumped; strings
- * will not be freed until the CompileOptions goes out of scope. In this
- * situation, CompileOptions only refers to things others own, so it can be
- * lightweight.
- *
- * In some cases, however, we need to hold compilation options with a
- * non-stack-like lifetime. For example, JS::CompileOffThread needs to save
- * compilation options where a worker thread can find them, and then return
- * immediately. The worker thread will come along at some later point, and use
- * the options.
- *
- * The compiler itself just needs to be able to access a collection of options;
- * it doesn't care who owns them, or what's keeping them alive. It does its own
- * addrefs/copies/tracing/etc.
- *
- * Furthermore, in some cases compile options are propagated from one entity to
- * another (e.g. from a script to a function defined in that script).  This
- * involves copying over some, but not all, of the options.
- *
- * So, we have a class hierarchy that reflects these four use cases:
- *
- * - TransitiveCompileOptions is the common base class, representing options
- *   that should get propagated from a script to functions defined in that
- *   script.  This is never instantiated directly.
- *
- * - ReadOnlyCompileOptions is the only subclass of TransitiveCompileOptions,
- *   representing a full set of compile options.  It can be used by code that
- *   simply needs to access options set elsewhere, like the compiler.  This,
- *   again, is never instantiated directly.
- *
- * - The usual CompileOptions class must be stack-allocated, and holds
- *   non-owning references to the filename, element, and so on. It's derived
- *   from ReadOnlyCompileOptions, so the compiler can use it.
- *
- * - OwningCompileOptions roots / copies / reference counts of all its values,
- *   and unroots / frees / releases them when it is destructed. It too is
- *   derived from ReadOnlyCompileOptions, so the compiler accepts it.
- */
-
-enum class AsmJSOption : uint8_t { Enabled, Disabled, DisabledByDebugger };
-
-/**
- * The common base class for the CompileOptions hierarchy.
- *
- * Use this in code that needs to propagate compile options from one compilation
- * unit to another.
- */
-class JS_FRIEND_API(TransitiveCompileOptions)
-{
-  protected:
-    // The Web Platform allows scripts to be loaded from arbitrary cross-origin
-    // sources. This allows an attack by which a malicious website loads a
-    // sensitive file (say, a bank statement) cross-origin (using the user's
-    // cookies), and sniffs the generated syntax errors (via a window.onerror
-    // handler) for juicy morsels of its contents.
-    //
-    // To counter this attack, HTML5 specifies that script errors should be
-    // sanitized ("muted") when the script is not same-origin with the global
-    // for which it is loaded. Callers should set this flag for cross-origin
-    // scripts, and it will be propagated appropriately to child scripts and
-    // passed back in JSErrorReports.
-    bool mutedErrors_;
-    const char* filename_;
-    const char* introducerFilename_;
-    const char16_t* sourceMapURL_;
-
-    TransitiveCompileOptions()
-      : mutedErrors_(false),
-        filename_(nullptr),
-        introducerFilename_(nullptr),
-        sourceMapURL_(nullptr),
-        utf8(false),
-        selfHostingMode(false),
-        canLazilyParse(true),
-        strictOption(false),
-        extraWarningsOption(false),
-        werrorOption(false),
-        asmJSOption(AsmJSOption::Disabled),
-        throwOnAsmJSValidationFailureOption(false),
-        forceAsync(false),
-        sourceIsLazy(false),
-        allowHTMLComments(true),
-        isProbablySystemCode(false),
-        hideScriptFromDebugger(false),
-        introductionType(nullptr),
-        introductionLineno(0),
-        introductionOffset(0),
-        hasIntroductionInfo(false)
-    { }
-
-    // Set all POD options (those not requiring reference counts, copies,
-    // rooting, or other hand-holding) to their values in |rhs|.
-    void copyPODTransitiveOptions(const TransitiveCompileOptions& rhs);
-
-  public:
-    // Read-only accessors for non-POD options. The proper way to set these
-    // depends on the derived type.
-    bool mutedErrors() const { return mutedErrors_; }
-    const char* filename() const { return filename_; }
-    const char* introducerFilename() const { return introducerFilename_; }
-    const char16_t* sourceMapURL() const { return sourceMapURL_; }
-    virtual JSObject* element() const = 0;
-    virtual JSString* elementAttributeName() const = 0;
-    virtual JSScript* introductionScript() const = 0;
-
-    // POD options.
-    bool utf8;
-    bool selfHostingMode;
-    bool canLazilyParse;
-    bool strictOption;
-    bool extraWarningsOption;
-    bool werrorOption;
-    AsmJSOption asmJSOption;
-    bool throwOnAsmJSValidationFailureOption;
-    bool forceAsync;
-    bool sourceIsLazy;
-    bool allowHTMLComments;
-    bool isProbablySystemCode;
-    bool hideScriptFromDebugger;
-
-    // |introductionType| is a statically allocated C string:
-    // one of "eval", "Function", or "GeneratorFunction".
-    const char* introductionType;
-    unsigned introductionLineno;
-    uint32_t introductionOffset;
-    bool hasIntroductionInfo;
-
-  private:
-    void operator=(const TransitiveCompileOptions&) = delete;
-};
-
-/**
- * The class representing a full set of compile options.
- *
- * Use this in code that only needs to access compilation options created
- * elsewhere, like the compiler. Don't instantiate this class (the constructor
- * is protected anyway); instead, create instances only of the derived classes:
- * CompileOptions and OwningCompileOptions.
- */
-class JS_FRIEND_API(ReadOnlyCompileOptions) : public TransitiveCompileOptions
-{
-    friend class CompileOptions;
-
-  protected:
-    ReadOnlyCompileOptions()
-      : TransitiveCompileOptions(),
-        lineno(1),
-        column(0),
-        scriptSourceOffset(0),
-        isRunOnce(false),
-        nonSyntacticScope(false),
-        noScriptRval(false),
-        allowSyntaxParser(true)
-    { }
-
-    // Set all POD options (those not requiring reference counts, copies,
-    // rooting, or other hand-holding) to their values in |rhs|.
-    void copyPODOptions(const ReadOnlyCompileOptions& rhs);
-
-  public:
-    // Read-only accessors for non-POD options. The proper way to set these
-    // depends on the derived type.
-    bool mutedErrors() const { return mutedErrors_; }
-    const char* filename() const { return filename_; }
-    const char* introducerFilename() const { return introducerFilename_; }
-    const char16_t* sourceMapURL() const { return sourceMapURL_; }
-    virtual JSObject* element() const override = 0;
-    virtual JSString* elementAttributeName() const override = 0;
-    virtual JSScript* introductionScript() const override = 0;
-
-    // POD options.
-    unsigned lineno;
-    unsigned column;
-    // The offset within the ScriptSource's full uncompressed text of the first
-    // character we're presenting for compilation with this CompileOptions.
-    //
-    // When we compile a LazyScript, we pass the compiler only the substring of
-    // the source the lazy function occupies. With chunked decompression, we
-    // may not even have the complete uncompressed source present in memory. But
-    // parse node positions are offsets within the ScriptSource's full text,
-    // and LazyScripts indicate their substring of the full source by its
-    // starting and ending offsets within the full text. This
-    // scriptSourceOffset field lets the frontend convert between these
-    // offsets and offsets within the substring presented for compilation.
-    unsigned scriptSourceOffset;
-    // isRunOnce only applies to non-function scripts.
-    bool isRunOnce;
-    bool nonSyntacticScope;
-    bool noScriptRval;
-    bool allowSyntaxParser;
-
-  private:
-    void operator=(const ReadOnlyCompileOptions&) = delete;
-};
-
-/**
- * Compilation options, with dynamic lifetime. An instance of this type
- * makes a copy of / holds / roots all dynamically allocated resources
- * (principals; elements; strings) that it refers to. Its destructor frees
- * / drops / unroots them. This is heavier than CompileOptions, below, but
- * unlike CompileOptions, it can outlive any given stack frame.
- *
- * Note that this *roots* any JS values it refers to - they're live
- * unconditionally. Thus, instances of this type can't be owned, directly
- * or indirectly, by a JavaScript object: if any value that this roots ever
- * comes to refer to the object that owns this, then the whole cycle, and
- * anything else it entrains, will never be freed.
- */
-class JS_FRIEND_API(OwningCompileOptions) : public ReadOnlyCompileOptions
-{
-    PersistentRootedObject elementRoot;
-    PersistentRootedString elementAttributeNameRoot;
-    PersistentRootedScript introductionScriptRoot;
-
-  public:
-    // A minimal constructor, for use with OwningCompileOptions::copy.
-    explicit OwningCompileOptions(JSContext* cx);
-    ~OwningCompileOptions();
-
-    JSObject* element() const override { return elementRoot; }
-    JSString* elementAttributeName() const override { return elementAttributeNameRoot; }
-    JSScript* introductionScript() const override { return introductionScriptRoot; }
-
-    // Set this to a copy of |rhs|. Return false on OOM.
-    bool copy(JSContext* cx, const ReadOnlyCompileOptions& rhs);
-
-    /* These setters make copies of their string arguments, and are fallible. */
-    bool setFile(JSContext* cx, const char* f);
-    bool setFileAndLine(JSContext* cx, const char* f, unsigned l);
-    bool setSourceMapURL(JSContext* cx, const char16_t* s);
-    bool setIntroducerFilename(JSContext* cx, const char* s);
-
-    /* These setters are infallible, and can be chained. */
-    OwningCompileOptions& setLine(unsigned l)             { lineno = l; return *this; }
-    OwningCompileOptions& setElement(JSObject* e) {
-        elementRoot = e;
-        return *this;
-    }
-    OwningCompileOptions& setElementAttributeName(JSString* p) {
-        elementAttributeNameRoot = p;
-        return *this;
-    }
-    OwningCompileOptions& setIntroductionScript(JSScript* s) {
-        introductionScriptRoot = s;
-        return *this;
-    }
-    OwningCompileOptions& setMutedErrors(bool mute) {
-        mutedErrors_ = mute;
-        return *this;
-    }
-    OwningCompileOptions& setUTF8(bool u) { utf8 = u; return *this; }
-    OwningCompileOptions& setColumn(unsigned c) { column = c; return *this; }
-    OwningCompileOptions& setScriptSourceOffset(unsigned o) { scriptSourceOffset = o; return *this; }
-    OwningCompileOptions& setIsRunOnce(bool once) { isRunOnce = once; return *this; }
-    OwningCompileOptions& setNoScriptRval(bool nsr) { noScriptRval = nsr; return *this; }
-    OwningCompileOptions& setSelfHostingMode(bool shm) { selfHostingMode = shm; return *this; }
-    OwningCompileOptions& setCanLazilyParse(bool clp) { canLazilyParse = clp; return *this; }
-    OwningCompileOptions& setAllowSyntaxParser(bool clp) { allowSyntaxParser = clp; return *this; }
-    OwningCompileOptions& setSourceIsLazy(bool l) { sourceIsLazy = l; return *this; }
-    OwningCompileOptions& setNonSyntacticScope(bool n) { nonSyntacticScope = n; return *this; }
-    OwningCompileOptions& setIntroductionType(const char* t) { introductionType = t; return *this; }
-    bool setIntroductionInfo(JSContext* cx, const char* introducerFn, const char* intro,
-                             unsigned line, JSScript* script, uint32_t offset)
-    {
-        if (!setIntroducerFilename(cx, introducerFn))
-            return false;
-        introductionType = intro;
-        introductionLineno = line;
-        introductionScriptRoot = script;
-        introductionOffset = offset;
-        hasIntroductionInfo = true;
-        return true;
-    }
-
-    size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
-
-  private:
-    void operator=(const CompileOptions& rhs) = delete;
-};
-
-/**
- * Compilation options stored on the stack. An instance of this type
- * simply holds references to dynamically allocated resources (element;
- * filename; source map URL) that are owned by something else. If you
- * create an instance of this type, it's up to you to guarantee that
- * everything you store in it will outlive it.
- */
-class MOZ_STACK_CLASS JS_FRIEND_API(CompileOptions) final : public ReadOnlyCompileOptions
-{
-    RootedObject elementRoot;
-    RootedString elementAttributeNameRoot;
-    RootedScript introductionScriptRoot;
-
-  public:
-    explicit CompileOptions(JSContext* cx);
-    CompileOptions(JSContext* cx, const ReadOnlyCompileOptions& rhs)
-      : ReadOnlyCompileOptions(), elementRoot(cx), elementAttributeNameRoot(cx),
-        introductionScriptRoot(cx)
-    {
-        copyPODOptions(rhs);
-
-        filename_ = rhs.filename();
-        introducerFilename_ = rhs.introducerFilename();
-        sourceMapURL_ = rhs.sourceMapURL();
-        elementRoot = rhs.element();
-        elementAttributeNameRoot = rhs.elementAttributeName();
-        introductionScriptRoot = rhs.introductionScript();
-    }
-
-    CompileOptions(JSContext* cx, const TransitiveCompileOptions& rhs)
-      : ReadOnlyCompileOptions(), elementRoot(cx), elementAttributeNameRoot(cx),
-        introductionScriptRoot(cx)
-    {
-        copyPODTransitiveOptions(rhs);
-
-        filename_ = rhs.filename();
-        introducerFilename_ = rhs.introducerFilename();
-        sourceMapURL_ = rhs.sourceMapURL();
-        elementRoot = rhs.element();
-        elementAttributeNameRoot = rhs.elementAttributeName();
-        introductionScriptRoot = rhs.introductionScript();
-    }
-
-    JSObject* element() const override { return elementRoot; }
-    JSString* elementAttributeName() const override { return elementAttributeNameRoot; }
-    JSScript* introductionScript() const override { return introductionScriptRoot; }
-
-    CompileOptions& setFile(const char* f) { filename_ = f; return *this; }
-    CompileOptions& setLine(unsigned l) { lineno = l; return *this; }
-    CompileOptions& setFileAndLine(const char* f, unsigned l) {
-        filename_ = f; lineno = l; return *this;
-    }
-    CompileOptions& setSourceMapURL(const char16_t* s) { sourceMapURL_ = s; return *this; }
-    CompileOptions& setElement(JSObject* e)          { elementRoot = e; return *this; }
-    CompileOptions& setElementAttributeName(JSString* p) {
-        elementAttributeNameRoot = p;
-        return *this;
-    }
-    CompileOptions& setIntroductionScript(JSScript* s) {
-        introductionScriptRoot = s;
-        return *this;
-    }
-    CompileOptions& setMutedErrors(bool mute) {
-        mutedErrors_ = mute;
-        return *this;
-    }
-    CompileOptions& setUTF8(bool u) { utf8 = u; return *this; }
-    CompileOptions& setColumn(unsigned c) { column = c; return *this; }
-    CompileOptions& setScriptSourceOffset(unsigned o) { scriptSourceOffset = o; return *this; }
-    CompileOptions& setIsRunOnce(bool once) { isRunOnce = once; return *this; }
-    CompileOptions& setNoScriptRval(bool nsr) { noScriptRval = nsr; return *this; }
-    CompileOptions& setSelfHostingMode(bool shm) { selfHostingMode = shm; return *this; }
-    CompileOptions& setCanLazilyParse(bool clp) { canLazilyParse = clp; return *this; }
-    CompileOptions& setAllowSyntaxParser(bool clp) { allowSyntaxParser = clp; return *this; }
-    CompileOptions& setSourceIsLazy(bool l) { sourceIsLazy = l; return *this; }
-    CompileOptions& setNonSyntacticScope(bool n) { nonSyntacticScope = n; return *this; }
-    CompileOptions& setIntroductionType(const char* t) { introductionType = t; return *this; }
-    CompileOptions& setIntroductionInfo(const char* introducerFn, const char* intro,
-                                        unsigned line, JSScript* script, uint32_t offset)
-    {
-        introducerFilename_ = introducerFn;
-        introductionType = intro;
-        introductionLineno = line;
-        introductionScriptRoot = script;
-        introductionOffset = offset;
-        hasIntroductionInfo = true;
-        return *this;
-    }
-    CompileOptions& maybeMakeStrictMode(bool strict) {
-        strictOption = strictOption || strict;
-        return *this;
-    }
-
-  private:
-    void operator=(const CompileOptions& rhs) = delete;
-};
-
-/**
- * |script| will always be set. On failure, it will be set to nullptr.
- */
-extern JS_PUBLIC_API(bool)
-Compile(JSContext* cx, const ReadOnlyCompileOptions& options,
-        SourceBufferHolder& srcBuf, JS::MutableHandleScript script);
-
-extern JS_PUBLIC_API(bool)
-Compile(JSContext* cx, const ReadOnlyCompileOptions& options,
-        const char* bytes, size_t length, JS::MutableHandleScript script);
-
-extern JS_PUBLIC_API(bool)
-Compile(JSContext* cx, const ReadOnlyCompileOptions& options,
-        const char16_t* chars, size_t length, JS::MutableHandleScript script);
-
-extern JS_PUBLIC_API(bool)
-Compile(JSContext* cx, const ReadOnlyCompileOptions& options,
-        FILE* file, JS::MutableHandleScript script);
-
-extern JS_PUBLIC_API(bool)
-Compile(JSContext* cx, const ReadOnlyCompileOptions& options,
-        const char* filename, JS::MutableHandleScript script);
-
-extern JS_PUBLIC_API(bool)
-CompileForNonSyntacticScope(JSContext* cx, const ReadOnlyCompileOptions& options,
-                            SourceBufferHolder& srcBuf, JS::MutableHandleScript script);
-
-extern JS_PUBLIC_API(bool)
-CompileForNonSyntacticScope(JSContext* cx, const ReadOnlyCompileOptions& options,
-                            const char* bytes, size_t length, JS::MutableHandleScript script);
-
-extern JS_PUBLIC_API(bool)
-CompileForNonSyntacticScope(JSContext* cx, const ReadOnlyCompileOptions& options,
-                            const char16_t* chars, size_t length, JS::MutableHandleScript script);
-
-extern JS_PUBLIC_API(bool)
-CompileForNonSyntacticScope(JSContext* cx, const ReadOnlyCompileOptions& options,
-                            FILE* file, JS::MutableHandleScript script);
-
-extern JS_PUBLIC_API(bool)
-CompileForNonSyntacticScope(JSContext* cx, const ReadOnlyCompileOptions& options,
-                            const char* filename, JS::MutableHandleScript script);
-
-extern JS_PUBLIC_API(bool)
-CanCompileOffThread(JSContext* cx, const ReadOnlyCompileOptions& options, size_t length);
-
-extern JS_PUBLIC_API(bool)
-CanDecodeOffThread(JSContext* cx, const ReadOnlyCompileOptions& options, size_t length);
-
-/*
- * Off thread compilation control flow.
- *
- * After successfully triggering an off thread compile of a script, the
- * callback will eventually be invoked with the specified data and a token
- * for the compilation. The callback will be invoked while off thread,
- * so must ensure that its operations are thread safe. Afterwards, one of the
- * following functions must be invoked on the runtime's main thread:
- *
- * - FinishOffThreadScript, to get the result script (or nullptr on failure).
- * - CancelOffThreadScript, to free the resources without creating a script.
- *
- * The characters passed in to CompileOffThread must remain live until the
- * callback is invoked, and the resulting script will be rooted until the call
- * to FinishOffThreadScript.
- */
-
-extern JS_PUBLIC_API(bool)
-CompileOffThread(JSContext* cx, const ReadOnlyCompileOptions& options,
-                 const char16_t* chars, size_t length,
-                 OffThreadCompileCallback callback, void* callbackData);
-
-extern JS_PUBLIC_API(JSScript*)
-FinishOffThreadScript(JSContext* cx, OffThreadToken* token);
-
-extern JS_PUBLIC_API(void)
-CancelOffThreadScript(JSContext* cx, OffThreadToken* token);
-
-extern JS_PUBLIC_API(bool)
-CompileOffThreadModule(JSContext* cx, const ReadOnlyCompileOptions& options,
-                       const char16_t* chars, size_t length,
-                       OffThreadCompileCallback callback, void* callbackData);
-
-extern JS_PUBLIC_API(JSObject*)
-FinishOffThreadModule(JSContext* cx, OffThreadToken* token);
-
-extern JS_PUBLIC_API(void)
-CancelOffThreadModule(JSContext* cx, OffThreadToken* token);
-
-extern JS_PUBLIC_API(bool)
-DecodeOffThreadScript(JSContext* cx, const ReadOnlyCompileOptions& options,
-                      mozilla::Vector<uint8_t>& buffer /* TranscodeBuffer& */, size_t cursor,
-                      OffThreadCompileCallback callback, void* callbackData);
-
-extern JS_PUBLIC_API(bool)
-DecodeOffThreadScript(JSContext* cx, const ReadOnlyCompileOptions& options,
-                      const mozilla::Range<uint8_t>& range /* TranscodeRange& */,
-                      OffThreadCompileCallback callback, void* callbackData);
-
-extern JS_PUBLIC_API(JSScript*)
-FinishOffThreadScriptDecoder(JSContext* cx, OffThreadToken* token);
-
-extern JS_PUBLIC_API(void)
-CancelOffThreadScriptDecoder(JSContext* cx, OffThreadToken* token);
-
-extern JS_PUBLIC_API(bool)
-DecodeMultiOffThreadScripts(JSContext* cx, const ReadOnlyCompileOptions& options,
-                            mozilla::Vector<TranscodeSource>& sources,
-                            OffThreadCompileCallback callback, void* callbackData);
-
-extern JS_PUBLIC_API(bool)
-FinishMultiOffThreadScriptsDecoder(JSContext* cx, OffThreadToken* token,
-                                   JS::MutableHandle<JS::ScriptVector> scripts);
-
-extern JS_PUBLIC_API(void)
-CancelMultiOffThreadScriptsDecoder(JSContext* cx, OffThreadToken* token);
-
-/**
- * Compile a function with envChain plus the global as its scope chain.
- * envChain must contain objects in the current compartment of cx.  The actual
- * scope chain used for the function will consist of With wrappers for those
- * objects, followed by the current global of the compartment cx is in.  This
- * global must not be explicitly included in the scope chain.
- */
-extern JS_PUBLIC_API(bool)
-CompileFunction(JSContext* cx, AutoObjectVector& envChain,
-                const ReadOnlyCompileOptions& options,
-                const char* name, unsigned nargs, const char* const* argnames,
-                const char16_t* chars, size_t length, JS::MutableHandleFunction fun);
-
-/**
- * Same as above, but taking a SourceBufferHolder for the function body.
- */
-extern JS_PUBLIC_API(bool)
-CompileFunction(JSContext* cx, AutoObjectVector& envChain,
-                const ReadOnlyCompileOptions& options,
-                const char* name, unsigned nargs, const char* const* argnames,
-                SourceBufferHolder& srcBuf, JS::MutableHandleFunction fun);
-
-/**
- * Same as above, but taking a const char * for the function body.
- */
-extern JS_PUBLIC_API(bool)
-CompileFunction(JSContext* cx, AutoObjectVector& envChain,
-                const ReadOnlyCompileOptions& options,
-                const char* name, unsigned nargs, const char* const* argnames,
-                const char* bytes, size_t length, JS::MutableHandleFunction fun);
-
-/*
- * Associate an element wrapper and attribute name with a previously compiled
- * script, for debugging purposes. Calling this function is optional, but should
- * be done before script execution if it is required.
- */
-extern JS_PUBLIC_API(bool)
-InitScriptSourceElement(JSContext* cx, HandleScript script,
-                        HandleObject element, HandleString elementAttrName = nullptr);
-
-/*
- * For a script compiled with the hideScriptFromDebugger option, expose the
- * script to the debugger by calling the debugger's onNewScript hook.
- */
-extern JS_PUBLIC_API(void)
-ExposeScriptToDebugger(JSContext* cx, HandleScript script);
-
-} /* namespace JS */
-
 extern JS_PUBLIC_API(JSString*)
 JS_DecompileScript(JSContext* cx, JS::Handle<JSScript*> script);
 
@@ -3738,114 +3031,9 @@ extern JS_PUBLIC_API(JSString*)
 JS_DecompileFunction(JSContext* cx, JS::Handle<JSFunction*> fun);
 
 
-/*
- * NB: JS_ExecuteScript and the JS::Evaluate APIs come in two flavors: either
- * they use the global as the scope, or they take an AutoObjectVector of objects
- * to use as the scope chain.  In the former case, the global is also used as
- * the "this" keyword value and the variables object (ECMA parlance for where
- * 'var' and 'function' bind names) of the execution context for script.  In the
- * latter case, the first object in the provided list is used, unless the list
- * is empty, in which case the global is used.
- *
- * Why a runtime option?  The alternative is to add APIs duplicating those
- * for the other value of flags, and that doesn't seem worth the code bloat
- * cost.  Such new entry points would probably have less obvious names, too, so
- * would not tend to be used.  The ContextOptionsRef adjustment, OTOH, can be
- * more easily hacked into existing code that does not depend on the bug; such
- * code can continue to use the familiar JS::Evaluate, etc., entry points.
- */
-
-/**
- * Evaluate a script in the scope of the current global of cx.
- */
-extern JS_PUBLIC_API(bool)
-JS_ExecuteScript(JSContext* cx, JS::HandleScript script, JS::MutableHandleValue rval);
-
-extern JS_PUBLIC_API(bool)
-JS_ExecuteScript(JSContext* cx, JS::HandleScript script);
-
-/**
- * As above, but providing an explicit scope chain.  envChain must not include
- * the global object on it; that's implicit.  It needs to contain the other
- * objects that should end up on the script's scope chain.
- */
-extern JS_PUBLIC_API(bool)
-JS_ExecuteScript(JSContext* cx, JS::AutoObjectVector& envChain,
-                 JS::HandleScript script, JS::MutableHandleValue rval);
-
-extern JS_PUBLIC_API(bool)
-JS_ExecuteScript(JSContext* cx, JS::AutoObjectVector& envChain, JS::HandleScript script);
-
 namespace JS {
 
-/**
- * Like the above, but handles a cross-compartment script. If the script is
- * cross-compartment, it is cloned into the current compartment before executing.
- */
-extern JS_PUBLIC_API(bool)
-CloneAndExecuteScript(JSContext* cx, JS::Handle<JSScript*> script,
-                      JS::MutableHandleValue rval);
-
-/**
- * Like CloneAndExecuteScript above, but allows executing under a non-syntactic
- * environment chain.
- */
-extern JS_PUBLIC_API(bool)
-CloneAndExecuteScript(JSContext* cx, JS::AutoObjectVector& envChain,
-                      JS::Handle<JSScript*> script,
-                      JS::MutableHandleValue rval);
-
-} /* namespace JS */
-
-namespace JS {
-
-/**
- * Evaluate the given source buffer in the scope of the current global of cx.
- */
-extern JS_PUBLIC_API(bool)
-Evaluate(JSContext* cx, const ReadOnlyCompileOptions& options,
-         SourceBufferHolder& srcBuf, JS::MutableHandleValue rval);
-
-/**
- * As above, but providing an explicit scope chain.  envChain must not include
- * the global object on it; that's implicit.  It needs to contain the other
- * objects that should end up on the script's scope chain.
- */
-extern JS_PUBLIC_API(bool)
-Evaluate(JSContext* cx, AutoObjectVector& envChain, const ReadOnlyCompileOptions& options,
-         SourceBufferHolder& srcBuf, JS::MutableHandleValue rval);
-
-/**
- * Evaluate the given character buffer in the scope of the current global of cx.
- */
-extern JS_PUBLIC_API(bool)
-Evaluate(JSContext* cx, const ReadOnlyCompileOptions& options,
-         const char16_t* chars, size_t length, JS::MutableHandleValue rval);
-
-/**
- * As above, but providing an explicit scope chain.  envChain must not include
- * the global object on it; that's implicit.  It needs to contain the other
- * objects that should end up on the script's scope chain.
- */
-extern JS_PUBLIC_API(bool)
-Evaluate(JSContext* cx, AutoObjectVector& envChain, const ReadOnlyCompileOptions& options,
-         const char16_t* chars, size_t length, JS::MutableHandleValue rval);
-
-/**
- * Evaluate the given byte buffer in the scope of the current global of cx.
- */
-extern JS_PUBLIC_API(bool)
-Evaluate(JSContext* cx, const ReadOnlyCompileOptions& options,
-         const char* bytes, size_t length, JS::MutableHandleValue rval);
-
-/**
- * Evaluate the given file in the scope of the current global of cx.
- */
-extern JS_PUBLIC_API(bool)
-Evaluate(JSContext* cx, const ReadOnlyCompileOptions& options,
-         const char* filename, JS::MutableHandleValue rval);
-
-using ModuleResolveHook = JSObject* (*)(JSContext*, HandleObject, HandleString);
+using ModuleResolveHook = JSScript* (*)(JSContext*, HandleScript, HandleString);
 
 /**
  * Get the HostResolveImportedModule hook for the runtime.
@@ -3859,7 +3047,7 @@ GetModuleResolveHook(JSRuntime* rt);
 extern JS_PUBLIC_API(void)
 SetModuleResolveHook(JSRuntime* rt, ModuleResolveHook func);
 
-using ModuleMetadataHook = bool (*)(JSContext*, HandleObject, HandleObject);
+using ModuleMetadataHook = bool (*)(JSContext*, HandleScript, HandleObject);
 
 /**
  * Get the hook for populating the import.meta metadata object.
@@ -3876,24 +3064,23 @@ SetModuleMetadataHook(JSRuntime* rt, ModuleMetadataHook func);
 
 /**
  * Parse the given source buffer as a module in the scope of the current global
- * of cx and return a source text module record.
+ * of cx.
  */
 extern JS_PUBLIC_API(bool)
 CompileModule(JSContext* cx, const ReadOnlyCompileOptions& options,
-              SourceBufferHolder& srcBuf, JS::MutableHandleObject moduleRecord);
+              SourceBufferHolder& srcBuf, JS::MutableHandleScript script);
 
 /**
- * Set the [[HostDefined]] field of a source text module record to the given
- * value.
+ * Set the [[HostDefined]] field of a classic script or module script.
  */
 extern JS_PUBLIC_API(void)
-SetModuleHostDefinedField(JSObject* module, const JS::Value& value);
+SetTopLevelScriptPrivate(JSScript* script, void* value);
 
 /**
- * Get the [[HostDefined]] field of a source text module record.
+ * Get the [[HostDefined]] field of a classic script or module script.
  */
-extern JS_PUBLIC_API(JS::Value)
-GetModuleHostDefinedField(JSObject* module);
+extern JS_PUBLIC_API(void*)
+GetTopLevelScriptPrivate(JSScript* script);
 
 /*
  * Perform the ModuleInstantiate operation on the given source text module
@@ -3904,7 +3091,7 @@ GetModuleHostDefinedField(JSObject* module);
  * the module.
  */
 extern JS_PUBLIC_API(bool)
-ModuleInstantiate(JSContext* cx, JS::HandleObject moduleRecord);
+ModuleInstantiate(JSContext* cx, JS::HandleScript script);
 
 /*
  * Perform the ModuleEvaluate operation on the given source text module record.
@@ -3916,7 +3103,7 @@ ModuleInstantiate(JSContext* cx, JS::HandleObject moduleRecord);
  * ModuleInstantiate must have completed prior to calling this.
  */
 extern JS_PUBLIC_API(bool)
-ModuleEvaluate(JSContext* cx, JS::HandleObject moduleRecord);
+ModuleEvaluate(JSContext* cx, JS::HandleScript script);
 
 /*
  * Get a list of the module specifiers used by a source text module
@@ -3935,7 +3122,7 @@ ModuleEvaluate(JSContext* cx, JS::HandleObject moduleRecord);
  * GetRequestedModuleSourcePos()
  */
 extern JS_PUBLIC_API(JSObject*)
-GetRequestedModules(JSContext* cx, JS::HandleObject moduleRecord);
+GetRequestedModules(JSContext* cx, JS::HandleScript script);
 
 extern JS_PUBLIC_API(JSString*)
 GetRequestedModuleSpecifier(JSContext* cx, JS::HandleValue requestedModuleObject);
@@ -3943,9 +3130,6 @@ GetRequestedModuleSpecifier(JSContext* cx, JS::HandleValue requestedModuleObject
 extern JS_PUBLIC_API(void)
 GetRequestedModuleSourcePos(JSContext* cx, JS::HandleValue requestedModuleObject,
                             uint32_t* lineNumber, uint32_t* columnNumber);
-
-extern JS_PUBLIC_API(JSScript*)
-GetModuleScript(JS::HandleObject moduleRecord);
 
 } /* namespace JS */
 
@@ -4040,6 +3224,34 @@ SetEnqueuePromiseJobCallback(JSContext* cx, JSEnqueuePromiseJobCallback callback
 extern JS_PUBLIC_API(void)
 SetPromiseRejectionTrackerCallback(JSContext* cx, JSPromiseRejectionTrackerCallback callback,
                                    void* data = nullptr);
+
+/**
+ * Inform the runtime that the job queue is empty and the embedding is going to
+ * execute its last promise job. The runtime may now choose to skip creating
+ * promise jobs for asynchronous execution and instead continue execution
+ * synchronously. More specifically, this optimization is used to skip the
+ * standard job queuing behavior for `await` operations in async functions.
+ *
+ * This function may be called before executing the last job in the job queue.
+ * When it was called, JobQueueMayNotBeEmpty must be called in order to restore
+ * the default job queuing behavior before the embedding enqueues its next job
+ * into the job queue.
+ */
+extern JS_PUBLIC_API(void)
+JobQueueIsEmpty(JSContext* cx);
+
+/**
+ * Inform the runtime that job queue is no longer empty. The runtime can now no
+ * longer skip creating promise jobs for asynchronous execution, because
+ * pending jobs in the job queue must be executed first to preserve the FIFO
+ * (first in - first out) property of the queue. This effectively undoes
+ * JobQueueIsEmpty and re-enables the standard job queuing behavior.
+ *
+ * This function must be called whenever enqueuing a job to the job queue when
+ * JobQueueIsEmpty was called previously.
+ */
+extern JS_PUBLIC_API(void)
+JobQueueMayNotBeEmpty(JSContext* cx);
 
 /**
  * Returns a new instance of the Promise builtin class in the current
@@ -4608,19 +3820,6 @@ JS_DecodeBytes(JSContext* cx, const char* src, size_t srclen, char16_t* dst,
                size_t* dstlenp);
 
 /**
- * A variation on JS_EncodeCharacters where a null terminated string is
- * returned that you are expected to call JS_free on when done.
- */
-JS_PUBLIC_API(char*)
-JS_EncodeString(JSContext* cx, JSString* str);
-
-/**
- * Same behavior as JS_EncodeString(), but encode into UTF-8 string
- */
-JS_PUBLIC_API(char*)
-JS_EncodeStringToUTF8(JSContext* cx, JS::HandleString str);
-
-/**
  * Get number of bytes in the string encoding (without accounting for a
  * terminating zero bytes. The function returns (size_t) -1 if the string
  * can not be encoded into bytes and reports an error using cx accordingly.
@@ -4636,77 +3835,8 @@ JS_GetStringEncodingLength(JSContext* cx, JSString* str);
  * length parameter, the string will be cut and only length bytes will be
  * written into the buffer.
  */
-JS_PUBLIC_API(size_t)
+MOZ_MUST_USE JS_PUBLIC_API(bool)
 JS_EncodeStringToBuffer(JSContext* cx, JSString* str, char* buffer, size_t length);
-
-class MOZ_RAII JSAutoByteString
-{
-  public:
-    JSAutoByteString(JSContext* cx, JSString* str
-                     MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
-      : mBytes(JS_EncodeString(cx, str))
-    {
-        MOZ_ASSERT(cx);
-        MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-    }
-
-    explicit JSAutoByteString(MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM)
-      : mBytes(nullptr)
-    {
-        MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-    }
-
-    ~JSAutoByteString() {
-        JS_free(nullptr, mBytes);
-    }
-
-    /* Take ownership of the given byte array. */
-    void initBytes(JS::UniqueChars&& bytes) {
-        MOZ_ASSERT(!mBytes);
-        mBytes = bytes.release();
-    }
-
-    char* encodeLatin1(JSContext* cx, JSString* str) {
-        MOZ_ASSERT(!mBytes);
-        MOZ_ASSERT(cx);
-        mBytes = JS_EncodeString(cx, str);
-        return mBytes;
-    }
-
-    char* encodeUtf8(JSContext* cx, JS::HandleString str) {
-        MOZ_ASSERT(!mBytes);
-        MOZ_ASSERT(cx);
-        mBytes = JS_EncodeStringToUTF8(cx, str);
-        return mBytes;
-    }
-
-    void clear() {
-        js_free(mBytes);
-        mBytes = nullptr;
-    }
-
-    char* ptr() const {
-        return mBytes;
-    }
-
-    bool operator!() const {
-        return !mBytes;
-    }
-
-    size_t length() const {
-        if (!mBytes)
-            return 0;
-        return strlen(mBytes);
-    }
-
-  private:
-    char* mBytes;
-    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
-
-    /* Copy and assignment are not supported. */
-    JSAutoByteString(const JSAutoByteString& another);
-    JSAutoByteString& operator=(const JSAutoByteString& another);
-};
 
 /************************************************************************/
 /*
@@ -4816,110 +3946,6 @@ JS_PUBLIC_API(bool)
 PropertySpecNameToPermanentId(JSContext* cx, const char* name, jsid* idp);
 
 } /* namespace JS */
-
-/************************************************************************/
-/*
- * JSON functions
- */
-typedef bool (* JSONWriteCallback)(const char16_t* buf, uint32_t len, void* data);
-
-/**
- * JSON.stringify as specified by ES5.
- */
-JS_PUBLIC_API(bool)
-JS_Stringify(JSContext* cx, JS::MutableHandleValue value, JS::HandleObject replacer,
-             JS::HandleValue space, JSONWriteCallback callback, void* data);
-
-namespace JS {
-
-/**
- * An API akin to JS_Stringify but with the goal of not having observable
- * side-effects when the stringification is performed.  This means it does not
- * allow a replacer or a custom space, and has the following constraints on its
- * input:
- *
- * 1) The input must be a plain object or array, not an abitrary value.
- * 2) Every value in the graph reached by the algorithm starting with this
- *    object must be one of the following: null, undefined, a string (NOT a
- *    string object!), a boolean, a finite number (i.e. no NaN or Infinity or
- *    -Infinity), a plain object with no accessor properties, or an Array with
- *    no holes.
- *
- * The actual behavior differs from JS_Stringify only in asserting the above and
- * NOT attempting to get the "toJSON" property from things, since that could
- * clearly have side-effects.
- */
-JS_PUBLIC_API(bool)
-ToJSONMaybeSafely(JSContext* cx, JS::HandleObject input,
-                  JSONWriteCallback callback, void* data);
-
-} /* namespace JS */
-
-/**
- * JSON.parse as specified by ES5.
- */
-JS_PUBLIC_API(bool)
-JS_ParseJSON(JSContext* cx, const char16_t* chars, uint32_t len, JS::MutableHandleValue vp);
-
-JS_PUBLIC_API(bool)
-JS_ParseJSON(JSContext* cx, JS::HandleString str, JS::MutableHandleValue vp);
-
-JS_PUBLIC_API(bool)
-JS_ParseJSONWithReviver(JSContext* cx, const char16_t* chars, uint32_t len, JS::HandleValue reviver,
-                        JS::MutableHandleValue vp);
-
-JS_PUBLIC_API(bool)
-JS_ParseJSONWithReviver(JSContext* cx, JS::HandleString str, JS::HandleValue reviver,
-                        JS::MutableHandleValue vp);
-
-/************************************************************************/
-
-/**
- * The default locale for the ECMAScript Internationalization API
- * (Intl.Collator, Intl.NumberFormat, Intl.DateTimeFormat).
- * Note that the Internationalization API encourages clients to
- * specify their own locales.
- * The locale string remains owned by the caller.
- */
-extern JS_PUBLIC_API(bool)
-JS_SetDefaultLocale(JSRuntime* rt, const char* locale);
-
-/**
- * Look up the default locale for the ECMAScript Internationalization API.
- * NB: The locale information is retrieved from cx's runtime.
- */
-extern JS_PUBLIC_API(JS::UniqueChars)
-JS_GetDefaultLocale(JSContext* cx);
-
-/**
- * Reset the default locale to OS defaults.
- */
-extern JS_PUBLIC_API(void)
-JS_ResetDefaultLocale(JSRuntime* rt);
-
-/**
- * Locale specific string conversion and error message callbacks.
- */
-struct JSLocaleCallbacks {
-    JSLocaleToUpperCase     localeToUpperCase; // not used #if EXPOSE_INTL_API
-    JSLocaleToLowerCase     localeToLowerCase; // not used #if EXPOSE_INTL_API
-    JSLocaleCompare         localeCompare; // not used #if EXPOSE_INTL_API
-    JSLocaleToUnicode       localeToUnicode;
-};
-
-/**
- * Establish locale callbacks. The pointer must persist as long as the
- * JSContext.  Passing nullptr restores the default behaviour.
- */
-extern JS_PUBLIC_API(void)
-JS_SetLocaleCallbacks(JSRuntime* rt, const JSLocaleCallbacks* callbacks);
-
-/**
- * Return the address of the current locale callbacks struct, which may
- * be nullptr.
- */
-extern JS_PUBLIC_API(const JSLocaleCallbacks*)
-JS_GetLocaleCallbacks(JSRuntime* rt);
 
 /************************************************************************/
 
@@ -5061,208 +4087,6 @@ JS_ReportOutOfMemory(JSContext* cx);
  */
 extern JS_PUBLIC_API(void)
 JS_ReportAllocationOverflow(JSContext* cx);
-
-/**
- * Base class that implements parts shared by JSErrorReport and
- * JSErrorNotes::Note.
- */
-class JSErrorBase
-{
-    // The (default) error message.
-    // If ownsMessage_ is true, the it is freed in destructor.
-    JS::ConstUTF8CharsZ message_;
-
-  public:
-    JSErrorBase()
-      : filename(nullptr), lineno(0), column(0),
-        errorNumber(0),
-        ownsMessage_(false)
-    {}
-
-    ~JSErrorBase() {
-        freeMessage();
-    }
-
-    // Source file name, URL, etc., or null.
-    const char* filename;
-
-    // Source line number.
-    unsigned lineno;
-
-    // Zero-based column index in line.
-    unsigned column;
-
-    // the error number, e.g. see js.msg.
-    unsigned errorNumber;
-
-  private:
-    bool ownsMessage_ : 1;
-
-  public:
-    const JS::ConstUTF8CharsZ message() const {
-        return message_;
-    }
-
-    void initOwnedMessage(const char* messageArg) {
-        initBorrowedMessage(messageArg);
-        ownsMessage_ = true;
-    }
-    void initBorrowedMessage(const char* messageArg) {
-        MOZ_ASSERT(!message_);
-        message_ = JS::ConstUTF8CharsZ(messageArg, strlen(messageArg));
-    }
-
-    JSString* newMessageString(JSContext* cx);
-
-  private:
-    void freeMessage();
-};
-
-/**
- * Notes associated with JSErrorReport.
- */
-class JSErrorNotes
-{
-  public:
-    class Note : public JSErrorBase
-    {};
-
-  private:
-    // Stores pointers to each note.
-    js::Vector<js::UniquePtr<Note>, 1, js::SystemAllocPolicy> notes_;
-
-  public:
-    JSErrorNotes();
-    ~JSErrorNotes();
-
-    // Add an note to the given position.
-    bool addNoteASCII(JSContext* cx,
-                      const char* filename, unsigned lineno, unsigned column,
-                      JSErrorCallback errorCallback, void* userRef,
-                      const unsigned errorNumber, ...);
-    bool addNoteLatin1(JSContext* cx,
-                       const char* filename, unsigned lineno, unsigned column,
-                       JSErrorCallback errorCallback, void* userRef,
-                       const unsigned errorNumber, ...);
-    bool addNoteUTF8(JSContext* cx,
-                     const char* filename, unsigned lineno, unsigned column,
-                     JSErrorCallback errorCallback, void* userRef,
-                     const unsigned errorNumber, ...);
-
-    JS_PUBLIC_API(size_t) length();
-
-    // Create a deep copy of notes.
-    js::UniquePtr<JSErrorNotes> copy(JSContext* cx);
-
-    class iterator : public std::iterator<std::input_iterator_tag, js::UniquePtr<Note>>
-    {
-        js::UniquePtr<Note>* note_;
-      public:
-        explicit iterator(js::UniquePtr<Note>* note = nullptr) : note_(note)
-        {}
-
-        bool operator==(iterator other) const {
-            return note_ == other.note_;
-        }
-        bool operator!=(iterator other) const {
-            return !(*this == other);
-        }
-        iterator& operator++() {
-            note_++;
-            return *this;
-        }
-        reference operator*() {
-            return *note_;
-        }
-    };
-    JS_PUBLIC_API(iterator) begin();
-    JS_PUBLIC_API(iterator) end();
-};
-
-/**
- * Describes a single error or warning that occurs in the execution of script.
- */
-class JSErrorReport : public JSErrorBase
-{
-    // Offending source line without final '\n'.
-    // If ownsLinebuf_ is true, the buffer is freed in destructor.
-    const char16_t* linebuf_;
-
-    // Number of chars in linebuf_. Does not include trailing '\0'.
-    size_t linebufLength_;
-
-    // The 0-based offset of error token in linebuf_.
-    size_t tokenOffset_;
-
-  public:
-    JSErrorReport()
-      : linebuf_(nullptr), linebufLength_(0), tokenOffset_(0),
-        notes(nullptr),
-        flags(0), exnType(0), isMuted(false),
-        ownsLinebuf_(false)
-    {}
-
-    ~JSErrorReport() {
-        freeLinebuf();
-    }
-
-    // Associated notes, or nullptr if there's no note.
-    js::UniquePtr<JSErrorNotes> notes;
-
-    // error/warning, etc.
-    unsigned flags;
-
-    // One of the JSExnType constants.
-    int16_t exnType;
-
-    // See the comment in TransitiveCompileOptions.
-    bool isMuted : 1;
-
-  private:
-    bool ownsLinebuf_ : 1;
-
-  public:
-    const char16_t* linebuf() const {
-        return linebuf_;
-    }
-    size_t linebufLength() const {
-        return linebufLength_;
-    }
-    size_t tokenOffset() const {
-        return tokenOffset_;
-    }
-    void initOwnedLinebuf(const char16_t* linebufArg, size_t linebufLengthArg,
-                          size_t tokenOffsetArg) {
-        initBorrowedLinebuf(linebufArg, linebufLengthArg, tokenOffsetArg);
-        ownsLinebuf_ = true;
-    }
-    void initBorrowedLinebuf(const char16_t* linebufArg, size_t linebufLengthArg,
-                             size_t tokenOffsetArg);
-
-  private:
-    void freeLinebuf();
-};
-
-/*
- * JSErrorReport flag values.  These may be freely composed.
- */
-#define JSREPORT_ERROR      0x0     /* pseudo-flag for default case */
-#define JSREPORT_WARNING    0x1     /* reported via JS_ReportWarning */
-#define JSREPORT_EXCEPTION  0x2     /* exception was thrown */
-#define JSREPORT_STRICT     0x4     /* error or warning due to strict option */
-
-#define JSREPORT_USER_1     0x8     /* user-defined flag */
-
-/*
- * If JSREPORT_EXCEPTION is set, then a JavaScript-catchable exception
- * has been thrown for this runtime error, and the host should ignore it.
- * Exception-aware hosts should also check for JS_IsExceptionPending if
- * JS_ExecuteScript returns failure, and signal or propagate the exception, as
- * appropriate.
- */
-#define JSREPORT_IS_WARNING(flags)      (((flags) & JSREPORT_WARNING) != 0)
-#define JSREPORT_IS_EXCEPTION(flags)    (((flags) & JSREPORT_EXCEPTION) != 0)
-#define JSREPORT_IS_STRICT(flags)       (((flags) & JSREPORT_STRICT) != 0)
 
 namespace JS {
 
@@ -5540,6 +4364,15 @@ namespace JS {
 extern JS_PUBLIC_API(JSObject*)
 ExceptionStackOrNull(JS::HandleObject obj);
 
+/**
+ * If this process is recording or replaying and the given value is an
+ * exception object (or an unwrappable cross-compartment wrapper for one),
+ * return the point where this exception was thrown, for time warping later.
+ * Returns zero otherwise.
+ */
+extern JS_PUBLIC_API(uint64_t)
+ExceptionTimeWarpTarget(JS::HandleValue exn);
+
 } /* namespace JS */
 
 /**
@@ -5605,7 +4438,6 @@ JS_SetOffthreadIonCompilationEnabled(JSContext* cx, bool enabled);
     Register(SPECTRE_STRING_MITIGATIONS, "spectre.string-mitigations")      \
     Register(SPECTRE_VALUE_MASKING, "spectre.value-masking")                \
     Register(SPECTRE_JIT_TO_CXX_CALLS, "spectre.jit-to-C++-calls")          \
-    Register(ASMJS_ATOMICS_ENABLE, "asmjs.atomics.enable")                  \
     Register(WASM_FOLD_OFFSETS, "wasm.fold-offsets")                        \
     Register(WASM_DELAY_TIER2, "wasm.delay-tier2")
 
@@ -5738,79 +4570,6 @@ class MOZ_RAII AutoHideScriptedCaller
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
-/*
- * Encode/Decode interpreted scripts and functions to/from memory.
- */
-
-typedef mozilla::Vector<uint8_t> TranscodeBuffer;
-typedef mozilla::Range<uint8_t> TranscodeRange;
-
-struct TranscodeSource
-{
-    TranscodeSource(const TranscodeRange& range_, const char* file, uint32_t line)
-        : range(range_), filename(file), lineno(line)
-    {}
-
-    const TranscodeRange range;
-    const char* filename;
-    const uint32_t lineno;
-};
-
-typedef mozilla::Vector<JS::TranscodeSource> TranscodeSources;
-
-enum TranscodeResult: uint8_t
-{
-    // Successful encoding / decoding.
-    TranscodeResult_Ok = 0,
-
-    // A warning message, is set to the message out-param.
-    TranscodeResult_Failure = 0x10,
-    TranscodeResult_Failure_BadBuildId =          TranscodeResult_Failure | 0x1,
-    TranscodeResult_Failure_RunOnceNotSupported = TranscodeResult_Failure | 0x2,
-    TranscodeResult_Failure_AsmJSNotSupported =   TranscodeResult_Failure | 0x3,
-    TranscodeResult_Failure_BadDecode =           TranscodeResult_Failure | 0x4,
-    TranscodeResult_Failure_WrongCompileOption =  TranscodeResult_Failure | 0x5,
-    TranscodeResult_Failure_NotInterpretedFun =   TranscodeResult_Failure | 0x6,
-
-    // There is a pending exception on the context.
-    TranscodeResult_Throw = 0x20
-};
-
-extern JS_PUBLIC_API(TranscodeResult)
-EncodeScript(JSContext* cx, TranscodeBuffer& buffer, JS::HandleScript script);
-
-extern JS_PUBLIC_API(TranscodeResult)
-EncodeInterpretedFunction(JSContext* cx, TranscodeBuffer& buffer, JS::HandleObject funobj);
-
-extern JS_PUBLIC_API(TranscodeResult)
-DecodeScript(JSContext* cx, TranscodeBuffer& buffer, JS::MutableHandleScript scriptp,
-             size_t cursorIndex = 0);
-
-extern JS_PUBLIC_API(TranscodeResult)
-DecodeScript(JSContext* cx, const TranscodeRange& range, JS::MutableHandleScript scriptp);
-
-extern JS_PUBLIC_API(TranscodeResult)
-DecodeInterpretedFunction(JSContext* cx, TranscodeBuffer& buffer, JS::MutableHandleFunction funp,
-                          size_t cursorIndex = 0);
-
-// Register an encoder on the given script source, such that all functions can
-// be encoded as they are parsed. This strategy is used to avoid blocking the
-// main thread in a non-interruptible way.
-//
-// The |script| argument of |StartIncrementalEncoding| and
-// |FinishIncrementalEncoding| should be the top-level script returned either as
-// an out-param of any of the |Compile| functions, or the result of
-// |FinishOffThreadScript|.
-//
-// The |buffer| argument of |FinishIncrementalEncoding| is used for appending
-// the encoded bytecode into the buffer. If any of these functions failed, the
-// content of |buffer| would be undefined.
-extern JS_PUBLIC_API(bool)
-StartIncrementalEncoding(JSContext* cx, JS::HandleScript script);
-
-extern JS_PUBLIC_API(bool)
-FinishIncrementalEncoding(JSContext* cx, JS::HandleScript script, TranscodeBuffer& buffer);
-
 } /* namespace JS */
 
 namespace js {
@@ -5921,29 +4680,6 @@ SetBuildIdOp(JSContext* cx, BuildIdOp buildIdOp);
  * JS::WasmModule and thus the final reference of a JS::WasmModule may be
  * dropped from any thread and so the virtual destructor (and all internal
  * methods of the C++ module) must be thread-safe.
- *
- * For (de)serialization:
- *
- * - Serialization starts when WebAssembly.Module is passed to the
- * structured-clone algorithm. JS::GetWasmModule is called on the JSRuntime
- * thread that initiated the structured clone to get the JS::WasmModule.
- * This interface is then taken to a background thread where the bytecode and
- * compiled code are written into separate files: a bytecode file that always
- * allows successful deserialization and a compiled-code file keyed on cpu- and
- * build-id that may become invalid if either of these change between
- * serialization and deserialization. Due to tiering, the serialization must
- * asynchronously wait for compilation to complete before requesting the
- * module's compiled code. After serialization, a reference is dropped from a
- * separate thread so the virtual destructor must be thread-safe.
- *
- * - Deserialization starts when the structured clone algorithm encounters a
- * serialized WebAssembly.Module. On a background thread, the compiled-code file
- * is opened and CompiledWasmModuleAssumptionsMatch is called to see if it is
- * still valid (as described above). DeserializeWasmModule is then called to
- * construct a JS::WasmModule (also on the background thread), passing the
- * bytecode file descriptor and, if valid, the compiled-code file descriptor.
- * The JS::WasmObject is then transported to a JSContext thread and the wrapping
- * WebAssembly.Module object is created by calling createObject().
  */
 
 class WasmModuleListener
@@ -5965,19 +4701,6 @@ class WasmModuleListener
 struct WasmModule : js::AtomicRefCounted<WasmModule>
 {
     virtual ~WasmModule() {}
-
-    virtual size_t bytecodeSerializedSize() const = 0;
-    virtual void bytecodeSerialize(uint8_t* bytecodeBegin, size_t bytecodeSize) const = 0;
-
-    // Compilation must complete before the serialized code is requested. If
-    // compilation is not complete, the embedding must wait until notified by
-    // implementing WasmModuleListener. SpiderMonkey will hold a RefPtr to
-    // 'listener' until onCompilationComplete() is called.
-    virtual bool compilationComplete() const = 0;
-    virtual bool notifyWhenCompilationComplete(WasmModuleListener* listener) = 0;
-    virtual size_t compiledSerializedSize() const = 0;
-    virtual void compiledSerialize(uint8_t* compiledBegin, size_t compiledSize) const = 0;
-
     virtual JSObject* createObject(JSContext* cx) = 0;
 };
 
@@ -5987,11 +4710,8 @@ IsWasmModuleObject(HandleObject obj);
 extern JS_PUBLIC_API(RefPtr<WasmModule>)
 GetWasmModule(HandleObject obj);
 
-extern JS_PUBLIC_API(bool)
-CompiledWasmModuleAssumptionsMatch(PRFileDesc* compiled, BuildIdCharVector&& buildId);
-
 extern JS_PUBLIC_API(RefPtr<WasmModule>)
-DeserializeWasmModule(PRFileDesc* bytecode, PRFileDesc* maybeCompiled, BuildIdCharVector&& buildId,
+DeserializeWasmModule(PRFileDesc* bytecode, BuildIdCharVector&& buildId,
                       JS::UniqueChars filename, unsigned line);
 
 /**
@@ -6225,102 +4945,6 @@ CopyAsyncStack(JSContext* cx, HandleObject asyncStack,
                HandleString asyncCause, MutableHandleObject stackp,
                const mozilla::Maybe<size_t>& maxFrameCount);
 
-/*
- * Accessors for working with SavedFrame JSObjects
- *
- * Each of these functions assert that if their `HandleObject savedFrame`
- * argument is non-null, its JSClass is the SavedFrame class (or it is a
- * cross-compartment or Xray wrapper around an object with the SavedFrame class)
- * and the object is not the SavedFrame.prototype object.
- *
- * Each of these functions will find the first SavedFrame object in the chain
- * whose underlying stack frame principals are subsumed by the cx's current
- * compartment's principals, and operate on that SavedFrame object. This
- * prevents leaking information about privileged frames to un-privileged
- * callers. As a result, the SavedFrame in parameters do _NOT_ need to be in the
- * same compartment as the cx, and the various out parameters are _NOT_
- * guaranteed to be in the same compartment as cx.
- *
- * You may consider or skip over self-hosted frames by passing
- * `SavedFrameSelfHosted::Include` or `SavedFrameSelfHosted::Exclude`
- * respectively.
- *
- * Additionally, it may be the case that there is no such SavedFrame object
- * whose captured frame's principals are subsumed by the caller's compartment's
- * principals! If the `HandleObject savedFrame` argument is null, or the
- * caller's principals do not subsume any of the chained SavedFrame object's
- * principals, `SavedFrameResult::AccessDenied` is returned and a (hopefully)
- * sane default value is chosen for the out param.
- *
- * See also `js/src/doc/SavedFrame/SavedFrame.md`.
- */
-
-enum class SavedFrameResult {
-    Ok,
-    AccessDenied
-};
-
-enum class SavedFrameSelfHosted {
-    Include,
-    Exclude
-};
-
-/**
- * Given a SavedFrame JSObject, get its source property. Defaults to the empty
- * string.
- */
-extern JS_PUBLIC_API(SavedFrameResult)
-GetSavedFrameSource(JSContext* cx, HandleObject savedFrame, MutableHandleString sourcep,
-                    SavedFrameSelfHosted selfHosted = SavedFrameSelfHosted::Include);
-
-/**
- * Given a SavedFrame JSObject, get its line property. Defaults to 0.
- */
-extern JS_PUBLIC_API(SavedFrameResult)
-GetSavedFrameLine(JSContext* cx, HandleObject savedFrame, uint32_t* linep,
-                  SavedFrameSelfHosted selfHosted = SavedFrameSelfHosted::Include);
-
-/**
- * Given a SavedFrame JSObject, get its column property. Defaults to 0.
- */
-extern JS_PUBLIC_API(SavedFrameResult)
-GetSavedFrameColumn(JSContext* cx, HandleObject savedFrame, uint32_t* columnp,
-                    SavedFrameSelfHosted selfHosted = SavedFrameSelfHosted::Include);
-
-/**
- * Given a SavedFrame JSObject, get its functionDisplayName string, or nullptr
- * if SpiderMonkey was unable to infer a name for the captured frame's
- * function. Defaults to nullptr.
- */
-extern JS_PUBLIC_API(SavedFrameResult)
-GetSavedFrameFunctionDisplayName(JSContext* cx, HandleObject savedFrame, MutableHandleString namep,
-                                 SavedFrameSelfHosted selfHosted = SavedFrameSelfHosted::Include);
-
-/**
- * Given a SavedFrame JSObject, get its asyncCause string. Defaults to nullptr.
- */
-extern JS_PUBLIC_API(SavedFrameResult)
-GetSavedFrameAsyncCause(JSContext* cx, HandleObject savedFrame, MutableHandleString asyncCausep,
-                        SavedFrameSelfHosted selfHosted = SavedFrameSelfHosted::Include);
-
-/**
- * Given a SavedFrame JSObject, get its asyncParent SavedFrame object or nullptr
- * if there is no asyncParent. The `asyncParentp` out parameter is _NOT_
- * guaranteed to be in the cx's compartment. Defaults to nullptr.
- */
-extern JS_PUBLIC_API(SavedFrameResult)
-GetSavedFrameAsyncParent(JSContext* cx, HandleObject savedFrame, MutableHandleObject asyncParentp,
-                SavedFrameSelfHosted selfHosted = SavedFrameSelfHosted::Include);
-
-/**
- * Given a SavedFrame JSObject, get its parent SavedFrame object or nullptr if
- * it is the oldest frame in the stack. The `parentp` out parameter is _NOT_
- * guaranteed to be in the cx's compartment. Defaults to nullptr.
- */
-extern JS_PUBLIC_API(SavedFrameResult)
-GetSavedFrameParent(JSContext* cx, HandleObject savedFrame, MutableHandleObject parentp,
-                    SavedFrameSelfHosted selfHosted = SavedFrameSelfHosted::Include);
-
 /**
  * Given a SavedFrame JSObject stack, stringify it in the same format as
  * Error.prototype.stack. The stringified stack out parameter is placed in the
@@ -6329,20 +4953,29 @@ GetSavedFrameParent(JSContext* cx, HandleObject savedFrame, MutableHandleObject 
  * The same notes above about SavedFrame accessors applies here as well: cx
  * doesn't need to be in stack's compartment, and stack can be null, a
  * SavedFrame object, or a wrapper (CCW or Xray) around a SavedFrame object.
+ * SavedFrames not subsumed by |principals| are skipped.
  *
  * Optional indent parameter specifies the number of white spaces to indent
  * each line.
  */
 extern JS_PUBLIC_API(bool)
-BuildStackString(JSContext* cx, HandleObject stack, MutableHandleString stringp,
-                 size_t indent = 0, js::StackFormat stackFormat = js::StackFormat::Default);
+BuildStackString(JSContext* cx, JSPrincipals* principals, HandleObject stack,
+                 MutableHandleString stringp, size_t indent = 0,
+                 js::StackFormat stackFormat = js::StackFormat::Default);
 
 /**
  * Return true iff the given object is either a SavedFrame object or wrapper
  * around a SavedFrame object, and it is not the SavedFrame.prototype object.
  */
 extern JS_PUBLIC_API(bool)
-IsSavedFrame(JSObject* obj);
+IsMaybeWrappedSavedFrame(JSObject* obj);
+
+/**
+ * Return true iff the given object is a SavedFrame object and not the
+ * SavedFrame.prototype object.
+ */
+extern JS_PUBLIC_API(bool)
+IsUnwrappedSavedFrame(JSObject* obj);
 
 } /* namespace JS */
 

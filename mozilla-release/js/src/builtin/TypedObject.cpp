@@ -11,7 +11,6 @@
 
 #include "jsutil.h"
 
-#include "builtin/SIMD.h"
 #include "gc/Marking.h"
 #include "js/Vector.h"
 #include "util/StringBuffer.h"
@@ -244,10 +243,6 @@ ScalarTypeDescr::typeName(Type type)
         JS_FOR_EACH_SCALAR_TYPE_REPR(NUMERIC_TYPE_TO_STRING)
 #undef NUMERIC_TYPE_TO_STRING
       case Scalar::Int64:
-      case Scalar::Float32x4:
-      case Scalar::Int8x16:
-      case Scalar::Int16x8:
-      case Scalar::Int32x4:
       case Scalar::MaxTypedArrayViewType:
         break;
     }
@@ -285,10 +280,6 @@ ScalarTypeDescr::call(JSContext* cx, unsigned argc, Value* vp)
         JS_FOR_EACH_SCALAR_TYPE_REPR(SCALARTYPE_CALL)
 #undef SCALARTYPE_CALL
       case Scalar::Int64:
-      case Scalar::Float32x4:
-      case Scalar::Int8x16:
-      case Scalar::Int16x8:
-      case Scalar::Int32x4:
       case Scalar::MaxTypedArrayViewType:
         MOZ_CRASH();
     }
@@ -399,50 +390,6 @@ js::ReferenceTypeDescr::call(JSContext* cx, unsigned argc, Value* vp)
     }
 
     MOZ_CRASH("Unhandled Reference type");
-}
-
-/***************************************************************************
- * SIMD type objects
- *
- * Note: these are partially defined in SIMD.cpp
- */
-
-SimdType
-SimdTypeDescr::type() const {
-    uint32_t t = uint32_t(getReservedSlot(JS_DESCR_SLOT_TYPE).toInt32());
-    MOZ_ASSERT(t < uint32_t(SimdType::Count));
-    return SimdType(t);
-}
-
-uint32_t
-SimdTypeDescr::size(SimdType t)
-{
-    MOZ_ASSERT(unsigned(t) < unsigned(SimdType::Count));
-    switch (t) {
-      case SimdType::Int8x16:
-      case SimdType::Int16x8:
-      case SimdType::Int32x4:
-      case SimdType::Uint8x16:
-      case SimdType::Uint16x8:
-      case SimdType::Uint32x4:
-      case SimdType::Float32x4:
-      case SimdType::Float64x2:
-      case SimdType::Bool8x16:
-      case SimdType::Bool16x8:
-      case SimdType::Bool32x4:
-      case SimdType::Bool64x2:
-        return 16;
-      case SimdType::Count:
-        break;
-    }
-    MOZ_CRASH("unexpected SIMD type");
-}
-
-uint32_t
-SimdTypeDescr::alignment(SimdType t)
-{
-    MOZ_ASSERT(unsigned(t) < unsigned(SimdType::Count));
-    return size(t);
 }
 
 /***************************************************************************
@@ -600,6 +547,7 @@ ArrayMetaTypeDescr::create(JSContext* cx,
     obj->initReservedSlot(JS_DESCR_SLOT_OPAQUE, BooleanValue(elementType->opaque()));
     obj->initReservedSlot(JS_DESCR_SLOT_ARRAY_ELEM_TYPE, ObjectValue(*elementType));
     obj->initReservedSlot(JS_DESCR_SLOT_ARRAY_LENGTH, Int32Value(length));
+    obj->initReservedSlot(JS_DESCR_SLOT_FLAGS, Int32Value(JS_DESCR_FLAG_ALLOW_CONSTRUCT));
 
     RootedValue elementTypeVal(cx, ObjectValue(*elementType));
     if (!DefineDataProperty(cx, obj, cx->names().elementType, elementTypeVal,
@@ -736,7 +684,7 @@ static const ClassOps StructTypeDescrClassOps = {
     nullptr, /* resolve */
     nullptr, /* mayResolve */
     TypeDescr::finalize,
-    nullptr, /* call */
+    StructTypeDescr::call,
     nullptr, /* hasInstance */
     TypedObject::construct
 };
@@ -820,6 +768,8 @@ StructMetaTypeDescr::create(JSContext* cx,
     AutoValueVector fieldTypeObjs(cx); // Type descriptor of each field.
     bool opaque = false;               // Opacity of struct.
 
+    Vector<bool> fieldMutabilities(cx);
+
     RootedValue fieldTypeVal(cx);
     RootedId id(cx);
     Rooted<TypeDescr*> fieldType(cx);
@@ -849,6 +799,10 @@ StructMetaTypeDescr::create(JSContext* cx,
         if (!fieldTypeObjs.append(ObjectValue(*fieldType)))
             return nullptr;
 
+        // Along this path everything is mutable
+        if (!fieldMutabilities.append(true))
+            return nullptr;
+
         // Struct is opaque if any field is opaque
         if (fieldType->opaque())
             opaque = true;
@@ -858,19 +812,23 @@ StructMetaTypeDescr::create(JSContext* cx,
     if (!structTypePrototype)
         return nullptr;
 
-    return createFromArrays(cx, structTypePrototype, opaque, ids, fieldTypeObjs);
+    return createFromArrays(cx, structTypePrototype, opaque, /* allowConstruct= */ true, ids,
+                            fieldTypeObjs, fieldMutabilities);
 }
 
 /* static */ StructTypeDescr*
 StructMetaTypeDescr::createFromArrays(JSContext* cx,
                                       HandleObject structTypePrototype,
                                       bool opaque,
+                                      bool allowConstruct,
                                       AutoIdVector& ids,
-                                      AutoValueVector& fieldTypeObjs)
+                                      AutoValueVector& fieldTypeObjs,
+                                      Vector<bool>& fieldMutabilities)
 {
     StringBuffer stringBuffer(cx);     // Canonical string repr
     AutoValueVector fieldNames(cx);    // Name of each field.
     AutoValueVector fieldOffsets(cx);  // Offset of each field field.
+    AutoValueVector fieldMuts(cx);     // Mutability of each field.
     RootedObject userFieldOffsets(cx); // User-exposed {f:offset} object
     RootedObject userFieldTypes(cx);   // User-exposed {f:descr} object.
     Layout layout;                     // Field offsetter
@@ -925,6 +883,9 @@ StructMetaTypeDescr::createFromArrays(JSContext* cx,
         if (!fieldOffsets.append(Int32Value(offset.value())))
             return nullptr;
 
+        if (!fieldMuts.append(BooleanValue(fieldMutabilities[i])))
+            return nullptr;
+
         // userFieldOffsets[id] = offset
         RootedValue offsetValue(cx, Int32Value(offset.value()));
         if (!DefineDataProperty(cx, userFieldOffsets, id, offsetValue,
@@ -961,6 +922,8 @@ StructMetaTypeDescr::createFromArrays(JSContext* cx,
     descr->initReservedSlot(JS_DESCR_SLOT_ALIGNMENT, Int32Value(AssertedCast<int32_t>(alignment)));
     descr->initReservedSlot(JS_DESCR_SLOT_SIZE, Int32Value(totalSize.value()));
     descr->initReservedSlot(JS_DESCR_SLOT_OPAQUE, BooleanValue(opaque));
+    descr->initReservedSlot(JS_DESCR_SLOT_FLAGS,
+                            Int32Value(allowConstruct ? JS_DESCR_FLAG_ALLOW_CONSTRUCT : 0));
 
     // Construct for internal use an array with the name for each field.
     {
@@ -993,7 +956,19 @@ StructMetaTypeDescr::createFromArrays(JSContext* cx,
         descr->initReservedSlot(JS_DESCR_SLOT_STRUCT_FIELD_OFFSETS, ObjectValue(*fieldOffsetsVec));
     }
 
+    // Construct for internal use an array with the mutability for each field.
+    {
+        RootedObject fieldMutsVec(cx);
+        fieldMutsVec = NewDenseCopiedArray(cx, fieldMuts.length(),
+                                           fieldMuts.begin(), nullptr,
+                                           TenuredObject);
+        if (!fieldMutsVec)
+            return nullptr;
+        descr->initReservedSlot(JS_DESCR_SLOT_STRUCT_FIELD_MUTS, ObjectValue(*fieldMutsVec));
+    }
+
     // Create data properties fieldOffsets and fieldTypes
+    // TODO: Probably also want to track mutability here, but not important yet.
     if (!FreezeObject(cx, userFieldOffsets))
         return nullptr;
     if (!FreezeObject(cx, userFieldTypes))
@@ -1092,12 +1067,29 @@ StructTypeDescr::fieldOffset(size_t index) const
     return AssertedCast<size_t>(fieldOffsets.getDenseElement(index).toInt32());
 }
 
+bool
+StructTypeDescr::fieldIsMutable(size_t index) const
+{
+    ArrayObject& fieldMuts = fieldInfoObject(JS_DESCR_SLOT_STRUCT_FIELD_MUTS);
+    MOZ_ASSERT(index < fieldMuts.getDenseInitializedLength());
+    return fieldMuts.getDenseElement(index).toBoolean();
+}
+
 TypeDescr&
 StructTypeDescr::fieldDescr(size_t index) const
 {
     ArrayObject& fieldDescrs = fieldInfoObject(JS_DESCR_SLOT_STRUCT_FIELD_TYPES);
     MOZ_ASSERT(index < fieldDescrs.getDenseInitializedLength());
     return fieldDescrs.getDenseElement(index).toObject().as<TypeDescr>();
+}
+
+bool
+StructTypeDescr::call(JSContext* cx, unsigned argc, Value* vp)
+{
+    // A structure type is a constructor and hence callable, but at present the
+    // call always throws.
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_TYPEDOBJECT_STRUCTTYPE_NOT_CALLABLE);
+    return false;
 }
 
 /******************************************************************************
@@ -1175,6 +1167,7 @@ DefineSimpleTypeDescr(JSContext* cx,
     descr->initReservedSlot(JS_DESCR_SLOT_SIZE, Int32Value(AssertedCast<int32_t>(T::size(type))));
     descr->initReservedSlot(JS_DESCR_SLOT_OPAQUE, BooleanValue(T::Opaque));
     descr->initReservedSlot(JS_DESCR_SLOT_TYPE, Int32Value(int32_t(type)));
+    descr->initReservedSlot(JS_DESCR_SLOT_FLAGS, Int32Value(0));
 
     if (!CreateUserSizeAndAlignmentProperties(cx, descr))
         return false;
@@ -1664,7 +1657,6 @@ TypeDescr::hasProperty(const JSAtomState& names, jsid id)
     switch (kind()) {
       case type::Scalar:
       case type::Reference:
-      case type::Simd:
         return false;
 
       case type::Array:
@@ -1737,7 +1729,6 @@ TypedObject::obj_hasProperty(JSContext* cx, HandleObject obj, HandleId id, bool*
     switch (typedObj->typeDescr().kind()) {
       case type::Scalar:
       case type::Reference:
-      case type::Simd:
         break;
 
       case type::Array: {
@@ -1789,9 +1780,6 @@ TypedObject::obj_getProperty(JSContext* cx, HandleObject obj, HandleValue receiv
       case type::Reference:
         break;
 
-      case type::Simd:
-        break;
-
       case type::Array:
         if (JSID_IS_ATOM(id, cx->names().length)) {
             if (!typedObj->isAttached()) {
@@ -1838,7 +1826,6 @@ TypedObject::obj_getElement(JSContext* cx, HandleObject obj, HandleValue receive
     switch (descr->kind()) {
       case type::Scalar:
       case type::Reference:
-      case type::Simd:
       case type::Struct:
         break;
 
@@ -1884,9 +1871,6 @@ TypedObject::obj_setProperty(JSContext* cx, HandleObject obj, HandleId id, Handl
       case type::Reference:
         break;
 
-      case type::Simd:
-        break;
-
       case type::Array: {
         if (JSID_IS_ATOM(id, cx->names().length)) {
             if (receiver.isObject() && obj == &receiver.toObject()) {
@@ -1925,6 +1909,12 @@ TypedObject::obj_setProperty(JSContext* cx, HandleObject obj, HandleId id, Handl
         if (!descr->fieldIndex(id, &fieldIndex))
             break;
 
+        if (!descr->fieldIsMutable(fieldIndex)) {
+            JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                                      JSMSG_TYPEDOBJECT_SETTING_IMMUTABLE);
+            return false;
+        }
+
         if (!receiver.isObject() || obj != &receiver.toObject())
             return SetPropertyByDefining(cx, id, v, receiver, result);
 
@@ -1954,7 +1944,6 @@ TypedObject::obj_getOwnPropertyDescriptor(JSContext* cx, HandleObject obj, Handl
     switch (descr->kind()) {
       case type::Scalar:
       case type::Reference:
-      case type::Simd:
         break;
 
       case type::Array:
@@ -2008,7 +1997,6 @@ IsOwnId(JSContext* cx, HandleObject obj, HandleId id)
     switch (typedObj->typeDescr().kind()) {
       case type::Scalar:
       case type::Reference:
-      case type::Simd:
         return false;
 
       case type::Array:
@@ -2047,8 +2035,7 @@ TypedObject::obj_newEnumerate(JSContext* cx, HandleObject obj, AutoIdVector& pro
     RootedId id(cx);
     switch (descr->kind()) {
       case type::Scalar:
-      case type::Reference:
-      case type::Simd: {
+      case type::Reference: {
         // Nothing to enumerate.
         break;
       }
@@ -2171,7 +2158,7 @@ InlineTransparentTypedObject::getOrCreateBuffer(JSContext* cx)
     ObjectRealm& realm = ObjectRealm::get(this);
     if (!realm.lazyArrayBuffers) {
         auto table = cx->make_unique<ObjectWeakMap>(cx);
-        if (!table || !table->init())
+        if (!table)
             return nullptr;
 
         realm.lazyArrayBuffers = std::move(table);
@@ -2291,6 +2278,15 @@ TypedObject::construct(JSContext* cx, unsigned int argc, Value* vp)
     MOZ_ASSERT(args.callee().is<TypeDescr>());
     Rooted<TypeDescr*> callee(cx, &args.callee().as<TypeDescr>());
 
+    MOZ_ASSERT(cx->realm() == callee->realm());
+
+    // Types created by Wasm may not be constructible from JS due to field types
+    // that are not expressible in the current TypedObject system.
+    if (callee->is<ComplexTypeDescr>() && !callee->as<ComplexTypeDescr>().allowConstruct()) {
+        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_TYPEDOBJECT_NOT_CONSTRUCTIBLE);
+        return false;
+    }
+
     // Typed object constructors are overloaded in two ways:
     //
     //   new TypeObj()
@@ -2307,6 +2303,7 @@ TypedObject::construct(JSContext* cx, unsigned int argc, Value* vp)
 
     // Data constructor.
     if (args[0].isObject()) {
+
         // Create the typed object.
         Rooted<TypedObject*> obj(cx, createZeroed(cx, callee));
         if (!obj)
@@ -2526,22 +2523,6 @@ js::GetTypedObjectModule(JSContext* cx, unsigned argc, Value* vp)
     return true;
 }
 
-bool
-js::GetSimdTypeDescr(JSContext* cx, unsigned argc, Value* vp)
-{
-    CallArgs args = CallArgsFromVp(argc, vp);
-    MOZ_ASSERT(args.length() == 1);
-    MOZ_ASSERT(args[0].isInt32());
-    // One of the JS_SIMDTYPEREPR_* constants / a SimdType enum value.
-    // getOrCreateSimdTypeDescr() will do the range check.
-    int32_t simdTypeRepr = args[0].toInt32();
-    Rooted<GlobalObject*> global(cx, cx->global());
-    MOZ_ASSERT(global);
-    auto* obj = GlobalObject::getOrCreateSimdTypeDescr(cx, global, SimdType(simdTypeRepr));
-    args.rval().setObject(*obj);
-    return true;
-}
-
 #define JS_STORE_SCALAR_CLASS_IMPL(_constant, T, _name)                         \
 bool                                                                            \
 js::StoreScalar##T::Func(JSContext* cx, unsigned argc, Value* vp)               \
@@ -2732,7 +2713,6 @@ visitReferences(TypeDescr& descr,
 
     switch (descr.kind()) {
       case type::Scalar:
-      case type::Simd:
         return;
 
       case type::Reference:

@@ -6,7 +6,6 @@
 
 var EXPORTED_SYMBOLS = [ "Feeds" ];
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 ChromeUtils.defineModuleGetter(this, "BrowserUtils",
@@ -24,21 +23,6 @@ var Feeds = {
                           getService(Ci.nsIWebContentHandlerRegistrar);
         registrar.registerProtocolHandler(data.protocol, data.uri, data.title,
                                           aMessage.target);
-        break;
-      }
-
-      case "WCCR:registerContentHandler": {
-        let registrar = Cc["@mozilla.org/embeddor.implemented/web-content-handler-registrar;1"].
-                          getService(Ci.nsIWebContentHandlerRegistrar);
-        registrar.registerContentHandler(data.contentType, data.uri, data.title,
-                                         aMessage.target);
-        break;
-      }
-
-      case "WCCR:setAutoHandler": {
-        let registrar = Cc["@mozilla.org/embeddor.implemented/web-content-handler-registrar;1"].
-                          getService(Ci.nsIWebContentConverterService);
-        registrar.setAutoHandler(data.contentType, data.handler);
         break;
       }
 

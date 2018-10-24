@@ -13,6 +13,7 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/FloatingPoint.h"
 #include "mozilla/Maybe.h"
+#include "mozilla/ScopeExit.h"
 #include "mozilla/Sprintf.h"
 
 #include <string.h>
@@ -23,12 +24,14 @@
 #include "builtin/Array.h"
 #include "builtin/Eval.h"
 #include "builtin/ModuleObject.h"
+#include "builtin/Promise.h"
 #include "builtin/String.h"
 #include "jit/AtomicOperations.h"
 #include "jit/BaselineJIT.h"
 #include "jit/Ion.h"
 #include "jit/IonAnalysis.h"
 #include "jit/Jit.h"
+#include "js/AutoByteString.h"
 #include "util/StringBuffer.h"
 #include "vm/AsyncFunction.h"
 #include "vm/AsyncIteration.h"
@@ -306,8 +309,11 @@ js::MakeDefaultConstructor(JSContext* cx, HandleScript script, jsbytecode* pc, H
         return nullptr;
     uint32_t classStartOffset = GetSrcNoteOffset(classNote, 0);
     uint32_t classEndOffset = GetSrcNoteOffset(classNote, 1);
-    ctorScript->setDefaultClassConstructorSpan(script->sourceObject(), classStartOffset,
-                                               classEndOffset);
+    unsigned column;
+    unsigned line = PCToLineNumber(script, pc, &column);
+    ctorScript->setDefaultClassConstructorSpan(script->sourceObject(),
+                                               classStartOffset, classEndOffset,
+                                               line, column);
 
     return ctor;
 }
@@ -386,6 +392,8 @@ js::RunScript(JSContext* cx, RunState& state)
     // Since any script can conceivably GC, make sure it's safe to do so.
     cx->verifyIsSafeToGC();
 
+    MOZ_ASSERT(cx->realm() == state.script()->realm());
+
     MOZ_DIAGNOSTIC_ASSERT(cx->realm()->isSystem() ||
                           cx->runtime()->allowContentJS());
 
@@ -424,6 +432,55 @@ js::RunScript(JSContext* cx, RunState& state)
 # pragma optimize("", on)
 #endif
 
+STATIC_PRECONDITION_ASSUME(ubound(args.argv_) >= argc)
+MOZ_ALWAYS_INLINE bool
+CallJSNative(JSContext* cx, Native native, const CallArgs& args)
+{
+    if (!CheckRecursionLimit(cx))
+        return false;
+
+#ifdef DEBUG
+    bool alreadyThrowing = cx->isExceptionPending();
+#endif
+    cx->check(args);
+    MOZ_ASSERT(!args.callee().is<ProxyObject>());
+
+    AutoRealm ar(cx, &args.callee());
+    bool ok = native(cx, args.length(), args.base());
+    if (ok) {
+        cx->check(args.rval());
+        MOZ_ASSERT_IF(!alreadyThrowing, !cx->isExceptionPending());
+    }
+    return ok;
+}
+
+STATIC_PRECONDITION(ubound(args.argv_) >= argc)
+MOZ_ALWAYS_INLINE bool
+CallJSNativeConstructor(JSContext* cx, Native native, const CallArgs& args)
+{
+#ifdef DEBUG
+    RootedObject callee(cx, &args.callee());
+#endif
+
+    MOZ_ASSERT(args.thisv().isMagic());
+    if (!CallJSNative(cx, native, args))
+        return false;
+
+    /*
+     * Native constructors must return non-primitive values on success.
+     * Although it is legal, if a constructor returns the callee, there is a
+     * 99.9999% chance it is a bug. If any valid code actually wants the
+     * constructor to return the callee, the assertion can be removed or
+     * (another) conjunct can be added to the antecedent.
+     *
+     * Exception: (new Object(Object)) returns the callee.
+     */
+    MOZ_ASSERT_IF((!callee->is<JSFunction>() || callee->as<JSFunction>().native() != obj_construct),
+                  args.rval().isObject() && callee != &args.rval().toObject());
+
+    return true;
+}
+
 /*
  * Find a function reference and its 'this' value implicit first parameter
  * under argc arguments on cx's stack, and call the function.  Push missing
@@ -446,10 +503,19 @@ js::InternalCallOrConstruct(JSContext* cx, const CallArgs& args, MaybeConstruct 
 
     /* Invoke non-functions. */
     if (MOZ_UNLIKELY(!args.callee().is<JSFunction>())) {
-        MOZ_ASSERT_IF(construct, !args.callee().constructHook());
-        JSNative call = args.callee().callHook();
-        if (!call)
+        MOZ_ASSERT_IF(construct, !args.callee().isConstructor());
+
+        if (!args.callee().isCallable())
             return ReportIsNotFunction(cx, args.calleev(), skipForCallee, construct);
+
+        if (args.callee().is<ProxyObject>()) {
+            RootedObject proxy(cx, &args.callee());
+            return Proxy::call(cx, proxy, args);
+        }
+
+        JSNative call = args.callee().callHook();
+        MOZ_ASSERT(call, "isCallable without a callHook?");
+
         return CallJSNative(cx, call, args);
     }
 
@@ -477,7 +543,9 @@ js::InternalCallOrConstruct(JSContext* cx, const CallArgs& args, MaybeConstruct 
     /* Run function until JSOP_RETRVAL, JSOP_RETURN or error. */
     InvokeState state(cx, args, construct);
 
-    // Check to see if createSingleton flag should be set for this frame.
+    // Create |this| if we're constructing. Switch to the callee's realm to
+    // ensure this object has the correct realm.
+    AutoRealm ar(cx, state.script());
     if (construct) {
         bool createSingleton = false;
         jsbytecode* pc;
@@ -570,6 +638,11 @@ InternalConstruct(JSContext* cx, const AnyConstructArgs& args)
 
         MOZ_ASSERT(args.CallArgs::rval().isObject());
         return true;
+    }
+
+    if (callee.is<ProxyObject>()) {
+        RootedObject proxy(cx, &callee);
+        return Proxy::construct(cx, proxy, args);
     }
 
     JSNative construct = callee.constructHook();
@@ -728,7 +801,7 @@ js::Execute(JSContext* cx, HandleScript script, JSObject& envChainArg, Value* rv
 #ifdef DEBUG
     JSObject* s = envChain;
     do {
-        assertSameCompartment(cx, s);
+        cx->check(s);
         MOZ_ASSERT_IF(!s->enclosingEnvironment(), s->is<GlobalObject>());
     } while ((s = s->enclosingEnvironment()));
 #endif
@@ -794,6 +867,12 @@ EqualGivenSameType(JSContext* cx, HandleValue lval, HandleValue rval, bool* equa
         *equal = (lval.toDouble() == rval.toDouble());
         return true;
     }
+#ifdef ENABLE_BIGINT
+    if (lval.isBigInt()) {
+        *equal = BigInt::equal(lval.toBigInt(), rval.toBigInt());
+        return true;
+    }
+#endif
     if (lval.isGCThing()) {  // objects or symbols
         *equal = (lval.toGCThing() == rval.toGCThing());
         return true;
@@ -896,6 +975,24 @@ js::LooselyEqual(JSContext* cx, HandleValue lval, HandleValue rval, bool* result
             return false;
         return LooselyEqual(cx, lvalue, rval, result);
     }
+
+#ifdef ENABLE_BIGINT
+    if (lval.isBigInt()) {
+        RootedBigInt lbi(cx, lval.toBigInt());
+        bool tmpResult;
+        JS_TRY_VAR_OR_RETURN_FALSE(cx, tmpResult, BigInt::looselyEqual(cx, lbi, rval));
+        *result = tmpResult;
+        return true;
+    }
+
+    if (rval.isBigInt()) {
+        RootedBigInt rbi(cx, rval.toBigInt());
+        bool tmpResult;
+        JS_TRY_VAR_OR_RETURN_FALSE(cx, tmpResult, BigInt::looselyEqual(cx, rbi, lval));
+        *result = tmpResult;
+        return true;
+    }
+#endif
 
     // Step 12.
     *result = false;
@@ -1355,6 +1452,7 @@ static HandleErrorContinuation
 HandleError(JSContext* cx, InterpreterRegs& regs)
 {
     MOZ_ASSERT(regs.fp()->script()->containsPC(regs.pc));
+    MOZ_ASSERT(cx->realm() == regs.fp()->script()->realm());
 
     if (regs.fp()->script()->hasScriptCounts()) {
         PCCounts* counts = regs.fp()->script()->getThrowCounts(regs.pc);
@@ -1429,7 +1527,7 @@ HandleError(JSContext* cx, InterpreterRegs& regs)
 }
 
 #define REGS                     (activation.regs())
-#define PUSH_COPY(v)             do { *REGS.sp++ = (v); assertSameCompartmentDebugOnly(cx, REGS.sp[-1]); } while (0)
+#define PUSH_COPY(v)             do { *REGS.sp++ = (v); cx->debugOnlyCheck(REGS.sp[-1]); } while (0)
 #define PUSH_COPY_SKIP_CHECK(v)  *REGS.sp++ = (v)
 #define PUSH_NULL()              REGS.sp++->setNull()
 #define PUSH_UNDEFINED()         REGS.sp++->setUndefined()
@@ -1437,9 +1535,9 @@ HandleError(JSContext* cx, InterpreterRegs& regs)
 #define PUSH_DOUBLE(d)           REGS.sp++->setDouble(d)
 #define PUSH_INT32(i)            REGS.sp++->setInt32(i)
 #define PUSH_SYMBOL(s)           REGS.sp++->setSymbol(s)
-#define PUSH_STRING(s)           do { REGS.sp++->setString(s); assertSameCompartmentDebugOnly(cx, REGS.sp[-1]); } while (0)
-#define PUSH_OBJECT(obj)         do { REGS.sp++->setObject(obj); assertSameCompartmentDebugOnly(cx, REGS.sp[-1]); } while (0)
-#define PUSH_OBJECT_OR_NULL(obj) do { REGS.sp++->setObjectOrNull(obj); assertSameCompartmentDebugOnly(cx, REGS.sp[-1]); } while (0)
+#define PUSH_STRING(s)           do { REGS.sp++->setString(s); cx->debugOnlyCheck(REGS.sp[-1]); } while (0)
+#define PUSH_OBJECT(obj)         do { REGS.sp++->setObject(obj); cx->debugOnlyCheck(REGS.sp[-1]); } while (0)
+#define PUSH_OBJECT_OR_NULL(obj) do { REGS.sp++->setObjectOrNull(obj); cx->debugOnlyCheck(REGS.sp[-1]); } while (0)
 #define PUSH_MAGIC(magic)        REGS.sp++->setMagic(magic)
 #define POP_COPY_TO(v)           (v) = *--REGS.sp
 #define POP_RETURN_VALUE()       REGS.fp()->setReturnValue(*--REGS.sp)
@@ -1543,48 +1641,68 @@ AddOperation(JSContext* cx, MutableHandleValue lhs, MutableHandleValue rhs, Muta
                 return false;
         }
         res.setString(str);
-    } else {
-        double l, r;
-        if (!ToNumber(cx, lhs, &l) || !ToNumber(cx, rhs, &r))
-            return false;
-        res.setNumber(l + r);
+        return true;
     }
 
-    return true;
-}
-
-static MOZ_ALWAYS_INLINE bool
-SubOperation(JSContext* cx, HandleValue lhs, HandleValue rhs, MutableHandleValue res)
-{
-    double d1, d2;
-    if (!ToNumber(cx, lhs, &d1) || !ToNumber(cx, rhs, &d2))
+    if (!ToNumeric(cx, lhs) || !ToNumeric(cx, rhs))
         return false;
-    res.setNumber(d1 - d2);
+
+#ifdef ENABLE_BIGINT
+    if (lhs.isBigInt() || rhs.isBigInt())
+        return BigInt::add(cx, lhs, rhs, res);
+#endif
+
+    res.setNumber(lhs.toNumber() + rhs.toNumber());
     return true;
 }
 
 static MOZ_ALWAYS_INLINE bool
-MulOperation(JSContext* cx, HandleValue lhs, HandleValue rhs, MutableHandleValue res)
+SubOperation(JSContext* cx, MutableHandleValue lhs, MutableHandleValue rhs, MutableHandleValue res)
 {
-    double d1, d2;
-    if (!ToNumber(cx, lhs, &d1) || !ToNumber(cx, rhs, &d2))
+    if (!ToNumeric(cx, lhs) || !ToNumeric(cx, rhs))
         return false;
-    res.setNumber(d1 * d2);
+
+#ifdef ENABLE_BIGINT
+    if (lhs.isBigInt() || rhs.isBigInt())
+        return BigInt::sub(cx, lhs, rhs, res);
+#endif
+
+    res.setNumber(lhs.toNumber() - rhs.toNumber());
     return true;
 }
 
 static MOZ_ALWAYS_INLINE bool
-DivOperation(JSContext* cx, HandleValue lhs, HandleValue rhs, MutableHandleValue res)
+MulOperation(JSContext* cx, MutableHandleValue lhs, MutableHandleValue rhs, MutableHandleValue res)
 {
-    double d1, d2;
-    if (!ToNumber(cx, lhs, &d1) || !ToNumber(cx, rhs, &d2))
+    if (!ToNumeric(cx, lhs) || !ToNumeric(cx, rhs))
         return false;
-    res.setNumber(NumberDiv(d1, d2));
+
+#ifdef ENABLE_BIGINT
+    if (lhs.isBigInt() || rhs.isBigInt())
+        return BigInt::mul(cx, lhs, rhs, res);
+#endif
+
+    res.setNumber(lhs.toNumber() * rhs.toNumber());
     return true;
 }
 
 static MOZ_ALWAYS_INLINE bool
-ModOperation(JSContext* cx, HandleValue lhs, HandleValue rhs, MutableHandleValue res)
+DivOperation(JSContext* cx, MutableHandleValue lhs, MutableHandleValue rhs, MutableHandleValue res)
+{
+    if (!ToNumeric(cx, lhs) || !ToNumeric(cx, rhs))
+        return false;
+
+#ifdef ENABLE_BIGINT
+    if (lhs.isBigInt() || rhs.isBigInt())
+        return BigInt::div(cx, lhs, rhs, res);
+#endif
+
+    res.setNumber(NumberDiv(lhs.toNumber(), rhs.toNumber()));
+    return true;
+}
+
+static MOZ_ALWAYS_INLINE bool
+ModOperation(JSContext* cx, MutableHandleValue lhs, MutableHandleValue rhs, MutableHandleValue res)
 {
     int32_t l, r;
     if (lhs.isInt32() && rhs.isInt32() &&
@@ -1594,11 +1712,30 @@ ModOperation(JSContext* cx, HandleValue lhs, HandleValue rhs, MutableHandleValue
         return true;
     }
 
-    double d1, d2;
-    if (!ToNumber(cx, lhs, &d1) || !ToNumber(cx, rhs, &d2))
+    if (!ToNumeric(cx, lhs) || !ToNumeric(cx, rhs))
         return false;
 
-    res.setNumber(NumberMod(d1, d2));
+#ifdef ENABLE_BIGINT
+    if (lhs.isBigInt() || rhs.isBigInt())
+        return BigInt::mod(cx, lhs, rhs, res);
+#endif
+
+    res.setNumber(NumberMod(lhs.toNumber(), rhs.toNumber()));
+    return true;
+}
+
+static MOZ_ALWAYS_INLINE bool
+PowOperation(JSContext* cx, MutableHandleValue lhs, MutableHandleValue rhs, MutableHandleValue res)
+{
+    if (!ToNumeric(cx, lhs) || !ToNumeric(cx, rhs))
+        return false;
+
+#ifdef ENABLE_BIGINT
+    if (lhs.isBigInt() || rhs.isBigInt())
+        return BigInt::pow(cx, lhs, rhs, res);
+#endif
+
+    res.setNumber(ecmaPow(lhs.toNumber(), rhs.toNumber()));
     return true;
 }
 
@@ -1889,6 +2026,7 @@ Interpret(JSContext* cx, RunState& state)
 #define SET_SCRIPT(s)                                                         \
     JS_BEGIN_MACRO                                                            \
         script = (s);                                                         \
+        MOZ_ASSERT(cx->realm() == script->realm());                           \
         if (script->hasAnyBreakpointsOrStepMode() || script->hasScriptCounts()) \
             activation.enableInterruptsUnconditionally();                     \
     JS_END_MACRO
@@ -2038,7 +2176,6 @@ CASE(JSOP_NOP_DESTRUCTURING)
 CASE(JSOP_TRY_DESTRUCTURING_ITERCLOSE)
 CASE(JSOP_UNUSED126)
 CASE(JSOP_UNUSED206)
-CASE(JSOP_UNUSED223)
 CASE(JSOP_CONDSWITCH)
 {
     MOZ_ASSERT(CodeSpec[*REGS.pc].length == 1);
@@ -2090,6 +2227,8 @@ CASE(JSOP_LOOPENTRY)
             goto leave_on_safe_point;
         }
     }
+    if (script->trackRecordReplayProgress())
+        mozilla::recordreplay::AdvanceExecutionProgressCounter();
 END_CASE(JSOP_LOOPENTRY)
 
 CASE(JSOP_LINENO)
@@ -2179,11 +2318,17 @@ CASE(JSOP_RETRVAL)
   jit_return_pop_frame:
 
         activation.popInlineFrame(REGS.fp());
-        SET_SCRIPT(REGS.fp()->script());
+        {
+            JSScript* callerScript = REGS.fp()->script();
+            if (cx->realm() != callerScript->realm())
+                cx->leaveRealm(callerScript->realm());
+            SET_SCRIPT(callerScript);
+        }
 
   jit_return:
 
         MOZ_ASSERT(CodeSpec[*REGS.pc].format & JOF_INVOKE);
+        MOZ_ASSERT(cx->realm() == script->realm());
 
         /* Resume execution in the calling frame. */
         if (MOZ_LIKELY(interpReturnOK)) {
@@ -2602,7 +2747,7 @@ CASE(JSOP_SUB)
     ReservedRooted<Value> lval(&rootValue0, REGS.sp[-2]);
     ReservedRooted<Value> rval(&rootValue1, REGS.sp[-1]);
     MutableHandleValue res = REGS.stackHandleAt(-2);
-    if (!SubOperation(cx, lval, rval, res))
+    if (!SubOperation(cx, &lval, &rval, res))
         goto error;
     REGS.sp--;
 }
@@ -2613,7 +2758,7 @@ CASE(JSOP_MUL)
     ReservedRooted<Value> lval(&rootValue0, REGS.sp[-2]);
     ReservedRooted<Value> rval(&rootValue1, REGS.sp[-1]);
     MutableHandleValue res = REGS.stackHandleAt(-2);
-    if (!MulOperation(cx, lval, rval, res))
+    if (!MulOperation(cx, &lval, &rval, res))
         goto error;
     REGS.sp--;
 }
@@ -2624,7 +2769,7 @@ CASE(JSOP_DIV)
     ReservedRooted<Value> lval(&rootValue0, REGS.sp[-2]);
     ReservedRooted<Value> rval(&rootValue1, REGS.sp[-1]);
     MutableHandleValue res = REGS.stackHandleAt(-2);
-    if (!DivOperation(cx, lval, rval, res))
+    if (!DivOperation(cx, &lval, &rval, res))
         goto error;
     REGS.sp--;
 }
@@ -2635,7 +2780,7 @@ CASE(JSOP_MOD)
     ReservedRooted<Value> lval(&rootValue0, REGS.sp[-2]);
     ReservedRooted<Value> rval(&rootValue1, REGS.sp[-1]);
     MutableHandleValue res = REGS.stackHandleAt(-2);
-    if (!ModOperation(cx, lval, rval, res))
+    if (!ModOperation(cx, &lval, &rval, res))
         goto error;
     REGS.sp--;
 }
@@ -2646,7 +2791,7 @@ CASE(JSOP_POW)
     ReservedRooted<Value> lval(&rootValue0, REGS.sp[-2]);
     ReservedRooted<Value> rval(&rootValue1, REGS.sp[-1]);
     MutableHandleValue res = REGS.stackHandleAt(-2);
-    if (!math_pow_handle(cx, lval, rval, res))
+    if (!PowOperation(cx, &lval, &rval, res))
         goto error;
     REGS.sp--;
 }
@@ -2674,7 +2819,7 @@ CASE(JSOP_NEG)
 {
     ReservedRooted<Value> val(&rootValue0, REGS.sp[-1]);
     MutableHandleValue res = REGS.stackHandleAt(-1);
-    if (!NegOperation(cx, val, res))
+    if (!NegOperation(cx, &val, res))
         goto error;
 }
 END_CASE(JSOP_NEG)
@@ -2840,7 +2985,7 @@ CASE(JSOP_CALLPROP)
         goto error;
 
     TypeScript::Monitor(cx, script, REGS.pc, lval);
-    assertSameCompartmentDebugOnly(cx, lval);
+    cx->debugOnlyCheck(lval);
 }
 END_CASE(JSOP_GETPROP)
 
@@ -2854,7 +2999,7 @@ CASE(JSOP_GETPROP_SUPER)
         goto error;
 
     TypeScript::Monitor(cx, script, REGS.pc, rref);
-    assertSameCompartmentDebugOnly(cx, rref);
+    cx->debugOnlyCheck(rref);
 
     REGS.sp--;
 }
@@ -2869,7 +3014,7 @@ CASE(JSOP_GETBOUNDNAME)
         goto error;
 
     TypeScript::Monitor(cx, script, REGS.pc, rval);
-    assertSameCompartmentDebugOnly(cx, rval);
+    cx->debugOnlyCheck(rval);
 }
 END_CASE(JSOP_GETBOUNDNAME)
 
@@ -2966,8 +3111,8 @@ END_CASE(JSOP_GETELEM)
 
 CASE(JSOP_GETELEM_SUPER)
 {
-    ReservedRooted<Value> rval(&rootValue0, REGS.sp[-3]);
-    ReservedRooted<Value> receiver(&rootValue1, REGS.sp[-2]);
+    ReservedRooted<Value> receiver(&rootValue1, REGS.sp[-3]);
+    ReservedRooted<Value> rval(&rootValue0, REGS.sp[-2]);
     ReservedRooted<JSObject*> obj(&rootObject1, &REGS.sp[-1].toObject());
 
     MutableHandleValue res = REGS.stackHandleAt(-3);
@@ -3009,8 +3154,8 @@ CASE(JSOP_STRICTSETELEM_SUPER)
     static_assert(JSOP_SETELEM_SUPER_LENGTH == JSOP_STRICTSETELEM_SUPER_LENGTH,
                   "setelem-super and strictsetelem-super must be the same size");
 
-    ReservedRooted<Value> index(&rootValue1, REGS.sp[-4]);
-    ReservedRooted<Value> receiver(&rootValue0, REGS.sp[-3]);
+    ReservedRooted<Value> receiver(&rootValue0, REGS.sp[-4]);
+    ReservedRooted<Value> index(&rootValue1, REGS.sp[-3]);
     ReservedRooted<JSObject*> obj(&rootObject1, &REGS.sp[-2].toObject());
     HandleValue value = REGS.stackHandleAt(-1);
 
@@ -3135,10 +3280,19 @@ CASE(JSOP_FUNCALL)
         if (!funScript)
             goto error;
 
-        bool createSingleton = false;
-        if (construct) {
-            createSingleton = ObjectGroup::useSingletonForNewObject(cx, script, REGS.pc);
+        // Enter the callee's realm if this is a cross-realm call. Use
+        // MakeScopeExit to leave this realm on all error/JIT-return paths
+        // below.
+        const bool isCrossRealm = cx->realm() != funScript->realm();
+        if (isCrossRealm)
+            cx->enterRealmOf(funScript);
+        auto leaveRealmGuard = mozilla::MakeScopeExit([isCrossRealm, cx, &script] {
+            if (isCrossRealm)
+                cx->leaveRealm(script->realm());
+        });
 
+        if (construct) {
+            bool createSingleton = ObjectGroup::useSingletonForNewObject(cx, script, REGS.pc);
             if (!MaybeCreateThisForConstructor(cx, funScript, args, createSingleton))
                 goto error;
         }
@@ -3166,6 +3320,7 @@ CASE(JSOP_FUNCALL)
 
         if (!activation.pushInlineFrame(args, funScript, construct))
             goto error;
+        leaveRealmGuard.release(); // We leave the callee's realm when we call popInlineFrame.
     }
 
     SET_SCRIPT(REGS.fp()->script());
@@ -3575,7 +3730,7 @@ CASE(JSOP_GETLOCAL)
      * a use of the variable.
      */
     if (REGS.pc[JSOP_GETLOCAL_LENGTH] != JSOP_POP)
-        assertSameCompartmentDebugOnly(cx, REGS.sp[-1]);
+        cx->debugOnlyCheck(REGS.sp[-1]);
 }
 END_CASE(JSOP_GETLOCAL)
 
@@ -3701,6 +3856,24 @@ CASE(JSOP_TOASYNCITER)
 }
 END_CASE(JSOP_TOASYNCITER)
 
+CASE(JSOP_TRYSKIPAWAIT)
+{
+    ReservedRooted<Value> val(&rootValue0, REGS.sp[-1]);
+    ReservedRooted<Value> resolved(&rootValue1);
+    bool canSkip;
+
+    if (!TrySkipAwait(cx, val, &canSkip, &resolved))
+        goto error;
+
+    if (canSkip) {
+        REGS.sp[-1] = resolved;
+        PUSH_BOOLEAN(true);
+    } else {
+        PUSH_BOOLEAN(false);
+    }
+}
+END_CASE(JSOP_TRYSKIPAWAIT)
+
 CASE(JSOP_SETFUNNAME)
 {
     MOZ_ASSERT(REGS.stackDepth() >= 2);
@@ -3761,14 +3934,7 @@ END_CASE(JSOP_HOLE)
 
 CASE(JSOP_NEWINIT)
 {
-    uint8_t i = GET_UINT8(REGS.pc);
-    MOZ_ASSERT(i == JSProto_Array || i == JSProto_Object);
-
-    JSObject* obj;
-    if (i == JSProto_Array)
-        obj = NewArrayOperation(cx, script, REGS.pc, 0);
-    else
-        obj = NewObjectOperation(cx, script, REGS.pc);
+    JSObject* obj = NewObjectOperation(cx, script, REGS.pc);
 
     if (!obj)
         goto error;
@@ -3920,7 +4086,8 @@ CASE(JSOP_RETSUB)
          * be necessary, but it seems clearer.  And it points out a FIXME:
          * 350509, due to Igor Bukanov.
          */
-        cx->setPendingException(rval);
+        ReservedRooted<Value> v(&rootValue0, rval);
+        cx->setPendingException(v);
         goto error;
     }
     MOZ_ASSERT(rval.isInt32());
@@ -4127,22 +4294,50 @@ CASE(JSOP_AWAIT)
 CASE(JSOP_RESUME)
 {
     {
-        ReservedRooted<JSObject*> gen(&rootObject0, &REGS.sp[-2].toObject());
+        Rooted<GeneratorObject*> gen(cx, &REGS.sp[-2].toObject().as<GeneratorObject>());
         ReservedRooted<Value> val(&rootValue0, REGS.sp[-1]);
         // popInlineFrame expects there to be an additional value on the stack
         // to pop off, so leave "gen" on the stack.
 
         GeneratorObject::ResumeKind resumeKind = GeneratorObject::getResumeKind(REGS.pc);
-        bool ok = GeneratorObject::resume(cx, activation, gen, val, resumeKind);
-        SET_SCRIPT(REGS.fp()->script());
+        if (!GeneratorObject::resume(cx, activation, gen, val))
+            goto error;
+
+        JSScript* generatorScript = REGS.fp()->script();
+        if (cx->realm() != generatorScript->realm())
+            cx->enterRealmOf(generatorScript);
+        SET_SCRIPT(generatorScript);
 
         TraceLoggerThread* logger = TraceLoggerForCurrentThread(cx);
         TraceLoggerEvent scriptEvent(TraceLogger_Scripts, script);
         TraceLogStartEvent(logger, scriptEvent);
         TraceLogStartEvent(logger, TraceLogger_Interpreter);
 
-        if (!ok)
+        switch (Debugger::onEnterFrame(cx, REGS.fp())) {
+          case ResumeMode::Continue:
+            break;
+          case ResumeMode::Throw:
+          case ResumeMode::Terminate:
             goto error;
+          case ResumeMode::Return:
+            MOZ_ASSERT_IF(REGS.fp()->callee().isGenerator(),  // as opposed to an async function
+                          gen->isClosed());
+            if (!ForcedReturn(cx, REGS))
+                goto error;
+            goto successful_return_continuation;
+        }
+
+        switch (resumeKind) {
+          case GeneratorObject::NEXT:
+            break;
+          case GeneratorObject::THROW:
+          case GeneratorObject::RETURN:
+            MOZ_ALWAYS_FALSE(GeneratorThrowOrReturn(cx, activation.regs().fp(), gen, val,
+                                                    resumeKind));
+            goto error;
+          default:
+            MOZ_CRASH("bad resumeKind");
+        }
     }
     ADVANCE_AND_DISPATCH(0);
 }
@@ -4253,7 +4448,8 @@ CASE(JSOP_IMPORTMETA)
     ReservedRooted<JSObject*> module(&rootObject0, GetModuleObjectForScript(script));
     MOZ_ASSERT(module);
 
-    JSObject* metaObject = GetOrCreateModuleMetaObject(cx, module);
+    ReservedRooted<JSScript*> script(&rootScript0, module->as<ModuleObject>().script());
+    JSObject* metaObject = GetOrCreateModuleMetaObject(cx, script);
     if (!metaObject)
         goto error;
 
@@ -4732,6 +4928,12 @@ js::ModValues(JSContext* cx, MutableHandleValue lhs, MutableHandleValue rhs, Mut
 }
 
 bool
+js::PowValues(JSContext* cx, MutableHandleValue lhs, MutableHandleValue rhs, MutableHandleValue res)
+{
+    return PowOperation(cx, lhs, rhs, res);
+}
+
+bool
 js::UrshValues(JSContext* cx, MutableHandleValue lhs, MutableHandleValue rhs, MutableHandleValue res)
 {
     return UrshOperation(cx, lhs, rhs, res);
@@ -4900,7 +5102,7 @@ js::SpreadCallOperation(JSContext* cx, HandleScript script, jsbytecode* pc, Hand
                                    constructing ? CONSTRUCT : NO_CONSTRUCT);
     }
 
-    if (MOZ_UNLIKELY(!callee.toObject().is<JSFunction>()) && !callee.toObject().callHook()) {
+    if (!callee.toObject().isCallable()) {
         return ReportIsNotFunction(cx, callee, 2 + constructing,
                                    constructing ? CONSTRUCT : NO_CONSTRUCT);
     }
@@ -5005,8 +5207,13 @@ js::NewObjectOperation(JSContext* cx, HandleScript script, jsbytecode* pc,
             AutoSweepObjectGroup sweep(group);
             if (group->maybePreliminaryObjects(sweep)) {
                 group->maybePreliminaryObjects(sweep)->maybeAnalyze(cx, group);
-                if (group->maybeUnboxedLayout(sweep))
+                if (group->maybeUnboxedLayout(sweep)) {
+                    // This sets the allocation site so that the template object
+                    // can be read back but if op is NEWINIT, then the template
+                    // is null. 
+                    MOZ_ASSERT(JSOp(*pc) != JSOP_NEWINIT);
                     group->maybeUnboxedLayout(sweep)->setAllocationSite(script, pc);
+                }
             }
 
             if (group->shouldPreTenure(sweep) || group->maybePreliminaryObjects(sweep))
@@ -5024,7 +5231,6 @@ js::NewObjectOperation(JSContext* cx, HandleScript script, jsbytecode* pc,
         obj = CopyInitializerObject(cx, baseObject, newKind);
     } else {
         MOZ_ASSERT(*pc == JSOP_NEWINIT);
-        MOZ_ASSERT(GET_UINT8(pc) == JSProto_Object);
         obj = NewBuiltinClassInstance<PlainObject>(cx, newKind);
     }
 

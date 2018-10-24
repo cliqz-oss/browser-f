@@ -13,22 +13,33 @@ const paymentOptionsUpdater = {
     this.render(state);
   },
   render(state) {
-    let options = state.request.paymentOptions;
-    let checkboxes = document.querySelectorAll("#paymentOptions input[type='checkbox']");
-    for (let input of checkboxes) {
-      if (options.hasOwnProperty(input.name)) {
-        input.checked = options[input.name];
+    let {
+      completeStatus,
+      paymentOptions,
+    } = state.request;
+
+    document.getElementById("setChangesPrevented").checked = state.changesPrevented;
+
+    let paymentOptionInputs = document.querySelectorAll("#paymentOptions input[type='checkbox']");
+    for (let input of paymentOptionInputs) {
+      if (paymentOptions.hasOwnProperty(input.name)) {
+        input.checked = paymentOptions[input.name];
       }
+    }
+
+    let completeStatusInputs = document
+                                 .querySelectorAll("input[type='radio'][name='setCompleteStatus']");
+    for (let input of completeStatusInputs) {
+      input.checked = input.value == completeStatus;
     }
   },
 };
-
-requestStore.subscribe(paymentOptionsUpdater);
 
 let REQUEST_1 = {
   tabId: 9,
   topLevelPrincipal: {URI: {displayHost: "tschaeff.github.io"}},
   requestId: "3797081f-a96b-c34b-a58b-1083c6e66e25",
+  completeStatus: "",
   paymentMethods: [],
   paymentDetails: {
     id: "",
@@ -42,6 +53,7 @@ let REQUEST_1 = {
         },
       },
     ],
+    shippingAddressErrors: {},
     shippingOptions: [
       {
         id: "123",
@@ -79,6 +91,7 @@ let REQUEST_2 = {
   tabId: 9,
   topLevelPrincipal: {URI: {displayHost: "example.com"}},
   requestId: "3797081f-a96b-c34b-a58b-1083c6e66e25",
+  completeStatus: "",
   paymentMethods: [],
   paymentDetails: {
     id: "",
@@ -107,6 +120,7 @@ let REQUEST_2 = {
         },
       },
     ],
+    shippingAddressErrors: {},
     shippingOptions: [
       {
         id: "123",
@@ -170,21 +184,43 @@ let ADDRESSES_1 = {
     "address-level2": "Some City",
     "country": "US",
     "email": "foo@bar.com",
+    "family-name": "Smith",
+    "given-name": "John",
     "guid": "48bnds6854t",
-    "name": "Mr. Foo",
+    "name": "John Smith",
     "postal-code": "90210",
     "street-address": "123 Sesame Street,\nApt 40",
     "tel": "+1 519 555-5555",
   },
   "68gjdh354j": {
+    "additional-name": "Z.",
     "address-level1": "CA",
     "address-level2": "Mountain View",
     "country": "US",
+    "family-name": "Doe",
+    "given-name": "Jane",
     "guid": "68gjdh354j",
-    "name": "Mrs. Bar",
+    "name": "Jane Z. Doe",
     "postal-code": "94041",
     "street-address": "P.O. Box 123",
     "tel": "+1 650 555-5555",
+  },
+  "abcde12345": {
+    "address-level2": "Mountain View",
+    "country": "US",
+    "guid": "abcde12345",
+    "name": "Mrs. Fields",
+  },
+  "missing-country": {
+    "address-level1": "ON",
+    "address-level2": "Toronto",
+    "family-name": "Bogard",
+    "given-name": "Kristin",
+    "guid": "missing-country",
+    "name": "Kristin Bogard",
+    "postal-code": "H0H 0H0",
+    "street-address": "123 Yonge Street\nSuite 2300",
+    "tel": "+1 416 555-5555",
   },
 };
 
@@ -196,6 +232,8 @@ let DUPED_ADDRESSES = {
     "postal-code": "41144",
     "country": "US",
     "email": "bob@example.com",
+    "family-name": "Smith",
+    "given-name": "Bob",
     "guid": "a9e830667189",
     "tel": "+19871234567",
     "name": "Bob Smith",
@@ -206,6 +244,7 @@ let DUPED_ADDRESSES = {
     "address-level1": "SC",
     "postal-code": "29745",
     "country": "US",
+    "given-name": "Mary Sue",
     "guid": "72a15aed206d",
     "tel": "+19871234567",
     "name": "Mary Sue",
@@ -218,6 +257,8 @@ let DUPED_ADDRESSES = {
     "postal-code": "97403",
     "country": "US",
     "email": "rita@foo.com",
+    "family-name": "Foo",
+    "given-name": "Rita",
     "guid": "2b4dce0fbc1f",
     "name": "Rita Foo",
     "address-line1": "123 Park St",
@@ -229,6 +270,8 @@ let DUPED_ADDRESSES = {
     "postal-code": "97402",
     "country": "US",
     "email": "rita@foo.com",
+    "family-name": "Foo",
+    "given-name": "Rita",
     "guid": "46b2635a5b26",
     "name": "Rita Foo",
     "address-line1": "432 Another St",
@@ -270,6 +313,33 @@ let BASIC_CARDS_1 = {
     "cc-additional-name": "",
     "cc-family-name": "Doe",
     "cc-exp": "2023-05",
+  },
+  "123456789abc": {
+    methodName: "basic-card",
+    "cc-number": "************1234",
+    "guid": "123456789abc",
+    "version": 1,
+    "timeCreated": 1517890536491,
+    "timeLastModified": 1517890564518,
+    "timeLastUsed": 0,
+    "timesUsed": 0,
+    "cc-name": "Jane Fields",
+    "cc-given-name": "Jane",
+    "cc-additional-name": "",
+    "cc-family-name": "Fields",
+  },
+  "missing-cc-name": {
+    methodName: "basic-card",
+    "cc-number": "************8563",
+    "guid": "missing-cc-name",
+    "version": 1,
+    "timeCreated": 1517890536491,
+    "timeLastModified": 1517890564518,
+    "timeLastUsed": 0,
+    "timesUsed": 0,
+    "cc-exp-month": 8,
+    "cc-exp-year": 2024,
+    "cc-exp": "2024-08",
   },
 };
 
@@ -319,6 +389,11 @@ let buttonActions = {
     requestStore.setState({});
   },
 
+  saveVisibleForm() {
+    // Bypasses field validation which is useful to test error handling.
+    paymentDialog.querySelector("#main-container > .page:not([hidden])").saveRecord();
+  },
+
   setAddresses1() {
     paymentDialog.setStateFromParent({savedAddresses: ADDRESSES_1});
   },
@@ -331,15 +406,9 @@ let buttonActions = {
     paymentDialog.setStateFromParent({savedBasicCards: BASIC_CARDS_1});
   },
 
-  setChangesAllowed() {
+  setChangesPrevented(evt) {
     requestStore.setState({
-      changesPrevented: false,
-    });
-  },
-
-  setChangesPrevented() {
-    requestStore.setState({
-      changesPrevented: true,
+      changesPrevented: evt.target.checked,
     });
   },
 
@@ -404,44 +473,23 @@ let buttonActions = {
     });
   },
 
-  setStateDefault() {
-    requestStore.setState({
-      completionState: "initial",
-    });
-  },
-
-  setStateProcessing() {
-    requestStore.setState({
-      completionState: "processing",
-    });
-  },
-
-  setStateSuccess() {
-    requestStore.setState({
-      completionState: "success",
-    });
-  },
-
-  setStateFail() {
-    requestStore.setState({
-      completionState: "fail",
-    });
-  },
-
-  setStateUnknown() {
-    requestStore.setState({
-      completionState: "unknown",
+  setCompleteStatus() {
+    let input = document.querySelector("[name='setCompleteStatus']:checked");
+    let completeStatus = input.value;
+    let request = requestStore.getState().request;
+    paymentDialog.setStateFromParent({
+      request: Object.assign({}, request, { completeStatus }),
     });
   },
 };
 
 window.addEventListener("click", function onButtonClick(evt) {
-  let id = evt.target.id;
+  let id = evt.target.id || evt.target.name;
   if (!id || typeof(buttonActions[id]) != "function") {
     return;
   }
 
-  buttonActions[id]();
+  buttonActions[id](evt);
 });
 
 window.addEventListener("DOMContentLoaded", function onDCL() {
@@ -452,4 +500,7 @@ window.addEventListener("DOMContentLoaded", function onDCL() {
     // is manually loaded in a tab but will be shown.
     document.getElementById("debugFrame").hidden = false;
   }
+
+  requestStore.subscribe(paymentOptionsUpdater);
+  paymentOptionsUpdater.render(requestStore.getState());
 });

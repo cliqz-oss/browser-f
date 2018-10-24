@@ -116,7 +116,7 @@ add_task(async function test_value_structure_conflict() {
               oldParentGuid: "folderDDDDDD",
               newParentGuid: "folderDDDDDD",
               source: PlacesUtils.bookmarks.SOURCES.SYNC,
-              uri: "http://example.com/e" },
+              urlHref: "http://example.com/e" },
   }, {
     name: "onItemMoved",
     params: { itemId: localItemIds.get("bookmarkBBBB"),
@@ -127,7 +127,7 @@ add_task(async function test_value_structure_conflict() {
               oldParentGuid: "folderDDDDDD",
               newParentGuid: "folderDDDDDD",
               source: PlacesUtils.bookmarks.SOURCES.SYNC,
-              uri: "http://example.com/b" },
+              urlHref: "http://example.com/b" },
   }, {
     name: "onItemChanged",
     params: { itemId: localItemIds.get("folderDDDDDD"), property: "title",
@@ -216,7 +216,7 @@ add_task(async function test_move() {
       guid: "bzBmk_______",
       title: "Bugzilla",
       url: "https://bugzilla.mozilla.org",
-    }]
+    }],
   });
   await PlacesTestUtils.markBookmarksAsSynced();
 
@@ -292,18 +292,19 @@ add_task(async function test_move() {
               oldParentGuid: PlacesUtils.bookmarks.menuGuid,
               newParentGuid: PlacesUtils.bookmarks.toolbarGuid,
               source: PlacesUtils.bookmarks.SOURCES.SYNC,
-              uri: null },
+              urlHref: null },
   }, {
     name: "onItemMoved",
     params: { itemId: localItemIds.get("mozFolder___"),
               oldParentId: localItemIds.get("devFolder___"),
-              oldIndex: 1, newParentId: PlacesUtils.unfiledBookmarksFolderId,
+              oldIndex: 1,
+              newParentId: await PlacesUtils.promiseItemId(PlacesUtils.bookmarks.unfiledGuid),
               newIndex: 0, type: PlacesUtils.bookmarks.TYPE_FOLDER,
               guid: "mozFolder___",
               oldParentGuid: "devFolder___",
               newParentGuid: PlacesUtils.bookmarks.unfiledGuid,
               source: PlacesUtils.bookmarks.SOURCES.SYNC,
-              uri: null },
+              urlHref: null },
   }, {
     name: "onItemMoved",
     params: { itemId: localItemIds.get("bzBmk_______"),
@@ -314,7 +315,7 @@ add_task(async function test_move() {
               oldParentGuid: PlacesUtils.bookmarks.menuGuid,
               newParentGuid: "devFolder___",
               source: PlacesUtils.bookmarks.SOURCES.SYNC,
-              uri: "https://bugzilla.mozilla.org/" },
+              urlHref: "https://bugzilla.mozilla.org/" },
   }, {
     name: "onItemMoved",
     params: { itemId: localItemIds.get("wmBmk_______"),
@@ -325,7 +326,7 @@ add_task(async function test_move() {
               oldParentGuid: "devFolder___",
               newParentGuid: "devFolder___",
               source: PlacesUtils.bookmarks.SOURCES.SYNC,
-              uri: "https://webmaker.org/" },
+              urlHref: "https://webmaker.org/" },
   }, {
     name: "onItemMoved",
     params: { itemId: localItemIds.get("nightlyBmk__"),
@@ -336,7 +337,7 @@ add_task(async function test_move() {
               oldParentGuid: "mozFolder___",
               newParentGuid: "mozFolder___",
               source: PlacesUtils.bookmarks.SOURCES.SYNC,
-              uri: "https://nightly.mozilla.org/" },
+              urlHref: "https://nightly.mozilla.org/" },
   }, {
     name: "onItemMoved",
     params: { itemId: localItemIds.get("mdnBmk______"),
@@ -347,7 +348,7 @@ add_task(async function test_move() {
               oldParentGuid: "devFolder___",
               newParentGuid: "mozFolder___",
               source: PlacesUtils.bookmarks.SOURCES.SYNC,
-              uri: "https://developer.mozilla.org/" },
+              urlHref: "https://developer.mozilla.org/" },
   }, {
     name: "onItemMoved",
     params: { itemId: localItemIds.get("fxBmk_______"),
@@ -358,7 +359,7 @@ add_task(async function test_move() {
               oldParentGuid: "mozFolder___",
               newParentGuid: "mozFolder___",
               source: PlacesUtils.bookmarks.SOURCES.SYNC,
-              uri: "http://getfirefox.com/" },
+              urlHref: "http://getfirefox.com/" },
   }]);
 
   await assertLocalTree(PlacesUtils.bookmarks.rootGuid, {
@@ -523,7 +524,7 @@ add_task(async function test_move_into_parent_sibling() {
               oldParentGuid: "folderAAAAAA",
               newParentGuid: "folderCCCCCC",
               source: PlacesUtils.bookmarks.SOURCES.SYNC,
-              uri: "http://example.com/b" },
+              urlHref: "http://example.com/b" },
   }]);
 
   await assertLocalTree(PlacesUtils.bookmarks.menuGuid, {
@@ -647,7 +648,7 @@ add_task(async function test_complex_move_with_additions() {
   deepEqual(await buf.fetchUnmergedGuids(), [], "Should merge all items");
   deepEqual(mergeTelemetryEvents, [{
     value: "structure",
-    extra: { new: 1, remoteRevives: 0, localDeletes: 0, localRevives: 0,
+    extra: { new: 2, remoteRevives: 0, localDeletes: 0, localRevives: 0,
              remoteDeletes: 0 },
   }], "Should record telemetry with structure change counts");
 
@@ -678,7 +679,7 @@ add_task(async function test_complex_move_with_additions() {
               oldParentGuid: "folderAAAAAA",
               newParentGuid: PlacesUtils.bookmarks.menuGuid,
               source: PlacesUtils.bookmarks.SOURCES.SYNC,
-              uri: "http://example.com/c" },
+              urlHref: "http://example.com/c" },
   }, {
     name: "onItemMoved",
     params: { itemId: localItemIds.get("folderAAAAAA"),
@@ -689,7 +690,7 @@ add_task(async function test_complex_move_with_additions() {
               oldParentGuid: PlacesUtils.bookmarks.menuGuid,
               newParentGuid: PlacesUtils.bookmarks.toolbarGuid,
               source: PlacesUtils.bookmarks.SOURCES.SYNC,
-              uri: null },
+              urlHref: null },
   }]);
 
   await assertLocalTree(PlacesUtils.bookmarks.rootGuid, {

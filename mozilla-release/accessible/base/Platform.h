@@ -111,7 +111,12 @@ void ProxyVirtualCursorChangeEvent(ProxyAccessible* aTarget,
                                    ProxyAccessible* aNewPosition,
                                    int32_t aNewStartOffset,
                                    int32_t aNewEndOffset,
-                                   uint16_t aReason, bool aFromUser);
+                                   int16_t aReason, int16_t aBoundaryType,
+                                   bool aFromUser);
+
+void ProxyScrollingEvent(ProxyAccessible* aTarget,
+                         uint32_t aScrollX, uint32_t aScrollY,
+                         uint32_t aMaxScrollX, uint32_t aMaxScrollY);
 #endif
 } // namespace a11y
 } // namespace mozilla

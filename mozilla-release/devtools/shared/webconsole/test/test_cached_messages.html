@@ -12,7 +12,7 @@
 <p>Test for cached messages</p>
 
 <script class="testbody" type="application/javascript">
-document.docShell.cssErrorReportingEnabled = true;
+window.docShell.cssErrorReportingEnabled = true;
 var ConsoleAPIStorage = Cc["@mozilla.org/consoleAPI-storage;1"]
                           .getService(Ci.nsIConsoleAPIStorage);
 let expectedConsoleCalls = [];
@@ -97,8 +97,10 @@ function doConsoleCalls() {
 
 <script class="testbody" type="text/javascript">
 SimpleTest.waitForExplicitFinish();
-var {ConsoleServiceListener, ConsoleAPIListener} =
-  require("devtools/server/actors/webconsole/listeners");
+var {ConsoleServiceListener} =
+  require("devtools/server/actors/webconsole/listeners/console-service");
+var {ConsoleAPIListener} =
+  require("devtools/server/actors/webconsole/listeners/console-api");
 
 let consoleAPIListener, consoleServiceListener;
 let consoleAPICalls = 0;

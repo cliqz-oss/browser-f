@@ -248,9 +248,11 @@ class SyntaxParseHandler
     MOZ_MUST_USE bool addSpreadElement(Node literal, uint32_t begin, Node inner) { return true; }
     void addArrayElement(Node literal, Node element) { }
 
-    Node newCall(const TokenPos& pos) { return NodeFunctionCall; }
-    Node newSuperCall(Node callee) { return NodeGeneric; }
-    Node newTaggedTemplate(const TokenPos& pos) { return NodeGeneric; }
+    Node newArguments(const TokenPos& pos) { return NodeGeneric; }
+    Node newCall(Node callee, Node args) { return NodeFunctionCall; }
+
+    Node newSuperCall(Node callee, Node args) { return NodeGeneric; }
+    Node newTaggedTemplate(Node callee, Node args) { return NodeGeneric; }
 
     Node newObjectLiteral(uint32_t begin) { return NodeUnparenthesizedObject; }
     Node newClassMethodList(uint32_t begin) { return NodeGeneric; }
@@ -310,7 +312,11 @@ class SyntaxParseHandler
     Node newIfStatement(uint32_t begin, Node cond, Node then, Node else_) { return NodeGeneric; }
     Node newDoWhileStatement(Node body, Node cond, const TokenPos& pos) { return NodeGeneric; }
     Node newWhileStatement(uint32_t begin, Node cond, Node body) { return NodeGeneric; }
-    Node newSwitchStatement(uint32_t begin, Node discriminant, Node caseList) { return NodeGeneric; }
+    Node newSwitchStatement(uint32_t begin, Node discriminant, Node lexicalForCaseList,
+                            bool hasDefault)
+    {
+        return NodeGeneric;
+    }
     Node newCaseOrDefault(uint32_t begin, Node expr, Node body) { return NodeGeneric; }
     Node newContinueStatement(PropertyName* label, const TokenPos& pos) { return NodeGeneric; }
     Node newBreakStatement(PropertyName* label, const TokenPos& pos) { return NodeBreak; }
@@ -328,8 +334,12 @@ class SyntaxParseHandler
     }
     Node newDebuggerStatement(const TokenPos& pos) { return NodeGeneric; }
 
-    Node newPropertyAccess(Node expr, PropertyName* key, uint32_t end) {
-        lastAtom = key;
+    Node newPropertyName(PropertyName* name, const TokenPos& pos) {
+        lastAtom = name;
+        return NodeGeneric;
+    }
+
+    Node newPropertyAccess(Node expr, Node key) {
         return NodeDottedProperty;
     }
 
@@ -424,7 +434,7 @@ class SyntaxParseHandler
                    list == NodeFunctionCall);
     }
 
-    Node newNewExpression(uint32_t begin, Node ctor) {
+    Node newNewExpression(uint32_t begin, Node ctor, Node args) {
         return NodeGeneric;
     }
 

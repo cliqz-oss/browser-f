@@ -18,7 +18,7 @@ NS_IMPL_RELEASE_INHERITED(PerformanceNavigationTiming, PerformanceResourceTiming
 JSObject*
 PerformanceNavigationTiming::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return PerformanceNavigationTimingBinding::Wrap(aCx, this, aGivenProto);
+  return PerformanceNavigationTiming_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 #define REDUCE_TIME_PRECISION                               \
@@ -124,4 +124,11 @@ uint16_t
 PerformanceNavigationTiming::RedirectCount() const
 {
   return mTimingData->GetRedirectCount();
+}
+
+void
+PerformanceNavigationTiming::UpdatePropertiesFromHttpChannel(nsIHttpChannel* aHttpChannel,
+                                                             nsITimedChannel* aChannel)
+{
+  mTimingData->SetPropertiesFromHttpChannel(aHttpChannel, aChannel);
 }

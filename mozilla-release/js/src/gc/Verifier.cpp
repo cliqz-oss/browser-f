@@ -212,9 +212,6 @@ gc::GCRuntime::startVerifyPreBarriers()
     trc->edgeptr = (char*)trc->root;
     trc->term = trc->edgeptr + size;
 
-    if (!trc->nodemap.init())
-        goto oom;
-
     /* Create the root node. */
     trc->curnode = MakeNode(trc, nullptr, JS::TraceKind(0));
 
@@ -458,7 +455,6 @@ class HeapCheckTracerBase : public JS::CallbackTracer
 {
   public:
     explicit HeapCheckTracerBase(JSRuntime* rt, WeakMapTraceKind weakTraceKind);
-    bool init();
     bool traceHeap(AutoTraceSession& session);
     virtual void checkCell(Cell* cell) = 0;
 
@@ -503,12 +499,6 @@ HeapCheckTracerBase::HeapCheckTracerBase(JSRuntime* rt, WeakMapTraceKind weakTra
 #ifdef DEBUG
     setCheckEdges(false);
 #endif
-}
-
-bool
-HeapCheckTracerBase::init()
-{
-    return visited.init();
 }
 
 void
@@ -614,15 +604,21 @@ HeapCheckTracerBase::dumpCellPath()
 class CheckHeapTracer final : public HeapCheckTracerBase
 {
   public:
-    explicit CheckHeapTracer(JSRuntime* rt);
+    enum GCType {
+        Moving,
+        NonMoving
+    };
+
+    explicit CheckHeapTracer(JSRuntime* rt, GCType type);
     void check(AutoTraceSession& session);
 
   private:
     void checkCell(Cell* cell) override;
+    GCType gcType;
 };
 
-CheckHeapTracer::CheckHeapTracer(JSRuntime* rt)
-  : HeapCheckTracerBase(rt, TraceWeakMapKeysValues)
+CheckHeapTracer::CheckHeapTracer(JSRuntime* rt, GCType type)
+  : HeapCheckTracerBase(rt, TraceWeakMapKeysValues), gcType(type)
 {}
 
 inline static bool
@@ -634,7 +630,11 @@ IsValidGCThingPointer(Cell* cell)
 void
 CheckHeapTracer::checkCell(Cell* cell)
 {
-    if (!IsValidGCThingPointer(cell) || !IsGCThingValidAfterMovingGC(cell)) {
+    // Moving
+    if (!IsValidGCThingPointer(cell) ||
+        ((gcType == GCType::Moving) && !IsGCThingValidAfterMovingGC(cell)) ||
+        ((gcType == GCType::NonMoving) && cell->isForwarded()))
+    {
         failures++;
         fprintf(stderr, "Bad pointer %p\n", cell);
         dumpCellPath();
@@ -656,9 +656,15 @@ void
 js::gc::CheckHeapAfterGC(JSRuntime* rt)
 {
     AutoTraceSession session(rt);
-    CheckHeapTracer tracer(rt);
-    if (tracer.init())
-        tracer.check(session);
+    CheckHeapTracer::GCType gcType;
+
+    if (rt->gc.nursery().isEmpty())
+        gcType = CheckHeapTracer::GCType::Moving;
+    else
+        gcType = CheckHeapTracer::GCType::NonMoving;
+
+    CheckHeapTracer tracer(rt, gcType);
+    tracer.check(session);
 }
 
 #endif /* JSGC_HASH_TABLE_CHECKS */
@@ -726,8 +732,6 @@ js::CheckGrayMarkingState(JSRuntime* rt)
     gcstats::AutoPhase ap(rt->gc.stats(), gcstats::PhaseKind::TRACE_HEAP);
     AutoTraceSession session(rt);
     CheckGrayMarkingTracer tracer(rt);
-    if (!tracer.init())
-        return true; // Ignore failure
 
     return tracer.check(session);
 }

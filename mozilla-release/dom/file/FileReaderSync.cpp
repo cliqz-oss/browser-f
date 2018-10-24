@@ -47,7 +47,7 @@ FileReaderSync::WrapObject(JSContext* aCx,
                            JS::Handle<JSObject*> aGivenProto,
                            JS::MutableHandle<JSObject*> aReflector)
 {
-  return FileReaderSyncBinding::Wrap(aCx, this, aGivenProto, aReflector);
+  return FileReaderSync_Binding::Wrap(aCx, this, aGivenProto, aReflector);
 }
 
 void
@@ -62,7 +62,8 @@ FileReaderSync::ReadAsArrayBuffer(JSContext* aCx,
     return;
   }
 
-  UniquePtr<char[], JS::FreePolicy> bufferData(js_pod_malloc<char>(blobSize));
+  UniquePtr<char[], JS::FreePolicy> bufferData(
+    js_pod_arena_malloc<char>(js::ArrayBufferContentsArena, blobSize));
   if (!bufferData) {
     aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
     return;
@@ -443,7 +444,7 @@ FileReaderSync::SyncRead(nsIInputStream* aStream, char* aBuffer,
   WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
   MOZ_ASSERT(workerPrivate);
 
-  AutoSyncLoopHolder syncLoop(workerPrivate, Terminating);
+  AutoSyncLoopHolder syncLoop(workerPrivate, Canceling);
 
   nsCOMPtr<nsIEventTarget> syncLoopTarget = syncLoop.GetEventTarget();
   if (!syncLoopTarget) {

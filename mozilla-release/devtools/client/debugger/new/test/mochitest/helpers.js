@@ -8,9 +8,10 @@
 
 var { Toolbox } = require("devtools/client/framework/toolbox");
 var { Task } = require("devtools/shared/task");
+var asyncStorage = require("devtools/shared/async-storage");
 
 const sourceUtils = {
-  isLoaded: source => source.get("loadedState") === "loaded"
+  isLoaded: source => source.loadedState === "loaded"
 };
 
 function log(msg, data) {
@@ -194,7 +195,7 @@ function waitForSource(dbg, url) {
     dbg,
     state => {
       const sources = dbg.selectors.getSources(state);
-      return sources.find(s => (s.get("url") || "").includes(url));
+      return Object.values(sources).find(s => (s.url || "").includes(url));
     },
     `source exists`
   );
@@ -359,11 +360,7 @@ function assertHighlightLocation(dbg, source, line) {
   source = findSource(dbg, source);
 
   // Check the selected source
-  is(
-    getSelectedSource(getState()).get("url"),
-    source.url,
-    "source url is correct"
-  );
+  is(getSelectedSource(getState()).url, source.url, "source url is correct");
 
   // Check the highlight line
   const lineEl = findElement(dbg, "highlightLine");
@@ -376,10 +373,11 @@ function assertHighlightLocation(dbg, source, line) {
   );
 
   ok(isVisibleInEditor(dbg, lineEl), "Highlighted line is visible");
+
+  const cm = getCM(dbg);
+  const lineInfo = cm.lineInfo(line - 1);
   ok(
-    getCM(dbg)
-      .lineInfo(line - 1)
-      .wrapClass.includes("highlight-line"),
+    lineInfo.wrapClass.includes("highlight-line"),
     "Line is highlighted"
   );
 }
@@ -456,7 +454,7 @@ function isSelectedFrameSelected(dbg, state) {
     return false;
   }
 
-  const isLoaded = source.has("loadedState") && sourceUtils.isLoaded(source);
+  const isLoaded = source.loadedState && sourceUtils.isLoaded(source);
   if (!isLoaded) {
     return false;
   }
@@ -485,6 +483,8 @@ function createDebuggerContext(toolbox) {
  * Clear all the debugger related preferences.
  */
 function clearDebuggerPreferences() {
+  asyncStorage.clear()
+  Services.prefs.clearUserPref("devtools.recordreplay.enabled");
   Services.prefs.clearUserPref("devtools.debugger.pause-on-exceptions");
   Services.prefs.clearUserPref("devtools.debugger.pause-on-caught-exceptions");
   Services.prefs.clearUserPref("devtools.debugger.ignore-caught-exceptions");
@@ -494,6 +494,7 @@ function clearDebuggerPreferences() {
   Services.prefs.clearUserPref("devtools.debugger.expressions");
   Services.prefs.clearUserPref("devtools.debugger.call-stack-visible");
   Services.prefs.clearUserPref("devtools.debugger.scopes-visible");
+  Services.prefs.clearUserPref("devtools.debugger.skip-pausing");
 }
 
 /**
@@ -550,8 +551,8 @@ function findSource(dbg, url, { silent } = { silent: false }) {
     return source;
   }
 
-  const sources = dbg.selectors.getSources(dbg.getState());
-  const source = sources.find(s => (s.get("url") || "").includes(url));
+  const sources = Object.values(dbg.selectors.getSources(dbg.getState()));
+  const source = sources.find(s => (s.url || "").includes(url));
 
   if (!source) {
     if (silent) {
@@ -561,7 +562,7 @@ function findSource(dbg, url, { silent } = { silent: false }) {
     throw new Error(`Unable to find source: ${url}`);
   }
 
-  return source.toJS();
+  return source;
 }
 
 function sourceExists(dbg, url) {
@@ -580,10 +581,7 @@ function waitForLoadedSources(dbg) {
   return waitForState(
     dbg,
     state => {
-      const sources = dbg.selectors
-        .getSources(state)
-        .valueSeq()
-        .toJS();
+      const sources = Object.values(dbg.selectors.getSources(state));
       return !sources.some(source => source.loadedState == "loading");
     },
     "loaded source"
@@ -601,13 +599,14 @@ function waitForLoadedSources(dbg) {
  */
 async function selectSource(dbg, url, line) {
   const source = findSource(dbg, url);
-  await dbg.actions.selectLocation({ sourceId: source.id, line });
+  await dbg.actions.selectLocation({ sourceId: source.id, line }, {keepContext: false});
   return waitForSelectedSource(dbg, url);
 }
 
-function closeTab(dbg, url) {
+
+async function closeTab(dbg, url) {
   const source = findSource(dbg, url);
-  return dbg.actions.closeTab(source.url);
+  await dbg.actions.closeTab(source.url);
 }
 
 /**
@@ -750,10 +749,15 @@ async function loadAndAddBreakpoint(dbg, filename, line, column) {
   await addBreakpoint(dbg, source, line);
 
   is(getBreakpoints(getState()).size, 1, "One breakpoint exists");
-  ok(
-    getBreakpoint(getState(), { sourceId: source.id, line, column }),
-    `Breakpoint has correct line ${line}, column ${column}`
-  );
+  if (!getBreakpoint(getState(), { sourceId: source.id, line, column })) {
+    const breakpoints = getBreakpoints(getState()).toJS();
+    const id = Object.keys(breakpoints).pop();
+    const loc = breakpoints[id].location;
+    ok(
+      false,
+      `Breakpoint has correct line ${line}, column ${column}, but was line ${loc.line} column ${loc.column}`
+    );
+  }
 
   return source;
 }
@@ -896,7 +900,7 @@ function invokeInTab(fnc, ...args) {
     fnc,
     args
   }) {
-    content.wrappedJSObject[fnc](...args); // eslint-disable-line mozilla/no-cpows-in-tests, max-len
+    return content.wrappedJSObject[fnc](...args); // eslint-disable-line mozilla/no-cpows-in-tests, max-len
   });
 }
 
@@ -1032,7 +1036,7 @@ const selectors = {
   expressionInput: ".expressions-list  input.input-expression",
   expressionNodes: ".expressions-list .tree-node",
   scopesHeader: ".scopes-pane ._header",
-  breakpointItem: i => `.breakpoints-list .breakpoint:nth-of-type(${i})`,
+  breakpointItem: i => `.breakpoints-list div:nth-of-type(${i})`,
   breakpointItems: `.breakpoints-list .breakpoint`,
   scopes: ".scopes-list",
   scopeNode: i => `.scopes-list .tree-node:nth-child(${i}) .object-label`,
@@ -1051,6 +1055,7 @@ const selectors = {
   resume: ".resume.active",
   pause: ".pause.active",
   sourceTabs: ".source-tabs",
+  activeTab: ".source-tab.active",
   stepOver: ".stepOver.active",
   stepOut: ".stepOut.active",
   stepIn: ".stepIn.active",
@@ -1065,7 +1070,7 @@ const selectors = {
   sourceNodes: ".sources-list .tree-node",
   sourceDirectoryLabel: i => `.sources-list .tree-node:nth-child(${i}) .label`,
   resultItems: ".result-list .result-item",
-  fileMatch: ".managed-tree .result",
+  fileMatch: ".project-text-search .line-value",
   popup: ".popover",
   tooltip: ".tooltip",
   previewPopup: ".preview-popup",
@@ -1213,17 +1218,29 @@ function getCoordsFromPosition(cm, { line, ch }) {
   return cm.charCoords({ line: ~~line, ch: ~~ch });
 }
 
-function hoverAtPos(dbg, { line, ch }) {
+async function waitForScrolling(codeMirror) {
+  return new Promise(resolve => {
+    codeMirror.on("scroll", resolve);
+    setTimeout(resolve, 500);
+  });
+}
+
+async function hoverAtPos(dbg, { line, ch }) {
   info(`Hovering at ${line}, ${ch}`);
   const cm = getCM(dbg);
 
   // Ensure the line is visible with margin because the bar at the bottom of
   // the editor overlaps into what the editor things is its own space, blocking
   // the click event below.
-  cm.scrollIntoView({ line: line - 1, ch }, 100);
+  cm.scrollIntoView({ line: line - 1, ch }, 0);
+  await waitForScrolling(cm);
 
   const coords = getCoordsFromPosition(cm, { line: line - 1, ch });
   const tokenEl = dbg.win.document.elementFromPoint(coords.left, coords.top);
+
+  if (!tokenEl) {
+    return false;
+  }
 
   tokenEl.dispatchEvent(
     new MouseEvent("mouseover", {
@@ -1234,6 +1251,9 @@ function hoverAtPos(dbg, { line, ch }) {
   );
 }
 
+// tryHovering will hover at a position every second until we
+// see a preview element (popup, tooltip) appear. Once it appears,
+// it considers it a success.
 function tryHovering(dbg, line, column, elementName) {
   return new Promise((resolve, reject) => {
     const element = waitForElement(dbg, elementName);
@@ -1251,7 +1271,7 @@ function tryHovering(dbg, line, column, elementName) {
       }
 
       hoverAtPos(dbg, { line, ch: column - 1 });
-    }, 200);
+    }, 1000);
   });
 }
 

@@ -119,6 +119,7 @@ bool IsUnaligned(const wasm::MemoryAccessDesc& access);
 static constexpr Register ABINonArgReg0 = r4;
 static constexpr Register ABINonArgReg1 = r5;
 static constexpr Register ABINonArgReg2 = r6;
+static constexpr Register ABINonArgReg3 = r7;
 
 // This register may be volatile or nonvolatile. Avoid d15 which is the
 // ScratchDoubleReg.
@@ -142,9 +143,10 @@ static constexpr Register WasmTlsReg = r9;
 
 // Registers used for wasm table calls. These registers must be disjoint
 // from the ABI argument registers, WasmTlsReg and each other.
-static constexpr Register WasmTableCallScratchReg = ABINonArgReg0;
-static constexpr Register WasmTableCallSigReg = ABINonArgReg1;
-static constexpr Register WasmTableCallIndexReg = ABINonArgReg2;
+static constexpr Register WasmTableCallScratchReg0 = ABINonArgReg0;
+static constexpr Register WasmTableCallScratchReg1 = ABINonArgReg1;
+static constexpr Register WasmTableCallSigReg = ABINonArgReg2;
+static constexpr Register WasmTableCallIndexReg = ABINonArgReg3;
 
 static constexpr Register PreBarrierReg = r1;
 
@@ -157,6 +159,15 @@ static constexpr Register StackPointer = sp;
 static constexpr Register FramePointer = r11;
 static constexpr Register ReturnReg = r0;
 static constexpr Register64 ReturnReg64(r1, r0);
+
+// The attribute '__value_in_regs' alters the calling convention of a function so that
+// a structure of up to four elements can be returned via the argument registers rather
+// than being written to memory.
+static constexpr Register ReturnRegVal0 = IntArgReg0;
+static constexpr Register ReturnRegVal1 = IntArgReg1;
+static constexpr Register ReturnRegVal2 = IntArgReg2;
+static constexpr Register ReturnRegVal3 = IntArgReg3;
+
 static constexpr FloatRegister ReturnFloat32Reg = { FloatRegisters::d0, VFPRegister::Single };
 static constexpr FloatRegister ReturnDoubleReg = { FloatRegisters::d0, VFPRegister::Double};
 static constexpr FloatRegister ReturnSimd128Reg = InvalidFloatReg;
@@ -1325,17 +1336,17 @@ class Assembler : public AssemblerShared
   protected:
     // Structure for fixing up pc-relative loads/jumps when a the machine code
     // gets moved (executable copy, gc, etc.).
-    struct RelativePatch
+    class RelativePatch
     {
         void* target_;
-        Relocation::Kind kind_;
+        RelocationKind kind_;
 
       public:
-        RelativePatch(void* target, Relocation::Kind kind)
+        RelativePatch(void* target, RelocationKind kind)
           : target_(target), kind_(kind)
         { }
         void* target() const { return target_; }
-        Relocation::Kind kind() const { return kind_; }
+        RelocationKind kind() const { return kind_; }
     };
 
     // TODO: this should actually be a pool-like object. It is currently a big
@@ -1765,7 +1776,7 @@ class Assembler : public AssemblerShared
     }
     void retarget(Label* label, Label* target);
     // I'm going to pretend this doesn't exist for now.
-    void retarget(Label* label, void* target, Relocation::Kind reloc);
+    void retarget(Label* label, void* target, RelocationKind reloc);
 
     static void Bind(uint8_t* rawCode, const CodeLabel& label);
 
@@ -1780,7 +1791,7 @@ class Assembler : public AssemblerShared
 #ifdef DEBUG
         MOZ_ASSERT(dataRelocations_.length() == 0);
         for (auto& j : jumps_)
-            MOZ_ASSERT(j.kind() == Relocation::HARDCODED);
+            MOZ_ASSERT(j.kind() == RelocationKind::HARDCODED);
 #endif
     }
 
@@ -1797,9 +1808,9 @@ class Assembler : public AssemblerShared
     static bool HasRoundInstruction(RoundingMode mode) { return false; }
 
   protected:
-    void addPendingJump(BufferOffset src, ImmPtr target, Relocation::Kind kind) {
+    void addPendingJump(BufferOffset src, ImmPtr target, RelocationKind kind) {
         enoughMemory_ &= jumps_.append(RelativePatch(target.value, kind));
-        if (kind == Relocation::JITCODE)
+        if (kind == RelocationKind::JITCODE)
             writeRelocation(src);
     }
 

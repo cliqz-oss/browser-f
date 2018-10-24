@@ -6,7 +6,6 @@ this.EXPORTED_SYMBOLS = [ "AutoForgetTabsMonitor" ];
 
 const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource:///modules/AutoForgetTabs-utils.jsm");
 
 /**
@@ -119,7 +118,7 @@ class AutoForgetTabsMonitor {
 }
 
 // nsISupports:
-AutoForgetTabsMonitor.prototype.QueryInterface = XPCOMUtils.generateQI([
+AutoForgetTabsMonitor.prototype.QueryInterface = ChromeUtils.generateQI([
     Ci.nsISupports,
     Ci.nsISupportsWeakReference,
     Ci.nsIWebProgressListener,

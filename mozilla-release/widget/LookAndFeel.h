@@ -106,7 +106,9 @@ public:
     // used to highlight valid regions to drop something onto
     eColorID__moz_dragtargetzone,
 
-    // used to cell text background, selected but not focus
+    // used to cell text background, selected but not focus.
+    // It is not necessarily a system color, but it is
+    // distinct from -moz-appearance: listbox; and Highlight
     eColorID__moz_cellhighlight,
     // used to cell text, selected but not focus
     eColorID__moz_cellhighlighttext,
@@ -437,7 +439,15 @@ public:
       * A boolean value indicating whether or not the OS is using a dark theme,
       * which we may want to switch to as well if not overridden by the user.
       */
-     eIntID_SystemUsesDarkTheme
+     eIntID_SystemUsesDarkTheme,
+
+     /**
+      * Corresponding to prefers-reduced-motion.
+      * https://drafts.csswg.org/mediaqueries-5/#prefers-reduced-motion
+      * 0: no-preference
+      * 1: reduce
+      */
+     eIntID_PrefersReducedMotion,
   };
 
   /**
@@ -662,6 +672,11 @@ public:
    */
   static nsTArray<LookAndFeelInt> GetIntCache();
   static void SetIntCache(const nsTArray<LookAndFeelInt>& aLookAndFeelIntCache);
+  /**
+   * Set a flag indicating whether the cache should be cleared in RefreshImpl()
+   * or not.
+   */
+  static void SetShouldRetainCacheForTest(bool aValue);
 };
 
 } // namespace mozilla

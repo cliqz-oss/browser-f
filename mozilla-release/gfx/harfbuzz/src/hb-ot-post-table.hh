@@ -28,7 +28,7 @@
 #define HB_OT_POST_TABLE_HH
 
 #include "hb-open-type-private.hh"
-#include "hb-dsalgs.hh"
+#include "hb-subset-plan.hh"
 
 #define HB_STRING_ARRAY_NAME format1_names
 #define HB_STRING_ARRAY_LIST "hb-ot-post-macroman.hh"
@@ -38,14 +38,14 @@
 
 #define NUM_FORMAT1_NAMES 258
 
-namespace OT {
-
-
 /*
  * post -- PostScript
+ * https://docs.microsoft.com/en-us/typography/opentype/spec/post
  */
-
 #define HB_OT_TAG_post HB_TAG('p','o','s','t')
+
+
+namespace OT {
 
 
 struct postV2Tail
@@ -82,16 +82,39 @@ struct post
     return_trace (true);
   }
 
+  inline bool subset (hb_subset_plan_t *plan) const
+  {
+    unsigned int post_prime_length;
+    hb_blob_t *post_blob = hb_sanitize_context_t().reference_table<post>(plan->source);
+    hb_blob_t *post_prime_blob = hb_blob_create_sub_blob (post_blob, 0, post::static_size);
+    post *post_prime = (post *) hb_blob_get_data_writable (post_prime_blob, &post_prime_length);
+    hb_blob_destroy (post_blob);
+
+    if (unlikely (!post_prime || post_prime_length != post::static_size))
+    {
+      hb_blob_destroy (post_prime_blob);
+      DEBUG_MSG(SUBSET, nullptr, "Invalid source post table with length %d.", post_prime_length);
+      return false;
+    }
+
+    post_prime->version.major.set (3); // Version 3 does not have any glyph names.
+    bool result = plan->add_table (HB_OT_TAG_post, post_prime_blob);
+    hb_blob_destroy (post_prime_blob);
+
+    return result;
+  }
+
   struct accelerator_t
   {
     inline void init (hb_face_t *face)
     {
-      blob = Sanitizer<post>().sanitize (face->reference_table (HB_OT_TAG_post));
-      const post *table = Sanitizer<post>::lock_instance (blob);
-      unsigned int table_length = hb_blob_get_length (blob);
+      index_to_offset.init ();
+
+      blob = hb_sanitize_context_t().reference_table<post> (face);
+      const post *table = blob->as<post> ();
+      unsigned int table_length = blob->length;
 
       version = table->version.to_int ();
-      index_to_offset.init ();
       if (version != 0x00020000)
         return;
 
@@ -102,23 +125,18 @@ struct post
 
       const uint8_t *end = (uint8_t *) table + table_length;
       for (const uint8_t *data = pool; data < end && data + *data <= end; data += 1 + *data)
-      {
-	uint32_t *offset = index_to_offset.push ();
-	if (unlikely (!offset))
-	  break;
-	*offset = data - pool;
-      }
+	index_to_offset.push (data - pool);
     }
     inline void fini (void)
     {
-      index_to_offset.finish ();
-      free (gids_sorted_by_name);
+      index_to_offset.fini ();
+      free (gids_sorted_by_name.get ());
     }
 
     inline bool get_glyph_name (hb_codepoint_t glyph,
 				char *buf, unsigned int buf_len) const
     {
-      hb_string_t s = find_glyph_name (glyph);
+      hb_bytes_t s = find_glyph_name (glyph);
       if (!s.len)
         return false;
       if (!buf_len)
@@ -144,7 +162,7 @@ struct post
 	return false;
 
     retry:
-      uint16_t *gids = (uint16_t *) hb_atomic_ptr_get (&gids_sorted_by_name);
+      uint16_t *gids = gids_sorted_by_name.get ();
 
       if (unlikely (!gids))
       {
@@ -156,13 +174,14 @@ struct post
 	  gids[i] = i;
 	hb_sort_r (gids, count, sizeof (gids[0]), cmp_gids, (void *) this);
 
-	if (!hb_atomic_ptr_cmpexch (&gids_sorted_by_name, nullptr, gids)) {
+	if (unlikely (!gids_sorted_by_name.cmpexch (nullptr, gids)))
+	{
 	  free (gids);
 	  goto retry;
 	}
       }
 
-      hb_string_t st (name, len);
+      hb_bytes_t st (name, len);
       const uint16_t *gid = (const uint16_t *) hb_bsearch_r (&st, gids, count, sizeof (gids[0]), cmp_key, (void *) this);
       if (gid)
       {
@@ -197,47 +216,47 @@ struct post
     static inline int cmp_key (const void *pk, const void *po, void *arg)
     {
       const accelerator_t *thiz = (const accelerator_t *) arg;
-      const hb_string_t *key = (const hb_string_t *) pk;
+      const hb_bytes_t *key = (const hb_bytes_t *) pk;
       uint16_t o = * (const uint16_t *) po;
       return thiz->find_glyph_name (o).cmp (*key);
     }
 
-    inline hb_string_t find_glyph_name (hb_codepoint_t glyph) const
+    inline hb_bytes_t find_glyph_name (hb_codepoint_t glyph) const
     {
       if (version == 0x00010000)
       {
 	if (glyph >= NUM_FORMAT1_NAMES)
-	  return hb_string_t ();
+	  return hb_bytes_t ();
 
 	return format1_names (glyph);
       }
 
       if (version != 0x00020000 || glyph >= glyphNameIndex->len)
-	return hb_string_t ();
+	return hb_bytes_t ();
 
-      unsigned int index = glyphNameIndex->array[glyph];
+      unsigned int index = glyphNameIndex->arrayZ[glyph];
       if (index < NUM_FORMAT1_NAMES)
 	return format1_names (index);
       index -= NUM_FORMAT1_NAMES;
 
       if (index >= index_to_offset.len)
-	return hb_string_t ();
-      unsigned int offset = index_to_offset.array[index];
+	return hb_bytes_t ();
+      unsigned int offset = index_to_offset.arrayZ[index];
 
       const uint8_t *data = pool + offset;
       unsigned int name_length = *data;
       data++;
 
-      return hb_string_t ((const char *) data, name_length);
+      return hb_bytes_t ((const char *) data, name_length);
     }
 
     private:
     hb_blob_t *blob;
     uint32_t version;
     const ArrayOf<HBUINT16> *glyphNameIndex;
-    hb_prealloced_array_t<uint32_t, 1> index_to_offset;
+    hb_vector_t<uint32_t, 1> index_to_offset;
     const uint8_t *pool;
-    mutable uint16_t *gids_sorted_by_name;
+    hb_atomic_ptr_t<uint16_t *> gids_sorted_by_name;
   };
 
   public:

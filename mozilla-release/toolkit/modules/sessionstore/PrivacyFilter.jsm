@@ -6,8 +6,6 @@
 
 var EXPORTED_SYMBOLS = ["PrivacyFilter"];
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
-
 ChromeUtils.defineModuleGetter(this, "PrivacyLevel",
   "resource://gre/modules/sessionstore/PrivacyLevel.jsm");
 
@@ -129,5 +127,5 @@ var PrivacyFilter = Object.freeze({
     // There is no need to call this function for private windows as the
     // whole window state should just be discarded so we explicitly don't
     // try to remove closed private tabs as an optimization.
-  }
+  },
 });

@@ -90,7 +90,8 @@ CompositorVsyncScheduler::CompositorVsyncScheduler(CompositorVsyncSchedulerOwner
   // mAsapScheduling is set on the main thread during init,
   // but is only accessed after on the compositor thread.
   mAsapScheduling = gfxPrefs::LayersCompositionFrameRate() == 0 ||
-                    gfxPlatform::IsInLayoutAsapMode();
+                    gfxPlatform::IsInLayoutAsapMode() ||
+                    recordreplay::IsRecordingOrReplaying();
 }
 
 CompositorVsyncScheduler::~CompositorVsyncScheduler()
@@ -158,7 +159,8 @@ CompositorVsyncScheduler::ScheduleComposition()
   }
 
   if (mAsapScheduling) {
-    // Used only for performance testing purposes
+    // Used only for performance testing purposes, and when recording/replaying
+    // to ensure that graphics are up to date.
     PostCompositeTask(TimeStamp::Now());
 #ifdef MOZ_WIDGET_ANDROID
   } else if (mNeedsComposite >= 2 && mIsObservingVsync) {
@@ -344,6 +346,13 @@ CompositorVsyncScheduler::GetLastComposeTime() const
 {
   MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
   return mLastCompose;
+}
+
+void
+CompositorVsyncScheduler::UpdateLastComposeTime()
+{
+  MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
+  mLastCompose = TimeStamp::Now();
 }
 
 } // namespace layers

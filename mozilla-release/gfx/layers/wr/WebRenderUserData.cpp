@@ -20,6 +20,15 @@
 namespace mozilla {
 namespace layers {
 
+void
+WebRenderBackgroundData::AddWebRenderCommands(wr::DisplayListBuilder& aBuilder)
+{
+  aBuilder.PushRect(mBounds,
+                    mBounds,
+                    true,
+                    mColor);
+}
+
 /* static */ bool
 WebRenderUserData::SupportsAsyncUpdate(nsIFrame* aFrame)
 {
@@ -69,10 +78,6 @@ WebRenderImageData::~WebRenderImageData()
 {
   ClearImageKey();
 
-  if (mExternalImageId) {
-    WrBridge()->DeallocExternalImageId(mExternalImageId.ref());
-  }
-
   if (mPipelineId) {
     WrBridge()->RemovePipelineIdForCompositable(mPipelineId.ref());
   }
@@ -86,10 +91,15 @@ WebRenderImageData::ClearImageKey()
     // key when appropriate.
     if (mOwnsKey) {
       mWRManager->AddImageKeyForDiscard(mKey.value());
+      if (mTextureOfImage) {
+        WrBridge()->ReleaseTextureOfImage(mKey.value());
+        mTextureOfImage = nullptr;
+      }
     }
     mKey.reset();
   }
   mOwnsKey = false;
+  MOZ_ASSERT(!mTextureOfImage);
 }
 
 Maybe<wr::ImageKey>
@@ -123,9 +133,7 @@ WebRenderImageData::UpdateImageKey(ImageContainer* aContainer,
   }
 
   CreateImageClientIfNeeded();
-  CreateExternalImageIfNeeded();
-
-  if (!mImageClient || !mExternalImageId) {
+  if (!mImageClient) {
     return Nothing();
   }
 
@@ -135,7 +143,8 @@ WebRenderImageData::UpdateImageKey(ImageContainer* aContainer,
   uint32_t oldCounter = imageClient->GetLastUpdateGenerationCounter();
 
   bool ret = imageClient->UpdateImage(aContainer, /* unused */0);
-  if (!ret || imageClient->IsEmpty()) {
+  RefPtr<TextureClient> currentTexture = imageClient->GetForwardedTexture();
+  if (!ret || !currentTexture) {
     // Delete old key
     ClearImageKey();
     return Nothing();
@@ -146,13 +155,29 @@ WebRenderImageData::UpdateImageKey(ImageContainer* aContainer,
     return mKey;
   }
 
-  // Delete old key, we are generating a new key.
-  // TODO(nical): noooo... we need to reuse image keys.
-  ClearImageKey();
+  // If we already had a texture and the format hasn't changed, better to reuse the image keys
+  // than create new ones.
+  bool useUpdate = mKey.isSome()
+                   && !!mTextureOfImage
+                   && !!currentTexture
+                   && mTextureOfImage->GetSize() == currentTexture->GetSize()
+                   && mTextureOfImage->GetFormat() == currentTexture->GetFormat();
 
-  key = WrBridge()->GetNextImageKey();
-  aResources.AddExternalImage(mExternalImageId.value(), key);
-  mKey = Some(key);
+  wr::MaybeExternalImageId extId = currentTexture->GetExternalImageKey();
+  MOZ_RELEASE_ASSERT(extId.isSome());
+
+  if (useUpdate) {
+    MOZ_ASSERT(mKey.isSome());
+    MOZ_ASSERT(mTextureOfImage);
+    aResources.PushExternalImageForTexture(extId.ref(), mKey.ref(), currentTexture, /* aIsUpdate */ true);
+  } else {
+    ClearImageKey();
+    key = WrBridge()->GetNextImageKey();
+    aResources.PushExternalImageForTexture(extId.ref(), key, currentTexture, /* aIsUpdate */ false);
+    mKey = Some(key);
+  }
+
+  mTextureOfImage = currentTexture;
   mOwnsKey = true;
 
   return mKey;
@@ -203,7 +228,6 @@ WebRenderImageData::CreateAsyncImageWebRenderCommands(mozilla::wr::DisplayListBu
     mContainer = aContainer;
   }
   MOZ_ASSERT(!mImageClient);
-  MOZ_ASSERT(!mExternalImageId);
 
   // Push IFrame for async image pipeline.
   //
@@ -236,14 +260,6 @@ WebRenderImageData::CreateImageClientIfNeeded()
     }
 
     mImageClient->Connect();
-  }
-}
-
-void
-WebRenderImageData::CreateExternalImageIfNeeded()
-{
-  if (!mExternalImageId)  {
-    mExternalImageId = Some(WrBridge()->AllocExternalImageIdForCompositable(mImageClient));
   }
 }
 

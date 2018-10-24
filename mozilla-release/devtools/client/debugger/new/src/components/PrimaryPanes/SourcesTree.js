@@ -12,21 +12,19 @@ var _classnames = require("devtools/client/debugger/new/dist/vendors").vendored[
 
 var _classnames2 = _interopRequireDefault(_classnames);
 
-var _devtoolsContextmenu = require("devtools/client/debugger/new/dist/vendors").vendored["devtools-contextmenu"];
-
 var _reactRedux = require("devtools/client/shared/vendor/react-redux");
-
-var _SourceIcon = require("../shared/SourceIcon");
-
-var _SourceIcon2 = _interopRequireDefault(_SourceIcon);
 
 var _selectors = require("../../selectors/index");
 
-var _sourceTree = require("../../actions/source-tree");
+var _sources = require("../../reducers/sources");
 
-var _sources = require("../../actions/sources/index");
+var _actions = require("../../actions/index");
 
-var _ui = require("../../actions/ui");
+var _actions2 = _interopRequireDefault(_actions);
+
+var _SourcesTreeItem = require("./SourcesTreeItem");
+
+var _SourcesTreeItem2 = _interopRequireDefault(_SourcesTreeItem);
 
 var _ManagedTree = require("../shared/ManagedTree");
 
@@ -39,10 +37,6 @@ var _Svg2 = _interopRequireDefault(_Svg);
 var _sourcesTree = require("../../utils/sources-tree/index");
 
 var _source = require("../../utils/source");
-
-var _clipboard = require("../../utils/clipboard");
-
-var _prefs = require("../../utils/prefs");
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
@@ -85,7 +79,7 @@ class SourcesTree extends _react.Component {
       sourceTree
     } = this.state;
 
-    if (projectRoot != nextProps.projectRoot || debuggeeUrl != nextProps.debuggeeUrl || nextProps.sources.size === 0) {
+    if (projectRoot != nextProps.projectRoot || debuggeeUrl != nextProps.debuggeeUrl || nextProps.sourceCount === 0) {
       // early recreate tree because of changes
       // to project root, debugee url or lack of sources
       return this.setState((0, _sourcesTree.createTree)({
@@ -97,19 +91,14 @@ class SourcesTree extends _react.Component {
 
     if (nextProps.shownSource && nextProps.shownSource != shownSource) {
       const listItems = (0, _sourcesTree.getDirectories)(nextProps.shownSource, sourceTree);
-
-      if (listItems && listItems[0]) {
-        this.selectItem(listItems[0]);
-      }
-
       return this.setState({
         listItems
       });
     }
 
     if (nextProps.selectedSource && nextProps.selectedSource != selectedSource) {
-      const highlightItems = (0, _sourcesTree.getDirectories)((0, _source.getRawSourceURL)(nextProps.selectedSource.get("url")), sourceTree);
-      return this.setState({
+      const highlightItems = (0, _sourcesTree.getDirectories)(nextProps.selectedSource, sourceTree);
+      this.setState({
         highlightItems
       });
     } // NOTE: do not run this every time a source is clicked,
@@ -130,7 +119,13 @@ class SourcesTree extends _react.Component {
 
   // NOTE: we get the source from sources because item.contents is cached
   getSource(item) {
-    return this.props.sources.get(item.contents.id);
+    const source = (0, _sourcesTree.getSourceFromNode)(item);
+
+    if (source) {
+      return this.props.sources[source.id];
+    }
+
+    return null;
   }
 
   isEmpty() {
@@ -138,15 +133,6 @@ class SourcesTree extends _react.Component {
       sourceTree
     } = this.state;
     return sourceTree.contents.length === 0;
-  }
-
-  renderItemName(name) {
-    const hosts = {
-      "ng://": "Angular",
-      "webpack://": "Webpack",
-      "moz-extension://": L10N.getStr("extensionsText")
-    };
-    return hosts[name] || name;
   }
 
   renderEmptyElement(message) {
@@ -176,8 +162,7 @@ class SourcesTree extends _react.Component {
     }, _react2.default.createElement(_Svg2.default, {
       name: "home"
     }), _react2.default.createElement(_Svg2.default, {
-      name: "breadcrumb",
-      "class": true
+      name: "breadcrumb"
     }), _react2.default.createElement("span", {
       className: "sources-clear-root-label"
     }, rootLabel)));
@@ -207,7 +192,8 @@ class SourcesTree extends _react.Component {
       onCollapse: this.onCollapse,
       onExpand: this.onExpand,
       onFocus: this.focusItem,
-      renderItem: this.renderItem
+      renderItem: this.renderItem,
+      preventBlur: true
     };
     return _react2.default.createElement(_ManagedTree2.default, treeProps);
   }
@@ -254,111 +240,21 @@ var _initialiseProps = function () {
   };
 
   this.selectItem = item => {
-    if (!(0, _sourcesTree.isDirectory)(item)) {
+    if (item.type == "source" && !Array.isArray(item.contents)) {
       this.props.selectSource(item.contents.id);
     }
   };
 
   this.getPath = item => {
     const path = `${item.path}/${item.name}`;
+    const source = this.getSource(item);
 
-    if ((0, _sourcesTree.isDirectory)(item)) {
+    if (!source || (0, _sourcesTree.isDirectory)(item)) {
       return path;
     }
 
-    const source = this.getSource(item);
     const blackBoxedPart = source.isBlackBoxed ? ":blackboxed" : "";
-    return `${path}${blackBoxedPart}`;
-  };
-
-  this.getIcon = (sources, item, depth) => {
-    const {
-      debuggeeUrl,
-      projectRoot
-    } = this.props;
-
-    if (item.path === "webpack://") {
-      return _react2.default.createElement(_Svg2.default, {
-        name: "webpack"
-      });
-    } else if (item.path === "ng://") {
-      return _react2.default.createElement(_Svg2.default, {
-        name: "angular"
-      });
-    } else if (item.path === "moz-extension://") {
-      return _react2.default.createElement("img", {
-        className: "extension"
-      });
-    }
-
-    if (depth === 0 && projectRoot === "") {
-      return _react2.default.createElement("img", {
-        className: (0, _classnames2.default)("domain", {
-          debuggee: debuggeeUrl && debuggeeUrl.includes(item.name)
-        })
-      });
-    }
-
-    if ((0, _sourcesTree.isDirectory)(item)) {
-      return _react2.default.createElement("img", {
-        className: "folder"
-      });
-    }
-
-    const source = this.getSource(item);
-    return _react2.default.createElement(_SourceIcon2.default, {
-      source: source
-    });
-  };
-
-  this.onContextMenu = (event, item) => {
-    const copySourceUri2Label = L10N.getStr("copySourceUri2");
-    const copySourceUri2Key = L10N.getStr("copySourceUri2.accesskey");
-    const setDirectoryRootLabel = L10N.getStr("setDirectoryRoot.label");
-    const setDirectoryRootKey = L10N.getStr("setDirectoryRoot.accesskey");
-    const removeDirectoryRootLabel = L10N.getStr("removeDirectoryRoot.label");
-    event.stopPropagation();
-    event.preventDefault();
-    const menuOptions = [];
-
-    if (!(0, _sourcesTree.isDirectory)(item)) {
-      const copySourceUri2 = {
-        id: "node-menu-copy-source",
-        label: copySourceUri2Label,
-        accesskey: copySourceUri2Key,
-        disabled: false,
-        click: () => (0, _clipboard.copyToTheClipboard)(item.contents.url)
-      };
-      menuOptions.push(copySourceUri2);
-    }
-
-    if ((0, _sourcesTree.isDirectory)(item) && _prefs.features.root) {
-      const {
-        path
-      } = item;
-      const {
-        projectRoot
-      } = this.props;
-
-      if (projectRoot.endsWith(path)) {
-        menuOptions.push({
-          id: "node-remove-directory-root",
-          label: removeDirectoryRootLabel,
-          disabled: false,
-          click: () => this.props.clearProjectDirectoryRoot()
-        });
-      } else {
-        menuOptions.push({
-          id: "node-set-directory-root",
-          label: setDirectoryRootLabel,
-          accesskey: setDirectoryRootKey,
-          disabled: false,
-          click: () => this.props.setProjectDirectoryRoot(path)
-        });
-      }
-    }
-
-    (0, _devtoolsContextmenu.showMenu)(event, menuOptions);
+    return `${path}/${source.id}/${blackBoxedPart}`;
   };
 
   this.onExpand = (item, expandedState) => {
@@ -377,40 +273,6 @@ var _initialiseProps = function () {
     if (e.keyCode === 13 && focusedItem) {
       this.selectItem(focusedItem);
     }
-  };
-
-  this.renderItem = (item, depth, focused, _, expanded, {
-    setExpanded
-  }) => {
-    const arrow = (0, _sourcesTree.nodeHasChildren)(item) ? _react2.default.createElement("img", {
-      className: (0, _classnames2.default)("arrow", {
-        expanded: expanded
-      })
-    }) : _react2.default.createElement("i", {
-      className: "no-arrow"
-    });
-    const {
-      sources
-    } = this.props;
-    const icon = this.getIcon(sources, item, depth);
-    return _react2.default.createElement("div", {
-      className: (0, _classnames2.default)("node", {
-        focused
-      }),
-      key: item.path,
-      onClick: e => {
-        this.focusItem(item);
-
-        if ((0, _sourcesTree.isDirectory)(item)) {
-          setExpanded(item, !!expanded, e.altKey);
-        } else {
-          this.selectItem(item);
-        }
-      },
-      onContextMenu: e => this.onContextMenu(e, item)
-    }, arrow, icon, _react2.default.createElement("span", {
-      className: "label"
-    }, " ", this.renderItemName(item.name), " "));
   };
 
   this.getRoots = () => {
@@ -434,23 +296,53 @@ var _initialiseProps = function () {
 
     return sourceTree.contents;
   };
-};
 
-const mapStateToProps = state => {
-  return {
-    shownSource: (0, _selectors.getShownSource)(state),
-    selectedSource: (0, _selectors.getSelectedSource)(state),
-    debuggeeUrl: (0, _selectors.getDebuggeeUrl)(state),
-    expanded: (0, _selectors.getExpandedState)(state),
-    projectRoot: (0, _selectors.getProjectDirectoryRoot)(state),
-    sources: (0, _selectors.getRelativeSources)(state)
+  this.renderItem = (item, depth, focused, _, expanded, {
+    setExpanded
+  }) => {
+    const {
+      debuggeeUrl,
+      projectRoot
+    } = this.props;
+    return _react2.default.createElement(_SourcesTreeItem2.default, {
+      item: item,
+      depth: depth,
+      focused: focused,
+      expanded: expanded,
+      focusItem: this.focusItem,
+      selectItem: this.selectItem,
+      source: this.getSource(item),
+      debuggeeUrl: debuggeeUrl,
+      projectRoot: projectRoot,
+      setExpanded: setExpanded
+    });
   };
 };
 
-const actionCreators = {
-  setExpandedState: _sourceTree.setExpandedState,
-  selectSource: _sources.selectSource,
-  setProjectDirectoryRoot: _ui.setProjectDirectoryRoot,
-  clearProjectDirectoryRoot: _ui.clearProjectDirectoryRoot
+function getSourceForTree(state, source) {
+  if (!source || !source.isPrettyPrinted) {
+    return source;
+  }
+
+  return (0, _sources.getSourceByURL)(state, (0, _source.getRawSourceURL)(source.url));
+}
+
+const mapStateToProps = state => {
+  const selectedSource = (0, _selectors.getSelectedSource)(state);
+  const shownSource = (0, _selectors.getShownSource)(state);
+  return {
+    shownSource: getSourceForTree(state, shownSource),
+    selectedSource: getSourceForTree(state, selectedSource),
+    debuggeeUrl: (0, _selectors.getDebuggeeUrl)(state),
+    expanded: (0, _selectors.getExpandedState)(state),
+    projectRoot: (0, _selectors.getProjectDirectoryRoot)(state),
+    sources: (0, _selectors.getRelativeSources)(state),
+    sourceCount: (0, _selectors.getSourceCount)(state)
+  };
 };
-exports.default = (0, _reactRedux.connect)(mapStateToProps, actionCreators)(SourcesTree);
+
+exports.default = (0, _reactRedux.connect)(mapStateToProps, {
+  selectSource: _actions2.default.selectSource,
+  setExpandedState: _actions2.default.setExpandedState,
+  clearProjectDirectoryRoot: _actions2.default.clearProjectDirectoryRoot
+})(SourcesTree);

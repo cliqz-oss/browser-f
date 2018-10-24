@@ -2,8 +2,6 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-
 const ID = "webextension1@tests.mozilla.org";
 
 const profileDir = gProfD.clone();
@@ -17,15 +15,15 @@ const ADDONS = {
       "manifest_version": 2,
       "applications": {
         "gecko": {
-          "id": "webextension1@tests.mozilla.org"
-        }
+          "id": "webextension1@tests.mozilla.org",
+        },
       },
       "icons": {
         "48": "icon48.png",
-        "64": "icon64.png"
-      }
+        "64": "icon64.png",
+      },
     },
-    "chrome.manifest": "content webex ./\n"
+    "chrome.manifest": "content webex ./\n",
   },
   webextension_3: {
     "manifest.json": {
@@ -36,30 +34,30 @@ const ADDONS = {
       "default_locale": "en",
       "applications": {
         "gecko": {
-          "id": "webextension3@tests.mozilla.org"
-        }
-      }
+          "id": "webextension3@tests.mozilla.org",
+        },
+      },
     },
     "_locales/en/messages.json": {
       "name": {
         "message": "foo ☹",
-        "description": "foo"
+        "description": "foo",
       },
       "desc": {
         "message": "bar ☹",
-        "description": "bar"
-      }
+        "description": "bar",
+      },
     },
     "_locales/fr/messages.json": {
       "name": {
         "message": "le foo ☺",
-        "description": "foo"
+        "description": "foo",
       },
       "desc": {
         "message": "le bar ☺",
-        "description": "bar"
-      }
-    }
+        "description": "bar",
+      },
+    },
   },
 };
 
@@ -152,9 +150,9 @@ add_task(async function test_2() {
     manifest_version: 2,
     applications: {
       gecko: {
-        id: ID
-      }
-    }
+        id: ID,
+      },
+    },
   }, profileDir);
 
   await promiseStartupManager();
@@ -214,9 +212,9 @@ add_task(async function test_3() {
     manifest_version: 2,
     applications: {
       gecko: {
-        id: ID
-      }
-    }
+        id: ID,
+      },
+    },
   }, profileDir);
 
   await promiseRestartManager();
@@ -238,9 +236,9 @@ add_task(async function test_4() {
     manifest_version: 1,
     applications: {
       gecko: {
-        id: ID
-      }
-    }
+        id: ID,
+      },
+    },
   }, profileDir);
 
   await promiseRestartManager();
@@ -322,7 +320,7 @@ add_task(async function developerShouldOverride() {
       default_locale: "en",
       developer: {
         name: "__MSG_name__",
-        url: "__MSG_url__"
+        url: "__MSG_url__",
       },
       author: "Will be overridden by developer",
       homepage_url: "https://will.be.overridden",
@@ -335,8 +333,8 @@ add_task(async function developerShouldOverride() {
         "url": {
           "message": "https://example.net/en"
         }
-      }`
-    }
+      }`,
+    },
   });
 
   checkAddon(ID, addon, {
@@ -357,7 +355,7 @@ add_task(async function developerEmpty() {
         manifest_version: 2,
         name: "Web Extension Name",
         version: "1.0",
-      }
+      },
     });
 
     checkAddon(ID, addon, {
@@ -377,7 +375,7 @@ add_task(async function authorNotString() {
         manifest_version: 2,
         name: "Web Extension Name",
         version: "1.0",
-      }
+      },
     });
 
     checkAddon(ID, addon, {
@@ -396,7 +394,7 @@ add_task(async function testThemeExtension() {
       name: "Web Extension Name",
       version: "1.0",
       theme: { images: { headerURL: "example.png" } },
-    }
+    },
   });
 
   checkAddon(ID, addon, {
@@ -423,7 +421,7 @@ add_task(async function testThemeExtension() {
       name: "Web Extension Name",
       version: "1.0",
       theme: null,
-    }
+    },
   });
 
   checkAddon(ID, addon, {
@@ -443,10 +441,10 @@ add_task(async function test_theme_upgrade() {
       name: "Test WebExtension 1 (temporary)",
       applications: {
         gecko: {
-          id: ID
-        }
-      }
-    }
+          id: ID,
+        },
+      },
+    },
   });
 
   checkAddon(ID, addon, {
@@ -466,11 +464,11 @@ add_task(async function test_theme_upgrade() {
       name: "Test WebExtension 1 (temporary)",
       applications: {
         gecko: {
-          id: ID
-        }
+          id: ID,
+        },
       },
-      theme: { images: { headerURL: "example.png" } }
-    }
+      theme: { images: { headerURL: "example.png" } },
+    },
   });
 
   checkAddon(ID, addon, {

@@ -45,8 +45,6 @@
 #include "mozilla/dom/MouseEvent.h"
 #include "mozilla/dom/Selection.h"
 #include "mozInlineSpellWordUtil.h"
-#include "mozISpellI18NManager.h"
-#include "mozISpellI18NUtil.h"
 #include "nsCOMPtr.h"
 #include "nsCRT.h"
 #include "nsGenericHTMLElement.h"
@@ -320,7 +318,7 @@ mozInlineSpellStatus::FinishInitOnEvent(mozInlineSpellWordUtil& aWordUtil)
       // everything should be initialized already in this case
       break;
     default:
-      NS_NOTREACHED("Bad operation");
+      MOZ_ASSERT_UNREACHABLE("Bad operation");
       return NS_ERROR_NOT_INITIALIZED;
   }
   return NS_OK;
@@ -944,25 +942,12 @@ mozInlineSpellChecker::ReplaceWord(nsINode *aNode, int32_t aOffset,
   nsresult res = GetMisspelledWord(aNode, aOffset, getter_AddRefs(range));
   NS_ENSURE_SUCCESS(res, res);
 
-  if (range)
-  {
-    // This range was retrieved from the spellchecker selection. As
-    // ranges cannot be shared between selections, we must clone it
-    // before adding it to the editor's selection.
-    RefPtr<nsRange> editorRange = range->CloneRange();
-
-    AutoPlaceholderBatch phb(mTextEditor, nullptr);
-
-    RefPtr<Selection> selection = mTextEditor->GetSelection();
-    NS_ENSURE_TRUE(selection, NS_ERROR_UNEXPECTED);
-    selection->RemoveAllRanges(IgnoreErrors());
-    selection->AddRange(*editorRange, IgnoreErrors());
-
-    MOZ_ASSERT(mTextEditor);
-    DebugOnly<nsresult> rv = mTextEditor->InsertTextAsAction(newword);
-    NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "Failed to insert the new word");
+  if (!range) {
+    return NS_OK;
   }
 
+  DebugOnly<nsresult> rv = mTextEditor->ReplaceTextAsAction(newword, range);
+  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "Failed to insert the new word");
   return NS_OK;
 }
 
@@ -1866,18 +1851,18 @@ mozInlineSpellChecker::OnKeyPress(Event* aKeyEvent)
   // we only care about navigation keys that moved selection
   switch (keyCode)
   {
-    case KeyboardEventBinding::DOM_VK_RIGHT:
-    case KeyboardEventBinding::DOM_VK_LEFT:
+    case KeyboardEvent_Binding::DOM_VK_RIGHT:
+    case KeyboardEvent_Binding::DOM_VK_LEFT:
       HandleNavigationEvent(false,
-                            keyCode == KeyboardEventBinding::DOM_VK_RIGHT ?
+                            keyCode == KeyboardEvent_Binding::DOM_VK_RIGHT ?
                               1 : -1);
       break;
-    case KeyboardEventBinding::DOM_VK_UP:
-    case KeyboardEventBinding::DOM_VK_DOWN:
-    case KeyboardEventBinding::DOM_VK_HOME:
-    case KeyboardEventBinding::DOM_VK_END:
-    case KeyboardEventBinding::DOM_VK_PAGE_UP:
-    case KeyboardEventBinding::DOM_VK_PAGE_DOWN:
+    case KeyboardEvent_Binding::DOM_VK_UP:
+    case KeyboardEvent_Binding::DOM_VK_DOWN:
+    case KeyboardEvent_Binding::DOM_VK_HOME:
+    case KeyboardEvent_Binding::DOM_VK_END:
+    case KeyboardEvent_Binding::DOM_VK_PAGE_UP:
+    case KeyboardEvent_Binding::DOM_VK_PAGE_DOWN:
       HandleNavigationEvent(true /* force a spelling correction */);
       break;
   }

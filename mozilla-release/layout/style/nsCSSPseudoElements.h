@@ -9,8 +9,7 @@
 #ifndef nsCSSPseudoElements_h___
 #define nsCSSPseudoElements_h___
 
-#include "nsAtom.h"
-#include "nsStaticAtom.h"
+#include "nsGkAtoms.h"
 #include "mozilla/CSSEnabledState.h"
 #include "mozilla/Compiler.h"
 
@@ -56,17 +55,6 @@
 // grid containers) and thus needs parent display-based style fixup?
 #define CSS_PSEUDO_ELEMENT_IS_FLEX_OR_GRID_ITEM        (1<<7)
 
-// Trivial subclass of nsStaticAtom so that function signatures can require an
-// atom from this atom list.
-class nsICSSPseudoElement : public nsStaticAtom
-{
-public:
-  constexpr nsICSSPseudoElement(const char16_t* aStr, uint32_t aLength,
-                                uint32_t aStringOffset)
-    : nsStaticAtom(aStr, aLength, aStringOffset)
-  {}
-};
-
 namespace mozilla {
 
 // The total count of CSSPseudoElement is less than 256,
@@ -90,28 +78,6 @@ enum class CSSPseudoElementType : CSSPseudoElementTypeBase {
   MAX
 };
 
-namespace detail {
-
-struct CSSPseudoElementAtoms
-{
-  #define CSS_PSEUDO_ELEMENT(name_, value_, flags_) \
-    NS_STATIC_ATOM_DECL_STRING(name_, value_)
-  #include "nsCSSPseudoElementList.h"
-  #undef CSS_PSEUDO_ELEMENT
-
-  enum class Atoms {
-    #define CSS_PSEUDO_ELEMENT(name_, value_, flags_) \
-      NS_STATIC_ATOM_ENUM(name_)
-    #include "nsCSSPseudoElementList.h"
-    #undef CSS_PSEUDO_ELEMENT
-    AtomsCount
-  };
-
-  const nsICSSPseudoElement mAtoms[static_cast<size_t>(Atoms::AtomsCount)];
-};
-
-} // namespace detail
-
 } // namespace mozilla
 
 class nsCSSPseudoElements
@@ -120,8 +86,6 @@ class nsCSSPseudoElements
   typedef mozilla::CSSEnabledState EnabledState;
 
 public:
-  static void RegisterStaticAtoms();
-
   static bool IsPseudoElement(nsAtom *aAtom);
 
   static bool IsCSS2PseudoElement(nsAtom *aAtom);
@@ -134,14 +98,19 @@ public:
     return PseudoElementHasFlags(aType, CSS_PSEUDO_ELEMENT_IS_CSS2);
   }
 
-private:
-  static const nsStaticAtom* const sAtoms;
-  static constexpr size_t sAtomsLen =
-    static_cast<size_t>(mozilla::detail::CSSPseudoElementAtoms::Atoms::AtomsCount);
-
 public:
-  #define CSS_PSEUDO_ELEMENT(name_, value_, flags_) \
-    NS_STATIC_ATOM_DECL_PTR(nsICSSPseudoElement, name_);
+#ifdef DEBUG
+  static void AssertAtoms();
+#endif
+
+  // Alias nsCSSPseudoElements::foo() to alias nsGkAtoms::foo.
+  // XXX Once nsGkAtoms::foo become constexpr variables, these can too.
+  // See bug 1449787.
+  #define CSS_PSEUDO_ELEMENT(name_, value_, flags_)       \
+    static constexpr nsICSSPseudoElement* const& name_()  \
+    {                                                     \
+      return nsGkAtoms::PseudoElement_##name_;            \
+    }
   #include "nsCSSPseudoElementList.h"
   #undef CSS_PSEUDO_ELEMENT
 
@@ -202,16 +171,6 @@ public:
 
 private:
   // Does the given pseudo-element have all of the flags given?
-
-  // Work around https://gcc.gnu.org/bugzilla/show_bug.cgi?id=64037 ,
-  // which is a general gcc bug that we seem to have hit only on Android/x86.
-#if defined(ANDROID) && defined(__i386__) && defined(__GNUC__) && \
-    !defined(__clang__)
-#if (MOZ_GCC_VERSION_AT_LEAST(4,8,0) && MOZ_GCC_VERSION_AT_MOST(4,8,4)) || \
-    (MOZ_GCC_VERSION_AT_LEAST(4,9,0) && MOZ_GCC_VERSION_AT_MOST(4,9,2))
-   __attribute__((noinline))
-#endif
-#endif
   static bool PseudoElementHasFlags(const Type aType, uint32_t aFlags)
   {
     MOZ_ASSERT(aType < Type::Count);

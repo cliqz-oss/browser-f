@@ -34,7 +34,7 @@ download() {
 main() {
     mkdir -p $ARTIFACT_PATH
 
-    packages=("rustc.tar.bz2" "clang.tar.bz2" "redist.tar.bz2")
+    packages=("rustc.tar.bz2" "clang.tar.bz2" "redist.tar.bz2" "cbindgen.tar.bz2" "node.tar.bz2")
     for package in ${packages[@]}; do
         if [ ! -s "$ARTIFACT_PATH/$package" ]; then
             retry "download $package"

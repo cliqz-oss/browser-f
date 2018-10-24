@@ -228,7 +228,8 @@ public:
   MOZ_MUST_USE bool Init(nsIGlobalObject* aGlobalObject);
 
   // This is a helper that grabs the native global associated with aObject and
-  // invokes the above Init() with that.
+  // invokes the above Init() with that. aObject must not be a cross-compartment
+  // wrapper: CCWs are not associated with a single global.
   MOZ_MUST_USE bool Init(JSObject* aObject);
 
   // Unsurprisingly, this uses aCx and enters the compartment of aGlobalObject.
@@ -322,7 +323,10 @@ public:
                   const char *aReason,
                   bool aIsMainThread = NS_IsMainThread());
 
-  AutoEntryScript(JSObject* aObject, // Any object from the relevant global
+  // aObject can be any object from the relevant global. It must not be a
+  // cross-compartment wrapper because CCWs are not associated with a single
+  // global.
+  AutoEntryScript(JSObject* aObject,
                   const char *aReason,
                   bool aIsMainThread = NS_IsMainThread());
 
@@ -380,6 +384,9 @@ private:
 
   Maybe<DocshellEntryMonitor> mDocShellEntryMonitor;
   JS::AutoHideScriptedCaller mCallerOverride;
+#ifdef MOZ_GECKO_PROFILER
+  AutoProfilerLabel mAutoProfilerLabel;
+#endif
 };
 
 /*

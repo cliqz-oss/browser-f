@@ -59,8 +59,8 @@ add_task(async function test_setup() {
     set: [
       [TelemetryUtils.Preferences.OverridePreRelease, true],
       [TelemetryUtils.Preferences.HybridContentEnabled, true],
-      [TelemetryUtils.Preferences.LogLevel, "Trace"]
-    ]
+      [TelemetryUtils.Preferences.LogLevel, "Trace"],
+    ],
   });
   // And take care of the already initialized one as well.
   let canRecordExtended = Services.telemetry.canRecordExtended;
@@ -158,7 +158,7 @@ add_task(async function test_trusted_disabled_hybrid_telemetry() {
 
   // This test requires hybrid content telemetry to be disabled.
   await SpecialPowers.pushPrefEnv({
-    set: [[TelemetryUtils.Preferences.HybridContentEnabled, false]]
+    set: [[TelemetryUtils.Preferences.HybridContentEnabled, false]],
   });
 
   // Install a custom handler that intercepts hybrid content telemetry messages
@@ -339,7 +339,7 @@ add_task(async function test_hybrid_content_recording() {
 add_task(async function test_can_upload() {
   const testHost = "https://example.org";
 
-  await SpecialPowers.pushPrefEnv({set: [[TelemetryUtils.Preferences.FhrUploadEnabled, false]]});
+  await SpecialPowers.pushPrefEnv({set: [[TelemetryUtils.Preferences.FhrUploadEnabled, true]]});
 
   // Give the test host enough privileges to use the API and open the test page.
   let testHttpsUri = Services.io.newURI(testHost);
@@ -349,19 +349,23 @@ add_task(async function test_can_upload() {
   let newTab = await BrowserTestUtils.openNewForegroundTab(gBrowser, url);
 
   // Check that CanUpload reports the correct value.
-  await ContentTask.spawn(newTab.linkedBrowser, {}, () => {
+  await ContentTask.spawn(newTab.linkedBrowser, {}, async function() {
     let contentWin = Cu.waiveXrays(content);
+
+    await contentWin.Mozilla.ContentTelemetry.initPromise();
+
     // We don't need to pass any parameter, we can safely call Mozilla.ContentTelemetry.
     let canUpload = contentWin.Mozilla.ContentTelemetry.canUpload();
-    ok(!canUpload, "CanUpload must report 'false' if the preference has that value.");
+    ok(canUpload, "CanUpload must report 'true' if the preference has that value.");
   });
 
   // Flip the pref and check again.
-  await SpecialPowers.pushPrefEnv({set: [[TelemetryUtils.Preferences.FhrUploadEnabled, true]]});
-  await ContentTask.spawn(newTab.linkedBrowser, {}, () => {
+  await SpecialPowers.pushPrefEnv({set: [[TelemetryUtils.Preferences.FhrUploadEnabled, false]]});
+  await ContentTask.spawn(newTab.linkedBrowser, {}, async function() {
     let contentWin = Cu.waiveXrays(content);
+    await contentWin.Mozilla.ContentTelemetry.initPromise();
     let canUpload = contentWin.Mozilla.ContentTelemetry.canUpload();
-    ok(canUpload, "CanUpload must report 'true' if the preference has that value.");
+    ok(!canUpload, "CanUpload must report 'false' if the preference has that value.");
   });
 
   // Cleanup permissions and remove the tab.
@@ -376,4 +380,56 @@ add_task(async function test_hct_for_discopane() {
   let permission = Services.perms.testPermission(discoHttpsUri, HC_PERMISSION);
 
   ok(permission == Services.perms.ALLOW_ACTION, "Disco Pane needs Hybrid Content Permission for Telemetry data upload");
+});
+
+add_task(async function test_init_rejects() {
+  await SpecialPowers.pushPrefEnv({set: [[TelemetryUtils.Preferences.FhrUploadEnabled, true]]});
+
+  // Give the test host no privilege: init() will throw.
+  const testHostNoPrivilege = "https://example.org";
+  let url = getRootDirectory(gTestPath) + "hybrid_content.html";
+  url = url.replace("chrome://mochitests/content", testHostNoPrivilege);
+  let newTab = await BrowserTestUtils.openNewForegroundTab(gBrowser, url);
+
+  // Check that CanUpload reports false if we threw. We don't block on spawning
+  // the content task, as we want to spawn another tab that loads an URI with HCT
+  // privileges in order to make sure that init works ok there. We want both pages
+  // to load in parallel.
+  let page1Promise = ContentTask.spawn(newTab.linkedBrowser, {}, async function() {
+    let contentWin = Cu.waiveXrays(content);
+
+    await Assert.rejects(contentWin.Mozilla.ContentTelemetry.initPromise(),
+                         /Origin not trusted/,
+                         "The init promise must reject if the page has no HCT permission.");
+
+    // We don't need to pass any parameter, we can safely call Mozilla.ContentTelemetry.
+    let canUpload = contentWin.Mozilla.ContentTelemetry.canUpload();
+    ok(!canUpload, "CanUpload must report 'false' if init failed.");
+  });
+
+  // Give the test host HCT privileges and test that init doesn't throw.
+  const testHostPrivileges = "https://example.com";
+  let testUrlPrivileges = Services.io.newURI(testHostPrivileges);
+  Services.perms.add(testUrlPrivileges, HC_PERMISSION, Services.perms.ALLOW_ACTION);
+  let urlWithPrivs = getRootDirectory(gTestPath) + "hybrid_content.html";
+  urlWithPrivs = urlWithPrivs.replace("chrome://mochitests/content", testHostPrivileges);
+  let otherTab = await BrowserTestUtils.openNewForegroundTab(gBrowser, urlWithPrivs);
+
+  // Check that CanUpload reports the correct value.
+  let page2Promise = ContentTask.spawn(otherTab.linkedBrowser, {}, async function() {
+    let contentWin = Cu.waiveXrays(content);
+
+    await contentWin.Mozilla.ContentTelemetry.initPromise();
+
+    // We don't need to pass any parameter, we can safely call Mozilla.ContentTelemetry.
+    let canUpload = contentWin.Mozilla.ContentTelemetry.canUpload();
+    ok(canUpload, "CanUpload must report the expected value if init succeeded.");
+  });
+
+  await Promise.all([page1Promise, page2Promise]);
+
+  // Cleanup permissions and remove the tab.
+  BrowserTestUtils.removeTab(newTab);
+  BrowserTestUtils.removeTab(otherTab);
+  Services.perms.remove(testUrlPrivileges, HC_PERMISSION);
 });

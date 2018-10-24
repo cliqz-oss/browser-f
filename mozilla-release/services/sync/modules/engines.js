@@ -7,7 +7,7 @@ var EXPORTED_SYMBOLS = [
   "SyncEngine",
   "Tracker",
   "Store",
-  "Changeset"
+  "Changeset",
 ];
 
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
@@ -127,8 +127,9 @@ Tracker.prototype = {
 
   unignoreID(id) {
     let index = this._ignored.indexOf(id);
-    if (index != -1)
+    if (index != -1) {
       this._ignored.splice(index, 1);
+    }
   },
 
   async _saveChangedID(id, when) {
@@ -344,12 +345,13 @@ Store.prototype = {
    *        Record to apply
    */
   async applyIncoming(record) {
-    if (record.deleted)
+    if (record.deleted) {
       await this.remove(record);
-    else if (!(await this.itemExists(record.id)))
+    } else if (!(await this.itemExists(record.id))) {
       await this.create(record);
-    else
+    } else {
       await this.update(record);
+    }
   },
 
   // override these in derived objects
@@ -459,7 +461,7 @@ Store.prototype = {
    */
   async wipe() {
     throw new Error("override wipe in a subclass");
-  }
+  },
 };
 
 function EngineManager(service) {
@@ -491,14 +493,7 @@ EngineManager.prototype = {
       return engines;
     }
 
-    let engine = this._engines[name];
-    if (!engine) {
-      this._log.debug("Could not get engine: " + name);
-      if (Object.keys) {
-        this._log.debug("Engines are: " + JSON.stringify(Object.keys(this._engines)));
-      }
-    }
-    return engine;
+    return this._engines[name]; // Silently returns undefined for unknown names.
   },
 
   getAll() {
@@ -767,7 +762,7 @@ function SyncEngine(name, service) {
 SyncEngine.kRecoveryStrategy = {
   ignore: "ignore",
   retry:  "retry",
-  error:  "error"
+  error:  "error",
 };
 
 SyncEngine.prototype = {
@@ -1225,8 +1220,9 @@ SyncEngine.prototype = {
       guidColl.sort  = "oldest";
 
       let guids = await guidColl.get();
-      if (!guids.success)
+      if (!guids.success) {
         throw guids;
+      }
 
       // Filtering out already downloaded IDs here isn't necessary. We only do
       // that in case the Sync server doesn't support `older` (bug 1316110).
@@ -1465,10 +1461,11 @@ SyncEngine.prototype = {
 
   // Marks an ID for deletion at the end of the sync.
   _noteDeletedId(id) {
-    if (this._delete.ids == null)
+    if (this._delete.ids == null) {
       this._delete.ids = [id];
-    else
+    } else {
       this._delete.ids.push(id);
+    }
   },
 
   async _switchItemToDupe(localDupeGUID, incomingItem) {
@@ -1740,8 +1737,9 @@ SyncEngine.prototype = {
           } else {
             out = await this._createRecord(id);
           }
-          if (this._log.level <= Log.Level.Trace)
+          if (this._log.level <= Log.Level.Trace) {
             this._log.trace("Outgoing: " + out);
+          }
           await out.encrypt(this.service.collectionKeys.keyForCollection(this.name));
           ok = true;
         } catch (ex) {
@@ -1801,9 +1799,9 @@ SyncEngine.prototype = {
 
       this._log.trace("doing post-sync deletions", {key, val});
       // Send a simple delete for the property
-      if (key != "ids" || val.length <= 100)
+      if (key != "ids" || val.length <= 100) {
         await doDelete(key, val);
-      else {
+      } else {
         // For many ids, split into chunks of at most 100
         while (val.length > 0) {
           await doDelete(key, val.slice(0, 100));

@@ -36,7 +36,7 @@ WORKER_TYPES = {
     'aws-provisioner-v1/taskcluster-generic': ('docker-worker', 'linux'),
     'invalid/invalid': ('invalid', None),
     'invalid/always-optimized': ('always-optimized', None),
-    'releng-hardware/gecko-t-linux-talos': ('native-engine', 'linux'),
+    'releng-hardware/gecko-t-linux-talos-tw': ('native-engine', 'linux'),
     'scriptworker-prov-v1/balrog-dev': ('balrog', None),
     'scriptworker-prov-v1/balrogworker-v1': ('balrog', None),
     'scriptworker-prov-v1/beetmoverworker-v1': ('beetmover', None),
@@ -50,6 +50,7 @@ WORKER_TYPES = {
     'proj-autophone/gecko-t-ap-unit-g5': ('script-engine-autophone', 'linux'),
     'proj-autophone/gecko-t-ap-perf-p2': ('script-engine-autophone', 'linux'),
     'proj-autophone/gecko-t-ap-unit-p2': ('script-engine-autophone', 'linux'),
+    'terraform-packet/gecko-t-linux': ('docker-worker', 'linux'),
 }
 
 

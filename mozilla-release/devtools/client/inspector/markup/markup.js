@@ -65,6 +65,7 @@ function MarkupView(inspector, frame, controllerWindow) {
   EventEmitter.decorate(this);
 
   this.inspector = inspector;
+  this.highlighters = inspector.highlighters;
   this.walker = this.inspector.walker;
   this._frame = frame;
   this.win = this._frame.contentWindow;
@@ -82,7 +83,6 @@ function MarkupView(inspector, frame, controllerWindow) {
   // The popup will be attached to the toolbox document.
   this.popup = new AutocompletePopup(inspector.toolbox.doc, {
     autoSelect: true,
-    theme: "auto",
   });
 
   this.undo = new UndoStack();
@@ -631,7 +631,7 @@ MarkupView.prototype = {
    * Highlights the node if needed, and make sure it is shown and selected in
    * the view.
    */
-  _onNewSelection: function() {
+  _onNewSelection: function(nodeFront, reason) {
     const selection = this.inspector.selection;
 
     if (this.htmlEditor) {
@@ -656,20 +656,22 @@ MarkupView.prototype = {
     }
 
     const slotted = selection.isSlotted();
-    const onShow = this.showNode(selection.nodeFront, { slotted }).then(() => {
-      // We could be destroyed by now.
-      if (this._destroyer) {
-        return promise.reject("markupview destroyed");
-      }
+    const smoothScroll = reason === "reveal-from-slot";
+    const onShow = this.showNode(selection.nodeFront, { slotted, smoothScroll })
+      .then(() => {
+        // We could be destroyed by now.
+        if (this._destroyer) {
+          return promise.reject("markupview destroyed");
+        }
 
-      // Mark the node as selected.
-      const container = this.getContainer(selection.nodeFront, slotted);
-      this._markContainerAsSelected(container);
+        // Mark the node as selected.
+        const container = this.getContainer(selection.nodeFront, slotted);
+        this._markContainerAsSelected(container);
 
-      // Make sure the new selection is navigated to.
-      this.maybeNavigateToNewSelection();
-      return undefined;
-    }).catch(this._handleRejectionIfNotDestroyed);
+        // Make sure the new selection is navigated to.
+        this.maybeNavigateToNewSelection();
+        return undefined;
+      }).catch(this._handleRejectionIfNotDestroyed);
 
     promise.all([onShowBoxModel, onShow]).then(done);
   },
@@ -1089,11 +1091,20 @@ MarkupView.prototype = {
         continue;
       }
 
-      if (type === "attributes" || type === "characterData"
-        || type === "events" || type === "pseudoClassLock") {
+      if (
+        type === "attributes" ||
+        type === "characterData" ||
+        type === "customElementDefined" ||
+        type === "events" ||
+        type === "pseudoClassLock"
+      ) {
         container.update();
-      } else if (type === "childList" || type === "nativeAnonymousChildList"
-        || type === "slotchange") {
+      } else if (
+        type === "childList" ||
+        type === "nativeAnonymousChildList" ||
+        type === "slotchange" ||
+        type === "shadowRootAttached"
+      ) {
         container.childrenDirty = true;
         // Update the children to take care of changes in the markup view DOM
         // and update container (and its subtree) DOM tree depth level for
@@ -1194,7 +1205,7 @@ MarkupView.prototype = {
    * Make sure the given node's parents are expanded and the
    * node is scrolled on to screen.
    */
-  showNode: function(node, {centered = true, slotted} = {}) {
+  showNode: function(node, {centered = true, slotted, smoothScroll = false} = {}) {
     if (slotted && !this.hasContainer(node, slotted)) {
       throw new Error("Tried to show a slotted node not previously imported");
     } else {
@@ -1208,7 +1219,7 @@ MarkupView.prototype = {
       return this._ensureVisible(node);
     }).then(() => {
       const container = this.getContainer(node, slotted);
-      scrollIntoViewIfNeeded(container.editor.elt, centered);
+      scrollIntoViewIfNeeded(container.editor.elt, centered, smoothScroll);
     }, this._handleRejectionIfNotDestroyed);
   },
 
@@ -1217,7 +1228,7 @@ MarkupView.prototype = {
 
     this.importNode(node);
 
-    while ((parent = parent.parentNode())) {
+    while ((parent = this._getParentInTree(parent))) {
       this.importNode(parent);
       this.expandNode(parent);
     }
@@ -1625,7 +1636,7 @@ MarkupView.prototype = {
   _ensureVisible: function(node) {
     while (node) {
       const container = this.getContainer(node);
-      const parent = node.parentNode();
+      const parent = this._getParentInTree(node);
       if (!container.elt.parentNode) {
         const parentContainer = this.getContainer(parent);
         if (parentContainer) {
@@ -1660,11 +1671,11 @@ MarkupView.prototype = {
     let centered = null;
     let node = this.inspector.selection.nodeFront;
     while (node) {
-      if (node.parentNode() === container.node) {
+      if (this._getParentInTree(node) === container.node) {
         centered = node;
         break;
       }
-      node = node.parentNode();
+      node = this._getParentInTree(node);
     }
 
     return centered;
@@ -1859,6 +1870,18 @@ MarkupView.prototype = {
   },
 
   /**
+   * The parent of a given node as rendered in the markup view is not necessarily
+   * node.parentNode(). For instance, shadow roots don't have a parentNode, but a host
+   * element. However they are represented as parent and children in the markup view.
+   *
+   * Use this method when you are interested in the parent of a node from the perspective
+   * of the markup-view tree, and not from the perspective of the actual DOM.
+   */
+  _getParentInTree: function(node) {
+    return node.parentOrHost();
+  },
+
+  /**
    * Tear down the markup panel.
    */
   destroy: function() {
@@ -1915,6 +1938,7 @@ MarkupView.prototype = {
     this.imagePreviewTooltip = null;
 
     this.doc = null;
+    this.highlighters = null;
     this.win = null;
 
     this._lastDropTarget = null;

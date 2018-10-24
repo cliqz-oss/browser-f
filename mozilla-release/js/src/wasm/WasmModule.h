@@ -43,8 +43,6 @@ struct CompileArgs;
 
 struct LinkDataTierCacheablePod
 {
-    uint32_t outOfBoundsOffset = 0;
-    uint32_t unalignedAccessOffset = 0;
     uint32_t trapOffset = 0;
 
     LinkDataTierCacheablePod() = default;
@@ -95,23 +93,6 @@ class LinkData
     WASM_DECLARE_SERIALIZABLE(LinkData)
 };
 
-// Contains the locked tiering state of a Module: whether there is an active
-// background tier-2 compilation in progress and, if so, the list of listeners
-// waiting for the tier-2 compilation to complete.
-
-struct Tiering
-{
-    typedef Vector<RefPtr<JS::WasmModuleListener>, 0, SystemAllocPolicy> ListenerVector;
-
-    Tiering() : active(false) {}
-    ~Tiering() { MOZ_ASSERT(listeners.empty()); MOZ_ASSERT(!active); }
-
-    ListenerVector listeners;
-    bool active;
-};
-
-typedef ExclusiveWaitableData<Tiering> ExclusiveTiering;
-
 // Module represents a compiled wasm module and primarily provides two
 // operations: instantiation and serialization. A Module can be instantiated any
 // number of times to produce new Instance objects. A Module can be serialized
@@ -137,7 +118,11 @@ class Module : public JS::WasmModule
     const ElemSegmentVector elemSegments_;
     const StructTypeVector  structTypes_;
     const SharedBytes       bytecode_;
-    ExclusiveTiering        tiering_;
+
+    // This flag is only used for testing purposes and is racily updated as soon
+    // as tier-2 compilation finishes (in success or failure).
+
+    mutable Atomic<bool>    testingTier2Active_;
 
     // `codeIsBusy_` is set to false initially and then to true when `code_` is
     // already being used for an instance and can't be shared because it may be
@@ -151,16 +136,15 @@ class Module : public JS::WasmModule
     bool instantiateTable(JSContext* cx,
                           MutableHandleWasmTableObject table,
                           SharedTableVector* tables) const;
-    bool instantiateGlobals(JSContext* cx, const ValVector& globalImportValues,
+    bool instantiateGlobals(JSContext* cx, HandleValVector globalImportValues,
                             WasmGlobalObjectVector& globalObjs) const;
     bool initSegments(JSContext* cx,
                       HandleWasmInstanceObject instance,
                       Handle<FunctionVector> funcImports,
                       HandleWasmMemoryObject memory,
-                      const ValVector& globalImportValues) const;
+                      HandleValVector globalImportValues) const;
 
     class Tier2GeneratorTaskImpl;
-    void notifyCompilationListeners();
 
   public:
     Module(Assumptions&& assumptions,
@@ -183,7 +167,7 @@ class Module : public JS::WasmModule
         elemSegments_(std::move(elemSegments)),
         structTypes_(std::move(structTypes)),
         bytecode_(&bytecode),
-        tiering_(mutexid::WasmModuleTieringLock),
+        testingTier2Active_(false),
         codeIsBusy_(false)
     {
         MOZ_ASSERT_IF(metadata().debugEnabled, unlinkedCodeForDebugging_);
@@ -207,35 +191,36 @@ class Module : public JS::WasmModule
                      Handle<FunctionVector> funcImports,
                      HandleWasmTableObject tableImport,
                      HandleWasmMemoryObject memoryImport,
-                     const ValVector& globalImportValues,
+                     HandleValVector globalImportValues,
                      WasmGlobalObjectVector& globalObjs,
                      HandleObject instanceProto,
                      MutableHandleWasmInstanceObject instanceObj) const;
 
     // Tier-2 compilation may be initiated after the Module is constructed at
-    // most once, ideally before any client can attempt to serialize the Module.
-    // When tier-2 compilation completes, ModuleGenerator calls finishTier2()
-    // from a helper thread, passing tier-variant data which will be installed
-    // and made visible.
+    // most once. When tier-2 compilation completes, ModuleGenerator calls
+    // finishTier2() from a helper thread, passing tier-variant data which will
+    // be installed and made visible.
 
     void startTier2(const CompileArgs& args);
     bool finishTier2(UniqueLinkDataTier linkData2, UniqueCodeTier tier2, ModuleEnvironment* env2);
-    void blockOnTier2Complete() const;
 
-    // JS API and JS::WasmModule implementation:
+    void testingBlockOnTier2Complete() const;
+    bool testingTier2Active() const { return testingTier2Active_; }
 
-    size_t bytecodeSerializedSize() const override;
-    void bytecodeSerialize(uint8_t* bytecodeBegin, size_t bytecodeSize) const override;
-    bool compilationComplete() const override;
-    bool notifyWhenCompilationComplete(JS::WasmModuleListener* listener) override;
-    size_t compiledSerializedSize() const override;
-    void compiledSerialize(uint8_t* compiledBegin, size_t compiledSize) const override;
+    // Currently dead, but will be ressurrected with shell tests (bug 1330661)
+    // and HTTP cache integration.
+
+    size_t compiledSerializedSize() const;
+    void compiledSerialize(uint8_t* compiledBegin, size_t compiledSize) const;
 
     static bool assumptionsMatch(const Assumptions& current, const uint8_t* compiledBegin,
                                  size_t remain);
     static RefPtr<Module> deserialize(const uint8_t* bytecodeBegin, size_t bytecodeSize,
                                       const uint8_t* compiledBegin, size_t compiledSize,
                                       Metadata* maybeMetadata = nullptr);
+
+    // JS API and JS::WasmModule implementation:
+
     JSObject* createObject(JSContext* cx) override;
 
     // about:memory reporting:
@@ -255,12 +240,9 @@ typedef RefPtr<Module> SharedModule;
 
 // JS API implementations:
 
-bool
-CompiledModuleAssumptionsMatch(PRFileDesc* compiled, JS::BuildIdCharVector&& buildId);
-
 SharedModule
-DeserializeModule(PRFileDesc* bytecode, PRFileDesc* maybeCompiled, JS::BuildIdCharVector&& buildId,
-                  UniqueChars filename, unsigned line);
+DeserializeModule(PRFileDesc* bytecode, JS::BuildIdCharVector&& buildId, UniqueChars filename,
+                  unsigned line);
 
 } // namespace wasm
 } // namespace js

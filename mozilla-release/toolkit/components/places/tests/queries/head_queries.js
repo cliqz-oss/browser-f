@@ -48,7 +48,7 @@ async function task_populateDB(aArray) {
           transition: qdata.transType,
           visitDate: qdata.lastVisit,
           referrer: qdata.referrer ? uri(qdata.referrer) : null,
-          title: qdata.title
+          title: qdata.title,
         });
         if (qdata.visitCount && !qdata.isDetails) {
           // Set a fake visit_count, this is not a real count but can be used
@@ -87,7 +87,7 @@ async function task_populateDB(aArray) {
         await PlacesTestUtils.addVisits({
           uri: uri(qdata.uri),
           visitDate: qdata.lastVisit,
-          title: qdata.title
+          title: qdata.title,
         });
       }
 
@@ -96,16 +96,13 @@ async function task_populateDB(aArray) {
       }
 
       if (qdata.isPageAnnotation) {
-        if (qdata.removeAnnotation)
-          PlacesUtils.annotations.removePageAnnotation(uri(qdata.uri),
-                                                       qdata.annoName);
-        else {
-          PlacesUtils.annotations.setPageAnnotation(uri(qdata.uri),
-                                                    qdata.annoName,
-                                                    qdata.annoVal,
-                                                    qdata.annoFlags,
-                                                    qdata.annoExpiration);
-        }
+        await PlacesUtils.history.update({
+          url: qdata.uri,
+          annotations: new Map([[
+            qdata.annoName,
+            qdata.removeAnnotation ? null : qdata.annoVal,
+          ]]),
+        });
       }
 
       if (qdata.isItemAnnotation) {
@@ -116,8 +113,8 @@ async function task_populateDB(aArray) {
           PlacesUtils.annotations.setItemAnnotation(qdata.itemId,
                                                     qdata.annoName,
                                                     qdata.annoVal,
-                                                    qdata.annoFlags,
-                                                    qdata.annoExpiration);
+                                                    0,
+                                                    PlacesUtils.annotations.EXPIRE_NEVER);
         }
       }
 
@@ -126,7 +123,7 @@ async function task_populateDB(aArray) {
           parentGuid: qdata.parentGuid,
           type: PlacesUtils.bookmarks.TYPE_FOLDER,
           title: qdata.title,
-          index: qdata.index
+          index: qdata.index,
         });
       }
 
@@ -135,7 +132,7 @@ async function task_populateDB(aArray) {
                                                   parentId: (await PlacesUtils.promiseItemId(qdata.parentGuid)),
                                                   index: qdata.index,
                                                   feedURI: uri(qdata.feedURI),
-                                                  siteURI: uri(qdata.uri)
+                                                  siteURI: uri(qdata.uri),
                                                 });
       }
 
@@ -144,7 +141,7 @@ async function task_populateDB(aArray) {
           parentGuid: qdata.parentGuid,
           index: qdata.index,
           title: qdata.title,
-          url: qdata.uri
+          url: qdata.uri,
         };
 
         if (qdata.dateAdded) {
@@ -171,7 +168,7 @@ async function task_populateDB(aArray) {
         await PlacesUtils.bookmarks.insert({
           parentGuid: qdata.parentGuid,
           type: PlacesUtils.bookmarks.TYPE_SEPARATOR,
-          index: qdata.index
+          index: qdata.index,
         });
       }
     } catch (ex) {
@@ -209,8 +206,6 @@ function queryData(obj) {
   this.removeAnnotation = !!obj.removeAnnotation;
   this.annoName = obj.annoName ? obj.annoName : "";
   this.annoVal = obj.annoVal ? obj.annoVal : "";
-  this.annoFlags = obj.annoFlags ? obj.annoFlags : 0;
-  this.annoExpiration = obj.annoExpiration ? obj.annoExpiration : 0;
   this.isItemAnnotation = obj.isItemAnnotation ? obj.isItemAnnotation : false;
   this.itemId = obj.itemId ? obj.itemId : 0;
   this.annoMimeType = obj.annoMimeType ? obj.annoMimeType : "";

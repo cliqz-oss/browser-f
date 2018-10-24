@@ -14,7 +14,7 @@
 
 namespace mozilla {
 
-using namespace dom::SVGPathSegBinding;
+using namespace dom::SVGPathSeg_Binding;
 
 // We could use NS_IMPL_CYCLE_COLLECTION(, except that in Unlink() we need to
 // clear our list's weak ref to us to be safe. (The other option would be to
@@ -376,7 +376,7 @@ DOMSVGPathSeg::CreateFor(DOMSVGPathSegList *aList,
   case PATHSEG_CURVETO_QUADRATIC_SMOOTH_REL:
     return new DOMSVGPathSegCurvetoQuadraticSmoothRel(aList, aListIndex, aIsAnimValItem);
   default:
-    NS_NOTREACHED("Invalid path segment type");
+    MOZ_ASSERT_UNREACHABLE("Invalid path segment type");
     return nullptr;
   }
 }

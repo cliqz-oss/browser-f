@@ -367,7 +367,7 @@ NS_IMETHODIMP
 nsNSSCertificate::GetEmailAddress(nsAString& aEmailAddress)
 {
   if (mCert->emailAddr) {
-    LossyUTF8ToUTF16(mCert->emailAddr, strlen(mCert->emailAddr), aEmailAddress);
+    CopyUTF8toUTF16(MakeStringSpan(mCert->emailAddr), aEmailAddress);
   } else {
     GetPIPNSSBundleString("CertNoEmailAddress", aEmailAddress);
   }
@@ -389,9 +389,6 @@ nsNSSCertificate::GetEmailAddresses(uint32_t* aLength, char16_t*** aAddresses)
   }
 
   *aAddresses = (char16_t**) moz_xmalloc(sizeof(char16_t*) * (*aLength));
-  if (!*aAddresses) {
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
 
   uint32_t iAddr = 0;
   for (const char* aAddr = CERT_GetFirstEmailAddress(mCert.get());
@@ -715,11 +712,9 @@ nsNSSCertificate::GetRawDER(uint32_t* aLength, uint8_t** aArray)
 {
   if (mCert) {
     *aArray = (uint8_t*)moz_xmalloc(mCert->derCert.len);
-    if (*aArray) {
-      memcpy(*aArray, mCert->derCert.data, mCert->derCert.len);
-      *aLength = mCert->derCert.len;
-      return NS_OK;
-    }
+    memcpy(*aArray, mCert->derCert.data, mCert->derCert.len);
+    *aLength = mCert->derCert.len;
+    return NS_OK;
   }
   *aLength = 0;
   return NS_ERROR_FAILURE;
@@ -837,6 +832,10 @@ nsNSSCertList::GetCertList()
 NS_IMETHODIMP
 nsNSSCertList::AddCert(nsIX509Cert* aCert)
 {
+  if (!aCert) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
   // We need an owning handle when calling nsIX509Cert::GetCert().
   UniqueCERTCertificate cert(aCert->GetCert());
   if (!cert) {
@@ -1025,17 +1024,19 @@ nsNSSCertList::Read(nsIObjectInputStream* aStream)
     nsCOMPtr<nsISupports> certSupports;
     rv = aStream->ReadObject(true, getter_AddRefs(certSupports));
     if (NS_FAILED(rv)) {
-      break;
+      return rv;
     }
-
     nsCOMPtr<nsIX509Cert> cert = do_QueryInterface(certSupports);
+    if (!cert) {
+      return NS_ERROR_UNEXPECTED;
+    }
     rv = AddCert(cert);
     if (NS_FAILED(rv)) {
-      break;
+      return rv;
     }
   }
 
-  return rv;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -1220,8 +1221,6 @@ nsNSSCertList::GetRootCertificate(/* out */ nsCOMPtr<nsIX509Cert>& aRoot)
   return NS_OK;
 }
 
-NS_IMPL_ISUPPORTS(nsNSSCertListEnumerator, nsISimpleEnumerator)
-
 nsNSSCertListEnumerator::nsNSSCertListEnumerator(
   const UniqueCERTCertList& certList)
 {
@@ -1339,8 +1338,6 @@ NS_IMETHODIMP
 nsNSSCertificate::GetClassID(nsCID** aClassID)
 {
   *aClassID = (nsCID*) moz_xmalloc(sizeof(nsCID));
-  if (!*aClassID)
-    return NS_ERROR_OUT_OF_MEMORY;
   return GetClassIDNoAlloc(*aClassID);
 }
 

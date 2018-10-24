@@ -37,7 +37,7 @@ add_task(async function test_show_error_on_addresschange() {
     }, PTU.ContentTasks.awaitPaymentRequestEventPromise);
 
     await spawnPaymentDialogTask(frame, expectedText => {
-      let errorText = content.document.querySelector("#error-text");
+      let errorText = content.document.querySelector("header .page-error");
       is(errorText.textContent, expectedText, "Error text should be on dialog");
       ok(content.isVisible(errorText), "Error text should be visible");
     }, PTU.Details.genericShippingError.error);
@@ -59,7 +59,7 @@ add_task(async function test_show_error_on_addresschange() {
     }, PTU.ContentTasks.awaitPaymentRequestEventPromise);
 
     await spawnPaymentDialogTask(frame, () => {
-      let errorText = content.document.querySelector("#error-text");
+      let errorText = content.document.querySelector("header .page-error");
       is(errorText.textContent, "", "Error text should not be on dialog");
       ok(content.isHidden(errorText), "Error text should not be visible");
     });
@@ -92,6 +92,7 @@ add_task(async function test_show_field_specific_error_on_addresschange() {
       eventName: "shippingaddresschange",
       details: Object.assign({},
                              PTU.Details.fieldSpecificErrors,
+                             PTU.Details.noShippingOptions,
                              PTU.Details.total2USD),
     }, PTU.ContentTasks.updateWith);
 
@@ -111,7 +112,7 @@ add_task(async function test_show_field_specific_error_on_addresschange() {
         return Object.keys(state.request.paymentDetails.shippingAddressErrors).length;
       }, "Check that there are shippingAddressErrors");
 
-      is(content.document.querySelector("#error-text").textContent,
+      is(content.document.querySelector("header .page-error").textContent,
          PTU.Details.fieldSpecificErrors.error,
          "Error text should be present on dialog");
 
@@ -130,7 +131,7 @@ add_task(async function test_show_field_specific_error_on_addresschange() {
       let errorFieldMap =
         Cu.waiveXrays(content.document.querySelector("address-form"))._errorFieldMap;
       for (let [errorName, errorValue] of Object.entries(shippingAddressErrors)) {
-        let field = content.document.querySelector(errorFieldMap[errorName]);
+        let field = content.document.querySelector(errorFieldMap[errorName] + "-container");
         try {
           is(field.querySelector(".error-text").textContent, errorValue,
              "Field specific error should be associated with " + errorName);
@@ -153,6 +154,20 @@ add_task(async function test_show_field_specific_error_on_addresschange() {
         PaymentTestUtils: PTU,
       } = ChromeUtils.import("resource://testing-common/PaymentTestUtils.jsm", {});
 
+      // TODO: bug 1482808 - Clear setCustomValidity from merchant errors since
+      // they don't currently ever get cleared.
+      for (let field of content.document.querySelector("address-form form").elements) {
+        if (!field.validity.customError) {
+          continue;
+        }
+        field.setCustomValidity("");
+        todo(false, `Clearing custom validity on #${field.id}`);
+      }
+
+      Cu.waiveXrays(content.document.querySelector("address-form")).updateSaveButtonState();
+
+      // End bug 1482808 TODO
+
       info("saving corrections");
       content.document.querySelector("address-form .save-button").click();
 
@@ -164,7 +179,7 @@ add_task(async function test_show_field_specific_error_on_addresschange() {
         return !Object.keys(state.request.paymentDetails.shippingAddressErrors).length;
       }, "Check that there are no more shippingAddressErrors");
 
-      is(content.document.querySelector("#error-text").textContent,
+      is(content.document.querySelector("header .page-error").textContent,
          "", "Error text should not be present on dialog");
 
       info("click the Edit link again");
@@ -194,4 +209,4 @@ add_task(async function test_show_field_specific_error_on_addresschange() {
 
     await BrowserTestUtils.waitForCondition(() => win.closed, "dialog should be closed");
   });
-}).skip();
+});

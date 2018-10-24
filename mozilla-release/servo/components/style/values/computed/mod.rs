@@ -43,7 +43,8 @@ pub use self::font::{FontFamily, FontLanguageOverride, FontStyle, FontVariantEas
 pub use self::font::{FontFeatureSettings, FontVariantLigatures, FontVariantNumeric};
 pub use self::font::{MozScriptLevel, MozScriptMinSize, MozScriptSizeMultiplier, XLang, XTextZoom};
 pub use self::box_::{AnimationIterationCount, AnimationName, Contain, Display, TransitionProperty};
-pub use self::box_::{OverflowClipBox, OverscrollBehavior, Perspective};
+pub use self::box_::{Appearance, Clear, Float};
+pub use self::box_::{OverflowClipBox, OverscrollBehavior, Perspective, Resize};
 pub use self::box_::{ScrollSnapType, TouchAction, VerticalAlign, WillChange};
 pub use self::color::{Color, ColorPropertyValue, RGBAColor};
 pub use self::column::ColumnCount;
@@ -51,7 +52,6 @@ pub use self::counters::{Content, ContentItem, CounterIncrement, CounterReset};
 pub use self::effects::{BoxShadow, Filter, SimpleShadow};
 pub use self::flex::FlexBasis;
 pub use self::image::{Gradient, GradientItem, Image, ImageLayer, LineDirection, MozImageRect};
-pub use self::inherited_box::{ImageOrientation, Orientation};
 #[cfg(feature = "gecko")]
 pub use self::gecko::ScrollSnapPoint;
 pub use self::rect::LengthOrNumberRect;
@@ -65,6 +65,7 @@ pub use self::length::{NonNegativeLengthOrPercentage, NonNegativeLengthOrPercent
 pub use self::list::Quotes;
 #[cfg(feature = "gecko")]
 pub use self::list::ListStyleType;
+pub use self::motion::OffsetPath;
 pub use self::outline::OutlineStyle;
 pub use self::percentage::{Percentage, NonNegativePercentage};
 pub use self::position::{GridAutoFlow, GridTemplateAreas, Position, ZIndex};
@@ -98,9 +99,9 @@ pub mod font;
 #[cfg(feature = "gecko")]
 pub mod gecko;
 pub mod image;
-pub mod inherited_box;
 pub mod length;
 pub mod list;
+pub mod motion;
 pub mod outline;
 pub mod percentage;
 pub mod position;

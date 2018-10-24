@@ -61,7 +61,8 @@ SERVO_BINDING_FUNC(Servo_StyleSheet_FromUTF8Bytes,
                    RawGeckoURLExtraData* extra_data,
                    uint32_t line_number_offset,
                    nsCompatibility quirks_mode,
-                   mozilla::css::LoaderReusableStyleSheets* reusable_sheets)
+                   mozilla::css::LoaderReusableStyleSheets* reusable_sheets,
+                   StyleUseCountersBorrowedOrNull use_counters)
 SERVO_BINDING_FUNC(Servo_StyleSheet_FromUTF8BytesAsync,
                    void,
                    mozilla::css::SheetLoadDataHolder* load_data,
@@ -69,7 +70,8 @@ SERVO_BINDING_FUNC(Servo_StyleSheet_FromUTF8BytesAsync,
                    const nsACString* bytes,
                    mozilla::css::SheetParsingMode parsing_mode,
                    uint32_t line_number_offset,
-                   nsCompatibility quirks_mode)
+                   nsCompatibility quirks_mode,
+                   bool should_record_use_counters)
 SERVO_BINDING_FUNC(Servo_StyleSheet_Empty, RawServoStyleSheetContentsStrong,
                    mozilla::css::SheetParsingMode parsing_mode)
 SERVO_BINDING_FUNC(Servo_StyleSheet_HasRules, bool,
@@ -136,6 +138,7 @@ SERVO_BINDING_FUNC(Servo_StyleSet_NoteStyleSheetsChanged, void,
 SERVO_BINDING_FUNC(Servo_StyleSet_GetKeyframesForName, bool,
                    RawServoStyleSetBorrowed set,
                    RawGeckoElementBorrowed element,
+                   ComputedStyleBorrowed style,
                    nsAtom* name,
                    nsTimingFunctionBorrowed timing_function,
                    RawGeckoKeyframeListBorrowedMut keyframe_list)
@@ -680,6 +683,10 @@ SERVO_BINDING_FUNC(Servo_MediaList_AppendMedium, void,
                    RawServoMediaListBorrowed list, const nsACString* new_medium)
 SERVO_BINDING_FUNC(Servo_MediaList_DeleteMedium, bool,
                    RawServoMediaListBorrowed list, const nsACString* old_medium)
+SERVO_BINDING_FUNC(Servo_MediaList_SizeOfIncludingThis, size_t,
+                   mozilla::MallocSizeOf malloc_size_of,
+                   mozilla::MallocSizeOf malloc_enclosing_size_of,
+                   RawServoMediaListBorrowed list)
 
 // CSS supports()
 SERVO_BINDING_FUNC(Servo_CSSSupports2, bool,
@@ -880,6 +887,17 @@ SERVO_BINDING_FUNC(Servo_ParseFontShorthandForMatching, bool,
                    nsCSSValueBorrowedMut stretch,
                    nsCSSValueBorrowedMut weight);
 
+SERVO_BINDING_FUNC(Servo_ResolveLogicalProperty,
+                   nsCSSPropertyID,
+                   nsCSSPropertyID,
+                   ComputedStyleBorrowed);
+SERVO_BINDING_FUNC(Servo_Property_LookupEnabledForAllContent,
+                   nsCSSPropertyID,
+                   const nsACString* name);
+SERVO_BINDING_FUNC(Servo_Property_GetName,
+                   const uint8_t*,
+                   nsCSSPropertyID,
+                   uint32_t* out_length);
 SERVO_BINDING_FUNC(Servo_Property_IsShorthand, bool,
                    const nsACString* name, bool* found);
 SERVO_BINDING_FUNC(Servo_Property_IsInherited, bool,
@@ -890,6 +908,15 @@ SERVO_BINDING_FUNC(Servo_Property_GetCSSValuesForProperty, void,
                    const nsACString* name, bool* found, nsTArray<nsString>* result)
 SERVO_BINDING_FUNC(Servo_PseudoClass_GetStates, uint64_t,
                    const nsACString* name)
+SERVO_BINDING_FUNC(Servo_UseCounters_Create, StyleUseCounters*)
+SERVO_BINDING_FUNC(Servo_UseCounters_Drop, void, StyleUseCountersOwned)
+SERVO_BINDING_FUNC(Servo_UseCounters_Merge, void,
+                   StyleUseCountersBorrowed doc_counters,
+                   StyleUseCountersBorrowed sheet_counters)
+SERVO_BINDING_FUNC(Servo_IsCssPropertyRecordedInUseCounter, bool,
+                   StyleUseCountersBorrowed,
+                   const nsACString* property,
+                   bool* out_known_prop)
 
 // AddRef / Release functions
 #define SERVO_ARC_TYPE(name_, type_)                                \

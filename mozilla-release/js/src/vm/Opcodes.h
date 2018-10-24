@@ -13,6 +13,8 @@
 #include <stddef.h>
 
 /*
+ * [SMDOC] Bytecode Definitions
+ *
  * JavaScript operation bytecodes.  Add a new bytecode by claiming one of the
  * JSOP_UNUSED* here or by extracting the first unused opcode from
  * FOR_EACH_TRAILING_UNUSED_OPCODE and updating js::detail::LastDefinedOpcode
@@ -536,7 +538,7 @@
     macro(JSOP_GETELEM,   55, "getelem",    NULL,         1,  2,  1, JOF_BYTE |JOF_ELEM|JOF_TYPESET|JOF_LEFTASSOC) \
     /*
      * Pops the top three values on the stack as 'val', 'propval' and 'obj',
-     * sets 'propval' property of 'obj' as 'val', pushes 'obj' onto the
+     * sets 'propval' property of 'obj' as 'val', pushes 'val' onto the
      * stack.
      *   Category: Literals
      *   Type: Object
@@ -546,7 +548,7 @@
     macro(JSOP_SETELEM,   56, "setelem",    NULL,         1,  3,  1, JOF_BYTE |JOF_ELEM|JOF_PROPSET|JOF_DETECTING|JOF_CHECKSLOPPY) \
     /*
      * Pops the top three values on the stack as 'val', 'propval' and 'obj',
-     * sets 'propval' property of 'obj' as 'val', pushes 'obj' onto the
+     * sets 'propval' property of 'obj' as 'val', pushes 'val' onto the
      * stack. Throws a TypeError if the set fails, per strict mode
      * semantics.
      *   Category: Literals
@@ -651,8 +653,8 @@
     \
     /*
      * Pops the top of stack value as 'i', if 'low <= i <= high',
-     * jumps to a 32-bit offset: 'offset[i - low]' from the current bytecode,
-     * jumps to a 32-bit offset: 'len' from the current bytecode if not.
+     * jumps to a 32-bit offset: 'offset[i - low]' from the current bytecode, unless the offset is zero (missing case)
+     * jumps to a 32-bit offset: 'len' from the current bytecode otherwise
      *
      * This opcode has variable length.
      *   Category: Statements
@@ -838,14 +840,11 @@
     /*
      * Pushes newly created object onto the stack.
      *
-     * This opcode takes the kind of initializer (JSProto_Array or
-     * JSProto_Object).
-     *
-     * This opcode has three extra bytes so it can be exchanged with
+     * This opcode has four extra bytes so it can be exchanged with
      * JSOP_NEWOBJECT during emit.
      *   Category: Literals
      *   Type: Object
-     *   Operands: uint8_t kind (, uint24_t extra)
+     *   Operands: (uint32_t extra)
      *   Stack: => obj
      */ \
     macro(JSOP_NEWINIT,   89, "newinit",    NULL,         5,  0,  1, JOF_UINT8) \
@@ -1279,7 +1278,7 @@
      *   Category: Literals
      *   Type: Object
      *   Operands:
-     *   Stack: propval, receiver, obj => obj[propval]
+     *   Stack: receiver, propval, obj => obj[propval]
      */ \
     macro(JSOP_GETELEM_SUPER, 125, "getelem-super", NULL, 1,  3,  1, JOF_BYTE|JOF_ELEM|JOF_TYPESET|JOF_LEFTASSOC) \
     macro(JSOP_UNUSED126, 126, "unused126", NULL, 5,  0,  1, JOF_UINT32) \
@@ -1453,7 +1452,7 @@
      * Pushes a JS_UNINITIALIZED_LEXICAL value onto the stack, representing an
      * uninitialized lexical binding.
      *
-     * This opcode is used with the JSOP_INITLET opcode.
+     * This opcode is used with the JSOP_INITLEXICAL opcode.
      *   Category: Literals
      *   Type: Constants
      *   Operands:
@@ -1637,7 +1636,7 @@
      *   Category: Literals
      *   Type: Object
      *   Operands:
-     *   Stack: propval, receiver, obj, val => val
+     *   Stack: receiver, propval, obj, val => val
      */ \
     macro(JSOP_SETELEM_SUPER,   158, "setelem-super", NULL, 1,  4,  1, JOF_BYTE |JOF_ELEM|JOF_PROPSET|JOF_DETECTING|JOF_CHECKSLOPPY) \
     /*
@@ -1646,7 +1645,7 @@
      *   Category: Literals
      *   Type: Object
      *   Operands:
-     *   Stack: propval, receiver, obj, val => val
+     *   Stack: receiver, propval, obj, val => val
      */ \
     macro(JSOP_STRICTSETELEM_SUPER, 159, "strict-setelem-super", NULL, 1,  4, 1, JOF_BYTE |JOF_ELEM|JOF_PROPSET|JOF_DETECTING|JOF_CHECKSTRICT) \
     \
@@ -2023,7 +2022,7 @@
     /* Lexical environment support. */ \
     /*
      * Replaces the current block on the env chain with a fresh block
-     * that copies all the bindings in the bock.  This operation implements the
+     * that copies all the bindings in the block.  This operation implements the
      * behavior of inducing a fresh lexical environment for every iteration of a
      * for(let ...; ...; ...) loop, if any declarations induced by such a loop
      * are captured within the loop.
@@ -2266,7 +2265,18 @@
      *   Stack: val => val
      */ \
     macro(JSOP_ITERNEXT,      222, "iternext",   NULL,  1,  1,  1,  JOF_BYTE) \
-    macro(JSOP_UNUSED223,     223, "unused223",  NULL,  1,  0,  0,  JOF_BYTE) \
+    /*
+     * Pops the top of stack value as 'value', checks if the await for 'value'
+     * can be skipped.
+     * If the await operation can be skipped and the resolution value for
+     * 'value' can be acquired, pushes the resolution value and 'true' onto the
+     * stack.  Otherwise, pushes 'value' and 'false' on the stack.
+     *   Category: Statements
+     *   Type: Function
+     *   Operands:
+     *   Stack: value => value_or_resolved, canskip
+     */ \
+    macro(JSOP_TRYSKIPAWAIT,  223,"tryskipawait",  NULL,  1,  1,  2,  JOF_BYTE) \
     \
     /*
      * Creates rest parameter array for current function call, and pushes it

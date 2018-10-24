@@ -312,8 +312,9 @@ txEXSLTFunctionCall::evaluate(txIEvalContext *aContext,
             rv = aContext->recycler()->getStringResult(getter_AddRefs(strRes));
             NS_ENSURE_SUCCESS(rv, rv);
 
-            AppendASCIItoUTF16(sTypes[exprResult->getResultType()],
-                               strRes->mValue);
+            AppendASCIItoUTF16(
+              MakeStringSpan(sTypes[exprResult->getResultType()]),
+              strRes->mValue);
 
             NS_ADDREF(*aResult = strRes);
 
@@ -679,7 +680,7 @@ txEXSLTFunctionCall::evaluate(txIEvalContext *aContext,
         }
     }
 
-    NS_NOTREACHED("Missing return?");
+    MOZ_ASSERT_UNREACHABLE("Missing return?");
     return NS_ERROR_UNEXPECTED;
 }
 
@@ -794,7 +795,7 @@ txEXSLTRegExFunctionCall::evaluate(txIEvalContext* aContext,
         }
     }
 
-    NS_NOTREACHED("Missing return?");
+    MOZ_ASSERT_UNREACHABLE("Missing return?");
     return NS_ERROR_UNEXPECTED;
 }
 

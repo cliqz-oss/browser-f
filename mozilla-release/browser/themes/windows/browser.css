@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-@import url("chrome://global/skin/");
-
 @namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
 @namespace html url("http://www.w3.org/1999/xhtml");
 
@@ -133,11 +131,11 @@
 }
 
 #navigator-toolbox,
-#navigator-toolbox > toolbar {
+.browser-toolbar {
   -moz-appearance: none;
 }
 
-#navigator-toolbox > toolbar:not(#toolbar-menubar):not(#TabsToolbar) {
+.browser-toolbar:not(.titlebar-color) {
   background-color: var(--toolbar-bgcolor);
   background-image: var(--toolbar-bgimage);
   background-clip: padding-box;
@@ -404,8 +402,6 @@ menuitem.bookmark-item {
 #restore-button,
 #close-button {
   -moz-appearance: none;
-  border: none;
-  margin: 0 !important;
   padding: 6px 12px;
   -moz-context-properties: stroke;
   stroke: currentColor;
@@ -549,7 +545,7 @@ menuitem.bookmark-item {
 }
 
 html|*.urlbar-input:-moz-lwtheme::placeholder,
-.searchbar-textbox:-moz-lwtheme > .urlbar-textbox-container > .textbox-input-box > html|*.textbox-input::placeholder {
+.searchbar-textbox:-moz-lwtheme > .urlbar-textbox-container > moz-input-box > html|*.textbox-input::placeholder {
   opacity: 1.0;
   color: #777;
 }
@@ -662,17 +658,8 @@ html|*.urlbar-input:-moz-lwtheme::placeholder,
 
 %include ../shared/sidebar.inc.css
 
-#sidebar-box {
-  background-color: -moz-Field;
-  color: -moz-FieldText;
-}
-
-#sidebar-header {
-  border-bottom: 1px solid ThreeDLightShadow;
-}
-
-.sidebar-splitter {
-  border-color: ThreeDLightShadow;
+#browser {
+  --sidebar-border-color: ThreeDLightShadow;
 }
 
 .browserContainer > findbar {

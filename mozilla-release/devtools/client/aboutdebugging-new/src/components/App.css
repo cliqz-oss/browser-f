@@ -1,0 +1,28 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/*
+ * The current layout of about:debugging is
+ *
+ *  +-------------+-------------------------------+
+ *  |   Sidebar   | Page (Runtime or Connect)     |
+ *  |   (240px)   |                               |
+ *  |             |                               |
+ *  +-------------+-------------------------------+
+ */
+.app {
+  display: grid;
+  font-size: 15px;
+  grid-column-gap: 40px;
+  grid-template-columns: 240px auto;
+  height: 100vh;
+  overflow: hidden;
+  width: 100vw;
+}
+
+.page {
+  padding-block-start: 60px;
+  padding-inline-end: 40px;
+  overflow-y: auto;
+}

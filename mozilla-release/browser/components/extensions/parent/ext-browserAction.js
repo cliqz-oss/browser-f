@@ -31,8 +31,6 @@ const POPUP_PRELOAD_TIMEOUT_MS = 200;
 const POPUP_OPEN_MS_HISTOGRAM = "WEBEXT_BROWSERACTION_POPUP_OPEN_MS";
 const POPUP_RESULT_HISTOGRAM = "WEBEXT_BROWSERACTION_POPUP_PRELOAD_RESULT_COUNT";
 
-var XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-
 // WeakMap[Extension -> BrowserAction]
 const browserActionMap = new WeakMap();
 
@@ -72,7 +70,9 @@ this.browserAction = class extends ExtensionAPI {
       enabled: true,
       title: options.default_title || extension.name,
       badgeText: "",
-      badgeBackgroundColor: null,
+      badgeBackgroundColor: [0xd9, 0, 0, 255],
+      badgeDefaultColor: [255, 255, 255, 255],
+      badgeTextColor: null,
       popup: options.default_popup || "",
       area: browserAreas[options.default_area || "navbar"],
     };
@@ -141,7 +141,7 @@ this.browserAction = class extends ExtensionAPI {
       localized: false,
 
       onBeforeCreated: document => {
-        let view = document.createElementNS(XUL_NS, "panelview");
+        let view = document.createXULElement("panelview");
         view.id = this.viewId;
         view.setAttribute("flex", "1");
         view.setAttribute("extension", true);
@@ -441,22 +441,13 @@ this.browserAction = class extends ExtensionAPI {
         node.setAttribute("disabled", "true");
       }
 
-      let color = tabData.badgeBackgroundColor;
-      if (color) {
-        color = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3] / 255})`;
-        node.setAttribute("badgeStyle", `background-color: ${color};`);
-      } else {
-        node.removeAttribute("badgeStyle");
-      }
+      let serializeColor = ([r, g, b, a]) => `rgba(${r}, ${g}, ${b}, ${a / 255})`;
+      node.setAttribute("badgeStyle", [
+        `background-color: ${serializeColor(tabData.badgeBackgroundColor)}`,
+        `color: ${serializeColor(this.getTextColor(tabData))}`,
+      ].join("; "));
 
-      let {style, legacy} = this.iconData.get(tabData.icon);
-      const LEGACY_CLASS = "toolbarbutton-legacy-addon";
-      if (legacy) {
-        node.classList.add(LEGACY_CLASS);
-      } else {
-        node.classList.remove(LEGACY_CLASS);
-      }
-
+      let style = this.iconData.get(tabData.icon);
       node.setAttribute("style", style);
     };
     if (sync) {
@@ -467,47 +458,29 @@ this.browserAction = class extends ExtensionAPI {
   }
 
   getIconData(icons) {
-    let baseSize = 16;
-    let {icon, size} = IconDetails.getPreferredIcon(icons, this.extension, baseSize);
-
-    let legacy = false;
-
-    // If the best available icon size is not divisible by 16, check if we have
-    // an 18px icon to fall back to, and trim off the padding instead.
-    if (size % 16 && typeof icon === "string" && !icon.endsWith(".svg")) {
-      let result = IconDetails.getPreferredIcon(icons, this.extension, 18);
-
-      if (result.size % 18 == 0) {
-        baseSize = 18;
-        icon = result.icon;
-        legacy = true;
-      }
-    }
-
-    let getIcon = (size, theme) => {
-      let {icon} = IconDetails.getPreferredIcon(icons, this.extension, size);
+    let getIcon = (icon, theme) => {
       if (typeof icon === "object") {
         return IconDetails.escapeUrl(icon[theme]);
       }
       return IconDetails.escapeUrl(icon);
     };
 
-    let getStyle = (name, size) => {
+    let getStyle = (name, icon) => {
       return `
-        --webextension-${name}: url("${getIcon(size, "default")}");
-        --webextension-${name}-light: url("${getIcon(size, "light")}");
-        --webextension-${name}-dark: url("${getIcon(size, "dark")}");
+        --webextension-${name}: url("${getIcon(icon, "default")}");
+        --webextension-${name}-light: url("${getIcon(icon, "light")}");
+        --webextension-${name}-dark: url("${getIcon(icon, "dark")}");
       `;
     };
 
-    let style = `
-      ${getStyle("menupanel-image", 32)}
-      ${getStyle("menupanel-image-2x", 64)}
-      ${getStyle("toolbar-image", baseSize)}
-      ${getStyle("toolbar-image-2x", baseSize * 2)}
+    let icon16 = IconDetails.getPreferredIcon(icons, this.extension, 16).icon;
+    let icon32 = IconDetails.getPreferredIcon(icons, this.extension, 32).icon;
+    return `
+      ${getStyle("menupanel-image", icon16)}
+      ${getStyle("menupanel-image-2x", icon32)}
+      ${getStyle("toolbar-image", icon16)}
+      ${getStyle("toolbar-image-2x", icon32)}
     `;
-
-    return {style, legacy};
   }
 
   /**
@@ -591,10 +564,12 @@ this.browserAction = class extends ExtensionAPI {
    * @param {XULElement|ChromeWindow|null} target
    *        A XULElement tab, a ChromeWindow, or null for the global data.
    * @param {string} prop
-   *        String property to set. Should should be one of "icon", "title",
-   *        "badgeText", "popup", "badgeBackgroundColor" or "enabled".
+   *        String property to set. Should should be one of "icon", "title", "badgeText",
+   *        "popup", "badgeBackgroundColor", "badgeTextColor" or "enabled".
    * @param {string} value
    *        Value for prop.
+   * @returns {Object}
+   *        The object to which the property has been set.
    */
   setProperty(target, prop, value) {
     let values = this.getContextData(target);
@@ -605,6 +580,7 @@ this.browserAction = class extends ExtensionAPI {
     }
 
     this.updateOnChange(target);
+    return values;
   }
 
   /**
@@ -630,11 +606,69 @@ this.browserAction = class extends ExtensionAPI {
     return this.getProperty(this.getTargetFromDetails(details), prop);
   }
 
+  /**
+   * Determines the text badge color to be used in a tab, window, or globally.
+   *
+   * @param {Object} values
+   *        The values associated with the tab or window, or global values.
+   * @returns {ColorArray}
+   */
+  getTextColor(values) {
+    // If a text color has been explicitly provided, use it.
+    let {badgeTextColor} = values;
+    if (badgeTextColor) {
+      return badgeTextColor;
+    }
+
+    // Otherwise, check if the default color to be used has been cached previously.
+    let {badgeDefaultColor} = values;
+    if (badgeDefaultColor) {
+      return badgeDefaultColor;
+    }
+
+    // Choose a color among white and black, maximizing contrast with background
+    // according to https://www.w3.org/TR/WCAG20-TECHS/G18.html#G18-procedure
+    let [r, g, b] = values.badgeBackgroundColor.slice(0, 3).map(function(channel) {
+      channel /= 255;
+      if (channel <= 0.03928) {
+        return channel / 12.92;
+      }
+      return ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    let lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+    // The luminance is 0 for black, 1 for white, and `lum` for the background color.
+    // Since `0 <= lum`, the contrast ratio for black is `c0 = (lum + 0.05) / 0.05`.
+    // Since `lum <= 1`, the contrast ratio for white is `c1 = 1.05 / (lum + 0.05)`.
+    // We want to maximize contrast, so black is chosen if `c1 < c0`, that is, if
+    // `1.05 * 0.05 < (L + 0.05) ** 2`. Otherwise white is chosen.
+    let channel = 1.05 * 0.05 < (lum + 0.05) ** 2 ? 0 : 255;
+    let result = [channel, channel, channel, 255];
+
+    // Cache the result as high as possible in the prototype chain
+    while (!Object.getOwnPropertyDescriptor(values, "badgeDefaultColor")) {
+      values = Object.getPrototypeOf(values);
+    }
+    values.badgeDefaultColor = result;
+    return result;
+  }
+
   getAPI(context) {
     let {extension} = context;
     let {tabManager} = extension;
 
     let browserAction = this;
+
+    function parseColor(color, kind) {
+      if (typeof color == "string") {
+        let rgba = InspectorUtils.colorToRGBA(color);
+        if (!rgba) {
+          throw new ExtensionError(`Invalid badge ${kind} color: "${color}"`);
+        }
+        color = [rgba.r, rgba.g, rgba.b, Math.round(rgba.a * 255)];
+      }
+      return color;
+    }
 
     return {
       browserAction: {
@@ -710,20 +744,31 @@ this.browserAction = class extends ExtensionAPI {
         },
 
         setBadgeBackgroundColor: function(details) {
-          let color = details.color;
-          if (typeof color == "string") {
-            let col = InspectorUtils.colorToRGBA(color);
-            if (!col) {
-              throw new ExtensionError(`Invalid badge background color: "${color}"`);
-            }
-            color = col && [col.r, col.g, col.b, Math.round(col.a * 255)];
+          let color = parseColor(details.color, "background");
+          let values = browserAction.setPropertyFromDetails(
+            details, "badgeBackgroundColor", color);
+          if (color === null) {
+            // Let the default text color inherit after removing background color
+            delete values.badgeDefaultColor;
+          } else {
+            // Invalidate a cached default color calculated with the old background
+            values.badgeDefaultColor = null;
           }
-          browserAction.setPropertyFromDetails(details, "badgeBackgroundColor", color);
         },
 
         getBadgeBackgroundColor: function(details, callback) {
-          let color = browserAction.getPropertyFromDetails(details, "badgeBackgroundColor");
-          return color || [0xd9, 0, 0, 255];
+          return browserAction.getPropertyFromDetails(details, "badgeBackgroundColor");
+        },
+
+        setBadgeTextColor: function(details) {
+          let color = parseColor(details.color, "text");
+          browserAction.setPropertyFromDetails(details, "badgeTextColor", color);
+        },
+
+        getBadgeTextColor: function(details) {
+          let target = browserAction.getTargetFromDetails(details);
+          let values = browserAction.getContextData(target);
+          return browserAction.getTextColor(values);
         },
 
         openPopup: function() {

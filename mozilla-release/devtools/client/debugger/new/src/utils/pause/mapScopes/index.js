@@ -15,14 +15,14 @@ var _findGeneratedBindingFromPosition = require("./findGeneratedBindingFromPosit
 
 var _buildGeneratedBindingList = require("./buildGeneratedBindingList");
 
+var _getApplicableBindingsForOriginalPosition = require("./getApplicableBindingsForOriginalPosition");
+
 var _log = require("../../log");
 
-function _objectWithoutProperties(source, excluded) { if (source == null) return {}; var target = {}; var sourceKeys = Object.keys(source); var key, i; for (i = 0; i < sourceKeys.length; i++) { key = sourceKeys[i]; if (excluded.indexOf(key) >= 0) continue; target[key] = source[key]; } if (Object.getOwnPropertySymbols) { var sourceSymbolKeys = Object.getOwnPropertySymbols(source); for (i = 0; i < sourceSymbolKeys.length; i++) { key = sourceSymbolKeys[i]; if (excluded.indexOf(key) >= 0) continue; if (!Object.prototype.propertyIsEnumerable.call(source, key)) continue; target[key] = source[key]; } } return target; }
-
-function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; var ownKeys = Object.keys(source); if (typeof Object.getOwnPropertySymbols === 'function') { ownKeys = ownKeys.concat(Object.getOwnPropertySymbols(source).filter(function (sym) { return Object.getOwnPropertyDescriptor(source, sym).enumerable; })); } ownKeys.forEach(function (key) { _defineProperty(target, key, source[key]); }); } return target; }
-
-function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
-
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+// eslint-disable-next-line max-len
 async function buildMappedScopes(source, frame, scopes, sourceMaps, client) {
   const originalAstScopes = await (0, _parser.getScopes)(frame.location);
   const generatedAstScopes = await (0, _parser.getScopes)(frame.generatedLocation);
@@ -31,8 +31,13 @@ async function buildMappedScopes(source, frame, scopes, sourceMaps, client) {
     return null;
   }
 
-  const generatedAstBindings = (0, _buildGeneratedBindingList.buildGeneratedBindingList)(scopes, generatedAstScopes, frame.this);
   const originalRanges = await (0, _rangeMetadata.loadRangeMetadata)(source, frame, originalAstScopes, sourceMaps);
+
+  if (hasLineMappings(originalRanges)) {
+    return null;
+  }
+
+  const generatedAstBindings = (0, _buildGeneratedBindingList.buildGeneratedBindingList)(scopes, generatedAstScopes, frame.this);
   const {
     mappedOriginalScopes,
     expressionLookup
@@ -67,9 +72,9 @@ async function mapOriginalBindingsToGenerated(source, originalRanges, originalAs
       }
     }
 
-    mappedOriginalScopes.push(_objectSpread({}, item, {
+    mappedOriginalScopes.push({ ...item,
       generatedBindings
-    }));
+    });
   }
 
   return {
@@ -101,7 +106,11 @@ function isReliableScope(scope) {
   } // As determined by fair dice roll.
 
 
-  return totalBindings === 0 || unknownBindings / totalBindings < 0.1;
+  return totalBindings === 0 || unknownBindings / totalBindings < 0.25;
+}
+
+function hasLineMappings(ranges) {
+  return ranges.every(range => range.columnStart === 0 && range.columnEnd === Infinity);
 }
 
 function batchScopeMappings(originalAstScopes, source, sourceMaps) {
@@ -176,40 +185,39 @@ function generateClientScope(scopes, originalScopes) {
 
 
   const result = originalScopes.slice(0, -2).reverse().reduce((acc, orig, i) => {
-    const _orig$generatedBindin = orig.generatedBindings,
-          {
+    const {
       // The 'this' binding data we have is handled independently, so
       // the binding data is not included here.
       // eslint-disable-next-line no-unused-vars
-      this: _this
-    } = _orig$generatedBindin,
-          variables = _objectWithoutProperties(_orig$generatedBindin, ["this"]);
-
-    return _objectSpread({
-      // Flow doesn't like casting 'parent'.
+      this: _this,
+      ...variables
+    } = orig.generatedBindings;
+    return {
       parent: acc,
       actor: `originalActor${i}`,
       type: orig.type,
       bindings: {
         arguments: [],
         variables
-      }
-    }, orig.type === "function" ? {
-      function: {
-        displayName: orig.displayName
-      }
-    } : null, orig.type === "block" ? {
-      block: {
-        displayName: orig.displayName
-      }
-    } : null);
+      },
+      ...(orig.type === "function" ? {
+        function: {
+          displayName: orig.displayName
+        }
+      } : null),
+      ...(orig.type === "block" ? {
+        block: {
+          displayName: orig.displayName
+        }
+      } : null)
+    };
   }, globalLexicalScope); // The rendering logic in getScope 'this' bindings only runs on the current
   // selected frame scope, so we pluck out the 'this' binding that was mapped,
   // and put it in a special location
 
   const thisScope = originalScopes.find(scope => scope.bindings.this);
 
-  if (thisScope) {
+  if (result.bindings && thisScope) {
     result.bindings.this = thisScope.generatedBindings.this || null;
   }
 
@@ -231,19 +239,45 @@ async function findGeneratedBinding(sourceMaps, client, source, name, originalBi
     return null;
   }
 
+  const loadApplicableBindings = async (pos, locationType) => {
+    let applicableBindings = await (0, _getApplicableBindingsForOriginalPosition.getApplicableBindingsForOriginalPosition)(generatedAstBindings, source, pos, originalBinding.type, locationType, sourceMaps);
+
+    if (applicableBindings.length > 0) {
+      hadApplicableBindings = true;
+    }
+
+    if (locationType === "ref") {
+      // Some tooling creates ranges that map a line as a whole, which is useful
+      // for step-debugging, but can easily lead to finding the wrong binding.
+      // To avoid these false-positives, we entirely ignore bindings matched
+      // by ranges that cover full lines.
+      applicableBindings = applicableBindings.filter(({
+        range
+      }) => !(range.start.column === 0 && range.end.column === Infinity));
+    }
+
+    if (locationType !== "ref" && !(await (0, _getApplicableBindingsForOriginalPosition.originalRangeStartsInside)(source, pos, sourceMaps))) {
+      applicableBindings = [];
+    }
+
+    return applicableBindings;
+  };
+
   const {
     refs
   } = originalBinding;
+  let hadApplicableBindings = false;
   let genContent = null;
 
   for (const pos of refs) {
+    const applicableBindings = await loadApplicableBindings(pos, pos.type);
     const range = (0, _rangeMetadata.findMatchingRange)(originalRanges, pos);
 
     if (range && hasValidIdent(range, pos)) {
       if (originalBinding.type === "import") {
-        genContent = await (0, _findGeneratedBindingFromPosition.findGeneratedBindingForImportBinding)(sourceMaps, client, source, pos, name, originalBinding.type, generatedAstBindings);
+        genContent = await (0, _findGeneratedBindingFromPosition.findGeneratedImportReference)(applicableBindings);
       } else {
-        genContent = await (0, _findGeneratedBindingFromPosition.findGeneratedBindingForStandardBinding)(sourceMaps, client, source, pos, name, originalBinding.type, generatedAstBindings);
+        genContent = await (0, _findGeneratedBindingFromPosition.findGeneratedReference)(applicableBindings);
       }
     }
 
@@ -251,8 +285,9 @@ async function findGeneratedBinding(sourceMaps, client, source, name, originalBi
       const declRange = (0, _rangeMetadata.findMatchingRange)(originalRanges, pos.declaration);
 
       if (declRange && declRange.type !== "multiple") {
-        // Resolve to first binding in the range
-        const declContent = await (0, _findGeneratedBindingFromPosition.findGeneratedBindingForNormalDeclaration)(sourceMaps, client, source, pos, name, originalBinding.type, generatedAstBindings);
+        const applicableDeclBindings = await loadApplicableBindings(pos.declaration, pos.type); // Resolve to first binding in the range
+
+        const declContent = await (0, _findGeneratedBindingFromPosition.findGeneratedReference)(applicableDeclBindings);
 
         if (declContent) {
           // Prefer the declaration mapping in this case because TS sometimes
@@ -263,7 +298,10 @@ async function findGeneratedBinding(sourceMaps, client, source, name, originalBi
       }
     }
 
-    if (!genContent && (pos.type === "import-decl" || pos.type === "import-ns-decl")) {
+    if (!genContent && pos.type === "import-decl" && typeof pos.importName === "string") {
+      const {
+        importName
+      } = pos;
       const declRange = (0, _rangeMetadata.findMatchingRange)(originalRanges, pos.declaration); // The import declaration should have an original position mapping,
       // but otherwise we don't really have preferences on the range type
       // because it can have multiple bindings, but we do want to make sure
@@ -271,8 +309,9 @@ async function findGeneratedBinding(sourceMaps, client, source, name, originalBi
       // import declaration.
 
       if (declRange && declRange.singleDeclaration) {
-        // match the import declaration location
-        genContent = await (0, _findGeneratedBindingFromPosition.findGeneratedBindingForImportDeclaration)(sourceMaps, client, source, pos, name, originalBinding.type, generatedAstBindings);
+        const applicableDeclBindings = await loadApplicableBindings(pos.declaration, pos.type); // match the import declaration location
+
+        genContent = await (0, _findGeneratedBindingFromPosition.findGeneratedImportDeclaration)(applicableDeclBindings, importName);
       }
     }
 
@@ -310,6 +349,27 @@ async function findGeneratedBinding(sourceMaps, client, source, name, originalBi
         }
       },
       expression: null
+    };
+  } else if (!hadApplicableBindings && name !== "this") {
+    // If there were no applicable bindings to consider while searching for
+    // matching bindings, then the source map for this file didn't make any
+    // attempt to map the binding, and that most likely means that the
+    // code was entirely emitted from the output code.
+    return {
+      grip: {
+        configurable: false,
+        enumerable: true,
+        writable: false,
+        value: {
+          type: "null",
+          optimizedOut: true
+        }
+      },
+      expression: `
+        (() => {
+          throw new Error('"' + ${JSON.stringify(name)} + '" has been optimized out.');
+        })()
+      `
     };
   } // If no location mapping is found, then the map is bad, or
   // the map is okay but it original location is inside

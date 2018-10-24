@@ -26,7 +26,6 @@
 #endif
 #include "vm/Debugger.h"
 #include "vm/EnvironmentObject.h"
-#include "vm/RegExpObject.h"
 #include "vm/RegExpShared.h"
 #include "vm/Scope.h"
 #include "vm/Shape.h"
@@ -38,6 +37,7 @@
 #include "gc/GC-inl.h"
 #include "gc/Nursery-inl.h"
 #include "gc/PrivateIterators-inl.h"
+#include "gc/Zone-inl.h"
 #include "vm/NativeObject-inl.h"
 #include "vm/Realm-inl.h"
 #include "vm/StringType-inl.h"
@@ -54,6 +54,8 @@ using mozilla::IsBaseOf;
 using mozilla::IsSame;
 using mozilla::PodCopy;
 
+// [SMDOC] GC Tracing
+//
 // Tracing Overview
 // ================
 //
@@ -272,8 +274,7 @@ js::CheckTracedThing(JSTracer* trc, T* thing)
      * IsThingPoisoned would be racy in this case.
      */
     MOZ_ASSERT_IF(JS::RuntimeHeapIsBusy() &&
-                  !zone->isGCCompacting() &&
-                  !rt->gc.isBackgroundSweeping(),
+                  !zone->isGCSweeping() && !zone->isGCFinished() && !zone->isGCCompacting(),
                   !IsThingPoisoned(thing) || !InFreeList(thing->asTenured().arena(), thing));
 #endif
 }
@@ -459,6 +460,8 @@ template void js::TraceManuallyBarrieredCrossCompartmentEdge<JSObject*>(JSTracer
                                                                         JSObject**, const char*);
 template void js::TraceManuallyBarrieredCrossCompartmentEdge<JSScript*>(JSTracer*, JSObject*,
                                                                         JSScript**, const char*);
+template void js::TraceManuallyBarrieredCrossCompartmentEdge<LazyScript*>(JSTracer*, JSObject*,
+                                                                          LazyScript**, const char*);
 
 void
 js::TraceCrossCompartmentEdge(JSTracer* trc, JSObject* src, WriteBarrieredBase<Value>* dst,
@@ -908,9 +911,10 @@ template <typename T>
 bool
 js::GCMarker::mark(T* thing)
 {
+    if (IsInsideNursery(thing))
+        return false;
     AssertShouldMarkInZone(thing);
     TenuredCell* cell = TenuredCell::fromPointer(thing);
-    MOZ_ASSERT(!IsInsideNursery(cell));
 
     if (!TypeParticipatesInCC<T>::value)
         return cell->markIfUnmarked(MarkColor::Black);
@@ -937,8 +941,10 @@ LazyScript::traceChildren(JSTracer* trc)
     if (sourceObject_)
         TraceEdge(trc, &sourceObject_, "sourceObject");
 
-    if (enclosingScope_)
-        TraceEdge(trc, &enclosingScope_, "enclosingScope");
+    if (enclosingLazyScriptOrScope_) {
+        TraceGenericPointerRoot(trc, reinterpret_cast<Cell**>(enclosingLazyScriptOrScope_.unsafeUnbarrieredForTracing()),
+                                "enclosingScope or enclosingLazyScript");
+    }
 
     // We rely on the fact that atoms are always tenured.
     JSAtom** closedOverBindings = this->closedOverBindings();
@@ -963,8 +969,10 @@ js::GCMarker::eagerlyMarkChildren(LazyScript *thing)
     if (thing->sourceObject_)
         traverseEdge(thing, static_cast<JSObject*>(thing->sourceObject_));
 
-    if (thing->enclosingScope_)
-        traverseEdge(thing, static_cast<Scope*>(thing->enclosingScope_));
+    if (thing->enclosingLazyScriptOrScope_) {
+        TraceManuallyBarrieredGenericPointerEdge(this, reinterpret_cast<Cell**>(thing->enclosingLazyScriptOrScope_.unsafeUnbarrieredForTracing()),
+                                                 "enclosingScope or enclosingLazyScript");
+    }
 
     // We rely on the fact that atoms are always tenured.
     JSAtom** closedOverBindings = thing->closedOverBindings();
@@ -1229,37 +1237,37 @@ Scope::traceChildren(JSTracer* trc)
     TraceNullableEdge(trc, &environmentShape_, "scope env shape");
     switch (kind_) {
       case ScopeKind::Function:
-        reinterpret_cast<FunctionScope::Data*>(data_)->trace(trc);
+        static_cast<FunctionScope::Data*>(data_)->trace(trc);
         break;
       case ScopeKind::FunctionBodyVar:
       case ScopeKind::ParameterExpressionVar:
-        reinterpret_cast<VarScope::Data*>(data_)->trace(trc);
+        static_cast<VarScope::Data*>(data_)->trace(trc);
         break;
       case ScopeKind::Lexical:
       case ScopeKind::SimpleCatch:
       case ScopeKind::Catch:
       case ScopeKind::NamedLambda:
       case ScopeKind::StrictNamedLambda:
-        reinterpret_cast<LexicalScope::Data*>(data_)->trace(trc);
+        static_cast<LexicalScope::Data*>(data_)->trace(trc);
         break;
       case ScopeKind::Global:
       case ScopeKind::NonSyntactic:
-        reinterpret_cast<GlobalScope::Data*>(data_)->trace(trc);
+        static_cast<GlobalScope::Data*>(data_)->trace(trc);
         break;
       case ScopeKind::Eval:
       case ScopeKind::StrictEval:
-        reinterpret_cast<EvalScope::Data*>(data_)->trace(trc);
+        static_cast<EvalScope::Data*>(data_)->trace(trc);
         break;
       case ScopeKind::Module:
-        reinterpret_cast<ModuleScope::Data*>(data_)->trace(trc);
+        static_cast<ModuleScope::Data*>(data_)->trace(trc);
         break;
       case ScopeKind::With:
         break;
       case ScopeKind::WasmInstance:
-        reinterpret_cast<WasmInstanceScope::Data*>(data_)->trace(trc);
+        static_cast<WasmInstanceScope::Data*>(data_)->trace(trc);
         break;
       case ScopeKind::WasmFunction:
-        reinterpret_cast<WasmFunctionScope::Data*>(data_)->trace(trc);
+        static_cast<WasmFunctionScope::Data*>(data_)->trace(trc);
         break;
     }
 }
@@ -1274,7 +1282,7 @@ js::GCMarker::eagerlyMarkChildren(Scope* scope)
     uint32_t length = 0;
     switch (scope->kind_) {
       case ScopeKind::Function: {
-        FunctionScope::Data* data = reinterpret_cast<FunctionScope::Data*>(scope->data_);
+        FunctionScope::Data* data = static_cast<FunctionScope::Data*>(scope->data_);
         traverseEdge(scope, static_cast<JSObject*>(data->canonicalFunction));
         names = &data->trailingNames;
         length = data->length;
@@ -1283,7 +1291,7 @@ js::GCMarker::eagerlyMarkChildren(Scope* scope)
 
       case ScopeKind::FunctionBodyVar:
       case ScopeKind::ParameterExpressionVar: {
-        VarScope::Data* data = reinterpret_cast<VarScope::Data*>(scope->data_);
+        VarScope::Data* data = static_cast<VarScope::Data*>(scope->data_);
         names = &data->trailingNames;
         length = data->length;
         break;
@@ -1294,7 +1302,7 @@ js::GCMarker::eagerlyMarkChildren(Scope* scope)
       case ScopeKind::Catch:
       case ScopeKind::NamedLambda:
       case ScopeKind::StrictNamedLambda: {
-        LexicalScope::Data* data = reinterpret_cast<LexicalScope::Data*>(scope->data_);
+        LexicalScope::Data* data = static_cast<LexicalScope::Data*>(scope->data_);
         names = &data->trailingNames;
         length = data->length;
         break;
@@ -1302,7 +1310,7 @@ js::GCMarker::eagerlyMarkChildren(Scope* scope)
 
       case ScopeKind::Global:
       case ScopeKind::NonSyntactic: {
-        GlobalScope::Data* data = reinterpret_cast<GlobalScope::Data*>(scope->data_);
+        GlobalScope::Data* data = static_cast<GlobalScope::Data*>(scope->data_);
         names = &data->trailingNames;
         length = data->length;
         break;
@@ -1310,14 +1318,14 @@ js::GCMarker::eagerlyMarkChildren(Scope* scope)
 
       case ScopeKind::Eval:
       case ScopeKind::StrictEval: {
-        EvalScope::Data* data = reinterpret_cast<EvalScope::Data*>(scope->data_);
+        EvalScope::Data* data = static_cast<EvalScope::Data*>(scope->data_);
         names = &data->trailingNames;
         length = data->length;
         break;
       }
 
       case ScopeKind::Module: {
-        ModuleScope::Data* data = reinterpret_cast<ModuleScope::Data*>(scope->data_);
+        ModuleScope::Data* data = static_cast<ModuleScope::Data*>(scope->data_);
         traverseEdge(scope, static_cast<JSObject*>(data->module));
         names = &data->trailingNames;
         length = data->length;
@@ -1328,7 +1336,7 @@ js::GCMarker::eagerlyMarkChildren(Scope* scope)
         break;
 
       case ScopeKind::WasmInstance: {
-        WasmInstanceScope::Data* data = reinterpret_cast<WasmInstanceScope::Data*>(scope->data_);
+        WasmInstanceScope::Data* data = static_cast<WasmInstanceScope::Data*>(scope->data_);
         traverseEdge(scope, static_cast<JSObject*>(data->instance));
         names = &data->trailingNames;
         length = data->length;
@@ -1336,7 +1344,7 @@ js::GCMarker::eagerlyMarkChildren(Scope* scope)
       }
 
       case ScopeKind::WasmFunction: {
-        WasmFunctionScope::Data* data = reinterpret_cast<WasmFunctionScope::Data*>(scope->data_);
+        WasmFunctionScope::Data* data = static_cast<WasmFunctionScope::Data*>(scope->data_);
         names = &data->trailingNames;
         length = data->length;
         break;
@@ -2594,8 +2602,7 @@ GCMarker::checkZone(void* p)
 #endif
 
 size_t
-GCMarker::sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf,
-                              const AutoAccessAtomsZone& access) const
+GCMarker::sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const
 {
     size_t size = stack.sizeOfExcludingThis(mallocSizeOf);
     for (ZonesIter zone(runtime(), WithAtoms); !zone.done(); zone.next())
@@ -2704,7 +2711,6 @@ js::gc::StoreBuffer::MonoTypeBuffer<T>::trace(StoreBuffer* owner, TenuringTracer
 {
     mozilla::ReentrancyGuard g(*owner);
     MOZ_ASSERT(owner->isEnabled());
-    MOZ_ASSERT(stores_.initialized());
     if (last_)
         last_.trace(mover);
     for (typename StoreSet::Range r = stores_.all(); !r.empty(); r.popFront())
@@ -2855,7 +2861,7 @@ js::gc::StoreBuffer::CellPtrEdge::trace(TenuringTracer& mover) const
     if (!IsInsideNursery(*edge))
         return;
 
-    if (JSString::nurseryCellIsString(*edge))
+    if ((*edge)->nurseryCellIsString())
         mover.traverse(reinterpret_cast<JSString**>(edge));
     else
         mover.traverse(reinterpret_cast<JSObject**>(edge));
@@ -2951,14 +2957,7 @@ js::TenuringTracer::insertIntoObjectFixupList(RelocationOverlay* entry) {
 template <typename T>
 inline T*
 js::TenuringTracer::allocTenured(Zone* zone, AllocKind kind) {
-    TenuredCell* t = zone->arenas.allocateFromFreeList(kind, Arena::thingSize(kind));
-    if (!t) {
-        AutoEnterOOMUnsafeRegion oomUnsafe;
-        t = runtime()->gc.refillFreeListInGC(zone, kind);
-        if (!t)
-            oomUnsafe.crash(ChunkSize, "Failed to allocate object while tenuring.");
-    }
-    return static_cast<T*>(static_cast<Cell*>(t));
+    return static_cast<T*>(static_cast<Cell*>(AllocateCellInGC(zone, kind)));
 }
 
 JSObject*
@@ -3003,6 +3002,7 @@ js::TenuringTracer::moveToTenuredSlow(JSObject* src)
     }
 
     tenuredSize += dstSize;
+    tenuredCells++;
 
     // Copy the Cell contents.
     MOZ_ASSERT(OffsetToChunkEnd(src) >= ptrdiff_t(srcSize));
@@ -3051,6 +3051,7 @@ js::TenuringTracer::movePlainObjectToTenured(PlainObject* src)
 
     size_t srcSize = Arena::thingSize(dstKind);
     tenuredSize += srcSize;
+    tenuredCells++;
 
     // Copy the Cell contents.
     MOZ_ASSERT(OffsetToChunkEnd(src) >= ptrdiff_t(srcSize));
@@ -3165,15 +3166,9 @@ js::TenuringTracer::moveToTenured(JSString* src)
     Zone* zone = src->zone();
     zone->tenuredStrings++;
 
-    TenuredCell* t = zone->arenas.allocateFromFreeList(dstKind, Arena::thingSize(dstKind));
-    if (!t) {
-        AutoEnterOOMUnsafeRegion oomUnsafe;
-        t = runtime()->gc.refillFreeListInGC(zone, dstKind);
-        if (!t)
-            oomUnsafe.crash(ChunkSize, "Failed to allocate string while tenuring.");
-    }
-    JSString* dst = reinterpret_cast<JSString*>(t);
+    JSString* dst = allocTenured<JSString>(zone, dstKind);
     tenuredSize += moveStringToTenured(dst, src, dstKind);
+    tenuredCells++;
 
     RelocationOverlay* overlay = RelocationOverlay::fromCell(src);
     overlay->forwardTo(dst);
@@ -3536,6 +3531,10 @@ static bool
 UnmarkGrayGCThing(JSRuntime* rt, JS::GCCellPtr thing)
 {
     MOZ_ASSERT(thing);
+
+    // Gray cell unmarking can occur at different points between recording and
+    // replay, so disallow recorded events from occurring in the tracer.
+    mozilla::recordreplay::AutoDisallowThreadEvents d;
 
     UnmarkGrayTracer unmarker(rt);
     gcstats::AutoPhase innerPhase(rt->gc.stats(), gcstats::PhaseKind::UNMARK_GRAY);

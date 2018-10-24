@@ -40,7 +40,7 @@ var SessionMigrationInternal = {
   convertState(aStateObj, aRestorePageURL) {
     let state = {
       selectedWindow: aStateObj.selectedWindow,
-      _closedWindows: []
+      _closedWindows: [],
     };
     state.windows = aStateObj.windows.map(function(oldWin) {
       var win = {extData: {}};
@@ -83,7 +83,7 @@ var SessionMigrationInternal = {
   writeState(aPath, aState) {
     let bytes = gEncoder.encode(JSON.stringify(aState));
     return OS.File.writeAtomic(aPath, bytes, {tmpPath: aPath + ".tmp", compression: "lz4"});
-  }
+  },
 };
 
 var SessionMigration = {
@@ -101,5 +101,5 @@ var SessionMigration = {
       // that's true.
       await SessionMigrationInternal.writeState(aToPath, outState);
     })();
-  }
+  },
 };

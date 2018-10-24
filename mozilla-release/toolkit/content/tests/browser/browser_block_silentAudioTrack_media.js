@@ -4,7 +4,7 @@ var SuspendedType = {
   NONE_SUSPENDED: 0,
   SUSPENDED_PAUSE: 1,
   SUSPENDED_BLOCK: 2,
-  SUSPENDED_PAUSE_DISPOSABLE: 3
+  SUSPENDED_PAUSE_DISPOSABLE: 3,
 };
 
 async function click_unblock_icon(tab) {
@@ -28,13 +28,13 @@ function check_audio_suspended(suspendedType) {
 add_task(async function setup_test_preference() {
   await SpecialPowers.pushPrefEnv({"set": [
     ["media.useAudioChannelService.testing", true],
-    ["media.block-autoplay-until-in-foreground", true]
+    ["media.block-autoplay-until-in-foreground", true],
   ]});
 });
 
 add_task(async function unblock_icon_should_disapear_after_resume_tab() {
   info("- open new background tab -");
-  let tab = window.gBrowser.addTab("about:blank");
+  let tab = BrowserTestUtils.addTab(window.gBrowser, "about:blank");
   tab.linkedBrowser.loadURI(PAGE);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
 
@@ -64,7 +64,7 @@ add_task(async function unblock_icon_should_disapear_after_resume_tab() {
 
 add_task(async function should_not_show_sound_indicator_after_resume_tab() {
   info("- open new background tab -");
-  let tab = window.gBrowser.addTab("about:blank");
+  let tab = BrowserTestUtils.addTab(window.gBrowser, "about:blank");
   tab.linkedBrowser.loadURI(PAGE);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
 

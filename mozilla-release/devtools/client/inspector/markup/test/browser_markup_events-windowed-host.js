@@ -32,7 +32,7 @@ add_task(async function() {
 
 async function runTests(inspector) {
   const markupContainer = await getContainerForSelector("#events", inspector);
-  const evHolder = markupContainer.elt.querySelector(".markupview-event-badge");
+  const evHolder = markupContainer.elt.querySelector(".markup-badge[data-event]");
   const tooltip = inspector.markup.eventDetailsTooltip;
 
   info("Clicking to open event tooltip.");
@@ -51,8 +51,8 @@ async function runTests(inspector) {
   const onTooltipHidden = tooltip.once("hidden");
 
   info("Click on another tag to hide the event tooltip");
-  const h1 = await getContainerForSelector("h1", inspector);
-  const tag = h1.elt.querySelector(".tag");
+  const script = await getContainerForSelector("script", inspector);
+  const tag = script.elt.querySelector(".tag");
   EventUtils.synthesizeMouseAtCenter(tag, {}, inspector.markup.doc.defaultView);
 
   await onTooltipHidden;

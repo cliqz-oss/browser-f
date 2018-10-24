@@ -43,6 +43,7 @@ class Element;
 } // namespace mozilla
 
 class nsAtom;
+class nsXULTooltipListener;
 
 // nsXULWindow
 
@@ -104,9 +105,13 @@ protected:
    bool       LoadPositionFromXUL(int32_t aSpecWidth, int32_t aSpecHeight);
    bool       LoadSizeFromXUL(int32_t& aSpecWidth, int32_t& aSpecHeight);
    void       SetSpecifiedSize(int32_t aSpecWidth, int32_t aSpecHeight);
-   bool       LoadMiscPersistentAttributesFromXUL();
+   bool       UpdateWindowStateFromMiscXULAttributes();
    void       SyncAttributesToWidget();
    NS_IMETHOD SavePersistentAttributes();
+
+   bool NeedsTooltipListener();
+   void AddTooltipSupport();
+   void RemoveTooltipSupport();
 
    NS_IMETHOD GetWindowDOMWindow(mozIDOMWindowProxy** aDOMWindow);
    mozilla::dom::Element* GetWindowDOMElement() const;

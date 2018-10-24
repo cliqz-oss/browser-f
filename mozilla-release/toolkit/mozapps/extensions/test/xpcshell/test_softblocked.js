@@ -4,7 +4,6 @@
 
 const URI_EXTENSION_BLOCKLIST_DIALOG = "chrome://mozapps/content/extensions/blocklist.xul";
 
-ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 ChromeUtils.import("resource://testing-common/MockRegistrar.jsm");
 
 // Allow insecure updates
@@ -32,7 +31,7 @@ var WindowWatcher = {
     Services.obs.notifyObservers(null, "addon-blocklist-closed");
   },
 
-  QueryInterface: ChromeUtils.generateQI(["nsIWindowWatcher"])
+  QueryInterface: ChromeUtils.generateQI(["nsIWindowWatcher"]),
 };
 
 MockRegistrar.register("@mozilla.org/embedcomp/window-watcher;1", WindowWatcher);
@@ -71,8 +70,8 @@ add_task(async function() {
     targetApplications: [{
       id: "xpcshell@tests.mozilla.org",
       minVersion: "2",
-      maxVersion: "3"
-    }]
+      maxVersion: "3",
+    }],
   }, profileDir);
 
   await promiseStartupManager();

@@ -15,6 +15,8 @@
 #include "nsCRT.h"
 #include "nsIUUIDGenerator.h"
 
+using namespace mozilla;
+
 ////////////////////////////////////////////////////////////////////////////////
 //// NullPrincipalURI
 
@@ -289,22 +291,6 @@ NullPrincipalURI::Clone(nsIURI** _newURI)
   return NS_OK;
 }
 
-NS_IMETHODIMP
-NullPrincipalURI::CloneIgnoringRef(nsIURI** _newURI)
-{
-  // GetRef/SetRef not supported by NullPrincipalURI, so
-  // CloneIgnoringRef() is the same as Clone().
-  return Clone(_newURI);
-}
-
-NS_IMETHODIMP
-NullPrincipalURI::CloneWithNewRef(const nsACString& newRef, nsIURI** _newURI)
-{
-  // GetRef/SetRef not supported by NullPrincipalURI, so
-  // CloneWithNewRef() is the same as Clone().
-  return Clone(_newURI);
-}
-
 NS_IMPL_ISUPPORTS(NullPrincipalURI::Mutator, nsIURISetters, nsIURIMutator)
 
 NS_IMETHODIMP
@@ -406,13 +392,13 @@ NullPrincipalURI::Deserialize(const mozilla::ipc::URIParams& aParams)
 //// nsISizeOf
 
 size_t
-NullPrincipalURI::SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
+NullPrincipalURI::SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const
 {
   return mPath.SizeOfExcludingThisIfUnshared(aMallocSizeOf);
 }
 
 size_t
-NullPrincipalURI::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
+NullPrincipalURI::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
 {
   return aMallocSizeOf(this) + SizeOfExcludingThis(aMallocSizeOf);
 }

@@ -78,7 +78,7 @@ var gSitePermissionsManager = {
     let permissionsDisableDescription = document.getElementById("permissionsDisableDescription");
     let permissionsText = document.getElementById("permissionsText");
 
-    const l10n = sitePermissionsL10n[this._type];
+    let l10n = sitePermissionsL10n[this._type];
     document.l10n.setAttributes(permissionsText, l10n.description);
     document.l10n.setAttributes(this._checkbox, l10n.disableLabel);
     document.l10n.setAttributes(permissionsDisableDescription, l10n.disableDescription);
@@ -112,7 +112,7 @@ var gSitePermissionsManager = {
     }
 
     this._loadPermissions();
-    await this.buildPermissionsList();
+    this.buildPermissionsList();
 
     this._searchBox.focus();
   },
@@ -168,7 +168,7 @@ var gSitePermissionsManager = {
       stringKey = "permissions-capabilities-prompt";
       break;
     default:
-        throw new Error(`Unknown capability: ${capability}`);
+      throw new Error(`Unknown capability: ${capability}`);
     }
     return stringKey;
   },
@@ -192,29 +192,27 @@ var gSitePermissionsManager = {
 
   _loadPermissions() {
     // load permissions into a table.
-    let enumerator = Services.perms.enumerator;
-    while (enumerator.hasMoreElements()) {
-      let nextPermission = enumerator.getNext().QueryInterface(Ci.nsIPermission);
+    for (let nextPermission of Services.perms.enumerator) {
       this._addPermissionToList(nextPermission);
     }
   },
 
   _createPermissionListItem(permission) {
-    let richlistitem = document.createElement("richlistitem");
+    let richlistitem = document.createXULElement("richlistitem");
     richlistitem.setAttribute("origin", permission.origin);
-    let row = document.createElement("hbox");
+    let row = document.createXULElement("hbox");
     row.setAttribute("flex", "1");
 
-    let hbox = document.createElement("hbox");
-    let website = document.createElement("label");
+    let hbox = document.createXULElement("hbox");
+    let website = document.createXULElement("label");
     website.setAttribute("value", permission.origin);
     website.setAttribute("width", "50");
     hbox.setAttribute("class", "website-name");
     hbox.setAttribute("flex", "3");
     hbox.appendChild(website);
 
-    let menulist = document.createElement("menulist");
-    let menupopup = document.createElement("menupopup");
+    let menulist = document.createXULElement("menulist");
+    let menupopup = document.createXULElement("menupopup");
     menulist.setAttribute("flex", "1");
     menulist.setAttribute("width", "50");
     menulist.setAttribute("class", "website-status");
@@ -230,7 +228,7 @@ var gSitePermissionsManager = {
       } else if (state == SitePermissions.UNKNOWN) {
         continue;
       }
-      let m = document.createElement("menuitem");
+      let m = document.createXULElement("menuitem");
       document.l10n.setAttributes(m, this._getCapabilityString(state));
       m.setAttribute("value", state);
       menupopup.appendChild(m);
@@ -335,7 +333,7 @@ var gSitePermissionsManager = {
     window.close();
   },
 
-  async buildPermissionsList(sortCol) {
+  buildPermissionsList(sortCol) {
     // Clear old entries.
     let oldItems = this._list.querySelectorAll("richlistitem");
     for (let item of oldItems) {
@@ -391,7 +389,7 @@ var gSitePermissionsManager = {
     }
 
     let comp = new Services.intl.Collator(undefined, {
-      usage: "sort"
+      usage: "sort",
     });
 
     let items = Array.from(frag.querySelectorAll("richlistitem"));

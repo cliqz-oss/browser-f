@@ -141,7 +141,7 @@ include('build/moz.configure/warnings.configure',
         when='--enable-compile-environment')
 include('build/moz.configure/flags.configure',
         when='--enable-compile-environment')
-
+# rust.configure is included by js/moz.configure.
 
 js_option('--enable-valgrind',
           help='Enable Valgrind integration hooks')
@@ -227,6 +227,8 @@ library_name_info = library_name_info_template(target)
 
 set_config('DLL_PREFIX', library_name_info.dll.prefix)
 set_config('DLL_SUFFIX', library_name_info.dll.suffix)
+set_config('HOST_DLL_PREFIX', host_library_name_info.dll.prefix)
+set_config('HOST_DLL_SUFFIX', host_library_name_info.dll.suffix)
 set_config('LIB_PREFIX', library_name_info.lib.prefix)
 set_config('LIB_SUFFIX', library_name_info.lib.suffix)
 set_config('RUST_LIB_PREFIX', library_name_info.rust_lib.prefix)
@@ -237,6 +239,9 @@ add_old_configure_assignment('OBJ_SUFFIX', library_name_info.obj.suffix)
 set_config('IMPORT_LIB_SUFFIX', library_name_info.import_lib.suffix)
 set_define('MOZ_DLL_SUFFIX', depends(library_name_info.dll.suffix)(lambda s: '"%s"' % s))
 
+# Depends on host_library_name_info, so needs to go here.
+include('build/moz.configure/bindgen.configure',
+        when='--enable-compile-environment')
 include(include_project_configure)
 
 @depends('--help')
@@ -254,10 +259,16 @@ def build_backend(backends):
 imply_option('--build-backends', build_backend)
 
 
-@depends('--enable-artifact-builds', '--disable-compile-environment', '--help')
+@depends('--enable-artifact-builds', '--disable-compile-environment',
+         '--enable-build-backend', '--help')
 @imports('sys')
-def build_backend_defaults(artifact_builds, compile_environment, _):
-    if artifact_builds:
+def build_backend_defaults(artifact_builds, compile_environment, requested_backends,
+                           _):
+    if 'Tup' in requested_backends:
+        # As a special case, if Tup was requested, do not combine it with any
+        # Make based backend by default.
+        all_backends = []
+    elif artifact_builds:
         all_backends = ['FasterMake+RecursiveMake']
     else:
         all_backends = ['RecursiveMake', 'FasterMake']
@@ -266,7 +277,7 @@ def build_backend_defaults(artifact_builds, compile_environment, _):
     # and this is not a can of worms we can open at the moment.
     if sys.platform == 'win32' and compile_environment:
         all_backends.append('VisualStudio')
-    return tuple(all_backends)
+    return tuple(all_backends) or None
 
 option('--build-backends', nargs='+', default=build_backend_defaults,
        choices=build_backends_choices, help='Build backends to generate')
@@ -304,7 +315,8 @@ set_config('MOZ_UI_LOCALE', depends('--enable-ui-locale')(lambda x: x))
 
 # clang-plugin location
 # ==============================================================
-@depends(library_name_info, check_build_environment, when='--enable-clang-plugin')
+@depends(host_library_name_info, check_build_environment,
+         when='--enable-clang-plugin')
 def clang_plugin_path(library_name_info, build_env):
     topobjdir = build_env.topobjdir
     if topobjdir.endswith('/js/src'):
@@ -392,64 +404,20 @@ def possible_makes(make, host):
 
 check_prog('GMAKE', possible_makes)
 
-# tup detection
-# ==============================================================
-@depends(build_backends)
-def tup_progs(build_backends):
+@depends(build_backends, build_project)
+def tup_include(build_backends, build_project):
+    # We need to check the rustc version when building with tup, but
+    # rustc_info isn't available when configuring js (and build_backends isn't
+    # available from project-specific configure), so as a workaround we only
+    # include the file when we know we'll need it. This can be removed when
+    # we globally require a rustc recent enough to build with tup.
+    if build_project not in ('browser', 'mobile/android'):
+        return None
     for backend in build_backends:
         if 'Tup' in backend:
-            return ['tup']
-    return None
+            return 'build/moz.configure/tup.configure'
 
-tup = check_prog('TUP', tup_progs)
-
-@depends_if(tup)
-@checking('for tup version')
-@imports('re')
-def tup_version(tup):
-    tup_min_version = '0.7.6'
-    out = check_cmd_output(tup, '--version',
-                           onerror=lambda: die('Failed to get tup version'))
-    m = re.search(r'tup v?([0-9]+\.[0-9]+\.[0-9]+)', out)
-
-    if not m:
-        raise FatalCheckError('Unknown version of tup: %s' % out)
-    ver = Version(m.group(1))
-
-    if ver < tup_min_version:
-        raise FatalCheckError('To use the tup backend you must have tup version '
-                              '%s or greater in your path' % tup_min_version)
-    return ver
-
-@depends_if(tup)
-@checking('for tup ldpreload dependency checker')
-def tup_is_ldpreload(tup):
-    out = check_cmd_output(tup, 'server',
-                           onerror=lambda: die('Failed to get tup dependency checker'))
-    if out.rstrip() != 'ldpreload':
-        raise FatalCheckError('To use the tup backend, please use a version '
-                              'of tup compiled with the ldpreload dependency '
-                              'checker. Either compile tup locally with '
-                              'CONFIG_TUP_SERVER=ldpreload in your tup.config '
-                              'file, or use the version from the toolchain '
-                              'task via |./mach artifact toolchain '
-                              '--from-build linux64-tup|')
-    return True
-
-@depends_if(tup, using_sccache)
-def tup_and_sccache(tup, using_sccache):
-    if tup and using_sccache:
-        die('Cannot use sccache with tup yet. Please disable sccache or use '
-            'the make backend until it is supported.')
-
-option('--upload-tup-db', help= 'Upload the tup database from an automated build.')
-
-@depends('--upload-tup-db')
-def upload_tdb(value):
-    if value:
-        return True
-
-set_config('UPLOAD_TUP_DB', upload_tdb)
+include(tup_include)
 
 # watchman detection
 # ==============================================================
@@ -619,6 +587,7 @@ def config_status_deps(build_env, build_project):
         extra_deps = [os.path.join(topobjdir[:-7], '.mozconfig.json')]
 
     return list(__sandbox__._all_paths) + extra_deps + [
+        os.path.join(topsrcdir, 'CLOBBER'),
         os.path.join(topsrcdir, 'configure'),
         os.path.join(topsrcdir, 'js', 'src', 'configure'),
         os.path.join(topsrcdir, 'configure.in'),

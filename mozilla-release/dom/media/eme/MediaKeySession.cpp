@@ -114,7 +114,7 @@ MediaKeySession::GetSessionId() const
 JSObject*
 MediaKeySession::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return MediaKeySessionBinding::Wrap(aCx, this, aGivenProto);
+  return MediaKeySession_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 double
@@ -607,7 +607,9 @@ MediaKeySession::DispatchKeyStatusesChange()
   UpdateKeyStatusMap();
 
   RefPtr<AsyncEventDispatcher> asyncDispatcher =
-    new AsyncEventDispatcher(this, NS_LITERAL_STRING("keystatuseschange"), false);
+    new AsyncEventDispatcher(this,
+                             NS_LITERAL_STRING("keystatuseschange"),
+                             CanBubble::eNo);
   asyncDispatcher->PostDOMEvent();
 }
 
@@ -643,25 +645,25 @@ MediaKeySession::SetExpiration(double aExpiration)
 EventHandlerNonNull*
 MediaKeySession::GetOnkeystatuseschange()
 {
-  return GetEventHandler(nsGkAtoms::onkeystatuseschange, EmptyString());
+  return GetEventHandler(nsGkAtoms::onkeystatuseschange);
 }
 
 void
 MediaKeySession::SetOnkeystatuseschange(EventHandlerNonNull* aCallback)
 {
-  SetEventHandler(nsGkAtoms::onkeystatuseschange, EmptyString(), aCallback);
+  SetEventHandler(nsGkAtoms::onkeystatuseschange, aCallback);
 }
 
 EventHandlerNonNull*
 MediaKeySession::GetOnmessage()
 {
-  return GetEventHandler(nsGkAtoms::onmessage, EmptyString());
+  return GetEventHandler(nsGkAtoms::onmessage);
 }
 
 void
 MediaKeySession::SetOnmessage(EventHandlerNonNull* aCallback)
 {
-  SetEventHandler(nsGkAtoms::onmessage, EmptyString(), aCallback);
+  SetEventHandler(nsGkAtoms::onmessage, aCallback);
 }
 
 nsCString

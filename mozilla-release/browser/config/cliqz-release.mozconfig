@@ -17,3 +17,7 @@ fi
 export MOZ_TELEMETRY_REPORTING=1
 export MOZ_ADDON_SIGNING=1
 export MOZ_REQUIRE_SIGNING=1
+
+# safeguard against someone forgetting to re-set EARLY_BETA_OR_EARLIER in
+# defines.sh during the beta cycle
+export BUILDING_RELEASE=1

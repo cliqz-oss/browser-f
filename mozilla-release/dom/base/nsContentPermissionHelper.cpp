@@ -167,8 +167,8 @@ ContentPermissionRequestParent::~ContentPermissionRequestParent()
 mozilla::ipc::IPCResult
 ContentPermissionRequestParent::Recvprompt()
 {
-  mProxy = new nsContentPermissionRequestProxy();
-  if (NS_FAILED(mProxy->Init(mRequests, this))) {
+  mProxy = new nsContentPermissionRequestProxy(this);
+  if (NS_FAILED(mProxy->Init(mRequests))) {
     mProxy->Cancel();
   }
   return IPC_OK();
@@ -578,8 +578,10 @@ nsContentPermissionRequestProxy::nsContentPermissionRequesterProxy
   }
 }
 
-nsContentPermissionRequestProxy::nsContentPermissionRequestProxy()
+nsContentPermissionRequestProxy::nsContentPermissionRequestProxy(ContentPermissionRequestParent* parent)
+  : mParent(parent)
 {
+    NS_ASSERTION(mParent, "null parent");
 }
 
 nsContentPermissionRequestProxy::~nsContentPermissionRequestProxy()
@@ -587,11 +589,8 @@ nsContentPermissionRequestProxy::~nsContentPermissionRequestProxy()
 }
 
 nsresult
-nsContentPermissionRequestProxy::Init(const nsTArray<PermissionRequest>& requests,
-                                      ContentPermissionRequestParent* parent)
+nsContentPermissionRequestProxy::Init(const nsTArray<PermissionRequest>& requests)
 {
-  NS_ASSERTION(parent, "null parent");
-  mParent = parent;
   mPermissionRequests = requests;
   mRequester = new nsContentPermissionRequesterProxy(mParent);
 
@@ -709,11 +708,16 @@ nsContentPermissionRequestProxy::Allow(JS::HandleValue aChoices)
     for (uint32_t i = 0; i < mPermissionRequests.Length(); ++i) {
       nsCString type = mPermissionRequests[i].type();
 
+      JS::Rooted<JSObject*> obj(RootingCx(), &aChoices.toObject());
+      obj = CheckedUnwrap(obj);
+      if (!obj) {
+        return NS_ERROR_FAILURE;
+      }
+
       AutoJSAPI jsapi;
       jsapi.Init();
 
       JSContext* cx = jsapi.cx();
-      JS::Rooted<JSObject*> obj(cx, &aChoices.toObject());
       JSAutoRealm ar(cx, obj);
 
       JS::Rooted<JS::Value> val(cx);

@@ -70,13 +70,14 @@ public class LayerSession {
         private void onCompositorDetached() {
             // Clear out any pending calls on the UI thread.
             LayerSession.this.onCompositorDetached();
-            disposeNative();
+        }
+
+        @Override protected void disposeNative() {
+            // Disposal happens in native code.
+            throw new UnsupportedOperationException();
         }
 
         @WrapForJNI(calledFrom = "ui", dispatchTo = "gecko")
-        @Override protected native void disposeNative();
-
-        @WrapForJNI(calledFrom = "any", dispatchTo = "gecko")
         public native void attachNPZC(PanZoomController npzc);
 
         @WrapForJNI(calledFrom = "ui", dispatchTo = "gecko")
@@ -139,13 +140,6 @@ public class LayerSession {
         @WrapForJNI(calledFrom = "ui")
         private void updateOverscrollOffset(final float x, final float y) {
             LayerSession.this.updateOverscrollOffset(x, y);
-        }
-
-        @WrapForJNI(calledFrom = "ui")
-        private void onSelectionCaretDrag(final boolean dragging) {
-            // Active SelectionCaretDrag requires DynamicToolbarAnimator to be pinned to
-            // avoid unwanted scroll interactions.
-            LayerSession.this.onSelectionCaretDrag(dragging);
         }
     }
 
@@ -490,14 +484,22 @@ public class LayerSession {
         mOverscroll.setDistance(y, OverscrollEdgeEffect.AXIS_Y);
     }
 
-    /* package */ void onSelectionCaretDrag(final boolean dragging) {
+    protected boolean mShouldPinOnScreen;
+
+    protected void setShouldPinOnScreen(final boolean pinned) {
         if (DEBUG) {
             ThreadUtils.assertOnUiThread();
         }
 
         if (mToolbar != null) {
-            mToolbar.setPinned(dragging, DynamicToolbarAnimator.PinReason.CARET_DRAG);
+            mToolbar.setPinned(pinned, DynamicToolbarAnimator.PinReason.CARET_DRAG);
         }
+        mShouldPinOnScreen = pinned;
+    }
+
+    /* package */ boolean shouldPinOnScreen() {
+        ThreadUtils.assertOnUiThread();
+        return mShouldPinOnScreen;
     }
 
     /* package */ void onMetricsChanged(final float scrollX, final float scrollY,

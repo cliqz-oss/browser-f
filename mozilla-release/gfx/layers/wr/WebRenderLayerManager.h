@@ -71,7 +71,8 @@ public:
   virtual bool EndEmptyTransaction(EndTransactionFlags aFlags = END_DEFAULT) override;
   void EndTransactionWithoutLayer(nsDisplayList* aDisplayList,
                                   nsDisplayListBuilder* aDisplayListBuilder,
-                                  const nsTArray<wr::WrFilterOp>& aFilters = nsTArray<wr::WrFilterOp>());
+                                  const nsTArray<wr::WrFilterOp>& aFilters = nsTArray<wr::WrFilterOp>(),
+                                  WebRenderBackgroundData* aBackground = nullptr);
   virtual void EndTransaction(DrawPaintedLayerCallback aCallback,
                               void* aCallbackData,
                               EndTransactionFlags aFlags = END_DEFAULT) override;
@@ -86,12 +87,11 @@ public:
   already_AddRefed<ContainerLayer> CreateContainerLayer() override { return nullptr; }
   already_AddRefed<ImageLayer> CreateImageLayer() override { return nullptr; }
   already_AddRefed<ColorLayer> CreateColorLayer() override { return nullptr; }
-  already_AddRefed<BorderLayer> CreateBorderLayer() override { return nullptr; }
   already_AddRefed<CanvasLayer> CreateCanvasLayer() override { return nullptr; }
 
   virtual bool NeedsWidgetInvalidation() override { return false; }
 
-  virtual void SetLayerObserverEpoch(uint64_t aLayerObserverEpoch) override;
+  virtual void SetLayersObserverEpoch(LayersObserverEpoch aEpoch) override;
 
   virtual void DidComposite(TransactionId aTransactionId,
                             const mozilla::TimeStamp& aCompositeStart,
@@ -211,6 +211,7 @@ private:
   // See equivalent field in ClientLayerManager
   APZTestData mApzTestData;
 
+  TimeStamp mTransactionStart;
   WebRenderCommandBuilder mWebRenderCommandBuilder;
 
   size_t mLastDisplayListSize;

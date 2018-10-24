@@ -6,14 +6,19 @@
 
 #include "mozilla/dom/CustomElementRegistry.h"
 
+#include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/dom/CustomElementRegistryBinding.h"
 #include "mozilla/dom/HTMLElementBinding.h"
+#include "mozilla/dom/XULElementBinding.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/WebComponentsBinding.h"
 #include "mozilla/dom/DocGroup.h"
+#include "mozilla/dom/CustomEvent.h"
+#include "mozilla/dom/ShadowRoot.h"
 #include "nsHTMLTags.h"
 #include "jsapi.h"
+#include "xpcprivate.h"
 #include "nsGlobalWindow.h"
 
 namespace mozilla {
@@ -37,6 +42,13 @@ public:
     aCb.NoteNativeChild(mDefinition,
       NS_CYCLE_COLLECTION_PARTICIPANT(CustomElementDefinition));
   }
+
+  size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const override
+  {
+    // We don't really own mDefinition.
+    return aMallocSizeOf(this);
+  }
+
 private:
   virtual void Invoke(Element* aElement, ErrorResult& aRv) override
   {
@@ -62,6 +74,15 @@ class CustomElementCallbackReaction final : public CustomElementReaction
       mCustomElementCallback->Traverse(aCb);
     }
 
+    size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const override
+    {
+      size_t n = aMallocSizeOf(this);
+
+      n += mCustomElementCallback->SizeOfIncludingThis(aMallocSizeOf);
+
+      return n;
+    }
+
   private:
     virtual void Invoke(Element* aElement, ErrorResult& aRv) override
     {
@@ -73,6 +94,16 @@ class CustomElementCallbackReaction final : public CustomElementReaction
 
 //-----------------------------------------------------
 // CustomElementCallback
+
+size_t
+LifecycleCallbackArgs::SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const
+{
+  size_t n = name.SizeOfExcludingThisIfUnshared(aMallocSizeOf);
+  n += oldValue.SizeOfExcludingThisIfUnshared(aMallocSizeOf);
+  n += newValue.SizeOfExcludingThisIfUnshared(aMallocSizeOf);
+  n += namespaceURI.SizeOfExcludingThisIfUnshared(aMallocSizeOf);
+  return n;
+}
 
 void
 CustomElementCallback::Call()
@@ -92,6 +123,9 @@ CustomElementCallback::Call()
       static_cast<LifecycleAttributeChangedCallback *>(mCallback.get())->Call(mThisObject,
         mArgs.name, mArgs.oldValue, mArgs.newValue, mArgs.namespaceURI);
       break;
+    case nsIDocument::eGetCustomInterface:
+      MOZ_ASSERT_UNREACHABLE("Don't call GetCustomInterface through callback");
+      break;
   }
 }
 
@@ -103,6 +137,24 @@ CustomElementCallback::Traverse(nsCycleCollectionTraversalCallback& aCb) const
 
   NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(aCb, "mCallback");
   aCb.NoteXPCOMChild(mCallback);
+}
+
+size_t
+CustomElementCallback::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
+{
+  size_t n = aMallocSizeOf(this);
+
+  // We don't uniquely own mThisObject.
+
+  // We own mCallback but it doesn't have any special memory reporting we can do
+  // for it other than report its own size.
+  n += aMallocSizeOf(mCallback);
+
+  n += mArgs.SizeOfExcludingThis(aMallocSizeOf);
+
+  // mAdoptedCallbackArgs doesn't really uniquely own its members.
+
+  return n;
 }
 
 CustomElementCallback::CustomElementCallback(Element* aThisObject,
@@ -206,6 +258,25 @@ CustomElementData::Unlink()
   mCustomElementDefinition = nullptr;
 }
 
+size_t
+CustomElementData::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
+{
+  size_t n = aMallocSizeOf(this);
+
+  n += mReactionQueue.ShallowSizeOfExcludingThis(aMallocSizeOf);
+
+  for (auto& reaction : mReactionQueue) {
+    // "reaction" can be null if we're being called indirectly from
+    // InvokeReactions (e.g. due to a reaction causing a memory report to be
+    // captured somehow).
+    if (reaction) {
+      n += reaction->SizeOfIncludingThis(aMallocSizeOf);
+    }
+  }
+
+  return n;
+}
+
 //-----------------------------------------------------
 // CustomElementRegistry
 
@@ -258,8 +329,8 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(CustomElementRegistry)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(CustomElementRegistry)
-  for (ConstructorMap::Enum iter(tmp->mConstructors); !iter.empty(); iter.popFront()) {
-    aCallbacks.Trace(&iter.front().mutableKey(),
+  for (auto iter = tmp->mConstructors.iter(); !iter.done(); iter.next()) {
+    aCallbacks.Trace(&iter.get().mutableKey(),
                      "mConstructors key",
                      aClosure);
   }
@@ -279,7 +350,6 @@ CustomElementRegistry::CustomElementRegistry(nsPIDOMWindowInner* aWindow)
  , mIsCustomDefinitionRunning(false)
 {
   MOZ_ASSERT(aWindow);
-  MOZ_ALWAYS_TRUE(mConstructors.init());
 
   mozilla::HoldJSObjects(this);
 }
@@ -296,7 +366,13 @@ CustomElementRegistry::IsCustomElementEnabled(JSContext* aCx, JSObject* aObject)
     return true;
   }
 
-  return XRE_IsParentProcess() && nsContentUtils::AllowXULXBLForPrincipal(nsContentUtils::ObjectPrincipal(aObject));
+  if (!XRE_IsParentProcess()) {
+    return false;
+  }
+
+  nsIPrincipal* principal =
+    nsContentUtils::ObjectPrincipal(js::UncheckedUnwrap(aObject));
+  return nsContentUtils::AllowXULXBLForPrincipal(principal);
 }
 
 bool
@@ -344,6 +420,7 @@ CustomElementRegistry::RunCustomElementCreationCallback::Run()
 
 CustomElementDefinition*
 CustomElementRegistry::LookupCustomElementDefinition(nsAtom* aNameAtom,
+                                                     int32_t aNameSpaceID,
                                                      nsAtom* aTypeAtom)
 {
   CustomElementDefinition* data = mCustomDefinitions.GetWeak(aTypeAtom);
@@ -361,7 +438,7 @@ CustomElementRegistry::LookupCustomElementDefinition(nsAtom* aNameAtom,
     }
   }
 
-  if (data && data->mLocalName == aNameAtom) {
+  if (data && data->mLocalName == aNameAtom && data->mNamespaceID == aNameSpaceID) {
     return data;
   }
 
@@ -474,6 +551,10 @@ CustomElementRegistry::CreateCustomElementCallback(
       if (aDefinition->mCallbacks->mAttributeChangedCallback.WasPassed()) {
         func = aDefinition->mCallbacks->mAttributeChangedCallback.Value();
       }
+      break;
+
+    case nsIDocument::eGetCustomInterface:
+      MOZ_ASSERT_UNREACHABLE("Don't call GetCustomInterface through callback");
       break;
   }
 
@@ -658,7 +739,7 @@ CustomElementRegistry::UpgradeCandidates(nsAtom* aKey,
 JSObject*
 CustomElementRegistry::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return CustomElementRegistryBinding::Wrap(aCx, this, aGivenProto);
+  return CustomElementRegistry_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 nsISupports* CustomElementRegistry::GetParentObject() const
@@ -670,6 +751,24 @@ DocGroup*
 CustomElementRegistry::GetDocGroup() const
 {
   return mWindow ? mWindow->GetDocGroup() : nullptr;
+}
+
+int32_t
+CustomElementRegistry::InferNamespace(JSContext* aCx,
+                                      JS::Handle<JSObject*> constructor)
+{
+  JS::Rooted<JSObject*> XULConstructor(aCx, XULElement_Binding::GetConstructorObject(aCx));
+
+  JS::Rooted<JSObject*> proto(aCx, constructor);
+  while (proto) {
+    if (proto == XULConstructor) {
+      return kNameSpaceID_XUL;
+    }
+
+    JS_GetPrototype(aCx, proto, &proto);
+  }
+
+  return kNameSpaceID_XHTML;
 }
 
 // https://html.spec.whatwg.org/multipage/scripting.html#element-definition
@@ -704,12 +803,13 @@ CustomElementRegistry::Define(JSContext* aCx,
     return;
   }
 
+  int32_t nameSpaceID = InferNamespace(aCx, constructor);
+
   /**
    * 2. If name is not a valid custom element name, then throw a "SyntaxError"
    *    DOMException and abort these steps.
    */
   nsIDocument* doc = mWindow->GetExtantDoc();
-  uint32_t nameSpaceID = doc ? doc->GetDefaultNamespaceID() : kNameSpaceID_XHTML;
   RefPtr<nsAtom> nameAtom(NS_Atomize(aName));
   if (!nsContentUtils::IsCustomElementName(nameAtom, nameSpaceID)) {
     aRv.Throw(NS_ERROR_DOM_SYNTAX_ERR);
@@ -831,7 +931,8 @@ CustomElementRegistry::Define(JSContext* aCx,
      * 10.3. Let lifecycleCallbacks be a map with the four keys
      *       "connectedCallback", "disconnectedCallback", "adoptedCallback", and
      *       "attributeChangedCallback", each of which belongs to an entry whose
-     *       value is null.
+     *       value is null. The 'getCustomInterface' callback is also included
+     *       for chrome usage.
      * 10.4. For each of the four keys callbackName in lifecycleCallbacks:
      *       1. Let callbackValue be Get(prototype, callbackName). Rethrow any
      *          exceptions.
@@ -928,6 +1029,7 @@ CustomElementRegistry::Define(JSContext* aCx,
   RefPtr<CustomElementDefinition> definition =
     new CustomElementDefinition(nameAtom,
                                 localNameAtom,
+                                nameSpaceID,
                                 &aFunctionConstructor,
                                 std::move(observedAttributes),
                                 std::move(callbacksHolder));
@@ -955,6 +1057,27 @@ CustomElementRegistry::Define(JSContext* aCx,
   mWhenDefinedPromiseMap.Remove(nameAtom, getter_AddRefs(promise));
   if (promise) {
     promise->MaybeResolveWithUndefined();
+  }
+
+  // Dispatch a "customelementdefined" event for DevTools.
+  {
+    JSString* nameJsStr = JS_NewUCStringCopyN(aCx,
+                                              aName.BeginReading(),
+                                              aName.Length());
+
+    JS::Rooted<JS::Value> detail(aCx, JS::StringValue(nameJsStr));
+    RefPtr<CustomEvent> event = NS_NewDOMCustomEvent(doc, nullptr, nullptr);
+    event->InitCustomEvent(aCx,
+                           NS_LITERAL_STRING("customelementdefined"),
+                           /* CanBubble */ true,
+                           /* Cancelable */ true,
+                           detail);
+    event->SetTrusted(true);
+
+    AsyncEventDispatcher* dispatcher = new AsyncEventDispatcher(doc, event);
+    dispatcher->mOnlyChromeDispatch = ChromeOnlyDispatch::eYes;
+
+    dispatcher->PostDOMEvent();
   }
 
   /**
@@ -1155,9 +1278,60 @@ CustomElementRegistry::Upgrade(Element* aElement,
 
   // Step 8.
   data->mState = CustomElementData::State::eCustom;
+  aElement->SetDefined(true);
 
   // Step 9.
   aElement->SetCustomElementDefinition(aDefinition);
+}
+
+already_AddRefed<nsISupports>
+CustomElementRegistry::CallGetCustomInterface(Element* aElement,
+                                              const nsIID& aIID)
+{
+  MOZ_ASSERT(aElement);
+
+  if (nsContentUtils::IsChromeDoc(aElement->OwnerDoc())) {
+    CustomElementDefinition* definition = aElement->GetCustomElementDefinition();
+    if (definition && definition->mCallbacks &&
+        definition->mCallbacks->mGetCustomInterfaceCallback.WasPassed() &&
+        definition->mLocalName == aElement->NodeInfo()->NameAtom()) {
+
+      LifecycleGetCustomInterfaceCallback* func =
+        definition->mCallbacks->mGetCustomInterfaceCallback.Value();
+      JS::Rooted<JSObject*> customInterface(RootingCx());
+
+      nsCOMPtr<nsIJSID> iid = nsJSID::NewID(aIID);
+      func->Call(aElement, iid, &customInterface);
+      JS::Rooted<JSObject*> funcGlobal(RootingCx(), func->CallbackGlobalOrNull());
+      if (customInterface && funcGlobal) {
+        RefPtr<nsXPCWrappedJS> wrappedJS;
+        AutoJSAPI jsapi;
+        if (jsapi.Init(funcGlobal)) {
+          JSContext* cx = jsapi.cx();
+          nsresult rv =
+            nsXPCWrappedJS::GetNewOrUsed(cx, customInterface,
+                                         NS_GET_IID(nsISupports),
+                                         getter_AddRefs(wrappedJS));
+          if (NS_SUCCEEDED(rv) && wrappedJS) {
+            // Check if the returned object implements the desired interface.
+            nsCOMPtr<nsISupports> retval;
+            if (NS_SUCCEEDED(wrappedJS->QueryInterface(aIID,
+                                                       getter_AddRefs(retval)))) {
+              return retval.forget();
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Otherwise, check if the element supports the interface directly, and just use that.
+  nsCOMPtr<nsISupports> supports;
+  if (NS_SUCCEEDED(aElement->QueryInterface(aIID, getter_AddRefs(supports)))) {
+    return supports.forget();
+  }
+
+  return nullptr;
 }
 
 //-----------------------------------------------------
@@ -1249,10 +1423,6 @@ CustomElementReactionsStack::Enqueue(Element* aElement,
   // Add element to the backup element queue.
   MOZ_ASSERT(mReactionsStack.IsEmpty(),
              "custom element reactions stack should be empty");
-  MOZ_ASSERT(!aReaction->IsUpgradeReaction() ||
-             nsContentUtils::IsChromeDoc(aElement->OwnerDoc()),
-             "Upgrade reaction should not be scheduled to backup queue "
-             "except when Custom Element is used inside XBL (in chrome).");
   mBackupQueue.AppendElement(aElement);
   elementData->mReactionQueue.AppendElement(aReaction);
 
@@ -1310,9 +1480,6 @@ CustomElementReactionsStack::InvokeReactions(ElementQueue* aElementQueue,
       auto reaction(std::move(reactions.ElementAt(j)));
       if (reaction) {
         if (!aGlobal && reaction->IsUpgradeReaction()) {
-          // This is for the special case when custom element is included
-          // inside XBL.
-          MOZ_ASSERT(nsContentUtils::IsChromeDoc(element->OwnerDoc()));
           nsIGlobalObject* global = element->GetOwnerGlobal();
           MOZ_ASSERT(!aes);
           aes.emplace(global, "custom elements reaction invocation");
@@ -1371,6 +1538,11 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(CustomElementDefinition)
     cb.NoteXPCOMChild(callbacks->mAdoptedCallback.Value());
   }
 
+  if (callbacks->mGetCustomInterfaceCallback.WasPassed()) {
+    NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mCallbacks->mGetCustomInterfaceCallback");
+    cb.NoteXPCOMChild(callbacks->mGetCustomInterfaceCallback.Value());
+  }
+
   NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mConstructor");
   cb.NoteXPCOMChild(tmp->mConstructor);
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
@@ -1384,11 +1556,13 @@ NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(CustomElementDefinition, Release)
 
 CustomElementDefinition::CustomElementDefinition(nsAtom* aType,
                                                  nsAtom* aLocalName,
+                                                 int32_t aNamespaceID,
                                                  Function* aConstructor,
                                                  nsTArray<RefPtr<nsAtom>>&& aObservedAttributes,
                                                  UniquePtr<LifecycleCallbacks>&& aCallbacks)
   : mType(aType),
     mLocalName(aLocalName),
+    mNamespaceID(aNamespaceID),
     mConstructor(new CustomElementConstructor(aConstructor)),
     mObservedAttributes(std::move(aObservedAttributes)),
     mCallbacks(std::move(aCallbacks))

@@ -41,6 +41,8 @@
 #include "common/mac/scoped_task_suspend-inl.h"
 #include "google_breakpad/common/minidump_exception_mac.h"
 
+#include "mozilla/RecordReplay.h"
+
 #ifndef __EXCEPTIONS
 // This file uses C++ try/catch (but shouldn't). Duplicate the macros from
 // <c++/4.2.1/exception_defines.h> allowing this file to work properly with
@@ -126,7 +128,7 @@ extern "C" {
                        mach_msg_header_t* reply);
 
   // This symbol must be visible to dlsym() - see
-  // http://code.google.com/p/google-breakpad/issues/detail?id=345 for details.
+  // https://bugs.chromium.org/p/google-breakpad/issues/detail?id=345 for details.
   kern_return_t catch_exception_raise(mach_port_t target_port,
                                       mach_port_t failed_thread,
                                       mach_port_t task,
@@ -356,6 +358,11 @@ bool ExceptionHandler::WriteMinidumpWithException(
     bool report_current_thread) {
   bool result = false;
 
+#if TARGET_OS_IPHONE
+  // _exit() should never be called on iOS.
+  exit_after_write = false;
+#endif
+
   if (directCallback_) {
     if (directCallback_(callback_context_,
                         exception_type,
@@ -459,7 +466,7 @@ kern_return_t ForwardException(mach_port_t task, mach_port_t failed_thread,
 
   kern_return_t result;
   // TODO: Handle the case where |target_behavior| has MACH_EXCEPTION_CODES
-  // set. https://code.google.com/p/google-breakpad/issues/detail?id=551
+  // set. https://bugs.chromium.org/p/google-breakpad/issues/detail?id=551
   switch (target_behavior) {
     case EXCEPTION_DEFAULT:
       result = exception_raise(target_port, failed_thread, task, exception,
@@ -632,6 +639,21 @@ void ExceptionHandler::SignalHandler(int sig, siginfo_t* info, void* uc) {
 #endif
 }
 
+// static
+bool ExceptionHandler::WriteForwardedExceptionMinidump(int exception_type,
+						       int exception_code,
+						       int exception_subcode,
+						       mach_port_t thread)
+{
+  if (!gProtectedData.handler) {
+    return false;
+  }
+  return gProtectedData.handler->WriteMinidumpWithException(exception_type, exception_code,
+							    exception_subcode, NULL, thread,
+							    /* exit_after_write = */ false,
+							    /* report_current_thread = */ true);
+}
+
 bool ExceptionHandler::InstallHandler() {
   // If a handler is already installed, something is really wrong.
   if (gProtectedData.handler != NULL) {
@@ -666,6 +688,12 @@ bool ExceptionHandler::InstallHandler() {
   }
   catch (std::bad_alloc) {
     return false;
+  }
+
+  // Don't modify exception ports when replaying, to avoid interfering with the
+  // record/replay system's exception handler.
+  if (mozilla::recordreplay::IsReplaying()) {
+    return true;
   }
 
   // Save the current exception ports so that we can forward to them
@@ -757,7 +785,9 @@ bool ExceptionHandler::Setup(bool install_handler) {
     if (!InstallHandler())
       return false;
 
-  if (result == KERN_SUCCESS) {
+  // Don't spawn the handler thread when replaying, as we have not set up
+  // exception ports for it to monitor.
+  if (result == KERN_SUCCESS && !mozilla::recordreplay::IsReplaying()) {
     // Install the handler in its own thread, detached as we won't be joining.
     pthread_attr_t attr;
     pthread_attr_init(&attr);

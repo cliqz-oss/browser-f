@@ -13,7 +13,7 @@ var state = {entries: [
     triggeringPrincipal_base64,
     children: [{ docIdentifier: 10,
                  url: "http://example.com?10",
-                 triggeringPrincipal_base64 }]
+                 triggeringPrincipal_base64 }],
   },
   {
     docIdentifier: 1,
@@ -21,8 +21,8 @@ var state = {entries: [
     triggeringPrincipal_base64,
     children: [{ docIdentifier: 10,
                  url: "http://example.com?10#aa",
-                 triggeringPrincipal_base64 }]
-  }
+                 triggeringPrincipal_base64 }],
+  },
 ]};
 
 add_task(async function test() {
@@ -30,13 +30,8 @@ add_task(async function test() {
   await promiseTabState(tab, state);
   await ContentTask.spawn(tab.linkedBrowser, null, function() {
     function compareEntries(i, j, history) {
-      let e1 = history.getEntryAtIndex(i, false)
-                      .QueryInterface(Ci.nsISHEntry)
-                      .QueryInterface(Ci.nsISHContainer);
-
-      let e2 = history.getEntryAtIndex(j, false)
-                      .QueryInterface(Ci.nsISHEntry)
-                      .QueryInterface(Ci.nsISHContainer);
+      let e1 = history.getEntryAtIndex(i, false);
+      let e2 = history.getEntryAtIndex(j, false);
 
       ok(e1.sharesDocumentWith(e2),
          `${i} should share doc with ${j}`);

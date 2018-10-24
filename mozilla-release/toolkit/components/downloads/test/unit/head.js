@@ -36,6 +36,8 @@ ChromeUtils.defineModuleGetter(this, "FileTestUtils",
                                "resource://testing-common/FileTestUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "MockRegistrar",
                                "resource://testing-common/MockRegistrar.jsm");
+ChromeUtils.defineModuleGetter(this, "TestUtils",
+                               "resource://testing-common/TestUtils.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "gExternalHelperAppService",
            "@mozilla.org/uriloader/external-helper-app-service;1",
@@ -68,10 +70,10 @@ const TEST_REFERRER_URL = "https://www.example.com/referrer.html";
 const TEST_DATA_SHORT = "This test string is downloaded.";
 // Generate using gzipCompressString in TelemetryController.jsm.
 const TEST_DATA_SHORT_GZIP_ENCODED_FIRST = [
- 31, 139, 8, 0, 0, 0, 0, 0, 0, 3, 11, 201, 200, 44, 86, 40, 73, 45, 46, 81, 40, 46, 41, 202, 204
+ 31, 139, 8, 0, 0, 0, 0, 0, 0, 3, 11, 201, 200, 44, 86, 40, 73, 45, 46, 81, 40, 46, 41, 202, 204,
 ];
 const TEST_DATA_SHORT_GZIP_ENCODED_SECOND = [
-  75, 87, 0, 114, 83, 242, 203, 243, 114, 242, 19, 83, 82, 83, 244, 0, 151, 222, 109, 43, 31, 0, 0, 0
+  75, 87, 0, 114, 83, 242, 203, 243, 114, 242, 19, 83, 82, 83, 244, 0, 151, 222, 109, 43, 31, 0, 0, 0,
 ];
 const TEST_DATA_SHORT_GZIP_ENCODED =
   TEST_DATA_SHORT_GZIP_ENCODED_FIRST.concat(TEST_DATA_SHORT_GZIP_ENCODED_SECOND);
@@ -146,32 +148,16 @@ function promiseTimeout(aTime) {
  */
 function promiseWaitForVisit(aUrl) {
   return new Promise(resolve => {
-
-    let uri = NetUtil.newURI(aUrl);
-
-    PlacesUtils.history.addObserver({
-      QueryInterface: ChromeUtils.generateQI([Ci.nsINavHistoryObserver]),
-      onBeginUpdateBatch() {},
-      onEndUpdateBatch() {},
-      onVisits(aVisits) {
-        Assert.equal(aVisits.length, 1);
-        let {
-          uri: visitUri,
-          time,
-          transitionType,
-        } = aVisits[0];
-        if (visitUri.equals(uri)) {
-          PlacesUtils.history.removeObserver(this);
-          resolve([time, transitionType]);
-        }
-      },
-      onTitleChanged() {},
-      onDeleteURI() {},
-      onClearHistory() {},
-      onPageChanged() {},
-      onDeleteVisits() {},
-    });
-
+    function listener(aEvents) {
+      Assert.equal(aEvents.length, 1);
+      let event = aEvents[0];
+      Assert.equal(event.type, "page-visited");
+      if (event.url == aUrl) {
+        PlacesObservers.removeListener(["page-visited"], listener);
+        resolve([event.visitTime, event.transitionType, event.lastKnownTitle]);
+      }
+    }
+    PlacesObservers.addListener(["page-visited"], listener);
   });
 }
 
@@ -299,7 +285,8 @@ function promiseStartLegacyDownload(aSourceUrl, aOptions) {
 
       // Start the actual download process.
       persist.savePrivacyAwareURI(
-        sourceURI, 0, referrer, Ci.nsIHttpChannel.REFERRER_POLICY_UNSAFE_URL,
+        sourceURI, Services.scriptSecurityManager.getSystemPrincipal(),
+        0, referrer, Ci.nsIHttpChannel.REFERRER_POLICY_UNSAFE_URL,
         null, null, targetFile, isPrivate);
     }).catch(do_report_unexpected_exception);
 
@@ -345,7 +332,7 @@ function promiseStartExternalHelperAppServiceDownload(aSourceUrl) {
 
       let channel = NetUtil.newChannel({
         uri: sourceURI,
-        loadUsingSystemPrincipal: true
+        loadUsingSystemPrincipal: true,
       });
 
       // Start the actual download process.
@@ -593,6 +580,17 @@ function registerInterruptibleHandler(aPath, aFirstPartFn, aSecondPartFn) {
  */
 function isValidDate(aDate) {
   return aDate && aDate.getTime && !isNaN(aDate.getTime());
+}
+
+/**
+ * Waits for the download annotations to be set for the given page, required
+ * because the addDownload method will add these to the database asynchronously.
+ */
+function waitForAnnotation(sourceUriSpec, annotationName) {
+  return TestUtils.waitForCondition(async () => {
+    let pageInfo = await PlacesUtils.history.fetch(sourceUriSpec, {includeAnnotations: true});
+    return pageInfo && pageInfo.annotations.has(annotationName);
+  }, `Should have found annotation ${annotationName} for ${sourceUriSpec}`);
 }
 
 /**

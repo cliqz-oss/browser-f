@@ -2,16 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-.tabbrowser-tabpanels {
-  -moz-binding: url("chrome://browser/content/tabbrowser.xml#tabbrowser-tabpanels");
-}
-
 .tabbrowser-arrowscrollbox {
   -moz-binding: url("chrome://browser/content/tabbrowser.xml#tabbrowser-arrowscrollbox");
 }
 
 .tab-close-button[pinned],
 #tabbrowser-tabs[closebuttons="activetab"] > .tabbrowser-tab > .tab-stack > .tab-content > .tab-close-button:not([selected="true"]),
+.tab-icon-pending:not([pendingicon]),
+.tab-icon-pending[busy],
+.tab-icon-pending[pinned],
 .tab-icon-image:not([src]):not([pinned]):not([crashed])[selected],
 .tab-icon-image:not([src]):not([pinned]):not([crashed]):not([sharing]),
 .tab-icon-image[busy],

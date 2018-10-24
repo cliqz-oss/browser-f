@@ -340,8 +340,7 @@ template void MacroAssembler::guardTypeSet(const TypedOrValueRegister& value, co
 
 template<typename S, typename T>
 static void
-StoreToTypedFloatArray(MacroAssembler& masm, int arrayType, const S& value, const T& dest,
-                       unsigned numElems)
+StoreToTypedFloatArray(MacroAssembler& masm, int arrayType, const S& value, const T& dest)
 {
     switch (arrayType) {
       case Scalar::Float32:
@@ -350,48 +349,6 @@ StoreToTypedFloatArray(MacroAssembler& masm, int arrayType, const S& value, cons
       case Scalar::Float64:
         masm.storeDouble(value, dest);
         break;
-      case Scalar::Float32x4:
-        switch (numElems) {
-          case 1:
-            masm.storeFloat32(value, dest);
-            break;
-          case 2:
-            masm.storeDouble(value, dest);
-            break;
-          case 3:
-            masm.storeFloat32x3(value, dest);
-            break;
-          case 4:
-            masm.storeUnalignedSimd128Float(value, dest);
-            break;
-          default: MOZ_CRASH("unexpected number of elements in simd write");
-        }
-        break;
-      case Scalar::Int32x4:
-        switch (numElems) {
-          case 1:
-            masm.storeInt32x1(value, dest);
-            break;
-          case 2:
-            masm.storeInt32x2(value, dest);
-            break;
-          case 3:
-            masm.storeInt32x3(value, dest);
-            break;
-          case 4:
-            masm.storeUnalignedSimd128Int(value, dest);
-            break;
-          default: MOZ_CRASH("unexpected number of elements in simd write");
-        }
-        break;
-      case Scalar::Int8x16:
-        MOZ_ASSERT(numElems == 16, "unexpected partial store");
-        masm.storeUnalignedSimd128Int(value, dest);
-        break;
-      case Scalar::Int16x8:
-        MOZ_ASSERT(numElems == 8, "unexpected partial store");
-        masm.storeUnalignedSimd128Int(value, dest);
-        break;
       default:
         MOZ_CRASH("Invalid typed array type");
     }
@@ -399,21 +356,21 @@ StoreToTypedFloatArray(MacroAssembler& masm, int arrayType, const S& value, cons
 
 void
 MacroAssembler::storeToTypedFloatArray(Scalar::Type arrayType, FloatRegister value,
-                                       const BaseIndex& dest, unsigned numElems)
+                                       const BaseIndex& dest)
 {
-    StoreToTypedFloatArray(*this, arrayType, value, dest, numElems);
+    StoreToTypedFloatArray(*this, arrayType, value, dest);
 }
 void
 MacroAssembler::storeToTypedFloatArray(Scalar::Type arrayType, FloatRegister value,
-                                       const Address& dest, unsigned numElems)
+                                       const Address& dest)
 {
-    StoreToTypedFloatArray(*this, arrayType, value, dest, numElems);
+    StoreToTypedFloatArray(*this, arrayType, value, dest);
 }
 
 template<typename T>
 void
 MacroAssembler::loadFromTypedArray(Scalar::Type arrayType, const T& src, AnyRegister dest, Register temp,
-                                   Label* fail, bool canonicalizeDoubles, unsigned numElems)
+                                   Label* fail, bool canonicalizeDoubles)
 {
     switch (arrayType) {
       case Scalar::Int8:
@@ -454,59 +411,17 @@ MacroAssembler::loadFromTypedArray(Scalar::Type arrayType, const T& src, AnyRegi
         if (canonicalizeDoubles)
             canonicalizeDouble(dest.fpu());
         break;
-      case Scalar::Int32x4:
-        switch (numElems) {
-          case 1:
-            loadInt32x1(src, dest.fpu());
-            break;
-          case 2:
-            loadInt32x2(src, dest.fpu());
-            break;
-          case 3:
-            loadInt32x3(src, dest.fpu());
-            break;
-          case 4:
-            loadUnalignedSimd128Int(src, dest.fpu());
-            break;
-          default: MOZ_CRASH("unexpected number of elements in SIMD load");
-        }
-        break;
-      case Scalar::Float32x4:
-        switch (numElems) {
-          case 1:
-            loadFloat32(src, dest.fpu());
-            break;
-          case 2:
-            loadDouble(src, dest.fpu());
-            break;
-          case 3:
-            loadFloat32x3(src, dest.fpu());
-            break;
-          case 4:
-            loadUnalignedSimd128Float(src, dest.fpu());
-            break;
-          default: MOZ_CRASH("unexpected number of elements in SIMD load");
-        }
-        break;
-      case Scalar::Int8x16:
-        MOZ_ASSERT(numElems == 16, "unexpected partial load");
-        loadUnalignedSimd128Int(src, dest.fpu());
-        break;
-      case Scalar::Int16x8:
-        MOZ_ASSERT(numElems == 8, "unexpected partial load");
-        loadUnalignedSimd128Int(src, dest.fpu());
-        break;
       default:
         MOZ_CRASH("Invalid typed array type");
     }
 }
 
-template void MacroAssembler::loadFromTypedArray(Scalar::Type arrayType, const Address& src, AnyRegister dest,
-                                                 Register temp, Label* fail, bool canonicalizeDoubles,
-                                                 unsigned numElems);
-template void MacroAssembler::loadFromTypedArray(Scalar::Type arrayType, const BaseIndex& src, AnyRegister dest,
-                                                 Register temp, Label* fail, bool canonicalizeDoubles,
-                                                 unsigned numElems);
+template void MacroAssembler::loadFromTypedArray(Scalar::Type arrayType, const Address& src,
+                                                 AnyRegister dest, Register temp, Label* fail,
+                                                 bool canonicalizeDoubles);
+template void MacroAssembler::loadFromTypedArray(Scalar::Type arrayType, const BaseIndex& src,
+                                                 AnyRegister dest, Register temp, Label* fail,
+                                                 bool canonicalizeDoubles);
 
 template<typename T>
 void
@@ -818,9 +733,10 @@ MacroAssembler::checkAllocatorState(Label* fail)
 
 #ifdef JS_GC_ZEAL
     // Don't execute the inline path if gc zeal or tracing are active.
-    branch32(Assembler::NotEqual,
-             AbsoluteAddress(GetJitContext()->runtime->addressOfGCZealModeBits()), Imm32(0),
-             fail);
+    const uint32_t *ptrZealModeBits =
+        GetJitContext()->runtime->addressOfGCZealModeBits();
+    branch32(Assembler::NotEqual, AbsoluteAddress(ptrZealModeBits), Imm32(0),
+        fail);
 #endif
 
     // Don't execute the inline path if the realm has an object metadata callback,
@@ -860,13 +776,14 @@ MacroAssembler::nurseryAllocateObject(Register result, Register temp, gc::AllocK
     // No explicit check for nursery.isEnabled() is needed, as the comparison
     // with the nursery's end will always fail in such cases.
     CompileZone* zone = GetJitContext()->realm->zone();
-    int thingSize = int(gc::Arena::thingSize(allocKind));
-    int totalSize = thingSize + nDynamicSlots * sizeof(HeapSlot);
+    size_t thingSize = gc::Arena::thingSize(allocKind);
+    size_t totalSize = thingSize + nDynamicSlots * sizeof(HeapSlot);
+    MOZ_ASSERT(totalSize < INT32_MAX);
     MOZ_ASSERT(totalSize % gc::CellAlignBytes == 0);
-    loadPtr(AbsoluteAddress(zone->addressOfNurseryPosition()), result);
-    computeEffectiveAddress(Address(result, totalSize), temp);
-    branchPtr(Assembler::Below, AbsoluteAddress(zone->addressOfNurseryCurrentEnd()), temp, fail);
-    storePtr(temp, AbsoluteAddress(zone->addressOfNurseryPosition()));
+
+    bumpPointerAllocate(result, temp, fail,
+        zone->addressOfNurseryPosition(),
+        zone->addressOfNurseryCurrentEnd(), totalSize, totalSize);
 
     if (nDynamicSlots) {
         computeEffectiveAddress(Address(result, thingSize), temp);
@@ -886,14 +803,15 @@ MacroAssembler::freeListAllocate(Register result, Register temp, gc::AllocKind a
 
     // Load the first and last offsets of |zone|'s free list for |allocKind|.
     // If there is no room remaining in the span, fall back to get the next one.
-    loadPtr(AbsoluteAddress(zone->addressOfFreeList(allocKind)), temp);
+    gc::FreeSpan **ptrFreeList = zone->addressOfFreeList(allocKind);
+    loadPtr(AbsoluteAddress(ptrFreeList), temp);
     load16ZeroExtend(Address(temp, js::gc::FreeSpan::offsetOfFirst()), result);
     load16ZeroExtend(Address(temp, js::gc::FreeSpan::offsetOfLast()), temp);
     branch32(Assembler::AboveOrEqual, result, temp, &fallback);
 
     // Bump the offset for the next allocation.
     add32(Imm32(thingSize), result);
-    loadPtr(AbsoluteAddress(zone->addressOfFreeList(allocKind)), temp);
+    loadPtr(AbsoluteAddress(ptrFreeList), temp);
     store16(result, Address(temp, js::gc::FreeSpan::offsetOfFirst()));
     sub32(Imm32(thingSize), result);
     addPtr(temp, result); // Turn the offset into a pointer.
@@ -904,7 +822,7 @@ MacroAssembler::freeListAllocate(Register result, Register temp, gc::AllocKind a
     // interpreter will call the GC allocator to set up a new arena to allocate
     // from, after which we can resume allocating in the jit.
     branchTest32(Assembler::Zero, result, result, fail);
-    loadPtr(AbsoluteAddress(zone->addressOfFreeList(allocKind)), temp);
+    loadPtr(AbsoluteAddress(ptrFreeList), temp);
     addPtr(temp, result); // Turn the offset into a pointer.
     Push(result);
     // Update the free list to point to the next span (which may be empty).
@@ -913,6 +831,12 @@ MacroAssembler::freeListAllocate(Register result, Register temp, gc::AllocKind a
     Pop(result);
 
     bind(&success);
+
+    if (GetJitContext()->runtime->geckoProfiler().enabled()) {
+        uint32_t* countAddress = GetJitContext()->runtime->addressOfTenuredAllocCount();
+        movePtr(ImmPtr(countAddress), temp);
+        add32(Imm32(1), Address(temp, 0));
+    }
 }
 
 void
@@ -1042,38 +966,51 @@ MacroAssembler::nurseryAllocateString(Register result, Register temp, gc::AllocK
     // with the nursery's end will always fail in such cases.
 
     CompileZone* zone = GetJitContext()->realm->zone();
-    int thingSize = int(gc::Arena::thingSize(allocKind));
-    int totalSize = js::Nursery::stringHeaderSize() + thingSize;
+    size_t thingSize = gc::Arena::thingSize(allocKind);
+    size_t totalSize = js::Nursery::stringHeaderSize() + thingSize;
+    MOZ_ASSERT(totalSize < INT32_MAX,
+        "Nursery allocation too large");
     MOZ_ASSERT(totalSize % gc::CellAlignBytes == 0);
 
-    // The nursery position (allocation pointer) and the nursery end are stored
-    // very close to each other. In practice, the zone will probably be close
-    // (within 32 bits) as well. If so, use relative offsets between them, to
-    // avoid multiple 64-bit immediate loads.
-    auto nurseryPosAddr = intptr_t(zone->addressOfStringNurseryPosition());
-    auto nurseryEndAddr = intptr_t(zone->addressOfStringNurseryCurrentEnd());
-    auto zoneAddr = intptr_t(zone);
+    bumpPointerAllocate(result, temp, fail,
+        zone->addressOfStringNurseryPosition(),
+        zone->addressOfStringNurseryCurrentEnd(), totalSize, thingSize);
+    storePtr(ImmPtr(zone), Address(result, -js::Nursery::stringHeaderSize()));
+}
 
-    intptr_t maxOffset = std::max(std::abs(nurseryPosAddr - zoneAddr),
-                                  std::abs(nurseryEndAddr - zoneAddr));
-    if (maxOffset < (1 << 31)) {
-        movePtr(ImmPtr(zone), temp); // temp holds the Zone pointer from here on.
-        loadPtr(Address(temp, nurseryPosAddr - zoneAddr), result);
-        addPtr(Imm32(totalSize), result); // result points past this allocation.
-        branchPtr(Assembler::Below, Address(temp, nurseryEndAddr - zoneAddr), result, fail);
-        storePtr(result, Address(temp, nurseryPosAddr - zoneAddr)); // Update position.
-        subPtr(Imm32(thingSize), result); // Point result at Cell data.
-        storePtr(temp, Address(result, -js::Nursery::stringHeaderSize())); // Store Zone*
-    } else {
-        // Otherwise, the zone is far from the nursery pointers. But the
-        // nursery pos/end pointers are still near each other.
-        movePtr(ImmPtr(zone->addressOfNurseryPosition()), temp);
-        loadPtr(Address(temp, 0), result);
-        addPtr(Imm32(totalSize), result);
-        branchPtr(Assembler::Below, Address(temp, nurseryEndAddr - nurseryPosAddr), result, fail);
-        storePtr(result, Address(temp, 0));
-        subPtr(Imm32(thingSize), result);
-        storePtr(ImmPtr(zone), Address(result, -js::Nursery::stringHeaderSize()));
+void
+MacroAssembler::bumpPointerAllocate(Register result, Register temp, Label* fail,
+    void* posAddr, const void* curEndAddr, uint32_t totalSize, uint32_t size)
+{
+    // The position (allocation pointer) and the end pointer are stored
+    // very close to each other -- specifically, easily within a 32 bit offset.
+    // Use relative offsets between them, to avoid 64-bit immediate loads.
+    //
+    // I tried to optimise this further by using an extra register to avoid
+    // the final subtraction and hopefully get some more instruction
+    // parallelism, but it made no difference.
+    movePtr(ImmPtr(posAddr), temp);
+    loadPtr(Address(temp, 0), result);
+    addPtr(Imm32(totalSize), result);
+    CheckedInt<int32_t> endOffset = (CheckedInt<uintptr_t>(uintptr_t(curEndAddr)) -
+        CheckedInt<uintptr_t>(uintptr_t(posAddr))).toChecked<int32_t>();
+    MOZ_ASSERT(endOffset.isValid(),
+        "Position and end pointers must be nearby");
+    branchPtr(Assembler::Below, Address(temp, endOffset.value()), result, fail);
+    storePtr(result, Address(temp, 0));
+    subPtr(Imm32(size), result);
+
+    if (GetJitContext()->runtime->geckoProfiler().enabled()) {
+        CompileZone* zone = GetJitContext()->realm->zone();
+        uint32_t* countAddress = zone->addressOfNurseryAllocCount();
+        CheckedInt<int32_t> counterOffset = (CheckedInt<uintptr_t>(uintptr_t(countAddress)) -
+            CheckedInt<uintptr_t>(uintptr_t(posAddr))).toChecked<int32_t>();
+        if (counterOffset.isValid()) {
+            add32(Imm32(1), Address(temp, counterOffset.value()));
+        } else {
+            movePtr(ImmPtr(countAddress), temp);
+            add32(Imm32(1), Address(temp, 0));
+        }
     }
 }
 
@@ -1511,26 +1448,28 @@ MacroAssembler::compareStrings(JSOp op, Register left, Register right, Register 
 
     Label done;
     Label notPointerEqual;
-    // Fast path for identical strings.
+    // If operands point to the same instance, the strings are trivially equal.
     branchPtr(Assembler::NotEqual, left, right, &notPointerEqual);
     move32(Imm32(op == JSOP_EQ || op == JSOP_STRICTEQ), result);
     jump(&done);
 
     bind(&notPointerEqual);
 
-    Label notAtom;
-    // Optimize the equality operation to a pointer compare for two atoms.
+    Label leftIsNotAtom;
+    Label setNotEqualResult;
+    // Atoms cannot be equal to each other if they point to different strings.
     Imm32 nonAtomBit(JSString::NON_ATOM_BIT);
-    branchTest32(Assembler::NonZero, Address(left, JSString::offsetOfFlags()), nonAtomBit, &notAtom);
-    branchTest32(Assembler::NonZero, Address(right, JSString::offsetOfFlags()), nonAtomBit, &notAtom);
+    branchTest32(Assembler::NonZero, Address(left, JSString::offsetOfFlags()), nonAtomBit,
+                 &leftIsNotAtom);
+    branchTest32(Assembler::Zero, Address(right, JSString::offsetOfFlags()), nonAtomBit,
+                 &setNotEqualResult);
 
-    cmpPtrSet(JSOpToCondition(MCompare::Compare_String, op), left, right, result);
-    jump(&done);
-
-    bind(&notAtom);
+    bind(&leftIsNotAtom);
     // Strings of different length can never be equal.
     loadStringLength(left, result);
     branch32(Assembler::Equal, Address(right, JSString::offsetOfLength()), result, fail);
+
+    bind(&setNotEqualResult);
     move32(Imm32(op == JSOP_NE || op == JSOP_STRICTNE), result);
 
     bind(&done);
@@ -1683,16 +1622,6 @@ MacroAssembler::loadDependentStringBase(Register str, Register dest)
 }
 
 void
-MacroAssembler::leaNewDependentStringBase(Register str, Register dest)
-{
-    MOZ_ASSERT(str != dest);
-
-    // Spectre-safe because this is a newly allocated dependent string, thus we
-    // are certain of its type and the type of its base field.
-    computeEffectiveAddress(Address(str, JSDependentString::offsetOfBase()), dest);
-}
-
-void
 MacroAssembler::storeDependentStringBase(Register base, Register str)
 {
     storePtr(base, Address(str, JSDependentString::offsetOfBase()));
@@ -1729,12 +1658,12 @@ MacroAssembler::loadStringChar(Register str, Register index, Register output, Re
     // because a TwoByte rope might have a Latin1 child.
     branchLatin1String(output, &isLatin1);
     loadStringChars(output, scratch, CharEncoding::TwoByte);
-    load16ZeroExtend(BaseIndex(scratch, index, TimesTwo), output);
+    loadChar(scratch, index, output, CharEncoding::TwoByte);
     jump(&done);
 
     bind(&isLatin1);
     loadStringChars(output, scratch, CharEncoding::Latin1);
-    load8ZeroExtend(BaseIndex(scratch, index, TimesOne), output);
+    loadChar(scratch, index, output, CharEncoding::Latin1);
 
     bind(&done);
 }
@@ -1751,6 +1680,27 @@ MacroAssembler::loadStringIndexValue(Register str, Register dest, Label* fail)
 
     // Extract the index.
     rshift32(Imm32(JSString::INDEX_VALUE_SHIFT), dest);
+}
+
+void
+MacroAssembler::loadChar(Register chars, Register index, Register dest, CharEncoding encoding,
+                         int32_t offset/* = 0 */)
+{
+    if (encoding == CharEncoding::Latin1)
+        loadChar(BaseIndex(chars, index, TimesOne, offset), dest, encoding);
+    else
+        loadChar(BaseIndex(chars, index, TimesTwo, offset), dest, encoding);
+}
+
+void
+MacroAssembler::addToCharPtr(Register chars, Register index, CharEncoding encoding)
+{
+    if (encoding == CharEncoding::Latin1) {
+        static_assert(sizeof(char) == 1, "Latin-1 string index shouldn't need scaling");
+        addPtr(index, chars);
+    } else {
+        computeEffectiveAddress(BaseIndex(chars, index, TimesTwo), chars);
+    }
 }
 
 void
@@ -1785,6 +1735,65 @@ MacroAssembler::loadJSContext(Register dest)
 {
     JitContext* jcx = GetJitContext();
     movePtr(ImmPtr(jcx->runtime->mainContextPtr()), dest);
+}
+
+static const uint8_t*
+ContextRealmPtr()
+{
+    return (static_cast<const uint8_t*>(GetJitContext()->runtime->mainContextPtr()) +
+            JSContext::offsetOfRealm());
+}
+
+void
+MacroAssembler::switchToRealm(Register realm)
+{
+    storePtr(realm, AbsoluteAddress(ContextRealmPtr()));
+}
+
+void
+MacroAssembler::switchToRealm(const void* realm, Register scratch)
+{
+    MOZ_ASSERT(realm);
+
+    movePtr(ImmPtr(realm), scratch);
+    switchToRealm(scratch);
+}
+
+void
+MacroAssembler::switchToObjectRealm(Register obj, Register scratch)
+{
+    loadPtr(Address(obj, JSObject::offsetOfGroup()), scratch);
+    loadPtr(Address(scratch, ObjectGroup::offsetOfRealm()), scratch);
+    switchToRealm(scratch);
+}
+
+void
+MacroAssembler::switchToBaselineFrameRealm(Register scratch)
+{
+    Address envChain(BaselineFrameReg, BaselineFrame::reverseOffsetOfEnvironmentChain());
+    loadPtr(envChain, scratch);
+    switchToObjectRealm(scratch, scratch);
+}
+
+void
+MacroAssembler::switchToWasmTlsRealm(Register scratch1, Register scratch2)
+{
+    loadPtr(Address(WasmTlsReg, offsetof(wasm::TlsData, cx)), scratch1);
+    loadPtr(Address(WasmTlsReg, offsetof(wasm::TlsData, realm)), scratch2);
+    storePtr(scratch2, Address(scratch1, JSContext::offsetOfRealm()));
+}
+
+void
+MacroAssembler::debugAssertContextRealm(const void* realm, Register scratch)
+{
+#ifdef DEBUG
+    Label ok;
+    movePtr(ImmPtr(realm), scratch);
+    branchPtr(Assembler::Equal, AbsoluteAddress(ContextRealmPtr()),
+              scratch, &ok);
+    assumeUnreachable("Unexpected context realm");
+    bind(&ok);
+#endif
 }
 
 void
@@ -1874,7 +1883,7 @@ MacroAssembler::generateBailoutTail(Register scratch, Register bailoutInfo)
         // Enter exit frame for the FinishBailoutToBaseline call.
         loadPtr(Address(bailoutInfo, offsetof(BaselineBailoutInfo, resumeFramePtr)), temp);
         load32(Address(temp, BaselineFrame::reverseOffsetOfFrameSize()), temp);
-        makeFrameDescriptor(temp, JitFrame_BaselineJS, ExitFrameLayout::Size());
+        makeFrameDescriptor(temp, FrameType::BaselineJS, ExitFrameLayout::Size());
         push(temp);
         push(Address(bailoutInfo, offsetof(BaselineBailoutInfo, resumeAddr)));
         // No GC things to mark on the stack, push a bare token.
@@ -1972,10 +1981,10 @@ MacroAssembler::assertRectifierFrameParentType(Register frameType)
     {
         // Check the possible previous frame types here.
         Label checkOk;
-        branch32(Assembler::Equal, frameType, Imm32(JitFrame_IonJS), &checkOk);
-        branch32(Assembler::Equal, frameType, Imm32(JitFrame_BaselineStub), &checkOk);
-        branch32(Assembler::Equal, frameType, Imm32(JitFrame_WasmToJSJit), &checkOk);
-        branch32(Assembler::Equal, frameType, Imm32(JitFrame_CppToJSJit), &checkOk);
+        branch32(Assembler::Equal, frameType, Imm32(FrameType::IonJS), &checkOk);
+        branch32(Assembler::Equal, frameType, Imm32(FrameType::BaselineStub), &checkOk);
+        branch32(Assembler::Equal, frameType, Imm32(FrameType::WasmToJSJit), &checkOk);
+        branch32(Assembler::Equal, frameType, Imm32(FrameType::CppToJSJit), &checkOk);
         assumeUnreachable("Unrecognized frame type preceding RectifierFrame.");
         bind(&checkOk);
     }
@@ -3231,8 +3240,10 @@ MacroAssembler::branchIfNotInterpretedConstructor(Register fun, Register scratch
 {
     // 16-bit loads are slow and unaligned 32-bit loads may be too so
     // perform an aligned 32-bit load and adjust the bitmask accordingly.
-    MOZ_ASSERT(JSFunction::offsetOfNargs() % sizeof(uint32_t) == 0);
-    MOZ_ASSERT(JSFunction::offsetOfFlags() == JSFunction::offsetOfNargs() + 2);
+    static_assert(JSFunction::offsetOfNargs() % sizeof(uint32_t) == 0,
+                  "JSFunction nargs are aligned to uint32_t");
+    static_assert(JSFunction::offsetOfFlags() == JSFunction::offsetOfNargs() + 2,
+                  "JSFunction nargs and flags are stored next to each other");
 
     // First, ensure it's a scripted function.
     load32(Address(fun, JSFunction::offsetOfNargs()), scratch);
@@ -3311,9 +3322,16 @@ void
 MacroAssembler::branchIfPretenuredGroup(const ObjectGroup* group, Register scratch, Label* label)
 {
     movePtr(ImmGCPtr(group), scratch);
-    branchTest32(Assembler::NonZero, Address(scratch, ObjectGroup::offsetOfFlags()),
+    branchIfPretenuredGroup(scratch, label);
+}
+
+void
+MacroAssembler::branchIfPretenuredGroup(Register group, Label* label)
+{
+    branchTest32(Assembler::NonZero, Address(group, ObjectGroup::offsetOfFlags()),
                  Imm32(OBJECT_FLAG_PRE_TENURE), label);
 }
+
 
 void
 MacroAssembler::branchIfNonNativeObj(Register obj, Register scratch, Label* label)
@@ -3329,41 +3347,6 @@ MacroAssembler::branchIfInlineTypedObject(Register obj, Register scratch, Label*
     loadObjClassUnsafe(obj, scratch);
     branchPtr(Assembler::Equal, scratch, ImmPtr(&InlineOpaqueTypedObject::class_), label);
     branchPtr(Assembler::Equal, scratch, ImmPtr(&InlineTransparentTypedObject::class_), label);
-}
-
-void
-MacroAssembler::branchIfNotSimdObject(Register obj, Register scratch, SimdType simdType,
-                                      Label* label)
-{
-    loadPtr(Address(obj, JSObject::offsetOfGroup()), scratch);
-
-    // Guard that the object has the same representation as the one produced for
-    // SIMD value-type.
-    Address clasp(scratch, ObjectGroup::offsetOfClasp());
-    static_assert(!SimdTypeDescr::Opaque, "SIMD objects are transparent");
-    branchPtr(Assembler::NotEqual, clasp, ImmPtr(&InlineTransparentTypedObject::class_),
-              label);
-
-    // obj->type()->typeDescr()
-    // The previous class pointer comparison implies that the addendumKind is
-    // Addendum_TypeDescr.
-    loadPtr(Address(scratch, ObjectGroup::offsetOfAddendum()), scratch);
-
-    // Check for the /Kind/ reserved slot of the TypeDescr.  This is an Int32
-    // Value which is equivalent to the object class check.
-    static_assert(JS_DESCR_SLOT_KIND < NativeObject::MAX_FIXED_SLOTS, "Load from fixed slots");
-    Address typeDescrKind(scratch, NativeObject::getFixedSlotOffset(JS_DESCR_SLOT_KIND));
-    assertTestInt32(Assembler::Equal, typeDescrKind,
-      "MOZ_ASSERT(obj->type()->typeDescr()->getReservedSlot(JS_DESCR_SLOT_KIND).isInt32())");
-    branch32(Assembler::NotEqual, ToPayload(typeDescrKind), Imm32(js::type::Simd), label);
-
-    // Check if the SimdTypeDescr /Type/ matches the specialization of this
-    // MSimdUnbox instruction.
-    static_assert(JS_DESCR_SLOT_TYPE < NativeObject::MAX_FIXED_SLOTS, "Load from fixed slots");
-    Address typeDescrType(scratch, NativeObject::getFixedSlotOffset(JS_DESCR_SLOT_TYPE));
-    assertTestInt32(Assembler::Equal, typeDescrType,
-      "MOZ_ASSERT(obj->type()->typeDescr()->getReservedSlot(JS_DESCR_SLOT_TYPE).isInt32())");
-    branch32(Assembler::NotEqual, ToPayload(typeDescrType), Imm32(int32_t(simdType)), label);
 }
 
 void
@@ -3479,6 +3462,11 @@ MacroAssembler::wasmCallImport(const wasm::CallSiteDesc& desc, const wasm::Calle
     static_assert(ABINonArgReg0 != WasmTlsReg, "by constraint");
 #endif
 
+    // Switch to the callee's realm.
+    loadWasmGlobalPtr(globalDataOffset + offsetof(wasm::FuncImportTls, realm), ABINonArgReg1);
+    loadPtr(Address(WasmTlsReg, offsetof(wasm::TlsData, cx)), ABINonArgReg2);
+    storePtr(ABINonArgReg1, Address(ABINonArgReg2, JSContext::offsetOfRealm()));
+
     // Switch to the callee's TLS and pinned registers and make the call.
     loadWasmGlobalPtr(globalDataOffset + offsetof(wasm::FuncImportTls, tls), WasmTlsReg);
     loadWasmPinnedRegsFromTls();
@@ -3511,7 +3499,7 @@ void
 MacroAssembler::wasmCallIndirect(const wasm::CallSiteDesc& desc, const wasm::CalleeDesc& callee,
                                  bool needsBoundsCheck)
 {
-    Register scratch = WasmTableCallScratchReg;
+    Register scratch = WasmTableCallScratchReg0;
     Register index = WasmTableCallIndexReg;
 
     if (callee.which() == wasm::CalleeDesc::AsmJSTable) {
@@ -3572,6 +3560,7 @@ MacroAssembler::wasmCallIndirect(const wasm::CallSiteDesc& desc, const wasm::Cal
         bind(&nonNull);
 
         loadWasmPinnedRegsFromTls();
+        switchToWasmTlsRealm(index, WasmTableCallScratchReg1);
 
         loadPtr(Address(scratch, offsetof(wasm::ExternalTableElem, code)), scratch);
     } else {

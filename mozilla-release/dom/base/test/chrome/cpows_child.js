@@ -185,7 +185,7 @@ function compartment_test(finish)
     function ok(x, msg) { results.push({ result: x ? "PASS" : "FAIL", message: msg }) };
 
     let cpowLocation = Cu.getRealmLocation(obj);
-    ok(/Privileged Junk/.test(cpowLocation),
+    ok(/shared JSM global/.test(cpowLocation),
        "child->parent CPOWs should live in the privileged junk scope: " + cpowLocation);
     is(obj(), 42, "child->parent CPOW is invokable");
     try {
@@ -371,9 +371,7 @@ function dead_test(finish)
 
   let gcTrigger = function() {
     // Force the GC to dead-ify the thing.
-    content.QueryInterface(Ci.nsIInterfaceRequestor)
-           .getInterface(Ci.nsIDOMWindowUtils)
-           .garbageCollect();
+    content.windowUtils.garbageCollect();
   }
 
   {

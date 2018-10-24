@@ -85,7 +85,7 @@ add_task(async function move_roots_fail() {
                PlacesUtils.bookmarks.tagsGuid,
                PlacesUtils.bookmarks.mobileGuid];
   for (let guid of guids) {
-    Assert.rejects(PlacesUtils.bookmarks.update({
+    await Assert.rejects(PlacesUtils.bookmarks.update({
       guid,
       index: -1,
       parentGuid: PlacesUtils.bookmarks.unfiledGuid,
@@ -307,12 +307,12 @@ add_task(async function update_move_folder_into_descendant_throws() {
 add_task(async function update_move_into_root_folder_rejects() {
   let folder = await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.unfiledGuid,
-    type: PlacesUtils.bookmarks.TYPE_FOLDER
+    type: PlacesUtils.bookmarks.TYPE_FOLDER,
   });
   let bm = await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.unfiledGuid,
     url: "http://example.com/",
-    type: PlacesUtils.bookmarks.TYPE_BOOKMARK
+    type: PlacesUtils.bookmarks.TYPE_BOOKMARK,
   });
 
   Assert.throws(() =>

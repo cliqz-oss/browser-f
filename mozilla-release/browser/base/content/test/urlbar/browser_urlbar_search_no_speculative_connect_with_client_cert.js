@@ -70,7 +70,7 @@ function startServer(cert) {
           } catch (e) {
             // This will fail when we close the speculative connection.
           }
-        }
+        },
       }, 0, 0, Services.tm.currentThread);
     },
 
@@ -78,10 +78,9 @@ function startServer(cert) {
       info("onStopListening");
       input.close();
       output.close();
-    }
+    },
   };
 
-  tlsServer.setSessionCache(false);
   tlsServer.setSessionTickets(false);
   tlsServer.setRequestClientCertificate(Ci.nsITLSServerSocket.REQUEST_ALWAYS);
 
@@ -118,7 +117,7 @@ add_task(async function setup() {
           return;
         }
         resolve(c);
-      }
+      },
     });
   });
   server = startServer(cert);
@@ -146,7 +145,7 @@ add_task(async function popup_mousedown_no_client_cert_dialog_until_navigate_tes
   const test = {
     // To not trigger autofill, search keyword starts from the second character.
     search: host.substr(1, 4),
-    completeValue: uri
+    completeValue: uri,
   };
   info(`Searching for '${test.search}'`);
   await promiseAutocompleteResultPopup(test.search, window, true);

@@ -679,17 +679,23 @@ GlobalObject::initSelfHostingBuiltins(JSContext* cx, Handle<GlobalObject*> globa
 }
 
 /* static */ bool
-GlobalObject::isRuntimeCodeGenEnabled(JSContext* cx, Handle<GlobalObject*> global)
+GlobalObject::isRuntimeCodeGenEnabled(JSContext* cx, HandleValue code,
+                                      Handle<GlobalObject*> global)
 {
     HeapSlot& v = global->getSlotRef(RUNTIME_CODEGEN_ENABLED);
     if (v.isUndefined()) {
         /*
          * If there are callbacks, make sure that the CSP callback is installed
-         * and that it permits runtime code generation, then cache the result.
+         * and that it permits runtime code generation.
          */
         JSCSPEvalChecker allows = cx->runtime()->securityCallbacks->contentSecurityPolicyAllows;
-        Value boolValue = BooleanValue(!allows || allows(cx));
-        v.set(global, HeapSlot::Slot, RUNTIME_CODEGEN_ENABLED, boolValue);
+        if (allows)
+          return allows(cx, code);
+
+        // Let's cache the result only if the contentSecurityPolicyAllows callback is not set. In
+        // this way, contentSecurityPolicyAllows callback is executed each time, with the current
+        // HandleValue code.
+        v.set(global, HeapSlot::Slot, RUNTIME_CODEGEN_ENABLED, JS::TrueValue());
     }
     return !v.isFalse();
 }
@@ -810,7 +816,7 @@ GlobalObject::getDebuggers() const
 /* static */ GlobalObject::DebuggerVector*
 GlobalObject::getOrCreateDebuggers(JSContext* cx, Handle<GlobalObject*> global)
 {
-    assertSameCompartment(cx, global);
+    cx->check(global);
     DebuggerVector* debuggers = global->getDebuggers();
     if (debuggers)
         return debuggers;
@@ -829,7 +835,7 @@ GlobalObject::getOrCreateDebuggers(JSContext* cx, Handle<GlobalObject*> global)
 /* static */ NativeObject*
 GlobalObject::getOrCreateForOfPICObject(JSContext* cx, Handle<GlobalObject*> global)
 {
-    assertSameCompartment(cx, global);
+    cx->check(global);
     NativeObject* forOfPIC = global->getForOfPICObject();
     if (forOfPIC)
         return forOfPIC;

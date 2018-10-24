@@ -12,14 +12,14 @@ def Libxul_defines():
         LIBRARY_DEFINES['STATIC_EXPORTABLE_JS_API'] = True
 
 @template
-def Libxul(name):
+def Libxul(name, output_category=None):
     if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('cocoa', 'uikit'):
         # This is going to be a framework named "XUL", not an ordinary library named
         # "libxul.dylib"
-        GeckoFramework(name, linkage=None)
+        GeckoFramework(name, output_category=output_category, linkage=None)
         SHARED_LIBRARY_NAME = 'XUL'
     else:
-        GeckoSharedLibrary(name, linkage=None)
+        GeckoSharedLibrary(name, output_category=output_category, linkage=None)
         SHARED_LIBRARY_NAME = 'xul'
 
     DELAYLOAD_DLLS += [
@@ -87,20 +87,6 @@ Libxul('xul')
 FORCE_STATIC_LIB = True
 
 STATIC_LIBRARY_NAME = 'xul_s'
-
-SOURCES += [
-    'StaticXULComponentsStart.cpp',
-]
-
-# This, combined with the fact the file is first, makes the start pointer
-# it contains first in Windows PGO builds.
-SOURCES['StaticXULComponentsStart.cpp'].no_pgo = True
-
-# Don't let LTO reorder StaticXULComponentsStart.o.
-for f in CONFIG['OS_CXXFLAGS']:
-    if f.startswith('-flto'):
-        SOURCES['StaticXULComponentsStart.cpp'].flags += ['-fno-lto']
-        break
 
 if CONFIG['OS_ARCH'] == 'WINNT':
     SOURCES += [
@@ -228,11 +214,8 @@ if CONFIG['MOZ_ANDROID_GOOGLE_VR']:
 OS_LIBS += CONFIG['MOZ_CAIRO_OSLIBS']
 OS_LIBS += CONFIG['MOZ_WEBRTC_X11_LIBS']
 
-if CONFIG['SERVO_TARGET_DIR']:
-    if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
-        OS_LIBS += ['%s/geckoservo' % CONFIG['SERVO_TARGET_DIR']]
-    else:
-        OS_LIBS += ['-L%s' % CONFIG['SERVO_TARGET_DIR'], '-lgeckoservo']
+if CONFIG['MOZ_LIB_SECRET']:
+    OS_LIBS += CONFIG['MOZ_LIB_SECRET_LIBS']
 
 if CONFIG['MOZ_SYSTEM_JPEG']:
     OS_LIBS += CONFIG['MOZ_JPEG_LIBS']
@@ -329,6 +312,7 @@ if CONFIG['OS_ARCH'] == 'WINNT':
         'locationapi',
         'sapi',
         'dxguid',
+        'dhcpcsvc',
     ]
     if CONFIG['ACCESSIBILITY']:
         OS_LIBS += [
@@ -360,14 +344,22 @@ if CONFIG['COMPILE_ENVIRONMENT']:
 
     if CONFIG['OS_ARCH'] == 'Linux' and CONFIG['OS_TARGET'] != 'Android':
         GENERATED_FILES += ['symverscript']
-        GENERATED_FILES['symverscript'].script = 'gen_symverscript.py'
+        GENERATED_FILES['symverscript'].script = '/build/gen_symverscript.py'
         GENERATED_FILES['symverscript'].inputs = ['symverscript.in']
+        GENERATED_FILES['symverscript'].flags = [
+            'xul%s' % CONFIG['MOZILLA_SYMBOLVERSION']
+        ]
         SYMBOLS_FILE = '!symverscript'
 
-# This library needs to be last to make XPCOM module registration work.
-USE_LIBS += ['StaticXULComponentsEnd']
+    # Generate GDB pretty printer-autoload files only on Linux. OSX's GDB is
+    # too old to support Python pretty-printers; if this changes, we could
+    # make this 'ifdef GNU_CC'.
+    if CONFIG['OS_ARCH'] == 'Linux':
+        # Create a GDB Python auto-load file alongside the libxul shared library
+        # in the build directory.
+        DEFINES['topsrcdir'] = TOPSRCDIR
+        OBJDIR_PP_FILES.toolkit.library += ['libxul.so-gdb.py.in']
 
-# The above library needs to be last for C++ purposes.  This library,
-# however, is entirely composed of Rust code, and needs to come after
+# This library is entirely composed of Rust code, and needs to come after
 # all the C++ code so any possible C++ -> Rust calls can be resolved.
 USE_LIBS += ['gkrust']

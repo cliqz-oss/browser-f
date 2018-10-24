@@ -41,8 +41,7 @@ add_task(async function() {
     let bounds = plugin.getBoundingClientRect();
     let left = (bounds.left + bounds.right) / 2;
     let top = (bounds.top + bounds.bottom) / 2;
-    let utils = content.QueryInterface(Ci.nsIInterfaceRequestor)
-                       .getInterface(Ci.nsIDOMWindowUtils);
+    let utils = content.windowUtils;
     utils.sendMouseEvent("mousedown", left, top, 0, 1, 0, false, 0, 0);
     utils.sendMouseEvent("mouseup", left, top, 0, 1, 0, false, 0, 0);
   });
@@ -53,9 +52,9 @@ add_task(async function() {
   ok(!pluginInfo.activated, "1b plugin should not be activated");
 
   let condition = () => !PopupNotifications.getNotification("click-to-play-plugins", gTestBrowser).dismissed &&
-    PopupNotifications.panel.firstChild;
+    PopupNotifications.panel.firstElementChild;
   await promiseForCondition(condition);
-  PopupNotifications.panel.firstChild.button.click();
+  PopupNotifications.panel.firstElementChild.button.click();
 
   // check plugin state
   pluginInfo = await promiseForPluginInfo("plugin");

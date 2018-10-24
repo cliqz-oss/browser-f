@@ -17,16 +17,11 @@ textbox[nomatch="true"][highlightnonmatches="true"] {
 
 /* ::::: autocomplete popups ::::: */
 
-panel[type="autocomplete-richlistbox"],
-.autocomplete-history-popup {
+panel[type="autocomplete-richlistbox"] {
   -moz-appearance: none;
   padding: 0;
   color: -moz-FieldText;
   background-color: -moz-Field;
-}
-
-.autocomplete-history-popup {
-  max-height: 180px;
 }
 
 /* ::::: richlistbox autocomplete ::::: */
@@ -111,7 +106,7 @@ html|span.ac-tag {
 
 /* ::::: textboxes inside toolbarpaletteitems ::::: */
 
-toolbarpaletteitem > toolbaritem > textbox > .textbox-input-box> html|*.textbox-input,
-toolbarpaletteitem > toolbaritem > * > textbox > .textbox-input-box > html|*.textbox-input {
+toolbarpaletteitem > toolbaritem > textbox > moz-input-box > html|*.textbox-input,
+toolbarpaletteitem > toolbaritem > * > textbox > moz-input-box  > html|*.textbox-input {
   visibility: hidden;
 }

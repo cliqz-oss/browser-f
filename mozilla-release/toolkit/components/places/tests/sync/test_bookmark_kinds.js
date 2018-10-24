@@ -7,6 +7,9 @@ add_task(async function test_livemarks() {
   try {
     let buf = await openMirror("livemarks");
 
+    let unfiledFolderId =
+      await PlacesUtils.promiseItemId(PlacesUtils.bookmarks.unfiledGuid);
+
     info("Set up mirror");
     await PlacesUtils.bookmarks.insertTree({
       guid: PlacesUtils.bookmarks.menuGuid,
@@ -81,6 +84,7 @@ add_task(async function test_livemarks() {
     }]));
 
     info("Apply remote");
+    let observer = expectBookmarkChangeNotifications();
     let changesToUpload = await buf.apply();
     deepEqual(await buf.fetchUnmergedGuids(), [], "Should merge all items");
 
@@ -233,20 +237,132 @@ add_task(async function test_livemarks() {
       }],
     }, "Should apply and dedupe livemarks");
 
-    let cLivemark = await PlacesUtils.livemarks.getLivemark({
-      guid: "livemarkCCCC",
+    let livemarkA = await PlacesUtils.livemarks.getLivemark({
+      guid: "livemarkAAAA",
     });
-    equal(cLivemark.title, "C (remote)", "Should set livemark C title");
-    ok(cLivemark.feedURI.equals(Services.io.newURI(site + "/feed/c-remote")),
-      "Should set livemark C feed URL");
-
-    let bLivemark = await PlacesUtils.livemarks.getLivemark({
+    let livemarkB = await PlacesUtils.livemarks.getLivemark({
       guid: "livemarkB111",
     });
-    ok(bLivemark.feedURI.equals(Services.io.newURI(site + "/feed/b-remote")),
-      "Should set deduped livemark B feed URL");
-    strictEqual(bLivemark.siteURI, null,
-      "Should remove deduped livemark B site URL");
+    let livemarkC = await PlacesUtils.livemarks.getLivemark({
+      guid: "livemarkCCCC",
+    });
+    let livemarkE = await PlacesUtils.livemarks.getLivemark({
+      guid: "livemarkEEEE",
+    });
+
+    observer.check([{
+      name: "onItemChanged",
+      params: { itemId: livemarkB.id, property: "guid", isAnnoProperty: false,
+                newValue: "livemarkB111", parentId: PlacesUtils.toolbarFolderId,
+                type: PlacesUtils.bookmarks.TYPE_FOLDER, guid: "livemarkB111",
+                parentGuid: "toolbar_____", oldValue: "livemarkBBBB",
+                source: PlacesUtils.bookmarks.SOURCES.SYNC },
+    }, {
+      name: "onItemAdded",
+      params: { itemId: livemarkC.id, parentId: PlacesUtils.toolbarFolderId,
+                index: 0, type: PlacesUtils.bookmarks.TYPE_FOLDER,
+                urlHref: null, title: "C (remote)", guid: "livemarkCCCC",
+                parentGuid: PlacesUtils.bookmarks.toolbarGuid,
+                source: PlacesUtils.bookmarks.SOURCES.SYNC },
+    }, {
+      name: "onItemAdded",
+      params: { itemId: livemarkE.id,
+                parentId: unfiledFolderId,
+                index: 0, type: PlacesUtils.bookmarks.TYPE_FOLDER,
+                urlHref: null, title: "E", guid: "livemarkEEEE",
+                parentGuid: "unfiled_____",
+                source: PlacesUtils.bookmarks.SOURCES.SYNC },
+    }, {
+      name: "onItemMoved",
+      params: { itemId: livemarkB.id, oldParentId: PlacesUtils.toolbarFolderId,
+                oldIndex: 0, newParentId: PlacesUtils.toolbarFolderId,
+                newIndex: 1, type: PlacesUtils.bookmarks.TYPE_FOLDER,
+                guid: "livemarkB111", uri: null,
+                oldParentGuid: PlacesUtils.bookmarks.toolbarGuid,
+                newParentGuid: PlacesUtils.bookmarks.toolbarGuid,
+                source: PlacesUtils.bookmarks.SOURCES.SYNC },
+    }, {
+      name: "onItemChanged",
+      params: { itemId: livemarkA.id, property: "title", isAnnoProperty: false,
+                newValue: "A (remote)", type: PlacesUtils.bookmarks.TYPE_FOLDER,
+                parentId: PlacesUtils.bookmarksMenuFolderId,
+                guid: "livemarkAAAA",
+                parentGuid: PlacesUtils.bookmarks.menuGuid, oldValue: "A",
+                source: PlacesUtils.bookmarks.SOURCES.SYNC },
+    }, {
+      name: "onItemChanged",
+      params: { itemId: livemarkA.id, property: PlacesUtils.LMANNO_FEEDURI,
+                isAnnoProperty: true, newValue: "",
+                type: PlacesUtils.bookmarks.TYPE_FOLDER,
+                parentId: PlacesUtils.bookmarksMenuFolderId,
+                guid: "livemarkAAAA",
+                parentGuid: PlacesUtils.bookmarks.menuGuid, oldValue: "",
+                source: PlacesUtils.bookmarks.SOURCES.SYNC },
+    }, {
+      name: "onItemChanged",
+      params: { itemId: livemarkA.id, property: PlacesUtils.LMANNO_FEEDURI,
+                isAnnoProperty: true, newValue: "",
+                type: PlacesUtils.bookmarks.TYPE_FOLDER,
+                parentId: PlacesUtils.bookmarksMenuFolderId,
+                guid: "livemarkAAAA",
+                parentGuid: PlacesUtils.bookmarks.menuGuid, oldValue: "",
+                source: PlacesUtils.bookmarks.SOURCES.SYNC },
+    }, {
+      name: "onItemChanged",
+      params: { itemId: livemarkC.id, property: "livemark/feedURI",
+                isAnnoProperty: true, newValue: "",
+                type: PlacesUtils.bookmarks.TYPE_FOLDER,
+                parentId: PlacesUtils.toolbarFolderId, guid: "livemarkCCCC",
+                parentGuid: PlacesUtils.bookmarks.toolbarGuid, oldValue: "",
+                source: PlacesUtils.bookmarks.SOURCES.SYNC },
+    }, {
+      name: "onItemChanged",
+      params: { itemId: livemarkB.id, property: PlacesUtils.LMANNO_FEEDURI,
+                isAnnoProperty: true, newValue: "",
+                type: PlacesUtils.bookmarks.TYPE_FOLDER,
+                parentId: PlacesUtils.toolbarFolderId,
+                guid: "livemarkB111",
+                parentGuid: PlacesUtils.bookmarks.toolbarGuid, oldValue: "",
+                source: PlacesUtils.bookmarks.SOURCES.SYNC },
+    }, {
+      name: "onItemChanged",
+      params: { itemId: livemarkB.id, property: PlacesUtils.LMANNO_SITEURI,
+                isAnnoProperty: true, newValue: "",
+                type: PlacesUtils.bookmarks.TYPE_FOLDER,
+                parentId: PlacesUtils.toolbarFolderId,
+                guid: "livemarkB111",
+                parentGuid: PlacesUtils.bookmarks.toolbarGuid, oldValue: "",
+                source: PlacesUtils.bookmarks.SOURCES.SYNC },
+    }, {
+      name: "onItemChanged",
+      params: { itemId: livemarkB.id, property: PlacesUtils.LMANNO_FEEDURI,
+                isAnnoProperty: true, newValue: "",
+                type: PlacesUtils.bookmarks.TYPE_FOLDER,
+                parentId: PlacesUtils.toolbarFolderId,
+                guid: "livemarkB111",
+                parentGuid: PlacesUtils.bookmarks.toolbarGuid, oldValue: "",
+                source: PlacesUtils.bookmarks.SOURCES.SYNC },
+    }, {
+      name: "onItemChanged",
+      params: { itemId: livemarkE.id, property: PlacesUtils.LMANNO_FEEDURI,
+                isAnnoProperty: true, newValue: "",
+                type: PlacesUtils.bookmarks.TYPE_FOLDER,
+                parentId: unfiledFolderId,
+                guid: "livemarkEEEE",
+                parentGuid: PlacesUtils.bookmarks.unfiledGuid,
+                oldValue: "",
+                source: PlacesUtils.bookmarks.SOURCES.SYNC },
+    }, {
+      name: "onItemChanged",
+      params: { itemId: livemarkE.id, property: PlacesUtils.LMANNO_SITEURI,
+                isAnnoProperty: true, newValue: "",
+                type: PlacesUtils.bookmarks.TYPE_FOLDER,
+                parentId: unfiledFolderId,
+                guid: "livemarkEEEE",
+                parentGuid: PlacesUtils.bookmarks.unfiledGuid,
+                oldValue: "",
+                source: PlacesUtils.bookmarks.SOURCES.SYNC },
+    }]);
 
     await buf.finalize();
   } finally {
@@ -411,7 +527,7 @@ add_task(async function test_mismatched_but_compatible_folder_types() {
       ["HCRq40Rnxhrd", "YeyWCV1RVsYw", "GCceVZMhvMbP", "sYi2hevdArlF",
        "vjbZlPlSyGY8", "UtjUhVyrpeG6", "rVq8WMG2wfZI", "Lx0tcy43ZKhZ",
        "oT74WwV8_j4P", "IztsItWVSo3-"],
-    "parentid": "toolbar"
+    "parentid": "toolbar",
   }]);
 
   info("Apply remote");
@@ -462,7 +578,7 @@ add_task(async function test_mismatched_but_incompatible_folder_types() {
       "type": "folder",
       "title": "not really a Livemark",
       "description": null,
-      "parentid": "menu"
+      "parentid": "menu",
     }]);
 
     info("Apply remote, should fail");
@@ -494,7 +610,7 @@ add_task(async function test_different_but_compatible_bookmark_types() {
           title: "a query",
           url: "place:foo",
 
-        }
+        },
       ],
     });
 

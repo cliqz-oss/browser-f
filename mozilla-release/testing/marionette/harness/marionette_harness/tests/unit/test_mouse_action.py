@@ -8,7 +8,7 @@ import urllib
 
 from marionette_driver import By, errors, Wait
 from marionette_driver.keys import Keys
-from marionette_driver.marionette import W3C_WEBELEMENT_KEY
+from marionette_driver.marionette import WEB_ELEMENT_KEY
 
 from marionette_harness import MarionetteTestCase
 
@@ -35,14 +35,12 @@ class Actions(object):
             "type": "pointer"
         }]}
 
-        return self.marionette._send_message("performActions", params=params)
+        return self.marionette._send_message("WebDriver:PerformActions", params=params)
 
     def move(self, element, x=0, y=0, duration=250):
         self.action_chain.append({
             "duration": duration,
-            "origin": {
-                W3C_WEBELEMENT_KEY: element.id
-            },
+            "origin": {WEB_ELEMENT_KEY: element.id},
             "type": "pointerMove",
             "x": x,
             "y": y,
@@ -67,7 +65,7 @@ class BaseMouseAction(MarionetteTestCase):
     def setUp(self):
         super(BaseMouseAction, self).setUp()
 
-        if self.marionette.session_capabilities["platformName"] == "darwin":
+        if self.marionette.session_capabilities["platformName"] == "mac":
             self.mod_key = Keys.META
         else:
             self.mod_key = Keys.CONTROL

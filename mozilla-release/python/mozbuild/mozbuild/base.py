@@ -11,7 +11,11 @@ import multiprocessing
 import os
 import subprocess
 import sys
-import which
+try:
+    from shutil import which
+except ImportError:
+    # shutil.which is not available in Python 2.7
+    import which
 
 from mach.mixin.process import ProcessExecutionMixin
 from mozversioncontrol import (
@@ -752,16 +756,16 @@ class MozbuildObject(ProcessExecutionMixin):
         self._activate_virtualenv()
         pipenv = os.path.join(self.virtualenv_manager.bin_path, 'pipenv')
         if not os.path.exists(pipenv):
-            pipenv_reqs = os.path.join(self.topsrcdir, 'python/mozbuild/mozbuild/pipenv.txt')
-            self.virtualenv_manager.install_pip_requirements(
-                pipenv_reqs, require_hashes=False, vendored=True)
+            for package in ['certifi', 'pipenv', 'six', 'virtualenv', 'virtualenv-clone']:
+                path = os.path.normpath(os.path.join(self.topsrcdir, 'third_party/python', package))
+                self.virtualenv_manager.install_pip_package(path, vendored=True)
         return pipenv
 
-    def activate_pipenv(self, path, args=None):
-        if not os.path.exists(path):
-            raise Exception('Pipfile not found: %s.' % path)
+    def activate_pipenv(self, pipfile=None, populate=False, python=None):
+        if pipfile is not None and not os.path.exists(pipfile):
+            raise Exception('Pipfile not found: %s.' % pipfile)
         self.ensure_pipenv()
-        self.virtualenv_manager.activate_pipenv(path, args)
+        self.virtualenv_manager.activate_pipenv(pipfile, populate, python)
 
 
 class MachCommandBase(MozbuildObject):

@@ -25,14 +25,11 @@ extern crate test;
 mod animated_properties;
 mod attr;
 mod custom_properties;
-mod keyframes;
 mod logical_geometry;
-mod media_queries;
 mod parsing;
 mod properties;
 mod rule_tree;
 mod size_of;
-#[path = "../../../ports/geckolib/tests/specified_values.rs"]
 mod specified_values;
 mod str;
 mod stylesheets;

@@ -21,18 +21,16 @@
 #include "nsIDOMXULMultSelectCntrlEl.h"
 #include "nsIURI.h"
 #include "nsLayoutCID.h"
-#include "nsAttrAndChildArray.h"
+#include "AttrArray.h"
 #include "nsGkAtoms.h"
 #include "nsStringFwd.h"
 #include "nsStyledElement.h"
-#include "nsIFrameLoaderOwner.h"
 #include "mozilla/dom/DOMRect.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/DOMString.h"
 #include "mozilla/dom/FromParser.h"
 
 class nsIDocument;
-class nsFrameLoader;
 class nsXULPrototypeDocument;
 
 class nsIObjectInputStream;
@@ -364,11 +362,10 @@ public:
     virtual nsresult PreHandleEvent(
                        mozilla::EventChainVisitor& aVisitor) override;
     // nsIContent
-    virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
-                                nsIContent* aBindingParent,
-                                bool aCompileEventHandlers) override;
+    virtual nsresult BindToTree(nsIDocument* aDocument,
+                                nsIContent* aParent,
+                                nsIContent* aBindingParent) override;
     virtual void UnbindFromTree(bool aDeep, bool aNullParent) override;
-    virtual void RemoveChildNode(nsIContent* aKid, bool aNotify) override;
     virtual void DestroyContent() override;
 
 #ifdef DEBUG
@@ -394,11 +391,8 @@ public:
                                                 int32_t aModType) const override;
     NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
 
-    virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
-                           bool aPreallocateChildren) const override;
+    virtual nsresult Clone(mozilla::dom::NodeInfo*, nsINode** aResult) const override;
     virtual mozilla::EventStates IntrinsicState() const override;
-
-    void PresetOpenerWindow(mozIDOMWindowProxy* aWindow, ErrorResult& aRv);
 
     virtual void RecompileScriptEventListeners() override;
 
@@ -622,23 +616,7 @@ public:
     already_AddRefed<mozilla::dom::BoxObject> GetBoxObject(mozilla::ErrorResult& rv);
     void Click(mozilla::dom::CallerType aCallerType);
     void DoCommand();
-    already_AddRefed<nsINodeList>
-      GetElementsByAttribute(const nsAString& aAttribute,
-                             const nsAString& aValue);
-    already_AddRefed<nsINodeList>
-      GetElementsByAttributeNS(const nsAString& aNamespaceURI,
-                               const nsAString& aAttribute,
-                               const nsAString& aValue,
-                               mozilla::ErrorResult& rv);
     // Style() inherited from nsStyledElement
-    already_AddRefed<nsFrameLoader> GetFrameLoader();
-    void InternalSetFrameLoader(nsFrameLoader* aNewFrameLoader);
-    void SwapFrameLoaders(mozilla::dom::HTMLIFrameElement& aOtherLoaderOwner,
-                          mozilla::ErrorResult& rv);
-    void SwapFrameLoaders(nsXULElement& aOtherLoaderOwner,
-                          mozilla::ErrorResult& rv);
-    void SwapFrameLoaders(nsIFrameLoaderOwner* aOtherLoaderOwner,
-                          mozilla::ErrorResult& rv);
 
     nsINode* GetScopeChainParent() const override
     {
@@ -656,12 +634,7 @@ protected:
     // Implementation methods
     nsresult EnsureContentsGenerated(void) const;
 
-    // Helper routine that crawls a parent chain looking for a tree element.
-    NS_IMETHOD GetParentTree(nsIDOMXULMultiSelectControlElement** aTreeElement);
-
     nsresult AddPopupListener(nsAtom* aName);
-
-    void LoadSrc();
 
     /**
      * The nearest enclosing content node with a binding
@@ -698,8 +671,7 @@ protected:
     /**
      * Add a listener for the specified attribute, if appropriate.
      */
-    void AddListenerFor(const nsAttrName& aName,
-                        bool aCompileEventHandlers);
+    void AddListenerFor(const nsAttrName& aName);
     void MaybeAddPopupListener(nsAtom* aLocalName);
 
     nsIWidget* GetWindowWidget();

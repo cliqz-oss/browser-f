@@ -6,6 +6,7 @@
 
 #include "mozilla/dom/ChildSHistory.h"
 #include "mozilla/dom/ChildSHistoryBinding.h"
+#include "mozilla/dom/ContentFrameMessageManager.h"
 #include "nsIMessageManager.h"
 #include "nsComponentManagerUtils.h"
 #include "nsSHistory.h"
@@ -20,6 +21,7 @@ ChildSHistory::ChildSHistory(nsDocShell* aDocShell)
   : mDocShell(aDocShell)
   , mHistory(new nsSHistory())
 {
+  MOZ_ASSERT(mDocShell);
   mHistory->SetRootDocShell(mDocShell);
 }
 
@@ -63,9 +65,6 @@ ChildSHistory::CanGo(int32_t aOffset)
 void
 ChildSHistory::Go(int32_t aOffset, ErrorResult& aRv)
 {
-  // XXX(nika): Should we turn Go(-1) and Go(1) to call GoForward and GoBack?
-  // They technically fire different change events but I couldn't find anyone
-  // who cares, so I'm inclined not to.
   CheckedInt<int32_t> index = Index();
   index += aOffset;
   if (!index.isValid()) {
@@ -87,14 +86,8 @@ ChildSHistory::LegacySHistory()
   return mHistory;
 }
 
-nsISHistoryInternal*
-ChildSHistory::LegacySHistoryInternal()
-{
-  return mHistory;
-}
-
-nsIWebNavigation*
-ChildSHistory::LegacySHistoryWebNav()
+nsSHistory*
+ChildSHistory::LegacySHistoryImpl()
 {
   return mHistory;
 }
@@ -124,17 +117,20 @@ NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(ChildSHistory,
 JSObject*
 ChildSHistory::WrapObject(JSContext* cx, JS::Handle<JSObject*> aGivenProto)
 {
-  return ChildSHistoryBinding::Wrap(cx, this, aGivenProto);
+  return ChildSHistory_Binding::Wrap(cx, this, aGivenProto);
 }
 
 nsISupports*
 ChildSHistory::GetParentObject() const
 {
-  // We want to get the TabChildGlobal, which is the
-  // nsIContentFrameMessageManager on mDocShell.
-  nsCOMPtr<nsIContentFrameMessageManager> mm =
-    do_GetInterface(static_cast<nsIDocShell*>(mDocShell));
-  return mm;
+  // We want to get the TabChildMessageManager, which is the
+  // messageManager on mDocShell.
+  RefPtr<ContentFrameMessageManager> mm;
+  if (mDocShell) {
+    mm = mDocShell->GetMessageManager();
+  }
+  // else we must be unlinked... can that happen here?
+  return ToSupports(mm);
 }
 
 } // namespace dom

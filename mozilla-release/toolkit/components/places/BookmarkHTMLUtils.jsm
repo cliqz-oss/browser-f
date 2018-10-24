@@ -24,7 +24,6 @@
  *   FEEDURL is the URI of the RSS feed if this is a livemark.
  *   LAST_CHARSET is stored as an annotation so that the next time we go to
  *     that page we remember the user's preference.
- *   WEB_PANEL is set to "true" if the bookmark should be loaded in the sidebar.
  *   ICON will be stored in the favicon service
  *   ICON_URI is new for places bookmarks.html, it refers to the original
  *     URI of the favicon so we don't have to make up favicon URLs.
@@ -76,7 +75,6 @@ const Container_Menu = 2;
 const Container_Unfiled = 3;
 const Container_Places = 4;
 
-const LOAD_IN_SIDEBAR_ANNO = "bookmarkProperties/loadInSidebar";
 const DESCRIPTION_ANNO = "bookmarkProperties/description";
 
 const MICROSEC_PER_SEC = 1000000;
@@ -226,7 +224,7 @@ var BookmarkHTMLUtils = Object.freeze({
       return Services.prefs.getCharPref("browser.bookmarks.file");
     } catch (ex) {}
     return OS.Path.join(OS.Constants.Path.profileDir, "bookmarks.html");
-  }
+  },
 });
 
 function Frame(aFolder) {
@@ -315,7 +313,7 @@ function BookmarkImporter(aInitialImport, aSource) {
   this._bookmarkTree = {
     type: PlacesUtils.bookmarks.TYPE_FOLDER,
     guid: PlacesUtils.bookmarks.menuGuid,
-    children: []
+    children: [],
   };
 
   this._frames = [];
@@ -347,7 +345,7 @@ BookmarkImporter.prototype = {
 
     let folder = {
       children: [],
-      type: PlacesUtils.bookmarks.TYPE_FOLDER
+      type: PlacesUtils.bookmarks.TYPE_FOLDER,
     };
 
     switch (containerType) {
@@ -406,7 +404,7 @@ BookmarkImporter.prototype = {
     let frame = this._curFrame;
 
     let separator = {
-      type: PlacesUtils.bookmarks.TYPE_SEPARATOR
+      type: PlacesUtils.bookmarks.TYPE_SEPARATOR,
     };
     frame.folder.children.push(separator);
     frame.previousItem = separator;
@@ -502,7 +500,6 @@ BookmarkImporter.prototype = {
     let lastCharset = this._safeTrim(aElt.getAttribute("last_charset"));
     let keyword = this._safeTrim(aElt.getAttribute("shortcuturl"));
     let postData = this._safeTrim(aElt.getAttribute("post_data"));
-    let webPanel = this._safeTrim(aElt.getAttribute("web_panel"));
     let dateAdded = this._safeTrim(aElt.getAttribute("add_date"));
     let lastModified = this._safeTrim(aElt.getAttribute("last_modified"));
     let tags = this._safeTrim(aElt.getAttribute("tags"));
@@ -562,23 +559,12 @@ BookmarkImporter.prototype = {
 
     if (tags) {
       bookmark.tags = tags.split(",").filter(aTag => aTag.length > 0 &&
-        aTag.length <= Ci.nsITaggingService.MAX_TAG_LENGTH);
+        aTag.length <= PlacesUtils.bookmarks.MAX_TAG_LENGTH);
 
       // If we end up with none, then delete the property completely.
       if (!bookmark.tags.length) {
         delete bookmark.tags;
       }
-    }
-
-    if (webPanel && webPanel.toLowerCase() == "true") {
-      if (!bookmark.hasOwnProperty("annos")) {
-        bookmark.annos = [];
-      }
-      bookmark.annos.push({ "name": LOAD_IN_SIDEBAR_ANNO,
-                            "flags": 0,
-                            "expires": 4,
-                            "value": 1
-                          });
     }
 
     if (lastCharset) {
@@ -650,14 +636,14 @@ BookmarkImporter.prototype = {
           "name": PlacesUtils.LMANNO_FEEDURI,
           "flags": 0,
           "expires": 4,
-          "value": frame.previousFeed
+          "value": frame.previousFeed,
         });
         if (frame.previousLink) {
           frame.previousItem.annos.push({
             "name": PlacesUtils.LMANNO_SITEURI,
             "flags": 0,
             "expires": 4,
-            "value": frame.previousLink
+            "value": frame.previousLink,
           });
         }
       }
@@ -699,25 +685,10 @@ BookmarkImporter.prototype = {
   _closeContainer: function closeContainer(aElt) {
     let frame = this._curFrame;
 
-    // see the comment for the definition of inDescription. Basically, we commit
-    // any text in previousText to the description of the node/folder if there
-    // is any.
+    // Although we no longer support importing descriptions, we still need to
+    // clear any previous text, so that it doesn't get swallowed into other elements.
     if (frame.inDescription) {
-      // NOTE ES5 trim trims more than the previous C++ trim.
-      frame.previousText = frame.previousText.trim(); // important
-      if (frame.previousText) {
-        let item = frame.previousLink ? frame.previousItem : frame.folder;
-        if (!item.hasOwnProperty("annos")) {
-          item.annos = [];
-        }
-        item.annos.push({
-          "name": DESCRIPTION_ANNO,
-          "flags": 0,
-          "expires": 4,
-          "value": frame.previousText
-        });
-        frame.previousText = "";
-      }
+      frame.previousText = "";
       frame.inDescription = false;
     }
 
@@ -1035,8 +1006,6 @@ BookmarkExporter.prototype = {
         this._writeAttribute("POST_DATA", escapeHtmlEntities(aItem.postData));
     }
 
-    if (aItem.annos && aItem.annos.some(anno => anno.name == LOAD_IN_SIDEBAR_ANNO))
-      this._writeAttribute("WEB_PANEL", "true");
     if (aItem.charset)
       this._writeAttribute("LAST_CHARSET", escapeHtmlEntities(aItem.charset));
     if (aItem.tags)
@@ -1079,7 +1048,7 @@ BookmarkExporter.prototype = {
                           aItem.annos.find(anno => anno.name == DESCRIPTION_ANNO);
     if (descriptionAnno)
       this._writeLine(aIndent + "<DD>" + escapeHtmlEntities(descriptionAnno.value));
-  }
+  },
 };
 
 /**

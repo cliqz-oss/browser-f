@@ -45,7 +45,6 @@ public:
   const SdpRemoteCandidatesAttribute& GetRemoteCandidates() const override;
   const SdpSetupAttribute& GetSetup() const override;
   const SdpSsrcAttributeList& GetSsrc() const override;
-  const SdpSsrcGroupAttributeList& GetSsrcGroup() const override;
   const SdpDtlsMessageAttribute& GetDtlsMessage() const override;
 
   // These attributes can appear multiple times, so the returned
@@ -124,24 +123,30 @@ private:
   void LoadIdentity(RustAttributeList* attributeList);
   void LoadIceOptions(RustAttributeList* attributeList);
   void LoadFingerprint(RustAttributeList* attributeList);
+  void LoadDtlsMessage(RustAttributeList* attributeList);
   void LoadSetup(RustAttributeList* attributeList);
   void LoadSsrc(RustAttributeList* attributeList);
   void LoadRtpmap(RustAttributeList* attributeList);
   void LoadFmtp(RustAttributeList* attributeList);
   void LoadPtime(RustAttributeList* attributeList);
   void LoadFlags(RustAttributeList* attributeList);
+  void LoadMaxMessageSize(RustAttributeList* attributeList);
   void LoadMid(RustAttributeList* attributeList);
   void LoadMsid(RustAttributeList* attributeList);
   void LoadMsidSemantics(RustAttributeList* attributeList);
   void LoadGroup(RustAttributeList* attributeList);
   void LoadRtcp(RustAttributeList* attributeList);
   void LoadRtcpFb(RustAttributeList* attributeList);
+  void LoadSctpPort(RustAttributeList* attributeList);
+  void LoadSimulcast(RustAttributeList* attributeList);
   void LoadImageattr(RustAttributeList* attributeList);
   void LoadSctpmaps(RustAttributeList* attributeList);
   void LoadDirection(RustAttributeList* attributeList);
   void LoadRemoteCandidates(RustAttributeList* attributeList);
   void LoadRids(RustAttributeList* attributeList);
   void LoadExtmap(RustAttributeList* attributeList);
+  void LoadMaxPtime(RustAttributeList* attributeList);
+  void LoadCandidate(RustAttributeList* attributeList);
 
   void WarnAboutMisplacedAttribute(SdpAttribute::AttributeType type,
                                    uint32_t lineNumber,

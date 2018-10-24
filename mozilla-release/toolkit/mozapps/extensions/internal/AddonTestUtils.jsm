@@ -743,8 +743,13 @@ var AddonTestUtils = {
       throw new Error("Attempting to startup manager that was already started.");
 
 
-    if (newVersion)
+    if (newVersion) {
       this.appInfo.version = newVersion;
+      if (Cu.isModuleLoaded("resource://gre/modules/Blocklist.jsm")) {
+        let bsPassBlocklist = ChromeUtils.import("resource://gre/modules/Blocklist.jsm", {});
+        Object.defineProperty(bsPassBlocklist, "gAppVersion", {value: newVersion});
+      }
+    }
 
     let XPIScope = ChromeUtils.import("resource://gre/modules/addons/XPIProvider.jsm", null);
     XPIScope.AsyncShutdown = MockAsyncShutdown;
@@ -1466,7 +1471,7 @@ var AddonTestUtils = {
             result.error = error;
             reject(result);
           }
-        }
+        },
       }, reason, ...args);
     });
   },
@@ -1634,7 +1639,7 @@ var AddonTestUtils = {
        Services.io.newFileURI(file).spec],
     ]);
     Services.prefs.setBoolPref(PREF_DISABLE_SECURITY, prevPrefVal);
-  }
+  },
 };
 
 for (let [key, val] of Object.entries(AddonTestUtils)) {

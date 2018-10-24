@@ -74,11 +74,13 @@ public:
                       const gfx::IntSize& aSize,
                       TransactionId aTransactionId,
                       const WebRenderScrollData& aScrollData,
+                      const mozilla::TimeStamp& aRefreshStartTime,
                       const mozilla::TimeStamp& aTxnStartTime);
   void EndEmptyTransaction(const FocusTarget& aFocusTarget,
                            const ScrollUpdatesMap& aUpdates,
                            uint32_t aPaintSequenceNumber,
                            TransactionId aTransactionId,
+                           const mozilla::TimeStamp& aRefreshStartTime,
                            const mozilla::TimeStamp& aTxnStartTime);
   void ProcessWebRenderParentCommands();
 
@@ -98,8 +100,11 @@ public:
                                     const CompositableHandle& aHandlee);
   void RemovePipelineIdForCompositable(const wr::PipelineId& aPipelineId);
 
-  wr::ExternalImageId AllocExternalImageIdForCompositable(CompositableClient* aCompositable);
   void DeallocExternalImageId(const wr::ExternalImageId& aImageId);
+
+  /// Release TextureClient that is bounded to ImageKey.
+  /// It is used for recycling TextureClient.
+  void ReleaseTextureOfImage(const wr::ImageKey& aKey);
 
   /**
    * Clean this up, finishing with SendShutDown() which will cause __delete__
@@ -200,7 +205,8 @@ private:
 
   void DoDestroy();
 
-  mozilla::ipc::IPCResult RecvWrUpdated(const wr::IdNamespace& aNewIdNamespace) override;
+  mozilla::ipc::IPCResult RecvWrUpdated(const wr::IdNamespace& aNewIdNamespace,
+                                        const TextureFactoryIdentifier& textureFactoryIdentifier) override;
 
   void AddIPDLReference() {
     MOZ_ASSERT(mIPCOpen == false);

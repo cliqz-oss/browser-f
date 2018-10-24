@@ -11,6 +11,7 @@
 #include "nsHTMLDocument.h"
 #include "nsGenericHTMLElement.h"
 #include "nsIStringBundle.h"
+#include "nsIThreadRetargetableStreamListener.h"
 
 #define NSMEDIADOCUMENT_PROPERTIES_URI "chrome://global/locale/layout/MediaDocument.properties"
 
@@ -22,6 +23,9 @@ class MediaDocument : public nsHTMLDocument
 public:
   MediaDocument();
   virtual ~MediaDocument();
+
+  // Subclasses need to override this.
+  enum MediaDocumentKind MediaDocumentKind() const override = 0;
 
   virtual nsresult Init() override;
 
@@ -92,7 +96,9 @@ private:
 };
 
 
-class MediaDocumentStreamListener: public nsIStreamListener
+class MediaDocumentStreamListener
+  : public nsIStreamListener
+  , public nsIThreadRetargetableStreamListener
 {
 protected:
   virtual ~MediaDocumentStreamListener();
@@ -101,11 +107,13 @@ public:
   explicit MediaDocumentStreamListener(MediaDocument* aDocument);
   void SetStreamListener(nsIStreamListener *aListener);
 
-  NS_DECL_ISUPPORTS
+  NS_DECL_THREADSAFE_ISUPPORTS
 
   NS_DECL_NSIREQUESTOBSERVER
 
   NS_DECL_NSISTREAMLISTENER
+
+  NS_DECL_NSITHREADRETARGETABLESTREAMLISTENER
 
   void DropDocumentRef()
   {

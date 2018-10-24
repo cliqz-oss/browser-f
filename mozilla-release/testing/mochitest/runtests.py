@@ -131,6 +131,8 @@ class MochitestFormatter(TbplFormatter):
 
     def __call__(self, data):
         output = super(MochitestFormatter, self).__call__(data)
+        if not output:
+            return None
         log_level = data.get('level', 'info').upper()
 
         if 'js_source' in data or log_level == 'ERROR':
@@ -757,7 +759,6 @@ def findTestMediaDevices(log):
     info['video'] = name
 
     pactl = spawn.find_executable("pactl")
-    pacmd = spawn.find_executable("pacmd")
 
     # Use pactl to see if the PulseAudio module-null-sink module is loaded.
     def null_sink_loaded():
@@ -773,9 +774,6 @@ def findTestMediaDevices(log):
     if not null_sink_loaded():
         log.error('Couldn\'t load module-null-sink')
         return None
-
-    # Whether it was loaded or not make it the default output
-    subprocess.check_call([pacmd, 'set-default-sink', 'null'])
 
     # Hardcode the name since it's always the same.
     info['audio'] = 'Monitor of Null Output'
@@ -867,6 +865,7 @@ class MochitestDesktop(object):
         self.tests_by_manifest = defaultdict(list)
         self.prefs_by_manifest = defaultdict(set)
         self._active_tests = None
+        self.currentTests = None
         self._locations = None
 
         self.marionette = None
@@ -1906,7 +1905,7 @@ toolbar#nav-bar {
             "idle.lastDailyNotification": int(time.time()),
             # Enable tracing output for detailed failures in case of
             # failing connection attempts, and hangs (bug 1397201)
-            "marionette.log.level": "TRACE",
+            "marionette.log.level": "Trace",
         }
 
         if options.flavor == 'browser' and options.timeout:
@@ -1927,6 +1926,12 @@ toolbar#nav-bar {
         if options.useTestMediaDevices:
             prefs['media.audio_loopback_dev'] = self.mediaDevices['audio']
             prefs['media.video_loopback_dev'] = self.mediaDevices['video']
+            prefs['media.cubeb.output_device'] = "Null Output"
+            prefs['media.volume_scale'] = "1.0"
+
+        # Disable web replay rewinding by default if recordings are being saved.
+        if options.recordingPath:
+            prefs["devtools.recordreplay.enableRewinding"] = False
 
         self.profile.set_preferences(prefs)
 
@@ -2636,9 +2641,12 @@ toolbar#nav-bar {
             print("4 INFO Mode:    %s" % e10s_mode)
             print("5 INFO SimpleTest FINISHED")
 
-        if not result and not self.countpass:
-            # either tests failed or no tests run
-            result = 1
+        if not result:
+            if self.countfail or \
+               not (self.countpass or self.counttodo):
+                # at least one test failed, or
+                # no tests passed, and no tests failed (possibly a crash)
+                result = 1
 
         return result
 
@@ -2725,6 +2733,9 @@ toolbar#nav-bar {
             if options.jsdebugger:
                 options.browserArgs.extend(['-jsdebugger', '-wait-for-jsdebugger'])
 
+            if options.recordingPath:
+                options.browserArgs.extend(['--save-recordings', options.recordingPath])
+
             # Remove the leak detection file so it can't "leak" to the tests run.
             # The file is not there if leak logging was not enabled in the
             # application build.
@@ -2772,6 +2783,7 @@ toolbar#nav-bar {
                 if not tests:
                     continue
 
+                self.currentTests = [t['path'] for t in tests]
                 testURL = self.buildTestURL(options, scheme=scheme)
 
                 self.buildURLOptions(options, self.browserEnv)
@@ -2802,10 +2814,13 @@ toolbar#nav-bar {
         except KeyboardInterrupt:
             self.log.info("runtests.py | Received keyboard interrupt.\n")
             status = -1
-        except Exception:
+        except Exception as e:
             traceback.print_exc()
             self.log.error(
                 "Automation Error: Received unexpected exception while running application\n")
+            if 'ADBTimeoutError' in repr(e):
+                self.log.info("runtests.py | Device disconnected. Aborting test.\n")
+                raise
             status = 1
         finally:
             self.stopServers()
@@ -3030,6 +3045,11 @@ toolbar#nav-bar {
             """record last test on harness"""
             if message['action'] == 'test_start':
                 self.harness.lastTestSeen = message['test']
+            elif message['action'] == 'test_end':
+                if self.harness.currentTests and message['test'] == self.harness.currentTests[-1]:
+                    self.harness.lastTestSeen = 'Last test finished'
+                else:
+                    self.harness.lastTestSeen = '{} (finished)'.format(message['test'])
             return message
 
         def dumpScreenOnTimeout(self, message):

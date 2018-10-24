@@ -10,6 +10,8 @@ from collections import deque
 from .base import BaseFormatter
 from .process import strstatus
 from ..handlers import SummaryHandler
+import six
+from functools import reduce
 
 
 def output_subtests(func):
@@ -129,7 +131,7 @@ class TbplFormatter(BaseFormatter):
 
     def suite_start(self, data):
         self.suite_start_time = data["time"]
-        num_tests = reduce(lambda x, y: x + len(y), data['tests'].itervalues(), 0)
+        num_tests = reduce(lambda x, y: x + len(y), six.itervalues(data['tests']), 0)
         return "SUITE-START | Running %i tests\n" % num_tests
 
     def test_start(self, data):
@@ -256,7 +258,7 @@ class TbplFormatter(BaseFormatter):
         return "SUITE-END | took %is\n" % time
 
     def test_id(self, test_id):
-        if isinstance(test_id, (str, unicode)):
+        if isinstance(test_id, (str, six.text_type)):
             return test_id
         else:
             return tuple(test_id)
@@ -274,6 +276,21 @@ class TbplFormatter(BaseFormatter):
         data["column"] = ":%s" % data["column"] if data["column"] else ""
         data['rule'] = data['rule'] or data['linter'] or ""
         return fmt.append(fmt.format(**data))
+
+    def lsan_leak(self, data):
+        frames = data.get("frames")
+        allowed_match = data.get("allowed_match")
+        frame_list = ", ".join(frames)
+        prefix = "TEST-UNEXPECTED-FAIL" if not allowed_match else "TEST-FAIL"
+        suffix = ("" if not allowed_match
+                  else "INFO | LeakSanitizer | Frame %s matched a expected leak\n" % allowed_match)
+        return "%s | LeakSanitizer | leak at %s\n%s" % (prefix, frame_list, suffix)
+
+    def lsan_summary(self, data):
+        level = "INFO" if data.get("allowed", False) else "ERROR"
+        return ("%s | LeakSanitizer | "
+                "SUMMARY: AddressSanitizer: %d byte(s) leaked in %d allocation(s)." %
+                (level, data["bytes"], data["allocations"]))
 
     def _format_suite_summary(self, suite, summary):
         counts = summary['counts']

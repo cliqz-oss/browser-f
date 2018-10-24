@@ -15,6 +15,7 @@ cfg_if! {
         use pathfinder_font_renderer::{PathfinderComPtr, IDWriteFontFace};
         use glyph_rasterizer::NativeFontHandleWrapper;
     } else if #[cfg(not(feature = "pathfinder"))] {
+        use api::FontInstancePlatformOptions;
         use glyph_rasterizer::{GlyphFormat, GlyphRasterResult, RasterizedGlyph};
         use gamma_lut::GammaLut;
     }
@@ -33,9 +34,7 @@ pub struct FontContext {
     fonts: FastHashMap<FontKey, dwrote::FontFace>,
     simulations: FastHashMap<(FontKey, dwrote::DWRITE_FONT_SIMULATIONS), dwrote::FontFace>,
     #[cfg(not(feature = "pathfinder"))]
-    gamma_lut: GammaLut,
-    #[cfg(not(feature = "pathfinder"))]
-    gdi_gamma_lut: GammaLut,
+    gamma_luts: FastHashMap<(u16, u16), GammaLut>,
 }
 
 // DirectWrite is safe to use on multiple threads and non-shareable resources are
@@ -97,29 +96,13 @@ fn is_bitmap_font(font: &FontInstance) -> bool {
         font.flags.contains(FontInstanceFlags::EMBEDDED_BITMAPS)
 }
 
-// Skew factor matching Gecko/DWrite.
-const OBLIQUE_SKEW_FACTOR: f32 = 0.3;
-
 impl FontContext {
     pub fn new() -> Result<FontContext, ResourceCacheError> {
-        // These are the default values we use in Gecko.
-        // We use a gamma value of 2.3 for gdi fonts
-        // TODO: Fetch this data from Gecko itself.
-        cfg_if! {
-            if #[cfg(not(feature = "pathfinder"))] {
-                const CONTRAST: f32 = 1.0;
-                const GAMMA: f32 = 1.8;
-                const GDI_GAMMA: f32 = 2.3;
-            }
-        }
-
         Ok(FontContext {
             fonts: FastHashMap::default(),
             simulations: FastHashMap::default(),
             #[cfg(not(feature = "pathfinder"))]
-            gamma_lut: GammaLut::new(CONTRAST, GAMMA, GAMMA),
-            #[cfg(not(feature = "pathfinder"))]
-            gdi_gamma_lut: GammaLut::new(CONTRAST, GDI_GAMMA, GDI_GAMMA),
+            gamma_luts: FastHashMap::default(),
         })
     }
 
@@ -206,7 +189,7 @@ impl FontContext {
         bitmaps: bool,
     ) -> dwrote::GlyphRunAnalysis {
         let face = self.get_font_face(font);
-        let glyph = key.index as u16;
+        let glyph = key.index() as u16;
         let advance = 0.0f32;
         let offset = dwrote::GlyphOffset {
             advanceOffset: 0.0,
@@ -257,8 +240,8 @@ impl FontContext {
     ) -> Option<GlyphDimensions> {
         let size = font.size.to_f32_px();
         let bitmaps = is_bitmap_font(font);
-        let transform = if font.flags.intersects(FontInstanceFlags::SYNTHETIC_ITALICS |
-                                                 FontInstanceFlags::TRANSPOSE |
+        let transform = if font.synthetic_italics.is_enabled() ||
+                           font.flags.intersects(FontInstanceFlags::TRANSPOSE |
                                                  FontInstanceFlags::FLIP_X |
                                                  FontInstanceFlags::FLIP_Y) {
             let mut shape = FontTransform::identity();
@@ -271,8 +254,8 @@ impl FontContext {
             if font.flags.contains(FontInstanceFlags::TRANSPOSE) {
                 shape = shape.swap_xy();
             }
-            if font.flags.contains(FontInstanceFlags::SYNTHETIC_ITALICS) {
-                shape = shape.synthesize_italics(OBLIQUE_SKEW_FACTOR);
+            if font.synthetic_italics.is_enabled() {
+                shape = shape.synthesize_italics(font.synthetic_italics);
             }
             Some(dwrote::DWRITE_MATRIX {
                 m11: shape.scale_x,
@@ -301,7 +284,7 @@ impl FontContext {
         }
 
         let face = self.get_font_face(font);
-        face.get_design_glyph_metrics(&[key.index as u16], false)
+        face.get_design_glyph_metrics(&[key.index() as u16], false)
             .first()
             .map(|metrics| {
                 let em_size = size / 16.;
@@ -403,8 +386,8 @@ impl FontContext {
         if font.flags.contains(FontInstanceFlags::TRANSPOSE) {
             shape = shape.swap_xy();
         }
-        if font.flags.contains(FontInstanceFlags::SYNTHETIC_ITALICS) {
-            shape = shape.synthesize_italics(OBLIQUE_SKEW_FACTOR);
+        if font.synthetic_italics.is_enabled() {
+            shape = shape.synthesize_italics(font.synthetic_italics);
         }
         let transform = if !shape.is_identity() || (x_offset, y_offset) != (0.0, 0.0) {
             Some(dwrote::DWRITE_MATRIX {
@@ -435,17 +418,30 @@ impl FontContext {
         let pixels = analysis.create_alpha_texture(texture_type, bounds);
         let mut bgra_pixels = self.convert_to_bgra(&pixels, font.render_mode, bitmaps);
 
-        let lut_correction = match font.render_mode {
-            FontRenderMode::Mono => &self.gdi_gamma_lut,
+        // These are the default values we use in Gecko.
+        // We use a gamma value of 2.3 for gdi fonts
+        const GDI_GAMMA: u16 = 230;
+
+        let FontInstancePlatformOptions { gamma, contrast, .. } = font.platform_options.unwrap_or_default();
+        let gdi_gamma = match font.render_mode {
+            FontRenderMode::Mono => GDI_GAMMA,
             FontRenderMode::Alpha | FontRenderMode::Subpixel => {
                 if bitmaps || font.flags.contains(FontInstanceFlags::FORCE_GDI) {
-                    &self.gdi_gamma_lut
+                    GDI_GAMMA
                 } else {
-                    &self.gamma_lut
+                    gamma
                 }
             }
         };
-        lut_correction.preblend(&mut bgra_pixels, font.color);
+        let gamma_lut = self.gamma_luts
+            .entry((gdi_gamma, contrast))
+            .or_insert_with(||
+                GammaLut::new(
+                    contrast as f32 / 100.0,
+                    gdi_gamma as f32 / 100.0,
+                    gdi_gamma as f32 / 100.0,
+                ));
+        gamma_lut.preblend(&mut bgra_pixels, font.color);
 
         GlyphRasterResult::Bitmap(RasterizedGlyph {
             left: bounds.left as f32,

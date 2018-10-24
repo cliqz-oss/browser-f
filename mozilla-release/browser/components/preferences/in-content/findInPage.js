@@ -185,9 +185,7 @@ var gSearchResultsPane = {
    */
   getFindSelection(win) {
     // Yuck. See bug 138068.
-    let docShell = win.QueryInterface(Ci.nsIInterfaceRequestor)
-                      .getInterface(Ci.nsIWebNavigation)
-                      .QueryInterface(Ci.nsIDocShell);
+    let docShell = win.docShell;
 
     let controller = docShell.QueryInterface(Ci.nsIInterfaceRequestor)
                               .getInterface(Ci.nsISelectionDisplay)
@@ -520,8 +518,8 @@ var gSearchResultsPane = {
     if (anchorNode.tooltipNode) {
       return;
     }
-    let searchTooltip = anchorNode.ownerDocument.createElement("span");
-    let searchTooltipText = anchorNode.ownerDocument.createElement("span");
+    let searchTooltip = anchorNode.ownerDocument.createXULElement("span");
+    let searchTooltipText = anchorNode.ownerDocument.createXULElement("span");
     searchTooltip.className = "search-tooltip";
     searchTooltipText.textContent = query;
     searchTooltip.appendChild(searchTooltipText);
@@ -563,5 +561,5 @@ var gSearchResultsPane = {
       node.removeAttribute("indicator");
     }
     this.listSearchMenuitemIndicators.clear();
-  }
+  },
 };

@@ -355,7 +355,7 @@ AutoForgetTabsService.prototype = {
         label: browserStrings.GetStringFromName(
             "apt.cleanupPrompt.learnMoreButton"),
         callback: (notification, descr) => {
-          browser.ownerGlobal.openLinkIn(
+          browser.ownerGlobal.openTrustedLinkIn(
               "https://cliqz.com/support/automatic-forget-mode",
               "tab",
               {

@@ -23,6 +23,8 @@ namespace interceptor {
 template <typename VMPolicy>
 class WindowsDllDetourPatcher final : public WindowsDllPatcherBase<VMPolicy>
 {
+  typedef typename VMPolicy::MMPolicyT MMPolicyT;
+
 public:
   template <typename... Args>
   explicit WindowsDllDetourPatcher(Args... aArgs)
@@ -42,7 +44,7 @@ public:
 
   void Clear()
   {
-    if (!mVMPolicy.ShouldUnhookUponDestruction()) {
+    if (!this->mVMPolicy.ShouldUnhookUponDestruction()) {
       return;
     }
 
@@ -50,11 +52,14 @@ public:
     size_t nBytes = 1 + sizeof(intptr_t);
 #elif defined(_M_X64)
     size_t nBytes = 2 + sizeof(intptr_t);
+#elif defined(_M_ARM64)
+    size_t nBytes = 4;
+    MOZ_RELEASE_ASSERT(false, "Shouldn't get here");
 #else
 #error "Unknown processor type"
 #endif
 
-    const auto& tramps = mVMPolicy.Items();
+    const auto& tramps = this->mVMPolicy.Items();
     for (auto&& tramp : tramps) {
       // First we read the pointer to the interceptor instance.
       Maybe<uintptr_t> instance = tramp.ReadEncodedPointer();
@@ -80,7 +85,7 @@ public:
         continue;
       }
 
-      WritableTargetFunction<MMPolicyT> origBytes(mVMPolicy,
+      WritableTargetFunction<MMPolicyT> origBytes(this->mVMPolicy,
                                                   interceptedFn.value(), nBytes);
       if (!origBytes) {
         continue;
@@ -128,6 +133,8 @@ public:
       if (!origBytes) {
         continue;
       }
+#elif defined(_M_ARM64)
+      MOZ_RELEASE_ASSERT(false, "Shouldn't get here")
 #else
 #error "Unknown processor type"
 #endif
@@ -135,7 +142,7 @@ public:
       origBytes.Commit();
     }
 
-    mVMPolicy.Clear();
+    this->mVMPolicy.Clear();
   }
 
   void Init(int aNumHooks = 0)
@@ -148,20 +155,20 @@ public:
       // Win32 allocates VM addresses at a 64KiB granularity, so by default we
       // might as well utilize that entire 64KiB reservation instead of
       // artifically constraining ourselves to the page size.
-      aNumHooks = mVMPolicy.GetAllocGranularity() / kHookSize;
+      aNumHooks = this->mVMPolicy.GetAllocGranularity() / kHookSize;
     }
 
-    mVMPolicy.Reserve(aNumHooks);
+    this->mVMPolicy.Reserve(aNumHooks);
   }
 
   bool Initialized() const
   {
-    return !!mVMPolicy;
+    return !!this->mVMPolicy;
   }
 
   bool AddHook(FARPROC aTargetFn, intptr_t aHookDest, void** aOrigFunc)
   {
-    ReadOnlyTargetFunction<MMPolicyT> target(ResolveRedirectedAddress(aTargetFn));
+    ReadOnlyTargetFunction<MMPolicyT> target(this->ResolveRedirectedAddress(aTargetFn));
 
     CreateTrampoline(target, aHookDest, aOrigFunc);
     if (!*aOrigFunc) {
@@ -399,7 +406,7 @@ protected:
   {
     *aOutTramp = nullptr;
 
-    Trampoline<MMPolicyT> tramp(mVMPolicy.GetNextTrampoline());
+    Trampoline<MMPolicyT> tramp(this->mVMPolicy.GetNextTrampoline());
     if (!tramp) {
       return;
     }
@@ -961,6 +968,8 @@ protected:
         return;
       }
     }
+#elif defined(_M_ARM64)
+      MOZ_RELEASE_ASSERT(false, "Shouldn't get here")
 #else
 #error "Unknown processor type"
 #endif

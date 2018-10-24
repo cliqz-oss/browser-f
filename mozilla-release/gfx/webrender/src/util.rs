@@ -3,14 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use api::{BorderRadius, DeviceIntPoint, DeviceIntRect, DeviceIntSize, DevicePixelScale};
-use api::{DevicePoint, DeviceRect, DeviceSize, LayoutPixel, LayoutPoint, LayoutRect, LayoutSize};
-use api::{WorldPixel, WorldRect};
+use api::{LayoutPixel, DeviceRect, WorldPixel, WorldRect};
 use euclid::{Point2D, Rect, Size2D, TypedPoint2D, TypedRect, TypedSize2D};
-use euclid::{TypedTransform2D, TypedTransform3D, TypedVector2D, TypedVector3D};
-use euclid::{HomogeneousVector};
+use euclid::{TypedTransform2D, TypedTransform3D, TypedVector2D};
 use num_traits::Zero;
-use plane_split::{Clipper, Plane, Polygon};
-use std::{i32, f32};
+use plane_split::{Clipper, Polygon};
+use std::{i32, f32, fmt};
+use std::borrow::Cow;
+
 
 // Matches the definition of SK_ScalarNearlyZero in Skia.
 const NEARLY_ZERO: f32 = 1.0 / 4096.0;
@@ -167,163 +167,6 @@ pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
     (b - a) * t + a
 }
 
-pub fn calculate_screen_bounding_rect(
-    transform: &LayoutToWorldFastTransform,
-    rect: &LayoutRect,
-    device_pixel_scale: DevicePixelScale,
-    screen_bounds: Option<&DeviceIntRect>,
-) -> Option<DeviceIntRect> {
-    debug!("rect {:?}", rect);
-    debug!("transform {:?}", transform);
-    debug!("screen_bounds: {:?}", screen_bounds);
-    let homogens = [
-        transform.transform_point2d_homogeneous(&rect.origin),
-        transform.transform_point2d_homogeneous(&rect.top_right()),
-        transform.transform_point2d_homogeneous(&rect.bottom_left()),
-        transform.transform_point2d_homogeneous(&rect.bottom_right()),
-    ];
-    debug!("homogeneous points {:?}", homogens);
-    let max_rect = match screen_bounds {
-        Some(bounds) => bounds.to_f32(),
-        None => DeviceRect::max_rect(),
-    };
-
-    // Note: we only do the full frustum collision when the polygon approaches the camera plane.
-    // Otherwise, it will be clamped to the screen bounds anyway.
-    let world_rect = if homogens.iter().any(|h| h.w <= 0.0) {
-        let mut clipper = Clipper::new();
-        // using inverse-transpose of the inversed transform
-        let t = transform.to_transform();
-        // camera plane
-        {
-            let normal = TypedVector3D::new(t.m14, t.m24, t.m34);
-            let kf = 1.0 / normal.length();
-            clipper.add(Plane {
-                normal: normal * kf,
-                offset: t.m44 * kf,
-            });
-        }
-
-        // The equations for clip planes come from the following one:
-        // (v * M).x < right
-        // (v, Mx) < right
-        // (v, Mx) - right = 0;
-
-        // left/right planes
-        if let Some(bounds) = screen_bounds {
-            let normal = TypedVector3D::new(t.m11, t.m21, t.m31);
-            let kf = 1.0 / normal.length();
-            clipper.add(Plane {
-                normal: normal * kf,
-                offset: t.m41 * kf - (bounds.origin.x) as f32 / device_pixel_scale.0,
-            });
-            clipper.add(Plane {
-                normal: normal * -kf,
-                offset: t.m41 * -kf + (bounds.origin.x + bounds.size.width) as f32 / device_pixel_scale.0,
-            });
-        }
-        // top/bottom planes
-        if let Some(bounds) = screen_bounds {
-            let normal = TypedVector3D::new(t.m12, t.m22, t.m32);
-            let kf = 1.0 / normal.length();
-            clipper.add(Plane {
-                normal: normal * kf,
-                offset: t.m42 * kf - (bounds.origin.y) as f32 / device_pixel_scale.0,
-            });
-            clipper.add(Plane {
-                normal: normal * -kf,
-                offset: t.m42 * -kf + (bounds.origin.y + bounds.size.height) as f32 / device_pixel_scale.0,
-            });
-        }
-
-        let polygon = Polygon::from_points(
-            [
-                rect.origin.to_3d(),
-                rect.top_right().to_3d(),
-                rect.bottom_left().to_3d(),
-                rect.bottom_right().to_3d(),
-            ],
-            1,
-        );
-        debug!("crossing detected for poly {:?}", polygon);
-        let results = clipper.clip(polygon);
-        debug!("clip results: {:?}", results);
-        if results.is_empty() {
-            return None
-        }
-
-        debug!("points:");
-        WorldRect::from_points(results
-            .into_iter()
-            // filter out parts behind the view plane
-            .flat_map(|poly| &poly.points)
-            .map(|p| {
-                debug!("\tpoint {:?} -> {:?} -> {:?}", p,
-                    transform.transform_point2d_homogeneous(&p.to_2d()),
-                    transform.transform_point2d(&p.to_2d())
-                );
-                transform.transform_point2d(&p.to_2d())
-            })
-        )
-    } else {
-        WorldRect::from_points(&[
-            homogens[0].to_point2d(),
-            homogens[1].to_point2d(),
-            homogens[2].to_point2d(),
-            homogens[3].to_point2d(),
-        ])
-    };
-
-    debug!("world rect {:?}", world_rect);
-    (world_rect * device_pixel_scale)
-        .round_out()
-        .intersection(&max_rect)
-        .map(|r| r.to_i32())
-}
-
-pub fn _subtract_rect<U>(
-    rect: &TypedRect<f32, U>,
-    other: &TypedRect<f32, U>,
-    results: &mut Vec<TypedRect<f32, U>>,
-) {
-    results.clear();
-
-    let int = rect.intersection(other);
-    match int {
-        Some(int) => {
-            let rx0 = rect.origin.x;
-            let ry0 = rect.origin.y;
-            let rx1 = rx0 + rect.size.width;
-            let ry1 = ry0 + rect.size.height;
-
-            let ox0 = int.origin.x;
-            let oy0 = int.origin.y;
-            let ox1 = ox0 + int.size.width;
-            let oy1 = oy0 + int.size.height;
-
-            let r = TypedRect::from_untyped(&rect_from_points_f(rx0, ry0, ox0, ry1));
-            if r.size.width > 0.0 && r.size.height > 0.0 {
-                results.push(r);
-            }
-            let r = TypedRect::from_untyped(&rect_from_points_f(ox0, ry0, ox1, oy0));
-            if r.size.width > 0.0 && r.size.height > 0.0 {
-                results.push(r);
-            }
-            let r = TypedRect::from_untyped(&rect_from_points_f(ox0, oy1, ox1, ry1));
-            if r.size.width > 0.0 && r.size.height > 0.0 {
-                results.push(r);
-            }
-            let r = TypedRect::from_untyped(&rect_from_points_f(ox1, ry0, rx1, ry1));
-            if r.size.width > 0.0 && r.size.height > 0.0 {
-                results.push(r);
-            }
-        }
-        None => {
-            results.push(*rect);
-        }
-    }
-}
-
 #[repr(u32)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
@@ -413,15 +256,6 @@ pub trait MaxRect {
     fn max_rect() -> Self;
 }
 
-impl MaxRect for LayoutRect {
-    fn max_rect() -> Self {
-        LayoutRect::new(
-            LayoutPoint::new(f32::MIN / 2.0, f32::MIN / 2.0),
-            LayoutSize::new(f32::MAX, f32::MAX),
-        )
-    }
-}
-
 impl MaxRect for DeviceIntRect {
     fn max_rect() -> Self {
         DeviceIntRect::new(
@@ -431,7 +265,7 @@ impl MaxRect for DeviceIntRect {
     }
 }
 
-impl MaxRect for DeviceRect {
+impl<U> MaxRect for TypedRect<f32, U> {
     fn max_rect() -> Self {
         // Having an unlimited bounding box is fine up until we try
         // to cast it to `i32`, where we get `-2147483648` for any
@@ -441,9 +275,9 @@ impl MaxRect for DeviceRect {
         // with explanation left as an exercise for the reader.
         const MAX_COORD: f32 = 1.0e9;
 
-        DeviceRect::new(
-            DevicePoint::new(-MAX_COORD, -MAX_COORD),
-            DeviceSize::new(2.0 * MAX_COORD, 2.0 * MAX_COORD),
+        TypedRect::new(
+            TypedPoint2D::new(-MAX_COORD, -MAX_COORD),
+            TypedSize2D::new(2.0 * MAX_COORD, 2.0 * MAX_COORD),
         )
     }
 }
@@ -482,11 +316,20 @@ impl<Src, Dst> FastTransform<Src, Dst> {
         FastTransform::Transform { transform, inverse, is_2d}
     }
 
-    pub fn to_transform(&self) -> TypedTransform3D<f32, Src, Dst> {
+    pub fn kind(&self) -> TransformedRectKind {
         match *self {
-            FastTransform::Offset(offset) =>
-                TypedTransform3D::create_translation(offset.x, offset.y, 0.0),
-            FastTransform::Transform { transform, .. } => transform
+            FastTransform::Offset(_) => TransformedRectKind::AxisAligned,
+            FastTransform::Transform { ref transform, .. } if transform.preserves_2d_axis_alignment() => TransformedRectKind::AxisAligned,
+            FastTransform::Transform { .. } => TransformedRectKind::Complex,
+        }
+    }
+
+    pub fn to_transform(&self) -> Cow<TypedTransform3D<f32, Src, Dst>> {
+        match *self {
+            FastTransform::Offset(offset) => Cow::Owned(
+                TypedTransform3D::create_translation(offset.x, offset.y, 0.0)
+            ),
+            FastTransform::Transform { ref transform, .. } => Cow::Borrowed(transform),
         }
     }
 
@@ -525,23 +368,6 @@ impl<Src, Dst> FastTransform<Src, Dst> {
     }
 
     #[inline(always)]
-    pub fn preserves_2d_axis_alignment(&self) -> bool {
-        match *self {
-            FastTransform::Offset(..) => true,
-            FastTransform::Transform { ref transform, .. } =>
-                transform.preserves_2d_axis_alignment(),
-        }
-    }
-
-    #[inline(always)]
-    pub fn has_perspective_component(&self) -> bool {
-        match *self {
-            FastTransform::Offset(..) => false,
-            FastTransform::Transform { ref transform, .. } => transform.has_perspective_component(),
-        }
-    }
-
-    #[inline(always)]
     pub fn is_backface_visible(&self) -> bool {
         match *self {
             FastTransform::Offset(..) => false,
@@ -550,33 +376,13 @@ impl<Src, Dst> FastTransform<Src, Dst> {
     }
 
     #[inline(always)]
-    pub fn transform_point2d(&self, point: &TypedPoint2D<f32, Src>) -> TypedPoint2D<f32, Dst> {
+    pub fn transform_point2d(&self, point: &TypedPoint2D<f32, Src>) -> Option<TypedPoint2D<f32, Dst>> {
         match *self {
             FastTransform::Offset(offset) => {
                 let new_point = *point + offset;
-                TypedPoint2D::from_untyped(&new_point.to_untyped())
+                Some(TypedPoint2D::from_untyped(&new_point.to_untyped()))
             }
             FastTransform::Transform { ref transform, .. } => transform.transform_point2d(point),
-        }
-    }
-
-    #[inline(always)]
-    pub fn transform_point2d_homogeneous(&self, point: &TypedPoint2D<f32, Src>) -> HomogeneousVector<f32, Dst> {
-        match *self {
-            FastTransform::Offset(offset) => {
-                let new_point = *point + offset;
-                HomogeneousVector::new(new_point.x, new_point.y, 0.0, 1.0)
-            }
-            FastTransform::Transform { ref transform, .. } => transform.transform_point2d_homogeneous(point),
-        }
-    }
-
-    #[inline(always)]
-    pub fn transform_rect(&self, rect: &TypedRect<f32, Src>) -> TypedRect<f32, Dst> {
-        match *self {
-            FastTransform::Offset(offset) =>
-                TypedRect::from_untyped(&rect.to_untyped().translate(&offset.to_untyped())),
-            FastTransform::Transform { ref transform, .. } => transform.transform_rect(rect),
         }
     }
 
@@ -585,21 +391,10 @@ impl<Src, Dst> FastTransform<Src, Dst> {
             FastTransform::Offset(offset) =>
                 Some(TypedRect::from_untyped(&rect.to_untyped().translate(&-offset.to_untyped()))),
             FastTransform::Transform { inverse: Some(ref inverse), is_2d: true, .. }  =>
-                Some(inverse.transform_rect(rect)),
+                inverse.transform_rect(rect),
             FastTransform::Transform { ref transform, is_2d: false, .. } =>
                 Some(transform.inverse_rect_footprint(rect)),
             FastTransform::Transform { inverse: None, .. }  => None,
-        }
-    }
-
-    #[inline(always)]
-    pub fn offset(&self, new_offset: TypedVector2D<f32, Src>) -> Self {
-        match *self {
-            FastTransform::Offset(offset) => FastTransform::Offset(offset + new_offset),
-            FastTransform::Transform { ref transform, .. } => {
-                let transform = transform.pre_translate(new_offset.to_3d());
-                FastTransform::with_transform(transform)
-            }
         }
     }
 
@@ -631,27 +426,11 @@ impl<Src, Dst> FastTransform<Src, Dst> {
 
         }
     }
-
-    pub fn update(&self, transform: TypedTransform3D<f32, Src, Dst>) -> Option<Self> {
-        if transform.is_simple_2d_translation() {
-            Some(self.offset(TypedVector2D::new(transform.m41, transform.m42)))
-        } else {
-            // If we break 2D axis alignment or have a perspective component, we need to start a
-            // new incompatible coordinate system with which we cannot share clips without masking.
-            None
-        }
-    }
 }
 
 impl<Src, Dst> From<TypedTransform3D<f32, Src, Dst>> for FastTransform<Src, Dst> {
     fn from(transform: TypedTransform3D<f32, Src, Dst>) -> Self {
         FastTransform::with_transform(transform)
-    }
-}
-
-impl<Src, Dst> Into<TypedTransform3D<f32, Src, Dst>> for FastTransform<Src, Dst> {
-    fn into(self) -> TypedTransform3D<f32, Src, Dst> {
-        self.to_transform()
     }
 }
 
@@ -663,4 +442,60 @@ impl<Src, Dst> From<TypedVector2D<f32, Src>> for FastTransform<Src, Dst> {
 
 pub type LayoutFastTransform = FastTransform<LayoutPixel, LayoutPixel>;
 pub type LayoutToWorldFastTransform = FastTransform<LayoutPixel, WorldPixel>;
-pub type WorldToLayoutFastTransform = FastTransform<WorldPixel, LayoutPixel>;
+
+pub fn project_rect<F, T>(
+    transform: &TypedTransform3D<f32, F, T>,
+    rect: &TypedRect<f32, F>,
+) -> Option<TypedRect<f32, T>>
+ where F: fmt::Debug
+{
+    let homogens = [
+        transform.transform_point2d_homogeneous(&rect.origin),
+        transform.transform_point2d_homogeneous(&rect.top_right()),
+        transform.transform_point2d_homogeneous(&rect.bottom_left()),
+        transform.transform_point2d_homogeneous(&rect.bottom_right()),
+    ];
+
+    // Note: we only do the full frustum collision when the polygon approaches the camera plane.
+    // Otherwise, it will be clamped to the screen bounds anyway.
+    if homogens.iter().any(|h| h.w <= 0.0) {
+        let mut clipper = Clipper::new();
+        clipper.add_frustum(
+            transform,
+            None,
+        );
+
+        let polygon = Polygon::from_rect(*rect, 1);
+        let results = clipper.clip(polygon);
+        if results.is_empty() {
+            return None
+        }
+
+        Some(TypedRect::from_points(results
+            .into_iter()
+            // filter out parts behind the view plane
+            .flat_map(|poly| &poly.points)
+            .map(|p| {
+                let mut homo = transform.transform_point2d_homogeneous(&p.to_2d());
+                homo.w = homo.w.max(0.00000001); // avoid infinite values
+                homo.to_point2d().unwrap()
+            })
+        ))
+    } else {
+        // we just checked for all the points to be in positive hemisphere, so `unwrap` is valid
+        Some(TypedRect::from_points(&[
+            homogens[0].to_point2d().unwrap(),
+            homogens[1].to_point2d().unwrap(),
+            homogens[2].to_point2d().unwrap(),
+            homogens[3].to_point2d().unwrap(),
+        ]))
+    }
+}
+
+pub fn world_rect_to_device_pixels(
+    rect: WorldRect,
+    device_pixel_scale: DevicePixelScale,
+) -> DeviceRect {
+    let device_rect = rect * device_pixel_scale;
+    device_rect.round_out()
+}

@@ -29,7 +29,6 @@
 #include "nsIScreenManager.h"
 #include "nsISupportsPrimitives.h"
 #include "nsIURL.h"
-#include "nsCWebBrowserPersist.h"
 #include "nsToolkit.h"
 #include "nsCRT.h"
 #include "nsDirectoryServiceDefs.h"
@@ -69,7 +68,7 @@ nsDragService::~nsDragService()
 
 bool
 nsDragService::CreateDragImage(nsINode *aDOMNode,
-                               nsIScriptableRegion *aRegion,
+                               const Maybe<CSSIntRegion>& aRegion,
                                SHDRAGIMAGE *psdi)
 {
   if (!psdi)
@@ -166,7 +165,7 @@ nsDragService::CreateDragImage(nsINode *aDOMNode,
 //-------------------------------------------------------------------------
 nsresult
 nsDragService::InvokeDragSessionImpl(nsIArray* anArrayTransferables,
-                                     nsIScriptableRegion* aRegion,
+                                     const Maybe<CSSIntRegion>& aRegion,
                                      uint32_t aActionType)
 {
   // Try and get source URI of the items that are being dragged
@@ -317,7 +316,7 @@ nsDragService::StartInvokingDragSession(IDataObject * aDataObj,
                                          getter_AddRefs(pAsyncOp)))) {
     pAsyncOp->SetAsyncMode(VARIANT_TRUE);
   } else {
-    NS_NOTREACHED("When did our data object stop being async");
+    MOZ_ASSERT_UNREACHABLE("When did our data object stop being async");
   }
 
   // Call the native D&D method
@@ -655,7 +654,7 @@ nsDragService::UpdateDragImage(nsINode* aImage, int32_t aImageX, int32_t aImageY
                                  CLSCTX_INPROC_SERVER,
                                  IID_IDragSourceHelper, (void**)&pdsh))) {
     SHDRAGIMAGE sdi;
-    if (CreateDragImage(mSourceNode, nullptr, &sdi)) {
+    if (CreateDragImage(mSourceNode, Nothing(), &sdi)) {
       nsNativeDragTarget::DragImageChanged();
       if (FAILED(pdsh->InitializeFromBitmap(&sdi, mDataObject)))
         DeleteObject(sdi.hbmpDragImage);

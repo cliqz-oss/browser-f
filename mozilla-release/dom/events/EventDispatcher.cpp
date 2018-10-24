@@ -12,6 +12,7 @@
 #include "nsIContentInlines.h"
 #include "nsIDocument.h"
 #include "nsINode.h"
+#include "nsIScriptObjectPrincipal.h"
 #include "nsPIDOMWindow.h"
 #include "AnimationEvent.h"
 #include "BeforeUnloadEvent.h"
@@ -104,22 +105,23 @@ static bool IsEventTargetChrome(EventTarget* aEventTarget,
   }
 
   nsIDocument* doc = nullptr;
-  nsCOMPtr<nsINode> node = do_QueryInterface(aEventTarget);
-  if (node) {
+  if (nsCOMPtr<nsINode> node = do_QueryInterface(aEventTarget)) {
     doc = node->OwnerDoc();
-  } else {
-    nsCOMPtr<nsPIDOMWindowInner> window = do_QueryInterface(aEventTarget);
-    if (!window) {
-      return false;
-    }
+  } else if (nsCOMPtr<nsPIDOMWindowInner> window = do_QueryInterface(aEventTarget)) {
     doc = window->GetExtantDoc();
   }
 
   // nsContentUtils::IsChromeDoc is null-safe.
-  bool isChrome = nsContentUtils::IsChromeDoc(doc);
-  if (aDocument && doc) {
-    nsCOMPtr<nsIDocument> retVal = doc;
-    retVal.swap(*aDocument);
+  bool isChrome = false;
+  if (doc) {
+    isChrome = nsContentUtils::IsChromeDoc(doc);
+    if (aDocument) {
+      nsCOMPtr<nsIDocument> retVal = doc;
+      retVal.swap(*aDocument);
+    }
+  } else if (nsCOMPtr<nsIScriptObjectPrincipal> sop =
+              do_QueryInterface(aEventTarget->GetOwnerGlobal())) {
+    isChrome = nsContentUtils::IsSystemPrincipal(sop->GetPrincipal());
   }
   return isChrome;
 }
@@ -321,6 +323,16 @@ public:
     return mFlags.mRootOfClosedTree;
   }
 
+  void SetItemInShadowTree(bool aSet)
+  {
+    mFlags.mItemInShadowTree = aSet;
+  }
+
+  bool IsItemInShadowTree()
+  {
+    return mFlags.mItemInShadowTree;
+  }
+
   void SetIsSlotInClosedTree(bool aSet)
   {
     mFlags.mIsSlotInClosedTree = aSet;
@@ -408,7 +420,8 @@ public:
       mManager->HandleEvent(aVisitor.mPresContext, aVisitor.mEvent,
                             &aVisitor.mDOMEvent,
                             CurrentTarget(),
-                            &aVisitor.mEventStatus);
+                            &aVisitor.mEventStatus,
+                            IsItemInShadowTree());
       NS_ASSERTION(aVisitor.mEvent->mCurrentTarget == nullptr,
                    "CurrentTarget should be null!");
     }
@@ -443,6 +456,7 @@ private:
     bool mWantsPreHandleEvent : 1;
     bool mPreHandleEventOnly : 1;
     bool mRootOfClosedTree : 1;
+    bool mItemInShadowTree : 1;
     bool mIsSlotInClosedTree : 1;
     bool mIsChromeHandler : 1;
   private:
@@ -485,6 +499,7 @@ EventTargetChainItem::GetEventTargetParent(EventChainPreVisitor& aVisitor)
   SetWantsPreHandleEvent(aVisitor.mWantsPreHandleEvent);
   SetPreHandleEventOnly(aVisitor.mWantsPreHandleEvent && !aVisitor.mCanHandle);
   SetRootOfClosedTree(aVisitor.mRootOfClosedTree);
+  SetItemInShadowTree(aVisitor.mItemInShadowTree);
   SetRetargetedRelatedTarget(aVisitor.mRetargetedRelatedTarget);
   SetRetargetedTouchTarget(std::move(aVisitor.mRetargetedTouchTargets));
   mItemFlags = aVisitor.mItemFlags;
@@ -760,6 +775,10 @@ MayRetargetToChromeIfCanNotHandleEvent(
     EventTargetChainItem* chromeTargetEtci =
       EventTargetChainItemForChromeTarget(aChain, aContent, aChildEtci);
     if (chromeTargetEtci) {
+      // If we propagate to chrome, need to ensure we mark
+      // EventTargetChainItem to be chrome handler so that event.composedPath()
+      // can return the right value.
+      chromeTargetEtci->SetIsChromeHandler(true);
       chromeTargetEtci->GetEventTargetParent(aPreVisitor);
       return chromeTargetEtci;
     }
@@ -869,7 +888,7 @@ EventDispatcher::Dispatch(nsISupports* aTarget,
 
       // Set the target to be the original dispatch target,
       aEvent->mTarget = target;
-      // but use chrome event handler or TabChildGlobal for event target chain.
+      // but use chrome event handler or TabChildMessageManager for event target chain.
       target = piTarget;
     } else if (NS_WARN_IF(!doc)) {
       return NS_ERROR_UNEXPECTED;
@@ -997,7 +1016,7 @@ EventDispatcher::Dispatch(nsISupports* aTarget,
   } else {
     // At least the original target can handle the event.
     // Setting the retarget to the |target| simplifies retargeting code.
-    nsCOMPtr<EventTarget> t = do_QueryInterface(aEvent->mTarget);
+    nsCOMPtr<EventTarget> t = aEvent->mTarget;
     targetEtci->SetNewTarget(t);
     // In order to not change the targetTouches array passed to TouchEvents
     // when dispatching events from JS, we need to store the initial Touch
@@ -1048,6 +1067,7 @@ EventDispatcher::Dispatch(nsISupports* aTarget,
         preVisitor.mTargetInKnownToBeHandledScope = preVisitor.mEvent->mTarget;
         topEtci = parentEtci;
       } else {
+        bool ignoreBecauseOfShadowDOM = preVisitor.mIgnoreBecauseOfShadowDOM;
         nsCOMPtr<nsINode> disabledTarget = do_QueryInterface(parentTarget);
         parentEtci = MayRetargetToChromeIfCanNotHandleEvent(chain,
                                                             preVisitor,
@@ -1058,7 +1078,11 @@ EventDispatcher::Dispatch(nsISupports* aTarget,
           preVisitor.mTargetInKnownToBeHandledScope = preVisitor.mEvent->mTarget;
           EventTargetChainItem* item =
             EventTargetChainItem::GetFirstCanHandleEventTarget(chain);
-          item->SetNewTarget(parentTarget);
+          if (!ignoreBecauseOfShadowDOM) {
+            // If we ignored the target because of Shadow DOM retargeting, we
+            // shouldn't treat the target to be in the event path at all.
+            item->SetNewTarget(parentTarget);
+          }
           topEtci = parentEtci;
           continue;
         }

@@ -14,7 +14,7 @@
 #include "nsString.h"
 #include "nsNameSpaceManager.h"
 #include "nsIDOMXULMenuListElement.h"
-#include "nsThemeConstants.h"
+#include "nsStyleConsts.h"
 #include "nsIComponentManager.h"
 #include "nsPIDOMWindow.h"
 #include "nsProgressFrame.h"
@@ -27,6 +27,7 @@
 #include "mozilla/dom/HTMLBodyElement.h"
 #include "mozilla/dom/HTMLInputElement.h"
 #include "mozilla/dom/HTMLProgressElement.h"
+#include "mozilla/StaticPrefs.h"
 #include "nsIDocumentInlines.h"
 #include <algorithm>
 
@@ -51,14 +52,14 @@ nsNativeTheme::GetPresShell(nsIFrame* aFrame)
 }
 
 EventStates
-nsNativeTheme::GetContentState(nsIFrame* aFrame, uint8_t aWidgetType)
+nsNativeTheme::GetContentState(nsIFrame* aFrame, StyleAppearance aWidgetType)
 {
   if (!aFrame)
     return EventStates();
 
-  bool isXULCheckboxRadio = 
-    (aWidgetType == NS_THEME_CHECKBOX ||
-     aWidgetType == NS_THEME_RADIO) &&
+  bool isXULCheckboxRadio =
+    (aWidgetType == StyleAppearance::Checkbox ||
+     aWidgetType == StyleAppearance::Radio) &&
     aFrame->GetContent()->IsXULElement();
   if (isXULCheckboxRadio)
     aFrame = aFrame->GetParent();
@@ -77,7 +78,7 @@ nsNativeTheme::GetContentState(nsIFrame* aFrame, uint8_t aWidgetType)
 
     // <input type=number> needs special handling since its nested native
     // anonymous <input type=text> takes focus for it.
-    if (aWidgetType == NS_THEME_NUMBER_INPUT &&
+    if (aWidgetType == StyleAppearance::NumberInput &&
         frameContent->IsHTMLElement(nsGkAtoms::input)) {
       nsNumberControlFrame *numberControlFrame = do_QueryFrame(aFrame);
       if (numberControlFrame && numberControlFrame->IsFocused()) {
@@ -94,7 +95,7 @@ nsNativeTheme::GetContentState(nsIFrame* aFrame, uint8_t aWidgetType)
     }
   }
   
-  if (isXULCheckboxRadio && aWidgetType == NS_THEME_RADIO) {
+  if (isXULCheckboxRadio && aWidgetType == StyleAppearance::Radio) {
     if (IsFocused(aFrame))
       flags |= NS_EVENT_STATE_FOCUS;
   }
@@ -104,17 +105,17 @@ nsNativeTheme::GetContentState(nsIFrame* aFrame, uint8_t aWidgetType)
   // focus something in the window.
 #if defined(XP_MACOSX)
   // Mac always draws focus rings for textboxes and lists.
-  if (aWidgetType == NS_THEME_NUMBER_INPUT ||
-      aWidgetType == NS_THEME_TEXTFIELD ||
-      aWidgetType == NS_THEME_TEXTFIELD_MULTILINE ||
-      aWidgetType == NS_THEME_SEARCHFIELD ||
-      aWidgetType == NS_THEME_LISTBOX) {
+  if (aWidgetType == StyleAppearance::NumberInput ||
+      aWidgetType == StyleAppearance::Textfield ||
+      aWidgetType == StyleAppearance::TextfieldMultiline ||
+      aWidgetType == StyleAppearance::Searchfield ||
+      aWidgetType == StyleAppearance::Listbox) {
     return flags;
   }
 #endif
 #if defined(XP_WIN)
   // On Windows, focused buttons are always drawn as such by the native theme.
-  if (aWidgetType == NS_THEME_BUTTON)
+  if (aWidgetType == StyleAppearance::Button)
     return flags;
 #endif    
 #if defined(XP_MACOSX) || defined(XP_WIN)
@@ -236,7 +237,7 @@ nsNativeTheme::IsButtonTypeMenu(nsIFrame* aFrame)
 bool
 nsNativeTheme::IsPressedButton(nsIFrame* aFrame)
 {
-  EventStates eventState = GetContentState(aFrame, NS_THEME_TOOLBARBUTTON);
+  EventStates eventState = GetContentState(aFrame, StyleAppearance::Toolbarbutton);
   if (IsDisabled(aFrame, eventState))
     return false;
 
@@ -270,7 +271,7 @@ nsNativeTheme::GetIndeterminate(nsIFrame* aFrame)
 
 bool
 nsNativeTheme::IsWidgetStyled(nsPresContext* aPresContext, nsIFrame* aFrame,
-                              uint8_t aWidgetType)
+                              StyleAppearance aWidgetType)
 {
   // Check for specific widgets to see if HTML has overridden the style.
   if (!aFrame)
@@ -281,7 +282,7 @@ nsNativeTheme::IsWidgetStyled(nsPresContext* aPresContext, nsIFrame* aFrame,
   // whether the style is overriden instead of the resizer. This allows a
   // non-native transparent resizer to be used instead. Otherwise, we just
   // fall through and return false.
-  if (aWidgetType == NS_THEME_RESIZER) {
+  if (aWidgetType == StyleAppearance::Resizer) {
     nsIFrame* parentFrame = aFrame->GetParent();
     if (parentFrame && parentFrame->IsScrollFrame()) {
       // if the parent is a scrollframe, the resizer should be native themed
@@ -298,9 +299,9 @@ nsNativeTheme::IsWidgetStyled(nsPresContext* aPresContext, nsIFrame* aFrame,
    * Progress bar appearance should be the same for the bar and the container
    * frame. nsProgressFrame owns the logic and will tell us what we should do.
    */
-  if (aWidgetType == NS_THEME_PROGRESSCHUNK ||
-      aWidgetType == NS_THEME_PROGRESSBAR) {
-    nsProgressFrame* progressFrame = do_QueryFrame(aWidgetType == NS_THEME_PROGRESSCHUNK
+  if (aWidgetType == StyleAppearance::Progresschunk ||
+      aWidgetType == StyleAppearance::Progressbar) {
+    nsProgressFrame* progressFrame = do_QueryFrame(aWidgetType == StyleAppearance::Progresschunk
                                        ? aFrame->GetParent() : aFrame);
     if (progressFrame) {
       return !progressFrame->ShouldUseNativeStyle();
@@ -311,9 +312,9 @@ nsNativeTheme::IsWidgetStyled(nsPresContext* aPresContext, nsIFrame* aFrame,
    * Meter bar appearance should be the same for the bar and the container
    * frame. nsMeterFrame owns the logic and will tell us what we should do.
    */
-  if (aWidgetType == NS_THEME_METERCHUNK ||
-      aWidgetType == NS_THEME_METERBAR) {
-    nsMeterFrame* meterFrame = do_QueryFrame(aWidgetType == NS_THEME_METERCHUNK
+  if (aWidgetType == StyleAppearance::Meterchunk ||
+      aWidgetType == StyleAppearance::Meterbar) {
+    nsMeterFrame* meterFrame = do_QueryFrame(aWidgetType == StyleAppearance::Meterchunk
                                        ? aFrame->GetParent() : aFrame);
     if (meterFrame) {
       return !meterFrame->ShouldUseNativeStyle();
@@ -325,18 +326,18 @@ nsNativeTheme::IsWidgetStyled(nsPresContext* aPresContext, nsIFrame* aFrame,
    * comes to native theming (either all parts, or no parts, are themed).
    * nsRangeFrame owns the logic and will tell us what we should do.
    */
-  if (aWidgetType == NS_THEME_RANGE ||
-      aWidgetType == NS_THEME_RANGE_THUMB) {
+  if (aWidgetType == StyleAppearance::Range ||
+      aWidgetType == StyleAppearance::RangeThumb) {
     nsRangeFrame* rangeFrame =
-      do_QueryFrame(aWidgetType == NS_THEME_RANGE_THUMB
+      do_QueryFrame(aWidgetType == StyleAppearance::RangeThumb
                       ? aFrame->GetParent() : aFrame);
     if (rangeFrame) {
       return !rangeFrame->ShouldUseNativeStyle();
     }
   }
 
-  if (aWidgetType == NS_THEME_SPINNER_UPBUTTON ||
-      aWidgetType == NS_THEME_SPINNER_DOWNBUTTON) {
+  if (aWidgetType == StyleAppearance::SpinnerUpbutton ||
+      aWidgetType == StyleAppearance::SpinnerDownbutton) {
     nsNumberControlFrame* numberControlFrame =
       nsNumberControlFrame::GetNumberControlFrameForSpinButton(aFrame);
     if (numberControlFrame) {
@@ -344,12 +345,14 @@ nsNativeTheme::IsWidgetStyled(nsPresContext* aPresContext, nsIFrame* aFrame,
     }
   }
 
-  return (aWidgetType == NS_THEME_NUMBER_INPUT ||
-          aWidgetType == NS_THEME_BUTTON ||
-          aWidgetType == NS_THEME_TEXTFIELD ||
-          aWidgetType == NS_THEME_TEXTFIELD_MULTILINE ||
-          aWidgetType == NS_THEME_LISTBOX ||
-          aWidgetType == NS_THEME_MENULIST) &&
+  return (aWidgetType == StyleAppearance::NumberInput ||
+          aWidgetType == StyleAppearance::Button ||
+          aWidgetType == StyleAppearance::Textfield ||
+          aWidgetType == StyleAppearance::TextfieldMultiline ||
+          aWidgetType == StyleAppearance::Listbox ||
+          aWidgetType == StyleAppearance::Menulist ||
+          (aWidgetType == StyleAppearance::MenulistButton &&
+           StaticPrefs::layout_css_webkit_appearance_enabled())) &&
          aFrame->GetContent()->IsHTMLElement() &&
          aPresContext->HasAuthorSpecifiedRules(aFrame,
                                                NS_AUTHOR_SPECIFIED_BORDER |
@@ -599,7 +602,7 @@ nsNativeTheme::IsVerticalMeter(nsIFrame* aFrame)
     case StyleOrient::Block:
       return !aFrame->GetWritingMode().IsVertical();
   }
-  NS_NOTREACHED("unexpected -moz-orient value");
+  MOZ_ASSERT_UNREACHABLE("unexpected -moz-orient value");
   return false;
 }
 
@@ -636,16 +639,6 @@ nsNativeTheme::IsRegularMenuItem(nsIFrame *aFrame)
   nsMenuFrame *menuFrame = do_QueryFrame(aFrame);
   return !(menuFrame && (menuFrame->IsOnMenuBar() ||
                          menuFrame->GetParentMenuListType() != eNotMenuList));
-}
-
-bool
-nsNativeTheme::IsMenuListEditable(nsIFrame *aFrame)
-{
-  bool isEditable = false;
-  nsCOMPtr<nsIDOMXULMenuListElement> menulist = do_QueryInterface(aFrame->GetContent());
-  if (menulist)
-    menulist->GetEditable(&isEditable);
-  return isEditable;
 }
 
 bool
@@ -808,4 +801,70 @@ nsNativeTheme::IsDarkBackground(nsIFrame* aFrame)
            NS_GET_R(bgColor) + NS_GET_G(bgColor) + NS_GET_B(bgColor) < 384;
   }
   return false;
+}
+
+bool
+nsNativeTheme::IsWidgetScrollbarPart(StyleAppearance aWidgetType)
+{
+  switch (aWidgetType) {
+    case StyleAppearance::Scrollbar:
+    case StyleAppearance::ScrollbarSmall:
+    case StyleAppearance::ScrollbarVertical:
+    case StyleAppearance::ScrollbarHorizontal:
+    case StyleAppearance::ScrollbarbuttonUp:
+    case StyleAppearance::ScrollbarbuttonDown:
+    case StyleAppearance::ScrollbarbuttonLeft:
+    case StyleAppearance::ScrollbarbuttonRight:
+    case StyleAppearance::ScrollbarthumbVertical:
+    case StyleAppearance::ScrollbarthumbHorizontal:
+    case StyleAppearance::Scrollcorner:
+      return true;
+    default:
+      return false;
+  }
+}
+
+static nscolor
+GetOpaqueBackgroundColor(ComputedStyle* aStyle)
+{
+  nscolor color = aStyle->StyleBackground()->BackgroundColor(aStyle);
+  if (NS_GET_A(color) == 255) {
+    return color;
+  }
+  // Compose white background with the background color.
+  return NS_ComposeColors(NS_RGB(255, 255, 255), color);
+}
+
+nscolor
+nsNativeTheme::GetScrollbarFaceColor(ComputedStyle* aStyle,
+                                     AutoColorGetter aAutoGetter)
+{
+  StyleComplexColor complexColor = aStyle->StyleUI()->mScrollbarFaceColor;
+  if (complexColor.IsAuto()) {
+    return aAutoGetter(aStyle);
+  }
+  nscolor color = complexColor.CalcColor(aStyle);
+  if (NS_GET_A(color) == 255) {
+    return color;
+  }
+  nscolor bgColor = GetOpaqueBackgroundColor(aStyle);
+  return NS_ComposeColors(bgColor, color);
+}
+
+nscolor
+nsNativeTheme::GetScrollbarTrackColor(ComputedStyle* aStyle,
+                                      AutoColorGetter aAutoGetter)
+{
+  StyleComplexColor complexColor = aStyle->StyleUI()->mScrollbarTrackColor;
+  nscolor color;
+  if (complexColor.IsAuto()) {
+    color = aAutoGetter(aStyle);
+  } else {
+    color = complexColor.CalcColor(aStyle);
+  }
+  if (NS_GET_A(color) == 255) {
+    return color;
+  }
+  nscolor bgColor = GetOpaqueBackgroundColor(aStyle);
+  return NS_ComposeColors(bgColor, color);
 }

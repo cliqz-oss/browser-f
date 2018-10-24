@@ -15,12 +15,12 @@ var gTests = [
     is(PopupNotifications.getNotification("webRTC-shareDevices").anchorID,
        "webRTC-shareDevices-notification-icon", "anchored to device icon");
     checkDeviceSelectors(true, true);
-    is(PopupNotifications.panel.firstChild.getAttribute("popupid"),
+    is(PopupNotifications.panel.firstElementChild.getAttribute("popupid"),
        "webRTC-shareDevices", "panel using devices icon");
 
     let indicator = promiseIndicatorWindow();
     await promiseMessage("ok", () => {
-      PopupNotifications.panel.firstChild.button.click();
+      PopupNotifications.panel.firstElementChild.button.click();
     });
     await expectObserverCalled("getUserMedia:response:allow");
     await expectObserverCalled("recording-device-events");
@@ -30,7 +30,7 @@ var gTests = [
     await indicator;
     await checkSharingUI({audio: true, video: true});
     await closeStream(false, "frame1");
-  }
+  },
 },
 
 {
@@ -71,7 +71,7 @@ var gTests = [
 
     // the stream is already closed, but this will do some cleanup anyway
     await closeStream(true, "frame1");
-  }
+  },
 },
 
 {
@@ -85,7 +85,7 @@ var gTests = [
 
     let indicator = promiseIndicatorWindow();
     await promiseMessage("ok", () => {
-      PopupNotifications.panel.firstChild.button.click();
+      PopupNotifications.panel.firstElementChild.button.click();
     });
     await expectObserverCalled("getUserMedia:response:allow");
     await expectObserverCalled("recording-device-events");
@@ -104,7 +104,7 @@ var gTests = [
 
     await expectNoObserverCalled();
     await checkNotSharing();
-  }
+  },
 },
 
 {
@@ -124,7 +124,7 @@ var gTests = [
 
     await expectNoObserverCalled();
     await checkNotSharing();
-  }
+  },
 },
 
 {
@@ -143,7 +143,7 @@ var gTests = [
 
     let indicator = promiseIndicatorWindow();
     await promiseMessage("ok", () => {
-      PopupNotifications.panel.firstChild.button.click();
+      PopupNotifications.panel.firstElementChild.button.click();
     });
     await expectObserverCalled("getUserMedia:response:allow");
     await expectObserverCalled("recording-device-events");
@@ -163,7 +163,7 @@ var gTests = [
     checkDeviceSelectors(false, true);
 
     await promiseMessage("ok", () => {
-      PopupNotifications.panel.firstChild.button.click();
+      PopupNotifications.panel.firstElementChild.button.click();
     });
     await expectObserverCalled("getUserMedia:response:allow");
     await expectObserverCalled("recording-device-events");
@@ -185,7 +185,7 @@ var gTests = [
     await closeStream(false, "frame1");
     await expectNoObserverCalled();
     await checkNotSharing();
-  }
+  },
 },
 
 {
@@ -203,7 +203,7 @@ var gTests = [
 
     let indicator = promiseIndicatorWindow();
     await promiseMessage("ok", () => {
-      PopupNotifications.panel.firstChild.button.click();
+      PopupNotifications.panel.firstElementChild.button.click();
     });
     await expectObserverCalled("getUserMedia:response:allow");
     await expectObserverCalled("recording-device-events");
@@ -221,7 +221,7 @@ var gTests = [
     checkDeviceSelectors(true, true);
 
     await promiseMessage("ok", () => {
-      PopupNotifications.panel.firstChild.button.click();
+      PopupNotifications.panel.firstElementChild.button.click();
     });
     await expectObserverCalled("getUserMedia:response:allow");
     await expectObserverCalled("recording-device-events");
@@ -243,7 +243,7 @@ var gTests = [
     await closeStream(false, "frame1");
     await expectNoObserverCalled();
     await checkNotSharing();
-  }
+  },
 },
 
 {
@@ -257,7 +257,7 @@ var gTests = [
 
     let indicator = promiseIndicatorWindow();
     await promiseMessage("ok", () => {
-      PopupNotifications.panel.firstChild.button.click();
+      PopupNotifications.panel.firstElementChild.button.click();
     });
     await expectObserverCalled("getUserMedia:response:allow");
     await expectObserverCalled("recording-device-events");
@@ -268,8 +268,8 @@ var gTests = [
     await checkSharingUI({video: true, audio: true});
 
     await reloadAndAssertClosedStreams();
-  }
-}
+  },
+},
 
 ];
 

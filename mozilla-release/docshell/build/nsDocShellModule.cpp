@@ -7,6 +7,8 @@
 #include "mozilla/ModuleUtils.h"
 #include "nsDocShellCID.h"
 
+#include "mozilla/dom/BrowsingContext.h"
+
 #include "nsDocShell.h"
 #include "nsDefaultURIFixup.h"
 #include "nsWebNavigationInfo.h"
@@ -26,7 +28,6 @@
 #include "nsDBusHandlerApp.h"
 #endif
 #if defined(MOZ_WIDGET_ANDROID)
-#include "nsExternalSharingAppService.h"
 #include "nsExternalURLHandlerService.h"
 #endif
 
@@ -34,13 +35,6 @@
 #include "nsSHEntry.h"
 #include "nsSHEntryShared.h"
 #include "nsSHistory.h"
-#include "nsSHTransaction.h"
-
-#ifndef MOZ_PLACES
-// download history
-#include "nsDownloadHistory.h"
-#endif
-
 
 // LoadContexts (used for testing)
 #include "LoadContext.h"
@@ -59,6 +53,7 @@ Initialize()
   }
   gInitialized = true;
 
+  mozilla::dom::BrowsingContext::Init();
   nsresult rv = nsSHistory::Startup();
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -92,19 +87,12 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(PlatformLocalHandlerApp_t)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsDBusHandlerApp)
 #endif
 #if defined(MOZ_WIDGET_ANDROID)
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsExternalSharingAppService)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsExternalURLHandlerService)
 #endif
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(ContentHandlerService, Init)
 
 // session history
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsSHEntry)
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsSHTransaction)
-
-#ifndef MOZ_PLACES
-// download history
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsDownloadHistory)
-#endif
 
 NS_DEFINE_NAMED_CID(NS_DOCSHELL_CID);
 NS_DEFINE_NAMED_CID(NS_DEFAULTURIFIXUP_CID);
@@ -122,14 +110,9 @@ NS_DEFINE_NAMED_CID(NS_LOCALHANDLERAPP_CID);
 NS_DEFINE_NAMED_CID(NS_DBUSHANDLERAPP_CID);
 #endif
 #if defined(MOZ_WIDGET_ANDROID)
-NS_DEFINE_NAMED_CID(NS_EXTERNALSHARINGAPPSERVICE_CID);
 NS_DEFINE_NAMED_CID(NS_EXTERNALURLHANDLERSERVICE_CID);
 #endif
 NS_DEFINE_NAMED_CID(NS_SHENTRY_CID);
-NS_DEFINE_NAMED_CID(NS_SHTRANSACTION_CID);
-#ifndef MOZ_PLACES
-NS_DEFINE_NAMED_CID(NS_DOWNLOADHISTORY_CID);
-#endif
 NS_DEFINE_NAMED_CID(NS_CONTENTHANDLERSERVICE_CID);
 NS_DEFINE_NAMED_CID(NS_LOADCONTEXT_CID);
 NS_DEFINE_NAMED_CID(NS_PRIVATELOADCONTEXT_CID);
@@ -153,14 +136,9 @@ const mozilla::Module::CIDEntry kDocShellCIDs[] = {
   { &kNS_DBUSHANDLERAPP_CID, false, nullptr, nsDBusHandlerAppConstructor },
 #endif
 #if defined(MOZ_WIDGET_ANDROID)
-  { &kNS_EXTERNALSHARINGAPPSERVICE_CID, false, nullptr, nsExternalSharingAppServiceConstructor },
   { &kNS_EXTERNALURLHANDLERSERVICE_CID, false, nullptr, nsExternalURLHandlerServiceConstructor },
 #endif
   { &kNS_SHENTRY_CID, false, nullptr, nsSHEntryConstructor },
-  { &kNS_SHTRANSACTION_CID, false, nullptr, nsSHTransactionConstructor },
-#ifndef MOZ_PLACES
-  { &kNS_DOWNLOADHISTORY_CID, false, nullptr, nsDownloadHistoryConstructor },
-#endif
   { &kNS_LOADCONTEXT_CID, false, nullptr, mozilla::CreateTestLoadContext },
   { &kNS_PRIVATELOADCONTEXT_CID, false, nullptr, mozilla::CreatePrivateTestLoadContext },
   { nullptr }
@@ -214,14 +192,9 @@ const mozilla::Module::ContractIDEntry kDocShellContracts[] = {
   { NS_DBUSHANDLERAPP_CONTRACTID, &kNS_DBUSHANDLERAPP_CID },
 #endif
 #if defined(MOZ_WIDGET_ANDROID)
-  { NS_EXTERNALSHARINGAPPSERVICE_CONTRACTID, &kNS_EXTERNALSHARINGAPPSERVICE_CID },
   { NS_EXTERNALURLHANDLERSERVICE_CONTRACTID, &kNS_EXTERNALURLHANDLERSERVICE_CID },
 #endif
   { NS_SHENTRY_CONTRACTID, &kNS_SHENTRY_CID },
-  { NS_SHTRANSACTION_CONTRACTID, &kNS_SHTRANSACTION_CID },
-#ifndef MOZ_PLACES
-  { NS_DOWNLOADHISTORY_CONTRACTID, &kNS_DOWNLOADHISTORY_CID },
-#endif
   { NS_LOADCONTEXT_CONTRACTID, &kNS_LOADCONTEXT_CID },
   { NS_PRIVATELOADCONTEXT_CONTRACTID, &kNS_PRIVATELOADCONTEXT_CID },
   { nullptr }

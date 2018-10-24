@@ -7,7 +7,6 @@
 var EXPORTED_SYMBOLS = [ "YandexTranslator" ];
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/Log.jsm");
 ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
 ChromeUtils.import("resource://services-common/async.js");
 ChromeUtils.import("resource://gre/modules/Http.jsm");
@@ -168,7 +167,7 @@ this.YandexTranslator.prototype = {
     if (--this._pendingRequests == 0) {
       if (this._partialSuccess) {
         this._onFinishedDeferred.resolve({
-          characterCount: this._translatedCharacterCount
+          characterCount: this._translatedCharacterCount,
         });
       } else {
         let error = this._serviceUnavailable ? "unavailable" : "failure";
@@ -252,7 +251,7 @@ this.YandexTranslator.prototype = {
         return {
           data: output,
           finished: false,
-          lastIndex: i
+          lastIndex: i,
         };
       }
 
@@ -264,9 +263,9 @@ this.YandexTranslator.prototype = {
     return {
       data: output,
       finished: true,
-      lastIndex: 0
+      lastIndex: 0,
     };
-  }
+  },
 };
 
 /**
@@ -318,7 +317,7 @@ YandexRequest.prototype = {
           onError(e, responseText, xhr) {
             reject(xhr);
           },
-          postData: params
+          postData: params,
         };
 
         // Fire the request.
@@ -326,7 +325,7 @@ YandexRequest.prototype = {
 
       });
     })();
-  }
+  },
 };
 
 /**

@@ -20,27 +20,6 @@ const HOMEPAGE_CONFIRMED_TYPE = "homepageNotification";
 const HOMEPAGE_SETTING_TYPE = "prefs";
 const HOMEPAGE_SETTING_NAME = "homepage_override";
 
-// This promise is used to wait for the search service to be initialized.
-// None of the code in this module requests that initialization. It is assumed
-// that it is started at some point. If tests start to fail because this
-// promise never resolves, that's likely the cause.
-const searchInitialized = () => {
-  if (Services.search.isInitialized) {
-    return;
-  }
-  return new Promise(resolve => {
-    const SEARCH_SERVICE_TOPIC = "browser-search-service";
-    Services.obs.addObserver(function observer(subject, topic, data) {
-      if (data != "init-complete") {
-        return;
-      }
-
-      Services.obs.removeObserver(observer, SEARCH_SERVICE_TOPIC);
-      resolve();
-    }, SEARCH_SERVICE_TOPIC);
-  });
-};
-
 XPCOMUtils.defineLazyGetter(this, "homepagePopup", () => {
   return new ExtensionControlledPopup({
     confirmedType: HOMEPAGE_CONFIRMED_TYPE,
@@ -78,8 +57,8 @@ XPCOMUtils.defineLazyGetter(this, "homepagePopup", () => {
 // startup case we need to check if the preferences are set to load the homepage
 // and check if the homepage is active, then show the doorhanger in that case.
 async function handleInitialHomepagePopup(extensionId, homepageUrl) {
-  // browser.startup.page == 1 is show homepage.
-  if (Services.prefs.getIntPref("browser.startup.page") == 1) {
+  // browser.startup.addFreshTab == true means we would like to show a home page
+  if (Services.prefs.getBoolPref("browser.startup.addFreshTab")) {
     let {gBrowser} = windowTracker.topWindow;
     let tab = gBrowser.selectedTab;
     let currentUrl = gBrowser.currentURI.spec;
@@ -135,7 +114,7 @@ this.chrome_settings_overrides = class extends ExtensionAPI {
     if (item) {
       ExtensionSettingsStore.removeSetting(
         id, DEFAULT_SEARCH_STORE_TYPE, ENGINE_ADDED_SETTING_NAME);
-      await searchInitialized();
+      await searchInitialized;
       let engine = Services.search.getEngineByName(item.value);
       try {
         Services.search.removeEngine(engine);
@@ -211,7 +190,7 @@ this.chrome_settings_overrides = class extends ExtensionAPI {
       });
     }
     if (manifest.chrome_settings_overrides.search_provider) {
-      await searchInitialized();
+      await searchInitialized;
       extension.callOnClose({
         close: () => {
           if (extension.shutdownReason == "ADDON_DISABLE") {

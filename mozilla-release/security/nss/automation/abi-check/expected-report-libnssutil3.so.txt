@@ -1,4 +1,5 @@
 
 1 Added function:
 
-  'function SECStatus SECITEM_MakeItem(PLArenaPool*, SECItem*, unsigned char*, unsigned int)'    {SECITEM_MakeItem@@NSSUTIL_3.38}
+  'function char* NSSUTIL_AddNSSFlagToModuleSpec(char*, char*)'    {NSSUTIL_AddNSSFlagToModuleSpec@@NSSUTIL_3.39}
+

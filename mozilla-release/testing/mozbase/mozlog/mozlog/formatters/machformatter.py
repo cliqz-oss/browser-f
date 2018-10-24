@@ -12,6 +12,8 @@ from mozterm import Terminal
 from . import base
 from .process import strstatus
 from ..handlers import SummaryHandler
+import six
+from functools import reduce
 
 
 def format_seconds(total):
@@ -60,7 +62,7 @@ class MachFormatter(base.BaseFormatter):
         return test_id
 
     def _get_file_name(self, test_id):
-        if isinstance(test_id, (str, unicode)):
+        if isinstance(test_id, (str, six.text_type)):
             return test_id
 
         if isinstance(test_id, tuple):
@@ -69,7 +71,7 @@ class MachFormatter(base.BaseFormatter):
         assert False, "unexpected test_id"
 
     def suite_start(self, data):
-        num_tests = reduce(lambda x, y: x + len(y), data['tests'].itervalues(), 0)
+        num_tests = reduce(lambda x, y: x + len(y), six.itervalues(data['tests']), 0)
         action = self.term.yellow(data['action'].upper())
         name = ""
         if 'name' in data:
@@ -221,6 +223,26 @@ class MachFormatter(base.BaseFormatter):
             rv = rv + line + "\n"
 
         return rv
+
+    def lsan_leak(self, data):
+        allowed = data.get("allowed_match")
+        if allowed:
+            prefix = self.term.yellow("FAIL")
+        else:
+            prefix = self.term.red("UNEXPECTED-FAIL")
+
+        return "%s LeakSanitizer: leak at %s" % (prefix, ", ".join(data["frames"]))
+
+    def lsan_summary(self, data):
+        allowed = data.get("allowed", False)
+        if allowed:
+            prefix = self.term.yellow("WARNING")
+        else:
+            prefix = self.term.red("ERROR")
+
+        return ("%s | LeakSanitizer | "
+                "SUMMARY: AddressSanitizer: %d byte(s) leaked in %d allocation(s)." %
+                (prefix, data["bytes"], data["allocations"]))
 
     def test_status(self, data):
         test = self._get_test_id(data)

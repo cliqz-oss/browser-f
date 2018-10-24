@@ -92,6 +92,8 @@
 #include <string.h>
 
 #include "xpcpublic.h"
+#include "js/HashTable.h"
+#include "js/GCHashTable.h"
 #include "js/TracingAPI.h"
 #include "js/WeakMapPtr.h"
 #include "PLDHashTable.h"
@@ -180,11 +182,9 @@ class Exception;
 
 /***************************************************************************/
 // data declarations...
-extern const char XPC_CONTEXT_STACK_CONTRACTID[];
 extern const char XPC_EXCEPTION_CONTRACTID[];
 extern const char XPC_CONSOLE_CONTRACTID[];
 extern const char XPC_SCRIPT_ERROR_CONTRACTID[];
-extern const char XPC_ID_CONTRACTID[];
 extern const char XPC_XPCONNECT_CONTRACTID[];
 
 /***************************************************************************/
@@ -436,7 +436,7 @@ private:
 
     // Number of XPCJSContexts currently alive.
     static uint32_t         sInstanceCount;
-    static mozilla::StaticRefPtr<WatchdogManager> sWatchdogInstance;
+    static mozilla::StaticAutoPtr<WatchdogManager> sWatchdogInstance;
     static WatchdogManager* GetWatchdogManager();
 
     // If we spend too much time running JS code in an event handler, then we
@@ -572,11 +572,12 @@ public:
     void AddGCCallback(xpcGCCallback cb);
     void RemoveGCCallback(xpcGCCallback cb);
 
+    JSObject* GetUAWidgetScope(JSContext* cx, nsIPrincipal* principal);
+
     size_t SizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf);
 
     JSObject* UnprivilegedJunkScope() { return mUnprivilegedJunkScope; }
-    JSObject* PrivilegedJunkScope() { return mPrivilegedJunkScope; }
-    JSObject* CompilationScope() { return mCompilationScope; }
+    JSObject* LoaderGlobal();
 
     void InitSingletonScopes();
     void DeleteSingletonScopes();
@@ -596,11 +597,35 @@ private:
     jsid mStrIDs[XPCJSContext::IDX_TOTAL_COUNT];
     JS::Value mStrJSVals[XPCJSContext::IDX_TOTAL_COUNT];
 
+    struct Hasher {
+        typedef RefPtr<mozilla::BasePrincipal> Key;
+        typedef Key Lookup;
+        static uint32_t hash(const Lookup& l) {
+            return l->GetOriginNoSuffixHash();
+        }
+        static bool match(const Key& k, const Lookup& l) {
+            return k->FastEquals(l);
+        }
+    };
+
+    struct SweepPolicy {
+        static bool needsSweep(RefPtr<mozilla::BasePrincipal>* /* unused */, JS::Heap<JSObject*>* value) {
+            return JS::GCPolicy<JS::Heap<JSObject*>>::needsSweep(value);
+        }
+    };
+
+    typedef JS::GCHashMap<RefPtr<mozilla::BasePrincipal>,
+                          JS::Heap<JSObject*>,
+                          Hasher,
+                          js::SystemAllocPolicy,
+                          SweepPolicy> Principal2JSObjectMap;
+
     JSObject2WrappedJSMap*   mWrappedJSMap;
     IID2WrappedJSClassMap*   mWrappedJSClassMap;
     IID2NativeInterfaceMap*  mIID2NativeInterfaceMap;
     ClassInfo2NativeSetMap*  mClassInfo2NativeSetMap;
     NativeSetMap*            mNativeSetMap;
+    Principal2JSObjectMap    mUAWidgetScopeMap;
     XPCWrappedNativeProtoMap* mDyingWrappedNativeProtoMap;
     bool mGCIsRunning;
     nsTArray<nsISupports*> mNativesToReleaseArray;
@@ -611,8 +636,7 @@ private:
     JS::GCSliceCallback mPrevGCSliceCallback;
     JS::DoCycleCollectionCallback mPrevDoCycleCollectionCallback;
     JS::PersistentRootedObject mUnprivilegedJunkScope;
-    JS::PersistentRootedObject mPrivilegedJunkScope;
-    JS::PersistentRootedObject mCompilationScope;
+    JS::PersistentRootedObject mLoaderGlobal;
     RefPtr<AsyncFreeSnowWhite> mAsyncSnowWhiteFreer;
 
     friend class XPCJSContext;
@@ -835,8 +859,8 @@ public:
 
     nsIPrincipal*
     GetPrincipal() const {
-        JS::Compartment* c = js::GetObjectCompartment(mGlobalJSObject);
-        return nsJSPrincipals::get(JS_GetCompartmentPrincipals(c));
+        JS::Realm* r = js::GetNonCCWObjectRealm(mGlobalJSObject);
+        return nsJSPrincipals::get(JS::GetRealmPrincipals(r));
     }
 
     JSObject*
@@ -1703,15 +1727,19 @@ public:
                           const nsXPTMethodInfo* info,
                           nsXPTCMiniVariant* params);
 
-    JSObject*  CallQueryInterfaceOnJSObject(JSContext* cx,
-                                            JSObject* jsobj, REFNSIID aIID);
+    JSObject* CallQueryInterfaceOnJSObject(JSContext* cx,
+                                           JSObject* jsobj,
+                                           JS::HandleObject scope,
+                                           REFNSIID aIID);
 
     static nsresult BuildPropertyEnumerator(XPCCallContext& ccx,
                                             JSObject* aJSObj,
+                                            JS::HandleObject scope,
                                             nsISimpleEnumerator** aEnumerate);
 
     static nsresult GetNamedPropertyAsVariant(XPCCallContext& ccx,
                                               JSObject* aJSObj,
+                                              JS::HandleObject scope,
                                               const nsAString& aName,
                                               nsIVariant** aResult);
 
@@ -1790,7 +1818,8 @@ public:
     */
 
     static nsresult
-    GetNewOrUsed(JS::HandleObject aJSObj,
+    GetNewOrUsed(JSContext* cx,
+                 JS::HandleObject aJSObj,
                  REFNSIID aIID,
                  nsXPCWrappedJS** wrapper);
 
@@ -1836,7 +1865,16 @@ public:
     // to find non-rooting wrappers for dying JS objects. See the top of
     // XPCWrappedJS.cpp for more details.
     bool IsSubjectToFinalization() const {return IsValid() && mRefCnt == 1;}
-    void UpdateObjectPointerAfterGC() {JS_UpdateWeakPointerAfterGC(&mJSObj);}
+
+    void UpdateObjectPointerAfterGC() {
+        MOZ_ASSERT(IsRootWrapper());
+        JS_UpdateWeakPointerAfterGC(&mJSObj);
+        JS_UpdateWeakPointerAfterGC(&mJSObjGlobal);
+        // Note: this is a root wrapper, so mJSObj is never a CCW. Therefore,
+        // if mJSObj is still alive, mJSObjGlobal must also still be alive,
+        // because marking a JSObject will also mark its global.
+        MOZ_ASSERT_IF(mJSObj, mJSObjGlobal);
+    }
 
     bool IsAggregatedToNative() const {return mRoot->mOuter != nullptr;}
     nsISupports* GetAggregatedNativeObject() const {return mRoot->mOuter;}
@@ -1859,6 +1897,7 @@ protected:
     nsXPCWrappedJS() = delete;
     nsXPCWrappedJS(JSContext* cx,
                    JSObject* aJSObj,
+                   JSObject* aJSObjGlobal,
                    nsXPCWrappedJSClass* aClass,
                    nsXPCWrappedJS* root,
                    nsresult* rv);
@@ -1873,6 +1912,13 @@ private:
     }
 
     JS::Heap<JSObject*> mJSObj;
+    // A global object that must be same-compartment with mJSObj. This is the
+    // global/realm we enter when making calls into JS. Note that we cannot
+    // simply use mJSObj's global here because mJSObj might be a
+    // cross-compartment wrapper and CCWs are not associated with a single
+    // global. After removing in-content XBL, we no longer need this field
+    // because we can then assert against CCWs. See bug 1480121.
+    JS::Heap<JSObject*> mJSObjGlobal;
     RefPtr<nsXPCWrappedJSClass> mClass;
     nsXPCWrappedJS* mRoot;    // If mRoot != this, it is an owning pointer.
     nsXPCWrappedJS* mNext;
@@ -1927,7 +1973,8 @@ public:
                               const nsID* iid, uint32_t arrlen,
                               nsresult* pErr);
 
-    static bool JSData2Native(void* d, JS::HandleValue s,
+    static bool JSData2Native(JSContext* cx,
+                              void* d, JS::HandleValue s,
                               const nsXPTType& type,
                               const nsID* iid,
                               uint32_t arrlen,
@@ -1956,7 +2003,8 @@ public:
     static bool GetNativeInterfaceFromJSObject(void** dest, JSObject* src,
                                                const nsID* iid,
                                                nsresult* pErr);
-    static bool JSObject2NativeInterface(void** dest, JS::HandleObject src,
+    static bool JSObject2NativeInterface(JSContext* cx,
+                                         void** dest, JS::HandleObject src,
                                          const nsID* iid,
                                          nsISupports* aOuter,
                                          nsresult* pErr);
@@ -1964,31 +2012,6 @@ public:
     // Note - This return the XPCWrappedNative, rather than the native itself,
     // for the WN case. You probably want UnwrapReflectorToISupports.
     static bool GetISupportsFromJSObject(JSObject* obj, nsISupports** iface);
-
-    /**
-     * Convert a native array into a JS::Value.
-     *
-     * @param d [out] the resulting JS::Value
-     * @param s the native array we're working with
-     * @param type the type of objects in the array
-     * @param iid the interface of each object in the array that we want
-     * @param count the number of items in the array
-     * @param scope the default scope to put on the new JSObjects' parent chain
-     * @param pErr [out] relevant error code, if any.
-     */
-    static bool NativeArray2JS(JS::MutableHandleValue d, const void* const* s,
-                               const nsXPTType& type, const nsID* iid,
-                               uint32_t count, nsresult* pErr);
-
-    static bool JSArray2Native(void** d, JS::HandleValue s,
-                               uint32_t count, const nsXPTType& type,
-                               const nsID* iid, nsresult* pErr);
-
-    static bool JSTypedArray2Native(void** d,
-                                    JSObject* jsarray,
-                                    uint32_t count,
-                                    const nsXPTType& type,
-                                    nsresult* pErr);
 
     static nsresult JSValToXPCException(JS::MutableHandleValue s,
                                         const char* ifaceName,
@@ -2004,6 +2027,40 @@ public:
                                        JS::Value* jsExceptionPtr);
 
 private:
+    /**
+     * Convert a native array into a JS::Value.
+     *
+     * @param d [out] the resulting JS::Value
+     * @param buf the native buffer containing input values
+     * @param type the type of objects in the array
+     * @param iid the interface of each object in the array that we want
+     * @param count the number of items in the array
+     * @param scope the default scope to put on the new JSObjects' parent chain
+     * @param pErr [out] relevant error code, if any.
+     */
+    static bool NativeArray2JS(JS::MutableHandleValue d, const void* buf,
+                               const nsXPTType& type, const nsID* iid,
+                               uint32_t count, nsresult* pErr);
+
+    typedef std::function<void* (uint32_t*)> ArrayAllocFixupLen;
+
+    /**
+     * Convert a JS::Value into a native array.
+     *
+     * @param aJSVal the JS::Value to convert
+     * @param aEltType the type of objects in the array
+     * @param aIID the interface of each object in the array
+     * @param pErr [out] relevant error code, if any
+     * @param aAllocFixupLen function called with the JS Array's length to
+     *                       allocate the backing buffer. This function may
+     *                       modify the length of array to be converted.
+     */
+    static bool JSArray2Native(JS::HandleValue aJSVal,
+                               const nsXPTType& aEltType,
+                               const nsIID* aIID,
+                               nsresult* pErr,
+                               const ArrayAllocFixupLen& aAllocFixupLen);
+
     XPCConvert() = delete;
 
 };
@@ -2068,8 +2125,8 @@ public:
     NS_DECL_ISUPPORTS
     NS_DECL_NSIJSID
 
-    bool InitWithName(const nsID& id, const char* nameString);
-    bool SetName(const char* name);
+    void InitWithName(const nsID& id, const char* nameString);
+    void SetName(const char* name);
     void   SetNameToNoString()
         {MOZ_ASSERT(!mName, "name already set"); mName = const_cast<char*>(gNoString);}
     bool NameIsSet() const {return nullptr != mName;}
@@ -2206,7 +2263,7 @@ protected:
 /***************************************************************************/
 
 extern JSObject*
-xpc_NewIDObject(JSContext* cx, JS::HandleObject jsobj, const nsID& aID);
+xpc_NewIDObject(JSContext* cx, JS::HandleObject scope, const nsID& aID);
 
 extern const nsID*
 xpc_JSObjectToID(JSContext* cx, JSObject* obj);
@@ -2607,6 +2664,7 @@ public:
         , sameZoneAs(cx)
         , freshZone(false)
         , isContentXBLScope(false)
+        , isUAWidgetScope(false)
         , invisibleToDebugger(false)
         , discardSource(false)
         , metadata(cx)
@@ -2626,6 +2684,7 @@ public:
     JS::RootedObject sameZoneAs;
     bool freshZone;
     bool isContentXBLScope;
+    bool isUAWidgetScope;
     bool invisibleToDebugger;
     bool discardSource;
     GlobalProperties globalProperties;
@@ -2799,7 +2858,8 @@ CloneInto(JSContext* cx, JS::HandleValue vobj, JS::HandleValue vscope,
           JS::HandleValue voptions, JS::MutableHandleValue rval);
 
 bool
-StackScopedClone(JSContext* cx, StackScopedCloneOptions& options, JS::MutableHandleValue val);
+StackScopedClone(JSContext* cx, StackScopedCloneOptions& options, JS::HandleObject sourceScope,
+                 JS::MutableHandleValue val);
 
 } /* namespace xpc */
 
@@ -2874,6 +2934,12 @@ public:
     // True if this compartment is a content XBL compartment. Every global in
     // such a compartment is a content XBL scope.
     bool isContentXBLCompartment;
+
+    // True if this compartment is a UA widget compartment.
+    bool isUAWidgetCompartment;
+
+    // True if this is a sandbox compartment. See xpc::CreateSandboxObject.
+    bool isSandboxCompartment;
 
     // True if EnsureAddonCompartment has been called for this compartment.
     // Note that this is false for extensions that ship with the browser, like
@@ -2961,6 +3027,13 @@ public:
         return Get(realm);
     }
 
+    // Get the RealmPrivate for a given script.
+    static RealmPrivate* Get(JSScript* script)
+    {
+        JS::Realm* realm = JS::GetScriptRealm(script);
+        return Get(realm);
+    }
+
     // The scriptability of this realm.
     Scriptability scriptability;
 
@@ -3029,6 +3102,8 @@ bool IsOutObject(JSContext* cx, JSObject* obj);
 
 nsresult HasInstance(JSContext* cx, JS::HandleObject objArg, const nsID* iid, bool* bp);
 
+// Returns the principal associated with |obj|'s realm. The object must not be a
+// cross-compartment wrapper.
 nsIPrincipal* GetObjectPrincipal(JSObject* obj);
 
 // Attempt to clean up the passed in value pointer. The pointer `value` must be
@@ -3043,18 +3118,16 @@ nsIPrincipal* GetObjectPrincipal(JSObject* obj);
 //     value : char[16_t]** (free)
 //   TD_INTERFACE_TYPE, TD_INTERFACE_IS_TYPE
 //     value : nsISupports** (release)
-//   TD_ARRAY (NOTE: aArrayLen should be passed)
-//     value : void** (cleanup elements & free)
+//   TD_LEGACY_ARRAY (NOTE: aArrayLen should be passed)
+//     value : void** (destroy elements & free)
+//   TD_ARRAY
+//     value : nsTArray<T>* (destroy elements & Clear)
 //   TD_DOMOBJECT
 //     value : T** (cleanup)
 //   TD_PROMISE
 //     value : dom::Promise** (release)
 //
 // Other types are ignored.
-//
-// Custom behaviour may be desired in some situations:
-//  - This method Truncate()s nsStrings, it does not free them.
-//  - This method does not unroot JSValues.
 inline void CleanupValue(const nsXPTType& aType,
                          void* aValue,
                          uint32_t aArrayLen = 0);
@@ -3063,6 +3136,28 @@ inline void CleanupValue(const nsXPTType& aType,
 void InnerCleanupValue(const nsXPTType& aType,
                        void* aValue,
                        uint32_t aArrayLen);
+
+// In order to be able to safely call CleanupValue on a generated value, the
+// data behind it needs to be initialized to a safe value. This method handles
+// initializing the backing data to a safe value to use as an argument to
+// XPCConvert methods, or xpc::CleanupValue.
+//
+// The pointer `aValue` must point to a block of memory at least aType.Stride()
+// bytes large, and correctly aligned.
+//
+// This method accepts the same types as xpc::CleanupValue.
+void InitializeValue(const nsXPTType& aType, void* aValue);
+
+// If a value was initialized with InitializeValue, it should be destroyed with
+// DestructValue. This method acts like CleanupValue, except that destructors
+// for complex types are also invoked, leaving them in an invalid state.
+//
+// This method should be called when destroying types initialized with
+// InitializeValue.
+//
+// The pointer 'aValue' must point to a valid value of type 'aType'.
+void DestructValue(const nsXPTType& aType, void* aValue,
+                   uint32_t aArrayLen = 0);
 
 } // namespace xpc
 

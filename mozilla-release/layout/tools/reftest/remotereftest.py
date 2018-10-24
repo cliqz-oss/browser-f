@@ -13,7 +13,7 @@ import traceback
 import urllib2
 from contextlib import closing
 
-from mozdevice import ADBAndroid
+from mozdevice import ADBAndroid, ADBTimeoutError
 import mozinfo
 from automation import Automation
 from remoteautomation import RemoteAutomation, fennecLogcatFilters
@@ -153,7 +153,6 @@ class RemoteReftest(RefTest):
                                  device=options.deviceSerial,
                                  test_root=options.remoteTestRoot,
                                  verbose=verbose)
-
         if options.remoteTestRoot is None:
             options.remoteTestRoot = posixpath.join(self.device.test_root, "reftest")
         options.remoteProfile = posixpath.join(options.remoteTestRoot, "profile")
@@ -322,17 +321,6 @@ class RemoteReftest(RefTest):
 
         return profile
 
-    def copyExtraFilesToProfile(self, options, profile):
-        profileDir = profile.profile
-        RefTest.copyExtraFilesToProfile(self, options, profile)
-        if len(os.listdir(profileDir)) > 0:
-            try:
-                self.device.push(profileDir, options.remoteProfile)
-                self.device.chmod(options.remoteProfile, recursive=True, root=True)
-            except Exception:
-                print "Automation Error: Failed to copy extra files to device"
-                raise
-
     def printDeviceInfo(self, printLogcat=False):
         try:
             if printLogcat:
@@ -349,6 +337,8 @@ class RemoteReftest(RefTest):
                 else:
                     print "  %s: %s" % (category, devinfo[category])
             print "Test root: %s" % self.device.test_root
+        except ADBTimeoutError:
+            raise
         except Exception as e:
             print "WARNING: Error getting device information: %s" % str(e)
 

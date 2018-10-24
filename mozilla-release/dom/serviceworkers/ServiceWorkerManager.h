@@ -32,7 +32,6 @@
 #include "nsDataHashtable.h"
 #include "nsRefPtrHashtable.h"
 #include "nsTArrayForwardDeclare.h"
-#include "nsTObserverArray.h"
 
 class nsIConsoleReportCollector;
 
@@ -51,7 +50,6 @@ class ServiceWorkerJobQueue;
 class ServiceWorkerManagerChild;
 class ServiceWorkerPrivate;
 class ServiceWorkerRegistrar;
-class ServiceWorkerRegistrationListener;
 
 class ServiceWorkerUpdateFinishCallback
 {
@@ -101,8 +99,6 @@ public:
 
   struct RegistrationDataPerPrincipal;
   nsClassHashtable<nsCStringHashKey, RegistrationDataPerPrincipal> mRegistrationInfos;
-
-  nsTObserverArray<ServiceWorkerRegistrationListener*> mServiceWorkerRegistrationListeners;
 
   struct ControlledClientData
   {
@@ -311,14 +307,6 @@ public:
   ForceUnregister(RegistrationDataPerPrincipal* aRegistrationData,
                   ServiceWorkerRegistrationInfo* aRegistration);
 
-  NS_IMETHOD
-  AddRegistrationEventListener(const nsAString& aScope,
-                               ServiceWorkerRegistrationListener* aListener);
-
-  NS_IMETHOD
-  RemoveRegistrationEventListener(const nsAString& aScope,
-                                  ServiceWorkerRegistrationListener* aListener);
-
   void
   MaybeCheckNavigationUpdate(const ClientInfo& aClientInfo);
 
@@ -390,23 +378,8 @@ private:
   GetActiveWorkerInfoForScope(const OriginAttributes& aOriginAttributes,
                               const nsACString& aScope);
 
-  ServiceWorkerInfo*
-  GetActiveWorkerInfoForDocument(nsIDocument* aDocument);
-
-  void
-  UpdateRegistrationListeners(ServiceWorkerRegistrationInfo* aReg);
-
-  void
-  NotifyServiceWorkerRegistrationRemoved(ServiceWorkerRegistrationInfo* aRegistration);
-
   void
   StopControllingRegistration(ServiceWorkerRegistrationInfo* aRegistration);
-
-  already_AddRefed<ServiceWorkerRegistrationInfo>
-  GetServiceWorkerRegistrationInfo(nsPIDOMWindowInner* aWindow) const;
-
-  already_AddRefed<ServiceWorkerRegistrationInfo>
-  GetServiceWorkerRegistrationInfo(nsIDocument* aDoc) const;
 
   already_AddRefed<ServiceWorkerRegistrationInfo>
   GetServiceWorkerRegistrationInfo(const ClientInfo& aClientInfo) const;
@@ -446,9 +419,6 @@ private:
   void
   QueueFireEventOnServiceWorkerRegistrations(ServiceWorkerRegistrationInfo* aRegistration,
                                              const nsAString& aName);
-
-  void
-  FireUpdateFoundOnServiceWorkerRegistrations(ServiceWorkerRegistrationInfo* aRegistration);
 
   void
   UpdateClientControllers(ServiceWorkerRegistrationInfo* aRegistration);

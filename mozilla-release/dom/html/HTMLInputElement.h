@@ -196,8 +196,7 @@ public:
   void SetValueOfRangeForUserEvent(Decimal aValue);
 
   virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
-                              nsIContent* aBindingParent,
-                              bool aCompileEventHandlers) override;
+                              nsIContent* aBindingParent) override;
   virtual void UnbindFromTree(bool aDeep = true,
                               bool aNullParent = true) override;
 
@@ -278,8 +277,7 @@ public:
    */
   HTMLInputElement* GetSelectedRadioButton() const;
 
-  virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
-                         bool aPreallocateChildren) const override;
+  virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
 
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(HTMLInputElement,
                                            nsGenericHTMLFormElementWithState)
@@ -1225,10 +1223,10 @@ protected:
       case VALUE_MODE_VALUE:
       case VALUE_MODE_FILENAME:
         return mValueChanged;
-      default:
-        NS_NOTREACHED("We should not be there: there are no other modes.");
-        return false;
     }
+
+    MOZ_ASSERT_UNREACHABLE("We should not be there: there are no other modes.");
+    return false;
   }
 
   /**
@@ -1666,8 +1664,8 @@ protected:
   bool                     mHasPatternAttribute : 1;
 
 private:
-  static void MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
-                                    GenericSpecifiedValues* aGenericData);
+  static void ImageInputMapAttributesIntoRule(const nsMappedAttributes* aAttributes,
+                                              MappedDeclarations&);
 
   /**
    * Returns true if this input's type will fire a DOM "change" event when it

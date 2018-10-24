@@ -74,7 +74,7 @@ add_task(async function test_execute() {
       children: [{
         title: "moz test",
         url: uri,
-      }]
+      }],
     }],
   });
 
@@ -91,8 +91,10 @@ add_task(async function test_execute() {
 
   PlacesUtils.annotations.setItemAnnotation(itemId, "test-anno", content, 0,
                                             PlacesUtils.annotations.EXPIRE_NEVER);
-  PlacesUtils.annotations.setPageAnnotation(uri, "test-anno", content, 0,
-                                            PlacesUtils.annotations.EXPIRE_NEVER);
+  await PlacesUtils.history.update({
+    url: uri,
+    annotations: new Map([["test-anno", content]]),
+  });
 
   // Request to gather telemetry data.
   Cc["@mozilla.org/places/categoriesStarter;1"]
@@ -112,7 +114,7 @@ add_task(async function test_execute() {
   for (let i = 0; i < 3; i++) {
     await PlacesTestUtils.addVisits({
       uri: NetUtil.newURI("http://" + i + ".moz.org/"),
-      visitDate: newTimeInMicroseconds()
+      visitDate: newTimeInMicroseconds(),
     });
   }
   Services.prefs.setIntPref("places.history.expiration.max_pages", 0);
@@ -144,7 +146,7 @@ add_task(async function test_execute() {
     setSelectedIndex: function() {},
     get searchCount() { return this.searches.length; },
     getSearchAt: function(aIndex) { return this.searches[aIndex]; },
-    QueryInterface: XPCOMUtils.generateQI([
+    QueryInterface: ChromeUtils.generateQI([
       Ci.nsIAutoCompleteInput,
       Ci.nsIAutoCompletePopup,
     ])

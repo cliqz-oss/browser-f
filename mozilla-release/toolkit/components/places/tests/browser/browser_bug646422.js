@@ -23,12 +23,11 @@ add_task(async function() {
 
       onBeginUpdateBatch() { },
       onEndUpdateBatch() { },
-      onVisits() { },
       onDeleteURI() { },
       onClearHistory() { },
       onPageChanged() { },
       onDeleteVisits() { },
-      QueryInterface: ChromeUtils.generateQI([Ci.nsINavHistoryObserver])
+      QueryInterface: ChromeUtils.generateQI([Ci.nsINavHistoryObserver]),
     };
 
     PlacesUtils.history.addObserver(observer);

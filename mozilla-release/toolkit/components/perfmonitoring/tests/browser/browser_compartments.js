@@ -86,7 +86,7 @@ var SilentAssert = {
   },
   leq(a, b, msg) {
     this.ok(a <= b, `${msg}: ${a} <= ${b}`);
-  }
+  },
 };
 
 var isShuttingDown = false;
@@ -113,7 +113,7 @@ function monotinicity_tester(source, testName) {
       ["jank", "totalUserTime"],
       ["jank", "totalSystemTime"],
       ["cpow", "totalCPOWTime"],
-      ["ticks", "ticks"]
+      ["ticks", "ticks"],
     ]) {
       SilentAssert.equal(typeof next[probe][k], "number", `Sanity check (${testName}): ${k} is a number.`);
       SilentAssert.leq(prev[probe][k], next[probe][k], `Sanity check (${testName}): ${k} is monotonic.`);
@@ -179,7 +179,7 @@ function monotinicity_tester(source, testName) {
       for (let [probe, k] of [
         ["jank", "totalUserTime"],
         ["jank", "totalSystemTime"],
-        ["cpow", "totalCPOWTime"]
+        ["cpow", "totalCPOWTime"],
       ]) {
         // Note that we cannot expect components data to be always smaller
         // than parent data, as `getrusage` & co are not monotonic.
@@ -236,7 +236,7 @@ add_task(async function test() {
     info("Setting titles");
     await promiseContentResponse(browser, "compartments-test:setTitles", {
       parent: PARENT_TITLE,
-      frames: FRAME_TITLE
+      frames: FRAME_TITLE,
     });
     info("Titles set");
 
@@ -245,9 +245,7 @@ add_task(async function test() {
     // Attach titles to components.
     let titles = [];
     let map = new Map();
-    let windows = Services.wm.getEnumerator("navigator:browser");
-    while (windows.hasMoreElements()) {
-      let window = windows.getNext();
+    for (let window of Services.wm.getEnumerator("navigator:browser")) {
       let tabbrowser = window.gBrowser;
       for (let browser of tabbrowser.browsers) {
         let id = browser.outerWindowID; // May be `null` if the browser isn't loaded yet

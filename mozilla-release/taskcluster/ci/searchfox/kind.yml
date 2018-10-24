@@ -46,7 +46,9 @@ jobs:
             keep-artifacts: false
         toolchains:
             - linux64-clang
+            - linux64-node
             - linux64-rust
+            - linux64-cbindgen
 
     macosx64-searchfox/debug:
         description: "MacOS X x64 Debug Cross-compile Searchfox"
@@ -77,7 +79,9 @@ jobs:
             - linux64-hfsplus
             - linux64-libdmg
             - linux64-llvm-dsymutil
+            - linux64-node
             - linux64-rust-macos
+            - linux64-cbindgen
 
     # NOTE: Windows Searchfox jobs aren't working quite yet (bug 1418415).
 
@@ -105,4 +109,6 @@ jobs:
                 - builds/taskcluster_sub_win64/searchfox_debug.py
         toolchains:
             - win64-clang-cl
+            - win64-node
             - win64-rust
+            - win64-cbindgen

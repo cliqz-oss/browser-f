@@ -77,10 +77,7 @@ GetKeyedHistogramSnapshots(JSContext *aCx, JS::MutableHandleValue aResult, unsig
                            bool aClearSubsession);
 
 size_t
-GetMapShallowSizesOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf);
-
-size_t
-GetHistogramSizesofIncludingThis(mozilla::MallocSizeOf aMallocSizeOf);
+GetHistogramSizesOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf);
 
 // These functions are only meant to be used for GeckoView persistence.
 // They are responsible for updating in-memory probes with the data persisted

@@ -31,8 +31,12 @@ MARKUPMAP(blockquote,
           roles::BLOCKQUOTE)
 
 MARKUPMAP(dd,
-          New_HTMLDefinition,
+          New_HTMLDtOrDd<HyperTextAccessibleWrap>,
           roles::DEFINITION)
+
+MARKUPMAP(del,
+          New_HyperText,
+          roles::CONTENT_DELETION)
 
 MARKUPMAP(details,
           New_HyperText,
@@ -47,7 +51,7 @@ MARKUPMAP(dl,
           roles::DEFINITION_LIST)
 
 MARKUPMAP(dt,
-          New_HTMLListitem,
+          New_HTMLDtOrDd<HTMLLIAccessible>,
           roles::TERM)
 
 MARKUPMAP(figcaption,
@@ -98,6 +102,10 @@ MARKUPMAP(h6,
 MARKUPMAP(input,
           New_HTMLInput,
           0)
+
+MARKUPMAP(ins,
+          New_HyperText,
+          roles::CONTENT_INSERTION)
 
 MARKUPMAP(label,
           New_HTMLLabel,

@@ -12,6 +12,7 @@
 #ifndef nsNavHistoryResult_h_
 #define nsNavHistoryResult_h_
 
+#include "INativePlacesEventCallback.h"
 #include "nsTArray.h"
 #include "nsInterfaceHashtable.h"
 #include "nsDataHashtable.h"
@@ -74,7 +75,7 @@ private:
   NS_IMETHOD OnPageChanged(nsIURI *aURI, uint32_t aChangedAttribute,    \
                            const nsAString &aNewValue,                  \
                            const nsACString &aGUID) __VA_ARGS__;        \
-  NS_IMETHOD OnDeleteVisits(nsIURI* aURI, PRTime aVisitTime,            \
+  NS_IMETHOD OnDeleteVisits(nsIURI* aURI, bool aPartialRemoval,         \
                             const nsACString& aGUID, uint16_t aReason,  \
                             uint32_t aTransitionType) __VA_ARGS__;
 
@@ -98,7 +99,8 @@ private:
 class nsNavHistoryResult final : public nsSupportsWeakReference,
                                  public nsINavHistoryResult,
                                  public nsINavBookmarkObserver,
-                                 public nsINavHistoryObserver
+                                 public nsINavHistoryObserver,
+                                 public mozilla::places::INativePlacesEventCallback
 {
 public:
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_NAVHISTORYRESULT_IID)
@@ -107,8 +109,6 @@ public:
   NS_DECL_NSINAVHISTORYRESULT
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsNavHistoryResult, nsINavHistoryResult)
   NS_DECL_BOOKMARK_HISTORY_OBSERVER_EXTERNAL(override)
-  NS_IMETHOD OnVisits(nsIVisitData** aVisits,
-                      uint32_t aVisitsCount) override;
 
   void AddHistoryObserver(nsNavHistoryQueryResultNode* aNode);
   void AddBookmarkFolderObserver(nsNavHistoryFolderResultNode* aNode, int64_t aFolder);
@@ -128,8 +128,7 @@ public:
 public:
   explicit nsNavHistoryResult(nsNavHistoryContainerResultNode* mRoot,
                               const RefPtr<nsNavHistoryQuery>& aQuery,
-                              const RefPtr<nsNavHistoryQueryOptions>& aOptions,
-                              bool aBatchInProgress);
+                              const RefPtr<nsNavHistoryQueryOptions>& aOptions);
 
   RefPtr<nsNavHistoryContainerResultNode> mRootNode;
 
@@ -174,9 +173,11 @@ public:
   ContainerObserverList mRefreshParticipants;
   void requestRefresh(nsNavHistoryContainerResultNode* aContainer);
 
+  void HandlePlacesEvent(const PlacesEventSequence& aEvents) override;
+
   void OnMobilePrefChanged();
 
-  static void OnMobilePrefChangedCallback(const char* prefName, void* closure);
+  static void OnMobilePrefChangedCallback(const char* prefName, nsNavHistoryResult* self);
 
 protected:
   virtual ~nsNavHistoryResult();

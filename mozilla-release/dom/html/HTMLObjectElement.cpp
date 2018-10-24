@@ -230,17 +230,14 @@ HTMLObjectElement::PostHandleEvent(EventChainPostVisitor& aVisitor)
 nsresult
 HTMLObjectElement::BindToTree(nsIDocument *aDocument,
                               nsIContent *aParent,
-                              nsIContent *aBindingParent,
-                              bool aCompileEventHandlers)
+                              nsIContent *aBindingParent)
 {
   nsresult rv = nsGenericHTMLFormElement::BindToTree(aDocument, aParent,
-                                                     aBindingParent,
-                                                     aCompileEventHandlers);
+                                                     aBindingParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
   rv = nsObjectLoadingContent::BindToTree(aDocument, aParent,
-                                          aBindingParent,
-                                          aCompileEventHandlers);
+                                          aBindingParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Don't kick off load from being bound to a plugin document - the plugin
@@ -369,7 +366,7 @@ HTMLObjectElement::IsHTMLFocusable(bool aWithMouse,
 
   // TODO: this should probably be managed directly by IsHTMLFocusable.
   // See bug 597242.
-  const nsAttrValue* attrVal = mAttrsAndChildren.GetAttr(nsGkAtoms::tabindex);
+  const nsAttrValue* attrVal = mAttrs.GetAttr(nsGkAtoms::tabindex);
 
   *aIsFocusable = attrVal && attrVal->Type() == nsAttrValue::eInteger;
 
@@ -465,14 +462,14 @@ HTMLObjectElement::ParseAttribute(int32_t aNamespaceID,
 }
 
 void
-HTMLObjectElement::MapAttributesIntoRule(const nsMappedAttributes *aAttributes,
-                                         GenericSpecifiedValues *aData)
+HTMLObjectElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
+                                         MappedDeclarations& aDecls)
 {
-  nsGenericHTMLFormElement::MapImageAlignAttributeInto(aAttributes, aData);
-  nsGenericHTMLFormElement::MapImageBorderAttributeInto(aAttributes, aData);
-  nsGenericHTMLFormElement::MapImageMarginAttributeInto(aAttributes, aData);
-  nsGenericHTMLFormElement::MapImageSizeAttributesInto(aAttributes, aData);
-  nsGenericHTMLFormElement::MapCommonAttributesInto(aAttributes, aData);
+  nsGenericHTMLFormElement::MapImageAlignAttributeInto(aAttributes, aDecls);
+  nsGenericHTMLFormElement::MapImageBorderAttributeInto(aAttributes, aDecls);
+  nsGenericHTMLFormElement::MapImageMarginAttributeInto(aAttributes, aDecls);
+  nsGenericHTMLFormElement::MapImageSizeAttributesInto(aAttributes, aDecls);
+  nsGenericHTMLFormElement::MapCommonAttributesInto(aAttributes, aDecls);
 }
 
 NS_IMETHODIMP_(bool)
@@ -529,10 +526,9 @@ HTMLObjectElement::DestroyContent()
 }
 
 nsresult
-HTMLObjectElement::CopyInnerTo(Element* aDest, bool aPreallocateChildren)
+HTMLObjectElement::CopyInnerTo(Element* aDest)
 {
-  nsresult rv = nsGenericHTMLFormElement::CopyInnerTo(aDest,
-                                                      aPreallocateChildren);
+  nsresult rv = nsGenericHTMLFormElement::CopyInnerTo(aDest);
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (aDest->OwnerDoc()->IsStaticDocument()) {
@@ -546,7 +542,7 @@ JSObject*
 HTMLObjectElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
   JS::Rooted<JSObject*> obj(aCx,
-    HTMLObjectElementBinding::Wrap(aCx, this, aGivenProto));
+    HTMLObjectElement_Binding::Wrap(aCx, this, aGivenProto));
   if (!obj) {
     return nullptr;
   }

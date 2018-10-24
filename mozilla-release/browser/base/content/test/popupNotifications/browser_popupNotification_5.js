@@ -35,7 +35,7 @@ var tests = [
 
       this.notification.remove();
     },
-    onHidden() { }
+    onHidden() { },
   },
   // A first dismissed notification shouldn't stop _update from showing a second notification
   { id: "Test#2",
@@ -60,7 +60,7 @@ var tests = [
       this.notification1.remove();
       this.notification2.remove();
     },
-    onHidden(popup) { }
+    onHidden(popup) { },
   },
   // The anchor icon should be shown for notifications in background windows.
   { id: "Test#3",
@@ -80,7 +80,7 @@ var tests = [
       await waitForWindowReadyForPopupNotifications(window);
 
       goNext();
-    }
+    },
   },
   // Test that persistent doesn't allow the notification to persist after
   // navigation.
@@ -90,7 +90,7 @@ var tests = [
       await BrowserTestUtils.openNewForegroundTab(gBrowser, "http://example.com/");
       this.notifyObj = new BasicNotification(this.id);
       this.notifyObj.addOptions({
-        persistent: true
+        persistent: true,
       });
       this.notification = showNotification(this.notifyObj);
     },
@@ -111,7 +111,7 @@ var tests = [
       this.notification.remove();
       gBrowser.removeTab(gBrowser.selectedTab);
       gBrowser.selectedTab = this.oldSelectedTab;
-    }
+    },
   },
   // Test that persistent allows the notification to persist until explicitly
   // dismissed.
@@ -121,7 +121,7 @@ var tests = [
       await BrowserTestUtils.openNewForegroundTab(gBrowser, "http://example.com/");
       this.notifyObj = new BasicNotification(this.id);
       this.notifyObj.addOptions({
-        persistent: true
+        persistent: true,
       });
       this.notification = showNotification(this.notifyObj);
     },
@@ -142,7 +142,7 @@ var tests = [
       this.notification.remove();
       gBrowser.removeTab(gBrowser.selectedTab);
       gBrowser.selectedTab = this.oldSelectedTab;
-    }
+    },
   },
   // Test that persistent panels are still open after switching to another tab
   // and back.
@@ -160,19 +160,19 @@ var tests = [
       ok(true, "Should have hidden the notification after tab switch");
       gBrowser.removeTab(gBrowser.selectedTab);
       gBrowser.selectedTab = this.oldSelectedTab;
-    }
+    },
   },
   // Second part of the previous test that compensates for the limitation in
   // runNextTest that expects a single onShown/onHidden invocation per test.
   { id: "Test#6b",
     run() {
-      let id = PopupNotifications.panel.firstChild.getAttribute("popupid");
+      let id = PopupNotifications.panel.firstElementChild.getAttribute("popupid");
       ok(id.endsWith("Test#6a"), "Should have found the notification from Test6a");
       ok(PopupNotifications.isPanelOpen, "Should have shown the popup again after getting back to the tab");
       gNotification.remove();
       gNotification = null;
       goNext();
-    }
+    },
   },
   // Test that persistent panels are still open after switching to another
   // window and back.
@@ -203,13 +203,13 @@ var tests = [
 
       let anchor = win.document.getElementById("default-notification-icon");
       win.PopupNotifications._reshowNotifications(anchor);
-      ok(win.PopupNotifications.panel.childNodes.length == 0,
+      ok(win.PopupNotifications.panel.children.length == 0,
          "no notification displayed in new window");
 
       await BrowserTestUtils.closeWindow(win);
       await waitForWindowReadyForPopupNotifications(window);
 
-      let id = PopupNotifications.panel.firstChild.getAttribute("popupid");
+      let id = PopupNotifications.panel.firstElementChild.getAttribute("popupid");
       ok(id.endsWith("Test#7"), "Should have found the notification from Test7");
       ok(PopupNotifications.isPanelOpen,
          "Should have kept the popup on the first window");
@@ -227,7 +227,7 @@ var tests = [
       gBrowser.selectedTab = this.oldSelectedTab;
 
       goNext();
-    }
+    },
   },
   // Test that only the first persistent notification is shown on update
   { id: "Test#8",
@@ -251,7 +251,7 @@ var tests = [
       this.notification1.remove();
       this.notification2.remove();
     },
-    onHidden(popup) { }
+    onHidden(popup) { },
   },
   // Test that persistent notifications are shown stacked by anchor on update
   { id: "Test#9",
@@ -277,7 +277,7 @@ var tests = [
       PopupNotifications._update();
     },
     onShown(popup) {
-      let notifications = popup.childNodes;
+      let notifications = popup.children;
       is(notifications.length, 2, "two notifications displayed");
       let [notification1, notification2] = notifications;
       is(notification1.id, this.notifyObj1.id + "-notification", "id 1 matches");
@@ -287,7 +287,7 @@ var tests = [
       this.notification2.remove();
       this.notification3.remove();
     },
-    onHidden(popup) { }
+    onHidden(popup) { },
   },
   // Test that on closebutton click, only the persistent notification
   // that contained the closebutton loses its persistent status.
@@ -317,12 +317,12 @@ var tests = [
       PopupNotifications._update();
     },
     onShown(popup) {
-      let notifications = popup.childNodes;
+      let notifications = popup.children;
       is(notifications.length, 3, "three notifications displayed");
       EventUtils.synthesizeMouseAtCenter(notifications[1].closebutton, {});
     },
     onHidden(popup) {
-      let notifications = popup.childNodes;
+      let notifications = popup.children;
       is(notifications.length, 2, "two notifications displayed");
 
       ok(this.notification1.options.persistent, "notification 1 is persistent");
@@ -332,7 +332,7 @@ var tests = [
       this.notification1.remove();
       this.notification2.remove();
       this.notification3.remove();
-    }
+    },
   },
   // Test clicking the anchor icon.
   // Clicking the anchor of an already visible persistent notification should
@@ -368,7 +368,7 @@ var tests = [
       // (because it's the first focusable element), but not
       // call event callbacks on the notification object.
       clickAnchor(notifyObj1);
-      is(document.activeElement, popup.childNodes[0].closebutton);
+      is(document.activeElement, popup.children[0].closebutton);
       ok(!notifyObj1.dismissalCallbackTriggered,
          "Should not have dismissed the notification");
       ok(!notifyObj1.shownCallbackTriggered,
@@ -404,6 +404,6 @@ var tests = [
       notification1.remove();
       notification2.remove();
       goNext();
-    }
+    },
   },
 ];

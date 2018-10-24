@@ -5,7 +5,6 @@
  * Tests that nsBrowserGlue correctly imports bookmarks from distribution.ini.
  */
 
-const PREF_SMART_BOOKMARKS_VERSION = "browser.places.smartBookmarksVersion";
 const PREF_BMPROCESSED = "distribution.516444.bookmarksProcessed";
 const PREF_DISTRIBUTION_ID = "distribution.id";
 
@@ -48,9 +47,6 @@ registerCleanupFunction(function() {
 });
 
 add_task(async function() {
-  // Disable Smart Bookmarks creation.
-  Services.prefs.setIntPref(PREF_SMART_BOOKMARKS_VERSION, -1);
-
   let glue = Cc["@mozilla.org/browser/browserglue;1"].getService(Ci.nsIObserver);
   // Initialize Places through the History Service and check that a new
   // database has been created.
@@ -65,13 +61,13 @@ add_task(async function() {
   // Check the custom bookmarks exist on menu.
   let menuItem = await PlacesUtils.bookmarks.fetch({
     parentGuid: PlacesUtils.bookmarks.menuGuid,
-    index: 0
+    index: 0,
   });
   Assert.equal(menuItem.title, "Menu Link Before");
 
   menuItem = await PlacesUtils.bookmarks.fetch({
     parentGuid: PlacesUtils.bookmarks.menuGuid,
-    index: 1 + DEFAULT_BOOKMARKS_ON_MENU
+    index: 1 + DEFAULT_BOOKMARKS_ON_MENU,
   });
   Assert.equal(menuItem.title, "Menu Link After");
 
@@ -81,14 +77,14 @@ add_task(async function() {
   }, "Favicon not found", 10), /Favicon\snot\sfound/, "Favicon not found");
 
   let keywordItem = await PlacesUtils.keywords.fetch({
-    url: menuItem.url.href
+    url: menuItem.url.href,
   });
   Assert.strictEqual(keywordItem, null);
 
   // Check the custom bookmarks exist on toolbar.
   let toolbarItem = await PlacesUtils.bookmarks.fetch({
     parentGuid: PlacesUtils.bookmarks.toolbarGuid,
-    index: 0
+    index: 0,
   });
   Assert.equal(toolbarItem.title, "Toolbar Link Before");
 
@@ -105,14 +101,14 @@ add_task(async function() {
   Assert.equal(base64Icon, SMALLPNG_DATA_URI.spec);
 
   keywordItem = await PlacesUtils.keywords.fetch({
-    url: toolbarItem.url.href
+    url: toolbarItem.url.href,
   });
   Assert.notStrictEqual(keywordItem, null);
   Assert.equal(keywordItem.keyword, "e:t:b");
 
   toolbarItem = await PlacesUtils.bookmarks.fetch({
     parentGuid: PlacesUtils.bookmarks.toolbarGuid,
-    index: 1 + DEFAULT_BOOKMARKS_ON_TOOLBAR
+    index: 1 + DEFAULT_BOOKMARKS_ON_TOOLBAR,
   });
   Assert.equal(toolbarItem.title, "Toolbar Link After");
 

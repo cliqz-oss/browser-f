@@ -24,7 +24,7 @@ const {
 const INSERTMETHOD = {
   APPEND: 0, // Just append new results.
   MERGE_RELATED: 1, // Merge previous and current results if search strings are related
-  MERGE: 2 // Always merge previous and current results
+  MERGE: 2, // Always merge previous and current results
 };
 
 // Prefs are defined as [pref name, default value] or [pref name, [default
@@ -140,7 +140,7 @@ const MATCHTYPE = {
   HEURISTIC: "heuristic",
   GENERAL: "general",
   SUGGESTION: "suggestion",
-  EXTENSION: "extension"
+  EXTENSION: "extension",
 };
 
 // Buckets for match insertion.
@@ -168,7 +168,7 @@ const DEFAULT_BUCKETS_AFTER = [
 // If a URL starts with one of these prefixes, then we don't provide search
 // suggestions for it.
 const DISALLOWED_URLLIKE_PREFIXES = [
-  "http", "https", "ftp"
+  "http", "https", "ftp",
 ];
 
 // This SQL query fragment provides the following:
@@ -263,8 +263,7 @@ const QUERYINDEX_ORIGIN_FRECENCY = 3;
 // `WITH` clause for the autofill queries.  autofill_frecency_threshold.value is
 // the mean of all moz_origins.frecency values + stddevMultiplier * one standard
 // deviation.  This is inlined directly in the SQL (as opposed to being a custom
-// Sqlite function for example) in order to be as efficient as possible.  The
-// MAX() is to make sure that places with <= 0 frecency are never autofilled.
+// Sqlite function for example) in order to be as efficient as possible.
 const SQL_AUTOFILL_WITH = `
   WITH
   frecency_stats(count, sum, squares) AS (
@@ -274,13 +273,13 @@ const SQL_AUTOFILL_WITH = `
       CAST((SELECT IFNULL(value, 0.0) FROM moz_meta WHERE key = "origin_frecency_sum_of_squares") AS REAL)
   ),
   autofill_frecency_threshold(value) AS (
-    SELECT MAX(1,
+    SELECT
       CASE count
       WHEN 0 THEN 0.0
       WHEN 1 THEN sum
       ELSE (sum / count) + (:stddevMultiplier * sqrt((squares - ((sum * sum) / count)) / count))
       END
-    ) FROM frecency_stats
+    FROM frecency_stats
   )
 `;
 
@@ -300,22 +299,32 @@ function originQuery(conditions = "", bookmarkedFragment = "NULL") {
             SELECT host,
                    host AS fixed_up_host,
                    TOTAL(frecency) AS host_frecency,
-                   ${bookmarkedFragment} AS bookmarked
+                   (
+                     SELECT TOTAL(foreign_count) > 0
+                     FROM moz_places
+                     WHERE moz_places.origin_id = moz_origins.id
+                   ) AS bookmarked
             FROM moz_origins
             WHERE host BETWEEN :searchString AND :searchString || X'FFFF'
                   ${conditions}
             GROUP BY host
             HAVING host_frecency >= ${SQL_AUTOFILL_FRECENCY_THRESHOLD}
+                   OR bookmarked
             UNION ALL
             SELECT host,
                    fixup_url(host) AS fixed_up_host,
                    TOTAL(frecency) AS host_frecency,
-                   ${bookmarkedFragment} AS bookmarked
+                   (
+                     SELECT TOTAL(foreign_count) > 0
+                     FROM moz_places
+                     WHERE moz_places.origin_id = moz_origins.id
+                   ) AS bookmarked
             FROM moz_origins
             WHERE host BETWEEN 'www.' || :searchString AND 'www.' || :searchString || X'FFFF'
                   ${conditions}
             GROUP BY host
             HAVING host_frecency >= ${SQL_AUTOFILL_FRECENCY_THRESHOLD}
+                   OR bookmarked
           ) AS grouped_hosts
           JOIN moz_origins ON moz_origins.host = grouped_hosts.host
           ORDER BY frecency DESC, id DESC
@@ -329,16 +338,12 @@ const SQL_ORIGIN_PREFIX_QUERY = originQuery(
 );
 
 const SQL_ORIGIN_BOOKMARKED_QUERY = originQuery(
-  `AND bookmarked`,
-  `(SELECT foreign_count > 0 FROM moz_places
-    WHERE moz_places.origin_id = moz_origins.id)`
+  `AND bookmarked`
 );
 
 const SQL_ORIGIN_PREFIX_BOOKMARKED_QUERY = originQuery(
   `AND bookmarked
    AND prefix BETWEEN :prefix AND :prefix || X'FFFF'`,
-  `(SELECT foreign_count > 0 FROM moz_places
-    WHERE moz_places.origin_id = moz_origins.id)`
 );
 
 // Result row indexes for urlQuery()
@@ -347,8 +352,11 @@ const QUERYINDEX_URL_STRIPPED_URL = 2;
 const QUERYINDEX_URL_FRECENCY = 3;
 
 function urlQuery(conditions1, conditions2) {
+  // We limit the search to places that are either bookmarked or have a frecency
+  // over some small, arbitrary threshold (20) in order to avoid scanning as few
+  // rows as possible.  Keep in mind that we run this query every time the user
+  // types a key when the urlbar value looks like a URL with a path.
   return `/* do not warn (bug no): cannot use an index to sort */
-          ${SQL_AUTOFILL_WITH}
           SELECT :query_type,
                  url,
                  :strippedURL,
@@ -357,7 +365,7 @@ function urlQuery(conditions1, conditions2) {
                  id
           FROM moz_places
           WHERE rev_host = :revHost
-                AND frecency >= ${SQL_AUTOFILL_FRECENCY_THRESHOLD}
+                AND (bookmarked OR frecency > 20)
                 ${conditions1}
           UNION ALL
           SELECT :query_type,
@@ -368,7 +376,7 @@ function urlQuery(conditions1, conditions2) {
                  id
           FROM moz_places
           WHERE rev_host = :revHost || 'www.'
-                AND frecency >= ${SQL_AUTOFILL_FRECENCY_THRESHOLD}
+                AND (bookmarked OR frecency > 20)
                 ${conditions2}
           ORDER BY frecency DESC, id DESC
           LIMIT 1 `;
@@ -550,7 +558,7 @@ XPCOMUtils.defineLazyGetter(this, "SwitchToTabStorage", () => Object.seal({
   shutdown() {
     this._conn = null;
     this._queue.clear();
-  }
+  },
 }));
 
 /**
@@ -711,8 +719,8 @@ XPCOMUtils.defineLazyGetter(this, "Prefs", () => {
     },
     QueryInterface: ChromeUtils.generateQI([
       Ci.nsIObserver,
-      Ci.nsISupportsWeakReference
-    ])
+      Ci.nsISupportsWeakReference,
+    ]),
   };
   Services.prefs.addObserver(PREF_URLBAR_BRANCH, store, true);
   Services.prefs.addObserver("keyword.enabled", store, true);
@@ -934,8 +942,8 @@ function Search(searchString, searchParam, autocompleteListener,
       }
     },
     QueryInterface: ChromeUtils.generateQI([
-      Ci.nsIAutoCompleteSimpleResultListener
-    ])
+      Ci.nsIAutoCompleteSimpleResultListener,
+    ]),
   });
   // Will be set later, if needed.
   result.setDefaultIndex(-1);
@@ -1531,7 +1539,7 @@ Search.prototype = {
 
   async _matchPlacesKeyword() {
     // The first word could be a keyword, so that's what we'll search.
-    let keyword = this._searchTokens[0];
+    let keyword = this._strippedPrefix + this._searchTokens[0];
     let entry = await PlacesUtils.keywords.fetch(keyword);
     if (!entry)
       return false;
@@ -1556,7 +1564,7 @@ Search.prototype = {
       value = PlacesUtils.mozActionURI("keyword", {
         url,
         input: this._originalSearchString,
-        postData
+        postData,
       });
     }
     // The title will end up being "host: queryString"
@@ -1569,7 +1577,7 @@ Search.prototype = {
       // but the string does, it may cause pointless icon flicker on typing.
       icon: iconHelper(entry.url),
       style,
-      frecency: Infinity
+      frecency: Infinity,
     });
     if (!this._keywordSubstitute) {
       this._keywordSubstitute = entry.url.host;
@@ -1632,7 +1640,7 @@ Search.prototype = {
       comment: match.engineName,
       icon: match.iconUrl,
       style: "priority-search",
-      frecency: Infinity
+      frecency: Infinity,
     });
     return true;
   },
@@ -1675,13 +1683,13 @@ Search.prototype = {
     this._addMatch({
       value: PlacesUtils.mozActionURI("extension", {
         content,
-        keyword: this._searchTokens[0]
+        keyword: this._searchTokens[0],
       }),
       comment,
       icon: "chrome://browser/content/extension.svg",
       style: "action extension",
       frecency: Infinity,
-      type: MATCHTYPE.EXTENSION
+      type: MATCHTYPE.EXTENSION,
     });
   },
 
@@ -1702,7 +1710,7 @@ Search.prototype = {
       comment: searchMatch.engineName,
       icon: searchMatch.iconUrl,
       style: "action searchengine",
-      frecency: FRECENCY_DEFAULT
+      frecency: FRECENCY_DEFAULT,
     };
     if (suggestion) {
       match.style += " suggestion";
@@ -1790,7 +1798,7 @@ Search.prototype = {
           value,
           comment: searchUrl,
           style: "action visiturl",
-          frecency: Infinity
+          frecency: Infinity,
         });
 
         return true;
@@ -1832,7 +1840,7 @@ Search.prototype = {
       value,
       comment: displayURL,
       style: "action visiturl",
-      frecency: Infinity
+      frecency: Infinity,
     };
 
     // We don't know if this url is in Places or not, and checking that would
@@ -2023,7 +2031,7 @@ Search.prototype = {
       this._buckets = buckets.map(([type, available]) => ({ type,
                                                             available,
                                                             insertIndex: 0,
-                                                            count: 0
+                                                            count: 0,
                                                           }));
 
       // If we have matches from the previous search, we want to replace them
@@ -2328,8 +2336,8 @@ Search.prototype = {
         userContextId: this._userContextId,
         // Limit the query to the the maximum number of desired results.
         // This way we can avoid doing more work than needed.
-        maxResults: Prefs.get("maxRichResults")
-      }
+        maxResults: Prefs.get("maxRichResults"),
+      },
     ];
   },
 
@@ -2350,8 +2358,8 @@ Search.prototype = {
         // original search string.
         searchString: this._keywordSubstitutedSearchString,
         userContextId: this._userContextId,
-        maxResults: Prefs.get("maxRichResults")
-      }
+        maxResults: Prefs.get("maxRichResults"),
+      },
     ];
   },
 
@@ -2371,8 +2379,8 @@ Search.prototype = {
         matchBehavior: this._matchBehavior,
         searchBehavior: this._behavior,
         userContextId: this._userContextId,
-        maxResults: Prefs.get("maxRichResults")
-      }
+        maxResults: Prefs.get("maxRichResults"),
+      },
     ];
   },
 
@@ -2485,7 +2493,6 @@ Search.prototype = {
       query_type: QUERYTYPE_AUTOFILL_URL,
       revHost,
       strippedURL,
-      stddevMultiplier: Prefs.get("autoFill.stddevMultiplier"),
     };
 
     let bookmarked = this.hasBehavior("bookmark") &&
@@ -2595,7 +2602,7 @@ UnifiedComplete.prototype = {
       this._promiseDatabase = (async () => {
         let conn = await Sqlite.cloneStorageConnection({
           connection: PlacesUtils.history.DBConnection,
-          readOnly: true
+          readOnly: true,
         });
 
         try {
@@ -2782,8 +2789,8 @@ UnifiedComplete.prototype = {
     Ci.nsIAutoCompleteSearchDescriptor,
     Ci.mozIPlacesAutoComplete,
     Ci.nsIObserver,
-    Ci.nsISupportsWeakReference
-  ])
+    Ci.nsISupportsWeakReference,
+  ]),
 };
 
 this.NSGetFactory = XPCOMUtils.generateNSGetFactory([UnifiedComplete]);

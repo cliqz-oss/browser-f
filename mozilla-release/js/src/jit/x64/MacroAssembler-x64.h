@@ -10,6 +10,7 @@
 #include "jit/JitFrames.h"
 #include "jit/MoveResolver.h"
 #include "jit/x86-shared/MacroAssembler-x86-shared.h"
+#include "js/HeapAPI.h"
 
 namespace js {
 namespace jit {
@@ -163,6 +164,20 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
             movl(Imm32(Upper32Of(GetShiftedTag(type))), ToUpper32(Operand(dest)));
         } else {
             ScratchRegisterScope scratch(asMasm());
+#ifdef NIGHTLY_BUILD
+            // Bug 1485209 - Diagnostic assert for constructing Values with
+            // nullptr or misaligned (eg poisoned) JSObject/JSString pointers.
+            if (type == JSVAL_TYPE_OBJECT || type == JSVAL_TYPE_STRING) {
+                Label crash, ok;
+                testPtr(reg, Imm32(js::gc::CellAlignMask));
+                j(Assembler::NonZero, &crash);
+                testPtr(reg, reg);
+                j(Assembler::NonZero, &ok);
+                bind(&crash);
+                breakpoint();
+                bind(&ok);
+            }
+#endif
             boxValue(type, reg, scratch);
             movq(scratch, Operand(dest));
         }
@@ -546,7 +561,7 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
 
     CodeOffsetJump jumpWithPatch(RepatchLabel* label) {
         JmpSrc src = jmpSrc(label);
-        return CodeOffsetJump(size(), addPatchableJump(src, Relocation::HARDCODED));
+        return CodeOffsetJump(size(), addPatchableJump(src, RelocationKind::HARDCODED));
     }
 
     void movePtr(Register src, Register dest) {

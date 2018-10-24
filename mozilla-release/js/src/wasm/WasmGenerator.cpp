@@ -21,6 +21,7 @@
 #include "mozilla/CheckedInt.h"
 #include "mozilla/EnumeratedRange.h"
 #include "mozilla/SHA1.h"
+#include "mozilla/Unused.h"
 
 #include <algorithm>
 #include <thread>
@@ -39,6 +40,7 @@ using namespace js::wasm;
 
 using mozilla::CheckedInt;
 using mozilla::MakeEnumeratedRange;
+using mozilla::Unused;
 
 bool
 CompiledCode::swap(MacroAssembler& masm)
@@ -200,24 +202,22 @@ ModuleGenerator::init(Metadata* maybeAsmJSMetadata)
 
     // Pre-reserve space for large Vectors to avoid the significant cost of the
     // final reallocs. In particular, the MacroAssembler can be enormous, so be
-    // extra conservative. Note, podResizeToFit calls at the end will trim off
-    // unneeded capacity.
+    // extra conservative. Since large over-reservations may fail when the
+    // actual allocations will succeed, ignore OOM failures. Note,
+    // podResizeToFit calls at the end will trim off unneeded capacity.
 
     size_t codeSectionSize = env_->codeSection ? env_->codeSection->size : 0;
-    size_t estimatedCodeSize = 1.2 * EstimateCompiledCodeSize(tier(), codeSectionSize);
-    if (!masm_.reserve(Min(estimatedCodeSize, MaxCodeBytesPerProcess)))
-        return false;
 
-    if (!metadataTier_->codeRanges.reserve(2 * env_->numFuncDefs()))
-        return false;
+    size_t estimatedCodeSize = 1.2 * EstimateCompiledCodeSize(tier(), codeSectionSize);
+    Unused << masm_.reserve(Min(estimatedCodeSize, MaxCodeBytesPerProcess));
+
+    Unused << metadataTier_->codeRanges.reserve(2 * env_->numFuncDefs());
 
     const size_t ByteCodesPerCallSite = 50;
-    if (!metadataTier_->callSites.reserve(codeSectionSize / ByteCodesPerCallSite))
-        return false;
+    Unused << metadataTier_->callSites.reserve(codeSectionSize / ByteCodesPerCallSite);
 
     const size_t ByteCodesPerOOBTrap = 10;
-    if (!metadataTier_->trapSites[Trap::OutOfBounds].reserve(codeSectionSize / ByteCodesPerOOBTrap))
-        return false;
+    Unused << metadataTier_->trapSites[Trap::OutOfBounds].reserve(codeSectionSize / ByteCodesPerOOBTrap);
 
     // Allocate space in TlsData for declarations that need it.
 
@@ -420,8 +420,6 @@ ModuleGenerator::linkCallSites()
     // all possible calls/traps have been emitted.
 
     OffsetMap existingCallFarJumps;
-    if (!existingCallFarJumps.init())
-        return false;
 
     TrapMaybeOffsetArray existingTrapFarJumps;
 
@@ -514,14 +512,6 @@ ModuleGenerator::noteCodeRange(uint32_t codeRangeIndex, const CodeRange& codeRan
       case CodeRange::DebugTrap:
         MOZ_ASSERT(!debugTrapCodeOffset_);
         debugTrapCodeOffset_ = codeRange.begin();
-        break;
-      case CodeRange::OutOfBoundsExit:
-        MOZ_ASSERT(!linkDataTier_->outOfBoundsOffset);
-        linkDataTier_->outOfBoundsOffset = codeRange.begin();
-        break;
-      case CodeRange::UnalignedExit:
-        MOZ_ASSERT(!linkDataTier_->unalignedAccessOffset);
-        linkDataTier_->unalignedAccessOffset = codeRange.begin();
         break;
       case CodeRange::TrapExit:
         MOZ_ASSERT(!linkDataTier_->trapOffset);
@@ -872,7 +862,7 @@ ModuleGenerator::finishMetadata(const ShareableBytes& bytecode)
     // now that every function has a code range.
 
     for (FuncExport& fe : metadataTier_->funcExports)
-        fe.initInterpCodeRangeIndex(funcToCodeRange_[fe.funcIndex()]);
+        fe.initFuncCodeRangeIndex(funcToCodeRange_[fe.funcIndex()]);
 
     for (ElemSegment& elems : env_->elemSegments) {
         Uint32Vector& codeRangeIndices = elems.elemCodeRangeIndices(tier());

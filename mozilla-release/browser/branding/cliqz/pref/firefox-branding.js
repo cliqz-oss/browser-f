@@ -4,6 +4,8 @@
 
 pref("startup.homepage_override_url","");
 pref("startup.homepage_welcome_url","");
+pref("startup.homepage_welcome_url.additional", "");
+
 // Interval: Time between checks for a new version (in seconds)
 pref("app.update.interval", 43200); // 12 hours
 // The time interval between the downloading of mar file chunks in the

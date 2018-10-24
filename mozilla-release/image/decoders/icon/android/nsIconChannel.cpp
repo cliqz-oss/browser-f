@@ -5,6 +5,7 @@
 
 #include <stdlib.h>
 #include "mozilla/dom/ContentChild.h"
+#include "mozilla/NullPrincipal.h"
 #include "nsMimeTypes.h"
 #include "nsIURL.h"
 #include "nsXULAppAPI.h"
@@ -13,7 +14,6 @@
 #include "nsIStringStream.h"
 #include "nsNetUtil.h"
 #include "nsComponentManagerUtils.h"
-#include "NullPrincipal.h"
 
 NS_IMPL_ISUPPORTS(nsIconChannel,
                   nsIRequest,
@@ -74,7 +74,6 @@ moz_icon_to_channel(nsIURI* aURI, const nsACString& aFileExt,
   const int channels = 4;
   long int buf_size = 2 + channels * height * width;
   uint8_t* const buf = (uint8_t*)moz_xmalloc(buf_size);
-  NS_ENSURE_TRUE(buf, NS_ERROR_OUT_OF_MEMORY);
   uint8_t* out = buf;
 
   *(out++) = width;

@@ -15,7 +15,7 @@ ChromeUtils.import("resource://gre/modules/Services.jsm");
 // Lazy getters
 XPCOMUtils.defineLazyModuleGetters(this, {
   AppConstants: "resource://gre/modules/AppConstants.jsm",
-  PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm"
+  PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
 });
 
 // Constants
@@ -169,24 +169,20 @@ var WindowHelper = {
       // if we're lucky, this isn't a popup, and we can just return this
       if (win && !isSuitableBrowserWindow(win)) {
         win = null;
-        let windowList = Services.wm.getEnumerator("navigator:browser");
         // this is oldest to newest, so this gets a bit ugly
-        while (windowList.hasMoreElements()) {
-          let nextWin = windowList.getNext();
+        for (let nextWin of Services.wm.getEnumerator("navigator:browser")) {
           if (isSuitableBrowserWindow(nextWin))
             win = nextWin;
         }
       }
       return win;
     }
-    let windowList = Services.wm.getZOrderDOMWindowEnumerator("navigator:browser", true);
-    while (windowList.hasMoreElements()) {
-      let win = windowList.getNext();
+    for (let win of Services.wm.getZOrderDOMWindowEnumerator("navigator:browser", true)) {
       if (isSuitableBrowserWindow(win))
         return win;
     }
     return null;
-  }
+  },
 };
 
 this.BrowserWindowTracker = {
@@ -215,10 +211,10 @@ this.BrowserWindowTracker = {
       // we'd rather have an outdated order than skip/revisit windows.
       for (let window of [..._trackedWindows])
         yield window;
-    }
+    },
   },
 
   track(window) {
     return WindowHelper.addWindow(window);
-  }
+  },
 };

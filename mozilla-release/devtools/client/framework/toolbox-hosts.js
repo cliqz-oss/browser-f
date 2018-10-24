@@ -8,7 +8,6 @@
 
 const EventEmitter = require("devtools/shared/event-emitter");
 const promise = require("promise");
-const defer = require("devtools/shared/defer");
 const Services = require("Services");
 const {DOMHelpers} = require("resource://devtools/client/shared/DOMHelpers.jsm");
 
@@ -54,12 +53,12 @@ BottomHost.prototype = {
     const ownerDocument = gBrowser.ownerDocument;
     this._nbox = gBrowser.getNotificationBox(this.hostTab.linkedBrowser);
 
-    this._splitter = ownerDocument.createElement("splitter");
+    this._splitter = ownerDocument.createXULElement("splitter");
     this._splitter.setAttribute("class", "devtools-horizontal-splitter");
     // Avoid resizing notification containers
     this._splitter.setAttribute("resizebefore", "flex");
 
-    this.frame = ownerDocument.createElement("iframe");
+    this.frame = ownerDocument.createXULElement("iframe");
     this.frame.flex = 1; // Required to be able to shrink when the window shrinks
     this.frame.className = "devtools-toolbox-bottom-iframe";
     this.frame.height = Math.min(
@@ -142,10 +141,10 @@ class SidebarHost {
     this._browser = gBrowser.getBrowserContainer(this.hostTab.linkedBrowser);
     this._sidebar = gBrowser.getSidebarContainer(this.hostTab.linkedBrowser);
 
-    this._splitter = ownerDocument.createElement("splitter");
+    this._splitter = ownerDocument.createXULElement("splitter");
     this._splitter.setAttribute("class", "devtools-side-splitter");
 
-    this.frame = ownerDocument.createElement("iframe");
+    this.frame = ownerDocument.createXULElement("iframe");
     this.frame.flex = 1; // Required to be able to shrink when the window shrinks
     this.frame.className = "devtools-toolbox-side-iframe";
 
@@ -249,36 +248,33 @@ WindowHost.prototype = {
    * Create a new xul window to contain the toolbox.
    */
   create: function() {
-    const deferred = defer();
+    return new Promise(resolve => {
+      const flags = "chrome,centerscreen,resizable,dialog=no";
+      const win = Services.ww.openWindow(null, this.WINDOW_URL, "_blank",
+                                      flags, null);
 
-    const flags = "chrome,centerscreen,resizable,dialog=no";
-    const win = Services.ww.openWindow(null, this.WINDOW_URL, "_blank",
-                                     flags, null);
+      const frameLoad = () => {
+        win.removeEventListener("load", frameLoad, true);
+        win.focus();
 
-    const frameLoad = () => {
-      win.removeEventListener("load", frameLoad, true);
-      win.focus();
+        let key;
+        if (AppConstants.platform === "macosx") {
+          key = win.document.getElementById("toolbox-key-toggle-osx");
+        } else {
+          key = win.document.getElementById("toolbox-key-toggle");
+        }
+        key.removeAttribute("disabled");
 
-      let key;
-      if (AppConstants.platform === "macosx") {
-        key = win.document.getElementById("toolbox-key-toggle-osx");
-      } else {
-        key = win.document.getElementById("toolbox-key-toggle");
-      }
-      key.removeAttribute("disabled");
+        this.frame = win.document.getElementById("toolbox-iframe");
+        this.emit("ready", this.frame);
+        resolve(this.frame);
+      };
 
-      this.frame = win.document.getElementById("toolbox-iframe");
-      this.emit("ready", this.frame);
+      win.addEventListener("load", frameLoad, true);
+      win.addEventListener("unload", this._boundUnload);
 
-      deferred.resolve(this.frame);
-    };
-
-    win.addEventListener("load", frameLoad, true);
-    win.addEventListener("unload", this._boundUnload);
-
-    this._window = win;
-
-    return deferred.promise;
+      this._window = win;
+    });
   },
 
   /**

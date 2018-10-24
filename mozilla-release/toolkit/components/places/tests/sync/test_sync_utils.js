@@ -5,8 +5,6 @@ ChromeUtils.defineModuleGetter(this, "Preferences",
                                "resource://gre/modules/Preferences.jsm");
 Cu.importGlobalProperties(["URLSearchParams"]);
 
-const DESCRIPTION_ANNO = "bookmarkProperties/description";
-const LOAD_IN_SIDEBAR_ANNO = "bookmarkProperties/loadInSidebar";
 const SYNC_PARENT_ANNO = "sync/parent";
 
 var makeGuid = PlacesUtils.history.makeGuid;
@@ -39,9 +37,11 @@ function shuffle(array) {
   return results;
 }
 
-function assertTagForURLs(tag, urls, message) {
-  let taggedURLs = PlacesUtils.tagging.getURIsForTag(tag).map(uri => uri.spec);
-  deepEqual(taggedURLs.sort(compareAscending), urls.sort(compareAscending), message);
+async function assertTagForURLs(tag, urls, message) {
+  let taggedURLs = new Set();
+  await PlacesUtils.bookmarks.fetch({tags: [tag]}, b => taggedURLs.add(b.url.href));
+  deepEqual(Array.from(taggedURLs).sort(compareAscending),
+            urls.sort(compareAscending), message);
 }
 
 function assertURLHasTags(url, tags, message) {
@@ -583,7 +583,7 @@ add_task(async function test_update_tags() {
     deepEqual(updatedItem.tags, ["foo", "baz"], "Should return updated tags");
     assertURLHasTags("https://mozilla.org", ["baz", "foo"],
       "Should update tags for URL");
-    assertTagForURLs("bar", [], "Should remove existing tag");
+    await assertTagForURLs("bar", [], "Should remove existing tag");
   }
 
   info("Tags with whitespace");
@@ -647,7 +647,7 @@ add_task(async function test_pullChanges_tags() {
 
   let tagBm = await PlacesUtils.bookmarks.fetch({
     parentGuid: PlacesUtils.bookmarks.tagsGuid,
-    index: 0
+    index: 0,
   });
   let tagFolderGuid = tagBm.guid;
   let tagFolderId = await PlacesUtils.promiseItemId(tagFolderGuid);
@@ -668,7 +668,7 @@ add_task(async function test_pullChanges_tags() {
     deepEqual(Object.keys(changes).sort(),
       [firstItem.recordId, secondItem.recordId, taggedItem.recordId].sort(),
       "Should include tagged bookmarks after changing case");
-    assertTagForURLs("TaGgY", ["https://example.org/", "https://mozilla.org/"],
+    await assertTagForURLs("TaGgY", ["https://example.org/", "https://mozilla.org/"],
       "Should add tag for new URL");
     await setChangesSynced(changes);
   }
@@ -681,7 +681,7 @@ add_task(async function test_pullChanges_tags() {
   info("Rename tag folder using Bookmarks.setItemTitle");
   {
     PlacesUtils.bookmarks.setItemTitle(tagFolderId, "sneaky");
-    deepEqual(PlacesUtils.tagging.allTags, ["sneaky"],
+    deepEqual((await PlacesUtils.bookmarks.fetchTags()).map(t => t.name), ["sneaky"],
       "Tagging service should update cache with new title");
     let changes = await PlacesSyncUtils.bookmarks.pullChanges();
     deepEqual(Object.keys(changes).sort(),
@@ -696,7 +696,7 @@ add_task(async function test_pullChanges_tags() {
       guid: tagFolderGuid,
       title: "tricky",
     });
-    deepEqual(PlacesUtils.tagging.allTags, ["tricky"],
+    deepEqual((await PlacesUtils.bookmarks.fetchTags()).map(t => t.name), ["tricky"],
       "Tagging service should update cache after updating tag folder");
     let changes = await PlacesSyncUtils.bookmarks.pullChanges();
     deepEqual(Object.keys(changes).sort(),
@@ -709,7 +709,7 @@ add_task(async function test_pullChanges_tags() {
   {
     let bm = await PlacesUtils.bookmarks.fetch({
       parentGuid: tagFolderGuid,
-      index: 0
+      index: 0,
     });
     bm.url = "https://bugzilla.org/";
     await PlacesUtils.bookmarks.update(bm);
@@ -717,17 +717,17 @@ add_task(async function test_pullChanges_tags() {
     deepEqual(Object.keys(changes).sort(),
       [firstItem.recordId, secondItem.recordId, untaggedItem.recordId].sort(),
       "Should include tagged bookmarks after changing tag entry URI");
-    assertTagForURLs("tricky", ["https://bugzilla.org/", "https://mozilla.org/"],
+    await assertTagForURLs("tricky", ["https://bugzilla.org/", "https://mozilla.org/"],
       "Should remove tag entry for old URI");
     await setChangesSynced(changes);
 
-    bm.url = "https://example.com/";
+    bm.url = "https://example.org/";
     await PlacesUtils.bookmarks.update(bm);
     changes = await PlacesSyncUtils.bookmarks.pullChanges();
     deepEqual(Object.keys(changes).sort(),
-      [untaggedItem.recordId].sort(),
+      [firstItem.recordId, secondItem.recordId, untaggedItem.recordId].sort(),
       "Should include tagged bookmarks after changing tag entry URL");
-    assertTagForURLs("tricky", ["https://example.com/", "https://mozilla.org/"],
+    await assertTagForURLs("tricky", ["https://example.org/", "https://mozilla.org/"],
       "Should remove tag entry for old URL");
     await setChangesSynced(changes);
   }
@@ -965,69 +965,6 @@ add_task(async function test_conflicting_keywords() {
       dupeTbBmk.recordId,
     ].sort(), "Should bump change counter for bookmarks with updated keyword");
     await setChangesSynced(changes);
-  }
-
-  await PlacesUtils.bookmarks.eraseEverything();
-  await PlacesSyncUtils.bookmarks.reset();
-});
-
-add_task(async function test_update_annos() {
-  let guids = await populateTree(PlacesUtils.bookmarks.menuGuid, {
-    kind: "folder",
-    title: "folder",
-  }, {
-    kind: "bookmark",
-    title: "bmk",
-    url: "https://example.com",
-  });
-
-  info("Add folder description");
-  {
-    let updatedItem = await PlacesSyncUtils.bookmarks.update({
-      recordId: guids.folder,
-      description: "Folder description",
-    });
-    equal(updatedItem.description, "Folder description",
-      "Should return new description");
-    let id = await recordIdToId(updatedItem.recordId);
-    equal(PlacesUtils.annotations.getItemAnnotation(id, DESCRIPTION_ANNO),
-      "Folder description", "Should set description anno");
-  }
-
-  info("Clear folder description");
-  {
-    let updatedItem = await PlacesSyncUtils.bookmarks.update({
-      recordId: guids.folder,
-      description: null,
-    });
-    ok(!updatedItem.description, "Should not return cleared description");
-    let id = await recordIdToId(updatedItem.recordId);
-    ok(!PlacesUtils.annotations.itemHasAnnotation(id, DESCRIPTION_ANNO),
-      "Should remove description anno");
-  }
-
-  info("Add bookmark sidebar anno");
-  {
-    let updatedItem = await PlacesSyncUtils.bookmarks.update({
-      recordId: guids.bmk,
-      loadInSidebar: true,
-    });
-    ok(updatedItem.loadInSidebar, "Should return sidebar anno");
-    let id = await recordIdToId(updatedItem.recordId);
-    ok(PlacesUtils.annotations.itemHasAnnotation(id, LOAD_IN_SIDEBAR_ANNO),
-      "Should set sidebar anno for existing bookmark");
-  }
-
-  info("Clear bookmark sidebar anno");
-  {
-    let updatedItem = await PlacesSyncUtils.bookmarks.update({
-      recordId: guids.bmk,
-      loadInSidebar: false,
-    });
-    ok(!updatedItem.loadInSidebar, "Should not return cleared sidebar anno");
-    let id = await recordIdToId(updatedItem.recordId);
-    ok(!PlacesUtils.annotations.itemHasAnnotation(id, LOAD_IN_SIDEBAR_ANNO),
-      "Should clear sidebar anno for existing bookmark");
   }
 
   await PlacesUtils.bookmarks.eraseEverything();
@@ -1378,13 +1315,13 @@ add_task(async function test_insert_tags() {
     title: "bar",
   }].map(info => PlacesSyncUtils.bookmarks.insert(info)));
 
-  assertTagForURLs("foo", ["https://example.com/", "https://example.org/"],
+  await assertTagForURLs("foo", ["https://example.com/", "https://example.org/"],
     "2 URLs with new tag");
-  assertTagForURLs("bar", ["https://example.com/"], "1 URL with existing tag");
-  assertTagForURLs("baz", ["https://example.org/",
+  await assertTagForURLs("bar", ["https://example.com/"], "1 URL with existing tag");
+  await assertTagForURLs("baz", ["https://example.org/",
     "place:queryType=1&sort=12&maxResults=10"],
     "Should support tagging URLs and tag queries");
-  assertTagForURLs("qux", ["place:queryType=1&sort=12&maxResults=10"],
+  await assertTagForURLs("qux", ["place:queryType=1&sort=12&maxResults=10"],
     "Should support tagging tag queries");
 
   await PlacesUtils.bookmarks.eraseEverything();
@@ -1418,12 +1355,12 @@ add_task(async function test_insert_tags_whitespace() {
   assertURLHasTags("https://example.net/", ["taggy"],
     "Should ignore dupes when setting tags");
 
-  assertTagForURLs("taggy", ["https://example.net/", "https://example.org/"],
+  await assertTagForURLs("taggy", ["https://example.net/", "https://example.org/"],
     "Should exclude falsy tags");
 
   PlacesUtils.tagging.untagURI(uri("https://example.org"), ["untrimmed", "taggy"]);
   PlacesUtils.tagging.untagURI(uri("https://example.net"), ["taggy"]);
-  deepEqual(PlacesUtils.tagging.allTags, [], "Should clean up all tags");
+  deepEqual((await PlacesUtils.bookmarks.fetchTags()).map(t => t.name), [], "Should clean up all tags");
 
   await PlacesUtils.bookmarks.eraseEverything();
   await PlacesSyncUtils.bookmarks.reset();
@@ -1462,73 +1399,6 @@ add_task(async function test_insert_keyword() {
   await PlacesSyncUtils.bookmarks.reset();
 });
 
-add_task(async function test_insert_annos() {
-  info("Bookmark with description");
-  let descBmk = await PlacesSyncUtils.bookmarks.insert({
-    kind: "bookmark",
-    url: "https://example.com",
-    recordId: makeGuid(),
-    parentRecordId: "menu",
-    description: "Bookmark description",
-  });
-  {
-    equal(descBmk.description, "Bookmark description",
-      "Should return new bookmark description");
-    let id = await recordIdToId(descBmk.recordId);
-    equal(PlacesUtils.annotations.getItemAnnotation(id, DESCRIPTION_ANNO),
-      "Bookmark description", "Should set new bookmark description");
-  }
-
-  info("Folder with description");
-  let descFolder = await PlacesSyncUtils.bookmarks.insert({
-    kind: "folder",
-    recordId: makeGuid(),
-    parentRecordId: "menu",
-    description: "Folder description",
-  });
-  {
-    equal(descFolder.description, "Folder description",
-      "Should return new folder description");
-    let id = await recordIdToId(descFolder.recordId);
-    equal(PlacesUtils.annotations.getItemAnnotation(id, DESCRIPTION_ANNO),
-      "Folder description", "Should set new folder description");
-  }
-
-  info("Bookmark with sidebar anno");
-  let sidebarBmk = await PlacesSyncUtils.bookmarks.insert({
-    kind: "bookmark",
-    url: "https://example.com",
-    recordId: makeGuid(),
-    parentRecordId: "menu",
-    loadInSidebar: true,
-  });
-  {
-    ok(sidebarBmk.loadInSidebar, "Should return sidebar anno for new bookmark");
-    let id = await recordIdToId(sidebarBmk.recordId);
-    ok(PlacesUtils.annotations.itemHasAnnotation(id, LOAD_IN_SIDEBAR_ANNO),
-      "Should set sidebar anno for new bookmark");
-  }
-
-  info("Bookmark without sidebar anno");
-  let noSidebarBmk = await PlacesSyncUtils.bookmarks.insert({
-    kind: "bookmark",
-    url: "https://example.org",
-    recordId: makeGuid(),
-    parentRecordId: "toolbar",
-    loadInSidebar: false,
-  });
-  {
-    ok(!noSidebarBmk.loadInSidebar,
-      "Should not return sidebar anno for new bookmark");
-    let id = await recordIdToId(noSidebarBmk.recordId);
-    ok(!PlacesUtils.annotations.itemHasAnnotation(id, LOAD_IN_SIDEBAR_ANNO),
-      "Should not set sidebar anno for new bookmark");
-  }
-
-  await PlacesUtils.bookmarks.eraseEverything();
-  await PlacesSyncUtils.bookmarks.reset();
-});
-
 add_task(async function test_insert_tag_query() {
   info("Use the public tagging API to ensure we added the tag correctly");
   await PlacesUtils.bookmarks.insert({
@@ -1555,7 +1425,7 @@ add_task(async function test_insert_tag_query() {
     ok(!params.has("type"), "Should not preserve query type");
     ok(!params.has("folder"), "Should not preserve folder");
     equal(params.get("tag"), "nonexisting", "Should add tag");
-    deepEqual(PlacesUtils.tagging.allTags, ["taggy"],
+    deepEqual((await PlacesUtils.bookmarks.fetchTags()).map(t => t.name), ["taggy"],
               "The nonexisting tag should not be added");
   }
 
@@ -1575,7 +1445,7 @@ add_task(async function test_insert_tag_query() {
     ok(!params.has("folder"), "Should not preserve folder");
     equal(params.get("maxResults"), "15", "Should preserve additional params");
     equal(params.get("tag"), "taggy", "Should add tag");
-    deepEqual(PlacesUtils.tagging.allTags, ["taggy"],
+    deepEqual((await PlacesUtils.bookmarks.fetchTags()).map(t => t.name), ["taggy"],
               "Should not duplicate existing tags");
   }
 
@@ -1583,7 +1453,7 @@ add_task(async function test_insert_tag_query() {
 
   info("Removing the tag should clean up the tag folder");
   PlacesUtils.tagging.untagURI(uri("https://mozilla.org"), null);
-  deepEqual(PlacesUtils.tagging.allTags, [],
+  deepEqual((await PlacesUtils.bookmarks.fetchTags()).map(t => t.name), [],
     "Should remove tag folder once last item is untagged");
 
   await PlacesUtils.bookmarks.eraseEverything();
@@ -1788,7 +1658,7 @@ add_task(async function test_unsynced_orphans() {
     await PlacesUtils.bookmarks.update({
       guid: unknownGuid,
       parentGuid: PlacesUtils.bookmarks.toolbarGuid,
-      index: PlacesUtils.bookmarks.DEFAULT_INDEX
+      index: PlacesUtils.bookmarks.DEFAULT_INDEX,
     });
     let orphanGuids = await PlacesSyncUtils.bookmarks.fetchGuidsWithAnno(
       SYNC_PARENT_ANNO, nonexistentRecordId);
@@ -1815,15 +1685,12 @@ add_task(async function test_fetch() {
     recordId: makeGuid(),
     parentRecordId: "menu",
     kind: "folder",
-    description: "Folder description",
   });
   let bmk = await PlacesSyncUtils.bookmarks.insert({
     recordId: makeGuid(),
     parentRecordId: "menu",
     kind: "bookmark",
     url: "https://example.com",
-    description: "Bookmark description",
-    loadInSidebar: true,
     tags: ["taggy"],
   });
   let folderBmk = await PlacesSyncUtils.bookmarks.insert({
@@ -1846,53 +1713,41 @@ add_task(async function test_fetch() {
     folder: "taggy",
     title: "Tagged stuff",
   });
-  let smartBmk = await PlacesSyncUtils.bookmarks.insert({
-    kind: "query",
-    recordId: makeGuid(),
-    parentRecordId: "toolbar",
-    url: "place:folder=TOOLBAR",
-    query: "BookmarksToolbar",
-    title: "Bookmarks toolbar query",
-  });
 
-  info("Fetch empty folder with description");
+  info("Fetch empty folder");
   {
     let item = await PlacesSyncUtils.bookmarks.fetch(folder.recordId);
     deepEqual(item, {
       recordId: folder.recordId,
       kind: "folder",
       parentRecordId: "menu",
-      description: "Folder description",
       childRecordIds: [folderBmk.recordId, folderSep.recordId],
       parentTitle: "menu",
       dateAdded: item.dateAdded,
       title: "",
-    }, "Should include description, children, title, and parent title in folder");
+    }, "Should include children, title, and parent title in folder");
   }
 
-  info("Fetch bookmark with description, sidebar anno, and tags");
+  info("Fetch bookmark with tags");
   {
     let item = await PlacesSyncUtils.bookmarks.fetch(bmk.recordId);
     deepEqual(Object.keys(item).sort(), ["recordId", "kind", "parentRecordId",
-      "url", "tags", "description", "loadInSidebar", "parentTitle", "title", "dateAdded"].sort(),
+      "url", "tags", "parentTitle", "title", "dateAdded"].sort(),
       "Should include bookmark-specific properties");
     equal(item.recordId, bmk.recordId, "Sync ID should match");
     equal(item.url.href, "https://example.com/", "Should return URL");
     equal(item.parentRecordId, "menu", "Should return parent sync ID");
     deepEqual(item.tags, ["taggy"], "Should return tags");
-    equal(item.description, "Bookmark description", "Should return bookmark description");
-    strictEqual(item.loadInSidebar, true, "Should return sidebar anno");
     equal(item.parentTitle, "menu", "Should return parent title");
     strictEqual(item.title, "", "Should return empty title");
   }
 
-  info("Fetch bookmark with keyword; without parent title or annos");
+  info("Fetch bookmark with keyword; without parent title");
   {
     let item = await PlacesSyncUtils.bookmarks.fetch(folderBmk.recordId);
     deepEqual(Object.keys(item).sort(), ["recordId", "kind", "parentRecordId",
-      "url", "keyword", "tags", "loadInSidebar", "parentTitle", "title", "dateAdded"].sort(),
+      "url", "keyword", "tags", "parentTitle", "title", "dateAdded"].sort(),
       "Should omit blank bookmark-specific properties");
-    strictEqual(item.loadInSidebar, false, "Should not load bookmark in sidebar");
     deepEqual(item.tags, [], "Tags should be empty");
     equal(item.keyword, "kw", "Should return keyword");
     strictEqual(item.parentTitle, "", "Should include parent title even if empty");
@@ -1915,15 +1770,6 @@ add_task(async function test_fetch() {
     equal(item.folder, "taggy", "Should return tag name for tag queries");
   }
 
-  info("Fetch smart bookmark");
-  {
-    let item = await PlacesSyncUtils.bookmarks.fetch(smartBmk.recordId);
-    deepEqual(Object.keys(item).sort(), ["recordId", "kind", "parentRecordId",
-      "url", "title", "query", "parentTitle", "dateAdded"].sort(),
-      "Should include smart bookmark-specific properties");
-    equal(item.query, "BookmarksToolbar", "Should return query name for smart bookmarks");
-  }
-
   await PlacesUtils.bookmarks.eraseEverything();
   await PlacesSyncUtils.bookmarks.reset();
 });
@@ -1939,15 +1785,12 @@ add_task(async function test_fetch_livemark() {
       siteURI: uri(site),
       index: PlacesUtils.bookmarks.DEFAULT_INDEX,
     });
-    PlacesUtils.annotations.setItemAnnotation(livemark.id, DESCRIPTION_ANNO,
-      "Livemark description", 0, PlacesUtils.annotations.EXPIRE_NEVER);
 
     info("Fetch livemark");
     let item = await PlacesSyncUtils.bookmarks.fetch(livemark.guid);
     deepEqual(Object.keys(item).sort(), ["recordId", "kind", "parentRecordId",
-      "description", "feed", "site", "parentTitle", "title", "dateAdded"].sort(),
+      "feed", "site", "parentTitle", "title", "dateAdded"].sort(),
       "Should include livemark-specific properties");
-    equal(item.description, "Livemark description", "Should return description");
     equal(item.feed.href, site + "/feed/1", "Should return feed URL");
     equal(item.site.href, site + "/", "Should return site URL");
     strictEqual(item.title, "", "Should include livemark title even if empty");
@@ -2301,6 +2144,7 @@ add_task(async function test_pushChanges() {
   }
 
   info("Pull changes");
+  let totalSyncChanges = PlacesUtils.bookmarks.totalSyncChanges;
   let changes = await PlacesSyncUtils.bookmarks.pullChanges();
   {
     let actualChanges = Object.entries(changes).map(([recordId, change]) => ({
@@ -2344,6 +2188,7 @@ add_task(async function test_pushChanges() {
   }
 
   await PlacesSyncUtils.bookmarks.pushChanges(changes);
+  equal(PlacesUtils.bookmarks.totalSyncChanges, totalSyncChanges + 4);
 
   {
     let fields = await PlacesTestUtils.fetchBookmarkSyncFields(
@@ -2405,6 +2250,7 @@ add_task(async function test_changes_between_pull_and_push() {
   });
 
   info("Pull changes");
+  let totalSyncChanges = PlacesUtils.bookmarks.totalSyncChanges;
   let changes = await PlacesSyncUtils.bookmarks.pullChanges();
   Assert.equal(changes[guids.bmk].counter, 1);
   Assert.equal(changes[guids.bmk].tombstone, false);
@@ -2414,6 +2260,7 @@ add_task(async function test_changes_between_pull_and_push() {
 
   info("Push changes");
   await PlacesSyncUtils.bookmarks.pushChanges(changes);
+  equal(PlacesUtils.bookmarks.totalSyncChanges, totalSyncChanges + 2);
 
   // we should have a tombstone.
   let ts = await PlacesTestUtils.fetchSyncTombstones();
@@ -2508,7 +2355,7 @@ add_task(async function test_separator() {
   let separator = await PlacesSyncUtils.bookmarks.insert({
     kind: "separator",
     parentRecordId: "menu",
-    recordId: separatorRecordId
+    recordId: separatorRecordId,
   });
   await PlacesSyncUtils.bookmarks.insert({
     kind: "bookmark",
@@ -2525,7 +2372,7 @@ add_task(async function test_separator() {
   await PlacesUtils.bookmarks.update({
     guid: child2Guid,
     parentGuid,
-    index: 2
+    index: 2,
   });
   let changes = await PlacesSyncUtils.bookmarks.pullChanges();
   deepEqual(Object.keys(changes).sort(),
@@ -2537,7 +2384,7 @@ add_task(async function test_separator() {
   await PlacesUtils.bookmarks.update({
     guid: separatorGuid,
     parentGuid,
-    index: 0
+    index: 0,
   });
 
   changes = await PlacesSyncUtils.bookmarks.pullChanges();

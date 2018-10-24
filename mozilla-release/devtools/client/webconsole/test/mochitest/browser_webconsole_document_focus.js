@@ -9,9 +9,8 @@ const TEST_URI = "data:text/html;charset=utf-8,Test content focus after closing 
 add_task(async function() {
   const hud = await openNewTabAndConsole(TEST_URI);
 
-  const inputNode = hud.jsterm.inputNode;
   info("Focus after console is opened");
-  ok(hasFocus(inputNode), "input node is focused after console is opened");
+  ok(isJstermFocused(hud.jsterm), "input node is focused after console is opened");
 
   info("Closing console");
   await closeConsole();

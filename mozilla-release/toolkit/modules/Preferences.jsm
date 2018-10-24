@@ -4,7 +4,6 @@
 
 var EXPORTED_SYMBOLS = ["Preferences"];
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 // The minimum and maximum integers that can be set as preferences.
@@ -188,14 +187,14 @@ Preferences.isSet = function(prefName) {
     return prefName.map(this.isSet, this);
 
   return (this.has(prefName) && this._prefBranch.prefHasUserValue(prefName));
-},
+};
 
 /**
  * Whether or not the given pref has a user-set value. Use isSet instead,
  * which is equivalent.
  * @deprecated
  */
-Preferences.modified = function(prefName) { return this.isSet(prefName); },
+Preferences.modified = function(prefName) { return this.isSet(prefName); };
 
 Preferences.reset = function(prefName) {
   if (Array.isArray(prefName)) {
@@ -330,7 +329,7 @@ Preferences.resetBranch = function(prefBranch = "") {
     else
       throw ex;
   }
-},
+};
 
 /**
  * A string identifying the branch of the preferences tree to which this
@@ -362,7 +361,7 @@ Object.defineProperty(Preferences, "_prefBranch",
     return this._cachedPrefBranch;
   },
   enumerable: true,
-  configurable: true
+  configurable: true,
 });
 
 // Constructor-based access (Preferences.get(...) and set) is preferred over
@@ -409,7 +408,7 @@ PrefObserver.prototype = {
         this.callback(prefValue);
     } else // typeof this.callback == "object" (nsIObserver)
       this.callback.observe(subject, topic, data);
-  }
+  },
 };
 
 function isObject(val) {

@@ -19,6 +19,7 @@
 #include "nsIWebNavigation.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "shared-libraries.h"
+#include "js/JSON.h"
 #include "js/Value.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/dom/Promise.h"
@@ -234,9 +235,7 @@ nsProfiler::GetProfileDataAsync(double aSinceTime, JSContext* aCx,
     return NS_ERROR_FAILURE;
   }
 
-  nsIGlobalObject* globalObject =
-    xpc::NativeGlobal(JS::CurrentGlobalOrNull(aCx));
-
+  nsIGlobalObject* globalObject = xpc::CurrentNativeGlobal(aCx);
   if (NS_WARN_IF(!globalObject)) {
     return NS_ERROR_FAILURE;
   }
@@ -302,9 +301,7 @@ nsProfiler::GetProfileDataAsArrayBuffer(double aSinceTime, JSContext* aCx,
     return NS_ERROR_FAILURE;
   }
 
-  nsIGlobalObject* globalObject =
-    xpc::NativeGlobal(JS::CurrentGlobalOrNull(aCx));
-
+  nsIGlobalObject* globalObject = xpc::CurrentNativeGlobal(aCx);
   if (NS_WARN_IF(!globalObject)) {
     return NS_ERROR_FAILURE;
   }
@@ -359,9 +356,7 @@ nsProfiler::DumpProfileToFileAsync(const nsACString& aFilename,
     return NS_ERROR_FAILURE;
   }
 
-  nsIGlobalObject* globalObject =
-    xpc::NativeGlobal(JS::CurrentGlobalOrNull(aCx));
-
+  nsIGlobalObject* globalObject = xpc::CurrentNativeGlobal(aCx);
   if (NS_WARN_IF(!globalObject)) {
     return NS_ERROR_FAILURE;
   }
@@ -620,7 +615,7 @@ nsProfiler::StartGathering(double aSinceTime)
     profile->Then(GetMainThreadSerialEventTarget(), __func__,
       [self](const mozilla::ipc::Shmem& aResult) {
         const nsDependentCSubstring profileString(aResult.get<char>(),
-                                                  aResult.Size<char>());
+                                                  aResult.Size<char>() - 1);
         self->GatheredOOPProfile(profileString);
       },
       [self](ipc::ResponseRejectReason aReason) {

@@ -12,6 +12,7 @@
 
 #include "nsXHTMLContentSerializer.h"
 
+#include "mozilla/dom/Element.h"
 #include "nsIContent.h"
 #include "nsIDocument.h"
 #include "nsElementTable.h"
@@ -30,7 +31,6 @@
 #include "nsStubMutationObserver.h"
 #include "nsAttrName.h"
 #include "nsComputedDOMStyle.h"
-#include "mozilla/dom/Element.h"
 
 using namespace mozilla;
 
@@ -48,6 +48,10 @@ NS_NewXHTMLContentSerializer(nsIContentSerializer** aSerializer)
 
 nsXHTMLContentSerializer::nsXHTMLContentSerializer()
   : mIsHTMLSerializer(false)
+  , mIsCopying(false)
+  , mDisableEntityEncoding(0)
+  , mRewriteEncodingDeclaration(false)
+  , mIsFirstChildOfOL(false)
 {
 }
 
@@ -172,6 +176,8 @@ nsXHTMLContentSerializer::SerializeAttributes(Element* aElement,
   xmlnsStr.AssignLiteral(kXMLNS);
 
   int32_t contentNamespaceID = aElement->GetNameSpaceID();
+
+  MaybeSerializeIsValue(aElement, aStr);
 
   // this method is not called by nsHTMLContentSerializer
   // so we don't have to check HTML element, just XHTML

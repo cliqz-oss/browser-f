@@ -16,6 +16,7 @@
 #include "BlockReflowInput.h"
 #include "nsLineBox.h"
 
+class nsBulletFrame;
 class nsFloatManager;
 struct nsStyleText;
 
@@ -101,11 +102,9 @@ public:
                    ReflowOutput* aMetrics,
                    bool& aPushedFrame);
 
-  void AddBulletFrame(nsIFrame* aFrame, const ReflowOutput& aMetrics);
+  void AddBulletFrame(nsBulletFrame* aFrame, const ReflowOutput& aMetrics);
 
-  void RemoveBulletFrame(nsIFrame* aFrame) {
-    PushFrame(aFrame);
-  }
+  void RemoveBulletFrame(nsBulletFrame* aFrame);
 
   /**
    * Place frames in the block direction (CSS property vertical-align)
@@ -251,21 +250,21 @@ public:
    * @return true if we are actually reflowing with forced break position and we
    * should break here
    */
-  bool NotifyOptionalBreakPosition(nsIFrame* aFrame, int32_t aOffset,
-                                   bool aFits, gfxBreakPriority aPriority) {
-    NS_ASSERTION(!aFits || !mNeedBackup,
-                  "Shouldn't be updating the break position with a break that fits after we've already flagged an overrun");
-    // Remember the last break position that fits; if there was no break that fit,
-    // just remember the first break
-    if ((aFits && aPriority >= mLastOptionalBreakPriority) ||
-        !mLastOptionalBreakFrame) {
-      mLastOptionalBreakFrame = aFrame;
-      mLastOptionalBreakFrameOffset = aOffset;
-      mLastOptionalBreakPriority = aPriority;
-    }
-    return aFrame && mForceBreakFrame == aFrame &&
-      mForceBreakFrameOffset == aOffset;
-  }
+  bool NotifyOptionalBreakPosition(nsIFrame* aFrame,
+                                   int32_t aOffset,
+                                   bool aFits,
+                                   gfxBreakPriority aPriority);
+
+  // Tries to place a float, and records whether the float actually was placed.
+  bool TryToPlaceFloat(nsIFrame* aFloat);
+
+  // Records a floating frame in a nowrap context for it to be placed on the
+  // next break opportunity.
+  void RecordNoWrapFloat(nsIFrame* aFloat);
+
+  // Tries to place the floats from the nowrap context.
+  void FlushNoWrapFloats();
+
   /**
    * Like NotifyOptionalBreakPosition, but here it's OK for mNeedBackup
    * to be set, because the caller is merely pruning some saved break position(s)
@@ -547,10 +546,9 @@ protected:
     nscoord* mBaseline;
 
     void AppendFrame(PerFrameData* pfd) {
-      if (nullptr == mLastFrame) {
+      if (!mLastFrame) {
         mFirstFrame = pfd;
-      }
-      else {
+      } else {
         mLastFrame->mNext = pfd;
         pfd->mPrev = mLastFrame;
       }

@@ -17,7 +17,7 @@
 #include "nsIDirectoryEnumerator.h"
 #include "nsNativeCharsetUtils.h"
 
-#include "nsISimpleEnumerator.h"
+#include "nsSimpleEnumerator.h"
 #include "nsIComponentManager.h"
 #include "prio.h"
 #include "private/pprio.h"  // To get PR_ImportFile
@@ -231,13 +231,17 @@ private:
   nsString mResolvedPath;
 };
 
-class nsDriveEnumerator : public nsIDirectoryEnumerator
+class nsDriveEnumerator : public nsSimpleEnumerator
+                        , public nsIDirectoryEnumerator
 {
 public:
   nsDriveEnumerator();
-  NS_DECL_ISUPPORTS
+  NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSISIMPLEENUMERATOR
+  NS_FORWARD_NSISIMPLEENUMERATORBASE(nsSimpleEnumerator::)
   nsresult Init();
+
+  const nsID& DefaultInterface() override { return NS_GET_IID(nsIFile); }
 
   NS_IMETHOD GetNextFile(nsIFile** aResult) override
   {
@@ -681,7 +685,8 @@ CloseDir(nsDir*& aDir)
 //-----------------------------------------------------------------------------
 
 class nsDirEnumerator final
-  : public nsIDirectoryEnumerator
+  : public nsSimpleEnumerator
+  , public nsIDirectoryEnumerator
 {
 private:
   ~nsDirEnumerator()
@@ -690,11 +695,15 @@ private:
   }
 
 public:
-  NS_DECL_ISUPPORTS
+  NS_DECL_ISUPPORTS_INHERITED
+
+  NS_FORWARD_NSISIMPLEENUMERATORBASE(nsSimpleEnumerator::)
 
   nsDirEnumerator() : mDir(nullptr)
   {
   }
+
+  const nsID& DefaultInterface() override { return NS_GET_IID(nsIFile); }
 
   nsresult Init(nsIFile* aParent)
   {
@@ -750,7 +759,7 @@ public:
         return rv;
       }
 
-      mNext = do_QueryInterface(file);
+      mNext = file.forget();
     }
     *aResult = mNext != nullptr;
     if (!*aResult) {
@@ -767,11 +776,11 @@ public:
     if (NS_FAILED(rv)) {
       return rv;
     }
+    if (!hasMore) {
+      return NS_ERROR_FAILURE;
+    }
 
-    *aResult = mNext;        // might return nullptr
-    NS_IF_ADDREF(*aResult);
-
-    mNext = nullptr;
+    mNext.forget(aResult);
     return NS_OK;
   }
 
@@ -783,9 +792,7 @@ public:
     if (NS_FAILED(rv) || !hasMore) {
       return rv;
     }
-    *aResult = mNext;
-    NS_IF_ADDREF(*aResult);
-    mNext = nullptr;
+    mNext.forget(aResult);
     return NS_OK;
   }
 
@@ -807,7 +814,7 @@ protected:
   nsCOMPtr<nsIFile>  mNext;
 };
 
-NS_IMPL_ISUPPORTS(nsDirEnumerator, nsISimpleEnumerator, nsIDirectoryEnumerator)
+NS_IMPL_ISUPPORTS_INHERITED(nsDirEnumerator, nsSimpleEnumerator, nsIDirectoryEnumerator)
 
 
 //-----------------------------------------------------------------------------
@@ -2037,7 +2044,7 @@ nsLocalFile::CopyMove(nsIFile* aParentDir, const nsAString& aNewName,
         return NS_ERROR_FILE_ACCESS_DENIED;
       }
 
-      nsCOMPtr<nsISimpleEnumerator> targetIterator;
+      nsCOMPtr<nsIDirectoryEnumerator> targetIterator;
       rv = target->GetDirectoryEntries(getter_AddRefs(targetIterator));
       if (NS_FAILED(rv)) {
         return rv;
@@ -3126,17 +3133,6 @@ NS_IMETHODIMP
 nsLocalFile::GetTarget(nsAString& aResult)
 {
   aResult.Truncate();
-#if STRICT_FAKE_SYMLINKS
-  bool symLink = false;
-  nsresult rv = IsSymlink(&symLink);
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-
-  if (!symLink) {
-    return NS_ERROR_FILE_INVALID_PATH;
-  }
-#endif
   Resolve();
 
   aResult = mResolvedPath;
@@ -3597,7 +3593,7 @@ nsLocalFile::GetHashCode(uint32_t* aResult)
   return NS_OK;
 }
 
-NS_IMPL_ISUPPORTS(nsDriveEnumerator, nsIDirectoryEnumerator, nsISimpleEnumerator)
+NS_IMPL_ISUPPORTS_INHERITED(nsDriveEnumerator, nsSimpleEnumerator, nsIDirectoryEnumerator)
 
 nsDriveEnumerator::nsDriveEnumerator()
 {
@@ -3642,7 +3638,7 @@ nsDriveEnumerator::GetNext(nsISupports** aNext)
    * character of the current drive. */
   if (*mStartOfCurrentDrive == L'\0') {
     *aNext = nullptr;
-    return NS_OK;
+    return NS_ERROR_FAILURE;
   }
 
   nsAString::const_iterator driveEnd = mStartOfCurrentDrive;

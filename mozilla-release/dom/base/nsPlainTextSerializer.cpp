@@ -81,7 +81,10 @@ NS_NewPlainTextSerializer(nsIContentSerializer** aSerializer)
 }
 
 nsPlainTextSerializer::nsPlainTextSerializer()
-  : kSpace(NS_LITERAL_STRING(" ")) // Init of "constant"
+  : mFlags(0)
+  , mFloatingLines(-1)
+  , mLineBreakDue(false)
+  , kSpace(NS_LITERAL_STRING(" ")) // Init of "constant"
 {
 
   mOutputString = nullptr;
@@ -1633,7 +1636,7 @@ nsPlainTextSerializer::Write(const nsAString& aStr)
     // Have to put it in before every line.
     while(bol<totLen) {
       bool outputQuotes = mAtFirstColumn;
-      bool atFirstColumn = mAtFirstColumn;
+      bool atFirstColumn;
       bool outputLineBreak = false;
       bool spacesOnly = true;
 

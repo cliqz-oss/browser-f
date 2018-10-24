@@ -14,7 +14,6 @@ ChromeUtils.import("resource://gre/modules/TelemetryUtils.jsm", this);
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
-  TelemetrySend: "resource://gre/modules/TelemetrySend.jsm",
   AddonManagerPrivate: "resource://gre/modules/AddonManager.jsm",
   TelemetryController: "resource://gre/modules/TelemetryController.jsm",
   TelemetryStorage: "resource://gre/modules/TelemetryStorage.jsm",
@@ -198,7 +197,7 @@ var processInfo = {
     if (!this._GetProcessIoCounters(this._GetCurrentProcess(), io.address()))
       return null;
     return [parseInt(io.readBytes), parseInt(io.writeBytes)];
-  }
+  },
 };
 
 /**
@@ -567,6 +566,17 @@ var TelemetrySession = Object.freeze({
   getMetadata(reason) {
     return Impl.getMetadata(reason);
   },
+
+  /**
+   * Reset the subsession and profile subsession counter.
+   * This should only be called when the profile should be considered completely new,
+   * e.g. after opting out of sending Telemetry
+   */
+  resetSubsessionCounter() {
+    Impl._subsessionCounter = 0;
+    Impl._profileSubsessionCounter = 0;
+  },
+
   /**
    * Used only for testing purposes.
    */
@@ -732,7 +742,7 @@ var Impl = {
     let elapsedTime = Date.now() - si.process;
     var ret = {
       totalTime: Math.round(elapsedTime / 1000), // totalTime, in seconds
-      uptime: Math.round(elapsedTime / 60000) // uptime in minutes
+      uptime: Math.round(elapsedTime / 60000), // uptime in minutes
     };
 
     // Look for app-specific timestamps
@@ -793,8 +803,6 @@ var Impl = {
     for (let ioCounter in this._startupIO)
       ret[ioCounter] = this._startupIO[ioCounter];
 
-    ret.savedPings = TelemetryStorage.pendingPingCount;
-
     let activeTicks = this._sessionActiveTicks;
     if (isSubsession) {
       activeTicks = this._sessionActiveTicks - this._subsessionStartActiveTicks;
@@ -805,8 +813,6 @@ var Impl = {
     }
 
     ret.activeTicks = activeTicks;
-
-    ret.pingsOverdue = TelemetrySend.overduePingsCount;
 
     return ret;
   },
@@ -1394,9 +1400,7 @@ var Impl = {
   getOpenTabsCount: function getOpenTabsCount() {
     let tabCount = 0;
 
-    let browserEnum = Services.wm.getEnumerator("navigator:browser");
-    while (browserEnum.hasMoreElements()) {
-      let win = browserEnum.getNext();
+    for (let win of Services.wm.getEnumerator("navigator:browser")) {
       tabCount += win.gBrowser.tabs.length;
     }
 

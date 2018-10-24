@@ -12,6 +12,7 @@
 #include "TRRService.h"
 
 #include "mozilla/Preferences.h"
+#include "mozilla/Tokenizer.h"
 
 static const char kOpenCaptivePortalLoginEvent[] = "captive-portal-login";
 static const char kClearPrivateData[] = "clear-private-data";
@@ -43,9 +44,12 @@ TRRService::TRRService()
   , mRfc1918(false)
   , mCaptiveIsPassed(false)
   , mUseGET(false)
+  , mDisableECS(true)
+  , mDisableAfterFails(5)
   , mClearTRRBLStorage(false)
   , mConfirmationState(CONFIRM_INIT)
   , mRetryConfirmInterval(1000)
+  , mTRRFailures(0)
 {
   MOZ_ASSERT(NS_IsMainThread(), "wrong thread");
 }
@@ -131,14 +135,18 @@ TRRService::ReadPrefs(const char *name)
 {
   MOZ_ASSERT(NS_IsMainThread(), "wrong thread");
   if (!name || !strcmp(name, TRR_PREF("mode"))) {
-    // 0 - off, 1 - parallel, 2 - TRR first, 3 - TRR only, 4 - shadow
+    // 0 - off, 1 - parallel, 2 - TRR first, 3 - TRR only, 4 - shadow,
+    // 5 - explicit off
     uint32_t tmp;
     if (NS_SUCCEEDED(Preferences::GetUint(TRR_PREF("mode"), &tmp))) {
+      if (tmp > MODE_TRROFF) {
+        tmp = MODE_TRROFF;
+      }
       mMode = tmp;
     }
   }
   if (!name || !strcmp(name, TRR_PREF("uri"))) {
-    // Base URI, appends "?ct&dns=..."
+    // URI Template, RFC 6570.
     MutexAutoLock lock(mLock);
     nsAutoCString old(mPrivateURI);
     Preferences::GetCString(TRR_PREF("uri"), mPrivateURI);
@@ -155,7 +163,35 @@ TRRService::ReadPrefs(const char *name)
       mPrivateURI.Truncate();
     }
     if (!mPrivateURI.IsEmpty()) {
-      LOG(("TRRService TRR URI %s\n", mPrivateURI.get()));
+      // cut off everything from "{" to "}" sequences (potentially multiple),
+      // as a crude conversion from template into URI.
+      nsAutoCString uri(mPrivateURI);
+
+      do {
+        nsCCharSeparatedTokenizer openBrace(uri, '{');
+        if (openBrace.hasMoreTokens()) {
+          // the 'nextToken' is the left side of the open brace (or full uri)
+          nsAutoCString prefix(openBrace.nextToken());
+
+          // if there is an open brace, there's another token
+          const nsACString& endBrace = openBrace.nextToken();
+          nsCCharSeparatedTokenizer closeBrace(endBrace, '}');
+          if (closeBrace.hasMoreTokens()) {
+            // there is a close brace as well, make a URI out of the prefix
+            // and the suffix
+            closeBrace.nextToken();
+            nsAutoCString suffix(closeBrace.nextToken());
+            uri = prefix + suffix;
+          } else {
+            // no (more) close brace
+            break;
+          }
+        } else {
+          // no (more) open brace
+          break;
+        }
+      } while (true);
+      mPrivateURI = uri;
     }
     if (!old.IsEmpty() && !mPrivateURI.Equals(old)) {
       mClearTRRBLStorage = true;
@@ -223,6 +259,18 @@ TRRService::ReadPrefs(const char *name)
     bool tmp;
     if (NS_SUCCEEDED(Preferences::GetBool(kDisableIpv6Pref, &tmp))) {
       mDisableIPv6 = tmp;
+    }
+  }
+  if (!name || !strcmp(name, TRR_PREF("disable-ECS"))) {
+    bool tmp;
+    if (NS_SUCCEEDED(Preferences::GetBool(TRR_PREF("disable-ECS"), &tmp))) {
+      mDisableECS = tmp;
+    }
+  }
+  if (!name || !strcmp(name, TRR_PREF("max-fails"))) {
+    uint32_t fails;
+    if (NS_SUCCEEDED(Preferences::GetUint(TRR_PREF("max-fails"), &fails))) {
+      mDisableAfterFails = fails;
     }
   }
 
@@ -303,9 +351,11 @@ TRRService::Observe(nsISupports *aSubject,
       }
     }
 
-    if (mConfirmationState != CONFIRM_OK) {
-      mConfirmationState = CONFIRM_TRYING;
-      MaybeConfirm();
+    if (!mCaptiveIsPassed) {
+      if (mConfirmationState != CONFIRM_OK) {
+        mConfirmationState = CONFIRM_TRYING;
+        MaybeConfirm();
+      }
     } else {
       LOG(("TRRservice CP clear when already up!\n"));
     }
@@ -547,6 +597,26 @@ TRRService::Notify(nsITimer *aTimer)
 }
 
 
+void
+TRRService::TRRIsOkay(bool aWorks)
+{
+  if (aWorks) {
+    mTRRFailures = 0;
+  } else if ((mMode == MODE_TRRFIRST) && (mConfirmationState == CONFIRM_OK)) {
+    // only count failures while in OK state
+    uint32_t fails = ++mTRRFailures;
+    if (fails >= mDisableAfterFails) {
+      LOG(("TRRService goes FAILED after %u failures in a row\n", fails));
+      mConfirmationState = CONFIRM_FAILED;
+      // Fire off a timer and start re-trying the NS domain again
+      NS_NewTimerWithCallback(getter_AddRefs(mRetryConfirmTimer),
+                              this, mRetryConfirmInterval,
+                              nsITimer::TYPE_ONE_SHOT);
+      mTRRFailures = 0; // clear it again
+    }
+  }
+}
+
 AHostResolver::LookupStatus
 TRRService::CompleteLookup(nsHostRecord *rec, nsresult status, AddrInfo *aNewRRSet, bool pb)
 {
@@ -565,8 +635,8 @@ TRRService::CompleteLookup(nsHostRecord *rec, nsresult status, AddrInfo *aNewRRS
     LOG(("TRRService finishing confirmation test %s %d %X\n",
          mPrivateURI.get(), (int)mConfirmationState, (unsigned int)status));
     mConfirmer = nullptr;
-    if ((mConfirmationState == CONFIRM_FAILED) && (mMode == MODE_TRRONLY)) {
-      // in TRR-only mode; retry failed confirmations
+    if (mConfirmationState == CONFIRM_FAILED) {
+      // retry failed NS confirmation
       NS_NewTimerWithCallback(getter_AddRefs(mRetryConfirmTimer),
                               this, mRetryConfirmInterval,
                               nsITimer::TYPE_ONE_SHOT);

@@ -34,7 +34,7 @@ interface Node : EventTarget {
   [Pure, Throws, NeedsCallerType, BinaryName="baseURIFromJS"]
   readonly attribute DOMString? baseURI;
 
-  [Pure, BinaryName=getComposedDoc]
+  [Pure, BinaryName=isInComposedDoc]
   readonly attribute boolean isConnected;
   [Pure]
   readonly attribute Document? ownerDocument;
@@ -62,18 +62,21 @@ interface Node : EventTarget {
   [CEReactions, SetterThrows, GetterCanOOM,
    SetterNeedsSubjectPrincipal=NonSystem, Pure]
            attribute DOMString? textContent;
-  [CEReactions, Throws]
+  // These DOM methods cannot be accessed by UA Widget scripts
+  // because the DOM element reflectors will be in the content scope,
+  // instead of the desired UA Widget scope.
+  [CEReactions, Throws, Func="IsNotUAWidget"]
   Node insertBefore(Node node, Node? child);
-  [CEReactions, Throws]
+  [CEReactions, Throws, Func="IsNotUAWidget"]
   Node appendChild(Node node);
-  [CEReactions, Throws]
+  [CEReactions, Throws, Func="IsNotUAWidget"]
   Node replaceChild(Node node, Node child);
   [CEReactions, Throws]
   Node removeChild(Node child);
   [CEReactions]
   void normalize();
 
-  [CEReactions, Throws]
+  [CEReactions, Throws, Func="IsNotUAWidget"]
   Node cloneNode(optional boolean deep = false);
   [Pure]
   boolean isSameNode(Node? node);
@@ -105,6 +108,8 @@ interface Node : EventTarget {
   readonly attribute URI? baseURIObject;
   [ChromeOnly]
   DOMString generateXPath();
+  [ChromeOnly, Pure, BinaryName="flattenedTreeParentNodeNonInline"]
+  readonly attribute Node? flattenedTreeParentNode;
 
   /**
    * This method provides a fast-path for the Fluent localization system to

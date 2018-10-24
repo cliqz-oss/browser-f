@@ -22,15 +22,60 @@ var log = {
 };
 
 var PaymentDialogUtils = {
-  getAddressLabel(address) {
+  getAddressLabel(address, addressFields = null) {
+    if (addressFields) {
+      let requestedFields = addressFields.trim().split(/\s+/);
+      return requestedFields.filter(f => f && address[f]).map(f => address[f]).join(", ") +
+        ` (${address.guid})`;
+    }
     return `${address.name} (${address.guid})`;
   },
+
+  getCreditCardNetworks(address) {
+    // Shim for list of known and supported credit card network ids as exposed by
+    // toolkit/modules/CreditCard.jsm
+    return [
+      "amex",
+      "cartebancaire",
+      "diners",
+      "discover",
+      "jcb",
+      "mastercard",
+      "mir",
+      "unionpay",
+      "visa",
+    ];
+  },
   isCCNumber(str) {
-    return str.length > 0;
+    return !!str.replace(/[-\s]/g, "").match(/^\d{9,}$/);
   },
   DEFAULT_REGION: "US",
-  supportedCountries: ["US", "CA"],
+  supportedCountries: ["US", "CA", "DE"],
   getFormFormat(country) {
+    if (country == "DE") {
+      return {
+        addressLevel1Label: "province",
+        postalCodeLabel: "postalCode",
+        fieldsOrder: [
+          {
+            fieldId: "name",
+            newLine: true,
+          },
+          {
+            fieldId: "organization",
+            newLine: true,
+          },
+          {
+            fieldId: "street-address",
+            newLine: true,
+          },
+          {fieldId: "postal-code"},
+          {fieldId: "address-level2"},
+        ],
+        postalCodePattern: "\\d{5}",
+      };
+    }
+
     return {
       "addressLevel1Label": country == "US" ? "state" : "province",
       "postalCodeLabel": country == "US" ? "zip" : "postalCode",
@@ -42,6 +87,16 @@ var PaymentDialogUtils = {
         {fieldId: "address-level1"},
         {fieldId: "postal-code"},
       ],
+      // The following values come from addressReferences.js and should not be changed.
+      /* eslint-disable-next-line max-len */
+      "postalCodePattern": country == "US" ? "(\\d{5})(?:[ \\-](\\d{4}))?" : "[ABCEGHJKLMNPRSTVXY]\\d[ABCEGHJ-NPRSTV-Z] ?\\d[ABCEGHJ-NPRSTV-Z]\\d",
     };
+  },
+  getDefaultPreferences() {
+    let prefValues = {
+      saveCreditCardDefaultChecked: false,
+      saveAddressDefaultChecked: true,
+    };
+    return prefValues;
   },
 };

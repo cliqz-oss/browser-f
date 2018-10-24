@@ -2,14 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* exported TraversalRules, TraversalHelper */
-
 "use strict";
 
 var EXPORTED_SYMBOLS = ["TraversalRules", "TraversalHelper"]; // jshint ignore:line
 
 ChromeUtils.import("resource://gre/modules/accessibility/Utils.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "Roles", // jshint ignore:line
   "resource://gre/modules/accessibility/Constants.jsm");
 ChromeUtils.defineModuleGetter(this, "Filters", // jshint ignore:line
@@ -51,20 +48,12 @@ BaseTraversalRule.prototype = {
           Filters.MATCH | Filters.IGNORE_SUBTREE : Filters.IGNORE;
       }
 
-      let matchResult =
-        (this._explicitMatchRoles.has(role) || !this._explicitMatchRoles.size) ?
-        this._matchFunc(aAccessible) : Filters.IGNORE;
-
-      // If we are on a label that nests a checkbox/radio we should land on it.
-      // It is a bigger touch target, and it reduces clutter.
-      if (role == Roles.LABEL && !(matchResult & Filters.IGNORE_SUBTREE)) {
-        let control = Utils.getEmbeddedControl(aAccessible);
-        if (control && this._explicitMatchRoles.has(control.role)) {
-          matchResult = this._matchFunc(control) | Filters.IGNORE_SUBTREE;
-        }
+      if (this._explicitMatchRoles.has(role) ||
+          !this._explicitMatchRoles.size) {
+        return this._matchFunc(aAccessible);
       }
 
-      return matchResult;
+      return Filters.IGNORE;
     },
 
     QueryInterface: ChromeUtils.generateQI([Ci.nsIAccessibleTraversalRule])
@@ -177,7 +166,6 @@ var gSimpleMatchFunc = function gSimpleMatchFunc(aAccessible) {
 
 var gSimplePreFilter = Prefilters.DEFUNCT |
   Prefilters.INVISIBLE |
-  Prefilters.ARIA_HIDDEN |
   Prefilters.TRANSPARENT;
 
 var TraversalRules = { // jshint ignore:line
@@ -185,7 +173,7 @@ var TraversalRules = { // jshint ignore:line
 
   SimpleOnScreen: new BaseTraversalRule(
     gSimpleTraversalRoles, gSimpleMatchFunc,
-    Prefilters.DEFUNCT | Prefilters.INVISIBLE | Prefilters.ARIA_HIDDEN |
+    Prefilters.DEFUNCT | Prefilters.INVISIBLE |
     Prefilters.TRANSPARENT | Prefilters.OFFSCREEN),
 
   Anchor: new BaseTraversalRule(

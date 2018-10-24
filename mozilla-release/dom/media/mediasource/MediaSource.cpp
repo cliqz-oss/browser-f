@@ -6,9 +6,6 @@
 
 #include "MediaSource.h"
 
-#if MOZ_AV1
-#include "AOMDecoder.h"
-#endif
 #include "AsyncEventRunner.h"
 #include "DecoderTraits.h"
 #include "Benchmark.h"
@@ -22,6 +19,7 @@
 #include "mozilla/ErrorResult.h"
 #include "mozilla/FloatingPoint.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/HTMLMediaElement.h"
 #include "mozilla/mozalloc.h"
@@ -130,12 +128,13 @@ MediaSource::IsTypeSupported(const nsAString& aType, DecoderDoctorDiagnostics* a
   }
   if (mimeType == MEDIAMIMETYPE("video/webm")) {
     if (!(Preferences::GetBool("media.mediasource.webm.enabled", false) ||
+          StaticPrefs::MediaCapabilitiesEnabled() ||
           containerType->ExtendedType().Codecs().Contains(
             NS_LITERAL_STRING("vp8")) ||
 #ifdef MOZ_AV1
-          // FIXME: Temporary comparison with the full codecs attribute.
-          // See bug 1377015.
-          AOMDecoder::IsSupportedCodec(containerType->ExtendedType().Codecs().AsString()) ||
+          (StaticPrefs::MediaAv1Enabled() &&
+           IsAV1CodecString(
+             containerType->ExtendedType().Codecs().AsString())) ||
 #endif
           IsWebMForced(aDiagnostics))) {
       return NS_ERROR_DOM_NOT_SUPPORTED_ERR;
@@ -634,7 +633,7 @@ MediaSource::GetParentObject() const
 JSObject*
 MediaSource::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return MediaSourceBinding::Wrap(aCx, this, aGivenProto);
+  return MediaSource_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 NS_IMPL_CYCLE_COLLECTION_INHERITED(MediaSource, DOMEventTargetHelper,

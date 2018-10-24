@@ -9,9 +9,7 @@
 
 var EXPORTED_SYMBOLS = ["PageThumbUtils"];
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 ChromeUtils.defineModuleGetter(this, "BrowserUtils",
   "resource://gre/modules/BrowserUtils.jsm");
@@ -91,8 +89,7 @@ var PageThumbUtils = {
    * minus the scroll bars.
    */
   getContentSize(aWindow) {
-    let utils = aWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                       .getInterface(Ci.nsIDOMWindowUtils);
+    let utils = aWindow.windowUtils;
     // aWindow may be a cpow, add exposed props security values.
     let sbWidth = {}, sbHeight = {};
 
@@ -261,8 +258,7 @@ var PageThumbUtils = {
     if (Cu.isCrossProcessWrapper(aWindow)) {
       throw new Error("Do not pass cpows here.");
     }
-    let utils = aWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                       .getInterface(Ci.nsIDOMWindowUtils);
+    let utils = aWindow.windowUtils;
     // aWindow may be a cpow, add exposed props security values.
     let sbWidth = {}, sbHeight = {};
 

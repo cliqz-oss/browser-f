@@ -15,12 +15,15 @@
 #include "frontend/ParseContext.h"
 #include "frontend/Parser.h"
 #include "fuzz-tests/tests.h"
+#include "js/CompileOptions.h"
 #include "vm/Interpreter.h"
 
 #include "vm/JSContext-inl.h"
 
 using UsedNameTracker = js::frontend::UsedNameTracker;
 using namespace js;
+
+using JS::CompileOptions;
 
 // These are defined and pre-initialized by the harness (in tests.cpp).
 extern JS::PersistentRootedObject gGlobal;
@@ -51,10 +54,6 @@ testBinASTReaderFuzz(const uint8_t* buf, size_t size) {
     }
 
     js::frontend::UsedNameTracker binUsedNames(gCx);
-    if (!binUsedNames.init()) {
-        ReportOutOfMemory(gCx);
-        return 0;
-    }
 
     js::frontend::BinASTParser<js::frontend::BinTokenReaderTester> reader(gCx, gCx->tempLifoAlloc(), binUsedNames, options);
 

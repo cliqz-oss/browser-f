@@ -29,6 +29,7 @@
 #include "jit/arm64/vixl/Debugger-vixl.h"
 #include "jit/arm64/vixl/Simulator-vixl.h"
 #include "jit/IonTypes.h"
+#include "js/UniquePtr.h"
 #include "js/Utility.h"
 #include "threading/LockGuard.h"
 #include "vm/Runtime.h"
@@ -124,7 +125,7 @@ void Simulator::init(Decoder* decoder, FILE* stream) {
   ResetState();
 
   // Allocate and set up the simulator stack.
-  stack_ = (byte*)js_malloc(stack_size_);
+  stack_ = js_pod_malloc<byte>(stack_size_);
   if (!stack_) {
     oom_ = true;
     return;
@@ -168,19 +169,17 @@ Simulator* Simulator::Create(JSContext* cx) {
   // FIXME: This just leaks the Decoder object for now, which is probably OK.
   // FIXME: We should free it at some point.
   // FIXME: Note that it can't be stored in the SimulatorRuntime due to lifetime conflicts.
-  Simulator *sim;
+  js::UniquePtr<Simulator> sim;
   if (getenv("USE_DEBUGGER") != nullptr)
-    sim = js_new<Debugger>(cx, decoder, stdout);
+    sim.reset(js_new<Debugger>(cx, decoder, stdout));
   else
-    sim = js_new<Simulator>(cx, decoder, stdout);
+    sim.reset(js_new<Simulator>(cx, decoder, stdout));
 
   // Check if Simulator:init ran out of memory.
-  if (sim && sim->oom()) {
-    js_delete(sim);
+  if (sim && sim->oom())
     return nullptr;
-  }
 
-  return sim;
+  return sim.release();
 }
 
 
@@ -267,11 +266,9 @@ Simulator::handle_wasm_seg_fault(uintptr_t addr, unsigned numBytes)
 
     js::wasm::Trap trap;
     js::wasm::BytecodeOffset bytecode;
-    if (!moduleSegment->code().lookupTrap(pc, &trap, &bytecode)) {
-        act->startWasmTrap(js::wasm::Trap::OutOfBounds, 0, registerState());
-        set_pc((Instruction*)moduleSegment->outOfBoundsCode());
-        return true;
-    }
+    MOZ_ALWAYS_TRUE(moduleSegment->code().lookupTrap(pc, &trap, &bytecode));
+
+    MOZ_RELEASE_ASSERT(trap == js::wasm::Trap::OutOfBounds);
 
     act->startWasmTrap(js::wasm::Trap::OutOfBounds, bytecode.offset(), registerState());
     set_pc((Instruction*)moduleSegment->trapCode());
@@ -391,8 +388,9 @@ class Redirection
       }
     }
 
+    // Note: we can't use js_new here because the constructor is private.
     js::AutoEnterOOMUnsafeRegion oomUnsafe;
-    Redirection* redir = (Redirection*)js_malloc(sizeof(Redirection));
+    Redirection* redir = js_pod_malloc<Redirection>(1);
     if (!redir)
         oomUnsafe.crash("Simulator redirection");
     new(redir) Redirection(nativeFunction, type);

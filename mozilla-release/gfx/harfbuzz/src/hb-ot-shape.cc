@@ -27,8 +27,8 @@
  */
 
 #define HB_SHAPER ot
-#define hb_ot_shaper_face_data_t hb_ot_layout_t
-#define hb_ot_shaper_shape_plan_data_t hb_ot_shape_plan_t
+#define hb_ot_face_data_t hb_ot_layout_t
+#define hb_ot_shape_plan_data_t hb_ot_shape_plan_t
 #include "hb-shaper-impl-private.hh"
 
 #include "hb-ot-shape-private.hh"
@@ -41,7 +41,7 @@
 #include "hb-set-private.hh"
 
 #include "hb-ot-layout-gsubgpos-private.hh"
-//#include "hb-aat-layout-private.hh"
+#include "hb-aat-layout-private.hh"
 
 static hb_tag_t common_features[] = {
   HB_TAG('c','c','m','p'),
@@ -132,14 +132,14 @@ hb_ot_shape_collect_features (hb_ot_shape_planner_t          *planner,
 
 HB_SHAPER_DATA_ENSURE_DEFINE(ot, face)
 
-hb_ot_shaper_face_data_t *
+hb_ot_face_data_t *
 _hb_ot_shaper_face_data_create (hb_face_t *face)
 {
   return _hb_ot_layout_create (face);
 }
 
 void
-_hb_ot_shaper_face_data_destroy (hb_ot_shaper_face_data_t *data)
+_hb_ot_shaper_face_data_destroy (hb_ot_face_data_t *data)
 {
   _hb_ot_layout_destroy (data);
 }
@@ -151,16 +151,16 @@ _hb_ot_shaper_face_data_destroy (hb_ot_shaper_face_data_t *data)
 
 HB_SHAPER_DATA_ENSURE_DEFINE(ot, font)
 
-struct hb_ot_shaper_font_data_t {};
+struct hb_ot_font_data_t {};
 
-hb_ot_shaper_font_data_t *
+hb_ot_font_data_t *
 _hb_ot_shaper_font_data_create (hb_font_t *font HB_UNUSED)
 {
-  return (hb_ot_shaper_font_data_t *) HB_SHAPER_DATA_SUCCEEDED;
+  return (hb_ot_font_data_t *) HB_SHAPER_DATA_SUCCEEDED;
 }
 
 void
-_hb_ot_shaper_font_data_destroy (hb_ot_shaper_font_data_t *data)
+_hb_ot_shaper_font_data_destroy (hb_ot_font_data_t *data)
 {
 }
 
@@ -169,7 +169,7 @@ _hb_ot_shaper_font_data_destroy (hb_ot_shaper_font_data_t *data)
  * shaper shape_plan data
  */
 
-hb_ot_shaper_shape_plan_data_t *
+hb_ot_shape_plan_data_t *
 _hb_ot_shaper_shape_plan_data_create (hb_shape_plan_t    *shape_plan,
 				      const hb_feature_t *user_features,
 				      unsigned int        num_user_features,
@@ -179,6 +179,8 @@ _hb_ot_shaper_shape_plan_data_create (hb_shape_plan_t    *shape_plan,
   hb_ot_shape_plan_t *plan = (hb_ot_shape_plan_t *) calloc (1, sizeof (hb_ot_shape_plan_t));
   if (unlikely (!plan))
     return nullptr;
+
+  plan->init ();
 
   hb_ot_shape_planner_t planner (shape_plan);
 
@@ -192,19 +194,22 @@ _hb_ot_shaper_shape_plan_data_create (hb_shape_plan_t    *shape_plan,
   if (plan->shaper->data_create) {
     plan->data = plan->shaper->data_create (plan);
     if (unlikely (!plan->data))
+    {
+      free (plan);
       return nullptr;
+    }
   }
 
   return plan;
 }
 
 void
-_hb_ot_shaper_shape_plan_data_destroy (hb_ot_shaper_shape_plan_data_t *plan)
+_hb_ot_shaper_shape_plan_data_destroy (hb_ot_shape_plan_data_t *plan)
 {
   if (plan->shaper->data_destroy)
     plan->shaper->data_destroy (const_cast<void *> (plan->data));
 
-  plan->finish ();
+  plan->fini ();
 
   free (plan);
 }
@@ -268,7 +273,7 @@ hb_insert_dotted_circle (hb_buffer_t *buffer, hb_font_t *font)
   info.cluster = buffer->cur().cluster;
   info.mask = buffer->cur().mask;
   buffer->output_info (info);
-  while (buffer->idx < buffer->len && !buffer->in_error)
+  while (buffer->idx < buffer->len && buffer->successful)
     buffer->next_glyph ();
 
   buffer->swap_buffers ();
@@ -306,13 +311,16 @@ static void
 hb_ensure_native_direction (hb_buffer_t *buffer)
 {
   hb_direction_t direction = buffer->props.direction;
+  hb_direction_t horiz_dir = hb_script_get_horizontal_direction (buffer->props.script);
 
   /* TODO vertical:
    * The only BTT vertical script is Ogham, but it's not clear to me whether OpenType
    * Ogham fonts are supposed to be implemented BTT or not.  Need to research that
    * first. */
-  if ((HB_DIRECTION_IS_HORIZONTAL (direction) && direction != hb_script_get_horizontal_direction (buffer->props.script)) ||
-      (HB_DIRECTION_IS_VERTICAL   (direction) && direction != HB_DIRECTION_TTB))
+  if ((HB_DIRECTION_IS_HORIZONTAL (direction) &&
+       direction != horiz_dir && horiz_dir != HB_DIRECTION_INVALID) ||
+      (HB_DIRECTION_IS_VERTICAL   (direction) &&
+       direction != HB_DIRECTION_TTB))
   {
     /* Same loop as hb_form_clusters().
      * Since form_clusters() merged clusters already, we don't merge. */
@@ -618,8 +626,8 @@ hb_ot_substitute_complex (hb_ot_shape_context_t *c)
 
   c->plan->substitute (c->font, buffer);
 
-  /* XXX Call morx instead. */
-  //hb_aat_layout_substitute (c->font, c->buffer);
+  if (0) /* XXX Call morx instead. */
+    hb_aat_layout_substitute (c->font, c->buffer);
 }
 
 static inline void
@@ -672,8 +680,8 @@ hb_ot_position_default (hb_ot_shape_context_t *c)
 
   if (HB_DIRECTION_IS_HORIZONTAL (direction))
   {
-    for (unsigned int i = 0; i < count; i++)
-      pos[i].x_advance = c->font->get_glyph_h_advance (info[i].codepoint);
+    c->font->get_glyph_h_advances (count, &info[0].codepoint, sizeof(info[0]),
+                                   &pos[0].x_advance, sizeof(pos[0]));
     /* The nil glyph_h_origin() func returns 0, so no need to apply it. */
     if (c->font->has_glyph_h_origin_func ())
       for (unsigned int i = 0; i < count; i++)
@@ -683,9 +691,10 @@ hb_ot_position_default (hb_ot_shape_context_t *c)
   }
   else
   {
+    c->font->get_glyph_v_advances (count, &info[0].codepoint, sizeof(info[0]),
+                                   &pos[0].y_advance, sizeof(pos[0]));
     for (unsigned int i = 0; i < count; i++)
     {
-      pos[i].y_advance = c->font->get_glyph_v_advance (info[i].codepoint);
       c->font->subtract_glyph_v_origin (info[i].codepoint,
 					&pos[i].x_offset,
 					&pos[i].y_offset);
@@ -824,12 +833,12 @@ hb_ot_shape_internal (hb_ot_shape_context_t *c)
 {
   c->buffer->deallocate_var_all ();
   c->buffer->scratch_flags = HB_BUFFER_SCRATCH_FLAG_DEFAULT;
-  if (likely (!_hb_unsigned_int_mul_overflows (c->buffer->len, HB_BUFFER_MAX_LEN_FACTOR)))
+  if (likely (!hb_unsigned_mul_overflows (c->buffer->len, HB_BUFFER_MAX_LEN_FACTOR)))
   {
     c->buffer->max_len = MAX (c->buffer->len * HB_BUFFER_MAX_LEN_FACTOR,
 			      (unsigned) HB_BUFFER_MAX_LEN_MIN);
   }
-  if (likely (!_hb_unsigned_int_mul_overflows (c->buffer->len, HB_BUFFER_MAX_OPS_FACTOR)))
+  if (likely (!hb_unsigned_mul_overflows (c->buffer->len, HB_BUFFER_MAX_OPS_FACTOR)))
   {
     c->buffer->max_ops = MAX (c->buffer->len * HB_BUFFER_MAX_OPS_FACTOR,
 			      (unsigned) HB_BUFFER_MAX_OPS_MIN);
@@ -939,8 +948,6 @@ hb_ot_shape_glyphs_closure (hb_font_t          *font,
 			    unsigned int        num_features,
 			    hb_set_t           *glyphs)
 {
-  hb_ot_shape_plan_t plan;
-
   const char *shapers[] = {"ot", nullptr};
   hb_shape_plan_t *shape_plan = hb_shape_plan_create_cached (font->face, &buffer->props,
 							     features, num_features, shapers);
@@ -954,15 +961,7 @@ hb_ot_shape_glyphs_closure (hb_font_t          *font,
 
   hb_set_t *lookups = hb_set_create ();
   hb_ot_shape_plan_collect_lookups (shape_plan, HB_OT_TAG_GSUB, lookups);
-
-  /* And find transitive closure. */
-  hb_set_t *copy = hb_set_create ();
-  do {
-    copy->set (glyphs);
-    for (hb_codepoint_t lookup_index = HB_SET_VALUE_INVALID; hb_set_next (lookups, &lookup_index);)
-      hb_ot_layout_lookup_substitute_closure (font->face, lookup_index, glyphs);
-  } while (!copy->is_equal (glyphs));
-  hb_set_destroy (copy);
+  hb_ot_layout_lookups_substitute_closure (font->face, lookups, glyphs);
 
   hb_set_destroy (lookups);
 

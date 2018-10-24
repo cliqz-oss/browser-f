@@ -20,12 +20,9 @@ function load_test_vacuum_component() {
   // This is a lazy check, there could be more participants than just this test
   // we just mind that the test exists though.
   const EXPECTED_ENTRIES = ["vacuumParticipant"];
-  let catMan = Cc["@mozilla.org/categorymanager;1"].
-               getService(Ci.nsICategoryManager);
+  let {catMan} = Services;
   let found = false;
-  let entries = catMan.enumerateCategory(CATEGORY_NAME);
-  while (entries.hasMoreElements()) {
-    let entry = entries.getNext().QueryInterface(Ci.nsISupportsCString).data;
+  for (let {data: entry} of catMan.enumerateCategory(CATEGORY_NAME)) {
     print("Check if the found category entry (" + entry + ") is expected.");
     if (EXPECTED_ENTRIES.includes(entry)) {
       print("Check that only one test entry exists.");
@@ -251,7 +248,7 @@ const TESTS = [
 
         run_next_test();
       },
-      QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver])
+      QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver])
     }
     Services.obs.addObserver(vacuumObserver, "test-end-vacuum", false);
 
@@ -298,7 +295,7 @@ const TESTS = [
         do_check_false(aData);
         run_next_test();
       },
-      QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver])
+      QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver])
     }
     Services.obs.addObserver(vacuumObserver, "test-end-vacuum", false);
 

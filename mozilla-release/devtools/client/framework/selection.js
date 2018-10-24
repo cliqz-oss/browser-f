@@ -173,7 +173,7 @@ Selection.prototype = {
       if (node === this._walker.rootNode) {
         return true;
       }
-      node = node.parentNode();
+      node = node.parentOrHost();
     }
     return false;
   },
@@ -265,5 +265,9 @@ Selection.prototype = {
 
   isSlotted: function() {
     return this._isSlotted;
+  },
+
+  isShadowRootNode: function() {
+    return this.isNode() && this.nodeFront.isShadowRoot;
   },
 };

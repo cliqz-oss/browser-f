@@ -39,9 +39,11 @@ from .data import (
     ExternalStaticLibrary,
     ExternalSharedLibrary,
     HostDefines,
+    HostGeneratedSources,
     HostLibrary,
     HostProgram,
     HostRustProgram,
+    HostSharedLibrary,
     HostSimpleProgram,
     HostSources,
     InstallationTarget,
@@ -55,6 +57,7 @@ from .data import (
     ObjdirFiles,
     ObjdirPreprocessedFiles,
     PerSourceFlag,
+    PgoGenerateOnlySources,
     WebIDLCollection,
     Program,
     RustLibrary,
@@ -69,7 +72,7 @@ from .data import (
     TestManifest,
     UnifiedSources,
     VariablePassthru,
-    XPIDLFile,
+    XPIDLModule,
 )
 from mozpack.chrome.manifest import (
     Manifest,
@@ -124,7 +127,6 @@ class TreeMetadataEmitter(LoggingMixin):
         self._binaries = OrderedDict()
         self._compile_dirs = set()
         self._host_compile_dirs = set()
-        self._rust_compile_dirs = set()
         self._asm_compile_dirs = set()
         self._compile_flags = dict()
         self._compile_as_flags = dict()
@@ -352,7 +354,9 @@ class TreeMetadataEmitter(LoggingMixin):
 
         # We have to wait for all the self._link_library calls above to have
         # happened for obj.cxx_link to be final.
-        if not isinstance(obj, (StaticLibrary, HostLibrary,
+        # FIXME: Theoretically, HostSharedLibrary shouldn't be here (bug
+        # 1474022).
+        if not isinstance(obj, (StaticLibrary, HostLibrary, HostSharedLibrary,
                                 BaseRustProgram)) and obj.cxx_link:
             if context.config.substs.get(self.LIBSTDCXX_VAR[obj.KIND]):
                 self._link_library(context, obj, variable,
@@ -592,8 +596,6 @@ class TreeMetadataEmitter(LoggingMixin):
             if not programs:
                 continue
 
-            if kind == 'RUST_PROGRAMS':
-                self._rust_compile_dirs.add(context.objdir)
             all_rust_programs.append((programs, kind, cls))
 
         # Verify Rust program definitions.
@@ -616,6 +618,7 @@ class TreeMetadataEmitter(LoggingMixin):
 
                     check_unique_binary(program, kind)
                     self._binaries[program] = cls(context, program, cargo_file)
+                    add_program(self._binaries[program], kind)
 
         for kind, cls in [
                 ('SIMPLE_PROGRAMS', SimpleProgram),
@@ -645,6 +648,8 @@ class TreeMetadataEmitter(LoggingMixin):
             is_rust_library = context.get('IS_RUST_LIBRARY')
             if is_rust_library:
                 lib = self._rust_library(context, host_libname, {}, cls=HostRustLibrary)
+            elif context.get('FORCE_SHARED_LIB'):
+                lib = HostSharedLibrary(context, host_libname)
             else:
                 lib = HostLibrary(context, host_libname)
             self._libs[host_libname].append(lib)
@@ -817,14 +822,7 @@ class TreeMetadataEmitter(LoggingMixin):
         if not (linkables or host_linkables):
             return
 
-        # Avoid emitting compile flags for directories only containing rust
-        # libraries. Emitted compile flags are only relevant to C/C++ sources
-        # for the time being, however ldflags must be emitted for the benefit
-        # of cargo.
-        if not all(isinstance(l, (RustLibrary)) for l in linkables):
-            self._compile_dirs.add(context.objdir)
-        elif linkables:
-            self._rust_compile_dirs.add(context.objdir)
+        self._compile_dirs.add(context.objdir)
 
         if host_linkables and not all(isinstance(l, HostRustLibrary) for l in host_linkables):
             self._host_compile_dirs.add(context.objdir)
@@ -836,12 +834,18 @@ class TreeMetadataEmitter(LoggingMixin):
 
         sources = defaultdict(list)
         gen_sources = defaultdict(list)
+        pgo_generate_only = set()
         all_flags = {}
         for symbol in ('SOURCES', 'HOST_SOURCES', 'UNIFIED_SOURCES'):
             srcs = sources[symbol]
             gen_srcs = gen_sources[symbol]
             context_srcs = context.get(symbol, [])
+            seen_sources = set()
             for f in context_srcs:
+                if f in seen_sources:
+                    raise SandboxValidationError('Source file should only '
+                        'be added to %s once: %s' % (symbol, f), context)
+                seen_sources.add(f)
                 full_path = f.full_path
                 if isinstance(f, SourcePath):
                     srcs.append(full_path)
@@ -852,19 +856,33 @@ class TreeMetadataEmitter(LoggingMixin):
                     flags = context_srcs[f]
                     if flags:
                         all_flags[full_path] = flags
+                    # Files for the generation phase of PGO are unusual, so
+                    # it's not unreasonable to require them to be special.
+                    if flags.pgo_generate_only:
+                        if not isinstance(f, Path):
+                            raise SandboxValidationError('pgo_generate_only file'
+                                'must not be a generated file: %s' % f, context)
+                        if mozpath.splitext(f)[1] != '.cpp':
+                            raise SandboxValidationError('pgo_generate_only file'
+                                'must be a .cpp file: %s' % f, context)
+                        if flags.no_pgo:
+                            raise SandboxValidationError('pgo_generate_only files'
+                                'cannot be marked no_pgo: %s' % f, context)
+                        pgo_generate_only.add(f)
 
                 if isinstance(f, SourcePath) and not os.path.exists(full_path):
                     raise SandboxValidationError('File listed in %s does not '
                         'exist: \'%s\'' % (symbol, full_path), context)
 
-        # HOST_SOURCES and UNIFIED_SOURCES only take SourcePaths, so
-        # there should be no generated source in here
-        assert not gen_sources['HOST_SOURCES']
+        # UNIFIED_SOURCES only take SourcePaths, so there should be no
+        # generated source in here
         assert not gen_sources['UNIFIED_SOURCES']
 
         no_pgo = context.get('NO_PGO')
         no_pgo_sources = [f for f, flags in all_flags.iteritems()
                           if flags.no_pgo]
+        pgo_gen_only_sources = set(f for f, flags in all_flags.iteritems()
+                                   if flags.pgo_generate_only)
         if no_pgo:
             if no_pgo_sources:
                 raise SandboxValidationError('NO_PGO and SOURCES[...].no_pgo '
@@ -903,7 +921,7 @@ class TreeMetadataEmitter(LoggingMixin):
         all_suffixes = list(suffix_map.keys())
         varmap = dict(
             SOURCES=(Sources, GeneratedSources, all_suffixes),
-            HOST_SOURCES=(HostSources, None, ['.c', '.mm', '.cpp']),
+            HOST_SOURCES=(HostSources, HostGeneratedSources, ['.c', '.mm', '.cpp']),
             UNIFIED_SOURCES=(UnifiedSources, None, ['.c', '.mm', '.cpp']),
         )
         # Track whether there are any C++ source files.
@@ -927,6 +945,8 @@ class TreeMetadataEmitter(LoggingMixin):
 
             for srcs, cls in ((sources[variable], klass),
                               (gen_sources[variable], gen_klass)):
+                if variable == 'SOURCES' and pgo_gen_only_sources:
+                    srcs = [s for s in srcs if s not in pgo_gen_only_sources]
                 # Now sort the files to let groupby work.
                 sorted_files = sorted(srcs, key=canonical_suffix_for_file)
                 for canonical_suffix, files in itertools.groupby(
@@ -950,6 +970,8 @@ class TreeMetadataEmitter(LoggingMixin):
                 for target_var in ('SOURCES', 'UNIFIED_SOURCES'):
                     for suffix, srcs in ctxt_sources[target_var].items():
                         linkable.sources[suffix] += srcs
+                if pgo_gen_only_sources:
+                    linkable.pgo_gen_only_sources = pgo_gen_only_sources
                 if no_pgo_sources:
                     linkable.no_pgo_sources = no_pgo_sources
                 elif no_pgo:
@@ -962,6 +984,9 @@ class TreeMetadataEmitter(LoggingMixin):
             if flags.flags:
                 ext = mozpath.splitext(f)[1]
                 yield PerSourceFlag(context, f, flags.flags)
+
+        if pgo_generate_only:
+            yield PgoGenerateOnlySources(context, pgo_generate_only)
 
         # If there are any C++ sources, set all the linkables defined here
         # to require the C++ linker.
@@ -1069,6 +1094,18 @@ class TreeMetadataEmitter(LoggingMixin):
                     not context.config.substs.get('MOZ_NO_DEBUG_RTL')):
                 rtl_flag += 'd'
             computed_flags.resolve_flags('RTL', [rtl_flag])
+            # For PGO clang-cl builds, we generate order files in the
+            # profile generate phase that are subsequently used to link the
+            # final library.  We need to provide flags to the compiler to
+            # have it instrument functions for generating the data for the
+            # order file.  We'd normally put flags like these in
+            # PROFILE_GEN_CFLAGS or the like, but we need to only use the
+            # flags in contexts where we're compiling code for xul.
+            code_for_xul = context.get('FINAL_LIBRARY', 'notxul') == 'xul'
+            if context.config.substs.get('CLANG_CL') and code_for_xul:
+                computed_flags.resolve_flags('PROFILE_GEN_DYN_CFLAGS',
+                                             ['-Xclang',
+                                              '-finstrument-functions-after-inlining'])
             if not context.config.substs.get('CROSS_COMPILE'):
                 computed_host_flags.resolve_flags('RTL', [rtl_flag])
 
@@ -1300,8 +1337,6 @@ class TreeMetadataEmitter(LoggingMixin):
         if context.objdir in self._compile_dirs:
             self._compile_flags[context.objdir] = computed_flags
             yield computed_link_flags
-        elif context.objdir in self._rust_compile_dirs:
-            yield computed_link_flags
 
         if context.objdir in self._asm_compile_dirs:
             self._compile_as_flags[context.objdir] = computed_as_flags
@@ -1325,22 +1360,27 @@ class TreeMetadataEmitter(LoggingMixin):
         # XPIDL_MODULE.
         xpidl_module = context['XPIDL_MODULE']
 
-        if context['XPIDL_SOURCES'] and not xpidl_module:
-            raise SandboxValidationError('XPIDL_MODULE must be defined if '
-                'XPIDL_SOURCES is defined.', context)
+        if not xpidl_module:
+            if context['XPIDL_SOURCES']:
+                raise SandboxValidationError('XPIDL_MODULE must be defined if '
+                    'XPIDL_SOURCES is defined.', context)
+            return
 
-        if xpidl_module and not context['XPIDL_SOURCES']:
+        if not context['XPIDL_SOURCES']:
             raise SandboxValidationError('XPIDL_MODULE cannot be defined '
                 'unless there are XPIDL_SOURCES', context)
 
-        if context['XPIDL_SOURCES'] and context['DIST_INSTALL'] is False:
+        if context['DIST_INSTALL'] is False:
             self.log(logging.WARN, 'mozbuild_warning', dict(
                 path=context.main_path),
                 '{path}: DIST_INSTALL = False has no effect on XPIDL_SOURCES.')
 
         for idl in context['XPIDL_SOURCES']:
-            yield XPIDLFile(context, mozpath.join(context.srcdir, idl),
-                xpidl_module)
+            if not os.path.exists(idl.full_path):
+                raise SandboxValidationError('File %s from XPIDL_SOURCES '
+                    'does not exist' % idl.full_path, context)
+
+        yield XPIDLModule(context, xpidl_module, context['XPIDL_SOURCES'])
 
     def _process_generated_files(self, context):
         for path in context['CONFIGURE_DEFINE_FILES']:

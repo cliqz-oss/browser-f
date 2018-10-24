@@ -34,7 +34,7 @@ struct OverrideMapping;
 class nsIDomainPolicy;
 class nsIURIClassifierCallback;
 struct LookAndFeelInt;
-class nsIDocShellLoadInfo;
+class nsDocShellLoadInfo;
 
 namespace mozilla {
 class RemoteSpellcheckEngineChild;
@@ -65,6 +65,10 @@ class URIParams;
 }// namespace ipc
 
 namespace dom {
+
+namespace ipc {
+class SharedMap;
+}
 
 class AlertObserver;
 class ConsoleListener;
@@ -115,7 +119,7 @@ public:
                       const nsAString& aName,
                       const nsACString& aFeatures,
                       bool aForceNoOpener,
-                      nsIDocShellLoadInfo* aLoadInfo,
+                      nsDocShellLoadInfo* aLoadInfo,
                       bool* aWindowIsNew,
                       mozIDOMWindowProxy** aReturn);
 
@@ -164,6 +168,8 @@ public:
 
   bool IsShuttingDown() const;
 
+  ipc::SharedMap* SharedData() { return mSharedData; };
+
   static void AppendProcessId(nsACString& aName);
 
   static void UpdateCookieStatus(nsIChannel *aChannel);
@@ -192,7 +198,7 @@ public:
     nsTArray<uint32_t>&& namespaces) override;
 
   mozilla::ipc::IPCResult
-  RecvRequestPerformanceMetrics() override;
+  RecvRequestPerformanceMetrics(const nsID& aID) override;
 
   mozilla::ipc::IPCResult
   RecvReinitRendering(
@@ -394,6 +400,13 @@ public:
                                                    const IPC::Principal& aPrincipal,
                                                    const ClonedMessageData& aData) override;
 
+  mozilla::ipc::IPCResult RecvRegisterStringBundles(nsTArray<StringBundleDescriptor>&& stringBundles) override;
+
+  mozilla::ipc::IPCResult RecvUpdateSharedData(const FileDescriptor& aMapFile,
+                                               const uint32_t& aMapSize,
+                                               nsTArray<IPCBlob>&& aBlobs,
+                                               nsTArray<nsCString>&& aChangedKeys) override;
+
   virtual mozilla::ipc::IPCResult RecvGeolocationUpdate(nsIDOMGeoPosition* aPosition) override;
 
   virtual mozilla::ipc::IPCResult RecvGeolocationError(const uint16_t& errorCode) override;
@@ -408,6 +421,8 @@ public:
   virtual mozilla::ipc::IPCResult RecvClearSiteDataReloadNeeded(const nsString& aOrigin) override;
 
   virtual mozilla::ipc::IPCResult RecvAddPermission(const IPC::Permission& permission) override;
+
+  virtual mozilla::ipc::IPCResult RecvRemoveAllPermissions() override;
 
   virtual mozilla::ipc::IPCResult RecvFlushMemory(const nsString& reason) override;
 
@@ -624,10 +639,10 @@ public:
   RecvShareCodeCoverageMutex(const CrossProcessMutexHandle& aHandle) override;
 
   virtual mozilla::ipc::IPCResult
-  RecvDumpCodeCoverageCounters() override;
+  RecvDumpCodeCoverageCounters(DumpCodeCoverageCountersResolver&& aResolver) override;
 
   virtual mozilla::ipc::IPCResult
-  RecvResetCodeCoverageCounters() override;
+  RecvResetCodeCoverageCounters(ResetCodeCoverageCountersResolver&& aResolver) override;
 
   virtual mozilla::ipc::IPCResult
   RecvSetInputEventQueueEnabled() override;
@@ -718,6 +733,9 @@ public:
 
   virtual bool
   DeallocPClientOpenWindowOpChild(PClientOpenWindowOpChild* aActor) override;
+
+  mozilla::ipc::IPCResult
+  RecvSaveRecording(const FileDescriptor& aFile) override;
 
 #ifdef NIGHTLY_BUILD
   // Fetch the current number of pending input events.
@@ -810,6 +828,8 @@ private:
 
   nsCOMPtr<nsIDomainPolicy> mPolicy;
   nsCOMPtr<nsITimer> mForceKillTimer;
+
+  RefPtr<ipc::SharedMap> mSharedData;
 
 #ifdef MOZ_GECKO_PROFILER
   RefPtr<ChildProfilerController> mProfilerController;

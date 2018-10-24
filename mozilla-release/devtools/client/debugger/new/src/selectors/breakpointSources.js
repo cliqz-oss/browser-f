@@ -17,21 +17,19 @@ var _source = require("../utils/source");
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 function getBreakpointsForSource(source, breakpoints) {
-  return breakpoints.valueSeq().filter(bp => bp.location.sourceId == source.id && !bp.hidden && (bp.text || bp.condition)).sortBy(bp => bp.location.line).toJS();
+  const bpList = breakpoints.valueSeq();
+  return bpList.filter(bp => bp.location.sourceId == source.id && !bp.hidden && (bp.text || bp.originalText || bp.condition || bp.disabled)).sortBy(bp => bp.location.line).toJS();
 }
 
 function findBreakpointSources(sources, breakpoints) {
-  const sourceIds = (0, _lodash.uniq)(breakpoints.valueSeq().filter(bp => !bp.hidden).map(bp => bp.location.sourceId).toJS());
-  const breakpointSources = sourceIds.map(id => (0, _selectors.getSourceInSources)(sources, id)).filter(source => source && !source.isBlackBoxed);
-  return (0, _lodash.sortBy)(breakpointSources, source => (0, _source.getFilenameFromURL)(source.url));
+  const sourceIds = (0, _lodash.uniq)(breakpoints.valueSeq().map(bp => bp.location.sourceId).toJS());
+  const breakpointSources = sourceIds.map(id => sources[id]).filter(source => source && !source.isBlackBoxed);
+  return (0, _lodash.sortBy)(breakpointSources, source => (0, _source.getFilename)(source));
 }
 
-function _getBreakpointSources(breakpoints, sources, selectedSource) {
-  const breakpointSources = findBreakpointSources(sources, breakpoints);
-  return breakpointSources.map(source => ({
-    source,
-    breakpoints: getBreakpointsForSource(source, breakpoints)
-  }));
-}
-
-const getBreakpointSources = exports.getBreakpointSources = (0, _reselect.createSelector)(_selectors.getBreakpoints, _selectors.getSources, _getBreakpointSources);
+const getBreakpointSources = exports.getBreakpointSources = (0, _reselect.createSelector)(_selectors.getBreakpoints, _selectors.getSources, (breakpoints, sources) => findBreakpointSources(sources, breakpoints).map(source => ({
+  source,
+  breakpoints: getBreakpointsForSource(source, breakpoints)
+})).filter(({
+  breakpoints: bpSources
+}) => bpSources.length > 0));

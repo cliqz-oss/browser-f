@@ -24,7 +24,7 @@ struct DependentAddPtr
     typedef typename T::Entry Entry;
 
     template <class Lookup>
-    DependentAddPtr(const JSContext* cx, const T& table, const Lookup& lookup)
+    DependentAddPtr(const JSContext* cx, T& table, const Lookup& lookup)
       : addPtr(table.lookupForAdd(lookup))
       , originalGcNumber(cx->zone()->gcNumber())
     {}
@@ -47,7 +47,8 @@ struct DependentAddPtr
     template <class KeyInput>
     void remove(JSContext* cx, T& table, const KeyInput& key) {
         refreshAddPtr(cx, table, key);
-        table.remove(addPtr);
+        if (addPtr)
+            table.remove(addPtr);
     }
 
     bool found() const                 { return addPtr.found(); }
@@ -56,7 +57,7 @@ struct DependentAddPtr
     const Entry* operator->() const    { return &*addPtr; }
 
   private:
-    AddPtr addPtr ;
+    AddPtr addPtr;
     const uint64_t originalGcNumber;
 
     template <class KeyInput>

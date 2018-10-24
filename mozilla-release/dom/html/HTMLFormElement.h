@@ -99,8 +99,7 @@ public:
                      EventChainPostVisitor& aVisitor) override;
 
   virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
-                              nsIContent* aBindingParent,
-                              bool aCompileEventHandlers) override;
+                              nsIContent* aBindingParent) override;
   virtual void UnbindFromTree(bool aDeep = true,
                               bool aNullParent = true) override;
   virtual nsresult BeforeSetAttr(int32_t aNamespaceID, nsAtom* aName,
@@ -118,8 +117,7 @@ public:
    */
   void ForgetCurrentSubmission();
 
-  virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
-                         bool aPreallocateChildren) const override;
+  virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
 
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(HTMLFormElement,
                                            nsGenericHTMLElement)
@@ -519,7 +517,7 @@ protected:
    *
    * @return Whether the form is currently valid.
    */
-  bool CheckFormValidity(nsIMutableArray* aInvalidElements) const;
+  bool CheckFormValidity(nsTArray<RefPtr<Element>>* aInvalidElements) const;
 
   // Clear the mImageNameLookupTable and mImageElements.
   void Clear();

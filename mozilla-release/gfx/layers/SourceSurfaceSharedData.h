@@ -42,6 +42,7 @@ public:
     : mStride(0)
     , mConsumers(0)
     , mFormat(SurfaceFormat::UNKNOWN)
+    , mCreatorPid(0)
   { }
 
   bool Init(const IntSize& aSize,
@@ -119,7 +120,6 @@ public:
     , mStride(0)
     , mMapCount(0)
     , mHandleCount(0)
-    , mInvalidations(0)
     , mFormat(SurfaceFormat::UNKNOWN)
     , mClosed(false)
     , mFinalized(false)
@@ -249,22 +249,34 @@ public:
   }
 
   /**
-   * Indicates how many times the surface has been invalidated.
+   * Yields a dirty rect of what has changed since it was last called.
    */
-  int32_t Invalidations() const override
+  Maybe<IntRect> TakeDirtyRect() override
   {
     MutexAutoLock lock(mMutex);
-    return mInvalidations;
+    if (mDirtyRect) {
+      Maybe<IntRect> ret = std::move(mDirtyRect);
+      return ret;
+    }
+    return Nothing();
   }
 
   /**
    * Increment the invalidation counter.
    */
-  void Invalidate() override
+  void Invalidate(const IntRect& aDirtyRect) override
   {
     MutexAutoLock lock(mMutex);
-    ++mInvalidations;
-    MOZ_ASSERT(mInvalidations >= 0);
+    if (!aDirtyRect.IsEmpty()) {
+      if (mDirtyRect) {
+        mDirtyRect->UnionRect(mDirtyRect.ref(), aDirtyRect);
+      } else {
+        mDirtyRect = Some(aDirtyRect);
+      }
+    } else {
+      mDirtyRect = Some(IntRect(IntPoint(0, 0), mSize));
+    }
+    MOZ_ASSERT_IF(mDirtyRect, !mDirtyRect->IsEmpty());
   }
 
   /**
@@ -333,7 +345,7 @@ private:
   int32_t mStride;
   int32_t mMapCount;
   int32_t mHandleCount;
-  int32_t mInvalidations;
+  Maybe<IntRect> mDirtyRect;
   IntSize mSize;
   RefPtr<SharedMemoryBasic> mBuf;
   RefPtr<SharedMemoryBasic> mOldBuf;

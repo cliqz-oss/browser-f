@@ -176,14 +176,13 @@ HTMLMenuItemElement::~HTMLMenuItemElement()
 //NS_IMPL_ELEMENT_CLONE(HTMLMenuItemElement)
 
 nsresult
-HTMLMenuItemElement::Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
-                           bool aPreallocateArrays) const
+HTMLMenuItemElement::Clone(dom::NodeInfo* aNodeInfo, nsINode** aResult) const
 {
   *aResult = nullptr;
   already_AddRefed<mozilla::dom::NodeInfo> ni = RefPtr<mozilla::dom::NodeInfo>(aNodeInfo).forget();
   RefPtr<HTMLMenuItemElement> it =
     new HTMLMenuItemElement(ni, NOT_FROM_PARSER);
-  nsresult rv = const_cast<HTMLMenuItemElement*>(this)->CopyInnerTo(it, aPreallocateArrays);
+  nsresult rv = const_cast<HTMLMenuItemElement*>(this)->CopyInnerTo(it);
   if (NS_SUCCEEDED(rv)) {
     switch (mType) {
       case CMD_TYPE_CHECKBOX:
@@ -300,12 +299,10 @@ HTMLMenuItemElement::PostHandleEvent(EventChainPostVisitor& aVisitor)
 
 nsresult
 HTMLMenuItemElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
-                                nsIContent* aBindingParent,
-                                bool aCompileEventHandlers)
+                                nsIContent* aBindingParent)
 {
   nsresult rv = nsGenericHTMLElement::BindToTree(aDocument, aParent,
-                                                 aBindingParent,
-                                                 aCompileEventHandlers);
+                                                 aBindingParent);
 
   if (NS_SUCCEEDED(rv) && aDocument && mType == CMD_TYPE_RADIO) {
     AddedToRadioGroup();
@@ -478,7 +475,7 @@ HTMLMenuItemElement::InitChecked()
 JSObject*
 HTMLMenuItemElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return HTMLMenuItemElementBinding::Wrap(aCx, this, aGivenProto);
+  return HTMLMenuItemElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 } // namespace dom

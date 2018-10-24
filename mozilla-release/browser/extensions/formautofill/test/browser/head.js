@@ -13,6 +13,7 @@
 "use strict";
 
 ChromeUtils.import("resource://testing-common/LoginTestUtils.jsm", this);
+ChromeUtils.import("resource://formautofill/MasterPassword.jsm", this);
 
 const MANAGE_ADDRESSES_DIALOG_URL = "chrome://formautofill/content/manageAddresses.xhtml";
 const MANAGE_CREDIT_CARDS_DIALOG_URL = "chrome://formautofill/content/manageCreditCards.xhtml";
@@ -103,6 +104,7 @@ const TEST_CREDIT_CARD_1 = {
   "cc-number": "4111111111111111",
   "cc-exp-month": 4,
   "cc-exp-year": new Date().getFullYear(),
+  "cc-type": "visa",
 };
 
 const TEST_CREDIT_CARD_2 = {
@@ -110,12 +112,14 @@ const TEST_CREDIT_CARD_2 = {
   "cc-number": "4929001587121045",
   "cc-exp-month": 12,
   "cc-exp-year": new Date().getFullYear() + 10,
+  "cc-type": "visa",
 };
 
 const TEST_CREDIT_CARD_3 = {
   "cc-number": "5103059495477870",
   "cc-exp-month": 1,
   "cc-exp-year": 2000,
+  "cc-type": "mastercard",
 };
 
 const MAIN_BUTTON = "button";
@@ -344,6 +348,11 @@ async function waitForFocusAndFormReady(win) {
 }
 
 async function testDialog(url, testFn, arg = undefined) {
+  if (url == EDIT_CREDIT_CARD_DIALOG_URL && arg && arg.record) {
+    arg.record = Object.assign({}, arg.record, {
+      "cc-number": await MasterPassword.decrypt(arg.record["cc-number-encrypted"]),
+    });
+  }
   let win = window.openDialog(url, null, "width=600,height=600", arg);
   await waitForFocusAndFormReady(win);
   let unloadPromise = BrowserTestUtils.waitForEvent(win, "unload");

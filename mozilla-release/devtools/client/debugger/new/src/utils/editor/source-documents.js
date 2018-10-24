@@ -76,7 +76,7 @@ function updateDocument(editor, source) {
     return;
   }
 
-  const sourceId = source.get("id");
+  const sourceId = source.id;
   const doc = getDocument(sourceId) || editor.createDocument();
   editor.replaceDocument(doc);
   updateLineNumberFormat(editor, sourceId);
@@ -158,8 +158,9 @@ function showSourceText(editor, source, symbols) {
 
     if (editor.codeMirror.doc === doc) {
       const mode = (0, _source.getMode)(source, symbols);
+      const currentMode = editor.codeMirror.getOption("mode");
 
-      if (doc.mode.name !== mode.name) {
+      if (currentMode.name != mode.name) {
         editor.setMode(mode);
       }
 

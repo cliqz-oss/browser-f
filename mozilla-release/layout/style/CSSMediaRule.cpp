@@ -8,13 +8,18 @@
 
 #include "mozilla/dom/CSSMediaRuleBinding.h"
 #include "mozilla/dom/MediaList.h"
+#include "mozilla/ServoBindings.h"
 
 namespace mozilla {
 namespace dom {
 
 CSSMediaRule::CSSMediaRule(RefPtr<RawServoMediaRule> aRawRule,
-                           uint32_t aLine, uint32_t aColumn)
-  : ConditionRule(Servo_MediaRule_GetRules(aRawRule).Consume(), aLine, aColumn)
+                           StyleSheet* aSheet,
+                           css::Rule* aParentRule,
+                           uint32_t aLine,
+                           uint32_t aColumn)
+  : ConditionRule(Servo_MediaRule_GetRules(aRawRule).Consume(),
+                  aSheet, aParentRule, aLine, aColumn)
   , mRawRule(std::move(aRawRule))
 {
 }
@@ -47,12 +52,12 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(CSSMediaRule, css::ConditionRu
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 /* virtual */ void
-CSSMediaRule::SetStyleSheet(StyleSheet* aSheet)
+CSSMediaRule::DropSheetReference()
 {
   if (mMediaList) {
-    mMediaList->SetStyleSheet(aSheet);
+    mMediaList->SetStyleSheet(nullptr);
   }
-  ConditionRule::SetStyleSheet(aSheet);
+  ConditionRule::DropSheetReference();
 }
 
 #ifdef DEBUG
@@ -107,7 +112,7 @@ CSSMediaRule::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
 /* virtual */ JSObject*
 CSSMediaRule::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return CSSMediaRuleBinding::Wrap(aCx, this, aGivenProto);
+  return CSSMediaRule_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 } // namespace dom

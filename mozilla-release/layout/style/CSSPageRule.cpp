@@ -56,13 +56,15 @@ CSSPageRuleDeclaration::GetParentObject()
 }
 
 DeclarationBlock*
-CSSPageRuleDeclaration::GetCSSDeclaration(Operation aOperation)
+CSSPageRuleDeclaration::GetOrCreateCSSDeclaration(Operation aOperation,
+                                                  DeclarationBlock** aCreated)
 {
   return mDecls;
 }
 
 nsresult
-CSSPageRuleDeclaration::SetCSSDeclaration(DeclarationBlock* aDecl)
+CSSPageRuleDeclaration::SetCSSDeclaration(DeclarationBlock* aDecl,
+                                          MutationClosureData* aClosureData)
 {
   MOZ_ASSERT(aDecl, "must be non-null");
   CSSPageRule* rule = Rule();
@@ -94,8 +96,11 @@ CSSPageRuleDeclaration::GetParsingEnvironment(
 // -- CSSPageRule --------------------------------------------------
 
 CSSPageRule::CSSPageRule(RefPtr<RawServoPageRule> aRawRule,
-                         uint32_t aLine, uint32_t aColumn)
-  : Rule(aLine, aColumn)
+                         StyleSheet* aSheet,
+                         css::Rule* aParentRule,
+                         uint32_t aLine,
+                         uint32_t aColumn)
+  : css::Rule(aSheet, aParentRule, aLine, aColumn)
   , mRawRule(std::move(aRawRule))
   , mDecls(Servo_PageRule_GetStyle(mRawRule).Consume())
 {
@@ -182,7 +187,7 @@ CSSPageRule::Style()
 JSObject*
 CSSPageRule::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return CSSPageRuleBinding::Wrap(aCx, this, aGivenProto);
+  return CSSPageRule_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 } // namespace dom

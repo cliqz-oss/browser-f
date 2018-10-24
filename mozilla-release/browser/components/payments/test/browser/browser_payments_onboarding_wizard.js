@@ -37,7 +37,7 @@ add_task(async function test_onboarding_wizard_without_saved_addresses_and_saved
 
       await PTU.DialogContentUtils.waitForState(content, (state) => {
         return state.page.id == "address-page" &&
-               state.page.selectedStateKey[0] == "selectedShippingAddress";
+               state["address-page"].selectedStateKey[0] == "selectedShippingAddress";
       }, "Address page is shown first during on-boarding if there are no saved addresses");
 
       info("Checking if the address page has been rendered");
@@ -59,16 +59,15 @@ add_task(async function test_onboarding_wizard_without_saved_addresses_and_saved
       let addressCancelButton = content.document.querySelector("address-form .cancel-button");
       ok(content.isVisible(addressCancelButton),
          "The cancel button on the address page is visible");
+    });
 
-      for (let [key, val] of Object.entries(PTU.Addresses.TimBL2)) {
-        let field = content.document.getElementById(key);
-        if (!field) {
-          ok(false, `${key} field not found`);
-        }
-        field.value = val;
-        ok(!field.disabled, `Field #${key} shouldn't be disabled`);
-      }
-      content.document.querySelector("address-form .save-button").click();
+    await fillInShippingAddressForm(frame, PTU.Addresses.TimBL2);
+    await spawnPaymentDialogTask(frame, PTU.DialogContentTasks.clickPrimaryButton);
+
+    await spawnPaymentDialogTask(frame, async function() {
+      let {
+        PaymentTestUtils: PTU,
+      } = ChromeUtils.import("resource://testing-common/PaymentTestUtils.jsm", {});
 
       await PTU.DialogContentUtils.waitForState(content, (state) => {
         return state.page.id == "basic-card-page";
@@ -82,25 +81,27 @@ add_task(async function test_onboarding_wizard_without_saved_addresses_and_saved
       is(basicCardTitle.textContent, "Add Credit Card", "Basic card page title is correctly shown");
 
       info("Check if the correct billing address is selected in the basic card page");
-      PTU.DialogContentUtils.waitForState((state) => {
+      PTU.DialogContentUtils.waitForState(content, (state) => {
         let billingAddressSelect = content.document.querySelector("#billingAddressGUID");
         return state.selectedShippingAddress == billingAddressSelect.value;
       }, "Shipping address is selected as the billing address");
+    });
 
-      for (let [key, val] of Object.entries(PTU.BasicCards.JohnDoe)) {
-        let field = content.document.getElementById(key);
-        field.value = val;
-        ok(!field.disabled, `Field #${key} shouldn't be disabled`);
-      }
-      content.document.querySelector("basic-card-form .save-button").click();
+    await fillInCardForm(frame, PTU.BasicCards.JohnDoe);
+
+    await spawnPaymentDialogTask(frame, PTU.DialogContentTasks.clickPrimaryButton);
+
+    await spawnPaymentDialogTask(frame, async function() {
+      let {
+        PaymentTestUtils: PTU,
+      } = ChromeUtils.import("resource://testing-common/PaymentTestUtils.jsm", {});
 
       await PTU.DialogContentUtils.waitForState(content, (state) => {
         return state.page.id == "payment-summary";
       }, "Payment summary page is shown after the basic card page during on boarding");
 
       let cancelButton = content.document.querySelector("#cancel");
-      ok(content.isVisible(cancelButton),
-         "Payment summary page is rendered");
+      ok(content.isVisible(cancelButton), "Payment summary page is rendered");
     });
 
     info("Closing the payment dialog");
@@ -269,16 +270,16 @@ add_task(async function test_onboarding_wizard_without_saved_address_with_saved_
       info("Checking if the address page has been rendered");
       let addressSaveButton = content.document.querySelector("address-form .save-button");
       ok(content.isVisible(addressSaveButton), "Address save button is rendered");
+    });
 
-      for (let [key, val] of Object.entries(PTU.Addresses.TimBL2)) {
-        let field = content.document.getElementById(key);
-        if (!field) {
-          ok(false, `${key} field not found`);
-        }
-        field.value = val;
-        ok(!field.disabled, `Field #${key} shouldn't be disabled`);
-      }
-      content.document.querySelector("address-form .save-button").click();
+
+    await fillInShippingAddressForm(frame, PTU.Addresses.TimBL2);
+    await spawnPaymentDialogTask(frame, PTU.DialogContentTasks.clickPrimaryButton);
+
+    await spawnPaymentDialogTask(frame, async function checkSavedAndCancelButton() {
+      let {
+        PaymentTestUtils: PTU,
+      } = ChromeUtils.import("resource://testing-common/PaymentTestUtils.jsm", {});
 
       await PTU.DialogContentUtils.waitForState(content, (state) => {
         return state.page.id == "payment-summary";
@@ -317,8 +318,8 @@ add_task(async function test_onboarding_wizard_with_requestShipping_turned_off()
 
       await PTU.DialogContentUtils.waitForState(content, (state) => {
         return state.page.id == "address-page" &&
-               state.page.selectedStateKey[0] == "basic-card-page" &&
-               state.page.selectedStateKey[1] == "billingAddressGUID";
+               state["address-page"].selectedStateKey[0] == "basic-card-page" &&
+               state["address-page"].selectedStateKey[1] == "billingAddressGUID";
       // eslint-disable-next-line max-len
       }, "Billing address page is shown first during on-boarding if requestShipping is turned off");
 
@@ -332,16 +333,15 @@ add_task(async function test_onboarding_wizard_with_requestShipping_turned_off()
       ok(content.isVisible(addressPageTitle), "Address page title is visible");
       is(addressPageTitle.textContent, "Add Billing Address",
          "Address page title is correctly shown");
+    });
 
-      for (let [key, val] of Object.entries(PTU.Addresses.TimBL2)) {
-        let field = content.document.getElementById(key);
-        if (!field) {
-          ok(false, `${key} field not found`);
-        }
-        field.value = val;
-        ok(!field.disabled, `Field #${key} shouldn't be disabled`);
-      }
-      content.document.querySelector("address-form .save-button").click();
+    await fillInBillingAddressForm(frame, PTU.Addresses.TimBL2);
+    await spawnPaymentDialogTask(frame, PTU.DialogContentTasks.clickPrimaryButton);
+
+    await spawnPaymentDialogTask(frame, async function() {
+      let {
+        PaymentTestUtils: PTU,
+      } = ChromeUtils.import("resource://testing-common/PaymentTestUtils.jsm", {});
 
       await PTU.DialogContentUtils.waitForState(content, (state) => {
         return state.page.id == "basic-card-page";
@@ -352,17 +352,20 @@ add_task(async function test_onboarding_wizard_with_requestShipping_turned_off()
       ok(content.isVisible(cardSaveButton), "Basic card page is rendered");
 
       info("Check if the correct billing address is selected in the basic card page");
-      PTU.DialogContentUtils.waitForState((state) => {
+      PTU.DialogContentUtils.waitForState(content, (state) => {
         let billingAddressSelect = content.document.querySelector("#billingAddressGUID");
         return state["basic-card-page"].billingAddressGUID == billingAddressSelect.value;
       }, "Billing Address is correctly shown");
+    });
 
-      for (let [key, val] of Object.entries(PTU.BasicCards.JohnDoe)) {
-        let field = content.document.getElementById(key);
-        field.value = val;
-        ok(!field.disabled, `Field #${key} shouldn't be disabled`);
-      }
-      content.document.querySelector("basic-card-form .save-button").click();
+    await fillInCardForm(frame, PTU.BasicCards.JohnDoe);
+
+    await spawnPaymentDialogTask(frame, PTU.DialogContentTasks.clickPrimaryButton);
+
+    await spawnPaymentDialogTask(frame, async function() {
+      let {
+        PaymentTestUtils: PTU,
+      } = ChromeUtils.import("resource://testing-common/PaymentTestUtils.jsm", {});
 
       await PTU.DialogContentUtils.waitForState(content, (state) => {
         return state.page.id == "payment-summary";
@@ -433,21 +436,22 @@ add_task(async function test_back_button_on_basic_card_page_during_onboarding() 
 
       await PTU.DialogContentUtils.waitForState(content, (state) => {
         return state.page.id == "address-page";
-      }, "Address page is shown first if there are saved addresses during on boarding");
-
+      }, "Billing address page is shown first if there are no saved addresses " +
+         "and requestShipping is false during on boarding");
       info("Checking if the address page has been rendered");
       let addressSaveButton = content.document.querySelector("address-form .save-button");
       ok(content.isVisible(addressSaveButton), "Address save button is rendered");
+    });
 
-      for (let [key, val] of Object.entries(PTU.Addresses.TimBL2)) {
-        let field = content.document.getElementById(key);
-        if (!field) {
-          ok(false, `${key} field not found`);
-        }
-        field.value = val;
-        ok(!field.disabled, `Field #${key} shouldn't be disabled`);
-      }
-      content.document.querySelector("address-form .save-button").click();
+    await fillInBillingAddressForm(frame, PTU.Addresses.TimBL2);
+    await spawnPaymentDialogTask(frame, PTU.DialogContentTasks.clickPrimaryButton);
+
+    await spawnPaymentDialogTask(frame, async function() {
+      let {
+        PaymentTestUtils: PTU,
+      } = ChromeUtils.import("resource://testing-common/PaymentTestUtils.jsm", {});
+
+      let addressSaveButton = content.document.querySelector("address-form .save-button");
 
       await PTU.DialogContentUtils.waitForState(content, (state) => {
         return state.page.id == "basic-card-page";
@@ -459,7 +463,7 @@ add_task(async function test_back_button_on_basic_card_page_during_onboarding() 
 
       info("Partially fill basic card form");
       let field = content.document.getElementById("cc-number");
-      field.value = PTU.BasicCards.JohnDoe["cc-number"];
+      content.fillField(field, PTU.BasicCards.JohnDoe["cc-number"]);
 
       info("Clicking on the back button to edit address saved in the previous step");
       basicCardBackButton.click();
@@ -479,7 +483,7 @@ add_task(async function test_back_button_on_basic_card_page_during_onboarding() 
          "Given name field value is correctly loaded");
 
       info("Editing the address and saving again");
-      field.value = "John";
+      content.fillField(field, "John");
       addressSaveButton.click();
 
       info("Checking if the address was correctly edited");

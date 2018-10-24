@@ -12,7 +12,6 @@ class Repackage(BaseScript):
     def __init__(self, require_config_file=False):
         script_kwargs = {
             'all_actions': [
-                "download_input",
                 "setup",
                 "repackage",
             ],
@@ -23,25 +22,16 @@ class Repackage(BaseScript):
             **script_kwargs
         )
 
-    def download_input(self):
-        config = self.config
+    def setup(self):
         dirs = self.query_abs_dirs()
 
-        input_home = config['input_home'].format(**dirs)
-
-        for path, url in config["download_config"].items():
-            status = self.download_file(url=url,
-                                        file_name=path,
-                                        parent_dir=input_home)
-            if not status:
-                self.fatal("Unable to fetch signed input from %s" % url)
-
-            if 'mar' in path:
-                # Ensure mar is executable
-                self.chmod(os.path.join(input_home, path), 0755)
-
-    def setup(self):
         self._run_tooltool()
+
+        mar_path = os.path.join(dirs['abs_input_dir'], 'mar')
+        if self._is_windows():
+            mar_path += '.exe'
+        if mar_path and os.path.exists(mar_path):
+            self.chmod(mar_path, 0755)
         if self.config.get("run_configure", True):
             self._get_mozconfig()
             self._run_configure()
@@ -51,24 +41,18 @@ class Repackage(BaseScript):
             return self.abs_dirs
         abs_dirs = super(Repackage, self).query_abs_dirs()
         config = self.config
-        for directory in abs_dirs:
-            value = abs_dirs[directory]
-            abs_dirs[directory] = value
 
         dirs = {}
         dirs['abs_tools_dir'] = os.path.join(abs_dirs['abs_work_dir'], 'tools')
         dirs['abs_mozilla_dir'] = os.path.join(abs_dirs['abs_work_dir'], 'src')
-        locale_dir = ''
+        dirs['abs_input_dir'] = os.path.join(abs_dirs['base_work_dir'], 'fetches')
+        output_dir_suffix = []
         if config.get('locale'):
-            locale_dir = "{}{}".format(os.path.sep, config['locale'])
-        repack_id_dir = ''
+            output_dir_suffix.append(config['locale'])
         if config.get('repack_id'):
-            repack_id_dir = "{}{}".format(os.path.sep, config['repack_id'])
-        dirs['output_home'] = config['output_home'].format(
-            locale=locale_dir,
-            repack_id=repack_id_dir,
-            **abs_dirs
-        )
+            output_dir_suffix.append(config['repack_id'])
+        dirs['abs_output_dir'] = os.path.join(
+            abs_dirs['abs_work_dir'], 'outputs', *output_dir_suffix)
         for key in dirs.keys():
             if key not in abs_dirs:
                 abs_dirs[key] = dirs[key]
@@ -79,13 +63,28 @@ class Repackage(BaseScript):
         config = self.config
         dirs = self.query_abs_dirs()
 
+        subst = {
+            'package-name': config['package-name'],
+            'sfx-stub': config['sfx-stub'],
+            'installer-tag': config['installer-tag'],
+            'stub-installer-tag': config['stub-installer-tag'],
+        }
+        subst.update(dirs)
+
         # Make sure the upload dir is around.
-        self.mkdir_p(dirs['output_home'])
+        self.mkdir_p(dirs['abs_output_dir'])
 
         for repack_config in config["repackage_config"]:
-            command = [sys.executable, 'mach', '--log-no-times', 'repackage'] + \
-                [arg.format(**dirs)
-                    for arg in list(repack_config)]
+            command = [sys.executable, 'mach', '--log-no-times', 'repackage']
+            command.extend([arg.format(**subst) for arg in repack_config['args']])
+            for arg, filename in repack_config['inputs'].items():
+                command.extend([
+                    '--{}'.format(arg),
+                    os.path.join(dirs['abs_input_dir'], filename),
+                ])
+            command.extend([
+                '--output', os.path.join(dirs['abs_output_dir'], repack_config['output']),
+            ])
             self.run_command(
                 command=command,
                 cwd=dirs['abs_mozilla_dir'],

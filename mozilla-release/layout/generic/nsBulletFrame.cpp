@@ -204,6 +204,7 @@ public:
   BulletRenderer(imgIContainer* image, const nsRect& dest)
     : mImage(image)
     , mDest(dest)
+    , mColor(NS_RGBA(0, 0, 0, 0))
     , mListStyleType(NS_STYLE_LIST_STYLE_NONE)
   {
     MOZ_ASSERT(IsImageType());
@@ -280,9 +281,6 @@ public:
            mListStyleType != NS_STYLE_LIST_STYLE_DISCLOSURE_CLOSED &&
            !mText.IsEmpty();
   }
-
-  bool
-  BuildGlyphForText(nsDisplayItem* aItem, bool disableSubpixelAA);
 
   void
   PaintTextToContext(nsIFrame* aFrame,
@@ -427,37 +425,6 @@ BulletRenderer::Paint(gfxContext& aRenderingContext, nsPoint aPt,
   return ImgDrawResult::SUCCESS;
 }
 
-bool
-BulletRenderer::BuildGlyphForText(nsDisplayItem* aItem, bool disableSubpixelAA)
-{
-  MOZ_ASSERT(IsTextType());
-
-  RefPtr<DrawTarget> screenTarget = gfxPlatform::GetPlatform()->ScreenReferenceDrawTarget();
-  RefPtr<DrawTargetCapture> capture =
-    Factory::CreateCaptureDrawTarget(screenTarget->GetBackendType(),
-                                     IntSize(),
-                                     screenTarget->GetFormat());
-
-  RefPtr<gfxContext> captureCtx = gfxContext::CreateOrNull(capture);
-
-  PaintTextToContext(aItem->Frame(), captureCtx, disableSubpixelAA);
-
-  layers::GlyphArray* g = mGlyphs.AppendElement();
-  std::vector<Glyph> glyphs;
-  Color color;
-  if (!capture->ContainsOnlyColoredGlyphs(mFont, color, glyphs)) {
-    mFont = nullptr;
-    mGlyphs.Clear();
-    return false;
-  }
-
-  g->glyphs().SetLength(glyphs.size());
-  PodCopy(g->glyphs().Elements(), glyphs.data(), glyphs.size());
-  g->color() = color;
-
-  return true;
-}
-
 void
 BulletRenderer::PaintTextToContext(nsIFrame* aFrame,
                                    gfxContext* aCtx,
@@ -563,7 +530,7 @@ BulletRenderer::CreateWebRenderCommandsForPath(nsDisplayItem* aItem,
     case NS_STYLE_LIST_STYLE_DISC: {
       nsTArray<wr::ComplexClipRegion> clips;
       clips.AppendElement(wr::ToComplexClipRegion(
-        RoundedRect(ThebesRect(mPathRect.ToUnknownRect()),
+        RoundedRect(mPathRect.ToUnknownRect(),
                     RectCornerRadii(dest.size.width / 2.0))
       ));
       auto clipId = aBuilder.DefineClip(Nothing(), dest, &clips, nullptr);
@@ -603,7 +570,7 @@ BulletRenderer::CreateWebRenderCommandsForText(nsDisplayItem* aItem,
     return true;
   }
 
-  RefPtr<TextDrawTarget> textDrawer = new TextDrawTarget(aBuilder, aSc, aManager, aItem, bounds);
+  RefPtr<TextDrawTarget> textDrawer = new TextDrawTarget(aBuilder, aResources, aSc, aManager, aItem, bounds);
   RefPtr<gfxContext> captureCtx = gfxContext::CreateOrNull(textDrawer);
   PaintTextToContext(aItem->Frame(), captureCtx, aItem->IsSubpixelAADisabled());
   textDrawer->TerminateShadows();

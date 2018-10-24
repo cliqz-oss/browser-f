@@ -44,7 +44,7 @@ add_task(async function() {
   await withPerfObserver(async function() {
     let switchDone = BrowserTestUtils.waitForEvent(window, "TabSwitchDone");
     let tab = gBrowser.tabs[gBrowser.tabs.length - 1];
-    gBrowser.removeTab(tab, { animate: true });
+    gBrowser.removeTab(tab, { animate: true, byMouse: true });
     await BrowserTestUtils.waitForEvent(tab, "transitionend",
       false, e => e.propertyName === "max-width");
     await switchDone;
@@ -59,8 +59,8 @@ add_task(async function() {
           // that they sometimes get reported in the same rect.
           // So we accept up to the width of n-1 tabs.
           r.w <= (gBrowser.tabs.length - 1) * Math.ceil(tabStripRect.width / gBrowser.tabs.length)
-        ))
-      }
+        )),
+      },
      });
 
   await removeAllButFirstTab();

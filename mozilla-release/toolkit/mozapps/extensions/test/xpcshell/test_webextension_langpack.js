@@ -1,8 +1,7 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
-
-ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+"use strict";
 
 const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
 const { L10nRegistry } = ChromeUtils.import("resource://gre/modules/L10nRegistry.jsm", {});
@@ -27,26 +26,26 @@ const ADDONS = {
         "gecko": {
           "id": "langpack-und@test.mozilla.org",
           "strict_min_version": "58.0",
-          "strict_max_version": "58.*"
-        }
+          "strict_max_version": "58.*",
+        },
       },
       "sources": {
         "browser": {
-          "base_path": "browser/"
-        }
+          "base_path": "browser/",
+        },
       },
       "langpack_id": "und",
       "languages": {
         "und": {
           "chrome_resources": {
-            "global": "chrome/und/locale/und/global/"
+            "global": "chrome/und/locale/und/global/",
           },
-          "version": "20171001190118"
-        }
+          "version": "20171001190118",
+        },
       },
       "author": "Mozilla Localization Task Force",
-      "description": "Language pack for Testy for und"
-    }
+      "description": "Language pack for Testy for und",
+    },
   },
 };
 
@@ -59,6 +58,10 @@ function promiseLangpackStartup() {
     }, EVENT);
   });
 }
+
+add_task(async function setup() {
+  Services.prefs.clearUserPref("extensions.startupScanScopes");
+});
 
 /**
  * This is a basic life-cycle test which verifies that
@@ -144,6 +147,36 @@ add_task(async function() {
   }
 
   await addon.uninstall();
+  await promiseShutdownManager();
+});
+
+add_task(async function test_amazing_disappearing_langpacks() {
+  let check = (yes) => {
+    equal(L10nRegistry.getAvailableLocales().includes("und"), yes);
+    equal(Services.locale.getAvailableLocales().includes("und"), yes);
+  };
+
+  await promiseStartupManager();
+
+  check(false);
+
+  await Promise.all([
+    promiseLangpackStartup(),
+    AddonTestUtils.promiseInstallXPI(ADDONS.langpack_1),
+  ]);
+
+  check(true);
+
+  await promiseShutdownManager();
+
+  check(false);
+
+  await AddonTestUtils.manuallyUninstall(AddonTestUtils.profileExtensions,
+                                        ID);
+
+  await promiseStartupManager();
+
+  check(false);
 });
 
 /**

@@ -481,6 +481,11 @@ public:
     return mViewport;
   }
 
+  CSSRect GetVisualViewport() const
+  {
+    return CSSRect(mScrollOffset, CalculateCompositedSizeInCssPixels());
+  }
+
   void SetExtraResolution(const ScreenToLayerScale2D& aExtraResolution)
   {
     mExtraResolution = aExtraResolution;
@@ -508,7 +513,7 @@ public:
   // contents start at rightside also cause their horizontal scrollbars, if any,
   // initially start at rightside. So we can also learn about the initial side
   // of the horizontal scrollbar for the frame by calling this function.
-  bool IsHorizontalContentRightToLeft() {
+  bool IsHorizontalContentRightToLeft() const {
     return mScrollableRect.x < 0;
   }
 
@@ -525,6 +530,23 @@ public:
   bool IsScrollInfoLayer() const {
     return mIsScrollInfoLayer;
   }
+
+  // Determine if the visual viewport is outside of the layout viewport and
+  // adjust the x,y-offset in mViewport accordingly. This is necessary to
+  // allow APZ to async-scroll the layout viewport.
+  //
+  // This is a no-op if mIsRootContent is false.
+  void RecalculateViewportOffset();
+
+  // Helper function for RecalculateViewportOffset(). Exposed so that
+  // APZC can perform the operation on other copies of the layout
+  // and visual viewport rects (e.g. the "effective" ones used to implement
+  // the frame delay).
+  // Modifies |aLayoutViewport| to continue enclosing |aVisualViewport|
+  // if possible.
+  static void KeepLayoutViewportEnclosingVisualViewport(
+      const CSSRect& aVisualViewport,
+      CSSRect& aLayoutViewport);
 
 private:
   // A unique ID assigned to each scrollable frame.

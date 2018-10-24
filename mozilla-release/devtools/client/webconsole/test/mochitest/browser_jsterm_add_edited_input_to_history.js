@@ -12,17 +12,19 @@
 const TEST_URI = "data:text/html;charset=utf-8,Web Console test for bug 817834";
 
 add_task(async function() {
-  const hud = await openNewTabAndConsole(TEST_URI);
-  await testEditedInputHistory(hud);
+  // Run test with legacy JsTerm
+  await pushPref("devtools.webconsole.jsterm.codeMirror", false);
+  await performTests();
+  // And then run it with the CodeMirror-powered one.
+  await pushPref("devtools.webconsole.jsterm.codeMirror", true);
+  await performTests();
 });
 
-async function testEditedInputHistory(hud) {
-  const jsterm = hud.jsterm;
-  const inputNode = jsterm.inputNode;
+async function performTests() {
+  const {jsterm} = await openNewTabAndConsole(TEST_URI);
 
   ok(!jsterm.getInputValue(), "jsterm.getInputValue() is empty");
-  is(inputNode.selectionStart, 0);
-  is(inputNode.selectionEnd, 0);
+  checkJsTermCursor(jsterm, 0, "Cursor is at expected position");
 
   jsterm.setInputValue('"first item"');
   EventUtils.synthesizeKey("KEY_ArrowUp");
@@ -52,4 +54,16 @@ async function testEditedInputHistory(hud) {
   EventUtils.synthesizeKey("KEY_ArrowDown");
   is(jsterm.getInputValue(), '"editing input 2"',
      "test history down restores new in-progress input again");
+
+  // Appending the same value again should not impact the history.
+  // Let's also use some spaces around to check that the input value
+  // is properly trimmed.
+  await jsterm.execute('"second item"');
+  await jsterm.execute('  "second item"    ');
+  EventUtils.synthesizeKey("KEY_ArrowUp");
+  is(jsterm.getInputValue(), '"second item"',
+    "test history up reaches duplicated entry just once");
+  EventUtils.synthesizeKey("KEY_ArrowUp");
+  is(jsterm.getInputValue(), '"first item"',
+    "test history up reaches the previous value");
 }

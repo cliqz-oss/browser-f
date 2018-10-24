@@ -9,16 +9,19 @@ import math
 
 from mozbuild.util import memoize
 from mozpack.path import match as mozpackmatch
-from mozversioncontrol import get_repository_object, InvalidRepoPath
-from subprocess import CalledProcessError
 from taskgraph import files_changed
+import taskgraph
 from .. import GECKO
 
 logger = logging.getLogger(__name__)
 
 
 @memoize
-def perfile_number_of_chunks(try_task_config, head_repository, head_rev, type):
+def perfile_number_of_chunks(is_try, try_task_config, head_repository, head_rev, type):
+    if taskgraph.fast and not is_try:
+        # When iterating on taskgraph changes, the exact number of chunks that
+        # test-verify runs usually isn't important, so skip it when going fast.
+        return 3
     tests_per_chunk = 10.0
     if type.startswith('test-coverage'):
         tests_per_chunk = 30.0
@@ -36,9 +39,9 @@ def perfile_number_of_chunks(try_task_config, head_repository, head_rev, type):
         file_patterns = ['**/test_*',
                          '**/browser_*',
                          '**/crashtest*/**',
-                         'js/src/test/test/**',
-                         'js/src/test/non262/**',
-                         'js/src/test/test262/**']
+                         'js/src/tests/test/**',
+                         'js/src/tests/non262/**',
+                         'js/src/tests/test262/**']
     else:
         # Returning 0 means no tests to run, this captures non test-verify tasks
         return 1
@@ -48,15 +51,9 @@ def perfile_number_of_chunks(try_task_config, head_repository, head_rev, type):
     if try_task_config:
         specified_files = try_task_config.split(":")
 
-    try:
-        vcs = get_repository_object(GECKO)
-        changed_files.update(vcs.get_outgoing_files('AM'))
-    except InvalidRepoPath:
-        vcs = None
-    except CalledProcessError:
-        return 0
-
-    if not changed_files:
+    if is_try:
+        changed_files.update(files_changed.get_locally_changed_files(GECKO))
+    else:
         changed_files.update(files_changed.get_changed_files(head_repository,
                                                              head_rev))
 
@@ -66,6 +63,8 @@ def perfile_number_of_chunks(try_task_config, head_repository, head_rev, type):
         for path in changed_files:
             # TODO: consider running tests if a manifest changes
             if path.endswith('.list') or path.endswith('.ini'):
+                continue
+            if path.endswith('^headers^'):
                 continue
 
             if mozpackmatch(path, pattern):

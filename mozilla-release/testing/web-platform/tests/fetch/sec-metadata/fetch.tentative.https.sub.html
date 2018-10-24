@@ -8,9 +8,8 @@
         .then(r => r.json())
         .then(j => {
           assert_header_equals(j.header, {
-            "cause": "forced",
-            "destination": "\"\"",
-            "target": "subresource",
+            "cause": undefined,
+            "destination": "",
             "site": "same-origin"
           });
         });
@@ -21,9 +20,8 @@
         .then(r => r.json())
         .then(j => {
           assert_header_equals(j.header, {
-            "cause": "forced",
-            "destination": "\"\"",
-            "target": "subresource",
+            "cause": undefined,
+            "destination": "",
             "site": "same-site"
           });
         });
@@ -34,9 +32,8 @@
         .then(r => r.json())
         .then(j => {
           assert_header_equals(j.header, {
-            "cause": "forced",
-            "destination": "\"\"",
-            "target": "subresource",
+            "cause": undefined,
+            "destination": "",
             "site": "cross-site"
           });
         });

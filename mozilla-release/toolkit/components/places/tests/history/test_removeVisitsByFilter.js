@@ -68,7 +68,7 @@ add_task(async function test_removeVisitsByFilter() {
         await PlacesUtils.bookmarks.insert({
           url: uri,
           parentGuid: PlacesUtils.bookmarks.unfiledGuid,
-          title: "test bookmark"
+          title: "test bookmark",
         });
         info("Bookmark added");
       }
@@ -134,9 +134,6 @@ add_task(async function test_removeVisitsByFilter() {
       deferred: PromiseUtils.defer(),
       onBeginUpdateBatch() {},
       onEndUpdateBatch() {},
-      onVisits(aVisits) {
-        this.deferred.reject(new Error("Unexpected call to onVisits " + aVisits.length));
-      },
       onTitleChanged(uri) {
         this.deferred.reject(new Error("Unexpected call to onTitleChanged " + uri.spec));
       },
@@ -166,7 +163,7 @@ add_task(async function test_removeVisitsByFilter() {
       },
       onDeleteVisits(aURI) {
         // Not sure we can test anything.
-      }
+      },
     };
     PlacesUtils.history.addObserver(observer);
 
@@ -323,6 +320,10 @@ add_task(async function test_error_cases() {
     () => PlacesUtils.history.removeVisitsByFilter({beginDate: new Date(1000), endDate: new Date(0)}),
     /TypeError: `beginDate` should be at least as old/
   );
+  Assert.throws(
+    () => PlacesUtils.history.removeVisitsByFilter({transition: -1}),
+    /TypeError: `transition` should be valid/
+  );
 });
 
 add_task(async function test_orphans() {
@@ -332,8 +333,10 @@ add_task(async function test_orphans() {
   PlacesUtils.favicons.setAndFetchFaviconForPage(
     uri, SMALLPNG_DATA_URI, true, PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE,
     null, Services.scriptSecurityManager.getSystemPrincipal());
-  PlacesUtils.annotations.setPageAnnotation(uri, "test", "restval", 0,
-                                            PlacesUtils.annotations.EXPIRE_NEVER);
+  await PlacesUtils.history.update({
+    url: uri,
+    annotations: new Map([["test", "restval"]]),
+  });
 
   await PlacesUtils.history.removeVisitsByFilter({ beginDate: new Date(1999, 9, 9, 9, 9),
                                                    endDate: new Date() });

@@ -37,7 +37,7 @@ public:
   void Init(uint8_t aAttrEnum = 0xff,
             float aValue = 0,
             uint8_t aUnitType =
-              mozilla::dom::SVGAngleBinding::SVG_ANGLETYPE_UNSPECIFIED) {
+              mozilla::dom::SVGAngle_Binding::SVG_ANGLETYPE_UNSPECIFIED) {
     mAnimVal = mBaseVal = aValue;
     mAnimValUnit = mBaseValUnit = aUnitType;
     mAttrEnum = aAttrEnum;
@@ -55,7 +55,8 @@ public:
   float GetAnimValue() const
     { return mAnimVal * GetDegreesPerUnit(mAnimValUnit); }
 
-  void SetBaseValue(float aValue, nsSVGElement *aSVGElement, bool aDoSetAttr);
+  void SetBaseValue(float aValue, uint8_t aUnit, nsSVGElement *aSVGElement,
+                    bool aDoSetAttr);
   void SetAnimValue(float aValue, uint8_t aUnit, nsSVGElement *aSVGElement);
 
   uint8_t GetBaseValueUnit() const { return mBaseValUnit; }

@@ -39,49 +39,138 @@ CodeGeneratorARM64::CodeGeneratorARM64(MIRGenerator* gen, LIRGraph* graph, Macro
 bool
 CodeGeneratorARM64::generateOutOfLineCode()
 {
-    MOZ_CRASH("generateOutOfLineCode");
+    if (!CodeGeneratorShared::generateOutOfLineCode())
+        return false;
+
+    if (deoptLabel_.used()) {
+        // All non-table-based bailouts will go here.
+        masm.bind(&deoptLabel_);
+
+        // Store the frame size, so the handler can recover the IonScript.
+        masm.Mov(x30, frameSize());
+
+        TrampolinePtr handler = gen->jitRuntime()->getGenericBailoutHandler();
+        masm.jump(handler);
+    }
+
+    return !masm.oom();
 }
 
 void
 CodeGeneratorARM64::emitBranch(Assembler::Condition cond, MBasicBlock* mirTrue, MBasicBlock* mirFalse)
 {
-    MOZ_CRASH("emitBranch");
+    if (isNextBlock(mirFalse->lir())) {
+        jumpToBlock(mirTrue, cond);
+    } else {
+        jumpToBlock(mirFalse, Assembler::InvertCondition(cond));
+        jumpToBlock(mirTrue);
+    }
 }
 
 void
 OutOfLineBailout::accept(CodeGeneratorARM64* codegen)
 {
-    MOZ_CRASH("accept");
+    codegen->visitOutOfLineBailout(this);
 }
 
 void
 CodeGenerator::visitTestIAndBranch(LTestIAndBranch* test)
 {
-    MOZ_CRASH("visitTestIAndBranch");
+    Register input = ToRegister(test->input());
+    MBasicBlock* mirTrue = test->ifTrue();
+    MBasicBlock* mirFalse = test->ifFalse();
+
+    masm.test32(input, input);
+
+    // Jump to the True block if NonZero.
+    // Jump to the False block if Zero.
+    if (isNextBlock(mirFalse->lir())) {
+        jumpToBlock(mirTrue, Assembler::NonZero);
+    } else {
+        jumpToBlock(mirFalse, Assembler::Zero);
+        if (!isNextBlock(mirTrue->lir()))
+            jumpToBlock(mirTrue);
+    }
 }
 
 void
 CodeGenerator::visitCompare(LCompare* comp)
 {
-    MOZ_CRASH("visitCompare");
+    const MCompare* mir = comp->mir();
+    const MCompare::CompareType type = mir->compareType();
+    const Assembler::Condition cond = JSOpToCondition(type, comp->jsop());
+    const Register leftreg = ToRegister(comp->getOperand(0));
+    const LAllocation* right = comp->getOperand(1);
+    const Register defreg = ToRegister(comp->getDef(0));
+
+    if (type == MCompare::Compare_Object || type == MCompare::Compare_Symbol) {
+        masm.cmpPtrSet(cond, leftreg, ToRegister(right), defreg);
+        return;
+    }
+
+    if (right->isConstant())
+        masm.cmp32Set(cond, leftreg, Imm32(ToInt32(right)), defreg);
+    else
+        masm.cmp32Set(cond, leftreg, ToRegister(right), defreg);
 }
 
 void
 CodeGenerator::visitCompareAndBranch(LCompareAndBranch* comp)
 {
-    MOZ_CRASH("visitCompareAndBranch");
+    const MCompare* mir = comp->cmpMir();
+    const MCompare::CompareType type = mir->compareType();
+    const LAllocation* left = comp->left();
+    const LAllocation* right = comp->right();
+
+    if (type == MCompare::Compare_Object || type == MCompare::Compare_Symbol) {
+        masm.cmpPtr(ToRegister(left), ToRegister(right));
+    } else if (right->isConstant()) {
+        masm.cmp32(ToRegister(left), Imm32(ToInt32(right)));
+    } else {
+        masm.cmp32(ToRegister(left), ToRegister(right));
+    }
+
+    Assembler::Condition cond = JSOpToCondition(type, comp->jsop());
+    emitBranch(cond, comp->ifTrue(), comp->ifFalse());
 }
 
 void
 CodeGeneratorARM64::bailoutIf(Assembler::Condition condition, LSnapshot* snapshot)
 {
-    MOZ_CRASH("bailoutIf");
+    encode(snapshot);
+
+    // Though the assembler doesn't track all frame pushes, at least make sure
+    // the known value makes sense.
+    MOZ_ASSERT_IF(frameClass_ != FrameSizeClass::None() && deoptTable_,
+                  frameClass_.frameSize() == masm.framePushed());
+
+    // ARM64 doesn't use a bailout table.
+    InlineScriptTree* tree = snapshot->mir()->block()->trackedTree();
+    OutOfLineBailout* ool = new(alloc()) OutOfLineBailout(snapshot);
+    addOutOfLineCode(ool, new(alloc()) BytecodeSite(tree, tree->script()->code()));
+
+    masm.B(ool->entry(), condition);
 }
 
 void
 CodeGeneratorARM64::bailoutFrom(Label* label, LSnapshot* snapshot)
 {
-    MOZ_CRASH("bailoutFrom");
+    MOZ_ASSERT(label->used());
+    MOZ_ASSERT(!label->bound());
+
+    encode(snapshot);
+
+    // Though the assembler doesn't track all frame pushes, at least make sure
+    // the known value makes sense.
+    MOZ_ASSERT_IF(frameClass_ != FrameSizeClass::None() && deoptTable_,
+                  frameClass_.frameSize() == masm.framePushed());
+
+    // ARM64 doesn't use a bailout table.
+    InlineScriptTree* tree = snapshot->mir()->block()->trackedTree();
+    OutOfLineBailout* ool = new(alloc()) OutOfLineBailout(snapshot);
+    addOutOfLineCode(ool, new(alloc()) BytecodeSite(tree, tree->script()->code()));
+
+    masm.retarget(label, ool->entry());
 }
 
 void
@@ -93,7 +182,8 @@ CodeGeneratorARM64::bailout(LSnapshot* snapshot)
 void
 CodeGeneratorARM64::visitOutOfLineBailout(OutOfLineBailout* ool)
 {
-    MOZ_CRASH("visitOutOfLineBailout");
+    masm.push(Imm32(ool->snapshot()->snapshotOffset()));
+    masm.B(&deoptLabel_);
 }
 
 void
@@ -148,16 +238,24 @@ toXRegister(const T* a)
     return ARMRegister(ToRegister(a), 64);
 }
 
-js::jit::Operand
+Operand
 toWOperand(const LAllocation* a)
 {
-    MOZ_CRASH("toWOperand");
+    if (a->isConstant())
+        return Operand(ToInt32(a));
+    return Operand(toWRegister(a));
 }
 
 vixl::CPURegister
 ToCPURegister(const LAllocation* a, Scalar::Type type)
 {
-    MOZ_CRASH("ToCPURegister");
+    if (a->isFloatReg() && type == Scalar::Float64)
+        return ARMFPRegister(ToFloatRegister(a), 64);
+    if (a->isFloatReg() && type == Scalar::Float32)
+        return ARMFPRegister(ToFloatRegister(a), 32);
+    if (a->isGeneralReg())
+        return ARMRegister(ToRegister(a), 32);
+    MOZ_CRASH("Unknown LAllocation");
 }
 
 vixl::CPURegister
@@ -169,19 +267,112 @@ ToCPURegister(const LDefinition* d, Scalar::Type type)
 void
 CodeGenerator::visitAddI(LAddI* ins)
 {
-    MOZ_CRASH("visitAddI");
+    const LAllocation* lhs = ins->getOperand(0);
+    const LAllocation* rhs = ins->getOperand(1);
+    const LDefinition* dest = ins->getDef(0);
+
+    // Platforms with three-operand arithmetic ops don't need recovery.
+    MOZ_ASSERT(!ins->recoversInput());
+
+    if (ins->snapshot()) {
+        masm.Adds(toWRegister(dest), toWRegister(lhs), toWOperand(rhs));
+        bailoutIf(Assembler::Overflow, ins->snapshot());
+    } else {
+        masm.Add(toWRegister(dest), toWRegister(lhs), toWOperand(rhs));
+    }
 }
 
 void
 CodeGenerator::visitSubI(LSubI* ins)
 {
-    MOZ_CRASH("visitSubI");
+    const LAllocation* lhs = ins->getOperand(0);
+    const LAllocation* rhs = ins->getOperand(1);
+    const LDefinition* dest = ins->getDef(0);
+
+    // Platforms with three-operand arithmetic ops don't need recovery.
+    MOZ_ASSERT(!ins->recoversInput());
+
+    if (ins->snapshot()) {
+        masm.Subs(toWRegister(dest), toWRegister(lhs), toWOperand(rhs));
+        bailoutIf(Assembler::Overflow, ins->snapshot());
+    } else {
+        masm.Sub(toWRegister(dest), toWRegister(lhs), toWOperand(rhs));
+    }
 }
 
 void
 CodeGenerator::visitMulI(LMulI* ins)
 {
-    MOZ_CRASH("visitMulI");
+    const LAllocation* lhs = ins->getOperand(0);
+    const LAllocation* rhs = ins->getOperand(1);
+    const LDefinition* dest = ins->getDef(0);
+    MMul* mul = ins->mir();
+    MOZ_ASSERT_IF(mul->mode() == MMul::Integer, !mul->canBeNegativeZero() && !mul->canOverflow());
+
+    Register lhsreg = ToRegister(lhs);
+
+    if (rhs->isConstant()) {
+        // Bailout on -0.0.
+        int32_t constant = ToInt32(rhs);
+        if (mul->canBeNegativeZero() && constant <= 0) {
+            Assembler::Condition bailoutCond = (constant == 0) ? Assembler::LessThan : Assembler::Equal;
+            masm.Cmp(toWRegister(lhs), Operand(0));
+            bailoutIf(bailoutCond, ins->snapshot());
+        }
+
+        switch (constant) {
+          case -1:
+            masm.neg32(lhsreg);
+            break;
+          case 0:
+            masm.Mov(ARMRegister(lhsreg, 32), wzr);
+            return; // escape overflow check;
+          case 1:
+            // nop
+            return; // escape overflow check;
+          case 2:
+            masm.add32(lhsreg, lhsreg);
+            break;
+          default:
+            // Use shift if cannot overflow and constant is a power of 2
+            if (!mul->canOverflow() && constant > 0) {
+                int32_t shift = FloorLog2(constant);
+                if ((1 << shift) == constant) {
+                    masm.lshift32(Imm32(shift), lhsreg);
+                    return;
+                }
+            }
+
+            // Otherwise, just multiply.
+            Label bailout;
+            Label* onZero = mul->canBeNegativeZero() ? &bailout : nullptr;
+            Label* onOverflow = mul->canOverflow() ? &bailout : nullptr;
+
+            vixl::UseScratchRegisterScope temps(&masm.asVIXL());
+            const Register scratch = temps.AcquireW().asUnsized();
+
+            masm.move32(Imm32(constant), scratch);
+            masm.mul32(lhsreg, scratch, ToRegister(dest), onOverflow, onZero);
+            if (onZero || onOverflow)
+                bailoutFrom(&bailout, ins->snapshot());
+            return; // escape overflow check;
+        }
+
+        // Overflow check.
+        if (mul->canOverflow())
+            bailoutIf(Assembler::Overflow, ins->snapshot());
+    } else {
+        Register rhsreg = ToRegister(rhs);
+
+        Label bailout;
+        // TODO: x64 (but not other platforms) have an OOL path for onZero.
+        Label* onZero = mul->canBeNegativeZero() ? &bailout : nullptr;
+        Label* onOverflow = mul->canOverflow() ? &bailout : nullptr;
+
+        masm.mul32(lhsreg, rhsreg, ToRegister(dest), onOverflow, onZero);
+        if (onZero || onOverflow)
+            bailoutFrom(&bailout, ins->snapshot());
+    }
 }
 
 
@@ -189,6 +380,7 @@ void
 CodeGenerator::visitDivI(LDivI* ins)
 {
     MOZ_CRASH("visitDivI");
+
 }
 
 void
@@ -213,7 +405,42 @@ CodeGenerator::visitModI(LModI* ins)
 void
 CodeGenerator::visitModPowTwoI(LModPowTwoI* ins)
 {
-    MOZ_CRASH("visitModPowTwoI");
+    Register lhs = ToRegister(ins->getOperand(0));
+    ARMRegister lhsw = toWRegister(ins->getOperand(0));
+    ARMRegister outw = toWRegister(ins->output());
+
+    int32_t shift = ins->shift();
+    bool canBeNegative = !ins->mir()->isUnsigned() && ins->mir()->canBeNegativeDividend();
+
+    Label negative;
+    if (canBeNegative) {
+        // Switch based on sign of the lhs.
+        // Positive numbers are just a bitmask.
+        masm.branchTest32(Assembler::Signed, lhs, lhs, &negative);
+    }
+
+    masm.And(outw, lhsw, Operand((uint32_t(1) << shift) - 1));
+
+    if (canBeNegative) {
+        Label done;
+        masm.jump(&done);
+
+        // Negative numbers need a negate, bitmask, negate.
+        masm.bind(&negative);
+        masm.Neg(outw, Operand(lhsw));
+        masm.And(outw, outw, Operand((uint32_t(1) << shift) - 1));
+
+        // Since a%b has the same sign as b, and a is negative in this branch,
+        // an answer of 0 means the correct result is actually -0. Bail out.
+        if (!ins->mir()->isTruncated()) {
+            masm.Negs(outw, Operand(outw));
+            bailoutIf(Assembler::Zero, ins->snapshot());
+        } else {
+            masm.Neg(outw, Operand(outw));
+        }
+
+        masm.bind(&done);
+    }
 }
 
 void
@@ -225,13 +452,31 @@ CodeGenerator::visitModMaskI(LModMaskI* ins)
 void
 CodeGenerator::visitBitNotI(LBitNotI* ins)
 {
-    MOZ_CRASH("visitBitNotI");
+    const LAllocation* input = ins->getOperand(0);
+    const LDefinition* output = ins->getDef(0);
+    masm.Mvn(toWRegister(output), toWOperand(input));
 }
 
 void
 CodeGenerator::visitBitOpI(LBitOpI* ins)
 {
-    MOZ_CRASH("visitBitOpI");
+    const ARMRegister lhs = toWRegister(ins->getOperand(0));
+    const Operand rhs = toWOperand(ins->getOperand(1));
+    const ARMRegister dest = toWRegister(ins->getDef(0));
+
+    switch (ins->bitop()) {
+      case JSOP_BITOR:
+        masm.Orr(dest, lhs, rhs);
+        break;
+      case JSOP_BITXOR:
+        masm.Eor(dest, lhs, rhs);
+        break;
+      case JSOP_BITAND:
+        masm.And(dest, lhs, rhs);
+        break;
+      default:
+        MOZ_CRASH("unexpected binary opcode");
+    }
 }
 
 void
@@ -255,7 +500,11 @@ CodeGenerator::visitPowHalfD(LPowHalfD* ins)
 MoveOperand
 CodeGeneratorARM64::toMoveOperand(const LAllocation a) const
 {
-    MOZ_CRASH("toMoveOperand");
+    if (a.isGeneralReg())
+        return MoveOperand(ToRegister(a));
+    if (a.isFloatReg())
+        return MoveOperand(ToFloatRegister(a));
+    return MoveOperand(AsRegister(masm.getStackPointer()), ToStackOffset(a));
 }
 
 class js::jit::OutOfLineTableSwitch : public OutOfLineCodeBase<CodeGeneratorARM64>
@@ -312,25 +561,45 @@ CodeGenerator::visitMathF(LMathF* math)
 void
 CodeGenerator::visitFloor(LFloor* lir)
 {
-    MOZ_CRASH("visitFloor");
+    FloatRegister input = ToFloatRegister(lir->input());
+    Register output = ToRegister(lir->output());
+
+    Label bailout;
+    masm.floor(input, output, &bailout);
+    bailoutFrom(&bailout, lir->snapshot());
 }
 
 void
 CodeGenerator::visitFloorF(LFloorF* lir)
 {
-    MOZ_CRASH("visitFloorF");
+    FloatRegister input = ToFloatRegister(lir->input());
+    Register output = ToRegister(lir->output());
+
+    Label bailout;
+    masm.floorf(input, output, &bailout);
+    bailoutFrom(&bailout, lir->snapshot());
 }
 
 void
 CodeGenerator::visitCeil(LCeil* lir)
 {
-    MOZ_CRASH("visitCeil");
+    FloatRegister input = ToFloatRegister(lir->input());
+    Register output = ToRegister(lir->output());
+
+    Label bailout;
+    masm.ceil(input, output, &bailout);
+    bailoutFrom(&bailout, lir->snapshot());
 }
 
 void
 CodeGenerator::visitCeilF(LCeilF* lir)
 {
-    MOZ_CRASH("visitCeilF");
+    FloatRegister input = ToFloatRegister(lir->input());
+    Register output = ToRegister(lir->output());
+
+    Label bailout;
+    masm.ceilf(input, output, &bailout);
+    bailoutFrom(&bailout, lir->snapshot());
 }
 
 void
@@ -360,7 +629,9 @@ CodeGenerator::visitTruncF(LTruncF* lir)
 void
 CodeGenerator::visitClzI(LClzI* lir)
 {
-    MOZ_CRASH("visitClzI");
+    ARMRegister input = toWRegister(lir->input());
+    ARMRegister output = toWRegister(lir->output());
+    masm.Clz(output, input);
 }
 
 void
@@ -422,31 +693,96 @@ CodeGeneratorARM64::ToTempValue(LInstruction* ins, size_t pos)
 void
 CodeGenerator::visitValue(LValue* value)
 {
-    MOZ_CRASH("visitValue");
+    ValueOperand result = ToOutValue(value);
+    masm.moveValue(value->value(), result);
 }
 
 void
 CodeGenerator::visitBox(LBox* box)
 {
-    MOZ_CRASH("visitBox");
+    const LAllocation* in = box->getOperand(0);
+    ValueOperand result = ToOutValue(box);
+
+    masm.moveValue(TypedOrValueRegister(box->type(), ToAnyRegister(in)), result);
 }
 
 void
 CodeGenerator::visitUnbox(LUnbox* unbox)
 {
-    MOZ_CRASH("visitUnbox");
+    MUnbox* mir = unbox->mir();
+
+    if (mir->fallible()) {
+        const ValueOperand value = ToValue(unbox, LUnbox::Input);
+        Assembler::Condition cond;
+        switch (mir->type()) {
+          case MIRType::Int32:
+            cond = masm.testInt32(Assembler::NotEqual, value);
+            break;
+          case MIRType::Boolean:
+            cond = masm.testBoolean(Assembler::NotEqual, value);
+            break;
+          case MIRType::Object:
+            cond = masm.testObject(Assembler::NotEqual, value);
+            break;
+          case MIRType::String:
+            cond = masm.testString(Assembler::NotEqual, value);
+            break;
+          case MIRType::Symbol:
+            cond = masm.testSymbol(Assembler::NotEqual, value);
+            break;
+          default:
+            MOZ_CRASH("Given MIRType cannot be unboxed.");
+        }
+        bailoutIf(cond, unbox->snapshot());
+    } else {
+#ifdef DEBUG
+        JSValueTag tag = MIRTypeToTag(mir->type());
+        Label ok;
+
+        ValueOperand input = ToValue(unbox, LUnbox::Input);
+        ScratchTagScope scratch(masm, input);
+        masm.splitTagForTest(input, scratch);
+        masm.branchTest32(Assembler::Condition::Equal, scratch, Imm32(tag), &ok);
+        masm.assumeUnreachable("Infallible unbox type mismatch");
+        masm.bind(&ok);
+#endif
+    }
+
+    ValueOperand input = ToValue(unbox, LUnbox::Input);
+    Register result = ToRegister(unbox->output());
+    switch (mir->type()) {
+      case MIRType::Int32:
+        masm.unboxInt32(input, result);
+        break;
+      case MIRType::Boolean:
+        masm.unboxBoolean(input, result);
+        break;
+      case MIRType::Object:
+        masm.unboxObject(input, result);
+        break;
+      case MIRType::String:
+        masm.unboxString(input, result);
+        break;
+      case MIRType::Symbol:
+        masm.unboxSymbol(input, result);
+        break;
+      default:
+        MOZ_CRASH("Given MIRType cannot be unboxed.");
+    }
 }
 
 void
 CodeGenerator::visitDouble(LDouble* ins)
 {
-    MOZ_CRASH("visitDouble");
+    ARMFPRegister output(ToFloatRegister(ins->getDef(0)), 64);
+    masm.Fmov(output, ins->getDouble());
 }
 
 void
 CodeGenerator::visitFloat32(LFloat32* ins)
 {
-    MOZ_CRASH("visitFloat32");
+    ARMFPRegister output(ToFloatRegister(ins->getDef(0)), 32);
+    masm.Fmov(output, ins->getFloat());
 }
 
 void
@@ -470,25 +806,49 @@ CodeGenerator::visitTestFAndBranch(LTestFAndBranch* test)
 void
 CodeGenerator::visitCompareD(LCompareD* comp)
 {
-    MOZ_CRASH("visitCompareD");
+    const FloatRegister left = ToFloatRegister(comp->left());
+    const FloatRegister right = ToFloatRegister(comp->right());
+    ARMRegister output = toWRegister(comp->output());
+    Assembler::DoubleCondition cond = JSOpToDoubleCondition(comp->mir()->jsop());
+
+    masm.compareDouble(cond, left, right);
+    masm.cset(output, Assembler::ConditionFromDoubleCondition(cond));
 }
 
 void
 CodeGenerator::visitCompareF(LCompareF* comp)
 {
-    MOZ_CRASH("visitCompareF");
+    const FloatRegister left = ToFloatRegister(comp->left());
+    const FloatRegister right = ToFloatRegister(comp->right());
+    ARMRegister output = toWRegister(comp->output());
+    Assembler::DoubleCondition cond = JSOpToDoubleCondition(comp->mir()->jsop());
+
+    masm.compareFloat(cond, left, right);
+    masm.cset(output, Assembler::ConditionFromDoubleCondition(cond));
 }
 
 void
 CodeGenerator::visitCompareDAndBranch(LCompareDAndBranch* comp)
 {
-    MOZ_CRASH("visitCompareDAndBranch");
+    const FloatRegister left = ToFloatRegister(comp->left());
+    const FloatRegister right = ToFloatRegister(comp->right());
+    Assembler::DoubleCondition doubleCond = JSOpToDoubleCondition(comp->cmpMir()->jsop());
+    Assembler::Condition cond = Assembler::ConditionFromDoubleCondition(doubleCond);
+
+    masm.compareDouble(doubleCond, left, right);
+    emitBranch(cond, comp->ifTrue(), comp->ifFalse());
 }
 
 void
 CodeGenerator::visitCompareFAndBranch(LCompareFAndBranch* comp)
 {
-    MOZ_CRASH("visitCompareFAndBranch");
+    const FloatRegister left = ToFloatRegister(comp->left());
+    const FloatRegister right = ToFloatRegister(comp->right());
+    Assembler::DoubleCondition doubleCond = JSOpToDoubleCondition(comp->cmpMir()->jsop());
+    Assembler::Condition cond = Assembler::ConditionFromDoubleCondition(doubleCond);
+
+    masm.compareFloat(doubleCond, left, right);
+    emitBranch(cond, comp->ifTrue(), comp->ifFalse());
 }
 
 void
@@ -567,7 +927,22 @@ CodeGeneratorARM64::storeElementTyped(const LAllocation* value, MIRType valueTyp
 void
 CodeGeneratorARM64::generateInvalidateEpilogue()
 {
-    MOZ_CRASH("generateInvalidateEpilogue");
+    // Ensure that there is enough space in the buffer for the OsiPoint patching
+    // to occur. Otherwise, we could overwrite the invalidation epilogue.
+    for (size_t i = 0; i < sizeof(void*); i += Assembler::NopSize())
+        masm.nop();
+
+    masm.bind(&invalidate_);
+
+    // Push the Ion script onto the stack (when we determine what that pointer is).
+    invalidateEpilogueData_ = masm.pushWithPatch(ImmWord(uintptr_t(-1)));
+
+    TrampolinePtr thunk = gen->jitRuntime()->getInvalidationThunk();
+    masm.call(thunk);
+
+    // We should never reach this point in JIT code -- the invalidation thunk
+    // should pop the invalidated JS frame and return directly to its caller.
+    masm.assumeUnreachable("Should have returned directly to its caller instead of here.");
 }
 
 template <class U>
@@ -657,7 +1032,7 @@ CodeGenerator::visitCompareExchangeTypedArrayElement(LCompareExchangeTypedArrayE
     Register newval = ToRegister(lir->newval());
 
     Scalar::Type arrayType = lir->mir()->arrayType();
-    int width = Scalar::byteSize(arrayType);
+    size_t width = Scalar::byteSize(arrayType);
 
     if (lir->index()->isConstant()) {
         Address dest(elements, ToInt32(lir->index()) * width);
@@ -678,7 +1053,7 @@ CodeGenerator::visitAtomicExchangeTypedArrayElement(LAtomicExchangeTypedArrayEle
     Register value = ToRegister(lir->value());
 
     Scalar::Type arrayType = lir->mir()->arrayType();
-    int width = Scalar::byteSize(arrayType);
+    size_t width = Scalar::byteSize(arrayType);
 
     if (lir->index()->isConstant()) {
         Address dest(elements, ToInt32(lir->index()) * width);
@@ -687,66 +1062,6 @@ CodeGenerator::visitAtomicExchangeTypedArrayElement(LAtomicExchangeTypedArrayEle
         BaseIndex dest(elements, ToRegister(lir->index()), ScaleFromElemWidth(width));
         masm.atomicExchangeJS(arrayType, Synchronization::Full(), dest, value, temp, output);
     }
-}
-
-void
-CodeGenerator::visitSimdSplatX4(LSimdSplatX4* lir)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimd128Int(LSimd128Int* ins)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimd128Float(LSimd128Float* ins)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdExtractElementI(LSimdExtractElementI* ins)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdExtractElementF(LSimdExtractElementF* ins)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdBinaryCompIx4(LSimdBinaryCompIx4* lir)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdBinaryCompFx4(LSimdBinaryCompFx4* lir)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdBinaryArithIx4(LSimdBinaryArithIx4* lir)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdBinaryArithFx4(LSimdBinaryArithFx4* lir)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdBinaryBitwise(LSimdBinaryBitwise* lir)
-{
-    MOZ_CRASH("NYI");
 }
 
 void
@@ -852,12 +1167,6 @@ CodeGenerator::visitRotateI64(LRotateI64*)
 }
 
 void
-CodeGenerator::visitSimdShift(LSimdShift*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
 CodeGenerator::visitWasmStore(LWasmStore*)
 {
     MOZ_CRASH("NYI");
@@ -876,61 +1185,13 @@ CodeGenerator::visitNearbyIntF(LNearbyIntF*)
 }
 
 void
-CodeGenerator::visitSimdSelect(LSimdSelect*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
 CodeGenerator::visitWasmSelect(LWasmSelect*)
 {
     MOZ_CRASH("NYI");
 }
 
 void
-CodeGenerator::visitSimdAllTrue(LSimdAllTrue*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdAnyTrue(LSimdAnyTrue*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdShuffle(LSimdShuffle*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdSplatX8(LSimdSplatX8*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
 CodeGenerator::visitWasmLoadI64(LWasmLoadI64*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdSplatX16(LSimdSplatX16*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdSwizzleF(LSimdSwizzleF*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdSwizzleI(LSimdSwizzleI*)
 {
     MOZ_CRASH("NYI");
 }
@@ -943,12 +1204,6 @@ CodeGenerator::visitWasmStoreI64(LWasmStoreI64*)
 
 void
 CodeGenerator::visitMemoryBarrier(LMemoryBarrier*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdShuffleX4(LSimdShuffleX4*)
 {
     MOZ_CRASH("NYI");
 }
@@ -1002,73 +1257,7 @@ CodeGenerator::visitWrapInt64ToInt32(LWrapInt64ToInt32*)
 }
 
 void
-CodeGenerator::visitSimdBinaryCompIx8(LSimdBinaryCompIx8*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdUnaryArithFx4(LSimdUnaryArithFx4*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdUnaryArithIx4(LSimdUnaryArithIx4*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdUnaryArithIx8(LSimdUnaryArithIx8*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
 CodeGenerator::visitExtendInt32ToInt64(LExtendInt32ToInt64*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitFloat32x4ToInt32x4(LFloat32x4ToInt32x4*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitInt32x4ToFloat32x4(LInt32x4ToFloat32x4*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdBinaryArithIx8(LSimdBinaryArithIx8*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdBinaryCompIx16(LSimdBinaryCompIx16*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdInsertElementF(LSimdInsertElementF*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdInsertElementI(LSimdInsertElementI*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdUnaryArithIx16(LSimdUnaryArithIx16*)
 {
     MOZ_CRASH("NYI");
 }
@@ -1080,61 +1269,13 @@ CodeGenerator::visitCompareI64AndBranch(LCompareI64AndBranch*)
 }
 
 void
-CodeGenerator::visitFloat32x4ToUint32x4(LFloat32x4ToUint32x4*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdBinaryArithIx16(LSimdBinaryArithIx16*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdExtractElementB(LSimdExtractElementB*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdGeneralShuffleF(LSimdGeneralShuffleF*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdGeneralShuffleI(LSimdGeneralShuffleI*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdReinterpretCast(LSimdReinterpretCast*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
 CodeGenerator::visitWasmTruncateToInt32(LWasmTruncateToInt32*)
 {
     MOZ_CRASH("NYI");
 }
 
 void
-CodeGenerator::visitSimdBinarySaturating(LSimdBinarySaturating*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
 CodeGenerator::visitWasmReinterpretToI64(LWasmReinterpretToI64*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdExtractElementU2D(LSimdExtractElementU2D*)
 {
     MOZ_CRASH("NYI");
 }

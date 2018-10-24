@@ -25,7 +25,7 @@
  *   /dom/webidl/Animation*.webidl
  */
 
-const {Cu, Ci} = require("chrome");
+const {Cu} = require("chrome");
 const protocol = require("devtools/shared/protocol");
 const {Actor} = protocol;
 const {animationPlayerSpec, animationsSpec} = require("devtools/shared/specs/animation");
@@ -88,6 +88,7 @@ var AnimationPlayerActor = protocol.ActorClassWithSpec(animationPlayerSpec, {
     }
 
     this.createdTime = createdTime;
+    this.currentTimeAtCreated = player.currentTime;
   },
 
   destroy: function() {
@@ -336,6 +337,8 @@ var AnimationPlayerActor = protocol.ActorClassWithSpec(animationPlayerSpec, {
       documentCurrentTime: this.node.ownerDocument.timeline.currentTime,
       // The time which this animation created.
       createdTime: this.createdTime,
+      // The time which an animation's current time when this animation has created.
+      currentTimeAtCreated: this.currentTimeAtCreated,
     };
   },
 
@@ -389,9 +392,8 @@ var AnimationPlayerActor = protocol.ActorClassWithSpec(animationPlayerSpec, {
       }
 
       if (hasCurrentAnimation(changedAnimations)) {
-        // Only consider the state has having changed if any of delay, duration,
-        // iterationCount, iterationStart, or playbackRate has changed (for now
-        // at least).
+        // Only consider the state has having changed if any of effect timing properties,
+        // animationTimingFunction or playbackRate has changed.
         const newState = this.getState();
         const oldState = this.currentState;
         hasChanged = newState.delay !== oldState.delay ||
@@ -399,6 +401,11 @@ var AnimationPlayerActor = protocol.ActorClassWithSpec(animationPlayerSpec, {
                      newState.iterationStart !== oldState.iterationStart ||
                      newState.duration !== oldState.duration ||
                      newState.endDelay !== oldState.endDelay ||
+                     newState.direction !== oldState.direction ||
+                     newState.easing !== oldState.easing ||
+                     newState.fill !== oldState.fill ||
+                     newState.animationTimingFunction !==
+                       oldState.animationTimingFunction ||
                      newState.playbackRate !== oldState.playbackRate;
         break;
       }
@@ -489,9 +496,7 @@ var AnimationPlayerActor = protocol.ActorClassWithSpec(animationPlayerSpec, {
       return {name: property.property, values: property.values};
     });
 
-    const DOMWindowUtils =
-      this.window.QueryInterface(Ci.nsIInterfaceRequestor)
-          .getInterface(Ci.nsIDOMWindowUtils);
+    const DOMWindowUtils = this.window.windowUtils;
 
     // Fill missing keyframe with computed value.
     for (const property of properties) {
@@ -925,13 +930,6 @@ exports.AnimationsActor = protocol.ActorClassWithSpec(animationsSpec, {
    * @param {Object} player
    */
   pauseSync(player) {
-    // Gecko includes an optimization that means that if the animation is play-pending
-    // and we set the startTime to null, the change will be ignored and the animation
-    // will continue to be play-pending. This violates the spec but until the spec is
-    // clarified[1] on this point we work around this by ensuring the animation's
-    // startTime is set to something non-null before setting it to null.
-    // [1] https://github.com/w3c/csswg-drafts/issues/2691
-    this.playSync(player);
     player.startTime = null;
   },
 

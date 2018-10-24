@@ -63,6 +63,11 @@ nsPrintingProxy::GetInstance()
 nsresult
 nsPrintingProxy::Init()
 {
+  // Don't create a printing proxy in middleman processes, to avoid conflicts
+  // with the one created in the child recording process.
+  if (recordreplay::IsMiddleman()) {
+    return NS_ERROR_FAILURE;
+  }
   mozilla::Unused << ContentChild::GetSingleton()->SendPPrintingConstructor(this);
   return NS_OK;
 }
@@ -211,8 +216,8 @@ nsPrintingProxy::AllocPPrintProgressDialogChild()
 {
   // The parent process will never initiate the PPrintProgressDialog
   // protocol connection, so no need to provide an allocator here.
-  NS_NOTREACHED("Allocator for PPrintProgressDialogChild should not be "
-                "called on nsPrintingProxy.");
+  MOZ_ASSERT_UNREACHABLE("Allocator for PPrintProgressDialogChild should not "
+                         "be called on nsPrintingProxy.");
   return nullptr;
 }
 
@@ -229,8 +234,8 @@ nsPrintingProxy::AllocPPrintSettingsDialogChild()
 {
   // The parent process will never initiate the PPrintSettingsDialog
   // protocol connection, so no need to provide an allocator here.
-  NS_NOTREACHED("Allocator for PPrintSettingsDialogChild should not be "
-                "called on nsPrintingProxy.");
+  MOZ_ASSERT_UNREACHABLE("Allocator for PPrintSettingsDialogChild should not "
+                         "be called on nsPrintingProxy.");
   return nullptr;
 }
 

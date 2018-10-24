@@ -16,7 +16,8 @@
  * limitations under the License.
  */
 
-/* WebAssembly baseline compiler ("RabaldrMonkey")
+/*
+ * [SMDOC] WebAssembly baseline compiler (RabaldrMonkey)
  *
  * General assumptions for 32-bit vs 64-bit code:
  *
@@ -138,6 +139,7 @@
 #endif
 
 #include "wasm/WasmGenerator.h"
+#include "wasm/WasmInstance.h"
 #include "wasm/WasmOpIter.h"
 #include "wasm/WasmSignalHandlers.h"
 #include "wasm/WasmValidate.h"
@@ -1010,7 +1012,7 @@ BaseLocalIter::BaseLocalIter(const ValTypeVector& locals, size_t argsLength, boo
     index_(0),
     localSize_(debugEnabled ? DebugFrame::offsetOfFrame() : 0),
     reservedSize_(localSize_),
-    frameOffset_(0),
+    frameOffset_(UINT32_MAX),
     mirType_(MIRType::Undefined),
     done_(false)
 {
@@ -1056,6 +1058,7 @@ BaseLocalIter::settle()
           case ValType::I64:
           case ValType::F32:
           case ValType::F64:
+          case ValType::Ref:
           case ValType::AnyRef:
             mirType_ = ToMIRType(locals_[index_]);
             frameOffset_ = pushLocal(MIRTypeToSize(mirType_));
@@ -1888,6 +1891,7 @@ class BaseCompiler final : public BaseCompilerInterface
     ValTypeVector               SigF_;
     MIRTypeVector               SigP_;
     MIRTypeVector               SigPI_;
+    MIRTypeVector               SigPL_;
     MIRTypeVector               SigPII_;
     MIRTypeVector               SigPIII_;
     MIRTypeVector               SigPIIL_;
@@ -2130,25 +2134,39 @@ class BaseCompiler final : public BaseCompilerInterface
     }
 
     void maybeReserveJoinRegI(ExprType type) {
-        if (type == ExprType::I32)
+        switch (type.code()) {
+          case ExprType::I32:
             needI32(joinRegI32_);
-        else if (type == ExprType::I64)
+            break;
+          case ExprType::I64:
             needI64(joinRegI64_);
-        else if (type == ExprType::AnyRef)
+            break;
+          case ExprType::AnyRef:
+          case ExprType::Ref:
             needRef(joinRegPtr_);
+            break;
+          default:;
+        }
     }
 
     void maybeUnreserveJoinRegI(ExprType type) {
-        if (type == ExprType::I32)
+        switch (type.code()) {
+          case ExprType::I32:
             freeI32(joinRegI32_);
-        else if (type == ExprType::I64)
+            break;
+          case ExprType::I64:
             freeI64(joinRegI64_);
-        else if (type == ExprType::AnyRef)
+            break;
+          case ExprType::AnyRef:
+          case ExprType::Ref:
             freeRef(joinRegPtr_);
+            break;
+          default:;
+        }
     }
 
     void maybeReserveJoinReg(ExprType type) {
-        switch (type) {
+        switch (type.code()) {
           case ExprType::I32:
             needI32(joinRegI32_);
             break;
@@ -2161,6 +2179,7 @@ class BaseCompiler final : public BaseCompilerInterface
           case ExprType::F64:
             needF64(joinRegF64_);
             break;
+          case ExprType::Ref:
           case ExprType::AnyRef:
             needRef(joinRegPtr_);
             break;
@@ -2170,7 +2189,7 @@ class BaseCompiler final : public BaseCompilerInterface
     }
 
     void maybeUnreserveJoinReg(ExprType type) {
-        switch (type) {
+        switch (type.code()) {
           case ExprType::I32:
             freeI32(joinRegI32_);
             break;
@@ -2183,6 +2202,7 @@ class BaseCompiler final : public BaseCompilerInterface
           case ExprType::F64:
             freeF64(joinRegF64_);
             break;
+          case ExprType::Ref:
           case ExprType::AnyRef:
             freeRef(joinRegPtr_);
             break;
@@ -3099,7 +3119,7 @@ class BaseCompiler final : public BaseCompilerInterface
     // become available in that process.
 
     MOZ_MUST_USE Maybe<AnyReg> popJoinRegUnlessVoid(ExprType type) {
-        switch (type) {
+        switch (type.code()) {
           case ExprType::Void: {
             return Nothing();
           }
@@ -3127,6 +3147,7 @@ class BaseCompiler final : public BaseCompilerInterface
                        k == Stk::LocalF32);
             return Some(AnyReg(popF32(joinRegF32_)));
           }
+          case ExprType::Ref:
           case ExprType::AnyRef: {
             DebugOnly<Stk::Kind> k(stk_.back().kind());
             MOZ_ASSERT(k == Stk::RegisterRef || k == Stk::ConstRef || k == Stk::MemRef ||
@@ -3146,7 +3167,7 @@ class BaseCompiler final : public BaseCompilerInterface
     // to be found.
 
     MOZ_MUST_USE Maybe<AnyReg> captureJoinRegUnlessVoid(ExprType type) {
-        switch (type) {
+        switch (type.code()) {
           case ExprType::I32:
             MOZ_ASSERT(isAvailableI32(joinRegI32_));
             needI32(joinRegI32_);
@@ -3163,6 +3184,7 @@ class BaseCompiler final : public BaseCompilerInterface
             MOZ_ASSERT(isAvailableF64(joinRegF64_));
             needF64(joinRegF64_);
             return Some(AnyReg(joinRegF64_));
+          case ExprType::Ref:
           case ExprType::AnyRef:
             MOZ_ASSERT(isAvailableRef(joinRegPtr_));
             needRef(joinRegPtr_);
@@ -3419,7 +3441,7 @@ class BaseCompiler final : public BaseCompilerInterface
         MOZ_ASSERT(env_.debugEnabled());
         size_t debugFrameOffset = masm.framePushed() - DebugFrame::offsetOfFrame();
         Address resultsAddress(masm.getStackPointer(), debugFrameOffset + DebugFrame::offsetOfResults());
-        switch (funcType().ret()) {
+        switch (funcType().ret().code()) {
           case ExprType::Void:
             break;
           case ExprType::I32:
@@ -3434,6 +3456,7 @@ class BaseCompiler final : public BaseCompilerInterface
           case ExprType::F32:
             masm.storeFloat32(RegF32(ReturnFloat32Reg), resultsAddress);
             break;
+          case ExprType::Ref:
           case ExprType::AnyRef:
             masm.storePtr(RegPtr(ReturnReg), resultsAddress);
             break;
@@ -3446,7 +3469,7 @@ class BaseCompiler final : public BaseCompilerInterface
         MOZ_ASSERT(env_.debugEnabled());
         size_t debugFrameOffset = masm.framePushed() - DebugFrame::offsetOfFrame();
         Address resultsAddress(masm.getStackPointer(), debugFrameOffset + DebugFrame::offsetOfResults());
-        switch (funcType().ret()) {
+        switch (funcType().ret().code()) {
           case ExprType::Void:
             break;
           case ExprType::I32:
@@ -3461,6 +3484,7 @@ class BaseCompiler final : public BaseCompilerInterface
           case ExprType::F32:
             masm.loadFloat32(resultsAddress, RegF32(ReturnFloat32Reg));
             break;
+          case ExprType::Ref:
           case ExprType::AnyRef:
             masm.loadPtr(resultsAddress, RegPtr(ReturnReg));
             break;
@@ -3522,7 +3546,7 @@ class BaseCompiler final : public BaseCompilerInterface
     {
         explicit FunctionCall(uint32_t lineOrBytecode)
           : lineOrBytecode(lineOrBytecode),
-            reloadMachineStateAfter(false),
+            isInterModule(false),
             usesSystemAbi(false),
 #ifdef JS_CODEGEN_ARM
             hardFP(true),
@@ -3533,7 +3557,7 @@ class BaseCompiler final : public BaseCompilerInterface
 
         uint32_t lineOrBytecode;
         ABIArgGenerator abi;
-        bool reloadMachineStateAfter;
+        bool isInterModule;
         bool usesSystemAbi;
 #ifdef JS_CODEGEN_ARM
         bool hardFP;
@@ -3544,7 +3568,7 @@ class BaseCompiler final : public BaseCompilerInterface
 
     void beginCall(FunctionCall& call, UseABI useABI, InterModule interModule)
     {
-        call.reloadMachineStateAfter = interModule == InterModule::True || useABI == UseABI::System;
+        call.isInterModule = interModule == InterModule::True;
         call.usesSystemAbi = useABI == UseABI::System;
 
         if (call.usesSystemAbi) {
@@ -3575,7 +3599,11 @@ class BaseCompiler final : public BaseCompilerInterface
         size_t adjustment = call.stackArgAreaSize + call.frameAlignAdjustment;
         fr.freeArgAreaAndPopBytes(adjustment, stackSpace);
 
-        if (call.reloadMachineStateAfter) {
+        if (call.isInterModule) {
+            masm.loadWasmTlsRegFromFrame();
+            masm.loadWasmPinnedRegsFromTls();
+            masm.switchToWasmTlsRealm(ABINonArgReturnReg0, ABINonArgReturnReg1);
+        } else if (call.usesSystemAbi) {
             // On x86 there are no pinned registers, so don't waste time
             // reloading the Tls.
 #ifndef JS_CODEGEN_X86
@@ -3733,6 +3761,7 @@ class BaseCompiler final : public BaseCompilerInterface
             }
             break;
           }
+          case ValType::Ref:
           case ValType::AnyRef: {
             ABIArg argLoc = call->abi.next(MIRType::Pointer);
             if (argLoc.kind() == ABIArg::Stack) {
@@ -4368,7 +4397,6 @@ class BaseCompiler final : public BaseCompilerInterface
     Address addressOfGlobalVar(const GlobalDesc& global, RegI32 tmp)
     {
         uint32_t globalToTlsOffset = offsetof(TlsData, globalArea) + global.offset();
-
         masm.loadWasmTlsRegFromFrame(tmp);
         if (global.isIndirect()) {
             masm.loadPtr(Address(tmp, globalToTlsOffset), tmp);
@@ -4707,11 +4735,10 @@ class BaseCompiler final : public BaseCompilerInterface
 #endif
 
     template<typename T>
-    void atomicRMW32(T srcAddr, Scalar::Type viewType, AtomicOp op, RegI32 rv, RegI32 rd,
-                     const AtomicRMW32Temps& temps)
+    void atomicRMW32(const MemoryAccessDesc& access, T srcAddr, AtomicOp op,
+                     RegI32 rv, RegI32 rd, const AtomicRMW32Temps& temps)
     {
-        Synchronization sync = Synchronization::Full();
-        switch (viewType) {
+        switch (access.type()) {
           case Scalar::Uint8:
 #ifdef JS_CODEGEN_X86
           {
@@ -4721,7 +4748,7 @@ class BaseCompiler final : public BaseCompilerInterface
             ScratchI8 scratch(*this);
             if (op != AtomicFetchAddOp && op != AtomicFetchSubOp)
                 temp = scratch;
-            masm.atomicFetchOp(viewType, sync, op, rv, srcAddr, temp, rd);
+            masm.wasmAtomicFetchOp(access, op, rv, srcAddr, temp, rd);
             break;
           }
 #endif
@@ -4729,9 +4756,9 @@ class BaseCompiler final : public BaseCompilerInterface
           case Scalar::Int32:
           case Scalar::Uint32:
 #if defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
-            masm.atomicFetchOp(viewType, sync, op, rv, srcAddr, temps[0], temps[1], temps[2], rd);
+            masm.wasmAtomicFetchOp(access, op, rv, srcAddr, temps[0], temps[1], temps[2], rd);
 #else
-            masm.atomicFetchOp(viewType, sync, op, rv, srcAddr, temps[0], rd);
+            masm.wasmAtomicFetchOp(access, op, rv, srcAddr, temps[0], rd);
 #endif
             break;
           default: {
@@ -4743,9 +4770,10 @@ class BaseCompiler final : public BaseCompilerInterface
     // On x86, V is Address.  On other platforms, it is Register64.
     // T is BaseIndex or Address.
     template<typename T, typename V>
-    void atomicRMW64(const T& srcAddr, AtomicOp op, V value, Register64 temp, Register64 rd)
+    void atomicRMW64(const MemoryAccessDesc& access, const T& srcAddr, AtomicOp op, V value,
+                     Register64 temp, Register64 rd)
     {
-        masm.atomicFetchOp64(Synchronization::Full(), op, value, srcAddr, temp, rd);
+        masm.wasmAtomicFetchOp64(access, op, value, srcAddr, temp, rd);
     }
 
 #if defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
@@ -4755,11 +4783,10 @@ class BaseCompiler final : public BaseCompilerInterface
 #endif
 
     template<typename T>
-    void atomicCmpXchg32(T srcAddr, Scalar::Type viewType, RegI32 rexpect, RegI32 rnew, RegI32 rd,
-                         const AtomicCmpXchg32Temps& temps)
+    void atomicCmpXchg32(const MemoryAccessDesc& access, T srcAddr, RegI32 rexpect, RegI32 rnew,
+                         RegI32 rd, const AtomicCmpXchg32Temps& temps)
     {
-        Synchronization sync = Synchronization::Full();
-        switch (viewType) {
+        switch (access.type()) {
           case Scalar::Uint8:
 #if defined(JS_CODEGEN_X86)
           {
@@ -4770,7 +4797,7 @@ class BaseCompiler final : public BaseCompilerInterface
                 masm.movl(rnew, scratch);
                 rnew = scratch;
             }
-            masm.compareExchange(viewType, sync, srcAddr, rexpect, rnew, rd);
+            masm.wasmCompareExchange(access, srcAddr, rexpect, rnew, rd);
             break;
           }
 #endif
@@ -4778,10 +4805,10 @@ class BaseCompiler final : public BaseCompilerInterface
           case Scalar::Int32:
           case Scalar::Uint32:
 #if defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
-            masm.compareExchange(viewType, sync, srcAddr, rexpect, rnew, temps[0], temps[1],
-                                 temps[2], rd);
+            masm.wasmCompareExchange(access, srcAddr, rexpect, rnew, temps[0], temps[1], temps[2],
+                                     rd);
 #else
-            masm.compareExchange(viewType, sync, srcAddr, rexpect, rnew, rd);
+            masm.wasmCompareExchange(access, srcAddr, rexpect, rnew, rd);
 #endif
             break;
           default:
@@ -4796,21 +4823,20 @@ class BaseCompiler final : public BaseCompilerInterface
 #endif
 
     template<typename T>
-    void atomicXchg32(T srcAddr, Scalar::Type viewType, RegI32 rv, RegI32 rd,
+    void atomicXchg32(const MemoryAccessDesc& access, T srcAddr, RegI32 rv, RegI32 rd,
                       const AtomicXchg32Temps& temps)
     {
-        Synchronization sync = Synchronization::Full();
-        switch (viewType) {
+        switch (access.type()) {
           case Scalar::Uint8:
 #if defined(JS_CODEGEN_X86)
           {
             if (!ra.isSingleByteI32(rd)) {
                 ScratchI8 scratch(*this);
                 // The output register must have a byte persona.
-                masm.atomicExchange(viewType, sync, srcAddr, rv, scratch);
+                masm.wasmAtomicExchange(access, srcAddr, rv, scratch);
                 masm.movl(scratch, rd);
             } else {
-                masm.atomicExchange(viewType, sync, srcAddr, rv, rd);
+                masm.wasmAtomicExchange(access, srcAddr, rv, rd);
             }
             break;
           }
@@ -4819,9 +4845,9 @@ class BaseCompiler final : public BaseCompilerInterface
           case Scalar::Int32:
           case Scalar::Uint32:
 #if defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
-            masm.atomicExchange(viewType, sync, srcAddr, rv, temps[0], temps[1], temps[2], rd);
+            masm.wasmAtomicExchange(access, srcAddr, rv, temps[0], temps[1], temps[2], rd);
 #else
-            masm.atomicExchange(viewType, sync, srcAddr, rv, rd);
+            masm.wasmAtomicExchange(access, srcAddr, rv, rd);
 #endif
             break;
           default:
@@ -5054,8 +5080,8 @@ class BaseCompiler final : public BaseCompilerInterface
 #endif
 
         template<typename T>
-        void atomicCmpXchg32(T srcAddr, Scalar::Type viewType) {
-            bc->atomicCmpXchg32(srcAddr, viewType, rexpect, rnew, getRd(), temps);
+        void atomicCmpXchg32(const MemoryAccessDesc& access, T srcAddr) {
+            bc->atomicCmpXchg32(access, srcAddr, rexpect, rnew, getRd(), temps);
         }
     };
 
@@ -5122,16 +5148,15 @@ class BaseCompiler final : public BaseCompilerInterface
 
 #ifdef JS_CODEGEN_X86
         template<typename T>
-        void atomicCmpXchg64(T srcAddr, RegI32 ebx) {
+        void atomicCmpXchg64(const MemoryAccessDesc& access, T srcAddr, RegI32 ebx) {
             MOZ_ASSERT(ebx == js::jit::ebx);
             bc->masm.move32(rnew.low, ebx);
-            bc->masm.compareExchange64(Synchronization::Full(), srcAddr, rexpect,
-                                       bc->specific_.ecx_ebx, getRd());
+            bc->masm.wasmCompareExchange64(access, srcAddr, rexpect, bc->specific_.ecx_ebx, getRd());
         }
 #else
         template<typename T>
-        void atomicCmpXchg64(T srcAddr) {
-            bc->masm.compareExchange64(Synchronization::Full(), srcAddr, rexpect, rnew, getRd());
+        void atomicCmpXchg64(const MemoryAccessDesc& access, T srcAddr) {
+            bc->masm.wasmCompareExchange64(access, srcAddr, rexpect, rnew, getRd());
         }
 #endif
     };
@@ -5170,14 +5195,14 @@ class BaseCompiler final : public BaseCompilerInterface
 
 # ifdef JS_CODEGEN_X86
         template<typename T>
-        void atomicLoad64(T srcAddr, RegI32 ebx) {
+        void atomicLoad64(const MemoryAccessDesc& access, T srcAddr, RegI32 ebx) {
             MOZ_ASSERT(ebx == js::jit::ebx);
-            bc->masm.atomicLoad64(Synchronization::Full(), srcAddr, bc->specific_.ecx_ebx, getRd());
+            bc->masm.wasmAtomicLoad64(access, srcAddr, bc->specific_.ecx_ebx, getRd());
         }
-# else
+# else  // ARM, MIPS32
         template<typename T>
-        void atomicLoad64(T srcAddr) {
-            bc->masm.atomicLoad64(Synchronization::Full(), srcAddr, RegI64::Invalid(), getRd());
+        void atomicLoad64(const MemoryAccessDesc& access, T srcAddr) {
+            bc->masm.wasmAtomicLoad64(access, srcAddr, RegI64::Invalid(), getRd());
         }
 # endif
     };
@@ -5268,8 +5293,8 @@ class BaseCompiler final : public BaseCompilerInterface
 #endif
 
         template<typename T>
-        void atomicRMW32(T srcAddr, Scalar::Type viewType, AtomicOp op) {
-            bc->atomicRMW32(srcAddr, viewType, op, rv, getRd(), temps);
+        void atomicRMW32(const MemoryAccessDesc& access, T srcAddr, AtomicOp op) {
+            bc->atomicRMW32(access, srcAddr, op, rv, getRd(), temps);
         }
     };
 
@@ -5350,14 +5375,16 @@ class BaseCompiler final : public BaseCompilerInterface
 
 #ifdef JS_CODEGEN_X86
         template<typename T, typename V>
-        void atomicRMW64(T srcAddr, AtomicOp op, const V& value, RegI32 ebx) {
+        void atomicRMW64(const MemoryAccessDesc& access, T srcAddr, AtomicOp op, const V& value,
+                         RegI32 ebx)
+        {
             MOZ_ASSERT(ebx == js::jit::ebx);
-            bc->atomicRMW64(srcAddr, op, value, bc->specific_.ecx_ebx, getRd());
+            bc->atomicRMW64(access, srcAddr, op, value, bc->specific_.ecx_ebx, getRd());
         }
 #else
         template<typename T>
-        void atomicRMW64(T srcAddr, AtomicOp op) {
-            bc->atomicRMW64(srcAddr, op, rv, temp, getRd());
+        void atomicRMW64(const MemoryAccessDesc& access, T srcAddr, AtomicOp op) {
+            bc->atomicRMW64(access, srcAddr, op, rv, temp, getRd());
         }
 #endif
     };
@@ -5410,8 +5437,8 @@ class BaseCompiler final : public BaseCompilerInterface
 #endif
 
         template<typename T>
-        void atomicXchg32(T srcAddr, Scalar::Type viewType) {
-            bc->atomicXchg32(srcAddr, viewType, rv, getRd(), temps);
+        void atomicXchg32(const MemoryAccessDesc& access, T srcAddr) {
+            bc->atomicXchg32(access, srcAddr, rv, getRd(), temps);
         }
     };
 
@@ -5476,16 +5503,15 @@ class BaseCompiler final : public BaseCompilerInterface
 
 #ifdef JS_CODEGEN_X86
         template<typename T>
-        void atomicXchg64(T srcAddr, RegI32 ebx) const {
+        void atomicXchg64(const MemoryAccessDesc& access, T srcAddr, RegI32 ebx) const {
             MOZ_ASSERT(ebx == js::jit::ebx);
             bc->masm.move32(rv.low, ebx);
-            bc->masm.atomicExchange64(Synchronization::Full(), srcAddr, bc->specific_.ecx_ebx,
-                                      getRd());
+            bc->masm.wasmAtomicExchange64(access, srcAddr, bc->specific_.ecx_ebx, getRd());
         }
 #else
         template<typename T>
-        void atomicXchg64(T srcAddr) const {
-            bc->masm.atomicExchange64(Synchronization::Full(), srcAddr, rv, getRd());
+        void atomicXchg64(const MemoryAccessDesc& access, T srcAddr) const {
+            bc->masm.wasmAtomicExchange64(access, srcAddr, rv, getRd());
         }
 #endif
     };
@@ -5586,6 +5612,101 @@ class BaseCompiler final : public BaseCompilerInterface
     void trap(Trap t) const {
         masm.wasmTrap(t, bytecodeOffset());
     }
+
+    ////////////////////////////////////////////////////////////
+    //
+    // Object support.
+
+#ifdef ENABLE_WASM_GC
+    // This emits a GC pre-write barrier.  The pre-barrier is needed when we
+    // replace a member field with a new value, and the previous field value
+    // might have no other referents, and incremental GC is ongoing. The field
+    // might belong to an object or be a stack slot or a register or a heap
+    // allocated value.
+    //
+    // let obj = { field: previousValue };
+    // obj.field = newValue; // previousValue must be marked with a pre-barrier.
+    //
+    // The `valueAddr` is the address of the location that we are about to
+    // update.  This function preserves that register.
+
+    void emitPreBarrier(RegPtr valueAddr) {
+        Label skipBarrier;
+
+        MOZ_ASSERT(valueAddr == PreBarrierReg);
+
+        ScratchPtr scratch(*this);
+
+        // If no incremental GC has started, we don't need the barrier.
+        masm.loadWasmTlsRegFromFrame(scratch);
+        masm.loadPtr(Address(scratch, offsetof(TlsData, addressOfNeedsIncrementalBarrier)), scratch);
+        masm.branchTest32(Assembler::Zero, Address(scratch, 0), Imm32(0x1), &skipBarrier);
+
+        // If the previous value is null, we don't need the barrier.
+        masm.loadPtr(Address(valueAddr, 0), scratch);
+        masm.branchTestPtr(Assembler::Zero, scratch, scratch, &skipBarrier);
+
+        // Call the barrier. This assumes PreBarrierReg contains the address of
+        // the stored value.
+        //
+        // PreBarrierReg is volatile and is preserved by the barrier.
+        masm.loadWasmTlsRegFromFrame(scratch);
+        masm.loadPtr(Address(scratch, offsetof(TlsData, instance)), scratch);
+        masm.loadPtr(Address(scratch, Instance::offsetOfPreBarrierCode()), scratch);
+        masm.call(scratch);
+
+        masm.bind(&skipBarrier);
+    }
+
+    // This emits a GC post-write barrier. This is needed to ensure that the GC
+    // is aware of slots of tenured things containing references to nursery
+    // values. Pass None for object when the field's owner object is known to
+    // be tenured or heap-allocated.
+    //
+    // This frees the register `valueAddr`.
+
+    void emitPostBarrier(const Maybe<RegPtr>& object, RegPtr otherScratch, RegPtr valueAddr, RegPtr setValue) {
+        Label skipBarrier;
+
+        // One of the branches (in case we need the C++ call) will cause a sync,
+        // so ensure the stack is sync'd before, so that the join is sync'd too.
+        sync();
+
+        // If the pointer being stored is null, no barrier.
+        masm.branchTestPtr(Assembler::Zero, setValue, setValue, &skipBarrier);
+
+        // If there is a containing object and it is in the nursery, no barrier.
+        if (object)
+            masm.branchPtrInNurseryChunk(Assembler::Equal, *object, otherScratch, &skipBarrier);
+
+        // If the pointer being stored is to a tenured object, no barrier.
+        masm.branchPtrInNurseryChunk(Assembler::NotEqual, setValue, otherScratch, &skipBarrier);
+
+        // Need a barrier.
+        uint32_t bytecodeOffset = iter_.lastOpcodeOffset();
+
+        // The `valueAddr` is a raw pointer to the cell within some GC object or
+        // TLS area, and we guarantee that the GC will not run while the
+        // postbarrier call is active, so push a uintptr_t value.
+# ifdef JS_64BIT
+        pushI64(RegI64(Register64(valueAddr)));
+        emitInstanceCall(bytecodeOffset, SigPL_, ExprType::Void, SymbolicAddress::PostBarrier);
+# else
+        pushI32(RegI32(valueAddr));
+        emitInstanceCall(bytecodeOffset, SigPI_, ExprType::Void, SymbolicAddress::PostBarrier);
+# endif
+
+        masm.bind(&skipBarrier);
+    }
+
+    void emitBarrieredStore(const Maybe<RegPtr>& object, RegPtr valueAddr, RegPtr value) {
+        emitPreBarrier(valueAddr); // Preserves valueAddr
+        masm.storePtr(value, Address(valueAddr, 0));
+        RegPtr otherScratch = needRef();
+        emitPostBarrier(object, otherScratch, valueAddr, value); // Consumes valueAddr
+        freeRef(otherScratch);
+    }
+#endif // ENABLE_WASM_GC
 
     ////////////////////////////////////////////////////////////
     //
@@ -5763,10 +5884,7 @@ class BaseCompiler final : public BaseCompilerInterface
     MOZ_MUST_USE bool storeCommon(MemoryAccessDesc* access, ValType resultType);
     MOZ_MUST_USE bool emitSelect();
 
-    // Mark these templates as inline to work around a compiler crash in
-    // gcc 4.8.5 when compiling for linux64-opt.
-
-    template<bool isSetLocal> MOZ_MUST_USE inline bool emitSetOrTeeLocal(uint32_t slot);
+    template<bool isSetLocal> MOZ_MUST_USE bool emitSetOrTeeLocal(uint32_t slot);
 
     void endBlock(ExprType type);
     void endLoop(ExprType type);
@@ -7684,7 +7802,7 @@ BaseCompiler::emitDrop()
 void
 BaseCompiler::doReturn(ExprType type, bool popStack)
 {
-    switch (type) {
+    switch (type.code()) {
       case ExprType::Void: {
         returnCleanup(popStack);
         break;
@@ -7713,6 +7831,7 @@ BaseCompiler::doReturn(ExprType type, bool popStack)
         freeF32(rv);
         break;
       }
+      case ExprType::Ref:
       case ExprType::AnyRef: {
         RegPtr rv = popRef(RegPtr(ReturnReg));
         returnCleanup(popStack);
@@ -7759,7 +7878,7 @@ BaseCompiler::emitCallArgs(const ValTypeVector& argTypes, FunctionCall* baseline
 void
 BaseCompiler::pushReturnedIfNonVoid(const FunctionCall& call, ExprType type)
 {
-    switch (type) {
+    switch (type.code()) {
       case ExprType::Void:
         // There's no return value.  Do nothing.
         break;
@@ -7783,6 +7902,7 @@ BaseCompiler::pushReturnedIfNonVoid(const FunctionCall& call, ExprType type)
         pushF64(rv);
         break;
       }
+      case ExprType::Ref:
       case ExprType::AnyRef: {
         RegPtr rv = captureReturnedRef();
         pushRef(rv);
@@ -8113,6 +8233,7 @@ BaseCompiler::emitGetLocal()
       case ValType::F32:
         pushLocalF32(slot);
         break;
+      case ValType::Ref:
       case ValType::AnyRef:
         pushLocalRef(slot);
         break;
@@ -8172,6 +8293,7 @@ BaseCompiler::emitSetOrTeeLocal(uint32_t slot)
             pushF32(rv);
         break;
       }
+      case ValType::Ref:
       case ValType::AnyRef: {
         RegPtr rv = popRef();
         syncLocal(slot);
@@ -8222,7 +8344,7 @@ BaseCompiler::emitGetGlobal()
     const GlobalDesc& global = env_.globals[id];
 
     if (global.isConstant()) {
-        Val value = global.constantValue();
+        LitVal value = global.constantValue();
         switch (value.type().code()) {
           case ValType::I32:
             pushI32(value.i32());
@@ -8235,6 +8357,10 @@ BaseCompiler::emitGetGlobal()
             break;
           case ValType::F64:
             pushF64(value.f64());
+            break;
+          case ValType::Ref:
+          case ValType::AnyRef:
+            pushRef(intptr_t(value.ptr()));
             break;
           default:
             MOZ_CRASH("Global constant type");
@@ -8269,6 +8395,14 @@ BaseCompiler::emitGetGlobal()
         ScratchI32 tmp(*this);
         masm.loadDouble(addressOfGlobalVar(global, tmp), rv);
         pushF64(rv);
+        break;
+      }
+      case ValType::Ref:
+      case ValType::AnyRef: {
+        RegPtr rv = needRef();
+        ScratchI32 tmp(*this);
+        masm.loadPtr(addressOfGlobalVar(global, tmp), rv);
+        pushRef(rv);
         break;
       }
       default:
@@ -8320,6 +8454,21 @@ BaseCompiler::emitSetGlobal()
         freeF64(rv);
         break;
       }
+#ifdef ENABLE_WASM_GC
+      case ValType::Ref:
+      case ValType::AnyRef: {
+        RegPtr valueAddr(PreBarrierReg);
+        needRef(valueAddr);
+        {
+            ScratchI32 tmp(*this);
+            masm.computeEffectiveAddress(addressOfGlobalVar(global, tmp), valueAddr);
+        }
+        RegPtr rv = popRef();
+        emitBarrieredStore(Nothing(), valueAddr, rv); // Consumes valueAddr
+        freeRef(rv);
+        break;
+      }
+#endif
       default:
         MOZ_CRASH("Global variable type");
         break;
@@ -8702,6 +8851,7 @@ BaseCompiler::emitSelect()
         pushF64(r);
         break;
       }
+      case ValType::Ref:
       case ValType::AnyRef: {
         RegPtr r, rs;
         pop2xRef(&r, &rs);
@@ -8872,7 +9022,8 @@ BaseCompiler::emitCurrentMemory()
 bool
 BaseCompiler::emitRefNull()
 {
-    if (!iter_.readRefNull())
+    ValType type;
+    if (!iter_.readRefNull(&type))
         return false;
 
     if (deadCode_)
@@ -8905,7 +9056,7 @@ BaseCompiler::emitAtomicCmpXchg(ValType type, Scalar::Type viewType)
         return true;
 
     MemoryAccessDesc access(viewType, addr.align, addr.offset, bytecodeOffset(),
-                            /*numSimdExprs=*/ 0, Synchronization::Full());
+                            Synchronization::Full());
 
     if (Scalar::byteSize(viewType) <= 4) {
         PopAtomicCmpXchg32Regs regs(this, type, viewType);
@@ -8914,7 +9065,8 @@ BaseCompiler::emitAtomicCmpXchg(ValType type, Scalar::Type viewType)
         RegI32 rp = popMemoryAccess(&access, &check);
         RegI32 tls = maybeLoadTlsForAccess(check);
 
-        regs.atomicCmpXchg32(prepareAtomicMemoryAccess(&access, &check, tls, rp), viewType);
+        auto memaddr = prepareAtomicMemoryAccess(&access, &check, tls, rp);
+        regs.atomicCmpXchg32(access, memaddr);
 
         maybeFreeI32(tls);
         freeI32(rp);
@@ -8937,10 +9089,12 @@ BaseCompiler::emitAtomicCmpXchg(ValType type, Scalar::Type viewType)
 #ifdef JS_CODEGEN_X86
     ScratchEBX ebx(*this);
     RegI32 tls = maybeLoadTlsForAccess(check, ebx);
-    regs.atomicCmpXchg64(prepareAtomicMemoryAccess(&access, &check, tls, rp), ebx);
+    auto memaddr = prepareAtomicMemoryAccess(&access, &check, tls, rp);
+    regs.atomicCmpXchg64(access, memaddr, ebx);
 #else
     RegI32 tls = maybeLoadTlsForAccess(check);
-    regs.atomicCmpXchg64(prepareAtomicMemoryAccess(&access, &check, tls, rp));
+    auto memaddr = prepareAtomicMemoryAccess(&access, &check, tls, rp);
+    regs.atomicCmpXchg64(access, memaddr);
     maybeFreeI32(tls);
 #endif
 
@@ -8961,7 +9115,7 @@ BaseCompiler::emitAtomicLoad(ValType type, Scalar::Type viewType)
         return true;
 
     MemoryAccessDesc access(viewType, addr.align, addr.offset, bytecodeOffset(),
-                            /*numSimdElems=*/ 0, Synchronization::Load());
+                            Synchronization::Load());
 
     if (Scalar::byteSize(viewType) <= sizeof(void*))
         return loadCommon(&access, type);
@@ -8979,10 +9133,12 @@ BaseCompiler::emitAtomicLoad(ValType type, Scalar::Type viewType)
 # ifdef JS_CODEGEN_X86
     ScratchEBX ebx(*this);
     RegI32 tls = maybeLoadTlsForAccess(check, ebx);
-    regs.atomicLoad64(prepareAtomicMemoryAccess(&access, &check, tls, rp), ebx);
+    auto memaddr = prepareAtomicMemoryAccess(&access, &check, tls, rp);
+    regs.atomicLoad64(access, memaddr, ebx);
 # else
     RegI32 tls = maybeLoadTlsForAccess(check);
-    regs.atomicLoad64(prepareAtomicMemoryAccess(&access, &check, tls, rp));
+    auto memaddr = prepareAtomicMemoryAccess(&access, &check, tls, rp);
+    regs.atomicLoad64(access, memaddr);
     maybeFreeI32(tls);
 # endif
 
@@ -9005,7 +9161,7 @@ BaseCompiler::emitAtomicRMW(ValType type, Scalar::Type viewType, AtomicOp op)
         return true;
 
     MemoryAccessDesc access(viewType, addr.align, addr.offset, bytecodeOffset(),
-                            /*numSimdElems=*/ 0, Synchronization::Full());
+                            Synchronization::Full());
 
     if (Scalar::byteSize(viewType) <= 4) {
         PopAtomicRMW32Regs regs(this, type, viewType, op);
@@ -9014,7 +9170,8 @@ BaseCompiler::emitAtomicRMW(ValType type, Scalar::Type viewType, AtomicOp op)
         RegI32 rp = popMemoryAccess(&access, &check);
         RegI32 tls = maybeLoadTlsForAccess(check);
 
-        regs.atomicRMW32(prepareAtomicMemoryAccess(&access, &check, tls, rp), viewType, op);
+        auto memaddr = prepareAtomicMemoryAccess(&access, &check, tls, rp);
+        regs.atomicRMW32(access, memaddr, op);
 
         maybeFreeI32(tls);
         freeI32(rp);
@@ -9041,12 +9198,14 @@ BaseCompiler::emitAtomicRMW(ValType type, Scalar::Type viewType, AtomicOp op)
     fr.pushPtr(regs.valueLow());
     Address value(esp, 0);
 
-    regs.atomicRMW64(prepareAtomicMemoryAccess(&access, &check, tls, rp), op, value, ebx);
+    auto memaddr = prepareAtomicMemoryAccess(&access, &check, tls, rp);
+    regs.atomicRMW64(access, memaddr, op, value, ebx);
 
     fr.popBytes(8);
 #else
     RegI32 tls = maybeLoadTlsForAccess(check);
-    regs.atomicRMW64(prepareAtomicMemoryAccess(&access, &check, tls, rp), op);
+    auto memaddr = prepareAtomicMemoryAccess(&access, &check, tls, rp);
+    regs.atomicRMW64(access, memaddr, op);
     maybeFreeI32(tls);
 #endif
 
@@ -9068,7 +9227,7 @@ BaseCompiler::emitAtomicStore(ValType type, Scalar::Type viewType)
         return true;
 
     MemoryAccessDesc access(viewType, addr.align, addr.offset, bytecodeOffset(),
-                            /*numSimdElems=*/ 0, Synchronization::Store());
+                            Synchronization::Store());
 
     if (Scalar::byteSize(viewType) <= sizeof(void*))
         return storeCommon(&access, type);
@@ -9096,14 +9255,15 @@ BaseCompiler::emitAtomicXchg(ValType type, Scalar::Type viewType)
 
     AccessCheck check;
     MemoryAccessDesc access(viewType, addr.align, addr.offset, bytecodeOffset(),
-                            /*numSimdElems=*/ 0, Synchronization::Full());
+                            Synchronization::Full());
 
     if (Scalar::byteSize(viewType) <= 4) {
         PopAtomicXchg32Regs regs(this, type, viewType);
         RegI32 rp = popMemoryAccess(&access, &check);
         RegI32 tls = maybeLoadTlsForAccess(check);
 
-        regs.atomicXchg32(prepareAtomicMemoryAccess(&access, &check, tls, rp), viewType);
+        auto memaddr = prepareAtomicMemoryAccess(&access, &check, tls, rp);
+        regs.atomicXchg32(access, memaddr);
 
         maybeFreeI32(tls);
         freeI32(rp);
@@ -9132,10 +9292,12 @@ BaseCompiler::emitAtomicXchg64(MemoryAccessDesc* access, ValType type, WantResul
 #ifdef JS_CODEGEN_X86
     ScratchEBX ebx(*this);
     RegI32 tls = maybeLoadTlsForAccess(check, ebx);
-    regs.atomicXchg64(prepareAtomicMemoryAccess(access, &check, tls, rp), ebx);
+    auto memaddr = prepareAtomicMemoryAccess(access, &check, tls, rp);
+    regs.atomicXchg64(*access, memaddr, ebx);
 #else
     RegI32 tls = maybeLoadTlsForAccess(check);
-    regs.atomicXchg64(prepareAtomicMemoryAccess(access, &check, tls, rp));
+    auto memaddr = prepareAtomicMemoryAccess(access, &check, tls, rp);
+    regs.atomicXchg64(*access, memaddr);
     maybeFreeI32(tls);
 #endif
 
@@ -10115,6 +10277,8 @@ BaseCompiler::init()
         return false;
     if (!SigPI_.append(MIRType::Pointer) || !SigPI_.append(MIRType::Int32))
         return false;
+    if (!SigPL_.append(MIRType::Pointer) || !SigPL_.append(MIRType::Int64))
+        return false;
     if (!SigPII_.append(MIRType::Pointer) || !SigPII_.append(MIRType::Int32) ||
         !SigPII_.append(MIRType::Int32))
     {
@@ -10211,7 +10375,7 @@ js::wasm::BaselineCompileFunctions(const ModuleEnvironment& env, LifoAlloc& lifo
         ValTypeVector locals;
         if (!locals.appendAll(env.funcTypes[func.index]->args()))
             return false;
-        if (!DecodeLocalEntries(d, env.kind, env.gcTypesEnabled, &locals))
+        if (!DecodeLocalEntries(d, env.kind, env.types, env.gcTypesEnabled, &locals))
             return false;
 
         // One-pass baseline compilation.

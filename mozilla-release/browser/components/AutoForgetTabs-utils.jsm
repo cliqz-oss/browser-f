@@ -4,8 +4,6 @@
 
 const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
 const RPC_PREFIX = "AutoForgetTabsService:";
 
 this.EXPORTED_SYMBOLS = [
@@ -155,7 +153,7 @@ class RPCResponder {
   }
 }
 // nsISupports:
-RPCResponder.prototype.QueryInterface = XPCOMUtils.generateQI([
+RPCResponder.prototype.QueryInterface = ChromeUtils.generateQI([
     Ci.nsISupports,
 ]);
 

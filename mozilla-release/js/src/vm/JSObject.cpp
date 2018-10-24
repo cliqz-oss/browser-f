@@ -35,6 +35,7 @@
 #include "frontend/BytecodeCompiler.h"
 #include "gc/Policy.h"
 #include "jit/BaselineJIT.h"
+#include "js/AutoByteString.h"
 #include "js/MemoryMetrics.h"
 #include "js/Proxy.h"
 #include "js/UbiNode.h"
@@ -139,7 +140,7 @@ JS::FromPropertyDescriptor(JSContext* cx, Handle<PropertyDescriptor> desc, Mutab
 {
     AssertHeapIsIdle();
     CHECK_REQUEST(cx);
-    assertSameCompartment(cx, desc);
+    cx->check(desc);
 
     // Step 1.
     if (!desc.object()) {
@@ -475,7 +476,7 @@ GetSealedOrFrozenAttributes(unsigned attrs, IntegrityLevel level)
 bool
 js::SetIntegrityLevel(JSContext* cx, HandleObject obj, IntegrityLevel level)
 {
-    assertSameCompartment(cx, obj);
+    cx->check(obj);
 
     // Steps 3-5. (Steps 1-2 are redundant assertions.)
     if (!PreventExtensions(cx, obj))
@@ -1137,8 +1138,12 @@ JS_FRIEND_API(bool)
 JS_CopyPropertyFrom(JSContext* cx, HandleId id, HandleObject target,
                     HandleObject obj, PropertyCopyBehavior copyBehavior)
 {
+    // |target| must not be a CCW because we need to enter its realm below and
+    // CCWs are not associated with a single realm.
+    MOZ_ASSERT(!IsCrossCompartmentWrapper(target));
+
     // |obj| and |cx| are generally not same-compartment with |target| here.
-    assertSameCompartment(cx, obj, id);
+    cx->check(obj, id);
     Rooted<PropertyDescriptor> desc(cx);
 
     if (!GetOwnPropertyDescriptor(cx, obj, id, &desc))
@@ -1168,6 +1173,11 @@ JS_CopyPropertyFrom(JSContext* cx, HandleId id, HandleObject target,
 JS_FRIEND_API(bool)
 JS_CopyPropertiesFrom(JSContext* cx, HandleObject target, HandleObject obj)
 {
+    // Both |obj| and |target| must not be CCWs because we need to enter their
+    // realms below and CCWs are not associated with a single realm.
+    MOZ_ASSERT(!IsCrossCompartmentWrapper(obj));
+    MOZ_ASSERT(!IsCrossCompartmentWrapper(target));
+
     JSAutoRealm ar(cx, obj);
 
     AutoIdVector props(cx);
@@ -1375,7 +1385,7 @@ InitializePropertiesFromCompatibleNativeObject(JSContext* cx,
                                                HandleNativeObject dst,
                                                HandleNativeObject src)
 {
-    assertSameCompartment(cx, src, dst);
+    cx->check(src, dst);
     MOZ_ASSERT(src->getClass() == dst->getClass());
     MOZ_ASSERT(dst->lastProperty()->getObjectFlags() == 0);
     MOZ_ASSERT(!src->isSingleton());
@@ -1444,7 +1454,7 @@ js::XDRObjectLiteral(XDRState<mode>* xdr, MutableHandleObject obj)
     /* NB: Keep this in sync with DeepCloneObjectLiteral. */
 
     JSContext* cx = xdr->cx();
-    assertSameCompartment(cx, obj);
+    cx->check(obj);
 
     // Distinguish between objects and array classes.
     uint32_t isArray = 0;
@@ -1579,7 +1589,7 @@ NativeObject::fillInAfterSwap(JSContext* cx, HandleNativeObject obj,
     }
 
     if (size_t ndynamic = dynamicSlotsCount(nfixed, values.length(), obj->getClass())) {
-        obj->slots_ = cx->zone()->pod_malloc<HeapSlot>(ndynamic);
+        obj->slots_ = cx->pod_malloc<HeapSlot>(ndynamic);
         if (!obj->slots_)
             return false;
         Debug_SetSlotRangeToCrashOnTouch(obj->slots_, ndynamic);
@@ -2109,7 +2119,7 @@ SetClassAndProto(JSContext* cx, HandleObject obj,
         // group so we can keep track of the interpreted function for Ion
         // inlining.
         MOZ_ASSERT(obj->is<JSFunction>());
-        newGroup = ObjectGroupRealm::makeGroup(cx, &JSFunction::class_, proto);
+        newGroup = ObjectGroupRealm::makeGroup(cx, oldGroup->realm(), &JSFunction::class_, proto);
         if (!newGroup)
             return false;
         newGroup->setInterpretedFunction(oldGroup->maybeInterpretedFunction());
@@ -2145,8 +2155,7 @@ JSObject::changeToSingleton(JSContext* cx, HandleObject obj)
 
     MarkObjectGroupUnknownProperties(cx, obj->group());
 
-    ObjectGroupRealm& realm = ObjectGroupRealm::get(obj->group());
-    ObjectGroup* group = ObjectGroup::lazySingletonGroup(cx, realm, obj->getClass(),
+    ObjectGroup* group = ObjectGroup::lazySingletonGroup(cx, obj->group(), obj->getClass(),
                                                          obj->taggedProto());
     if (!group)
         return false;
@@ -2175,7 +2184,7 @@ JSObject::changeToSingleton(JSContext* cx, HandleObject obj)
 bool
 js::GetObjectFromIncumbentGlobal(JSContext* cx, MutableHandleObject obj)
 {
-    RootedObject globalObj(cx, cx->runtime()->getIncumbentGlobal(cx));
+    Rooted<GlobalObject*> globalObj(cx, cx->runtime()->getIncumbentGlobal(cx));
     if (!globalObj) {
         obj.set(nullptr);
         return true;
@@ -2183,8 +2192,7 @@ js::GetObjectFromIncumbentGlobal(JSContext* cx, MutableHandleObject obj)
 
     {
         AutoRealm ar(cx, globalObj);
-        Handle<GlobalObject*> global = globalObj.as<GlobalObject>();
-        obj.set(GlobalObject::getOrCreateObjectPrototype(cx, global));
+        obj.set(GlobalObject::getOrCreateObjectPrototype(cx, globalObj));
         if (!obj)
             return false;
     }
@@ -2508,6 +2516,25 @@ NativeGetPureInline(NativeObject* pobj, jsid id, PropertyResult prop, Value* vp)
     return true;
 }
 
+static inline bool
+UnboxedGetPureInline(JSObject* pobj, jsid id, PropertyResult prop, Value* vp)
+{
+    MOZ_ASSERT(prop.isNonNativeProperty());
+
+    // This might be a TypedObject.
+    if (!pobj->is<UnboxedPlainObject>())
+        return false;
+
+    const UnboxedLayout& layout = pobj->as<UnboxedPlainObject>().layout();
+    if (const UnboxedLayout::Property* property = layout.lookup(id)) {
+        *vp = pobj->as<UnboxedPlainObject>().getValue(*property);
+        return true;
+    }
+
+    // Don't bother supporting expandos for now.
+    return false;
+}
+
 bool
 js::GetPropertyPure(JSContext* cx, JSObject* obj, jsid id, Value* vp)
 {
@@ -2521,22 +2548,28 @@ js::GetPropertyPure(JSContext* cx, JSObject* obj, jsid id, Value* vp)
         return true;
     }
 
-    return pobj->isNative() && NativeGetPureInline(&pobj->as<NativeObject>(), id, prop, vp);
+    if (MOZ_LIKELY(pobj->isNative()))
+        return NativeGetPureInline(&pobj->as<NativeObject>(), id, prop, vp);
+    return UnboxedGetPureInline(pobj, id, prop, vp);
 }
 
 bool
-js::GetOwnPropertyPure(JSContext* cx, JSObject* obj, jsid id, Value* vp)
+js::GetOwnPropertyPure(JSContext* cx, JSObject* obj, jsid id, Value* vp, bool* found)
 {
     PropertyResult prop;
     if (!LookupOwnPropertyPure(cx, obj, id, &prop))
         return false;
 
     if (!prop) {
+        *found = false;
         vp->setUndefined();
         return true;
     }
 
-    return obj->isNative() && NativeGetPureInline(&obj->as<NativeObject>(), id, prop, vp);
+    *found = true;
+    if (MOZ_LIKELY(obj->isNative()))
+        return NativeGetPureInline(&obj->as<NativeObject>(), id, prop, vp);
+    return UnboxedGetPureInline(obj, id, prop, vp);
 }
 
 static inline bool
@@ -2660,17 +2693,6 @@ js::SetPrototype(JSContext* cx, HandleObject obj, HandleObject proto, JS::Object
         return result.fail(JSMSG_CANT_SET_PROTO);
 
     /*
-     * Disallow mutating the [[Prototype]] on ArrayBuffer objects, which
-     * due to their complicated delegate-object shenanigans can't easily
-     * have a mutable [[Prototype]].
-     */
-    if (obj->is<ArrayBufferObject>()) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_CANT_SET_PROTO_OF,
-                                  "incompatible ArrayBuffer");
-        return false;
-    }
-
-    /*
      * Disallow mutating the [[Prototype]] on Typed Objects, per the spec.
      */
     if (obj->is<TypedObject>()) {
@@ -2739,8 +2761,16 @@ js::PreventExtensions(JSContext* cx, HandleObject obj, ObjectOpResult& result)
     if (obj->is<ProxyObject>())
         return js::Proxy::preventExtensions(cx, obj, result);
 
-    if (!obj->nonProxyIsExtensible())
+    if (!obj->nonProxyIsExtensible()) {
+        // If the following assertion fails, there's somewhere else a missing
+        // call to shrinkCapacityToInitializedLength() which needs to be found
+        // and fixed.
+        MOZ_ASSERT_IF(obj->isNative(),
+                      obj->as<NativeObject>().getDenseInitializedLength() ==
+                      obj->as<NativeObject>().getDenseCapacity());
+
         return result.succeed();
+    }
 
     if (!MaybeConvertUnboxedObjectToNative(cx, obj))
         return false;
@@ -3152,17 +3182,7 @@ js::ToPropertyKeySlow(JSContext* cx, HandleValue argument, MutableHandleId resul
 /* * */
 
 bool
-js::IsDelegate(JSContext* cx, HandleObject obj, const js::Value& v, bool* result)
-{
-    if (v.isPrimitive()) {
-        *result = false;
-        return true;
-    }
-    return IsDelegateOfObject(cx, obj, &v.toObject(), result);
-}
-
-bool
-js::IsDelegateOfObject(JSContext* cx, HandleObject protoObj, JSObject* obj, bool* result)
+js::IsPrototypeOf(JSContext* cx, HandleObject protoObj, JSObject* obj, bool* result)
 {
     RootedObject obj2(cx, obj);
     for (;;) {
@@ -3339,7 +3359,7 @@ GetObjectSlotNameFunctor::operator()(JS::CallbackTracer* trc, char* buf, size_t 
 
 /*** Debugging routines **************************************************************************/
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(JS_JITSPEW)
 
 /*
  * Routines to print out values during debugging.  These are FRIEND_API to help
@@ -3390,7 +3410,6 @@ dumpValue(const Value& v, js::GenericPrinter& out)
             out.put("false");
     } else if (v.isMagic()) {
         out.put("<invalid");
-#ifdef DEBUG
         switch (v.whyMagic()) {
           case JS_ELEMENTS_HOLE:     out.put(" elements hole");      break;
           case JS_NO_ITER_VALUE:     out.put(" no iter value");      break;
@@ -3398,7 +3417,6 @@ dumpValue(const Value& v, js::GenericPrinter& out)
           case JS_OPTIMIZED_OUT:     out.put(" optimized out");      break;
           default:                   out.put(" ?!");                 break;
         }
-#endif
         out.putChar('>');
     } else {
         out.put("unexpected value");
@@ -3688,7 +3706,7 @@ js::DumpInterpreterFrame(JSContext* cx, js::GenericPrinter& out, InterpreterFram
     }
 }
 
-#endif /* DEBUG */
+#endif /* defined(DEBUG) || defined(JS_JITSPEW) */
 
 namespace js {
 

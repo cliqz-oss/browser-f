@@ -6,7 +6,7 @@ var tabState = {
   entries: [{
     url: "about:robots",
     triggeringPrincipal_base64,
-    children: [{url: "about:mozilla", triggeringPrincipal_base64, }]}]
+    children: [{url: "about:mozilla", triggeringPrincipal_base64 }]}],
 };
 
 function test() {
@@ -25,7 +25,6 @@ function test() {
   promiseTabState(tab, tabState).then(() => {
     let sessionHistory = browser.sessionHistory;
     let entry = sessionHistory.legacySHistory.getEntryAtIndex(0, false);
-    entry.QueryInterface(Ci.nsISHContainer);
 
     whenChildCount(entry, 1, function() {
       whenChildCount(entry, 2, function() {

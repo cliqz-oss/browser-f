@@ -1,8 +1,17 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html#License
 ps{
-    Version{"2.1.39.11"}
+    Version{"2.1.41.97"}
     zoneStrings{
+        "Etc:UTC"{
+            ls{"همغږۍ نړیواله موده"}
+        }
+        "Europe:Dublin"{
+            ld{"ایراني معیاري وخ"}
+        }
+        "Europe:London"{
+            ld{"د انګلستان سمر وخت"}
+        }
         "meta:Afghanistan"{
             ls{"افغانستان وخت"}
         }

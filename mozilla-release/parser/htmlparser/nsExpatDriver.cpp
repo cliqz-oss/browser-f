@@ -25,12 +25,13 @@
 #include "nsXPCOMCIDInternal.h"
 #include "nsUnicharInputStream.h"
 #include "nsContentUtils.h"
-#include "NullPrincipal.h"
+#include "mozilla/NullPrincipal.h"
 
 #include "mozilla/Logging.h"
 
 using mozilla::fallible;
 using mozilla::LogLevel;
+using mozilla::MakeStringSpan;
 
 #define kExpatSeparatorChar 0xFFFF
 
@@ -322,7 +323,8 @@ nsExpatDriver::HandleStartElement(const char16_t *aValue,
   if (mSink) {
     nsresult rv = mSink->
       HandleStartElement(aValue, aAtts, attrArrayLength,
-                         XML_GetCurrentLineNumber(mExpatParser));
+                         XML_GetCurrentLineNumber(mExpatParser),
+                         XML_GetCurrentColumnNumber(mExpatParser));
     MaybeStopParser(rv);
   }
 
@@ -577,11 +579,11 @@ nsExpatDriver::HandleExternalEntityRef(const char16_t *openEntityNames,
   if (NS_FAILED(rv)) {
 #ifdef DEBUG
     nsCString message("Failed to open external DTD: publicId \"");
-    AppendUTF16toUTF8(publicId, message);
+    AppendUTF16toUTF8(MakeStringSpan(publicId), message);
     message += "\" systemId \"";
-    AppendUTF16toUTF8(systemId, message);
+    AppendUTF16toUTF8(MakeStringSpan(systemId), message);
     message += "\" base \"";
-    AppendUTF16toUTF8(base, message);
+    AppendUTF16toUTF8(MakeStringSpan(base), message);
     message += "\" URL \"";
     AppendUTF16toUTF8(absURL, message);
     message += "\"";
@@ -679,7 +681,7 @@ nsExpatDriver::OpenInputStreamFromExternalDTD(const char16_t* aFPIStr,
       }
     }
     if (!loadingPrincipal) {
-      loadingPrincipal = NullPrincipal::CreateWithoutOriginAttributes();
+      loadingPrincipal = mozilla::NullPrincipal::CreateWithoutOriginAttributes();
     }
     rv = NS_NewChannel(getter_AddRefs(channel),
                        uri,

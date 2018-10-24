@@ -8,7 +8,6 @@ ChromeUtils.defineModuleGetter(this, "PanelMultiView",
                                "resource:///modules/PanelMultiView.jsm");
 
 var EXPORTED_SYMBOLS = ["TabsPanel"];
-const NSXUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
 function setAttributes(element, attrs) {
   for (let [name, value] of Object.entries(attrs)) {
@@ -119,10 +118,10 @@ class TabsListBase {
 
   _addTab(newTab) {
     let newRow = this._createRow(newTab);
-    let nextTab = newTab.nextSibling;
+    let nextTab = newTab.nextElementSibling;
 
     while (nextTab && !this.filterFn(nextTab)) {
-      nextTab = nextTab.nextSibling;
+      nextTab = nextTab.nextElementSibling;
     }
 
     if (nextTab) {
@@ -157,7 +156,7 @@ class TabsPanel extends TabsListBase {
   constructor(opts) {
     super({
       ...opts,
-      containerNode: opts.containerNode || opts.view.firstChild,
+      containerNode: opts.containerNode || opts.view.firstElementChild,
     });
     this.view = opts.view;
     this.view.addEventListener(TABS_PANEL_EVENTS.show, this);
@@ -216,7 +215,7 @@ class TabsPanel extends TabsListBase {
 
   _createRow(tab) {
     let {doc} = this;
-    let row = doc.createElementNS(NSXUL, "toolbaritem");
+    let row = doc.createXULElement("toolbaritem");
     row.setAttribute("class", "all-tabs-item");
     if (this.className) {
       row.classList.add(this.className);
@@ -225,7 +224,7 @@ class TabsPanel extends TabsListBase {
     row.addEventListener("command", this);
     this.tabToElement.set(tab, row);
 
-    let button = doc.createElementNS(NSXUL, "toolbarbutton");
+    let button = doc.createXULElement("toolbarbutton");
     button.setAttribute("class", "all-tabs-button subviewbutton subviewbutton-iconic");
     button.setAttribute("flex", "1");
     button.setAttribute("crop", "right");
@@ -233,7 +232,7 @@ class TabsPanel extends TabsListBase {
 
     row.appendChild(button);
 
-    let secondaryButton = doc.createElementNS(NSXUL, "toolbarbutton");
+    let secondaryButton = doc.createXULElement("toolbarbutton");
     secondaryButton.setAttribute(
       "class", "all-tabs-secondary-button subviewbutton subviewbutton-iconic");
     secondaryButton.setAttribute("closemenu", "none");
@@ -250,7 +249,7 @@ class TabsPanel extends TabsListBase {
     setAttributes(row, {selected: tab.selected});
 
     let busy = tab.getAttribute("busy");
-    let button = row.firstChild;
+    let button = row.firstElementChild;
     setAttributes(button, {
       busy,
       label: tab.label,
@@ -269,7 +268,7 @@ class TabsPanel extends TabsListBase {
   }
 
   _setImageAttributes(row, tab) {
-    let button = row.firstChild;
+    let button = row.firstElementChild;
     let image = this.doc.getAnonymousElementByAttribute(
       button, "class", "toolbarbutton-icon") ||
       this.doc.getAnonymousElementByAttribute(

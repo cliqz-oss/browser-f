@@ -29,6 +29,10 @@ logger.addAppender(new Log.ConsoleAppender(new Log.BasicFormatter()));
 logger.addAppender(new Log.DumpAppender(new Log.BasicFormatter()));
 logger.level = Preferences.get(PREF_LOG_LEVEL, Log.Level.Info);
 
+// Determine the directory where ASan dumps will be located
+let profileDir = Services.dirsvc.get("ProfD", Ci.nsIFile);
+let asanDumpDir = OS.Path.join(profileDir.path, "asan");
+
 this.TabCrashObserver = {
   init() {
     if (this.initialized)
@@ -44,7 +48,7 @@ this.TabCrashObserver = {
         if (!aSubject.get("abnormal")) {
           return;
         }
-        processDirectory("/tmp");
+        processDirectory(asanDumpDir);
     }
   },
 };
@@ -60,15 +64,7 @@ function startup(aData, aReason) {
   // after they happen instead of relying on the user to restart the browser.
   TabCrashObserver.init();
 
-  // We could use OS.Constants.Path.tmpDir here, but unfortunately there is
-  // no way in C++ to get the same value *prior* to xpcom initialization.
-  // Since ASan needs its options, including the "log_path" option already
-  // at early startup, there is no way to pass this on to ASan.
-  //
-  // Instead, we hardcode the /tmp directory here, which should be fine in
-  // most cases, as long as we are on Linux and Mac (the main targets for
-  // this addon at the time of writing).
-  processDirectory("/tmp");
+  processDirectory(asanDumpDir);
 }
 
 function shutdown(aData, aReason) {
@@ -147,7 +143,7 @@ function submitToServer(data) {
       let versionArr = [
         Services.appinfo.version,
         Services.appinfo.appBuildID,
-        (AppConstants.SOURCE_REVISION_URL || "unknown")
+        (AppConstants.SOURCE_REVISION_URL || "unknown"),
       ];
 
       // Concatenate all relevant information as our server only
@@ -165,7 +161,7 @@ function submitToServer(data) {
         product_version,
         os,
         client,
-        tool: "asan-nightly-program"
+        tool: "asan-nightly-program",
       };
 
       var xhr = new XMLHttpRequest();

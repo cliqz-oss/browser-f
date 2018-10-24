@@ -49,11 +49,11 @@ AutoCompleteInput.prototype = {
     invalidate() {},
 
     // nsISupports implementation
-    QueryInterface: ChromeUtils.generateQI(["nsIAutoCompletePopup"])
+    QueryInterface: ChromeUtils.generateQI(["nsIAutoCompletePopup"]),
   },
 
   // nsISupports implementation
-  QueryInterface: ChromeUtils.generateQI(["nsIAutoCompleteInput"])
+  QueryInterface: ChromeUtils.generateQI(["nsIAutoCompleteInput"]),
 };
 
 
@@ -69,7 +69,7 @@ function AutoCompleteResult(aValues, aComments, aStyles) {
   if (this._values.length > 0) {
     this.searchResult = Ci.nsIAutoCompleteResult.RESULT_SUCCESS;
   } else {
-    this.searchResult = Ci.nsIAutoCompleteResult.NOMATCH;
+    this.searchResult = Ci.nsIAutoCompleteResult.RESULT_NOMATCH;
   }
 }
 AutoCompleteResult.prototype = {
@@ -116,7 +116,7 @@ AutoCompleteResult.prototype = {
   removeValueAt(aRowIndex, aRemoveFromDb) {},
 
   // nsISupports implementation
-  QueryInterface: ChromeUtils.generateQI(["nsIAutoCompleteResult"])
+  QueryInterface: ChromeUtils.generateQI(["nsIAutoCompleteResult"]),
 };
 
 
@@ -157,7 +157,7 @@ AutoCompleteSearch.prototype = {
   // nsIFactory implementation
   createInstance(outer, iid) {
     return this.QueryInterface(iid);
-  }
+  },
 };
 
 
@@ -256,4 +256,3 @@ function run_test() {
 
   controller.startSearch("test");
 }
-

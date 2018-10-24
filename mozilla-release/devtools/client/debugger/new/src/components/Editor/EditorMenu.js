@@ -30,8 +30,9 @@ var _actions2 = _interopRequireDefault(_actions);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-function _objectWithoutProperties(source, excluded) { if (source == null) return {}; var target = {}; var sourceKeys = Object.keys(source); var key, i; for (i = 0; i < sourceKeys.length; i++) { key = sourceKeys[i]; if (excluded.indexOf(key) >= 0) continue; target[key] = source[key]; } if (Object.getOwnPropertySymbols) { var sourceSymbolKeys = Object.getOwnPropertySymbols(source); for (i = 0; i < sourceSymbolKeys.length; i++) { key = sourceSymbolKeys[i]; if (excluded.indexOf(key) >= 0) continue; if (!Object.prototype.propertyIsEnumerable.call(source, key)) continue; target[key] = source[key]; } } return target; }
-
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 function getMenuItems(event, {
   addExpression,
   editor,
@@ -48,7 +49,7 @@ function getMenuItems(event, {
   toggleBlackBox
 }) {
   // variables
-  const hasSourceMap = !!selectedSource.get("sourceMapURL");
+  const hasSourceMap = !!selectedSource.sourceMapURL;
   const isOriginal = (0, _devtoolsSourceMap.isOriginalId)(selectedLocation.sourceId);
   const isPrettyPrinted = (0, _source.isPretty)(selectedSource);
   const isPrettified = isPrettyPrinted || hasPrettyPrint;
@@ -104,7 +105,7 @@ function getMenuItems(event, {
     disabled: false,
     click: () => (0, _clipboard.copyToTheClipboard)((0, _source.getRawSourceURL)(selectedSource.url))
   };
-  const sourceId = selectedSource.get("id");
+  const sourceId = selectedSource.id;
   const sourceLine = (0, _editor.toSourceLine)(sourceId, line);
   const functionText = getFunctionText(sourceLine);
   const copyFunctionItem = {
@@ -146,7 +147,7 @@ function getMenuItems(event, {
     label: toggleBlackBoxLabel,
     accesskey: blackboxKey,
     disabled: isOriginal || isPrettyPrinted || hasSourceMap,
-    click: () => toggleBlackBox(selectedSource.toJS())
+    click: () => toggleBlackBox(selectedSource)
   };
   const watchExpressionItem = {
     id: "node-menu-add-watch-expression",
@@ -189,10 +190,9 @@ class EditorMenu extends _react.Component {
 
   showMenu(nextProps) {
     const {
-      contextMenu
-    } = nextProps,
-          options = _objectWithoutProperties(nextProps, ["contextMenu"]);
-
+      contextMenu,
+      ...options
+    } = nextProps;
     const {
       event
     } = contextMenu;

@@ -29,12 +29,12 @@ add_UITour_task(function setup_block_target() {
   // interferes with UITour as it does a teardown. All we really care about
   // is the permission manager entry but UITour tests shouldn't rely on that
   // implementation detail.
-  TrackingProtection.disableForCurrentPage();
+  window.ContentBlocking.disableForCurrentPage();
 });
 
 add_UITour_task(async function test_block_target() {
   await checkToggleTarget("controlCenter-trackingBlock");
-  TrackingProtection.enableForCurrentPage();
+  window.ContentBlocking.enableForCurrentPage();
 });
 
 
@@ -56,7 +56,7 @@ async function checkToggleTarget(targetID) {
     let iframe = doc.createElement("iframe");
     iframe.setAttribute("id", "tracking-element");
     iframe.setAttribute("src", "https://tracking.example.com/");
-    doc.body.insertBefore(iframe, doc.body.firstChild);
+    doc.body.insertBefore(iframe, doc.body.firstElementChild);
   });
 
   await trackerOpened;

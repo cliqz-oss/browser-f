@@ -593,6 +593,17 @@ Layer::HasScrollableFrameMetrics() const
 }
 
 bool
+Layer::HasRootScrollableFrameMetrics() const
+{
+  for (uint32_t i = 0; i < GetScrollMetadataCount(); i++) {
+    if (GetFrameMetrics(i).IsScrollable() && GetFrameMetrics(i).IsRootContent()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool
 Layer::IsScrollableWithoutContent() const
 {
   // A scrollable container layer with no children
@@ -640,12 +651,6 @@ Layer::IsScrollbarContainer() const
   return (data.mScrollbarLayerType == ScrollbarLayerType::Container)
       ? data.mDirection.isSome()
       : false;
-}
-
-bool
-Layer::HasOpacityAnimation() const
-{
-  return mAnimationInfo.HasOpacityAnimation();
 }
 
 bool
@@ -1078,6 +1083,14 @@ ContainerLayer::Creates3DContextWithExtendingChildren()
   return false;
 }
 
+RenderTargetIntRect
+ContainerLayer::GetIntermediateSurfaceRect()
+{
+  NS_ASSERTION(mUseIntermediateSurface, "Must have intermediate surface");
+  LayerIntRect bounds = GetLocalVisibleRegion().GetBounds();
+  return RenderTargetIntRect::FromUnknownRect(bounds.ToUnknownRect());
+}
+
 bool
 ContainerLayer::HasMultipleChildren()
 {
@@ -1130,7 +1143,7 @@ SortLayersWithBSPTree(nsTArray<Layer*>& aArray)
     }
 
     const gfx::IntRect& bounds =
-      layer->GetLocalVisibleRegion().ToUnknownRegion().GetBounds();
+      layer->GetLocalVisibleRegion().GetBounds().ToUnknownRect();
 
     const gfx::Matrix4x4& transform = layer->GetEffectiveTransform();
 
@@ -2118,18 +2131,6 @@ ColorLayer::DumpPacket(layerscope::LayersPacket* aPacket, const void* aParent)
   layer->set_color(mColor.ToABGR());
 }
 
-void
-BorderLayer::PrintInfo(std::stringstream& aStream, const char* aPrefix)
-{
-  Layer::PrintInfo(aStream, aPrefix);
-}
-
-void
-BorderLayer::DumpPacket(layerscope::LayersPacket* aPacket, const void* aParent)
-{
-  Layer::DumpPacket(aPacket, aParent);
-}
-
 CanvasLayer::CanvasLayer(LayerManager* aManager, void* aImplData)
   : Layer(aManager, aImplData)
   , mSamplingFilter(SamplingFilter::GOOD)
@@ -2434,7 +2435,7 @@ SetAntialiasingFlags(Layer* aLayer, DrawTarget* aTarget)
     return;
   }
 
-  const IntRect& bounds = aLayer->GetVisibleRegion().ToUnknownRegion().GetBounds();
+  const IntRect& bounds = aLayer->GetVisibleRegion().GetBounds().ToUnknownRect();
   gfx::Rect transformedBounds = aTarget->GetTransform().TransformBounds(gfx::Rect(Float(bounds.X()), Float(bounds.Y()),
                                                                                   Float(bounds.Width()), Float(bounds.Height())));
   transformedBounds.RoundOut();

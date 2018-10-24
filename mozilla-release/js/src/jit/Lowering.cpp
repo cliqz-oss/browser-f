@@ -2513,7 +2513,7 @@ LIRGenerator::visitStringReplace(MStringReplace* ins)
 }
 
 void
-LIRGenerator::visitBinarySharedStub(MBinarySharedStub* ins)
+LIRGenerator::visitBinaryCache(MBinaryCache* ins)
 {
     MDefinition* lhs = ins->getOperand(0);
     MDefinition* rhs = ins->getOperand(1);
@@ -2521,9 +2521,11 @@ LIRGenerator::visitBinarySharedStub(MBinarySharedStub* ins)
     MOZ_ASSERT(ins->type() == MIRType::Value);
     MOZ_ASSERT(ins->type() == MIRType::Value);
 
-    LBinarySharedStub* lir = new(alloc()) LBinarySharedStub(useBoxFixedAtStart(lhs, R0),
-                                                            useBoxFixedAtStart(rhs, R1));
-    defineSharedStubReturn(lir, ins);
+    LBinaryCache* lir = new(alloc()) LBinaryCache(useBox(lhs),
+                                                  useBox(rhs),
+                                                  tempFixed(FloatReg0),
+                                                  tempFixed(FloatReg1));
+    defineBox(lir, ins);
     assignSafepoint(lir, ins);
 }
 
@@ -2535,17 +2537,6 @@ LIRGenerator::visitUnaryCache(MUnaryCache* ins)
 
     LUnaryCache* lir = new(alloc()) LUnaryCache(useBox(input));
     defineBox(lir, ins);
-    assignSafepoint(lir, ins);
-}
-
-void
-LIRGenerator::visitNullarySharedStub(MNullarySharedStub* ins)
-{
-    MOZ_ASSERT(ins->type() == MIRType::Value);
-
-    LNullarySharedStub* lir = new(alloc()) LNullarySharedStub();
-
-    defineSharedStubReturn(lir, ins);
     assignSafepoint(lir, ins);
 }
 
@@ -3671,8 +3662,7 @@ LIRGenerator::visitLoadUnboxedScalar(MLoadUnboxedScalar* ins)
     const LUse elements = useRegister(ins->elements());
     const LAllocation index = useRegisterOrConstant(ins->index());
 
-    MOZ_ASSERT(IsNumberType(ins->type()) || IsSimdType(ins->type()) ||
-               ins->type() == MIRType::Boolean);
+    MOZ_ASSERT(IsNumberType(ins->type()) || ins->type() == MIRType::Boolean);
 
     // We need a temp register for Uint32Array with known double result.
     LDefinition tempDef = LDefinition::BogusTemp();
@@ -3753,12 +3743,7 @@ LIRGenerator::visitStoreUnboxedScalar(MStoreUnboxedScalar* ins)
     MOZ_ASSERT(IsValidElementsType(ins->elements(), ins->offsetAdjustment()));
     MOZ_ASSERT(ins->index()->type() == MIRType::Int32);
 
-    if (ins->isSimdWrite()) {
-        MOZ_ASSERT_IF(ins->writeType() == Scalar::Float32x4, ins->value()->type() == MIRType::Float32x4);
-        MOZ_ASSERT_IF(ins->writeType() == Scalar::Int8x16, ins->value()->type() == MIRType::Int8x16);
-        MOZ_ASSERT_IF(ins->writeType() == Scalar::Int16x8, ins->value()->type() == MIRType::Int16x8);
-        MOZ_ASSERT_IF(ins->writeType() == Scalar::Int32x4, ins->value()->type() == MIRType::Int32x4);
-    } else if (ins->isFloatWrite()) {
+    if (ins->isFloatWrite()) {
         MOZ_ASSERT_IF(ins->writeType() == Scalar::Float32, ins->value()->type() == MIRType::Float32);
         MOZ_ASSERT_IF(ins->writeType() == Scalar::Float64, ins->value()->type() == MIRType::Double);
     } else {
@@ -4630,17 +4615,32 @@ LIRGenerator::visitWasmAlignmentCheck(MWasmAlignmentCheck* ins)
 void
 LIRGenerator::visitWasmLoadGlobalVar(MWasmLoadGlobalVar* ins)
 {
-    LDefinition addrTemp = ins->isIndirect() ? temp() : LDefinition::BogusTemp();
     if (ins->type() == MIRType::Int64) {
 #ifdef JS_PUNBOX64
         LAllocation tlsPtr = useRegisterAtStart(ins->tlsPtr());
 #else
         LAllocation tlsPtr = useRegister(ins->tlsPtr());
 #endif
-        defineInt64(new(alloc()) LWasmLoadGlobalVarI64(tlsPtr, addrTemp), ins);
+        defineInt64(new(alloc()) LWasmLoadGlobalVarI64(tlsPtr), ins);
     } else {
         LAllocation tlsPtr = useRegisterAtStart(ins->tlsPtr());
-        define(new(alloc()) LWasmLoadGlobalVar(tlsPtr, addrTemp), ins);
+        define(new(alloc()) LWasmLoadGlobalVar(tlsPtr), ins);
+    }
+}
+
+void
+LIRGenerator::visitWasmLoadGlobalCell(MWasmLoadGlobalCell* ins)
+{
+    if (ins->type() == MIRType::Int64) {
+#ifdef JS_PUNBOX64
+        LAllocation cellPtr = useRegisterAtStart(ins->cellPtr());
+#else
+        LAllocation cellPtr = useRegister(ins->cellPtr());
+#endif
+        defineInt64(new(alloc()) LWasmLoadGlobalCellI64(cellPtr), ins);
+    } else {
+        LAllocation cellPtr = useRegisterAtStart(ins->cellPtr());
+        define(new(alloc()) LWasmLoadGlobalCell(cellPtr), ins);
     }
 }
 
@@ -4648,7 +4648,6 @@ void
 LIRGenerator::visitWasmStoreGlobalVar(MWasmStoreGlobalVar* ins)
 {
     MDefinition* value = ins->value();
-    LDefinition addrTemp = ins->isIndirect() ? temp() : LDefinition::BogusTemp();
     if (value->type() == MIRType::Int64) {
 #ifdef JS_PUNBOX64
         LAllocation tlsPtr = useRegisterAtStart(ins->tlsPtr());
@@ -4657,11 +4656,31 @@ LIRGenerator::visitWasmStoreGlobalVar(MWasmStoreGlobalVar* ins)
         LAllocation tlsPtr = useRegister(ins->tlsPtr());
         LInt64Allocation valueAlloc = useInt64Register(value);
 #endif
-        add(new(alloc()) LWasmStoreGlobalVarI64(valueAlloc, tlsPtr, addrTemp), ins);
+        add(new(alloc()) LWasmStoreGlobalVarI64(valueAlloc, tlsPtr), ins);
     } else {
         LAllocation tlsPtr = useRegisterAtStart(ins->tlsPtr());
         LAllocation valueAlloc = useRegisterAtStart(value);
-        add(new(alloc()) LWasmStoreGlobalVar(valueAlloc, tlsPtr, addrTemp), ins);
+        add(new(alloc()) LWasmStoreGlobalVar(valueAlloc, tlsPtr), ins);
+    }
+}
+
+void
+LIRGenerator::visitWasmStoreGlobalCell(MWasmStoreGlobalCell* ins)
+{
+    MDefinition* value = ins->value();
+    if (value->type() == MIRType::Int64) {
+#ifdef JS_PUNBOX64
+        LAllocation cellPtr = useRegisterAtStart(ins->cellPtr());
+        LInt64Allocation valueAlloc = useInt64RegisterAtStart(value);
+#else
+        LAllocation cellPtr = useRegister(ins->cellPtr());
+        LInt64Allocation valueAlloc = useInt64Register(value);
+#endif
+        add(new(alloc()) LWasmStoreGlobalCellI64(valueAlloc, cellPtr), ins);
+    } else {
+        LAllocation cellPtr = useRegisterAtStart(ins->cellPtr());
+        LAllocation valueAlloc = useRegisterAtStart(value);
+        add(new(alloc()) LWasmStoreGlobalCell(valueAlloc, cellPtr), ins);
     }
 }
 
@@ -4692,7 +4711,7 @@ LIRGenerator::visitWasmParameter(MWasmParameter* ins)
 #endif
         );
     } else {
-        MOZ_ASSERT(IsNumberType(ins->type()) || IsSimdType(ins->type()));
+        MOZ_ASSERT(IsNumberType(ins->type()));
         defineFixed(new(alloc()) LWasmParameter, ins, LArgument(abi.offsetFromArgBase()));
     }
 }
@@ -4712,8 +4731,6 @@ LIRGenerator::visitWasmReturn(MWasmReturn* ins)
         lir->setOperand(0, useFixed(rval, ReturnFloat32Reg));
     else if (rval->type() == MIRType::Double)
         lir->setOperand(0, useFixed(rval, ReturnDoubleReg));
-    else if (IsSimdType(rval->type()))
-        lir->setOperand(0, useFixed(rval, ReturnSimd128Reg));
     else if (rval->type() == MIRType::Int32)
         lir->setOperand(0, useFixed(rval, ReturnReg));
     else
@@ -4733,7 +4750,7 @@ LIRGenerator::visitWasmStackArg(MWasmStackArg* ins)
 {
     if (ins->arg()->type() == MIRType::Int64) {
         add(new(alloc()) LWasmStackArgI64(useInt64RegisterOrConstantAtStart(ins->arg())), ins);
-    } else if (IsFloatingPointType(ins->arg()->type()) || IsSimdType(ins->arg()->type())) {
+    } else if (IsFloatingPointType(ins->arg()->type())) {
         MOZ_ASSERT(!ins->arg()->isEmittedAtUses());
         add(new(alloc()) LWasmStackArg(useRegisterAtStart(ins->arg())), ins);
     } else {
@@ -4866,217 +4883,6 @@ LIRGenerator::visitRecompileCheck(MRecompileCheck* ins)
     LRecompileCheck* lir = new(alloc()) LRecompileCheck(temp());
     add(lir, ins);
     assignSafepoint(lir, ins);
-}
-
-void
-LIRGenerator::visitSimdBox(MSimdBox* ins)
-{
-    MOZ_ASSERT(IsSimdType(ins->input()->type()));
-    LUse in = useRegister(ins->input());
-    LSimdBox* lir = new(alloc()) LSimdBox(in, temp());
-    define(lir, ins);
-    assignSafepoint(lir, ins);
-}
-
-void
-LIRGenerator::visitSimdUnbox(MSimdUnbox* ins)
-{
-    MOZ_ASSERT(ins->input()->type() == MIRType::Object);
-    MOZ_ASSERT(IsSimdType(ins->type()));
-    LUse in = useRegister(ins->input());
-    LSimdUnbox* lir = new(alloc()) LSimdUnbox(in, temp());
-    assignSnapshot(lir, Bailout_UnexpectedSimdInput);
-    define(lir, ins);
-}
-
-void
-LIRGenerator::visitSimdConstant(MSimdConstant* ins)
-{
-    MOZ_ASSERT(IsSimdType(ins->type()));
-
-    switch (ins->type()) {
-      case MIRType::Int8x16:
-      case MIRType::Int16x8:
-      case MIRType::Int32x4:
-      case MIRType::Bool8x16:
-      case MIRType::Bool16x8:
-      case MIRType::Bool32x4:
-        define(new(alloc()) LSimd128Int(), ins);
-        break;
-      case MIRType::Float32x4:
-        define(new(alloc()) LSimd128Float(), ins);
-        break;
-      default:
-        MOZ_CRASH("Unknown SIMD kind when generating constant");
-    }
-}
-
-void
-LIRGenerator::visitSimdConvert(MSimdConvert* ins)
-{
-    MOZ_ASSERT(IsSimdType(ins->type()));
-    MDefinition* input = ins->input();
-    LUse use = useRegister(input);
-    if (ins->type() == MIRType::Int32x4) {
-        MOZ_ASSERT(input->type() == MIRType::Float32x4);
-        switch (ins->signedness()) {
-          case SimdSign::Signed: {
-              LFloat32x4ToInt32x4* lir = new(alloc()) LFloat32x4ToInt32x4(use, temp());
-              if (!gen->compilingWasm())
-                  assignSnapshot(lir, Bailout_BoundsCheck);
-              define(lir, ins);
-              break;
-          }
-          case SimdSign::Unsigned: {
-              LFloat32x4ToUint32x4* lir =
-                new (alloc()) LFloat32x4ToUint32x4(use, temp(), temp(LDefinition::SIMD128INT));
-              if (!gen->compilingWasm())
-                  assignSnapshot(lir, Bailout_BoundsCheck);
-              define(lir, ins);
-              break;
-          }
-          default:
-            MOZ_CRASH("Unexpected SimdConvert sign");
-        }
-    } else if (ins->type() == MIRType::Float32x4) {
-        MOZ_ASSERT(input->type() == MIRType::Int32x4);
-        MOZ_ASSERT(ins->signedness() == SimdSign::Signed, "Unexpected SimdConvert sign");
-        define(new(alloc()) LInt32x4ToFloat32x4(use), ins);
-    } else {
-        MOZ_CRASH("Unknown SIMD kind when generating constant");
-    }
-}
-
-void
-LIRGenerator::visitSimdReinterpretCast(MSimdReinterpretCast* ins)
-{
-    MOZ_ASSERT(IsSimdType(ins->type()) && IsSimdType(ins->input()->type()));
-    MDefinition* input = ins->input();
-    LUse use = useRegisterAtStart(input);
-    // :TODO: (Bug 1132894) We have to allocate a different register as redefine
-    // and/or defineReuseInput are not yet capable of reusing the same register
-    // with a different register type.
-    define(new(alloc()) LSimdReinterpretCast(use), ins);
-}
-
-void
-LIRGenerator::visitSimdAllTrue(MSimdAllTrue* ins)
-{
-    MDefinition* input = ins->input();
-    MOZ_ASSERT(IsBooleanSimdType(input->type()));
-
-    LUse use = useRegisterAtStart(input);
-    define(new(alloc()) LSimdAllTrue(use), ins);
-}
-
-void
-LIRGenerator::visitSimdAnyTrue(MSimdAnyTrue* ins)
-{
-    MDefinition* input = ins->input();
-    MOZ_ASSERT(IsBooleanSimdType(input->type()));
-
-    LUse use = useRegisterAtStart(input);
-    define(new(alloc()) LSimdAnyTrue(use), ins);
-}
-
-void
-LIRGenerator::visitSimdUnaryArith(MSimdUnaryArith* ins)
-{
-    MOZ_ASSERT(IsSimdType(ins->input()->type()));
-    MOZ_ASSERT(IsSimdType(ins->type()));
-
-    // Cannot be at start, as the ouput is used as a temporary to store values.
-    LUse in = use(ins->input());
-
-    switch (ins->type()) {
-      case MIRType::Int8x16:
-      case MIRType::Bool8x16:
-        define(new (alloc()) LSimdUnaryArithIx16(in), ins);
-        break;
-      case MIRType::Int16x8:
-      case MIRType::Bool16x8:
-        define(new (alloc()) LSimdUnaryArithIx8(in), ins);
-        break;
-      case MIRType::Int32x4:
-      case MIRType::Bool32x4:
-        define(new (alloc()) LSimdUnaryArithIx4(in), ins);
-        break;
-      case MIRType::Float32x4:
-        define(new (alloc()) LSimdUnaryArithFx4(in), ins);
-        break;
-      default:
-        MOZ_CRASH("Unknown SIMD kind for unary operation");
-    }
-}
-
-void
-LIRGenerator::visitSimdBinaryComp(MSimdBinaryComp* ins)
-{
-    MOZ_ASSERT(IsSimdType(ins->lhs()->type()));
-    MOZ_ASSERT(IsSimdType(ins->rhs()->type()));
-    MOZ_ASSERT(IsBooleanSimdType(ins->type()));
-
-    if (ShouldReorderCommutative(ins->lhs(), ins->rhs(), ins))
-        ins->reverse();
-
-    switch (ins->specialization()) {
-      case MIRType::Int8x16: {
-          MOZ_ASSERT(ins->signedness() == SimdSign::Signed);
-          LSimdBinaryCompIx16* add = new (alloc()) LSimdBinaryCompIx16();
-          lowerForFPU(add, ins, ins->lhs(), ins->rhs());
-          return;
-      }
-      case MIRType::Int16x8: {
-          MOZ_ASSERT(ins->signedness() == SimdSign::Signed);
-          LSimdBinaryCompIx8* add = new (alloc()) LSimdBinaryCompIx8();
-          lowerForFPU(add, ins, ins->lhs(), ins->rhs());
-          return;
-      }
-      case MIRType::Int32x4: {
-          MOZ_ASSERT(ins->signedness() == SimdSign::Signed);
-          LSimdBinaryCompIx4* add = new (alloc()) LSimdBinaryCompIx4();
-          lowerForCompIx4(add, ins, ins->lhs(), ins->rhs());
-          return;
-      }
-      case MIRType::Float32x4: {
-          MOZ_ASSERT(ins->signedness() == SimdSign::NotApplicable);
-          LSimdBinaryCompFx4* add = new (alloc()) LSimdBinaryCompFx4();
-          lowerForCompFx4(add, ins, ins->lhs(), ins->rhs());
-          return;
-      }
-      default:
-        MOZ_CRASH("Unknown compare type when comparing values");
-    }
-}
-
-void
-LIRGenerator::visitSimdBinaryBitwise(MSimdBinaryBitwise* ins)
-{
-    MOZ_ASSERT(IsSimdType(ins->lhs()->type()));
-    MOZ_ASSERT(IsSimdType(ins->rhs()->type()));
-    MOZ_ASSERT(IsSimdType(ins->type()));
-
-    MDefinition* lhs = ins->lhs();
-    MDefinition* rhs = ins->rhs();
-    ReorderCommutative(&lhs, &rhs, ins);
-    LSimdBinaryBitwise* lir = new(alloc()) LSimdBinaryBitwise;
-    lowerForFPU(lir, ins, lhs, rhs);
-}
-
-void
-LIRGenerator::visitSimdShift(MSimdShift* ins)
-{
-    MOZ_ASSERT(IsIntegerSimdType(ins->type()));
-    MOZ_ASSERT(ins->lhs()->type() == ins->type());
-    MOZ_ASSERT(ins->rhs()->type() == MIRType::Int32);
-
-    LUse vector = useRegisterAtStart(ins->lhs());
-    LAllocation value = useRegisterOrConstant(ins->rhs());
-    // We need a temp register to mask the shift amount, but not if the shift
-    // amount is a constant.
-    LDefinition tempReg = value.isConstant() ? LDefinition::BogusTemp() : temp();
-    LSimdShift* lir = new(alloc()) LSimdShift(vector, value, tempReg);
-    defineReuseInput(lir, ins, 0);
 }
 
 void
@@ -5535,6 +5341,59 @@ void
 LIRGenerator::visitUnknownValue(MUnknownValue* ins)
 {
     MOZ_CRASH("Can not lower unknown value.");
+}
+
+void
+LIRGenerator::visitIonToWasmCall(MIonToWasmCall* ins)
+{
+    // The instruction needs a temp register:
+    // - that's not the FramePointer, since wasm is going to use it in the
+    // function.
+    // - that's not aliasing an input register.
+    LDefinition scratch = tempFixed(ABINonArgReg0);
+
+    // Also prevent register allocation from using wasm's FramePointer, in
+    // non-profiling mode.
+    LDefinition fp = gen->isProfilerInstrumentationEnabled()
+                   ? LDefinition::BogusTemp()
+                   : tempFixed(FramePointer);
+
+    // Note that since this is a LIR call instruction, regalloc will prevent
+    // the use*AtStart below from reusing any of the temporaries.
+
+    LInstruction* lir;
+    if (ins->type() == MIRType::Value)
+        lir = allocateVariadic<LIonToWasmCallV>(ins->numOperands(), scratch, fp);
+    else
+        lir = allocateVariadic<LIonToWasmCall>(ins->numOperands(), scratch, fp);
+    if (!lir) {
+        abort(AbortReason::Alloc, "Couldn't allocate for LIonToWasmCallBase");
+        return;
+    }
+
+    ABIArgGenerator abi;
+    for (unsigned i = 0; i < ins->numOperands(); i++) {
+        MDefinition* argDef = ins->getOperand(i);
+        ABIArg arg = abi.next(ToMIRType(argDef->type()));
+        switch (arg.kind()) {
+          case ABIArg::GPR:
+          case ABIArg::FPU:
+            lir->setOperand(i, useFixedAtStart(argDef, arg.reg()));
+            break;
+          case ABIArg::Stack:
+            lir->setOperand(i, useAtStart(argDef));
+            break;
+#ifdef JS_CODEGEN_REGISTER_PAIR
+          case ABIArg::GPR_PAIR:
+            MOZ_CRASH("no way to pass i64, and wasm uses hardfp for function calls");
+#endif
+          case ABIArg::Uninitialized:
+            MOZ_CRASH("Uninitialized ABIArg kind");
+        }
+    }
+
+    defineReturn(lir, ins);
+    assignSafepoint(lir, ins);
 }
 
 static_assert(!std::is_polymorphic<LIRGenerator>::value,

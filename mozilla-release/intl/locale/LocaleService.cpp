@@ -315,6 +315,11 @@ LocaleService::GetRequestedLocales(nsTArray<nsCString>& aRetVal)
 bool
 LocaleService::GetAvailableLocales(nsTArray<nsCString>& aRetVal)
 {
+  MOZ_ASSERT(mIsServer, "This should only be called in the server mode.");
+  if (!mIsServer) {
+    return false;
+  }
+
   if (mAvailableLocales.IsEmpty()) {
     // If there are no available locales set, it means that L10nRegistry
     // did not register its locale pool yet. The best course of action
@@ -518,8 +523,8 @@ LocaleService::NegotiateLanguages(const nsTArray<nsCString>& aRequested,
                                   LangNegStrategy aStrategy,
                                   nsTArray<nsCString>& aRetVal)
 {
-  MOZ_ASSERT(aDefaultLocale.IsEmpty() || Locale(aDefaultLocale).IsValid(),
-    "If specified, default locale must be a valid BCP47 language tag.");
+  MOZ_ASSERT(aDefaultLocale.IsEmpty() || Locale(aDefaultLocale).IsWellFormed(),
+    "If specified, default locale must be a well-formed BCP47 language tag.");
 
   if (aStrategy == LangNegStrategy::Lookup && aDefaultLocale.IsEmpty()) {
     NS_WARNING("Default locale should be specified when using lookup strategy.");
@@ -903,6 +908,11 @@ NS_IMETHODIMP
 LocaleService::SetRequestedLocales(const char** aRequested,
                                    uint32_t aRequestedCount)
 {
+  MOZ_ASSERT(mIsServer, "This should only be called in the server mode.");
+  if (!mIsServer) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
   nsAutoCString str;
 
   for (uint32_t i = 0; i < aRequestedCount; i++) {
@@ -949,6 +959,11 @@ NS_IMETHODIMP
 LocaleService::SetAvailableLocales(const char** aAvailable,
                                    uint32_t aAvailableCount)
 {
+  MOZ_ASSERT(mIsServer, "This should only be called in the server mode.");
+  if (!mIsServer) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
   nsTArray<nsCString> newLocales;
 
   for (uint32_t i = 0; i < aAvailableCount; i++) {

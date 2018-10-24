@@ -51,7 +51,7 @@ function hasArrayIndex(str) {
  *
  *            {
  *              state: STATE_NORMAL|STATE_QUOTE|STATE_DQUOTE,
- *              startPos: index of where the last statement begins
+ *              lastStatement: the last statement in the string
  *            }
  */
 function findCompletionBeginning(str) {
@@ -60,8 +60,11 @@ function findCompletionBeginning(str) {
   let state = STATE_NORMAL;
   let start = 0;
   let c;
-  for (let i = 0; i < str.length; i++) {
-    c = str[i];
+
+  // Use an array in order to handle character with a length > 2 (e.g. 😎).
+  const characters = Array.from(str);
+  for (let i = 0; i < characters.length; i++) {
+    c = characters[i];
 
     switch (state) {
       // Normal JS state.
@@ -73,7 +76,33 @@ function findCompletionBeginning(str) {
         } else if (c == ";") {
           start = i + 1;
         } else if (c == " ") {
-          start = i + 1;
+          const before = characters.slice(0, i);
+          const after = characters.slice(i + 1);
+          const trimmedBefore = Array.from(before.join("").trimRight());
+          const trimmedAfter = Array.from(after.join("").trimLeft());
+
+          const nextNonSpaceChar = trimmedAfter[0];
+          const nextNonSpaceCharIndex = after.indexOf(nextNonSpaceChar);
+          const previousNonSpaceChar = trimmedBefore[trimmedBefore.length - 1];
+
+          // If the previous meaningful char was a dot and there is no meaningful char
+          // after, we can break out of the loop.
+          if (previousNonSpaceChar === "." && !nextNonSpaceChar) {
+            break;
+          }
+
+          if (nextNonSpaceChar) {
+            // If the previous char wasn't a dot, and the next one isn't a dot either,
+            // update the start pos.
+            if (previousNonSpaceChar !== "." && nextNonSpaceChar !== ".") {
+              start = i + nextNonSpaceCharIndex;
+            }
+            // Let's jump to handle the next non-space char.
+            i = i + nextNonSpaceCharIndex;
+          } else {
+            // There's only spaces after that, so we can break out of the loop.
+            break;
+          }
         } else if (OPEN_BODY.includes(c)) {
           bodyStack.push({
             token: c,
@@ -125,7 +154,7 @@ function findCompletionBeginning(str) {
 
   return {
     state: state,
-    startPos: start
+    lastStatement: characters.slice(start).join("")
   };
 }
 
@@ -151,7 +180,7 @@ function findCompletionBeginning(str) {
  *          If no completion valued could be computed, null is returned,
  *          otherwise a object with the following form is returned:
  *            {
- *              matches: [ string, string, string ],
+ *              matches: Set<string>
  *              matchProp: Last part of the inputValue that was used to find
  *                         the matches-strings.
  *            }
@@ -165,20 +194,20 @@ function JSPropertyProvider(dbgObject, anEnvironment, inputValue, cursor) {
 
   // Analyse the inputValue and find the beginning of the last part that
   // should be completed.
-  const beginning = findCompletionBeginning(inputValue);
+  const {err, state, lastStatement} = findCompletionBeginning(inputValue);
 
   // There was an error analysing the string.
-  if (beginning.err) {
+  if (err) {
     return null;
   }
 
   // If the current state is not STATE_NORMAL, then we are inside of an string
   // which means that no completion is possible.
-  if (beginning.state != STATE_NORMAL) {
+  if (state != STATE_NORMAL) {
     return null;
   }
 
-  const completionPart = inputValue.substring(beginning.startPos);
+  const completionPart = lastStatement;
   const lastDot = completionPart.lastIndexOf(".");
 
   // Don't complete on just an empty string.
@@ -201,7 +230,7 @@ function JSPropertyProvider(dbgObject, anEnvironment, inputValue, cursor) {
     // If there were parse errors this won't exist.
     if (lastBody) {
       const expression = lastBody.expression;
-      const matchProp = completionPart.slice(lastDot + 1);
+      const matchProp = completionPart.slice(lastDot + 1).trimLeft();
       if (expression.type === "ArrayExpression") {
         return getMatchedProps(Array.prototype, matchProp);
       } else if (expression.type === "Literal" &&
@@ -378,16 +407,24 @@ function getMatchedProps(obj, match) {
  * Get all properties in the given object (and its parent prototype chain) that
  * match a given prefix.
  *
- * @param mixed obj
+ * @param {Mixed} obj
  *        Object whose properties we want to filter.
- * @param string match
+ * @param {string} match
  *        Filter for properties that match this string.
- * @return object
- *         Object that contains the matchProp and the list of names.
+ * @returns {object} which holds the following properties:
+ *            - {string} matchProp.
+ *            - {Set} matches: List of matched properties.
  */
 function getMatchedPropsImpl(obj, match, {chainIterator, getProperties}) {
   const matches = new Set();
   let numProps = 0;
+
+  const insensitiveMatching = match && match[0].toUpperCase() !== match[0];
+  const propertyMatches = prop => {
+    return insensitiveMatching
+      ? prop.toLocaleLowerCase().startsWith(match.toLocaleLowerCase())
+      : prop.startsWith(match);
+  };
 
   // We need to go up the prototype chain.
   const iter = chainIterator(obj);
@@ -408,7 +445,7 @@ function getMatchedPropsImpl(obj, match, {chainIterator, getProperties}) {
 
     for (let i = 0; i < props.length; i++) {
       const prop = props[i];
-      if (prop.indexOf(match) != 0) {
+      if (!propertyMatches(prop)) {
         continue;
       }
       if (prop.indexOf("-") > -1) {
@@ -430,7 +467,7 @@ function getMatchedPropsImpl(obj, match, {chainIterator, getProperties}) {
 
   return {
     matchProp: match,
-    matches: [...matches],
+    matches,
   };
 }
 

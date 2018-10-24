@@ -4,7 +4,7 @@
 "use strict";
 
 const { console, ConsoleAPI } = require("resource://gre/modules/Console.jsm");
-const { ConsoleAPIListener } = require("devtools/server/actors/webconsole/listeners");
+const { ConsoleAPIListener } = require("devtools/server/actors/webconsole/listeners/console-api");
 
 var seenMessages = 0;
 var seenTypes = 0;
@@ -54,8 +54,7 @@ function createFakeAddonWindow({addonId} = {}) {
   const principal = Services.scriptSecurityManager
         .createCodebasePrincipal(baseURI, {});
   const chromeWebNav = Services.appShell.createWindowlessBrowser(true);
-  const docShell = chromeWebNav.QueryInterface(Ci.nsIInterfaceRequestor)
-                             .getInterface(Ci.nsIDocShell);
+  const { docShell } = chromeWebNav;
   docShell.createAboutBlankContentViewer(principal);
   const addonWindow = docShell.contentViewer.DOMDocument.defaultView;
 

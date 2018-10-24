@@ -175,19 +175,16 @@ class Module::Tier2GeneratorTaskImpl : public Tier2GeneratorTask
     SharedModule            module_;
     SharedCompileArgs       compileArgs_;
     Atomic<bool>            cancelled_;
-    bool                    finished_;
 
   public:
     Tier2GeneratorTaskImpl(Module& module, const CompileArgs& compileArgs)
       : module_(&module),
         compileArgs_(&compileArgs),
-        cancelled_(false),
-        finished_(false)
+        cancelled_(false)
     {}
 
     ~Tier2GeneratorTaskImpl() override {
-        if (!finished_)
-            module_->notifyCompilationListeners();
+        module_->testingTier2Active_ = false;
     }
 
     void cancel() override {
@@ -195,51 +192,24 @@ class Module::Tier2GeneratorTaskImpl : public Tier2GeneratorTask
     }
 
     void execute() override {
-        MOZ_ASSERT(!finished_);
-        finished_ = CompileTier2(*compileArgs_, *module_, &cancelled_);
+        CompileTier2(*compileArgs_, *module_, &cancelled_);
     }
 };
 
 void
 Module::startTier2(const CompileArgs& args)
 {
-    MOZ_ASSERT(!tiering_.lock()->active);
+    MOZ_ASSERT(!testingTier2Active_);
 
-    // If a Module initiates tier-2 compilation, we must ensure that eventually
-    // notifyCompilationListeners() is called. Since we must ensure
-    // Tier2GeneratorTaskImpl objects are destroyed *anyway*, we use
-    // ~Tier2GeneratorTaskImpl() to call notifyCompilationListeners() if it
-    // hasn't been already.
-
-    UniqueTier2GeneratorTask task(js_new<Tier2GeneratorTaskImpl>(*this, args));
+    auto task = MakeUnique<Tier2GeneratorTaskImpl>(*this, args);
     if (!task)
         return;
 
-    tiering_.lock()->active = true;
+    // This flag will be cleared asynchronously by ~Tier2GeneratorTaskImpl()
+    // on success or failure.
+    testingTier2Active_ = true;
 
     StartOffThreadWasmTier2Generator(std::move(task));
-}
-
-void
-Module::notifyCompilationListeners()
-{
-    // Notify listeners without holding the lock to avoid deadlocks if the
-    // listener takes their own lock or reenters this Module.
-
-    Tiering::ListenerVector listeners;
-    {
-        auto tiering = tiering_.lock();
-
-        MOZ_ASSERT(tiering->active);
-        tiering->active = false;
-
-        Swap(listeners, tiering->listeners);
-
-        tiering.notify_all(/* inactive */);
-    }
-
-    for (RefPtr<JS::WasmModuleListener>& listener : listeners)
-        listener->onCompilationComplete();
 }
 
 bool
@@ -296,14 +266,8 @@ Module::finishTier2(UniqueLinkDataTier linkData2, UniqueCodeTier tier2Arg, Modul
         MOZ_ASSERT(!code().hasTier2());
         code().commitTier2();
 
-        // Now tier2 is committed and we can update jump tables entries to
-        // start making tier2 live.  Because lazy stubs are protected by a lock
-        // and notifyCompilationListeners should be called without any lock
-        // held, do it before.
-
         stubs2->setJitEntries(stub2Index, code());
     }
-    notifyCompilationListeners();
 
     // And we update the jump vector.
 
@@ -323,65 +287,16 @@ Module::finishTier2(UniqueLinkDataTier linkData2, UniqueCodeTier tier2Arg, Modul
 }
 
 void
-Module::blockOnTier2Complete() const
+Module::testingBlockOnTier2Complete() const
 {
-    auto tiering = tiering_.lock();
-    while (tiering->active)
-        tiering.wait(/* inactive */);
-}
-
-/* virtual */ size_t
-Module::bytecodeSerializedSize() const
-{
-    return bytecode_->bytes.length();
-}
-
-/* virtual */ void
-Module::bytecodeSerialize(uint8_t* bytecodeBegin, size_t bytecodeSize) const
-{
-    MOZ_ASSERT(!!bytecodeBegin == !!bytecodeSize);
-
-    // Bytecode deserialization is not guarded by Assumptions and thus must not
-    // change incompatibly between builds. For simplicity, the format of the
-    // bytecode file is a .wasm file which ensures backwards compatibility.
-
-    const Bytes& bytes = bytecode_->bytes;
-    uint8_t* bytecodeEnd = WriteBytes(bytecodeBegin, bytes.begin(), bytes.length());
-    MOZ_RELEASE_ASSERT(bytecodeEnd == bytecodeBegin + bytecodeSize);
-}
-
-/* virtual */ bool
-Module::compilationComplete() const
-{
-    // For the purposes of serialization, if there is not an active tier-2
-    // compilation in progress, compilation is "complete" in that
-    // compiledSerialize() can be called. Now, tier-2 compilation may have
-    // failed or never started in the first place, but in such cases, a
-    // zero-byte compilation is serialized, triggering recompilation on upon
-    // deserialization. Basically, we only want serialization to wait if waiting
-    // would eventually produce tier-2 code.
-    return !tiering_.lock()->active;
-}
-
-/* virtual */ bool
-Module::notifyWhenCompilationComplete(JS::WasmModuleListener* listener)
-{
-    {
-        auto tiering = tiering_.lock();
-        if (tiering->active)
-            return tiering->listeners.append(listener);
-    }
-
-    // Notify the listener without holding the lock to avoid deadlocks if the
-    // listener takes their own lock or reenters this Module.
-    listener->onCompilationComplete();
-    return true;
+    while (testingTier2Active_)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
 }
 
 /* virtual */ size_t
 Module::compiledSerializedSize() const
 {
-    MOZ_ASSERT(!tiering_.lock()->active);
+    MOZ_ASSERT(!testingTier2Active_);
 
     // The compiled debug code must not be saved, set compiled size to 0,
     // so Module::assumptionsMatch will return false during assumptions
@@ -405,7 +320,7 @@ Module::compiledSerializedSize() const
 /* virtual */ void
 Module::compiledSerialize(uint8_t* compiledBegin, size_t compiledSize) const
 {
-    MOZ_ASSERT(!tiering_.lock()->active);
+    MOZ_ASSERT(!testingTier2Active_);
 
     if (metadata().debugEnabled) {
         MOZ_RELEASE_ASSERT(compiledSize == 0);
@@ -551,37 +466,14 @@ MapFile(PRFileDesc* file, PRFileInfo* info)
     return UniqueMapping(memory, MemUnmap(info->size));
 }
 
-bool
-wasm::CompiledModuleAssumptionsMatch(PRFileDesc* compiled, JS::BuildIdCharVector&& buildId)
-{
-    PRFileInfo info;
-    UniqueMapping mapping = MapFile(compiled, &info);
-    if (!mapping)
-        return false;
-
-    Assumptions assumptions(std::move(buildId));
-    return Module::assumptionsMatch(assumptions, mapping.get(), info.size);
-}
-
 SharedModule
-wasm::DeserializeModule(PRFileDesc* bytecodeFile, PRFileDesc* maybeCompiledFile,
-                        JS::BuildIdCharVector&& buildId, UniqueChars filename,
-                        unsigned line)
+wasm::DeserializeModule(PRFileDesc* bytecodeFile, JS::BuildIdCharVector&& buildId,
+                        UniqueChars filename, unsigned line)
 {
     PRFileInfo bytecodeInfo;
     UniqueMapping bytecodeMapping = MapFile(bytecodeFile, &bytecodeInfo);
     if (!bytecodeMapping)
         return nullptr;
-
-    if (PRFileDesc* compiledFile = maybeCompiledFile) {
-        PRFileInfo compiledInfo;
-        UniqueMapping compiledMapping = MapFile(compiledFile, &compiledInfo);
-        if (!compiledMapping)
-            return nullptr;
-
-        return Module::deserialize(bytecodeMapping.get(), bytecodeInfo.size,
-                                   compiledMapping.get(), compiledInfo.size);
-    }
 
     // Since the compiled file's assumptions don't match, we must recompile from
     // bytecode. The bytecode file format is simply that of a .wasm (see
@@ -655,7 +547,7 @@ Module::extractCode(JSContext* cx, Tier tier, MutableHandleValue vp) const
 
     // This function is only used for testing purposes so we can simply
     // block on tiered compilation to complete.
-    blockOnTier2Complete();
+    testingBlockOnTier2Complete();
 
     if (!code_->hasTier(tier)) {
         vp.setNull();
@@ -721,13 +613,13 @@ Module::extractCode(JSContext* cx, Tier tier, MutableHandleValue vp) const
 }
 
 static uint32_t
-EvaluateInitExpr(const ValVector& globalImportValues, InitExpr initExpr)
+EvaluateInitExpr(HandleValVector globalImportValues, InitExpr initExpr)
 {
     switch (initExpr.kind()) {
       case InitExpr::Kind::Constant:
         return initExpr.val().i32();
       case InitExpr::Kind::GetGlobal:
-        return globalImportValues[initExpr.globalIndex()].i32();
+        return globalImportValues[initExpr.globalIndex()].get().i32();
     }
 
     MOZ_CRASH("bad initializer expression");
@@ -738,7 +630,7 @@ Module::initSegments(JSContext* cx,
                      HandleWasmInstanceObject instanceObj,
                      Handle<FunctionVector> funcImports,
                      HandleWasmMemoryObject memoryObj,
-                     const ValVector& globalImportValues) const
+                     HandleValVector globalImportValues) const
 {
     Instance& instance = instanceObj->instance();
     const SharedTableVector& tables = instance.tables();
@@ -1010,38 +902,44 @@ Module::instantiateTable(JSContext* cx, MutableHandleWasmTableObject tableObj,
     return true;
 }
 
-static Val
-ExtractGlobalValue(const ValVector& globalImportValues, uint32_t globalIndex, const GlobalDesc& global)
+static void
+ExtractGlobalValue(HandleValVector globalImportValues, uint32_t globalIndex,
+                   const GlobalDesc& global, MutableHandleVal result)
 {
     switch (global.kind()) {
       case GlobalKind::Import: {
-        return globalImportValues[globalIndex];
+        result.set(Val(globalImportValues[globalIndex]));
+        return;
       }
       case GlobalKind::Variable: {
         const InitExpr& init = global.initExpr();
         switch (init.kind()) {
           case InitExpr::Kind::Constant:
-            return init.val();
+            result.set(Val(init.val()));
+            return;
           case InitExpr::Kind::GetGlobal:
-            return globalImportValues[init.globalIndex()];
+            result.set(Val(globalImportValues[init.globalIndex()]));
+            return;
         }
         break;
       }
       case GlobalKind::Constant: {
-        return global.constantValue();
+        result.set(Val(global.constantValue()));
+        return;
       }
     }
     MOZ_CRASH("Not a global value");
 }
 
 static bool
-EnsureGlobalObject(JSContext* cx, const ValVector& globalImportValues, size_t globalIndex,
+EnsureGlobalObject(JSContext* cx, HandleValVector globalImportValues, size_t globalIndex,
                    const GlobalDesc& global, WasmGlobalObjectVector& globalObjs)
 {
     if (globalIndex < globalObjs.length() && globalObjs[globalIndex])
         return true;
 
-    Val val = ExtractGlobalValue(globalImportValues, globalIndex, global);
+    RootedVal val(cx);
+    ExtractGlobalValue(globalImportValues, globalIndex, global, &val);
     RootedWasmGlobalObject go(cx, WasmGlobalObject::create(cx, val, global.isMutable()));
     if (!go)
         return false;
@@ -1056,7 +954,7 @@ EnsureGlobalObject(JSContext* cx, const ValVector& globalImportValues, size_t gl
 }
 
 bool
-Module::instantiateGlobals(JSContext* cx, const ValVector& globalImportValues,
+Module::instantiateGlobals(JSContext* cx, HandleValVector globalImportValues,
                            WasmGlobalObjectVector& globalObjs) const
 {
     // If there are exported globals that aren't in globalObjs because they
@@ -1120,24 +1018,11 @@ GetFunctionExport(JSContext* cx,
 }
 
 static bool
-GetGlobalExport(JSContext* cx,
-                const GlobalDescVector& globals,
-                uint32_t globalIndex,
-                const ValVector& globalImportValues,
-                const WasmGlobalObjectVector& globalObjs,
-                MutableHandleValue jsval)
-{
-    jsval.setObject(*globalObjs[globalIndex]);
-    return true;
-}
-
-static bool
 CreateExportObject(JSContext* cx,
                    HandleWasmInstanceObject instanceObj,
                    Handle<FunctionVector> funcImports,
                    HandleWasmTableObject tableObj,
                    HandleWasmMemoryObject memoryObj,
-                   const ValVector& globalImportValues,
                    const WasmGlobalObjectVector& globalObjs,
                    const ExportVector& exports)
 {
@@ -1179,11 +1064,7 @@ CreateExportObject(JSContext* cx,
             val = ObjectValue(*memoryObj);
             break;
           case DefinitionKind::Global:
-            if (!GetGlobalExport(cx, metadata.globals, exp.globalIndex(), globalImportValues,
-                                 globalObjs, &val))
-            {
-                return false;
-            }
+            val.setObject(*globalObjs[exp.globalIndex()]);
             break;
         }
 
@@ -1205,7 +1086,7 @@ Module::instantiate(JSContext* cx,
                     Handle<FunctionVector> funcImports,
                     HandleWasmTableObject tableImport,
                     HandleWasmMemoryObject memoryImport,
-                    const ValVector& globalImportValues,
+                    HandleValVector globalImportValues,
                     WasmGlobalObjectVector& globalObjs,
                     HandleObject instanceProto,
                     MutableHandleWasmInstanceObject instance) const
@@ -1306,11 +1187,8 @@ Module::instantiate(JSContext* cx,
     if (!instance)
         return false;
 
-    if (!CreateExportObject(cx, instance, funcImports, table, memory, globalImportValues,
-                            globalObjs, exports_))
-    {
+    if (!CreateExportObject(cx, instance, funcImports, table, memory, globalObjs, exports_))
         return false;
-    }
 
     // Register the instance with the Realm so that it can find out about global
     // events like profiling being enabled in the realm. Registration does not
@@ -1341,7 +1219,7 @@ Module::instantiate(JSContext* cx,
     cx->runtime()->setUseCounter(instance, useCounter);
 
     if (cx->options().testWasmAwaitTier2())
-        blockOnTier2Complete();
+        testingBlockOnTier2Complete();
 
     return true;
 }

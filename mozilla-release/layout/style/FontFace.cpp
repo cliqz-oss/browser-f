@@ -130,7 +130,7 @@ FontFace::~FontFace()
 JSObject*
 FontFace::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return FontFaceBinding::Wrap(aCx, this, aGivenProto);
+  return FontFace_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 static FontFaceLoadStatus
@@ -147,7 +147,7 @@ LoadStateToStatus(gfxUserFontEntry::UserFontLoadState aLoadState)
     case gfxUserFontEntry::UserFontLoadState::STATUS_FAILED:
       return FontFaceLoadStatus::Error;
   }
-  NS_NOTREACHED("invalid aLoadState value");
+  MOZ_ASSERT_UNREACHABLE("invalid aLoadState value");
   return FontFaceLoadStatus::Error;
 }
 

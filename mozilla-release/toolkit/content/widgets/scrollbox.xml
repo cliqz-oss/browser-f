@@ -15,15 +15,6 @@
         <children/>
       </xul:box>
     </content>
-
-    <implementation>
-      <method name="scrollByIndex">
-        <parameter name="index"/>
-        <body>
-          this.boxObject.scrollByIndex(index);
-        </body>
-      </method>
-    </implementation>
   </binding>
 
   <binding id="arrowscrollbox" extends="chrome://global/content/bindings/general.xml#basecontrol">
@@ -115,13 +106,9 @@
         ]]></setter>
       </property>
 
-      <field name="_scrollBoxObject">null</field>
       <property name="scrollBoxObject" readonly="true">
         <getter><![CDATA[
-          if (!this._scrollBoxObject) {
-            this._scrollBoxObject = this._scrollbox.boxObject;
-          }
-          return this._scrollBoxObject;
+          return this._scrollbox.boxObject;
         ]]></getter>
       </property>
 
@@ -175,20 +162,11 @@
         document.defaultView.getComputedStyle(this._scrollbox).direction == "rtl";
       ]]></field>
 
-      <field name="_scrollTarget">null</field>
-
       <method name="_boundsWithoutFlushing">
         <parameter name="element"/>
         <body><![CDATA[
           if (!("_DOMWindowUtils" in this)) {
-            try {
-              this._DOMWindowUtils =
-                window.QueryInterface(Ci.nsIInterfaceRequestor)
-                      .getInterface(Ci.nsIDOMWindowUtils);
-            } catch (e) {
-              // Can't access nsIDOMWindowUtils if we're unprivileged.
-              this._DOMWindowUtils = null;
-            }
+            this._DOMWindowUtils = window.windowUtils;
           }
 
           return this._DOMWindowUtils ?
@@ -213,6 +191,7 @@
         ]]></body>
       </method>
 
+      <field name="_ensureElementIsVisibleAnimationFrame">0</field>
       <method name="ensureElementIsVisible">
         <parameter name="element"/>
         <parameter name="aInstant"/>
@@ -220,7 +199,13 @@
           if (!this._canScrollToElement(element))
             return;
 
-          element.scrollIntoView({ behavior: aInstant ? "instant" : "auto" });
+          if (this._ensureElementIsVisibleAnimationFrame) {
+            window.cancelAnimationFrame(this._ensureElementIsVisibleAnimationFrame);
+          }
+          this._ensureElementIsVisibleAnimationFrame = window.requestAnimationFrame(() => {
+            element.scrollIntoView({ behavior: aInstant ? "instant" : "auto" });
+            this._ensureElementIsVisibleAnimationFrame = 0;
+          });
         ]]></body>
       </method>
 
@@ -230,16 +215,6 @@
         <body><![CDATA[
           if (index == 0)
             return;
-
-          // Each scrollByIndex call is expected to scroll the given number of
-          // items. If a previous call is still in progress because of smooth
-          // scrolling, we need to complete it before starting a new one.
-          if (this._scrollTarget) {
-            let elements = this._getScrollableElements();
-            if (this._scrollTarget != elements[0] &&
-                this._scrollTarget != elements[elements.length - 1])
-              this.ensureElementIsVisible(this._scrollTarget, true);
-          }
 
           var rect = this.scrollClientRect;
           var [start, end] = this._startEndProps;
@@ -254,13 +229,13 @@
           while (index < 0 && nextElement) {
             if (this._canScrollToElement(nextElement))
               targetElement = nextElement;
-            nextElement = nextElement.previousSibling;
+            nextElement = nextElement.previousElementSibling;
             index++;
           }
           while (index > 0 && nextElement) {
             if (this._canScrollToElement(nextElement))
               targetElement = nextElement;
-            nextElement = nextElement.nextSibling;
+            nextElement = nextElement.nextElementSibling;
             index--;
           }
           if (!targetElement)
@@ -272,11 +247,11 @@
 
       <method name="_getScrollableElements">
         <body><![CDATA[
-          var nodes = this.childNodes;
+          var nodes = this.children;
           if (nodes.length == 1 &&
               nodes[0].localName == "children" &&
               nodes[0].namespaceURI == "http://www.mozilla.org/xbl") {
-            nodes = document.getBindingParent(this).childNodes;
+            nodes = document.getBindingParent(this).children;
           }
 
           return Array.filter(nodes, this._canScrollToElement, this);
@@ -570,9 +545,7 @@
       <handler event="overflow" phase="capturing"><![CDATA[
         // Ignore overflow events:
         // - from nested scrollable elements
-        // - when the window is tiny initially
-        if (event.target != this ||
-            window.outerWidth <= 1) {
+        if (event.target != this) {
           return;
         }
 
@@ -685,7 +658,7 @@
           const scrollDelta = 0.5 * timePassed * scrollIndex;
           this.scrollbox.scrollByPixels(scrollDelta, true);
           this.requestHandle = window.requestAnimationFrame(this.sample.bind(this));
-        }
+        },
       })]]></field>
 
       <method name="_startScroll">
@@ -785,8 +758,8 @@
             // so don't scroll too far
             if (targetElement)
               targetElement = scrollBack ?
-                              targetElement.nextSibling :
-                              targetElement.previousSibling;
+                              targetElement.nextElementSibling :
+                              targetElement.previousElementSibling;
           }
 
           if (!targetElement) {

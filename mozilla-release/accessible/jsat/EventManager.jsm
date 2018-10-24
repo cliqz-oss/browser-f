@@ -4,7 +4,6 @@
 
 "use strict";
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "Services",
   "resource://gre/modules/Services.jsm");
 ChromeUtils.defineModuleGetter(this, "Utils",
@@ -26,9 +25,8 @@ ChromeUtils.defineModuleGetter(this, "setTimeout",
 
 var EXPORTED_SYMBOLS = ["EventManager"];
 
-function EventManager(aContentScope, aContentControl) {
+function EventManager(aContentScope) {
   this.contentScope = aContentScope;
-  this.contentControl = aContentControl;
   this.addEventListener = this.contentScope.addEventListener.bind(
     this.contentScope);
   this.removeEventListener = this.contentScope.removeEventListener.bind(
@@ -86,30 +84,35 @@ this.EventManager.prototype = {
     }
   },
 
+  get contentControl() {
+    return this.contentScope._jsat_contentControl;
+  },
+
   handleEvent: function handleEvent(aEvent) {
     Logger.debug(() => {
       return ["DOMEvent", aEvent.type];
     });
 
+    // The target could be an element, document or window
+    const win = aEvent.target.ownerGlobal;
     try {
       switch (aEvent.type) {
-      case "wheel":
-      {
-        let delta = aEvent.deltaX || aEvent.deltaY;
-        this.contentControl.autoMove(
-         null,
-         { moveMethod: delta > 0 ? "moveNext" : "movePrevious",
-           onScreenOnly: true, noOpIfOnScreen: true, delay: 500 });
-        break;
-      }
-      case "scroll":
-      case "resize":
-      {
-        // the target could be an element, document or window
-        let window = aEvent.target.ownerGlobal;
-        this.present(Presentation.viewportChanged(window));
-        break;
-      }
+        case "wheel":
+        {
+          let delta = aEvent.deltaX || aEvent.deltaY;
+          this.contentControl.autoMove(
+           null,
+           { moveMethod: delta > 0 ? "moveNext" : "movePrevious",
+             onScreenOnly: true, noOpIfOnScreen: true, delay: 500 });
+          break;
+        }
+        case "scroll":
+          this.present(Presentation.viewportScrolled(win));
+        case "resize":
+        {
+          this.present(Presentation.viewportChanged(win));
+          break;
+        }
       }
     } catch (x) {
       Logger.logException(x, "Error handling DOM event");
@@ -136,47 +139,39 @@ this.EventManager.prototype = {
     switch (aEvent.eventType) {
       case Events.VIRTUALCURSOR_CHANGED:
       {
-        let pivot = aEvent.accessible.
-          QueryInterface(Ci.nsIAccessibleDocument).virtualCursor;
-        let position = pivot.position;
-        if (position && position.role == Roles.INTERNAL_FRAME)
+        if (!aEvent.isFromUserInput) {
           break;
-        let event = aEvent.
-          QueryInterface(Ci.nsIAccessibleVirtualCursorChangeEvent);
-        let reason = event.reason;
-        let oldAccessible = event.oldAccessible;
+        }
 
-        if (!Utils.getState(position).contains(States.FOCUSED)) {
+        const event = aEvent.
+          QueryInterface(Ci.nsIAccessibleVirtualCursorChangeEvent);
+        const position = event.newAccessible;
+
+        // We pass control to the vc in the embedded frame.
+        if (position && position.role == Roles.INTERNAL_FRAME) {
+          break;
+        }
+
+        // Blur to document if new position is not explicitly focused.
+        if (!position || !Utils.getState(position).contains(States.FOCUSED)) {
           aEvent.accessibleDocument.takeFocus();
         }
+
         this.present(
-          Presentation.pivotChanged(position, oldAccessible, reason,
-                                    pivot.startOffset, pivot.endOffset,
-                                    aEvent.isFromUserInput));
+          Presentation.pivotChanged(position, event.oldAccessible,
+                                    event.newStartOffset, event.newEndOffset,
+                                    event.reason, event.boundaryType));
 
         break;
       }
       case Events.STATE_CHANGE:
       {
-        let event = aEvent.QueryInterface(Ci.nsIAccessibleStateChangeEvent);
-        let state = Utils.getState(event);
+        const event = aEvent.QueryInterface(Ci.nsIAccessibleStateChangeEvent);
+        const state = Utils.getState(event);
         if (state.contains(States.CHECKED)) {
-          if (aEvent.accessible.role === Roles.SWITCH) {
-            this.present(
-              Presentation.
-                actionInvoked(aEvent.accessible,
-                              event.isEnabled ? "on" : "off"));
-          } else {
-            this.present(
-              Presentation.
-                actionInvoked(aEvent.accessible,
-                              event.isEnabled ? "check" : "uncheck"));
-          }
+          this.present(Presentation.checked(aEvent.accessible));
         } else if (state.contains(States.SELECTED)) {
-          this.present(
-            Presentation.
-              actionInvoked(aEvent.accessible,
-                            event.isEnabled ? "select" : "unselect"));
+          this.present(Presentation.selected(aEvent.accessible));
         }
         break;
       }
@@ -210,23 +205,14 @@ this.EventManager.prototype = {
         // on this one..
         let state = Utils.getState(acc);
         if (state.contains(States.FOCUSED) && state.contains(States.EDITABLE)) {
-          this.present(Presentation.textSelectionChanged(acc.getText(0, -1),
-            caretOffset, caretOffset, 0, 0, aEvent.isFromUserInput));
-        }
-        break;
-      }
-      case Events.OBJECT_ATTRIBUTE_CHANGED:
-      {
-        let evt = aEvent.QueryInterface(
-          Ci.nsIAccessibleObjectAttributeChangedEvent);
-        if (evt.changedAttribute !== "aria-hidden") {
-          // Only handle aria-hidden attribute change.
-          break;
-        }
-        let hidden = Utils.isHidden(aEvent.accessible);
-        this[hidden ? "_handleHide" : "_handleShow"](evt);
-        if (this.inTest) {
-          this.sendMsgFunc("AccessFu:AriaHidden", { hidden });
+          let fromIndex = caretOffset;
+          if (acc.selectionCount) {
+            const [startSel, endSel] = Utils.getTextSelection(acc);
+            fromIndex = startSel == caretOffset ? endSel : startSel;
+          }
+          this.present(Presentation.textSelectionChanged(
+            acc.getText(0, -1), fromIndex, caretOffset, 0, 0,
+            aEvent.isFromUserInput));
         }
         break;
       }
@@ -265,7 +251,7 @@ this.EventManager.prototype = {
 
         this.present(Presentation.focused(acc));
 
-       if (this.inTest) {
+       if (Utils.inTest) {
         this.sendMsgFunc("AccessFu:Focused");
        }
        break;
@@ -480,7 +466,9 @@ this.EventManager.prototype = {
   },
 
   present: function present(aPresentationData) {
-    this.sendMsgFunc("AccessFu:Present", aPresentationData);
+    if (aPresentationData && aPresentationData.length > 0) {
+      this.sendMsgFunc("AccessFu:Present", aPresentationData);
+    }
   },
 
   onStateChange: function onStateChange(aWebProgress, aRequest, aStateFlags, aStatus) {
@@ -629,7 +617,16 @@ const AccessibilityEventObserver = {
         Logger.accessibleToString(event.accessible));
       return;
     }
-    let content = event.accessibleDocument.window;
+    let content;
+    try {
+      content = event.accessibleDocument.window;
+    } catch (e) {
+      Logger.warning(
+        "AccessibilityEventObserver.observe: no window for accessible document:",
+        Logger.eventToString(event), "accessible:",
+        Logger.accessibleToString(event.accessible));
+      return;
+    }
     // Match the content window to its EventManager.
     let eventManager = this.getListener(content);
     if (!eventManager || !eventManager._started) {

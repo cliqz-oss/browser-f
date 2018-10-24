@@ -20,6 +20,7 @@ const kAllowedPrefs = new Set([
   "narrate.rate",
   "narrate.voice",
 
+  "browser.contentblocking.enabled",
   "privacy.trackingprotection.pbmode.enabled",
 
   "reader.font_size",
@@ -175,6 +176,6 @@ if (kInChildProcess) {
       Services.ppmm.addMessageListener("AsyncPrefs:SetPref", this);
       Services.ppmm.addMessageListener("AsyncPrefs:ResetPref", this);
       // PLEASE KEEP THIS LIST IN SYNC WITH THE LISTENERS ADDED IN nsBrowserGlue
-    }
+    },
   };
 }

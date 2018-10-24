@@ -19,6 +19,7 @@
 #include "gc/Memory.h"
 #include "gc/PublicIterators.h"
 #include "jit/JitFrames.h"
+#include "jit/JitRealm.h"
 #include "vm/ArrayObject.h"
 #include "vm/Debugger.h"
 #if defined(DEBUG)
@@ -31,6 +32,7 @@
 #include "vm/TypeInference.h"
 
 #include "gc/Marking-inl.h"
+#include "gc/Zone-inl.h"
 #include "vm/NativeObject-inl.h"
 
 using namespace js;
@@ -48,7 +50,6 @@ struct js::Nursery::FreeMallocedBuffersTask : public GCParallelTaskHelper<FreeMa
     explicit FreeMallocedBuffersTask(FreeOp* fop)
       : GCParallelTaskHelper(fop->runtime()),
         fop_(fop) {}
-    bool init() { return buffers_.init(); }
     void transferBuffersToFree(MallocedBuffersSet& buffersToFree,
                                const AutoLockHelperThreadState& lock);
     ~FreeMallocedBuffersTask() { join(); }
@@ -148,12 +149,14 @@ js::Nursery::Nursery(JSRuntime* rt)
 bool
 js::Nursery::init(uint32_t maxNurseryBytes, AutoLockGCBgAlloc& lock)
 {
-    if (!mallocedBuffers.init())
+    freeMallocedBuffersTask = js_new<FreeMallocedBuffersTask>(runtime()->defaultFreeOp());
+    if (!freeMallocedBuffersTask)
         return false;
 
-    freeMallocedBuffersTask = js_new<FreeMallocedBuffersTask>(runtime()->defaultFreeOp());
-    if (!freeMallocedBuffersTask || !freeMallocedBuffersTask->init())
-        return false;
+    // The nursery is permanently disabled when recording or replaying. Nursery
+    // collections may occur at non-deterministic points in execution.
+    if (mozilla::recordreplay::IsRecordingOrReplaying())
+        maxNurseryBytes = 0;
 
     /* maxNurseryBytes parameter is rounded down to a multiple of chunk size. */
     chunkCountLimit_ = maxNurseryBytes >> ChunkShift;
@@ -243,6 +246,8 @@ js::Nursery::disable()
     freeChunksFrom(0);
     maxChunkCount_ = 0;
 
+    // We must reset currentEnd_ so that there is no space for anything in the
+    // nursery.  JIT'd code uses this even if the nursery is disabled.
     currentEnd_ = 0;
     currentStringEnd_ = 0;
     runtime()->gc.storeBuffer().disable();
@@ -374,13 +379,13 @@ js::Nursery::allocate(size_t size)
         if (chunkno == maxChunkCount())
             return nullptr;
         if (MOZ_UNLIKELY(chunkno == allocatedChunkCount())) {
-            mozilla::TimeStamp start = TimeStamp::Now();
+            mozilla::TimeStamp start = ReallyNow();
             {
                 AutoLockGCBgAlloc lock(runtime());
                 if (!allocateNextChunk(chunkno, lock))
                     return nullptr;
             }
-            timeInChunkAlloc_ += TimeStamp::Now() - start;
+            timeInChunkAlloc_ += ReallyNow() - start;
             MOZ_ASSERT(chunkno < allocatedChunkCount());
         }
         setCurrentChunk(chunkno);
@@ -388,6 +393,9 @@ js::Nursery::allocate(size_t size)
 
     void* thing = (void*)position();
     position_ = position() + size;
+    // We count this regardless of the profiler's state, assuming that it costs just as much to
+    // count it, as to check the profiler's state and decide not to count it.
+    runtime()->gc.stats().noteNurseryAlloc();
 
     JS_EXTRA_POISON(thing, JS_ALLOCATED_NURSERY_PATTERN, size, MemCheckKind::MakeUndefined);
 
@@ -494,8 +502,6 @@ Nursery::setIndirectForwardingPointer(void* oldData, void* newData)
     MOZ_ASSERT(!isInside(newData) || (uintptr_t(newData) & ChunkMask) == 0);
 
     AutoEnterOOMUnsafeRegion oomUnsafe;
-    if (!forwardedBuffers.initialized() && !forwardedBuffers.init())
-        oomUnsafe.crash("Nursery::setForwardingPointer");
 #ifdef DEBUG
     if (ForwardedBufferMap::Ptr p = forwardedBuffers.lookup(oldData))
         MOZ_ASSERT(p->value() == newData);
@@ -524,11 +530,9 @@ js::Nursery::forwardBufferPointer(HeapSlot** pSlotsElems)
     // The new location for this buffer is either stored inline with it or in
     // the forwardedBuffers table.
     do {
-        if (forwardedBuffers.initialized()) {
-            if (ForwardedBufferMap::Ptr p = forwardedBuffers.lookup(old)) {
-                *pSlotsElems = reinterpret_cast<HeapSlot*>(p->value());
-                break;
-            }
+        if (ForwardedBufferMap::Ptr p = forwardedBuffers.lookup(old)) {
+            *pSlotsElems = reinterpret_cast<HeapSlot*>(p->value());
+            break;
         }
 
         *pSlotsElems = *reinterpret_cast<HeapSlot**>(old);
@@ -542,6 +546,7 @@ js::TenuringTracer::TenuringTracer(JSRuntime* rt, Nursery* nursery)
   : JSTracer(rt, JSTracer::TracerKindTag::Tenuring, TraceWeakMapKeysValues)
   , nursery_(*nursery)
   , tenuredSize(0)
+  , tenuredCells(0)
   , objHead(nullptr)
   , objTail(&objHead)
   , stringHead(nullptr)
@@ -601,6 +606,7 @@ js::Nursery::renderProfileJSON(JSONPrinter& json) const
 
     json.property("reason", JS::gcreason::ExplainReason(previousGC.reason));
     json.property("bytes_tenured", previousGC.tenuredBytes);
+    json.property("cells_tenured", previousGC.tenuredCells);
     json.property("bytes_used", previousGC.nurseryUsedBytes);
     json.property("cur_capacity", previousGC.nurseryCapacity);
     const size_t newCapacity = spaceToEnd(maxChunkCount());
@@ -611,10 +617,19 @@ js::Nursery::renderProfileJSON(JSONPrinter& json) const
     if (!timeInChunkAlloc_.IsZero())
         json.property("chunk_alloc_us", timeInChunkAlloc_, json.MICROSECONDS);
 
+    // These counters only contain consistent data if the profiler is enabled,
+    // and then there's no guarentee.
+    if (runtime()->geckoProfiler().enabled()) {
+        json.property("cells_allocated_nursery",
+            runtime()->gc.stats().allocsSinceMinorGCNursery());
+        json.property("cells_allocated_tenured",
+            runtime()->gc.stats().allocsSinceMinorGCTenured());
+    }
+
     json.beginObjectProperty("phase_times");
 
 #define EXTRACT_NAME(name, text) #name,
-    static const char* names[] = {
+    static const char* const names[] = {
 FOR_EACH_NURSERY_PROFILE_TIME(EXTRACT_NAME)
 #undef EXTRACT_NAME
     "" };
@@ -668,13 +683,13 @@ js::Nursery::maybeClearProfileDurations()
 inline void
 js::Nursery::startProfile(ProfileKey key)
 {
-    startTimes_[key] = TimeStamp::Now();
+    startTimes_[key] = ReallyNow();
 }
 
 inline void
 js::Nursery::endProfile(ProfileKey key)
 {
-    profileDurations_[key] = TimeStamp::Now() - startTimes_[key];
+    profileDurations_[key] = ReallyNow() - startTimes_[key];
     totalDurations_[key] += profileDurations_[key];
 }
 
@@ -701,6 +716,8 @@ js::Nursery::collect(JS::gcreason::Reason reason)
 {
     JSRuntime* rt = runtime();
     MOZ_ASSERT(!rt->mainContextFromOwnThread()->suppressGC);
+
+    mozilla::recordreplay::AutoDisallowThreadEvents disallow;
 
     if (!isEnabled() || isEmpty()) {
         // Our barriers are not always exact, and there may be entries in the
@@ -741,6 +758,7 @@ js::Nursery::collect(JS::gcreason::Reason reason)
         previousGC.nurseryCapacity = spaceToEnd(maxChunkCount());
         previousGC.nurseryLazyCapacity = spaceToEnd(allocatedChunkCount());
         previousGC.tenuredBytes = 0;
+        previousGC.tenuredCells = 0;
     }
 
     // Resize the nursery.
@@ -921,7 +939,7 @@ js::Nursery::doCollection(JS::gcreason::Reason reason, TenureCountCache& tenureC
     // Update any slot or element pointers whose destination has been tenured.
     startProfile(ProfileKey::UpdateJitActivations);
     js::jit::UpdateJitActivationsForMinorGC(rt);
-    forwardedBuffers.finish();
+    forwardedBuffers.clearAndCompact();
     endProfile(ProfileKey::UpdateJitActivations);
 
     startProfile(ProfileKey::ObjectsTenuredCallback);
@@ -954,6 +972,7 @@ js::Nursery::doCollection(JS::gcreason::Reason reason, TenureCountCache& tenureC
     previousGC.nurseryLazyCapacity = spaceToEnd(allocatedChunkCount());
     previousGC.nurseryUsedBytes = initialNurseryUsedBytes;
     previousGC.tenuredBytes = mover.tenuredSize;
+    previousGC.tenuredCells = mover.tenuredCells;
 }
 
 void

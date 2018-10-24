@@ -14,6 +14,7 @@
 #include "mozilla/dom/WorkerDebuggerGlobalScopeBinding.h"
 #include "mozilla/dom/WorkerGlobalScopeBinding.h"
 #include "mozilla/EventDispatcher.h"
+#include "nsGlobalWindowInner.h"
 #include "nsIConsoleService.h"
 #include "nsScriptError.h"
 #include "WorkerRunnable.h"
@@ -88,7 +89,6 @@ public:
         NS_ASSERTION(global, "This should never be null!");
 
         nsEventStatus status = nsEventStatus_eIgnore;
-        nsIScriptGlobalObject* sgo;
 
         if (aWorkerPrivate) {
           WorkerGlobalScope* globalScope = nullptr;
@@ -129,10 +129,10 @@ public:
             status = nsEventStatus_eIgnore;
           }
         }
-        else if ((sgo = nsJSUtils::GetStaticScriptGlobal(global))) {
+        else if (nsGlobalWindowInner* win = xpc::WindowOrNull(global)) {
           MOZ_ASSERT(NS_IsMainThread());
 
-          if (NS_FAILED(sgo->HandleScriptError(init, &status))) {
+          if (!win->HandleScriptError(init, &status)) {
             NS_WARNING("Failed to dispatch main thread error event!");
             status = nsEventStatus_eIgnore;
           }
@@ -240,6 +240,80 @@ private:
   }
 };
 
+class ReportGenericErrorRunnable final : public WorkerRunnable
+{
+public:
+  static void
+  CreateAndDispatch(WorkerPrivate* aWorkerPrivate)
+  {
+    MOZ_ASSERT(aWorkerPrivate);
+    aWorkerPrivate->AssertIsOnWorkerThread();
+
+    RefPtr<ReportGenericErrorRunnable> runnable =
+      new ReportGenericErrorRunnable(aWorkerPrivate);
+    runnable->Dispatch();
+  }
+
+private:
+  explicit ReportGenericErrorRunnable(WorkerPrivate* aWorkerPrivate)
+    : WorkerRunnable(aWorkerPrivate, ParentThreadUnchangedBusyCount)
+  {
+    aWorkerPrivate->AssertIsOnWorkerThread();
+  }
+
+  void
+  PostDispatch(WorkerPrivate* aWorkerPrivate, bool aDispatchResult) override
+  {
+    aWorkerPrivate->AssertIsOnWorkerThread();
+
+    // Dispatch may fail if the worker was canceled, no need to report that as
+    // an error, so don't call base class PostDispatch.
+  }
+
+  bool
+  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override
+  {
+    if (aWorkerPrivate->IsFrozen() ||
+        aWorkerPrivate->IsParentWindowPaused()) {
+      MOZ_ASSERT(!IsDebuggerRunnable());
+      aWorkerPrivate->QueueRunnable(this);
+      return true;
+    }
+
+    if (aWorkerPrivate->IsSharedWorker()) {
+      aWorkerPrivate->BroadcastErrorToSharedWorkers(aCx, nullptr,
+                                                    /* isErrorEvent */ false);
+      return true;
+    }
+
+    if (aWorkerPrivate->IsServiceWorker()) {
+      RefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
+      if (swm) {
+        swm->HandleError(aCx, aWorkerPrivate->GetPrincipal(),
+                         aWorkerPrivate->ServiceWorkerScope(),
+                         aWorkerPrivate->ScriptURL(),
+                         EmptyString(), EmptyString(), EmptyString(),
+                         0, 0, JSREPORT_ERROR, JSEXN_ERR);
+      }
+      return true;
+    }
+
+    if (!aWorkerPrivate->IsAcceptingEvents()) {
+      return true;
+    }
+
+    RefPtr<mozilla::dom::EventTarget> parentEventTarget =
+      aWorkerPrivate->ParentEventTargetRef();
+    RefPtr<Event> event =
+      Event::Constructor(parentEventTarget, NS_LITERAL_STRING("error"),
+                         EventInit());
+    event->SetTrusted(true);
+
+    parentEventTarget->DispatchEvent(*event);
+    return true;
+  }
+};
+
 } // anonymous
 
 void
@@ -342,7 +416,6 @@ WorkerErrorReport::ReportError(JSContext* aCx, WorkerPrivate* aWorkerPrivate,
       NS_ASSERTION(global, "This should never be null!");
 
       nsEventStatus status = nsEventStatus_eIgnore;
-      nsIScriptGlobalObject* sgo;
 
       if (aWorkerPrivate) {
         WorkerGlobalScope* globalScope = nullptr;
@@ -383,10 +456,10 @@ WorkerErrorReport::ReportError(JSContext* aCx, WorkerPrivate* aWorkerPrivate,
           status = nsEventStatus_eIgnore;
         }
       }
-      else if ((sgo = nsJSUtils::GetStaticScriptGlobal(global))) {
+      else if (nsGlobalWindowInner* win = xpc::WindowOrNull(global)) {
         MOZ_ASSERT(NS_IsMainThread());
 
-        if (NS_FAILED(sgo->HandleScriptError(init, &status))) {
+        if (!win->HandleScriptError(init, &status)) {
           NS_WARNING("Failed to dispatch main thread error event!");
           status = nsEventStatus_eIgnore;
         }
@@ -473,6 +546,12 @@ WorkerErrorReport::LogErrorToConsole(const WorkerErrorReport& aReport,
 
   fprintf(stderr, kErrorString, msg.get(), filename.get(), aReport.mLineNumber);
   fflush(stderr);
+}
+
+/* static */ void
+WorkerErrorReport::CreateAndDispatchGenericErrorRunnableToParent(WorkerPrivate* aWorkerPrivate)
+{
+  ReportGenericErrorRunnable::CreateAndDispatch(aWorkerPrivate);
 }
 
 } // dom namespace

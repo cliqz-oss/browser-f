@@ -29,7 +29,7 @@ namespace dom {
 JSObject*
 SVGFEImageElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return SVGFEImageElementBinding::Wrap(aCx, this, aGivenProto);
+  return SVGFEImageElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 nsSVGElement::StringInfo SVGFEImageElement::sStringInfo[3] =
@@ -156,16 +156,13 @@ SVGFEImageElement::MaybeLoadSVGImage()
 
 nsresult
 SVGFEImageElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
-                              nsIContent* aBindingParent,
-                              bool aCompileEventHandlers)
+                              nsIContent* aBindingParent)
 {
   nsresult rv = SVGFEImageElementBase::BindToTree(aDocument, aParent,
-                                                  aBindingParent,
-                                                  aCompileEventHandlers);
+                                                  aBindingParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsImageLoadingContent::BindToTree(aDocument, aParent, aBindingParent,
-                                    aCompileEventHandlers);
+  nsImageLoadingContent::BindToTree(aDocument, aParent, aBindingParent);
 
   if (mStringAttributes[HREF].IsExplicitlySet() ||
       mStringAttributes[XLINK_HREF].IsExplicitlySet()) {

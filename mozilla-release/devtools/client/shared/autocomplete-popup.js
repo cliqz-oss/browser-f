@@ -5,10 +5,8 @@
 
 "use strict";
 
-const Services = require("Services");
 const EventEmitter = require("devtools/shared/event-emitter");
 const {HTMLTooltip} = require("devtools/client/shared/widgets/tooltip/HTMLTooltip");
-const {PrefObserver} = require("devtools/client/shared/prefs");
 const {colorUtils} = require("devtools/shared/css/color");
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
@@ -24,7 +22,6 @@ let itemIdCounter = 0;
  *        An object consiting any of the following options:
  *        - listId {String} The id for the list <LI> element.
  *        - position {String} The position for the tooltip ("top" or "bottom").
- *        - theme {String} String related to the theme of the popup
  *        - autoSelect {Boolean} Boolean to allow the first entry of the popup
  *          panel to be automatically selected when the popup shows.
  *        - onSelect {String} Callback called when the selected index is updated.
@@ -38,28 +35,15 @@ function AutocompletePopup(toolboxDoc, options = {}) {
 
   this.autoSelect = options.autoSelect || false;
   this.position = options.position || "bottom";
-  let theme = options.theme || "dark";
 
   this.onSelectCallback = options.onSelect;
   this.onClickCallback = options.onClick;
-
-  // If theme is auto, use the devtools.theme pref
-  if (theme === "auto") {
-    theme = Services.prefs.getCharPref("devtools.theme");
-    this.autoThemeEnabled = true;
-    // Setup theme change listener.
-    this._handleThemeChange = this._handleThemeChange.bind(this);
-    this._prefObserver = new PrefObserver("devtools.");
-    this._prefObserver.on("devtools.theme", this._handleThemeChange);
-    this._currentTheme = theme;
-  }
 
   // Create HTMLTooltip instance
   this._tooltip = new HTMLTooltip(this._document);
   this._tooltip.panel.classList.add(
     "devtools-autocomplete-popup",
-    "devtools-monospace",
-    theme + "-theme");
+    "devtools-monospace");
   // Stop this appearing as an alert to accessibility.
   this._tooltip.panel.setAttribute("role", "presentation");
 
@@ -74,9 +58,21 @@ function AutocompletePopup(toolboxDoc, options = {}) {
   if (options.listId) {
     this._list.setAttribute("id", options.listId);
   }
-  this._list.className = "devtools-autocomplete-listbox " + theme + "-theme";
+  this._list.className = "devtools-autocomplete-listbox";
 
-  this._tooltip.setContent(this._list);
+  // We need to retrieve the item padding in order to correct the offset of the popup.
+  const paddingPropertyName = "--autocomplete-item-padding-inline";
+  const listPadding = this._document.defaultView
+    .getComputedStyle(this._list)
+    .getPropertyValue(paddingPropertyName)
+    .replace("px", "");
+
+  this._listPadding = 0;
+  if (!Number.isNaN(Number(listPadding))) {
+    this._listPadding = Number(listPadding);
+  }
+
+  this._tooltip.setContent(this._list, { height: Infinity });
 
   this.onClick = this.onClick.bind(this);
   this._list.addEventListener("click", this.onClick);
@@ -133,8 +129,12 @@ AutocompletePopup.prototype = {
     // Retrieve the anchor's document active element to add accessibility metadata.
     this._activeElement = anchor.ownerDocument.activeElement;
 
+    // We want the autocomplete items to be perflectly lined-up with the string the
+    // user entered, so we need to remove the left-padding and the left-border from
+    // the xOffset.
+    const leftBorderSize = 1;
     this._tooltip.show(anchor, {
-      x: xOffset,
+      x: xOffset - this._listPadding - leftBorderSize,
       y: yOffset,
       position: this.position,
     });
@@ -155,10 +155,9 @@ AutocompletePopup.prototype = {
    *        The position of the item to select.
    */
   selectItemAtIndex: function(index) {
-    if (typeof index !== "number") {
-      // If no index was provided, select the item closest to the input.
-      const isAboveInput = this.position === "top";
-      index = isAboveInput ? this.itemCount - 1 : 0;
+    if (!Number.isInteger(index)) {
+      // If no index was provided, select the first item.
+      index = 0;
     }
     this.selectedIndex = index;
   },
@@ -196,17 +195,13 @@ AutocompletePopup.prototype = {
 
     this._list.removeEventListener("click", this.onClick);
 
-    if (this.autoThemeEnabled) {
-      this._prefObserver.off("devtools.theme", this._handleThemeChange);
-      this._prefObserver.destroy();
-    }
-
     this._list.remove();
     this._listClone.remove();
     this._tooltip.destroy();
     this._document = null;
     this._list = null;
     this._tooltip = null;
+    this._listPadding = null;
   },
 
   /**
@@ -597,21 +592,6 @@ AutocompletePopup.prototype = {
     const prevPageIndex = this.selectedIndex - this._itemsPerPane - 1;
     this.selectedIndex = Math.max(prevPageIndex, 0);
     return this.selectedItem;
-  },
-
-  /**
-   * Manages theme switching for the popup based on the devtools.theme pref.
-   */
-  _handleThemeChange: function() {
-    const oldValue = this._currentTheme;
-    const newValue = Services.prefs.getCharPref("devtools.theme");
-
-    this._tooltip.panel.classList.toggle(oldValue + "-theme", false);
-    this._tooltip.panel.classList.toggle(newValue + "-theme", true);
-    this._list.classList.toggle(oldValue + "-theme", false);
-    this._list.classList.toggle(newValue + "-theme", true);
-
-    this._currentTheme = newValue;
   },
 
   /**

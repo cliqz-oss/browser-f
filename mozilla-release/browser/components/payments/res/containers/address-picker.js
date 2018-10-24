@@ -3,8 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import AddressOption from "../components/address-option.js";
-import PaymentStateSubscriberMixin from "../mixins/PaymentStateSubscriberMixin.js";
-import RichSelect from "../components/rich-select.js";
+import RichPicker from "./rich-picker.js";
 import paymentRequest from "../paymentRequest.js";
 
 /**
@@ -13,39 +12,39 @@ import paymentRequest from "../paymentRequest.js";
  * <address-option> listening to savedAddresses & tempAddresses.
  */
 
-export default class AddressPicker extends PaymentStateSubscriberMixin(HTMLElement) {
+export default class AddressPicker extends RichPicker {
   static get observedAttributes() {
-    return ["address-fields"];
+    return RichPicker.observedAttributes.concat(["address-fields"]);
   }
 
   constructor() {
     super();
-    this.dropdown = new RichSelect();
-    this.dropdown.addEventListener("change", this);
-    this.addLink = document.createElement("a");
-    this.addLink.className = "add-link";
-    this.addLink.href = "javascript:void(0)";
-    this.addLink.textContent = this.dataset.addLinkLabel;
-    this.addLink.addEventListener("click", this);
-    this.editLink = document.createElement("a");
-    this.editLink.className = "edit-link";
-    this.editLink.href = "javascript:void(0)";
-    this.editLink.textContent = this.dataset.editLinkLabel;
-    this.editLink.addEventListener("click", this);
-  }
-
-  connectedCallback() {
-    this.appendChild(this.dropdown);
-    this.appendChild(this.addLink);
-    this.append(" ");
-    this.appendChild(this.editLink);
-    super.connectedCallback();
+    this.dropdown.setAttribute("option-type", "address-option");
   }
 
   attributeChangedCallback(name, oldValue, newValue) {
-    if (oldValue !== newValue) {
+    super.attributeChangedCallback(name, oldValue, newValue);
+    if (name == "address-fields" && oldValue !== newValue) {
       this.render(this.requestStore.getState());
     }
+  }
+
+  get fieldNames() {
+    if (this.hasAttribute("address-fields")) {
+      let names = this.getAttribute("address-fields").trim().split(/\s+/);
+      if (names.length) {
+        return names;
+      }
+    }
+
+    return [
+      // "address-level1", // TODO: bug 1481481 - not required for some countries e.g. DE
+      "address-level2",
+      "country",
+      "name",
+      "postal-code",
+      "street-address",
+    ];
   }
 
   /**
@@ -56,14 +55,7 @@ export default class AddressPicker extends PaymentStateSubscriberMixin(HTMLEleme
    *                              de-duping and excluding entries
    * @returns {object} filtered copy of given addresses
    */
-  filterAddresses(addresses, fieldNames = [
-    "address-level1",
-    "address-level2",
-    "country",
-    "name",
-    "postal-code",
-    "street-address",
-  ]) {
+  filterAddresses(addresses, fieldNames = this.fieldNames) {
     let uniques = new Set();
     let result = {};
     for (let [guid, address] of Object.entries(addresses)) {
@@ -91,19 +83,11 @@ export default class AddressPicker extends PaymentStateSubscriberMixin(HTMLEleme
   render(state) {
     let addresses = paymentRequest.getAddresses(state);
     let desiredOptions = [];
-    let fieldNames;
-    if (this.hasAttribute("address-fields")) {
-      let names = this.getAttribute("address-fields").split(/\s+/);
-      if (names.length) {
-        fieldNames = names;
-      }
-    }
-    let filteredAddresses = this.filterAddresses(addresses, fieldNames);
-
+    let filteredAddresses = this.filterAddresses(addresses, this.fieldNames);
     for (let [guid, address] of Object.entries(filteredAddresses)) {
       let optionEl = this.dropdown.getOptionByValue(guid);
       if (!optionEl) {
-        optionEl = new AddressOption();
+        optionEl = document.createElement("option");
         optionEl.value = guid;
       }
 
@@ -116,26 +100,28 @@ export default class AddressPicker extends PaymentStateSubscriberMixin(HTMLEleme
         }
       }
 
+      // fieldNames getter is not used here because it returns a default array with
+      // attributes even when "address-fields" observed attribute is null.
+      let addressFields = this.getAttribute("address-fields");
+      optionEl.textContent = AddressOption.formatSingleLineLabel(address, addressFields);
       desiredOptions.push(optionEl);
     }
 
-    let el = null;
-    while ((el = this.dropdown.popupBox.querySelector(":scope > address-option"))) {
-      el.remove();
-    }
+    this.dropdown.popupBox.textContent = "";
     for (let option of desiredOptions) {
       this.dropdown.popupBox.appendChild(option);
     }
 
     // Update selectedness after the options are updated
     let selectedAddressGUID = state[this.selectedStateKey];
-    let optionWithGUID = this.dropdown.getOptionByValue(selectedAddressGUID);
-    this.dropdown.selectedOption = optionWithGUID;
+    this.dropdown.value = selectedAddressGUID;
 
-    if (selectedAddressGUID && !optionWithGUID) {
-      throw new Error(`${this.selectedStateKey} option ${selectedAddressGUID}` +
-                      `does not exist in options`);
+    if (selectedAddressGUID && selectedAddressGUID !== this.dropdown.value) {
+      throw new Error(`${this.selectedStateKey} option ${selectedAddressGUID} ` +
+                      `does not exist in the address picker`);
     }
+
+    super.render(state);
   }
 
   get selectedStateKey() {
@@ -155,11 +141,10 @@ export default class AddressPicker extends PaymentStateSubscriberMixin(HTMLEleme
   }
 
   onChange(event) {
-    let select = event.target;
     let selectedKey = this.selectedStateKey;
     if (selectedKey) {
       this.requestStore.setState({
-        [selectedKey]: select.selectedOption && select.selectedOption.guid,
+        [selectedKey]: this.dropdown.value,
       });
     }
   }
@@ -171,7 +156,7 @@ export default class AddressPicker extends PaymentStateSubscriberMixin(HTMLEleme
       },
       "address-page": {
         addressFields: this.getAttribute("address-fields"),
-        selectedStateKey: this.selectedStateKey,
+        selectedStateKey: [this.selectedStateKey],
       },
     };
 

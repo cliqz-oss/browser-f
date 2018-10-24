@@ -164,12 +164,16 @@ ResetSimulatedInterrupt()
 } // namespace js
 #endif // defined(DEBUG) || defined(JS_OOM_BREAKPOINT)
 
+bool js::gDisablePoisoning = false;
+
 JS_PUBLIC_DATA(arena_id_t) js::MallocArena;
+JS_PUBLIC_DATA(arena_id_t) js::ArrayBufferContentsArena;
 
 void
 js::InitMallocAllocator()
 {
     MallocArena = moz_create_arena();
+    ArrayBufferContentsArena = moz_create_arena();
 }
 
 void
@@ -177,6 +181,7 @@ js::ShutDownMallocAllocator()
 {
     // Until Bug 1364359 is fixed it is unsafe to call moz_dispose_arena.
     // moz_dispose_arena(MallocArena);
+    // moz_dispose_arena(ArrayBufferContentsArena);
 }
 
 JS_PUBLIC_API(void)

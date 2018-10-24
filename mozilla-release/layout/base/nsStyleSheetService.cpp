@@ -74,7 +74,7 @@ nsStyleSheetService::RegisterFromEnumerator(nsICategoryManager  *aManager,
     icStr->GetData(name);
 
     nsCString spec;
-    aManager->GetCategoryEntry(aCategory, name.get(), getter_Copies(spec));
+    aManager->GetCategoryEntry(nsDependentCString(aCategory), name, spec);
 
     nsCOMPtr<nsIURI> uri;
     NS_NewURI(getter_AddRefs(uri), spec);
@@ -310,8 +310,7 @@ nsStyleSheetService::PreloadSheetAsync(nsIURI* aSheetURI, uint32_t aSheetType,
   nsresult rv = GetParsingMode(aSheetType, &parsingMode);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsCOMPtr<nsIGlobalObject> global =
-    xpc::NativeGlobal(JS::CurrentGlobalOrNull(aCx));
+  nsCOMPtr<nsIGlobalObject> global = xpc::CurrentNativeGlobal(aCx);
   NS_ENSURE_TRUE(global, NS_ERROR_UNEXPECTED);
 
   ErrorResult errv;

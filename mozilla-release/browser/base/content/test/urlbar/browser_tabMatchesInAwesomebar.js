@@ -8,7 +8,7 @@ requestLongerTimeout(2);
 
 const TEST_URL_BASES = [
   "http://example.org/browser/browser/base/content/test/urlbar/dummy_page.html#tabmatch",
-  "http://example.org/browser/browser/base/content/test/urlbar/moz.png#tabmatch"
+  "http://example.org/browser/browser/base/content/test/urlbar/moz.png#tabmatch",
 ];
 
 const RESTRICT_TOKEN_OPENPAGE = "%";
@@ -139,9 +139,7 @@ function loadTab(tab, url) {
 function ensure_opentabs_match_db() {
   var tabs = {};
 
-  var winEnum = Services.wm.getEnumerator("navigator:browser");
-  while (winEnum.hasMoreElements()) {
-    let browserWin = winEnum.getNext();
+  for (let browserWin of Services.wm.getEnumerator("navigator:browser")) {
     // skip closed-but-not-destroyed windows
     if (browserWin.closed)
       continue;
@@ -207,7 +205,7 @@ function checkAutocompleteResults(aExpected, aCallback) {
     QueryInterface: ChromeUtils.generateQI([
       Ci.nsIAutoCompleteInput,
       Ci.nsIAutoCompletePopup,
-    ])
+    ]),
   };
 
   info("Searching open pages.");

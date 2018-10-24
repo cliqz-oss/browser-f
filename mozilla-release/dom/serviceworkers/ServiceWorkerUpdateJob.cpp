@@ -8,6 +8,11 @@
 
 #include "nsIScriptError.h"
 #include "nsIURL.h"
+#include "nsNetUtil.h"
+#include "nsProxyRelease.h"
+#include "ServiceWorkerManager.h"
+#include "ServiceWorkerPrivate.h"
+#include "ServiceWorkerRegistrationInfo.h"
 #include "ServiceWorkerScriptCache.h"
 #include "mozilla/dom/WorkerCommon.h"
 
@@ -203,6 +208,7 @@ ServiceWorkerUpdateJob::ServiceWorkerUpdateJob(
   : ServiceWorkerJob(aType, aPrincipal, aScope, aScriptSpec)
   , mLoadGroup(aLoadGroup)
   , mUpdateViaCache(aUpdateViaCache)
+  , mOnFailure(serviceWorkerScriptCache::OnFailure::DoNothing)
 {
 }
 
@@ -461,6 +467,8 @@ ServiceWorkerUpdateJob::ComparisonResult(nsresult aStatus,
   RefPtr<ServiceWorkerInfo> sw =
     new ServiceWorkerInfo(mRegistration->Principal(),
                           mRegistration->Scope(),
+                          mRegistration->Id(),
+                          mRegistration->Version(),
                           mScriptSpec,
                           aNewCacheName,
                           flags);
@@ -514,15 +522,14 @@ ServiceWorkerUpdateJob::ContinueUpdateAfterScriptEval(bool aScriptEvaluationResu
     return;
   }
 
-  Install(swm);
+  Install();
 }
 
 void
-ServiceWorkerUpdateJob::Install(ServiceWorkerManager* aSWM)
+ServiceWorkerUpdateJob::Install()
 {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_DIAGNOSTIC_ASSERT(!Canceled());
-  MOZ_DIAGNOSTIC_ASSERT(aSWM);
 
   MOZ_ASSERT(!mRegistration->GetInstalling());
 
@@ -538,15 +545,9 @@ ServiceWorkerUpdateJob::Install(ServiceWorkerManager* aSWM)
   // The job promise cannot be rejected after this point, but the job can
   // still fail; e.g. if the install event handler throws, etc.
 
-  // fire the updatefound event
-  nsCOMPtr<nsIRunnable> upr =
-    NewRunnableMethod<RefPtr<ServiceWorkerRegistrationInfo>>(
-      "dom::ServiceWorkerManager::"
-      "FireUpdateFoundOnServiceWorkerRegistrations",
-      aSWM,
-      &ServiceWorkerManager::FireUpdateFoundOnServiceWorkerRegistrations,
-      mRegistration);
-  NS_DispatchToMainThread(upr);
+  // Note, the updatefound event is fired automatically when the installing
+  // property is set on the ServiceWorkerRegistration binding object.  This
+  // happens via the TransitionEvaluatingToInstalling() call above.
 
   nsMainThreadPtrHandle<ServiceWorkerUpdateJob> handle(
     new nsMainThreadPtrHolder<ServiceWorkerUpdateJob>(

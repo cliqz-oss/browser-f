@@ -24,6 +24,7 @@
 #include "mozilla/dom/ScriptLoadRequest.h"
 #include "mozilla/dom/SRIMetadata.h"
 #include "mozilla/dom/SRICheck.h"
+#include "mozilla/Maybe.h"
 #include "mozilla/MozPromise.h"
 #include "mozilla/net/ReferrerPolicy.h"
 #include "mozilla/Vector.h"
@@ -349,6 +350,7 @@ private:
   ScriptLoadRequest* CreateLoadRequest(ScriptKind aKind,
                                        nsIURI* aURI,
                                        nsIScriptElement* aElement,
+                                       nsIPrincipal* aTriggeringPrincipal,
                                        mozilla::CORSMode aCORSMode,
                                        const SRIMetadata& aIntegrity,
                                        mozilla::net::ReferrerPolicy aReferrerPolicy);
@@ -454,7 +456,8 @@ private:
 
   void ReportErrorToConsole(ScriptLoadRequest *aRequest, nsresult aResult) const;
 
-  nsresult AttemptAsyncScriptCompile(ScriptLoadRequest* aRequest);
+  nsresult AttemptAsyncScriptCompile(ScriptLoadRequest* aRequest,
+                                     bool* aCouldCompileOut);
   nsresult ProcessRequest(ScriptLoadRequest* aRequest);
   nsresult CompileOffThreadOrProcessRequest(ScriptLoadRequest* aRequest);
   void FireScriptAvailable(nsresult aResult,
@@ -504,8 +507,8 @@ private:
 
   void MaybeMoveToLoadedList(ScriptLoadRequest* aRequest);
 
-  JS::SourceBufferHolder GetScriptSource(ScriptLoadRequest* aRequest,
-                                         nsAutoString& inlineData);
+  mozilla::Maybe<JS::SourceBufferHolder> GetScriptSource(JSContext* aCx,
+                                                         ScriptLoadRequest* aRequest);
 
   void SetModuleFetchStarted(ModuleLoadRequest *aRequest);
   void SetModuleFetchFinishedAndResumeWaitingRequests(ModuleLoadRequest* aRequest,
@@ -517,8 +520,8 @@ private:
   RefPtr<mozilla::GenericPromise> WaitForModuleFetch(nsIURI* aURL);
   ModuleScript* GetFetchedModule(nsIURI* aURL) const;
 
-  friend JSObject*
-  HostResolveImportedModule(JSContext* aCx, JS::Handle<JSObject*> aModule,
+  friend JSScript*
+  HostResolveImportedModule(JSContext* aCx, JS::Handle<JSScript*> aScript,
                           JS::Handle<JSString*> aSpecifier);
 
   // Returns wether we should save the bytecode of this script after the
@@ -536,6 +539,9 @@ private:
 
   RefPtr<mozilla::GenericPromise>
   StartFetchingModuleAndDependencies(ModuleLoadRequest* aParent, nsIURI* aURI);
+
+  nsresult AssociateSourceElementsForModuleTree(JSContext* aCx,
+                                                ModuleLoadRequest* aRequest);
 
   nsIDocument* mDocument;                   // [WEAK]
   nsCOMArray<nsIScriptLoaderObserver> mObservers;

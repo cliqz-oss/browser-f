@@ -187,14 +187,19 @@ var UITour = {
       },
     }],
     ["trackingProtection", {
-      query: "#tracking-protection-icon",
+      query: (aDocument) => {
+        if (Services.prefs.getBoolPref("toolkit.cosmeticAnimations.enabled", false)) {
+          return aDocument.getElementById("tracking-protection-icon-animatable-box");
+        }
+        return aDocument.getElementById("tracking-protection-icon");
+      },
     }],
     ["urlbar",      {
       query: "#urlbar",
       widgetName: "urlbar-container",
     }],
     ["pageActionButton", {
-      query: "#pageActionButton"
+      query: "#pageActionButton",
     }],
     ["pageAction-bookmark", {
       query: (aDocument) => {
@@ -235,7 +240,7 @@ var UITour = {
         return aDocument.getElementById("pageAction-urlbar-screenshots") ||
                aDocument.getElementById("pageAction-panel-screenshots");
       },
-    }]
+    }],
   ]),
 
   init() {
@@ -647,9 +652,7 @@ var UITour = {
       // The browser message manager is disconnected when the <browser> is
       // destroyed and we want to teardown at that point.
       case "message-manager-close": {
-        let winEnum = Services.wm.getEnumerator("navigator:browser");
-        while (winEnum.hasMoreElements()) {
-          let window = winEnum.getNext();
+        for (let window of Services.wm.getEnumerator("navigator:browser")) {
           if (window.closed)
             continue;
 
@@ -739,8 +742,8 @@ var UITour = {
         events: [
           [ "popuphidden", this.onPanelHidden ],
           [ "popuphiding", this.onAppMenuHiding ],
-          [ "ViewShowing", this.onAppMenuSubviewShowing ]
-        ]
+          [ "ViewShowing", this.onAppMenuSubviewShowing ],
+        ],
       },
       {
         name: "pageActionPanel",
@@ -748,16 +751,16 @@ var UITour = {
         events: [
           [ "popuphidden", this.onPanelHidden ],
           [ "popuphiding", this.onPageActionPanelHiding ],
-          [ "ViewShowing", this.onPageActionPanelSubviewShowing ]
-        ]
+          [ "ViewShowing", this.onPageActionPanelSubviewShowing ],
+        ],
       },
       {
         name: "controlCenter",
         node: aWindow.gIdentityHandler._identityPopup,
         events: [
           [ "popuphidden", this.onPanelHidden ],
-          [ "popuphiding", this.onControlCenterHiding ]
-        ]
+          [ "popuphiding", this.onControlCenterHiding ],
+        ],
       },
     ];
     for (let panel of panels) {
@@ -1137,7 +1140,7 @@ var UITour = {
 
       for (let button of aButtons) {
         let isButton = button.style != "text";
-        let el = document.createElement(isButton ? "button" : "label");
+        let el = document.createXULElement(isButton ? "button" : "label");
         el.setAttribute(isButton ? "label" : "value", button.label);
 
         if (isButton) {
@@ -1255,7 +1258,7 @@ var UITour = {
 
     if (aMenuName == "appMenu" || aMenuName == "pageActionPanel") {
       let menu = {
-        onPanelHidden: this.onPanelHidden
+        onPanelHidden: this.onPanelHidden,
       };
       if (aMenuName == "appMenu") {
         menu.node = aWindow.PanelUI.panel;
@@ -1359,7 +1362,11 @@ var UITour = {
   },
 
   showNewTab(aWindow, aBrowser) {
-    aWindow.openLinkIn("about:newtab", "current", {targetBrowser: aBrowser});
+    let url = "about:newtab";
+    aWindow.openLinkIn(url, "current", {
+      targetBrowser: aBrowser,
+      triggeringPrincipal: Services.scriptSecurityManager.createCodebasePrincipal(Services.io.newURI(url), {}),
+    });
     aWindow.gURLBar.focus();
   },
 
@@ -1456,7 +1463,7 @@ var UITour = {
             data = {
               searchEngineIdentifier: Services.search.defaultEngine.identifier,
               engines: engines.filter((engine) => engine.identifier)
-                              .map((engine) => TARGET_SEARCHENGINE_PREFIX + engine.identifier)
+                              .map((engine) => TARGET_SEARCHENGINE_PREFIX + engine.identifier),
             };
           } else {
             data = {engines: [], searchEngineIdentifier: ""};
@@ -1674,9 +1681,7 @@ var UITour = {
   },
 
   notify(eventName, params) {
-    let winEnum = Services.wm.getEnumerator("navigator:browser");
-    while (winEnum.hasMoreElements()) {
-      let window = winEnum.getNext();
+    for (let window of Services.wm.getEnumerator("navigator:browser")) {
       if (window.closed)
         continue;
 
@@ -1744,5 +1749,5 @@ const UITourHealthReport = {
         addClientId: true,
         addEnvironment: true,
       });
-  }
+  },
 };

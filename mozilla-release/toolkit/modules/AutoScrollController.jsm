@@ -3,10 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* eslint no-unused-vars: ["error", {args: "none"}] */
-
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 var EXPORTED_SYMBOLS = ["AutoScrollController"];
 
@@ -177,8 +174,7 @@ class AutoScrollController {
     if (!content.performance)
       return;
 
-    let domUtils = content.QueryInterface(Ci.nsIInterfaceRequestor)
-                          .getInterface(Ci.nsIDOMWindowUtils);
+    let domUtils = content.windowUtils;
     let scrollable = this._scrollable;
     if (scrollable instanceof Ci.nsIDOMWindow) {
       // getViewId() needs an element to operate on.
@@ -296,7 +292,7 @@ class AutoScrollController {
     this._scrollable.scrollBy({
       left: actualScrollX,
       top: actualScrollY,
-      behavior: "instant"
+      behavior: "instant",
     });
 
     this._scrollable.ownerGlobal.requestAnimationFrame(this.autoscrollLoop);

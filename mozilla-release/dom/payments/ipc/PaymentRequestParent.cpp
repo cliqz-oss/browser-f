@@ -147,6 +147,16 @@ PaymentRequestParent::RecvRequestPayment(const IPCPaymentActionRequest& aRequest
       MOZ_ASSERT(action);
       break;
     }
+    case IPCPaymentActionRequest::TIPCPaymentCloseActionRequest: {
+      const IPCPaymentCloseActionRequest& request = aRequest;
+      rv = CreateActionRequest(request.requestId(),
+                               nsIPaymentActionRequest::CLOSE_ACTION,
+                               getter_AddRefs(action));
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return IPC_FAIL_NO_REASON(this);
+      }
+      break;
+    }
     default: {
       return IPC_FAIL(this, "Unexpected request type");
     }
@@ -304,10 +314,6 @@ PaymentRequestParent::ChangeShippingAddress(const nsAString& aRequestId,
   rv = aAddress->GetSortingCode(sortingCode);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsAutoString languageCode;
-  rv = aAddress->GetLanguageCode(languageCode);
-  NS_ENSURE_SUCCESS(rv, rv);
-
   nsAutoString organization;
   rv = aAddress->GetOrganization(organization);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -335,7 +341,7 @@ PaymentRequestParent::ChangeShippingAddress(const nsAString& aRequestId,
 
   IPCPaymentAddress ipcAddress(country, addressLine, region, city,
                                dependentLocality, postalCode, sortingCode,
-                               languageCode, organization, recipient, phone);
+                               organization, recipient, phone);
 
   nsAutoString requestId(aRequestId);
   if (!SendChangeShippingAddress(requestId, ipcAddress)) {

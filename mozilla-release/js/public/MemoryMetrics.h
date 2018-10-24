@@ -123,13 +123,6 @@ struct InefficientNonFlatteningStringHashPolicy
     static bool match(const JSString* const& k, const Lookup& l);
 };
 
-struct CStringHashPolicy
-{
-    typedef const char* Lookup;
-    static HashNumber hash(const Lookup& l);
-    static bool match(const char* const& k, const Lookup& l);
-};
-
 // This file features many classes with numerous size_t fields, and each such
 // class has one or more methods that need to operate on all of these fields.
 // Writing these individually is error-prone -- it's easy to add a new field
@@ -560,7 +553,6 @@ struct RuntimeSizes
     macro(_, MallocHeap, contexts) \
     macro(_, MallocHeap, temporary) \
     macro(_, MallocHeap, interpreterStack) \
-    macro(_, MallocHeap, mathCache) \
     macro(_, MallocHeap, sharedImmutableStringsCache) \
     macro(_, MallocHeap, sharedIntlData) \
     macro(_, MallocHeap, uncompressedSourceCache) \
@@ -577,7 +569,7 @@ struct RuntimeSizes
         notableScriptSources()
     {
         allScriptSources = js_new<ScriptSourcesHashMap>();
-        if (!allScriptSources || !allScriptSources->init())
+        if (!allScriptSources)
             MOZ_CRASH("oom");
     }
 
@@ -605,7 +597,7 @@ struct RuntimeSizes
     GCSizes gc;
 
     typedef js::HashMap<const char*, ScriptSourceInfo,
-                        js::CStringHashPolicy,
+                        mozilla::CStringHasher,
                         js::SystemAllocPolicy> ScriptSourcesHashMap;
 
     // |allScriptSources| is only used transiently.  During the reporting phase
@@ -902,7 +894,7 @@ struct RealmStats
     void* extra;            // This field can be used by embedders.
 
     typedef js::HashMap<const char*, ClassInfo,
-                        js::CStringHashPolicy,
+                        mozilla::CStringHasher,
                         js::SystemAllocPolicy> ClassesHashMap;
 
     // These are similar to |allStrings| and |notableStrings| in ZoneStats.

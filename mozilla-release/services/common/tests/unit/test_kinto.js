@@ -337,8 +337,12 @@ add_task(async function test_kinto_sync() {
     result = await collection.sync();
     Assert.ok(result.ok);
     list = await collection.list();
-    const after = list.data[0].title;
+    const after = list.data[1].title;
     Assert.notEqual(before, after);
+
+    const manualID = list.data[0].id;
+    Assert.equal(list.data.length, 3);
+    Assert.equal(manualID, "some-manually-chosen-id");
   } finally {
     await sqliteHandle.close();
   }
@@ -365,29 +369,29 @@ function getSampleResponse(req, port) {
         "Access-Control-Allow-Methods: GET,HEAD,OPTIONS,POST,DELETE,OPTIONS",
         "Access-Control-Allow-Origin: *",
         "Content-Type: application/json; charset=UTF-8",
-        "Server: waitress"
+        "Server: waitress",
       ],
       "status": {status: 200, statusText: "OK"},
-      "responseBody": "null"
+      "responseBody": "null",
     },
     "GET:/v1/?": {
       "sampleHeaders": [
         "Access-Control-Allow-Origin: *",
         "Access-Control-Expose-Headers: Retry-After, Content-Length, Alert, Backoff",
         "Content-Type: application/json; charset=UTF-8",
-        "Server: waitress"
+        "Server: waitress",
       ],
       "status": {status: 200, statusText: "OK"},
       "responseBody": JSON.stringify({
         "settings": {
-          "batch_max_requests": 25
+          "batch_max_requests": 25,
         },
         "url": `http://localhost:${port}/v1/`,
         "documentation": "https://kinto.readthedocs.org/",
         "version": "1.5.1",
         "commit": "cbc6f58",
-        "hello": "kinto"
-      })
+        "hello": "kinto",
+      }),
     },
     "GET:/v1/buckets/default/collections/test_collection/records?_sort=-last_modified": {
       "sampleHeaders": [
@@ -395,7 +399,7 @@ function getSampleResponse(req, port) {
         "Access-Control-Expose-Headers: Retry-After, Content-Length, Alert, Backoff",
         "Content-Type: application/json; charset=UTF-8",
         "Server: waitress",
-        "Etag: \"1445606341071\""
+        "Etag: \"1445606341071\"",
       ],
       "status": {status: 200, statusText: "OK"},
       "responseBody": JSON.stringify({
@@ -403,9 +407,9 @@ function getSampleResponse(req, port) {
           "last_modified": 1445606341071,
           "done": false,
           "id": "68db8313-686e-4fff-835e-07d78ad6f2af",
-          "title": "New test"
-        }]
-      })
+          "title": "New test",
+        }],
+      }),
     },
     "GET:/v1/buckets/default/collections/test_collection/records?_sort=-last_modified&_since=1445606341071": {
       "sampleHeaders": [
@@ -413,7 +417,7 @@ function getSampleResponse(req, port) {
         "Access-Control-Expose-Headers: Retry-After, Content-Length, Alert, Backoff",
         "Content-Type: application/json; charset=UTF-8",
         "Server: waitress",
-        "Etag: \"1445607941223\""
+        "Etag: \"1445607941223\"",
       ],
       "status": {status: 200, statusText: "OK"},
       "responseBody": JSON.stringify({
@@ -421,9 +425,9 @@ function getSampleResponse(req, port) {
           "last_modified": 1445607941223,
           "done": false,
           "id": "901967b0-f729-4b30-8d8d-499cba7f4b1d",
-          "title": "Another new test"
-        }]
-      })
+          "title": "Another new test",
+        }],
+      }),
     },
     "GET:/v1/buckets/default/collections/test_collection/records?_sort=-last_modified&_since=1445607941223": {
       "sampleHeaders": [
@@ -431,7 +435,7 @@ function getSampleResponse(req, port) {
         "Access-Control-Expose-Headers: Retry-After, Content-Length, Alert, Backoff",
         "Content-Type: application/json; charset=UTF-8",
         "Server: waitress",
-        "Etag: \"1445607541265\""
+        "Etag: \"1445607541267\"",
       ],
       "status": {status: 200, statusText: "OK"},
       "responseBody": JSON.stringify({
@@ -439,10 +443,15 @@ function getSampleResponse(req, port) {
           "last_modified": 1445607541265,
           "done": false,
           "id": "901967b0-f729-4b30-8d8d-499cba7f4b1d",
-          "title": "Modified title"
-        }]
-      })
-    }
+          "title": "Modified title",
+        }, {
+          "last_modified": 1445607541267,
+          "done": true,
+          "id": "some-manually-chosen-id",
+          "title": "New record with custom ID",
+        }],
+      }),
+    },
   };
   return responses[`${req.method}:${req.path}?${req.queryString}`] ||
          responses[req.method];

@@ -5,6 +5,7 @@
 from __future__ import absolute_import, unicode_literals
 
 import os
+import gzip
 import itertools
 import json
 import sys
@@ -12,6 +13,8 @@ import shutil
 
 import mozpack.path as mozpath
 from mozbuild import shellutil
+from mozbuild.analyze.graph import Graph
+from mozbuild.analyze.hg import Report
 from mozbuild.base import MozbuildObject
 from mozbuild.backend.base import PartialBackend, HybridBackend
 from mozbuild.backend.recursivemake import RecursiveMakeBackend
@@ -44,6 +47,7 @@ from ..frontend.data import (
     Program,
     SimpleProgram,
     HostLibrary,
+    HostRustLibrary,
     HostProgram,
     HostSimpleProgram,
     RustLibrary,
@@ -71,7 +75,8 @@ class BackendTupfile(object):
     """Represents a generated Tupfile.
     """
 
-    def __init__(self, objdir, environment, topsrcdir, topobjdir, dry_run):
+    def __init__(self, objdir, environment, topsrcdir, topobjdir, dry_run,
+                 default_group):
         self.topsrcdir = topsrcdir
         self.objdir = objdir
         self.relobjdir = mozpath.relpath(objdir, topobjdir)
@@ -88,7 +93,6 @@ class BackendTupfile(object):
         self.sources = defaultdict(list)
         self.host_sources = defaultdict(list)
         self.variables = {}
-        self.rust_library = None
         self.static_lib = None
         self.shared_lib = None
         self.programs = []
@@ -96,9 +100,12 @@ class BackendTupfile(object):
         self.host_library = None
         self.exports = set()
 
+        self._default_group = default_group
+
         # These files are special, ignore anything that generates them or
         # depends on them.
         self._skip_files = [
+            'built_in_addons.json',
             'signmar',
         ]
 
@@ -115,9 +122,12 @@ class BackendTupfile(object):
             self.rules_included = True
 
     def rule(self, cmd, inputs=None, outputs=None, display=None,
-             extra_inputs=None, extra_outputs=None, check_unchanged=False):
+             extra_inputs=None, output_group=None, check_unchanged=False):
         inputs = inputs or []
         outputs = outputs or []
+
+        if output_group is None:
+            output_group = self._default_group
 
         for f in inputs + outputs:
             if any(f.endswith(skip_file) for skip_file in self._skip_files):
@@ -137,21 +147,19 @@ class BackendTupfile(object):
         else:
             caret_text = flags
 
-        self.write(': %(inputs)s%(extra_inputs)s |> %(display)s%(cmd)s |> %(outputs)s%(extra_outputs)s\n' % {
+        self.write(': %(inputs)s%(extra_inputs)s |> %(display)s%(cmd)s |> %(outputs)s%(output_group)s\n' % {
             'inputs': ' '.join(inputs),
             'extra_inputs': ' | ' + ' '.join(extra_inputs) if extra_inputs else '',
             'display': '^%s^ ' % caret_text if caret_text else '',
             'cmd': ' '.join(cmd),
             'outputs': ' '.join(outputs),
-            'extra_outputs': ' | ' + ' '.join(extra_outputs) if extra_outputs else '',
+            'output_group': ' ' + output_group if output_group else '',
         })
 
         self.outputs.update(outputs)
 
     def symlink_rule(self, source, output=None, output_group=None):
         outputs = [output] if output else [mozpath.basename(source)]
-        if output_group:
-            outputs.append(output_group)
 
         # The !tup_ln macro does a symlink or file copy (depending on the
         # platform) without shelling out to a subprocess.
@@ -159,6 +167,7 @@ class BackendTupfile(object):
             cmd=['!tup_ln'],
             inputs=[source],
             outputs=outputs,
+            output_group=output_group
         )
 
     def gen_sources_rules(self, extra_inputs):
@@ -248,18 +257,29 @@ class TupBackend(CommonBackend):
 
         # These are 'group' dependencies - All rules that list these as an output
         # will be built before any rules that list this as an input.
-        self._installed_idls = '$(MOZ_OBJ_ROOT)/<installed-idls>'
-        self._installed_files = '$(MOZ_OBJ_ROOT)/<installed-files>'
-        self._rust_libs = '$(MOZ_OBJ_ROOT)/<rust-libs>'
+        self._installed_idls = self._output_group('installed-idls')
+        self._installed_files = self._output_group('installed-files')
+        self._rust_libs = self._output_group('rust-libs')
         # The preprocessor including source-repo.h and buildid.h creates
         # dependencies that aren't specified by moz.build and cause errors
         # in Tup. Express these as a group dependency.
-        self._early_generated_files = '$(MOZ_OBJ_ROOT)/<early-generated-files>'
+        self._early_generated_files = self._output_group('early-generated-files')
+
+        self._shlibs = self._output_group('shlibs')
+        self._default_group = self._output_group('default')
+
+        self._rust_cmds = set()
 
         self._built_in_addons = set()
         self._built_in_addons_file = 'dist/bin/browser/chrome/browser/content/browser/built_in_addons.json'
 
-        self._shlibs = '$(MOZ_OBJ_ROOT)/<shlibs>'
+    def _output_group(self, label):
+        if label:
+            return '$(MOZ_OBJ_ROOT)/<%s>' % label
+
+    def _rust_output_group(self, label):
+        if label:
+            return self._output_group('rust-' + label)
 
     def _get_mozconfig_env(self, config):
         env = {}
@@ -276,26 +296,42 @@ class TupBackend(CommonBackend):
 
     def build(self, config, output, jobs, verbose, what=None):
         if not what:
-            what = [self.environment.topobjdir]
+            what = ['%s/<default>' % config.topobjdir]
         args = [self.environment.substs['TUP'], 'upd'] + what
         if self.environment.substs.get('MOZ_AUTOMATION'):
             args += ['--quiet']
+        else:
+            args += ['--debug-logging']
         if verbose:
             args += ['--verbose']
         if jobs > 0:
             args += ['-j%d' % jobs]
         else:
             args += ['-j%d' % multiprocessing.cpu_count()]
+
+        tiers = output.monitor.tiers
+        tiers.set_tiers(('tup',))
+        tiers.begin_tier('tup')
         status = config.run_process(args=args,
                                   line_handler=output.on_line,
                                   ensure_exit_code=False,
                                   append_env=self._get_mozconfig_env(config))
-        # upload Tup db
-        if (not status and
-            self.environment.substs.get('MOZ_AUTOMATION') and self.environment.substs.get('UPLOAD_TUP_DB')):
+        tiers.finish_tier('tup')
+        if not status and self.environment.substs.get('MOZ_AUTOMATION'):
+            config.log_manager.enable_unstructured()
+            config._activate_virtualenv()
+            config.virtualenv_manager.install_pip_package('tablib==0.12.1')
             src = mozpath.join(self.environment.topsrcdir, '.tup')
-            dst = mozpath.join(os.environ['UPLOAD_PATH'], 'tup_db')
-            shutil.make_archive(dst, 'zip', src)
+            dst = os.environ['UPLOAD_PATH']
+            if self.environment.substs.get('UPLOAD_TUP_DB'):
+                shutil.make_archive(mozpath.join(dst, 'tup_db'), 'zip', src)
+            cost_dict = Graph(mozpath.join(src, 'db')).get_cost_dict()
+            with gzip.open(mozpath.join(dst, 'cost_dict.gz'), 'wt') as outfile:
+                json.dump(cost_dict, outfile)
+            # Additionally generate a report with 30 days worth of data
+            # for upload.
+            r = Report(30, cost_dict=cost_dict)
+            r.generate_output('html', None, dst)
         return status
 
     def _get_backend_file(self, relobjdir):
@@ -304,7 +340,7 @@ class TupBackend(CommonBackend):
             self._backend_files[objdir] = \
                     BackendTupfile(objdir, self.environment,
                                    self.environment.topsrcdir, self.environment.topobjdir,
-                                   self.dry_run)
+                                   self.dry_run, self._default_group)
         return self._backend_files[objdir]
 
     def _get_backend_file_for(self, obj):
@@ -322,11 +358,20 @@ class TupBackend(CommonBackend):
         return [mozpath.relpath(mozpath.join(l.objdir, l.import_name), objdir)
                 for l in libs]
 
+    def _trim_outputs(self, outputs):
+        # Trim an output list for display to at most 3 entries
+        if len(outputs) > 3:
+            display_outputs = ', '.join(outputs[0:3]) + ', ...'
+        else:
+            display_outputs = ', '.join(outputs)
+        return display_outputs
+
     def _gen_shared_library(self, backend_file):
         shlib = backend_file.shared_lib
 
-        if backend_file.objdir.endswith('gtest') and shlib.name == 'libxul.so':
-            return
+        output_group = self._shlibs
+        if shlib.output_category:
+            output_group = self._output_group(shlib.output_category)
 
         if shlib.cxx_link:
             mkshlib = (
@@ -346,28 +391,28 @@ class TupBackend(CommonBackend):
             ['-o', shlib.lib_name]
         )
 
-        objs, _, shared_libs, os_libs, static_libs = self._expand_libs(shlib)
+        objs, _, _, shared_libs, os_libs, static_libs = self._expand_libs(shlib)
         static_libs = self._lib_paths(backend_file.objdir, static_libs)
         shared_libs = self._lib_paths(backend_file.objdir, shared_libs)
 
         list_file_name = '%s.list' % shlib.name.replace('.', '_')
         list_file = self._make_list_file(backend_file.objdir, objs, list_file_name)
 
-        rust_linked = self._lib_paths(backend_file.objdir,
-                                      (l for l in backend_file.shared_lib.linked_libraries
-                                       if isinstance(l, RustLibrary)))
+        rust_linked = [l for l in backend_file.shared_lib.linked_libraries
+                       if isinstance(l, RustLibrary)]
 
         inputs = objs + static_libs + shared_libs
 
         extra_inputs = []
         if rust_linked:
-            extra_inputs = [self._rust_libs]
-            static_libs += rust_linked
+            extra_inputs = [self._rust_output_group(rust_linked[0].output_category) or
+                            self._rust_libs]
+            static_libs += self._lib_paths(backend_file.objdir, rust_linked)
 
         symbols_file = []
-        if shlib.symbols_file:
+        if (shlib.symbols_file and
+            backend_file.environment.substs.get('GCC_USE_GNU_LD')):
             inputs.append(shlib.symbols_file)
-            # TODO: Assumes GNU LD
             symbols_file = ['-Wl,--version-script,%s' % shlib.symbols_file]
 
         cmd = (
@@ -385,7 +430,7 @@ class TupBackend(CommonBackend):
             inputs=inputs,
             extra_inputs=extra_inputs,
             outputs=[shlib.lib_name],
-            extra_outputs=[self._shlibs],
+            output_group=output_group,
             display='LINK %o'
         )
         backend_file.symlink_rule(mozpath.join(backend_file.objdir,
@@ -393,7 +438,7 @@ class TupBackend(CommonBackend):
                                   output=mozpath.join(self.environment.topobjdir,
                                                       shlib.install_target,
                                                       shlib.lib_name),
-                                  output_group=self._shlibs)
+                                  output_group=output_group)
 
     def _gen_programs(self, backend_file):
         for p in backend_file.programs:
@@ -401,7 +446,7 @@ class TupBackend(CommonBackend):
 
     def _gen_program(self, backend_file, prog):
         cc_or_cxx = 'CXX' if prog.cxx_link else 'CC'
-        objs, _, shared_libs, os_libs, static_libs = self._expand_libs(prog)
+        objs, _, _, shared_libs, os_libs, static_libs = self._expand_libs(prog)
         static_libs = self._lib_paths(backend_file.objdir, static_libs)
         shared_libs = self._lib_paths(backend_file.objdir, shared_libs)
 
@@ -461,7 +506,7 @@ class TupBackend(CommonBackend):
 
 
     def _gen_host_program(self, backend_file, prog):
-        _, _, _, extra_libs, _ = self._expand_libs(prog)
+        _, _, _, _, extra_libs, _ = self._expand_libs(prog)
         objs = prog.objs
 
         if isinstance(prog, HostSimpleProgram):
@@ -469,13 +514,19 @@ class TupBackend(CommonBackend):
         else:
             outputs = [mozpath.relpath(prog.output_path.full_path,
                                        backend_file.objdir)]
-        host_libs = []
-        for lib in prog.linked_libraries:
-            if isinstance(lib, HostLibrary):
-                host_libs.append(lib)
-        host_libs = self._lib_paths(backend_file.objdir, host_libs)
-
+        host_libs = self._lib_paths(backend_file.objdir,
+                                    (lib for lib in prog.linked_libraries
+                                     if isinstance(lib, HostLibrary)))
         inputs = objs + host_libs
+
+        rust_linked = self._lib_paths(backend_file.objdir,
+                                      (lib for lib in prog.linked_libraries
+                                       if isinstance(lib, HostRustLibrary)))
+        extra_inputs = []
+        if rust_linked:
+            extra_inputs += [self._rust_libs]
+            host_libs += rust_linked
+
         use_cxx = any(f.endswith(('.cc', '.cpp')) for f in prog.source_files())
         cc_or_cxx = 'HOST_CXX' if use_cxx else 'HOST_CC'
         cmd = (
@@ -489,6 +540,7 @@ class TupBackend(CommonBackend):
         backend_file.rule(
             cmd=cmd,
             inputs=inputs,
+            extra_inputs=extra_inputs,
             outputs=outputs,
             display='LINK %o'
         )
@@ -500,7 +552,7 @@ class TupBackend(CommonBackend):
             backend_file.environment.substs['AR_FLAGS'].replace('$@', '%o')
         ]
 
-        objs, _, shared_libs, _, static_libs = self._expand_libs(backend_file.static_lib)
+        objs, _, _, shared_libs, _, static_libs = self._expand_libs(backend_file.static_lib)
         static_libs = self._lib_paths(backend_file.objdir, static_libs)
         shared_libs = self._lib_paths(backend_file.objdir, shared_libs)
 
@@ -578,7 +630,7 @@ class TupBackend(CommonBackend):
         elif isinstance(obj, VariablePassthru):
             backend_file.variables = obj.variables
         elif isinstance(obj, RustLibrary):
-            backend_file.rust_library = obj
+            self._gen_rust_rules(obj, backend_file)
         elif isinstance(obj, StaticLibrary):
             backend_file.static_lib = obj
         elif isinstance(obj, SharedLibrary):
@@ -616,8 +668,7 @@ class TupBackend(CommonBackend):
                                      self._gen_static_library),
                                     (backend_file.programs, self._gen_programs),
                                     (backend_file.host_programs, self._gen_host_programs),
-                                    (backend_file.host_library, self._gen_host_library),
-                                    (backend_file.rust_library, self._gen_rust)):
+                                    (backend_file.host_library, self._gen_host_library)):
                 if var:
                     backend_file.export_shell()
                     gen_method(backend_file)
@@ -653,7 +704,7 @@ class TupBackend(CommonBackend):
         # Run 'tup init' if necessary.
         if not os.path.exists(mozpath.join(self.environment.topsrcdir, ".tup")):
             tup = self.environment.substs.get('TUP', 'tup')
-            self._cmd.run_process(cwd=self.environment.topsrcdir, log_name='tup', args=[tup, 'init'])
+            self._cmd.run_process(cwd=self.environment.topsrcdir, log_name='tup', args=[tup, 'init', '--no-sync'])
 
 
     def _get_cargo_flags(self, obj):
@@ -672,8 +723,7 @@ class TupBackend(CommonBackend):
             ]
         return cargo_flags
 
-    def _get_cargo_env(self, backend_file):
-        lib = backend_file.rust_library
+    def _get_cargo_env(self, lib, backend_file):
         env = {
             'CARGO_TARGET_DIR': mozpath.normpath(mozpath.join(lib.objdir,
                                                               lib.target_dir)),
@@ -688,11 +738,9 @@ class TupBackend(CommonBackend):
             'PYTHON': self.environment.substs['PYTHON'],
             'PYTHONDONTWRITEBYTECODE': '1',
         }
-        cargo_incremental = self.environment.substs.get('CARGO_INCREMENTAL')
-        if cargo_incremental is not None:
-            # TODO (bug 1468527): CARGO_INCREMENTAL produces outputs that Tup
-            # doesn't know about, disable it unconditionally for now.
-            pass # env['CARGO_INCREMENTAL'] = cargo_incremental
+        # TODO (bug 1468527): CARGO_INCREMENTAL produces outputs that Tup
+        # doesn't know about, disable it unconditionally for now.
+        env['CARGO_INCREMENTAL'] = '0'
 
         rust_simd = self.environment.substs.get('MOZ_RUST_SIMD')
         if rust_simd is not None:
@@ -709,9 +757,16 @@ class TupBackend(CommonBackend):
             'RUSTFLAGS': '%s %s' % (' '.join(self.environment.substs['MOZ_RUST_DEFAULT_FLAGS']),
                                     ' '.join(self.environment.substs['RUSTFLAGS'])),
         })
+
+        if os.environ.get('MOZ_AUTOMATION'):
+            # Build scripts generally read environment variables that are set
+            # by cargo, however, some may rely on MOZ_AUTOMATION. We may need
+            # to audit for others as well.
+            env['MOZ_AUTOMATION'] = os.environ['MOZ_AUTOMATION']
+
         return env
 
-    def _gen_cargo_rules(self, backend_file, build_plan, cargo_env):
+    def _gen_cargo_rules(self, backend_file, build_plan, cargo_env, output_group):
         invocations = build_plan['invocations']
         processed = set()
 
@@ -724,8 +779,8 @@ class TupBackend(CommonBackend):
         def display_name(invocation):
             output_str = ''
             if invocation['outputs']:
-                output_str = ' -> %s' % ' '.join([os.path.basename(f)
-                                                  for f in invocation['outputs']])
+                outputs = [os.path.basename(f) for f in invocation['outputs']]
+                output_str = ' -> [%s]' % self._trim_outputs(outputs)
             return '{name} v{version} {kind}{output}'.format(
                 name=invocation['package_name'],
                 version=invocation['package_version'],
@@ -783,31 +838,42 @@ class TupBackend(CommonBackend):
             invocation['full-deps'] = set(inputs)
             invocation['full-deps'].update(invocation['outputs'])
 
-            backend_file.rule(
-                command,
-                inputs=sorted(inputs),
-                outputs=outputs,
-                extra_outputs=[self._rust_libs],
-                extra_inputs=[self._installed_files],
-                display='%s %s' % (header, display_name(invocation)),
-            )
+            cmd_key = ' '.join(command)
+            if cmd_key not in self._rust_cmds:
+                self._rust_cmds.add(cmd_key)
+                # We have some custom build scripts that depend on python code
+                # as well as invalidate a lot of the rust build, so set
+                # check_unchanged to try to reduce long incremental builds
+                # when only changing python.
+                check_unchanged = False
+                if (invocation['target_kind'][0] == 'custom-build' and
+                    os.path.basename(invocation['program']) != 'rustc'):
+                    check_unchanged = True
 
-            for dst, link in invocation['links'].iteritems():
-                backend_file.symlink_rule(link, dst, self._rust_libs)
+                # The two rust libraries in the tree share many prerequisites,
+                # so we need to prune common dependencies and therefore build
+                # all rust from the same Tupfile.
+                rust_backend_file = self._get_backend_file('toolkit/library/rust')
+                rust_backend_file.rule(
+                    command,
+                    inputs=sorted(inputs),
+                    outputs=outputs,
+                    output_group=output_group,
+                    extra_inputs=[self._installed_files],
+                    display='%s %s' % (header, display_name(invocation)),
+                    check_unchanged=check_unchanged,
+                )
+
+                for dst, link in invocation['links'].iteritems():
+                    rust_backend_file.symlink_rule(link, dst, output_group)
 
         for val in enumerate(invocations):
             _process(*val)
 
 
-    def _gen_rust(self, backend_file):
-        # TODO (bug 1468547): The gtest rust library depends on many of the same
-        # libraries as the main rust library, so we'll need to handle these all
-        # at once in order to build the gtest rust library.
-        if 'toolkit/library/gtest' in backend_file.objdir:
-            return
-
-        cargo_flags = self._get_cargo_flags(backend_file.rust_library)
-        cargo_env = self._get_cargo_env(backend_file)
+    def _gen_rust_rules(self, obj, backend_file):
+        cargo_flags = self._get_cargo_flags(obj)
+        cargo_env = self._get_cargo_env(obj, backend_file)
 
         output_lines = []
         def accumulate_output(line):
@@ -816,10 +882,17 @@ class TupBackend(CommonBackend):
         cargo_status = self._cmd.run_process(
             [self.environment.substs['CARGO'], 'build'] + cargo_flags,
             line_handler=accumulate_output,
+            ensure_exit_code=False,
             explicit_env=cargo_env)
+        if cargo_status:
+            raise Exception("cargo --build-plan failed with output:\n%s" %
+                            '\n'.join(output_lines))
 
         cargo_plan = json.loads(''.join(output_lines))
-        self._gen_cargo_rules(backend_file, cargo_plan, cargo_env)
+
+        self._gen_cargo_rules(backend_file, cargo_plan, cargo_env,
+                              self._rust_output_group(obj.output_category) or
+                              self._rust_libs)
         self.backend_input_files |= set(cargo_plan['inputs'])
 
 
@@ -854,9 +927,9 @@ class TupBackend(CommonBackend):
 
             if any(f.endswith(('automation.py', 'source-repo.h', 'buildid.h'))
                    for f in obj.outputs):
-                extra_outputs = [self._early_generated_files]
+                output_group = self._early_generated_files
             else:
-                extra_outputs = [self._installed_files] if obj.required_for_compile else []
+                output_group = self._installed_files if obj.required_for_compile else None
                 full_inputs += [self._early_generated_files]
 
             extra_inputs = []
@@ -864,14 +937,10 @@ class TupBackend(CommonBackend):
                                               'dependendentlibs.list.gtest')):
                 extra_inputs += [self._shlibs]
 
-            if len(outputs) > 3:
-                display_outputs = ', '.join(outputs[0:3]) + ', ...'
-            else:
-                display_outputs = ', '.join(outputs)
             display = 'python {script}:{method} -> [{display_outputs}]'.format(
                 script=obj.script,
                 method=obj.method,
-                display_outputs=display_outputs
+                display_outputs=self._trim_outputs(outputs),
             )
             backend_file.rule(
                 display=display,
@@ -879,7 +948,7 @@ class TupBackend(CommonBackend):
                 inputs=full_inputs,
                 extra_inputs=extra_inputs,
                 outputs=outputs,
-                extra_outputs=extra_outputs,
+                output_group=output_group,
                 check_unchanged=True,
             )
 
@@ -910,9 +979,22 @@ class TupBackend(CommonBackend):
             if not path:
                 raise Exception("Cannot install to " + target)
 
+        js_shell = self.environment.substs.get('JS_SHELL_NAME')
+        if js_shell:
+            js_shell = '%s%s' % (js_shell,
+                                 self.environment.substs['BIN_SUFFIX'])
+
         for path, files in obj.files.walk():
             self._add_features(target, path)
             for f in files:
+
+                if (js_shell and isinstance(obj, ObjdirFiles) and
+                    f.endswith(js_shell)):
+                    # Skip this convenience install for now. Accessing
+                    # !/js/src/js when trying to find headers creates
+                    # an error for tup when !/js/src/js is also a target.
+                    continue
+
                 output_group = None
                 if any(mozpath.match(mozpath.basename(f), p)
                        for p in self._compile_env_files):
@@ -1000,10 +1082,10 @@ class TupBackend(CommonBackend):
         backend_file.export_shell()
 
         all_idl_directories = set()
-        all_idl_directories.update(*map(lambda x: x[1], manager.modules.itervalues()))
+        all_idl_directories.update(*map(lambda x: x.directories, manager.modules.itervalues()))
 
         all_xpts = []
-        for module, (idls, _) in sorted(manager.modules.iteritems()):
+        for module_name, module in sorted(manager.modules.iteritems()):
             cmd = [
                 '$(PYTHON_PATH)',
                 '$(PLY_INCLUDE)',
@@ -1021,13 +1103,13 @@ class TupBackend(CommonBackend):
                 '$(DIST)/include',
                 '$(DIST)/xpcrs',
                 '.',
-                module,
+                module_name,
             ])
-            cmd.extend(sorted(idls))
+            cmd.extend(sorted(module.idl_files))
 
-            all_xpts.append('$(MOZ_OBJ_ROOT)/%s/%s.xpt' % (backend_file.relobjdir, module))
-            outputs = ['%s.xpt' % module]
-            stems = sorted(mozpath.splitext(mozpath.basename(idl))[0] for idl in idls)
+            all_xpts.append('$(MOZ_OBJ_ROOT)/%s/%s.xpt' % (backend_file.relobjdir, module_name))
+            outputs = ['%s.xpt' % module_name]
+            stems = sorted(module.stems())
             outputs.extend(['$(MOZ_OBJ_ROOT)/dist/include/%s.h' % f for f in stems])
             outputs.extend(['$(MOZ_OBJ_ROOT)/dist/xpcrs/rt/%s.rs' % f for f in stems])
             outputs.extend(['$(MOZ_OBJ_ROOT)/dist/xpcrs/bt/%s.rs' % f for f in stems])
@@ -1037,10 +1119,10 @@ class TupBackend(CommonBackend):
                     '$(MOZ_OBJ_ROOT)/xpcom/idl-parser/xpidl/xpidlyacc.py',
                     self._installed_idls,
                 ],
-                display='XPIDL %s' % module,
+                display='XPIDL %s' % module_name,
                 cmd=cmd,
                 outputs=outputs,
-                extra_outputs=[self._installed_files],
+                output_group=self._installed_files,
                 check_unchanged=True,
             )
 
@@ -1133,7 +1215,7 @@ class TupBackend(CommonBackend):
             display='IPDL code generation',
             cmd=cmd,
             outputs=outputs,
-            extra_outputs=[self._installed_files],
+            output_group=self._installed_files,
             check_unchanged=True,
         )
         backend_file.sources['.cpp'].extend(u[0] for u in unified_ipdl_cppsrcs_mapping)
@@ -1166,7 +1248,7 @@ class TupBackend(CommonBackend):
             cmd=cmd,
             inputs=webidls.all_non_static_basenames(),
             outputs=outputs,
-            extra_outputs=[self._installed_files],
+            output_group=self._installed_files,
             check_unchanged=True,
         )
         backend_file.sources['.cpp'].extend(u[0] for u in unified_source_mapping)

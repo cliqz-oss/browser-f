@@ -108,6 +108,13 @@ IsMatchForCompositor(const KeyframeEffect& aEffect,
     return MatchForCompositor::No;
   }
 
+  // If we know that the animation is not visible, we don't need to send the
+  // animation to the compositor.
+  if (!aFrame->IsVisibleOrMayHaveVisibleDescendants() ||
+      aFrame->IsScrolledOutOfView()) {
+    return MatchForCompositor::NoAndBlockThisProperty;
+  }
+
   return animation->IsPlaying()
          ? MatchForCompositor::Yes
          : MatchForCompositor::IfNeeded;
@@ -481,8 +488,8 @@ EffectCompositor::GetElementToRestyle(dom::Element* aElement,
     return nsLayoutUtils::GetAfterPseudo(aElement);
   }
 
-  NS_NOTREACHED("Should not try to get the element to restyle for a pseudo "
-                "other that :before or :after");
+  MOZ_ASSERT_UNREACHABLE("Should not try to get the element to restyle for "
+                         "a pseudo other that :before or :after");
   return nullptr;
 }
 

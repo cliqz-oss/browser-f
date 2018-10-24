@@ -16,12 +16,12 @@
 
 namespace mozilla {
 namespace dom {
-class TabChildGlobal;
-class ProcessGlobal;
+class ContentProcessMessageManager;
+class InProcessTabChildMessageManager;
+class TabChildMessageManager;
 } // namespace dom
 } // namespace mozilla
 class SandboxPrivate;
-class nsInProcessTabChildGlobal;
 class nsWindowRoot;
 
 #define NS_WRAPPERCACHE_IID \
@@ -41,7 +41,7 @@ class nsWindowRoot;
 // This may waste space for some other nsWrapperCache-derived objects that have
 // a 32-bit field as their first member, but those objects are unlikely to be as
 // numerous or performance-critical as DOM nodes.
-#if defined(_M_X64) || defined(__LP64__)
+#ifdef HAVE_64BIT_BUILD
 static_assert(sizeof(void*) == 8, "These architectures should be 64-bit");
 #define BOOL_FLAGS_ON_WRAPPER_CACHE
 #else
@@ -79,6 +79,10 @@ static_assert(sizeof(void*) == 4, "Only support 32-bit and 64-bit");
  * A number of the methods are implemented in nsWrapperCacheInlines.h because we
  * have to include some JS headers that don't play nicely with the rest of the
  * codebase. Include nsWrapperCacheInlines.h if you need to call those methods.
+ *
+ * When recording or replaying an execution, wrapper caches are instrumented so
+ * that they behave consistently even if the GC executes at different points
+ * and collects different objects.
  */
 
 class nsWrapperCache
@@ -96,6 +100,10 @@ public:
   }
   ~nsWrapperCache()
   {
+    // Clear any JS root associated with this cache while replaying.
+    if (mozilla::recordreplay::IsReplaying()) {
+      mozilla::recordreplay::SetWeakPointerJSRoot(this, nullptr);
+    }
     MOZ_ASSERT(!PreservingWrapper(),
                "Destroying cache with a preserved wrapper!");
   }
@@ -133,6 +141,23 @@ public:
    */
   JSObject* GetWrapperMaybeDead() const
   {
+    // Keep track of accesses on the cache when recording or replaying an
+    // execution. Accesses during a GC (when thread events are disallowed)
+    // fetch the underlying object without making sure the returned value
+    // is consistent between recording and replay.
+    if (mozilla::recordreplay::IsRecordingOrReplaying() &&
+        !mozilla::recordreplay::AreThreadEventsDisallowed() &&
+        !mozilla::recordreplay::HasDivergedFromRecording()) {
+      bool success = mozilla::recordreplay::RecordReplayValue(!!mWrapper);
+      if (mozilla::recordreplay::IsReplaying()) {
+        if (success) {
+          MOZ_RELEASE_ASSERT(mWrapper);
+        } else {
+          const_cast<nsWrapperCache*>(this)->ClearWrapper();
+        }
+      }
+    }
+
     return mWrapper;
   }
 

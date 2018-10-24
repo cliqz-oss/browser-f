@@ -236,7 +236,7 @@ public:
                             int16_t aButton =
                               mozilla::WidgetMouseEvent::eLeftButton,
                             uint16_t aInputSource =
-                              mozilla::dom::MouseEventBinding::MOZ_SOURCE_MOUSE,
+                              mozilla::dom::MouseEvent_Binding::MOZ_SOURCE_MOUSE,
                             WinPointerInfo* aPointerInfo = nullptr);
   virtual bool            DispatchWindowEvent(mozilla::WidgetGUIEvent* aEvent,
                                               nsEventStatus& aStatus);
@@ -655,7 +655,7 @@ protected:
   // Whether we're in the process of sending a WM_SETTEXT ourselves
   bool                  mSendingSetText;
 
-  // Whether we we're created as a NS_CHILD_CID window (aka ChildWindow) or not.
+  // Whether we we're created as a child window (aka ChildWindow) or not.
   bool                  mIsChildWindow : 1;
 
   // The point in time at which the last paint completed. We use this to avoid

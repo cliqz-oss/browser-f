@@ -14,7 +14,7 @@ namespace mozilla {
 namespace dom {
 namespace network {
 
-class ConnectionProxy final : public NetworkObserver
+class ConnectionProxy final : public hal::NetworkObserver
 {
 public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(ConnectionProxy)
@@ -171,7 +171,7 @@ ConnectionWorker::Create(WorkerPrivate* aWorkerPrivate, ErrorResult& aRv)
   RefPtr<InitializeRunnable> runnable =
     new InitializeRunnable(aWorkerPrivate, c->mProxy, networkInfo);
 
-  runnable->Dispatch(Terminating, aRv);
+  runnable->Dispatch(Canceling, aRv);
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
   }

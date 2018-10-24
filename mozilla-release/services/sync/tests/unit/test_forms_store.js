@@ -26,16 +26,17 @@ add_task(async function run_test() {
   await applyEnsureNoFailures([{
     id: Utils.makeGUID(),
     name: "name!!",
-    value: "value??"
+    value: "value??",
   }]);
 
   _("Should have 1 entry now");
   let id = "";
   for (let _id in (await store.getAllIDs())) {
-    if (id == "")
+    if (id == "") {
       id = _id;
-    else
+    } else {
       do_throw("Should have only gotten one!");
+    }
   }
   Assert.ok((store.itemExists(id)));
 
@@ -63,14 +64,15 @@ add_task(async function run_test() {
   await applyEnsureNoFailures([{
     id: Utils.makeGUID(),
     name: "another",
-    value: "entry"
+    value: "entry",
   }]);
   id = "";
   for (let _id in (await store.getAllIDs())) {
-    if (id == "")
+    if (id == "") {
       id = _id;
-    else
+    } else {
       do_throw("Should have only gotten one!");
+    }
   }
 
   _("Change the id of the new entry to something else");
@@ -81,7 +83,7 @@ add_task(async function run_test() {
 
   _("Remove the entry");
   await store.remove({
-    id: "newid"
+    id: "newid",
   });
   if ((await store.getAllIDs()).length) {
     do_throw("Shouldn't get any ids!");
@@ -89,7 +91,7 @@ add_task(async function run_test() {
 
   _("Removing the entry again shouldn't matter");
   await store.remove({
-    id: "newid"
+    id: "newid",
   });
   if ((await store.getAllIDs()).length) {
     do_throw("Shouldn't get any ids!");
@@ -99,15 +101,16 @@ add_task(async function run_test() {
   let toDelete = {
     id: Utils.makeGUID(),
     name: "todelete",
-    value: "entry"
+    value: "entry",
   };
   await applyEnsureNoFailures([toDelete]);
   id = "";
   for (let _id in (await store.getAllIDs())) {
-    if (id == "")
+    if (id == "") {
       id = _id;
-    else
+    } else {
       do_throw("Should have only gotten one!");
+    }
   }
   Assert.ok((store.itemExists(id)));
   // mark entry as deleted
@@ -122,7 +125,7 @@ add_task(async function run_test() {
   await applyEnsureNoFailures([{
     id: Utils.makeGUID(),
     name: "towipe",
-    value: "entry"
+    value: "entry",
   }]);
 
   await store.wipe();
@@ -142,7 +145,7 @@ add_task(async function run_test() {
     await applyEnsureNoFailures([{
       id: Utils.makeGUID(),
       name: "some",
-      value: "entry"
+      value: "entry",
     }]);
   } finally {
     Services.prefs.clearUserPref("browser.formfill.enable");

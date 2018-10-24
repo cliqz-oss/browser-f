@@ -15,7 +15,6 @@ const ERRNO_UNKNOWN_ERROR              = 999;
 const ERROR_UNKNOWN                    = "UNKNOWN_ERROR";
 
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 
@@ -291,7 +290,7 @@ this.WebChannel.prototype = {
     if (message && browser && browser.messageManager && principal) {
       browser.messageManager.sendAsyncMessage("WebChannelMessageToContent", {
         id: this.id,
-        message
+        message,
       }, { eventTarget }, principal);
     } else if (!message) {
       Cu.reportError("Failed to send a WebChannel message. Message not set.");
@@ -323,7 +322,7 @@ this.WebChannel.prototype = {
       } catch (ex) {
         this.send({
           errno: ERRNO_UNKNOWN_ERROR,
-          error: ex.message ? ex.message : ERROR_UNKNOWN
+          error: ex.message ? ex.message : ERROR_UNKNOWN,
         }, sendingContext);
         Cu.reportError("Failed to execute WebChannel callback:");
         Cu.reportError(ex);
@@ -331,5 +330,5 @@ this.WebChannel.prototype = {
     } else {
       Cu.reportError("No callback set for this channel.");
     }
-  }
+  },
 };

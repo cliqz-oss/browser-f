@@ -2,11 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* exported Utils, Logger, PivotContext, PrefCache */
-
 "use strict";
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "Services", // jshint ignore:line
   "resource://gre/modules/Services.jsm");
 ChromeUtils.defineModuleGetter(this, "Rect", // jshint ignore:line
@@ -83,41 +80,6 @@ var Utils = { // jshint ignore:line
       Services.wm.getMostRecentWindow("navigator:browser") ||
       Services.wm.getMostRecentWindow("navigator:geckoview");
     return win.document.querySelector("browser[type=content][primary=true]");
-  },
-
-  getAllMessageManagers: function getAllMessageManagers(aWindow) {
-    let messageManagers = new Set();
-
-    function collectLeafMessageManagers(mm) {
-      for (let i = 0; i < mm.childCount; i++) {
-        let childMM = mm.getChildAt(i);
-
-        if ("sendAsyncMessage" in childMM) {
-          messageManagers.add(childMM);
-        } else {
-          collectLeafMessageManagers(childMM);
-        }
-      }
-    }
-
-    collectLeafMessageManagers(aWindow.messageManager);
-
-    let browser = this.getCurrentBrowser(aWindow);
-    let document = browser ? browser.contentDocument : null;
-
-    if (document) {
-      let remoteframes = document.querySelectorAll("iframe");
-
-      for (let i = 0; i < remoteframes.length; ++i) {
-        let mm = this.getMessageManager(remoteframes[i]);
-        if (mm) {
-          messageManagers.add(mm);
-        }
-      }
-
-    }
-
-    return messageManagers;
   },
 
   get isContentProcess() {
@@ -198,13 +160,9 @@ var Utils = { // jshint ignore:line
     let attributes = {};
 
     if (aAccessible && aAccessible.attributes) {
-      let attributesEnum = aAccessible.attributes.enumerate();
-
       // Populate |attributes| object with |aAccessible|'s attribute key-value
       // pairs.
-      while (attributesEnum.hasMoreElements()) {
-        let attribute = attributesEnum.getNext().QueryInterface(
-          Ci.nsIPropertyElement);
+      for (let attribute of aAccessible.attributes.enumerate()) {
         attributes[attribute.key] = attribute.value;
       }
     }
@@ -221,9 +179,7 @@ var Utils = { // jshint ignore:line
 
   getContentResolution: function _getContentResolution(aAccessible) {
     let res = { value: 1 };
-    aAccessible.document.window.QueryInterface(
-      Ci.nsIInterfaceRequestor).getInterface(
-      Ci.nsIDOMWindowUtils).getResolution(res);
+    aAccessible.document.window.windowUtils.getResolution(res);
     return res.value;
   },
 
@@ -232,6 +188,18 @@ var Utils = { // jshint ignore:line
     aAccessible.getBounds(objX, objY, objW, objH);
 
     return new Rect(objX.value, objY.value, objW.value, objH.value);
+  },
+
+  getTextSelection: function getTextSelection(aAccessible) {
+    const accText = aAccessible.QueryInterface(Ci.nsIAccessibleText);
+    const start = {}, end = {};
+    if (accText.selectionCount) {
+      accText.getSelectionBounds(0, start, end);
+    } else {
+      start.value = end.value = accText.caretOffset;
+    }
+
+    return [start.value, end.value];
   },
 
   getTextBounds: function getTextBounds(aAccessible, aStart, aEnd,
@@ -277,30 +245,12 @@ var Utils = { // jshint ignore:line
     return false;
   },
 
-  isHidden: function isHidden(aAccessible) {
-    // Need to account for aria-hidden, so can't just check for INVISIBLE
-    // state.
-    let hidden = Utils.getAttributes(aAccessible).hidden;
-    return hidden && hidden === "true";
-  },
-
   visibleChildCount: function visibleChildCount(aAccessible) {
     let count = 0;
     for (let child = aAccessible.firstChild; child; child = child.nextSibling) {
-      if (!this.isHidden(child)) {
-        ++count;
-      }
+      ++count;
     }
     return count;
-  },
-
-  inHiddenSubtree: function inHiddenSubtree(aAccessible) {
-    for (let acc = aAccessible; acc; acc = acc.parent) {
-      if (this.isHidden(acc)) {
-        return true;
-      }
-    }
-    return false;
   },
 
   isAliveAndVisible: function isAliveAndVisible(aAccessible, aIsOnScreen) {
@@ -311,8 +261,7 @@ var Utils = { // jshint ignore:line
     try {
       let state = this.getState(aAccessible);
       if (state.contains(States.DEFUNCT) || state.contains(States.INVISIBLE) ||
-          (aIsOnScreen && state.contains(States.OFFSCREEN)) ||
-          Utils.inHiddenSubtree(aAccessible)) {
+          (aIsOnScreen && state.contains(States.OFFSCREEN))) {
         return false;
       }
     } catch (x) {
@@ -392,14 +341,6 @@ var Utils = { // jshint ignore:line
 
     return parent.role === Roles.LISTITEM && parent.childCount > 1 &&
       aStaticText.indexInParent === 0;
-  },
-
-  isActivatableOnFingerUp: function isActivatableOnFingerUp(aAccessible) {
-    if (aAccessible.role === Roles.KEY) {
-      return true;
-    }
-    let quick_activate = this.getAttributes(aAccessible)["moz-quick-activate"];
-    return quick_activate && JSON.parse(quick_activate);
   }
 };
 
@@ -438,7 +379,8 @@ var Logger = { // jshint ignore:line
 
   logLevel: 1, // INFO;
 
-  test: false,
+  // Note: used for testing purposes. If true, also log to the console service.
+  useConsoleService: false,
 
   log: function log(aLogLevel) {
     if (aLogLevel < this.logLevel) {
@@ -450,9 +392,7 @@ var Logger = { // jshint ignore:line
     message = "[" + Utils.ScriptName + "] " + this._LEVEL_NAMES[aLogLevel + 1] +
       " " + message + "\n";
     dump(message);
-    // Note: used for testing purposes. If |this.test| is true, also log to
-    // the console service.
-    if (this.test) {
+    if (this.useConsoleService) {
       try {
         Services.console.logStringMessage(message);
       } catch (ex) {
@@ -731,12 +671,7 @@ PivotContext.prototype = {
     }
     let child = aAccessible.firstChild;
     while (child) {
-      let include;
-      if (this._includeInvisible) {
-        include = true;
-      } else {
-        include = !Utils.isHidden(child);
-      }
+      let include = true;
       if (include) {
         if (aPreorder) {
           yield child;
@@ -818,9 +753,8 @@ PivotContext.prototype = {
       }
     };
     let getHeaders = function* getHeaders(aHeaderCells) {
-      let enumerator = aHeaderCells.enumerate();
-      while (enumerator.hasMoreElements()) {
-        yield enumerator.getNext().QueryInterface(Ci.nsIAccessible).name;
+      for (let {name} of aHeaderCells.enumerate(Ci.nsIAccessible)) {
+        yield name;
       }
     };
 

@@ -2,14 +2,12 @@
 
 /* global windowTracker, EventManager, EventEmitter */
 
+/* eslint-disable complexity */
+
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 ChromeUtils.defineModuleGetter(this, "LightweightThemeManager",
                                "resource://gre/modules/LightweightThemeManager.jsm");
-
-XPCOMUtils.defineLazyGetter(this, "gThemesEnabled", () => {
-  return Services.prefs.getBoolPref("extensions.webextensions.themes.enabled");
-});
 
 var {
   getWinUtils,
@@ -40,17 +38,36 @@ class Theme {
    * @param {string} extension Extension that created the theme.
    * @param {Integer} windowId The windowId where the theme is applied.
    */
-  constructor(extension, windowId) {
-    // The base URI of the extension, used to resolve relative filepaths.
-    this.baseURI = extension.baseURI;
-    // Logger that will be used to show manifest warnings to the theme author.
-    this.logger = extension.logger;
-
+  constructor({extension, details, windowId, experiment}) {
     this.extension = extension;
+    this.details = details;
     this.windowId = windowId;
+
     this.lwtStyles = {
       icons: {},
     };
+
+    if (experiment) {
+      const canRunExperiment = AppConstants.MOZ_ALLOW_LEGACY_EXTENSIONS &&
+        Services.prefs.getBoolPref("extensions.legacy.enabled");
+      if (canRunExperiment) {
+        this.lwtStyles.experimental = {
+          colors: {},
+          images: {},
+          properties: {},
+        };
+        const {baseURI} = this.extension;
+        if (experiment.stylesheet) {
+          experiment.stylesheet = baseURI.resolve(experiment.stylesheet);
+        }
+        this.experiment = experiment;
+      } else {
+        const {logger} = this.extension;
+        logger.warn("This extension is not allowed to run theme experiments");
+        return;
+      }
+    }
+    this.load();
   }
 
   /**
@@ -60,13 +77,8 @@ class Theme {
    * @param {Object} details Theme part of the manifest. Supported
    *   properties can be found in the schema under ThemeType.
    */
-  load(details) {
-    this.details = details;
-
-    if (this.windowId) {
-      this.lwtStyles.window = getWinUtils(
-        windowTracker.getWindow(this.windowId)).outerWindowID;
-    }
+  load() {
+    const {details} = this;
 
     if (details.colors) {
       this.loadColors(details.colors);
@@ -84,25 +96,27 @@ class Theme {
       this.loadProperties(details.properties);
     }
 
-    // Lightweight themes require accentcolor and textcolor to be defined.
-    if (this.lwtStyles.accentcolor &&
-        this.lwtStyles.textcolor) {
-      if (this.windowId) {
-        windowOverrides.set(this.windowId, this);
-      } else {
-        windowOverrides.clear();
-        defaultTheme = this;
-      }
-      onUpdatedEmitter.emit("theme-updated", this.details, this.windowId);
+    let lwtData = {
+      theme: this.lwtStyles,
+    };
 
-      LightweightThemeManager.fallbackThemeData = this.lwtStyles;
-      Services.obs.notifyObservers(null,
-                                   "lightweight-theme-styling-update",
-                                   JSON.stringify(this.lwtStyles));
+    if (this.windowId) {
+      lwtData.window =
+        getWinUtils(windowTracker.getWindow(this.windowId)).outerWindowID;
+      windowOverrides.set(this.windowId, this);
     } else {
-      this.logger.warn("Your theme doesn't include one of the following required " +
-        "properties: 'headerURL', 'accentcolor' or 'textcolor'");
+      windowOverrides.clear();
+      defaultTheme = this;
     }
+    onUpdatedEmitter.emit("theme-updated", this.details, this.windowId);
+
+    if (this.experiment) {
+      lwtData.experiment = this.experiment;
+    }
+    LightweightThemeManager.fallbackThemeData = this.lwtStyles;
+    Services.obs.notifyObservers(null,
+                                 "lightweight-theme-styling-update",
+                                 JSON.stringify(lwtData));
   }
 
   /**
@@ -170,7 +184,21 @@ class Theme {
         case "popup_border":
         case "popup_highlight":
         case "popup_highlight_text":
+        case "ntp_background":
+        case "ntp_text":
+        case "sidebar":
+        case "sidebar_text":
+        case "sidebar_highlight":
+        case "sidebar_highlight_text":
           this.lwtStyles[color] = cssColor;
+          break;
+        default:
+          if (this.experiment && this.experiment.colors && color in this.experiment.colors) {
+            this.lwtStyles.experimental.colors[color] = cssColor;
+          } else {
+            const {logger} = this.extension;
+            logger.warn(`Unrecognized theme property found: colors.${color}`);
+          }
           break;
       }
     }
@@ -182,6 +210,8 @@ class Theme {
    * @param {Object} images Dictionary mapping image properties to values.
    */
   loadImages(images) {
+    const {baseURI, logger} = this.extension;
+
     for (let image of Object.keys(images)) {
       let val = images[image];
 
@@ -191,14 +221,22 @@ class Theme {
 
       switch (image) {
         case "additional_backgrounds": {
-          let backgroundImages = val.map(img => this.baseURI.resolve(img));
+          let backgroundImages = val.map(img => baseURI.resolve(img));
           this.lwtStyles.additionalBackgrounds = backgroundImages;
           break;
         }
         case "headerURL":
         case "theme_frame": {
-          let resolvedURL = this.baseURI.resolve(val);
+          let resolvedURL = baseURI.resolve(val);
           this.lwtStyles.headerURL = resolvedURL;
+          break;
+        }
+        default: {
+          if (this.experiment && this.experiment.images && image in this.experiment.images) {
+            this.lwtStyles.experimental.images[image] = baseURI.resolve(val);
+          } else {
+            logger.warn(`Unrecognized theme property found: images.${image}`);
+          }
           break;
         }
       }
@@ -211,6 +249,8 @@ class Theme {
    * @param {Object} icons Dictionary mapping icon properties to extension URLs.
    */
   loadIcons(icons) {
+    const {baseURI} = this.extension;
+
     if (!Services.prefs.getBoolPref("extensions.webextensions.themes.icons.enabled")) {
       // Return early if icons are disabled.
       return;
@@ -221,11 +261,11 @@ class Theme {
       // We also have to compare against the baseURI spec because
       // `val` might have been resolved already. Resolving "" against
       // the baseURI just produces that URI, so check for equality.
-      if (!val || val == this.baseURI.spec || !ICONS.includes(icon)) {
+      if (!val || val == baseURI.spec || !ICONS.includes(icon)) {
         continue;
       }
       let variableName = `--${icon}-icon`;
-      let resolvedURL = this.baseURI.resolve(val);
+      let resolvedURL = baseURI.resolve(val);
       this.lwtStyles.icons[variableName] = resolvedURL;
     }
   }
@@ -241,13 +281,14 @@ class Theme {
     let additionalBackgroundsCount = (this.lwtStyles.additionalBackgrounds &&
       this.lwtStyles.additionalBackgrounds.length) || 0;
     const assertValidAdditionalBackgrounds = (property, valueCount) => {
+      const {logger} = this.extension;
       if (!additionalBackgroundsCount) {
-        this.logger.warn(`The '${property}' property takes effect only when one ` +
+        logger.warn(`The '${property}' property takes effect only when one ` +
           `or more additional background images are specified using the 'additional_backgrounds' property.`);
         return false;
       }
       if (additionalBackgroundsCount !== valueCount) {
-        this.logger.warn(`The amount of values specified for '${property}' ` +
+        logger.warn(`The amount of values specified for '${property}' ` +
           `(${valueCount}) is not equal to the amount of additional background ` +
           `images (${additionalBackgroundsCount}), which may lead to unexpected results.`);
       }
@@ -282,24 +323,26 @@ class Theme {
           this.lwtStyles.backgroundsTiling = tiling.join(",");
           break;
         }
+        default: {
+          if (this.experiment && this.experiment.properties && property in this.experiment.properties) {
+            this.lwtStyles.experimental.properties[property] = val;
+          } else {
+            const {logger} = this.extension;
+            logger.warn(`Unrecognized theme property found: properties.${property}`);
+          }
+          break;
+        }
       }
     }
   }
 
   static unload(windowId) {
-    let lwtStyles = {
-      headerURL: "",
-      accentcolor: "",
-      accentcolorInactive: "",
-      additionalBackgrounds: "",
-      backgroundsAlignment: "",
-      backgroundsTiling: "",
-      textcolor: "",
-      icons: {},
+    let lwtData = {
+      theme: null,
     };
 
     if (windowId) {
-      lwtStyles.window = getWinUtils(windowTracker.getWindow(windowId)).outerWindowID;
+      lwtData.window = getWinUtils(windowTracker.getWindow(windowId)).outerWindowID;
       windowOverrides.set(windowId, emptyTheme);
     } else {
       windowOverrides.clear();
@@ -307,33 +350,24 @@ class Theme {
     }
     onUpdatedEmitter.emit("theme-updated", {}, windowId);
 
-    for (let icon of ICONS) {
-      lwtStyles.icons[`--${icon}--icon`] = "";
-    }
     LightweightThemeManager.fallbackThemeData = null;
     Services.obs.notifyObservers(null,
                                  "lightweight-theme-styling-update",
-                                 JSON.stringify(lwtStyles));
+                                 JSON.stringify(lwtData));
   }
 }
 
 this.theme = class extends ExtensionAPI {
   onManifestEntry(entryName) {
-    if (!gThemesEnabled) {
-      // Return early if themes are disabled.
-      return;
-    }
-
     let {extension} = this;
     let {manifest} = extension;
+    let {theme, theme_experiment} = manifest;
 
-    if (!gThemesEnabled) {
-      // Return early if themes are disabled.
-      return;
-    }
-
-    defaultTheme = new Theme(extension);
-    defaultTheme.load(manifest.theme);
+    defaultTheme = new Theme({
+      extension,
+      details: theme,
+      experiment: theme_experiment,
+    });
   }
 
   onShutdown(reason) {
@@ -370,11 +404,6 @@ this.theme = class extends ExtensionAPI {
           return Promise.resolve(defaultTheme.details);
         },
         update: (windowId, details) => {
-          if (!gThemesEnabled) {
-            // Return early if themes are disabled.
-            return;
-          }
-
           if (windowId) {
             const browserWindow = windowTracker.getWindow(windowId, context);
             if (!browserWindow) {
@@ -382,15 +411,14 @@ this.theme = class extends ExtensionAPI {
             }
           }
 
-          let theme = new Theme(extension, windowId);
-          theme.load(details);
+          new Theme({
+            extension,
+            details,
+            windowId,
+            experiment: this.extension.manifest.theme_experiment,
+          });
         },
         reset: (windowId) => {
-          if (!gThemesEnabled) {
-            // Return early if themes are disabled.
-            return;
-          }
-
           if (windowId) {
             const browserWindow = windowTracker.getWindow(windowId, context);
             if (!browserWindow) {

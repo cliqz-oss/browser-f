@@ -60,13 +60,15 @@ CSSStyleRuleDeclaration::GetParentObject()
 }
 
 DeclarationBlock*
-CSSStyleRuleDeclaration::GetCSSDeclaration(Operation aOperation)
+CSSStyleRuleDeclaration::GetOrCreateCSSDeclaration(Operation aOperation,
+                                                   DeclarationBlock** aCreated)
 {
   return mDecls;
 }
 
 nsresult
-CSSStyleRuleDeclaration::SetCSSDeclaration(DeclarationBlock* aDecl)
+CSSStyleRuleDeclaration::SetCSSDeclaration(DeclarationBlock* aDecl,
+                                           MutationClosureData* aClosureData)
 {
   CSSStyleRule* rule = Rule();
   if (RefPtr<StyleSheet> sheet = rule->GetStyleSheet()) {
@@ -98,8 +100,11 @@ CSSStyleRuleDeclaration::GetParsingEnvironment(
 // -- CSSStyleRule --------------------------------------------------
 
 CSSStyleRule::CSSStyleRule(already_AddRefed<RawServoStyleRule> aRawRule,
-                               uint32_t aLine, uint32_t aColumn)
-  : BindingStyleRule(aLine, aColumn)
+                           StyleSheet* aSheet,
+                           css::Rule* aParentRule,
+                           uint32_t aLine,
+                           uint32_t aColumn)
+  : BindingStyleRule(aSheet, aParentRule, aLine, aColumn)
   , mRawRule(aRawRule)
   , mDecls(Servo_StyleRule_GetStyle(mRawRule).Consume())
 {

@@ -56,9 +56,6 @@ struct IPCPaymentDetails
   IPCPaymentDetailsModifier[] modifiers;
   nsString error;
   nsString shippingAddressErrors;
-  bool displayItemsPassed;
-  bool shippingOptionsPassed;
-  bool modifiersPassed;
 };
 
 struct IPCPaymentOptions
@@ -108,6 +105,11 @@ struct IPCPaymentUpdateActionRequest
   nsString shippingOption;
 };
 
+struct IPCPaymentCloseActionRequest
+{
+  nsString requestId;
+};
+
 union IPCPaymentActionRequest
 {
   IPCPaymentCreateActionRequest;
@@ -116,6 +118,7 @@ union IPCPaymentActionRequest
   IPCPaymentAbortActionRequest;
   IPCPaymentCompleteActionRequest;
   IPCPaymentUpdateActionRequest;
+  IPCPaymentCloseActionRequest;
 };
 
 struct IPCPaymentCanMakeActionResponse
@@ -164,7 +167,6 @@ struct IPCPaymentAddress
   nsString dependentLocality;
   nsString postalCode;
   nsString sortingCode;
-  nsString languageCode;
   nsString organization;
   nsString recipient;
   nsString phone;

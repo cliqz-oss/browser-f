@@ -19,7 +19,6 @@
 #include "nsIDocShell.h"
 #include "nsIDocumentLoader.h"
 #include "nsIDOMWindow.h"
-#include "nsIDOMOfflineResourceList.h"
 #include "nsIDocument.h"
 #include "nsIObserverService.h"
 #include "nsIURL.h"
@@ -138,7 +137,7 @@ nsOfflineCachePendingUpdate::OnProgressChange(nsIWebProgress *aProgress,
                                               int32_t curTotalProgress,
                                               int32_t maxTotalProgress)
 {
-    NS_NOTREACHED("notification excluded in AddProgressListener(...)");
+    MOZ_ASSERT_UNREACHABLE("notification excluded in AddProgressListener(...)");
     return NS_OK;
 }
 
@@ -207,7 +206,7 @@ nsOfflineCachePendingUpdate::OnLocationChange(nsIWebProgress* aWebProgress,
                                               nsIURI *location,
                                               uint32_t aFlags)
 {
-    NS_NOTREACHED("notification excluded in AddProgressListener(...)");
+    MOZ_ASSERT_UNREACHABLE("notification excluded in AddProgressListener(...)");
     return NS_OK;
 }
 
@@ -217,7 +216,7 @@ nsOfflineCachePendingUpdate::OnStatusChange(nsIWebProgress* aWebProgress,
                                             nsresult aStatus,
                                             const char16_t* aMessage)
 {
-    NS_NOTREACHED("notification excluded in AddProgressListener(...)");
+    MOZ_ASSERT_UNREACHABLE("notification excluded in AddProgressListener(...)");
     return NS_OK;
 }
 
@@ -226,7 +225,7 @@ nsOfflineCachePendingUpdate::OnSecurityChange(nsIWebProgress *aWebProgress,
                                               nsIRequest *aRequest,
                                               uint32_t state)
 {
-    NS_NOTREACHED("notification excluded in AddProgressListener(...)");
+    MOZ_ASSERT_UNREACHABLE("notification excluded in AddProgressListener(...)");
     return NS_OK;
 }
 
@@ -503,11 +502,10 @@ nsOfflineCacheUpdateService::Schedule(nsIURI *aManifestURI,
     nsresult rv;
 
     if (aWindow) {
-      // Ensure there is window.applicationCache object that is
-      // responsible for association of the new applicationCache
-      // with the corresponding document.  Just ignore the result.
-      nsCOMPtr<nsIDOMOfflineResourceList> appCacheWindowObject =
-          aWindow->GetApplicationCache();
+        // Ensure there is window.applicationCache object that is
+        // responsible for association of the new applicationCache
+        // with the corresponding document.  Just ignore the result.
+        aWindow->GetApplicationCache();
     }
 
     rv = update->Init(aManifestURI, aDocumentURI, aLoadingPrincipal, aDocument,

@@ -1,8 +1,17 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html#License
 ru{
-    Version{"2.1.39.20"}
+    Version{"2.1.41.97"}
     zoneStrings{
+        "Etc:UTC"{
+            ls{"Всемирное координированное время"}
+        }
+        "Europe:Dublin"{
+            ld{"Ирландия, стандартное время"}
+        }
+        "Europe:London"{
+            ld{"Великобритания, летнее время"}
+        }
         "meta:Acre"{
             ld{"Акри летнее время"}
             lg{"Акри время"}

@@ -71,25 +71,27 @@
             });
 
             var fullNames = new Array;
-            for (var fullName in measuredValuesByFullName)
+            for (var fullName in measuredValuesByFullName) {
                 fullNames.push(fullName);
+            }
 
             if (typeof tpRecordTime !== "undefined" || location.search == '?raptor') {
                 var values = new Array;
+                var allNames = new Array;
                 for (var i = 0; i < fullNames.length; i++) {
-                    values.push(measuredValuesByFullName[fullNames[i]]);
-                }
-                fullNames = new Array;
-                for (var fullName in measuredValuesByFullName) {
-                    for (var count=0; count < this.iterationCount; count++) {
-                        fullNames.push(fullName);
+                    vals = measuredValuesByFullName[fullNames[i]];
+                    values.push(vals);
+                    for (var count=0; count < vals.length; count ++) {
+                        allNames.push(fullNames[i]);
                     }
                 }
+
                 if (location.search == '?raptor') {
                     _data = ['raptor-benchmark', 'speedometer', measuredValuesByFullName];
+                    console.log('speedometer source about to post results to the raptor webext');
                     window.postMessage(_data, '*');
                 } else {
-                    tpRecordTime(values.join(','), 0, fullNames.join(','));
+                    tpRecordTime(values.join(','), 0, allNames.join(','));
                 }
             } else {
                 for (var i = 0; i < fullNames.length; i++) {

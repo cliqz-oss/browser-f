@@ -9,10 +9,15 @@
 #include "nsStringFwd.h"
 #include "nsTArrayForwardDeclare.h"
 template<class T> class nsCOMArray;
+namespace mozilla {
+class TimeStamp;
+}
 %}
 [ptr] native StringArray(nsTArray<nsCString>);
 [ref] native StringArrayRef(const nsTArray<nsCString>);
 [ref] native securityMessagesArray(nsCOMArray<nsISecurityConsoleMessage>);
+
+native TimeStamp(mozilla::TimeStamp);
 
 interface nsIAsyncInputStream;
 interface nsIAsyncOutputStream;
@@ -324,4 +329,16 @@ interface nsIHttpChannelInternal : nsISupports
      */
     [noscript, infallible]
     attribute unsigned long lastRedirectFlags;
+
+      // This is use to determine the duration since navigation started.
+    [noscript] attribute TimeStamp navigationStartTimeStamp;
+
+    /**
+     * Cancel a channel because we have determined that it needs to be blocked
+     * for tracking protection.  This is an internal API that is meant to be
+     * called by the channel classifier.  Please DO NOT use this API if you don't
+     * know whether you should be using it.
+     */
+    [noscript] void cancelForTrackingProtection();
+
 };

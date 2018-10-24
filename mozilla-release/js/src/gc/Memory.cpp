@@ -47,7 +47,9 @@ static size_t allocGranularity = 0;
 
 #if defined(XP_UNIX)
 // The addresses handed out by mmap may grow up or down.
-static mozilla::Atomic<int, mozilla::Relaxed> growthDirection(0);
+static mozilla::Atomic<int,
+                       mozilla::Relaxed,
+                       mozilla::recordreplay::Behavior::DontPreserve> growthDirection(0);
 #endif
 
 // Data from OOM crashes shows there may be up to 24 chunksized but unusable
@@ -284,6 +286,8 @@ MarkPagesInUse(void* p, size_t size)
 size_t
 GetPageFaultCount()
 {
+    if (mozilla::recordreplay::IsRecordingOrReplaying())
+        return 0;
     PROCESS_MEMORY_COUNTERS pmc;
     if (!GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc)))
         return 0;
@@ -811,6 +815,8 @@ MarkPagesInUse(void* p, size_t size)
 size_t
 GetPageFaultCount()
 {
+    if (mozilla::recordreplay::IsRecordingOrReplaying())
+        return 0;
     struct rusage usage;
     int err = getrusage(RUSAGE_SELF, &usage);
     if (err)

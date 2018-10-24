@@ -9,6 +9,7 @@
 #include "nsAutoPtr.h"
 #include "nsIChannel.h"
 #include "nsIContentSecurityPolicy.h"
+#include "nsICookieService.h"
 #include "nsIDocument.h"
 #include "nsIDOMChromeWindow.h"
 #include "nsIEffectiveTLDService.h"
@@ -28,7 +29,9 @@
 #include "mozilla/ipc/BackgroundChild.h"
 #include "GeckoProfiler.h"
 #include "jsfriendapi.h"
+#include "js/LocaleSensitive.h"
 #include "mozilla/AbstractThread.h"
+#include "mozilla/AntiTrackingCommon.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/Atomics.h"
@@ -53,6 +56,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/Navigator.h"
 #include "mozilla/Monitor.h"
+#include "mozilla/StaticPrefs.h"
 #include "nsContentUtils.h"
 #include "nsCycleCollector.h"
 #include "nsDOMJSUtils.h"
@@ -69,6 +73,7 @@
 #include "Principal.h"
 #include "SharedWorker.h"
 #include "WorkerDebuggerManager.h"
+#include "WorkerError.h"
 #include "WorkerLoadInfo.h"
 #include "WorkerPrivate.h"
 #include "WorkerRunnable.h"
@@ -574,6 +579,13 @@ InterruptCallback(JSContext* aCx)
   WorkerPrivate* worker = GetWorkerPrivateFromContext(aCx);
   MOZ_ASSERT(worker);
 
+  // As with the main thread, the interrupt callback is triggered
+  // non-deterministically when recording/replaying, so return early to avoid
+  // performing any recorded events.
+  if (recordreplay::IsRecordingOrReplaying()) {
+    return true;
+  }
+
   // Now is a good time to turn on profiling if it's pending.
   PROFILER_JS_INTERRUPT_CALLBACK();
 
@@ -584,14 +596,21 @@ class LogViolationDetailsRunnable final : public WorkerMainThreadRunnable
 {
   nsString mFileName;
   uint32_t mLineNum;
+  uint32_t mColumnNum;
+  nsString mScriptSample;
 
 public:
   LogViolationDetailsRunnable(WorkerPrivate* aWorker,
                               const nsString& aFileName,
-                              uint32_t aLineNum)
+                              uint32_t aLineNum,
+                              uint32_t aColumnNum,
+                              const nsAString& aScriptSample)
     : WorkerMainThreadRunnable(aWorker,
                                NS_LITERAL_CSTRING("RuntimeService :: LogViolationDetails"))
-    , mFileName(aFileName), mLineNum(aLineNum)
+    , mFileName(aFileName)
+    , mLineNum(aLineNum)
+    , mColumnNum(aColumnNum)
+    , mScriptSample(aScriptSample)
   {
     MOZ_ASSERT(aWorker);
   }
@@ -603,24 +622,38 @@ private:
 };
 
 bool
-ContentSecurityPolicyAllows(JSContext* aCx)
+ContentSecurityPolicyAllows(JSContext* aCx, JS::HandleValue aValue)
 {
   WorkerPrivate* worker = GetWorkerPrivateFromContext(aCx);
   worker->AssertIsOnWorkerThread();
 
   if (worker->GetReportCSPViolations()) {
+    JS::Rooted<JSString*> jsString(aCx, JS::ToString(aCx, aValue));
+    if (NS_WARN_IF(!jsString)) {
+      JS_ClearPendingException(aCx);
+      return false;
+    }
+
+    nsAutoJSString scriptSample;
+    if (NS_WARN_IF(!scriptSample.init(aCx, jsString))) {
+      JS_ClearPendingException(aCx);
+      return false;
+    }
+
     nsString fileName;
     uint32_t lineNum = 0;
+    uint32_t columnNum = 0;
 
     JS::AutoFilename file;
-    if (JS::DescribeScriptedCaller(aCx, &file, &lineNum) && file.get()) {
+    if (JS::DescribeScriptedCaller(aCx, &file, &lineNum, &columnNum) && file.get()) {
       fileName = NS_ConvertUTF8toUTF16(file.get());
     } else {
       MOZ_ASSERT(!JS_IsExceptionPending(aCx));
     }
 
     RefPtr<LogViolationDetailsRunnable> runnable =
-        new LogViolationDetailsRunnable(worker, fileName, lineNum);
+        new LogViolationDetailsRunnable(worker, fileName, lineNum, columnNum,
+                                        scriptSample);
 
     ErrorResult rv;
     runnable->Dispatch(Killing, rv);
@@ -898,7 +931,8 @@ Wrap(JSContext *cx, JS::HandleObject existing, JS::HandleObject obj)
     MOZ_CRASH("There should be no edges from the debuggee to the debugger.");
   }
 
-  JSObject* originGlobal = js::GetGlobalForObjectCrossCompartment(obj);
+  // Note: the JS engine unwraps CCWs before calling this callback.
+  JSObject* originGlobal = JS::GetNonCCWObjectGlobal(obj);
 
   const js::Wrapper* wrapper = nullptr;
   if (IsWorkerDebuggerGlobal(originGlobal) ||
@@ -1095,6 +1129,7 @@ public:
       microTaskQueue = &GetDebuggerMicroTaskQueue();
     }
 
+    JS::JobQueueMayNotBeEmpty(cx);
     microTaskQueue->push(runnable.forget());
   }
 
@@ -2231,6 +2266,23 @@ RuntimeService::ResumeWorkersForWindow(nsPIDOMWindowInner* aWindow)
   }
 }
 
+void
+RuntimeService::PropagateFirstPartyStorageAccessGranted(nsPIDOMWindowInner* aWindow)
+{
+  AssertIsOnMainThread();
+  MOZ_ASSERT(aWindow);
+  MOZ_ASSERT(StaticPrefs::network_cookie_cookieBehavior() ==
+               nsICookieService::BEHAVIOR_REJECT_TRACKER &&
+             AntiTrackingCommon::ShouldHonorContentBlockingCookieRestrictions());
+
+  nsTArray<WorkerPrivate*> workers;
+  GetWorkersForWindow(aWindow, workers);
+
+  for (uint32_t index = 0; index < workers.Length(); index++) {
+    workers[index]->PropagateFirstPartyStorageAccessGranted();
+  }
+}
+
 nsresult
 RuntimeService::CreateSharedWorker(const GlobalObject& aGlobal,
                                    const nsAString& aScriptURL,
@@ -2370,7 +2422,9 @@ RuntimeService::CreateSharedWorkerFromLoadInfo(JSContext* aCx,
     // We're done here.  Just queue up our error event and return our
     // dead-on-arrival SharedWorker.
     RefPtr<AsyncEventDispatcher> errorEvent =
-      new AsyncEventDispatcher(sharedWorker, NS_LITERAL_STRING("error"), false);
+      new AsyncEventDispatcher(sharedWorker,
+                               NS_LITERAL_STRING("error"),
+                               CanBubble::eNo);
     errorEvent->PostDOMEvent();
     sharedWorker.forget(aSharedWorker);
     return NS_OK;
@@ -2603,7 +2657,7 @@ RuntimeService::Observe(nsISupports* aSubject, const char* aTopic,
     return NS_OK;
   }
 
-  NS_NOTREACHED("Unknown observer topic!");
+  MOZ_ASSERT_UNREACHABLE("Unknown observer topic!");
   return NS_OK;
 }
 
@@ -2614,11 +2668,10 @@ LogViolationDetailsRunnable::MainThreadRun()
 
   nsIContentSecurityPolicy* csp = mWorkerPrivate->GetCSP();
   if (csp) {
-    NS_NAMED_LITERAL_STRING(scriptSample,
-        "Call to eval() or related function blocked by CSP.");
     if (mWorkerPrivate->GetReportCSPViolations()) {
       csp->LogViolationDetails(nsIContentSecurityPolicy::VIOLATION_TYPE_EVAL,
-                               mFileName, scriptSample, mLineNum,
+                               nullptr, // triggering element
+                               mFileName, mScriptSample, mLineNum, mColumnNum,
                                EmptyString(), EmptyString());
     }
   }
@@ -2637,10 +2690,10 @@ WorkerThreadPrimaryRunnable::Run()
   // Note: GetOrCreateForCurrentThread() must be called prior to
   //       mWorkerPrivate->SetThread() in order to avoid accidentally consuming
   //       worker messages here.
+  bool ipcReady = true;
   if (NS_WARN_IF(!BackgroundChild::GetOrCreateForCurrentThread())) {
-    // XXX need to fire an error at parent.
-    // Failed in creating BackgroundChild: probably in shutdown. Continue to run
-    // without BackgroundChild created.
+    // Let's report the error only after SetThread().
+    ipcReady = false;
   }
 
   class MOZ_STACK_CLASS SetThreadHelper final
@@ -2679,6 +2732,11 @@ WorkerThreadPrimaryRunnable::Run()
 
   mWorkerPrivate->AssertIsOnWorkerThread();
 
+  if (!ipcReady) {
+    WorkerErrorReport::CreateAndDispatchGenericErrorRunnableToParent(mWorkerPrivate);
+    return NS_ERROR_FAILURE;
+  }
+
   {
     nsCycleCollector_startup();
 
@@ -2691,8 +2749,7 @@ WorkerThreadPrimaryRunnable::Run()
     JSContext* cx = context->Context();
 
     if (!InitJSContextForWorker(mWorkerPrivate, cx)) {
-      // XXX need to fire an error at parent.
-      NS_ERROR("Failed to create context!");
+      WorkerErrorReport::CreateAndDispatchGenericErrorRunnableToParent(mWorkerPrivate);
       return NS_ERROR_FAILURE;
     }
 
@@ -2822,6 +2879,20 @@ ResumeWorkersForWindow(nsPIDOMWindowInner* aWindow)
   RuntimeService* runtime = RuntimeService::GetService();
   if (runtime) {
     runtime->ResumeWorkersForWindow(aWindow);
+  }
+}
+
+void
+PropagateFirstPartyStorageAccessGrantedToWorkers(nsPIDOMWindowInner* aWindow)
+{
+  AssertIsOnMainThread();
+  MOZ_ASSERT(StaticPrefs::network_cookie_cookieBehavior() ==
+               nsICookieService::BEHAVIOR_REJECT_TRACKER &&
+             AntiTrackingCommon::ShouldHonorContentBlockingCookieRestrictions());
+
+  RuntimeService* runtime = RuntimeService::GetService();
+  if (runtime) {
+    runtime->PropagateFirstPartyStorageAccessGranted(aWindow);
   }
 }
 

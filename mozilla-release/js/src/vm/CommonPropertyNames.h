@@ -102,6 +102,7 @@
     macro(direction, direction, "direction") \
     macro(displayURL, displayURL, "displayURL") \
     macro(do, do_, "do") \
+    macro(domNode, domNode, "domNode") \
     macro(done, done, "done") \
     macro(dotGenerator, dotGenerator, ".generator") \
     macro(dotThis, dotThis, ".this") \
@@ -159,6 +160,7 @@
     macro(get, get, "get") \
     macro(GetInternalError, GetInternalError, "GetInternalError") \
     macro(getInternals, getInternals, "getInternals") \
+    macro(GetModuleNamespace, GetModuleNamespace, "GetModuleNamespace") \
     macro(getOwnPropertyDescriptor, getOwnPropertyDescriptor, "getOwnPropertyDescriptor") \
     macro(getOwnPropertyNames, getOwnPropertyNames, "getOwnPropertyNames") \
     macro(getPrefix, getPrefix, "get ") \
@@ -203,6 +205,7 @@
     macro(integer, integer, "integer") \
     macro(interface, interface, "interface") \
     macro(InterpretGeneratorResume, InterpretGeneratorResume, "InterpretGeneratorResume") \
+    macro(InvalidDate, InvalidDate, "Invalid Date") \
     macro(isEntryPoint, isEntryPoint, "isEntryPoint") \
     macro(isExtensible, isExtensible, "isExtensible") \
     macro(isFinite, isFinite, "isFinite") \

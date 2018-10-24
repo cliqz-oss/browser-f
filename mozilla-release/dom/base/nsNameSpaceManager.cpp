@@ -30,7 +30,7 @@ using namespace mozilla::dom;
 
 static const char* kPrefSVGDisabled = "svg.disabled";
 static const char* kPrefMathMLDisabled = "mathml.disabled";
-static const char* kObservedPrefs[] = {
+static const char* kObservedNSPrefs[] = {
   kPrefMathMLDisabled,
   kPrefSVGDisabled,
   nullptr
@@ -63,10 +63,11 @@ bool nsNameSpaceManager::Init()
   rv = AddDisabledNameSpace(dont_AddRef(uri), id); \
   NS_ENSURE_SUCCESS(rv, false)
 
-  mozilla::Preferences::AddStrongObservers(this, kObservedPrefs);
-  mMathMLDisabled = mozilla::Preferences::GetBool(kPrefMathMLDisabled);
-  mSVGDisabled = mozilla::Preferences::GetBool(kPrefSVGDisabled);
+  mozilla::Preferences::RegisterCallbacks(
+    PREF_CHANGE_METHOD(nsNameSpaceManager::PrefChanged),
+    kObservedNSPrefs, this);
 
+  PrefChanged(nullptr);
 
   // Need to be ordered according to ID.
   MOZ_ASSERT(mURIArray.IsEmpty());
@@ -273,16 +274,9 @@ nsNameSpaceManager::AddDisabledNameSpace(already_AddRefed<nsAtom> aURI,
   return NS_OK;
 }
 
-// nsISupports
-NS_IMPL_ISUPPORTS(nsNameSpaceManager,
-                  nsIObserver)
-
-// nsIObserver
-NS_IMETHODIMP
-nsNameSpaceManager::Observe(nsISupports* aObject, const char* aTopic,
-                            const char16_t* aMessage)
+void
+nsNameSpaceManager::PrefChanged(const char* aPref)
 {
   mMathMLDisabled = mozilla::Preferences::GetBool(kPrefMathMLDisabled);
   mSVGDisabled = mozilla::Preferences::GetBool(kPrefSVGDisabled);
-  return NS_OK;
 }

@@ -27,6 +27,7 @@
 #include "nsWrapperCache.h"
 #include "nsHashKeys.h"
 #include "mozilla/HashFunctions.h"
+#include "mozilla/MemoryReporting.h"
 #include "mozilla/dom/NameSpaceConstants.h"
 
 namespace mozilla {
@@ -93,6 +94,11 @@ public:
   }
 
   virtual void LastRelease() {}
+
+  // Memory reporting.  For now, subclasses of nsBaseContentList don't really
+  // need to report any members that are not part of the object itself, so we
+  // don't need to make this virtual.
+  size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
 
 protected:
   virtual ~nsBaseContentList();
@@ -575,11 +581,11 @@ public:
       mString == aKey->mString;
   }
 
-#ifdef DEBUG
   enum ContentListType {
     eNodeList,
     eHTMLCollection
   };
+#ifdef DEBUG
   ContentListType mType;
 #endif
 
@@ -588,8 +594,12 @@ protected:
                                    nsContentListMatchFunc aFunc,
                                    nsContentListDestroyFunc aDestroyFunc,
                                    nsFuncStringContentListDataAllocator aDataAllocator,
-                                   const nsAString& aString) :
+                                   const nsAString& aString,
+                                   mozilla::DebugOnly<ContentListType> aType) :
     nsContentList(aRootNode, aFunc, aDestroyFunc, nullptr),
+#ifdef DEBUG
+    mType(aType),
+#endif
     mString(aString)
   {
     mData = (*aDataAllocator)(aRootNode, &mString);
@@ -614,11 +624,8 @@ public:
                                    nsFuncStringContentListDataAllocator aDataAllocator,
                                    const nsAString& aString)
     : nsCacheableFuncStringContentList(aRootNode, aFunc, aDestroyFunc,
-                                       aDataAllocator, aString)
+                                       aDataAllocator, aString, eNodeList)
   {
-#ifdef DEBUG
-    mType = eNodeList;
-#endif
   }
 
   NS_DECL_NSIMUTATIONOBSERVER_ATTRIBUTECHANGED
@@ -640,11 +647,8 @@ public:
                                       nsFuncStringContentListDataAllocator aDataAllocator,
                                       const nsAString& aString)
     : nsCacheableFuncStringContentList(aRootNode, aFunc, aDestroyFunc,
-                                       aDataAllocator, aString)
+                                       aDataAllocator, aString, eHTMLCollection)
   {
-#ifdef DEBUG
-    mType = eHTMLCollection;
-#endif
   }
 
   virtual JSObject* WrapObject(JSContext *cx, JS::Handle<JSObject*> aGivenProto) override;

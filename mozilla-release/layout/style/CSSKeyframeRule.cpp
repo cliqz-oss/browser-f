@@ -38,11 +38,13 @@ public:
     mDecls->SetOwningRule(nullptr);
   }
 
-  DeclarationBlock* GetCSSDeclaration(Operation aOperation) final
+  DeclarationBlock* GetOrCreateCSSDeclaration(
+    Operation aOperation, DeclarationBlock** aCreated) final
   {
     return mDecls;
   }
-  nsresult SetCSSDeclaration(DeclarationBlock* aDecls) final
+  nsresult SetCSSDeclaration(DeclarationBlock* aDecls,
+                             MutationClosureData* aClosureData) final
   {
     if (!mRule) {
       return NS_OK;
@@ -99,9 +101,14 @@ NS_INTERFACE_MAP_END_INHERITING(nsDOMCSSDeclaration)
 //
 
 CSSKeyframeRule::CSSKeyframeRule(already_AddRefed<RawServoKeyframe> aRaw,
-                                 uint32_t aLine, uint32_t aColumn)
-    : css::Rule(aLine, aColumn)
-    , mRaw(aRaw) {}
+                                 StyleSheet* aSheet,
+                                 css::Rule* aParentRule,
+                                 uint32_t aLine,
+                                 uint32_t aColumn)
+  : css::Rule(aSheet, aParentRule, aLine, aColumn)
+  , mRaw(aRaw)
+{
+}
 
 CSSKeyframeRule::~CSSKeyframeRule()
 {
@@ -205,7 +212,7 @@ CSSKeyframeRule::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
 CSSKeyframeRule::WrapObject(JSContext* aCx,
                             JS::Handle<JSObject*> aGivenProto)
 {
-  return CSSKeyframeRuleBinding::Wrap(aCx, this, aGivenProto);
+  return CSSKeyframeRule_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 } // namespace dom

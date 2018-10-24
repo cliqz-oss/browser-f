@@ -36,6 +36,7 @@
 #include "mozilla/dom/quota/PQuotaParent.h"
 #include "mozilla/dom/quota/PQuotaRequestParent.h"
 #include "mozilla/dom/quota/PQuotaUsageRequestParent.h"
+#include "mozilla/dom/simpledb/ActorsParent.h"
 #include "mozilla/dom/StorageActivityService.h"
 #include "mozilla/ipc/BackgroundParent.h"
 #include "mozilla/ipc/BackgroundUtils.h"
@@ -2031,52 +2032,6 @@ EnsureDirectory(nsIFile* aDirectory, bool* aCreated)
   return NS_OK;
 }
 
-nsresult
-EnsureOriginDirectory(nsIFile* aDirectory, bool* aCreated)
-{
-  AssertIsOnIOThread();
-
-  nsresult rv;
-
-#ifndef RELEASE_OR_BETA
-  bool exists;
-  rv = aDirectory->Exists(&exists);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  if (!exists) {
-    nsString leafName;
-    nsresult rv = aDirectory->GetLeafName(leafName);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
-    }
-
-    if (!leafName.EqualsLiteral(kChromeOrigin)) {
-      nsCString spec;
-      OriginAttributes attrs;
-      OriginParser::ResultType result =
-        OriginParser::ParseOrigin(NS_ConvertUTF16toUTF8(leafName),
-                                  spec,
-                                  &attrs);
-      if (NS_WARN_IF(result != OriginParser::ValidOrigin)) {
-        QM_WARNING("Preventing creation of a new origin directory which is not "
-                   "supported by our origin parser or is obsolete!");
-
-        return NS_ERROR_FAILURE;
-      }
-    }
-  }
-#endif
-
-  rv = EnsureDirectory(aDirectory, aCreated);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  return NS_OK;
-}
-
 enum FileFlag {
   kTruncateFileFlag,
   kUpdateFileFlag,
@@ -3646,8 +3601,12 @@ QuotaManager::Init(const nsAString& aBasePath)
     return NS_ERROR_FAILURE;
   }
 
-  static_assert(Client::IDB == 0 && Client::ASMJS == 1 && Client::DOMCACHE == 2 &&
-                Client::TYPE_MAX == 3, "Fix the registration!");
+  static_assert(Client::IDB == 0 &&
+                Client::ASMJS == 1 &&
+                Client::DOMCACHE == 2 &&
+                Client::SDB == 3 &&
+                Client::TYPE_MAX == 4,
+                "Fix the registration!");
 
   MOZ_ASSERT(mClients.Capacity() == Client::TYPE_MAX,
              "Should be using an auto array with correct capacity!");
@@ -3656,6 +3615,7 @@ QuotaManager::Init(const nsAString& aBasePath)
   mClients.AppendElement(indexedDB::CreateQuotaClient());
   mClients.AppendElement(asmjscache::CreateClient());
   mClients.AppendElement(cache::CreateQuotaClient());
+  mClients.AppendElement(simpledb::CreateQuotaClient());
 
   return NS_OK;
 }
@@ -4147,7 +4107,7 @@ QuotaManager::GetDirectoryMetadata2(nsIFile* aDirectory,
 {
   AssertIsOnIOThread();
   MOZ_ASSERT(aDirectory);
-  MOZ_ASSERT(aTimestamp || aPersisted);
+  MOZ_ASSERT(aTimestamp != nullptr || aPersisted != nullptr);
   MOZ_ASSERT(mStorageInitialized);
 
   nsCOMPtr<nsIBinaryInputStream> binaryStream;
@@ -4165,17 +4125,17 @@ QuotaManager::GetDirectoryMetadata2(nsIFile* aDirectory,
   }
 
   bool persisted;
-  if (aPersisted) {
+  if (aPersisted != nullptr) {
     rv = binaryStream->ReadBoolean(&persisted);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
   }
 
-  if (aTimestamp) {
+  if (aTimestamp != nullptr) {
     *aTimestamp = timestamp;
   }
-  if (aPersisted) {
+  if (aPersisted != nullptr) {
     *aPersisted = persisted;
   }
   return NS_OK;
@@ -4923,7 +4883,7 @@ QuotaManager::MaybeRemoveLocalStorageDirectories()
     return NS_OK;
   }
 
-  nsCOMPtr<nsISimpleEnumerator> entries;
+  nsCOMPtr<nsIDirectoryEnumerator> entries;
   rv = defaultStorageDir->GetDirectoryEntries(getter_AddRefs(entries));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
@@ -5361,10 +5321,6 @@ QuotaManager::EnsureOriginIsInitializedInternal(
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
-
-    mTemporaryStorageInitialized = true;
-
-    CheckTemporaryStorageLimits();
   }
 
   bool created;
@@ -5479,6 +5435,43 @@ QuotaManager::EnsureTemporaryStorageIsInitialized()
   CheckTemporaryStorageLimits();
 
   return rv;
+}
+
+nsresult
+QuotaManager::EnsureOriginDirectory(nsIFile* aDirectory,
+                                    bool* aCreated)
+{
+  AssertIsOnIOThread();
+  MOZ_ASSERT(aDirectory);
+  MOZ_ASSERT(aCreated);
+
+  bool exists;
+  nsresult rv = aDirectory->Exists(&exists);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  if (!exists) {
+    nsString leafName;
+    rv = aDirectory->GetLeafName(leafName);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+
+    if (!leafName.EqualsLiteral(kChromeOrigin) &&
+        !IsSanitizedOriginValid(NS_ConvertUTF16toUTF8(leafName))) {
+      QM_WARNING("Preventing creation of a new origin directory which is not "
+                 "supported by our origin parser or is obsolete!");
+      return NS_ERROR_FAILURE;
+    }
+  }
+
+  rv = EnsureDirectory(aDirectory, aCreated);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  return NS_OK;
 }
 
 void
@@ -6037,6 +6030,29 @@ QuotaManager::GetDirectoryLockTable(PersistenceType aPersistenceType)
     default:
       MOZ_CRASH("Bad persistence type value!");
   }
+}
+
+bool
+QuotaManager::IsSanitizedOriginValid(const nsACString& aSanitizedOrigin)
+{
+  AssertIsOnIOThread();
+  MOZ_ASSERT(!aSanitizedOrigin.Equals(kChromeOrigin));
+
+  bool valid;
+  if (auto entry = mValidOrigins.LookupForAdd(aSanitizedOrigin)) {
+    // We already parsed this sanitized origin string.
+    valid = entry.Data();
+  } else {
+    nsCString spec;
+    OriginAttributes attrs;
+    OriginParser::ResultType result =
+      OriginParser::ParseOrigin(aSanitizedOrigin, spec, &attrs);
+
+    valid = result == OriginParser::ValidOrigin;
+    entry.OrInsert([valid]() { return valid; });
+  }
+
+  return valid;
 }
 
 /*******************************************************************************
@@ -7941,7 +7957,7 @@ PersistOp::DoDirectoryWork(QuotaManager* aQuotaManager)
   }
 
   bool created;
-  rv = EnsureOriginDirectory(directory, &created);
+  rv = aQuotaManager->EnsureOriginDirectory(directory, &created);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }

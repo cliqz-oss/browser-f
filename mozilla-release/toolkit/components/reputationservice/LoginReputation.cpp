@@ -30,6 +30,7 @@ static Atomic<bool> gShuttingDown(false);
 
 static const char* kObservedPrefs[] = {
   PREF_PASSWORD_ALLOW_TABLE,
+  nullptr,
 };
 
 // -------------------------------------------------------------------------
@@ -144,7 +145,11 @@ LoginWhitelist::QueryLoginWhitelist(nsILoginReputationQuery* aParam)
 
   // AsyncClassifyLocalWithTables API won't trigger a gethash request on
   // a full-length match, so this API call should only include local operation.
-  rv = uriClassifier->AsyncClassifyLocalWithTables(uri, mTables, this);
+  // We don't support prefs overwrite for this classification.
+  rv = uriClassifier->AsyncClassifyLocalWithTables(uri, mTables,
+                                                   nsTArray<nsCString>(),
+                                                   nsTArray<nsCString>(),
+                                                   this);
   if (NS_FAILED(rv)) {
     return p;
   }
@@ -273,9 +278,7 @@ LoginReputationService::Enable()
   nsresult rv = mLoginWhitelist->Init();
   Unused << NS_WARN_IF(NS_FAILED(rv));
 
-  for (const char* pref : kObservedPrefs) {
-    Preferences::AddStrongObserver(this, pref);
-  }
+  Preferences::AddStrongObservers(this, kObservedPrefs);
 
   return NS_OK;
 }
@@ -294,9 +297,7 @@ LoginReputationService::Disable()
 
   nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
   if (prefs) {
-    for (const char* pref : kObservedPrefs) {
-      prefs->RemoveObserver(pref, this);
-    }
+    Preferences::RemoveObservers(this, kObservedPrefs);
   }
 
   return NS_OK;

@@ -17,15 +17,14 @@ function promiseDialogOpened() {
       onOpenWindow(xulWin) {
         Services.wm.removeListener(this);
 
-        let win = xulWin.QueryInterface(Ci.nsIInterfaceRequestor)
-                        .getInterface(Ci.nsIDOMWindow);
+        let win = xulWin.docShell.domWindow;
         waitForFocus(() => {
           if (win.location == "chrome://global/content/commonDialog.xul")
             resolve(win);
           else
             reject();
         }, win);
-      }
+      },
     });
   });
 }

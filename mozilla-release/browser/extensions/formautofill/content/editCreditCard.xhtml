@@ -9,26 +9,26 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
   <title data-localization="addNewCreditCardTitle"/>
-  <link rel="stylesheet" href="chrome://formautofill-shared/skin/editDialog.css"/>
-  <link rel="stylesheet" href="chrome://formautofill-shared/skin/editCreditCard.css"/>
-  <link rel="stylesheet" href="chrome://formautofill/skin/editDialog.css"/>
+  <link rel="stylesheet" href="resource://formautofill/editDialog-shared.css"/>
+  <link rel="stylesheet" href="resource://formautofill/editCreditCard.css"/>
+  <link rel="stylesheet" href="resource://formautofill/editDialog.css"/>
   <script src="chrome://formautofill/content/l10n.js"></script>
   <script src="chrome://formautofill/content/editDialog.js"></script>
   <script src="chrome://formautofill/content/autofillEditForms.js"></script>
 </head>
 <body dir="&locale.dir;">
-  <form id="form" autocomplete="off">
-    <label>
-      <span data-localization="cardNumber"/>
-      <input id="cc-number" type="text"/>
+  <form id="form" class="editCreditCardForm" autocomplete="off">
+    <!--
+        The <span class="label-text" …/> needs to be after the form field in the same element in
+        order to get proper label styling with :focus and :moz-ui-invalid.
+      -->
+    <label id="cc-number-container" class="container">
+      <span id="invalidCardNumberString" hidden="hidden" data-localization="invalidCardNumber"></span>
+      <input id="cc-number" type="text" required="required" minlength="9" pattern="[- 0-9]+"/>
+      <span data-localization="cardNumber" class="label-text"/>
     </label>
-    <label>
-      <span data-localization="nameOnCard"/>
-      <input id="cc-name" type="text"/>
-    </label>
-    <div>
-      <span data-localization="cardExpires"/>
-      <select id="cc-exp-month">
+    <label id="cc-exp-month-container" class="container">
+      <select id="cc-exp-month" required="required">
         <option/>
         <option value="1">01</option>
         <option value="2">02</option>
@@ -43,14 +43,27 @@
         <option value="11">11</option>
         <option value="12">12</option>
       </select>
-      <select id="cc-exp-year">
+      <span data-localization="cardExpiresMonth" class="label-text"/>
+    </label>
+    <label id="cc-exp-year-container" class="container">
+      <select id="cc-exp-year" required="required">
         <option/>
       </select>
-    </div>
-    <label class="billingAddressRow">
-      <span data-localization="billingAddress"/>
+      <span data-localization="cardExpiresYear" class="label-text"/>
+    </label>
+    <label id="cc-name-container" class="container">
+      <input id="cc-name" type="text" required="required"/>
+      <span data-localization="nameOnCard" class="label-text"/>
+    </label>
+    <label id="cc-type-container" class="container">
+      <select id="cc-type">
+      </select>
+      <span data-localization="cardNetwork" class="label-text"/>
+    </label>
+    <label id="billingAddressGUID-container" class="billingAddressRow container">
       <select id="billingAddressGUID">
       </select>
+      <span data-localization="billingAddress" class="label-text"/>
     </label>
   </form>
   <div id="controls-container">
@@ -63,8 +76,13 @@
     let {
       getAddressLabel,
       isCCNumber,
+      getCreditCardNetworks,
     } = FormAutofillUtils;
-    let record = window.arguments && window.arguments[0];
+    let args = window.arguments || [];
+    let {
+      record,
+    } = args[0] || {};
+
     let addresses = {};
     for (let address of formAutofillStorage.addresses.getAll()) {
       addresses[address.guid] = address;
@@ -77,6 +95,7 @@
       {
         getAddressLabel: getAddressLabel.bind(FormAutofillUtils),
         isCCNumber: isCCNumber.bind(FormAutofillUtils),
+        getSupportedNetworks: getCreditCardNetworks.bind(FormAutofillUtils),
       });
 
     /* import-globals-from editDialog.js */

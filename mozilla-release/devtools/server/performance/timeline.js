@@ -75,7 +75,6 @@ Timeline.prototype = {
    */
   get docShells() {
     let originalDocShell;
-    const docShells = [];
 
     if (this.targetActor.isRootActor) {
       originalDocShell = this.targetActor.docShell;
@@ -84,7 +83,7 @@ Timeline.prototype = {
     }
 
     if (!originalDocShell) {
-      return docShells;
+      return [];
     }
 
     const docShellsEnum = originalDocShell.getDocShellEnumerator(
@@ -92,12 +91,7 @@ Timeline.prototype = {
       Ci.nsIDocShell.ENUMERATE_FORWARDS
     );
 
-    while (docShellsEnum.hasMoreElements()) {
-      const docShell = docShellsEnum.getNext();
-      docShells.push(docShell.QueryInterface(Ci.nsIDocShell));
-    }
-
-    return docShells;
+    return Array.from(docShellsEnum);
   },
 
   /**
@@ -315,9 +309,7 @@ Timeline.prototype = {
    */
   _onWindowReady: function({ window }) {
     if (this._isRecording) {
-      const docShell = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                           .getInterface(Ci.nsIWebNavigation)
-                           .QueryInterface(Ci.nsIDocShell);
+      const docShell = window.docShell;
       docShell.recordProfileTimelineMarkers = true;
     }
   },

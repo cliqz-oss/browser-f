@@ -157,12 +157,9 @@ public:
    *
    * @param aObserver    observer to notify once the stylesheet is loaded.
    *                     This will be passed to the CSSLoader
-   * @param aForceUpdate whether we wand to force the update, flushing the
-   *                     cached version if any.
    */
   virtual mozilla::Result<Update, nsresult>
-    UpdateStyleSheet(nsICSSLoaderObserver* aObserver,
-                     ForceUpdate = ForceUpdate::No) = 0;
+    UpdateStyleSheet(nsICSSLoaderObserver* aObserver) = 0;
 
   /**
    * Tells this element whether to update the stylesheet when the
@@ -202,6 +199,19 @@ public:
    *         was set
    */
   virtual uint32_t GetLineNumber() = 0;
+
+  // This doesn't entirely belong here since they only make sense for
+  // some types of linking elements, but it's a better place than
+  // anywhere else.
+  virtual void SetColumnNumber(uint32_t aColumnNumber) = 0;
+
+  /**
+   * Get the column number, as previously set by SetColumnNumber.
+   *
+   * @return the column number of this element; or 1 if no column number
+   *         was set
+   */
+  virtual uint32_t GetColumnNumber() = 0;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsIStyleSheetLinkingElement,

@@ -13,6 +13,7 @@
 #include "gc/WeakMap.h"
 #include "js/GCHashTable.h"
 #include "vm/ArgumentsObject.h"
+#include "vm/GlobalObject.h"
 #include "vm/JSContext.h"
 #include "vm/JSObject.h"
 #include "vm/ProxyObject.h"
@@ -45,6 +46,8 @@ EnvironmentCoordinateFunctionScript(JSScript* script, jsbytecode* pc);
 /*** Environment objects *****************************************************/
 
 /*
+ * [SMDOC] Environment Objects
+ *
  * About environments
  * ------------------
  *
@@ -224,17 +227,20 @@ EnvironmentCoordinateFunctionScript(JSScript* script, jsbytecode* pc);
  *
  * D. Frame scripts
  *
- * XUL frame scripts are always loaded with a NonSyntacticVariablesObject as a
- * "polluting global". This is done exclusively in
- * js::ExecuteInGlobalAndReturnScope.
+ * XUL frame scripts are loaded in the same global as components, with a
+ * NonSyntacticVariablesObject as a "polluting global", and a with environment
+ * wrapping a message manager object. This is done exclusively in
+ * js::ExecuteInScopeChainAndReturnNewScope.
  *
- *   Loader global
+ *   BackstagePass global
  *       |
  *   LexicalEnvironmentObject[this=global]
  *       |
  *   NonSyntacticVariablesObject
  *       |
- *   LexicalEnvironmentObject[this=global]
+ *   WithEnvironmentObject wrapping messageManager
+ *       |
+ *   LexicalEnvironmentObject[this=messageManager]
  *
  * D. XBL and DOM event handlers
  *
@@ -991,8 +997,6 @@ class DebugEnvironments
     Zone* zone() const { return zone_; }
 
   private:
-    bool init();
-
     static DebugEnvironments* ensureRealmData(JSContext* cx);
 
     template <typename Environment, typename Scope>

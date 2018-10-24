@@ -4,8 +4,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 %endif
 
-@import url("chrome://global/skin/");
-
 @namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
 @namespace html url("http://www.w3.org/1999/xhtml");
 
@@ -71,11 +69,11 @@
   border-top: none;
 }
 
-#navigator-toolbox > toolbar {
+.browser-toolbar {
   padding: 0;
 }
 
-#navigator-toolbox > toolbar:not(#toolbar-menubar):not(#TabsToolbar) {
+.browser-toolbar:not(.titlebar-color) {
   background-color: var(--toolbar-bgcolor);
   background-image: var(--toolbar-bgimage);
   color: var(--toolbar-color, inherit);
@@ -151,19 +149,56 @@ menuitem.bookmark-item {
 %include ../shared/menupanel.inc.css
 
 /* Fullscreen window controls */
-#window-controls {
-  -moz-box-align: start;
-  margin-inline-start: 10px;
+
+#minimize-button,
+#restore-button,
+#close-button {
+  -moz-appearance: none;
+  padding: 6px 12px;
+  -moz-context-properties: stroke;
+  stroke: currentColor;
+  color: inherit;
 }
 
 #minimize-button {
-  list-style-image: url("chrome://global/skin/icons/Minimize.gif");
+  list-style-image: url(chrome://browser/skin/window-controls/minimize.svg);
 }
+
 #restore-button {
-  list-style-image: url("chrome://global/skin/icons/Restore.gif");
+  list-style-image: url(chrome://browser/skin/window-controls/restore.svg);
 }
+
+#minimize-button:hover,
+#restore-button:hover {
+  background-color: hsla(0,0%,0%,.12);
+}
+
+#minimize-button:hover:active,
+#restore-button:hover:active {
+  background-color: hsla(0,0%,0%,.22);
+}
+
+#TabsToolbar[brighttext] > #window-controls > #minimize-button:hover,
+#TabsToolbar[brighttext] > #window-controls > #restore-button:hover {
+  background-color: hsla(0,0%,100%,.12);
+}
+
+#TabsToolbar[brighttext] > #window-controls > #minimize-button:hover:active,
+#TabsToolbar[brighttext] > #window-controls > #restore-button:hover:active {
+  background-color: hsla(0,0%,100%,.22);
+}
+
 #close-button {
-  list-style-image: url("chrome://global/skin/icons/Close.gif");
+  list-style-image: url(chrome://browser/skin/window-controls/close.svg);
+}
+
+#close-button:hover {
+  background-color: #d70022;
+  stroke: white;
+}
+
+#close-button:hover:active {
+  background-color: #ff0039;
 }
 
 /* Location bar */
@@ -411,13 +446,8 @@ notification[value="translation"] menulist > .menulist-dropmarker {
 
 %include ../shared/sidebar.inc.css
 
-#sidebar-box {
-  background-color: -moz-Field;
-  color: -moz-FieldText;
-}
-
-#sidebar-header {
-  border-bottom: 1px solid ThreeDShadow;
+#browser {
+  --sidebar-border-color: ThreeDShadow;
 }
 
 .sidebar-splitter {

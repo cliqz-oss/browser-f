@@ -36,7 +36,7 @@ var WindowWatcher = {
 
   },
 
-  QueryInterface: ChromeUtils.generateQI(["nsIWindowWatcher"])
+  QueryInterface: ChromeUtils.generateQI(["nsIWindowWatcher"]),
 };
 
 MockRegistrar.register("@mozilla.org/embedcomp/window-watcher;1", WindowWatcher);
@@ -53,8 +53,6 @@ function load_blocklist(aFile, aCallback) {
                              gPort + "/data/" + aFile);
   var blocklist = Cc["@mozilla.org/extensions/blocklist;1"].
                   getService(Ci.nsITimerCallback);
-  ok(Services.prefs.getBoolPref("services.blocklist.update_enabled"),
-                                "Kinto update should be enabled");
   blocklist.notify(null);
 }
 
@@ -77,8 +75,8 @@ async function run_test() {
     targetApplications: [{
       id: "xpcshell@tests.mozilla.org",
       minVersion: "1",
-      maxVersion: "3"
-    }]
+      maxVersion: "3",
+    }],
   }, profileDir);
 
   await promiseStartupManager();

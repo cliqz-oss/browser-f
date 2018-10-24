@@ -17,7 +17,7 @@
 #include "mozilla/dom/HTMLOptionElement.h"
 #include "mozilla/dom/HTMLSelectElementBinding.h"
 #include "mozilla/dom/UnionTypes.h"
-#include "mozilla/GenericSpecifiedValuesInlines.h"
+#include "mozilla/MappedDeclarations.h"
 #include "nsContentCreatorFunctions.h"
 #include "nsContentList.h"
 #include "nsError.h"
@@ -1108,12 +1108,10 @@ HTMLSelectElement::SelectSomething(bool aNotify)
 
 nsresult
 HTMLSelectElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
-                              nsIContent* aBindingParent,
-                              bool aCompileEventHandlers)
+                              nsIContent* aBindingParent)
 {
   nsresult rv = nsGenericHTMLFormElementWithState::BindToTree(aDocument, aParent,
-                                                              aBindingParent,
-                                                              aCompileEventHandlers);
+                                                              aBindingParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
   // If there is a disabled fieldset in the parent chain, the element is now
@@ -1273,10 +1271,10 @@ HTMLSelectElement::ParseAttribute(int32_t aNamespaceID,
 
 void
 HTMLSelectElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
-                                         GenericSpecifiedValues* aData)
+                                         MappedDeclarations& aDecls)
 {
-  nsGenericHTMLFormElementWithState::MapImageAlignAttributeInto(aAttributes, aData);
-  nsGenericHTMLFormElementWithState::MapCommonAttributesInto(aAttributes, aData);
+  nsGenericHTMLFormElementWithState::MapImageAlignAttributeInto(aAttributes, aDecls);
+  nsGenericHTMLFormElementWithState::MapCommonAttributesInto(aAttributes, aDecls);
 }
 
 nsChangeHint
@@ -1814,7 +1812,7 @@ HTMLSelectElement::SetPreviewValue(const nsAString& aValue)
 JSObject*
 HTMLSelectElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return HTMLSelectElementBinding::Wrap(aCx, this, aGivenProto);
+  return HTMLSelectElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 } // namespace dom

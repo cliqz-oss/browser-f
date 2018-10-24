@@ -42,8 +42,7 @@ async function compareImages(window, expected, test) {
   is(testCanvas.width, expectedCanvas.width, "The test and expected images must be the same size");
   is(testCanvas.height, expectedCanvas.height, "The test and expected images must be the same size");
 
-  const nsIDOMWindowUtils = window.getInterface(Ci.nsIDOMWindowUtils);
-  return nsIDOMWindowUtils.compareCanvases(expectedCanvas, testCanvas, {});
+  return window.windowUtils.compareCanvases(expectedCanvas, testCanvas, {});
 }
 
 async function cropAndCompare(window, src, expected, test, region, subregions) {
@@ -93,7 +92,7 @@ add_task(async function crop() {
         new Rect(0, 0, 16, 16),
         new Rect(16, 16, 16, 16),
         new Rect(32, 32, 16, 16),
-        new Rect(48, 48, 16, 16)
+        new Rect(48, 48, 16, 16),
       ]
   ), 0, "The image should be contain squares across the diagonal");
 

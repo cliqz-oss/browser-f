@@ -13,7 +13,7 @@
 #include "mozilla/dom/HTMLTextAreaElementBinding.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/EventStates.h"
-#include "mozilla/GenericSpecifiedValuesInlines.h"
+#include "mozilla/MappedDeclarations.h"
 #include "mozilla/MouseEvents.h"
 #include "nsAttrValueInlines.h"
 #include "nsContentCID.h"
@@ -93,15 +93,14 @@ NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(HTMLTextAreaElement,
 // nsIDOMHTMLTextAreaElement
 
 nsresult
-HTMLTextAreaElement::Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
-                           bool aPreallocateChildren) const
+HTMLTextAreaElement::Clone(dom::NodeInfo* aNodeInfo, nsINode** aResult) const
 {
   *aResult = nullptr;
   already_AddRefed<mozilla::dom::NodeInfo> ni =
     RefPtr<mozilla::dom::NodeInfo>(aNodeInfo).forget();
   RefPtr<HTMLTextAreaElement> it = new HTMLTextAreaElement(ni);
 
-  nsresult rv = const_cast<HTMLTextAreaElement*>(this)->CopyInnerTo(it, aPreallocateChildren);
+  nsresult rv = const_cast<HTMLTextAreaElement*>(this)->CopyInnerTo(it);
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (mValueChanged) {
@@ -427,19 +426,19 @@ HTMLTextAreaElement::ParseAttribute(int32_t aNamespaceID,
 
 void
 HTMLTextAreaElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
-                                           GenericSpecifiedValues* aData)
+                                           MappedDeclarations& aDecls)
 {
   // wrap=off
-  if (!aData->PropertyIsSet(eCSSProperty_white_space)) {
+  if (!aDecls.PropertyIsSet(eCSSProperty_white_space)) {
     const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::wrap);
     if (value && value->Type() == nsAttrValue::eString &&
         value->Equals(nsGkAtoms::OFF, eIgnoreCase)) {
-      aData->SetKeywordValue(eCSSProperty_white_space, StyleWhiteSpace::Pre);
+      aDecls.SetKeywordValue(eCSSProperty_white_space, StyleWhiteSpace::Pre);
     }
   }
 
-  nsGenericHTMLFormElementWithState::MapDivAlignAttributeInto(aAttributes, aData);
-  nsGenericHTMLFormElementWithState::MapCommonAttributesInto(aAttributes, aData);
+  nsGenericHTMLFormElementWithState::MapDivAlignAttributeInto(aAttributes, aDecls);
+  nsGenericHTMLFormElementWithState::MapCommonAttributesInto(aAttributes, aDecls);
 }
 
 nsChangeHint
@@ -552,8 +551,9 @@ HTMLTextAreaElement::FireChangeEventIfNeeded()
   mFocusedValue = value;
   nsContentUtils::DispatchTrustedEvent(OwnerDoc(),
                                        static_cast<nsIContent*>(this),
-                                       NS_LITERAL_STRING("change"), true,
-                                       false);
+                                       NS_LITERAL_STRING("change"),
+                                       CanBubble::eYes,
+                                       Cancelable::eNo);
 }
 
 nsresult
@@ -910,12 +910,10 @@ HTMLTextAreaElement::IntrinsicState() const
 
 nsresult
 HTMLTextAreaElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
-                                nsIContent* aBindingParent,
-                                bool aCompileEventHandlers)
+                                nsIContent* aBindingParent)
 {
   nsresult rv = nsGenericHTMLFormElementWithState::BindToTree(aDocument, aParent,
-                                                              aBindingParent,
-                                                              aCompileEventHandlers);
+                                                              aBindingParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
   // If there is a disabled fieldset in the parent chain, the element is now
@@ -1039,10 +1037,9 @@ HTMLTextAreaElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
   }
 
 nsresult
-HTMLTextAreaElement::CopyInnerTo(Element* aDest, bool aPreallocateChildren)
+HTMLTextAreaElement::CopyInnerTo(Element* aDest)
 {
-  nsresult rv = nsGenericHTMLFormElementWithState::CopyInnerTo(aDest,
-                                                               aPreallocateChildren);
+  nsresult rv = nsGenericHTMLFormElementWithState::CopyInnerTo(aDest);
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (aDest->OwnerDoc()->IsStaticDocument()) {
@@ -1332,7 +1329,7 @@ HTMLTextAreaElement::FieldSetDisabledChanged(bool aNotify)
 JSObject*
 HTMLTextAreaElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return HTMLTextAreaElementBinding::Wrap(aCx, this, aGivenProto);
+  return HTMLTextAreaElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void

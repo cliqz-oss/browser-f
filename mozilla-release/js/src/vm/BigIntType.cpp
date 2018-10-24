@@ -171,6 +171,233 @@ BigInt::copy(JSContext* cx, HandleBigInt x)
     return bi;
 }
 
+// BigInt proposal section 1.1.7
+BigInt*
+BigInt::add(JSContext* cx, HandleBigInt x, HandleBigInt y)
+{
+    BigInt* z = create(cx);
+    if (!z)
+        return nullptr;
+    mpz_add(z->num_, x->num_, y->num_);
+    return z;
+}
+
+// BigInt proposal section 1.1.8
+BigInt*
+BigInt::sub(JSContext* cx, HandleBigInt x, HandleBigInt y)
+{
+    BigInt* z = create(cx);
+    if (!z)
+        return nullptr;
+    mpz_sub(z->num_, x->num_, y->num_);
+    return z;
+}
+
+// BigInt proposal section 1.1.4
+BigInt*
+BigInt::mul(JSContext* cx, HandleBigInt x, HandleBigInt y)
+{
+    BigInt* z = create(cx);
+    if (!z)
+        return nullptr;
+    mpz_mul(z->num_, x->num_, y->num_);
+    return z;
+}
+
+// BigInt proposal section 1.1.5
+BigInt*
+BigInt::div(JSContext* cx, HandleBigInt x, HandleBigInt y)
+{
+    // Step 1.
+    if (mpz_size(y->num_) == 0) {
+        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                                  JSMSG_BIGINT_DIVISION_BY_ZERO);
+        return nullptr;
+    }
+
+    // Steps 2-3.
+    BigInt* z = create(cx);
+    if (!z)
+        return nullptr;
+    mpz_tdiv_q(z->num_, x->num_, y->num_);
+    return z;
+}
+
+// BigInt proposal section 1.1.6
+BigInt*
+BigInt::mod(JSContext* cx, HandleBigInt x, HandleBigInt y)
+{
+    // Step 1.
+    if (mpz_size(y->num_) == 0) {
+        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                                  JSMSG_BIGINT_DIVISION_BY_ZERO);
+        return nullptr;
+    }
+
+    // Steps 2-4.
+    BigInt* z = create(cx);
+    if (!z)
+        return nullptr;
+    mpz_tdiv_r(z->num_, x->num_, y->num_);
+    return z;
+}
+
+// BigInt proposal section 1.1.3
+BigInt*
+BigInt::pow(JSContext* cx, HandleBigInt x, HandleBigInt y)
+{
+    // Step 1.
+    if (mpz_sgn(y->num_) < 0) {
+        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                                  JSMSG_BIGINT_NEGATIVE_EXPONENT);
+        return nullptr;
+    }
+
+    // Throw a RangeError if the exponent is too large.
+    if (!mpz_fits_uint_p(y->num_)) {
+        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                                  JSMSG_BIGINT_TOO_LARGE);
+        return nullptr;
+    }
+    unsigned long int power = mpz_get_ui(y->num_);
+
+    // Steps 2-3.
+    BigInt* z = create(cx);
+    if (!z)
+        return nullptr;
+
+    mpz_pow_ui(z->num_, x->num_, power);
+    return z;
+}
+
+// BigInt proposal section 1.1.1
+BigInt*
+BigInt::neg(JSContext* cx, HandleBigInt x)
+{
+    BigInt* res = create(cx);
+    if (!res)
+        return nullptr;
+    mpz_neg(res->num_, x->num_);
+    return res;
+}
+
+static bool
+ValidBigIntOperands(JSContext* cx, HandleValue lhs, HandleValue rhs)
+{
+    MOZ_ASSERT(lhs.isBigInt() || rhs.isBigInt());
+
+    if (!lhs.isBigInt() || !rhs.isBigInt()) {
+        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                                  JSMSG_BIGINT_TO_NUMBER);
+        return false;
+    }
+
+    return true;
+}
+
+bool
+BigInt::add(JSContext* cx, HandleValue lhs, HandleValue rhs, MutableHandleValue res)
+{
+    if (!ValidBigIntOperands(cx, lhs, rhs))
+        return false;
+
+    RootedBigInt lhsBigInt(cx, lhs.toBigInt());
+    RootedBigInt rhsBigInt(cx, rhs.toBigInt());
+    BigInt* resBigInt = BigInt::add(cx, lhsBigInt, rhsBigInt);
+    if (!resBigInt)
+        return false;
+    res.setBigInt(resBigInt);
+    return true;
+}
+
+bool
+BigInt::sub(JSContext* cx, HandleValue lhs, HandleValue rhs, MutableHandleValue res)
+{
+    if (!ValidBigIntOperands(cx, lhs, rhs))
+        return false;
+
+    RootedBigInt lhsBigInt(cx, lhs.toBigInt());
+    RootedBigInt rhsBigInt(cx, rhs.toBigInt());
+    BigInt* resBigInt = BigInt::sub(cx, lhsBigInt, rhsBigInt);
+    if (!resBigInt)
+        return false;
+    res.setBigInt(resBigInt);
+    return true;
+}
+
+bool
+BigInt::mul(JSContext* cx, HandleValue lhs, HandleValue rhs, MutableHandleValue res)
+{
+    if (!ValidBigIntOperands(cx, lhs, rhs))
+        return false;
+
+    RootedBigInt lhsBigInt(cx, lhs.toBigInt());
+    RootedBigInt rhsBigInt(cx, rhs.toBigInt());
+    BigInt* resBigInt = BigInt::mul(cx, lhsBigInt, rhsBigInt);
+    if (!resBigInt)
+        return false;
+    res.setBigInt(resBigInt);
+    return true;
+}
+
+bool
+BigInt::div(JSContext* cx, HandleValue lhs, HandleValue rhs, MutableHandleValue res)
+{
+    if (!ValidBigIntOperands(cx, lhs, rhs))
+        return false;
+
+    RootedBigInt lhsBigInt(cx, lhs.toBigInt());
+    RootedBigInt rhsBigInt(cx, rhs.toBigInt());
+    BigInt* resBigInt = BigInt::div(cx, lhsBigInt, rhsBigInt);
+    if (!resBigInt)
+        return false;
+    res.setBigInt(resBigInt);
+    return true;
+}
+
+bool
+BigInt::mod(JSContext* cx, HandleValue lhs, HandleValue rhs, MutableHandleValue res)
+{
+    if (!ValidBigIntOperands(cx, lhs, rhs))
+        return false;
+
+    RootedBigInt lhsBigInt(cx, lhs.toBigInt());
+    RootedBigInt rhsBigInt(cx, rhs.toBigInt());
+    BigInt* resBigInt = BigInt::mod(cx, lhsBigInt, rhsBigInt);
+    if (!resBigInt)
+        return false;
+    res.setBigInt(resBigInt);
+    return true;
+}
+
+bool
+BigInt::pow(JSContext* cx, HandleValue lhs, HandleValue rhs, MutableHandleValue res)
+{
+    if (!ValidBigIntOperands(cx, lhs, rhs))
+        return false;
+
+    RootedBigInt lhsBigInt(cx, lhs.toBigInt());
+    RootedBigInt rhsBigInt(cx, rhs.toBigInt());
+    BigInt* resBigInt = BigInt::pow(cx, lhsBigInt, rhsBigInt);
+    if (!resBigInt)
+        return false;
+    res.setBigInt(resBigInt);
+    return true;
+}
+
+bool
+BigInt::neg(JSContext* cx, HandleValue operand, MutableHandleValue res)
+{
+    MOZ_ASSERT(operand.isBigInt());
+
+    RootedBigInt operandBigInt(cx, operand.toBigInt());
+    BigInt* resBigInt = BigInt::neg(cx, operandBigInt);
+    if (!resBigInt)
+        return false;
+    res.setBigInt(resBigInt);
+    return true;
+}
+
 // BigInt proposal section 7.3
 BigInt*
 js::ToBigInt(JSContext* cx, HandleValue val)
@@ -182,7 +409,6 @@ js::ToBigInt(JSContext* cx, HandleValue val)
         return nullptr;
 
     // Step 2.
-    // String conversions are not yet supported.
     if (v.isBigInt())
         return v.toBigInt();
 
@@ -191,7 +417,14 @@ js::ToBigInt(JSContext* cx, HandleValue val)
 
     if (v.isString()) {
         RootedString str(cx, v.toString());
-        return StringToBigInt(cx, str, 0);
+        BigInt* bi;
+        JS_TRY_VAR_OR_RETURN_NULL(cx, bi, StringToBigInt(cx, str, 0));
+        if (!bi) {
+            JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                                      JSMSG_BIGINT_INVALID_SYNTAX);
+            return nullptr;
+        }
+        return bi;
     }
 
     JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_NOT_BIGINT);
@@ -210,13 +443,72 @@ BigInt::numberValue(BigInt* x)
     return ldexp(d, exp);
 }
 
+bool
+BigInt::equal(BigInt* lhs, BigInt* rhs)
+{
+    if (lhs == rhs)
+        return true;
+    if (mpz_cmp(lhs->num_, rhs->num_) == 0)
+        return true;
+    return false;
+}
+
+bool
+BigInt::equal(BigInt* lhs, double rhs)
+{
+    // The result of mpz_cmp_d is undefined for comparisons to NaN.
+    if (mozilla::IsNaN(rhs))
+        return false;
+    if (mpz_cmp_d(lhs->num_, rhs) == 0)
+        return true;
+    return false;
+}
+
+// BigInt proposal section 3.2.5
+JS::Result<bool>
+BigInt::looselyEqual(JSContext* cx, HandleBigInt lhs, HandleValue rhs)
+{
+    // Step 1.
+    if (rhs.isBigInt())
+        return equal(lhs, rhs.toBigInt());
+
+    // Steps 2-5 (not applicable).
+
+    // Steps 6-7.
+    if (rhs.isString()) {
+        RootedBigInt rhsBigInt(cx);
+        RootedString rhsString(cx, rhs.toString());
+        MOZ_TRY_VAR(rhsBigInt, StringToBigInt(cx, rhsString, 0));
+        if (!rhsBigInt)
+            return false;
+        return equal(lhs, rhsBigInt);
+    }
+
+    // Steps 8-9 (not applicable).
+
+    // Steps 10-11.
+    if (rhs.isObject()) {
+        RootedValue rhsPrimitive(cx, rhs);
+        if (!ToPrimitive(cx, &rhsPrimitive))
+            return cx->alreadyReportedError();
+        return looselyEqual(cx, lhs, rhsPrimitive);
+    }
+
+    // Step 12.
+    if (rhs.isNumber())
+        return equal(lhs, rhs.toNumber());
+
+    // Step 13.
+    return false;
+}
+
 JSLinearString*
 BigInt::toString(JSContext* cx, BigInt* x, uint8_t radix)
 {
     MOZ_ASSERT(2 <= radix && radix <= 36);
     // We need two extra chars for '\0' and potentially '-'.
     size_t strSize = mpz_sizeinbase(x->num_, 10) + 2;
-    UniqueChars str(static_cast<char*>(js_malloc(strSize)));
+    UniqueChars str(js_pod_malloc<char>(strSize));
     if (!str) {
         ReportOutOfMemory(cx);
         return nullptr;
@@ -292,28 +584,28 @@ js::StringToBigIntImpl(const Range<const CharT>& chars, uint8_t radix,
     return true;
 }
 
-BigInt*
+JS::Result<BigInt*, JS::OOM&>
 js::StringToBigInt(JSContext* cx, HandleString str, uint8_t radix)
 {
     RootedBigInt res(cx, BigInt::create(cx));
+    if (!res)
+        return cx->alreadyReportedOOM();
 
     JSLinearString* linear = str->ensureLinear(cx);
     if (!linear)
-        return nullptr;
+        return cx->alreadyReportedOOM();
 
     {
         JS::AutoCheckCannotGC nogc;
         if (linear->hasLatin1Chars()) {
             if (StringToBigIntImpl(linear->latin1Range(nogc), radix, res))
-                return res;
+                return res.get();
         } else {
             if (StringToBigIntImpl(linear->twoByteRange(nogc), radix, res))
-                return res;
+                return res.get();
         }
     }
 
-    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
-                              JSMSG_BIGINT_INVALID_SYNTAX);
     return nullptr;
 }
 

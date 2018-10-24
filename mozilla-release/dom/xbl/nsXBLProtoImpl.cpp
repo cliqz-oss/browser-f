@@ -22,7 +22,6 @@
 
 using namespace mozilla;
 using namespace mozilla::dom;
-using js::GetGlobalForObjectCrossCompartment;
 using js::AssertSameCompartment;
 
 nsresult
@@ -82,10 +81,10 @@ nsXBLProtoImpl::InstallImplementation(nsXBLPrototypeBinding* aPrototypeBinding,
   // First, start by entering the realm of the XBL scope. This may or may
   // not be the same realm as globalObject.
   JS::Rooted<JSObject*> globalObject(cx,
-    GetGlobalForObjectCrossCompartment(targetClassObject));
+    JS::GetNonCCWObjectGlobal(targetClassObject));
   JS::Rooted<JSObject*> scopeObject(cx, xpc::GetXBLScopeOrGlobal(cx, globalObject));
   NS_ENSURE_TRUE(scopeObject, NS_ERROR_OUT_OF_MEMORY);
-  MOZ_ASSERT(js::GetGlobalForObjectCrossCompartment(scopeObject) == scopeObject);
+  MOZ_ASSERT(JS_IsGlobalObject(scopeObject));
   JSAutoRealm ar(cx, scopeObject);
 
   // Determine the appropriate property holder.
@@ -97,11 +96,15 @@ nsXBLProtoImpl::InstallImplementation(nsXBLPrototypeBinding* aPrototypeBinding,
   // end up with a different content prototype, but we'll already have a property
   // holder called |foo| in the XBL scope. Check for that to avoid wasteful and
   // weird property holder duplication.
-  const char16_t* className = aPrototypeBinding->ClassName().get();
+  const nsString& className = aPrototypeBinding->ClassName();
+  const char16_t* classNameChars = className.get();
+  const size_t classNameLen = className.Length();
+
   JS::Rooted<JSObject*> propertyHolder(cx);
   JS::Rooted<JS::PropertyDescriptor> existingHolder(cx);
   if (scopeObject != globalObject &&
-      !JS_GetOwnUCPropertyDescriptor(cx, scopeObject, className, &existingHolder)) {
+      !JS_GetOwnUCPropertyDescriptor(cx, scopeObject, classNameChars,
+                                     classNameLen, &existingHolder)) {
     return NS_ERROR_FAILURE;
   }
   bool propertyHolderIsNew = !existingHolder.object() || !existingHolder.value().isObject();
@@ -116,8 +119,9 @@ nsXBLProtoImpl::InstallImplementation(nsXBLPrototypeBinding* aPrototypeBinding,
 
     // Define it as a property on the scopeObject, using the same name used on
     // the content side.
-    bool ok = JS_DefineUCProperty(cx, scopeObject, className, -1, propertyHolder,
-                                  JSPROP_PERMANENT | JSPROP_READONLY);
+    bool ok =
+      JS_DefineUCProperty(cx, scopeObject, classNameChars, classNameLen,
+                          propertyHolder, JSPROP_PERMANENT | JSPROP_READONLY);
     NS_ENSURE_TRUE(ok, NS_ERROR_UNEXPECTED);
   } else {
     propertyHolder = targetClassObject;
@@ -208,14 +212,19 @@ nsXBLProtoImpl::InitTargetObjects(nsXBLPrototypeBinding* aBinding,
   JSAutoRealm ar(cx, global);
   // Make sure the interface object is created before the prototype object
   // so that XULElement is hidden from content. See bug 909340.
-  bool defineOnGlobal = dom::XULElementBinding::ConstructorEnabled(cx, global);
-  dom::XULElementBinding::GetConstructorObjectHandle(cx, defineOnGlobal);
+  bool defineOnGlobal = dom::XULElement_Binding::ConstructorEnabled(cx, global);
+  dom::XULElement_Binding::GetConstructorObjectHandle(cx, defineOnGlobal);
 
   rv = nsContentUtils::WrapNative(cx, aBoundElement, &v,
                                   /* aAllowWrapping = */ false);
   NS_ENSURE_SUCCESS(rv, rv);
 
   JS::Rooted<JSObject*> value(cx, &v.toObject());
+
+  // We passed aAllowWrapping = false to nsContentUtils::WrapNative so we
+  // should not have a wrapper.
+  MOZ_ASSERT(!js::IsWrapper(value));
+
   JSAutoRealm ar2(cx, value);
 
   // All of the above code was just obtaining the bound element's script object and its immediate

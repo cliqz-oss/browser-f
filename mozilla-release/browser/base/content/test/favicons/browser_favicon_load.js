@@ -70,14 +70,6 @@ FaviconObserver.prototype = {
         return;
       }
 
-      let loadingPrincipal = reqLoadInfo.loadingPrincipal;
-
-      if (loadingPrincipal.equals(systemPrincipal)) {
-        this._faviconReqXUL = true;
-      } else {
-        this._faviconReqPlaces = true;
-      }
-
       let haveTailFlag = !!(cos.classFlags & Ci.nsIClassOfService.Tail);
       info("classFlags=" + cos.classFlags);
       is(haveTailFlag, this._tailingEnabled, "Should have correct cos flag.");
@@ -85,14 +77,10 @@ FaviconObserver.prototype = {
       ok(false, "Received unexpected topic: ", aTopic);
     }
 
-    if (this._faviconReqXUL && this._faviconReqPlaces) {
-      this._faviconLoaded.resolve();
-    }
+    this._faviconLoaded.resolve();
   },
 
   reset(aPageURI, aFaviconURL, aTailingEnabled) {
-    this._faviconReqXUL = false;
-    this._faviconReqPlaces = false;
     this._faviconURL = aFaviconURL;
     this._faviconLoaded = PromiseUtils.defer();
     this._tailingEnabled = aTailingEnabled;
@@ -100,7 +88,7 @@ FaviconObserver.prototype = {
 
   get promise() {
     return this._faviconLoaded.promise;
-  }
+  },
 };
 
 function waitOnFaviconLoaded(aFaviconURL) {
@@ -137,7 +125,7 @@ async function doTest(aTestPage, aFaviconURL, aTailingEnabled) {
 
 async function setupTailingPreference(aTailingEnabled) {
   await SpecialPowers.pushPrefEnv({"set": [
-      ["network.http.tailing.enabled", aTailingEnabled]
+      ["network.http.tailing.enabled", aTailingEnabled],
   ]});
 }
 

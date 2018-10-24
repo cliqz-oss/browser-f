@@ -67,6 +67,7 @@ struct AnimatedValue {
                 gfx::Matrix4x4&& aFrameTransform,
                 const TransformData& aData)
     : mType(AnimatedValue::TRANSFORM)
+    , mOpacity(0.0)
   {
     mTransform.mTransformInDevSpace = std::move(aTransformInDevSpace);
     mTransform.mFrameTransform = std::move(aFrameTransform);
@@ -132,19 +133,7 @@ public:
    */
   AnimatedValue* GetAnimatedValue(const uint64_t& aId) const;
 
-  /**
-   * Like GetAnimatedValue(), but ensures the value is an opacity and returns
-   * the float value if possible, or Nothing() otherwise.
-   */
-  Maybe<float> GetAnimationOpacity(const uint64_t& aId) const;
-
-  /**
-   * Like GetAnimatedValue(), but ensures the value is a transform and returns
-   * the transform matrix if possible, or Nothing() otherwise. It also does
-   * some post-processing on the transform matrix as well. See the comments
-   * inside the function for details.
-   */
-  Maybe<gfx::Matrix4x4> GetAnimationTransform(const uint64_t& aId) const;
+  OMTAValue GetOMTAValue(const uint64_t& aId) const;
 
   /**
    * Return the iterator of animated value table

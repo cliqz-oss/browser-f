@@ -205,8 +205,10 @@ private:
   #undef NO_OVERLAP
 
   // We combine the active bit with the feature bits so they can be read or
-  // written in a single atomic operation.
-  static mozilla::Atomic<uint32_t, mozilla::MemoryOrdering::Relaxed> sActiveAndFeatures;
+  // written in a single atomic operation. Accesses to this atomic are not
+  // recorded by web replay as they may occur at non-deterministic points.
+  static mozilla::Atomic<uint32_t, mozilla::MemoryOrdering::Relaxed,
+                         recordreplay::Behavior::DontPreserve> sActiveAndFeatures;
 };
 
 } // namespace detail
@@ -279,7 +281,7 @@ void profiler_ensure_started(uint32_t aEntries, double aInterval,
   do { char stackTop; profiler_register_thread(name, &stackTop); } while (0)
 #define PROFILER_UNREGISTER_THREAD() \
   profiler_unregister_thread()
-void profiler_register_thread(const char* name, void* guessStackTop);
+ProfilingStack* profiler_register_thread(const char* name, void* guessStackTop);
 void profiler_unregister_thread();
 
 // Register and unregister a thread within a scope.

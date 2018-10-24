@@ -7,6 +7,7 @@ from __future__ import absolute_import, print_function
 import json
 import os
 import re
+import shutil
 import sys
 from abc import ABCMeta, abstractmethod, abstractproperty
 from argparse import ArgumentParser
@@ -30,9 +31,10 @@ class Benchmark(object):
     should_alert = False
     units = 'score'
 
-    def __init__(self, shell, args=None):
+    def __init__(self, shell, args=None, shell_name=None):
         self.shell = shell
         self.args = args
+        self.shell_name = shell_name
 
     @abstractproperty
     def name(self):
@@ -69,6 +71,10 @@ class Benchmark(object):
 
     def reset(self):
         """Resets state between runs."""
+        name = self.name
+        if self.shell_name:
+            name = '{}-{}'.format(name, self.shell_name)
+
         self.perfherder_data = {
             'framework': {
                 'name': 'js-bench',
@@ -76,7 +82,7 @@ class Benchmark(object):
             'suites': [
                 {
                     'lowerIsBetter': self.lower_is_better,
-                    'name': self.name,
+                    'name': name,
                     'shouldAlert': self.should_alert,
                     'subtests': [],
                     'units': self.units,
@@ -99,6 +105,19 @@ class Benchmark(object):
         proc = ProcessHandler(**process_args)
         proc.run()
         return proc.wait()
+
+
+class RunOnceBenchmark(Benchmark):
+    def collect_results(self):
+        bench_total = 0
+        # NOTE: for this benchmark we run the test once, so we have a single value array
+        for bench, scores in self.scores.items():
+            for score, values in scores.items():
+                test_name = "{}-{}".format(self.name, score)
+                mean = sum(values) / len(values)
+                self.suite['subtests'].append({'name': test_name, 'value': mean})
+                bench_total += int(sum(values))
+        self.suite['value'] = bench_total
 
 
 class Ares6(Benchmark):
@@ -151,15 +170,15 @@ class Ares6(Benchmark):
     def collect_results(self):
         for bench, scores in self.scores.items():
             for score, values in scores.items():
-                total = sum(values) / len(values)
+                mean = sum(values) / len(values)
                 test_name = "{}-{}".format(bench, score)
-                self.suite['subtests'].append({'name': test_name, 'value': total})
+                self.suite['subtests'].append({'name': test_name, 'value': mean})
 
         if self.last_summary:
             self.suite['value'] = self.last_summary
 
 
-class SixSpeed(Benchmark):
+class SixSpeed(RunOnceBenchmark):
     name = 'six-speed'
     path = os.path.join('third_party', 'webkit', 'PerformanceTests', 'six-speed')
     units = 'ms'
@@ -187,53 +206,25 @@ class SixSpeed(Benchmark):
         self.scores[self.name][subtest].append(int(score))
 
 
-    def collect_results(self):
-        bench_total = 0
-        # NOTE: for this benchmark we run the test once, so we have a single value array
-        for bench, scores in self.scores.items():
-            for score, values in scores.items():
-                test_name = "{}-{}".format(self.name, score)
-                total = sum(values) / len(values)
-                self.suite['subtests'].append({'name': test_name, 'value': total})
-                bench_total += int(sum(values))
-        self.suite['value'] = bench_total
-
-
-class AsmJSApps(Benchmark):
-    name = 'asmjsapps'
-    path = os.path.join('third_party', 'webkit', 'PerformanceTests', 'asmjs-apps')
+class SunSpider(RunOnceBenchmark):
+    name = 'sunspider'
+    path = os.path.join('third_party', 'webkit', 'PerformanceTests', 'SunSpider', 'sunspider-0.9.1')
     units = 'ms'
 
     @property
     def command(self):
-        if not self.args:
-            self.args = []
-        full_args = ['bash', 'harness.sh', self.shell + " " + " ".join(self.args)]
-        return full_args
+        cmd = super(SunSpider, self).command
+        return cmd + ['sunspider-standalone-driver.js']
 
     def reset(self):
-        super(AsmJSApps, self).reset()
+        super(SunSpider, self).reset()
 
         # Scores are of the form:
         # {<bench_name>: {<score_name>: [<values>]}}
         self.scores = defaultdict(lambda: defaultdict(list))
 
-    def process_results(self, output):
-        total = 0.0
-        tests = []
-        for line in output.splitlines():
-            m = re.search("(.+) - (\d+(\.\d+)?)", line)
-            if not m:
-                continue
-            name = m.group(1)
-            score = m.group(2)
-            total += float(score)
-            tests.append({ 'name': name, 'time': score })
-        tests.append({ 'name': '__total__', 'time': total })
-        return tests
-
     def process_line(self, output):
-        m = re.search("(.+) - (\d+(\.\d+)?)", output)
+        m = re.search("(.+): (\d+)", output)
         if not m:
             return
         subtest = m.group(1)
@@ -243,26 +234,70 @@ class AsmJSApps(Benchmark):
         self.scores[self.name][subtest].append(int(score))
 
 
+class WebToolingBenchmark(Benchmark):
+    name = 'web-tooling-benchmark'
+    path = os.path.join('third_party', 'webkit', 'PerformanceTests', 'web-tooling-benchmark')
+    main_js = 'cli.js'
+
+    @property
+    def command(self):
+        cmd = super(WebToolingBenchmark, self).command
+        return cmd + [self.main_js]
+
+    def reset(self):
+        super(WebToolingBenchmark, self).reset()
+
+        # Scores are of the form:
+        # {<bench_name>: {<score_name>: [<values>]}}
+        self.scores = defaultdict(lambda: defaultdict(list))
+
+    def process_line(self, output):
+        m = re.search(" +([a-zA-Z].+): +([.0-9]+) +runs/sec", output)
+        if not m:
+            return
+        subtest = m.group(1)
+        score = m.group(2)
+        if subtest not in self.scores[self.name]:
+            self.scores[self.name][subtest] = []
+        self.scores[self.name][subtest].append(float(score))
+
     def collect_results(self):
-        bench_total = 0
         # NOTE: for this benchmark we run the test once, so we have a single value array
         for bench, scores in self.scores.items():
-            for score, values in scores.items():
-                test_name = "{}-{}".format(self.name, score)
-                total = sum(values) / len(values)
-                self.suite['subtests'].append({'name': test_name, 'value': total})
-                bench_total += int(sum(values))
-        self.suite['value'] = bench_total
+            for score_name, values in scores.items():
+                test_name = "{}-{}".format(self.name, score_name)
+                mean = sum(values) / len(values)
+                self.suite['subtests'].append({'name': test_name, 'value': mean})
+                if score_name == 'mean':
+                    bench_mean = mean
+        self.suite['value'] = bench_mean
+
+    def _provision_benchmark_script(self):
+        if os.path.isdir(self.path):
+            return
+
+        # Some benchmarks may have been downloaded from a fetch task, make
+        # sure they get copied over.
+        fetches_dir = os.environ.get('MOZ_FETCHES_DIR')
+        if fetches_dir and os.path.isdir(fetches_dir):
+            webtool_fetchdir = os.path.join(fetches_dir, 'web-tooling-benchmark')
+            if os.path.isdir(webtool_fetchdir):
+                shutil.copytree(webtool_fetchdir, self.path)
+
+    def run(self):
+        self._provision_benchmark_script()
+        return super(WebToolingBenchmark, self).run()
 
 
 all_benchmarks = {
     'ares6': Ares6,
     'six-speed': SixSpeed,
-    'asmjs-apps': AsmJSApps,
+    'sunspider': SunSpider,
+    'web-tooling-benchmark': WebToolingBenchmark
 }
 
 
-def run(benchmark, binary=None, extra_args=None, perfherder=False):
+def run(benchmark, binary=None, extra_args=None, perfherder=None):
     if not binary:
         try:
             binary = os.path.join(build.bindir, 'js' + build.substs['BIN_SUFFIX'])
@@ -273,7 +308,7 @@ def run(benchmark, binary=None, extra_args=None, perfherder=False):
             print(JSSHELL_NOT_FOUND)
             return 1
 
-    bench = all_benchmarks.get(benchmark)(binary, args=extra_args)
+    bench = all_benchmarks.get(benchmark)(binary, args=extra_args, shell_name=perfherder)
     res = bench.run()
 
     if perfherder:
@@ -289,8 +324,8 @@ def get_parser():
                         help="Path to the JS shell binary to use.")
     parser.add_argument('--arg', dest='extra_args', action='append', default=None,
                         help="Extra arguments to pass to the JS shell.")
-    parser.add_argument('--perfherder', action='store_true', default=False,
-                        help="Log PERFHERDER_DATA to stdout.")
+    parser.add_argument('--perfherder', default=None,
+                        help="Log PERFHERDER_DATA to stdout using the given suite name.")
     return parser
 
 

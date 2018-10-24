@@ -341,7 +341,7 @@ nsTableCellMap::GetEffectiveRowSpan(int32_t aRowIndex,
     rowIndex -= map->GetRowCount();
     map = map->GetNextSibling();
   }
-  NS_NOTREACHED("Bogus row index?");
+  MOZ_ASSERT_UNREACHABLE("Bogus row index?");
   return 0;
 }
 
@@ -358,7 +358,7 @@ nsTableCellMap::GetEffectiveColSpan(int32_t aRowIndex,
     rowIndex -= map->GetRowCount();
     map = map->GetNextSibling();
   }
-  NS_NOTREACHED("Bogus row index?");
+  MOZ_ASSERT_UNREACHABLE("Bogus row index?");
   return 0;
 }
 
@@ -905,10 +905,9 @@ nsTableCellMap::ResetBStartStart(LogicalSide aSide,
                                  nsCellMap&  aCellMap,
                                  uint32_t    aRowGroupStart,
                                  uint32_t    aRowIndex,
-                                 uint32_t    aColIndex,
-                                 bool        aIsBEndIEnd)
+                                 uint32_t    aColIndex)
 {
-  if (!mBCInfo || aIsBEndIEnd) ABORT0();
+  if (!mBCInfo) ABORT0();
 
   BCCellData* cellData;
   BCData* bcData = nullptr;
@@ -957,7 +956,7 @@ nsTableCellMap::ResetBStartStart(LogicalSide aSide,
 }
 
 // store the aSide border segment at coord = (aRowIndex, aColIndex). For bStart/iStart, store
-// the info at coord. For bEnd/iStart store it at the adjacent location so that it is
+// the info at coord. For bEnd/iEnd store it at the adjacent location so that it is
 // bStart/iStart at that location. If the new location is at the iEnd or bEnd edge of the
 // table, then store it one of the special arrays (iEnd-most borders, bEnd-most borders).
 void
@@ -2716,6 +2715,6 @@ nsCellMapColumnIterator::GetNextFrame(int32_t* aRow, int32_t* aColSpan)
     return cellFrame;
   }
 
-  NS_NOTREACHED("Can't get here");
+  MOZ_ASSERT_UNREACHABLE("Can't get here");
   return nullptr;
 }

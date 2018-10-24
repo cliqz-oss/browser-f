@@ -26,16 +26,16 @@ let gSiteDataSettings = {
   _searchBox: null,
 
   _createSiteListItem(site) {
-    let item = document.createElement("richlistitem");
+    let item = document.createXULElement("richlistitem");
     item.setAttribute("host", site.host);
-    let container = document.createElement("hbox");
+    let container = document.createXULElement("hbox");
 
     // Creates a new column item with the specified relative width.
     function addColumnItem(l10n, flexWidth, tooltipText) {
-      let box = document.createElement("hbox");
+      let box = document.createXULElement("hbox");
       box.className = "item-box";
       box.setAttribute("flex", flexWidth);
-      let label = document.createElement("label");
+      let label = document.createXULElement("label");
       label.setAttribute("crop", "end");
       if (l10n) {
         if (l10n.hasOwnProperty("raw")) {
@@ -64,7 +64,7 @@ let gSiteDataSettings = {
       let strName = site.persisted ? "site-usage-persistent" : "site-usage-pattern";
       addColumnItem({
         id: strName,
-        args: { value, unit }
+        args: { value, unit },
       }, "2");
     } else {
       // Pass null to avoid showing "0KB" when there is no site data stored.
@@ -295,5 +295,5 @@ let gSiteDataSettings = {
 
   onSelect() {
     this._updateButtonsState();
-  }
+  },
 };

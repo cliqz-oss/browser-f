@@ -72,12 +72,10 @@ HTMLLegendElement::GetAttributeChangeHint(const nsAtom* aAttribute,
 
 nsresult
 HTMLLegendElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
-                              nsIContent* aBindingParent,
-                              bool aCompileEventHandlers)
+                              nsIContent* aBindingParent)
 {
   return nsGenericHTMLElement::BindToTree(aDocument, aParent,
-                                          aBindingParent,
-                                          aCompileEventHandlers);
+                                          aBindingParent);
 }
 
 void
@@ -135,7 +133,7 @@ HTMLLegendElement::GetForm()
 JSObject*
 HTMLLegendElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return HTMLLegendElementBinding::Wrap(aCx, this, aGivenProto);
+  return HTMLLegendElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 } // namespace dom

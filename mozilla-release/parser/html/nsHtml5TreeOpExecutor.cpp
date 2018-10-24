@@ -16,6 +16,7 @@
 #include "mozilla/StaticPrefs.h"
 #include "mozilla/css/Loader.h"
 #include "nsContentUtils.h"
+#include "nsDocShell.h"
 #include "nsError.h"
 #include "nsHtml5AutoPauseUpdate.h"
 #include "nsHtml5Parser.h"
@@ -33,7 +34,6 @@
 #include "nsIScriptError.h"
 #include "nsIScriptGlobalObject.h"
 #include "nsIViewSourceChannel.h"
-#include "nsIWebShellServices.h"
 #include "nsNetUtil.h"
 #include "xpcpublic.h"
 
@@ -137,7 +137,7 @@ nsHtml5TreeOpExecutor::~nsHtml5TreeOpExecutor()
 NS_IMETHODIMP
 nsHtml5TreeOpExecutor::WillParse()
 {
-  NS_NOTREACHED("No one should call this");
+  MOZ_ASSERT_UNREACHABLE("No one should call this");
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -222,14 +222,14 @@ nsHtml5TreeOpExecutor::DidBuildModel(bool aTerminated)
 NS_IMETHODIMP
 nsHtml5TreeOpExecutor::WillInterrupt()
 {
-  NS_NOTREACHED("Don't call. For interface compat only.");
+  MOZ_ASSERT_UNREACHABLE("Don't call. For interface compat only.");
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 NS_IMETHODIMP
 nsHtml5TreeOpExecutor::WillResume()
 {
-  NS_NOTREACHED("Don't call. For interface compat only.");
+  MOZ_ASSERT_UNREACHABLE("Don't call. For interface compat only.");
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -770,18 +770,18 @@ nsHtml5TreeOpExecutor::NeedsCharsetSwitchTo(NotNull<const Encoding*> aEncoding,
     return;
   }
 
-  nsCOMPtr<nsIWebShellServices> wss = do_QueryInterface(mDocShell);
-  if (!wss) {
+  if (!mDocShell) {
     return;
   }
 
-  // ask the webshellservice to load the URL
-  if (NS_SUCCEEDED(wss->StopDocumentLoad())) {
+  nsDocShell* docShell = static_cast<nsDocShell*>(mDocShell.get());
+
+  if (NS_SUCCEEDED(docShell->CharsetChangeStopDocumentLoad())) {
     nsAutoCString charset;
     aEncoding->Name(charset);
-    wss->ReloadDocument(charset.get(), aSource);
+    docShell->CharsetChangeReloadDocument(charset.get(), aSource);
   }
-  // if the charset switch was accepted, wss has called Terminate() on the
+  // if the charset switch was accepted, mDocShell has called Terminate() on the
   // parser by now
 
   if (!mParser) {
@@ -1135,7 +1135,7 @@ nsHtml5TreeOpExecutor::SetSpeculationReferrerPolicy(
 void
 nsHtml5TreeOpExecutor::AddSpeculationCSP(const nsAString& aCSP)
 {
-  if (!CSPService::sCSPEnabled) {
+  if (!StaticPrefs::security_csp_enable()) {
     return;
   }
 

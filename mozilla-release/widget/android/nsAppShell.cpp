@@ -9,13 +9,11 @@
 #include "base/message_loop.h"
 #include "base/task.h"
 #include "mozilla/Hal.h"
-#include "nsExceptionHandler.h"
 #include "nsIScreen.h"
 #include "nsIScreenManager.h"
 #include "nsWindow.h"
 #include "nsThreadUtils.h"
 #include "nsICommandLineRunner.h"
-#include "nsICrashReporter.h"
 #include "nsIObserverService.h"
 #include "nsIAppStartup.h"
 #include "nsIGeolocationProvider.h"
@@ -299,7 +297,7 @@ public:
     }
 
     static void OnSensorChanged(int32_t aType, float aX, float aY, float aZ,
-                                float aW, int32_t aAccuracy, int64_t aTime)
+                                float aW, int64_t aTime)
     {
         AutoTArray<float, 4> values;
 
@@ -339,8 +337,7 @@ public:
                                 "Unknown sensor type %d", aType);
         }
 
-        hal::SensorData sdata(hal::SensorType(aType), aTime, values,
-                              hal::SensorAccuracyType(aAccuracy));
+        hal::SensorData sdata(hal::SensorType(aType), aTime, values);
         hal::NotifySensorChange(sdata);
     }
 
@@ -407,6 +404,8 @@ nsAppShell::nsAppShell()
         MutexAutoLock lock(*sAppShellLock);
         sAppShell = this;
     }
+
+    hal::Init();
 
     if (!XRE_IsParentProcess()) {
         if (jni::IsAvailable()) {
@@ -475,6 +474,8 @@ nsAppShell::~nsAppShell()
         sPowerManagerService = nullptr;
         sWakeLockListener = nullptr;
     }
+
+    hal::Shutdown();
 
     if (jni::IsAvailable() && XRE_IsParentProcess()) {
         DestroyAndroidUiThread();
@@ -590,11 +591,6 @@ nsAppShell::Observe(nsISupports* aSubject,
 
     } else if (!strcmp(aTopic, "profile-after-change")) {
         if (jni::IsAvailable()) {
-            // See if we want to force 16-bit color before doing anything
-            if (Preferences::GetBool("gfx.android.rgb16.force", false)) {
-                java::GeckoAppShell::SetScreenDepthOverride(16);
-            }
-
             java::GeckoThread::SetState(
                     java::GeckoThread::State::PROFILE_READY());
 

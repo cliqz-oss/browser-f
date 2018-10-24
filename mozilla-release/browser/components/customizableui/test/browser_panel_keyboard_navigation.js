@@ -7,10 +7,19 @@
 const {PanelView} = ChromeUtils.import("resource:///modules/PanelMultiView.jsm", {});
 const kHelpButtonId = "appMenu-help-button";
 
+function getEnabledNavigableElementsForView(panelView) {
+  return Array.from(panelView.querySelectorAll(
+    "button,toolbarbutton,menulist,.text-link"
+  )).filter(element => {
+    let bounds = element.getBoundingClientRect();
+    return !element.disabled && (bounds.width > 0 && bounds.height > 0);
+  });
+}
+
 add_task(async function testUpDownKeys() {
   await gCUITestUtils.openMainMenu();
 
-  let buttons = PanelView.forNode(PanelUI.mainView)._getNavigableElements();
+  let buttons = getEnabledNavigableElementsForView(PanelUI.mainView);
 
   for (let button of buttons) {
     if (button.disabled)
@@ -36,10 +45,31 @@ add_task(async function testUpDownKeys() {
   await gCUITestUtils.hideMainMenu();
 });
 
+add_task(async function testHomeEndKeys() {
+  await gCUITestUtils.openMainMenu();
+
+  let buttons = getEnabledNavigableElementsForView(PanelUI.mainView);
+  let enabledButtons = buttons.filter(btn => !btn.disabled);
+  let firstButton = enabledButtons[0];
+  let lastButton = enabledButtons.pop();
+
+  Assert.ok(firstButton != lastButton, "There is more than one button");
+
+  EventUtils.synthesizeKey("KEY_End");
+  Assert.equal(document.commandDispatcher.focusedElement, lastButton,
+    "The last button should be focused after pressing End");
+
+  EventUtils.synthesizeKey("KEY_Home");
+  Assert.equal(document.commandDispatcher.focusedElement, firstButton,
+    "The first button should be focused after pressing Home");
+
+  await gCUITestUtils.hideMainMenu();
+});
+
 add_task(async function testEnterKeyBehaviors() {
   await gCUITestUtils.openMainMenu();
 
-  let buttons = PanelView.forNode(PanelUI.mainView)._getNavigableElements();
+  let buttons = getEnabledNavigableElementsForView(PanelUI.mainView);
 
   // Navigate to the 'Help' button, which points to a subview.
   EventUtils.synthesizeKey("KEY_ArrowUp");
@@ -56,7 +86,7 @@ add_task(async function testEnterKeyBehaviors() {
   EventUtils.synthesizeKey("KEY_Enter");
   await promise;
 
-  let helpButtons = PanelView.forNode(PanelUI.helpView)._getNavigableElements();
+  let helpButtons = getEnabledNavigableElementsForView(PanelUI.helpView);
   Assert.ok(helpButtons[0].classList.contains("subviewbutton-back"),
     "First button in help view should be a back button");
 
@@ -132,7 +162,7 @@ add_task(async function testLeftRightKeys() {
 add_task(async function testTabKey() {
   await gCUITestUtils.openMainMenu();
 
-  let buttons = PanelView.forNode(PanelUI.mainView)._getNavigableElements();
+  let buttons = getEnabledNavigableElementsForView(PanelUI.mainView);
 
   for (let button of buttons) {
     if (button.disabled)
@@ -165,7 +195,7 @@ add_task(async function testTabKey() {
 add_task(async function testInterleavedTabAndArrowKeys() {
   await gCUITestUtils.openMainMenu();
 
-  let buttons = PanelView.forNode(PanelUI.mainView)._getNavigableElements();
+  let buttons = getEnabledNavigableElementsForView(PanelUI.mainView);
   let tab = false;
 
   for (let button of buttons) {
@@ -188,7 +218,7 @@ add_task(async function testInterleavedTabAndArrowKeys() {
 add_task(async function testSpaceDownAfterTabNavigation() {
   await gCUITestUtils.openMainMenu();
 
-  let buttons = PanelView.forNode(PanelUI.mainView)._getNavigableElements();
+  let buttons = getEnabledNavigableElementsForView(PanelUI.mainView);
   let button;
 
   for (button of buttons) {

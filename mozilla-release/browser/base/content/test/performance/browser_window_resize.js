@@ -54,8 +54,7 @@ async function resizeWindow(win, width, height) {
     BrowserTestUtils.waitForEvent(win, "BookmarksToolbarVisibilityUpdated");
   let resizeEvent =
     BrowserTestUtils.waitForEvent(win, "resize");
-  let dwu = win.QueryInterface(Ci.nsIInterfaceRequestor)
-               .getInterface(Ci.nsIDOMWindowUtils);
+  let dwu = win.windowUtils;
   dwu.ensureDirtyRootFrame();
   win.resizeTo(width, height);
   await resizeEvent;
@@ -80,7 +79,7 @@ add_task(async function() {
   await PlacesUtils.bookmarks.insertTree({
     guid: PlacesUtils.bookmarks.toolbarGuid,
     children: Array(BOOKMARKS_COUNT).fill("")
-                                    .map((_, i) => ({ url: `http://test.places.${i}/`}))
+                                    .map((_, i) => ({ url: `http://test.places.${i}/`})),
   });
 
   let wasCollapsed = gToolbar.collapsed;

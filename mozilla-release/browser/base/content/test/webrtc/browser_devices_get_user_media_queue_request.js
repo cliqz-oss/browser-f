@@ -22,7 +22,7 @@ var gTests = [
     let indicator = promiseIndicatorWindow();
 
     await promiseMessage("ok", () => {
-      PopupNotifications.panel.firstChild.button.click();
+      PopupNotifications.panel.firstElementChild.button.click();
     });
 
     await expectObserverCalled("getUserMedia:response:allow");
@@ -45,7 +45,7 @@ var gTests = [
 
     // close all streams
     await closeStream();
-  }
+  },
 },
 
 {
@@ -72,7 +72,7 @@ var gTests = [
     let indicator = promiseIndicatorWindow();
 
     await promiseMessage("ok", () => {
-      PopupNotifications.panel.firstChild.button.click();
+      PopupNotifications.panel.firstElementChild.button.click();
     });
 
     await expectObserverCalled("getUserMedia:response:allow");
@@ -86,7 +86,7 @@ var gTests = [
 
     // close all streams
     await closeStream();
-  }
+  },
 },
 
 {
@@ -103,7 +103,7 @@ var gTests = [
     await expectObserverCalled("getUserMedia:request");
 
     await promiseMessage(badDeviceError, () => {
-      PopupNotifications.panel.firstChild.button.click();
+      PopupNotifications.panel.firstElementChild.button.click();
     });
 
     await expectObserverCalled("getUserMedia:response:allow");
@@ -114,7 +114,7 @@ var gTests = [
     let indicator = promiseIndicatorWindow();
 
     await promiseMessage("ok", () => {
-      PopupNotifications.panel.firstChild.button.click();
+      PopupNotifications.panel.firstElementChild.button.click();
     });
 
     await expectObserverCalled("getUserMedia:response:allow");
@@ -126,7 +126,7 @@ var gTests = [
 
     // close all streams
     await closeStream();
-  }
+  },
 },
 
 {
@@ -148,8 +148,8 @@ var gTests = [
     await expectObserverCalled("recording-window-ended");
 
     SitePermissions.remove(null, "microphone", gBrowser.selectedBrowser);
-  }
-}
+  },
+},
 
 ];
 

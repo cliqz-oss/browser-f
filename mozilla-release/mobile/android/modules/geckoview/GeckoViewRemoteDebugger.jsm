@@ -13,13 +13,17 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   Services: "resource://gre/modules/Services.jsm",
 });
 
-XPCOMUtils.defineLazyGetter(this, "DebuggerServer", () => {
+XPCOMUtils.defineLazyGetter(this, "require", () => {
   const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+  return require;
+});
+
+XPCOMUtils.defineLazyGetter(this, "DebuggerServer", () => {
   const { DebuggerServer } = require("devtools/server/main");
   return DebuggerServer;
 });
 
-GeckoViewUtils.initLogging("GeckoView.RemoteDebugger", this);
+GeckoViewUtils.initLogging("RemoteDebugger", this);
 
 var GeckoViewRemoteDebugger = {
   observe(aSubject, aTopic, aData) {
@@ -48,23 +52,31 @@ var GeckoViewRemoteDebugger = {
     debug `onEnable`;
     DebuggerServer.init();
     DebuggerServer.registerAllActors();
-    DebuggerServer.registerModule("resource://gre/modules/dbg-browser-actors.js");
+    const { createRootActor } = require("resource://gre/modules/dbg-browser-actors.js");
+    DebuggerServer.setRootActor(createRootActor);
     DebuggerServer.allowChromeProcess = true;
     DebuggerServer.chromeWindowType = "navigator:geckoview";
 
+    // Socket address for USB remote debugger expects
+    // @ANDROID_PACKAGE_NAME/firefox-debugger-socket.
+    // In /proc/net/unix, it will be outputed as
+    // @org.mozilla.geckoview_example/firefox-debugger-socket
+    //
+    // If package name isn't available, it will be "@firefox-debugger-socket".
+
     const env = Cc["@mozilla.org/process/environment;1"]
               .getService(Ci.nsIEnvironment);
-    const dataDir = env.get("MOZ_ANDROID_DATA_DIR");
-
-    if (!dataDir) {
-      warn `Missing env MOZ_ANDROID_DATA_DIR - aborting debugger server start`;
-      return;
+    let packageName = env.get("MOZ_ANDROID_PACKAGE_NAME");
+    if (packageName) {
+      packageName = packageName + "/";
+    } else {
+      warn `Missing env MOZ_ANDROID_PACKAGE_NAME. Unable to get pacakge name`;
     }
 
     this._isEnabled = true;
     this._usbDebugger.stop();
 
-    const portOrPath = dataDir + "/firefox-debugger-socket";
+    const portOrPath = packageName + "firefox-debugger-socket";
     this._usbDebugger.start(portOrPath);
   },
 

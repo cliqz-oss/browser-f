@@ -94,7 +94,7 @@ enum TraceLoggerTextId {
     TraceLogger_Internal,
 #define DEFINE_TEXT_ID(textId) TraceLogger_ ## textId,
     TRACELOGGER_TREE_ITEMS(DEFINE_TEXT_ID)
-    TraceLogger_LastTreeItem,
+    TraceLogger_TreeItemEnd,
     TRACELOGGER_LOG_ITEMS(DEFINE_TEXT_ID)
 #undef DEFINE_TEXT_ID
     TraceLogger_Last
@@ -131,7 +131,7 @@ TLTextIdIsTogglable(uint32_t id)
     if (id == TraceLogger_Stop)
         return false;
     // Actually never used. But added here so it doesn't show as toggle
-    if (id == TraceLogger_LastTreeItem)
+    if (id == TraceLogger_TreeItemEnd)
         return false;
     if (id == TraceLogger_Last)
         return false;
@@ -145,9 +145,9 @@ TLTextIdIsTogglable(uint32_t id)
 inline bool
 TLTextIdIsTreeEvent(uint32_t id)
 {
-    // Everything between TraceLogger_Error and TraceLogger_LastTreeItem are tree events and
+    // Everything between TraceLogger_Error and TraceLogger_TreeItemEnd are tree events and
     // atm also every custom event.
-    return (id > TraceLogger_Error && id < TraceLogger_LastTreeItem) ||
+    return (id > TraceLogger_Error && id < TraceLogger_TreeItemEnd) ||
            id >= TraceLogger_Last;
 }
 
@@ -170,7 +170,7 @@ class ContinuousSpace {
     bool init() {
         capacity_ = 64;
         size_ = 0;
-        data_ = (T*) js_malloc(capacity_ * sizeof(T));
+        data_ = js_pod_malloc<T>(capacity_);
         if (!data_)
             return false;
 
@@ -230,7 +230,7 @@ class ContinuousSpace {
         uint32_t nCapacity = capacity_ * 2;
         nCapacity = (nCapacity < maxSize()) ? nCapacity : maxSize();
 
-        T* entries = (T*) js_realloc(data_, nCapacity * sizeof(T));
+        T* entries = js_pod_realloc<T>(data_, capacity_, nCapacity);
         if (!entries)
             return false;
 

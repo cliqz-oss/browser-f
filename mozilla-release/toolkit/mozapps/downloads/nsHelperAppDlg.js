@@ -75,7 +75,7 @@ nsUnknownContentTypeDialogProgressListener.prototype = {
 
   onRefreshAttempted(aWebProgress, aURI, aDelay, aSameURI) {
     return true;
-  }
+  },
 };
 
 // /////////////////////////////////////////////////////////////////////////////
@@ -156,10 +156,7 @@ nsUnknownContentTypeDialog.prototype = {
     try {
       let ir = this.mContext.QueryInterface(Ci.nsIInterfaceRequestor);
       let docShell = ir.getInterface(Ci.nsIDocShell);
-      let rootWin = docShell.QueryInterface(Ci.nsIDocShellTreeItem)
-                                 .rootTreeItem
-                                 .QueryInterface(Ci.nsIInterfaceRequestor)
-                                 .getInterface(Ci.nsIDOMWindow);
+      let rootWin = docShell.rootTreeItem.domWindow;
       this.mDialog = Services.ww.openWindow(rootWin,
                                             "chrome://mozapps/content/downloads/unknownContentType.xul",
                                             null,
@@ -220,9 +217,7 @@ nsUnknownContentTypeDialog.prototype = {
       // because the original one is definitely gone (and nsIFilePicker doesn't like
       // a null parent):
       gDownloadLastDir = this._mDownloadDir;
-      let windowsEnum = Services.wm.getEnumerator("");
-      while (windowsEnum.hasMoreElements()) {
-        let someWin = windowsEnum.getNext();
+      for (let someWin of Services.wm.getEnumerator("")) {
         // We need to make sure we don't end up with this dialog, because otherwise
         // that's going to go away when the user clicks "Save", and that breaks the
         // windows file picker that's supposed to show up if we let the user choose
@@ -527,7 +522,7 @@ nsUnknownContentTypeDialog.prototype = {
       enableDialog: () => {
         this.mDialog.document.documentElement.getButton("accept").disabled = false;
       },
-      focusTarget: this.mDialog
+      focusTarget: this.mDialog,
     });
   },
 

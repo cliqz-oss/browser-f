@@ -50,7 +50,7 @@ add_task(async function actionURILosslessDecode() {
     gURLBar.controller.handleKeyNavigation(KeyEvent.DOM_VK_DOWN);
   } while (gURLBar.popup.selectedIndex != 0);
 
-  let [, type, ] = gURLBar.value.match(/^moz-action:([^,]+),(.*)$/);
+  let [, type ] = gURLBar.value.match(/^moz-action:([^,]+),(.*)$/);
   Assert.equal(type, "visiturl",
                "visiturl action URI should be in the urlbar");
 
@@ -65,7 +65,7 @@ add_task(async function actionURILosslessDecode() {
 async function checkInput(inputStr) {
   await promiseAutocompleteResultPopup(inputStr);
 
-  let item = gURLBar.popup.richlistbox.firstChild;
+  let item = gURLBar.popup.richlistbox.firstElementChild;
   Assert.ok(item, "Should have a result");
 
   // visiturl matches have their param.urls fixed up.

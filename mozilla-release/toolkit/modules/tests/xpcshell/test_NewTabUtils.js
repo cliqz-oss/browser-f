@@ -3,6 +3,8 @@
 
 // See also browser/base/content/test/newtab/.
 
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+
 // A small 1x1 test png
 const image1x1 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVQI12NgAAAAAgAB4iG8MwAAAABJRU5ErkJggg==";
 
@@ -324,7 +326,7 @@ add_task(async function extractSite() {
 add_task(async function faviconBytesToDataURI() {
   let tests = [
         [{favicon: "bar".split("").map(s => s.charCodeAt(0)), mimeType: "foo"}],
-        [{favicon: "bar".split("").map(s => s.charCodeAt(0)), mimeType: "foo", xxyy: "quz"}]
+        [{favicon: "bar".split("").map(s => s.charCodeAt(0)), mimeType: "foo", xxyy: "quz"}],
       ];
   let provider = NewTabUtils.activityStreamProvider;
 
@@ -354,7 +356,7 @@ add_task(async function addFavicons() {
   links[0].url = "https://mozilla.com";
 
   let visit = [
-    {uri: links[0].url, visitDate: timeDaysAgo(0), transition: PlacesUtils.history.TRANSITION_TYPED}
+    {uri: links[0].url, visitDate: timeDaysAgo(0), transition: PlacesUtils.history.TRANSITION_TYPED},
   ];
   await PlacesTestUtils.addVisits(visit);
 
@@ -390,7 +392,7 @@ add_task(async function getHighlightsWithoutPocket() {
   const addMetadata = url => PlacesUtils.history.update({
     description: "desc",
     previewImageURL: "https://image/",
-    url
+    url,
   });
 
   await setUpActivityStreamTest();
@@ -407,13 +409,13 @@ add_task(async function getHighlightsWithoutPocket() {
       dateAdded: new Date(now - oldSeconds * 1000),
       parentGuid: PlacesUtils.bookmarks.unfiledGuid,
       title: "foo",
-      url: "https://mozilla1.com/dayOld"
+      url: "https://mozilla1.com/dayOld",
     },
     {
       parentGuid: PlacesUtils.bookmarks.unfiledGuid,
       title: "foo",
-      url: "https://mozilla1.com/nowNew"
-    }
+      url: "https://mozilla1.com/nowNew",
+    },
   ];
   for (let placeInfo of bookmarks) {
     await PlacesUtils.bookmarks.insert(placeInfo);
@@ -490,7 +492,7 @@ add_task(async function getHighlightsWithoutPocket() {
   await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.unfiledGuid,
     title: "now a bookmark",
-    url: testURI
+    url: testURI,
   });
 
   links = await provider.getHighlights();
@@ -519,7 +521,7 @@ add_task(async function getHighlightsWithPocketSuccess() {
       title: "foo",
       description: "desc",
       preview_image_url: "foo.com/img.png",
-      url: "https://mozilla1.com/"
+      url: "https://mozilla1.com/",
   };
 
   const fakeResponse = {
@@ -531,14 +533,14 @@ add_task(async function getHighlightsWithPocketSuccess() {
         resolved_title: "A title for foo",
         resolved_url: "http://www.foo.com",
         item_id: "123",
-        open_url: "getpocket.com/itemID",
-        status: "0"
+        open_url: "http://www.getpocket.com/itemID",
+        status: "0",
       },
       "456": {
         item_id: "456",
         status: "2",
-      }
-    }
+      },
+    },
   };
 
   await PlacesUtils.bookmarks.insert(bookmark);
@@ -568,7 +570,7 @@ add_task(async function getHighlightsWithPocketSuccess() {
   Assert.equal(currentLink.title, pocketItem.resolved_title, "Correct title was added");
   Assert.equal(currentLink.description, pocketItem.excerpt, "Correct description was added");
   Assert.equal(currentLink.pocket_id, pocketItem.item_id, "item_id was preserved");
-  Assert.equal(currentLink.open_url, pocketItem.open_url, "open_url was preserved");
+  Assert.equal(currentLink.open_url, `${pocketItem.open_url}?src=fx_new_tab`, "open_url was preserved");
   Assert.equal(currentLink.date_added, pocketItem.time_added * 1000, "date_added was added to pocket item");
 
   NewTabUtils.activityStreamLinks._savedPocketStories = null;
@@ -586,14 +588,14 @@ add_task(async function getHighlightsWithPocketCached() {
         resolved_title: "A title for foo",
         resolved_url: "http://www.foo.com",
         item_id: "123",
-        open_url: "getpocket.com/itemID",
-        status: "0"
+        open_url: "http://www.getpocket.com/itemID",
+        status: "0",
       },
       "456": {
         item_id: "456",
         status: "2",
-      }
-    }
+      },
+    },
   };
 
   NewTabUtils.activityStreamProvider.fetchSavedPocketItems = () => fakeResponse;
@@ -611,8 +613,8 @@ add_task(async function getHighlightsWithPocketCached() {
     resolved_title: "A title for bar",
     resolved_url: "http://www.bar.com",
     item_id: "789",
-    open_url: "getpocket.com/itemID",
-    status: "0"
+    open_url: "http://www.getpocket.com/itemID",
+    status: "0",
   };
 
   // Call getHighlights again - this time we should get the cached links since we just updated
@@ -677,6 +679,48 @@ add_task(async function getTopFrecentSites() {
   links = await provider.getTopSites({topsiteFrecency: 100});
   Assert.equal(links.length, 1, "adding a visit yields a link");
   Assert.equal(links[0].url, testURI, "added visit corresponds to added url");
+});
+
+add_task({ skip_if: () => AppConstants.MOZ_APP_NAME == "thunderbird" },
+         async function getTopFrecentSites_improveSearch() {
+  await setUpActivityStreamTest();
+  const SEARCH_SHORTCUTS_EXPERIMENT_PREF = "browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts";
+  Services.prefs.setBoolPref(SEARCH_SHORTCUTS_EXPERIMENT_PREF, true);
+
+  let testURI = "https://www.amazon.com?search=tv";
+  await PlacesTestUtils.addVisits(testURI);
+
+  let provider = NewTabUtils.activityStreamLinks;
+  let links = await provider.getTopSites({topsiteFrecency: 100});
+  Assert.equal(links.length, 1, "sanity check that we got the link from top sites");
+  Assert.equal(links[0].url, "https://amazon.com", "the amazon site was converted to generic search shortcut site");
+
+  Services.prefs.setBoolPref(SEARCH_SHORTCUTS_EXPERIMENT_PREF, false);
+});
+
+add_task(async function getTopFrecentSites_no_dedup() {
+  await setUpActivityStreamTest();
+
+  let provider = NewTabUtils.activityStreamLinks;
+  let links = await provider.getTopSites({topsiteFrecency: 100});
+  Assert.equal(links.length, 0, "empty history yields empty links");
+
+  // Add a visits in reverse order they will be returned in when not deduped.
+  let testURIs = [{uri: "http://www.mozilla.com/"}, {uri: "http://mozilla.com/"}];
+  await PlacesTestUtils.addVisits(testURIs);
+
+  links = await provider.getTopSites();
+  Assert.equal(links.length, 0, "adding a single visit doesn't exceed default threshold");
+
+  links = await provider.getTopSites({topsiteFrecency: 100});
+  Assert.equal(links.length, 1, "adding a visit yields a link");
+  // Plain domain is returned when deduped.
+  Assert.equal(links[0].url, testURIs[1].uri, "added visit corresponds to added url");
+
+  links = await provider.getTopSites({topsiteFrecency: 100, onePerDomain: false});
+  Assert.equal(links.length, 2, "adding a visit yields a link");
+  Assert.equal(links[0].url, testURIs[1].uri, "added visit corresponds to added url");
+  Assert.equal(links[1].url, testURIs[0].uri, "added visit corresponds to added url");
 });
 
 add_task(async function getTopFrecentSites_dedupeWWW() {
@@ -793,7 +837,7 @@ add_task(async function getTopFrecentSites_order() {
     // sort by last visit date, frecency 200
     {uri: "https://mozilla3.com/2", visitDate: timeLater, transition: TRANSITION_TYPED},
     // sort by frecency, frecency 10
-    {uri: "https://mozilla4.com/3", visitDate: timeLater}
+    {uri: "https://mozilla0.com/", visitDate: timeLater},
   ];
 
   let links = await provider.getTopSites({topsiteFrecency: 0});
@@ -841,7 +885,7 @@ add_task(async function activitySteamProvider_deleteHistoryLink() {
     // frecency 200
     {uri: "https://mozilla1.com/0", visitDate: timeDaysAgo(1), transition: TRANSITION_TYPED},
     // sort by url, frecency 200
-    {uri: "https://mozilla2.com/1", visitDate: timeDaysAgo(0)}
+    {uri: "https://mozilla2.com/1", visitDate: timeDaysAgo(0)},
   ];
 
   let size = await getHistorySize();
@@ -882,7 +926,7 @@ add_task(async function activityStream_deleteBookmark() {
   let provider = NewTabUtils.activityStreamLinks;
   let bookmarks = [
     {url: "https://mozilla1.com/0", parentGuid: PlacesUtils.bookmarks.unfiledGuid},
-    {url: "https://mozilla1.com/1", parentGuid: PlacesUtils.bookmarks.unfiledGuid}
+    {url: "https://mozilla1.com/1", parentGuid: PlacesUtils.bookmarks.unfiledGuid},
   ];
 
   let bookmarksSize = await getBookmarksSize();
@@ -919,7 +963,7 @@ add_task(async function activityStream_blockedURLs() {
     {uri: "https://example1.com/", visitDate: timeToday, transition: TRANSITION_TYPED},
     {uri: "https://example2.com/", visitDate: timeToday, transition: TRANSITION_TYPED},
     {uri: "https://example3.com/", visitDate: timeEarlier, transition: TRANSITION_TYPED},
-    {uri: "https://example4.com/", visitDate: timeEarlier, transition: TRANSITION_TYPED}
+    {uri: "https://example4.com/", visitDate: timeEarlier, transition: TRANSITION_TYPED},
   ];
   await PlacesTestUtils.addVisits(visits);
   await PlacesUtils.bookmarks.insert({url: "https://example5.com/", parentGuid: PlacesUtils.bookmarks.unfiledGuid});
@@ -937,7 +981,7 @@ add_task(async function activityStream_getTotalBookmarksCount() {
   let provider = NewTabUtils.activityStreamProvider;
   let bookmarks = [
     {url: "https://mozilla1.com/0", parentGuid: PlacesUtils.bookmarks.unfiledGuid},
-    {url: "https://mozilla1.com/1", parentGuid: PlacesUtils.bookmarks.unfiledGuid}
+    {url: "https://mozilla1.com/1", parentGuid: PlacesUtils.bookmarks.unfiledGuid},
   ];
 
   let bookmarksSize = await provider.getTotalBookmarksCount();

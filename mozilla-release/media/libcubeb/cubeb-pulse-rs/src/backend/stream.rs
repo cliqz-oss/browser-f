@@ -438,7 +438,7 @@ impl<'ctx> StreamOps for PulseStream<'ctx> {
         let stm = self.output_stream.as_ref().unwrap();
         let r = match stm.get_time() {
             Ok(r_usec) => {
-                let bytes = r_usec.to_bytes(&self.output_sample_spec);
+                let bytes = USecExt::to_bytes(r_usec, &self.output_sample_spec);
                 Ok((bytes / self.output_sample_spec.frame_size()) as u64)
             }
             Err(_) => Err(Error::error()),
@@ -902,13 +902,17 @@ impl<'ctx> PulseStream<'ctx> {
 
 fn stream_success(_: &pulse::Stream, success: i32, u: *mut c_void) {
     let stm = unsafe { &*(u as *mut PulseStream) };
-    debug_assert_ne!(success, 0);
+    if success != 1 {
+        cubeb_log!("stream_success ignored failure: {}", success);
+    }
     stm.context.mainloop.signal();
 }
 
 fn context_success(_: &pulse::Context, success: i32, u: *mut c_void) {
     let ctx = unsafe { &*(u as *mut PulseContext) };
-    debug_assert_ne!(success, 0);
+    if success != 1 {
+        cubeb_log!("context_success ignored failure: {}", success);
+    }
     ctx.mainloop.signal();
 }
 

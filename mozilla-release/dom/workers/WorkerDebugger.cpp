@@ -58,8 +58,8 @@ private:
                                                   nullptr);
     event->InitMessageEvent(nullptr,
                             NS_LITERAL_STRING("message"),
-                            false, // canBubble
-                            true, // cancelable
+                            CanBubble::eNo,
+                            Cancelable::eYes,
                             data,
                             EmptyString(),
                             EmptyString(),
@@ -478,41 +478,57 @@ PerformanceInfo
 WorkerDebugger::ReportPerformanceInfo()
 {
   AssertIsOnMainThread();
+
 #if defined(XP_WIN)
   uint32_t pid = GetCurrentProcessId();
 #else
   uint32_t pid = getpid();
 #endif
-  uint64_t wid = mWorkerPrivate->WindowID();
-  uint64_t pwid = wid;
-  nsPIDOMWindowInner* win = mWorkerPrivate->GetWindow();
+  bool isTopLevel= false;
+  uint64_t windowID = mWorkerPrivate->WindowID();
+
+  // Walk up to our containing page and its window
+  WorkerPrivate* wp = mWorkerPrivate;
+  while (wp->GetParent()) {
+    wp = wp->GetParent();
+  }
+  nsPIDOMWindowInner* win = wp->GetWindow();
   if (win) {
     nsPIDOMWindowOuter* outer = win->GetOuterWindow();
     if (outer) {
       nsCOMPtr<nsPIDOMWindowOuter> top = outer->GetTop();
       if (top) {
-        pwid = top->WindowID();
+        windowID = top->WindowID();
+        isTopLevel = outer->IsTopLevelWindow();
       }
     }
   }
-  RefPtr<PerformanceCounter> perf = mWorkerPrivate->GetPerformanceCounter();
-  uint16_t count =  perf->GetTotalDispatchCount();
-  uint64_t duration = perf->GetExecutionDuration();
-  RefPtr<nsIURI> uri = mWorkerPrivate->GetResolvedScriptURI();
+
+  // getting the worker URL
+  RefPtr<nsIURI> scriptURI = mWorkerPrivate->GetResolvedScriptURI();
+  nsCString url = scriptURI->GetSpecOrDefault();
 
   // Workers only produce metrics for a single category - DispatchCategory::Worker.
   // We still return an array of CategoryDispatch so the PerformanceInfo
   // struct is common to all performance counters throughout Firefox.
   FallibleTArray<CategoryDispatch> items;
-  CategoryDispatch item = CategoryDispatch(DispatchCategory::Worker.GetValue(), count);
-  if (!items.AppendElement(item, fallible)) {
-    NS_ERROR("Could not complete the operation");
-    return PerformanceInfo(uri->GetSpecOrDefault(), pid, wid, pwid, duration,
-                            true, items);
+  uint64_t duration = 0;
+  uint16_t count = 0;
+  uint64_t perfId = 0;
+
+  RefPtr<PerformanceCounter> perf = mWorkerPrivate->GetPerformanceCounter();
+  if (perf) {
+    perfId = perf->GetID();
+    count =  perf->GetTotalDispatchCount();
+    duration = perf->GetExecutionDuration();
+    CategoryDispatch item = CategoryDispatch(DispatchCategory::Worker.GetValue(), count);
+    if (!items.AppendElement(item, fallible)) {
+      NS_ERROR("Could not complete the operation");
+      return PerformanceInfo(url, pid, windowID, duration, perfId, true, isTopLevel, items);
+    }
   }
-  perf->ResetPerformanceCounters();
-  return PerformanceInfo(uri->GetSpecOrDefault(), pid, wid, pwid, duration,
-                         true, items);
+
+  return PerformanceInfo(url, pid, windowID, duration, perfId, true, isTopLevel, items);
 }
 
 } // dom namespace

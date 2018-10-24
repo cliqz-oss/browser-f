@@ -7,11 +7,9 @@
 #include "mozilla/dom/TreeBoxObject.h"
 #include "nsCOMPtr.h"
 #include "nsXULElement.h"
-#include "nsIScriptableRegion.h"
 #include "nsTreeContentView.h"
 #include "nsITreeSelection.h"
 #include "ChildIterator.h"
-#include "nsContentUtils.h"
 #include "nsError.h"
 #include "nsTreeBodyFrame.h"
 #include "mozilla/dom/TreeBoxObjectBinding.h"
@@ -314,19 +312,6 @@ int32_t TreeBoxObject::GetPageLength()
   return 0;
 }
 
-already_AddRefed<nsIScriptableRegion>
-TreeBoxObject::SelectionRegion()
-{
-  nsTreeBodyFrame* body = GetTreeBodyFrame();
-  if (!body) {
-    return nullptr;
-  }
-
-  nsCOMPtr<nsIScriptableRegion> region;
-  body->GetSelectionRegion(getter_AddRefs(region));
-  return region.forget();
-}
-
 NS_IMETHODIMP
 TreeBoxObject::EnsureRowIsVisible(int32_t aRow)
 {
@@ -618,7 +603,7 @@ TreeBoxObject::ClearCachedValues()
 JSObject*
 TreeBoxObject::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return TreeBoxObjectBinding::Wrap(aCx, this, aGivenProto);
+  return TreeBoxObject_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 } // namespace dom

@@ -137,7 +137,7 @@ impl<'ctx> MonotoneFramework for CannotDeriveHash<'ctx> {
             });
             return if layout_can_derive &&
                 !(ty.is_union() &&
-                  self.ctx.options().rust_features().untagged_union()) {
+                  self.ctx.options().rust_features().untagged_union) {
                 trace!("    we can trivially derive Hash for the layout");
                 ConstrainResult::Same
             } else {
@@ -202,6 +202,18 @@ impl<'ctx> MonotoneFramework for CannotDeriveHash<'ctx> {
                     self.insert(id)
                 }
             }
+            TypeKind::Vector(t, len) => {
+                if self.cannot_derive_hash.contains(&t.into()) {
+                    trace!(
+                        "    vectors of T for which we cannot derive Hash \
+                         also cannot derive Hash"
+                    );
+                    return self.insert(id);
+                }
+                assert_ne!(len, 0, "vectors cannot have zero length");
+                trace!("    vector can derive Hash");
+                ConstrainResult::Same
+            }
 
             TypeKind::Pointer(inner) => {
                 let inner_type =
@@ -257,7 +269,7 @@ impl<'ctx> MonotoneFramework for CannotDeriveHash<'ctx> {
                 }
 
                 if info.kind() == CompKind::Union {
-                    if self.ctx.options().rust_features().untagged_union() {
+                    if self.ctx.options().rust_features().untagged_union {
                         trace!("    cannot derive Hash for Rust unions");
                         return self.insert(id);
                     }

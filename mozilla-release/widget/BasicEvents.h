@@ -31,6 +31,17 @@ namespace mozilla {
 
 class EventTargetChainItem;
 
+enum class CrossProcessForwarding
+{
+  // eStop prevents the event to be sent to remote process.
+  eStop,
+  // eAllow keeps current state of the event whether it's sent to remote
+  // process.  In other words, eAllow does NOT mean that making the event
+  // sent to remote process when IsCrossProcessForwardingStopped() returns
+  // true.
+  eAllow,
+};
+
 /******************************************************************************
  * mozilla::BaseEventFlags
  *
@@ -190,18 +201,23 @@ public:
     // mDefaultPreventedByContent to true because in such case, defaultPrevented
     // must be true when web apps check it after they call preventDefault().
     if (aCalledByDefaultHandler) {
+      StopCrossProcessForwarding();
       mDefaultPreventedByChrome = true;
     } else {
       mDefaultPreventedByContent = true;
     }
   }
   // This should be used only before dispatching events into the DOM tree.
-  inline void PreventDefaultBeforeDispatch()
+  inline void
+  PreventDefaultBeforeDispatch(CrossProcessForwarding aCrossProcessForwarding)
   {
     if (!mCancelable) {
       return;
     }
     mDefaultPrevented = true;
+    if (aCrossProcessForwarding == CrossProcessForwarding::eStop) {
+      StopCrossProcessForwarding();
+    }
   }
   inline bool DefaultPrevented() const
   {
@@ -651,7 +667,11 @@ public:
   void PreventDefault(bool aCalledByDefaultHandler = true,
                       nsIPrincipal* aPrincipal = nullptr);
 
-  void PreventDefaultBeforeDispatch() { mFlags.PreventDefaultBeforeDispatch(); }
+  void
+  PreventDefaultBeforeDispatch(CrossProcessForwarding aCrossProcessForwarding)
+  {
+    mFlags.PreventDefaultBeforeDispatch(aCrossProcessForwarding);
+  }
   bool DefaultPrevented() const { return mFlags.DefaultPrevented(); }
   bool DefaultPreventedByContent() const
   {
@@ -912,7 +932,8 @@ public:
         mFlags.mComposed = mMessage == eEditorInput;
         break;
       case eFocusEventClass:
-        mFlags.mComposed = mMessage == eBlur || mMessage == eFocus;
+        mFlags.mComposed = mMessage == eBlur || mMessage == eFocus ||
+                           mMessage == eFocusOut || mMessage == eFocusIn;
         break;
       case eKeyboardEventClass:
         mFlags.mComposed = mMessage == eKeyDown || mMessage == eKeyUp ||
@@ -923,7 +944,6 @@ public:
                            mMessage == eMouseDoubleClick ||
                            mMessage == eMouseAuxClick ||
                            mMessage == eMouseDown || mMessage == eMouseUp ||
-                           mMessage == eMouseEnter || mMessage == eMouseLeave ||
                            mMessage == eMouseOver || mMessage == eMouseOut ||
                            mMessage == eMouseMove || mMessage == eContextMenu;
         break;
@@ -934,8 +954,6 @@ public:
                            mMessage == ePointerCancel ||
                            mMessage == ePointerOver ||
                            mMessage == ePointerOut ||
-                           mMessage == ePointerEnter ||
-                           mMessage == ePointerLeave ||
                            mMessage == ePointerGotCapture ||
                            mMessage == ePointerLostCapture;
         break;

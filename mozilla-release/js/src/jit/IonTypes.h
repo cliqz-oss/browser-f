@@ -104,9 +104,6 @@ enum BailoutKind
     Bailout_NonStringInput,
     Bailout_NonSymbolInput,
 
-    // SIMD Unbox expects a given type, bails out if it doesn't match.
-    Bailout_UnexpectedSimdInput,
-
     // Atomic operations require shared memory, bail out if the typed array
     // maps unshared memory.
     Bailout_NonSharedTypedArrayInput,
@@ -208,8 +205,6 @@ BailoutKindString(BailoutKind kind)
         return "Bailout_NonStringInput";
       case Bailout_NonSymbolInput:
         return "Bailout_NonSymbolInput";
-      case Bailout_UnexpectedSimdInput:
-        return "Bailout_UnexpectedSimdInput";
       case Bailout_NonSharedTypedArrayInput:
         return "Bailout_NonSharedTypedArrayInput";
       case Bailout_Debugger:
@@ -251,6 +246,19 @@ static const uint32_t ELEMENT_TYPE_MASK = (1 << ELEMENT_TYPE_BITS) - 1;
 static const uint32_t VECTOR_SCALE_BITS = 3;
 static const uint32_t VECTOR_SCALE_SHIFT = ELEMENT_TYPE_BITS + ELEMENT_TYPE_SHIFT;
 static const uint32_t VECTOR_SCALE_MASK = (1 << VECTOR_SCALE_BITS) - 1;
+
+// The integer SIMD types have a lot of operations that do the exact same thing
+// for signed and unsigned integer types. Sometimes it is simpler to treat
+// signed and unsigned integer SIMD types as the same type, using a SimdSign to
+// distinguish the few cases where there is a difference.
+enum class SimdSign {
+    // Signedness is not applicable to this type. (i.e., Float or Bool).
+    NotApplicable,
+    // Treat as an unsigned integer with a range 0 .. 2^N-1.
+    Unsigned,
+    // Treat as a signed integer in two's complement encoding.
+    Signed,
+};
 
 class SimdConstant {
   public:
@@ -410,7 +418,7 @@ enum class IntConversionInputKind {
 // The ordering of this enumeration is important: Anything < Value is a
 // specialized type. Furthermore, anything < String has trivial conversion to
 // a number.
-enum class MIRType
+enum class MIRType: uint8_t
 {
     Undefined,
     Null,
@@ -454,40 +462,7 @@ enum class MIRType
 static inline bool
 IsSimdType(MIRType type)
 {
-    return ((unsigned(type) >> VECTOR_SCALE_SHIFT) & VECTOR_SCALE_MASK) != 0;
-}
-
-// Returns the number of vector elements (hereby called "length") for a given
-// SIMD kind. It is the Y part of the name "Foo x Y".
-static inline unsigned
-SimdTypeToLength(MIRType type)
-{
-    MOZ_ASSERT(IsSimdType(type));
-    return 1 << ((unsigned(type) >> VECTOR_SCALE_SHIFT) & VECTOR_SCALE_MASK);
-}
-
-// Get the type of the individual lanes in a SIMD type.
-// For example, Int32x4 -> Int32, Float32x4 -> Float32 etc.
-static inline MIRType
-SimdTypeToLaneType(MIRType type)
-{
-    MOZ_ASSERT(IsSimdType(type));
-    static_assert(unsigned(MIRType::Last) <= ELEMENT_TYPE_MASK,
-                  "ELEMENT_TYPE_MASK should be larger than the last MIRType");
-    return MIRType((unsigned(type) >> ELEMENT_TYPE_SHIFT) & ELEMENT_TYPE_MASK);
-}
-
-// Get the type expected when inserting a lane into a SIMD type.
-// This is the argument type expected by the MSimdValue constructors as well as
-// MSimdSplat and MSimdInsertElement.
-static inline MIRType
-SimdTypeToLaneArgumentType(MIRType type)
-{
-    MIRType laneType = SimdTypeToLaneType(type);
-
-    // Boolean lanes should be pre-converted to an Int32 with the values 0 or -1.
-    // All other lane types are inserted directly.
-    return laneType == MIRType::Boolean ? MIRType::Int32 : laneType;
+    return ((uint8_t(type) >> VECTOR_SCALE_SHIFT) & VECTOR_SCALE_MASK) != 0;
 }
 
 static inline MIRType
@@ -690,24 +665,6 @@ IsNullOrUndefined(MIRType type)
 }
 
 static inline bool
-IsFloatingPointSimdType(MIRType type)
-{
-    return type == MIRType::Float32x4;
-}
-
-static inline bool
-IsIntegerSimdType(MIRType type)
-{
-    return IsSimdType(type) && SimdTypeToLaneType(type) == MIRType::Int32;
-}
-
-static inline bool
-IsBooleanSimdType(MIRType type)
-{
-    return IsSimdType(type) && SimdTypeToLaneType(type) == MIRType::Boolean;
-}
-
-static inline bool
 IsMagicType(MIRType type)
 {
     return type == MIRType::MagicHole ||
@@ -735,18 +692,10 @@ ScalarTypeToMIRType(Scalar::Type type)
         return MIRType::Float32;
       case Scalar::Float64:
         return MIRType::Double;
-      case Scalar::Float32x4:
-        return MIRType::Float32x4;
-      case Scalar::Int8x16:
-        return MIRType::Int8x16;
-      case Scalar::Int16x8:
-        return MIRType::Int16x8;
-      case Scalar::Int32x4:
-        return MIRType::Int32x4;
       case Scalar::MaxTypedArrayViewType:
         break;
     }
-    MOZ_CRASH("unexpected SIMD kind");
+    MOZ_CRASH("unexpected kind");
 }
 
 static inline unsigned
@@ -764,17 +713,10 @@ ScalarTypeToLength(Scalar::Type type)
       case Scalar::Float64:
       case Scalar::Uint8Clamped:
         return 1;
-      case Scalar::Float32x4:
-      case Scalar::Int32x4:
-        return 4;
-      case Scalar::Int16x8:
-        return 8;
-      case Scalar::Int8x16:
-        return 16;
       case Scalar::MaxTypedArrayViewType:
         break;
     }
-    MOZ_CRASH("unexpected SIMD kind");
+    MOZ_CRASH("unexpected kind");
 }
 
 static inline const char*
@@ -933,6 +875,11 @@ static const uint32_t MAX_UNCHECKED_LEAF_FRAME_SIZE = 64;
 typedef uint32_t TruncFlags;
 static const TruncFlags TRUNC_UNSIGNED   = TruncFlags(1) << 0;
 static const TruncFlags TRUNC_SATURATING = TruncFlags(1) << 1;
+
+enum BranchDirection {
+    FALSE_BRANCH,
+    TRUE_BRANCH
+};
 
 } // namespace jit
 } // namespace js

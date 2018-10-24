@@ -32,9 +32,9 @@ add_task(async function test_midi_permission_prompt() {
 
 // Tests that AutoplayPermissionPrompt works as expected
 add_task(async function test_autoplay_permission_prompt() {
-  Services.prefs.setBoolPref("media.autoplay.enabled", false);
+  Services.prefs.setIntPref("media.autoplay.default", Ci.nsIAutoplay.PROMPT);
   await testPrompt(PermissionUI.AutoplayPermissionPrompt);
-  Services.prefs.clearUserPref("media.autoplay.enabled");
+  Services.prefs.clearUserPref("media.autoplay.default");
 });
 
 async function testPrompt(Prompt) {
@@ -109,7 +109,7 @@ async function testPrompt(Prompt) {
     curPerm = SitePermissions.get(principal.URI, permissionKey);
     Assert.deepEqual(curPerm, {
                        state: SitePermissions.BLOCK,
-                       scope: SitePermissions.SCOPE_PERSISTENT
+                       scope: SitePermissions.SCOPE_PERSISTENT,
                      }, "Should have denied the action permanently");
     Assert.ok(mockRequest._cancelled,
               "The request should have been cancelled");
@@ -133,7 +133,7 @@ async function testPrompt(Prompt) {
     curPerm = SitePermissions.get(principal.URI, permissionKey);
     Assert.deepEqual(curPerm, {
                        state: SitePermissions.ALLOW,
-                       scope: SitePermissions.SCOPE_PERSISTENT
+                       scope: SitePermissions.SCOPE_PERSISTENT,
                      }, "Should have allowed the action permanently");
     Assert.ok(!mockRequest._cancelled,
               "The request should not have been cancelled");

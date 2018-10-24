@@ -30,8 +30,10 @@ public:
   nsINode* GetParentObject() final;
 
 protected:
-  DeclarationBlock* GetCSSDeclaration(Operation aOperation) final;
-  nsresult SetCSSDeclaration(DeclarationBlock* aDecl) final;
+  mozilla::DeclarationBlock* GetOrCreateCSSDeclaration(
+    Operation aOperation, mozilla::DeclarationBlock** aCreated) final;
+  nsresult SetCSSDeclaration(DeclarationBlock* aDecl,
+                             MutationClosureData* aClosureData) final;
   nsIDocument* DocToUpdate() final;
   ParsingEnvironment
   GetParsingEnvironment(nsIPrincipal* aSubjectPrincipal) const final;
@@ -51,11 +53,14 @@ private:
 };
 
 class CSSStyleRule final : public BindingStyleRule
-                           , public SupportsWeakPtr<CSSStyleRule>
+                         , public SupportsWeakPtr<CSSStyleRule>
 {
 public:
   CSSStyleRule(already_AddRefed<RawServoStyleRule> aRawRule,
-                 uint32_t aLine, uint32_t aColumn);
+               StyleSheet* aSheet,
+               css::Rule* aParentRule,
+               uint32_t aLine,
+               uint32_t aColumn);
 
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(CSSStyleRule,
@@ -76,7 +81,7 @@ public:
   NotNull<DeclarationBlock*> GetDeclarationBlock() const override;
 
   // WebIDL interface
-  uint16_t Type() const final { return dom::CSSRuleBinding::STYLE_RULE; }
+  uint16_t Type() const final { return dom::CSSRule_Binding::STYLE_RULE; }
   void GetCssText(nsAString& aCssText) const final;
   void GetSelectorText(nsAString& aSelectorText) final;
   void SetSelectorText(const nsAString& aSelectorText) final;

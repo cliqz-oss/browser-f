@@ -21,7 +21,6 @@
 #include "nsGkAtoms.h"
 #include "nsHashKeys.h"
 #include "nsPrintfCString.h"
-#include "nsStaticAtom.h"
 #include "nsString.h"
 #include "nsThreadUtils.h"
 #include "nsUnicharUtils.h"
@@ -61,7 +60,10 @@ enum class GCKind {
 // threads are operating the same atom, so it has to be signed so that
 // we wouldn't use overflow value for comparison.
 // See nsAtom::AddRef() and nsAtom::Release().
-static Atomic<int32_t, ReleaseAcquire> gUnusedAtomCount(0);
+// This atomic can be accessed during the GC and other places where recorded
+// events are not allowed, so its value is not preserved when recording or
+// replaying.
+static Atomic<int32_t, ReleaseAcquire, recordreplay::Behavior::DontPreserve> gUnusedAtomCount(0);
 
 nsDynamicAtom::nsDynamicAtom(const nsAString& aString, uint32_t aHash)
   : nsAtom(AtomKind::DynamicNormal, aString, aHash)
@@ -193,18 +195,15 @@ struct AtomTableKey
     *aHashOut = mHash;
   }
 
-  AtomTableKey(const char* aUTF8String, uint32_t aLength, uint32_t* aHashOut)
+  AtomTableKey(const char* aUTF8String,
+               uint32_t aLength,
+               uint32_t* aHashOut,
+               bool* aErr)
     : mUTF16String(nullptr)
     , mUTF8String(aUTF8String)
     , mLength(aLength)
   {
-    bool err;
-    mHash = HashUTF8AsUTF16(mUTF8String, mLength, &err);
-    if (err) {
-      mUTF8String = nullptr;
-      mLength = 0;
-      mHash = 0;
-    }
+    mHash = HashUTF8AsUTF16(mUTF8String, mLength, aErr);
     *aHashOut = mHash;
   }
 
@@ -243,7 +242,7 @@ class nsAtomSubTable
   void AddSizeOfExcludingThisLocked(MallocSizeOf aMallocSizeOf,
                                     AtomsSizes& aSizes);
 
-  AtomTableEntry* Search(AtomTableKey& aKey)
+  AtomTableEntry* Search(AtomTableKey& aKey) const
   {
     mLock.AssertCurrentThreadOwns();
     return static_cast<AtomTableEntry*>(mTable.Search(&aKey));
@@ -330,10 +329,12 @@ AtomTableMatchKey(const PLDHashEntryHdr* aEntry, const void* aKey)
   const AtomTableKey* k = static_cast<const AtomTableKey*>(aKey);
 
   if (k->mUTF8String) {
-    return
-      CompareUTF8toUTF16(nsDependentCSubstring(k->mUTF8String,
-                                               k->mUTF8String + k->mLength),
-                         nsDependentAtomString(he->mAtom)) == 0;
+    bool err = false;
+    return (CompareUTF8toUTF16(nsDependentCSubstring(
+                                 k->mUTF8String, k->mUTF8String + k->mLength),
+                               nsDependentAtomString(he->mAtom),
+                               &err) == 0) &&
+           !err;
   }
 
   return he->mAtom->Equals(k->mUTF16String, k->mLength);
@@ -646,6 +647,11 @@ nsAtomTable::RegisterStaticAtoms(const nsStaticAtom* aAtoms, size_t aAtomsLen)
     MOZ_ASSERT(nsCRT::IsAscii(atom->String()));
     MOZ_ASSERT(NS_strlen(atom->String()) == atom->GetLength());
 
+    // This assertion ensures the static atom's precomputed hash value matches
+    // what would be computed by mozilla::HashString(aStr), which is what we use
+    // when atomizing strings. We compute this hash in Atom.py.
+    MOZ_ASSERT(HashString(atom->String()) == atom->hash());
+
     AtomTableKey key(atom);
     nsAtomSubTable& table = SelectSubTable(key);
     MutexAutoLock lock(table.mLock);
@@ -669,8 +675,10 @@ nsAtomTable::RegisterStaticAtoms(const nsStaticAtom* aAtoms, size_t aAtomsLen)
 void
 NS_RegisterStaticAtoms(const nsStaticAtom* aAtoms, size_t aAtomsLen)
 {
+  MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(gAtomTable);
   gAtomTable->RegisterStaticAtoms(aAtoms, aAtomsLen);
+  gStaticAtomsDone = true;
 }
 
 already_AddRefed<nsAtom>
@@ -684,7 +692,16 @@ already_AddRefed<nsAtom>
 nsAtomTable::Atomize(const nsACString& aUTF8String)
 {
   uint32_t hash;
-  AtomTableKey key(aUTF8String.Data(), aUTF8String.Length(), &hash);
+  bool err;
+  AtomTableKey key(aUTF8String.Data(), aUTF8String.Length(), &hash, &err);
+  if (MOZ_UNLIKELY(err)) {
+    MOZ_ASSERT_UNREACHABLE("Tried to atomize invalid UTF-8.");
+    // The input was invalid UTF-8. Let's replace the errors with U+FFFD
+    // and atomize the result.
+    nsString str;
+    CopyUTF8toUTF16(aUTF8String, str);
+    return Atomize(str);
+  }
   nsAtomSubTable& table = SelectSubTable(key);
   MutexAutoLock lock(table.mLock);
   AtomTableEntry* he = table.Add(key);
@@ -821,13 +838,6 @@ nsAtomTable::GetStaticAtom(const nsAString& aUTF16String)
   return he && he->mAtom->IsStatic()
        ? static_cast<nsStaticAtom*>(he->mAtom)
        : nullptr;
-}
-
-void
-NS_SetStaticAtomsDone()
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  gStaticAtomsDone = true;
 }
 
 void ToLowerCaseASCII(RefPtr<nsAtom>& aAtom)

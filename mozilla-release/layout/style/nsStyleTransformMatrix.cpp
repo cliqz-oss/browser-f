@@ -173,13 +173,13 @@ ProcessTranslatePart(const nsCSSValue& aValue,
   }
 
   float translation =
-    NSAppUnitsToFloatPixels(offset, nsPresContext::AppUnitsPerCSSPixel());
+    NSAppUnitsToFloatPixels(offset, AppUnitsPerCSSPixel());
   // We want to avoid calling aDimensionGetter if there's no percentage to be
   // resolved (for performance reasons - see TransformReferenceBox).
   if (percent != 0.0f && aRefBox && !aRefBox->IsEmpty()) {
     translation +=
       percent * NSAppUnitsToFloatPixels((aRefBox->*aDimensionGetter)(),
-                                        nsPresContext::AppUnitsPerCSSPixel());
+                                        AppUnitsPerCSSPixel());
   }
   return translation;
 }
@@ -508,7 +508,7 @@ ProcessMatrixOperator(Matrix4x4& aMatrix,
       return matrix;
     }
 
-    float appUnitPerCSSPixel = nsPresContext::AppUnitsPerCSSPixel();
+    float appUnitPerCSSPixel = AppUnitsPerCSSPixel();
     matrix = nsStyleTransformMatrix::ReadTransforms(list,
                                                     aRefBox,
                                                     appUnitPerCSSPixel,
@@ -885,7 +885,7 @@ MatrixForTransformFunction(Matrix4x4& aMatrix,
     ProcessPerspective(aMatrix, aData);
     break;
   default:
-    NS_NOTREACHED("Unknown transform function!");
+    MOZ_ASSERT_UNREACHABLE("Unknown transform function!");
   }
 }
 
@@ -926,14 +926,12 @@ SetIdentityMatrix(nsCSSValue::Array* aMatrix)
   }
 }
 
-Matrix4x4
-ReadTransforms(const nsCSSValueList* aList,
-               TransformReferenceBox& aRefBox,
-               float aAppUnitsPerMatrixUnit,
-               bool* aContains3dTransform)
+static void
+ReadTransformsImpl(Matrix4x4& aMatrix,
+                   const nsCSSValueList* aList,
+                   TransformReferenceBox& aRefBox,
+                   bool* aContains3dTransform)
 {
-  Matrix4x4 result;
-
   for (const nsCSSValueList* curr = aList; curr != nullptr; curr = curr->mNext) {
     const nsCSSValue &currElem = curr->mValue;
     if (currElem.GetUnit() != eCSSUnit_Function) {
@@ -947,11 +945,57 @@ ReadTransforms(const nsCSSValueList* aList,
                  "Incoming function is too short!");
 
     /* Read in a single transform matrix. */
-    MatrixForTransformFunction(result, currElem.GetArrayValue(), aRefBox,
+    MatrixForTransformFunction(aMatrix, currElem.GetArrayValue(), aRefBox,
                                aContains3dTransform);
   }
+}
 
-  float scale = float(nsPresContext::AppUnitsPerCSSPixel()) / aAppUnitsPerMatrixUnit;
+Matrix4x4
+ReadTransforms(const nsCSSValueList* aList,
+               TransformReferenceBox& aRefBox,
+               float aAppUnitsPerMatrixUnit,
+               bool* aContains3dTransform)
+{
+  Matrix4x4 result;
+  ReadTransformsImpl(result, aList, aRefBox, aContains3dTransform);
+
+  float scale = float(AppUnitsPerCSSPixel()) / aAppUnitsPerMatrixUnit;
+  result.PreScale(1/scale, 1/scale, 1/scale);
+  result.PostScale(scale, scale, scale);
+
+  return result;
+}
+
+Matrix4x4
+ReadTransforms(const nsCSSValueList* aIndividualTransforms,
+               const Maybe<MotionPathData>& aMotion,
+               const nsCSSValueList* aTransform,
+               TransformReferenceBox& aRefBox,
+               float aAppUnitsPerMatrixUnit,
+               bool* aContains3dTransform)
+{
+  Matrix4x4 result;
+
+  if (aIndividualTransforms) {
+    ReadTransformsImpl(result, aIndividualTransforms, aRefBox,
+                       aContains3dTransform);
+  }
+
+  if (aMotion.isSome()) {
+    // Create the equivalent translate and rotate function, according to the
+    // order in spec. We combine the translate and then the rotate.
+    // https://drafts.fxtf.org/motion-1/#calculating-path-transform
+    result.PreTranslate(aMotion->mTranslate.x, aMotion->mTranslate.y, 0.0);
+    if (aMotion->mRotate != 0.0) {
+      result.RotateZ(aMotion->mRotate);
+    }
+  }
+
+  if (aTransform) {
+    ReadTransformsImpl(result, aTransform, aRefBox, aContains3dTransform);
+  }
+
+  float scale = float(AppUnitsPerCSSPixel()) / aAppUnitsPerMatrixUnit;
   result.PreScale(1/scale, 1/scale, 1/scale);
   result.PostScale(scale, scale, scale);
 

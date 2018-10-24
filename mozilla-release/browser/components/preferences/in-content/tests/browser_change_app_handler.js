@@ -28,10 +28,9 @@ add_task(async function() {
   container.selectItem(ourItem);
   ok(ourItem.selected, "Should be able to select our item.");
 
-  let list = await TestUtils.waitForCondition(() => win.document.getAnonymousElementByAttribute(ourItem, "class", "actionsMenu"));
-  info("Got list after item was selected");
+  let list = ourItem.querySelector(".actionsMenu");
 
-  let chooseItem = list.firstChild.querySelector(".choose-app-item");
+  let chooseItem = list.firstElementChild.querySelector(".choose-app-item");
   let dialogLoadedPromise = promiseLoadSubDialog("chrome://global/content/appPicker.xul");
   let cmdEvent = win.document.createEvent("xulcommandevent");
   cmdEvent.initCommandEvent("command", true, true, win, 0, false, false, false, false, null, 0);
@@ -42,8 +41,8 @@ add_task(async function() {
 
   let dialogDoc = dialog.document;
   let dialogList = dialogDoc.getElementById("app-picker-listbox");
-  dialogList.selectItem(dialogList.firstChild);
-  let selectedApp = dialogList.firstChild.handlerApp;
+  dialogList.selectItem(dialogList.firstElementChild);
+  let selectedApp = dialogList.firstElementChild.handlerApp;
   dialogDoc.documentElement.acceptDialog();
 
   // Verify results are correct in mime service:
@@ -51,8 +50,6 @@ add_task(async function() {
   ok(mimeInfo.preferredApplicationHandler.equals(selectedApp), "App should be set as preferred.");
 
   // Check that we display this result:
-  list = await TestUtils.waitForCondition(() => win.document.getAnonymousElementByAttribute(ourItem, "class", "actionsMenu"));
-  info("Got list after item was selected");
   ok(list.selectedItem, "Should have a selected item");
   ok(mimeInfo.preferredApplicationHandler.equals(list.selectedItem.handlerApp),
      "App should be visible as preferred item.");
@@ -61,7 +58,7 @@ add_task(async function() {
   // Now try to 'manage' this list:
   dialogLoadedPromise = promiseLoadSubDialog("chrome://browser/content/preferences/applicationManager.xul");
 
-  let manageItem = list.firstChild.querySelector(".manage-app-item");
+  let manageItem = list.firstElementChild.querySelector(".manage-app-item");
   cmdEvent = win.document.createEvent("xulcommandevent");
   cmdEvent.initCommandEvent("command", true, true, win, 0, false, false, false, false, null, 0);
   manageItem.dispatchEvent(cmdEvent);
@@ -71,7 +68,7 @@ add_task(async function() {
 
   dialogDoc = dialog.document;
   dialogList = dialogDoc.getElementById("appList");
-  let itemToRemove = dialogList.querySelector('listitem[label="' + selectedApp.name + '"]');
+  let itemToRemove = dialogList.querySelector('richlistitem > label[value="' + selectedApp.name + '"]').parentNode;
   dialogList.selectItem(itemToRemove);
   let itemsBefore = dialogList.children.length;
   dialogDoc.getElementById("remove").click();
@@ -84,7 +81,6 @@ add_task(async function() {
   ok(!mimeInfo.preferredApplicationHandler, "App should no longer be set as preferred.");
 
   // Check that we display this result:
-  list = await TestUtils.waitForCondition(() => win.document.getAnonymousElementByAttribute(ourItem, "class", "actionsMenu"));
   ok(list.selectedItem, "Should have a selected item");
   ok(!list.selectedItem.handlerApp,
      "No app should be visible as preferred item.");

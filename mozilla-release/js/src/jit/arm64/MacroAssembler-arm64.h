@@ -676,7 +676,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     void jump(TrampolinePtr code) {
         syncStackPtr();
         BufferOffset loc = b(-1, LabelDoc()); // The jump target will be patched by executableCopy().
-        addPendingJump(loc, ImmPtr(code.value), Relocation::HARDCODED);
+        addPendingJump(loc, ImmPtr(code.value), RelocationKind::HARDCODED);
     }
     void jump(RepatchLabel* label) {
         MOZ_CRASH("jump (repatchlabel)");
@@ -920,44 +920,6 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     void store64(Register64 src, Address address) {
         storePtr(src.reg, address);
     }
-
-    // SIMD.
-    void loadInt32x1(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadInt32x1(const BaseIndex& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadInt32x2(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadInt32x2(const BaseIndex& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadInt32x3(const Address& src, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadInt32x3(const BaseIndex& src, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadInt32x4(const Address& src, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void storeInt32x1(FloatRegister src, const Address& dest) { MOZ_CRASH("NYI"); }
-    void storeInt32x1(FloatRegister src, const BaseIndex& dest) { MOZ_CRASH("NYI"); }
-    void storeInt32x2(FloatRegister src, const Address& dest) { MOZ_CRASH("NYI"); }
-    void storeInt32x2(FloatRegister src, const BaseIndex& dest) { MOZ_CRASH("NYI"); }
-    void storeInt32x3(FloatRegister src, const Address& dest) { MOZ_CRASH("NYI"); }
-    void storeInt32x3(FloatRegister src, const BaseIndex& dest) { MOZ_CRASH("NYI"); }
-    void storeInt32x4(FloatRegister src, const Address& dest) { MOZ_CRASH("NYI"); }
-    void loadAlignedSimd128Int(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadAlignedSimd128Int(const BaseIndex& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void storeAlignedSimd128Int(FloatRegister src, const Address& addr) { MOZ_CRASH("NYI"); }
-    void storeAlignedSimd128Int(FloatRegister src, const BaseIndex& addr) { MOZ_CRASH("NYI"); }
-    void loadUnalignedSimd128Int(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadUnalignedSimd128Int(const BaseIndex& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void storeUnalignedSimd128Int(FloatRegister dest, const Address& addr) { MOZ_CRASH("NYI"); }
-    void storeUnalignedSimd128Int(FloatRegister dest, const BaseIndex& addr) { MOZ_CRASH("NYI"); }
-
-    void loadFloat32x3(const Address& src, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadFloat32x3(const BaseIndex& src, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadFloat32x4(const Address& src, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void storeFloat32x4(FloatRegister src, const Address& addr) { MOZ_CRASH("NYI"); }
-
-    void loadAlignedSimd128Float(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadAlignedSimd128Float(const BaseIndex& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void storeAlignedSimd128Float(FloatRegister src, const Address& addr) { MOZ_CRASH("NYI"); }
-    void storeAlignedSimd128Float(FloatRegister src, const BaseIndex& addr) { MOZ_CRASH("NYI"); }
-    void loadUnalignedSimd128Float(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadUnalignedSimd128Float(const BaseIndex& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void storeUnalignedSimd128Float(FloatRegister dest, const Address& addr) { MOZ_CRASH("NYI"); }
-    void storeUnalignedSimd128Float(FloatRegister dest, const BaseIndex& addr) { MOZ_CRASH("NYI"); }
 
     // StackPointer manipulation.
     inline void addToStackPtr(Register src);
@@ -1268,7 +1230,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     void branch(JitCode* target) {
         syncStackPtr();
         BufferOffset loc = b(-1, LabelDoc()); // The jump target will be patched by executableCopy().
-        addPendingJump(loc, ImmPtr(target->raw()), Relocation::JITCODE);
+        addPendingJump(loc, ImmPtr(target->raw()), RelocationKind::JITCODE);
     }
 
     CodeOffsetJump jumpWithPatch(RepatchLabel* label)
@@ -1934,7 +1896,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
                 nop();
         }
 
-        addPendingJump(loadOffset, ImmPtr(target->raw()), Relocation::JITCODE);
+        addPendingJump(loadOffset, ImmPtr(target->raw()), RelocationKind::JITCODE);
         CodeOffset ret(offset.getOffset());
         return ret;
     }
@@ -2047,7 +2009,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
 
   protected:
     bool buildOOLFakeExitFrame(void* fakeReturnAddr) {
-        uint32_t descriptor = MakeFrameDescriptor(framePushed(), JitFrame_IonJS,
+        uint32_t descriptor = MakeFrameDescriptor(framePushed(), FrameType::IonJS,
                                                   ExitFrameLayout::Size());
         Push(Imm32(descriptor));
         Push(ImmPtr(fakeReturnAddr));

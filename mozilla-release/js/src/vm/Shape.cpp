@@ -16,6 +16,7 @@
 #include "gc/Policy.h"
 #include "gc/PublicIterators.h"
 #include "js/HashTable.h"
+#include "js/UniquePtr.h"
 #include "util/Text.h"
 #include "vm/JSAtom.h"
 #include "vm/JSContext.h"
@@ -1444,11 +1445,6 @@ BaseShape::getUnowned(JSContext* cx, StackBaseShape& base)
 {
     auto& table = cx->zone()->baseShapes();
 
-    if (!table.initialized() && !table.init()) {
-        ReportOutOfMemory(cx);
-        return nullptr;
-    }
-
     auto p = MakeDependentAddPtr(cx, table, base);
     if (p)
         return *p;
@@ -1531,9 +1527,6 @@ BaseShape::canSkipMarkingShapeTable(Shape* lastShape)
 void
 Zone::checkBaseShapeTableAfterMovingGC()
 {
-    if (!baseShapes().initialized())
-        return;
-
     for (auto r = baseShapes().all(); !r.empty(); r.popFront()) {
         UnownedBaseShape* base = r.front().unbarrieredGet();
         CheckGCThingAfterMovingGC(base);
@@ -1570,9 +1563,6 @@ InitialShapeEntry::InitialShapeEntry(Shape* shape, const Lookup::ShapeProto& pro
 void
 Zone::checkInitialShapesTableAfterMovingGC()
 {
-    if (!initialShapes().initialized())
-        return;
-
     /*
      * Assert that the postbarriers have worked and that nothing is left in
      * initialShapes that points into the nursery, and that the hash table
@@ -1628,15 +1618,13 @@ ShapeHasher::match(const Key k, const Lookup& l)
 static KidsHash*
 HashChildren(Shape* kid1, Shape* kid2)
 {
-    KidsHash* hash = js_new<KidsHash>();
-    if (!hash || !hash->init(2)) {
-        js_delete(hash);
+    auto hash = MakeUnique<KidsHash>();
+    if (!hash || !hash->reserve(2))
         return nullptr;
-    }
 
     hash->putNewInfallible(StackShape(kid1), kid1);
     hash->putNewInfallible(StackShape(kid2), kid2);
-    return hash;
+    return hash.release();
 }
 
 bool
@@ -2044,6 +2032,8 @@ IsOriginalProto(GlobalObject* global, JSProtoKey key, NativeObject& proto)
     if (global->getPrototype(key) != ObjectValue(proto))
         return false;
 
+    MOZ_ASSERT(&proto.global() == global);
+
     if (key == JSProto_Object) {
         MOZ_ASSERT(proto.staticPrototypeIsImmutable(),
                    "proto should be Object.prototype, whose prototype is "
@@ -2072,7 +2062,6 @@ GetInitialShapeProtoKey(TaggedProto proto, JSContext* cx)
     if (proto.isObject() && proto.toObject()->isNative()) {
         GlobalObject* global = cx->global();
         NativeObject& obj = proto.toObject()->as<NativeObject>();
-        MOZ_ASSERT(global == &obj.global());
 
         if (IsOriginalProto(global, JSProto_Object, obj))
             return JSProto_Object;
@@ -2093,11 +2082,6 @@ EmptyShape::getInitialShape(JSContext* cx, const Class* clasp, TaggedProto proto
     MOZ_ASSERT_IF(proto.isObject(), cx->isInsideCurrentCompartment(proto.toObject()));
 
     auto& table = cx->zone()->initialShapes();
-
-    if (!table.initialized() && !table.init()) {
-        ReportOutOfMemory(cx);
-        return nullptr;
-    }
 
     using Lookup = InitialShapeEntry::Lookup;
     auto protoPointer = MakeDependentAddPtr(cx, table,
@@ -2248,9 +2232,6 @@ EmptyShape::insertInitialShape(JSContext* cx, HandleShape shape, HandleObject pr
 void
 Zone::fixupInitialShapeTable()
 {
-    if (!initialShapes().initialized())
-        return;
-
     for (InitialShapeSet::Enum e(initialShapes()); !e.empty(); e.popFront()) {
         // The shape may have been moved, but we can update that in place.
         Shape* shape = e.front().shape.unbarrieredGet();
@@ -2293,7 +2274,7 @@ JS::ubi::Concrete<js::Shape>::size(mozilla::MallocSizeOf mallocSizeOf) const
         size += table->sizeOfIncludingThis(mallocSizeOf);
 
     if (!get().inDictionary() && get().kids.isHash())
-        size += get().kids.toHash()->sizeOfIncludingThis(mallocSizeOf);
+        size += get().kids.toHash()->shallowSizeOfIncludingThis(mallocSizeOf);
 
     return size;
 }

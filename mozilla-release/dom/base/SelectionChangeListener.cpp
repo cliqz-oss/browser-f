@@ -71,22 +71,18 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(SelectionChangeListener)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mOldRanges);
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(SelectionChangeListener)
-  NS_INTERFACE_MAP_ENTRY(nsISupports)
-  NS_INTERFACE_MAP_ENTRY(nsISelectionListener)
-NS_INTERFACE_MAP_END
+NS_IMPL_CYCLE_COLLECTION_ROOT_NATIVE(SelectionChangeListener, AddRef)
+NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(SelectionChangeListener, Release)
 
-NS_IMPL_CYCLE_COLLECTING_ADDREF(SelectionChangeListener)
-NS_IMPL_CYCLE_COLLECTING_RELEASE(SelectionChangeListener)
-
-NS_IMETHODIMP
-SelectionChangeListener::NotifySelectionChanged(nsIDocument* aDoc,
-                                                Selection* aSel, int16_t aReason)
+void
+SelectionChangeListener::OnSelectionChange(nsIDocument* aDoc,
+                                           Selection* aSel,
+                                           int16_t aReason)
 {
   nsIDocument* doc = aSel->GetParentObject();
   if (!(doc && nsContentUtils::IsSystemPrincipal(doc->NodePrincipal())) &&
       !nsFrameSelection::sSelectionEventsEnabled) {
-    return NS_OK;
+    return;
   }
 
   // Check if the ranges have actually changed
@@ -103,7 +99,7 @@ SelectionChangeListener::NotifySelectionChanged(nsIDocument* aDoc,
     }
 
     if (!changed) {
-      return NS_OK;
+      return;
     }
   }
 
@@ -116,7 +112,7 @@ SelectionChangeListener::NotifySelectionChanged(nsIDocument* aDoc,
   if (doc) {
     nsPIDOMWindowInner* inner = doc->GetInnerWindow();
     if (inner && !inner->HasSelectionChangeEventListeners()) {
-      return NS_OK;
+      return;
     }
   }
 
@@ -124,7 +120,7 @@ SelectionChangeListener::NotifySelectionChanged(nsIDocument* aDoc,
   // update mOldRanges so that changes after the changes stop being hidden don't
   // incorrectly trigger a change, even though they didn't change anything
   if (aSel->IsBlockingSelectionChangeEvents()) {
-    return NS_OK;
+    return;
   }
 
   // The spec currently doesn't say that we should dispatch this event on text
@@ -156,24 +152,22 @@ SelectionChangeListener::NotifySelectionChanged(nsIDocument* aDoc,
 
     if (target) {
       RefPtr<AsyncEventDispatcher> asyncDispatcher =
-        new AsyncEventDispatcher(target, eSelectionChange, false);
+        new AsyncEventDispatcher(target, eSelectionChange, CanBubble::eNo);
       asyncDispatcher->PostDOMEvent();
     }
   } else {
     if (const nsFrameSelection* fs = aSel->GetFrameSelection()) {
       if (nsCOMPtr<nsIContent> root = fs->GetLimiter()) {
         if (root->IsInNativeAnonymousSubtree()) {
-          return NS_OK;
+          return;
         }
       }
     }
 
     if (aDoc) {
       RefPtr<AsyncEventDispatcher> asyncDispatcher =
-        new AsyncEventDispatcher(aDoc, eSelectionChange, false);
+        new AsyncEventDispatcher(aDoc, eSelectionChange, CanBubble::eNo);
       asyncDispatcher->PostDOMEvent();
     }
   }
-
-  return NS_OK;
 }

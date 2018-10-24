@@ -379,6 +379,33 @@ protected:
   // Destroys native caret if there is.
   void     MaybeDestroyNativeCaret();
 
+  /**
+   * MaybeHackNoErrorLayoutBugs() is a helper method of GetTextExt().  In
+   * strictly speaking, TSF is aware of asynchronous layout computation like us.
+   * However, Windows 10 version 1803 and older (including Windows 8.1 and
+   * older) Windows has a bug which is that the caller of GetTextExt() of TSF
+   * does not return TS_E_NOLAYOUT to TIP as is.  Additionally, even after
+   * fixing this bug, some TIPs are not work well when we return TS_E_NOLAYOUT.
+   * For avoiding this issue, this method checks current Windows version and
+   * active TIP, and if in case we cannot return TS_E_NOLAYOUT, this modifies
+   * aACPStart and aACPEnd to making sure that they are in range of unmodified
+   * characters.
+   *
+   * @param aACPStart   Initial value should be acpStart of GetTextExt().
+   *                    If this method returns true, this may be modified
+   *                    to be in range of unmodified characters.
+   * @param aACPEnd     Initial value should be acpEnd of GetTextExt().
+   *                    If this method returns true, this may be modified
+   *                    to be in range of unmodified characters.
+   *                    And also this may become same as aACPStart.
+   * @return            true if the caller shouldn't return TS_E_NOLAYOUT.
+   *                    In this case, this method modifies aACPStart and/or
+   *                    aASCPEnd to compute rectangle of unmodified characters.
+   *                    false if the caller can return TS_E_NOLAYOUT or
+   *                    we cannot have proper unmodified characters.
+   */
+  bool MaybeHackNoErrorLayoutBugs(LONG& aACPStart, LONG& aACPEnd);
+
   // Holds the pointer to our current win32 widget
   RefPtr<nsWindowBase>       mWidget;
   // mDispatcher is a helper class to dispatch composition events.
@@ -700,8 +727,9 @@ protected:
       eKeyboardEvent,
     };
     Type mType;
-    // For eCompositionStart and eSetSelection
+    // For eCompositionStart, eCompositionEnd and eSetSelection
     LONG mSelectionStart;
+    // For eCompositionStart and eSetSelection
     LONG mSelectionLength;
     // For eCompositionStart, eCompositionUpdate and eCompositionEnd
     nsString mData;
@@ -738,30 +766,27 @@ protected:
   }
 
   /**
-   * WasTextInsertedWithoutCompositionAt() checks if text was inserted without
-   * composition immediately before (e.g., see InsertTextAtSelectionInternal()).
+   * IsLastPendingActionCompositionEndAt() checks whether the previous pending
+   * action is committing composition whose range starts from aStart and its
+   * length is aLength.  In other words, this checks whether new composition
+   * which will replace same range as previous pending commit can be merged
+   * with the previous composition.
    *
    * @param aStart              The inserted offset you expected.
    * @param aLength             The inserted text length you expected.
-   * @return                    true if the last pending actions are
-   *                            eCompositionStart and eCompositionEnd and
-   *                            aStart and aLength match their information.
+   * @return                    true if the last pending action is
+   *                            eCompositionEnd and it inserted the text
+   *                            between aStart and aStart + aLength.
    */
-  bool WasTextInsertedWithoutCompositionAt(LONG aStart, LONG aLength) const
+  bool IsLastPendingActionCompositionEndAt(LONG aStart, LONG aLength) const
   {
-    if (mPendingActions.Length() < 2) {
+    if (mPendingActions.IsEmpty()) {
       return false;
     }
     const PendingAction& pendingLastAction = mPendingActions.LastElement();
-    if (pendingLastAction.mType != PendingAction::Type::eCompositionEnd ||
-        pendingLastAction.mData.Length() != ULONG(aLength)) {
-      return false;
-    }
-    const PendingAction& pendingPreLastAction =
-      mPendingActions[mPendingActions.Length() - 2];
-    return pendingPreLastAction.mType ==
-             PendingAction::Type::eCompositionStart &&
-           pendingPreLastAction.mSelectionStart == aStart;
+    return pendingLastAction.mType == PendingAction::Type::eCompositionEnd &&
+           pendingLastAction.mSelectionStart == aStart &&
+           pendingLastAction.mData.Length() == static_cast<ULONG>(aLength);
   }
 
   bool IsPendingCompositionUpdateIncomplete() const
@@ -892,19 +917,17 @@ protected:
     /**
      * RestoreCommittedComposition() restores the committed string as
      * composing string.  If InsertTextAtSelection() or something is called
-     * before a call of OnStartComposition(), there is a pending
-     * compositionstart and a pending compositionend.  In this case, we
-     * need to cancel the pending compositionend and continue the composition.
+     * before a call of OnStartComposition() or previous composition is
+     * committed and new composition is restarted to clean up the commited
+     * string, there is a pending compositionend.  In this case, we need to
+     * cancel the pending compositionend and continue the composition.
      *
      * @param aCompositionView          The composition view.
-     * @param aPendingCompositionStart  The pending compositionstart which
-     *                                  started the committed composition.
      * @param aCanceledCompositionEnd   The pending compositionend which is
      *                                  canceled for restarting the composition.
      */
     void RestoreCommittedComposition(
                          ITfCompositionView* aCompositionView,
-                         const PendingAction& aPendingCompositionStart,
                          const PendingAction& aCanceledCompositionEnd);
     void EndComposition(const PendingAction& aCompEnd);
 

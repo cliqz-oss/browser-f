@@ -22,6 +22,7 @@
 #include "nsICacheStorage.h"
 #include "nsICacheEntry.h"
 #include "nsICaptivePortalService.h"
+#include "nsICookieService.h"
 #include "nsICryptoHash.h"
 #include "nsINetworkInterceptController.h"
 #include "nsINSSErrorsService.h"
@@ -55,6 +56,7 @@
 #include "nsThreadUtils.h"
 #include "GeckoProfiler.h"
 #include "nsIConsoleService.h"
+#include "mozilla/AntiTrackingCommon.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/Preferences.h"
@@ -69,7 +71,6 @@
 #include "nsIScriptError.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsISSLStatus.h"
-#include "nsISSLStatusProvider.h"
 #include "nsITransportSecurityInfo.h"
 #include "nsIWebProgressListener.h"
 #include "LoadContextInfo.h"
@@ -95,7 +96,6 @@
 #include "nsIHttpPushListener.h"
 #include "nsIX509Cert.h"
 #include "ScopedNSSTypes.h"
-#include "NullPrincipal.h"
 #include "nsIDeprecationWarner.h"
 #include "nsIDocument.h"
 #include "nsICompressConvStats.h"
@@ -104,7 +104,7 @@
 #include "mozilla/extensions/StreamFilterParent.h"
 #include "mozilla/net/Predictor.h"
 #include "mozilla/MathAlgorithms.h"
-#include "mozilla/StaticPrefs.h"
+#include "mozilla/NullPrincipal.h"
 #include "CacheControlParser.h"
 #include "nsMixedContentBlocker.h"
 #include "CacheStorageService.h"
@@ -158,6 +158,24 @@ enum CacheDisposition {
     kCacheHitViaReval = 2,
     kCacheMissedViaReval = 3,
     kCacheMissed = 4
+};
+
+using mozilla::Telemetry::LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED;
+
+static const struct {
+  LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED mTelemetryLabel;
+  const char* mHostName;
+} gFastBlockAnalyticsProviders[] = {
+  { LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED::googleanalytics, "google-analytics.com" },
+  { LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED::scorecardresearch, "scorecardresearch.com" },
+  { LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED::hotjar, "hotjar.com" },
+  { LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED::newrelic, "newrelic.com" },
+  { LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED::nrdata, "nr-data.net" },
+  { LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED::crwdcntrl, "crwdcntrl.net" },
+  { LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED::eyeota, "eyeota.net" },
+  { LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED::yahooanalytics, "analytics.yahoo.com" },
+  { LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED::statcounter, "statcounter.com" },
+  { LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED::v12group, "v12group.com" }
 };
 
 void
@@ -336,6 +354,7 @@ nsHttpChannel::nsHttpChannel()
     , mStronglyFramed(false)
     , mUsedNetwork(0)
     , mAuthConnectionRestartable(0)
+    , mTrackingProtectionCancellationPending(0)
     , mPushedStream(nullptr)
     , mLocalBlocklist(false)
     , mOnTailUnblock(nullptr)
@@ -439,9 +458,84 @@ nsHttpChannel::LogBlockedCORSRequest(const nsAString& aMessage, const nsACString
 //-----------------------------------------------------------------------------
 
 nsresult
+nsHttpChannel::PrepareToConnect()
+{
+    LOG(("nsHttpChannel::PrepareToConnect [this=%p]\n", this));
+
+    AddCookiesToRequest();
+
+    // notify "http-on-modify-request" observers
+    CallOnModifyRequestObservers();
+
+    SetLoadGroupUserAgentOverride();
+
+    // Check if request was cancelled during on-modify-request or on-useragent.
+    if (mCanceled) {
+        return mStatus;
+    }
+
+    if (mSuspendCount) {
+        // We abandon the connection here if there was one.
+        LOG(("Waiting until resume OnBeforeConnect [this=%p]\n", this));
+        MOZ_ASSERT(!mCallOnResume);
+        mCallOnResume = &nsHttpChannel::HandleOnBeforeConnect;
+        return NS_OK;
+    }
+
+    return OnBeforeConnect();
+}
+
+void
+nsHttpChannel::HandleContinueCancelledByTrackingProtection()
+{
+    MOZ_ASSERT(!mCallOnResume, "How did that happen?");
+
+    if (mSuspendCount) {
+        LOG(("Waiting until resume HandleContinueCancelledByTrackingProtection [this=%p]\n", this));
+        mCallOnResume = &nsHttpChannel::HandleContinueCancelledByTrackingProtection;
+        return;
+    }
+
+    LOG(("nsHttpChannel::HandleContinueCancelledByTrackingProtection [this=%p]\n", this));
+    ContinueCancelledByTrackingProtection();
+}
+
+void
+nsHttpChannel::HandleOnBeforeConnect()
+{
+    MOZ_ASSERT(!mCallOnResume, "How did that happen?");
+    nsresult rv;
+
+    if (mSuspendCount) {
+        LOG(("Waiting until resume OnBeforeConnect [this=%p]\n", this));
+        mCallOnResume = &nsHttpChannel::HandleOnBeforeConnect;
+        return;
+    }
+
+    LOG(("nsHttpChannel::HandleOnBeforeConnect [this=%p]\n", this));
+    rv = OnBeforeConnect();
+    if (NS_FAILED(rv)) {
+        CloseCacheEntry(false);
+        Unused << AsyncAbort(rv);
+    }
+}
+
+nsresult
 nsHttpChannel::OnBeforeConnect()
 {
     nsresult rv;
+
+    // Check if request was cancelled during suspend AFTER on-modify-request or
+    // on-useragent.
+    if (mCanceled) {
+        return mStatus;
+    }
+
+    // Check to see if we should redirect this channel elsewhere by
+    // nsIHttpChannel.redirectTo API request
+    if (mAPIRedirectToURI) {
+        return AsyncCall(&nsHttpChannel::HandleAsyncAPIRedirect);
+    }
 
     // Note that we are only setting the "Upgrade-Insecure-Requests" request
     // header for *all* navigational requests instead of all requests as
@@ -505,12 +599,18 @@ nsHttpChannel::OnBeforeConnect()
         mCaps |= NS_HTTP_LARGE_KEEPALIVE | NS_HTTP_DISABLE_TRR;
     }
 
+    if (mLoadFlags & LOAD_DISABLE_TRR) {
+        mCaps |= NS_HTTP_DISABLE_TRR;
+    }
+
     // Finalize ConnectionInfo flags before SpeculativeConnect
     mConnectionInfo->SetAnonymous((mLoadFlags & LOAD_ANONYMOUS) != 0);
     mConnectionInfo->SetPrivate(mPrivateBrowsing);
     mConnectionInfo->SetNoSpdy(mCaps & NS_HTTP_DISALLOW_SPDY);
     mConnectionInfo->SetBeConservative((mCaps & NS_HTTP_BE_CONSERVATIVE) || mBeConservative);
     mConnectionInfo->SetTlsFlags(mTlsFlags);
+    mConnectionInfo->SetTrrUsed(mTRR);
+    mConnectionInfo->SetTrrDisabled(mCaps & NS_HTTP_DISABLE_TRR);
 
     // notify "http-on-before-connect" observers
     gHttpHandler->OnBeforeConnect(this);
@@ -566,7 +666,7 @@ nsHttpChannel::Connect()
         return RedirectToInterceptedChannel();
     }
 
-    bool isTrackingResource = mIsTrackingResource; // is atomic
+    bool isTrackingResource = mIsThirdPartyTrackingResource; // is atomic
     LOG(("nsHttpChannel %p tracking resource=%d, cos=%u",
           this, isTrackingResource, mClassOfService));
 
@@ -583,12 +683,158 @@ nsHttpChannel::Connect()
     return ConnectOnTailUnblock();
 }
 
+static bool
+IsContentPolicyTypeWhitelistedForFastBlock(nsILoadInfo* aLoadInfo)
+{
+  nsContentPolicyType type = aLoadInfo ?
+                             aLoadInfo->GetExternalContentPolicyType() :
+                             nsIContentPolicy::TYPE_OTHER;
+  switch (type) {
+  // images
+  case nsIContentPolicy::TYPE_IMAGE:
+  case nsIContentPolicy::TYPE_IMAGESET:
+  case nsIContentPolicy::TYPE_INTERNAL_IMAGE:
+  case nsIContentPolicy::TYPE_INTERNAL_IMAGE_PRELOAD:
+  case nsIContentPolicy::TYPE_INTERNAL_IMAGE_FAVICON:
+  // fonts
+  case nsIContentPolicy::TYPE_FONT:
+  // stylesheets
+  case nsIContentPolicy::TYPE_STYLESHEET:
+  case nsIContentPolicy::TYPE_INTERNAL_STYLESHEET:
+  case nsIContentPolicy::TYPE_INTERNAL_STYLESHEET_PRELOAD:
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool
+nsHttpChannel::CheckFastBlocked()
+{
+    LOG(("nsHttpChannel::CheckFastBlocked [this=%p, url=%s]",
+         this, mSpec.get()));
+    MOZ_ASSERT(mIsThirdPartyTrackingResource);
+
+    static bool sFastBlockInited = false;
+    static uint32_t sFastBlockTimeout = 0;
+    static uint32_t sFastBlockLimit = 0;
+
+    if (!sFastBlockInited) {
+        sFastBlockInited = true;
+        Preferences::AddUintVarCache(&sFastBlockTimeout, "browser.fastblock.timeout");
+        Preferences::AddUintVarCache(&sFastBlockLimit, "browser.fastblock.limit");
+    }
+
+    if (!StaticPrefs::browser_contentblocking_enabled() ||
+        !StaticPrefs::browser_fastblock_enabled()) {
+        LOG(("FastBlock disabled by pref [this=%p]\n", this));
+
+        return false;
+    }
+
+    TimeStamp timestamp;
+    if (NS_FAILED(GetNavigationStartTimeStamp(&timestamp)) || !timestamp) {
+        LOG(("FastBlock passed (no timestamp) [this=%p]\n", this));
+
+        return false;
+    }
+
+    bool engageFastBlock = false;
+
+    TimeDuration duration = TimeStamp::NowLoRes() - timestamp;
+    if (IsContentPolicyTypeWhitelistedForFastBlock(mLoadInfo)) {
+        LOG(("FastBlock passed (whitelisted content type %u) (%lf) [this=%p]\n",
+             mLoadInfo ? mLoadInfo->GetExternalContentPolicyType() : nsIContentPolicy::TYPE_OTHER,
+             duration.ToMilliseconds(), this));
+    } else if (mLoadInfo && mLoadInfo->GetDocumentHasUserInteracted()) {
+        LOG(("FastBlock passed (user interaction) (%lf) [this=%p]\n",
+             duration.ToMilliseconds(), this));
+    } else if (mLoadInfo && mLoadInfo->GetDocumentHasLoaded()) {
+        LOG(("FastBlock passed (document loaded) (%lf) [this=%p]\n",
+             duration.ToMilliseconds(), this));
+    } else {
+            bool hasFastBlockStarted = duration.ToMilliseconds() >= sFastBlockTimeout;
+        bool hasFastBlockStopped = false;
+        if ((sFastBlockLimit != 0) && (sFastBlockLimit > sFastBlockTimeout)) {
+            hasFastBlockStopped = duration.ToMilliseconds() > sFastBlockLimit;
+        }
+        LOG(("FastBlock started=%d stopped=%d (%lf) [this=%p]\n",
+             static_cast<int>(hasFastBlockStarted),
+             static_cast<int>(hasFastBlockStopped),
+             duration.ToMilliseconds(),
+             this));
+        engageFastBlock = hasFastBlockStarted && !hasFastBlockStopped;
+    }
+
+    // Remember the data needed for fastblock telemetry in case fastblock is
+    // enabled, we have decided to block the channel, and the channel isn't
+    // marked as private.
+    if (engageFastBlock && !NS_UsePrivateBrowsing(this)) {
+        nsCOMPtr<nsIURI> uri;
+        nsresult rv = GetURI(getter_AddRefs(uri));
+        NS_ENSURE_SUCCESS(rv, false);
+
+        nsAutoCString host;
+        rv = uri->GetHost(host);
+        NS_ENSURE_SUCCESS(rv, false);
+
+        nsCOMPtr<nsIEffectiveTLDService> tldService =
+            do_GetService(NS_EFFECTIVETLDSERVICE_CONTRACTID);
+        NS_ENSURE_TRUE(tldService, false);
+
+        LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED label =
+            LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED::other;
+        for (const auto& entry : gFastBlockAnalyticsProviders) {
+          // For each entry in the list of our analytics providers, use the
+          // effective TLD service to look up subdomains to make sure we find a
+          // potential match if one is available.
+          while (true) {
+            if (host == entry.mHostName) {
+              label = entry.mTelemetryLabel;
+              break;
+            }
+
+            nsAutoCString newHost;
+            rv = tldService->GetNextSubDomain(host, newHost);
+            if (rv == NS_ERROR_INSUFFICIENT_DOMAIN_LEVELS) {
+              // we're done searching this entry.
+              break;
+            }
+            NS_ENSURE_SUCCESS(rv, false);
+
+            host = newHost;
+          }
+
+          if (label != LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED::other) {
+            // We have found a label in the previous loop, bail out now!
+            break;
+          }
+        }
+
+        if (mLoadInfo) {
+          MOZ_ALWAYS_SUCCEEDS(mLoadInfo->SetIsTrackerBlocked(true));
+          MOZ_ALWAYS_SUCCEEDS(mLoadInfo->SetTrackerBlockedReason(label));
+        }
+    }
+
+    return engageFastBlock;
+}
+
 nsresult
 nsHttpChannel::ConnectOnTailUnblock()
 {
     nsresult rv;
 
     LOG(("nsHttpChannel::ConnectOnTailUnblock [this=%p]\n", this));
+
+    bool isTrackingResource = mIsThirdPartyTrackingResource; // is atomic
+    if (isTrackingResource && CheckFastBlocked()) {
+        AntiTrackingCommon::NotifyRejection(this,
+                                            nsIWebProgressListener::STATE_BLOCKED_SLOW_TRACKING_CONTENT);
+        Unused << AsyncAbort(NS_ERROR_TRACKING_ANNOTATION_URI);
+        CloseCacheEntry(false);
+        return NS_OK;
+    }
 
     // Consider opening a TCP connection right away.
     SpeculativeConnect();
@@ -1770,7 +2016,7 @@ nsHttpChannel::ProcessSingleSecurityHeader(uint32_t aType,
             atom = nsHttp::ResolveAtom("Public-Key-Pins");
             break;
         default:
-            NS_NOTREACHED("Invalid security header type");
+            MOZ_ASSERT_UNREACHABLE("Invalid security header type");
             return NS_ERROR_FAILURE;
     }
 
@@ -1857,11 +2103,11 @@ nsHttpChannel::ProcessSecurityHeaders()
     uint32_t flags =
       NS_UsePrivateBrowsing(this) ? nsISocketProvider::NO_PERMANENT_STORAGE : 0;
 
-    // Get the SSLStatus
-    nsCOMPtr<nsISSLStatusProvider> sslprov = do_QueryInterface(mSecurityInfo);
-    NS_ENSURE_TRUE(sslprov, NS_ERROR_FAILURE);
+    // Get the TransportSecurityInfo
+    nsCOMPtr<nsITransportSecurityInfo> transSecInfo = do_QueryInterface(mSecurityInfo);
+    NS_ENSURE_TRUE(transSecInfo, NS_ERROR_FAILURE);
     nsCOMPtr<nsISSLStatus> sslStatus;
-    rv = sslprov->GetSSLStatus(getter_AddRefs(sslStatus));
+    rv = transSecInfo->GetSSLStatus(getter_AddRefs(sslStatus));
     NS_ENSURE_SUCCESS(rv, rv);
     NS_ENSURE_TRUE(sslStatus, NS_ERROR_FAILURE);
 
@@ -1992,17 +2238,15 @@ nsHttpChannel::ProcessSSLInformation()
         !IsHTTPS() || mPrivateBrowsing)
         return;
 
-    nsCOMPtr<nsISSLStatusProvider> statusProvider =
+    nsCOMPtr<nsITransportSecurityInfo> securityInfo =
         do_QueryInterface(mSecurityInfo);
-    if (!statusProvider)
+    if (!securityInfo)
         return;
     nsCOMPtr<nsISSLStatus> sslstat;
-    statusProvider->GetSSLStatus(getter_AddRefs(sslstat));
+    securityInfo->GetSSLStatus(getter_AddRefs(sslstat));
     if (!sslstat)
         return;
 
-    nsCOMPtr<nsITransportSecurityInfo> securityInfo =
-        do_QueryInterface(mSecurityInfo);
     uint32_t state;
     if (securityInfo &&
         NS_SUCCEEDED(securityInfo->GetSecurityState(&state)) &&
@@ -2177,11 +2421,13 @@ nsHttpChannel::ProcessResponse()
     if (!referrer) {
         referrer = mReferrer;
     }
+
     if (referrer) {
         nsCOMPtr<nsILoadContextInfo> lci = GetLoadContextInfo(this);
         mozilla::net::Predictor::UpdateCacheability(referrer, mURI, httpStatus,
                                                     mRequestHead, mResponseHead,
-                                                    lci, mIsTrackingResource);
+                                                    lci,
+                                                    mIsThirdPartyTrackingResource);
     }
 
     // Only allow 407 (authentication required) to continue
@@ -3145,7 +3391,7 @@ nsHttpChannel::SetupByteRangeRequest(int64_t partialLen)
     if (val.IsEmpty()) {
         // if we hit this code it means mCachedResponseHead->IsResumable() is
         // either broken or not being called.
-        NS_NOTREACHED("no cache validator");
+        MOZ_ASSERT_UNREACHABLE("no cache validator");
         mIsPartialRequest = false;
         return NS_ERROR_FAILURE;
     }
@@ -3327,7 +3573,7 @@ nsHttpChannel::OnDoneReadingPartialCacheEntry(bool *streamDone)
             *streamDone = false;
     }
     else
-        NS_NOTREACHED("no transaction");
+        MOZ_ASSERT_UNREACHABLE("no transaction");
     return rv;
 }
 
@@ -3742,28 +3988,27 @@ nsHttpChannel::OpenCacheEntryInternal(bool isHttps,
         extension.Append("TRR");
     }
 
-    if (StaticPrefs::privacy_trackingprotection_storagerestriction_enabled() &&
-        mIsTrackingResource) {
-        nsCOMPtr<mozIThirdPartyUtil> thirdPartyUtil =
-            services::GetThirdPartyUtil();
-        if (thirdPartyUtil) {
-            bool thirdParty = false;
-            Unused << thirdPartyUtil->IsThirdPartyChannel(this,
-                                                          nullptr,
-                                                          &thirdParty);
-            if (thirdParty) {
-                nsCOMPtr<nsIURI> topWindowURI;
-                rv = GetTopWindowURI(getter_AddRefs(topWindowURI));
-                NS_ENSURE_SUCCESS(rv, rv);
-
-                nsAutoString topWindowOrigin;
-                rv = nsContentUtils::GetUTFOrigin(topWindowURI, topWindowOrigin);
-                NS_ENSURE_SUCCESS(rv, rv);
-
-                extension.Append("-trackerFor:");
-                extension.Append(NS_ConvertUTF16toUTF8(topWindowOrigin));
-            }
+    if (mIsThirdPartyTrackingResource &&
+        !AntiTrackingCommon::IsFirstPartyStorageAccessGrantedFor(this, mURI, nullptr)) {
+        nsCOMPtr<nsIURI> topWindowURI;
+        rv = GetTopWindowURI(getter_AddRefs(topWindowURI));
+        bool isDocument = false;
+        if (NS_FAILED(rv) &&
+            NS_SUCCEEDED(GetIsMainDocumentChannel(&isDocument)) &&
+            isDocument) {
+          // For top-level documents, use the document channel's origin to compute
+          // the unique storage space identifier instead of the top Window URI.
+          rv = NS_GetFinalChannelURI(this, getter_AddRefs(topWindowURI));
+          NS_ENSURE_SUCCESS(rv, rv);
         }
+
+        nsAutoString topWindowOrigin;
+        rv = nsContentUtils::GetUTFOrigin(topWindowURI ? topWindowURI : mURI,
+                                          topWindowOrigin);
+        NS_ENSURE_SUCCESS(rv, rv);
+
+        extension.Append("-unique:");
+        extension.Append(NS_ConvertUTF16toUTF8(topWindowOrigin));
     }
 
     mCacheOpenWithPriority = cacheEntryOpenFlags & nsICacheStorage::OPEN_PRIORITY;
@@ -5514,6 +5759,18 @@ nsHttpChannel::SetupReplacementChannel(nsIURI       *newURI,
         resumableChannel->ResumeAt(mStartPos, mEntityID);
     }
 
+    nsCOMPtr<nsIHttpChannelInternal> internalChannel = do_QueryInterface(newChannel, &rv);
+    if (NS_SUCCEEDED(rv)) {
+        TimeStamp timestamp;
+        rv = GetNavigationStartTimeStamp(&timestamp);
+        if (NS_WARN_IF(NS_FAILED(rv))) {
+            return rv;
+        }
+        if (timestamp) {
+            Unused << internalChannel->SetNavigationStartTimeStamp(timestamp);
+        }
+    }
+
     return NS_OK;
 }
 
@@ -5838,6 +6095,8 @@ nsHttpChannel::Cancel(nsresult status)
     MOZ_ASSERT(NS_IsMainThread());
     // We should never have a pump open while a CORS preflight is in progress.
     MOZ_ASSERT_IF(mPreflightChannel, !mCachePump);
+    MOZ_ASSERT(status != NS_ERROR_TRACKING_URI,
+               "NS_ERROR_TRACKING_URI needs to be handled by CancelForTrackingProtection()");
 
     LOG(("nsHttpChannel::Cancel [this=%p status=%" PRIx32 "]\n",
          this, static_cast<uint32_t>(status)));
@@ -5849,6 +6108,100 @@ nsHttpChannel::Cancel(nsresult status)
     if (mWaitingForRedirectCallback) {
         LOG(("channel canceled during wait for redirect callback"));
     }
+
+    return CancelInternal(status);
+}
+
+NS_IMETHODIMP
+nsHttpChannel::CancelForTrackingProtection()
+{
+    MOZ_ASSERT(NS_IsMainThread());
+    // We should never have a pump open while a CORS preflight is in progress.
+    MOZ_ASSERT_IF(mPreflightChannel, !mCachePump);
+
+    LOG(("nsHttpChannel::CancelForTrackingProtection [this=%p]\n", this));
+
+    if (mCanceled) {
+        LOG(("  ignoring; already canceled\n"));
+        return NS_OK;
+    }
+
+    // We are being canceled by the channel classifier because of tracking
+    // protection, but we haven't yet had a chance to dispatch the
+    // "http-on-modify-request" notifications yet (this would normally be
+    // done in PrepareToConnect()).  So do that now, before proceeding to
+    // cancel.
+    //
+    // Note that running these observers can itself result in the channel
+    // being canceled.  In that case, we accept that cancelation code as
+    // the cause of the cancelation, as if the classification of the channel
+    // would have occurred past this point!
+
+    // notify "http-on-modify-request" observers
+    CallOnModifyRequestObservers();
+
+    SetLoadGroupUserAgentOverride();
+
+    // Check if request was cancelled during on-modify-request or on-useragent.
+    if (mCanceled) {
+        return mStatus;
+    }
+
+    if (mSuspendCount) {
+        LOG(("Waiting until resume in Cancel [this=%p]\n", this));
+        MOZ_ASSERT(!mCallOnResume);
+        mTrackingProtectionCancellationPending = 1;
+        mCallOnResume = &nsHttpChannel::HandleContinueCancelledByTrackingProtection;
+        return NS_OK;
+    }
+
+    // Check to see if we should redirect this channel elsewhere by
+    // nsIHttpChannel.redirectTo API request
+    if (mAPIRedirectToURI) {
+        mTrackingProtectionCancellationPending = 1;
+        return AsyncCall(&nsHttpChannel::HandleAsyncAPIRedirect);
+    }
+
+    return CancelInternal(NS_ERROR_TRACKING_URI);
+}
+
+void
+nsHttpChannel::ContinueCancelledByTrackingProtection()
+{
+    MOZ_ASSERT(NS_IsMainThread());
+    // We should never have a pump open while a CORS preflight is in progress.
+    MOZ_ASSERT_IF(mPreflightChannel, !mCachePump);
+
+    LOG(("nsHttpChannel::ContinueCancelledByTrackingProtection [this=%p]\n",
+         this));
+    if (mCanceled) {
+        LOG(("  ignoring; already canceled\n"));
+        return;
+    }
+
+    // Check to see if we should redirect this channel elsewhere by
+    // nsIHttpChannel.redirectTo API request
+    if (mAPIRedirectToURI) {
+        Unused << AsyncCall(&nsHttpChannel::HandleAsyncAPIRedirect);
+        return;
+    }
+
+    Unused << CancelInternal(NS_ERROR_TRACKING_URI);
+}
+
+nsresult
+nsHttpChannel::CancelInternal(nsresult status)
+{
+    bool trackingProtectionCancellationPending =
+      !!mTrackingProtectionCancellationPending;
+    if (status == NS_ERROR_TRACKING_URI) {
+      mTrackingProtectionCancellationPending = 0;
+      if (mLoadInfo) {
+        MOZ_ALWAYS_SUCCEEDS(mLoadInfo->SetIsTracker(true));
+        MOZ_ALWAYS_SUCCEEDS(mLoadInfo->SetIsTrackerBlocked(true));
+      }
+    }
+
     mCanceled = true;
     mStatus = status;
     if (mProxyRequest)
@@ -5865,6 +6218,10 @@ nsHttpChannel::Cancel(nsresult status)
         mOnTailUnblock = nullptr;
         mRequestContext->CancelTailedRequest(this);
         CloseCacheEntry(false);
+        Unused << AsyncAbort(status);
+    } else if (trackingProtectionCancellationPending) {
+        // If we're coming from an asynchronous path when canceling a channel due
+        // to tracking protection, we need to AsyncAbort the channel now.
         Unused << AsyncAbort(status);
     }
     return NS_OK;
@@ -6020,8 +6377,6 @@ nsHttpChannel::AsyncOpen(nsIStreamListener *listener, nsISupports *context)
     if (NS_SUCCEEDED(mRequestHead.GetHeader(nsHttp::Cookie, cookieHeader))) {
         mUserSetCookieHeader = cookieHeader;
     }
-
-    AddCookiesToRequest();
 
     // Set user agent override, do so before OnOpeningRequest notification
     // since we want to allow consumers of that notification change or remove
@@ -6189,15 +6544,15 @@ nsHttpChannel::BeginConnect()
             do_GetService(NS_CONSOLESERVICE_CONTRACTID);
         if (consoleService) {
             nsAutoString message(NS_LITERAL_STRING("Alternate Service Mapping found: "));
-            AppendASCIItoUTF16(scheme.get(), message);
+            AppendASCIItoUTF16(scheme, message);
             message.AppendLiteral(u"://");
-            AppendASCIItoUTF16(host.get(), message);
+            AppendASCIItoUTF16(host, message);
             message.AppendLiteral(u":");
             message.AppendInt(port);
             message.AppendLiteral(u" to ");
-            AppendASCIItoUTF16(scheme.get(), message);
+            AppendASCIItoUTF16(scheme, message);
             message.AppendLiteral(u"://");
-            AppendASCIItoUTF16(mapping->AlternateHost().get(), message);
+            AppendASCIItoUTF16(mapping->AlternateHost(), message);
             message.AppendLiteral(u":");
             message.AppendInt(mapping->AlternatePort());
             consoleService->LogStringMessage(message.get());
@@ -6233,63 +6588,6 @@ nsHttpChannel::BeginConnect()
     if (NS_FAILED(rv)) {
         LOG(("nsHttpChannel %p AddAuthorizationHeaders failed (%08x)",
              this, static_cast<uint32_t>(rv)));
-    }
-
-    // notify "http-on-modify-request" observers
-    CallOnModifyRequestObservers();
-
-    SetLoadGroupUserAgentOverride();
-
-    // Check if request was cancelled during on-modify-request or on-useragent.
-    if (mCanceled) {
-        return mStatus;
-    }
-
-    if (mSuspendCount) {
-        LOG(("Waiting until resume BeginConnect [this=%p]\n", this));
-        MOZ_ASSERT(!mCallOnResume);
-        mCallOnResume = &nsHttpChannel::HandleBeginConnectContinue;
-        return NS_OK;
-    }
-
-    return BeginConnectContinue();
-}
-
-void
-nsHttpChannel::HandleBeginConnectContinue()
-{
-    MOZ_ASSERT(!mCallOnResume, "How did that happen?");
-    nsresult rv;
-
-    if (mSuspendCount) {
-        LOG(("Waiting until resume BeginConnect [this=%p]\n", this));
-        mCallOnResume = &nsHttpChannel::HandleBeginConnectContinue;
-        return;
-    }
-
-    LOG(("nsHttpChannel::HandleBeginConnectContinue [this=%p]\n", this));
-    rv = BeginConnectContinue();
-    if (NS_FAILED(rv)) {
-        CloseCacheEntry(false);
-        Unused << AsyncAbort(rv);
-    }
-}
-
-nsresult
-nsHttpChannel::BeginConnectContinue()
-{
-    nsresult rv;
-
-    // Check if request was cancelled during suspend AFTER on-modify-request or
-    // on-useragent.
-    if (mCanceled) {
-        return mStatus;
-    }
-
-    // Check to see if we should redirect this channel elsewhere by
-    // nsIHttpChannel.redirectTo API request
-    if (mAPIRedirectToURI) {
-        return AsyncCall(&nsHttpChannel::HandleAsyncAPIRedirect);
     }
 
     // If mTimingEnabled flag is not set after OnModifyRequest() then
@@ -6384,6 +6682,14 @@ nsHttpChannel::BeginConnectActual()
 {
     if (mCanceled) {
         return mStatus;
+    }
+
+    if (mTrackingProtectionCancellationPending) {
+        LOG(("Waiting for tracking protection cancellation in BeginConnectActual [this=%p]\n", this));
+        MOZ_ASSERT(!mCallOnResume ||
+                   mCallOnResume == &nsHttpChannel::HandleContinueCancelledByTrackingProtection,
+                   "We should be paused waiting for cancellation from tracking protection");
+        return NS_OK;
     }
 
     if (!mConnectionInfo->UsingHttpProxy() &&
@@ -6494,6 +6800,23 @@ nsHttpChannel::AttachStreamFilter(ipc::Endpoint<extensions::PStreamFilterParent>
   return true;
 }
 
+NS_IMETHODIMP
+nsHttpChannel::GetNavigationStartTimeStamp(TimeStamp* aTimeStamp)
+{
+  LOG(("nsHttpChannel::GetNavigationStartTimeStamp %p", this));
+  MOZ_ASSERT(aTimeStamp);
+  *aTimeStamp = mNavigationStartTimeStamp;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsHttpChannel::SetNavigationStartTimeStamp(TimeStamp aTimeStamp)
+{
+  LOG(("nsHttpChannel::SetNavigationStartTimeStamp %p", this));
+  mNavigationStartTimeStamp = aTimeStamp;
+  return NS_OK;
+}
+
 //-----------------------------------------------------------------------------
 // nsHttpChannel::nsISupportsPriority
 //-----------------------------------------------------------------------------
@@ -6546,7 +6869,7 @@ nsHttpChannel::ContinueBeginConnectWithResult()
         // case, we should not send the request to the server
         rv = mStatus;
     } else {
-        rv = OnBeforeConnect();
+        rv = PrepareToConnect();
     }
 
     LOG(("nsHttpChannel::ContinueBeginConnectWithResult result [this=%p rv=%" PRIx32
@@ -6868,6 +7191,8 @@ nsHttpChannel::OnStartRequest(nsIRequest *request, nsISupports *ctxt)
 {
     nsresult rv;
 
+    MOZ_ASSERT(mRequestObserversCalled);
+
     AUTO_PROFILER_LABEL("nsHttpChannel::OnStartRequest", NETWORK);
 
     if (!(mCanceled || NS_FAILED(mStatus)) && !WRONG_RACING_RESPONSE_SOURCE(request)) {
@@ -6880,6 +7205,9 @@ nsHttpChannel::OnStartRequest(nsIRequest *request, nsISupports *ctxt)
 
     LOG(("nsHttpChannel::OnStartRequest [this=%p request=%p status=%" PRIx32 "]\n",
          this, request, static_cast<uint32_t>(static_cast<nsresult>(mStatus))));
+
+    Telemetry::Accumulate(Telemetry::HTTP_CHANNEL_ONSTART_SUCCESS,
+                          NS_SUCCEEDED(mStatus));
 
     if (mRaceCacheWithNetwork) {
         LOG(("  racingNetAndCache - mFirstResponseSource:%d fromCache:%d fromNet:%d\n",
@@ -6965,7 +7293,7 @@ nsHttpChannel::OnStartRequest(nsIRequest *request, nsISupports *ctxt)
 
     // avoid crashing if mListener happens to be null...
     if (!mListener) {
-        NS_NOTREACHED("mListener is null");
+        MOZ_ASSERT_UNREACHABLE("mListener is null");
         return NS_OK;
     }
 
@@ -7116,7 +7444,7 @@ nsHttpChannel::OnStopRequest(nsIRequest *request, nsISupports *ctxt, nsresult st
                 MOZ_ASSERT(mConcurrentCacheAccess);
             }
             else
-                NS_NOTREACHED("unexpected request");
+                MOZ_ASSERT_UNREACHABLE("unexpected request");
         }
         // Do not to leave the transaction in a suspended state in error cases.
         if (NS_FAILED(status) && mTransaction) {
@@ -8054,6 +8382,10 @@ nsHttpChannel::DoAuthRetry(nsAHttpConnection *conn)
     // the request headers (bug 95044).
     mIsPending = false;
 
+    // Reset mRequestObserversCalled because we've probably called the request
+    // observers once already.
+    mRequestObserversCalled = false;
+
     // fetch cookies, and add them to the request header.
     // the server response could have included cookies that must be sent with
     // this authentication attempt (bug 84794).
@@ -8198,7 +8530,7 @@ nsHttpChannel::OfflineCacheEntryAsForeignMarker::MarkAsForeign()
     nsresult rv;
 
     nsCOMPtr<nsIURI> noRefURI;
-    rv = mCacheURI->CloneIgnoringRef(getter_AddRefs(noRefURI));
+    rv = NS_GetURIWithoutRef(mCacheURI, getter_AddRefs(noRefURI));
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoCString spec;

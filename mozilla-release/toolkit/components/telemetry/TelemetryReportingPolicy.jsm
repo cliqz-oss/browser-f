@@ -5,20 +5,17 @@
 "use strict";
 
 var EXPORTED_SYMBOLS = [
-  "TelemetryReportingPolicy"
+  "TelemetryReportingPolicy",
 ];
 
 ChromeUtils.import("resource://gre/modules/Log.jsm", this);
 ChromeUtils.import("resource://gre/modules/Services.jsm", this);
 ChromeUtils.import("resource://gre/modules/Timer.jsm", this);
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 ChromeUtils.import("resource://services-common/observers.js", this);
 ChromeUtils.import("resource://gre/modules/TelemetryUtils.jsm", this);
 
 ChromeUtils.defineModuleGetter(this, "TelemetrySend",
                                "resource://gre/modules/TelemetrySend.jsm");
-ChromeUtils.defineModuleGetter(this, "UpdateUtils",
-                               "resource://gre/modules/UpdateUtils.jsm");
 
 const LOGGER_NAME = "Toolkit.Telemetry";
 const LOGGER_PREFIX = "TelemetryReportingPolicy::";
@@ -35,7 +32,7 @@ const DEPRECATED_FHR_PREFS = [
   PREF_BRANCH + "dataSubmissionPolicyAccepted",
   PREF_BRANCH + "dataSubmissionPolicyBypassAcceptance",
   PREF_BRANCH + "dataSubmissionPolicyResponseType",
-  PREF_BRANCH + "dataSubmissionPolicyResponseTime"
+  PREF_BRANCH + "dataSubmissionPolicyResponseTime",
 ];
 
 // How much time until we display the data choices notification bar, on the first run.
@@ -250,7 +247,7 @@ var TelemetryReportingPolicyImpl = {
     // use the general minimum policy version.
     let channel = "";
     try {
-      channel = UpdateUtils.getUpdateChannel(false);
+      channel = TelemetryUtils.getUpdateChannel();
     } catch (e) {
       this._log.error("minimumPolicyVersion - Unable to retrieve the current channel.");
       return minPolicyVersion;

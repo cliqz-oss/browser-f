@@ -37,6 +37,7 @@ class AnimationListContainer extends PureComponent {
       setAnimationsCurrentTime: PropTypes.func.isRequired,
       setHighlightedNode: PropTypes.func.isRequired,
       setSelectedNode: PropTypes.func.isRequired,
+      sidebarWidth: PropTypes.number.isRequired,
       simulateAnimation: PropTypes.func.isRequired,
       timeScale: PropTypes.object.isRequired,
     };
@@ -55,8 +56,17 @@ class AnimationListContainer extends PureComponent {
     this.updateState(this.props);
   }
 
-  componentWillReceiveProps(nextProps) {
-    this.updateState(nextProps);
+  componentDidUpdate(prevProps) {
+    const {
+      timeScale,
+      sidebarWidth
+    } = this.props;
+
+    if (timeScale.getDuration() !== prevProps.timeScale.getDuration() ||
+        timeScale.zeroPositionTime !== prevProps.timeScale.zeroPositionTime ||
+        sidebarWidth !== prevProps.sidebarWidth) {
+      this.updateState(this.props);
+    }
   }
 
   updateState(props) {
@@ -69,16 +79,26 @@ class AnimationListContainer extends PureComponent {
     const intervalWidth = intervalLength * width / animationDuration;
     const tickCount = parseInt(width / intervalWidth, 10);
     const isAllDurationInfinity =
-      animations.every(animation => animation.state.duration === Infinity);
+          animations.every(animation => animation.state.duration === Infinity);
+    const zeroBasePosition =
+          width * (timeScale.zeroPositionTime / animationDuration);
+    const shiftWidth = zeroBasePosition % intervalWidth;
+    const needToShift = zeroBasePosition !== 0 && shiftWidth !== 0;
 
     const ticks = [];
+    // Need to display first graduation since position will be shifted.
+    if (needToShift) {
+      const label = timeScale.formatTime(timeScale.distanceToRelativeTime(0));
+      ticks.push({ position: 0, label, width: shiftWidth });
+    }
 
     for (let i = 0; i <= tickCount; i++) {
-      const position = i * intervalWidth * 100 / width;
+      const position = ((i * intervalWidth) + shiftWidth) * 100 / width;
+      const distance = timeScale.distanceToRelativeTime(position);
       const label = isAllDurationInfinity && i === tickCount
-                      ? getStr("player.infiniteTimeLabel")
-                      : timeScale.formatTime(timeScale.distanceToRelativeTime(position));
-      ticks.push({ position, label });
+                    ? getStr("player.infiniteTimeLabel")
+                    : timeScale.formatTime(distance);
+      ticks.push({ position, label, width: intervalWidth });
     }
 
     this.setState({ ticks });

@@ -9,7 +9,6 @@ import android.annotation.TargetApi;
 import android.app.ActivityManager;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
-import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Build;
@@ -29,9 +28,9 @@ import org.mozilla.gecko.DoorHangerPopup;
 import org.mozilla.gecko.FormAssistPopup;
 import org.mozilla.gecko.GeckoApplication;
 import org.mozilla.gecko.GeckoScreenOrientation;
-import org.mozilla.gecko.GeckoSharedPrefs;
-import org.mozilla.gecko.preferences.GeckoPreferences;
 import org.mozilla.gecko.R;
+import org.mozilla.gecko.Telemetry;
+import org.mozilla.gecko.TelemetryContract;
 import org.mozilla.gecko.customtabs.CustomTabsActivity;
 import org.mozilla.gecko.permissions.Permissions;
 import org.mozilla.gecko.prompts.PromptService;
@@ -39,9 +38,7 @@ import org.mozilla.gecko.text.TextSelection;
 import org.mozilla.gecko.util.ActivityUtils;
 import org.mozilla.gecko.util.ColorUtil;
 import org.mozilla.gecko.widget.ActionModePresenter;
-import org.mozilla.geckoview.GeckoResponse;
 import org.mozilla.geckoview.GeckoResult;
-import org.mozilla.geckoview.GeckoRuntime;
 import org.mozilla.geckoview.GeckoSession;
 import org.mozilla.geckoview.GeckoSessionSettings;
 import org.mozilla.geckoview.GeckoView;
@@ -91,6 +88,8 @@ public class WebAppActivity extends AppCompatActivity
 
             Intent lastLaunchIntent = savedInstanceState.getParcelable(SAVED_INTENT);
             setIntent(lastLaunchIntent);
+        } else {
+            Telemetry.sendUIEvent(TelemetryContract.Event.PWA, TelemetryContract.Method.HOMESCREEN);
         }
 
         super.onCreate(savedInstanceState);
@@ -178,15 +177,6 @@ public class WebAppActivity extends AppCompatActivity
         mGeckoSession.loadUri(mManifest.getStartUri().toString());
     }
 
-    @Override
-    public void onConfigurationChanged(Configuration newConfig) {
-        super.onConfigurationChanged(newConfig);
-
-        if (mPromptService != null) {
-            mPromptService.changePromptOrientation(newConfig.orientation);
-        }
-    }
-
     private void fallbackToFennec(String message) {
         if (message != null) {
             Toast.makeText(this, message, Toast.LENGTH_LONG).show();
@@ -208,18 +198,6 @@ public class WebAppActivity extends AppCompatActivity
         } else {
             finish();
         }
-    }
-
-    @Override
-    public void onResume() {
-        mGeckoSession.setActive(true);
-        super.onResume();
-    }
-
-    @Override
-    public void onPause() {
-        mGeckoSession.setActive(false);
-        super.onPause();
     }
 
     @Override
@@ -415,11 +393,6 @@ public class WebAppActivity extends AppCompatActivity
             return GeckoResult.fromValue(false);
         }
 
-        if ("javascript".equals(uri.getScheme())) {
-            // These URIs will fail the scope check but should still be loaded in the PWA.
-            return GeckoResult.fromValue(false);
-        }
-
         if ("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()) ||
             "data".equals(uri.getScheme()) || "blob".equals(uri.getScheme())) {
             final CustomTabsIntent.Builder builder = new CustomTabsIntent.Builder()
@@ -453,6 +426,12 @@ public class WebAppActivity extends AppCompatActivity
     public GeckoResult<GeckoSession> onNewSession(final GeckoSession session, final String uri) {
         // We should never get here because we abort loads that need a new session in onLoadRequest()
         throw new IllegalStateException("Unexpected new session");
+    }
+
+    @Override
+    public GeckoResult<String> onLoadError(final GeckoSession session, final String urlStr,
+                                           final int category, final int error) {
+        return null;
     }
 
     private void updateFullScreen() {

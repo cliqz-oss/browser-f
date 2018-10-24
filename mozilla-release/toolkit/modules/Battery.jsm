@@ -12,8 +12,6 @@
   */
 var EXPORTED_SYMBOLS = ["GetBattery", "Battery"];
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
-
 // Load Services, for the BatteryManager API
 ChromeUtils.defineModuleGetter(this, "Services",
   "resource://gre/modules/Services.jsm");
@@ -33,7 +31,7 @@ var Debugging = {
    * Set it to `true` if you need to fake battery values
    * for testing or debugging purposes.
    */
-  fake: false
+  fake: false,
 };
 
 var GetBattery = function() {
@@ -64,6 +62,6 @@ for (let k of ["charging", "chargingTime", "dischargingTime", "level"]) {
         throw new Error("Tried to set fake battery value when battery spoofing was disabled");
       }
       gFakeBattery[prop] = fakeSetting;
-    }
+    },
   });
 }

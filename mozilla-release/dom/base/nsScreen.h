@@ -7,9 +7,12 @@
 #define nsScreen_h___
 
 #include "mozilla/Attributes.h"
+#include "mozilla/dom/ScreenBinding.h"
+#include "mozilla/dom/ScreenLuminance.h"
 #include "mozilla/dom/ScreenOrientation.h"
 #include "mozilla/DOMEventTargetHelper.h"
 #include "mozilla/ErrorResult.h"
+#include "mozilla/StaticPrefs.h"
 #include "nsCOMPtr.h"
 #include "nsRect.h"
 
@@ -109,6 +112,24 @@ public:
     aRv = GetAvailRect(rect);
     return rect.Height();
   }
+
+  // Media Capabilities extension
+  mozilla::dom::ScreenColorGamut ColorGamut() const
+  {
+    return mozilla::dom::ScreenColorGamut::Srgb;
+  }
+
+  already_AddRefed<mozilla::dom::ScreenLuminance> GetLuminance() const
+  {
+    return nullptr;
+  }
+
+  static bool MediaCapabilitiesEnabled(JSContext* aCx, JSObject* aGlobal)
+  {
+    return mozilla::StaticPrefs::MediaCapabilitiesScreenEnabled();
+  }
+
+  IMPL_EVENT_HANDLER(change);
 
   // Deprecated
   void GetMozOrientation(nsString& aOrientation,

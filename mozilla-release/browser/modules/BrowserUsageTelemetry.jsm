@@ -18,6 +18,8 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
                                "resource://gre/modules/PrivateBrowsingUtils.jsm");
 
+XPCOMUtils.defineLazyGlobalGetters(this, ["URLSearchParams"]);
+
 // The upper bound for the count of the visited unique domain names.
 const MAX_UNIQUE_VISITED_DOMAINS = 100;
 
@@ -43,6 +45,7 @@ const KNOWN_SEARCH_SOURCES = [
   "newtab",
   "searchbar",
   "urlbar",
+  "webextension",
 ];
 
 const KNOWN_ONEOFF_SOURCES = [
@@ -93,9 +96,7 @@ function getOpenTabsAndWinsCounts() {
   let tabCount = 0;
   let winCount = 0;
 
-  let browserEnum = Services.wm.getEnumerator("navigator:browser");
-  while (browserEnum.hasMoreElements()) {
-    let win = browserEnum.getNext();
+  for (let win of Services.wm.getEnumerator("navigator:browser")) {
     winCount++;
     tabCount += win.gBrowser.tabs.length;
   }
@@ -366,10 +367,6 @@ let urlbarListener = {
       Services.telemetry
               .getKeyedHistogramById("FX_URLBAR_SELECTED_RESULT_INDEX_BY_TYPE")
               .add(actionType, idx);
-      if (actionType === "bookmark" || actionType === "history") {
-        Services.telemetry.recordEvent("savant", "follow_urlbar_link", actionType, null,
-                                      { subcategory: "navigation" });
-      }
     } else {
       Cu.reportError("Unknown FX_URLBAR_SELECTED_RESULT_TYPE type: " +
                      actionType);
@@ -503,9 +500,6 @@ let BrowserUsageTelemetry = {
                                       scalarKey, 1);
     Services.telemetry.recordEvent("navigation", "search", source, action,
                                    { engine: getSearchEngineId(engine) });
-    Services.telemetry.recordEvent("savant", "search", source, action,
-                                   { subcategory: "navigation",
-                                   engine: getSearchEngineId(engine) });
   },
 
   _handleSearchAction(engine, source, details) {
@@ -524,7 +518,8 @@ let BrowserUsageTelemetry = {
         this._recordSearch(engine, "about_newtab", "enter");
         break;
       case "contextmenu":
-        this._recordSearch(engine, "contextmenu");
+      case "webextension":
+        this._recordSearch(engine, source);
         break;
     }
   },
@@ -657,9 +652,8 @@ let BrowserUsageTelemetry = {
     Services.obs.addObserver(this, TELEMETRY_SUBSESSIONSPLIT_TOPIC, true);
 
     // Attach the tabopen handlers to the existing Windows.
-    let browserEnum = Services.wm.getEnumerator("navigator:browser");
-    while (browserEnum.hasMoreElements()) {
-      this._registerWindow(browserEnum.getNext());
+    for (let win of Services.wm.getEnumerator("navigator:browser")) {
+      this._registerWindow(win);
     }
 
     // Get the initial tab and windows max counts.
@@ -745,5 +739,5 @@ let BrowserUsageTelemetry = {
       Services.telemetry.getHistogramById("TAB_COUNT").add(tabCount);
       this._lastRecordTabCount = currentTime;
     }
-  }
+  },
 };

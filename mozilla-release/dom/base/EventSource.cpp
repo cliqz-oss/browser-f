@@ -154,7 +154,7 @@ public:
 
   bool IsTargetThread() const
   {
-    return NS_IsMainThread() == mIsMainThread;
+    return NS_GetCurrentThread() == mTargetThread;
   }
 
   uint16_t ReadyState()
@@ -312,6 +312,14 @@ public:
   uint64_t mInnerWindowID;
 
 private:
+
+  // Pointer to the target thread for checking whether we are
+  // on the target thread. This is intentionally a non-owning
+  // pointer in order not to affect the thread destruction
+  // sequence. This pointer must only be compared for equality
+  // and must not be dereferenced.
+  nsIThread* mTargetThread;
+
   // prevent bad usage
   EventSourceImpl(const EventSourceImpl& x) = delete;
   EventSourceImpl& operator=(const EventSourceImpl& x) = delete;
@@ -348,6 +356,7 @@ EventSourceImpl::EventSourceImpl(EventSource* aEventSource)
   , mScriptLine(0)
   , mScriptColumn(0)
   , mInnerWindowID(0)
+  , mTargetThread(NS_GetCurrentThread())
 {
   MOZ_ASSERT(mEventSource);
   if (!mIsMainThread) {
@@ -455,6 +464,7 @@ public:
                                NS_LITERAL_CSTRING("EventSource :: Init"))
     , mImpl(aEventSourceImpl)
     , mURL(aURL)
+    , mRv(NS_ERROR_NOT_INITIALIZED)
   {
     MOZ_ASSERT(aWorkerPrivate);
     aWorkerPrivate->AssertIsOnWorkerThread();
@@ -1193,7 +1203,7 @@ EventSourceImpl::ReestablishConnection()
   } else {
     RefPtr<CallRestartConnection> runnable = new CallRestartConnection(this);
     ErrorResult result;
-    runnable->Dispatch(Terminating, result);
+    runnable->Dispatch(Canceling, result);
     MOZ_ASSERT(!result.Failed());
     rv = result.StealNSResult();
   }
@@ -1518,8 +1528,9 @@ EventSourceImpl::DispatchAllMessageEvents()
     RefPtr<MessageEvent> event = new MessageEvent(mEventSource, nullptr,
                                                   nullptr);
 
-    event->InitMessageEvent(nullptr, message->mEventName, false, false, jsData,
-                            mOrigin, message->mLastEventID, nullptr,
+    event->InitMessageEvent(nullptr, message->mEventName, CanBubble::eNo,
+                            Cancelable::eNo, jsData, mOrigin,
+                            message->mLastEventID, nullptr,
                             Sequence<OwningNonNull<MessagePort>>());
     event->SetTrusted(true);
 
@@ -1992,7 +2003,7 @@ EventSource::Constructor(const GlobalObject& aGlobal, const nsAString& aURL,
 
   RefPtr<InitRunnable> initRunnable =
     new InitRunnable(workerPrivate, eventSourceImp, aURL);
-  initRunnable->Dispatch(Terminating, aRv);
+  initRunnable->Dispatch(Canceling, aRv);
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
   }
@@ -2020,7 +2031,7 @@ EventSource::Constructor(const GlobalObject& aGlobal, const nsAString& aURL,
   // Let's connect to the server.
   RefPtr<ConnectRunnable> connectRunnable =
     new ConnectRunnable(workerPrivate, eventSourceImp);
-  connectRunnable->Dispatch(Terminating, aRv);
+  connectRunnable->Dispatch(Canceling, aRv);
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
   }
@@ -2033,7 +2044,7 @@ JSObject*
 EventSource::WrapObject(JSContext* aCx,
                         JS::Handle<JSObject*> aGivenProto)
 {
-  return EventSourceBinding::Wrap(aCx, this, aGivenProto);
+  return EventSource_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void

@@ -246,7 +246,7 @@ nsXBLPrototypeHandler::InitAccessKeys()
 #ifdef XP_MACOSX
   kMenuAccessKey = 0;
 #else
-  kMenuAccessKey = KeyboardEventBinding::DOM_VK_ALT;
+  kMenuAccessKey = KeyboardEvent_Binding::DOM_VK_ALT;
 #endif
 
   // Get the menu access key value from prefs, overriding the default:
@@ -377,7 +377,9 @@ nsXBLPrototypeHandler::ExecuteHandler(EventTarget* aTarget,
   NS_ENSURE_TRUE(bound, NS_ERROR_FAILURE);
 
   RefPtr<EventHandlerNonNull> handlerCallback =
-    new EventHandlerNonNull(nullptr, bound, /* aIncumbentGlobal = */ nullptr);
+    new EventHandlerNonNull(static_cast<JSContext*>(nullptr), bound,
+                            scopeObject,
+                            /* aIncumbentGlobal = */ nullptr);
 
   TypedEventHandler typedHandler(handlerCallback);
 
@@ -525,7 +527,7 @@ nsXBLPrototypeHandler::DispatchXBLCommand(EventTarget* aTarget, Event* aEvent)
   aEvent->PreventDefault();
 
   if (mEventName == nsGkAtoms::keypress &&
-      mDetail == KeyboardEventBinding::DOM_VK_SPACE &&
+      mDetail == KeyboardEvent_Binding::DOM_VK_SPACE &&
       mMisc == 1) {
     // get the focused element so that we can pageDown only at
     // certain times.
@@ -787,16 +789,16 @@ int32_t nsXBLPrototypeHandler::KeyToMask(int32_t key)
 {
   switch (key)
   {
-    case KeyboardEventBinding::DOM_VK_META:
+    case KeyboardEvent_Binding::DOM_VK_META:
       return cMeta | cMetaMask;
 
-    case KeyboardEventBinding::DOM_VK_WIN:
+    case KeyboardEvent_Binding::DOM_VK_WIN:
       return cOS | cOSMask;
 
-    case KeyboardEventBinding::DOM_VK_ALT:
+    case KeyboardEvent_Binding::DOM_VK_ALT:
       return cAlt | cAltMask;
 
-    case KeyboardEventBinding::DOM_VK_CONTROL:
+    case KeyboardEvent_Binding::DOM_VK_CONTROL:
     default:
       return cControl | cControlMask;
   }
@@ -809,13 +811,13 @@ nsXBLPrototypeHandler::AccelKeyMask()
 {
   switch (WidgetInputEvent::AccelModifier()) {
     case MODIFIER_ALT:
-      return KeyToMask(KeyboardEventBinding::DOM_VK_ALT);
+      return KeyToMask(KeyboardEvent_Binding::DOM_VK_ALT);
     case MODIFIER_CONTROL:
-      return KeyToMask(KeyboardEventBinding::DOM_VK_CONTROL);
+      return KeyToMask(KeyboardEvent_Binding::DOM_VK_CONTROL);
     case MODIFIER_META:
-      return KeyToMask(KeyboardEventBinding::DOM_VK_META);
+      return KeyToMask(KeyboardEvent_Binding::DOM_VK_META);
     case MODIFIER_OS:
-      return KeyToMask(KeyboardEventBinding::DOM_VK_WIN);
+      return KeyToMask(KeyboardEvent_Binding::DOM_VK_WIN);
     default:
       MOZ_CRASH("Handle the new result of WidgetInputEvent::AccelModifier()");
       return 0;

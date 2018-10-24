@@ -91,7 +91,7 @@ class ManagedTree extends _react.Component {
       focused
     } = this.props;
 
-    if (nextProps.listItems && nextProps.listItems != listItems && nextProps.listItems.length) {
+    if (nextProps.listItems && nextProps.listItems != listItems) {
       this.expandListItems(nextProps.listItems);
     }
 
@@ -125,8 +125,11 @@ class ManagedTree extends _react.Component {
     } else {
       // Look at folders starting from the top-level until finds a
       // closed folder and highlights this folder
-      const index = highlightItems.reverse().findIndex(item => !expanded.has(this.props.getPath(item)));
-      this.focusItem(highlightItems[index]);
+      const index = highlightItems.reverse().findIndex(item => !expanded.has(this.props.getPath(item)) && item.name !== "root");
+
+      if (highlightItems[index]) {
+        this.focusItem(highlightItems[index]);
+      }
     }
   }
 

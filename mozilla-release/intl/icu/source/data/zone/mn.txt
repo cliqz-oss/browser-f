@@ -1,8 +1,17 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html#License
 mn{
-    Version{"2.1.39.11"}
+    Version{"2.1.41.97"}
     zoneStrings{
+        "Etc:UTC"{
+            ls{"Олон улсын зохицуулалттай цаг"}
+        }
+        "Europe:Dublin"{
+            ld{"Ирландын стандарт цаг"}
+        }
+        "Europe:London"{
+            ld{"Британийн зуны цаг"}
+        }
         "meta:Afghanistan"{
             ls{"Афганистаны цаг"}
         }

@@ -10,11 +10,13 @@
 
 use cssparser::ToCss;
 use gecko_bindings::structs::{self, CSSPseudoElementType};
-use properties::{CascadeFlags, ComputedValues, PropertyFlags};
+use properties::{ComputedValues, PropertyFlags};
 use properties::longhands::display::computed_value::T as Display;
 use selector_parser::{NonTSPseudoClass, PseudoElementCascadeType, SelectorImpl};
 use std::fmt;
+use str::{starts_with_ignore_ascii_case, string_as_ascii_lowercase};
 use string_cache::Atom;
+use thin_slice::ThinBoxedSlice;
 use values::serialize_atom_identifier;
 
 include!(concat!(
@@ -55,14 +57,12 @@ impl PseudoElement {
         PseudoElementCascadeType::Lazy
     }
 
-    /// The CascadeFlags needed to cascade this pseudo-element.
+    /// Whether cascading this pseudo-element makes it inherit all properties,
+    /// even reset ones.
     ///
-    /// This is only needed to support the broken INHERIT_ALL pseudo mode for
-    /// Servo.
+    /// This is used in Servo for anonymous boxes, though it's likely broken.
     #[inline]
-    pub fn cascade_flags(&self) -> CascadeFlags {
-        CascadeFlags::empty()
-    }
+    pub fn inherits_all(&self) -> bool { false }
 
     /// Whether the pseudo-element should inherit from the default computed
     /// values instead of from the parent element.
@@ -161,15 +161,6 @@ impl PseudoElement {
     #[inline]
     pub fn is_precomputed(&self) -> bool {
         self.is_anon_box() && !self.is_tree_pseudo_element()
-    }
-
-    /// Covert non-canonical pseudo-element to canonical one, and keep a
-    /// canonical one as it is.
-    pub fn canonical(&self) -> PseudoElement {
-        match *self {
-            PseudoElement::MozPlaceholder => PseudoElement::Placeholder,
-            _ => self.clone(),
-        }
     }
 
     /// Property flag that properties must have to apply to this pseudo-element.

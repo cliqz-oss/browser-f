@@ -9,8 +9,6 @@
 #include "mozilla/EditorBase.h"
 #include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
-#include "nsIEditor.h"
-#include "nsIEditorMailSupport.h"
 #include "nsIPlaintextEditor.h"
 #include "nsISupportsImpl.h"
 #include "nscore.h"
@@ -36,7 +34,6 @@ class Selection;
  */
 class TextEditor : public EditorBase
                  , public nsIPlaintextEditor
-                 , public nsIEditorMailSupport
 {
 public:
   /****************************************************************************
@@ -57,9 +54,6 @@ public:
   // nsIPlaintextEditor methods
   NS_DECL_NSIPLAINTEXTEDITOR
 
-  // nsIEditorMailSupport overrides
-  NS_DECL_NSIEDITORMAILSUPPORT
-
   // Overrides of nsIEditor
   NS_IMETHOD GetDocumentIsEmpty(bool* aDocumentIsEmpty) override;
 
@@ -78,7 +72,6 @@ public:
   NS_IMETHOD Copy() override;
   NS_IMETHOD CanCopy(bool* aCanCopy) override;
   NS_IMETHOD CanDelete(bool* aCanDelete) override;
-  NS_IMETHOD Paste(int32_t aSelectionType) override;
   NS_IMETHOD CanPaste(int32_t aSelectionType, bool* aCanPaste) override;
   NS_IMETHOD PasteTransferable(nsITransferable* aTransferable) override;
 
@@ -98,7 +91,20 @@ public:
                         nsISelectionController* aSelCon, uint32_t aFlags,
                         const nsAString& aValue) override;
 
-  nsresult DocumentIsEmpty(bool* aIsEmpty);
+  /**
+   * IsEmpty() checks whether the editor is empty.  If editor has only bogus
+   * node, returns true.  If editor's root element has non-empty text nodes or
+   * other nodes like <br>, returns false.
+   */
+  nsresult IsEmpty(bool* aIsEmpty) const;
+  bool IsEmpty() const
+  {
+    bool isEmpty = false;
+    nsresult rv = IsEmpty(&isEmpty);
+    NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
+      "Checking whether the editor is empty failed");
+    return NS_SUCCEEDED(rv) && isEmpty;
+  }
 
   virtual nsresult HandleKeyPressEvent(
                      WidgetKeyboardEvent* aKeyboardEvent) override;
@@ -106,18 +112,40 @@ public:
   virtual dom::EventTarget* GetDOMEventTarget() override;
 
   /**
+   * PasteAsAction() pastes clipboard content to Selection.  This method
+   * may dispatch ePaste event first.  If its defaultPrevent() is called,
+   * this does nothing but returns NS_OK.
+   *
+   * @param aClipboardType      nsIClipboard::kGlobalClipboard or
+   *                            nsIClipboard::kSelectionClipboard.
+   */
+  nsresult PasteAsAction(int32_t aClipboardType);
+
+  /**
    * InsertTextAsAction() inserts aStringToInsert at selection.
    * Although this method is implementation of nsIPlaintextEditor.insertText(),
-   * this treats the input is an edit action.
+   * this treats the input is an edit action.  If you'd like to insert text
+   * as part of edit action, you probably should use InsertTextAsSubAction().
    *
    * @param aStringToInsert     The string to insert.
    */
   nsresult InsertTextAsAction(const nsAString& aStringToInsert);
 
   /**
+   * PasteAsQuotationAsAction() pastes content in clipboard as quotation.
+   * If the editor is TextEditor or in plaintext mode, will paste the content
+   * with appending ">" to start of each line.
+   *
+   * @param aClipboardType      nsIClipboard::kGlobalClipboard or
+   *                            nsIClipboard::kSelectionClipboard.
+   */
+  virtual nsresult PasteAsQuotationAsAction(int32_t aClipboardType);
+
+  /**
    * DeleteSelectionAsAction() removes selection content or content around
    * caret with transactions.  This should be used for handling it as an
-   * edit action.
+   * edit action.  If you'd like to remove selection for preparing to insert
+   * something, you probably should use DeleteSelectionAsSubAction().
    *
    * @param aDirection          How much range should be removed.
    * @param aStripWrappers      Whether the parent blocks should be removed
@@ -140,6 +168,17 @@ public:
    * @ param aString   the string to be set
    */
   nsresult SetText(const nsAString& aString);
+
+  /**
+   * Replace text in aReplaceRange or all text in this editor with aString and
+   * treat the change as inserting the string.
+   *
+   * @param aString             The string to set.
+   * @param aReplaceRange       The range to be replaced.
+   *                            If nullptr, all contents will be replaced.
+   */
+  nsresult ReplaceTextAsAction(const nsAString& aString,
+                               nsRange* aReplaceRange = nullptr);
 
   /**
    * OnInputParagraphSeparator() is called when user tries to separate current
@@ -176,6 +215,20 @@ public:
    */
   nsresult OnDrop(dom::DragEvent* aDropEvent);
 
+  /**
+   * ComputeTextValue() computes plaintext value of this editor.  This may be
+   * too expensive if it's in hot path.
+   *
+   * @param aDocumentEncoderFlags   Flags of nsIDocumentEncoder.
+   * @param aCharset                Encoding of the document.
+   */
+  nsresult ComputeTextValue(uint32_t aDocumentEncoderFlags,
+                            nsAString& aOutputString) const
+  {
+    return ComputeValueInternal(NS_LITERAL_STRING("text/plain"),
+                                aDocumentEncoderFlags, aOutputString);
+  }
+
 protected: // May be called by friends.
   /****************************************************************************
    * Some classes like TextEditRules, HTMLEditRules, WSRunObject which are
@@ -199,6 +252,26 @@ protected: // May be called by friends.
   using EditorBase::SetAttributeOrEquivalent;
 
   /**
+   * InsertTextAsSubAction() inserts aStringToInsert at selection.  This
+   * should be used for handling it as an edit sub-action.
+   *
+   * @param aStringToInsert     The string to insert.
+   */
+  nsresult InsertTextAsSubAction(const nsAString& aStringToInsert);
+
+  /**
+   * DeleteSelectionAsSubAction() removes selection content or content around
+   * caret with transactions.  This should be used for handling it as an
+   * edit sub-action.
+   *
+   * @param aDirection          How much range should be removed.
+   * @param aStripWrappers      Whether the parent blocks should be removed
+   *                            when they become empty.
+   */
+  nsresult DeleteSelectionAsSubAction(EDirection aDirection,
+                                      EStripWrappers aStripWrappers);
+
+  /**
    * DeleteSelectionWithTransaction() removes selected content or content
    * around caret with transactions.
    *
@@ -209,6 +282,21 @@ protected: // May be called by friends.
   virtual nsresult
   DeleteSelectionWithTransaction(EDirection aAction,
                                  EStripWrappers aStripWrappers);
+
+  /**
+   * Replace existed string with aString.  Caller must guarantee that there
+   * is a placeholder transaction which will have the transaction.
+   *
+   * @ param aString   The string to be set.
+   */
+  nsresult SetTextAsSubAction(const nsAString& aString);
+
+  /**
+   * ReplaceSelectionAsSubAction() replaces selection with aString.
+   *
+   * @param aString    The string to replace.
+   */
+  nsresult ReplaceSelectionAsSubAction(const nsAString& aString);
 
   /**
    * InsertBrElementWithTransaction() creates a <br> element and inserts it
@@ -257,6 +345,8 @@ protected: // Called by helper classes.
 protected: // Shouldn't be used by friend classes
   virtual ~TextEditor();
 
+  int32_t WrapWidth() const { return mWrapColumn; }
+
   /**
    * Make the given selection span the entire document.
    */
@@ -291,6 +381,15 @@ protected: // Shouldn't be used by friend classes
                                           bool aDoDeleteSelection) override;
 
   /**
+   * InsertWithQuotationsAsSubAction() inserts aQuotedText with appending ">"
+   * to start of every line.
+   *
+   * @param aQuotedText         String to insert.  This will be quoted by ">"
+   *                            automatically.
+   */
+  nsresult InsertWithQuotationsAsSubAction(const nsAString& aQuotedText);
+
+  /**
    * Return true if the data is safe to insert as the source and destination
    * principals match, or we are in a editor context where this doesn't matter.
    * Otherwise, the data must be sanitized first.
@@ -299,10 +398,31 @@ protected: // Shouldn't be used by friend classes
 
   virtual nsresult InitRules();
 
-  already_AddRefed<nsIDocumentEncoder> GetAndInitDocEncoder(
-                                         const nsAString& aFormatType,
-                                         uint32_t aFlags,
-                                         const nsACString& aCharset);
+  /**
+   * GetAndInitDocEncoder() returns a document encoder instance for aFormatType
+   * after initializing it.  The result may be cached for saving recreation
+   * cost.
+   *
+   * @param aFormatType             MIME type like "text/plain".
+   * @param aDocumentEncoderFlags   Flags of nsIDocumentEncoder.
+   * @param aCharset                Encoding of the document.
+   */
+  already_AddRefed<nsIDocumentEncoder>
+  GetAndInitDocEncoder(const nsAString& aFormatType,
+                       uint32_t aDocumentEncoderFlags,
+                       const nsACString& aCharset) const;
+
+  /**
+   * ComputeValueInternal() computes string value of this editor for given
+   * format.  This may be too expensive if it's in hot path.
+   *
+   * @param aFormatType             MIME type like "text/plain".
+   * @param aDocumentEncoderFlags   Flags of nsIDocumentEncoder.
+   * @param aCharset                Encoding of the document.
+   */
+  nsresult ComputeValueInternal(const nsAString& aFormatType,
+                                uint32_t aDocumentEncoderFlags,
+                                nsAString& aOutputString) const;
 
   /**
    * Factored methods for handling insertion of data from transferables
@@ -365,8 +485,8 @@ protected: // Shouldn't be used by friend classes
   virtual already_AddRefed<nsIContent> GetInputEventTargetContent() override;
 
 protected:
-  nsCOMPtr<nsIDocumentEncoder> mCachedDocumentEncoder;
-  nsString mCachedDocumentEncoderType;
+  mutable nsCOMPtr<nsIDocumentEncoder> mCachedDocumentEncoder;
+  mutable nsString mCachedDocumentEncoderType;
   int32_t mWrapColumn;
   int32_t mMaxTextLength;
   int32_t mInitTriggerCounter;

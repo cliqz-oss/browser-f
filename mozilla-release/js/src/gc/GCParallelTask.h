@@ -14,6 +14,8 @@
 
 namespace js {
 
+class AutoLockHelperThreadState;
+
 // A generic task used to dispatch work to the helper thread system.
 // Users supply a function pointer to call.
 //
@@ -44,7 +46,8 @@ class GCParallelTask
 
   protected:
     // A flag to signal a request for early completion of the off-thread task.
-    mozilla::Atomic<bool, mozilla::MemoryOrdering::ReleaseAcquire> cancel_;
+    mozilla::Atomic<bool, mozilla::MemoryOrdering::ReleaseAcquire,
+                    mozilla::recordreplay::Behavior::DontPreserve> cancel_;
 
   public:
     explicit GCParallelTask(JSRuntime* runtime, TaskFunc func)
@@ -72,12 +75,12 @@ class GCParallelTask
     mozilla::TimeDuration duration() const { return duration_; }
 
     // The simple interface to a parallel task works exactly like pthreads.
-    bool start();
+    MOZ_MUST_USE bool start();
     void join();
 
     // If multiple tasks are to be started or joined at once, it is more
     // efficient to take the helper thread lock once and use these methods.
-    bool startWithLockHeld(AutoLockHelperThreadState& locked);
+    MOZ_MUST_USE bool startWithLockHeld(AutoLockHelperThreadState& locked);
     void joinWithLockHeld(AutoLockHelperThreadState& locked);
 
     // Instead of dispatching to a helper, run the task on the current thread.

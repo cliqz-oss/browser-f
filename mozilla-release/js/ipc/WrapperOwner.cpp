@@ -118,8 +118,6 @@ class CPOWProxyHandler : public BaseProxyHandler
     virtual bool call(JSContext* cx, HandleObject proxy, const CallArgs& args) const override;
     virtual bool construct(JSContext* cx, HandleObject proxy, const CallArgs& args) const override;
 
-    virtual bool getPropertyDescriptor(JSContext* cx, HandleObject proxy, HandleId id,
-                                       MutableHandle<PropertyDescriptor> desc) const override;
     virtual bool hasOwn(JSContext* cx, HandleObject proxy, HandleId id, bool* bp) const override;
     virtual bool getOwnEnumerablePropertyKeys(JSContext* cx, HandleObject proxy,
                                               AutoIdVector& props) const override;
@@ -159,36 +157,6 @@ const CPOWProxyHandler CPOWProxyHandler::singleton;
         CPOWTimer timer(cx);                                            \
         return owner->call args;                                        \
     }
-
-bool
-CPOWProxyHandler::getPropertyDescriptor(JSContext* cx, HandleObject proxy, HandleId id,
-                                        MutableHandle<PropertyDescriptor> desc) const
-{
-    FORWARD(getPropertyDescriptor, (cx, proxy, id, desc), false);
-}
-
-bool
-WrapperOwner::getPropertyDescriptor(JSContext* cx, HandleObject proxy, HandleId id,
-                                    MutableHandle<PropertyDescriptor> desc)
-{
-    ObjectId objId = idOf(proxy);
-
-    JSIDVariant idVar;
-    if (!toJSIDVariant(cx, id, &idVar))
-        return false;
-
-    ReturnStatus status;
-    PPropertyDescriptor result;
-    if (!SendGetPropertyDescriptor(objId, idVar, &status, &result))
-        return ipcfail(cx);
-
-    LOG_STACK();
-
-    if (!ok(cx, status))
-        return false;
-
-    return toDescriptor(cx, result, desc);
-}
 
 bool
 CPOWProxyHandler::getOwnPropertyDescriptor(JSContext* cx, HandleObject proxy, HandleId id,
@@ -939,15 +907,6 @@ WrapperOwner::updatePointer(JSObject* obj, const JSObject* old)
 }
 
 bool
-WrapperOwner::init()
-{
-    if (!JavaScriptShared::init())
-        return false;
-
-    return true;
-}
-
-bool
 WrapperOwner::getPropertyKeys(JSContext* cx, HandleObject proxy, uint32_t flags, AutoIdVector& props)
 {
     ObjectId objId = idOf(proxy);
@@ -1233,7 +1192,9 @@ JSObject*
 WrapperOwner::fromLocalObjectVariant(JSContext* cx, const LocalObject& objVar)
 {
     Maybe<ObjectId> id(ObjectId::deserialize(objVar.serializedId()));
-    MOZ_RELEASE_ASSERT(id.isSome());
+    if (id.isNothing()) {
+        return nullptr;
+    }
     Rooted<JSObject*> obj(cx, findObjectById(cx, id.value()));
     if (!obj)
         return nullptr;

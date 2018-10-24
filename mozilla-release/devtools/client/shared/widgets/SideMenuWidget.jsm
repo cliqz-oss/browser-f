@@ -117,8 +117,7 @@ SideMenuWidget.prototype = {
    */
   isScrolledToBottom: function() {
     if (this._list.lastElementChild) {
-      const utils = this.window.QueryInterface(Ci.nsIInterfaceRequestor)
-                             .getInterface(Ci.nsIDOMWindowUtils);
+      const utils = this.window.windowUtils;
       const childRect = utils.getBoundsWithoutFlushing(this._list.lastElementChild);
       const listRect = utils.getBoundsWithoutFlushing(this._list);
 
@@ -227,9 +226,9 @@ SideMenuWidget.prototype = {
     }
 
     // Ensure the element is visible but not scrolled horizontally.
-    const boxObject = this._list.boxObject;
-    boxObject.ensureElementIsVisible(aElement);
-    boxObject.scrollBy(-this._list.clientWidth, 0);
+    const scrollbox = this._list;
+    scrollbox.ensureElementIsVisible(aElement);
+    scrollbox.scrollBy(-this._list.clientWidth, 0);
   },
 
   /**

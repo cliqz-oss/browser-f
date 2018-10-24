@@ -74,10 +74,7 @@ XULContentSinkImpl::ContextStack::~ContextStack()
 nsresult
 XULContentSinkImpl::ContextStack::Push(nsXULPrototypeNode* aNode, State aState)
 {
-    Entry* entry = new Entry;
-    entry->mNode  = aNode;
-    entry->mState = aState;
-    entry->mNext  = mTop;
+    Entry* entry = new Entry(aNode, aState, mTop);
 
     mTop = entry;
 
@@ -410,7 +407,8 @@ NS_IMETHODIMP
 XULContentSinkImpl::HandleStartElement(const char16_t *aName,
                                        const char16_t **aAtts,
                                        uint32_t aAttsCount,
-                                       uint32_t aLineNumber)
+                                       uint32_t aLineNumber,
+                                       uint32_t aColumnNumber)
 {
   // XXX Hopefully the parser will flag this before we get here. If
   // we're in the epilog, there should be no new elements
@@ -653,13 +651,6 @@ XULContentSinkImpl::ReportError(const char16_t* aErrorText,
     return NS_OK;
   };
 
-  if (idoc &&
-      idoc->IsXULDocument() &&
-      !idoc->AsXULDocument()->OnDocumentParserError()) {
-    // The overlay was broken.  Don't add a messy element to the master doc.
-    return NS_OK;
-  }
-
   const char16_t* noAtts[] = { 0, 0 };
 
   NS_NAMED_LITERAL_STRING(errorNs,
@@ -669,7 +660,7 @@ XULContentSinkImpl::ReportError(const char16_t* aErrorText,
   parsererror.Append((char16_t)0xFFFF);
   parsererror.AppendLiteral("parsererror");
 
-  rv = HandleStartElement(parsererror.get(), noAtts, 0, 0);
+  rv = HandleStartElement(parsererror.get(), noAtts, 0, 0, 0);
   NS_ENSURE_SUCCESS(rv,rv);
 
   rv = HandleCharacterData(aErrorText, NS_strlen(aErrorText));
@@ -679,7 +670,7 @@ XULContentSinkImpl::ReportError(const char16_t* aErrorText,
   sourcetext.Append((char16_t)0xFFFF);
   sourcetext.AppendLiteral("sourcetext");
 
-  rv = HandleStartElement(sourcetext.get(), noAtts, 0, 0);
+  rv = HandleStartElement(sourcetext.get(), noAtts, 0, 0, 0);
   NS_ENSURE_SUCCESS(rv,rv);
 
   rv = HandleCharacterData(aSourceText, NS_strlen(aSourceText));

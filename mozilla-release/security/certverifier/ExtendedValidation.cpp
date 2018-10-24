@@ -165,44 +165,6 @@ static const struct EVInfo kEVInfos[] = {
     "ALtAHEP1Xk+w",
   },
   {
-    // CN=VeriSign Class 3 Public Primary Certification Authority - G5,OU="(c) 2006 VeriSign, Inc. - For authorized use only",OU=VeriSign Trust Network,O="VeriSign, Inc.",C=US
-    "2.16.840.1.113733.1.7.23.6",
-    "VeriSign EV OID",
-    { 0x9A, 0xCF, 0xAB, 0x7E, 0x43, 0xC8, 0xD8, 0x80, 0xD0, 0x6B, 0x26,
-      0x2A, 0x94, 0xDE, 0xEE, 0xE4, 0xB4, 0x65, 0x99, 0x89, 0xC3, 0xD0,
-      0xCA, 0xF1, 0x9B, 0xAF, 0x64, 0x05, 0xE4, 0x1A, 0xB7, 0xDF },
-    "MIHKMQswCQYDVQQGEwJVUzEXMBUGA1UEChMOVmVyaVNpZ24sIEluYy4xHzAdBgNV"
-    "BAsTFlZlcmlTaWduIFRydXN0IE5ldHdvcmsxOjA4BgNVBAsTMShjKSAyMDA2IFZl"
-    "cmlTaWduLCBJbmMuIC0gRm9yIGF1dGhvcml6ZWQgdXNlIG9ubHkxRTBDBgNVBAMT"
-    "PFZlcmlTaWduIENsYXNzIDMgUHVibGljIFByaW1hcnkgQ2VydGlmaWNhdGlvbiBB"
-    "dXRob3JpdHkgLSBHNQ==",
-    "GNrRniZ96LtKIVjNzGs7Sg==",
-  },
-  {
-    // CN=GeoTrust Primary Certification Authority,O=GeoTrust Inc.,C=US
-    "1.3.6.1.4.1.14370.1.6",
-    "GeoTrust EV OID",
-    { 0x37, 0xD5, 0x10, 0x06, 0xC5, 0x12, 0xEA, 0xAB, 0x62, 0x64, 0x21,
-      0xF1, 0xEC, 0x8C, 0x92, 0x01, 0x3F, 0xC5, 0xF8, 0x2A, 0xE9, 0x8E,
-      0xE5, 0x33, 0xEB, 0x46, 0x19, 0xB8, 0xDE, 0xB4, 0xD0, 0x6C },
-    "MFgxCzAJBgNVBAYTAlVTMRYwFAYDVQQKEw1HZW9UcnVzdCBJbmMuMTEwLwYDVQQD"
-    "EyhHZW9UcnVzdCBQcmltYXJ5IENlcnRpZmljYXRpb24gQXV0aG9yaXR5",
-    "GKy1av1pthU6Y2yv2vrEoQ==",
-  },
-  {
-    // CN=thawte Primary Root CA,OU="(c) 2006 thawte, Inc. - For authorized use only",OU=Certification Services Division,O="thawte, Inc.",C=US
-    "2.16.840.1.113733.1.7.48.1",
-    "Thawte EV OID",
-    { 0x8D, 0x72, 0x2F, 0x81, 0xA9, 0xC1, 0x13, 0xC0, 0x79, 0x1D, 0xF1,
-      0x36, 0xA2, 0x96, 0x6D, 0xB2, 0x6C, 0x95, 0x0A, 0x97, 0x1D, 0xB4,
-      0x6B, 0x41, 0x99, 0xF4, 0xEA, 0x54, 0xB7, 0x8B, 0xFB, 0x9F },
-    "MIGpMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMdGhhd3RlLCBJbmMuMSgwJgYDVQQL"
-    "Ex9DZXJ0aWZpY2F0aW9uIFNlcnZpY2VzIERpdmlzaW9uMTgwNgYDVQQLEy8oYykg"
-    "MjAwNiB0aGF3dGUsIEluYy4gLSBGb3IgYXV0aG9yaXplZCB1c2Ugb25seTEfMB0G"
-    "A1UEAxMWdGhhd3RlIFByaW1hcnkgUm9vdCBDQQ==",
-    "NE7VVyDV7exJ9C/ON9srbQ==",
-  },
-  {
     // CN=XRamp Global Certification Authority,O=XRamp Security Services Inc,OU=www.xrampsecurity.com,C=US
     "2.16.840.1.114404.1.1.2.4.1",
     "Trustwave EV OID",
@@ -414,17 +376,6 @@ static const struct EVInfo kEVInfos[] = {
     "Ag==",
   },
   {
-    // CN=Class 2 Primary CA,O=Certplus,C=FR
-    "1.3.6.1.4.1.22234.2.5.2.3.1",
-    "Certplus EV OID",
-    { 0x0F, 0x99, 0x3C, 0x8A, 0xEF, 0x97, 0xBA, 0xAF, 0x56, 0x87, 0x14,
-      0x0E, 0xD5, 0x9A, 0xD1, 0x82, 0x1B, 0xB4, 0xAF, 0xAC, 0xF0, 0xAA,
-      0x9A, 0x58, 0xB5, 0xD5, 0x7A, 0x33, 0x8A, 0x3A, 0xFB, 0xCB },
-    "MD0xCzAJBgNVBAYTAkZSMREwDwYDVQQKEwhDZXJ0cGx1czEbMBkGA1UEAxMSQ2xh"
-    "c3MgMiBQcmltYXJ5IENB",
-    "AIW9S/PY2uNp9pTXX8OlRCM=",
-  },
-  {
     // CN=Chambers of Commerce Root - 2008,O=AC Camerfirma S.A.,serialNumber=A82743287,L=Madrid (see current address at www.camerfirma.com/address),C=EU
     "1.3.6.1.4.1.17326.10.14.2.1.2",
     "Camerfirma EV OID a",
@@ -574,45 +525,6 @@ static const struct EVInfo kEVInfos[] = {
     "MFAxCzAJBgNVBAYTAkRFMRUwEwYDVQQKDAxELVRydXN0IEdtYkgxKjAoBgNVBAMM"
     "IUQtVFJVU1QgUm9vdCBDbGFzcyAzIENBIDIgRVYgMjAwOQ==",
     "CYP0",
-  },
-  {
-    // CN=VeriSign Universal Root Certification Authority,OU="(c) 2008 VeriSign, Inc. - For authorized use only",OU=VeriSign Trust Network,O="VeriSign, Inc.",C=US
-    "2.16.840.1.113733.1.7.23.6",
-    "VeriSign EV OID",
-    { 0x23, 0x99, 0x56, 0x11, 0x27, 0xA5, 0x71, 0x25, 0xDE, 0x8C, 0xEF,
-      0xEA, 0x61, 0x0D, 0xDF, 0x2F, 0xA0, 0x78, 0xB5, 0xC8, 0x06, 0x7F,
-      0x4E, 0x82, 0x82, 0x90, 0xBF, 0xB8, 0x60, 0xE8, 0x4B, 0x3C },
-    "MIG9MQswCQYDVQQGEwJVUzEXMBUGA1UEChMOVmVyaVNpZ24sIEluYy4xHzAdBgNV"
-    "BAsTFlZlcmlTaWduIFRydXN0IE5ldHdvcmsxOjA4BgNVBAsTMShjKSAyMDA4IFZl"
-    "cmlTaWduLCBJbmMuIC0gRm9yIGF1dGhvcml6ZWQgdXNlIG9ubHkxODA2BgNVBAMT"
-    "L1ZlcmlTaWduIFVuaXZlcnNhbCBSb290IENlcnRpZmljYXRpb24gQXV0aG9yaXR5",
-    "QBrEZCGzEyEDDrvkEhrFHQ==",
-  },
-  {
-    // CN=GeoTrust Primary Certification Authority - G3,OU=(c) 2008 GeoTrust Inc. - For authorized use only,O=GeoTrust Inc.,C=US
-    "1.3.6.1.4.1.14370.1.6",
-    "GeoTrust EV OID",
-    { 0xB4, 0x78, 0xB8, 0x12, 0x25, 0x0D, 0xF8, 0x78, 0x63, 0x5C, 0x2A,
-      0xA7, 0xEC, 0x7D, 0x15, 0x5E, 0xAA, 0x62, 0x5E, 0xE8, 0x29, 0x16,
-      0xE2, 0xCD, 0x29, 0x43, 0x61, 0x88, 0x6C, 0xD1, 0xFB, 0xD4 },
-    "MIGYMQswCQYDVQQGEwJVUzEWMBQGA1UEChMNR2VvVHJ1c3QgSW5jLjE5MDcGA1UE"
-    "CxMwKGMpIDIwMDggR2VvVHJ1c3QgSW5jLiAtIEZvciBhdXRob3JpemVkIHVzZSBv"
-    "bmx5MTYwNAYDVQQDEy1HZW9UcnVzdCBQcmltYXJ5IENlcnRpZmljYXRpb24gQXV0"
-    "aG9yaXR5IC0gRzM=",
-    "FaxulBmyeUtB9iepwxgPHw==",
-  },
-  {
-    // CN=thawte Primary Root CA - G3,OU="(c) 2008 thawte, Inc. - For authorized use only",OU=Certification Services Division,O="thawte, Inc.",C=US
-    "2.16.840.1.113733.1.7.48.1",
-    "Thawte EV OID",
-    { 0x4B, 0x03, 0xF4, 0x58, 0x07, 0xAD, 0x70, 0xF2, 0x1B, 0xFC, 0x2C,
-      0xAE, 0x71, 0xC9, 0xFD, 0xE4, 0x60, 0x4C, 0x06, 0x4C, 0xF5, 0xFF,
-      0xB6, 0x86, 0xBA, 0xE5, 0xDB, 0xAA, 0xD7, 0xFD, 0xD3, 0x4C },
-    "MIGuMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMdGhhd3RlLCBJbmMuMSgwJgYDVQQL"
-    "Ex9DZXJ0aWZpY2F0aW9uIFNlcnZpY2VzIERpdmlzaW9uMTgwNgYDVQQLEy8oYykg"
-    "MjAwOCB0aGF3dGUsIEluYy4gLSBGb3IgYXV0aG9yaXplZCB1c2Ugb25seTEkMCIG"
-    "A1UEAxMbdGhhd3RlIFByaW1hcnkgUm9vdCBDQSAtIEcz",
-    "YAGXt0an6rS0mtZLL/eQ+w==",
   },
   {
     // CN = Autoridad de Certificacion Firmaprofesional CIF A62634068, C = ES
@@ -866,75 +778,6 @@ static const struct EVInfo kEVInfos[] = {
     "drEgUnTwhYdGs/gjGvbCwA==",
   },
   {
-    // CN=Certplus Root CA G1,O=Certplus,C=FR
-    "1.3.6.1.4.1.22234.3.5.3.1",
-    "DocuSign EV OID 1",
-    { 0x15, 0x2A, 0x40, 0x2B, 0xFC, 0xDF, 0x2C, 0xD5, 0x48, 0x05, 0x4D,
-      0x22, 0x75, 0xB3, 0x9C, 0x7F, 0xCA, 0x3E, 0xC0, 0x97, 0x80, 0x78,
-      0xB0, 0xF0, 0xEA, 0x76, 0xE5, 0x61, 0xA6, 0xC7, 0x43, 0x3E },
-    "MD4xCzAJBgNVBAYTAkZSMREwDwYDVQQKDAhDZXJ0cGx1czEcMBoGA1UEAwwTQ2Vy"
-    "dHBsdXMgUm9vdCBDQSBHMQ==",
-    "ESBVg+QtPlRWhS2DN7cs3EYR",
-  },
-  {
-    // CN=Certplus Root CA G2,O=Certplus,C=FR
-    "1.3.6.1.4.1.22234.3.5.3.2",
-    "DocuSign EV OID 2",
-    { 0x6C, 0xC0, 0x50, 0x41, 0xE6, 0x44, 0x5E, 0x74, 0x69, 0x6C, 0x4C,
-      0xFB, 0xC9, 0xF8, 0x0F, 0x54, 0x3B, 0x7E, 0xAB, 0xBB, 0x44, 0xB4,
-      0xCE, 0x6F, 0x78, 0x7C, 0x6A, 0x99, 0x71, 0xC4, 0x2F, 0x17 },
-    "MD4xCzAJBgNVBAYTAkZSMREwDwYDVQQKDAhDZXJ0cGx1czEcMBoGA1UEAwwTQ2Vy"
-    "dHBsdXMgUm9vdCBDQSBHMg==",
-    "ESDZkc6uo+jF5//pAq/Pc7xV",
-  },
-  {
-    // CN=OpenTrust Root CA G1,O=OpenTrust,C=FR
-    "1.3.6.1.4.1.22234.2.14.3.11",
-    "DocuSign EV OID 3",
-    { 0x56, 0xC7, 0x71, 0x28, 0xD9, 0x8C, 0x18, 0xD9, 0x1B, 0x4C, 0xFD,
-      0xFF, 0xBC, 0x25, 0xEE, 0x91, 0x03, 0xD4, 0x75, 0x8E, 0xA2, 0xAB,
-      0xAD, 0x82, 0x6A, 0x90, 0xF3, 0x45, 0x7D, 0x46, 0x0E, 0xB4 },
-    "MEAxCzAJBgNVBAYTAkZSMRIwEAYDVQQKDAlPcGVuVHJ1c3QxHTAbBgNVBAMMFE9w"
-    "ZW5UcnVzdCBSb290IENBIEcx",
-    "ESCzkFU5fX82bWTCp59rY45n",
-  },
-  {
-    // CN=OpenTrust Root CA G2,O=OpenTrust,C=FR
-    "1.3.6.1.4.1.22234.2.14.3.11",
-    "DocuSign EV OID 3",
-    { 0x27, 0x99, 0x58, 0x29, 0xFE, 0x6A, 0x75, 0x15, 0xC1, 0xBF, 0xE8,
-      0x48, 0xF9, 0xC4, 0x76, 0x1D, 0xB1, 0x6C, 0x22, 0x59, 0x29, 0x25,
-      0x7B, 0xF4, 0x0D, 0x08, 0x94, 0xF2, 0x9E, 0xA8, 0xBA, 0xF2 },
-    "MEAxCzAJBgNVBAYTAkZSMRIwEAYDVQQKDAlPcGVuVHJ1c3QxHTAbBgNVBAMMFE9w"
-    "ZW5UcnVzdCBSb290IENBIEcy",
-    "ESChaRu/vbm9UpaPI+hIvyYR",
-  },
-  {
-    // CN=OpenTrust Root CA G3,O=OpenTrust,C=FR
-    "1.3.6.1.4.1.22234.2.14.3.11",
-    "DocuSign EV OID 3",
-    { 0xB7, 0xC3, 0x62, 0x31, 0x70, 0x6E, 0x81, 0x07, 0x8C, 0x36, 0x7C,
-      0xB8, 0x96, 0x19, 0x8F, 0x1E, 0x32, 0x08, 0xDD, 0x92, 0x69, 0x49,
-      0xDD, 0x8F, 0x57, 0x09, 0xA4, 0x10, 0xF7, 0x5B, 0x62, 0x92 },
-    "MEAxCzAJBgNVBAYTAkZSMRIwEAYDVQQKDAlPcGVuVHJ1c3QxHTAbBgNVBAMMFE9w"
-    "ZW5UcnVzdCBSb290IENBIEcz",
-    "ESDm+Ez8JLC+BUCs2oMbNGA/",
-  },
-  {
-    // CN=VeriSign Class 3 Public Primary Certification Authority - G4,OU="(c) 2007 VeriSign, Inc. - For authorized use only",OU=VeriSign Trust Network,O="VeriSign, Inc.",C=US
-    "2.16.840.1.113733.1.7.23.6",
-    "VeriSign EV OID",
-    { 0x69, 0xDD, 0xD7, 0xEA, 0x90, 0xBB, 0x57, 0xC9, 0x3E, 0x13, 0x5D,
-      0xC8, 0x5E, 0xA6, 0xFC, 0xD5, 0x48, 0x0B, 0x60, 0x32, 0x39, 0xBD,
-      0xC4, 0x54, 0xFC, 0x75, 0x8B, 0x2A, 0x26, 0xCF, 0x7F, 0x79 },
-    "MIHKMQswCQYDVQQGEwJVUzEXMBUGA1UEChMOVmVyaVNpZ24sIEluYy4xHzAdBgNV"
-    "BAsTFlZlcmlTaWduIFRydXN0IE5ldHdvcmsxOjA4BgNVBAsTMShjKSAyMDA3IFZl"
-    "cmlTaWduLCBJbmMuIC0gRm9yIGF1dGhvcml6ZWQgdXNlIG9ubHkxRTBDBgNVBAMT"
-    "PFZlcmlTaWduIENsYXNzIDMgUHVibGljIFByaW1hcnkgQ2VydGlmaWNhdGlvbiBB"
-    "dXRob3JpdHkgLSBHNA==",
-    "L4D+I4wOIg9IZxIokYessw==",
-  },
-  {
     // CN=Amazon Root CA 1,O=Amazon,C=US
     "2.23.140.1.1",
     "CA/Browser Forum EV OID",
@@ -1102,17 +945,17 @@ CertIsAuthoritativeForEVPolicy(const UniqueCERTCertificate& cert,
     // This check ensures that only the specific roots we approve for EV get
     // that status, and not certs (roots or otherwise) that happen to have an
     // OID that's already been approved for EV.
-    if (!PodEqual(fingerprint, entry.sha256Fingerprint)) {
+    if (!ArrayEqual(fingerprint, entry.sha256Fingerprint)) {
       continue;
     }
 
     if (cabforumOIDData && cabforumOIDData->oid.len == policy.numBytes &&
-        PodEqual(cabforumOIDData->oid.data, policy.bytes, policy.numBytes)) {
+        ArrayEqual(cabforumOIDData->oid.data, policy.bytes, policy.numBytes)) {
       return true;
     }
     const SECOidData* oidData = SECOID_FindOIDByTag(sEVInfoOIDTags[i]);
     if (oidData && oidData->oid.len == policy.numBytes &&
-        PodEqual(oidData->oid.data, policy.bytes, policy.numBytes)) {
+        ArrayEqual(oidData->oid.data, policy.bytes, policy.numBytes)) {
       return true;
     }
   }
@@ -1188,7 +1031,7 @@ LoadExtendedValidationInfo()
       if (srv != SECSuccess) {
         return NS_ERROR_FAILURE;
       }
-      bool same = PodEqual(certFingerprint, entry.sha256Fingerprint);
+      bool same = ArrayEqual(certFingerprint, entry.sha256Fingerprint);
       MOZ_ASSERT(same, "EV root fingerprint mismatch");
       if (!same) {
         return NS_ERROR_FAILURE;

@@ -498,11 +498,13 @@ exports.CustomHighlighterActor = protocol.ActorClassWithSpec(customHighlighterSp
    * (FF41+)
    */
   show: function(node, options) {
-    if (!node || !this._highlighter) {
-      return false;
+    if (!this._highlighter) {
+      return null;
     }
 
-    return this._highlighter.show(node.rawNode, options);
+    const rawNode = node && node.rawNode;
+
+    return this._highlighter.show(rawNode, options);
   },
 
   /**
@@ -640,9 +642,7 @@ HighlighterEnvironment.prototype = {
 
   get docShell() {
     return this.window &&
-           this.window.QueryInterface(Ci.nsIInterfaceRequestor)
-                      .getInterface(Ci.nsIWebNavigation)
-                      .QueryInterface(Ci.nsIDocShell);
+           this.window.docShell;
   },
 
   get webProgress() {

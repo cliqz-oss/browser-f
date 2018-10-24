@@ -47,10 +47,14 @@ public:
   bool IsPresentationGenerationCurrent() const;
   void MakePresentationGenerationCurrent();
 
+  void StartVRNavigation();
+  void StopVRNavigation(const TimeDuration& aTimeout);
+
 protected:
   virtual ~VRDisplayClient();
 
   void FireEvents();
+  void FireGamepadEvents();
 
   VRDisplayInfo mDisplayInfo;
 
@@ -60,6 +64,10 @@ protected:
   int mPresentationCount;
   uint64_t mLastEventFrameId;
   uint32_t mLastPresentingGeneration;
+
+  // Difference between mDisplayInfo.mControllerState and mLastEventControllerState
+  // determines what gamepad events to fire when updated.
+  VRControllerState mLastEventControllerState[kVRControllerMaxCount];
 private:
   VRSubmitFrameResultInfo mSubmitFrameResult;
 };

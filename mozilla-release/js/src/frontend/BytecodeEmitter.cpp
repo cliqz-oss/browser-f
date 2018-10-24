@@ -18,13 +18,25 @@
 
 #include <string.h>
 
-#include "jsapi.h"
 #include "jsnum.h"
 #include "jstypes.h"
 #include "jsutil.h"
 
 #include "ds/Nestable.h"
+#include "frontend/BytecodeControlStructures.h"
+#include "frontend/CForEmitter.h"
+#include "frontend/DoWhileEmitter.h"
+#include "frontend/EmitterScope.h"
+#include "frontend/ForInEmitter.h"
+#include "frontend/ForOfEmitter.h"
+#include "frontend/ForOfLoopControl.h"
+#include "frontend/IfEmitter.h"
 #include "frontend/Parser.h"
+#include "frontend/SwitchEmitter.h"
+#include "frontend/TDZCheckCache.h"
+#include "frontend/TryEmitter.h"
+#include "frontend/WhileEmitter.h"
+#include "js/CompileOptions.h"
 #include "vm/BytecodeUtil.h"
 #include "vm/Debugger.h"
 #include "vm/GeneratorObject.h"
@@ -36,10 +48,7 @@
 #include "wasm/AsmJS.h"
 
 #include "frontend/ParseNode-inl.h"
-#include "vm/EnvironmentObject-inl.h"
-#include "vm/JSAtom-inl.h"
-#include "vm/JSScript-inl.h"
-#include "vm/NativeObject-inl.h"
+#include "vm/JSObject-inl.h"
 
 using namespace js;
 using namespace js::gc;
@@ -55,12 +64,6 @@ using mozilla::PodCopy;
 using mozilla::Some;
 using mozilla::Unused;
 
-class BreakableControl;
-class LabelControl;
-class LoopControl;
-class ForOfLoopControl;
-class TryFinallyControl;
-
 static bool
 ParseNodeRequiresSpecialLineNumberNotes(ParseNode* pn)
 {
@@ -75,2430 +78,6 @@ ParseNodeRequiresSpecialLineNumberNotes(ParseNode* pn)
            kind == ParseNodeKind::For ||
            kind == ParseNodeKind::Function;
 }
-
-// A cache that tracks Temporal Dead Zone (TDZ) checks, so that any use of a
-// lexical variable that's dominated by an earlier use, or by evaluation of its
-// declaration (which will initialize it, perhaps to |undefined|), doesn't have
-// to redundantly check that the lexical variable has been initialized
-//
-// Each basic block should have a TDZCheckCache in scope. Some NestableControl
-// subclasses contain a TDZCheckCache.
-//
-// When a scope containing lexical variables is entered, all such variables are
-// marked as CheckTDZ.  When a lexical variable is accessed, its entry is
-// checked.  If it's CheckTDZ, a JSOP_CHECKLEXICAL is emitted and then the
-// entry is marked DontCheckTDZ.  If it's DontCheckTDZ, no check is emitted
-// because a prior check would have already failed.  Finally, because
-// evaluating a lexical variable declaration initializes it (after any
-// initializer is evaluated), evaluating a lexical declaration marks its entry
-// as DontCheckTDZ.
-class BytecodeEmitter::TDZCheckCache : public Nestable<BytecodeEmitter::TDZCheckCache>
-{
-    PooledMapPtr<CheckTDZMap> cache_;
-
-    MOZ_MUST_USE bool ensureCache(BytecodeEmitter* bce) {
-        return cache_ || cache_.acquire(bce->cx);
-    }
-
-  public:
-    explicit TDZCheckCache(BytecodeEmitter* bce)
-      : Nestable<TDZCheckCache>(&bce->innermostTDZCheckCache),
-        cache_(bce->cx->frontendCollectionPool())
-    { }
-
-    Maybe<MaybeCheckTDZ> needsTDZCheck(BytecodeEmitter* bce, JSAtom* name);
-    MOZ_MUST_USE bool noteTDZCheck(BytecodeEmitter* bce, JSAtom* name, MaybeCheckTDZ check);
-};
-
-class BytecodeEmitter::NestableControl : public Nestable<BytecodeEmitter::NestableControl>
-{
-    StatementKind kind_;
-
-    // The innermost scope when this was pushed.
-    EmitterScope* emitterScope_;
-
-  protected:
-    NestableControl(BytecodeEmitter* bce, StatementKind kind)
-      : Nestable<NestableControl>(&bce->innermostNestableControl),
-        kind_(kind),
-        emitterScope_(bce->innermostEmitterScopeNoCheck())
-    { }
-
-  public:
-    using Nestable<NestableControl>::enclosing;
-    using Nestable<NestableControl>::findNearest;
-
-    StatementKind kind() const {
-        return kind_;
-    }
-
-    EmitterScope* emitterScope() const {
-        return emitterScope_;
-    }
-
-    template <typename T>
-    bool is() const;
-
-    template <typename T>
-    T& as() {
-        MOZ_ASSERT(this->is<T>());
-        return static_cast<T&>(*this);
-    }
-};
-
-// Template specializations are disallowed in different namespaces; specialize
-// all the NestableControl subtypes up front.
-namespace js {
-namespace frontend {
-
-template <>
-bool
-BytecodeEmitter::NestableControl::is<BreakableControl>() const
-{
-    return StatementKindIsUnlabeledBreakTarget(kind_) || kind_ == StatementKind::Label;
-}
-
-template <>
-bool
-BytecodeEmitter::NestableControl::is<LabelControl>() const
-{
-    return kind_ == StatementKind::Label;
-}
-
-template <>
-bool
-BytecodeEmitter::NestableControl::is<LoopControl>() const
-{
-    return StatementKindIsLoop(kind_);
-}
-
-template <>
-bool
-BytecodeEmitter::NestableControl::is<ForOfLoopControl>() const
-{
-    return kind_ == StatementKind::ForOfLoop;
-}
-
-template <>
-bool
-BytecodeEmitter::NestableControl::is<TryFinallyControl>() const
-{
-    return kind_ == StatementKind::Try || kind_ == StatementKind::Finally;
-}
-
-} // namespace frontend
-} // namespace js
-
-class BreakableControl : public BytecodeEmitter::NestableControl
-{
-  public:
-    // Offset of the last break.
-    JumpList breaks;
-
-    BreakableControl(BytecodeEmitter* bce, StatementKind kind)
-      : NestableControl(bce, kind)
-    {
-        MOZ_ASSERT(is<BreakableControl>());
-    }
-
-    MOZ_MUST_USE bool patchBreaks(BytecodeEmitter* bce) {
-        return bce->emitJumpTargetAndPatch(breaks);
-    }
-};
-
-class LabelControl : public BreakableControl
-{
-    RootedAtom label_;
-
-    // The code offset when this was pushed. Used for effectfulness checking.
-    ptrdiff_t startOffset_;
-
-  public:
-    LabelControl(BytecodeEmitter* bce, JSAtom* label, ptrdiff_t startOffset)
-      : BreakableControl(bce, StatementKind::Label),
-        label_(bce->cx, label),
-        startOffset_(startOffset)
-    { }
-
-    HandleAtom label() const {
-        return label_;
-    }
-
-    ptrdiff_t startOffset() const {
-        return startOffset_;
-    }
-};
-
-class LoopControl : public BreakableControl
-{
-    // Loops' children are emitted in dominance order, so they can always
-    // have a TDZCheckCache.
-    BytecodeEmitter::TDZCheckCache tdzCache_;
-
-    // Stack depth when this loop was pushed on the control stack.
-    int32_t stackDepth_;
-
-    // The loop nesting depth. Used as a hint to Ion.
-    uint32_t loopDepth_;
-
-    // Can we OSR into Ion from here? True unless there is non-loop state on the stack.
-    bool canIonOsr_;
-
-  public:
-    // The target of continue statement jumps, e.g., the update portion of a
-    // for(;;) loop.
-    JumpTarget continueTarget;
-
-    // Offset of the last continue in the loop.
-    JumpList continues;
-
-    LoopControl(BytecodeEmitter* bce, StatementKind loopKind)
-      : BreakableControl(bce, loopKind),
-        tdzCache_(bce),
-        continueTarget({ -1 })
-    {
-        MOZ_ASSERT(is<LoopControl>());
-
-        LoopControl* enclosingLoop = findNearest<LoopControl>(enclosing());
-
-        stackDepth_ = bce->stackDepth;
-        loopDepth_ = enclosingLoop ? enclosingLoop->loopDepth_ + 1 : 1;
-
-        int loopSlots;
-        if (loopKind == StatementKind::Spread) {
-            // The iterator next method, the iterator, the result array, and
-            // the current array index are on the stack.
-            loopSlots = 4;
-        } else if (loopKind == StatementKind::ForOfLoop) {
-            // The iterator next method, the iterator, and the current value
-            // are on the stack.
-            loopSlots = 3;
-        } else if (loopKind == StatementKind::ForInLoop) {
-            // The iterator and the current value are on the stack.
-            loopSlots = 2;
-        } else {
-            // No additional loop values are on the stack.
-            loopSlots = 0;
-        }
-
-        MOZ_ASSERT(loopSlots <= stackDepth_);
-
-        if (enclosingLoop) {
-            canIonOsr_ = (enclosingLoop->canIonOsr_ &&
-                          stackDepth_ == enclosingLoop->stackDepth_ + loopSlots);
-        } else {
-            canIonOsr_ = stackDepth_ == loopSlots;
-        }
-    }
-
-    uint32_t loopDepth() const {
-        return loopDepth_;
-    }
-
-    bool canIonOsr() const {
-        return canIonOsr_;
-    }
-
-    MOZ_MUST_USE bool emitSpecialBreakForDone(BytecodeEmitter* bce) {
-        // This doesn't pop stack values, nor handle any other controls.
-        // Should be called on the toplevel of the loop.
-        MOZ_ASSERT(bce->stackDepth == stackDepth_);
-        MOZ_ASSERT(bce->innermostNestableControl == this);
-
-        if (!bce->newSrcNote(SRC_BREAK))
-            return false;
-        if (!bce->emitJump(JSOP_GOTO, &breaks))
-            return false;
-
-        return true;
-    }
-
-    MOZ_MUST_USE bool patchBreaksAndContinues(BytecodeEmitter* bce) {
-        MOZ_ASSERT(continueTarget.offset != -1);
-        if (!patchBreaks(bce))
-            return false;
-        bce->patchJumpsToTarget(continues, continueTarget);
-        return true;
-    }
-};
-
-class TryFinallyControl : public BytecodeEmitter::NestableControl
-{
-    bool emittingSubroutine_;
-
-  public:
-    // The subroutine when emitting a finally block.
-    JumpList gosubs;
-
-    TryFinallyControl(BytecodeEmitter* bce, StatementKind kind)
-      : NestableControl(bce, kind),
-        emittingSubroutine_(false)
-    {
-        MOZ_ASSERT(is<TryFinallyControl>());
-    }
-
-    void setEmittingSubroutine() {
-        emittingSubroutine_ = true;
-    }
-
-    bool emittingSubroutine() const {
-        return emittingSubroutine_;
-    }
-};
-
-static inline void
-MarkAllBindingsClosedOver(LexicalScope::Data& data)
-{
-    TrailingNamesArray& names = data.trailingNames;
-    for (uint32_t i = 0; i < data.length; i++)
-        names[i] = BindingName(names[i].name(), true);
-}
-
-// A scope that introduces bindings.
-class BytecodeEmitter::EmitterScope : public Nestable<BytecodeEmitter::EmitterScope>
-{
-    // The cache of bound names that may be looked up in the
-    // scope. Initially populated as the set of names this scope binds. As
-    // names are looked up in enclosing scopes, they are cached on the
-    // current scope.
-    PooledMapPtr<NameLocationMap> nameCache_;
-
-    // If this scope's cache does not include free names, such as the
-    // global scope, the NameLocation to return.
-    Maybe<NameLocation> fallbackFreeNameLocation_;
-
-    // True if there is a corresponding EnvironmentObject on the environment
-    // chain, false if all bindings are stored in frame slots on the stack.
-    bool hasEnvironment_;
-
-    // The number of enclosing environments. Used for error checking.
-    uint8_t environmentChainLength_;
-
-    // The next usable slot on the frame for not-closed over bindings.
-    //
-    // The initial frame slot when assigning slots to bindings is the
-    // enclosing scope's nextFrameSlot. For the first scope in a frame,
-    // the initial frame slot is 0.
-    uint32_t nextFrameSlot_;
-
-    // The index in the BytecodeEmitter's interned scope vector, otherwise
-    // ScopeNote::NoScopeIndex.
-    uint32_t scopeIndex_;
-
-    // If kind is Lexical, Catch, or With, the index in the BytecodeEmitter's
-    // block scope note list. Otherwise ScopeNote::NoScopeNote.
-    uint32_t noteIndex_;
-
-    MOZ_MUST_USE bool ensureCache(BytecodeEmitter* bce) {
-        return nameCache_.acquire(bce->cx);
-    }
-
-    template <typename BindingIter>
-    MOZ_MUST_USE bool checkSlotLimits(BytecodeEmitter* bce, const BindingIter& bi) {
-        if (bi.nextFrameSlot() >= LOCALNO_LIMIT ||
-            bi.nextEnvironmentSlot() >= ENVCOORD_SLOT_LIMIT)
-        {
-            bce->reportError(nullptr, JSMSG_TOO_MANY_LOCALS);
-            return false;
-        }
-        return true;
-    }
-
-    MOZ_MUST_USE bool checkEnvironmentChainLength(BytecodeEmitter* bce) {
-        uint32_t hops;
-        if (EmitterScope* emitterScope = enclosing(&bce))
-            hops = emitterScope->environmentChainLength_;
-        else
-            hops = bce->sc->compilationEnclosingScope()->environmentChainLength();
-
-        if (hops >= ENVCOORD_HOPS_LIMIT - 1) {
-            bce->reportError(nullptr, JSMSG_TOO_DEEP, js_function_str);
-            return false;
-        }
-
-        environmentChainLength_ = mozilla::AssertedCast<uint8_t>(hops + 1);
-        return true;
-    }
-
-    void updateFrameFixedSlots(BytecodeEmitter* bce, const BindingIter& bi) {
-        nextFrameSlot_ = bi.nextFrameSlot();
-        if (nextFrameSlot_ > bce->maxFixedSlots)
-            bce->maxFixedSlots = nextFrameSlot_;
-        MOZ_ASSERT_IF(bce->sc->isFunctionBox() &&
-                      (bce->sc->asFunctionBox()->isGenerator() ||
-                       bce->sc->asFunctionBox()->isAsync()),
-                      bce->maxFixedSlots == 0);
-    }
-
-    MOZ_MUST_USE bool putNameInCache(BytecodeEmitter* bce, JSAtom* name, NameLocation loc) {
-        NameLocationMap& cache = *nameCache_;
-        NameLocationMap::AddPtr p = cache.lookupForAdd(name);
-        MOZ_ASSERT(!p);
-        if (!cache.add(p, name, loc)) {
-            ReportOutOfMemory(bce->cx);
-            return false;
-        }
-        return true;
-    }
-
-    Maybe<NameLocation> lookupInCache(BytecodeEmitter* bce, JSAtom* name) {
-        if (NameLocationMap::Ptr p = nameCache_->lookup(name))
-            return Some(p->value().wrapped);
-        if (fallbackFreeNameLocation_ && nameCanBeFree(bce, name))
-            return fallbackFreeNameLocation_;
-        return Nothing();
-    }
-
-    friend bool BytecodeEmitter::needsImplicitThis();
-
-    EmitterScope* enclosing(BytecodeEmitter** bce) const {
-        // There is an enclosing scope with access to the same frame.
-        if (EmitterScope* inFrame = enclosingInFrame())
-            return inFrame;
-
-        // We are currently compiling the enclosing script, look in the
-        // enclosing BCE.
-        if ((*bce)->parent) {
-            *bce = (*bce)->parent;
-            return (*bce)->innermostEmitterScopeNoCheck();
-        }
-
-        return nullptr;
-    }
-
-    Scope* enclosingScope(BytecodeEmitter* bce) const {
-        if (EmitterScope* es = enclosing(&bce))
-            return es->scope(bce);
-
-        // The enclosing script is already compiled or the current script is the
-        // global script.
-        return bce->sc->compilationEnclosingScope();
-    }
-
-    static bool nameCanBeFree(BytecodeEmitter* bce, JSAtom* name) {
-        // '.generator' cannot be accessed by name.
-        return name != bce->cx->names().dotGenerator;
-    }
-
-    static NameLocation searchInEnclosingScope(JSAtom* name, Scope* scope, uint8_t hops);
-    NameLocation searchAndCache(BytecodeEmitter* bce, JSAtom* name);
-
-    template <typename ScopeCreator>
-    MOZ_MUST_USE bool internScope(BytecodeEmitter* bce, ScopeCreator createScope);
-    template <typename ScopeCreator>
-    MOZ_MUST_USE bool internBodyScope(BytecodeEmitter* bce, ScopeCreator createScope);
-    MOZ_MUST_USE bool appendScopeNote(BytecodeEmitter* bce);
-
-    MOZ_MUST_USE bool deadZoneFrameSlotRange(BytecodeEmitter* bce, uint32_t slotStart,
-                                             uint32_t slotEnd);
-
-  public:
-    explicit EmitterScope(BytecodeEmitter* bce)
-      : Nestable<EmitterScope>(&bce->innermostEmitterScope_),
-        nameCache_(bce->cx->frontendCollectionPool()),
-        hasEnvironment_(false),
-        environmentChainLength_(0),
-        nextFrameSlot_(0),
-        scopeIndex_(ScopeNote::NoScopeIndex),
-        noteIndex_(ScopeNote::NoScopeNoteIndex)
-    { }
-
-    void dump(BytecodeEmitter* bce);
-
-    MOZ_MUST_USE bool enterLexical(BytecodeEmitter* bce, ScopeKind kind,
-                                   Handle<LexicalScope::Data*> bindings);
-    MOZ_MUST_USE bool enterNamedLambda(BytecodeEmitter* bce, FunctionBox* funbox);
-    MOZ_MUST_USE bool enterFunction(BytecodeEmitter* bce, FunctionBox* funbox);
-    MOZ_MUST_USE bool enterFunctionExtraBodyVar(BytecodeEmitter* bce, FunctionBox* funbox);
-    MOZ_MUST_USE bool enterParameterExpressionVar(BytecodeEmitter* bce);
-    MOZ_MUST_USE bool enterGlobal(BytecodeEmitter* bce, GlobalSharedContext* globalsc);
-    MOZ_MUST_USE bool enterEval(BytecodeEmitter* bce, EvalSharedContext* evalsc);
-    MOZ_MUST_USE bool enterModule(BytecodeEmitter* module, ModuleSharedContext* modulesc);
-    MOZ_MUST_USE bool enterWith(BytecodeEmitter* bce);
-    MOZ_MUST_USE bool deadZoneFrameSlots(BytecodeEmitter* bce);
-
-    MOZ_MUST_USE bool leave(BytecodeEmitter* bce, bool nonLocal = false);
-
-    uint32_t index() const {
-        MOZ_ASSERT(scopeIndex_ != ScopeNote::NoScopeIndex, "Did you forget to intern a Scope?");
-        return scopeIndex_;
-    }
-
-    uint32_t noteIndex() const {
-        return noteIndex_;
-    }
-
-    Scope* scope(const BytecodeEmitter* bce) const {
-        return bce->scopeList.vector[index()];
-    }
-
-    bool hasEnvironment() const {
-        return hasEnvironment_;
-    }
-
-    // The first frame slot used.
-    uint32_t frameSlotStart() const {
-        if (EmitterScope* inFrame = enclosingInFrame())
-            return inFrame->nextFrameSlot_;
-        return 0;
-    }
-
-    // The last frame slot used + 1.
-    uint32_t frameSlotEnd() const {
-        return nextFrameSlot_;
-    }
-
-    EmitterScope* enclosingInFrame() const {
-        return Nestable<EmitterScope>::enclosing();
-    }
-
-    NameLocation lookup(BytecodeEmitter* bce, JSAtom* name) {
-        if (Maybe<NameLocation> loc = lookupInCache(bce, name))
-            return *loc;
-        return searchAndCache(bce, name);
-    }
-
-    Maybe<NameLocation> locationBoundInScope(JSAtom* name, EmitterScope* target);
-};
-
-void
-BytecodeEmitter::EmitterScope::dump(BytecodeEmitter* bce)
-{
-    fprintf(stdout, "EmitterScope [%s] %p\n", ScopeKindString(scope(bce)->kind()), this);
-
-    for (NameLocationMap::Range r = nameCache_->all(); !r.empty(); r.popFront()) {
-        const NameLocation& l = r.front().value();
-
-        JSAutoByteString bytes;
-        if (!AtomToPrintableString(bce->cx, r.front().key(), &bytes))
-            return;
-        if (l.kind() != NameLocation::Kind::Dynamic)
-            fprintf(stdout, "  %s %s ", BindingKindString(l.bindingKind()), bytes.ptr());
-        else
-            fprintf(stdout, "  %s ", bytes.ptr());
-
-        switch (l.kind()) {
-          case NameLocation::Kind::Dynamic:
-            fprintf(stdout, "dynamic\n");
-            break;
-          case NameLocation::Kind::Global:
-            fprintf(stdout, "global\n");
-            break;
-          case NameLocation::Kind::Intrinsic:
-            fprintf(stdout, "intrinsic\n");
-            break;
-          case NameLocation::Kind::NamedLambdaCallee:
-            fprintf(stdout, "named lambda callee\n");
-            break;
-          case NameLocation::Kind::Import:
-            fprintf(stdout, "import\n");
-            break;
-          case NameLocation::Kind::ArgumentSlot:
-            fprintf(stdout, "arg slot=%u\n", l.argumentSlot());
-            break;
-          case NameLocation::Kind::FrameSlot:
-            fprintf(stdout, "frame slot=%u\n", l.frameSlot());
-            break;
-          case NameLocation::Kind::EnvironmentCoordinate:
-            fprintf(stdout, "environment hops=%u slot=%u\n",
-                    l.environmentCoordinate().hops(), l.environmentCoordinate().slot());
-            break;
-          case NameLocation::Kind::DynamicAnnexBVar:
-            fprintf(stdout, "dynamic annex b var\n");
-            break;
-        }
-    }
-
-    fprintf(stdout, "\n");
-}
-
-template <typename ScopeCreator>
-bool
-BytecodeEmitter::EmitterScope::internScope(BytecodeEmitter* bce, ScopeCreator createScope)
-{
-    RootedScope enclosing(bce->cx, enclosingScope(bce));
-    Scope* scope = createScope(bce->cx, enclosing);
-    if (!scope)
-        return false;
-    hasEnvironment_ = scope->hasEnvironment();
-    scopeIndex_ = bce->scopeList.length();
-    return bce->scopeList.append(scope);
-}
-
-template <typename ScopeCreator>
-bool
-BytecodeEmitter::EmitterScope::internBodyScope(BytecodeEmitter* bce, ScopeCreator createScope)
-{
-    MOZ_ASSERT(bce->bodyScopeIndex == UINT32_MAX, "There can be only one body scope");
-    bce->bodyScopeIndex = bce->scopeList.length();
-    return internScope(bce, createScope);
-}
-
-bool
-BytecodeEmitter::EmitterScope::appendScopeNote(BytecodeEmitter* bce)
-{
-    MOZ_ASSERT(ScopeKindIsInBody(scope(bce)->kind()) && enclosingInFrame(),
-               "Scope notes are not needed for body-level scopes.");
-    noteIndex_ = bce->scopeNoteList.length();
-    return bce->scopeNoteList.append(index(), bce->offset(), bce->inPrologue(),
-                                     enclosingInFrame() ? enclosingInFrame()->noteIndex()
-                                                        : ScopeNote::NoScopeNoteIndex);
-}
-
-#ifdef DEBUG
-static bool
-NameIsOnEnvironment(Scope* scope, JSAtom* name)
-{
-    for (BindingIter bi(scope); bi; bi++) {
-        // If found, the name must already be on the environment or an import,
-        // or else there is a bug in the closed-over name analysis in the
-        // Parser.
-        if (bi.name() == name) {
-            BindingLocation::Kind kind = bi.location().kind();
-
-            if (bi.hasArgumentSlot()) {
-                JSScript* script = scope->as<FunctionScope>().script();
-                if (!script->strict() && !script->functionHasParameterExprs()) {
-                    // Check for duplicate positional formal parameters.
-                    for (BindingIter bi2(bi); bi2 && bi2.hasArgumentSlot(); bi2++) {
-                        if (bi2.name() == name)
-                            kind = bi2.location().kind();
-                    }
-                }
-            }
-
-            return kind == BindingLocation::Kind::Global ||
-                   kind == BindingLocation::Kind::Environment ||
-                   kind == BindingLocation::Kind::Import;
-        }
-    }
-
-    // If not found, assume it's on the global or dynamically accessed.
-    return true;
-}
-#endif
-
-/* static */ NameLocation
-BytecodeEmitter::EmitterScope::searchInEnclosingScope(JSAtom* name, Scope* scope, uint8_t hops)
-{
-    for (ScopeIter si(scope); si; si++) {
-        MOZ_ASSERT(NameIsOnEnvironment(si.scope(), name));
-
-        bool hasEnv = si.hasSyntacticEnvironment();
-
-        switch (si.kind()) {
-          case ScopeKind::Function:
-            if (hasEnv) {
-                JSScript* script = si.scope()->as<FunctionScope>().script();
-                if (script->funHasExtensibleScope())
-                    return NameLocation::Dynamic();
-
-                for (BindingIter bi(si.scope()); bi; bi++) {
-                    if (bi.name() != name)
-                        continue;
-
-                    BindingLocation bindLoc = bi.location();
-                    if (bi.hasArgumentSlot() &&
-                        !script->strict() &&
-                        !script->functionHasParameterExprs())
-                    {
-                        // Check for duplicate positional formal parameters.
-                        for (BindingIter bi2(bi); bi2 && bi2.hasArgumentSlot(); bi2++) {
-                            if (bi2.name() == name)
-                                bindLoc = bi2.location();
-                        }
-                    }
-
-                    MOZ_ASSERT(bindLoc.kind() == BindingLocation::Kind::Environment);
-                    return NameLocation::EnvironmentCoordinate(bi.kind(), hops, bindLoc.slot());
-                }
-            }
-            break;
-
-          case ScopeKind::FunctionBodyVar:
-          case ScopeKind::ParameterExpressionVar:
-          case ScopeKind::Lexical:
-          case ScopeKind::NamedLambda:
-          case ScopeKind::StrictNamedLambda:
-          case ScopeKind::SimpleCatch:
-          case ScopeKind::Catch:
-            if (hasEnv) {
-                for (BindingIter bi(si.scope()); bi; bi++) {
-                    if (bi.name() != name)
-                        continue;
-
-                    // The name must already have been marked as closed
-                    // over. If this assertion is hit, there is a bug in the
-                    // name analysis.
-                    BindingLocation bindLoc = bi.location();
-                    MOZ_ASSERT(bindLoc.kind() == BindingLocation::Kind::Environment);
-                    return NameLocation::EnvironmentCoordinate(bi.kind(), hops, bindLoc.slot());
-                }
-            }
-            break;
-
-          case ScopeKind::Module:
-            if (hasEnv) {
-                for (BindingIter bi(si.scope()); bi; bi++) {
-                    if (bi.name() != name)
-                        continue;
-
-                    BindingLocation bindLoc = bi.location();
-
-                    // Imports are on the environment but are indirect
-                    // bindings and must be accessed dynamically instead of
-                    // using an EnvironmentCoordinate.
-                    if (bindLoc.kind() == BindingLocation::Kind::Import) {
-                        MOZ_ASSERT(si.kind() == ScopeKind::Module);
-                        return NameLocation::Import();
-                    }
-
-                    MOZ_ASSERT(bindLoc.kind() == BindingLocation::Kind::Environment);
-                    return NameLocation::EnvironmentCoordinate(bi.kind(), hops, bindLoc.slot());
-                }
-            }
-            break;
-
-          case ScopeKind::Eval:
-          case ScopeKind::StrictEval:
-            // As an optimization, if the eval doesn't have its own var
-            // environment and its immediate enclosing scope is a global
-            // scope, all accesses are global.
-            if (!hasEnv && si.scope()->enclosing()->is<GlobalScope>())
-                return NameLocation::Global(BindingKind::Var);
-            return NameLocation::Dynamic();
-
-          case ScopeKind::Global:
-            return NameLocation::Global(BindingKind::Var);
-
-          case ScopeKind::With:
-          case ScopeKind::NonSyntactic:
-            return NameLocation::Dynamic();
-
-          case ScopeKind::WasmInstance:
-          case ScopeKind::WasmFunction:
-            MOZ_CRASH("No direct eval inside wasm functions");
-        }
-
-        if (hasEnv) {
-            MOZ_ASSERT(hops < ENVCOORD_HOPS_LIMIT - 1);
-            hops++;
-        }
-    }
-
-    MOZ_CRASH("Malformed scope chain");
-}
-
-NameLocation
-BytecodeEmitter::EmitterScope::searchAndCache(BytecodeEmitter* bce, JSAtom* name)
-{
-    Maybe<NameLocation> loc;
-    uint8_t hops = hasEnvironment() ? 1 : 0;
-    DebugOnly<bool> inCurrentScript = enclosingInFrame();
-
-    // Start searching in the current compilation.
-    for (EmitterScope* es = enclosing(&bce); es; es = es->enclosing(&bce)) {
-        loc = es->lookupInCache(bce, name);
-        if (loc) {
-            if (loc->kind() == NameLocation::Kind::EnvironmentCoordinate)
-                *loc = loc->addHops(hops);
-            break;
-        }
-
-        if (es->hasEnvironment())
-            hops++;
-
-#ifdef DEBUG
-        if (!es->enclosingInFrame())
-            inCurrentScript = false;
-#endif
-    }
-
-    // If the name is not found in the current compilation, walk the Scope
-    // chain encompassing the compilation.
-    if (!loc) {
-        inCurrentScript = false;
-        loc = Some(searchInEnclosingScope(name, bce->sc->compilationEnclosingScope(), hops));
-    }
-
-    // Each script has its own frame. A free name that is accessed
-    // from an inner script must not be a frame slot access. If this
-    // assertion is hit, it is a bug in the free name analysis in the
-    // parser.
-    MOZ_ASSERT_IF(!inCurrentScript, loc->kind() != NameLocation::Kind::FrameSlot);
-
-    // It is always correct to not cache the location. Ignore OOMs to make
-    // lookups infallible.
-    if (!putNameInCache(bce, name, *loc))
-        bce->cx->recoverFromOutOfMemory();
-
-    return *loc;
-}
-
-Maybe<NameLocation>
-BytecodeEmitter::EmitterScope::locationBoundInScope(JSAtom* name, EmitterScope* target)
-{
-    // The target scope must be an intra-frame enclosing scope of this
-    // one. Count the number of extra hops to reach it.
-    uint8_t extraHops = 0;
-    for (EmitterScope* es = this; es != target; es = es->enclosingInFrame()) {
-        if (es->hasEnvironment())
-            extraHops++;
-    }
-
-    // Caches are prepopulated with bound names. So if the name is bound in a
-    // particular scope, it must already be in the cache. Furthermore, don't
-    // consult the fallback location as we only care about binding names.
-    Maybe<NameLocation> loc;
-    if (NameLocationMap::Ptr p = target->nameCache_->lookup(name)) {
-        NameLocation l = p->value().wrapped;
-        if (l.kind() == NameLocation::Kind::EnvironmentCoordinate)
-            loc = Some(l.addHops(extraHops));
-        else
-            loc = Some(l);
-    }
-    return loc;
-}
-
-bool
-BytecodeEmitter::EmitterScope::deadZoneFrameSlotRange(BytecodeEmitter* bce, uint32_t slotStart,
-                                                      uint32_t slotEnd)
-{
-    // Lexical bindings throw ReferenceErrors if they are used before
-    // initialization. See ES6 8.1.1.1.6.
-    //
-    // For completeness, lexical bindings are initialized in ES6 by calling
-    // InitializeBinding, after which touching the binding will no longer
-    // throw reference errors. See 13.1.11, 9.2.13, 13.6.3.4, 13.6.4.6,
-    // 13.6.4.8, 13.14.5, 15.1.8, and 15.2.0.15.
-    if (slotStart != slotEnd) {
-        if (!bce->emit1(JSOP_UNINITIALIZED))
-            return false;
-        for (uint32_t slot = slotStart; slot < slotEnd; slot++) {
-            if (!bce->emitLocalOp(JSOP_INITLEXICAL, slot))
-                return false;
-        }
-        if (!bce->emit1(JSOP_POP))
-            return false;
-    }
-
-    return true;
-}
-
-bool
-BytecodeEmitter::EmitterScope::deadZoneFrameSlots(BytecodeEmitter* bce)
-{
-    return deadZoneFrameSlotRange(bce, frameSlotStart(), frameSlotEnd());
-}
-
-bool
-BytecodeEmitter::EmitterScope::enterLexical(BytecodeEmitter* bce, ScopeKind kind,
-                                            Handle<LexicalScope::Data*> bindings)
-{
-    MOZ_ASSERT(kind != ScopeKind::NamedLambda && kind != ScopeKind::StrictNamedLambda);
-    MOZ_ASSERT(this == bce->innermostEmitterScopeNoCheck());
-
-    if (!ensureCache(bce))
-        return false;
-
-    // Marks all names as closed over if the context requires it. This
-    // cannot be done in the Parser as we may not know if the context requires
-    // all bindings to be closed over until after parsing is finished. For
-    // example, legacy generators require all bindings to be closed over but
-    // it is unknown if a function is a legacy generator until the first
-    // 'yield' expression is parsed.
-    //
-    // This is not a problem with other scopes, as all other scopes with
-    // bindings are body-level. At the time of their creation, whether or not
-    // the context requires all bindings to be closed over is already known.
-    if (bce->sc->allBindingsClosedOver())
-        MarkAllBindingsClosedOver(*bindings);
-
-    // Resolve bindings.
-    TDZCheckCache* tdzCache = bce->innermostTDZCheckCache;
-    uint32_t firstFrameSlot = frameSlotStart();
-    BindingIter bi(*bindings, firstFrameSlot, /* isNamedLambda = */ false);
-    for (; bi; bi++) {
-        if (!checkSlotLimits(bce, bi))
-            return false;
-
-        NameLocation loc = NameLocation::fromBinding(bi.kind(), bi.location());
-        if (!putNameInCache(bce, bi.name(), loc))
-            return false;
-
-        if (!tdzCache->noteTDZCheck(bce, bi.name(), CheckTDZ))
-            return false;
-    }
-
-    updateFrameFixedSlots(bce, bi);
-
-    // Create and intern the VM scope.
-    auto createScope = [kind, bindings, firstFrameSlot](JSContext* cx,
-                                                        HandleScope enclosing)
-    {
-        return LexicalScope::create(cx, kind, bindings, firstFrameSlot, enclosing);
-    };
-    if (!internScope(bce, createScope))
-        return false;
-
-    if (ScopeKindIsInBody(kind) && hasEnvironment()) {
-        // After interning the VM scope we can get the scope index.
-        if (!bce->emitInternedScopeOp(index(), JSOP_PUSHLEXICALENV))
-            return false;
-    }
-
-    // Lexical scopes need notes to be mapped from a pc.
-    if (!appendScopeNote(bce))
-        return false;
-
-    // Put frame slots in TDZ. Environment slots are poisoned during
-    // environment creation.
-    //
-    // This must be done after appendScopeNote to be considered in the extent
-    // of the scope.
-    if (!deadZoneFrameSlotRange(bce, firstFrameSlot, frameSlotEnd()))
-        return false;
-
-    return checkEnvironmentChainLength(bce);
-}
-
-bool
-BytecodeEmitter::EmitterScope::enterNamedLambda(BytecodeEmitter* bce, FunctionBox* funbox)
-{
-    MOZ_ASSERT(this == bce->innermostEmitterScopeNoCheck());
-    MOZ_ASSERT(funbox->namedLambdaBindings());
-
-    if (!ensureCache(bce))
-        return false;
-
-    // See comment in enterLexical about allBindingsClosedOver.
-    if (funbox->allBindingsClosedOver())
-        MarkAllBindingsClosedOver(*funbox->namedLambdaBindings());
-
-    BindingIter bi(*funbox->namedLambdaBindings(), LOCALNO_LIMIT, /* isNamedLambda = */ true);
-    MOZ_ASSERT(bi.kind() == BindingKind::NamedLambdaCallee);
-
-    // The lambda name, if not closed over, is accessed via JSOP_CALLEE and
-    // not a frame slot. Do not update frame slot information.
-    NameLocation loc = NameLocation::fromBinding(bi.kind(), bi.location());
-    if (!putNameInCache(bce, bi.name(), loc))
-        return false;
-
-    bi++;
-    MOZ_ASSERT(!bi, "There should be exactly one binding in a NamedLambda scope");
-
-    auto createScope = [funbox](JSContext* cx, HandleScope enclosing) {
-        ScopeKind scopeKind =
-            funbox->strict() ? ScopeKind::StrictNamedLambda : ScopeKind::NamedLambda;
-        return LexicalScope::create(cx, scopeKind, funbox->namedLambdaBindings(),
-                                    LOCALNO_LIMIT, enclosing);
-    };
-    if (!internScope(bce, createScope))
-        return false;
-
-    return checkEnvironmentChainLength(bce);
-}
-
-bool
-BytecodeEmitter::EmitterScope::enterParameterExpressionVar(BytecodeEmitter* bce)
-{
-    MOZ_ASSERT(this == bce->innermostEmitterScopeNoCheck());
-
-    if (!ensureCache(bce))
-        return false;
-
-    // Parameter expressions var scopes have no pre-set bindings and are
-    // always extensible, as they are needed for eval.
-    fallbackFreeNameLocation_ = Some(NameLocation::Dynamic());
-
-    // Create and intern the VM scope.
-    uint32_t firstFrameSlot = frameSlotStart();
-    auto createScope = [firstFrameSlot](JSContext* cx, HandleScope enclosing) {
-        return VarScope::create(cx, ScopeKind::ParameterExpressionVar,
-                                /* data = */ nullptr, firstFrameSlot,
-                                /* needsEnvironment = */ true, enclosing);
-    };
-    if (!internScope(bce, createScope))
-        return false;
-
-    MOZ_ASSERT(hasEnvironment());
-    if (!bce->emitInternedScopeOp(index(), JSOP_PUSHVARENV))
-        return false;
-
-    // The extra var scope needs a note to be mapped from a pc.
-    if (!appendScopeNote(bce))
-        return false;
-
-    return checkEnvironmentChainLength(bce);
-}
-
-bool
-BytecodeEmitter::EmitterScope::enterFunction(BytecodeEmitter* bce, FunctionBox* funbox)
-{
-    MOZ_ASSERT(this == bce->innermostEmitterScopeNoCheck());
-
-    // If there are parameter expressions, there is an extra var scope.
-    if (!funbox->hasExtraBodyVarScope())
-        bce->setVarEmitterScope(this);
-
-    if (!ensureCache(bce))
-        return false;
-
-    // Resolve body-level bindings, if there are any.
-    auto bindings = funbox->functionScopeBindings();
-    Maybe<uint32_t> lastLexicalSlot;
-    if (bindings) {
-        NameLocationMap& cache = *nameCache_;
-
-        BindingIter bi(*bindings, funbox->hasParameterExprs);
-        for (; bi; bi++) {
-            if (!checkSlotLimits(bce, bi))
-                return false;
-
-            NameLocation loc = NameLocation::fromBinding(bi.kind(), bi.location());
-            NameLocationMap::AddPtr p = cache.lookupForAdd(bi.name());
-
-            // The only duplicate bindings that occur are simple formal
-            // parameters, in which case the last position counts, so update the
-            // location.
-            if (p) {
-                MOZ_ASSERT(bi.kind() == BindingKind::FormalParameter);
-                MOZ_ASSERT(!funbox->hasDestructuringArgs);
-                MOZ_ASSERT(!funbox->hasRest());
-                p->value() = loc;
-                continue;
-            }
-
-            if (!cache.add(p, bi.name(), loc)) {
-                ReportOutOfMemory(bce->cx);
-                return false;
-            }
-        }
-
-        updateFrameFixedSlots(bce, bi);
-    } else {
-        nextFrameSlot_ = 0;
-    }
-
-    // If the function's scope may be extended at runtime due to sloppy direct
-    // eval and there is no extra var scope, any names beyond the function
-    // scope must be accessed dynamically as we don't know if the name will
-    // become a 'var' binding due to direct eval.
-    if (!funbox->hasParameterExprs && funbox->hasExtensibleScope())
-        fallbackFreeNameLocation_ = Some(NameLocation::Dynamic());
-
-    // In case of parameter expressions, the parameters are lexical
-    // bindings and have TDZ.
-    if (funbox->hasParameterExprs && nextFrameSlot_) {
-        uint32_t paramFrameSlotEnd = 0;
-        for (BindingIter bi(*bindings, true); bi; bi++) {
-            if (!BindingKindIsLexical(bi.kind()))
-                break;
-
-            NameLocation loc = NameLocation::fromBinding(bi.kind(), bi.location());
-            if (loc.kind() == NameLocation::Kind::FrameSlot) {
-                MOZ_ASSERT(paramFrameSlotEnd <= loc.frameSlot());
-                paramFrameSlotEnd = loc.frameSlot() + 1;
-            }
-        }
-
-        if (!deadZoneFrameSlotRange(bce, 0, paramFrameSlotEnd))
-            return false;
-    }
-
-    // Create and intern the VM scope.
-    auto createScope = [funbox](JSContext* cx, HandleScope enclosing) {
-        RootedFunction fun(cx, funbox->function());
-        return FunctionScope::create(cx, funbox->functionScopeBindings(),
-                                     funbox->hasParameterExprs,
-                                     funbox->needsCallObjectRegardlessOfBindings(),
-                                     fun, enclosing);
-    };
-    if (!internBodyScope(bce, createScope))
-        return false;
-
-    return checkEnvironmentChainLength(bce);
-}
-
-bool
-BytecodeEmitter::EmitterScope::enterFunctionExtraBodyVar(BytecodeEmitter* bce, FunctionBox* funbox)
-{
-    MOZ_ASSERT(funbox->hasParameterExprs);
-    MOZ_ASSERT(funbox->extraVarScopeBindings() ||
-               funbox->needsExtraBodyVarEnvironmentRegardlessOfBindings());
-    MOZ_ASSERT(this == bce->innermostEmitterScopeNoCheck());
-
-    // The extra var scope is never popped once it's entered. It replaces the
-    // function scope as the var emitter scope.
-    bce->setVarEmitterScope(this);
-
-    if (!ensureCache(bce))
-        return false;
-
-    // Resolve body-level bindings, if there are any.
-    uint32_t firstFrameSlot = frameSlotStart();
-    if (auto bindings = funbox->extraVarScopeBindings()) {
-        BindingIter bi(*bindings, firstFrameSlot);
-        for (; bi; bi++) {
-            if (!checkSlotLimits(bce, bi))
-                return false;
-
-            NameLocation loc = NameLocation::fromBinding(bi.kind(), bi.location());
-            if (!putNameInCache(bce, bi.name(), loc))
-                return false;
-        }
-
-        updateFrameFixedSlots(bce, bi);
-    } else {
-        nextFrameSlot_ = firstFrameSlot;
-    }
-
-    // If the extra var scope may be extended at runtime due to sloppy
-    // direct eval, any names beyond the var scope must be accessed
-    // dynamically as we don't know if the name will become a 'var' binding
-    // due to direct eval.
-    if (funbox->hasExtensibleScope())
-        fallbackFreeNameLocation_ = Some(NameLocation::Dynamic());
-
-    // Create and intern the VM scope.
-    auto createScope = [funbox, firstFrameSlot](JSContext* cx, HandleScope enclosing) {
-        return VarScope::create(cx, ScopeKind::FunctionBodyVar,
-                                funbox->extraVarScopeBindings(), firstFrameSlot,
-                                funbox->needsExtraBodyVarEnvironmentRegardlessOfBindings(),
-                                enclosing);
-    };
-    if (!internScope(bce, createScope))
-        return false;
-
-    if (hasEnvironment()) {
-        if (!bce->emitInternedScopeOp(index(), JSOP_PUSHVARENV))
-            return false;
-    }
-
-    // The extra var scope needs a note to be mapped from a pc.
-    if (!appendScopeNote(bce))
-        return false;
-
-    return checkEnvironmentChainLength(bce);
-}
-
-class DynamicBindingIter : public BindingIter
-{
-  public:
-    explicit DynamicBindingIter(GlobalSharedContext* sc)
-      : BindingIter(*sc->bindings)
-    { }
-
-    explicit DynamicBindingIter(EvalSharedContext* sc)
-      : BindingIter(*sc->bindings, /* strict = */ false)
-    {
-        MOZ_ASSERT(!sc->strict());
-    }
-
-    JSOp bindingOp() const {
-        switch (kind()) {
-          case BindingKind::Var:
-            return JSOP_DEFVAR;
-          case BindingKind::Let:
-            return JSOP_DEFLET;
-          case BindingKind::Const:
-            return JSOP_DEFCONST;
-          default:
-            MOZ_CRASH("Bad BindingKind");
-        }
-    }
-};
-
-bool
-BytecodeEmitter::EmitterScope::enterGlobal(BytecodeEmitter* bce, GlobalSharedContext* globalsc)
-{
-    MOZ_ASSERT(this == bce->innermostEmitterScopeNoCheck());
-
-    bce->setVarEmitterScope(this);
-
-    if (!ensureCache(bce))
-        return false;
-
-    if (bce->emitterMode == BytecodeEmitter::SelfHosting) {
-        // In self-hosting, it is incorrect to consult the global scope because
-        // self-hosted scripts are cloned into their target compartments before
-        // they are run. Instead of Global, Intrinsic is used for all names.
-        //
-        // Intrinsic lookups are redirected to the special intrinsics holder
-        // in the global object, into which any missing values are cloned
-        // lazily upon first access.
-        fallbackFreeNameLocation_ = Some(NameLocation::Intrinsic());
-
-        auto createScope = [](JSContext* cx, HandleScope enclosing) {
-            MOZ_ASSERT(!enclosing);
-            return &cx->global()->emptyGlobalScope();
-        };
-        return internBodyScope(bce, createScope);
-    }
-
-    // Resolve binding names and emit DEF{VAR,LET,CONST} prologue ops.
-    if (globalsc->bindings) {
-        for (DynamicBindingIter bi(globalsc); bi; bi++) {
-            NameLocation loc = NameLocation::fromBinding(bi.kind(), bi.location());
-            JSAtom* name = bi.name();
-            if (!putNameInCache(bce, name, loc))
-                return false;
-
-            // Define the name in the prologue. Do not emit DEFVAR for
-            // functions that we'll emit DEFFUN for.
-            if (bi.isTopLevelFunction())
-                continue;
-
-            if (!bce->emitAtomOp(name, bi.bindingOp()))
-                return false;
-        }
-    }
-
-    // Note that to save space, we don't add free names to the cache for
-    // global scopes. They are assumed to be global vars in the syntactic
-    // global scope, dynamic accesses under non-syntactic global scope.
-    if (globalsc->scopeKind() == ScopeKind::Global)
-        fallbackFreeNameLocation_ = Some(NameLocation::Global(BindingKind::Var));
-    else
-        fallbackFreeNameLocation_ = Some(NameLocation::Dynamic());
-
-    auto createScope = [globalsc](JSContext* cx, HandleScope enclosing) {
-        MOZ_ASSERT(!enclosing);
-        return GlobalScope::create(cx, globalsc->scopeKind(), globalsc->bindings);
-    };
-    return internBodyScope(bce, createScope);
-}
-
-bool
-BytecodeEmitter::EmitterScope::enterEval(BytecodeEmitter* bce, EvalSharedContext* evalsc)
-{
-    MOZ_ASSERT(this == bce->innermostEmitterScopeNoCheck());
-
-    bce->setVarEmitterScope(this);
-
-    if (!ensureCache(bce))
-        return false;
-
-    // For simplicity, treat all free name lookups in eval scripts as dynamic.
-    fallbackFreeNameLocation_ = Some(NameLocation::Dynamic());
-
-    // Create the `var` scope. Note that there is also a lexical scope, created
-    // separately in emitScript().
-    auto createScope = [evalsc](JSContext* cx, HandleScope enclosing) {
-        ScopeKind scopeKind = evalsc->strict() ? ScopeKind::StrictEval : ScopeKind::Eval;
-        return EvalScope::create(cx, scopeKind, evalsc->bindings, enclosing);
-    };
-    if (!internBodyScope(bce, createScope))
-        return false;
-
-    if (hasEnvironment()) {
-        if (!bce->emitInternedScopeOp(index(), JSOP_PUSHVARENV))
-            return false;
-    } else {
-        // Resolve binding names and emit DEFVAR prologue ops if we don't have
-        // an environment (i.e., a sloppy eval not in a parameter expression).
-        // Eval scripts always have their own lexical scope, but non-strict
-        // scopes may introduce 'var' bindings to the nearest var scope.
-        //
-        // TODO: We may optimize strict eval bindings in the future to be on
-        // the frame. For now, handle everything dynamically.
-        if (!hasEnvironment() && evalsc->bindings) {
-            for (DynamicBindingIter bi(evalsc); bi; bi++) {
-                MOZ_ASSERT(bi.bindingOp() == JSOP_DEFVAR);
-
-                if (bi.isTopLevelFunction())
-                    continue;
-
-                if (!bce->emitAtomOp(bi.name(), JSOP_DEFVAR))
-                    return false;
-            }
-        }
-
-        // As an optimization, if the eval does not have its own var
-        // environment and is directly enclosed in a global scope, then all
-        // free name lookups are global.
-        if (scope(bce)->enclosing()->is<GlobalScope>())
-            fallbackFreeNameLocation_ = Some(NameLocation::Global(BindingKind::Var));
-    }
-
-    return true;
-}
-
-bool
-BytecodeEmitter::EmitterScope::enterModule(BytecodeEmitter* bce, ModuleSharedContext* modulesc)
-{
-    MOZ_ASSERT(this == bce->innermostEmitterScopeNoCheck());
-
-    bce->setVarEmitterScope(this);
-
-    if (!ensureCache(bce))
-        return false;
-
-    // Resolve body-level bindings, if there are any.
-    TDZCheckCache* tdzCache = bce->innermostTDZCheckCache;
-    Maybe<uint32_t> firstLexicalFrameSlot;
-    if (ModuleScope::Data* bindings = modulesc->bindings) {
-        BindingIter bi(*bindings);
-        for (; bi; bi++) {
-            if (!checkSlotLimits(bce, bi))
-                return false;
-
-            NameLocation loc = NameLocation::fromBinding(bi.kind(), bi.location());
-            if (!putNameInCache(bce, bi.name(), loc))
-                return false;
-
-            if (BindingKindIsLexical(bi.kind())) {
-                if (loc.kind() == NameLocation::Kind::FrameSlot && !firstLexicalFrameSlot)
-                    firstLexicalFrameSlot = Some(loc.frameSlot());
-
-                if (!tdzCache->noteTDZCheck(bce, bi.name(), CheckTDZ))
-                    return false;
-            }
-        }
-
-        updateFrameFixedSlots(bce, bi);
-    } else {
-        nextFrameSlot_ = 0;
-    }
-
-    // Modules are toplevel, so any free names are global.
-    fallbackFreeNameLocation_ = Some(NameLocation::Global(BindingKind::Var));
-
-    // Put lexical frame slots in TDZ. Environment slots are poisoned during
-    // environment creation.
-    if (firstLexicalFrameSlot) {
-        if (!deadZoneFrameSlotRange(bce, *firstLexicalFrameSlot, frameSlotEnd()))
-            return false;
-    }
-
-    // Create and intern the VM scope.
-    auto createScope = [modulesc](JSContext* cx, HandleScope enclosing) {
-        return ModuleScope::create(cx, modulesc->bindings, modulesc->module(), enclosing);
-    };
-    if (!internBodyScope(bce, createScope))
-        return false;
-
-    return checkEnvironmentChainLength(bce);
-}
-
-bool
-BytecodeEmitter::EmitterScope::enterWith(BytecodeEmitter* bce)
-{
-    MOZ_ASSERT(this == bce->innermostEmitterScopeNoCheck());
-
-    if (!ensureCache(bce))
-        return false;
-
-    // 'with' make all accesses dynamic and unanalyzable.
-    fallbackFreeNameLocation_ = Some(NameLocation::Dynamic());
-
-    auto createScope = [](JSContext* cx, HandleScope enclosing) {
-        return WithScope::create(cx, enclosing);
-    };
-    if (!internScope(bce, createScope))
-        return false;
-
-    if (!bce->emitInternedScopeOp(index(), JSOP_ENTERWITH))
-        return false;
-
-    if (!appendScopeNote(bce))
-        return false;
-
-    return checkEnvironmentChainLength(bce);
-}
-
-bool
-BytecodeEmitter::EmitterScope::leave(BytecodeEmitter* bce, bool nonLocal)
-{
-    // If we aren't leaving the scope due to a non-local jump (e.g., break),
-    // we must be the innermost scope.
-    MOZ_ASSERT_IF(!nonLocal, this == bce->innermostEmitterScopeNoCheck());
-
-    ScopeKind kind = scope(bce)->kind();
-    switch (kind) {
-      case ScopeKind::Lexical:
-      case ScopeKind::SimpleCatch:
-      case ScopeKind::Catch:
-        if (!bce->emit1(hasEnvironment() ? JSOP_POPLEXICALENV : JSOP_DEBUGLEAVELEXICALENV))
-            return false;
-        break;
-
-      case ScopeKind::With:
-        if (!bce->emit1(JSOP_LEAVEWITH))
-            return false;
-        break;
-
-      case ScopeKind::ParameterExpressionVar:
-        MOZ_ASSERT(hasEnvironment());
-        if (!bce->emit1(JSOP_POPVARENV))
-            return false;
-        break;
-
-      case ScopeKind::Function:
-      case ScopeKind::FunctionBodyVar:
-      case ScopeKind::NamedLambda:
-      case ScopeKind::StrictNamedLambda:
-      case ScopeKind::Eval:
-      case ScopeKind::StrictEval:
-      case ScopeKind::Global:
-      case ScopeKind::NonSyntactic:
-      case ScopeKind::Module:
-        break;
-
-      case ScopeKind::WasmInstance:
-      case ScopeKind::WasmFunction:
-        MOZ_CRASH("No wasm function scopes in JS");
-    }
-
-    // Finish up the scope if we are leaving it in LIFO fashion.
-    if (!nonLocal) {
-        // Popping scopes due to non-local jumps generate additional scope
-        // notes. See NonLocalExitControl::prepareForNonLocalJump.
-        if (ScopeKindIsInBody(kind)) {
-            // The extra function var scope is never popped once it's pushed,
-            // so its scope note extends until the end of any possible code.
-            uint32_t offset = kind == ScopeKind::FunctionBodyVar ? UINT32_MAX : bce->offset();
-            bce->scopeNoteList.recordEnd(noteIndex_, offset, bce->inPrologue());
-        }
-    }
-
-    return true;
-}
-
-Maybe<MaybeCheckTDZ>
-BytecodeEmitter::TDZCheckCache::needsTDZCheck(BytecodeEmitter* bce, JSAtom* name)
-{
-    if (!ensureCache(bce))
-        return Nothing();
-
-    CheckTDZMap::AddPtr p = cache_->lookupForAdd(name);
-    if (p)
-        return Some(p->value().wrapped);
-
-    MaybeCheckTDZ rv = CheckTDZ;
-    for (TDZCheckCache* it = enclosing(); it; it = it->enclosing()) {
-        if (it->cache_) {
-            if (CheckTDZMap::Ptr p2 = it->cache_->lookup(name)) {
-                rv = p2->value();
-                break;
-            }
-        }
-    }
-
-    if (!cache_->add(p, name, rv)) {
-        ReportOutOfMemory(bce->cx);
-        return Nothing();
-    }
-
-    return Some(rv);
-}
-
-bool
-BytecodeEmitter::TDZCheckCache::noteTDZCheck(BytecodeEmitter* bce, JSAtom* name,
-                                             MaybeCheckTDZ check)
-{
-    if (!ensureCache(bce))
-        return false;
-
-    CheckTDZMap::AddPtr p = cache_->lookupForAdd(name);
-    if (p) {
-        MOZ_ASSERT(!check, "TDZ only needs to be checked once per binding per basic block.");
-        p->value() = check;
-    } else {
-        if (!cache_->add(p, name, check)) {
-            ReportOutOfMemory(bce->cx);
-            return false;
-        }
-    }
-
-    return true;
-}
-
-// Class for emitting bytecode for blocks like try-catch-finally.
-//
-// Usage: (check for the return value is omitted for simplicity)
-//
-//   `try { try_block } catch (ex) { catch_block }`
-//     TryEmitter tryCatch(this, TryEmitter::Kind::TryCatch,
-//                         TryEmitter::ControlKind::Syntactic);
-//     tryCatch.emitTry();
-//     emit(try_block);
-//     tryCatch.emitCatch();
-//     emit(ex and catch_block); // use JSOP_EXCEPTION to get exception
-//     tryCatch.emitEnd();
-//
-//   `try { try_block } finally { finally_block }`
-//     TryEmitter tryCatch(this, TryEmitter::Kind::TryFinally,
-//                         TryEmitter::ControlKind::Syntactic);
-//     tryCatch.emitTry();
-//     emit(try_block);
-//     // finally_pos: The "{" character's position in the source code text.
-//     tryCatch.emitFinally(Some(finally_pos));
-//     emit(finally_block);
-//     tryCatch.emitEnd();
-//
-//   `try { try_block } catch (ex) {catch_block} finally { finally_block }`
-//     TryEmitter tryCatch(this, TryEmitter::Kind::TryCatchFinally,
-//                         TryEmitter::ControlKind::Syntactic);
-//     tryCatch.emitTry();
-//     emit(try_block);
-//     tryCatch.emitCatch();
-//     emit(ex and catch_block);
-//     tryCatch.emitFinally(Some(finally_pos));
-//     emit(finally_block);
-//     tryCatch.emitEnd();
-//
-class MOZ_STACK_CLASS TryEmitter
-{
-  public:
-    enum class Kind {
-        TryCatch,
-        TryCatchFinally,
-        TryFinally
-    };
-
-    // Syntactic try-catch-finally and internally used non-syntactic
-    // try-catch-finally behave differently for 2 points.
-    //
-    // The first one is whether TryFinallyControl is used or not.
-    // See the comment for `controlInfo_`.
-    //
-    // The second one is whether the catch and finally blocks handle the frame's
-    // return value.  For syntactic try-catch-finally, the bytecode marked with
-    // "*" are emitted to clear return value with `undefined` before the catch
-    // block and the finally block, and also to save/restore the return value
-    // before/after the finally block.
-    //
-    //     JSOP_TRY
-    //
-    //     try_body...
-    //
-    //     JSOP_GOSUB finally
-    //     JSOP_JUMPTARGET
-    //     JSOP_GOTO end:
-    //
-    //   catch:
-    //     JSOP_JUMPTARGET
-    //   * JSOP_UNDEFINED
-    //   * JSOP_SETRVAL
-    //
-    //     catch_body...
-    //
-    //     JSOP_GOSUB finally
-    //     JSOP_JUMPTARGET
-    //     JSOP_GOTO end
-    //
-    //   finally:
-    //     JSOP_JUMPTARGET
-    //   * JSOP_GETRVAL
-    //   * JSOP_UNDEFINED
-    //   * JSOP_SETRVAL
-    //
-    //     finally_body...
-    //
-    //   * JSOP_SETRVAL
-    //     JSOP_NOP
-    //
-    //   end:
-    //     JSOP_JUMPTARGET
-    //
-    // For syntactic try-catch-finally, Syntactic should be used.
-    // For non-syntactic try-catch-finally, NonSyntactic should be used.
-    enum class ControlKind {
-        Syntactic,
-        NonSyntactic
-    };
-
-  private:
-    BytecodeEmitter* bce_;
-    Kind kind_;
-    ControlKind controlKind_;
-
-    // Track jumps-over-catches and gosubs-to-finally for later fixup.
-    //
-    // When a finally block is active, non-local jumps (including
-    // jumps-over-catches) result in a GOSUB being written into the bytecode
-    // stream and fixed-up later.
-    //
-    // For non-syntactic try-catch-finally, all that handling is skipped.
-    // The non-syntactic try-catch-finally must:
-    //   * have only one catch block
-    //   * have JSOP_GOTO at the end of catch-block
-    //   * have no non-local-jump
-    //   * don't use finally block for normal completion of try-block and
-    //     catch-block
-    //
-    // Additionally, a finally block may be emitted for non-syntactic
-    // try-catch-finally, even if the kind is TryCatch, because GOSUBs are not
-    // emitted.
-    Maybe<TryFinallyControl> controlInfo_;
-
-    // The stack depth before emitting JSOP_TRY.
-    int depth_;
-
-    // The source note index for SRC_TRY.
-    unsigned noteIndex_;
-
-    // The offset after JSOP_TRY.
-    ptrdiff_t tryStart_;
-
-    // JSOP_JUMPTARGET after the entire try-catch-finally block.
-    JumpList catchAndFinallyJump_;
-
-    // The offset of JSOP_GOTO at the end of the try block.
-    JumpTarget tryEnd_;
-
-    // The offset of JSOP_JUMPTARGET at the beginning of the finally block.
-    JumpTarget finallyStart_;
-
-#ifdef DEBUG
-    // The state of this emitter.
-    //
-    // +-------+ emitTry +-----+   emitCatch +-------+      emitEnd  +-----+
-    // | Start |-------->| Try |-+---------->| Catch |-+->+--------->| End |
-    // +-------+         +-----+ |           +-------+ |  ^          +-----+
-    //                           |                     |  |
-    //                           |  +------------------+  +----+
-    //                           |  |                          |
-    //                           |  v emitFinally +---------+  |
-    //                           +->+------------>| Finally |--+
-    //                                            +---------+
-    enum class State {
-        // The initial state.
-        Start,
-
-        // After calling emitTry.
-        Try,
-
-        // After calling emitCatch.
-        Catch,
-
-        // After calling emitFinally.
-        Finally,
-
-        // After calling emitEnd.
-        End
-    };
-    State state_;
-#endif
-
-    bool hasCatch() const {
-        return kind_ == Kind::TryCatch || kind_ == Kind::TryCatchFinally;
-    }
-    bool hasFinally() const {
-        return kind_ == Kind::TryCatchFinally || kind_ == Kind::TryFinally;
-    }
-
-  public:
-    TryEmitter(BytecodeEmitter* bce, Kind kind, ControlKind controlKind)
-      : bce_(bce),
-        kind_(kind),
-        controlKind_(controlKind),
-        depth_(0),
-        noteIndex_(0),
-        tryStart_(0),
-        tryEnd_{}
-#ifdef DEBUG
-      , state_(State::Start)
-#endif
-    {
-        if (controlKind_ == ControlKind::Syntactic)
-            controlInfo_.emplace(bce_, hasFinally() ? StatementKind::Finally : StatementKind::Try);
-        finallyStart_.offset = 0;
-    }
-
-    // Emits JSOP_GOTO to the end of try-catch-finally.
-    // Used in `yield*`.
-    MOZ_MUST_USE bool emitJumpOverCatchAndFinally() {
-        if (!bce_->emitJump(JSOP_GOTO, &catchAndFinallyJump_))
-            return false;
-        return true;
-    }
-
-    MOZ_MUST_USE bool emitTry() {
-        MOZ_ASSERT(state_ == State::Start);
-
-        // Since an exception can be thrown at any place inside the try block,
-        // we need to restore the stack and the scope chain before we transfer
-        // the control to the exception handler.
-        //
-        // For that we store in a try note associated with the catch or
-        // finally block the stack depth upon the try entry. The interpreter
-        // uses this depth to properly unwind the stack and the scope chain.
-        depth_ = bce_->stackDepth;
-
-        // Record the try location, then emit the try block.
-        if (!bce_->newSrcNote(SRC_TRY, &noteIndex_))
-            return false;
-        if (!bce_->emit1(JSOP_TRY))
-            return false;
-        tryStart_ = bce_->offset();
-
-#ifdef DEBUG
-        state_ = State::Try;
-#endif
-        return true;
-    }
-
-  private:
-    MOZ_MUST_USE bool emitTryEnd() {
-        MOZ_ASSERT(state_ == State::Try);
-        MOZ_ASSERT(depth_ == bce_->stackDepth);
-
-        // GOSUB to finally, if present.
-        if (hasFinally() && controlInfo_) {
-            if (!bce_->emitJump(JSOP_GOSUB, &controlInfo_->gosubs))
-                return false;
-        }
-
-        // Source note points to the jump at the end of the try block.
-        if (!bce_->setSrcNoteOffset(noteIndex_, 0, bce_->offset() - tryStart_ + JSOP_TRY_LENGTH))
-            return false;
-
-        // Emit jump over catch and/or finally.
-        if (!bce_->emitJump(JSOP_GOTO, &catchAndFinallyJump_))
-            return false;
-
-        if (!bce_->emitJumpTarget(&tryEnd_))
-            return false;
-
-        return true;
-    }
-
-  public:
-    MOZ_MUST_USE bool emitCatch() {
-        MOZ_ASSERT(state_ == State::Try);
-        if (!emitTryEnd())
-            return false;
-
-        MOZ_ASSERT(bce_->stackDepth == depth_);
-
-        if (controlKind_ == ControlKind::Syntactic) {
-            // Clear the frame's return value that might have been set by the
-            // try block:
-            //
-            //   eval("try { 1; throw 2 } catch(e) {}"); // undefined, not 1
-            if (!bce_->emit1(JSOP_UNDEFINED))
-                return false;
-            if (!bce_->emit1(JSOP_SETRVAL))
-                return false;
-        }
-
-#ifdef DEBUG
-        state_ = State::Catch;
-#endif
-        return true;
-    }
-
-  private:
-    MOZ_MUST_USE bool emitCatchEnd() {
-        MOZ_ASSERT(state_ == State::Catch);
-
-        if (!controlInfo_)
-            return true;
-
-        // gosub <finally>, if required.
-        if (hasFinally()) {
-            if (!bce_->emitJump(JSOP_GOSUB, &controlInfo_->gosubs))
-                return false;
-            MOZ_ASSERT(bce_->stackDepth == depth_);
-
-            // Jump over the finally block.
-            if (!bce_->emitJump(JSOP_GOTO, &catchAndFinallyJump_))
-                return false;
-        }
-
-        return true;
-    }
-
-  public:
-    // If `finallyPos` is specified, it's an offset of the finally block's
-    // "{" character in the source code text, to improve line:column number in
-    // the error reporting.
-    // For non-syntactic try-catch-finally, `finallyPos` can be omitted.
-    MOZ_MUST_USE bool emitFinally(const Maybe<uint32_t>& finallyPos = Nothing()) {
-        // If we are using controlInfo_ (i.e., emitting a syntactic try
-        // blocks), we must have specified up front if there will be a finally
-        // close. For internal non-syntactic try blocks, like those emitted for
-        // yield* and IteratorClose inside for-of loops, we can emitFinally even
-        // without specifying up front, since the internal non-syntactic try
-        // blocks emit no GOSUBs.
-        if (!controlInfo_) {
-            if (kind_ == Kind::TryCatch)
-                kind_ = Kind::TryCatchFinally;
-        } else {
-            MOZ_ASSERT(hasFinally());
-        }
-
-        if (!hasCatch()) {
-            MOZ_ASSERT(state_ == State::Try);
-            if (!emitTryEnd())
-                return false;
-        } else {
-            MOZ_ASSERT(state_ == State::Catch);
-            if (!emitCatchEnd())
-                return false;
-        }
-
-        MOZ_ASSERT(bce_->stackDepth == depth_);
-
-        if (!bce_->emitJumpTarget(&finallyStart_))
-            return false;
-
-        if (controlInfo_) {
-            // Fix up the gosubs that might have been emitted before non-local
-            // jumps to the finally code.
-            bce_->patchJumpsToTarget(controlInfo_->gosubs, finallyStart_);
-
-            // Indicate that we're emitting a subroutine body.
-            controlInfo_->setEmittingSubroutine();
-        }
-        if (finallyPos) {
-            if (!bce_->updateSourceCoordNotes(finallyPos.value()))
-                return false;
-        }
-        if (!bce_->emit1(JSOP_FINALLY))
-            return false;
-
-        if (controlKind_ == ControlKind::Syntactic) {
-            if (!bce_->emit1(JSOP_GETRVAL))
-                return false;
-
-            // Clear the frame's return value to make break/continue return
-            // correct value even if there's no other statement before them:
-            //
-            //   eval("x: try { 1 } finally { break x; }"); // undefined, not 1
-            if (!bce_->emit1(JSOP_UNDEFINED))
-                return false;
-            if (!bce_->emit1(JSOP_SETRVAL))
-                return false;
-        }
-
-#ifdef DEBUG
-        state_ = State::Finally;
-#endif
-        return true;
-    }
-
-  private:
-    MOZ_MUST_USE bool emitFinallyEnd() {
-        MOZ_ASSERT(state_ == State::Finally);
-
-        if (controlKind_ == ControlKind::Syntactic) {
-            if (!bce_->emit1(JSOP_SETRVAL))
-                return false;
-        }
-
-        if (!bce_->emit1(JSOP_RETSUB))
-            return false;
-
-        bce_->hasTryFinally = true;
-        return true;
-    }
-
-  public:
-    MOZ_MUST_USE bool emitEnd() {
-        if (!hasFinally()) {
-            MOZ_ASSERT(state_ == State::Catch);
-            if (!emitCatchEnd())
-                return false;
-        } else {
-            MOZ_ASSERT(state_ == State::Finally);
-            if (!emitFinallyEnd())
-                return false;
-        }
-
-        MOZ_ASSERT(bce_->stackDepth == depth_);
-
-        // ReconstructPCStack needs a NOP here to mark the end of the last
-        // catch block.
-        if (!bce_->emit1(JSOP_NOP))
-            return false;
-
-        // Fix up the end-of-try/catch jumps to come here.
-        if (!bce_->emitJumpTargetAndPatch(catchAndFinallyJump_))
-            return false;
-
-        // Add the try note last, to let post-order give us the right ordering
-        // (first to last for a given nesting level, inner to outer by level).
-        if (hasCatch()) {
-            if (!bce_->tryNoteList.append(JSTRY_CATCH, depth_, tryStart_, tryEnd_.offset))
-                return false;
-        }
-
-        // If we've got a finally, mark try+catch region with additional
-        // trynote to catch exceptions (re)thrown from a catch block or
-        // for the try{}finally{} case.
-        if (hasFinally()) {
-            if (!bce_->tryNoteList.append(JSTRY_FINALLY, depth_, tryStart_, finallyStart_.offset))
-                return false;
-        }
-
-#ifdef DEBUG
-        state_ = State::End;
-#endif
-        return true;
-    }
-};
-
-// Class for emitting bytecode for blocks like if-then-else.
-//
-// This class can be used to emit single if-then-else block, or cascading
-// else-if blocks.
-//
-// Usage: (check for the return value is omitted for simplicity)
-//
-//   `if (cond) then_block`
-//     IfEmitter ifThen(this);
-//     emit(cond);
-//     ifThen.emitThen();
-//     emit(then_block);
-//     ifThen.emitEnd();
-//
-//   `if (cond) then_block else else_block`
-//     IfEmitter ifThenElse(this);
-//     emit(cond);
-//     ifThenElse.emitThenElse();
-//     emit(then_block);
-//     ifThenElse.emitElse();
-//     emit(else_block);
-//     ifThenElse.emitEnd();
-//
-//   `if (c1) b1 else if (c2) b2 else if (c3) b3 else b4`
-//     IfEmitter ifThenElse(this);
-//     emit(c1);
-//     ifThenElse.emitThenElse();
-//     emit(b1);
-//     ifThenElse.emitElseIf();
-//     emit(c2);
-//     ifThenElse.emitThenElse();
-//     emit(b2);
-//     ifThenElse.emitElseIf();
-//     emit(c3);
-//     ifThenElse.emitThenElse();
-//     emit(b3);
-//     ifThenElse.emitElse();
-//     emit(b4);
-//     ifThenElse.emitEnd();
-//
-//   `cond ? then_expr : else_expr`
-//     IfEmitter condElse(this);
-//     emit(cond);
-//     condElse.emitCond();
-//     emit(then_block);
-//     condElse.emitElse();
-//     emit(else_block);
-//     condElse.emitEnd();
-//
-class MOZ_STACK_CLASS IfEmitter
-{
-  public:
-    // Whether the then-clause, the else-clause, or else-if condition may
-    // contain declaration or access to lexical variables, which means they
-    // should have their own TDZCheckCache.  Basically TDZCheckCache should be
-    // created for each basic block, which then-clause, else-clause, and
-    // else-if condition are, but for internally used branches which are
-    // known not to touch lexical variables we can skip creating TDZCheckCache
-    // for them.
-    //
-    // See the comment for TDZCheckCache class for more details.
-    enum class Kind {
-        // For syntactic branches (if, if-else, and conditional expression),
-        // which basically may contain declaration or accesses to lexical
-        // variables inside then-clause, else-clause, and else-if condition.
-        MayContainLexicalAccessInBranch,
-
-        // For internally used branches which don't touch lexical variables
-        // inside then-clause, else-clause, nor else-if condition.
-        NoLexicalAccessInBranch
-    };
-
-  private:
-    using TDZCheckCache = BytecodeEmitter::TDZCheckCache;
-
-    BytecodeEmitter* bce_;
-
-    // Jump around the then clause, to the beginning of the else clause.
-    JumpList jumpAroundThen_;
-
-    // Jump around the else clause, to the end of the entire branch.
-    JumpList jumpsAroundElse_;
-
-    // The stack depth before emitting the then block.
-    // Used for restoring stack depth before emitting the else block.
-    // Also used for assertion to make sure then and else blocks pushed the
-    // same number of values.
-    int32_t thenDepth_;
-
-    Kind kind_;
-    Maybe<TDZCheckCache> tdzCache_;
-
-#ifdef DEBUG
-    // The number of values pushed in the then and else blocks.
-    int32_t pushed_;
-    bool calculatedPushed_;
-
-    // The state of this emitter.
-    //
-    // +-------+   emitCond +------+ emitElse +------+        emitEnd +-----+
-    // | Start |-+--------->| Cond |--------->| Else |------>+------->| End |
-    // +-------+ |          +------+          +------+       ^        +-----+
-    //           |                                           |
-    //           v emitThen +------+                         |
-    //        +->+--------->| Then |------------------------>+
-    //        ^  |          +------+                         ^
-    //        |  |                                           |
-    //        |  |                                           +---+
-    //        |  |                                               |
-    //        |  | emitThenElse +----------+   emitElse +------+ |
-    //        |  +------------->| ThenElse |-+--------->| Else |-+
-    //        |                 +----------+ |          +------+
-    //        |                              |
-    //        |                              | emitElseIf +--------+
-    //        |                              +----------->| ElseIf |-+
-    //        |                                           +--------+ |
-    //        |                                                      |
-    //        +------------------------------------------------------+
-    enum class State {
-        // The initial state.
-        Start,
-
-        // After calling emitThen.
-        Then,
-
-        // After calling emitCond.
-        Cond,
-
-        // After calling emitThenElse.
-        ThenElse,
-
-        // After calling emitElse.
-        Else,
-
-        // After calling emitElseIf.
-        ElseIf,
-
-        // After calling emitEnd.
-        End
-    };
-    State state_;
-#endif
-
-  protected:
-    // For InternalIfEmitter.
-    IfEmitter(BytecodeEmitter* bce, Kind kind)
-      : bce_(bce)
-      , thenDepth_(0)
-      , kind_(kind)
-#ifdef DEBUG
-      , pushed_(0)
-      , calculatedPushed_(false)
-      , state_(State::Start)
-#endif
-    {}
-
-  public:
-    explicit IfEmitter(BytecodeEmitter* bce)
-      : IfEmitter(bce, Kind::MayContainLexicalAccessInBranch)
-    {}
-
-  private:
-    MOZ_MUST_USE bool emitIfInternal(SrcNoteType type) {
-        MOZ_ASSERT_IF(state_ == State::ElseIf, tdzCache_.isSome());
-        MOZ_ASSERT_IF(state_ != State::ElseIf, tdzCache_.isNothing());
-
-        // The end of TDZCheckCache for cond for else-if.
-        if (kind_ == Kind::MayContainLexicalAccessInBranch)
-            tdzCache_.reset();
-
-        // Emit an annotated branch-if-false around the then part.
-        if (!bce_->newSrcNote(type))
-            return false;
-        if (!bce_->emitJump(JSOP_IFEQ, &jumpAroundThen_))
-            return false;
-
-        // To restore stack depth in else part, save depth of the then part.
-#ifdef DEBUG
-        // If DEBUG, this is also necessary to calculate |pushed_|.
-        thenDepth_ = bce_->stackDepth;
-#else
-        if (type == SRC_COND || type == SRC_IF_ELSE)
-            thenDepth_ = bce_->stackDepth;
-#endif
-
-        // Enclose then-branch with TDZCheckCache.
-        if (kind_ == Kind::MayContainLexicalAccessInBranch)
-            tdzCache_.emplace(bce_);
-
-        return true;
-    }
-
-    void calculateOrCheckPushed() {
-#ifdef DEBUG
-        if (!calculatedPushed_) {
-            pushed_ = bce_->stackDepth - thenDepth_;
-            calculatedPushed_ = true;
-        } else {
-            MOZ_ASSERT(pushed_ == bce_->stackDepth - thenDepth_);
-        }
-#endif
-    }
-
-  public:
-    MOZ_MUST_USE bool emitThen() {
-        MOZ_ASSERT(state_ == State::Start || state_ == State::ElseIf);
-        if (!emitIfInternal(SRC_IF))
-            return false;
-
-#ifdef DEBUG
-        state_ = State::Then;
-#endif
-        return true;
-    }
-
-    MOZ_MUST_USE bool emitCond() {
-        MOZ_ASSERT(state_ == State::Start);
-        if (!emitIfInternal(SRC_COND))
-            return false;
-
-#ifdef DEBUG
-        state_ = State::Cond;
-#endif
-        return true;
-    }
-
-    MOZ_MUST_USE bool emitThenElse() {
-        MOZ_ASSERT(state_ == State::Start || state_ == State::ElseIf);
-        if (!emitIfInternal(SRC_IF_ELSE))
-            return false;
-
-#ifdef DEBUG
-        state_ = State::ThenElse;
-#endif
-        return true;
-    }
-
-  private:
-    MOZ_MUST_USE bool emitElseInternal() {
-        calculateOrCheckPushed();
-
-        // The end of TDZCheckCache for then-clause.
-        if (kind_ == Kind::MayContainLexicalAccessInBranch) {
-            MOZ_ASSERT(tdzCache_.isSome());
-            tdzCache_.reset();
-        }
-
-        // Emit a jump from the end of our then part around the else part. The
-        // patchJumpsToTarget call at the bottom of this function will fix up
-        // the offset with jumpsAroundElse value.
-        if (!bce_->emitJump(JSOP_GOTO, &jumpsAroundElse_))
-            return false;
-
-        // Ensure the branch-if-false comes here, then emit the else.
-        if (!bce_->emitJumpTargetAndPatch(jumpAroundThen_))
-            return false;
-
-        // Clear jumpAroundThen_ offset, to tell emitEnd there was an else part.
-        jumpAroundThen_ = JumpList();
-
-        // Restore stack depth of the then part.
-        bce_->stackDepth = thenDepth_;
-#ifdef DEBUG
-        state_ = State::Else;
-#endif
-        return true;
-    }
-
-  public:
-    MOZ_MUST_USE bool emitElse() {
-        MOZ_ASSERT(state_ == State::ThenElse || state_ == State::Cond);
-
-        if (!emitElseInternal())
-            return false;
-
-        // Enclose else-branch with TDZCheckCache.
-        if (kind_ == Kind::MayContainLexicalAccessInBranch)
-            tdzCache_.emplace(bce_);
-
-#ifdef DEBUG
-        state_ = State::Else;
-#endif
-        return true;
-    }
-
-    MOZ_MUST_USE bool emitElseIf() {
-        MOZ_ASSERT(state_ == State::ThenElse);
-
-        if (!emitElseInternal())
-            return false;
-
-        // Enclose cond for else-if with TDZCheckCache.
-        if (kind_ == Kind::MayContainLexicalAccessInBranch)
-            tdzCache_.emplace(bce_);
-
-#ifdef DEBUG
-        state_ = State::ElseIf;
-#endif
-        return true;
-    }
-
-    MOZ_MUST_USE bool emitEnd() {
-        MOZ_ASSERT(state_ == State::Then || state_ == State::Else);
-        // If there was an else part for the last branch, jumpAroundThen_ is
-        // already fixed up when emitting the else part.
-        MOZ_ASSERT_IF(state_ == State::Then, jumpAroundThen_.offset != -1);
-        MOZ_ASSERT_IF(state_ == State::Else, jumpAroundThen_.offset == -1);
-
-        // The end of TDZCheckCache for then or else-clause.
-        if (kind_ == Kind::MayContainLexicalAccessInBranch) {
-            MOZ_ASSERT(tdzCache_.isSome());
-            tdzCache_.reset();
-        }
-
-        calculateOrCheckPushed();
-
-        if (jumpAroundThen_.offset != -1) {
-            // No else part for the last branch, fixup the branch-if-false to
-            // come here.
-            if (!bce_->emitJumpTargetAndPatch(jumpAroundThen_))
-                return false;
-        }
-
-        // Patch all the jumps around else parts.
-        if (!bce_->emitJumpTargetAndPatch(jumpsAroundElse_))
-            return false;
-
-#ifdef DEBUG
-        state_ = State::End;
-#endif
-        return true;
-    }
-
-#ifdef DEBUG
-    // Returns the number of values pushed onto the value stack inside
-    // `then_block` and `else_block`.
-    // Can be used in assertion after emitting if-then-else.
-    int32_t pushed() const {
-        return pushed_;
-    }
-
-    // Returns the number of values popped onto the value stack inside
-    // `then_block` and `else_block`.
-    // Can be used in assertion after emitting if-then-else.
-    int32_t popped() const {
-        return -pushed_;
-    }
-#endif
-};
-
-// Class for emitting bytecode for blocks like if-then-else which doesn't touch
-// lexical variables.
-//
-// See the comments above NoLexicalAccessInBranch for more details when to use
-// this instead of IfEmitter.
-class MOZ_STACK_CLASS InternalIfEmitter : public IfEmitter
-{
-  public:
-    explicit InternalIfEmitter(BytecodeEmitter* bce)
-      : IfEmitter(bce, Kind::NoLexicalAccessInBranch)
-    {}
-};
-
-class ForOfLoopControl : public LoopControl
-{
-    using EmitterScope = BytecodeEmitter::EmitterScope;
-
-    // The stack depth of the iterator.
-    int32_t iterDepth_;
-
-    // for-of loops, when throwing from non-iterator code (i.e. from the body
-    // or from evaluating the LHS of the loop condition), need to call
-    // IteratorClose.  This is done by enclosing non-iterator code with
-    // try-catch and call IteratorClose in `catch` block.
-    // If IteratorClose itself throws, we must not re-call IteratorClose. Since
-    // non-local jumps like break and return call IteratorClose, whenever a
-    // non-local jump is emitted, we must tell catch block not to perform
-    // IteratorClose.
-    //
-    //   for (x of y) {
-    //     // Operations for iterator (IteratorNext etc) are outside of
-    //     // try-block.
-    //     try {
-    //       ...
-    //       if (...) {
-    //         // Before non-local jump, clear iterator on the stack to tell
-    //         // catch block not to perform IteratorClose.
-    //         tmpIterator = iterator;
-    //         iterator = undefined;
-    //         IteratorClose(tmpIterator, { break });
-    //         break;
-    //       }
-    //       ...
-    //     } catch (e) {
-    //       // Just throw again when iterator is cleared by non-local jump.
-    //       if (iterator === undefined)
-    //         throw e;
-    //       IteratorClose(iterator, { throw, e });
-    //     }
-    //   }
-    Maybe<TryEmitter> tryCatch_;
-
-    // Used to track if any yields were emitted between calls to to
-    // emitBeginCodeNeedingIteratorClose and emitEndCodeNeedingIteratorClose.
-    uint32_t numYieldsAtBeginCodeNeedingIterClose_;
-
-    bool allowSelfHosted_;
-
-    IteratorKind iterKind_;
-
-  public:
-    ForOfLoopControl(BytecodeEmitter* bce, int32_t iterDepth, bool allowSelfHosted,
-                     IteratorKind iterKind)
-      : LoopControl(bce, StatementKind::ForOfLoop),
-        iterDepth_(iterDepth),
-        numYieldsAtBeginCodeNeedingIterClose_(UINT32_MAX),
-        allowSelfHosted_(allowSelfHosted),
-        iterKind_(iterKind)
-    {
-    }
-
-    bool emitBeginCodeNeedingIteratorClose(BytecodeEmitter* bce) {
-        tryCatch_.emplace(bce, TryEmitter::Kind::TryCatch, TryEmitter::ControlKind::NonSyntactic);
-
-        if (!tryCatch_->emitTry())
-            return false;
-
-        MOZ_ASSERT(numYieldsAtBeginCodeNeedingIterClose_ == UINT32_MAX);
-        numYieldsAtBeginCodeNeedingIterClose_ = bce->yieldAndAwaitOffsetList.numYields;
-
-        return true;
-    }
-
-    bool emitEndCodeNeedingIteratorClose(BytecodeEmitter* bce) {
-        if (!tryCatch_->emitCatch())              // ITER ...
-            return false;
-
-        if (!bce->emit1(JSOP_EXCEPTION))          // ITER ... EXCEPTION
-            return false;
-        unsigned slotFromTop = bce->stackDepth - iterDepth_;
-        if (!bce->emitDupAt(slotFromTop))         // ITER ... EXCEPTION ITER
-            return false;
-
-        // If ITER is undefined, it means the exception is thrown by
-        // IteratorClose for non-local jump, and we should't perform
-        // IteratorClose again here.
-        if (!bce->emit1(JSOP_UNDEFINED))          // ITER ... EXCEPTION ITER UNDEF
-            return false;
-        if (!bce->emit1(JSOP_STRICTNE))           // ITER ... EXCEPTION NE
-            return false;
-
-        InternalIfEmitter ifIteratorIsNotClosed(bce);
-        if (!ifIteratorIsNotClosed.emitThen())    // ITER ... EXCEPTION
-            return false;
-
-        MOZ_ASSERT(slotFromTop == unsigned(bce->stackDepth - iterDepth_));
-        if (!bce->emitDupAt(slotFromTop))         // ITER ... EXCEPTION ITER
-            return false;
-        if (!emitIteratorCloseInInnermostScope(bce, CompletionKind::Throw))
-            return false;                         // ITER ... EXCEPTION
-
-        if (!ifIteratorIsNotClosed.emitEnd())     // ITER ... EXCEPTION
-            return false;
-
-        if (!bce->emit1(JSOP_THROW))              // ITER ...
-            return false;
-
-        // If any yields were emitted, then this for-of loop is inside a star
-        // generator and must handle the case of Generator.return. Like in
-        // yield*, it is handled with a finally block.
-        uint32_t numYieldsEmitted = bce->yieldAndAwaitOffsetList.numYields;
-        if (numYieldsEmitted > numYieldsAtBeginCodeNeedingIterClose_) {
-            if (!tryCatch_->emitFinally())
-                return false;
-
-            InternalIfEmitter ifGeneratorClosing(bce);
-            if (!bce->emit1(JSOP_ISGENCLOSING))   // ITER ... FTYPE FVALUE CLOSING
-                return false;
-            if (!ifGeneratorClosing.emitThen())   // ITER ... FTYPE FVALUE
-                return false;
-            if (!bce->emitDupAt(slotFromTop + 1)) // ITER ... FTYPE FVALUE ITER
-                return false;
-            if (!emitIteratorCloseInInnermostScope(bce, CompletionKind::Normal))
-                return false;                     // ITER ... FTYPE FVALUE
-            if (!ifGeneratorClosing.emitEnd())    // ITER ... FTYPE FVALUE
-                return false;
-        }
-
-        if (!tryCatch_->emitEnd())
-            return false;
-
-        tryCatch_.reset();
-        numYieldsAtBeginCodeNeedingIterClose_ = UINT32_MAX;
-
-        return true;
-    }
-
-    bool emitIteratorCloseInInnermostScope(BytecodeEmitter* bce,
-                                           CompletionKind completionKind = CompletionKind::Normal) {
-        return emitIteratorCloseInScope(bce,  *bce->innermostEmitterScope(), completionKind);
-    }
-
-    bool emitIteratorCloseInScope(BytecodeEmitter* bce,
-                                  EmitterScope& currentScope,
-                                  CompletionKind completionKind = CompletionKind::Normal) {
-        ptrdiff_t start = bce->offset();
-        if (!bce->emitIteratorCloseInScope(currentScope, iterKind_, completionKind,
-                                           allowSelfHosted_))
-        {
-            return false;
-        }
-        ptrdiff_t end = bce->offset();
-        return bce->tryNoteList.append(JSTRY_FOR_OF_ITERCLOSE, 0, start, end);
-    }
-
-    bool emitPrepareForNonLocalJumpFromScope(BytecodeEmitter* bce,
-                                             EmitterScope& currentScope,
-                                             bool isTarget) {
-        // Pop unnecessary value from the stack.  Effectively this means
-        // leaving try-catch block.  However, the performing IteratorClose can
-        // reach the depth for try-catch, and effectively re-enter the
-        // try-catch block.
-        if (!bce->emit1(JSOP_POP))                        // NEXT ITER
-            return false;
-
-        // Pop the iterator's next method.
-        if (!bce->emit1(JSOP_SWAP))                       // ITER NEXT
-            return false;
-        if (!bce->emit1(JSOP_POP))                        // ITER
-            return false;
-
-        // Clear ITER slot on the stack to tell catch block to avoid performing
-        // IteratorClose again.
-        if (!bce->emit1(JSOP_UNDEFINED))                  // ITER UNDEF
-            return false;
-        if (!bce->emit1(JSOP_SWAP))                       // UNDEF ITER
-            return false;
-
-        if (!emitIteratorCloseInScope(bce, currentScope, CompletionKind::Normal)) // UNDEF
-            return false;
-
-        if (isTarget) {
-            // At the level of the target block, there's bytecode after the
-            // loop that will pop the next method, the iterator, and the
-            // value, so push two undefineds to balance the stack.
-            if (!bce->emit1(JSOP_UNDEFINED))              // UNDEF UNDEF
-                return false;
-            if (!bce->emit1(JSOP_UNDEFINED))              // UNDEF UNDEF UNDEF
-                return false;
-        } else {
-            if (!bce->emit1(JSOP_POP))                    //
-                return false;
-        }
-
-        return true;
-    }
-};
-
 
 BytecodeEmitter::BytecodeEmitter(BytecodeEmitter* parent,
                                  SharedContext* sc, HandleScript script,
@@ -2746,27 +325,6 @@ BytecodeEmitter::emitJumpTarget(JumpTarget* target)
     return true;
 }
 
-void
-JumpList::push(jsbytecode* code, ptrdiff_t jumpOffset)
-{
-    SET_JUMP_OFFSET(&code[jumpOffset], offset - jumpOffset);
-    offset = jumpOffset;
-}
-
-void
-JumpList::patchAll(jsbytecode* code, JumpTarget target)
-{
-    ptrdiff_t delta;
-    for (ptrdiff_t jumpOffset = offset; jumpOffset != -1; jumpOffset += delta) {
-        jsbytecode* pc = &code[jumpOffset];
-        MOZ_ASSERT(IsJumpOpcode(JSOp(*pc)) || JSOp(*pc) == JSOP_LABEL);
-        delta = GET_JUMP_OFFSET(pc);
-        MOZ_ASSERT(delta < 0);
-        ptrdiff_t span = target.offset - jumpOffset;
-        SET_JUMP_OFFSET(pc, span);
-    }
-}
-
 bool
 BytecodeEmitter::emitJumpNoFallthrough(JSOp op, JumpList* jump)
 {
@@ -2832,11 +390,19 @@ BytecodeEmitter::emitJumpTargetAndPatch(JumpList jump)
 }
 
 bool
+BytecodeEmitter::emitCall(JSOp op, uint16_t argc, const Maybe<uint32_t>& sourceCoordOffset)
+{
+    if (sourceCoordOffset.isSome()) {
+        if (!updateSourceCoordNotes(*sourceCoordOffset))
+            return false;
+    }
+    return emit3(op, ARGC_LO(argc), ARGC_HI(argc));
+}
+
+bool
 BytecodeEmitter::emitCall(JSOp op, uint16_t argc, ParseNode* pn)
 {
-    if (pn && !updateSourceCoordNotes(pn->pn_pos.begin))
-        return false;
-    return emit3(op, ARGC_LO(argc), ARGC_HI(argc));
+    return emitCall(op, argc, pn ? Some(pn->pn_pos.begin) : Nothing());
 }
 
 bool
@@ -2959,51 +525,22 @@ BytecodeEmitter::updateSourceCoordNotes(uint32_t offset)
     return true;
 }
 
-bool
-BytecodeEmitter::emitLoopHead(ParseNode* nextpn, JumpTarget* top)
+Maybe<uint32_t>
+BytecodeEmitter::getOffsetForLoop(ParseNode* nextpn)
 {
-    if (nextpn) {
-        /*
-         * Try to give the JSOP_LOOPHEAD the same line number as the next
-         * instruction. nextpn is often a block, in which case the next
-         * instruction typically comes from the first statement inside.
-         */
-        if (nextpn->isKind(ParseNodeKind::LexicalScope))
-            nextpn = nextpn->scopeBody();
-        MOZ_ASSERT_IF(nextpn->isKind(ParseNodeKind::StatementList), nextpn->isArity(PN_LIST));
-        if (nextpn->isKind(ParseNodeKind::StatementList) && nextpn->pn_head)
-            nextpn = nextpn->pn_head;
-        if (!updateSourceCoordNotes(nextpn->pn_pos.begin))
-            return false;
-    }
+    if (!nextpn)
+        return Nothing();
 
-    *top = { offset() };
-    return emit1(JSOP_LOOPHEAD);
-}
+    // Try to give the JSOP_LOOPHEAD and JSOP_LOOPENTRY the same line number as
+    // the next instruction. nextpn is often a block, in which case the next
+    // instruction typically comes from the first statement inside.
+    if (nextpn->isKind(ParseNodeKind::LexicalScope))
+        nextpn = nextpn->scopeBody();
+    MOZ_ASSERT_IF(nextpn->isKind(ParseNodeKind::StatementList), nextpn->isArity(PN_LIST));
+    if (nextpn->isKind(ParseNodeKind::StatementList) && nextpn->pn_head)
+        nextpn = nextpn->pn_head;
 
-bool
-BytecodeEmitter::emitLoopEntry(ParseNode* nextpn, JumpList entryJump)
-{
-    if (nextpn) {
-        /* Update the line number, as for LOOPHEAD. */
-        if (nextpn->isKind(ParseNodeKind::LexicalScope))
-            nextpn = nextpn->scopeBody();
-        MOZ_ASSERT_IF(nextpn->isKind(ParseNodeKind::StatementList), nextpn->isArity(PN_LIST));
-        if (nextpn->isKind(ParseNodeKind::StatementList) && nextpn->pn_head)
-            nextpn = nextpn->pn_head;
-        if (!updateSourceCoordNotes(nextpn->pn_pos.begin))
-            return false;
-    }
-
-    JumpTarget entry{ offset() };
-    patchJumpsToTarget(entryJump, entry);
-
-    LoopControl& loopInfo = innermostNestableControl->as<LoopControl>();
-    MOZ_ASSERT(loopInfo.loopDepth() > 0);
-
-    uint8_t loopDepthAndFlags = PackLoopEntryDepthHintAndFlags(loopInfo.loopDepth(),
-                                                               loopInfo.canIonOsr());
-    return emit2(JSOP_LOOPENTRY, loopDepthAndFlags);
+    return Some(nextpn->pn_pos.begin);
 }
 
 void
@@ -3066,7 +603,7 @@ class NonLocalExitControl
 
     NonLocalExitControl(const NonLocalExitControl&) = delete;
 
-    MOZ_MUST_USE bool leaveScope(BytecodeEmitter::EmitterScope* scope);
+    MOZ_MUST_USE bool leaveScope(EmitterScope* scope);
 
   public:
     NonLocalExitControl(BytecodeEmitter* bce, Kind kind)
@@ -3083,7 +620,7 @@ class NonLocalExitControl
         bce_->stackDepth = savedDepth_;
     }
 
-    MOZ_MUST_USE bool prepareForNonLocalJump(BytecodeEmitter::NestableControl* target);
+    MOZ_MUST_USE bool prepareForNonLocalJump(NestableControl* target);
 
     MOZ_MUST_USE bool prepareForNonLocalJumpToOutermost() {
         return prepareForNonLocalJump(nullptr);
@@ -3091,7 +628,7 @@ class NonLocalExitControl
 };
 
 bool
-NonLocalExitControl::leaveScope(BytecodeEmitter::EmitterScope* es)
+NonLocalExitControl::leaveScope(EmitterScope* es)
 {
     if (!es->leave(bce_, /* nonLocal = */ true))
         return false;
@@ -3114,11 +651,8 @@ NonLocalExitControl::leaveScope(BytecodeEmitter::EmitterScope* es)
  * Emit additional bytecode(s) for non-local jumps.
  */
 bool
-NonLocalExitControl::prepareForNonLocalJump(BytecodeEmitter::NestableControl* target)
+NonLocalExitControl::prepareForNonLocalJump(NestableControl* target)
 {
-    using NestableControl = BytecodeEmitter::NestableControl;
-    using EmitterScope = BytecodeEmitter::EmitterScope;
-
     EmitterScope* es = bce_->innermostEmitterScope();
     int npops = 0;
 
@@ -3485,7 +1019,7 @@ BytecodeEmitter::checkSideEffects(ParseNode* pn, bool* answer)
 
       // Watch out for getters!
       case ParseNodeKind::Dot:
-        MOZ_ASSERT(pn->isArity(PN_NAME));
+        MOZ_ASSERT(pn->isArity(PN_BINARY));
         *answer = true;
         return true;
 
@@ -3723,6 +1257,14 @@ BytecodeEmitter::checkSideEffects(ParseNode* pn, bool* answer)
       case ParseNodeKind::Call:
       case ParseNodeKind::TaggedTemplate:
       case ParseNodeKind::SuperCall:
+        MOZ_ASSERT(pn->isArity(PN_BINARY));
+        *answer = true;
+        return true;
+
+      // Function arg lists can contain arbitrary expressions. Technically
+      // this only causes side-effects if one of the arguments does, but since
+      // the call being made will always trigger side-effects, it isn't needed.
+      case ParseNodeKind::Arguments:
         MOZ_ASSERT(pn->isArity(PN_LIST));
         *answer = true;
         return true;
@@ -3857,6 +1399,7 @@ BytecodeEmitter::checkSideEffects(ParseNode* pn, bool* answer)
       case ParseNodeKind::CallSiteObj:      // by ParseNodeKind::TaggedTemplate
       case ParseNodeKind::PosHolder:        // by ParseNodeKind::NewTarget
       case ParseNodeKind::SuperBase:        // by ParseNodeKind::Elem and others
+      case ParseNodeKind::PropertyName:     // by ParseNodeKind::Dot
         MOZ_CRASH("handled by parent nodes");
 
       case ParseNodeKind::Limit: // invalid sentinel value
@@ -3932,6 +1475,20 @@ BytecodeEmitter::reportError(ParseNode* pn, unsigned errorNumber, ...)
     va_end(args);
 }
 
+void
+BytecodeEmitter::reportError(const Maybe<uint32_t>& maybeOffset, unsigned errorNumber, ...)
+{
+    MOZ_ASSERT_IF(!maybeOffset, this->scriptStartOffsetSet);
+    uint32_t offset = maybeOffset ? *maybeOffset : this->scriptStartOffset;
+
+    va_list args;
+    va_start(args, errorNumber);
+
+    parser->errorReporter().errorAtVA(offset, errorNumber, &args);
+
+    va_end(args);
+}
+
 bool
 BytecodeEmitter::reportExtraWarning(ParseNode* pn, unsigned errorNumber, ...)
 {
@@ -3948,7 +1505,23 @@ BytecodeEmitter::reportExtraWarning(ParseNode* pn, unsigned errorNumber, ...)
 }
 
 bool
-BytecodeEmitter::emitNewInit(JSProtoKey key)
+BytecodeEmitter::reportExtraWarning(const Maybe<uint32_t>& maybeOffset,
+                                    unsigned errorNumber, ...)
+{
+    MOZ_ASSERT_IF(!maybeOffset, this->scriptStartOffsetSet);
+    uint32_t offset = maybeOffset ? *maybeOffset : this->scriptStartOffset;
+
+    va_list args;
+    va_start(args, errorNumber);
+
+    bool result = parser->errorReporter().reportExtraWarningErrorNumberVA(nullptr, offset, errorNumber, &args);
+
+    va_end(args);
+    return result;
+}
+
+bool
+BytecodeEmitter::emitNewInit()
 {
     const size_t len = 1 + UINT32_INDEX_LEN;
     ptrdiff_t offset;
@@ -3957,7 +1530,7 @@ BytecodeEmitter::emitNewInit(JSProtoKey key)
 
     jsbytecode* code = this->code(offset);
     code[0] = JSOP_NEWINIT;
-    code[1] = jsbytecode(key);
+    code[1] = 0;
     code[2] = 0;
     code[3] = 0;
     code[4] = 0;
@@ -4298,11 +1871,11 @@ BytecodeEmitter::emitPropLHS(ParseNode* pn)
     MOZ_ASSERT(pn->isKind(ParseNodeKind::Dot));
     MOZ_ASSERT(!pn->as<PropertyAccess>().isSuper());
 
-    ParseNode* pn2 = pn->pn_expr;
+    ParseNode* pn2 = pn->pn_left;
 
     /*
      * If the object operand is also a dotted property reference, reverse the
-     * list linked via pn_expr temporarily so we can iterate over it from the
+     * list linked via pn_left temporarily so we can iterate over it from the
      * bottom up (reversing again as we go), to avoid excessive recursion.
      */
     if (pn2->isKind(ParseNodeKind::Dot) && !pn2->as<PropertyAccess>().isSuper()) {
@@ -4310,9 +1883,9 @@ BytecodeEmitter::emitPropLHS(ParseNode* pn)
         ParseNode* pnup = nullptr;
         ParseNode* pndown;
         for (;;) {
-            /* Reverse pndot->pn_expr to point up, not down. */
-            pndown = pndot->pn_expr;
-            pndot->pn_expr = pnup;
+            /* Reverse pndot->pn_left to point up, not down. */
+            pndown = pndot->pn_left;
+            pndot->pn_left = pnup;
             if (!pndown->isKind(ParseNodeKind::Dot) || pndown->as<PropertyAccess>().isSuper())
                 break;
             pnup = pndot;
@@ -4325,12 +1898,12 @@ BytecodeEmitter::emitPropLHS(ParseNode* pn)
 
         do {
             /* Walk back up the list, emitting annotated name ops. */
-            if (!emitAtomOp(pndot, JSOP_GETPROP))
+            if (!emitAtomOp(pndot->pn_right, JSOP_GETPROP))
                 return false;
 
-            /* Reverse the pn_expr link again. */
-            pnup = pndot->pn_expr;
-            pndot->pn_expr = pndown;
+            /* Reverse the pn_left link again. */
+            pnup = pndot->pn_left;
+            pndot->pn_left = pndown;
             pndown = pndot;
         } while ((pndot = pnup) != nullptr);
         return true;
@@ -4355,7 +1928,7 @@ BytecodeEmitter::emitSuperPropLHS(ParseNode* superBase, bool isCall)
 bool
 BytecodeEmitter::emitPropOp(ParseNode* pn, JSOp op)
 {
-    MOZ_ASSERT(pn->isArity(PN_NAME));
+    MOZ_ASSERT(pn->isArity(PN_BINARY));
 
     if (!emitPropLHS(pn))
         return false;
@@ -4363,7 +1936,7 @@ BytecodeEmitter::emitPropOp(ParseNode* pn, JSOp op)
     if (op == JSOP_CALLPROP && !emit1(JSOP_DUP))
         return false;
 
-    if (!emitAtomOp(pn, op))
+    if (!emitAtomOp(pn->pn_right, op))
         return false;
 
     if (op == JSOP_CALLPROP && !emit1(JSOP_SWAP))
@@ -4373,13 +1946,13 @@ BytecodeEmitter::emitPropOp(ParseNode* pn, JSOp op)
 }
 
 bool
-BytecodeEmitter::emitSuperPropOp(ParseNode* pn, JSOp op, bool isCall)
+BytecodeEmitter::emitSuperGetProp(ParseNode* pn, bool isCall)
 {
     ParseNode* base = &pn->as<PropertyAccess>().expression();
     if (!emitSuperPropLHS(base, isCall))
         return false;
 
-    if (!emitAtomOp(pn, op))
+    if (!emitAtomOp(pn->pn_right, JSOP_GETPROP_SUPER))
         return false;
 
     if (isCall && !emit1(JSOP_SWAP))
@@ -4409,7 +1982,7 @@ BytecodeEmitter::emitPropIncDec(ParseNode* pn)
         if (!emit1(JSOP_DUP))                       // OBJ OBJ
             return false;
     }
-    if (!emitAtomOp(pn->pn_kid, isSuper? JSOP_GETPROP_SUPER : JSOP_GETPROP)) // OBJ V
+    if (!emitAtomOp(pn->pn_kid->pn_right, isSuper ? JSOP_GETPROP_SUPER : JSOP_GETPROP)) // OBJ V
         return false;
     if (!emit1(JSOP_POS))                           // OBJ N
         return false;
@@ -4435,7 +2008,7 @@ BytecodeEmitter::emitPropIncDec(ParseNode* pn)
 
     JSOp setOp = isSuper ? sc->strict() ? JSOP_STRICTSETPROP_SUPER : JSOP_SETPROP_SUPER
                          : sc->strict() ? JSOP_STRICTSETPROP : JSOP_SETPROP;
-    if (!emitAtomOp(pn->pn_kid, setOp))             // N? N+1
+    if (!emitAtomOp(pn->pn_kid->pn_right, setOp))   // N? N+1
         return false;
     if (post && !emit1(JSOP_POP))                   // RESULT
         return false;
@@ -4527,10 +2100,7 @@ BytecodeEmitter::emitElemOperands(ParseNode* pn, EmitElemOption opts)
     if (!emitTree(pn->pn_right))
         return false;
 
-    if (opts == EmitElemOption::Set) {
-        if (!emit2(JSOP_PICK, 2))
-            return false;
-    } else if (opts == EmitElemOption::IncDec || opts == EmitElemOption::CompoundAssign) {
+    if (opts == EmitElemOption::IncDec || opts == EmitElemOption::CompoundAssign) {
         if (!emit1(JSOP_TOID))
             return false;
     }
@@ -4542,37 +2112,27 @@ BytecodeEmitter::emitSuperElemOperands(ParseNode* pn, EmitElemOption opts)
 {
     MOZ_ASSERT(pn->isKind(ParseNodeKind::Elem) && pn->as<PropertyByValue>().isSuper());
 
-    // The ordering here is somewhat screwy. We need to evaluate the propval
-    // first, by spec. Do a little dance to not emit more than one JSOP_THIS.
-    // Since JSOP_THIS might throw in derived class constructors, we cannot
-    // just push it earlier as the receiver. We have to swap it down instead.
+    if (!emitGetThisForSuperBase(pn->pn_left))      // THIS
+        return false;
 
-    if (!emitTree(pn->pn_right))
+    if (opts == EmitElemOption::Call) {
+        // We need a second |this| that will be consumed during computation of
+        // the property value. (The original |this| is passed to the call.)
+        if (!emit1(JSOP_DUP))                       // THIS THIS
+            return false;
+    }
+
+    if (!emitTree(pn->pn_right))                    // THIS? THIS KEY
         return false;
 
     // We need to convert the key to an object id first, so that we do not do
     // it inside both the GETELEM and the SETELEM.
     if (opts == EmitElemOption::IncDec || opts == EmitElemOption::CompoundAssign) {
-        if (!emit1(JSOP_TOID))
+        if (!emit1(JSOP_TOID))                      // THIS? THIS KEY
             return false;
     }
 
-    if (!emitGetThisForSuperBase(pn->pn_left))
-        return false;
-
-    if (opts == EmitElemOption::Call) {
-        if (!emit1(JSOP_SWAP))
-            return false;
-
-        // We need another |this| on top, also
-        if (!emitDupAt(1))
-            return false;
-    }
-
-    if (!emit1(JSOP_SUPERBASE))
-        return false;
-
-    if (opts == EmitElemOption::Set && !emit2(JSOP_PICK, 3))
+    if (!emit1(JSOP_SUPERBASE))                     // THIS? THIS KEY SUPERBASE
         return false;
 
     return true;
@@ -4591,30 +2151,27 @@ BytecodeEmitter::emitElemOpBase(JSOp op)
 bool
 BytecodeEmitter::emitElemOp(ParseNode* pn, JSOp op)
 {
-    EmitElemOption opts = EmitElemOption::Get;
-    if (op == JSOP_CALLELEM)
-        opts = EmitElemOption::Call;
-    else if (op == JSOP_SETELEM || op == JSOP_STRICTSETELEM)
-        opts = EmitElemOption::Set;
+    MOZ_ASSERT(op == JSOP_GETELEM ||
+               op == JSOP_CALLELEM ||
+               op == JSOP_DELELEM ||
+               op == JSOP_STRICTDELELEM);
+
+    EmitElemOption opts = op == JSOP_CALLELEM ? EmitElemOption::Call : EmitElemOption::Get;
 
     return emitElemOperands(pn, opts) && emitElemOpBase(op);
 }
 
 bool
-BytecodeEmitter::emitSuperElemOp(ParseNode* pn, JSOp op, bool isCall)
+BytecodeEmitter::emitSuperGetElem(ParseNode* pn, bool isCall)
 {
-    EmitElemOption opts = EmitElemOption::Get;
-    if (isCall)
-        opts = EmitElemOption::Call;
-    else if (op == JSOP_SETELEM_SUPER || op == JSOP_STRICTSETELEM_SUPER)
-        opts = EmitElemOption::Set;
+    EmitElemOption opts = isCall ? EmitElemOption::Call : EmitElemOption::Get;
 
-    if (!emitSuperElemOperands(pn, opts))
+    if (!emitSuperElemOperands(pn, opts))           // THIS? THIS KEY SUPERBASE
         return false;
-    if (!emitElemOpBase(op))
+    if (!emitElemOpBase(JSOP_GETELEM_SUPER))        // THIS? VALUE
         return false;
 
-    if (isCall && !emit1(JSOP_SWAP))
+    if (isCall && !emit1(JSOP_SWAP))                // VALUE THIS
         return false;
 
     return true;
@@ -4645,11 +2202,11 @@ BytecodeEmitter::emitElemIncDec(ParseNode* pn)
     if (isSuper) {
         // There's no such thing as JSOP_DUP3, so we have to be creative.
         // Note that pushing things again is no fewer JSOps.
-        if (!emitDupAt(2))                              // KEY THIS OBJ KEY
+        if (!emitDupAt(2))                              // THIS KEY OBJ THIS
             return false;
-        if (!emitDupAt(2))                              // KEY THIS OBJ KEY THIS
+        if (!emitDupAt(2))                              // THIS KEY OBJ THIS KEY
             return false;
-        if (!emitDupAt(2))                              // KEY THIS OBJ KEY THIS OBJ
+        if (!emitDupAt(2))                              // THIS KEY OBJ THIS KEY OBJ
             return false;
         getOp = JSOP_GETELEM_SUPER;
     } else {
@@ -4662,27 +2219,16 @@ BytecodeEmitter::emitElemIncDec(ParseNode* pn)
         return false;
     if (!emit1(JSOP_POS))                               // OBJ KEY N
         return false;
-    if (post && !emit1(JSOP_DUP))                       // OBJ KEY N? N
-        return false;
-    if (!emit1(JSOP_ONE))                               // OBJ KEY N? N 1
-        return false;
-    if (!emit1(binop))                                  // OBJ KEY N? N+1
-        return false;
-
     if (post) {
-        if (isSuper) {
-            // We have one more value to rotate around, because of |this|
-            // on the stack
-            if (!emit2(JSOP_PICK, 4))
-                return false;
-        }
-        if (!emit2(JSOP_PICK, 3 + isSuper))             // KEY N N+1 OBJ
+        if (!emit1(JSOP_DUP))                           // OBJ KEY N N
             return false;
-        if (!emit2(JSOP_PICK, 3 + isSuper))             // N N+1 OBJ KEY
-            return false;
-        if (!emit2(JSOP_PICK, 2 + isSuper))             // N OBJ KEY N+1
+        if (!emit2(JSOP_UNPICK, 3 + isSuper))           // N OBJ KEY N
             return false;
     }
+    if (!emit1(JSOP_ONE))                               // N? OBJ KEY N 1
+        return false;
+    if (!emit1(binop))                                  // N? OBJ KEY N+1
+        return false;
 
     JSOp setOp = isSuper ? (sc->strict() ? JSOP_STRICTSETELEM_SUPER : JSOP_SETELEM_SUPER)
                          : (sc->strict() ? JSOP_STRICTSETELEM : JSOP_SETELEM);
@@ -4757,36 +2303,29 @@ BytecodeEmitter::emitNumberOp(double dval)
  * into emitTree which is recursive and uses relatively little stack space.
  */
 MOZ_NEVER_INLINE bool
-BytecodeEmitter::emitSwitch(ParseNode* pn)
+BytecodeEmitter::emitSwitch(SwitchStatement* pn)
 {
-    ParseNode* cases = pn->pn_right;
-    MOZ_ASSERT(cases->isKind(ParseNodeKind::LexicalScope) ||
-               cases->isKind(ParseNodeKind::StatementList));
+    ParseNode& lexical = pn->lexicalForCaseList();
+    MOZ_ASSERT(lexical.isKind(ParseNodeKind::LexicalScope));
+    ParseNode* cases = lexical.scopeBody();
+    MOZ_ASSERT(cases->isKind(ParseNodeKind::StatementList));
 
-    // Emit code for the discriminant.
-    if (!emitTree(pn->pn_left))
+    SwitchEmitter se(this);
+    if (!se.emitDiscriminant(Some(pn->pn_pos.begin)))
+        return false;
+    if (!emitTree(&pn->discriminant()))
         return false;
 
     // Enter the scope before pushing the switch BreakableControl since all
     // breaks are under this scope.
-    Maybe<TDZCheckCache> tdzCache;
-    Maybe<EmitterScope> emitterScope;
-    if (cases->isKind(ParseNodeKind::LexicalScope)) {
-        if (!cases->isEmptyScope()) {
-            tdzCache.emplace(this);
-            emitterScope.emplace(this);
-            if (!emitterScope->enterLexical(this, ScopeKind::Lexical, cases->scopeBindings()))
-                return false;
-        }
-
-        // Advance |cases| to refer to the switch case list.
-        cases = cases->scopeBody();
+    if (!lexical.isEmptyScope()) {
+        if (!se.emitLexical(lexical.scopeBindings()))
+            return false;
 
         // A switch statement may contain hoisted functions inside its
         // cases. The PNX_FUNCDEFS flag is propagated from the STATEMENTLIST
         // bodies of the cases to the case list.
         if (cases->pn_xflags & PNX_FUNCDEFS) {
-            MOZ_ASSERT(emitterScope);
             for (ParseNode* caseNode = cases->pn_head; caseNode; caseNode = caseNode->pn_next) {
                 if (caseNode->pn_right->pn_xflags & PNX_FUNCDEFS) {
                     if (!emitHoistedFunctionsInList(caseNode->pn_right))
@@ -4794,305 +2333,96 @@ BytecodeEmitter::emitSwitch(ParseNode* pn)
                 }
             }
         }
-    }
-
-    // After entering the scope, push the switch control.
-    BreakableControl controlInfo(this, StatementKind::Switch);
-
-    ptrdiff_t top = offset();
-
-    // Switch bytecodes run from here till end of final case.
-    uint32_t caseCount = cases->pn_count;
-    if (caseCount > JS_BIT(16)) {
-        reportError(pn, JSMSG_TOO_MANY_CASES);
-        return false;
-    }
-
-    // Try for most optimal, fall back if not dense ints.
-    JSOp switchOp = JSOP_TABLESWITCH;
-    uint32_t tableLength = 0;
-    int32_t low, high;
-    bool hasDefault = false;
-    CaseClause* firstCase = cases->pn_head ? &cases->pn_head->as<CaseClause>() : nullptr;
-    if (caseCount == 0 ||
-        (caseCount == 1 && (hasDefault = firstCase->isDefault())))
-    {
-        low = 0;
-        high = -1;
     } else {
-        Vector<size_t, 128, SystemAllocPolicy> intmap;
-        int32_t intmapBitLength = 0;
+        MOZ_ASSERT(!(cases->pn_xflags & PNX_FUNCDEFS));
+    }
 
-        low  = JSVAL_INT_MAX;
-        high = JSVAL_INT_MIN;
-
+    SwitchEmitter::TableGenerator tableGen(this);
+    uint32_t caseCount = cases->pn_count - (pn->hasDefault() ? 1 : 0);
+    CaseClause* firstCase = cases->pn_head ? &cases->pn_head->as<CaseClause>() : nullptr;
+    if (caseCount == 0) {
+        tableGen.finish(0);
+    } else {
         for (CaseClause* caseNode = firstCase; caseNode; caseNode = caseNode->next()) {
-            if (caseNode->isDefault()) {
-                hasDefault = true;
-                caseCount--;  // one of the "cases" was the default
+            if (caseNode->isDefault())
                 continue;
-            }
-
-            if (switchOp == JSOP_CONDSWITCH)
-                continue;
-
-            MOZ_ASSERT(switchOp == JSOP_TABLESWITCH);
 
             ParseNode* caseValue = caseNode->caseExpression();
 
             if (caseValue->getKind() != ParseNodeKind::Number) {
-                switchOp = JSOP_CONDSWITCH;
-                continue;
+                tableGen.setInvalid();
+                break;
             }
 
             int32_t i;
             if (!NumberEqualsInt32(caseValue->pn_dval, &i)) {
-                switchOp = JSOP_CONDSWITCH;
-                continue;
+                tableGen.setInvalid();
+                break;
             }
 
-            if (unsigned(i + int(JS_BIT(15))) >= unsigned(JS_BIT(16))) {
-                switchOp = JSOP_CONDSWITCH;
-                continue;
-            }
-            if (i < low)
-                low = i;
-            if (i > high)
-                high = i;
-
-            // Check for duplicates, which require a JSOP_CONDSWITCH.
-            // We bias i by 65536 if it's negative, and hope that's a rare
-            // case (because it requires a malloc'd bitmap).
-            if (i < 0)
-                i += JS_BIT(16);
-            if (i >= intmapBitLength) {
-                size_t newLength = NumWordsForBitArrayOfLength(i + 1);
-                if (!intmap.resize(newLength)) {
-                    ReportOutOfMemory(cx);
-                    return false;
-                }
-                intmapBitLength = newLength * BitArrayElementBits;
-            }
-            if (IsBitArrayElementSet(intmap.begin(), intmap.length(), i)) {
-                switchOp = JSOP_CONDSWITCH;
-                continue;
-            }
-            SetBitArrayElement(intmap.begin(), intmap.length(), i);
+            if (!tableGen.addNumber(i))
+                return false;
         }
 
-        // Compute table length and select condswitch instead if overlarge or
-        // more than half-sparse.
-        if (switchOp == JSOP_TABLESWITCH) {
-            tableLength = uint32_t(high - low + 1);
-            if (tableLength >= JS_BIT(16) || tableLength > 2 * caseCount)
-                switchOp = JSOP_CONDSWITCH;
-        }
+        tableGen.finish(caseCount);
     }
 
-    // The note has one or two offsets: first tells total switch code length;
-    // second (if condswitch) tells offset to first JSOP_CASE.
-    unsigned noteIndex;
-    size_t switchSize;
-    if (switchOp == JSOP_CONDSWITCH) {
-        // 0 bytes of immediate for unoptimized switch.
-        switchSize = 0;
-        if (!newSrcNote3(SRC_CONDSWITCH, 0, 0, &noteIndex))
-            return false;
-    } else {
-        MOZ_ASSERT(switchOp == JSOP_TABLESWITCH);
-
-        // 3 offsets (len, low, high) before the table, 1 per entry.
-        switchSize = size_t(JUMP_OFFSET_LEN * (3 + tableLength));
-        if (!newSrcNote2(SRC_TABLESWITCH, 0, &noteIndex))
-            return false;
-    }
-
-    // Emit switchOp followed by switchSize bytes of jump or lookup table.
-    MOZ_ASSERT(top == offset());
-    if (!emitN(switchOp, switchSize))
+    if (!se.validateCaseCount(caseCount))
         return false;
 
-    Vector<CaseClause*, 32, SystemAllocPolicy> table;
-
-    JumpList condSwitchDefaultOff;
-    if (switchOp == JSOP_CONDSWITCH) {
-        unsigned caseNoteIndex;
-        bool beforeCases = true;
-        ptrdiff_t lastCaseOffset = -1;
-
-        // The case conditions need their own TDZ cache since they might not
-        // all execute.
-        TDZCheckCache tdzCache(this);
+    bool isTableSwitch = tableGen.isValid();
+    if (isTableSwitch) {
+        if (!se.emitTable(tableGen))
+            return false;
+    } else {
+        if (!se.emitCond())
+            return false;
 
         // Emit code for evaluating cases and jumping to case statements.
         for (CaseClause* caseNode = firstCase; caseNode; caseNode = caseNode->next()) {
-            ParseNode* caseValue = caseNode->caseExpression();
+            if (caseNode->isDefault())
+                continue;
 
+            ParseNode* caseValue = caseNode->caseExpression();
             // If the expression is a literal, suppress line number emission so
             // that debugging works more naturally.
-            if (caseValue) {
-                if (!emitTree(caseValue, ValueUsage::WantValue,
-                              caseValue->isLiteral() ? SUPPRESS_LINENOTE : EMIT_LINENOTE))
-                {
-                    return false;
-                }
-            }
-
-            if (!beforeCases) {
-                // prevCase is the previous JSOP_CASE's bytecode offset.
-                if (!setSrcNoteOffset(caseNoteIndex, 0, offset() - lastCaseOffset))
-                    return false;
-            }
-            if (!caseValue) {
-                // This is the default clause.
-                continue;
-            }
-
-            if (!newSrcNote2(SRC_NEXTCASE, 0, &caseNoteIndex))
-                return false;
-
-            // The case clauses are produced before any of the case body. The
-            // JumpList is saved on the parsed tree, then later restored and
-            // patched when generating the cases body.
-            JumpList caseJump;
-            if (!emitJump(JSOP_CASE, &caseJump))
-                return false;
-            caseNode->setOffset(caseJump.offset);
-            lastCaseOffset = caseJump.offset;
-
-            if (beforeCases) {
-                // Switch note's second offset is to first JSOP_CASE.
-                unsigned noteCount = notes().length();
-                if (!setSrcNoteOffset(noteIndex, 1, lastCaseOffset - top))
-                    return false;
-                unsigned noteCountDelta = notes().length() - noteCount;
-                if (noteCountDelta != 0)
-                    caseNoteIndex += noteCountDelta;
-                beforeCases = false;
-            }
-        }
-
-        // If we didn't have an explicit default (which could fall in between
-        // cases, preventing us from fusing this setSrcNoteOffset with the call
-        // in the loop above), link the last case to the implicit default for
-        // the benefit of IonBuilder.
-        if (!hasDefault &&
-            !beforeCases &&
-            !setSrcNoteOffset(caseNoteIndex, 0, offset() - lastCaseOffset))
-        {
-            return false;
-        }
-
-        // Emit default even if no explicit default statement.
-        if (!emitJump(JSOP_DEFAULT, &condSwitchDefaultOff))
-            return false;
-    } else {
-        MOZ_ASSERT(switchOp == JSOP_TABLESWITCH);
-
-        // skip default offset.
-        jsbytecode* pc = code(top + JUMP_OFFSET_LEN);
-
-        // Fill in switch bounds, which we know fit in 16-bit offsets.
-        SET_JUMP_OFFSET(pc, low);
-        pc += JUMP_OFFSET_LEN;
-        SET_JUMP_OFFSET(pc, high);
-        pc += JUMP_OFFSET_LEN;
-
-        if (tableLength != 0) {
-            if (!table.growBy(tableLength)) {
-                ReportOutOfMemory(cx);
+            if (!emitTree(caseValue, ValueUsage::WantValue,
+                          caseValue->isLiteral() ? SUPPRESS_LINENOTE : EMIT_LINENOTE))
+            {
                 return false;
             }
 
-            for (CaseClause* caseNode = firstCase; caseNode; caseNode = caseNode->next()) {
-                if (ParseNode* caseValue = caseNode->caseExpression()) {
-                    MOZ_ASSERT(caseValue->isKind(ParseNodeKind::Number));
-
-                    int32_t i = int32_t(caseValue->pn_dval);
-                    MOZ_ASSERT(double(i) == caseValue->pn_dval);
-
-                    i -= low;
-                    MOZ_ASSERT(uint32_t(i) < tableLength);
-                    MOZ_ASSERT(!table[i]);
-                    table[i] = caseNode;
-                }
-            }
+            if (!se.emitCaseJump())
+                return false;
         }
     }
 
-    JumpTarget defaultOffset{ -1 };
-
     // Emit code for each case's statements.
     for (CaseClause* caseNode = firstCase; caseNode; caseNode = caseNode->next()) {
-        if (switchOp == JSOP_CONDSWITCH && !caseNode->isDefault()) {
-            // The case offset got saved in the caseNode structure after
-            // emitting the JSOP_CASE jump instruction above.
-            JumpList caseCond;
-            caseCond.offset = caseNode->offset();
-            if (!emitJumpTargetAndPatch(caseCond))
+        if (caseNode->isDefault()) {
+            if (!se.emitDefaultBody())
                 return false;
+        } else {
+            if (isTableSwitch) {
+                ParseNode* caseValue = caseNode->caseExpression();
+                MOZ_ASSERT(caseValue->isKind(ParseNodeKind::Number));
+
+                int32_t i = int32_t(caseValue->pn_dval);
+                MOZ_ASSERT(double(i) == caseValue->pn_dval);
+
+                if (!se.emitCaseBody(i, tableGen))
+                    return false;
+            } else {
+                if (!se.emitCaseBody())
+                    return false;
+            }
         }
-
-        JumpTarget here;
-        if (!emitJumpTarget(&here))
-            return false;
-        if (caseNode->isDefault())
-            defaultOffset = here;
-
-        // If this is emitted as a TABLESWITCH, we'll need to know this case's
-        // offset later when emitting the table. Store it in the node's
-        // pn_offset (giving the field a different meaning vs. how we used it
-        // on the immediately preceding line of code).
-        caseNode->setOffset(here.offset);
-
-        TDZCheckCache tdzCache(this);
 
         if (!emitTree(caseNode->statementList()))
             return false;
     }
 
-    if (!hasDefault) {
-        // If no default case, offset for default is to end of switch.
-        if (!emitJumpTarget(&defaultOffset))
-            return false;
-    }
-    MOZ_ASSERT(defaultOffset.offset != -1);
-
-    // Set the default offset (to end of switch if no default).
-    jsbytecode* pc;
-    if (switchOp == JSOP_CONDSWITCH) {
-        pc = nullptr;
-        patchJumpsToTarget(condSwitchDefaultOff, defaultOffset);
-    } else {
-        MOZ_ASSERT(switchOp == JSOP_TABLESWITCH);
-        pc = code(top);
-        SET_JUMP_OFFSET(pc, defaultOffset.offset - top);
-        pc += JUMP_OFFSET_LEN;
-    }
-
-    // Set the SRC_SWITCH note's offset operand to tell end of switch.
-    if (!setSrcNoteOffset(noteIndex, 0, lastNonJumpTargetOffset() - top))
-        return false;
-
-    if (switchOp == JSOP_TABLESWITCH) {
-        // Skip over the already-initialized switch bounds.
-        pc += 2 * JUMP_OFFSET_LEN;
-
-        // Fill in the jump table, if there is one.
-        for (uint32_t i = 0; i < tableLength; i++) {
-            CaseClause* caseNode = table[i];
-            ptrdiff_t off = caseNode ? caseNode->offset() - top : 0;
-            SET_JUMP_OFFSET(pc, off);
-            pc += JUMP_OFFSET_LEN;
-        }
-    }
-
-    // Patch breaks before leaving the scope, as all breaks are under the
-    // lexical scope if it exists.
-    if (!controlInfo.patchBreaks(this))
-        return false;
-
-    if (emitterScope && !emitterScope->leave(this))
+    if (!se.emitEnd())
         return false;
 
     return true;
@@ -5253,6 +2583,9 @@ BytecodeEmitter::emitScript(ParseNode* body)
     if (!emitterScope.leave(this))
         return false;
 
+    if (!NameFunctions(cx, body))
+        return false;
+
     if (!JSScript::fullyInitFromEmitter(cx, script, this))
         return false;
 
@@ -5262,8 +2595,11 @@ BytecodeEmitter::emitScript(ParseNode* body)
 }
 
 bool
-BytecodeEmitter::emitFunctionScript(ParseNode* body)
+BytecodeEmitter::emitFunctionScript(ParseNode* fn, TopLevelFunction isTopLevel)
 {
+    MOZ_ASSERT(fn->isKind(ParseNodeKind::Function));
+    ParseNode* body = fn->pn_body;
+    MOZ_ASSERT(body->isKind(ParseNodeKind::ParamsBody));
     FunctionBox* funbox = sc->asFunctionBox();
     AutoFrontendTraceLog traceLog(cx, TraceLogger_BytecodeEmission, parser->errorReporter(), funbox);
 
@@ -5317,6 +2653,11 @@ BytecodeEmitter::emitFunctionScript(ParseNode* body)
         namedLambdaEmitterScope.reset();
     }
 
+    if (isTopLevel == TopLevelFunction::Yes) {
+        if (!NameFunctions(cx, fn))
+            return false;
+    }
+
     if (!JSScript::fullyInitFromEmitter(cx, script, this))
         return false;
 
@@ -5357,7 +2698,7 @@ BytecodeEmitter::emitDestructuringLHSRef(ParseNode* target, size_t* emitted)
                 return false;
             *emitted = 2;
         } else {
-            if (!emitTree(target->pn_expr))
+            if (!emitTree(target->pn_left))
                 return false;
             *emitted = 1;
         }
@@ -5475,7 +2816,7 @@ BytecodeEmitter::emitSetOrInitializeDestructuring(ParseNode* target, Destructuri
                 setOp = sc->strict() ? JSOP_STRICTSETPROP_SUPER : JSOP_SETPROP_SUPER;
             else
                 setOp = sc->strict() ? JSOP_STRICTSETPROP : JSOP_SETPROP;
-            if (!emitAtomOp(target, setOp))
+            if (!emitAtomOp(target->pn_right, setOp))
                 return false;
             break;
           }
@@ -5515,7 +2856,8 @@ BytecodeEmitter::emitSetOrInitializeDestructuring(ParseNode* target, Destructuri
 }
 
 bool
-BytecodeEmitter::emitIteratorNext(ParseNode* pn, IteratorKind iterKind /* = IteratorKind::Sync */,
+BytecodeEmitter::emitIteratorNext(const Maybe<uint32_t>& callSourceCoordOffset,
+                                  IteratorKind iterKind /* = IteratorKind::Sync */,
                                   bool allowSelfHosted /* = false */)
 {
     MOZ_ASSERT(allowSelfHosted || emitterMode != BytecodeEmitter::SelfHosting,
@@ -5524,7 +2866,7 @@ BytecodeEmitter::emitIteratorNext(ParseNode* pn, IteratorKind iterKind /* = Iter
 
     MOZ_ASSERT(this->stackDepth >= 2);                    // ... NEXT ITER
 
-    if (!emitCall(JSOP_CALL, 0, pn))                      // ... RESULT
+    if (!emitCall(JSOP_CALL, 0, callSourceCoordOffset))   // ... RESULT
         return false;
 
     if (iterKind == IteratorKind::Async) {
@@ -6057,7 +3399,7 @@ BytecodeEmitter::emitDestructuringOpsArray(ParseNode* pattern, DestructuringFlav
             return false;
         if (!emitDupAt(emitted + 1))                              // ... OBJ NEXT ITER *LREF NEXT ITER
             return false;
-        if (!emitIteratorNext(pattern))                           // ... OBJ NEXT ITER *LREF RESULT
+        if (!emitIteratorNext(Some(pattern->pn_pos.begin)))       // ... OBJ NEXT ITER *LREF RESULT
             return false;
         if (!emit1(JSOP_DUP))                                     // ... OBJ NEXT ITER *LREF RESULT RESULT
             return false;
@@ -6196,7 +3538,7 @@ BytecodeEmitter::emitDestructuringOpsObject(ParseNode* pattern, DestructuringFla
             if (!updateSourceCoordNotes(member->pn_pos.begin))
                 return false;
 
-            if (!emitNewInit(JSProto_Object))                     // ... *SET RHS *LREF RHS TARGET
+            if (!emitNewInit())                                   // ... *SET RHS *LREF RHS TARGET
                 return false;
             if (!emit1(JSOP_DUP))                                 // ... *SET RHS *LREF RHS TARGET TARGET
                 return false;
@@ -6290,7 +3632,7 @@ BytecodeEmitter::emitDestructuringObjRestExclusionSet(ParseNode* pattern)
     MOZ_ASSERT(pattern->last()->isKind(ParseNodeKind::Spread));
 
     ptrdiff_t offset = this->offset();
-    if (!emitNewInit(JSProto_Object))
+    if (!emitNewInit())
         return false;
 
     // Try to construct the shape of the object as we go, so we can emit a
@@ -6587,11 +3929,11 @@ BytecodeEmitter::emitAssignment(ParseNode* lhs, ParseNodeKind pnk, ParseNode* rh
                 return false;
             offset += 2;
         } else {
-            if (!emitTree(lhs->expr()))
+            if (!emitTree(lhs->pn_left))
                 return false;
             offset += 1;
         }
-        if (!makeAtomIndex(lhs->pn_atom, &atomIndex))
+        if (!makeAtomIndex(lhs->pn_right->pn_atom, &atomIndex))
             return false;
         break;
       case ParseNodeKind::Elem: {
@@ -6640,7 +3982,7 @@ BytecodeEmitter::emitAssignment(ParseNode* lhs, ParseNodeKind pnk, ParseNode* rh
             } else {
                 if (!emit1(JSOP_DUP))
                     return false;
-                bool isLength = (lhs->pn_atom == cx->names().length);
+                bool isLength = (lhs->pn_right->pn_atom == cx->names().length);
                 getOp = isLength ? JSOP_LENGTH : JSOP_GETPROP;
             }
             if (!emitIndex32(getOp, atomIndex))
@@ -6896,10 +4238,6 @@ BytecodeEmitter::emitCallSiteObject(ParseNode* pn)
     return emitObjectPairOp(objbox1, objbox2, JSOP_CALLSITEOBJ);
 }
 
-/* See the SRC_FOR source note offsetBias comments later in this file. */
-JS_STATIC_ASSERT(JSOP_NOP_LENGTH == 1);
-JS_STATIC_ASSERT(JSOP_POP_LENGTH == 1);
-
 namespace {
 
 class EmitLevelManager
@@ -7021,6 +4359,9 @@ BytecodeEmitter::emitIf(ParseNode* pn)
 {
     IfEmitter ifThenElse(this);
 
+    if (!ifThenElse.emitIf(Some(pn->pn_pos.begin)))
+        return false;
+
   if_again:
     /* Emit code for the condition before pushing stmtInfo. */
     if (!emitTree(pn->pn_kid1))
@@ -7043,7 +4384,7 @@ BytecodeEmitter::emitIf(ParseNode* pn)
         if (elseNode->isKind(ParseNodeKind::If)) {
             pn = elseNode;
 
-            if (!ifThenElse.emitElseIf())
+            if (!ifThenElse.emitElseIf(Some(pn->pn_pos.begin)))
                 return false;
 
             goto if_again;
@@ -7152,6 +4493,10 @@ BytecodeEmitter::emitLexicalScope(ParseNode* pn)
 bool
 BytecodeEmitter::emitWith(ParseNode* pn)
 {
+    // Ensure that the column of the 'with' is set properly.
+    if (!updateSourceCoordNotes(pn->pn_pos.begin))
+        return false;
+
     if (!emitTree(pn->pn_left))
         return false;
 
@@ -7320,12 +4665,10 @@ BytecodeEmitter::emitSpread(bool allowSelfHosted)
     // Jump down to the loop condition to minimize overhead, assuming at least
     // one iteration.  (This is also what we do for loops; whether this
     // assumption holds for spreads is an unanswered question.)
-    JumpList initialJump;
-    if (!emitJump(JSOP_GOTO, &initialJump))               // NEXT ITER ARR I (during the goto)
+    if (!loopInfo.emitEntryJump(this))                    // NEXT ITER ARR I (during the goto)
         return false;
 
-    JumpTarget top{ -1 };
-    if (!emitLoopHead(nullptr, &top))                     // NEXT ITER ARR I
+    if (!loopInfo.emitLoopHead(this, Nothing()))          // NEXT ITER ARR I
         return false;
 
     // When we enter the goto above, we have NEXT ITER ARR I on the stack. But
@@ -7334,8 +4677,6 @@ BytecodeEmitter::emitSpread(bool allowSelfHosted)
     // Increment manually to reflect this.
     this->stackDepth++;
 
-    JumpList beq;
-    JumpTarget breakTarget{ -1 };
     {
 #ifdef DEBUG
         auto loopDepth = this->stackDepth;
@@ -7353,36 +4694,42 @@ BytecodeEmitter::emitSpread(bool allowSelfHosted)
         // and enclosing "update" offsets, as we do with for-loops.
 
         // COME FROM the beginning of the loop to here.
-        if (!emitLoopEntry(nullptr, initialJump))         // NEXT ITER ARR I
+        if (!loopInfo.emitLoopEntry(this, Nothing()))     // NEXT ITER ARR I
             return false;
 
         if (!emitDupAt(3))                                // NEXT ITER ARR I NEXT
             return false;
         if (!emitDupAt(3))                                // NEXT ITER ARR I NEXT ITER
             return false;
-        if (!emitIteratorNext(nullptr, IteratorKind::Sync, allowSelfHosted))  // ITER ARR I RESULT
-            return false;
+        if (!emitIteratorNext(Nothing(), IteratorKind::Sync, allowSelfHosted))
+            return false;                                 // ITER ARR I RESULT
         if (!emit1(JSOP_DUP))                             // NEXT ITER ARR I RESULT RESULT
             return false;
         if (!emitAtomOp(cx->names().done, JSOP_GETPROP))  // NEXT ITER ARR I RESULT DONE
             return false;
 
-        if (!emitBackwardJump(JSOP_IFEQ, top, &beq, &breakTarget)) // NEXT ITER ARR I RESULT
+        if (!loopInfo.emitLoopEnd(this, JSOP_IFEQ))       // NEXT ITER ARR I RESULT
             return false;
 
         MOZ_ASSERT(this->stackDepth == loopDepth);
     }
 
     // Let Ion know where the closing jump of this loop is.
-    if (!setSrcNoteOffset(noteIndex, 0, beq.offset - initialJump.offset))
+    if (!setSrcNoteOffset(noteIndex, SrcNote::ForOf::BackJumpOffset,
+                          loopInfo.loopEndOffsetFromEntryJump()))
+    {
         return false;
+    }
 
     // No breaks or continues should occur in spreads.
     MOZ_ASSERT(loopInfo.breaks.offset == -1);
     MOZ_ASSERT(loopInfo.continues.offset == -1);
 
-    if (!tryNoteList.append(JSTRY_FOR_OF, stackDepth, top.offset, breakTarget.offset))
+    if (!tryNoteList.append(JSTRY_FOR_OF, stackDepth, loopInfo.headOffset(),
+                            loopInfo.breakTargetOffset()))
+    {
         return false;
+    }
 
     if (!emit2(JSOP_PICK, 4))                             // ITER ARR FINAL_INDEX RESULT NEXT
         return false;
@@ -7455,7 +4802,7 @@ BytecodeEmitter::emitInitializeForInOrOfTarget(ParseNode* forHead)
 }
 
 bool
-BytecodeEmitter::emitForOf(ParseNode* forOfLoop, EmitterScope* headLexicalEmitterScope)
+BytecodeEmitter::emitForOf(ParseNode* forOfLoop, const EmitterScope* headLexicalEmitterScope)
 {
     MOZ_ASSERT(forOfLoop->isKind(ParseNodeKind::For));
     MOZ_ASSERT(forOfLoop->isArity(PN_BINARY));
@@ -7478,177 +4825,47 @@ BytecodeEmitter::emitForOf(ParseNode* forOfLoop, EmitterScope* headLexicalEmitte
     bool allowSelfHostedIter = false;
     if (emitterMode == BytecodeEmitter::SelfHosting &&
         forHeadExpr->isKind(ParseNodeKind::Call) &&
-        forHeadExpr->pn_head->name() == cx->names().allowContentIter)
+        forHeadExpr->pn_left->name() == cx->names().allowContentIter)
     {
         allowSelfHostedIter = true;
     }
 
-    // Evaluate the expression being iterated. The forHeadExpr should use a
-    // distinct TDZCheckCache to evaluate since (abstractly) it runs in its own
-    // LexicalEnvironment.
-    if (!emitTreeInBranch(forHeadExpr))                   // ITERABLE
-        return false;
-    if (iterKind == IteratorKind::Async) {
-        if (!emitAsyncIterator())                         // NEXT ITER
-            return false;
-    } else {
-        if (!emitIterator())                              // NEXT ITER
-            return false;
-    }
+    ForOfEmitter forOf(this, headLexicalEmitterScope, allowSelfHostedIter, iterKind);
 
-    int32_t iterDepth = stackDepth;
-
-    // For-of loops have the iterator next method, the iterator itself, and
-    // the result.value on the stack.
-    // Push an undefined to balance the stack.
-    if (!emit1(JSOP_UNDEFINED))                           // NEXT ITER UNDEF
+    if (!forOf.emitIterated())                            //
         return false;
 
-    ForOfLoopControl loopInfo(this, iterDepth, allowSelfHostedIter, iterKind);
-
-    // Annotate so IonMonkey can find the loop-closing jump.
-    unsigned noteIndex;
-    if (!newSrcNote(SRC_FOR_OF, &noteIndex))
+    if (!emitTree(forHeadExpr))                           // ITERABLE
         return false;
 
-    JumpList initialJump;
-    if (!emitJump(JSOP_GOTO, &initialJump))               // NEXT ITER UNDEF
-        return false;
-
-    JumpTarget top{ -1 };
-    if (!emitLoopHead(nullptr, &top))                     // NEXT ITER UNDEF
-        return false;
-
-    // If the loop had an escaping lexical declaration, replace the current
-    // environment with an dead zoned one to implement TDZ semantics.
     if (headLexicalEmitterScope) {
-        // The environment chain only includes an environment for the for-of
-        // loop head *if* a scope binding is captured, thereby requiring
-        // recreation each iteration. If a lexical scope exists for the head,
-        // it must be the innermost one. If that scope has closed-over
-        // bindings inducing an environment, recreate the current environment.
         DebugOnly<ParseNode*> forOfTarget = forOfHead->pn_kid1;
         MOZ_ASSERT(forOfTarget->isKind(ParseNodeKind::Let) ||
                    forOfTarget->isKind(ParseNodeKind::Const));
-        MOZ_ASSERT(headLexicalEmitterScope == innermostEmitterScope());
-        MOZ_ASSERT(headLexicalEmitterScope->scope(this)->kind() == ScopeKind::Lexical);
-
-        if (headLexicalEmitterScope->hasEnvironment()) {
-            if (!emit1(JSOP_RECREATELEXICALENV))          // NEXT ITER UNDEF
-                return false;
-        }
-
-        // For uncaptured bindings, put them back in TDZ.
-        if (!headLexicalEmitterScope->deadZoneFrameSlots(this))
-            return false;
     }
 
-    JumpList beq;
-    JumpTarget breakTarget{ -1 };
-    {
-#ifdef DEBUG
-        auto loopDepth = this->stackDepth;
-#endif
+    if (!forOf.emitInitialize(Some(forOfHead->pn_pos.begin)))
+        return false;                                     // NEXT ITER VALUE
 
-        // Make sure this code is attributed to the "for".
-        if (!updateSourceCoordNotes(forOfHead->pn_pos.begin))
-            return false;
-
-        if (!emit1(JSOP_POP))                             // NEXT ITER
-            return false;
-        if (!emit1(JSOP_DUP2))                            // NEXT ITER NEXT ITER
-            return false;
-
-        if (!emitIteratorNext(forOfHead, iterKind, allowSelfHostedIter))
-            return false;                                 // NEXT ITER RESULT
-
-        if (!emit1(JSOP_DUP))                             // NEXT ITER RESULT RESULT
-            return false;
-        if (!emitAtomOp(cx->names().done, JSOP_GETPROP))  // NEXT ITER RESULT DONE
-            return false;
-
-        InternalIfEmitter ifDone(this);
-
-        if (!ifDone.emitThen())                           // NEXT ITER RESULT
-            return false;
-
-        // Remove RESULT from the stack to release it.
-        if (!emit1(JSOP_POP))                             // NEXT ITER
-            return false;
-        if (!emit1(JSOP_UNDEFINED))                       // NEXT ITER UNDEF
-            return false;
-
-        // If the iteration is done, leave loop here, instead of the branch at
-        // the end of the loop.
-        if (!loopInfo.emitSpecialBreakForDone(this))      // NEXT ITER UNDEF
-            return false;
-
-        if (!ifDone.emitEnd())                            // NEXT ITER RESULT
-            return false;
-
-        // Emit code to assign result.value to the iteration variable.
-        //
-        // Note that ES 13.7.5.13, step 5.c says getting result.value does not
-        // call IteratorClose, so start JSTRY_ITERCLOSE after the GETPROP.
-        if (!emitAtomOp(cx->names().value, JSOP_GETPROP)) // NEXT ITER VALUE
-            return false;
-
-        if (!loopInfo.emitBeginCodeNeedingIteratorClose(this))
-            return false;
-
-        if (!emitInitializeForInOrOfTarget(forOfHead))    // NEXT ITER VALUE
-            return false;
-
-        MOZ_ASSERT(stackDepth == loopDepth,
-                   "the stack must be balanced around the initializing "
-                   "operation");
-
-        // Remove VALUE from the stack to release it.
-        if (!emit1(JSOP_POP))                             // NEXT ITER
-            return false;
-        if (!emit1(JSOP_UNDEFINED))                       // NEXT ITER UNDEF
-            return false;
-
-        // Perform the loop body.
-        ParseNode* forBody = forOfLoop->pn_right;
-        if (!emitTree(forBody))                           // NEXT ITER UNDEF
-            return false;
-
-        MOZ_ASSERT(stackDepth == loopDepth,
-                   "the stack must be balanced around the for-of body");
-
-        if (!loopInfo.emitEndCodeNeedingIteratorClose(this))
-            return false;
-
-        // Set offset for continues.
-        loopInfo.continueTarget = { offset() };
-
-        if (!emitLoopEntry(forHeadExpr, initialJump))     // NEXT ITER UNDEF
-            return false;
-
-        if (!emit1(JSOP_FALSE))                           // NEXT ITER UNDEF FALSE
-            return false;
-        if (!emitBackwardJump(JSOP_IFEQ, top, &beq, &breakTarget))
-            return false;                                 // NEXT ITER UNDEF
-
-        MOZ_ASSERT(this->stackDepth == loopDepth);
-    }
-
-    // Let Ion know where the closing jump of this loop is.
-    if (!setSrcNoteOffset(noteIndex, 0, beq.offset - initialJump.offset))
+    if (!emitInitializeForInOrOfTarget(forOfHead))        // NEXT ITER VALUE
         return false;
 
-    if (!loopInfo.patchBreaksAndContinues(this))
+    if (!forOf.emitBody())                                // NEXT ITER UNDEF
         return false;
 
-    if (!tryNoteList.append(JSTRY_FOR_OF, stackDepth, top.offset, breakTarget.offset))
+    // Perform the loop body.
+    ParseNode* forBody = forOfLoop->pn_right;
+    if (!emitTree(forBody))                               // NEXT ITER UNDEF
         return false;
 
-    return emitPopN(3);                                   //
+    if (!forOf.emitEnd(Some(forHeadExpr->pn_pos.begin)))  //
+        return false;
+
+    return true;
 }
 
 bool
-BytecodeEmitter::emitForIn(ParseNode* forInLoop, EmitterScope* headLexicalEmitterScope)
+BytecodeEmitter::emitForIn(ParseNode* forInLoop, const EmitterScope* headLexicalEmitterScope)
 {
     MOZ_ASSERT(forInLoop->isKind(ParseNodeKind::For));
     MOZ_ASSERT(forInLoop->isArity(PN_BINARY));
@@ -7657,6 +4874,8 @@ BytecodeEmitter::emitForIn(ParseNode* forInLoop, EmitterScope* headLexicalEmitte
     ParseNode* forInHead = forInLoop->pn_left;
     MOZ_ASSERT(forInHead->isKind(ParseNodeKind::ForIn));
     MOZ_ASSERT(forInHead->isArity(PN_TERNARY));
+
+    ForInEmitter forIn(this, headLexicalEmitterScope);
 
     // Annex B: Evaluate the var-initializer expression if present.
     // |for (var i = initializer in expr) { ... }|
@@ -7685,309 +4904,118 @@ BytecodeEmitter::emitForIn(ParseNode* forInLoop, EmitterScope* headLexicalEmitte
         }
     }
 
+    if (!forIn.emitIterated())                            //
+        return false;
+
     // Evaluate the expression being iterated.
     ParseNode* expr = forInHead->pn_kid3;
-    if (!emitTreeInBranch(expr))                          // EXPR
+    if (!emitTree(expr))                                  // EXPR
         return false;
 
     MOZ_ASSERT(forInLoop->pn_iflags == 0);
 
-    if (!emit1(JSOP_ITER))                                // ITER
+    MOZ_ASSERT_IF(headLexicalEmitterScope,
+                  forInTarget->isKind(ParseNodeKind::Let) ||
+                  forInTarget->isKind(ParseNodeKind::Const));
+
+    if (!forIn.emitInitialize())                          // ITER ITERVAL
         return false;
 
-    // For-in loops have both the iterator and the value on the stack. Push
-    // undefined to balance the stack.
-    if (!emit1(JSOP_UNDEFINED))                           // ITER ITERVAL
+    if (!emitInitializeForInOrOfTarget(forInHead))        // ITER ITERVAL
         return false;
 
-    LoopControl loopInfo(this, StatementKind::ForInLoop);
-
-    /* Annotate so IonMonkey can find the loop-closing jump. */
-    unsigned noteIndex;
-    if (!newSrcNote(SRC_FOR_IN, &noteIndex))
+    if (!forIn.emitBody())                                // ITER ITERVAL
         return false;
-
-    // Jump down to the loop condition to minimize overhead (assuming at least
-    // one iteration, just like the other loop forms).
-    JumpList initialJump;
-    if (!emitJump(JSOP_GOTO, &initialJump))               // ITER ITERVAL
-        return false;
-
-    JumpTarget top{ -1 };
-    if (!emitLoopHead(nullptr, &top))                     // ITER ITERVAL
-        return false;
-
-    // If the loop had an escaping lexical declaration, replace the current
-    // environment with an dead zoned one to implement TDZ semantics.
-    if (headLexicalEmitterScope) {
-        // The environment chain only includes an environment for the for-in
-        // loop head *if* a scope binding is captured, thereby requiring
-        // recreation each iteration. If a lexical scope exists for the head,
-        // it must be the innermost one. If that scope has closed-over
-        // bindings inducing an environment, recreate the current environment.
-        MOZ_ASSERT(forInTarget->isKind(ParseNodeKind::Let) ||
-                   forInTarget->isKind(ParseNodeKind::Const));
-        MOZ_ASSERT(headLexicalEmitterScope == innermostEmitterScope());
-        MOZ_ASSERT(headLexicalEmitterScope->scope(this)->kind() == ScopeKind::Lexical);
-
-        if (headLexicalEmitterScope->hasEnvironment()) {
-            if (!emit1(JSOP_RECREATELEXICALENV))          // ITER ITERVAL
-                return false;
-        }
-
-        // For uncaptured bindings, put them back in TDZ.
-        if (!headLexicalEmitterScope->deadZoneFrameSlots(this))
-            return false;
-    }
-
-    {
-#ifdef DEBUG
-        auto loopDepth = this->stackDepth;
-#endif
-        MOZ_ASSERT(loopDepth >= 2);
-
-        if (!emit1(JSOP_ITERNEXT))                        // ITER ITERVAL
-            return false;
-
-        if (!emitInitializeForInOrOfTarget(forInHead))    // ITER ITERVAL
-            return false;
-
-        MOZ_ASSERT(this->stackDepth == loopDepth,
-                   "iterator and iterval must be left on the stack");
-    }
 
     // Perform the loop body.
     ParseNode* forBody = forInLoop->pn_right;
     if (!emitTree(forBody))                               // ITER ITERVAL
         return false;
 
-    // Set offset for continues.
-    loopInfo.continueTarget = { offset() };
-
-    // Make sure this code is attributed to the "for".
-    if (!updateSourceCoordNotes(forInHead->pn_pos.begin))
+    if (!forIn.emitEnd(Some(forInHead->pn_pos.begin)))    //
         return false;
 
-    if (!emitLoopEntry(nullptr, initialJump))             // ITER ITERVAL
-        return false;
-    if (!emit1(JSOP_POP))                                 // ITER
-        return false;
-    if (!emit1(JSOP_MOREITER))                            // ITER NEXTITERVAL?
-        return false;
-    if (!emit1(JSOP_ISNOITER))                            // ITER NEXTITERVAL? ISNOITER
-        return false;
-
-    JumpList beq;
-    JumpTarget breakTarget{ -1 };
-    if (!emitBackwardJump(JSOP_IFEQ, top, &beq, &breakTarget))
-        return false;                                     // ITER NEXTITERVAL
-
-    // Set the srcnote offset so we can find the closing jump.
-    if (!setSrcNoteOffset(noteIndex, 0, beq.offset - initialJump.offset))
-        return false;
-
-    if (!loopInfo.patchBreaksAndContinues(this))
-        return false;
-
-    // Pop the enumeration value.
-    if (!emit1(JSOP_POP))                                 // ITER
-        return false;
-
-    if (!tryNoteList.append(JSTRY_FOR_IN, this->stackDepth, top.offset, offset()))
-        return false;
-
-    return emit1(JSOP_ENDITER);                           //
+    return true;
 }
 
 /* C-style `for (init; cond; update) ...` loop. */
 bool
-BytecodeEmitter::emitCStyleFor(ParseNode* pn, EmitterScope* headLexicalEmitterScope)
+BytecodeEmitter::emitCStyleFor(ParseNode* pn, const EmitterScope* headLexicalEmitterScope)
 {
-    LoopControl loopInfo(this, StatementKind::ForLoop);
-
     ParseNode* forHead = pn->pn_left;
     ParseNode* forBody = pn->pn_right;
+    ParseNode* init = forHead->pn_kid1;
+    ParseNode* cond = forHead->pn_kid2;
+    ParseNode* update = forHead->pn_kid3;
+    bool isLet = init && init->isKind(ParseNodeKind::Let);
+
+    CForEmitter cfor(this, isLet ? headLexicalEmitterScope : nullptr);
+
+    if (!cfor.emitInit(init ? Some(init->pn_pos.begin) : Nothing()))
+        return false;                                     //
 
     // If the head of this for-loop declared any lexical variables, the parser
     // wrapped this ParseNodeKind::For node in a ParseNodeKind::LexicalScope
-    // representing the implicit scope of those variables. By the time we get here,
-    // we have already entered that scope. So far, so good.
-    //
-    // ### Scope freshening
-    //
-    // Each iteration of a `for (let V...)` loop creates a fresh loop variable
-    // binding for V, even if the loop is a C-style `for(;;)` loop:
-    //
-    //     var funcs = [];
-    //     for (let i = 0; i < 2; i++)
-    //         funcs.push(function() { return i; });
-    //     assertEq(funcs[0](), 0);  // the two closures capture...
-    //     assertEq(funcs[1](), 1);  // ...two different `i` bindings
-    //
-    // This is implemented by "freshening" the implicit block -- changing the
-    // scope chain to a fresh clone of the instantaneous block object -- each
-    // iteration, just before evaluating the "update" in for(;;) loops.
-    //
-    // No freshening occurs in `for (const ...;;)` as there's no point: you
-    // can't reassign consts. This is observable through the Debugger API. (The
-    // ES6 spec also skips cloning the environment in this case.)
-    bool forLoopRequiresFreshening = false;
-    if (ParseNode* init = forHead->pn_kid1) {
+    // representing the implicit scope of those variables. By the time we get
+    // here, we have already entered that scope. So far, so good.
+    if (init) {
         // Emit the `init` clause, whether it's an expression or a variable
         // declaration. (The loop variables were hoisted into an enclosing
         // scope, but we still need to emit code for the initializers.)
-        if (!updateSourceCoordNotes(init->pn_pos.begin))
-            return false;
         if (init->isForLoopDeclaration()) {
-            if (!emitTree(init))
+            if (!emitTree(init))                          //
                 return false;
         } else {
             // 'init' is an expression, not a declaration. emitTree left its
             // value on the stack.
-            if (!emitTree(init, ValueUsage::IgnoreValue))
+            if (!emitTree(init, ValueUsage::IgnoreValue)) // VAL
                 return false;
-            if (!emit1(JSOP_POP))
+            if (!emit1(JSOP_POP))                         //
                 return false;
-        }
-
-        // ES 13.7.4.8 step 2. The initial freshening.
-        //
-        // If an initializer let-declaration may be captured during loop iteration,
-        // the current scope has an environment.  If so, freshen the current
-        // environment to expose distinct bindings for each loop iteration.
-        forLoopRequiresFreshening = init->isKind(ParseNodeKind::Let) && headLexicalEmitterScope;
-        if (forLoopRequiresFreshening) {
-            // The environment chain only includes an environment for the for(;;)
-            // loop head's let-declaration *if* a scope binding is captured, thus
-            // requiring a fresh environment each iteration. If a lexical scope
-            // exists for the head, it must be the innermost one. If that scope
-            // has closed-over bindings inducing an environment, recreate the
-            // current environment.
-            MOZ_ASSERT(headLexicalEmitterScope == innermostEmitterScope());
-            MOZ_ASSERT(headLexicalEmitterScope->scope(this)->kind() == ScopeKind::Lexical);
-
-            if (headLexicalEmitterScope->hasEnvironment()) {
-                if (!emit1(JSOP_FRESHENLEXICALENV))
-                    return false;
-            }
         }
     }
 
-    /*
-     * NB: the SRC_FOR note has offsetBias 1 (JSOP_NOP_LENGTH).
-     * Use tmp to hold the biased srcnote "top" offset, which differs
-     * from the top local variable by the length of the JSOP_GOTO
-     * emitted in between tmp and top if this loop has a condition.
-     */
-    unsigned noteIndex;
-    if (!newSrcNote(SRC_FOR, &noteIndex))
+    if (!cfor.emitBody(cond ? CForEmitter::Cond::Present : CForEmitter::Cond::Missing,
+                       getOffsetForLoop(forBody)))        //
+    {
         return false;
-    if (!emit1(JSOP_NOP))
-        return false;
-    ptrdiff_t tmp = offset();
-
-    JumpList jmp;
-    if (forHead->pn_kid2) {
-        /* Goto the loop condition, which branches back to iterate. */
-        if (!emitJump(JSOP_GOTO, &jmp))
-            return false;
     }
 
-    /* Emit code for the loop body. */
-    JumpTarget top{ -1 };
-    if (!emitLoopHead(forBody, &top))
-        return false;
-    if (jmp.offset == -1 && !emitLoopEntry(forBody, jmp))
+    if (!emitTree(forBody))                               //
         return false;
 
-    if (!emitTreeInBranch(forBody))
+    if (!cfor.emitUpdate(update ? CForEmitter::Update::Present : CForEmitter::Update::Missing,
+                         update ? Some(update->pn_pos.begin) : Nothing()))
+    {                                                     //
         return false;
-
-    // Set loop and enclosing "update" offsets, for continue.  Note that we
-    // continue to immediately *before* the block-freshening: continuing must
-    // refresh the block.
-    if (!emitJumpTarget(&loopInfo.continueTarget))
-        return false;
-
-    // ES 13.7.4.8 step 3.e. The per-iteration freshening.
-    if (forLoopRequiresFreshening) {
-        MOZ_ASSERT(headLexicalEmitterScope == innermostEmitterScope());
-        MOZ_ASSERT(headLexicalEmitterScope->scope(this)->kind() == ScopeKind::Lexical);
-
-        if (headLexicalEmitterScope->hasEnvironment()) {
-            if (!emit1(JSOP_FRESHENLEXICALENV))
-                return false;
-        }
     }
 
     // Check for update code to do before the condition (if any).
-    // The update code may not be executed at all; it needs its own TDZ cache.
-    if (ParseNode* update = forHead->pn_kid3) {
-        TDZCheckCache tdzCache(this);
-
-        if (!updateSourceCoordNotes(update->pn_pos.begin))
-            return false;
-        if (!emitTree(update, ValueUsage::IgnoreValue))
-            return false;
-        if (!emit1(JSOP_POP))
-            return false;
-
-        /* Restore the absolute line number for source note readers. */
-        uint32_t lineNum = parser->errorReporter().lineAt(pn->pn_pos.end);
-        if (currentLine() != lineNum) {
-            if (!newSrcNote2(SRC_SETLINE, ptrdiff_t(lineNum)))
-                return false;
-            current->currentLine = lineNum;
-            current->lastColumn = 0;
-        }
-    }
-
-    ptrdiff_t tmp3 = offset();
-
-    if (forHead->pn_kid2) {
-        /* Fix up the goto from top to target the loop condition. */
-        MOZ_ASSERT(jmp.offset >= 0);
-        if (!emitLoopEntry(forHead->pn_kid2, jmp))
-            return false;
-
-        if (!emitTree(forHead->pn_kid2))
-            return false;
-    } else if (!forHead->pn_kid3) {
-        // If there is no condition clause and no update clause, mark
-        // the loop-ending "goto" with the location of the "for".
-        // This ensures that the debugger will stop on each loop
-        // iteration.
-        if (!updateSourceCoordNotes(pn->pn_pos.begin))
+    if (update) {
+        if (!emitTree(update, ValueUsage::IgnoreValue))   // VAL
             return false;
     }
 
-    /* Set the first note offset so we can find the loop condition. */
-    if (!setSrcNoteOffset(noteIndex, 0, tmp3 - tmp))
+    if (!cfor.emitCond(Some(pn->pn_pos.begin),
+                       cond ? Some(cond->pn_pos.begin) : Nothing(),
+                       Some(pn->pn_pos.end)))             //
+    {
         return false;
-    if (!setSrcNoteOffset(noteIndex, 1, loopInfo.continueTarget.offset - tmp))
-        return false;
+    }
 
-    /* If no loop condition, just emit a loop-closing jump. */
-    JumpList beq;
-    JumpTarget breakTarget{ -1 };
-    if (!emitBackwardJump(forHead->pn_kid2 ? JSOP_IFNE : JSOP_GOTO, top, &beq, &breakTarget))
-        return false;
+    if (cond) {
+        if (!emitTree(cond))                              // VAL
+            return false;
+    }
 
-    /* The third note offset helps us find the loop-closing jump. */
-    if (!setSrcNoteOffset(noteIndex, 2, beq.offset - tmp))
-        return false;
-
-    if (!tryNoteList.append(JSTRY_LOOP, stackDepth, top.offset, breakTarget.offset))
-        return false;
-
-    if (!loopInfo.patchBreaksAndContinues(this))
+    if (!cfor.emitEnd())                                  //
         return false;
 
     return true;
 }
 
 bool
-BytecodeEmitter::emitFor(ParseNode* pn, EmitterScope* headLexicalEmitterScope)
+BytecodeEmitter::emitFor(ParseNode* pn, const EmitterScope* headLexicalEmitterScope)
 {
     MOZ_ASSERT(pn->isKind(ParseNodeKind::For));
 
@@ -8072,14 +5100,7 @@ BytecodeEmitter::emitFunction(ParseNode* pn, bool needsProto)
 
         SharedContext* outersc = sc;
         if (fun->isInterpretedLazy()) {
-            // We need to update the static scope chain regardless of whether
-            // the LazyScript has already been initialized, due to the case
-            // where we previously successfully compiled an inner function's
-            // lazy script but failed to compile the outer script after the
-            // fact. If we attempt to compile the outer script again, the
-            // static scope chain will be newly allocated and will mismatch
-            // the previously compiled LazyScript's.
-            fun->lazyScript()->setEnclosingScope(innermostScope());
+            funbox->setEnclosingScopeForInnerLazyFunction(innermostScope());
             if (emittingRunOnceLambda)
                 fun->lazyScript()->setTreatAsRunOnce();
         } else {
@@ -8089,8 +5110,8 @@ BytecodeEmitter::emitFunction(ParseNode* pn, bool needsProto)
             // parent.  Use default values for the rest.
             Rooted<JSScript*> parent(cx, script);
             MOZ_ASSERT(parent->mutedErrors() == parser->options().mutedErrors());
-            const TransitiveCompileOptions& transitiveOptions = parser->options();
-            CompileOptions options(cx, transitiveOptions);
+            const JS::TransitiveCompileOptions& transitiveOptions = parser->options();
+            JS::CompileOptions options(cx, transitiveOptions);
 
             Rooted<JSObject*> sourceObject(cx, script->sourceObject());
             Rooted<JSScript*> script(cx, JSScript::Create(cx, options, sourceObject,
@@ -8106,7 +5127,7 @@ BytecodeEmitter::emitFunction(ParseNode* pn, bool needsProto)
                 return false;
 
             /* We measured the max scope depth when we parsed the function. */
-            if (!bce2.emitFunctionScript(pn->pn_body))
+            if (!bce2.emitFunctionScript(pn, TopLevelFunction::No))
                 return false;
 
             if (funbox->isLikelyConstructorWrapper())
@@ -8290,60 +5311,21 @@ BytecodeEmitter::emitAsyncWrapper(unsigned index, bool needsHomeObject, bool isA
 bool
 BytecodeEmitter::emitDo(ParseNode* pn)
 {
-    /* Emit an annotated nop so IonBuilder can recognize the 'do' loop. */
-    unsigned noteIndex;
-    if (!newSrcNote(SRC_WHILE, &noteIndex))
-        return false;
-    if (!emit1(JSOP_NOP))
-        return false;
+    DoWhileEmitter doWhile(this);
 
-    unsigned noteIndex2;
-    if (!newSrcNote(SRC_WHILE, &noteIndex2))
-        return false;
-
-    /* Compile the loop body. */
-    JumpTarget top;
-    if (!emitLoopHead(pn->pn_left, &top))
-        return false;
-
-    LoopControl loopInfo(this, StatementKind::DoLoop);
-
-    JumpList empty;
-    if (!emitLoopEntry(nullptr, empty))
+    if (!doWhile.emitBody(Some(pn->pn_pos.begin), getOffsetForLoop(pn->pn_left)))
         return false;
 
     if (!emitTree(pn->pn_left))
         return false;
 
-    // Set the offset for continues.
-    if (!emitJumpTarget(&loopInfo.continueTarget))
+    if (!doWhile.emitCond())
         return false;
 
-    /* Compile the loop condition, now that continues know where to go. */
     if (!emitTree(pn->pn_right))
         return false;
 
-    JumpList beq;
-    JumpTarget breakTarget{ -1 };
-    if (!emitBackwardJump(JSOP_IFNE, top, &beq, &breakTarget))
-        return false;
-
-    if (!tryNoteList.append(JSTRY_LOOP, stackDepth, top.offset, breakTarget.offset))
-        return false;
-
-    /*
-     * Update the annotations with the update and back edge positions, for
-     * IonBuilder.
-     *
-     * Be careful: We must set noteIndex2 before noteIndex in case the noteIndex
-     * note gets bigger.
-     */
-    if (!setSrcNoteOffset(noteIndex2, 0, beq.offset - top.offset))
-        return false;
-    if (!setSrcNoteOffset(noteIndex, 0, 1 + (loopInfo.continueTarget.offset - top.offset)))
-        return false;
-
-    if (!loopInfo.patchBreaksAndContinues(this))
+    if (!doWhile.emitEnd())
         return false;
 
     return true;
@@ -8352,73 +5334,20 @@ BytecodeEmitter::emitDo(ParseNode* pn)
 bool
 BytecodeEmitter::emitWhile(ParseNode* pn)
 {
-    /*
-     * Minimize bytecodes issued for one or more iterations by jumping to
-     * the condition below the body and closing the loop if the condition
-     * is true with a backward branch. For iteration count i:
-     *
-     *  i    test at the top                 test at the bottom
-     *  =    ===============                 ==================
-     *  0    ifeq-pass                       goto; ifne-fail
-     *  1    ifeq-fail; goto; ifne-pass      goto; ifne-pass; ifne-fail
-     *  2    2*(ifeq-fail; goto); ifeq-pass  goto; 2*ifne-pass; ifne-fail
-     *  . . .
-     *  N    N*(ifeq-fail; goto); ifeq-pass  goto; N*ifne-pass; ifne-fail
-     */
-
-    // If we have a single-line while, like "while (x) ;", we want to
-    // emit the line note before the initial goto, so that the
-    // debugger sees a single entry point.  This way, if there is a
-    // breakpoint on the line, it will only fire once; and "next"ing
-    // will skip the whole loop.  However, for the multi-line case we
-    // want to emit the line note after the initial goto, so that
-    // "cont" stops on each iteration -- but without a stop before the
-    // first iteration.
-    if (parser->errorReporter().lineAt(pn->pn_pos.begin) ==
-        parser->errorReporter().lineAt(pn->pn_pos.end))
-    {
-        if (!updateSourceCoordNotes(pn->pn_pos.begin))
-            return false;
-    }
-
-    JumpTarget top{ -1 };
-    if (!emitJumpTarget(&top))
+    WhileEmitter wh(this);
+    if (!wh.emitBody(Some(pn->pn_pos.begin), getOffsetForLoop(pn->pn_right), Some(pn->pn_pos.end)))
         return false;
 
-    LoopControl loopInfo(this, StatementKind::WhileLoop);
-    loopInfo.continueTarget = top;
-
-    unsigned noteIndex;
-    if (!newSrcNote(SRC_WHILE, &noteIndex))
+    if (!emitTree(pn->pn_right))
         return false;
 
-    JumpList jmp;
-    if (!emitJump(JSOP_GOTO, &jmp))
+    if (!wh.emitCond(getOffsetForLoop(pn->pn_left)))
         return false;
 
-    if (!emitLoopHead(pn->pn_right, &top))
-        return false;
-
-    if (!emitTreeInBranch(pn->pn_right))
-        return false;
-
-    if (!emitLoopEntry(pn->pn_left, jmp))
-        return false;
     if (!emitTree(pn->pn_left))
         return false;
 
-    JumpList beq;
-    JumpTarget breakTarget{ -1 };
-    if (!emitBackwardJump(JSOP_IFNE, top, &beq, &breakTarget))
-        return false;
-
-    if (!tryNoteList.append(JSTRY_LOOP, stackDepth, top.offset, breakTarget.offset))
-        return false;
-
-    if (!setSrcNoteOffset(noteIndex, 0, beq.offset - jmp.offset))
-        return false;
-
-    if (!loopInfo.patchBreaksAndContinues(this))
+    if (!wh.emitEnd())
         return false;
 
     return true;
@@ -8684,10 +5613,26 @@ BytecodeEmitter::emitAwaitInInnermostScope(ParseNode* pn)
 bool
 BytecodeEmitter::emitAwaitInScope(EmitterScope& currentScope)
 {
+    if (!emit1(JSOP_TRYSKIPAWAIT))              // VALUE_OR_RESOLVED CANSKIP
+        return false;
+
+    if (!emit1(JSOP_NOT))                       // VALUE_OR_RESOLVED !CANSKIP
+        return false;
+
+    InternalIfEmitter ifCanSkip(this);
+    if (!ifCanSkip.emitThen())                  // VALUE_OR_RESOLVED
+        return false;
+
     if (!emitGetDotGeneratorInScope(currentScope))
+        return false;                           // VALUE GENERATOR
+    if (!emitYieldOp(JSOP_AWAIT))               // RESOLVED
         return false;
-    if (!emitYieldOp(JSOP_AWAIT))
+
+    if (!ifCanSkip.emitEnd())
         return false;
+
+    MOZ_ASSERT(ifCanSkip.popped() == 0);
+
     return true;
 }
 
@@ -8697,11 +5642,13 @@ BytecodeEmitter::emitYieldStar(ParseNode* iter)
     MOZ_ASSERT(sc->isFunctionBox());
     MOZ_ASSERT(sc->asFunctionBox()->isGenerator());
 
-    bool isAsyncGenerator = sc->asFunctionBox()->isAsync();
+    IteratorKind iterKind = sc->asFunctionBox()->isAsync()
+                            ? IteratorKind::Async
+                            : IteratorKind::Sync;
 
     if (!emitTree(iter))                                  // ITERABLE
         return false;
-    if (isAsyncGenerator) {
+    if (iterKind == IteratorKind::Async) {
         if (!emitAsyncIterator())                         // NEXT ITER
             return false;
     } else {
@@ -8729,7 +5676,7 @@ BytecodeEmitter::emitYieldStar(ParseNode* iter)
     MOZ_ASSERT(this->stackDepth == startDepth);
 
     // 11.4.3.7 AsyncGeneratorYield step 5.
-    if (isAsyncGenerator) {
+    if (iterKind == IteratorKind::Async) {
         if (!emitAwaitInInnermostScope())                 // NEXT ITER RESULT
             return false;
     }
@@ -8745,7 +5692,8 @@ BytecodeEmitter::emitYieldStar(ParseNode* iter)
     if (!tryCatch.emitCatch())                            // NEXT ITER RESULT
         return false;
 
-    stackDepth = startDepth;                              // NEXT ITER RESULT
+    MOZ_ASSERT(stackDepth == startDepth);
+
     if (!emit1(JSOP_EXCEPTION))                           // NEXT ITER RESULT EXCEPTION
         return false;
     if (!emitDupAt(2))                                    // NEXT ITER RESULT EXCEPTION ITER
@@ -8754,31 +5702,15 @@ BytecodeEmitter::emitYieldStar(ParseNode* iter)
         return false;
     if (!emitAtomOp(cx->names().throw_, JSOP_CALLPROP))   // NEXT ITER RESULT EXCEPTION ITER THROW
         return false;
-    if (!emit1(JSOP_DUP))                                 // NEXT ITER RESULT EXCEPTION ITER THROW THROW
-        return false;
-    if (!emit1(JSOP_UNDEFINED))                           // NEXT ITER RESULT EXCEPTION ITER THROW THROW UNDEFINED
-        return false;
-    if (!emit1(JSOP_EQ))                                  // NEXT ITER RESULT EXCEPTION ITER THROW ?EQL
+
+    savedDepthTemp = stackDepth;
+    InternalIfEmitter ifThrowMethodIsNotDefined(this);
+    if (!emitPushNotUndefinedOrNull())                    // NEXT ITER RESULT EXCEPTION ITER THROW NOT-UNDEF-OR-NULL
         return false;
 
-    InternalIfEmitter ifThrowMethodIsNotDefined(this);
-    if (!ifThrowMethodIsNotDefined.emitThen())            // NEXT ITER RESULT EXCEPTION ITER THROW
+    if (!ifThrowMethodIsNotDefined.emitThenElse())        // NEXT ITER RESULT EXCEPTION ITER THROW
         return false;
-    savedDepthTemp = stackDepth;
-    if (!emit1(JSOP_POP))                                 // NEXT ITER RESULT EXCEPTION ITER
-        return false;
-    // ES 14.4.13, YieldExpression : yield * AssignmentExpression, step 5.b.iii.2
-    //
-    // If the iterator does not have a "throw" method, it calls IteratorClose
-    // and then throws a TypeError.
-    IteratorKind iterKind = isAsyncGenerator ? IteratorKind::Async : IteratorKind::Sync;
-    if (!emitIteratorCloseInInnermostScope(iterKind))     // NEXT ITER RESULT EXCEPTION
-        return false;
-    if (!emitUint16Operand(JSOP_THROWMSG, JSMSG_ITERATOR_NO_THROW)) // throw
-        return false;
-    stackDepth = savedDepthTemp;
-    if (!ifThrowMethodIsNotDefined.emitEnd())             // NEXT ITER OLDRESULT EXCEPTION ITER THROW
-        return false;
+
     // ES 14.4.13, YieldExpression : yield * AssignmentExpression, step 5.b.iii.4.
     // RESULT = ITER.throw(EXCEPTION)                     // NEXT ITER OLDRESULT EXCEPTION ITER THROW
     if (!emit1(JSOP_SWAP))                                // NEXT ITER OLDRESULT EXCEPTION THROW ITER
@@ -8789,7 +5721,7 @@ BytecodeEmitter::emitYieldStar(ParseNode* iter)
         return false;
     checkTypeSet(JSOP_CALL);
 
-    if (isAsyncGenerator) {
+    if (iterKind == IteratorKind::Async) {
         if (!emitAwaitInInnermostScope())                 // NEXT ITER OLDRESULT RESULT
             return false;
     }
@@ -8809,6 +5741,26 @@ BytecodeEmitter::emitYieldStar(ParseNode* iter)
     if (!emitJump(JSOP_GOTO, &checkResult))               // goto checkResult
         return false;
 
+    stackDepth = savedDepthTemp;
+    if (!ifThrowMethodIsNotDefined.emitElse())            // NEXT ITER RESULT EXCEPTION ITER THROW
+        return false;
+
+    if (!emit1(JSOP_POP))                                 // NEXT ITER RESULT EXCEPTION ITER
+        return false;
+    // ES 14.4.13, YieldExpression : yield * AssignmentExpression, step 5.b.iii.2
+    //
+    // If the iterator does not have a "throw" method, it calls IteratorClose
+    // and then throws a TypeError.
+    if (!emitIteratorCloseInInnermostScope(iterKind))     // NEXT ITER RESULT EXCEPTION
+        return false;
+    if (!emitUint16Operand(JSOP_THROWMSG, JSMSG_ITERATOR_NO_THROW)) // throw
+        return false;
+
+    stackDepth = savedDepthTemp;
+    if (!ifThrowMethodIsNotDefined.emitEnd())
+        return false;
+
+    stackDepth = startDepth;
     if (!tryCatch.emitFinally())
          return false;
 
@@ -8930,7 +5882,7 @@ BytecodeEmitter::emitYieldStar(ParseNode* iter)
         return false;
     checkTypeSet(JSOP_CALL);
 
-    if (isAsyncGenerator) {
+    if (iterKind == IteratorKind::Async) {
         if (!emitAwaitInInnermostScope())                        // NEXT ITER RESULT RESULT
             return false;
     }
@@ -9081,17 +6033,26 @@ BytecodeEmitter::emitDeleteProperty(ParseNode* node)
     MOZ_ASSERT(node->isKind(ParseNodeKind::DeleteProp));
     MOZ_ASSERT(node->isArity(PN_UNARY));
 
-    ParseNode* propExpr = node->pn_kid;
-    MOZ_ASSERT(propExpr->isKind(ParseNodeKind::Dot));
+    PropertyAccess* propExpr = &node->pn_kid->as<PropertyAccess>();
 
-    if (propExpr->as<PropertyAccess>().isSuper()) {
-        // Still have to calculate the base, even though we are are going
-        // to throw unconditionally, as calculating the base could also
-        // throw.
+    if (propExpr->isSuper()) {
+        // The expression |delete super.foo;| has to evaluate |super.foo|,
+        // which could throw if |this| hasn't yet been set by a |super(...)|
+        // call or the super-base is not an object, before throwing a
+        // ReferenceError for attempting to delete a super-reference.
+        if (!emitGetThisForSuperBase(&propExpr->expression()))
+            return false;
+
         if (!emit1(JSOP_SUPERBASE))
             return false;
 
-        return emitUint16Operand(JSOP_THROWMSG, JSMSG_CANT_DELETE_SUPER);
+        // Unconditionally throw when attempting to delete a super-reference.
+        if (!emitUint16Operand(JSOP_THROWMSG, JSMSG_CANT_DELETE_SUPER))
+            return false;
+
+        // Another wrinkle: Balance the stack from the emitter's point of view.
+        // Execution will not reach here, as the last bytecode threw.
+        return emit1(JSOP_POP);
     }
 
     JSOp delOp = sc->strict() ? JSOP_STRICTDELPROP : JSOP_DELPROP;
@@ -9104,23 +6065,32 @@ BytecodeEmitter::emitDeleteElement(ParseNode* node)
     MOZ_ASSERT(node->isKind(ParseNodeKind::DeleteElem));
     MOZ_ASSERT(node->isArity(PN_UNARY));
 
-    ParseNode* elemExpr = node->pn_kid;
-    MOZ_ASSERT(elemExpr->isKind(ParseNodeKind::Elem));
+    PropertyByValue* elemExpr = &node->pn_kid->as<PropertyByValue>();
 
-    if (elemExpr->as<PropertyByValue>().isSuper()) {
-        // Still have to calculate everything, even though we're gonna throw
-        // since it may have side effects
+    if (elemExpr->isSuper()) {
+        // The expression |delete super[foo];| has to evaluate |super[foo]|,
+        // which could throw if |this| hasn't yet been set by a |super(...)|
+        // call, or trigger side-effects when evaluating ToPropertyKey(foo),
+        // or also throw when the super-base is not an object, before throwing
+        // a ReferenceError for attempting to delete a super-reference.
+        if (!emitGetThisForSuperBase(elemExpr->pn_left))
+            return false;
+
         if (!emitTree(elemExpr->pn_right))
+            return false;
+        if (!emit1(JSOP_TOID))
             return false;
 
         if (!emit1(JSOP_SUPERBASE))
             return false;
+
+        // Unconditionally throw when attempting to delete a super-reference.
         if (!emitUint16Operand(JSOP_THROWMSG, JSMSG_CANT_DELETE_SUPER))
             return false;
 
         // Another wrinkle: Balance the stack from the emitter's point of view.
         // Execution will not reach here, as the last bytecode threw.
-        return emit1(JSOP_POP);
+        return emitPopN(2);
     }
 
     JSOp delOp = sc->strict() ? JSOP_STRICTDELELEM : JSOP_DELELEM;
@@ -9176,10 +6146,12 @@ BytecodeEmitter::emitSelfHostedCallFunction(ParseNode* pn)
     //
     // argc is set to the amount of actually emitted args and the
     // emitting of args below is disabled by setting emitArgs to false.
-    ParseNode* pn2 = pn->pn_head;
-    const char* errorName = SelfHostedCallFunctionName(pn2->name(), cx);
+    ParseNode* pn_callee = pn->pn_left;
+    ParseNode* pn_args = pn->pn_right;
 
-    if (pn->pn_count < 3) {
+    const char* errorName = SelfHostedCallFunctionName(pn_callee->name(), cx);
+
+    if (pn_args->pn_count < 2) {
         reportError(pn, JSMSG_MORE_ARGS_NEEDED, errorName, "2", "s");
         return false;
     }
@@ -9190,8 +6162,8 @@ BytecodeEmitter::emitSelfHostedCallFunction(ParseNode* pn)
         return false;
     }
 
-    bool constructing = pn2->name() == cx->names().constructContentFunction;
-    ParseNode* funNode = pn2->pn_next;
+    bool constructing = pn_callee->name() == cx->names().constructContentFunction;
+    ParseNode* funNode = pn_args->pn_head;
     if (constructing) {
         callOp = JSOP_NEW;
     } else if (funNode->getKind() == ParseNodeKind::Name &&
@@ -9204,7 +6176,7 @@ BytecodeEmitter::emitSelfHostedCallFunction(ParseNode* pn)
 
 #ifdef DEBUG
     if (emitterMode == BytecodeEmitter::SelfHosting &&
-        pn2->name() == cx->names().callFunction)
+        pn_callee->name() == cx->names().callFunction)
     {
         if (!emit1(JSOP_DEBUGCHECKSELFHOSTED))
             return false;
@@ -9233,7 +6205,7 @@ BytecodeEmitter::emitSelfHostedCallFunction(ParseNode* pn)
             return false;
     }
 
-    uint32_t argc = pn->pn_count - 3;
+    uint32_t argc = pn_args->pn_count - 2;
     if (!emitCall(callOp, argc))
         return false;
 
@@ -9244,15 +6216,15 @@ BytecodeEmitter::emitSelfHostedCallFunction(ParseNode* pn)
 bool
 BytecodeEmitter::emitSelfHostedResumeGenerator(ParseNode* pn)
 {
+    ParseNode* pn_args = pn->pn_right;
+
     // Syntax: resumeGenerator(gen, value, 'next'|'throw'|'return')
-    if (pn->pn_count != 4) {
+    if (pn_args->pn_count != 3) {
         reportError(pn, JSMSG_MORE_ARGS_NEEDED, "resumeGenerator", "1", "s");
         return false;
     }
 
-    ParseNode* funNode = pn->pn_head;  // The resumeGenerator node.
-
-    ParseNode* genNode = funNode->pn_next;
+    ParseNode* genNode = pn_args->pn_head;
     if (!emitTree(genNode))
         return false;
 
@@ -9284,24 +6256,26 @@ BytecodeEmitter::emitSelfHostedForceInterpreter()
 bool
 BytecodeEmitter::emitSelfHostedAllowContentIter(ParseNode* pn)
 {
-    if (pn->pn_count != 2) {
+    ParseNode* pn_args = pn->pn_right;
+
+    if (pn_args->pn_count != 1) {
         reportError(pn, JSMSG_MORE_ARGS_NEEDED, "allowContentIter", "1", "");
         return false;
     }
 
     // We're just here as a sentinel. Pass the value through directly.
-    return emitTree(pn->pn_head->pn_next);
+    return emitTree(pn_args->pn_head);
 }
 
 bool
 BytecodeEmitter::emitSelfHostedDefineDataProperty(ParseNode* pn)
 {
-    // Only optimize when 3 arguments are passed (we use 4 to include |this|).
-    MOZ_ASSERT(pn->pn_count == 4);
+    ParseNode* pn_args = pn->pn_right;
 
-    ParseNode* funNode = pn->pn_head;  // The _DefineDataProperty node.
+    // Only optimize when 3 arguments are passed.
+    MOZ_ASSERT(pn_args->pn_count == 3);
 
-    ParseNode* objNode = funNode->pn_next;
+    ParseNode* objNode = pn_args->pn_head;
     if (!emitTree(objNode))
         return false;
 
@@ -9322,14 +6296,14 @@ BytecodeEmitter::emitSelfHostedDefineDataProperty(ParseNode* pn)
 bool
 BytecodeEmitter::emitSelfHostedHasOwn(ParseNode* pn)
 {
-    if (pn->pn_count != 3) {
+    ParseNode* pn_args = pn->pn_right;
+
+    if (pn_args->pn_count != 2) {
         reportError(pn, JSMSG_MORE_ARGS_NEEDED, "hasOwn", "2", "");
         return false;
     }
 
-    ParseNode* funNode = pn->pn_head;  // The hasOwn node.
-
-    ParseNode* idNode = funNode->pn_next;
+    ParseNode* idNode = pn_args->pn_head;
     if (!emitTree(idNode))
         return false;
 
@@ -9343,21 +6317,21 @@ BytecodeEmitter::emitSelfHostedHasOwn(ParseNode* pn)
 bool
 BytecodeEmitter::emitSelfHostedGetPropertySuper(ParseNode* pn)
 {
-    if (pn->pn_count != 4) {
+    ParseNode* pn_args = pn->pn_right;
+
+    if (pn_args->pn_count != 3) {
         reportError(pn, JSMSG_MORE_ARGS_NEEDED, "getPropertySuper", "3", "");
         return false;
     }
 
-    ParseNode* funNode = pn->pn_head;  // The getPropertySuper node.
-
-    ParseNode* objNode = funNode->pn_next;
+    ParseNode* objNode = pn_args->pn_head;
     ParseNode* idNode = objNode->pn_next;
     ParseNode* receiverNode = idNode->pn_next;
 
-    if (!emitTree(idNode))
+    if (!emitTree(receiverNode))
         return false;
 
-    if (!emitTree(receiverNode))
+    if (!emitTree(idNode))
         return false;
 
     if (!emitTree(objNode))
@@ -9379,11 +6353,11 @@ BytecodeEmitter::isRestParameter(ParseNode* pn)
 
     if (!pn->isKind(ParseNodeKind::Name)) {
         if (emitterMode == BytecodeEmitter::SelfHosting && pn->isKind(ParseNodeKind::Call)) {
-            ParseNode* pn2 = pn->pn_head;
-            if (pn2->getKind() == ParseNodeKind::Name &&
-                pn2->name() == cx->names().allowContentIter)
+            ParseNode* pn_callee = pn->pn_left;
+            if (pn_callee->getKind() == ParseNodeKind::Name &&
+                pn_callee->name() == cx->names().allowContentIter)
             {
-                return isRestParameter(pn2->pn_next);
+                return isRestParameter(pn->pn_right->pn_head);
             }
         }
         return false;
@@ -9416,7 +6390,7 @@ BytecodeEmitter::emitCallee(ParseNode* callee, ParseNode* call, bool* callop)
       case ParseNodeKind::Dot:
         MOZ_ASSERT(emitterMode != BytecodeEmitter::SelfHosting);
         if (callee->as<PropertyAccess>().isSuper()) {
-            if (!emitSuperPropOp(callee, JSOP_GETPROP_SUPER, /* isCall = */ *callop))
+            if (!emitSuperGetProp(callee, /* isCall = */ *callop))
                 return false;
         } else {
             if (!emitPropOp(callee, *callop ? JSOP_CALLPROP : JSOP_GETPROP))
@@ -9427,7 +6401,7 @@ BytecodeEmitter::emitCallee(ParseNode* callee, ParseNode* call, bool* callop)
       case ParseNodeKind::Elem:
         MOZ_ASSERT(emitterMode != BytecodeEmitter::SelfHosting);
         if (callee->as<PropertyByValue>().isSuper()) {
-            if (!emitSuperElemOp(callee, JSOP_GETELEM_SUPER, /* isCall = */ *callop))
+            if (!emitSuperGetElem(callee, /* isCall = */ *callop))
                 return false;
         } else {
             if (!emitElemOp(callee, *callop ? JSOP_CALLELEM : JSOP_GETELEM))
@@ -9513,101 +6487,22 @@ BytecodeEmitter::emitPipeline(ParseNode* pn)
 }
 
 bool
-BytecodeEmitter::emitCallOrNew(ParseNode* pn, ValueUsage valueUsage /* = ValueUsage::WantValue */)
+BytecodeEmitter::emitArguments(ParseNode* pn, bool callop, bool spread)
 {
-    bool callop =
-        pn->isKind(ParseNodeKind::Call) || pn->isKind(ParseNodeKind::TaggedTemplate);
-    /*
-     * Emit callable invocation or operator new (constructor call) code.
-     * First, emit code for the left operand to evaluate the callable or
-     * constructable object expression.
-     *
-     * For operator new, we emit JSOP_GETPROP instead of JSOP_CALLPROP, etc.
-     * This is necessary to interpose the lambda-initialized method read
-     * barrier -- see the code in jsinterp.cpp for JSOP_LAMBDA followed by
-     * JSOP_{SET,INIT}PROP.
-     *
-     * Then (or in a call case that has no explicit reference-base
-     * object) we emit JSOP_UNDEFINED to produce the undefined |this|
-     * value required for calls (which non-strict mode functions
-     * will box into the global object).
-     */
-    uint32_t argc = pn->pn_count - 1;
+    uint32_t argc = pn->pn_count;
 
     if (argc >= ARGC_LIMIT) {
         reportError(pn, callop ? JSMSG_TOO_MANY_FUN_ARGS : JSMSG_TOO_MANY_CON_ARGS);
         return false;
     }
 
-    ParseNode* pn2 = pn->pn_head;
-    bool spread = JOF_OPTYPE(pn->getOp()) == JOF_BYTE;
-
-    if (pn2->isKind(ParseNodeKind::Name) && emitterMode == BytecodeEmitter::SelfHosting && !spread) {
-        // Calls to "forceInterpreter", "callFunction",
-        // "callContentFunction", or "resumeGenerator" in self-hosted
-        // code generate inline bytecode.
-        if (pn2->name() == cx->names().callFunction ||
-            pn2->name() == cx->names().callContentFunction ||
-            pn2->name() == cx->names().constructContentFunction)
-        {
-            return emitSelfHostedCallFunction(pn);
-        }
-        if (pn2->name() == cx->names().resumeGenerator)
-            return emitSelfHostedResumeGenerator(pn);
-        if (pn2->name() == cx->names().forceInterpreter)
-            return emitSelfHostedForceInterpreter();
-        if (pn2->name() == cx->names().allowContentIter)
-            return emitSelfHostedAllowContentIter(pn);
-        if (pn2->name() == cx->names().defineDataPropertyIntrinsic && pn->pn_count == 4)
-            return emitSelfHostedDefineDataProperty(pn);
-        if (pn2->name() == cx->names().hasOwn)
-            return emitSelfHostedHasOwn(pn);
-        if (pn2->name() == cx->names().getPropertySuper)
-            return emitSelfHostedGetPropertySuper(pn);
-        // Fall through
-    }
-
-    if (!emitCallee(pn2, pn, &callop))
-        return false;
-
-    bool isNewOp = pn->getOp() == JSOP_NEW || pn->getOp() == JSOP_SPREADNEW ||
-                   pn->getOp() == JSOP_SUPERCALL || pn->getOp() == JSOP_SPREADSUPERCALL;
-
-
-    // Emit room for |this|.
-    if (!callop) {
-        if (isNewOp) {
-            if (!emit1(JSOP_IS_CONSTRUCTING))
-                return false;
-        } else {
-            if (!emit1(JSOP_UNDEFINED))
-                return false;
-        }
-    }
-
-    /*
-     * Emit code for each argument in order, then emit the JSOP_*CALL or
-     * JSOP_NEW bytecode with a two-byte immediate telling how many args
-     * were pushed on the operand stack.
-     */
     if (!spread) {
-        for (ParseNode* pn3 = pn2->pn_next; pn3; pn3 = pn3->pn_next) {
+        for (ParseNode* pn3 = pn->pn_head; pn3; pn3 = pn3->pn_next) {
             if (!emitTree(pn3))
                 return false;
         }
-
-        if (isNewOp) {
-            if (pn->isKind(ParseNodeKind::SuperCall)) {
-                if (!emit1(JSOP_NEWTARGET))
-                    return false;
-            } else {
-                // Repush the callee as new.target
-                if (!emitDupAt(argc + 1))
-                    return false;
-            }
-        }
     } else {
-        ParseNode* args = pn2->pn_next;
+        ParseNode* args = pn->pn_head;
         bool emitOptCode = (argc == 1) && isRestParameter(args->pn_kid);
         InternalIfEmitter ifNotOptimizable(this);
 
@@ -9647,29 +6542,159 @@ BytecodeEmitter::emitCallOrNew(ParseNode* pn, ValueUsage valueUsage /* = ValueUs
             if (!ifNotOptimizable.emitEnd())
                 return false;
         }
+    }
 
+    return true;
+}
+
+bool
+BytecodeEmitter::emitCallOrNew(ParseNode* pn, ValueUsage valueUsage /* = ValueUsage::WantValue */)
+{
+    bool callop =
+        pn->isKind(ParseNodeKind::Call) || pn->isKind(ParseNodeKind::TaggedTemplate);
+
+    /*
+     * Emit callable invocation or operator new (constructor call) code.
+     * First, emit code for the left operand to evaluate the callable or
+     * constructable object expression.
+     *
+     * For operator new, we emit JSOP_GETPROP instead of JSOP_CALLPROP, etc.
+     * This is necessary to interpose the lambda-initialized method read
+     * barrier -- see the code in jsinterp.cpp for JSOP_LAMBDA followed by
+     * JSOP_{SET,INIT}PROP.
+     *
+     * Then (or in a call case that has no explicit reference-base
+     * object) we emit JSOP_UNDEFINED to produce the undefined |this|
+     * value required for calls (which non-strict mode functions
+     * will box into the global object).
+     */
+    ParseNode* pn_callee = pn->pn_left;
+    ParseNode* pn_args = pn->pn_right;
+
+    bool spread = JOF_OPTYPE(pn->getOp()) == JOF_BYTE;
+
+    if (pn_callee->isKind(ParseNodeKind::Name) && emitterMode == BytecodeEmitter::SelfHosting && !spread) {
+        // Calls to "forceInterpreter", "callFunction",
+        // "callContentFunction", or "resumeGenerator" in self-hosted
+        // code generate inline bytecode.
+        if (pn_callee->name() == cx->names().callFunction ||
+            pn_callee->name() == cx->names().callContentFunction ||
+            pn_callee->name() == cx->names().constructContentFunction)
+        {
+            return emitSelfHostedCallFunction(pn);
+        }
+        if (pn_callee->name() == cx->names().resumeGenerator)
+            return emitSelfHostedResumeGenerator(pn);
+        if (pn_callee->name() == cx->names().forceInterpreter)
+            return emitSelfHostedForceInterpreter();
+        if (pn_callee->name() == cx->names().allowContentIter)
+            return emitSelfHostedAllowContentIter(pn);
+        if (pn_callee->name() == cx->names().defineDataPropertyIntrinsic && pn_args->pn_count == 3)
+            return emitSelfHostedDefineDataProperty(pn);
+        if (pn_callee->name() == cx->names().hasOwn)
+            return emitSelfHostedHasOwn(pn);
+        if (pn_callee->name() == cx->names().getPropertySuper)
+            return emitSelfHostedGetPropertySuper(pn);
+        // Fall through
+    }
+
+    if (!emitCallee(pn_callee, pn, &callop))
+        return false;
+
+    bool isNewOp = pn->getOp() == JSOP_NEW || pn->getOp() == JSOP_SPREADNEW ||
+                   pn->getOp() == JSOP_SUPERCALL || pn->getOp() == JSOP_SPREADSUPERCALL;
+
+    // Emit room for |this|.
+    if (!callop) {
         if (isNewOp) {
-            if (pn->isKind(ParseNodeKind::SuperCall)) {
-                if (!emit1(JSOP_NEWTARGET))
-                    return false;
-            } else {
-                if (!emitDupAt(2))
-                    return false;
+            if (!emit1(JSOP_IS_CONSTRUCTING))
+                return false;
+        } else {
+            if (!emit1(JSOP_UNDEFINED))
+                return false;
+        }
+    }
+
+    if (!emitArguments(pn_args, callop, spread))
+        return false;
+
+    uint32_t argc = pn_args->pn_count;
+
+    /*
+     * Emit code for each argument in order, then emit the JSOP_*CALL or
+     * JSOP_NEW bytecode with a two-byte immediate telling how many args
+     * were pushed on the operand stack.
+     */
+    if (isNewOp) {
+        if (pn->isKind(ParseNodeKind::SuperCall)) {
+            if (!emit1(JSOP_NEWTARGET))
+                return false;
+        } else if (!spread) {
+            // Repush the callee as new.target
+            if (!emitDupAt(argc + 1))
+                return false;
+        } else {
+            if (!emitDupAt(2))
+                return false;
+        }
+    }
+
+    ParseNode* coordNode = pn;
+    if (pn->isOp(JSOP_CALL) || pn->isOp(JSOP_SPREADCALL)) {
+        switch (pn_callee->getKind()) {
+          case ParseNodeKind::Dot: {
+
+            // Check if this member is a simple chain of simple chain of
+            // property accesses, e.g. x.y.z, this.x.y, super.x.y
+            bool simpleDotChain = false;
+            for (ParseNode* cur = pn_callee; cur->isKind(ParseNodeKind::Dot); cur = cur->pn_left) {
+                ParseNode* left = cur->pn_left;
+                if (left->isKind(ParseNodeKind::Name) || left->isKind(ParseNodeKind::This) ||
+                    left->isKind(ParseNodeKind::SuperBase))
+                {
+                    simpleDotChain = true;
+                }
             }
+
+            if (!simpleDotChain) {
+                // obj().aprop() // expression
+                //       ^       // column coord
+                //
+                // Note: Because of the constant folding logic in FoldElement,
+                // this case also applies for constant string properties.
+                //
+                // obj()['aprop']() // expression
+                //       ^          // column coord
+                coordNode = pn_callee->pn_right;
+            }
+            break;
+          }
+          case ParseNodeKind::Elem:
+            // obj[expr]() // expression
+            //          ^  // column coord
+            coordNode = pn_args;
+            break;
+          default:
+            break;
         }
     }
 
     if (!spread) {
         if (pn->getOp() == JSOP_CALL && valueUsage == ValueUsage::IgnoreValue) {
-            if (!emitCall(JSOP_CALL_IGNORES_RV, argc, pn))
+            if (!emitCall(JSOP_CALL_IGNORES_RV, argc, coordNode))
                 return false;
             checkTypeSet(JSOP_CALL_IGNORES_RV);
         } else {
-            if (!emitCall(pn->getOp(), argc, pn))
+            if (!emitCall(pn->getOp(), argc, coordNode))
                 return false;
             checkTypeSet(pn->getOp());
         }
     } else {
+        if (coordNode) {
+            if (!updateSourceCoordNotes(coordNode->pn_pos.begin))
+                return false;
+        }
+
         if (!emit1(pn->getOp()))
             return false;
         checkTypeSet(pn->getOp());
@@ -9880,26 +6905,28 @@ bool
 BytecodeEmitter::emitConditionalExpression(ConditionalExpression& conditional,
                                            ValueUsage valueUsage /* = ValueUsage::WantValue */)
 {
-    /* Emit the condition, then branch if false to the else part. */
+    CondEmitter cond(this);
+    if (!cond.emitCond())
+        return false;
+
     if (!emitTree(&conditional.condition()))
         return false;
 
-    IfEmitter ifThenElse(this);
-    if (!ifThenElse.emitCond())
+    if (!cond.emitThenElse())
         return false;
 
     if (!emitTree(&conditional.thenExpression(), valueUsage))
         return false;
 
-    if (!ifThenElse.emitElse())
+    if (!cond.emitElse())
         return false;
 
     if (!emitTree(&conditional.elseExpression(), valueUsage))
         return false;
 
-    if (!ifThenElse.emitEnd())
+    if (!cond.emitEnd())
         return false;
-    MOZ_ASSERT(ifThenElse.pushed() == 1);
+    MOZ_ASSERT(cond.pushed() == 1);
 
     return true;
 }
@@ -10087,7 +7114,7 @@ BytecodeEmitter::emitObject(ParseNode* pn)
      * (or mutating the object's [[Prototype]], in the case of __proto__).
      */
     ptrdiff_t offset = this->offset();
-    if (!emitNewInit(JSProto_Object))
+    if (!emitNewInit())
         return false;
 
     // Try to construct the shape of the object as we go, so we can emit a
@@ -10238,7 +7265,7 @@ BytecodeEmitter::emitArray(ParseNode* pn, uint32_t count)
 
                 if (emitterMode == BytecodeEmitter::SelfHosting &&
                     expr->isKind(ParseNodeKind::Call) &&
-                    expr->pn_head->name() == cx->names().allowContentIter)
+                    expr->pn_left->name() == cx->names().allowContentIter)
                 {
                     allowSelfHostedIter = true;
                 }
@@ -10787,7 +7814,7 @@ BytecodeEmitter::emitClass(ParseNode* pn)
         if (!emit1(JSOP_SWAP))                                  // ... HOMEOBJ HERITAGE
             return false;
     } else {
-        if (!emitNewInit(JSProto_Object))                       // ... HOMEOBJ
+        if (!emitNewInit())                                     // ... HOMEOBJ
             return false;
     }
 
@@ -10923,7 +7950,7 @@ BytecodeEmitter::emitTree(ParseNode* pn, ValueUsage valueUsage /* = ValueUsage::
         break;
 
       case ParseNodeKind::Switch:
-        if (!emitSwitch(pn))
+        if (!emitSwitch(&pn->as<SwitchStatement>()))
             return false;
         break;
 
@@ -10943,11 +7970,19 @@ BytecodeEmitter::emitTree(ParseNode* pn, ValueUsage valueUsage /* = ValueUsage::
         break;
 
       case ParseNodeKind::Break:
+        // Ensure that the column of the 'break' is set properly.
+        if (!updateSourceCoordNotes(pn->pn_pos.begin))
+            return false;
+
         if (!emitBreak(pn->as<BreakStatement>().label()))
             return false;
         break;
 
       case ParseNodeKind::Continue:
+        // Ensure that the column of the 'continue' is set properly.
+        if (!updateSourceCoordNotes(pn->pn_pos.begin))
+            return false;
+
         if (!emitContinue(pn->as<ContinueStatement>().label()))
             return false;
         break;
@@ -11138,7 +8173,7 @@ BytecodeEmitter::emitTree(ParseNode* pn, ValueUsage valueUsage /* = ValueUsage::
 
       case ParseNodeKind::Dot:
         if (pn->as<PropertyAccess>().isSuper()) {
-            if (!emitSuperPropOp(pn, JSOP_GETPROP_SUPER))
+            if (!emitSuperGetProp(pn))
                 return false;
         } else {
             if (!emitPropOp(pn, JSOP_GETPROP))
@@ -11148,7 +8183,7 @@ BytecodeEmitter::emitTree(ParseNode* pn, ValueUsage valueUsage /* = ValueUsage::
 
       case ParseNodeKind::Elem:
         if (pn->as<PropertyByValue>().isSuper()) {
-            if (!emitSuperElemOp(pn, JSOP_GETELEM_SUPER))
+            if (!emitSuperGetElem(pn))
                 return false;
         } else {
             if (!emitElemOp(pn, JSOP_GETELEM))
@@ -11278,8 +8313,9 @@ BytecodeEmitter::emitTree(ParseNode* pn, ValueUsage valueUsage /* = ValueUsage::
             return false;
         break;
 
+      case ParseNodeKind::PropertyName:
       case ParseNodeKind::PosHolder:
-        MOZ_FALLTHROUGH_ASSERT("Should never try to emit ParseNodeKind::PosHolder");
+        MOZ_FALLTHROUGH_ASSERT("Should never try to emit ParseNodeKind::PosHolder or ::Property");
 
       default:
         MOZ_ASSERT(0);
@@ -11541,6 +8577,8 @@ CGObjectList::finish(ObjectArray* array)
         --cursor;
         MOZ_ASSERT(!*cursor);
         MOZ_ASSERT(objbox->object->isTenured());
+        if (objbox->isFunctionBox())
+            objbox->asFunctionBox()->finish();
         *cursor = objbox->object;
     } while ((objbox = objbox->emitLink) != nullptr);
     MOZ_ASSERT(cursor == array->vector);
@@ -11629,10 +8667,6 @@ CGYieldAndAwaitOffsetList::finish(YieldAndAwaitOffsetArray& array, uint32_t prol
         array[i] = prologueLength + list[i];
 }
 
-/*
- * We should try to get rid of offsetBias (always 0 or 1, where 1 is
- * JSOP_{NOP,POP}_LENGTH), which is used only by SRC_FOR.
- */
 const JSSrcNoteSpec js_SrcNoteSpec[] = {
 #define DEFINE_SRC_NOTE_SPEC(sym, name, arity) { name, arity },
     FOR_EACH_SRC_NOTE_TYPE(DEFINE_SRC_NOTE_SPEC)

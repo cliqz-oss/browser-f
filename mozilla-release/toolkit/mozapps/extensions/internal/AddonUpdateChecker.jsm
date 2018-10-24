@@ -17,7 +17,6 @@ const TOOLKIT_ID            = "toolkit@mozilla.org";
 const PREF_UPDATE_REQUIREBUILTINCERTS = "extensions.update.requireBuiltInCerts";
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 ChromeUtils.defineModuleGetter(this, "AddonManager",
                                "resource://gre/modules/AddonManager.jsm");
@@ -390,7 +389,7 @@ UpdateParser.prototype = {
     this.request = null;
     this._doneAt = new Error("UP_cancel");
     this.notifyError(AddonManager.ERROR_CANCELLED);
-  }
+  },
 };
 
 /**
@@ -542,5 +541,5 @@ var AddonUpdateChecker = {
    */
   checkForUpdates(aId, aUrl, aObserver) {
     return new UpdateParser(aId, aUrl, aObserver);
-  }
+  },
 };

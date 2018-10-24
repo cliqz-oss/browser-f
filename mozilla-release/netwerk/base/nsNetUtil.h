@@ -103,6 +103,19 @@ nsresult NS_NewFileURI(nsIURI **result,
                        nsIFile *spec,
                        nsIIOService *ioService = nullptr);     // pass in nsIIOService to optimize callers
 
+// These methods will only mutate the URI if the ref of aInput doesn't already
+// match the ref we are trying to set.
+// If aInput has no ref, and we are calling NS_GetURIWithoutRef, or
+// NS_GetURIWithNewRef with an empty string, then aOutput will be the same
+// as aInput. The same is true if aRef is already equal to the ref of aInput.
+// This is OK because URIs are immutable and threadsafe.
+// If the URI doesn't support ref fragments aOutput will be the same as aInput.
+nsresult NS_GetURIWithNewRef(nsIURI* aInput,
+                             const nsACString& aRef,
+                             nsIURI** aOutput);
+nsresult NS_GetURIWithoutRef(nsIURI* aInput,
+                             nsIURI** aOutput);
+
 nsresult NS_GetSanitizedURIStringFromURI(nsIURI *aUri,
                                          nsAString &aSanitizedSpec);
 
@@ -977,6 +990,24 @@ bool InScriptableRange(int64_t val);
 
 // Make sure a 64bit value can be captured by JS MAX_SAFE_INTEGER
 bool InScriptableRange(uint64_t val);
+
+/**
+ * Given the value of a single header field  (such as
+ * Content-Disposition and Content-Type) and the name of a parameter
+ * (e.g. filename, name, charset), returns the value of the parameter.
+ * See nsIMIMEHeaderParam.idl for more information.
+ *
+ * @param  aHeaderVal        a header string to get the value of a parameter
+ *                           from.
+ * @param  aParamName        the name of a MIME header parameter (e.g.
+ *                           filename, name, charset). If empty or nullptr,
+ *                           returns the first (possibly) _unnamed_ 'parameter'.
+ * @return the value of <code>aParamName</code> in Unichar(UTF-16).
+ */
+nsresult
+GetParameterHTTP(const nsACString& aHeaderVal,
+                 const char* aParamName,
+                 nsAString& aResult);
 
 } // namespace net
 } // namespace mozilla

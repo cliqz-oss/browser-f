@@ -123,6 +123,19 @@ nsHttpConnection::~nsHttpConnection()
              this, mHttp1xTransactionCount));
         Telemetry::Accumulate(Telemetry::HTTP_REQUEST_PER_CONN,
                               mHttp1xTransactionCount);
+        nsHttpConnectionInfo *ci = nullptr;
+        if (mTransaction) {
+            ci = mTransaction->ConnectionInfo();
+        }
+        if (!ci) {
+            ci = mConnInfo;
+        }
+
+        MOZ_ASSERT(ci);
+        if (ci->GetTrrUsed()) {
+            Telemetry::Accumulate(Telemetry::DNS_TRR_REQUEST_PER_CONN,
+                                  mHttp1xTransactionCount);
+        }
     }
 
     if (mTotalBytesRead) {
@@ -1594,7 +1607,7 @@ nsHttpConnection::ResumeSend()
         return rv;
     }
 
-    NS_NOTREACHED("no socket output stream");
+    MOZ_ASSERT_UNREACHABLE("no socket output stream");
     return NS_ERROR_UNEXPECTED;
 }
 
@@ -1622,7 +1635,7 @@ nsHttpConnection::ResumeRecv()
     if (mSocketIn)
         return mSocketIn->AsyncWait(this, 0, 0, nullptr);
 
-    NS_NOTREACHED("no socket input stream");
+    MOZ_ASSERT_UNREACHABLE("no socket input stream");
     return NS_ERROR_UNEXPECTED;
 }
 

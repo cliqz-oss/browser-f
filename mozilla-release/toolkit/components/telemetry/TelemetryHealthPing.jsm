@@ -12,8 +12,6 @@ var EXPORTED_SYMBOLS = [
   "TelemetryHealthPing",
 ];
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
-
 ChromeUtils.defineModuleGetter(this, "TelemetryController", "resource://gre/modules/TelemetryController.jsm");
 ChromeUtils.defineModuleGetter(this, "setTimeout", "resource://gre/modules/Timer.jsm");
 ChromeUtils.defineModuleGetter(this, "clearTimeout", "resource://gre/modules/Timer.jsm");
@@ -38,7 +36,7 @@ const LOGGER_PREFIX = "TelemetryHealthPing::";
 
 var Policy = {
   setSchedulerTickTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
-  clearSchedulerTickTimeout: (id) => clearTimeout(id)
+  clearSchedulerTickTimeout: (id) => clearTimeout(id),
 };
 
 var TelemetryHealthPing = {
@@ -55,7 +53,7 @@ var TelemetryHealthPing = {
 
   OsInfo: Object.freeze({
     "name": Services.appinfo.OS,
-    "version": Services.sysinfo.get("kernel_version") || Services.sysinfo.get("version")
+    "version": Services.sysinfo.get("kernel_version") || Services.sysinfo.get("version"),
   }),
 
   HEALTH_PING_TYPE: "health",
@@ -107,7 +105,7 @@ var TelemetryHealthPing = {
     this._log.trace("_assemblePayload()");
     let payload = {
       os: this.OsInfo,
-      reason
+      reason,
     };
 
     for (let key of Object.keys(this._failures)) {
@@ -157,7 +155,7 @@ var TelemetryHealthPing = {
 
     let options = {
       addClientId: true,
-      usePingSender: reason === this.Reason.SHUT_DOWN
+      usePingSender: reason === this.Reason.SHUT_DOWN,
     };
 
     return new Promise(r =>

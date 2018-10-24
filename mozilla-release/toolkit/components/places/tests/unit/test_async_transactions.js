@@ -99,7 +99,7 @@ var observer = {
                                  newParentGuid: aNewParentGuid,
                                  newIndex:      aNewIndex,
                                  itemType:      aItemType });
-  }
+  },
 };
 observer.reset();
 
@@ -477,7 +477,7 @@ add_task(async function test_new_folder_with_annotation() {
 add_task(async function test_new_folder_with_children() {
   let folder_info = createTestFolderInfo("Test folder", PlacesUtils.bookmarks.menuGuid, [{
     url: "http://test_create_item.com",
-    title: "Test creating an item"
+    title: "Test creating an item",
   }]);
   ensureUndoState();
   let txn = PT.NewFolder(folder_info);
@@ -503,7 +503,7 @@ add_task(async function test_new_folder_with_children() {
       children: [{
         title: "Test creating an item",
         url: "http://test_create_item.com",
-      }]
+      }],
     });
     observer.reset();
   };
@@ -745,13 +745,13 @@ add_task(async function test_move_multiple_items_to_folder() {
       oldParentGuid: folder_a_info.guid,
       newParentGuid: folder_a_info.guid,
       oldIndex: 0,
-      newIndex: 2
+      newIndex: 2,
     }, {
       guid: bkm_b_info.guid,
       oldParentGuid: folder_a_info.guid,
       newParentGuid: folder_a_info.guid,
       oldIndex: 1,
-      newIndex: 2
+      newIndex: 2,
     });
     observer.reset();
   };
@@ -762,13 +762,13 @@ add_task(async function test_move_multiple_items_to_folder() {
       oldParentGuid: folder_a_info.guid,
       newParentGuid: folder_a_info.guid,
       oldIndex: 1,
-      newIndex: 0
+      newIndex: 0,
     }, {
       guid: bkm_b_info.guid,
       oldParentGuid: folder_a_info.guid,
       newParentGuid: folder_a_info.guid,
       oldIndex: 2,
-      newIndex: 1
+      newIndex: 1,
     });
     observer.reset();
   };
@@ -1160,7 +1160,7 @@ add_task(async function test_edit_title() {
   let bm_info = {
     parentGuid: PlacesUtils.bookmarks.unfiledGuid,
     url: "http://test_create_item.com",
-    title: "Original Title"
+    title: "Original Title",
   };
 
   function ensureTitleChange(aCurrentTitle) {
@@ -1353,19 +1353,19 @@ add_task(async function test_edit_specific_keyword() {
   function ensureKeywordChange(aCurrentKeyword = "", aPreviousKeyword = "") {
     ensureItemsChanged({ guid: bm_info.guid,
                          property: "keyword",
-                         newValue: aCurrentKeyword
+                         newValue: aCurrentKeyword,
                        });
   }
 
   await PlacesUtils.keywords.insert({
     keyword: "kw1",
     url: bm_info.url,
-    postData: "postData1"
+    postData: "postData1",
   });
   await PlacesUtils.keywords.insert({
     keyword: "kw2",
     url: bm_info.url,
-    postData: "postData2"
+    postData: "postData2",
   });
   bm_info.guid = await PT.NewBookmark(bm_info).transact();
 
@@ -1557,105 +1557,6 @@ add_task(async function test_untag_uri() {
   ensureUndoState();
 });
 
-add_task(async function test_annotate() {
-  let bm_info = { url: "http://test.item.annotation",
-                  parentGuid: PlacesUtils.bookmarks.unfiledGuid };
-  let anno_info = { name: "TestAnno", value: "TestValue" };
-  function ensureAnnoState(aSet) {
-    ensureAnnotationsSet(bm_info.guid,
-                         [{ name: anno_info.name,
-                            value: aSet ? anno_info.value : null }]);
-  }
-
-  bm_info.guid = await PT.NewBookmark(bm_info).transact();
-
-  observer.reset();
-  await PT.Annotate({ guid: bm_info.guid, annotation: anno_info }).transact();
-  ensureAnnoState(true);
-
-  observer.reset();
-  await PT.undo();
-  ensureAnnoState(false);
-
-  observer.reset();
-  await PT.redo();
-  ensureAnnoState(true);
-
-  // Test removing the annotation by not passing the |value| property.
-  observer.reset();
-  await PT.Annotate({ guid: bm_info.guid,
-                      annotation: { name: anno_info.name }}).transact();
-  ensureAnnoState(false);
-
-  observer.reset();
-  await PT.undo();
-  ensureAnnoState(true);
-
-  observer.reset();
-  await PT.redo();
-  ensureAnnoState(false);
-
-  // Cleanup
-  await PT.undo();
-  observer.reset();
-});
-
-add_task(async function test_annotate_multiple() {
-  let guid = await PT.NewFolder(createTestFolderInfo()).transact();
-  let itemId = await PlacesUtils.promiseItemId(guid);
-
-  function AnnoObj(aName, aValue) {
-    this.name = aName;
-    this.value = aValue;
-    this.flags = 0;
-    this.expires = Ci.nsIAnnotationService.EXPIRE_NEVER;
-  }
-
-  function annos(a = null, b = null) {
-    return [new AnnoObj("A", a), new AnnoObj("B", b)];
-  }
-
-  async function verifyAnnoValues(a = null, b = null) {
-    let currentAnnos = await PlacesUtils.promiseAnnotationsForItem(itemId);
-    let expectedAnnos = [];
-    if (a !== null)
-      expectedAnnos.push(new AnnoObj("A", a));
-    if (b !== null)
-      expectedAnnos.push(new AnnoObj("B", b));
-
-    Assert.deepEqual(currentAnnos, expectedAnnos);
-  }
-
-  await PT.Annotate({ guid, annotations: annos(1, 2) }).transact();
-  await verifyAnnoValues(1, 2);
-  await PT.undo();
-  await verifyAnnoValues();
-  await PT.redo();
-  await verifyAnnoValues(1, 2);
-
-  await PT.Annotate({ guid,
-                      annotation: { name: "A" } }).transact();
-  await verifyAnnoValues(null, 2);
-
-  await PT.Annotate({ guid,
-                      annotation: { name: "B", value: 0 } }).transact();
-  await verifyAnnoValues(null, 0);
-  await PT.undo();
-  await verifyAnnoValues(null, 2);
-  await PT.redo();
-  await verifyAnnoValues(null, 0);
-  await PT.undo();
-  await verifyAnnoValues(null, 2);
-  await PT.undo();
-  await verifyAnnoValues(1, 2);
-  await PT.undo();
-  await verifyAnnoValues();
-
-  // Cleanup
-  await PT.undo();
-  observer.reset();
-});
-
 add_task(async function test_sort_folder_by_name() {
   let folder_info = createTestFolderInfo();
 
@@ -1752,7 +1653,7 @@ add_task(async function test_livemark_txns() {
 add_task(async function test_copy() {
   async function duplicate_and_test(aOriginalGuid) {
     let txn = PT.Copy({
-      guid: aOriginalGuid, newParentGuid: PlacesUtils.bookmarks.unfiledGuid
+      guid: aOriginalGuid, newParentGuid: PlacesUtils.bookmarks.unfiledGuid,
     });
     let duplicateGuid = await txn.transact();
     let originalInfo = await PlacesUtils.promiseBookmarksTree(aOriginalGuid);
@@ -1796,7 +1697,7 @@ add_task(async function test_copy() {
                    annos: [{ name: "Anno", value: "AnnoValue"}] });
   let sepTxn = PT.NewSeparator({
     parentGuid: PlacesUtils.bookmarks.unfiledGuid,
-    index: 1
+    index: 1,
   });
   let livemarkTxn = PT.NewLivemark(
     { feedUrl: "http://test.feed.uri",
@@ -1913,45 +1814,6 @@ add_task(async function test_invalid_uri_spec_throws() {
            /TypeError: invalid uri spec is not a valid URL/);
 });
 
-add_task(async function test_annotate_multiple_items() {
-  let parentGuid = menuGuid;
-  let guids = [
-    await PT.NewBookmark({ url: "about:blank", parentGuid }).transact(),
-    await PT.NewFolder({ title: "Test Folder", parentGuid }).transact()];
-
-  let annotation = { name: "TestAnno", value: "TestValue" };
-  await PT.Annotate({ guids, annotation }).transact();
-
-  async function ensureAnnoSet() {
-    for (let guid of guids) {
-      let itemId = await PlacesUtils.promiseItemId(guid);
-      Assert.equal(annosvc.getItemAnnotation(itemId, annotation.name),
-                   annotation.value);
-    }
-  }
-  async function ensureAnnoUnset() {
-    for (let guid of guids) {
-      let itemId = await PlacesUtils.promiseItemId(guid);
-      Assert.ok(!annosvc.itemHasAnnotation(itemId, annotation.name));
-    }
-  }
-
-  await ensureAnnoSet();
-  await PT.undo();
-  await ensureAnnoUnset();
-  await PT.redo();
-  await ensureAnnoSet();
-  await PT.undo();
-  await ensureAnnoUnset();
-
-  // Cleanup
-  await PT.undo();
-  await PT.undo();
-  await ensureNonExistent(...guids);
-  await PT.clearTransactionsHistory();
-  observer.reset();
-});
-
 add_task(async function test_remove_multiple() {
   let guids = [];
   await PT.batch(async function() {
@@ -2009,16 +1871,16 @@ add_task(async function test_renameTag() {
   // Create bookmark queries that point to the modified tag.
   let bm1 = await PlacesUtils.bookmarks.insert({
     url: "place:tag=t2",
-    parentGuid: PlacesUtils.bookmarks.unfiledGuid
+    parentGuid: PlacesUtils.bookmarks.unfiledGuid,
   });
   let bm2 = await PlacesUtils.bookmarks.insert({
     url: "place:tag=t2&sort=1",
-    parentGuid: PlacesUtils.bookmarks.unfiledGuid
+    parentGuid: PlacesUtils.bookmarks.unfiledGuid,
   });
   // This points to 2 tags, and as such won't be touched.
   let bm3 = await PlacesUtils.bookmarks.insert({
     url: "place:tag=t2&tag=t1",
-    parentGuid: PlacesUtils.bookmarks.unfiledGuid
+    parentGuid: PlacesUtils.bookmarks.unfiledGuid,
   });
 
   await PT.RenameTag({ oldTag: "t2", tag: "t3" }).transact();

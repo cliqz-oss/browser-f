@@ -10,18 +10,19 @@ const EDIT_ADDRESS_URL = "chrome://formautofill/content/editAddress.xhtml";
 const EDIT_CREDIT_CARD_URL = "chrome://formautofill/content/editCreditCard.xhtml";
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-ChromeUtils.import("resource://formautofill/FormAutofillUtils.jsm");
+ChromeUtils.import("resource://formautofill/FormAutofill.jsm");
 
 ChromeUtils.defineModuleGetter(this, "CreditCard",
                                "resource://gre/modules/CreditCard.jsm");
 ChromeUtils.defineModuleGetter(this, "formAutofillStorage",
                                "resource://formautofill/FormAutofillStorage.jsm");
+ChromeUtils.defineModuleGetter(this, "FormAutofillUtils",
+                               "resource://formautofill/FormAutofillUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "MasterPassword",
                                "resource://formautofill/MasterPassword.jsm");
 
 this.log = null;
-FormAutofillUtils.defineLazyLogGetter(this, "manageAddresses");
+FormAutofill.defineLazyLogGetter(this, "manageAddresses");
 
 class ManageRecords {
   constructor(subStorageName, elements) {
@@ -292,7 +293,12 @@ class ManageAddresses extends ManageRecords {
    * @param  {object} address [optional]
    */
   openEditDialog(address) {
-    this.prefWin.gSubDialog.open(EDIT_ADDRESS_URL, null, address);
+    this.prefWin.gSubDialog.open(EDIT_ADDRESS_URL, null, {
+      record: address,
+      // Don't validate in preferences since it's fine for fields to be missing
+      // for autofill purposes. For PaymentRequest addresses get more validation.
+      noValidate: true,
+    });
   }
 
   getLabel(address) {
@@ -327,7 +333,9 @@ class ManageCreditCards extends ManageRecords {
         decryptedCCNumObj["cc-number"] = await MasterPassword.decrypt(creditCard["cc-number-encrypted"]);
       }
       let decryptedCreditCard = Object.assign({}, creditCard, decryptedCCNumObj);
-      this.prefWin.gSubDialog.open(EDIT_CREDIT_CARD_URL, "resizable=no", decryptedCreditCard);
+      this.prefWin.gSubDialog.open(EDIT_CREDIT_CARD_URL, "resizable=no", {
+        record: decryptedCreditCard,
+      });
     }
   }
 
@@ -345,6 +353,7 @@ class ManageCreditCards extends ManageRecords {
       encryptedNumber: creditCard["cc-number-encrypted"],
       number: creditCard["cc-number"],
       name: creditCard["cc-name"],
+      network: creditCard["cc-type"],
     });
     return cardObj.getLabel({showNumbers: showCreditCards});
   }

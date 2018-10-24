@@ -37,8 +37,15 @@
 #include "gc/Marking.h"
 #include "jit/Ion.h"
 #include "jit/PcScriptCache.h"
+#include "js/AutoByteString.h"
 #include "js/CharacterEncoding.h"
 #include "js/Printf.h"
+#ifdef JS_SIMULATOR_ARM64
+# include "jit/arm64/vixl/Simulator-vixl.h"
+#endif
+#ifdef JS_SIMULATOR_ARM
+# include "jit/arm/Simulator-arm.h"
+#endif
 #include "util/DoubleToString.h"
 #include "util/NativeStack.h"
 #include "util/Windows.h"
@@ -115,6 +122,10 @@ JSContext::init(ContextKind kind)
 #endif
 
         if (!wasm::EnsureSignalHandlers(this))
+            return false;
+    } else {
+        atomsZoneFreeLists_ = js_new<FreeLists>();
+        if (!atomsZoneFreeLists_)
             return false;
     }
 
@@ -296,6 +307,7 @@ js::ReportOutOfMemory(JSContext* cx)
      */
     fprintf(stderr, "ReportOutOfMemory called\n");
 #endif
+    mozilla::recordreplay::InvalidateRecording("OutOfMemory exception thrown");
 
     if (cx->helperThread())
         return cx->addPendingOutOfMemory();
@@ -307,7 +319,8 @@ js::ReportOutOfMemory(JSContext* cx)
     if (JS::OutOfMemoryCallback oomCallback = cx->runtime()->oomCallback)
         oomCallback(cx, cx->runtime()->oomCallbackData);
 
-    cx->setPendingException(StringValue(cx->names().outOfMemory));
+    RootedValue oomMessage(cx, StringValue(cx->names().outOfMemory));
+    cx->setPendingException(oomMessage);
 }
 
 mozilla::GenericErrorResult<OOM&>
@@ -331,6 +344,7 @@ js::ReportOverRecursed(JSContext* maybecx, unsigned errorNumber)
      */
     fprintf(stderr, "ReportOverRecursed called\n");
 #endif
+    mozilla::recordreplay::InvalidateRecording("OverRecursed exception thrown");
     if (maybecx) {
         if (!maybecx->helperThread()) {
             JS_ReportErrorNumberASCII(maybecx, GetErrorMessage, nullptr, errorNumber);
@@ -1032,28 +1046,13 @@ InternalEnqueuePromiseJobCallback(JSContext* cx, JS::HandleObject job,
                                   JS::HandleObject incumbentGlobal, void* data)
 {
     MOZ_ASSERT(job);
-    return cx->jobQueue->append(job);
-}
-
-namespace {
-class MOZ_STACK_CLASS ReportExceptionClosure : public ScriptEnvironmentPreparer::Closure
-{
-  public:
-    explicit ReportExceptionClosure(HandleValue exn)
-        : exn_(exn)
-    {
-    }
-
-    bool operator()(JSContext* cx) override
-    {
-        cx->setPendingException(exn_);
+    JS::JobQueueMayNotBeEmpty(cx);
+    if (!cx->jobQueue->append(job)) {
+        ReportOutOfMemory(cx);
         return false;
     }
-
-  private:
-    HandleValue exn_;
-};
-} // anonymous namespace
+    return true;
+}
 
 JS_FRIEND_API(bool)
 js::UseInternalJobQueues(JSContext* cx)
@@ -1081,6 +1080,7 @@ JS_FRIEND_API(bool)
 js::EnqueueJob(JSContext* cx, JS::HandleObject job)
 {
     MOZ_ASSERT(cx->jobQueue);
+    JS::JobQueueMayNotBeEmpty(cx);
     if (!cx->jobQueue->append(job)) {
         ReportOutOfMemory(cx);
         return false;
@@ -1136,7 +1136,13 @@ js::RunJobs(JSContext* cx)
                 continue;
 
             cx->jobQueue->get()[i] = nullptr;
-            AutoRealm ar(cx, job);
+
+            // If the next job is the last job in the job queue, allow
+            // skipping the standard job queuing behavior.
+            if (i == cx->jobQueue->length() - 1)
+                JS::JobQueueIsEmpty(cx);
+
+            AutoRealm ar(cx, &job->as<JSFunction>());
             {
                 if (!JS::Call(cx, UndefinedHandleValue, job, args, &rval)) {
                     // Nothing we can do about uncatchable exceptions.
@@ -1150,7 +1156,7 @@ js::RunJobs(JSContext* cx)
                          * have one.
                          */
                         cx->clearPendingException();
-                        ReportExceptionClosure reportExn(exn);
+                        js::ReportExceptionClosure reportExn(exn);
                         PrepareScriptEnvironmentAndInvoke(cx, cx->global(), reportExn);
                     }
                 }
@@ -1205,7 +1211,7 @@ JSContext::JSContext(JSRuntime* runtime, const JS::ContextOptions& options)
     kind_(ContextKind::HelperThread),
     helperThread_(nullptr),
     options_(options),
-    arenas_(nullptr),
+    freeLists_(nullptr),
     jitActivation(nullptr),
     activation_(nullptr),
     profilingActivation_(nullptr),
@@ -1279,6 +1285,7 @@ JSContext::JSContext(JSRuntime* runtime, const JS::ContextOptions& options)
     jobQueue(nullptr),
     drainingJobQueue(false),
     stopDrainingJobQueue(false),
+    canSkipEnqueuingJobs(false),
     promiseRejectionTrackerCallback(nullptr),
     promiseRejectionTrackerCallbackData(nullptr)
 {
@@ -1301,8 +1308,6 @@ JSContext::~JSContext()
     /* Free the stuff hanging off of cx. */
     MOZ_ASSERT(!resolvingList);
 
-    js_delete(ionPcScriptCache.ref());
-
     if (dtoaState)
         DestroyDtoaState(dtoaState);
 
@@ -1317,6 +1322,8 @@ JSContext::~JSContext()
     if (traceLogger)
         DestroyTraceLogger(traceLogger);
 #endif
+
+    js_delete(atomsZoneFreeLists_.ref());
 
     MOZ_ASSERT(TlsContext.get() == this);
     TlsContext.set(nullptr);
@@ -1345,7 +1352,7 @@ JSContext::getPendingException(MutableHandleValue rval)
     clearPendingException();
     if (!compartment()->wrap(this, rval))
         return false;
-    assertSameCompartment(this, rval);
+    this->check(rval);
     setPendingException(rval);
     overRecursed_ = wasOverRecursed;
     return true;
@@ -1553,17 +1560,10 @@ JS::AutoCheckRequestDepth::~AutoCheckRequestDepth()
 
 #ifdef JS_CRASH_DIAGNOSTICS
 void
-CompartmentChecker::check(InterpreterFrame* fp)
-{
-    if (fp)
-        check(fp->environmentChain());
-}
-
-void
-CompartmentChecker::check(AbstractFramePtr frame)
+ContextChecks::check(AbstractFramePtr frame, int argIndex)
 {
     if (frame)
-        check(frame.environmentChain());
+        check(frame.realm(), argIndex);
 }
 #endif
 

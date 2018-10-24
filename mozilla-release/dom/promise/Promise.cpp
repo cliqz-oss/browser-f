@@ -5,6 +5,7 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/dom/Promise.h"
+#include "mozilla/dom/Promise-inl.h"
 
 #include "js/Debug.h"
 
@@ -12,6 +13,7 @@
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/OwningNonNull.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/ResultExtensions.h"
 
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/DOMException.h"
@@ -227,6 +229,48 @@ Promise::Then(JSContext* aCx,
 }
 
 void
+PromiseNativeThenHandlerBase::ResolvedCallback(JSContext* aCx,
+                                               JS::Handle<JS::Value> aValue)
+{
+  RefPtr<Promise> promise = CallResolveCallback(aCx, aValue);
+  mPromise->MaybeResolve(promise);
+}
+
+void
+PromiseNativeThenHandlerBase::RejectedCallback(JSContext* aCx,
+                                               JS::Handle<JS::Value> aValue)
+{
+  mPromise->MaybeReject(aCx, aValue);
+}
+
+NS_IMPL_CYCLE_COLLECTION_CLASS(PromiseNativeThenHandlerBase)
+
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(PromiseNativeThenHandlerBase)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mPromise)
+  tmp->Traverse(cb);
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(PromiseNativeThenHandlerBase)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mPromise)
+  tmp->Unlink();
+NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(PromiseNativeThenHandlerBase)
+  NS_INTERFACE_MAP_ENTRY(nsISupports)
+NS_INTERFACE_MAP_END
+
+NS_IMPL_CYCLE_COLLECTING_ADDREF(PromiseNativeThenHandlerBase)
+NS_IMPL_CYCLE_COLLECTING_RELEASE(PromiseNativeThenHandlerBase)
+
+Result<RefPtr<Promise>, nsresult>
+Promise::ThenWithoutCycleCollection(
+  const std::function<already_AddRefed<Promise>(JSContext* aCx,
+                                                JS::HandleValue aValue)>& aCallback)
+{
+  return ThenWithCycleCollectedArgs(aCallback);
+}
+
+void
 Promise::CreateWrapper(JS::Handle<JSObject*> aDesiredProto, ErrorResult& aRv)
 {
   AutoJSAPI jsapi;
@@ -362,7 +406,7 @@ public:
   WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto,
              JS::MutableHandle<JSObject*> aWrapper)
   {
-    return PromiseNativeHandlerBinding::Wrap(aCx, this, aGivenProto, aWrapper);
+    return PromiseNativeHandler_Binding::Wrap(aCx, this, aGivenProto, aWrapper);
   }
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -489,12 +533,6 @@ Promise::ReportRejectedPromise(JSContext* aCx, JS::HandleObject aPromise)
 
   JS::Rooted<JS::Value> result(aCx, JS::GetPromiseResult(aPromise));
 
-  js::ErrorReport report(aCx);
-  if (!report.init(aCx, result, js::ErrorReport::NoSideEffects)) {
-    JS_ClearPendingException(aCx);
-    return;
-  }
-
   RefPtr<xpc::ErrorReport> xpcReport = new xpc::ErrorReport();
   bool isMainThread = MOZ_LIKELY(NS_IsMainThread());
   bool isChrome = isMainThread ? nsContentUtils::IsSystemPrincipal(nsContentUtils::ObjectPrincipal(aPromise))
@@ -502,8 +540,23 @@ Promise::ReportRejectedPromise(JSContext* aCx, JS::HandleObject aPromise)
   nsGlobalWindowInner* win = isMainThread
     ? xpc::WindowGlobalOrNull(aPromise)
     : nullptr;
-  xpcReport->Init(report.report(), report.toStringResult().c_str(), isChrome,
-                  win ? win->AsInner()->WindowID() : 0);
+
+  js::ErrorReport report(aCx);
+  if (report.init(aCx, result, js::ErrorReport::NoSideEffects)) {
+    xpcReport->Init(report.report(), report.toStringResult().c_str(), isChrome,
+                    win ? win->AsInner()->WindowID() : 0);
+  } else {
+    JS_ClearPendingException(aCx);
+
+    RefPtr<Exception> exn;
+    if (result.isObject() &&
+        (NS_SUCCEEDED(UNWRAP_OBJECT(DOMException, &result, exn)) ||
+         NS_SUCCEEDED(UNWRAP_OBJECT(Exception, &result, exn)))) {
+      xpcReport->Init(aCx, exn, isChrome, win ? win->AsInner()->WindowID() : 0);
+    } else {
+      return;
+    }
+  }
 
   // Now post an event to do the real reporting async
   RefPtr<nsIRunnable> event = new AsyncErrorReporter(xpcReport);

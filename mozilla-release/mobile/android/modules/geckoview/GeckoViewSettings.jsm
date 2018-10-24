@@ -7,17 +7,11 @@
 var EXPORTED_SYMBOLS = ["GeckoViewSettings"];
 
 ChromeUtils.import("resource://gre/modules/GeckoViewModule.jsm");
-ChromeUtils.import("resource://gre/modules/GeckoViewUtils.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
+  SafeBrowsing: "resource://gre/modules/SafeBrowsing.jsm",
   Services: "resource://gre/modules/Services.jsm",
-});
-
-/* global SafeBrowsing:false */
-GeckoViewUtils.addLazyGetter(this, "SafeBrowsing", {
-  module: "resource://gre/modules/SafeBrowsing.jsm",
-  init: sb => sb.init(),
 });
 
 XPCOMUtils.defineLazyGetter(
@@ -28,6 +22,19 @@ XPCOMUtils.defineLazyGetter(
            .replace(/Android \d.+?; [a-zA-Z]+/, "X11; Linux x86_64")
            .replace(/Gecko\/[0-9\.]+/, "Gecko/20100101");
   });
+
+XPCOMUtils.defineLazyGetter(
+  this, "VR_USER_AGENT",
+  function() {
+    return Cc["@mozilla.org/network/protocol;1?name=http"]
+           .getService(Ci.nsIHttpProtocolHandler).userAgent
+           .replace(/Android \d+; [a-zA-Z]+/, "VR");
+  });
+
+// This needs to match GeckoSessionSettings.java
+const USER_AGENT_MODE_MOBILE = 0;
+const USER_AGENT_MODE_DESKTOP = 1;
+const USER_AGENT_MODE_VR = 2;
 
 // Handles GeckoView settings including:
 // * multiprocess
@@ -40,8 +47,11 @@ class GeckoViewSettings extends GeckoViewModule {
   }
 
   onInit() {
+    debug `onInit`;
     this._useTrackingProtection = false;
-    this._useDesktopMode = false;
+    this._userAgentMode = USER_AGENT_MODE_MOBILE;
+    // Required for safe browsing and tracking protection.
+    SafeBrowsing.init();
   }
 
   onSettingsUpdate() {
@@ -49,25 +59,15 @@ class GeckoViewSettings extends GeckoViewModule {
     debug `onSettingsUpdate: ${settings}`;
 
     this.displayMode = settings.displayMode;
-    this.useTrackingProtection = !!settings.useTrackingProtection;
-    this.useDesktopMode = !!settings.useDesktopMode;
+    this.userAgentMode = settings.userAgentMode;
   }
 
   get useMultiprocess() {
     return this.browser.isRemoteBrowser;
   }
 
-  get useTrackingProtection() {
-    return this._useTrackingProtection;
-  }
-
-  set useTrackingProtection(aUse) {
-    aUse && SafeBrowsing;
-    this._useTrackingProtection = aUse;
-  }
-
-  onUserAgentRequest(aSubject, aTopic, aData) {
-    debug `onUserAgentRequest`;
+  observe(aSubject, aTopic, aData) {
+    debug `observer`;
 
     let channel = aSubject.QueryInterface(Ci.nsIHttpChannel);
 
@@ -75,40 +75,34 @@ class GeckoViewSettings extends GeckoViewModule {
       return;
     }
 
-    if (this.useDesktopMode) {
+    if (this.userAgentMode === USER_AGENT_MODE_DESKTOP) {
       channel.setRequestHeader("User-Agent", DESKTOP_USER_AGENT, false);
+    } else if (this.userAgentMode === USER_AGENT_MODE_VR) {
+      channel.setRequestHeader("User-Agent", VR_USER_AGENT, false);
     }
   }
 
-  get useDesktopMode() {
-    return this._useDesktopMode;
+  get userAgentMode() {
+    return this._userAgentMode;
   }
 
-  set useDesktopMode(aUse) {
-    if (this.useDesktopMode === aUse) {
+  set userAgentMode(aMode) {
+    if (this.userAgentMode === aMode) {
       return;
     }
-    if (aUse) {
-      this._userAgentObserver = this.onUserAgentRequest.bind(this);
-      Services.obs.addObserver(this._userAgentObserver,
-                               "http-on-useragent-request");
-    } else if (this._userAgentObserver) {
-      Services.obs.removeObserver(this._userAgentObserver,
-                                  "http-on-useragent-request");
-      this._userAgentObserver = undefined;
+    if (this.userAgentMode === USER_AGENT_MODE_MOBILE) {
+      Services.obs.addObserver(this, "http-on-useragent-request");
+    } else if (aMode === USER_AGENT_MODE_MOBILE) {
+      Services.obs.removeObserver(this, "http-on-useragent-request");
     }
-    this._useDesktopMode = aUse;
+    this._userAgentMode = aMode;
   }
 
   get displayMode() {
-    return this.window.QueryInterface(Ci.nsIInterfaceRequestor)
-                      .getInterface(Ci.nsIDocShell)
-                      .displayMode;
+    return this.window.docShell.displayMode;
   }
 
   set displayMode(aMode) {
-    this.window.QueryInterface(Ci.nsIInterfaceRequestor)
-               .getInterface(Ci.nsIDocShell)
-               .displayMode = aMode;
+    this.window.docShell.displayMode = aMode;
   }
 }

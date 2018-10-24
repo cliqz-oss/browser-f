@@ -8,7 +8,8 @@ const { createFactory, PureComponent } = require("devtools/client/shared/vendor/
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 
-const FontMeta = createFactory(require("./FontMeta"));
+const FontName = createFactory(require("./FontName"));
+const FontOrigin = createFactory(require("./FontOrigin"));
 const FontPreview = createFactory(require("./FontPreview"));
 
 const Types = require("../types");
@@ -17,8 +18,7 @@ class Font extends PureComponent {
   static get propTypes() {
     return {
       font: PropTypes.shape(Types.font).isRequired,
-      fontOptions: PropTypes.shape(Types.fontOptions).isRequired,
-      onPreviewFonts: PropTypes.func.isRequired,
+      onPreviewClick: PropTypes.func,
       onToggleFontHighlight: PropTypes.func.isRequired,
     };
   }
@@ -96,17 +96,23 @@ class Font extends PureComponent {
     return dom.span(attributes);
   }
 
+  renderFontFamilyName(family) {
+    if (!family) {
+      return null;
+    }
+
+    return dom.div({ className: "font-family-name" }, family);
+  }
+
   render() {
     const {
       font,
-      fontOptions,
-      onPreviewFonts,
+      onPreviewClick,
       onToggleFontHighlight,
     } = this.props;
 
-    const { previewText } = fontOptions;
-
     const {
+      CSSFamilyName,
       previewUrl,
       rule,
       ruleText,
@@ -116,8 +122,13 @@ class Font extends PureComponent {
       {
         className: "font",
       },
-      FontMeta({ font, onToggleFontHighlight }),
-      FontPreview({ previewText, previewUrl, onPreviewFonts }),
+      dom.div(
+        {},
+        this.renderFontFamilyName(CSSFamilyName),
+        FontName({ font, onToggleFontHighlight })
+      ),
+      FontOrigin({ font }),
+      FontPreview({ onPreviewClick, previewUrl }),
       this.renderFontCSSCode(rule, ruleText)
     );
   }

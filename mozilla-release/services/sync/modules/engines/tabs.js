@@ -20,6 +20,10 @@ ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
 ChromeUtils.defineModuleGetter(this, "SessionStore",
   "resource:///modules/sessionstore/SessionStore.jsm");
 
+XPCOMUtils.defineLazyModuleGetters(this, {
+  PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
+});
+
 function TabSetRecord(collection, id) {
   CryptoWrapper.call(this, collection, id);
 }
@@ -58,8 +62,9 @@ TabEngine.prototype = {
   async getChangedIDs() {
     // No need for a proper timestamp (no conflict resolution needed).
     let changedIDs = {};
-    if (this._tracker.modified)
+    if (this._tracker.modified) {
       changedIDs[this.service.clientsEngine.localID] = 0;
+    }
     return changedIDs;
   },
 
@@ -82,17 +87,6 @@ TabEngine.prototype = {
   async removeClientData() {
     let url = this.engineURL + "/" + this.service.clientsEngine.localID;
     await this.service.resource(url).delete();
-  },
-
-  /**
-   * Return a Set of open URLs.
-   */
-  getOpenURLs() {
-    let urls = new Set();
-    for (let entry of this._store.getAllTabs()) {
-      urls.add(entry.urlHistory[0]);
-    }
-    return urls;
   },
 
   async _reconcile(item) {
@@ -136,14 +130,12 @@ TabStore.prototype = {
     return JSON.parse(SessionStore.getTabState(tab));
   },
 
-  getAllTabs(filter) {
+  async getAllTabs(filter) {
     let filteredUrls = new RegExp(Svc.Prefs.get("engine.tabs.filteredUrls"), "i");
 
     let allTabs = [];
 
-    let winEnum = this.getWindowEnumerator();
-    while (winEnum.hasMoreElements()) {
-      let win = winEnum.getNext();
+    for (let win of this.getWindowEnumerator()) {
       if (this.shouldSkipWindow(win)) {
         continue;
       }
@@ -190,12 +182,18 @@ TabStore.prototype = {
           urls.length = TAB_ENTRIES_LIMIT;
         }
 
+        // tabState has .image, but it's a large data: url. So we ask the favicon service for the url.
+        let icon = "";
+        try {
+          let iconData = await PlacesUtils.promiseFaviconData(urls[0]);
+          icon = iconData.uri.spec;
+        } catch (ex) {
+          this._log.warn(`Failed to fetch favicon for ${urls[0]}`, ex);
+        }
         allTabs.push({
           title: current.title || "",
           urlHistory: urls,
-          icon: tabState.image ||
-                (tabState.attributes && tabState.attributes.image) ||
-                "",
+          icon,
           lastUsed: Math.floor((tabState.lastAccessed || 0) / 1000),
         });
       }
@@ -209,7 +207,7 @@ TabStore.prototype = {
     record.clientName = this.engine.service.clientsEngine.localName;
 
     // Sort tabs in descending-used order to grab the most recently used
-    let tabs = this.getAllTabs(true).sort(function(a, b) {
+    let tabs = (await this.getAllTabs(true)).sort(function(a, b) {
       return b.lastUsed - a.lastUsed;
     });
     const maxPayloadSize = this.engine.service.getMemcacheMaxRecordPayloadSize();
@@ -235,9 +233,8 @@ TabStore.prototype = {
     // first syncs.
     let ids = {};
     let allWindowsArePrivate = false;
-    let wins = Services.wm.getEnumerator("navigator:browser");
-    while (wins.hasMoreElements()) {
-      if (PrivateBrowsingUtils.isWindowPrivate(wins.getNext())) {
+    for (let win of Services.wm.getEnumerator("navigator:browser")) {
+      if (PrivateBrowsingUtils.isWindowPrivate(win)) {
         // Ensure that at least there is a private window.
         allWindowsArePrivate = true;
       } else {
@@ -263,7 +260,7 @@ TabStore.prototype = {
   async create(record) {
     this._log.debug("Adding remote tabs from " + record.clientName);
     this._remoteClients[record.id] = Object.assign({}, record.cleartext, {
-      lastModified: record.modified
+      lastModified: record.modified,
     });
   },
 
@@ -320,17 +317,15 @@ TabTracker.prototype = {
 
   onStart() {
     Svc.Obs.add("domwindowopened", this.asyncObserver);
-    let wins = Services.wm.getEnumerator("navigator:browser");
-    while (wins.hasMoreElements()) {
-      this._registerListenersForWindow(wins.getNext());
+    for (let win of Services.wm.getEnumerator("navigator:browser")) {
+      this._registerListenersForWindow(win);
     }
   },
 
   onStop() {
     Svc.Obs.remove("domwindowopened", this.asyncObserver);
-    let wins = Services.wm.getEnumerator("navigator:browser");
-    while (wins.hasMoreElements()) {
-      this._unregisterListenersForWindow(wins.getNext());
+    for (let win of Services.wm.getEnumerator("navigator:browser")) {
+      this._unregisterListenersForWindow(win);
     }
   },
 

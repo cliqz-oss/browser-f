@@ -8,6 +8,7 @@
 
 #include "jsapi.h"
 #include "jsfriendapi.h"
+#include "js/JSON.h"
 #include "js/TracingAPI.h"
 #include "xpcpublic.h"
 
@@ -409,11 +410,16 @@ public:
 
   nsString Path() { return GetString("path"); }
 
-  bool Bootstrapped() { return GetBool("bootstrapped"); }
+  nsString Type() { return GetString("type", "extension"); }
 
   bool Enabled() { return GetBool("enabled"); }
 
   double LastModifiedTime() { return GetNumber("lastModifiedTime"); }
+
+  bool ShouldCheckStartupModifications()
+  {
+    return Type().EqualsLiteral("webextension-langpack");
+  }
 
 
   Result<nsCOMPtr<nsIFile>, nsresult> FullPath();
@@ -450,8 +456,15 @@ Addon::UpdateLastModifiedTime()
   nsCOMPtr<nsIFile> file;
   MOZ_TRY_VAR(file, FullPath());
 
+  JS::RootedObject obj(mCx, mObject);
+
   bool result;
   if (NS_FAILED(file->Exists(&result)) || !result) {
+    JS::RootedValue value(mCx, JS::NullValue());
+    if (!JS_SetProperty(mCx, obj, "currentModifiedTime", value)) {
+      JS_ClearPendingException(mCx);
+    }
+
     return true;
   }
 
@@ -471,8 +484,6 @@ Addon::UpdateLastModifiedTime()
   if (NS_FAILED(manifest->GetLastModifiedTime(&time))) {
     return true;
   }
-
-  JS::RootedObject obj(mCx, mObject);
 
   double lastModified = time;
   JS::RootedValue value(mCx, JS::NumberValue(lastModified));
@@ -528,14 +539,12 @@ AddonManagerStartup::ReadStartupData(JSContext* cx, JS::MutableHandleValue locat
   for (auto e1 : PropertyIter(cx, locs)) {
     InstallLocation loc(e1);
 
-    if (!loc.ShouldCheckStartupModifications()) {
-      continue;
-    }
+    bool shouldCheck = loc.ShouldCheckStartupModifications();
 
     for (auto e2 : loc.Addons()) {
       Addon addon(e2);
 
-      if (addon.Enabled()) {
+      if (addon.Enabled() && (shouldCheck || addon.ShouldCheckStartupModifications())) {
         bool changed;
         MOZ_TRY_VAR(changed, addon.UpdateLastModifiedTime());
         if (changed) {
@@ -670,11 +679,13 @@ public:
   NS_DECL_NSIJSRAIIHELPER
 
   using Override = AutoTArray<nsCString, 2>;
+  using Content = AutoTArray<nsCString, 2>;
   using Locale = AutoTArray<nsCString, 3>;
 
-  RegistryEntries(FileLocation& location, nsTArray<Override>&& overrides, nsTArray<Locale>&& locales)
+  RegistryEntries(FileLocation& location, nsTArray<Override>&& overrides, nsTArray<Content>&& content, nsTArray<Locale>&& locales)
     : mLocation(location)
     , mOverrides(std::move(overrides))
+    , mContent(std::move(content))
     , mLocales(std::move(locales))
   {}
 
@@ -689,6 +700,7 @@ protected:
 private:
   FileLocation mLocation;
   const nsTArray<Override> mOverrides;
+  const nsTArray<Content> mContent;
   const nsTArray<Locale> mLocales;
 };
 
@@ -704,6 +716,11 @@ RegistryEntries::Register()
   for (auto& override : mOverrides) {
     const char* args[] = {override[0].get(), override[1].get()};
     cr->ManifestOverride(context, 0, const_cast<char**>(args), 0);
+  }
+
+  for (auto& content: mContent) {
+    const char* args[] = {content[0].get(), content[1].get()};
+    cr->ManifestContent(context, 0, const_cast<char**>(args), 0);
   }
 
   for (auto& locale : mLocales) {
@@ -751,6 +768,7 @@ AddonManagerStartup::RegisterChrome(nsIURI* manifestURI, JS::HandleValue locatio
 
 
   nsTArray<RegistryEntries::Locale> locales;
+  nsTArray<RegistryEntries::Content> content;
   nsTArray<RegistryEntries::Override> overrides;
 
   JS::RootedObject locs(cx, &locations.toObject());
@@ -778,6 +796,9 @@ AddonManagerStartup::RegisterChrome(nsIURI* manifestURI, JS::HandleValue locatio
     if (type.EqualsLiteral("override")) {
       NS_ENSURE_TRUE(vals.Length() == 2, NS_ERROR_INVALID_ARG);
       overrides.AppendElement(vals);
+    } else if (type.EqualsLiteral("content")) {
+      NS_ENSURE_TRUE(vals.Length() == 2, NS_ERROR_INVALID_ARG);
+      content.AppendElement(vals);
     } else if (type.EqualsLiteral("locale")) {
       NS_ENSURE_TRUE(vals.Length() == 3, NS_ERROR_INVALID_ARG);
       locales.AppendElement(vals);
@@ -796,6 +817,7 @@ AddonManagerStartup::RegisterChrome(nsIURI* manifestURI, JS::HandleValue locatio
 
   auto entry = MakeRefPtr<RegistryEntries>(location,
                                            std::move(overrides),
+                                           std::move(content),
                                            std::move(locales));
 
   entry->Register();

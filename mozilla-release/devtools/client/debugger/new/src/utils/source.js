@@ -20,9 +20,10 @@ exports.isPrettyURL = isPrettyURL;
 exports.isThirdParty = isThirdParty;
 exports.getPrettySourceURL = getPrettySourceURL;
 exports.getRawSourceURL = getRawSourceURL;
-exports.getFilenameFromURL = getFilenameFromURL;
 exports.getFormattedSourceId = getFormattedSourceId;
 exports.getFilename = getFilename;
+exports.getTruncatedFileName = getTruncatedFileName;
+exports.getDisplayPath = getDisplayPath;
 exports.getFileURL = getFileURL;
 exports.getSourcePath = getSourcePath;
 exports.getSourceLineCount = getSourceLineCount;
@@ -31,24 +32,29 @@ exports.isLoaded = isLoaded;
 exports.isLoading = isLoading;
 exports.getTextAtPosition = getTextAtPosition;
 exports.getSourceClassnames = getSourceClassnames;
+exports.getRelativeUrl = getRelativeUrl;
+exports.underRoot = underRoot;
 
 var _devtoolsSourceMap = require("devtools/client/shared/source-map/index.js");
 
-var _utils = require("./utils");
-
-var _path = require("./path");
-
-var _url = require("devtools/client/debugger/new/dist/vendors").vendored["url"];
-
 var _devtoolsModules = require("devtools/client/debugger/new/dist/vendors").vendored["devtools-modules"];
 
+var _utils = require("./utils");
+
+var _text = require("../utils/text");
+
+var _url = require("../utils/url");
+
 var _sourcesTree = require("./sources-tree/index");
+
+var _prefs = require("./prefs");
 
 const sourceTypes = exports.sourceTypes = {
   coffee: "coffeescript",
   js: "javascript",
   jsx: "react",
-  ts: "typescript"
+  ts: "typescript",
+  vue: "vue"
 };
 /**
  * Trims the query part or reference identifier of a url string, if necessary.
@@ -67,18 +73,7 @@ function trimUrlQuery(url) {
 }
 
 function shouldPrettyPrint(source) {
-  if (!source) {
-    return false;
-  }
-
-  const _isPretty = isPretty(source);
-
-  const _isJavaScript = isJavaScript(source);
-
-  const isOriginal = (0, _devtoolsSourceMap.isOriginalId)(source.id);
-  const hasSourceMap = source.get("sourceMapURL");
-
-  if (_isPretty || isOriginal || hasSourceMap || !_isJavaScript) {
+  if (!source || isPretty(source) || !isJavaScript(source) || (0, _devtoolsSourceMap.isOriginalId)(source.id) || source.sourceMapURL || !_prefs.prefs.clientSourceMapsEnabled) {
     return false;
   }
 
@@ -153,17 +148,6 @@ function resolveFileURL(url, transformUrl = initialUrl => initialUrl) {
   const name = transformUrl(url);
   return (0, _utils.endTruncateStr)(name, 50);
 }
-/**
- * Gets a readable filename from a URL for display purposes.
- *
- * @memberof utils/source
- * @static
- */
-
-
-function getFilenameFromURL(url) {
-  return resolveFileURL(url, initialUrl => (0, _devtoolsModules.getUnicodeUrlPath)((0, _path.basename)(initialUrl)) || "(index)");
-}
 
 function getFormattedSourceId(id) {
   const sourceId = id.split("/")[1];
@@ -188,14 +172,55 @@ function getFilename(source) {
     return getFormattedSourceId(id);
   }
 
-  let filename = getFilenameFromURL(url);
-  const qMarkIdx = filename.indexOf("?");
+  const {
+    filename
+  } = (0, _sourcesTree.getURL)(source);
+  return getRawSourceURL(filename);
+}
+/**
+ * Provides a middle-trunated filename
+ *
+ * @memberof utils/source
+ * @static
+ */
 
-  if (qMarkIdx > 0) {
-    filename = filename.slice(0, qMarkIdx);
+
+function getTruncatedFileName(source, length = 30) {
+  return (0, _text.truncateMiddleText)(getFilename(source), length);
+}
+/* Gets path for files with same filename for editor tabs, breakpoints, etc.
+ * Pass the source, and list of other sources
+ *
+ * @memberof utils/source
+ * @static
+ */
+
+
+function getDisplayPath(mySource, sources) {
+  const filename = getFilename(mySource); // Find sources that have the same filename, but different paths
+  // as the original source
+
+  const similarSources = sources.filter(source => getRawSourceURL(mySource.url) != getRawSourceURL(source.url) && filename == getFilename(source));
+
+  if (similarSources.length == 0) {
+    return undefined;
+  } // get an array of source path directories e.g. ['a/b/c.html'] => [['b', 'a']]
+
+
+  const paths = [mySource, ...similarSources].map(source => (0, _sourcesTree.getURL)(source).path.split("/").reverse().slice(1)); // create an array of similar path directories and one dis-similar directory
+  // for example [`a/b/c.html`, `a1/b/c.html`] => ['b', 'a']
+  // where 'b' is the similar directory and 'a' is the dis-similar directory.
+
+  let similar = true;
+  const displayPath = [];
+
+  for (let i = 0; similar && i < paths[0].length; i++) {
+    const [dir, ...dirs] = paths.map(path => path[i]);
+    displayPath.push(dir);
+    similar = dirs.includes(dir);
   }
 
-  return filename;
+  return displayPath.reverse().join("/");
 }
 /**
  * Gets a readable source URL for display purposes.
@@ -273,7 +298,11 @@ function getSourcePath(url) {
 
 
 function getSourceLineCount(source) {
-  if (source.isWasm && !source.error) {
+  if (source.error) {
+    return 0;
+  }
+
+  if (source.isWasm) {
     const {
       binary
     } = source.text;
@@ -303,14 +332,19 @@ function getSourceLineCount(source) {
 
 
 function getMode(source, symbols) {
+  if (source.isWasm) {
+    return {
+      name: "text"
+    };
+  }
+
   const {
     contentType,
     text,
-    isWasm,
     url
   } = source;
 
-  if (!text || isWasm) {
+  if (!text) {
     return {
       name: "text"
     };
@@ -421,15 +455,15 @@ function getMode(source, symbols) {
 }
 
 function isLoaded(source) {
-  return source.get("loadedState") === "loaded";
+  return source.loadedState === "loaded";
 }
 
 function isLoading(source) {
-  return source.get("loadedState") === "loading";
+  return source.loadedState === "loading";
 }
 
 function getTextAtPosition(source, location) {
-  if (!source || !source.text || source.isWasm) {
+  if (!source || source.isWasm || !source.text) {
     return "";
   }
 
@@ -464,5 +498,24 @@ function getSourceClassnames(source, sourceMetaData) {
     return "blackBox";
   }
 
-  return sourceTypes[(0, _sourcesTree.getFileExtension)(source.url)] || defaultClassName;
+  return sourceTypes[(0, _sourcesTree.getFileExtension)(source)] || defaultClassName;
+}
+
+function getRelativeUrl(source, root) {
+  const {
+    group,
+    path
+  } = (0, _sourcesTree.getURL)(source);
+
+  if (!root) {
+    return path;
+  } // + 1 removes the leading "/"
+
+
+  const url = group + path;
+  return url.slice(url.indexOf(root) + root.length + 1);
+}
+
+function underRoot(source, root) {
+  return source.url && source.url.includes(root);
 }

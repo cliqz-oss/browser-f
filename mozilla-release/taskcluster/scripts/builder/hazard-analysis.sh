@@ -12,6 +12,8 @@ export CC="$TOOLTOOL_DIR/gcc/bin/gcc"
 export CXX="$TOOLTOOL_DIR/gcc/bin/g++"
 export PATH="$TOOLTOOL_DIR/gcc/bin:$PATH"
 export LD_LIBRARY_PATH="$TOOLTOOL_DIR/gcc/lib64"
+export RUSTC="$TOOLTOOL_DIR/rustc/bin/rustc"
+export CARGO="$TOOLTOOL_DIR/rustc/bin/cargo"
 
 PYTHON=python2.7
 if ! which $PYTHON; then
@@ -100,7 +102,7 @@ function run_analysis () {
 
     (
         cd "$analysis_dir"
-        $PYTHON "$ANALYSIS_SRCDIR/analyze.py" --buildcommand="$GECKO_DIR/taskcluster/scripts/builder/hazard-${build_type}.sh"
+        $PYTHON "$ANALYSIS_SRCDIR/analyze.py" -v --buildcommand="$GECKO_DIR/taskcluster/scripts/builder/hazard-${build_type}.sh"
     )
 }
 

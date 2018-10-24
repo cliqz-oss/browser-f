@@ -9,6 +9,8 @@
 
 #include <stddef.h>                     // for size_t
 #include <stdint.h>                     // for uint32_t, uint64_t
+#include <unordered_map>
+
 #include "mozilla/Attributes.h"         // for override
 #include "mozilla/Atomics.h"
 #include "mozilla/RefPtr.h"             // for already_AddRefed
@@ -21,7 +23,6 @@
 #include "mozilla/webrender/WebRenderTypes.h"
 #include "nsIObserver.h"
 #include "nsRegion.h"                   // for nsIntRegion
-#include "nsRefPtrHashtable.h"
 #include "mozilla/gfx/Rect.h"
 #include "mozilla/ReentrantMonitor.h"   // for ReentrantMonitor, etc
 
@@ -94,7 +95,7 @@ bool InImageBridgeChildThread();
  *   - (B) Since the ImageContainer does not use ImageBridge, the image data is swaped.
  *
  * - During composition:
- *   - (A) The CompositableHost has an AsyncID, it looks up the ID in the 
+ *   - (A) The CompositableHost has an AsyncID, it looks up the ID in the
  *   global table to see if there is an image. If there is no image, nothing is rendered.
  *   - (B) The CompositableHost has image data rather than an ID (meaning it is not
  *   using ImageBridge), then it just composites the image data normally.
@@ -192,6 +193,9 @@ public:
 
   virtual mozilla::ipc::IPCResult
   RecvDidComposite(InfallibleTArray<ImageCompositeNotification>&& aNotifications) override;
+
+  virtual mozilla::ipc::IPCResult
+  RecvReportFramesDropped(const CompositableHandle& aHandle, const uint32_t& aFrames) override;
 
   // Create an ImageClient from any thread.
   RefPtr<ImageClient> CreateImageClient(
@@ -395,13 +399,14 @@ private:
    * Hold TextureClients refs until end of their usages on host side.
    * It defer calling of TextureClient recycle callback.
    */
-  nsRefPtrHashtable<nsUint64HashKey, TextureClient> mTexturesWaitingRecycled;
+  std::unordered_map<uint64_t, RefPtr<TextureClient>> mTexturesWaitingRecycled;
 
   /**
    * Mapping from async compositable IDs to image containers.
    */
   Mutex mContainerMapLock;
-  nsRefPtrHashtable<nsUint64HashKey, ImageContainerListener> mImageContainerListeners;
+  std::unordered_map<uint64_t, RefPtr<ImageContainerListener>> mImageContainerListeners;
+  RefPtr<ImageContainerListener> FindListener(const CompositableHandle& aHandle);
 
 #if defined(XP_WIN)
   /**

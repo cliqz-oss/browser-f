@@ -25,7 +25,7 @@ struct DtoaState;
 
 namespace js {
 
-class AutoAtomsZone;
+class AutoAllocInAtomsZone;
 class AutoRealm;
 
 namespace jit {
@@ -72,7 +72,6 @@ struct HelperThread;
 
 using JobQueue = GCVector<JSObject*, 0, SystemAllocPolicy>;
 
-class AutoLockForExclusiveAccess;
 class AutoLockScriptData;
 
 void ReportOverRecursed(JSContext* cx, unsigned errorNumber);
@@ -128,7 +127,16 @@ struct JSContext : public JS::RootingContext,
 
     js::ThreadData<JS::ContextOptions> options_;
 
-    js::ThreadData<js::gc::ArenaLists*> arenas_;
+    // Free lists for allocating in the current zone.
+    js::ThreadData<js::gc::FreeLists*> freeLists_;
+
+    // This is reset each time we switch zone, then added to the variable in the
+    // zone when we switch away from it.  This would be a js::ThreadData but we
+    // need to take its address.
+    uint32_t allocsThisZoneSinceMinorGC_;
+
+    // Free lists for parallel allocation in the atoms zone on helper threads.
+    js::ThreadData<js::gc::FreeLists*> atomsZoneFreeLists_;
 
   public:
     // This is used by helper threads to change the runtime their context is
@@ -137,7 +145,15 @@ struct JSContext : public JS::RootingContext,
 
     bool isMainThreadContext() const { return kind_ == js::ContextKind::MainThread; }
 
-    inline js::gc::ArenaLists* arenas() const { return arenas_; }
+    js::gc::FreeLists& freeLists() {
+        MOZ_ASSERT(freeLists_);
+        return *freeLists_;
+    }
+
+    js::gc::FreeLists& atomsZoneFreeLists() {
+        MOZ_ASSERT(atomsZoneFreeLists_);
+        return *atomsZoneFreeLists_;
+    }
 
     template <typename T>
     bool isInsideCurrentZone(T thing) const {
@@ -160,10 +176,45 @@ struct JSContext : public JS::RootingContext,
     /* Clear the pending exception (if any) due to OOM. */
     void recoverFromOutOfMemory();
 
+    /*
+     * This variation of calloc will call the large-allocation-failure callback
+     * on OOM and retry the allocation.
+     */
+    template <typename T>
+    T* pod_callocCanGC(size_t numElems, arena_id_t arena = js::MallocArena) {
+        T* p = maybe_pod_calloc<T>(numElems, arena);
+        if (MOZ_LIKELY(!!p))
+            return p;
+        size_t bytes;
+        if (MOZ_UNLIKELY(!js::CalculateAllocSize<T>(numElems, &bytes))) {
+            reportAllocationOverflow();
+            return nullptr;
+        }
+        p = static_cast<T*>(runtime()->onOutOfMemoryCanGC(js::AllocFunction::Calloc, bytes));
+        if (!p)
+            return nullptr;
+        updateMallocCounter(bytes);
+        return p;
+    }
+
     void updateMallocCounter(size_t nbytes);
 
     void reportAllocationOverflow() {
         js::ReportAllocationOverflow(this);
+    }
+
+    void noteTenuredAlloc() {
+        allocsThisZoneSinceMinorGC_++;
+    }
+
+    uint32_t* addressOfTenuredAllocCount() {
+        return &allocsThisZoneSinceMinorGC_;
+    }
+
+    uint32_t getAndResetAllocsThisZoneSinceMinorGC() {
+        uint32_t allocs = allocsThisZoneSinceMinorGC_;
+        allocsThisZoneSinceMinorGC_ = 0;
+        return allocs;
     }
 
     // Accessors for immutable runtime data.
@@ -172,8 +223,8 @@ struct JSContext : public JS::RootingContext,
     js::SharedImmutableStringsCache& sharedImmutableStrings() {
         return runtime_->sharedImmutableStrings();
     }
-    bool isPermanentAtomsInitialized() { return !!runtime_->permanentAtoms; }
-    js::FrozenAtomSet& permanentAtoms() { return *runtime_->permanentAtoms; }
+    bool permanentAtomsPopulated() { return runtime_->permanentAtomsPopulated(); }
+    const js::FrozenAtomSet& permanentAtoms() { return *runtime_->permanentAtoms(); }
     js::WellKnownSymbols& wellKnownSymbols() { return *runtime_->wellKnownSymbols; }
     JS::BuildIdOp buildIdOp() { return runtime_->buildIdOp; }
     const JS::AsmJSCacheOps& asmJSCacheOps() { return runtime_->asmJSCacheOps; }
@@ -206,9 +257,16 @@ struct JSContext : public JS::RootingContext,
   private:
     inline void setRealm(JS::Realm* realm);
     inline void enterRealm(JS::Realm* realm);
-    inline void enterAtomsZone(const js::AutoLockForExclusiveAccess& lock);
 
-    friend class js::AutoAtomsZone;
+    inline void enterAtomsZone();
+    inline void leaveAtomsZone(JS::Realm* oldRealm);
+    enum IsAtomsZone {
+        AtomsZone,
+        NotAtomsZone
+    };
+    inline void setZone(js::Zone* zone, IsAtomsZone isAtomsZone);
+
+    friend class js::AutoAllocInAtomsZone;
     friend class js::AutoRealm;
 
   public:
@@ -217,9 +275,9 @@ struct JSContext : public JS::RootingContext,
     inline void enterRealmOf(js::ObjectGroup* target);
     inline void enterNullRealm();
 
+    inline void setRealmForJitExceptionHandler(JS::Realm* realm);
+
     inline void leaveRealm(JS::Realm* oldRealm);
-    inline void leaveAtomsZone(JS::Realm* oldRealm,
-                               const js::AutoLockForExclusiveAccess& lock);
 
     void setHelperThread(js::HelperThread* helperThread);
     js::HelperThread* helperThread() const { return helperThread_; }
@@ -265,16 +323,19 @@ struct JSContext : public JS::RootingContext,
     // AutoRealm from which it's called.
     inline js::Handle<js::GlobalObject*> global() const;
 
-    // Methods to access runtime data that must be protected by locks.
-    js::AtomSet& atoms(const js::AutoAccessAtomsZone& access) {
-        return runtime_->atoms(access);
+    js::AtomsTable& atoms() {
+        return runtime_->atoms();
     }
+
     const JS::Zone* atomsZone(const js::AutoAccessAtomsZone& access) {
         return runtime_->atomsZone(access);
     }
-    js::SymbolRegistry& symbolRegistry(const js::AutoAccessAtomsZone& access) {
-        return runtime_->symbolRegistry(access);
+
+    js::SymbolRegistry& symbolRegistry() {
+        return runtime_->symbolRegistry();
     }
+
+    // Methods to access runtime data that must be protected by locks.
     js::ScriptDataTable& scriptDataTable(js::AutoLockScriptData& lock) {
         return runtime_->scriptDataTable(lock);
     }
@@ -565,7 +626,9 @@ struct JSContext : public JS::RootingContext,
 
     /* Whether sampling should be enabled or not. */
   private:
-    mozilla::Atomic<bool, mozilla::SequentiallyConsistent> suppressProfilerSampling;
+    mozilla::Atomic<bool,
+                    mozilla::SequentiallyConsistent,
+                    mozilla::recordreplay::Behavior::DontPreserve> suppressProfilerSampling;
 
   public:
     bool isProfilerSamplingEnabled() const {
@@ -593,7 +656,7 @@ struct JSContext : public JS::RootingContext,
     js::ThreadData<uint32_t> debuggerMutations;
 
     // Cache for jit::GetPcScript().
-    js::ThreadData<js::jit::PcScriptCache*> ionPcScriptCache;
+    js::ThreadData<js::UniquePtr<js::jit::PcScriptCache>> ionPcScriptCache;
 
   private:
     /* Exception state -- the exception member is a GC root by definition. */
@@ -737,7 +800,7 @@ struct JSContext : public JS::RootingContext,
     bool isThrowingDebuggeeWouldRun();
     bool isClosingGenerator();
 
-    void setPendingException(const js::Value& v);
+    void setPendingException(JS::HandleValue v);
 
     void clearPendingException() {
         throwing = false;
@@ -782,7 +845,8 @@ struct JSContext : public JS::RootingContext,
     js::ThreadData<bool> interruptCallbackDisabled;
 
     // Bitfield storing InterruptReason values.
-    mozilla::Atomic<uint32_t, mozilla::Relaxed> interruptBits_;
+    mozilla::Atomic<uint32_t, mozilla::Relaxed,
+                    mozilla::recordreplay::Behavior::DontPreserve> interruptBits_;
 
     // Any thread can call requestInterrupt() to request that this thread
     // stop running. To stop this thread, requestInterrupt sets two fields:
@@ -863,7 +927,8 @@ struct JSContext : public JS::RootingContext,
         ionReturnOverride_ = v;
     }
 
-    mozilla::Atomic<uintptr_t, mozilla::Relaxed> jitStackLimit;
+    mozilla::Atomic<uintptr_t, mozilla::Relaxed,
+                    mozilla::recordreplay::Behavior::DontPreserve> jitStackLimit;
 
     // Like jitStackLimit, but not reset to trigger interrupts.
     js::ThreadData<uintptr_t> jitStackLimitNoInterrupt;
@@ -879,6 +944,7 @@ struct JSContext : public JS::RootingContext,
     js::ThreadData<JS::PersistentRooted<js::JobQueue>*> jobQueue;
     js::ThreadData<bool> drainingJobQueue;
     js::ThreadData<bool> stopDrainingJobQueue;
+    js::ThreadData<bool> canSkipEnqueuingJobs;
 
     js::ThreadData<JSPromiseRejectionTrackerCallback> promiseRejectionTrackerCallback;
     js::ThreadData<void*> promiseRejectionTrackerCallbackData;
@@ -888,6 +954,26 @@ struct JSContext : public JS::RootingContext,
                            js::HandleObject incumbentGlobal);
     void addUnhandledRejectedPromise(JSContext* cx, js::HandleObject promise);
     void removeUnhandledRejectedPromise(JSContext* cx, js::HandleObject promise);
+
+  private:
+    // Base case for the recursive function below.
+    inline void checkImpl(int argIndex) {}
+
+    template <class Head, class... Tail>
+    inline void checkImpl(int argIndex, const Head& head, const Tail&... tail);
+
+    bool contextChecksEnabled() const {
+        // Don't perform these checks when called from a finalizer. The checking
+        // depends on other objects not having been swept yet.
+        return !RuntimeHeapIsCollecting(runtime()->heapState());
+    }
+
+  public:
+    // Assert the arguments are in this context's realm (for scripts),
+    // compartment (for objects) or zone (for strings, symbols).
+    template <class... Args> inline void check(const Args&... args);
+    template <class... Args> inline void releaseCheck(const Args&... args);
+    template <class... Args> MOZ_ALWAYS_INLINE void debugOnlyCheck(const Args&... args);
 }; /* struct JSContext */
 
 inline JS::Result<>
@@ -1103,46 +1189,6 @@ class AutoAssertNoException
     }
 };
 
-class MOZ_RAII AutoLockForExclusiveAccess
-{
-    JSRuntime* runtime;
-
-    void init(JSRuntime* rt) {
-        MOZ_ASSERT(CurrentThreadCanAccessRuntime(rt) || CurrentThreadIsParseThread());
-        runtime = rt;
-        if (runtime->hasHelperThreadZones()) {
-            runtime->exclusiveAccessLock.lock();
-        } else {
-            MOZ_ASSERT(!runtime->activeThreadHasExclusiveAccess);
-#ifdef DEBUG
-            runtime->activeThreadHasExclusiveAccess = true;
-#endif
-        }
-    }
-
-  public:
-    explicit AutoLockForExclusiveAccess(JSContext* cx MOZ_GUARD_OBJECT_NOTIFIER_PARAM) {
-        MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-        init(cx->runtime());
-    }
-    explicit AutoLockForExclusiveAccess(JSRuntime* rt MOZ_GUARD_OBJECT_NOTIFIER_PARAM) {
-        MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-        init(rt);
-    }
-    ~AutoLockForExclusiveAccess() {
-        if (runtime->hasHelperThreadZones()) {
-            runtime->exclusiveAccessLock.unlock();
-        } else {
-            MOZ_ASSERT(runtime->activeThreadHasExclusiveAccess);
-#ifdef DEBUG
-            runtime->activeThreadHasExclusiveAccess = false;
-#endif
-        }
-    }
-
-    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
-};
-
 class MOZ_RAII AutoLockScriptData
 {
     JSRuntime* runtime;
@@ -1179,15 +1225,15 @@ class MOZ_RAII AutoLockScriptData
 // accessed by the main thread and by off-thread parsing. There are two
 // situations in which it is safe:
 //
-//  - the current thread holds the exclusive access lock (off-thread parsing may
-//    be running and this must also take the lock for access)
+//  - the current thread holds all atoms table locks (off-thread parsing may be
+//    running and must also take one of these locks for access)
 //
 //  - the GC is running and is collecting the atoms zone (this cannot be started
 //    while off-thread parsing is happening)
 class MOZ_STACK_CLASS AutoAccessAtomsZone
 {
   public:
-    MOZ_IMPLICIT AutoAccessAtomsZone(const AutoLockForExclusiveAccess& lock) {}
+    MOZ_IMPLICIT AutoAccessAtomsZone(const AutoLockAllAtoms& lock) {}
     MOZ_IMPLICIT AutoAccessAtomsZone(const gc::AutoCheckCanAccessAtomsDuringGC& canAccess) {}
 };
 
@@ -1274,24 +1320,24 @@ struct MOZ_RAII AutoSetThreadIsPerformingGC
 #endif
 };
 
-// In debug builds, set/unset the GC sweeping flag for the current thread.
+// In debug builds, set/reset the GC sweeping flag for the current thread.
 struct MOZ_RAII AutoSetThreadIsSweeping
 {
 #ifdef DEBUG
     AutoSetThreadIsSweeping()
-      : cx(TlsContext.get())
+      : cx(TlsContext.get()),
+        prevState(cx->gcSweeping)
     {
-        MOZ_ASSERT(!cx->gcSweeping);
         cx->gcSweeping = true;
     }
 
     ~AutoSetThreadIsSweeping() {
-        MOZ_ASSERT(cx->gcSweeping);
-        cx->gcSweeping = false;
+        cx->gcSweeping = prevState;
     }
 
   private:
     JSContext* cx;
+    bool prevState;
 #else
     AutoSetThreadIsSweeping() {}
 #endif

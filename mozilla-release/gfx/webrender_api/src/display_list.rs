@@ -16,7 +16,7 @@ use time::precise_time_ns;
 use {AlphaType, BorderDetails, BorderDisplayItem, BorderRadius, BorderWidths, BoxShadowClipMode};
 use {BoxShadowDisplayItem, ClipAndScrollInfo, ClipChainId, ClipChainItem, ClipDisplayItem, ClipId};
 use {ColorF, ComplexClipRegion, DisplayItem, ExtendMode, ExternalScrollId, FilterOp};
-use {FontInstanceKey, GlyphInstance, GlyphOptions, GlyphRasterSpace, Gradient};
+use {FontInstanceKey, GlyphInstance, GlyphOptions, GlyphRasterSpace, Gradient, GradientBuilder};
 use {GradientDisplayItem, GradientStop, IframeDisplayItem, ImageDisplayItem, ImageKey, ImageMask};
 use {ImageRendering, LayoutPoint, LayoutPrimitiveInfo, LayoutRect, LayoutSize, LayoutTransform};
 use {LayoutVector2D, LineDisplayItem, LineOrientation, LineStyle, MixBlendMode, PipelineId};
@@ -27,11 +27,16 @@ use {StickyFrameDisplayItem, StickyOffsetBounds, TextDisplayItem, TransformStyle
 use {YuvData, YuvImageDisplayItem};
 
 // We don't want to push a long text-run. If a text-run is too long, split it into several parts.
-// This needs to be set to (renderer::MAX_VERTEX_TEXTURE_WIDTH - VECS_PER_PRIM_HEADER - VECS_PER_TEXT_RUN) * 2
-pub const MAX_TEXT_RUN_LENGTH: usize = 2038;
+// This needs to be set to (renderer::MAX_VERTEX_TEXTURE_WIDTH - VECS_PER_TEXT_RUN) * 2
+pub const MAX_TEXT_RUN_LENGTH: usize = 2040;
 
 // We start at 2, because the root reference is always 0 and the root scroll node is always 1.
-const FIRST_CLIP_ID: usize = 2;
+// TODO(mrobinson): It would be a good idea to eliminate the root scroll frame which is only
+// used by Servo.
+const FIRST_SPATIAL_NODE_INDEX: usize = 2;
+
+// There are no default clips, so we start at the 0 index for clips.
+const FIRST_CLIP_NODE_INDEX: usize = 0;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -79,8 +84,10 @@ pub struct BuiltDisplayListDescriptor {
     builder_finish_time: u64,
     /// The third IPC time stamp: just before sending
     send_start_time: u64,
-    /// The amount of clips ids assigned while building this display list.
-    total_clip_ids: usize,
+    /// The amount of clipping nodes created while building this display list.
+    total_clip_nodes: usize,
+    /// The amount of spatial nodes created while building this display list.
+    total_spatial_nodes: usize,
 }
 
 pub struct BuiltDisplayListIter<'a> {
@@ -116,7 +123,7 @@ pub struct AuxIter<'a, T> {
 impl BuiltDisplayListDescriptor {}
 
 impl BuiltDisplayList {
-    pub fn from_data(data: Vec<u8>, descriptor: BuiltDisplayListDescriptor) -> BuiltDisplayList {
+    pub fn from_data(data: Vec<u8>, descriptor: BuiltDisplayListDescriptor) -> Self {
         BuiltDisplayList { data, descriptor }
     }
 
@@ -146,8 +153,12 @@ impl BuiltDisplayList {
         )
     }
 
-    pub fn total_clip_ids(&self) -> usize {
-        self.descriptor.total_clip_ids
+    pub fn total_clip_nodes(&self) -> usize {
+        self.descriptor.total_clip_nodes
+    }
+
+    pub fn total_spatial_nodes(&self) -> usize {
+        self.descriptor.total_spatial_nodes
     }
 
     pub fn iter(&self) -> BuiltDisplayListIter {
@@ -517,12 +528,13 @@ impl<'de> Deserialize<'de> for BuiltDisplayList {
 
         let mut data = Vec::new();
         let mut temp = Vec::new();
-        let mut total_clip_ids = FIRST_CLIP_ID;
+        let mut total_clip_nodes = FIRST_CLIP_NODE_INDEX;
+        let mut total_spatial_nodes = FIRST_SPATIAL_NODE_INDEX;
         for complete in list {
             let item = DisplayItem {
                 item: match complete.item {
                     Clip(specific_item, complex_clips) => {
-                        total_clip_ids += 1;
+                        total_clip_nodes += 1;
                         DisplayListBuilder::push_iter_impl(&mut temp, complex_clips);
                         SpecificDisplayItem::Clip(specific_item)
                     },
@@ -531,12 +543,13 @@ impl<'de> Deserialize<'de> for BuiltDisplayList {
                         SpecificDisplayItem::ClipChain(specific_item)
                     }
                     ScrollFrame(specific_item, complex_clips) => {
-                        total_clip_ids += 2;
+                        total_spatial_nodes += 1;
+                        total_clip_nodes += 1;
                         DisplayListBuilder::push_iter_impl(&mut temp, complex_clips);
                         SpecificDisplayItem::ScrollFrame(specific_item)
                     },
                     StickyFrame(specific_item) => {
-                        total_clip_ids += 1;
+                        total_spatial_nodes += 1;
                         SpecificDisplayItem::StickyFrame(specific_item)
                     }
                     Rectangle(specific_item) => SpecificDisplayItem::Rectangle(specific_item),
@@ -554,7 +567,7 @@ impl<'de> Deserialize<'de> for BuiltDisplayList {
                     RadialGradient(specific_item) =>
                         SpecificDisplayItem::RadialGradient(specific_item),
                     Iframe(specific_item) => {
-                        total_clip_ids += 1;
+                        total_clip_nodes += 1;
                         SpecificDisplayItem::Iframe(specific_item)
                     }
                     PushStackingContext(specific_item, filters) => {
@@ -563,7 +576,7 @@ impl<'de> Deserialize<'de> for BuiltDisplayList {
                     },
                     PopStackingContext => SpecificDisplayItem::PopStackingContext,
                     PushReferenceFrame(specific_item) => {
-                        total_clip_ids += 1;
+                        total_spatial_nodes += 1;
                         SpecificDisplayItem::PushReferenceFrame(specific_item)
                     }
                     PopReferenceFrame => SpecificDisplayItem::PopReferenceFrame,
@@ -588,7 +601,8 @@ impl<'de> Deserialize<'de> for BuiltDisplayList {
                 builder_start_time: 0,
                 builder_finish_time: 1,
                 send_start_time: 0,
-                total_clip_ids,
+                total_clip_nodes,
+                total_spatial_nodes,
             },
         })
     }
@@ -813,7 +827,8 @@ impl<'a, 'b> Read for UnsafeReader<'a, 'b> {
 pub struct SaveState {
     dl_len: usize,
     clip_stack_len: usize,
-    next_clip_id: usize,
+    next_clip_index: usize,
+    next_spatial_index: usize,
     next_clip_chain_id: u64,
 }
 
@@ -822,7 +837,8 @@ pub struct DisplayListBuilder {
     pub data: Vec<u8>,
     pub pipeline_id: PipelineId,
     clip_stack: Vec<ClipAndScrollInfo>,
-    next_clip_id: usize,
+    next_clip_index: usize,
+    next_spatial_index: usize,
     next_clip_chain_id: u64,
     builder_start_time: u64,
 
@@ -850,7 +866,8 @@ impl DisplayListBuilder {
             clip_stack: vec![
                 ClipAndScrollInfo::simple(ClipId::root_scroll_node(pipeline_id)),
             ],
-            next_clip_id: FIRST_CLIP_ID,
+            next_clip_index: FIRST_CLIP_NODE_INDEX,
+            next_spatial_index: FIRST_SPATIAL_NODE_INDEX,
             next_clip_chain_id: 0,
             builder_start_time: start_time,
             content_size,
@@ -876,7 +893,8 @@ impl DisplayListBuilder {
         self.save_state = Some(SaveState {
             clip_stack_len: self.clip_stack.len(),
             dl_len: self.data.len(),
-            next_clip_id: self.next_clip_id,
+            next_clip_index: self.next_clip_index,
+            next_spatial_index: self.next_spatial_index,
             next_clip_chain_id: self.next_clip_chain_id,
         });
     }
@@ -887,7 +905,8 @@ impl DisplayListBuilder {
 
         self.clip_stack.truncate(state.clip_stack_len);
         self.data.truncate(state.dl_len);
-        self.next_clip_id = state.next_clip_id;
+        self.next_clip_index = state.next_clip_index;
+        self.next_spatial_index = state.next_spatial_index;
         self.next_clip_chain_id = state.next_clip_chain_id;
     }
 
@@ -896,21 +915,44 @@ impl DisplayListBuilder {
         self.save_state.take().expect("No save to clear in DisplayListBuilder");
     }
 
-    pub fn print_display_list(&mut self) {
+    /// Print the display items in the list to stderr. If the start parameter
+    /// is specified, only display items starting at that index (inclusive) will
+    /// be printed. If the end parameter is specified, only display items before
+    /// that index (exclusive) will be printed. Calling this function with
+    /// end <= start is allowed but is just a waste of CPU cycles.
+    /// This function returns the total number of items in the display list, which
+    /// allows the caller to subsequently invoke this function to only dump the
+    /// newly-added items.
+    pub fn print_display_list(
+        &mut self,
+        indent: usize,
+        start: Option<usize>,
+        end: Option<usize>,
+    ) -> usize {
         let mut temp = BuiltDisplayList::default();
         mem::swap(&mut temp.data, &mut self.data);
 
+        let mut index: usize = 0;
         {
             let mut iter = BuiltDisplayListIter::new(&temp);
             while let Some(item) = iter.next_raw() {
-                println!("{:?}", item.display_item());
+                if index >= start.unwrap_or(0) && end.map_or(true, |e| index < e) {
+                    eprintln!("{}{:?}", "  ".repeat(indent), item.display_item());
+                }
+                index += 1;
             }
         }
 
         self.data = temp.data;
+        index
     }
 
-    fn push_item(&mut self, item: SpecificDisplayItem, info: &LayoutPrimitiveInfo) {
+    /// Add an item to the display list.
+    ///
+    /// NOTE: It is usually preferable to use the specialized methods to push
+    /// display items. Pushing unexpected or invalid items here may
+    /// result in WebRender panicking or behaving in unexpected ways.
+    pub fn push_item(&mut self, item: SpecificDisplayItem, info: &LayoutPrimitiveInfo) {
         serialize_fast(
             &mut self.data,
             &DisplayItem {
@@ -981,7 +1023,11 @@ impl DisplayListBuilder {
         debug_assert_eq!(len, count);
     }
 
-    fn push_iter<I>(&mut self, iter: I)
+    /// Push items from an iterator to the display list.
+    ///
+    /// NOTE: Pushing unexpected or invalid items to the display list
+    /// may result in panic and confusion.
+    pub fn push_iter<I>(&mut self, iter: I)
     where
         I: IntoIterator,
         I::IntoIter: ExactSizeIterator + Clone,
@@ -1025,6 +1071,7 @@ impl DisplayListBuilder {
         image_rendering: ImageRendering,
         alpha_type: AlphaType,
         key: ImageKey,
+        color: ColorF,
     ) {
         let item = SpecificDisplayItem::Image(ImageDisplayItem {
             image_key: key,
@@ -1032,6 +1079,7 @@ impl DisplayListBuilder {
             tile_spacing,
             image_rendering,
             alpha_type,
+            color,
         });
 
         self.push_item(item, info);
@@ -1073,129 +1121,34 @@ impl DisplayListBuilder {
         }
     }
 
-    // Gradients can be defined with stops outside the range of [0, 1]
-    // when this happens the gradient needs to be normalized by adjusting
-    // the gradient stops and gradient line into an equivalent gradient
-    // with stops in the range [0, 1]. this is done by moving the beginning
-    // of the gradient line to where stop[0] and the end of the gradient line
-    // to stop[n-1]. this function adjusts the stops in place, and returns
-    // the amount to adjust the gradient line start and stop
-    fn normalize_stops(stops: &mut Vec<GradientStop>, extend_mode: ExtendMode) -> (f32, f32) {
-        assert!(stops.len() >= 2);
-
-        let first = *stops.first().unwrap();
-        let last = *stops.last().unwrap();
-
-        assert!(first.offset <= last.offset);
-
-        let stops_delta = last.offset - first.offset;
-
-        if stops_delta > 0.000001 {
-            for stop in stops {
-                stop.offset = (stop.offset - first.offset) / stops_delta;
-            }
-
-            (first.offset, last.offset)
-        } else {
-            // We have a degenerate gradient and can't accurately transform the stops
-            // what happens here depends on the repeat behavior, but in any case
-            // we reconstruct the gradient stops to something simpler and equivalent
-            stops.clear();
-
-            match extend_mode {
-                ExtendMode::Clamp => {
-                    // This gradient is two colors split at the offset of the stops,
-                    // so create a gradient with two colors split at 0.5 and adjust
-                    // the gradient line so 0.5 is at the offset of the stops
-                    stops.push(GradientStop { color: first.color, offset: 0.0, });
-                    stops.push(GradientStop { color: first.color, offset: 0.5, });
-                    stops.push(GradientStop { color: last.color, offset: 0.5, });
-                    stops.push(GradientStop { color: last.color, offset: 1.0, });
-
-                    let offset = last.offset;
-
-                    (offset - 0.5, offset + 0.5)
-                }
-                ExtendMode::Repeat => {
-                    // A repeating gradient with stops that are all in the same
-                    // position should just display the last color. I believe the
-                    // spec says that it should be the average color of the gradient,
-                    // but this matches what Gecko and Blink does
-                    stops.push(GradientStop { color: last.color, offset: 0.0, });
-                    stops.push(GradientStop { color: last.color, offset: 1.0, });
-
-                    (0.0, 1.0)
-                }
-            }
-        }
-    }
-
-    // NOTE: gradients must be pushed in the order they're created
-    // because create_gradient stores the stops in anticipation
+    /// NOTE: gradients must be pushed in the order they're created
+    /// because create_gradient stores the stops in anticipation.
     pub fn create_gradient(
         &mut self,
         start_point: LayoutPoint,
         end_point: LayoutPoint,
-        mut stops: Vec<GradientStop>,
+        stops: Vec<GradientStop>,
         extend_mode: ExtendMode,
     ) -> Gradient {
-        let (start_offset, end_offset) =
-            DisplayListBuilder::normalize_stops(&mut stops, extend_mode);
-
-        let start_to_end = end_point - start_point;
-
-        self.push_stops(&stops);
-
-        Gradient {
-            start_point: start_point + start_to_end * start_offset,
-            end_point: start_point + start_to_end * end_offset,
-            extend_mode,
-        }
+        let mut builder = GradientBuilder::with_stops(stops);
+        let gradient = builder.gradient(start_point, end_point, extend_mode);
+        self.push_stops(builder.stops());
+        gradient
     }
 
-    // NOTE: gradients must be pushed in the order they're created
-    // because create_gradient stores the stops in anticipation
+    /// NOTE: gradients must be pushed in the order they're created
+    /// because create_gradient stores the stops in anticipation.
     pub fn create_radial_gradient(
         &mut self,
         center: LayoutPoint,
         radius: LayoutSize,
-        mut stops: Vec<GradientStop>,
+        stops: Vec<GradientStop>,
         extend_mode: ExtendMode,
     ) -> RadialGradient {
-        if radius.width <= 0.0 || radius.height <= 0.0 {
-            // The shader cannot handle a non positive radius. So
-            // reuse the stops vector and construct an equivalent
-            // gradient.
-            let last_color = stops.last().unwrap().color;
-
-            let stops = [
-                GradientStop { offset: 0.0, color: last_color, },
-                GradientStop { offset: 1.0, color: last_color, },
-            ];
-
-            self.push_stops(&stops);
-
-            return RadialGradient {
-                center,
-                radius: LayoutSize::new(1.0, 1.0),
-                start_offset: 0.0,
-                end_offset: 1.0,
-                extend_mode,
-            };
-        }
-
-        let (start_offset, end_offset) =
-            DisplayListBuilder::normalize_stops(&mut stops, extend_mode);
-
-        self.push_stops(&stops);
-
-        RadialGradient {
-            center,
-            radius,
-            start_offset,
-            end_offset,
-            extend_mode,
-        }
+        let mut builder = GradientBuilder::with_stops(stops);
+        let gradient = builder.radial_gradient(center, radius, extend_mode);
+        self.push_stops(builder.stops());
+        gradient
     }
 
     pub fn push_border(
@@ -1288,7 +1241,7 @@ impl DisplayListBuilder {
         transform: Option<PropertyBinding<LayoutTransform>>,
         perspective: Option<LayoutTransform>,
     ) -> ClipId {
-        let id = self.generate_clip_id();
+        let id = self.generate_spatial_index();
         let item = SpecificDisplayItem::PushReferenceFrame(PushReferenceFrameDisplayListItem {
             reference_frame: ReferenceFrame {
                 transform,
@@ -1338,9 +1291,14 @@ impl DisplayListBuilder {
         self.push_iter(stops);
     }
 
-    fn generate_clip_id(&mut self) -> ClipId {
-        self.next_clip_id += 1;
-        ClipId::Clip(self.next_clip_id - 1, self.pipeline_id)
+    fn generate_clip_index(&mut self) -> ClipId {
+        self.next_clip_index += 1;
+        ClipId::Clip(self.next_clip_index - 1, self.pipeline_id)
+    }
+
+    fn generate_spatial_index(&mut self) -> ClipId {
+        self.next_spatial_index += 1;
+        ClipId::Spatial(self.next_spatial_index - 1, self.pipeline_id)
     }
 
     fn generate_clip_chain_id(&mut self) -> ClipChainId {
@@ -1386,8 +1344,8 @@ impl DisplayListBuilder {
         I: IntoIterator<Item = ComplexClipRegion>,
         I::IntoIter: ExactSizeIterator + Clone,
     {
-        let clip_id = self.generate_clip_id();
-        let scroll_frame_id = self.generate_clip_id();
+        let clip_id = self.generate_clip_index();
+        let scroll_frame_id = self.generate_spatial_index();
         let item = SpecificDisplayItem::ScrollFrame(ScrollFrameDisplayItem {
             clip_id,
             scroll_frame_id,
@@ -1451,7 +1409,7 @@ impl DisplayListBuilder {
         I: IntoIterator<Item = ComplexClipRegion>,
         I::IntoIter: ExactSizeIterator + Clone,
     {
-        let id = self.generate_clip_id();
+        let id = self.generate_clip_index();
         let item = SpecificDisplayItem::Clip(ClipDisplayItem {
             id,
             image_mask,
@@ -1474,7 +1432,7 @@ impl DisplayListBuilder {
         previously_applied_offset: LayoutVector2D,
 
     ) -> ClipId {
-        let id = self.generate_clip_id();
+        let id = self.generate_spatial_index();
         let item = SpecificDisplayItem::StickyFrame(StickyFrameDisplayItem {
             id,
             margins,
@@ -1512,7 +1470,7 @@ impl DisplayListBuilder {
         ignore_missing_pipeline: bool
     ) {
         let item = SpecificDisplayItem::Iframe(IframeDisplayItem {
-            clip_id: self.generate_clip_id(),
+            clip_id: self.generate_clip_index(),
             pipeline_id,
             ignore_missing_pipeline,
         });
@@ -1541,7 +1499,8 @@ impl DisplayListBuilder {
                     builder_start_time: self.builder_start_time,
                     builder_finish_time: end_time,
                     send_start_time: 0,
-                    total_clip_ids: self.next_clip_id,
+                    total_clip_nodes: self.next_clip_index,
+                    total_spatial_nodes: self.next_spatial_index,
                 },
                 data: self.data,
             },

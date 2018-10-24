@@ -26,15 +26,12 @@
 #include "nsIClassInfoImpl.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/LoadInfo.h"
+#include "mozilla/NullPrincipal.h"
 #include "mozilla/Preferences.h"
 #include "nsILoadInfo.h"
 #include "nsIContentPolicy.h"
 #include "nsContentUtils.h"
-#include "NullPrincipal.h"
 #include "imgICache.h"
-
-#define MAX_FAILED_FAVICONS 256
-#define FAVICON_CACHE_REDUCE_COUNT 64
 
 #define UNASSOCIATED_FAVICONS_LENGTH 32
 
@@ -132,9 +129,7 @@ NS_IMPL_ISUPPORTS_CI(
 )
 
 nsFaviconService::nsFaviconService()
-  : mFailedFaviconSerial(0)
-  , mFailedFavicons(MAX_FAILED_FAVICONS / 2)
-  , mUnassociatedIcons(UNASSOCIATED_FAVICONS_LENGTH)
+  : mUnassociatedIcons(UNASSOCIATED_FAVICONS_LENGTH)
   , mDefaultIconURIPreferredSize(UINT16_MAX)
 {
   NS_ASSERTION(!gFaviconService,
@@ -327,19 +322,6 @@ nsFaviconService::SetAndFetchFaviconForPage(nsIURI* aPageURI,
   NS_ENSURE_ARG(aFaviconURI);
   NS_ENSURE_ARG_POINTER(_canceler);
 
-  // If a favicon is in the failed cache, only load it during a forced reload.
-  bool previouslyFailed;
-  nsresult rv = IsFailedFavicon(aFaviconURI, &previouslyFailed);
-  NS_ENSURE_SUCCESS(rv, rv);
-  if (previouslyFailed) {
-    if (aForceReload) {
-      RemoveFailedFavicon(aFaviconURI);
-    }
-    else {
-      return NS_OK;
-    }
-  }
-
   nsCOMPtr<nsIPrincipal> loadingPrincipal = aLoadingPrincipal;
   MOZ_ASSERT(loadingPrincipal, "please provide aLoadingPrincipal for this favicon");
   if (!loadingPrincipal) {
@@ -362,7 +344,7 @@ nsFaviconService::SetAndFetchFaviconForPage(nsIURI* aPageURI,
 
   // Build page data.
   PageData page;
-  rv = aPageURI->GetSpec(page.spec);
+  nsresult rv = aPageURI->GetSpec(page.spec);
   NS_ENSURE_SUCCESS(rv, rv);
   // URIs can arguably lack a host.
   Unused << aPageURI->GetHost(page.host);
@@ -583,8 +565,6 @@ nsFaviconService::ReplaceFaviconDataFromDataURL(nsIURI* aFaviconURI,
   // Read all the decoded data.
   uint8_t* buffer = static_cast<uint8_t*>
                                (moz_xmalloc(sizeof(uint8_t) * available));
-  if (!buffer)
-    return NS_ERROR_OUT_OF_MEMORY;
   uint32_t numRead;
   rv = stream->Read(TO_CHARBUFFER(buffer), available, &numRead);
   if (NS_FAILED(rv) || numRead != available) {
@@ -710,62 +690,6 @@ nsFaviconService::GetFaviconLinkForIcon(nsIURI* aFaviconURI,
     NS_ENSURE_SUCCESS(rv, rv);
   }
   return GetFaviconLinkForIconString(spec, aOutputURI);
-}
-
-
-NS_IMETHODIMP
-nsFaviconService::AddFailedFavicon(nsIURI* aFaviconURI)
-{
-  NS_ENSURE_ARG(aFaviconURI);
-
-  nsAutoCString spec;
-  nsresult rv = aFaviconURI->GetSpec(spec);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  mFailedFavicons.Put(spec, mFailedFaviconSerial);
-  mFailedFaviconSerial ++;
-
-  if (mFailedFavicons.Count() > MAX_FAILED_FAVICONS) {
-    // need to expire some entries, delete the FAVICON_CACHE_REDUCE_COUNT number
-    // of items that are the oldest
-    uint32_t threshold = mFailedFaviconSerial -
-                         MAX_FAILED_FAVICONS + FAVICON_CACHE_REDUCE_COUNT;
-    for (auto iter = mFailedFavicons.Iter(); !iter.Done(); iter.Next()) {
-      if (iter.Data() < threshold) {
-        iter.Remove();
-      }
-    }
-  }
-  return NS_OK;
-}
-
-
-NS_IMETHODIMP
-nsFaviconService::RemoveFailedFavicon(nsIURI* aFaviconURI)
-{
-  NS_ENSURE_ARG(aFaviconURI);
-
-  nsAutoCString spec;
-  nsresult rv = aFaviconURI->GetSpec(spec);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  // we silently do nothing and succeed if the icon is not in the cache
-  mFailedFavicons.Remove(spec);
-  return NS_OK;
-}
-
-
-NS_IMETHODIMP
-nsFaviconService::IsFailedFavicon(nsIURI* aFaviconURI, bool* _retval)
-{
-  NS_ENSURE_ARG(aFaviconURI);
-  nsAutoCString spec;
-  nsresult rv = aFaviconURI->GetSpec(spec);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  uint32_t serial;
-  *_retval = mFailedFavicons.Get(spec, &serial);
-  return NS_OK;
 }
 
 

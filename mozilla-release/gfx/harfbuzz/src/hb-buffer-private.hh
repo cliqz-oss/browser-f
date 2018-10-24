@@ -31,7 +31,6 @@
 #define HB_BUFFER_PRIVATE_HH
 
 #include "hb-private.hh"
-#include "hb-object-private.hh"
 #include "hb-unicode-private.hh"
 
 
@@ -84,7 +83,8 @@ HB_MARK_AS_FLAG_T (hb_buffer_scratch_flags_t);
  * hb_buffer_t
  */
 
-struct hb_buffer_t {
+struct hb_buffer_t
+{
   hb_object_header_t header;
   ASSERT_POD ();
 
@@ -101,7 +101,7 @@ struct hb_buffer_t {
   hb_buffer_content_type_t content_type;
   hb_segment_properties_t props; /* Script, language, direction */
 
-  bool in_error; /* Allocation failed */
+  bool successful; /* Allocations successful */
   bool have_output; /* Whether we have an output buffer going on */
   bool have_positions; /* Whether we have positions */
 
@@ -353,6 +353,7 @@ struct hb_buffer_t {
       info[i].mask &= ~HB_GLYPH_FLAG_UNSAFE_TO_BREAK;
   }
 };
+DECLARE_NULL_INSTANCE (hb_buffer_t);
 
 
 /* Loop over clusters. Duplicated in foreach_syllable(). */

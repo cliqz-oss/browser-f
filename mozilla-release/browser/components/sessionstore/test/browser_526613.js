@@ -10,9 +10,8 @@ function test() {
 
   function browserWindowsCount(expected) {
     let count = 0;
-    let e = Services.wm.getEnumerator("navigator:browser");
-    while (e.hasMoreElements()) {
-      if (!e.getNext().closed)
+    for (let win of Services.wm.getEnumerator("navigator:browser")) {
+      if (!win.closed)
         ++count;
     }
     is(count, expected,
@@ -35,7 +34,7 @@ function test() {
     ],
     // make sure the first window is focused, otherwise when restoring the
     // old state, the first window is closed and the test harness gets unloaded
-    selectedWindow: 1
+    selectedWindow: 1,
   };
 
   let pass = 1;

@@ -34,7 +34,7 @@ add_task(async function test_eraseEverything() {
                                          url: "http://mozilla.org/" });
   checkBookmarkObject(unfiledBookmarkInFolder);
   PlacesUtils.annotations.setItemAnnotation((await PlacesUtils.promiseItemId(unfiledBookmarkInFolder.guid)),
-                                            "testanno1", "testvalue1", 0, 0);
+                                            "testanno1", "testvalue1", 0, PlacesUtils.annotations.EXPIRE_NEVER);
 
   let menuFolder = await PlacesUtils.bookmarks.insert({ parentGuid: PlacesUtils.bookmarks.menuGuid,
                                                         type: PlacesUtils.bookmarks.TYPE_FOLDER });
@@ -49,7 +49,7 @@ add_task(async function test_eraseEverything() {
                                          url: "http://mozilla.org/" });
   checkBookmarkObject(menuBookmarkInFolder);
   PlacesUtils.annotations.setItemAnnotation((await PlacesUtils.promiseItemId(menuBookmarkInFolder.guid)),
-                                            "testanno1", "testvalue1", 0, 0);
+                                            "testanno1", "testvalue1", 0, PlacesUtils.annotations.EXPIRE_NEVER);
 
   let toolbarFolder = await PlacesUtils.bookmarks.insert({ parentGuid: PlacesUtils.bookmarks.toolbarGuid,
                                                            type: PlacesUtils.bookmarks.TYPE_FOLDER });
@@ -64,7 +64,7 @@ add_task(async function test_eraseEverything() {
                                          url: "http://mozilla.org/" });
   checkBookmarkObject(toolbarBookmarkInFolder);
   PlacesUtils.annotations.setItemAnnotation((await PlacesUtils.promiseItemId(toolbarBookmarkInFolder.guid)),
-                                            "testanno1", "testvalue1", 0, 0);
+                                            "testanno1", "testvalue1", 0, PlacesUtils.annotations.EXPIRE_NEVER);
 
   await PlacesTestUtils.promiseAsyncUpdates();
   Assert.ok(frecencyForUrl("http://example.com/") > frecencyForExample);
@@ -103,16 +103,16 @@ add_task(async function test_eraseEverything_reparented() {
   // Create a folder with 1 bookmark in it...
   let folder1 = await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.toolbarGuid,
-    type: PlacesUtils.bookmarks.TYPE_FOLDER
+    type: PlacesUtils.bookmarks.TYPE_FOLDER,
   });
   let bookmark1 = await PlacesUtils.bookmarks.insert({
     parentGuid: folder1.guid,
-    url: "http://example.com/"
+    url: "http://example.com/",
   });
   // ...and a second folder.
   let folder2 = await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.toolbarGuid,
-    type: PlacesUtils.bookmarks.TYPE_FOLDER
+    type: PlacesUtils.bookmarks.TYPE_FOLDER,
   });
 
   // Reparent the bookmark to the 2nd folder.
@@ -141,8 +141,8 @@ add_task(async function test_notifications() {
       children: [{
         title: "test2",
         url: "http://example.com/2",
-      }]
-    }]
+      }],
+    }],
   });
 
   let skipDescendantsObserver = expectNotifications(true);

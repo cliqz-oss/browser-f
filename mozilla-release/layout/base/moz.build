@@ -63,7 +63,6 @@ EXPORTS += [
     'nsRefreshDriver.h',
     'nsStyleChangeList.h',
     'nsStyleSheetService.h',
-    'ScrollbarStyles.h',
     'StackArena.h',
     'TouchManager.h',
     'Units.h',
@@ -73,6 +72,7 @@ EXPORTS += [
 ]
 
 EXPORTS.mozilla += [
+    'AccessibleCaretEventHub.h',
     'ArenaObjectID.h',
     'ArenaRefPtr.h',
     'ArenaRefPtrInlines.h',
@@ -80,6 +80,7 @@ EXPORTS.mozilla += [
     'OverflowChangedTracker.h',
     'PresShell.h',
     'RestyleManager.h',
+    'ScrollStyles.h',
     'ShapeUtils.h',
     'StaticPresData.h',
     'UndisplayedNode.h',
@@ -113,7 +114,7 @@ UNIFIED_SOURCES += [
     'PositionedEventTargeting.cpp',
     'PresShell.cpp',
     'RestyleManager.cpp',
-    'ScrollbarStyles.cpp',
+    'ScrollStyles.cpp',
     'ShapeUtils.cpp',
     'StackArena.cpp',
     'StaticPresData.cpp',

@@ -11,7 +11,11 @@ var _create = require("./create");
 
 var _frontsDevice = require("devtools/shared/fronts/device");
 
-var _devtoolsModules = require("devtools/client/debugger/new/dist/vendors").vendored["devtools-modules"];
+var _devtoolsServices = require("Services");
+
+var _devtoolsServices2 = _interopRequireDefault(_devtoolsServices);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -321,7 +325,7 @@ async function setSkipPausing(shouldSkip) {
   return threadClient.request({
     skip: shouldSkip,
     to: threadClient.actor,
-    type: "skipPausing"
+    type: "skipBreakpoints"
   });
 }
 
@@ -362,7 +366,7 @@ async function checkServerSupportsListWorkers() {
     return false;
   }
 
-  const deviceFront = await (0, _frontsDevice.getDeviceFront)(debuggerClient, root);
+  const deviceFront = await debuggerClient.mainRoot.getFront("device");
   const description = await deviceFront.getDescription();
   const isFennec = description.apptype === "mobile/android";
 
@@ -376,7 +380,7 @@ async function checkServerSupportsListWorkers() {
 
 
   const version = description.platformversion;
-  return _devtoolsModules.Services.vc.compare(version, "61.0") >= 0;
+  return _devtoolsServices2.default.vc.compare(version, "61.0") >= 0;
 }
 
 async function fetchWorkers() {

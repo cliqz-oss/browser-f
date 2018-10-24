@@ -13,12 +13,9 @@ const DISABLE_AUTOHIDE_PREF = "ui.popup.disable_autohide";
 const HOST_HISTOGRAM = "DEVTOOLS_TOOLBOX_HOST";
 const CURRENT_THEME_SCALAR = "devtools.current_theme";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
-const REGEX_PANEL =
-  /^(?:webconsole|inspector|jsdebugger|styleeditor|netmonitor|storage)$/;
 
 var {Ci, Cc} = require("chrome");
 var promise = require("promise");
-var defer = require("devtools/shared/defer");
 const { debounce } = require("devtools/shared/debounce");
 var Services = require("Services");
 var ChromeUtils = require("ChromeUtils");
@@ -44,14 +41,8 @@ loader.lazyRequireGetter(this, "getHighlighterUtils",
   "devtools/client/framework/toolbox-highlighter-utils", true);
 loader.lazyRequireGetter(this, "Selection",
   "devtools/client/framework/selection", true);
-loader.lazyRequireGetter(this, "InspectorFront",
-  "devtools/shared/fronts/inspector", true);
 loader.lazyRequireGetter(this, "flags",
   "devtools/shared/flags");
-loader.lazyRequireGetter(this, "createPerformanceFront",
-  "devtools/shared/fronts/performance", true);
-loader.lazyRequireGetter(this, "getPreferenceFront",
-  "devtools/shared/fronts/preference", true);
 loader.lazyRequireGetter(this, "KeyShortcuts",
   "devtools/client/shared/key-shortcuts");
 loader.lazyRequireGetter(this, "ZoomKeys",
@@ -66,12 +57,8 @@ loader.lazyRequireGetter(this, "HUDService",
   "devtools/client/webconsole/hudservice", true);
 loader.lazyRequireGetter(this, "viewSource",
   "devtools/client/shared/view-source");
-loader.lazyRequireGetter(this, "StyleSheetsFront",
-  "devtools/shared/fronts/stylesheets", true);
 loader.lazyRequireGetter(this, "buildHarLog",
   "devtools/client/netmonitor/src/har/har-builder-utils", true);
-loader.lazyRequireGetter(this, "getKnownDeviceFront",
-  "devtools/shared/fronts/device", true);
 loader.lazyRequireGetter(this, "NetMonitorAPI",
   "devtools/client/netmonitor/src/api", true);
 loader.lazyRequireGetter(this, "sortPanelDefinitions",
@@ -128,7 +115,6 @@ function Toolbox(target, selectedTool, hostType, contentWindow, frameId,
 
   this._initInspector = null;
   this._inspector = null;
-  this._styleSheets = null;
   this._netMonitorAPI = null;
 
   // Map of frames (id => frame-info) and currently selected frame id.
@@ -168,10 +154,13 @@ function Toolbox(target, selectedTool, hostType, contentWindow, frameId,
   this._onNewSelectedNodeFront = this._onNewSelectedNodeFront.bind(this);
   this._onToolSelected = this._onToolSelected.bind(this);
   this.updateToolboxButtonsVisibility = this.updateToolboxButtonsVisibility.bind(this);
+  this.updateToolboxButtons = this.updateToolboxButtons.bind(this);
   this.selectTool = this.selectTool.bind(this);
   this._pingTelemetrySelectTool = this._pingTelemetrySelectTool.bind(this);
   this.toggleSplitConsole = this.toggleSplitConsole.bind(this);
   this.toggleOptions = this.toggleOptions.bind(this);
+  this.togglePaintFlashing = this.togglePaintFlashing.bind(this);
+  this.isPaintFlashing = false;
 
   this._target.on("close", this.destroy);
 
@@ -182,8 +171,9 @@ function Toolbox(target, selectedTool, hostType, contentWindow, frameId,
 
   this._hostType = hostType;
 
-  this._isOpenDeferred = defer();
-  this.isOpen = this._isOpenDeferred.promise;
+  this.isOpen = new Promise(function(resolve) {
+    this._resolveIsOpen = resolve;
+  }.bind(this));
 
   EventEmitter.decorate(this);
 
@@ -244,6 +234,10 @@ Toolbox.prototype = {
   set currentToolId(id) {
     this._currentToolId = id;
     this.component.setCurrentToolId(id);
+  },
+
+  get defaultToolId() {
+    return this._defaultToolId;
   },
 
   get panelDefinitions() {
@@ -313,17 +307,16 @@ Toolbox.prototype = {
    *          A promise that resolves once the panel is ready.
    */
   getPanelWhenReady: function(id) {
-    const deferred = defer();
     const panel = this.getPanel(id);
-    if (panel) {
-      deferred.resolve(panel);
-    } else {
-      this.on(id + "-ready", initializedPanel => {
-        deferred.resolve(initializedPanel);
-      });
-    }
-
-    return deferred.promise;
+    return new Promise(resolve => {
+      if (panel) {
+        resolve(panel);
+      } else {
+        this.on(id + "-ready", initializedPanel => {
+          resolve(initializedPanel);
+        });
+      }
+    });
   },
 
   /**
@@ -446,11 +439,12 @@ Toolbox.prototype = {
         this._URL = this.win.location.href;
       }
 
-      const domReady = defer();
       const domHelper = new DOMHelpers(this.win);
-      domHelper.onceDOMReady(() => {
-        domReady.resolve();
-      }, this._URL);
+      const domReady = new Promise(resolve => {
+        domHelper.onceDOMReady(() => {
+          resolve();
+        }, this._URL);
+      });
 
       // Optimization: fire up a few other things before waiting on
       // the iframe being ready (makes startup faster)
@@ -468,7 +462,7 @@ Toolbox.prototype = {
 
       // Attach the thread
       this._threadClient = await attachThread(this);
-      await domReady.promise;
+      await domReady;
 
       this.isReady = true;
 
@@ -576,8 +570,13 @@ Toolbox.prototype = {
       }
 
       this.emit("ready");
-      this._isOpenDeferred.resolve();
-    }.bind(this))().catch(console.error);
+      this._resolveIsOpen();
+    }.bind(this))().catch(e => {
+      console.error("Exception while opening the toolbox", String(e), e);
+      // While the exception stack is correctly printed in the Browser console when
+      // passing `e` to console.error, it is not on the stdout, so print it via dump.
+      dump(e.stack + "\n");
+    });
   },
 
   /**
@@ -801,9 +800,10 @@ Toolbox.prototype = {
       className,
       description,
       disabled,
-      onClick(event) {
+      async onClick(event) {
         if (typeof onClick == "function") {
-          onClick(event, toolbox);
+          await onClick(event, toolbox);
+          button.emit("updatechecked");
         }
       },
       onKeyDown(event) {
@@ -1001,7 +1001,7 @@ Toolbox.prototype = {
       }
       const { toolId, shortcut, modifiers } = item;
 
-      const key = doc.createElement("key");
+      const key = doc.createXULElement("key");
 
       key.id = "key_" + toolId;
 
@@ -1022,7 +1022,7 @@ Toolbox.prototype = {
 
     // Add key for toggling the browser console from the detached window
     if (!doc.getElementById("key_browserconsole")) {
-      const key = doc.createElement("key");
+      const key = doc.createXULElement("key");
       key.id = "key_browserconsole";
 
       key.setAttribute("key", L10N.getStr("browserConsoleCmd.commandkey"));
@@ -1359,6 +1359,40 @@ Toolbox.prototype = {
   },
 
   /**
+   * Update the buttons.
+   */
+  updateToolboxButtons() {
+    const inspector = this.inspector;
+    // two of the buttons have highlighters that need to be cleared
+    // on will-navigate, otherwise we hold on to the stale highlighter
+    const hasHighlighters = inspector &&
+        (inspector.hasHighlighter("RulersHighlighter") ||
+        inspector.hasHighlighter("MeasuringToolHighlighter"));
+    if (hasHighlighters || this.isPaintFlashing) {
+      if (this.isPaintFlashing) {
+        this.togglePaintFlashing();
+      }
+      if (hasHighlighters) {
+        inspector.destroyHighlighters();
+      }
+      this.component.setToolboxButtons(this.toolbarButtons);
+    }
+  },
+
+  /**
+   * Set paintflashing to enabled or disabled for this toolbox's tab.
+   */
+  togglePaintFlashing: function() {
+    if (this.isPaintFlashing) {
+      this.telemetry.toolOpened("paintflashing");
+    } else {
+      this.telemetry.toolClosed("paintflashing");
+    }
+    this.isPaintFlashing = !this.isPaintFlashing;
+    return this.target.activeTab.reconfigure({"paintFlashing": this.isPaintFlashing});
+  },
+
+  /**
    * Visually update picker button.
    * This function is called on every "select" event. Newly selected panel can
    * update the visual state of the picker button such as disabled state,
@@ -1442,7 +1476,7 @@ Toolbox.prototype = {
     if (!toolDefinition.bgTheme) {
       toolDefinition.bgTheme = "theme-toolbar";
     }
-    const panel = this.doc.createElement("vbox");
+    const panel = this.doc.createXULElement("vbox");
     panel.className = "toolbox-panel " + toolDefinition.bgTheme;
 
     // There is already a container for the webconsole frame.
@@ -1629,130 +1663,129 @@ Toolbox.prototype = {
       return this.initInspector().then(() => this.loadTool(id));
     }
 
-    const deferred = defer();
     let iframe = this.doc.getElementById("toolbox-panel-iframe-" + id);
-
     if (iframe) {
       const panel = this._toolPanels.get(id);
-      if (panel) {
-        deferred.resolve(panel);
-      } else {
-        this.once(id + "-ready", initializedPanel => {
-          deferred.resolve(initializedPanel);
-        });
-      }
-      return deferred.promise;
-    }
-
-    // Retrieve the tool definition (from the global or the per-toolbox tool maps)
-    const definition = this.getToolDefinition(id);
-
-    if (!definition) {
-      deferred.reject(new Error("no such tool id " + id));
-      return deferred.promise;
-    }
-
-    iframe = this.doc.createElement("iframe");
-    iframe.className = "toolbox-panel-iframe";
-    iframe.id = "toolbox-panel-iframe-" + id;
-    iframe.setAttribute("flex", 1);
-    iframe.setAttribute("forceOwnRefreshDriver", "");
-    iframe.tooltip = "aHTMLTooltip";
-    iframe.style.visibility = "hidden";
-
-    gDevTools.emit(id + "-init", this, iframe);
-    this.emit(id + "-init", iframe);
-
-    // If no parent yet, append the frame into default location.
-    if (!iframe.parentNode) {
-      const vbox = this.doc.getElementById("toolbox-panel-" + id);
-      vbox.appendChild(iframe);
-      vbox.visibility = "visible";
-    }
-
-    const onLoad = () => {
-      // Prevent flicker while loading by waiting to make visible until now.
-      iframe.style.visibility = "visible";
-
-      // Try to set the dir attribute as early as possible.
-      this.setIframeDocumentDir(iframe);
-
-      // The build method should return a panel instance, so events can
-      // be fired with the panel as an argument. However, in order to keep
-      // backward compatibility with existing extensions do a check
-      // for a promise return value.
-      let built = definition.build(iframe.contentWindow, this);
-
-      if (!(typeof built.then == "function")) {
-        const panel = built;
-        iframe.panel = panel;
-
-        // The panel instance is expected to fire (and listen to) various
-        // framework events, so make sure it's properly decorated with
-        // appropriate API (on, off, once, emit).
-        // In this case we decorate panel instances directly returned by
-        // the tool definition 'build' method.
-        if (typeof panel.emit == "undefined") {
-          EventEmitter.decorate(panel);
-        }
-
-        gDevTools.emit(id + "-build", this, panel);
-        this.emit(id + "-build", panel);
-
-        // The panel can implement an 'open' method for asynchronous
-        // initialization sequence.
-        if (typeof panel.open == "function") {
-          built = panel.open();
+      return new Promise(resolve => {
+        if (panel) {
+          resolve(panel);
         } else {
-          const buildDeferred = defer();
-          buildDeferred.resolve(panel);
-          built = buildDeferred.promise;
+          this.once(id + "-ready", initializedPanel => {
+            resolve(initializedPanel);
+          });
         }
-      }
-
-      // Wait till the panel is fully ready and fire 'ready' events.
-      promise.resolve(built).then((panel) => {
-        this._toolPanels.set(id, panel);
-
-        // Make sure to decorate panel object with event API also in case
-        // where the tool definition 'build' method returns only a promise
-        // and the actual panel instance is available as soon as the
-        // promise is resolved.
-        if (typeof panel.emit == "undefined") {
-          EventEmitter.decorate(panel);
-        }
-
-        gDevTools.emit(id + "-ready", this, panel);
-        this.emit(id + "-ready", panel);
-
-        deferred.resolve(panel);
-      }, console.error);
-    };
-
-    iframe.setAttribute("src", definition.url);
-    if (definition.panelLabel) {
-      iframe.setAttribute("aria-label", definition.panelLabel);
+      });
     }
 
-    // Depending on the host, iframe.contentWindow is not always
-    // defined at this moment. If it is not defined, we use an
-    // event listener on the iframe DOM node. If it's defined,
-    // we use the chromeEventHandler. We can't use a listener
-    // on the DOM node every time because this won't work
-    // if the (xul chrome) iframe is loaded in a content docshell.
-    if (iframe.contentWindow) {
-      const domHelper = new DOMHelpers(iframe.contentWindow);
-      domHelper.onceDOMReady(onLoad);
-    } else {
-      const callback = () => {
-        iframe.removeEventListener("DOMContentLoaded", callback);
-        onLoad();
+    return new Promise((resolve, reject) => {
+      // Retrieve the tool definition (from the global or the per-toolbox tool maps)
+      const definition = this.getToolDefinition(id);
+
+      if (!definition) {
+        reject(new Error("no such tool id " + id));
+        return;
+      }
+
+      iframe = this.doc.createXULElement("iframe");
+      iframe.className = "toolbox-panel-iframe";
+      iframe.id = "toolbox-panel-iframe-" + id;
+      iframe.setAttribute("flex", 1);
+      iframe.setAttribute("forceOwnRefreshDriver", "");
+      iframe.tooltip = "aHTMLTooltip";
+      iframe.style.visibility = "hidden";
+
+      gDevTools.emit(id + "-init", this, iframe);
+      this.emit(id + "-init", iframe);
+
+      // If no parent yet, append the frame into default location.
+      if (!iframe.parentNode) {
+        const vbox = this.doc.getElementById("toolbox-panel-" + id);
+        vbox.appendChild(iframe);
+        vbox.visibility = "visible";
+      }
+
+      const onLoad = () => {
+        // Prevent flicker while loading by waiting to make visible until now.
+        iframe.style.visibility = "visible";
+
+        // Try to set the dir attribute as early as possible.
+        this.setIframeDocumentDir(iframe);
+
+        // The build method should return a panel instance, so events can
+        // be fired with the panel as an argument. However, in order to keep
+        // backward compatibility with existing extensions do a check
+        // for a promise return value.
+        let built = definition.build(iframe.contentWindow, this);
+
+        if (!(typeof built.then == "function")) {
+          const panel = built;
+          iframe.panel = panel;
+
+          // The panel instance is expected to fire (and listen to) various
+          // framework events, so make sure it's properly decorated with
+          // appropriate API (on, off, once, emit).
+          // In this case we decorate panel instances directly returned by
+          // the tool definition 'build' method.
+          if (typeof panel.emit == "undefined") {
+            EventEmitter.decorate(panel);
+          }
+
+          gDevTools.emit(id + "-build", this, panel);
+          this.emit(id + "-build", panel);
+
+          // The panel can implement an 'open' method for asynchronous
+          // initialization sequence.
+          if (typeof panel.open == "function") {
+            built = panel.open();
+          } else {
+            built = new Promise(resolve => {
+              resolve(panel);
+            });
+          }
+        }
+
+        // Wait till the panel is fully ready and fire 'ready' events.
+        promise.resolve(built).then((panel) => {
+          this._toolPanels.set(id, panel);
+
+          // Make sure to decorate panel object with event API also in case
+          // where the tool definition 'build' method returns only a promise
+          // and the actual panel instance is available as soon as the
+          // promise is resolved.
+          if (typeof panel.emit == "undefined") {
+            EventEmitter.decorate(panel);
+          }
+
+          gDevTools.emit(id + "-ready", this, panel);
+          this.emit(id + "-ready", panel);
+
+          resolve(panel);
+        }, console.error);
       };
 
-      iframe.addEventListener("DOMContentLoaded", callback);
-    }
+      iframe.setAttribute("src", definition.url);
+      if (definition.panelLabel) {
+        iframe.setAttribute("aria-label", definition.panelLabel);
+      }
 
-    return deferred.promise;
+      // Depending on the host, iframe.contentWindow is not always
+      // defined at this moment. If it is not defined, we use an
+      // event listener on the iframe DOM node. If it's defined,
+      // we use the chromeEventHandler. We can't use a listener
+      // on the DOM node every time because this won't work
+      // if the (xul chrome) iframe is loaded in a content docshell.
+      if (iframe.contentWindow) {
+        const domHelper = new DOMHelpers(iframe.contentWindow);
+        domHelper.onceDOMReady(onLoad);
+      } else {
+        const callback = () => {
+          iframe.removeEventListener("DOMContentLoaded", callback);
+          onLoad();
+        };
+
+        iframe.addEventListener("DOMContentLoaded", callback);
+      }
+    });
   },
 
   /**
@@ -1827,7 +1860,7 @@ Toolbox.prototype = {
       Object.defineProperty(doc, "visibilityState", { value: state, configurable: true });
 
       // 2) Fake the 'visibilitychange' event
-      win.dispatchEvent(new win.Event("visibilitychange"));
+      doc.dispatchEvent(new win.Event("visibilitychange"));
     }
   },
 
@@ -1840,6 +1873,8 @@ Toolbox.prototype = {
    *        Reason the tool was opened
    */
   selectTool: function(id, reason = "unknown") {
+    this.emit("panel-changed");
+
     if (this.currentToolId == id) {
       const panel = this._toolPanels.get(id);
       if (panel) {
@@ -1899,15 +1934,7 @@ Toolbox.prototype = {
     const panelName = this.getTelemetryPanelNameOrOther(id);
     const prevPanelName = this.getTelemetryPanelNameOrOther(this.currentToolId);
     const cold = !this.getPanel(id);
-
-    this.telemetry.addEventProperties("devtools.main", "enter", panelName, null, {
-      "host": this._hostType,
-      "width": width,
-      "start_state": reason,
-      "panel_name": panelName,
-      "cold": cold,
-      // "session_id" is included at the end of this method.
-    });
+    const pending = ["host", "width", "start_state", "panel_name", "cold", "session_id"];
 
     // On first load this.currentToolId === undefined so we need to skip sending
     // a devtools.main.exit telemetry event.
@@ -1922,27 +1949,38 @@ Toolbox.prototype = {
       });
     }
 
-    const pending = ["host", "width", "start_state", "panel_name", "cold", "session_id"];
+    this.telemetry.addEventProperties("devtools.main", "open", "tools", null, {
+      "width": width,
+      "session_id": this.sessionId
+    });
+
     if (id === "webconsole") {
       pending.push("message_count");
-
-      // Cold webconsole event message_count is handled in
-      // devtools/client/webconsole/webconsole-output-wrapper.js
-      if (!cold) {
-        this.telemetry.addEventProperty(
-          "devtools.main", "enter", "webconsole", null, "message_count", 0);
-      }
     }
-    this.telemetry.preparePendingEvent(
-      "devtools.main", "enter", panelName, null, pending);
-    this.telemetry.addEventProperty(
-      "devtools.main", "open", "tools", null, "session_id", this.sessionId
-    );
-    // We send the "enter" session ID here to ensure it is always sent *after*
-    // the "open" session ID.
-    this.telemetry.addEventProperty(
-      "devtools.main", "enter", panelName, null, "session_id", this.sessionId
-    );
+
+    this.telemetry.preparePendingEvent("devtools.main", "enter", panelName, null, pending);
+
+    this.telemetry.addEventProperties("devtools.main", "enter", panelName, null, {
+      "host": this._hostType,
+      "start_state": reason,
+      "panel_name": panelName,
+      "cold": cold,
+      "session_id": this.sessionId
+    });
+
+    if (reason !== "initial_panel") {
+      const width = Math.ceil(this.win.outerWidth / 50) * 50;
+      this.telemetry.addEventProperty(
+        "devtools.main", "enter", panelName, null, "width", width
+      );
+    }
+
+    // Cold webconsole event message_count is handled in
+    // devtools/client/webconsole/webconsole-output-wrapper.js
+    if (!cold && id === "webconsole") {
+      this.telemetry.addEventProperty(
+        "devtools.main", "enter", "webconsole", null, "message_count", 0);
+    }
 
     this.telemetry.toolOpened(id);
   },
@@ -2163,6 +2201,7 @@ Toolbox.prototype = {
    * Fired when user just started navigating away to another web page.
    */
   async _onWillNavigate() {
+    this.updateToolboxButtons();
     const toolId = this.currentToolId;
     // For now, only inspector, webconsole and netmonitor fire "reloaded" event
     if (toolId != "inspector" && toolId != "webconsole" && toolId != "netmonitor") {
@@ -2209,16 +2248,14 @@ Toolbox.prototype = {
    * client. See the definition of the preference actor for more information.
    */
   get preferenceFront() {
-    if (this._preferenceFront) {
-      return Promise.resolve(this._preferenceFront);
-    }
-    return this.isOpen.then(() => {
-      return this.target.root.then(rootForm => {
-        const front = getPreferenceFront(this.target.client, rootForm);
-        this._preferenceFront = front;
-        return front;
-      });
+    const frontPromise = this.target.client.mainRoot.getFront("preference");
+    frontPromise.then(front => {
+      // Set the _preferenceFront property to allow the resetPreferences toolbox method
+      // to cleanup the preference set when the toolbox is closed.
+      this._preferenceFront = front;
     });
+
+    return frontPromise;
   },
 
   // Is the disable auto-hide of pop-ups feature available in this context?
@@ -2228,6 +2265,7 @@ Toolbox.prototype = {
 
   async toggleNoAutohide() {
     const front = await this.preferenceFront;
+
     const toggledValue = !(await this._isDisableAutohideEnabled());
 
     front.setBoolPref(DISABLE_AUTOHIDE_PREF, toggledValue);
@@ -2703,7 +2741,10 @@ Toolbox.prototype = {
   initInspector: function() {
     if (!this._initInspector) {
       this._initInspector = (async function() {
-        this._inspector = InspectorFront(this._target.client, this._target.form);
+        // Temporary fix for bug #1493131 - inspector has a different life cycle
+        // than most other fronts because it is closely related to the toolbox.
+        // TODO: replace with getFront once inspector is separated from the toolbox
+        this._inspector = this.target.getInspector();
         const pref = "devtools.inspector.showAllAnonymousContent";
         const showAllAnonymousContent = Services.prefs.getBoolPref(pref);
         this._walker = await this._inspector.getWalker({ showAllAnonymousContent });
@@ -2752,7 +2793,7 @@ Toolbox.prototype = {
       const nodeFound = await inspector.inspectNodeActor(objectActor.actor,
                                                          inspectFromAnnotation);
       if (nodeFound) {
-        await this.selectTool("inspector", "inspect_dom");
+        await this.selectTool("inspector");
       }
     } else if (objectActor.type !== "null" &&
                objectActor.type !== "undefined") {
@@ -2769,6 +2810,7 @@ Toolbox.prototype = {
   /**
    * Destroy the inspector/walker/selection fronts
    * Returns a promise that resolves when the fronts are destroyed
+   * TODO: move to the inspector front once we can have listener hooks into fronts
    */
   destroyInspector: function() {
     if (this._destroyingInspector) {
@@ -2790,8 +2832,10 @@ Toolbox.prototype = {
       } else {
         await this.highlighterUtils.stopPicker();
       }
+      // Temporary fix for bug #1493131 - inspector has a different life cycle
+      // than most other fronts because it is closely related to the toolbox.
+      this._inspector.destroy();
 
-      await this._inspector.destroy();
       if (this._highlighter) {
         // Note that if the toolbox is closed, this will work fine, but will fail
         // in case the browser is closed and will trigger a noSuchActor message.
@@ -2839,8 +2883,6 @@ Toolbox.prototype = {
     if (this._destroyer) {
       return this._destroyer;
     }
-    const deferred = defer();
-    this._destroyer = deferred.promise;
 
     this.emit("destroy");
 
@@ -2908,6 +2950,7 @@ Toolbox.prototype = {
     }
 
     this.browserRequire = null;
+    this._toolNames = null;
 
     // Now that we are closing the toolbox we can re-enable the cache settings
     // and disable the service workers testing settings for the current tab.
@@ -2925,22 +2968,8 @@ Toolbox.prototype = {
     // Destroy the profiler connection
     outstanding.push(this.destroyPerformance());
 
-    // Destroy the preference front
-    outstanding.push(this.destroyPreference());
-
-    // Destroy the style sheet front.
-    if (this._styleSheets) {
-      this._styleSheets.destroy();
-      this._styleSheets = null;
-    }
-
-    // Destroy the device front for the current client if any.
-    // A given DeviceFront instance can cached and shared between different panels, so
-    // destroying it is the responsibility of the toolbox.
-    const deviceFront = getKnownDeviceFront(this.target.client);
-    if (deviceFront) {
-      deviceFront.destroy();
-    }
+    // Reset preferences set by the toolbox
+    outstanding.push(this.resetPreference());
 
     // Detach the thread
     detachThread(this._threadClient);
@@ -2961,11 +2990,6 @@ Toolbox.prototype = {
     const prevPanelName = this.getTelemetryPanelNameOrOther(this.currentToolId);
 
     this.telemetry.toolClosed("toolbox");
-    this.telemetry.recordEvent("devtools.main", "close", "tools", null, {
-      "host": host,
-      "width": width,
-      "session_id": this.sessionId
-    });
     this.telemetry.recordEvent("devtools.main", "exit", prevPanelName, null, {
       "host": host,
       "width": width,
@@ -2974,11 +2998,17 @@ Toolbox.prototype = {
       "reason": "toolbox_close",
       "session_id": this.sessionId
     });
+    this.telemetry.recordEvent("devtools.main", "close", "tools", null, {
+      "host": host,
+      "width": width,
+      "session_id": this.sessionId
+    });
 
     // Finish all outstanding tasks (which means finish destroying panels and
     // then destroying the host, successfully or not) before destroying the
     // target.
-    deferred.resolve(settleAll(outstanding)
+    this._destroyer = new Promise(resolve => {
+      resolve(settleAll(outstanding)
         .catch(console.error)
         .then(() => {
           const api = this._netMonitorAPI;
@@ -3025,11 +3055,10 @@ Toolbox.prototype = {
           // Force GC to prevent long GC pauses when running tests and to free up
           // memory in general when the toolbox is closed.
           if (flags.testing) {
-            win.QueryInterface(Ci.nsIInterfaceRequestor)
-              .getInterface(Ci.nsIDOMWindowUtils)
-              .garbageCollect();
+            win.windowUtils.garbageCollect();
           }
         }).catch(console.error));
+    });
 
     const leakCheckObserver = ({wrappedJSObject: barrier}) => {
       // Make the leak detector wait until this toolbox is properly destroyed.
@@ -3086,19 +3115,23 @@ Toolbox.prototype = {
     }
 
     if (this._performanceFrontConnection) {
-      return this._performanceFrontConnection.promise;
+      return this._performanceFrontConnection;
     }
 
-    this._performanceFrontConnection = defer();
-    this._performance = createPerformanceFront(this._target);
+    let resolvePerformance;
+    this._performanceFrontConnection = new Promise(function(resolve) {
+      resolvePerformance = resolve;
+    });
+
+    this._performance = this.target.getFront("performance");
     await this.performance.connect();
 
     // Emit an event when connected, but don't wait on startup for this.
     this.emit("profiler-connected");
 
     this.performance.on("*", this._onPerformanceFrontEvent);
-    this._performanceFrontConnection.resolve(this.performance);
-    return this._performanceFrontConnection.promise;
+    resolvePerformance(this.performance);
+    return this._performanceFrontConnection;
   },
 
   /**
@@ -3113,7 +3146,7 @@ Toolbox.prototype = {
     // If still connecting to performance actor, allow the
     // actor to resolve its connection before attempting to destroy.
     if (this._performanceFrontConnection) {
-      await this._performanceFrontConnection.promise;
+      await this._performanceFrontConnection;
     }
     this.performance.off("*", this._onPerformanceFrontEvent);
     await this.performance.destroy();
@@ -3121,20 +3154,9 @@ Toolbox.prototype = {
   },
 
   /**
-   * Return the style sheets front, creating it if necessary.  If the
-   * style sheets front is not supported by the target, returns null.
+   * Reset preferences set by the toolbox.
    */
-  initStyleSheetsFront: function() {
-    if (!this._styleSheets && this.target.hasActor("styleSheets")) {
-      this._styleSheets = StyleSheetsFront(this.target.client, this.target.form);
-    }
-    return this._styleSheets;
-  },
-
-  /**
-   * Destroy the preferences actor when the toolbox is unloaded.
-   */
-  async destroyPreference() {
+  async resetPreference() {
     if (!this._preferenceFront) {
       return;
     }
@@ -3145,7 +3167,6 @@ Toolbox.prototype = {
       await this._preferenceFront.clearUserPref(DISABLE_AUTOHIDE_PREF);
     }
 
-    this._preferenceFront.destroy();
     this._preferenceFront = null;
   },
 
@@ -3205,8 +3226,8 @@ Toolbox.prototype = {
    * Opens source in debugger. Falls back to plain "view-source:".
    * @see devtools/client/shared/source-utils.js
    */
-  viewSourceInDebugger: function(sourceURL, sourceLine) {
-    return viewSource.viewSourceInDebugger(this, sourceURL, sourceLine);
+  viewSourceInDebugger: function(sourceURL, sourceLine, reason) {
+    return viewSource.viewSourceInDebugger(this, sourceURL, sourceLine, reason);
   },
 
   /**
@@ -3371,10 +3392,27 @@ Toolbox.prototype = {
     return extInfo && Services.prefs.getBoolPref(extInfo.pref, false);
   },
 
+  /**
+   * Returns a panel id in the case of built in panels or "other" in the case of
+   * third party panels. This is necessary due to limitations in addon id strings,
+   * the permitted length of event telemetry property values and what we actually
+   * want to see in our telemetry.
+   *
+   * @param {String} id
+   *        The panel id we would like to process.
+   */
   getTelemetryPanelNameOrOther: function(id) {
-    if (!REGEX_PANEL.test(id)) {
+    if (!this._toolNames) {
+      const definitions = gDevTools.getToolDefinitionArray();
+      const definitionIds = definitions.map(definition => definition.id);
+
+      this._toolNames = new Set(definitionIds);
+    }
+
+    if (!this._toolNames.has(id)) {
       return "other";
     }
+
     return id;
   },
 };

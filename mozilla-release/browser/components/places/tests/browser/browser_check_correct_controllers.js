@@ -8,7 +8,7 @@ add_task(async function test() {
   let bookmark = await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.toolbarGuid,
     title: "Plain Bob",
-    url: "http://example.com"
+    url: "http://example.com",
   });
 
   registerCleanupFunction(async () => {
@@ -42,7 +42,7 @@ add_task(async function test() {
   // Open the context menu for a toolbar item, and check if the toolbar's
   // controller is returned.
   let toolbarItems = document.getElementById("PlacesToolbarItems");
-  EventUtils.synthesizeMouse(toolbarItems.childNodes[0],
+  EventUtils.synthesizeMouse(toolbarItems.children[0],
                              4, 4, { type: "contextmenu", button: 2 },
                              window);
   controller = PlacesUIUtils.getControllerForCommand(window, "placesCmd_copy");

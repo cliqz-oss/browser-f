@@ -11,7 +11,18 @@ const TEST_URI = "http://example.com/browser/devtools/client/webconsole/" +
 add_task(async function() {
   // Enable net messages in the console for this test.
   await pushPref("devtools.browserconsole.filter.net", true);
+  // This is required for testing the text input in the browser console:
+  await pushPref("devtools.chrome.enabled", true);
 
+  // Run test with legacy JsTerm
+  await pushPref("devtools.webconsole.jsterm.codeMirror", false);
+  await performTests();
+  // And then run it with the CodeMirror-powered one.
+  await pushPref("devtools.webconsole.jsterm.codeMirror", true);
+  await performTests();
+});
+
+async function performTests() {
   await addTab(TEST_URI);
   const hud = await HUDService.toggleBrowserConsole();
 
@@ -56,8 +67,23 @@ add_task(async function() {
   is(getSimplifiedContextMenu(menuPopup).join("\n"), expectedContextMenu.join("\n"),
     "The context menu has the expected entries for a simple log message");
 
+  menuPopup = await openContextMenu(hud, hud.jsterm.node || hud.jsterm.inputNode);
+
+  expectedContextMenu = [
+    "#editmenu-undo (editmenu-undo) [disabled]",
+    "#editmenu-cut (editmenu-cut)",
+    "#editmenu-copy (editmenu-copy)",
+    "#editmenu-paste (editmenu-paste)",
+    "#editmenu-delete (editmenu-delete) [disabled]",
+    "#editmenu-selectAll (editmenu-select-all) [disabled]",
+  ];
+  is(getL10NContextMenu(menuPopup).join("\n"), expectedContextMenu.join("\n"),
+    "The context menu has the correct edit menu items");
+
   await hideContextMenu(hud);
-});
+  // Close the browser console.
+  await HUDService.toggleBrowserConsole();
+}
 
 function addPrefBasedEntries(expectedEntries) {
   if (Services.prefs.getBoolPref("devtools.webconsole.sidebarToggle", false)) {
@@ -65,6 +91,15 @@ function addPrefBasedEntries(expectedEntries) {
   }
 
   return expectedEntries;
+}
+
+function getL10NContextMenu(popupElement) {
+  return [...popupElement.querySelectorAll("menuitem")]
+    .map(entry => {
+      const l10nID = entry.getAttribute("data-l10n-id");
+      const disabled = entry.hasAttribute("disabled");
+      return `#${entry.id} (${l10nID})${disabled ? " [disabled]" : ""}`;
+    });
 }
 
 function getSimplifiedContextMenu(popupElement) {

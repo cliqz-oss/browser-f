@@ -65,9 +65,7 @@ function triggerSave(aWindow, aCallback) {
   }
 
   function continueDownloading() {
-    let windows = Services.wm.getEnumerator("");
-    while (windows.hasMoreElements()) {
-      let win = windows.getNext();
+    for (let win of Services.wm.getEnumerator("")) {
       if (win.location && win.location.href == UCT_URI) {
         win.document.documentElement._fireButtonEvent("accept");
         win.close();
@@ -112,7 +110,7 @@ var windowObserver = {
         });
       }
     }, {once: true});
-  }
+  },
 };
 
 Services.ww.registerNotification(windowObserver);
@@ -153,7 +151,7 @@ function test() {
 
   Services.prefs.setBoolPref(ALWAYS_DOWNLOAD_DIR_PREF, false);
   testOnWindow(undefined, function(win) {
-    let windowGonePromise = promiseWindowWillBeClosed(win);
+    let windowGonePromise = BrowserTestUtils.domWindowClosed(win);
     Services.prefs.setBoolPref(SAVE_PER_SITE_PREF, true);
     triggerSave(win, function() {
       windowGonePromise.then(function() {

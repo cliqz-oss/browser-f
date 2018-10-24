@@ -21,7 +21,6 @@
 
 #include "nsPresContext.h"
 #include "nsStyleChangeList.h"
-#include "nsContentUtils.h"
 #include "nsLayoutUtils.h"
 #include "nsIFrame.h"
 #include "nsIDocument.h"
@@ -47,7 +46,7 @@ typedef mozilla::ComputedTiming::AnimationPhase AnimationPhase;
 JSObject*
 CSSAnimation::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return dom::CSSAnimationBinding::Wrap(aCx, this, aGivenProto);
+  return dom::CSSAnimation_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 mozilla::dom::Promise*
@@ -156,7 +155,10 @@ CSSAnimation::HasLowerCompositeOrderThan(const CSSAnimation& aOther) const
 
   // 1. Sort by document order
   if (!mOwningElement.Equals(aOther.mOwningElement)) {
-    return mOwningElement.LessThan(aOther.mOwningElement);
+    return mOwningElement.LessThan(
+      const_cast<CSSAnimation*>(this)->CachedChildIndexRef(),
+      aOther.mOwningElement,
+      const_cast<CSSAnimation*>(&aOther)->CachedChildIndexRef());
   }
 
   // 2. (Same element and pseudo): Sort by position in animation-name
@@ -193,7 +195,6 @@ CSSAnimation::QueueEvents(const StickyTimeDuration& aActiveTime)
     return;
   }
 
-  static constexpr StickyTimeDuration zeroDuration = StickyTimeDuration();
   uint64_t currentIteration = 0;
   ComputedTiming::AnimationPhase currentPhase;
   StickyTimeDuration intervalStartTime;
@@ -203,6 +204,9 @@ CSSAnimation::QueueEvents(const StickyTimeDuration& aActiveTime)
   if (!mEffect) {
     currentPhase = GetAnimationPhaseWithoutEffect
       <ComputedTiming::AnimationPhase>(*this);
+    if (currentPhase == mPreviousPhase) {
+      return;
+    }
   } else {
     ComputedTiming computedTiming = mEffect->GetComputedTiming();
     currentPhase = computedTiming.mPhase;
@@ -211,14 +215,8 @@ CSSAnimation::QueueEvents(const StickyTimeDuration& aActiveTime)
         currentIteration == mPreviousIteration) {
       return;
     }
-    intervalStartTime =
-      std::max(std::min(StickyTimeDuration(-mEffect->SpecifiedTiming().Delay()),
-                        computedTiming.mActiveDuration),
-               zeroDuration);
-    intervalEndTime =
-      std::max(std::min((EffectEnd() - mEffect->SpecifiedTiming().Delay()),
-                        computedTiming.mActiveDuration),
-               zeroDuration);
+    intervalStartTime = IntervalStartTime(computedTiming.mActiveDuration);
+    intervalEndTime = IntervalEndTime(computedTiming.mActiveDuration);
 
     uint64_t iterationBoundary = mPreviousIteration > currentIteration
                                  ? currentIteration + 1
@@ -236,7 +234,7 @@ CSSAnimation::QueueEvents(const StickyTimeDuration& aActiveTime)
 
   auto appendAnimationEvent = [&](EventMessage aMessage,
                                   const StickyTimeDuration& aElapsedTime,
-                                  const TimeStamp& aTimeStamp) {
+                                  const TimeStamp& aScheduledEventTimeStamp) {
     double elapsedTime = aElapsedTime.ToSeconds();
     if (aMessage == eAnimationCancel) {
       // 0 is an inappropriate value for this callsite. What we need to do is
@@ -250,7 +248,7 @@ CSSAnimation::QueueEvents(const StickyTimeDuration& aActiveTime)
                                             mOwningElement.Target(),
                                             aMessage,
                                             elapsedTime,
-                                            aTimeStamp,
+                                            aScheduledEventTimeStamp,
                                             this));
   };
 
@@ -258,8 +256,9 @@ CSSAnimation::QueueEvents(const StickyTimeDuration& aActiveTime)
   if ((mPreviousPhase != AnimationPhase::Idle &&
        mPreviousPhase != AnimationPhase::After) &&
       currentPhase == AnimationPhase::Idle) {
-    TimeStamp activeTimeStamp = ElapsedTimeToTimeStamp(aActiveTime);
-    appendAnimationEvent(eAnimationCancel, aActiveTime, activeTimeStamp);
+    appendAnimationEvent(eAnimationCancel,
+                         aActiveTime,
+                         GetTimelineCurrentTimeAsTimeStamp());
   }
 
   switch (mPreviousPhase) {
@@ -363,12 +362,12 @@ public:
                       const nsTimingFunction& aTimingFunction,
                       nsTArray<Keyframe>& aKeyframes)
   {
-    ServoStyleSet* styleSet = aPresContext->StyleSet();
-    MOZ_ASSERT(styleSet);
-    return styleSet->GetKeyframesForName(aElement,
-                                         aName,
-                                         aTimingFunction,
-                                         aKeyframes);
+    return aPresContext->StyleSet()->GetKeyframesForName(
+        aElement,
+        *mComputedStyle,
+        aName,
+        aTimingFunction,
+        aKeyframes);
   }
   void SetKeyframes(KeyframeEffect& aEffect, nsTArray<Keyframe>&& aKeyframes)
   {
@@ -650,13 +649,13 @@ nsAnimationManager::DoUpdateAnimations(
 
   // Build the updated animations list, extracting matching animations from
   // the existing collection as we go.
-  OwningCSSAnimationPtrArray newAnimations;
-  newAnimations = BuildAnimations(mPresContext,
-                                  aTarget,
-                                  aStyleDisplay,
-                                  aBuilder,
-                                  collection,
-                                  mMaybeReferencedAnimations);
+  OwningCSSAnimationPtrArray newAnimations =
+    BuildAnimations(mPresContext,
+                    aTarget,
+                    aStyleDisplay,
+                    aBuilder,
+                    collection,
+                    mMaybeReferencedAnimations);
 
   if (newAnimations.IsEmpty()) {
     if (collection) {

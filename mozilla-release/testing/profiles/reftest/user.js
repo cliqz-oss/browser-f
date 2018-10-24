@@ -66,8 +66,6 @@ user_pref("layout.testing.overlay-scrollbars.always-visible", true);
 // The prefs recommended by Marionette are typically geared towards
 // consumer automation; not vendor testing.
 user_pref("marionette.prefs.recommended", false);
-// Ensure autoplay is enabled for all platforms.
-user_pref("media.autoplay.enabled", true);
 user_pref("media.gmp-manager.url.override", "http://localhost/dummy-gmp-manager.xml");
 user_pref("media.openUnsupportedTypeWithExternalApp", false);
 // Reftests load a lot of URLs very quickly. This puts avoidable and
@@ -102,3 +100,6 @@ user_pref("toolkit.telemetry.enabled", false);
 user_pref("toolkit.telemetry.server", "https://%(server)s/telemetry-dummy/");
 user_pref("ui.caretBlinkTime", -1);
 user_pref("ui.caretWidth", 1);
+user_pref("ui.prefersReducedMotion", 0);
+// Turn off the Push service.
+user_pref("dom.push.serverURL", "");

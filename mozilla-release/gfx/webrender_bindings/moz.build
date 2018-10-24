@@ -15,6 +15,7 @@ EXPORTS.mozilla.webrender += [
     'RenderSharedSurfaceTextureHost.h',
     'RenderTextureHost.h',
     'RenderTextureHostOGL.h',
+    'RenderTextureHostWrapper.h',
     'RenderThread.h',
     'webrender_ffi.h',
     'webrender_ffi_generated.h',
@@ -31,6 +32,7 @@ UNIFIED_SOURCES += [
     'RenderSharedSurfaceTextureHost.cpp',
     'RenderTextureHost.cpp',
     'RenderTextureHostOGL.cpp',
+    'RenderTextureHostWrapper.cpp',
     'RenderThread.cpp',
     'WebRenderAPI.cpp',
     'WebRenderTypes.cpp',
@@ -64,3 +66,6 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'gtk3'):
 include('/ipc/chromium/chromium-config.mozbuild')
 
 FINAL_LIBRARY = 'xul'
+
+if CONFIG['CC_TYPE'] == 'clang-cl':
+    AllowCompilerWarnings()  # workaround for bug 1090497

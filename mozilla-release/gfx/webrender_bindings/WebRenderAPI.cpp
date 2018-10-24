@@ -31,6 +31,7 @@ public:
               layers::CompositorBridgeParent* aBridge,
               uint32_t* aMaxTextureSize,
               bool* aUseANGLE,
+              bool* aUseDComp,
               RefPtr<widget::CompositorWidget>&& aWidget,
               layers::SynchronousTask* aTask,
               LayoutDeviceIntSize aSize,
@@ -38,6 +39,7 @@ public:
     : mDocHandle(aDocHandle)
     , mMaxTextureSize(aMaxTextureSize)
     , mUseANGLE(aUseANGLE)
+    , mUseDComp(aUseDComp)
     , mBridge(aBridge)
     , mCompositorWidget(std::move(aWidget))
     , mTask(aTask)
@@ -63,6 +65,7 @@ public:
     }
 
     *mUseANGLE = compositor->UseANGLE();
+    *mUseDComp = compositor->UseDComp();
 
     wr::Renderer* wrRenderer = nullptr;
     if (!wr_window_new(aWindowId, mSize.width, mSize.height, compositor->gl(),
@@ -102,6 +105,7 @@ private:
   wr::DocumentHandle** mDocHandle;
   uint32_t* mMaxTextureSize;
   bool* mUseANGLE;
+  bool* mUseDComp;
   layers::CompositorBridgeParent* mBridge;
   RefPtr<widget::CompositorWidget> mCompositorWidget;
   layers::SynchronousTask* mTask;
@@ -135,7 +139,7 @@ private:
 
 
 TransactionBuilder::TransactionBuilder(bool aUseSceneBuilderThread)
-  : mUseSceneBuilderThread(gfxPrefs::WebRenderAsyncSceneBuild() && aUseSceneBuilderThread)
+  : mUseSceneBuilderThread(aUseSceneBuilderThread)
 {
   mTxn = wr_transaction_new(mUseSceneBuilderThread);
 }
@@ -271,13 +275,14 @@ WebRenderAPI::Create(layers::CompositorBridgeParent* aBridge,
   wr::DocumentHandle* docHandle = nullptr;
   uint32_t maxTextureSize = 0;
   bool useANGLE = false;
+  bool useDComp = false;
   layers::SyncHandle syncHandle = 0;
 
   // Dispatch a synchronous task because the DocumentHandle object needs to be created
   // on the render thread. If need be we could delay waiting on this task until
   // the next time we need to access the DocumentHandle object.
   layers::SynchronousTask task("Create Renderer");
-  auto event = MakeUnique<NewRenderer>(&docHandle, aBridge, &maxTextureSize, &useANGLE,
+  auto event = MakeUnique<NewRenderer>(&docHandle, aBridge, &maxTextureSize, &useANGLE, &useDComp,
                                        std::move(aWidget), &task, aSize,
                                        &syncHandle);
   RenderThread::Get()->RunEvent(aWindowId, std::move(event));
@@ -288,7 +293,7 @@ WebRenderAPI::Create(layers::CompositorBridgeParent* aBridge,
     return nullptr;
   }
 
-  return RefPtr<WebRenderAPI>(new WebRenderAPI(docHandle, aWindowId, maxTextureSize, useANGLE, syncHandle)).forget();
+  return RefPtr<WebRenderAPI>(new WebRenderAPI(docHandle, aWindowId, maxTextureSize, useANGLE, useDComp, syncHandle)).forget();
 }
 
 already_AddRefed<WebRenderAPI>
@@ -297,7 +302,7 @@ WebRenderAPI::Clone()
   wr::DocumentHandle* docHandle = nullptr;
   wr_api_clone(mDocHandle, &docHandle);
 
-  RefPtr<WebRenderAPI> renderApi = new WebRenderAPI(docHandle, mId, mMaxTextureSize, mUseANGLE, mSyncHandle);
+  RefPtr<WebRenderAPI> renderApi = new WebRenderAPI(docHandle, mId, mMaxTextureSize, mUseANGLE, mUseDComp, mSyncHandle);
   renderApi->mRootApi = this; // Hold root api
   renderApi->mRootDocumentApi = this;
   return renderApi.forget();
@@ -316,6 +321,7 @@ WebRenderAPI::CreateDocument(LayoutDeviceIntSize aSize, int8_t aLayerIndex)
   RefPtr<WebRenderAPI> api(new WebRenderAPI(newDoc, mId,
                                             mMaxTextureSize,
                                             mUseANGLE,
+                                            mUseDComp,
                                             mSyncHandle));
   api->mRootApi = this;
   return api.forget();
@@ -365,7 +371,8 @@ WebRenderAPI::HitTest(const wr::WorldPoint& aPoint,
 }
 
 void
-WebRenderAPI::Readback(gfx::IntSize size,
+WebRenderAPI::Readback(const TimeStamp& aStartTime,
+                       gfx::IntSize size,
                        uint8_t *buffer,
                        uint32_t buffer_size)
 {
@@ -373,8 +380,10 @@ WebRenderAPI::Readback(gfx::IntSize size,
     {
         public:
             explicit Readback(layers::SynchronousTask* aTask,
+                              TimeStamp aStartTime,
                               gfx::IntSize aSize, uint8_t *aBuffer, uint32_t aBufferSize)
                 : mTask(aTask)
+                , mStartTime(aStartTime)
                 , mSize(aSize)
                 , mBuffer(aBuffer)
                 , mBufferSize(aBufferSize)
@@ -389,20 +398,21 @@ WebRenderAPI::Readback(gfx::IntSize size,
 
             virtual void Run(RenderThread& aRenderThread, WindowId aWindowId) override
             {
-                aRenderThread.UpdateAndRender(aWindowId, /* aReadback */ true);
+                aRenderThread.UpdateAndRender(aWindowId, mStartTime, /* aReadback */ true);
                 wr_renderer_readback(aRenderThread.GetRenderer(aWindowId)->GetRenderer(),
                                      mSize.width, mSize.height, mBuffer, mBufferSize);
                 layers::AutoCompleteTask complete(mTask);
             }
 
             layers::SynchronousTask* mTask;
+            TimeStamp mStartTime;
             gfx::IntSize mSize;
             uint8_t *mBuffer;
             uint32_t mBufferSize;
     };
 
     layers::SynchronousTask task("Readback");
-    auto event = MakeUnique<Readback>(&task, size, buffer, buffer_size);
+    auto event = MakeUnique<Readback>(&task, aStartTime, size, buffer, buffer_size);
     // This event will be passed from wr_backend thread to renderer thread. That
     // implies that all frame data have been processed when the renderer runs this
     // read-back event. Then, we could make sure this read-back event gets the
@@ -410,6 +420,12 @@ WebRenderAPI::Readback(gfx::IntSize size,
     RunOnRenderThread(std::move(event));
 
     task.Wait();
+}
+
+void
+WebRenderAPI::ClearAllCaches()
+{
+  wr_api_clear_all_caches(mDocHandle);
 }
 
 void
@@ -484,6 +500,12 @@ WebRenderAPI::Resume()
 
     task.Wait();
     return result;
+}
+
+void
+WebRenderAPI::NotifyMemoryPressure()
+{
+  wr_api_notify_memory_pressure(mDocHandle);
 }
 
 void
@@ -635,6 +657,28 @@ TransactionBuilder::UpdateExternalImage(ImageKey aKey,
 }
 
 void
+TransactionBuilder::UpdateExternalImageWithDirtyRect(ImageKey aKey,
+                                                     const ImageDescriptor& aDescriptor,
+                                                     ExternalImageId aExtID,
+                                                     wr::WrExternalImageBufferType aBufferType,
+                                                     const wr::DeviceUintRect& aDirtyRect,
+                                                     uint8_t aChannelIndex)
+{
+  wr_resource_updates_update_external_image_with_dirty_rect(mTxn,
+                                                            aKey,
+                                                            &aDescriptor,
+                                                            aExtID,
+                                                            aBufferType,
+                                                            aChannelIndex,
+                                                            aDirtyRect);
+}
+
+void TransactionBuilder::SetImageVisibleArea(ImageKey aKey, const wr::NormalizedRect& aArea)
+{
+  wr_resource_updates_set_image_visible_area(mTxn, aKey, &aArea);
+}
+
+void
 TransactionBuilder::DeleteImage(ImageKey aKey)
 {
   wr_resource_updates_delete_image(mTxn, aKey);
@@ -735,7 +779,13 @@ DisplayListBuilder::~DisplayListBuilder()
 void DisplayListBuilder::Save() { wr_dp_save(mWrState); }
 void DisplayListBuilder::Restore() { wr_dp_restore(mWrState); }
 void DisplayListBuilder::ClearSave() { wr_dp_clear_save(mWrState); }
-void DisplayListBuilder::Dump() { wr_dump_display_list(mWrState); }
+
+usize DisplayListBuilder::Dump(usize aIndent,
+                               const Maybe<usize>& aStart,
+                               const Maybe<usize>& aEnd)
+{
+  return wr_dump_display_list(mWrState, aIndent, aStart.ptrOr(nullptr), aEnd.ptrOr(nullptr));
+}
 
 void
 DisplayListBuilder::Finalize(wr::LayoutSize& aOutContentSize,
@@ -997,12 +1047,13 @@ DisplayListBuilder::PushImage(const wr::LayoutRect& aBounds,
                               bool aIsBackfaceVisible,
                               wr::ImageRendering aFilter,
                               wr::ImageKey aImage,
-                              bool aPremultipliedAlpha)
+                              bool aPremultipliedAlpha,
+                              const wr::ColorF& aColor)
 {
   wr::LayoutSize size;
   size.width = aBounds.size.width;
   size.height = aBounds.size.height;
-  PushImage(aBounds, aClip, aIsBackfaceVisible, size, size, aFilter, aImage, aPremultipliedAlpha);
+  PushImage(aBounds, aClip, aIsBackfaceVisible, size, size, aFilter, aImage, aPremultipliedAlpha, aColor);
 }
 
 void
@@ -1013,13 +1064,14 @@ DisplayListBuilder::PushImage(const wr::LayoutRect& aBounds,
                               const wr::LayoutSize& aTileSpacing,
                               wr::ImageRendering aFilter,
                               wr::ImageKey aImage,
-                              bool aPremultipliedAlpha)
+                              bool aPremultipliedAlpha,
+                              const wr::ColorF& aColor)
 {
   WRDL_LOG("PushImage b=%s cl=%s s=%s t=%s\n", mWrState,
       Stringify(aBounds).c_str(),
       Stringify(aClip).c_str(), Stringify(aStretchSize).c_str(),
       Stringify(aTileSpacing).c_str());
-  wr_dp_push_image(mWrState, aBounds, aClip, aIsBackfaceVisible, aStretchSize, aTileSpacing, aFilter, aImage, aPremultipliedAlpha);
+  wr_dp_push_image(mWrState, aBounds, aClip, aIsBackfaceVisible, aStretchSize, aTileSpacing, aFilter, aImage, aPremultipliedAlpha, aColor);
 }
 
 void
@@ -1127,6 +1179,9 @@ DisplayListBuilder::PushBorderGradient(const wr::LayoutRect& aBounds,
                                        const wr::LayoutRect& aClip,
                                        bool aIsBackfaceVisible,
                                        const wr::BorderWidths& aWidths,
+                                       const uint32_t aWidth,
+                                       const uint32_t aHeight,
+                                       const wr::SideOffsets2D<uint32_t>& aSlice,
                                        const wr::LayoutPoint& aStartPoint,
                                        const wr::LayoutPoint& aEndPoint,
                                        const nsTArray<wr::GradientStop>& aStops,
@@ -1134,7 +1189,7 @@ DisplayListBuilder::PushBorderGradient(const wr::LayoutRect& aBounds,
                                        const wr::SideOffsets2D<float>& aOutset)
 {
   wr_dp_push_border_gradient(mWrState, aBounds, aClip, aIsBackfaceVisible,
-                             aWidths, aStartPoint, aEndPoint,
+                             aWidths, aWidth, aHeight, aSlice, aStartPoint, aEndPoint,
                              aStops.Elements(), aStops.Length(),
                              aExtendMode, aOutset);
 }

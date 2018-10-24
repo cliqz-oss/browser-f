@@ -6,6 +6,7 @@
 #include "mozilla/dom/MediaStreamBinding.h"
 #include "mozilla/dom/MediaDeviceInfo.h"
 #include "mozilla/dom/MediaDevicesBinding.h"
+#include "mozilla/dom/NavigatorBinding.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/MediaManager.h"
 #include "MediaTrackConstraints.h"
@@ -113,25 +114,21 @@ public:
     }
     nsTArray<RefPtr<MediaDeviceInfo>> infos;
     for (auto& device : devices) {
-      nsString type;
-      device->GetType(type);
-      bool isVideo = type.EqualsLiteral("video");
-      bool isAudio = type.EqualsLiteral("audio");
-      if (isVideo || isAudio) {
-        MediaDeviceKind kind = isVideo ?
-            MediaDeviceKind::Videoinput : MediaDeviceKind::Audioinput;
-        nsString id;
-        nsString name;
-        device->GetId(id);
-        // Include name only if page currently has a gUM stream active or
-        // persistent permissions (audio or video) have been granted
-        if (MediaManager::Get()->IsActivelyCapturingOrHasAPermission(mWindowId) ||
-            Preferences::GetBool("media.navigator.permission.disabled", false)) {
-          device->GetName(name);
-        }
-        RefPtr<MediaDeviceInfo> info = new MediaDeviceInfo(id, kind, name);
-        infos.AppendElement(info);
+      MediaDeviceKind kind = static_cast<MediaDevice*>(device.get())->mKind;
+      MOZ_ASSERT(kind == dom::MediaDeviceKind::Audioinput
+                  || kind == dom::MediaDeviceKind::Videoinput
+                  || kind == dom::MediaDeviceKind::Audiooutput);
+      nsString id;
+      nsString name;
+      device->GetId(id);
+      // Include name only if page currently has a gUM stream active or
+      // persistent permissions (audio or video) have been granted
+      if (MediaManager::Get()->IsActivelyCapturingOrHasAPermission(mWindowId) ||
+          Preferences::GetBool("media.navigator.permission.disabled", false)) {
+        device->GetName(name);
       }
+      RefPtr<MediaDeviceInfo> info = new MediaDeviceInfo(id, kind, name);
+      infos.AppendElement(info);
     }
     mPromise->MaybeResolve(infos);
     return NS_OK;
@@ -186,11 +183,12 @@ MediaDevices::GetUserMedia(const MediaStreamConstraints& aConstraints,
   RefPtr<Promise> p = Promise::Create(GetParentObject(), aRv);
   NS_ENSURE_TRUE(!aRv.Failed(), nullptr);
 
-  RefPtr<GumResolver> resolver = new GumResolver(p);
-  RefPtr<GumRejecter> rejecter = new GumRejecter(p);
+  MediaManager::GetUserMediaSuccessCallback resolver(new GumResolver(p));
+  MediaManager::GetUserMediaErrorCallback rejecter(new GumRejecter(p));
 
   aRv = MediaManager::Get()->GetUserMedia(GetOwner(), aConstraints,
-                                          resolver, rejecter,
+                                          std::move(resolver),
+                                          std::move(rejecter),
                                           aCallerType);
   return p.forget();
 }
@@ -253,20 +251,13 @@ MediaDevices::OnDeviceChange()
 mozilla::dom::EventHandlerNonNull*
 MediaDevices::GetOndevicechange()
 {
-  if (NS_IsMainThread()) {
-    return GetEventHandler(nsGkAtoms::ondevicechange, EmptyString());
-  }
-  return GetEventHandler(nullptr, NS_LITERAL_STRING("devicechange"));
+  return GetEventHandler(nsGkAtoms::ondevicechange);
 }
 
 void
 MediaDevices::SetOndevicechange(mozilla::dom::EventHandlerNonNull* aCallback)
 {
-  if (NS_IsMainThread()) {
-    SetEventHandler(nsGkAtoms::ondevicechange, EmptyString(), aCallback);
-  } else {
-    SetEventHandler(nullptr, NS_LITERAL_STRING("devicechange"), aCallback);
-  }
+  SetEventHandler(nsGkAtoms::ondevicechange, aCallback);
 
   MediaManager::Get()->AddDeviceChangeCallback(this);
 }
@@ -281,7 +272,7 @@ MediaDevices::EventListenerAdded(nsAtom* aType)
 JSObject*
 MediaDevices::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return MediaDevicesBinding::Wrap(aCx, this, aGivenProto);
+  return MediaDevices_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 } // namespace dom

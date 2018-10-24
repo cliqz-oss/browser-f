@@ -355,7 +355,7 @@ XPCWrappedNative::GetNewOrUsed(xpcObjectHelper& helper,
         MOZ_ASSERT(!xpc::WrapperFactory::IsXrayWrapper(parent),
                    "Xray wrapper being used to parent XPCWrappedNative?");
 
-        MOZ_ASSERT(js::GetGlobalForObjectCrossCompartment(parent) == parent,
+        MOZ_ASSERT(JS_IsGlobalObject(parent),
                    "Non-global being used to parent XPCWrappedNative?");
 
         ar.emplace(static_cast<JSContext*>(cx), parent);
@@ -486,6 +486,8 @@ XPCWrappedNative::XPCWrappedNative(already_AddRefed<nsISupports>&& aIdentity,
     MOZ_ASSERT(NS_IsMainThread());
 
     mIdentity = aIdentity;
+    RecordReplayRegisterDeferredFinalizeThing(nullptr, nullptr, mIdentity);
+
     mFlatJSObject.setFlags(FLAT_JS_OBJECT_VALID);
 
     MOZ_ASSERT(mMaybeProto, "bad ctor param");
@@ -503,6 +505,8 @@ XPCWrappedNative::XPCWrappedNative(already_AddRefed<nsISupports>&& aIdentity,
     MOZ_ASSERT(NS_IsMainThread());
 
     mIdentity = aIdentity;
+    RecordReplayRegisterDeferredFinalizeThing(nullptr, nullptr, mIdentity);
+
     mFlatJSObject.setFlags(FLAT_JS_OBJECT_VALID);
 
     MOZ_ASSERT(aScope, "bad ctor param");
@@ -529,8 +533,12 @@ XPCWrappedNative::Destroy()
 #endif
 
     if (mIdentity) {
+        // Either release mIdentity immediately or defer the release. When
+        // recording or replaying the release must always be deferred, so that
+        // DeferredFinalize matches the earlier call to
+        // RecordReplayRegisterDeferredFinalizeThing.
         XPCJSRuntime* rt = GetRuntime();
-        if (rt && rt->GetDoingFinalization()) {
+        if ((rt && rt->GetDoingFinalization()) || recordreplay::IsRecordingOrReplaying()) {
             DeferredFinalize(mIdentity.forget().take());
         } else {
             mIdentity = nullptr;
@@ -753,8 +761,10 @@ XPCWrappedNative::FlatJSObjectFinalized()
         }
 
         // We also need to release any native pointers held...
+        // As for XPCWrappedNative::Destroy, when recording or replaying the
+        // release must always be deferred.
         RefPtr<nsISupports> native = to->TakeNative();
-        if (native && GetRuntime()) {
+        if (native && (GetRuntime() || recordreplay::IsRecordingOrReplaying())) {
             DeferredFinalize(native.forget().take());
         }
 
@@ -1023,9 +1033,11 @@ XPCWrappedNative::InitTearOff(XPCWrappedNativeTearOff* aTearOff,
         // nsIPropertyBag - xpconnect will do that work.
 
         if (iid->Equals(NS_GET_IID(nsIPropertyBag)) && jso) {
+            RootedObject jsoGlobal(cx, wrappedJS->GetJSObjectGlobal());
             RefPtr<nsXPCWrappedJSClass> clasp = nsXPCWrappedJSClass::GetNewOrUsed(cx, *iid);
             if (clasp) {
-                RootedObject answer(cx, clasp->CallQueryInterfaceOnJSObject(cx, jso, *iid));
+                RootedObject answer(cx, clasp->CallQueryInterfaceOnJSObject(cx, jso, jsoGlobal,
+                                                                            *iid));
 
                 if (!answer) {
                     aTearOff->SetInterface(nullptr);
@@ -1054,6 +1066,8 @@ XPCWrappedNative::InitTearOff(XPCWrappedNativeTearOff* aTearOff,
 
     aTearOff->SetInterface(aInterface);
     aTearOff->SetNative(qiResult);
+    RecordReplayRegisterDeferredFinalizeThing(nullptr, nullptr, qiResult);
+
     if (needJSObject && !InitTearOffJSObject(aTearOff))
         return NS_ERROR_OUT_OF_MEMORY;
 
@@ -1233,15 +1247,11 @@ CallMethodHelper::Call()
 CallMethodHelper::~CallMethodHelper()
 {
     for (nsXPTCVariant& param : mDispatchParams) {
-        // Only clean up values which need cleanup.
-        if (!param.DoesValNeedCleanup())
-            continue;
-
         uint32_t arraylen = 0;
         if (!GetArraySizeFromParam(param.type, UndefinedHandleValue, &arraylen))
             continue;
 
-        xpc::CleanupValue(param.type, &param.val, arraylen);
+        xpc::DestructValue(param.type, &param.val, arraylen);
     }
 }
 
@@ -1250,7 +1260,7 @@ CallMethodHelper::GetArraySizeFromParam(const nsXPTType& type,
                                         HandleValue maybeArray,
                                         uint32_t* result)
 {
-    if (type.Tag() != nsXPTType::T_ARRAY &&
+    if (type.Tag() != nsXPTType::T_LEGACY_ARRAY &&
         type.Tag() != nsXPTType::T_PSTRING_SIZE_IS &&
         type.Tag() != nsXPTType::T_PWSTRING_SIZE_IS) {
         *result = 0;
@@ -1442,17 +1452,16 @@ CallMethodHelper::InitializeDispatchParams()
     const uint8_t wantsJSContext = mMethodInfo->WantsContext() ? 1 : 0;
     const uint8_t paramCount = mMethodInfo->GetParamCount();
     uint8_t requiredArgs = paramCount;
-    uint8_t hasRetval = 0;
 
     // XXX ASSUMES that retval is last arg. The xpidl compiler ensures this.
-    if (mMethodInfo->HasRetval()) {
-        hasRetval = 1;
+    if (mMethodInfo->HasRetval())
         requiredArgs--;
-    }
 
     if (mArgc < requiredArgs || wantsOptArgc) {
-        if (wantsOptArgc)
-            mOptArgcIndex = requiredArgs;
+        if (wantsOptArgc) {
+            // The implicit JSContext*, if we have one, comes first.
+            mOptArgcIndex = requiredArgs + wantsJSContext;
+        }
 
         // skip over any optional arguments
         while (requiredArgs && mMethodInfo->GetParam(requiredArgs-1).IsOptional())
@@ -1464,36 +1473,41 @@ CallMethodHelper::InitializeDispatchParams()
         }
     }
 
-    if (wantsJSContext) {
-        if (wantsOptArgc)
-            // Need to bump mOptArgcIndex up one here.
-            mJSContextIndex = mOptArgcIndex++;
-        else if (mMethodInfo->IsSetter() || mMethodInfo->IsGetter())
-            // For attributes, we always put the JSContext* first.
-            mJSContextIndex = 0;
-        else
-            mJSContextIndex = paramCount - hasRetval;
+    mJSContextIndex = mMethodInfo->IndexOfJSContext();
+
+    // Allocate enough space in mDispatchParams up-front.
+    if (!mDispatchParams.AppendElements(paramCount + wantsJSContext + wantsOptArgc)) {
+        Throw(NS_ERROR_OUT_OF_MEMORY, mCallContext);
+        return false;
     }
 
-    // iterate through the params to clear flags (for safe cleanup later)
-    for (uint8_t i = 0; i < paramCount + wantsJSContext + wantsOptArgc; i++) {
-        nsXPTCVariant* dp = mDispatchParams.AppendElement();
-        dp->ClearFlags();
-        dp->val.p = nullptr;
-    }
+    // Initialize each parameter to a valid state (for safe cleanup later).
+    for (uint8_t i = 0, paramIdx = 0; i < mDispatchParams.Length(); i++) {
+        nsXPTCVariant& dp = mDispatchParams[i];
 
-    // Fill in the JSContext argument
-    if (wantsJSContext) {
-        nsXPTCVariant* dp = &mDispatchParams[mJSContextIndex];
-        dp->type = nsXPTType::T_VOID;
-        dp->val.p = mCallContext;
-    }
+        if (i == mJSContextIndex) {
+            // Fill in the JSContext argument
+            dp.type = nsXPTType::T_VOID;
+            dp.val.p = mCallContext;
+        } else if (i == mOptArgcIndex) {
+            // Fill in the optional_argc argument
+            dp.type = nsXPTType::T_U8;
+            dp.val.u8 = std::min<uint32_t>(mArgc, paramCount) - requiredArgs;
+        } else {
+            // Initialize normal arguments.
+            const nsXPTParamInfo& param = mMethodInfo->Param(paramIdx);
+            dp.type = param.Type();
+            xpc::InitializeValue(dp.type, &dp.val);
 
-    // Fill in the optional_argc argument
-    if (wantsOptArgc) {
-        nsXPTCVariant* dp = &mDispatchParams[mOptArgcIndex];
-        dp->type = nsXPTType::T_U8;
-        dp->val.u8 = std::min<uint32_t>(mArgc, paramCount) - requiredArgs;
+            // Specify the correct storage/calling semantics. This will also set
+            // the `ptr` field to be self-referential.
+            if (param.IsIndirect()) {
+                dp.SetIndirect();
+            }
+
+            // Advance to the next normal parameter.
+            paramIdx++;
+        }
     }
 
     return true;
@@ -1520,40 +1534,8 @@ bool
 CallMethodHelper::ConvertIndependentParam(uint8_t i)
 {
     const nsXPTParamInfo& paramInfo = mMethodInfo->GetParam(i);
-    const nsXPTType& type = paramInfo.GetType();
+    const nsXPTType& type = paramInfo.Type();
     nsXPTCVariant* dp = GetDispatchParam(i);
-    dp->type = type;
-    MOZ_ASSERT(!paramInfo.IsShared(), "[shared] implies [noscript]!");
-
-    // Specify the correct storage/calling semantics.
-    if (paramInfo.IsIndirect())
-        dp->SetIndirect();
-
-    // Some types are always stored within the nsXPTCVariant, and passed
-    // indirectly, regardless of in/out-ness. These types are stored in the
-    // nsXPTCVariant's extended value.
-    switch (type.Tag()) {
-        // Ensure that the jsval has a valid value.
-        case nsXPTType::T_JSVAL:
-            new (&dp->ext.jsval) JS::Value();
-            MOZ_ASSERT(dp->ext.jsval.isUndefined());
-            break;
-
-        // Initialize our temporary string class values so they can be assigned
-        // to by the XPCConvert logic.
-        case nsXPTType::T_ASTRING:
-        case nsXPTType::T_DOMSTRING:
-            new (&dp->ext.nsstr) nsString();
-            break;
-        case nsXPTType::T_CSTRING:
-        case nsXPTType::T_UTF8STRING:
-            new (&dp->ext.nscstr) nsCString();
-            break;
-    }
-
-    // Flag cleanup for anything that isn't self-contained.
-    if (!type.IsArithmetic())
-        dp->SetValNeedsCleanup();
 
     // Even if there's nothing to convert, we still need to examine the
     // JSObject container for out-params. If it's null or otherwise invalid,
@@ -1611,7 +1593,7 @@ CallMethodHelper::ConvertIndependentParam(uint8_t i)
     }
 
     nsresult err;
-    if (!XPCConvert::JSData2Native(&dp->val, src, type, &param_iid, 0, &err)) {
+    if (!XPCConvert::JSData2Native(mCallContext, &dp->val, src, type, &param_iid, 0, &err)) {
         ThrowBadParam(err, i, mCallContext);
         return false;
     }
@@ -1639,18 +1621,8 @@ bool
 CallMethodHelper::ConvertDependentParam(uint8_t i)
 {
     const nsXPTParamInfo& paramInfo = mMethodInfo->GetParam(i);
-    const nsXPTType& type = paramInfo.GetType();
-
+    const nsXPTType& type = paramInfo.Type();
     nsXPTCVariant* dp = GetDispatchParam(i);
-    dp->type = type;
-
-    // Specify the correct storage/calling semantics.
-    if (paramInfo.IsIndirect())
-        dp->SetIndirect();
-
-    // Make sure we clean up all of our dependent types. All of them require
-    // allocations of some kind.
-    dp->SetValNeedsCleanup();
 
     // Even if there's nothing to convert, we still need to examine the
     // JSObject container for out-params. If it's null or otherwise invalid,
@@ -1685,7 +1657,7 @@ CallMethodHelper::ConvertDependentParam(uint8_t i)
 
     nsresult err;
 
-    if (!XPCConvert::JSData2Native(&dp->val, src, type,
+    if (!XPCConvert::JSData2Native(mCallContext, &dp->val, src, type,
                                    &param_iid, array_count, &err)) {
         ThrowBadParam(err, i, mCallContext);
         return false;
@@ -1710,14 +1682,18 @@ TraceParam(JSTracer* aTrc, void* aVal, const nsXPTType& aType,
     if (aType.Tag() == nsXPTType::T_JSVAL) {
         JS::UnsafeTraceRoot(aTrc, (JS::Value*)aVal,
                             "XPCWrappedNative::CallMethod param");
-    } else if (aType.Tag() == nsXPTType::T_ARRAY && *(void**)aVal) {
+    } else if (aType.Tag() == nsXPTType::T_ARRAY) {
+        auto* array = (xpt::detail::UntypedTArray*)aVal;
         const nsXPTType& elty = aType.ArrayElementType();
-        if (elty.Tag() != nsXPTType::T_JSVAL) {
-            return;
+
+        for (uint32_t i = 0; i < array->Length(); ++i) {
+            TraceParam(aTrc, elty.ElementPtr(array->Elements(), i), elty);
         }
+    } else if (aType.Tag() == nsXPTType::T_LEGACY_ARRAY && *(void**)aVal) {
+        const nsXPTType& elty = aType.ArrayElementType();
 
         for (uint32_t i = 0; i < aArrayLen; ++i) {
-            TraceParam(aTrc, elty.ElementPtr(aVal, i), elty);
+            TraceParam(aTrc, elty.ElementPtr(*(void**)aVal, i), elty);
         }
     }
 }
@@ -1727,9 +1703,8 @@ CallMethodHelper::trace(JSTracer* aTrc)
 {
     // We need to note each of our initialized parameters which contain jsvals.
     for (nsXPTCVariant& param : mDispatchParams) {
-        if (!param.DoesValNeedCleanup()) {
-            MOZ_ASSERT(param.type.Tag() != nsXPTType::T_JSVAL,
-                       "JSVals are marked as needing cleanup (even though they don't)");
+        // We only need to trace parameters which have an innermost JSVAL.
+        if (param.type.InnermostType().Tag() != nsXPTType::T_JSVAL) {
             continue;
         }
 

@@ -18,6 +18,7 @@
 
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/Maybe.h"
 
 extern "C" {
 
@@ -124,9 +125,9 @@ FindCharInUnicodeString(const UNICODE_STRING& aStr, WCHAR aChar, uint16_t& aPos,
 inline bool
 IsHexDigit(WCHAR aChar)
 {
-  return aChar >= L'0' && aChar <= L'9' ||
-         aChar >= L'A' && aChar <= L'F' ||
-         aChar >= L'a' && aChar <= L'f';
+  return (aChar >= L'0' && aChar <= L'9') ||
+         (aChar >= L'A' && aChar <= L'F') ||
+         (aChar >= L'a' && aChar <= L'f');
 }
 
 inline bool
@@ -148,6 +149,13 @@ MatchUnicodeString(const UNICODE_STRING& aStr, bool (*aPredicate)(WCHAR))
 inline bool
 Contains12DigitHexString(const UNICODE_STRING& aLeafName)
 {
+  // Quick check: If the string is too short, don't bother
+  // (We need at least 12 hex digits, one char for '.', and 3 for extension)
+  const USHORT kMinLen = (12 + 1 + 3) * sizeof(wchar_t);
+  if (aLeafName.Length < kMinLen) {
+    return false;
+  }
+
   uint16_t start, end;
   if (!FindCharInUnicodeString(aLeafName, L'.', start)) {
     return false;
@@ -173,6 +181,13 @@ Contains12DigitHexString(const UNICODE_STRING& aLeafName)
 inline bool
 IsFileNameAtLeast16HexDigits(const UNICODE_STRING& aLeafName)
 {
+  // Quick check: If the string is too short, don't bother
+  // (We need 16 hex digits, one char for '.', and 3 for extension)
+  const USHORT kMinLen = (16 + 1 + 3) * sizeof(wchar_t);
+  if (aLeafName.Length < kMinLen) {
+    return false;
+  }
+
   uint16_t dotIndex;
   if (!FindCharInUnicodeString(aLeafName, L'.', dotIndex)) {
     return false;
@@ -435,8 +450,15 @@ private:
       return;
     }
 
+    DWORD imageSize = mPeHeader->OptionalHeader.SizeOfImage;
+    // This is a coarse-grained check to ensure that the image size is
+    // reasonable. It we aren't big enough to contain headers, we have a problem!
+    if (imageSize < sizeof(IMAGE_DOS_HEADER) + sizeof(IMAGE_NT_HEADERS)) {
+      return;
+    }
+
     mImageLimit =
-      RVAToPtrUnchecked<void*>(mPeHeader->OptionalHeader.SizeOfImage - 1UL);
+      RVAToPtrUnchecked<void*>(imageSize - 1UL);
   }
 
   template <typename T>
@@ -497,8 +519,7 @@ private:
   GetFixedFileInfo(VS_VERSIONINFO_HEADER* aVerInfo)
   {
     WORD length = aVerInfo->wLength;
-    WORD offset = sizeof(VS_VERSIONINFO_HEADER);
-    if (!offset) {
+    if (length < sizeof(VS_VERSIONINFO_HEADER)) {
       return nullptr;
     }
 
@@ -509,12 +530,19 @@ private:
       return nullptr;
     }
 
+    if (aVerInfo->wValueLength != sizeof(VS_FIXEDFILEINFO)) {
+      // Fixed file info does not exist
+      return nullptr;
+    }
+
+    WORD offset = sizeof(VS_VERSIONINFO_HEADER);
+
     uintptr_t base = reinterpret_cast<uintptr_t>(aVerInfo);
     // Align up to 4-byte boundary
 #pragma warning(suppress: 4146)
     offset += (-(base + offset) & 3);
 
-    if (offset > length) {
+    if (offset >= length) {
       return nullptr;
     }
 
@@ -538,6 +566,32 @@ RtlGetProcessHeap()
   PTEB teb = ::NtCurrentTeb();
   PPEB peb = teb->ProcessEnvironmentBlock;
   return peb->Reserved4[1];
+}
+
+inline Maybe<DWORD>
+GetParentProcessId()
+{
+  struct PROCESS_BASIC_INFORMATION
+  {
+    NTSTATUS ExitStatus;
+    PPEB PebBaseAddress;
+    ULONG_PTR AffinityMask;
+    LONG BasePriority;
+    ULONG_PTR UniqueProcessId;
+    ULONG_PTR InheritedFromUniqueProcessId;
+  };
+
+  ULONG returnLength;
+  PROCESS_BASIC_INFORMATION pbi = {};
+  NTSTATUS status = ::NtQueryInformationProcess(::GetCurrentProcess(),
+                                                ProcessBasicInformation,
+                                                &pbi, sizeof(pbi),
+                                                &returnLength);
+  if (!NT_SUCCESS(status)) {
+    return Nothing();
+  }
+
+  return Some(static_cast<DWORD>(pbi.InheritedFromUniqueProcessId & 0xFFFFFFFF));
 }
 
 } // namespace nt

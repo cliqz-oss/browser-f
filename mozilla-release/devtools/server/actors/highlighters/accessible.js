@@ -5,14 +5,14 @@
 "use strict";
 
 const { AutoRefreshHighlighter } = require("./auto-refresh");
-const { getBounds } = require("./utils/accessibility");
-
+const { getBounds, Infobar } = require("./utils/accessibility");
 const {
   CanvasFrameAnonymousContentHelper,
   createNode,
-  createSVGNode
+  createSVGNode,
+  isNodeValid,
 } = require("./utils/markup");
-
+const { TEXT_NODE } = require("devtools/shared/dom-node-constants");
 const { setIgnoreLayoutChanges } = require("devtools/shared/layout/utils");
 
 /**
@@ -36,21 +36,33 @@ const { setIgnoreLayoutChanges } = require("devtools/shared/layout/utils");
  *           height of the the accessible object
  *         - {Number} duration
  *           Duration of time that the highlighter should be shown.
+ *         - {String|null} name
+ *           name of the the accessible object
+ *         - {String} role
+ *           role of the the accessible object
  *
  * Structure:
- * <div class="highlighter-container">
+ * <div class="highlighter-container" aria-hidden="true">
  *   <div class="accessible-root">
  *     <svg class="accessible-elements" hidden="true">
  *       <path class="accessible-bounds" points="..." />
  *     </svg>
+ *     <div class="accessible-infobar-container">
+ *      <div class="accessible-infobar">
+ *        <div class="accessible-infobar-text">
+ *          <span class="accessible-infobar-role">Accessible Role</span>
+ *          <span class="accessible-infobar-name">Accessible Name</span>
+ *        </div>
+ *      </div>
+ *     </div>
  *   </div>
  * </div>
  */
 class AccessibleHighlighter extends AutoRefreshHighlighter {
   constructor(highlighterEnv) {
     super(highlighterEnv);
-
     this.ID_CLASS_PREFIX = "accessible-";
+    this.accessibleInfobar = new Infobar(this);
 
     this.markup = new CanvasFrameAnonymousContentHelper(this.highlighterEnv,
       this._buildMarkup.bind(this));
@@ -73,7 +85,7 @@ class AccessibleHighlighter extends AutoRefreshHighlighter {
     const container = createNode(this.win, {
       attributes: {
         "class": "highlighter-container",
-        "role": "presentation"
+        "aria-hidden": "true"
       }
     });
 
@@ -82,7 +94,6 @@ class AccessibleHighlighter extends AutoRefreshHighlighter {
       attributes: {
         "id": "root",
         "class": "root",
-        "role": "presentation"
       },
       prefix: this.ID_CLASS_PREFIX
     });
@@ -96,7 +107,6 @@ class AccessibleHighlighter extends AutoRefreshHighlighter {
         "width": "100%",
         "height": "100%",
         "hidden": "true",
-        "role": "presentation"
       },
       prefix: this.ID_CLASS_PREFIX
     });
@@ -107,10 +117,12 @@ class AccessibleHighlighter extends AutoRefreshHighlighter {
       attributes: {
         "class": "bounds",
         "id": "bounds",
-        "role": "presentation"
       },
       prefix: this.ID_CLASS_PREFIX
     });
+
+    // Build the accessible's infobar markup.
+    this.accessibleInfobar.buildMarkup(root);
 
     return container;
   }
@@ -127,6 +139,8 @@ class AccessibleHighlighter extends AutoRefreshHighlighter {
     this.highlighterEnv.off("will-navigate", this.onWillNavigate);
     this.pageListenerTarget.removeEventListener("pagehide", this.onPageHide);
     this.pageListenerTarget = null;
+    this.accessibleInfobar.destroy();
+    this.accessibleInfobar = null;
 
     this.markup.destroy();
     AutoRefreshHighlighter.prototype.destroy.call(this);
@@ -144,6 +158,18 @@ class AccessibleHighlighter extends AutoRefreshHighlighter {
   }
 
   /**
+   * Check if node is a valid element or text node.
+   *
+   * @override  AutoRefreshHighlighter.prototype._isNodeValid
+   * @param  {DOMNode} node
+   *         The node to highlight.
+   * @return {Boolean} whether or not node is valid.
+   */
+  _isNodeValid(node) {
+    return super._isNodeValid(node) || isNodeValid(node, TEXT_NODE);
+  }
+
+  /**
    * Show the highlighter on a given accessible.
    *
    * @return {Boolean} True if accessible is highlighted, false otherwise.
@@ -156,11 +182,15 @@ class AccessibleHighlighter extends AutoRefreshHighlighter {
 
     const { duration } = this.options;
     const shown = this._update();
-    if (shown && duration) {
-      this._highlightTimer = setTimeout(() => {
-        this.hide();
-      }, duration);
+    if (shown) {
+      this.emit("highlighter-event", { options: this.options, type: "shown"});
+      if (duration) {
+        this._highlightTimer = setTimeout(() => {
+          this.hide();
+        }, duration);
+      }
     }
+
     return shown;
   }
 
@@ -175,6 +205,9 @@ class AccessibleHighlighter extends AutoRefreshHighlighter {
 
     if (this._updateAccessibleBounds()) {
       this._showAccessibleBounds();
+
+      this.accessibleInfobar.show();
+
       shown = true;
     } else {
       // Nothing to highlight (0px rectangle like a <script> tag for instance)
@@ -193,6 +226,7 @@ class AccessibleHighlighter extends AutoRefreshHighlighter {
   _hide() {
     setIgnoreLayoutChanges(true);
     this._hideAccessibleBounds();
+    this.accessibleInfobar.hide();
     setIgnoreLayoutChanges(false,
                            this.highlighterEnv.window.document.documentElement);
   }
@@ -205,7 +239,7 @@ class AccessibleHighlighter extends AutoRefreshHighlighter {
   }
 
   /**
-   * Showthe accessible bounds container.
+   * Show the accessible bounds container.
    */
   _showAccessibleBounds() {
     this.getElement("elements").removeAttribute("hidden");
@@ -230,7 +264,7 @@ class AccessibleHighlighter extends AutoRefreshHighlighter {
   _updateAccessibleBounds() {
     const bounds = this._bounds;
     if (!bounds) {
-      this._hideAccessibleBounds();
+      this._hide();
       return false;
     }
 

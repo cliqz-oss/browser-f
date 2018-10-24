@@ -116,6 +116,10 @@ JS_FOR_EACH_TRACEKIND(TRACE_ROOTS)
 #undef TRACE_ROOTS
     TracePersistentRootedList<jsid>(trc, heapRoots.ref()[JS::RootKind::Id], "persistent-id");
     TracePersistentRootedList<Value>(trc, heapRoots.ref()[JS::RootKind::Value], "persistent-value");
+
+    // ConcreteTraceable calls through a function pointer.
+    JS::AutoSuppressGCAnalysis nogc;
+
     TracePersistentRootedList<ConcreteTraceable>(
         trc, heapRoots.ref()[JS::RootKind::Traceable], "persistent-traceable");
 }
@@ -325,7 +329,7 @@ void
 js::gc::GCRuntime::traceRuntimeAtoms(JSTracer* trc, const AutoAccessAtomsZone& access)
 {
     gcstats::AutoPhase ap(stats(), gcstats::PhaseKind::MARK_RUNTIME_DATA);
-    TracePermanentAtoms(trc);
+    rt->tracePermanentAtoms(trc);
     TraceAtoms(trc, access);
     TraceWellKnownSymbols(trc);
     jit::JitRuntime::Trace(trc, access);
@@ -391,6 +395,9 @@ js::gc::GCRuntime::traceRuntimeCommon(JSTracer* trc, TraceOrMarkRuntime traceOrM
     if (!JS::RuntimeHeapIsMinorCollecting()) {
         gcstats::AutoPhase ap(stats(), gcstats::PhaseKind::MARK_EMBEDDING);
 
+        // The analysis doesn't like the function pointers below.
+        JS::AutoSuppressGCAnalysis nogc;
+
         /*
          * The embedding can register additional roots here.
          *
@@ -432,8 +439,7 @@ js::gc::GCRuntime::finishRoots()
 
     rt->finishAtoms();
 
-    if (rootsHash.ref().initialized())
-        rootsHash.ref().clear();
+    rootsHash.ref().clear();
 
     rt->finishPersistentRoots();
 

@@ -4,9 +4,21 @@ ignore = E121, E123, E126, E129, E133, E226, E241, E242, E704, W503, E402, E741
 max-line-length = 99
 exclude =
     browser/extensions/mortar/ppapi/,
+    browser/moz.configure,
+    build/moz.configure/*.configure,
     build/pymake/,
+    dom/canvas/test/webgl-conf/checkout/closure-library/,
+    editor/libeditor/tests/browserscope/,
+    intl/icu/,
+    ipc/chromium/,
+    gfx/angle/,
+    gfx/harfbuzz,
+    glx/skia/,
+    js/*.configure,
+    memory/moz.configure,
+    mobile/android/*.configure,
     node_modules,
     security/nss/,
     testing/mochitest/pywebsocket,
     tools/lint/test/files,
-
+    build/build-infer/build-infer.py,

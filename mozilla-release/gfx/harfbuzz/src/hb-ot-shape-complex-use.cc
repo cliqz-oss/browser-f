@@ -35,7 +35,7 @@
 
 /*
  * Universal Shaping Engine.
- * https://www.microsoft.com/typography/OpenTypeDev/USE/intro.htm
+ * https://docs.microsoft.com/en-us/typography/script-development/use
  */
 
 static const hb_tag_t
@@ -511,7 +511,7 @@ insert_dotted_circles (const hb_ot_shape_plan_t *plan HB_UNUSED,
 
   buffer->idx = 0;
   unsigned int last_syllable = 0;
-  while (buffer->idx < buffer->len && !buffer->in_error)
+  while (buffer->idx < buffer->len && buffer->successful)
   {
     unsigned int syllable = buffer->cur().syllable();
     syllable_type_t syllable_type = (syllable_type_t) (syllable & 0x0F);
@@ -526,7 +526,7 @@ insert_dotted_circles (const hb_ot_shape_plan_t *plan HB_UNUSED,
       /* TODO Set glyph_props? */
 
       /* Insert dottedcircle after possible Repha. */
-      while (buffer->idx < buffer->len && !buffer->in_error &&
+      while (buffer->idx < buffer->len && buffer->successful &&
 	     last_syllable == buffer->cur().syllable() &&
 	     buffer->cur().use_category() == USE_R)
         buffer->next_glyph ();
@@ -561,25 +561,6 @@ reorder (const hb_ot_shape_plan_t *plan,
 }
 
 static bool
-decompose_use (const hb_ot_shape_normalize_context_t *c,
-                hb_codepoint_t  ab,
-                hb_codepoint_t *a,
-                hb_codepoint_t *b)
-{
-  switch (ab)
-  {
-    /* Chakma:
-     * Special case where the Unicode decomp gives matras in the wrong order
-     * for cluster validation.
-     */
-    case 0x1112Eu : *a = 0x11127u; *b= 0x11131u; return true;
-    case 0x1112Fu : *a = 0x11127u; *b= 0x11132u; return true;
-  }
-
-  return (bool) c->unicode->decompose (ab, a, b);
-}
-
-static bool
 compose_use (const hb_ot_shape_normalize_context_t *c,
 	     hb_codepoint_t  a,
 	     hb_codepoint_t  b,
@@ -602,7 +583,7 @@ const hb_ot_complex_shaper_t _hb_ot_complex_shaper_use =
   nullptr, /* preprocess_text */
   nullptr, /* postprocess_glyphs */
   HB_OT_SHAPE_NORMALIZATION_MODE_COMPOSED_DIACRITICS_NO_SHORT_CIRCUIT,
-  decompose_use,
+  nullptr, /* decompose */
   compose_use,
   setup_masks_use,
   nullptr, /* disable_otl */

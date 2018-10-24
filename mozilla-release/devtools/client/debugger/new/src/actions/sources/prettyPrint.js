@@ -10,7 +10,9 @@ var _assert = require("../../utils/assert");
 
 var _assert2 = _interopRequireDefault(_assert);
 
-var _breakpoints = require("../breakpoints");
+var _telemetry = require("../../utils/telemetry");
+
+var _breakpoints = require("../breakpoints/index");
 
 var _ast = require("../ast");
 
@@ -22,29 +24,29 @@ var _source = require("../../utils/source");
 
 var _loadSourceText = require("./loadSourceText");
 
-var _sources = require("../sources/index");
-
 var _pause = require("../pause/index");
+
+var _sources = require("../sources/index");
 
 var _selectors = require("../../selectors/index");
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; var ownKeys = Object.keys(source); if (typeof Object.getOwnPropertySymbols === 'function') { ownKeys = ownKeys.concat(Object.getOwnPropertySymbols(source).filter(function (sym) { return Object.getOwnPropertyDescriptor(source, sym).enumerable; })); } ownKeys.forEach(function (key) { _defineProperty(target, key, source[key]); }); } return target; }
-
-function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
-
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 function createPrettySource(sourceId) {
   return async ({
     dispatch,
     getState,
     sourceMaps
   }) => {
-    const source = (0, _selectors.getSource)(getState(), sourceId);
+    const source = (0, _selectors.getSourceFromId)(getState(), sourceId);
     const url = (0, _source.getPrettySourceURL)(source.url);
     const id = await sourceMaps.generatedToOriginalId(sourceId, url);
     const prettySource = {
       url,
+      relativeUrl: url,
       id,
       isBlackBoxed: false,
       isPrettyPrinted: true,
@@ -64,12 +66,10 @@ function createPrettySource(sourceId) {
       url
     });
     await sourceMaps.applySourceMap(source.id, url, code, mappings);
-
-    const loadedPrettySource = _objectSpread({}, prettySource, {
+    const loadedPrettySource = { ...prettySource,
       text: code,
       loadedState: "loaded"
-    });
-
+    };
     (0, _parser.setSource)(loadedPrettySource);
     dispatch({
       type: "UPDATE_SOURCE",
@@ -105,6 +105,10 @@ function togglePrettyPrint(sourceId) {
       return {};
     }
 
+    if (!source.isPrettyPrinted) {
+      (0, _telemetry.recordEvent)("pretty_print");
+    }
+
     if (!(0, _source.isLoaded)(source)) {
       await dispatch((0, _loadSourceText.loadSourceText)(source));
     }
@@ -120,11 +124,10 @@ function togglePrettyPrint(sourceId) {
     }
 
     if (prettySource) {
-      const _sourceId = prettySource.get("id");
-
-      return dispatch((0, _sources.selectLocation)(_objectSpread({}, options.location, {
+      const _sourceId = prettySource.id;
+      return dispatch((0, _sources.selectSpecificLocation)({ ...options.location,
         sourceId: _sourceId
-      })));
+      }));
     }
 
     const newPrettySource = await dispatch(createPrettySource(sourceId));
@@ -132,8 +135,9 @@ function togglePrettyPrint(sourceId) {
     await dispatch((0, _pause.mapFrames)());
     await dispatch((0, _ast.setPausePoints)(newPrettySource.id));
     await dispatch((0, _ast.setSymbols)(newPrettySource.id));
-    return dispatch((0, _sources.selectLocation)(_objectSpread({}, options.location, {
+    dispatch((0, _sources.selectSpecificLocation)({ ...options.location,
       sourceId: newPrettySource.id
-    })));
+    }));
+    return newPrettySource;
   };
 }

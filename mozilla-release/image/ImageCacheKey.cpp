@@ -8,8 +8,10 @@
 #include "mozilla/HashFunctions.h"
 #include "mozilla/Move.h"
 #include "nsContentUtils.h"
+#include "nsICookieService.h"
 #include "nsLayoutUtils.h"
 #include "nsString.h"
+#include "mozilla/AntiTrackingCommon.h"
 #include "mozilla/dom/BlobURLProtocolHandler.h"
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/ServiceWorkerManager.h"
@@ -128,27 +130,39 @@ ImageCacheKey::SchemeIs(const char* aScheme)
 /* static */ void*
 ImageCacheKey::GetSpecialCaseDocumentToken(nsIDocument* aDocument, nsIURI* aURI)
 {
+  // Cookie-averse documents can never have storage granted to them.  Since they
+  // may not have inner windows, they would require special handling below, so
+  // just bail out early here.
+  if (!aDocument || aDocument->IsCookieAverse()) {
+    return nullptr;
+  }
+
   // For controlled documents, we cast the pointer into a void* to avoid
   // dereferencing it (since we only use it for comparisons).
-  void* pointer = nullptr;
   RefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
-  if (aDocument && swm) {
-    ErrorResult rv;
-    if (aDocument->GetController().isSome()) {
-      pointer = aDocument;
-    }
+  if (swm && aDocument->GetController().isSome()) {
+    return aDocument;
   }
 
-  // If this document has been marked as tracker, let's use its address to make
-  // a unique cache key.
-  if (!pointer && aDocument &&
-      nsContentUtils::StorageDisabledByAntiTracking(nullptr,
-                                                    aDocument->GetChannel(),
-                                                    aURI)) {
-    pointer = aDocument;
+  // If the window is 3rd party resource, let's see if first-party storage
+  // access is granted for this image.
+  if (nsContentUtils::IsTrackingResourceWindow(aDocument->GetInnerWindow())) {
+    return nsContentUtils::StorageDisabledByAntiTracking(aDocument, aURI) ?
+             aDocument : nullptr;
   }
 
-  return pointer;
+  // Another scenario is if this image is a 3rd party resource loaded by a
+  // first party context. In this case, we should check if the nsIChannel has
+  // been marked as tracking resource, but we don't have the channel yet at
+  // this point.  The best approach here is to be conservative: if we are sure
+  // that the permission is granted, let's return a nullptr. Otherwise, let's
+  // make a unique image cache.
+  if (!AntiTrackingCommon::MaybeIsFirstPartyStorageAccessGrantedFor(aDocument->GetInnerWindow(),
+                                                                    aURI)) {
+    return aDocument;
+  }
+
+  return nullptr;
 }
 
 } // namespace image

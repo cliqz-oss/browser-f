@@ -116,12 +116,11 @@ ExtractAlpha_SIMD(const IntSize& size, uint8_t* sourceData, int32_t sourceStride
       int32_t sourceIndex = y * sourceStride + 4 * x;
       int32_t targetIndex = y * alphaStride + x;
 
-      u8x16_t bgrabgrabgrabgra1 = simd::FromZero8<u8x16_t>();
       u8x16_t bgrabgrabgrabgra2 = simd::FromZero8<u8x16_t>();
       u8x16_t bgrabgrabgrabgra3 = simd::FromZero8<u8x16_t>();
       u8x16_t bgrabgrabgrabgra4 = simd::FromZero8<u8x16_t>();
 
-      bgrabgrabgrabgra1 = simd::Load8<u8x16_t>(&sourceData[sourceIndex]);
+      u8x16_t bgrabgrabgrabgra1 = simd::Load8<u8x16_t>(&sourceData[sourceIndex]);
       if (4 * (x + 4) < sourceStride) {
         bgrabgrabgrabgra2 = simd::Load8<u8x16_t>(&sourceData[sourceIndex + 4 * 4]);
       }
@@ -801,12 +800,11 @@ SeparateColorChannels_SIMD(const IntSize &size, uint8_t* sourceData, int32_t sou
       int32_t sourceIndex = y * sourceStride + 4 * x;
       int32_t targetIndex = y * channelStride + x;
 
-      u8x16_t bgrabgrabgrabgra1 = simd::FromZero8<u8x16_t>();
       u8x16_t bgrabgrabgrabgra2 = simd::FromZero8<u8x16_t>();
       u8x16_t bgrabgrabgrabgra3 = simd::FromZero8<u8x16_t>();
       u8x16_t bgrabgrabgrabgra4 = simd::FromZero8<u8x16_t>();
 
-      bgrabgrabgrabgra1 = simd::Load8<u8x16_t>(&sourceData[sourceIndex]);
+      u8x16_t bgrabgrabgrabgra1 = simd::Load8<u8x16_t>(&sourceData[sourceIndex]);
       if (4 * (x + 4) < sourceStride) {
         bgrabgrabgrabgra2 = simd::Load8<u8x16_t>(&sourceData[sourceIndex + 4 * 4]);
       }
@@ -977,6 +975,38 @@ DoUnpremultiplicationCalculation_SIMD(const IntSize& aSize,
       p34 = simd::ShiftRight16<8>(simd::Add16(simd::Mul16(p34, aF34), simd::FromU16<u16x8_t>(128)));
 
       u8x16_t result = simd::PackAndSaturate16To8(p12, p34);
+      simd::Store8(&aTargetData[targetIndex], result);
+    }
+  }
+}
+
+template<typename u16x8_t, typename u8x16_t>
+static void
+DoOpacityCalculation_SIMD(const IntSize& aSize,
+                          uint8_t* aTargetData, int32_t aTargetStride,
+                          uint8_t* aSourceData, int32_t aSourceStride,
+                          Float aOpacity)
+{
+  uint8_t alphaValue = uint8_t(roundf(255.f * aOpacity));
+  u16x8_t alphaValues = simd::FromU16<u16x8_t>(alphaValue, alphaValue, alphaValue, alphaValue,
+                                               alphaValue, alphaValue, alphaValue, alphaValue);
+  for (int32_t y = 0; y < aSize.height; y++) {
+    for (int32_t x = 0; x < aSize.width; x += 4) {
+      int32_t inputIndex = y * aSourceStride + 4 * x;
+      int32_t targetIndex = y * aTargetStride + 4 * x;
+
+      u8x16_t p1234 = simd::Load8<u8x16_t>(&aSourceData[inputIndex]);
+      u16x8_t p12 = simd::UnpackLo8x8ToU16x8(p1234);
+      u16x8_t p34 = simd::UnpackHi8x8ToU16x8(p1234);
+
+      // Multiply all components with alpha.
+      p12 = simd::Mul16(p12, alphaValues);
+      p34 = simd::Mul16(p34, alphaValues);
+
+      // Divide by 255 and pack.
+      u8x16_t result = simd::PackAndSaturate16To8(simd::ShiftRight16<8>(p12),
+        simd::ShiftRight16<8>(p34));
+
       simd::Store8(&aTargetData[targetIndex], result);
     }
   }

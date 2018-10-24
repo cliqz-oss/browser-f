@@ -45,14 +45,14 @@ function checkSimplestRequest(payRequest) {
     emitTestFail("total item's value should be '1.00'.");
   }
 
-  if (details.displayItems) {
-    emitTestFail("details.displayItems should be undefined.");
+  if (details.displayItems.length !== 0) {
+    emitTestFail("details.displayItems should be an empty array.");
   }
-  if (details.modifiers) {
-    emitTestFail("details.displayItems should be undefined.");
+  if (details.modifiers.length !== 0) {
+    emitTestFail("details.modifiers should be an empty array.");
   }
-  if (details.shippingOptions) {
-    emitTestFail("details.shippingOptions should be undefined.");
+  if (details.shippingOptions.length !== 0) {
+    emitTestFail("details.shippingOptions should be an empty array.");
   }
 
   // checking the default generated PaymentOptions parameter
@@ -319,14 +319,14 @@ function checkNonBasicCardRequest(payRequest) {
     emitTestFail("total item's value should be '1.00'.");
   }
 
-  if (details.displayItems) {
-    emitTestFail("details.displayItems should be undefined.");
+  if (details.displayItems.length !== 0) {
+    emitTestFail("details.displayItems should be an zero length array.");
   }
-  if (details.modifiers) {
-    emitTestFail("details.displayItems should be undefined.");
+  if (details.displayItems.length !== 0) {
+    emitTestFail("details.modifiers should be an zero length array.");
   }
-  if (details.shippingOptions) {
-    emitTestFail("details.shippingOptions should be undefined.");
+  if (details.displayItems.length !== 0) {
+    emitTestFail("details.shippingOptions should be an zero length array.");
   }
 
   // checking the default generated PaymentOptions parameter
@@ -353,8 +353,7 @@ function checkSimplestRequestHandler() {
   if (!paymentEnum.hasMoreElements()) {
     emitTestFail("PaymentRequestService should have at least one payment request.");
   }
-  while (paymentEnum.hasMoreElements()) {
-    let payRequest = paymentEnum.getNext().QueryInterface(Ci.nsIPaymentRequest);
+  for (let payRequest of paymentEnum) {
     if (!payRequest) {
       emitTestFail("Fail to get existing payment request.");
       break;
@@ -370,8 +369,7 @@ function checkComplexRequestHandler() {
   if (!paymentEnum.hasMoreElements()) {
     emitTestFail("PaymentRequestService should have at least one payment request.");
   }
-  while (paymentEnum.hasMoreElements()) {
-    let payRequest = paymentEnum.getNext().QueryInterface(Ci.nsIPaymentRequest);
+  for (let payRequest of paymentEnum) {
     if (!payRequest) {
       emitTestFail("Fail to get existing payment request.");
       break;
@@ -387,8 +385,7 @@ function checkNonBasicCardRequestHandler() {
   if (!paymentEnum.hasMoreElements()) {
     emitTestFail("PaymentRequestService should have at least one payment request.");
   }
-  while (paymentEnum.hasMoreElements()) {
-    let payRequest = paymentEnum.getNext().QueryInterface(Ci.nsIPaymentRequest);
+  for (let payRequest of paymentEnum) {
     if (!payRequest) {
       emitTestFail("Fail to get existing payment request.");
       break;
@@ -404,8 +401,7 @@ function checkMultipleRequestsHandler () {
   if (!paymentEnum.hasMoreElements()) {
     emitTestFail("PaymentRequestService should have at least one payment request.");
   }
-  while (paymentEnum.hasMoreElements()) {
-    let payRequest = paymentEnum.getNext().QueryInterface(Ci.nsIPaymentRequest);
+  for (let payRequest of paymentEnum) {
     if (!payRequest) {
       emitTestFail("Fail to get existing payment request.");
       break;
@@ -425,8 +421,7 @@ function checkCrossOriginTopLevelPrincipalHandler() {
   if (!paymentEnum.hasMoreElements()) {
     emitTestFail("PaymentRequestService should have at least one payment request.");
   }
-  while (paymentEnum.hasMoreElements()) {
-    let payRequest = paymentEnum.getNext().QueryInterface(Ci.nsIPaymentRequest);
+  for (let payRequest of paymentEnum) {
     if (!payRequest) {
       emitTestFail("Fail to get existing payment request.");
       break;
@@ -447,6 +442,5 @@ addMessageListener("check-nonbasiccard-request", checkNonBasicCardRequestHandler
 addMessageListener("check-cross-origin-top-level-principal", checkCrossOriginTopLevelPrincipalHandler);
 
 addMessageListener("teardown", function() {
-  paymentSrv.cleanup();
   sendAsyncMessage("teardown-complete");
 });

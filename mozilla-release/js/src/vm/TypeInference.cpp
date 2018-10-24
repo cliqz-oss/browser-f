@@ -11,6 +11,7 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Move.h"
 #include "mozilla/PodOperations.h"
+#include "mozilla/ScopeExit.h"
 #include "mozilla/Sprintf.h"
 
 #include <new>
@@ -172,6 +173,8 @@ js::InferSpewActive(SpewChannel channel)
     if (!checked) {
         checked = true;
         PodArrayZero(active);
+        if (mozilla::recordreplay::IsRecordingOrReplaying())
+            return false;
         const char* env = getenv("INFERFLAGS");
         if (!env)
             return false;
@@ -194,6 +197,8 @@ static bool InferSpewColorable()
     static bool checked = false;
     if (!checked) {
         checked = true;
+        if (mozilla::recordreplay::IsRecordingOrReplaying())
+            return false;
         const char* env = getenv("TERM");
         if (!env)
             return false;
@@ -710,9 +715,11 @@ class TypeSetRef : public BufferableRef
 void
 ConstraintTypeSet::postWriteBarrier(JSContext* cx, Type type)
 {
-    if (type.isSingletonUnchecked() && IsInsideNursery(type.singletonNoBarrier())) {
-        cx->runtime()->gc.storeBuffer().putGeneric(TypeSetRef(cx->zone(), this));
-        cx->runtime()->gc.storeBuffer().setShouldCancelIonCompilations();
+    if (type.isSingletonUnchecked()) {
+        if (gc::StoreBuffer* sb = type.singletonNoBarrier()->storeBuffer()) {
+            sb->putGeneric(TypeSetRef(cx->zone(), this));
+            sb->setShouldCancelIonCompilations();
+        }
     }
 }
 
@@ -2347,6 +2354,50 @@ TemporaryTypeSet::getKnownClass(CompilerConstraintList* constraints)
     return clasp;
 }
 
+Realm*
+TemporaryTypeSet::getKnownRealm(CompilerConstraintList* constraints)
+{
+    if (unknownObject())
+        return nullptr;
+
+    Realm* realm = nullptr;
+    unsigned count = getObjectCount();
+
+    for (unsigned i = 0; i < count; i++) {
+        const Class* clasp = getObjectClass(i);
+        if (!clasp)
+            continue;
+
+        // If clasp->isProxy(), this might be a cross-compartment wrapper and
+        // CCWs don't have a (single) realm, so we give up. If the object has
+        // unknownProperties(), hasStableClassAndProto (called below) will
+        // return |false| so fail now before attaching any constraints.
+        if (clasp->isProxy() || getObject(i)->unknownProperties())
+            return nullptr;
+
+        MOZ_ASSERT(hasSingleton(i) || hasGroup(i));
+
+        Realm* nrealm = hasSingleton(i) ? getSingleton(i)->nonCCWRealm() : getGroup(i)->realm();
+        MOZ_ASSERT(nrealm);
+        if (!realm) {
+            realm = nrealm;
+            continue;
+        }
+        if (realm != nrealm)
+            return nullptr;
+    }
+
+    if (realm) {
+        for (unsigned i = 0; i < count; i++) {
+            ObjectKey* key = getObject(i);
+            if (key && !key->hasStableClassAndProto(constraints))
+                return nullptr;
+        }
+    }
+
+    return realm;
+}
+
 void
 TemporaryTypeSet::getTypedArraySharedness(CompilerConstraintList* constraints,
                                           TypedArraySharedness* sharedness)
@@ -3366,7 +3417,7 @@ js::FillBytecodeTypeMap(JSScript* script, uint32_t* bytecodeMap)
 void
 js::TypeMonitorResult(JSContext* cx, JSScript* script, jsbytecode* pc, TypeSet::Type type)
 {
-    assertSameCompartment(cx, script, type);
+    cx->check(script, type);
 
     AutoEnterAnalysis enter(cx);
 
@@ -3384,7 +3435,7 @@ void
 js::TypeMonitorResult(JSContext* cx, JSScript* script, jsbytecode* pc, StackTypeSet* types,
                       TypeSet::Type type)
 {
-    assertSameCompartment(cx, script, type);
+    cx->check(script, type);
 
     AutoEnterAnalysis enter(cx);
 
@@ -3419,18 +3470,16 @@ bool
 JSScript::makeTypes(JSContext* cx)
 {
     MOZ_ASSERT(!types_);
-    assertSameCompartment(cx, this);
+    cx->check(this);
 
     AutoEnterAnalysis enter(cx);
 
     unsigned count = TypeScript::NumTypeSets(this);
 
-    TypeScript* typeScript = (TypeScript*)
-        zone()->pod_calloc<uint8_t>(TypeScript::SizeIncludingTypeArray(count));
-    if (!typeScript) {
-        ReportOutOfMemory(cx);
+    size_t size = TypeScript::SizeIncludingTypeArray(count);
+    auto typeScript = reinterpret_cast<TypeScript*>(cx->pod_calloc<uint8_t>(size));
+    if (!typeScript)
         return false;
-    }
 
 #ifdef JS_CRASH_DIAGNOSTICS
     {
@@ -3476,7 +3525,7 @@ JSFunction::setTypeForScriptedFunction(JSContext* cx, HandleFunction fun,
     } else {
         RootedObject funProto(cx, fun->staticPrototype());
         Rooted<TaggedProto> taggedProto(cx, TaggedProto(funProto));
-        ObjectGroup* group = ObjectGroupRealm::makeGroup(cx, &JSFunction::class_,
+        ObjectGroup* group = ObjectGroupRealm::makeGroup(cx, fun->realm(), &JSFunction::class_,
                                                          taggedProto);
         if (!group)
             return false;
@@ -3728,11 +3777,10 @@ TypeNewScript::makeNativeVersion(JSContext* cx, TypeNewScript* newScript,
     while (cursor->kind != Initializer::DONE) { cursor++; }
     size_t initializerLength = cursor - newScript->initializerList + 1;
 
-    nativeNewScript->initializerList = cx->zone()->pod_calloc<Initializer>(initializerLength);
-    if (!nativeNewScript->initializerList) {
-        ReportOutOfMemory(cx);
+    nativeNewScript->initializerList = cx->pod_calloc<Initializer>(initializerLength);
+    if (!nativeNewScript->initializerList)
         return nullptr;
-    }
+
     PodCopy(nativeNewScript->initializerList, newScript->initializerList, initializerLength);
 
     return nativeNewScript.release();
@@ -3773,25 +3821,6 @@ ChangeObjectFixedSlotCount(JSContext* cx, PlainObject* obj, gc::AllocKind allocK
     return true;
 }
 
-namespace {
-
-struct DestroyTypeNewScript
-{
-    JSContext* cx;
-    ObjectGroup* group;
-
-    DestroyTypeNewScript(JSContext* cx, ObjectGroup* group)
-      : cx(cx), group(group)
-    {}
-
-    ~DestroyTypeNewScript() {
-        if (group)
-            group->clearNewScript(cx);
-    }
-};
-
-} // namespace
-
 bool
 TypeNewScript::maybeAnalyze(JSContext* cx, ObjectGroup* group, bool* regenerate, bool force)
 {
@@ -3823,7 +3852,10 @@ TypeNewScript::maybeAnalyze(JSContext* cx, ObjectGroup* group, bool* regenerate,
     AutoEnterAnalysis enter(cx);
 
     // Any failures after this point will clear out this TypeNewScript.
-    DestroyTypeNewScript destroyNewScript(cx, group);
+    auto destroyNewScript = mozilla::MakeScopeExit([&] {
+        if (group)
+            group->clearNewScript(cx);
+    });
 
     // Compute the greatest common shape prefix and the largest slot span of
     // the preliminary objects.
@@ -3958,7 +3990,7 @@ TypeNewScript::maybeAnalyze(JSContext* cx, ObjectGroup* group, bool* regenerate,
         // An unboxed layout was constructed for the group, and this has already
         // been hooked into it.
         MOZ_ASSERT(group->unboxedLayout(sweep).newScript() == this);
-        destroyNewScript.group = nullptr;
+        destroyNewScript.release();
 
         // Clear out the template object, which is not used for TypeNewScripts
         // with an unboxed layout. Currently it is a mutant object with a
@@ -3981,7 +4013,7 @@ TypeNewScript::maybeAnalyze(JSContext* cx, ObjectGroup* group, bool* regenerate,
         // is needed.
         group->addDefiniteProperties(cx, templateObject()->lastProperty());
 
-        destroyNewScript.group = nullptr;
+        destroyNewScript.release();
         return true;
     }
 
@@ -3995,8 +4027,8 @@ TypeNewScript::maybeAnalyze(JSContext* cx, ObjectGroup* group, bool* regenerate,
     ObjectGroupFlags initialFlags = group->flags(sweep) & OBJECT_FLAG_DYNAMIC_MASK;
 
     Rooted<TaggedProto> protoRoot(cx, group->proto());
-    ObjectGroup* initialGroup = ObjectGroupRealm::makeGroup(cx, group->clasp(), protoRoot,
-                                                            initialFlags);
+    ObjectGroup* initialGroup = ObjectGroupRealm::makeGroup(cx, group->realm(), group->clasp(),
+                                                            protoRoot, initialFlags);
     if (!initialGroup)
         return false;
 
@@ -4020,7 +4052,7 @@ TypeNewScript::maybeAnalyze(JSContext* cx, ObjectGroup* group, bool* regenerate,
     initializedShape_ = prefixShape;
     initializedGroup_ = group;
 
-    destroyNewScript.group = nullptr;
+    destroyNewScript.release();
 
     if (regenerate)
         *regenerate = true;
@@ -4602,10 +4634,10 @@ Zone::addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf,
                              size_t* compartmentsPrivateData)
 {
     *typePool += types.typeLifoAlloc().sizeOfExcludingThis(mallocSizeOf);
-    *regexpZone += regExps.sizeOfExcludingThis(mallocSizeOf);
+    *regexpZone += regExps().sizeOfExcludingThis(mallocSizeOf);
     if (jitZone_)
         jitZone_->addSizeOfIncludingThis(mallocSizeOf, jitZone, baselineStubsOptimized, cachedCFG);
-    *uniqueIdMap += uniqueIds().sizeOfExcludingThis(mallocSizeOf);
+    *uniqueIdMap += uniqueIds().shallowSizeOfExcludingThis(mallocSizeOf);
     *shapeTables += baseShapes().sizeOfExcludingThis(mallocSizeOf)
                   + initialShapes().sizeOfExcludingThis(mallocSizeOf);
     *atomsMarkBitmaps += markedAtoms().sizeOfExcludingThis(mallocSizeOf);

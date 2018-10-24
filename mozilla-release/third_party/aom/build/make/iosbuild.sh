@@ -56,6 +56,7 @@ build_target() {
 
   mkdir "${target}"
   cd "${target}"
+  # TODO(tomfinegan@google.com): switch to cmake.
   eval "${LIBAOM_SOURCE_DIR}/configure" --target="${target}" \
     ${CONFIGURE_ARGS} ${EXTRA_CONFIGURE_ARGS} ${target_specific_flags} \
     ${devnull}
@@ -244,7 +245,7 @@ build_framework() {
 # Trap function. Cleans up the subtree used to build all targets contained in
 # $TARGETS.
 cleanup() {
-  local readonly res=$?
+  local res=$?
   cd "${ORIG_PWD}"
 
   if [ $res -ne 0 ]; then

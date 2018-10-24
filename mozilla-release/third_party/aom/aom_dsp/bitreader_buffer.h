@@ -31,13 +31,13 @@ struct aom_read_bit_buffer {
   aom_rb_error_handler error_handler;
 };
 
-size_t aom_rb_bytes_read(struct aom_read_bit_buffer *rb);
+size_t aom_rb_bytes_read(const struct aom_read_bit_buffer *rb);
 
 int aom_rb_read_bit(struct aom_read_bit_buffer *rb);
 
 int aom_rb_read_literal(struct aom_read_bit_buffer *rb, int bits);
 
-int aom_rb_read_signed_literal(struct aom_read_bit_buffer *rb, int bits);
+uint32_t aom_rb_read_unsigned_literal(struct aom_read_bit_buffer *rb, int bits);
 
 int aom_rb_read_inv_signed_literal(struct aom_read_bit_buffer *rb, int bits);
 

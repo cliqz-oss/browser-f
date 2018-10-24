@@ -8,8 +8,10 @@
 #define CubebUtils_h_
 
 #include "cubeb/cubeb.h"
-#include "mozilla/dom/AudioDeviceInfo.h"
-#include "mozilla/Maybe.h"
+#include "nsString.h"
+#include "mozilla/RefPtr.h"
+
+class AudioDeviceInfo;
 
 namespace mozilla {
 namespace CubebUtils {
@@ -47,10 +49,16 @@ void GetCurrentBackend(nsAString& aBackend);
 void GetDeviceCollection(nsTArray<RefPtr<AudioDeviceInfo>>& aDeviceInfos,
                          Side aSide);
 cubeb_stream_prefs GetDefaultStreamPrefs();
+char* GetForcedOutputDevice();
 
 #ifdef MOZ_WIDGET_ANDROID
 uint32_t AndroidGetAudioOutputSampleRate();
 uint32_t AndroidGetAudioOutputFramesPerBuffer();
+#endif
+
+#ifdef ENABLE_SET_CUBEB_BACKEND
+void
+ForceSetCubebContext(cubeb* aCubebContext);
 #endif
 } // namespace CubebUtils
 } // namespace mozilla

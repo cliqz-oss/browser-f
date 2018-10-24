@@ -40,6 +40,14 @@ class L10nBumper(VCSScript):
             "default": False,
             "help": "Bump l10n changesets on a closed tree."
         }
+    ], [
+        ['--build', ],
+        {
+            "action": "store_false",
+            "dest": "dontbuild",
+            "default": True,
+            "help": "Trigger new builds on push."
+        }
     ]]
 
     def __init__(self, require_config_file=True):
@@ -191,9 +199,11 @@ class L10nBumper(VCSScript):
 
     def build_commit_message(self, name, locale_map):
         comments = ''
-        approval_str = 'DONTBUILD r=release a=l10n-bump'
+        approval_str = 'r=release a=l10n-bump'
         for locale, revision in sorted(locale_map.items()):
             comments += "%s -> %s\n" % (locale, revision)
+        if self.config['dontbuild']:
+            approval_str += " DONTBUILD"
         if self.config['ignore_closed_tree']:
             approval_str += " CLOSED TREE"
         message = 'no bug - Bumping %s %s\n\n' % (name, approval_str)
@@ -267,7 +277,10 @@ class L10nBumper(VCSScript):
                 continue
 
             # Write to disk
-            content_string = json.dumps(new_contents, sort_keys=True, indent=4)
+            content_string = json.dumps(
+                new_contents, sort_keys=True, indent=4,
+                separators=(',', ': '),
+            )
             fh = codecs.open(path, encoding='utf-8', mode='w+')
             fh.write(content_string + "\n")
             fh.close()

@@ -1,6 +1,6 @@
 [build]
 args = [
-    "-x", "c++", "-std=c++14", "-fno-sized-deallocation",
+    "-x", "c++", "-std=gnu++14", "-fno-sized-deallocation",
     "-DTRACING=1", "-DIMPL_LIBXUL", "-DMOZ_STYLO_BINDINGS=1",
     "-DMOZILLA_INTERNAL_API", "-DRUST_BINDGEN"
 ]
@@ -29,9 +29,13 @@ args = ["-DOS_ANDROID=1"]
 "arch=arm" = ["--target=armv7-linux-androideabi"]
 "arch=x86" = ["--target=i686-linux-android"]
 
-[build."os=windows"."env=msvc"]
+[build."os=windows"]
 args = [
     "-DOS_WIN=1", "-DWIN32=1",
+]
+
+[build."os=windows"."env=msvc"]
+args = [
     # For compatibility with MSVC 2015
     "-fms-compatibility-version=19",
     # To enable the builtin __builtin_offsetof so that CRT wouldn't
@@ -45,6 +49,11 @@ args = [
 ]
 "arch=x86" = ["--target=i686-pc-win32"]
 "arch=x86_64" = ["--target=x86_64-pc-win32"]
+"arch=aarch64" = ["--target=aarch64-pc-windows-msvc"]
+
+[build."os=windows"."env=gnu"]
+"arch=x86" = ["--target=i686-pc-mingw32"]
+"arch=x86_64" = ["--target=x86_64-w64-mingw32"]
 
 [structs]
 headers = [
@@ -52,7 +61,7 @@ headers = [
     "mozilla/StyleAnimationValue.h",
     "gfxFontConstants.h",
     "gfxFontFeatures.h",
-    "nsThemeConstants.h",
+    "nsStyleConsts.h",
     "mozilla/css/Loader.h",
     "mozilla/css/SheetLoadData.h",
     "mozilla/DeclarationBlock.h",
@@ -64,6 +73,7 @@ headers = [
     "mozilla/AnimationPropertySegment.h",
     "mozilla/ComputedTiming.h",
     "mozilla/ComputedTimingFunction.h",
+    "mozilla/CORSMode.h",
     "mozilla/Keyframe.h",
     "mozilla/ServoElementSnapshot.h",
     "mozilla/ServoElementSnapshotTable.h",
@@ -123,9 +133,9 @@ rusty-enums = [
     "mozilla::dom::CompositeOperation",
     "mozilla::InheritTarget",
     "mozilla::FontFamilyType",
-    "mozilla::css::URLMatchingFunction",
+    "mozilla::css::DocumentMatchingFunction",
     "mozilla::css::SheetParsingMode",
-    "nsStyleContentType",
+    "mozilla::StyleContentType",
     "nsStyleSVGOpacitySource",
     "nsStyleUnit",
     "nsCSSKeyword",
@@ -140,7 +150,6 @@ rusty-enums = [
     "nsresult",
     "nsAtom_AtomKind",
     "nsStyleImageLayers_LayerType",
-    "nsStyleImageOrientation_Angles",
     "nsTimingFunction_Type",
     "mozilla::ServoElementSnapshotFlags",
     "mozilla::Side",
@@ -148,14 +157,18 @@ rusty-enums = [
     "mozilla::dom::FillMode",
     "mozilla::HalfCorner",
     "mozilla::StyleDisplay",
+    "mozilla::StyleDisplayMode",
     "mozilla::StyleFloatEdge",
     "mozilla::StyleShapeRadius",
     "mozilla::StyleWindowDragging",
     "mozilla::StyleOrient",
     "mozilla::StyleBoxSizing",
     "mozilla::StyleClear",
+    "mozilla::StyleColumnFill",
+    "mozilla::StyleColumnSpan",
     "mozilla::StyleComplexColor_Tag",
     "mozilla::StyleFloat",
+    "mozilla::StyleImageOrientation",
     "mozilla::StyleUserModify",
     "mozilla::StyleUserInput",
     "mozilla::StyleBoxDirection",
@@ -178,6 +191,7 @@ rusty-enums = [
     "mozilla::StyleRuleInclusion",
     "mozilla::StyleGridTrackBreadth",
     "mozilla::StyleOverscrollBehavior",
+    "mozilla::StyleScrollbarWidth",
     "mozilla::StyleWhiteSpace",
     "nsStyleImageType",
     "nsStyleSVGPaintType",
@@ -193,6 +207,7 @@ rusty-enums = [
 whitelist-vars = [
     "NS_AUTHOR_SPECIFIED_.*",
     "NS_THEME_.*",
+    "NS_ATTRVALUE_.*",
     "NODE_.*",
     "ELEMENT_.*",
     "NS_FONT_.*",
@@ -225,11 +240,12 @@ whitelist-types = [
     "mozilla::ServoStyleSheetInner",
     "mozilla::ServoStyleSetSizes",
     "mozilla::ServoTraversalStatistics",
+    "mozilla::StyleDisplayMode",
     "mozilla::css::LoaderReusableStyleSheets",
     "mozilla::css::SheetLoadData",
     "mozilla::css::SheetLoadDataHolder",
     "mozilla::css::SheetParsingMode",
-    "mozilla::css::URLMatchingFunction",
+    "mozilla::css::DocumentMatchingFunction",
     "mozilla::dom::IterationCompositeOperation",
     "mozilla::dom::StyleChildrenIterator",
     "mozilla::HalfCorner",
@@ -277,6 +293,7 @@ whitelist-types = [
     "nsCSSFontDesc",
     "nsCSSKTableEntry",
     "nsCSSKeyword",
+    "nsCSSKeywordAndBoolTableEntry",
     "nsCSSPropertyID",
     "nsCSSPropertyIDSet",
     "nsCSSProps",
@@ -335,7 +352,7 @@ whitelist-types = [
     "nsStyleUIReset",
     "nsStyleUnion",
     "nsStyleUnit",
-    "nsStyleUserInterface",
+    "nsStyleUI",
     "nsStyleVisibility",
     "nsStyleXUL",
     "nsTArrayHeader",
@@ -378,6 +395,7 @@ opaque-types = [
     # have negative regexes.
     "mozilla::gfx::(.{0,4}|.{6,12}|.{14,}|([^F][^o][^n][^t][^V][^a][^r][^i][^a][^t][^i][^o][^n])|([^F][^l][^o][^a][^t]))",
     "mozilla::dom::Sequence",
+    "mozilla::SmallPointerArray",
     "mozilla::dom::Optional",
     "mozilla::dom::OwningNodeOrString_Value",
     "mozilla::dom::Nullable",
@@ -460,14 +478,18 @@ structs-types = [
     "mozilla::dom::ShadowRoot",
     "mozilla::AnonymousCounterStyle",
     "mozilla::AtomArray",
+    "mozilla::CORSMode",
     "mozilla::FontStretch",
     "mozilla::FontSlantStyle",
     "mozilla::FontWeight",
     "mozilla::MallocSizeOf",
     "mozilla::OriginFlags",
+    "mozilla::StyleMotion",
     "mozilla::UniquePtr",
+    "mozilla::StyleDisplayMode",
     "ServoRawOffsetArc",
     "DeclarationBlockMutationClosure",
+    "nsAttrValue",
     "nsIContent",
     "nsINode",
     "nsIDocument",
@@ -503,6 +525,7 @@ structs-types = [
     "RawServoSourceSizeList",
     "RefPtr",
     "RustString",
+    "StyleUseCounters",
     "CSSPseudoElementType",
     "ServoTraversalFlags",
     "ComputedTimingFunction_BeforeFlag",
@@ -546,7 +569,7 @@ structs-types = [
     "nsStyleContent",
     "nsStyleContentData",
     "nsStyleContentData_CounterFunction",
-    "nsStyleContentType",
+    "mozilla::StyleContentType",
     "ComputedStyle",
     "nsStyleCoord",
     "nsStyleCoord_Calc",
@@ -581,7 +604,7 @@ structs-types = [
     "nsStyleUIReset",
     "nsStyleUnion",
     "nsStyleUnit",
-    "nsStyleUserInterface",
+    "nsStyleUI",
     "nsStyleVisibility",
     "nsStyleXUL",
     "nsTimingFunction",
@@ -599,7 +622,7 @@ structs-types = [
     "UpdateAnimationsTasks",
     "ParsingMode",
     "InheritTarget",
-    "URLMatchingFunction",
+    "DocumentMatchingFunction",
     "StyleAnimation",
     "StyleRuleInclusion",
     "nsStyleTransformMatrix::MatrixTransformOperator",
@@ -615,6 +638,7 @@ servo-owned-types = [
     { name = "RawServoAuthorStyles", opaque = true },
     { name = "RawServoSelectorList", opaque = false },
     { name = "RawServoSourceSizeList", opaque = false },
+    { name = "StyleUseCounters", opaque = false },
     { name = "ServoElementSnapshot", opaque = false },
     { name = "RawServoAnimationValueMap", opaque = true },
 ]

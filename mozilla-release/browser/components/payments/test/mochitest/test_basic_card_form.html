@@ -42,6 +42,7 @@ function checkCCForm(customEl, expectedCard) {
     "cc-name",
     "cc-exp-month",
     "cc-exp-year",
+    "cc-type",
   ];
   for (let propName of CC_PROPERTY_NAMES) {
     let expectedVal = expectedCard[propName] || "";
@@ -59,6 +60,11 @@ add_task(async function test_initialState() {
   display.appendChild(form);
   await asyncElementRendered();
   is(page.id, "payment-summary", "Check initial page after appending");
+
+  // :-moz-ui-invalid, unlike :invalid, only applies to fields showing the error outline.
+  let fieldsVisiblyInvalid = form.querySelectorAll(":-moz-ui-invalid");
+  is(fieldsVisiblyInvalid.length, 0, "Check no fields are visibly invalid on an empty 'add' form");
+
   form.remove();
 });
 
@@ -78,7 +84,7 @@ add_task(async function test_backButton() {
   await asyncElementRendered();
 
   let stateChangePromise = promiseStateChange(form.requestStore);
-  is(form.pageTitle.textContent, "Sample page title 2", "Check title");
+  is(form.pageTitleHeading.textContent, "Sample page title 2", "Check title");
   is(form.backButton.textContent, "Back", "Check label");
   synthesizeMouseAtCenter(form.backButton, {});
 
@@ -90,52 +96,103 @@ add_task(async function test_backButton() {
 
 add_task(async function test_saveButton() {
   let form = new BasicCardForm();
-  form.dataset.saveButtonLabel = "Save";
+  form.dataset.addButtonLabel = "Add";
   form.dataset.errorGenericSave = "Generic error";
   await form.promiseReady;
   display.appendChild(form);
   await asyncElementRendered();
 
-  form.form.querySelector("#cc-number").focus();
-  sendString("4111111111111111");
+  ok(form.saveButton.disabled, "Save button should initially be disabled");
+  fillField(form.form.querySelector("#cc-number"), "4111 1111-1111 1111");
   form.form.querySelector("#cc-name").focus();
+  // Check .disabled after .focus() so that it's after both "input" and "change" events.
+  ok(form.saveButton.disabled, "Save button should still be disabled without a name");
   sendString("J. Smith");
-  form.form.querySelector("#cc-exp-month").focus();
-  sendString("11");
-  form.form.querySelector("#cc-exp-year").focus();
+  fillField(form.form.querySelector("#cc-exp-month"), "11");
   let year = (new Date()).getFullYear().toString();
-  sendString(year);
+  fillField(form.form.querySelector("#cc-exp-year"), year);
+  fillField(form.form.querySelector("#cc-type"), "visa");
+  form.saveButton.focus();
+  ok(!form.saveButton.disabled,
+     "Save button should be enabled since the required fields are filled");
+
+  fillField(form.form.querySelector("#cc-exp-month"), "");
+  fillField(form.form.querySelector("#cc-exp-year"), "");
+  form.saveButton.focus();
+  ok(form.saveButton.disabled,
+     "Save button should be disabled since the required fields are empty");
+  fillField(form.form.querySelector("#cc-exp-month"), "11");
+  fillField(form.form.querySelector("#cc-exp-year"), year);
+  form.saveButton.focus();
+  ok(!form.saveButton.disabled,
+     "Save button should be enabled since the required fields are filled again");
+
+  info("blanking the cc-number field");
+  fillField(form.form.querySelector("#cc-number"), "");
+  ok(form.saveButton.disabled, "Save button is disabled after blanking cc-number");
+  form.form.querySelector("#cc-number").blur();
+  let fieldsVisiblyInvalid = form.querySelectorAll(":-moz-ui-invalid");
+  is(fieldsVisiblyInvalid.length, 1, "Check 1 field visibly invalid after blanking and blur");
+  is(fieldsVisiblyInvalid[0].id, "cc-number", "Check #cc-number is visibly invalid");
+
+  fillField(form.form.querySelector("#cc-number"), "4111 1111-1111 1111");
+  is(form.querySelectorAll(":-moz-ui-invalid").length, 0, "Check no fields visibly invalid");
+  ok(!form.saveButton.disabled, "Save button is enabled after re-filling cc-number");
 
   let messagePromise = promiseContentToChromeMessage("updateAutofillRecord");
-  is(form.saveButton.textContent, "Save", "Check label");
+  is(form.saveButton.textContent, "Add", "Check label");
   synthesizeMouseAtCenter(form.saveButton, {});
 
   let details = await messagePromise;
+  ok(typeof(details.messageID) == "number" && details.messageID > 0, "Check messageID type");
+  delete details.messageID;
   is(details.collectionName, "creditCards", "Check collectionName");
   isDeeply(details, {
     collectionName: "creditCards",
-    errorStateChange: {
-      page: {
-        id: "basic-card-page",
-        error: "Generic error",
-      },
-    },
     guid: undefined,
     messageType: "updateAutofillRecord",
-    preserveOldProperties: true,
     record: {
       "cc-exp-month": "11",
       "cc-exp-year": year,
       "cc-name": "J. Smith",
-      "cc-number": "4111111111111111",
-    },
-    selectedStateKey: ["selectedPaymentCard"],
-    successStateChange: {
-      page: {
-        id: "payment-summary",
-      },
+      "cc-number": "4111 1111-1111 1111",
+      "cc-type": "visa",
+      "billingAddressGUID": "",
+      "isTemporary": true,
     },
   }, "Check event details for the message to chrome");
+  form.remove();
+});
+
+add_task(async function test_requiredAttributePropagated() {
+  let form = new BasicCardForm();
+  await form.promiseReady;
+  display.appendChild(form);
+  await asyncElementRendered();
+
+  let requiredElements = [...form.form.elements].filter(e => e.required && !e.disabled);
+  ok(requiredElements.length, "There should be at least one required element");
+  for (let element of requiredElements) {
+    let container = element.closest("label") || element.closest("div");
+    ok(container.hasAttribute("required"), "Container should also be marked as required");
+  }
+  // Now test that toggling the `required` attribute will affect the container.
+  let sampleRequiredElement = requiredElements[0];
+  let sampleRequiredContainer = sampleRequiredElement.closest("label") ||
+                                sampleRequiredElement.closest("div");
+  sampleRequiredElement.removeAttribute("required");
+  await form.requestStore.setState({});
+  await asyncElementRendered();
+  ok(!sampleRequiredElement.hasAttribute("required"),
+     `"required" attribute should still be removed from element (${sampleRequiredElement.id})`);
+  ok(!sampleRequiredContainer.hasAttribute("required"),
+     `"required" attribute should be removed from container`);
+  sampleRequiredElement.setAttribute("required", "true");
+  await form.requestStore.setState({});
+  await asyncElementRendered();
+  ok(sampleRequiredContainer.hasAttribute("required"),
+     "`required` attribute is re-added to container");
+
   form.remove();
 });
 
@@ -169,6 +226,8 @@ add_task(async function test_add_selectedShippingAddress() {
 
   let address1 = deepClone(PTU.Addresses.TimBL);
   address1.guid = "TimBLGUID";
+  let address2 = deepClone(PTU.Addresses.TimBL2);
+  address2.guid = "TimBL2GUID";
 
   await form.requestStore.setState({
     page: {
@@ -176,15 +235,16 @@ add_task(async function test_add_selectedShippingAddress() {
     },
     savedAddresses: {
       [address1.guid]: deepClone(address1),
+      [address2.guid]: deepClone(address2),
     },
     savedBasicCards: {
       [card1.guid]: deepClone(card1),
     },
-    selectedShippingAddress: address1.guid,
+    selectedShippingAddress: address2.guid,
   });
   await asyncElementRendered();
   checkCCForm(form, {
-    billingAddressGUID: address1.guid,
+    billingAddressGUID: address2.guid,
   });
 
   form.remove();
@@ -237,6 +297,7 @@ add_task(async function test_add_noSelectedShippingAddress() {
 
 add_task(async function test_edit() {
   let form = new BasicCardForm();
+  form.dataset.updateButtonLabel = "Update";
   await form.promiseReady;
   display.appendChild(form);
   await asyncElementRendered();
@@ -258,7 +319,19 @@ add_task(async function test_edit() {
     },
   });
   await asyncElementRendered();
+  is(form.saveButton.textContent, "Update", "Check label");
+  is(form.querySelectorAll(":-moz-ui-invalid").length, 0,
+     "Check no fields are visibly invalid on an 'edit' form with a complete card");
   checkCCForm(form, card1);
+  ok(!form.saveButton.disabled, "Save button should be enabled upon edit for a valid card");
+
+  let requiredElements = [...form.form.elements].filter(e => e.required && !e.disabled);
+  ok(requiredElements.length, "There should be at least one required element");
+  for (let element of requiredElements) {
+    let container = element.closest("label") || element.closest("div");
+    ok(element.hasAttribute("required"), "Element should be marked as required");
+    ok(container.hasAttribute("required"), "Container should also be marked as required");
+  }
 
   info("test future year");
   card1["cc-exp-year"] = 2100;
@@ -289,6 +362,8 @@ add_task(async function test_edit() {
     },
   });
   await asyncElementRendered();
+  ok(form.querySelectorAll(":-moz-ui-invalid").length > 0,
+     "Check fields are visibly invalid on an 'edit' form with missing fields");
   checkCCForm(form, minimalCard);
 
   info("change to no selected card");
@@ -301,10 +376,121 @@ add_task(async function test_edit() {
     },
   });
   await asyncElementRendered();
+  is(form.querySelectorAll(":-moz-ui-invalid").length, 0,
+     "Check no fields are visibly invalid after converting to an 'add' form");
   checkCCForm(form, {});
 
   form.remove();
 });
+
+add_task(async function test_field_validity_updates() {
+  let form = new BasicCardForm();
+  form.dataset.updateButtonLabel = "Add";
+  await form.promiseReady;
+  display.appendChild(form);
+  await asyncElementRendered();
+
+  let ccNumber = form.form.querySelector("#cc-number");
+  let nameInput = form.form.querySelector("#cc-name");
+  let monthInput = form.form.querySelector("#cc-exp-month");
+  let yearInput = form.form.querySelector("#cc-exp-year");
+
+  info("test with valid cc-number but missing cc-name");
+  fillField(ccNumber, "4111111111111111");
+  ok(ccNumber.checkValidity(), "cc-number field is valid with good input");
+  ok(!nameInput.checkValidity(), "cc-name field is invalid when empty");
+  ok(form.saveButton.disabled, "Save button should be disabled with incomplete input");
+
+  info("correct by adding cc-name and expiration values");
+  fillField(nameInput, "First");
+  fillField(monthInput, "11");
+  let year = (new Date()).getFullYear().toString();
+  fillField(yearInput, year);
+  ok(ccNumber.checkValidity(), "cc-number field is valid with good input");
+  ok(nameInput.checkValidity(), "cc-name field is valid with a value");
+  ok(monthInput.checkValidity(), "cc-exp-month field is valid with a value");
+  ok(yearInput.checkValidity(), "cc-exp-year field is valid with a value");
+  ok(!form.saveButton.disabled, "Save button should not be disabled with good input");
+
+  info("edit to make the cc-number invalid");
+  ccNumber.focus();
+  sendString("aa");
+  nameInput.focus();
+  sendString("Surname");
+
+  ok(!ccNumber.checkValidity(), "cc-number field becomes invalid with bad input");
+  ok(form.querySelector("#cc-number:-moz-ui-invalid"), "cc-number field is visibly invalid");
+  ok(nameInput.checkValidity(), "cc-name field is valid with a value");
+  ok(form.saveButton.disabled, "Save button becomes disabled with bad input");
+
+  info("fix the cc-number to make it all valid again");
+  ccNumber.focus();
+  sendKey("BACK_SPACE");
+  sendKey("BACK_SPACE");
+  info("after backspaces, ccNumber.value: " + ccNumber.value);
+
+  ok(ccNumber.checkValidity(), "cc-number field becomes valid with corrected input");
+  ok(nameInput.checkValidity(), "cc-name field is valid with a value");
+  ok(!form.saveButton.disabled, "Save button is no longer disabled with corrected input");
+
+  form.remove();
+});
+
+add_task(async function test_numberCustomValidityReset() {
+  let form = new BasicCardForm();
+  form.dataset.updateButtonLabel = "Add";
+  await form.promiseReady;
+  display.appendChild(form);
+  await asyncElementRendered();
+
+  fillField(form.querySelector("#cc-number"), "junk");
+  sendKey("TAB");
+  ok(form.querySelector("#cc-number:-moz-ui-invalid"), "cc-number field is visibly invalid");
+
+  info("simulate triggering an add again to reset the form");
+  await form.requestStore.setState({
+    page: {
+      id: "basic-card-page",
+    },
+    "basic-card-page": {
+    },
+  });
+
+  ok(!form.querySelector("#cc-number:-moz-ui-invalid"), "cc-number field is not visibly invalid");
+
+  form.remove();
+});
+
+add_task(async function test_noCardNetworkSelected() {
+  let form = new BasicCardForm();
+  await form.promiseReady;
+  display.appendChild(form);
+  await asyncElementRendered();
+
+  info("have an existing card in storage, with no network id");
+  let card1 = deepClone(PTU.BasicCards.JohnDoe);
+  card1.guid = "9864798564";
+  delete card1["cc-type"];
+
+  await form.requestStore.setState({
+    page: {
+      id: "basic-card-page",
+    },
+    "basic-card-page": {
+      guid: card1.guid,
+    },
+    savedBasicCards: {
+      [card1.guid]: deepClone(card1),
+    },
+  });
+  await asyncElementRendered();
+  checkCCForm(form, card1);
+  is(document.getElementById("cc-type").selectedIndex, 0, "Initial empty option is selected");
+
+  form.remove();
+  await form.requestStore.reset();
+});
+
 </script>
 
 </body>

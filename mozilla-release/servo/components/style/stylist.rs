@@ -20,15 +20,15 @@ use malloc_size_of::{MallocShallowSizeOf, MallocSizeOf, MallocSizeOfOps};
 #[cfg(feature = "gecko")]
 use malloc_size_of::MallocUnconditionalShallowSizeOf;
 use media_queries::Device;
-use properties::{self, CascadeFlags, ComputedValues};
+use properties::{self, CascadeMode, ComputedValues};
 use properties::{AnimationRules, PropertyDeclarationBlock};
 use rule_cache::{RuleCache, RuleCacheConditions};
 use rule_tree::{CascadeLevel, RuleTree, ShadowCascadeOrder, StrongRuleNode, StyleSource};
-use selector_map::{PrecomputedHashMap, SelectorMap, SelectorMapEntry};
+use selector_map::{PrecomputedHashMap, PrecomputedHashSet, SelectorMap, SelectorMapEntry};
 use selector_parser::{PerPseudoElementMap, PseudoElement, SelectorImpl, SnapshotMap};
 use selectors::NthIndexCache;
 use selectors::attr::{CaseSensitivity, NamespaceConstraint};
-use selectors::bloom::{BloomFilter, NonCountingBloomFilter};
+use selectors::bloom::BloomFilter;
 use selectors::matching::{matches_selector, ElementSelectorFlags, MatchingContext, MatchingMode};
 use selectors::matching::VisitedHandlingMode;
 use selectors::parser::{AncestorHashes, Combinator, Component, Selector};
@@ -824,9 +824,6 @@ impl Stylist {
     ///
     /// layout_parent_style is the style used for some property fixups.  It's
     /// the style of the nearest ancestor with a layout box.
-    ///
-    /// is_link should be true if we're computing style for a link; that affects
-    /// how :visited handling is done.
     pub fn cascade_style_and_visited<E>(
         &self,
         element: Option<E>,
@@ -845,55 +842,18 @@ impl Stylist {
     {
         debug_assert!(pseudo.is_some() || element.is_some(), "Huh?");
 
-        let cascade_flags = pseudo.map_or(CascadeFlags::empty(), |p| p.cascade_flags());
-
         // We need to compute visited values if we have visited rules or if our
         // parent has visited values.
-        let mut visited_values = None;
-        if inputs.visited_rules.is_some() || parent_style.and_then(|s| s.visited_style()).is_some()
-        {
-            // At this point inputs may have visited rules, or rules.
-            let rule_node = match inputs.visited_rules.as_ref() {
-                Some(rules) => rules,
-                None => inputs.rules.as_ref().unwrap_or(self.rule_tree.root()),
-            };
-
-            let inherited_style;
-            let inherited_style_ignoring_first_line;
-            let layout_parent_style_for_visited;
-            if pseudo.is_none() && element.unwrap().is_link() {
-                // We just want to use our parent style as our parent.
-                inherited_style = parent_style;
-                inherited_style_ignoring_first_line = parent_style_ignoring_first_line;
-                layout_parent_style_for_visited = layout_parent_style;
-            } else {
-                // We want to use the visited bits (if any) from our parent
-                // style as our parent.
-                inherited_style = parent_style
-                    .map(|parent_style| parent_style.visited_style().unwrap_or(parent_style));
-                inherited_style_ignoring_first_line = parent_style_ignoring_first_line
-                    .map(|parent_style| parent_style.visited_style().unwrap_or(parent_style));
-                layout_parent_style_for_visited = layout_parent_style
-                    .map(|parent_style| parent_style.visited_style().unwrap_or(parent_style));
+        let visited_rules = match inputs.visited_rules.as_ref() {
+            Some(rules) => Some(rules),
+            None => {
+                if parent_style.and_then(|s| s.visited_style()).is_some() {
+                    Some(inputs.rules.as_ref().unwrap_or(self.rule_tree.root()))
+                } else {
+                    None
+                }
             }
-
-            visited_values = Some(properties::cascade::<E>(
-                &self.device,
-                pseudo,
-                rule_node,
-                guards,
-                inherited_style,
-                inherited_style_ignoring_first_line,
-                layout_parent_style_for_visited,
-                None,
-                font_metrics,
-                cascade_flags | CascadeFlags::VISITED_DEPENDENT_ONLY,
-                self.quirks_mode,
-                rule_cache,
-                rule_cache_conditions,
-                element,
-            ));
-        }
+        };
 
         // Read the comment on `precomputed_values_for_pseudo` to see why it's
         // difficult to assert that display: contents nodes never arrive here
@@ -909,9 +869,8 @@ impl Stylist {
             parent_style,
             parent_style_ignoring_first_line,
             layout_parent_style,
-            visited_values,
+            visited_rules,
             font_metrics,
-            cascade_flags,
             self.quirks_mode,
             rule_cache,
             rule_cache_conditions,
@@ -936,7 +895,6 @@ impl Stylist {
     where
         E: TElement,
     {
-        let pseudo = pseudo.canonical();
         debug_assert!(pseudo.is_lazy());
 
         // Apply the selector flags. We should be in sequential mode
@@ -1170,15 +1128,7 @@ impl Stylist {
 
         let rule_hash_target = element.rule_hash_target();
 
-        debug!(
-            "Determining if style is shareable: pseudo: {}",
-            pseudo_element.is_some()
-        );
-
-        let only_default_rules = rule_inclusion == RuleInclusion::DefaultOnly;
-        let matches_user_rules = rule_hash_target.matches_user_and_author_rules();
-        let matches_author_rules =
-            matches_user_rules && self.author_styles_enabled == AuthorStylesEnabled::Yes;
+        let matches_user_and_author_rules = rule_hash_target.matches_user_and_author_rules();
 
         // Normal user-agent rules.
         if let Some(map) = self.cascade_data
@@ -1205,7 +1155,7 @@ impl Stylist {
         //      rule_hash_target.matches_user_and_author_rules())
         //
         // Which may be more what you would probably expect.
-        if matches_user_rules {
+        if matches_user_and_author_rules {
             // User normal rules.
             if let Some(map) = self.cascade_data.user.normal_rules(pseudo_element) {
                 map.get_all_matching_rules(
@@ -1220,7 +1170,11 @@ impl Stylist {
             }
         }
 
-        if pseudo_element.is_none() && !only_default_rules {
+        if rule_inclusion == RuleInclusion::DefaultOnly {
+            return;
+        }
+
+        if pseudo_element.is_none() {
             // Presentational hints.
             //
             // These go before author rules, but after user rules, see:
@@ -1230,8 +1184,8 @@ impl Stylist {
                 context.visited_handling(),
                 applicable_declarations,
             );
-            if applicable_declarations.len() != length_before_preshints {
-                if cfg!(debug_assertions) {
+            if cfg!(debug_assertions) {
+                if applicable_declarations.len() != length_before_preshints {
                     for declaration in &applicable_declarations[length_before_preshints..] {
                         assert_eq!(declaration.level(), CascadeLevel::PresHints);
                     }
@@ -1239,7 +1193,11 @@ impl Stylist {
             }
         }
 
-        let mut match_document_author_rules = matches_author_rules;
+        if self.author_styles_enabled == AuthorStylesEnabled::No {
+            return;
+        }
+
+        let mut match_document_author_rules = matches_user_and_author_rules;
         let mut shadow_cascade_order = 0;
 
         // XBL / Shadow DOM rules, which are author rules too.
@@ -1248,56 +1206,68 @@ impl Stylist {
         // particular, normally document rules override ::slotted() rules, but
         // for !important it should be the other way around. So probably we need
         // to add some sort of AuthorScoped cascade level or something.
-        if matches_author_rules && !only_default_rules {
-            if let Some(shadow) = rule_hash_target.shadow_root() {
-                if let Some(map) = shadow.style_data().host_rules(pseudo_element) {
-                    context.with_shadow_host(Some(rule_hash_target), |context| {
-                        map.get_all_matching_rules(
-                            element,
-                            rule_hash_target,
-                            applicable_declarations,
-                            context,
-                            flags_setter,
-                            CascadeLevel::InnerShadowNormal,
-                            shadow_cascade_order,
-                        );
-                    });
-                    shadow_cascade_order += 1;
-                }
+        if let Some(shadow) = rule_hash_target.shadow_root() {
+            debug_assert!(
+                matches_user_and_author_rules,
+                "NAC should not be a shadow host"
+            );
+            if let Some(map) = shadow
+                .style_data()
+                .and_then(|data| data.host_rules(pseudo_element))
+            {
+                context.with_shadow_host(Some(rule_hash_target), |context| {
+                    map.get_all_matching_rules(
+                        element,
+                        rule_hash_target,
+                        applicable_declarations,
+                        context,
+                        flags_setter,
+                        CascadeLevel::InnerShadowNormal,
+                        shadow_cascade_order,
+                    );
+                });
+                shadow_cascade_order += 1;
             }
+        }
 
-            // Match slotted rules in reverse order, so that the outer slotted
-            // rules come before the inner rules (and thus have less priority).
-            let mut slots = SmallVec::<[_; 3]>::new();
-            let mut current = rule_hash_target.assigned_slot();
-            while let Some(slot) = current {
-                slots.push(slot);
-                current = slot.assigned_slot();
+        // Match slotted rules in reverse order, so that the outer slotted
+        // rules come before the inner rules (and thus have less priority).
+        let mut slots = SmallVec::<[_; 3]>::new();
+        let mut current = rule_hash_target.assigned_slot();
+        while let Some(slot) = current {
+            debug_assert!(
+                matches_user_and_author_rules,
+                "We should not slot NAC anywhere"
+            );
+            slots.push(slot);
+            current = slot.assigned_slot();
+        }
+
+        for slot in slots.iter().rev() {
+            let shadow = slot.containing_shadow().unwrap();
+            if let Some(map) = shadow.style_data().and_then(|data| data.slotted_rules(pseudo_element)) {
+                context.with_shadow_host(Some(shadow.host()), |context| {
+                    map.get_all_matching_rules(
+                        element,
+                        rule_hash_target,
+                        applicable_declarations,
+                        context,
+                        flags_setter,
+                        CascadeLevel::InnerShadowNormal,
+                        shadow_cascade_order,
+                    );
+                });
+                shadow_cascade_order += 1;
             }
+        }
 
-            for slot in slots.iter().rev() {
-                let shadow = slot.containing_shadow().unwrap();
-                let styles = shadow.style_data();
-                if let Some(map) = styles.slotted_rules(pseudo_element) {
-                    context.with_shadow_host(Some(shadow.host()), |context| {
-                        map.get_all_matching_rules(
-                            element,
-                            rule_hash_target,
-                            applicable_declarations,
-                            context,
-                            flags_setter,
-                            CascadeLevel::InnerShadowNormal,
-                            shadow_cascade_order,
-                        );
-                    });
-                    shadow_cascade_order += 1;
-                }
-            }
-
-            if let Some(containing_shadow) = rule_hash_target.containing_shadow() {
+        if matches_user_and_author_rules {
+            let mut current_containing_shadow = rule_hash_target.containing_shadow();
+            while let Some(containing_shadow) = current_containing_shadow {
                 let cascade_data = containing_shadow.style_data();
-                if let Some(map) = cascade_data.normal_rules(pseudo_element) {
-                    context.with_shadow_host(Some(containing_shadow.host()), |context| {
+                let host = containing_shadow.host();
+                if let Some(map) = cascade_data.and_then(|data| data.normal_rules(pseudo_element)) {
+                    context.with_shadow_host(Some(host), |context| {
                         map.get_all_matching_rules(
                             element,
                             rule_hash_target,
@@ -1311,14 +1281,39 @@ impl Stylist {
                     shadow_cascade_order += 1;
                 }
 
-                match_document_author_rules = false;
+                let host_is_svg_use_element =
+                    host.is_svg_element() && host.local_name() == &*local_name!("use");
+
+                if !host_is_svg_use_element {
+                    match_document_author_rules = false;
+                    break;
+                }
+
+                debug_assert!(
+                    cascade_data.is_none(),
+                    "We allow no stylesheets in <svg:use> subtrees"
+                );
+
+                // NOTE(emilio): Hack so <svg:use> matches the rules of the
+                // enclosing tree.
+                //
+                // This is not a problem for invalidation and that kind of stuff
+                // because they still don't match rules based on elements
+                // outside of the shadow tree, and because the <svg:use>
+                // subtrees are immutable and recreated each time the source
+                // tree changes.
+                //
+                // We historically allow cross-document <svg:use> to have these
+                // rules applied, but I think that's not great. Gecko is the
+                // only engine supporting that.
+                //
+                // See https://github.com/w3c/svgwg/issues/504 for the relevant
+                // spec discussion.
+                current_containing_shadow = host.containing_shadow();
+                match_document_author_rules = current_containing_shadow.is_none();
             }
         }
 
-        // FIXME(emilio): It looks very wrong to match XBL rules even for
-        // getDefaultComputedStyle!
-        //
-        // Also, this doesn't account for the author_styles_enabled stuff.
         let cut_xbl_binding_inheritance =
             element.each_xbl_cascade_data(|cascade_data, quirks_mode| {
                 if let Some(map) = cascade_data.normal_rules(pseudo_element) {
@@ -1349,7 +1344,7 @@ impl Stylist {
 
         match_document_author_rules &= !cut_xbl_binding_inheritance;
 
-        if match_document_author_rules && !only_default_rules {
+        if match_document_author_rules {
             // Author normal rules.
             if let Some(map) = self.cascade_data.author.normal_rules(pseudo_element) {
                 map.get_all_matching_rules(
@@ -1364,47 +1359,43 @@ impl Stylist {
             }
         }
 
-        if !only_default_rules {
-            // Style attribute ("Normal override declarations").
-            if let Some(sa) = style_attribute {
-                applicable_declarations.push(ApplicableDeclarationBlock::from_declarations(
-                    sa.clone_arc(),
-                    CascadeLevel::StyleAttributeNormal,
-                ));
-            }
+        // Style attribute ("Normal override declarations").
+        if let Some(sa) = style_attribute {
+            applicable_declarations.push(ApplicableDeclarationBlock::from_declarations(
+                sa.clone_arc(),
+                CascadeLevel::StyleAttributeNormal,
+            ));
+        }
 
-            // Declarations from SVG SMIL animation elements.
-            if let Some(so) = smil_override {
-                applicable_declarations.push(ApplicableDeclarationBlock::from_declarations(
-                    so.clone_arc(),
-                    CascadeLevel::SMILOverride,
-                ));
-            }
+        // Declarations from SVG SMIL animation elements.
+        if let Some(so) = smil_override {
+            applicable_declarations.push(ApplicableDeclarationBlock::from_declarations(
+                so.clone_arc(),
+                CascadeLevel::SMILOverride,
+            ));
+        }
 
-            // The animations sheet (CSS animations, script-generated
-            // animations, and CSS transitions that are no longer tied to CSS
-            // markup).
-            if let Some(anim) = animation_rules.0 {
-                applicable_declarations.push(ApplicableDeclarationBlock::from_declarations(
-                    anim.clone(),
-                    CascadeLevel::Animations,
-                ));
-            }
+        // The animations sheet (CSS animations, script-generated
+        // animations, and CSS transitions that are no longer tied to CSS
+        // markup).
+        if let Some(anim) = animation_rules.0 {
+            applicable_declarations.push(ApplicableDeclarationBlock::from_declarations(
+                anim.clone(),
+                CascadeLevel::Animations,
+            ));
         }
 
         //
         // !important rules are handled during rule tree insertion.
         //
 
-        if !only_default_rules {
-            // The transitions sheet (CSS transitions that are tied to CSS
-            // markup).
-            if let Some(anim) = animation_rules.1 {
-                applicable_declarations.push(ApplicableDeclarationBlock::from_declarations(
-                    anim.clone(),
-                    CascadeLevel::Transitions,
-                ));
-            }
+        // The transitions sheet (CSS transitions that are tied to CSS
+        // markup).
+        if let Some(anim) = animation_rules.1 {
+            applicable_declarations.push(ApplicableDeclarationBlock::from_declarations(
+                anim.clone(),
+                CascadeLevel::Transitions,
+            ));
         }
     }
 
@@ -1422,8 +1413,7 @@ impl Stylist {
             CaseSensitivity::CaseSensitive => {},
         }
 
-        let hash = id.get_hash();
-        self.any_applicable_rule_data(element, |data| data.mapped_ids.might_contain_hash(hash))
+        self.any_applicable_rule_data(element, |data| data.mapped_ids.contains(id))
     }
 
     /// Returns the registered `@keyframes` animation for the specified name.
@@ -1461,11 +1451,15 @@ impl Stylist {
         // [2]: https://github.com/w3c/csswg-drafts/issues/1995
         // [3]: https://bugzil.la/1458189
         if let Some(shadow) = element.shadow_root() {
-            try_find_in!(shadow.style_data());
+            if let Some(data) = shadow.style_data() {
+                try_find_in!(data);
+            }
         }
 
         if let Some(shadow) = element.containing_shadow() {
-            try_find_in!(shadow.style_data());
+            if let Some(data) = shadow.style_data() {
+                try_find_in!(data);
+            }
         } else {
             try_find_in!(self.cascade_data.author);
         }
@@ -1584,9 +1578,8 @@ impl Stylist {
             Some(parent_style),
             Some(parent_style),
             Some(parent_style),
-            None,
             &metrics,
-            CascadeFlags::empty(),
+            CascadeMode::Unvisited { visited_rules: None },
             self.quirks_mode,
             /* rule_cache = */ None,
             &mut Default::default(),
@@ -1776,11 +1769,9 @@ struct StylistSelectorVisitor<'a> {
     passed_rightmost_selector: bool,
     /// The filter with all the id's getting referenced from rightmost
     /// selectors.
-    mapped_ids: &'a mut NonCountingBloomFilter,
+    mapped_ids: &'a mut PrecomputedHashSet<Atom>,
     /// The filter with the local names of attributes there are selectors for.
-    attribute_dependencies: &'a mut NonCountingBloomFilter,
-    /// Whether there's any attribute selector for the [style] attribute.
-    style_attribute_dependency: &'a mut bool,
+    attribute_dependencies: &'a mut PrecomputedHashSet<LocalName>,
     /// All the states selectors in the page reference.
     state_dependencies: &'a mut ElementState,
     /// All the document states selectors in the page reference.
@@ -1845,13 +1836,8 @@ impl<'a> SelectorVisitor for StylistSelectorVisitor<'a> {
         name: &LocalName,
         lower_name: &LocalName,
     ) -> bool {
-        if *lower_name == local_name!("style") {
-            *self.style_attribute_dependency = true;
-        } else {
-            self.attribute_dependencies.insert_hash(name.get_hash());
-            self.attribute_dependencies
-                .insert_hash(lower_name.get_hash());
-        }
+        self.attribute_dependencies.insert(name.clone());
+        self.attribute_dependencies.insert(lower_name.clone());
         true
     }
 
@@ -1877,7 +1863,7 @@ impl<'a> SelectorVisitor for StylistSelectorVisitor<'a> {
                 //
                 // NOTE(emilio): See the comment regarding on when this may
                 // break in visit_complex_selector.
-                self.mapped_ids.insert_hash(id.get_hash());
+                self.mapped_ids.insert(id.clone());
             },
             _ => {},
         }
@@ -1909,12 +1895,14 @@ impl ElementAndPseudoRules {
         pseudo_element: Option<&PseudoElement>,
         quirks_mode: QuirksMode,
     ) -> Result<(), FailedAllocationError> {
-        debug_assert!(pseudo_element.map_or(true, |pseudo| !pseudo.is_precomputed()));
+        debug_assert!(pseudo_element.map_or(true, |pseudo| {
+            !pseudo.is_precomputed() && !pseudo.is_unknown_webkit_pseudo_element()
+        }));
 
         let map = match pseudo_element {
             None => &mut self.element_map,
             Some(pseudo) => self.pseudos_map
-                .get_or_insert_with(&pseudo.canonical(), || Box::new(SelectorMap::new())),
+                .get_or_insert_with(pseudo, || Box::new(SelectorMap::new())),
         };
 
         map.insert(rule, quirks_mode)
@@ -1928,7 +1916,7 @@ impl ElementAndPseudoRules {
     #[inline]
     fn rules(&self, pseudo: Option<&PseudoElement>) -> Option<&SelectorMap<Rule>> {
         match pseudo {
-            Some(pseudo) => self.pseudos_map.get(&pseudo.canonical()).map(|p| &**p),
+            Some(pseudo) => self.pseudos_map.get(pseudo).map(|p| &**p),
             None => Some(&self.element_map),
         }
     }
@@ -1975,18 +1963,9 @@ pub struct CascadeData {
 
     /// The attribute local names that appear in attribute selectors.  Used
     /// to avoid taking element snapshots when an irrelevant attribute changes.
-    /// (We don't bother storing the namespace, since namespaced attributes
-    /// are rare.)
-    #[ignore_malloc_size_of = "just an array"]
-    attribute_dependencies: NonCountingBloomFilter,
-
-    /// Whether `"style"` appears in an attribute selector.  This is not common,
-    /// and by tracking this explicitly, we can avoid taking an element snapshot
-    /// in the common case of style=""` changing due to modifying
-    /// `element.style`.  (We could track this in `attribute_dependencies`, like
-    /// all other attributes, but we should probably not risk incorrectly
-    /// returning `true` for `"style"` just due to a hash collision.)
-    style_attribute_dependency: bool,
+    /// (We don't bother storing the namespace, since namespaced attributes are
+    /// rare.)
+    attribute_dependencies: PrecomputedHashSet<LocalName>,
 
     /// The element state bits that are relied on by selectors.  Like
     /// `attribute_dependencies`, this is used to avoid taking element snapshots
@@ -2002,8 +1981,7 @@ pub struct CascadeData {
     /// hence in our selector maps).  Used to determine when sharing styles is
     /// safe: we disallow style sharing for elements whose id matches this
     /// filter, and hence might be in one of our selector maps.
-    #[ignore_malloc_size_of = "just an array"]
-    mapped_ids: NonCountingBloomFilter,
+    mapped_ids: PrecomputedHashSet<Atom>,
 
     /// Selectors that require explicit cache revalidation (i.e. which depend
     /// on state that is not otherwise visible to the cache, like attributes or
@@ -2040,11 +2018,10 @@ impl CascadeData {
             host_rules: None,
             slotted_rules: None,
             invalidation_map: InvalidationMap::new(),
-            attribute_dependencies: NonCountingBloomFilter::new(),
-            style_attribute_dependency: false,
+            attribute_dependencies: PrecomputedHashSet::default(),
             state_dependencies: ElementState::empty(),
             document_state_dependencies: DocumentState::empty(),
-            mapped_ids: NonCountingBloomFilter::new(),
+            mapped_ids: PrecomputedHashSet::default(),
             selectors_for_cache_revalidation: SelectorMap::new(),
             animations: Default::default(),
             extra_data: ExtraStyleData::default(),
@@ -2109,13 +2086,9 @@ impl CascadeData {
     /// selector of some rule.
     #[inline]
     pub fn might_have_attribute_dependency(&self, local_name: &LocalName) -> bool {
-        if *local_name == local_name!("style") {
-            return self.style_attribute_dependency;
-        }
-
-        self.attribute_dependencies
-            .might_contain_hash(local_name.get_hash())
+        self.attribute_dependencies.contains(local_name)
     }
+
     #[inline]
     fn normal_rules(&self, pseudo: Option<&PseudoElement>) -> Option<&SelectorMap<Rule>> {
         self.normal_rules.rules(pseudo)
@@ -2212,7 +2185,7 @@ impl CascadeData {
                                 precomputed_pseudo_element_decls
                                     .as_mut()
                                     .expect("Expected precomputed declarations for the UA level")
-                                    .get_or_insert_with(&pseudo.canonical(), Vec::new)
+                                    .get_or_insert_with(pseudo, Vec::new)
                                     .push(ApplicableDeclarationBlock::new(
                                         StyleSource::from_rule(locked.clone()),
                                         self.rules_source_order,
@@ -2220,6 +2193,9 @@ impl CascadeData {
                                         selector.specificity(),
                                         0,
                                     ));
+                                continue;
+                            }
+                            if pseudo.is_unknown_webkit_pseudo_element() {
                                 continue;
                             }
                         }
@@ -2239,7 +2215,6 @@ impl CascadeData {
                                 needs_revalidation: false,
                                 passed_rightmost_selector: false,
                                 attribute_dependencies: &mut self.attribute_dependencies,
-                                style_attribute_dependency: &mut self.style_attribute_dependency,
                                 state_dependencies: &mut self.state_dependencies,
                                 document_state_dependencies: &mut self.document_state_dependencies,
                                 mapped_ids: &mut self.mapped_ids,
@@ -2438,6 +2413,9 @@ impl CascadeData {
         if let Some(ref mut slotted_rules) = self.slotted_rules {
             slotted_rules.clear();
         }
+        if let Some(ref mut host_rules) = self.host_rules {
+            host_rules.clear();
+        }
         self.animations.clear();
         self.extra_data.clear();
         self.rules_source_order = 0;
@@ -2449,7 +2427,6 @@ impl CascadeData {
         self.clear_cascade_data();
         self.invalidation_map.clear();
         self.attribute_dependencies.clear();
-        self.style_attribute_dependency = false;
         self.state_dependencies = ElementState::empty();
         self.document_state_dependencies = DocumentState::empty();
         self.mapped_ids.clear();
@@ -2463,6 +2440,9 @@ impl CascadeData {
         self.normal_rules.add_size_of(ops, sizes);
         if let Some(ref slotted_rules) = self.slotted_rules {
             slotted_rules.add_size_of(ops, sizes);
+        }
+        if let Some(ref host_rules) = self.host_rules {
+            host_rules.add_size_of(ops, sizes);
         }
         sizes.mInvalidationMap += self.invalidation_map.size_of(ops);
         sizes.mRevalidationSelectors += self.selectors_for_cache_revalidation.size_of(ops);
@@ -2545,16 +2525,14 @@ impl Rule {
 
 /// A function to be able to test the revalidation stuff.
 pub fn needs_revalidation_for_testing(s: &Selector<SelectorImpl>) -> bool {
-    let mut attribute_dependencies = NonCountingBloomFilter::new();
-    let mut mapped_ids = NonCountingBloomFilter::new();
-    let mut style_attribute_dependency = false;
+    let mut attribute_dependencies = Default::default();
+    let mut mapped_ids = Default::default();
     let mut state_dependencies = ElementState::empty();
     let mut document_state_dependencies = DocumentState::empty();
     let mut visitor = StylistSelectorVisitor {
         needs_revalidation: false,
         passed_rightmost_selector: false,
         attribute_dependencies: &mut attribute_dependencies,
-        style_attribute_dependency: &mut style_attribute_dependency,
         state_dependencies: &mut state_dependencies,
         document_state_dependencies: &mut document_state_dependencies,
         mapped_ids: &mut mapped_ids,

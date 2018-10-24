@@ -29,8 +29,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1375833
       ok(e.data.endsWith("file_bug1375833-frame2.html"), "check location");
 
       webNav = SpecialPowers.wrap(testWin)
-               .QueryInterface(SpecialPowers.Ci.nsIInterfaceRequestor)
-               .getInterface(SpecialPowers.Ci.nsIWebNavigation);
+               .docShell
+               .QueryInterface(SpecialPowers.Ci.nsIWebNavigation);
       shistory = webNav.sessionHistory;
       is(shistory.count, 2, "check history length");
       is(shistory.index, 1, "check history index");
@@ -50,9 +50,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1375833
       is(newFrameDocShellId, frameDocShellId, "check docshell ID remains after reload");
 
       let entry = shistory.legacySHistory.getEntryAtIndex(shistory.index, false);
-      let frameEntry = SpecialPowers.wrap(entry)
-                       .QueryInterface(SpecialPowers.Ci.nsISHContainer)
-                       .GetChildAt(0);
+      let frameEntry = entry.GetChildAt(0);
       is(String(frameEntry.docshellID), frameDocShellId, "check newly added shentry uses the same docshell ID");
 
       webNav.goBack();
@@ -82,9 +80,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1375833
   });
 
   function getFrameDocShell() {
-    return SpecialPowers.wrap(testWin.window[0])
-           .QueryInterface(SpecialPowers.Ci.nsIInterfaceRequestor)
-           .getInterface(SpecialPowers.Ci.nsIDocShell)
+    return SpecialPowers.wrap(testWin.window[0]).docShell;
   }
 
   </script>

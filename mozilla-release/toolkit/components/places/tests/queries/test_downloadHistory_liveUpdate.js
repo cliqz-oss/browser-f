@@ -19,7 +19,7 @@ function accumulateNotifications(result) {
       return () => {
         notifications.push(name);
       };
-    }
+    },
   });
   result.addObserver(resultObserver, false);
   return resultObserver;
@@ -39,7 +39,7 @@ add_task(async function test_downloadhistory_query_notifications() {
   // Add more maxResults downloads in order.
   let transitions = Object.values(PlacesUtils.history.TRANSITIONS);
   for (let transition of transitions) {
-    let uri = Services.io.newURI("http://fx-search.com/" + transition);
+    let uri = "http://fx-search.com/" + transition;
     await PlacesTestUtils.addVisits({ uri, transition, title: "test " + transition });
     // For each visit also set apart:
     //  - a bookmark
@@ -47,11 +47,13 @@ add_task(async function test_downloadhistory_query_notifications() {
     //  - an icon
     await PlacesUtils.bookmarks.insert({
       url: uri,
-      parentGuid: PlacesUtils.bookmarks.unfiledGuid
+      parentGuid: PlacesUtils.bookmarks.unfiledGuid,
     });
-    PlacesUtils.annotations.setPageAnnotation(uri, "test/anno", "testValue", 0,
-                                              PlacesUtils.annotations.EXPIRE_WITH_HISTORY);
-    await PlacesTestUtils.addFavicons(new Map([[uri.spec, SMALLPNG_DATA_URI.spec]]));
+    await PlacesUtils.history.update({
+      url: uri,
+      annotations: new Map([["test/anno", "testValue"]]),
+    });
+    await PlacesTestUtils.addFavicons(new Map([[uri, SMALLPNG_DATA_URI.spec]]));
   }
   // Remove all the visits one by one.
   for (let transition of transitions) {
@@ -89,7 +91,7 @@ add_task(async function test_downloadhistory_query_filtering() {
     await PlacesTestUtils.addVisits({
       uri,
       transition: PlacesUtils.history.TRANSITIONS.DOWNLOAD,
-      visitDate
+      visitDate,
     });
     uris.push(uri);
   }
@@ -97,7 +99,7 @@ add_task(async function test_downloadhistory_query_filtering() {
   await PlacesTestUtils.addVisits({
     uri: `http://fx-search.com/download/unordered`,
     transition: PlacesUtils.history.TRANSITIONS.DOWNLOAD,
-    visitDate: new Date(Date.now() - 7200000)
+    visitDate: new Date(Date.now() - 7200000),
   });
 
   Assert.equal(root.childCount, MAX_RESULTS, "Result should be limited");

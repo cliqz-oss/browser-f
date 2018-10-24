@@ -198,7 +198,7 @@ public:
     MOZ_DECLARE_WEAKREFERENCE_TYPENAME(GLContext)
     static MOZ_THREAD_LOCAL(uintptr_t) sCurrentContext;
 
-    bool mImplicitMakeCurrent;
+    bool mImplicitMakeCurrent = false;
     bool mUseTLSIsCurrent;
 
     class TlsScope final {
@@ -338,19 +338,19 @@ public:
 
 protected:
     bool mIsOffscreen;
-    mutable bool mContextLost;
+    mutable bool mContextLost = false;
 
     /**
      * mVersion store the OpenGL's version, multiplied by 100. For example, if
      * the context is an OpenGL 2.1 context, mVersion value will be 210.
      */
-    uint32_t mVersion;
-    ContextProfile mProfile;
+    uint32_t mVersion = 0;
+    ContextProfile mProfile = ContextProfile::Unknown;
 
-    uint32_t mShadingLanguageVersion;
+    uint32_t mShadingLanguageVersion = 0;
 
-    GLVendor mVendor;
-    GLRenderer mRenderer;
+    GLVendor mVendor = GLVendor::Other;
+    GLRenderer mRenderer = GLRenderer::Other;
 
 // -----------------------------------------------------------------------------
 // Extensions management
@@ -380,6 +380,7 @@ public:
         ANGLE_texture_compression_dxt5,
         ANGLE_timer_query,
         APPLE_client_storage,
+        APPLE_fence,
         APPLE_framebuffer_multisample,
         APPLE_sync,
         APPLE_texture_range,
@@ -570,7 +571,7 @@ public:
     }
 
 private:
-    mutable GLenum mTopError;
+    mutable GLenum mTopError = 0;
 
     GLenum RawGetError() const {
         return mSymbols.fGetError();
@@ -3303,6 +3304,25 @@ public:
     }
 
 // -----------------------------------------------------------------------------
+// APPLE_fence
+
+    void fFinishObjectAPPLE(GLenum object, GLint name) {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fFinishObjectAPPLE);
+        mSymbols.fFinishObjectAPPLE(object, name);
+        AFTER_GL_CALL;
+    }
+
+    realGLboolean fTestObjectAPPLE(GLenum object, GLint name) {
+        realGLboolean ret = false;
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fTestObjectAPPLE);
+        ret = mSymbols.fTestObjectAPPLE(object, name);
+        AFTER_GL_CALL;
+        return ret;
+    }
+
+// -----------------------------------------------------------------------------
 // prim_restart
 
     void fPrimitiveRestartIndex(GLuint index) {
@@ -3473,6 +3493,7 @@ public:
     };
 
     const uint8_t mDebugFlags;
+    static uint8_t ChooseDebugFlags(CreateContextFlags createFlags);
 
 protected:
     RefPtr<GLContext> mSharedContext;
@@ -3480,7 +3501,7 @@ protected:
     // The thread id which this context was created.
     PlatformThreadId mOwningThreadId;
 
-    GLContextSymbols mSymbols;
+    GLContextSymbols mSymbols = {};
 
     UniquePtr<GLBlitHelper> mBlitHelper;
     UniquePtr<GLReadTexImageHelper> mReadTexImageHelper;
@@ -3553,7 +3574,7 @@ protected:
     friend class GLScreenBuffer;
     UniquePtr<GLScreenBuffer> mScreen;
 
-    SharedSurface* mLockedSurface;
+    SharedSurface* mLockedSurface = nullptr;
 
 public:
     void LockSurface(SharedSurface* surf) {
@@ -3598,22 +3619,22 @@ private:
 protected:
     void InitExtensions();
 
-    GLint mViewportRect[4];
-    GLint mScissorRect[4];
+    GLint mViewportRect[4] = {};
+    GLint mScissorRect[4] = {};
 
     uint32_t mMaxTexOrRbSize = 0;
-    GLint mMaxTextureSize;
-    GLint mMaxCubeMapTextureSize;
-    GLint mMaxTextureImageSize;
-    GLint mMaxRenderbufferSize;
-    GLint mMaxViewportDims[2];
-    GLsizei mMaxSamples;
-    bool mNeedsTextureSizeChecks;
-    bool mNeedsFlushBeforeDeleteFB;
-    bool mTextureAllocCrashesOnMapFailure;
-    bool mNeedsCheckAfterAttachTextureToFb;
-    bool mWorkAroundDriverBugs;
-    mutable uint64_t mSyncGLCallCount;
+    GLint mMaxTextureSize = 0;
+    GLint mMaxCubeMapTextureSize = 0;
+    GLint mMaxTextureImageSize = 0;
+    GLint mMaxRenderbufferSize = 0;
+    GLint mMaxViewportDims[2] = {};
+    GLsizei mMaxSamples = 0;
+    bool mNeedsTextureSizeChecks = false;
+    bool mNeedsFlushBeforeDeleteFB = false;
+    bool mTextureAllocCrashesOnMapFailure = false;
+    bool mNeedsCheckAfterAttachTextureToFb = false;
+    bool mWorkAroundDriverBugs = true;
+    mutable uint64_t mSyncGLCallCount = 0;
 
     bool IsTextureSizeSafeToPassToDriver(GLenum target, GLsizei width, GLsizei height) const {
         if (mNeedsTextureSizeChecks) {
@@ -3697,7 +3718,7 @@ public:
 
 
 protected:
-    bool mHeavyGLCallsSinceLastFlush;
+    bool mHeavyGLCallsSinceLastFlush = false;
 
 public:
     void FlushIfHeavyGLCallsSinceLastFlush();

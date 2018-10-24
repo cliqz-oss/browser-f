@@ -291,6 +291,7 @@ public:
       mValue(value)
   {}
 
+  // TODO: remove this, Bug 1469702
   explicit SdpDtlsMessageAttribute(const std::string& unparsed)
     : SdpAttribute(kDtlsMessageAttribute),
       mRole(kClient)
@@ -303,6 +304,8 @@ public:
   }
 
   virtual void Serialize(std::ostream& os) const override;
+
+  // TODO: remove this, Bug 1469702
   bool Parse(std::istream& is, std::string* error);
 
   Role mRole;
@@ -718,9 +721,13 @@ public:
     public:
       XYRange() : min(0), max(0), step(1) {}
       void Serialize(std::ostream& os) const;
+      // TODO: Remove this Bug 1469702
       bool Parse(std::istream& is, std::string* error);
+      // TODO: Remove this Bug 1469702
       bool ParseAfterBracket(std::istream& is, std::string* error);
+      // TODO: Remove this Bug 1469702
       bool ParseAfterMin(std::istream& is, std::string* error);
+      // TODO: Remove this Bug 1469702
       bool ParseDiscreteValues(std::istream& is, std::string* error);
       std::vector<uint32_t> discreteValues;
       // min/max are used iff discreteValues is empty
@@ -734,9 +741,13 @@ public:
     public:
       SRange() : min(0), max(0) {}
       void Serialize(std::ostream& os) const;
+      // TODO: Remove this Bug 1469702
       bool Parse(std::istream& is, std::string* error);
+      // TODO: Remove this Bug 1469702
       bool ParseAfterBracket(std::istream& is, std::string* error);
+      // TODO: Remove this Bug 1469702
       bool ParseAfterMin(std::istream& is, std::string* error);
+      // TODO: Remove this Bug 1469702
       bool ParseDiscreteValues(std::istream& is, std::string* error);
       bool IsSet() const
       {
@@ -753,6 +764,7 @@ public:
     public:
       PRange() : min(0), max(0) {}
       void Serialize(std::ostream& os) const;
+      // TODO: Remove this Bug 1469702
       bool Parse(std::istream& is, std::string* error);
       bool IsSet() const
       {
@@ -767,6 +779,7 @@ public:
     public:
       Set() : qValue(-1) {}
       void Serialize(std::ostream& os) const;
+      // TODO: Remove this Bug 1469702
       bool Parse(std::istream& is, std::string* error);
       XYRange xRange;
       XYRange yRange;
@@ -780,7 +793,9 @@ public:
     public:
       Imageattr() : pt(), sendAll(false), recvAll(false) {}
       void Serialize(std::ostream& os) const;
+      // TODO: Remove this Bug 1469702
       bool Parse(std::istream& is, std::string* error);
+      // TODO: Remove this Bug 1469702
       bool ParseSets(std::istream& is, std::string* error);
       // If not set, this means all payload types
       Maybe<uint16_t> pt;
@@ -791,6 +806,8 @@ public:
   };
 
   virtual void Serialize(std::ostream& os) const override;
+
+  // TODO: Remove this Bug 1469702
   bool PushEntry(const std::string& raw, std::string* error, size_t* errorPos);
 
   std::vector<Imageattr> mImageattrs;
@@ -942,10 +959,15 @@ public:
       direction(sdp::kSend)
     {}
 
+    // Remove this function. See Bug 1469702
     bool Parse(std::istream& is, std::string* error);
+    // Remove this function. See Bug 1469702
     bool ParseParameters(std::istream& is, std::string* error);
+    // Remove this function. See Bug 1469702
     bool ParseDepend(std::istream& is, std::string* error);
+    // Remove this function. See Bug 1469702
     bool ParseFormats(std::istream& is, std::string* error);
+
     void Serialize(std::ostream& os) const;
     void SerializeParameters(std::ostream& os) const;
     bool HasFormat(const std::string& format) const;
@@ -970,7 +992,15 @@ public:
   };
 
   virtual void Serialize(std::ostream& os) const override;
+
+  // Remove this function. See Bug 1469702
   bool PushEntry(const std::string& raw, std::string* error, size_t* errorPos);
+
+  void PushEntry(const std::string& id, sdp::Direction dir,
+                 const std::vector<uint16_t>& formats,
+                 const EncodingConstraints& constraints,
+                 const std::vector<std::string>& dependIds);
+
 
   std::vector<Rid> mRids;
 };
@@ -1049,7 +1079,7 @@ class SdpRtcpFbAttributeList : public SdpAttribute
 public:
   SdpRtcpFbAttributeList() : SdpAttribute(kRtcpFbAttribute) {}
 
-  enum Type { kAck, kApp, kCcm, kNack, kTrrInt, kRemb };
+  enum Type { kAck, kApp, kCcm, kNack, kTrrInt, kRemb, kTransCC };
 
   static const char* pli;
   static const char* sli;
@@ -1102,6 +1132,9 @@ inline std::ostream& operator<<(std::ostream& os,
       break;
     case SdpRtcpFbAttributeList::kRemb:
       os << "goog-remb";
+      break;
+    case SdpRtcpFbAttributeList::kTransCC:
+      os << "transport-cc";
       break;
     default:
       MOZ_ASSERT(false);
@@ -1250,6 +1283,13 @@ public:
     virtual ~Parameters() {}
     virtual Parameters* Clone() const = 0;
     virtual void Serialize(std::ostream& os) const = 0;
+    virtual bool CompareEq(const Parameters& other) const = 0;
+
+    bool operator==(const Parameters& other) const
+    {
+        return codec_type == other.codec_type &&
+               CompareEq(other);
+    }
 
     SdpRtpmapAttributeList::CodecType codec_type;
   };
@@ -1275,6 +1315,12 @@ public:
         os << (i != 0 ? "/" : "")
            << std::to_string(encodings[i]);
       }
+    }
+
+    virtual bool
+    CompareEq(const Parameters& other) const override
+    {
+      return encodings == static_cast<const RedParameters&>(other).encodings;
     }
 
     std::vector<uint8_t> encodings;
@@ -1344,6 +1390,22 @@ public:
       }
     }
 
+    virtual bool
+    CompareEq(const Parameters& other) const override
+    {
+      const auto& otherH264 = static_cast<const H264Parameters&>(other);
+
+      // sprop is not comapred here as it does not get parsed in the rsdparsa
+      return packetization_mode == otherH264.packetization_mode &&
+             level_asymmetry_allowed == otherH264.level_asymmetry_allowed &&
+             profile_level_id == otherH264.profile_level_id &&
+             max_mbps == otherH264.max_mbps &&
+             max_fs == otherH264.max_fs &&
+             max_cpb == otherH264.max_cpb &&
+             max_dpb == otherH264.max_dpb &&
+             max_br == otherH264.max_br;
+    }
+
     static const size_t max_sprop_len = 128;
     char sprop_parameter_sets[max_sprop_len];
     unsigned int packetization_mode;
@@ -1380,6 +1442,15 @@ public:
       os << ";max-fr=" << max_fr;
     }
 
+    virtual bool
+    CompareEq(const Parameters& other) const override
+    {
+      const auto& otherVP8 = static_cast<const VP8Parameters&>(other);
+
+      return max_fs == otherVP8.max_fs &&
+             max_fr == otherVP8.max_fr;
+    }
+
     unsigned int max_fs;
     unsigned int max_fr;
   };
@@ -1411,6 +1482,25 @@ public:
          << ";useinbandfec=" << useInBandFec;
     }
 
+    virtual bool
+    CompareEq(const Parameters& other) const override
+    {
+      const auto& otherOpus = static_cast<const OpusParameters&>(other);
+
+      bool maxplaybackrateIsEq = (maxplaybackrate == otherOpus.maxplaybackrate);
+
+      // This is due to a bug in sipcc that causes maxplaybackrate to
+      // always be 0 if it appears in the fmtp
+      if (((maxplaybackrate == 0) && (otherOpus.maxplaybackrate != 0)) ||
+          ((maxplaybackrate != 0) && (otherOpus.maxplaybackrate == 0))) {
+           maxplaybackrateIsEq = true;
+       }
+
+      return maxplaybackrateIsEq &&
+             stereo == otherOpus.stereo &&
+             useInBandFec == otherOpus.useInBandFec;
+    }
+
     unsigned int maxplaybackrate;
     unsigned int stereo;
     unsigned int useInBandFec;
@@ -1434,6 +1524,13 @@ public:
     Serialize(std::ostream& os) const override
     {
       os << dtmfTones;
+    }
+
+    virtual bool
+    CompareEq(const Parameters& other) const override
+    {
+      return dtmfTones == static_cast<const TelephoneEventParameters&>(other)
+                          .dtmfTones;
     }
 
     std::string dtmfTones;
@@ -1466,6 +1563,12 @@ public:
       return *this;
     }
 
+    bool operator==(const Fmtp& other) const
+    {
+      return format == other.format &&
+             *parameters == *other.parameters;
+    }
+
     // The contract around these is as follows:
     // * |parameters| is only set if we recognized the media type and had
     //   a subclass of Parameters to represent that type of parameters
@@ -1476,6 +1579,8 @@ public:
     std::string format;
     UniquePtr<Parameters> parameters;
   };
+
+  bool operator==(const SdpFmtpAttributeList& other) const;
 
   virtual void Serialize(std::ostream& os) const override;
 

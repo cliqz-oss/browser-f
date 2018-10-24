@@ -25,6 +25,7 @@
 
 #include "builtin/String.h"
 #include "gc/FreeOp.h"
+#include "js/AutoByteString.h"
 #include "js/Conversions.h"
 #include "js/Wrapper.h"
 #include "shell/jsshell.h"
@@ -404,7 +405,7 @@ class FileObject : public NativeObject
     static const js::Class class_;
 
     static FileObject* create(JSContext* cx, RCFile* file) {
-        FileObject* obj = js::NewObjectWithClassProto<FileObject>(cx, nullptr);
+        FileObject* obj = js::NewBuiltinClassInstance<FileObject>(cx);
         if (!obj)
             return nullptr;
 
@@ -773,20 +774,11 @@ ReportSysError(JSContext* cx, const char* prefix)
     if (!errstr)
         errstr = "unknown error";
 
-    size_t nbytes = strlen(prefix) + strlen(errstr) + 3;
-    char* final = (char*) js_malloc(nbytes);
-    if (!final) {
-        JS_ReportOutOfMemory(cx);
-        return;
-    }
-
-    snprintf(final, nbytes, "%s: %s", prefix, errstr);
     /*
      * Use Latin1 variant here because the encoding of the return value of
      * strerror_s and strerror_r function can be non-UTF-8.
      */
-    JS_ReportErrorLatin1(cx, "%s", final);
-    js_free(final);
+    JS_ReportErrorLatin1(cx, "%s: %s", prefix, errstr);
 }
 
 static bool

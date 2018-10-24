@@ -38,7 +38,6 @@ PrepareAndDispatch(nsXPTCStubBase * self, uint32_t methodIndex,
     const nsXPTMethodInfo* info;
     uint32_t paramCount;
     uint32_t i;
-    nsresult result = NS_ERROR_FAILURE;
 
     NS_ASSERTION(self,"no self");
 
@@ -59,6 +58,8 @@ PrepareAndDispatch(nsXPTCStubBase * self, uint32_t methodIndex,
     if (!dispatchParams)
         return NS_ERROR_OUT_OF_MEMORY;
 
+    const uint8_t indexOfJSContext = info->IndexOfJSContext();
+
     uint64_t* ap = args;
     uint32_t nr_gpr = 1;    // skip one GPR register for 'that'
     uint32_t nr_fpr = 0;
@@ -68,6 +69,13 @@ PrepareAndDispatch(nsXPTCStubBase * self, uint32_t methodIndex,
         const nsXPTParamInfo& param = info->GetParam(i);
         const nsXPTType& type = param.GetType();
         nsXPTCMiniVariant* dp = &dispatchParams[i];
+
+        if (i == indexOfJSContext) {
+            if (nr_gpr < GPR_COUNT)
+                nr_gpr++;
+            else
+                ap++;
+        }
 
         if (!param.IsOut() && type == nsXPTType::T_DOUBLE) {
             if (nr_fpr < FPR_COUNT)
@@ -116,7 +124,8 @@ PrepareAndDispatch(nsXPTCStubBase * self, uint32_t methodIndex,
         }
     }
 
-    result = self->mOuter->CallMethod((uint16_t) methodIndex, info, dispatchParams);
+    nsresult result = self->mOuter->CallMethod((uint16_t) methodIndex, info,
+                                               dispatchParams);
 
     if (dispatchParams != paramBuffer)
         delete [] dispatchParams;

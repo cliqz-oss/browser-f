@@ -21,6 +21,7 @@
 #include "mozilla/layers/PaintThread.h" // For PaintThread
 #include "mozilla/layers/ShadowLayers.h"  // for ShadowLayerForwarder, etc
 #include "mozilla/layers/APZTestData.h" // for APZTestData
+#include "mozilla/layers/MemoryPressureObserver.h"
 #include "nsCOMPtr.h"                   // for already_AddRefed
 #include "nsIObserver.h"                // for nsIObserver
 #include "nsISupportsImpl.h"            // for Layer::Release, etc
@@ -47,6 +48,7 @@ class ImageLayer;
 class FrameUniformityData;
 
 class ClientLayerManager final : public LayerManager
+                               , public MemoryPressureListener
 {
   typedef nsTArray<RefPtr<Layer> > LayerRefArray;
 
@@ -106,7 +108,6 @@ public:
   virtual already_AddRefed<CanvasLayer> CreateCanvasLayer() override;
   virtual already_AddRefed<ReadbackLayer> CreateReadbackLayer() override;
   virtual already_AddRefed<ColorLayer> CreateColorLayer() override;
-  virtual already_AddRefed<BorderLayer> CreateBorderLayer() override;
   virtual already_AddRefed<RefLayer> CreateRefLayer() override;
 
   virtual void UpdateTextureFactoryIdentifier(const TextureFactoryIdentifier& aNewIdentifier) override;
@@ -150,7 +151,7 @@ public:
   // if we have one.
   virtual void ClearCachedResources(Layer* aSubtree = nullptr) override;
 
-  void HandleMemoryPressure();
+  virtual void OnMemoryPressure(MemoryPressureReason aWhy) override;
 
   void SetRepeatTransaction() { mRepeatTransaction = true; }
   bool GetRepeatTransaction() { return mRepeatTransaction; }
@@ -243,7 +244,7 @@ public:
 
   bool AsyncPanZoomEnabled() const override;
 
-  virtual void SetLayerObserverEpoch(uint64_t aLayerObserverEpoch) override;
+  virtual void SetLayersObserverEpoch(LayersObserverEpoch aEpoch) override;
 
   virtual void AddDidCompositeObserver(DidCompositeObserver* aObserver) override;
   virtual void RemoveDidCompositeObserver(DidCompositeObserver* aObserver) override;
@@ -268,29 +269,6 @@ protected:
   TransactionPhase mPhase;
 
 private:
-  // Listen memory-pressure event for ClientLayerManager
-  class MemoryPressureObserver final : public nsIObserver
-  {
-  public:
-    NS_DECL_ISUPPORTS
-    NS_DECL_NSIOBSERVER
-
-    explicit MemoryPressureObserver(ClientLayerManager* aClientLayerManager)
-      : mClientLayerManager(aClientLayerManager)
-    {
-      RegisterMemoryPressureEvent();
-    }
-
-    void Destroy();
-
-  private:
-    virtual ~MemoryPressureObserver() {}
-    void RegisterMemoryPressureEvent();
-    void UnregisterMemoryPressureEvent();
-
-    ClientLayerManager* mClientLayerManager;
-  };
-
   /**
    * Forward transaction results to the parent context.
    */

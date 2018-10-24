@@ -4,7 +4,7 @@ var SuspendedType = {
   NONE_SUSPENDED: 0,
   SUSPENDED_PAUSE: 1,
   SUSPENDED_BLOCK: 2,
-  SUSPENDED_PAUSE_DISPOSABLE: 3
+  SUSPENDED_PAUSE_DISPOSABLE: 3,
 };
 
 function check_audio_suspended(suspendedType) {
@@ -46,7 +46,7 @@ function play_audio() {
 add_task(async function setup_test_preference() {
   await SpecialPowers.pushPrefEnv({"set": [
     ["media.useAudioChannelService.testing", true],
-    ["media.block-autoplay-until-in-foreground", true]
+    ["media.block-autoplay-until-in-foreground", true],
   ]});
 });
 
@@ -58,7 +58,7 @@ add_task(async function setup_test_preference() {
  */
 add_task(async function media_should_be_able_to_play_in_visible_tab() {
   info("- open new background tab, and check tab's media pause state -");
-  let tab = window.gBrowser.addTab("about:blank");
+  let tab = BrowserTestUtils.addTab(window.gBrowser, "about:blank");
   tab.linkedBrowser.loadURI(PAGE);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
   await ContentTask.spawn(tab.linkedBrowser, true,

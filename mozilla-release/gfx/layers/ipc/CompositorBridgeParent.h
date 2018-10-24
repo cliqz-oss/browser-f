@@ -138,7 +138,7 @@ public:
 
   mozilla::ipc::IPCResult Recv__delete__() override { return IPC_OK(); }
 
-  virtual void ObserveLayerUpdate(LayersId aLayersId, uint64_t aEpoch, bool aActive) = 0;
+  virtual void ObserveLayersUpdate(LayersId aLayersId, LayersObserverEpoch aEpoch, bool aActive) = 0;
 
   virtual void DidComposite(LayersId aId, TimeStamp& aCompositeStart, TimeStamp& aCompositeEnd) = 0;
 
@@ -170,6 +170,12 @@ public:
   virtual bool IsRemote() const {
     return false;
   }
+
+  virtual void ForceComposeToTarget(gfx::DrawTarget* aTarget, const gfx::IntRect* aRect = nullptr) {
+    MOZ_CRASH();
+  }
+
+  virtual void NotifyMemoryPressure() {}
 
 protected:
   ~CompositorBridgeParentBase() override;
@@ -232,6 +238,8 @@ public:
 
   mozilla::ipc::IPCResult RecvAllPluginsCaptured() override;
 
+  virtual void NotifyMemoryPressure() override;
+
   void ActorDestroy(ActorDestroyReason why) override;
 
   void ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
@@ -270,6 +278,7 @@ public:
   bool IsSameProcess() const override;
 
   void NotifyWebRenderError(wr::WebRenderError aError);
+  void NotifyWebRenderContextPurge();
   void NotifyPipelineRendered(const wr::PipelineId& aPipelineId,
                               const wr::Epoch& aEpoch,
                               TimeStamp& aCompositeStart,
@@ -279,7 +288,7 @@ public:
   PCompositorWidgetParent* AllocPCompositorWidgetParent(const CompositorWidgetInitData& aInitData) override;
   bool DeallocPCompositorWidgetParent(PCompositorWidgetParent* aActor) override;
 
-  void ObserveLayerUpdate(LayersId aLayersId, uint64_t aEpoch, bool aActive) override { }
+  void ObserveLayersUpdate(LayersId aLayersId, LayersObserverEpoch aEpoch, bool aActive) override { }
 
   /**
    * This forces the is-first-paint flag to true. This is intended to
@@ -446,7 +455,7 @@ public:
 
   widget::CompositorWidget* GetWidget() { return mWidget; }
 
-  void ForceComposeToTarget(gfx::DrawTarget* aTarget, const gfx::IntRect* aRect = nullptr);
+  virtual void ForceComposeToTarget(gfx::DrawTarget* aTarget, const gfx::IntRect* aRect = nullptr) override;
 
   PAPZCTreeManagerParent* AllocPAPZCTreeManagerParent(const LayersId& aLayersId) override;
   bool DeallocPAPZCTreeManagerParent(PAPZCTreeManagerParent* aActor) override;
@@ -601,6 +610,7 @@ protected:
   TimeDuration mVsyncRate;
 
   TransactionId mPendingTransaction;
+  TimeStamp mRefreshStartTime;
   TimeStamp mTxnStartTime;
   TimeStamp mFwdTime;
 

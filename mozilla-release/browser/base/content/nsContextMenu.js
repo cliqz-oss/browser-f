@@ -108,6 +108,7 @@ nsContextMenu.prototype = {
       let subject = {
         menu: aXulMenu,
         tab: gBrowser ? gBrowser.getTabForBrowser(this.browser) : undefined,
+        timeStamp: this.timeStamp,
         isContentSelected: this.isContentSelected,
         inFrame: this.inFrame,
         isTextSelected: this.isTextSelected,
@@ -163,6 +164,7 @@ nsContextMenu.prototype = {
     }
 
     this.shouldDisplay = context.shouldDisplay;
+    this.timeStamp = context.timeStamp;
 
     // Assign what's _possibly_ needed from `context` sent by ContextMenu.jsm
     // Keep this consistent with the similar code in ContextMenu's _setContext
@@ -201,7 +203,6 @@ nsContextMenu.prototype = {
     this.onLink              = context.onLink;
     this.onLoadedImage       = context.onLoadedImage;
     this.onMailtoLink        = context.onMailtoLink;
-    this.onMathML            = context.onMathML;
     this.onMozExtLink        = context.onMozExtLink;
     this.onNumeric           = context.onNumeric;
     this.onPassword          = context.onPassword;
@@ -231,11 +232,7 @@ nsContextMenu.prototype = {
       this.browser = gContextMenuContentData.browser;
       this.selectionInfo = gContextMenuContentData.selectionInfo;
     } else {
-      this.browser = this.ownerDoc.defaultView
-                         .QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIWebNavigation)
-                         .QueryInterface(Ci.nsIDocShell)
-                         .chromeEventHandler;
+      this.browser = this.ownerDoc.defaultView.docShell.chromeEventHandler;
       this.selectionInfo = BrowserUtils.getSelectionDetails(window);
     }
 
@@ -261,10 +258,7 @@ nsContextMenu.prototype = {
         InlineSpellCheckerUI.initFromRemote(gContextMenuContentData.spellInfo);
       } else {
         var targetWin = this.ownerDoc.defaultView;
-        var editingSession = targetWin.QueryInterface(Ci.nsIInterfaceRequestor)
-                                      .getInterface(Ci.nsIWebNavigation)
-                                      .QueryInterface(Ci.nsIInterfaceRequestor)
-                                      .getInterface(Ci.nsIEditingSession);
+        var {editingSession} = targetWin.docShell;
 
         InlineSpellCheckerUI.init(editingSession.getEditorForWindow(targetWin));
         InlineSpellCheckerUI.initFromEvent(document.popupRangeParent,
@@ -386,9 +380,6 @@ nsContextMenu.prototype = {
 
     this.showItem("context-reload", stopReloadItem == "reload");
     this.showItem("context-stop", stopReloadItem == "stop");
-
-    // XXX: Stop is determined in browser.js; the canStop broadcaster is broken
-    // this.setItemAttrFromNode( "context-stop", "disabled", "canStop" );
   },
 
   initLeaveDOMFullScreenItems: function CM_initLeaveFullScreenItem() {
@@ -430,8 +421,6 @@ nsContextMenu.prototype = {
     // View source is always OK, unless in directory listing.
     this.showItem("context-viewpartialsource-selection",
                   this.isContentSelected);
-    this.showItem("context-viewpartialsource-mathml",
-                  this.onMathML && !this.isContentSelected);
 
     var shouldShow = !(this.isContentSelected ||
                        this.onImage || this.onCanvas ||
@@ -519,7 +508,6 @@ nsContextMenu.prototype = {
                   !(this.isContentSelected || this.onTextInput || this.onLink ||
                     this.onImage || this.onVideo || this.onAudio ||
                     this.onCanvas || this.inWebExtBrowser));
-    bookmarkPage.setAttribute("tooltiptext", bookmarkPage.getAttribute("buttontooltiptext"));
 
     this.showItem("context-bookmarklink", (this.onLink && !this.onMailtoLink &&
                                            !this.onMozExtLink) || this.onPlainTextLink);
@@ -848,6 +836,7 @@ nsContextMenu.prototype = {
     let referrer = gContextMenuContentData.referrer;
     openLinkIn(gContextMenuContentData.docLocation, "tab",
                { charset: gContextMenuContentData.charSet,
+                 triggeringPrincipal: this.browser.contentPrincipal,
                  referrerURI: referrer ? makeURI(referrer) : null });
   },
 
@@ -863,6 +852,7 @@ nsContextMenu.prototype = {
     let referrer = gContextMenuContentData.referrer;
     openLinkIn(gContextMenuContentData.docLocation, "window",
                { charset: gContextMenuContentData.charSet,
+                 triggeringPrincipal: this.browser.contentPrincipal,
                  referrerURI: referrer ? makeURI(referrer) : null });
   },
 
@@ -873,7 +863,6 @@ nsContextMenu.prototype = {
                      Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
     let referrer = gContextMenuContentData.referrer;
     openWebLinkIn(gContextMenuContentData.docLocation, "current", {
-      disallowInheritPrincipal: true,
       referrerURI: referrer ? makeURI(referrer) : null,
       triggeringPrincipal: this.browser.contentPrincipal,
     });
@@ -884,7 +873,7 @@ nsContextMenu.prototype = {
   },
 
   // View Partial Source
-  viewPartialSource(aContext) {
+  viewPartialSource() {
     let {browser} = this;
     let openSelectionFn = function() {
       let tabBrowser = gBrowser;
@@ -906,8 +895,7 @@ nsContextMenu.prototype = {
       return tabBrowser.getBrowserForTab(tab);
     };
 
-    let target = aContext == "mathml" ? this.target : null;
-    top.gViewSourceUtils.viewPartialSourceInBrowser(browser, target, openSelectionFn);
+    top.gViewSourceUtils.viewPartialSourceInBrowser(browser, openSelectionFn);
   },
 
   // Open new "view source" window with the frame's URL.
@@ -932,8 +920,7 @@ nsContextMenu.prototype = {
     urlSecurityCheck(this.imageDescURL,
                      this.principal,
                      Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
-    openUILink(this.imageDescURL, e, { disallowInheritPrincipal: true,
-                                       referrerURI: gContextMenuContentData.documentURIObject,
+    openUILink(this.imageDescURL, e, { referrerURI: gContextMenuContentData.documentURIObject,
                                        triggeringPrincipal: this.principal,
     });
   },
@@ -971,16 +958,14 @@ nsContextMenu.prototype = {
     let systemPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
     if (this.onCanvas) {
       this._canvasToBlobURL(this.target).then(function(blobURL) {
-        openUILink(blobURL, e, { disallowInheritPrincipal: true,
-                                 referrerURI,
+        openUILink(blobURL, e, { referrerURI,
                                  triggeringPrincipal: systemPrincipal});
       }, Cu.reportError);
     } else {
       urlSecurityCheck(this.mediaURL,
                        this.principal,
                        Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
-      openUILink(this.mediaURL, e, { disallowInheritPrincipal: true,
-                                     referrerURI,
+      openUILink(this.mediaURL, e, { referrerURI,
                                      forceAllowDataURI: true,
                                      triggeringPrincipal: this.principal,
       });
@@ -1007,12 +992,22 @@ nsContextMenu.prototype = {
       target: this.target,
     });
 
+    // Cache this because we fetch the data async
+    let {documentURIObject} = gContextMenuContentData;
+
     let onMessage = (message) => {
       mm.removeMessageListener("ContextMenu:SaveVideoFrameAsImage:Result", onMessage);
+      // FIXME can we switch this to a blob URL?
       let dataURL = message.data.dataURL;
-      saveImageURL(dataURL, name, "SaveImageTitle", true, false,
-                   document.documentURIObject, null, null, null,
-                   isPrivate);
+      saveImageURL(dataURL, name, "SaveImageTitle",
+                   true, // bypass cache
+                   false, // don't skip prompt for where to save
+                   documentURIObject, // referrer
+                   null, // document
+                   null, // content type
+                   null, // content disposition
+                   isPrivate,
+                   this.principal);
     };
     mm.addMessageListener("ContextMenu:SaveVideoFrameAsImage:Result", onMessage);
   },
@@ -1027,8 +1022,7 @@ nsContextMenu.prototype = {
                      this.principal,
                      Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
 
-    openUILink(this.bgImageURL, e, { disallowInheritPrincipal: true,
-                                     referrerURI: gContextMenuContentData.documentURIObject,
+    openUILink(this.bgImageURL, e, { referrerURI: gContextMenuContentData.documentURIObject,
                                      triggeringPrincipal: this.principal,
     });
   },
@@ -1151,7 +1145,7 @@ nsContextMenu.prototype = {
                                                            aOffset, aCount) {
         this.extListener.onDataAvailable(aRequest, aContext, aInputStream,
                                          aOffset, aCount);
-      }
+      },
     };
 
     function callbacks() {}
@@ -1167,7 +1161,7 @@ nsContextMenu.prototype = {
           channel.cancel(NS_ERROR_SAVE_LINK_AS_TIMEOUT);
         }
         throw Cr.NS_ERROR_NO_INTERFACE;
-      }
+      },
     };
 
     // if it we don't have the headers after a short time, the user
@@ -1177,7 +1171,7 @@ nsContextMenu.prototype = {
     timerCallback.prototype = {
       notify: function sLA_timer_notify(aTimer) {
         channel.cancel(NS_ERROR_SAVE_LINK_AS_TIMEOUT);
-      }
+      },
     };
 
     // setting up a new channel for 'right click - save link as ...'
@@ -1250,13 +1244,15 @@ nsContextMenu.prototype = {
       this._canvasToBlobURL(this.target).then(function(blobURL) {
         saveImageURL(blobURL, "canvas.png", "SaveImageTitle",
                      true, false, referrerURI, null, null, null,
-                     isPrivate);
+                     isPrivate,
+                     document.nodePrincipal /* system, because blob: */);
       }, Cu.reportError);
     } else if (this.onImage) {
       urlSecurityCheck(this.mediaURL, this.principal);
       saveImageURL(this.mediaURL, null, "SaveImageTitle", false,
                    false, referrerURI, null, gContextMenuContentData.contentType,
-                   gContextMenuContentData.contentDisposition, isPrivate);
+                   gContextMenuContentData.contentDisposition, isPrivate,
+                   this.principal);
     } else if (this.onVideo || this.onAudio) {
       var dialogTitle = this.onVideo ? "SaveVideoTitle" : "SaveAudioTitle";
       this.saveHelper(this.mediaURL, null, dialogTitle, false, doc, referrerURI,
@@ -1351,16 +1347,6 @@ nsContextMenu.prototype = {
     }
   },
 
-  // Set context menu attribute according to like attribute of another node
-  // (such as a broadcaster).
-  setItemAttrFromNode(aItem_id, aAttr, aOther_id) {
-    var elem = document.getElementById(aOther_id);
-    if (elem && elem.getAttribute(aAttr) == "true")
-      this.setItemAttr(aItem_id, aAttr, "true");
-    else
-      this.setItemAttr(aItem_id, aAttr, null);
-  },
-
   // Temporary workaround for DOM api not yet implemented by XUL nodes.
   cloneNode(aItem) {
     // Create another element like the one we're cloning.
@@ -1432,13 +1418,13 @@ nsContextMenu.prototype = {
 
   bookmarkThisPage: function CM_bookmarkThisPage() {
     window.top.PlacesCommandHook
-              .bookmarkPage(this.browser, true)
+              .bookmarkPage()
               .catch(Cu.reportError);
   },
 
   bookmarkLink: function CM_bookmarkLink() {
-    window.top.PlacesCommandHook.bookmarkLink(PlacesUtils.bookmarksMenuFolderId,
-                                              this.linkURL, this.linkTextStr);
+    window.top.PlacesCommandHook.bookmarkLink(this.linkURL, this.linkTextStr)
+                                .catch(Cu.reportError);
   },
 
   addBookmarkForFrame: function CM_addBookmarkForFrame() {
@@ -1448,9 +1434,7 @@ nsContextMenu.prototype = {
     let onMessage = (message) => {
       mm.removeMessageListener("ContextMenu:BookmarkFrame:Result", onMessage);
 
-      window.top.PlacesCommandHook.bookmarkLink(PlacesUtils.bookmarksMenuFolderId,
-                                                uri.spec,
-                                                message.data.title)
+      window.top.PlacesCommandHook.bookmarkLink(uri.spec, message.data.title)
                                   .catch(Cu.reportError);
     };
     mm.addMessageListener("ContextMenu:BookmarkFrame:Result", onMessage);
@@ -1473,8 +1457,7 @@ nsContextMenu.prototype = {
   mediaCommand: function CM_mediaCommand(command, data) {
     let mm = this.browser.messageManager;
     let win = this.browser.ownerGlobal;
-    let windowUtils = win.QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIDOMWindowUtils);
+    let windowUtils = win.windowUtils;
     mm.sendAsyncMessage("ContextMenu:MediaCommand",
                         {command,
                          data,
@@ -1512,6 +1495,7 @@ nsContextMenu.prototype = {
 
     // Store searchTerms in context menu item so we know what to search onclick
     menuItem.searchTerms = selectedText;
+    menuItem.principal = this.principal;
 
     // Copied to alert.js' prefillAlertInfo().
     // If the JS character after our truncation point is a trail surrogate,

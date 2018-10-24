@@ -8,6 +8,7 @@
 
 #include "mozilla/Atomics.h"
 #include "mozilla/PodOperations.h"
+#include "mozilla/TimeStamp.h"
 
 #include <stdint.h>
 
@@ -19,6 +20,7 @@
 #include "gc/GCInternals.h"
 #include "gc/PublicIterators.h"
 #include "gc/WeakMap.h"
+#include "js/AutoByteString.h"
 #include "js/Printf.h"
 #include "js/Proxy.h"
 #include "js/Wrapper.h"
@@ -74,7 +76,7 @@ JS_SetGrayGCRootsTracer(JSContext* cx, JSTraceDataOp traceOp, void* data)
 JS_FRIEND_API(JSObject*)
 JS_FindCompilationScope(JSContext* cx, HandleObject objArg)
 {
-    assertSameCompartment(cx, objArg);
+    cx->check(objArg);
 
     RootedObject obj(cx, objArg);
 
@@ -109,7 +111,7 @@ JS_SplicePrototype(JSContext* cx, HandleObject obj, HandleObject proto)
      * does not nuke type information for the object.
      */
     CHECK_REQUEST(cx);
-    assertSameCompartment(cx, obj, proto);
+    cx->check(obj, proto);
 
     if (!obj->isSingleton()) {
         /*
@@ -143,7 +145,7 @@ JS_NewObjectWithUniqueType(JSContext* cx, const JSClass* clasp, HandleObject pro
 JS_FRIEND_API(JSObject*)
 JS_NewObjectWithoutMetadata(JSContext* cx, const JSClass* clasp, JS::Handle<JSObject*> proto)
 {
-    assertSameCompartment(cx, proto);
+    cx->check(proto);
     AutoSuppressAllocationMetadataBuilder suppressMetadata(cx);
     return JS_NewObjectWithGivenProto(cx, clasp, proto);
 }
@@ -177,20 +179,18 @@ JS::SetRealmPrincipals(JS::Realm* realm, JSPrincipals* principals)
     if (principals == realm->principals())
         return;
 
-    // Any realm with the trusted principals -- and there can be
-    // multiple -- is a system realm.
+    // We'd like to assert that our new principals is always same-origin
+    // with the old one, but JSPrincipals doesn't give us a way to do that.
+    // But we can at least assert that we're not switching between system
+    // and non-system.
     const JSPrincipals* trusted = realm->runtimeFromMainThread()->trustedPrincipals();
     bool isSystem = principals && principals == trusted;
+    MOZ_RELEASE_ASSERT(realm->isSystem() == isSystem);
 
     // Clear out the old principals, if any.
     if (realm->principals()) {
         JS_DropPrincipals(TlsContext.get(), realm->principals());
         realm->setPrincipals(nullptr);
-        // We'd like to assert that our new principals is always same-origin
-        // with the old one, but JSPrincipals doesn't give us a way to do that.
-        // But we can at least assert that we're not switching between system
-        // and non-system.
-        MOZ_ASSERT(realm->isSystem() == isSystem);
     }
 
     // Set up the new principals.
@@ -198,9 +198,6 @@ JS::SetRealmPrincipals(JS::Realm* realm, JSPrincipals* principals)
         JS_HoldPrincipals(principals);
         realm->setPrincipals(principals);
     }
-
-    // Update the system flag.
-    realm->setIsSystem(isSystem);
 }
 
 JS_FRIEND_API(JSPrincipals*)
@@ -222,7 +219,7 @@ JS_ScriptHasMutedErrors(JSScript* script)
 }
 
 JS_FRIEND_API(bool)
-JS_WrapPropertyDescriptor(JSContext* cx, JS::MutableHandle<js::PropertyDescriptor> desc)
+JS_WrapPropertyDescriptor(JSContext* cx, JS::MutableHandle<JS::PropertyDescriptor> desc)
 {
     return cx->compartment()->wrap(cx, desc);
 }
@@ -256,7 +253,7 @@ JS_DefineFunctionsWithHelp(JSContext* cx, HandleObject obj, const JSFunctionSpec
     MOZ_ASSERT(!cx->zone()->isAtomsZone());
 
     CHECK_REQUEST(cx);
-    assertSameCompartment(cx, obj);
+    cx->check(obj);
     for (; fs->name; fs++) {
         JSAtom* atom = Atomize(cx, fs->name, strlen(fs->name));
         if (!atom)
@@ -336,7 +333,7 @@ js::GetBuiltinClass(JSContext* cx, HandleObject obj, ESClass* cls)
 JS_FRIEND_API(const char*)
 js::ObjectClassName(JSContext* cx, HandleObject obj)
 {
-    assertSameCompartment(cx, obj);
+    cx->check(obj);
     return GetObjectClassName(cx, obj);
 }
 
@@ -349,12 +346,10 @@ js::GetRealmZone(JS::Realm* realm)
 JS_FRIEND_API(bool)
 js::IsSystemCompartment(JS::Compartment* comp)
 {
-    // Note: for now we assume a single realm per compartment. This API will
-    // hopefully go away once Gecko supports same-compartment realms. Another
-    // option is to return comp->zone()->isSystem here, but we'd have to make
-    // sure that's equivalent.
-    MOZ_RELEASE_ASSERT(comp->realms().length() == 1);
-
+    // Realms in the same compartment must either all be system realms or
+    // non-system realms. We assert this in NewRealm and SetRealmPrincipals,
+    // but do an extra sanity check here.
+    MOZ_ASSERT(comp->realms()[0]->isSystem() == comp->realms().back()->isSystem());
     return comp->realms()[0]->isSystem();
 }
 
@@ -382,10 +377,10 @@ js::IsFunctionObject(JSObject* obj)
     return obj->is<JSFunction>();
 }
 
-JS_FRIEND_API(JSObject*)
-js::GetGlobalForObjectCrossCompartment(JSObject* obj)
+JS_FRIEND_API(bool)
+js::UninlinedIsCrossCompartmentWrapper(const JSObject* obj)
 {
-    return &obj->deprecatedGlobal();
+    return js::IsCrossCompartmentWrapper(obj);
 }
 
 JS_FRIEND_API(JSObject*)
@@ -398,13 +393,13 @@ js::GetPrototypeNoProxy(JSObject* obj)
 JS_FRIEND_API(void)
 js::AssertSameCompartment(JSContext* cx, JSObject* obj)
 {
-    assertSameCompartment(cx, obj);
+    cx->check(obj);
 }
 
 JS_FRIEND_API(void)
 js::AssertSameCompartment(JSContext* cx, JS::HandleValue v)
 {
-    assertSameCompartment(cx, v);
+    cx->check(v);
 }
 
 #ifdef DEBUG
@@ -420,7 +415,7 @@ js::NotifyAnimationActivity(JSObject* obj)
 {
     MOZ_ASSERT(obj->is<GlobalObject>());
 
-    int64_t timeNow = PRMJ_Now();
+    auto timeNow = mozilla::TimeStamp::Now();
     obj->as<GlobalObject>().realm()->lastAnimationTime = timeNow;
     obj->runtimeFromMainThread()->lastAnimationTime = timeNow;
 }
@@ -450,7 +445,7 @@ js::DefineFunctionWithReserved(JSContext* cx, JSObject* objArg, const char* name
     RootedObject obj(cx, objArg);
     MOZ_ASSERT(!cx->zone()->isAtomsZone());
     CHECK_REQUEST(cx);
-    assertSameCompartment(cx, obj);
+    cx->check(obj);
     JSAtom* atom = Atomize(cx, name, strlen(name));
     if (!atom)
         return nullptr;
@@ -485,7 +480,7 @@ js::NewFunctionByIdWithReserved(JSContext* cx, JSNative native, unsigned nargs, 
     MOZ_ASSERT(JSID_IS_STRING(id));
     MOZ_ASSERT(!cx->zone()->isAtomsZone());
     CHECK_REQUEST(cx);
-    assertSameCompartment(cx, id);
+    cx->check(id);
 
     RootedAtom atom(cx, JSID_TO_ATOM(id));
     return (flags & JSFUN_CONSTRUCTOR) ?
@@ -518,7 +513,7 @@ js::FunctionHasNativeReserved(JSObject* fun)
 JS_FRIEND_API(bool)
 js::GetObjectProto(JSContext* cx, JS::Handle<JSObject*> obj, JS::MutableHandle<JSObject*> proto)
 {
-    assertSameCompartment(cx, obj);
+    cx->check(obj);
 
     if (IsProxy(obj))
         return JS_GetPrototype(cx, obj, proto);
@@ -664,12 +659,12 @@ JS_FRIEND_API(JSObject*)
 JS_CloneObject(JSContext* cx, HandleObject obj, HandleObject protoArg)
 {
     // |obj| might be in a different compartment.
-    assertSameCompartment(cx, protoArg);
+    cx->check(protoArg);
     Rooted<TaggedProto> proto(cx, TaggedProto(protoArg.get()));
     return CloneObject(cx, obj, proto);
 }
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(JS_JITSPEW)
 
 // We don't want jsfriendapi.h to depend on GenericPrinter,
 // so these functions are declared directly in the cpp.
@@ -827,6 +822,8 @@ FormatValue(JSContext* cx, const Value& vArg, JSAutoByteString& bytes)
      */
     RootedString str(cx);
     if (v.isObject()) {
+        if (IsCrossCompartmentWrapper(&v.toObject()))
+            return "[cross-compartment wrapper]";
         AutoRealm ar(cx, &v.toObject());
         str = ToString<CanGC>(cx, v);
     } else {
@@ -1125,7 +1122,7 @@ JS::ForceLexicalInitialization(JSContext *cx, HandleObject obj)
 {
     AssertHeapIsIdle();
     CHECK_REQUEST(cx);
-    assertSameCompartment(cx, obj);
+    cx->check(obj);
 
     bool initializedAny = false;
     NativeObject* nobj = &obj->as<NativeObject>();
@@ -1146,8 +1143,7 @@ extern JS_FRIEND_API(int)
 JS::IsGCPoisoning()
 {
 #ifdef JS_GC_POISONING
-    static bool disablePoison = bool(getenv("JSGC_DISABLE_POISONING"));
-    return !disablePoison;
+    return !js::gDisablePoisoning;
 #else
     return false;
 #endif
@@ -1398,14 +1394,16 @@ js::detail::IdMatchesAtom(jsid id, JSString* atom)
 }
 
 JS_FRIEND_API(void)
-js::PrepareScriptEnvironmentAndInvoke(JSContext* cx, HandleObject scope, ScriptEnvironmentPreparer::Closure& closure)
+js::PrepareScriptEnvironmentAndInvoke(JSContext* cx, HandleObject global,
+                                      ScriptEnvironmentPreparer::Closure& closure)
 {
     MOZ_ASSERT(!cx->isExceptionPending());
+    MOZ_ASSERT(global->is<GlobalObject>());
 
     MOZ_RELEASE_ASSERT(cx->runtime()->scriptEnvironmentPreparer,
                        "Embedding needs to set a scriptEnvironmentPreparer callback");
 
-    cx->runtime()->scriptEnvironmentPreparer->invoke(scope, closure);
+    cx->runtime()->scriptEnvironmentPreparer->invoke(global, closure);
 }
 
 JS_FRIEND_API(void)
@@ -1450,7 +1448,7 @@ js::GetAllocationMetadata(JSObject* obj)
 JS_FRIEND_API(bool)
 js::ReportIsNotFunction(JSContext* cx, HandleValue v)
 {
-    assertSameCompartment(cx, v);
+    cx->check(v);
     return ReportIsNotFunction(cx, v, -1);
 }
 
@@ -1495,7 +1493,7 @@ js::SetWindowProxy(JSContext* cx, HandleObject global, HandleObject windowProxy)
     AssertHeapIsIdle();
     CHECK_REQUEST(cx);
 
-    assertSameCompartment(cx, global, windowProxy);
+    cx->check(global, windowProxy);
 
     MOZ_ASSERT(IsWindowProxy(windowProxy));
     global->as<GlobalObject>().setWindowProxy(windowProxy);

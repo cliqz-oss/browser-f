@@ -15,7 +15,7 @@ serviceworker-list-header = Service-Worker
 
 # Text displayed next to the list of Service Workers to encourage users to check out
 # about:debugging to see all registered Service Workers.
-serviceworker-list-aboutdebugging = <a>about:debugging</a> für Service-Worker von anderen Domains öffnen
+serviceworker-list-aboutdebugging = Service-Worker von anderen Domains sind über <a>about:debugging</a> verfügbar
 
 # Text for the button to unregister a Service Worker. Displayed for active Service Workers.
 serviceworker-worker-unregister = Abmelden
@@ -56,15 +56,15 @@ serviceworker-worker-status-registering = Wird angemeldet
 
 # Text displayed when no service workers are visible for the current page. Clicking on the
 # link will open https://developer-mozilla-org/docs/Web/API/Service_Worker_API/Using_Service_Workers
-serviceworker-empty-intro = Es muss ein Service-Worker angemeldet werden, um ihn hier zu untersuchen. <a>Weitere Informationen</a>
+serviceworker-empty-intro = Es muss ein Service-Worker angemeldet sein, um ihn hier zu untersuchen. <a>Weitere Informationen</a>
 
 # Text displayed when there are no Service Workers to display for the current page,
 # introducing hints to debug Service Worker issues.
-serviceworker-empty-suggestions = Falls die derzeitige Seite Service-Worker besitzen sollte, können Sie Folgendes versuchen
+serviceworker-empty-suggestions = Falls die derzeitige Seite Service-Worker besitzen sollte, können Sie Folgendes versuchen:
 
 # Suggestion to check for errors in the Console to investigate why a service worker is not
 # registered. Clicking on the link opens the webconsole.
-serviceworker-empty-suggestions-console = Überprüfen Sie Konsole auf Fehler. <a>Konsole öffnen</a>
+serviceworker-empty-suggestions-console = Überprüfen Sie die Konsole auf Fehler. <a>Konsole öffnen</a>
 
 # Suggestion to use the debugger to investigate why a service worker is not registered.
 # Clicking on the link will switch from the Application panel to the debugger.
@@ -72,4 +72,4 @@ serviceworker-empty-suggestions-debugger = Gehen Sie die Service-Worker-Anmeldun
 
 # Suggestion to go to about:debugging in order to see Service Workers for all domains.
 # Clicking on the link will open about:debugging in a new tab.
-serviceworker-empty-suggestions-aboutdebugging = Service-Worker von anderen Domains untersuchen. <a>about:debugging öffnen</a>
+serviceworker-empty-suggestions-aboutdebugging = Untersuchen Sie Service-Worker von anderen Domains. <a>about:debugging öffnen</a>

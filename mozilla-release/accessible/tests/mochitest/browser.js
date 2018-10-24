@@ -1,3 +1,5 @@
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+
 /**
  * Load the browser with the given url and then invokes the given function.
  */
@@ -113,9 +115,9 @@ function openBrowserWindowIntl() {
   }
 
   gBrowserContext.browserWnd =
-    window.openDialog(Services.prefs.getCharPref("browser.chromeURL"),
+    window.openDialog(AppConstants.BROWSER_CHROME_URL,
                       "_blank", params,
-                      gBrowserContext.startURL);
+                      gBrowserContext.startURL || "data:text/html,<html></html>");
 
   whenDelayedStartupFinished(browserWindow(), function() {
     addA11yLoadEvent(startBrowserTests, browserWindow());

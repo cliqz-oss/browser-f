@@ -172,15 +172,13 @@ WebGLShader::~WebGLShader()
 void
 WebGLShader::ShaderSource(const nsAString& source)
 {
-    const char funcName[] = "shaderSource";
     nsString sourceWithoutComments;
     if (!TruncateComments(source, &sourceWithoutComments)) {
-        mContext->ErrorOutOfMemory("%s: Failed to alloc for empting comment contents.",
-                                   funcName);
+        mContext->ErrorOutOfMemory("Failed to alloc for empting comment contents.");
         return;
     }
 
-    if (!ValidateGLSLPreprocString(mContext, funcName, sourceWithoutComments))
+    if (!ValidateGLSLPreprocString(mContext, sourceWithoutComments))
         return;
 
     // We checked that the source stripped of comments is in the
@@ -427,7 +425,7 @@ WebGLShader::MapTransformFeedbackVaryings(const std::vector<nsString>& varyings,
 JSObject*
 WebGLShader::WrapObject(JSContext* js, JS::Handle<JSObject*> givenProto)
 {
-    return dom::WebGLShaderBinding::Wrap(js, this, givenProto);
+    return dom::WebGLShader_Binding::Wrap(js, this, givenProto);
 }
 
 size_t

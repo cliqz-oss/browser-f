@@ -13,11 +13,7 @@ cpm.addMessageListener("cpm-async",
     cpm.sendAsyncMessage("ppm-async");
   });
 
-var dshell = content.QueryInterface(Ci.nsIInterfaceRequestor)
-                    .getInterface(Ci.nsIWebNavigation)
-                    .QueryInterface(Ci.nsIDocShellTreeItem)
-                    .rootTreeItem
-                    .QueryInterface(Ci.nsIDocShell);
+var dshell = content.docShell.rootTreeItem.QueryInterface(Ci.nsIDocShell);
 
 
 addEventListener("click",
@@ -25,9 +21,8 @@ addEventListener("click",
     dump(e.target + "\n");
     if (ChromeUtils.getClassName(e.target) === "HTMLAnchorElement" &&
         dshell == docShell) {
-      var retval = docShell.QueryInterface(Ci.nsIInterfaceRequestor).
-                            getInterface(Ci.nsIContentFrameMessageManager).
-                            sendSyncMessage("linkclick", { href: e.target.href });
+      var retval = docShell.messageManager
+                           .sendSyncMessage("linkclick", { href: e.target.href });
       dump(uneval(retval[0]) + "\n");
       // Test here also that both retvals are the same
       sendAsyncMessage("linkclick-reply-object", uneval(retval[0]) == uneval(retval[1]) ? retval[0] : "");

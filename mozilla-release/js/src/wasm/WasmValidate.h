@@ -77,10 +77,10 @@ struct ModuleEnvironment
     ImportVector              imports;
     ExportVector              exports;
     Maybe<uint32_t>           startFuncIndex;
+    ElemSegmentVector         elemSegments;
     MaybeSectionRange         codeSection;
 
     // Fields decoded as part of the wasm module tail:
-    ElemSegmentVector         elemSegments;
     DataSegmentVector         dataSegments;
     Maybe<NameInBytecode>     moduleName;
     NameInBytecodeVector      funcNames;
@@ -131,9 +131,6 @@ struct ModuleEnvironment
     }
     bool funcIsImport(uint32_t funcIndex) const {
         return funcIndex < funcImportGlobalDataOffsets.length();
-    }
-    uint32_t funcIndexToFuncTypeIndex(uint32_t funcIndex) const {
-        return TypeDef::fromFuncTypeWithIdPtr(funcTypes[funcIndex]) - types.begin();
     }
 };
 
@@ -240,18 +237,6 @@ class Encoder
     MOZ_MUST_USE bool writeFixedF64(double d) {
         return write<double>(d);
     }
-    MOZ_MUST_USE bool writeFixedI8x16(const I8x16& i8x16) {
-        return write<I8x16>(i8x16);
-    }
-    MOZ_MUST_USE bool writeFixedI16x8(const I16x8& i16x8) {
-        return write<I16x8>(i16x8);
-    }
-    MOZ_MUST_USE bool writeFixedI32x4(const I32x4& i32x4) {
-        return write<I32x4>(i32x4);
-    }
-    MOZ_MUST_USE bool writeFixedF32x4(const F32x4& f32x4) {
-        return write<F32x4>(f32x4);
-    }
 
     // Variable-length encodings that all use LEB128.
 
@@ -269,13 +254,21 @@ class Encoder
     }
     MOZ_MUST_USE bool writeValType(ValType type) {
         static_assert(size_t(TypeCode::Limit) <= UINT8_MAX, "fits");
-        MOZ_ASSERT(size_t(type.bitsUnsafe()) < size_t(TypeCode::Limit));
-        return writeFixedU8(uint8_t(type.bitsUnsafe()));
+        MOZ_ASSERT(size_t(type.code()) < size_t(TypeCode::Limit));
+        if (type.isRef()) {
+            return writeFixedU8(uint8_t(TypeCode::Ref)) &&
+                   writeVarU32(type.refTypeIndex());
+        }
+        return writeFixedU8(uint8_t(type.code()));
     }
     MOZ_MUST_USE bool writeBlockType(ExprType type) {
         static_assert(size_t(TypeCode::Limit) <= UINT8_MAX, "fits");
-        MOZ_ASSERT(size_t(type) < size_t(TypeCode::Limit));
-        return writeFixedU8(uint8_t(type));
+        MOZ_ASSERT(size_t(type.code()) < size_t(TypeCode::Limit));
+        if (type.isRef()) {
+            return writeFixedU8(uint8_t(ExprType::Ref)) &&
+                   writeVarU32(type.refTypeIndex());
+        }
+        return writeFixedU8(uint8_t(type.code()));
     }
     MOZ_MUST_USE bool writeOp(Op op) {
         static_assert(size_t(Op::Limit) == 256, "fits");
@@ -520,18 +513,6 @@ class Decoder
     MOZ_MUST_USE bool readFixedF64(double* d) {
         return read<double>(d);
     }
-    MOZ_MUST_USE bool readFixedI8x16(I8x16* i8x16) {
-        return read<I8x16>(i8x16);
-    }
-    MOZ_MUST_USE bool readFixedI16x8(I16x8* i16x8) {
-        return read<I16x8>(i16x8);
-    }
-    MOZ_MUST_USE bool readFixedI32x4(I32x4* i32x4) {
-        return read<I32x4>(i32x4);
-    }
-    MOZ_MUST_USE bool readFixedF32x4(F32x4* f32x4) {
-        return read<F32x4>(f32x4);
-    }
 
     // Variable-length encodings that all use LEB128.
 
@@ -547,13 +528,29 @@ class Decoder
     MOZ_MUST_USE bool readVarS64(int64_t* out) {
         return readVarS<int64_t>(out);
     }
-    MOZ_MUST_USE bool readValType(uint8_t* type) {
+    MOZ_MUST_USE bool readValType(uint8_t* code, uint32_t* refTypeIndex) {
         static_assert(uint8_t(TypeCode::Limit) <= UINT8_MAX, "fits");
-        return readFixedU8(type);
+        if (!readFixedU8(code))
+            return false;
+        if (*code == uint8_t(TypeCode::Ref)) {
+            if (!readVarU32(refTypeIndex))
+                return false;
+        } else {
+            *refTypeIndex = NoRefTypeIndex;
+        }
+        return true;
     }
-    MOZ_MUST_USE bool readBlockType(uint8_t* type) {
+    MOZ_MUST_USE bool readBlockType(uint8_t* code, uint32_t* refTypeIndex) {
         static_assert(size_t(TypeCode::Limit) <= UINT8_MAX, "fits");
-        return readFixedU8(type);
+        if (!readFixedU8(code))
+            return false;
+        if (*code == uint8_t(TypeCode::Ref)) {
+            if (!readVarU32(refTypeIndex))
+                return false;
+        } else {
+            *refTypeIndex = NoRefTypeIndex;
+        }
+        return true;
     }
     MOZ_MUST_USE bool readOp(OpBytes* op) {
         static_assert(size_t(Op::Limit) == 256, "fits");
@@ -671,35 +668,12 @@ class Decoder
         MOZ_ALWAYS_TRUE(readVarS64(&i64));
         return i64;
     }
-    ValType uncheckedReadValType() {
-        return ValType::fromTypeCode(uncheckedReadFixedU8());
-    }
     Op uncheckedReadOp() {
         static_assert(size_t(Op::Limit) == 256, "fits");
         uint8_t u8 = uncheckedReadFixedU8();
         return u8 != UINT8_MAX
                ? Op(u8)
                : Op(uncheckedReadFixedU8() + UINT8_MAX);
-    }
-    void uncheckedReadFixedI8x16(I8x16* i8x16) {
-        struct T { I8x16 v; };
-        T t = uncheckedRead<T>();
-        memcpy(i8x16, &t, sizeof(t));
-    }
-    void uncheckedReadFixedI16x8(I16x8* i16x8) {
-        struct T { I16x8 v; };
-        T t = uncheckedRead<T>();
-        memcpy(i16x8, &t, sizeof(t));
-    }
-    void uncheckedReadFixedI32x4(I32x4* i32x4) {
-        struct T { I32x4 v; };
-        T t = uncheckedRead<T>();
-        memcpy(i32x4, &t, sizeof(t));
-    }
-    void uncheckedReadFixedF32x4(F32x4* f32x4) {
-        struct T { F32x4 v; };
-        T t = uncheckedRead<T>();
-        memcpy(f32x4, &t, sizeof(t));
     }
 };
 
@@ -709,8 +683,17 @@ class Decoder
 MOZ_MUST_USE bool
 EncodeLocalEntries(Encoder& d, const ValTypeVector& locals);
 
+// This performs no validation; the local entries must already have been
+// validated by an earlier pass.
+
 MOZ_MUST_USE bool
-DecodeLocalEntries(Decoder& d, ModuleKind kind, HasGcTypes gcTypesEnabled, ValTypeVector* locals);
+DecodeValidatedLocalEntries(Decoder& d, ValTypeVector* locals);
+
+// This validates the entries.
+
+MOZ_MUST_USE bool
+DecodeLocalEntries(Decoder& d, ModuleKind kind, const TypeDefVector& types,
+                   HasGcTypes gcTypesEnabled, ValTypeVector* locals);
 
 // Returns whether the given [begin, end) prefix of a module's bytecode starts a
 // code section and, if so, returns the SectionRange of that code section.
@@ -737,6 +720,9 @@ ValidateFunctionBody(const ModuleEnvironment& env, uint32_t funcIndex, uint32_t 
 
 MOZ_MUST_USE bool
 DecodeModuleTail(Decoder& d, ModuleEnvironment* env);
+
+void
+ConvertMemoryPagesToBytes(Limits* memory);
 
 // Validate an entire module, returning true if the module was validated
 // successfully. If Validate returns false:

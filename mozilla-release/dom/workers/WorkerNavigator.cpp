@@ -6,6 +6,7 @@
 
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/DOMPrefs.h"
+#include "mozilla/dom/MediaCapabilities.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/PromiseWorkerProxy.h"
 #include "mozilla/dom/StorageManager.h"
@@ -31,7 +32,7 @@ namespace dom {
 using namespace workerinternals;
 
 NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(WorkerNavigator, mStorageManager,
-                                      mConnection);
+                                      mConnection, mMediaCapabilities);
 
 NS_IMPL_CYCLE_COLLECTION_ROOT_NATIVE(WorkerNavigator, AddRef)
 NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(WorkerNavigator, Release)
@@ -65,13 +66,13 @@ WorkerNavigator::Create(bool aOnLine)
 JSObject*
 WorkerNavigator::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return WorkerNavigatorBinding::Wrap(aCx, this, aGivenProto);
+  return WorkerNavigator_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void
 WorkerNavigator::SetLanguages(const nsTArray<nsString>& aLanguages)
 {
-  WorkerNavigatorBinding::ClearCachedLanguagesValue(this);
+  WorkerNavigator_Binding::ClearCachedLanguagesValue(this);
   mProperties.mLanguages = aLanguages;
 }
 
@@ -175,7 +176,7 @@ WorkerNavigator::GetUserAgent(nsString& aUserAgent, CallerType aCallerType,
   RefPtr<GetUserAgentRunnable> runnable =
     new GetUserAgentRunnable(workerPrivate, aUserAgent);
 
-  runnable->Dispatch(Terminating, aRv);
+  runnable->Dispatch(Canceling, aRv);
 }
 
 uint64_t
@@ -216,6 +217,20 @@ WorkerNavigator::GetConnection(ErrorResult& aRv)
   return mConnection;
 }
 
+dom::MediaCapabilities*
+WorkerNavigator::MediaCapabilities()
+{
+  if (!mMediaCapabilities) {
+    WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
+    MOZ_ASSERT(workerPrivate);
+
+    nsIGlobalObject* global = workerPrivate->GlobalScope();
+    MOZ_ASSERT(global);
+
+    mMediaCapabilities = new dom::MediaCapabilities(global);
+  }
+  return mMediaCapabilities;
+}
 
 } // namespace dom
 } // namespace mozilla

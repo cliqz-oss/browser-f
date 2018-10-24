@@ -15,7 +15,7 @@ use {BuiltDisplayList, BuiltDisplayListDescriptor, ColorF, DeviceIntPoint, Devic
 use {DeviceUintSize, ExternalScrollId, FontInstanceKey, FontInstanceOptions};
 use {FontInstancePlatformOptions, FontKey, FontVariation, GlyphDimensions, GlyphIndex, ImageData};
 use {ImageDescriptor, ImageKey, ItemTag, LayoutPoint, LayoutSize, LayoutTransform, LayoutVector2D};
-use {NativeFontHandle, WorldPoint};
+use {NativeFontHandle, WorldPoint, NormalizedRect};
 
 pub type TileSize = u16;
 /// Documents are rendered in the ascending order of their associated layer values.
@@ -26,6 +26,7 @@ pub enum ResourceUpdate {
     AddImage(AddImage),
     UpdateImage(UpdateImage),
     DeleteImage(ImageKey),
+    SetImageVisibleArea(ImageKey, NormalizedRect),
     AddFont(AddFont),
     DeleteFont(FontKey),
     AddFontInstance(AddFontInstance),
@@ -64,7 +65,7 @@ impl Transaction {
             frame_ops: Vec::new(),
             resource_updates: Vec::new(),
             payloads: Vec::new(),
-            use_scene_builder_thread: false, // TODO: make this true by default.
+            use_scene_builder_thread: true,
             generate_frame: false,
         }
     }
@@ -292,6 +293,10 @@ impl Transaction {
 
     pub fn delete_image(&mut self, key: ImageKey) {
         self.resource_updates.push(ResourceUpdate::DeleteImage(key));
+    }
+
+    pub fn set_image_visible_area(&mut self, key: ImageKey, area: NormalizedRect) {
+        self.resource_updates.push(ResourceUpdate::SetImageVisibleArea(key, area))
     }
 
     pub fn add_raw_font(&mut self, key: FontKey, bytes: Vec<u8>, index: u32) {
@@ -530,11 +535,12 @@ bitflags!{
     /// Mask for clearing caches in debug commands.
     #[derive(Deserialize, Serialize)]
     pub struct ClearCache: u8 {
-        const IMAGES = 0x1;
-        const GLYPHS = 0x2;
-        const GLYPH_DIMENSIONS = 0x4;
-        const RENDER_TASKS = 0x8;
-        const TEXTURE_CACHE = 0x16;
+        const IMAGES = 0b1;
+        const GLYPHS = 0b01;
+        const GLYPH_DIMENSIONS = 0b001;
+        const RENDER_TASKS = 0b0001;
+        const TEXTURE_CACHE = 0b00001;
+        const RASTERIZED_BLOBS = 0b000001;
     }
 }
 
@@ -565,6 +571,8 @@ pub enum DebugCommand {
     EnableNewFrameIndicator(bool),
     /// Show an indicator that moves every time a scene is built.
     EnableNewSceneIndicator(bool),
+    /// Show an overlay displaying overdraw amount.
+    EnableShowOverdraw(bool),
     /// Fetch current documents and display lists.
     FetchDocuments,
     /// Fetch current passes and batches.
@@ -970,6 +978,10 @@ impl RenderApi {
 
     /// Load a capture of the current frame state for debugging.
     pub fn load_capture(&self, path: PathBuf) -> Vec<CapturedDocument> {
+        // First flush the scene builder otherwise async scenes might clobber
+        // the capture we are about to load.
+        self.flush_scene_builder();
+
         let (tx, rx) = channel::msg_channel().unwrap();
         let msg = ApiMsg::DebugCommand(DebugCommand::LoadCapture(path, tx));
         self.send_message(msg);
@@ -1085,7 +1097,7 @@ impl<T> From<T> for PropertyBinding<T> {
 
 /// The current value of an animated property. This is
 /// supplied by the calling code.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
 pub struct PropertyValue<T> {
     pub key: PropertyBindingKey<T>,
     pub value: T,
@@ -1094,7 +1106,7 @@ pub struct PropertyValue<T> {
 /// When using `generate_frame()`, a list of `PropertyValue` structures
 /// can optionally be supplied to provide the current value of any
 /// animated properties.
-#[derive(Clone, Deserialize, Serialize, Debug)]
+#[derive(Clone, Deserialize, Serialize, Debug, PartialEq, Default)]
 pub struct DynamicProperties {
     pub transforms: Vec<PropertyValue<LayoutTransform>>,
     pub floats: Vec<PropertyValue<f32>>,
@@ -1103,7 +1115,7 @@ pub struct DynamicProperties {
 pub trait RenderNotifier: Send {
     fn clone(&self) -> Box<RenderNotifier>;
     fn wake_up(&self);
-    fn new_frame_ready(&self, DocumentId, scrolled: bool, composite_needed: bool);
+    fn new_frame_ready(&self, DocumentId, scrolled: bool, composite_needed: bool, render_time_ns: Option<u64>);
     fn external_event(&self, _evt: ExternalEvent) {
         unimplemented!()
     }

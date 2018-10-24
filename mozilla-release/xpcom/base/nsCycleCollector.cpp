@@ -157,6 +157,7 @@
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/CycleCollectedJSRuntime.h"
 #include "mozilla/DebugOnly.h"
+#include "mozilla/HashTable.h"
 #include "mozilla/HoldDropJSObjects.h"
 /* This must occur *after* base/process_util.h to avoid typedefs conflicts. */
 #include "mozilla/LinkedList.h"
@@ -616,7 +617,7 @@ public:
     , mInternalRefs{ 0 }
     , mRefCount{ 0 }
   {
-    NS_NOTREACHED("should never be called");
+    MOZ_ASSERT_UNREACHABLE("should never be called");
   }
 
   bool IsGrayJS() const
@@ -675,7 +676,8 @@ PtrInfo::AnnotatedReleaseAssert(bool aCondition, const char* aMessage)
     piName = mParticipant->ClassName();
   }
   nsPrintfCString msg("%s, for class %s", aMessage, piName);
-  CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("CycleCollector"), msg);
+  CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::CycleCollector,
+                                     msg);
 
   MOZ_CRASH();
 }
@@ -698,7 +700,7 @@ private:
     NodeBlock()
       : mNext{ nullptr }
     {
-      NS_NOTREACHED("should never be called");
+      MOZ_ASSERT_UNREACHABLE("should never be called");
 
       // Ensure NodeBlock is the right size (see the comment on NodeBlockSize
       // above).
@@ -710,7 +712,7 @@ private:
     }
     ~NodeBlock()
     {
-      NS_NOTREACHED("should never be called");
+      MOZ_ASSERT_UNREACHABLE("should never be called");
     }
 
     NodeBlock* mNext;
@@ -848,28 +850,20 @@ private:
   PtrInfo* mLast;
 };
 
-
-// Declarations for mPtrToNodeMap.
-
-struct PtrToNodeEntry : public PLDHashEntryHdr
+struct PtrToNodeHashPolicy
 {
-  // The key is mNode->mPointer
-  PtrInfo* mNode;
-};
+  using Key = PtrInfo*;
+  using Lookup = void*;
 
-static bool
-PtrToNodeMatchEntry(const PLDHashEntryHdr* aEntry, const void* aKey)
-{
-  const PtrToNodeEntry* n = static_cast<const PtrToNodeEntry*>(aEntry);
-  return n->mNode->mPointer == aKey;
-}
+  static js::HashNumber hash(const Lookup& aLookup)
+  {
+    return mozilla::HashGeneric(aLookup);
+  }
 
-static PLDHashTableOps PtrNodeOps = {
-  PLDHashTable::HashVoidPtrKeyStub,
-  PtrToNodeMatchEntry,
-  PLDHashTable::MoveEntryStub,
-  PLDHashTable::ClearEntryStub,
-  nullptr
+  static bool match(const Key& aKey, const Lookup& aLookup)
+  {
+    return aKey->mPointer == aLookup;
+  }
 };
 
 
@@ -892,7 +886,10 @@ struct CCGraph
   uint32_t mRootCount;
 
 private:
-  PLDHashTable mPtrToNodeMap;
+  friend CCGraphBuilder;
+
+  mozilla::HashSet<PtrInfo*, PtrToNodeHashPolicy> mPtrInfoMap;
+
   bool mOutOfMemory;
 
   static const uint32_t kInitialMapLength = 16384;
@@ -900,9 +897,10 @@ private:
 public:
   CCGraph()
     : mRootCount(0)
-    , mPtrToNodeMap(&PtrNodeOps, sizeof(PtrToNodeEntry), kInitialMapLength)
+    , mPtrInfoMap(kInitialMapLength)
     , mOutOfMemory(false)
-  {}
+  {
+  }
 
   ~CCGraph() {}
 
@@ -917,7 +915,7 @@ public:
     mEdges.Clear();
     mWeakMaps.Clear();
     mRootCount = 0;
-    mPtrToNodeMap.ClearAndPrepareForLength(kInitialMapLength);
+    mPtrInfoMap.clearAndCompact();
     mOutOfMemory = false;
   }
 
@@ -926,17 +924,16 @@ public:
   {
     return mNodes.IsEmpty() && mEdges.IsEmpty() &&
            mWeakMaps.IsEmpty() && mRootCount == 0 &&
-           mPtrToNodeMap.EntryCount() == 0;
+           mPtrInfoMap.empty();
   }
 #endif
 
   PtrInfo* FindNode(void* aPtr);
-  PtrToNodeEntry* AddNodeToMap(void* aPtr);
   void RemoveObjectFromMap(void* aObject);
 
   uint32_t MapCount() const
   {
-    return mPtrToNodeMap.EntryCount();
+    return mPtrInfoMap.count();
   }
 
   size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const
@@ -950,52 +947,28 @@ public:
     // pointers are non-owning.
     n += mWeakMaps.ShallowSizeOfExcludingThis(aMallocSizeOf);
 
-    n += mPtrToNodeMap.ShallowSizeOfExcludingThis(aMallocSizeOf);
+    n += mPtrInfoMap.shallowSizeOfExcludingThis(aMallocSizeOf);
 
     return n;
-  }
-
-private:
-  PtrToNodeEntry* FindNodeEntry(void* aPtr)
-  {
-    return static_cast<PtrToNodeEntry*>(mPtrToNodeMap.Search(aPtr));
   }
 };
 
 PtrInfo*
 CCGraph::FindNode(void* aPtr)
 {
-  PtrToNodeEntry* e = FindNodeEntry(aPtr);
-  return e ? e->mNode : nullptr;
-}
-
-PtrToNodeEntry*
-CCGraph::AddNodeToMap(void* aPtr)
-{
-  JS::AutoSuppressGCAnalysis suppress;
-  if (mOutOfMemory) {
-    return nullptr;
-  }
-
-  auto e = static_cast<PtrToNodeEntry*>(mPtrToNodeMap.Add(aPtr, fallible));
-  if (!e) {
-    mOutOfMemory = true;
-    MOZ_ASSERT(false, "Ran out of memory while building cycle collector graph");
-    return nullptr;
-  }
-  return e;
+  auto p = mPtrInfoMap.lookup(aPtr);
+  return p ? *p : nullptr;
 }
 
 void
 CCGraph::RemoveObjectFromMap(void* aObj)
 {
-  PtrToNodeEntry* e = FindNodeEntry(aObj);
-  PtrInfo* pinfo = e ? e->mNode : nullptr;
-  if (pinfo) {
-    mPtrToNodeMap.RemoveEntry(e);
-
+  auto p = mPtrInfoMap.lookup(aObj);
+  if (p) {
+    PtrInfo* pinfo = *p;
     pinfo->mPointer = nullptr;
     pinfo->mParticipant = nullptr;
+    mPtrInfoMap.remove(p);
   }
 }
 
@@ -1353,6 +1326,7 @@ public:
   void ForgetSkippable(js::SliceBudget& aBudget, bool aRemoveChildlessNodes,
                        bool aAsyncSnowWhiteFreeing);
   bool FreeSnowWhite(bool aUntilNoSWInPurpleBuffer);
+  bool FreeSnowWhiteWithBudget(js::SliceBudget& aBudget);
 
   // This method assumes its argument is already canonicalized.
   void RemoveObjectFromGraph(void* aPtr);
@@ -2040,7 +2014,7 @@ public:
           aHandler->DescribeGarbage(d->mAddress);
           break;
         case CCGraphDescriber::eUnknown:
-          NS_NOTREACHED("CCGraphDescriber::eUnknown");
+          MOZ_ASSERT_UNREACHABLE("CCGraphDescriber::eUnknown");
           break;
       }
       delete d;
@@ -2076,18 +2050,11 @@ private:
 
 NS_IMPL_ISUPPORTS(nsCycleCollectorLogger, nsICycleCollectorListener)
 
-nsresult
-nsCycleCollectorLoggerConstructor(nsISupports* aOuter,
-                                  const nsIID& aIID,
-                                  void** aInstancePtr)
+already_AddRefed<nsICycleCollectorListener>
+nsCycleCollector_createLogger()
 {
-  if (NS_WARN_IF(aOuter)) {
-    return NS_ERROR_NO_AGGREGATION;
-  }
-
-  nsISupports* logger = new nsCycleCollectorLogger();
-
-  return logger->QueryInterface(aIID, aInstancePtr);
+  nsCOMPtr<nsICycleCollectorListener> logger = new nsCycleCollectorLogger();
+  return logger.forget();
 }
 
 static bool
@@ -2269,26 +2236,33 @@ CCGraphBuilder::~CCGraphBuilder()
 PtrInfo*
 CCGraphBuilder::AddNode(void* aPtr, nsCycleCollectionParticipant* aParticipant)
 {
-  PtrToNodeEntry* e = mGraph.AddNodeToMap(aPtr);
-  if (!e) {
+  if (mGraph.mOutOfMemory) {
     return nullptr;
   }
 
   PtrInfo* result;
-  if (!e->mNode) {
-    // New entry.
+  auto p = mGraph.mPtrInfoMap.lookupForAdd(aPtr);
+  if (!p) {
+    // New entry
     result = mNodeBuilder.Add(aPtr, aParticipant);
     if (!result) {
       return nullptr;
     }
 
-    e->mNode = result;
-    NS_ASSERTION(result, "mNodeBuilder.Add returned null");
+    if (!mGraph.mPtrInfoMap.add(p, result)) {
+      // `result` leaks here, but we can't free it because it's
+      // pool-allocated within NodePool.
+      mGraph.mOutOfMemory = true;
+      MOZ_ASSERT(false, "OOM while building cycle collector graph");
+      return nullptr;
+    }
+
   } else {
-    result = e->mNode;
+    result = *p;
     MOZ_ASSERT(result->mParticipant == aParticipant,
                "nsCycleCollectionParticipant shouldn't change!");
   }
+
   return result;
 }
 
@@ -2715,40 +2689,68 @@ class SnowWhiteKiller : public TraceCallbacks
     ObjectsVector;
 
 public:
-  explicit SnowWhiteKiller(nsCycleCollector* aCollector)
+  SnowWhiteKiller(nsCycleCollector* aCollector, js::SliceBudget* aBudget)
     : mCollector(aCollector)
     , mObjects(kSegmentSize)
+    , mBudget(aBudget)
+    , mSawSnowWhiteObjects(false)
   {
     MOZ_ASSERT(mCollector, "Calling SnowWhiteKiller after nsCC went away");
+  }
+
+  explicit SnowWhiteKiller(nsCycleCollector* aCollector)
+    : SnowWhiteKiller(aCollector, nullptr)
+  {
   }
 
   ~SnowWhiteKiller()
   {
     for (auto iter = mObjects.Iter(); !iter.Done(); iter.Next()) {
       SnowWhiteObject& o = iter.Get();
-      if (!o.mRefCnt->get() && !o.mRefCnt->IsInPurpleBuffer()) {
-        mCollector->RemoveObjectFromGraph(o.mPointer);
-        o.mRefCnt->stabilizeForDeletion();
-        {
-          JS::AutoEnterCycleCollection autocc(mCollector->Runtime()->Runtime());
-          o.mParticipant->Trace(o.mPointer, *this, nullptr);
-        }
-        o.mParticipant->DeleteCycleCollectable(o.mPointer);
+      MaybeKillObject(o);
+    }
+  }
+
+  void
+  MaybeKillObject(SnowWhiteObject& aObject)
+  {
+    if (!aObject.mRefCnt->get() && !aObject.mRefCnt->IsInPurpleBuffer()) {
+      mCollector->RemoveObjectFromGraph(aObject.mPointer);
+      aObject.mRefCnt->stabilizeForDeletion();
+      {
+        JS::AutoEnterCycleCollection autocc(mCollector->Runtime()->Runtime());
+        aObject.mParticipant->Trace(aObject.mPointer, *this, nullptr);
       }
+      aObject.mParticipant->DeleteCycleCollectable(aObject.mPointer);
     }
   }
 
   bool
   Visit(nsPurpleBuffer& aBuffer, nsPurpleBufferEntry* aEntry)
   {
+    // Ignore any slice budget we have when recording/replaying, as it behaves
+    // non-deterministically.
+    if (mBudget && !recordreplay::IsRecordingOrReplaying()) {
+      if (mBudget->isOverBudget()) {
+        return false;
+      }
+      mBudget->step();
+    }
+
     MOZ_ASSERT(aEntry->mObject, "Null object in purple buffer");
     if (!aEntry->mRefCnt->get()) {
+      mSawSnowWhiteObjects = true;
       void* o = aEntry->mObject;
       nsCycleCollectionParticipant* cp = aEntry->mParticipant;
       ToParticipant(o, &cp);
       SnowWhiteObject swo = { o, cp, aEntry->mRefCnt };
-      mObjects.InfallibleAppend(swo);
+      if (!mBudget) {
+        mObjects.InfallibleAppend(swo);
+      }
       aBuffer.Remove(aEntry);
+      if (mBudget) {
+        MaybeKillObject(swo);
+      }
     }
     return true;
   }
@@ -2756,6 +2758,11 @@ public:
   bool HasSnowWhiteObjects() const
   {
     return !mObjects.IsEmpty();
+  }
+
+  bool SawSnowWhiteObjects() const
+  {
+    return mSawSnowWhiteObjects;
   }
 
   virtual void Trace(JS::Heap<JS::Value>* aValue, const char* aName,
@@ -2817,6 +2824,8 @@ public:
 private:
   RefPtr<nsCycleCollector> mCollector;
   ObjectsVector mObjects;
+  js::SliceBudget* mBudget;
+  bool mSawSnowWhiteObjects;
 };
 
 class RemoveSkippableVisitor : public SnowWhiteKiller
@@ -2925,6 +2934,23 @@ nsCycleCollector::FreeSnowWhite(bool aUntilNoSWInPurpleBuffer)
   return hadSnowWhiteObjects;
 }
 
+bool
+nsCycleCollector::FreeSnowWhiteWithBudget(js::SliceBudget& aBudget)
+{
+  CheckThreadSafety();
+
+  if (mFreeingSnowWhite) {
+    return false;
+  }
+
+  AutoRestore<bool> ar(mFreeingSnowWhite);
+  mFreeingSnowWhite = true;
+
+  SnowWhiteKiller visitor(this, &aBudget);
+  mPurpleBuf.VisitEntries(visitor);
+  return visitor.SawSnowWhiteObjects();;
+}
+
 void
 nsCycleCollector::ForgetSkippable(js::SliceBudget& aBudget,
                                   bool aRemoveChildlessNodes,
@@ -2940,6 +2966,11 @@ nsCycleCollector::ForgetSkippable(js::SliceBudget& aBudget,
   // If we remove things from the purple buffer during graph building, we may
   // lose track of an object that was mutated during graph building.
   MOZ_ASSERT(IsIdle());
+
+  // The cycle collector does not collect anything when recording/replaying.
+  if (recordreplay::IsRecordingOrReplaying()) {
+    return;
+  }
 
   if (mCCJSRuntime) {
     mCCJSRuntime->PrepareForForgetSkippable();
@@ -3718,7 +3749,8 @@ nsCycleCollector::Collect(ccType aCCType,
   CheckThreadSafety();
 
   // This can legitimately happen in a few cases. See bug 383651.
-  if (mActivelyCollecting || mFreeingSnowWhite) {
+  // When recording/replaying we do not collect cycles.
+  if (mActivelyCollecting || mFreeingSnowWhite || recordreplay::IsRecordingOrReplaying()) {
     return false;
   }
   mActivelyCollecting = true;
@@ -4165,7 +4197,9 @@ nsCycleCollector_suspectedCount()
   // We should have started the cycle collector by now.
   MOZ_ASSERT(data);
 
-  if (!data->mCollector) {
+  // When recording/replaying we do not collect cycles. Return zero here so
+  // that callers behave consistently between recording and replaying.
+  if (!data->mCollector || recordreplay::IsRecordingOrReplaying()) {
     return 0;
   }
 
@@ -4306,6 +4340,19 @@ nsCycleCollector_doDeferredDeletion()
   return data->mCollector->FreeSnowWhite(false);
 }
 
+bool
+nsCycleCollector_doDeferredDeletionWithBudget(js::SliceBudget& aBudget)
+{
+  CollectorData* data = sCollectorData.get();
+
+  // We should have started the cycle collector by now.
+  MOZ_ASSERT(data);
+  MOZ_ASSERT(data->mCollector);
+  MOZ_ASSERT(data->mContext);
+
+  return data->mCollector->FreeSnowWhiteWithBudget(aBudget);
+}
+
 already_AddRefed<nsICycleCollectorLogSink>
 nsCycleCollector_createLogSink()
 {
@@ -4387,8 +4434,9 @@ nsCycleCollector_shutdown(bool aDoCollect)
     data->mCollector = nullptr;
     if (data->mContext) {
       // Run any remaining tasks that may have been enqueued via
-      // RunInStableState during the final cycle collection.
+      // RunInStableState or DispatchToMicroTask during the final cycle collection.
       data->mContext->ProcessStableStateQueue();
+      data->mContext->PerformMicroTaskCheckPoint(true);
     }
     if (!data->mContext) {
       delete data;

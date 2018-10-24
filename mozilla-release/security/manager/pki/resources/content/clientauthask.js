@@ -51,7 +51,7 @@ var bundle;
 var certArray;
 /**
  * The checkbox storing whether the user wants to remember the selected cert.
- * @type nsIDOMXULCheckboxElement
+ * @type Element checkbox, has to have |checked| property.
  */
 var rememberBox;
 
@@ -81,7 +81,7 @@ function onLoad() {
   let selectElement = document.getElementById("nicknames");
   certArray = window.arguments[4].QueryInterface(Ci.nsIArray);
   for (let i = 0; i < certArray.length; i++) {
-    let menuItemNode = document.createElement("menuitem");
+    let menuItemNode = document.createXULElement("menuitem");
     let cert = certArray.queryElementAt(i, Ci.nsIX509Cert);
     let nickAndSerial =
       bundle.getFormattedString("clientAuthNickAndSerial",

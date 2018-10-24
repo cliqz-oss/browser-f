@@ -337,7 +337,7 @@ StorageActors.defaults = function(typeName, observationTopics) {
      *          - data - The requested values.
      */
     async getStoreObjects(host, names, options = {}) {
-      let offset = options.offset || 0;
+      const offset = options.offset || 0;
       let size = options.size || MAX_STORE_OBJECT_COUNT;
       if (size > MAX_STORE_OBJECT_COUNT) {
         size = MAX_STORE_OBJECT_COUNT;
@@ -381,19 +381,6 @@ StorageActors.defaults = function(typeName, observationTopics) {
         }
 
         toReturn.total = this.getObjectsSize(host, names, options);
-
-        if (offset > toReturn.total) {
-          // In this case, toReturn.data is an empty array.
-          toReturn.offset = toReturn.total;
-          toReturn.data = [];
-        } else {
-          // We need to use natural sort before slicing.
-          const sorted = toReturn.data.sort((a, b) => {
-            return naturalSortCaseInsensitive(a[sortOn], b[sortOn]);
-          });
-          const sliced = sorted.slice(offset, offset + size);
-          toReturn.data = sliced.map(a => this.toStoreObject(a));
-        }
       } else {
         let obj = await this.getValuesForHost(host, undefined, undefined,
                                               this.hostVsStores, principal);
@@ -402,19 +389,28 @@ StorageActors.defaults = function(typeName, observationTopics) {
         }
 
         toReturn.total = obj.length;
+        toReturn.data = obj;
+      }
 
-        if (offset > toReturn.total) {
-          // In this case, toReturn.data is an empty array.
-          toReturn.offset = offset = toReturn.total;
-          toReturn.data = [];
+      if (offset > toReturn.total) {
+        // In this case, toReturn.data is an empty array.
+        toReturn.offset = toReturn.total;
+        toReturn.data = [];
+      } else {
+        // We need to use natural sort before slicing.
+        const sorted = toReturn.data.sort((a, b) => {
+          return naturalSortCaseInsensitive(a[sortOn], b[sortOn]);
+        });
+        let sliced;
+        if (this.typeName === "indexedDB") {
+          // indexedDB's getValuesForHost never returns *all* values available but only
+          // a slice, starting at the expected offset. Therefore the result is already
+          // sliced as expected.
+          sliced = sorted;
         } else {
-          // We need to use natural sort before slicing.
-          const sorted = obj.sort((a, b) => {
-            return naturalSortCaseInsensitive(a[sortOn], b[sortOn]);
-          });
-          const sliced = sorted.slice(offset, offset + size);
-          toReturn.data = sliced.map(object => this.toStoreObject(object));
+          sliced = sorted.slice(offset, offset + size);
         }
+        toReturn.data = sliced.map(a => this.toStoreObject(a));
       }
 
       return toReturn;
@@ -757,8 +753,7 @@ StorageActors.createActor({
       return;
     }
 
-    const { sendSyncMessage, addMessageListener } =
-      this.conn.parentMessageManager;
+    const mm = this.conn.parentMessageManager;
 
     this.conn.setupInParent({
       module: "devtools/server/actors/storage",
@@ -780,11 +775,11 @@ StorageActors.createActor({
     this.removeAllSessionCookies =
       callParentProcess.bind(null, "removeAllSessionCookies");
 
-    addMessageListener("debug:storage-cookie-request-child",
-                       cookieHelpers.handleParentRequest);
+    mm.addMessageListener("debug:storage-cookie-request-child",
+                          cookieHelpers.handleParentRequest);
 
     function callParentProcess(methodName, ...args) {
-      const reply = sendSyncMessage("debug:storage-cookie-request-parent", {
+      const reply = mm.sendSyncMessage("debug:storage-cookie-request-parent", {
         method: methodName,
         args: args
       });
@@ -815,16 +810,8 @@ var cookieHelpers = {
 
     host = trimHttpHttpsPort(host);
 
-    const cookies = Services.cookies.getCookiesFromHost(host, originAttributes);
-    const store = [];
-
-    while (cookies.hasMoreElements()) {
-      const cookie = cookies.getNext().QueryInterface(Ci.nsICookie2);
-
-      store.push(cookie);
-    }
-
-    return store;
+    return Array.from(
+      Services.cookies.getCookiesFromHost(host, originAttributes));
   },
 
   /**
@@ -859,11 +846,9 @@ var cookieHelpers = {
     const origPath = field === "path" ? oldValue : data.items.path;
     let cookie = null;
 
-    const enumerator =
-      Services.cookies.getCookiesFromHost(origHost, data.originAttributes || {});
-
-    while (enumerator.hasMoreElements()) {
-      const nsiCookie = enumerator.getNext().QueryInterface(Ci.nsICookie2);
+    const cookies = Services.cookies.getCookiesFromHost(origHost,
+                                                        data.originAttributes || {});
+    for (const nsiCookie of cookies) {
       if (nsiCookie.name === origName &&
           nsiCookie.host === origHost &&
           nsiCookie.path === origPath) {
@@ -961,11 +946,9 @@ var cookieHelpers = {
       return cookieHost == host;
     }
 
-    const enumerator =
-      Services.cookies.getCookiesFromHost(host, opts.originAttributes || {});
-
-    while (enumerator.hasMoreElements()) {
-      const cookie = enumerator.getNext().QueryInterface(Ci.nsICookie2);
+    const cookies = Services.cookies.getCookiesFromHost(host,
+                                                        opts.originAttributes || {});
+    for (const cookie of cookies) {
       if (hostMatches(cookie.host, host) &&
           (!opts.name || cookie.name === opts.name) &&
           (!opts.domain || cookie.host === opts.domain) &&
@@ -1901,8 +1884,7 @@ StorageActors.createActor({
       return;
     }
 
-    const { sendAsyncMessage, addMessageListener } =
-      this.conn.parentMessageManager;
+    const mm = this.conn.parentMessageManager;
 
     this.conn.setupInParent({
       module: "devtools/server/actors/storage",
@@ -1918,7 +1900,7 @@ StorageActors.createActor({
     this.removeDBRecord = callParentProcessAsync.bind(null, "removeDBRecord");
     this.clearDBStore = callParentProcessAsync.bind(null, "clearDBStore");
 
-    addMessageListener("debug:storage-indexedDB-request-child", msg => {
+    mm.addMessageListener("debug:storage-indexedDB-request-child", msg => {
       switch (msg.json.method) {
         case "backToChild": {
           const [func, rv] = msg.json.args;
@@ -1942,7 +1924,7 @@ StorageActors.createActor({
 
       unresolvedPromises.set(methodName, deferred);
 
-      sendAsyncMessage("debug:storage-indexedDB-request-parent", {
+      mm.sendAsyncMessage("debug:storage-indexedDB-request-parent", {
         method: methodName,
         args: args
       });
@@ -2358,15 +2340,15 @@ var indexedDBHelpers = {
       objectStore: objectStore,
       id: id,
       index: options.index,
-      offset: 0,
+      offset: options.offset,
       size: options.size
     });
     return this.backToChild("getValuesForHost", {result: result});
   },
 
   /**
-   * Returns all or requested entries from a particular objectStore from the db
-   * in the given host.
+   * Returns requested entries (or at most MAX_STORE_OBJECT_COUNT) from a particular
+   * objectStore from the db in the given host.
    *
    * @param {string} host
    *        The given host.
@@ -2687,9 +2669,7 @@ const StorageActor = protocol.ActorClassWithSpec(specs.storageSpec, {
   getWindowFromInnerWindowID(innerID) {
     innerID = innerID.QueryInterface(Ci.nsISupportsPRUint64).data;
     for (const win of this.childWindowPool.values()) {
-      const id = win.QueryInterface(Ci.nsIInterfaceRequestor)
-                   .getInterface(Ci.nsIDOMWindowUtils)
-                   .currentInnerWindowID;
+      const id = win.windowUtils.currentInnerWindowID;
       if (id == innerID) {
         return win;
       }

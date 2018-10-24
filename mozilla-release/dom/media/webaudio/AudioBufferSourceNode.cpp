@@ -669,9 +669,6 @@ AudioBufferSourceNode::DestroyMediaStream()
     mStream->RemoveMainThreadListener(this);
   }
   AudioNode::DestroyMediaStream();
-  if (hadStream && Context()) {
-    Context()->UnregisterAudioBufferSourceNode(this);
-  }
 }
 
 size_t
@@ -695,7 +692,7 @@ AudioBufferSourceNode::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
 JSObject*
 AudioBufferSourceNode::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return AudioBufferSourceNodeBinding::Wrap(aCx, this, aGivenProto);
+  return AudioBufferSourceNode_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void

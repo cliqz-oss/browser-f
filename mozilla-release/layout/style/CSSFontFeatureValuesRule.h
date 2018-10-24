@@ -19,14 +19,21 @@ class CSSFontFeatureValuesRule final : public css::Rule
 {
 public:
   CSSFontFeatureValuesRule(RefPtr<RawServoFontFeatureValuesRule> aRawRule,
-                           uint32_t aLine, uint32_t aColumn);
+                           StyleSheet* aSheet,
+                           css::Rule* aParentRule,
+                           uint32_t aLine,
+                           uint32_t aColumn)
+    : css::Rule(aSheet, aParentRule, aLine, aColumn)
+    , mRawRule(std::move(aRawRule))
+  {
+  }
 
   virtual bool IsCCLeaf() const override;
 
   RawServoFontFeatureValuesRule* Raw() const { return mRawRule; }
 
   // WebIDL interfaces
-  uint16_t Type() const final { return CSSRuleBinding::FONT_FEATURE_VALUES_RULE; }
+  uint16_t Type() const final { return CSSRule_Binding::FONT_FEATURE_VALUES_RULE; }
   void GetCssText(nsAString& aCssText) const override;
   void GetFontFamily(nsAString& aFamily);
   void SetFontFamily(const nsAString& aFamily, mozilla::ErrorResult& aRv);

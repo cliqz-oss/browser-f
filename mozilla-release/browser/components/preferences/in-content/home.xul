@@ -11,20 +11,18 @@
       class="subcategory"
       hidden="true"
       data-category="paneHome">
-  <label class="header-name" flex="1" data-l10n-id="pane-home-title" />
+  <label class="header-name" data-l10n-id="pane-home-title" flex="1"/>
+  <button id="restoreDefaultHomePageBtn"
+          class="homepage-button check-home-page-controlled"
+          data-preference-related="browser.startup.homepage"
+          data-l10n-id="home-restore-defaults"
+          preference="pref.browser.homepage.disable_button.restore_default"/>
 </hbox>
 
 <groupbox id="homepageGroup"
           data-category="paneHome"
           hidden="true">
-  <hbox>
-    <caption flex="1" align="center"><label data-l10n-id="home-new-windows-tabs-header"/></caption>
-    <button id="restoreDefaultHomePageBtn"
-            class="homepage-button check-home-page-controlled"
-            data-preference-related="browser.startup.homepage"
-            data-l10n-id="home-restore-defaults"
-            preference="pref.browser.homepage.disable_button.restore_default"/>
-  </hbox>
+  <caption><label data-l10n-id="home-new-windows-tabs-header"/></caption>
   <description data-l10n-id="home-new-windows-tabs-description2" />
 
   <vbox>
@@ -86,13 +84,15 @@
       </menulist>
     </hbox>
 
-    <hbox id="browserHomePageExtensionContent" align="center" hidden="true">
+    <hbox id="browserHomePageExtensionContent"
+          align="center" hidden="true" class="extension-controlled">
       <description control="disableHomePageExtension" flex="1" />
       <button id="disableHomePageExtension"
               class="extension-controlled-button accessory-button"
               data-l10n-id="disable-extension" />
     </hbox>
-    <hbox id="browserNewTabExtensionContent" align="center" hidden="true">
+    <hbox id="browserNewTabExtensionContent"
+          align="center" hidden="true" class="extension-controlled">
       <description control="disableNewTabExtension" flex="1" />
       <button id="disableNewTabExtension"
               class="extension-controlled-button accessory-button"

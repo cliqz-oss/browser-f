@@ -84,7 +84,7 @@ function initTreeView() {
       label: winLabel.replace("%S", (aIx + 1)),
       open: true,
       checked: true,
-      ix: aIx
+      ix: aIx,
     };
     winState.tabs = aWinData.tabs.map(function(aTabData) {
       var entry = aTabData.entries[aTabData.index - 1] || { url: "about:blank" };
@@ -96,7 +96,7 @@ function initTreeView() {
         label: entry.title || entry.url,
         checked: true,
         src: iconURL,
-        parent: winState
+        parent: winState,
       };
     });
     gTreeData.push(winState);
@@ -224,9 +224,7 @@ function onListKeyDown(aEvent) {
 // Helper functions
 
 function getBrowserWindow() {
-  return window.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIWebNavigation)
-               .QueryInterface(Ci.nsIDocShellTreeItem).rootTreeItem
-               .QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindow);
+  return window.docShell.rootTreeItem.domWindow;
 }
 
 function toggleRowChecked(aIx) {
@@ -265,7 +263,7 @@ function toggleRowChecked(aIx) {
 
 function restoreSingleTab(aIx, aShifted) {
   var tabbrowser = getBrowserWindow().gBrowser;
-  var newTab = tabbrowser.addTab();
+  var newTab = tabbrowser.addWebTab();
   var item = gTreeData[aIx];
 
   var tabState = gStateObject.windows[item.parent.ix]
@@ -364,5 +362,5 @@ var treeView = {
   selectionChanged() { },
   performAction(action) { },
   performActionOnCell(action, index, column) { },
-  getColumnProperties(column) { return ""; }
+  getColumnProperties(column) { return ""; },
 };

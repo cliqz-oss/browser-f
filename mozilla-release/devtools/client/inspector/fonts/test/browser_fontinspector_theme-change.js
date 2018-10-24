@@ -9,7 +9,7 @@ requestLongerTimeout(2);
 
 const { getTheme, setTheme } = require("devtools/client/shared/theme");
 
-const TEST_URI = URL_ROOT + "browser_fontinspector.html";
+const TEST_URI = URL_ROOT + "doc_browser_fontinspector.html";
 const originalTheme = getTheme();
 
 registerCleanupFunction(() => {
@@ -23,9 +23,9 @@ add_task(async function() {
   const viewDoc = view.document;
 
   await selectNode(".normal-text", inspector);
-  await expandOtherFontsAccordion(viewDoc);
-  const otherFontsEls = getOtherFontsEls(viewDoc);
-  const fontEl = otherFontsEls[0];
+  await expandFontsAccordion(viewDoc);
+  const allFontsEls = getAllFontsEls(viewDoc);
+  const fontEl = allFontsEls[0];
 
   // Store the original preview URI for later comparison.
   const originalURI = fontEl.querySelector(".font-preview").src;

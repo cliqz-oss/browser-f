@@ -36,7 +36,7 @@ public:
 
   // Called by nsThread to inform the ThreadManager it is going away.  This
   // method must be called when the given thread is the current thread.
-  void UnregisterCurrentThread(nsThread& aThread);
+  void UnregisterCurrentThread(nsThread& aThread, bool aIfExists = false);
 
   // Returns the current thread.  Returns null if OOM or if ThreadManager isn't
   // initialized.  Creates the nsThread if one does not exist yet.
@@ -85,12 +85,16 @@ private:
   SpinEventLoopUntilInternal(nsINestedEventLoopCondition* aCondition,
                              bool aCheckingShutdown);
 
+  static void ReleaseThread(void* aData);
+
   nsRefPtrHashtable<nsPtrHashKey<PRThread>, nsThread> mThreadsByPRThread;
   unsigned            mCurThreadIndex;  // thread-local-storage index
   RefPtr<nsThread>  mMainThread;
   PRThread*         mMainPRThread;
   mozilla::OffTheBooksMutex mLock;  // protects tables
-  mozilla::Atomic<bool> mInitialized;
+  mozilla::Atomic<bool,
+                  mozilla::SequentiallyConsistent,
+                  mozilla::recordreplay::Behavior::DontPreserve> mInitialized;
 
   // The current number of threads
   uint32_t            mCurrentNumberOfThreads;

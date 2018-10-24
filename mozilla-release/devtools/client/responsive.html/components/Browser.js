@@ -9,12 +9,12 @@
 const Services = require("Services");
 const flags = require("devtools/shared/flags");
 const { PureComponent } = require("devtools/client/shared/vendor/react");
-const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 
 const e10s = require("../utils/e10s");
 const message = require("../utils/message");
-const { getToplevelWindow } = require("../utils/window");
+const { getTopLevelWindow } = require("../utils/window");
 
 const FRAME_SCRIPT = "resource://devtools/client/responsive.html/browser/content.js";
 
@@ -26,10 +26,10 @@ class Browser extends PureComponent {
    */
   static get propTypes() {
     return {
-      swapAfterMount: PropTypes.bool.isRequired,
-      userContextId: PropTypes.number.isRequired,
       onBrowserMounted: PropTypes.func.isRequired,
       onContentResize: PropTypes.func.isRequired,
+      swapAfterMount: PropTypes.bool.isRequired,
+      userContextId: PropTypes.number.isRequired,
     };
   }
 
@@ -114,7 +114,7 @@ class Browser extends PureComponent {
     mm.loadFrameScript(FRAME_SCRIPT, true);
     await ready;
 
-    const browserWindow = getToplevelWindow(window);
+    const browserWindow = getTopLevelWindow(window);
     const requiresFloatingScrollbars =
       !browserWindow.matchMedia("(-moz-overlay-scrollbars)").matches;
 
@@ -149,22 +149,24 @@ class Browser extends PureComponent {
     // @noisolation and @allowfullscreen are needed so that these frames have the same
     // access to browser features as regular browser tabs. The `swapFrameLoaders` platform
     // API we use compares such features before allowing the swap to proceed.
-    return dom.iframe(
-      {
-        allowFullScreen: "true",
-        className: "browser",
-        height: "100%",
-        mozbrowser: "true",
-        noisolation: "true",
-        remote: "true",
-        remotetype: "web",
-        src: "about:blank",
-        usercontextid: userContextId,
-        width: "100%",
-        ref: browser => {
-          this.browser = browser;
-        },
-      }
+    return (
+      dom.iframe(
+        {
+          allowFullScreen: "true",
+          className: "browser",
+          height: "100%",
+          mozbrowser: "true",
+          noisolation: "true",
+          remote: "true",
+          remotetype: "web",
+          src: "about:blank",
+          usercontextid: userContextId,
+          width: "100%",
+          ref: browser => {
+            this.browser = browser;
+          },
+        }
+      )
     );
   }
 }

@@ -1,8 +1,17 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html#License
 ky{
-    Version{"2.1.39.11"}
+    Version{"2.1.41.97"}
     zoneStrings{
+        "Etc:UTC"{
+            ls{"Бирдиктүү дүйнөлүк убакыт"}
+        }
+        "Europe:Dublin"{
+            ld{"Ирландия кышкы убакыты"}
+        }
+        "Europe:London"{
+            ld{"Британия жайкы убактысы"}
+        }
         "meta:Afghanistan"{
             ls{"Афганистан убактысы"}
         }

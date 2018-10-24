@@ -4,8 +4,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-
 ChromeUtils.defineModuleGetter(this, "Services",
   "resource://gre/modules/Services.jsm");
 
@@ -320,6 +318,5 @@ ViewSourceBrowser.prototype = {
  *        String containing the URI
  */
 ViewSourceBrowser.isViewSource = function(uri) {
-  return uri.startsWith("view-source:") ||
-         (uri.startsWith("data:") && uri.includes("MathML"));
+  return uri.startsWith("view-source:");
 };

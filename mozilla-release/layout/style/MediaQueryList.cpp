@@ -166,7 +166,7 @@ MediaQueryList::GetParentObject() const
 JSObject*
 MediaQueryList::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return MediaQueryListBinding::Wrap(aCx, this, aGivenProto);
+  return MediaQueryList_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void
@@ -197,6 +197,16 @@ MediaQueryList::MaybeNotify()
   event->SetTrusted(true);
 
   DispatchEvent(*event);
+}
+
+size_t
+MediaQueryList::SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const
+{
+  size_t n = 0;
+  // mMediaList is reference counted, but it's created and primarily owned
+  // by this MediaQueryList object.
+  n += mMediaList->SizeOfIncludingThis(aMallocSizeOf);
+  return n;
 }
 
 } // namespace dom

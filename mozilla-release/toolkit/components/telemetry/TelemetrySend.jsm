@@ -59,7 +59,7 @@ const PING_FORMAT_VERSION = 4;
 
 const MS_IN_A_MINUTE = 60 * 1000;
 
-const PING_TYPE_DELETION = "deletion";
+const PING_TYPE_OPTOUT = "optout";
 
 // We try to spread "midnight" pings out over this interval.
 const MIDNIGHT_FUZZING_INTERVAL_MS = 60 * MS_IN_A_MINUTE;
@@ -81,9 +81,6 @@ const SEND_TICK_DELAY = 1 * MS_IN_A_MINUTE;
 // SEND_MAXIMUM_BACKOFF_DELAY_MS.
 // This exponential backoff will be reset by external ping submissions & idle-daily.
 const SEND_MAXIMUM_BACKOFF_DELAY_MS = 120 * MS_IN_A_MINUTE;
-
-// The age of a pending ping to be considered overdue (in milliseconds).
-const OVERDUE_PING_FILE_AGE = 7 * 24 * 60 * MS_IN_A_MINUTE; // 1 week
 
 // Strings to map from XHR.errorCode to TELEMETRY_SEND_FAILURE_TYPE.
 // Echoes XMLHttpRequestMainThread's ErrorType enum.
@@ -121,24 +118,20 @@ function isV4PingFormat(aPing) {
 }
 
 /**
- * Check if the provided ping is a deletion ping.
+ * Check if the provided ping is an optout ping.
  * @param {Object} aPing The ping to check.
- * @return {Boolean} True if the ping is a deletion ping, false otherwise.
+ * @return {Boolean} True if the ping is an optout ping, false otherwise.
  */
-function isDeletionPing(aPing) {
-  return isV4PingFormat(aPing) && (aPing.type == PING_TYPE_DELETION);
+function isOptoutPing(aPing) {
+  return isV4PingFormat(aPing) && (aPing.type == PING_TYPE_OPTOUT);
 }
 
 /**
- * Save the provided ping as a pending ping. If it's a deletion ping, save it
- * to a special location.
+ * Save the provided ping as a pending ping.
  * @param {Object} aPing The ping to save.
  * @return {Promise} A promise resolved when the ping is saved.
  */
 function savePing(aPing) {
-  if (isDeletionPing(aPing)) {
-    return TelemetryStorage.saveDeletionPing(aPing);
-  }
   return TelemetryStorage.savePendingPing(aPing);
 }
 
@@ -155,7 +148,7 @@ function gzipCompressString(string) {
       for (let offset = 0; offset < result.length; offset += chunkSize) {
         this.buffer += String.fromCharCode.apply(String, result.slice(offset, offset + chunkSize));
       }
-    }
+    },
   };
 
   let scs = Cc["@mozilla.org/streamConverters;1"]
@@ -175,13 +168,6 @@ function gzipCompressString(string) {
 }
 
 var TelemetrySend = {
-
-  /**
-   * Age in ms of a pending ping to be considered overdue.
-   */
-  get OVERDUE_PING_FILE_AGE() {
-    return OVERDUE_PING_FILE_AGE;
-  },
 
   get pendingPingCount() {
     return TelemetrySendImpl.pendingPingCount;
@@ -232,10 +218,15 @@ var TelemetrySend = {
   },
 
   /**
-   * Count of pending pings that were found to be overdue at startup.
+   * Check if sending is disabled. If Telemetry is not allowed to upload,
+   * pings are not sent to the server.
+   * If trying to send an optout ping, don't block it.
+   *
+   * @param {Object} [ping=null] A ping to be checked.
+   * @return {Boolean} True if pings can be send to the servers, false otherwise.
    */
-  get overduePingsCount() {
-    return TelemetrySendImpl.overduePingsCount;
+  sendingEnabled(ping = null) {
+    return TelemetrySendImpl.sendingEnabled(ping);
   },
 
   /**
@@ -462,16 +453,17 @@ var SendScheduler = {
       }
 
       // Get a list of pending pings, sorted by last modified, descending.
-      // Filter out all the pings we can't send now. This addresses scenarios like "deletion" pings
-      // which can be send even when upload is disabled.
+      // Filter out all the pings we can't send now. This addresses scenarios like "optout" pings
+      // which can be sent even when upload is disabled.
       let pending = TelemetryStorage.getPendingPingList();
       let current = TelemetrySendImpl.getUnpersistedPings();
       this._log.trace("_doSendTask - pending: " + pending.length + ", current: " + current.length);
       // Note that the two lists contain different kind of data. |pending| only holds ping
       // info, while |current| holds actual ping data.
       if (!TelemetrySendImpl.sendingEnabled()) {
-        pending = pending.filter(pingInfo => TelemetryStorage.isDeletionPing(pingInfo.id));
-        current = current.filter(p => isDeletionPing(p));
+        // If sending is disabled, only handle an unpersisted optout ping
+        pending = [];
+        current = current.filter(p => isOptoutPing(p));
       }
       this._log.trace("_doSendTask - can send - pending: " + pending.length + ", current: " + current.length);
 
@@ -597,8 +589,6 @@ var TelemetrySendImpl = {
   _currentPings: new Map(),
   // Used to skip spawning the pingsender if OS is shutting down.
   _isOSShutdown: false,
-  // Count of pending pings that were overdue.
-  _overduePingCount: 0,
   // Has the network shut down, making it too late to send pings?
   _tooLateToSend: false,
 
@@ -625,10 +615,6 @@ var TelemetrySendImpl = {
     }
 
     return this._logger;
-  },
-
-  get overduePingsCount() {
-    return this._overduePingCount;
   },
 
   get pendingPingRequests() {
@@ -704,8 +690,8 @@ var TelemetrySendImpl = {
 
         if (!this.sendingEnabled() || !TelemetryReportingPolicy.canUpload()) {
           // If we cannot send pings then clear the crash annotations
-          crs.annotateCrashReport("TelemetryClientId", "");
-          crs.annotateCrashReport("TelemetryServerURL", "");
+          crs.removeCrashReportAnnotation("TelemetryClientId");
+          crs.removeCrashReportAnnotation("TelemetryServerURL");
         } else {
           crs.annotateCrashReport("TelemetryClientId", clientId);
           crs.annotateCrashReport("TelemetryServerURL", server);
@@ -730,11 +716,6 @@ var TelemetrySendImpl = {
     }
 
     const now = Policy.now();
-
-    // Check for overdue pings.
-    const overduePings = infos.filter((info) =>
-      (now.getTime() - info.lastModificationDate) > OVERDUE_PING_FILE_AGE);
-    this._overduePingCount = overduePings.length;
 
     // Submit the age of the pending pings.
     for (let pingInfo of infos) {
@@ -783,7 +764,6 @@ var TelemetrySendImpl = {
 
     this._shutdown = false;
     this._currentPings = new Map();
-    this._overduePingCount = 0;
     this._tooLateToSend = false;
     this._isOSShutdown = false;
     this._sendingEnabled = true;
@@ -820,7 +800,6 @@ var TelemetrySendImpl = {
     let setOSShutdown = () => {
       this._log.trace("setOSShutdown - in OS shutdown");
       this._isOSShutdown = true;
-      Telemetry.scalarSet("telemetry.os_shutting_down", true);
     };
 
     switch (topic) {
@@ -977,9 +956,13 @@ var TelemetrySendImpl = {
         try {
           await this._doPing(ping, ping.id, false);
         } catch (ex) {
-          this._log.info("sendPings - ping " + ping.id + " not sent, saving to disk", ex);
-          // Deletion pings must be saved to a special location.
-          await savePing(ping);
+          if (isOptoutPing(ping)) {
+            // Optout pings should only be tried once and then discarded.
+            this._log.info("sendPings - optout ping " + ping.id + " not sent, discarding", ex);
+          } else {
+            this._log.info("sendPings - ping " + ping.id + " not sent, saving to disk", ex);
+            await savePing(ping);
+          }
         } finally {
           this._currentPings.delete(ping.id);
         }
@@ -1008,7 +991,7 @@ var TelemetrySendImpl = {
   async _sendPersistedPings(pingIds) {
     this._log.trace("sendPersistedPings");
 
-    if (TelemetryStorage.pendingPingCount < 1) {
+    if (this.pendingPingCount < 1) {
       this._log.trace("_sendPersistedPings - no pings to send");
       return;
     }
@@ -1051,9 +1034,6 @@ var TelemetrySendImpl = {
     }
 
     if (success && isPersisted) {
-      if (TelemetryStorage.isDeletionPing(id)) {
-        return TelemetryStorage.removeDeletionPing();
-      }
       return TelemetryStorage.removePendingPing(id);
     }
     return Promise.resolve();
@@ -1072,7 +1052,7 @@ var TelemetrySendImpl = {
       // pings.
       let app = ping.application;
       pathComponents = [
-        ping.id, ping.type, app.name, app.version, app.channel, app.buildId
+        ping.id, ping.type, app.name, app.version, app.channel, app.buildId,
       ];
     } else {
       // This is a ping in the old format.
@@ -1254,9 +1234,9 @@ var TelemetrySendImpl = {
   },
 
   /**
-   * Check if sending is disabled. If FHR is not allowed to upload,
-   * pings are not sent to the server (Telemetry is a sub-feature of FHR). If trying
-   * to send a deletion ping, don't block it.
+   * Check if sending is disabled. If Telemetry is not allowed to upload,
+   * pings are not sent to the server.
+   * If trying to send an optout ping, don't block it.
    * If unified telemetry is off, don't send pings if Telemetry is disabled.
    *
    * @param {Object} [ping=null] A ping to be checked.
@@ -1273,8 +1253,8 @@ var TelemetrySendImpl = {
     // With unified Telemetry, the FHR upload setting controls whether we can send pings.
     // The Telemetry pref enables sending extended data sets instead.
     if (IS_UNIFIED_TELEMETRY) {
-      // Deletion pings are sent even if the upload is disabled.
-      if (ping && isDeletionPing(ping)) {
+      // Optout pings are sent once even if the upload is disabled.
+      if (ping && isOptoutPing(ping)) {
         return true;
       }
       return Services.prefs.getBoolPref(TelemetryUtils.Preferences.FhrUploadEnabled, false);
@@ -1311,8 +1291,11 @@ var TelemetrySendImpl = {
   async _persistCurrentPings() {
     for (let [id, ping] of this._currentPings) {
       try {
-        await savePing(ping);
-        this._log.trace("_persistCurrentPings - saved ping " + id);
+        // Never save an optout ping to disk
+        if (!isOptoutPing(ping)) {
+          await savePing(ping);
+          this._log.trace("_persistCurrentPings - saved ping " + id);
+        }
       } catch (ex) {
         this._log.error("_persistCurrentPings - failed to save ping " + id, ex);
       } finally {

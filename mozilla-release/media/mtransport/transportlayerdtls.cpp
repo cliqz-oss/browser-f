@@ -829,11 +829,11 @@ void TransportLayerDtls::StateChange(TransportLayer *layer, State state) {
       break;
 
     case TS_CONNECTING:
-      MOZ_MTLOG(ML_ERROR, LAYER_INFO << "Lower layer is connecting.");
+      MOZ_MTLOG(ML_INFO, LAYER_INFO << "Lower layer is connecting.");
       break;
 
     case TS_OPEN:
-      MOZ_MTLOG(ML_ERROR,
+      MOZ_MTLOG(ML_INFO,
                 LAYER_INFO << "Lower layer is now open; starting TLS");
       // Async, since the ICE layer might need to send a STUN response, and we
       // don't want the handshake to start until that is sent.
@@ -848,7 +848,7 @@ void TransportLayerDtls::StateChange(TransportLayer *layer, State state) {
       break;
 
     case TS_CLOSED:
-      MOZ_MTLOG(ML_ERROR, LAYER_INFO << "Lower layer is now closed");
+      MOZ_MTLOG(ML_INFO, LAYER_INFO << "Lower layer is now closed");
       TL_SET_STATE(TS_CLOSED);
       break;
 
@@ -885,6 +885,8 @@ void TransportLayerDtls::Handshake() {
     }
 
     TL_SET_STATE(TS_OPEN);
+
+    RecordCipherTelemetry();
   } else {
     int32_t err = PR_GetError();
     switch(err) {
@@ -1330,6 +1332,67 @@ TransportLayerDtls::RecordHandshakeCompletionTelemetry(
     default:
       MOZ_ASSERT(false);
   }
+}
+
+void
+TransportLayerDtls::RecordCipherTelemetry() {
+  uint16_t cipher;
+
+  nsresult rv = GetCipherSuite(&cipher);
+
+  if (NS_FAILED(rv)) {
+    MOZ_MTLOG(ML_ERROR, "Failed to get cipher suite");
+    return;
+  }
+
+  uint16_t t_cipher = 0;
+
+  switch (cipher) {
+    /* Old DHE ciphers: candidates for removal, see bug 1227519 */
+    case TLS_DHE_RSA_WITH_AES_128_CBC_SHA:
+      t_cipher = 1;
+      break;
+    case TLS_DHE_RSA_WITH_AES_256_CBC_SHA:
+      t_cipher = 2;
+      break;
+    /* Current ciphers */
+    case TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA:
+      t_cipher = 3;
+      break;
+    case TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA:
+      t_cipher = 4;
+      break;
+    case TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA:
+      t_cipher = 5;
+      break;
+    case TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA:
+      t_cipher = 6;
+      break;
+    case TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:
+      t_cipher = 7;
+      break;
+    case TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256:
+      t_cipher = 8;
+      break;
+    case TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256:
+      t_cipher = 9;
+      break;
+    case TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256:
+      t_cipher = 10;
+      break;
+    /* TLS 1.3 ciphers */
+    case TLS_AES_128_GCM_SHA256:
+      t_cipher = 11;
+      break;
+    case TLS_CHACHA20_POLY1305_SHA256:
+      t_cipher = 12;
+      break;
+    case TLS_AES_256_GCM_SHA384:
+      t_cipher = 13;
+      break;
+  }
+
+  Telemetry::Accumulate(Telemetry::WEBRTC_DTLS_CIPHER, t_cipher);
 }
 
 }  // close namespace

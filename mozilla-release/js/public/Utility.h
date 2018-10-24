@@ -14,7 +14,6 @@
 #include "mozilla/Move.h"
 #include "mozilla/TemplateLib.h"
 #include "mozilla/UniquePtr.h"
-#include "mozilla/WrappingOperations.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -375,31 +374,41 @@ struct MOZ_RAII JS_PUBLIC_DATA(AutoEnterOOMUnsafeRegion)
 namespace js {
 
 extern JS_PUBLIC_DATA(arena_id_t) MallocArena;
+extern JS_PUBLIC_DATA(arena_id_t) ArrayBufferContentsArena;
 
 extern void InitMallocAllocator();
 extern void ShutDownMallocAllocator();
 
 } /* namespace js */
 
-static inline void* js_malloc(size_t bytes)
+static inline void* js_arena_malloc(arena_id_t arena, size_t bytes)
 {
     JS_OOM_POSSIBLY_FAIL();
-    return moz_arena_malloc(js::MallocArena, bytes);
+    return moz_arena_malloc(arena, bytes);
+}
+
+static inline void* js_malloc(size_t bytes)
+{
+    return js_arena_malloc(js::MallocArena, bytes);
+}
+
+static inline void* js_arena_calloc(arena_id_t arena, size_t nmemb, size_t size)
+{
+    JS_OOM_POSSIBLY_FAIL();
+    return moz_arena_calloc(arena, nmemb, size);
 }
 
 static inline void* js_calloc(size_t bytes)
 {
-    JS_OOM_POSSIBLY_FAIL();
-    return moz_arena_calloc(js::MallocArena, bytes, 1);
+    return js_arena_calloc(js::MallocArena, bytes, 1);
 }
 
 static inline void* js_calloc(size_t nmemb, size_t size)
 {
-    JS_OOM_POSSIBLY_FAIL();
-    return moz_arena_calloc(js::MallocArena, nmemb, size);
+    return js_arena_calloc(js::MallocArena, nmemb, size);
 }
 
-static inline void* js_realloc(void* p, size_t bytes)
+static inline void* js_arena_realloc(arena_id_t arena, void* p, size_t bytes)
 {
     // realloc() with zero size is not portable, as some implementations may
     // return nullptr on success and free |p| for this.  We assume nullptr
@@ -407,7 +416,12 @@ static inline void* js_realloc(void* p, size_t bytes)
     MOZ_ASSERT(bytes != 0);
 
     JS_OOM_POSSIBLY_FAIL();
-    return moz_arena_realloc(js::MallocArena, p, bytes);
+    return moz_arena_realloc(arena, p, bytes);
+}
+
+static inline void* js_realloc(void* p, size_t bytes)
+{
+    return js_arena_realloc(js::MallocArena, p, bytes);
 }
 
 static inline void js_free(void* p)
@@ -562,36 +576,36 @@ js_delete_poison(const T* p)
 
 template <class T>
 static MOZ_ALWAYS_INLINE T*
-js_pod_malloc()
+js_pod_arena_malloc(arena_id_t arena, size_t numElems)
 {
-    return static_cast<T*>(js_malloc(sizeof(T)));
-}
-
-template <class T>
-static MOZ_ALWAYS_INLINE T*
-js_pod_calloc()
-{
-    return static_cast<T*>(js_calloc(sizeof(T)));
+  size_t bytes;
+  if (MOZ_UNLIKELY(!js::CalculateAllocSize<T>(numElems, &bytes)))
+    return nullptr;
+  return static_cast<T*>(js_arena_malloc(arena, bytes));
 }
 
 template <class T>
 static MOZ_ALWAYS_INLINE T*
 js_pod_malloc(size_t numElems)
 {
+    return js_pod_arena_malloc<T>(js::MallocArena, numElems);
+}
+
+template <class T>
+static MOZ_ALWAYS_INLINE T*
+js_pod_arena_calloc(arena_id_t arena, size_t numElems)
+{
     size_t bytes;
     if (MOZ_UNLIKELY(!js::CalculateAllocSize<T>(numElems, &bytes)))
         return nullptr;
-    return static_cast<T*>(js_malloc(bytes));
+    return static_cast<T*>(js_arena_calloc(arena, bytes, 1));
 }
 
 template <class T>
 static MOZ_ALWAYS_INLINE T*
 js_pod_calloc(size_t numElems)
 {
-    size_t bytes;
-    if (MOZ_UNLIKELY(!js::CalculateAllocSize<T>(numElems, &bytes)))
-        return nullptr;
-    return static_cast<T*>(js_calloc(bytes));
+    return js_pod_arena_calloc<T>(js::MallocArena, numElems);
 }
 
 template <class T>
@@ -634,55 +648,6 @@ typedef mozilla::UniquePtr<char[], JS::FreePolicy> UniqueChars;
 typedef mozilla::UniquePtr<char16_t[], JS::FreePolicy> UniqueTwoByteChars;
 
 } // namespace JS
-
-namespace js {
-
-/* Integral types for all hash functions. */
-typedef uint32_t HashNumber;
-const unsigned HashNumberSizeBits = 32;
-
-namespace detail {
-
-/*
- * Given a raw hash code, h, return a number that can be used to select a hash
- * bucket.
- *
- * This function aims to produce as uniform an output distribution as possible,
- * especially in the most significant (leftmost) bits, even though the input
- * distribution may be highly nonrandom, given the constraints that this must
- * be deterministic and quick to compute.
- *
- * Since the leftmost bits of the result are best, the hash bucket index is
- * computed by doing ScrambleHashCode(h) / (2^32/N) or the equivalent
- * right-shift, not ScrambleHashCode(h) % N or the equivalent bit-mask.
- *
- * FIXME: OrderedHashTable uses a bit-mask; see bug 775896.
- */
-inline HashNumber
-ScrambleHashCode(HashNumber h)
-{
-    /*
-     * Simply returning h would not cause any hash tables to produce wrong
-     * answers. But it can produce pathologically bad performance: The caller
-     * right-shifts the result, keeping only the highest bits. The high bits of
-     * hash codes are very often completely entropy-free. (So are the lowest
-     * bits.)
-     *
-     * So we use Fibonacci hashing, as described in Knuth, The Art of Computer
-     * Programming, 6.4. This mixes all the bits of the input hash code h.
-     *
-     * The value of goldenRatio is taken from the hex
-     * expansion of the golden ratio, which starts 1.9E3779B9....
-     * This value is especially good if values with consecutive hash codes
-     * are stored in a hash table; see Knuth for details.
-     */
-    static const HashNumber goldenRatio = 0x9E3779B9U;
-    return mozilla::WrappingMultiply(h, goldenRatio);
-}
-
-} /* namespace detail */
-
-} /* namespace js */
 
 /* sixgill annotation defines */
 #ifndef HAVE_STATIC_ANNOTATIONS

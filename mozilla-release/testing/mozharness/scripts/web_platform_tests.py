@@ -13,6 +13,8 @@ from datetime import datetime, timedelta
 # load modules from parent dir
 sys.path.insert(1, os.path.dirname(sys.path[0]))
 
+import mozinfo
+
 from mozharness.base.errors import BaseErrorList
 from mozharness.base.script import PreScriptAction
 from mozharness.base.vcs.vcsbase import MercurialScript
@@ -181,6 +183,8 @@ class WebPlatformTest(TestingMixin, MercurialScript, CodeCoverageMixin):
             self.fatal("Could not create blobber upload directory")
             # Exit
 
+        mozinfo.find_and_update_from_json(dirs['abs_test_install_dir'])
+
         cmd += ["--log-raw=-",
                 "--log-raw=%s" % os.path.join(dirs["abs_blob_upload_dir"],
                                               "wpt_raw.log"),
@@ -192,7 +196,7 @@ class WebPlatformTest(TestingMixin, MercurialScript, CodeCoverageMixin):
                 "--symbols-path=%s" % self.query_symbols_url(),
                 "--stackwalk-binary=%s" % self.query_minidump_stackwalk(),
                 "--stackfix-dir=%s" % os.path.join(dirs["abs_test_install_dir"], "bin"),
-                "--run-by-dir=3",
+                "--run-by-dir=%i" % (3 if not mozinfo.info["asan"] else 0),
                 "--no-pause-after-test"]
 
         if not sys.platform.startswith("linux"):
@@ -373,17 +377,19 @@ class WebPlatformTest(TestingMixin, MercurialScript, CodeCoverageMixin):
                 cmd = self._query_cmd(test_types)
                 cmd.extend(per_test_args)
 
+                final_env = copy.copy(env)
+
                 if self.per_test_coverage:
-                    gcov_dir, jsvm_dir = self.set_coverage_env(env)
+                    self.set_coverage_env(final_env, is_baseline_test)
 
                 return_code = self.run_command(cmd,
                                                cwd=dirs['abs_work_dir'],
                                                output_timeout=1000,
                                                output_parser=parser,
-                                               env=env)
+                                               env=final_env)
 
                 if self.per_test_coverage:
-                    self.add_per_test_coverage_report(gcov_dir, jsvm_dir, suite, per_test_args[-1])
+                    self.add_per_test_coverage_report(final_env, suite, per_test_args[-1])
 
                 tbpl_status, log_level, summary = parser.evaluate_parser(return_code,
                                                                          previous_summary=summary)

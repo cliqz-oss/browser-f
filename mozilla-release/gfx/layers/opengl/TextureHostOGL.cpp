@@ -242,14 +242,12 @@ GLTextureSource::GLTextureSource(TextureSourceProvider* aProvider,
                                  GLuint aTextureHandle,
                                  GLenum aTarget,
                                  gfx::IntSize aSize,
-                                 gfx::SurfaceFormat aFormat,
-                                 bool aExternallyOwned)
+                                 gfx::SurfaceFormat aFormat)
   : mGL(aProvider->GetGLContext())
   , mTextureHandle(aTextureHandle)
   , mTextureTarget(aTarget)
   , mSize(aSize)
   , mFormat(aFormat)
-  , mExternallyOwned(aExternallyOwned)
 {
   MOZ_COUNT_CTOR(GLTextureSource);
 }
@@ -257,17 +255,13 @@ GLTextureSource::GLTextureSource(TextureSourceProvider* aProvider,
 GLTextureSource::~GLTextureSource()
 {
   MOZ_COUNT_DTOR(GLTextureSource);
-  if (!mExternallyOwned) {
-    DeleteTextureHandle();
-  }
+  DeleteTextureHandle();
 }
 
 void
 GLTextureSource::DeallocateDeviceData()
 {
-  if (!mExternallyOwned) {
-    DeleteTextureHandle();
-  }
+  DeleteTextureHandle();
 }
 
 void
@@ -313,6 +307,143 @@ bool
 GLTextureSource::IsValid() const
 {
   return !!gl() && mTextureHandle != 0;
+}
+
+////////////////////////////////////////////////////////////////////////
+// DirectMapTextureSource
+
+DirectMapTextureSource::DirectMapTextureSource(TextureSourceProvider* aProvider,
+                                               gfx::DataSourceSurface* aSurface)
+  : GLTextureSource(aProvider,
+                    0,
+                    LOCAL_GL_TEXTURE_RECTANGLE_ARB,
+                    aSurface->GetSize(),
+                    aSurface->GetFormat())
+  , mSync(0)
+{
+  MOZ_ASSERT(aSurface);
+
+  UpdateInternal(aSurface, nullptr, nullptr, true);
+}
+
+DirectMapTextureSource::~DirectMapTextureSource()
+{
+  if (!mSync || !gl() || !gl()->MakeCurrent() || gl()->IsDestroyed()) {
+    return;
+  }
+
+  gl()->fDeleteSync(mSync);
+  mSync = 0;
+}
+
+bool
+DirectMapTextureSource::Update(gfx::DataSourceSurface* aSurface,
+                               nsIntRegion* aDestRegion,
+                               gfx::IntPoint* aSrcOffset)
+{
+  if (!aSurface) {
+    return false;
+  }
+
+  return UpdateInternal(aSurface, aDestRegion, aSrcOffset, false);
+}
+
+void
+DirectMapTextureSource::MaybeFenceTexture()
+{
+  if (!gl() ||
+      !gl()->MakeCurrent() ||
+      gl()->IsDestroyed()) {
+    return;
+  }
+
+  if (mSync) {
+    gl()->fDeleteSync(mSync);
+  }
+  mSync = gl()->fFenceSync(LOCAL_GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+}
+
+
+bool
+DirectMapTextureSource::Sync(bool aBlocking)
+{
+  if (!gl() || !gl()->MakeCurrent() || gl()->IsDestroyed()) {
+    // We use this function to decide whether we can unlock the texture
+    // and clean it up. If we return false here and for whatever reason
+    // the context is absent or invalid, the compositor will keep a
+    // reference to this texture forever.
+    return true;
+  }
+
+  if (!mSync) {
+    return false;
+  }
+
+  GLenum waitResult = gl()->fClientWaitSync(mSync,
+                                            LOCAL_GL_SYNC_FLUSH_COMMANDS_BIT,
+                                            aBlocking ? LOCAL_GL_TIMEOUT_IGNORED : 0);
+  return waitResult == LOCAL_GL_ALREADY_SIGNALED ||
+         waitResult == LOCAL_GL_CONDITION_SATISFIED; 
+}
+
+bool
+DirectMapTextureSource::UpdateInternal(gfx::DataSourceSurface* aSurface,
+                                       nsIntRegion* aDestRegion,
+                                       gfx::IntPoint* aSrcOffset,
+                                       bool aInit)
+{
+  if (!gl() || !gl()->MakeCurrent()) {
+    return false;
+  }
+
+  if (aInit) {
+    gl()->fGenTextures(1, &mTextureHandle);
+    gl()->fBindTexture(LOCAL_GL_TEXTURE_RECTANGLE_ARB, mTextureHandle);
+
+    gl()->fTexParameteri(LOCAL_GL_TEXTURE_RECTANGLE_ARB,
+                         LOCAL_GL_TEXTURE_STORAGE_HINT_APPLE,
+                         LOCAL_GL_STORAGE_CACHED_APPLE);
+    gl()->fTextureRangeAPPLE(LOCAL_GL_TEXTURE_RECTANGLE_ARB,
+                             aSurface->Stride() * aSurface->GetSize().height,
+                             aSurface->GetData());
+
+    gl()->fTexParameteri(LOCAL_GL_TEXTURE_RECTANGLE_ARB,
+                         LOCAL_GL_TEXTURE_WRAP_S,
+                         LOCAL_GL_CLAMP_TO_EDGE);
+    gl()->fTexParameteri(LOCAL_GL_TEXTURE_RECTANGLE_ARB,
+                         LOCAL_GL_TEXTURE_WRAP_T,
+                         LOCAL_GL_CLAMP_TO_EDGE);
+  }
+
+  MOZ_ASSERT(mTextureHandle);
+
+  // APPLE_client_storage
+  gl()->fPixelStorei(LOCAL_GL_UNPACK_CLIENT_STORAGE_APPLE, LOCAL_GL_TRUE);
+
+  nsIntRegion destRegion = aDestRegion ? *aDestRegion
+                                       : IntRect(0, 0,
+                                                 aSurface->GetSize().width,
+                                                 aSurface->GetSize().height);
+  gfx::IntPoint srcPoint = aSrcOffset ? *aSrcOffset
+                                      : gfx::IntPoint(0, 0);
+  mFormat = gl::UploadSurfaceToTexture(gl(),
+                                       aSurface,
+                                       destRegion,
+                                       mTextureHandle,
+                                       aSurface->GetSize(),
+                                       nullptr,
+                                       aInit,
+                                       srcPoint,
+                                       LOCAL_GL_TEXTURE0,
+                                       LOCAL_GL_TEXTURE_RECTANGLE_ARB);
+
+  if (mSync) {
+    gl()->fDeleteSync(mSync);
+    mSync = 0;
+  }
+
+  gl()->fPixelStorei(LOCAL_GL_UNPACK_CLIENT_STORAGE_APPLE, LOCAL_GL_FALSE);
+  return true;
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -764,8 +895,7 @@ GLTextureHost::Lock()
                                          mTexture,
                                          mTarget,
                                          mSize,
-                                         format,
-                                         false /* owned by the client */);
+                                         format);
   }
 
   return true;

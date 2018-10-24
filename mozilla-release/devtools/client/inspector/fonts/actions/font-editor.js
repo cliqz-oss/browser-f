@@ -11,6 +11,7 @@ const {
   UPDATE_CUSTOM_INSTANCE,
   UPDATE_EDITOR_STATE,
   UPDATE_PROPERTY_VALUE,
+  UPDATE_WARNING_MESSAGE,
 } = require("./index");
 
 module.exports = {
@@ -43,12 +44,12 @@ module.exports = {
     };
   },
 
-  updateFontEditor(fonts, families = { used: [], notUsed: [] }, properties = {}) {
+  updateFontEditor(fonts, properties = {}, id = "") {
     return {
       type: UPDATE_EDITOR_STATE,
       fonts,
-      families,
       properties,
+      id,
     };
   },
 
@@ -57,6 +58,13 @@ module.exports = {
       type: UPDATE_PROPERTY_VALUE,
       property,
       value,
+    };
+  },
+
+  updateWarningMessage(warning) {
+    return {
+      type: UPDATE_WARNING_MESSAGE,
+      warning,
     };
   },
 

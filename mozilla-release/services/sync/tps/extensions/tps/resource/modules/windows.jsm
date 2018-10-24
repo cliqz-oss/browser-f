@@ -11,7 +11,6 @@
 const EXPORTED_SYMBOLS = ["BrowserWindows"];
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://services-sync/main.js");
 
 var BrowserWindows = {
   /**
@@ -28,5 +27,5 @@ var BrowserWindows = {
     win.addEventListener("load", function() {
       fn.call(win);
     }, {once: true});
-  }
+  },
 };

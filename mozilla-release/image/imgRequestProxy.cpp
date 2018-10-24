@@ -150,11 +150,7 @@ imgRequestProxy::~imgRequestProxy()
                                    mHadDispatch);
   }
 
-  // Unlock the image the proper number of times if we're holding locks on
-  // it. Note that UnlockImage() decrements mLockCount each time it's called.
-  while (mLockCount) {
-    UnlockImage();
-  }
+  MOZ_RELEASE_ASSERT(!mLockCount, "Someone forgot to unlock on time?");
 
   ClearAnimationConsumers();
 
@@ -807,7 +803,7 @@ imgRequestProxy::GetMimeType(char** aMimeType)
     return NS_ERROR_FAILURE;
   }
 
-  *aMimeType = NS_strdup(type);
+  *aMimeType = NS_xstrdup(type);
 
   return NS_OK;
 }
@@ -1039,7 +1035,7 @@ NotificationTypeToString(int32_t aType)
     case imgINotificationObserver::IS_ANIMATED: return "IS_ANIMATED";
     case imgINotificationObserver::HAS_TRANSPARENCY: return "HAS_TRANSPARENCY";
     default:
-      NS_NOTREACHED("Notification list should be exhaustive");
+      MOZ_ASSERT_UNREACHABLE("Notification list should be exhaustive");
       return "(unknown notification)";
   }
 }

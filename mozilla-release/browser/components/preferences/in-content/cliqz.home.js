@@ -1,9 +1,7 @@
-// browser.startup.page values
 // HOME PAGE
 /*
  * Preferences:
  *
- * browser.startup.page
  * - what page(s) to show when the user starts the application, as an integer:
  *
  *  0: a blank page (DEPRECATED - this can be set via browser.startup.homepage)
@@ -11,6 +9,9 @@
  *  2: the last page the user visited (DEPRECATED)
  *  3: windows and tabs from the last session (a.k.a. session restore)
  */
+
+ChromeUtils.import("resource:///modules/HomePage.jsm");
+
 const STARTUP_PREF_BLANK = 0;
 const STARTUP_PREF_HOMEPAGE = 1;
 
@@ -26,23 +27,20 @@ let gHomePane = {
    * */
   onMenuChange(event) {
     const {value} = event.target;
-    const startupPref = Preferences.get("browser.startup.page");
-    const homePref = Preferences.get("browser.startup.homepage");
+    const homePref = HomePage.getAsString();
+    const homePrefDefault = HomePage.getAsString(true);
 
     switch (value) {
       case this.HOME_MODE_CLIQZ_HOME:
-        if (startupPref.value === STARTUP_PREF_BLANK) {
-          startupPref.value = STARTUP_PREF_HOMEPAGE;
-        }
-        if (homePref.value !== homePref.defaultValue) {
-          homePref.value = homePref.defaultValue;
+        if (homePref !== homePrefDefault) {
+          HomePage.set(homePrefDefault);
         } else {
           this._renderCustomSettings({shouldShow: false});
         }
         break;
       case this.HOME_MODE_BLANK:
-        if (homePref.value !== ABOUT_BLANK_URL) {
-          homePref.value = ABOUT_BLANK_URL;
+        if (homePref !== ABOUT_BLANK_URL) {
+          HomePage.set(ABOUT_BLANK_URL);
         } else {
           this._renderCustomSettings({shouldShow: false});
         }
@@ -58,9 +56,8 @@ let gHomePane = {
    * @param {obj} event Event which is fired by changing a home page url value.
    * */
   onCustomHomePageChange(event) {
-    const homePref = Preferences.get("browser.startup.homepage");
-    const value = event.target.value || homePref.defaultValue;
-    homePref.value = value;
+    const value = event.target.value || HomePage.getAsString(true);
+    HomePage.set(value);
   },
 
   /**
@@ -118,7 +115,6 @@ let gHomePane = {
   * updating about:preferences#general (Home section) UI to reflect this.
   */
   setHomePageToCurrent() {
-    let homePage = Preferences.get("browser.startup.homepage");
     let tabs = this._getTabsForHomePage();
     function getTabURI(t) {
       return t.linkedBrowser.currentURI.spec;
@@ -126,7 +122,7 @@ let gHomePane = {
 
     // FIXME Bug 244192: using dangerous "|" joiner!
     if (tabs.length) {
-      homePage.value = tabs.map(getTabURI).join("|");
+      HomePage.set(tabs.map(getTabURI).join("|"));
     }
 
     Services.telemetry.scalarAdd("preferences.use_current_page", 1);
@@ -136,10 +132,8 @@ let gHomePane = {
     if (aEvent.detail.button != "accept")
       return;
     if (rv.urls && rv.names) {
-      let homePage = Preferences.get("browser.startup.homepage");
-
       // XXX still using dangerous "|" joiner!
-      homePage.value = rv.urls.join("|");
+      HomePage.set(rv.urls.join("|"));
     }
   },
 
@@ -157,8 +151,7 @@ let gHomePane = {
   },
 
   restoreDefaultHomePage() {
-    const homePref = Preferences.get('browser.startup.homepage');
-    homePref.value = homePref.defaultValue;
+    HomePage.set(HomePage.getAsString(true));
   },
 
   onCustomHomePageInput(event) {
@@ -214,7 +207,8 @@ let gHomePane = {
     let {shouldShow, isControlled} = options;
     const customSettingsContainerEl = document.getElementById("customSettings");
     const customUrlEl = customSettingsContainerEl.querySelector("#homePageUrl");
-    const homePref = Preferences.get("browser.startup.homepage");
+    const homePref = HomePage.getAsString();
+    const homePrefDefault = HomePage.getAsString(true);
 
     const isHomePageCustom = isControlled || (!this._isHomePageDefaultValue() && !this.isHomePageBlank());
     if (shouldShow == null) {
@@ -222,11 +216,9 @@ let gHomePane = {
     }
     customSettingsContainerEl.hidden = !shouldShow;
 
-    // We can't use isHomePageDefaultValue and isHomePageBlank here because we want to disregard the blank
-    // possibility triggered by the browser.startup.page being 0.
     let newValue;
-    if (homePref.value !== homePref.defaultValue && homePref.value !== ABOUT_BLANK_URL) {
-      newValue = homePref.value;
+    if (homePref !== homePrefDefault && homePref !== ABOUT_BLANK_URL) {
+      newValue = homePref;
     } else {
       newValue = "";
     }
@@ -240,9 +232,7 @@ let gHomePane = {
    * @returns {bool} Is the homepage set to the default pref value?
    */
   _isHomePageDefaultValue() {
-    const startupPref = Preferences.get("browser.startup.page");
-    const homePref = Preferences.get("browser.startup.homepage");
-    return startupPref.value !== STARTUP_PREF_BLANK && homePref.value === homePref.defaultValue;
+    return HomePage.getAsString() === HomePage.getAsString(true);
   },
 
   /**
@@ -250,9 +240,8 @@ let gHomePane = {
    * @returns {bool} Is the homepage set to about:blank?
    */
   isHomePageBlank() {
-    const startupPref = Preferences.get("browser.startup.page");
-    const homePref = Preferences.get("browser.startup.homepage");
-    return homePref.value === ABOUT_BLANK_URL || homePref.value === "" || startupPref.value === STARTUP_PREF_BLANK;
+    const homePref = HomePage.getAsString();
+    return homePref === ABOUT_BLANK_URL || homePref === "";
   },
 
   init() {

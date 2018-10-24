@@ -9,6 +9,12 @@ var {
   ExtensionError,
 } = ExtensionUtils;
 
+const SAME_SITE_STATUSES = [
+  "no_restriction", // Index 0 = Ci.nsICookie2.SAMESITE_UNSET
+  "lax",            // Index 1 = Ci.nsICookie2.SAMESITE_LAX
+  "strict",         // Index 2 = Ci.nsICookie2.SAMESITE_STRICT
+];
+
 const convertCookie = ({cookie, isPrivate}) => {
   let result = {
     name: cookie.name,
@@ -18,6 +24,7 @@ const convertCookie = ({cookie, isPrivate}) => {
     path: cookie.path,
     secure: cookie.isSecure,
     httpOnly: cookie.isHttpOnly,
+    sameSite: SAME_SITE_STATUSES[cookie.sameSite],
     session: cookie.isSession,
     firstPartyDomain: cookie.originAttributes.firstPartyDomain || "",
   };
@@ -271,7 +278,7 @@ const query = function* (detailsIn, props, context) {
     return true;
   }
 
-  for (const cookie of XPCOMUtils.IterSimpleEnumerator(enumerator, Ci.nsICookie2)) {
+  for (const cookie of enumerator) {
     if (matches(cookie)) {
       yield {cookie, isPrivate, storeId};
     }
@@ -376,10 +383,13 @@ this.cookies = class extends ExtensionAPI {
             firstPartyDomain: details.firstPartyDomain,
           };
 
+          let sameSite = SAME_SITE_STATUSES.indexOf(details.sameSite);
+
           // The permission check may have modified the domain, so use
           // the new value instead.
           Services.cookies.add(cookieAttrs.host, path, name, value,
-                               secure, httpOnly, isSession, expiry, originAttributes);
+                               secure, httpOnly, isSession, expiry,
+                               originAttributes, sameSite);
 
           return self.cookies.get(details);
         },

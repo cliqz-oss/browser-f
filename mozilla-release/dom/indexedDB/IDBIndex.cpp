@@ -338,7 +338,7 @@ IDBIndex::GetInternal(bool aKeyOnly,
 
   if (!keyRange) {
     // Must specify a key or keyRange for get() and getKey().
-    aRv.Throw(NS_ERROR_DOM_INDEXEDDB_DATA_ERR);
+    aRv.Throw(NS_ERROR_DOM_INDEXEDDB_KEY_ERR);
     return nullptr;
   }
 
@@ -673,7 +673,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 JSObject*
 IDBIndex::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return IDBIndexBinding::Wrap(aCx, this, aGivenProto);
+  return IDBIndex_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 } // namespace dom

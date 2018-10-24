@@ -10,7 +10,7 @@
 #include "mozAutoDocUpdate.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/Element.h"
-#include "mozilla/GenericSpecifiedValuesInlines.h"
+#include "mozilla/MappedDeclarations.h"
 #include "mozilla/dom/HTMLFormSubmission.h"
 #include "mozilla/dom/HTMLOptionElement.h"
 #include "mozilla/dom/HTMLOptionsCollectionBinding.h"
@@ -105,7 +105,7 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(HTMLOptionsCollection)
 JSObject*
 HTMLOptionsCollection::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return HTMLOptionsCollectionBinding::Wrap(aCx, this, aGivenProto);
+  return HTMLOptionsCollection_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 uint32_t

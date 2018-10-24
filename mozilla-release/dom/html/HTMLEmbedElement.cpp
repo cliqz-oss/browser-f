@@ -86,17 +86,14 @@ HTMLEmbedElement::AsyncEventRunning(AsyncEventDispatcher* aEvent)
 nsresult
 HTMLEmbedElement::BindToTree(nsIDocument *aDocument,
                              nsIContent *aParent,
-                             nsIContent *aBindingParent,
-                             bool aCompileEventHandlers)
+                             nsIContent *aBindingParent)
 {
   nsresult rv = nsGenericHTMLElement::BindToTree(aDocument, aParent,
-                                                 aBindingParent,
-                                                 aCompileEventHandlers);
+                                                 aBindingParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
   rv = nsObjectLoadingContent::BindToTree(aDocument, aParent,
-                                          aBindingParent,
-                                          aCompileEventHandlers);
+                                          aBindingParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Don't kick off load from being bound to a plugin document - the plugin
@@ -238,28 +235,28 @@ HTMLEmbedElement::ParseAttribute(int32_t aNamespaceID,
 
 static void
 MapAttributesIntoRuleBase(const nsMappedAttributes *aAttributes,
-                          GenericSpecifiedValues* aData)
+                          MappedDeclarations& aDecls)
 {
-  nsGenericHTMLElement::MapImageBorderAttributeInto(aAttributes, aData);
-  nsGenericHTMLElement::MapImageMarginAttributeInto(aAttributes, aData);
-  nsGenericHTMLElement::MapImageSizeAttributesInto(aAttributes, aData);
-  nsGenericHTMLElement::MapImageAlignAttributeInto(aAttributes, aData);
+  nsGenericHTMLElement::MapImageBorderAttributeInto(aAttributes, aDecls);
+  nsGenericHTMLElement::MapImageMarginAttributeInto(aAttributes, aDecls);
+  nsGenericHTMLElement::MapImageSizeAttributesInto(aAttributes, aDecls);
+  nsGenericHTMLElement::MapImageAlignAttributeInto(aAttributes, aDecls);
 }
 
 static void
 MapAttributesIntoRuleExceptHidden(const nsMappedAttributes *aAttributes,
-                                  GenericSpecifiedValues* aData)
+                                  MappedDeclarations& aDecls)
 {
-  MapAttributesIntoRuleBase(aAttributes, aData);
-  nsGenericHTMLElement::MapCommonAttributesIntoExceptHidden(aAttributes, aData);
+  MapAttributesIntoRuleBase(aAttributes, aDecls);
+  nsGenericHTMLElement::MapCommonAttributesIntoExceptHidden(aAttributes, aDecls);
 }
 
 void
 HTMLEmbedElement::MapAttributesIntoRule(const nsMappedAttributes *aAttributes,
-                                        GenericSpecifiedValues* aData)
+                                        MappedDeclarations& aDecls)
 {
-  MapAttributesIntoRuleBase(aAttributes, aData);
-  nsGenericHTMLElement::MapCommonAttributesInto(aAttributes, aData);
+  MapAttributesIntoRuleBase(aAttributes, aDecls);
+  nsGenericHTMLElement::MapCommonAttributesInto(aAttributes, aDecls);
 }
 
 NS_IMETHODIMP_(bool)
@@ -316,13 +313,13 @@ HTMLEmbedElement::DestroyContent()
 }
 
 nsresult
-HTMLEmbedElement::CopyInnerTo(Element* aDest, bool aPreallocateChildren)
+HTMLEmbedElement::CopyInnerTo(HTMLEmbedElement* aDest)
 {
-  nsresult rv = nsGenericHTMLElement::CopyInnerTo(aDest, aPreallocateChildren);
+  nsresult rv = nsGenericHTMLElement::CopyInnerTo(aDest);
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (aDest->OwnerDoc()->IsStaticDocument()) {
-    CreateStaticClone(static_cast<HTMLEmbedElement*>(aDest));
+    CreateStaticClone(aDest);
   }
 
   return rv;
@@ -332,7 +329,7 @@ JSObject*
 HTMLEmbedElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
   JSObject* obj;
-  obj = HTMLEmbedElementBinding::Wrap(aCx, this, aGivenProto);
+  obj = HTMLEmbedElement_Binding::Wrap(aCx, this, aGivenProto);
 
   if (!obj) {
     return nullptr;

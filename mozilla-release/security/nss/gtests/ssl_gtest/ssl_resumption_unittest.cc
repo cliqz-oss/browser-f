@@ -276,8 +276,13 @@ TEST_P(TlsConnectGeneric, ConnectResumeCorruptTicket) {
   ASSERT_NE(nullptr, hmac_key);
   SSLInt_SetSelfEncryptMacKey(hmac_key);
   ConfigureSessionCache(RESUME_BOTH, RESUME_TICKET);
-  ConnectExpectAlert(server_, illegal_parameter);
-  server_->CheckErrorCode(SSL_ERROR_RX_MALFORMED_CLIENT_HELLO);
+  if (version_ >= SSL_LIBRARY_VERSION_TLS_1_3) {
+    ExpectResumption(RESUME_NONE);
+    Connect();
+  } else {
+    ConnectExpectAlert(server_, illegal_parameter);
+    server_->CheckErrorCode(SSL_ERROR_RX_MALFORMED_CLIENT_HELLO);
+  }
 }
 
 // This callback switches out the "server" cert used on the server with
@@ -392,6 +397,33 @@ TEST_P(TlsConnectTls13, TestTls13ResumeDifferentGroup) {
   Connect();
   CheckKeys(ssl_kea_dh, ssl_grp_ffdhe_2048, ssl_auth_rsa_sign,
             ssl_sig_rsa_pss_rsae_sha256);
+}
+
+// Verify that TLS 1.3 server doesn't request certificate in the main
+// handshake, after resumption.
+TEST_P(TlsConnectTls13, TestTls13ResumeNoCertificateRequest) {
+  ConfigureSessionCache(RESUME_BOTH, RESUME_TICKET);
+  client_->SetupClientAuth();
+  server_->RequestClientAuth(true);
+  Connect();
+  SendReceive();  // Need to read so that we absorb the session ticket.
+  ScopedCERTCertificate cert1(SSL_LocalCertificate(client_->ssl_fd()));
+
+  Reset();
+  ConfigureSessionCache(RESUME_BOTH, RESUME_TICKET);
+  ExpectResumption(RESUME_TICKET);
+  server_->RequestClientAuth(false);
+  auto cr_capture =
+      MakeTlsFilter<TlsHandshakeRecorder>(server_, ssl_hs_certificate_request);
+  cr_capture->EnableDecryption();
+  Connect();
+  SendReceive();
+  EXPECT_EQ(0U, cr_capture->buffer().len()) << "expect nothing captured yet";
+
+  // Sanity check whether the client certificate matches the one
+  // decrypted from ticket.
+  ScopedCERTCertificate cert2(SSL_PeerCertificate(server_->ssl_fd()));
+  EXPECT_TRUE(SECITEM_ItemsAreEqual(&cert1->derCert, &cert2->derCert));
 }
 
 // We need to enable different cipher suites at different times in the following

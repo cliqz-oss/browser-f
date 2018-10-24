@@ -60,7 +60,7 @@ function cacheProxy(target) {
         cache.set(prop, target[prop]);
       }
       return cache.get(prop);
-    }
+    },
   });
 }
 
@@ -89,7 +89,7 @@ async function jexlFilterFunc(entry, environment) {
   let result;
   try {
     const context = {
-      environment
+      environment,
     };
     result = await FilterExpressions.eval(filter_expression, context);
   } catch (e) {
@@ -160,11 +160,13 @@ async function fetchLatestChanges(url, lastEtag) {
     let payload;
     try {
       payload = await response.json();
-    } catch (e) {}
+    } catch (e) {
+      payload = e.message;
+    }
     if (!payload.hasOwnProperty("data")) {
       // If the server is failing, the JSON response might not contain the
       // expected data (e.g. error response - Bug 1259145)
-      throw new Error(`Server error response ${JSON.stringify(payload)}`);
+      throw new Error(`Server error ${response.status} ${response.statusText}: ${JSON.stringify(payload)}`);
     }
     changes = payload.data;
   }
@@ -190,11 +192,11 @@ async function fetchLatestChanges(url, lastEtag) {
 
 /**
  * Load the the JSON file distributed with the release for this collection.
+ * @param {String} bucket
+ * @param {String} collection
  */
-async function loadDumpFile(filename) {
-  // Replace OS specific path separator by / for URI.
-  const { components: folderFile } = OS.Path.split(filename);
-  const fileURI = `resource://app/defaults/settings/${folderFile.join("/")}`;
+async function loadDumpFile(bucket, collection) {
+  const fileURI = `resource://app/defaults/settings/${bucket}/${collection}.json`;
   const response = await fetch(fileURI);
   if (!response.ok) {
     throw new Error(`Could not read from '${fileURI}'`);
@@ -206,11 +208,12 @@ async function loadDumpFile(filename) {
 
 class RemoteSettingsClient {
 
-  constructor(collectionName, { bucketName, signerName, filterFunc = jexlFilterFunc, lastCheckTimePref }) {
+  constructor(collectionName, { bucketName, signerName, filterFunc = jexlFilterFunc, localFields = [], lastCheckTimePref }) {
     this.collectionName = collectionName;
     this.bucketName = bucketName;
     this.signerName = signerName;
     this.filterFunc = filterFunc;
+    this.localFields = localFields;
     this._lastCheckTimePref = lastCheckTimePref;
 
     this._listeners = new Map();
@@ -221,12 +224,6 @@ class RemoteSettingsClient {
 
   get identifier() {
     return `${this.bucketName}/${this.collectionName}`;
-  }
-
-  get filename() {
-    // Replace slash by OS specific path separator (eg. Windows)
-    const identifier = OS.Path.join(...this.identifier.split("/"));
-    return `${identifier}.json`;
   }
 
   get lastCheckTimePref() {
@@ -265,18 +262,40 @@ class RemoteSettingsClient {
     this._listeners.get(event).push(callback);
   }
 
+  off(event, callback) {
+    if (!this._listeners.has(event)) {
+      throw new Error(`Unknown event type ${event}`);
+    }
+    const callbacks = this._listeners.get(event);
+    const i = callbacks.indexOf(callback);
+    if (i < 0) {
+      throw new Error(`Unknown callback`);
+    } else {
+      callbacks.splice(i, 1);
+    }
+  }
+
   /**
    * Open the underlying Kinto collection, using the appropriate adapter and
-   * options. This acts as a context manager where the connection is closed
-   * once the specified `callback` has finished.
-   *
-   * @param {callback} function           the async function to execute with the open SQlite connection.
-   * @param {Object}   options            additional advanced options.
-   * @param {string}   options.hooks      hooks to execute on synchronization (see Kinto.js docs)
+   * options.
    */
-  async openCollection(options = {}) {
+  async openCollection() {
     if (!this._kinto) {
       this._kinto = new Kinto({ bucket: this.bucketName, adapter: Kinto.adapters.IDB });
+    }
+    const options = {
+      localFields: this.localFields,
+    };
+    // If there is a `signerName` and collection signing is enforced, add a
+    // hook for incoming changes that validates the signature.
+    const verifySignature = Services.prefs.getBoolPref(PREF_SETTINGS_VERIFY_SIGNATURE, true);
+    if (this.signerName && verifySignature) {
+      const remote = Services.prefs.getCharPref(PREF_SETTINGS_SERVER);
+      options.hooks = {
+        "incoming-changes": [(payload, collection) => {
+          return this._validateCollectionSignature(remote, payload, collection);
+        }],
+      };
     }
     return this._kinto.collection(this.collectionName, options);
   }
@@ -300,7 +319,7 @@ class RemoteSettingsClient {
     // a packaged JSON dump.
     if (timestamp == null) {
       try {
-        const { data } = await loadDumpFile(this.filename);
+        const { data } = await loadDumpFile(this.bucketName, this.collectionName);
         await c.loadDump(data);
       } catch (e) {
         // Report but return an empty list since there will be no data anyway.
@@ -326,22 +345,10 @@ class RemoteSettingsClient {
   async maybeSync(lastModified, serverTime, options = { loadDump: true }) {
     const {loadDump} = options;
     const remote = Services.prefs.getCharPref(PREF_SETTINGS_SERVER);
-    const verifySignature = Services.prefs.getBoolPref(PREF_SETTINGS_VERIFY_SIGNATURE, true);
-
-    // if there is a signerName and collection signing is enforced, add a
-    // hook for incoming changes that validates the signature
-    const colOptions = {};
-    if (this.signerName && verifySignature) {
-      colOptions.hooks = {
-        "incoming-changes": [(payload, collection) => {
-          return this._validateCollectionSignature(remote, payload, collection);
-        }]
-      };
-    }
 
     let reportStatus = null;
     try {
-      const collection = await this.openCollection(colOptions);
+      const collection = await this.openCollection();
       // Synchronize remote data into a local Sqlite DB.
       let collectionLastModified = await collection.db.getLastModified();
 
@@ -351,7 +358,7 @@ class RemoteSettingsClient {
       // cold start.
       if (!collectionLastModified && loadDump) {
         try {
-          const initialData = await loadDumpFile(this.filename);
+          const initialData = await loadDumpFile(this.bucketName, this.collectionName);
           await collection.loadDump(initialData.data);
           collectionLastModified = await collection.db.getLastModified();
         } catch (e) {
@@ -505,14 +512,14 @@ class RemoteSettingsClient {
     if (ignoreLocal) {
       toSerialize = {
         last_modified: `${payload.last_modified}`,
-        data: payload.data
+        data: payload.data,
       };
     } else {
       const {data: localRecords} = await collection.list();
       const records = mergeChanges(collection, localRecords, payload.changes);
       toSerialize = {
         last_modified: `${payload.lastModified}`,
-        data: records
+        data: records,
       };
     }
 
@@ -584,9 +591,8 @@ async function databaseExists(bucket, collection) {
  * @return {bool} Whether it is present or not.
  */
 async function hasLocalDump(bucket, collection) {
-  const filename = OS.Path.join(bucket, `${collection}.json`);
   try {
-    await loadDumpFile(filename);
+    await loadDumpFile(bucket, collection);
     return true;
   } catch (e) {
     return false;
@@ -613,13 +619,17 @@ function remoteSettingsFunction() {
     const rsOptions = {
       bucketName: mainBucket,
       signerName: defaultSigner,
-      ...options
+      ...options,
     };
     const { bucketName } = rsOptions;
     const key = `${bucketName}/${collectionName}`;
     if (!_clients.has(key)) {
+      // Register a new client!
       const c = new RemoteSettingsClient(collectionName, rsOptions);
       _clients.set(key, c);
+      // Invalidate the polling status, since we want the new collection to
+      // be taken into account.
+      Services.prefs.clearUserPref(PREF_SETTINGS_LAST_ETAG);
     }
     return _clients.get(key);
   };
@@ -629,7 +639,7 @@ function remoteSettingsFunction() {
       const kintoServer = Services.prefs.getCharPref(PREF_SETTINGS_SERVER);
       const changesPath = Services.prefs.getCharPref(PREF_SETTINGS_CHANGES_PATH);
       return kintoServer + changesPath;
-    }
+    },
   });
 
   /**
@@ -655,7 +665,7 @@ function remoteSettingsFunction() {
     } else if (bucketName == mainBucket) {
       const [dbExists, localDump] = await Promise.all([
         databaseExists(bucketName, collectionName),
-        hasLocalDump(bucketName, collectionName)
+        hasLocalDump(bucketName, collectionName),
       ]);
       if (dbExists || localDump) {
         return new RemoteSettingsClient(collectionName, { bucketName, signerName: defaultSigner });
@@ -789,7 +799,7 @@ function remoteSettingsFunction() {
         localTimestamp,
         serverTimestamp,
         lastCheck,
-        signerName: client.signerName
+        signerName: client.signerName,
       };
     }));
 
@@ -800,23 +810,28 @@ function remoteSettingsFunction() {
       lastCheck: Services.prefs.getIntPref(PREF_SETTINGS_LAST_UPDATE, 0),
       mainBucket,
       defaultSigner,
-      collections: collections.filter(c => !!c)
+      collections: collections.filter(c => !!c),
     };
   };
 
-
-  const broadcastID = "remote-settings/monitor_changes";
-  // When we start on a new profile there will be no ETag stored.
-  // Use an arbitrary ETag that is guaranteed not to occur.
-  // This will trigger a broadcast message but that's fine because we
-  // will check the changes on each collection and retrieve only the
-  // changes (e.g. nothing if we have a dump with the same data).
-  const currentVersion = Services.prefs.getStringPref(PREF_SETTINGS_LAST_ETAG, "\"0\"");
-  const moduleInfo = {
-    moduleURI: __URI__,
-    symbolName: "remoteSettingsBroadcastHandler",
+  /**
+   * Startup function called from nsBrowserGlue.
+   */
+  remoteSettings.init = () => {
+    // Hook the Push broadcast and RemoteSettings polling.
+    const broadcastID = "remote-settings/monitor_changes";
+    // When we start on a new profile there will be no ETag stored.
+    // Use an arbitrary ETag that is guaranteed not to occur.
+    // This will trigger a broadcast message but that's fine because we
+    // will check the changes on each collection and retrieve only the
+    // changes (e.g. nothing if we have a dump with the same data).
+    const currentVersion = Services.prefs.getStringPref(PREF_SETTINGS_LAST_ETAG, "\"0\"");
+    const moduleInfo = {
+      moduleURI: __URI__,
+      symbolName: "remoteSettingsBroadcastHandler",
+    };
+    pushBroadcastService.addListener(broadcastID, currentVersion, moduleInfo);
   };
-  pushBroadcastService.addListener(broadcastID, currentVersion, moduleInfo);
 
   return remoteSettings;
 }
@@ -826,5 +841,5 @@ var RemoteSettings = remoteSettingsFunction();
 var remoteSettingsBroadcastHandler = {
   async receivedBroadcastMessage(data, broadcastID) {
     return RemoteSettings.pollChanges();
-  }
+  },
 };

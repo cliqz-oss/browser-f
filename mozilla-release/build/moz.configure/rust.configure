@@ -14,8 +14,13 @@ def add_rustup_path(what):
 
 # Rust is required by `rust_compiler` below. We allow_missing here
 # to propagate failures to the better error message there.
-rustc = check_prog('RUSTC', add_rustup_path('rustc'), allow_missing=True)
-cargo = check_prog('CARGO', add_rustup_path('cargo'), allow_missing=True)
+js_option(env='RUSTC', nargs=1, help='Path to the rust compiler')
+js_option(env='CARGO', nargs=1, help='Path to the Cargo package manager')
+
+rustc = check_prog('RUSTC', add_rustup_path('rustc'),
+                   input='RUSTC', allow_missing=True)
+cargo = check_prog('CARGO', add_rustup_path('cargo'),
+                   input='CARGO', allow_missing=True)
 
 
 @depends_if(rustc)
@@ -67,8 +72,8 @@ def rust_compiler(rustc_info, cargo_info):
         You can install rust by running './mach bootstrap'
         or by directly running the installer from https://rustup.rs/
         '''))
-    rustc_min_version = Version('1.24.0')
-    cargo_min_version = Version('0.{}'.format(rustc_min_version.minor + 1))
+    rustc_min_version = Version('1.28.0')
+    cargo_min_version = rustc_min_version
 
     version = rustc_info.version
     if version < rustc_min_version:
@@ -149,7 +154,7 @@ def rust_triple_alias(host_or_target):
     """
     assert host_or_target in (host, target)
 
-    @depends(rustc, host_or_target, building_with_gcc, rust_supported_targets,
+    @depends(rustc, host_or_target, c_compiler, rust_supported_targets,
              when=rust_compiler)
     @imports('os')
     @imports('subprocess')
@@ -157,7 +162,7 @@ def rust_triple_alias(host_or_target):
     @imports(_from='mozbuild.shellutil', _import='quote')
     @imports(_from='tempfile', _import='mkstemp')
     @imports(_from='textwrap', _import='dedent')
-    def rust_target(rustc, host_or_target, building_with_gcc,
+    def rust_target(rustc, host_or_target, compiler_info,
                     rust_supported_targets):
         # Rust's --target options are similar to, but not exactly the same
         # as, the autoconf-derived targets we use.  An example would be that
@@ -169,7 +174,7 @@ def rust_triple_alias(host_or_target):
         # We correlate the autoconf-derived targets with the list of targets
         # rustc gives us with --print target-list.
         if host_or_target.kernel == 'WINNT':
-            if building_with_gcc:
+            if compiler_info.type in ('gcc', 'clang'):
                 host_or_target_os = 'windows-gnu'
             else:
                 host_or_target_os = 'windows-msvc'
@@ -254,14 +259,15 @@ set_config('RUST_TARGET_ENV_NAME', rust_target_env_name)
 # This is used for putting source info into symbol files.
 set_config('RUSTC_COMMIT', depends(rustc_info)(lambda i: i.commit))
 
-set_config('RUSTC_VERSION', depends(rustc_info)(lambda i: str(i.version)))
-
 # Until we remove all the other Rust checks in old-configure.
 add_old_configure_assignment('RUSTC', rustc)
 add_old_configure_assignment('RUST_TARGET', rust_target_triple)
 
 # Rustdoc is required by Rust tests below.
-rustdoc = check_prog('RUSTDOC', add_rustup_path('rustdoc'), allow_missing=True)
+js_option(env='RUSTDOC', nargs=1, help='Path to the rustdoc program')
+
+rustdoc = check_prog('RUSTDOC', add_rustup_path('rustdoc'),
+                     input='RUSTDOC', allow_missing=True)
 
 # This option is separate from --enable-tests because Rust tests are particularly
 # expensive in terms of compile time (especially for code in libxul).
@@ -278,8 +284,41 @@ def rust_tests(enable_rust_tests, rustdoc):
 
 set_config('MOZ_RUST_TESTS', rust_tests)
 
-option(env='WIN64_LINK', nargs=1, help='Path to link.exe that targets win64')
-option(env='WIN64_LIB', nargs=1, help='Paths to libraries for the win64 linker')
+# cbindgen is needed by the style system build.
+cbindgen = check_prog('CBINDGEN', add_rustup_path('cbindgen'), paths=toolchain_search_path,
+                      when=depends(build_project)
+                      (lambda build_project: build_project != 'js'))
+
+
+@depends_if(cbindgen)
+@checking('cbindgen version')
+@imports(_from='textwrap', _import='dedent')
+def cbindgen_version(cbindgen):
+    cbindgen_min_version = Version('0.6.2')
+
+    # cbindgen x.y.z
+    version = Version(check_cmd_output(cbindgen, '--version').strip().split(" ")[1])
+
+    if version < cbindgen_min_version:
+        die(dedent('''\
+        cbindgen version {} is too old. At least version {} is required.
+
+        Please update using 'cargo install cbindgen --force' or running
+        './mach bootstrap', after removing the existing executable located at
+        {}.
+        '''.format(version, cbindgen_min_version, cbindgen)))
+
+    return version
+
+
+# Bindgen can use rustfmt to format Rust file, but it's not required.
+js_option(env='RUSTFMT', nargs=1, help='Path to the rustfmt program')
+
+rustfmt = check_prog('RUSTFMT', add_rustup_path('rustfmt'),
+                     input='RUSTFMT', allow_missing=True)
+
+js_option(env='WIN64_LINK', nargs=1, help='Path to link.exe that targets win64')
+js_option(env='WIN64_LIB', nargs=1, help='Paths to libraries for the win64 linker')
 
 set_config('WIN64_LINK', depends('WIN64_LINK')(lambda x: x))
 set_config('WIN64_LIB', depends('WIN64_LIB')(lambda x: x))

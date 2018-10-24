@@ -24,6 +24,7 @@
 #pragma warning( pop )
 
 #include "Authenticode.h"
+#include "CrashAnnotations.h"
 #include "nsAutoPtr.h"
 #include "nsWindowsDllInterceptor.h"
 #include "mozilla/Sprintf.h"
@@ -38,25 +39,16 @@
 
 using namespace mozilla;
 
+using CrashReporter::Annotation;
+using CrashReporter::AnnotationToString;
+
 #define DLL_BLOCKLIST_ENTRY(name, ...) \
   { name, __VA_ARGS__ },
-#define DLL_BLOCKLIST_CHAR_TYPE char
+#define DLL_BLOCKLIST_STRING_TYPE const char*
 #include "mozilla/WindowsDllBlocklistDefs.h"
 
 // define this for very verbose dll load debug spew
 #undef DEBUG_very_verbose
-
-static const char kBlockedDllsParameter[] = "BlockedDllList=";
-static const int kBlockedDllsParameterLen =
-  sizeof(kBlockedDllsParameter) - 1;
-
-static const char kBlocklistInitFailedParameter[] = "BlocklistInitFailed=1\n";
-static const int kBlocklistInitFailedParameterLen =
-  sizeof(kBlocklistInitFailedParameter) - 1;
-
-static const char kUser32BeforeBlocklistParameter[] = "User32BeforeBlocklist=1\n";
-static const int kUser32BeforeBlocklistParameterLen =
-  sizeof(kUser32BeforeBlocklistParameter) - 1;
 
 static uint32_t sInitFlags;
 static bool sBlocklistInitAttempted;
@@ -90,14 +82,14 @@ printf_stderr(const char *fmt, ...)
 
 
 typedef MOZ_NORETURN_PTR void (__fastcall* BaseThreadInitThunk_func)(BOOL aIsInitialThread, void* aStartAddress, void* aThreadParam);
-static BaseThreadInitThunk_func stub_BaseThreadInitThunk = nullptr;
+static WindowsDllInterceptor::FuncHookType<BaseThreadInitThunk_func> stub_BaseThreadInitThunk;
 
 typedef NTSTATUS (NTAPI *LdrLoadDll_func) (PWCHAR filePath, PULONG flags, PUNICODE_STRING moduleFileName, PHANDLE handle);
-static LdrLoadDll_func stub_LdrLoadDll;
+static WindowsDllInterceptor::FuncHookType<LdrLoadDll_func> stub_LdrLoadDll;
 
 #ifdef _M_AMD64
 typedef decltype(RtlInstallFunctionTableCallback)* RtlInstallFunctionTableCallback_func;
-static RtlInstallFunctionTableCallback_func stub_RtlInstallFunctionTableCallback;
+static WindowsDllInterceptor::FuncHookType<RtlInstallFunctionTableCallback_func> stub_RtlInstallFunctionTableCallback;
 
 extern uint8_t* sMsMpegJitCodeRegionStart;
 extern size_t sMsMpegJitCodeRegionSize;
@@ -374,6 +366,45 @@ static wchar_t* lastslash(wchar_t* s, int len)
   return nullptr;
 }
 
+
+#ifdef ENABLE_TESTS
+DllLoadHookType gDllLoadHook = nullptr;
+
+void
+DllBlocklist_SetDllLoadHook(DllLoadHookType aHook)
+{
+  gDllLoadHook = aHook;
+}
+
+void
+CallDllLoadHook(bool aDllLoaded, NTSTATUS aStatus, HANDLE aDllBase, PUNICODE_STRING aDllName)
+{
+  if (gDllLoadHook) {
+    gDllLoadHook(aDllLoaded, aStatus, aDllBase, aDllName);
+  }
+}
+
+CreateThreadHookType gCreateThreadHook = nullptr;
+
+void
+DllBlocklist_SetCreateThreadHook(CreateThreadHookType aHook)
+{
+  gCreateThreadHook = aHook;
+}
+
+void
+CallCreateThreadHook(bool aWasAllowed, void* aStartAddress)
+{
+  if (gCreateThreadHook) {
+    gCreateThreadHook(aWasAllowed, aStartAddress);
+  }
+}
+
+#else // ENABLE_TESTS
+#define CallDllLoadHook(...)
+#define CallCreateThreadHook(...)
+#endif // ENABLE_TESTS
+
 static NTSTATUS NTAPI
 patched_LdrLoadDll (PWCHAR filePath, PULONG flags, PUNICODE_STRING moduleFileName, PHANDLE handle)
 {
@@ -453,6 +484,7 @@ patched_LdrLoadDll (PWCHAR filePath, PULONG flags, PUNICODE_STRING moduleFileNam
       char * end = nullptr;
       _strtoui64(dot+1, &end, 16);
       if (end == dot+13) {
+        CallDllLoadHook(false, STATUS_DLL_NOT_FOUND, 0, moduleFileName);
         return STATUS_DLL_NOT_FOUND;
       }
     }
@@ -463,6 +495,7 @@ patched_LdrLoadDll (PWCHAR filePath, PULONG flags, PUNICODE_STRING moduleFileNam
         current++;
       }
       if (current == dot) {
+        CallDllLoadHook(false, STATUS_DLL_NOT_FOUND, 0, moduleFileName);
         return STATUS_DLL_NOT_FOUND;
       }
     }
@@ -510,6 +543,7 @@ patched_LdrLoadDll (PWCHAR filePath, PULONG flags, PUNICODE_STRING moduleFileNam
         if (!full_fname) {
           // uh, we couldn't find the DLL at all, so...
           printf_stderr("LdrLoadDll: Blocking load of '%s' (SearchPathW didn't find it?)\n", dllName);
+          CallDllLoadHook(false, STATUS_DLL_NOT_FOUND, 0, moduleFileName);
           return STATUS_DLL_NOT_FOUND;
         }
 
@@ -548,6 +582,7 @@ patched_LdrLoadDll (PWCHAR filePath, PULONG flags, PUNICODE_STRING moduleFileNam
       if (!load_ok) {
         printf_stderr("LdrLoadDll: Blocking load of '%s' -- see http://www.mozilla.com/en-US/blocklist/\n", dllName);
         DllBlockSet::Add(info->name, fVersion);
+        CallDllLoadHook(false, STATUS_DLL_NOT_FOUND, 0, moduleFileName);
         return STATUS_DLL_NOT_FOUND;
       }
     }
@@ -570,7 +605,9 @@ continue_loading:
   AutoSuppressStackWalking suppress;
 #endif
 
-  return stub_LdrLoadDll(filePath, flags, moduleFileName, handle);
+  NTSTATUS ret = stub_LdrLoadDll(filePath, flags, moduleFileName, handle);
+  CallDllLoadHook(true, ret, handle ? *handle : 0, moduleFileName);
+  return ret;
 }
 
 #if defined(NIGHTLY_BUILD)
@@ -616,7 +653,10 @@ patched_BaseThreadInitThunk(BOOL aIsInitialThread, void* aStartAddress,
                             void* aThreadParam)
 {
   if (ShouldBlockThread(aStartAddress)) {
+    CallCreateThreadHook(false, aStartAddress);
     aStartAddress = (void*)NopThreadProc;
+  } else {
+    CallCreateThreadHook(true, aStartAddress);
   }
 
   stub_BaseThreadInitThunk(aIsInitialThread, aStartAddress, aThreadParam);
@@ -662,7 +702,8 @@ DllBlocklist_Initialize(uint32_t aInitFlags)
   // We specifically use a detour, because there are cases where external
   // code also tries to hook LdrLoadDll, and doesn't know how to relocate our
   // nop space patches. (Bug 951827)
-  bool ok = NtDllIntercept.AddDetour("LdrLoadDll", reinterpret_cast<intptr_t>(patched_LdrLoadDll), (void**) &stub_LdrLoadDll);
+  bool ok = stub_LdrLoadDll.SetDetour(NtDllIntercept, "LdrLoadDll",
+                                      &patched_LdrLoadDll);
 
   if (!ok) {
     sBlocklistInitFailed = true;
@@ -683,18 +724,18 @@ DllBlocklist_Initialize(uint32_t aInitFlags)
 #ifdef _M_AMD64
   if (!IsWin8OrLater()) {
     // The crash that this hook works around is only seen on Win7.
-    Kernel32Intercept.AddHook("RtlInstallFunctionTableCallback",
-                              reinterpret_cast<intptr_t>(patched_RtlInstallFunctionTableCallback),
-                              (void**)&stub_RtlInstallFunctionTableCallback);
+    stub_RtlInstallFunctionTableCallback.Set(Kernel32Intercept,
+                                             "RtlInstallFunctionTableCallback",
+                                             &patched_RtlInstallFunctionTableCallback);
   }
 #endif
 
   // Bug 1361410: WRusr.dll will overwrite our hook and cause a crash.
   // Workaround: If we detect WRusr.dll, don't hook.
   if (!GetModuleHandleW(L"WRusr.dll")) {
-    if(!Kernel32Intercept.AddDetour("BaseThreadInitThunk",
-                                    reinterpret_cast<intptr_t>(patched_BaseThreadInitThunk),
-                                    (void**) &stub_BaseThreadInitThunk)) {
+    if (!stub_BaseThreadInitThunk.SetDetour(Kernel32Intercept,
+                                            "BaseThreadInitThunk",
+                                            &patched_BaseThreadInitThunk)) {
 #ifdef DEBUG
     printf_stderr("BaseThreadInitThunk hook failed\n");
 #endif
@@ -730,23 +771,38 @@ DllBlocklist_Initialize(uint32_t aInitFlags)
 #endif
 }
 
+#ifdef DEBUG
+MFBT_API void
+DllBlocklist_Shutdown()
+{
+}
+#endif // DEBUG
+
+static void
+WriteAnnotation(HANDLE aFile, Annotation aAnnotation, const char* aValue,
+                DWORD* aNumBytes)
+{
+  const char* str = AnnotationToString(aAnnotation);
+  WriteFile(aFile, str, strlen(str), aNumBytes, nullptr);
+  WriteFile(aFile, "=", 1, aNumBytes, nullptr);
+  WriteFile(aFile, aValue, strlen(aValue), aNumBytes, nullptr);
+}
+
 static void
 InternalWriteNotes(HANDLE file)
 {
   DWORD nBytes;
 
-  WriteFile(file, kBlockedDllsParameter, kBlockedDllsParameterLen, &nBytes, nullptr);
+  WriteAnnotation(file, Annotation::BlockedDllList, "", &nBytes);
   DllBlockSet::Write(file);
   WriteFile(file, "\n", 1, &nBytes, nullptr);
 
   if (sBlocklistInitFailed) {
-    WriteFile(file, kBlocklistInitFailedParameter,
-              kBlocklistInitFailedParameterLen, &nBytes, nullptr);
+    WriteAnnotation(file, Annotation::BlocklistInitFailed, "1\n", &nBytes);
   }
 
   if (sUser32BeforeBlocklist) {
-    WriteFile(file, kUser32BeforeBlocklistParameter,
-              kUser32BeforeBlocklistParameterLen, &nBytes, nullptr);
+    WriteAnnotation(file, Annotation::User32BeforeBlocklist, "1\n", &nBytes);
   }
 }
 

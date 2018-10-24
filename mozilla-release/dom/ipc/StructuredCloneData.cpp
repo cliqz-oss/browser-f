@@ -12,8 +12,10 @@
 #include "ipc/IPCMessageUtils.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/BlobBinding.h"
-#include "mozilla/dom/IPCBlobUtils.h"
+#include "mozilla/dom/DOMTypes.h"
 #include "mozilla/dom/File.h"
+#include "mozilla/dom/IPCBlobUtils.h"
+#include "mozilla/ipc/BackgroundParent.h"
 #include "mozilla/ipc/IPCStreamUtils.h"
 #include "nsContentUtils.h"
 #include "nsJSEnvironment.h"
@@ -21,9 +23,16 @@
 #include "StructuredCloneTags.h"
 #include "jsapi.h"
 
+using namespace mozilla::ipc;
+
 namespace mozilla {
 namespace dom {
 namespace ipc {
+
+using mozilla::ipc::AutoIPCStream;
+using mozilla::ipc::IPCStream;
+using mozilla::ipc::PBackgroundChild;
+using mozilla::ipc::PBackgroundParent;
 
 StructuredCloneData::StructuredCloneData()
   : StructuredCloneData(StructuredCloneHolder::TransferringSupported)
@@ -49,6 +58,7 @@ StructuredCloneData::~StructuredCloneData()
 StructuredCloneData&
 StructuredCloneData::operator=(StructuredCloneData&& aOther)
 {
+  mBlobImplArray = std::move(aOther.mBlobImplArray);
   mExternalData = std::move(aOther.mExternalData);
   mSharedData = std::move(aOther.mSharedData);
   mIPCStreams = std::move(aOther.mIPCStreams);
@@ -97,7 +107,7 @@ StructuredCloneData::Read(JSContext* aCx,
 {
   MOZ_ASSERT(mInitialized);
 
-  nsIGlobalObject *global = xpc::NativeGlobal(JS::CurrentGlobalOrNull(aCx));
+  nsIGlobalObject* global = xpc::CurrentNativeGlobal(aCx);
   MOZ_ASSERT(global);
 
   ReadFromBuffer(global, aCx, Data(), aValue, aRv);
@@ -375,7 +385,7 @@ void
 StructuredCloneData::CopyFromClonedMessageDataForBackgroundParent(const ClonedMessageData& aClonedData)
 {
   MOZ_ASSERT(IsOnBackgroundThread());
-  UnpackClonedMessageData<BorrowMemory, Parent>(aClonedData, *this);
+  UnpackClonedMessageData<CopyMemory, Parent>(aClonedData, *this);
 }
 
 void
@@ -461,6 +471,12 @@ StructuredCloneData::StealExternalData(JSStructuredCloneData& aData)
   mSharedData = new SharedJSAllocatedData(std::move(aData));
   mInitialized = true;
   return true;
+}
+
+already_AddRefed<SharedJSAllocatedData>
+StructuredCloneData::TakeSharedData()
+{
+  return mSharedData.forget();
 }
 
 } // namespace ipc

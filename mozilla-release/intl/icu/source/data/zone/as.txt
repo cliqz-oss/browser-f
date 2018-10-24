@@ -1,8 +1,17 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html#License
 as{
-    Version{"2.1.39.11"}
+    Version{"2.1.41.97"}
     zoneStrings{
+        "Etc:UTC"{
+            ls{"সমন্বিত সাৰ্বজনীন সময়"}
+        }
+        "Europe:Dublin"{
+            ld{"আইৰিচ মান সময়"}
+        }
+        "Europe:London"{
+            ld{"ব্ৰিটিছ গ্ৰীষ্মকালীন সময়"}
+        }
         "meta:Afghanistan"{
             ls{"আফগানিস্তানৰ সময়"}
         }

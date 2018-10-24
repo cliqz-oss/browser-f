@@ -19,9 +19,9 @@ namespace detail {
 #define DEFINE_PRIMITIVE_TYPE_ADAPTER(NativeType, JNIType, JNIName, ABIName) \
     \
     constexpr JNIType (JNIEnv::*TypeAdapter<NativeType>::Call) \
-            (jobject, jmethodID, jvalue*) MOZ_JNICALL_ABI; \
+            (jobject, jmethodID, CallArgs::JValueType) MOZ_JNICALL_ABI; \
     constexpr JNIType (JNIEnv::*TypeAdapter<NativeType>::StaticCall) \
-            (jclass, jmethodID, jvalue*) MOZ_JNICALL_ABI; \
+            (jclass, jmethodID, CallArgs::JValueType) MOZ_JNICALL_ABI; \
     constexpr JNIType (JNIEnv::*TypeAdapter<NativeType>::Get) \
             (jobject, jfieldID) ABIName; \
     constexpr JNIType (JNIEnv::*TypeAdapter<NativeType>::StaticGet) \
@@ -204,8 +204,8 @@ bool ReportException(JNIEnv* aEnv, jthrowable aExc, jstring aStack)
     bool result = true;
 
     result &= NS_SUCCEEDED(CrashReporter::AnnotateCrashReport(
-            NS_LITERAL_CSTRING("JavaStackTrace"),
-            String::Ref::From(aStack)->ToCString()));
+                           CrashReporter::Annotation::JavaStackTrace,
+                           String::Ref::From(aStack)->ToCString()));
 
     auto appNotes = java::GeckoAppShell::GetAppNotes();
     if (NS_WARN_IF(aEnv->ExceptionCheck())) {

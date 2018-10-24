@@ -228,20 +228,27 @@ def verify_android_device(build_obj, install=False, xre=False, debugger=False,
         if not app:
             app = build_obj.substs["ANDROID_PACKAGE_NAME"]
         device = _get_device(build_obj.substs, device_serial)
-        if not device.is_app_installed(app):
-            if 'fennec' not in app and 'firefox' not in app:
-                raw_input(
-                    "It looks like %s is not installed on this device,\n"
-                    "but I don't know how to install it.\n"
-                    "Install it now, then hit Enter " % app)
-            else:
-                response = raw_input(
-                    "It looks like %s is not installed on this device.\n"
-                    "Install Firefox? (Y/n) " % app).strip()
-                if response.lower().startswith('y') or response == '':
-                    _log_info("Installing Firefox. This may take a while...")
-                    build_obj._run_make(directory=".", target='install',
-                                        ensure_exit_code=False)
+        response = ''
+        while not device.is_app_installed(app):
+            try:
+                if 'fennec' not in app and 'firefox' not in app:
+                    response = raw_input(
+                        "It looks like %s is not installed on this device,\n"
+                        "but I don't know how to install it.\n"
+                        "Install it now, then hit Enter or quit to exit " % app)
+                else:
+                    response = response = raw_input(
+                        "It looks like %s is not installed on this device.\n"
+                        "Install Firefox? (Y/n) or quit to exit " % app).strip()
+                    if response.lower().startswith('y') or response == '':
+                        _log_info("Installing Firefox. This may take a while...")
+                        build_obj._run_make(directory=".", target='install',
+                                            ensure_exit_code=False)
+            except EOFError:
+                response = 'quit'
+            if response == 'quit':
+                device_verified = False
+                break
 
     if device_verified and xre:
         # Check whether MOZ_HOST_BIN has been set to a valid xre; if not,
@@ -374,6 +381,7 @@ def grant_runtime_permissions(build_obj, app, device_serial=None):
             device.shell_output('pm grant %s android.permission.ACCESS_COARSE_LOCATION' % app)
             device.shell_output('pm grant %s android.permission.ACCESS_FINE_LOCATION' % app)
             device.shell_output('pm grant %s android.permission.CAMERA' % app)
+            device.shell_output('pm grant %s android.permission.RECORD_AUDIO' % app)
     except Exception:
         _log_warning("Unable to grant runtime permissions to %s" % app)
 
