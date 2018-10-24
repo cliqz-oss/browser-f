@@ -7,7 +7,7 @@
 
 site-data-settings-window =
     .title = Cookies und Website-Daten verwalten
-site-data-settings-description = Die folgenden Websites speichern Cookies und Websitedaten auf dem Computer. { -brand-short-name } behält Daten von Websites mit dauerhaftem Speicher, bis Sie diese löschen, und löscht Daten von Websites mit nicht-dauerhaftem Speicher, wenn Speicherplatz benötigt wird.
+site-data-settings-description = Die folgenden Websites speichern Cookies und Website-Daten auf dem Computer. { -brand-short-name } behält Daten von Websites mit dauerhaftem Speicher, bis Sie diese löschen, und löscht Daten von Websites mit nicht-dauerhaftem Speicher, wenn Speicherplatz benötigt wird.
 site-data-search-textbox =
     .placeholder = Websites suchen
     .accesskey = s

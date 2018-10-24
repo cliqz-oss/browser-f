@@ -5,25 +5,38 @@
 languages-window =
     .title = Sprachen
     .style = width: 37em
+
+webpage-languages-window =
+    .title = Websites - Spracheinstellungen
+    .style = width: 40em
+
 languages-close-key =
     .key = w
+
 languages-description = Webseiten sind manchmal in mehr als einer Sprache verfügbar. Wählen Sie die Sprachen für die Darstellung von Webseiten in der von Ihnen bevorzugten Reihenfolge:
+
 languages-customize-spoof-english =
     .label = Englischsprachige Versionen von Websites für verbesserte Privatsphäre anfordern
+
 languages-customize-moveup =
     .label = Nach oben
     .accesskey = o
+
 languages-customize-movedown =
     .label = Nach unten
     .accesskey = u
+
 languages-customize-remove =
     .label = Entfernen
     .accesskey = E
+
 languages-customize-select-language =
     .placeholder = Wählen Sie eine Sprache zum Hinzufügen aus…
+
 languages-customize-add =
     .label = Hinzufügen
     .accesskey = z
+
 # The pattern used to generate strings presented to the user in the
 # locale selection list.
 #
@@ -36,3 +49,12 @@ languages-customize-add =
 #   $code (String) - Locale code of the locale (for example: "is", "es-CL")
 languages-code-format =
     .label = { $locale }  [{ $code }]
+
+languages-active-code-format =
+    .value = { languages-code-format.label }
+
+browser-languages-window =
+    .title = { -brand-short-name } - Spracheinstellungen
+    .style = width: 40em
+
+browser-languages-description = { -brand-short-name } wird die erste Sprache als Standardsprache und die anderen Sprachen falls nötig als Alternativen in der aufgeführten Reihenfolge verwenden.

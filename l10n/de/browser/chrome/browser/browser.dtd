@@ -38,6 +38,20 @@ left instead of right. -->
 <!ENTITY  closeSelectedTabs.label            "Ausgewählte Tabs schließen">
 <!ENTITY  closeSelectedTabs.accesskey        "s">
 
+<!ENTITY  pinSelectedTabs.label              "Tabs anheften">
+<!-- Pin Tab and Pin Selected Tabs have the same accesskey
+but will never be visible at the same time. -->
+<!ENTITY  pinSelectedTabs.accesskey          "h">
+<!ENTITY  unpinSelectedTabs.label            "Tabs ablösen">
+<!-- Unpin Tab and Unpin Selected Tabs have the same accesskey
+but will never be visible at the same time. -->
+<!ENTITY  unpinSelectedTabs.accesskey        "b">
+<!-- Reload Tab and Reload Selected Tabs have the same accesskey
+but will never be visible at the same time. -->
+<!ENTITY  reloadSelectedTabs.label           "Ausgewählte Tabs neu laden">
+<!ENTITY  reloadSelectedTabs.accesskey       "d">
+<!ENTITY  bookmarkSelectedTabs.label         "Tabs als Lesezeichen hinzufügen…">
+<!ENTITY  bookmarkSelectedTabs.accesskey     "L">
 
 <!-- LOCALIZATION NOTE (pinTab.label, unpinTab.label): "Pin" is being
 used as a metaphor for expressing the fact that these tabs are "pinned" to the
@@ -302,6 +316,10 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY webDeveloperMenu.label       "Web-Entwickler">
 <!ENTITY webDeveloperMenu.accesskey   "W">
 
+<!ENTITY devtoolsRecordExecution.label "Ausführung aufnehmen">
+<!ENTITY devtoolsSaveRecording.label "Ausführung speichern">
+<!ENTITY devtoolsReplayExecution.label "Ausführung wiedergeben">
+
 <!ENTITY inspectContextMenu.label     "Element untersuchen">
 <!ENTITY inspectContextMenu.accesskey "Q">
 
@@ -415,8 +433,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!-- LOCALIZATION NOTE (customizeMenu.addToOverflowMenu.label,
      customizeMenu.pinToOverflowMenu.label, customizeMenu.unpinFromOverflowMenu.label)
      The overflow menu is the menu that appears if you click the chevron (>> button)
-     in the location bar. These labels are only used in Photon, where you can put
-     items into this menu permanently (pinned). -->
+     in the location bar. -->
 <!ENTITY customizeMenu.addToOverflowMenu.label "In Überhangmenü verschieben">
 <!ENTITY customizeMenu.addToOverflowMenu.accesskey "b">
 <!ENTITY customizeMenu.moveToToolbar.label "In Symbolleiste verschieben">
@@ -428,6 +445,9 @@ These should match what Safari and other Apple applications use on OS X Lion. --
      keys.  -->
 <!ENTITY customizeMenu.moveToPanel.label "In Menü verschieben">
 <!ENTITY customizeMenu.moveToPanel.accesskey "v">
+<!-- LOCALIZATION NOTE (customizeMenu.pinToOverflowMenu.accesskey)
+     can appear on the same context menu as menubarCmd and personalbarCmd,
+     so they should have different access keys.  -->
 <!ENTITY customizeMenu.pinToOverflowMenu.label "In Überhangmenü verschieben">
 <!ENTITY customizeMenu.pinToOverflowMenu.accesskey "M">
 <!ENTITY customizeMenu.unpinFromOverflowMenu.label "Aus Überhangmenü entfernen">
@@ -766,8 +786,15 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY spellAddDictionaries.label "Wörterbücher hinzufügen…">
 <!ENTITY spellAddDictionaries.accesskey "W">
 
+<!-- LOCALIZATION NOTE (editBookmark.panel.width): width of the bookmark panel.
+     Should be large enough to fully display the Done and Cancel/
+     Remove Bookmark buttons. -->
+<!ENTITY editBookmark.panel.width                    "23em">
 <!ENTITY editBookmark.done.label                     "Fertig">
 <!ENTITY editBookmark.removeBookmark.accessKey       "L">
+
+<!ENTITY editBookmark.showForNewBookmarks.label       "Eigenschaften beim Speichern bearbeiten">
+<!ENTITY editBookmark.showForNewBookmarks.accesskey   "g">
 
 <!-- LOCALIZATION NOTE (identity.securityView.label)
      This is the header of the security subview in the Site Identity panel. -->
@@ -810,7 +837,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 
 <!ENTITY identity.moreInfoLinkText2 "Weitere Informationen">
 
-<!ENTITY identity.clearSiteData "Cookies und Websitedaten löschen…">
+<!ENTITY identity.clearSiteData "Cookies und Website-Daten löschen…">
 
 <!ENTITY identity.permissions "Berechtigungen">
 <!ENTITY identity.permissionsEmpty "Der Website wurden keine besonderen Berechtigungen erteilt.">
@@ -919,6 +946,61 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY trackingProtection.on "Schutz vor Aktivitätenverfolgung: EIN">
 <!ENTITY trackingProtection.off "Schutz vor Aktivitätenverfolgung: AUS">
 
+<!ENTITY contentBlocking.title "Seitenelemente blockieren">
+<!ENTITY contentBlocking.detected "Blockierbare Seitenelemente gefunden">
+<!ENTITY contentBlocking.notDetected "Keine blockierbaren Seitenelemente gefunden">
+<!ENTITY contentBlocking.disabled.label "Deaktiviert">
+<!ENTITY contentBlocking.disabled.tooltip "Das Blockieren von Seitenelementen ist deaktiviert.">
+<!ENTITY contentBlocking.exception.tooltip "Das Blockieren von Seitenelementen ist für diese Website deaktiviert.">
+
+<!ENTITY contentBlocking.fastBlock.label "Langsam ladende Elemente zur Aktivitätenverfolgung">
+<!-- LOCALIZATION NOTE (contentBlocking.fastBlock.blocked.label):
+     This label signals that this type of content blocking is turned
+     ON and is successfully blocking malicious/slow content, so this is
+     a positive thing. It forms the end of the (imaginary) sentence
+     "Slow-Loading Trackers [are] Blocked"-->
+<!ENTITY contentBlocking.fastBlock.blocked.label "Blockiert">
+<!-- LOCALIZATION NOTE (contentBlocking.fastBlock.add.label):
+     This is displayed as a link to preferences, where the user can add
+     this specific type of content blocking. When this text is shown
+     the type of content blocking is currently not enabled. -->
+<!ENTITY contentBlocking.fastBlock.add.label "Blockieren aktivieren…">
+
+<!ENTITY contentBlocking.trackingProtection2.label "Alle erkannten Elemente zur Aktivitätenverfolgung">
+<!-- LOCALIZATION NOTE (contentBlocking.trackingProtection.blocked.label):
+     This label signals that this type of content blocking is turned
+     ON and is successfully blocking malicious/slow content, so this is
+     a positive thing. It forms the end of the (imaginary) sentence
+     "Trackers [are] Blocked"-->
+<!ENTITY contentBlocking.trackingProtection.blocked.label "Blockiert">
+<!-- LOCALIZATION NOTE (contentBlocking.trackingProtection.add.label):
+     This is displayed as a link to preferences, where the user can add
+     this specific type of content blocking. When this text is shown
+     the type of content blocking is currently not enabled. -->
+<!ENTITY contentBlocking.trackingProtection.add.label "Blockieren aktivieren…">
+
+<!ENTITY contentBlocking.3rdPartyCookies.label "Cookies von eingebundenen externen Inhalten (&quot;Drittanbieter&quot;)">
+<!-- LOCALIZATION NOTE (contentBlocking.3rdPartyCookies.blocked.label):
+     This label signals that this type of content blocking is turned
+     ON and is successfully blocking third-party cookies, so this is
+     a positive thing. It forms the end of the (imaginary) sentence
+     "Third-Party Cookies [are] Blocked"-->
+<!ENTITY contentBlocking.3rdPartyCookies.blocked.label "Blockiert">
+<!-- LOCALIZATION NOTE (contentBlocking.3rdPartyCookies.add.label):
+     This is displayed as a link to preferences, where the user can add
+     this specific type of content blocking. When this text is shown
+     the type of content blocking is currently not enabled. -->
+<!ENTITY contentBlocking.3rdPartyCookies.add.label "Blockieren aktivieren…">
+
+<!ENTITY contentBlocking.openBreakageReportView2.label "Problem melden">
+<!ENTITY contentBlocking.breakageReportView.label "Probleme melden">
+<!ENTITY contentBlocking.breakageReportView2.description "Das Blockieren von Seitenelementen kann bei einigen Websites zu Problemen führen. Wenn Sie Probleme melden, helfen Sie &brandShortName; für alle besser zu machen. (Dabei werden die Adresse sowie Informationen über Ihre Browsereinstellungen an Mozilla gesendet.)">
+<!ENTITY contentBlocking.breakageReportView.learnMore "Weitere Informationen">
+<!ENTITY contentBlocking.breakageReportView.collection.url.label "Adresse">
+<!ENTITY contentBlocking.breakageReportView.collection.comments.label "Welche Probleme traten bei Ihnen auf? (freiwillig)">
+<!ENTITY contentBlocking.breakageReportView.sendReport.label "Bericht senden">
+<!ENTITY contentBlocking.breakageReportView.cancel.label "Abbrechen">
+
 <!ENTITY trackingProtection.title "Schutz vor Aktivitätenverfolgung">
 <!ENTITY trackingProtection.detectedBlocked3 "&brandShortName; blockiert Seitenelemente, die Ihre Surfaktivitäten verfolgen könnten.">
 <!ENTITY trackingProtection.detectedNotBlocked3 "Die Seite enthält Inhalte, die Ihre Surfaktivitäten verfolgen könnten. Sie haben den Schutz deaktiviert.">
@@ -950,6 +1032,8 @@ you can use these alternative items. Otherwise, their values should be empty.  -
      center while looking at a site with trackers in NON-private browsing mode. -->
 <!ENTITY trackingProtection.unblock3.label "Deaktivieren für diese Website">
 <!ENTITY trackingProtection.unblock3.accesskey "D">
+<!ENTITY trackingProtection.unblock4.label "Blockieren für diese Seite aufheben">
+<!ENTITY trackingProtection.unblock4.accesskey "B">
 <!-- LOCALIZATION NOTE (trackingProtection.unblockPrivate3.label, trackingProtection.unblockPrivate3.accesskey):
      The associated button with this label and accesskey is only shown when opening the control
      center while looking at a site with trackers in PRIVATE browsing mode. -->
@@ -957,6 +1041,10 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY trackingProtection.unblockPrivate3.accesskey "D">
 <!ENTITY trackingProtection.block4.label "Aktivieren für diese Website">
 <!ENTITY trackingProtection.block4.accesskey "A">
+<!ENTITY trackingProtection.unblockPrivate4.label "Blockieren temporär aufheben">
+<!ENTITY trackingProtection.unblockPrivate4.accesskey "a">
+<!ENTITY trackingProtection.block5.label "Blockieren für diese Website aktivieren">
+<!ENTITY trackingProtection.block5.accesskey "a">
 <!ENTITY trackingProtection.reload2.label "Seite neu laden">
 <!ENTITY trackingProtection.reload2.accesskey "n">
 
@@ -1061,6 +1149,8 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY sendToDevice.syncNotReady.label "Geräte werden synchronisiert…">
 
 <!ENTITY pageAction.shareUrl.label "Teilen">
+
+<!ENTITY pageAction.shareMore.label "Mehr…">
 
 <!ENTITY libraryButton.tooltip "Öffnen von Chronik, Lesezeichen und mehr">
 

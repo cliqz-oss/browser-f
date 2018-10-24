@@ -396,7 +396,7 @@
 <!ENTITY pref_private_data_cookies2 "Cookies &amp; Aktive Logins">
 <!ENTITY pref_private_data_passwords2 "Gespeicherte Zugangsdaten">
 <!ENTITY pref_private_data_cache "Cache">
-<!ENTITY pref_private_data_offlineApps "Offline-Websitedaten">
+<!ENTITY pref_private_data_offlineApps "Offline-Website-Daten">
 <!ENTITY pref_private_data_siteSettings2 "Website-Einstellungen">
 <!ENTITY pref_private_data_downloadFiles2 "Downloads">
 <!ENTITY pref_private_data_syncedTabs "Synchronisierte Tabs">

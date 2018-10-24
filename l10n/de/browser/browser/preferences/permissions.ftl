@@ -5,37 +5,50 @@
 permissions-window =
     .title = Ausnahmen
     .style = width: 36em
+
 permissions-close-key =
     .key = w
+
 permissions-address = Adresse der Website:
     .accesskey = d
+
 permissions-block =
     .label = Blockieren
     .accesskey = B
+
 permissions-session =
     .label = Für diese Sitzung erlauben
     .accesskey = F
+
 permissions-allow =
     .label = Erlauben
     .accesskey = E
+
 permissions-site-name =
     .label = Website
+
 permissions-status =
     .label = Status
+
 permissions-remove =
     .label = Website entfernen
     .accesskey = n
+
 permissions-remove-all =
     .label = Alle Websites entfernen
     .accesskey = a
+
 permissions-button-cancel =
     .label = Abbrechen
     .accesskey = r
+
 permissions-button-ok =
     .label = Änderungen speichern
     .accesskey = s
+
 permissions-searchbox =
     .placeholder = Website suchen
+
 permissions-capabilities-allow =
     .label = Erlauben
 permissions-capabilities-block =
@@ -58,9 +71,9 @@ permissions-exceptions-tracking-protection-desc = Sie haben den Schutz vor Aktiv
 ## Exceptions - Cookies
 
 permissions-exceptions-cookie-window =
-    .title = Ausnahmen - Cookies und Websitedaten
+    .title = Ausnahmen - Cookies und Website-Daten
     .style = { permissions-window.style }
-permissions-exceptions-cookie-desc = Sie können festlegen, welchen Websites Sie immer oder niemals erlauben möchten, Cookies und Websitedaten zu verwenden. Geben Sie bitte die exakte Adresse der Website ein, die Sie verwalten möchten, und klicken Sie dann Blockieren, für diese Sitzung erlauben oder Erlauben.
+permissions-exceptions-cookie-desc = Sie können festlegen, welchen Websites Sie immer oder niemals erlauben möchten, Cookies und Website-Daten zu verwenden. Geben Sie bitte die exakte Adresse der Website ein, die Sie verwalten möchten, und klicken Sie dann Blockieren, für diese Sitzung erlauben oder Erlauben.
 
 ## Exceptions - Pop-ups
 
@@ -89,6 +102,11 @@ permissions-exceptions-autoplay-media-window =
     .title = Berechtigte Websites - Automatische Wiedergabe
     .style = { permissions-window.style }
 permissions-exceptions-autoplay-media-desc = Hier können die Websites festgelegt werden, welche automatisch Medien mit Ton wiedergeben dürfen. Geben Sie die exakte Adresse der zu erlaubenden Website ein und klicken Sie dann auf &quot;Erlauben&quot;.
+
+permissions-exceptions-autoplay-media-window2 =
+    .title = Ausnahmen - Automatische Wiedergabe
+    .style = { permissions-window.style }
+permissions-exceptions-autoplay-media-desc2 = Hier können die Websites festgelegt werden, welche immer oder nie automatisch Medien mit Ton wiedergeben dürfen. Geben Sie die Adresse der Website ein und klicken Sie dann auf &quot;Blockieren&quot; oder &quot;Erlauben&quot;.
 
 ## Site Permissions - Notifications
 

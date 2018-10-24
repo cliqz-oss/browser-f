@@ -5,7 +5,7 @@
 clear-site-data-window =
     .title = Daten löschen
     .style = width: 45em
-clear-site-data-description = Das Leeren von durch { -brand-short-name } gespeicherten Cookies und Websitedaten meldet Sie eventuell von Websites ab und entfernt lokal zwischengespeicherte Webinhalte (Cache). Ihre Zugangsdaten bleiben beim Leeren des Caches erhalten.
+clear-site-data-description = Das Leeren von durch { -brand-short-name } gespeicherten Cookies und Website-Daten meldet Sie eventuell von Websites ab und entfernt lokal zwischengespeicherte Webinhalte (Cache). Ihre Zugangsdaten bleiben beim Leeren des Caches erhalten.
 clear-site-data-close-key =
     .key = w
 # The parameters in parentheses in this string describe disk usage
@@ -14,7 +14,7 @@ clear-site-data-close-key =
 #   $amount (Number) - Amount of site data currently stored on disk
 #   $unit (String) - Abbreviation of the unit that $amount is in, e.g. "MB"
 clear-site-data-cookies-with-data =
-    .label = Cookies und Websitedaten ({ $amount } { $unit })
+    .label = Cookies und Website-Daten ({ $amount } { $unit })
     .accesskey = o
 # This string is a placeholder for while the data used to fill
 # clear-site-data-cookies-with-data is loading. This placeholder is usually
@@ -22,7 +22,7 @@ clear-site-data-cookies-with-data =
 # or the same as clear-site-data-cookies-with-data (except the amount and unit),
 # to avoid flickering.
 clear-site-data-cookies-empty =
-    .label = Cookies und Websitedaten
+    .label = Cookies und Website-Daten
     .accesskey = o
 clear-site-data-cookies-info = Sie werden eventuell von Websites abgemeldet und müssen sich erneut mit den Zugangsdaten anmelden.
 # The parameters in parentheses in this string describe disk usage

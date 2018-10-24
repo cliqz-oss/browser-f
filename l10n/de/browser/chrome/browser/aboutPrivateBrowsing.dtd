@@ -30,3 +30,6 @@
 <!ENTITY trackingProtection.title              "Schutz vor Aktivitätenverfolgung">
 <!ENTITY trackingProtection.description2                 "Einige Websites verwenden Seiteninhalte, um Ihre Aktivitäten durch das ganze Internet zu verfolgen. Beim Schutz vor Aktivitätenverfolgung blockiert Firefox viele dieser verfolgenden Seiteninhalte, welche Informationen über Ihre Internetaktivitäten aufzeichnen könnten.">
 <!ENTITY trackingProtection.startTour1         "Wie es funktioniert">
+
+<!ENTITY contentBlocking.title                           "Blockieren von Seitenelementen">
+<!ENTITY contentBlocking.description                     "Einige Websites verwenden Elemente zur Aktivitätenverfolgung, um Ihr Surfverhalten quer über das Internet zu verfolgen. In privaten Fenstern ist Firefoxs Blockieren von Seitenelementen automatisch aktiv und verhindert das Laden vieler Elemente zur Aktivitätenverfolgung, welche sonst Informationen über Ihr Surfverhalten sammeln können.">

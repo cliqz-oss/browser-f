@@ -14,7 +14,7 @@ sync-disconnect-remove-sync-data = Lesezeichen, Chronik, Zugangsdaten usw.
 
 sync-disconnect-remove-other-caption = Andere private Daten entfernen
 
-sync-disconnect-remove-other-data = Cookies, Cache, Offline-Websitedaten usw.
+sync-disconnect-remove-other-data = Cookies, Cache, Offline-Website-Daten usw.
 
 # Shown while the disconnect is in progress
 sync-disconnect-disconnecting = Wird getrennt…

@@ -8,7 +8,11 @@
 <!ENTITY loadError.label "Seiten-Ladefehler">
 <!ENTITY retry.label "Nochmals versuchen">
 <!ENTITY returnToPreviousPage.label "Zurück">
+<!ENTITY returnToPreviousPage1.label "Zurück (empfohlen)">
 <!ENTITY advanced.label "Erweitert">
+
+<!ENTITY continue2.label "Mehr…">
+<!ENTITY moreInformation.label "Weitere Informationen">
 
 <!-- Specific error messages -->
 
@@ -146,10 +150,31 @@
 ">
 
 <!ENTITY certerror.longpagetitle1 "Diese Verbindung ist nicht sicher">
-<!-- Localization note (certerror.introPara) - The text content of the span tag
+<!ENTITY certerror.longpagetitle2 "Warnung: Mögliches Sicherheitsrisiko erkannt">
+<!-- Localization note (certerror.introPara, certerror.introPara2) - The text content of the span tag
 will be replaced at runtime with the name of the server to which the user
 was trying to connect. -->
 <!ENTITY certerror.introPara "Der Inhaber von <span class='hostname'/> hat die Website nicht richtig konfiguriert. &brandShortName; hat keine Verbindung mit dieser Website aufgebaut, um Ihre Informationen vor Diebstahl zu schützen.">
+
+<!ENTITY certerror.introPara2 "&brandShortName; hat ein mögliches Sicherheitsrisiko erkannt und <span class='hostname'/> nicht geladen. Falls Sie die Website besuchen, könnten Angreifer versuchen, Passwörter, E-Mails oder Kreditkartendaten zu stehlen.">
+
+<!ENTITY certerror.expiredCert.secondPara "Am wahrscheinlichsten sind Datum- und/oder Uhrzeit auf Ihrem Computer nicht korrekt, was &brandShortName; daran hindert, eine gesicherte Verbindung zu nutzen.">
+
+<!ENTITY certerror.whatCanYouDoAboutItTitle "Was können Sie dagegen tun?">
+
+<!ENTITY certerror.unknownIssuer.whatCanYouDoAboutIt "
+<p>Am wahrscheinlichsten wird das Problem durch die Website verursacht und Sie können nichts dagegen tun.</p>
+<p>Falls Sie sich in einem Firmennetzwerk befinden oder Antivirus-Software einsetzen, so können Sie jeweils deren IT-Support kontaktieren. Das Benachrichtigen des Website-Administrators über das Problem ist eine weitere Möglichkeit.</p>
+">
+
+<!ENTITY certerror.expiredCert.whatCanYouDoAboutIt2 "
+<p>Datum und Uhrzeit Ihres Computers sind eingestellt auf <span id='wrongSystemTime_systemDate2'/>. Überprüfen Sie, ob Datum, Uhrzeit und Zeitzone in den Systemeinstellungen korrekt gesetzt sind und laden Sie <span class='hostname'/> neu.</p>
+<p>Falls Datum und Uhrzeit bereits korrekt sind, so ist die Website wahrscheinlich falsch eingerichtet und Sie können nichts machen, um das Problem zu beheben. Sie können den Website-Administrator über das Problem benachrichtigen.</p>
+">
+
+<!ENTITY certerror.badCertDomain.whatCanYouDoAboutIt "
+<p>Am wahrscheinlichsten wird das Problem durch die Website verursacht und Sie können nichts dagegen tun. Sie können den Website-Administrator über das Problem benachrichtigen.</p>
+">
 
 <!ENTITY sharedLongDesc "
 <ul>
@@ -171,6 +196,8 @@ was trying to connect. -->
 
 <!ENTITY securityOverride.exceptionButtonLabel "Ausnahme hinzufügen…">
 
+<!ENTITY securityOverride.exceptionButton1Label "Risiko akzeptieren und fortfahren">
+
 <!ENTITY errorReporting.automatic2 "Fehler an Mozilla melden, um beim Identifizieren und Blockieren böswilliger Websites zu helfen">
 <!ENTITY errorReporting.learnMore "Weitere Informationen…">
 
@@ -189,7 +216,9 @@ was trying to connect. -->
 <!ENTITY certerror.wrongSystemTimeWithoutReference "<p>&brandShortName; konnte mit <span id='wrongSystemTimeWithoutReference_URL'/> keine gesicherte Verbindung aufbauen, da Ihr Computer ein falsches Datum oder eine falsche Uhrzeit zu verwenden scheint.</p> <p>Auf Ihrem Computer ist es der <span id='wrongSystemTimeWithoutReference_systemDate'/>. Korrigieren Sie Datum und Uhrzeit auf Ihrem Computer auf die richtigen Werte, um das Problem zu beheben.</p>">
 
 <!ENTITY certerror.pagetitle1  "Nicht gesicherte Verbindung">
+<!ENTITY certerror.pagetitle2  "Warnung: Mögliches Sicherheitsrisiko erkannt">
 <!ENTITY certerror.whatShouldIDo.badStsCertExplanation "Diese Website verwendet HTTP Strict Transport Security (HSTS), um mitzuteilen, dass &brandShortName; nur über gesicherte Verbindungen mit ihr kommunizieren soll. Daher ist es nicht möglich, eine Ausnahme für dieses Zertifikat anzulegen.">
+<!ENTITY certerror.whatShouldIDo.badStsCertExplanation1 "<span class='hostname'></span> verwendet eine Sicherheitstechnologie namens &quot;HTTP Strict Transport Security (HSTS)&quot;, durch welche &brandShortName; nur über gesicherte Verbindungen mit der Website verbinden darf. Daher kann keine Ausnahme für die Website hinzugefügt werden.">
 <!ENTITY certerror.copyToClipboard.label "In Zwischenablage kopieren">
 
 <!ENTITY inadequateSecurityError.title "Diese Verbindung ist nicht sicher">
@@ -198,6 +227,9 @@ was trying to connect. -->
 <!ENTITY inadequateSecurityError.longDesc "<p><span class='hostname'></span> verwendet Sicherheitstechnologie, welche veraltet und verwundbar ist. Ein Angreifer könnte leicht Informationen entschlüsseln, welche Sie für sicher hielten. Der Website-Administrator muss dieses Problem auf dem Server beheben, bevor Sie die Seite aufrufen können.</p><p>Fehlercode: NS_ERROR_NET_INADEQUATE_SECURITY</p>">
 
 <!ENTITY blockedByPolicy.title "Blockierte Seite">
+
+<!ENTITY clockSkewError.title "Datum- und/oder Uhrzeit Ihres Computers sind nicht korrekt">
+<!ENTITY clockSkewError.longDesc "Datum- und Uhrzeit Ihres Computer sind auf <span id='wrongSystemTime_systemDate1'/> gesetzt, was &brandShortName; am Herstellen einer gesicherten Verbindung hindert. Setzen Sie Datum, Uhrzeit und Zeitzone in den Systemeinstellungen korrekt und laden Sie anschließend <span class='hostname'></span> neu.">
 
 <!ENTITY prefReset.longDesc "Dies könnte durch die Netzwerk-Sicherheitseinstellungen verursacht werden. Sollen die Standardeinstellungen wiederhergestellt werden?">
 <!ENTITY prefReset.label "Standardeinstellungen wiederherstellen">
