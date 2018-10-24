@@ -5,13 +5,7 @@
 clear-site-data-window =
     .title = Daten löschen
     .style = width: 45em
-<<<<<<< HEAD
-clear-site-data-description = Das Leeren von durch { -brand-short-name } gespeicherten Cookies und Websitedaten meldet dich eventuell von Websites ab und entfernt lokal zwischengespeicherte Webinhalte (Cache). Deine Zugangsdaten bleiben beim Leeren des Caches erhalten.
-||||||| merged common ancestors
-clear-site-data-description = Das Leeren von durch { -brand-short-name } gespeicherten Cookies und Websitedaten meldet Sie eventuell von Websites ab und entfernt lokal zwischengespeicherte Webinhalte (Cache). Ihre Zugangsdaten bleiben beim Leeren des Caches erhalten.
-=======
-clear-site-data-description = Das Leeren von durch { -brand-short-name } gespeicherten Cookies und Website-Daten meldet Sie eventuell von Websites ab und entfernt lokal zwischengespeicherte Webinhalte (Cache). Ihre Zugangsdaten bleiben beim Leeren des Caches erhalten.
->>>>>>> origin/upstream-releases
+clear-site-data-description = Das Leeren von durch { -brand-short-name } gespeicherten Cookies und Website-Daten meldet dich eventuell von Websites ab und entfernt lokal zwischengespeicherte Webinhalte (Cache). Deine Zugangsdaten bleiben beim Leeren des Caches erhalten.
 clear-site-data-close-key =
     .key = w
 # The parameters in parentheses in this string describe disk usage

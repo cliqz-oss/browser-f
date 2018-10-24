@@ -73,13 +73,7 @@ permissions-exceptions-tracking-protection-desc = Du hast den Schutz vor Aktivit
 permissions-exceptions-cookie-window =
     .title = Ausnahmen - Cookies und Website-Daten
     .style = { permissions-window.style }
-<<<<<<< HEAD
-permissions-exceptions-cookie-desc = Du kannst festlegen, welchen Websites du immer oder niemals erlauben möchtest, Cookies und Websitedaten zu verwenden. Gib bitte die exakte Adresse der Website ein, die du verwalten möchtest, und klicke dann Blockieren, für diese Sitzung erlauben oder Erlauben.
-||||||| merged common ancestors
-permissions-exceptions-cookie-desc = Sie können festlegen, welchen Websites Sie immer oder niemals erlauben möchten, Cookies und Websitedaten zu verwenden. Geben Sie bitte die exakte Adresse der Website ein, die Sie verwalten möchten, und klicken Sie dann Blockieren, für diese Sitzung erlauben oder Erlauben.
-=======
-permissions-exceptions-cookie-desc = Sie können festlegen, welchen Websites Sie immer oder niemals erlauben möchten, Cookies und Website-Daten zu verwenden. Geben Sie bitte die exakte Adresse der Website ein, die Sie verwalten möchten, und klicken Sie dann Blockieren, für diese Sitzung erlauben oder Erlauben.
->>>>>>> origin/upstream-releases
+permissions-exceptions-cookie-desc = Du kannst festlegen, welchen Websites du immer oder niemals erlauben möchtest, Cookies und Website-Daten zu verwenden. Gib bitte die exakte Adresse der Website ein, die du verwalten möchtest, und klicke dann Blockieren, für diese Sitzung erlauben oder Erlauben.
 
 ## Exceptions - Pop-ups
 
