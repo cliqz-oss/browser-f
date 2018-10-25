@@ -40,7 +40,8 @@ RUN apt-get update && apt-get install -y \
   mesa-common-dev \
   python-dbus \
   xvfb \
-  yasm
+  yasm \
+  apt-transport-https
 
 RUN pip install awscli
 
@@ -52,6 +53,16 @@ RUN echo "deb http://repo.aptly.info/ squeeze main" > /etc/apt/sources.list.d/ap
   ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
+
+RUN echo "deb http://ppa.launchpad.net/mercurial-ppa/releases/ubuntu xenial main" > /etc/apt/sources.list.d/mercurial.list; \
+  apt-key adv --keyserver pool.sks-keyservers.net --recv-keys 41BD8711B1F0EC2B0D85B91CF59CE3A8323293EE; \
+  apt-get update; \
+  apt-get install mercurial -y
+
+RUN wget -qO- https://deb.nodesource.com/gpgkey/nodesource.gpg.key | apt-key add -
+RUN echo "deb https://deb.nodesource.com/node_10.x xenial main" > /etc/apt/sources.list.d/nodesource.list; \
+  apt-get update; \
+  apt-get install -y nodejs
 
 RUN set -eux; \
     \
