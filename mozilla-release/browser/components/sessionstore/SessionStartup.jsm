@@ -307,11 +307,13 @@ var SessionStartup = {
            this._sessionType == this.RESUME_SESSION;
   },
 
+  // CLIQZ-SPECIAL
+  // This method is called to determine whether to restore previously opened pages.
   _willRestoreCliqz() {
     //     Either we'll show a recovery page
-    return this._sessionType == Ci.nsISessionStartup.RECOVER_SESSION ||
+    return this._sessionType == this.RECOVER_SESSION ||
     //        Or just previously open tabs (without start pages)
-              (this._sessionType == Ci.nsISessionStartup.RESUME_SESSION &&
+              (this._sessionType == this.RESUME_SESSION &&
                !Services.prefs.getBoolPref("browser.startup.addFreshTab"));
   },
 
