@@ -3,7 +3,7 @@
 
 Vagrant.configure("2") do |config|
 
-  config.vm.box = "browser-f_mac10.11.4_34"
+  config.vm.box = "browser-ios-v300"
   config.vm.network "public_network"
   config.vm.define "browser-f-mac"
 
