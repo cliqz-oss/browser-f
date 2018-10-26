@@ -6,6 +6,7 @@ Vagrant.configure("2") do |config|
   config.vm.box = "browser-ios-v300"
   config.vm.network "public_network"
   config.vm.define "browser-f-mac"
+  config.vm.network "forwarded_port", guest: 5900, host: 7900
 
   config.vm.provider "vmware_fusion" do |v|
     v.gui = false
@@ -15,6 +16,10 @@ Vagrant.configure("2") do |config|
     v.vmx["remotedisplay.vnc.enabled"] = "TRUE"
     v.vmx["RemoteDisplay.vnc.port"] = ENV["NODE_VNC_PORT"]
   end
+
+  config.vm.provision "shell", privileged: true, run: "always", inline: <<-SHELL
+    /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -clientopts -setvnclegacy -vnclegacy yes -clientopts -restart -agent -privs -all
+  SHELL
 
   config.vm.provision "shell", privileged: false, run: "always", inline: <<-SHELL
     rm -f slave.jar
