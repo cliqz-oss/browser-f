@@ -84,6 +84,24 @@ if (AppConstants.MOZ_CRASHREPORTER) {
     "resource:///modules/ContentCrashHandlers.jsm");
 }
 
+XPCOMUtils.defineLazyScriptGetter(this, ["isBlankPageURL"],
+                                  "chrome://browser/content/utilityOverlay.js");
+XPCOMUtils.defineLazyScriptGetter(this, "gDataNotificationInfoBar",
+                                  "chrome://browser/content/browser-data-submission-info-bar.js");
+XPCOMUtils.defineLazyScriptGetter(this, "BookmarkingUI",
+                                  "chrome://browser/content/browser-places.js");
+XPCOMUtils.defineLazyScriptGetter(this, "gIdentityHandler",
+                                  "chrome://browser/content/browser-siteIdentity.js");
+XPCOMUtils.defineLazyScriptGetter(this, "BrowserPageActions",
+                                  "chrome://browser/content/browser-pageActions.js");
+XPCOMUtils.defineLazyScriptGetter(this, "FeedHandler",
+                                  "chrome://browser/content/browser-feeds.js");
+XPCOMUtils.defineLazyScriptGetter(this, "SidebarUI",
+                                  "chrome://browser/content/browser-sidebar.js");
+XPCOMUtils.defineLazyScriptGetter(this, "gPluginHandler",
+                                  "chrome://browser/content/browser-plugins.js");
+XPCOMUtils.defineLazyScriptGetter(this, "TabsInTitlebar",
+                                  "chrome://browser/content/browser-tabsintitlebar.js");
 XPCOMUtils.defineLazyScriptGetter(this, "PlacesTreeView",
                                   "chrome://browser/content/places/treeView.js");
 XPCOMUtils.defineLazyScriptGetter(this, ["PlacesInsertionPoint", "PlacesController",

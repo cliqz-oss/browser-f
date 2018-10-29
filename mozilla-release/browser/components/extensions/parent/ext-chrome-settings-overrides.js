@@ -52,6 +52,14 @@ XPCOMUtils.defineLazyGetter(this, "homepagePopup", () => {
   });
 });
 
+// CLIQZ-SPECIAL
+// If Preferences -> Show home page is checked then we need to show a home page specific for Cliqz.
+// An URL for this page is defined in a nsBrowserContentHandler.js file (defaultArgs).
+// handleInitialHomepagePopup MUST have a check against browser.startup.addFreshTab,
+// meaning that Cliqz home page to be displayed otherwise a blank page will be shown.
+// Other words, if browser.startup.addFreshTab is not tested here then selected Homepage
+// and new windows in Preferences will not take affect.
+//
 // When the browser starts up it will trigger the observer topic we're expecting
 // but that happens before our observer has been registered. To handle the
 // startup case we need to check if the preferences are set to load the homepage

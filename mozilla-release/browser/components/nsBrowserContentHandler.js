@@ -567,6 +567,7 @@ nsBrowserContentHandler.prototype = {
     var startPage = "";
 
     // DB-1878
+    // CLIQZ-SPECIAL
     // If 'Show home page' is selected then we need to take into account which option is chosen
     // to be a home page, meaning that we need to check a value of 'browser.startup.homepage'.
     // If a user does not check 'Show home page' option then when a browser starts one needs to show
