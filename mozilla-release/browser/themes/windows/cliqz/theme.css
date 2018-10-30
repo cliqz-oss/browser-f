@@ -355,7 +355,7 @@
 }
 #main-window.cliqz-blue #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab:after {
   opacity: 1;
-  border-left-color: #008bbe;
+  border-left-color: #0088bc;
 }
 #main-window.cliqz-blue #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab[visuallyselected=true] {
   border-top: 0;
@@ -367,7 +367,7 @@
   background-color: #f2f2f2;
 }
 #main-window.cliqz-blue #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab:hover:not([visuallyselected=true]) .tab-content {
-  background-color: #0098d5;
+  background-color: #009bd6;
   transition: background-color ease 150ms;
 }
 #main-window.cliqz-blue #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab .tab-label-container:not([selected=true]) {
@@ -378,7 +378,7 @@
   opacity: 1;
 }
 #main-window.cliqz-blue #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab:not([visuallyselected=true]) .tab-close-button:hover .toolbarbutton-icon {
-  background-color: #0074a2;
+  background-color: #0076a3;
 }
 #main-window.cliqz-blue #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab:not([visuallyselected=true]) .tab-close-button:hover:-moz-lwtheme {
   background-color: rgba(0, 0, 0, 0.2);
@@ -400,5 +400,68 @@
 }
 #main-window.cliqz-blue .tabs-newtab-button:hover,
 #main-window.cliqz-blue #new-tab-button:hover {
+  --toolbarbutton-icon-fill-opacity: 1;
+}
+
+#main-window.cliqz-purple {
+  /* Override light theme variables */
+}
+#main-window.cliqz-purple:-moz-lwtheme-darktext, #main-window.cliqz-purple:-moz-lwtheme {
+  --chrome-background-color: #6f3b80;
+}
+#main-window.cliqz-purple #navigator-toolbox, #main-window.cliqz-purple #navigator-toolbox #TabsToolbar,
+#main-window.cliqz-purple .tabbrowser-tab .tab-content {
+  background-color: #6f3b80;
+}
+#main-window.cliqz-purple #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab:first-of-type:-moz-lwtheme {
+  border-left: 0.5px solid rgba(0, 0, 0, 0.2);
+}
+#main-window.cliqz-purple #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab:after {
+  opacity: 1;
+  border-left-color: #512b5d;
+}
+#main-window.cliqz-purple #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab[visuallyselected=true] {
+  border-top: 0;
+}
+#main-window.cliqz-purple #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab[visuallyselected=true]:-moz-lwtheme .tab-content {
+  background-color: unset;
+}
+#main-window.cliqz-purple #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab[visuallyselected=true]:-moz-lwtheme-darktext .tab-content {
+  background-color: #f2f2f2;
+}
+#main-window.cliqz-purple #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab:hover:not([visuallyselected=true]) .tab-content {
+  background-color: #60336f;
+  transition: background-color ease 150ms;
+}
+#main-window.cliqz-purple #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab .tab-label-container:not([selected=true]) {
+  opacity: 1;
+}
+#main-window.cliqz-purple #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab .tab-label-container:not([selected=true]) .tab-label:not([selected=true]) {
+  color: #fff;
+  opacity: 1;
+}
+#main-window.cliqz-purple #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab:not([visuallyselected=true]) .tab-close-button:hover .toolbarbutton-icon {
+  background-color: #42234c;
+}
+#main-window.cliqz-purple #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab:not([visuallyselected=true]) .tab-close-button:hover:-moz-lwtheme {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 2px;
+}
+#main-window.cliqz-purple #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab:not([visuallyselected=true]) .tab-close-button:hover:-moz-lwtheme-darktext {
+  background-color: unset;
+  border-radius: unset;
+}
+#main-window.cliqz-purple #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab:not([visuallyselected=true]) .toolbarbutton-icon {
+  --toolbarbutton-icon-fill-opacity: 1;
+  fill: #fff;
+  stroke-opacity: 1;
+}
+#main-window.cliqz-purple .tabs-newtab-button,
+#main-window.cliqz-purple #new-tab-button {
+  --toolbarbutton-icon-fill-opacity: 0.75;
+  fill: #fff;
+}
+#main-window.cliqz-purple .tabs-newtab-button:hover,
+#main-window.cliqz-purple #new-tab-button:hover {
   --toolbarbutton-icon-fill-opacity: 1;
 }
