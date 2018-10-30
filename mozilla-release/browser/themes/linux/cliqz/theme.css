@@ -64,6 +64,13 @@
   min-height: 36px;
 }
 
+#main-window:-moz-lwtheme {
+  background-color: #464646 !important;
+}
+#main-window:-moz-lwtheme-darktext {
+  background-color: #D1D1D1 !important;
+}
+
 #navigator-toolbox {
   /* TABS TOOLBAR */
   /* NAVIGATION TOOLBAR */
@@ -231,6 +238,7 @@
 
 #main-window.cliqz-blue {
   /* Override light theme variables */
+  background-color: #00ADEF !important;
 }
 #main-window.cliqz-blue:-moz-lwtheme-darktext, #main-window.cliqz-blue:-moz-lwtheme {
   --chrome-background-color: #00ADEF;
