@@ -9,7 +9,6 @@ set -e
 set -x
 
 source cliqz_env.sh
-
 cd $SRC_BASE
 
 if $CLOBBER; then
@@ -38,8 +37,8 @@ echo '***** Packaging *****'
 ./mach package
 
 echo '***** Prepare build symbols *****'
-# Because of Rust problem with dsymutil on Mac (stylo) - only for Windows platform
-if [ $IS_WIN ]; then
+# Because of Rust problem with dsymutil on Mac (stylo) - only for Windows or mac cross builds
+if [[ $IS_WIN==true || $OSX_CROSS_BUILD==true ]]; then
   if [ "$MOZ_UPDATE_CHANNEL" == "release" ] || [ "$MOZ_UPDATE_CHANNEL" == "beta" ]; then
     ./mach buildsymbols
   fi

@@ -43,6 +43,13 @@ else
   echo 'Unknow OS -`$OSTYPE`'
 fi
 
+# check if we are cross compiling
+if [[ $IS_LINUX == "true" ]]; then
+  if [[ "$CROSS_TARGET" == *"apple-darwin"* ]];then
+    OSX_CROSS_BUILD=true
+  fi
+fi
+
 if [ $IS_WIN ]; then
   MAKE=mozmake
   export USE_STUB_INSTALLER=1
@@ -67,6 +74,8 @@ fi
 export MOZ_OBJDIR=../obj
 if [ "$CQZ_BUILD_64BIT_WINDOWS" == "1" ]; then
   export MOZCONFIG=browser/config/cliqz-release-64.mozconfig
+elif [ "$OSX_CROSS_BUILD" == "true" ]; then
+  export MOZCONFIG=browser/config/cliqz-release-cross.mozconfig
 else
   export MOZCONFIG=browser/config/cliqz-release.mozconfig
 fi
@@ -99,6 +108,11 @@ if [ "$CQZ_RELEASE_CHANNEL" == "release" ] || [ "$CQZ_RELEASE_CHANNEL" == "beta"
   export S3_UPLOAD_PATH_SERVICE=`echo cliqzfox/buildsymbols/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$MOZ_BUILD_DATE`
 fi
 
+if [ "$OSX_CROSS_BUILD" == "true" ]; then
+  export S3_UPLOAD_PATH="$S3_UPLOAD_PATH/crossbuild"
+  export S3_UPLOAD_PATH_SERVICE="$S3_UPLOAD_PATH_SERVICE/crossbuild"
+fi
+
 OBJ_DIR=$MOZ_OBJDIR
 SRC_BASE=mozilla-release
 
@@ -111,4 +125,7 @@ export CQZ_ADULT_DOMAINS_BF=../adult-domains.bin
 if [ "$CQZ_RELEASE_CHANNEL" == "beta" ] ; then
   export CQZ_TOR_MODE=1
 fi
-ROOT_PATH=$PWD
+
+export ROOT_PATH=$PWD
+export SHELL=$SHELL
+

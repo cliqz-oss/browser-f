@@ -1,0 +1,224 @@
+#!/usr/bin/env/ groovy
+@Library('cliqz-shared-library@vagrant') _
+
+/*
+ TRIGGERING JOB
+
+    ```groovy
+node(CROSS_BUILD_NODE){
+    step([
+        $class: 'CopyArtifact',
+        projectName: TRIGGERING_JOB_NAME,
+        selector: [$class: 'SpecificBuildSelector', buildNumber: TRIGGERING_BUILD_NUMBER],
+        target: 'artifacts'
+    ])
+
+    def helpers = load "artifacts/build-helpers.groovy"
+    stage("Checkout") {
+        helpers.checkoutSCM(REPO_URL, COMMIT_ID)
+    }
+    load ENTRY_POINT
+}
+    ```
+*/
+def imageName="browser-f/crossbuild"
+def image
+def depsVersion = ""
+
+depsVersion = readFile('mozilla-release/browser/config/version_display.txt').trim()
+
+withEnv(["depsVersion=$depsVersion"]){
+    sh """#!/bin/bash -l
+        set -e
+        set -x
+        cd docker/
+        ./get_osxcross_deps.sh
+    """
+}
+image = stage('Build docker image') {
+    //Build docker image. 
+    docker.build(imageName, '--no-cache --build-arg user=`whoami` --build-arg UID=`id -u` --build-arg GID=`id -g` -f docker/Dockerfile.osxcross ./docker/')
+}
+image.inside("-v ${pwd}:/opt/browser-f -w /opt/browser-f"){
+    withEnv([
+        "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL",
+        "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION"]){
+        stage('Biuld browser') {
+            sh """#!/bin/bash -l
+                set -e
+                set -x
+                ./magic_build_and_package.sh --clobber
+            """
+        }
+    }
+    stage('Stash artifacts'){
+        stash includes: 'obj/dist/*de.mac.dmg', name: 'dedmg'
+        stash includes: 'obj/dist/*en-US.mac.dmg', name: 'usdmg'
+         sh """#!/bin/bash -l
+            set -e
+            set -x
+            rm -rf obj/dist/*.mac.dmg
+        """
+    }
+}
+node('gideon') {
+    
+    writeFile file: 'Vagrantfile', text: '''
+    # -*- mode: ruby -*-
+    # vi: set ft=ruby :
+    
+    Vagrant.configure("2") do |config|
+        config.vm.box = "browser-ios-10.13.6"
+        config.vm.synced_folder ".", "/vagrant", disabled: true
+        config.vm.define "crossbuild" do |crossbuild|
+            crossbuild.vm.hostname = "browser-f-mac-crossbuild"
+            crossbuild.vm.network "public_network", :bridge => "en0: Ethernet 1", auto_config: false
+            crossbuild.vm.boot_timeout = 900
+            crossbuild.ssh.forward_agent = true
+            crossbuild.vm.provider "virtualbox" do |v|
+                v.gui = false
+                v.name = "crossbuild"
+                v.memory = ENV["NODE_MEMORY"]
+            end
+            crossbuild.vm.provision "shell", privileged: true, run: "always", inline: <<-SHELL
+                npm install -g appdmg
+            SHELL
+            crossbuild.vm.provision "shell", privileged: false, run: "always", inline: <<-SHELL
+                rm -f slave.jar
+                wget #{ENV['JENKINS_URL']}/jnlpJars/agent.jar
+                nohup java -jar agent.jar -jnlpUrl #{ENV['JENKINS_URL']}/computer/#{ENV['NODE_ID']}/slave-agent.jnlp -secret #{ENV["NODE_SECRET"]} &
+            SHELL
+        end
+    end
+    '''
+    vagrant.inside(
+        'Vagrantfile', 
+        '/jenkins',
+        4, // CPU
+        8000, // MEMORY
+        7000, // VNCPORT
+        false, // rebuild image
+    ){ nodeId ->
+        node(nodeId){
+            try{
+                stage('Checkout'){
+                    checkout([
+                        $class: 'GitSCM', 
+                        branches: [[name: '*/osxcrossbuild']], 
+                        doGenerateSubmoduleConfigurations: false, 
+                        extensions: [], 
+                        submoduleCfg: [], 
+                        userRemoteConfigs: [[url: 'https://github.com/cliqz-oss/browser-f.git']]
+                    ])
+                }
+                stage('Create dir and unstash'){
+                    sh """#!/bin/bash -l
+                        set -e
+                        set -x
+                        rm -rf obj/dist/*.dmg
+                        mkdir -p obj/dist/cliqz
+                        mkdir -p obj/dist/l10n-stage/cliqz
+                    """
+                    unstash 'dedmg'
+                    unstash 'usdmg'
+                }
+                stage('sign') {
+                    // remove old package - important if clobber was not done
+                    sh 'rm -rf obj/pkg || true'
+            
+                    withCredentials([
+                        [$class: 'FileBinding', credentialsId: MAC_CERT_CREDENTIAL_ID, variable: 'MAC_CERT'],
+                        [$class: 'StringBinding', credentialsId: MAC_CERT_PASS_CREDENTIAL_ID, variable: 'MAC_CERT_PASS']
+                    ]) {
+                        try {
+                            // create temporary keychain and make it a default one
+                            sh '''#!/bin/bash -l -x
+                                security create-keychain -p cliqz cliqz
+                                security list-keychains -s cliqz
+                                security default-keychain -s cliqz
+                                security unlock-keychain -p cliqz cliqz
+                            '''
+            
+                            sh '''#!/bin/bash -l +x
+                                security import $MAC_CERT -P $MAC_CERT_PASS -k cliqz -A
+                                security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k cliqz cliqz
+                            '''
+                            withEnv(["MAC_CERT_NAME=$MAC_CERT_NAME"]){
+                                sh "./sign_mac.sh"
+                            }
+                        } finally {
+                            sh '''#!/bin/bash -l -x
+                                security delete-keychain cliqz
+                                security list-keychains -s login.keychain
+                                security default-keychain -s login.keychain
+                                true
+                            '''
+                        }
+                    }
+                }
+                stage('Stash signed artifacts'){
+                    stash includes: 'obj/dist/*de.mac.dmg', name: 'signeddedmg'
+                    stash includes: 'obj/dist/*en-US.mac.dmg', name: 'signedusdmg'
+                     sh """#!/bin/bash -l
+                    set -e
+                    set -x
+                    rm -rf obj/dist/*mac.dmg
+                """
+                }
+            }
+            catch(all) {
+                jobStatus = 'FAIL'
+                print "Something Failed. Check the above logs."
+                currentBuild.result = 'FAILURE'
+            }
+        }
+    }
+}
+image.inside("-w /opt/browser-f"){
+    stage('Unstash signed artifacts'){
+        unstash 'signeddedmg'
+        unstash 'signedusdmg'
+    }
+    stage('upload') {
+        withEnv(['CQZ_CERT_DB_PATH=/home/jenkins/certs', "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION"]) {
+            try {
+                //expose certs
+                withCredentials([
+                    [$class: 'FileBinding', credentialsId: MAR_CERT_CREDENTIAL_ID, variable: 'MAR_CERT'],
+                    [$class: 'StringBinding', credentialsId: MAR_CERT_PASS_CREDENTIAL_ID, variable: 'MAR_CERT_PASS']]) {
+
+                    sh '''#!/bin/bash -x
+                        mkdir $CQZ_CERT_DB_PATH
+                        certutil -N -d $CQZ_CERT_DB_PATH --empty-password
+                        set +x
+                        pk12util -i $MAR_CERT -W $MAR_CERT_PASS -d $CQZ_CERT_DB_PATH
+                        certutil -L -d $CQZ_CERT_DB_PATH
+                    '''
+                }
+
+                withCredentials([[
+                    $class: 'UsernamePasswordMultiBinding',
+                    credentialsId: CQZ_AWS_CREDENTIAL_ID,
+                    passwordVariable: 'AWS_SECRET_ACCESS_KEY',
+                    usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
+
+                    sh """#!/bin/bash -l 
+                        set -x
+                        ./magic_upload_files.sh
+                    """
+
+                    if (CQZ_BUILD_DE_LOCALIZATION == "1") {
+                      archiveArtifacts 'obj/en_build_properties.json'
+                      archiveArtifacts 'obj/de_build_properties.json'
+                    } else {
+                      archiveArtifacts 'obj/build_properties.json'
+                    }
+                }
+            } finally {
+                // remove certs
+                sh 'rm -r $CQZ_CERT_DB_PATH || true'
+            }
+        }
+    }
+}
+
