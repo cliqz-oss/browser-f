@@ -30,7 +30,11 @@ if [ $CQZ_CERT_DB_PATH ]; then
     # signmar is somehow dependent on its execution path. It refuses to work when
     # launched using relative paths, and gives unrelated error:
     # "Could not initialize NSS". BEWARE!
-    SIGNMAR_ABS_DIR=$(cd dist/bin/; pwd)
+    if [ "$OSX_CROSS_BUILD" == "true" ]; then
+      SIGNMAR_ABS_DIR=$(cd /opt/; pwd)
+    else
+      SIGNMAR_ABS_DIR=$(cd dist/bin/; pwd)
+    fi
     $SIGNMAR_ABS_DIR/signmar -d $CQZ_CERT_DB_PATH -n "$MAR_CERT_NAME" \
       -s $MAR_FILE $MAR_FILE.signed
 
