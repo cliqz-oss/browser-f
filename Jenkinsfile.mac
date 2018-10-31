@@ -84,6 +84,7 @@ withEnv([
 
                 sh '''#!/bin/bash -l +x
                     security import $MAC_CERT -P $MAC_CERT_PASS -k cliqz -A
+                    security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k cliqz cliqz
                 '''
 
                 withEnv(["MAC_CERT_NAME=$MAC_CERT_NAME"]) {
