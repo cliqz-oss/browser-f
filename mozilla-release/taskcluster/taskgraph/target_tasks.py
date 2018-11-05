@@ -28,6 +28,13 @@ def filter_out_nightly(task, parameters):
     return not task.attributes.get('nightly') or parameters.get('include_nightly')
 
 
+def filter_out_cron(task, parameters):
+    """
+    Filter out tasks that run via cron.
+    """
+    return not task.attributes.get('cron')
+
+
 def filter_for_project(task, parameters):
     """Filter tasks by project.  Optionally enable nightlies."""
     run_on_projects = set(task.attributes.get('run_on_projects', []))
@@ -93,7 +100,7 @@ def filter_beta_release_tasks(task, parameters, ignore_kinds=None, allow_l10n=Fa
 def standard_filter(task, parameters):
     return all(
         filter_func(task, parameters) for filter_func in
-        (filter_out_nightly, filter_for_project)
+        (filter_out_nightly, filter_out_cron, filter_for_project)
     )
 
 
@@ -332,6 +339,12 @@ def target_tasks_promote_desktop(full_task_graph, parameters, graph_config):
             if 'secondary' in task.kind:
                 return False
 
+        # FIXME: Bug 1499440 - temp hack to filter out the mark-as-started task
+        # until Ship-itv2 is rolled-out for release/esr60 branches as well
+        if ('release-mark-as-started' in task.kind
+                and parameters['project'] != 'mozilla-beta'):
+            return False
+
         if task.attributes.get('shipping_phase') == 'promote':
             return True
 
@@ -401,6 +414,11 @@ def target_tasks_promote_fennec(full_task_graph, parameters, graph_config):
         attr = task.attributes.get
         # Don't ship single locale fennec anymore - Bug 1408083
         if attr("locale") or attr("chunk_locales"):
+            return False
+        # FIXME: Bug 1499440 - temp hack to filter out the mark-as-started task
+        # until Ship-itv2 is rolled-out for release/esr60 branches as well
+        if ('release-mark-as-started' in task.kind
+                and parameters['project'] != 'mozilla-beta'):
             return False
         if task.label in filtered_for_project:
             if task.kind not in ('balrog', 'push-apk'):
@@ -597,6 +615,8 @@ def target_tasks_bouncer_check(full_task_graph, parameters, graph_config):
     """Select the set of tasks required to perform bouncer version verification.
     """
     def filter(task):
+        if not filter_for_project(task, parameters):
+            return False
         # For now any task in the repo-update kind is ok
         return task.kind in ['cron-bouncer-check']
     return [l for l, t in full_task_graph.tasks.iteritems() if filter(t)]
