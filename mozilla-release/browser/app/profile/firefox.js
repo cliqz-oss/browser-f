@@ -1248,19 +1248,19 @@ pref("browser.newtab.preload", false);
 pref("browser.newtabpage.enabled", true);
 
 // Activity Stream prefs that control to which page to redirect
-pref("browser.newtabpage.activity-stream.prerender", true);
+pref("browser.newtabpage.activity-stream.prerender", false);
 #ifndef RELEASE_OR_BETA
 pref("browser.newtabpage.activity-stream.debug", false);
 #endif
 
-pref("browser.library.activity-stream.enabled", true);
+pref("browser.library.activity-stream.enabled", false);
 
 // The remote FxA root content URL for the Activity Stream firstrun page.
 pref("browser.newtabpage.activity-stream.fxaccounts.endpoint", "https://accounts.firefox.com/");
 
 // The pref that controls if the search shortcuts experiment is on
 #ifdef EARLY_BETA_OR_EARLIER
-pref("browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts", true);
+pref("browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts", false);
 #else
 pref("browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts", false);
 #endif
@@ -1743,10 +1743,10 @@ pref("browser.onboarding.newtour", "performance,private,screenshots,addons,custo
 pref("browser.onboarding.updatetour", "performance,library,screenshots,singlesearch,customize,sync");
 
 // Preference that allows individual users to disable Screenshots.
-pref("extensions.screenshots.disabled", false);
+pref("extensions.screenshots.disabled", true);
 // Preference that allows individual users to leave Screenshots enabled, but
 // disable uploading to the server.
-pref("extensions.screenshots.upload-disabled", false);
+pref("extensions.screenshots.upload-disabled", true);
 
 // Preferences for BrowserErrorReporter.jsm
 // Only collect errors on Nightly, and specifically not local builds
