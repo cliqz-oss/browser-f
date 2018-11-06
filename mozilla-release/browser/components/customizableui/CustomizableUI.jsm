@@ -353,7 +353,9 @@ var CustomizableUIInternal = {
         "find-button",
         "preferences-button",
         "add-ons-button",
+#if 0
         "sync-button",
+#endif
         "mobilepairing_btn", // Cliqz connect/pairing
       ];
 
