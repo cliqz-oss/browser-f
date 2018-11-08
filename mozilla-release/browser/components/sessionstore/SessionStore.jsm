@@ -55,6 +55,7 @@ const OBSERVING = [
 // final URLs after redirections.
 // See DB-1219.
 const redirectedURLs = {
+  "about:home": "resource://cliqz/freshtab/home.html",
   "about:cliqz": "resource://cliqz/freshtab/home.html",
 };
 
@@ -3435,7 +3436,7 @@ var SessionStoreInternal = {
     // This is intended to work when both tab restore and fresh tab features
     // are enabled.
     if (!overwriteTabs) {
-      let homePages = aWindow.gHomeButton.getHomePage().split("|")
+      let homePages = HomePage.get().split("|")
         // Use final URLs that get into session after redirection (see DB-1219).
         .map(url => {
           return redirectedURLs[url] || url;
