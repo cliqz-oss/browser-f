@@ -156,6 +156,10 @@ function getPostUpdateOverridePage(defaultOverridePage) {
   return update.getProperty("openURL") || defaultOverridePage;
 }
 
+function isCommandLineInitialLaunch(cmdLine) {
+  return cmdLine.state == Ci.nsICommandLine.STATE_INITIAL_LAUNCH;
+}
+
 /**
  * Open a browser window. If this is the initial launch, this function will
  * attempt to use the navigator:blank window opened by nsBrowserGlue.js during
@@ -187,7 +191,7 @@ function openBrowserWindow(cmdLine, triggeringPrincipal, urlOrUrlList, postData 
   let args;
   if (!urlOrUrlList) {
     // Just pass in the defaultArgs directly. We'll use system principal on the other end.
-    args = [gBrowserContentHandler.defaultArgs];
+    args = [gBrowserContentHandler.getDefaultArgs(isCommandLineInitialLaunch(cmdLine))];
   } else if (Array.isArray(urlOrUrlList)) {
     // There isn't an explicit way to pass a principal here, so we load multiple URLs
     // with system principal when we get to actually loading them.
@@ -220,7 +224,7 @@ function openBrowserWindow(cmdLine, triggeringPrincipal, urlOrUrlList, postData 
             triggeringPrincipal];
   }
 
-  if (cmdLine.state == Ci.nsICommandLine.STATE_INITIAL_LAUNCH) {
+  if (isCommandLineInitialLaunch(cmdLine)) {
     let win = Services.wm.getMostRecentWindow("navigator:blank");
     if (win) {
       // Remove the windowtype of our blank window so that we don't close it
@@ -433,7 +437,7 @@ nsBrowserContentHandler.prototype = {
     // PB builds.
     if (cmdLine.handleFlag("private", false) && PrivateBrowsingUtils.enabled) {
       PrivateBrowsingUtils.enterTemporaryAutoStartMode();
-      if (cmdLine.state == Ci.nsICommandLine.STATE_INITIAL_LAUNCH) {
+      if (isCommandLineInitialLaunch(cmdLine)) {
         let win = Services.wm.getMostRecentWindow("navigator:blank");
         if (win) {
           win.docShell
@@ -490,6 +494,10 @@ nsBrowserContentHandler.prototype = {
   /* nsIBrowserHandler */
 
   get defaultArgs() {
+    return this.getDefaultArgs();
+  },
+
+  getDefaultArgs: function bch_getDefaultArgs(initialLaunch) {
     var prefb = Services.prefs;
 
     if (!gFirstWindow) {
@@ -564,30 +572,24 @@ nsBrowserContentHandler.prototype = {
       }
     }
 
+    // CLIQZ-SPECIAL, DB-1849, DB-1878
+    // If this is initial launch (meaning that isCommandLineInitialLaunch returns true)
+    // then we need to show a Cliqz home page only if browser.startup.addFreshTab is true.
+    // Otherwise a blank page should be displayed.
     var startPage = "";
-
-    // DB-1878
-    // CLIQZ-SPECIAL
-    // If 'Show home page' is selected then we need to take into account which option is chosen
-    // to be a home page, meaning that we need to check a value of 'browser.startup.homepage'.
-    // If a user does not check 'Show home page' option then when a browser starts one needs to show
-    // a blank page (testing whether a profile is overridden comes further in code).
-    if (prefb.getBoolPref('browser.startup.addFreshTab')) {
-      try {
-        // We do not need to get a 'Show home page' option checked
-        // to show a page a user whats to be displayed as a default
-        // when she/he opens a new window / homepage.
-        // That is why we do not test against browser.startup.addFreshTab prop here.
-        // Calling HomePage.get will trigger a getter defined in resource:///modules/HomePage.jsm.
-        // Services.prefs.getComplexValue will return an object
-        // which contains a user predefined homepage url.
-        startPage = HomePage.get().replace("about:home", "resource://cliqz/freshtab/home.html");
-      } catch (e) {
-        Cu.reportError(e);
-      }
-    } else {
-      startPage = "about:blank";
+    try {
+      startPage = HomePage.get().replace("about:home", "resource://cliqz/freshtab/home.html");
+    } catch (e) {
+      Cu.reportError(e);
     }
+
+    if (initialLaunch) {
+      if (!prefb.getBoolPref('browser.startup.addFreshTab')) {
+        startPage = 'about:blank';
+      }
+    }
+    // In a case this is not an initial launch of a browser (a new window is opened)
+    // then we leave a startPage value as it is (HomePage.get if no error is thrown).
 
     if (startPage == "about:blank")
       startPage = "";
@@ -770,8 +772,7 @@ nsDefaultCommandLineHandler.prototype = {
     }
 
     if (urilist.length) {
-      if (cmdLine.state != Ci.nsICommandLine.STATE_INITIAL_LAUNCH &&
-          urilist.length == 1) {
+      if (!isCommandLineInitialLaunch(cmdLine) && urilist.length == 1) {
         // Try to find an existing window and load our URI into the
         // current tab, new tab, or new window as prefs determine.
         try {
@@ -789,7 +790,7 @@ nsDefaultCommandLineHandler.prototype = {
 
     } else if (!cmdLine.preventDefault) {
       if (AppConstants.isPlatformAndVersionAtLeast("win", "10") &&
-          cmdLine.state != Ci.nsICommandLine.STATE_INITIAL_LAUNCH &&
+          !isCommandLineInitialLaunch(cmdLine) &&
           WindowsUIUtils.inTabletMode) {
         // In windows 10 tablet mode, do not create a new window, but reuse the existing one.
         let win = BrowserWindowTracker.getTopWindow();
