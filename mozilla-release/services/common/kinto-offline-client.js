@@ -490,9 +490,14 @@ class IDB extends _base2.default {
     const storeName = name || this.storeName;
     // On Safari, calling IDBDatabase.transaction with mode == undefined raises
     // a TypeError.
-    const transaction = mode ? this._db.transaction([storeName], mode) : this._db.transaction([storeName]);
-    const store = transaction.objectStore(storeName);
-    return { transaction, store };
+    try {
+      // TODO: introducing try catch to subsidize teh console error, need to be removed with DB-1909
+      const transaction = mode ? this._db.transaction([storeName], mode) : this._db.transaction([storeName]);
+      const store = transaction.objectStore(storeName);
+      return { transaction, store };
+    } catch(e) {
+      return {};
+    }
   }
 
   /**
@@ -675,11 +680,16 @@ class IDB extends _base2.default {
     await this.open();
     return new Promise((resolve, reject) => {
       const { transaction, store } = this.prepare(undefined, "__meta__");
-      const request = store.get(`${this.storeName}-lastModified`);
-      transaction.onerror = event => reject(event.target.error);
-      transaction.oncomplete = event => {
-        resolve(request.result && request.result.value || null);
-      };
+      try {
+        // TODO: introducing try catch to subsidize teh console error, need to be removed with DB-1909
+        const request = store.get(`${this.storeName}-lastModified`);
+        transaction.onerror = event => reject(event.target.error);
+        transaction.oncomplete = event => {
+          resolve(request.result && request.result.value || null);
+        };
+      } catch(e) {
+        reject(e)
+      }
     });
   }
 
