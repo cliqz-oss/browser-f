@@ -311,25 +311,30 @@ class RemoteSettingsClient {
   async get(options = {}) {
     // In Bug 1451031, we will do some jexl filtering to limit the list items
     // whose target is matched.
-    const { filters = {}, order } = options;
-    const c = await this.openCollection();
+    try {
+      // TODO: introducing try catch to subsidize teh console error, need to be removed with DB-1909
+      const { filters = {}, order } = options;
+      const c = await this.openCollection();
 
-    const timestamp = await c.db.getLastModified();
-    // If the local database was never synchronized, then we attempt to load
-    // a packaged JSON dump.
-    if (timestamp == null) {
-      try {
-        const { data } = await loadDumpFile(this.bucketName, this.collectionName);
-        await c.loadDump(data);
-      } catch (e) {
-        // Report but return an empty list since there will be no data anyway.
-        Cu.reportError(e);
-        return [];
+      const timestamp = await c.db.getLastModified();
+      // If the local database was never synchronized, then we attempt to load
+      // a packaged JSON dump.
+      if (timestamp == null) {
+        try {
+          const { data } = await loadDumpFile(this.bucketName, this.collectionName);
+          await c.loadDump(data);
+        } catch (e) {
+          // Report but return an empty list since there will be no data anyway.
+          Cu.reportError(e);
+          return [];
+        }
       }
-    }
 
-    const { data } = await c.list({ filters, order });
-    return this._filterEntries(data);
+      const { data } = await c.list({ filters, order });
+      return this._filterEntries(data);
+    } catch(e) {
+      return [];
+    }
   }
 
   /**
