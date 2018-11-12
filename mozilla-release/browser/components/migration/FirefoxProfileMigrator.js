@@ -37,9 +37,6 @@ ChromeUtils.defineModuleGetter(this, "Sqlite",
 ChromeUtils.defineModuleGetter(this, "FormHistory",
                                "resource://gre/modules/FormHistory.jsm");
 
-XPCOMUtils.defineLazyServiceGetter(this, "INIParserFactory",
-    "@mozilla.org/xpcom/ini-processor-factory;1", "nsIINIParserFactory");
-
 const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 
 let fxProductDir = FileUtils.getDir(
@@ -126,7 +123,9 @@ FirefoxProfileMigrator.prototype._getAllProfiles = function() {
         profilesIni.isFile() &&
         profilesIni.isReadable()))
     return profiles;
-  const iniParser = INIParserFactory.createINIParser(profilesIni);
+  const factory = Cc["@mozilla.org/xpcom/ini-parser-factory;1"].
+                getService(Ci.nsIINIParserFactory);
+  const iniParser = factory.createINIParser(profilesIni);
 
   const sections = iniParser.getSections();
   const profileSectionNameRE = /^Profile\d+$/;
