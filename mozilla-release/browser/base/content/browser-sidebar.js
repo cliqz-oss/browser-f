@@ -25,6 +25,7 @@ var SidebarUI = {
         menuId: "menu_historySidebar",
         buttonId: "sidebar-switcher-history",
       }],
+#ifdef MOZ_SERVICES_SYNC
       ["viewTabsSidebar", {
         title: document.getElementById("sidebar-switcher-tabs")
                        .getAttribute("label"),
@@ -32,6 +33,7 @@ var SidebarUI = {
         menuId: "menu_tabsSidebar",
         buttonId: "sidebar-switcher-tabs",
       }],
+#endif
     ]);
   },
 
