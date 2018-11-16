@@ -69,7 +69,7 @@
   </wizardpage>
 
   <wizardpage id="importItems" pageid="importItems" label="&importItems.title;"
-              next="migrating"
+              next="selectAddons"
               onpageshow="return MigrationWizard.onImportItemsPageShow();"
               onpagerewound="return MigrationWizard.onImportItemsPageRewound();"
               onpageadvanced="return MigrationWizard.onImportItemsPageAdvanced();"
@@ -77,6 +77,17 @@
     <description control="dataSources">&importItems.label;</description>
 
     <vbox id="dataSources" style="overflow: auto; -moz-appearance: listbox" align="left" flex="1" role="group"/>
+  </wizardpage>
+
+  <wizardpage id="selectAddons" pageid="selectAddons" label="&selectAddons.title;"
+              next="migrating"
+              onpageshow="return MigrationWizard.onImportAddonsPageShow();"
+              onpagerewound="return MigrationWizard.onImportAddonsPageRewound();"
+              onpageadvanced="return MigrationWizard.onImportAddonsPageAdvanced();"
+              oncommand="MigrationWizard.onImportAddonsCommand();">
+    <description control="availableAddons">&selectAddons.label;</description>
+
+    <vbox id="availableAddons" style="overflow: auto; -moz-appearance: listbox" align="left" flex="1" role="group"/>
   </wizardpage>
 
   <wizardpage id="migrating" pageid="migrating" label="&migrating.title;"

@@ -213,6 +213,15 @@ var MigratorPrototype = {
     return types.reduce((a, b) => { a |= b; return a; }, 0);
   },
 
+  getAddons: async function MP_getAddons(aProfile) {
+    const resources = await this._getMaybeCachedResources(aProfile) || [];
+    const addons = resources.filter(r => r.type === MigrationUtils.resourceTypes.ADDONS)
+    if (addons.length > 0) {
+      return addons[0].data
+    }
+    return [];
+  },
+
   getBrowserKey: function MP_getBrowserKey() {
     return this.contractID.match(/\=([^\=]+)$/)[1];
   },
@@ -471,6 +480,7 @@ var MigrationUtils = Object.freeze({
     BOOKMARKS:  Ci.nsIBrowserProfileMigrator.BOOKMARKS,
     OTHERDATA:  Ci.nsIBrowserProfileMigrator.OTHERDATA,
     SESSION:    Ci.nsIBrowserProfileMigrator.SESSION,
+    ADDONS:     Ci.nsIBrowserProfileMigrator.ADDONS,
   },
 
   /**

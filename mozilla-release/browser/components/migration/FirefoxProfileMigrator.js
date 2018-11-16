@@ -231,7 +231,7 @@ FirefoxProfileMigrator.prototype.getLastUsedDate = function() {
   return Promise.resolve(new Date(0));
 };
 
-FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileDir, currentProfileDir) {
+FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourceProfileDir, currentProfileDir) {
   let getFileResource = (aMigrationType, aFileNames) => {
     let files = [];
     for (let fileName of aFileNames) {
@@ -501,6 +501,42 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
     };
   }.bind(this);
 
+  let getAddons = async function() {
+    try {
+      let oldPath = OS.Path.join(sourceProfileDir.path, "addons.json");
+      let exists = await OS.File.exists(oldPath);
+      if (exists) {
+        let raw = await OS.File.read(oldPath, {encoding: "utf-8"});
+        let data = JSON.parse(raw);
+        if (data && data.addons && data.addons.length > 0) {
+          // Write it to prefs.js and flush the file.
+          //Services.prefs.setStringPref("extensions.cliqz.migrate_addons", JSON.stringify(data.addons));
+          //savePrefs();
+          return {
+            name: "addons",
+            type: MigrationUtils.resourceTypes.ADDONS,
+            data: data.addons,
+            migrate: async aCallback => {
+              try {
+                const sorceExtensionDirectory = OS.Path.join(sourceProfileDir.path, "extensions");
+                const destExtensionDirectory = OS.Path.join(currentProfileDir.path, "extensions");  
+                //await OS.File.copy(oldPath, OS.Path.join(currentProfileDir.path, "addons.json"));
+                
+              } catch (ex) {
+                aCallback(false);
+                return;
+              }
+              aCallback(true);
+            },
+          }
+        }
+      }
+    } catch (ex) {
+      return false;
+    }
+    return false;
+  }.bind(this);
+
   function savePrefs() {
     // If we've used the pref service to write prefs for the new profile, it's too
     // early in startup for the service to have a profile directory, so we have to
@@ -511,11 +547,14 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
   }
 
   let types = MigrationUtils.resourceTypes;
+
   if (!this.startupOnlyMigrator && !MigrationUtils.isStartupMigration) {
+
+    const addons = await getAddons();
     let places = getHistoryAndBookmarksResource("places.sqlite");
     let cookies = getCookiesResource("cookies.sqlite");
     let formData = getFormDataResource("formhistory.sqlite");
-    return [places, cookies, formData].filter(r => r);
+    return [places, cookies, formData, addons].filter(r => r);
   }
   let places = getFileResource(types.HISTORY, ["places.sqlite"]);
   let favicons = getFileResource(types.HISTORY, ["favicons.sqlite"]);
