@@ -551,9 +551,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
   }
 
   let types = MigrationUtils.resourceTypes;
-
   if (!this.startupOnlyMigrator && !MigrationUtils.isStartupMigration) {
-
     const addons = await getAddons();
     let places = getHistoryAndBookmarksResource("places.sqlite");
     let cookies = getCookiesResource("cookies.sqlite");
