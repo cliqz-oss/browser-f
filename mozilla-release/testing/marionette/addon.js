@@ -18,6 +18,7 @@ const ERRORS = {
   [-3]: "ERROR_CORRUPT_FILE: The file appears to be corrupt.",
   [-4]: "ERROR_FILE_ACCESS: There was an error accessing the filesystem.",
   [-5]: "ERROR_SIGNEDSTATE_REQUIRED: The addon must be signed and isn't.",
+  [-9]: "ERROR_SIGNEDSTATE_CLIQZ: Add-on was not installed as it is already integrated in your browser.",
 };
 
 async function installAddon(file) {

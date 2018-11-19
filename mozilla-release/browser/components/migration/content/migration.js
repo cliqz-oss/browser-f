@@ -386,7 +386,7 @@ var MigrationWizard = { /* exported MigrationWizard */
       );
     }
 
-    await this._migrator.migrate(this._itemsFlags, this._autoMigrate, this._selectedProfile, this._addons);
+    await this._migrator.migrate(this._itemsFlags, this._autoMigrate, this._selectedProfile);
 
     Services.telemetry.getHistogramById("FX_MIGRATION_SOURCE_BROWSER")
                       .add(MigrationUtils.getSourceIdForTelemetry(this._source));

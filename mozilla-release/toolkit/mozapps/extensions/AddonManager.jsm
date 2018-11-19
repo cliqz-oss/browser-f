@@ -3051,6 +3051,8 @@ var AddonManager = {
     ["ERROR_UNEXPECTED_ADDON_TYPE", -6],
     // The addon did not have the expected ID
     ["ERROR_INCORRECT_ID", -7],
+    // CLIQZ: Addon is already integrated as system addon
+    ["ERROR_SIGNEDSTATE_CLIQZ", -9]
   ]),
   // The update check timed out
   ERROR_TIMEOUT: -1,
@@ -3223,6 +3225,8 @@ var AddonManager = {
   SIGNEDSTATE_SYSTEM: 3,
   // Add-on is signed with a "Mozilla Extensions" certificate
   SIGNEDSTATE_PRIVILEGED: 4,
+  // CLIQZ: Add-on is signed with a "Mozilla Extensions" certificate
+  SIGNEDSTATE_CLIQZ: -9,
 
   // Constants for the Addon.userDisabled property
   // Indicates that the userDisabled state of this add-on is currently

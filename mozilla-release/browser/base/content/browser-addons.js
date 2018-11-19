@@ -381,7 +381,7 @@ var gXPInstallObserver = {
 
         let error = (host || install.error == 0) ? "addonInstallError" : "addonLocalInstallError";
         let args;
-        if (install.error < 0) {
+        if (install.error < 0 || install.error == AddonManager.SIGNEDSTATE_CLIQZ) {
           error += install.error;
           args = [brandShortName, install.name];
         } else if (install.addon.blocklistState == Ci.nsIBlocklistService.STATE_BLOCKED) {
