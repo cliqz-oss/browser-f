@@ -186,7 +186,8 @@ var MigrationWizard = { /* exported MigrationWizard */
     // check for more than one source profile
     var sourceProfiles = this.spinResolve(this._migrator.getSourceProfiles());
     if (this._skipImportSourcePage) {
-      this._wiz.currentPage.next = "migrating";
+      // Trishul: check if no addons, then move to migrate page directly.
+      this._wiz.currentPage.next = "selectAddons";
     } else if (sourceProfiles && sourceProfiles.length > 1) {
       this._wiz.currentPage.next = "selectProfile";
     } else {
@@ -276,6 +277,7 @@ var MigrationWizard = { /* exported MigrationWizard */
       }
     }
     if(!hasAddon) this._wiz.currentPage.next = "migrating";
+    else this._wiz.currentPage.next = "selectAddons";
   },
 
   onImportItemsPageRewound() {
@@ -333,6 +335,10 @@ var MigrationWizard = { /* exported MigrationWizard */
         if(this._addons.has(checkbox.id))
         checkbox.checked = true;
       })
+    } else {
+      // Trishul: this needs to be cross checked, its used in case where there is only 1 profile and no addons.
+      // The migration page should be shown instead of blank addons page.
+      this._wiz.currentPage.next = "migrating";
     }
   },
 
@@ -347,11 +353,11 @@ var MigrationWizard = { /* exported MigrationWizard */
     for (var i = 0; i < dataSources.childNodes.length; ++i) {
       var checkbox = dataSources.childNodes[i];
       if (checkbox.localName == "checkbox" && checkbox.checked)
-        this._addons.add(parseInt(checkbox.id));
+        this._addons.add(checkbox.id);
     }
   },
 
-  onImportAddonCommand() {
+  onImportAddonsCommand() {
     // can always go next
     this._wiz.canAdvance = true;
   },
@@ -374,7 +380,13 @@ var MigrationWizard = { /* exported MigrationWizard */
   },
 
   async onMigratingMigrate() {
-    await this._migrator.migrate(this._itemsFlags, this._autoMigrate, this._selectedProfile);
+    if(this._addons.size > 0) {
+      Services.prefs.setStringPref(
+        "extensions.cliqz.migrate_addons", JSON.stringify(Array.from(this._addons))
+      );
+    }
+
+    await this._migrator.migrate(this._itemsFlags, this._autoMigrate, this._selectedProfile, this._addons);
 
     Services.telemetry.getHistogramById("FX_MIGRATION_SOURCE_BROWSER")
                       .add(MigrationUtils.getSourceIdForTelemetry(this._source));

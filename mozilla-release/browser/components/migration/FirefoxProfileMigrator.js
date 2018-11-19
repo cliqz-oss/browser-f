@@ -518,10 +518,14 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
             data: data.addons,
             migrate: async aCallback => {
               try {
+                var addonsString = Services.prefs.getStringPref("extensions.cliqz.migrate_addons", "");
                 const sorceExtensionDirectory = OS.Path.join(sourceProfileDir.path, "extensions");
                 const destExtensionDirectory = OS.Path.join(currentProfileDir.path, "extensions");  
-                //await OS.File.copy(oldPath, OS.Path.join(currentProfileDir.path, "addons.json"));
-                
+                const selectedAddons = JSON.parse(addonsString);
+                selectedAddons.forEach(async addon => {
+                  await OS.File.copy(OS.Path.join(sorceExtensionDirectory, `${addon}.xpi`), OS.Path.join(destExtensionDirectory, `${addon}.xpi`));
+                });
+                Services.prefs.setStringPref("extensions.cliqz.migrate_addons", "");
               } catch (ex) {
                 aCallback(false);
                 return;
