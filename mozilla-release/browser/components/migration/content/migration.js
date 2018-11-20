@@ -186,7 +186,7 @@ var MigrationWizard = { /* exported MigrationWizard */
     // check for more than one source profile
     var sourceProfiles = this.spinResolve(this._migrator.getSourceProfiles());
     if (this._skipImportSourcePage) {
-      // Trishul: check if no addons, then move to migrate page directly.
+      // CLIQZ-TODO: check if no addons, then move to migrate page directly.
       this._wiz.currentPage.next = "selectAddons";
     } else if (sourceProfiles && sourceProfiles.length > 1) {
       this._wiz.currentPage.next = "selectProfile";
@@ -263,7 +263,7 @@ var MigrationWizard = { /* exported MigrationWizard */
     for (var i = 0; i < 16; ++i) {
       var itemID = (items >> i) & 0x1 ? Math.pow(2, i) : 0;
       // CLIQZ - If no addons found set next button to final step 4
-      if(itemID == Ci.nsIBrowserProfileMigrator.ADDONS) {
+      if (itemID == Ci.nsIBrowserProfileMigrator.ADDONS) {
         hasAddon = true;
       }
       if (itemID > 0) {
@@ -276,8 +276,10 @@ var MigrationWizard = { /* exported MigrationWizard */
           checkbox.checked = true;
       }
     }
-    if(!hasAddon) this._wiz.currentPage.next = "migrating";
-    else this._wiz.currentPage.next = "selectAddons";
+    if (!hasAddon)
+      this._wiz.currentPage.next = "migrating";
+    else
+      this._wiz.currentPage.next = "selectAddons";
   },
 
   onImportItemsPageRewound() {
@@ -293,14 +295,13 @@ var MigrationWizard = { /* exported MigrationWizard */
       var checkbox = dataSources.childNodes[i];
       if (checkbox.localName == "checkbox" && checkbox.checked) {
         this._itemsFlags |= parseInt(checkbox.id);
-        // CLIQZ
-        // If addon is not selected, directly advance to step 4
-        if(checkbox.id == Ci.nsIBrowserProfileMigrator.ADDONS) {
+        // CLIQZ: If addon is not selected, directly advance to step 4
+        if (checkbox.id == Ci.nsIBrowserProfileMigrator.ADDONS)
           isAddonSelected = true;
-        }
       }
     }
-    if(!isAddonSelected) this._wiz.currentPage.next = "migrating";
+    if (!isAddonSelected)
+      this._wiz.currentPage.next = "migrating";
   },
 
   onImportItemCommand() {
@@ -326,7 +327,7 @@ var MigrationWizard = { /* exported MigrationWizard */
 
     const addons = this.spinResolve(this._migrator.getAddons(this._selectedProfile)) || [];
 
-    if(addons.length > 0) {
+    if (addons.length > 0) {
       addons.forEach(addon => {
         const checkbox = document.createElement("checkbox");
         checkbox.id = addon.id;
@@ -336,7 +337,7 @@ var MigrationWizard = { /* exported MigrationWizard */
         checkbox.checked = true;
       })
     } else {
-      // Trishul: this needs to be cross checked, its used in case where there is only 1 profile and no addons.
+      // CLIQZ-TODO: this needs to be cross checked, its used in case where there is only 1 profile and no addons.
       // The migration page should be shown instead of blank addons page.
       this._wiz.currentPage.next = "migrating";
     }
@@ -348,10 +349,10 @@ var MigrationWizard = { /* exported MigrationWizard */
   },
 
   onImportAddonsPageAdvanced() {
-    var dataSources = document.getElementById("availableAddons");
+    const dataSources = document.getElementById("availableAddons");
     this._addons = new Set();
-    for (var i = 0; i < dataSources.childNodes.length; ++i) {
-      var checkbox = dataSources.childNodes[i];
+    for (let i = 0; i < dataSources.childNodes.length; ++i) {
+      const checkbox = dataSources.childNodes[i];
       if (checkbox.localName == "checkbox" && checkbox.checked)
         this._addons.add(checkbox.id);
     }
@@ -380,9 +381,9 @@ var MigrationWizard = { /* exported MigrationWizard */
   },
 
   async onMigratingMigrate() {
-    if(this._addons.size > 0) {
+    if (this._addons.size > 0) {
       Services.prefs.setStringPref(
-        "extensions.cliqz.migrate_addons", JSON.stringify(Array.from(this._addons))
+        "browser.migrate.addons", JSON.stringify(Array.from(this._addons))
       );
     }
 

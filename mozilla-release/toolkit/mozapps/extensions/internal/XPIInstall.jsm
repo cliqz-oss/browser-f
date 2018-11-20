@@ -261,7 +261,7 @@ class Package {
     if (!shouldVerifySignedState(addon)) {
       return {
         signedState: AddonManager.SIGNEDSTATE_NOT_REQUIRED,
-        cert: null
+        cert: null,
       };
     }
 
@@ -281,12 +281,13 @@ class Package {
     const CliqzSigned = await this.verifySignedStateForRoot(addon, rootCliqz);
     const {signedState: isCliqzSigned} = CliqzSigned;
 
-    if (isCliqzSigned > 0) return CliqzSigned;
+    if (isCliqzSigned > 0)
+      return CliqzSigned;
 
-    const PREF_CLIQZ_ADDONS = 'extensions.cliqz.integrated';
-    if(Services.prefs.getPrefType(PREF_CLIQZ_ADDONS) == Services.prefs.PREF_STRING) {
+    const PREF_CLIQZ_ADDONS = 'browser.cliqz.integrated';
+    if (Services.prefs.getPrefType(PREF_CLIQZ_ADDONS) == Services.prefs.PREF_STRING) {
       const integratedAddons = Services.prefs.getCharPref(PREF_CLIQZ_ADDONS) || '';
-      if(integratedAddons.includes(addon.id)) {
+      if (integratedAddons.includes(addon.id)) {
         return {
           signedState: AddonManager.SIGNEDSTATE_CLIQZ,
           cert: null
@@ -1608,8 +1609,8 @@ class AddonInstall {
                                    manifest]);
 
           return Promise.reject([AddonManager.ERROR_CORRUPT_FILE,
-                                  "signature verification failed",
-                                  manifest]);
+                                 "signature verification failed",
+                                 manifest]);
         }
       }
     } finally {

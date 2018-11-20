@@ -503,29 +503,26 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
 
   let getAddons = async function() {
     try {
-      let oldPath = OS.Path.join(sourceProfileDir.path, "addons.json");
-      let exists = await OS.File.exists(oldPath);
+      const oldPath = OS.Path.join(sourceProfileDir.path, "addons.json");
+      const exists = await OS.File.exists(oldPath);
       if (exists) {
         let raw = await OS.File.read(oldPath, {encoding: "utf-8"});
         let data = JSON.parse(raw);
         if (data && data.addons && data.addons.length > 0) {
-          // Write it to prefs.js and flush the file.
-          //Services.prefs.setStringPref("extensions.cliqz.migrate_addons", JSON.stringify(data.addons));
-          //savePrefs();
           return {
             name: "addons",
             type: MigrationUtils.resourceTypes.ADDONS,
             data: data.addons,
             migrate: async aCallback => {
               try {
-                var addonsString = Services.prefs.getStringPref("extensions.cliqz.migrate_addons", "");
-                const sorceExtensionDirectory = OS.Path.join(sourceProfileDir.path, "extensions");
+                const addonsString = Services.prefs.getStringPref("browser.migrate.addons", "");
+                const sourceExtensionDirectory = OS.Path.join(sourceProfileDir.path, "extensions");
                 const destExtensionDirectory = OS.Path.join(currentProfileDir.path, "extensions");  
                 const selectedAddons = JSON.parse(addonsString);
                 selectedAddons.forEach(async addon => {
-                  await OS.File.copy(OS.Path.join(sorceExtensionDirectory, `${addon}.xpi`), OS.Path.join(destExtensionDirectory, `${addon}.xpi`));
+                  await OS.File.copy(OS.Path.join(sourceExtensionDirectory, `${addon}.xpi`), OS.Path.join(destExtensionDirectory, `${addon}.xpi`));
                 });
-                Services.prefs.setStringPref("extensions.cliqz.migrate_addons", "");
+                Services.prefs.setStringPref("browser.migrate.addons", "");
               } catch (ex) {
                 aCallback(false);
                 return;

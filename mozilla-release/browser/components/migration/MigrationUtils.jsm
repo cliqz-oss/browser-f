@@ -215,8 +215,8 @@ var MigratorPrototype = {
 
   getAddons: async function MP_getAddons(aProfile) {
     const resources = await this._getMaybeCachedResources(aProfile) || [];
-    const addons = resources.filter(r => r.type === MigrationUtils.resourceTypes.ADDONS)
-    if (addons.length > 0) {
+    const addons = resources.filter(r => r.type === MigrationUtils.resourceTypes.ADDONS);
+    if (addons[0] && addons[0].data) {
       return addons[0].data
     }
     return [];

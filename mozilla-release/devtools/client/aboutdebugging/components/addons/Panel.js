@@ -100,9 +100,7 @@ class AddonsPanel extends Component {
   }
 
   updateAddonsList() {
-    /*
-    CLIQZ - filter and hide all system addon
-    */
+    // CLIQZ: filter and hide all system addon
    const AddonsDetails = new Set();
    const filteredExtensions = [];
     this.props.client.listAddons()
@@ -130,7 +128,7 @@ class AddonsPanel extends Component {
               this.setState({ extensions });
           } else {
             data.forEach( detail => {
-              if(!detail.isSystem)
+              if (!detail.isSystem)
                 filteredExtensions.push(extensions.filter(extension => extension.addonID === detail.id)[0]);
             });
             this.setState({ extensions: filteredExtensions });
