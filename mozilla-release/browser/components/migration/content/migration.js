@@ -333,8 +333,8 @@ var MigrationWizard = { /* exported MigrationWizard */
         checkbox.id = addon.id;
         checkbox.setAttribute("label", addon.name);
         availableAddons.appendChild(checkbox);
-        if(this._addons.has(checkbox.id))
-        checkbox.checked = true;
+        if (this._addons.has(checkbox.id))
+          checkbox.checked = true;
       })
     } else {
       // CLIQZ-TODO: this needs to be cross checked, its used in case where there is only 1 profile and no addons.
