@@ -36,6 +36,10 @@ ChromeUtils.defineModuleGetter(this, "Sqlite",
                                "resource://gre/modules/Sqlite.jsm");
 ChromeUtils.defineModuleGetter(this, "FormHistory",
                                "resource://gre/modules/FormHistory.jsm");
+ChromeUtils.defineModuleGetter(this, "AddonManager",
+                               "resource://gre/modules/AddonManager.jsm");
+ChromeUtils.defineModuleGetter(this, "AddonRepository",
+                               "resource://gre/modules/addons/AddonRepository.jsm");
 
 const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 
@@ -160,6 +164,31 @@ FirefoxProfileMigrator.prototype._getAllProfiles = function() {
 // This migrator is used for profile refresh.
 function CliqzProfileMigrator() {
   FirefoxProfileMigrator.apply(this);
+}
+
+/*
+ * CLIQZ: Prepare install object
+ * with install method, which installs addon
+ * We can add listeners to install object
+ * to get events like oninstalled
+**/
+function getInstall(addon) {
+  return AddonManager.getInstallForURL(
+    addon.sourceURI.spec, "application/x-xpinstall", undefined, addon.name, addon.iconURL, addon.version
+  );
+}
+
+/*
+ * CLIQZ: Installs addons directly while import
+ * Accepts addon id, get addon data from AMO
+ * Installs addon into the browser(default enabled version)
+**/
+async function installAddons(ids) {
+  let addons = await AddonRepository.getAddonsByIDs(ids);
+  addons.forEach(async addon => {
+      const install = await getInstall(addon);
+      await install.install();
+  })
 }
 
 CliqzProfileMigrator.prototype =
@@ -516,12 +545,8 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
             migrate: async aCallback => {
               try {
                 const addonsString = Services.prefs.getStringPref("browser.migrate.addons", "");
-                const sourceExtensionDirectory = OS.Path.join(sourceProfileDir.path, "extensions");
-                const destExtensionDirectory = OS.Path.join(currentProfileDir.path, "extensions");  
                 const selectedAddons = JSON.parse(addonsString);
-                selectedAddons.forEach(async addon => {
-                  await OS.File.copy(OS.Path.join(sourceExtensionDirectory, `${addon}.xpi`), OS.Path.join(destExtensionDirectory, `${addon}.xpi`));
-                });
+                await installAddons(selectedAddons);
                 Services.prefs.setStringPref("browser.migrate.addons", "");
               } catch (ex) {
                 aCallback(false);

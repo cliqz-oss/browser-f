@@ -204,12 +204,15 @@ var MigratorPrototype = {
    *
    * @see nsIBrowserProfileMigrator
    */
-  getMigrateData: async function MP_getMigrateData(aProfile) {
+  getMigrateData: async function MP_getMigrateData(aProfile, isAutoMigration) {
     let resources = await this._getMaybeCachedResources(aProfile);
     if (!resources) {
       return [];
     }
     let types = resources.map(r => r.type);
+    // CLIQZ: to prevent addons import window at startup/automigration
+    if (isAutoMigration)
+      types = types.filter(t => t.type !== MigrationUtils.resourceTypes.ADDONS);
     return types.reduce((a, b) => { a |= b; return a; }, 0);
   },
 

@@ -186,8 +186,7 @@ var MigrationWizard = { /* exported MigrationWizard */
     // check for more than one source profile
     var sourceProfiles = this.spinResolve(this._migrator.getSourceProfiles());
     if (this._skipImportSourcePage) {
-      // CLIQZ-TODO: check if no addons, then move to migrate page directly.
-      this._wiz.currentPage.next = "selectAddons";
+      this._wiz.currentPage.next = "migrating";
     } else if (sourceProfiles && sourceProfiles.length > 1) {
       this._wiz.currentPage.next = "selectProfile";
     } else {
