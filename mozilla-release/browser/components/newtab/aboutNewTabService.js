@@ -11,8 +11,10 @@ ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 ChromeUtils.import("resource://gre/modules/E10SUtils.jsm");
 
+#ifdef MOZ_ACTIVITY_STREAM
 ChromeUtils.defineModuleGetter(this, "AboutNewTab",
                                "resource:///modules/AboutNewTab.jsm");
+#endif
 
 const LOCAL_NEWTAB_URL = "resource://cliqz/freshtab/home.html";
 const TOPIC_APP_QUIT = "quit-application-granted";
@@ -50,7 +52,9 @@ function AboutNewTabService() {
   this.initialized = true;
 
   if (IS_MAIN_PROCESS) {
+#ifdef MOZ_ACTIVITY_STREAM
     AboutNewTab.init();
+#endif
   } else if (IS_PRIVILEGED_PROCESS) {
     Services.obs.addObserver(this, TOPIC_CONTENT_DOCUMENT_INTERACTIVE);
   }
@@ -179,7 +183,9 @@ AboutNewTabService.prototype = {
       case TOPIC_APP_QUIT:
         this.uninit();
         if (IS_MAIN_PROCESS) {
+#ifdef MOZ_ACTIVITY_STREAM
           AboutNewTab.uninit();
+#endif
         } else if (IS_PRIVILEGED_PROCESS) {
           Services.obs.removeObserver(this, TOPIC_CONTENT_DOCUMENT_INTERACTIVE);
         }
