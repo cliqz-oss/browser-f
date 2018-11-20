@@ -37,8 +37,10 @@ with Files("test/unit/test_LaterRun.js"):
 with Files("test/unit/test_SitePermissions.js"):
     BUG_COMPONENT = ("Firefox", "Site Identity and Permission Panels")
 
+#ifdef MOZ_ACTIVITY_STREAM
 with Files("AboutNewTab.jsm"):
     BUG_COMPONENT = ("Firefox", "New Tab Page")
+#endif
 
 with Files('AsyncTabSwitcher.jsm'):
     BUG_COMPONENT = ('Firefox', 'Tabbed Browser')
@@ -114,7 +116,6 @@ BROWSER_CHROME_MANIFESTS += [
 XPCSHELL_TESTS_MANIFESTS += ['test/unit/xpcshell.ini']
 
 EXTRA_JS_MODULES += [
-    'AboutNewTab.jsm',
     'AsyncTabSwitcher.jsm',
     'BrowserErrorReporter.jsm',
     'BrowserUsageTelemetry.jsm',
@@ -150,6 +151,12 @@ EXTRA_JS_MODULES += [
 EXTRA_PP_JS_MODULES += [
     'PageActions.jsm',
 ]
+
+if CONFIG['MOZ_ACTIVITY_STREAM']:
+    EXTRA_JS_MODULES += [
+        'AboutNewTab.jsm',
+    ]
+
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
     EXTRA_JS_MODULES += [
