@@ -120,6 +120,8 @@ this.runtime = class extends ExtensionAPI {
 
         id: extension.id,
 
+        isCliqz: true,
+
         getURL: function(url) {
           return extension.baseURI.resolve(url);
         },
