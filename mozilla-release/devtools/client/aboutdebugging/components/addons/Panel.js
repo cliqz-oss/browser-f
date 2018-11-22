@@ -100,9 +100,13 @@ class AddonsPanel extends Component {
   }
 
   updateAddonsList() {
+    // CLIQZ: filter and hide all system addon
+   const AddonsDetails = new Set();
+   const filteredExtensions = [];
     this.props.client.listAddons()
       .then(({addons}) => {
         const extensions = addons.filter(addon => addon.debuggable).map(addon => {
+          AddonsDetails.add(AddonManager.getAddonByID(addon.id))
           return {
             addonTargetActor: addon.actor,
             addonID: addon.id,
@@ -118,7 +122,18 @@ class AddonsPanel extends Component {
           };
         });
 
-        this.setState({ extensions });
+        Promise.all(AddonsDetails).then( data => {
+          if (Services.prefs.getPrefType("extensions.cliqz.listed")
+            && Services.prefs.getBoolPref("extensions.cliqz.listed")) {
+              this.setState({ extensions });
+          } else {
+            data.forEach( detail => {
+              if (!detail.isSystem)
+                filteredExtensions.push(extensions.filter(extension => extension.addonID === detail.id)[0]);
+            });
+            this.setState({ extensions: filteredExtensions });
+          }
+        });
       }, error => {
         throw new Error("Client error while listing addons: " + error);
       });

@@ -265,13 +265,37 @@ class Package {
       };
     }
 
-    let root = Ci.nsIX509CertDB.CliqzAddonsRoot;
+    /*
+     * CLIQZ - allow both Firefox and Cliqz certificate for installing addons
+     * Prevent pre integrated addons from installing - Cliqz/Ghostery/HttpsEverywhere
+     */
+
+    const rootCliqz = Ci.nsIX509CertDB.CliqzAddonsRoot;
+    let rootFirefox = Ci.nsIX509CertDB.AddonsPublicRoot;
+
     if (!AppConstants.MOZ_REQUIRE_SIGNING &&
         Services.prefs.getBoolPref(PREF_XPI_SIGNATURES_DEV_ROOT, false)) {
-      root = Ci.nsIX509CertDB.AddonsStageRoot;
+      rootFirefox = Ci.nsIX509CertDB.AddonsStageRoot;
     }
 
-    return this.verifySignedStateForRoot(addon, root);
+    const CliqzSigned = await this.verifySignedStateForRoot(addon, rootCliqz);
+    const {signedState: isCliqzSigned} = CliqzSigned;
+
+    if (isCliqzSigned > 0)
+      return CliqzSigned;
+
+    const PREF_CLIQZ_ADDONS = 'browser.cliqz.integrated';
+    if (Services.prefs.getPrefType(PREF_CLIQZ_ADDONS) == Services.prefs.PREF_STRING) {
+      const integratedAddons = Services.prefs.getCharPref(PREF_CLIQZ_ADDONS) || '';
+      if (integratedAddons.includes(addon.id)) {
+        return {
+          signedState: AddonManager.SIGNEDSTATE_CLIQZ,
+          cert: null
+        };
+      }
+    }
+
+    return this.verifySignedStateForRoot(addon, rootFirefox)
   }
 
   flushCache() {}
@@ -927,14 +951,16 @@ function getSignedStatus(aRv, aCert, aAddonID) {
       if (expectedCommonName && expectedCommonName != aCert.commonName)
         return AddonManager.SIGNEDSTATE_BROKEN;
 
-      if (aCert.organizationalUnit == "Cliqz Frontend") {
+      if (aCert.organizationalUnit == "Cliqz Frontend" ||
+          aCert.organizationalUnit == "Mozilla Components"
+      ) {
         return AddonManager.SIGNEDSTATE_SYSTEM;
       }
-/*
+
       if (aCert.organizationalUnit == "Mozilla Extensions") {
         return AddonManager.SIGNEDSTATE_PRIVILEGED;
       }
-*/
+
       return /preliminary/i.test(aCert.organizationalUnit)
                ? AddonManager.SIGNEDSTATE_PRELIMINARY
                : AddonManager.SIGNEDSTATE_SIGNED;
@@ -1572,9 +1598,14 @@ class AddonInstall {
           this.addon = null;
 
           if (state == AddonManager.SIGNEDSTATE_MISSING ||
-              state == AddonManager.SIGNEDSTATE_UNKNOWN)
-            return Promise.reject([AddonManager.ERROR_SIGNEDSTATE_REQUIRED,
-                                   "signature is required but missing",
+            state == AddonManager.SIGNEDSTATE_UNKNOWN)
+          return Promise.reject([AddonManager.ERROR_SIGNEDSTATE_REQUIRED,
+                                 "signature is required but missing",
+                                 manifest]);
+
+          if (state == AddonManager.SIGNEDSTATE_CLIQZ)
+            return Promise.reject([AddonManager.ERROR_SIGNEDSTATE_CLIQZ,
+                                   "cliqz addon - already integrated",
                                    manifest]);
 
           return Promise.reject([AddonManager.ERROR_CORRUPT_FILE,

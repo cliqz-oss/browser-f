@@ -45,3 +45,4 @@ pref("browser.aboutHomeSnippets.updateUrl", "https://www.cliqz.com/");
 // Cliqz distribution settings
 pref("app.distributor", "cliqz");
 pref("mozilla.partner.id", "cliqz");
+pref("browser.cliqz.integrated", "cliqz@cliqz.com, https-everywhere@eff.org, gdprtool@cliqz.com, myoffrz@cliqz.com");

@@ -300,7 +300,7 @@
                        oncommand="PanelUI.showSubView('appMenu-libraryView', this)"/>
         <toolbarbutton id="appMenu-addons-button"
                        class="subviewbutton subviewbutton-iconic"
-                       label="&plugins.label;"
+                       label="&addons.label;"
                        key="key_openAddons"
                        command="Tools:Addons"
                        />

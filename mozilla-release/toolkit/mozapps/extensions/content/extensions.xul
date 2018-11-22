@@ -191,8 +191,6 @@
         <vbox id="headered-views" flex="1">
           <!-- main header -->
           <hbox id="header" align="center">
-          <!-- This is just to hide contents without actually removing elements. -->
-         <hbox id="settings-icon" hidden="true">
             <button id="show-all-extensions" hidden="true"
                     label="&showAllExtensions.button.label;"
                     command="cmd_showAllExtensions"/>
@@ -254,10 +252,9 @@
                           command="cmd_resetAddonAutoUpdate"/>
               </menupopup>
             </toolbarbutton>
-            <textbox id="header-search" hidden="true" type="search" searchbutton="true"
+            <textbox id="header-search" type="search" searchbutton="true"
                      searchbuttonlabel="&search.buttonlabel;"
                      placeholder="&search.placeholder2;" maxlength="100"/>
-          </hbox>
           </hbox>
 
           <deck id="headered-views-content" flex="1" selectedIndex="0">

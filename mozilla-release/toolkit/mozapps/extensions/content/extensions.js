@@ -53,7 +53,7 @@ const UPDATES_RELEASENOTES_TRANSFORMFILE = "chrome://mozapps/content/extensions/
 
 const XMLURI_PARSE_ERROR = "http://www.mozilla.org/newlayout/xml/parsererror.xml";
 
-var gViewDefault = "addons://list/plugin";
+var gViewDefault = "addons://list/extension";
 
 XPCOMUtils.defineLazyGetter(this, "extensionStylesheets", () => {
   const {ExtensionParent} = ChromeUtils.import("resource://gre/modules/ExtensionParent.jsm", {});
@@ -250,6 +250,10 @@ function isLegacyExtension(addon) {
     legacy = false;
   }
   return legacy;
+}
+
+function isNotSystemExtension(addon) {
+  return !(addon.type == "extension" && addon.isSystem);
 }
 
 function isDisabledLegacy(addon) {
@@ -1627,6 +1631,12 @@ async function getAddonsAndInstalls(aType, aCallback) {
 
   let aAddonsList = await AddonManager.getAddonsByTypes(types);
   addons = aAddonsList.filter(a => !a.hidden);
+
+  if (Services.prefs.getPrefType("extensions.cliqz.listed")
+    && !Services.prefs.getBoolPref("extensions.cliqz.listed")) {
+      addons = addons.filter(isNotSystemExtension);
+  }
+
   if (installs != null)
     aCallback(addons, installs);
 
@@ -1663,16 +1673,11 @@ var gCategories = {
 
     // These addon categories are disabled in Cliqz.
     const disabledCategories = new Set([
-        'extension',
         'service',
         'experiment',
         'theme',
         'legacy'
         ]);
-    if (!Services.prefs.getPrefType("extensions.cliqz.listed")
-      || Services.prefs.getBoolPref("extensions.cliqz.listed")) {
-      disabledCategories.delete('extension');
-    }
     var types = AddonManager.addonTypes;
     for (var type in types) {
       if (disabledCategories.has(type))
@@ -1898,12 +1903,6 @@ var gHeader = {
         triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}),
       });
     });
-
-    const SETTINGS_PREF_NAME = 'extensions.cliqz.listed';
-    if(Services.prefs.getPrefType(SETTINGS_PREF_NAME) === 128 &&
-      Services.prefs.getBoolPref(SETTINGS_PREF_NAME)) {
-      document.getElementById("settings-icon").hidden = false;
-    }
   },
 
   focusSearchBox() {

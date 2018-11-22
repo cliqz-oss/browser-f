@@ -204,13 +204,25 @@ var MigratorPrototype = {
    *
    * @see nsIBrowserProfileMigrator
    */
-  getMigrateData: async function MP_getMigrateData(aProfile) {
+  getMigrateData: async function MP_getMigrateData(aProfile, isAutoMigration) {
     let resources = await this._getMaybeCachedResources(aProfile);
     if (!resources) {
       return [];
     }
     let types = resources.map(r => r.type);
+    // CLIQZ: to prevent addons import window at startup/automigration
+    if (isAutoMigration)
+      types = types.filter(t => t.type !== MigrationUtils.resourceTypes.ADDONS);
     return types.reduce((a, b) => { a |= b; return a; }, 0);
+  },
+
+  getAddons: async function MP_getAddons(aProfile) {
+    const resources = await this._getMaybeCachedResources(aProfile) || [];
+    const addons = resources.filter(r => r.type === MigrationUtils.resourceTypes.ADDONS);
+    if (addons[0] && addons[0].data) {
+      return addons[0].data
+    }
+    return [];
   },
 
   getBrowserKey: function MP_getBrowserKey() {
@@ -471,6 +483,7 @@ var MigrationUtils = Object.freeze({
     BOOKMARKS:  Ci.nsIBrowserProfileMigrator.BOOKMARKS,
     OTHERDATA:  Ci.nsIBrowserProfileMigrator.OTHERDATA,
     SESSION:    Ci.nsIBrowserProfileMigrator.SESSION,
+    ADDONS:     Ci.nsIBrowserProfileMigrator.ADDONS,
   },
 
   /**

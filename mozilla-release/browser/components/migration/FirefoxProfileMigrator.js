@@ -36,6 +36,10 @@ ChromeUtils.defineModuleGetter(this, "Sqlite",
                                "resource://gre/modules/Sqlite.jsm");
 ChromeUtils.defineModuleGetter(this, "FormHistory",
                                "resource://gre/modules/FormHistory.jsm");
+ChromeUtils.defineModuleGetter(this, "AddonManager",
+                               "resource://gre/modules/AddonManager.jsm");
+ChromeUtils.defineModuleGetter(this, "AddonRepository",
+                               "resource://gre/modules/addons/AddonRepository.jsm");
 
 const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 
@@ -162,6 +166,31 @@ function CliqzProfileMigrator() {
   FirefoxProfileMigrator.apply(this);
 }
 
+/*
+ * CLIQZ: Prepare install object
+ * with install method, which installs addon
+ * We can add listeners to install object
+ * to get events like oninstalled
+**/
+function getInstall(addon) {
+  return AddonManager.getInstallForURL(
+    addon.sourceURI.spec, "application/x-xpinstall", undefined, addon.name, addon.iconURL, addon.version
+  );
+}
+
+/*
+ * CLIQZ: Installs addons directly while import
+ * Accepts addon id, get addon data from AMO
+ * Installs addon into the browser(default enabled version)
+**/
+async function installAddons(ids) {
+  let addons = await AddonRepository.getAddonsByIDs(ids);
+  addons.forEach(async addon => {
+      const install = await getInstall(addon);
+      await install.install();
+  })
+}
+
 CliqzProfileMigrator.prototype =
     Object.create(FirefoxProfileMigrator.prototype);
 
@@ -231,7 +260,7 @@ FirefoxProfileMigrator.prototype.getLastUsedDate = function() {
   return Promise.resolve(new Date(0));
 };
 
-FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileDir, currentProfileDir) {
+FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourceProfileDir, currentProfileDir) {
   let getFileResource = (aMigrationType, aFileNames) => {
     let files = [];
     for (let fileName of aFileNames) {
@@ -501,6 +530,39 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
     };
   }.bind(this);
 
+  let getAddons = async function() {
+    try {
+      const oldPath = OS.Path.join(sourceProfileDir.path, "addons.json");
+      const exists = await OS.File.exists(oldPath);
+      if (exists) {
+        let raw = await OS.File.read(oldPath, {encoding: "utf-8"});
+        let data = JSON.parse(raw);
+        if (data && data.addons && data.addons.length > 0) {
+          return {
+            name: "addons",
+            type: MigrationUtils.resourceTypes.ADDONS,
+            data: data.addons,
+            migrate: async aCallback => {
+              try {
+                const addonsString = Services.prefs.getStringPref("browser.migrate.addons", "");
+                const selectedAddons = JSON.parse(addonsString);
+                await installAddons(selectedAddons);
+                Services.prefs.setStringPref("browser.migrate.addons", "");
+              } catch (ex) {
+                aCallback(false);
+                return;
+              }
+              aCallback(true);
+            },
+          }
+        }
+      }
+    } catch (ex) {
+      return false;
+    }
+    return false;
+  }.bind(this);
+
   function savePrefs() {
     // If we've used the pref service to write prefs for the new profile, it's too
     // early in startup for the service to have a profile directory, so we have to
@@ -512,10 +574,11 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
 
   let types = MigrationUtils.resourceTypes;
   if (!this.startupOnlyMigrator && !MigrationUtils.isStartupMigration) {
+    const addons = await getAddons();
     let places = getHistoryAndBookmarksResource("places.sqlite");
     let cookies = getCookiesResource("cookies.sqlite");
     let formData = getFormDataResource("formhistory.sqlite");
-    return [places, cookies, formData].filter(r => r);
+    return [places, cookies, formData, addons].filter(r => r);
   }
   let places = getFileResource(types.HISTORY, ["places.sqlite"]);
   let favicons = getFileResource(types.HISTORY, ["favicons.sqlite"]);

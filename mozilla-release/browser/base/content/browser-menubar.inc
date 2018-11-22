@@ -489,7 +489,7 @@
                         key="key_openDownloads"
                         command="Tools:Downloads"/>
               <menuitem id="menu_openAddons"
-                        label="&plugins.label;"
+                        label="&addons.label;"
                         accesskey="&addons.accesskey;"
                         key="key_openAddons"
                         command="Tools:Addons"/>

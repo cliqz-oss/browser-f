@@ -3051,6 +3051,8 @@ var AddonManager = {
     ["ERROR_UNEXPECTED_ADDON_TYPE", -6],
     // The addon did not have the expected ID
     ["ERROR_INCORRECT_ID", -7],
+    // CLIQZ: Addon is already integrated as system addon
+    ["ERROR_SIGNEDSTATE_CLIQZ", -8]
   ]),
   // The update check timed out
   ERROR_TIMEOUT: -1,
@@ -3208,6 +3210,8 @@ var AddonManager = {
   // to be unusable in builds that require signing should have negative values.
   // Add-on signing is not required, e.g. because the pref is disabled.
   SIGNEDSTATE_NOT_REQUIRED: undefined,
+  // CLIQZ: Cliqz Add-on is signed with a "Mozilla Extensions" certificate
+  SIGNEDSTATE_CLIQZ: -3,
   // Add-on is signed but signature verification has failed.
   SIGNEDSTATE_BROKEN: -2,
   // Add-on may be signed but by an certificate that doesn't chain to our
