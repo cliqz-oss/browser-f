@@ -266,9 +266,9 @@ class Package {
     }
 
     /*
-      * CLIQZ - allow both Firefox and Cliqz certificate for installing addons
-      * Prevent pre integrated addons from installing - Cliqz/Ghostery/HttpsEverywhere
-    */
+     * CLIQZ - allow both Firefox and Cliqz certificate for installing addons
+     * Prevent pre integrated addons from installing - Cliqz/Ghostery/HttpsEverywhere
+     */
 
     const rootCliqz = Ci.nsIX509CertDB.CliqzAddonsRoot;
     let rootFirefox = Ci.nsIX509CertDB.AddonsPublicRoot;
