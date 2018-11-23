@@ -3741,7 +3741,30 @@ var SessionStoreInternal = {
       return;
     }
 
-    let firstWindowData = root.windows.splice(0, 1);
+    // CLIQZ-SPECIAL:
+    // aWindow contains data which does not correspond to any session state yet.
+    // Also it contains a "page" information that is to be displayed in a loading tab,
+    // user could click on a link in some of his/her applications.
+    // root.windows is an Array of windows data retrieved from a user's session.
+    // Here we need to find a window with zIndex equaled to 1.
+    // That means this window will be on top of the others after restore process is done.
+    // Putting a new aWindow data into that window with zIndex = 1 will let us display
+    // a new tabbrowser (a new tab) always on top (explicitly visible) for a user.
+    let firstWindowData = null;
+    for (let i = 0, l = root.windows.length; i < l; i++) {
+
+      if (root.windows[i].zIndex === 1) {
+        firstWindowData = root.windows.splice(i, 1);
+        break;
+      }
+    }
+    // Fallback.
+    // If by any case (only FF guys know the details of who it works;))
+    // a window with zIndex equaled to 1 has not been found we take the first one from a session.
+    if (firstWindowData == null) {
+      firstWindowData = root.windows.splice(0, 1);
+    }
+
     // Store the restore state and restore option of the current window,
     // so that the window can be restored in reversed z-order.
     this._updateWindowRestoreState(aWindow, {windows: firstWindowData, options: aOptions});
