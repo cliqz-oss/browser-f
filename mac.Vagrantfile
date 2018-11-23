@@ -8,7 +8,7 @@ Vagrant.configure("2") do |config|
   config.vm.define "browser-f-mac"
   config.vm.network "forwarded_port", guest: 5900, host: 7900
 
-  config.vm.provider "vmware_fusion" do |v|
+  config.vm.provider "virtualbox" do |v|
     v.gui = false
     v.name = "browser-f-mac"
     v.memory = ENV["NODE_MEMORY"]
