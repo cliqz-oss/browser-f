@@ -1522,8 +1522,8 @@
     </handlers>
   </binding>
 
-  <!-- Cliqz feature -->
-  <binding id="cliqz-feature"
+  <!-- Cliqz Recommended feature -->
+  <binding id="cliqz-recommended-feature"
            extends="chrome://mozapps/content/extensions/extensions.xml#addon-base">
     <content>
       <xul:hbox class="content-container" align="center">
@@ -1534,9 +1534,6 @@
             <xul:hbox class="name-container">
               <xul:label anonid="name" class="name" crop="end"
                          tooltip="addonitem-tooltip" xbl:inherits="value=name"/>
-
-              <xul:label anonid="version" class="version" crop="end" flex="1"
-                         tooltip="addonitem-tooltip" xbl:inherits="value=version"/>
             </xul:hbox>
         </xul:vbox>
         <xul:vbox class="homepage-container">
@@ -1548,12 +1545,9 @@
         <xul:vbox class="status-control-wrapper">
           <xul:hbox anonid="control-container" class="control-container">
 
-            <xul:button anonid="installBtn" class="addon-control install"
+            <xul:button anonid="installBtn" class="addon-control install no-auto-hide"
                         label="&cmd.installAddon.label;"
                         oncommand="document.getBindingParent(this).installClicked();"/>
-            <xul:button anonid="uninstallBtn" class="addon-control remove"
-                        label="&cmd.uninstallAddon.label;"
-                        oncommand="document.getBindingParent(this).unInstallClicked();"/>
           </xul:hbox>
         </xul:vbox>
       </xul:hbox>
@@ -1565,7 +1559,8 @@
              icon =  document.getAnonymousElementByAttribute(this, "anonid", "icon");
 
          this.setAttribute("name", this.mAddon.name);
-         this.setAttribute("version", "(v. " + this.mAddon.version + ")");
+         this.setAttribute("id", this.mAddon.id);
+         this.setAttribute("status", "new");
 
          homepage.href = this.mAddon.homepageURL;
          icon.src = this.mAddon.icons["64"] || this.mAddon.icons["32"];
@@ -1584,38 +1579,11 @@
         ]]>
         </body>
       </method>
-      <method name="unInstallClicked">
+      <method name="changeButtonLabel">
+        <parameter name="text"/>
         <body><![CDATA[
-          let unInstallEvent = new CustomEvent("unInstallClicked", {
-                bubbles: true,
-                cancelable: false,
-                detail: {}
-              });
-          this.dispatchEvent(unInstallEvent);
-        ]]>
-        </body>
-      </method>
-      <method name="updateInstallationProgress">
-        <parameter name="percentage"/>
-        <body><![CDATA[
-          let progressHolder = document.getAnonymousElementByAttribute(this, "anonid", "installBtn");
-          progressHolder.label = percentage
-        ]]>
-        </body>
-      </method>
-      <method name="updateDownloadFailed">
-        <parameter name="showText"/>
-        <body><![CDATA[
-          let button = document.getAnonymousElementByAttribute(this, "anonid", "installBtn");
-          button.textContent = showText;
-        ]]>
-        </body>
-      </method>
-      <method name="updateInstallFailed">
-        <parameter name="showText"/>
-        <body><![CDATA[
-          let button = document.getAnonymousElementByAttribute(this, "anonid", "installBtn");
-          button.label = showText;
+          const button = document.getAnonymousElementByAttribute(this, "anonid", "installBtn");
+          button.label = text
         ]]>
         </body>
       </method>

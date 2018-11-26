@@ -245,7 +245,6 @@ async function spotlight(subcategory) {
     }
   }
   if (subcategory) {
-    await gPrivacyPane.privacyPanesInitialized;
 #if 0
     if (!gSearchResultsPane.categoriesInitialized) {
       await waitForSystemAddonInjectionsFinished([{

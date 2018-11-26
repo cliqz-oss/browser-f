@@ -21,6 +21,8 @@
 <!ENTITY installAddonFromFile.label           "Add-on aus Datei installieren…">
 <!ENTITY installAddonFromFile.accesskey       "A">
 <!ENTITY toolsMenu.tooltip                    "Tools für alle Add-ons">
+<!ENTITY recommendedAddon.label               "Recommended Add-ons">
+<!ENTITY installedAddon.label                 "Installed Add-ons">
 
 <!ENTITY getThemes.description                "Wollen Sie Ihren Browser anpassen?">
 <!ENTITY getThemes.learnMore                  "Wählen Sie aus Tausenden von Themes.">

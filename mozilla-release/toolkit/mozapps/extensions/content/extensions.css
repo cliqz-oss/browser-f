@@ -175,3 +175,31 @@ richlistitem:not([selected]) * {
 .view-pane:not(#legacy-view) .addon-control.replacement {
   display: none;
 }
+
+#recommended-addon-list {
+  margin: 10px 0;
+  padding: 0 48px;
+}
+
+.cliqz-recommended-addons {
+  -moz-box-orient: vertical;
+  -moz-binding: url("chrome://mozapps/content/extensions/extensions.xml#cliqz-recommended-feature");
+  padding: 5px;
+  background: #fff;
+}
+
+.cliqz-recommended-addons .icon {
+  width: 48px;
+  height: 48px;
+  margin: 3px 7px;
+  -moz-box-align: center;
+  -moz-box-pack: center;
+}
+
+.cliqz-recommended-addons .name {
+  font-weight: bold;
+}
+
+.cliqz-recommended-addons .homepage-container {
+  margin-right: 10px;
+}
