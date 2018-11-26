@@ -18,6 +18,8 @@
 <!ENTITY installAddonFromFile.label           "Install Add-on From File…">
 <!ENTITY installAddonFromFile.accesskey       "I">
 <!ENTITY toolsMenu.tooltip                    "Tools for all add-ons">
+<!ENTITY recommendedAddon.label               "Recommended Add-ons">
+<!ENTITY installedAddon.label                 "Installed Add-ons">
 
 <!ENTITY getThemes.description                "Looking to personalize your browser?">
 <!ENTITY getThemes.learnMore                  "Choose from thousands of themes.">

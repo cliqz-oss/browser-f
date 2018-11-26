@@ -29,6 +29,9 @@ ChromeUtils.defineModuleGetter(this, "PluralForm",
 ChromeUtils.defineModuleGetter(this, "Preferences",
                                "resource://gre/modules/Preferences.jsm");
 
+ChromeUtils.defineModuleGetter(this, "AddonRepository",
+                               "resource://gre/modules/addons/AddonRepository.jsm");
+
 XPCOMUtils.defineLazyPreferenceGetter(this, "WEBEXT_PERMISSION_PROMPTS",
                                       "extensions.webextPermissionPrompts", false);
 XPCOMUtils.defineLazyPreferenceGetter(this, "XPINSTALL_ENABLED",
@@ -52,6 +55,32 @@ const UPDATES_RECENT_TIMESPAN = 2 * 24 * 3600000; // 2 days (in milliseconds)
 const UPDATES_RELEASENOTES_TRANSFORMFILE = "chrome://mozapps/content/extensions/updateinfo.xsl";
 
 const XMLURI_PARSE_ERROR = "http://www.mozilla.org/newlayout/xml/parsererror.xml";
+const RECOMMENDED_ADDONS = {
+  "firefox@ghostery.com": {
+    "id": "firefox@ghostery.com",
+    "icons": {
+      "64": "https://s3.amazonaws.com/cdn.cliqz.com/browser-f/features/firefox%40ghostery.com/64x64.png",
+    },
+    "name": "Ghostery",
+    "homepageURL": "https://www.ghostery.com",
+  },
+  "support@lastpass.com": {
+    "id": "support@lastpass.com",
+    "icons": {
+      "64": "https://s3.amazonaws.com/cdn.cliqz.com/browser-f/features/support%40lastpass.com/64x64.png",
+    },
+    "name": "LastPass",
+    "homepageURL": "https://lastpass.com",
+  },
+  "{446900e4-71c2-419f-a6a7-df9c091e268b}": {
+    "id": "{446900e4-71c2-419f-a6a7-df9c091e268b}",
+    "icons": {
+      "64": "https://s3.amazonaws.com/cdn.cliqz.com/browser-f/features/%7B446900e4-71c2-419f-a6a7-df9c091e268b%7D/64x64.png",
+    },
+    "name": "Bitwarden",
+    "homepageURL": "https://bitwarden.com",
+  }
+};
 
 var gViewDefault = "addons://list/extension";
 
@@ -2320,7 +2349,7 @@ var gListView = {
   _emptyNotice: null,
   _type: null,
 
-  initialize() {
+  async initialize() {
     this.node = document.getElementById("list-view");
     this._listBox = document.getElementById("addon-list");
     this._emptyNotice = document.getElementById("addon-list-empty");
@@ -2366,6 +2395,7 @@ var gListView = {
     } else {
       document.getElementById("getthemes-container").hidden = true;
     }
+    await this.initializeRecommended();
   },
 
   show(aType, aRequest) {
@@ -2552,6 +2582,26 @@ var gListView = {
     }
     return null;
   },
+
+  async initializeRecommended() {
+    const installedAddons = await AddonManager.getAddonsByTypes(["extension"]);
+    const installedAddonsIds = installedAddons.map(a => a.id);
+    const recommendedDiv = document.getElementById("recommended-addon-list");
+    while (recommendedDiv.firstChild) {
+      recommendedDiv.removeChild(recommendedDiv.firstChild);
+    }
+    const recommendedAddons = Object.keys(RECOMMENDED_ADDONS).filter(a => !installedAddonsIds.includes(a));
+    if(recommendedAddons.length > 0) {
+      document.getElementById('recommendedBlock').hidden = false;
+      recommendedAddons.forEach(async rAddon => {
+        const addon = RECOMMENDED_ADDONS[rAddon];
+        let _installed_addon = new ItemHandler(addon);
+        recommendedDiv.appendChild(_installed_addon.listItem);
+      })
+    } else {
+      document.getElementById('recommendedBlock').hidden = true;
+    }
+  }
 };
 
 
@@ -3496,4 +3546,64 @@ var gBrowser = {
   window.addEventListener("scroll", () => {
     updatePositionTask.arm();
   }, true);
+}
+
+function ItemHandler(addon) {
+  this._addon = addon;
+  this._listItem = this.createItem(addon);
+  this._listItem.addEventListener("installClicked", this.onInstallClick.bind(this));
+}
+
+ItemHandler.prototype = {
+  get listItem() { return this._listItem; },
+
+  createItem: function(aObj) {
+    let item = document.createElement("richlistitem");
+    item.setAttribute("class", "cliqz-recommended-addons");
+    item.mAddon = aObj;
+    return item;
+  },
+
+  onInstallClick: async function() {
+    let self = this;
+    let reloadTimeout = 3000;
+    const downloadText = gStrings.ext.GetStringFromName("installDownloading");
+    this.listItem.changeButtonLabel(downloadText);
+    let rAddon;
+    // To make sure we can get XPI url from AMO
+    try {
+      rAddon = await AddonRepository.getAddonsByIDs([this._addon.id]);
+    } catch(e) {
+      const errorText = gStrings.ext.GetStringFromName("installFailed");
+      this.listItem.changeButtonLabel(errorText);
+      return;
+    }
+
+    AddonManager.getInstallForURL(rAddon[0].sourceURI.spec, "application/x-xpinstall")
+      .then((addon) => {
+        addon.addListener({
+          onDownloadProgress: function(aInstall) {
+            let percent = gStrings.ext.GetStringFromName("installDownloading") + ' ' + parseInt(aInstall.progress / aInstall.maxProgress * 100) + "%";
+            self.listItem.changeButtonLabel(percent);
+          },
+          onDownloadFailed: function() {
+            let showText = gStrings.ext.GetStringFromName("installDownloadFailed");
+            self.listItem.changeButtonLabel(showText);
+            self.onFaliure(self, reloadTimeout);
+          },
+          onInstallFailed: function() {
+            let showText = gStrings.ext.GetStringFromName("installFailed");
+            self.listItem.changeButtonLabel(showText);
+            self.onFaliure(self, reloadTimeout);
+          },
+          onInstallEnded: async function(aInstall, aAddon) {
+            await gListView.initializeRecommended();
+          }
+        });
+        addon.install();
+      });
+  },
+
+  // CLIQZ-TODO: if we need to something extra on install/download failure
+  onFaliure: function(failedItem, reloadTimeout) {console.log('failed', failedItem)}
 }
