@@ -10,6 +10,8 @@ ChromeUtils.defineModuleGetter(this, "AppConstants",
   "resource://gre/modules/AppConstants.jsm");
 ChromeUtils.defineModuleGetter(this, "SessionStore",
   "resource:///modules/sessionstore/SessionStore.jsm");
+ChromeUtils.defineModuleGetter(this, "HomePage",
+  "resource:///modules/HomePage.jsm");
 
 var gStateObject;
 var gTreeData;
@@ -179,7 +181,7 @@ function restoreSession() {
 }
 
 function startNewSession() {
-  let addNTP = Services.prefs.getBoolPref("browser.startup.addFreshTab");
+  let addNTP = HomePage.canBeDisplayed();
   if (addNTP)
     getBrowserWindow().BrowserHome();
 }

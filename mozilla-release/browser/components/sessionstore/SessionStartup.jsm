@@ -43,6 +43,8 @@ ChromeUtils.defineModuleGetter(this, "CrashMonitor",
   "resource://gre/modules/CrashMonitor.jsm");
 ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
   "resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "HomePage",
+  "resource:///modules/HomePage.jsm");
 
 const STATE_RUNNING_STR = "running";
 
@@ -314,7 +316,7 @@ var SessionStartup = {
     return this._sessionType == this.RECOVER_SESSION ||
     //        Or just previously open tabs (without start pages)
               (this._sessionType == this.RESUME_SESSION &&
-               !Services.prefs.getBoolPref("browser.startup.addFreshTab"));
+               !HomePage.canBeDisplayed());
   },
 
   /**
