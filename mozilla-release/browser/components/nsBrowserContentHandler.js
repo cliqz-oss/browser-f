@@ -506,7 +506,24 @@ nsBrowserContentHandler.prototype = {
         return "about:privatebrowsing";
       }
     }
+    // CLIQZ-SPECIAL
+    // Remove source code below which only complicated the logical process
+    // rather than made it simple.
+    //
+    // DB-1929 According to this ticket we have a simple final steps which define
+    // when should be displayed home page and restored windows
+    // (details could be found in the ticket).
+    //
+    // Shortly: home page defines a rule when it should/could be displayed.
+    // It is up to us to decide whether we need to do this check or not.
+    // Meaning that if some other rules beyond appear
+    // then we can combine them with what we have in HomePage.canBeDisplayed.
+    if (HomePage.canBeDisplayed()) {
+      return HomePage.get();
+    }
 
+    return 'about:blank';
+#if 0
     var override;
     var overridePage = "";
     var additionalPage = "";
@@ -602,6 +619,7 @@ nsBrowserContentHandler.prototype = {
       return overridePage + "|" + startPage;
 
     return overridePage || startPage || "about:blank";
+#endif
   },
 
   mFeatures: null,
@@ -785,6 +803,12 @@ nsDefaultCommandLineHandler.prototype = {
 
       var URLlist = urilist.filter(shouldLoadURI).map(u => u.spec);
       if (URLlist.length) {
+        // DB-1929
+        // If HomePage can be displayed then we get its' URL and add it to the URLlist
+        // So a window could start loading two tabs at once (without waiting for restore process).
+        if (HomePage.canBeDisplayed()) {
+          URLlist.push(HomePage.get());
+        }
         openBrowserWindow(cmdLine, gSystemPrincipal, URLlist);
       }
 

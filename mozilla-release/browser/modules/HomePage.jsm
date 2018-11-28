@@ -12,6 +12,7 @@ var EXPORTED_SYMBOLS = ["HomePage"];
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const kPrefName = "browser.startup.homepage";
+const freshTabPrefName = "browser.startup.addFreshTab";
 
 function getHomepagePref(useDefault) {
   let homePage;
@@ -55,6 +56,10 @@ let HomePage = {
     }
 
     return res.value;
+  },
+
+  canBeDisplayed() {
+    return Services.prefs.getBoolPref(freshTabPrefName) === true;
   },
 
   getDefault() {
