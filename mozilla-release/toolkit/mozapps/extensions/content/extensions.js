@@ -2354,6 +2354,7 @@ var gListView = {
   async initialize() {
     this.node = document.getElementById("list-view");
     this._listBox = document.getElementById("addon-list");
+    this._listBoxHeadng = document.getElementById("addon-list-heading");
     this._emptyNotice = document.getElementById("addon-list-empty");
 
     this._listBox.addEventListener("keydown", (aEvent) => {
@@ -2496,8 +2497,11 @@ var gListView = {
   },
 
   showEmptyNotice(aShow) {
+#if 0
     this._emptyNotice.hidden = !aShow;
+#endif
     this._listBox.hidden = aShow;
+    this._listBoxHeadng.hidden = aShow;
   },
 
   onSortChanged(aSortBy, aAscending) {

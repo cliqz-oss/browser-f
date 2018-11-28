@@ -324,6 +324,7 @@
                   <spacer flex="5000"/> <!-- Necessary to allow the message to wrap -->
                 </hbox>
               </hbox>
+#if 0
               <vbox id="addon-list-empty" class="alert-container"
                     flex="1" hidden="true">
                 <spacer class="alert-spacer-before"/>
@@ -336,6 +337,7 @@
                 </vbox>
                 <spacer class="alert-spacer-after"/>
               </vbox>
+#endif
               <vbox id="recommendedBlock" hidden="true">
                 <hbox class="subcategory">
                   <label class="header-name" flex="1">
@@ -344,7 +346,7 @@
                 </hbox>
                 <richlistbox id="recommended-addon-list" class="list" flex="1"/>
               </vbox>
-              <hbox class="subcategory">
+              <hbox class="subcategory" id="addon-list-heading">
                 <label class="header-name" flex="1">
                   &installedAddon.label;
                 </label>
