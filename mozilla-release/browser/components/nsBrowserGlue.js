@@ -381,9 +381,11 @@ XPCOMUtils.defineLazyServiceGetters(this, {
   WindowsUIUtils: ["@mozilla.org/windows-ui-utils;1", "nsIWindowsUIUtils"],
   aboutNewTabService: ["@mozilla.org/browser/aboutnewtab-service;1", "nsIAboutNewTabService"],
 });
+#ifdef MOZ_SERVICES_SYNC
 XPCOMUtils.defineLazyGetter(this, "WeaveService", () =>
   Cc["@mozilla.org/weave/service;1"].getService().wrappedJSObject
 );
+#endif
 
 // lazy module getters
 
@@ -1351,7 +1353,9 @@ BrowserGlue.prototype = {
     DateTimePickerParent.init();
     // Check if Sync is configured
     if (Services.prefs.prefHasUserValue("services.sync.username")) {
+#ifdef MOZ_SERVICES_SYNC
       WeaveService.init();
+#endif
     }
 
     PageThumbs.init();
