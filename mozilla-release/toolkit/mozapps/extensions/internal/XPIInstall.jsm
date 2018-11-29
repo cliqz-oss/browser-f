@@ -509,17 +509,9 @@ async function loadManifestFromWebManifest(aUri, aPackage) {
   }
 
   // CLIQZ: Do not install addons which have omnibox or themes or is language pack
-  if (
-    (
-      manifest.omnibox &&
-      manifest.omnibox.keyword
-    ) ||
-    (
-      manifest.permissions &&
-      manifest.permissions.includes('theme')
-    ) ||
-    addon.type == 'webextension-langpack'
-  ) {
+  if (manifest.omnibox && manifest.omnibox.keyword ||
+      manifest.permissions && manifest.permissions.includes('theme') ||
+      addon.type == 'webextension-langpack') {
     addon.doNotInstall = true;
   }
   // WebExtensions don't use iconURLs
