@@ -3052,7 +3052,9 @@ var AddonManager = {
     // The addon did not have the expected ID
     ["ERROR_INCORRECT_ID", -7],
     // CLIQZ: Addon is already integrated as system addon
-    ["ERROR_SIGNEDSTATE_CLIQZ", -8]
+    ["ERROR_SIGNEDSTATE_CLIQZ", -8],
+    // CLIQZ: Addon uses unsupported APIs
+    ["ERROR_UNSUPPORTED_API_CLIQZ", -9]
   ]),
   // The update check timed out
   ERROR_TIMEOUT: -1,

@@ -508,6 +508,20 @@ async function loadManifestFromWebManifest(aUri, aPackage) {
     addon.optionsBrowserStyle = manifest.options_ui.browser_style;
   }
 
+  // CLIQZ: Do not install addons which have omnibox or themes or is language pack
+  if (
+    (
+      manifest.omnibox &&
+      manifest.omnibox.keyword
+    ) ||
+    (
+      manifest.permissions &&
+      manifest.permissions.includes('theme')
+    ) ||
+    addon.type == 'webextension-langpack'
+  ) {
+    addon.doNotInstall = true;
+  }
   // WebExtensions don't use iconURLs
   addon.iconURL = null;
   addon.icon64URL = null;
@@ -1569,6 +1583,10 @@ class AddonInstall {
         this.addon = await loadManifest(pkg, this.location, this.existingAddon);
       } catch (e) {
         return Promise.reject([AddonManager.ERROR_CORRUPT_FILE, e]);
+      }
+
+      if (this.addon.doNotInstall) {
+        return Promise.reject([AddonManager.ERROR_UNSUPPORTED_API_CLIQZ,'unsupported Apis']);
       }
 
       if (!this.addon.id) {
