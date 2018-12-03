@@ -152,7 +152,7 @@ def prepareBuildConfig() {
     },
     'win_64': {
         def buildParams = getBaseBuildParams('browser-f-win', 'Jenkinsfile.win')
-        buildParams.parameters += getBaseWinBuildParams(true, 'rahm-win')
+        buildParams.parameters += getBaseWinBuildParams(true, 'master')
         if (CQZ_RELEASE_CHANNEL == "release") {
           buildParams.parameters += [
             string(name: 'NODE_MEMORY', value: '16000'),
