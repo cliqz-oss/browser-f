@@ -182,20 +182,8 @@ function restoreSession() {
 }
 
 function startNewSession() {
-<<<<<<< HEAD
   let addNTP = HomePage.canBeDisplayed();
   if (addNTP)
-||||||| merged common ancestors
-  if (Services.prefs.getIntPref("browser.startup.page") == 0)
-    getBrowserWindow().gBrowser.loadURI("about:blank");
-  else
-=======
-  if (Services.prefs.getIntPref("browser.startup.page") == 0)
-    getBrowserWindow().gBrowser.loadURI("about:blank", {
-      triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}),
-    });
-  else
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
     getBrowserWindow().BrowserHome();
 }
 

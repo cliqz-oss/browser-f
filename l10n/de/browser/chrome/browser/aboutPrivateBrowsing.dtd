@@ -31,14 +31,7 @@
 <!ENTITY aboutPrivateBrowsing.learnMore3.after           ".">
 
 <!ENTITY trackingProtection.title              "Schutz vor Aktivitätenverfolgung">
-<<<<<<< HEAD
 <!ENTITY trackingProtection.description2                 "Einige Websites verwenden Seiteninhalte, um Ihre Aktivitäten durch das ganze Internet zu verfolgen. Beim Schutz vor Aktivitätenverfolgung blockiert &brandShortName; viele dieser verfolgenden Seiteninhalte, welche Informationen über Ihre Internetaktivitäten aufzeichnen könnten.">
-||||||| merged common ancestors
-<!ENTITY trackingProtection.description2                 "Einige Websites verwenden Seiteninhalte, um Ihre Aktivitäten durch das ganze Internet zu verfolgen. Beim Schutz vor Aktivitätenverfolgung blockiert Firefox viele dieser verfolgenden Seiteninhalte, welche Informationen über Ihre Internetaktivitäten aufzeichnen könnten.">
-=======
-<!ENTITY trackingProtection.description2                 "Einige Websites verwenden Seiteninhalte, um Ihre Aktivitäten durch das ganze Internet zu verfolgen. Beim Schutz vor Aktivitätenverfolgung blockiert Firefox viele dieser verfolgenden Seiteninhalte, welche Informationen über Ihre Internetaktivitäten aufzeichnen könnten.">
-
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
 <!ENTITY trackingProtection.startTour1         "Wie es funktioniert">
 
 <!ENTITY contentBlocking.title                           "Blockieren von Seitenelementen">

@@ -220,7 +220,6 @@ EXTRA_JS_MODULES += [
     'Integration.jsm',
     'JSONFile.jsm',
     'Log.jsm',
-    'NewTabUtils.jsm',
     'NLP.jsm',
     'ObjectUtils.jsm',
     'offlineAppCache.jsm',
@@ -278,6 +277,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'gtk3', 'cocoa'):
 
 EXTRA_PP_JS_MODULES += [
     'AppConstants.jsm',
+    'NewTabUtils.jsm',
 ]
 
 if 'Android' != CONFIG['OS_TARGET']:

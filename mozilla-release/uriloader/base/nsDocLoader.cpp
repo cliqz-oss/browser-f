@@ -1426,28 +1426,6 @@ NS_IMETHODIMP nsDocLoader::AsyncOnChannelRedirect(nsIChannel *aOldChannel,
                                                   uint32_t aFlags,
                                                   nsIAsyncVerifyRedirectCallback *cb)
 {
-<<<<<<< HEAD
-  if (MOZ_LOG_TEST(gDocLoaderLog, LogLevel::Debug)) {
-    nsIURI* oldURI = nullptr;
-    if (aOldChannel)
-      aOldChannel->GetURI(&oldURI);
-    nsAutoCString oldURL;
-    if (oldURI)
-      oldURI->GetSpec(oldURL);
-
-    nsIURI* newURI = nullptr;
-    if (aNewChannel)
-      aNewChannel->GetURI(&newURI);
-    nsAutoCString newURL;
-    if (newURI)
-      newURI->GetSpec(newURL);
-
-    MOZ_LOG(gDocLoaderLog, LogLevel::Debug,
-           ("DocLoader:%p: AsyncOnChannelRedirect (%s -> %s) flags=%x",
-           this, oldURL.get(), newURL.get(), aFlags));
-  }
-||||||| merged common ancestors
-=======
   if (aFlags &
       (nsIChannelEventSink::REDIRECT_TEMPORARY |
        nsIChannelEventSink::REDIRECT_PERMANENT)) {
@@ -1478,7 +1456,6 @@ NS_IMETHODIMP nsDocLoader::AsyncOnChannelRedirect(nsIChannel *aOldChannel,
     }
   }
 
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
   if (aOldChannel)
   {
     nsLoadFlags loadFlags = 0;

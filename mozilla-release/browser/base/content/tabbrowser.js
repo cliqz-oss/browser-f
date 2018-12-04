@@ -3202,27 +3202,12 @@ window._gBrowser = {
    *   False if swapping isn't permitted, true otherwise.
    */
   swapBrowsersAndCloseOther(aOurTab, aOtherTab) {
-<<<<<<< HEAD
     // Cliqz. Auto-Forget-Tabs:
     // Transfering a private tab to a non-private window is fine.
     // Transfering a normal tab to a private window is not.
     if (PrivateBrowsingUtils.isWindowPrivate(window) &&
         !aOtherTab.private)
       return;
-||||||| merged common ancestors
-    // Do not allow transfering a private tab to a non-private window
-    // and vice versa.
-    if (PrivateBrowsingUtils.isWindowPrivate(window) !=
-      PrivateBrowsingUtils.isWindowPrivate(aOtherTab.ownerGlobal))
-      return;
-=======
-    // Do not allow transfering a private tab to a non-private window
-    // and vice versa.
-    if (PrivateBrowsingUtils.isWindowPrivate(window) !=
-        PrivateBrowsingUtils.isWindowPrivate(aOtherTab.ownerGlobal)) {
-      return false;
-    }
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
 
     let ourBrowser = this.getBrowserForTab(aOurTab);
     let otherBrowser = aOtherTab.linkedBrowser;
@@ -5548,7 +5533,6 @@ var TabContextMenu = {
     this.contextTab.toggleMultiSelectMuteMenuItem = toggleMultiSelectMute;
     this._updateToggleMuteMenuItems(this.contextTab);
 
-<<<<<<< HEAD
 #if CQZ_AUTO_PRIVATE_TAB
     // Privateness related menu items.
     const windowIsPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
@@ -5568,12 +5552,9 @@ var TabContextMenu = {
                          : "apt.tabContext.alwaysInForgetMode");
 #endif
 
-||||||| merged common ancestors
-=======
     let selectAllTabs = document.getElementById("context_selectAllTabs");
     selectAllTabs.disabled = gBrowser.allTabsSelected();
 
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
     this.contextTab.addEventListener("TabAttrModified", this);
     aPopupMenu.addEventListener("popuphiding", this);
 

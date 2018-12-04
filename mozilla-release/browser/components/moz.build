@@ -44,7 +44,7 @@ DIRS += [
     'newtab',
     'originattributes',
     'places',
-    'pocket',
+#   'pocket',
     'preferences',
     'privatebrowsing',
     'resistfingerprinting',
@@ -73,6 +73,7 @@ XPIDL_MODULE = 'browsercompsbase'
 
 EXTRA_PP_COMPONENTS += [
     'BrowserComponents.manifest',
+    'newtab/lib/TopStoriesFeed.jsm',
     'nsBrowserContentHandler.js',
     'nsBrowserGlue.js',
 ]

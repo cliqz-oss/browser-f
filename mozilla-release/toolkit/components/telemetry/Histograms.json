@@ -14184,7 +14184,6 @@
     "bug_numbers": [1482259],
     "description": "In order to know how many silent audio track in the web comparing to other normal media, we record the silence proportion of audio track of media element. The range of value is from 0% - 100%.",
     "releaseChannelCollection": "opt-out"
-<<<<<<< HEAD
   },
   "REPORT_DECEPTIVE_SITE": {
     "record_in_processes": ["main", "content"],
@@ -14195,8 +14194,6 @@
     "n_values": 3,
     "description": "Record how many times the report deceptive website button is clicked (0 = Phish, 1 = PhishMistake, 2 = MalwareMistake)",
     "releaseChannelCollection": "opt-out"
-||||||| merged common ancestors
-=======
   },
   "WEB_AUDIO_BECOMES_AUDIBLE_TIME": {
     "record_in_processes": ["main", "content"],
@@ -14224,6 +14221,5 @@
     "releaseChannelCollection": "opt-out",
     "alert_emails": ["ttung@mozilla.com"],
     "description": "Time (ms) for the QuotaManager to initialize repositories."
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
   }
 }

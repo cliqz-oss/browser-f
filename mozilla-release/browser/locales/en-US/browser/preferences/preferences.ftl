@@ -61,18 +61,12 @@ pane-sync-title = Firefox Account
 category-sync =
     .tooltiptext = { pane-sync-title }
 
-<<<<<<< HEAD
 pane-connect-title = Connect
 category-connect =
     .tooltiptext = { pane-connect-title }
 
-help-button-label = Mozilla Support
-||||||| merged common ancestors
-help-button-label = { -brand-short-name } Support
-=======
 help-button-label = { -brand-short-name } Support
 addons-button-label = Extensions & Themes
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
 
 focus-search =
     .key = f

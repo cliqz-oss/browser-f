@@ -156,15 +156,7 @@
 <!-- Localization note (certerror.introPara, certerror.introPara2) - The text content of the span tag
 will be replaced at runtime with the name of the server to which the user
 was trying to connect. -->
-<<<<<<< HEAD
 <!ENTITY certerror.introPara "Der Inhaber von <span class='hostname'/> hat die Website nicht richtig konfiguriert. &brandShortName; hat keine Verbindung mit dieser Website aufgebaut, um deine Informationen vor Diebstahl zu schützen.">
-
-||||||| merged common ancestors
-<!ENTITY certerror.introPara "Der Inhaber von <span class='hostname'/> hat die Website nicht richtig konfiguriert. &brandShortName; hat keine Verbindung mit dieser Website aufgebaut, um Ihre Informationen vor Diebstahl zu schützen.">
-
-=======
-<!ENTITY certerror.introPara "Der Inhaber von <span class='hostname'/> hat die Website nicht richtig konfiguriert. &brandShortName; hat keine Verbindung mit dieser Website aufgebaut, um Ihre Informationen vor Diebstahl zu schützen.">
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
 <!ENTITY certerror.introPara2 "&brandShortName; hat ein mögliches Sicherheitsrisiko erkannt und <span class='hostname'/> nicht geladen. Falls Sie die Website besuchen, könnten Angreifer versuchen, Passwörter, E-Mails oder Kreditkartendaten zu stehlen.">
 
 <!ENTITY certerror.expiredCert.secondPara "Am wahrscheinlichsten sind Datum- und/oder Uhrzeit auf Ihrem Computer nicht korrekt, was &brandShortName; daran hindert, eine gesicherte Verbindung zu nutzen.">

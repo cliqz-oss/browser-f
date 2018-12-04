@@ -1138,12 +1138,7 @@ var gBuiltInActions = [
 #endif
 ];
 
-<<<<<<< HEAD
 #ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-=======
-// send to device
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
 if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
   gBuiltInActions.push(
   {

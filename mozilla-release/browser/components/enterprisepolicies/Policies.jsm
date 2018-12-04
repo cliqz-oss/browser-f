@@ -626,44 +626,10 @@ var Policies = {
           });
         }
       }
-<<<<<<< HEAD
       if (param.Locked) {
         setAndLockPref("browser.startup.homepage", homepages);
 #if 0
 // Since we do not need a browser.startup.page pref;
-        setAndLockPref("browser.startup.page", 1);
-#endif
-        setAndLockPref("pref.browser.homepage.disable_button.current_page", true);
-        setAndLockPref("pref.browser.homepage.disable_button.bookmark_page", true);
-        setAndLockPref("pref.browser.homepage.disable_button.restore_default", true);
-      } else {
-        setDefaultPref("browser.startup.homepage", homepages);
-#if 0
-// Since we do not need a browser.startup.page pref;
-        setDefaultPref("browser.startup.page", 1);
-#endif
-        runOncePerModification("setHomepage", homepages, () => {
-          Services.prefs.clearUserPref("browser.startup.homepage");
-#if 0
-// Since we do not need a browser.startup.page pref;
-          Services.prefs.clearUserPref("browser.startup.page");
-#endif
-        });
-||||||| merged common ancestors
-      if (param.Locked) {
-        setAndLockPref("browser.startup.homepage", homepages);
-        setAndLockPref("browser.startup.page", 1);
-        setAndLockPref("pref.browser.homepage.disable_button.current_page", true);
-        setAndLockPref("pref.browser.homepage.disable_button.bookmark_page", true);
-        setAndLockPref("pref.browser.homepage.disable_button.restore_default", true);
-      } else {
-        setDefaultPref("browser.startup.homepage", homepages);
-        setDefaultPref("browser.startup.page", 1);
-        runOncePerModification("setHomepage", homepages, () => {
-          Services.prefs.clearUserPref("browser.startup.homepage");
-          Services.prefs.clearUserPref("browser.startup.page");
-        });
-=======
       if (param.StartPage) {
         let prefValue;
         switch (param.StartPage) {
@@ -682,7 +648,20 @@ var Policies = {
         } else {
           setDefaultPref("browser.startup.page", prefValue);
         }
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
+      }
+#endif
+        setAndLockPref("pref.browser.homepage.disable_button.current_page", true);
+        setAndLockPref("pref.browser.homepage.disable_button.bookmark_page", true);
+        setAndLockPref("pref.browser.homepage.disable_button.restore_default", true);
+      } else {
+        setDefaultPref("browser.startup.homepage", homepages);
+        runOncePerModification("setHomepage", homepages, () => {
+          Services.prefs.clearUserPref("browser.startup.homepage");
+#if 0
+// Since we do not need a browser.startup.page pref;
+          Services.prefs.clearUserPref("browser.startup.page");
+#endif
+        });
       }
     },
   },

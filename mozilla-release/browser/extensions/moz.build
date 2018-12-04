@@ -5,33 +5,11 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 DIRS += [
-<<<<<<< HEAD
-#    'aushelper',
 #    'formautofill',
-#    'onboarding',
-||||||| merged common ancestors
-    'aushelper',
-    'formautofill',
-    'onboarding',
-=======
-    'formautofill',
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
     'pdfjs',
-<<<<<<< HEAD
-#    'pocket',
 #    'screenshots',
 #    'webcompat',
 #    'webcompat-reporter'
-||||||| merged common ancestors
-    'pocket',
-    'screenshots',
-    'webcompat',
-    'webcompat-reporter'
-=======
-    'screenshots',
-    'webcompat',
-    'webcompat-reporter'
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
 ]
 
 ''' disabled by Cliqz
@@ -40,20 +18,4 @@ if CONFIG['MOZ_MORTAR']:
     DIRS += [
         'mortar',
     ]
-<<<<<<< HEAD
-
-# Add ASan reporter system add-on if requested
-if CONFIG['MOZ_ASAN_REPORTER']:
-    DIRS += [
-        'asan-reporter',
-    ]
 '''
-||||||| merged common ancestors
-
-# Add ASan reporter system add-on if requested
-if CONFIG['MOZ_ASAN_REPORTER']:
-    DIRS += [
-        'asan-reporter',
-    ]
-=======
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627

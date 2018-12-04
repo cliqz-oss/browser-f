@@ -426,7 +426,9 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   RemoteSettings: "resource://services-settings/remote-settings.js",
   SafeBrowsing: "resource://gre/modules/SafeBrowsing.jsm",
   Sanitizer: "resource:///modules/Sanitizer.jsm",
+#if 0
   SaveToPocket: "chrome://pocket/content/SaveToPocket.jsm",
+#endif
   SessionStartup: "resource:///modules/sessionstore/SessionStartup.jsm",
   SessionStore: "resource:///modules/sessionstore/SessionStore.jsm",
   ShellService: "resource:///modules/ShellService.jsm",
@@ -1088,7 +1090,9 @@ BrowserGlue.prototype = {
     const appSource = new FileSource("app", locales, "resource://app/localization/{locale}/");
     L10nRegistry.registerSource(appSource);
 
+#if 0
     SaveToPocket.init();
+#endif
     Services.obs.notifyObservers(null, "browser-ui-startup-complete");
   },
 
@@ -1447,7 +1451,9 @@ BrowserGlue.prototype = {
     AboutPrivateBrowsingHandler.uninit();
     AutoCompletePopup.uninit();
     DateTimePickerParent.uninit();
+#if 0
     SaveToPocket.uninit();
+#endif
 
     // Browser errors are only collected on Nightly, but telemetry for
     // them is collected on all channels.

@@ -64,7 +64,8 @@ LoadContext::AddWeakPrivacyTransitionObserver(
   if (!weakObs) {
     return NS_ERROR_NOT_AVAILABLE;
   }
-  return mPrivacyObservers.AppendElement(weakObs) ? NS_OK : NS_ERROR_FAILURE;
+  mPrivacyObservers.AppendElement(weakObs);
+  return NS_OK;
 }
 
 //-----------------------------------------------------------------------------

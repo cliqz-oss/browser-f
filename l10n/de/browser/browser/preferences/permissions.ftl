@@ -112,20 +112,6 @@ permissions-exceptions-addons-desc = Du kannst festlegen, welchen Websites du er
 
 ## Exceptions - Autoplay Media
 
-<<<<<<< HEAD
-permissions-exceptions-autoplay-media-window =
-    .title = Berechtigte Websites - Automatische Wiedergabe
-    .style = { permissions-window.style }
-permissions-exceptions-autoplay-media-desc = Hier können die Websites festgelegt werden, welche automatisch Medien mit Ton wiedergeben dürfen. Gib die exakte Adresse der zu erlaubenden Website ein und klicke dann auf &quot;Erlauben&quot;.
-
-||||||| merged common ancestors
-permissions-exceptions-autoplay-media-window =
-    .title = Berechtigte Websites - Automatische Wiedergabe
-    .style = { permissions-window.style }
-permissions-exceptions-autoplay-media-desc = Hier können die Websites festgelegt werden, welche automatisch Medien mit Ton wiedergeben dürfen. Geben Sie die exakte Adresse der zu erlaubenden Website ein und klicken Sie dann auf &quot;Erlauben&quot;.
-
-=======
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
 permissions-exceptions-autoplay-media-window2 =
     .title = Ausnahmen - Automatische Wiedergabe
     .style = { permissions-window.style }

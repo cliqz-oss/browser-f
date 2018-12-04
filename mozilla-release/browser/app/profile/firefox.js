@@ -1522,50 +1522,34 @@ pref("browser.ping-centre.production.endpoint", "");
 // Enable GMP support in the addon manager.
 pref("media.gmp-provider.enabled", true);
 
-<<<<<<< HEAD
 pref("browser.contentblocking.allowlist.storage.enabled", false);
-||||||| merged common ancestors
-pref("browser.contentblocking.allowlist.storage.enabled", true);
-=======
+
 // Enable blocking access to storage from tracking resources by default on
 // Nightly and Beta
 #ifdef EARLY_BETA_OR_EARLIER
 pref("network.cookie.cookieBehavior", 4 /* BEHAVIOR_REJECT_TRACKER */);
 #endif
 
-pref("browser.contentblocking.allowlist.storage.enabled", true);
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
-
 #ifdef NIGHTLY_BUILD
 pref("browser.contentblocking.global-toggle.enabled", false);
 #else
 pref("browser.contentblocking.global-toggle.enabled", false);
 #endif
 
-<<<<<<< HEAD
 // Define a set of default features for the Content Blocking UI
 #ifdef EARLY_BETA_OR_EARLIER
 pref("browser.contentblocking.fastblock.ui.enabled", false);
 pref("browser.contentblocking.fastblock.control-center.ui.enabled", false);
 #else
-||||||| merged common ancestors
-// Define a set of default features for the Content Blocking UI
-#ifdef EARLY_BETA_OR_EARLIER
-pref("browser.contentblocking.fastblock.ui.enabled", true);
-pref("browser.contentblocking.fastblock.control-center.ui.enabled", true);
-#else
-=======
+pref("browser.contentblocking.fastblock.ui.enabled", false);
+pref("browser.contentblocking.fastblock.control-center.ui.enabled", false);
+#endif
+
 #ifdef NIGHTLY_BUILD
 // Enable the Storage Access API in Nightly
 pref("dom.storage_access.enabled", true);
 #endif
 
-// Disable the UI for FastBlock in product.
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
-pref("browser.contentblocking.fastblock.ui.enabled", false);
-pref("browser.contentblocking.fastblock.control-center.ui.enabled", false);
-
-<<<<<<< HEAD
 pref("browser.contentblocking.trackingprotection.ui.enabled", false);
 pref("browser.contentblocking.trackingprotection.control-center.ui.enabled", false);
 pref("browser.contentblocking.rejecttrackers.ui.enabled", false);
@@ -1573,24 +1557,6 @@ pref("browser.contentblocking.rejecttrackers.ui.recommended", false);
 pref("browser.contentblocking.rejecttrackers.control-center.ui.enabled", false);
 pref("browser.contentblocking.cookies-site-data.ui.reject-trackers.recommended", false);
 pref("browser.contentblocking.cookies-site-data.ui.reject-trackers.enabled", false);
-||||||| merged common ancestors
-pref("browser.contentblocking.trackingprotection.ui.enabled", true);
-pref("browser.contentblocking.trackingprotection.control-center.ui.enabled", true);
-pref("browser.contentblocking.rejecttrackers.ui.enabled", true);
-pref("browser.contentblocking.rejecttrackers.ui.recommended", true);
-pref("browser.contentblocking.rejecttrackers.control-center.ui.enabled", true);
-pref("browser.contentblocking.cookies-site-data.ui.reject-trackers.recommended", true);
-pref("browser.contentblocking.cookies-site-data.ui.reject-trackers.enabled", true);
-=======
-// Define a set of default features for the Content Blocking UI.
-pref("browser.contentblocking.trackingprotection.ui.enabled", true);
-pref("browser.contentblocking.trackingprotection.control-center.ui.enabled", true);
-pref("browser.contentblocking.rejecttrackers.ui.enabled", true);
-pref("browser.contentblocking.rejecttrackers.ui.recommended", true);
-pref("browser.contentblocking.rejecttrackers.control-center.ui.enabled", true);
-pref("browser.contentblocking.cookies-site-data.ui.reject-trackers.recommended", true);
-pref("browser.contentblocking.cookies-site-data.ui.reject-trackers.enabled", true);
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
 
 // Enable the Report Breakage UI on Nightly and Beta but not on Release yet.
 #ifdef EARLY_BETA_OR_EARLIER

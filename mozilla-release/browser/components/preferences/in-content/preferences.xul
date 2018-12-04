@@ -38,44 +38,6 @@
       data-l10n-id="pref-page"
       data-l10n-attrs="title">
 
-<<<<<<< HEAD
-  <link rel="localization" href="branding/brand.ftl"/>
-  <link rel="localization" href="browser/branding/sync-brand.ftl"/>
-  <link rel="localization" href="browser/preferences/preferences.ftl"/>
-  <!-- Used by fontbuilder.js -->
-  <link rel="localization" href="browser/preferences/fonts.ftl"/>
-
-  <!-- Links below are only used for search-l10n-ids into subdialogs -->
-  <link rel="localization" href="browser/preferences/blocklists.ftl"/>
-  <link rel="localization" href="browser/preferences/clearSiteData.ftl"/>
-  <link rel="localization" href="browser/preferences/colors.ftl"/>
-  <link rel="localization" href="browser/preferences/connection.ftl"/>
-  <link rel="localization" href="browser/preferences/languages.ftl"/>
-  <link rel="localization" href="browser/preferences/permissions.ftl"/>
-  <link rel="localization" href="browser/preferences/selectBookmark.ftl"/>
-  <link rel="localization" href="browser/preferences/siteDataSettings.ftl"/>
-  <link rel="localization" href="browser/preferences/cliqz.home.ftl"/>
-
-  <script type="text/javascript" src="chrome://global/content/l10n.js"></script>
-||||||| merged common ancestors
-  <link rel="localization" href="branding/brand.ftl"/>
-  <link rel="localization" href="browser/branding/sync-brand.ftl"/>
-  <link rel="localization" href="browser/preferences/preferences.ftl"/>
-  <!-- Used by fontbuilder.js -->
-  <link rel="localization" href="browser/preferences/fonts.ftl"/>
-
-  <!-- Links below are only used for search-l10n-ids into subdialogs -->
-  <link rel="localization" href="browser/preferences/blocklists.ftl"/>
-  <link rel="localization" href="browser/preferences/clearSiteData.ftl"/>
-  <link rel="localization" href="browser/preferences/colors.ftl"/>
-  <link rel="localization" href="browser/preferences/connection.ftl"/>
-  <link rel="localization" href="browser/preferences/languages.ftl"/>
-  <link rel="localization" href="browser/preferences/permissions.ftl"/>
-  <link rel="localization" href="browser/preferences/selectBookmark.ftl"/>
-  <link rel="localization" href="browser/preferences/siteDataSettings.ftl"/>
-
-  <script type="text/javascript" src="chrome://global/content/l10n.js"></script>
-=======
   <linkset>
     <link rel="localization" href="branding/brand.ftl"/>
     <link rel="localization" href="browser/branding/sync-brand.ftl"/>
@@ -92,8 +54,10 @@
     <link rel="localization" href="browser/preferences/permissions.ftl"/>
     <link rel="localization" href="browser/preferences/selectBookmark.ftl"/>
     <link rel="localization" href="browser/preferences/siteDataSettings.ftl"/>
+    <link rel="localization" href="browser/preferences/cliqz.home.ftl"/>
   </linkset>
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
+
+  <script type="text/javascript" src="chrome://global/content/l10n.js"></script>
 
   <html:link rel="shortcut icon"
               href="chrome://browser/skin/settings.svg"/>

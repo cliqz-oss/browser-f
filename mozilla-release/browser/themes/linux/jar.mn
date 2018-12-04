@@ -15,13 +15,7 @@ browser.jar:
   skin/classic/browser/monitor_16-10.png
 * skin/classic/browser/pageInfo.css
   skin/classic/browser/pageInfo.png
-<<<<<<< HEAD
-  skin/classic/browser/page-livemarks.png
   skin/classic/browser/privatebrowsing-eraser.svg
-||||||| merged common ancestors
-  skin/classic/browser/page-livemarks.png
-=======
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
 * skin/classic/browser/searchbar.css
   skin/classic/browser/setDesktopBackground.css
   skin/classic/browser/slowStartup-16.png

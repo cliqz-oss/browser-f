@@ -3319,15 +3319,9 @@ public:
   NS_IMETHOD SetUsePrivateBrowsing(bool) NO_IMPL
   NS_IMETHOD SetPrivateBrowsing(bool) NO_IMPL
   NS_IMETHOD GetIsInIsolatedMozBrowserElement(bool*) NO_IMPL
-<<<<<<< HEAD
-  NS_IMETHOD GetScriptableOriginAttributes(JS::MutableHandleValue) NO_IMPL
+  NS_IMETHOD GetScriptableOriginAttributes(JSContext*, JS::MutableHandleValue) NO_IMPL
   NS_IMETHOD AddWeakPrivacyTransitionObserver(
       nsIPrivacyTransitionObserver *obs) NO_IMPL
-||||||| merged common ancestors
-  NS_IMETHOD GetScriptableOriginAttributes(JS::MutableHandleValue) NO_IMPL
-=======
-  NS_IMETHOD GetScriptableOriginAttributes(JSContext*, JS::MutableHandleValue) NO_IMPL
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
   NS_IMETHOD_(void) GetOriginAttributes(mozilla::OriginAttributes& aAttrs) override {}
   NS_IMETHOD GetUseRemoteTabs(bool*) NO_IMPL
   NS_IMETHOD SetRemoteTabs(bool) NO_IMPL

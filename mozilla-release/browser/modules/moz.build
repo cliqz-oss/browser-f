@@ -155,7 +155,6 @@ EXTRA_JS_MODULES += [
     'ZoomUI.jsm',
 ]
 
-<<<<<<< HEAD
 EXTRA_PP_JS_MODULES += [
     'PageActions.jsm',
 ]
@@ -166,14 +165,11 @@ if CONFIG['MOZ_ACTIVITY_STREAM']:
     ]
 
 
-||||||| merged common ancestors
-=======
 if CONFIG['MOZ_ASAN_REPORTER']:
     EXTRA_JS_MODULES += [
         'AsanReporter.jsm',
     ]
 
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
     EXTRA_JS_MODULES += [
         'Windows8WindowFrameColor.jsm',

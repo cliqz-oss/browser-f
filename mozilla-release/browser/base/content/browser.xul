@@ -70,18 +70,11 @@
         fullscreenbutton="true"
         sizemode="normal"
         retargetdocumentfocus="urlbar"
-<<<<<<< HEAD
-        persist="screenX screenY width height sizemode"
-        cliqzBrowser="true">
-||||||| merged common ancestors
-        persist="screenX screenY width height sizemode">
-=======
         persist="screenX screenY width height sizemode"
 #ifdef BROWSER_XHTML
         hidden="true"
 #endif
-        >
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
+        cliqzBrowser="true">
 
 # All JS files which are needed by browser.xul and other top level windows to
 # support MacOS specific features *must* go into the global-scripts.inc file so
@@ -181,26 +174,12 @@ xmlns="http://www.w3.org/1999/xhtml"
         <menupopup oncommand="TabContextMenu.reopenInContainer(event);"
                    onpopupshowing="TabContextMenu.createReopenInContainerMenu(event);"/>
       </menu>
-<<<<<<< HEAD
       <menuitem id="context_openTabInWindow" label="&moveToNewWindow.label;"
                 accesskey="&moveToNewWindow.accesskey;"
                 tbattr="tabbrowser-multiple"
                 oncommand="gBrowser.replaceTabsWithWindow(TabContextMenu.contextTab);"/>
 #if 0
       <menuseparator id="context_sendTabToDevice_separator" class="sync-ui-item"/>
-      <menu id="context_sendTabToDevice" label="&sendTabToDevice.label;"
-            class="sync-ui-item"
-            accesskey="&sendTabToDevice.accesskey;">
-||||||| merged common ancestors
-      <menuitem id="context_openTabInWindow" label="&moveToNewWindow.label;"
-                accesskey="&moveToNewWindow.accesskey;"
-                tbattr="tabbrowser-multiple"
-                oncommand="gBrowser.replaceTabsWithWindow(TabContextMenu.contextTab);"/>
-      <menuseparator id="context_sendTabToDevice_separator" class="sync-ui-item"/>
-      <menu id="context_sendTabToDevice" label="&sendTabToDevice.label;"
-            class="sync-ui-item"
-            accesskey="&sendTabToDevice.accesskey;">
-=======
       <menu id="context_moveTabOptions"
             multiselectcontextlabel="&moveSelectedTabOptions.label;"
             multiselectcontextaccesskey="&moveSelectedTabOptions.accesskey;"
@@ -225,7 +204,6 @@ xmlns="http://www.w3.org/1999/xhtml"
       </menu>
       <menu id="context_sendTabToDevice"
             class="sync-ui-item">
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
         <menupopup id="context_sendTabToDevicePopupMenu"
                    onpopupshowing="gSync.populateSendTabToDevicesMenu(event.target, TabContextMenu.contextTab.linkedBrowser.currentURI.spec, TabContextMenu.contextTab.linkedBrowser.contentTitle, TabContextMenu.contextTab.multiselected);"/>
       </menu>

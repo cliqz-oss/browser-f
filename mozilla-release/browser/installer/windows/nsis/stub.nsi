@@ -1878,14 +1878,6 @@ Function OpenManualDownloadURL
 FunctionEnd
 
 Function ShouldPromptForProfileCleanup
-<<<<<<< HEAD
-  ; Call GetLatestReleasedVersion
-
-||||||| merged common ancestors
-  Call GetLatestReleasedVersion
-
-=======
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
   ; This will be our return value.
   StrCpy $ProfileCleanupPromptType 0
 

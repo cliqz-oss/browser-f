@@ -1110,18 +1110,10 @@
             }
 
           }
-<<<<<<< HEAD
 
           this._resetPrivateBrowsingObserver();
-        ]]>
-      </constructor>
-||||||| merged common ancestors
-        ]]>
-      </constructor>
-=======
         ]]></body>
       </method>
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
 
       <destructor>
         <![CDATA[

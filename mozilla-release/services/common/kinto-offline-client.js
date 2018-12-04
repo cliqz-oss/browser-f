@@ -653,31 +653,6 @@ class IDB extends _base.default {
    * @param  {String}      options.mode  Transaction mode ("readwrite" or undefined)
    * @return {Object}
    */
-<<<<<<< HEAD
-  prepare(mode = undefined, name = null) {
-    const storeName = name || this.storeName;
-    // On Safari, calling IDBDatabase.transaction with mode == undefined raises
-    // a TypeError.
-    try {
-      // TODO: introducing try catch to subsidize teh console error, need to be removed with DB-1909
-      const transaction = mode ? this._db.transaction([storeName], mode) : this._db.transaction([storeName]);
-      const store = transaction.objectStore(storeName);
-      return { transaction, store };
-    } catch(e) {
-      return {};
-    }
-  }
-||||||| merged common ancestors
-  prepare(mode = undefined, name = null) {
-    const storeName = name || this.storeName;
-    // On Safari, calling IDBDatabase.transaction with mode == undefined raises
-    // a TypeError.
-    const transaction = mode ? this._db.transaction([storeName], mode) : this._db.transaction([storeName]);
-    const store = transaction.objectStore(storeName);
-    return { transaction, store };
-  }
-=======
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
 
 
   async prepare(name, callback, options) {
@@ -888,32 +863,6 @@ class IDB extends _base.default {
 
 
   async getLastModified() {
-<<<<<<< HEAD
-    await this.open();
-    return new Promise((resolve, reject) => {
-      const { transaction, store } = this.prepare(undefined, "__meta__");
-      try {
-        // TODO: introducing try catch to subsidize teh console error, need to be removed with DB-1909
-        const request = store.get(`${this.storeName}-lastModified`);
-        transaction.onerror = event => reject(event.target.error);
-        transaction.oncomplete = event => {
-          resolve(request.result && request.result.value || null);
-        };
-      } catch(e) {
-        reject(e)
-      }
-    });
-||||||| merged common ancestors
-    await this.open();
-    return new Promise((resolve, reject) => {
-      const { transaction, store } = this.prepare(undefined, "__meta__");
-      const request = store.get(`${this.storeName}-lastModified`);
-      transaction.onerror = event => reject(event.target.error);
-      transaction.oncomplete = event => {
-        resolve(request.result && request.result.value || null);
-      };
-    });
-=======
     try {
       let entry = null;
       await this.prepare("timestamps", store => {
@@ -923,7 +872,6 @@ class IDB extends _base.default {
     } catch (e) {
       this._handleError("getLastModified", e);
     }
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
   }
   /**
    * Load a dump of records exported from a server.

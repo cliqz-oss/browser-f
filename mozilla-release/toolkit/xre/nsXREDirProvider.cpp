@@ -1313,16 +1313,8 @@ nsXREDirProvider::GetInstallHash(nsAString & aPathHash, bool aUseCompatibilityMo
   // under SOFTWARE\Mozilla.
   bool hasVendor = GetAppVendor() && strlen(GetAppVendor()) != 0;
   wchar_t regPath[1024] = { L'\0' };
-<<<<<<< HEAD
-  swprintf_s(regPath, mozilla::ArrayLength(regPath),
-             L"SOFTWARE\\%S\\TaskBarIDs", MOZ_APP_BASENAME);
-||||||| merged common ancestors
   swprintf_s(regPath, mozilla::ArrayLength(regPath), L"SOFTWARE\\%S\\%S\\TaskBarIDs",
-              (hasVendor ? gAppData->vendor : "Mozilla"), MOZ_APP_BASENAME);
-=======
-  swprintf_s(regPath, mozilla::ArrayLength(regPath), L"SOFTWARE\\%S\\%S\\TaskBarIDs",
-              (hasVendor ? GetAppVendor() : "Mozilla"), MOZ_APP_BASENAME);
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
+              (hasVendor ? GetAppVendor() : "Cliqz"), MOZ_APP_BASENAME);
 
   // If we pre-computed the hash, grab it from the registry.
   if (GetCachedHash(HKEY_LOCAL_MACHINE, nsDependentString(regPath), appDirPath,
@@ -1415,15 +1407,8 @@ nsXREDirProvider::GetUpdateRootDir(nsIFile* *aResult)
   bool hasVendor = GetAppVendor() && strlen(GetAppVendor()) != 0;
   if ((hasVendor || GetAppName()) &&
       NS_SUCCEEDED(GetUserDataDirectoryHome(getter_AddRefs(localDir), true)) &&
-<<<<<<< HEAD
-      NS_SUCCEEDED(localDir->AppendNative(nsDependentCString(gAppData->name))) &&
-||||||| merged common ancestors
-      NS_SUCCEEDED(localDir->AppendNative(nsDependentCString(hasVendor ?
-                                          gAppData->vendor : gAppData->name))) &&
-=======
       NS_SUCCEEDED(localDir->AppendNative(nsDependentCString(hasVendor ?
                                           GetAppVendor() : GetAppName()))) &&
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
       NS_SUCCEEDED(localDir->Append(NS_LITERAL_STRING("updates"))) &&
       NS_SUCCEEDED(localDir->Append(pathHash))) {
     localDir.forget(aResult);

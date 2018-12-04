@@ -942,42 +942,13 @@ var gMainPane = {
 
   updateBrowserStartupUI() {
     const pbAutoStartPref = Preferences.get("browser.privatebrowsing.autostart");
-<<<<<<< HEAD
     const restoreCheckbox = document.getElementById("restoreSessionCheckbox");
     let checkbox = document.getElementById("restoreSessionCheckbox");
     if (pbAutoStartPref.value) {
       restoreCheckbox.setAttribute("disabled", "true");
       restoreCheckbox.checked = false;
-||||||| merged common ancestors
-    const startupPref = Preferences.get("browser.startup.page");
-
-    let newValue;
-    let checkbox = document.getElementById("browserRestoreSession");
-    if (pbAutoStartPref.value || startupPref.locked) {
-      checkbox.setAttribute("disabled", "true");
-      newValue = false;
-=======
-    const startupPref = Preferences.get("browser.startup.page");
-
-    let newValue;
-    let checkbox = document.getElementById("browserRestoreSession");
-    if (pbAutoStartPref.value || startupPref.locked) {
-      checkbox.setAttribute("disabled", "true");
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
     } else {
       checkbox.removeAttribute("disabled");
-<<<<<<< HEAD
-||||||| merged common ancestors
-      newValue = startupPref.value === this.STARTUP_PREF_RESTORE_SESSION;
-    }
-    if (checkbox.checked !== newValue) {
-      checkbox.checked = newValue;
-=======
-    }
-    newValue = pbAutoStartPref.value ? false : startupPref.value === this.STARTUP_PREF_RESTORE_SESSION;
-    if (checkbox.checked !== newValue) {
-      checkbox.checked = newValue;
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
     }
   },
 

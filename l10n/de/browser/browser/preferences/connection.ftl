@@ -53,17 +53,9 @@ connection-proxy-socks5 =
     .accesskey = v
 connection-proxy-noproxy = Kein Proxy für:
     .accesskey = n
-<<<<<<< HEAD
 
 connection-proxy-noproxy-desc = Beispiel: .cliqz.com, .net.de, 192.168.1.0/24
 
-||||||| merged common ancestors
-
-connection-proxy-noproxy-desc = Beispiel: .mozilla.org, .net.de, 192.168.1.0/24
-
-=======
-connection-proxy-noproxy-desc = Beispiel: .mozilla.org, .net.de, 192.168.1.0/24
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
 connection-proxy-autotype =
     .label = Automatische Proxy-Konfigurations-Adresse:
     .accesskey = u

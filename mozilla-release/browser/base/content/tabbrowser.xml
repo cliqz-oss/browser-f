@@ -1011,48 +1011,6 @@
           let isMovingTabs = dt.mozItemCount > 0;
           for (let i = 0; i < dt.mozItemCount; i++) {
             // tabs are always added as the first type
-<<<<<<< HEAD
-            if (types[0] == TAB_DROP_TYPE) {
-              let sourceNode = dt.mozGetDataAt(TAB_DROP_TYPE, 0);
-              if (sourceNode instanceof XULElement &&
-                  sourceNode.localName == "tab" &&
-                  sourceNode.ownerGlobal.isChromeWindow &&
-                  sourceNode.ownerDocument.documentElement.getAttribute("windowtype") == "navigator:browser" &&
-                  sourceNode.ownerGlobal.gBrowser.tabContainer == sourceNode.parentNode) {
-                // Cliqz. Auto-Forget-Tabs:
-                // Transfering a private tab to a non-private window is fine.
-                // Transfering a normal tab to a private window is not.
-                if (PrivateBrowsingUtils.isWindowPrivate(window) &&
-                    !sourceNode.private)
-                  return "none";
-
-                if (window.gMultiProcessBrowser !=
-                    sourceNode.ownerGlobal.gMultiProcessBrowser)
-                  return "none";
-
-                return dt.dropEffect == "copy" ? "copy" : "move";
-              }
-||||||| merged common ancestors
-            if (types[0] == TAB_DROP_TYPE) {
-              let sourceNode = dt.mozGetDataAt(TAB_DROP_TYPE, 0);
-              if (sourceNode instanceof XULElement &&
-                  sourceNode.localName == "tab" &&
-                  sourceNode.ownerGlobal.isChromeWindow &&
-                  sourceNode.ownerDocument.documentElement.getAttribute("windowtype") == "navigator:browser" &&
-                  sourceNode.ownerGlobal.gBrowser.tabContainer == sourceNode.parentNode) {
-                // Do not allow transfering a private tab to a non-private window
-                // and vice versa.
-                if (PrivateBrowsingUtils.isWindowPrivate(window) !=
-                    PrivateBrowsingUtils.isWindowPrivate(sourceNode.ownerGlobal))
-                  return "none";
-
-                if (window.gMultiProcessBrowser !=
-                    sourceNode.ownerGlobal.gMultiProcessBrowser)
-                  return "none";
-
-                return dt.dropEffect == "copy" ? "copy" : "move";
-              }
-=======
             let types = dt.mozTypesAt(0);
             if (types[0] != TAB_DROP_TYPE) {
               isMovingTabs = false;
@@ -1067,10 +1025,11 @@
                 sourceNode.ownerGlobal.isChromeWindow &&
                 sourceNode.ownerDocument.documentElement.getAttribute("windowtype") == "navigator:browser" &&
                 sourceNode.ownerGlobal.gBrowser.tabContainer == sourceNode.parentNode) {
-              // Do not allow transfering a private tab to a non-private window
-              // and vice versa.
-              if (PrivateBrowsingUtils.isWindowPrivate(window) !=
-                  PrivateBrowsingUtils.isWindowPrivate(sourceNode.ownerGlobal))
+              // Cliqz. Auto-Forget-Tabs:
+              // Transfering a private tab to a non-private window is fine.
+              // Transfering a normal tab to a private window is not.
+              if (PrivateBrowsingUtils.isWindowPrivate(window) &&
+                  !sourceNode.private)
                 return "none";
 
               if (window.gMultiProcessBrowser !=
@@ -1078,7 +1037,6 @@
                 return "none";
 
               return dt.dropEffect == "copy" ? "copy" : "move";
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
             }
           }
 

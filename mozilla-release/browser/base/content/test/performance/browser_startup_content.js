@@ -60,7 +60,7 @@ const whitelist = {
     "resource://gre/modules/WebProgressChild.jsm",
 
     // Pocket
-    "chrome://pocket/content/AboutPocket.jsm",
+    // "chrome://pocket/content/AboutPocket.jsm",
 
     // Telemetry
     "resource://gre/modules/TelemetryController.jsm", // bug 1470339

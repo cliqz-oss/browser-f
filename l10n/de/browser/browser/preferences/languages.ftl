@@ -7,17 +7,9 @@ webpage-languages-window =
     .style = width: 40em
 languages-close-key =
     .key = w
-<<<<<<< HEAD
 
 languages-description = Webseiten sind manchmal in mehr als einer Sprache verfügbar. Wähle die Sprachen für die Darstellung von Webseiten in der von dir bevorzugten Reihenfolge:
 
-||||||| merged common ancestors
-
-languages-description = Webseiten sind manchmal in mehr als einer Sprache verfügbar. Wählen Sie die Sprachen für die Darstellung von Webseiten in der von Ihnen bevorzugten Reihenfolge:
-
-=======
-languages-description = Webseiten sind manchmal in mehr als einer Sprache verfügbar. Wählen Sie die Sprachen für die Darstellung von Webseiten in der von Ihnen bevorzugten Reihenfolge:
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
 languages-customize-spoof-english =
     .label = Englischsprachige Versionen von Websites für verbesserte Privatsphäre anfordern
 languages-customize-moveup =
@@ -30,15 +22,8 @@ languages-customize-remove =
     .label = Entfernen
     .accesskey = E
 languages-customize-select-language =
-<<<<<<< HEAD
     .placeholder = Wähle eine Sprache zum Hinzufügen aus…
 
-||||||| merged common ancestors
-    .placeholder = Wählen Sie eine Sprache zum Hinzufügen aus…
-
-=======
-    .placeholder = Wählen Sie eine Sprache zum Hinzufügen aus…
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
 languages-customize-add =
     .label = Hinzufügen
     .accesskey = z

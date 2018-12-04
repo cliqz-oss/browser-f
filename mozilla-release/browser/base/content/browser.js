@@ -100,8 +100,6 @@ XPCOMUtils.defineLazyScriptGetter(this, "gIdentityHandler",
                                   "chrome://browser/content/browser-siteIdentity.js");
 XPCOMUtils.defineLazyScriptGetter(this, "BrowserPageActions",
                                   "chrome://browser/content/browser-pageActions.js");
-XPCOMUtils.defineLazyScriptGetter(this, "FeedHandler",
-                                  "chrome://browser/content/browser-feeds.js");
 XPCOMUtils.defineLazyScriptGetter(this, "SidebarUI",
                                   "chrome://browser/content/browser-sidebar.js");
 XPCOMUtils.defineLazyScriptGetter(this, "gPluginHandler",
@@ -1448,13 +1446,7 @@ var gBrowserInit = {
     gPageStyleMenu.init();
     LanguageDetectionListener.init();
     BrowserOnClick.init();
-<<<<<<< HEAD
-    FeedHandler.init();
 #if 0
-||||||| merged common ancestors
-    FeedHandler.init();
-=======
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
     ContentBlocking.init();
 #endif
     CaptivePortalWatcher.init();
@@ -2049,15 +2041,7 @@ var gBrowserInit = {
 
     BrowserOnClick.uninit();
 
-<<<<<<< HEAD
-    FeedHandler.uninit();
-
 #if 0
-||||||| merged common ancestors
-    FeedHandler.uninit();
-
-=======
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
     ContentBlocking.uninit();
 #endif
 
@@ -5213,16 +5197,10 @@ var XULBrowserWindow = {
       uri = Services.uriFixup.createExposableURI(uri);
     } catch (e) {}
     gIdentityHandler.updateIdentity(this._state, uri);
-<<<<<<< HEAD
 #if 0
-    ContentBlocking.onSecurityChange(this._state, aWebProgress, aIsSimulated);
-#endif
-||||||| merged common ancestors
-    ContentBlocking.onSecurityChange(this._state, aWebProgress, aIsSimulated);
-=======
     ContentBlocking.onSecurityChange(aOldState, this._state, aWebProgress, aIsSimulated,
                                      aContentBlockingLogJSON);
->>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
+#endif
   },
 
   // simulate all change notifications after switching tabs
