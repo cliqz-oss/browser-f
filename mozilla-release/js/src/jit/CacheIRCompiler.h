@@ -43,8 +43,10 @@ namespace jit {
     _(GuardAndLoadUnboxedExpando)         \
     _(GuardNoDetachedTypedObjects)        \
     _(GuardNoDenseElements)               \
+    _(GuardAndGetNumberFromString)        \
     _(GuardAndGetIndexFromString)         \
     _(GuardIndexIsNonNegative)            \
+    _(GuardIndexGreaterThanDenseInitLength) \
     _(GuardTagNotEqual)                   \
     _(GuardXrayExpandoShapeAndDefaultProto)\
     _(GuardNoAllocationMetadataBuilder)   \
@@ -111,6 +113,8 @@ namespace jit {
     _(MegamorphicStoreSlot)               \
     _(MegamorphicHasPropResult)           \
     _(CallObjectHasSparseElementResult)   \
+    _(CallInt32ToString)                  \
+    _(CallNumberToString)                 \
     _(WrapResult)
 
 // Represents a Value on the Baseline frame's expression stack. Slot 0 is the
@@ -196,8 +200,9 @@ class OperandLocation
         return data_.valueStackPushed;
     }
     JSValueType payloadType() const {
-        if (kind_ == PayloadReg)
+        if (kind_ == PayloadReg) {
             return data_.payloadReg.type;
+        }
         MOZ_ASSERT(kind_ == PayloadStack);
         return data_.payloadStack.type;
     }
@@ -246,14 +251,16 @@ class OperandLocation
     bool isOnStack() const { return kind_ == PayloadStack || kind_ == ValueStack; }
 
     size_t stackPushed() const {
-        if (kind_ == PayloadStack)
+        if (kind_ == PayloadStack) {
             return data_.payloadStack.stackPushed;
+        }
         MOZ_ASSERT(kind_ == ValueStack);
         return data_.valueStackPushed;
     }
     size_t stackSizeInBytes() const {
-        if (kind_ == PayloadStack)
+        if (kind_ == PayloadStack) {
             return sizeof(uintptr_t);
+        }
         MOZ_ASSERT(kind_ == ValueStack);
         return sizeof(js::Value);
     }
@@ -267,10 +274,12 @@ class OperandLocation
     }
 
     bool aliasesReg(Register reg) const {
-        if (kind_ == PayloadReg)
+        if (kind_ == PayloadReg) {
             return payloadReg() == reg;
-        if (kind_ == ValueReg)
+        }
+        if (kind_ == ValueReg) {
             return valueReg().aliases(reg);
+        }
         return false;
     }
     bool aliasesReg(ValueOperand reg) const {
@@ -795,10 +804,12 @@ class MOZ_RAII AutoOutputRegister
     ~AutoOutputRegister();
 
     Register maybeReg() const {
-        if (output_.hasValue())
+        if (output_.hasValue()) {
             return output_.valueReg().scratchReg();
-        if (!output_.typedReg().isFloat())
+        }
+        if (!output_.typedReg().isFloat()) {
             return output_.typedReg().gpr();
+        }
         return InvalidReg;
     }
 

@@ -80,6 +80,11 @@ public:
 
   uint32_t GetLength() const { return mLength; }
 
+  operator mozilla::Span<const char16_t>() const
+  {
+    return mozilla::MakeSpan(static_cast<const char16_t*>(GetUTF16String()), GetLength());
+  }
+
   void ToString(nsAString& aString) const;
   void ToUTF8String(nsACString& aString) const;
 
@@ -103,7 +108,7 @@ public:
 
 protected:
   // Used by nsStaticAtom.
-  constexpr nsAtom(const char16_t* aStr, uint32_t aLength, uint32_t aHash)
+  constexpr nsAtom(uint32_t aLength, uint32_t aHash)
     : mLength(aLength)
     , mKind(static_cast<uint32_t>(nsAtom::AtomKind::Static))
     , mHash(aHash)
@@ -126,9 +131,9 @@ protected:
   const uint32_t mHash;
 };
 
-// This class would be |final| if it wasn't for nsICSSAnonBoxPseudo and
-// nsICSSPseudoElement, which are trivial subclasses used to ensure only
-// certain static atoms are passed to certain functions.
+// This class would be |final| if it wasn't for nsCSSAnonBoxPseudoStaticAtom
+// and nsCSSPseudoElementStaticAtom, which are trivial subclasses used to
+// ensure only certain static atoms are passed to certain functions.
 class nsStaticAtom : public nsAtom
 {
 public:
@@ -142,9 +147,9 @@ public:
   // which is what we use when atomizing strings. We compute this hash in
   // Atom.py and assert in nsAtomTable::RegisterStaticAtoms that the two
   // hashes match.
-  constexpr nsStaticAtom(const char16_t* aStr, uint32_t aLength,
-                         uint32_t aHash, uint32_t aStringOffset)
-    : nsAtom(aStr, aLength, aHash)
+  constexpr nsStaticAtom(uint32_t aLength, uint32_t aHash,
+                         uint32_t aStringOffset)
+    : nsAtom(aLength, aHash)
     , mStringOffset(aStringOffset)
   {}
 

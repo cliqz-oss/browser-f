@@ -12,7 +12,6 @@ const {
 
 loader.lazyRequireGetter(this, "EditingSession", "devtools/client/inspector/boxmodel/utils/editing-session");
 loader.lazyRequireGetter(this, "InplaceEditor", "devtools/client/shared/inplace-editor", true);
-loader.lazyRequireGetter(this, "getCssProperties", "devtools/shared/fronts/css-properties", true);
 
 const NUMERIC = /^-?[\d\.]+$/;
 
@@ -182,7 +181,12 @@ BoxModel.prototype = {
       this._updateReasons = [];
 
       return null;
-    }).bind(this))().catch(console.error);
+    }).bind(this))().catch(error => {
+      // If we failed because we were being destroyed while waiting for a request, ignore.
+      if (this.document) {
+        console.error(error);
+      }
+    });
 
     this._lastRequest = lastRequest;
   },
@@ -319,7 +323,7 @@ BoxModel.prototype = {
 
         this.updateBoxModel("editable-value-change");
       },
-      cssProperties: getCssProperties(this.inspector.toolbox)
+      cssProperties: this.inspector.cssProperties,
     }, event);
   },
 

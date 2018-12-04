@@ -27,7 +27,7 @@ add_task(async function() {
 
   // Reload to have one request in the list.
   const waitForEvents = waitForNetworkEvents(monitor, 1);
-  tab.linkedBrowser.loadURI(SIMPLE_URL);
+  BrowserTestUtils.loadURI(tab.linkedBrowser, SIMPLE_URL);
   await waitForEvents;
 
   // Click on a request and wait till the default "Headers" side panel is opened.
@@ -48,7 +48,7 @@ add_task(async function() {
     oldpanel: "headers",
     newpanel: "cookies",
   }, {
-    method: "sidepanel_changed"
+    method: "sidepanel_changed",
   });
 
   return teardown(monitor);

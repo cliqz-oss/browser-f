@@ -8,7 +8,10 @@ with Files("**"):
     BUG_COMPONENT = ("Core", "Embedding: APIs")
 
 EXPORTS += [
+    'nsBaseCommandController.h',
+    'nsCommandManager.h',
     'nsCommandParams.h',
+    'nsControllerCommandTable.h',
 ]
 
 XPIDL_SOURCES += [
@@ -24,10 +27,13 @@ XPIDL_MODULE = 'commandhandler'
 
 UNIFIED_SOURCES += [
     'nsBaseCommandController.cpp',
-    'nsCommandGroup.cpp',
     'nsCommandManager.cpp',
     'nsCommandParams.cpp',
     'nsControllerCommandTable.cpp',
+]
+
+LOCAL_INCLUDES += [
+    '/dom/base',
 ]
 
 FINAL_LIBRARY = 'xul'

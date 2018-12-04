@@ -97,7 +97,6 @@ XPIDL_SOURCES += [
     'nsISecCheckWrapChannel.idl',
     'nsISecureBrowserUI.idl',
     'nsISecurityEventSink.idl',
-    'nsISecurityInfoProvider.idl',
     'nsISensitiveInfoHiddenURI.idl',
     'nsISerializationHelper.idl',
     'nsIServerSocket.idl',
@@ -302,7 +301,6 @@ LOCAL_INCLUDES += [
     '/dom/base',
     '/netwerk/protocol/http',
     '/netwerk/socket',
-    '/security/pkix/include'
 ]
 
 if CONFIG['CC_TYPE'] in ('clang', 'gcc'):

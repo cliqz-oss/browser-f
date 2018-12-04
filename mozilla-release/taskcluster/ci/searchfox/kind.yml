@@ -35,6 +35,8 @@ jobs:
             max-run-time: 36000
             env:
                 PERFHERDER_EXTRA_OPTIONS: searchfox
+                RUSTC_BOOTSTRAP: "1"
+                MOZSEARCH_PLATFORM: "linux"
         run:
             using: mozharness
             actions: [build]
@@ -62,9 +64,11 @@ jobs:
             env:
                 TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/macosx64/cross-releng.manifest"
                 PERFHERDER_EXTRA_OPTIONS: searchfox
+                RUSTC_BOOTSTRAP: "1"
+                MOZSEARCH_PLATFORM: "macosx"
         run:
             using: mozharness
-            actions: [get-secrets build update]
+            actions: [get-secrets build]
             config:
                 - builds/releng_base_firefox.py
                 - builds/releng_base_mac_64_cross_builds.py

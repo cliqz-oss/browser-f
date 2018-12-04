@@ -4,13 +4,11 @@ const RELATIVE_DIR = "toolkit/mozapps/extensions/test/xpinstall/";
 
 const TESTROOT = "http://example.com/browser/" + RELATIVE_DIR;
 const TESTROOT2 = "http://example.org/browser/" + RELATIVE_DIR;
-const XPINSTALL_URL = "chrome://mozapps/content/xpinstall/xpinstallConfirm.xul";
 const PROMPT_URL = "chrome://global/content/commonDialog.xul";
 const ADDONS_URL = "chrome://mozapps/content/extensions/extensions.xul";
 const PREF_LOGGING_ENABLED = "extensions.logging.enabled";
 const PREF_INSTALL_REQUIREBUILTINCERTS = "extensions.install.requireBuiltInCerts";
 const PREF_INSTALL_REQUIRESECUREORIGIN = "extensions.install.requireSecureOrigin";
-const PREF_CUSTOM_CONFIRMATION_UI = "xpinstall.customConfirmationUI";
 const CHROME_NAME = "mochikit";
 
 function getChromeRoot(path) {
@@ -29,11 +27,6 @@ function extractChromeRoot(path) {
   }
   return chromeRootPath;
 }
-
-Services.prefs.setBoolPref(PREF_CUSTOM_CONFIRMATION_UI, false);
-registerCleanupFunction(() => {
-  Services.prefs.clearUserPref(PREF_CUSTOM_CONFIRMATION_UI);
-});
 
 /**
  * This is a test harness designed to handle responding to UI during the process
@@ -120,6 +113,7 @@ var Harness = {
       Services.wm.addListener(this);
 
       window.addEventListener("popupshown", this);
+      PanelUI.notificationPanel.addEventListener("popupshown", this);
 
       var self = this;
       registerCleanupFunction(async function() {
@@ -138,6 +132,7 @@ var Harness = {
         Services.wm.removeListener(self);
 
         window.removeEventListener("popupshown", self);
+        PanelUI.notificationPanel.removeEventListener("popupshown", self);
 
         let aInstalls = await AddonManager.getAllInstalls();
         is(aInstalls.length, 0, "Should be no active installs at the end of the test");
@@ -154,6 +149,11 @@ var Harness = {
   },
 
   finish() {
+    // Some tests using this harness somehow finish leaving
+    // the addon-installed panel open.  hiding here addresses
+    // that which fixes the rest of the tests.  Since no test
+    // here cares about this panel, we just need it to close.
+    PanelUI.notificationPanel.hidePopup();
     finish();
   },
 
@@ -187,29 +187,7 @@ var Harness = {
 
   // Window open handling
   windowReady(window) {
-    if (window.document.location.href == XPINSTALL_URL) {
-      if (this.installBlockedCallback)
-        ok(false, "Should have been blocked by the whitelist");
-      this.pendingCount = window.document.getElementById("itemList").childNodes.length;
-
-      // If there is a confirm callback then its return status determines whether
-      // to install the items or not. If not the test is over.
-      let result = true;
-      if (this.installConfirmCallback) {
-        result = this.installConfirmCallback(window);
-        if (result === this.leaveOpen)
-          return;
-      }
-
-      if (!result) {
-        window.document.documentElement.cancelDialog();
-      } else {
-        // Initially the accept button is disabled on a countdown timer
-        var button = window.document.documentElement.getButton("accept");
-        button.disabled = false;
-        window.document.documentElement.acceptDialog();
-      }
-    } else if (window.document.location.href == PROMPT_URL) {
+    if (window.document.location.href == PROMPT_URL) {
         var promptType = window.args.promptType;
         switch (promptType) {
           case "alert":
@@ -265,12 +243,14 @@ var Harness = {
 
   handleEvent(event) {
     if (event.type === "popupshown") {
-      if (event.target.firstChild) {
+      if (event.target == PanelUI.notificationPanel) {
+        PanelUI.notificationPanel.hidePopup();
+      } else if (event.target.firstElementChild) {
         let popupId = event.target.getAttribute("popupid");
         if (popupId === "addon-webext-permissions") {
-          this.popupReady(event.target.firstChild);
-        } else if (popupId === "addon-installed" || popupId === "addon-install-failed") {
-          event.target.firstChild.button.click();
+          this.popupReady(event.target.firstElementChild);
+        } else if (popupId === "addon-install-failed") {
+          event.target.firstElementChild.button.click();
         }
       }
     }

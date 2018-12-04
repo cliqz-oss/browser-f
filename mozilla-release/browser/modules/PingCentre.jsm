@@ -8,6 +8,8 @@ XPCOMUtils.defineLazyGlobalGetters(this, ["fetch"]);
 
 ChromeUtils.defineModuleGetter(this, "AppConstants",
   "resource://gre/modules/AppConstants.jsm");
+ChromeUtils.defineModuleGetter(this, "UpdateUtils",
+  "resource://gre/modules/UpdateUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "ClientID",
   "resource://gre/modules/ClientID.jsm");
 ChromeUtils.defineModuleGetter(this, "TelemetryEnvironment",
@@ -143,7 +145,7 @@ class PingCentre {
     }
 
     let clientID = data.client_id || await this.telemetryClientId;
-    let locale = data.locale || Services.locale.getAppLocalesAsLangTags().pop();
+    let locale = data.locale || Services.locale.appLocaleAsLangTag;
     let profileCreationDate = TelemetryEnvironment.currentEnvironment.profile.resetDate ||
       TelemetryEnvironment.currentEnvironment.profile.creationDate;
     const payload = Object.assign({
@@ -151,7 +153,7 @@ class PingCentre {
       topic: this._topic,
       client_id: clientID,
       version: AppConstants.MOZ_APP_VERSION,
-      release_channel: AppConstants.MOZ_UPDATE_CHANNEL,
+      release_channel: UpdateUtils.getUpdateChannel(false),
     }, data);
     if (experimentsString) {
       payload.shield_id = experimentsString;

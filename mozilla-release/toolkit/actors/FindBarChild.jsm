@@ -14,8 +14,9 @@ ChromeUtils.defineModuleGetter(this, "BrowserUtils",
                                "resource://gre/modules/BrowserUtils.jsm");
 
 class FindBarChild extends ActorChild {
-  constructor(mm) {
-    super(mm);
+  constructor(dispatcher) {
+    super(dispatcher);
+
     this._findKey = null;
 
     XPCOMUtils.defineLazyProxy(this, "FindBarContent", () => {
@@ -60,8 +61,15 @@ class FindBarChild extends ActorChild {
       return FindBarContent.start(event);
     }
 
+    // disable FAYT in about:blank to prevent FAYT opening unexpectedly.
+    let location = this.content.location.href;
+    if (location == "about:blank") {
+      return null;
+    }
+
     if (event.ctrlKey || event.altKey || event.metaKey || event.defaultPrevented ||
-        !BrowserUtils.canFastFind(this.content)) {
+        !BrowserUtils.mimeTypeIsTextBased(this.content.document.contentType) ||
+        !BrowserUtils.canFindInPage(location)) {
       return null;
     }
 

@@ -29,6 +29,7 @@
 #include "nsCocoaWindow.h"
 #include "nsNativeThemeColors.h"
 #include "nsIScrollableFrame.h"
+#include "mozilla/ClearOnShutdown.h"
 #include "mozilla/EventStates.h"
 #include "mozilla/Range.h"
 #include "mozilla/RelativeLuminanceUtils.h"
@@ -2021,6 +2022,15 @@ nsNativeThemeCocoa::DrawTextBox(CGContextRef cgContext, const HIRect& inBoxRect,
   CGContextSetRGBFillColor(cgContext, 1.0, 1.0, 1.0, 1.0);
   CGContextFillRect(cgContext, inBoxRect);
 
+#if DRAW_IN_FRAME_DEBUG
+  CGContextSetRGBFillColor(cgContext, 0.0, 0.0, 0.5, 0.25);
+  CGContextFillRect(cgContext, inBoxRect);
+#endif
+
+  if (aParams.borderless) {
+    return;
+  }
+
   HIThemeFrameDrawInfo fdi;
   fdi.version = 0;
   fdi.kind = kHIThemeFrameTextFieldSquare;
@@ -2040,11 +2050,6 @@ nsNativeThemeCocoa::DrawTextBox(CGContextRef cgContext, const HIRect& inBoxRect,
   drawRect.origin.y += frameOutset;
   drawRect.size.width -= frameOutset * 2;
   drawRect.size.height -= frameOutset * 2;
-
-#if DRAW_IN_FRAME_DEBUG
-  CGContextSetRGBFillColor(cgContext, 0.0, 0.0, 0.5, 0.25);
-  CGContextFillRect(cgContext, inBoxRect);
-#endif
 
   HIThemeDrawFrame(&drawRect, &fdi, cgContext, HITHEME_ORIENTATION);
 
@@ -2716,21 +2721,6 @@ nsNativeThemeCocoa::DrawResizer(CGContextRef cgContext, const HIRect& aRect,
   NS_OBJC_END_TRY_ABORT_BLOCK;
 }
 
-static nscolor
-GetAutoScrollbarTrackColor(ComputedStyle* aStyle)
-{
-  // Use the default scrollbar color. XXX Can we get it from the system?
-  return NS_RGB(0xFA, 0xFA, 0xFA);
-}
-
-static nscolor
-GetAutoScrollbarFaceColor(ComputedStyle* aStyle)
-{
-  // Use the default scrollbar color. We may want to derive from track
-  // color at some point.
-  return NS_RGB(0xC1, 0xC1, 0xC1);
-}
-
 static bool
 IsSmallScrollbar(nsIFrame* aFrame)
 {
@@ -2761,12 +2751,11 @@ nsNativeThemeCocoa::ComputeScrollbarParams(nsIFrame* aFrame, bool aIsHorizontal)
   // generally good enough for use cases of custom scrollbars.
   if (!params.overlay) {
     ComputedStyle* style = nsLayoutUtils::StyleForScrollbar(aFrame);
-    if (style->StyleUI()->HasCustomScrollbars()) {
+    const nsStyleUI* ui = style->StyleUI();
+    if (ui->HasCustomScrollbars()) {
       params.custom = true;
-      params.trackColor =
-        GetScrollbarTrackColor(style, &GetAutoScrollbarTrackColor);
-      params.faceColor =
-        GetScrollbarFaceColor(style, &GetAutoScrollbarFaceColor);
+      params.trackColor = ui->mScrollbarTrackColor.CalcColor(style);
+      params.faceColor = ui->mScrollbarFaceColor.CalcColor(style);
     }
   }
   return params;
@@ -3333,15 +3322,14 @@ nsNativeThemeCocoa::ComputeWidgetInfo(nsIFrame* aFrame,
     case StyleAppearance::Statusbar:
       return Some(WidgetInfo::StatusBar(IsActive(aFrame, YES)));
 
-    case StyleAppearance::Menulist:
-    case StyleAppearance::MenulistTextfield: {
+    case StyleAppearance::Menulist: {
       ControlParams controlParams = ComputeControlParams(aFrame, eventState);
       controlParams.focused = controlParams.focused || IsFocused(aFrame);
       controlParams.pressed = IsOpenButton(aFrame);
       DropdownParams params;
       params.controlParams = controlParams;
       params.pullsDown = false;
-      params.editable = aWidgetType == StyleAppearance::MenulistTextfield;
+      params.editable = false;
       return Some(WidgetInfo::Dropdown(params));
     }
 
@@ -3354,6 +3342,7 @@ nsNativeThemeCocoa::ComputeWidgetInfo(nsIFrame* aFrame,
     case StyleAppearance::Groupbox:
       return Some(WidgetInfo::GroupBox());
 
+    case StyleAppearance::MenulistTextfield:
     case StyleAppearance::Textfield:
     case StyleAppearance::NumberInput: {
       bool isFocused = eventState.HasState(NS_EVENT_STATE_FOCUS);
@@ -3367,7 +3356,10 @@ nsNativeThemeCocoa::ComputeWidgetInfo(nsIFrame* aFrame,
       }
 
       bool isDisabled = IsDisabled(aFrame, eventState) || IsReadOnly(aFrame);
-      return Some(WidgetInfo::TextBox(TextBoxParams{isDisabled, isFocused}));
+      bool borderless =
+        (aWidgetType == StyleAppearance::MenulistTextfield && !isFocused);
+      return Some(WidgetInfo::TextBox(TextBoxParams{isDisabled, isFocused,
+                                                    borderless}));
     }
 
     case StyleAppearance::Searchfield:
@@ -3942,7 +3934,7 @@ nsNativeThemeCocoa::CreateWebRenderCommandsForWidget(mozilla::wr::DisplayListBui
 
       wr::BorderRadius borderRadius = wr::EmptyBorderRadius();
       float borderWidth = presContext->CSSPixelsToDevPixels(1.0f);
-      wr::BorderWidths borderWidths =
+      wr::LayoutSideOffsets borderWidths =
         wr::ToBorderWidths(borderWidth, borderWidth, borderWidth, borderWidth);
 
       mozilla::Range<const wr::BorderSide> wrsides(side, 4);
@@ -3965,7 +3957,7 @@ nsNativeThemeCocoa::CreateWebRenderCommandsForWidget(mozilla::wr::DisplayListBui
 
       wr::BorderRadius borderRadius = wr::EmptyBorderRadius();
       float borderWidth = presContext->CSSPixelsToDevPixels(1.0f);
-      wr::BorderWidths borderWidths =
+      wr::LayoutSideOffsets borderWidths =
         wr::ToBorderWidths(borderWidth, borderWidth, borderWidth, borderWidth);
 
       mozilla::Range<const wr::BorderSide> wrsides(side, 4);
@@ -3999,6 +3991,31 @@ nsNativeThemeCocoa::CreateWebRenderCommandsForWidget(mozilla::wr::DisplayListBui
 
     default:
       return true;
+  }
+}
+
+
+nscolor
+nsNativeThemeCocoa::GetWidgetAutoColor(mozilla::ComputedStyle* aStyle,
+                                       WidgetType aWidgetType)
+{
+  switch (aWidgetType) {
+    case StyleAppearance::Scrollbar:
+    case StyleAppearance::ScrollbarSmall:
+    case StyleAppearance::ScrollbarVertical:
+    case StyleAppearance::ScrollbarHorizontal:
+    case StyleAppearance::ScrollbarbuttonUp:
+    case StyleAppearance::ScrollbarbuttonDown:
+    case StyleAppearance::ScrollbarbuttonLeft:
+    case StyleAppearance::ScrollbarbuttonRight:
+      return NS_RGB(0xFA, 0xFA, 0xFA);
+
+    case StyleAppearance::ScrollbarthumbVertical:
+    case StyleAppearance::ScrollbarthumbHorizontal:
+      return NS_RGB(0xC1, 0xC1, 0xC1);
+
+    default:
+      return nsITheme::GetWidgetAutoColor(aStyle, aWidgetType);
   }
 }
 
@@ -4063,9 +4080,6 @@ nsNativeThemeCocoa::GetWidgetBorder(nsDeviceContext* aContext,
       break;
 
     case StyleAppearance::MenulistTextfield:
-      result = DirectionAwareMargin(kAquaComboboxBorder, aFrame);
-      break;
-
     case StyleAppearance::NumberInput:
     case StyleAppearance::Textfield:
     {
@@ -4329,6 +4343,7 @@ nsNativeThemeCocoa::GetMinimumWidgetSize(nsPresContext* aPresContext,
       break;
     }
 
+    case StyleAppearance::MenulistTextfield:
     case StyleAppearance::NumberInput:
     case StyleAppearance::Textfield:
     case StyleAppearance::TextfieldMultiline:
@@ -4644,7 +4659,6 @@ nsNativeThemeCocoa::ThemeSupportsWidget(nsPresContext* aPresContext, nsIFrame* a
     case StyleAppearance::MenulistButton:
     case StyleAppearance::MozMenulistButton:
     case StyleAppearance::MenulistText:
-    case StyleAppearance::MenulistTextfield:
       if (aFrame && aFrame->GetWritingMode().IsVertical()) {
         return false;
       }
@@ -4708,6 +4722,7 @@ nsNativeThemeCocoa::ThemeSupportsWidget(nsPresContext* aPresContext, nsIFrame* a
     case StyleAppearance::Treeheadersortarrow:
     case StyleAppearance::Treeitem:
     case StyleAppearance::Treeline:
+    case StyleAppearance::MenulistTextfield:
     case StyleAppearance::MozMacSourceList:
     case StyleAppearance::MozMacSourceListSelection:
     case StyleAppearance::MozMacActiveSourceListSelection:
@@ -4802,7 +4817,6 @@ nsNativeThemeCocoa::ThemeDrawsFocusForWidget(WidgetType aWidgetType)
   }
 
   if (aWidgetType == StyleAppearance::Menulist ||
-      aWidgetType == StyleAppearance::MenulistTextfield ||
       aWidgetType == StyleAppearance::Button ||
       aWidgetType == StyleAppearance::MozMacHelpButton ||
       aWidgetType == StyleAppearance::MozMacDisclosureButtonOpen ||
@@ -4842,6 +4856,7 @@ nsNativeThemeCocoa::WidgetAppearanceDependsOnWindowFocus(WidgetType aWidgetType)
     case StyleAppearance::SpinnerDownbutton:
     case StyleAppearance::Separator:
     case StyleAppearance::Toolbox:
+    case StyleAppearance::MenulistTextfield:
     case StyleAppearance::NumberInput:
     case StyleAppearance::Textfield:
     case StyleAppearance::Treeview:
@@ -4956,8 +4971,18 @@ nsNativeThemeCocoa::GetWidgetTransparency(nsIFrame* aFrame, WidgetType aWidgetTy
 
   case StyleAppearance::ScrollbarSmall:
   case StyleAppearance::Scrollbar:
-  case StyleAppearance::Scrollcorner:
-    return nsLookAndFeel::UseOverlayScrollbars() ? eTransparent : eOpaque;
+  case StyleAppearance::Scrollcorner: {
+    // We don't use custom scrollbars when using overlay scrollbars.
+    if (nsLookAndFeel::UseOverlayScrollbars()) {
+      return eTransparent;
+    }
+    const nsStyleUI* ui = nsLayoutUtils::StyleForScrollbar(aFrame)->StyleUI();
+    StyleComplexColor trackColor = ui->mScrollbarTrackColor;
+    if (!trackColor.IsAuto() && trackColor.MaybeTransparent()) {
+      return eTransparent;
+    }
+    return eOpaque;
+  }
 
   case StyleAppearance::Statusbar:
     // Knowing that scrollbars and statusbars are opaque improves
@@ -4970,4 +4995,17 @@ nsNativeThemeCocoa::GetWidgetTransparency(nsIFrame* aFrame, WidgetType aWidgetTy
   default:
     return eUnknownTransparency;
   }
+}
+
+already_AddRefed<nsITheme>
+do_GetNativeTheme()
+{
+  static nsCOMPtr<nsITheme> inst;
+
+  if (!inst) {
+    inst = new nsNativeThemeCocoa();
+    ClearOnShutdown(&inst);
+  }
+
+  return do_AddRef(inst);
 }

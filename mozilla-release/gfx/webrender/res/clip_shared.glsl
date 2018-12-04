@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include rect,render_task,resource_cache,snap,transform
+#include rect,render_task,gpu_cache,snap,transform
 
 #ifdef WR_VERTEX_SHADER
 
@@ -13,13 +13,15 @@
 #define SEGMENT_CORNER_BR   4
 
 in int aClipRenderTaskAddress;
-in int aScrollNodeId;
+in int aClipTransformId;
+in int aPrimTransformId;
 in int aClipSegment;
 in ivec4 aClipDataResourceAddress;
 
 struct ClipMaskInstance {
     int render_task_address;
-    int transform_id;
+    int clip_transform_id;
+    int prim_transform_id;
     int segment;
     ivec2 clip_data_address;
     ivec2 resource_address;
@@ -29,7 +31,8 @@ ClipMaskInstance fetch_clip_item() {
     ClipMaskInstance cmi;
 
     cmi.render_task_address = aClipRenderTaskAddress;
-    cmi.transform_id = aScrollNodeId;
+    cmi.clip_transform_id = aClipTransformId;
+    cmi.prim_transform_id = aPrimTransformId;
     cmi.segment = aClipSegment;
     cmi.clip_data_address = aClipDataResourceAddress.xy;
     cmi.resource_address = aClipDataResourceAddress.zw;
@@ -39,7 +42,6 @@ ClipMaskInstance fetch_clip_item() {
 
 struct ClipVertexInfo {
     vec3 local_pos;
-    vec2 screen_pos;
     RectWithSize clipped_local_rect;
 };
 
@@ -51,49 +53,48 @@ RectWithSize intersect_rect(RectWithSize a, RectWithSize b) {
 // The transformed vertex function that always covers the whole clip area,
 // which is the intersection of all clip instances of a given primitive
 ClipVertexInfo write_clip_tile_vertex(RectWithSize local_clip_rect,
-                                      Transform transform,
+                                      Transform prim_transform,
+                                      Transform clip_transform,
                                       ClipArea area) {
-    vec2 device_pos = area.screen_origin + aPosition.xy * area.common_data.task_rect.size;
-    vec2 actual_pos = device_pos;
+    vec2 device_pos = area.screen_origin +
+                      aPosition.xy * area.common_data.task_rect.size;
 
-    if (transform.is_axis_aligned) {
+    if (clip_transform.is_axis_aligned && prim_transform.is_axis_aligned) {
+        mat4 snap_mat = clip_transform.m * prim_transform.inv_m;
         vec4 snap_positions = compute_snap_positions(
-            transform.m,
-            local_clip_rect
+            snap_mat,
+            local_clip_rect,
+            area.common_data.device_pixel_scale
         );
 
         vec2 snap_offsets = compute_snap_offset_impl(
             device_pos,
-            transform.m,
-            local_clip_rect,
             RectWithSize(snap_positions.xy, snap_positions.zw - snap_positions.xy),
-            snap_positions,
-            vec2(0.5)
+            snap_positions
         );
 
-        actual_pos -= snap_offsets;
+        device_pos -= snap_offsets;
     }
 
-    vec4 node_pos;
+    vec2 world_pos = device_pos / area.common_data.device_pixel_scale;
 
-    // Select the local position, based on whether we are rasterizing this
-    // clip mask in local- or sccreen-space.
-    if (area.local_space) {
-        node_pos = vec4(actual_pos / uDevicePixelRatio, 0.0, 1.0);
-    } else {
-        node_pos = get_node_pos(actual_pos / uDevicePixelRatio, transform);
-    }
+    vec4 pos = prim_transform.m * vec4(world_pos, 0.0, 1.0);
+    pos.xyz /= pos.w;
 
-    // compute the point position inside the scroll node, in CSS space
-    vec2 vertex_pos = device_pos +
-                      area.common_data.task_rect.p0 -
-                      area.screen_origin;
+    vec4 p = get_node_pos(pos.xy, clip_transform);
+    vec3 local_pos = p.xyw * pos.w;
 
-    gl_Position = uTransform * vec4(vertex_pos, 0.0, 1);
+    vec4 vertex_pos = vec4(
+        area.common_data.task_rect.p0 + aPosition.xy * area.common_data.task_rect.size,
+        0.0,
+        1.0
+    );
+
+    gl_Position = uTransform * vertex_pos;
 
     init_transform_vs(vec4(local_clip_rect.p0, local_clip_rect.p0 + local_clip_rect.size));
 
-    ClipVertexInfo vi = ClipVertexInfo(node_pos.xyw, actual_pos, local_clip_rect);
+    ClipVertexInfo vi = ClipVertexInfo(local_pos, local_clip_rect);
     return vi;
 }
 

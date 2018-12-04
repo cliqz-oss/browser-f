@@ -34,6 +34,7 @@
 #include "Units.h"
 
 // forward declarations
+class   nsIBidiKeyboard;
 class   nsIRollupListener;
 class   imgIContainer;
 class   nsIContent;
@@ -777,6 +778,11 @@ class nsIWidget : public nsISupports
                         double aWidth,
                         double aHeight,
                         bool   aRepaint) = 0;
+
+    virtual mozilla::Maybe<bool> IsResizingNativeWidget()
+    {
+        return mozilla::Nothing();
+    }
 
     /**
      * Resize the widget so that the inner client area has the given size.
@@ -1741,6 +1747,9 @@ private:
 
   static void OnLongTapTimerCallback(nsITimer* aTimer, void* aClosure);
 
+  static already_AddRefed<nsIBidiKeyboard> CreateBidiKeyboardContentProcess();
+  static already_AddRefed<nsIBidiKeyboard> CreateBidiKeyboardInner();
+
   mozilla::UniquePtr<LongTapInfo> mLongTapTouchPoint;
   nsCOMPtr<nsITimer> mLongTapTimer;
   static int32_t sPointerIdCounter;
@@ -2127,6 +2136,8 @@ public:
      */
     virtual void RecvScreenPixels(mozilla::ipc::Shmem&& aMem, const ScreenIntSize& aSize) = 0;
 #endif
+
+    static already_AddRefed<nsIBidiKeyboard> CreateBidiKeyboard();
 
 protected:
     /**

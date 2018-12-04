@@ -175,7 +175,7 @@ WebConsoleClient.prototype = {
 
     this.emit("networkEventUpdate", {
       packet: packet,
-      networkInfo
+      networkInfo,
     });
   },
 
@@ -318,6 +318,7 @@ WebConsoleClient.prototype = {
       url: options.url,
       selectedNodeActor: options.selectedNodeActor,
       selectedObjectActor: options.selectedObjectActor,
+      mapped: options.mapped,
     };
 
     return new Promise((resolve, reject) => {
@@ -634,7 +635,7 @@ WebConsoleClient.prototype = {
     const packet = {
       to: this._actor,
       type: "sendHTTPRequest",
-      request: data
+      request: data,
     };
     return this._client.request(packet, onResponse);
   },
@@ -762,5 +763,5 @@ WebConsoleClient.prototype = {
         resolve(initial + response.substring);
       });
     });
-  }
+  },
 };

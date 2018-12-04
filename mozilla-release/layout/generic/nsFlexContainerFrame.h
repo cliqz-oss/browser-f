@@ -11,6 +11,7 @@
 
 #include "nsContainerFrame.h"
 #include "mozilla/UniquePtr.h"
+#include "mozilla/dom/FlexBinding.h"
 
 class nsStyleCoord;
 
@@ -40,9 +41,11 @@ struct ComputedFlexItemInfo
    */
   nscoord mMainBaseSize;
   /**
-   * mMainDeltaSize is the value that the flex sizing algorithm
-   * "wants" to use to stretch or shrink the item, before clamping to
-   * the item's main min and max sizes. Since the flex sizing
+   * mMainDeltaSize is the amount that the flex sizing algorithm
+   * adds to the mMainBaseSize, before clamping to mMainMinSize and
+   * mMainMaxSize. This can be thought of as the amount by which the
+   * flex layout algorithm "wants" to shrink or grow the item, and
+   * would do, if it was unconstrained. Since the flex sizing
    * algorithm proceeds linearly, the mMainDeltaSize for an item only
    * respects the resolved size of items already frozen.
    */
@@ -70,6 +73,8 @@ struct ComputedFlexLineInfo
 struct ComputedFlexContainerInfo
 {
   nsTArray<ComputedFlexLineInfo> mLines;
+  mozilla::dom::FlexPhysicalDirection mMainAxisDirection;
+  mozilla::dom::FlexPhysicalDirection mCrossAxisDirection;
 };
 
 /**
@@ -226,6 +231,11 @@ public:
    */
   static bool IsUsedFlexBasisContent(const nsStyleCoord* aFlexBasis,
                                      const nsStyleCoord* aMainSize);
+
+  /**
+   * Callback for nsFrame::MarkIntrinsicISizesDirty() on a flex item.
+   */
+  static void MarkCachedFlexMeasurementsDirty(nsIFrame* aItemFrame);
 
 protected:
   // Protected constructor & destructor

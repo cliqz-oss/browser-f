@@ -11,8 +11,8 @@ const {
 
 const {
   getExtensionUuid,
-  parseFileUri
-} = require("devtools/client/aboutdebugging-new/src/modules/extensions-helper");
+  parseFileUri,
+} = require("../modules/extensions-helper");
 
 /**
  * This middleware converts extensions object that get from DebuggerClient.listAddons()

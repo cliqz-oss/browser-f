@@ -4,6 +4,8 @@
 
 "use strict";
 
+// This is loaded into chrome windows with the subscript loader. Wrap in
+// a block to prevent accidentally leaking globals onto `window`.
 {
 
 const cachedFragments = {
@@ -59,18 +61,17 @@ class MozInputBox extends MozXULElement {
   }
 
   attributeChangedCallback(name, oldValue, newValue) {
-    if (name === "spellcheck") {
-      this.spellcheck = newValue;
+    if (name === "spellcheck" && oldValue != newValue) {
       this._initUI();
     }
   }
 
   connectedCallback() {
-    this.spellcheck = this.hasAttribute("spellcheck");
     this._initUI();
   }
 
   _initUI() {
+    this.spellcheck = this.hasAttribute("spellcheck");
     if (this.menupopup) {
       this.menupopup.remove();
     }

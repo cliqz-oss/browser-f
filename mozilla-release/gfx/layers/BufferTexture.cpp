@@ -5,13 +5,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "BufferTexture.h"
-#include "mozilla/layers/ImageDataSerializer.h"
-#include "mozilla/layers/ISurfaceAllocator.h"
-#include "mozilla/layers/CompositableForwarder.h"
-#include "mozilla/gfx/Logging.h"
-#include "mozilla/gfx/2D.h"
-#include "mozilla/fallible.h"
 #include "libyuv.h"
+#include "mozilla/Move.h"
+#include "mozilla/fallible.h"
+#include "mozilla/gfx/2D.h"
+#include "mozilla/gfx/Logging.h"
+#include "mozilla/layers/CompositableForwarder.h"
+#include "mozilla/layers/ISurfaceAllocator.h"
+#include "mozilla/layers/ImageDataSerializer.h"
 
 #ifdef MOZ_WIDGET_GTK
 #include "gfxPlatformGtk.h"
@@ -168,8 +169,8 @@ BufferTextureData::CreateForYCbCr(KnowsCompositor* aAllocator,
                                   gfx::IntSize aCbCrSize,
                                   uint32_t aCbCrStride,
                                   StereoMode aStereoMode,
+                                  gfx::ColorDepth aColorDepth,
                                   YUVColorSpace aYUVColorSpace,
-                                  uint32_t aBitDepth,
                                   TextureFlags aTextureFlags)
 {
   uint32_t bufSize = ImageDataSerializer::ComputeYCbCrBufferSize(
@@ -200,8 +201,8 @@ BufferTextureData::CreateForYCbCr(KnowsCompositor* aAllocator,
                                                aCbCrSize, aCbCrStride,
                                                yOffset, cbOffset, crOffset,
                                                aStereoMode,
+                                               aColorDepth,
                                                aYUVColorSpace,
-                                               aBitDepth,
                                                hasIntermediateBuffer);
 
   return CreateInternal(aAllocator ? aAllocator->GetTextureForwarder()
@@ -254,10 +255,10 @@ BufferTextureData::GetYUVColorSpace() const
   return ImageDataSerializer::YUVColorSpaceFromBufferDescriptor(mDescriptor);
 }
 
-Maybe<uint32_t>
-BufferTextureData::GetBitDepth() const
+Maybe<gfx::ColorDepth>
+BufferTextureData::GetColorDepth() const
 {
-  return ImageDataSerializer::BitDepthFromBufferDescriptor(mDescriptor);
+  return ImageDataSerializer::ColorDepthFromBufferDescriptor(mDescriptor);
 }
 
 Maybe<StereoMode>
@@ -275,12 +276,6 @@ BufferTextureData::GetFormat() const
 already_AddRefed<gfx::DrawTarget>
 BufferTextureData::BorrowDrawTarget()
 {
-  if (mDrawTarget) {
-    mDrawTarget->SetTransform(gfx::Matrix());
-    RefPtr<gfx::DrawTarget> dt = mDrawTarget;
-    return dt.forget();
-  }
-
   if (mDescriptor.type() != BufferDescriptor::TRGBDescriptor) {
     return nullptr;
   }
@@ -288,37 +283,24 @@ BufferTextureData::BorrowDrawTarget()
   const RGBDescriptor& rgb = mDescriptor.get_RGBDescriptor();
 
   uint32_t stride = ImageDataSerializer::GetRGBStride(rgb);
+  RefPtr<gfx::DrawTarget> dt;
   if (gfx::Factory::DoesBackendSupportDataDrawtarget(mMoz2DBackend)) {
-    mDrawTarget = gfx::Factory::CreateDrawTargetForData(mMoz2DBackend,
-                                                        GetBuffer(), rgb.size(),
-                                                        stride, rgb.format(), true);
-  } else {
+    dt = gfx::Factory::CreateDrawTargetForData(mMoz2DBackend,
+                                               GetBuffer(), rgb.size(),
+                                               stride, rgb.format(), true);
+  }
+  if (!dt) {
     // Fall back to supported platform backend.  Note that mMoz2DBackend
     // does not match the draw target type.
-    mDrawTarget = gfxPlatform::CreateDrawTargetForData(GetBuffer(), rgb.size(),
-                                                       stride, rgb.format(),
-                                                       true);
+    dt = gfxPlatform::CreateDrawTargetForData(GetBuffer(), rgb.size(),
+                                              stride, rgb.format(),
+                                              true);
   }
 
-  if (mDrawTarget) {
-    RefPtr<gfx::DrawTarget> dt = mDrawTarget;
-    return dt.forget();
-  }
-
-  // TODO - should we warn? should we really fallback to cairo? perhaps
-  // at least update mMoz2DBackend...
-  if (mMoz2DBackend != gfx::BackendType::CAIRO) {
-    gfxCriticalNote << "Falling to CAIRO from " << (int)mMoz2DBackend;
-    mDrawTarget = gfx::Factory::CreateDrawTargetForData(gfx::BackendType::CAIRO,
-                                                        GetBuffer(), rgb.size(),
-                                                        stride, rgb.format(), true);
-  }
-
-  if (!mDrawTarget) {
+  if (!dt) {
     gfxCriticalNote << "BorrowDrawTarget failure, original backend " << (int)mMoz2DBackend;
   }
 
-  RefPtr<gfx::DrawTarget> dt = mDrawTarget;
   return dt.forget();
 }
 
@@ -354,7 +336,8 @@ BufferTextureData::BorrowMappedYCbCrData(MappedYCbCrTextureData& aMap)
 
   aMap.stereoMode = desc.stereoMode();
   aMap.metadata = nullptr;
-  uint32_t bytesPerPixel = desc.bitDepth() > 8 ? 2 : 1;
+  uint32_t bytesPerPixel =
+    BytesPerPixel(SurfaceFormatForColorDepth(desc.colorDepth()));
 
   aMap.y.data = data + desc.yOffset();
   aMap.y.size = ySize;
@@ -434,11 +417,11 @@ BufferTextureData::UpdateFromSurface(gfx::SourceSurface* aSurface)
 }
 
 void
-BufferTextureData::SetDesciptor(const BufferDescriptor& aDescriptor)
+BufferTextureData::SetDescriptor(BufferDescriptor&& aDescriptor)
 {
   MOZ_ASSERT(mDescriptor.type() == BufferDescriptor::TYCbCrDescriptor);
   MOZ_ASSERT(mDescriptor.get_YCbCrDescriptor().ySize() == gfx::IntSize());
-  mDescriptor = aDescriptor;
+  mDescriptor = std::move(aDescriptor);
 }
 
 bool

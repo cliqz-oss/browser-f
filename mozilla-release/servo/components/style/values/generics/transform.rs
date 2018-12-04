@@ -10,13 +10,15 @@ use num_traits::Zero;
 use values::{computed, CSSFloat};
 use values::computed::length::Length as ComputedLength;
 use values::computed::length::LengthOrPercentage as ComputedLengthOrPercentage;
+use values::specified::angle::Angle as SpecifiedAngle;
 use values::specified::length::Length as SpecifiedLength;
 use values::specified::length::LengthOrPercentage as SpecifiedLengthOrPercentage;
 
 /// A generic 2D transformation matrix.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo,
-         ToComputedValue, ToCss)]
+#[derive(
+    Clone, Copy, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToComputedValue, ToCss,
+)]
 #[css(comma, function)]
 pub struct Matrix<T> {
     pub a: T,
@@ -66,8 +68,19 @@ impl<T: Into<f64>> From<Matrix3D<T>> for Transform3D<f64> {
 }
 
 /// A generic transform origin.
-#[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug, MallocSizeOf,
-         PartialEq, SpecifiedValueInfo, ToAnimatedZero, ToComputedValue, ToCss)]
+#[derive(
+    Animate,
+    Clone,
+    ComputeSquaredDistance,
+    Copy,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToAnimatedZero,
+    ToComputedValue,
+    ToCss,
+)]
 pub struct TransformOrigin<H, V, Depth> {
     /// The horizontal origin.
     pub horizontal: H,
@@ -80,8 +93,7 @@ pub struct TransformOrigin<H, V, Depth> {
 /// A generic timing function.
 ///
 /// <https://drafts.csswg.org/css-timing-1/#single-timing-function-production>
-#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo,
-         ToCss)]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToCss)]
 #[value_info(ty = "TIMING_FUNCTION")]
 pub enum TimingFunction<Integer, Number> {
     /// `linear | ease | ease-in | ease-out | ease-in-out`
@@ -106,8 +118,18 @@ pub enum TimingFunction<Integer, Number> {
 
 #[allow(missing_docs)]
 #[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
-#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, Parse, PartialEq,
-         SpecifiedValueInfo, ToComputedValue, ToCss)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+)]
 pub enum TimingKeyword {
     Linear,
     Ease,
@@ -163,8 +185,7 @@ impl TimingKeyword {
     }
 }
 
-#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo,
-         ToComputedValue, ToCss)]
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToComputedValue, ToCss)]
 /// A single operation in the list of a `transform` value
 pub enum TransformOperation<Angle, Number, Length, Integer, LengthOrPercentage> {
     /// Represents a 2D 2x3 matrix.
@@ -268,8 +289,7 @@ pub enum TransformOperation<Angle, Number, Length, Integer, LengthOrPercentage> 
     },
 }
 
-#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo,
-         ToComputedValue, ToCss)]
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToComputedValue, ToCss)]
 /// A value of the `transform` property
 pub struct Transform<T>(#[css(if_empty = "none", iterable)] pub Vec<T>);
 
@@ -281,11 +301,7 @@ impl<Angle, Number, Length, Integer, LengthOrPercentage>
         use self::TransformOperation::*;
         matches!(
             *self,
-            Rotate(..) |
-            Rotate3D(..) |
-            RotateX(..) |
-            RotateY(..) |
-            RotateZ(..)
+            Rotate(..) | Rotate3D(..) | RotateX(..) | RotateY(..) | RotateZ(..)
         )
     }
 
@@ -379,10 +395,30 @@ pub trait ToMatrix {
     fn to_3d_matrix(&self, reference_box: Option<&Rect<Au>>) -> Result<Transform3D<f64>, ()>;
 }
 
+/// A little helper to deal with both specified and computed angles.
+pub trait ToRadians {
+    /// Return the radians value as a 64-bit floating point value.
+    fn radians64(&self) -> f64;
+}
+
+impl ToRadians for computed::angle::Angle {
+    #[inline]
+    fn radians64(&self) -> f64 {
+        computed::angle::Angle::radians64(self)
+    }
+}
+
+impl ToRadians for SpecifiedAngle {
+    #[inline]
+    fn radians64(&self) -> f64 {
+        computed::angle::Angle::from_degrees(self.degrees()).radians64()
+    }
+}
+
 impl<Angle, Number, Length, Integer, LoP> ToMatrix
     for TransformOperation<Angle, Number, Length, Integer, LoP>
 where
-    Angle: Copy + AsRef<computed::angle::Angle>,
+    Angle: ToRadians + Copy,
     Number: Copy + Into<f32> + Into<f64>,
     Length: ToAbsoluteLength,
     LoP: ToAbsoluteLength,
@@ -411,7 +447,7 @@ where
         let reference_height = reference_box.map(|v| v.size.height);
         let matrix = match *self {
             Rotate3D(ax, ay, az, theta) => {
-                let theta = TWO_PI - theta.as_ref().radians64();
+                let theta = TWO_PI - theta.radians64();
                 let (ax, ay, az, theta) =
                     get_normalized_vector_and_angle(ax.into(), ay.into(), az.into(), theta);
                 Transform3D::create_rotation(
@@ -422,15 +458,15 @@ where
                 )
             },
             RotateX(theta) => {
-                let theta = euclid::Angle::radians(TWO_PI - theta.as_ref().radians64());
+                let theta = euclid::Angle::radians(TWO_PI - theta.radians64());
                 Transform3D::create_rotation(1., 0., 0., theta)
             },
             RotateY(theta) => {
-                let theta = euclid::Angle::radians(TWO_PI - theta.as_ref().radians64());
+                let theta = euclid::Angle::radians(TWO_PI - theta.radians64());
                 Transform3D::create_rotation(0., 1., 0., theta)
             },
             RotateZ(theta) | Rotate(theta) => {
-                let theta = euclid::Angle::radians(TWO_PI - theta.as_ref().radians64());
+                let theta = euclid::Angle::radians(TWO_PI - theta.radians64());
                 Transform3D::create_rotation(0., 0., 1., theta)
             },
             Perspective(ref d) => {
@@ -464,16 +500,16 @@ where
                 Transform3D::create_translation(0., 0., z.to_pixel_length(None)? as f64)
             },
             Skew(theta_x, theta_y) => Transform3D::create_skew(
-                euclid::Angle::radians(theta_x.as_ref().radians64()),
-                euclid::Angle::radians(theta_y.map_or(0., |a| a.as_ref().radians64())),
+                euclid::Angle::radians(theta_x.radians64()),
+                euclid::Angle::radians(theta_y.map_or(0., |a| a.radians64())),
             ),
             SkewX(theta) => Transform3D::create_skew(
-                euclid::Angle::radians(theta.as_ref().radians64()),
+                euclid::Angle::radians(theta.radians64()),
                 euclid::Angle::radians(0.),
             ),
             SkewY(theta) => Transform3D::create_skew(
                 euclid::Angle::radians(0.),
-                euclid::Angle::radians(theta.as_ref().radians64()),
+                euclid::Angle::radians(theta.radians64()),
             ),
             Matrix3D(m) => m.into(),
             Matrix(m) => m.into(),
@@ -574,8 +610,18 @@ pub fn get_normalized_vector_and_angle<T: Zero>(
     }
 }
 
-#[derive(Clone, ComputeSquaredDistance, Copy, Debug, MallocSizeOf, PartialEq,
-         SpecifiedValueInfo, ToAnimatedZero, ToComputedValue, ToCss)]
+#[derive(
+    Clone,
+    ComputeSquaredDistance,
+    Copy,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToAnimatedZero,
+    ToComputedValue,
+    ToCss,
+)]
 /// A value of the `Rotate` property
 ///
 /// <https://drafts.csswg.org/css-transforms-2/#individual-transforms>
@@ -588,8 +634,18 @@ pub enum Rotate<Number, Angle> {
     Rotate3D(Number, Number, Number, Angle),
 }
 
-#[derive(Clone, ComputeSquaredDistance, Copy, Debug, MallocSizeOf, PartialEq,
-         SpecifiedValueInfo, ToAnimatedZero, ToComputedValue, ToCss)]
+#[derive(
+    Clone,
+    ComputeSquaredDistance,
+    Copy,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToAnimatedZero,
+    ToComputedValue,
+    ToCss,
+)]
 /// A value of the `Scale` property
 ///
 /// <https://drafts.csswg.org/css-transforms-2/#individual-transforms>
@@ -604,8 +660,17 @@ pub enum Scale<Number> {
     Scale3D(Number, Number, Number),
 }
 
-#[derive(Clone, ComputeSquaredDistance, Debug, MallocSizeOf, PartialEq,
-         SpecifiedValueInfo, ToAnimatedZero, ToComputedValue, ToCss)]
+#[derive(
+    Clone,
+    ComputeSquaredDistance,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToAnimatedZero,
+    ToComputedValue,
+    ToCss,
+)]
 /// A value of the `Translate` property
 ///
 /// <https://drafts.csswg.org/css-transforms-2/#individual-transforms>
@@ -621,8 +686,9 @@ pub enum Translate<LengthOrPercentage, Length> {
 }
 
 #[allow(missing_docs)]
-#[derive(Clone, Copy, Debug, MallocSizeOf, Parse, PartialEq, SpecifiedValueInfo,
-         ToComputedValue, ToCss)]
+#[derive(
+    Clone, Copy, Debug, MallocSizeOf, Parse, PartialEq, SpecifiedValueInfo, ToComputedValue, ToCss,
+)]
 pub enum TransformStyle {
     #[cfg(feature = "servo")]
     Auto,

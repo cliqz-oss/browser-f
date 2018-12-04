@@ -80,6 +80,10 @@ WebConsoleFrame.prototype = {
     await this._initConnection();
     await this.consoleOutput.init();
 
+    // Toggle the timestamp on preference change
+    Services.prefs.addObserver(PREF_MESSAGE_TIMESTAMP, this._onToolboxPrefChanged);
+    this._onToolboxPrefChanged();
+
     const id = WebConsoleUtils.supportsString(this.hudId);
     if (Services.obs) {
       Services.obs.notifyObservers(id, "web-console-created");
@@ -136,7 +140,6 @@ WebConsoleFrame.prototype = {
     if (clearStorage) {
       this.webConsoleClient.clearMessagesCache();
     }
-    this.jsterm.focus();
     this.emit("messages-cleared");
   },
 
@@ -150,6 +153,16 @@ WebConsoleFrame.prototype = {
       this.consoleOutput.dispatchPrivateMessagesClear();
       this.emit("private-messages-cleared");
     }
+  },
+
+  inspectObjectActor(objectActor) {
+    this.consoleOutput.dispatchMessageAdd({
+      helperResult: {
+        type: "inspectObject",
+        object: objectActor,
+      },
+    }, true);
+    return this.consoleOutput;
   },
 
   _onUpdateListeners() {
@@ -228,15 +241,13 @@ WebConsoleFrame.prototype = {
     this.document = this.window.document;
     this.rootElement = this.document.documentElement;
 
-    this.outputNode = this.document.getElementById("output-container");
+    this.outputNode = this.document.getElementById("app-wrapper");
 
     const toolbox = gDevTools.getToolbox(this.owner.target);
 
     this.consoleOutput = new this.window.WebConsoleOutput(
-      this.outputNode, this, toolbox, this.owner, this.document);
-    // Toggle the timestamp on preference change
-    Services.prefs.addObserver(PREF_MESSAGE_TIMESTAMP, this._onToolboxPrefChanged);
-    this._onToolboxPrefChanged();
+      this.outputNode, this, toolbox, this.owner, this.document
+    );
 
     this._initShortcuts();
     this._initOutputSyntaxHighlighting();
@@ -274,7 +285,7 @@ WebConsoleFrame.prototype = {
 
   _initShortcuts: function() {
     const shortcuts = new KeyShortcuts({
-      window: this.window
+      window: this.window,
     });
 
     shortcuts.on(l10n.getStr("webconsole.find.key"),
@@ -396,7 +407,7 @@ WebConsoleFrame.prototype = {
     if (packet.url) {
       this.onLocationChange(packet.url, packet.title);
     }
-  }
+  },
 };
 
 /* This is the same as DevelopmentHelpers.quickRestart, but it runs in all

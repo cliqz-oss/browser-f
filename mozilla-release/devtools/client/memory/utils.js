@@ -51,7 +51,7 @@ exports.getSnapshotTitle = function(snapshot) {
     year: "2-digit",
     month: "2-digit",
     day: "2-digit",
-    hour12: false
+    hour12: false,
   });
 };
 
@@ -439,7 +439,7 @@ exports.openFilePicker = function({ title, filters, defaultName, mode }) {
           return;
         }
         resolve(fp.file);
-      }
+      },
     });
   });
 };
@@ -453,6 +453,7 @@ exports.openFilePicker = function({ title, filters, defaultName, mode }) {
  */
 exports.formatNumber = function(number, showSign = false) {
   const rounded = Math.round(number);
+  // eslint-disable-next-line no-compare-neg-zero
   if (rounded === 0 || rounded === -0) {
     return "0";
   }

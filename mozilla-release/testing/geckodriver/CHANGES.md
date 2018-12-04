@@ -4,21 +4,139 @@ Change log
 All notable changes to this program is documented in this file.
 
 
-Unreleased
-----------
+0.23.0 (2018-10-03)
+-------------------
 
-### Added
+This release contains a number of fixes for regressions introduced
+in 0.22.0, where we shipped a significant refactoring to the way
+geckodriver internally dealt with JSON serialisation.
 
-- Support for WebDriver web element, web frame, and web window
-  identifiers from Firefox.
+### Removed
+
+- The POST `/session/{session id}/element/{element id}/tap` endpoint
+  was removed, thanks to Kerem Kat.
 
 ### Changed
 
-- The HTTP status codes used for [`ScriptTimeout`] and [`Timeout`]
+- [webdriver crate] upgraded to 0.38.0.
+
+### Fixed
+
+- `desiredCapabilities` and `requiredCapabilities` are again
+  recognised on session creation
+
+  A regression in 0.22.0 caused geckodriver to recognise `desired`
+  and `required` instead of the correct `desiredCapabilities`
+  and `requiredCapabilities`.  This will have caused significant
+  problems for users who relied on this legacy Selenium-style
+  session creation pattern.
+
+  Do however note that support for Selenium-styled new session
+  requests is temporary and that this will be removed sometime
+  before the 1.0 release.
+
+- `duration` field made optional on pause actions
+
+  A regression in 0.22.0 caused the pause action primitive to
+  require a `duration` field.  This has now been fixed so that
+  pauses in action chains can be achieved with the default duration.
+
+- Log level formatted to expected Marionette input
+
+  A regression in 0.22.0 caused the log level to be improperly
+  formatted when using Firefox pre-releases.  This is now fixed so
+  that the requested log level is correctly interpreted by Marionette.
+
+- `temporary` field on addon installation made optional
+
+  A regression in 0.22.0 caused the `temporary` field for POST
+  `/session/{session id}/moz/addon/install` to be mandatory.  This has
+  now been fixed so that an addon is installed permanently by default.
+
+- SHA1s in version information uses limited number of characters
+
+  The SHA1 used in `--version` when building geckodriver from a
+  git repository is now limited to 12 characters, as it is when
+  building from an hg checkout.  This ensures reproducible builds.
+
+
+0.22.0 (2018-09-15)
+-------------------
+
+This release marks an important milestone on the path towards
+a stable release of geckodriver.  Large portions of geckodriver
+and the [webdriver] library it is based on has been refactored to
+accommodate using [serde] for JSON serialization.
+
+We have also made great strides to improving [WebDriver conformance],
+to the extent that geckodriver is now _almost_ entirely conforming
+to the standard.
+
+### Added
+
+- Support for WebDriver web element-, web frame-, and web window
+  identifiers from Firefox.
+
+- Added support for the non-configurable `setWindowRect` capability
+  from WebDriver.
+
+  This capability informs whether the attached browser supports
+  manipulating the window dimensions and position.
+
+- A new extension capability `moz:geckodriverVersion` is returned
+  upon session creation.
+
+### Changed
+
+- All JSON serialization and deserialisation has moved from
+  rustc_serialize to [serde].
+
+- The HTTP status codes used for [script timeout] and [timeout]
   errors has changed from Request Timeout (408) to Internal Server
   Error (500) in order to not break HTTP/1.1 `Keep-Alive` support,
   as HTTP clients interpret the old status code to mean they should
   duplicate the request.
+
+- The HTTP/1.1 `Keep-Alive` timeout for persistent connections  has
+  been increased to 90 seconds.
+
+- An [invalid session ID] error is now returned when there is no
+  active session.
+
+- An [invalid argument] error is now returned when [Add Cookie]
+  is given invalid parameters.
+
+- The handshake when geckodriver connects to Marionette has been
+  hardened by killing the Firefox process if it fails.
+
+- The handshake read timeout has been reduced to 10 seconds instead
+  of waiting forever.
+
+- The HTTP server geckodriver uses, [hyper], has been upgraded to
+  version 0.12, thanks to [Bastien Orivel].
+
+- geckodriver version number is no longer logged on startup, as
+  the log level is not configured until a session is created.
+
+  The version number is available through `--version`, and now
+  also through a new `moz:geckodriverVersion` field in the matched
+  capabilities.
+
+- [webdriver crate] upgraded to 0.37.0.
+
+### Fixed
+
+- Parsing [timeout object] values has been made WebDriver conforming,
+  by allowing floats as input.
+
+- Implicit downloads of OpenH264 and Widevine plugins has been disabled.
+
+- The commit hash and date displayed when invoking `--version`
+  is now well-formatted when built from an hg repository, thanks to
+  [Jeremy Lempereur].
+
+- Many documentation improvements, now published on
+  https://firefox-source-docs.mozilla.org/testing/geckodriver/geckodriver/.
 
 
 0.21.0 (2018-06-15)
@@ -914,6 +1032,7 @@ and greater.
 
 [README]: https://github.com/mozilla/geckodriver/blob/master/README.md
 [Browser Toolbox]: https://developer.mozilla.org/en-US/docs/Tools/Browser_Toolbox
+[WebDriver conformance]: https://wpt.fyi/results/webdriver/tests?label=experimental
 
 [`CloseWindowResponse`]: https://docs.rs/webdriver/newest/webdriver/response/struct.CloseWindowResponse.html
 [`CookieResponse`]: https://docs.rs/webdriver/newest/webdriver/response/struct.CookieResponse.html
@@ -939,7 +1058,16 @@ and greater.
 [`UnknownError`]: https://docs.rs/webdriver/newest/webdriver/error/enum.ErrorStatus.html#variant.UnknownError
 [`WindowRectParameters`]: https://docs.rs/webdriver/newest/webdriver/command/struct.WindowRectParameters.html
 
+[Add Cookie]: https://developer.mozilla.org/en-US/docs/Web/WebDriver/Commands/AddCookie
+[invalid argument]: https://developer.mozilla.org/en-US/docs/Web/WebDriver/Errors/InvalidArgument
+[invalid session id]: https://developer.mozilla.org/en-US/docs/Web/WebDriver/Errors/InvalidSessionID
+[script timeout]: https://developer.mozilla.org/en-US/docs/Web/WebDriver/Errors/ScriptTimeout
+[timeout]: https://developer.mozilla.org/en-US/docs/Web/WebDriver/Errors/Timeout
+[timeout object]: https://developer.mozilla.org/en-US/docs/Web/WebDriver/Timeouts
+
+[hyper]: https://hyper.rs/
 [mozrunner crate]: https://crates.io/crates/mozrunner
+[serde]: https://serde.rs/
 [webdriver crate]: https://crates.io/crates/webdriver
 
 [Actions]: https://w3c.github.io/webdriver/webdriver-spec.html#actions
@@ -957,7 +1085,9 @@ and greater.
 [Take Element Screenshot]: https://w3c.github.io/webdriver/webdriver-spec.html#take-element-screenshot
 [WebDriver errors]: https://w3c.github.io/webdriver/webdriver-spec.html#handling-errors
 
+[Bastien Orivel]: https://github.com/Eijebong
 [Jason Juang]: https://github.com/juangj
+[Jeremy Lempereur]: https://github.com/o0Ignition0o
 [Joshua Bruning]: https://github.com/joshbruning
 [Kalpesh Krishna]: https://github.com/martiansideofthemoon
 [Mike Pennisi]: https://github.com/jugglinmike

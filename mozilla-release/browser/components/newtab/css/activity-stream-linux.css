@@ -57,6 +57,7 @@ body {
   --newtab-search-dropdown-header-color: #F9F9FA;
   --newtab-search-header-background-color: rgba(249, 249, 250, 0.95);
   --newtab-search-icon-color: rgba(12, 12, 13, 0.4);
+  --newtab-search-wordmark-color: #363959;
   --newtab-topsites-background-color: #FFF;
   --newtab-topsites-icon-shadow: inset 0 0 0 1px var(--newtab-inner-box-shadow-color);
   --newtab-topsites-label-color: inherit;
@@ -99,6 +100,7 @@ body {
     --newtab-search-dropdown-header-color: #4A4A4F;
     --newtab-search-header-background-color: rgba(42, 42, 46, 0.95);
     --newtab-search-icon-color: rgba(249, 249, 250, 0.6);
+    --newtab-search-wordmark-color: #FFF;
     --newtab-topsites-background-color: #38383D;
     --newtab-topsites-icon-shadow: none;
     --newtab-topsites-label-color: rgba(249, 249, 250, 0.8);
@@ -185,7 +187,7 @@ body {
     .icon.icon-pin-small:dir(rtl) {
       transform: scaleX(-1); }
   .icon.icon-check {
-    background-image: url("chrome://browser/skin/check.svg"); }
+    background-image: url("chrome://global/skin/icons/check.svg"); }
   .icon.icon-download {
     background-image: url("chrome://browser/skin/downloads/download-icons.svg#arrow-with-bar"); }
   .icon.icon-copy {
@@ -233,11 +235,6 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Ubuntu', 'Helvetica Neue', sans-serif;
   font-size: 16px;
   overflow-y: scroll; }
-  body.hide-onboarding > #onboarding-overlay-button,
-  body.hide-main > #onboarding-overlay-button {
-    display: none !important; }
-  body.hide-main > #onboarding-notification-bar {
-    display: none; }
 
 h1,
 h2 {
@@ -331,6 +328,9 @@ input[type='text'], input[type='search'] {
   padding: 30px 32px 32px; }
   .outer-wrapper.fixed-to-top {
     display: block; }
+  .outer-wrapper.only-search {
+    display: block;
+    padding-top: 134px; }
   .outer-wrapper a {
     color: var(--newtab-link-primary-color); }
 
@@ -631,6 +631,7 @@ main {
   margin: 0 auto;
   max-height: calc(100% - 40px);
   overflow-y: auto;
+  overflow-x: hidden;
   position: fixed;
   right: 0;
   top: 40px;
@@ -814,16 +815,15 @@ main {
 
 .topsite-form [type='checkbox']:not(:checked) + label::after,
 .topsite-form [type='checkbox']:checked + label::after {
-  background: url("chrome://global/skin/in-content/check.svg") no-repeat center center;
+  background: url("chrome://global/skin/icons/check.svg") no-repeat center center;
   content: '';
   height: 21px;
   left: -8px;
   position: absolute;
   top: -8px;
   width: 21px;
-  -moz-context-properties: fill, stroke;
+  -moz-context-properties: fill;
   fill: var(--newtab-link-primary-color);
-  stroke: none;
   z-index: 2; }
   [dir='rtl'] .topsite-form [type='checkbox']:not(:checked) + label::after, [dir='rtl']
   .topsite-form [type='checkbox']:checked + label::after {
@@ -875,7 +875,8 @@ main {
       inset-inline-end: 0;
       inset-inline-start: auto; } }
   @media (min-width: 1122px) and (max-width: 1570px) {
-    .sections-list .section-list :nth-child(3n) .context-menu {
+    .sections-list .section-list :nth-child(3n) .context-menu,
+    .sections-list .section-list :nth-child(4n) .context-menu {
       margin-inline-end: 5px;
       margin-inline-start: auto;
       inset-inline-end: 0;
@@ -1212,6 +1213,37 @@ a.firstrun-link {
   @media (max-height: 700px) {
     .search-wrapper {
       padding: 0 0 30px; } }
+  .only-search .search-wrapper {
+    padding: 0 0 64px; }
+  .search-wrapper .logo-and-wordmark {
+    align-items: center;
+    display: flex;
+    justify-content: center;
+    margin-bottom: 49px; }
+    .search-wrapper .logo-and-wordmark .logo {
+      background: url("chrome://branding/content/icon128.png") no-repeat center center;
+      background-size: 97px;
+      display: inline-block;
+      height: 97px;
+      width: 97px; }
+    .search-wrapper .logo-and-wordmark .wordmark {
+      background: url("../data/content/assets/firefox-wordmark.svg") no-repeat center center;
+      background-size: 142px;
+      -moz-context-properties: fill;
+      display: inline-block;
+      fill: var(--newtab-search-wordmark-color);
+      height: 97px;
+      margin-inline-start: 15px;
+      width: 142px; }
+    @media (max-width: 481px) {
+      .search-wrapper .logo-and-wordmark .logo {
+        background-size: 64px;
+        height: 64px;
+        width: 64px; }
+      .search-wrapper .logo-and-wordmark .wordmark {
+        background-size: 100px;
+        height: 64px;
+        width: 100px; } }
   .search-wrapper .search-inner-wrapper {
     cursor: default;
     display: flex;
@@ -1373,9 +1405,10 @@ a.firstrun-link {
 
 .confirmation-dialog .modal {
   box-shadow: 0 2px 2px 0 rgba(0, 0, 0, 0.1);
-  left: 50%;
-  margin-left: -200px;
+  left: 0;
+  margin: auto;
   position: fixed;
+  right: 0;
   top: 20%;
   width: 400px; }
 
@@ -1861,16 +1894,46 @@ a.firstrun-link {
   transform: scaleX(-1); }
 
 .ASRouterButton {
+  font-weight: 600;
+  font-size: 14px;
   white-space: nowrap;
-  border-radius: 4px;
-  border: 1px solid var(--newtab-border-secondary-color);
-  background-color: var(--newtab-button-secondary-color);
+  border-radius: 2px;
+  border: 0;
   font-family: inherit;
   padding: 8px 15px;
   margin-inline-start: 12px;
-  color: inherit; }
+  color: inherit;
+  cursor: pointer; }
   .tall .ASRouterButton {
     margin-inline-start: 20px; }
+  .ASRouterButton.primary {
+    border: 1px solid var(--newtab-button-primary-color);
+    background-color: var(--newtab-button-primary-color);
+    color: #F9F9FA; }
+    .ASRouterButton.primary:hover {
+      background-color: #003EAA; }
+    .ASRouterButton.primary:active {
+      background-color: #002275; }
+  .ASRouterButton.secondary {
+    background-color: rgba(12, 12, 13, 0.1); }
+    .ASRouterButton.secondary:hover {
+      background-color: rgba(12, 12, 13, 0.2); }
+    .ASRouterButton.secondary:active {
+      background-color: rgba(12, 12, 13, 0.3); }
+
+[lwt-newtab-brighttext] .secondary {
+  background-color: rgba(249, 249, 250, 0.1); }
+  [lwt-newtab-brighttext] .secondary:hover {
+    background-color: rgba(249, 249, 250, 0.2); }
+  [lwt-newtab-brighttext] .secondary:active {
+    background-color: rgba(249, 249, 250, 0.3); }
+
+[lwt-newtab-brighttext] .footer .secondary {
+  background-color: rgba(249, 249, 250, 0.3); }
+  [lwt-newtab-brighttext] .footer .secondary:hover {
+    background-color: rgba(249, 249, 250, 0.4); }
+  [lwt-newtab-brighttext] .footer .secondary:active {
+    background-color: rgba(249, 249, 250, 0.5); }
 
 .SnippetBaseContainer {
   position: fixed;
@@ -1879,25 +1942,34 @@ a.firstrun-link {
   right: 0;
   background-color: var(--newtab-snippets-background-color);
   color: var(--newtab-text-primary-color);
-  font-size: 12px;
-  line-height: 16px;
+  font-size: 14px;
+  line-height: 20px;
   border-top: 1px solid var(--newtab-snippets-hairline-color);
   box-shadow: 0 1px 4px 0 rgba(12, 12, 13, 0.2);
   display: flex;
   align-items: center; }
+  .SnippetBaseContainer a {
+    cursor: pointer;
+    color: var(--newtab-link-primary-color); }
+    .SnippetBaseContainer a:hover {
+      text-decoration: underline; }
+    [lwt-newtab-brighttext] .SnippetBaseContainer a {
+      font-weight: bold; }
+  .SnippetBaseContainer input[type='checkbox'] {
+    margin-inline-start: 0; }
   .SnippetBaseContainer .innerWrapper {
     margin: 0 auto;
     display: flex;
     align-items: center;
     padding: 12px 25px;
     padding-inline-end: 36px;
-    max-width: 786px; }
+    max-width: 836px; }
     @media (min-width: 866px) {
       .SnippetBaseContainer .innerWrapper {
         padding-inline-end: 25px; } }
     @media (min-width: 1122px) {
       .SnippetBaseContainer .innerWrapper {
-        max-width: 1042px; } }
+        max-width: 1092px; } }
   .SnippetBaseContainer .blockButton {
     display: none;
     background: none;
@@ -1919,6 +1991,23 @@ a.firstrun-link {
         inset-inline-end: 24px; } }
   .SnippetBaseContainer:hover .blockButton {
     display: block; }
+  .SnippetBaseContainer .icon {
+    height: 42px;
+    width: 42px;
+    margin-inline-end: 12px;
+    flex-shrink: 0; }
+
+.snippets-preview-banner {
+  font-size: 15px;
+  line-height: 42px;
+  color: rgba(74, 74, 79, 0.7);
+  background: rgba(215, 215, 219, 0.6);
+  text-align: center;
+  position: absolute;
+  top: 0;
+  width: 100%; }
+  .snippets-preview-banner span {
+    vertical-align: middle; }
 
 .activity-stream.modal-open {
   overflow: hidden; }
@@ -1937,9 +2026,9 @@ a.firstrun-link {
 
 .modalOverlayInner {
   width: 960px;
-  height: 510px;
+  height: 570px;
   position: fixed;
-  top: calc(50% - 255px);
+  top: calc(50% - 285px);
   left: calc(50% - 480px);
   background: #FFF;
   box-shadow: 0 1px 15px 0 rgba(0, 0, 0, 0.3);
@@ -1992,25 +2081,59 @@ a.firstrun-link {
         position: sticky; } }
     .modalOverlayInner .footer .modalButton {
       margin-top: 20px;
-      width: 150px;
+      min-width: 150px;
       height: 30px;
-      padding: 4px 0 6px;
+      padding: 4px 30px 6px;
       font-size: 15px; }
-      .modalOverlayInner .footer .modalButton:focus, .modalOverlayInner .footer .modalButton.active {
-        box-shadow: 0 0 0 5px var(--newtab-card-active-outline-color);
+      .modalOverlayInner .footer .modalButton:focus, .modalOverlayInner .footer .modalButton.active, .modalOverlayInner .footer .modalButton:hover {
+        box-shadow: 0 0 0 5px #D7D7DB;
         transition: box-shadow 150ms; }
 
 .SimpleSnippet.tall {
   padding: 27px 0; }
 
+.SimpleSnippet p em {
+  color: #0C0C0D;
+  font-style: normal;
+  background: #FFE900; }
+
+.SimpleSnippet.bold .donation-form-url,
+.SimpleSnippet.bold .donation-amount, .SimpleSnippet.takeover .donation-form-url,
+.SimpleSnippet.takeover .donation-amount {
+  padding-top: 8px;
+  padding-bottom: 8px; }
+
+.SimpleSnippet.bold {
+  height: 176px; }
+  .SimpleSnippet.bold .body {
+    font-size: 14px;
+    line-height: 20px;
+    margin-bottom: 20px; }
+  .SimpleSnippet.bold .icon {
+    width: 71px;
+    height: 71px; }
+
+.SimpleSnippet.takeover {
+  height: 344px; }
+  .SimpleSnippet.takeover .body {
+    font-size: 16px;
+    line-height: 24px;
+    margin-bottom: 35px; }
+  .SimpleSnippet.takeover .icon {
+    width: 79px;
+    height: 79px; }
+
 .SimpleSnippet .title {
-  display: inline;
   font-size: inherit;
   margin: 0; }
+
+.SimpleSnippet .title-inline {
+  display: inline; }
 
 .SimpleSnippet .titleIcon {
   background-repeat: no-repeat;
   background-size: 14px;
+  background-position: center;
   height: 16px;
   width: 16px;
   margin-top: 2px;
@@ -2022,17 +2145,99 @@ a.firstrun-link {
   display: inline;
   margin: 0; }
 
-.SimpleSnippet .icon {
-  height: 42px;
-  width: 42px;
-  margin-inline-end: 12px;
-  flex-shrink: 0; }
-
 .SimpleSnippet.tall .icon {
   margin-inline-end: 20px; }
 
-.SimpleSnippet .ASRouterButton {
-  cursor: pointer; }
+.SimpleSnippet.takeover .icon, .SimpleSnippet.bold .icon {
+  margin-inline-end: 20px; }
+
+.SimpleSnippet .icon {
+  align-self: flex-start; }
+
+.SubmitFormSnippet {
+  flex-direction: column;
+  flex: 1 1 100%;
+  width: 100%; }
+  .SubmitFormSnippet .disclaimerText {
+    margin: 20px 0 0;
+    font-size: 12px;
+    color: var(--newtab-text-secondary-color); }
+  .SubmitFormSnippet p {
+    margin: 0; }
+  .SubmitFormSnippet.send_to_device_snippet {
+    text-align: center; }
+    .SubmitFormSnippet.send_to_device_snippet .message {
+      font-size: 16px;
+      margin-bottom: 20px; }
+    .SubmitFormSnippet.send_to_device_snippet .scene2Title {
+      font-size: 24px;
+      display: block; }
+  .SubmitFormSnippet .ASRouterButton.primary {
+    flex: 1 1 0; }
+  .SubmitFormSnippet .scene2Icon {
+    width: 100%;
+    margin-bottom: 20px; }
+    .SubmitFormSnippet .scene2Icon img {
+      width: 98px;
+      display: inline-block; }
+  .SubmitFormSnippet .scene2Title {
+    font-size: inherit;
+    margin: 0 0 10px;
+    font-weight: bold;
+    display: inline; }
+  .SubmitFormSnippet form {
+    display: flex;
+    flex-direction: column;
+    width: 100%; }
+  .SubmitFormSnippet .message {
+    font-size: 14px;
+    align-self: stretch;
+    flex: 0 0 100%;
+    margin-bottom: 10px; }
+  .SubmitFormSnippet .privacyNotice {
+    font-size: 12px;
+    color: var(--newtab-text-secondary-color);
+    margin-top: 10px;
+    flex: 0 0 100%; }
+  .SubmitFormSnippet .innerWrapper {
+    max-width: 670px;
+    flex-wrap: wrap;
+    justify-items: center;
+    padding-top: 40px;
+    padding-bottom: 40px; }
+  .SubmitFormSnippet .footer {
+    width: 100%;
+    margin: 0 auto;
+    text-align: right;
+    background-color: var(--newtab-background-color);
+    padding: 10px 0; }
+    .SubmitFormSnippet .footer .footer-content {
+      margin: 0 auto;
+      max-width: 768px;
+      width: 100%;
+      text-align: right; }
+      [dir='rtl'] .SubmitFormSnippet .footer .footer-content {
+        text-align: left; }
+  .SubmitFormSnippet input.mainInput {
+    border-radius: 2px;
+    background-color: var(--newtab-textbox-background-color);
+    border: 1px solid var(--newtab-textbox-border);
+    padding: 0 8px;
+    height: 100%;
+    font-size: 14px;
+    width: 50%; }
+    .SubmitFormSnippet input.mainInput.clean:invalid, .SubmitFormSnippet input.mainInput.clean:required {
+      box-shadow: none; }
+    .SubmitFormSnippet input.mainInput:focus {
+      border: 1px solid var(--newtab-textbox-focus-color);
+      box-shadow: var(--newtab-textbox-focus-boxshadow); }
+
+.submissionStatus {
+  text-align: center;
+  font-size: 14px;
+  padding: 20px 0; }
+  .submissionStatus .submitStatusTitle {
+    font-size: 20px; }
 
 .onboardingMessageContainer {
   display: grid;
@@ -2106,13 +2311,14 @@ a.firstrun-link {
     .onboardingMessage .onboardingContent > span > p {
       color: #4A4A4F;
       margin-top: 0;
-      height: 130px;
+      height: 180px;
       margin-bottom: 12px;
       font-size: 15px;
       line-height: 22px; }
       @media (max-width: 650px) {
         .onboardingMessage .onboardingContent > span > p {
-          margin-bottom: 0; } }
+          margin-bottom: 0;
+          height: 160px; } }
   .onboardingMessage .onboardingButton {
     background-color: rgba(12, 12, 13, 0.1);
     border: 0;
@@ -2124,27 +2330,62 @@ a.firstrun-link {
     @media (max-width: 850px) {
       .onboardingMessage .onboardingButton {
         float: right;
-        margin-top: -60px;
-        margin-right: -10px; } }
+        margin-top: -105px;
+        margin-inline-end: -10px; } }
     @media (max-width: 650px) {
       .onboardingMessage .onboardingButton {
-        float: none;
-        margin-top: 30px; } }
-    .onboardingMessage .onboardingButton:focus, .onboardingMessage .onboardingButton.active {
-      box-shadow: 0 0 0 5px var(--newtab-card-active-outline-color);
+        float: none; } }
+    .onboardingMessage .onboardingButton:focus, .onboardingMessage .onboardingButton.active, .onboardingMessage .onboardingButton:hover {
+      box-shadow: 0 0 0 5px #D7D7DB;
       transition: box-shadow 150ms; }
   .onboardingMessage::before {
     content: '';
-    height: 220px;
+    height: 230px;
     width: 1px;
     position: absolute;
     background-color: #D7D7DB;
     margin-top: 40px;
-    margin-left: 215px; }
+    margin-inline-start: 215px; }
     @media (max-width: 850px) {
       .onboardingMessage::before {
         content: none; } }
   .onboardingMessage:last-child::before {
     content: none; }
+
+.EOYSnippetForm {
+  margin: 10px 0 8px;
+  align-self: start;
+  font-size: 14px;
+  display: flex;
+  align-items: center; }
+  .EOYSnippetForm .donation-amount,
+  .EOYSnippetForm .donation-form-url {
+    white-space: nowrap;
+    font-size: 14px;
+    padding: 8px 20px;
+    border-radius: 2px; }
+  .EOYSnippetForm .donation-amount {
+    color: #0C0C0D;
+    margin-inline-end: 18px;
+    border: 1px solid #B1B1B3;
+    padding: 5px 14px;
+    background: #F9F9FA;
+    cursor: pointer; }
+  .EOYSnippetForm input[type='radio'] {
+    opacity: 0;
+    margin-inline-end: -18px; }
+    .EOYSnippetForm input[type='radio']:checked + .donation-amount {
+      background: #737373;
+      color: #FFF;
+      border: 1px solid #4A4A4F; }
+    .EOYSnippetForm input[type='radio']:checked:focus + .donation-amount,
+    .EOYSnippetForm input[type='radio']:not(:checked):focus + .donation-amount {
+      border: 1px dotted var(--newtab-link-primary-color); }
+  .EOYSnippetForm .monthly-checkbox-container {
+    width: 100%; }
+  .EOYSnippetForm .donation-form-url {
+    margin-inline-start: 18px;
+    align-self: flex-end;
+    display: flex; }
 
 /*# sourceMappingURL=activity-stream-linux.css.map */

@@ -21,7 +21,6 @@ ChromeUtils.defineModuleGetter(this, "NewTabUtils",
 const SNIPPETS_URL_PREF = "browser.aboutHomeSnippets.updateUrl";
 const TELEMETRY_PREF = "datareporting.healthreport.uploadEnabled";
 const FXA_USERNAME_PREF = "services.sync.username";
-const ONBOARDING_FINISHED_PREF = "browser.onboarding.notification.finished";
 // Prefix for any target matching a search engine.
 const TARGET_SEARCHENGINE_PREFIX = "searchEngine-";
 
@@ -60,12 +59,12 @@ this.SnippetsFeed = class SnippetsFeed {
   }
 
   async getProfileInfo() {
-    const profileAge = new ProfileAge(null, null);
+    const profileAge = await ProfileAge();
     const createdDate = await profileAge.created;
     const resetDate = await profileAge.reset;
     return {
       createdWeeksAgo:  Math.floor((Date.now() - createdDate) / ONE_WEEK),
-      resetWeeksAgo: resetDate ? Math.floor((Date.now() - resetDate) / ONE_WEEK) : null
+      resetWeeksAgo: resetDate ? Math.floor((Date.now() - resetDate) / ONE_WEEK) : null,
     };
   }
 
@@ -80,7 +79,7 @@ this.SnippetsFeed = class SnippetsFeed {
             searchEngineIdentifier: Services.search.defaultEngine.identifier,
             engines: engines
               .filter(engine => engine.identifier)
-              .map(engine => `${TARGET_SEARCHENGINE_PREFIX}${engine.identifier}`)
+              .map(engine => `${TARGET_SEARCHENGINE_PREFIX}${engine.identifier}`),
           });
         } else {
           resolve({engines: [], searchEngineIdentifier: ""});
@@ -97,13 +96,13 @@ this.SnippetsFeed = class SnippetsFeed {
         version: addon.version,
         type: addon.type,
         isSystem: addon.isSystem,
-        isWebExtension: addon.isWebExtension
+        isWebExtension: addon.isWebExtension,
       };
       if (fullData) {
         Object.assign(info[addon.id], {
           name: addon.name,
           userDisabled: addon.userDisabled,
-          installDate: addon.installDate
+          installDate: addon.installDate,
         });
       }
     }
@@ -148,13 +147,13 @@ this.SnippetsFeed = class SnippetsFeed {
       snippetsURL: this.snippetsURL,
       version: STARTPAGE_VERSION,
       telemetryEnabled: Services.prefs.getBoolPref(TELEMETRY_PREF),
-      onboardingFinished: Services.prefs.getBoolPref(ONBOARDING_FINISHED_PREF),
+      onboardingFinished: true,
       fxaccount: Services.prefs.prefHasUserValue(FXA_USERNAME_PREF),
       selectedSearchEngine: await this.getSelectedSearchEngine(),
       defaultBrowser: this.isDefaultBrowser(),
       isDevtoolsUser: this.isDevtoolsUser(),
       blockList: await this._getBlockList() || [],
-      previousSessionEnd: this._previousSessionEnd
+      previousSessionEnd: this._previousSessionEnd,
     };
     this._dispatchChanges(data);
   }
@@ -171,7 +170,6 @@ this.SnippetsFeed = class SnippetsFeed {
     Services.obs.addObserver(this, SEARCH_ENGINE_OBSERVER_TOPIC);
     this._previousSessionEnd = await this._storage.get("previousSessionEnd");
     await this._refresh();
-    Services.prefs.addObserver(ONBOARDING_FINISHED_PREF, this._refresh);
     Services.prefs.addObserver(SNIPPETS_URL_PREF, this._refresh);
     Services.prefs.addObserver(TELEMETRY_PREF, this._refresh);
     Services.prefs.addObserver(FXA_USERNAME_PREF, this._refresh);
@@ -179,7 +177,6 @@ this.SnippetsFeed = class SnippetsFeed {
 
   uninit() {
     this._storage.set("previousSessionEnd", Date.now());
-    Services.prefs.removeObserver(ONBOARDING_FINISHED_PREF, this._refresh);
     Services.prefs.removeObserver(SNIPPETS_URL_PREF, this._refresh);
     Services.prefs.removeObserver(TELEMETRY_PREF, this._refresh);
     Services.prefs.removeObserver(FXA_USERNAME_PREF, this._refresh);
@@ -190,7 +187,7 @@ this.SnippetsFeed = class SnippetsFeed {
   async showFirefoxAccounts(browser) {
     const url = await FxAccounts.config.promiseSignUpURI("snippets");
     // We want to replace the current tab.
-    browser.loadURI(url);
+    browser.loadURI(url, {triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({})});
   }
 
   async onAction(action) {

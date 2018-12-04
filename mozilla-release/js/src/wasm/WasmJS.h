@@ -26,6 +26,7 @@
 namespace js {
 
 class GlobalObject;
+class StructTypeDescr;
 class TypedArrayObject;
 class WasmFunctionScope;
 class WasmInstanceScope;
@@ -40,10 +41,21 @@ namespace wasm {
 bool
 HasCompilerSupport(JSContext* cx);
 
-// Return whether WebAssembly is enabled on this platform.
+// Return whether WebAssembly is supported on this platform. This determines
+// whether the WebAssembly object is exposed to JS and takes into account
+// configuration options that disable various modes.
 
 bool
 HasSupport(JSContext* cx);
+
+// Return whether WebAssembly streaming/caching is supported on this platform.
+// This takes into account prefs and necessary embedding callbacks.
+
+bool
+HasStreamingSupport(JSContext* cx);
+
+bool
+HasCachingSupport(JSContext* cx);
 
 // Compiles the given binary wasm module given the ArrayBufferObject
 // and links the module's imports with the given import object.
@@ -107,9 +119,9 @@ class WasmModuleObject : public NativeObject
     static bool construct(JSContext*, unsigned, Value*);
 
     static WasmModuleObject* create(JSContext* cx,
-                                    wasm::Module& module,
+                                    const wasm::Module& module,
                                     HandleObject proto = nullptr);
-    wasm::Module& module() const;
+    const wasm::Module& module() const;
 };
 
 // The class of WebAssembly.Global.  This wraps a storage location, and there is
@@ -214,15 +226,18 @@ class WasmInstanceObject : public NativeObject
 
     static WasmInstanceObject* create(JSContext* cx,
                                       RefPtr<const wasm::Code> code,
-                                      UniquePtr<wasm::DebugState> debug,
+                                      const wasm::DataSegmentVector& dataSegments,
+                                      const wasm::ElemSegmentVector& elemSegments,
                                       wasm::UniqueTlsData tlsData,
                                       HandleWasmMemoryObject memory,
                                       Vector<RefPtr<wasm::Table>, 0, SystemAllocPolicy>&& tables,
+                                      GCVector<HeapPtr<StructTypeDescr*>, 0, SystemAllocPolicy>&& structTypeDescrs,
                                       Handle<FunctionVector> funcImports,
                                       const wasm::GlobalDescVector& globals,
                                       wasm::HandleValVector globalImportValues,
                                       const WasmGlobalObjectVector& globalObjs,
-                                      HandleObject proto);
+                                      HandleObject proto,
+                                      UniquePtr<wasm::DebugState> maybeDebug);
     void initExportsObj(JSObject& exportsObj);
 
     wasm::Instance& instance() const;
@@ -233,7 +248,7 @@ class WasmInstanceObject : public NativeObject
                                     uint32_t funcIndex,
                                     MutableHandleFunction fun);
 
-    const wasm::CodeRange& getExportedFunctionCodeRange(HandleFunction fun, wasm::Tier tier);
+    const wasm::CodeRange& getExportedFunctionCodeRange(JSFunction* fun, wasm::Tier tier);
 
     static WasmInstanceScope* getScope(JSContext* cx, HandleWasmInstanceObject instanceObj);
     static WasmFunctionScope* getFunctionScope(JSContext* cx,

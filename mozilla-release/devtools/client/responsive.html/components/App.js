@@ -6,7 +6,7 @@
 
 "use strict";
 
-const { Component, createFactory } = require("devtools/client/shared/vendor/react");
+const { createFactory, PureComponent } = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const { connect } = require("devtools/client/shared/vendor/react-redux");
@@ -25,10 +25,15 @@ const {
   updateDeviceModal,
   updatePreferredDevices,
 } = require("../actions/devices");
-const { changeReloadCondition } = require("../actions/reload-conditions");
 const { takeScreenshot } = require("../actions/screenshot");
-const { changeTouchSimulation } = require("../actions/touch-simulation");
-const { toggleLeftAlignment } = require("../actions/ui");
+const {
+  changeUserAgent,
+  toggleLeftAlignment,
+  toggleReloadOnTouchSimulation,
+  toggleReloadOnUserAgent,
+  toggleTouchSimulation,
+  toggleUserAgentInput,
+} = require("../actions/ui");
 const {
   changeDevice,
   changePixelRatio,
@@ -39,16 +44,13 @@ const {
 
 const Types = require("../types");
 
-class App extends Component {
+class App extends PureComponent {
   static get propTypes() {
     return {
       devices: PropTypes.shape(Types.devices).isRequired,
       dispatch: PropTypes.func.isRequired,
-      displayPixelRatio: Types.pixelRatio.value.isRequired,
       networkThrottling: PropTypes.shape(Types.networkThrottling).isRequired,
-      reloadConditions: PropTypes.shape(Types.reloadConditions).isRequired,
       screenshot: PropTypes.shape(Types.screenshot).isRequired,
-      touchSimulation: PropTypes.shape(Types.touchSimulation).isRequired,
       viewports: PropTypes.arrayOf(PropTypes.shape(Types.viewport)).isRequired,
     };
   }
@@ -61,8 +63,8 @@ class App extends Component {
     this.onChangeDevice = this.onChangeDevice.bind(this);
     this.onChangeNetworkThrottling = this.onChangeNetworkThrottling.bind(this);
     this.onChangePixelRatio = this.onChangePixelRatio.bind(this);
-    this.onChangeReloadCondition = this.onChangeReloadCondition.bind(this);
     this.onChangeTouchSimulation = this.onChangeTouchSimulation.bind(this);
+    this.onChangeUserAgent = this.onChangeUserAgent.bind(this);
     this.onContentResize = this.onContentResize.bind(this);
     this.onDeviceListUpdate = this.onDeviceListUpdate.bind(this);
     this.onExit = this.onExit.bind(this);
@@ -72,6 +74,10 @@ class App extends Component {
     this.onRotateViewport = this.onRotateViewport.bind(this);
     this.onScreenshot = this.onScreenshot.bind(this);
     this.onToggleLeftAlignment = this.onToggleLeftAlignment.bind(this);
+    this.onToggleReloadOnTouchSimulation =
+      this.onToggleReloadOnTouchSimulation.bind(this);
+    this.onToggleReloadOnUserAgent = this.onToggleReloadOnUserAgent.bind(this);
+    this.onToggleUserAgentInput = this.onToggleUserAgentInput.bind(this);
     this.onUpdateDeviceDisplayed = this.onUpdateDeviceDisplayed.bind(this);
     this.onUpdateDeviceModal = this.onUpdateDeviceModal.bind(this);
   }
@@ -93,8 +99,9 @@ class App extends Component {
       device,
     }, "*");
     this.props.dispatch(changeDevice(id, device.name, deviceType));
-    this.props.dispatch(changeTouchSimulation(device.touch));
     this.props.dispatch(changePixelRatio(id, device.pixelRatio));
+    this.props.dispatch(changeUserAgent(device.userAgent));
+    this.props.dispatch(toggleTouchSimulation(device.touch));
   }
 
   onChangeNetworkThrottling(enabled, profile) {
@@ -114,16 +121,20 @@ class App extends Component {
     this.props.dispatch(changePixelRatio(0, pixelRatio));
   }
 
-  onChangeReloadCondition(id, value) {
-    this.props.dispatch(changeReloadCondition(id, value));
-  }
-
   onChangeTouchSimulation(enabled) {
     window.postMessage({
       type: "change-touch-simulation",
       enabled,
     }, "*");
-    this.props.dispatch(changeTouchSimulation(enabled));
+    this.props.dispatch(toggleTouchSimulation(enabled));
+  }
+
+  onChangeUserAgent(userAgent) {
+    window.postMessage({
+      type: "change-user-agent",
+      userAgent,
+    }, "*");
+    this.props.dispatch(changeUserAgent(userAgent));
   }
 
   onContentResize({ width, height }) {
@@ -143,6 +154,14 @@ class App extends Component {
   }
 
   onRemoveCustomDevice(device) {
+    // If the custom device is currently selected on any of the viewports,
+    // remove the device association and reset all the ui state.
+    for (const viewport of this.props.viewports) {
+      if (viewport.device === device.name) {
+        this.onRemoveDeviceAssociation(viewport.id);
+      }
+    }
+
     this.props.dispatch(removeCustomDevice(device));
   }
 
@@ -150,11 +169,17 @@ class App extends Component {
     // TODO: Bug 1332754: Move messaging and logic into the action creator so that device
     // property changes are sent from there instead of this function.
     this.props.dispatch(removeDeviceAssociation(id));
-    this.props.dispatch(changeTouchSimulation(false));
+    this.props.dispatch(toggleTouchSimulation(false));
     this.props.dispatch(changePixelRatio(id, 0));
+    this.props.dispatch(changeUserAgent(""));
   }
 
   onResizeViewport(id, width, height) {
+    window.postMessage({
+      type: "viewport-resize",
+      width,
+      height,
+    }, "*");
     this.props.dispatch(resizeViewport(id, width, height));
   }
 
@@ -170,6 +195,18 @@ class App extends Component {
     this.props.dispatch(toggleLeftAlignment());
   }
 
+  onToggleReloadOnTouchSimulation() {
+    this.props.dispatch(toggleReloadOnTouchSimulation());
+  }
+
+  onToggleReloadOnUserAgent() {
+    this.props.dispatch(toggleReloadOnUserAgent());
+  }
+
+  onToggleUserAgentInput() {
+    this.props.dispatch(toggleUserAgentInput());
+  }
+
   onUpdateDeviceDisplayed(device, deviceType, displayed) {
     this.props.dispatch(updateDeviceDisplayed(device, deviceType, displayed));
   }
@@ -181,11 +218,8 @@ class App extends Component {
   render() {
     const {
       devices,
-      displayPixelRatio,
       networkThrottling,
-      reloadConditions,
       screenshot,
-      touchSimulation,
       viewports,
     } = this.props;
 
@@ -195,8 +229,8 @@ class App extends Component {
       onChangeDevice,
       onChangeNetworkThrottling,
       onChangePixelRatio,
-      onChangeReloadCondition,
       onChangeTouchSimulation,
+      onChangeUserAgent,
       onContentResize,
       onDeviceListUpdate,
       onExit,
@@ -206,6 +240,9 @@ class App extends Component {
       onRotateViewport,
       onScreenshot,
       onToggleLeftAlignment,
+      onToggleReloadOnTouchSimulation,
+      onToggleReloadOnUserAgent,
+      onToggleUserAgentInput,
       onUpdateDeviceDisplayed,
       onUpdateDeviceModal,
     } = this;
@@ -226,25 +263,25 @@ class App extends Component {
       dom.div({ id: "app" },
         Toolbar({
           devices,
-          displayPixelRatio,
           networkThrottling,
-          reloadConditions,
           screenshot,
           selectedDevice,
           selectedPixelRatio,
-          touchSimulation,
           viewport: viewports[0],
           onChangeDevice,
           onChangeNetworkThrottling,
           onChangePixelRatio,
-          onChangeReloadCondition,
           onChangeTouchSimulation,
+          onChangeUserAgent,
           onExit,
           onRemoveDeviceAssociation,
           onResizeViewport,
           onRotateViewport,
           onScreenshot,
           onToggleLeftAlignment,
+          onToggleReloadOnTouchSimulation,
+          onToggleReloadOnUserAgent,
+          onToggleUserAgentInput,
           onUpdateDeviceModal,
         }),
         Viewports({

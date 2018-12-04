@@ -7,7 +7,7 @@
 // Checks for the AccessibleWalkerActor
 
 add_task(async function() {
-  const {client, walker, accessibility} =
+  const {target, walker, accessibility} =
     await initAccessibilityFrontForUrl(MAIN_DOMAIN + "doc_accessibility.html");
 
   const a11yWalker = await accessibility.getWalker();
@@ -29,14 +29,14 @@ add_task(async function() {
 
   checkA11yFront(accessibleFront, {
     name: "Accessible Button",
-    role: "pushbutton"
+    role: "pushbutton",
   });
 
   const ancestry = await a11yWalker.getAncestry(accessibleFront);
   is(ancestry.length, 1, "Button is a direct child of a root document.");
   is(ancestry[0].accessible, a11yDoc,
     "Button's only ancestor is a root document");
-  is(ancestry[0].children.length, 3,
+  is(ancestry[0].children.length, 4,
     "Root doc should have correct number of children");
   ok(ancestry[0].children.includes(accessibleFront),
     "Button accessible front is in root doc's children");
@@ -56,7 +56,7 @@ add_task(async function() {
 
   // Ensure reorder event is emitted by walker when DOM tree changes.
   let docChildren = await a11yDoc.children();
-  is(docChildren.length, 3, "Root doc should have correct number of children");
+  is(docChildren.length, 4, "Root doc should have correct number of children");
 
   await emitA11yEvent(a11yWalker, "reorder",
     front => checkA11yFront(front, { }, a11yDoc),
@@ -69,7 +69,7 @@ add_task(async function() {
     }));
 
   docChildren = await a11yDoc.children();
-  is(docChildren.length, 4, "Root doc should have correct number of children");
+  is(docChildren.length, 5, "Root doc should have correct number of children");
 
   // Ensure destory event is emitted by walker when cached accessible's raw
   // accessible gets destroyed.
@@ -127,6 +127,6 @@ add_task(async function() {
 
   await accessibility.disable();
   await waitForA11yShutdown();
-  await client.close();
+  await target.destroy();
   gBrowser.removeCurrentTab();
 });

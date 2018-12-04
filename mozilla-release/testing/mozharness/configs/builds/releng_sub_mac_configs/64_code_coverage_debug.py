@@ -1,12 +1,6 @@
 import os
 
 config = {
-    'default_actions': [
-        'clobber',
-        'build',
-        'check-test',
-        'update',  # decided by query_is_nightly()
-    ],
     'stage_platform': 'macosx64-ccov-debug',
     'debug_build': True,
     #### 64 bit build specific #####
@@ -24,6 +18,5 @@ config = {
                 '/bin:/usr/sbin:/sbin:/usr/local/bin:/usr/X11/bin',
         ##
     },
-    'mozconfig_variant': 'code-coverage-debug',
     #######################
 }

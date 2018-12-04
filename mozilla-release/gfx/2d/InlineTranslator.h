@@ -34,6 +34,11 @@ public:
 
   bool TranslateRecording(char *, size_t len);
 
+  void SetExternalSurfaces(nsRefPtrHashtable<nsUint64HashKey, SourceSurface>* aExternalSurfaces)
+  {
+    mExternalSurfaces = aExternalSurfaces;
+  }
+
   DrawTarget* LookupDrawTarget(ReferencePtr aRefPtr) final
   {
     DrawTarget* result = mDrawTargets.GetWeak(aRefPtr);
@@ -83,17 +88,16 @@ public:
     return result;
   }
 
-  UnscaledFont* LookupUnscaledFontByIndex(size_t index) final
-  {
-    UnscaledFont* result = mUnscaledFontTable[index];
-    return result;
-  }
-
   NativeFontResource* LookupNativeFontResource(uint64_t aKey) final
   {
     NativeFontResource* result = mNativeFontResources.GetWeak(aKey);
     MOZ_ASSERT(result);
     return result;
+  }
+
+  already_AddRefed<SourceSurface> LookupExternalSurface(uint64_t aKey) override
+  {
+    return mExternalSurfaces->Get(aKey);
   }
 
   void AddDrawTarget(ReferencePtr aRefPtr, DrawTarget *aDT) final
@@ -128,7 +132,6 @@ public:
 
   void AddUnscaledFont(ReferencePtr aRefPtr, UnscaledFont *aUnscaledFont) final
   {
-    mUnscaledFontTable.push_back(aUnscaledFont);
     mUnscaledFonts.Put(aRefPtr, aUnscaledFont);
   }
 
@@ -186,7 +189,6 @@ private:
   RefPtr<DrawTarget> mBaseDT;
   void*              mFontContext;
 
-  std::vector<RefPtr<UnscaledFont>> mUnscaledFontTable;
   nsRefPtrHashtable<nsPtrHashKey<void>, DrawTarget> mDrawTargets;
   nsRefPtrHashtable<nsPtrHashKey<void>, Path> mPaths;
   nsRefPtrHashtable<nsPtrHashKey<void>, SourceSurface> mSourceSurfaces;
@@ -195,6 +197,7 @@ private:
   nsRefPtrHashtable<nsPtrHashKey<void>, ScaledFont> mScaledFonts;
   nsRefPtrHashtable<nsPtrHashKey<void>, UnscaledFont> mUnscaledFonts;
   nsRefPtrHashtable<nsUint64HashKey, NativeFontResource> mNativeFontResources;
+  nsRefPtrHashtable<nsUint64HashKey, SourceSurface>* mExternalSurfaces;
 };
 
 } // namespace gfx

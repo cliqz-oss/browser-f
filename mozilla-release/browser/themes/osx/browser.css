@@ -5,7 +5,6 @@
 %include shared.inc
 %define toolbarButtonPressed :hover:active:not([disabled="true"]):not([cui-areatype="menu-panel"])
 
-@namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
 @namespace html url("http://www.w3.org/1999/xhtml");
 
 %include ../shared/browser.inc.css
@@ -231,10 +230,9 @@
 
 /* Override OSX-specific toolkit findbar button styles */
 .findbar-button {
-  background: none;
-  box-shadow: none;
+  background: none !important;
+  box-shadow: none !important;
   border: none;
-  color: inherit;
 }
 
 /* On Mac, native buttons keep their full opacity when they become disabled
@@ -487,15 +485,9 @@ html|input.urlbar-input {
 #editBMPanel_folderMenuList > .menulist-dropmarker {
   -moz-appearance: none;
   display: -moz-box;
-  background-color: transparent;
-  border: 0;
-  margin: 0;
-  padding: 0;
+  -moz-box-align: center;
   padding-inline-end: 4px;
   width: 7px;
-}
-
-#editBMPanel_folderMenuList > .menulist-dropmarker > .dropmarker-icon {
   list-style-image: url("chrome://global/skin/icons/panel-dropmarker.png");
 }
 
@@ -669,9 +661,9 @@ html|input.urlbar-input {
   text-shadow: inherit;
 }
 
-.tabbrowser-tab:focus > .tab-stack > .tab-content > .tab-label-container:not([pinned]),
-.tabbrowser-tab:focus > .tab-stack > .tab-content > .tab-icon-image[pinned],
-.tabbrowser-tab:focus > .tab-stack > .tab-content > .tab-throbber[pinned] {
+:-moz-any(.keyboard-focused-tab, .tabbrowser-tab:focus:not([aria-activedescendant])) > .tab-stack > .tab-content > .tab-label-container:not([pinned]),
+:-moz-any(.keyboard-focused-tab, .tabbrowser-tab:focus:not([aria-activedescendant])) > .tab-stack > .tab-content > .tab-icon-image[pinned],
+:-moz-any(.keyboard-focused-tab, .tabbrowser-tab:focus:not([aria-activedescendant])) > .tab-stack > .tab-content > .tab-throbber[pinned] {
   box-shadow: var(--focus-ring-box-shadow);
 }
 
@@ -977,7 +969,6 @@ html|*.addon-webext-perm-list {
 
 %include ../shared/fullscreen/warning.inc.css
 %include ../shared/ctrlTab.inc.css
-%include ../shared/plugin-doorhanger.inc.css
 
 /* On mac, the popup notification contents are indented by default and so
   the default closebutton margins from notification.css require adjustment */

@@ -5,10 +5,19 @@ ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 const TEST_WINDOW = window;
 
+function windowActivated(win) {
+  if (Services.ww.activeWindow == win) {
+    return Promise.resolve();
+  }
+  return BrowserTestUtils.waitForEvent(win, "activate");
+}
+
 async function withOpenWindows(amount, cont) {
   let windows = [];
   for (let i = 0; i < amount; ++i) {
-    windows.push(await BrowserTestUtils.openNewBrowserWindow());
+    let win = await BrowserTestUtils.openNewBrowserWindow();
+    await windowActivated(win);
+    windows.push(win);
   }
   await cont(windows);
   await Promise.all(windows.map(window => BrowserTestUtils.closeWindow(window)));
@@ -67,6 +76,7 @@ add_task(async function test_getTopWindow() {
       content.window.open("about:blank", "_blank", features);
     });
     let popupWindow = await popupWindowPromise;
+    await windowActivated(popupWindow);
     window = BrowserWindowTracker.getTopWindow({ allowPopups: true });
     Assert.equal(window, popupWindow,
       "The popup window should be the most recent one, when requested.");
@@ -79,7 +89,9 @@ add_task(async function test_getTopWindow() {
 
 add_task(async function test_orderedWindows() {
   await withOpenWindows(10, async function(windows) {
-    let ordered = [...BrowserWindowTracker.orderedWindows].filter(w => w != TEST_WINDOW);
+    Assert.equal(BrowserWindowTracker.windowCount, 11,
+      "Number of tracked windows, including the test window");
+    let ordered = BrowserWindowTracker.orderedWindows.filter(w => w != TEST_WINDOW);
     Assert.deepEqual([9, 8, 7, 6, 5, 4, 3, 2, 1, 0], ordered.map(w => windows.indexOf(w)),
       "Order of opened windows should be as opened.");
 
@@ -90,7 +102,7 @@ add_task(async function test_orderedWindows() {
       await promise;
     }
 
-    let ordered2 = [...BrowserWindowTracker.orderedWindows].filter(w => w != TEST_WINDOW);
+    let ordered2 = BrowserWindowTracker.orderedWindows.filter(w => w != TEST_WINDOW);
     // After the shuffle, we expect window '1' to be the top-most window, because
     // it was the last one we called focus on. Then '6', the window we focused
     // before-last, followed by '4'. The order of the other windows remains
@@ -104,7 +116,7 @@ add_task(async function test_orderedWindows() {
     windows[9].minimize();
     await promise;
 
-    let ordered3 = [...BrowserWindowTracker.orderedWindows].filter(w => w != TEST_WINDOW);
+    let ordered3 = BrowserWindowTracker.orderedWindows.filter(w => w != TEST_WINDOW);
     // Test the end of the array of window indices, because Windows Debug builds
     // mysteriously swap the order of the first two windows.
     Assert.deepEqual([8, 7, 5, 3, 2, 0, 9], ordered3.map(w => windows.indexOf(w)).slice(3),

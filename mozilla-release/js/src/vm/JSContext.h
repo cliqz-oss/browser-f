@@ -183,16 +183,18 @@ struct JSContext : public JS::RootingContext,
     template <typename T>
     T* pod_callocCanGC(size_t numElems, arena_id_t arena = js::MallocArena) {
         T* p = maybe_pod_calloc<T>(numElems, arena);
-        if (MOZ_LIKELY(!!p))
+        if (MOZ_LIKELY(!!p)) {
             return p;
+        }
         size_t bytes;
         if (MOZ_UNLIKELY(!js::CalculateAllocSize<T>(numElems, &bytes))) {
             reportAllocationOverflow();
             return nullptr;
         }
         p = static_cast<T*>(runtime()->onOutOfMemoryCanGC(js::AllocFunction::Calloc, bytes));
-        if (!p)
+        if (!p) {
             return nullptr;
+        }
         updateMallocCounter(bytes);
         return p;
     }
@@ -226,7 +228,6 @@ struct JSContext : public JS::RootingContext,
     bool permanentAtomsPopulated() { return runtime_->permanentAtomsPopulated(); }
     const js::FrozenAtomSet& permanentAtoms() { return *runtime_->permanentAtoms(); }
     js::WellKnownSymbols& wellKnownSymbols() { return *runtime_->wellKnownSymbols; }
-    JS::BuildIdOp buildIdOp() { return runtime_->buildIdOp; }
     const JS::AsmJSCacheOps& asmJSCacheOps() { return runtime_->asmJSCacheOps; }
     js::PropertyName* emptyString() { return runtime_->emptyString; }
     js::FreeOp* defaultFreeOp() { return runtime_->defaultFreeOp(); }
@@ -443,13 +444,9 @@ struct JSContext : public JS::RootingContext,
     }
 #endif
 
-  private:
-    /* Space for interpreter frames. */
-    js::ThreadData<js::InterpreterStack> interpreterStack_;
-
   public:
     js::InterpreterStack& interpreterStack() {
-        return interpreterStack_.ref();
+        return runtime()->interpreterStack();
     }
 
     /* Base address of the native stack for the current thread. */
@@ -471,15 +468,7 @@ struct JSContext : public JS::RootingContext,
      */
     js::ThreadData<js::EnterDebuggeeNoExecute*> noExecuteDebuggerTop;
 
-    js::ThreadData<js::ActivityCallback> activityCallback;
-    js::ThreadData<void*>                activityCallbackArg;
-    void triggerActivityCallback(bool active);
-
-    /* The request depth for this thread. */
-    js::ThreadData<unsigned> requestDepth;
-
 #ifdef DEBUG
-    js::ThreadData<unsigned> checkRequestDepth;
     js::ThreadData<uint32_t> inUnsafeCallWithABI;
     js::ThreadData<bool> hasAutoUnsafeCallWithABI;
 #endif
@@ -493,7 +482,7 @@ struct JSContext : public JS::RootingContext,
 #endif
 
 #ifdef JS_TRACE_LOGGING
-    js::ThreadData<js::TraceLoggerThread*> traceLogger;
+    js::UnprotectedData<js::TraceLoggerThread*> traceLogger;
 #endif
 
   private:
@@ -544,7 +533,6 @@ struct JSContext : public JS::RootingContext,
     // Whether this thread is currently manipulating possibly-gray GC things.
     js::ThreadData<size_t> isTouchingGrayThings;
 
-    js::ThreadData<size_t> noGCOrAllocationCheck;
     js::ThreadData<size_t> noNurseryAllocationCheck;
 
     /*
@@ -554,13 +542,6 @@ struct JSContext : public JS::RootingContext,
      * creation.
      */
     js::ThreadData<uintptr_t> disableStrictProxyCheckingCount;
-
-    bool isAllocAllowed() { return noGCOrAllocationCheck == 0; }
-    void disallowAlloc() { ++noGCOrAllocationCheck; }
-    void allowAlloc() {
-        MOZ_ASSERT(!isAllocAllowed());
-        --noGCOrAllocationCheck;
-    }
 
     bool isNurseryAllocAllowed() { return noNurseryAllocationCheck == 0; }
     void disallowNurseryAlloc() { ++noNurseryAllocationCheck; }
@@ -664,8 +645,9 @@ struct JSContext : public JS::RootingContext,
     js::ThreadData<JS::PersistentRooted<JS::Value>> unwrappedException_; /* most-recently-thrown exception */
 
     JS::Value& unwrappedException() {
-        if (!unwrappedException_.ref().initialized())
+        if (!unwrappedException_.ref().initialized()) {
             unwrappedException_.ref().init(this);
+        }
         return unwrappedException_.ref().get();
     }
 
@@ -721,9 +703,6 @@ struct JSContext : public JS::RootingContext,
         return runtime_ == rt;
     }
 
-    // Number of JS_BeginRequest calls without the corresponding JS_EndRequest.
-    js::ThreadData<unsigned> outstandingRequests;
-
     js::ThreadData<bool> jitIsBroken;
 
     void updateJITEnabled();
@@ -742,8 +721,9 @@ struct JSContext : public JS::RootingContext,
   public:
 
     js::SavedFrame*& asyncStackForNewActivations() {
-        if (!asyncStackForNewActivations_.ref().initialized())
+        if (!asyncStackForNewActivations_.ref().initialized()) {
             asyncStackForNewActivations_.ref().init(this);
+        }
         return asyncStackForNewActivations_.ref().get();
     }
 
@@ -1107,7 +1087,10 @@ ReportIsNotDefined(JSContext* cx, HandleId id);
  * Report an attempt to access the property of a null or undefined value (v).
  */
 extern void
-ReportIsNullOrUndefined(JSContext* cx, int spindex, HandleValue v);
+ReportIsNullOrUndefinedForPropertyAccess(JSContext* cx, HandleValue v, bool reportScanStack);
+extern void
+ReportIsNullOrUndefinedForPropertyAccess(JSContext* cx, HandleValue v, HandleId key,
+                                         bool reportScanStack);
 
 extern void
 ReportMissingArg(JSContext* cx, js::HandleValue v, unsigned arg);
@@ -1167,26 +1150,27 @@ class MOZ_RAII AutoArrayRooter : private JS::AutoGCRooter
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
-class AutoAssertNoException
+
+class AutoAssertNoPendingException
 {
 #ifdef DEBUG
-    JSContext* cx;
-    bool hadException;
-#endif
+    JSContext* cx_;
 
   public:
-    explicit AutoAssertNoException(JSContext* cx)
-#ifdef DEBUG
-      : cx(cx),
-        hadException(cx->isExceptionPending())
-#endif
+    explicit AutoAssertNoPendingException(JSContext* cxArg)
+      : cx_(cxArg)
     {
+        MOZ_ASSERT(!JS_IsExceptionPending(cx_));
     }
 
-    ~AutoAssertNoException()
-    {
-        MOZ_ASSERT_IF(!hadException, !cx->isExceptionPending());
+    ~AutoAssertNoPendingException() {
+        MOZ_ASSERT(!JS_IsExceptionPending(cx_));
     }
+#else
+  public:
+    explicit AutoAssertNoPendingException(JSContext* cxArg)
+    {}
+#endif
 };
 
 class MOZ_RAII AutoLockScriptData
@@ -1278,20 +1262,42 @@ class MOZ_RAII AutoEnterIonCompilation
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
+enum UnsafeABIStrictness {
+    NoExceptions,
+    AllowPendingExceptions,
+    AllowThrownExceptions
+};
+
 // Should be used in functions called directly from JIT code (with
 // masm.callWithABI) to assert invariants in debug builds.
+// In debug mode, masm.callWithABI inserts code to verify that the
+// callee function uses AutoUnsafeCallWithABI.
+// While this object is live:
+// 1. cx->hasAutoUnsafeCallWithABI must be true.
+// 2. We can't GC.
+// 3. Exceptions should not be pending/thrown.
+//
+// Note that #3 is a precaution, not a requirement. By default, we
+// assert that the function is not called with a pending exception,
+// and that it does not throw an exception itself.
 class MOZ_RAII AutoUnsafeCallWithABI
 {
 #ifdef DEBUG
     JSContext* cx_;
     bool nested_;
+    bool checkForPendingException_;
 #endif
     JS::AutoCheckCannotGC nogc;
 
   public:
 #ifdef DEBUG
-    AutoUnsafeCallWithABI();
+    explicit AutoUnsafeCallWithABI(UnsafeABIStrictness strictness =
+                                   UnsafeABIStrictness::NoExceptions);
     ~AutoUnsafeCallWithABI();
+#else
+    explicit AutoUnsafeCallWithABI(UnsafeABIStrictness unused_ =
+                                   UnsafeABIStrictness::NoExceptions)
+    {}
 #endif
 };
 
@@ -1346,5 +1352,8 @@ struct MOZ_RAII AutoSetThreadIsSweeping
 } // namespace gc
 
 } /* namespace js */
+
+#define CHECK_THREAD(cx) \
+    MOZ_ASSERT_IF(cx && !cx->helperThread(), CurrentThreadCanAccessRuntime(cx->runtime()))
 
 #endif /* vm_JSContext_h */

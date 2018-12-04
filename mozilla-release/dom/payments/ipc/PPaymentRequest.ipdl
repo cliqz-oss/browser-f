@@ -27,7 +27,6 @@ struct IPCPaymentItem
   nsString label;
   IPCPaymentCurrencyAmount amount;
   bool pending;
-  nsString type;
 };
 
 struct IPCPaymentDetailsModifier
@@ -56,6 +55,8 @@ struct IPCPaymentDetails
   IPCPaymentDetailsModifier[] modifiers;
   nsString error;
   nsString shippingAddressErrors;
+  nsString payerErrors;
+  nsString paymentMethodErrors;
 };
 
 struct IPCPaymentOptions
@@ -110,6 +111,15 @@ struct IPCPaymentCloseActionRequest
   nsString requestId;
 };
 
+struct IPCPaymentRetryActionRequest
+{
+  nsString requestId;
+  nsString error;
+  nsString payerErrors;
+  nsString paymentMethodErrors;
+  nsString shippingAddressErrors;
+};
+
 union IPCPaymentActionRequest
 {
   IPCPaymentCreateActionRequest;
@@ -119,6 +129,7 @@ union IPCPaymentActionRequest
   IPCPaymentCompleteActionRequest;
   IPCPaymentUpdateActionRequest;
   IPCPaymentCloseActionRequest;
+  IPCPaymentRetryActionRequest;
 };
 
 struct IPCPaymentCanMakeActionResponse
@@ -163,6 +174,7 @@ struct IPCPaymentAddress
   nsString country;
   nsString[] addressLine;
   nsString region;
+  nsString regionCode;
   nsString city;
   nsString dependentLocality;
   nsString postalCode;
@@ -187,6 +199,10 @@ child:
                               IPCPaymentAddress aAddress);
   async ChangeShippingOption(nsString aRequestId,
                              nsString aOption);
+  async ChangePayerDetail(nsString aRequestId,
+                          nsString aPayerName,
+                          nsString aPayerEmail,
+                          nsString aPayerPhone);
 };
 
 } // end of namespace dom

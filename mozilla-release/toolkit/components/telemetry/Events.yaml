@@ -73,6 +73,55 @@ activity_stream:
       page: about:home or about_newtab - the page where the event occurred
       user_prefs: An integer representaing a user's A-S settings.
 
+addonsManager:
+  install:
+    description: >
+      This events are recorded during the install and update flow for extensions and themes,
+      the value of the event is an install_id shared by the events related to the same install
+      or update flow.
+    objects: ["extension", "theme", "locale", "dictionary", "other", "unknown"]
+    methods: ["install", "update"]
+    extra_keys:
+      addon_id: A string which identify the extension (when available)
+      download_time: The number of ms needed to complete the download
+      error: The AddonManager error related to an install or update failure.
+      source: The source that originally triggered the add-on installation
+      method: >
+        The method used by the source to install the add-on (included when the source can use more than one,
+        e.g. install events with source "about:addons" may have "install-from-file" or "url" as method).
+      num_perms: The number of permissions shown to the user in the extension permission doorhanger
+      num_origins: The number of origins shown to the user in the extension permission doorhanger
+      updated_from: Determine if an update has been requested by the user or the application ("app" / "user")
+      step: >
+        The current step in the install or update flow:
+          - started, postponed, cancelled, failed, permissions_prompt, completed
+          - site_warning, site_blocked, install_disabled_warning
+          - download_started, download_completed, download_failed
+    notification_emails: ["addons-dev-internal@mozilla.com"]
+    expiry_version: "68"
+    record_in_processes: ["main"]
+    bug_numbers: [1433335]
+    release_channel_collection: opt-out
+  manage:
+    description: >
+      This events are recorded when an installed add-ons is being disable/enabled/uninstalled,
+      the value of the event is the addon_id (which also allow to correlate multiple events
+      related to each other).
+    objects: ["extension", "theme", "locale", "dictionary", "other"]
+    methods: ["disable", "enable", "sideload_prompt", "uninstall"]
+    extra_keys:
+      source: The source from which the addon has been installed
+      method: >
+        The method used by the source to install the add-on (included when the source can use more than one,
+        e.g. install events with source "about:addons" may have "install-from-file" or "url" as method).
+      num_perms: The number of permissions shown to the user for a sideload extension permissions doorhanger
+      num_origins: The number of origins shown to the user for a sideload extension permissions doorhanger
+    notification_emails: ["addons-dev-internal@mozilla.com"]
+    expiry_version: "68"
+    record_in_processes: ["main"]
+    bug_numbers: [1433335]
+    release_channel_collection: opt-out
+
 extensions.data:
   migrateResult:
     objects: ["storageLocal"]
@@ -232,7 +281,7 @@ devtools.main:
     release_channel_collection: opt-out
     expiry_version: never
     extra_keys:
-      entrypoint: How was the toolbox opened? CommandLine, ContextMenu, DeveloperToolbar, HamburgerMenu, KeyShortcut, SessionRestore or SystemMenu
+      entrypoint: How was the toolbox opened? CommandLine, ContextMenu, HamburgerMenu, KeyShortcut, SessionRestore or SystemMenu
       first_panel: The name of the first panel opened.
       host: "Toolbox host (positioning): bottom, side, window or other."
       splitconsole: Indicates whether the split console was open.
@@ -502,3 +551,109 @@ devtools.main:
       time_open: Time open.
       os: The OS name and version e.g. "Linux 4.4.0-1014-aws", "Darwin 14.5.0", "Windows_NT 6.1.7601" or "Windows_NT 10.0.15063." This can be used to make sense of data when a feature is only available from a particular operating system build number.
       session_id: The start time of the session in milliseconds since epoch (Unix Timestamp) e.g. 1396381378123.
+
+security.ui.certerror:
+  load:
+    objects: ["aboutcerterror"]
+    bug_numbers:
+      - 1484255
+      - 1505310
+    description: >
+      The about:certerror page is loaded, keyed by error code, see https://searchfox.org/mozilla-central/source/security/nss/lib/mozpkix/include/pkix/Result.h
+    expiry_version: "70"
+    notification_emails:
+      - jhofmann@mozilla.com
+      - rtestard@mozilla.com
+      - seceng-telemetry@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes: ["content"]
+    products:
+      - firefox
+    extra_keys:
+      is_frame: If the error page is loaded in an iframe.
+      has_sts: If the error page is for a site with HSTS headers or with a pinned key.
+  click:
+    objects: [
+      "advanced_button",
+      "exception_button",
+      "return_button_top",
+      "return_button_adv",
+      "learn_more_link",
+      "auto_report_cb",
+      "error_code_link",
+      "clipboard_button_top",
+      "clipboard_button_bot",
+    ]
+    bug_numbers:
+      - 1484255
+      - 1505310
+    description: >
+      User interaction by click events on the cert error page. Keyed by error code, see https://searchfox.org/mozilla-central/source/security/nss/lib/mozpkix/include/pkix/Result.h
+    expiry_version: "70"
+    notification_emails:
+      - jhofmann@mozilla.com
+      - rtestard@mozilla.com
+      - seceng-telemetry@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes: ["content"]
+    products:
+      - firefox
+    extra_keys:
+      is_frame: If the error page is loaded in an iframe.
+      has_sts: If the error page is for a site with HSTS headers or with a pinned key.
+      panel_open: If the advanced panel was open at the time of the interaction.
+
+security.ui.identitypopup:
+  open:
+    objects: ["identity_popup"]
+    bug_numbers:
+      - 1484251
+    description: >
+      How many times the control center was opened.
+      Keyed by the state of the content blocking shield, where the shield-showing key indicates
+      that the shield icon in the identity UI is visible to the user, and shield-hidden indicates
+      that it is not visible.
+    expiry_version: "70"
+    notification_emails:
+      - jhofmann@mozilla.com
+      - pdol@mozilla.com
+      - seceng-telemetry@mozilla.com
+    release_channel_collection: opt-in
+    record_in_processes:
+      - main
+    extra_keys:
+      fb: Whether FastBlock was active while the user opened the popup
+      tp: Whether Tracking Protection was active while the user opened the popup
+      cr: Whether Cookie Restrictions was active while the user opened the popup
+    products:
+      - firefox
+  click:
+    objects: [
+      "fb_add_blocking",
+      "tp_add_blocking",
+      "cookies_add_blocking",
+      "cb_prefs_button",
+      "clear_sitedata",
+      "unblock",
+      "unblock_private",
+      "block",
+      "report_breakage"
+    ]
+    bug_numbers:
+      - 1484251
+    description: >
+      User interaction by click events in the identity popup.
+    expiry_version: "70"
+    notification_emails:
+      - jhofmann@mozilla.com
+      - pdol@mozilla.com
+      - seceng-telemetry@mozilla.com
+    release_channel_collection: opt-in
+    record_in_processes:
+      - main
+    extra_keys:
+      fb: Whether FastBlock was active while the user interacted with the UI
+      tp: Whether Tracking Protection was active while the user interacted with the UI
+      cr: Whether Cookie Restrictions was active while the user interacted with the UI
+    products:
+      - firefox

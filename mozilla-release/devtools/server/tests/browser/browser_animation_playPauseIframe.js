@@ -12,7 +12,7 @@ const URL = MAIN_DOMAIN + "animation.html";
 add_task(async function() {
   info("Creating a test document with 2 iframes containing animated nodes");
 
-  const {client, walker, animations} = await initAnimationsFrontForUrl(
+  const {target, walker, animations} = await initAnimationsFrontForUrl(
     "data:text/html;charset=utf-8," +
     "<iframe id='i1' src='" + URL + "'></iframe>" +
     "<iframe id='i2' src='" + URL + "'></iframe>");
@@ -22,22 +22,27 @@ add_task(async function() {
   const nodeInFrame2 = await getNodeInFrame(walker, "#i2", ".simple-animation");
 
   info("Pause all animations in the test document");
-  await animations.pauseAll();
-  await checkState(animations, nodeInFrame1, "paused");
-  await checkState(animations, nodeInFrame2, "paused");
+  await toggleAndCheckStates(animations, nodeInFrame1, "paused");
+  await toggleAndCheckStates(animations, nodeInFrame2, "paused");
 
   info("Play all animations in the test document");
-  await animations.playAll();
-  await checkState(animations, nodeInFrame1, "running");
-  await checkState(animations, nodeInFrame2, "running");
+  await toggleAndCheckStates(animations, nodeInFrame1, "running");
+  await toggleAndCheckStates(animations, nodeInFrame2, "running");
 
-  await client.close();
+  await target.destroy();
   gBrowser.removeCurrentTab();
 });
 
-async function checkState(animations, nodeFront, playState) {
-  info("Getting the AnimationPlayerFront for the test node");
+async function toggleAndCheckStates(animations, nodeFront, playState) {
   const [player] = await animations.getAnimationPlayersForNode(nodeFront);
+
+  if (playState === "paused") {
+    await animations.pauseSome([player]);
+  } else {
+    await animations.playSome([player]);
+  }
+
+  info("Getting the AnimationPlayerFront for the test node");
   await player.ready;
   const state = await player.getCurrentState();
   is(state.playState, playState,

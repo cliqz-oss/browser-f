@@ -54,7 +54,6 @@ public:
     void SetDocShellAllowsScript(bool aAllowed);
 
     static Scriptability& Get(JSObject* aScope);
-    static Scriptability& Get(JSScript* aScript);
 
 private:
     // Whenever a consumer wishes to prevent script from running on a global,
@@ -92,6 +91,10 @@ bool IsInUAWidgetScope(JSObject* obj);
 
 bool IsInSandboxCompartment(JSObject* obj);
 
+bool MightBeWebContentCompartment(JS::Compartment* compartment);
+
+void SetCompartmentChangedDocumentDomain(JS::Compartment* compartment);
+
 // Return a raw XBL scope object corresponding to contentScope, which must
 // be an object whose global is a DOM window.
 //
@@ -118,8 +121,9 @@ inline JSObject*
 GetXBLScopeOrGlobal(JSContext* cx, JSObject* obj)
 {
     MOZ_ASSERT(!js::IsCrossCompartmentWrapper(obj));
-    if (IsInContentXBLScope(obj))
+    if (IsInContentXBLScope(obj)) {
         return JS::GetNonCCWObjectGlobal(obj);
+    }
     return GetXBLScope(cx, obj);
 }
 
@@ -276,8 +280,9 @@ public:
         bool ignored;
         JSString* str = JS_NewMaybeExternalString(cx, literal, length,
                                                   &sLiteralFinalizer, &ignored);
-        if (!str)
+        if (!str) {
             return false;
+        }
         rval.setString(str);
         return true;
     }
@@ -291,8 +296,9 @@ public:
                                                   atom->GetLength(),
                                                   &sDynamicAtomFinalizer,
                                                   &sharedAtom);
-        if (!str)
+        if (!str) {
             return false;
+        }
         if (sharedAtom) {
             // We only have non-owning atoms in DOMString for now.
             // nsDynamicAtom::AddRef is always-inline and defined in a
@@ -346,7 +352,7 @@ bool Base64Decode(JSContext* cx, JS::HandleValue val, JS::MutableHandleValue out
 bool NonVoidStringToJsval(JSContext* cx, nsAString& str, JS::MutableHandleValue rval);
 inline bool StringToJsval(JSContext* cx, nsAString& str, JS::MutableHandleValue rval)
 {
-    // From the T_DOMSTRING case in XPCConvert::NativeData2JS.
+    // From the T_ASTRING case in XPCConvert::NativeData2JS.
     if (str.IsVoid()) {
         rval.setNull();
         return true;
@@ -550,16 +556,22 @@ WindowGlobalOrNull(JSObject* aObj);
 nsGlobalWindowInner*
 CurrentWindowOrNull(JSContext* cx);
 
-void
-SimulateActivityCallback(bool aActive);
+class MOZ_RAII AutoScriptActivity
+{
+    bool mActive;
+    bool mOldValue;
+  public:
+    explicit AutoScriptActivity(bool aActive);
+    ~AutoScriptActivity();
+};
 
 // This function may be used off-main-thread, in which case it is benignly
 // racey.
 bool
 ShouldDiscardSystemSource();
 
-bool
-SharedMemoryEnabled();
+void
+SetPrefableRealmOptions(JS::RealmOptions &options);
 
 bool
 ExtraWarningsForSystemJS();
@@ -751,6 +763,13 @@ bool IsChromeOrXBLOrUAWidget(JSContext* cx, JSObject* /* unused */);
 bool ThreadSafeIsChromeOrXBLOrUAWidget(JSContext* cx, JSObject* obj);
 
 } // namespace dom
+
+/**
+ * Fill the given vector with the buildid.
+ */
+bool
+GetBuildId(JS::BuildIdCharVector* aBuildID);
+
 } // namespace mozilla
 
 #endif

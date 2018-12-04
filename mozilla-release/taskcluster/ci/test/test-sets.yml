@@ -38,8 +38,6 @@ common-tests:
     - reftest
     - reftest-no-accel
     - telemetry-tests-client
-    - test-coverage
-    - test-coverage-wpt
     - test-verify
     - test-verify-gpu
     - test-verify-wpt
@@ -90,7 +88,6 @@ raptor-firefox:
     - raptor-webaudio-firefox
     - raptor-gdocs-firefox
     - raptor-sunspider-firefox
-    - raptor-assorted-dom-firefox
 
 raptor-chrome:
     - raptor-tp6-chrome
@@ -101,7 +98,6 @@ raptor-chrome:
     - raptor-webaudio-chrome
     - raptor-gdocs-chrome
     - raptor-sunspider-chrome
-    - raptor-assorted-dom-chrome
 
 # Fetch tasks are only supported on Linux for now,
 # so these need to be separate sets.
@@ -110,14 +106,21 @@ raptor-fetch-firefox:
     - raptor-wasm-misc-firefox
     - raptor-wasm-misc-baseline-firefox
     - raptor-wasm-misc-ion-firefox
+    - raptor-assorted-dom-firefox
+
+raptor-fetch-geckoview:
+    - raptor-unity-webgl-geckoview
 
 raptor-fetch-chrome:
     - raptor-unity-webgl-chrome
     - raptor-wasm-misc-chrome
+    - raptor-assorted-dom-chrome
 
 awsy:
     - awsy
     - awsy-base
+    - awsy-dmd
+    - awsy-base-dmd
 
 awsy-stylo-sequential:
     - awsy-stylo-sequential
@@ -136,6 +139,7 @@ linux-qr-tests:
     - mochitest-gpu
     - mochitest-media
     - mochitest-webgl1-core
+    - mochitest-webgl1-ext
     - reftest
     - xpcshell
 
@@ -167,13 +171,14 @@ windows-qr-tests:
     - mochitest-gpu
     - mochitest-media
     - mochitest-webgl1-core
+    - mochitest-webgl1-ext
+    - mochitest-webgl2-core
+    - mochitest-webgl2-ext
     - reftest
 
-jsdcov-code-coverage-tests:
-    - mochitest
-    - mochitest-browser-chrome
-    - mochitest-devtools-chrome
-    - xpcshell
+ccov-code-coverage-tests:
+    - test-coverage
+    - test-coverage-wpt
 
 windows-reftest-gpu:
     - reftest-gpu
@@ -202,13 +207,12 @@ windows-tests:
     - mochitest-webgl2-ext
     - reftest
     - reftest-no-accel
-    - test-coverage
-    - test-coverage-wpt
     - test-verify
     - test-verify-gpu
     - test-verify-wpt
     - web-platform-tests
     - web-platform-tests-reftests
+    - web-platform-tests-wdspec
     - xpcshell
 
 windows-talos:
@@ -279,6 +283,7 @@ macosx64-tests:
     - test-verify-wpt
     - web-platform-tests
     - web-platform-tests-reftests
+    - web-platform-tests-wdspec
     - xpcshell
 
 macosx64-talos:
@@ -383,14 +388,9 @@ android-opt-tests:
     # Robocop tests often fail on Debug builds
     - robocop
 
-android-gradle-tests:
-    # geckoview_example is only built in gradle builds
-    - geckoview
-
 android-x86-tests:
     - mochitest-chrome
     - xpcshell
-    - geckoview
 
 android-x86-kvm-tests:
     - crashtest
@@ -404,9 +404,13 @@ android-x86-kvm-tests:
     # - mochitest-webgl1-core
     # - reftest
     # - test-verify
+    # - web-platform-tests
+    # - web-platform-tests-reftests
+    # - web-platform-tests-wdspec
 
 android-ccov-tests:
     - geckoview-junit
+    - robocop
 
 devtools-tests:
     - mochitest-devtools-chrome
@@ -422,3 +426,10 @@ android-hw-arm7-debug-unittests:
 
 android-hw-aarch64-opt-unittests:
     - jittest
+
+# Coming soonish!
+android-hw-arm7-raptor:
+    - raptor-speedometer-geckoview
+
+android-hw-aarch64-raptor:
+    - raptor-speedometer-geckoview

@@ -20,13 +20,13 @@
 #include "nsIIncrementalStreamLoader.h"
 #include "nsURIHashKey.h"
 #include "mozilla/CORSMode.h"
-#include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/ScriptLoadRequest.h"
 #include "mozilla/dom/SRIMetadata.h"
 #include "mozilla/dom/SRICheck.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/MozPromise.h"
 #include "mozilla/net/ReferrerPolicy.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/Vector.h"
 
 class nsIURI;
@@ -406,7 +406,7 @@ private:
   static bool BinASTEncodingEnabled()
   {
 #ifdef JS_BUILD_BINAST
-    return DOMPrefs::BinASTEncodingEnabled();
+    return StaticPrefs::dom_script_loader_binast_encoding_enabled();
 #else
     return false;
 #endif
@@ -520,9 +520,10 @@ private:
   RefPtr<mozilla::GenericPromise> WaitForModuleFetch(nsIURI* aURL);
   ModuleScript* GetFetchedModule(nsIURI* aURL) const;
 
-  friend JSScript*
-  HostResolveImportedModule(JSContext* aCx, JS::Handle<JSScript*> aScript,
-                          JS::Handle<JSString*> aSpecifier);
+  friend JSObject*
+  HostResolveImportedModule(JSContext* aCx,
+                            JS::Handle<JS::Value> aReferencingPrivate,
+                            JS::Handle<JSString*> aSpecifier);
 
   // Returns wether we should save the bytecode of this script after the
   // execution of the script.

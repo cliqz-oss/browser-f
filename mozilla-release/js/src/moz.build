@@ -4,6 +4,9 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+include('js-config.mozbuild')
+include('js-cxxflags.mozbuild')
+
 # Directory metadata
 component_engine = ('Core', 'JavaScript Engine')
 component_gc     = ('Core', 'JavaScript: GC')
@@ -39,7 +42,6 @@ for stlfile in ['jsdate.*', 'jsnum.*']:
 
 with Files('builtin/intl/*'):
     BUG_COMPONENT = component_intl
-
 
 if CONFIG['JS_BUNDLED_EDITLINE']:
     DIRS += ['editline']
@@ -124,7 +126,6 @@ EXPORTS += [
 
 EXPORTS.js += [
     '../public/AllocPolicy.h',
-    '../public/AutoByteString.h',
     '../public/CallArgs.h',
     '../public/CallNonGenericMethod.h',
     '../public/CharacterEncoding.h',
@@ -169,6 +170,7 @@ EXPORTS.js += [
     '../public/StructuredClone.h',
     '../public/SweepingAPI.h',
     '../public/TraceKind.h',
+    '../public/TraceLoggerAPI.h',
     '../public/TracingAPI.h',
     '../public/TrackedOptimizationInfo.h',
     '../public/Transcoding.h',
@@ -189,6 +191,7 @@ EXPORTS.js += [
 ]
 
 UNIFIED_SOURCES += [
+    'builtin/Array.cpp',
     'builtin/AtomicsObject.cpp',
     'builtin/Boolean.cpp',
     'builtin/DataViewObject.cpp',
@@ -223,9 +226,12 @@ UNIFIED_SOURCES += [
     'frontend/BytecodeCompiler.cpp',
     'frontend/BytecodeControlStructures.cpp',
     'frontend/BytecodeEmitter.cpp',
+    'frontend/CallOrNewEmitter.cpp',
     'frontend/CForEmitter.cpp',
     'frontend/DoWhileEmitter.cpp',
+    'frontend/ElemOpEmitter.cpp',
     'frontend/EmitterScope.cpp',
+    'frontend/ExpressionStatementEmitter.cpp',
     'frontend/FoldConstants.cpp',
     'frontend/ForInEmitter.cpp',
     'frontend/ForOfEmitter.cpp',
@@ -233,7 +239,9 @@ UNIFIED_SOURCES += [
     'frontend/IfEmitter.cpp',
     'frontend/JumpList.cpp',
     'frontend/NameFunctions.cpp',
+    'frontend/NameOpEmitter.cpp',
     'frontend/ParseNode.cpp',
+    'frontend/PropOpEmitter.cpp',
     'frontend/SwitchEmitter.cpp',
     'frontend/TDZCheckCache.cpp',
     'frontend/TokenStream.cpp',
@@ -284,7 +292,6 @@ UNIFIED_SOURCES += [
     'jit/CacheIRSpewer.cpp',
     'jit/CodeGenerator.cpp',
     'jit/CompileWrappers.cpp',
-    'jit/Disassembler.cpp',
     'jit/EdgeCaseAnalysis.cpp',
     'jit/EffectiveAddressAnalysis.cpp',
     'jit/ExecutableAllocator.cpp',
@@ -324,7 +331,6 @@ UNIFIED_SOURCES += [
     'jit/Safepoints.cpp',
     'jit/ScalarReplacement.cpp',
     'jit/shared/Assembler-shared.cpp',
-    'jit/shared/BaselineCompiler-shared.cpp',
     'jit/shared/CodeGenerator-shared.cpp',
     'jit/shared/Disassembler-shared.cpp',
     'jit/shared/Lowering-shared.cpp',
@@ -353,6 +359,7 @@ UNIFIED_SOURCES += [
     'threading/Mutex.cpp',
     'threading/ProtectedData.cpp',
     'util/AllocPolicy.cpp',
+    'util/CompleteFile.cpp',
     'util/NativeStack.cpp',
     'util/Printf.cpp',
     'util/StringBuffer.cpp',
@@ -360,6 +367,7 @@ UNIFIED_SOURCES += [
     'util/Unicode.cpp',
     'vm/ArgumentsObject.cpp',
     'vm/ArrayBufferObject.cpp',
+    'vm/ArrayBufferViewObject.cpp',
     'vm/AsyncFunction.cpp',
     'vm/AsyncIteration.cpp',
     'vm/BytecodeUtil.cpp',
@@ -368,6 +376,7 @@ UNIFIED_SOURCES += [
     'vm/CharacterEncoding.cpp',
     'vm/CodeCoverage.cpp',
     'vm/Compartment.cpp',
+    'vm/CompilationAndEvaluation.cpp',
     'vm/Compression.cpp',
     'vm/DateTime.cpp',
     'vm/Debugger.cpp',
@@ -383,6 +392,7 @@ UNIFIED_SOURCES += [
     'vm/Id.cpp',
     'vm/Initialization.cpp',
     'vm/Iteration.cpp',
+    'vm/JSAtom.cpp',
     'vm/JSContext.cpp',
     'vm/JSFunction.cpp',
     'vm/JSObject.cpp',
@@ -392,6 +402,7 @@ UNIFIED_SOURCES += [
     'vm/MemoryMetrics.cpp',
     'vm/NativeObject.cpp',
     'vm/ObjectGroup.cpp',
+    'vm/OffThreadScriptCompilation.cpp',
     'vm/PIC.cpp',
     'vm/Printer.cpp',
     'vm/Probes.cpp',
@@ -444,8 +455,6 @@ UNIFIED_SOURCES += [
     'wasm/WasmValidate.cpp'
 ]
 
-# builtin/Array.cpp and vm/JSAtom.cpp cannot be built in unified mode because
-#   xpcshell is broken during packaging when compiled with gcc-4.8.2
 # builtin/RegExp.cpp cannot be built in unified mode because it causes huge
 #   win32 test slowdowns
 # frontend/Parser.cpp cannot be built in unified mode because of explicit
@@ -465,7 +474,6 @@ UNIFIED_SOURCES += [
 # vm/Interpreter.cpp is gigantic and destroys incremental build times for any
 #   files unlucky enough to be unified with it.
 SOURCES += [
-    'builtin/Array.cpp',
     'builtin/RegExp.cpp',
     'frontend/Parser.cpp',
     'gc/StoreBuffer.cpp',
@@ -473,7 +481,6 @@ SOURCES += [
     'jsutil.cpp',
     'util/DoubleToString.cpp',
     'vm/Interpreter.cpp',
-    'vm/JSAtom.cpp',
     'vm/ProfilingStack.cpp',
 ]
 
@@ -511,22 +518,17 @@ elif CONFIG['JS_CODEGEN_X86'] or CONFIG['JS_CODEGEN_X64']:
         'jit/x86-shared/Architecture-x86-shared.cpp',
         'jit/x86-shared/Assembler-x86-shared.cpp',
         'jit/x86-shared/AssemblerBuffer-x86-shared.cpp',
-        'jit/x86-shared/BaselineCompiler-x86-shared.cpp',
         'jit/x86-shared/CodeGenerator-x86-shared.cpp',
         'jit/x86-shared/Lowering-x86-shared.cpp',
         'jit/x86-shared/MacroAssembler-x86-shared-SIMD.cpp',
         'jit/x86-shared/MacroAssembler-x86-shared.cpp',
         'jit/x86-shared/MoveEmitter-x86-shared.cpp',
     ]
-    SOURCES += [
-        'jit/x86-shared/Disassembler-x86-shared.cpp',  # using namespace js::jit::X86Encoding;
-    ]
     if CONFIG['JS_CODEGEN_X64']:
         LOpcodesGenerated.inputs += ['jit/x64/LIR-x64.h']
         UNIFIED_SOURCES += [
             'jit/x64/Assembler-x64.cpp',
             'jit/x64/Bailouts-x64.cpp',
-            'jit/x64/BaselineCompiler-x64.cpp',
             'jit/x64/CodeGenerator-x64.cpp',
             'jit/x64/Lowering-x64.cpp',
             'jit/x64/MacroAssembler-x64.cpp',
@@ -537,7 +539,6 @@ elif CONFIG['JS_CODEGEN_X86'] or CONFIG['JS_CODEGEN_X64']:
         UNIFIED_SOURCES += [
             'jit/x86/Assembler-x86.cpp',
             'jit/x86/Bailouts-x86.cpp',
-            'jit/x86/BaselineCompiler-x86.cpp',
             'jit/x86/CodeGenerator-x86.cpp',
             'jit/x86/Lowering-x86.cpp',
             'jit/x86/MacroAssembler-x86.cpp',
@@ -549,7 +550,6 @@ elif CONFIG['JS_CODEGEN_ARM']:
         'jit/arm/Architecture-arm.cpp',
         'jit/arm/Assembler-arm.cpp',
         'jit/arm/Bailouts-arm.cpp',
-        'jit/arm/BaselineCompiler-arm.cpp',
         'jit/arm/CodeGenerator-arm.cpp',
         'jit/arm/disasm/Constants-arm.cpp',
         'jit/arm/disasm/Disasm-arm.cpp',
@@ -574,7 +574,6 @@ elif CONFIG['JS_CODEGEN_ARM64']:
         'jit/arm64/Assembler-arm64.cpp',
         'jit/arm64/Bailouts-arm64.cpp',
         'jit/arm64/CodeGenerator-arm64.cpp',
-        'jit/arm64/Disassembler-arm64.cpp',
         'jit/arm64/Lowering-arm64.cpp',
         'jit/arm64/MacroAssembler-arm64.cpp',
         'jit/arm64/MoveEmitter-arm64.cpp',
@@ -603,7 +602,6 @@ elif CONFIG['JS_CODEGEN_MIPS32'] or CONFIG['JS_CODEGEN_MIPS64']:
         'jit/mips-shared/Architecture-mips-shared.cpp',
         'jit/mips-shared/Assembler-mips-shared.cpp',
         'jit/mips-shared/Bailouts-mips-shared.cpp',
-        'jit/mips-shared/BaselineCompiler-mips-shared.cpp',
         'jit/mips-shared/CodeGenerator-mips-shared.cpp',
         'jit/mips-shared/Lowering-mips-shared.cpp',
         'jit/mips-shared/MacroAssembler-mips-shared.cpp',
@@ -615,7 +613,6 @@ elif CONFIG['JS_CODEGEN_MIPS32'] or CONFIG['JS_CODEGEN_MIPS64']:
             'jit/mips32/Architecture-mips32.cpp',
             'jit/mips32/Assembler-mips32.cpp',
             'jit/mips32/Bailouts-mips32.cpp',
-            'jit/mips32/BaselineCompiler-mips32.cpp',
             'jit/mips32/CodeGenerator-mips32.cpp',
             'jit/mips32/Lowering-mips32.cpp',
             'jit/mips32/MacroAssembler-mips32.cpp',
@@ -632,7 +629,6 @@ elif CONFIG['JS_CODEGEN_MIPS32'] or CONFIG['JS_CODEGEN_MIPS64']:
             'jit/mips64/Architecture-mips64.cpp',
             'jit/mips64/Assembler-mips64.cpp',
             'jit/mips64/Bailouts-mips64.cpp',
-            'jit/mips64/BaselineCompiler-mips64.cpp',
             'jit/mips64/CodeGenerator-mips64.cpp',
             'jit/mips64/Lowering-mips64.cpp',
             'jit/mips64/MacroAssembler-mips64.cpp',
@@ -699,13 +695,11 @@ DIRS += [
 
 FINAL_LIBRARY = 'js'
 
-if CONFIG['NIGHTLY_BUILD']:
-    DEFINES['ENABLE_BINARYDATA'] = True
-    DEFINES['ENABLE_WASM_BULKMEM_OPS'] = True
-    DEFINES['ENABLE_WASM_SATURATING_TRUNC_OPS'] = True
-    DEFINES['ENABLE_WASM_THREAD_OPS'] = True
-    DEFINES['ENABLE_WASM_GC'] = True
-    DEFINES['WASM_PRIVATE_REFTYPES'] = True
+if CONFIG['ENABLE_WASM_CRANELIFT']:
+    DIRS += ['rust']
+    UNIFIED_SOURCES += [
+        'wasm/WasmCraneliftCompile.cpp',
+    ]
 
 if CONFIG['JS_BUILD_BINAST']:
     # Using SOURCES, as UNIFIED_SOURCES causes mysterious bugs on 32-bit platforms.
@@ -716,6 +710,7 @@ if CONFIG['JS_BUILD_BINAST']:
     SOURCES += [
         'frontend/BinSource-auto.cpp',
         'frontend/BinSource.cpp',
+        'frontend/BinSourceRuntimeSupport.cpp',
         'frontend/BinToken.cpp',
         'frontend/BinTokenReaderBase.cpp',
         'frontend/BinTokenReaderMultipart.cpp',
@@ -723,54 +718,11 @@ if CONFIG['JS_BUILD_BINAST']:
 
     # Instrument BinAST files for fuzzing as we have a fuzzing target for BinAST.
     if CONFIG['FUZZING_INTERFACES'] and CONFIG['LIBFUZZER']:
+        SOURCES['frontend/BinSource-auto.cpp'].flags += libfuzzer_flags
         SOURCES['frontend/BinSource.cpp'].flags += libfuzzer_flags
         SOURCES['frontend/BinToken.cpp'].flags += libfuzzer_flags
-        SOURCES['frontend/BinTokenReaderTester.cpp'].flags += libfuzzer_flags
-
-# Wasm code should use WASM_HUGE_MEMORY instead of JS_CODEGEN_X64
-# so that it is easy to use the huge-mapping optimization for other
-# 64-bit platforms in the future.
-
-if CONFIG['JS_CODEGEN_X64'] or CONFIG['JS_CODEGEN_ARM64']:
-    DEFINES['WASM_HUGE_MEMORY'] = True
-
-if CONFIG['MOZ_DEBUG'] or CONFIG['NIGHTLY_BUILD']:
-    DEFINES['JS_CACHEIR_SPEW'] = True
-
-# Also set in shell/moz.build
-DEFINES['ENABLE_SHARED_ARRAY_BUFFER'] = True
-
-DEFINES['EXPORT_JS_API'] = True
-
-if CONFIG['JS_HAS_CTYPES']:
-    DEFINES['JS_HAS_CTYPES'] = True
-    for var in ('DLL_PREFIX', 'DLL_SUFFIX'):
-        DEFINES[var] = '"%s"' % CONFIG[var]
-
-if CONFIG['MOZ_LINKER']:
-    DEFINES['MOZ_LINKER'] = True
-
-if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
-    # Prevent floating point errors caused by VC++ optimizations
-    # XXX We should add this to CXXFLAGS, too?
-    CFLAGS += ['-fp:precise']
-    # C4805 warns mixing bool with other integral types in computation.
-    # But given the conversion from bool is specified, and this is a
-    # pattern widely used in code in js/src, suppress this warning here.
-    CXXFLAGS += ['-wd4805']
-    # C4661 ("no suitable definition provided for explicit template
-    # instantiation request") is emitted for all Parser methods that
-    # have a Parser<FullParseHandler> definition but no
-    # Parser<SyntaxParseHandler> definition, see bug 1167030.
-    CXXFLAGS += ['-wd4661']
-    # FIXME: unary minus operator applied to unsigned type (bug 1229189)
-    CXXFLAGS += ['-wd4146']
-    # FIXME: 'operation' : conversion from 'type1' to 'type2' of
-    # greater size (bug 1259304)
-    CXXFLAGS += ['-wd4312']
-
-CFLAGS += CONFIG['MOZ_ICU_CFLAGS']
-CXXFLAGS += CONFIG['MOZ_ICU_CFLAGS']
+        SOURCES['frontend/BinTokenReaderBase.cpp'].flags += libfuzzer_flags
+        SOURCES['frontend/BinTokenReaderMultipart.cpp'].flags += libfuzzer_flags
 
 # Prepare self-hosted JS code for embedding
 GENERATED_FILES += [('selfhosted.out.h', 'selfhosted.js')]
@@ -819,14 +771,6 @@ selfhosted.inputs = [
 if CONFIG['JS_HAS_CTYPES']:
     if CONFIG['MOZ_SYSTEM_FFI']:
         CXXFLAGS += CONFIG['MOZ_FFI_CFLAGS']
-    else:
-        # Windows needs this to be linked with a static library.
-        DEFINES['FFI_BUILDING'] = True
-
-if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
-    # Also disable strict-aliasing for GCC compiler, that is enabled by default
-    # starting with version 7.1, see Bug 1363009
-    CXXFLAGS += ['-Wno-shadow', '-Werror=format', '-fno-strict-aliasing']
 
 # Suppress warnings in third-party code.
 if CONFIG['CC_TYPE'] in ('clang', 'gcc'):

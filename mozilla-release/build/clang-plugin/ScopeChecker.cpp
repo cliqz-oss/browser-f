@@ -8,10 +8,12 @@
 void ScopeChecker::registerMatchers(MatchFinder *AstMatcher) {
   AstMatcher->addMatcher(varDecl().bind("node"), this);
   AstMatcher->addMatcher(cxxNewExpr().bind("node"), this);
-  AstMatcher->addMatcher(materializeTemporaryExpr().bind("node"), this);
+  AstMatcher->addMatcher(
+      materializeTemporaryExpr(
+          unless(hasDescendant(cxxConstructExpr(allowsTemporary())))
+      ).bind("node"), this);
   AstMatcher->addMatcher(
       callExpr(callee(functionDecl(heapAllocator()))).bind("node"), this);
-  AstMatcher->addMatcher(parmVarDecl().bind("parm_vardecl"), this);
 }
 
 // These enum variants determine whether an allocation has occured in the code.
@@ -37,7 +39,7 @@ void ScopeChecker::check(const MatchFinder::MatchResult &Result) {
   QualType T;
 
   if (const ParmVarDecl *D =
-          Result.Nodes.getNodeAs<ParmVarDecl>("parm_vardecl")) {
+          Result.Nodes.getNodeAs<ParmVarDecl>("node")) {
     if (D->hasUnparsedDefaultArg() || D->hasUninstantiatedDefaultArg()) {
       return;
     }

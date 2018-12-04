@@ -119,8 +119,7 @@ private:
     friend nsresult NS_NewToolkitProfileService(nsIToolkitProfileService**);
 
     nsToolkitProfileService() :
-        mStartWithLast(true),
-        mStartOffline(false)
+        mStartWithLast(true)
     {
         gService = this;
     }
@@ -140,7 +139,6 @@ private:
     nsCOMPtr<nsIFile>           mTempData;
     nsCOMPtr<nsIFile>           mListFile;
     bool mStartWithLast;
-    bool mStartOffline;
 
     static nsToolkitProfileService *gService;
 
@@ -574,20 +572,6 @@ nsToolkitProfileService::GetStartWithLastProfile(bool *aResult)
 }
 
 NS_IMETHODIMP
-nsToolkitProfileService::GetStartOffline(bool *aResult)
-{
-    *aResult = mStartOffline;
-    return NS_OK;
-}
-
-NS_IMETHODIMP
-nsToolkitProfileService::SetStartOffline(bool aValue)
-{
-    mStartOffline = aValue;
-    return NS_OK;
-}
-
-NS_IMETHODIMP
 nsToolkitProfileService::GetProfiles(nsISimpleEnumerator* *aResult)
 {
     *aResult = new ProfileEnumerator(this->mFirst);
@@ -834,7 +818,7 @@ nsToolkitProfileService::CreateTimesInternal(nsIFile* aProfileDir)
     rv = creationLog->OpenNSPRFileDesc(PR_WRONLY, 0700, &writeFile);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    PR_fprintf(writeFile, "{\n\"created\": %lld\n}\n", msec);
+    PR_fprintf(writeFile, "{\n\"created\": %lld,\n\"firstUse\": null\n}\n", msec);
     PR_Close(writeFile);
     return NS_OK;
 }

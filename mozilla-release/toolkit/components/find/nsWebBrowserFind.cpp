@@ -139,11 +139,7 @@ nsWebBrowserFind::FindNext(bool* aResult)
   }
 
   // remember where we started
-  nsCOMPtr<nsIDocShellTreeItem> startingItem =
-    do_QueryInterface(searchFrame->GetDocShell(), &rv);
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
+  nsCOMPtr<nsIDocShellTreeItem> startingItem = searchFrame->GetDocShell();
 
   nsCOMPtr<nsIDocShellTreeItem> curItem;
 
@@ -261,17 +257,16 @@ nsWebBrowserFind::FindNext(bool* aResult)
 }
 
 NS_IMETHODIMP
-nsWebBrowserFind::GetSearchString(char16_t** aSearchString)
+nsWebBrowserFind::GetSearchString(nsAString& aSearchString)
 {
-  NS_ENSURE_ARG_POINTER(aSearchString);
-  *aSearchString = ToNewUnicode(mSearchString);
+  aSearchString = mSearchString;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsWebBrowserFind::SetSearchString(const char16_t* aSearchString)
+nsWebBrowserFind::SetSearchString(const nsAString& aSearchString)
 {
-  mSearchString.Assign(aSearchString);
+  mSearchString = aSearchString;
   return NS_OK;
 }
 

@@ -28,7 +28,6 @@ class MediaStreamTrack;
 }
 }
 
-#include "nricectxhandler.h"
 #include "nriceresolver.h"
 #include "nricemediastream.h"
 
@@ -50,25 +49,18 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
  public:
   explicit PeerConnectionMedia(PeerConnectionImpl *parent);
 
-  enum IceRestartState { ICE_RESTART_NONE,
-                         ICE_RESTART_PROVISIONAL,
-                         ICE_RESTART_COMMITTED
-  };
-
   PeerConnectionImpl* GetPC() { return mParent; }
-  nsresult Init(const std::vector<NrIceStunServer>& stun_servers,
-                const std::vector<NrIceTurnServer>& turn_servers,
-                NrIceCtx::Policy policy);
+  nsresult Init(const dom::RTCConfiguration& aConfiguration);
   // WARNING: This destroys the object!
   void SelfDestruct();
 
-  RefPtr<NrIceCtxHandler> ice_ctx_hdlr() const { return mIceCtxHdlr; }
-  RefPtr<NrIceCtx> ice_ctx() const { return mIceCtxHdlr->ctx(); }
-
-  RefPtr<NrIceMediaStream> ice_media_stream(
-      const std::string& aTransportId) const {
-    return mIceCtxHdlr->ctx()->GetStream(aTransportId);
-  }
+  void GetIceStats_s(const std::string& aTransportId,
+                     bool internalStats,
+                     DOMHighResTimeStamp now,
+                     RTCStatsReportInternal* report) const;
+  void GetAllIceStats_s(bool internalStats,
+                        DOMHighResTimeStamp now,
+                        RTCStatsReportInternal* report) const;
 
   // Ensure ICE transports exist that we might need when offer/answer concludes
   void EnsureTransports(const JsepSession& aSession);
@@ -80,19 +72,6 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
 
   // Start ICE checks.
   void StartIceChecks(const JsepSession& session);
-
-  bool IsIceRestarting() const;
-  IceRestartState GetIceRestartState() const;
-
-  // Begin ICE restart
-  void BeginIceRestart(const std::string& ufrag,
-                       const std::string& pwd);
-  // Commit ICE Restart - offer/answer complete, no rollback possible
-  void CommitIceRestart();
-  // Finalize ICE restart
-  void FinalizeIceRestart();
-  // Abort ICE restart
-  void RollbackIceRestart();
 
   // Process a trickle ICE candidate.
   void AddIceCandidate(const std::string& candidate,
@@ -181,9 +160,9 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
                               bool aPrivacyRequested);
 
   // ICE state signals
-  sigslot::signal2<NrIceCtx*, NrIceCtx::GatheringState>
+  sigslot::signal1<mozilla::dom::PCImplIceGatheringState>
       SignalIceGatheringStateChange;
-  sigslot::signal2<NrIceCtx*, NrIceCtx::ConnectionState>
+  sigslot::signal1<mozilla::dom::PCImplIceConnectionState>
       SignalIceConnectionStateChange;
   // This passes a candidate:... attribute and transport id
   sigslot::signal2<const std::string&, const std::string&> SignalCandidate;
@@ -240,8 +219,12 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
                            bool aForceIceTcp);
 
   void EnsureTransport_s(const std::string& aTransportId,
+                         const std::string& aUfrag,
+                         const std::string& aPwd,
                          size_t aComponentCount);
   void ActivateTransport_s(const std::string& aTransportId,
+                           const std::string& aLocalUfrag,
+                           const std::string& aLocalPwd,
                            size_t aComponentCount,
                            const std::string& aUfrag,
                            const std::string& aPassword,
@@ -260,9 +243,6 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
                         bool aIsIceLite,
                         const std::vector<std::string>& aIceOptionsList);
 
-  void BeginIceRestart_s(RefPtr<NrIceCtx> new_ctx);
-  void FinalizeIceRestart_s();
-  void RollbackIceRestart_s();
   bool GetPrefDefaultAddressOnly() const;
   bool GetPrefProxyOnly() const;
 
@@ -310,6 +290,11 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
     return mProxyResolveCompleted && mLocalAddrsCompleted;
   }
 
+  void GetIceStats_s(const NrIceMediaStream& aStream,
+                     bool internalStats,
+                     DOMHighResTimeStamp now,
+                     RTCStatsReportInternal* report) const;
+
   // The parent PC
   PeerConnectionImpl *mParent;
   // and a loose handle on it for event driven stuff
@@ -319,7 +304,7 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
   std::vector<RefPtr<TransceiverImpl>> mTransceivers;
 
   // ICE objects
-  RefPtr<NrIceCtxHandler> mIceCtxHdlr;
+  RefPtr<NrIceCtx> mIceCtx;
 
   // DNS
   RefPtr<NrIceResolver> mDNSResolver;
@@ -353,9 +338,6 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
 
   // Used to store the result of the request.
   UniquePtr<NrIceProxyServer> mProxyServer;
-
-  // Used to track the state of ice restart
-  IceRestartState mIceRestartState;
 
   // Used to cancel incoming stun addrs response
   RefPtr<net::StunAddrsRequestChild> mStunAddrsRequest;

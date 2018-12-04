@@ -15,7 +15,6 @@
 
 #include "jspubtd.h"
 
-#include "js/AutoByteString.h"
 #include "js/CallArgs.h"
 #include "js/CallNonGenericMethod.h"
 #include "js/CharacterEncoding.h"
@@ -225,6 +224,9 @@ namespace js {
 JS_FRIEND_API(bool)
 GetBuiltinClass(JSContext* cx, JS::HandleObject obj, ESClass* cls);
 
+JS_FRIEND_API(bool)
+IsArgumentsObject(JS::HandleObject obj);
+
 JS_FRIEND_API(const char*)
 ObjectClassName(JSContext* cx, JS::HandleObject obj);
 
@@ -302,8 +304,7 @@ namespace JS {
 
 /** Exposed for DumpJSStack */
 extern JS_FRIEND_API(JS::UniqueChars)
-FormatStackDump(JSContext* cx, JS::UniqueChars&& buf, bool showArgs, bool showLocals,
-                bool showThisProps);
+FormatStackDump(JSContext* cx, bool showArgs, bool showLocals, bool showThisProps);
 
 /**
  * Set all of the uninitialized lexicals on an object to undefined. Return
@@ -463,7 +464,7 @@ extern JS_FRIEND_API(JS::Zone*)
 GetRealmZone(JS::Realm* realm);
 
 typedef bool
-(* PreserveWrapperCallback)(JSContext* cx, JSObject* obj);
+(* PreserveWrapperCallback)(JSContext* cx, JS::HandleObject obj);
 
 typedef enum  {
     CollectNurseryBeforeDump,
@@ -614,8 +615,9 @@ struct Object {
 
     JS::Value& slotRef(size_t slot) const {
         size_t nfixed = numFixedSlots();
-        if (slot < nfixed)
+        if (slot < nfixed) {
             return fixedSlots()[slot];
+        }
         return slots[slot - nfixed];
     }
 };
@@ -662,12 +664,14 @@ inline JSProtoKey
 InheritanceProtoKeyForStandardClass(JSProtoKey key)
 {
     // [Object] has nothing to inherit from.
-    if (key == JSProto_Object)
+    if (key == JSProto_Object) {
         return JSProto_Null;
+    }
 
     // If we're ClassSpec defined return the proto key from that
-    if (ProtoKeyToClass(key)->specDefined())
+    if (ProtoKeyToClass(key)->specDefined()) {
         return ProtoKeyToClass(key)->specInheritanceProtoKey();
+    }
 
     // Otherwise, we inherit [Object].
     return JSProto_Object;
@@ -778,10 +782,11 @@ SetReservedSlot(JSObject* obj, size_t slot, const JS::Value& value)
 {
     MOZ_ASSERT(slot < JSCLASS_RESERVED_SLOTS(GetObjectClass(obj)));
     shadow::Object* sobj = reinterpret_cast<shadow::Object*>(obj);
-    if (sobj->slotRef(slot).isGCThing() || value.isGCThing())
+    if (sobj->slotRef(slot).isGCThing() || value.isGCThing()) {
         SetReservedSlotWithBarrier(obj, slot, value);
-    else
+    } else {
         sobj->slotRef(slot) = value;
+    }
 }
 
 JS_FRIEND_API(uint32_t)
@@ -839,8 +844,9 @@ GetLatin1LinearStringChars(const JS::AutoRequireNoGC& nogc, JSLinearString* line
 
     using JS::shadow::String;
     String* s = reinterpret_cast<String*>(linear);
-    if (s->flags() & String::INLINE_CHARS_BIT)
+    if (s->flags() & String::INLINE_CHARS_BIT) {
         return s->inlineStorageLatin1;
+    }
     return s->nonInlineCharsLatin1;
 }
 
@@ -851,8 +857,9 @@ GetTwoByteLinearStringChars(const JS::AutoRequireNoGC& nogc, JSLinearString* lin
 
     using JS::shadow::String;
     String* s = reinterpret_cast<String*>(linear);
-    if (s->flags() & String::INLINE_CHARS_BIT)
+    if (s->flags() & String::INLINE_CHARS_BIT) {
         return s->inlineStorageTwoByte;
+    }
     return s->nonInlineCharsTwoByte;
 }
 
@@ -892,8 +899,9 @@ IsExternalString(JSString* str, const JSStringFinalizer** fin, const char16_t** 
     using JS::shadow::String;
     String* s = reinterpret_cast<String*>(str);
 
-    if ((s->flags() & String::TYPE_FLAGS_MASK) != String::EXTERNAL_FLAGS)
+    if ((s->flags() & String::TYPE_FLAGS_MASK) != String::EXTERNAL_FLAGS) {
         return false;
+    }
 
     MOZ_ASSERT(JS_IsExternalString(str));
     *fin = s->externalFinalizer;
@@ -909,8 +917,9 @@ StringToLinearString(JSContext* cx, JSString* str)
 {
     using JS::shadow::String;
     String* s = reinterpret_cast<String*>(str);
-    if (MOZ_UNLIKELY(!(s->flags() & String::LINEAR_BIT)))
+    if (MOZ_UNLIKELY(!(s->flags() & String::LINEAR_BIT))) {
         return StringToLinearStringSlow(cx, str);
+    }
     return reinterpret_cast<JSLinearString*>(str);
 }
 
@@ -925,8 +934,9 @@ CopyLinearStringChars(char16_t* dest, JSLinearString* s, size_t len, size_t star
     JS::AutoCheckCannotGC nogc;
     if (LinearStringHasLatin1Chars(s)) {
         const JS::Latin1Char* src = GetLatin1LinearStringChars(nogc, s);
-        for (size_t i = 0; i < len; i++)
+        for (size_t i = 0; i < len; i++) {
             dest[i] = src[start + i];
+        }
     } else {
         const char16_t* src = GetTwoByteLinearStringChars(nogc, s);
         mozilla::PodCopy(dest, src + start, len);
@@ -940,12 +950,14 @@ CopyLinearStringChars(char* dest, JSLinearString* s, size_t len, size_t start = 
     JS::AutoCheckCannotGC nogc;
     if (LinearStringHasLatin1Chars(s)) {
         const JS::Latin1Char* src = GetLatin1LinearStringChars(nogc, s);
-        for (size_t i = 0; i < len; i++)
+        for (size_t i = 0; i < len; i++) {
            dest[i] = char(src[start + i]);
+        }
     } else {
       const char16_t* src = GetTwoByteLinearStringChars(nogc, s);
-      for (size_t i = 0; i < len; i++)
+      for (size_t i = 0; i < len; i++) {
           dest[i] = char(src[start + i]);
+      }
     }
 }
 
@@ -954,8 +966,9 @@ inline bool
 CopyStringChars(JSContext* cx, CharType* dest, JSString* s, size_t len, size_t start = 0)
 {
     JSLinearString* linear = StringToLinearString(cx, s);
-    if (!linear)
+    if (!linear) {
         return false;
+    }
 
     CopyLinearStringChars(dest, linear, len, start);
     return true;
@@ -994,8 +1007,25 @@ GetPropertyKeys(JSContext* cx, JS::HandleObject obj, unsigned flags, JS::AutoIdV
 JS_FRIEND_API(bool)
 AppendUnique(JSContext* cx, JS::AutoIdVector& base, JS::AutoIdVector& others);
 
+/**
+ * Determine whether the given string is an array index in the sense of <https://tc39.github.io/ecma262/#array-index>.
+ *
+ * If it isn't, returns false.
+ *
+ * If it is, returns true and outputs the index in *indexp.
+ */
 JS_FRIEND_API(bool)
 StringIsArrayIndex(JSLinearString* str, uint32_t* indexp);
+
+/**
+ * Overloads of StringIsArrayIndex taking (char*,length) pairs.  These
+ * behave the same as the JSLinearString version.
+ */
+JS_FRIEND_API(bool)
+StringIsArrayIndex(const char* str, uint32_t length, uint32_t* indexp);
+
+JS_FRIEND_API(bool)
+StringIsArrayIndex(const char16_t* str, uint32_t length, uint32_t* indexp);
 
 JS_FRIEND_API(void)
 SetPreserveWrapperCallback(JSContext* cx, PreserveWrapperCallback callback);
@@ -1081,8 +1111,9 @@ CheckRecursionLimit(JSContext* cx)
     // use. To work around this, check the untrusted limit first to avoid the
     // overhead in most cases.
     uintptr_t untrustedLimit = GetNativeStackLimit(cx, JS::StackForUntrustedScript);
-    if (MOZ_LIKELY(CheckRecursionLimitDontReport(untrustedLimit)))
+    if (MOZ_LIKELY(CheckRecursionLimitDontReport(untrustedLimit))) {
         return true;
+    }
     return CheckRecursionLimit(cx, GetNativeStackLimit(cx));
 }
 
@@ -1160,17 +1191,6 @@ GetPCCountScriptContents(JSContext* cx, size_t script);
  */
 JS_FRIEND_API(char*)
 GetCodeCoverageSummary(JSContext* cx, size_t* length);
-
-typedef void
-(* ActivityCallback)(void* arg, bool active);
-
-/**
- * Sets a callback that is run whenever the runtime goes idle - the
- * last active request ceases - and begins activity - when it was
- * idle and a request begins.
- */
-JS_FRIEND_API(void)
-SetActivityCallback(JSContext* cx, ActivityCallback cb, void* arg);
 
 typedef bool
 (* DOMInstanceClassHasProtoAtDepth)(const Class* instanceClass,
@@ -1475,13 +1495,13 @@ struct MOZ_STACK_CLASS JS_FRIEND_API(ErrorReport)
     JS::RootedObject exnObject;
 
     // And for our filename.
-    JSAutoByteString filename;
+    JS::UniqueChars filename;
 
     // We may have a result of error.toString().
     // FIXME: We should not call error.toString(), since it could have side
     //        effect (see bug 633623).
     JS::ConstUTF8CharsZ toStringResult_;
-    JSAutoByteString toStringResultBytesStorage;
+    JS::UniqueChars toStringResultBytesStorage;
 };
 
 /* Implemented in vm/StructuredClone.cpp. */
@@ -2565,12 +2585,15 @@ namespace js {
 static MOZ_ALWAYS_INLINE JS::Value
 IdToValue(jsid id)
 {
-    if (JSID_IS_STRING(id))
+    if (JSID_IS_STRING(id)) {
         return JS::StringValue(JSID_TO_STRING(id));
-    if (JSID_IS_INT(id))
+    }
+    if (JSID_IS_INT(id)) {
         return JS::Int32Value(JSID_TO_INT(id));
-    if (JSID_IS_SYMBOL(id))
+    }
+    if (JSID_IS_SYMBOL(id)) {
         return JS::SymbolValue(JSID_TO_SYMBOL(id));
+    }
     MOZ_ASSERT(JSID_IS_VOID(id));
     return JS::UndefinedValue();
 }
@@ -2857,8 +2880,9 @@ ToWindowProxyIfWindowSlow(JSObject* obj);
 inline bool
 IsWindow(JSObject* obj)
 {
-    if (GetObjectClass(obj)->flags & JSCLASS_IS_GLOBAL)
+    if (GetObjectClass(obj)->flags & JSCLASS_IS_GLOBAL) {
         return detail::IsWindowSlow(obj);
+    }
     return false;
 }
 
@@ -2876,8 +2900,9 @@ IsWindowProxy(JSObject* obj);
 MOZ_ALWAYS_INLINE JSObject*
 ToWindowProxyIfWindow(JSObject* obj)
 {
-    if (GetObjectClass(obj)->flags & JSCLASS_IS_GLOBAL)
+    if (GetObjectClass(obj)->flags & JSCLASS_IS_GLOBAL) {
         return detail::ToWindowProxyIfWindowSlow(obj);
+    }
     return obj;
 }
 

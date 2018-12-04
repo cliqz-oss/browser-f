@@ -41,6 +41,9 @@ with Files("rewriting/**"):
 with Files("tryselect/**"):
     BUG_COMPONENT = ("Testing", "General")
 
+with Files("tryselect/selectors/release.py"):
+    BUG_COMPONENT = ("Release Engineering", "General")
+
 with Files("update-packaging/**"):
     BUG_COMPONENT = ("Release Engineering", "Other")
 
@@ -65,5 +68,6 @@ CRAMTEST_MANIFESTS += [
 
 PYTHON_UNITTEST_MANIFESTS += [
     'lint/test/python.ini',
+    'rb/python.ini',
     'tryselect/test/python.ini',
 ]

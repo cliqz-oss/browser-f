@@ -31,8 +31,9 @@ var gPrefView = gPrefArray; // share the JS array
 var gSortedColumn = "prefCol";
 var gSortFunction = null;
 var gSortDirection = 1; // 1 is ascending; -1 is descending
-var gConfigBundle = null;
 var gFilter = null;
+
+let gCategoriesRecordedOnce = new Set();
 
 var view = {
   get rowCount() { return gPrefView.length; },
@@ -75,6 +76,7 @@ var view = {
   toggleOpenState(index) {},
   cycleHeader(col) {
     var index = this.selection.currentIndex;
+    recordTelemetryOnce(gCategoryLabelForSortColumn[col.id]);
     if (col.id == gSortedColumn) {
       gSortDirection = -gSortDirection;
       gPrefArray.reverse();
@@ -304,17 +306,23 @@ function fetchPref(prefName, prefIndex) {
   }
 }
 
-function onConfigLoad() {
+async function onConfigLoad() {
   // Load strings
-  gConfigBundle = document.getElementById("configBundle");
+  let [lockDefault, lockModified, lockLocked, typeString, typeInt, typeBool] =
+    await document.l10n.formatValues([
+      {id: "config-default"},
+      {id: "config-modified"},
+      {id: "config-locked"},
+      {id: "config-property-string"},
+      {id: "config-property-int"},
+      {id: "config-property-bool"}]);
 
-  gLockStrs[PREF_IS_DEFAULT_VALUE] = gConfigBundle.getString("default");
-  gLockStrs[PREF_IS_MODIFIED] = gConfigBundle.getString("modified");
-  gLockStrs[PREF_IS_LOCKED] = gConfigBundle.getString("locked");
-
-  gTypeStrs[nsIPrefBranch.PREF_STRING] = gConfigBundle.getString("string");
-  gTypeStrs[nsIPrefBranch.PREF_INT] = gConfigBundle.getString("int");
-  gTypeStrs[nsIPrefBranch.PREF_BOOL] = gConfigBundle.getString("bool");
+  gLockStrs[PREF_IS_DEFAULT_VALUE] = lockDefault;
+  gLockStrs[PREF_IS_MODIFIED] = lockModified;
+  gLockStrs[PREF_IS_LOCKED] = lockLocked;
+  gTypeStrs[nsIPrefBranch.PREF_STRING] = typeString;
+  gTypeStrs[nsIPrefBranch.PREF_INT] = typeInt;
+  gTypeStrs[nsIPrefBranch.PREF_BOOL] = typeBool;
 
   var showWarning = gPrefBranch.getBoolPref("general.warnOnAboutConfig");
 
@@ -326,6 +334,7 @@ function onConfigLoad() {
 
 // Unhide the warning message
 function ShowPrefs() {
+  recordTelemetryOnce("Show");
   gPrefBranch.getChildList("").forEach(fetchPref);
 
   var descending = document.getElementsByAttribute("sortDirection", "descending");
@@ -385,6 +394,7 @@ function FilterPrefs() {
   var substring = document.getElementById("textbox").value;
   // Check for "/regex/[i]"
   if (substring.charAt(0) == "/") {
+    recordTelemetryOnce("RegexSearch");
     var r = substring.match(/^\/(.*)\/(i?)$/);
     try {
       gFilter = RegExp(r[1], r[2]);
@@ -392,6 +402,7 @@ function FilterPrefs() {
       return; // Do nothing on incomplete or bad RegExp
     }
   } else if (substring) {
+    recordTelemetryOnce("Search");
     gFilter = RegExp(substring.replace(/([^* \w])/g, "\\$1")
                               .replace(/^\*+/, "").replace(/\*+/g, ".*"), "i");
   } else {
@@ -449,6 +460,13 @@ const gSortFunctions =
   valueCol: valueColSortFunction,
 };
 
+const gCategoryLabelForSortColumn = {
+  prefCol: "SortByName",
+  lockCol: "SortByStatus",
+  typeCol: "SortByType",
+  valueCol: "SortByValue",
+};
+
 const configController = {
   supportsCommand: function supportsCommand(command) {
     return command == "cmd_copy";
@@ -504,35 +522,45 @@ function updateContextMenu() {
 }
 
 function copyPref() {
+  recordTelemetryOnce("Copy");
   var pref = gPrefView[view.selection.currentIndex];
   gClipboardHelper.copyString(pref.prefCol + ";" + pref.valueCol);
 }
 
 function copyName() {
+  recordTelemetryOnce("CopyName");
   gClipboardHelper.copyString(gPrefView[view.selection.currentIndex].prefCol);
 }
 
 function copyValue() {
+  recordTelemetryOnce("CopyValue");
   gClipboardHelper.copyString(gPrefView[view.selection.currentIndex].valueCol);
 }
 
 function ModifySelected() {
+  recordTelemetryOnce("ModifyValue");
   if (view.selection.currentIndex >= 0)
     ModifyPref(gPrefView[view.selection.currentIndex]);
 }
 
 function ResetSelected() {
+  recordTelemetryOnce("Reset");
   var entry = gPrefView[view.selection.currentIndex];
   gPrefBranch.clearUserPref(entry.prefCol);
 }
 
-function NewPref(type) {
+async function NewPref(type) {
+  recordTelemetryOnce("CreateNew");
   var result = { value: "" };
   var dummy = { value: 0 };
+
+  let [newTitle, newPrompt] = await document.l10n.formatValues([
+    {id: "config-new-title", args: {type: gTypeStrs[type]} },
+    {id: "config-new-prompt"}]);
+
   if (Services.prompt.prompt(window,
-                             gConfigBundle.getFormattedString("new_title",
-                                                              [gTypeStrs[type]]),
-                             gConfigBundle.getString("new_prompt"),
+                             newTitle,
+                             newPrompt,
                              result,
                              null,
                              dummy)) {
@@ -563,10 +591,12 @@ function gotoPref(pref) {
   }
 }
 
-function ModifyPref(entry) {
+async function ModifyPref(entry) {
   if (entry.lockCol == PREF_IS_LOCKED)
     return false;
-  var title = gConfigBundle.getFormattedString("modify_title", [gTypeStrs[entry.typeCol]]);
+
+  let [title] = await document.l10n.formatValues([{id: "config-modify-title", args: { type: gTypeStrs[entry.typeCol] }}]);
+
   if (entry.typeCol == nsIPrefBranch.PREF_BOOL) {
     var check = { value: entry.valueCol == "false" };
     if (!entry.valueCol && !Services.prompt.select(window, title, entry.prefCol, 2, [false, true], check))
@@ -582,8 +612,10 @@ function ModifyPref(entry) {
       // Thus, this check should catch all cases.
       var val = result.value | 0;
       if (val != result.value - 0) {
-        var err_title = gConfigBundle.getString("nan_title");
-        var err_text = gConfigBundle.getString("nan_text");
+        const [err_title, err_text] = await document.l10n.formatValues([
+          {id: "config-nan-title"},
+          {id: "config-nan-text"}]);
+
         Services.prompt.alert(window, err_title, err_text);
         return false;
       }
@@ -595,4 +627,14 @@ function ModifyPref(entry) {
 
   Services.prefs.savePrefFile(null);
   return true;
+}
+
+function recordTelemetryOnce(categoryLabel) {
+  if (!gCategoriesRecordedOnce.has(categoryLabel)) {
+    // Don't raise an exception if Telemetry is not available.
+    try {
+      Services.telemetry.getHistogramById("ABOUT_CONFIG_FEATURES_USAGE").add(categoryLabel);
+    } catch (ex) {}
+    gCategoriesRecordedOnce.add(categoryLabel);
+  }
 }

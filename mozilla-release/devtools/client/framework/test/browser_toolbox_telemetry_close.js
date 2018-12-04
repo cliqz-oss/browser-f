@@ -17,8 +17,8 @@ const DATA = [
     value: null,
     extra: {
       host: "right",
-      width: "1440"
-    }
+      width: "1440",
+    },
   },
   {
     timestamp: null,
@@ -28,9 +28,9 @@ const DATA = [
     value: null,
     extra: {
       host: "bottom",
-      width: "1440"
-    }
-  }
+      width: "1440",
+    },
+  },
 ];
 
 add_task(async function() {
@@ -49,7 +49,7 @@ add_task(async function() {
 
 async function openAndCloseToolbox(toolId, host) {
   const tab = await addTab(URL);
-  const target = TargetFactory.forTab(tab);
+  const target = await TargetFactory.forTab(tab);
   const toolbox = await gDevTools.showToolbox(target, toolId);
 
   await toolbox.switchHost(host);

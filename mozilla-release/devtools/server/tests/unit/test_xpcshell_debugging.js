@@ -26,11 +26,10 @@ add_task(async function() {
   equal(desc.geckobuildid, Services.appinfo.platformBuildID, "device actor works");
 
   // Even though we have no tabs, getProcess gives us the chromeDebugger.
-  const response = await client.getProcess();
+  const response = await client.mainRoot.getProcess(0);
 
-  const actor = response.form.actor;
-  const [, tabClient] = await client.attachTab(actor);
-  const [, threadClient] = await tabClient.attachThread(null);
+  const { chromeDebugger } = response.form;
+  const [, threadClient] = await client.attachThread(chromeDebugger);
   const onResumed = new Promise(resolve => {
     threadClient.addOneTimeListener("paused", (event, packet) => {
       equal(packet.why.type, "breakpoint",

@@ -108,6 +108,7 @@
 #include "nsIComponentManager.h"
 #include "nsIComponentRegistrar.h"
 #include "nsISupportsPrimitives.h"
+#include "nsISimpleEnumerator.h"
 #include "nsMemory.h"
 #include "nsIXPConnect.h"
 #include "nsIXPCScriptable.h"
@@ -229,18 +230,6 @@ public:
 
     // non-interface implementation
 public:
-    // These get non-addref'd pointers
-    static nsXPConnect* XPConnect()
-    {
-        // Do a release-mode assert that we're not doing anything significant in
-        // XPConnect off the main thread. If you're an extension developer hitting
-        // this, you need to change your code. See bug 716167.
-        if (!MOZ_LIKELY(NS_IsMainThread()))
-            MOZ_CRASH();
-
-        return gSelf;
-    }
-
     static XPCJSRuntime* GetRuntimeInstance();
 
     static bool IsISupportsDescendant(const nsXPTInterfaceInfo* info);
@@ -259,14 +248,10 @@ public:
         return gSystemPrincipal;
     }
 
-    static already_AddRefed<nsXPConnect> GetSingleton();
-
     // Called by module code in dll startup
     static void InitStatics();
     // Called by module code on dll shutdown.
     static void ReleaseXPConnectSingleton();
-
-    bool IsShuttingDown() const {return mShuttingDown;}
 
     void RecordTraversal(void* p, nsISupports* s);
 
@@ -283,10 +268,13 @@ private:
     XPCJSRuntime*                   mRuntime;
     bool                            mShuttingDown;
 
+    friend class nsIXPConnect;
+
 public:
     static nsIScriptSecurityManager* gScriptSecurityManager;
     static nsIPrincipal* gSystemPrincipal;
 };
+
 
 /***************************************************************************/
 
@@ -373,7 +361,14 @@ public:
 
     PRTime GetWatchdogTimestamp(WatchdogTimestampCategory aCategory);
 
-    static void ActivityCallback(void* arg, bool active);
+    static bool RecordScriptActivity(bool aActive);
+
+    bool SetHasScriptActivity(bool aActive) {
+        bool oldValue = mHasScriptActivity;
+        mHasScriptActivity = aActive;
+        return oldValue;
+    }
+
     static bool InterruptCallback(JSContext* cx);
 
     // Mapping of often used strings to jsid atoms that live 'forever'.
@@ -416,6 +411,8 @@ public:
         IDX_LASTINDEX               ,
         IDX_THEN                    ,
         IDX_ISINSTANCE              ,
+        IDX_INFINITY                ,
+        IDX_NAN                     ,
         IDX_TOTAL_COUNT // just a count of the above
     };
 
@@ -460,6 +457,8 @@ private:
     // Accumulates total time we actually waited for telemetry
     mozilla::TimeDuration mSlowScriptActualWait;
     bool mTimeoutAccumulated;
+
+    bool mHasScriptActivity;
 
     // mPendingResult is used to implement Components.returnCode.  Only really
     // meaningful while calling through XPCWrappedJS.
@@ -763,10 +762,9 @@ inline void CHECK_STATE(int s) const {MOZ_ASSERT(mState >= s, "bad state");}
 #endif
 
 private:
-    JSAutoRequest                   mAr;
     State                           mState;
 
-    RefPtr<nsXPConnect>           mXPC;
+    nsCOMPtr<nsIXPConnect>          mXPC;
 
     XPCJSContext*                   mXPCJSContext;
     JSContext*                      mJSContext;
@@ -884,10 +882,12 @@ public:
     }
 
     void TraceInside(JSTracer* trc) {
-        if (mContentXBLScope)
+        if (mContentXBLScope) {
             mContentXBLScope.trace(trc, "XPCWrappedNativeScope::mXBLScope");
-        if (mXrayExpandos.initialized())
+        }
+        if (mXrayExpandos.initialized()) {
             mXrayExpandos.trace(trc);
+        }
     }
 
     static void
@@ -937,7 +937,8 @@ public:
     // object is wrapped into the compartment of the global.
     JSObject* EnsureContentXBLScope(JSContext* cx);
 
-    XPCWrappedNativeScope(JSContext* cx, JS::HandleObject aGlobal);
+    XPCWrappedNativeScope(JSContext* cx, JS::HandleObject aGlobal,
+                          const mozilla::SiteIdentifier& aSite);
 
     nsAutoPtr<JSObject2JSObjectMap> mWaiverWrapperMap;
 
@@ -1320,8 +1321,9 @@ public:
     void DebugDump(int16_t depth);
 
     void TraceSelf(JSTracer* trc) {
-        if (mJSProtoObject)
+        if (mJSProtoObject) {
             mJSProtoObject.trace(trc, "XPCWrappedNativeProto::mJSProtoObject");
+        }
     }
 
     void TraceInside(JSTracer* trc) {
@@ -1335,8 +1337,9 @@ public:
 
     void WriteBarrierPre(JSContext* cx)
     {
-        if (JS::IsIncrementalBarrierNeeded(cx) && mJSProtoObject)
+        if (JS::IsIncrementalBarrierNeeded(cx) && mJSProtoObject) {
             mJSProtoObject.writeBarrierPre(cx);
+        }
     }
 
     // NOP. This is just here to make the AutoMarkingPtr code compile.
@@ -1580,10 +1583,11 @@ public:
     void Mark() const {}
 
     inline void TraceInside(JSTracer* trc) {
-        if (HasProto())
+        if (HasProto()) {
             GetProto()->TraceSelf(trc);
-        else
+        } else {
             GetScope()->TraceSelf(trc);
+        }
 
         JSObject* obj = mFlatJSObject.unbarrieredGetPtr();
         if (obj && JS_IsGlobalObject(obj)) {
@@ -1852,8 +1856,9 @@ public:
     nsXPCWrappedJS* FindInherited(REFNSIID aIID);
     nsXPCWrappedJS* FindOrFindInherited(REFNSIID aIID) {
         nsXPCWrappedJS* wrapper = Find(aIID);
-        if (wrapper)
+        if (wrapper) {
             return wrapper;
+        }
         return FindInherited(aIID);
     }
 
@@ -1948,6 +1953,31 @@ private:
     nsString             mName;
     nsCOMPtr<nsIVariant> mValue;
 };
+
+namespace xpc {
+
+// A wrapper around JS iterators which presents an equivalent
+// nsISimpleEnumerator interface for their contents.
+class XPCWrappedJSIterator final : public nsISimpleEnumerator
+{
+public:
+    NS_DECL_CYCLE_COLLECTION_CLASS(XPCWrappedJSIterator)
+    NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+    NS_DECL_NSISIMPLEENUMERATOR
+    NS_DECL_NSISIMPLEENUMERATORBASE
+
+    explicit XPCWrappedJSIterator(nsIJSEnumerator* aEnum);
+
+private:
+    ~XPCWrappedJSIterator() = default;
+
+    nsCOMPtr<nsIJSEnumerator> mEnum;
+    nsCOMPtr<nsIGlobalObject> mGlobal;
+    nsCOMPtr<nsISupports> mNext;
+    mozilla::Maybe<bool> mHasNext;
+};
+
+} // namespace xpc
 
 /***************************************************************************/
 // class here just for static methods
@@ -2365,13 +2395,15 @@ class AutoMarkingPtr
     }
 
     void TraceJSAll(JSTracer* trc) {
-        for (AutoMarkingPtr* cur = this; cur; cur = cur->mNext)
+        for (AutoMarkingPtr* cur = this; cur; cur = cur->mNext) {
             cur->TraceJS(trc);
+        }
     }
 
     void MarkAfterJSFinalizeAll() {
-        for (AutoMarkingPtr* cur = this; cur; cur = cur->mNext)
+        for (AutoMarkingPtr* cur = this; cur; cur = cur->mNext) {
             cur->MarkAfterJSFinalize();
+        }
     }
 
   protected:
@@ -2407,8 +2439,9 @@ class TypedAutoMarkingPtr : public AutoMarkingPtr
 
     virtual void MarkAfterJSFinalize() override
     {
-        if (mPtr)
+        if (mPtr) {
             mPtr->Mark();
+        }
     }
 
   private:
@@ -2599,6 +2632,7 @@ struct GlobalProperties {
     bool MessageChannel: 1;
     bool Node : 1;
     bool NodeFilter : 1;
+    bool PromiseDebugging : 1;
     bool TextDecoder : 1;
     bool TextEncoder : 1;
     bool URL : 1;
@@ -2737,14 +2771,16 @@ public:
 
     JSObject* ToJSObject(JSContext* cx) {
         JS::RootedObject obj(cx, JS_NewObjectWithGivenProto(cx, nullptr, nullptr));
-        if (!obj)
+        if (!obj) {
             return nullptr;
+        }
 
         JS::RootedValue val(cx);
         unsigned attrs = JSPROP_READONLY | JSPROP_PERMANENT;
         val = JS::BooleanValue(allowCrossOriginArguments);
-        if (!JS_DefineProperty(cx, obj, "allowCrossOriginArguments", val, attrs))
+        if (!JS_DefineProperty(cx, obj, "allowCrossOriginArguments", val, attrs)) {
             return nullptr;
+        }
 
         return obj;
     }
@@ -2882,6 +2918,63 @@ enum WrapperDenialType {
 };
 bool ReportWrapperDenial(JSContext* cx, JS::HandleId id, WrapperDenialType type, const char* reason);
 
+class CompartmentOriginInfo
+{
+public:
+    CompartmentOriginInfo(const CompartmentOriginInfo&) = delete;
+
+    CompartmentOriginInfo(mozilla::BasePrincipal* aOrigin,
+                          const mozilla::SiteIdentifier& aSite)
+      : mOrigin(aOrigin)
+      , mSite(aSite)
+    {
+        MOZ_ASSERT(aOrigin);
+        MOZ_ASSERT(aSite.IsInitialized());
+    }
+
+    bool IsSameOrigin(nsIPrincipal* aOther) const;
+
+    // Does the principal of compartment a subsume the principal of compartment b?
+    static bool Subsumes(JS::Compartment* aCompA, JS::Compartment* aCompB);
+    static bool SubsumesIgnoringFPD(JS::Compartment* aCompA, JS::Compartment* aCompB);
+
+    bool MightBeWebContent() const;
+
+    // Note: this principal must not be used for subsumes/equality checks
+    // considering document.domain. See mOrigin.
+    mozilla::BasePrincipal* GetPrincipalIgnoringDocumentDomain() const {
+        return mOrigin;
+    }
+
+    const mozilla::SiteIdentifier& SiteRef() const {
+        return mSite;
+    }
+
+    bool HasChangedDocumentDomain() const {
+        return mChangedDocumentDomain;
+    }
+    void SetChangedDocumentDomain() {
+        mChangedDocumentDomain = true;
+    }
+
+private:
+    // All globals in the compartment must have this origin. Note that
+    // individual globals and principals can have their domain changed via
+    // document.domain, so this principal must not be used for things like
+    // subsumesConsideringDomain or equalsConsideringDomain. Use the realm's
+    // principal for that.
+    RefPtr<mozilla::BasePrincipal> mOrigin;
+
+    // In addition to the origin we also store the SiteIdentifier. When realms
+    // in different compartments can become same-origin (via document.domain),
+    // these compartments must have equal SiteIdentifiers. (This is derived from
+    // mOrigin but we cache it here for performance reasons.)
+    mozilla::SiteIdentifier mSite;
+
+    // True if any global in this compartment mutated document.domain.
+    bool mChangedDocumentDomain = false;
+};
+
 // The CompartmentPrivate contains XPConnect-specific stuff related to each JS
 // compartment. Since compartments are trust domains, this means mostly
 // information needed to select the right security policy for cross-compartment
@@ -2892,7 +2985,8 @@ class CompartmentPrivate
     CompartmentPrivate(const CompartmentPrivate&) = delete;
 
 public:
-    explicit CompartmentPrivate(JS::Compartment* c);
+    CompartmentPrivate(JS::Compartment* c, mozilla::BasePrincipal* origin,
+                       const mozilla::SiteIdentifier& site);
 
     ~CompartmentPrivate();
 
@@ -2908,6 +3002,8 @@ public:
         JS::Compartment* compartment = js::GetObjectCompartment(object);
         return Get(compartment);
     }
+
+    CompartmentOriginInfo originInfo;
 
     // Controls whether this compartment gets Xrays to same-origin. This behavior
     // is deprecated, but is still the default for sandboxes for compatibity
@@ -3027,13 +3123,6 @@ public:
         return Get(realm);
     }
 
-    // Get the RealmPrivate for a given script.
-    static RealmPrivate* Get(JSScript* script)
-    {
-        JS::Realm* realm = JS::GetScriptRealm(script);
-        return Get(realm);
-    }
-
     // The scriptability of this realm.
     Scriptability scriptability;
 
@@ -3070,17 +3159,21 @@ public:
     }
 
     void SetLocation(const nsACString& aLocation) {
-        if (aLocation.IsEmpty())
+        if (aLocation.IsEmpty()) {
             return;
-        if (!location.IsEmpty() || locationURI)
+        }
+        if (!location.IsEmpty() || locationURI) {
             return;
+        }
         location = aLocation;
     }
     void SetLocationURI(nsIURI* aLocationURI) {
-        if (!aLocationURI)
+        if (!aLocationURI) {
             return;
-        if (locationURI)
+        }
+        if (locationURI) {
             return;
+        }
         locationURI = aLocationURI;
     }
 
@@ -3112,7 +3205,7 @@ nsIPrincipal* GetObjectPrincipal(JSObject* obj);
 // This method expects a value of the following types:
 //   TD_PNSIID
 //     value : nsID* (free)
-//   TD_DOMSTRING, TD_ASTRING, TD_CSTRING, TD_UTF8STRING
+//   TD_ASTRING, TD_CSTRING, TD_UTF8STRING
 //     value : ns[C]String* (truncate)
 //   TD_PSTRING, TD_PWSTRING, TD_PSTRING_SIZE_IS, TD_PWSTRING_SIZE_IS
 //     value : char[16_t]** (free)

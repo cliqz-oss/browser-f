@@ -2,14 +2,19 @@
 
 use std::{mem, ptr};
 use std::collections::HashMap;
-use std::sync::{Mutex, atomic};
+use std::sync::atomic::AtomicUsize;
+use std::sync::{Arc, Mutex, atomic};
 use std::marker::Send;
-use winapi::{IUnknown, IUnknownVtbl};
-use winapi::{IDWriteFontFileStream, IDWriteFontFileStreamVtbl};
-use winapi::{IDWriteFontFileLoader, IDWriteFontFileLoaderVtbl};
-use winapi::IDWriteFontFile;
-use winapi::{E_FAIL, E_INVALIDARG, E_NOTIMPL, S_OK};
-use winapi::{c_void, UINT32, UINT64, ULONG, HRESULT, REFIID};
+use winapi::ctypes::c_void;
+use winapi::shared::basetsd::{UINT32, UINT64};
+use winapi::shared::guiddef::REFIID;
+use winapi::shared::minwindef::ULONG;
+use winapi::shared::winerror::{E_FAIL, E_INVALIDARG, E_NOTIMPL, S_OK};
+use winapi::um::dwrite::IDWriteFontFile;
+use winapi::um::dwrite::{IDWriteFontFileLoader, IDWriteFontFileLoaderVtbl};
+use winapi::um::dwrite::{IDWriteFontFileStream, IDWriteFontFileStreamVtbl};
+use winapi::um::unknwnbase::{IUnknown, IUnknownVtbl};
+use winapi::um::winnt::HRESULT;
 
 use super::DWriteFactory;
 use comptr::ComPtr;
@@ -34,15 +39,18 @@ const FontFileLoaderVtbl: &'static IDWriteFontFileLoaderVtbl = &IDWriteFontFileL
             }
             assert!(fontFileReferenceKeySize == mem::size_of::<usize>() as UINT32);
             let key = *(fontFileReferenceKey as *const usize);
-            let stream = match FONT_FILE_STREAM_MAP.lock().unwrap().get_mut(&key) {
+            let stream = match FONT_FILE_STREAM_MAP.lock().unwrap().get(&key) {
                 None => {
                     *fontFileStream = ptr::null_mut();
                     return E_FAIL
                 }
-                Some(file_stream) => {
-                    file_stream.as_ptr()
+                Some(&FontFileStreamPtr(file_stream)) => {
+                    file_stream
                 }
             };
+
+            // This is an addref getter, so make sure to do that!
+            (*stream).AddRef();
 
             *fontFileStream = stream;
             S_OK
@@ -72,7 +80,8 @@ unsafe impl Sync for FontFileLoader {}
 
 struct FontFileStream {
     refcount: atomic::AtomicUsize,
-    data: Vec<u8>,
+    key: usize,
+    data: Arc<Vec<u8>>,
 }
 
 const FontFileStreamVtbl: &'static IDWriteFontFileStreamVtbl = &IDWriteFontFileStreamVtbl {
@@ -91,7 +100,7 @@ const FontFileStreamVtbl: &'static IDWriteFontFileStreamVtbl = &IDWriteFontFileS
                 return E_INVALIDARG
             }
             let index = fileOffset as usize;
-            *fragmentStart = this.data[index..].as_mut_ptr() as *const c_void;
+            *fragmentStart = this.data[index..].as_ptr() as *const c_void;
             S_OK
         }
         ReadFileFragment
@@ -127,11 +136,18 @@ const FontFileStreamVtbl: &'static IDWriteFontFileStreamVtbl = &IDWriteFontFileS
 };
 
 impl FontFileStream {
-    pub fn new(data: &[u8]) -> FontFileStream {
+    pub fn new(key: usize, data: Arc<Vec<u8>>) -> FontFileStream {
         FontFileStream {
-            refcount: atomic::ATOMIC_USIZE_INIT,
-            data: data.to_vec(),
+            refcount: AtomicUsize::new(1),
+            key,
+            data,
         }
+    }
+}
+
+impl Drop for FontFileStream {
+    fn drop(&mut self) {
+        DataFontHelper::unregister_font_data(self.key);
     }
 }
 
@@ -145,10 +161,14 @@ impl Com<IUnknown> for FontFileStream {
     fn vtbl() -> &'static IUnknownVtbl { &FontFileStreamVtbl.parent }
 }
 
+struct FontFileStreamPtr(*mut IDWriteFontFileStream);
+
+unsafe impl Send for FontFileStreamPtr {}
+
 static mut FONT_FILE_KEY: atomic::AtomicUsize = atomic::ATOMIC_USIZE_INIT;
 
 lazy_static! {
-    static ref FONT_FILE_STREAM_MAP: Mutex<HashMap<usize, ComPtr<IDWriteFontFileStream>>> = {
+    static ref FONT_FILE_STREAM_MAP: Mutex<HashMap<usize, FontFileStreamPtr>> = {
         Mutex::new(HashMap::new())
     };
 
@@ -166,14 +186,17 @@ lazy_static! {
 pub struct DataFontHelper;
 
 impl DataFontHelper {
-    pub fn register_font_data(font_data: &[u8]) -> (ComPtr<IDWriteFontFile>, usize) {
+    pub fn register_font_data(font_data: Arc<Vec<u8>>)
+        -> (ComPtr<IDWriteFontFile>, ComPtr<IDWriteFontFileStream>, usize) {
         unsafe {
             let key = FONT_FILE_KEY.fetch_add(1, atomic::Ordering::Relaxed);
-            let font_file_stream_native = FontFileStream::new(font_data);
-            let font_file_stream = ComPtr::from_ptr(font_file_stream_native.into_interface());
+            let font_file_stream_native = FontFileStream::new(key, font_data);
+            let font_file_stream: ComPtr<IDWriteFontFileStream> =
+                ComPtr::already_addrefed(font_file_stream_native.into_interface());
+
             {
                 let mut map = FONT_FILE_STREAM_MAP.lock().unwrap();
-                map.insert(key, font_file_stream);
+                map.insert(key, FontFileStreamPtr(font_file_stream.as_ptr()));
             }
 
             let mut font_file: ComPtr<IDWriteFontFile> = ComPtr::new();
@@ -187,11 +210,11 @@ impl DataFontHelper {
                 assert!(hr == S_OK);
             }
 
-            (font_file, key)
+            (font_file, font_file_stream, key)
         }
     }
 
-    pub fn unregister_font_data(key: usize) {
+    fn unregister_font_data(key: usize) {
         let mut map = FONT_FILE_STREAM_MAP.lock().unwrap();
         if map.remove(&key).is_none() {
             panic!("unregister_font_data: trying to unregister key that is no longer registered");

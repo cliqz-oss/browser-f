@@ -19,6 +19,7 @@ import mozharness
 from mozharness.base.errors import PythonErrorList
 from mozharness.base.log import OutputParser, DEBUG, ERROR, CRITICAL, INFO
 from mozharness.mozilla.testing.testbase import TestingMixin, testing_config_options
+from mozharness.mozilla.testing.android import AndroidMixin
 from mozharness.base.vcs.vcsbase import MercurialScript
 from mozharness.mozilla.testing.codecoverage import (
     CodeCoverageMixin,
@@ -43,7 +44,7 @@ RaptorErrorList = PythonErrorList + [
 ]
 
 
-class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin):
+class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
     """
     install and run raptor tests
     """
@@ -123,6 +124,7 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin):
             # raptor initiated in production via mozharness
             self.test = self.config['test']
             self.app = self.config.get("app", "firefox")
+            self.binary_path = self.config.get("binary_path", None)
 
         self.installer_url = self.config.get("installer_url")
         self.raptor_json_url = self.config.get("raptor_json_url")
@@ -133,6 +135,7 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin):
         self.test = None
         self.gecko_profile = self.config.get('gecko_profile')
         self.gecko_profile_interval = self.config.get('gecko_profile_interval')
+        self.test_packages_url = self.config.get('test_packages_url')
 
     # We accept some configuration options from the try commit message in the
     # format mozharness: <options>. Example try commit message: mozharness:
@@ -155,6 +158,7 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin):
         abs_dirs['abs_blob_upload_dir'] = os.path.join(abs_dirs['abs_work_dir'],
                                                        'blobber_upload_dir')
         abs_dirs['abs_test_install_dir'] = os.path.join(abs_dirs['abs_work_dir'], 'tests')
+
         self.abs_dirs = abs_dirs
         return self.abs_dirs
 
@@ -250,15 +254,15 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin):
         # binary path; if testing on firefox the binary path already came from mozharness/pro;
         # otherwise the binary path is forwarded from cmd line arg (raptor_cmd_line_args)
         kw_options['app'] = self.app
-        if self.app == "firefox":
+        if self.app == "firefox" or (self.app == "geckoview" and not self.run_local):
             binary_path = self.binary_path or self.config.get('binary_path')
             if not binary_path:
                 self.fatal("Raptor requires a path to the binary.")
             kw_options['binary'] = binary_path
-        else:
+        else:  # running on google chrome
             if not self.run_local:
-                # in production we aready installed google chrome, so set the binary path for arg
-                # when running locally a --binary arg as passed in, already in raptor_cmd_line_args
+                # when running locally we already set the chrome binary above in init; here
+                # in production we aready installed chrome, so set the binary path to our install
                 kw_options['binary'] = self.chrome_path
 
         # options overwritten from **kw
@@ -301,6 +305,7 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin):
     def download_and_extract(self, extract_dirs=None, suite_categories=None):
         if 'MOZ_FETCHES' in os.environ:
             self.fetch_content()
+
         return super(Raptor, self).download_and_extract(
             suite_categories=['common', 'raptor']
         )
@@ -358,6 +363,12 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin):
             requirements=[os.path.join(self.raptor_path,
                                        'requirements.txt')]
         )
+
+    def install(self):
+        if self.app == "geckoview":
+            self.install_apk(self.installer_path)
+        else:
+            super(Raptor, self).install()
 
     def _validate_treeherder_data(self, parser):
         # late import is required, because install is done in create_virtualenv
@@ -429,6 +440,12 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin):
         env['SCRIPTSPATH'] = scripts_path
         env['EXTERNALTOOLSPATH'] = external_tools_path
 
+        # disable "GC poisoning" Bug# 1499043
+        env['JSGC_DISABLE_POISONING'] = '1'
+
+        # needed to load unsigned raptor webext on moz-beta
+        env['MOZ_DISABLE_NONLOCAL_CONNECTIONS'] = '1'
+
         if self.repo_path is not None:
             env['MOZ_DEVELOPER_REPO_DIR'] = self.repo_path
         if self.obj_path is not None:
@@ -455,6 +472,9 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin):
 
             return bool(debug_opts.intersection(cmdline))
 
+        if self.app == "geckoview":
+            self.logcat_start()
+
         command = [python, run_tests] + options + mozlog_opts
         if launch_in_debug_mode(command):
             raptor_process = subprocess.Popen(command, cwd=self.workdir, env=env)
@@ -464,6 +484,10 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin):
                                                 output_timeout=output_timeout,
                                                 output_parser=parser,
                                                 env=env)
+
+        if self.app == "geckoview":
+            self.logcat_stop()
+
         if parser.minidump_output:
             self.info("Looking at the minidump files for debugging purposes...")
             for item in parser.minidump_output:

@@ -1,13 +1,13 @@
 (function webpackUniversalModuleDefinition(root, factory) {
 	if(typeof exports === 'object' && typeof module === 'object')
-		module.exports = factory(require("devtools/client/shared/vendor/react"), require("Services"), require("devtools/client/shared/vendor/react-redux"), require("devtools/client/shared/vendor/redux"), require("devtools/client/shared/vendor/react-prop-types"), require("devtools/client/shared/vendor/react-dom-factories"));
+		module.exports = factory(require("devtools/client/shared/vendor/react"), require("Services"), require("devtools/client/shared/vendor/react-redux"), require("devtools/client/shared/vendor/react-prop-types"), require("devtools/client/shared/vendor/react-dom-factories"));
 	else if(typeof define === 'function' && define.amd)
-		define(["devtools/client/shared/vendor/react", "Services", "devtools/client/shared/vendor/react-redux", "devtools/client/shared/vendor/redux", "devtools/client/shared/vendor/react-prop-types", "devtools/client/shared/vendor/react-dom-factories"], factory);
+		define(["devtools/client/shared/vendor/react", "Services", "devtools/client/shared/vendor/react-redux", "devtools/client/shared/vendor/react-prop-types", "devtools/client/shared/vendor/react-dom-factories"], factory);
 	else {
-		var a = typeof exports === 'object' ? factory(require("devtools/client/shared/vendor/react"), require("Services"), require("devtools/client/shared/vendor/react-redux"), require("devtools/client/shared/vendor/redux"), require("devtools/client/shared/vendor/react-prop-types"), require("devtools/client/shared/vendor/react-dom-factories")) : factory(root["devtools/client/shared/vendor/react"], root["Services"], root["devtools/client/shared/vendor/react-redux"], root["devtools/client/shared/vendor/redux"], root["devtools/client/shared/vendor/react-prop-types"], root["devtools/client/shared/vendor/react-dom-factories"]);
+		var a = typeof exports === 'object' ? factory(require("devtools/client/shared/vendor/react"), require("Services"), require("devtools/client/shared/vendor/react-redux"), require("devtools/client/shared/vendor/react-prop-types"), require("devtools/client/shared/vendor/react-dom-factories")) : factory(root["devtools/client/shared/vendor/react"], root["Services"], root["devtools/client/shared/vendor/react-redux"], root["devtools/client/shared/vendor/react-prop-types"], root["devtools/client/shared/vendor/react-dom-factories"]);
 		for(var i in a) (typeof exports === 'object' ? exports : root)[i] = a[i];
 	}
-})(typeof self !== 'undefined' ? self : this, function(__WEBPACK_EXTERNAL_MODULE_0__, __WEBPACK_EXTERNAL_MODULE_22__, __WEBPACK_EXTERNAL_MODULE_3592__, __WEBPACK_EXTERNAL_MODULE_3593__, __WEBPACK_EXTERNAL_MODULE_3642__, __WEBPACK_EXTERNAL_MODULE_3643__) {
+})(typeof self !== 'undefined' ? self : this, function(__WEBPACK_EXTERNAL_MODULE_0__, __WEBPACK_EXTERNAL_MODULE_22__, __WEBPACK_EXTERNAL_MODULE_3592__, __WEBPACK_EXTERNAL_MODULE_3642__, __WEBPACK_EXTERNAL_MODULE_3643__) {
 return /******/ (function(modules) { // webpackBootstrap
 /******/ 	// The module cache
 /******/ 	var installedModules = {};
@@ -153,13 +153,6 @@ module.exports = __WEBPACK_EXTERNAL_MODULE_22__;
 /***/ (function(module, exports) {
 
 module.exports = __WEBPACK_EXTERNAL_MODULE_3592__;
-
-/***/ }),
-
-/***/ 3593:
-/***/ (function(module, exports) {
-
-module.exports = __WEBPACK_EXTERNAL_MODULE_3593__;
 
 /***/ }),
 
@@ -655,6 +648,7 @@ const NaNRep = __webpack_require__(3679);
 const Accessor = __webpack_require__(3680);
 
 // DOM types (grips)
+const Accessible = __webpack_require__(3787);
 const Attribute = __webpack_require__(3681);
 const DateTime = __webpack_require__(3682);
 const Document = __webpack_require__(3683);
@@ -679,7 +673,7 @@ const Grip = __webpack_require__(3656);
 // List of all registered template.
 // XXX there should be a way for extensions to register a new
 // or modify an existing rep.
-const reps = [RegExp, StyleSheet, Event, DateTime, CommentNode, ElementNode, TextNode, Attribute, Func, PromiseRep, ArrayRep, Document, DocumentType, Window, ObjectWithText, ObjectWithURL, ErrorRep, GripArray, GripMap, GripMapEntry, Grip, Undefined, Null, StringRep, Number, SymbolRep, InfinityRep, NaNRep, Accessor, Obj];
+const reps = [RegExp, StyleSheet, Event, DateTime, CommentNode, Accessible, ElementNode, TextNode, Attribute, Func, PromiseRep, ArrayRep, Document, DocumentType, Window, ObjectWithText, ObjectWithURL, ErrorRep, GripArray, GripMap, GripMapEntry, Grip, Undefined, Null, StringRep, Number, SymbolRep, InfinityRep, NaNRep, Accessor, Obj];
 
 /**
  * Generic rep that is used for rendering native JS types or an object.
@@ -730,6 +724,7 @@ function getRep(object, defaultRep = Grip, noGrip = false) {
 module.exports = {
   Rep,
   REPS: {
+    Accessible,
     Accessor,
     ArrayRep,
     Attribute,
@@ -969,8 +964,7 @@ function getLinkifiedElements(text, cropLimit, openLink) {
   if (currentIndex !== text.length) {
     let nonUrlText = text.slice(currentIndex, text.length);
     if (currentIndex < endCropIndex) {
-      const cutIndex = endCropIndex - currentIndex;
-      nonUrlText = nonUrlText.substring(cutIndex);
+      nonUrlText = getCroppedString(nonUrlText, currentIndex, startCropIndex, endCropIndex);
     }
     items.push(nonUrlText);
   }
@@ -1275,8 +1269,7 @@ module.exports = wrapRender(PropRep);
 
 const { MODE } = __webpack_require__(3645);
 const { REPS, getRep } = __webpack_require__(3647);
-const ObjectInspector = __webpack_require__(3695);
-const ObjectInspectorUtils = __webpack_require__(3657);
+const objectInspector = __webpack_require__(3695);
 
 const {
   parseURLEncodedText,
@@ -1293,8 +1286,7 @@ module.exports = {
   parseURLEncodedText,
   parseURLParams,
   getGripPreviewItems,
-  ObjectInspector,
-  ObjectInspectorUtils
+  objectInspector
 };
 
 /***/ }),
@@ -2928,6 +2920,22 @@ function getValue(item) {
   return undefined;
 }
 
+function getActor(item, roots) {
+  const isRoot = isNodeRoot(item, roots);
+  const value = getValue(item);
+  return isRoot || !value ? null : value.actor;
+}
+
+function isNodeRoot(item, roots) {
+  const gripItem = getClosestGripNode(item);
+  const value = getValue(gripItem);
+
+  return value && roots.some(root => {
+    const rootValue = getValue(root);
+    return rootValue && rootValue.actor === value.actor;
+  });
+}
+
 function nodeIsBucket(item) {
   return getType(item) === NODE_TYPES.BUCKET;
 }
@@ -3595,6 +3603,7 @@ function getClosestNonBucketNode(item) {
 
 module.exports = {
   createNode,
+  getActor,
   getChildren,
   getClosestGripNode,
   getClosestNonBucketNode,
@@ -4470,10 +4479,7 @@ class Tree extends Component {
         // Only set default focus to the first tree node if the focus came
         // from outside the tree (e.g. by tabbing to the tree from other
         // external elements).
-        if (
-          explicitOriginalTarget !== this.treeRef &&
-          !this.treeRef.contains(explicitOriginalTarget)
-        ) {
+        if (explicitOriginalTarget !== this.treeRef && !this.treeRef.contains(explicitOriginalTarget)) {
           this._focus(traversal[0].item);
         }
       },
@@ -6120,35 +6126,11 @@ module.exports = {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-const { createElement, createFactory, PureComponent } = __webpack_require__(0);
-const { Provider } = __webpack_require__(3592);
-const ObjectInspector = createFactory(__webpack_require__(3696));
-const createStore = __webpack_require__(3700);
-const Utils = __webpack_require__(3657);
-const { renderRep, shouldRenderRootsInReps } = Utils;
+const ObjectInspector = __webpack_require__(3696);
+const utils = __webpack_require__(3657);
+const reducer = __webpack_require__(3703);
 
-class OI extends PureComponent {
-  constructor(props) {
-    super(props);
-    this.store = createStore(props);
-  }
-
-  getStore() {
-    return this.store;
-  }
-
-  render() {
-    return createElement(Provider, { store: this.store }, ObjectInspector(this.props));
-  }
-}
-
-module.exports = props => {
-  const { roots } = props;
-  if (shouldRenderRootsInReps(roots)) {
-    return renderRep(roots[0], props);
-  }
-  return new OI(props);
-};
+module.exports = { ObjectInspector, utils, reducer };
 
 /***/ }),
 
@@ -6174,10 +6156,12 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-const { Component, createFactory } = __webpack_require__(0);
+const { Component, createFactory, createElement } = __webpack_require__(0);
 const dom = __webpack_require__(3643);
 const { connect } = __webpack_require__(3592);
-const { bindActionCreators } = __webpack_require__(3593);
+const actions = __webpack_require__(3699);
+
+const selectors = __webpack_require__(3703);
 
 const { appinfo } = _devtoolsServices2.default;
 const isMacOS = appinfo.OS === "Darwin";
@@ -6189,10 +6173,11 @@ const classnames = __webpack_require__(175);
 const { MODE } = __webpack_require__(3645);
 
 const Utils = __webpack_require__(3657);
+const { renderRep, shouldRenderRootsInReps } = Utils;
 
 const {
   getChildren,
-  getClosestGripNode,
+  getActor,
   getParent,
   getValue,
   nodeHasAccessors,
@@ -6256,28 +6241,28 @@ class ObjectInspector extends Component {
     self.getRoots = this.getRoots.bind(this);
   }
 
-  shouldComponentUpdate(nextProps) {
-    const { expandedPaths, focusedItem, loadedProperties, roots } = this.props;
+  componentWillMount() {
+    this.roots = this.props.roots;
+    this.focusedItem = this.props.focusedItem;
+  }
 
-    if (roots !== nextProps.roots) {
+  componentWillUpdate(nextProps) {
+    if (this.roots !== nextProps.roots) {
       // Since the roots changed, we assume the properties did as well,
       // so we need to cleanup the component internal state.
 
       // We can clear the cachedNodes to avoid bugs and memory leaks.
       this.cachedNodes.clear();
-      // The rootsChanged action will be handled in a middleware to release the
-      // actors of the old roots, as well as cleanup the state properties
-      // (expandedPaths, loadedProperties, …).
-      this.props.rootsChanged(nextProps);
-      // We don't render right away since the state is going to be changed by
-      // the rootsChanged action. The `state.forceUpdate` flag will be set
-      // to `true` so we can execute a new render cycle with the cleaned state.
-      return false;
+      this.roots = nextProps.roots;
+      this.focusedItem = nextProps.focusedItem;
+      if (this.props.rootsChanged) {
+        this.props.rootsChanged();
+      }
     }
+  }
 
-    if (nextProps.forceUpdate === true) {
-      return true;
-    }
+  shouldComponentUpdate(nextProps) {
+    const { expandedPaths, loadedProperties } = this.props;
 
     // We should update if:
     // - there are new loaded properties
@@ -6286,26 +6271,11 @@ class ObjectInspector extends Component {
     // - OR the expanded paths number did not changed, but old and new sets
     //      differ
     // - OR the focused node changed.
-    return loadedProperties.size !== nextProps.loadedProperties.size || expandedPaths.size !== nextProps.expandedPaths.size && [...nextProps.expandedPaths].every(path => nextProps.loadedProperties.has(path)) || expandedPaths.size === nextProps.expandedPaths.size && [...nextProps.expandedPaths].some(key => !expandedPaths.has(key)) || focusedItem !== nextProps.focusedItem;
-  }
-
-  componentDidUpdate(prevProps) {
-    if (this.props.forceUpdate) {
-      // If the component was updated, we can then reset the forceUpdate flag.
-      this.props.forceUpdated();
-    }
+    return loadedProperties.size !== nextProps.loadedProperties.size || expandedPaths.size !== nextProps.expandedPaths.size && [...nextProps.expandedPaths].every(path => nextProps.loadedProperties.has(path)) || expandedPaths.size === nextProps.expandedPaths.size && [...nextProps.expandedPaths].some(key => !expandedPaths.has(key)) || this.focusedItem !== nextProps.focusedItem || this.roots !== nextProps.roots;
   }
 
   componentWillUnmount() {
-    const { releaseActor } = this.props;
-    if (typeof releaseActor !== "function") {
-      return;
-    }
-
-    const { actors } = this.props;
-    for (const actor of actors) {
-      releaseActor(actor);
-    }
+    this.props.closeObjectInspector();
   }
 
   getItemChildren(item) {
@@ -6333,9 +6303,6 @@ class ObjectInspector extends Component {
     }
 
     const {
-      createObjectClient,
-      createLongStringClient,
-      loadedProperties,
       nodeExpand,
       nodeCollapse,
       recordTelemetryEvent,
@@ -6343,15 +6310,8 @@ class ObjectInspector extends Component {
     } = this.props;
 
     if (expand === true) {
-      const gripItem = getClosestGripNode(item);
-      const value = getValue(gripItem);
-      const isRoot = value && roots.some(root => {
-        const rootValue = getValue(root);
-        return rootValue && rootValue.actor === value.actor;
-      });
-      const actor = isRoot || !value ? null : value.actor;
-      nodeExpand(item, actor, loadedProperties, createObjectClient, createLongStringClient);
-
+      const actor = getActor(item, roots);
+      nodeExpand(item, actor);
       if (recordTelemetryEvent) {
         recordTelemetryEvent("object_expanded");
       }
@@ -6361,11 +6321,13 @@ class ObjectInspector extends Component {
   }
 
   focusItem(item) {
-    const { focusable = true, focusedItem, nodeFocus, onFocus } = this.props;
+    const { focusable = true, onFocus } = this.props;
 
-    if (focusable && focusedItem !== item) {
-      nodeFocus(item);
-      if (focusedItem !== item && onFocus) {
+    if (focusable && this.focusedItem !== item) {
+      this.focusedItem = item;
+      this.forceUpdate();
+
+      if (onFocus) {
         onFocus(item);
       }
     }
@@ -6537,7 +6499,6 @@ class ObjectInspector extends Component {
       focusable = true,
       disableWrap = false,
       expandedPaths,
-      focusedItem,
       inline
     } = this.props;
 
@@ -6547,12 +6508,13 @@ class ObjectInspector extends Component {
         nowrap: disableWrap,
         "object-inspector": true
       }),
+
       autoExpandAll,
       autoExpandDepth,
 
       isExpanded: item => expandedPaths && expandedPaths.has(item.path),
       isExpandable: item => nodeIsPrimitive(item) === false,
-      focused: focusedItem,
+      focused: this.focusedItem,
 
       getRoots: this.getRoots,
       getParent,
@@ -6570,20 +6532,22 @@ class ObjectInspector extends Component {
 
 function mapStateToProps(state, props) {
   return {
-    actors: state.actors,
-    expandedPaths: state.expandedPaths,
-    // If the root changes, we want to pass a possibly new focusedItem property
-    focusedItem: state.roots !== props.roots ? props.focusedItem : state.focusedItem,
-    loadedProperties: state.loadedProperties,
-    forceUpdate: state.forceUpdate
+    actors: selectors.getActors(state),
+    expandedPaths: selectors.getExpandedPaths(state),
+    loadedProperties: selectors.getLoadedProperties(state)
   };
 }
 
-function mapDispatchToProps(dispatch) {
-  return bindActionCreators(__webpack_require__(3699), dispatch);
-}
+const OI = connect(mapStateToProps, actions)(ObjectInspector);
 
-module.exports = connect(mapStateToProps, mapDispatchToProps)(ObjectInspector);
+module.exports = props => {
+  const { roots } = props;
+  if (shouldRenderRootsInReps(roots)) {
+    return renderRep(roots[0], props);
+  }
+
+  return createElement(OI, props);
+};
 
 /***/ }),
 
@@ -6629,20 +6593,16 @@ const { loadItemProperties } = __webpack_require__(3666); /* This Source Code Fo
                                                                     * License, v. 2.0. If a copy of the MPL was not distributed with this
                                                                     * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
+const { getLoadedProperties, getActors } = __webpack_require__(3703);
+
 /**
  * This action is responsible for expanding a given node, which also means that
  * it will call the action responsible to fetch properties.
  */
-function nodeExpand(node, actor, loadedProperties, createObjectClient, createLongStringClient) {
-  return async ({ dispatch }) => {
-    dispatch({
-      type: "NODE_EXPAND",
-      data: { node }
-    });
-
-    if (!loadedProperties.has(node.path)) {
-      dispatch(nodeLoadProperties(node, actor, loadedProperties, createObjectClient, createLongStringClient));
-    }
+function nodeExpand(node, actor) {
+  return async ({ dispatch, getState }) => {
+    dispatch({ type: "NODE_EXPAND", data: { node } });
+    dispatch(nodeLoadProperties(node, actor));
   };
 }
 
@@ -6653,22 +6613,22 @@ function nodeCollapse(node) {
   };
 }
 
-function nodeFocus(node) {
-  return {
-    type: "NODE_FOCUS",
-    data: { node }
-  };
-}
 /*
  * This action checks if we need to fetch properties, entries, prototype and
  * symbols for a given node. If we do, it will call the appropriate ObjectClient
  * functions.
  */
-function nodeLoadProperties(item, actor, loadedProperties, createObjectClient, createLongStringClient) {
-  return async ({ dispatch }) => {
+function nodeLoadProperties(node, actor) {
+  return async ({ dispatch, client, getState }) => {
+    const loadedProperties = getLoadedProperties(getState());
+    if (loadedProperties.has(node.path)) {
+      return;
+    }
+
     try {
-      const properties = await loadItemProperties(item, createObjectClient, createLongStringClient, loadedProperties);
-      dispatch(nodePropertiesLoaded(item, actor, properties));
+      const properties = await loadItemProperties(node, client.createObjectClient, client.createLongStringClient, loadedProperties);
+
+      dispatch(nodePropertiesLoaded(node, actor, properties));
     } catch (e) {
       console.error(e);
     }
@@ -6682,6 +6642,12 @@ function nodePropertiesLoaded(node, actor, properties) {
   };
 }
 
+function closeObjectInspector() {
+  return async ({ getState, client }) => {
+    releaseActors(getState(), client);
+  };
+}
+
 /*
  * This action is dispatched when the `roots` prop, provided by a consumer of
  * the ObjectInspector (inspector, console, …), is modified. It will clean the
@@ -6691,194 +6657,29 @@ function nodePropertiesLoaded(node, actor, properties) {
  * consumer.
  */
 function rootsChanged(props) {
-  return {
-    type: "ROOTS_CHANGED",
-    data: props
+  return async ({ dispatch, client, getState }) => {
+    releaseActors(getState(), client);
+    dispatch({
+      type: "ROOTS_CHANGED",
+      data: props
+    });
   };
 }
 
-/*
- * This action will reset the `forceUpdate` flag in the state.
- */
-function forceUpdated() {
-  return {
-    type: "FORCE_UPDATED"
-  };
+function releaseActors(state, client) {
+  const actors = getActors(state);
+  for (const actor of actors) {
+    client.releaseActor(actor);
+  }
 }
 
 module.exports = {
-  forceUpdated,
+  closeObjectInspector,
   nodeExpand,
   nodeCollapse,
-  nodeFocus,
   nodeLoadProperties,
   nodePropertiesLoaded,
   rootsChanged
-};
-
-/***/ }),
-
-/***/ 3700:
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
-const { applyMiddleware, createStore, compose } = __webpack_require__(3593);
-const { thunk } = __webpack_require__(3701);
-const {
-  waitUntilService
-} = __webpack_require__(3702);
-const reducer = __webpack_require__(3703);
-
-function createInitialState(overrides) {
-  return _extends({
-    actors: new Set(),
-    expandedPaths: new Set(),
-    focusedItem: null,
-    loadedProperties: new Map(),
-    forceUpdated: false
-  }, overrides);
-}
-
-function enableStateReinitializer(props) {
-  return next => (innerReducer, initialState, enhancer) => {
-    function reinitializerEnhancer(state, action) {
-      if (action.type !== "ROOTS_CHANGED") {
-        return innerReducer(state, action);
-      }
-
-      if (props.releaseActor && initialState.actors) {
-        initialState.actors.forEach(props.releaseActor);
-      }
-
-      return _extends({}, action.data, {
-        actors: new Set(),
-        expandedPaths: new Set(),
-        loadedProperties: new Map(),
-        // Indicates to the component that we do want to render on the next
-        // render cycle.
-        forceUpdate: true
-      });
-    }
-    return next(reinitializerEnhancer, initialState, enhancer);
-  };
-}
-
-module.exports = props => {
-  const middlewares = [thunk];
-
-  if (props.injectWaitService) {
-    middlewares.push(waitUntilService);
-  }
-
-  return createStore(reducer, createInitialState(props), compose(applyMiddleware(...middlewares), enableStateReinitializer(props)));
-};
-
-/***/ }),
-
-/***/ 3701:
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
-/**
- * A middleware that allows thunks (functions) to be dispatched.
- * If it's a thunk, it is called with `dispatch` and `getState`,
- * allowing the action to create multiple actions (most likely
- * asynchronously).
- */
-function thunk({ dispatch, getState }) {
-  return next => action => {
-    return typeof action === "function" ? action({ dispatch, getState }) : next(action);
-  };
-}
-exports.thunk = thunk;
-
-/***/ }),
-
-/***/ 3702:
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
-const WAIT_UNTIL_TYPE = "@@service/waitUntil";
-/**
- * A middleware which acts like a service, because it is stateful
- * and "long-running" in the background. It provides the ability
- * for actions to install a function to be run once when a specific
- * condition is met by an action coming through the system. Think of
- * it as a thunk that blocks until the condition is met. Example:
- *
- * ```js
- * const services = { WAIT_UNTIL: require('wait-service').NAME };
- *
- * { type: services.WAIT_UNTIL,
- *   predicate: action => action.type === "ADD_ITEM",
- *   run: (dispatch, getState, action) => {
- *     // Do anything here. You only need to accept the arguments
- *     // if you need them. `action` is the action that satisfied
- *     // the predicate.
- *   }
- * }
- * ```
- */
-function waitUntilService({ dispatch, getState }) {
-  let pending = [];
-
-  function checkPending(action) {
-    const readyRequests = [];
-    const stillPending = [];
-
-    // Find the pending requests whose predicates are satisfied with
-    // this action. Wait to run the requests until after we update the
-    // pending queue because the request handler may synchronously
-    // dispatch again and run this service (that use case is
-    // completely valid).
-    for (const request of pending) {
-      if (request.predicate(action)) {
-        readyRequests.push(request);
-      } else {
-        stillPending.push(request);
-      }
-    }
-
-    pending = stillPending;
-    for (const request of readyRequests) {
-      request.run(dispatch, getState, action);
-    }
-  }
-
-  return next => action => {
-    if (action.type === WAIT_UNTIL_TYPE) {
-      pending.push(action);
-      return null;
-    }
-    const result = next(action);
-    checkPending(action);
-    return result;
-  };
-}
-
-module.exports = {
-  WAIT_UNTIL_TYPE,
-  waitUntilService
 };
 
 /***/ }),
@@ -6891,7 +6692,18 @@ module.exports = {
 
 var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
 
-function reducer(state = {}, action) {
+function initialState() {
+  return {
+    expandedPaths: new Set(),
+    loadedProperties: new Map(),
+    actors: new Set()
+  };
+} /* This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+
+function reducer(state = initialState(), action = {}) {
   const { type, data } = action;
 
   const cloneState = overrides => _extends({}, state, overrides);
@@ -6915,29 +6727,50 @@ function reducer(state = {}, action) {
     });
   }
 
-  if (type === "NODE_FOCUS") {
-    if (state.focusedItem === data.node) {
-      return state;
-    }
-
-    return cloneState({
-      focusedItem: data.node
-    });
-  }
-
-  if (type === "FORCE_UPDATED") {
-    return cloneState({
-      forceUpdate: false
-    });
+  if (type === "ROOTS_CHANGED") {
+    return cloneState();
   }
 
   return state;
-} /* This Source Code Form is subject to the terms of the Mozilla Public
-   * License, v. 2.0. If a copy of the MPL was not distributed with this
-   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+}
 
+function getObjectInspectorState(state) {
+  return state.objectInspector;
+}
 
-module.exports = reducer;
+function getExpandedPaths(state) {
+  return getObjectInspectorState(state).expandedPaths;
+}
+
+function getExpandedPathKeys(state) {
+  return [...getExpandedPaths(state).keys()];
+}
+
+function getActors(state) {
+  return getObjectInspectorState(state).actors;
+}
+
+function getLoadedProperties(state) {
+  return getObjectInspectorState(state).loadedProperties;
+}
+
+function getLoadedPropertyKeys(state) {
+  return [...getLoadedProperties(state).keys()];
+}
+
+const selectors = {
+  getExpandedPaths,
+  getExpandedPathKeys,
+  getActors,
+  getLoadedProperties,
+  getLoadedPropertyKeys
+};
+
+Object.defineProperty(module.exports, "__esModule", {
+  value: true
+});
+module.exports = selectors;
+module.exports.default = reducer;
 
 /***/ }),
 
@@ -6946,6 +6779,129 @@ module.exports = reducer;
 
 module.exports = __webpack_require__(3655);
 
+
+/***/ }),
+
+/***/ 3787:
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+// ReactJS
+const PropTypes = __webpack_require__(3642);
+const { button, span } = __webpack_require__(3643);
+
+// Utils
+const { isGrip, wrapRender } = __webpack_require__(3644);
+const { rep: StringRep } = __webpack_require__(3648);
+
+/**
+ * Renders Accessible object.
+ */
+Accessible.propTypes = {
+  object: PropTypes.object.isRequired,
+  inspectIconTitle: PropTypes.string,
+  nameMaxLength: PropTypes.number,
+  onAccessibleClick: PropTypes.func,
+  onAccessibleMouseOver: PropTypes.func,
+  onAccessibleMouseOut: PropTypes.func,
+  onInspectIconClick: PropTypes.func,
+  roleFirst: PropTypes.bool,
+  separatorText: PropTypes.string
+};
+
+function Accessible(props) {
+  const {
+    object,
+    inspectIconTitle,
+    nameMaxLength,
+    onAccessibleClick,
+    onAccessibleMouseOver,
+    onAccessibleMouseOut,
+    onInspectIconClick,
+    roleFirst,
+    separatorText
+  } = props;
+  const elements = getElements(object, nameMaxLength, roleFirst, separatorText);
+  const isInTree = object.preview && object.preview.isConnected === true;
+  const baseConfig = {
+    "data-link-actor-id": object.actor,
+    className: "objectBox objectBox-accessible"
+  };
+
+  let inspectIcon;
+  if (isInTree) {
+    if (onAccessibleClick) {
+      Object.assign(baseConfig, {
+        onClick: _ => onAccessibleClick(object),
+        className: `${baseConfig.className} clickable`
+      });
+    }
+
+    if (onAccessibleMouseOver) {
+      Object.assign(baseConfig, {
+        onMouseOver: _ => onAccessibleMouseOver(object)
+      });
+    }
+
+    if (onAccessibleMouseOut) {
+      Object.assign(baseConfig, {
+        onMouseOut: onAccessibleMouseOut
+      });
+    }
+
+    if (onInspectIconClick) {
+      inspectIcon = button({
+        className: "open-accessibility-inspector",
+        title: inspectIconTitle,
+        onClick: e => {
+          if (onAccessibleClick) {
+            e.stopPropagation();
+          }
+
+          onInspectIconClick(object, e);
+        }
+      });
+    }
+  }
+
+  return span(baseConfig, ...elements, inspectIcon);
+}
+
+function getElements(grip, nameMaxLength, roleFirst = false, separatorText = ": ") {
+  const { name, role } = grip.preview;
+  const elements = [];
+  if (name) {
+    elements.push(StringRep({
+      className: "accessible-name",
+      object: name,
+      cropLimit: nameMaxLength
+    }), span({ className: "separator" }, separatorText));
+  }
+
+  elements.push(span({ className: "accessible-role" }, role));
+  return roleFirst ? elements.reverse() : elements;
+}
+
+// Registration
+function supportsObject(object, noGrip = false) {
+  if (noGrip === true || !isGrip(object)) {
+    return false;
+  }
+
+  return object.preview && object.typeName && object.typeName === "accessible";
+}
+
+// Exports from this module
+module.exports = {
+  rep: wrapRender(Accessible),
+  supportsObject
+};
 
 /***/ })
 

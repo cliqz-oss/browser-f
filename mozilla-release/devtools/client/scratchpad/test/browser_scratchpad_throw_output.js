@@ -10,7 +10,7 @@ function test() {
     openScratchpad(testThrowOutput);
   });
 
-  gBrowser.loadURI("data:text/html;charset=utf8,<p>Test throw outputs in Scratchpad</p>");
+  BrowserTestUtils.loadURI(gBrowser, "data:text/html;charset=utf8,<p>Test throw outputs in Scratchpad</p>");
 }
 
 function testThrowOutput() {
@@ -23,7 +23,7 @@ function testThrowOutput() {
       method: "display",
       code: "throw " + value + ";",
       result: "throw " + value + ";\n/*\nException: " + value + "\n*/",
-      label: "Correct exception message for '" + value + "' is shown"
+      label: "Correct exception message for '" + value + "' is shown",
     });
   });
 
@@ -39,7 +39,7 @@ function testThrowOutput() {
     code: "throw (new Array(" + longLength + ").join('a'));",
     result: "throw (new Array(" + longLength + ").join('a'));\n" +
             "/*\nException: " + shortedString + "\n*/",
-    label: "Correct exception message for a longString is shown"
+    label: "Correct exception message for a longString is shown",
   });
 
   runAsyncTests(scratchpad, tests).then(function() {

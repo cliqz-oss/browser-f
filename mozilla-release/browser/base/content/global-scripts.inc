@@ -16,13 +16,19 @@ Components.utils.import("resource://gre/modules/Services.jsm");
 
 for (let script of [
   "chrome://browser/content/browser.js",
+  "chrome://browser/content/search/searchbar.js",
 
   "chrome://browser/content/browser-captivePortal.js",
   "chrome://browser/content/browser-compacttheme.js",
 #if 0
   "chrome://browser/content/browser-contentblocking.js",
+<<<<<<< HEAD
 #endif
   "chrome://browser/content/browser-feeds.js",
+||||||| merged common ancestors
+  "chrome://browser/content/browser-feeds.js",
+=======
+>>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
   "chrome://browser/content/browser-media.js",
   "chrome://browser/content/browser-pageActions.js",
   "chrome://browser/content/browser-places.js",

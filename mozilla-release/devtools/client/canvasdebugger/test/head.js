@@ -3,6 +3,7 @@
 
 /* eslint no-unused-vars: [2, {"vars": "local"}] */
 /* import-globals-from ../../shared/test/shared-head.js */
+/* import-globals-from ../../debugger/new/test/mochitest/helpers/context.js */
 
 "use strict";
 
@@ -11,11 +12,17 @@ Services.scriptloader.loadSubScript(
   "chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js",
   this);
 
+// Import helpers for the new debugger
+Services.scriptloader.loadSubScript(
+  "chrome://mochitests/content/browser/devtools/client/debugger/new/test/mochitest/helpers/context.js",
+  this);
+
 var { generateUUID } = Cc["@mozilla.org/uuid-generator;1"].getService(Ci.nsIUUIDGenerator);
 
 var { DebuggerClient } = require("devtools/shared/client/debugger-client");
 var { DebuggerServer } = require("devtools/server/main");
-var { CallWatcherFront } = require("devtools/shared/fronts/call-watcher");
+var { METHOD_FUNCTION } = require("devtools/shared/fronts/function-call");
+var { CallWatcherFront } = require("chrome://mochitests/content/browser/devtools/client/canvasdebugger/test/call-watcher-front");
 var { CanvasFront } = require("devtools/shared/fronts/canvas");
 var { Toolbox } = require("devtools/client/framework/toolbox");
 var { isWebGLSupported } = require("devtools/client/shared/webgl-utils");
@@ -100,7 +107,7 @@ function navigateInHistory(aTarget, aDirection, aWaitForTargetEvent = "navigate"
 }
 
 function navigate(aTarget, aUrl, aWaitForTargetEvent = "navigate") {
-  executeSoon(() => aTarget.activeTab.navigateTo(aUrl));
+  executeSoon(() => aTarget.activeTab.navigateTo({ url: aUrl }));
   return once(aTarget, aWaitForTargetEvent);
 }
 
@@ -120,9 +127,15 @@ function initCallWatcherBackend(aUrl) {
 
   return (async function() {
     const tab = await addTab(aUrl);
-    const target = TargetFactory.forTab(tab);
 
-    await target.makeRemote();
+    await registerActorInContentProcess("chrome://mochitests/content/browser/devtools/client/canvasdebugger/test/call-watcher-actor.js", {
+      prefix: "callWatcher",
+      constructor: "CallWatcherActor",
+      type: { target: true },
+    });
+
+    const target = await TargetFactory.forTab(tab);
+    await target.attach();
 
     const front = new CallWatcherFront(target.client, target.form);
     return { target, front };
@@ -135,9 +148,8 @@ function initCanvasDebuggerBackend(aUrl) {
 
   return (async function() {
     const tab = await addTab(aUrl);
-    const target = TargetFactory.forTab(tab);
-
-    await target.makeRemote();
+    const target = await TargetFactory.forTab(tab);
+    await target.attach();
 
     const front = new CanvasFront(target.client, target.form);
     return { target, front };
@@ -149,9 +161,9 @@ function initCanvasDebuggerFrontend(aUrl) {
 
   return (async function() {
     const tab = await addTab(aUrl);
-    const target = TargetFactory.forTab(tab);
+    const target = await TargetFactory.forTab(tab);
 
-    await target.makeRemote();
+    await target.attach();
 
     Services.prefs.setBoolPref("devtools.canvasdebugger.enabled", true);
     const toolbox = await gDevTools.showToolbox(target, "canvasdebugger");
@@ -172,4 +184,14 @@ function teardown({target}) {
 function getSourceActor(aSources, aURL) {
   const item = aSources.getItemForAttachment(a => a.source.url === aURL);
   return item ? item.value : null;
+}
+
+async function validateDebuggerLocation(dbg, url, line) {
+  const location = dbg.selectors.getSelectedLocation(dbg.getState());
+  const sourceUrl = dbg.selectors.getSelectedSource(dbg.getState()).url;
+
+  is(sourceUrl, url,
+    "The expected source was shown in the debugger.");
+  is(location.line, line,
+    "The expected source line is highlighted in the debugger.");
 }

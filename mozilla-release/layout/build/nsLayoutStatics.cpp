@@ -79,7 +79,6 @@
 #endif
 
 #include "CubebUtils.h"
-#include "Latency.h"
 #include "WebAudioUtils.h"
 
 #include "nsError.h"
@@ -111,6 +110,7 @@
 #include "mozilla/dom/PointerEventHandler.h"
 #include "mozilla/dom/BlobURLProtocolHandler.h"
 #include "nsThreadManager.h"
+#include "mozilla/css/ImageLoader.h"
 
 using namespace mozilla;
 using namespace mozilla::net;
@@ -173,6 +173,7 @@ nsLayoutStatics::Initialize()
   mozilla::SharedFontList::Initialize();
   StaticPresData::Init();
   nsCSSRendering::Init();
+  css::ImageLoader::Init();
 
   rv = nsHTMLDNSPrefetch::Initialize();
   if (NS_FAILED(rv)) {
@@ -219,7 +220,6 @@ nsLayoutStatics::Initialize()
     return rv;
   }
 
-  AsyncLatencyLogger::InitializeStatics();
   DecoderDoctorLogger::Init();
   MediaManager::StartupInit();
   CubebUtils::InitLibrary();
@@ -357,7 +357,6 @@ nsLayoutStatics::Shutdown()
   FrameLayerBuilder::Shutdown();
 
   CubebUtils::ShutdownLibrary();
-  AsyncLatencyLogger::ShutdownLogger();
   WebAudioUtils::Shutdown();
 
   nsCORSListenerProxy::Shutdown();
@@ -393,4 +392,6 @@ nsLayoutStatics::Shutdown()
   PromiseDebugging::Shutdown();
 
   BlobURLProtocolHandler::RemoveDataEntries();
+
+  css::ImageLoader::Shutdown();
 }

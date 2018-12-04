@@ -914,9 +914,16 @@ HttpBaseChannel::EnsureUploadStreamIsCloneable(nsIRunnable* aCallback)
   // this is called more than once simultaneously.
   NS_ENSURE_FALSE(mUploadCloneableCallback, NS_ERROR_UNEXPECTED);
 
-  // If the CloneUploadStream() will succeed, then synchronously invoke
-  // the callback to indicate we're already cloneable.
-  if (!mUploadStream || NS_InputStreamIsCloneable(mUploadStream)) {
+  // We can immediately exec the callback if we don't have an upload stream.
+  if (!mUploadStream) {
+    aCallback->Run();
+    return NS_OK;
+  }
+
+  // Upload nsIInputStream must be cloneable and seekable in order to be
+  // processed by devtools network inspector.
+  nsCOMPtr<nsISeekableStream> seekable = do_QueryInterface(mUploadStream);
+  if (seekable && NS_InputStreamIsCloneable(mUploadStream)) {
     aCallback->Run();
     return NS_OK;
   }
@@ -1457,7 +1464,8 @@ HttpBaseChannel::nsContentEncodings::GetNext(nsACString& aNextEncoding)
 // HttpBaseChannel::nsContentEncodings::nsISupports
 //-----------------------------------------------------------------------------
 
-NS_IMPL_ISUPPORTS(HttpBaseChannel::nsContentEncodings, nsIUTF8StringEnumerator)
+NS_IMPL_ISUPPORTS(HttpBaseChannel::nsContentEncodings, nsIUTF8StringEnumerator,
+                  nsIStringEnumerator)
 
 //-----------------------------------------------------------------------------
 // HttpBaseChannel::nsContentEncodings <private>
@@ -1690,7 +1698,8 @@ HttpBaseChannel::IsCrossOriginWithReferrer()
       LOG(("triggeringURI=%s\n", triggeringURISpec.get()));
     }
     nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
-    rv = ssm->CheckSameOriginURI(triggeringURI, mURI, false);
+    bool isPrivateWin = mLoadInfo->GetOriginAttributes().mPrivateBrowsingId > 0;
+    rv = ssm->CheckSameOriginURI(triggeringURI, mURI, false, isPrivateWin);
     return (NS_FAILED(rv));
   }
 
@@ -3896,7 +3905,9 @@ HttpBaseChannel::SetupReplacementChannel(nsIURI       *newURI,
   // Pass the preferred alt-data type on to the new channel.
   nsCOMPtr<nsICacheInfoChannel> cacheInfoChan(do_QueryInterface(newChannel));
   if (cacheInfoChan) {
-    cacheInfoChan->PreferAlternativeDataType(mPreferredCachedAltDataType);
+    for (auto& pair : mPreferredCachedAltDataTypes) {
+      cacheInfoChan->PreferAlternativeDataType(mozilla::Get<0>(pair), mozilla::Get<1>(pair));
+    }
   }
 
   if (redirectFlags & (nsIChannelEventSink::REDIRECT_INTERNAL |
@@ -3918,7 +3929,8 @@ bool
 HttpBaseChannel::SameOriginWithOriginalUri(nsIURI *aURI)
 {
   nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
-  nsresult rv = ssm->CheckSameOriginURI(aURI, mOriginalURI, false);
+  bool isPrivateWin = mLoadInfo->GetOriginAttributes().mPrivateBrowsingId > 0;
+  nsresult rv = ssm->CheckSameOriginURI(aURI, mOriginalURI, false, isPrivateWin);
   return (NS_SUCCEEDED(rv));
 }
 
@@ -4373,11 +4385,14 @@ HttpBaseChannel::GetPerformanceStorage()
     return nullptr;
   }
 
-  // We only add to the document's performance object if it has the same
-  // principal as the one triggering the load. This is to prevent navigations
-  // triggered _by_ the iframe from showing up in the parent document's
-  // performance entries if they have different origins.
   if (!mLoadInfo->TriggeringPrincipal()->Equals(loadingDocument->NodePrincipal())) {
+    return nullptr;
+  }
+
+  if (mLoadInfo->GetExternalContentPolicyType() == nsIContentPolicy::TYPE_SUBDOCUMENT &&
+      !mLoadInfo->GetIsFromProcessingFrameAttributes()) {
+    // We only report loads caused by processing the attributes of the
+    // browsing context container.
     return nullptr;
   }
 

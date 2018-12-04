@@ -76,7 +76,7 @@ function getTarget(client) {
       const target = TargetFactory.forRemoteTab({
         client: client,
         form: tabList.tabs[tabList.selected],
-        chrome: false
+        chrome: false,
       });
       resolve(target);
     });
@@ -113,10 +113,6 @@ function test() {
         // resolve.
         if (actor.includes("framerateActor")) {
           todo(false, "Front for " + actor + " still held in pool!");
-          continue;
-        }
-        // gcliActor is for the commandline which is separate to the toolbox
-        if (actor.includes("gcliActor")) {
           continue;
         }
         ok(false, "Front for " + actor + " still held in pool!");

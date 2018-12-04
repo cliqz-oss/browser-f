@@ -336,7 +336,8 @@ CreateBackendIndependentTextureHost(const SurfaceDescriptor& aDesc,
       break;
     }
     case SurfaceDescriptor::TSurfaceDescriptorGPUVideo: {
-      result = new GPUVideoTextureHost(aFlags, aDesc.get_SurfaceDescriptorGPUVideo());
+      result = GPUVideoTextureHost::CreateFromDescriptor(
+        aFlags, aDesc.get_SurfaceDescriptorGPUVideo());
       break;
     }
 #ifdef XP_WIN
@@ -655,8 +656,14 @@ BufferTextureHost::PushResourceUpdates(wr::TransactionBuilder& aResources,
     MOZ_ASSERT(aImageKeys.length() == 3);
 
     const layers::YCbCrDescriptor& desc = mDescriptor.get_YCbCrDescriptor();
-    wr::ImageDescriptor yDescriptor(desc.ySize(), desc.yStride(), gfx::SurfaceFormat::A8);
-    wr::ImageDescriptor cbcrDescriptor(desc.cbCrSize(), desc.cbCrStride(), gfx::SurfaceFormat::A8);
+    wr::ImageDescriptor yDescriptor(
+      desc.ySize(),
+      desc.yStride(),
+      SurfaceFormatForColorDepth(desc.colorDepth()));
+    wr::ImageDescriptor cbcrDescriptor(
+      desc.cbCrSize(),
+      desc.cbCrStride(),
+      SurfaceFormatForColorDepth(desc.colorDepth()));
     (aResources.*method)(aImageKeys[0], yDescriptor, aExtID, bufferType, 0);
     (aResources.*method)(aImageKeys[1], cbcrDescriptor, aExtID, bufferType, 1);
     (aResources.*method)(aImageKeys[2], cbcrDescriptor, aExtID, bufferType, 2);
@@ -682,6 +689,7 @@ BufferTextureHost::PushDisplayItems(wr::DisplayListBuilder& aBuilder,
                                   aImageKeys[0],
                                   aImageKeys[1],
                                   aImageKeys[2],
+                                  wr::ToWrColorDepth(desc.colorDepth()),
                                   wr::ToWrYuvColorSpace(desc.yUVColorSpace()),
                                   aFilter);
   }
@@ -963,14 +971,14 @@ BufferTextureHost::GetYUVColorSpace() const
   return YUVColorSpace::UNKNOWN;
 }
 
-uint32_t
-BufferTextureHost::GetBitDepth() const
+gfx::ColorDepth
+BufferTextureHost::GetColorDepth() const
 {
   if (mFormat == gfx::SurfaceFormat::YUV) {
     const YCbCrDescriptor& desc = mDescriptor.get_YCbCrDescriptor();
-    return desc.bitDepth();
+    return desc.colorDepth();
   }
-  return 8;
+  return gfx::ColorDepth::COLOR_8;
 }
 
 bool
@@ -1083,17 +1091,17 @@ BufferTextureHost::Upload(nsIntRegion *aRegion)
       gfx::Factory::CreateWrappingDataSourceSurface(ImageDataSerializer::GetYChannel(buf, desc),
                                                     desc.yStride(),
                                                     desc.ySize(),
-                                                    SurfaceFormatForAlphaBitDepth(desc.bitDepth()));
+                                                    SurfaceFormatForColorDepth(desc.colorDepth()));
     RefPtr<gfx::DataSourceSurface> tempCb =
       gfx::Factory::CreateWrappingDataSourceSurface(ImageDataSerializer::GetCbChannel(buf, desc),
                                                     desc.cbCrStride(),
                                                     desc.cbCrSize(),
-                                                    SurfaceFormatForAlphaBitDepth(desc.bitDepth()));
+                                                    SurfaceFormatForColorDepth(desc.colorDepth()));
     RefPtr<gfx::DataSourceSurface> tempCr =
       gfx::Factory::CreateWrappingDataSourceSurface(ImageDataSerializer::GetCrChannel(buf, desc),
                                                     desc.cbCrStride(),
                                                     desc.cbCrSize(),
-                                                    SurfaceFormatForAlphaBitDepth(desc.bitDepth()));
+                                                    SurfaceFormatForColorDepth(desc.colorDepth()));
     // We don't support partial updates for Y U V textures
     NS_ASSERTION(!aRegion, "Unsupported partial updates for YCbCr textures");
     if (!tempY ||

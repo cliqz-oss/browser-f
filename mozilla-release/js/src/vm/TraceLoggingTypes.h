@@ -124,21 +124,27 @@ TLStringToTextId(JSLinearString* str);
 inline bool
 TLTextIdIsTogglable(uint32_t id)
 {
-    if (id == TraceLogger_Error)
+    if (id == TraceLogger_Error) {
         return false;
-    if (id == TraceLogger_Internal)
+    }
+    if (id == TraceLogger_Internal) {
         return false;
-    if (id == TraceLogger_Stop)
+    }
+    if (id == TraceLogger_Stop) {
         return false;
+    }
     // Actually never used. But added here so it doesn't show as toggle
-    if (id == TraceLogger_TreeItemEnd)
+    if (id == TraceLogger_TreeItemEnd) {
         return false;
-    if (id == TraceLogger_Last)
+    }
+    if (id == TraceLogger_Last) {
         return false;
+    }
     // Cannot toggle the logging of one engine on/off, because at the stop
     // event it is sometimes unknown which engine was running.
-    if (id == TraceLogger_IonMonkey || id == TraceLogger_Baseline || id == TraceLogger_Interpreter)
+    if (id == TraceLogger_IonMonkey || id == TraceLogger_Baseline || id == TraceLogger_Interpreter) {
         return false;
+    }
     return true;
 }
 
@@ -149,6 +155,24 @@ TLTextIdIsTreeEvent(uint32_t id)
     // atm also every custom event.
     return (id > TraceLogger_Error && id < TraceLogger_TreeItemEnd) ||
            id >= TraceLogger_Last;
+}
+
+inline bool
+TLTextIdIsLogEvent(uint32_t id)
+{
+    // These id's do not have start & stop events.
+    return (id > TraceLogger_TreeItemEnd && id < TraceLogger_Last);
+}
+
+inline bool
+TLTextIdIsInternalEvent(uint32_t id)
+{
+    // Id's used for bookkeeping.  Does not correspond to real events.
+    return (id == TraceLogger_Error       ||
+            id == TraceLogger_Last        ||
+            id == TraceLogger_TreeItemEnd ||
+            id == TraceLogger_Internal    ||
+            id == TraceLogger_Stop);
 }
 
 template <class T>
@@ -171,8 +195,9 @@ class ContinuousSpace {
         capacity_ = 64;
         size_ = 0;
         data_ = js_pod_malloc<T>(capacity_);
-        if (!data_)
+        if (!data_) {
             return false;
+        }
 
         return true;
     }
@@ -213,26 +238,30 @@ class ContinuousSpace {
     }
 
     bool hasSpaceForAdd(uint32_t count = 1) {
-        if (size_ + count <= capacity_)
+        if (size_ + count <= capacity_) {
             return true;
+        }
         return false;
     }
 
     bool ensureSpaceBeforeAdd(uint32_t count = 1) {
         MOZ_ASSERT(data_);
-        if (hasSpaceForAdd(count))
+        if (hasSpaceForAdd(count)) {
             return true;
+        }
 
         // Limit the size of a continuous buffer.
-        if (size_ + count > maxSize())
+        if (size_ + count > maxSize()) {
             return false;
+        }
 
         uint32_t nCapacity = capacity_ * 2;
         nCapacity = (nCapacity < maxSize()) ? nCapacity : maxSize();
 
         T* entries = js_pod_realloc<T>(data_, capacity_, nCapacity);
-        if (!entries)
+        if (!entries) {
             return false;
+        }
 
         data_ = entries;
         capacity_ = nCapacity;
@@ -262,6 +291,19 @@ class ContinuousSpace {
 
     void clear() {
         size_ = 0;
+    }
+
+    bool reset() {
+        size_t oldCapacity = data_ ? capacity_ : 0;
+        capacity_ = 64;
+        size_ = 0;
+        data_ = js_pod_realloc<T>(data_, oldCapacity, capacity_);
+
+        if (!data_) {
+            return false;
+        }
+
+        return true;
     }
 
     size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const {

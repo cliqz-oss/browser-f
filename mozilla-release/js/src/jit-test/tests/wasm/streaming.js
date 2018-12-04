@@ -1,9 +1,4 @@
-try {
-    WebAssembly.compileStreaming();
-} catch (err) {
-    assertEq(String(err).indexOf("not supported with --no-threads") !== -1, true);
-    quit();
-}
+// |jit-test| skip-if: !wasmStreamingIsSupported()
 
 function testInstantiate(source, importObj, exportName, expectedValue) {
     var result;

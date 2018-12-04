@@ -19,6 +19,7 @@ LOCAL_INCLUDES += [
     '/accessible/base',
     '/accessible/generic',
     '/accessible/xpcom',
+    '/layout/forms',
     '/layout/generic',
     '/layout/tables',
     '/layout/xul',
@@ -36,6 +37,10 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
 elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     LOCAL_INCLUDES += [
         '/accessible/mac',
+    ]
+elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
+    LOCAL_INCLUDES += [
+        '/accessible/android',
     ]
 else:
     LOCAL_INCLUDES += [

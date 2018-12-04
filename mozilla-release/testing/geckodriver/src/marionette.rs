@@ -21,7 +21,7 @@ use webdriver::capabilities::CapabilitiesMatching;
 use webdriver::command::WebDriverCommand::{AcceptAlert, AddCookie, CloseWindow, DeleteCookie,
                                            DeleteCookies, DeleteSession, DismissAlert,
                                            ElementClear, ElementClick, ElementSendKeys,
-                                           ElementTap, ExecuteAsyncScript, ExecuteScript,
+                                           ExecuteAsyncScript, ExecuteScript,
                                            Extension, FindElement, FindElementElement,
                                            FindElementElements, FindElements, FullscreenWindow,
                                            Get, GetActiveElement, GetAlertText, GetCSSValue,
@@ -99,19 +99,17 @@ impl MarionetteHandler {
     ) -> WebDriverResult<Map<String, Value>> {
         let (options, capabilities) = {
             let mut fx_capabilities = FirefoxCapabilities::new(self.settings.binary.as_ref());
-            let mut capabilities = try!(
-                try!(new_session_parameters.match_browser(&mut fx_capabilities)).ok_or(
-                    WebDriverError::new(
-                        ErrorStatus::SessionNotCreated,
-                        "Unable to find a matching set of capabilities",
-                    ),
-                )
-            );
+            let mut capabilities = new_session_parameters
+                .match_browser(&mut fx_capabilities)?
+                .ok_or(WebDriverError::new(
+                    ErrorStatus::SessionNotCreated,
+                    "Unable to find a matching set of capabilities",
+                ))?;
 
-            let options = try!(FirefoxOptions::from_capabilities(
+            let options = FirefoxOptions::from_capabilities(
                 fx_capabilities.chosen_binary,
-                &mut capabilities
-            ));
+                &mut capabilities,
+            )?;
             (options, capabilities)
         };
 
@@ -121,11 +119,16 @@ impl MarionetteHandler {
 
         let port = self.settings.port.unwrap_or(get_free_port()?);
         if !self.settings.connect_existing {
-            try!(self.start_browser(port, options));
+            self.start_browser(port, options)?;
         }
 
         let mut connection = MarionetteConnection::new(port, session_id.clone());
-        connection.connect(&mut self.browser)?;
+        connection.connect(&mut self.browser).or_else(|e| {
+            if let Some(ref mut runner) = self.browser {
+                runner.kill()?;
+            }
+            Err(e)
+        })?;
         self.connection = Mutex::new(Some(connection));
         Ok(capabilities)
     }
@@ -205,24 +208,21 @@ impl MarionetteHandler {
         prefs.insert_slice(&extra_prefs[..]);
 
         if self.settings.jsdebugger {
-            prefs.insert(
-                "devtools.browsertoolbox.panel",
-                Pref::new("jsdebugger".to_owned()),
-            );
+            prefs.insert("devtools.browsertoolbox.panel", Pref::new("jsdebugger"));
             prefs.insert("devtools.debugger.remote-enabled", Pref::new(true));
             prefs.insert("devtools.chrome.enabled", Pref::new(true));
             prefs.insert("devtools.debugger.prompt-connection", Pref::new(false));
             prefs.insert("marionette.debugging.clicktostart", Pref::new(true));
         }
 
-        prefs.insert(
-            "marionette.log.level",
-            Pref::new(logging::max_level().to_string()),
-        );
+        prefs.insert("marionette.log.level", logging::max_level().into());
         prefs.insert("marionette.port", Pref::new(port));
 
-        prefs.write().map_err(|_| {
-            WebDriverError::new(ErrorStatus::UnknownError, "Unable to write Firefox profile")
+        prefs.write().map_err(|e| {
+            WebDriverError::new(
+                ErrorStatus::UnknownError,
+                format!("Unable to write Firefox profile: {}", e),
+            )
         })
     }
 }
@@ -281,7 +281,7 @@ impl WebDriverHandler<GeckoExtensionRoute> for MarionetteHandler {
             }
             if let Some(capabilities) = capabilities_options {
                 resolved_capabilities =
-                    Some(try!(self.create_connection(&msg.session_id, &capabilities)));
+                    Some(self.create_connection(&msg.session_id, &capabilities)?);
             }
         }
 
@@ -456,7 +456,6 @@ impl MarionetteSession {
             | AcceptAlert
             | SendAlertText(_)
             | ElementClick(_)
-            | ElementTap(_)
             | ElementClear(_)
             | ElementSendKeys(_, _)
             | PerformActions(_)
@@ -822,7 +821,6 @@ impl MarionetteCommand {
                 );
                 (Some("WebDriver:ElementSendKeys"), Some(Ok(data)))
             }
-            ElementTap(ref x) => (Some("singleTap"), Some(x.to_marionette())),
             ExecuteAsyncScript(ref x) => (
                 Some("WebDriver:ExecuteAsyncScript"),
                 Some(x.to_marionette()),
@@ -1113,17 +1111,53 @@ impl MarionetteConnection {
             }
         }
 
-        let data = self.handshake()?;
-        self.session.protocol = Some(data.protocol);
-        self.session.application_type = Some(data.application_type);
+        debug!(
+            "Connection established on {}:{}. Waiting for Marionette handshake",
+            DEFAULT_HOST, self.port,
+        );
 
-        debug!("Connected to Marionette on {}:{}", DEFAULT_HOST, self.port);
+        let data = self.handshake()?;
+        self.session.application_type = Some(data.application_type);
+        self.session.protocol = Some(data.protocol);
+
+        debug!("Connected to Marionette");
         Ok(())
     }
 
     fn handshake(&mut self) -> WebDriverResult<MarionetteHandshake> {
-        let resp = self.read_resp()?;
+        let resp = (match self.stream.as_mut().unwrap().read_timeout() {
+            Ok(timeout) => {
+                // If platform supports changing the read timeout of the stream,
+                // use a short one only for the handshake with Marionette.
+                self.stream
+                    .as_mut()
+                    .unwrap()
+                    .set_read_timeout(Some(time::Duration::from_secs(10)))
+                    .ok();
+                let data = self.read_resp();
+                self.stream.as_mut().unwrap().set_read_timeout(timeout).ok();
+
+                data
+            }
+            _ => self.read_resp(),
+        }).or_else(|e| {
+            Err(WebDriverError::new(
+                ErrorStatus::UnknownError,
+                format!("Socket timeout reading Marionette handshake data: {}", e),
+            ))
+        })?;
+
         let data = serde_json::from_str::<MarionetteHandshake>(&resp)?;
+
+        if data.application_type != "gecko" {
+            return Err(WebDriverError::new(
+                ErrorStatus::UnknownError,
+                format!(
+                    "Unrecognized application type {}",
+                    data.application_type
+                ),
+            ));
+        }
 
         if data.protocol != 3 {
             return Err(WebDriverError::new(
@@ -1364,11 +1398,11 @@ impl ToMarionette for GetParameters {
 
 impl ToMarionette for JavascriptCommandParameters {
     fn to_marionette(&self) -> WebDriverResult<Map<String, Value>> {
-        let mut data = serde_json::to_value(self)?.as_object().unwrap().clone();
-        data.insert("newSandbox".to_string(), Value::Bool(false));
-        data.insert("specialPowers".to_string(), Value::Bool(false));
-        data.insert("scriptTimeout".to_string(), Value::Null);
-        Ok(data)
+        Ok(try_opt!(
+            serde_json::to_value(self)?.as_object(),
+            ErrorStatus::UnknownError,
+            "Expected an object"
+        ).clone())
     }
 }
 
@@ -1449,4 +1483,32 @@ impl ToMarionette for WindowRectParameters {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::{MarionetteHandler, MarionetteSettings};
+    use mozprofile::preferences::PrefValue;
+    use mozprofile::profile::Profile;
+
+    // This is not a pretty test, mostly due to the nature of
+    // mozprofile's and MarionetteHandler's APIs, but we have had
+    // several regressions related to marionette.log.level.
+    #[test]
+    fn test_marionette_log_level() {
+        let mut profile = Profile::new(None).unwrap();
+        let handler = MarionetteHandler::new(MarionetteSettings::default());
+        handler.set_prefs(2828, &mut profile, false, vec![]).ok();
+        let user_prefs = profile.user_prefs().unwrap();
+
+        let pref = user_prefs.get("marionette.log.level").unwrap();
+        let value = match pref.value {
+            PrefValue::String(ref s) => s,
+            _ => panic!(),
+        };
+        for (i, ch) in value.chars().enumerate() {
+            if i == 0 {
+                assert!(ch.is_uppercase());
+            } else {
+                assert!(ch.is_lowercase());
+            }
+        }
+    }
+}

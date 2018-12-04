@@ -23,13 +23,14 @@ import time
 
 import mozcrash
 import mozfile
-import results
-import talosconfig
-import utils
+
 from mozlog import get_proxy_logger
 from talos.cmanager import CounterManagement
 from talos.ffsetup import FFSetup
 from talos.talos_process import run_browser
+from talos import utils
+from talos import results
+from talos import talosconfig
 from talos.utils import TalosCrash, TalosError, TalosRegression, run_in_debug_mode
 
 LOG = get_proxy_logger()
@@ -108,6 +109,8 @@ class TTest(object):
                 profile=setup.profile_dir,
                 firefox=browser_config['browser_path']
             )
+        else:
+            setup.env['MOZ_USE_PAGELOADER'] = '1'
 
         # setup global (cross-cycle) responsiveness counters
         global_counters = {}

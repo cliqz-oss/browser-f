@@ -9,16 +9,24 @@ const {
   TAKE_SCREENSHOT_START,
 } = require("../actions/index");
 
-const INITIAL_SCREENSHOT = { isCapturing: false };
+const INITIAL_SCREENSHOT = {
+  isCapturing: false,
+};
 
 const reducers = {
 
   [TAKE_SCREENSHOT_END](screenshot, action) {
-    return Object.assign({}, screenshot, { isCapturing: false });
+    return {
+      ...screenshot,
+      isCapturing: false,
+    };
   },
 
   [TAKE_SCREENSHOT_START](screenshot, action) {
-    return Object.assign({}, screenshot, { isCapturing: true });
+    return {
+      ...screenshot,
+      isCapturing: true,
+    };
   },
 };
 

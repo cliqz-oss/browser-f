@@ -44,12 +44,14 @@ class DebugTargetPane extends PureComponent {
     } = this.props;
 
     return dom.section(
-      {},
+      {
+        className: "js-debug-target-pane",
+      },
       dom.h2(
         {},
         dom.a(
           {
-            className: "debug-target-pane__title" +
+            className: "debug-target-pane__title js-debug-target-pane-title" +
                        (isCollapsed ? " debug-target-pane__title--collapsed" : ""),
             href: "#",
             onClick: e => this.toggleCollapsibility(),

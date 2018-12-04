@@ -13,6 +13,7 @@
 #include "nsPrintfCString.h"
 
 #include <dlfcn.h>
+#include <dbus/dbus-glib-lowlevel.h>
 
 using mozilla::LogLevel;
 static mozilla::LazyLogModule sRemoteLm("DBusRemoteClient");
@@ -43,6 +44,7 @@ DBusRemoteClient::Init()
     return NS_ERROR_FAILURE;
 
   dbus_connection_set_exit_on_disconnect(mConnection, false);
+  dbus_connection_setup_with_g_main(mConnection, nullptr);
 
   return NS_OK;
 }

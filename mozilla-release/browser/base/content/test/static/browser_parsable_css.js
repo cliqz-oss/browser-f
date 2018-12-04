@@ -63,10 +63,6 @@ let whitelist = [
    intermittent: true,
    errorMessage: /Property contained reference to invalid variable.*background/i,
    isFromDevTools: true},
-  {sourceName: /devtools\/skin\/animationinspector\.css$/i,
-   intermittent: true,
-   errorMessage: /Property contained reference to invalid variable.*color/i,
-   isFromDevTools: true},
 ];
 
 if (!Services.prefs.getBoolPref("layout.css.xul-box-display-values.content.enabled")) {
@@ -91,15 +87,15 @@ if (!Services.prefs.getBoolPref("full-screen-api.unprefix.enabled")) {
   });
 }
 
+if (!Services.prefs.getBoolPref("layout.css.scrollbar-width.enabled")) {
+  whitelist.push({
+    sourceName: /(?:res|gre-resources)\/forms\.css$/i,
+    errorMessage: /Unknown property .*\bscrollbar-width\b/i,
+    isFromDevTools: false,
+  });
+}
+
 let propNameWhitelist = [
-  // These are CSS custom properties that we found a definition of but
-  // no reference to.
-  // Bug 1441837
-  {propName: "--in-content-category-text-active",
-   isFromDevTools: false},
-  // Bug 1441929
-  {propName: "--theme-search-overlays-semitransparent",
-   isFromDevTools: true},
   // These custom properties are retrieved directly from CSSOM
   // in videocontrols.xml to get pre-defined style instead of computed
   // dimensions, which is why they are not referenced by CSS.

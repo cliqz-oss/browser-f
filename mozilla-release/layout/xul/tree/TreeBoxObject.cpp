@@ -340,7 +340,7 @@ TreeBoxObject::ScrollToRow(int32_t aRow)
   if (!body) {
     return;
   }
-    
+
   body->ScrollToRow(aRow);
 }
 
@@ -608,14 +608,3 @@ TreeBoxObject::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 
 } // namespace dom
 } // namespace mozilla
-
-// Creation Routine ///////////////////////////////////////////////////////////////////////
-
-using namespace mozilla::dom;
-
-nsresult
-NS_NewTreeBoxObject(nsIBoxObject** aResult)
-{
-  NS_ADDREF(*aResult = new TreeBoxObject());
-  return NS_OK;
-}

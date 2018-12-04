@@ -13,7 +13,6 @@ Services.scriptloader.loadSubScript(
 
 var { DebuggerClient } = require("devtools/shared/client/debugger-client");
 var { DebuggerServer } = require("devtools/server/main");
-var { WebGLFront } = require("devtools/shared/fronts/webgl");
 var { Toolbox } = require("devtools/client/framework/toolbox");
 var { isWebGLSupported } = require("devtools/client/shared/webgl-utils");
 
@@ -83,15 +82,12 @@ function createCanvas() {
 
 function observe(aNotificationName, aOwnsWeak = false) {
   info("Waiting for observer notification: '" + aNotificationName + ".");
-
-  const deferred = defer();
-
-  Services.obs.addObserver(function onNotification(...aArgs) {
-    Services.obs.removeObserver(onNotification, aNotificationName);
-    deferred.resolve.apply(deferred, aArgs);
-  }, aNotificationName, aOwnsWeak);
-
-  return deferred.promise;
+  return new Promise(resolve =>{
+    Services.obs.addObserver(function onNotification(...aArgs) {
+      Services.obs.removeObserver(onNotification, aNotificationName);
+      resolve.apply(deferred, aArgs);
+    }, aNotificationName, aOwnsWeak);
+  });
 }
 
 function isApprox(aFirst, aSecond, aMargin = 1) {
@@ -135,13 +131,14 @@ function navigateInHistory(aTarget, aDirection, aWaitForTargetEvent = "navigate"
 }
 
 function navigate(aTarget, aUrl, aWaitForTargetEvent = "navigate") {
-  executeSoon(() => aTarget.activeTab.navigateTo(aUrl));
+  executeSoon(() => aTarget.activeTab.navigateTo({ url: aUrl }));
   return once(aTarget, aWaitForTargetEvent);
 }
 
-function reload(aTarget, aWaitForTargetEvent = "navigate") {
-  executeSoon(() => aTarget.activeTab.reload());
-  return once(aTarget, aWaitForTargetEvent);
+async function reload(aTarget, aWaitForTargetEvent = "navigate") {
+  const onTargetEvent = once(aTarget, aWaitForTargetEvent);
+  await aTarget.activeTab.reload();
+  return onTargetEvent;
 }
 
 function initBackend(aUrl) {
@@ -152,11 +149,11 @@ function initBackend(aUrl) {
 
   return (async function() {
     const tab = await addTab(aUrl);
-    const target = TargetFactory.forTab(tab);
+    const target = await TargetFactory.forTab(tab);
 
-    await target.makeRemote();
+    await target.attach();
 
-    const front = new WebGLFront(target.client, target.form);
+    const front = target.getFront("webgl");
     return { target, front };
   })();
 }
@@ -166,9 +163,7 @@ function initShaderEditor(aUrl) {
 
   return (async function() {
     const tab = await addTab(aUrl);
-    const target = TargetFactory.forTab(tab);
-
-    await target.makeRemote();
+    const target = await TargetFactory.forTab(tab);
 
     Services.prefs.setBoolPref("devtools.shadereditor.enabled", true);
     const toolbox = await gDevTools.showToolbox(target, "shadereditor");
@@ -182,7 +177,7 @@ function teardown(aPanel) {
 
   return promise.all([
     once(aPanel, "destroyed"),
-    removeTab(aPanel.target.tab)
+    removeTab(aPanel.target.tab),
   ]);
 }
 
@@ -195,19 +190,19 @@ function teardown(aPanel) {
 // programs that should be listened to and waited on, and an optional
 // `onAdd` function that calls with the entire actors array on program link
 function getPrograms(front, count, onAdd) {
-  const actors = [];
-  const deferred = defer();
-  front.on("program-linked", function onLink(actor) {
-    if (actors.length !== count) {
-      actors.push(actor);
-      if (typeof onAdd === "function") {
-        onAdd(actors);
+  return new Promise(resolve => {
+    const actors = [];
+    front.on("program-linked", function onLink(actor) {
+      if (actors.length !== count) {
+        actors.push(actor);
+        if (typeof onAdd === "function") {
+          onAdd(actors);
+        }
       }
-    }
-    if (actors.length === count) {
-      front.off("program-linked", onLink);
-      deferred.resolve(actors);
-    }
+      if (actors.length === count) {
+        front.off("program-linked", onLink);
+        resolve(actors);
+      }
+    });
   });
-  return deferred.promise;
 }

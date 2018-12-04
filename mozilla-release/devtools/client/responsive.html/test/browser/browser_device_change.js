@@ -4,12 +4,9 @@ http://creativecommons.org/publicdomain/zero/1.0/ */
 "use strict";
 
 // Tests changing viewport device (need HTTP load for proper UA testing)
-const TEST_URL = `${URL_ROOT}doc_page_state.html`;
 
+const TEST_URL = `${URL_ROOT}doc_page_state.html`;
 const DEFAULT_DPPX = window.devicePixelRatio;
-const DEFAULT_UA = Cc["@mozilla.org/network/protocol;1?name=http"]
-  .getService(Ci.nsIHttpProtocolHandler)
-  .userAgent;
 
 const Types = require("devtools/client/responsive.html/types");
 
@@ -87,8 +84,10 @@ add_task(async function() {
   reloadOnUAChange(true);
 
   // Wait until the viewport has been added and the device list has been loaded
-  await waitUntilState(store, state => state.viewports.length == 1
-    && state.devices.listState == Types.loadableState.LOADED);
+  await waitUntilState(store, state =>
+    state.viewports.length == 1 &&
+    state.viewports[0].device === "Laptop (1366 x 768)" &&
+    state.devices.listState == Types.loadableState.LOADED);
 
   // Select device with custom UA
   let reloaded = waitForViewportLoad(ui);
@@ -111,17 +110,3 @@ add_task(async function() {
 
   reloadOnUAChange(false);
 });
-
-function testViewportDimensions(ui, w, h) {
-  const viewport = ui.toolWindow.document.querySelector(".viewport-content");
-
-  is(ui.toolWindow.getComputedStyle(viewport).getPropertyValue("width"),
-     `${w}px`, `Viewport should have width of ${w}px`);
-  is(ui.toolWindow.getComputedStyle(viewport).getPropertyValue("height"),
-     `${h}px`, `Viewport should have height of ${h}px`);
-}
-
-async function testDevicePixelRatio(ui, expected) {
-  const dppx = await getViewportDevicePixelRatio(ui);
-  is(dppx, expected, `devicePixelRatio should be set to ${expected}`);
-}

@@ -29,14 +29,14 @@ var spellchecker;
 
 SimpleTest.waitForExplicitFinish();
 SimpleTest.waitForFocus(function() {
-  SpecialPowers.Cu.import(
-    "resource://testing-common/AsyncSpellCheckTestHelper.jsm", window);
+  var onSpellCheck =
+    SpecialPowers.Cu.import(
+      "resource://testing-common/AsyncSpellCheckTestHelper.jsm", null).onSpellCheck;
 
-  var elem = document.getElementById('en-US');
+  var elem = document.getElementById("en-US");
   elem.focus();
 
-  onSpellCheck(elem, function () {
-    var Ci = SpecialPowers.Ci;
+  onSpellCheck(elem, function() {
     var editingSession = SpecialPowers.wrap(window).docShell.editingSession;
     var editor = editingSession.getEditorForWindow(window);
     var selcon = editor.selectionController;
@@ -44,11 +44,8 @@ SimpleTest.waitForFocus(function() {
 
     is(sel.toString(), "missspelled", "one misspelled word expected: missspelled");
 
-    spellchecker = SpecialPowers.Cc['@mozilla.org/editor/editorspellchecker;1']
-                                .createInstance(Ci.nsIEditorSpellCheck);
-    var filterContractId = "@mozilla.org/editor/txtsrvfilter;1";
-    spellchecker.setFilter(SpecialPowers.Cc[filterContractId]
-                                        .createInstance(Ci.nsITextServicesFilter));
+    spellchecker = SpecialPowers.Cu.createSpellChecker();
+    spellchecker.setFilterType(spellchecker.FILTERTYPE_NORMAL);
     spellchecker.InitSpellChecker(editor, false, spellCheckStarted);
   });
 });

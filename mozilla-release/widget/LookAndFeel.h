@@ -19,7 +19,10 @@ struct gfxFontStyle;
 struct LookAndFeelInt
 {
   int32_t id;
-  int32_t value;
+  union {
+    int32_t value;
+    nscolor colorValue;
+  };
 };
 
 namespace mozilla {
@@ -419,6 +422,12 @@ public:
 
      /*
       * A boolean value indicating whether client-side decorations should
+      * have transparent background.
+      */
+     eIntID_GTKCSDTransparentBackground,
+
+     /*
+      * A boolean value indicating whether client-side decorations should
       * contain a minimize button.
       */
      eIntID_GTKCSDMinimizeButton,
@@ -447,7 +456,22 @@ public:
       * 0: no-preference
       * 1: reduce
       */
+
      eIntID_PrefersReducedMotion,
+     /**
+      * Corresponding to PointerCapabilities in ServoTypes.h
+      * 0: None
+      * 1: Coarse
+      * 2: Fine
+      * 4: Hover
+      */
+     eIntID_PrimaryPointerCapabilities,
+     /**
+      * Corresponding to union of PointerCapabilities values in ServoTypes.h
+      * E.g. if there is a mouse and a digitizer, the value will be
+      * 'Coarse | Fine | Hover'.
+      */
+     eIntID_AllPointerCapabilities,
   };
 
   /**

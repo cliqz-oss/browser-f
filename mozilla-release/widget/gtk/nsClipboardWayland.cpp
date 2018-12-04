@@ -29,7 +29,6 @@
 
 #include <gtk/gtk.h>
 #include <poll.h>
-#include <sys/epoll.h>
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
@@ -153,7 +152,7 @@ DataOffer::GetData(wl_display* aDisplay, const char* aMimeType,
 
     GIOChannel *channel = g_io_channel_unix_new(pipe_fd[0]);
     GError* error = nullptr;
-    char* clipboardData;
+    char* clipboardData = nullptr;
 
     g_io_channel_set_encoding(channel, nullptr, &error);
     if (!error) {
@@ -470,13 +469,17 @@ nsRetrievalContextWayland::SetClipboardDataOffer(wl_data_offer *aWaylandDataOffe
     // Delete existing clipboard data offer
     mClipboardOffer = nullptr;
 
-    DataOffer* dataOffer =
-        static_cast<DataOffer*>(g_hash_table_lookup(mActiveOffers,
-                                                    aWaylandDataOffer));
-    NS_ASSERTION(dataOffer, "We're missing clipboard data offer!");
-    if (dataOffer) {
-        g_hash_table_remove(mActiveOffers, aWaylandDataOffer);
-        mClipboardOffer = dataOffer;
+    // null aWaylandDataOffer indicates that our clipboard content
+    // is no longer valid and should be release.
+    if (aWaylandDataOffer != nullptr) {
+        DataOffer* dataOffer =
+            static_cast<DataOffer*>(g_hash_table_lookup(mActiveOffers,
+                                                        aWaylandDataOffer));
+        NS_ASSERTION(dataOffer, "We're missing stored clipboard data offer!");
+        if (dataOffer) {
+            g_hash_table_remove(mActiveOffers, aWaylandDataOffer);
+            mClipboardOffer = dataOffer;
+        }
     }
 }
 

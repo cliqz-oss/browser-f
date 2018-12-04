@@ -141,7 +141,7 @@ class TestFirefoxRefresh(MarionetteTestCase):
           // Expire in 15 minutes:
           let expireTime = Math.floor(Date.now() / 1000) + 15 * 60;
           Services.cookies.add(arguments[0], arguments[1], arguments[2], arguments[3],
-                               true, false, false, expireTime);
+                               true, false, false, expireTime, {}, Ci.nsICookie2.SAMESITE_UNSET);
         """, script_args=(self._cookieHost, self._cookiePath, self._cookieName, self._cookieValue))
 
     def createSession(self):
@@ -316,7 +316,7 @@ class TestFirefoxRefresh(MarionetteTestCase):
     def checkCookie(self):
         cookieInfo = self.runCode("""
           try {
-            let cookieEnum = Services.cookies.getCookiesFromHost(arguments[0]);
+            let cookieEnum = Services.cookies.getCookiesFromHost(arguments[0], {});
             let cookie = null;
             while (cookieEnum.hasMoreElements()) {
               let hostCookie = cookieEnum.getNext();
@@ -577,8 +577,7 @@ class TestFirefoxRefresh(MarionetteTestCase):
                         "Reset profile path should be present")
         self.assertTrue(os.path.isdir(self.desktop_backup_path),
                         "Backup profile path should be present")
-        self.assertTrue(self.profileNameToRemove in self.reset_profile_path,
-                        "Reset profile path should contain profile name to remove")
+        self.assertIn(self.profileNameToRemove, self.reset_profile_path)
 
     def testReset(self):
         self.checkProfile()

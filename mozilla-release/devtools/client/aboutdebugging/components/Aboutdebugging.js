@@ -34,18 +34,18 @@ const panels = [{
   id: "addons",
   name: Strings.GetStringFromName("addons"),
   icon: "chrome://devtools/skin/images/debugging-addons.svg",
-  component: AddonsPanel
+  component: AddonsPanel,
 }, {
 #endif
   id: "tabs",
   name: Strings.GetStringFromName("tabs"),
   icon: "chrome://devtools/skin/images/debugging-tabs.svg",
-  component: TabsPanel
+  component: TabsPanel,
 }, {
   id: "workers",
   name: Strings.GetStringFromName("workers"),
   icon: "chrome://devtools/skin/images/debugging-workers.svg",
-  component: WorkersPanel
+  component: WorkersPanel,
 }];
 
 #if MOZ_UPDATE_CHANNEL != release
@@ -59,7 +59,7 @@ class AboutDebuggingApp extends Component {
     return {
       client: PropTypes.instanceOf(DebuggerClient).isRequired,
       connect: PropTypes.object.isRequired,
-      telemetry: PropTypes.instanceOf(Telemetry).isRequired
+      telemetry: PropTypes.instanceOf(Telemetry).isRequired,
     };
   }
 
@@ -67,7 +67,7 @@ class AboutDebuggingApp extends Component {
     super(props);
 
     this.state = {
-      selectedPanelId: defaultPanelId
+      selectedPanelId: window.location.hash.substr(1) || defaultPanelId,
     };
 
     this.onHashChange = this.onHashChange.bind(this);
@@ -76,18 +76,23 @@ class AboutDebuggingApp extends Component {
 
   componentDidMount() {
     window.addEventListener("hashchange", this.onHashChange);
-    this.onHashChange();
-    this.props.telemetry.toolOpened("aboutdebugging");
+
+    // aboutdebugging is not connected with a toolbox so we pass -1 as the
+    // toolbox session id.
+    this.props.telemetry.toolOpened("aboutdebugging", -1, this);
   }
 
   componentWillUnmount() {
     window.removeEventListener("hashchange", this.onHashChange);
-    this.props.telemetry.toolClosed("aboutdebugging");
+
+    // aboutdebugging is not connected with a toolbox so we pass -1 as the
+    // toolbox session id.
+    this.props.telemetry.toolClosed("aboutdebugging", -1, this);
   }
 
   onHashChange() {
     this.setState({
-      selectedPanelId: window.location.hash.substr(1) || defaultPanelId
+      selectedPanelId: window.location.hash.substr(1) || defaultPanelId,
     });
   }
 

@@ -129,13 +129,16 @@ struct CustomElementData
 
   void SetCustomElementDefinition(CustomElementDefinition* aDefinition);
   CustomElementDefinition* GetCustomElementDefinition();
-  nsAtom* GetCustomElementType();
+  nsAtom* GetCustomElementType() const
+  {
+    return mType;
+  }
 
   void Traverse(nsCycleCollectionTraversalCallback& aCb) const;
   void Unlink();
   size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const;
 
-  nsAtom* GetIs(Element* aElement)
+  nsAtom* GetIs(const Element* aElement) const
   {
     // If mType isn't the same as name atom, this is a customized built-in
     // element, which has 'is' value set.
@@ -416,6 +419,17 @@ private:
 
 public:
   /**
+   * Returns whether there's a definition that is likely to match this type
+   * atom. This is not exact, so should only be used for optimization, but it's
+   * good enough to prove that the chrome code doesn't need an XBL binding.
+   */
+  bool IsLikelyToBeCustomElement(nsAtom* aTypeAtom) const
+  {
+    return mCustomDefinitions.GetWeak(aTypeAtom) ||
+      mElementCreationCallbacks.GetWeak(aTypeAtom);
+  }
+
+  /**
    * Looking up a custom element definition.
    * https://html.spec.whatwg.org/#look-up-a-custom-element-definition
    */
@@ -441,10 +455,7 @@ public:
    * To allow native code to call methods of chrome-implemented custom elements,
    * a helper method may be defined in the custom element called
    * 'getCustomInterfaceCallback'. This method takes an IID and returns an
-   * object which implements an XPCOM interface. If there is no
-   * getCustomInterfaceCallback or the callback doesn't return an object,
-   * QueryInterface is called on aElement to see if this interface is
-   * implemented directly.
+   * object which implements an XPCOM interface.
    *
    * This returns null if aElement is not from a chrome document.
    */

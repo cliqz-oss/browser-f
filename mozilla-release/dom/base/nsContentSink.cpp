@@ -908,6 +908,7 @@ void
 nsContentSink::PrefetchDNS(const nsAString &aHref)
 {
   nsAutoString hostname;
+  bool isHttps = false;
 
   if (StringBeginsWith(aHref, NS_LITERAL_STRING("//")))  {
     hostname = Substring(aHref, 2);
@@ -927,10 +928,11 @@ nsContentSink::PrefetchDNS(const nsAString &aHref)
       uri->GetHost(host);
       CopyUTF8toUTF16(host, hostname);
     }
+    uri->SchemeIs("https", &isHttps);
   }
 
   if (!hostname.IsEmpty() && nsHTMLDNSPrefetch::IsAllowed(mDocument)) {
-    nsHTMLDNSPrefetch::PrefetchLow(hostname,
+    nsHTMLDNSPrefetch::PrefetchLow(hostname, isHttps,
                                    mDocument->NodePrincipal()->OriginAttributesRef());
   }
 }
@@ -1669,6 +1671,6 @@ nsContentSink::NotifyDocElementCreated(nsIDocument* aDoc)
 NS_IMETHODIMP
 nsContentSink::GetName(nsACString& aName)
 {
-  aName.AssignASCII("nsContentSink_timer");
+  aName.AssignLiteral("nsContentSink_timer");
   return NS_OK;
 }

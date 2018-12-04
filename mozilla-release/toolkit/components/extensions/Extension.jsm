@@ -41,10 +41,10 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   AddonSettings: "resource://gre/modules/addons/AddonSettings.jsm",
   AppConstants: "resource://gre/modules/AppConstants.jsm",
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.jsm",
-  ContextualIdentityService: "resource://gre/modules/ContextualIdentityService.jsm",
   ExtensionPermissions: "resource://gre/modules/ExtensionPermissions.jsm",
   ExtensionStorage: "resource://gre/modules/ExtensionStorage.jsm",
   ExtensionStorageIDB: "resource://gre/modules/ExtensionStorageIDB.jsm",
+  ExtensionTelemetry: "resource://gre/modules/ExtensionTelemetry.jsm",
   ExtensionTestCommon: "resource://testing-common/ExtensionTestCommon.jsm",
   FileSource: "resource://gre/modules/L10nRegistry.jsm",
   L10nRegistry: "resource://gre/modules/L10nRegistry.jsm",
@@ -54,7 +54,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   OS: "resource://gre/modules/osfile.jsm",
   PluralForm: "resource://gre/modules/PluralForm.jsm",
   Schemas: "resource://gre/modules/Schemas.jsm",
-  TelemetryStopwatch: "resource://gre/modules/TelemetryStopwatch.jsm",
   XPIProvider: "resource://gre/modules/addons/XPIProvider.jsm",
 });
 
@@ -112,11 +111,9 @@ XPCOMUtils.defineLazyGetter(this, "LocaleData", () => ExtensionCommon.LocaleData
 const {sharedData} = Services.ppmm;
 
 // The userContextID reserved for the extension storage (its purpose is ensuring that the IndexedDB
-// storage used by the browser.storage.local API is not directly accessible from the extension code).
-XPCOMUtils.defineLazyGetter(this, "WEBEXT_STORAGE_USER_CONTEXT_ID", () => {
-  return ContextualIdentityService.getDefaultPrivateIdentity(
-    "userContextIdInternal.webextStorageLocal").userContextId;
-});
+// storage used by the browser.storage.local API is not directly accessible from the extension code,
+// it is defined and reserved as "userContextIdInternal.webextStorageLocal" in ContextualIdentityService.jsm).
+const WEBEXT_STORAGE_USER_CONTEXT_ID = -1 >>> 0;
 
 // The maximum time to wait for extension child shutdown blockers to complete.
 const CHILD_SHUTDOWN_TIMEOUT_MS = 8000;
@@ -862,9 +859,20 @@ class ExtensionData {
   }
 
   hasPermission(perm, includeOptional = false) {
+    // If the permission is a "manifest property" permission, we check if the extension
+    // does have the required property in its manifest.
     let manifest_ = "manifest:";
     if (perm.startsWith(manifest_)) {
-      return this.manifest[perm.substr(manifest_.length)] != null;
+      // Handle nested "manifest property" permission (e.g. as in "manifest:property.nested").
+      let value = this.manifest;
+      for (let prop of perm.substr(manifest_.length).split(".")) {
+        if (!value) {
+          break;
+        }
+        value = value[prop];
+      }
+
+      return value != null;
     }
 
     if (this.permissions.has(perm)) {
@@ -1080,8 +1088,7 @@ class ExtensionData {
       }
       let match = /^[a-z*]+:\/\/([^/]*)\//.exec(permission);
       if (!match) {
-        Cu.reportError(`Unparseable host permission ${permission}`);
-        continue;
+        throw new Error(`Unparseable host permission ${permission}`);
       }
       if (!match[1] || match[1] == "*") {
         allUrls = true;
@@ -1216,7 +1223,7 @@ class BootstrapScope {
   }
 
   update(data, reason) {
-    Management.emit("update", {id: data.id, resourceURI: data.resourceURI});
+    return Management.emit("update", {id: data.id, resourceURI: data.resourceURI});
   }
 
   startup(data, reason) {
@@ -1494,7 +1501,7 @@ class Extension extends ExtensionData {
   }
 
   get manifestCacheKey() {
-    return [this.id, this.version, Services.locale.getAppLocaleAsLangTag()];
+    return [this.id, this.version, Services.locale.appLocaleAsLangTag];
   }
 
   get isPrivileged() {
@@ -1726,7 +1733,7 @@ class Extension extends ExtensionData {
       let locales = await this.promiseLocales();
 
       let matches = Services.locale.negotiateLanguages(
-        Services.locale.getAppLocalesAsLangTags(),
+        Services.locale.appLocalesAsLangTags,
         Array.from(locales.keys()),
         this.defaultLocale);
 
@@ -1799,7 +1806,7 @@ class Extension extends ExtensionData {
 
     this.policy.extension = this;
 
-    TelemetryStopwatch.start("WEBEXT_EXTENSION_STARTUP_MS", this);
+    ExtensionTelemetry.extensionStartup.stopwatchStart(this);
     try {
       this.state = "Startup: Loading manifest";
       await this.loadManifest();
@@ -1837,15 +1844,6 @@ class Extension extends ExtensionData {
         } else if (ExtensionStorageIDB.isMigratedExtension(this)) {
           this.setSharedData("storageIDBBackend", true);
           this.setSharedData("storageIDBPrincipal", ExtensionStorageIDB.getStoragePrincipal(this));
-        } else {
-          // If the extension has to migrate backend, ensure that the data migration
-          // starts once Firefox is idle after the extension has been started.
-          this.once("ready", () => ChromeUtils.idleDispatch(() => {
-            if (this.hasShutdown) {
-              return;
-            }
-            ExtensionStorageIDB.selectBackend({extension: this});
-          }));
         }
       }
 
@@ -1871,7 +1869,7 @@ class Extension extends ExtensionData {
 
       Management.emit("ready", this);
       this.emit("ready");
-      TelemetryStopwatch.finish("WEBEXT_EXTENSION_STARTUP_MS", this);
+      ExtensionTelemetry.extensionStartup.stopwatchFinish(this);
 
       this.state = "Startup: Complete";
     } catch (errors) {

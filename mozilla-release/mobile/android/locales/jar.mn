@@ -30,14 +30,13 @@
   locale/@AB_CD@/browser/aboutLogins.dtd          (%chrome/aboutLogins.dtd)
   locale/@AB_CD@/browser/aboutLogins.properties  (%chrome/aboutLogins.properties)
   locale/@AB_CD@/browser/passwordmgr.properties   (%chrome/passwordmgr.properties)
-#ifndef RELEASE_OR_BETA
+#if MOZ_UPDATE_CHANNEL != release && MOZ_UPDATE_CHANNEL != esr
   locale/@AB_CD@/browser/webcompatReporter.properties (%chrome/webcompatReporter.properties)
 #endif
 
 # overrides for toolkit l10n, also for en-US
 # keep this file list in sync with l10n.toml and filter.py
 relativesrcdir toolkit/locales:
-  locale/@AB_CD@/browser/overrides/aboutAbout.dtd                  (%chrome/global/aboutAbout.dtd)
   locale/@AB_CD@/browser/overrides/aboutReader.properties          (%chrome/global/aboutReader.properties)
   locale/@AB_CD@/browser/overrides/aboutRights.dtd                 (%chrome/global/aboutRights.dtd)
   locale/@AB_CD@/browser/overrides/charsetMenu.properties          (%chrome/global/charsetMenu.properties)
@@ -79,3 +78,5 @@ relativesrcdir toolkit/locales:
 #about:crashes
   crashreporter                                    (%crashreporter/**/*.ftl)
 #endif
+#about:about
+  toolkit                                          (%toolkit/about/*About.ftl)

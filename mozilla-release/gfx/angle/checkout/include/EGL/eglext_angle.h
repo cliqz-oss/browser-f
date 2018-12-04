@@ -82,6 +82,11 @@
 #define EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE 0x3450
 #endif /* EGL_ANGLE_platform_angle_vulkan */
 
+#ifndef EGL_ANGLE_platform_angle_context_virtualization
+#define EGL_ANGLE_platform_angle_context_virtualization 1
+#define EGL_PLATFORM_ANGLE_CONTEXT_VIRTUALIZATION_ANGLE 0x3481
+#endif /* EGL_ANGLE_platform_angle_context_virtualization */
+
 #ifndef EGL_ANGLE_x11_visual
 #define EGL_ANGLE_x11_visual
 #define EGL_X11_VISUAL_ID_ANGLE 0x33A3
@@ -180,6 +185,11 @@ EGLAPI EGLint EGLAPIENTRY eglProgramCacheResizeANGLE(EGLDisplay dpy, EGLint limi
 #define EGL_ANGLE_create_context_extensions_enabled 1
 #define EGL_EXTENSIONS_ENABLED_ANGLE 0x345F
 #endif /* EGL_ANGLE_create_context_extensions_enabled */
+
+#ifndef EGL_MOZ_create_context_provoking_vertex_dont_care
+#define EGL_MOZ_create_context_provoking_vertex_dont_care 1
+#define EGL_CONTEXT_PROVOKING_VERTEX_DONT_CARE_MOZ 0x6000
+#endif /* EGL_MOZ_create_context_provoking_vertex_dont_care */
 
 // clang-format on
 

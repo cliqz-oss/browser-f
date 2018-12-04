@@ -1,11 +1,6 @@
 import os
 
 config = {
-    'default_actions': [
-        'clobber',
-        'build',
-        'update',  # decided by query_is_nightly()
-    ],
     'stage_platform': 'macosx64-noopt-debug',
     'debug_build': True,
     #### 64 bit build specific #####
@@ -24,7 +19,6 @@ config = {
                 '/bin:/usr/sbin:/sbin:/usr/local/bin:/usr/X11/bin',
         ##
     },
-    'mozconfig_variant': 'cross-noopt-debug',
     'artifact_flag_build_variant_in_try': 'cross-debug-artifact',
     #######################
 }

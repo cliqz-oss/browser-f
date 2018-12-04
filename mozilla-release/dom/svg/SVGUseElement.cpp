@@ -20,6 +20,7 @@
 #include "mozilla/URLExtraData.h"
 #include "SVGObserverUtils.h"
 #include "nsSVGUseFrame.h"
+#include "mozilla/net/ReferrerPolicy.h"
 
 NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(Use)
 
@@ -37,16 +38,16 @@ SVGUseElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 
 nsSVGElement::LengthInfo SVGUseElement::sLengthInfo[4] =
 {
-  { &nsGkAtoms::x, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::X },
-  { &nsGkAtoms::y, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::Y },
-  { &nsGkAtoms::width, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::X },
-  { &nsGkAtoms::height, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::Y },
+  { nsGkAtoms::x, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::X },
+  { nsGkAtoms::y, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::Y },
+  { nsGkAtoms::width, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::X },
+  { nsGkAtoms::height, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::Y },
 };
 
 nsSVGElement::StringInfo SVGUseElement::sStringInfo[2] =
 {
-  { &nsGkAtoms::href, kNameSpaceID_None, true },
-  { &nsGkAtoms::href, kNameSpaceID_XLink, true }
+  { nsGkAtoms::href, kNameSpaceID_None, true },
+  { nsGkAtoms::href, kNameSpaceID_XLink, true }
 };
 
 //----------------------------------------------------------------------
@@ -73,8 +74,8 @@ NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(SVGUseElement,
 //----------------------------------------------------------------------
 // Implementation
 
-SVGUseElement::SVGUseElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-  : SVGUseElementBase(aNodeInfo)
+SVGUseElement::SVGUseElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
+  : SVGUseElementBase(std::move(aNodeInfo))
   , mReferencedElementTracker(this)
 {
 }
@@ -91,12 +92,63 @@ SVGUseElement::~SVGUseElement()
 //----------------------------------------------------------------------
 // nsINode methods
 
+void
+SVGUseElement::ProcessAttributeChange(int32_t aNamespaceID, nsAtom* aAttribute)
+{
+  if (aNamespaceID == kNameSpaceID_None) {
+    if (aAttribute == nsGkAtoms::x || aAttribute == nsGkAtoms::y) {
+      if (auto* frame = GetFrame()) {
+        frame->PositionAttributeChanged();
+      }
+    } else if (aAttribute == nsGkAtoms::width ||
+               aAttribute == nsGkAtoms::height) {
+      const bool hadValidDimensions = HasValidDimensions();
+      const bool isUsed = OurWidthAndHeightAreUsed();
+      if (isUsed) {
+        SyncWidthOrHeight(aAttribute);
+      }
+
+      if (auto* frame = GetFrame()) {
+        frame->DimensionAttributeChanged(hadValidDimensions, isUsed);
+      }
+    }
+  }
+
+  if ((aNamespaceID == kNameSpaceID_XLink ||
+       aNamespaceID == kNameSpaceID_None) &&
+      aAttribute == nsGkAtoms::href) {
+    // We're changing our nature, clear out the clone information.
+    if (auto* frame = GetFrame()) {
+      frame->HrefChanged();
+    }
+    mOriginal = nullptr;
+    UnlinkSource();
+    TriggerReclone();
+  }
+}
+
+nsresult
+SVGUseElement::AfterSetAttr(int32_t aNamespaceID,
+                            nsAtom* aAttribute,
+                            const nsAttrValue* aValue,
+                            const nsAttrValue* aOldValue,
+                            nsIPrincipal* aSubjectPrincipal,
+                            bool aNotify)
+{
+  ProcessAttributeChange(aNamespaceID, aAttribute);
+  return SVGUseElementBase::AfterSetAttr(aNamespaceID,
+                                         aAttribute,
+                                         aValue,
+                                         aOldValue,
+                                         aSubjectPrincipal,
+                                         aNotify);
+}
+
 nsresult
 SVGUseElement::Clone(dom::NodeInfo* aNodeInfo, nsINode** aResult) const
 {
   *aResult = nullptr;
-  already_AddRefed<mozilla::dom::NodeInfo> ni = RefPtr<mozilla::dom::NodeInfo>(aNodeInfo).forget();
-  SVGUseElement *it = new SVGUseElement(ni);
+  SVGUseElement *it = new SVGUseElement(do_AddRef(aNodeInfo));
 
   nsCOMPtr<nsINode> kungFuDeathGrip(it);
   nsresult rv1 = it->Init();
@@ -179,7 +231,7 @@ SVGUseElement::CharacterDataChanged(nsIContent* aContent,
 
 void
 SVGUseElement::AttributeChanged(Element* aElement,
-                                int32_t aNameSpaceID,
+                                int32_t aNamespaceID,
                                 nsAtom* aAttribute,
                                 int32_t aModType,
                                 const nsAttrValue* aOldValue)
@@ -326,10 +378,12 @@ SVGUseElement::UpdateShadowTree()
       newSVGElement->SetLength(nsGkAtoms::height, mLengthAttributes[ATTR_HEIGHT]);
   }
 
-  // Store the base URI
+  // The specs do not say which referrer policy we should use, pass RP_Unset for
+  // now
   mContentURLData = new URLExtraData(baseURI.forget(),
                                      do_AddRef(OwnerDoc()->GetDocumentURI()),
-                                     do_AddRef(NodePrincipal()));
+                                     do_AddRef(NodePrincipal()),
+                                     mozilla::net::RP_Unset);
 
   targetElement->AddMutationObserver(this);
 }
@@ -375,7 +429,7 @@ SVGUseElement::SyncWidthOrHeight(nsAtom* aName)
   }
 
   auto* target = nsSVGElement::FromNode(GetClonedChild(*this));
-  uint32_t index = *sLengthInfo[ATTR_WIDTH].mName == aName ? ATTR_WIDTH : ATTR_HEIGHT;
+  uint32_t index = sLengthInfo[ATTR_WIDTH].mName == aName ? ATTR_WIDTH : ATTR_HEIGHT;
 
   if (mLengthAttributes[index].IsExplicitlySet()) {
     target->SetLength(aName, mLengthAttributes[index]);
@@ -419,7 +473,10 @@ SVGUseElement::LookupHref()
   nsCOMPtr<nsIURI> targetURI;
   nsContentUtils::NewURIWithDocumentCharset(getter_AddRefs(targetURI), href,
                                             GetComposedDoc(), baseURI);
-  mReferencedElementTracker.Reset(this, targetURI);
+  // Bug 1415044 to investigate which referrer we should use
+  mReferencedElementTracker.Reset(this, targetURI,
+                                  OwnerDoc()->GetDocumentURI(),
+                                  OwnerDoc()->GetReferrerPolicy());
 }
 
 void
@@ -506,7 +563,12 @@ nsSVGUseFrame*
 SVGUseElement::GetFrame() const
 {
   nsIFrame* frame = GetPrimaryFrame();
-  MOZ_ASSERT_IF(frame, frame->IsSVGUseFrame());
+  // We might be a plain nsSVGContainerFrame if we didn't pass the conditional
+  // processing checks.
+  if (!frame || !frame->IsSVGUseFrame()) {
+    MOZ_ASSERT_IF(frame, frame->Type() == LayoutFrameType::None);
+    return nullptr;
+  }
   return static_cast<nsSVGUseFrame*>(frame);
 }
 

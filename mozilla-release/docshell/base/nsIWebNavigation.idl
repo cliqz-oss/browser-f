@@ -250,7 +250,7 @@ interface nsIWebNavigation : nsISupports
    *        aReferrer is also null docShell peforms a load using the
    *        SystemPrincipal as the triggeringPrincipal.
    */
-  void loadURI(in wstring                  aURI,
+  void loadURI(in AString                  aURI,
                in unsigned long            aLoadFlags,
                in nsIURI                   aReferrer,
                in nsIInputStream           aPostData,
@@ -302,6 +302,7 @@ interface nsIWebNavigation : nsISupports
    *        tries to create a codeBasePrincipal from aReferrer if not null. If
    *        aReferrer is also null docShell peforms a load using the
    *        SystemPrincipal as the triggeringPrincipal.
+<<<<<<< HEAD
    * @param aEnsurePrivate
    *        Set whether to switch into private mode before loading.
    *        TODO: Remove this argument. Should not be necessary after
@@ -316,6 +317,27 @@ interface nsIWebNavigation : nsISupports
                           in nsIURI         aBaseURI,
                           in nsIPrincipal   aTriggeringPrincipal,
                           in boolean        aEnsurePrivate);
+||||||| merged common ancestors
+   */
+  void loadURIWithOptions(in wstring                  aURI,
+                          in unsigned long            aLoadFlags,
+                          in nsIURI                   aReferrer,
+                          in unsigned long            aReferrerPolicy,
+                          in nsIInputStream           aPostData,
+                          in nsIInputStream           aHeaders,
+                          in nsIURI                   aBaseURI,
+                          [optional] in nsIPrincipal  aTriggeringPrincipal);
+=======
+   */
+  void loadURIWithOptions(in AString                  aURI,
+                          in unsigned long            aLoadFlags,
+                          in nsIURI                   aReferrer,
+                          in unsigned long            aReferrerPolicy,
+                          in nsIInputStream           aPostData,
+                          in nsIInputStream           aHeaders,
+                          in nsIURI                   aBaseURI,
+                          [optional] in nsIPrincipal  aTriggeringPrincipal);
+>>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
 
   /**
    * Tells the Object to reload the current page.  There may be cases where the

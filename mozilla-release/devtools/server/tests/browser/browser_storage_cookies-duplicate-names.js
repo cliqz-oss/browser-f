@@ -7,7 +7,6 @@
 // Test that the storage panel is able to display multiple cookies with the same
 // name (and different paths).
 
-const {StorageFront} = require("devtools/shared/fronts/storage");
 /* import-globals-from storage-helpers.js */
 Services.scriptloader.loadSubScript("chrome://mochitests/content/browser/devtools/server/tests/browser/storage-helpers.js", this);
 
@@ -19,7 +18,7 @@ const TESTDATA = {
       expires: 0,
       path: "/",
       host: "test1.example.org",
-      isDomain: false,
+      hostOnly: true,
       isSecure: false,
     },
     {
@@ -28,7 +27,7 @@ const TESTDATA = {
       expires: 0,
       path: "/path2/",
       host: "test1.example.org",
-      isDomain: false,
+      hostOnly: true,
       isSecure: false,
     },
     {
@@ -37,19 +36,16 @@ const TESTDATA = {
       expires: 0,
       path: "/path3/",
       host: "test1.example.org",
-      isDomain: false,
+      hostOnly: true,
       isSecure: false,
-    }
-  ]
+    },
+  ],
 };
 
 add_task(async function() {
-  await openTabAndSetupStorage(MAIN_DOMAIN + "storage-cookies-same-name.html");
+  const { target, front } =
+    await openTabAndSetupStorage(MAIN_DOMAIN + "storage-cookies-same-name.html");
 
-  initDebuggerServer();
-  const client = new DebuggerClient(DebuggerServer.connectPipe());
-  const form = await connectDebuggerClient(client);
-  const front = StorageFront(client, form);
   const data = await front.listStores();
 
   ok(data.cookies, "Cookies storage actor is present");
@@ -59,7 +55,7 @@ add_task(async function() {
 
   // Forcing GC/CC to get rid of docshells and windows created by this test.
   forceCollections();
-  await client.close();
+  await target.destroy();
   forceCollections();
   DebuggerServer.destroy();
   forceCollections();
@@ -89,7 +85,7 @@ var testCookiesObjects = async function(index, hosts, cookiesActor) {
           is(item.path, toMatch.path, "The path matches.");
           is(item.host, toMatch.host, "The host matches.");
           is(item.isSecure, toMatch.isSecure, "The isSecure value matches.");
-          is(item.isDomain, toMatch.isDomain, "The isDomain value matches.");
+          is(item.hostOnly, toMatch.hostOnly, "The hostOnly value matches.");
           break;
         }
       }

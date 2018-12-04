@@ -17,32 +17,32 @@ add_task(async function() {
   const { Chart } = windowRequire("devtools/client/shared/widgets/Chart");
 
   const wait = waitForNetworkEvents(monitor, 1);
-  tab.linkedBrowser.loadURI(SIMPLE_URL);
+  BrowserTestUtils.loadURI(tab.linkedBrowser, SIMPLE_URL);
   await wait;
 
   const chart = Chart.PieTable(document, {
     title: "Table title",
     data: [{
       size: 1,
-      label: 11.1
+      label: 11.1,
     }, {
       size: 2,
-      label: 12.2
+      label: 12.2,
     }, {
       size: 3,
-      label: 13.3
+      label: 13.3,
     }],
     strings: {
-      label2: (value, index) => value + ["foo", "bar", "baz"][index]
+      label2: (value, index) => value + ["foo", "bar", "baz"][index],
     },
     totals: {
       size: value => "Hello " + L10N.numberWithDecimals(value, 2),
-      label: value => "World " + L10N.numberWithDecimals(value, 2)
+      label: value => "World " + L10N.numberWithDecimals(value, 2),
     },
     header: {
       label1: "",
-      label2: ""
-    }
+      label2: "",
+    },
   });
 
   ok(chart.pie, "The pie chart proxy is accessible.");

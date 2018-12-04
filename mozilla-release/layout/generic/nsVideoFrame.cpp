@@ -12,6 +12,7 @@
 #include "nsGkAtoms.h"
 
 #include "mozilla/dom/HTMLVideoElement.h"
+#include "mozilla/dom/ShadowRoot.h"
 #include "mozilla/layers/WebRenderLayerManager.h"
 #include "nsDisplayList.h"
 #include "nsGenericHTMLElement.h"
@@ -19,6 +20,7 @@
 #include "nsContentCreatorFunctions.h"
 #include "nsBoxLayoutState.h"
 #include "nsBoxFrame.h"
+#include "nsIContentInlines.h"
 #include "nsImageFrame.h"
 #include "nsIImageLoadingContent.h"
 #include "nsContentUtils.h"
@@ -685,7 +687,7 @@ nsVideoFrame::ComputeSize(gfxContext *aRenderingContext,
 nscoord nsVideoFrame::GetMinISize(gfxContext *aRenderingContext)
 {
   nscoord result;
-  DISPLAY_MIN_WIDTH(this, result);
+  DISPLAY_MIN_INLINE_SIZE(this, result);
 
   if (HasVideoElement()) {
     nsSize size = GetVideoIntrinsicSize(aRenderingContext);
@@ -709,7 +711,7 @@ nscoord nsVideoFrame::GetMinISize(gfxContext *aRenderingContext)
 nscoord nsVideoFrame::GetPrefISize(gfxContext *aRenderingContext)
 {
   nscoord result;
-  DISPLAY_PREF_WIDTH(this, result);
+  DISPLAY_PREF_INLINE_SIZE(this, result);
 
   if (HasVideoElement()) {
     nsSize size = GetVideoIntrinsicSize(aRenderingContext);

@@ -18,7 +18,6 @@ Device.prototype = {
   type: "adb",
 
   shell: ADB.shell.bind(ADB),
-  forwardPort: ADB.forwardPort.bind(ADB),
 
   getModel() {
     if (this._modelPromise) {
@@ -27,7 +26,7 @@ Device.prototype = {
     this._modelPromise = this.shell("getprop ro.product.model")
                              .then(model => model.trim());
     return this._modelPromise;
-  }
+  },
   // push, pull were removed in Bug 1481691.
 };
 

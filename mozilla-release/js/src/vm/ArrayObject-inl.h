@@ -13,6 +13,8 @@
 #include "vm/StringType.h"
 
 #include "vm/JSObject-inl.h"
+#include "vm/ObjectGroup-inl.h"
+#include "vm/ObjectOperations-inl.h" // js::GetElement
 #include "vm/TypeInference-inl.h"
 
 namespace js {
@@ -50,15 +52,17 @@ ArrayObject::createArrayInternal(JSContext* cx, gc::AllocKind kind, gc::InitialH
 
     size_t nDynamicSlots = dynamicSlotsCount(0, shape->slotSpan(), clasp);
     JSObject* obj = js::Allocate<JSObject>(cx, kind, nDynamicSlots, heap, clasp);
-    if (!obj)
+    if (!obj) {
         return nullptr;
+    }
 
     ArrayObject* aobj = static_cast<ArrayObject*>(obj);
     aobj->initGroup(group);
     aobj->initShape(shape);
     // NOTE: Dynamic slots are created internally by Allocate<JSObject>.
-    if (!nDynamicSlots)
+    if (!nDynamicSlots) {
         aobj->initSlots(nullptr);
+    }
 
     MOZ_ASSERT(clasp->shouldDelayMetadataBuilder());
     cx->realm()->setObjectPendingMetadata(cx, aobj);
@@ -70,8 +74,9 @@ ArrayObject::createArrayInternal(JSContext* cx, gc::AllocKind kind, gc::InitialH
 ArrayObject::finishCreateArray(ArrayObject* obj, HandleShape shape, AutoSetNewObjectMetadata& metadata)
 {
     size_t span = shape->slotSpan();
-    if (span)
+    if (span) {
         obj->initializeSlotRange(0, span);
+    }
 
     gc::gcTracer.traceCreateObject(obj);
 
@@ -84,8 +89,9 @@ ArrayObject::createArray(JSContext* cx, gc::AllocKind kind, gc::InitialHeap heap
                          uint32_t length, AutoSetNewObjectMetadata& metadata)
 {
     ArrayObject* obj = createArrayInternal(cx, kind, heap, shape, group, metadata);
-    if (!obj)
+    if (!obj) {
         return nullptr;
+    }
 
     uint32_t capacity = gc::GetGCKindSlots(kind) - ObjectElements::VALUES_PER_HEADER;
 
@@ -111,8 +117,9 @@ ArrayObject::createCopyOnWriteArray(JSContext* cx, gc::InitialHeap heap,
     RootedShape shape(cx, sharedElementsOwner->lastProperty());
     RootedObjectGroup group(cx, sharedElementsOwner->group());
     ArrayObject* obj = createArrayInternal(cx, kind, heap, shape, group, metadata);
-    if (!obj)
+    if (!obj) {
         return nullptr;
+    }
 
     obj->elements_ = sharedElementsOwner->getDenseElementsAllowCopyOnWrite();
 

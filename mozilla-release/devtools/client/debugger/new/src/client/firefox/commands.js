@@ -9,8 +9,6 @@ var _breakpoint = require("../../utils/breakpoint/index");
 
 var _create = require("./create");
 
-var _frontsDevice = require("devtools/shared/fronts/device");
-
 var _devtoolsServices = require("Services");
 
 var _devtoolsServices2 = _interopRequireDefault(_devtoolsServices);
@@ -35,6 +33,18 @@ function setupCommands(dependencies) {
   return {
     bpClients
   };
+}
+
+function createObjectClient(grip) {
+  return debuggerClient.createObjectClient(grip);
+}
+
+function releaseActor(actor) {
+  if (!actor) {
+    return;
+  }
+
+  return debuggerClient.release(actor);
 }
 
 function sendPacket(packet, callback = r => r) {
@@ -237,7 +247,7 @@ function debuggeeCommand(script) {
 }
 
 function navigate(url) {
-  return tabTarget.activeTab.navigateTo(url);
+  return tabTarget.activeTab.navigateTo({ url });
 }
 
 function reload() {
@@ -344,7 +354,12 @@ function pauseGrip(func) {
 async function fetchSources() {
   const {
     sources
-  } = await threadClient.getSources();
+  } = await threadClient.getSources(); // NOTE: this happens when we fetch sources and then immediately navigate
+
+  if (!sources) {
+    return;
+  }
+
   return sources.map(source => (0, _create.createSource)(source, {
     supportsWasm
   }));
@@ -403,6 +418,8 @@ async function fetchWorkers() {
 const clientCommands = {
   autocomplete,
   blackBox,
+  createObjectClient,
+  releaseActor,
   interrupt,
   eventListeners,
   pauseGrip,

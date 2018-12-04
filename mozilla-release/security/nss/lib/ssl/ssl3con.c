@@ -656,7 +656,7 @@ ssl_LookupCipherSuiteCfgMutable(ssl3CipherSuite suite,
     return NULL;
 }
 
-const static ssl3CipherSuiteCfg *
+const ssl3CipherSuiteCfg *
 ssl_LookupCipherSuiteCfg(ssl3CipherSuite suite, const ssl3CipherSuiteCfg *suites)
 {
     return ssl_LookupCipherSuiteCfgMutable(suite,
@@ -854,9 +854,9 @@ ssl3_config_match_init(sslSocket *ss)
 /* Return PR_TRUE if suite is usable.  This if the suite is permitted by policy,
  * enabled, has a certificate (as needed), has a viable key agreement method, is
  * usable with the negotiated TLS version, and is otherwise usable. */
-static PRBool
-config_match(const ssl3CipherSuiteCfg *suite, PRUint8 policy,
-             const SSLVersionRange *vrange, const sslSocket *ss)
+PRBool
+ssl3_config_match(const ssl3CipherSuiteCfg *suite, PRUint8 policy,
+                  const SSLVersionRange *vrange, const sslSocket *ss)
 {
     const ssl3CipherSuiteDef *cipher_def;
     const ssl3KEADef *kea_def;
@@ -899,7 +899,7 @@ count_cipher_suites(sslSocket *ss, PRUint8 policy)
         return 0;
     }
     for (i = 0; i < ssl_V3_SUITES_IMPLEMENTED; i++) {
-        if (config_match(&ss->cipherSuites[i], policy, &ss->vrange, ss))
+        if (ssl3_config_match(&ss->cipherSuites[i], policy, &ss->vrange, ss))
             count++;
     }
     if (count == 0) {
@@ -4798,7 +4798,7 @@ ssl3_SendClientHello(sslSocket *ss, sslClientHelloType type)
         suite = ssl_LookupCipherSuiteCfg(sid->u.ssl3.cipherSuite,
                                          ss->cipherSuites);
         PORT_Assert(suite);
-        if (!suite || !config_match(suite, ss->ssl3.policy, &ss->vrange, ss)) {
+        if (!suite || !ssl3_config_match(suite, ss->ssl3.policy, &ss->vrange, ss)) {
             sidOK = PR_FALSE;
         }
 
@@ -4946,6 +4946,14 @@ ssl3_SendClientHello(sslSocket *ss, sslClientHelloType type)
         PR_RWLock_Rlock(sid->u.ssl3.lock);
     }
 
+    /* Generate a new random if this is the first attempt. */
+    if (type == client_hello_initial) {
+        rv = ssl3_GetNewRandom(ss->ssl3.hs.client_random);
+        if (rv != SECSuccess) {
+            goto loser; /* err set by GetNewRandom. */
+        }
+    }
+
     if (ss->vrange.max >= SSL_LIBRARY_VERSION_TLS_1_3 &&
         type == client_hello_initial) {
         rv = tls13_SetupClientHello(ss);
@@ -4953,6 +4961,7 @@ ssl3_SendClientHello(sslSocket *ss, sslClientHelloType type)
             goto loser;
         }
     }
+
     if (isTLS || (ss->firstHsDone && ss->peerRequestedProtection)) {
         rv = ssl_ConstructExtensions(ss, &extensionBuf, ssl_hs_client_hello);
         if (rv != SECSuccess) {
@@ -5024,13 +5033,6 @@ ssl3_SendClientHello(sslSocket *ss, sslClientHelloType type)
         goto loser; /* err set by ssl3_AppendHandshake* */
     }
 
-    /* Generate a new random if this is the first attempt. */
-    if (type == client_hello_initial) {
-        rv = ssl3_GetNewRandom(ss->ssl3.hs.client_random);
-        if (rv != SECSuccess) {
-            goto loser; /* err set by GetNewRandom. */
-        }
-    }
     rv = ssl3_AppendHandshake(ss, ss->ssl3.hs.client_random,
                               SSL3_RANDOM_LENGTH);
     if (rv != SECSuccess) {
@@ -5085,7 +5087,7 @@ ssl3_SendClientHello(sslSocket *ss, sslClientHelloType type)
     }
     for (i = 0; i < ssl_V3_SUITES_IMPLEMENTED; i++) {
         ssl3CipherSuiteCfg *suite = &ss->cipherSuites[i];
-        if (config_match(suite, ss->ssl3.policy, &ss->vrange, ss)) {
+        if (ssl3_config_match(suite, ss->ssl3.policy, &ss->vrange, ss)) {
             actual_count++;
             if (actual_count > num_suites) {
                 /* set error card removal/insertion error */
@@ -6326,7 +6328,7 @@ ssl_ClientSetCipherSuite(sslSocket *ss, SSL3ProtocolVersion version,
         ssl3CipherSuiteCfg *suiteCfg = &ss->cipherSuites[i];
         if (suite == suiteCfg->cipher_suite) {
             SSLVersionRange vrange = { version, version };
-            if (!config_match(suiteCfg, ss->ssl3.policy, &vrange, ss)) {
+            if (!ssl3_config_match(suiteCfg, ss->ssl3.policy, &vrange, ss)) {
                 /* config_match already checks whether the cipher suite is
                  * acceptable for the version, but the check is repeated here
                  * in order to give a more precise error code. */
@@ -6386,15 +6388,18 @@ ssl_CheckServerSessionIdCorrectness(sslSocket *ss, SECItem *sidBytes)
 
     /* TLS 1.2: Session ID shouldn't match if we sent a fake. */
     if (ss->version < SSL_LIBRARY_VERSION_TLS_1_3) {
-        return !sentFakeSid || !sidMatch;
+        if (sentFakeSid) {
+            return !sidMatch;
+        }
+        return PR_TRUE;
     }
 
     /* TLS 1.3: We sent a session ID.  The server's should match. */
-    if (sentRealSid || sentFakeSid) {
+    if (!IS_DTLS(ss) && (sentRealSid || sentFakeSid)) {
         return sidMatch;
     }
 
-    /* TLS 1.3: The server shouldn't send a session ID. */
+    /* TLS 1.3 (no SID)/DTLS 1.3: The server shouldn't send a session ID. */
     return sidBytes->len == 0;
 }
 
@@ -6558,9 +6563,20 @@ ssl3_HandleServerHello(sslSocket *ss, PRUint8 *b, PRUint32 length)
         goto alert_loser;
     }
 
-    /* The server didn't pick 1.3 although we either received a
-     * HelloRetryRequest, or we prepared to send early app data. */
+    /* There are three situations in which the server must pick
+     * TLS 1.3.
+     *
+     * 1. We offered ESNI.
+     * 2. We received HRR
+     * 3. We sent early app data.
+     *
+     */
     if (ss->version < SSL_LIBRARY_VERSION_TLS_1_3) {
+        if (ss->xtnData.esniPrivateKey) {
+            desc = protocol_version;
+            errCode = SSL_ERROR_UNSUPPORTED_VERSION;
+            goto alert_loser;
+        }
         if (isHelloRetry || ss->ssl3.hs.helloRetry) {
             /* SSL3_SendAlert() will uncache the SID. */
             desc = illegal_parameter;
@@ -7855,6 +7871,30 @@ ssl3_KEASupportsTickets(const ssl3KEADef *kea_def)
     return PR_TRUE;
 }
 
+SECStatus
+ssl3_NegotiateCipherSuiteInner(sslSocket *ss, const SECItem *suites,
+                               PRUint16 version, PRUint16 *suitep)
+{
+    unsigned int j;
+    unsigned int i;
+
+    for (j = 0; j < ssl_V3_SUITES_IMPLEMENTED; j++) {
+        ssl3CipherSuiteCfg *suite = &ss->cipherSuites[j];
+        SSLVersionRange vrange = { version, version };
+        if (!ssl3_config_match(suite, ss->ssl3.policy, &vrange, ss)) {
+            continue;
+        }
+        for (i = 0; i + 1 < suites->len; i += 2) {
+            PRUint16 suite_i = (suites->data[i] << 8) | suites->data[i + 1];
+            if (suite_i == suite->cipher_suite) {
+                *suitep = suite_i;
+                return SECSuccess;
+            }
+        }
+    }
+    return SECFailure;
+}
+
 /* Select a cipher suite.
 **
 ** NOTE: This suite selection algorithm should be the same as the one in
@@ -7873,24 +7913,16 @@ SECStatus
 ssl3_NegotiateCipherSuite(sslSocket *ss, const SECItem *suites,
                           PRBool initHashes)
 {
-    unsigned int j;
-    unsigned int i;
+    PRUint16 selected;
+    SECStatus rv;
 
-    for (j = 0; j < ssl_V3_SUITES_IMPLEMENTED; j++) {
-        ssl3CipherSuiteCfg *suite = &ss->cipherSuites[j];
-        SSLVersionRange vrange = { ss->version, ss->version };
-        if (!config_match(suite, ss->ssl3.policy, &vrange, ss)) {
-            continue;
-        }
-        for (i = 0; i + 1 < suites->len; i += 2) {
-            PRUint16 suite_i = (suites->data[i] << 8) | suites->data[i + 1];
-            if (suite_i == suite->cipher_suite) {
-                ss->ssl3.hs.cipher_suite = suite_i;
-                return ssl3_SetupCipherSuite(ss, initHashes);
-            }
-        }
+    rv = ssl3_NegotiateCipherSuiteInner(ss, suites, ss->version, &selected);
+    if (rv != SECSuccess) {
+        return SECFailure;
     }
-    return SECFailure;
+
+    ss->ssl3.hs.cipher_suite = selected;
+    return ssl3_SetupCipherSuite(ss, initHashes);
 }
 
 /*
@@ -8022,9 +8054,12 @@ ssl3_ServerCallSNICallback(sslSocket *ss)
                 }
                 /* Need to tell the client that application has picked
                  * the name from the offered list and reconfigured the socket.
+                 * Don't do this if we negotiated ESNI.
                  */
-                ssl3_RegisterExtensionSender(ss, &ss->xtnData, ssl_server_name_xtn,
-                                             ssl_SendEmptyExtension);
+                if (!ssl3_ExtensionNegotiated(ss, ssl_tls13_encrypted_sni_xtn)) {
+                    ssl3_RegisterExtensionSender(ss, &ss->xtnData, ssl_server_name_xtn,
+                                                 ssl_SendEmptyExtension);
+                }
             } else {
                 /* Callback returned index outside of the boundary. */
                 PORT_Assert((unsigned int)ret < ss->xtnData.sniNameArrSize);
@@ -8628,7 +8663,7 @@ ssl3_HandleClientHelloPart2(sslSocket *ss,
              * The product policy won't change during the process lifetime.
              * Implemented ("isPresent") shouldn't change for servers.
              */
-            if (!config_match(suite, ss->ssl3.policy, &vrange, ss))
+            if (!ssl3_config_match(suite, ss->ssl3.policy, &vrange, ss))
                 break;
 #else
             if (!suite->enabled)
@@ -9010,7 +9045,7 @@ ssl3_HandleV2ClientHello(sslSocket *ss, unsigned char *buffer, unsigned int leng
     for (j = 0; j < ssl_V3_SUITES_IMPLEMENTED; j++) {
         ssl3CipherSuiteCfg *suite = &ss->cipherSuites[j];
         SSLVersionRange vrange = { ss->version, ss->version };
-        if (!config_match(suite, ss->ssl3.policy, &vrange, ss)) {
+        if (!ssl3_config_match(suite, ss->ssl3.policy, &vrange, ss)) {
             continue;
         }
         for (i = 0; i + 2 < suite_length; i += 3) {
@@ -9741,6 +9776,23 @@ ssl3_GenerateRSAPMS(sslSocket *ss, ssl3CipherSpec *spec,
     return pms;
 }
 
+static void
+ssl3_CSwapPK11SymKey(PK11SymKey **x, PK11SymKey **y, PRBool c)
+{
+    uintptr_t mask = (uintptr_t)c;
+    unsigned int i;
+    for (i = 1; i < sizeof(uintptr_t) * 8; i <<= 1) {
+        mask |= mask << i;
+    }
+    uintptr_t x_ptr = (uintptr_t)*x;
+    uintptr_t y_ptr = (uintptr_t)*y;
+    uintptr_t tmp = (x_ptr ^ y_ptr) & mask;
+    x_ptr = x_ptr ^ tmp;
+    y_ptr = y_ptr ^ tmp;
+    *x = (PK11SymKey *)x_ptr;
+    *y = (PK11SymKey *)y_ptr;
+}
+
 /* Note: The Bleichenbacher attack on PKCS#1 necessitates that we NEVER
  * return any indication of failure of the Client Key Exchange message,
  * where that failure is caused by the content of the client's message.
@@ -9761,9 +9813,9 @@ ssl3_HandleRSAClientKeyExchange(sslSocket *ss,
 {
     SECStatus rv;
     SECItem enc_pms;
-    PK11SymKey *tmpPms[2] = { NULL, NULL };
-    PK11SlotInfo *slot;
-    int useFauxPms = 0;
+    PK11SymKey *pms = NULL;
+    PK11SymKey *fauxPms = NULL;
+    PK11SlotInfo *slot = NULL;
 
     PORT_Assert(ss->opt.noLocks || ssl_HaveRecvBufLock(ss));
     PORT_Assert(ss->opt.noLocks || ssl_HaveSSL3HandshakeLock(ss));
@@ -9783,11 +9835,6 @@ ssl3_HandleRSAClientKeyExchange(sslSocket *ss,
             enc_pms.len = kLen;
         }
     }
-
-#define currentPms tmpPms[!useFauxPms]
-#define unusedPms tmpPms[useFauxPms]
-#define realPms tmpPms[1]
-#define fauxPms tmpPms[0]
 
     /*
      * Get as close to algorithm 2 from RFC 5246; Section 7.4.7.1
@@ -9843,39 +9890,32 @@ ssl3_HandleRSAClientKeyExchange(sslSocket *ss,
      *  the unwrap.  Rather, it is the mechanism with which the
      *      unwrapped pms will be used.
      */
-    realPms = PK11_PubUnwrapSymKey(serverKeyPair->privKey, &enc_pms,
-                                   CKM_SSL3_MASTER_KEY_DERIVE, CKA_DERIVE, 0);
+    pms = PK11_PubUnwrapSymKey(serverKeyPair->privKey, &enc_pms,
+                               CKM_SSL3_MASTER_KEY_DERIVE, CKA_DERIVE, 0);
     /* Temporarily use the PMS if unwrapping the real PMS fails. */
-    useFauxPms |= (realPms == NULL);
+    ssl3_CSwapPK11SymKey(&pms, &fauxPms, pms == NULL);
 
     /* Attempt to derive the MS from the PMS. This is the only way to
      * check the version field in the RSA PMS. If this fails, we
      * then use the faux PMS in place of the PMS. Note that this
      * operation should never fail if we are using the faux PMS
      * since it is correctly formatted. */
-    rv = ssl3_ComputeMasterSecret(ss, currentPms, NULL);
+    rv = ssl3_ComputeMasterSecret(ss, pms, NULL);
 
-    /* If we succeeded, then select the true PMS and discard the
-     * FPMS. Else, select the FPMS and select the true PMS */
-    useFauxPms |= (rv != SECSuccess);
-
-    if (unusedPms) {
-        PK11_FreeSymKey(unusedPms);
-    }
+    /* If we succeeded, then select the true PMS, else select the FPMS. */
+    ssl3_CSwapPK11SymKey(&pms, &fauxPms, (rv != SECSuccess) & (fauxPms != NULL));
 
     /* This step will derive the MS from the PMS, among other things. */
-    rv = ssl3_InitPendingCipherSpecs(ss, currentPms, PR_TRUE);
-    PK11_FreeSymKey(currentPms);
+    rv = ssl3_InitPendingCipherSpecs(ss, pms, PR_TRUE);
+
+    /* Clear both PMS. */
+    PK11_FreeSymKey(pms);
+    PK11_FreeSymKey(fauxPms);
 
     if (rv != SECSuccess) {
         (void)SSL3_SendAlert(ss, alert_fatal, handshake_failure);
         return SECFailure; /* error code set by ssl3_InitPendingCipherSpec */
     }
-
-#undef currentPms
-#undef unusedPms
-#undef realPms
-#undef fauxPms
 
     return SECSuccess;
 }
@@ -10669,6 +10709,9 @@ ssl3_AuthCertificate(sslSocket *ss)
                                            PR_TRUE, isServer);
     if (rv != SECSuccess) {
         errCode = PORT_GetError();
+        if (errCode == 0) {
+            errCode = SSL_ERROR_BAD_CERTIFICATE;
+        }
         if (rv != SECWouldBlock) {
             if (ss->handleBadCert) {
                 rv = (*ss->handleBadCert)(ss->badCertArg, ss->fd);

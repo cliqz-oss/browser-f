@@ -2528,7 +2528,7 @@ nsRange::CloneContents(ErrorResult& aRv)
 
     // Place the cloned subtree into the cloned doc frag tree!
 
-    nsCOMPtr<nsINode> cloneNode = do_QueryInterface(clone);
+    nsCOMPtr<nsINode> cloneNode = clone;
     if (closestAncestor)
     {
       // Append the subtree under closestAncestor since it is the
@@ -2652,7 +2652,7 @@ nsRange::InsertNode(nsINode& aNode, ErrorResult& aRv)
       return;
     }
 
-    referenceNode = do_QueryInterface(secondPart);
+    referenceNode = secondPart;
   } else {
     tChildList = tStartContainer->ChildNodes();
 
@@ -3172,7 +3172,7 @@ nsRange::GetClientRectsAndTexts(
 }
 
 nsresult
-nsRange::GetUsedFontFaces(nsTArray<nsAutoPtr<InspectorFontFace>>& aResult,
+nsRange::GetUsedFontFaces(nsLayoutUtils::UsedFontFaceList& aResult,
                           uint32_t aMaxRanges, bool aSkipCollapsedWhitespace)
 {
   NS_ENSURE_TRUE(mStart.Container(), NS_ERROR_UNEXPECTED);
@@ -3189,9 +3189,8 @@ nsRange::GetUsedFontFaces(nsTArray<nsAutoPtr<InspectorFontFace>>& aResult,
   NS_ENSURE_TRUE(mStart.Container()->IsInComposedDoc(), NS_ERROR_UNEXPECTED);
 
   // A table to map gfxFontEntry objects to InspectorFontFace objects.
-  // (We hold on to the InspectorFontFaces strongly due to the nsAutoPtrs
-  // in the nsClassHashtable, until we move them out into aResult at the end
-  // of the function.)
+  // This table does NOT own the InspectorFontFace objects, it only holds
+  // raw pointers to them. They are owned by the aResult array.
   nsLayoutUtils::UsedFontFaceTable fontFaces;
 
   RangeSubtreeIterator iter;
@@ -3217,26 +3216,23 @@ nsRange::GetUsedFontFaces(nsTArray<nsAutoPtr<InspectorFontFace>>& aResult,
          int32_t offset = startContainer == endContainer ?
            mEnd.Offset() : content->GetText()->GetLength();
          nsLayoutUtils::GetFontFacesForText(frame, mStart.Offset(), offset,
-                                            true, fontFaces, aMaxRanges,
+                                            true, aResult, fontFaces,
+                                            aMaxRanges,
                                             aSkipCollapsedWhitespace);
          continue;
        }
        if (node == endContainer) {
          nsLayoutUtils::GetFontFacesForText(frame, 0, mEnd.Offset(),
-                                            true, fontFaces, aMaxRanges,
+                                            true, aResult, fontFaces,
+                                            aMaxRanges,
                                             aSkipCollapsedWhitespace);
          continue;
        }
     }
 
-    nsLayoutUtils::GetFontFacesForFrames(frame, fontFaces, aMaxRanges,
+    nsLayoutUtils::GetFontFacesForFrames(frame, aResult, fontFaces,
+                                         aMaxRanges,
                                          aSkipCollapsedWhitespace);
-  }
-
-  // Take ownership of the InspectorFontFaces in the table and move them into
-  // the aResult outparam.
-  for (auto iter = fontFaces.Iter(); !iter.Done(); iter.Next()) {
-    aResult.AppendElement(std::move(iter.Data()));
   }
 
   return NS_OK;
@@ -3461,17 +3457,6 @@ IsVisibleAndNotInReplacedElement(nsIFrame* aFrame)
   return true;
 }
 
-static bool
-ElementIsVisibleNoFlush(Element* aElement)
-{
-  if (!aElement) {
-    return false;
-  }
-  RefPtr<ComputedStyle> sc =
-    nsComputedDOMStyle::GetComputedStyleNoFlush(aElement, nullptr);
-  return sc && sc->StyleVisibility()->IsVisible();
-}
-
 static void
 AppendTransformedText(InnerTextAccumulator& aResult, nsIContent* aContainer)
 {
@@ -3587,12 +3572,7 @@ nsRange::GetInnerTextNoFlush(DOMString& aValue, ErrorResult& aError,
     bool isVisibleAndNotReplaced = IsVisibleAndNotInReplacedElement(f);
     if (currentState == AT_NODE) {
       bool isText = currentNode->IsText();
-      if (isText && currentNode->GetParent()->IsHTMLElement(nsGkAtoms::rp) &&
-          ElementIsVisibleNoFlush(currentNode->GetParent()->AsElement())) {
-        nsAutoString str;
-        currentNode->GetTextContent(str, aError);
-        result.Append(str);
-      } else if (isVisibleAndNotReplaced) {
+      if (isVisibleAndNotReplaced) {
         result.AddRequiredLineBreakCount(GetRequiredInnerTextLineBreakCount(f));
         if (isText) {
           nsIFrame::RenderedText text = f->GetRenderedText();

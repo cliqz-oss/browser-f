@@ -6,6 +6,7 @@
 
 #include "ds/LifoAlloc.h"
 
+#include "mozilla/Likely.h"
 #include "mozilla/MathAlgorithms.h"
 
 #include "ds/MemoryProtectionExceptionHandler.h"
@@ -24,15 +25,16 @@ namespace detail {
 
 /* static */
 UniquePtr<BumpChunk>
-BumpChunk::newWithCapacity(size_t size, bool protect)
+BumpChunk::newWithCapacity(size_t size)
 {
     MOZ_DIAGNOSTIC_ASSERT(RoundUpPow2(size) == size);
     MOZ_DIAGNOSTIC_ASSERT(size >= sizeof(BumpChunk));
     void* mem = js_malloc(size);
-    if (!mem)
+    if (!mem) {
         return nullptr;
+    }
 
-    UniquePtr<BumpChunk> result(new (mem) BumpChunk(size, protect));
+    UniquePtr<BumpChunk> result(new (mem) BumpChunk(size));
 
     // We assume that the alignment of LIFO_ALLOC_ALIGN is less than that of the
     // underlying memory allocator -- creating a new BumpChunk should always
@@ -43,8 +45,8 @@ BumpChunk::newWithCapacity(size_t size, bool protect)
 
 #ifdef LIFO_CHUNK_PROTECT
 
-static const uint8_t*
-AlignPtrUp(const uint8_t* ptr, uintptr_t align) {
+static uint8_t*
+AlignPtrUp(uint8_t* ptr, uintptr_t align) {
     MOZ_ASSERT(mozilla::IsPowerOfTwo(align));
     uintptr_t uptr = uintptr_t(ptr);
     uintptr_t diff = uptr & (align - 1);
@@ -53,8 +55,8 @@ AlignPtrUp(const uint8_t* ptr, uintptr_t align) {
     return (uint8_t*) uptr;
 }
 
-static const uint8_t*
-AlignPtrDown(const uint8_t* ptr, uintptr_t align) {
+static uint8_t*
+AlignPtrDown(uint8_t* ptr, uintptr_t align) {
     MOZ_ASSERT(mozilla::IsPowerOfTwo(align));
     uintptr_t uptr = uintptr_t(ptr);
     uptr = uptr & ~(align - 1);
@@ -62,71 +64,41 @@ AlignPtrDown(const uint8_t* ptr, uintptr_t align) {
 }
 
 void
-BumpChunk::setRWUntil(Loc loc) const
+BumpChunk::setReadOnly()
 {
-    if (!protect_)
-        return;
-
     uintptr_t pageSize = gc::SystemPageSize();
     // The allocated chunks might not be aligned on page boundaries. This code
     // is used to ensure that we are changing the memory protection of pointers
     // which are within the range of the BumpChunk, or that the range formed by
     // [b .. e] is empty.
-    const uint8_t* b = base();
-    const uint8_t* e = capacity_;
+    uint8_t* b = base();
+    uint8_t* e = capacity_;
     b = AlignPtrUp(b, pageSize);
     e = AlignPtrDown(e, pageSize);
-    if (e < b)
-        e = b;
-    // The mid-point is aligned to the next page, and clamp to the end-point to
-    // ensure that it remains in the [b .. e] range.
-    const uint8_t* m = nullptr;
-    switch (loc) {
-      case Loc::Header:
-        m = b;
-        break;
-      case Loc::Allocated:
-        m = begin();
-        break;
-      case Loc::Reserved:
-        m = end();
-        break;
-      case Loc::End:
-        m = e;
-        break;
+    if (e <= b) {
+        return;
     }
-    m = AlignPtrUp(m, pageSize);
-    if (e < m)
-        m = e;
-
-    if (b < m)
-        gc::UnprotectPages(const_cast<uint8_t*>(b), m - b);
-    // Note: We could use no-access protection for everything after begin(), but
-    // we need to read capabilities for reading the bump_ / capacity_ fields
-    // from this function to unprotect the memory later.
-    if (m < e)
-        gc::MakePagesReadOnly(const_cast<uint8_t*>(m), e - m);
-}
-
-// The memory protection handler is catching memory accesses error on the
-// regions registered into it. These method, instead of registering sub-ranges
-// of the BumpChunk within setRWUntil, we just register the full BumpChunk
-// ranges, and let the MemoryProtectionExceptionHandler catch bad memory
-// accesses when it is being protected by setRWUntil.
-void
-BumpChunk::addMProtectHandler() const
-{
-    if (!protect_)
-        return;
-    js::MemoryProtectionExceptionHandler::addRegion(const_cast<uint8_t*>(base()), capacity_ - base());
+    js::MemoryProtectionExceptionHandler::addRegion(base(), capacity_ - base());
+    gc::MakePagesReadOnly(b, e - b);
 }
 
 void
-BumpChunk::removeMProtectHandler() const
+BumpChunk::setReadWrite()
 {
-    if (!protect_)
+    uintptr_t pageSize = gc::SystemPageSize();
+    // The allocated chunks might not be aligned on page boundaries. This code
+    // is used to ensure that we are changing the memory protection of pointers
+    // which are within the range of the BumpChunk, or that the range formed by
+    // [b .. e] is empty.
+    uint8_t* b = base();
+    uint8_t* e = capacity_;
+    b = AlignPtrUp(b, pageSize);
+    e = AlignPtrDown(e, pageSize);
+    if (e <= b) {
         return;
-    js::MemoryProtectionExceptionHandler::removeRegion(const_cast<uint8_t*>(base()));
+    }
+    gc::UnprotectPages(b, e - b);
+    js::MemoryProtectionExceptionHandler::removeRegion(base());
 }
 
 #endif
@@ -140,11 +112,9 @@ LifoAlloc::reset(size_t defaultChunkSize)
     MOZ_ASSERT(mozilla::IsPowerOfTwo(defaultChunkSize));
 
     while (!chunks_.empty()) {
-        chunks_.begin()->setRWUntil(Loc::End);
         chunks_.popFirst();
     }
     while (!unused_.empty()) {
-        unused_.begin()->setRWUntil(Loc::End);
         unused_.popFirst();
     }
     defaultChunkSize_ = defaultChunkSize;
@@ -156,12 +126,10 @@ void
 LifoAlloc::freeAll()
 {
     while (!chunks_.empty()) {
-        chunks_.begin()->setRWUntil(Loc::End);
         UniqueBumpChunk bc = chunks_.popFirst();
         decrementCurSize(bc->computedSizeOfIncludingThis());
     }
     while (!unused_.empty()) {
-        unused_.begin()->setRWUntil(Loc::End);
         UniqueBumpChunk bc = unused_.popFirst();
         decrementCurSize(bc->computedSizeOfIncludingThis());
     }
@@ -178,41 +146,23 @@ LifoAlloc::newChunkWithCapacity(size_t n)
 
     // Compute the size which should be requested in order to be able to fit |n|
     // bytes in a newly allocated chunk, or default to |defaultChunkSize_|.
-    uint8_t* u8begin = nullptr;
-    uint8_t* u8end = u8begin + detail::BumpChunkReservedSpace;
-    u8end = detail::BumpChunk::nextAllocEnd(detail::BumpChunk::nextAllocBase(u8end), n);
-    size_t allocSizeWithCanaries = u8end - u8begin;
 
-    // Guard for overflow.
-    if (allocSizeWithCanaries < n ||
-        (allocSizeWithCanaries & (size_t(1) << (BitSize<size_t>::value - 1))))
+    size_t minSize;
+    if (MOZ_UNLIKELY(!detail::BumpChunk::allocSizeWithRedZone(n, &minSize) ||
+                     (minSize & (size_t(1) << (BitSize<size_t>::value - 1)))))
     {
         return nullptr;
     }
 
-    size_t chunkSize;
-    if (allocSizeWithCanaries > defaultChunkSize_)
-        chunkSize = RoundUpPow2(allocSizeWithCanaries);
-    else
-        chunkSize = defaultChunkSize_;
-
-    bool protect = false;
-#ifdef LIFO_CHUNK_PROTECT
-    protect = protect_;
-    // In a few cases where we keep adding memory protection, we might OOM while
-    // doing a mprotect / VirtualProtect due to the consumption of space in the
-    // page table reserved by the system. This error appears as an OOM on Linux,
-    // as an Invalid parameters on Windows and as a crash on OS/X. This code caps
-    // the amount of memory protected in order to limit occurences of this issue.
-    const size_t MaxPeakSize = 32 * 1024 * 1024;
-    if (protect && MaxPeakSize <= this->peakSize_)
-        protect = false;
-#endif
+    const size_t chunkSize = minSize > defaultChunkSize_
+                             ?  RoundUpPow2(minSize)
+                             : defaultChunkSize_;
 
     // Create a new BumpChunk, and allocate space for it.
-    UniqueBumpChunk result = detail::BumpChunk::newWithCapacity(chunkSize, protect);
-    if (!result)
+    UniqueBumpChunk result = detail::BumpChunk::newWithCapacity(chunkSize);
+    if (!result) {
         return nullptr;
+    }
     MOZ_ASSERT(result->computedSizeOfIncludingThis() == chunkSize);
     return result;
 }
@@ -220,22 +170,12 @@ LifoAlloc::newChunkWithCapacity(size_t n)
 bool
 LifoAlloc::getOrCreateChunk(size_t n)
 {
-    // This function is adding a new BumpChunk in which all upcoming allocation
-    // would be made. Thus, we protect against out-of-bounds the last chunk in
-    // which we did our previous allocations.
-    auto protectLast = [&]() {
-        if (!chunks_.empty())
-            chunks_.last()->setRWUntil(Loc::Reserved);
-    };
-
     // Look for existing unused BumpChunks to satisfy the request, and pick the
     // first one which is large enough, and move it into the list of used
     // chunks.
     if (!unused_.empty()) {
         if (unused_.begin()->canAlloc(n)) {
-            protectLast();
             chunks_.append(unused_.popFirst());
-            chunks_.last()->setRWUntil(Loc::End);
             return true;
         }
 
@@ -245,10 +185,8 @@ LifoAlloc::getOrCreateChunk(size_t n)
             MOZ_ASSERT(elem->empty());
             if (elem->canAlloc(n)) {
                 BumpChunkList temp = unused_.splitAfter(i.get());
-                protectLast();
                 chunks_.append(temp.popFirst());
                 unused_.appendAll(std::move(temp));
-                chunks_.last()->setRWUntil(Loc::End);
                 return true;
             }
         }
@@ -256,13 +194,10 @@ LifoAlloc::getOrCreateChunk(size_t n)
 
     // Allocate a new BumpChunk with enough space for the next allocation.
     UniqueBumpChunk newChunk = newChunkWithCapacity(n);
-    if (!newChunk)
+    if (!newChunk) {
         return false;
+    }
     size_t size = newChunk->computedSizeOfIncludingThis();
-    // The last chunk in which allocations are performed should be protected
-    // with setRWUntil(Loc::End), but this is not necessary here because any new
-    // allocation should be protected as RW already.
-    protectLast();
     chunks_.append(std::move(newChunk));
     incrementCurSize(size);
     return true;
@@ -286,8 +221,9 @@ LifoAlloc::transferUnusedFrom(LifoAlloc* other)
     MOZ_ASSERT(!markCount);
 
     size_t size = 0;
-    for (detail::BumpChunk& bc : other->unused_)
+    for (detail::BumpChunk& bc : other->unused_) {
         size += bc.computedSizeOfIncludingThis();
+    }
 
     appendUnused(std::move(other->unused_));
     incrementCurSize(size);

@@ -75,7 +75,7 @@ nsLeafBoxFrame::AttributeChanged(int32_t aNameSpaceID,
 void nsLeafBoxFrame::UpdateMouseThrough()
 {
   static Element::AttrValuesArray strings[] =
-    {&nsGkAtoms::never, &nsGkAtoms::always, nullptr};
+    {nsGkAtoms::never, nsGkAtoms::always, nullptr};
   switch (mContent->AsElement()->FindAttrValueIn(kNameSpaceID_None,
                                                  nsGkAtoms::mousethrough,
                                                  strings, eCaseMatters)) {
@@ -111,7 +111,7 @@ nsLeafBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 nsLeafBoxFrame::GetMinISize(gfxContext *aRenderingContext)
 {
   nscoord result;
-  DISPLAY_MIN_WIDTH(this, result);
+  DISPLAY_MIN_INLINE_SIZE(this, result);
   nsBoxLayoutState state(PresContext(), aRenderingContext);
 
   WritingMode wm = GetWritingMode();
@@ -133,7 +133,7 @@ nsLeafBoxFrame::GetMinISize(gfxContext *aRenderingContext)
 nsLeafBoxFrame::GetPrefISize(gfxContext *aRenderingContext)
 {
   nscoord result;
-  DISPLAY_PREF_WIDTH(this, result);
+  DISPLAY_PREF_INLINE_SIZE(this, result);
   nsBoxLayoutState state(PresContext(), aRenderingContext);
 
   WritingMode wm = GetWritingMode();

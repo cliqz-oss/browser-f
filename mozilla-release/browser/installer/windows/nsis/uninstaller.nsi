@@ -305,6 +305,7 @@ Section "Uninstall"
   ${un.RegCleanProtocolHandler} "ftp"
   ${un.RegCleanProtocolHandler} "http"
   ${un.RegCleanProtocolHandler} "https"
+<<<<<<< HEAD
 
   ${un.RegCleanFileHandler}  ".htm"   "CliqzHTML-$AppUserModelID"
   ${un.RegCleanFileHandler}  ".html"  "CliqzHTML-$AppUserModelID"
@@ -316,6 +317,30 @@ Section "Uninstall"
   ${un.RegCleanFileHandler}  ".ogv"  "CliqzHTML-$AppUserModelID"
   ${un.RegCleanFileHandler}  ".pdf"  "CliqzHTML-$AppUserModelID"
   ${un.RegCleanFileHandler}  ".webm"  "CliqzHTML-$AppUserModelID"
+||||||| merged common ancestors
+  ${un.RegCleanFileHandler}  ".htm"   "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".html"  "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".shtml" "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".xht"   "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".xhtml" "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".oga"  "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".ogg"  "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".ogv"  "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".pdf"  "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".webm"  "FirefoxHTML-$AppUserModelID"
+=======
+  ${un.RegCleanProtocolHandler} "mailto"
+  ${un.RegCleanFileHandler}  ".htm"   "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".html"  "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".shtml" "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".xht"   "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".xhtml" "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".oga"  "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".ogg"  "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".ogv"  "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".pdf"  "FirefoxHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".webm"  "FirefoxHTML-$AppUserModelID"
+>>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
 
   SetShellVarContext all  ; Set SHCTX to HKLM
   ${un.GetSecondInstallPath} "Software\CLIQZ" $R9

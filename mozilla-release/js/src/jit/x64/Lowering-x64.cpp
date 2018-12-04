@@ -100,8 +100,9 @@ LIRGenerator::visitUnbox(MUnbox* unbox)
 
     if (box->type() == MIRType::ObjectOrNull) {
         LUnboxObjectOrNull* lir = new(alloc()) LUnboxObjectOrNull(useRegisterAtStart(box));
-        if (unbox->fallible())
+        if (unbox->fallible()) {
             assignSnapshot(lir, unbox->bailoutKind());
+        }
         defineReuseInput(lir, unbox, 0);
         return;
     }
@@ -119,8 +120,9 @@ LIRGenerator::visitUnbox(MUnbox* unbox)
         lir = new(alloc()) LUnbox(useAtStart(box));
     }
 
-    if (unbox->fallible())
+    if (unbox->fallible()) {
         assignSnapshot(lir, unbox->bailoutKind());
+    }
 
     define(lir, unbox);
 }
@@ -134,12 +136,6 @@ LIRGenerator::visitReturn(MReturn* ret)
     LReturn* ins = new(alloc()) LReturn;
     ins->setOperand(0, useFixed(opd, JSReturnReg));
     add(ins);
-}
-
-void
-LIRGeneratorX64::defineUntypedPhi(MPhi* phi, size_t lirIndex)
-{
-    defineTypedPhi(phi, lirIndex);
 }
 
 void
@@ -229,10 +225,11 @@ LIRGenerator::visitWasmStore(MWasmStore* ins)
         break;
       case Scalar::Int64:
         // No way to encode an int64-to-memory move on x64.
-        if (value->isConstant() && value->type() != MIRType::Int64)
+        if (value->isConstant() && value->type() != MIRType::Int64) {
             valueAlloc = useOrConstantAtStart(value);
-        else
+        } else {
             valueAlloc = useRegisterAtStart(value);
+        }
         break;
       case Scalar::Float32:
       case Scalar::Float64:
@@ -245,45 +242,6 @@ LIRGenerator::visitWasmStore(MWasmStore* ins)
 
     LAllocation baseAlloc = useRegisterOrZeroAtStart(base);
     auto* lir = new(alloc()) LWasmStore(baseAlloc, valueAlloc);
-    add(lir, ins);
-}
-
-void
-LIRGenerator::visitAsmJSLoadHeap(MAsmJSLoadHeap* ins)
-{
-    MDefinition* base = ins->base();
-    MOZ_ASSERT(base->type() == MIRType::Int32);
-
-    define(new(alloc()) LAsmJSLoadHeap(useRegisterOrZeroAtStart(base)), ins);
-}
-
-void
-LIRGenerator::visitAsmJSStoreHeap(MAsmJSStoreHeap* ins)
-{
-    MDefinition* base = ins->base();
-    MOZ_ASSERT(base->type() == MIRType::Int32);
-
-    LAsmJSStoreHeap* lir = nullptr;  // initialize to silence GCC warning
-    switch (ins->access().type()) {
-      case Scalar::Int8:
-      case Scalar::Uint8:
-      case Scalar::Int16:
-      case Scalar::Uint16:
-      case Scalar::Int32:
-      case Scalar::Uint32:
-        lir = new(alloc()) LAsmJSStoreHeap(useRegisterOrZeroAtStart(base),
-                                           useRegisterOrConstantAtStart(ins->value()));
-        break;
-      case Scalar::Float32:
-      case Scalar::Float64:
-        lir = new(alloc()) LAsmJSStoreHeap(useRegisterOrZeroAtStart(base),
-                                           useRegisterAtStart(ins->value()));
-        break;
-      case Scalar::Int64:
-      case Scalar::Uint8Clamped:
-      case Scalar::MaxTypedArrayViewType:
-        MOZ_CRASH("unexpected array type");
-    }
     add(lir, ins);
 }
 
@@ -387,12 +345,13 @@ LIRGenerator::visitWasmAtomicBinopHeap(MWasmAtomicBinopHeap* ins)
                                                    value,
                                                    bitOp ? temp() : LDefinition::BogusTemp());
 
-    if (reuseInput)
+    if (reuseInput) {
         defineReuseInput(lir, ins, LWasmAtomicBinopHeap::valueOp);
-    else if (bitOp)
+    } else if (bitOp) {
         defineFixed(lir, ins, LAllocation(AnyRegister(rax)));
-    else
+    } else {
         define(lir, ins);
+    }
 }
 
 void

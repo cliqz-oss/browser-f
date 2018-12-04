@@ -175,8 +175,8 @@ GetFile(nsIFile* dir, const nsACString& name, nsCOMPtr<nsIFile>& result)
   if (NS_FAILED(rv))
     return false;
 
-  result = do_QueryInterface(file, &rv);
-  return NS_SUCCEEDED(rv);
+  result = file;
+  return true;
 }
 
 static bool
@@ -297,6 +297,7 @@ IsOlderVersion(nsIFile *versionFile, const char *appVersion)
   return false;
 }
 
+#if !defined(XP_WIN)
 static bool
 CopyFileIntoUpdateDir(nsIFile *parentDir, const nsACString& leaf, nsIFile *updateDir)
 {
@@ -363,6 +364,7 @@ CopyUpdaterIntoUpdateDir(nsIFile *greDir, nsIFile *appDir, nsIFile *updateDir,
   rv = updater->AppendNative(NS_LITERAL_CSTRING(UPDATER_BIN));
   return NS_SUCCEEDED(rv);
 }
+#endif
 
 /**
  * Appends the specified path to the library path.
@@ -589,7 +591,7 @@ ApplyUpdate(nsIFile *greDir, nsIFile *updateDir, nsIFile *appDir, int appArgc,
 #if defined(XP_UNIX) & !defined(XP_MACOSX)
     // When execv is used for an update that requires a restart 0 is passed
     // which is ignored by the updater.
-    pid.AssignASCII("0");
+    pid.AssignLiteral("0");
 #else
     pid.AppendInt((int32_t) getpid());
 #endif
@@ -600,7 +602,7 @@ ApplyUpdate(nsIFile *greDir, nsIFile *updateDir, nsIFile *appDir, int appArgc,
     }
   } else {
     // Signal the updater application that it should stage the update.
-    pid.AssignASCII("-1");
+    pid.AssignLiteral("-1");
   }
 
   int argc = 5;

@@ -59,16 +59,16 @@ static constexpr size_t kStyleStructSizeLimit = 504;
 #undef STYLE_STRUCT
 
 static bool
-DefinitelyEqualURIs(css::URLValueData* aURI1,
-                    css::URLValueData* aURI2)
+DefinitelyEqualURIs(css::URLValue* aURI1,
+                    css::URLValue* aURI2)
 {
   return aURI1 == aURI2 ||
          (aURI1 && aURI2 && aURI1->DefinitelyEqualURIs(*aURI2));
 }
 
 static bool
-DefinitelyEqualURIsAndPrincipal(css::URLValueData* aURI1,
-                                css::URLValueData* aURI2)
+DefinitelyEqualURIsAndPrincipal(css::URLValue* aURI1,
+                                css::URLValue* aURI2)
 {
   return aURI1 == aURI2 ||
          (aURI1 && aURI2 && aURI1->DefinitelyEqualURIsAndPrincipal(*aURI2));
@@ -94,29 +94,6 @@ static bool AreShadowArraysEqual(nsCSSShadowArray* lhs, nsCSSShadowArray* rhs);
 // --------------------
 // nsStyleFont
 //
-nsStyleFont::nsStyleFont(const nsFont& aFont, const nsPresContext* aContext)
-  : mFont(aFont)
-  , mSize(nsStyleFont::ZoomText(aContext, mFont.size))
-  , mFontSizeFactor(1.0)
-  , mFontSizeOffset(0)
-  , mFontSizeKeyword(NS_STYLE_FONT_SIZE_MEDIUM)
-  , mGenericID(kGenericFont_NONE)
-  , mScriptLevel(0)
-  , mMathVariant(NS_MATHML_MATHVARIANT_NONE)
-  , mMathDisplay(NS_MATHML_DISPLAYSTYLE_INLINE)
-  , mMinFontSizeRatio(100) // 100%
-  , mExplicitLanguage(false)
-  , mAllowZoom(true)
-  , mScriptUnconstrainedSize(mSize)
-  , mScriptMinSize(nsPresContext::CSSTwipsToAppUnits(
-      NS_POINTS_TO_TWIPS(NS_MATHML_DEFAULT_SCRIPT_MIN_SIZE_PT)))
-  , mScriptSizeMultiplier(NS_MATHML_DEFAULT_SCRIPT_SIZE_MULTIPLIER)
-  , mLanguage(GetLanguage(aContext))
-{
-  MOZ_COUNT_CTOR(nsStyleFont);
-  mFont.size = mSize;
-}
-
 nsStyleFont::nsStyleFont(const nsStyleFont& aSrc)
   : mFont(aSrc.mFont)
   , mSize(aSrc.mSize)
@@ -139,36 +116,32 @@ nsStyleFont::nsStyleFont(const nsStyleFont& aSrc)
 }
 
 nsStyleFont::nsStyleFont(const nsPresContext* aContext)
-  : nsStyleFont(*aContext->GetDefaultFont(kPresContext_DefaultVariableFont_ID,
-                                          nullptr),
-                aContext)
+  : mFont(*aContext->GetDefaultFont(kPresContext_DefaultVariableFont_ID,
+                                    nullptr))
+  , mSize(ZoomText(aContext, mFont.size))
+  , mFontSizeFactor(1.0)
+  , mFontSizeOffset(0)
+  , mFontSizeKeyword(NS_STYLE_FONT_SIZE_MEDIUM)
+  , mGenericID(kGenericFont_NONE)
+  , mScriptLevel(0)
+  , mMathVariant(NS_MATHML_MATHVARIANT_NONE)
+  , mMathDisplay(NS_MATHML_DISPLAYSTYLE_INLINE)
+  , mMinFontSizeRatio(100) // 100%
+  , mExplicitLanguage(false)
+  , mAllowZoom(true)
+  , mScriptUnconstrainedSize(mSize)
+  , mScriptMinSize(nsPresContext::CSSTwipsToAppUnits(
+      NS_POINTS_TO_TWIPS(NS_MATHML_DEFAULT_SCRIPT_MIN_SIZE_PT)))
+  , mScriptSizeMultiplier(NS_MATHML_DEFAULT_SCRIPT_SIZE_MULTIPLIER)
+  , mLanguage(GetLanguage(aContext))
 {
+  MOZ_COUNT_CTOR(nsStyleFont);
   MOZ_ASSERT(NS_IsMainThread());
   nscoord minimumFontSize = aContext->MinFontSize(mLanguage);
   if (minimumFontSize > 0 && !aContext->IsChrome()) {
     mFont.size = std::max(mSize, minimumFontSize);
   } else {
     mFont.size = mSize;
-  }
-}
-
-void
-nsStyleFont::EnableZoom(nsPresContext* aContext, bool aEnable)
-{
-  if (mAllowZoom == aEnable) {
-    return;
-  }
-  mAllowZoom = aEnable;
-  if (mAllowZoom) {
-    mSize = nsStyleFont::ZoomText(aContext, mSize);
-    mFont.size = nsStyleFont::ZoomText(aContext, mFont.size);
-    mScriptUnconstrainedSize =
-      nsStyleFont::ZoomText(aContext, mScriptUnconstrainedSize);
-  } else {
-    mSize = nsStyleFont::UnZoomText(aContext, mSize);
-    mFont.size = nsStyleFont::UnZoomText(aContext, mFont.size);
-    mScriptUnconstrainedSize =
-      nsStyleFont::UnZoomText(aContext, mScriptUnconstrainedSize);
   }
 }
 
@@ -215,14 +188,6 @@ nsStyleFont::ZoomText(const nsPresContext* aPresContext, nscoord aSize)
   // aSize can be negative (e.g.: calc(-1px)) so we can't assert that here.
   // The caller is expected deal with that.
   return NSToCoordTruncClamped(float(aSize) * aPresContext->EffectiveTextZoom());
-}
-
-/* static */ nscoord
-nsStyleFont::UnZoomText(nsPresContext *aPresContext, nscoord aSize)
-{
-  // aSize can be negative (e.g.: calc(-1px)) so we can't assert that here.
-  // The caller is expected deal with that.
-  return NSToCoordTruncClamped(float(aSize) / aPresContext->EffectiveTextZoom());
 }
 
 /* static */ already_AddRefed<nsAtom>
@@ -555,8 +520,28 @@ nsStyleList::nsStyleList(const nsPresContext* aContext)
   : mListStylePosition(NS_STYLE_LIST_STYLE_POSITION_OUTSIDE)
 {
   MOZ_COUNT_CTOR(nsStyleList);
+  MOZ_ASSERT(NS_IsMainThread());
+
   mCounterStyle = CounterStyleManager::GetDiscStyle();
-  SetQuotesInitial();
+
+  if (!sInitialQuotes) {
+    // The initial value for quotes is the en-US typographic convention:
+    // outermost are LEFT and RIGHT DOUBLE QUOTATION MARK, alternating
+    // with LEFT and RIGHT SINGLE QUOTATION MARK.
+    static const char16_t initialQuotes[8] = {
+      0x201C, 0, 0x201D, 0, 0x2018, 0, 0x2019, 0
+    };
+
+    sInitialQuotes = new nsStyleQuoteValues;
+    sInitialQuotes->mQuotePairs.AppendElement(
+        std::make_pair(nsDependentString(&initialQuotes[0], 1),
+                       nsDependentString(&initialQuotes[2], 1)));
+    sInitialQuotes->mQuotePairs.AppendElement(
+        std::make_pair(nsDependentString(&initialQuotes[4], 1),
+                       nsDependentString(&initialQuotes[6], 1)));
+  }
+
+  mQuotes = sInitialQuotes;
 }
 
 nsStyleList::~nsStyleList()
@@ -584,57 +569,6 @@ nsStyleList::FinishStyle(nsPresContext* aPresContext, const nsStyleList* aOldSty
       aPresContext, aOldStyle ? aOldStyle->mListStyleImage.get() : nullptr);
   }
   mCounterStyle.Resolve(aPresContext->CounterStyleManager());
-}
-
-void
-nsStyleList::SetQuotesInherit(const nsStyleList* aOther)
-{
-  mQuotes = aOther->mQuotes;
-}
-
-void
-nsStyleList::SetQuotesInitial()
-{
-  if (!sInitialQuotes) {
-    // The initial value for quotes is the en-US typographic convention:
-    // outermost are LEFT and RIGHT DOUBLE QUOTATION MARK, alternating
-    // with LEFT and RIGHT SINGLE QUOTATION MARK.
-    static const char16_t initialQuotes[8] = {
-      0x201C, 0, 0x201D, 0, 0x2018, 0, 0x2019, 0
-    };
-
-    sInitialQuotes = new nsStyleQuoteValues;
-    sInitialQuotes->mQuotePairs.AppendElement(
-        std::make_pair(nsDependentString(&initialQuotes[0], 1),
-                       nsDependentString(&initialQuotes[2], 1)));
-    sInitialQuotes->mQuotePairs.AppendElement(
-        std::make_pair(nsDependentString(&initialQuotes[4], 1),
-                       nsDependentString(&initialQuotes[6], 1)));
-  }
-
-  mQuotes = sInitialQuotes;
-}
-
-void
-nsStyleList::SetQuotesNone()
-{
-  if (!sNoneQuotes) {
-    sNoneQuotes = new nsStyleQuoteValues;
-  }
-  mQuotes = sNoneQuotes;
-}
-
-void
-nsStyleList::SetQuotes(nsStyleQuoteValues::QuotePairArray&& aValues)
-{
-  mQuotes = new nsStyleQuoteValues;
-  mQuotes->mQuotePairs = std::move(aValues);
-}
-
-const nsStyleQuoteValues::QuotePairArray&
-nsStyleList::GetQuotePairs() const
-{
-  return mQuotes->mQuotePairs;
 }
 
 nsChangeHint
@@ -694,9 +628,6 @@ nsStyleList::GetListStyleImageURI() const
 
 StaticRefPtr<nsStyleQuoteValues>
 nsStyleList::sInitialQuotes;
-
-StaticRefPtr<nsStyleQuoteValues>
-nsStyleList::sNoneQuotes;
 
 
 // --------------------
@@ -1320,7 +1251,7 @@ nsStyleSVGReset::FinishStyle(nsPresContext* aPresContext, const nsStyleSVGReset*
   NS_FOR_VISIBLE_IMAGE_LAYERS_BACK_TO_FRONT(i, mMask) {
     nsStyleImage& image = mMask.mLayers[i].mImage;
     if (image.GetType() == eStyleImageType_Image) {
-      URLValueData* url = image.GetURLValue();
+      css::URLValue* url = image.GetURLValue();
       // If the url is a local ref, it must be a <mask-resource>, so we don't
       // need to resolve the style image.
       if (url->IsLocalRef()) {
@@ -1356,9 +1287,6 @@ nsStyleSVGReset::CalcDifference(const nsStyleSVGReset& aNewData) const
   if (mClipPath != aNewData.mClipPath) {
     hint |= nsChangeHint_UpdateEffects |
             nsChangeHint_RepaintFrame;
-    // clip-path changes require that we update the PreEffectsBBoxProperty,
-    // which is done during overflow computation.
-    hint |= nsChangeHint_UpdateOverflow;
   }
 
   if (mDominantBaseline != aNewData.mDominantBaseline) {
@@ -1844,15 +1772,6 @@ nsStylePosition::CalcDifference(const nsStylePosition& aNewData,
   return hint;
 }
 
-/* static */ bool
-nsStylePosition::WidthCoordDependsOnContainer(const nsStyleCoord &aCoord)
-{
-  return aCoord.HasPercent() ||
-         (aCoord.GetUnit() == eStyleUnit_Enumerated &&
-          (aCoord.GetIntValue() == NS_STYLE_WIDTH_FIT_CONTENT ||
-           aCoord.GetIntValue() == NS_STYLE_WIDTH_AVAILABLE));
-}
-
 uint8_t
 nsStylePosition::UsedAlignSelf(ComputedStyle* aParent) const
 {
@@ -2096,8 +2015,8 @@ nsStyleGradient::HasCalc()
 // nsStyleImageRequest
 
 /**
- * Runnable to release the nsStyleImageRequest's mRequestProxy,
- * mImageValue and mImageTracker on the main thread, and to perform
+ * Runnable to release the nsStyleImageRequest's mRequestProxy
+ * and mImageTracker on the main thread, and to perform
  * any necessary unlocking and untracking of the image.
  */
 class StyleImageRequestCleanupTask : public mozilla::Runnable
@@ -2107,12 +2026,10 @@ public:
 
   StyleImageRequestCleanupTask(Mode aModeFlags,
                                already_AddRefed<imgRequestProxy> aRequestProxy,
-                               already_AddRefed<css::ImageValue> aImageValue,
                                already_AddRefed<ImageTracker> aImageTracker)
     : mozilla::Runnable("StyleImageRequestCleanupTask")
     , mModeFlags(aModeFlags)
     , mRequestProxy(aRequestProxy)
-    , mImageValue(aImageValue)
     , mImageTracker(aImageTracker)
   {
   }
@@ -2143,9 +2060,6 @@ public:
 protected:
   virtual ~StyleImageRequestCleanupTask()
   {
-    MOZ_ASSERT(mImageValue->mRequests.Count() == 0 || NS_IsMainThread(),
-               "If mImageValue has any mRequests, we need to run on main "
-               "thread to release ImageValues!");
     MOZ_ASSERT((!mRequestProxy && !mImageTracker) || NS_IsMainThread(),
                "mRequestProxy and mImageTracker's destructor need to run "
                "on the main thread!");
@@ -2156,12 +2070,11 @@ private:
   // Since we always dispatch this runnable to the main thread, these will be
   // released on the main thread when the runnable itself is released.
   RefPtr<imgRequestProxy> mRequestProxy;
-  RefPtr<css::ImageValue> mImageValue;
   RefPtr<ImageTracker> mImageTracker;
 };
 
 nsStyleImageRequest::nsStyleImageRequest(Mode aModeFlags,
-                                         css::ImageValue* aImageValue)
+                                         css::URLValue* aImageValue)
   : mImageValue(aImageValue)
   , mModeFlags(aModeFlags)
   , mResolved(false)
@@ -2172,12 +2085,11 @@ nsStyleImageRequest::~nsStyleImageRequest()
 {
   // We may or may not be being destroyed on the main thread.  To clean
   // up, we must untrack and unlock the image (depending on mModeFlags),
-  // and release mRequestProxy and mImageValue, all on the main thread.
+  // and release mRequestProxy and mImageTracker, all on the main thread.
   {
     RefPtr<StyleImageRequestCleanupTask> task =
         new StyleImageRequestCleanupTask(mModeFlags,
                                          mRequestProxy.forget(),
-                                         mImageValue.forget(),
                                          mImageTracker.forget());
     if (NS_IsMainThread()) {
       task->Run();
@@ -2192,7 +2104,6 @@ nsStyleImageRequest::~nsStyleImageRequest()
   }
 
   MOZ_ASSERT(!mRequestProxy);
-  MOZ_ASSERT(!mImageValue);
   MOZ_ASSERT(!mImageTracker);
 }
 
@@ -2239,8 +2150,7 @@ nsStyleImageRequest::Resolve(
     mRequestProxy = aOldImageRequest->mRequestProxy;
   } else {
     mDocGroup = doc->GetDocGroup();
-    mImageValue->Initialize(doc);
-    imgRequestProxy* request = mImageValue->mRequests.GetWeak(doc);
+    imgRequestProxy* request = mImageValue->LoadImage(doc);
     if (aPresContext->IsDynamic()) {
       mRequestProxy = request;
     } else if (request) {
@@ -2746,7 +2656,7 @@ nsStyleImage::GetImageURI() const
   return uri.forget();
 }
 
-css::URLValueData*
+css::URLValue*
 nsStyleImage::GetURLValue() const
 {
   if (mType == eStyleImageType_Image) {
@@ -3294,35 +3204,6 @@ nsStyleImageLayers::Layer::CalcDifference(const nsStyleImageLayers::Layer& aNewL
   if (!DefinitelyEqualURIs(mImage.GetURLValue(),
                            aNewLayer.mImage.GetURLValue())) {
     hint |= nsChangeHint_RepaintFrame | nsChangeHint_UpdateEffects;
-
-    // If mImage links to an SVG mask, the URL in mImage must have a fragment.
-    // Not vice versa.
-    // Here are examples of URI contains a fragment, two of them link to an
-    // SVG mask:
-    //   mask:url(a.svg#maskID); // The fragment of this URI is an ID of a mask
-    //                           // element in a.svg.
-    //   mask:url(#localMaskID); // The fragment of this URI is an ID of a mask
-    //                           // element in local document.
-    //   mask:url(b.svg#viewBoxID); // The fragment of this URI is an ID of a
-    //                              // viewbox defined in b.svg.
-    // That is, if the URL in mImage has a fragment, it may link to an SVG
-    // mask; If not, it "must" not link to an SVG mask.
-    bool maybeSVGMask = false;
-    if (mImage.GetURLValue()) {
-      maybeSVGMask = mImage.GetURLValue()->MightHaveRef();
-    }
-
-    if (!maybeSVGMask && aNewLayer.mImage.GetURLValue()) {
-      maybeSVGMask = aNewLayer.mImage.GetURLValue()->MightHaveRef();
-    }
-
-    // Return nsChangeHint_UpdateOverflow if either URI might link to an SVG
-    // mask.
-    if (maybeSVGMask) {
-      // Mask changes require that we update the PreEffectsBBoxProperty,
-      // which is done during overflow computation.
-      hint |= nsChangeHint_UpdateOverflow;
-    }
   } else if (mAttachment != aNewLayer.mAttachment ||
              mClip != aNewLayer.mClip ||
              mOrigin != aNewLayer.mOrigin ||
@@ -3847,17 +3728,7 @@ nsStyleDisplay::CalcDifference(const nsStyleDisplay& aNewData) const
       // If we are floating, and our shape-outside, shape-margin, or
       // shape-image-threshold are changed, our descendants are not impacted,
       // but our ancestor and siblings are.
-      //
-      // This is similar to a float-only change, but since the ISize of the
-      // float area changes arbitrarily along its block axis, more is required
-      // to get the siblings to adjust properly. Hinting overflow change is
-      // sufficient to trigger the correct calculation, but may be too
-      // heavyweight.
-
-      // XXX What is the minimum hint to ensure mShapeInfo is regenerated in
-      // the next reflow?
-      hint |= nsChangeHint_ReflowHintsForFloatAreaChange |
-              nsChangeHint_ScrollbarChange;
+      hint |= nsChangeHint_ReflowHintsForFloatAreaChange;
     } else {
       // shape-outside or shape-margin or shape-image-threshold changed,
       // but we don't need to reflow because we're not floating.
@@ -3975,7 +3846,8 @@ nsStyleDisplay::CalcDifference(const nsStyleDisplay& aNewData) const
     hint |= nsChangeHint_RepaintFrame;
   }
 
-  if (willChangeBitsChanged & NS_STYLE_WILL_CHANGE_FIXPOS_CB) {
+  if (willChangeBitsChanged & (NS_STYLE_WILL_CHANGE_FIXPOS_CB |
+                               NS_STYLE_WILL_CHANGE_ABSPOS_CB)) {
     hint |= nsChangeHint_UpdateContainingBlock;
   }
 
@@ -4027,7 +3899,8 @@ nsStyleDisplay::CalcDifference(const nsStyleDisplay& aNewData) const
        mAnimationFillModeCount != aNewData.mAnimationFillModeCount ||
        mAnimationPlayStateCount != aNewData.mAnimationPlayStateCount ||
        mAnimationIterationCountCount != aNewData.mAnimationIterationCountCount ||
-       mScrollSnapCoordinate != aNewData.mScrollSnapCoordinate)) {
+       mScrollSnapCoordinate != aNewData.mScrollSnapCoordinate ||
+       mWillChange != aNewData.mWillChange)) {
     hint |= nsChangeHint_NeutralChange;
   }
 

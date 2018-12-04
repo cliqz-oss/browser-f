@@ -29,6 +29,12 @@ cargo_extra_outputs = {
         'midl.o',
         'mdb.o',
     ],
+    'num-integer': [
+        'rust_out.o',
+    ],
+    'num-traits': [
+        'rust_out.o',
+    ],
     'selectors': [
         'ascii_case_insensitive_html_attributes.rs',
     ],
@@ -89,11 +95,55 @@ cargo_extra_outputs = {
     'webrender': [
         'shaders.rs',
     ],
-}
-
-cargo_extra_flags = {
-    'style': [
-        '-l', 'static=global_static',
-        '-L', 'native=%(libloading_outdir)s',
-    ]
+    'geckodriver': [
+        'build-info.rs',
+    ],
+    'crc': [
+        'crc64_constants.rs',
+        'crc32_constants.rs',
+    ],
+    'bzip2-sys': [
+        'bzip2-1.0.6/blocksort.o',
+        'bzip2-1.0.6/bzlib.o',
+        'bzip2-1.0.6/compress.o',
+        'bzip2-1.0.6/crctable.o',
+        'bzip2-1.0.6/decompress.o',
+        'bzip2-1.0.6/huffman.o',
+        'bzip2-1.0.6/randtable.o',
+        'libbz2.a',
+    ],
+    'cranelift-codegen': [
+        'binemit-arm32.rs',
+        'binemit-arm64.rs',
+        'binemit-riscv.rs',
+        'binemit-x86.rs',
+        'encoding-arm32.rs',
+        'encoding-arm64.rs',
+        'encoding-riscv.rs',
+        'encoding-x86.rs',
+        'inst_builder.rs',
+        'legalize-arm32.rs',
+        'legalize-arm64.rs',
+        'legalize-riscv.rs',
+        'legalize-x86.rs',
+        'legalizer.rs',
+        'new_types.rs',
+        'opcodes.rs',
+        'registers-arm32.rs',
+        'registers-arm64.rs',
+        'registers-riscv.rs',
+        'registers-x86.rs',
+        'settings-arm32.rs',
+        'settings-arm64.rs',
+        'settings-riscv.rs',
+        'settings-x86.rs',
+        'settings.rs',
+        'types.rs',
+    ],
+    'target-lexicon': [
+        'host.rs',
+    ],
+    'baldrdash': [
+        'bindings.rs',
+    ],
 }

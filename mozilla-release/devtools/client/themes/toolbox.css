@@ -17,6 +17,7 @@
   --command-paintflashing-image: url(images/command-paintflashing.svg);
   --command-screenshot-image: url(images/command-screenshot.svg);
   --command-responsive-image: url(images/command-responsivemode.svg);
+  --command-replay-image: url(images/command-replay.svg);
   --command-scratchpad-image: url(images/tool-scratchpad.svg);
   --command-pick-image: url(images/command-pick.svg);
   --command-pick-accessibility-image: url(images/command-pick-accessibility.svg);
@@ -271,6 +272,22 @@
   min-width: 32px;
 }
 
+#command-button-pick::before {
+  background-image: var(--command-pick-image);
+  -moz-context-properties: fill, stroke;
+  fill: var(--theme-toolbar-photon-icon-color);
+  stroke: none;
+}
+
+#command-button-pick.checked::before {
+  fill: var(--theme-toolbar-checked-color);
+  stroke: var(--theme-toolbar-checked-color);
+}
+
+#command-button-pick.accessibility::before {
+  background-image: var(--command-pick-accessibility-image);
+}
+
 /* Command button images */
 
 #command-button-paintflashing::before {
@@ -283,24 +300,39 @@
 
 #command-button-responsive::before {
   background-image: var(--command-responsive-image);
+  -moz-context-properties: fill, stroke;
   fill: var(--theme-toolbar-photon-icon-color);
-  -moz-context-properties: fill;
+  stroke: none;
 }
 
 #command-button-responsive.checked::before {
+  fill: var(--theme-toolbar-checked-color);
+  stroke: var(--theme-toolbar-checked-color);
+}
+
+#command-button-stop-replay::before, #command-button-replay::before {
+  background-image: var(--command-replay-image);
+  fill: var(--theme-toolbar-photon-icon-color);
+  -moz-context-properties: fill;
+  background-repeat: no-repeat;
+  height: 16px;
+  background-size: contain;
+}
+
+#command-button-replay, #command-button-stop-replay {
+  background-color: transparent;
+}
+
+#command-button-replay:hover, #command-button-stop-replay:hover {
+  background: var(--toolbarbutton-background);
+}
+
+#command-button-stop-replay::before {
   fill: currentColor;
 }
 
 #command-button-scratchpad::before {
   background-image: var(--command-scratchpad-image);
-}
-
-#command-button-pick::before {
-  background-image: var(--command-pick-image);
-}
-
-#command-button-pick.accessibility::before {
-  background-image: var(--command-pick-accessibility-image);
 }
 
 #command-button-eyedropper::before {
@@ -317,34 +349,26 @@
 
 #command-button-frames::before {
   background-image: var(--command-frames-image);
+  -moz-context-properties: fill, stroke;
+  fill: var(--theme-toolbar-photon-icon-color);
+  stroke: none;
 }
 
-#command-button-frames {
-  background-image: url("chrome://devtools/skin/images/dropmarker.svg");
-  background-repeat: no-repeat;
-
-  /* Override background-size from the command-button.
-   The drop down arrow is smaller */
-  background-size: 8px 4px !important;
-  min-width: 32px;
+#command-button-frames.checked::before {
+  fill: var(--theme-toolbar-checked-color);
+  stroke: var(--theme-toolbar-checked-color);
 }
 
-#command-button-frames::before {
-  /* The frames button has a drop-down arrow making it asymmetrical.
-   * Drop the margin on the non-arrow side to make it fit more symmetrical. */
-  margin-inline-start: 0px;
-  /* The direction of devtools-button is forced to 'ltr' for text-as-image
-   * buttons. We don't need that here (there's no text in this button) and we
-   * want the logical properties to reflect the text direction so unset it. */
-  direction: unset;
+/* Tooltip of frames menu  */
+
+#command-button-frames-panel > .tooltip-panel {
+  max-width: 500px;
+  overflow-y: auto;
 }
 
-#command-button-frames:-moz-locale-dir(ltr) {
-  background-position: right 2px top 14px;
-}
-
-#command-button-frames:-moz-locale-dir(rtl) {
-  background-position: left 2px top 14px;
+#toolbox-frame-menu span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Toolbox panels */

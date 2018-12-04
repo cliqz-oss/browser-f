@@ -51,6 +51,22 @@ pub type PicturePoint3D = TypedPoint3D<f32, PicturePixel>;
 pub type PictureVector2D = TypedVector2D<f32, PicturePixel>;
 pub type PictureVector3D = TypedVector3D<f32, PicturePixel>;
 
+/// Geometry gets rasterized in a given root coordinate space. This
+/// is often the root spatial node (world space), but may be a local
+/// space for a variety of reasons (e.g. perspective).
+#[derive(Hash, Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub struct RasterPixel;
+
+pub type RasterIntRect = TypedRect<i32, RasterPixel>;
+pub type RasterIntPoint = TypedPoint2D<i32, RasterPixel>;
+pub type RasterIntSize = TypedSize2D<i32, RasterPixel>;
+pub type RasterRect = TypedRect<f32, RasterPixel>;
+pub type RasterPoint = TypedPoint2D<f32, RasterPixel>;
+pub type RasterSize = TypedSize2D<f32, RasterPixel>;
+pub type RasterPoint3D = TypedPoint3D<f32, RasterPixel>;
+pub type RasterVector2D = TypedVector2D<f32, RasterPixel>;
+pub type RasterVector3D = TypedVector3D<f32, RasterPixel>;
+
 /// Geometry in a stacking context's local coordinate space (logical pixels).
 #[derive(Hash, Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Deserialize, Serialize)]
 pub struct LayoutPixel;
@@ -61,6 +77,7 @@ pub type LayoutPoint3D = TypedPoint3D<f32, LayoutPixel>;
 pub type LayoutVector2D = TypedVector2D<f32, LayoutPixel>;
 pub type LayoutVector3D = TypedVector3D<f32, LayoutPixel>;
 pub type LayoutSize = TypedSize2D<f32, LayoutPixel>;
+pub type LayoutSideOffsets = TypedSideOffsets2D<f32, LayoutPixel>;
 
 /// Geometry in the document's coordinate space (logical pixels).
 #[derive(Hash, Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -94,16 +111,17 @@ pub type WorldToLayoutTransform = TypedTransform3D<f32, WorldPixel, LayoutPixel>
 pub type LayoutToPictureTransform = TypedTransform3D<f32, LayoutPixel, PicturePixel>;
 pub type PictureToLayoutTransform = TypedTransform3D<f32, PicturePixel, LayoutPixel>;
 
+pub type LayoutToRasterTransform = TypedTransform3D<f32, LayoutPixel, RasterPixel>;
+pub type RasterToLayoutTransform = TypedTransform3D<f32, RasterPixel, LayoutPixel>;
+
+pub type PictureToRasterTransform = TypedTransform3D<f32, PicturePixel, RasterPixel>;
+pub type RasterToPictureTransform = TypedTransform3D<f32, RasterPixel, PicturePixel>;
+
 // Fixed position coordinates, to avoid float precision errors.
 pub type LayoutPointAu = TypedPoint2D<Au, LayoutPixel>;
 pub type LayoutRectAu = TypedRect<Au, LayoutPixel>;
 pub type LayoutSizeAu = TypedSize2D<Au, LayoutPixel>;
-
-/// Coordinates in normalized space (between zero and one).
-#[derive(Hash, Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub struct NormalizedCoordinates;
-
-pub type NormalizedRect = TypedRect<f32, NormalizedCoordinates>;
+pub type LayoutVector2DAu = TypedVector2D<Au, LayoutPixel>;
 
 /// Stores two coordinates in texel space. The coordinates
 /// are stored in texel coordinates because the texture atlas
@@ -129,5 +147,82 @@ impl TexelRect {
             uv0: DevicePoint::new(-1.0, -1.0),
             uv1: DevicePoint::new(-1.0, -1.0),
         }
+    }
+}
+
+const MAX_AU_FLOAT: f32 = 1.0e6;
+
+pub trait AuHelpers<T> {
+    fn from_au(data: T) -> Self;
+    fn to_au(&self) -> T;
+}
+
+impl AuHelpers<LayoutSizeAu> for LayoutSize {
+    fn from_au(size: LayoutSizeAu) -> Self {
+        LayoutSize::new(
+            size.width.to_f32_px(),
+            size.height.to_f32_px(),
+        )
+    }
+
+    fn to_au(&self) -> LayoutSizeAu {
+        let width = self.width.min(2.0 * MAX_AU_FLOAT);
+        let height = self.height.min(2.0 * MAX_AU_FLOAT);
+
+        LayoutSizeAu::new(
+            Au::from_f32_px(width),
+            Au::from_f32_px(height),
+        )
+    }
+}
+
+impl AuHelpers<LayoutVector2DAu> for LayoutVector2D {
+    fn from_au(size: LayoutVector2DAu) -> Self {
+        LayoutVector2D::new(
+            size.x.to_f32_px(),
+            size.y.to_f32_px(),
+        )
+    }
+
+    fn to_au(&self) -> LayoutVector2DAu {
+        LayoutVector2DAu::new(
+            Au::from_f32_px(self.x),
+            Au::from_f32_px(self.y),
+        )
+    }
+}
+
+impl AuHelpers<LayoutPointAu> for LayoutPoint {
+    fn from_au(point: LayoutPointAu) -> Self {
+        LayoutPoint::new(
+            point.x.to_f32_px(),
+            point.y.to_f32_px(),
+        )
+    }
+
+    fn to_au(&self) -> LayoutPointAu {
+        let x = self.x.min(MAX_AU_FLOAT).max(-MAX_AU_FLOAT);
+        let y = self.y.min(MAX_AU_FLOAT).max(-MAX_AU_FLOAT);
+
+        LayoutPointAu::new(
+            Au::from_f32_px(x),
+            Au::from_f32_px(y),
+        )
+    }
+}
+
+impl AuHelpers<LayoutRectAu> for LayoutRect {
+    fn from_au(rect: LayoutRectAu) -> Self {
+        LayoutRect::new(
+            LayoutPoint::from_au(rect.origin),
+            LayoutSize::from_au(rect.size),
+        )
+    }
+
+    fn to_au(&self) -> LayoutRectAu {
+        LayoutRectAu::new(
+            self.origin.to_au(),
+            self.size.to_au(),
+        )
     }
 }

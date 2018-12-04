@@ -57,8 +57,9 @@ const uint32_t ASYNC_STACK_MAX_FRAME_COUNT = 60;
 void
 LiveSavedFrameCache::trace(JSTracer* trc)
 {
-    if (!initialized())
+    if (!initialized()) {
         return;
+    }
 
     for (auto* entry = frames->begin(); entry < frames->end(); entry++) {
         TraceEdge(trc,
@@ -114,8 +115,9 @@ LiveSavedFrameCache::find(JSContext* cx, FramePtr& framePtr, const jsbytecode* p
 #ifdef DEBUG
         // Check that they are, indeed, all in the same realm.
         auto compartment = frames->back().savedFrame->realm();
-        for (const auto& f : (*frames))
+        for (const auto& f : (*frames)) {
             MOZ_ASSERT(compartment == f.savedFrame->realm());
+        }
 #endif
         frames->clear();
         frame.set(nullptr);
@@ -238,10 +240,12 @@ struct SavedFrame::Lookup {
             TraceManuallyBarrieredEdge(trc, &functionDisplayName,
                                        "SavedFrame::Lookup::functionDisplayName");
         }
-        if (asyncCause)
+        if (asyncCause) {
             TraceManuallyBarrieredEdge(trc, &asyncCause, "SavedFrame::Lookup::asyncCause");
-        if (parent)
+        }
+        if (parent) {
             TraceManuallyBarrieredEdge(trc, &parent, "SavedFrame::Lookup::parent");
+        }
     }
 };
 
@@ -261,8 +265,9 @@ class MOZ_STACK_CLASS SavedFrame::AutoLookupVector : public JS::CustomAutoRooter
     LookupVector lookups;
 
     virtual void trace(JSTracer* trc) override {
-        for (size_t i = 0; i < lookups.length(); i++)
+        for (size_t i = 0; i < lookups.length(); i++) {
             lookups[i].trace(trc);
+        }
     }
 };
 
@@ -299,29 +304,36 @@ SavedFrame::HashPolicy::match(SavedFrame* existing, const Lookup& lookup)
 {
     MOZ_ASSERT(existing);
 
-    if (existing->getLine() != lookup.line)
+    if (existing->getLine() != lookup.line) {
         return false;
+    }
 
-    if (existing->getColumn() != lookup.column)
+    if (existing->getColumn() != lookup.column) {
         return false;
+    }
 
-    if (existing->getParent() != lookup.parent)
+    if (existing->getParent() != lookup.parent) {
         return false;
+    }
 
-    if (existing->getPrincipals() != lookup.principals)
+    if (existing->getPrincipals() != lookup.principals) {
         return false;
+    }
 
     JSAtom* source = existing->getSource();
-    if (source != lookup.source)
+    if (source != lookup.source) {
         return false;
+    }
 
     JSAtom* functionDisplayName = existing->getFunctionDisplayName();
-    if (functionDisplayName != lookup.functionDisplayName)
+    if (functionDisplayName != lookup.functionDisplayName) {
         return false;
+    }
 
     JSAtom* asyncCause = existing->getAsyncCause();
-    if (asyncCause != lookup.asyncCause)
+    if (asyncCause != lookup.asyncCause) {
         return false;
+    }
 
     return true;
 }
@@ -335,10 +347,6 @@ SavedFrame::HashPolicy::rekey(Key& key, const Key& newKey)
 /* static */ bool
 SavedFrame::finishSavedFrameInit(JSContext* cx, HandleObject ctor, HandleObject proto)
 {
-    // The only object with the SavedFrame::class_ that doesn't have a source
-    // should be the prototype.
-    proto->as<NativeObject>().setReservedSlot(SavedFrame::JSSLOT_SOURCE, NullValue());
-
     return FreezeObject(cx, proto);
 }
 
@@ -358,7 +366,7 @@ static const ClassOps SavedFrameClassOps = {
 
 const ClassSpec SavedFrame::classSpec_ = {
     GenericCreateConstructor<SavedFrame::construct, 0, gc::AllocKind::FUNCTION>,
-    GenericCreatePrototype,
+    GenericCreatePrototype<SavedFrame>,
     SavedFrame::staticFunctions,
     nullptr,
     SavedFrame::protoFunctions,
@@ -375,6 +383,13 @@ const ClassSpec SavedFrame::classSpec_ = {
     JSCLASS_IS_ANONYMOUS |
     JSCLASS_FOREGROUND_FINALIZE,
     &SavedFrameClassOps,
+    &SavedFrame::classSpec_
+};
+
+const Class SavedFrame::protoClass_ = {
+    js_Object_str,
+    JSCLASS_HAS_CACHED_PROTO(JSProto_SavedFrame),
+    JS_NULL_CLASS_OPS,
     &SavedFrame::classSpec_
 };
 
@@ -439,8 +454,9 @@ JSAtom*
 SavedFrame::getFunctionDisplayName()
 {
     const Value& v = getReservedSlot(JSSLOT_FUNCTIONDISPLAYNAME);
-    if (v.isNull())
+    if (v.isNull()) {
         return nullptr;
+    }
     JSString* s = v.toString();
     return &s->asAtom();
 }
@@ -449,8 +465,9 @@ JSAtom*
 SavedFrame::getAsyncCause()
 {
     const Value& v = getReservedSlot(JSSLOT_ASYNCCAUSE);
-    if (v.isNull())
+    if (v.isNull()) {
         return nullptr;
+    }
     JSString* s = v.toString();
     return &s->asAtom();
 }
@@ -466,8 +483,9 @@ JSPrincipals*
 SavedFrame::getPrincipals()
 {
     const Value& v = getReservedSlot(JSSLOT_PRINCIPALS);
-    if (v.isUndefined())
+    if (v.isUndefined()) {
         return nullptr;
+    }
     return static_cast<JSPrincipals*>(v.toPrivate());
 }
 
@@ -496,8 +514,9 @@ SavedFrame::initColumn(uint32_t column)
 void
 SavedFrame::initPrincipals(JSPrincipals* principals)
 {
-    if (principals)
+    if (principals) {
         JS_HoldPrincipals(principals);
+    }
     initPrincipalsAlreadyHeld(principals);
 }
 
@@ -534,12 +553,15 @@ SavedFrame::initFromLookup(JSContext* cx, SavedFrame::HandleLookup lookup)
     // points where the context moves between compartments, but Lookups live on
     // the stack (where the atoms are kept alive regardless) and this is a
     // more convenient pinchpoint.
-    if (lookup->source)
+    if (lookup->source) {
         cx->markAtom(lookup->source);
-    if (lookup->functionDisplayName)
+    }
+    if (lookup->functionDisplayName) {
         cx->markAtom(lookup->functionDisplayName);
-    if (lookup->asyncCause)
+    }
+    if (lookup->asyncCause) {
         cx->markAtom(lookup->asyncCause);
+    }
 
     initSource(lookup->source);
     initLine(lookup->line);
@@ -562,8 +584,9 @@ SavedFrame::create(JSContext* cx)
     SavedStacks::AutoReentrancyGuard guard(cx->realm()->savedStacks());
 
     RootedNativeObject proto(cx, GlobalObject::getOrCreateSavedFramePrototype(cx, global));
-    if (!proto)
+    if (!proto) {
         return nullptr;
+    }
     cx->check(proto);
 
     return NewObjectWithGivenProto<SavedFrame>(cx, proto, TenuredObject);
@@ -611,8 +634,9 @@ static bool
 SavedFrameSubsumedByPrincipals(JSContext* cx, JSPrincipals* principals, HandleSavedFrame frame)
 {
     auto subsumes = cx->runtime()->securityCallbacks->subsumes;
-    if (!subsumes)
+    if (!subsumes) {
         return true;
+    }
 
     MOZ_ASSERT(!ReconstructedSavedFramePrincipals::is(principals));
 
@@ -620,10 +644,12 @@ SavedFrameSubsumedByPrincipals(JSContext* cx, JSPrincipals* principals, HandleSa
 
     // Handle SavedFrames that have been reconstructed from stacks in a heap
     // snapshot.
-    if (framePrincipals == &ReconstructedSavedFramePrincipals::IsSystem)
+    if (framePrincipals == &ReconstructedSavedFramePrincipals::IsSystem) {
         return cx->runningWithTrustedPrincipals();
-    if (framePrincipals == &ReconstructedSavedFramePrincipals::IsNotSystem)
+    }
+    if (framePrincipals == &ReconstructedSavedFramePrincipals::IsNotSystem) {
         return true;
+    }
 
     return subsumes(principals, framePrincipals);
 }
@@ -649,8 +675,9 @@ GetFirstMatchedFrame(JSContext* cx, JSPrincipals* principals, Matcher& matches,
             return rootedFrame;
         }
 
-        if (rootedFrame->getAsyncCause())
+        if (rootedFrame->getAsyncCause()) {
             skippedAsync = true;
+        }
 
         rootedFrame = rootedFrame->getParent();
     }
@@ -676,12 +703,14 @@ GetFirstSubsumedSavedFrame(JSContext* cx, JSPrincipals* principals,
                            HandleObject savedFrame,
                            JS::SavedFrameSelfHosted selfHosted)
 {
-    if (!savedFrame)
+    if (!savedFrame) {
         return nullptr;
+    }
 
     auto subsumes = cx->runtime()->securityCallbacks->subsumes;
-    if (!subsumes)
+    if (!subsumes) {
         return nullptr;
+    }
 
     auto matcher =
     [subsumes](JSContext* cx, JSPrincipals* principals, HandleSavedFrame frame) -> bool {
@@ -710,15 +739,6 @@ SavedFrame_checkThis(JSContext* cx, CallArgs& args, const char* fnName,
         JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_INCOMPATIBLE_PROTO,
                                   SavedFrame::class_.name, fnName,
                                   thisObject ? thisObject->getClass()->name : "object");
-        return false;
-    }
-
-    // Check for SavedFrame.prototype, which has the same class as SavedFrame
-    // instances, however doesn't actually represent a captured stack frame. It
-    // is the only object that is<SavedFrame>() but doesn't have a source.
-    if (!SavedFrame::isSavedFrameAndNotProto(*thisObject)) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_INCOMPATIBLE_PROTO,
-                                  SavedFrame::class_.name, fnName, "prototype object");
         return false;
     }
 
@@ -754,14 +774,16 @@ static inline js::SavedFrame*
 UnwrapSavedFrame(JSContext* cx, JSPrincipals* principals, HandleObject obj,
                  SavedFrameSelfHosted selfHosted, bool& skippedAsync)
 {
-    if (!obj)
+    if (!obj) {
         return nullptr;
+    }
 
     RootedObject savedFrameObj(cx, CheckedUnwrap(obj));
-    if (!savedFrameObj)
+    if (!savedFrameObj) {
         return nullptr;
+    }
 
-    MOZ_RELEASE_ASSERT(js::SavedFrame::isSavedFrameAndNotProto(*savedFrameObj));
+    MOZ_RELEASE_ASSERT(savedFrameObj->is<js::SavedFrame>());
     js::RootedSavedFrame frame(cx, &savedFrameObj->as<js::SavedFrame>());
     return GetFirstSubsumedFrame(cx, principals, frame, selfHosted, skippedAsync);
 }
@@ -772,7 +794,7 @@ GetSavedFrameSource(JSContext* cx, JSPrincipals* principals, HandleObject savedF
                     SavedFrameSelfHosted selfHosted /* = SavedFrameSelfHosted::Include */)
 {
     js::AssertHeapIsIdle();
-    CHECK_REQUEST(cx);
+    CHECK_THREAD(cx);
     MOZ_RELEASE_ASSERT(cx->realm());
 
     {
@@ -785,8 +807,9 @@ GetSavedFrameSource(JSContext* cx, JSPrincipals* principals, HandleObject savedF
         }
         sourcep.set(frame->getSource());
     }
-    if (sourcep->isAtom())
+    if (sourcep->isAtom()) {
         cx->markAtom(&sourcep->asAtom());
+    }
     return SavedFrameResult::Ok;
 }
 
@@ -796,7 +819,7 @@ GetSavedFrameLine(JSContext* cx, JSPrincipals* principals, HandleObject savedFra
                   SavedFrameSelfHosted selfHosted /* = SavedFrameSelfHosted::Include */)
 {
     js::AssertHeapIsIdle();
-    CHECK_REQUEST(cx);
+    CHECK_THREAD(cx);
     MOZ_RELEASE_ASSERT(cx->realm());
     MOZ_ASSERT(linep);
 
@@ -817,7 +840,7 @@ GetSavedFrameColumn(JSContext* cx, JSPrincipals* principals, HandleObject savedF
                     SavedFrameSelfHosted selfHosted /* = SavedFrameSelfHosted::Include */)
 {
     js::AssertHeapIsIdle();
-    CHECK_REQUEST(cx);
+    CHECK_THREAD(cx);
     MOZ_RELEASE_ASSERT(cx->realm());
     MOZ_ASSERT(columnp);
 
@@ -838,7 +861,7 @@ GetSavedFrameFunctionDisplayName(JSContext* cx, JSPrincipals* principals, Handle
                                  SavedFrameSelfHosted selfHosted /* = SavedFrameSelfHosted::Include */)
 {
     js::AssertHeapIsIdle();
-    CHECK_REQUEST(cx);
+    CHECK_THREAD(cx);
     MOZ_RELEASE_ASSERT(cx->realm());
 
     {
@@ -851,8 +874,9 @@ GetSavedFrameFunctionDisplayName(JSContext* cx, JSPrincipals* principals, Handle
         }
         namep.set(frame->getFunctionDisplayName());
     }
-    if (namep && namep->isAtom())
+    if (namep && namep->isAtom()) {
         cx->markAtom(&namep->asAtom());
+    }
     return SavedFrameResult::Ok;
 }
 
@@ -862,7 +886,7 @@ GetSavedFrameAsyncCause(JSContext* cx, JSPrincipals* principals, HandleObject sa
                         SavedFrameSelfHosted unused_ /* = SavedFrameSelfHosted::Include */)
 {
     js::AssertHeapIsIdle();
-    CHECK_REQUEST(cx);
+    CHECK_THREAD(cx);
     MOZ_RELEASE_ASSERT(cx->realm());
 
     {
@@ -880,11 +904,13 @@ GetSavedFrameAsyncCause(JSContext* cx, JSPrincipals* principals, HandleObject sa
             return SavedFrameResult::AccessDenied;
         }
         asyncCausep.set(frame->getAsyncCause());
-        if (!asyncCausep && skippedAsync)
+        if (!asyncCausep && skippedAsync) {
             asyncCausep.set(cx->names().Async);
+        }
     }
-    if (asyncCausep && asyncCausep->isAtom())
+    if (asyncCausep && asyncCausep->isAtom()) {
         cx->markAtom(&asyncCausep->asAtom());
+    }
     return SavedFrameResult::Ok;
 }
 
@@ -894,7 +920,7 @@ GetSavedFrameAsyncParent(JSContext* cx, JSPrincipals* principals, HandleObject s
                          SavedFrameSelfHosted selfHosted /* = SavedFrameSelfHosted::Include */)
 {
     js::AssertHeapIsIdle();
-    CHECK_REQUEST(cx);
+    CHECK_THREAD(cx);
     MOZ_RELEASE_ASSERT(cx->realm());
 
     bool skippedAsync;
@@ -915,10 +941,11 @@ GetSavedFrameAsyncParent(JSContext* cx, JSPrincipals* principals, HandleObject s
     // Even if |parent| is not subsumed, we still want to return a pointer to it
     // rather than |subsumedParent| so it can pick up any |asyncCause| from the
     // inaccessible part of the chain.
-    if (subsumedParent && (subsumedParent->getAsyncCause() || skippedAsync))
+    if (subsumedParent && (subsumedParent->getAsyncCause() || skippedAsync)) {
         asyncParentp.set(parent);
-    else
+    } else {
         asyncParentp.set(nullptr);
+    }
     return SavedFrameResult::Ok;
 }
 
@@ -928,7 +955,7 @@ GetSavedFrameParent(JSContext* cx, JSPrincipals* principals, HandleObject savedF
                     SavedFrameSelfHosted selfHosted /* = SavedFrameSelfHosted::Include */)
 {
     js::AssertHeapIsIdle();
-    CHECK_REQUEST(cx);
+    CHECK_THREAD(cx);
     MOZ_RELEASE_ASSERT(cx->realm());
 
     bool skippedAsync;
@@ -949,10 +976,11 @@ GetSavedFrameParent(JSContext* cx, JSPrincipals* principals, HandleObject savedF
     // Even if |parent| is not subsumed, we still want to return a pointer to it
     // rather than |subsumedParent| so it can pick up any |asyncCause| from the
     // inaccessible part of the chain.
-    if (subsumedParent && !(subsumedParent->getAsyncCause() || skippedAsync))
+    if (subsumedParent && !(subsumedParent->getAsyncCause() || skippedAsync)) {
         parentp.set(parent);
-    else
+    } else {
         parentp.set(nullptr);
+    }
     return SavedFrameResult::Ok;
 }
 
@@ -976,8 +1004,9 @@ FormatStackFrameColumn(JSContext* cx, js::StringBuffer& sb, js::HandleSavedFrame
         // See comment in WasmFrameIter::computeLine().
         js::ToCStringBuf cbuf;
         const char* cstr = NumberToCString(cx, &cbuf, frame->wasmBytecodeOffset(), 16);
-        if (!cstr)
+        if (!cstr) {
             return false;
+        }
 
         return sb.append("0x")
             && sb.append(cstr, strlen(cstr));
@@ -992,8 +1021,9 @@ FormatSpiderMonkeyStackFrame(JSContext* cx, js::StringBuffer& sb,
                              bool skippedAsync)
 {
     RootedString asyncCause(cx, frame->getAsyncCause());
-    if (!asyncCause && skippedAsync)
+    if (!asyncCause && skippedAsync) {
         asyncCause.set(cx->names().Async);
+    }
 
     js::RootedAtom name(cx, frame->getFunctionDisplayName());
     return (!indent || sb.appendN(' ', indent))
@@ -1034,13 +1064,14 @@ BuildStackString(JSContext* cx, JSPrincipals* principals, HandleObject stack,
                  MutableHandleString stringp, size_t indent, js::StackFormat format)
 {
     js::AssertHeapIsIdle();
-    CHECK_REQUEST(cx);
+    CHECK_THREAD(cx);
     MOZ_RELEASE_ASSERT(cx->realm());
 
     js::StringBuffer sb(cx);
 
-    if (format == js::StackFormat::Default)
+    if (format == js::StackFormat::Default) {
         format = cx->runtime()->stackFormat();
+    }
     MOZ_ASSERT(format != js::StackFormat::Default);
 
     // Enter a new block to constrain the scope of possibly entering the stack's
@@ -1069,12 +1100,14 @@ BuildStackString(JSContext* cx, JSPrincipals* principals, HandleObject stack,
 
             switch (format) {
                 case js::StackFormat::SpiderMonkey:
-                    if (!FormatSpiderMonkeyStackFrame(cx, sb, frame, indent, skippedAsync))
+                    if (!FormatSpiderMonkeyStackFrame(cx, sb, frame, indent, skippedAsync)) {
                         return false;
+                    }
                     break;
                 case js::StackFormat::V8:
-                    if (!FormatV8StackFrame(cx, sb, frame, indent, !nextFrame))
+                    if (!FormatV8StackFrame(cx, sb, frame, indent, !nextFrame)) {
                         return false;
+                    }
                     break;
                 case js::StackFormat::Default:
                     MOZ_MAKE_COMPILER_ASSUME_IS_UNREACHABLE("Unexpected value");
@@ -1087,8 +1120,9 @@ BuildStackString(JSContext* cx, JSPrincipals* principals, HandleObject stack,
     }
 
     JSString* str = sb.finishString();
-    if (!str)
+    if (!str) {
         return false;
+    }
     cx->check(str);
     stringp.set(str);
     return true;
@@ -1098,14 +1132,14 @@ JS_PUBLIC_API(bool)
 IsMaybeWrappedSavedFrame(JSObject* obj)
 {
     MOZ_ASSERT(obj);
-    return js::SavedFrame::isSavedFrameOrWrapperAndNotProto(*obj);
+    return js::SavedFrame::isSavedFrameOrWrapper(*obj);
 }
 
 JS_PUBLIC_API(bool)
 IsUnwrappedSavedFrame(JSObject* obj)
 {
     MOZ_ASSERT(obj);
-    return js::SavedFrame::isSavedFrameAndNotProto(*obj);
+    return obj->is<js::SavedFrame>();
 }
 
 } /* namespace JS */
@@ -1119,8 +1153,9 @@ SavedFrame::sourceProperty(JSContext* cx, unsigned argc, Value* vp)
     JSPrincipals* principals = cx->realm()->principals();
     RootedString source(cx);
     if (JS::GetSavedFrameSource(cx, principals, frame, &source) == JS::SavedFrameResult::Ok) {
-        if (!cx->compartment()->wrap(cx, &source))
+        if (!cx->compartment()->wrap(cx, &source)) {
             return false;
+        }
         args.rval().setString(source);
     } else {
         args.rval().setNull();
@@ -1134,10 +1169,11 @@ SavedFrame::lineProperty(JSContext* cx, unsigned argc, Value* vp)
     THIS_SAVEDFRAME(cx, argc, vp, "(get line)", args, frame);
     JSPrincipals* principals = cx->realm()->principals();
     uint32_t line;
-    if (JS::GetSavedFrameLine(cx, principals, frame, &line) == JS::SavedFrameResult::Ok)
+    if (JS::GetSavedFrameLine(cx, principals, frame, &line) == JS::SavedFrameResult::Ok) {
         args.rval().setNumber(line);
-    else
+    } else {
         args.rval().setNull();
+    }
     return true;
 }
 
@@ -1147,10 +1183,11 @@ SavedFrame::columnProperty(JSContext* cx, unsigned argc, Value* vp)
     THIS_SAVEDFRAME(cx, argc, vp, "(get column)", args, frame);
     JSPrincipals* principals = cx->realm()->principals();
     uint32_t column;
-    if (JS::GetSavedFrameColumn(cx, principals, frame, &column) == JS::SavedFrameResult::Ok)
+    if (JS::GetSavedFrameColumn(cx, principals, frame, &column) == JS::SavedFrameResult::Ok) {
         args.rval().setNumber(column);
-    else
+    } else {
         args.rval().setNull();
+    }
     return true;
 }
 
@@ -1163,8 +1200,9 @@ SavedFrame::functionDisplayNameProperty(JSContext* cx, unsigned argc, Value* vp)
     JS::SavedFrameResult result =
         JS::GetSavedFrameFunctionDisplayName(cx, principals, frame, &name);
     if (result == JS::SavedFrameResult::Ok && name) {
-        if (!cx->compartment()->wrap(cx, &name))
+        if (!cx->compartment()->wrap(cx, &name)) {
             return false;
+        }
         args.rval().setString(name);
     } else {
         args.rval().setNull();
@@ -1180,8 +1218,9 @@ SavedFrame::asyncCauseProperty(JSContext* cx, unsigned argc, Value* vp)
     RootedString asyncCause(cx);
     JS::SavedFrameResult result = JS::GetSavedFrameAsyncCause(cx, principals, frame, &asyncCause);
     if (result == JS::SavedFrameResult::Ok && asyncCause) {
-        if (!cx->compartment()->wrap(cx, &asyncCause))
+        if (!cx->compartment()->wrap(cx, &asyncCause)) {
             return false;
+        }
         args.rval().setString(asyncCause);
     } else {
         args.rval().setNull();
@@ -1196,8 +1235,9 @@ SavedFrame::asyncParentProperty(JSContext* cx, unsigned argc, Value* vp)
     JSPrincipals* principals = cx->realm()->principals();
     RootedObject asyncParent(cx);
     (void) JS::GetSavedFrameAsyncParent(cx, principals, frame, &asyncParent);
-    if (!cx->compartment()->wrap(cx, &asyncParent))
+    if (!cx->compartment()->wrap(cx, &asyncParent)) {
         return false;
+    }
     args.rval().setObjectOrNull(asyncParent);
     return true;
 }
@@ -1209,8 +1249,9 @@ SavedFrame::parentProperty(JSContext* cx, unsigned argc, Value* vp)
     JSPrincipals* principals = cx->realm()->principals();
     RootedObject parent(cx);
     (void) JS::GetSavedFrameParent(cx, principals, frame, &parent);
-    if (!cx->compartment()->wrap(cx, &parent))
+    if (!cx->compartment()->wrap(cx, &parent)) {
         return false;
+    }
     args.rval().setObjectOrNull(parent);
     return true;
 }
@@ -1221,8 +1262,9 @@ SavedFrame::toStringMethod(JSContext* cx, unsigned argc, Value* vp)
     THIS_SAVEDFRAME(cx, argc, vp, "toString", args, frame);
     JSPrincipals* principals = cx->realm()->principals();
     RootedString string(cx);
-    if (!JS::BuildStackString(cx, principals, frame, &string))
+    if (!JS::BuildStackString(cx, principals, frame, &string)) {
         return false;
+    }
     args.rval().setString(string);
     return true;
 }
@@ -1256,16 +1298,18 @@ SavedStacks::copyAsyncStack(JSContext* cx, HandleObject asyncStack, HandleString
     MOZ_DIAGNOSTIC_ASSERT(&cx->realm()->savedStacks() == this);
 
     RootedAtom asyncCauseAtom(cx, AtomizeString(cx, asyncCause));
-    if (!asyncCauseAtom)
+    if (!asyncCauseAtom) {
         return false;
+    }
 
     RootedObject asyncStackObj(cx, CheckedUnwrap(asyncStack));
     MOZ_RELEASE_ASSERT(asyncStackObj);
-    MOZ_RELEASE_ASSERT(js::SavedFrame::isSavedFrameAndNotProto(*asyncStackObj));
+    MOZ_RELEASE_ASSERT(asyncStackObj->is<js::SavedFrame>());
     adoptedStack.set(&asyncStackObj->as<js::SavedFrame>());
 
-    if (!adoptAsyncStack(cx, adoptedStack, asyncCauseAtom, maxFrameCount))
+    if (!adoptAsyncStack(cx, adoptedStack, asyncCauseAtom, maxFrameCount)) {
         return false;
+    }
 
     return true;
 }
@@ -1401,11 +1445,11 @@ SavedStacks::insertFrames(JSContext* cx, MutableHandleSavedFrame frame,
             seenCached |= framePtr->hasCachedSavedFrame();
         }
 
-        if (capture.is<JS::AllFrames>() && framePtr && framePtr->hasCachedSavedFrame())
-        {
+        if (capture.is<JS::AllFrames>() && framePtr && framePtr->hasCachedSavedFrame()) {
             auto* cache = activation.getLiveSavedFrameCache(cx);
-            if (!cache)
+            if (!cache) {
                 return false;
+            }
             cache->find(cx, *framePtr, iter.pc(), &parent);
 
             // Even though iter.hasCachedSavedFrame() was true, we can't
@@ -1416,8 +1460,9 @@ SavedStacks::insertFrames(JSContext* cx, MutableHandleSavedFrame frame,
             // 2) The cache was populated with SavedFrames captured for a
             //    different compartment, and got purged completely. We will
             //    repopulate it from scratch.
-            if (parent)
+            if (parent) {
                 break;
+            }
         }
 
         // We'll be pushing this frame onto stackChain. Gather the information
@@ -1425,8 +1470,9 @@ SavedStacks::insertFrames(JSContext* cx, MutableHandleSavedFrame frame,
         Rooted<LocationValue> location(cx);
         {
             AutoRealmUnchecked ar(cx, iter.realm());
-            if (!cx->realm()->savedStacks().getLocation(cx, iter, &location))
+            if (!cx->realm()->savedStacks().getLocation(cx, iter, &location)) {
                 return false;
+            }
         }
 
         RootedAtom displayAtom(cx, iter.maybeFunctionDisplayAtom());
@@ -1485,8 +1531,9 @@ SavedStacks::insertFrames(JSContext* cx, MutableHandleSavedFrame frame,
             // different strings used.
             const char* cause = activation.asyncCause();
             RootedAtom causeAtom(cx, AtomizeUTF8Chars(cx, cause, strlen(cause)));
-            if (!causeAtom)
+            if (!causeAtom) {
                 return false;
+            }
 
             // Translate our capture into a frame count limit for
             // adoptAsyncStack, which will impose further limits.
@@ -1498,13 +1545,15 @@ SavedStacks::insertFrames(JSContext* cx, MutableHandleSavedFrame frame,
             // Clip the stack if needed, attach the async cause string to the
             // top frame, and copy it into our compartment if necessary.
             parent.set(activation.asyncStack());
-            if (!adoptAsyncStack(cx, &parent, causeAtom, maxFrames))
+            if (!adoptAsyncStack(cx, &parent, causeAtom, maxFrames)) {
                 return false;
+            }
             break;
         }
 
-        if (capture.is<JS::MaxFrames>())
+        if (capture.is<JS::MaxFrames>()) {
             capture.as<JS::MaxFrames>().maxFrames--;
+        }
     }
 
     // Iterate through |stackChain| in reverse order and get or create the
@@ -1520,18 +1569,21 @@ SavedStacks::insertFrames(JSContext* cx, MutableHandleSavedFrame frame,
         // evalInFramePrev links, so that the parent is always the last frame we
         // created.
         if (capture.is<JS::AllFrames>() && lookup->framePtr) {
-            if (!checkForEvalInFramePrev(cx, lookup))
+            if (!checkForEvalInFramePrev(cx, lookup)) {
                 return false;
+            }
         }
 
         frame.set(getOrCreateSavedFrame(cx, lookup));
-        if (!frame)
+        if (!frame) {
             return false;
+        }
 
         if (capture.is<JS::AllFrames>() && lookup->framePtr) {
             auto* cache = lookup->activation->getLiveSavedFrameCache(cx);
-            if (!cache || !cache->insert(cx, *lookup->framePtr, lookup->pc, frame))
+            if (!cache || !cache->insert(cx, *lookup->framePtr, lookup->pc, frame)) {
                 return false;
+            }
         }
     }
 
@@ -1585,8 +1637,9 @@ SavedStacks::adoptAsyncStack(JSContext* cx, MutableHandleSavedFrame asyncStack,
     // specific limit, we only return half of them. This means that if we do
     // many subsequent captures with the same async stack, it's likely we can
     // use the optimization above.
-    if (maxFrameCount.isNothing() && currentSavedFrame)
+    if (maxFrameCount.isNothing() && currentSavedFrame) {
         stackChain->shrinkBy(ASYNC_STACK_MAX_FRAME_COUNT / 2);
+    }
 
     // Iterate through |stackChain| in reverse order and get or create the
     // actual SavedFrame instances.
@@ -1595,8 +1648,9 @@ SavedStacks::adoptAsyncStack(JSContext* cx, MutableHandleSavedFrame asyncStack,
         SavedFrame::HandleLookup lookup = stackChain.back();
         lookup->parent = asyncStack;
         asyncStack.set(getOrCreateSavedFrame(cx, lookup));
-        if (!asyncStack)
+        if (!asyncStack) {
             return false;
+        }
         stackChain->popBack();
     }
 
@@ -1619,12 +1673,14 @@ bool
 SavedStacks::checkForEvalInFramePrev(JSContext* cx, SavedFrame::HandleLookup lookup)
 {
     MOZ_ASSERT(lookup->framePtr);
-    if (!lookup->framePtr->isInterpreterFrame())
+    if (!lookup->framePtr->isInterpreterFrame()) {
         return true;
+    }
 
     InterpreterFrame& interpreterFrame = lookup->framePtr->asInterpreterFrame();
-    if (!interpreterFrame.isDebuggerEvalFrame())
+    if (!interpreterFrame.isDebuggerEvalFrame()) {
         return true;
+    }
 
     LiveSavedFrameCache::FramePtr target =
         LiveSavedFrameCache::FramePtr::create(interpreterFrame.evalInFramePrev());
@@ -1641,12 +1697,14 @@ SavedStacks::checkForEvalInFramePrev(JSContext* cx, SavedFrame::HandleLookup loo
         // something in the top cache, and all the lower ones should exist
         // already.
         auto* cache = act->getLiveSavedFrameCache(cx);
-        if (!cache)
+        if (!cache) {
             return false;
+        }
 
         cache->findWithoutInvalidation(target, &saved);
-        if (saved)
+        if (saved) {
             break;
+        }
     }
 
     // Since |target| has its cached bit set, we should have found it.
@@ -1667,11 +1725,13 @@ SavedStacks::getOrCreateSavedFrame(JSContext* cx, SavedFrame::HandleLookup looku
     }
 
     RootedSavedFrame frame(cx, createFrameFromLookup(cx, lookup));
-    if (!frame)
+    if (!frame) {
         return nullptr;
+    }
 
-    if (!p.add(cx, frames, lookupInstance, frame))
+    if (!p.add(cx, frames, lookupInstance, frame)) {
         return nullptr;
+    }
 
     return frame;
 }
@@ -1680,12 +1740,14 @@ SavedFrame*
 SavedStacks::createFrameFromLookup(JSContext* cx, SavedFrame::HandleLookup lookup)
 {
     RootedSavedFrame frame(cx, SavedFrame::create(cx));
-    if (!frame)
+    if (!frame) {
         return nullptr;
+    }
     frame->initFromLookup(cx, lookup);
 
-    if (!FreezeObject(cx, frame))
+    if (!FreezeObject(cx, frame)) {
         return nullptr;
+    }
 
     return frame;
 }
@@ -1714,8 +1776,9 @@ SavedStacks::getLocation(JSContext* cx, const FrameIter& iter,
             const char* filename = iter.filename() ? iter.filename() : "";
             locationp.setSource(Atomize(cx, filename, strlen(filename)));
         }
-        if (!locationp.source())
+        if (!locationp.source()) {
             return false;
+        }
 
         // See WasmFrameIter::computeLine() comment.
         uint32_t column = 0;
@@ -1738,8 +1801,9 @@ SavedStacks::getLocation(JSContext* cx, const FrameIter& iter,
             const char* filename = script->filename() ? script->filename() : "";
             source = Atomize(cx, filename, strlen(filename));
         }
-        if (!source)
+        if (!source) {
             return false;
+        }
 
         uint32_t column;
         uint32_t line = PCToLineNumber(script, pc, &column);
@@ -1760,12 +1824,14 @@ void
 SavedStacks::chooseSamplingProbability(Realm* realm)
 {
     GlobalObject* global = realm->maybeGlobal();
-    if (!global)
+    if (!global) {
         return;
+    }
 
     GlobalObject::DebuggerVector* dbgs = global->getDebuggers();
-    if (!dbgs || dbgs->empty())
+    if (!dbgs || dbgs->empty()) {
         return;
+    }
 
     mozilla::DebugOnly<ReadBarriered<Debugger*>*> begin = dbgs->begin();
     mozilla::DebugOnly<bool> foundAnyDebuggers = false;
@@ -1801,15 +1867,18 @@ SavedStacks::MetadataBuilder::build(JSContext* cx, HandleObject target,
     RootedObject obj(cx, target);
 
     SavedStacks& stacks = cx->realm()->savedStacks();
-    if (!stacks.bernoulli.trial())
+    if (!stacks.bernoulli.trial()) {
         return nullptr;
+    }
 
     RootedSavedFrame frame(cx);
-    if (!stacks.saveCurrentStack(cx, &frame))
+    if (!stacks.saveCurrentStack(cx, &frame)) {
         oomUnsafe.crash("SavedStacksMetadataBuilder");
+    }
 
-    if (!Debugger::onLogAllocationSite(cx, obj, frame, mozilla::TimeStamp::Now()))
+    if (!Debugger::onLogAllocationSite(cx, obj, frame, mozilla::TimeStamp::Now())) {
         oomUnsafe.crash("SavedStacksMetadataBuilder");
+    }
 
     MOZ_ASSERT_IF(frame, !frame->is<WrapperObject>());
     return frame;
@@ -1820,15 +1889,15 @@ const SavedStacks::MetadataBuilder SavedStacks::metadataBuilder;
 /* static */ ReconstructedSavedFramePrincipals ReconstructedSavedFramePrincipals::IsSystem;
 /* static */ ReconstructedSavedFramePrincipals ReconstructedSavedFramePrincipals::IsNotSystem;
 
-UTF8CharsZ
+UniqueChars
 BuildUTF8StackString(JSContext* cx, JSPrincipals* principals, HandleObject stack)
 {
     RootedString stackStr(cx);
-    if (!JS::BuildStackString(cx, principals, stack, &stackStr))
-        return UTF8CharsZ();
+    if (!JS::BuildStackString(cx, principals, stack, &stackStr)) {
+        return nullptr;
+    }
 
-    char* chars = JS_EncodeStringToUTF8(cx, stackStr);
-    return UTF8CharsZ(chars, strlen(chars));
+    return JS_EncodeStringToUTF8(cx, stackStr);
 }
 
 uint32_t
@@ -1839,8 +1908,9 @@ FixupColumnForDisplay(uint32_t column)
     // that format error stacks into strings, this information can be used to
     // synthesize a proper wasm frame. But when raw column numbers are handed
     // out, we just fix them to 1 to avoid confusion.
-    if (column & wasm::WasmFrameIter::ColumnBit)
+    if (column & wasm::WasmFrameIter::ColumnBit) {
         return 1;
+    }
 
     // XXX: Make the column 1-based as in other browsers, instead of 0-based
     // which is how SpiderMonkey stores it internally. This will be
@@ -1910,16 +1980,18 @@ ConstructSavedFrameStackSlow(JSContext* cx, JS::ubi::StackFrame& frame,
         js::RootedAtom source(cx);
         AtomizingMatcher atomizer(cx, ubiFrame.get().sourceLength());
         source = ubiFrame.get().source().match(atomizer);
-        if (!source)
+        if (!source) {
             return false;
+        }
 
         js::RootedAtom functionDisplayName(cx);
         auto nameLength = ubiFrame.get().functionDisplayNameLength();
         if (nameLength > 0) {
             AtomizingMatcher atomizer(cx, nameLength);
             functionDisplayName = ubiFrame.get().functionDisplayName().match(atomizer);
-            if (!functionDisplayName)
+            if (!functionDisplayName) {
                 return false;
+            }
         }
 
         auto principals = js::ReconstructedSavedFramePrincipals::getSingleton(ubiFrame.get());
@@ -1940,8 +2012,9 @@ ConstructSavedFrameStackSlow(JSContext* cx, JS::ubi::StackFrame& frame,
         SavedFrame::HandleLookup lookup = stackChain[i-1];
         lookup->parent = parentFrame;
         parentFrame = cx->realm()->savedStacks().getOrCreateSavedFrame(cx, lookup);
-        if (!parentFrame)
+        if (!parentFrame) {
             return false;
+        }
     }
 
     outSavedFrameStack.set(parentFrame);

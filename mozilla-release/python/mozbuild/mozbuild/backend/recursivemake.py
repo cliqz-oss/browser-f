@@ -113,7 +113,6 @@ MOZBUILD_VARIABLES = [
     b'NO_DIST_INSTALL',
     b'NO_EXPAND_LIBS',
     b'NO_INTERFACES_MANIFEST',
-    b'NO_JS_MANIFEST',
     b'OS_LIBS',
     b'PARALLEL_DIRS',
     b'PREF_JS_EXPORTS',
@@ -1449,14 +1448,14 @@ class RecursiveMakeBackend(CommonBackend):
         # We have to link any Rust libraries after all intermediate static
         # libraries have been listed to ensure that the Rust libraries are
         # searched after the C/C++ objects that might reference Rust symbols.
-        if isinstance(obj, SharedLibrary):
+        if isinstance(obj, (SharedLibrary, Program)):
             self._process_rust_libraries(obj, backend_file, pretty_relpath)
 
         # Process library-based defines
         self._process_defines(obj.lib_defines, backend_file)
 
     def _process_rust_libraries(self, obj, backend_file, pretty_relpath):
-        assert isinstance(obj, SharedLibrary)
+        assert isinstance(obj, (SharedLibrary, Program))
 
         # If this library does not depend on any Rust libraries, then we are done.
         direct_linked = [l for l in obj.linked_libraries if isinstance(l, RustLibrary)]
@@ -1469,8 +1468,11 @@ class RecursiveMakeBackend(CommonBackend):
         # TODO: see bug 1310063 for checking dependencies are set up correctly.
 
         direct_linked = direct_linked[0]
-        backend_file.write('RUST_STATIC_LIB_FOR_SHARED_LIB := %s\n' %
+        backend_file.write('RUST_STATIC_LIB := %s\n' %
                            pretty_relpath(direct_linked, direct_linked.import_name))
+
+        for lib in direct_linked.linked_system_libs:
+            backend_file.write_once('OS_LIBS += %s\n' % lib)
 
     def _process_final_target_files(self, obj, files, backend_file):
         target = obj.install_target
@@ -1677,6 +1679,7 @@ class RecursiveMakeBackend(CommonBackend):
             pp.handleLine(b'topobjdir := @topobjdir@\n')
             pp.handleLine(b'topsrcdir := @top_srcdir@\n')
             pp.handleLine(b'srcdir := @srcdir@\n')
+            pp.handleLine(b'srcdir_rel := @srcdir_rel@\n')
             pp.handleLine(b'VPATH := @srcdir@\n')
             pp.handleLine(b'relativesrcdir := @relativesrcdir@\n')
             pp.handleLine(b'include $(DEPTH)/config/@autoconfmk@\n')

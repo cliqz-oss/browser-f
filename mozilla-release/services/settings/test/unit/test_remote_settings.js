@@ -20,6 +20,7 @@ async function clear_state() {
   await collection.clear();
   // Reset event listeners.
   client._listeners.set("sync", []);
+  Services.prefs.clearUserPref("services.settings.default_bucket");
 }
 
 
@@ -126,7 +127,7 @@ add_task(async function test_default_records_come_from_a_local_dump_when_databas
   equal(data.length, 0);
 
   // When collection has a dump in services/settings/dumps/{bucket}/{collection}.json
-  data = await RemoteSettings("certificates", { bucketName: "blocklists" }).get();
+  data = await RemoteSettings("certificates", { bucketNamePref: "services.blocklist.bucket" }).get();
   notEqual(data.length, 0);
 });
 add_task(clear_state);
@@ -162,7 +163,7 @@ add_task(async function test_inspect_method() {
   const serverTime = Date.now();
 
   // Synchronize the `password-fields` collection.
-  await client.maybeSync(Infinity, serverTime);
+  await client.maybeSync(2000, serverTime);
 
   const inspected = await RemoteSettings.inspect();
 
@@ -309,6 +310,30 @@ add_task(async function test_telemetry_reports_unknown_errors() {
 });
 add_task(clear_state);
 
+add_task(async function test_bucketname_changes_when_bucket_pref_changes() {
+  equal(client.bucketName, "main");
+
+  Services.prefs.setCharPref("services.settings.default_bucket", "main-preview");
+
+  equal(client.bucketName, "main-preview");
+});
+add_task(clear_state);
+
+add_task(async function test_inspect_changes_the_list_when_bucket_pref_is_changed() {
+  // Register a client only listed in -preview...
+  RemoteSettings("crash-rate");
+
+  const { collections: before } = await RemoteSettings.inspect();
+  deepEqual(before.map(c => c.collection).sort(), ["password-fields"]);
+
+  Services.prefs.setCharPref("services.settings.default_bucket", "main-preview");
+
+  const { collections: after, mainBucket } = await RemoteSettings.inspect();
+  deepEqual(after.map(c => c.collection).sort(), ["crash-rate", "password-fields"]);
+  equal(mainBucket, "main-preview");
+});
+add_task(clear_state);
+
 // get a response for a given request from sample data
 function getSampleResponse(req, port) {
   const responses = {
@@ -363,10 +388,20 @@ function getSampleResponse(req, port) {
           "bucket": "main",
           "collection": "password-fields",
           "last_modified": 3000,
+        }, {
+          "id": "4acda969-3bd3-4074-a678-ff311eeb076e",
+          "bucket": "main-preview",
+          "collection": "password-fields",
+          "last_modified": 2000,
+        }, {
+          "id": "58697bd1-315f-4185-9bee-3371befc2585",
+          "bucket": "main-preview",
+          "collection": "crash-rate",
+          "last_modified": 1000,
         }],
       },
     },
-    "GET:/v1/buckets/main/collections/password-fields/records?_sort=-last_modified": {
+    "GET:/v1/buckets/main/collections/password-fields/records?_expected=2000&_sort=-last_modified": {
       "sampleHeaders": [
         "Access-Control-Allow-Origin: *",
         "Access-Control-Expose-Headers: Retry-After, Content-Length, Alert, Backoff",
@@ -384,7 +419,7 @@ function getSampleResponse(req, port) {
         }],
       },
     },
-    "GET:/v1/buckets/main/collections/password-fields/records?_sort=-last_modified&_since=3000": {
+    "GET:/v1/buckets/main/collections/password-fields/records?_expected=3001&_sort=-last_modified&_since=3000": {
       "sampleHeaders": [
         "Access-Control-Allow-Origin: *",
         "Access-Control-Expose-Headers: Retry-After, Content-Length, Alert, Backoff",
@@ -407,7 +442,7 @@ function getSampleResponse(req, port) {
         }],
       },
     },
-    "GET:/v1/buckets/main/collections/password-fields/records?_sort=-last_modified&_since=4000": {
+    "GET:/v1/buckets/main/collections/password-fields/records?_expected=4001&_sort=-last_modified&_since=4000": {
       "sampleHeaders": [
         "Access-Control-Allow-Origin: *",
         "Access-Control-Expose-Headers: Retry-After, Content-Length, Alert, Backoff",
@@ -423,7 +458,7 @@ function getSampleResponse(req, port) {
         }],
       },
     },
-    "GET:/v1/buckets/main/collections/password-fields/records?_sort=-last_modified&_since=9999": {
+    "GET:/v1/buckets/main/collections/password-fields/records?_expected=10000&_sort=-last_modified&_since=9999": {
       "sampleHeaders": [
         "Access-Control-Allow-Origin: *",
         "Access-Control-Expose-Headers: Retry-After, Content-Length, Alert, Backoff",
@@ -438,7 +473,6 @@ function getSampleResponse(req, port) {
       },
     },
   };
-  dump(`${req.method}:${req.path}?${req.queryString}`);
   return responses[`${req.method}:${req.path}?${req.queryString}`] ||
          responses[`${req.method}:${req.path}`] ||
          responses[req.method];

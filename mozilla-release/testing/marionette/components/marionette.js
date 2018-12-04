@@ -78,10 +78,17 @@ const RECOMMENDED_PREFS = new Map([
   // (bug 1176798, bug 1177018, bug 1210465)
   ["apz.content_response_timeout", 60000],
 
+  // Don't show the content blocking introduction panel.
+  // We use a larger number than the default 22 to have some buffer
+  ["browser.contentblocking.introCount", 99],
+
   // Indicate that the download panel has been shown once so that
   // whichever download test runs first doesn't show the popup
   // inconsistently.
   ["browser.download.panel.shown", true],
+
+  // Always display a blank page
+  ["browser.newtabpage.enabled", false],
 
   // Background thumbnails in particular cause grief, and disabling
   // thumbnails in general cannot hurt
@@ -113,9 +120,6 @@ const RECOMMENDED_PREFS = new Map([
 
   // Do not redirect user when a milstone upgrade of Firefox is detected
   ["browser.startup.homepage_override.mstone", "ignore"],
-
-  // Disable browser animations (tabs, fullscreen, sliding alerts)
-  ["toolkit.cosmeticAnimations.enabled", false],
 
   // Do not close the window when the last tab gets closed
   ["browser.tabs.closeWindowWithLastTab", false],
@@ -256,6 +260,9 @@ const RECOMMENDED_PREFS = new Map([
   // Disable first-run welcome page
   ["startup.homepage_welcome_url", "about:blank"],
   ["startup.homepage_welcome_url.additional", ""],
+
+  // Disable browser animations (tabs, fullscreen, sliding alerts)
+  ["toolkit.cosmeticAnimations.enabled", false],
 
   // Prevent starting into safe mode after application crashes
   ["toolkit.startup.max_resumed_crashes", -1],

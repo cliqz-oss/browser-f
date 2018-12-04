@@ -3,8 +3,6 @@
   "type": "object",
   "properties": {
     "AppUpdateURL": {
-      "machine_only": true,
-
       "type": "URL"
     },
 
@@ -95,6 +93,12 @@
       "properties": {
         "ImportEnterpriseRoots": {
           "type": "boolean"
+        },
+        "Install": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -157,8 +161,6 @@
     },
 
     "DisableAppUpdate": {
-      "machine_only": true,
-
       "type": "boolean"
     },
 
@@ -236,14 +238,10 @@
     },
 
     "DisableSystemAddonUpdate": {
-      "machine_only": true,
-
       "type": "boolean"
     },
 
     "DisableTelemetry": {
-      "machine_only": true,
-
       "type": "boolean"
     },
 
@@ -273,8 +271,6 @@
     },
 
     "Extensions": {
-      "machine_only": true,
-
       "type": "object",
       "properties": {
         "Install" : {
@@ -332,8 +328,6 @@
     },
 
     "Homepage": {
-      "machine_only": true,
-
       "type": "object",
       "properties": {
         "URL": {
@@ -348,9 +342,12 @@
           "items": {
             "type": "URL"
           }
+        },
+        "StartPage": {
+          "type": "string",
+          "enum": ["none", "homepage", "previous-session"]
         }
-      },
-      "required": ["URL"]
+      }
     },
 
     "InstallAddonsPermission": {
@@ -378,14 +375,10 @@
     },
 
     "OverrideFirstRunPage": {
-      "machine_only": true,
-
       "type": "URLorEmpty"
     },
 
     "OverridePostUpdatePage": {
-      "machine_only": true,
-
       "type": "URLorEmpty"
     },
 
@@ -586,6 +579,13 @@
       }
     },
 
+    "RequestedLocales": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+
     "SanitizeOnShutdown": {
       "type": "boolean"
     },
@@ -647,9 +647,14 @@
       }
     },
 
-    "WebsiteFilter": {
-      "machine_only": "true",
+    "SecurityDevices": {
+      "type": "object",
+      "patternProperties": {
+        "^.*$": { "type": "string" }
+      }
+    },
 
+    "WebsiteFilter": {
       "type": "object",
       "properties": {
         "Block": {

@@ -2605,7 +2605,6 @@ WorkerPrivate::WorkerPrivate(WorkerPrivate* aParent,
   , mDebugger(nullptr)
   , mJSContext(nullptr)
   , mPRThread(nullptr)
-  , mMainThreadEventTarget(GetMainThreadEventTarget())
   , mWorkerControlEventTarget(new WorkerEventTarget(this,
                                                     WorkerEventTarget::Behavior::ControlOnly))
   , mWorkerHybridEventTarget(new WorkerEventTarget(this,
@@ -2714,7 +2713,6 @@ WorkerPrivate::WorkerPrivate(WorkerPrivate* aParent,
   // that ThrottledEventQueue can only be created on the main thread at the
   // moment.
   if (aParent) {
-    mMainThreadThrottledEventQueue = aParent->mMainThreadThrottledEventQueue;
     mMainThreadEventTarget = aParent->mMainThreadEventTarget;
     return;
   }
@@ -2728,17 +2726,8 @@ WorkerPrivate::WorkerPrivate(WorkerPrivate* aParent,
   }
 
   // Throttle events to the main thread using a ThrottledEventQueue specific to
-  // this worker thread.  This may return nullptr during shutdown.
-  mMainThreadThrottledEventQueue = ThrottledEventQueue::Create(target);
-
-  // If we were able to creat the throttled event queue, then use it for
-  // dispatching our main thread runnables.  Otherwise use our underlying
-  // base target.
-  if (mMainThreadThrottledEventQueue) {
-    mMainThreadEventTarget = mMainThreadThrottledEventQueue;
-  } else {
-    mMainThreadEventTarget = target.forget();
-  }
+  // this tree of worker threads.
+  mMainThreadEventTarget = ThrottledEventQueue::Create(target);
 }
 
 WorkerPrivate::~WorkerPrivate()
@@ -3314,9 +3303,8 @@ WorkerPrivate::DoRunLoop(JSContext* aCx)
     // If the worker thread is spamming the main thread faster than it can
     // process the work, then pause the worker thread until the MT catches
     // up.
-    if (mMainThreadThrottledEventQueue &&
-        mMainThreadThrottledEventQueue->Length() > 5000) {
-      mMainThreadThrottledEventQueue->AwaitIdle();
+    if (mMainThreadEventTarget->Length() > 5000) {
+      mMainThreadEventTarget->AwaitIdle();
     }
   }
 
@@ -5012,7 +5000,8 @@ WorkerPrivate::StartCancelingTimer()
     }
   }
 
-  uint32_t cancelingTimeoutMillis = DOMPrefs::WorkerCancelingTimeoutMillis();
+  uint32_t cancelingTimeoutMillis =
+    StaticPrefs::dom_worker_canceling_timeoutMilliseconds();
 
   RefPtr<CancelingTimerCallback> callback = new CancelingTimerCallback(this);
   nsresult rv = mCancelingTimer->InitWithCallback(callback,
@@ -5355,22 +5344,13 @@ WorkerPrivate::CreateDebuggerGlobalScope(JSContext* aCx)
 bool
 WorkerPrivate::IsOnWorkerThread() const
 {
-  // This is much more complicated than it needs to be but we can't use mThread
-  // because it must be protected by mMutex and sometimes this method is called
-  // when mMutex is already locked. This method should always work.
+  // We can't use mThread because it must be protected by mMutex and sometimes
+  // this method is called when mMutex is already locked. This method should
+  // always work.
   MOZ_ASSERT(mPRThread,
              "AssertIsOnWorkerThread() called before a thread was assigned!");
 
-  nsCOMPtr<nsIThread> thread;
-  nsresult rv =
-    nsThreadManager::get().GetThreadFromPRThread(mPRThread,
-                                                 getter_AddRefs(thread));
-  MOZ_ASSERT(NS_SUCCEEDED(rv));
-  MOZ_ASSERT(thread);
-
-  bool current;
-  rv = thread->IsOnCurrentThread(&current);
-  return NS_SUCCEEDED(rv) && current;
+  return mPRThread == PR_GetCurrentThread();
 }
 
 #ifdef DEBUG

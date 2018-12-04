@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {Localization} = ChromeUtils.import("resource://gre/modules/Localization.jsm", {});
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Localization.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 XPCOMUtils.defineLazyGlobalGetters(this, ["fetch"]);
 
@@ -53,26 +53,11 @@ class PageAction {
     this.dispatchUserAction = this.dispatchUserAction.bind(this);
 
     this._l10n = new Localization([
-      "browser/newtab/asrouter.ftl"
+      "browser/newtab/asrouter.ftl",
     ]);
 
     // Saved timeout IDs for scheduled state changes, so they can be cancelled
     this.stateTransitionTimeoutIDs = [];
-  }
-
-  _dispatchImpression(message) {
-    this._dispatchToASRouter({type: "IMPRESSION", data: message});
-  }
-
-  _sendTelemetry(ping) {
-    // Note `useClientID` is set to true to tell TelemetryFeed to use client_id
-    // instead of `impression_id`. TelemetryFeed is also responsible for deciding
-    // whether to use `message_id` or `bucket_id` based on the release channel and
-    // shield study setup.
-    this._dispatchToASRouter({
-      type: "DOORHANGER_TELEMETRY",
-      data: {useClientID: true, action: "cfr_user_event", source: "CFR", ...ping}
-    });
   }
 
   async show(recommendation, shouldExpand = false) {
@@ -119,13 +104,6 @@ class PageAction {
       this.window.PopupNotifications.remove(this.currentNotification);
       this.currentNotification = null;
     }
-  }
-
-  dispatchUserAction(action) {
-    this._dispatchToASRouter(
-      {type: "USER_ACTION", data: action},
-      {browser: this.window.gBrowser.selectedBrowser}
-    );
   }
 
   _expand(delay) {
@@ -175,6 +153,24 @@ class PageAction {
     }
   }
 
+  dispatchUserAction(action) {
+    this._dispatchToASRouter(
+      {type: "USER_ACTION", data: action},
+      {browser: this.window.gBrowser.selectedBrowser}
+    );
+  }
+
+  _dispatchImpression(message) {
+    this._dispatchToASRouter({type: "IMPRESSION", data: message});
+  }
+
+  _sendTelemetry(ping) {
+    this._dispatchToASRouter({
+      type: "DOORHANGER_TELEMETRY",
+      data: {action: "cfr_user_event", source: "CFR", ...ping},
+    });
+  }
+
   _blockMessage(messageID) {
     this._dispatchToASRouter(
       {type: "BLOCK_MESSAGE_BY_ID", data: {id: messageID}}
@@ -191,12 +187,27 @@ class PageAction {
    */
   async getStrings(string, subAttribute = "") {
     if (!string.string_id) {
+      if (subAttribute) {
+        if (string.attributes) {
+          return string.attributes[subAttribute];
+        }
+
+        Cu.reportError(`String ${string.value} does not contain any attributes`);
+        return subAttribute;
+      }
+
+      if (typeof string.value === "string") {
+        const stringWithAttributes = new String(string.value); // eslint-disable-line no-new-wrappers
+        stringWithAttributes.attributes = string.attributes;
+        return stringWithAttributes;
+      }
+
       return string;
     }
 
     const [localeStrings] = await this._l10n.formatMessages([{
       id: string.string_id,
-      args: string.args
+      args: string.args,
     }]);
 
     const mainString = new String(localeStrings.value); // eslint-disable-line no-new-wrappers
@@ -255,7 +266,7 @@ class PageAction {
 
     author.textContent = await this.getStrings({
       string_id: "cfr-doorhanger-extension-author",
-      args: {name: content.addon.author}
+      args: {name: content.addon.author},
     });
 
     footerText.textContent = await this.getStrings(content.text);
@@ -270,7 +281,7 @@ class PageAction {
 
       const ratingString = await this.getStrings({
         string_id: "cfr-doorhanger-extension-rating",
-        args: {total: rating}
+        args: {total: rating},
       }, "tooltiptext");
       footerFilledStars.setAttribute("tooltiptext", ratingString);
       footerEmptyStars.setAttribute("tooltiptext", ratingString);
@@ -285,7 +296,7 @@ class PageAction {
     if (users) {
       footerUsers.setAttribute("value", await this.getStrings({
         string_id: "cfr-doorhanger-extension-total-users",
-        args: {total: users}
+        args: {total: users},
       }));
       footerUsers.removeAttribute("hidden");
     } else {
@@ -307,7 +318,13 @@ class PageAction {
 
     const {primary, secondary} = content.buttons;
     const primaryBtnStrings = await this.getStrings(primary.label);
-    const secondaryBtnStrings = await this.getStrings(secondary.label);
+
+    // For each secondary action, get the strings and attributes
+    const secondaryBtnStrings = [];
+    for (let button of secondary) {
+      let label = await this.getStrings(button.label);
+      secondaryBtnStrings.push({label, attributes: label.attributes});
+    }
 
     const mainAction = {
       label: primaryBtnStrings,
@@ -318,23 +335,42 @@ class PageAction {
         this.hide();
         this._sendTelemetry({message_id: id, bucket_id: content.bucket_id, event: "INSTALL"});
         RecommendationMap.delete(browser);
-      }
+      },
     };
 
     const secondaryActions = [{
-      label: secondaryBtnStrings,
-      accessKey: secondaryBtnStrings.attributes.accesskey,
+      label: secondaryBtnStrings[0].label,
+      accessKey: secondaryBtnStrings[0].attributes.accesskey,
       callback: () => {
+        this.dispatchUserAction(secondary[0].action);
         this.hide();
         this._sendTelemetry({message_id: id, bucket_id: content.bucket_id, event: "DISMISS"});
         RecommendationMap.delete(browser);
-      }
+      },
+    }, {
+      label: secondaryBtnStrings[1].label,
+      accessKey: secondaryBtnStrings[1].attributes.accesskey,
+      callback: () => {
+        this._blockMessage(id);
+        this.hide();
+        this._sendTelemetry({message_id: id, bucket_id: content.bucket_id, event: "BLOCK"});
+        RecommendationMap.delete(browser);
+      },
+    }, {
+      label: secondaryBtnStrings[2].label,
+      accessKey: secondaryBtnStrings[2].attributes.accesskey,
+      callback: () => {
+        this.dispatchUserAction(secondary[2].action);
+        this.hide();
+        this._sendTelemetry({message_id: id, bucket_id: content.bucket_id, event: "MANAGE"});
+        RecommendationMap.delete(browser);
+      },
     }];
 
     const options = {
       popupIconURL: content.addon.icon,
       hideClose: true,
-      eventCallback: this._popupStateChange
+      eventCallback: this._popupStateChange,
     };
 
     this._sendTelemetry({message_id: id, bucket_id: content.bucket_id, event: "CLICK_DOORHANGER"});
@@ -504,8 +540,12 @@ const CFRPageActions = {
     // WeakMaps don't have a `clear` method
     PageActionMap = new WeakMap();
     RecommendationMap = new WeakMap();
-  }
+    this.PageActionMap = PageActionMap;
+    this.RecommendationMap = RecommendationMap;
+  },
 };
+
+this.PageAction = PageAction;
 this.CFRPageActions = CFRPageActions;
 
-const EXPORTED_SYMBOLS = ["CFRPageActions"];
+const EXPORTED_SYMBOLS = ["CFRPageActions", "PageAction"];

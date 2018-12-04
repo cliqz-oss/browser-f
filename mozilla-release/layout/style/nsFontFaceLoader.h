@@ -22,8 +22,8 @@
 
 class nsIPrincipal;
 
-class nsFontFaceLoader : public nsIStreamLoaderObserver
-                       , public nsIRequestObserver
+class nsFontFaceLoader final : public nsIStreamLoaderObserver
+                             , public nsIRequestObserver
 {
 public:
   nsFontFaceLoader(gfxUserFontEntry* aFontToLoad, nsIURI* aFontURI,
@@ -51,7 +51,7 @@ protected:
   virtual ~nsFontFaceLoader();
 
   // helper method for determining the font-display value
-  uint8_t GetFontDisplay();
+  mozilla::StyleFontDisplay GetFontDisplay();
 
 private:
   RefPtr<gfxUserFontEntry>  mUserFontEntry;

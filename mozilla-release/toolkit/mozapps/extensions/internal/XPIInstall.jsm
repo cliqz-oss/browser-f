@@ -363,7 +363,7 @@ XPIPackage = class XPIPackage extends Package {
   }
 
   async iterFiles(callback) {
-    for (let path of XPCOMUtils.IterStringEnumerator(this.zipReader.findEntries("*"))) {
+    for (let path of this.zipReader.findEntries("*")) {
       let entry = this.zipReader.getEntry(path);
       callback({
         path,
@@ -858,7 +858,8 @@ var loadManifest = async function(aPackage, aLocation, aOldAddon) {
     }
   }
 
-  await addon.updateBlocklistState({oldAddon: aOldAddon});
+  addon.propagateDisabledState(aOldAddon);
+  await addon.updateBlocklistState();
   addon.appDisabled = !XPIDatabase.isUsableAddon(addon);
 
   defineSyncGUID(addon);
@@ -1346,6 +1347,11 @@ class AddonInstall {
    *        Optional icons for the add-on
    * @param {string} [options.version]
    *        An optional version for the add-on
+   * @param {Object?} [options.installTelemetryInfo]
+   *        An optional object which provides details about the installation source
+   *        included in the addon manager telemetry events.
+   * @param {boolean} [options.isUserRequestedUpdate]
+   *        An optional boolean, true if the install object is related to a user triggered update.
    * @param {function(string) : Promise<void>} [options.promptHandler]
    *        A callback to prompt the user before installing.
    */
@@ -1388,6 +1394,16 @@ class AddonInstall {
     this.name = options.name || null;
     this.type = options.type || null;
     this.version = options.version || null;
+    this.isUserRequestedUpdate = options.isUserRequestedUpdate;
+    this.installTelemetryInfo = null;
+
+    if (options.installTelemetryInfo) {
+      this.installTelemetryInfo = options.installTelemetryInfo;
+    } else if (this.existingAddon) {
+      // Inherits the installTelemetryInfo on updates (so that the source of the original
+      // installation telemetry data is being preserved across the extension updates).
+      this.installTelemetryInfo = this.existingAddon.installTelemetryInfo;
+    }
 
     this.file = null;
     this.ownsTempFile = null;
@@ -1544,13 +1560,18 @@ class AddonInstall {
   }
 
   /**
-   * Updates the sourceURI and releaseNotesURI values on the Addon being
-   * installed by this AddonInstall instance.
+   * Updates the addon metadata that has to be propagated across restarts.
    */
-  updateAddonURIs() {
+  updatePersistedMetadata() {
     this.addon.sourceURI = this.sourceURI.spec;
-    if (this.releaseNotesURI)
+
+    if (this.releaseNotesURI) {
       this.addon.releaseNotesURI = this.releaseNotesURI.spec;
+    }
+
+    if (this.installTelemetryInfo) {
+      this.addon.installTelemetryInfo = this.installTelemetryInfo;
+    }
   }
 
   /**
@@ -1626,7 +1647,7 @@ class AddonInstall {
       pkg.close();
     }
 
-    this.updateAddonURIs();
+    this.updatePersistedMetadata();
 
     this.addon._install = this;
     this.name = this.addon.selectedLocale.name;
@@ -1680,6 +1701,8 @@ class AddonInstall {
           existingAddon: this.existingAddon ? this.existingAddon.wrapper : null,
           addon: this.addon.wrapper,
           icon: this.getIcon(),
+          // Used in AMTelemetry to detect the install flow related to this prompt.
+          install: this.wrapper,
         };
 
         try {
@@ -1727,7 +1750,7 @@ class AddonInstall {
   /**
    * Installs the add-on into the install location.
    */
-  startInstall() {
+  async startInstall() {
     this.state = AddonManager.STATE_INSTALLING;
     if (!this._callInstallListeners("onInstallStarted")) {
       this.state = AddonManager.STATE_DOWNLOADED;
@@ -1748,6 +1771,19 @@ class AddonInstall {
       }
     }
 
+    // Reinstall existing user-disabled addon (of the same installed version).
+    // If addon is marked to be uninstalled - don't reinstall it.
+    if (this.existingAddon &&
+        this.existingAddon.location === this.location &&
+        this.existingAddon.version === this.addon.version &&
+        this.existingAddon.userDisabled &&
+        !this.existingAddon.pendingUninstall) {
+      await XPIDatabase.updateAddonDisabledState(this.existingAddon, false);
+      this.state = AddonManager.STATE_INSTALLED;
+      this._callInstallListeners("onInstallEnded", this.existingAddon.wrapper);
+      return;
+    }
+
     let isUpgrade = this.existingAddon &&
                     this.existingAddon.location == this.location;
 
@@ -1758,7 +1794,7 @@ class AddonInstall {
 
     let stagedAddon = this.location.installer.getStagingDir();
 
-    (async () => {
+    try {
       await this.location.installer.requestStagingDir();
 
       // remove any previously staged files
@@ -1789,8 +1825,7 @@ class AddonInstall {
         this.addon.visible = true;
 
         if (isUpgrade) {
-          this.addon =  XPIDatabase.updateAddonMetadata(this.existingAddon, this.addon,
-                                                        file.path);
+          this.addon = XPIDatabase.updateAddonMetadata(this.existingAddon, this.addon, file.path);
           let state = this.location.get(this.addon.id);
           if (state) {
             state.syncWithDB(this.addon, true);
@@ -1824,6 +1859,10 @@ class AddonInstall {
         if (this.existingAddon) {
           await XPIInternal.BootstrapScope.get(this.existingAddon).update(
             this.addon, !this.addon.disabled, install);
+
+          if (this.addon.disabled) {
+            flushJarCache(this.file);
+          }
         } else {
           await install();
           await XPIInternal.BootstrapScope.get(this.addon).install(undefined, true);
@@ -1831,7 +1870,7 @@ class AddonInstall {
       })();
 
       await this._startupPromise;
-    })().catch((e) => {
+    } catch (e) {
       logger.warn(`Failed to install ${this.file.path} from ${this.sourceURI.spec} to ${stagedAddon.path}`, e);
 
       if (stagedAddon.exists())
@@ -1842,10 +1881,10 @@ class AddonInstall {
       AddonManagerPrivate.callAddonListeners("onOperationCancelled",
                                              this.addon.wrapper);
       this._callInstallListeners("onInstallFailed");
-    }).then(() => {
+    } finally {
       this.removeTemporaryFile();
-      return this.location.installer.releaseStagingDir();
-    });
+      this.location.installer.releaseStagingDir();
+    }
   }
 
   /**
@@ -2021,7 +2060,8 @@ var LocalAddonInstall = class extends AddonInstall {
     let addon = await XPIDatabase.getVisibleAddonForID(this.addon.id);
 
     this.existingAddon = addon;
-    await this.addon.updateBlocklistState({oldAddon: this.existingAddon});
+    this.addon.propagateDisabledState(this.existingAddon);
+    await this.addon.updateBlocklistState();
     this.addon.updateDate = Date.now();
     this.addon.installDate = addon ? addon.installDate : this.addon.updateDate;
 
@@ -2096,6 +2136,7 @@ var DownloadAddonInstall = class extends AddonInstall {
     this.crypto = null;
     this.badCertHandler = null;
     this.restartDownload = false;
+    this.downloadStartedAt = null;
 
     this._callInstallListeners("onNewInstall", this.listeners, this.wrapper);
   }
@@ -2142,6 +2183,8 @@ var DownloadAddonInstall = class extends AddonInstall {
    * Starts downloading the add-on's XPI file.
    */
   startDownload() {
+    this.downloadStartedAt = Cu.now();
+
     this.state = AddonManager.STATE_DOWNLOADING;
     if (!this._callInstallListeners("onDownloadStarted")) {
       logger.debug("onDownloadStarted listeners cancelled installation of addon " + this.sourceURI.spec);
@@ -2417,7 +2460,8 @@ var DownloadAddonInstall = class extends AddonInstall {
     } else {
       this.addon.installDate = this.addon.updateDate;
     }
-    await this.addon.updateBlocklistState({oldAddon: this.existingAddon});
+    this.addon.propagateDisabledState(this.existingAddon);
+    await this.addon.updateBlocklistState();
 
     if (this._callInstallListeners("onDownloadEnded")) {
       // If a listener changed our state then do not proceed with the install
@@ -2460,8 +2504,10 @@ var DownloadAddonInstall = class extends AddonInstall {
  *        The add-on being updated
  * @param {Object} aUpdate
  *        The metadata about the new version from the update manifest
+ * @param {boolean} isUserRequested
+ *        An optional boolean, true if the install object is related to a user triggered update.
  */
-function createUpdate(aCallback, aAddon, aUpdate) {
+function createUpdate(aCallback, aAddon, aUpdate, isUserRequested) {
   let url = Services.io.newURI(aUpdate.updateURL);
 
   (async function() {
@@ -2472,7 +2518,9 @@ function createUpdate(aCallback, aAddon, aUpdate) {
       type: aAddon.type,
       icons: aAddon.icons,
       version: aUpdate.version,
+      isUserRequestedUpdate: isUserRequested,
     };
+
     let install;
     if (url instanceof Ci.nsIFileURL) {
       install = new LocalAddonInstall(aAddon.location, url, opts);
@@ -2495,6 +2543,10 @@ function createUpdate(aCallback, aAddon, aUpdate) {
 const wrapperMap = new WeakMap();
 let installFor = wrapper => wrapperMap.get(wrapper);
 
+// Numeric id included in the install telemetry events to correlate multiple events related
+// to the same install or update flow.
+let nextInstallId = 0;
+
 /**
  * Creates a wrapper for an AddonInstall that only exposes the public API
  *
@@ -2503,6 +2555,7 @@ let installFor = wrapper => wrapperMap.get(wrapper);
  */
 function AddonInstallWrapper(aInstall) {
   wrapperMap.set(this, aInstall);
+  this.installId = ++nextInstallId;
 }
 
 AddonInstallWrapper.prototype = {
@@ -2534,6 +2587,18 @@ AddonInstallWrapper.prototype = {
 
   set promptHandler(handler) {
     installFor(this).promptHandler = handler;
+  },
+
+  get installTelemetryInfo() {
+    return installFor(this).installTelemetryInfo;
+  },
+
+  get isUserRequestedUpdate() {
+    return Boolean(installFor(this).isUserRequestedUpdate);
+  },
+
+  get downloadStartedAt() {
+    return installFor(this).downloadStartedAt;
   },
 
   install() {
@@ -2591,6 +2656,7 @@ var UpdateChecker = function(aAddon, aListener, aReason, aAppVersion, aPlatformV
   this.appVersion = aAppVersion;
   this.platformVersion = aPlatformVersion;
   this.syncCompatibility = (aReason == AddonManager.UPDATE_WHEN_NEW_APP_INSTALLED);
+  this.isUserRequested = (aReason == AddonManager.UPDATE_WHEN_USER_REQUESTED);
 
   let updateURL = aAddon.updateURL;
   if (!updateURL) {
@@ -2731,7 +2797,7 @@ UpdateChecker.prototype = {
 
       createUpdate(aInstall => {
         sendUpdateAvailableMessages(this, aInstall);
-      }, this.addon, update);
+      }, this.addon, update, this.isUserRequested);
     } else {
       sendUpdateAvailableMessages(this, null);
     }
@@ -2771,17 +2837,22 @@ UpdateChecker.prototype = {
  *        The file to install
  * @param {XPIStateLocation} location
  *        The location to install to
+ * @param {Object?} [telemetryInfo]
+ *        An optional object which provides details about the installation source
+ *        included in the addon manager telemetry events.
  * @returns {Promise<AddonInstall>}
  *        A Promise that resolves with the new install object.
  */
-function createLocalInstall(file, location) {
+function createLocalInstall(file, location, telemetryInfo) {
   if (!location) {
     location = XPIStates.getLocation(KEY_APP_PROFILE);
   }
   let url = Services.io.newFileURI(file);
 
   try {
-    let install = new LocalAddonInstall(location, url);
+    let install = new LocalAddonInstall(location, url, {
+      installTelemetryInfo: telemetryInfo,
+    });
     return install.init().then(() => install);
   } catch (e) {
     logger.error("Error creating install", e);
@@ -3480,6 +3551,7 @@ var XPIInstall = {
    */
   async installDistributionAddon(id, file, location) {
     let addon = await loadManifestFromFile(file, location);
+    addon.installTelemetryInfo = {source: "distribution"};
 
     if (addon.id != id) {
       throw new Error(`File file ${file.path} contains an add-on with an incorrect ID`);
@@ -3795,9 +3867,12 @@ var XPIInstall = {
    *        A version for the install
    * @param {XULElement?} [aBrowser]
    *        The browser performing the install
+   * @param {Object?} [aInstallTelemetryInfo]
+   *        An optional object which provides details about the installation source
+   *        included in the addon manager telemetry events.
    * @returns {AddonInstall}
    */
-  async getInstallForURL(aUrl, aHash, aName, aIcons, aVersion, aBrowser) {
+  async getInstallForURL(aUrl, aHash, aName, aIcons, aVersion, aBrowser, aInstallTelemetryInfo) {
     let location = XPIStates.getLocation(KEY_APP_PROFILE);
     let url = Services.io.newURI(aUrl);
 
@@ -3807,6 +3882,7 @@ var XPIInstall = {
       name: aName,
       icons: aIcons,
       version: aVersion,
+      installTelemetryInfo: aInstallTelemetryInfo,
     };
 
     if (url instanceof Ci.nsIFileURL) {
@@ -3824,10 +3900,13 @@ var XPIInstall = {
    *
    * @param {nsIFile} aFile
    *        The file to be installed
+   * @param {Object?} [aInstallTelemetryInfo]
+   *        An optional object which provides details about the installation source
+   *        included in the addon manager telemetry events.
    * @returns {AddonInstall?}
    */
-  async getInstallForFile(aFile) {
-    let install = await createLocalInstall(aFile);
+  async getInstallForFile(aFile, aInstallTelemetryInfo) {
+    let install = await createLocalInstall(aFile, null, aInstallTelemetryInfo);
     return install ? install.wrapper : null;
   },
 

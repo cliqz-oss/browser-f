@@ -449,9 +449,11 @@ with only_when('--enable-compile-environment'):
 
     set_config('LIBFUZZER', enable_libfuzzer)
     set_define('LIBFUZZER', enable_libfuzzer)
+    add_old_configure_assignment('LIBFUZZER', enable_libfuzzer)
 
     set_config('FUZZING_INTERFACES', enable_fuzzing_interfaces)
     set_define('FUZZING_INTERFACES', enable_fuzzing_interfaces)
+    add_old_configure_assignment('FUZZING_INTERFACES', enable_fuzzing_interfaces)
 
 # Enable pipeline operator
 # ===================================================
@@ -483,13 +485,14 @@ set_config('JS_BUILD_BINAST', enable_build_binast)
 
 # Experimental support for wasm code generation with Cranelift
 # ==============================================================
+
+@depends(milestone.is_nightly)
+def default_cranelift(is_nightly):
+    return is_nightly
+
 js_option('--enable-cranelift',
+          default=default_cranelift,
           help='Enable Cranelift code generator for wasm')
 
-@depends('--enable-cranelift')
-def enable_cranelift(value):
-    if value:
-        return True
-
-set_config('MOZ_WASM_CRANELIFT', enable_cranelift)
-set_define('MOZ_WASM_CRANELIFT', enable_cranelift)
+set_config('ENABLE_WASM_CRANELIFT', depends_if('--enable-cranelift')(lambda x: True))
+set_define('ENABLE_WASM_CRANELIFT', depends_if('--enable-cranelift')(lambda x: True))

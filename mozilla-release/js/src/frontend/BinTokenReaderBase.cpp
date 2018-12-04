@@ -31,9 +31,14 @@ ErrorResult<JS::Error&>
 BinTokenReaderBase::raiseError(const char* description)
 {
     MOZ_ASSERT(!cx_->isExceptionPending());
-    TokenPos pos = this->pos();
-    JS_ReportErrorASCII(cx_, "BinAST parsing error: %s at offsets %u => %u",
-                        description, pos.begin, pos.end);
+    if (MOZ_LIKELY(errorReporter_)) {
+        errorReporter_->reportErrorNoOffset(JSMSG_BINAST, description);
+    } else {
+        // Only true in testing code.
+        TokenPos pos = this->pos();
+        JS_ReportErrorASCII(cx_, "BinAST parsing error: %s at offsets %u => %u",
+                            description, pos.begin, pos.end);
+    }
     return cx_->alreadyReportedError();
 }
 
@@ -93,17 +98,27 @@ BinTokenReaderBase::pos(size_t start)
     return pos;
 }
 
+void
+BinTokenReaderBase::seek(size_t offset)
+{
+    MOZ_ASSERT(start_ + offset >= start_ &&
+               start_ + offset < stop_);
+    current_ = start_ + offset;
+}
+
 JS::Result<Ok>
 BinTokenReaderBase::readBuf(uint8_t* bytes, uint32_t len)
 {
     MOZ_ASSERT(!cx_->isExceptionPending());
     MOZ_ASSERT(len > 0);
 
-    if (stop_ < current_ + len)
+    if (stop_ < current_ + len) {
         return raiseError("Buffer exceeds length");
+    }
 
-    for (uint32_t i = 0; i < len; ++i)
+    for (uint32_t i = 0; i < len; ++i) {
         *bytes++ = *current_++;
+    }
 
     return Ok();
 }

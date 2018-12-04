@@ -33,16 +33,16 @@ SVGImageElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 
 nsSVGElement::LengthInfo SVGImageElement::sLengthInfo[4] =
 {
-  { &nsGkAtoms::x, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::X },
-  { &nsGkAtoms::y, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::Y },
-  { &nsGkAtoms::width, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::X },
-  { &nsGkAtoms::height, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::Y },
+  { nsGkAtoms::x, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::X },
+  { nsGkAtoms::y, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::Y },
+  { nsGkAtoms::width, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::X },
+  { nsGkAtoms::height, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::Y },
 };
 
 nsSVGElement::StringInfo SVGImageElement::sStringInfo[2] =
 {
-  { &nsGkAtoms::href, kNameSpaceID_None, true },
-  { &nsGkAtoms::href, kNameSpaceID_XLink, true }
+  { nsGkAtoms::href, kNameSpaceID_None, true },
+  { nsGkAtoms::href, kNameSpaceID_XLink, true }
 };
 
 //----------------------------------------------------------------------
@@ -55,8 +55,8 @@ NS_IMPL_ISUPPORTS_INHERITED(SVGImageElement, SVGImageElementBase,
 //----------------------------------------------------------------------
 // Implementation
 
-SVGImageElement::SVGImageElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-  : SVGImageElementBase(aNodeInfo)
+SVGImageElement::SVGImageElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
+  : SVGImageElementBase(std::move(aNodeInfo))
 {
   // We start out broken
   AddStatesSilently(NS_EVENT_STATE_BROKEN);

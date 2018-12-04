@@ -4,10 +4,13 @@
 #if defined(XP_WIN)
 #include <d3d11.h>
 #include "mozilla/gfx/DeviceManagerDx.h"
-#endif // defined(XP_WIN)
+#elif defined(XP_MACOSX)
+#include "mozilla/gfx/MacIOSurface.h"
+#endif
 
 #include "mozilla/dom/GamepadEventTypes.h"
 #include "mozilla/dom/GamepadBinding.h"
+#include "VRThread.h"
 
 #if !defined(M_PI)
 #define M_PI 3.14159265358979323846264338327950288
@@ -16,7 +19,12 @@
 #define BTN_MASK_FROM_ID(_id) \
   ::vr::ButtonMaskFromId(vr::EVRButtonId::_id)
 
-static const uint32_t kNumOpenVRHaptcs = 1;
+// Haptic feedback is updated every 5ms, as this is
+// the minimum period between new haptic pulse requests.
+// Effectively, this results in a pulse width modulation
+// with an interval of 5ms.  Through experimentation, the
+// maximum duty cycle was found to be about 3.9ms
+const uint32_t kVRHapticUpdateInterval = 5;
 
 using namespace mozilla::gfx;
 
@@ -73,24 +81,6 @@ UpdateButton(VRControllerState& aState, const ::vr::VRControllerState_t& aContro
   }
 }
 
-void
-UpdateTrigger(VRControllerState& aState, uint32_t aButtonIndex, float aValue, float aThreshold)
-{
-  // For OpenVR, the threshold value of ButtonPressed and ButtonTouched is 0.55.
-  // We prefer to let developers to set their own threshold for the adjustment.
-  // Therefore, we don't check ButtonPressed and ButtonTouched with ButtonMask here.
-  // we just check the button value is larger than the threshold value or not.
-  uint64_t mask = (1ULL << aButtonIndex);
-  aState.triggerValue[aButtonIndex] = aValue;
-  if (aValue > aThreshold) {
-    aState.buttonPressed |= mask;
-    aState.buttonTouched |= mask;
-  } else {
-    aState.buttonPressed &= ~mask;
-    aState.buttonTouched &= ~mask;
-  }
-}
-
 }; // anonymous namespace
 
 OpenVRSession::OpenVRSession()
@@ -98,9 +88,11 @@ OpenVRSession::OpenVRSession()
   , mVRSystem(nullptr)
   , mVRChaperone(nullptr)
   , mVRCompositor(nullptr)
-  , mControllerDeviceIndex{0}
-  , mShouldQuit(false)
+  , mControllerDeviceIndex{}
+  , mHapticPulseRemaining{}
+  , mHapticPulseIntensity{}
   , mIsWindowsMR(false)
+  , mControllerHapticStateMutex("OpenVRSession::mControllerHapticStateMutex")
 {
 }
 
@@ -112,6 +104,9 @@ OpenVRSession::~OpenVRSession()
 bool
 OpenVRSession::Initialize(mozilla::gfx::VRSystemState& aSystemState)
 {
+  if (!gfxPrefs::VREnabled() || !gfxPrefs::VROpenVREnabled()) {
+    return false;
+  }
   if (mVRSystem != nullptr) {
     // Already initialized
     return true;
@@ -162,6 +157,9 @@ OpenVRSession::Initialize(mozilla::gfx::VRSystemState& aSystemState)
     return false;
   }
 
+  StartHapticThread();
+  StartHapticTimer();
+  
   // Succeeded
   return true;
 }
@@ -184,6 +182,8 @@ OpenVRSession::CreateD3DObjects()
 void
 OpenVRSession::Shutdown()
 {
+  StopHapticTimer();
+  StopHapticThread();
   if (mVRSystem || mVRCompositor || mVRSystem) {
     ::vr::VR_Shutdown();
     mVRCompositor = nullptr;
@@ -197,6 +197,7 @@ OpenVRSession::InitState(VRSystemState& aSystemState)
 {
   VRDisplayState& state = aSystemState.displayState;
   strncpy(state.mDisplayName, "OpenVR HMD", kVRDisplayNameMaxLen);
+  state.mEightCC = GFX_VR_EIGHTCC('O', 'p', 'e', 'n', 'V', 'R', ' ', ' ');
   state.mIsConnected = mVRSystem->IsTrackedDeviceConnected(::vr::k_unTrackedDeviceIndex_Hmd);
   state.mIsMounted = false;
   state.mCapabilityFlags = (VRDisplayCapabilityFlags)((int)VRDisplayCapabilityFlags::Cap_None |
@@ -205,6 +206,7 @@ OpenVRSession::InitState(VRSystemState& aSystemState)
     (int)VRDisplayCapabilityFlags::Cap_External |
     (int)VRDisplayCapabilityFlags::Cap_Present |
     (int)VRDisplayCapabilityFlags::Cap_StageParameters);
+  state.mReportsDroppedFrames = true;
 
   ::vr::ETrackedPropertyError err;
   bool bHasProximitySensor = mVRSystem->GetBoolTrackedDeviceProperty(::vr::k_unTrackedDeviceIndex_Hmd, ::vr::Prop_ContainsProximitySensor_Bool, &err);
@@ -380,6 +382,8 @@ OpenVRSession::EnumerateControllers(VRSystemState& aState)
 {
   MOZ_ASSERT(mVRSystem);
 
+  MutexAutoLock lock(mControllerHapticStateMutex);
+
   bool controllerPresent[kVRControllerMaxCount] = { false };
 
   // Basically, we would have HMDs in the tracked devices,
@@ -492,7 +496,7 @@ OpenVRSession::EnumerateControllers(VRSystemState& aState)
       strncpy(controllerState.controllerName, deviceId.BeginReading(), kVRControllerNameMaxLen);
       controllerState.numButtons = numButtons;
       controllerState.numAxes = numAxes;
-      controllerState.numHaptics = kNumOpenVRHaptcs;
+      controllerState.numHaptics = kNumOpenVRHaptics;
 
       // If the Windows MR controller doesn't has the amount
       // of buttons or axes as our expectation, switching off
@@ -760,13 +764,7 @@ OpenVRSession::StartFrame(mozilla::gfx::VRSystemState& aSystemState)
   EnumerateControllers(aSystemState);
   UpdateControllerButtons(aSystemState);
   UpdateControllerPoses(aSystemState);
-  aSystemState.sensorState.inputFrameID++;
-}
-
-bool
-OpenVRSession::ShouldQuit() const
-{
-  return mShouldQuit;
+  UpdateTelemetry(aSystemState);
 }
 
 void
@@ -814,73 +812,47 @@ OpenVRSession::ProcessEvents(mozilla::gfx::VRSystemState& aSystemState)
   }
 }
 
-bool
-OpenVRSession::SubmitFrame(const mozilla::gfx::VRLayer_Stereo_Immersive& aLayer)
-{
 #if defined(XP_WIN)
-
-  if (aLayer.mTextureType == VRLayerTextureType::LayerTextureType_D3D10SurfaceDescriptor) {
-      RefPtr<ID3D11Texture2D> dxTexture;
-      HRESULT hr = mDevice->OpenSharedResource((HANDLE)aLayer.mTextureHandle,
-        __uuidof(ID3D11Texture2D),
-        (void**)(ID3D11Texture2D**)getter_AddRefs(dxTexture));
-      if (FAILED(hr) || !dxTexture) {
-        NS_WARNING("Failed to open shared texture");
-        return false;
-      }
-
-      // Similar to LockD3DTexture in TextureD3D11.cpp
-      RefPtr<IDXGIKeyedMutex> mutex;
-      dxTexture->QueryInterface((IDXGIKeyedMutex**)getter_AddRefs(mutex));
-      if (mutex) {
-        HRESULT hr = mutex->AcquireSync(0, 1000);
-        if (hr == WAIT_TIMEOUT) {
-          gfxDevCrash(LogReason::D3DLockTimeout) << "D3D lock mutex timeout";
-        }
-        else if (hr == WAIT_ABANDONED) {
-          gfxCriticalNote << "GFX: D3D11 lock mutex abandoned";
-        }
-        if (FAILED(hr)) {
-          NS_WARNING("Failed to lock the texture");
-          return false;
-        }
-      }
-      bool success = SubmitFrame((void *)dxTexture,
+bool
+OpenVRSession::SubmitFrame(const mozilla::gfx::VRLayer_Stereo_Immersive& aLayer,
+                           ID3D11Texture2D* aTexture)
+{
+  return SubmitFrame((void *)aTexture,
                      ::vr::ETextureType::TextureType_DirectX,
                      aLayer.mLeftEyeRect, aLayer.mRightEyeRect);
-      if (mutex) {
-        HRESULT hr = mutex->ReleaseSync(0);
-        if (FAILED(hr)) {
-          NS_WARNING("Failed to unlock the texture");
-        }
-      }
-      if (!success) {
-        return false;
-      }
-      return true;
-  }
-
+}
 #elif defined(XP_MACOSX)
-
-  if (aLayer.mTextureType == VRLayerTextureType::LayerTextureType_MacIOSurface) {
-    return SubmitFrame(aLayer.mTextureHandle,
-                       ::vr::ETextureType::TextureType_IOSurface,
-                       aLayer.mLeftEyeRect, aLayer.mRightEyeRect);
-  }
-
+bool
+OpenVRSession::SubmitFrame(const mozilla::gfx::VRLayer_Stereo_Immersive& aLayer,
+                           const VRLayerTextureHandle& aTexture)
+{
+  return SubmitFrame(aTexture,
+                     ::vr::ETextureType::TextureType_IOSurface,
+                     aLayer.mLeftEyeRect, aLayer.mRightEyeRect);
+}
 #endif
 
-  return false;
-}
-
 bool
-OpenVRSession::SubmitFrame(void* aTextureHandle,
+OpenVRSession::SubmitFrame(const VRLayerTextureHandle& aTextureHandle,
                            ::vr::ETextureType aTextureType,
                            const VRLayerEyeRect& aLeftEyeRect,
                            const VRLayerEyeRect& aRightEyeRect)
 {
   ::vr::Texture_t tex;
+#if defined(XP_MACOSX)
+  // We get aTextureHandle from get_SurfaceDescriptorMacIOSurface() at VRDisplayExternal.
+  // scaleFactor and opaque are skipped because they always are 1.0 and false.
+  RefPtr<MacIOSurface> surf = MacIOSurface::LookupSurface(aTextureHandle);
+  if (!surf) {
+    NS_WARNING("OpenVRSession::SubmitFrame failed to get a MacIOSurface");
+    return false;
+  }
+
+  const void* ioSurface = surf->GetIOSurfacePtr();
+  tex.handle = (void *)ioSurface;
+#else
   tex.handle = aTextureHandle;
+#endif
   tex.eType = aTextureType;
   tex.eColorSpace = ::vr::EColorSpace::ColorSpace_Auto;
 
@@ -917,17 +889,168 @@ OpenVRSession::StopPresentation()
 
   ::vr::Compositor_CumulativeStats stats;
   mVRCompositor->GetCumulativeStats(&stats, sizeof(::vr::Compositor_CumulativeStats));
-  // TODO - Need to send telemetry back to browser.
-  // Bug 1473398 will refactor this original gfxVROpenVR code:
-  //   const uint32_t droppedFramesPerSec = (stats.m_nNumReprojectedFrames -
-  //                                      mTelemetry.mLastDroppedFrameCount) / duration.ToSeconds();
-  // Telemetry::Accumulate(Telemetry::WEBVR_DROPPED_FRAMES_IN_OPENVR, droppedFramesPerSec);
 }
 
 bool
 OpenVRSession::StartPresentation()
 {
   return true;
+}
+
+void
+OpenVRSession::VibrateHaptic(uint32_t aControllerIdx, uint32_t aHapticIndex,
+                             float aIntensity, float aDuration)
+{
+  MutexAutoLock lock(mControllerHapticStateMutex);
+  if (aHapticIndex >= kNumOpenVRHaptics ||
+      aControllerIdx >= kVRControllerMaxCount) {
+    return;
+  }
+
+  ::vr::TrackedDeviceIndex_t deviceIndex = mControllerDeviceIndex[aControllerIdx];
+  if (deviceIndex == 0) {
+    return;
+  }
+
+  mHapticPulseRemaining[aControllerIdx][aHapticIndex] = aDuration;
+  mHapticPulseIntensity[aControllerIdx][aHapticIndex] = aIntensity;
+
+  /**
+   *  TODO - The haptic feedback pulses will have latency of one frame and we
+   *         are simulating intensity with pulse-width modulation.
+   *         We should use of the OpenVR Input API to correct this
+   *         and replace the TriggerHapticPulse calls which have been
+   *         deprecated.
+   */
+}
+
+void
+OpenVRSession::StartHapticThread()
+{
+  if (!mHapticThread) {
+    mHapticThread = new VRThread(NS_LITERAL_CSTRING("VR_OpenVR_Haptics"));
+  }
+  mHapticThread->Start();
+}
+
+void
+OpenVRSession::StopHapticThread()
+{
+  if (mHapticThread) {
+    mHapticThread->Shutdown();
+    mHapticThread = nullptr;
+  }
+}
+
+void
+OpenVRSession::StartHapticTimer()
+{
+  if (!mHapticTimer && mHapticThread) {
+    mLastHapticUpdate = TimeStamp();
+    mHapticTimer = NS_NewTimer();
+    mHapticTimer->SetTarget(mHapticThread->GetThread()->EventTarget());
+    mHapticTimer->InitWithNamedFuncCallback(
+      HapticTimerCallback,
+      this,
+      kVRHapticUpdateInterval,
+      nsITimer::TYPE_REPEATING_PRECISE_CAN_SKIP,
+      "OpenVRSession::HapticTimerCallback");
+  }
+}
+
+void
+OpenVRSession::StopHapticTimer()
+{
+  if (mHapticTimer) {
+    mHapticTimer->Cancel();
+    mHapticTimer = nullptr;
+  }
+}
+
+/*static*/ void
+OpenVRSession::HapticTimerCallback(nsITimer* aTimer, void* aClosure)
+{
+  /**
+   * It is safe to use the pointer passed in aClosure to reference the
+   * OpenVRSession object as the timer is canceled in OpenVRSession::Shutdown,
+   * which is called by the OpenVRSession destructor, guaranteeing
+   * that this function runs if and only if the VRManager object is valid.
+   */
+  OpenVRSession* self = static_cast<OpenVRSession*>(aClosure);
+  self->UpdateHaptics();
+}
+
+void
+OpenVRSession::UpdateHaptics()
+{
+  MOZ_ASSERT(mHapticThread->GetThread() == NS_GetCurrentThread());
+  MOZ_ASSERT(mVRSystem);
+
+  MutexAutoLock lock(mControllerHapticStateMutex);
+
+  TimeStamp now = TimeStamp::Now();
+  if (mLastHapticUpdate.IsNull()) {
+    mLastHapticUpdate = now;
+    return;
+  }
+  float deltaTime = (float)(now - mLastHapticUpdate).ToSeconds();
+  mLastHapticUpdate = now;
+
+  for (int iController = 0; iController < kVRControllerMaxCount; iController++) {
+    for (int iHaptic = 0; iHaptic < kNumOpenVRHaptics; iHaptic++) {
+      ::vr::TrackedDeviceIndex_t deviceIndex = mControllerDeviceIndex[iController];
+      if (deviceIndex == 0) {
+        continue;
+      }
+      float intensity = mHapticPulseIntensity[iController][iHaptic];
+      float duration = mHapticPulseRemaining[iController][iHaptic];
+      if (duration <= 0.0f || intensity <= 0.0f) {
+        continue;
+      }
+      // We expect OpenVR to vibrate for 5 ms, but we found it only response the
+      // commend ~ 3.9 ms. For duration time longer than 3.9 ms, we separate them
+      // to a loop of 3.9 ms for make users feel that is a continuous events.
+      const float microSec = (duration < 0.0039f ? duration : 0.0039f) * 1000000.0f * intensity;
+      mVRSystem->TriggerHapticPulse(deviceIndex, iHaptic, (uint32_t)microSec);
+
+      duration -= deltaTime;
+      if (duration < 0.0f) {
+        duration = 0.0f;
+      }
+      mHapticPulseRemaining[iController][iHaptic] = duration;
+    }
+  }
+}
+
+void
+OpenVRSession::StopVibrateHaptic(uint32_t aControllerIdx)
+{
+  MutexAutoLock lock(mControllerHapticStateMutex);
+  if (aControllerIdx >= kVRControllerMaxCount) {
+    return;
+  }
+  for (int iHaptic = 0; iHaptic < kNumOpenVRHaptics; iHaptic++) {
+    mHapticPulseRemaining[aControllerIdx][iHaptic] = 0.0f;
+  }
+}
+
+void
+OpenVRSession::StopAllHaptics()
+{
+  MutexAutoLock lock(mControllerHapticStateMutex);
+  for (auto& controller : mHapticPulseRemaining) {
+    for (auto& haptic : controller) {
+      haptic = 0.0f;
+    }
+  }
+}
+
+void
+OpenVRSession::UpdateTelemetry(VRSystemState& aSystemState)
+{
+  ::vr::Compositor_CumulativeStats stats;
+  mVRCompositor->GetCumulativeStats(&stats, sizeof(::vr::Compositor_CumulativeStats));
+  aSystemState.displayState.mDroppedFrameCount = stats.m_nNumReprojectedFrames;
 }
 
 } // namespace mozilla

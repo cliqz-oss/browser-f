@@ -235,6 +235,28 @@ Event::GetTarget() const
   return mEvent->GetDOMEventTarget();
 }
 
+already_AddRefed<nsIDocument>
+Event::GetDocument() const
+{
+  nsCOMPtr<EventTarget> eventTarget = GetTarget();
+
+  if (!eventTarget) {
+    return nullptr;
+  }
+
+  nsCOMPtr<nsPIDOMWindowInner> win =
+    do_QueryInterface(eventTarget->GetOwnerGlobal());
+
+  if (!win) {
+    return nullptr;
+  }
+
+  nsCOMPtr<nsIDocument> doc;
+  doc = win->GetExtantDoc();
+
+  return doc.forget();
+}
+
 EventTarget*
 Event::GetCurrentTarget() const
 {
@@ -478,7 +500,7 @@ Event::EnsureWebAccessibleRelatedTarget(EventTarget* aRelatedTarget)
     if (content && content->ChromeOnlyAccess() &&
         !nsContentUtils::CanAccessNativeAnon()) {
       content = content->FindFirstNonChromeOnlyAccessContent();
-      relatedTarget = do_QueryInterface(content);
+      relatedTarget = content;
     }
 
     if (relatedTarget) {
@@ -491,7 +513,8 @@ Event::EnsureWebAccessibleRelatedTarget(EventTarget* aRelatedTarget)
 void
 Event::InitEvent(const nsAString& aEventTypeArg,
                  mozilla::CanBubble aCanBubbleArg,
-                 mozilla::Cancelable aCancelableArg)
+                 mozilla::Cancelable aCancelableArg,
+                 mozilla::Composed aComposedArg)
 {
   // Make sure this event isn't already being dispatched.
   NS_ENSURE_TRUE_VOID(!mEvent->mFlags.mIsBeingDispatched);
@@ -507,6 +530,9 @@ Event::InitEvent(const nsAString& aEventTypeArg,
 
   mEvent->mFlags.mBubbles = aCanBubbleArg == CanBubble::eYes;
   mEvent->mFlags.mCancelable = aCancelableArg == Cancelable::eYes;
+  if (aComposedArg != Composed::eDefault) {
+    mEvent->mFlags.mComposed = aComposedArg == Composed::eYes;
+  }
 
   mEvent->mFlags.mDefaultPrevented = false;
   mEvent->mFlags.mDefaultPreventedByContent = false;

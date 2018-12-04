@@ -466,6 +466,7 @@
   ${AddDisabledDDEHandlerValues} "ftp" "$2" "$8,1" "" ""
   ${AddDisabledDDEHandlerValues} "http" "$2" "$8,1" "" ""
   ${AddDisabledDDEHandlerValues} "https" "$2" "$8,1" "" ""
+  ${AddDisabledDDEHandlerValues} "mailto" "$2" "$8,1" "" ""
 !macroend
 !define SetHandlers "!insertmacro SetHandlers"
 
@@ -538,9 +539,20 @@
 
   WriteRegStr ${RegKey} "$0\Capabilities\StartMenu" "StartMenuInternet" "$1"
 
+<<<<<<< HEAD
   WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "CliqzURL$2"
   WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "CliqzURL$2"
   WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "CliqzURL$2"
+||||||| merged common ancestors
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "FirefoxURL$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "FirefoxURL$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "FirefoxURL$2"
+=======
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "FirefoxURL$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "FirefoxURL$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "FirefoxURL$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "mailto" "FirefoxURL$2"
+>>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
 
   ; Registered Application
   WriteRegStr ${RegKey} "Software\RegisteredApplications" "$1" "$0\Capabilities"
@@ -886,6 +898,11 @@
   ${IsHandlerForInstallDir} "https" $R9
   ${If} "$R9" == "true"
     ${AddDisabledDDEHandlerValues} "https" "$2" "$8,1" "" ""
+  ${EndIf}
+
+  ${IsHandlerForInstallDir} "mailto" $R9
+  ${If} "$R9" == "true"
+    ${AddDisabledDDEHandlerValues} "mailto" "$2" "$8,1" "" ""
   ${EndIf}
 !macroend
 !define UpdateProtocolHandlers "!insertmacro UpdateProtocolHandlers"

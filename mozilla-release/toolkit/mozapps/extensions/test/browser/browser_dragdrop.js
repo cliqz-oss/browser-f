@@ -14,38 +14,19 @@ var gManagerWindow;
 var EventUtils = {};
 Services.scriptloader.loadSubScript("chrome://mochikit/content/tests/SimpleTest/EventUtils.js", EventUtils);
 
-/**
- * Wait for the given PopupNotification to display
- *
- * @param {string} name
- *        The name of the notification to wait for.
- *
- * @returns {Promise}
- *          Resolves with the notification window.
- */
-function promisePopupNotificationShown(name) {
-  return new Promise(resolve => {
-    function popupshown() {
-      let notification = PopupNotifications.getNotification(name);
-      if (!notification) { return; }
-
-      ok(notification, `${name} notification shown`);
-      ok(PopupNotifications.isPanelOpen, "notification panel open");
-
-      PopupNotifications.panel.removeEventListener("popupshown", popupshown);
-      resolve(PopupNotifications.panel.firstChild);
-    }
-
-    PopupNotifications.panel.addEventListener("popupshown", popupshown);
-  });
-}
-
 async function checkInstallConfirmation(...names) {
   let notificationCount = 0;
   let observer = {
     observe(aSubject, aTopic, aData) {
       var installInfo = aSubject.wrappedJSObject;
       isnot(installInfo.browser, null, "Notification should have non-null browser");
+
+      is(installInfo.installs.length, 1, "Got one AddonInstall instance as expected");
+
+      Assert.deepEqual(installInfo.installs[0].installTelemetryInfo,
+                       {source: "about:addons", method: "drag-and-drop"},
+                       "Got the expected installTelemetryInfo");
+
       notificationCount++;
     },
   };

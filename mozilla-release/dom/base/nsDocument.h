@@ -53,7 +53,6 @@
 #include "nsDataHashtable.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Attributes.h"
-#include "mozilla/LinkedList.h"
 #include "CustomElementRegistry.h"
 #include "mozilla/dom/Performance.h"
 #include "mozilla/Maybe.h"
@@ -83,33 +82,6 @@ struct LifecycleCallbacks;
 class CallbackFunction;
 class DOMIntersectionObserver;
 class Performance;
-
-struct FullscreenRequest : public LinkedListElement<FullscreenRequest>
-{
-  explicit FullscreenRequest(Element* aElement);
-  FullscreenRequest(const FullscreenRequest&) = delete;
-  ~FullscreenRequest();
-
-  Element* GetElement() const { return mElement; }
-  nsIDocument* GetDocument() const { return mDocument; }
-
-private:
-  RefPtr<Element> mElement;
-  RefPtr<nsIDocument> mDocument;
-
-public:
-  // This value should be true if the fullscreen request is
-  // originated from chrome code.
-  bool mIsCallerChrome = false;
-  // This value denotes whether we should trigger a NewOrigin event if
-  // requesting fullscreen in its document causes the origin which is
-  // fullscreen to change. We may want *not* to trigger that event if
-  // we're calling RequestFullScreen() as part of a continuation of a
-  // request in a subdocument in different process, whereupon the caller
-  // need to send some notification itself with the real origin.
-  bool mShouldNotifyNewOrigin = true;
-};
-
 } // namespace dom
 } // namespace mozilla
 
@@ -156,6 +128,7 @@ public:
 
   virtual void StopDocumentLoad() override;
 
+  static bool DocumentSupportsL10n(JSContext* aCx, JSObject* aObject);
   static bool IsWebAnimationsEnabled(JSContext* aCx, JSObject* aObject);
   static bool IsWebAnimationsEnabled(mozilla::dom::CallerType aCallerType);
   static bool IsWebAnimationsGetAnimationsEnabled(JSContext* aCx,
@@ -314,7 +287,7 @@ public:
   // include https://github.com/rust-lang-nursery/rust-bindgen/pull/1271.
   js::ExpandoAndGeneration mExpandoAndGeneration;
 
-  friend class nsCallRequestFullScreen;
+  friend class nsCallRequestFullscreen;
 
   // The application cache that this document is associated with, if
   // any.  This can change during the lifetime of the document.

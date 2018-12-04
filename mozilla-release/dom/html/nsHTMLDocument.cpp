@@ -1394,7 +1394,7 @@ nsHTMLDocument::Open(JSContext* cx,
   if (curDocShell) {
     curDocShell->GetSameTypeParent(getter_AddRefs(parent));
   }
-  
+
   // We are using the same technique as in nsDocShell to figure
   // out the content policy type. If there is no same type parent,
   // we know we are loading a new top level document.
@@ -1983,7 +1983,7 @@ nsHTMLDocument::ResolveName(JSContext* aCx, const nsAString& aName,
   } else {
     // No named items were found, see if there's one registerd by id for aName.
     Element *e = entry->GetIdElement();
-  
+
     if (!e || !nsGenericHTMLElement::ShouldExposeIdAsHTMLDocumentProperty(e)) {
       return false;
     }
@@ -2681,6 +2681,7 @@ struct MidasCommand {
 };
 
 static const struct MidasCommand gMidasCommandTable[] = {
+  // clang-format off
   { "bold",          "cmd_bold",            "", true,  false },
   { "italic",        "cmd_italic",          "", true,  false },
   { "underline",     "cmd_underline",       "", true,  false },
@@ -2738,11 +2739,13 @@ static const struct MidasCommand gMidasCommandTable[] = {
   { "print",         "cmd_print",           "", true,  false },
 #endif
   { nullptr, nullptr, nullptr, false, false }
+  // clang-format on
 };
 
 #define MidasCommandCount ((sizeof(gMidasCommandTable) / sizeof(struct MidasCommand)) - 1)
 
 static const char* const gBlocks[] = {
+  // clang-format off
   "ADDRESS",
   "BLOCKQUOTE",
   "DD",
@@ -2757,6 +2760,7 @@ static const char* const gBlocks[] = {
   "H6",
   "P",
   "PRE"
+  // clang-format on
 };
 
 static bool
@@ -3290,7 +3294,8 @@ nsHTMLDocument::Clone(dom::NodeInfo* aNodeInfo, nsINode** aResult) const
   // State from nsHTMLDocument
   clone->mLoadFlags = mLoadFlags;
 
-  return CallQueryInterface(clone.get(), aResult);
+  clone.forget(aResult);
+  return NS_OK;
 }
 
 bool
@@ -3418,7 +3423,5 @@ nsHTMLDocument::GetFormsAndFormControls(nsContentList** aFormList,
 void
 nsHTMLDocument::UserInteractionForTesting()
 {
-  if (!UserHasInteracted()) {
-    SetUserHasInteracted(true);
-  }
+  SetUserHasInteracted();
 }

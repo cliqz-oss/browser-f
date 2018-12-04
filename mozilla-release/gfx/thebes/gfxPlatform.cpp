@@ -4,6 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/FontPropertyTypes.h"
+#include "mozilla/image/ImageMemoryReporter.h"
 #include "mozilla/layers/CompositorManagerChild.h"
 #include "mozilla/layers/CompositorThread.h"
 #include "mozilla/layers/ImageBridgeChild.h"
@@ -631,6 +632,124 @@ static uint32_t GetSkiaGlyphCacheSize()
 }
 #endif
 
+class WebRenderMemoryReporter final : public nsIMemoryReporter {
+public:
+  NS_DECL_ISUPPORTS
+  NS_DECL_NSIMEMORYREPORTER
+
+private:
+  ~WebRenderMemoryReporter() = default;
+};
+
+// Memory reporter for WebRender.
+//
+// The reporting within WebRender is manual and incomplete. We could do a much
+// more thorough job by depending on the malloc_size_of crate, but integrating
+// that into WebRender is tricky [1].
+//
+// So the idea is to start with manual reporting for the large allocations
+// detected by DMD, and see how much that can cover in practice (which may
+// require a few rounds of iteration). If that approach turns out to be
+// fundamentally insufficient, we can either duplicate more of the malloc_size_of
+// functionality in WebRender, or deal with the complexity of a gecko-only
+// crate dependency.
+//
+// [1] See https://bugzilla.mozilla.org/show_bug.cgi?id=1480293#c1
+struct WebRenderMemoryReporterHelper {
+  WebRenderMemoryReporterHelper(nsIHandleReportCallback* aCallback, nsISupports* aData)
+    : mCallback(aCallback), mData(aData)
+  {}
+  nsCOMPtr<nsIHandleReportCallback> mCallback;
+  nsCOMPtr<nsISupports> mData;
+
+  void Report(size_t aBytes, const char* aName) const
+  {
+    nsPrintfCString path("explicit/gfx/webrender/%s", aName);
+    nsCString desc(NS_LITERAL_CSTRING("CPU heap memory used by WebRender"));
+    ReportInternal(aBytes, path, desc, nsIMemoryReporter::KIND_HEAP);
+  }
+
+  void ReportTexture(size_t aBytes, const char* aName) const
+  {
+    nsPrintfCString path("gfx/webrender/textures/%s", aName);
+    nsCString desc(NS_LITERAL_CSTRING("GPU texture memory used by WebRender"));
+    ReportInternal(aBytes, path, desc, nsIMemoryReporter::KIND_OTHER);
+  }
+
+  void ReportInternal(size_t aBytes, nsACString& aPath, nsACString& aDesc, int32_t aKind) const
+  {
+    // Generally, memory reporters pass the empty string as the process name to
+    // indicate "current process". However, if we're using a GPU process, the
+    // measurements will actually take place in that process, and it's easier to
+    // just note that here rather than trying to invoke the memory reporter in
+    // the GPU process.
+    nsAutoCString processName;
+    if (gfxConfig::IsEnabled(Feature::GPU_PROCESS)) {
+      GPUParent::GetGPUProcessName(processName);
+    }
+
+    mCallback->Callback(processName, aPath,
+                        aKind, nsIMemoryReporter::UNITS_BYTES,
+                        aBytes, aDesc, mData);
+  }
+};
+
+static void
+FinishAsyncMemoryReport()
+{
+  nsCOMPtr<nsIMemoryReporterManager> imgr =
+    do_GetService("@mozilla.org/memory-reporter-manager;1");
+  if (imgr) {
+    imgr->EndReport();
+  }
+}
+
+NS_IMPL_ISUPPORTS(WebRenderMemoryReporter, nsIMemoryReporter)
+
+NS_IMETHODIMP
+WebRenderMemoryReporter::CollectReports(nsIHandleReportCallback* aHandleReport,
+                                        nsISupports* aData, bool aAnonymize)
+{
+  MOZ_ASSERT(XRE_IsParentProcess());
+  MOZ_ASSERT(NS_IsMainThread());
+  layers::CompositorManagerChild* manager = CompositorManagerChild::GetInstance();
+  if (!manager) {
+    FinishAsyncMemoryReport();
+    return NS_OK;
+  }
+
+  WebRenderMemoryReporterHelper helper(aHandleReport, aData);
+  manager->SendReportMemory(
+    [=](wr::MemoryReport aReport) {
+      // CPU Memory.
+      helper.Report(aReport.primitive_stores, "primitive-stores");
+      helper.Report(aReport.clip_stores, "clip-stores");
+      helper.Report(aReport.gpu_cache_metadata, "gpu-cache/metadata");
+      helper.Report(aReport.gpu_cache_cpu_mirror, "gpu-cache/cpu-mirror");
+      helper.Report(aReport.render_tasks, "render-tasks");
+      helper.Report(aReport.hit_testers, "hit-testers");
+      helper.Report(aReport.fonts, "resource-cache/fonts");
+      helper.Report(aReport.images, "resource-cache/images");
+      helper.Report(aReport.rasterized_blobs, "resource-cache/rasterized-blobs");
+
+      // GPU Memory.
+      helper.ReportTexture(aReport.gpu_cache_textures, "gpu-cache");
+      helper.ReportTexture(aReport.vertex_data_textures, "vertex-data");
+      helper.ReportTexture(aReport.render_target_textures, "render-targets");
+      helper.ReportTexture(aReport.texture_cache_textures, "texture-cache");
+      helper.ReportTexture(aReport.depth_target_textures, "depth-targets");
+
+      FinishAsyncMemoryReport();
+    },
+    [](mozilla::ipc::ResponseRejectReason aReason) {
+      FinishAsyncMemoryReport();
+    }
+  );
+
+  return NS_OK;
+}
+
+
 void
 gfxPlatform::Init()
 {
@@ -722,6 +841,14 @@ gfxPlatform::Init()
     nsCOMPtr<nsIGfxInfo> gfxInfo;
     /* this currently will only succeed on Windows */
     gfxInfo = services::GetGfxInfo();
+
+    if (XRE_IsParentProcess()) {
+      // Some gfxVars must be initialized prior gPlatform for coherent results.
+      gfxVars::SetDXInterop2Blocked(IsDXInterop2Blocked());
+      gfxVars::SetDXNV12Blocked(IsDXNV12Blocked());
+      gfxVars::SetDXP010Blocked(IsDXP010Blocked());
+      gfxVars::SetDXP016Blocked(IsDXP016Blocked());
+    }
 
 #if defined(XP_WIN)
     gPlatform = new gfxWindowsPlatform;
@@ -823,6 +950,10 @@ gfxPlatform::Init()
     }
 
     RegisterStrongMemoryReporter(new GfxMemoryImageReporter());
+    if (XRE_IsParentProcess() && gfxVars::UseWebRender()) {
+      RegisterStrongAsyncMemoryReporter(new WebRenderMemoryReporter());
+    }
+
 #ifdef USE_SKIA
     RegisterStrongMemoryReporter(new SkMemoryReporter());
 #endif
@@ -839,8 +970,6 @@ gfxPlatform::Init()
     InitOpenGLConfig();
 
     if (XRE_IsParentProcess()) {
-      gfxVars::SetDXInterop2Blocked(IsDXInterop2Blocked());
-      gfxVars::SetDXNV12Blocked(IsDXNV12Blocked());
       Preferences::Unlock(FONT_VARIATIONS_PREF);
       if (!gPlatform->HasVariationFontSupport()) {
         // Ensure variation fonts are disabled and the pref is locked.
@@ -869,30 +998,40 @@ gfxPlatform::Init()
     }
 }
 
-/* static*/ bool
-gfxPlatform::IsDXInterop2Blocked()
+bool
+IsFeatureSupported(long aFeature)
 {
   nsCOMPtr<nsIGfxInfo> gfxInfo = services::GetGfxInfo();
   nsCString blockId;
   int32_t status;
-  if (!NS_SUCCEEDED(gfxInfo->GetFeatureStatus(nsIGfxInfo::FEATURE_DX_INTEROP2,
+  if (!NS_SUCCEEDED(gfxInfo->GetFeatureStatus(aFeature,
                                               blockId, &status))) {
     return true;
   }
   return status != nsIGfxInfo::FEATURE_STATUS_OK;
 }
+/* static*/ bool
+gfxPlatform::IsDXInterop2Blocked()
+{
+  return IsFeatureSupported(nsIGfxInfo::FEATURE_DX_INTEROP2);
+}
 
 /* static*/ bool
 gfxPlatform::IsDXNV12Blocked()
 {
-  nsCOMPtr<nsIGfxInfo> gfxInfo = services::GetGfxInfo();
-  nsCString blockId;
-  int32_t status;
-  if (!NS_SUCCEEDED(gfxInfo->GetFeatureStatus(nsIGfxInfo::FEATURE_DX_NV12,
-                                              blockId, &status))) {
-    return true;
-  }
-  return status != nsIGfxInfo::FEATURE_STATUS_OK;
+  return IsFeatureSupported(nsIGfxInfo::FEATURE_DX_NV12);
+}
+
+/* static*/ bool
+gfxPlatform::IsDXP010Blocked()
+{
+  return IsFeatureSupported(nsIGfxInfo::FEATURE_DX_P010);
+}
+
+/* static*/ bool
+gfxPlatform::IsDXP016Blocked()
+{
+  return IsFeatureSupported(nsIGfxInfo::FEATURE_DX_P016);
 }
 
 /* static */ int32_t
@@ -1044,10 +1183,10 @@ gfxPlatform::InitLayersIPC()
   if (XRE_IsParentProcess() || recordreplay::IsRecordingOrReplaying()) {
     if (!gfxConfig::IsEnabled(Feature::GPU_PROCESS) && gfxVars::UseWebRender()) {
       wr::RenderThread::Start();
+      image::ImageMemoryReporter::InitForWebRender();
     }
 
     layers::CompositorThreadHolder::Start();
-    gfx::VRListenerThreadHolder::Start();
   }
 }
 
@@ -1076,7 +1215,7 @@ gfxPlatform::ShutdownLayersIPC()
         layers::ImageBridgeChild::ShutDown();
         // This has to happen after shutting down the child protocols.
         layers::CompositorThreadHolder::Shutdown();
-        gfx::VRListenerThreadHolder::Shutdown();
+        image::ImageMemoryReporter::ShutdownForWebRender();
         // There is a case that RenderThread exists when gfxVars::UseWebRender() is false.
         // This could happen when WebRender was fallbacked to compositor.
         if (wr::RenderThread::Get()) {
@@ -1645,22 +1784,21 @@ gfxPlatform::UpdateFontList()
     return NS_OK;
 }
 
-nsresult
-gfxPlatform::GetStandardFamilyName(const nsAString& aFontName,
-                                   nsAString& aFamilyName)
+void
+gfxPlatform::GetStandardFamilyName(const nsCString& aFontName,
+                                   nsACString& aFamilyName)
 {
     gfxPlatformFontList::PlatformFontList()->GetStandardFamilyName(aFontName,
                                                                    aFamilyName);
-    return NS_OK;
 }
 
-nsAutoString
+nsAutoCString
 gfxPlatform::GetDefaultFontName(const nsACString& aLangGroup,
                                 const nsACString& aGenericFamily)
 {
     // To benefit from Return Value Optimization, all paths here must return
     // this one variable:
-    nsAutoString result;
+    nsAutoCString result;
 
     gfxFontFamily* fontFamily = gfxPlatformFontList::PlatformFontList()->
         GetDefaultFontFamily(aLangGroup, aGenericFamily);
@@ -1765,7 +1903,7 @@ gfxPlatform::IsFontFormatSupported(uint32_t aFormatFlags)
 }
 
 gfxFontEntry*
-gfxPlatform::LookupLocalFont(const nsAString& aFontName,
+gfxPlatform::LookupLocalFont(const nsACString& aFontName,
                              WeightRange aWeightForEntry,
                              StretchRange aStretchForEntry,
                              SlantStyleRange aStyleForEntry)
@@ -1776,7 +1914,7 @@ gfxPlatform::LookupLocalFont(const nsAString& aFontName,
 }
 
 gfxFontEntry*
-gfxPlatform::MakePlatformFont(const nsAString& aFontName,
+gfxPlatform::MakePlatformFont(const nsACString& aFontName,
                               WeightRange aWeightForEntry,
                               StretchRange aStretchForEntry,
                               SlantStyleRange aStyleForEntry,
@@ -2559,6 +2697,12 @@ gfxPlatform::InitWebRenderConfig()
   // In all cases WR- means WR was not enabled, for one of many possible reasons.
   ScopedGfxFeatureReporter reporter("WR", prefEnabled || envvarEnabled);
   if (!XRE_IsParentProcess()) {
+    // Force-disable WebRender in recording/replaying child processes, which
+    // have their own compositor.
+    if (recordreplay::IsRecordingOrReplaying()) {
+      gfxVars::SetUseWebRender(false);
+    }
+
     // The parent process runs through all the real decision-making code
     // later in this function. For other processes we still want to report
     // the state of the feature for crash reports.
@@ -2599,7 +2743,9 @@ gfxPlatform::InitWebRenderConfig()
           featureWebRenderQualified.Disable(FeatureStatus::Blocked,
                                             "Bad device id",
                                             NS_LITERAL_CSTRING("FEATURE_FAILURE_BAD_DEVICE_ID"));
-        } else if (deviceID < 1000) { // > 1000 or 0x3e8 roughly corresponds to Tesla and newer
+        } else if (deviceID < 0x6c0) {
+           // 0x6c0 is the lowest Fermi device id. Unfortunately some Tesla devices that don't support D3D 10.1
+           // have higher deviceIDs. They will be included, but blocked by ANGLE.
           featureWebRenderQualified.Disable(FeatureStatus::Blocked,
                                             "Device too old",
                                             NS_LITERAL_CSTRING("FEATURE_FAILURE_DEVICE_TOO_OLD"));

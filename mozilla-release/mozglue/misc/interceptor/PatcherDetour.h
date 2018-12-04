@@ -54,13 +54,17 @@ public:
     size_t nBytes = 2 + sizeof(intptr_t);
 #elif defined(_M_ARM64)
     size_t nBytes = 4;
-    MOZ_RELEASE_ASSERT(false, "Shouldn't get here");
 #else
 #error "Unknown processor type"
 #endif
 
     const auto& tramps = this->mVMPolicy.Items();
     for (auto&& tramp : tramps) {
+
+#if defined(_M_ARM64)
+      MOZ_RELEASE_ASSERT(false, "Shouldn't get here");
+#endif
+
       // First we read the pointer to the interceptor instance.
       Maybe<uintptr_t> instance = tramp.ReadEncodedPointer();
       if (!instance) {
@@ -134,7 +138,7 @@ public:
         continue;
       }
 #elif defined(_M_ARM64)
-      MOZ_RELEASE_ASSERT(false, "Shouldn't get here")
+      MOZ_RELEASE_ASSERT(false, "Shouldn't get here");
 #else
 #error "Unknown processor type"
 #endif
@@ -969,7 +973,7 @@ protected:
       }
     }
 #elif defined(_M_ARM64)
-      MOZ_RELEASE_ASSERT(false, "Shouldn't get here")
+    MOZ_RELEASE_ASSERT(false, "Shouldn't get here");
 #else
 #error "Unknown processor type"
 #endif

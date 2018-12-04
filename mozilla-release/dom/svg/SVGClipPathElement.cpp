@@ -26,7 +26,7 @@ SVGClipPathElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 
 nsSVGElement::EnumInfo SVGClipPathElement::sEnumInfo[1] =
 {
-  { &nsGkAtoms::clipPathUnits,
+  { nsGkAtoms::clipPathUnits,
     sSVGUnitTypesMap,
     SVG_UNIT_TYPE_USERSPACEONUSE
   }
@@ -35,8 +35,8 @@ nsSVGElement::EnumInfo SVGClipPathElement::sEnumInfo[1] =
 //----------------------------------------------------------------------
 // Implementation
 
-SVGClipPathElement::SVGClipPathElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-  : SVGClipPathElementBase(aNodeInfo)
+SVGClipPathElement::SVGClipPathElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
+  : SVGClipPathElementBase(std::move(aNodeInfo))
 {
 }
 

@@ -10,19 +10,27 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const {actionTypes: at, actionUtils: au} = ChromeUtils.import("resource://activity-stream/common/Actions.jsm", {});
 const {Prefs} = ChromeUtils.import("resource://activity-stream/lib/ActivityStreamPrefs.jsm", {});
+const {classifySite} = ChromeUtils.import("resource://activity-stream/lib/SiteClassifier.jsm", {});
 
+ChromeUtils.defineModuleGetter(this, "ASRouterPreferences",
+  "resource://activity-stream/lib/ASRouterPreferences.jsm");
 ChromeUtils.defineModuleGetter(this, "perfService",
   "resource://activity-stream/common/PerfService.jsm");
 ChromeUtils.defineModuleGetter(this, "PingCentre",
   "resource:///modules/PingCentre.jsm");
 ChromeUtils.defineModuleGetter(this, "UTEventReporting",
   "resource://activity-stream/lib/UTEventReporting.jsm");
-ChromeUtils.defineModuleGetter(this, "AppConstants",
-  "resource://gre/modules/AppConstants.jsm");
+ChromeUtils.defineModuleGetter(this, "UpdateUtils",
+  "resource://gre/modules/UpdateUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "HomePage",
+  "resource:///modules/HomePage.jsm");
+ChromeUtils.defineModuleGetter(this, "ExtensionSettingsStore",
+  "resource://gre/modules/ExtensionSettingsStore.jsm");
 
-XPCOMUtils.defineLazyServiceGetter(this, "gUUIDGenerator",
-  "@mozilla.org/uuid-generator;1",
-  "nsIUUIDGenerator");
+XPCOMUtils.defineLazyServiceGetters(this, {
+  gUUIDGenerator: ["@mozilla.org/uuid-generator;1", "nsIUUIDGenerator"],
+  aboutNewTabService: ["@mozilla.org/browser/aboutnewtab-service;1", "nsIAboutNewTabService"],
+});
 
 const ACTIVITY_STREAM_ID = "activity-stream";
 const ACTIVITY_STREAM_ENDPOINT_PREF = "browser.newtabpage.activity-stream.telemetry.ping.endpoint";
@@ -35,13 +43,12 @@ const USER_PREFS_ENCODING = {
   "feeds.section.topstories": 1 << 2,
   "feeds.section.highlights": 1 << 3,
   "feeds.snippets": 1 << 4,
-  "showSponsored": 1 << 5
+  "showSponsored": 1 << 5,
 };
 
 const PREF_IMPRESSION_ID = "impressionId";
 const TELEMETRY_PREF = "telemetry";
 const EVENTS_TELEMETRY_PREF = "telemetry.ut.events";
-const ROUTER_MESSAGE_PROVIDER_PREF = "asrouter.messageProviders";
 
 this.TelemetryFeed = class TelemetryFeed {
   constructor(options) {
@@ -55,8 +62,7 @@ this.TelemetryFeed = class TelemetryFeed {
     this._prefs.observe(TELEMETRY_PREF, this._onTelemetryPrefChange);
     this._onEventsTelemetryPrefChange = this._onEventsTelemetryPrefChange.bind(this);
     this._prefs.observe(EVENTS_TELEMETRY_PREF, this._onEventsTelemetryPrefChange);
-    this._onRouterMessageProviderChange = this._onRouterMessageProviderChange.bind(this);
-    this._prefs.observe(ROUTER_MESSAGE_PROVIDER_PREF, this._onRouterMessageProviderChange);
+    this._classifySite = classifySite;
   }
 
   init() {
@@ -102,7 +108,7 @@ this.TelemetryFeed = class TelemetryFeed {
     try {
       data_to_save = {
         load_trigger_ts: perfService.getMostRecentAbsMarkStartByName("browser-open-newtab-start"),
-        load_trigger_type: "menu_plus_or_keyboard"
+        load_trigger_type: "menu_plus_or_keyboard",
       };
     } catch (e) {
       // if no mark was returned, we have nothing to save
@@ -120,28 +126,6 @@ this.TelemetryFeed = class TelemetryFeed {
   }
 
   /**
-   * Check the CFR experiment cohort information by parsing the pref string of
-   * AS router message provider. The experiment cohort can be identified by the
-   * `cohort` field in the "cfr" provider.
-   */
-  _parseCFRCohort(pref) {
-    try {
-      for (let provider of JSON.parse(pref)) {
-        if (provider.id === "cfr" && provider.enabled && provider.cohort) {
-          return true;
-        }
-      }
-    } catch (e) {
-      Cu.reportError("Problem parsing JSON message provider pref for ASRouter");
-    }
-    return false;
-  }
-
-  _onRouterMessageProviderChange(prefVal) {
-    this._isInCFRCohort = this._parseCFRCohort(prefVal);
-  }
-
-  /**
    * Lazily initialize PingCentre for Activity Stream to send pings
    */
   get pingCentre() {
@@ -149,8 +133,8 @@ this.TelemetryFeed = class TelemetryFeed {
       {
         value: new PingCentre({
           topic: ACTIVITY_STREAM_ID,
-          overrideEndpointPref: ACTIVITY_STREAM_ENDPOINT_PREF
-        })
+          overrideEndpointPref: ACTIVITY_STREAM_ENDPOINT_PREF,
+        }),
       });
     return this.pingCentre;
   }
@@ -190,14 +174,15 @@ this.TelemetryFeed = class TelemetryFeed {
   }
 
   /**
-   * Lazily parse the AS router pref to check if it is in the CFR experiment cohort
+   *  Check if it is in the CFR experiment cohort. ASRouterPreferences lazily parses AS router pref.
    */
   get isInCFRCohort() {
-    if (this._isInCFRCohort === undefined) {
-      const pref = this._prefs.get(ROUTER_MESSAGE_PROVIDER_PREF);
-      this._isInCFRCohort = this._parseCFRCohort(pref);
+    for (let provider of ASRouterPreferences.providers) {
+      if (provider.id === "cfr" && provider.enabled && provider.cohort) {
+        return true;
+      }
     }
-    return this._isInCFRCohort;
+    return false;
   }
 
   /**
@@ -257,8 +242,8 @@ this.TelemetryFeed = class TelemetryFeed {
       perf: {
         load_trigger_type,
         is_preloaded: false,
-        is_prerendered: false
-      }
+        is_prerendered: false,
+      },
     };
 
     if (load_trigger_ts) {
@@ -328,8 +313,8 @@ this.TelemetryFeed = class TelemetryFeed {
   createPing(portID) {
     const ping = {
       addon_version: Services.appinfo.appBuildID,
-      locale: Services.locale.getAppLocaleAsLangTag(),
-      user_prefs: this.userPreferences
+      locale: Services.locale.appLocaleAsLangTag,
+      user_prefs: this.userPreferences,
     };
 
     // If the ping is part of a user session, add session-related info
@@ -359,7 +344,7 @@ this.TelemetryFeed = class TelemetryFeed {
         action: "activity_stream_impression_stats",
         impression_id: this._impressionId,
         client_id: "n/a",
-        session_id: "n/a"
+        session_id: "n/a",
       }
     );
   }
@@ -397,7 +382,7 @@ this.TelemetryFeed = class TelemetryFeed {
         page: session.page,
         session_duration: session.session_duration,
         action: "activity_stream_session",
-        perf: session.perf
+        perf: session.perf,
       }
     );
   }
@@ -410,8 +395,8 @@ this.TelemetryFeed = class TelemetryFeed {
     const ping = {
       client_id: "n/a",
       addon_version: Services.appinfo.appBuildID,
-      locale: Services.locale.getAppLocaleAsLangTag(),
-      impression_id: this._impressionId
+      locale: Services.locale.appLocaleAsLangTag,
+      impression_id: this._impressionId,
     };
     const event = Object.assign(ping, action.data);
     if (event.action === "cfr_user_event") {
@@ -431,7 +416,7 @@ this.TelemetryFeed = class TelemetryFeed {
    * 3). In shield experiments conducted in release, it collects client_id and message_id
    */
   applyCFRPolicy(ping) {
-    if (AppConstants.MOZ_UPDATE_CHANNEL === "release" && !this.isInCFRCohort) {
+    if (UpdateUtils.getUpdateChannel(true) === "release" && !this.isInCFRCohort) {
       ping.message_id = ping.bucket_id || "n/a";
       ping.client_id = "n/a";
       ping.impression_id = this._impressionId;
@@ -506,10 +491,70 @@ this.TelemetryFeed = class TelemetryFeed {
     this.sendEvent(this.createUndesiredEvent(action));
   }
 
+  async sendPageTakeoverData() {
+    if (this.telemetryEnabled) {
+      const value = {};
+      let newtabAffected = false;
+      let homeAffected = false;
+
+      // Check whether or not about:home and about:newtab are set to a custom URL.
+      // If so, classify them.
+      if (Services.prefs.getBoolPref("browser.newtabpage.enabled") &&
+          aboutNewTabService.overridden &&
+          !aboutNewTabService.newTabURL.startsWith("moz-extension://")) {
+        value.newtab_url_category = await this._classifySite(aboutNewTabService.newTabURL);
+        newtabAffected = true;
+      }
+      // Check if the newtab page setting is controlled by an extension.
+      await ExtensionSettingsStore.initialize();
+      const newtabExtensionInfo = ExtensionSettingsStore.getSetting("url_overrides", "newTabURL");
+      if (newtabExtensionInfo && newtabExtensionInfo.id) {
+        value.newtab_extension_id = newtabExtensionInfo.id;
+        newtabAffected = true;
+      }
+
+      const homePageURL = HomePage.get();
+      if (!["about:home", "about:blank"].includes(homePageURL) &&
+          !homePageURL.startsWith("moz-extension://")) {
+        value.home_url_category = await this._classifySite(homePageURL);
+        homeAffected = true;
+      }
+      const homeExtensionInfo = ExtensionSettingsStore.getSetting("prefs", "homepage_override");
+      if (homeExtensionInfo && homeExtensionInfo.id) {
+        value.home_extension_id = homeExtensionInfo.id;
+        homeAffected = true;
+      }
+
+      let page;
+      if (newtabAffected && homeAffected) {
+        page = "both";
+      } else if (newtabAffected) {
+        page = "about:newtab";
+      } else if (homeAffected) {
+        page = "about:home";
+      }
+
+      if (page) {
+        const event = Object.assign(
+          this.createPing(),
+          {
+            action: "activity_stream_user_event",
+            event: "PAGE_TAKEOVER_DATA",
+            value,
+            page,
+            session_id: "n/a",
+          },
+        );
+        this.sendEvent(event);
+      }
+    }
+  }
+
   onAction(action) {
     switch (action.type) {
       case at.INIT:
         this.init();
+        this.sendPageTakeoverData();
         break;
       case at.NEW_TAB_INIT:
         this.handleNewTabInit(action);
@@ -603,7 +648,6 @@ this.TelemetryFeed = class TelemetryFeed {
     try {
       this._prefs.ignore(TELEMETRY_PREF, this._onTelemetryPrefChange);
       this._prefs.ignore(EVENTS_TELEMETRY_PREF, this._onEventsTelemetryPrefChange);
-      this._prefs.ignore(ROUTER_MESSAGE_PROVIDER_PREF, this._onRouterMessageProviderChange);
     } catch (e) {
       Cu.reportError(e);
     }
@@ -617,5 +661,4 @@ const EXPORTED_SYMBOLS = [
   "PREF_IMPRESSION_ID",
   "TELEMETRY_PREF",
   "EVENTS_TELEMETRY_PREF",
-  "ROUTER_MESSAGE_PROVIDER_PREF"
 ];

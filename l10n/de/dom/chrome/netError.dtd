@@ -99,3 +99,5 @@
 <!ENTITY inadequateSecurityError.longDesc "<p><span class='hostname'></span> verwendet Sicherheitstechnologie, welche veraltet und verwundbar ist. Ein Angreifer könnte leicht Informationen entschlüsseln, welche Sie für sicher hielten. Der Website-Administrator muss dieses Problem auf dem Server beheben, bevor Sie die Seite aufrufen können.</p><p>Fehlercode: NS_ERROR_NET_INADEQUATE_SECURITY</p>">
 
 <!ENTITY blockedByPolicy.title "Blockierte Seite">
+
+<!ENTITY networkProtocolError.title "Netzwerkprotokoll-Fehler">

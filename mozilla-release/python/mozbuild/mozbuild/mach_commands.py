@@ -15,6 +15,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import yaml
 
 from collections import OrderedDict
 
@@ -287,6 +288,7 @@ class CargoProvider(MachCommandBase):
             'gkrust-gtest': 'toolkit/library/gtest/rust',
             'js': 'js/rust',
             'mozjs_sys': 'js/src',
+            'baldrdash': 'js/src/wasm/cranelift',
             'geckodriver': 'testing/geckodriver',
         }
 
@@ -618,6 +620,10 @@ class GTestCommands(MachCommandBase):
         app_path = self.get_binary_path('app')
         args = [app_path, '-unittest', '--gtest_death_test_style=threadsafe'];
 
+        if sys.platform.startswith('win') and \
+            'MOZ_LAUNCHER_PROCESS' in self.defines:
+            args.append('--wait-for-browser')
+
         if debug or debugger or debugger_args:
             args = self.prepend_debugger_args(args, debugger, debugger_args)
 
@@ -845,6 +851,8 @@ class RunProgram(MachCommandBase):
         help='Set the specified pref before starting the program. Can be set multiple times. Prefs can also be set in ~/.mozbuild/machrc in the [runprefs] section - see `./mach settings` for more information.')
     @CommandArgument('--temp-profile', action='store_true', group=prog_group,
         help='Run the program using a new temporary profile created inside the objdir.')
+    @CommandArgument('--macos-open', action='store_true', group=prog_group,
+        help="On macOS, run the program using the open(1) command. Per open(1), the browser is launched \"just as if you had double-clicked the file's icon\". The browser can not be launched under a debugger with this option.")
 
     @CommandArgumentGroup('debugging')
     @CommandArgument('--debug', action='store_true', group='debugging',
@@ -868,8 +876,8 @@ class RunProgram(MachCommandBase):
     @CommandArgument('--show-dump-stats', action='store_true', group='DMD',
         help='Show stats when doing dumps.')
     def run(self, params, remote, background, noprofile, disable_e10s,
-        enable_crash_reporter, setpref, temp_profile, debug, debugger,
-        debugger_args, dmd, mode, stacks, show_dump_stats):
+        enable_crash_reporter, setpref, temp_profile, macos_open, debug,
+        debugger, debugger_args, dmd, mode, stacks, show_dump_stats):
 
         if conditions.is_android(self):
             # Running Firefox for Android is completely different
@@ -894,7 +902,23 @@ class RunProgram(MachCommandBase):
                 print(e)
                 return 1
 
-            args = [binpath]
+            args = []
+            if macos_open:
+                if debug:
+                    print("The browser can not be launched in the debugger "
+                        "when using the macOS open command.")
+                    return 1
+                try:
+                    m = re.search(r'^.+\.app', binpath)
+                    apppath = m.group(0)
+                    args = ['open', apppath, '--args']
+                except Exception as e:
+                    print("Couldn't get the .app path from the binary path. "
+                        "The macOS open option can only be used on macOS")
+                    print(e)
+                    return 1
+            else:
+                args = [binpath]
 
             if params:
                 args.extend(params)
@@ -1396,7 +1420,7 @@ class PackageFrontend(MachCommandBase):
                     setup=record.setup)
 
         if from_build:
-            if 'TASK_ID' in os.environ:
+            if 'MOZ_AUTOMATION' in os.environ:
                 self.log(logging.ERROR, 'artifact', {},
                          'Do not use --from-build in automation; all dependencies '
                          'should be determined in the decision task.')
@@ -1704,6 +1728,7 @@ class StaticAnalysis(MachCommandBase):
 
         cwd = self.topobjdir
         self._compilation_commands_path = self.topobjdir
+        self._clang_tidy_config = self._get_clang_tidy_config()
         args = self._get_clang_tidy_command(
             checks=checks, header_filter=header_filter, sources=source, jobs=jobs, fix=fix)
 
@@ -1711,7 +1736,7 @@ class StaticAnalysis(MachCommandBase):
 
         footer = StaticAnalysisFooter(self.log_manager.terminal, monitor)
         with StaticAnalysisOutputManager(self.log_manager, monitor, footer) as output:
-            rc = self.run_process(args=args, line_handler=output.on_line, cwd=cwd)
+            rc = self.run_process(args=args, ensure_exit_code=False, line_handler=output.on_line, cwd=cwd)
 
             self.log(logging.WARNING, 'warning_summary',
                      {'count': len(monitor.warnings_db)},
@@ -1822,7 +1847,6 @@ class StaticAnalysis(MachCommandBase):
 
     def _get_infer_config(self):
         '''Load the infer config file.'''
-        import yaml
         checkers = []
         tp_path = ''
         with open(mozpath.join(self.topsrcdir, 'tools',
@@ -1852,6 +1876,16 @@ class StaticAnalysis(MachCommandBase):
                 excludes.append(line.strip('\n'))
         return checkers, excludes
 
+    def _get_clang_tidy_config(self):
+        try:
+            file_handler = open(mozpath.join(self.topsrcdir, "tools", "clang-tidy", "config.yaml"))
+            config = yaml.safe_load(file_handler)
+        except Exception:
+                print('Looks like config.yaml is not valid, we are going to use default'
+                      ' values for the rest of the analysis.')
+                return None
+        return config
+
     def _get_clang_tidy_command(self, checks, header_filter, sources, jobs, fix):
 
         if checks == '-*':
@@ -1868,6 +1902,14 @@ class StaticAnalysis(MachCommandBase):
         # the source files or folders.
         common_args += ['-header-filter=%s' % (header_filter
                                               if len(header_filter) else '|'.join(sources))]
+
+        # From our configuration file, config.yaml, we build the configuration list, for
+        # the checkers that are used. These configuration options are used to better fit
+        # the checkers to our code.
+        cfg = self._get_checks_config()
+        if cfg:
+            common_args += ['-config=%s' % yaml.dump(cfg)]
+
         if fix:
             common_args += '-fix'
 
@@ -1908,23 +1950,24 @@ class StaticAnalysis(MachCommandBase):
         self.TOOLS_CHECKER_DIFF_FAILED = 6
         self.TOOLS_CHECKER_NOT_FOUND = 7
         self.TOOLS_CHECKER_FAILED_FILE = 8
+        self.TOOLS_CHECKER_LIST_EMPTY = 9
 
         # Configure the tree or download clang-tidy package, depending on the option that we choose
         if intree_tool:
             _, config, _ = self._get_config_environment()
             clang_tools_path = self.topsrcdir
             self._clang_tidy_path = mozpath.join(
-                clang_tools_path, "clang", "bin",
+                clang_tools_path, "clang-tidy", "bin",
                 "clang-tidy" + config.substs.get('BIN_SUFFIX', ''))
             self._clang_format_path = mozpath.join(
-                clang_tools_path, "clang", "bin",
+                clang_tools_path, "clang-tidy", "bin",
                 "clang-format" + config.substs.get('BIN_SUFFIX', ''))
             self._clang_apply_replacements = mozpath.join(
-                clang_tools_path, "clang", "bin",
+                clang_tools_path, "clang-tidy", "bin",
                 "clang-apply-replacements" + config.substs.get('BIN_SUFFIX', ''))
-            self._run_clang_tidy_path = mozpath.join(clang_tools_path, "clang", "share",
+            self._run_clang_tidy_path = mozpath.join(clang_tools_path, "clang-tidy", "share",
                                                      "clang", "run-clang-tidy.py")
-            self._clang_format_diff = mozpath.join(clang_tools_path, "clang", "share",
+            self._clang_format_diff = mozpath.join(clang_tools_path, "clang-tidy", "share",
                                                    "clang", "clang-format-diff.py")
 
             # Ensure that clang-tidy is present
@@ -1940,15 +1983,13 @@ class StaticAnalysis(MachCommandBase):
         self._clang_tidy_base_path = mozpath.join(self.topsrcdir, "tools", "clang-tidy")
 
         # For each checker run it
-        f = open(mozpath.join(self._clang_tidy_base_path, "config.yaml"))
-        import yaml
-        config = yaml.safe_load(f)
+        self._clang_tidy_config = self._get_clang_tidy_config()
         platform, _ = self.platform
 
-        if platform not in config['platforms']:
+        if platform not in self._clang_tidy_config['platforms']:
             self.log(logging.ERROR, 'static-analysis', {},
                      "RUNNING: clang-tidy autotest for platform {} not supported.".format(platform))
-            return TOOLS_UNSUPORTED_PLATFORM
+            return self.TOOLS_UNSUPORTED_PLATFORM
 
         import concurrent.futures
         import multiprocessing
@@ -1968,11 +2009,11 @@ class StaticAnalysis(MachCommandBase):
         self._clang_tidy_checks = [c.strip() for c in available_checks if c]
 
         # Build the dummy compile_commands.json
-        self._compilation_commands_path = self._create_temp_compilation_db(config)
-
+        self._compilation_commands_path = self._create_temp_compilation_db(self._clang_tidy_config)
+        checkers_test_batch = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = []
-            for item in config['clang_checkers']:
+            for item in self._clang_tidy_config['clang_checkers']:
                 # Skip if any of the following statements is true:
                 # 1. Checker attribute 'publish' is False.
                 not_published = not bool(item.get('publish', True))
@@ -1988,6 +2029,7 @@ class StaticAnalysis(MachCommandBase):
                    ignored_checker or \
                    checker_not_in_list:
                     continue
+                checkers_test_batch.append(item['name'])
                 futures.append(executor.submit(self._verify_checker, item))
 
             error_code = self.TOOLS_SUCCESS
@@ -2006,9 +2048,56 @@ class StaticAnalysis(MachCommandBase):
                 shutil.rmtree(self._compilation_commands_path)
                 return error_code
 
+            # Run the analysis on all checkers at the same time only if we don't dump results.
+            if not self._dump_results:
+                ret_val = self._run_analysis_batch(checkers_test_batch)
+                if ret_val != self.TOOLS_SUCCESS:
+                    shutil.rmtree(self._compilation_commands_path)
+                    return ret_val
+
         self.log(logging.INFO, 'static-analysis', {}, "SUCCESS: clang-tidy all tests passed.")
         # Also delete the tmp folder
         shutil.rmtree(self._compilation_commands_path)
+        return self.TOOLS_SUCCESS
+
+    def _run_analysis(self, checks, header_filter, sources, jobs=1, fix=False, print_out=False):
+        cmd = self._get_clang_tidy_command(
+            checks=checks, header_filter=header_filter,
+            sources=sources,
+            jobs=jobs, fix=fix)
+
+        try:
+            clang_output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode('utf-8')
+        except subprocess.CalledProcessError as e:
+            print(e.output)
+            return None
+        return self._parse_issues(clang_output)
+
+    def _run_analysis_batch(self, items):
+        self.log(logging.INFO, 'static-analysis', {},"RUNNING: clang-tidy checker batch analysis.")
+        if not len(items):
+            self.log(logging.ERROR, 'static-analysis', {}, "ERROR: clang-tidy checker list is empty!")
+            return self.TOOLS_CHECKER_LIST_EMPTY
+
+        issues = self._run_analysis(
+            checks='-*,' + ",".join(items), header_filter='',
+            sources=[mozpath.join(self._clang_tidy_base_path, "test", checker) + '.cpp' for checker in items], print_out=True)
+
+        if issues is None:
+            return self.TOOLS_CHECKER_FAILED_FILE
+
+        for checker in items:
+            test_file_path_json = mozpath.join(self._clang_tidy_base_path, "test", checker) + '.json'
+             # Read the pre-determined issues
+            baseline_issues = self._get_autotest_stored_issues(test_file_path_json)
+            found = all([element_base in issues for element_base in baseline_issues])
+
+            if not found:
+                self.log(
+                    logging.ERROR, 'static-analysis', {},
+                    "ERROR: clang-tidy auto-test failed for checker {0} in multiple files process unit.".
+                    format(checker))
+                return self.TOOLS_CHECKER_DIFF_FAILED
         return self.TOOLS_SUCCESS
 
     def _create_temp_compilation_db(self, config):
@@ -2126,51 +2215,44 @@ class StaticAnalysis(MachCommandBase):
             self.log(logging.ERROR, 'static-analysis', {}, "ERROR: clang-tidy checker {} doesn't have a test file.".format(check))
             return self.TOOLS_CHECKER_NO_TEST_FILE
 
-        cmd = self._get_clang_tidy_command(
-            checks='-*,' + check, header_filter='', sources=[test_file_path_cpp], jobs=1, fix=False)
-        try:
-            clang_output = subprocess.check_output(
-                cmd, stderr=subprocess.STDOUT).decode('utf-8')
-        except subprocess.CalledProcessError as e:
-            print(e.output)
+        issues = self._run_analysis(
+            checks='-*,' + check, header_filter='', sources=[test_file_path_cpp])
+        if issues is None:
             return self.TOOLS_CHECKER_FAILED_FILE
-        else:
-            issues = self._parse_issues(clang_output)
 
-            # Verify to see if we got any issues, if not raise exception
-            if not issues:
+        # Verify to see if we got any issues, if not raise exception
+        if not issues:
+            self.log(
+                logging.ERROR, 'static-analysis', {},
+                "ERROR: clang-tidy checker {0} did not find any issues in its associated test file.".
+                format(check))
+            return self.TOOLS_CHECKER_RETURNED_NO_ISSUES
+
+        if self._dump_results:
+            self._build_autotest_result(test_file_path_json, json.dumps(issues))
+        else:
+            if not os.path.exists(test_file_path_json):
+                # Result file for test not found maybe regenerate it?
                 self.log(
                     logging.ERROR, 'static-analysis', {},
-                    "ERROR: clang-tidy checker {0} did not find any issues in its associated test file.".
-                    format(check))
-                return self.CHECKER_RETURNED_NO_ISSUES
+                    "ERROR: clang-tidy result file not found for checker {0}".format(
+                        check))
+                return self.TOOLS_CHECKER_RESULT_FILE_NOT_FOUND
+            # Read the pre-determined issues
+            baseline_issues = self._get_autotest_stored_issues(test_file_path_json)
 
-            if self._dump_results:
-                self._build_autotest_result(test_file_path_json, issues)
-            else:
-                if not os.path.exists(test_file_path_json):
-                    # Result file for test not found maybe regenerate it?
-                    self.log(
-                        logging.ERROR, 'static-analysis', {},
-                        "ERROR: clang-tidy result file not found for checker {0}".format(
-                            check))
-                    return self.TOOLS_CHECKER_RESULT_FILE_NOT_FOUND
-                # Read the pre-determined issues
-                baseline_issues = self._get_autotest_stored_issues(test_file_path_json)
-
-                # Compare the two lists
-                if issues != baseline_issues:
-                    print("Clang output: {}".format(clang_output))
-                    self.log(
-                        logging.ERROR, 'static-analysis', {},
-                        "ERROR: clang-tidy auto-test failed for checker {0} Expected: {1} Got: {2}".
-                        format(check, baseline_issues, issues))
-                    return self.TOOLS_CHECKER_DIFF_FAILED
-            return self.TOOLS_SUCCESS
+            # Compare the two lists
+            if issues != baseline_issues:
+                self.log(
+                    logging.ERROR, 'static-analysis', {},
+                    "ERROR: clang-tidy auto-test failed for checker {0} Expected: {1} Got: {2}".
+                    format(check, baseline_issues, issues))
+                return self.TOOLS_CHECKER_DIFF_FAILED
+        return self.TOOLS_SUCCESS
 
     def _build_autotest_result(self, file, issues):
         with open(file, 'w') as f:
-            json.dump(issues, f, indent=4, sort_keys=True)
+            f.write(issues)
 
     def _get_autotest_stored_issues(self, file):
         with open(file) as f:
@@ -2201,22 +2283,45 @@ class StaticAnalysis(MachCommandBase):
             header_group = header.groups()
             element = [header_group[3], header_group[4], header_group[5]]
             issues.append(element)
-        return json.dumps(issues)
+        return issues
 
     def _get_checks(self):
         checks = '-*'
-        import yaml
-        with open(mozpath.join(self.topsrcdir, "tools", "clang-tidy", "config.yaml")) as f:
-            try:
-                config = yaml.safe_load(f)
-                for item in config['clang_checkers']:
-                    if item.get('publish', True):
-                        checks += ',' + item['name']
-            except Exception:
-                print('Looks like config.yaml is not valid, so we are unable to '
-                      'determine default checkers, using \'-checks=-*,mozilla-*\'')
-                checks += ',mozilla-*'
-        return checks
+        try:
+            config = self._clang_tidy_config
+            for item in config['clang_checkers']:
+                if item.get('publish', True):
+                    checks += ',' + item['name']
+        except Exception:
+            print('Looks like config.yaml is not valid, so we are unable to '
+                    'determine default checkers, using \'-checks=-*,mozilla-*\'')
+            checks += ',mozilla-*'
+        finally:
+            return checks
+
+    def _get_checks_config(self):
+        config_list = []
+        checker_config = {}
+        try:
+            config = self._clang_tidy_config
+            for checker in config['clang_checkers']:
+                if checker.get('publish', True) and 'config' in checker:
+                    for checker_option in checker['config']:
+                        # Verify if the format of the Option is correct,
+                        # possibilities are:
+                        # 1. CheckerName.Option
+                        # 2. Option -> that will become CheckerName.Option
+                        if not checker_option['key'].startswith(checker['name']):
+                            checker_option['key'] = "{}.{}".format(
+                                checker['name'], checker_option['key'])
+                    config_list += checker['config']
+            checker_config['CheckOptions'] = config_list
+        except Exception:
+            print('Looks like config.yaml is not valid, so we are unable to '
+                    'determine configuration for checkers, so using default')
+            checker_config = None
+        finally:
+            return checker_config
 
     def _get_config_environment(self):
         ran_configure = False
@@ -2296,17 +2401,17 @@ class StaticAnalysis(MachCommandBase):
             return rc
 
         clang_tools_path = mozpath.join(self._mach_context.state_dir, "clang-tools")
-        self._clang_tidy_path = mozpath.join(clang_tools_path, "clang", "bin",
+        self._clang_tidy_path = mozpath.join(clang_tools_path, "clang-tidy", "bin",
                                              "clang-tidy" + config.substs.get('BIN_SUFFIX', ''))
         self._clang_format_path = mozpath.join(
-            clang_tools_path, "clang", "bin",
+            clang_tools_path, "clang-tidy", "bin",
             "clang-format" + config.substs.get('BIN_SUFFIX', ''))
         self._clang_apply_replacements = mozpath.join(
-            clang_tools_path, "clang", "bin",
+            clang_tools_path, "clang-tidy", "bin",
             "clang-apply-replacements" + config.substs.get('BIN_SUFFIX', ''))
-        self._run_clang_tidy_path = mozpath.join(clang_tools_path, "clang", "share", "clang",
+        self._run_clang_tidy_path = mozpath.join(clang_tools_path, "clang-tidy", "share", "clang",
                                                  "run-clang-tidy.py")
-        self._clang_format_diff = mozpath.join(clang_tools_path, "clang", "share", "clang",
+        self._clang_format_diff = mozpath.join(clang_tools_path, "clang-tidy", "share", "clang",
                                                "clang-format-diff.py")
 
         if os.path.exists(self._clang_tidy_path) and \
@@ -2597,6 +2702,9 @@ class Vendor(MachCommandBase):
 
     @SubCommand('vendor', 'python',
                 description='Vendor Python packages from pypi.org into third_party/python')
+    @CommandArgument('--with-windows-wheel', action='store_true',
+        help='Vendor a wheel for Windows along with the source package',
+        default=False)
     @CommandArgument('packages', default=None, nargs='*', help='Packages to vendor. If omitted, packages and their dependencies defined in Pipfile.lock will be vendored. If Pipfile has been modified, then Pipfile.lock will be regenerated. Note that transient dependencies may be updated when running this command.')
     def vendor_python(self, **kwargs):
         from mozbuild.vendor_python import VendorPython
@@ -2801,3 +2909,12 @@ class Analyze(MachCommandBase):
                 res = 'Please specify the location of cost_dict.gz with --path.'
                 print ('Could not find cost_dict.gz at %s' % path, res, sep='\n')
                 return 1
+
+
+@SettingsProvider
+class TelemetrySettings():
+    config_settings = [
+        ('build.telemetry', 'boolean', """
+Enable submission of build system telemetry.
+        """.strip(), False),
+    ]

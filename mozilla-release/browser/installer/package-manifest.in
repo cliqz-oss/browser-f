@@ -185,8 +185,6 @@
 #endif
 @RESPATH@/browser/components/AutoForgetTabsService.js
 @RESPATH@/browser/components/BrowserFeeds.manifest
-@RESPATH@/browser/components/FeedConverter.js
-@RESPATH@/browser/components/FeedWriter.js
 @RESPATH@/browser/components/WebContentConverter.js
 @RESPATH@/browser/components/BrowserComponents.manifest
 @RESPATH@/browser/components/nsBrowserContentHandler.js
@@ -232,8 +230,6 @@
 @RESPATH@/components/NetworkGeolocationProvider.manifest
 @RESPATH@/components/NetworkGeolocationProvider.js
 @RESPATH@/components/extensions.manifest
-@RESPATH@/components/EditorUtils.manifest
-@RESPATH@/components/EditorUtils.js
 @RESPATH@/components/addonManager.js
 @RESPATH@/components/amContentHandler.js
 @RESPATH@/components/amInstallTrigger.js

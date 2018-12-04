@@ -73,6 +73,9 @@ private:
   Maybe<wr::WrClipId> ClipIdAfterOverride(const Maybe<wr::WrClipId>& aClipId);
 
   Maybe<wr::WrClipId>
+  GetScrollLayer(const ActiveScrolledRoot* aASR);
+
+  Maybe<wr::WrClipId>
   DefineScrollLayers(const ActiveScrolledRoot* aASR,
                      nsDisplayItem* aItem,
                      const StackingContextHelper& aSc);
@@ -122,11 +125,13 @@ private:
   // This holds some clip state for a single nsDisplayItem
   struct ItemClips {
     ItemClips(const ActiveScrolledRoot* aASR,
-              const DisplayItemClipChain* aChain);
+              const DisplayItemClipChain* aChain,
+              bool aSeparateLeaf);
 
     // These are the "inputs" - they come from the nsDisplayItem
     const ActiveScrolledRoot* mASR;
     const DisplayItemClipChain* mChain;
+    bool mSeparateLeaf;
 
     // These are the "outputs" - they are pushed to WR as needed
     Maybe<wr::WrClipId> mScrollId;
@@ -135,7 +140,8 @@ private:
     // State tracking
     bool mApplied;
 
-    void Apply(wr::DisplayListBuilder* aBuilder);
+    void Apply(wr::DisplayListBuilder* aBuilder,
+               int32_t aAppUnitsPerDevPixel);
     void Unapply(wr::DisplayListBuilder* aBuilder);
     bool HasSameInputs(const ItemClips& aOther);
     void CopyOutputsFrom(const ItemClips& aOther);

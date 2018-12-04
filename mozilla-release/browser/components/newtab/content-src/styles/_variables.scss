@@ -20,13 +20,16 @@ $yellow-50: #FFE900;
 // Photon opacity from http://design.firefox.com/photon/visuals/color.html#opacity
 $grey-10-10: rgba($grey-10, 0.1);
 $grey-10-20: rgba($grey-10, 0.2);
+$grey-10-30: rgba($grey-10, 0.3);
 $grey-10-40: rgba($grey-10, 0.4);
+$grey-10-50: rgba($grey-10, 0.5);
 $grey-10-60: rgba($grey-10, 0.6);
 $grey-10-80: rgba($grey-10, 0.8);
 $grey-10-95: rgba($grey-10, 0.95);
 $grey-20-60: rgba($grey-20, 0.6);
 $grey-20-80: rgba($grey-20, 0.8);
 $grey-30-60: rgba($grey-30, 0.6);
+$grey-60-70: rgba($grey-60, 0.7);
 $grey-80-95: rgba($grey-80, 0.95);
 $grey-90-10: rgba($grey-90, 0.1);
 $grey-90-20: rgba($grey-90, 0.2);
@@ -61,6 +64,8 @@ $aw-extra-blue-2: #0080FF;
 $aw-extra-blue-3: #00C7FF;
 $about-welcome-gradient: linear-gradient(to bottom, $blue-70 40%, $aw-extra-blue-1 60%, $blue-60 80%, $aw-extra-blue-2 90%, $aw-extra-blue-3 100%);
 $about-welcome-extra-links: #676F7E;
+$firefox-wordmark-default-color: #363959;
+$firefox-wordmark-darktheme-color: $white;
 
 // Photon transitions from http://design.firefox.com/photon/motion/duration-and-easing.html
 $photon-easing: cubic-bezier(0.07, 0.95, 0, 1);

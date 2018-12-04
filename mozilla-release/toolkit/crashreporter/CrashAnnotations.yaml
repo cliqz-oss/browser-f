@@ -148,6 +148,12 @@ BreakpadReserveSize:
     Size of the buffer reserved by Breakpad.
   type: string
 
+Bug_1086977:
+  description: >
+    Mac-only annotation which should be present only if Firefox crashed when
+    loading a facebook plugin.
+  type: string
+
 BuildID:
   description: >
     Application build ID, the format is YYYYMMDDHHMMSS.
@@ -477,6 +483,13 @@ MarshalActCtxManifestPath:
     Proxy stream marshalling current activation context manifest path.
   type: string
 
+MemoryErrorCorrection:
+  description: >
+    Windows only, type of error correction used by system memory.  See
+    documentation for MemoryErrorCorrection property of
+    Win32_PhysicalMemoryArray WMI class.
+  type: string
+
 MozCrashReason:
   description: >
     Plaintext description of why Firefox crashed, this is usually set by
@@ -577,6 +590,12 @@ ProxyStreamValid:
   description: >
     Set to "false" when encountering an invalid IPC proxy stream.
   type: string
+
+RecordReplay:
+  description: >
+    Set to 1 if this crash happened in a Web Replay middleman, recording,
+    or replaying process.
+  type: boolean
 
 RecordReplayError:
   description: >

@@ -26,6 +26,7 @@
 #include "mozilla/net/DNSRequestParent.h"
 #include "mozilla/net/ChannelDiverterParent.h"
 #include "mozilla/net/IPCTransportProvider.h"
+#include "mozilla/net/TrackingDummyChannelParent.h"
 #ifdef MOZ_WEBRTC
 #include "mozilla/net/StunAddrsRequestParent.h"
 #endif
@@ -696,21 +697,23 @@ NeckoParent::RecvSpeculativeConnect(const URIParams& aURI,
 }
 
 mozilla::ipc::IPCResult
-NeckoParent::RecvHTMLDNSPrefetch(const nsString& hostname,
+NeckoParent::RecvHTMLDNSPrefetch(const nsString& hostname, const bool& isHttps,
                                  const OriginAttributes& aOriginAttributes,
                                  const uint16_t& flags)
 {
-  nsHTMLDNSPrefetch::Prefetch(hostname, aOriginAttributes, flags);
+  nsHTMLDNSPrefetch::Prefetch(hostname, isHttps, aOriginAttributes, flags);
   return IPC_OK();
 }
 
 mozilla::ipc::IPCResult
 NeckoParent::RecvCancelHTMLDNSPrefetch(const nsString& hostname,
+                                       const bool& isHttps,
                                        const OriginAttributes& aOriginAttributes,
                                        const uint16_t& flags,
                                        const nsresult& reason)
 {
-  nsHTMLDNSPrefetch::CancelPrefetch(hostname, aOriginAttributes, flags, reason);
+  nsHTMLDNSPrefetch::CancelPrefetch(hostname, isHttps, aOriginAttributes,
+                                    flags, reason);
   return IPC_OK();
 }
 
@@ -1010,6 +1013,49 @@ NeckoParent::RecvGetExtensionFD(const URIParams& aURI,
   }
 
   return IPC_OK();
+}
+
+PTrackingDummyChannelParent*
+NeckoParent::AllocPTrackingDummyChannelParent(nsIURI* aURI,
+                                              nsIURI* aTopWindowURI,
+                                              const nsresult& aTopWindowURIResult,
+                                              const OptionalLoadInfoArgs& aLoadInfo)
+{
+  RefPtr<TrackingDummyChannelParent> c = new TrackingDummyChannelParent();
+  return c.forget().take();
+}
+
+mozilla::ipc::IPCResult
+NeckoParent::RecvPTrackingDummyChannelConstructor(PTrackingDummyChannelParent* aActor,
+                                                  nsIURI* aURI,
+                                                  nsIURI* aTopWindowURI,
+                                                  const nsresult& aTopWindowURIResult,
+                                                  const OptionalLoadInfoArgs& aLoadInfo)
+{
+  TrackingDummyChannelParent* p =
+    static_cast<TrackingDummyChannelParent*>(aActor);
+
+  if (NS_WARN_IF(!aURI)) {
+    return IPC_FAIL_NO_REASON(this);
+  }
+
+  nsCOMPtr<nsILoadInfo> loadInfo;
+  nsresult rv = LoadInfoArgsToLoadInfo(aLoadInfo, getter_AddRefs(loadInfo));
+  if (NS_WARN_IF(NS_FAILED(rv)) || !loadInfo) {
+    return IPC_FAIL_NO_REASON(this);
+  }
+
+  p->Init(aURI, aTopWindowURI, aTopWindowURIResult, loadInfo);
+  return IPC_OK();
+}
+
+bool
+NeckoParent::DeallocPTrackingDummyChannelParent(PTrackingDummyChannelParent* aActor)
+{
+  RefPtr<TrackingDummyChannelParent> c =
+    dont_AddRef(static_cast<TrackingDummyChannelParent*>(aActor));
+  MOZ_ASSERT(c);
+  return true;
 }
 
 } // namespace net

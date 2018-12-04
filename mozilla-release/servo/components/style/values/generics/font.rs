@@ -13,11 +13,9 @@ use std::fmt::{self, Write};
 use std::io::Cursor;
 use style_traits::{CssWriter, KeywordsCollectFn, ParseError};
 use style_traits::{SpecifiedValueInfo, StyleParseErrorKind, ToCss};
-use values::distance::{ComputeSquaredDistance, SquaredDistance};
 
 /// https://drafts.csswg.org/css-fonts-4/#feature-tag-value
-#[derive(Clone, Debug, Eq, MallocSizeOf, PartialEq, SpecifiedValueInfo,
-         ToComputedValue)]
+#[derive(Clone, Debug, Eq, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToComputedValue)]
 pub struct FeatureTagValue<Integer> {
     /// A four-character tag, packed into a u32 (one byte per character).
     pub tag: FontTag,
@@ -47,8 +45,18 @@ where
 /// Variation setting for a single feature, see:
 ///
 /// https://drafts.csswg.org/css-fonts-4/#font-variation-settings-def
-#[derive(Animate, Clone, Debug, Eq, MallocSizeOf, PartialEq, SpecifiedValueInfo,
-         ToComputedValue, ToCss)]
+#[derive(
+    Animate,
+    Clone,
+    ComputeSquaredDistance,
+    Debug,
+    Eq,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+)]
 pub struct VariationValue<Number> {
     /// A four-character tag, packed into a u32 (one byte per character).
     #[animation(constant)]
@@ -57,23 +65,9 @@ pub struct VariationValue<Number> {
     pub value: Number,
 }
 
-impl<Number> ComputeSquaredDistance for VariationValue<Number>
-where
-    Number: ComputeSquaredDistance,
-{
-    #[inline]
-    fn compute_squared_distance(&self, other: &Self) -> Result<SquaredDistance, ()> {
-        if self.tag != other.tag {
-            return Err(());
-        }
-        self.value.compute_squared_distance(&other.value)
-    }
-}
-
 /// A value both for font-variation-settings and font-feature-settings.
 #[css(comma)]
-#[derive(Clone, Debug, Eq, MallocSizeOf, PartialEq, SpecifiedValueInfo,
-         ToComputedValue, ToCss)]
+#[derive(Clone, Debug, Eq, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToComputedValue, ToCss)]
 pub struct FontSettings<T>(#[css(if_empty = "normal", iterable)] pub Box<[T]>);
 
 impl<T> FontSettings<T> {
@@ -109,8 +103,7 @@ impl<T: Parse> Parse for FontSettings<T> {
 ///   https://drafts.csswg.org/css-fonts-4/#font-variation-settings-def
 ///   https://drafts.csswg.org/css-fonts-4/#descdef-font-face-font-feature-settings
 ///
-#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, PartialEq, SpecifiedValueInfo,
-         ToComputedValue)]
+#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToComputedValue)]
 pub struct FontTag(pub u32);
 
 impl ToCss for FontTag {
@@ -145,8 +138,18 @@ impl Parse for FontTag {
     }
 }
 
-#[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug, MallocSizeOf, PartialEq,
-         ToAnimatedValue, ToAnimatedZero, ToCss)]
+#[derive(
+    Animate,
+    Clone,
+    ComputeSquaredDistance,
+    Copy,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    ToAnimatedValue,
+    ToAnimatedZero,
+    ToCss,
+)]
 /// Additional information for keyword-derived font sizes.
 pub struct KeywordInfo<Length> {
     /// The keyword used
@@ -189,9 +192,20 @@ impl<L> SpecifiedValueInfo for KeywordInfo<L> {
 }
 
 /// CSS font keywords
-#[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug, MallocSizeOf,
-         Parse, PartialEq, SpecifiedValueInfo, ToAnimatedValue, ToAnimatedZero,
-         ToCss)]
+#[derive(
+    Animate,
+    Clone,
+    ComputeSquaredDistance,
+    Copy,
+    Debug,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToAnimatedValue,
+    ToAnimatedZero,
+    ToCss,
+)]
 #[allow(missing_docs)]
 pub enum KeywordSize {
     #[css(keyword = "xx-small")]
@@ -228,8 +242,19 @@ impl Default for KeywordSize {
 /// https://drafts.csswg.org/css-fonts-4/#font-style-prop
 #[allow(missing_docs)]
 #[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
-#[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug, Hash, MallocSizeOf,
-         PartialEq, SpecifiedValueInfo, ToAnimatedValue, ToAnimatedZero)]
+#[derive(
+    Animate,
+    Clone,
+    ComputeSquaredDistance,
+    Copy,
+    Debug,
+    Hash,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToAnimatedValue,
+    ToAnimatedZero,
+)]
 pub enum FontStyle<Angle> {
     #[animation(error)]
     Normal,

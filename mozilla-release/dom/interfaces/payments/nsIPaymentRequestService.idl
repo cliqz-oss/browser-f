@@ -6,7 +6,6 @@
 #include "nsISupports.idl"
 #include "nsIVariant.idl"
 #include "nsIPaymentRequest.idl"
-#include "nsIPaymentActionRequest.idl"
 #include "nsIPaymentActionResponse.idl"
 #include "nsIPaymentAddress.idl"
 #include "nsISimpleEnumerator.idl"
@@ -56,6 +55,18 @@ interface nsIPaymentRequestService : nsISupports
   void changeShippingOption(in AString requestId, in AString option);
 
   /**
+   *  Inform the merchant the payer's details changed in the PaymentResponse.
+   *  @param requestId - the request identifier of the payment request.
+   *  @param aPayerName - the changed payer's name.
+   *  @param aPayerEmail - the changed payer's email.
+   *  @param aPayerPhone - the changed payer's phone.
+   */
+  void changePayerDetail(in AString requestId,
+                         in AString aPayerName,
+                         in AString aPayerEmail,
+                         in AString aPayerPhone);
+
+  /**
    *  Following APIs are for testing or platform code only. UI implementation
    *  should not use them.
    */
@@ -70,22 +81,6 @@ interface nsIPaymentRequestService : nsISupports
    *  This API is for testing only.
    */
   void setTestingUIService(in nsIPaymentUIService aUIService);
-
-  /**
-   *  Request a specified action on the specified PaymentRequest.
-   *  @param aRequest - the requested action.
-   */
-  void requestPayment(in nsIPaymentActionRequest aRequest);
-
-  /**
-   *  This is a cleanup function to break the association between
-   *  nsIPaymentRequestService and nsIPaymentActionCallback.
-   *  nsIPaymentActionCallback is an interface that registered to
-   *  nsIPaymentRequestService when the merchant asks to perform actions, and it
-   *  will be called when user's response send back to nsIPaymentRequestService.
-   *  @param aCallback - the specified nsIPaymentActionCallback.
-   */
-  void removeActionCallback(in nsIPaymentActionCallback aCallback);
 };
 
 %{C++

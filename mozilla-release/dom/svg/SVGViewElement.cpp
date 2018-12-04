@@ -21,14 +21,14 @@ SVGViewElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 }
 
 nsSVGEnumMapping SVGViewElement::sZoomAndPanMap[] = {
-  {&nsGkAtoms::disable, SVG_ZOOMANDPAN_DISABLE},
-  {&nsGkAtoms::magnify, SVG_ZOOMANDPAN_MAGNIFY},
+  {nsGkAtoms::disable, SVG_ZOOMANDPAN_DISABLE},
+  {nsGkAtoms::magnify, SVG_ZOOMANDPAN_MAGNIFY},
   {nullptr, 0}
 };
 
 nsSVGElement::EnumInfo SVGViewElement::sEnumInfo[1] =
 {
-  { &nsGkAtoms::zoomAndPan,
+  { nsGkAtoms::zoomAndPan,
     sZoomAndPanMap,
     SVG_ZOOMANDPAN_MAGNIFY
   }
@@ -37,8 +37,8 @@ nsSVGElement::EnumInfo SVGViewElement::sEnumInfo[1] =
 //----------------------------------------------------------------------
 // Implementation
 
-SVGViewElement::SVGViewElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-  : SVGViewElementBase(aNodeInfo)
+SVGViewElement::SVGViewElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
+  : SVGViewElementBase(std::move(aNodeInfo))
 {
 }
 

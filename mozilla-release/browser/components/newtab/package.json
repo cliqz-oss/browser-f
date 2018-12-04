@@ -37,7 +37,7 @@
     "eslint": "4.19.1",
     "eslint-plugin-import": "2.11.0",
     "eslint-plugin-json": "1.2.0",
-    "eslint-plugin-mozilla": "0.14.0",
+    "eslint-plugin-mozilla": "0.16.0",
     "eslint-plugin-no-unsanitized": "3.0.0",
     "eslint-plugin-promise": "3.7.0",
     "eslint-plugin-react": "7.7.0",
@@ -62,6 +62,7 @@
     "node-sass": "4.7.2",
     "npm-run-all": "4.1.2",
     "pontoon-to-json": "2.0.0",
+    "raw-loader": "0.5.1",
     "react-test-renderer": "16.3.2",
     "rimraf": "2.6.2",
     "sass-lint": "1.12.1",
@@ -75,7 +76,7 @@
   "engines": {
     "firefox": ">=45.0 <=*",
     "//": "when changing node versions, also edit .travis.yml and .nvmrc",
-    "node": "7.*"
+    "node": "8.*"
   },
   "homepage": "https://github.com/mozilla/activity-stream",
   "keywords": [
@@ -87,13 +88,18 @@
   "main": "bootstrap.js",
   "repository": "mozilla/activity-stream",
   "config": {
+    "default_locale": "en-US",
+    "/*": "NB: This directory is *not* 'locales' to avoid mercurial hook for uplifts.",
+    "**": "It contains the source default locale strings to be exported for localization",
+    "*/": "and is the path used to update translated strings and to prerender strings.",
+    "locales_dir": "locales-src",
     "mc_dir": "../mozilla-central"
   },
   "scripts": {
     "mochitest": "(cd $npm_package_config_mc_dir && ./mach mochitest browser/components/newtab/test/browser --headless)",
     "mochitest-debug": "(cd $npm_package_config_mc_dir && ./mach mochitest --jsdebugger browser/components/newtab/test/browser)",
     "bundle": "npm-run-all bundle:*",
-    "bundle:locales": "pontoon-to-json --src locales --dest data",
+    "bundle:locales": "pontoon-to-json --src $npm_package_config_locales_dir --dest data",
     "bundle:webpack": "webpack --config webpack.system-addon.config.js",
     "bundle:css": "node-sass --source-map true --source-map-contents content-src/styles -o css",
     "bundle:html": "rimraf prerendered && webpack --config webpack.prerender.config.js && node ./bin/render-activity-stream-html.js",
@@ -101,7 +107,7 @@
     "prebuildmc": "rimraf $npm_package_config_mc_dir/browser/components/newtab/",
     "buildmc:bundle": "npm run  bundle",
     "buildmc:copy": "rsync --exclude-from .mcignore -a . $npm_package_config_mc_dir/browser/components/newtab/",
-    "buildmc:stringsExport": "cp locales/en-US/strings.properties $npm_package_config_mc_dir/browser/locales/en-US/chrome/browser/activity-stream/newtab.properties",
+    "buildmc:stringsExport": "cp $npm_package_config_locales_dir/$npm_package_config_default_locale/strings.properties $npm_package_config_mc_dir/browser/locales/$npm_package_config_default_locale/chrome/browser/activity-stream/newtab.properties",
     "buildmc:copyPingCentre": "cpx \"ping-centre/PingCentre.jsm\" $npm_package_config_mc_dir/browser/modules",
     "startmc": "npm-run-all --parallel startmc:*",
     "prestartmc": "npm run buildmc",

@@ -18,7 +18,6 @@
 #include "mozilla/TextServicesDocument.h" // for TextServicesDocument
 #include "nsAString.h"                  // for nsAString::IsEmpty, etc
 #include "nsComponentManagerUtils.h"    // for do_CreateInstance
-#include "nsComposeTxtSrvFilter.h"
 #include "nsDebug.h"                    // for NS_ENSURE_TRUE, etc
 #include "nsDependentSubstring.h"       // for Substring
 #include "nsError.h"                    // for NS_ERROR_NOT_INITIALIZED, etc
@@ -29,7 +28,6 @@
 #include "nsILoadContext.h"
 #include "nsISupportsBase.h"            // for nsISupports
 #include "nsISupportsUtils.h"           // for NS_ADDREF
-#include "nsITextServicesFilter.h"      // for nsITextServicesFilter
 #include "nsIURI.h"                     // for nsIURI
 #include "nsThreadUtils.h"              // for GetMainThreadSerialEventTarget
 #include "nsVariant.h"                  // for nsIWritableVariant, etc
@@ -291,11 +289,11 @@ NS_INTERFACE_MAP_END
 
 NS_IMPL_CYCLE_COLLECTION(EditorSpellCheck,
                          mEditor,
-                         mSpellChecker,
-                         mTxtSrvFilter)
+                         mSpellChecker)
 
 EditorSpellCheck::EditorSpellCheck()
-  : mSuggestedWordIndex(0)
+  : mTxtSrvFilterType(0)
+  , mSuggestedWordIndex(0)
   , mDictionaryIndex(0)
   , mDictionaryFetcherGroup(0)
   , mUpdateDictionaryRunning(false)
@@ -325,9 +323,8 @@ EditorSpellCheck::CanSpellCheck(bool* aCanSpellCheck)
 {
   RefPtr<mozSpellChecker> spellChecker = mSpellChecker;
   if (!spellChecker) {
-    spellChecker = new mozSpellChecker();
-    DebugOnly<nsresult> rv = spellChecker->Init();
-    MOZ_ASSERT(NS_SUCCEEDED(rv));
+    spellChecker = mozSpellChecker::Create();
+    MOZ_ASSERT(spellChecker);
   }
   nsTArray<nsString> dictList;
   nsresult rv = spellChecker->GetDictionaryList(&dictList);
@@ -385,13 +382,14 @@ EditorSpellCheck::InitSpellChecker(nsIEditor* aEditor,
   // We can spell check with any editor type
   RefPtr<TextServicesDocument> textServicesDocument =
     new TextServicesDocument();
-  textServicesDocument->SetFilter(mTxtSrvFilter);
+  textServicesDocument->SetFilterType(mTxtSrvFilterType);
 
   // EditorBase::AddEditActionListener() needs to access mSpellChecker and
   // mSpellChecker->GetTextServicesDocument().  Therefore, we need to
   // initialize them before calling TextServicesDocument::InitWithEditor()
   // since it calls EditorBase::AddEditActionListener().
-  mSpellChecker = new mozSpellChecker();
+  mSpellChecker = mozSpellChecker::Create();
+  MOZ_ASSERT(mSpellChecker);
   rv = mSpellChecker->SetDocument(textServicesDocument, true);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
@@ -434,9 +432,6 @@ EditorSpellCheck::InitSpellChecker(nsIEditor* aEditor,
       }
     }
   }
-
-  rv = mSpellChecker->Init();
-  MOZ_ASSERT(NS_SUCCEEDED(rv));
   // do not fail if UpdateCurrentDictionary fails because this method may
   // succeed later.
   rv = UpdateCurrentDictionary(aCallback);
@@ -689,9 +684,9 @@ EditorSpellCheck::UninitSpellChecker()
 
 
 NS_IMETHODIMP
-EditorSpellCheck::SetFilter(nsITextServicesFilter *aFilter)
+EditorSpellCheck::SetFilterType(uint32_t aFilterType)
 {
-  mTxtSrvFilter = reinterpret_cast<nsComposeTxtSrvFilter*>(aFilter);
+  mTxtSrvFilterType = aFilterType;
   return NS_OK;
 }
 
@@ -732,7 +727,7 @@ EditorSpellCheck::UpdateCurrentDictionary(
     NS_ENSURE_TRUE(ownerDoc, NS_ERROR_FAILURE);
     nsIDocument* parentDoc = ownerDoc->GetParentDocument();
     if (parentDoc) {
-      rootContent = do_QueryInterface(parentDoc->GetDocumentElement());
+      rootContent = parentDoc->GetDocumentElement();
     }
   }
 

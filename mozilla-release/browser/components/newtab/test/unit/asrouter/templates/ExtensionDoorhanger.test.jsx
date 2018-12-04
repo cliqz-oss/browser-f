@@ -6,22 +6,22 @@ const DEFAULT_CONTENT = {
   "notification_text": "Recommendation",
   "heading_text": "Recommended Extension",
   "info_icon": {
-    "label": "Why am I seeing this",
-    "sumo_path": "extensionrecommendations"
+    "label": {"attributes": {"tooltiptext": "Why am I seeing this"}},
+    "sumo_path": "extensionrecommendations",
   },
   "addon": {
     "id": "1234",
     "title": "Addon name",
     "icon": "https://mozilla.org/icon",
     "author": "Author name",
-    "amo_url": "https://example.com"
+    "amo_url": "https://example.com",
   },
   "text": "Description of addon",
   "buttons": {
     "primary": {
       "label": {
         "value": "Add Now",
-        "attributes": {"accesskey": "A"}
+        "attributes": {"accesskey": "A"},
       },
       "action": {
         "type": "INSTALL_ADDON_FROM_URL",
@@ -31,11 +31,11 @@ const DEFAULT_CONTENT = {
     "secondary": {
       "label": {
         "value": "Not Now",
-        "attributes": {"accesskey": "N"}
+        "attributes": {"accesskey": "N"},
       },
-      "action": {"type": "CANCEL"}
-    }
-  }
+      "action": {"type": "CANCEL"},
+    },
+  },
 };
 
 const L10N_CONTENT = {
@@ -44,14 +44,14 @@ const L10N_CONTENT = {
   "heading_text": {"string_id": "heading_text_id"},
   "info_icon": {
     "label": {string_id: "why_seeing_this"},
-    "sumo_path": "extensionrecommendations"
+    "sumo_path": "extensionrecommendations",
   },
   "addon": {
     "id": "1234",
     "title": "Addon name",
     "icon": "https://mozilla.org/icon",
     "author": "Author name",
-    "amo_url": "https://example.com"
+    "amo_url": "https://example.com",
   },
   "text": {"string_id": "text_id"},
   "buttons": {
@@ -64,9 +64,9 @@ const L10N_CONTENT = {
     },
     "secondary": {
       "label": {"string_id": "btn_cancel_id"},
-      "action": {"type": "CANCEL"}
-    }
-  }
+      "action": {"type": "CANCEL"},
+    },
+  },
 };
 
 describe("ExtensionDoorhanger", () => {

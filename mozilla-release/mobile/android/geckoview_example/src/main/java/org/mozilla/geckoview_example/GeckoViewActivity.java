@@ -5,8 +5,8 @@
 
 package org.mozilla.geckoview_example;
 
+import org.mozilla.geckoview.AllowOrDeny;
 import org.mozilla.geckoview.BasicSelectionActionDelegate;
-import org.mozilla.geckoview.GeckoResponse;
 import org.mozilla.geckoview.GeckoResult;
 import org.mozilla.geckoview.GeckoRuntime;
 import org.mozilla.geckoview.GeckoRuntimeSettings;
@@ -49,6 +49,7 @@ public class GeckoViewActivity extends AppCompatActivity {
     private static final String LOGTAG = "GeckoViewActivity";
     private static final String DEFAULT_URL = "https://mozilla.org";
     private static final String USE_MULTIPROCESS_EXTRA = "use_multiprocess";
+    private static final String FULL_ACCESSIBILITY_TREE_EXTRA = "full_accessibility_tree";
     private static final String SEARCH_URI_BASE = "https://www.google.com/search?q=";
     private static final String ACTION_SHUTDOWN = "org.mozilla.geckoview_example.SHUTDOWN";
     private static final int REQUEST_FILE_PICKER = 1;
@@ -59,6 +60,7 @@ public class GeckoViewActivity extends AppCompatActivity {
     private GeckoSession mGeckoSession;
     private GeckoView mGeckoView;
     private boolean mUseMultiprocess;
+    private boolean mFullAccessibilityTree;
     private boolean mUseTrackingProtection;
     private boolean mUsePrivateBrowsing;
     private boolean mKillProcessOnDestroy;
@@ -103,6 +105,7 @@ public class GeckoViewActivity extends AppCompatActivity {
         getSupportActionBar().setDisplayOptions(ActionBar.DISPLAY_SHOW_CUSTOM);
 
         mUseMultiprocess = getIntent().getBooleanExtra(USE_MULTIPROCESS_EXTRA, true);
+        mFullAccessibilityTree = getIntent().getBooleanExtra(FULL_ACCESSIBILITY_TREE_EXTRA, false);
         mProgressView = (ProgressBar) findViewById(R.id.page_progress);
 
         if (sGeckoRuntime == null) {
@@ -122,11 +125,9 @@ public class GeckoViewActivity extends AppCompatActivity {
             runtimeSettingsBuilder
                     .useContentProcessHint(mUseMultiprocess)
                     .remoteDebuggingEnabled(true)
-                    .nativeCrashReportingEnabled(true)
-                    .javaCrashReportingEnabled(true)
-                    .crashReportingJobId(1024)
                     .consoleOutput(true)
-                    .trackingProtectionCategories(TrackingProtectionDelegate.CATEGORY_ALL);
+                    .trackingProtectionCategories(TrackingProtectionDelegate.CATEGORY_ALL)
+                    .crashHandler(ExampleCrashHandler.class);
 
             sGeckoRuntime = GeckoRuntime.create(this, runtimeSettingsBuilder.build());
         }
@@ -140,6 +141,7 @@ public class GeckoViewActivity extends AppCompatActivity {
             }
 
             mUseMultiprocess = mGeckoSession.getSettings().getBoolean(GeckoSessionSettings.USE_MULTIPROCESS);
+            mFullAccessibilityTree = mGeckoSession.getSettings().getBoolean(GeckoSessionSettings.FULL_ACCESSIBILITY_TREE);
 
             mGeckoView.setSession(mGeckoSession);
         } else {
@@ -157,6 +159,8 @@ public class GeckoViewActivity extends AppCompatActivity {
         session.getSettings().setBoolean(GeckoSessionSettings.USE_PRIVATE_MODE, mUsePrivateBrowsing);
         session.getSettings().setBoolean(
             GeckoSessionSettings.USE_TRACKING_PROTECTION, mUseTrackingProtection);
+        session.getSettings().setBoolean(
+                GeckoSessionSettings.FULL_ACCESSIBILITY_TREE, mFullAccessibilityTree);
 
         connectSession(session);
 
@@ -329,6 +333,24 @@ public class GeckoViewActivity extends AppCompatActivity {
     }
 
     private void downloadFile(GeckoSession.WebResponseInfo response) {
+        mGeckoSession
+                .getUserAgent()
+                .then(new GeckoResult.OnValueListener<String, Void>() {
+            @Override
+            public GeckoResult<Void> onValue(String userAgent) throws Throwable {
+                downloadFile(response, userAgent);
+                return null;
+            }
+        }, new GeckoResult.OnExceptionListener<Void>() {
+            @Override
+            public GeckoResult<Void> onException(Throwable exception) throws Throwable {
+                // getUserAgent() cannot fail.
+                throw new IllegalStateException("Could not get UserAgent string.");
+            }
+        });
+    }
+
+    private void downloadFile(GeckoSession.WebResponseInfo response, String userAgent) {
         if (ContextCompat.checkSelfPermission(GeckoViewActivity.this,
                 Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             mPendingDownloads.add(response);
@@ -346,6 +368,7 @@ public class GeckoViewActivity extends AppCompatActivity {
         req.setMimeType(response.contentType);
         req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename);
         req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE);
+        req.addRequestHeader("User-Agent", userAgent);
         manager.enqueue(req);
     }
 
@@ -615,11 +638,14 @@ public class GeckoViewActivity extends AppCompatActivity {
         }
 
         @Override
-        public GeckoResult<Boolean> onLoadRequest(final GeckoSession session, final String uri,
-                                                  final int target, final int flags) {
-            Log.d(LOGTAG, "onLoadRequest=" + uri + " where=" + target +
-                  " flags=" + flags);
-            return GeckoResult.fromValue(false);
+        public GeckoResult<AllowOrDeny> onLoadRequest(final GeckoSession session,
+                                                      final LoadRequest request) {
+            Log.d(LOGTAG, "onLoadRequest=" + request.uri +
+                  " triggerUri=" + request.triggerUri +
+                  " where=" + request.target +
+                  " isUserTriggered=" + request.isUserTriggered);
+
+            return GeckoResult.fromValue(AllowOrDeny.ALLOW);
         }
 
         @Override

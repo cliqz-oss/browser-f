@@ -35,6 +35,9 @@ using mozilla::NotNull;
 
 class nsThreadEnumerator;
 
+// See https://www.w3.org/TR/longtasks
+#define LONGTASK_BUSY_WINDOW_MS 50
+
 // A native thread
 class nsThread
   : public nsIThreadInternal
@@ -60,6 +63,10 @@ public:
            MainThreadFlag aMainThread,
            uint32_t aStackSize);
 
+private:
+  nsThread();
+
+public:
   // Initialize this as a wrapper for a new PRThread, and optionally give it a name.
   nsresult Init(const nsACString& aName = NS_LITERAL_CSTRING(""));
 
@@ -146,6 +153,11 @@ public:
 
   static nsThreadEnumerator Enumerate();
 
+  static uint32_t MaxActiveThreads();
+
+  const mozilla::TimeStamp& LastLongTaskEnd() { return mLastLongTaskEnd; }
+  const mozilla::TimeStamp& LastLongNonIdleTaskEnd() { return mLastLongNonIdleTaskEnd; }
+
 private:
   void DoMainThreadSpecificProcessing(bool aReallyWait);
 
@@ -169,16 +181,33 @@ protected:
   struct nsThreadShutdownContext* ShutdownInternal(bool aSync);
 
   friend class nsThreadManager;
+  friend class nsThreadPool;
 
   static mozilla::OffTheBooksMutex& ThreadListMutex();
   static mozilla::LinkedList<nsThread>& ThreadList();
   static void ClearThreadList();
 
+  // The current number of active threads.
+  static uint32_t sActiveThreads;
+  // The maximum current number of active threads we've had in this session.
+  static uint32_t sMaxActiveThreads;
+
+  void AddToThreadList();
+  void MaybeRemoveFromThreadList();
+
+
+  // Whether or not these members have a value determines whether the nsThread
+  // is treated as a full XPCOM thread or as a thin wrapper.
+  //
+  // For full nsThreads, they will always contain valid pointers. For thin
+  // wrappers around non-XPCOM threads, they will be null, and event dispatch
+  // methods which rely on them will fail (and assert) if called.
   RefPtr<mozilla::SynchronizedEventQueue> mEvents;
   RefPtr<mozilla::ThreadEventTarget> mEventTarget;
 
   // The shutdown contexts for any other threads we've asked to shut down.
-  nsTArray<nsAutoPtr<struct nsThreadShutdownContext>> mRequestedShutdownContexts;
+  using ShutdownContexts = nsTArray<nsAutoPtr<struct nsThreadShutdownContext>>;
+  ShutdownContexts mRequestedShutdownContexts;
   // The shutdown context for ourselves.
   struct nsThreadShutdownContext* mShutdownContext;
 
@@ -191,6 +220,9 @@ protected:
 
   uint32_t  mNestedEventLoopDepth;
   uint32_t  mCurrentEventLoopDepth;
+
+  mozilla::TimeStamp mLastLongTaskEnd;
+  mozilla::TimeStamp mLastLongNonIdleTaskEnd;
 
   mozilla::Atomic<bool> mShutdownRequired;
 

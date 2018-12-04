@@ -8,6 +8,8 @@ from __future__ import absolute_import
 
 import mozprofile
 import os
+import sys
+import pytest
 
 import mozunit
 
@@ -15,14 +17,8 @@ here = os.path.dirname(os.path.abspath(__file__))
 
 
 def test_profileprint(tmpdir):
-    """
-    test the summary function
-    """
-
-    keys = set(['Files', 'Path', 'user.js'])
-    ff_prefs = mozprofile.FirefoxProfile.preferences  # shorthand
-    pref_string = '\n'.join(['%s: %s' % (key, ff_prefs[key])
-                             for key in sorted(ff_prefs.keys())])
+    """Test the summary function."""
+    keys = set(['Files', 'Path'])
 
     tmpdir = tmpdir.strpath
     profile = mozprofile.FirefoxProfile(tmpdir)
@@ -31,15 +27,19 @@ def test_profileprint(tmpdir):
 
     assert parts['Path'] == tmpdir
     assert set(parts.keys()) == keys
-    assert pref_string == parts['user.js'].strip()
 
 
 def test_str_cast():
     """Test casting to a string."""
     profile = mozprofile.Profile()
-    assert str(profile) == profile.summary().encode("utf-8")
+    if sys.version_info[0] >= 3:
+        assert str(profile) == profile.summary()
+    else:
+        assert str(profile) == profile.summary().encode("utf-8")
 
 
+@pytest.mark.skipif(sys.version_info[0] >= 3,
+                    reason="no unicode() operator starting from python3")
 def test_unicode_cast():
     """Test casting to a unicode string."""
     profile = mozprofile.Profile()
@@ -55,14 +55,14 @@ def test_profile_diff():
 
     # diff two profiles
     diff = dict(mozprofile.diff(profile1, profile2))
-    assert diff.keys() == ['user.js']
+    assert list(diff.keys()) == ['user.js']
     lines = [line.strip() for line in diff['user.js'].splitlines()]
     assert '+foo: bar' in lines
 
     # diff a blank vs FirefoxProfile
     ff_profile = mozprofile.FirefoxProfile()
     diff = dict(mozprofile.diff(profile2, ff_profile))
-    assert diff.keys() == ['user.js']
+    assert list(diff.keys()) == ['user.js']
     lines = [line.strip() for line in diff['user.js'].splitlines()]
     assert '-foo: bar' in lines
     ff_pref_lines = ['+%s: %s' % (key, value)

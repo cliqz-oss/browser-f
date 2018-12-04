@@ -196,13 +196,14 @@ NS_DECLARE_FRAME_PROPERTY_SMALL_VALUE(FontSizeInflationProperty, float)
  *
  * This is stored in {Simple, Complex}TextRunUserData.
  */
-class GlyphObserver : public gfxFont::GlyphChangeObserver {
+class GlyphObserver final : public gfxFont::GlyphChangeObserver
+{
 public:
   GlyphObserver(gfxFont* aFont, gfxTextRun* aTextRun)
     : gfxFont::GlyphChangeObserver(aFont), mTextRun(aTextRun) {
     MOZ_ASSERT(aTextRun->GetUserData());
   }
-  virtual void NotifyGlyphsChanged() override;
+  void NotifyGlyphsChanged() override;
 private:
   gfxTextRun* mTextRun;
 };
@@ -1109,8 +1110,8 @@ public:
       , mOffsetIntoTextRun(aOffsetIntoTextRun)
     {}
 
-    virtual void SetBreaks(uint32_t aOffset, uint32_t aLength,
-                           uint8_t* aBreakBefore) override {
+    void SetBreaks(uint32_t aOffset, uint32_t aLength,
+                   uint8_t* aBreakBefore) final {
       gfxTextRun::Range range(aOffset + mOffsetIntoTextRun,
                               aOffset + mOffsetIntoTextRun + aLength);
       if (mTextRun->SetPotentialLineBreaks(range, aBreakBefore)) {
@@ -1119,8 +1120,8 @@ public:
       }
     }
 
-    virtual void SetCapitalization(uint32_t aOffset, uint32_t aLength,
-                                   bool* aCapitalize) override {
+    void SetCapitalization(uint32_t aOffset, uint32_t aLength,
+                           bool* aCapitalize) final {
       MOZ_ASSERT(mTextRun->GetFlags2() & nsTextFrameUtils::Flags::TEXT_IS_TRANSFORMED,
                  "Text run should be transformed!");
       if (mTextRun->GetFlags2() & nsTextFrameUtils::Flags::TEXT_IS_TRANSFORMED) {
@@ -1786,6 +1787,16 @@ GetSpaceWidthAppUnits(const gfxTextRun* aTextRun)
              aTextRun->GetAppUnitsPerDevUnit());
 
   return spaceWidthAppUnits;
+}
+
+static gfxFloat
+GetMinTabAdvanceAppUnits(const gfxTextRun* aTextRun)
+{
+  gfxFloat chWidthAppUnits =
+    NS_round(GetFirstFontMetrics(aTextRun->GetFontGroup(),
+                                 aTextRun->IsVertical()).zeroOrAveCharWidth *
+             aTextRun->GetAppUnitsPerDevUnit());
+  return 0.5 * chWidthAppUnits;
 }
 
 static nscoord
@@ -3099,6 +3110,7 @@ public:
       mLength(aLength),
       mWordSpacing(WordSpacing(aFrame, mTextRun, aTextStyle)),
       mLetterSpacing(LetterSpacing(aFrame, aTextStyle)),
+      mMinTabAdvance(-1.0),
       mHyphenWidth(-1),
       mOffsetFromBlockOriginForTabs(aOffsetFromBlockOriginForTabs),
       mJustificationArrayStart(0),
@@ -3124,6 +3136,7 @@ public:
       mLength(aFrame->GetContentLength()),
       mWordSpacing(WordSpacing(aFrame, mTextRun)),
       mLetterSpacing(LetterSpacing(aFrame)),
+      mMinTabAdvance(-1.0),
       mHyphenWidth(-1),
       mOffsetFromBlockOriginForTabs(0),
       mJustificationArrayStart(0),
@@ -3138,18 +3151,18 @@ public:
 
   void InitializeForMeasure();
 
-  void GetSpacing(Range aRange, Spacing* aSpacing) const override;
-  gfxFloat GetHyphenWidth() const override;
-  void GetHyphenationBreaks(Range aRange, HyphenType* aBreakBefore) const override;
-  StyleHyphens GetHyphensOption() const override {
+  void GetSpacing(Range aRange, Spacing* aSpacing) const final;
+  gfxFloat GetHyphenWidth() const final;
+  void GetHyphenationBreaks(Range aRange, HyphenType* aBreakBefore) const final;
+  StyleHyphens GetHyphensOption() const final {
     return mTextStyle->mHyphens;
   }
 
-  already_AddRefed<DrawTarget> GetDrawTarget() const override {
+  already_AddRefed<DrawTarget> GetDrawTarget() const final {
     return CreateReferenceDrawTarget(GetFrame());
   }
 
-  uint32_t GetAppUnitsPerDevUnit() const override {
+  uint32_t GetAppUnitsPerDevUnit() const final {
     return mTextRun->GetAppUnitsPerDevUnit();
   }
 
@@ -3190,6 +3203,13 @@ public:
 
   void CalcTabWidths(Range aTransformedRange, gfxFloat aTabWidth) const;
 
+  gfxFloat MinTabAdvance() const {
+    if (mMinTabAdvance < 0.0) {
+      mMinTabAdvance = GetMinTabAdvanceAppUnits(mTextRun);
+    }
+    return mMinTabAdvance;
+  }
+
   const gfxSkipCharsIterator& GetEndHint() const { return mTempIterator; }
 
 protected:
@@ -3222,6 +3242,7 @@ protected:
   int32_t                         mLength;  // DOM string length, may be INT32_MAX
   const gfxFloat                  mWordSpacing; // space for each whitespace char
   const gfxFloat                  mLetterSpacing; // space for each letter
+  mutable gfxFloat                mMinTabAdvance; // min advance for <tab> char
   mutable gfxFloat                mHyphenWidth;
   mutable gfxFloat                mOffsetFromBlockOriginForTabs;
 
@@ -3479,13 +3500,11 @@ PropertyProvider::GetSpacingInternal(Range aRange, Spacing* aSpacing,
 
 // aX and the result are in whole appunits.
 static gfxFloat
-AdvanceToNextTab(gfxFloat aX, gfxFloat aTabWidth)
+AdvanceToNextTab(gfxFloat aX, gfxFloat aTabWidth, gfxFloat aMinAdvance)
 {
-
-  // Advance aX to the next multiple of *aCachedTabWidth. We must advance
-  // by at least 1 appunit.
-  // XXX should we make this 1 CSS pixel?
-  return ceil((aX + 1) / aTabWidth) * aTabWidth;
+  // Advance aX to the next multiple of aTabWidth. We must advance
+  // by at least aMinAdvance.
+  return ceil((aX + aMinAdvance) / aTabWidth) * aTabWidth;
 }
 
 void
@@ -3548,7 +3567,7 @@ PropertyProvider::CalcTabWidths(Range aRange, gfxFloat aTabWidth) const
           mFrame->SetProperty(TabWidthProperty(), mTabWidths);
         }
         double nextTab = AdvanceToNextTab(mOffsetFromBlockOriginForTabs,
-                                          aTabWidth);
+                                          aTabWidth, MinTabAdvance());
         mTabWidths->mWidths.AppendElement(TabWidth(i - startOffset,
                 NSToIntRound(nextTab - mOffsetFromBlockOriginForTabs)));
         mOffsetFromBlockOriginForTabs = nextTab;
@@ -4385,15 +4404,15 @@ public:
 
   void Init(nsIContent* aContent,
             nsContainerFrame* aParent,
-            nsIFrame* aPrevInFlow) override;
+            nsIFrame* aPrevInFlow) final;
 
-  void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
+  void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) final;
 
-  nsTextFrame* GetPrevContinuation() const override
+  nsTextFrame* GetPrevContinuation() const final
   {
     return mPrevContinuation;
   }
-  void SetPrevContinuation(nsIFrame* aPrevContinuation) override
+  void SetPrevContinuation(nsIFrame* aPrevContinuation) final
   {
     NS_ASSERTION(!aPrevContinuation || Type() == aPrevContinuation->Type(),
                  "setting a prev continuation with incorrect type!");
@@ -4402,12 +4421,12 @@ public:
     mPrevContinuation = static_cast<nsTextFrame*>(aPrevContinuation);
     RemoveStateBits(NS_FRAME_IS_FLUID_CONTINUATION);
   }
-  nsIFrame* GetPrevInFlowVirtual() const override { return GetPrevInFlow(); }
+  nsIFrame* GetPrevInFlowVirtual() const final { return GetPrevInFlow(); }
   nsTextFrame* GetPrevInFlow() const
   {
     return (GetStateBits() & NS_FRAME_IS_FLUID_CONTINUATION) ? mPrevContinuation : nullptr;
   }
-  void SetPrevInFlow(nsIFrame* aPrevInFlow) override
+  void SetPrevInFlow(nsIFrame* aPrevInFlow) final
   {
     NS_ASSERTION(!aPrevInFlow || Type() == aPrevInFlow->Type(),
                  "setting a prev in flow with incorrect type!");
@@ -4416,13 +4435,13 @@ public:
     mPrevContinuation = static_cast<nsTextFrame*>(aPrevInFlow);
     AddStateBits(NS_FRAME_IS_FLUID_CONTINUATION);
   }
-  nsIFrame* FirstInFlow() const override;
-  nsIFrame* FirstContinuation() const override;
+  nsIFrame* FirstInFlow() const final;
+  nsIFrame* FirstContinuation() const final;
 
   void AddInlineMinISize(gfxContext* aRenderingContext,
-                         InlineMinISizeData* aData) override;
+                         InlineMinISizeData* aData) final;
   void AddInlinePrefISize(gfxContext* aRenderingContext,
-                          InlinePrefISizeData* aData) override;
+                          InlinePrefISizeData* aData) final;
 
 protected:
   explicit nsContinuingTextFrame(ComputedStyle* aStyle)
@@ -4777,6 +4796,28 @@ nsTextFrame::DisconnectTextRuns()
   }
 }
 
+void
+nsTextFrame::NotifyNativeAnonymousTextnodeChange(uint32_t aOldLength)
+{
+  MOZ_ASSERT(mContent->IsInNativeAnonymousSubtree());
+
+  MarkIntrinsicISizesDirty();
+
+  // This is to avoid making a new Reflow request in CharacterDataChanged:
+  for (nsTextFrame* f = this; f; f = f->GetNextContinuation()) {
+    f->AddStateBits(NS_FRAME_IS_DIRTY);
+    f->mReflowRequestedForCharDataChange = true;
+  }
+
+  // Pretend that all the text changed.
+  CharacterDataChangeInfo info;
+  info.mAppend = false;
+  info.mChangeStart = 0;
+  info.mChangeEnd = aOldLength;
+  info.mReplaceLength = mContent->TextLength();
+  CharacterDataChanged(info);
+}
+
 nsresult
 nsTextFrame::CharacterDataChanged(const CharacterDataChangeInfo& aInfo)
 {
@@ -4884,7 +4925,8 @@ nsTextFrame::CharacterDataChanged(const CharacterDataChangeInfo& aInfo)
   return NS_OK;
 }
 
-class nsDisplayText final : public nsCharClipDisplayItem {
+class nsDisplayText final : public nsCharClipDisplayItem
+{
 public:
   nsDisplayText(nsDisplayListBuilder* aBuilder, nsTextFrame* aFrame,
                 const Maybe<bool>& aIsSelected);
@@ -4894,35 +4936,33 @@ public:
   }
 #endif
 
-  virtual void RestoreState() override
+  void RestoreState() final
   {
     nsCharClipDisplayItem::RestoreState();
     mOpacity = 1.0f;
   }
 
-  virtual nsRect GetBounds(nsDisplayListBuilder* aBuilder,
-                           bool* aSnap) const override
+  nsRect GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap) const final
   {
     *aSnap = false;
     return mBounds;
   }
-  virtual void HitTest(nsDisplayListBuilder* aBuilder, const nsRect& aRect,
-                       HitTestState* aState,
-                       nsTArray<nsIFrame*> *aOutFrames) override {
+  void HitTest(nsDisplayListBuilder* aBuilder, const nsRect& aRect,
+               HitTestState* aState,
+               nsTArray<nsIFrame*> *aOutFrames) final {
     if (nsRect(ToReferenceFrame(), mFrame->GetSize()).Intersects(aRect)) {
       aOutFrames->AppendElement(mFrame);
     }
   }
-  virtual bool CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,
-                                       mozilla::wr::IpcResourceUpdateQueue& aResources,
-                                       const StackingContextHelper& aSc,
-                                       WebRenderLayerManager* aManager,
-                                       nsDisplayListBuilder* aDisplayListBuilder) override;
-  virtual void Paint(nsDisplayListBuilder* aBuilder,
-                     gfxContext* aCtx) override;
+  bool CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,
+                               mozilla::wr::IpcResourceUpdateQueue& aResources,
+                               const StackingContextHelper& aSc,
+                               WebRenderLayerManager* aManager,
+                               nsDisplayListBuilder* aDisplayListBuilder) final;
+  void Paint(nsDisplayListBuilder* aBuilder, gfxContext* aCtx) final;
   NS_DISPLAY_DECL_NAME("Text", TYPE_TEXT)
 
-  virtual nsRect GetComponentAlphaBounds(nsDisplayListBuilder* aBuilder) const override
+  nsRect GetComponentAlphaBounds(nsDisplayListBuilder* aBuilder) const final
   {
     if (gfxPlatform::GetPlatform()->RespectsFontStyleSmoothing()) {
       // On OS X, web authors can turn off subpixel text rendering using the
@@ -4936,15 +4976,15 @@ public:
     return GetBounds(aBuilder, &snap);
   }
 
-  virtual nsDisplayItemGeometry* AllocateGeometry(nsDisplayListBuilder* aBuilder) override;
+  nsDisplayItemGeometry* AllocateGeometry(nsDisplayListBuilder* aBuilder) final;
 
-  virtual void ComputeInvalidationRegion(nsDisplayListBuilder* aBuilder,
-                                         const nsDisplayItemGeometry* aGeometry,
-                                         nsRegion *aInvalidRegion) const override;
+  void ComputeInvalidationRegion(nsDisplayListBuilder* aBuilder,
+                                 const nsDisplayItemGeometry* aGeometry,
+                                 nsRegion *aInvalidRegion) const final;
 
   void RenderToContext(gfxContext* aCtx, nsDisplayListBuilder* aBuilder, bool aIsRecording = false);
 
-  bool CanApplyOpacity() const override
+  bool CanApplyOpacity() const final
   {
     nsTextFrame* f = static_cast<nsTextFrame*>(mFrame);
     if (f->IsSelected()) {
@@ -4967,14 +5007,14 @@ public:
 
   void ApplyOpacity(nsDisplayListBuilder* aBuilder,
                     float aOpacity,
-                    const DisplayItemClipChain* aClip) override
+                    const DisplayItemClipChain* aClip) final
   {
     NS_ASSERTION(CanApplyOpacity(), "ApplyOpacity should be allowed");
     mOpacity = aOpacity;
     IntersectClip(aBuilder, aClip, false);
   }
 
-  void WriteDebugInfo(std::stringstream& aStream) override
+  void WriteDebugInfo(std::stringstream& aStream) final
   {
 #ifdef DEBUG
     aStream << " (\"";
@@ -6633,6 +6673,17 @@ nsTextFrame::DrawEmphasisMarks(gfxContext* aContext,
   }
 
   bool isTextCombined = Style()->IsTextCombined();
+  if (isTextCombined && !aWM.IsVertical()) {
+    // XXX This only happens when the parent is display:contents with an
+    // orthogonal writing mode. This should be rare, and don't have use
+    // cases, so we don't care. It is non-trivial to implement a sane
+    // behavior for that case: if you treat the text as not combined,
+    // the marks would spread wider than the text (which is rendered as
+    // combined); if you try to draw a single mark, selecting part of
+    // the text could dynamically create multiple new marks.
+    NS_WARNING("Give up on combined text with horizontal wm");
+    return;
+  }
   nscolor color = aDecorationOverrideColor ? *aDecorationOverrideColor :
     nsLayoutUtils::GetColor(this, &nsStyleText::mTextEmphasisColor);
   aContext->SetColor(Color::FromABGR(color));
@@ -8630,7 +8681,8 @@ nsTextFrame::AddInlineMinISizeForFlow(gfxContext *aRenderingContext,
         tabWidth = ComputeTabWidthAppUnits(this, textRun);
       }
       gfxFloat afterTab =
-        AdvanceToNextTab(aData->mCurrentLine, tabWidth);
+        AdvanceToNextTab(aData->mCurrentLine, tabWidth,
+                         provider.MinTabAdvance());
       aData->mCurrentLine = nscoord(afterTab + spacing.mAfter);
       wordStart = i + 1;
     } else if (i < flowEndInTextRun ||
@@ -8793,7 +8845,8 @@ nsTextFrame::AddInlinePrefISizeForFlow(gfxContext *aRenderingContext,
         tabWidth = ComputeTabWidthAppUnits(this, textRun);
       }
       gfxFloat afterTab =
-        AdvanceToNextTab(aData->mCurrentLine, tabWidth);
+        AdvanceToNextTab(aData->mCurrentLine, tabWidth,
+                         provider.MinTabAdvance());
       aData->mCurrentLine = nscoord(afterTab + spacing.mAfter);
       aData->mLineIsEmpty = false;
       lineStart = i + 1;

@@ -156,6 +156,13 @@ class Talos(TestingMixin, MercurialScript, TooltoolMixin,
             "default": False,
             "help": "Tries to enable the WebRender compositor.",
         }],
+        [["--setpref"], {
+            "action": "append",
+            "metavar": "PREF=VALUE",
+            "dest": "extra_prefs",
+            "default": [],
+            "help": "Defines an extra user preference."}
+         ],
     ] + testing_config_options + copy.deepcopy(code_coverage_config_options)
 
     def __init__(self, **kwargs):
@@ -356,6 +363,8 @@ class Talos(TestingMixin, MercurialScript, TooltoolMixin,
             options += self.config['talos_extra_options']
         if self.config.get('code_coverage', False):
             options.extend(['--code-coverage'])
+        if self.config['extra_prefs']:
+            options.extend(['--setpref={}'.format(p) for p in self.config['extra_prefs']])
         return options
 
     def populate_webroot(self):
@@ -594,6 +603,11 @@ class Talos(TestingMixin, MercurialScript, TooltoolMixin,
                                      'lib',
                                      os.path.basename(_python_interp),
                                      'site-packages')
+
+            # if  running gecko profiling  install the requirements
+            if self.gecko_profile:
+                self._install_view_gecko_profile_req()
+
             sys.path.append(_path)
             return
 
@@ -623,6 +637,9 @@ class Talos(TestingMixin, MercurialScript, TooltoolMixin,
             requirements=[os.path.join(self.talos_path,
                                        'requirements.txt')]
         )
+        self._install_view_gecko_profile_req()
+
+    def _install_view_gecko_profile_req(self):
         # if running locally and gecko profiing is on, we will be using the
         # view-gecko-profile tool which has its own requirements too
         if self.gecko_profile and self.run_local:

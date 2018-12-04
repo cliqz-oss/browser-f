@@ -81,8 +81,10 @@ async function testMediaLink(editor, tab, ui, itemIndex, type, value) {
 async function closeRDM(tab, ui) {
   info("Closing responsive mode");
   ResponsiveUIManager.toggle(window, tab);
-  const onMediaChange = waitForNEvents(ui, "media-list-changed", 2);
+  const onMediaChange = waitForManyEvents(ui, 1000);
   await once(ResponsiveUIManager, "off");
+
+  info("Wait for media-list-changed events to settle on StyleEditorUI");
   await onMediaChange;
   ok(!ResponsiveUIManager.isActiveForTab(tab),
      "Responsive mode should no longer be active.");
@@ -119,7 +121,7 @@ async function getSizing(rdmUI) {
   const sizing = await ContentTask.spawn(browser, {}, async function() {
     return {
       width: content.innerWidth,
-      height: content.innerHeight
+      height: content.innerHeight,
     };
   });
   return sizing;

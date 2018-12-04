@@ -16,6 +16,7 @@
 #include "mozilla/Logging.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/Services.h"
+#include "mozilla/Telemetry.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/ContentParent.h"
@@ -26,6 +27,7 @@
 #include "nsIFile.h"
 #include "nsIObserverService.h"
 #include "nsJSUtils.h"
+#include "nsMemoryReporterManager.h"
 #include "nsNetUtil.h"
 #include "nsProxyRelease.h"
 #include "nsThreadUtils.h"
@@ -331,8 +333,9 @@ ScriptPreloader::InvalidateCache()
     MOZ_ASSERT(mParsingSources.empty());
     MOZ_ASSERT(mPendingScripts.isEmpty());
 
-    for (auto& script : IterHash(mScripts))
+    for (auto& script : IterHash(mScripts)) {
         script.Remove();
+    }
 
     // If we've already finished saving the cache at this point, start a new
     // delayed save operation. This will write out an empty cache file in place
@@ -422,6 +425,15 @@ ScriptPreloader::FinishContentStartup()
     if (mChildActor) {
         mChildActor->SendScriptsAndFinalize(mScripts);
     }
+
+#ifdef XP_WIN
+    // Record the amount of USS at startup. This is Windows-only for now,
+    // we could turn it on for Linux relatively cheaply. On macOS it can have
+    // a perf impact.
+    mozilla::Telemetry::Accumulate(
+        mozilla::Telemetry::MEMORY_UNIQUE_CONTENT_STARTUP,
+        nsMemoryReporterManager::ResidentUnique() / 1024);
+#endif
 }
 
 bool
@@ -1067,8 +1079,9 @@ ScriptPreloader::MaybeFinishOffThreadDecode()
     unsigned i = 0;
     for (auto script : mParsingScripts) {
         LOG(Debug, "Finished off-thread decode of %s\n", script->mURL.get());
-        if (i < jsScripts.length())
+        if (i < jsScripts.length()) {
             script->mScript = jsScripts[i++];
+        }
         script->mReadyToExecute = true;
     }
 }

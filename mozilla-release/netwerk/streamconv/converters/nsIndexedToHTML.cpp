@@ -22,6 +22,7 @@
 #include "nsIPrefLocalizedString.h"
 #include "nsIStringBundle.h"
 #include "nsITextToSubURI.h"
+#include "nsDirIndexParser.h"
 #include "nsNativeCharsetUtils.h"
 #include "nsString.h"
 #include <algorithm>
@@ -151,8 +152,8 @@ nsIndexedToHTML::DoOnStartRequest(nsIRequest* request, nsISupports *aContext,
 
     channel->SetContentType(NS_LITERAL_CSTRING("text/html"));
 
-    mParser = do_CreateInstance("@mozilla.org/dirIndexParser;1",&rv);
-    if (NS_FAILED(rv)) return rv;
+    mParser = nsDirIndexParser::CreateInstance();
+    if (!mParser) return NS_ERROR_FAILURE;
 
     rv = mParser->SetListener(this);
     if (NS_FAILED(rv)) return rv;
@@ -698,7 +699,7 @@ nsIndexedToHTML::OnIndexAvailable(nsIRequest *aRequest,
     // We don't know the file's character set yet, so retrieve the raw bytes
     // which will be decoded by the HTML parser.
     nsCString loc;
-    aIndex->GetLocation(getter_Copies(loc));
+    aIndex->GetLocation(loc);
 
     // Adjust the length in case unescaping shortened the string.
     loc.Truncate(nsUnescapeCount(loc.BeginWriting()));

@@ -31,17 +31,20 @@ BEGIN_TEST(testRedefineGlobalEval)
     /* Create the global object. */
     JS::RealmOptions options;
     JS::Rooted<JSObject*> g(cx, JS_NewGlobalObject(cx, &cls, nullptr, JS::FireOnNewGlobalHook, options));
-    if (!g)
+    if (!g) {
         return false;
+    }
 
     JSAutoRealm ar(cx, g);
     JS::Rooted<JS::Value> v(cx);
     CHECK(JS_GetProperty(cx, g, "Object", &v));
 
     static const char data[] = "Object.defineProperty(this, 'eval', { configurable: false });";
+
     JS::CompileOptions opts(cx);
-    CHECK(JS::Evaluate(cx, opts.setFileAndLine(__FILE__, __LINE__),
-                       data, mozilla::ArrayLength(data) - 1, &v));
+
+    CHECK(JS::EvaluateUtf8(cx, opts.setFileAndLine(__FILE__, __LINE__),
+                           data, mozilla::ArrayLength(data) - 1, &v));
 
     return true;
 }

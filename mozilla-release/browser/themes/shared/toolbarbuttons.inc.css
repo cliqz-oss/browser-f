@@ -63,7 +63,7 @@ toolbar[brighttext] {
 }
 
 .toolbarbutton-1 > .toolbarbutton-icon {
-  margin-inline-end: 0;
+  margin-inline-end: 0 !important;
 }
 
 .toolbarbutton-1 > .toolbarbutton-icon,
@@ -74,13 +74,13 @@ toolbar[brighttext] {
 #TabsToolbar .toolbarbutton-1,
 .tabbrowser-arrowscrollbox > .scrollbutton-up,
 .tabbrowser-arrowscrollbox > .scrollbutton-down {
-  margin: 0 0 @navbarTabsShadowSize@;
+  margin: 0 0 @navbarTabsShadowSize@ !important;
 }
 
 .tabbrowser-arrowscrollbox > .scrollbutton-up,
 .tabbrowser-arrowscrollbox > .scrollbutton-down {
   -moz-appearance: none;
-  padding: 0 var(--toolbarbutton-inner-padding);
+  padding: 0 var(--toolbarbutton-inner-padding) !important;
 }
 
 #navigator-toolbox:not(:hover) > #TabsToolbar > #tabbrowser-tabs > .tabbrowser-arrowscrollbox > .scrollbutton-down:not([highlight]) {
@@ -202,7 +202,7 @@ toolbar .toolbarbutton-1[checked]:not(:active):hover > .toolbarbutton-icon {
   padding-top: 3px;
   padding-bottom: 3px;
   padding-inline-start: 3px;
-  padding-inline-end: 0 !important;
+  padding-inline-end: 0;
   position: relative !important;
   z-index: 1 !important;
   border-radius: 0 10000px 10000px 0;

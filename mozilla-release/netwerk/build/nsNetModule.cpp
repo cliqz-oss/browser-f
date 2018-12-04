@@ -37,6 +37,7 @@
 #include "nsIContentSniffer.h"
 #include "Predictor.h"
 #include "nsIThreadPool.h"
+#include "mozilla/net/BackgroundChannelRegistrar.h"
 #include "mozilla/net/NeckoChild.h"
 #include "RedirectChannelRegistrar.h"
 
@@ -117,8 +118,6 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsAtomicFileOutputStream)
 
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsSafeFileOutputStream)
 
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsFileStream)
-
 typedef mozilla::net::nsLoadGroup nsLoadGroup;
 NS_GENERIC_AGGREGATED_CONSTRUCTOR_INIT(nsLoadGroup, Init)
 
@@ -175,15 +174,11 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsMIMEHeaderParamImpl)
 
 #include "nsRequestObserverProxy.h"
 #include "nsSimpleStreamListener.h"
-#include "nsDirIndexParser.h"
-#include "nsDirIndex.h"
 
 typedef mozilla::net::nsRequestObserverProxy nsRequestObserverProxy;
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsRequestObserverProxy)
 typedef mozilla::net::nsSimpleStreamListener nsSimpleStreamListener;
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsSimpleStreamListener)
-NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsDirIndexParser, Init)
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsDirIndex)
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -244,13 +239,11 @@ NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsFtpProtocolHandler, Init)
 #undef LOG
 #undef LOG_ENABLED
 #include "nsHttpAuthManager.h"
-#include "nsHttpChannelAuthProvider.h"
 #include "nsHttpBasicAuth.h"
 #include "nsHttpDigestAuth.h"
 #include "nsHttpNTLMAuth.h"
 #include "nsHttpActivityDistributor.h"
 #include "ThrottleQueue.h"
-#include "BackgroundChannelRegistrar.h"
 #undef LOG
 #undef LOG_ENABLED
 namespace mozilla {
@@ -259,12 +252,10 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsHttpNTLMAuth)
 NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(nsHttpHandler, nsHttpHandler::GetInstance)
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsHttpsHandler, Init)
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsHttpAuthManager, Init)
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsHttpChannelAuthProvider)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsHttpActivityDistributor)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsHttpBasicAuth)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsHttpDigestAuth)
 NS_GENERIC_FACTORY_CONSTRUCTOR(ThrottleQueue)
-NS_GENERIC_FACTORY_CONSTRUCTOR(BackgroundChannelRegistrar)
 } // namespace net
 } // namespace mozilla
 
@@ -648,6 +639,8 @@ static void nsNetShutdown()
 
     mozilla::net::RedirectChannelRegistrar::Shutdown();
 
+    mozilla::net::BackgroundChannelRegistrar::Shutdown();
+
     delete gNetSniffers;
     gNetSniffers = nullptr;
     delete gDataSniffers;
@@ -685,7 +678,6 @@ NS_DEFINE_NAMED_CID(NS_LOCALFILEINPUTSTREAM_CID);
 NS_DEFINE_NAMED_CID(NS_LOCALFILEOUTPUTSTREAM_CID);
 NS_DEFINE_NAMED_CID(NS_ATOMICLOCALFILEOUTPUTSTREAM_CID);
 NS_DEFINE_NAMED_CID(NS_SAFELOCALFILEOUTPUTSTREAM_CID);
-NS_DEFINE_NAMED_CID(NS_LOCALFILESTREAM_CID);
 NS_DEFINE_NAMED_CID(NS_INCREMENTALDOWNLOAD_CID);
 NS_DEFINE_NAMED_CID(NS_STDURLPARSER_CID);
 NS_DEFINE_NAMED_CID(NS_NOAUTHURLPARSER_CID);
@@ -704,13 +696,11 @@ NS_DEFINE_NAMED_CID(NS_NAMEDPIPESERVICE_CID);
 NS_DEFINE_NAMED_CID(NS_DASHBOARD_CID);
 NS_DEFINE_NAMED_CID(NS_FTPDIRLISTINGCONVERTER_CID);
 NS_DEFINE_NAMED_CID(NS_NSINDEXEDTOHTMLCONVERTER_CID);
-NS_DEFINE_NAMED_CID(NS_DIRINDEXPARSER_CID);
 NS_DEFINE_NAMED_CID(NS_MULTIMIXEDCONVERTER_CID);
 NS_DEFINE_NAMED_CID(NS_UNKNOWNDECODER_CID);
 NS_DEFINE_NAMED_CID(NS_BINARYDETECTOR_CID);
 NS_DEFINE_NAMED_CID(NS_HTTPCOMPRESSCONVERTER_CID);
 NS_DEFINE_NAMED_CID(MOZITXTTOHTMLCONV_CID);
-NS_DEFINE_NAMED_CID(NS_DIRINDEX_CID);
 NS_DEFINE_NAMED_CID(NS_MIMEHEADERPARAM_CID);
 NS_DEFINE_NAMED_CID(NS_FILEPROTOCOLHANDLER_CID);
 NS_DEFINE_NAMED_CID(NS_HTTPPROTOCOLHANDLER_CID);
@@ -719,10 +709,8 @@ NS_DEFINE_NAMED_CID(NS_HTTPBASICAUTH_CID);
 NS_DEFINE_NAMED_CID(NS_HTTPDIGESTAUTH_CID);
 NS_DEFINE_NAMED_CID(NS_HTTPNTLMAUTH_CID);
 NS_DEFINE_NAMED_CID(NS_HTTPAUTHMANAGER_CID);
-NS_DEFINE_NAMED_CID(NS_HTTPCHANNELAUTHPROVIDER_CID);
 NS_DEFINE_NAMED_CID(NS_HTTPACTIVITYDISTRIBUTOR_CID);
 NS_DEFINE_NAMED_CID(NS_THROTTLEQUEUE_CID);
-NS_DEFINE_NAMED_CID(NS_BACKGROUNDCHANNELREGISTRAR_CID);
 NS_DEFINE_NAMED_CID(NS_FTPPROTOCOLHANDLER_CID);
 NS_DEFINE_NAMED_CID(NS_RESPROTOCOLHANDLER_CID);
 NS_DEFINE_NAMED_CID(NS_EXTENSIONPROTOCOLHANDLER_CID);
@@ -772,6 +760,7 @@ NS_DEFINE_NAMED_CID(NETWORKINFOSERVICE_CID);
 #endif // BUILD_NETWORK_INFO_SERVICE
 
 static const mozilla::Module::CIDEntry kNeckoCIDs[] = {
+    // clang-format off
     { &kNS_IOSERVICE_CID, false, nullptr, nsIOServiceConstructor },
     { &kNS_STREAMTRANSPORTSERVICE_CID, false, nullptr, nsStreamTransportServiceConstructor },
     { &kNS_SOCKETTRANSPORTSERVICE_CID, false, nullptr, nsSocketTransportServiceConstructor },
@@ -805,7 +794,6 @@ static const mozilla::Module::CIDEntry kNeckoCIDs[] = {
     { &kNS_LOCALFILEOUTPUTSTREAM_CID, false, nullptr, nsFileOutputStream::Create },
     { &kNS_ATOMICLOCALFILEOUTPUTSTREAM_CID, false, nullptr, nsAtomicFileOutputStreamConstructor },
     { &kNS_SAFELOCALFILEOUTPUTSTREAM_CID, false, nullptr, nsSafeFileOutputStreamConstructor },
-    { &kNS_LOCALFILESTREAM_CID, false, nullptr, nsFileStreamConstructor },
     { &kNS_INCREMENTALDOWNLOAD_CID, false, nullptr, net_NewIncrementalDownload },
     { &kNS_STDURLPARSER_CID, false, nullptr, nsStdURLParserConstructor },
     { &kNS_NOAUTHURLPARSER_CID, false, nullptr, nsNoAuthURLParserConstructor },
@@ -824,13 +812,11 @@ static const mozilla::Module::CIDEntry kNeckoCIDs[] = {
     { &kNS_DASHBOARD_CID, false, nullptr, mozilla::net::DashboardConstructor },
     { &kNS_FTPDIRLISTINGCONVERTER_CID, false, nullptr, CreateNewFTPDirListingConv },
     { &kNS_NSINDEXEDTOHTMLCONVERTER_CID, false, nullptr, nsIndexedToHTML::Create },
-    { &kNS_DIRINDEXPARSER_CID, false, nullptr, nsDirIndexParserConstructor },
     { &kNS_MULTIMIXEDCONVERTER_CID, false, nullptr, CreateNewMultiMixedConvFactory },
     { &kNS_UNKNOWNDECODER_CID, false, nullptr, CreateNewUnknownDecoderFactory },
     { &kNS_BINARYDETECTOR_CID, false, nullptr, CreateNewBinaryDetectorFactory },
     { &kNS_HTTPCOMPRESSCONVERTER_CID, false, nullptr, CreateNewHTTPCompressConvFactory },
     { &kMOZITXTTOHTMLCONV_CID, false, nullptr, CreateNewTXTToHTMLConvFactory },
-    { &kNS_DIRINDEX_CID, false, nullptr, nsDirIndexConstructor },
     { &kNS_MIMEHEADERPARAM_CID, false, nullptr, nsMIMEHeaderParamImplConstructor },
     { &kNS_FILEPROTOCOLHANDLER_CID, false, nullptr, nsFileProtocolHandlerConstructor },
     { &kNS_HTTPPROTOCOLHANDLER_CID, false, nullptr, mozilla::net::nsHttpHandlerConstructor },
@@ -839,10 +825,8 @@ static const mozilla::Module::CIDEntry kNeckoCIDs[] = {
     { &kNS_HTTPDIGESTAUTH_CID, false, nullptr, mozilla::net::nsHttpDigestAuthConstructor },
     { &kNS_HTTPNTLMAUTH_CID, false, nullptr, mozilla::net::nsHttpNTLMAuthConstructor },
     { &kNS_HTTPAUTHMANAGER_CID, false, nullptr, mozilla::net::nsHttpAuthManagerConstructor },
-    { &kNS_HTTPCHANNELAUTHPROVIDER_CID, false, nullptr, mozilla::net::nsHttpChannelAuthProviderConstructor },
     { &kNS_HTTPACTIVITYDISTRIBUTOR_CID, false, nullptr, mozilla::net::nsHttpActivityDistributorConstructor },
     { &kNS_THROTTLEQUEUE_CID, false, nullptr, mozilla::net::ThrottleQueueConstructor },
-    { &kNS_BACKGROUNDCHANNELREGISTRAR_CID, false, nullptr, mozilla::net::BackgroundChannelRegistrarConstructor },
     { &kNS_FTPPROTOCOLHANDLER_CID, false, nullptr, nsFtpProtocolHandlerConstructor },
     { &kNS_RESPROTOCOLHANDLER_CID, false, nullptr, nsResProtocolHandlerConstructor },
     { &kNS_EXTENSIONPROTOCOLHANDLER_CID, false, nullptr, mozilla::ExtensionProtocolHandlerConstructor },
@@ -893,9 +877,11 @@ static const mozilla::Module::CIDEntry kNeckoCIDs[] = {
     { &kNETWORKINFOSERVICE_CID, false, nullptr, nsNetworkInfoServiceConstructor },
 #endif
     { nullptr }
+    // clang-format on
 };
 
 static const mozilla::Module::ContractIDEntry kNeckoContracts[] = {
+    // clang-format off
     { NS_IOSERVICE_CONTRACTID, &kNS_IOSERVICE_CID },
     { NS_NETUTIL_CONTRACTID, &kNS_IOSERVICE_CID },
     { NS_STREAMTRANSPORTSERVICE_CONTRACTID, &kNS_STREAMTRANSPORTSERVICE_CID },
@@ -925,7 +911,6 @@ static const mozilla::Module::ContractIDEntry kNeckoContracts[] = {
     { NS_LOCALFILEOUTPUTSTREAM_CONTRACTID, &kNS_LOCALFILEOUTPUTSTREAM_CID },
     { NS_ATOMICLOCALFILEOUTPUTSTREAM_CONTRACTID, &kNS_ATOMICLOCALFILEOUTPUTSTREAM_CID },
     { NS_SAFELOCALFILEOUTPUTSTREAM_CONTRACTID, &kNS_SAFELOCALFILEOUTPUTSTREAM_CID },
-    { NS_LOCALFILESTREAM_CONTRACTID, &kNS_LOCALFILESTREAM_CID },
     { NS_INCREMENTALDOWNLOAD_CONTRACTID, &kNS_INCREMENTALDOWNLOAD_CID },
     { NS_STDURLPARSER_CONTRACTID, &kNS_STDURLPARSER_CID },
     { NS_NOAUTHURLPARSER_CONTRACTID, &kNS_NOAUTHURLPARSER_CID },
@@ -943,12 +928,10 @@ static const mozilla::Module::ContractIDEntry kNeckoContracts[] = {
     { NS_DASHBOARD_CONTRACTID, &kNS_DASHBOARD_CID },
     { NS_ISTREAMCONVERTER_KEY FTP_TO_INDEX, &kNS_FTPDIRLISTINGCONVERTER_CID },
     { NS_ISTREAMCONVERTER_KEY INDEX_TO_HTML, &kNS_NSINDEXEDTOHTMLCONVERTER_CID },
-    { NS_DIRINDEXPARSER_CONTRACTID, &kNS_DIRINDEXPARSER_CID },
     { NS_ISTREAMCONVERTER_KEY MULTI_MIXED_X, &kNS_MULTIMIXEDCONVERTER_CID },
     { NS_ISTREAMCONVERTER_KEY MULTI_BYTERANGES, &kNS_MULTIMIXEDCONVERTER_CID },
     { NS_ISTREAMCONVERTER_KEY MULTI_MIXED, &kNS_MULTIMIXEDCONVERTER_CID },
     { NS_ISTREAMCONVERTER_KEY UNKNOWN_CONTENT, &kNS_UNKNOWNDECODER_CID },
-    { NS_GENERIC_CONTENT_SNIFFER, &kNS_UNKNOWNDECODER_CID },
     { NS_BINARYDETECTOR_CONTRACTID, &kNS_BINARYDETECTOR_CID },
     { NS_ISTREAMCONVERTER_KEY GZIP_TO_UNCOMPRESSED, &kNS_HTTPCOMPRESSCONVERTER_CID },
     { NS_ISTREAMCONVERTER_KEY XGZIP_TO_UNCOMPRESSED, &kNS_HTTPCOMPRESSCONVERTER_CID },
@@ -957,7 +940,6 @@ static const mozilla::Module::ContractIDEntry kNeckoContracts[] = {
     { NS_ISTREAMCONVERTER_KEY XCOMPRESS_TO_UNCOMPRESSED, &kNS_HTTPCOMPRESSCONVERTER_CID },
     { NS_ISTREAMCONVERTER_KEY DEFLATE_TO_UNCOMPRESSED, &kNS_HTTPCOMPRESSCONVERTER_CID },
     { MOZ_TXTTOHTMLCONV_CONTRACTID, &kMOZITXTTOHTMLCONV_CID },
-    { "@mozilla.org/dirIndex;1", &kNS_DIRINDEX_CID },
     { NS_MIMEHEADERPARAM_CONTRACTID, &kNS_MIMEHEADERPARAM_CID },
     { NS_NETWORK_PROTOCOL_CONTRACTID_PREFIX "file", &kNS_FILEPROTOCOLHANDLER_CID },
     { NS_NETWORK_PROTOCOL_CONTRACTID_PREFIX "http", &kNS_HTTPPROTOCOLHANDLER_CID },
@@ -966,10 +948,8 @@ static const mozilla::Module::ContractIDEntry kNeckoContracts[] = {
     { NS_HTTP_AUTHENTICATOR_CONTRACTID_PREFIX "digest", &kNS_HTTPDIGESTAUTH_CID },
     { NS_HTTP_AUTHENTICATOR_CONTRACTID_PREFIX "ntlm", &kNS_HTTPNTLMAUTH_CID },
     { NS_HTTPAUTHMANAGER_CONTRACTID, &kNS_HTTPAUTHMANAGER_CID },
-    { NS_HTTPCHANNELAUTHPROVIDER_CONTRACTID, &kNS_HTTPCHANNELAUTHPROVIDER_CID },
     { NS_HTTPACTIVITYDISTRIBUTOR_CONTRACTID, &kNS_HTTPACTIVITYDISTRIBUTOR_CID },
     { NS_THROTTLEQUEUE_CONTRACTID, &kNS_THROTTLEQUEUE_CID },
-    { NS_BACKGROUNDCHANNELREGISTRAR_CONTRACTID, &kNS_BACKGROUNDCHANNELREGISTRAR_CID },
     { NS_NETWORK_PROTOCOL_CONTRACTID_PREFIX "ftp", &kNS_FTPPROTOCOLHANDLER_CID },
     { NS_NETWORK_PROTOCOL_CONTRACTID_PREFIX "resource", &kNS_RESPROTOCOLHANDLER_CID },
     { NS_NETWORK_PROTOCOL_CONTRACTID_PREFIX "moz-extension", &kNS_EXTENSIONPROTOCOLHANDLER_CID },
@@ -1015,6 +995,7 @@ static const mozilla::Module::ContractIDEntry kNeckoContracts[] = {
     { NETWORKINFOSERVICE_CONTRACT_ID, &kNETWORKINFOSERVICE_CID },
 #endif
     { nullptr }
+    // clang-format on
 };
 
 static const mozilla::Module kNeckoModule = {

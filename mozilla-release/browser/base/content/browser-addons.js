@@ -297,7 +297,13 @@ var gXPInstallObserver = {
       let secondaryAction = {
         label: gNavigatorBundle.getString("xpinstallPromptMessage.dontAllow"),
         accessKey: gNavigatorBundle.getString("xpinstallPromptMessage.dontAllow.accesskey"),
-        callback: () => {},
+        callback: () => {
+          for (let install of installInfo.installs) {
+            if (install.state != AddonManager.STATE_CANCELLED) {
+              install.cancel();
+            }
+          }
+        },
       };
 
       secHistogram.add(Ci.nsISecurityUITelemetry.WARNING_ADDON_ASKING_PREVENTED);
@@ -327,11 +333,7 @@ var gXPInstallObserver = {
             let notificationElement = [...this.owner.panel.children]
                                       .find(n => n.notification == this);
             if (notificationElement) {
-              if (Services.prefs.getBoolPref("xpinstall.customConfirmationUI", false)) {
-                notificationElement.setAttribute("mainactiondisabled", "true");
-              } else {
-                notificationElement.button.hidden = true;
-              }
+              notificationElement.setAttribute("mainactiondisabled", "true");
             }
             break;
           case "removed":

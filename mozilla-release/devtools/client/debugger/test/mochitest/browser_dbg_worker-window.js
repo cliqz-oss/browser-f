@@ -22,16 +22,16 @@ add_task(async function() {
 
   let tab = await addTab(TAB_URL);
   let { tabs } = await listTabs(client);
-  let [, tabClient] = await attachTab(client, findTab(tabs, TAB_URL));
+  let [, targetFront] = await attachTarget(client, findTab(tabs, TAB_URL));
 
-  await listWorkers(tabClient);
+  await listWorkers(targetFront);
   await createWorkerInTab(tab, WORKER_URL);
 
-  let { workers } = await listWorkers(tabClient);
-  let [, workerClient] = await attachWorker(tabClient,
+  let { workers } = await listWorkers(targetFront);
+  let [, workerTargetFront] = await attachWorker(targetFront,
                                              findWorker(workers, WORKER_URL));
 
-  let toolbox = await gDevTools.showToolbox(TargetFactory.forWorker(workerClient),
+  let toolbox = await gDevTools.showToolbox(TargetFactory.forWorker(workerTargetFront),
                                             "jsdebugger",
                                             Toolbox.HostType.WINDOW);
 
@@ -55,7 +55,7 @@ add_task(async function() {
     "Correct set of tools supported by worker");
 
   terminateWorkerInTab(tab, WORKER_URL);
-  await waitForWorkerClose(workerClient);
+  await waitForWorkerClose(workerTargetFront);
   await close(client);
 
   await toolbox.destroy();

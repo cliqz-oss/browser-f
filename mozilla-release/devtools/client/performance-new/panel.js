@@ -30,12 +30,12 @@ class PerformancePanel {
 
     const [perfFront, preferenceFront] = await Promise.all([
       this.target.client.mainRoot.getFront("perf"),
-      this.target.client.mainRoot.getFront("preference")
+      this.target.client.mainRoot.getFront("preference"),
     ]);
 
     this.isReady = true;
     this.emit("ready");
-    this.panelWin.gInit(this.toolbox, perfFront, preferenceFront);
+    this.panelWin.gInit(perfFront, preferenceFront);
     return this;
   }
 

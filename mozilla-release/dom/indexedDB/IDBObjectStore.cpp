@@ -1150,8 +1150,6 @@ IDBObjectStore::DeserializeValue(JSContext* aCx,
 
   MOZ_ASSERT(!(aCloneReadInfo.mData.Size() % sizeof(uint64_t)));
 
-  JSAutoRequest ar(aCx);
-
   static const JSStructuredCloneCallbacks callbacks = {
     CommonStructuredCloneReadCallback,
     nullptr,
@@ -1577,31 +1575,27 @@ IDBObjectStore::GetAddInfo(JSContext* aCx,
   }
 
   // Figure out indexes and the index values to update here.
-  const nsTArray<IndexMetadata>& indexes = mSpec->indexes();
 
-  uint32_t idxCount = indexes.Length();
-
-  if (idxCount) {
-    if (!aValueWrapper.Clone(aCx)) {
-      return NS_ERROR_DOM_DATA_CLONE_ERR;
-    }
-
-    // Update idxCount, the structured clone process may trigger content code
-    // via getters/other which can potentially call CreateIndex/DeleteIndex.
-    idxCount = indexes.Length();
+  if (mSpec->indexes().Length() && !aValueWrapper.Clone(aCx)) {
+    return NS_ERROR_DOM_DATA_CLONE_ERR;
   }
 
-  aUpdateInfoArray.SetCapacity(idxCount); // Pretty good estimate
+  {
+    const nsTArray<IndexMetadata>& indexes = mSpec->indexes();
+    uint32_t idxCount = indexes.Length();
 
-  for (uint32_t idxIndex = 0; idxIndex < idxCount; idxIndex++) {
-    const IndexMetadata& metadata = indexes[idxIndex];
+    aUpdateInfoArray.SetCapacity(idxCount); // Pretty good estimate
 
-    rv = AppendIndexUpdateInfo(metadata.id(), metadata.keyPath(),
-                               metadata.unique(), metadata.multiEntry(),
-                               metadata.locale(), aCx, aValueWrapper.Value(),
-                               aUpdateInfoArray);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
+    for (uint32_t idxIndex = 0; idxIndex < idxCount; idxIndex++) {
+      const IndexMetadata& metadata = indexes[idxIndex];
+
+      rv = AppendIndexUpdateInfo(metadata.id(), metadata.keyPath(),
+                                 metadata.unique(), metadata.multiEntry(),
+                                 metadata.locale(), aCx, aValueWrapper.Value(),
+                                 aUpdateInfoArray);
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return rv;
+      }
     }
   }
 
@@ -1663,6 +1657,11 @@ IDBObjectStore::AddOrPut(JSContext* aCx,
 
   aRv = GetAddInfo(aCx, aValueWrapper, aKey, cloneWriteInfo, key, updateInfo);
   if (aRv.Failed()) {
+    return nullptr;
+  }
+
+  if (!mTransaction->IsOpen()) {
+    aRv.Throw(NS_ERROR_DOM_INDEXEDDB_TRANSACTION_INACTIVE_ERR);
     return nullptr;
   }
 
@@ -2241,7 +2240,9 @@ IDBObjectStore::CreateIndex(const nsAString& aName,
        index < count;
        index++) {
     if (aName == indexes[index].name()) {
-      aRv.Throw(NS_ERROR_DOM_INDEXEDDB_CONSTRAINT_ERR);
+      aRv.ThrowDOMException(NS_ERROR_DOM_INDEXEDDB_CONSTRAINT_ERR,
+        nsPrintfCString("Index named '%s' already exists at index '%u'",
+                        NS_ConvertUTF16toUTF8(aName).get(), index));
       return nullptr;
     }
   }

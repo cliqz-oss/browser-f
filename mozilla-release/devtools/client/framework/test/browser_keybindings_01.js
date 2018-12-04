@@ -35,11 +35,11 @@ function buildDevtoolsKeysetMap(keyset) {
         ctrlKey: modifiers.match("ctrl"),
         altKey: modifiers.match("alt"),
         metaKey: modifiers.match("meta"),
-        accelKey: modifiers.match("accel")
+        accelKey: modifiers.match("accel"),
       },
       synthesizeKey: function() {
         EventUtils.synthesizeKey(this.key, this.modifierOpt);
-      }
+      },
     });
   });
 }
@@ -51,12 +51,6 @@ function setupKeyBindingsTest() {
 }
 
 add_task(async function() {
-  // Use the new debugger frontend because the old one swallows the netmonitor shortcut:
-  // https://bugzilla.mozilla.org/show_bug.cgi?id=1370442#c7
-  await SpecialPowers.pushPrefEnv({set: [
-    ["devtools.debugger.new-debugger-frontend", true]
-  ]});
-
   await addTab(TEST_URL);
   await new Promise(done => waitForFocus(done));
 

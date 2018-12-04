@@ -9,8 +9,13 @@ const { createFactory, PureComponent } = require("devtools/client/shared/vendor/
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const { connect } = require("devtools/client/shared/vendor/react-redux");
+const {
+  getSelectorFromGrip,
+  translateNodeFrontToGrip,
+} = require("devtools/client/inspector/shared/utils");
 const { LocalizationHelper } = require("devtools/shared/l10n");
 
+const Accordion = createFactory(require("./Accordion"));
 const BoxModel = createFactory(require("devtools/client/inspector/boxmodel/components/BoxModel"));
 const Flexbox = createFactory(require("devtools/client/inspector/flexbox/components/Flexbox"));
 const Grid = createFactory(require("devtools/client/inspector/grids/components/Grid"));
@@ -18,8 +23,6 @@ const Grid = createFactory(require("devtools/client/inspector/grids/components/G
 const BoxModelTypes = require("devtools/client/inspector/boxmodel/types");
 const FlexboxTypes = require("devtools/client/inspector/flexbox/types");
 const GridTypes = require("devtools/client/inspector/grids/types");
-
-const Accordion = createFactory(require("./Accordion"));
 
 const BOXMODEL_STRINGS_URI = "devtools/client/locales/boxmodel.properties";
 const BOXMODEL_L10N = new LocalizationHelper(BOXMODEL_STRINGS_URI);
@@ -48,7 +51,6 @@ class LayoutApp extends PureComponent {
       onShowBoxModelHighlighterForNode: PropTypes.func.isRequired,
       onShowGridOutlineHighlight: PropTypes.func.isRequired,
       onToggleFlexboxHighlighter: PropTypes.func.isRequired,
-      onToggleFlexItemShown: PropTypes.func.isRequired,
       onToggleGeometryEditor: PropTypes.func.isRequired,
       onToggleGridHighlighter: PropTypes.func.isRequired,
       onToggleShowGridAreas: PropTypes.func.isRequired,
@@ -59,8 +61,21 @@ class LayoutApp extends PureComponent {
     };
   }
 
+  getFlexboxHeader(flexContainer) {
+    if (!flexContainer.actorID) {
+      // No flex container or flex item selected.
+      return LAYOUT_L10N.getStr("flexbox.header");
+    } else if (!flexContainer.flexItemShown) {
+      // No flex item selected.
+      return LAYOUT_L10N.getStr("flexbox.flexContainer");
+    }
+
+    const grip = translateNodeFrontToGrip(flexContainer.nodeFront);
+    return LAYOUT_L10N.getFormatStr("flexbox.flexItemOf", getSelectorFromGrip(grip));
+  }
+
   render() {
-    let items = [
+    const items = [
       {
         component: Grid,
         componentProps: this.props,
@@ -84,23 +99,47 @@ class LayoutApp extends PureComponent {
     ];
 
     if (Services.prefs.getBoolPref(FLEXBOX_ENABLED_PREF)) {
-      items = [
-        {
+      // Since the flexbox panel is hidden behind a pref. We insert the flexbox container
+      // to the first index of the accordion item list.
+      items.splice(0, 0, {
+        component: Flexbox,
+        componentProps: {
+          ...this.props,
+          flexContainer: this.props.flexbox.flexContainer,
+        },
+        header: this.getFlexboxHeader(this.props.flexbox.flexContainer),
+        opened: Services.prefs.getBoolPref(FLEXBOX_OPENED_PREF),
+        onToggled: () => {
+          const opened =  Services.prefs.getBoolPref(FLEXBOX_OPENED_PREF);
+          Services.prefs.setBoolPref(FLEXBOX_OPENED_PREF, !opened);
+        }
+      });
+
+      // If the current selected node is both a flex container and flex item. Render
+      // an accordion with another Flexbox component where the flexbox to show is the
+      // parent flex container of the current selected node.
+      if (this.props.flexbox.flexItemContainer &&
+          this.props.flexbox.flexItemContainer.actorID) {
+        // Insert the parent flex container to the first index of the accordion item
+        // list.
+        items.splice(0, 0, {
           component: Flexbox,
-          componentProps: this.props,
-          header: LAYOUT_L10N.getStr("flexbox.header"),
+          componentProps: {
+            ...this.props,
+            flexContainer: this.props.flexbox.flexItemContainer,
+          },
+          header: this.getFlexboxHeader(this.props.flexbox.flexItemContainer),
           opened: Services.prefs.getBoolPref(FLEXBOX_OPENED_PREF),
           onToggled: () => {
             const opened =  Services.prefs.getBoolPref(FLEXBOX_OPENED_PREF);
             Services.prefs.setBoolPref(FLEXBOX_OPENED_PREF, !opened);
           }
-        },
-        ...items
-      ];
+        });
+      }
     }
 
     return (
-      dom.div({ id: "layout-container" },
+      dom.div({ className: "layout-container" },
         Accordion({ items })
       )
     );

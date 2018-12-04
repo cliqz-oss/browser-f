@@ -70,9 +70,9 @@ ServoCSSParser::ParseTransformIntoMatrix(const nsAString& aValue,
 ServoCSSParser::ParseFontShorthandForMatching(const nsAString& aValue,
                                               URLExtraData* aUrl,
                                               RefPtr<SharedFontList>& aList,
-                                              nsCSSValue& aStyle,
-                                              nsCSSValue& aStretch,
-                                              nsCSSValue& aWeight)
+                                              StyleComputedFontStyleDescriptor& aStyle,
+                                              float& aStretch,
+                                              float& aWeight)
 {
   return Servo_ParseFontShorthandForMatching(&aValue, aUrl, &aList,
                                              &aStyle, &aStretch, &aWeight);
@@ -86,7 +86,8 @@ ServoCSSParser::GetURLExtraData(nsIDocument* aDocument)
   // FIXME this is using the wrong base uri (bug 1343919)
   RefPtr<URLExtraData> url = new URLExtraData(aDocument->GetDocumentURI(),
                                               aDocument->GetDocumentURI(),
-                                              aDocument->NodePrincipal());
+                                              aDocument->NodePrincipal(),
+                                              aDocument->GetReferrerPolicy());
   return url.forget();
 }
 

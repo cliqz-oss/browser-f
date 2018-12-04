@@ -29,10 +29,14 @@ function runTest() {
   });
 
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
-  gBrowser.loadURI(TESTROOT + "redirect.sjs?mode=redirect");
+  BrowserTestUtils.loadURI(gBrowser, TESTROOT + "redirect.sjs?mode=redirect");
 }
 
 function install_blocked(installInfo) {
+  is(installInfo.installs.length, 1, "Got one AddonInstall instance as expected");
+  Assert.deepEqual(installInfo.installs[0].installTelemetryInfo,
+                   {source: "unknown", method: "link"},
+                   "Got the expected install.installTelemetryInfo");
 }
 
 function finish_test(count) {

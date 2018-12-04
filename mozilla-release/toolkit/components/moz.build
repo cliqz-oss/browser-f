@@ -8,7 +8,7 @@ with Files('**'):
     BUG_COMPONENT = ('Toolkit', 'General')
 
 # These component dirs are built for all apps (including suite)
-if CONFIG['MOZ_ENABLE_XREMOTE']:
+if 'gtk' in CONFIG['MOZ_WIDGET_TOOLKIT']:
     DIRS += ['remote']
 
 DIRS += [
@@ -30,7 +30,6 @@ DIRS += [
     'contextualidentity',
     'crashes',
     'crashmonitor',
-    'diskspacewatcher',
     'downloads',
     'enterprisepolicies',
     'extensions',

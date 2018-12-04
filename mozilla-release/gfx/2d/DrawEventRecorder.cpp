@@ -66,6 +66,18 @@ DrawEventRecorderMemory::RecordEvent(const RecordedEvent &aEvent)
   aEvent.RecordToStream(mOutputStream);
 }
 
+void
+DrawEventRecorderMemory::AddDependentSurface(uint64_t aDependencyId)
+{
+  mDependentSurfaces.PutEntry(aDependencyId);
+}
+
+nsTHashtable<nsUint64HashKey>&&
+DrawEventRecorderMemory::TakeDependentSurfaces()
+{
+  return std::move(mDependentSurfaces);
+}
+
 DrawEventRecorderFile::DrawEventRecorderFile(const char_type* aFilename)
   : mOutputStream(aFilename, ofstream::binary)
 {
@@ -114,7 +126,7 @@ DrawEventRecorderMemory::DrawEventRecorderMemory()
 DrawEventRecorderMemory::DrawEventRecorderMemory(const SerializeResourcesFn &aFn) :
   mSerializeCallback(aFn)
 {
-  mExternalFonts = true;
+  mExternalFonts = !!mSerializeCallback;
   WriteHeader(mOutputStream);
 }
 
@@ -137,7 +149,7 @@ DrawEventRecorderMemory::FlushItem(IntRect aRect)
   WriteElement(mIndex, mOutputStream.mLength);
 
   // write out the fonts into the extra data section
-  mSerializeCallback(mOutputStream, mUnscaledFonts);
+  mSerializeCallback(mOutputStream, mScaledFonts);
   WriteElement(mIndex, mOutputStream.mLength);
 
   WriteElement(mIndex, aRect.x);

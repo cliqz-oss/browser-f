@@ -1,58 +1,112 @@
-commit ae3b5a6552ee26164b9a95ebb6f8e51db9494815
-Author: Jacek Caban <cjacek@gmail.com>
-Date:   Wed Jun 27 17:35:19 2018 +0200
+commit 790e8e6b417905eca335d06c16ec54c977188110
+Author: Olli Etuaho <oetuaho@nvidia.com>
+Date:   Thu Sep 20 13:20:50 2018 +0300
 
-    Fix PMurHash.cpp mingw clang 64-bit compilation.
+    Fix using a large vertex attrib divisor on D3D11
     
-    Tested with Firefox build, upstream bug:
-    https://bugzilla.mozilla.org/show_bug.cgi?id=1471632
+    A divisor >= 256 used to trigger an assert on the D3D11 backend since
+    it couldn't fit into the input layout cache. Increase the space
+    reserved for the divisor in the input layout cache to make sure that
+    the correct input layout will get used and to fix the assert.
     
-    Change-Id: I4b44847dfc69ee26cf2215b0a0b7573becfd369d
-    Reviewed-on: https://chromium-review.googlesource.com/1117187
-    Commit-Queue: Jamie Madill <jmadill@chromium.org>
+    BUG=angleproject:2832
+    TEST=angle_end2end_tests
+    
+    Change-Id: I34eead6c4e8c4fea379bbafc8670b4e32a5b633b
+    Reviewed-on: https://chromium-review.googlesource.com/1236293
     Reviewed-by: Jamie Madill <jmadill@chromium.org>
+    Reviewed-by: Geoff Lang <geofflang@chromium.org>
+    Commit-Queue: Olli Etuaho <oetuaho@nvidia.com>
 
-commit fc96a1a98357cfa17510bcf701e99a59ab474ce0
+commit 598f2502e3a41b76d90037e7858c43c18e66399d
+Merge: 8212058a6 e15a25c6f
+Author: Jeff Gilbert <jdashg@gmail.com>
+Date:   Tue Oct 9 13:54:05 2018 -0700
+
+    Merge pull request #13 from mattwoodrow/async-load-program
+    
+    Support async glProgramBInary
+
+commit 8212058a6c6339ba541f9aabb076900cd31448ef
+Merge: 4fb8d7f97 895294a05
+Author: Jeff Gilbert <jdashg@gmail.com>
+Date:   Tue Oct 9 13:52:08 2018 -0700
+
+    Merge pull request #14 from mattwoodrow/provoking-vertex
+    
+    Add support for EGL_MOZ_create_context_provoking_vertex_dont_care
+
+commit 895294a057c022f0db77975a19419abbec4c9226
+Author: Dan Glastonbury <dan.glastonbury@gmail.com>
+Date:   Tue Oct 9 10:02:46 2018 +1300
+
+    Add support for EGL_MOZ_create_context_provoking_vertex_dont_care
+    extension
+
+commit e15a25c6fa1d910115ce6fd7a03fa5ffece8a054
+Author: Matt Woodrow <matt.woodrow@gmail.com>
+Date:   Tue Oct 9 09:56:16 2018 +1300
+
+    Support async Program::load for ProgramD3D.
+
+commit 2555cc62e340cef6a2744b7f52f3e8b94aa635e1
+Author: Matt Woodrow <matt.woodrow@gmail.com>
+Date:   Tue Oct 9 09:53:40 2018 +1300
+
+    Move task definitions to earlier in the file.
+
+commit 04adbfe1a2bfad21c549a0d30349d1da620e556c
+Author: Matt Woodrow <matt.woodrow@gmail.com>
+Date:   Tue Oct 9 09:52:42 2018 +1300
+
+    Make ProgramImpl::load() return a task and support asynchronously waiting for it to complete.
+
+commit 4fb8d7f978adda36086377ea7846951faa9f6bd3
 Author: Jeff Gilbert <jgilbert@mozilla.com>
-Date:   Fri Jun 29 19:06:56 2018 -0700
+Date:   Wed Sep 26 18:04:05 2018 -0700
 
-    More includes missing from sources.
+    Polyfill BitCount for ARM/ARM64 on MSVC.
     
-    Bug: angleproject:2699
+    Also _WIN64 implies _WIN32.
+    
+    Bug: angleproject:2858
+    Change-Id: I63e2ffd2e9e304171ea6adb99836733981cc1813
 
-commit e30a1e0b967b42a5e17c4335361762ec1153e900
+commit 786e980807f104d35bf31a769d31699024b89c2f
 Author: Jeff Gilbert <jgilbert@mozilla.com>
-Date:   Tue May 29 19:19:54 2018 -0700
+Date:   Tue Sep 25 14:18:35 2018 -0700
 
-    Use stringstream with locale override.
+    Stream support for R16*_UNORM and P010/P016.
     
-    Add test for compiling float literals in locales with comma decimal separators.
+    Bug: angleproject:2850
+    Change-Id: Ib23b3012b5244c8e3edbdfa05d9b4e4869bbfed8
+
+commit b46b71ba277b13a7b72075766676a9698a665efd
+Author: Jeff Gilbert <jgilbert@mozilla.com>
+Date:   Tue Sep 18 17:03:59 2018 -0700
+
+    Remove unused include global_state.h from validationEGL.cpp.
     
-    Handle inexplicable test setlocale failure on Android,Linux. (Require success on other platforms)
-    
-    Skip setting the locale on Android, which is always C locale in C++, but for some
-    reason std::locale::classic isn't implemented as a no-op.
-    
-    Bug: angleproject:2607
-    Test: angle_unittests
-    Change-Id: I7c97cb56c01335db46f532fb8af3f9a4f2a30564
+    Bug: angleproject:2825
+    Change-Id: I34a7c520d31cf0a9321d5599046159ef9bf58be5
 
 Cherries picked
 ================================================================================
-Merge base from: origin/chromium/3440
+Merge base from: origin/chromium/3538
 
-commit ba16270867793da817417c722abe3a5d98d50fc0
-Author: Brandon Jones <brandon1.jones@intel.com>
-Date:   Thu May 24 12:47:50 2018 -0700
+commit 05c729f336efb544e224444c2485a412bd3a66b3
+Author: Jamie Madill <jmadill@chromium.org>
+Date:   Fri Sep 7 17:43:32 2018 -0400
 
-    Fix entry point generation on non-Windows
+    Pass unpack buffer as explicit parameter to texSubImage.
     
-    In "Implement EGL_ANGLE_explicit_context", backslashes were introduced in
-    a file path, which broke generation on non-Windows machines. This fixes
-    the issue.
+    This allows us to override it in the incomplete texture init. Any
+    back-end that used incomplete textures was vulnerable to a bug where
+    the unpack buffer would be used to initialize the incomplete texture.
     
-    Bug:angleproject:1395
-    Change-Id: I188c42c2a92afec37d7cb7dac5bffd7e855a0d2b
-    Reviewed-on: https://chromium-review.googlesource.com/1072509
-    Reviewed-by: Geoff Lang <geofflang@chromium.org>
-    Commit-Queue: Geoff Lang <geofflang@chromium.org>
+    Cherry-picked to the chromium/3538 branch cleanly.
+    
+    Bug: chromium:880906
+    Change-Id: Iead2a8c57674e8962915902d6d5896f44fe8ca88
+    Reviewed-on: https://chromium-review.googlesource.com/1227033
+    Reviewed-by: Jamie Madill <jmadill@chromium.org>

@@ -27,7 +27,7 @@ add_task(async function() {
   await checkGridHighlighter();
 
   info("Close the toolbox before reloading the tab");
-  const target = TargetFactory.forTab(gBrowser.selectedTab);
+  const target = await TargetFactory.forTab(gBrowser.selectedTab);
   await gDevTools.closeToolbox(target);
 
   await refreshTab();
@@ -49,5 +49,5 @@ async function checkGridHighlighter() {
   gridToggle.click();
   await onHighlighterShown;
 
-  ok(highlighters.gridHighlighterShown, "CSS grid highlighter is shown.");
+  is(highlighters.gridHighlighters.size, 1, "CSS grid highlighter is shown.");
 }

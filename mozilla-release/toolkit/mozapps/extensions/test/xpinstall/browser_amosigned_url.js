@@ -8,7 +8,7 @@ function test() {
 
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, "about:blank");
   BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser).then(() => {
-    gBrowser.loadURI(TESTROOT + "amosigned.xpi");
+    BrowserTestUtils.loadURI(gBrowser, TESTROOT + "amosigned.xpi");
   });
 }
 
@@ -18,6 +18,8 @@ function confirm_install(panel) {
 }
 
 function install_ended(install, addon) {
+  Assert.deepEqual(install.installTelemetryInfo, {source: "unknown", method: "link"},
+                   "Got the expected install.installTelemetryInfo");
   install.cancel();
 }
 

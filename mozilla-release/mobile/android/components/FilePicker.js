@@ -138,7 +138,7 @@ FilePicker.prototype = {
   },
 
   get files() {
-    return this.getEnumerator([this.file]);
+    return [this.file].values();
   },
 
   // We don't support directory selection yet.
@@ -147,7 +147,7 @@ FilePicker.prototype = {
   },
 
   get domFileOrDirectoryEnumerator() {
-    return this.getEnumerator([this._domFile]);
+    return [this._domFile].values();
   },
 
   get addToRecentDocs() {
@@ -248,26 +248,6 @@ FilePicker.prototype = {
     });
   },
 
-  getEnumerator: function(files) {
-    return {
-      QueryInterface: ChromeUtils.generateQI([Ci.nsISimpleEnumerator]),
-      mFiles: files,
-      mIndex: 0,
-      [Symbol.iterator]() {
-        return this.mFiles.values();
-      },
-      hasMoreElements: function() {
-        return (this.mIndex < this.mFiles.length);
-      },
-      getNext: function() {
-        if (this.mIndex >= this.mFiles.length) {
-          throw Cr.NS_ERROR_FAILURE;
-        }
-        return this.mFiles[this.mIndex++];
-      }
-    };
-  },
-
   fireDialogEvent: function(aDomWin, aEventName) {
     // accessing the document object can throw if this window no longer exists. See bug 789888.
     try {
@@ -282,7 +262,7 @@ FilePicker.prototype = {
   },
 
   classID: Components.ID("{18a4e042-7c7c-424b-a583-354e68553a7f}"),
-  QueryInterface: ChromeUtils.generateQI([Ci.nsIFilePicker, Ci.nsIObserver])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIFilePicker, Ci.nsIObserver]),
 };
 
 this.NSGetFactory = XPCOMUtils.generateNSGetFactory([FilePicker]);

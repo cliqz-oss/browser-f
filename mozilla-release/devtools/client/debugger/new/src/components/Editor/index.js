@@ -100,7 +100,6 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 // Redux actions
 const cssVars = {
   searchbarHeight: "var(--editor-searchbar-height)",
-  secondSearchbarHeight: "var(--editor-second-searchbar-height)",
   footerHeight: "var(--editor-footer-height)"
 };
 
@@ -228,11 +227,17 @@ class Editor extends _react.PureComponent {
       return;
     }
 
+    (0, _editor.startOperation)();
     (0, _ui.resizeBreakpointGutter)(this.state.editor.codeMirror);
     (0, _ui.resizeToggleButton)(this.state.editor.codeMirror);
+    (0, _editor.endOperation)();
   }
 
   componentWillUpdate(nextProps) {
+    if (!this.state.editor) {
+      return;
+    }
+
     this.setText(nextProps);
     this.setSize(nextProps);
     this.scrollToLocation(nextProps);
@@ -254,8 +259,10 @@ class Editor extends _react.PureComponent {
       codeMirror
     } = editor;
     const codeMirrorWrapper = codeMirror.getWrapperElement();
+    (0, _editor.startOperation)();
     (0, _ui.resizeBreakpointGutter)(codeMirror);
     (0, _ui.resizeToggleButton)(codeMirror);
+    (0, _editor.endOperation)();
     codeMirror.on("gutterClick", this.onGutterClick); // Set code editor wrapper to be focusable
 
     codeMirrorWrapper.tabIndex = 0;
@@ -528,7 +535,6 @@ class Editor extends _react.PureComponent {
 
     if (searchOn) {
       subtractions.push(cssVars.searchbarHeight);
-      subtractions.push(cssVars.secondSearchbarHeight);
     }
 
     return {
@@ -566,7 +572,9 @@ class Editor extends _react.PureComponent {
       return null;
     }
 
-    return _react2.default.createElement("div", null, _react2.default.createElement(_DebugLine2.default, null), _react2.default.createElement(_HighlightLine2.default, null), _react2.default.createElement(_EmptyLines2.default, {
+    return _react2.default.createElement("div", null, _react2.default.createElement(_DebugLine2.default, {
+      editor: editor
+    }), _react2.default.createElement(_HighlightLine2.default, null), _react2.default.createElement(_EmptyLines2.default, {
       editor: editor
     }), _react2.default.createElement(_Breakpoints2.default, {
       editor: editor
@@ -574,7 +582,6 @@ class Editor extends _react.PureComponent {
       editor: editor,
       editorRef: this.$editorWrapper
     }), ";", _react2.default.createElement(_Footer2.default, {
-      editor: editor,
       horizontal: horizontal
     }), _react2.default.createElement(_HighlightLines2.default, {
       editor: editor
@@ -612,10 +619,10 @@ class Editor extends _react.PureComponent {
         "coverage-on": coverageOn
       }),
       ref: c => this.$editorWrapper = c
-    }, this.renderSearchBar(), _react2.default.createElement("div", {
+    }, _react2.default.createElement("div", {
       className: "editor-mount devtools-monospace",
       style: this.getInlineEditorStyles()
-    }), this.renderItems());
+    }), this.renderSearchBar(), this.renderItems());
   }
 
 }

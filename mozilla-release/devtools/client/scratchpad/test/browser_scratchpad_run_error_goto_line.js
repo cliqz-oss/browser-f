@@ -13,7 +13,7 @@ function test() {
     openScratchpad(runTests);
   });
 
-  gBrowser.loadURI("data:text/html;charset=utf8,test Scratchpad pretty print.");
+  BrowserTestUtils.loadURI(gBrowser, "data:text/html;charset=utf8,test Scratchpad pretty print.");
 }
 
 function runTests(sw) {
@@ -24,7 +24,7 @@ function runTests(sw) {
     "var re = /a bad /regexp/; // line 3 is an obvious syntax error!",
     "// line 4",
     "// line 5",
-    ""
+    "",
   ].join("\n"));
   sp.run().then(() => {
     // CodeMirror lines and columns are 0-based, Scratchpad UI and error

@@ -35,20 +35,6 @@ a11y:
     record_in_processes:
       - 'main'
 
-# The following section contains the aushelper system add-on scalars.
-aushelper:
-  websense_reg_version:
-    bug_numbers:
-      - 1305847
-    description: The Websense version from the Windows registry.
-    expires: "60"
-    kind: string
-    notification_emails:
-      - application-update-telemetry-alerts@mozilla.com
-    release_channel_collection: opt-out
-    record_in_processes:
-      - 'main'
-
 # The following section contains the browser engagement scalars.
 browser.engagement:
   max_concurrent_tab_count:
@@ -449,11 +435,26 @@ services.sync:
     description: >
       Records transitions between login states of "success", "unverified"
       and "rejected.
-    expires: "65"
+    expires: "68"
     kind: boolean
     keyed: true
     notification_emails:
       - sync-staff@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - main
+
+identity.fxaccounts:
+  missed_commands_fetched:
+    bug_numbers:
+      - 1496638
+    description: >
+      The number of missed FxA commands we have recovered.
+    expires: "68"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - fxa-staff@mozilla.com
     release_channel_collection: opt-out
     record_in_processes:
       - main
@@ -504,6 +505,50 @@ security:
     notification_emails:
       - seceng-telemetry@mozilla.com
       - dkeeler@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - main
+
+contentblocking:
+  enabled:
+    bug_numbers:
+      - 1484251
+    description: >
+      Whether content blocking was enabled at startup.
+    expires: never
+    kind: boolean
+    notification_emails:
+      - jhofmann@mozilla.com
+      - pdol@mozilla.com
+      - seceng-telemetry@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - main
+  fastblock_enabled:
+    bug_numbers:
+      - 1484251
+    description: >
+      Whether FastBlock was enabled at startup.
+    expires: never
+    kind: boolean
+    notification_emails:
+      - jhofmann@mozilla.com
+      - pdol@mozilla.com
+      - seceng-telemetry@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - main
+  exceptions:
+    bug_numbers:
+      - 1484251
+    description: >
+      How many tracking protection/content blocking exceptions a user has at startup.
+    expires: "70"
+    kind: uint
+    notification_emails:
+      - jhofmann@mozilla.com
+      - pdol@mozilla.com
+      - seceng-telemetry@mozilla.com
     release_channel_collection: opt-out
     record_in_processes:
       - main
@@ -1445,6 +1490,67 @@ devtools.toolbox:
     record_in_processes:
       - 'main'
 
+devtools.webreplay:
+  new_recording:
+    bug_numbers:
+     - 1495910
+    description: >
+      Number of times a blank recording tab was created.
+    expires: never
+    kind: uint
+    notification_emails:
+     - bhackett@mozilla.com
+    record_in_processes:
+     - 'main'
+
+  reload_recording:
+    bug_numbers:
+     - 1495910
+    description: >
+      Number of times a non-recording tab was reloaded to create a recording tab.
+    expires: never
+    kind: uint
+    notification_emails:
+     - bhackett@mozilla.com
+    record_in_processes:
+     - 'main'
+
+  stop_recording:
+    bug_numbers:
+     - 1495910
+    description: >
+      Number of times a recording tab was reloaded to create a non-recording tab.
+    expires: never
+    kind: uint
+    notification_emails:
+     - bhackett@mozilla.com
+    record_in_processes:
+     - 'main'
+
+  save_recording:
+    bug_numbers:
+     - 1495910
+    description: >
+      Number of times a recording was saved.
+    expires: never
+    kind: uint
+    notification_emails:
+     - bhackett@mozilla.com
+    record_in_processes:
+     - 'main'
+
+  load_recording:
+    bug_numbers:
+     - 1495910
+    description: >
+      Number of times a recording was loaded.
+    expires: never
+    kind: uint
+    notification_emails:
+     - bhackett@mozilla.com
+    record_in_processes:
+     - 'main'
+
 navigator.storage:
   estimate_count:
     bug_numbers:
@@ -1563,7 +1669,7 @@ telemetry:
     description: >
       How many times the GeckoView Telemetry persistence timer was hit during
       the current subsession.
-    expires: "65"
+    expires: "70"
     kind: uint
     notification_emails:
       - telemetry-client-dev@mozilla.com
@@ -1578,7 +1684,7 @@ telemetry:
     description: >
       The number of times the pending operations list reached the
       high-water mark, leading to operations being applied immediately.
-    expires: "65"
+    expires: "70"
     kind: uint
     keyed: false
     notification_emails:
@@ -2165,6 +2271,23 @@ memoryreporter:
     release_channel_collection: opt-out
     record_in_processes:
       - 'content'
+
+resistfingerprinting:
+  content_window_size:
+    bug_numbers:
+      - 1489493
+    description: >
+      The size (in pixels) of the content windows for innerWidth and innerHeight.
+    expires: "66"
+    kind: uint
+    keyed: true
+    notification_emails:
+      - tihuang@mozilla.com
+      - tom@mozilla.com
+      - ettseng@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - 'main'
 
 # The following section is for probes testing the Telemetry system. They will not be
 # submitted in pings and are only used for testing.

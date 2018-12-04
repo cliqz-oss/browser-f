@@ -9,7 +9,8 @@ function test() {
   Harness.setup();
 
   Services.cookies.add("example.org", "/browser/" + RELATIVE_DIR, "xpinstall",
-    "true", false, false, true, (Date.now() / 1000) + 60, {});
+    "true", false, false, true, (Date.now() / 1000) + 60, {},
+    Ci.nsICookie2.SAMESITE_UNSET);
 
   var pm = Services.perms;
   pm.add(makeURI("http://example.com/"), "install", pm.ALLOW_ACTION);
@@ -20,7 +21,7 @@ function test() {
     "Cookie check": TESTROOT2 + "cookieRedirect.sjs?" + TESTROOT + "amosigned.xpi",
   }));
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
-  gBrowser.loadURI(TESTROOT + "installtrigger.html?" + triggers);
+  BrowserTestUtils.loadURI(gBrowser, TESTROOT + "installtrigger.html?" + triggers);
 }
 
 function download_failed(install) {

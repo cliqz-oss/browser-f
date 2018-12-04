@@ -688,7 +688,7 @@ private:
   NS_IMETHOD
   GetName(nsACString& aName) override
   {
-    aName.AssignASCII("ScriptLoaderRunnable");
+    aName.AssignLiteral("ScriptLoaderRunnable");
     return NS_OK;
   }
 
@@ -1237,7 +1237,7 @@ private:
             ("Scriptloader::Load, SRI required but not supported in workers"));
       nsCOMPtr<nsIContentSecurityPolicy> wcsp;
       chanLoadInfo->LoadingPrincipal()->GetCsp(getter_AddRefs(wcsp));
-      MOZ_ASSERT(wcsp, "We sould have a CSP for the worker here");
+      MOZ_ASSERT(wcsp, "We should have a CSP for the worker here");
       if (wcsp) {
         wcsp->LogViolationDetails(
             nsIContentSecurityPolicy::VIOLATION_TYPE_REQUIRE_SRI_FOR_SCRIPT,

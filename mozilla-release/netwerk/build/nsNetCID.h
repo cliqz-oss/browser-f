@@ -456,17 +456,6 @@
     {0x94, 0xdb, 0xd4, 0xf8, 0x59, 0x05, 0x82, 0x15} \
 }
 
-// component implementing nsIFileStream
-#define NS_LOCALFILESTREAM_CONTRACTID \
-    "@mozilla.org/network/file-stream;1"
-#define NS_LOCALFILESTREAM_CID                       \
-{ /* f8a69bd7-176c-4a60-9a05-b6d92f8f229a */         \
-    0xf8a69bd7,                                      \
-    0x176c,                                          \
-    0x4a60,                                          \
-    {0x9a, 0x05, 0xb6, 0xd9, 0x2f, 0x8f, 0x22, 0x9a} \
-}
-
 /**
  * Contract ID for a service implementing nsIURIClassifier that identifies
  * phishing and malware sites.
@@ -587,16 +576,6 @@
     {0x9f, 0xd4, 0xe0, 0x65, 0xe8, 0x55, 0x68, 0xf4} \
 }
 
-#define NS_HTTPCHANNELAUTHPROVIDER_CONTRACTID \
-    "@mozilla.org/network/http-channel-auth-provider;1"
-#define NS_HTTPCHANNELAUTHPROVIDER_CID \
-{ /* 02f5a8d8-4ef3-48b1-b527-8a643056abbd */         \
-    0x02f5a8d8,                                      \
-    0x4ef3,                                          \
-    0x48b1,                                          \
-    {0xb5, 0x27, 0x8a, 0x64, 0x30, 0x56, 0xab, 0xbd} \
-}
-
 // component implementing nsIHttpPushListener.
 #define NS_HTTPPUSHLISTENER_CONTRACTID \
     "@mozilla.org/network/push-listener;1"
@@ -627,18 +606,6 @@
     0xcd90,                                             \
     0x4dd3,                                             \
     {0x97, 0xa7, 0x06, 0xaf, 0x5e, 0x6d, 0x84, 0xc4}    \
-}
-
-// Background channel registrar used for pairing HttpChannelParent
-// and its background channel
-#define NS_BACKGROUNDCHANNELREGISTRAR_CONTRACTID \
-    "@mozilla.org/network/background-channel-registrar;1"
-#define NS_BACKGROUNDCHANNELREGISTRAR_CID \
-{ /* 6907788a-17cc-4c2a-a7c5-59ad2d9cc079 */          \
-    0x6907788a,                                       \
-    0x17cc,                                           \
-    0x4c2a,                                           \
-    { 0xa7, 0xc5, 0x59, 0xad, 0x2d, 0x9c, 0xc0, 0x79} \
 }
 
 /******************************************************************************
@@ -951,14 +918,6 @@
     0x11d3,                                          \
     {0xa1, 0x6c, 0x00, 0x50, 0x04, 0x1c, 0xaf, 0x44} \
 }
-
-/**
- * General-purpose content sniffer component. Use with CreateInstance.
- *
- * Implements nsIContentSniffer
- */
-#define NS_GENERIC_CONTENT_SNIFFER \
-    "@mozilla.org/network/content-sniffer;1"
 
 /**
  * Detector that can act as either an nsIStreamConverter or an

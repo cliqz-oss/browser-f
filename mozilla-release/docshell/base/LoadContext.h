@@ -125,8 +125,8 @@ private:
 #endif
 };
 
-nsresult CreateTestLoadContext(nsISupports *aOuter, REFNSIID aIID, void **aResult);
-nsresult CreatePrivateTestLoadContext(nsISupports *aOuter, REFNSIID aIID, void **aResult);
+already_AddRefed<nsILoadContext> CreateLoadContext();
+already_AddRefed<nsILoadContext> CreatePrivateLoadContext();
 
 } // namespace mozilla
 

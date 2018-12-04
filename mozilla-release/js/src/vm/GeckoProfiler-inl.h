@@ -17,8 +17,9 @@ namespace js {
 inline void
 GeckoProfilerThread::updatePC(JSContext* cx, JSScript* script, jsbytecode* pc)
 {
-    if (!cx->runtime()->geckoProfiler().enabled())
+    if (!cx->runtime()->geckoProfiler().enabled()) {
         return;
+    }
 
     uint32_t sp = profilingStack_->stackPointer;
     if (sp - 1 < profilingStack_->stackCapacity()) {
@@ -52,7 +53,7 @@ GeckoProfilerEntryMarker::GeckoProfilerEntryMarker(JSContext* cx,
   : profiler_(&cx->geckoProfiler())
 {
     MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-    if (MOZ_LIKELY(!profiler_->installed())) {
+    if (MOZ_LIKELY(!profiler_->infraInstalled())) {
         profiler_ = nullptr;
         return;
     }
@@ -71,8 +72,9 @@ GeckoProfilerEntryMarker::GeckoProfilerEntryMarker(JSContext* cx,
 MOZ_ALWAYS_INLINE
 GeckoProfilerEntryMarker::~GeckoProfilerEntryMarker()
 {
-    if (MOZ_LIKELY(profiler_ == nullptr))
+    if (MOZ_LIKELY(profiler_ == nullptr)) {
         return;
+    }
 
     profiler_->profilingStack_->pop();    // the JS frame
     profiler_->profilingStack_->pop();    // the SP_MARKER frame
@@ -86,7 +88,7 @@ AutoGeckoProfilerEntry::AutoGeckoProfilerEntry(JSContext* cx, const char* label,
   : profiler_(&cx->geckoProfiler())
 {
     MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-    if (MOZ_LIKELY(!profiler_->installed())) {
+    if (MOZ_LIKELY(!profiler_->infraInstalled())) {
         profiler_ = nullptr;
         return;
     }
@@ -103,8 +105,9 @@ AutoGeckoProfilerEntry::AutoGeckoProfilerEntry(JSContext* cx, const char* label,
 MOZ_ALWAYS_INLINE
 AutoGeckoProfilerEntry::~AutoGeckoProfilerEntry()
 {
-    if (MOZ_LIKELY(!profiler_))
+    if (MOZ_LIKELY(!profiler_)) {
         return;
+    }
 
     profiler_->profilingStack_->pop();
     MOZ_ASSERT(spBefore_ == profiler_->stackPointer());

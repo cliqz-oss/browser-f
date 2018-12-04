@@ -1,8 +1,6 @@
-// |jit-test| test-also-no-wasm-baseline
-// Tests that wasm module sourceMappingURL section is parsed.
+// |jit-test| test-also-no-wasm-baseline; skip-if: !wasmDebuggingIsSupported()
 
-if (!wasmDebuggingIsSupported())
-  quit();
+// Tests that wasm module sourceMappingURL section is parsed.
 
 load(libdir + "asserts.js");
 load(libdir + "wasm-binary.js");
@@ -66,9 +64,9 @@ assertEq(gotScript.source.sourceMapURL, 'http://example.org/test');
 // The sourceMapURL is read-only for wasm
 assertThrowsInstanceOf(() => gotScript.source.sourceMapURL = 'foo', Error);
 
-// The sourceMappingURL section is present, but is not available when wasm
+// The sourceMappingURL section is present, and is still available when wasm
 // binary source is disabled.
 dbg.allowWasmBinarySource = false;
 g.eval(`o = new WebAssembly.Instance(new WebAssembly.Module(toWasm('(module (func) (export "a" 0))', 'http://example.org/test2')));`);
 assertEq(gotScript.format, "wasm");
-assertEq(gotScript.source.sourceMapURL, null);
+assertEq(gotScript.source.sourceMapURL, 'http://example.org/test2');

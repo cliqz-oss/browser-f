@@ -1,9 +1,11 @@
-use spec::{ self, SpecBuilder, TypeSum };
+use spec::{ self, Laziness, SpecBuilder, TypeSum };
 
 use webidl::ast::*;
 
 pub struct Importer {
     builder: SpecBuilder,
+    /// The interfaces we have traversed so far.
+    path: Vec<String>,
 }
 impl Importer {
     /// Import an AST into a SpecBuilder.
@@ -12,37 +14,57 @@ impl Importer {
     /// extern crate binjs_meta;
     /// extern crate webidl;
     /// use webidl;
+    /// use binjs_meta::spec::SpecOptions;
     ///
     /// let ast = webidl::parse_string("
-    ///    [Skippable] interface SkippableFoo {
-    ///       attribute EagerFoo eager;
+    ///    interface FooContents {
+    ///      attribute boolean value;
+    ///    };
+    ///    interface LazyFoo {
+    ///       [Lazy] attribute FooContents contents;
     ///    };
     ///    interface EagerFoo {
-    ///       attribute bool value;
+    ///       attribute FooContents contents;
     ///    };
     /// ").expect("Could not parse");
     ///
     /// let mut builder = binjs_meta::import::Importer::import(&ast);
     ///
-    /// let name_eager = builder.get_node_name("EagerFoo")
+    /// let fake_root = builder.node_name("@@ROOT@@"); // Unused
+    /// let null = builder.node_name(""); // Used
+    /// let spec = builder.into_spec(SpecOptions {
+    ///     root: &fake_root,
+    ///     null: &null,
+    /// });
+    ///
+    /// let name_eager = spec.get_node_name("EagerFoo")
     ///     .expect("Missing name EagerFoo");
-    /// let name_skippable = builder.get_node_name("SkippableFoo")
-    ///     .expect("Missing name SkippableFoo");
+    /// let name_lazy = spec.get_node_name("LazyFoo")
+    ///     .expect("Missing name LazyFoo");
+    /// let name_contents = spec.get_field_name("contents")
+    ///     .expect("Missing name contents");
     ///
     /// {
-    ///     let interface_eager = builder.get_interface(&name_eager)
+    ///     let interface_eager = spec.get_interface_by_name(&name_eager)
     ///         .expect("Missing interface EagerFoo");
-    ///     assert_eq!(interface_eager.is_skippable(), false);
+    ///     let contents_field =
+    ///         interface_eager.get_field_by_name(&name_contents)
+    ///         .expect("Missing field contents");
+    ///     assert_eq!(contents_field.is_lazy(), false);
     /// }
     ///
     /// {
-    ///     let interface_skippable = builder.get_interface(&name_skippable)
-    ///         .expect("Missing interface SkippableFoo");
-    ///     assert_eq!(interface_skippable.is_skippable(), true);
+    ///     let interface_lazy = spec.get_interface_by_name(&name_lazy)
+    ///         .expect("Missing interface LazyFoo");
+    ///     let contents_field =
+    ///         interface_lazy.get_field_by_name(&name_contents)
+    ///         .expect("Missing field contents");
+    ///     assert_eq!(contents_field.is_lazy(), true);
     /// }
     /// ```
     pub fn import(ast: &AST) -> SpecBuilder {
         let mut importer = Importer {
+            path: Vec::with_capacity(256),
             builder: SpecBuilder::new()
         };
         importer.import_ast(ast);
@@ -71,9 +93,22 @@ impl Importer {
     }
     fn import_typedef(&mut self, typedef: &Typedef) {
         let name = self.builder.node_name(&typedef.name);
-        let type_ = self.convert_type(&*typedef.type_);
+        // The following are, unfortunately, not true typedefs.
+        // Ignore their definition.
+        let type_ = match typedef.name.as_ref() {
+            "Identifier"  => spec::TypeSpec::IdentifierName
+                .required(),
+            "IdentifierName" => spec::TypeSpec::IdentifierName
+                .required(),
+            "PropertyKey" => spec::TypeSpec::PropertyKey
+                .required(),
+            _ => self.convert_type(&*typedef.type_)
+        };
+        debug!(target: "meta::import", "Importing typedef {type_:?} {name:?}",
+            type_ = type_,
+            name = name);
         let mut node = self.builder.add_typedef(&name)
-            .expect("Name already present");
+            .unwrap_or_else(|| panic!("Error: Name {} is defined more than once in the spec.", name));
         assert!(!type_.is_optional());
         node.with_spec(type_.spec);
     }
@@ -83,19 +118,47 @@ impl Importer {
         } else {
             panic!("Expected a non-partial interface, got {:?}", interface);
         };
-        if interface.name == "Node" {
-            // We're not interested in the root interface.
-            return;
+
+        // Handle special, hardcoded, interfaces.
+        match interface.name.as_ref() {
+            "Node" => {
+                // We're not interested in the root interface.
+                return;
+            }
+            "IdentifierName" => {
+                unimplemented!()
+            }
+            _ => {
+
+            }
         }
         if let Some(ref parent) = interface.inherits {
             assert_eq!(parent, "Node");
         }
+
+        self.path.push(interface.name.clone());
+
+        // Now handle regular stuff.
         let mut fields = Vec::new();
         for member in &interface.members {
             if let InterfaceMember::Attribute(Attribute::Regular(ref attribute)) = *member {
+                use webidl::ast::ExtendedAttribute::NoArguments;
+                use webidl::ast::Other::Identifier;
+
                 let name = self.builder.field_name(&attribute.name);
                 let type_ = self.convert_type(&*attribute.type_);
-                fields.push((name, type_));
+
+                let is_lazy = attribute.extended_attributes.iter()
+                    .find(|attribute| {
+                        if let &NoArguments(Identifier(ref id)) = attribute.as_ref() {
+                            if &*id == "Lazy" {
+                                return true;
+                            }
+                        }
+                        false
+                    })
+                    .is_some();
+                fields.push((name, type_, if is_lazy { Laziness::Lazy } else { Laziness:: Eager }));
             } else {
                 panic!("Expected an attribute, got {:?}", member);
             }
@@ -103,8 +166,8 @@ impl Importer {
         let name = self.builder.node_name(&interface.name);
         let mut node = self.builder.add_interface(&name)
             .expect("Name already present");
-        for (field_name, field_type) in fields.drain(..) {
-            node.with_field(&field_name, field_type);
+        for (field_name, field_type, laziness) in fields.drain(..) {
+            node.with_field_laziness(&field_name, field_type, laziness);
         }
 
         for extended_attribute in &interface.extended_attributes {
@@ -112,18 +175,33 @@ impl Importer {
             use webidl::ast::Other::Identifier;
             if let &NoArguments(Identifier(ref id)) = extended_attribute.as_ref() {
                 if &*id == "Skippable" {
-                    node.with_skippable(true);
+                    panic!("Encountered deprecated attribute [Skippable]");
+                }
+                if &*id == "Scope" {
+                    node.with_scope(true);
                 }
             }
         }
+        self.path.pop();
     }
     fn convert_type(&mut self, t: &Type) -> spec::Type {
         let spec = match t.kind {
             TypeKind::Boolean => spec::TypeSpec::Boolean,
             TypeKind::Identifier(ref id) => {
                 let name = self.builder.node_name(id);
-                spec::TypeSpec::NamedType(name.clone())
+                // Sadly, some identifiers are not truly `typedef`s.
+                match name.to_str() {
+                    "IdentifierName" if self.is_at_interface("StaticMemberAssignmentTarget") => spec::TypeSpec::PropertyKey,
+                    "IdentifierName" if self.is_at_interface("StaticMemberExpression") => spec::TypeSpec::PropertyKey,
+                    "IdentifierName" if self.is_at_interface("ImportSpecifier") => spec::TypeSpec::PropertyKey,
+                    "IdentifierName" if self.is_at_interface("ExportSpecifier") => spec::TypeSpec::PropertyKey,
+                    "IdentifierName" if self.is_at_interface("ExportLocalSpecifier") => spec::TypeSpec::PropertyKey,
+                    "IdentifierName" => spec::TypeSpec::IdentifierName,
+                    "Identifier" => spec::TypeSpec::IdentifierName,
+                    _ => spec::TypeSpec::NamedType(name.clone())
+                }
             }
+            TypeKind::DOMString if self.is_at_interface("LiteralPropertyName") => spec::TypeSpec::PropertyKey,
             TypeKind::DOMString => spec::TypeSpec::String,
             TypeKind::Union(ref types) => {
                 let mut dest = Vec::with_capacity(types.len());
@@ -140,6 +218,8 @@ impl Importer {
             }
             TypeKind::RestrictedDouble =>
                 spec::TypeSpec::Number,
+            TypeKind::UnsignedLong =>
+                spec::TypeSpec::UnsignedLong,
             _ => {
                 panic!("I don't know how to import {:?} yet", t);
             }
@@ -150,5 +230,12 @@ impl Importer {
         } else {
             spec.required()
         }
+    }
+
+    fn is_at_interface(&self, name: &str) -> bool {
+        if self.path.len() == 0 {
+            return false;
+        }
+        self.path[0].as_str() == name
     }
 }

@@ -26,7 +26,8 @@ var gFrontProgressListener = {
   onStatusChange(aWebProgress, aRequest, aStatus, aMessage) {
   },
 
-  onSecurityChange(aWebProgress, aRequest, aState) {
+  onSecurityChange(aWebProgress, aRequest, aOldState, aState,
+                   aContentBlockingLogJSON) {
     var state = "onSecurityChange";
     info("FrontProgress: " + state + " 0x" + aState.toString(16));
     ok(gFrontNotificationsPos < gFrontNotifications.length, "Got an expected notification for the front notifications listener");
@@ -66,7 +67,8 @@ var gAllProgressListener = {
     ok(aBrowser == gTestBrowser, state + " notification came from the correct browser");
   },
 
-  onSecurityChange(aBrowser, aWebProgress, aRequest, aState) {
+  onSecurityChange(aBrowser, aWebProgress, aRequest, aOldState, aState,
+                   aContentBlockingLogJSON) {
     var state = "onSecurityChange";
     info("AllProgress: " + state + " 0x" + aState.toString(16));
     ok(aBrowser == gTestBrowser, state + " notification came from the correct browser");
@@ -97,8 +99,8 @@ function test() {
     BrowserTestUtils.browserStopped(gBackgroundBrowser, kBasePage),
     BrowserTestUtils.browserStopped(gForegroundBrowser, kBasePage),
   ];
-  gBackgroundBrowser.loadURI(kBasePage);
-  gForegroundBrowser.loadURI(kBasePage);
+  BrowserTestUtils.loadURI(gBackgroundBrowser, kBasePage);
+  BrowserTestUtils.loadURI(gForegroundBrowser, kBasePage);
   Promise.all(promises).then(startTest1);
 }
 
@@ -107,7 +109,7 @@ function runTest(browser, url, next) {
   gAllNotificationsPos = 0;
   gNextTest = next;
   gTestBrowser = browser;
-  browser.loadURI(url);
+  BrowserTestUtils.loadURI(browser, url);
 }
 
 function startTest1() {
@@ -130,7 +132,6 @@ function startTest2() {
   gAllNotifications = [
     "onStateChange",
     "onLocationChange",
-    "onSecurityChange",
     "onSecurityChange",
     "onStateChange",
   ];
@@ -155,7 +156,6 @@ function startTest4() {
   gAllNotifications = [
     "onStateChange",
     "onLocationChange",
-    "onSecurityChange",
     "onSecurityChange",
     "onStateChange",
   ];

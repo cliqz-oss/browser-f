@@ -77,11 +77,6 @@ HandleMessageInMiddleman(ipc::Side aSide, const IPC::Message& aMessage)
       // Preferences are initialized via the SetXPCOMProcessAttributes message.
       PreferencesLoaded();
     }
-    if (type == dom::PBrowser::Msg_RenderLayers__ID) {
-      // Graphics are being loaded or unloaded for a tab, so update what we are
-      // showing to the UI process according to the last paint performed.
-      UpdateGraphicsInUIProcess(nullptr);
-    }
     return false;
   }
 
@@ -92,6 +87,14 @@ HandleMessageInMiddleman(ipc::Side aSide, const IPC::Message& aMessage)
       type == dom::PContent::Msg_SaveRecording__ID ||
       // Teardown that should only happen in the middleman.
       type == dom::PContent::Msg_Shutdown__ID) {
+    ipc::IProtocol::Result r = dom::ContentChild::GetSingleton()->PContentChild::OnMessageReceived(aMessage);
+    MOZ_RELEASE_ASSERT(r == ipc::IProtocol::MsgProcessed);
+    return true;
+  }
+
+  // Send input events to the middleman when the active child is replaying,
+  // so that UI elements such as the replay overlay can be interacted with.
+  if (!ActiveChildIsRecording() && nsContentUtils::IsMessageInputEvent(aMessage)) {
     ipc::IProtocol::Result r = dom::ContentChild::GetSingleton()->PContentChild::OnMessageReceived(aMessage);
     MOZ_RELEASE_ASSERT(r == ipc::IProtocol::MsgProcessed);
     return true;
@@ -115,6 +118,13 @@ HandleMessageInMiddleman(ipc::Side aSide, const IPC::Message& aMessage)
 static bool
 AlwaysForwardMessage(const IPC::Message& aMessage)
 {
+  // Always forward messages in repaint stress mode, as the active child is
+  // almost always a replaying child and lost messages make it hard to load
+  // pages completely.
+  if (InRepaintStressMode()) {
+    return true;
+  }
+
   IPC::Message::msgid_t type = aMessage.type();
 
   // Forward close messages so that the tab shuts down properly even if it is
@@ -147,6 +157,15 @@ struct MOZ_RAII AutoMarkMainThreadWaitingForIPDLReply
   }
 };
 
+static void
+BeginShutdown()
+{
+  // If there is a channel error or anything that could result from the child
+  // crashing, cleanly shutdown this process so that we don't generate a
+  // separate minidump which masks the initial failure.
+  MainThreadMessageLoop()->PostTask(NewRunnableFunction("Shutdown", Shutdown));
+}
+
 class MiddlemanProtocol : public ipc::IToplevelProtocol
 {
 public:
@@ -172,7 +191,8 @@ public:
                 IPC::StringFromIPCMessageType(aMessage->type()),
                 (int) aMessage->routing_id());
       if (!aProtocol->GetIPCChannel()->Send(aMessage)) {
-        MOZ_CRASH("MiddlemanProtocol::ForwardMessageAsync");
+        MOZ_RELEASE_ASSERT(aProtocol->mSide == ipc::ParentSide);
+        BeginShutdown();
       }
     } else {
       delete aMessage;
@@ -209,7 +229,8 @@ public:
     MOZ_RELEASE_ASSERT(!*aReply);
     Message* nReply = new Message();
     if (!aProtocol->GetIPCChannel()->Send(aMessage, nReply)) {
-      MOZ_CRASH("MiddlemanProtocol::ForwardMessageSync");
+      MOZ_RELEASE_ASSERT(aProtocol->mSide == ipc::ParentSide);
+      BeginShutdown();
     }
 
     MonitorAutoLock lock(*gMonitor);
@@ -245,7 +266,8 @@ public:
     MOZ_RELEASE_ASSERT(!*aReply);
     Message* nReply = new Message();
     if (!aProtocol->GetIPCChannel()->Call(aMessage, nReply)) {
-      MOZ_CRASH("MiddlemanProtocol::ForwardCallMessage");
+      MOZ_RELEASE_ASSERT(aProtocol->mSide == ipc::ParentSide);
+      BeginShutdown();
     }
 
     MonitorAutoLock lock(*gMonitor);
@@ -281,11 +303,11 @@ public:
 
   virtual void OnChannelClose() override {
     MOZ_RELEASE_ASSERT(mSide == ipc::ChildSide);
-    MainThreadMessageLoop()->PostTask(NewRunnableFunction("Shutdown", Shutdown));
+    BeginShutdown();
   }
 
   virtual void OnChannelError() override {
-    MainThreadMessageLoop()->PostTask(NewRunnableFunction("Shutdown", Shutdown));
+    BeginShutdown();
   }
 };
 

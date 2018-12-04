@@ -70,7 +70,7 @@ nsSVGPatternFrame::AttributeChanged(int32_t         aNameSpaceID,
        aNameSpaceID == kNameSpaceID_None) &&
       aAttribute == nsGkAtoms::href) {
     // Blow away our reference, if any
-    DeleteProperty(SVGObserverUtils::HrefAsPaintingProperty());
+    SVGObserverUtils::RemoveTemplateObserver(this);
     mNoHRefURI = false;
     // And update whoever references us
     SVGObserverUtils::InvalidateDirectRenderingObservers(this);
@@ -572,54 +572,39 @@ nsSVGPatternFrame::GetLengthValue(uint32_t aIndex, nsIContent *aDefault)
 }
 
 // Private (helper) methods
-nsSVGPatternFrame *
+
+nsSVGPatternFrame*
 nsSVGPatternFrame::GetReferencedPattern()
 {
-  if (mNoHRefURI)
+  if (mNoHRefURI) {
     return nullptr;
-
-  nsSVGPaintingProperty *property =
-    GetProperty(SVGObserverUtils::HrefAsPaintingProperty());
-
-  if (!property) {
-    // Fetch our pattern element's href or xlink:href attribute
-    SVGPatternElement *pattern = static_cast<SVGPatternElement *>(GetContent());
-    nsAutoString href;
-    if (pattern->mStringAttributes[SVGPatternElement::HREF].IsExplicitlySet()) {
-      pattern->mStringAttributes[SVGPatternElement::HREF]
-        .GetAnimValue(href, pattern);
-    } else {
-      pattern->mStringAttributes[SVGPatternElement::XLINK_HREF]
-        .GetAnimValue(href, pattern);
-    }
-
-    if (href.IsEmpty()) {
-      mNoHRefURI = true;
-      return nullptr; // no URL
-    }
-
-    // Convert href to an nsIURI
-    nsCOMPtr<nsIURI> targetURI;
-    nsCOMPtr<nsIURI> base = mContent->GetBaseURI();
-    nsContentUtils::NewURIWithDocumentCharset(getter_AddRefs(targetURI), href,
-                                              mContent->GetUncomposedDoc(), base);
-
-    property =
-      SVGObserverUtils::GetPaintingProperty(targetURI, this,
-                          SVGObserverUtils::HrefAsPaintingProperty());
-    if (!property)
-      return nullptr;
   }
 
-  nsIFrame *result = property->GetReferencedFrame();
-  if (!result)
-    return nullptr;
+  auto GetHref = [this] (nsAString& aHref) {
+    SVGPatternElement* pattern =
+      static_cast<SVGPatternElement*>(this->GetContent());
+    if (pattern->mStringAttributes[SVGPatternElement::HREF].IsExplicitlySet()) {
+      pattern->mStringAttributes[SVGPatternElement::HREF]
+        .GetAnimValue(aHref, pattern);
+    } else {
+      pattern->mStringAttributes[SVGPatternElement::XLINK_HREF]
+        .GetAnimValue(aHref, pattern);
+    }
+    this->mNoHRefURI = aHref.IsEmpty();
+  };
 
-  LayoutFrameType frameType = result->Type();
-  if (frameType != LayoutFrameType::SVGPattern)
-    return nullptr;
+  nsIFrame* tframe = SVGObserverUtils::GetAndObserveTemplate(this, GetHref);
+  if (tframe) {
+    LayoutFrameType frameType = tframe->Type();
+    if (frameType == LayoutFrameType::SVGPattern) {
+      return static_cast<nsSVGPatternFrame*>(tframe);
+    }
+    // We don't call SVGObserverUtils::RemoveTemplateObserver and set
+    // `mNoHRefURI = false` here since we want to be invalidated if the ID
+    // specified by our href starts resolving to a different/valid element.
+  }
 
-  return static_cast<nsSVGPatternFrame*>(result);
+  return nullptr;
 }
 
 gfxRect

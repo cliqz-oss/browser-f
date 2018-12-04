@@ -9,6 +9,7 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/AutoRestore.h"
 #include "mozilla/CycleCollectedJSRuntime.h"
+#include "mozilla/EventStateManager.h"
 #include "mozilla/Move.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Sprintf.h"
@@ -20,7 +21,6 @@
 #include "mozilla/dom/DOMJSClass.h"
 #include "mozilla/dom/DOMException.h"
 #include "mozilla/dom/ProfileTimelineMarkerBinding.h"
-#include "mozilla/dom/Promise.h"
 #include "mozilla/dom/PromiseBinding.h"
 #include "mozilla/dom/PromiseDebugging.h"
 #include "mozilla/dom/ScriptSettings.h"
@@ -35,10 +35,10 @@
 #include "nsDOMJSUtils.h"
 #include "nsDOMMutationObserver.h"
 #include "nsJSUtils.h"
+#include "nsPIDOMWindow.h"
 #include "nsWrapperCache.h"
 #include "nsStringBuffer.h"
 
-#include "nsIPlatformInfo.h"
 #include "nsThread.h"
 #include "nsThreadUtils.h"
 #include "xpcpublic.h"
@@ -204,15 +204,24 @@ CycleCollectedJSContext::SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const
 class PromiseJobRunnable final : public MicroTaskRunnable
 {
 public:
-  PromiseJobRunnable(JS::HandleObject aCallback,
+  PromiseJobRunnable(JS::HandleObject aPromise,
+                     JS::HandleObject aCallback,
                      JS::HandleObject aCallbackGlobal,
                      JS::HandleObject aAllocationSite,
                      nsIGlobalObject* aIncumbentGlobal)
-    :mCallback(
+    : mCallback(
        new PromiseJobCallback(aCallback, aCallbackGlobal, aAllocationSite,
                               aIncumbentGlobal))
+    , mPropagateUserInputEventHandling(false)
   {
     MOZ_ASSERT(js::IsFunctionObject(aCallback));
+
+    if (aPromise) {
+      JS::PromiseUserInputEventHandlingState state =
+        JS::GetPromiseUserInputEventHandlingState(aPromise);
+      mPropagateUserInputEventHandling =
+        state == JS::PromiseUserInputEventHandlingState::HadUserInteractionAtCreation;
+    }
   }
 
   virtual ~PromiseJobRunnable()
@@ -225,6 +234,16 @@ protected:
     JSObject* callback = mCallback->CallbackPreserveColor();
     nsIGlobalObject* global = callback ? xpc::NativeGlobal(callback) : nullptr;
     if (global && !global->IsDying()) {
+      // Propagate the user input event handling bit if needed.
+      nsCOMPtr<nsPIDOMWindowInner> win = do_QueryInterface(global);
+      nsCOMPtr<nsIDocument> doc;
+      if (win) {
+        doc = win->GetExtantDoc();
+      }
+      AutoHandlingUserInputStatePusher userInpStatePusher(mPropagateUserInputEventHandling,
+                                                          nullptr,
+                                                          doc);
+
       mCallback->Call("promise callback");
       aAso.CheckForInterrupt();
     }
@@ -245,6 +264,7 @@ protected:
 
 private:
   RefPtr<PromiseJobCallback> mCallback;
+  bool mPropagateUserInputEventHandling;
 };
 
 /* static */
@@ -261,6 +281,7 @@ CycleCollectedJSContext::GetIncumbentGlobalCallback(JSContext* aCx)
 /* static */
 bool
 CycleCollectedJSContext::EnqueuePromiseJobCallback(JSContext* aCx,
+                                                   JS::HandleObject aPromise,
                                                    JS::HandleObject aJob,
                                                    JS::HandleObject aAllocationSite,
                                                    JS::HandleObject aIncumbentGlobal,
@@ -275,9 +296,10 @@ CycleCollectedJSContext::EnqueuePromiseJobCallback(JSContext* aCx,
     global = xpc::NativeGlobal(aIncumbentGlobal);
   }
   JS::RootedObject jobGlobal(aCx, JS::CurrentGlobalOrNull(aCx));
-  RefPtr<MicroTaskRunnable> runnable = new PromiseJobRunnable(aJob, jobGlobal,
-                                                              aAllocationSite,
-                                                              global);
+  RefPtr<PromiseJobRunnable> runnable = new PromiseJobRunnable(aPromise, aJob,
+                                                               jobGlobal,
+                                                               aAllocationSite,
+                                                               global);
   self->DispatchToMicroTask(runnable.forget());
   return true;
 }

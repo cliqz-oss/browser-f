@@ -21,7 +21,7 @@ typedef SVGGeometryElement SVGPolyElementBase;
 class SVGPolyElement : public SVGPolyElementBase
 {
 protected:
-  explicit SVGPolyElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
+  explicit SVGPolyElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
 
   virtual ~SVGPolyElement();
 
@@ -36,7 +36,7 @@ public:
   virtual SVGAnimatedPointList* GetAnimatedPointList() override {
     return &mPoints;
   }
-  virtual nsAtom* GetPointListAttrName() const override {
+  virtual nsStaticAtom* GetPointListAttrName() const override {
     return nsGkAtoms::points;
   }
 

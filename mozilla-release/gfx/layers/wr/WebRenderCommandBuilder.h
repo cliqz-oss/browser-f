@@ -41,6 +41,7 @@ public:
   , mBuilderDumpIndex(0)
   , mDumpIndent(0)
   , mDoGrouping(false)
+  , mContainsSVGGroup(false)
   {}
 
   void Destroy();
@@ -65,6 +66,7 @@ public:
                                      ImageContainer* aContainer,
                                      mozilla::wr::DisplayListBuilder& aBuilder,
                                      mozilla::wr::IpcResourceUpdateQueue& aResources,
+                                     mozilla::wr::ImageRendering aRendering,
                                      const StackingContextHelper& aSc,
                                      gfx::IntSize& aSize,
                                      const Maybe<LayoutDeviceRect>& aAsyncImageBounds);
@@ -118,6 +120,8 @@ public:
 
   bool ShouldDumpDisplayList();
   wr::usize GetBuilderDumpIndex() { return mBuilderDumpIndex; }
+
+  bool GetContainsSVGGroup() { return mContainsSVGGroup; }
 
   // Those are data that we kept between transactions. We used to cache some
   // data in the layer. But in layers free mode, we don't have layer which
@@ -189,9 +193,14 @@ private:
 
   wr::usize mBuilderDumpIndex;
   wr::usize mDumpIndent;
+public:
   // Whether consecutive inactive display items should be grouped into one
   // blob image.
   bool mDoGrouping;
+
+  // True if the most recently build display list contained an svg that
+  // we did grouping for.
+  bool mContainsSVGGroup;
 };
 
 } // namespace layers

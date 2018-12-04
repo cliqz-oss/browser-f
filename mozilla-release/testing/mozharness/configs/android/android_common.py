@@ -38,7 +38,7 @@ config = {
         'start-emulator',
         'download-and-extract',
         'create-virtualenv',
-        'verify-emulator',
+        'verify-device',
         'install',
         'run-tests',
     ],
@@ -321,15 +321,6 @@ config = {
                 "--startup-timeout=300",
                 "--device=%(device_serial)s",
                 "%(marionette_extra)s",
-            ],
-        },
-        "geckoview": {
-            "run_filename": "rungeckoview.py",
-            "testsdir": "mochitest",
-            "options": [
-                "--utility-path=%(utility_path)s",
-                "--symbols-path=%(symbols_path)s",
-                "--deviceSerial=%(device_serial)s",
             ],
         },
         "geckoview-junit": {

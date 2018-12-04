@@ -12,7 +12,7 @@ const ThreadStateTypes = {
   "paused": "paused",
   "resumed": "attached",
   "detached": "detached",
-  "running": "attached"
+  "running": "attached",
 };
 
 /**
@@ -21,35 +21,28 @@ const ThreadStateTypes = {
  */
 const UnsolicitedNotifications = {
   "consoleAPICall": "consoleAPICall",
-  "eventNotification": "eventNotification",
   "fileActivity": "fileActivity",
   "lastPrivateContextExited": "lastPrivateContextExited",
   "logMessage": "logMessage",
   "networkEvent": "networkEvent",
   "networkEventUpdate": "networkEventUpdate",
   "documentEvent": "documentEvent",
-  "newGlobal": "newGlobal",
-  "newScript": "newScript",
   "tabDetached": "tabDetached",
   "tabListChanged": "tabListChanged",
   "reflowActivity": "reflowActivity",
   "addonListChanged": "addonListChanged",
   "workerListChanged": "workerListChanged",
   "serviceWorkerRegistrationListChanged": "serviceWorkerRegistrationList",
-  "tabNavigated": "tabNavigated",
-  "frameUpdate": "frameUpdate",
   "pageError": "pageError",
-  "documentLoad": "documentLoad",
-  "enteredFrame": "enteredFrame",
-  "exitedFrame": "exitedFrame",
-  "appOpen": "appOpen",
-  "appClose": "appClose",
-  "appInstall": "appInstall",
-  "appUninstall": "appUninstall",
   "evaluationResult": "evaluationResult",
-  "newSource": "newSource",
   "updatedSource": "updatedSource",
-  "inspectObject": "inspectObject"
+  "inspectObject": "inspectObject",
+
+  // newSource is still emitted on the ThreadActor, in addition to the
+  // BrowsingContextActor we have to keep it here until ThreadClient is converted to
+  // ThreadFront and/or we stop emitting this duplicated events.
+  // See ThreadActor.onNewSourceEvent.
+  "newSource": "newSource",
 };
 
 /**

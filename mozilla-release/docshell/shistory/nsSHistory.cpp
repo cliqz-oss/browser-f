@@ -19,7 +19,6 @@
 #include "nsIObserverService.h"
 #include "nsISHEntry.h"
 #include "nsISHistoryListener.h"
-#include "nsSHTransaction.h"
 #include "nsIURI.h"
 #include "nsNetUtil.h"
 #include "nsTArray.h"
@@ -90,8 +89,7 @@ static LazyLogModule gSHistoryLog("nsSHistory");
 #define LOG_SHENTRY_SPEC(format, shentry)                  \
   PR_BEGIN_MACRO                                           \
     if (MOZ_LOG_TEST(gSHistoryLog, LogLevel::Debug)) {     \
-      nsCOMPtr<nsIURI> uri;                                \
-      shentry->GetURI(getter_AddRefs(uri));                \
+      nsCOMPtr<nsIURI> uri = shentry->GetURI();            \
       LOG_SPEC(format, uri);                               \
     }                                                      \
   PR_END_MACRO
@@ -185,32 +183,24 @@ nsSHistoryObserver::Observe(nsISupports* aSubject, const char* aTopic,
 namespace {
 
 already_AddRefed<nsIContentViewer>
-GetContentViewerForTransaction(nsISHTransaction* aTrans)
+GetContentViewerForEntry(nsISHEntry* aEntry)
 {
-  nsCOMPtr<nsISHEntry> entry;
-  aTrans->GetSHEntry(getter_AddRefs(entry));
-  if (!entry) {
-    return nullptr;
-  }
-
   nsCOMPtr<nsISHEntry> ownerEntry;
   nsCOMPtr<nsIContentViewer> viewer;
-  entry->GetAnyContentViewer(getter_AddRefs(ownerEntry),
-                             getter_AddRefs(viewer));
+  aEntry->GetAnyContentViewer(getter_AddRefs(ownerEntry),
+                              getter_AddRefs(viewer));
   return viewer.forget();
 }
 
 } // namespace
 
 void
-nsSHistory::EvictContentViewerForTransaction(nsISHTransaction* aTrans)
+nsSHistory::EvictContentViewerForEntry(nsISHEntry* aEntry)
 {
-  nsCOMPtr<nsISHEntry> entry;
-  aTrans->GetSHEntry(getter_AddRefs(entry));
   nsCOMPtr<nsIContentViewer> viewer;
   nsCOMPtr<nsISHEntry> ownerEntry;
-  entry->GetAnyContentViewer(getter_AddRefs(ownerEntry),
-                             getter_AddRefs(viewer));
+  aEntry->GetAnyContentViewer(getter_AddRefs(ownerEntry),
+                              getter_AddRefs(viewer));
   if (viewer) {
     NS_ASSERTION(ownerEntry, "Content viewer exists but its SHEntry is null");
 
@@ -227,10 +217,9 @@ nsSHistory::EvictContentViewerForTransaction(nsISHTransaction* aTrans)
   }
 
   // When dropping bfcache, we have to remove associated dynamic entries as well.
-  int32_t index = -1;
-  GetIndexOfEntry(entry, &index);
+  int32_t index = GetIndexOfEntry(aEntry);
   if (index != -1) {
-    RemoveDynEntries(index, entry);
+    RemoveDynEntries(index, aEntry);
   }
 }
 
@@ -397,7 +386,7 @@ nsSHistory::GetRootSHEntry(nsISHEntry* aEntry)
   nsISHEntry* result = nullptr;
   while (rootEntry) {
     result = rootEntry;
-    result->GetParent(getter_AddRefs(rootEntry));
+    rootEntry = result->GetParent();
   }
 
   return result;
@@ -412,8 +401,7 @@ nsSHistory::WalkHistoryEntries(nsISHEntry* aRootEntry,
 {
   NS_ENSURE_TRUE(aRootEntry, NS_ERROR_FAILURE);
 
-  int32_t childCount;
-  aRootEntry->GetChildCount(&childCount);
+  int32_t childCount = aRootEntry->GetChildCount();
   for (int32_t i = 0; i < childCount; i++) {
     nsCOMPtr<nsISHEntry> childEntry;
     aRootEntry->GetChildAt(i, getter_AddRefs(childEntry));
@@ -488,8 +476,7 @@ nsSHistory::CloneAndReplaceChild(nsISHEntry* aEntry,
     return NS_OK;
   }
 
-  uint32_t srcID;
-  aEntry->GetID(&srcID);
+  uint32_t srcID = aEntry->GetID();
 
   nsresult rv = NS_OK;
   if (srcID == cloneID) {
@@ -564,13 +551,12 @@ nsSHistory::SetChildHistoryEntry(nsISHEntry* aEntry, nsDocShell* aShell,
     // Note that we could set aShell's entry to null if we don't find a
     // corresponding entry under destTreeParent.
 
-    uint32_t targetID, id;
-    aEntry->GetID(&targetID);
+    uint32_t targetID = aEntry->GetID();
 
     // First look at the given index, since this is the common case.
     nsCOMPtr<nsISHEntry> entry;
     data->destTreeParent->GetChildAt(aEntryIndex, getter_AddRefs(entry));
-    if (entry && NS_SUCCEEDED(entry->GetID(&id)) && id == targetID) {
+    if (entry && entry->GetID() == targetID) {
       destEntry.swap(entry);
     } else {
       int32_t childCount;
@@ -581,8 +567,7 @@ nsSHistory::SetChildHistoryEntry(nsISHEntry* aEntry, nsDocShell* aShell,
           continue;
         }
 
-        entry->GetID(&id);
-        if (id == targetID) {
+        if (entry->GetID() == targetID) {
           destEntry.swap(entry);
           break;
         }
@@ -607,13 +592,18 @@ nsSHistory::AddEntry(nsISHEntry* aSHEntry, bool aPersist)
 {
   NS_ENSURE_ARG(aSHEntry);
 
-  nsCOMPtr<nsISHistory> shistoryOfEntry;
-  aSHEntry->GetSHistory(getter_AddRefs(shistoryOfEntry));
+  nsCOMPtr<nsISHistory> shistoryOfEntry = aSHEntry->GetSHistory();
   if (shistoryOfEntry && shistoryOfEntry != this) {
     NS_WARNING("The entry has been associated to another nsISHistory instance. "
                "Try nsISHEntry.clone() and nsISHEntry.abandonBFCacheEntry() "
                "first if you're copying an entry from another nsISHistory.");
     return NS_ERROR_FAILURE;
+  }
+
+  nsCOMPtr<nsISHEntry> currentTxn;
+  if (mIndex >= 0) {
+    nsresult rv = GetEntryAtIndex(mIndex, getter_AddRefs(currentTxn));
+    NS_ENSURE_SUCCESS(rv, rv);
   }
 
   aSHEntry->SetSHistory(this);
@@ -625,43 +615,23 @@ nsSHistory::AddEntry(nsISHEntry* aSHEntry, bool aPersist)
     aSHEntry->SetDocshellID(&docshellID);
   }
 
-  nsCOMPtr<nsISHTransaction> currentTxn;
-  GetTransactionAtIndex(mIndex, getter_AddRefs(currentTxn));
-
-  bool currentPersist = true;
-  if (currentTxn) {
-    currentTxn->GetPersist(&currentPersist);
-  }
-
-  int32_t currentIndex = mIndex;
-
-  if (!currentPersist) {
-    NOTIFY_LISTENERS(OnHistoryReplaceEntry, (currentIndex));
-    NS_ENSURE_SUCCESS(currentTxn->SetSHEntry(aSHEntry), NS_ERROR_FAILURE);
-    currentTxn->SetPersist(aPersist);
+  if (currentTxn && !currentTxn->GetPersist()) {
+    NOTIFY_LISTENERS(OnHistoryReplaceEntry, (mIndex));
+    aSHEntry->SetPersist(aPersist);
+    mEntries[mIndex] = aSHEntry;
     return NS_OK;
   }
 
-  nsCOMPtr<nsIURI> uri;
-  aSHEntry->GetURI(getter_AddRefs(uri));
-  NOTIFY_LISTENERS(OnHistoryNewEntry, (uri, currentIndex));
+  nsCOMPtr<nsIURI> uri = aSHEntry->GetURI();
+  NOTIFY_LISTENERS(OnHistoryNewEntry, (uri, mIndex));
 
-  // Note that a listener may have changed mIndex. So use mIndex instead of
-  // currentIndex.
-
-  nsCOMPtr<nsISHTransaction> txn = new nsSHTransaction();
-  txn->SetPersist(aPersist);
-  txn->SetSHEntry(aSHEntry);
-
-  // Remove all transactions after the current one, add the new one, and set
-  // the new one as the current one.
+  // Remove all entries after the current one, add the new one, and set the new
+  // one as the current one.
   MOZ_ASSERT(mIndex >= -1);
-  mTransactions.TruncateLength(mIndex + 1);
-  mTransactions.AppendElement(txn);
+  aSHEntry->SetPersist(aPersist);
+  mEntries.TruncateLength(mIndex + 1);
+  mEntries.AppendElement(aSHEntry);
   mIndex++;
-
-  NOTIFY_LISTENERS(OnLengthChanged, (Length()));
-  NOTIFY_LISTENERS(OnIndexChanged, (mIndex));
 
   // Purge History list if it is too long
   if (gHistoryMaxSize >= 0 && Length() > gHistoryMaxSize) {
@@ -675,17 +645,27 @@ nsSHistory::AddEntry(nsISHEntry* aSHEntry, bool aPersist)
 NS_IMETHODIMP
 nsSHistory::GetCount(int32_t* aResult)
 {
-  NS_ENSURE_ARG_POINTER(aResult);
+  MOZ_ASSERT(aResult, "null out param?");
   *aResult = Length();
   return NS_OK;
 }
 
-/* Get index of the history list */
 NS_IMETHODIMP
 nsSHistory::GetIndex(int32_t* aResult)
 {
   MOZ_ASSERT(aResult, "null out param?");
   *aResult = mIndex;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsSHistory::SetIndex(int32_t aIndex)
+{
+  if (aIndex < 0 || aIndex >= Length()) {
+    return NS_ERROR_FAILURE;
+  }
+
+  mIndex = aIndex;
   return NS_OK;
 }
 
@@ -698,33 +678,8 @@ nsSHistory::GetRequestedIndex(int32_t* aResult)
   return NS_OK;
 }
 
-/* Get the entry at a given index */
 NS_IMETHODIMP
-nsSHistory::GetEntryAtIndex(int32_t aIndex, bool aModifyIndex,
-                            nsISHEntry** aResult)
-{
-  nsresult rv;
-  nsCOMPtr<nsISHTransaction> txn;
-
-  /* GetTransactionAtIndex ensures aResult is valid and validates aIndex */
-  rv = GetTransactionAtIndex(aIndex, getter_AddRefs(txn));
-  if (NS_SUCCEEDED(rv) && txn) {
-    // Get the Entry from the transaction
-    rv = txn->GetSHEntry(aResult);
-    if (NS_SUCCEEDED(rv) && (*aResult)) {
-      // Set mIndex to the requested index, if asked to do so..
-      if (aModifyIndex) {
-        mIndex = aIndex;
-        NOTIFY_LISTENERS(OnIndexChanged, (mIndex))
-      }
-    }
-  }
-  return rv;
-}
-
-/* Get the transaction at a given index */
-NS_IMETHODIMP
-nsSHistory::GetTransactionAtIndex(int32_t aIndex, nsISHTransaction** aResult)
+nsSHistory::GetEntryAtIndex(int32_t aIndex, nsISHEntry** aResult)
 {
   NS_ENSURE_ARG_POINTER(aResult);
 
@@ -732,33 +687,21 @@ nsSHistory::GetTransactionAtIndex(int32_t aIndex, nsISHTransaction** aResult)
     return NS_ERROR_FAILURE;
   }
 
-  *aResult = mTransactions[aIndex];
+  *aResult = mEntries[aIndex];
   NS_ADDREF(*aResult);
   return NS_OK;
 }
 
-/* Get the index of a given entry */
-NS_IMETHODIMP
-nsSHistory::GetIndexOfEntry(nsISHEntry* aSHEntry, int32_t* aResult)
+NS_IMETHODIMP_(int32_t)
+nsSHistory::GetIndexOfEntry(nsISHEntry* aSHEntry)
 {
-  NS_ENSURE_ARG(aSHEntry);
-  NS_ENSURE_ARG_POINTER(aResult);
-  *aResult = -1;
-
   for (int32_t i = 0; i < Length(); i++) {
-    nsCOMPtr<nsISHEntry> entry;
-    nsresult rv = mTransactions[i]->GetSHEntry(getter_AddRefs(entry));
-    if (NS_FAILED(rv) || !entry) {
-      return NS_ERROR_FAILURE;
-    }
-
-    if (aSHEntry == entry) {
-      *aResult = i;
-      return NS_OK;
+    if (aSHEntry == mEntries[i]) {
+      return i;
     }
   }
 
-  return NS_ERROR_FAILURE;
+  return -1;
 }
 
 #ifdef DEBUG
@@ -766,20 +709,12 @@ nsresult
 nsSHistory::PrintHistory()
 {
   for (int32_t i = 0; i < Length(); i++) {
-    nsCOMPtr<nsISHTransaction> txn = mTransactions[i];
-    nsCOMPtr<nsISHEntry> entry;
-    nsresult rv = txn->GetSHEntry(getter_AddRefs(entry));
-    if (NS_FAILED(rv) && !entry) {
-      return NS_ERROR_FAILURE;
-    }
-
-    nsCOMPtr<nsILayoutHistoryState> layoutHistoryState;
-    nsCOMPtr<nsIURI> uri;
+    nsCOMPtr<nsISHEntry> entry = mEntries[i];
+    nsCOMPtr<nsILayoutHistoryState> layoutHistoryState =
+      entry->GetLayoutHistoryState();
+    nsCOMPtr<nsIURI> uri = entry->GetURI();
     nsString title;
-
-    entry->GetLayoutHistoryState(getter_AddRefs(layoutHistoryState));
-    entry->GetURI(getter_AddRefs(uri));
-    entry->GetTitle(getter_Copies(title));
+    entry->GetTitle(title);
 
 #if 0
     nsAutoCString url;
@@ -787,7 +722,7 @@ nsSHistory::PrintHistory()
       uri->GetSpec(url);
     }
 
-    printf("**** SH Transaction #%d, Entry = %x\n", i, entry.get());
+    printf("**** SH Entry #%d: %x\n", i, entry.get());
     printf("\t\t URL = %s\n", url.get());
 
     printf("\t\t Title = %s\n", NS_LossyConvertUTF16toASCII(title).get());
@@ -799,36 +734,12 @@ nsSHistory::PrintHistory()
 }
 #endif
 
-/* Get the max size of the history list */
-NS_IMETHODIMP
-nsSHistory::GetMaxLength(int32_t* aResult)
-{
-  NS_ENSURE_ARG_POINTER(aResult);
-  *aResult = gHistoryMaxSize;
-  return NS_OK;
-}
-
-/* Set the max size of the history list */
-NS_IMETHODIMP
-nsSHistory::SetMaxLength(int32_t aMaxSize)
-{
-  if (aMaxSize < 0) {
-    return NS_ERROR_ILLEGAL_VALUE;
-  }
-
-  gHistoryMaxSize = aMaxSize;
-  if (Length() > aMaxSize) {
-    PurgeHistory(Length() - aMaxSize);
-  }
-  return NS_OK;
-}
-
 void
 nsSHistory::WindowIndices(int32_t aIndex, int32_t* aOutStartIndex,
                           int32_t* aOutEndIndex)
 {
-  *aOutStartIndex = std::max(0, aIndex - nsISHistory::VIEWER_WINDOW);
-  *aOutEndIndex = std::min(Length() - 1, aIndex + nsISHistory::VIEWER_WINDOW);
+  *aOutStartIndex = std::max(0, aIndex - nsSHistory::VIEWER_WINDOW);
+  *aOutEndIndex = std::min(Length() - 1, aIndex + nsSHistory::VIEWER_WINDOW);
 }
 
 NS_IMETHODIMP
@@ -840,26 +751,16 @@ nsSHistory::PurgeHistory(int32_t aNumEntries)
 
   aNumEntries = std::min(aNumEntries, Length());
 
-  bool purgeHistory = true;
-  NOTIFY_LISTENERS_CANCELABLE(OnHistoryPurge, purgeHistory,
-                              (aNumEntries, &purgeHistory));
-
-  if (!purgeHistory) {
-    // Listener asked us not to purge
-    return NS_SUCCESS_LOSS_OF_INSIGNIFICANT_DATA;
-  }
+  NOTIFY_LISTENERS(OnHistoryPurge, (aNumEntries));
 
   // Remove the first `aNumEntries` entries.
-  mTransactions.RemoveElementsAt(0, aNumEntries);
+  mEntries.RemoveElementsAt(0, aNumEntries);
 
   // Adjust the indices, but don't let them go below -1.
   mIndex -= aNumEntries;
   mIndex = std::max(mIndex, -1);
   mRequestedIndex -= aNumEntries;
   mRequestedIndex = std::max(mRequestedIndex, -1);
-
-  NOTIFY_LISTENERS(OnLengthChanged, (Length()));
-  NOTIFY_LISTENERS(OnIndexChanged, (mIndex))
 
   if (mRootDocShell) {
     mRootDocShell->HistoryPurged(aNumEntries);
@@ -881,8 +782,8 @@ nsSHistory::AddSHistoryListener(nsISHistoryListener* aListener)
     return NS_ERROR_FAILURE;
   }
 
-  return mListeners.AppendElementUnlessExists(listener) ?
-    NS_OK : NS_ERROR_OUT_OF_MEMORY;
+  mListeners.AppendElementUnlessExists(listener);
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -902,30 +803,27 @@ NS_IMETHODIMP
 nsSHistory::ReplaceEntry(int32_t aIndex, nsISHEntry* aReplaceEntry)
 {
   NS_ENSURE_ARG(aReplaceEntry);
-  nsresult rv;
-  nsCOMPtr<nsISHTransaction> currentTxn;
 
-  rv = GetTransactionAtIndex(aIndex, getter_AddRefs(currentTxn));
-
-  if (currentTxn) {
-    nsCOMPtr<nsISHistory> shistoryOfEntry;
-    aReplaceEntry->GetSHistory(getter_AddRefs(shistoryOfEntry));
-    if (shistoryOfEntry && shistoryOfEntry != this) {
-      NS_WARNING("The entry has been associated to another nsISHistory instance. "
-                 "Try nsISHEntry.clone() and nsISHEntry.abandonBFCacheEntry() "
-                 "first if you're copying an entry from another nsISHistory.");
-      return NS_ERROR_FAILURE;
-    }
-
-    aReplaceEntry->SetSHistory(this);
-
-    NOTIFY_LISTENERS(OnHistoryReplaceEntry, (aIndex));
-
-    // Set the replacement entry in the transaction
-    rv = currentTxn->SetSHEntry(aReplaceEntry);
-    rv = currentTxn->SetPersist(true);
+  if (aIndex < 0 || aIndex >= Length()) {
+    return NS_ERROR_FAILURE;
   }
-  return rv;
+
+  nsCOMPtr<nsISHistory> shistoryOfEntry = aReplaceEntry->GetSHistory();
+  if (shistoryOfEntry && shistoryOfEntry != this) {
+    NS_WARNING("The entry has been associated to another nsISHistory instance. "
+               "Try nsISHEntry.clone() and nsISHEntry.abandonBFCacheEntry() "
+               "first if you're copying an entry from another nsISHistory.");
+    return NS_ERROR_FAILURE;
+  }
+
+  aReplaceEntry->SetSHistory(this);
+
+  NOTIFY_LISTENERS(OnHistoryReplaceEntry, (aIndex));
+
+  aReplaceEntry->SetPersist(true);
+  mEntries[aIndex] = aReplaceEntry;
+
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -953,7 +851,7 @@ nsSHistory::EvictAllContentViewers()
   // XXXbz we don't actually do a good job of evicting things as we should, so
   // we might have viewers quite far from mIndex.  So just evict everything.
   for (int32_t i = 0; i < Length(); i++) {
-    EvictContentViewerForTransaction(mTransactions[i]);
+    EvictContentViewerForEntry(mEntries[i]);
   }
 
   return NS_OK;
@@ -998,14 +896,9 @@ NS_IMETHODIMP
 nsSHistory::ReloadCurrentEntry()
 {
   // Notify listeners
-  bool canNavigate = true;
   nsCOMPtr<nsIURI> currentURI;
   GetCurrentURI(getter_AddRefs(currentURI));
-  NOTIFY_LISTENERS_CANCELABLE(OnHistoryGotoIndex, canNavigate,
-                              (mIndex, currentURI, &canNavigate));
-  if (!canNavigate) {
-    return NS_OK;
-  }
+  NOTIFY_LISTENERS(OnHistoryGotoIndex, (mIndex, currentURI));
 
   return LoadEntry(mIndex, LOAD_HISTORY, HIST_CMD_RELOAD);
 }
@@ -1021,11 +914,11 @@ nsSHistory::EvictOutOfRangeWindowContentViewers(int32_t aIndex)
   //
   // to ensure that this SHistory object isn't responsible for more than
   // VIEWER_WINDOW content viewers.  But our job is complicated by the
-  // fact that two transactions which are related by either hash navigations or
+  // fact that two entries which are related by either hash navigations or
   // history.pushState will have the same content viewer.
   //
   // To illustrate the issue, suppose VIEWER_WINDOW = 3 and we have four
-  // linked transactions in our history.  Suppose we then add a new content
+  // linked entries in our history.  Suppose we then add a new content
   // viewer and call into this function.  So the history looks like:
   //
   //   A A A A B
@@ -1066,8 +959,7 @@ nsSHistory::EvictOutOfRangeWindowContentViewers(int32_t aIndex)
   // if it appears outside this range.
   nsCOMArray<nsIContentViewer> safeViewers;
   for (int32_t i = startSafeIndex; i <= endSafeIndex; i++) {
-    nsCOMPtr<nsIContentViewer> viewer =
-      GetContentViewerForTransaction(mTransactions[i]);
+    nsCOMPtr<nsIContentViewer> viewer = GetContentViewerForEntry(mEntries[i]);
     safeViewers.AppendObject(viewer);
   }
 
@@ -1075,35 +967,32 @@ nsSHistory::EvictOutOfRangeWindowContentViewers(int32_t aIndex)
   // (It's important that the condition checks Length(), rather than a cached
   // copy of Length(), because the length might change between iterations.)
   for (int32_t i = 0; i < Length(); i++) {
-    nsCOMPtr<nsISHTransaction> trans = mTransactions[i];
-    nsCOMPtr<nsIContentViewer> viewer = GetContentViewerForTransaction(trans);
+    nsCOMPtr<nsISHEntry> entry = mEntries[i];
+    nsCOMPtr<nsIContentViewer> viewer = GetContentViewerForEntry(entry);
     if (safeViewers.IndexOf(viewer) == -1) {
-      EvictContentViewerForTransaction(trans);
+      EvictContentViewerForEntry(entry);
     }
   }
 }
 
 namespace {
 
-class TransactionAndDistance
+class EntryAndDistance
 {
 public:
-  TransactionAndDistance(nsSHistory* aSHistory, nsISHTransaction* aTrans, uint32_t aDist)
+  EntryAndDistance(nsSHistory* aSHistory, nsISHEntry* aEntry, uint32_t aDist)
     : mSHistory(aSHistory)
-    , mTransaction(aTrans)
+    , mEntry(aEntry)
     , mLastTouched(0)
     , mDistance(aDist)
   {
-    mViewer = GetContentViewerForTransaction(aTrans);
-    NS_ASSERTION(mViewer, "Transaction should have a content viewer");
+    mViewer = GetContentViewerForEntry(aEntry);
+    NS_ASSERTION(mViewer, "Entry should have a content viewer");
 
-    nsCOMPtr<nsISHEntry> shentry;
-    mTransaction->GetSHEntry(getter_AddRefs(shentry));
-
-    shentry->GetLastTouched(&mLastTouched);
+    mLastTouched = mEntry->GetLastTouched();
   }
 
-  bool operator<(const TransactionAndDistance& aOther) const
+  bool operator<(const EntryAndDistance& aOther) const
   {
     // Compare distances first, and fall back to last-accessed times.
     if (aOther.mDistance != this->mDistance) {
@@ -1113,17 +1002,17 @@ public:
     return this->mLastTouched < aOther.mLastTouched;
   }
 
-  bool operator==(const TransactionAndDistance& aOther) const
+  bool operator==(const EntryAndDistance& aOther) const
   {
     // This is a little silly; we need == so the default comaprator can be
     // instantiated, but this function is never actually called when we sort
-    // the list of TransactionAndDistance objects.
+    // the list of EntryAndDistance objects.
     return aOther.mDistance == this->mDistance &&
            aOther.mLastTouched == this->mLastTouched;
   }
 
   RefPtr<nsSHistory> mSHistory;
-  nsCOMPtr<nsISHTransaction> mTransaction;
+  nsCOMPtr<nsISHEntry> mEntry;
   nsCOMPtr<nsIContentViewer> mViewer;
   uint32_t mLastTouched;
   int32_t mDistance;
@@ -1135,18 +1024,18 @@ public:
 void
 nsSHistory::GloballyEvictContentViewers()
 {
-  // First, collect from each SHistory object the transactions which have a
-  // cached content viewer.  Associate with each transaction its distance from
-  // its SHistory's current index.
+  // First, collect from each SHistory object the entries which have a cached
+  // content viewer. Associate with each entry its distance from its SHistory's
+  // current index.
 
-  nsTArray<TransactionAndDistance> transactions;
+  nsTArray<EntryAndDistance> entries;
 
   for (auto shist : gSHistoryList) {
 
-    // Maintain a list of the transactions which have viewers and belong to
+    // Maintain a list of the entries which have viewers and belong to
     // this particular shist object.  We'll add this list to the global list,
-    // |transactions|, eventually.
-    nsTArray<TransactionAndDistance> shTransactions;
+    // |entries|, eventually.
+    nsTArray<EntryAndDistance> shEntries;
 
     // Content viewers are likely to exist only within shist->mIndex -/+
     // VIEWER_WINDOW, so only search within that range.
@@ -1164,18 +1053,18 @@ nsSHistory::GloballyEvictContentViewers()
     int32_t startIndex, endIndex;
     shist->WindowIndices(shist->mIndex, &startIndex, &endIndex);
     for (int32_t i = startIndex; i <= endIndex; i++) {
-      nsCOMPtr<nsISHTransaction> trans = shist->mTransactions[i];
+      nsCOMPtr<nsISHEntry> entry = shist->mEntries[i];
       nsCOMPtr<nsIContentViewer> contentViewer =
-        GetContentViewerForTransaction(trans);
+        GetContentViewerForEntry(entry);
 
       if (contentViewer) {
         // Because one content viewer might belong to multiple SHEntries, we
-        // have to search through shTransactions to see if we already know
+        // have to search through shEntries to see if we already know
         // about this content viewer.  If we find the viewer, update its
         // distance from the SHistory's index and continue.
         bool found = false;
-        for (uint32_t j = 0; j < shTransactions.Length(); j++) {
-          TransactionAndDistance& container = shTransactions[j];
+        for (uint32_t j = 0; j < shEntries.Length(); j++) {
+          EntryAndDistance& container = shEntries[j];
           if (container.mViewer == contentViewer) {
             container.mDistance = std::min(container.mDistance,
                                            DeprecatedAbs(i - shist->mIndex));
@@ -1184,44 +1073,43 @@ nsSHistory::GloballyEvictContentViewers()
           }
         }
 
-        // If we didn't find a TransactionAndDistance for this content viewer,
-        // make a new one.
+        // If we didn't find a EntryAndDistance for this content viewer, make a
+        // new one.
         if (!found) {
-          TransactionAndDistance container(shist, trans,
-                                           DeprecatedAbs(i - shist->mIndex));
-          shTransactions.AppendElement(container);
+          EntryAndDistance container(shist, entry,
+                                     DeprecatedAbs(i - shist->mIndex));
+          shEntries.AppendElement(container);
         }
       }
     }
 
-    // We've found all the transactions belonging to shist which have viewers.
-    // Add those transactions to our global list and move on.
-    transactions.AppendElements(shTransactions);
+    // We've found all the entries belonging to shist which have viewers.
+    // Add those entries to our global list and move on.
+    entries.AppendElements(shEntries);
   }
 
   // We now have collected all cached content viewers.  First check that we
   // have enough that we actually need to evict some.
-  if ((int32_t)transactions.Length() <= sHistoryMaxTotalViewers) {
+  if ((int32_t)entries.Length() <= sHistoryMaxTotalViewers) {
     return;
   }
 
-  // If we need to evict, sort our list of transactions and evict the largest
+  // If we need to evict, sort our list of entries and evict the largest
   // ones.  (We could of course get better algorithmic complexity here by using
   // a heap or something more clever.  But sHistoryMaxTotalViewers isn't large,
   // so let's not worry about it.)
-  transactions.Sort();
+  entries.Sort();
 
-  for (int32_t i = transactions.Length() - 1; i >= sHistoryMaxTotalViewers;
+  for (int32_t i = entries.Length() - 1; i >= sHistoryMaxTotalViewers;
        --i) {
-    (transactions[i].mSHistory)->
-      EvictContentViewerForTransaction(transactions[i].mTransaction);
+    (entries[i].mSHistory)->EvictContentViewerForEntry(entries[i].mEntry);
   }
 }
 
 nsresult
-nsSHistory::FindTransactionForBFCache(nsIBFCacheEntry* aEntry,
-                                      nsISHTransaction** aResult,
-                                      int32_t* aResultIndex)
+nsSHistory::FindEntryForBFCache(nsIBFCacheEntry* aBFEntry,
+                                nsISHEntry** aResult,
+                                int32_t* aResultIndex)
 {
   *aResult = nullptr;
   *aResultIndex = -1;
@@ -1230,13 +1118,11 @@ nsSHistory::FindTransactionForBFCache(nsIBFCacheEntry* aEntry,
   WindowIndices(mIndex, &startIndex, &endIndex);
 
   for (int32_t i = startIndex; i <= endIndex; ++i) {
-    nsCOMPtr<nsISHTransaction> trans = mTransactions[i];
-    nsCOMPtr<nsISHEntry> entry;
-    trans->GetSHEntry(getter_AddRefs(entry));
+    nsCOMPtr<nsISHEntry> shEntry = mEntries[i];
 
-    // Does entry have the same BFCacheEntry as the argument to this method?
-    if (entry->HasBFCacheEntry(aEntry)) {
-      trans.forget(aResult);
+    // Does shEntry have the same BFCacheEntry as the argument to this method?
+    if (shEntry->HasBFCacheEntry(aBFEntry)) {
+      shEntry.forget(aResult);
       *aResultIndex = i;
       return NS_OK;
     }
@@ -1245,47 +1131,47 @@ nsSHistory::FindTransactionForBFCache(nsIBFCacheEntry* aEntry,
 }
 
 nsresult
-nsSHistory::EvictExpiredContentViewerForEntry(nsIBFCacheEntry* aEntry)
+nsSHistory::EvictExpiredContentViewerForEntry(nsIBFCacheEntry* aBFEntry)
 {
   int32_t index;
-  nsCOMPtr<nsISHTransaction> trans;
-  FindTransactionForBFCache(aEntry, getter_AddRefs(trans), &index);
+  nsCOMPtr<nsISHEntry> shEntry;
+  FindEntryForBFCache(aBFEntry, getter_AddRefs(shEntry), &index);
 
   if (index == mIndex) {
     NS_WARNING("How did the current SHEntry expire?");
     return NS_OK;
   }
 
-  if (trans) {
-    EvictContentViewerForTransaction(trans);
+  if (shEntry) {
+    EvictContentViewerForEntry(shEntry);
   }
 
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsSHistory::AddToExpirationTracker(nsIBFCacheEntry* aEntry)
+NS_IMETHODIMP_(void)
+nsSHistory::AddToExpirationTracker(nsIBFCacheEntry* aBFEntry)
 {
-  RefPtr<nsSHEntryShared> entry = static_cast<nsSHEntryShared*>(aEntry);
+  RefPtr<nsSHEntryShared> entry = static_cast<nsSHEntryShared*>(aBFEntry);
   if (!mHistoryTracker || !entry) {
-    return NS_ERROR_FAILURE;
+    return;
   }
 
   mHistoryTracker->AddObject(entry);
-  return NS_OK;
+  return;
 }
 
-NS_IMETHODIMP
-nsSHistory::RemoveFromExpirationTracker(nsIBFCacheEntry* aEntry)
+NS_IMETHODIMP_(void)
+nsSHistory::RemoveFromExpirationTracker(nsIBFCacheEntry* aBFEntry)
 {
-  RefPtr<nsSHEntryShared> entry = static_cast<nsSHEntryShared*>(aEntry);
+  RefPtr<nsSHEntryShared> entry = static_cast<nsSHEntryShared*>(aBFEntry);
   MOZ_ASSERT(mHistoryTracker && !mHistoryTracker->IsEmpty());
   if (!mHistoryTracker || !entry) {
-    return NS_ERROR_FAILURE;
+    return;
   }
 
   mHistoryTracker->RemoveObject(entry);
-  return NS_OK;
+  return;
 }
 
 // Evicts all content viewers in all history objects.  This is very
@@ -1308,14 +1194,12 @@ GetDynamicChildren(nsISHEntry* aEntry,
                    nsTArray<nsID>& aDocshellIDs,
                    bool aOnlyTopLevelDynamic)
 {
-  int32_t count = 0;
-  aEntry->GetChildCount(&count);
+  int32_t count = aEntry->GetChildCount();
   for (int32_t i = 0; i < count; ++i) {
     nsCOMPtr<nsISHEntry> child;
     aEntry->GetChildAt(i, getter_AddRefs(child));
     if (child) {
-      bool dynAdded = false;
-      child->IsDynamicallyAdded(&dynAdded);
+      bool dynAdded = child->IsDynamicallyAdded();
       if (dynAdded) {
         nsID docshellID = child->DocshellID();
         aDocshellIDs.AppendElement(docshellID);
@@ -1331,8 +1215,7 @@ bool
 RemoveFromSessionHistoryEntry(nsISHEntry* aRoot, nsTArray<nsID>& aDocshellIDs)
 {
   bool didRemove = false;
-  int32_t childCount = 0;
-  aRoot->GetChildCount(&childCount);
+  int32_t childCount = aRoot->GetChildCount();
   for (int32_t i = childCount - 1; i >= 0; --i) {
     nsCOMPtr<nsISHEntry> child;
     aRoot->GetChildAt(i, getter_AddRefs(child));
@@ -1357,7 +1240,7 @@ RemoveChildEntries(nsISHistory* aHistory, int32_t aIndex,
                    nsTArray<nsID>& aEntryIDs)
 {
   nsCOMPtr<nsISHEntry> root;
-  aHistory->GetEntryAtIndex(aIndex, false, getter_AddRefs(root));
+  aHistory->GetEntryAtIndex(aIndex, getter_AddRefs(root));
   return root ? RemoveFromSessionHistoryEntry(root, aEntryIDs) : false;
 }
 
@@ -1370,16 +1253,14 @@ IsSameTree(nsISHEntry* aEntry1, nsISHEntry* aEntry2)
   if ((!aEntry1 && aEntry2) || (aEntry1 && !aEntry2)) {
     return false;
   }
-  uint32_t id1, id2;
-  aEntry1->GetID(&id1);
-  aEntry2->GetID(&id2);
+  uint32_t id1 = aEntry1->GetID();
+  uint32_t id2 = aEntry2->GetID();
   if (id1 != id2) {
     return false;
   }
 
-  int32_t count1, count2;
-  aEntry1->GetChildCount(&count1);
-  aEntry2->GetChildCount(&count2);
+  int32_t count1 = aEntry1->GetChildCount();
+  int32_t count2 = aEntry2->GetChildCount();
   // We allow null entries in the end of the child list.
   int32_t count = std::max(count1, count2);
   for (int32_t i = 0; i < count; ++i) {
@@ -1406,25 +1287,24 @@ nsSHistory::RemoveDuplicate(int32_t aIndex, bool aKeepNext)
 
   nsresult rv;
   nsCOMPtr<nsISHEntry> root1, root2;
-  rv = GetEntryAtIndex(aIndex, false, getter_AddRefs(root1));
+  rv = GetEntryAtIndex(aIndex, getter_AddRefs(root1));
   NS_ENSURE_SUCCESS(rv, false);
-  rv = GetEntryAtIndex(compareIndex, false, getter_AddRefs(root2));
+  rv = GetEntryAtIndex(compareIndex, getter_AddRefs(root2));
   NS_ENSURE_SUCCESS(rv, false);
 
   if (IsSameTree(root1, root2)) {
-    mTransactions.RemoveElementAt(aIndex);
+    mEntries.RemoveElementAt(aIndex);
 
     if (mRootDocShell) {
-      static_cast<nsDocShell*>(mRootDocShell)->HistoryTransactionRemoved(aIndex);
+      static_cast<nsDocShell*>(mRootDocShell)->HistoryEntryRemoved(aIndex);
     }
 
-    // Adjust our indices to reflect the removed transaction
+    // Adjust our indices to reflect the removed entry.
     if (mIndex > aIndex) {
       mIndex = mIndex - 1;
-      NOTIFY_LISTENERS(OnIndexChanged, (mIndex));
     }
 
-    // NB: If the transaction we are removing is the transaction currently
+    // NB: If the entry we are removing is the entry currently
     // being navigated to (mRequestedIndex) then we adjust the index
     // only if we're not keeping the next entry (because if we are keeping
     // the next entry (because the current is a duplicate of the next), then
@@ -1439,7 +1319,6 @@ nsSHistory::RemoveDuplicate(int32_t aIndex, bool aKeepNext)
     if (mRequestedIndex > aIndex || (mRequestedIndex == aIndex && !aKeepNext)) {
       mRequestedIndex = mRequestedIndex - 1;
     }
-    NOTIFY_LISTENERS(OnLengthChanged, (Length()));
     return true;
   }
   return false;
@@ -1475,7 +1354,7 @@ nsSHistory::RemoveDynEntries(int32_t aIndex, nsISHEntry* aEntry)
   // Remove dynamic entries which are at the index and belongs to the container.
   nsCOMPtr<nsISHEntry> entry(aEntry);
   if (!entry) {
-    GetEntryAtIndex(aIndex, false, getter_AddRefs(entry));
+    GetEntryAtIndex(aIndex, getter_AddRefs(entry));
   }
 
   if (entry) {
@@ -1488,15 +1367,13 @@ nsSHistory::RemoveDynEntries(int32_t aIndex, nsISHEntry* aEntry)
 }
 
 void
-nsSHistory::RemoveDynEntriesForBFCacheEntry(nsIBFCacheEntry* aEntry)
+nsSHistory::RemoveDynEntriesForBFCacheEntry(nsIBFCacheEntry* aBFEntry)
 {
   int32_t index;
-  nsCOMPtr<nsISHTransaction> trans;
-  FindTransactionForBFCache(aEntry, getter_AddRefs(trans), &index);
-  if (trans) {
-    nsCOMPtr<nsISHEntry> entry;
-    trans->GetSHEntry(getter_AddRefs(entry));
-    RemoveDynEntries(index, entry);
+  nsCOMPtr<nsISHEntry> shEntry;
+  FindEntryForBFCache(aBFEntry, getter_AddRefs(shEntry), &index);
+  if (shEntry) {
+    RemoveDynEntries(index, shEntry);
   }
 }
 
@@ -1506,7 +1383,6 @@ nsSHistory::UpdateIndex()
   // Update the actual index with the right value.
   if (mIndex != mRequestedIndex && mRequestedIndex != -1) {
     mIndex = mRequestedIndex;
-    NOTIFY_LISTENERS(OnIndexChanged, (mIndex))
   }
 
   mRequestedIndex = -1;
@@ -1520,15 +1396,16 @@ nsSHistory::GetCurrentURI(nsIURI** aResultURI)
   nsresult rv;
 
   nsCOMPtr<nsISHEntry> currentEntry;
-  rv = GetEntryAtIndex(mIndex, false, getter_AddRefs(currentEntry));
+  rv = GetEntryAtIndex(mIndex, getter_AddRefs(currentEntry));
   if (NS_FAILED(rv) && !currentEntry) {
     return rv;
   }
-  rv = currentEntry->GetURI(aResultURI);
+  nsCOMPtr<nsIURI> uri = currentEntry->GetURI();
+  uri.forget(aResultURI);
   return rv;
 }
 
-nsresult
+NS_IMETHODIMP
 nsSHistory::GotoIndex(int32_t aIndex)
 {
   return LoadEntry(aIndex, LOAD_HISTORY, HIST_CMD_GOTOINDEX);
@@ -1555,9 +1432,6 @@ nsSHistory::LoadEntry(int32_t aIndex, long aLoadType, uint32_t aHistCmd)
     return NS_ERROR_FAILURE;
   }
 
-  nsCOMPtr<nsIURI> nextURI;
-  nsCOMPtr<nsISHEntry> prevEntry;
-  nsCOMPtr<nsISHEntry> nextEntry;
   if (aIndex < 0 || aIndex >= Length()) {
     // The index is out of range
     return NS_ERROR_FAILURE;
@@ -1567,8 +1441,10 @@ nsSHistory::LoadEntry(int32_t aIndex, long aLoadType, uint32_t aHistCmd)
   // Keep note of requested history index in mRequestedIndex.
   mRequestedIndex = aIndex;
 
-  GetEntryAtIndex(mIndex, false, getter_AddRefs(prevEntry));
-  GetEntryAtIndex(mRequestedIndex, false, getter_AddRefs(nextEntry));
+  nsCOMPtr<nsISHEntry> prevEntry;
+  nsCOMPtr<nsISHEntry> nextEntry;
+  GetEntryAtIndex(mIndex, getter_AddRefs(prevEntry));
+  GetEntryAtIndex(mRequestedIndex, getter_AddRefs(nextEntry));
   if (!nextEntry || !prevEntry) {
     mRequestedIndex = -1;
     return NS_ERROR_FAILURE;
@@ -1579,23 +1455,14 @@ nsSHistory::LoadEntry(int32_t aIndex, long aLoadType, uint32_t aHistCmd)
   nextEntry->SetLastTouched(++gTouchCounter);
 
   // Get the uri for the entry we are about to visit
-  nextEntry->GetURI(getter_AddRefs(nextURI));
+  nsCOMPtr<nsIURI> nextURI = nextEntry->GetURI();
 
   MOZ_ASSERT((prevEntry && nextEntry && nextURI), "prevEntry, nextEntry and nextURI can't be null");
 
   // Send appropriate listener notifications.
-  bool canNavigate = true;
   if (aHistCmd == HIST_CMD_GOTOINDEX) {
     // We are going somewhere else. This is not reload either
-    NOTIFY_LISTENERS_CANCELABLE(OnHistoryGotoIndex, canNavigate,
-                                (aIndex, nextURI, &canNavigate));
-  }
-
-  if (!canNavigate) {
-    // If the listener asked us not to proceed with
-    // the operation, simply return.
-    mRequestedIndex = -1;
-    return NS_OK;  // XXX Maybe I can return some other error code?
+    NOTIFY_LISTENERS(OnHistoryGotoIndex, (aIndex, nextURI));
   }
 
   if (mRequestedIndex == mIndex) {
@@ -1625,10 +1492,8 @@ nsSHistory::LoadDifferingEntries(nsISHEntry* aPrevEntry, nsISHEntry* aNextEntry,
   }
 
   nsresult result = NS_OK;
-  uint32_t prevID, nextID;
-
-  aPrevEntry->GetID(&prevID);
-  aNextEntry->GetID(&nextID);
+  uint32_t prevID = aPrevEntry->GetID();
+  uint32_t nextID = aNextEntry->GetID();
 
   // Check the IDs to verify if the pages are different.
   if (prevID != nextID) {
@@ -1640,12 +1505,9 @@ nsSHistory::LoadDifferingEntries(nsISHEntry* aPrevEntry, nsISHEntry* aNextEntry,
   }
 
   // The entries are the same, so compare any child frames
-  int32_t pcnt = 0;
-  int32_t ncnt = 0;
+  int32_t pcnt = aPrevEntry->GetChildCount();
+  int32_t ncnt = aNextEntry->GetChildCount();
   int32_t dsCount = 0;
-
-  aPrevEntry->GetChildCount(&pcnt);
-  aNextEntry->GetChildCount(&ncnt);
   aParent->GetChildCount(&dsCount);
 
   // Create an array for child docshells.
@@ -1724,23 +1586,19 @@ nsSHistory::InitiateLoad(nsISHEntry* aFrameEntry, nsIDocShell* aFrameDS,
   loadInfo->SetLoadType(aLoadType);
   loadInfo->SetSHEntry(aFrameEntry);
 
-  nsCOMPtr<nsIURI> originalURI;
-  aFrameEntry->GetOriginalURI(getter_AddRefs(originalURI));
+  nsCOMPtr<nsIURI> originalURI = aFrameEntry->GetOriginalURI();
   loadInfo->SetOriginalURI(originalURI);
 
-  bool loadReplace;
-  aFrameEntry->GetLoadReplace(&loadReplace);
-  loadInfo->SetLoadReplace(loadReplace);
+  loadInfo->SetLoadReplace(aFrameEntry->GetLoadReplace());
 
-  nsCOMPtr<nsIURI> nextURI;
-  aFrameEntry->GetURI(getter_AddRefs(nextURI));
-  // Time   to initiate a document load
+  nsCOMPtr<nsIURI> nextURI = aFrameEntry->GetURI();
+  // Time to initiate a document load
   return aFrameDS->LoadURI(nextURI, loadInfo,
                            nsIWebNavigation::LOAD_FLAGS_NONE, false);
 
 }
 
-NS_IMETHODIMP
+NS_IMETHODIMP_(void)
 nsSHistory::SetRootDocShell(nsIDocShell* aDocShell)
 {
   mRootDocShell = aDocShell;
@@ -1750,7 +1608,7 @@ nsSHistory::SetRootDocShell(nsIDocShell* aDocShell)
   if (mRootDocShell) {
     nsCOMPtr<nsPIDOMWindowOuter> win = mRootDocShell->GetWindow();
     if (!win) {
-      return NS_ERROR_UNEXPECTED;
+      return;
     }
 
     // Seamonkey moves shistory between <xul:browser>s when restoring a tab.
@@ -1769,6 +1627,4 @@ nsSHistory::SetRootDocShell(nsIDocShell* aDocShell)
                                     CONTENT_VIEWER_TIMEOUT_SECONDS_DEFAULT),
       global->EventTargetFor(mozilla::TaskCategory::Other));
   }
-
-  return NS_OK;
 }

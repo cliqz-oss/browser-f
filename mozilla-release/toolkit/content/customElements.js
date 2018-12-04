@@ -2,20 +2,73 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* globals MozQueryInterface */
+ // This file defines these globals on the window object.
+ // Define them here so that ESLint can find them:
+/* globals MozElementMixin, MozXULElement, MozBaseControl */
 
 "use strict";
 
-// This is loaded into all XUL windows. Wrap in a block to prevent
-// leaking to window scope.
-{
+// This is loaded into chrome windows with the subscript loader. Wrap in
+// a block to prevent accidentally leaking globals onto `window`.
+(() => {
+
+// Handle customElements.js being loaded as a script in addition to the subscriptLoader
+// from MainProcessSingleton, to handle pages that can open both before and after
+// MainProcessSingleton starts. See Bug 1501845.
+if (window.MozXULElement) {
+  return;
+}
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+
+// The listener of DOMContentLoaded must be set on window, rather than
+// document, because the window can go away before the event is fired.
+// In that case, we don't want to initialize anything, otherwise we
+// may be leaking things because they will never be destroyed after.
+let gIsDOMContentLoaded = false;
+const gElementsPendingConnection = new Set();
+window.addEventListener("DOMContentLoaded", () => {
+  gIsDOMContentLoaded = true;
+  for (let element of gElementsPendingConnection) {
+    try {
+      if (element.isConnected) {
+        element.connectedCallback();
+      }
+    } catch (ex) { console.error(ex); }
+  }
+  gElementsPendingConnection.clear();
+}, { once: true, capture: true });
 
 const gXULDOMParser = new DOMParser();
 gXULDOMParser.forceEnableXULXBL();
 
-class MozXULElement extends XULElement {
+const MozElementMixin = Base => class MozElement extends Base {
+  /**
+   * Sometimes an element may not want to run connectedCallback logic during
+   * parse. This could be because we don't want to initialize the element before
+   * the element's contents have been fully parsed, or for performance reasons.
+   * If you'd like to opt-in to this, then add this to the beginning of your
+   * `connectedCallback` and `disconnectedCallback`:
+   *
+   *    if (this.delayConnectedCallback()) { return }
+   *
+   * And this at the beginning of your `attributeChangedCallback`
+   *
+   *    if (!this.isConnectedAndReady) { return; }
+   */
+  delayConnectedCallback() {
+    if (gIsDOMContentLoaded) {
+      return false;
+    }
+    gElementsPendingConnection.add(this);
+    return true;
+  }
+
+  get isConnectedAndReady() {
+    return gIsDOMContentLoaded && this.isConnected;
+  }
+
   /**
    * Allows eager deterministic construction of XUL elements with XBL attached, by
    * parsing an element tree and returning a DOM fragment to be inserted in the
@@ -72,9 +125,45 @@ class MozXULElement extends XULElement {
   }
 
   /**
-   * Indicate that a class defining an element implements one or more
-   * XPCOM interfaces. The custom element getCustomInterface is added
-   * as well as an implementation of QueryInterface.
+   * Insert a localization link to an FTL file. This is used so that
+   * a Custom Element can wait to inject the link until it's connected,
+   * and so that consuming documents don't require the correct <link>
+   * present in the markup.
+   *
+   * @param path
+   *        The path to the FTL file
+   */
+  static insertFTLIfNeeded(path) {
+    let container = document.head || document.querySelector("linkset");
+    if (!container) {
+      if (document.contentType == "application/vnd.mozilla.xul+xml") {
+        container = document.createXULElement("linkset");
+        document.documentElement.appendChild(container);
+      } else if (document.documentURI == AppConstants.BROWSER_CHROME_URL) {
+        // Special case for browser.xhtml. Here `document.head` is null, so
+        // just insert the link at the end of the window.
+        container = document.documentElement;
+      } else {
+        throw new Error("Attempt to inject localization link before document.head is available");
+      }
+    }
+
+    for (let link of container.querySelectorAll("link")) {
+      if (link.getAttribute("href") == path) {
+        return;
+      }
+    }
+
+    let link = document.createElement("link");
+    link.setAttribute("rel", "localization");
+    link.setAttribute("href", path);
+
+    container.appendChild(link);
+  }
+
+  /**
+   * Indicate that a class defining a XUL element implements one or more
+   * XPCOM interfaces by adding a getCustomInterface implementation to it.
    *
    * The supplied class should implement the properties and methods of
    * all of the interfaces that are specified.
@@ -82,24 +171,33 @@ class MozXULElement extends XULElement {
    * @param cls
    *        The class that implements the interface.
    * @param names
-   *        Array of interface names
+   *        Array of interface names.
    */
   static implementCustomInterface(cls, ifaces) {
-    cls.prototype.QueryInterface = ChromeUtils.generateQI(ifaces);
+    const numbers = new Set(ifaces.map(i => i.number));
+    if (cls.prototype.customInterfaceNumbers) {
+      // Base class already implemented some interfaces. Inherit:
+      cls.prototype.customInterfaceNumbers.forEach(number => numbers.add(number));
+    }
+
+    cls.prototype.customInterfaceNumbers = numbers;
     cls.prototype.getCustomInterfaceCallback = function getCustomInterfaceCallback(iface) {
-      if (ifaces.includes(Ci[Components.interfacesByID[iface.number]])) {
+      if (numbers.has(iface.number)) {
         return getInterfaceProxy(this);
       }
       return null;
     };
   }
-}
+};
+
+const MozXULElement = MozElementMixin(XULElement);
 
 /**
  * Given an object, add a proxy that reflects interface implementations
  * onto the object itself.
  */
 function getInterfaceProxy(obj) {
+  /* globals MozQueryInterface */
   if (!obj._customInterfaceProxy) {
     obj._customInterfaceProxy = new Proxy(obj, {
       get(target, prop, receiver) {
@@ -120,26 +218,62 @@ function getInterfaceProxy(obj) {
   return obj._customInterfaceProxy;
 }
 
+class MozBaseControl extends MozXULElement {
+  get disabled() {
+    return this.getAttribute("disabled") == "true";
+  }
+
+  set disabled(val) {
+    if (val) {
+      this.setAttribute("disabled", "true");
+    } else {
+      this.removeAttribute("disabled");
+    }
+  }
+
+  get tabIndex() {
+    return parseInt(this.getAttribute("tabindex")) || 0;
+  }
+
+  set tabIndex(val) {
+    if (val) {
+      this.setAttribute("tabindex", val);
+    } else {
+      this.removeAttribute("tabindex");
+    }
+  }
+}
+
+MozXULElement.implementCustomInterface(MozBaseControl, [Ci.nsIDOMXULControlElement]);
+
 // Attach the base class to the window so other scripts can use it:
+window.MozElementMixin = MozElementMixin;
 window.MozXULElement = MozXULElement;
+window.MozBaseControl = MozBaseControl;
 
-for (let script of [
-  "chrome://global/content/elements/stringbundle.js",
-  "chrome://global/content/elements/general.js",
-  "chrome://global/content/elements/textbox.js",
-  "chrome://global/content/elements/tabbox.js",
-]) {
-  Services.scriptloader.loadSubScript(script, window);
+// For now, don't load any elements in the extension dummy document.
+// We will want to load <browser> when that's migrated (bug 1441935).
+const isDummyDocument = document.documentURI == "chrome://extensions/content/dummy.xul";
+if (!isDummyDocument) {
+  for (let script of [
+    "chrome://global/content/elements/general.js",
+    "chrome://global/content/elements/progressmeter.js",
+    "chrome://global/content/elements/radio.js",
+    "chrome://global/content/elements/textbox.js",
+    "chrome://global/content/elements/tabbox.js",
+  ]) {
+    Services.scriptloader.loadSubScript(script, window);
+  }
+
+  for (let [tag, script] of [
+    ["findbar", "chrome://global/content/elements/findbar.js"],
+    ["stringbundle", "chrome://global/content/elements/stringbundle.js"],
+    ["printpreview-toolbar", "chrome://global/content/printPreviewToolbar.js"],
+    ["editor", "chrome://global/content/elements/editor.js"],
+  ]) {
+    customElements.setElementCreationCallback(tag, () => {
+      Services.scriptloader.loadSubScript(script, window);
+    });
+  }
 }
-
-customElements.setElementCreationCallback("printpreview-toolbar", type => {
-  Services.scriptloader.loadSubScript(
-    "chrome://global/content/printPreviewToolbar.js", window);
-});
-
-customElements.setElementCreationCallback("editor", type => {
-  Services.scriptloader.loadSubScript(
-    "chrome://global/content/elements/editor.js", window);
-});
-
-}
+})();

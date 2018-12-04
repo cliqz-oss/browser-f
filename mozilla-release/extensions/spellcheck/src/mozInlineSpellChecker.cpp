@@ -55,7 +55,6 @@
 #include "nsIRunnable.h"
 #include "nsISelectionController.h"
 #include "nsIServiceManager.h"
-#include "nsITextServicesFilter.h"
 #include "nsString.h"
 #include "nsThreadUtils.h"
 #include "nsUnicharUtils.h"
@@ -86,9 +85,6 @@ using namespace mozilla::dom;
 // must always be followed by ENDED.
 #define INLINESPELL_STARTED_TOPIC "inlineSpellChecker-spellCheck-started"
 #define INLINESPELL_ENDED_TOPIC "inlineSpellChecker-spellCheck-ended"
-
-static bool ContentIsDescendantOf(nsINode* aPossibleDescendant,
-                                    nsINode* aPossibleAncestor);
 
 static const char kMaxSpellCheckSelectionSize[] =
   "extensions.spellcheck.inline.max-misspellings";
@@ -229,7 +225,8 @@ mozInlineSpellStatus::InitForNavigation(
     return NS_ERROR_FAILURE;
   }
   // the anchor node might not be in the DOM anymore, check
-  if (root && aOldAnchorNode && ! ContentIsDescendantOf(aOldAnchorNode, root)) {
+  if (root && aOldAnchorNode &&
+      !nsContentUtils::ContentIsShadowIncludingDescendantOf(aOldAnchorNode, root)) {
     *aContinue = false;
     return NS_OK;
   }
@@ -668,16 +665,13 @@ nsresult mozInlineSpellChecker::Cleanup(bool aDestroyingFrames)
 bool // static
 mozInlineSpellChecker::CanEnableInlineSpellChecking()
 {
-  nsresult rv;
   if (gCanEnableSpellChecking == SpellCheck_Uninitialized) {
     gCanEnableSpellChecking = SpellCheck_NotAvailable;
 
-    nsCOMPtr<nsIEditorSpellCheck> spellchecker =
-      do_CreateInstance("@mozilla.org/editor/editorspellchecker;1", &rv);
-    NS_ENSURE_SUCCESS(rv, false);
+    nsCOMPtr<nsIEditorSpellCheck> spellchecker = new EditorSpellCheck();
 
     bool canSpellCheck = false;
-    rv = spellchecker->CanSpellCheck(&canSpellCheck);
+    nsresult rv = spellchecker->CanSpellCheck(&canSpellCheck);
     NS_ENSURE_SUCCESS(rv, false);
 
     if (canSpellCheck)
@@ -770,14 +764,8 @@ mozInlineSpellChecker::SetEnableRealTimeSpell(bool aEnabled)
     return NS_OK;
   }
 
-  nsCOMPtr<nsITextServicesFilter> filter =
-    do_CreateInstance("@mozilla.org/editor/txtsrvfiltermail;1");
-  if (NS_WARN_IF(!filter)) {
-    return NS_ERROR_FAILURE;
-  }
-
   mPendingSpellCheck = new EditorSpellCheck();
-  mPendingSpellCheck->SetFilter(filter);
+  mPendingSpellCheck->SetFilterType(nsIEditorSpellCheck::FILTERTYPE_MAIL);
 
   mPendingInitEditorSpellCheckCallback = new InitEditorSpellCheckCallback(this);
   nsresult rv = mPendingSpellCheck->InitSpellChecker(
@@ -1380,8 +1368,12 @@ nsresult mozInlineSpellChecker::DoSpellCheck(mozInlineSpellWordUtil& aWordUtil,
       return NS_OK;
     }
 
-    aWordUtil.SetEnd(endNode, endOffset);
-    aWordUtil.SetPosition(beginNode, beginOffset);
+    nsresult rv =
+      aWordUtil.SetPositionAndEnd(beginNode, beginOffset, endNode, endOffset);
+    if (NS_FAILED(rv)) {
+      // Just bail out and don't try to spell-check this
+      return NS_OK;
+    }
   }
 
   // aWordUtil.SetPosition flushes pending notifications, check editor again.
@@ -1732,24 +1724,6 @@ mozInlineSpellChecker::SaveCurrentSelectionPosition()
   mCurrentSelectionOffset = selection->FocusOffset();
 
   return NS_OK;
-}
-
-// This is a copy of nsContentUtils::ContentIsDescendantOf. Another crime
-// for XPCOM's rap sheet
-bool // static
-ContentIsDescendantOf(nsINode* aPossibleDescendant,
-                      nsINode* aPossibleAncestor)
-{
-  MOZ_ASSERT(aPossibleDescendant, "The possible descendant is null!");
-  MOZ_ASSERT(aPossibleAncestor, "The possible ancestor is null!");
-
-  do {
-    if (aPossibleDescendant == aPossibleAncestor)
-      return true;
-    aPossibleDescendant = aPossibleDescendant->GetParentNode();
-  } while (aPossibleDescendant);
-
-  return false;
 }
 
 // mozInlineSpellChecker::HandleNavigationEvent

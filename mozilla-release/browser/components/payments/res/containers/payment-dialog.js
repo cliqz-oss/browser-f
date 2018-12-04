@@ -2,13 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import "../vendor/custom-elements.min.js";
-
 import PaymentStateSubscriberMixin from "../mixins/PaymentStateSubscriberMixin.js";
 import paymentRequest from "../paymentRequest.js";
 
 import "../components/currency-amount.js";
 import "../components/payment-request-page.js";
+import "../components/accepted-cards.js";
 import "./address-picker.js";
 import "./address-form.js";
 import "./basic-card-form.js";
@@ -52,6 +51,9 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
     this._payerRelatedEls = contents.querySelectorAll(".payer-related");
     this._payerAddressPicker = contents.querySelector("address-picker.payer-related");
     this._paymentMethodPicker = contents.querySelector("payment-method-picker");
+    this._acceptedCardsList = contents.querySelector("accepted-cards");
+    this._manageText = contents.querySelector(".manage-text");
+    this._manageText.addEventListener("click", this);
 
     this._header = contents.querySelector("header");
 
@@ -73,7 +75,7 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
 
   handleEvent(event) {
     if (event.type == "click") {
-      switch (event.target) {
+      switch (event.currentTarget) {
         case this._viewAllButton:
           let orderDetailsShowing = !this.requestStore.getState().orderDetailsShowing;
           this.requestStore.setState({ orderDetailsShowing });
@@ -81,8 +83,18 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
         case this._payButton:
           this.pay();
           break;
+        case this._manageText:
+          if (event.target instanceof HTMLAnchorElement) {
+            this.openPreferences(event);
+          }
+          break;
       }
     }
+  }
+
+  openPreferences(event) {
+    paymentRequest.openPreferences();
+    event.preventDefault();
   }
 
   cancelRequest() {
@@ -90,17 +102,30 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
   }
 
   pay() {
+    let state = this.requestStore.getState();
     let {
       selectedPayerAddress,
       selectedPaymentCard,
       selectedPaymentCardSecurityCode,
-    } = this.requestStore.getState();
+      selectedShippingAddress,
+    } = state;
 
-    paymentRequest.pay({
-      selectedPayerAddressGUID: selectedPayerAddress,
+    let data = {
       selectedPaymentCardGUID: selectedPaymentCard,
       selectedPaymentCardSecurityCode,
-    });
+    };
+
+    data.selectedShippingAddressGUID =
+      state.request.paymentOptions.requestShipping ?
+      selectedShippingAddress :
+      null;
+
+    data.selectedPayerAddressGUID =
+      this._isPayerRequested(state.request.paymentOptions) ?
+      selectedPayerAddress :
+      null;
+
+    paymentRequest.pay(data);
   }
 
   changeShippingAddress(shippingAddressGUID) {
@@ -141,6 +166,13 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
         };
         state.changesPrevented = false;
         break;
+      case "": {
+        // When we get a DOM update for an updateWith() or retry() the completeStatus
+        // is "" when we need to show non-final screens. Don't set the page as we
+        // may be on a form instead of payment-summary
+        state.changesPrevented = false;
+        break;
+      }
     }
     return state;
   }
@@ -152,7 +184,7 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
    *
    * @param {object} state - See `PaymentsStore.setState`
    */
-  setStateFromParent(state) {
+  async setStateFromParent(state) {
     let oldAddresses = paymentRequest.getAddresses(this.requestStore.getState());
     if (state.request) {
       state = this._updateCompleteStatus(state);
@@ -245,6 +277,7 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
           (this._isPayerRequested(state.request.paymentOptions) &&
            (!this._payerAddressPicker.selectedOption ||
             this._payerAddressPicker.classList.contains(INVALID_CLASS_NAME))) ||
+          !this._paymentMethodPicker.securityCodeInput.isValid ||
           !this._paymentMethodPicker.selectedOption ||
           this._paymentMethodPicker.classList.contains(INVALID_CLASS_NAME) ||
           state.changesPrevented;
@@ -261,6 +294,39 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
         throw new Error(`Invalid completeStatus: ${completeStatus}`);
       }
     }
+  }
+
+  _renderPayerFields(state) {
+    let paymentOptions = state.request.paymentOptions;
+    let payerRequested = this._isPayerRequested(paymentOptions);
+    for (let element of this._payerRelatedEls) {
+      element.hidden = !payerRequested;
+    }
+
+    if (payerRequested) {
+      let fieldNames = new Set(); // default: ["name", "tel", "email"]
+      if (paymentOptions.requestPayerName) {
+        fieldNames.add("name");
+      }
+      if (paymentOptions.requestPayerEmail) {
+        fieldNames.add("email");
+      }
+      if (paymentOptions.requestPayerPhone) {
+        fieldNames.add("tel");
+      }
+      this._payerAddressPicker.setAttribute("address-fields", [...fieldNames].join(" "));
+      // For the payer picker we want to have a line break after the name field (#1)
+      // if all three fields are requested.
+      if (fieldNames.size == 3) {
+        this._payerAddressPicker.setAttribute("break-after-nth-field", 1);
+      } else {
+        this._payerAddressPicker.removeAttribute("break-after-nth-field");
+      }
+    } else {
+      this._payerAddressPicker.removeAttribute("address-fields");
+    }
+    this._payerAddressPicker.dataset.addAddressTitle = this.dataset.payerTitleAdd;
+    this._payerAddressPicker.dataset.editAddressTitle = this.dataset.payerTitleEdit;
   }
 
   stateChangeCallback(state) {
@@ -323,28 +389,17 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
     for (let element of this._shippingRelatedEls) {
       element.hidden = !paymentOptions.requestShipping;
     }
-    let payerRequested = this._isPayerRequested(paymentOptions);
-    for (let element of this._payerRelatedEls) {
-      element.hidden = !payerRequested;
-    }
 
-    if (payerRequested) {
-      let fieldNames = new Set(); // default: ["name", "tel", "email"]
-      if (paymentOptions.requestPayerName) {
-        fieldNames.add("name");
-      }
-      if (paymentOptions.requestPayerEmail) {
-        fieldNames.add("email");
-      }
-      if (paymentOptions.requestPayerPhone) {
-        fieldNames.add("tel");
-      }
-      this._payerAddressPicker.setAttribute("address-fields", [...fieldNames].join(" "));
-    } else {
-      this._payerAddressPicker.removeAttribute("address-fields");
+    this._renderPayerFields(state);
+
+    let isMac = /mac/i.test(navigator.platform);
+    for (let manageTextEl of this._manageText.children) {
+      manageTextEl.hidden = manageTextEl.dataset.os == "mac" ? !isMac : isMac;
+      let link = manageTextEl.querySelector("a");
+      // The href is only set to be exposed to accessibility tools so users know what will open.
+      // The actual opening happens from the click event listener.
+      link.href = "about:preferences#privacy-form-autofill";
     }
-    this._payerAddressPicker.dataset.addAddressTitle = this.dataset.payerTitleAdd;
-    this._payerAddressPicker.dataset.editAddressTitle = this.dataset.payerTitleEdit;
 
     this._renderPayButton(state);
 
@@ -359,6 +414,16 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
     }
     this.setAttribute("complete-status", request.completeStatus);
     this._disabledOverlay.hidden = !state.changesPrevented;
+  }
+
+  static maybeCreateFieldErrorElement(container) {
+    let span = container.querySelector(".error-text");
+    if (!span) {
+      span = document.createElement("span");
+      span.className = "error-text";
+      container.appendChild(span);
+    }
+    return span;
   }
 }
 

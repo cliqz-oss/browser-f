@@ -808,12 +808,28 @@ WebGLRenderingContext implements WebGLRenderingContextBase;
 // Reference: https://wiki.whatwg.org/wiki/OffscreenCanvas
 [Exposed=(Window,Worker)]
 partial interface WebGLRenderingContext {
-    [Func="mozilla::dom::DOMPrefs::OffscreenCanvasEnabled"]
+    [Func="mozilla::dom::DOMPrefs::gfx_offscreencanvas_enabled"]
     void commit();
 };
 
 ////////////////////////////////////////
 // specific extension interfaces
+
+[NoInterfaceObject]
+interface EXT_texture_compression_bptc {
+    const GLenum COMPRESSED_RGBA_BPTC_UNORM_EXT = 0x8E8C;
+    const GLenum COMPRESSED_SRGB_ALPHA_BPTC_UNORM_EXT = 0x8E8D;
+    const GLenum COMPRESSED_RGB_BPTC_SIGNED_FLOAT_EXT = 0x8E8E;
+    const GLenum COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_EXT = 0x8E8F;
+};
+
+[NoInterfaceObject]
+interface EXT_texture_compression_rgtc {
+    const GLenum COMPRESSED_RED_RGTC1_EXT = 0x8DBB;
+    const GLenum COMPRESSED_SIGNED_RED_RGTC1_EXT = 0x8DBC;
+    const GLenum COMPRESSED_RED_GREEN_RGTC2_EXT = 0x8DBD;
+    const GLenum COMPRESSED_SIGNED_RED_GREEN_RGTC2_EXT = 0x8DBE;
+};
 
 [NoInterfaceObject]
 interface WEBGL_compressed_texture_s3tc
@@ -868,14 +884,6 @@ interface WEBGL_compressed_texture_astc {
 
     // Profile query support.
     sequence<DOMString>? getSupportedProfiles();
-};
-
-[NoInterfaceObject]
-interface WEBGL_compressed_texture_atc
-{
-    const GLenum COMPRESSED_RGB_ATC_WEBGL                     = 0x8C92;
-    const GLenum COMPRESSED_RGBA_ATC_EXPLICIT_ALPHA_WEBGL     = 0x8C93;
-    const GLenum COMPRESSED_RGBA_ATC_INTERPOLATED_ALPHA_WEBGL = 0x87EE;
 };
 
 [NoInterfaceObject]

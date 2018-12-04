@@ -20,6 +20,7 @@ XPIDL_SOURCES += [
     'nsIHttpHeaderVisitor.idl',
     'nsIHttpProtocolHandler.idl',
     'nsIRaceCacheWithNetwork.idl',
+    'nsIRedirectProcessChooser.idl',
     'nsIWellKnownOpportunisticUtils.idl',
 ]
 
@@ -38,6 +39,7 @@ EXPORTS += [
 EXPORTS.mozilla.net += [
     'AltDataOutputStreamChild.h',
     'AltDataOutputStreamParent.h',
+    'BackgroundChannelRegistrar.h',
     'HttpAuthUtils.h',
     'HttpBackgroundChannelChild.h',
     'HttpBackgroundChannelParent.h',
@@ -50,6 +52,9 @@ EXPORTS.mozilla.net += [
     'PHttpChannelParams.h',
     'PSpdyPush.h',
     'TimingStruct.h',
+    'TrackingDummyChannel.h',
+    'TrackingDummyChannelChild.h',
+    'TrackingDummyChannelParent.h',
 ]
 
 SOURCES += [
@@ -98,6 +103,9 @@ UNIFIED_SOURCES += [
     'nsServerTiming.cpp',
     'NullHttpChannel.cpp',
     'NullHttpTransaction.cpp',
+    'TrackingDummyChannel.cpp',
+    'TrackingDummyChannelChild.cpp',
+    'TrackingDummyChannelParent.cpp',
     'TunnelUtils.cpp',
 ]
 
@@ -110,6 +118,7 @@ IPDL_SOURCES += [
     'PAltDataOutputStream.ipdl',
     'PHttpBackgroundChannel.ipdl',
     'PHttpChannel.ipdl',
+    'PTrackingDummyChannel.ipdl',
 ]
 
 EXTRA_JS_MODULES += [
@@ -125,7 +134,6 @@ LOCAL_INCLUDES += [
     '/dom/base',
     '/netwerk/base',
     '/netwerk/cookie',
-    '/security/pkix/include',
 ]
 
 EXTRA_COMPONENTS += [

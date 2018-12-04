@@ -26,12 +26,6 @@ IsBigInt(HandleValue v)
     return v.isBigInt() || (v.isObject() && v.toObject().is<BigIntObject>());
 }
 
-static JSObject*
-CreateBigIntPrototype(JSContext* cx, JSProtoKey key)
-{
-    return GlobalObject::createBlankPrototype<PlainObject>(cx, cx->global());
-}
-
 // BigInt proposal section 5.1.3
 static bool
 BigIntConstructor(JSContext* cx, unsigned argc, Value* vp)
@@ -46,15 +40,17 @@ BigIntConstructor(JSContext* cx, unsigned argc, Value* vp)
 
     // Step 2.
     RootedValue v(cx, args.get(0));
-    if (!ToPrimitive(cx, JSTYPE_NUMBER, &v))
+    if (!ToPrimitive(cx, JSTYPE_NUMBER, &v)) {
         return false;
+    }
 
     // Steps 3-4.
     BigInt* bi = v.isNumber()
                  ? NumberToBigInt(cx, v.toNumber())
                  : ToBigInt(cx, v);
-    if (!bi)
+    if (!bi) {
         return false;
+    }
 
     args.rval().setBigInt(bi);
     return true;
@@ -64,8 +60,9 @@ JSObject*
 BigIntObject::create(JSContext* cx, HandleBigInt bigInt)
 {
     RootedObject obj(cx, NewBuiltinClassInstance(cx, &class_));
-    if (!obj)
+    if (!obj) {
         return nullptr;
+    }
     BigIntObject& bn = obj->as<BigIntObject>();
     bn.setFixedSlot(PRIMITIVE_VALUE_SLOT, BigIntValue(bigInt));
     return &bn;
@@ -84,8 +81,9 @@ js::intrinsic_ToBigInt(JSContext* cx, unsigned argc, Value* vp)
     MOZ_ASSERT(args.length() == 1);
 
     BigInt* result = ToBigInt(cx, args[0]);
-    if (!result)
+    if (!result) {
         return false;
+    }
 
     args.rval().setBigInt(result);
     return true;
@@ -130,8 +128,9 @@ BigIntObject::toString_impl(JSContext* cx, const CallArgs& args)
     // Steps 4-5.
     if (args.hasDefined(0)) {
         double d;
-        if (!ToInteger(cx, args[0], &d))
+        if (!ToInteger(cx, args[0], &d)) {
             return false;
+        }
         if (d < 2 || d > 36) {
             JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_BAD_RADIX);
             return false;
@@ -141,8 +140,9 @@ BigIntObject::toString_impl(JSContext* cx, const CallArgs& args)
 
     // Steps 6-7.
     JSLinearString* str = BigInt::toString(cx, bi, radix);
-    if (!str)
+    if (!str) {
         return false;
+    }
     args.rval().setString(str);
     return true;
 }
@@ -167,8 +167,9 @@ BigIntObject::toLocaleString_impl(JSContext* cx, const CallArgs& args)
                         : thisv.toObject().as<BigIntObject>().unbox());
 
     RootedString str(cx, BigInt::toString(cx, bi, 10));
-    if (!str)
+    if (!str) {
         return false;
+    }
     args.rval().setString(str);
     return true;
 }
@@ -182,7 +183,7 @@ BigIntObject::toLocaleString(JSContext* cx, unsigned argc, Value* vp)
 
 const ClassSpec BigIntObject::classSpec_ = {
     GenericCreateConstructor<BigIntConstructor, 1, gc::AllocKind::FUNCTION>,
-    CreateBigIntPrototype,
+    GenericCreatePrototype<BigIntObject>,
     nullptr,
     nullptr,
     BigIntObject::methods,
@@ -194,6 +195,13 @@ const Class BigIntObject::class_ = {
     "Object",
     JSCLASS_HAS_CACHED_PROTO(JSProto_BigInt) |
     JSCLASS_HAS_RESERVED_SLOTS(RESERVED_SLOTS),
+    JS_NULL_CLASS_OPS,
+    &BigIntObject::classSpec_
+};
+
+const Class BigIntObject::protoClass_ = {
+    js_Object_str,
+    JSCLASS_HAS_CACHED_PROTO(JSProto_BigInt),
     JS_NULL_CLASS_OPS,
     &BigIntObject::classSpec_
 };

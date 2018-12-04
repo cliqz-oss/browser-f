@@ -4,9 +4,9 @@
 
 "use strict";
 
-// This file lists all of the actions available in responsive design.  This
+// This file lists all of the actions available in responsive design. This
 // central list of constants makes it easy to see all possible action names at
-// a glance.  Please add a comment with each new action type.
+// a glance. Please add a comment with each new action type.
 
 const { createEnum } = require("devtools/client/shared/enum");
 
@@ -28,7 +28,7 @@ createEnum([
   // Change the device displayed in the viewport.
   "CHANGE_DEVICE",
 
-  // Change the location of the page.  This may be triggered by the user
+  // Change the location of the page. This may be triggered by the user
   // directly entering a new URL, navigating with links, etc.
   "CHANGE_LOCATION",
 
@@ -40,16 +40,13 @@ createEnum([
   // Change the network throttling profile.
   CHANGE_NETWORK_THROTTLING,
 
+  // Change the user agent of the viewport.
+  "CHANGE_USER_AGENT",
+
   // The pixel ratio of the viewport has changed. This may be triggered by the user
   // when changing the device displayed in the viewport, or when a pixel ratio is
   // selected from the device pixel ratio dropdown.
   "CHANGE_PIXEL_RATIO",
-
-  // Change one of the reload conditions.
-  "CHANGE_RELOAD_CONDITION",
-
-  // Change the touch simulation state.
-  "CHANGE_TOUCH_SIMULATION",
 
   // Indicates that the device list is being loaded.
   "LOAD_DEVICE_LIST_START",
@@ -59,9 +56,6 @@ createEnum([
 
   // Indicates that the device list has been loaded successfully.
   "LOAD_DEVICE_LIST_END",
-
-  // Indicates that the reload conditions have been loaded successfully.
-  "LOAD_RELOAD_CONDITIONS_END",
 
   // Remove a device.
   "REMOVE_DEVICE",
@@ -83,6 +77,18 @@ createEnum([
 
   // Toggles the left alignment of the viewports.
   "TOGGLE_LEFT_ALIGNMENT",
+
+  // Toggles the reload on touch simulation changes.
+  "TOGGLE_RELOAD_ON_TOUCH_SIMULATION",
+
+  // Toggles the reload on user agent changes.
+  "TOGGLE_RELOAD_ON_USER_AGENT",
+
+  // Toggles the touch simulation state of the viewports.
+  "TOGGLE_TOUCH_SIMULATION",
+
+  // Toggles the user agent input displayed in the toolbar.
+  "TOGGLE_USER_AGENT_INPUT",
 
   // Update the device display state in the device selector.
   "UPDATE_DEVICE_DISPLAYED",

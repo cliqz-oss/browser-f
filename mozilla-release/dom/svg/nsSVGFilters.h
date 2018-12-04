@@ -50,12 +50,12 @@ protected:
   typedef mozilla::gfx::ColorSpace ColorSpace;
   typedef mozilla::gfx::FilterPrimitiveDescription FilterPrimitiveDescription;
 
-  explicit nsSVGFE(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-    : nsSVGFEBase(aNodeInfo) {}
+  explicit nsSVGFE(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
+    : nsSVGFEBase(std::move(aNodeInfo)) {}
   virtual ~nsSVGFE() {}
 
 public:
-  typedef mozilla::gfx::AttributeMap AttributeMap;
+  typedef mozilla::gfx::PrimitiveAttributes PrimitiveAttributes;
 
   ColorSpace
   GetInputColorSpace(int32_t aInputIndex, ColorSpace aUnchangedInputColorSpace) {
@@ -155,8 +155,8 @@ typedef nsSVGElement SVGFEUnstyledElementBase;
 class SVGFEUnstyledElement : public SVGFEUnstyledElementBase
 {
 protected:
-  explicit SVGFEUnstyledElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-    : SVGFEUnstyledElementBase(aNodeInfo) {}
+  explicit SVGFEUnstyledElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
+    : SVGFEUnstyledElementBase(std::move(aNodeInfo)) {}
 
 public:
   virtual nsresult Clone(mozilla::dom::NodeInfo*, nsINode** aResult) const override = 0;
@@ -174,8 +174,8 @@ typedef nsSVGFE nsSVGFELightingElementBase;
 class nsSVGFELightingElement : public nsSVGFELightingElementBase
 {
 protected:
-  explicit nsSVGFELightingElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-    : nsSVGFELightingElementBase(aNodeInfo) {}
+  explicit nsSVGFELightingElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
+    : nsSVGFELightingElementBase(std::move(aNodeInfo)) {}
 
   virtual ~nsSVGFELightingElement() {}
 
@@ -198,11 +198,11 @@ protected:
   virtual NumberPairAttributesInfo GetNumberPairInfo() override;
   virtual StringAttributesInfo GetStringInfo() override;
 
-  AttributeMap ComputeLightAttributes(nsSVGFilterInstance* aInstance);
+  mozilla::gfx::LightType ComputeLightAttributes(nsSVGFilterInstance* aInstance,
+                                                 nsTArray<float>& aFloatAttributes);
 
-  FilterPrimitiveDescription
-    AddLightingAttributes(const FilterPrimitiveDescription& aDescription,
-                          nsSVGFilterInstance* aInstance);
+  bool AddLightingAttributes(mozilla::gfx::DiffuseLightingAttributes* aAttributes,
+                             nsSVGFilterInstance* aInstance);
 
   enum { SURFACE_SCALE, DIFFUSE_CONSTANT, SPECULAR_CONSTANT, SPECULAR_EXPONENT };
   nsSVGNumber2 mNumberAttributes[4];
@@ -225,14 +225,14 @@ typedef SVGFEUnstyledElement SVGFELightElementBase;
 class SVGFELightElement : public SVGFELightElementBase
 {
 protected:
-  explicit SVGFELightElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-    : SVGFELightElementBase(aNodeInfo) {}
+  explicit SVGFELightElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
+    : SVGFELightElementBase(std::move(aNodeInfo)) {}
 
 public:
-  typedef gfx::AttributeMap AttributeMap;
+  typedef gfx::PrimitiveAttributes PrimitiveAttributes;
 
-  virtual AttributeMap
-    ComputeLightAttributes(nsSVGFilterInstance* aInstance) = 0;
+  virtual mozilla::gfx::LightType ComputeLightAttributes(nsSVGFilterInstance* aInstance,
+                                                         nsTArray<float>& aFloatAttributes) = 0;
 };
 
 } // namespace dom

@@ -299,6 +299,12 @@
      Similar to the already existing "pref_whats_new_notification_summary"-->
 <!ENTITY pref_feature_tips_notification_summary "Weitere Informationen über &brandShortName; und andere Produkte von &vendorShortName;">
 
+<!-- Localization note (pref_feature_tips_notification_enabling_hint):
+     Describe the action the user should do to enable this preference
+     Will be used in the context "<Turn on> ... to enable this feature" -->
+<!ENTITY pref_feature_tips_notification_enabling_hint "Zusätzlich notwendige Aktivierung:">
+
+
 <!-- Localization note (pref_category_experimental): Title of a sub category in the 'advanced' category
      for experimental features. -->
 <!ENTITY pref_category_experimental "Experimentelle Funktionen">
@@ -372,6 +378,8 @@
 
 <!ENTITY pref_media_autoplay_enabled "Automatische Wiedergabe">
 <!ENTITY pref_media_autoplay_enabled_summary "Webseiten die automatische Wiedergabe von Videos und anderen Medieninhalten erlauben">
+<!ENTITY pref_media_autoplay_allow "Automatische Wiedergabe erlauben">
+<!ENTITY pref_media_autoplay_block "Automatische Wiedergabe blockieren">
 <!ENTITY pref_zoom_force_enabled "Zoom immer aktivieren">
 <!ENTITY pref_zoom_force_enabled_summary "Vorgabe der Seite überschreiben, sodass die Zoomfunktion immer verwendet werden kann">
 <!ENTITY pref_voice_input "Spracheingabe">
@@ -447,6 +455,11 @@
 <!ENTITY datareporting_crashreporter_title_short "Absturzmelder">
 <!ENTITY datareporting_wifi_title2 "&vendorShortName;-Standortdienst">
 <!ENTITY datareporting_wifi_geolocation_summary4 "Helfen Sie &vendorShortName; beim Kartografieren der Welt! Teilen Sie uns ungefähre Standorte von WLANs und Mobilfunkzellen mit Ihrem Gerät mit, um unseren Standortdienst zu verbessern.">
+<!-- Localization note (datareporting_notification_title ) : This will be the title
+     of the notification shown whenever the user has enabled data reporting and the stumbler
+     service is running. -->
+<!ENTITY datareporting_stumbler_notification_title "&vendorShortName;-Standortdienst wird ausgeführt">
+
 <!-- Localization note (pref_update_autodownload2) : This should mention downloading
      specifically, since the pref only prevents automatic downloads and not the
      actual notification that an update is available. -->
@@ -888,3 +901,23 @@ See also https://bug1409261.bmoattachments.org/attachment.cgi?id=8919897 -->
 <!ENTITY pwa_add_to_launcher_badge2 "Zu Startbildschirm hinzufügen">
 <!ENTITY pwa_continue_to_website "Weiter zur Website">
 <!ENTITY pwa_onboarding_sumo "Sie können diese Website einfach zu Ihrem Startbildschirm hinzufügen, um unmittelbaren Zugriff darauf zu haben und sie wie eine App zu nutzen.">
+
+<!-- Used by accessibility services to identify the play/pause buttons shown in the
+Picture-in-picture mini window -->
+<!ENTITY pip_play_button_title "Wiedergeben">
+<!ENTITY pip_play_button_description "Wiedergabe fortsetzen">
+<!ENTITY pip_pause_button_title "Anhalten">
+<!ENTITY pip_pause_button_description "Wiedergabe anhalten">
+
+<!-- Notification channels names -->
+<!ENTITY default_notification_channel "&brandShortName;">
+<!ENTITY mls_notification_channel "&vendorShortName;-Standortdienst">
+<!ENTITY download_notification_channel "Downloads">
+<!ENTITY media_notification_channel "Medienwiedergabe">
+<!-- These push notifications come without a specific channel and/or name from Leanplum -->
+<!ENTITY leanplum_default_notifications_channel "&brandShortName;-Push-Benachrichtigungen">
+<!ENTITY updater_notification_channel "App-Updates">
+<!ENTITY synced_tabs_notification_channel "Synchronisierte Tabs">
+<!-- LOCALIZATION NOTE (site_notifications_channel): This is for system notifications displayed by
+web sites through the HTML Notifications API. -->
+<!ENTITY site_notifications_channel "Website-Benachrichtigungen">

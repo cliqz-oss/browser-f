@@ -196,6 +196,7 @@ EXPORTS.mozilla.layers += [
     'ipc/SharedPlanarYCbCrImage.h',
     'ipc/SharedRGBImage.h',
     'ipc/SharedSurfacesChild.h',
+    'ipc/SharedSurfacesMemoryReport.h',
     'ipc/SharedSurfacesParent.h',
     'ipc/SynchronousTask.h',
     'ipc/TextureForwarder.h',
@@ -296,6 +297,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
         'apz/src/AndroidAPZ.cpp',
         'apz/src/AndroidDynamicToolbarAnimator.cpp',
         'apz/src/AndroidFlingPhysics.cpp',
+        'apz/src/AndroidVelocityTracker.cpp',
     ]
     EXPORTS.mozilla.layers += [
         'apz/src/AndroidDynamicToolbarAnimator.h',
@@ -327,6 +329,7 @@ UNIFIED_SOURCES += [
     'apz/src/OverscrollHandoffState.cpp',
     'apz/src/PotentialCheckerboardDurationTracker.cpp',
     'apz/src/QueuedInput.cpp',
+    'apz/src/SimpleVelocityTracker.cpp',
     'apz/src/TouchCounter.cpp',
     'apz/src/WheelScrollAnimation.cpp',
     'apz/testutil/APZTestData.cpp',
@@ -582,6 +585,3 @@ if CONFIG['MOZ_ENABLE_SKIA']:
   UNIFIED_SOURCES += [
     'composite/PaintCounter.cpp',
   ]
-
-if CONFIG['CC_TYPE'] == 'clang-cl':
-    AllowCompilerWarnings()  # workaround for bug 1090497

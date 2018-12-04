@@ -6,12 +6,16 @@
 "use strict";
 
 const actionTypes = {
+  APPEND_NOTIFICATION: "APPEND_NOTIFICATION",
+  APPEND_TO_HISTORY: "APPEND_TO_HISTORY",
   BATCH_ACTIONS: "BATCH_ACTIONS",
+  CLEAR_HISTORY: "CLEAR_HISTORY",
   DEFAULT_FILTERS_RESET: "DEFAULT_FILTERS_RESET",
   FILTER_BAR_TOGGLE: "FILTER_BAR_TOGGLE",
   FILTER_TEXT_SET: "FILTER_TEXT_SET",
   FILTER_TOGGLE: "FILTER_TOGGLE",
   FILTERS_CLEAR: "FILTERS_CLEAR",
+  HISTORY_LOADED: "HISTORY_LOADED",
   INITIALIZE: "INITIALIZE",
   MESSAGE_CLOSE: "MESSAGE_CLOSE",
   MESSAGE_OPEN: "MESSAGE_OPEN",
@@ -22,18 +26,19 @@ const actionTypes = {
   NETWORK_UPDATE_REQUEST: "NETWORK_UPDATE_REQUEST",
   PERSIST_TOGGLE: "PERSIST_TOGGLE",
   PRIVATE_MESSAGES_CLEAR: "PRIVATE_MESSAGES_CLEAR",
-  REMOVED_ACTORS_CLEAR: "REMOVED_ACTORS_CLEAR",
-  SELECT_NETWORK_MESSAGE_TAB: "SELECT_NETWORK_MESSAGE_TAB",
-  SIDEBAR_CLOSE: "SIDEBAR_CLOSE",
-  SHOW_OBJECT_IN_SIDEBAR: "SHOW_OBJECT_IN_SIDEBAR",
-  TIMESTAMPS_TOGGLE: "TIMESTAMPS_TOGGLE",
-  APPEND_NOTIFICATION: "APPEND_NOTIFICATION",
   REMOVE_NOTIFICATION: "REMOVE_NOTIFICATION",
+  REMOVED_ACTORS_CLEAR: "REMOVED_ACTORS_CLEAR",
+  REVERSE_SEARCH_INPUT_TOGGLE: "REVERSE_SEARCH_INPUT_TOGGLE",
+  SELECT_NETWORK_MESSAGE_TAB: "SELECT_NETWORK_MESSAGE_TAB",
+  SHOW_OBJECT_IN_SIDEBAR: "SHOW_OBJECT_IN_SIDEBAR",
+  SIDEBAR_CLOSE: "SIDEBAR_CLOSE",
   SPLIT_CONSOLE_CLOSE_BUTTON_TOGGLE: "SPLIT_CONSOLE_CLOSE_BUTTON_TOGGLE",
-  APPEND_TO_HISTORY: "APPEND_TO_HISTORY",
-  CLEAR_HISTORY: "CLEAR_HISTORY",
-  HISTORY_LOADED: "HISTORY_LOADED",
+  TIMESTAMPS_TOGGLE: "TIMESTAMPS_TOGGLE",
   UPDATE_HISTORY_POSITION: "UPDATE_HISTORY_POSITION",
+  REVERSE_SEARCH_INPUT_CHANGE: "REVERSE_SEARCH_INPUT_CHANGE",
+  REVERSE_SEARCH_NEXT: "REVERSE_SEARCH_NEXT",
+  REVERSE_SEARCH_BACK: "REVERSE_SEARCH_BACK",
+  PAUSED_EXCECUTION_POINT: "PAUSED_EXCECUTION_POINT",
 };
 
 const prefs = {
@@ -63,8 +68,9 @@ const prefs = {
       // We use the same pref to enable the sidebar on webconsole and browser console.
       SIDEBAR_TOGGLE: "devtools.webconsole.sidebarToggle",
       JSTERM_CODE_MIRROR: "devtools.webconsole.jsterm.codeMirror",
-    }
-  }
+      JSTERM_REVERSE_SEARCH: "devtools.webconsole.jsterm.reverse-search",
+    },
+  },
 };
 
 const FILTERS = {
@@ -106,7 +112,7 @@ const chromeRDPEnums = {
     RENDERING: "rendering",
     SECURITY: "security",
     OTHER: "other",
-    DEPRECATION: "deprecation"
+    DEPRECATION: "deprecation",
   },
   MESSAGE_TYPE: {
     LOG: "log",
@@ -128,20 +134,21 @@ const chromeRDPEnums = {
     // Undocumented in Chrome RDP, but is used for messages that should not
     // output anything (e.g. `console.time()` calls).
     NULL_MESSAGE: "nullMessage",
+    NAVIGATION_MARKER: "navigationMarker",
   },
   MESSAGE_LEVEL: {
     LOG: "log",
     ERROR: "error",
     WARN: "warn",
     DEBUG: "debug",
-    INFO: "info"
-  }
+    INFO: "info",
+  },
 };
 
 const jstermCommands = {
   JSTERM_COMMANDS: {
-    INSPECT: "inspectObject"
-  }
+    INSPECT: "inspectObject",
+  },
 };
 
 // Constants used for defining the direction of JSTerm input history navigation.

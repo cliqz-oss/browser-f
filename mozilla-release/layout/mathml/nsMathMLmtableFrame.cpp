@@ -262,7 +262,7 @@ ComputeBorderOverflow(nsMathMLmtdFrame* aFrame,
  * around a nsMathMLmtdFrame based on the rowline and columnline properties
  * set on the cell frame.
  */
-class nsDisplaymtdBorder : public nsDisplayBorder
+class nsDisplaymtdBorder final : public nsDisplayBorder
 {
 public:
   nsDisplaymtdBorder(nsDisplayListBuilder* aBuilder, nsMathMLmtdFrame* aFrame)
@@ -603,7 +603,7 @@ MapAllAttributesIntoCSS(nsMathMLmtableFrame* aTableFrame)
 
       for (nsIFrame* cellFrame : rowFrame->PrincipalChildList()) {
         DEBUG_VERIFY_THAT_FRAME_IS(cellFrame, TableCell);
-        if (IS_TABLE_CELL(cellFrame->Type())) {
+        if (IsTableCell(cellFrame->Type())) {
           // Map cell rowalign.
           ParseFrameAttribute(cellFrame, nsGkAtoms::rowalign_, false);
           // Map row columnalign.

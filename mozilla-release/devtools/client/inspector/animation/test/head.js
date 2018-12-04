@@ -10,19 +10,15 @@ Services.scriptloader.loadSubScript(
   "chrome://mochitests/content/browser/devtools/client/inspector/test/head.js", this);
 
 const FRAME_SCRIPT_URL = CHROME_URL_ROOT + "doc_frame_script.js";
-const TAB_NAME = "newanimationinspector";
+const TAB_NAME = "animationinspector";
 
 const ANIMATION_L10N =
   new LocalizationHelper("devtools/client/locales/animationinspector.properties");
-
-// Enable new animation inspector.
-Services.prefs.setBoolPref("devtools.new-animationinspector.enabled", true);
 
 // Auto clean-up when a test ends.
 // Clean-up all prefs that might have been changed during a test run
 // (safer here because if the test fails, then the pref is never reverted)
 registerCleanupFunction(() => {
-  Services.prefs.clearUserPref("devtools.new-animationinspector.enabled");
   Services.prefs.clearUserPref("devtools.toolsidebar-width.inspector");
 });
 
@@ -47,7 +43,7 @@ const openAnimationInspector = async function() {
  * @return {Promise} that resolves when the toolbox has closed.
  */
 const closeAnimationInspector = async function() {
-  const target = TargetFactory.forTab(gBrowser.selectedTab);
+  const target = await TargetFactory.forTab(gBrowser.selectedTab);
   return gDevTools.closeToolbox(target);
 };
 
@@ -409,7 +405,7 @@ const mouseOutOnTargetNode = function(animationInspector, panel, index) {
 const selectAnimationInspector = async function(inspector) {
   await inspector.toolbox.selectTool("inspector");
   const onUpdated = inspector.once("inspector-updated");
-  inspector.sidebar.select("newanimationinspector");
+  inspector.sidebar.select("animationinspector");
   await onUpdated;
   await waitForRendering(inspector.animationinspector);
 };
@@ -557,6 +553,51 @@ const waitForRendering = async function(animationInspector) {
     waitForAnimationDetail(animationInspector),
   ]);
 };
+
+// Wait until an action of `type` is dispatched. If it's part of an
+// async operation, wait until the `status` field is "done" or "error"
+function _afterDispatchDone(store, type) {
+  return new Promise(resolve => {
+    store.dispatch({
+      // Normally we would use `services.WAIT_UNTIL`, but use the
+      // internal name here so tests aren't forced to always pass it
+      // in
+      type: "@@service/waitUntil",
+      predicate: action => {
+        if (action.type === type) {
+          return true;
+        }
+        return false;
+      },
+      run: (dispatch, getState, action) => {
+        resolve(action);
+      }
+    });
+  });
+}
+
+/**
+ * Wait for a specific action type to be dispatch.
+ * If an async action, will wait for it to be done.
+ * This is a custom waitForDispatch, and rather than having a number to wait on
+ * the function has a callback, that returns a number. This allows us to wait for
+ * an unknown number of dispatches.
+ *
+ * @memberof mochitest/waits
+ * @param {Object} inspector
+ * @param {String} type
+ * @param {Function} repeat
+ * @return {Promise}
+ * @static
+ */
+async function waitForDispatch(inspector, type, repeat) {
+  let count = 0;
+
+  while (count < repeat()) {
+    await _afterDispatchDone(inspector.store, type);
+    count++;
+  }
+}
 
 /**
  * Wait for rendering of animation keyframes.

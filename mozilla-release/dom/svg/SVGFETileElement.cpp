@@ -23,8 +23,8 @@ SVGFETileElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 
 nsSVGElement::StringInfo SVGFETileElement::sStringInfo[2] =
 {
-  { &nsGkAtoms::result, kNameSpaceID_None, true },
-  { &nsGkAtoms::in, kNameSpaceID_None, true }
+  { nsGkAtoms::result, kNameSpaceID_None, true },
+  { nsGkAtoms::in, kNameSpaceID_None, true }
 };
 
 //----------------------------------------------------------------------
@@ -54,7 +54,7 @@ SVGFETileElement::GetPrimitiveDescription(nsSVGFilterInstance* aInstance,
                                           const nsTArray<bool>& aInputsAreTainted,
                                           nsTArray<RefPtr<SourceSurface>>& aInputImages)
 {
-  return FilterPrimitiveDescription(PrimitiveType::Tile);
+  return FilterPrimitiveDescription(AsVariant(TileAttributes()));
 }
 
 bool

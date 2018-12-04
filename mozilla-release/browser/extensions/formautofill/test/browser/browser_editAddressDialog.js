@@ -1,5 +1,7 @@
 "use strict";
 
+requestLongerTimeout(6);
+
 add_task(async function setup_supportedCountries() {
   await SpecialPowers.pushPrefEnv({set: [
     [SUPPORTED_COUNTRIES_PREF, "US,CA,DE"],
@@ -49,9 +51,9 @@ add_task(async function test_saveAddress() {
   await testDialog(EDIT_ADDRESS_DIALOG_URL, win => {
     let doc = win.document;
     // Verify labels
-    is(doc.querySelector("#address-level1-container > span").textContent, "State",
+    is(doc.querySelector("#address-level1-container > .label-text").textContent, "State",
                          "US address-level1 label should be 'State'");
-    is(doc.querySelector("#postal-code-container > span").textContent, "ZIP Code",
+    is(doc.querySelector("#postal-code-container > .label-text").textContent, "ZIP Code",
                          "US postal-code label should be 'ZIP Code'");
     // Input address info and verify move through form with tab keys
     const keyInputs = [
@@ -72,7 +74,7 @@ add_task(async function test_saveAddress() {
       "VK_TAB",
       TEST_ADDRESS_1.organization,
       "VK_TAB",
-      TEST_ADDRESS_1.country,
+      // TEST_ADDRESS_1.country, // Country is already US
       "VK_TAB",
       TEST_ADDRESS_1.tel,
       "VK_TAB",
@@ -140,12 +142,15 @@ add_task(async function test_saveAddressCA() {
     EventUtils.synthesizeKey("Canada", {}, win);
 
     await TestUtils.waitForCondition(() => {
-      return doc.querySelector("#address-level1-container > span").textContent == "Province";
+      return doc.querySelector("#address-level1-container > .label-text").textContent == "Province";
     }, "Wait for the mutation observer to change the labels");
-    is(doc.querySelector("#address-level1-container > span").textContent, "Province",
+    is(doc.querySelector("#address-level1-container > .label-text").textContent, "Province",
                          "CA address-level1 label should be 'Province'");
-    is(doc.querySelector("#postal-code-container > span").textContent, "Postal Code",
+    is(doc.querySelector("#postal-code-container > .label-text").textContent, "Postal Code",
                          "CA postal-code label should be 'Postal Code'");
+    is(doc.querySelector("#address-level3-container").style.display, "none",
+                         "CA address-level3 should be hidden");
+
     // Input address info and verify move through form with tab keys
     doc.querySelector("#given-name").focus();
     const keyInputs = [
@@ -165,7 +170,7 @@ add_task(async function test_saveAddressCA() {
       "VK_TAB",
       TEST_ADDRESS_CA_1["postal-code"],
       "VK_TAB",
-      TEST_ADDRESS_CA_1.country,
+      // TEST_ADDRESS_1.country, // Country is already selected above
       "VK_TAB",
       TEST_ADDRESS_CA_1.tel,
       "VK_TAB",
@@ -190,12 +195,14 @@ add_task(async function test_saveAddressDE() {
     doc.querySelector("#country").focus();
     EventUtils.synthesizeKey("Germany", {}, win);
     await TestUtils.waitForCondition(() => {
-      return doc.querySelector("#postal-code-container > span").textContent == "Postal Code";
+      return doc.querySelector("#postal-code-container > .label-text").textContent == "Postal Code";
     }, "Wait for the mutation observer to change the labels");
-    is(doc.querySelector("#postal-code-container > span").textContent, "Postal Code",
+    is(doc.querySelector("#postal-code-container > .label-text").textContent, "Postal Code",
                          "DE postal-code label should be 'Postal Code'");
     is(doc.querySelector("#address-level1-container").style.display, "none",
                          "DE address-level1 should be hidden");
+    is(doc.querySelector("#address-level3-container").style.display, "none",
+                         "DE address-level3 should be hidden");
     // Input address info and verify move through form with tab keys
     doc.querySelector("#given-name").focus();
     const keyInputs = [
@@ -213,7 +220,7 @@ add_task(async function test_saveAddressDE() {
       "VK_TAB",
       TEST_ADDRESS_DE_1["address-level2"],
       "VK_TAB",
-      TEST_ADDRESS_DE_1.country,
+      // TEST_ADDRESS_1.country, // Country is already selected above
       "VK_TAB",
       TEST_ADDRESS_DE_1.tel,
       "VK_TAB",
@@ -229,6 +236,108 @@ add_task(async function test_saveAddressDE() {
     is(addresses[0][fieldName], fieldValue, "check " + fieldName);
   }
   await removeAllRecords();
+});
+
+add_task(async function test_saveAddressIE() {
+  await testDialog(EDIT_ADDRESS_DIALOG_URL, async win => {
+    let doc = win.document;
+    // Change country to verify labels
+    doc.querySelector("#country").focus();
+    EventUtils.synthesizeKey("Ireland", {}, win);
+    await TestUtils.waitForCondition(() => {
+      return doc.querySelector("#postal-code-container > .label-text").textContent == "Eircode";
+    }, "Wait for the mutation observer to change the labels");
+    is(doc.querySelector("#postal-code-container > .label-text").textContent, "Eircode",
+                         "IE postal-code label should be 'Eircode'");
+    is(doc.querySelector("#address-level1-container > .label-text").textContent, "County",
+                         "IE address-level1 should be 'County'");
+    is(doc.querySelector("#address-level3-container > .label-text").textContent, "Townland",
+                         "IE address-level3 should be 'Townland'");
+
+    // Input address info and verify move through form with tab keys
+    doc.querySelector("#given-name").focus();
+    const keyInputs = [
+      TEST_ADDRESS_IE_1["given-name"],
+      "VK_TAB",
+      TEST_ADDRESS_IE_1["additional-name"],
+      "VK_TAB",
+      TEST_ADDRESS_IE_1["family-name"],
+      "VK_TAB",
+      TEST_ADDRESS_IE_1.organization,
+      "VK_TAB",
+      TEST_ADDRESS_IE_1["street-address"],
+      "VK_TAB",
+      TEST_ADDRESS_IE_1["address-level3"],
+      "VK_TAB",
+      TEST_ADDRESS_IE_1["address-level2"],
+      "VK_TAB",
+      TEST_ADDRESS_IE_1["address-level1"],
+      "VK_TAB",
+      TEST_ADDRESS_IE_1["postal-code"],
+      "VK_TAB",
+      // TEST_ADDRESS_1.country, // Country is already selected above
+      "VK_TAB",
+      TEST_ADDRESS_IE_1.tel,
+      "VK_TAB",
+      TEST_ADDRESS_IE_1.email,
+      "VK_TAB",
+      "VK_TAB",
+      "VK_RETURN",
+    ];
+    keyInputs.forEach(input => EventUtils.synthesizeKey(input, {}, win));
+  });
+
+  let addresses = await getAddresses();
+  for (let [fieldName, fieldValue] of Object.entries(TEST_ADDRESS_IE_1)) {
+    is(addresses[0][fieldName], fieldValue, "check " + fieldName);
+  }
+  await removeAllRecords();
+});
+
+add_task(async function test_countryFieldLabels() {
+  await testDialog(EDIT_ADDRESS_DIALOG_URL, async win => {
+    let doc = win.document;
+    // Change country to verify labels
+    doc.querySelector("#country").focus();
+
+    let mutatableLabels = [
+      "postal-code-container",
+      "address-level1-container",
+      "address-level2-container",
+      "address-level3-container",
+    ].map(containerID => doc.getElementById(containerID).querySelector(":scope > .label-text"));
+
+    for (let countryOption of doc.querySelector("#country").options) {
+      if (countryOption.value == "") {
+        info("Skipping the empty option");
+        continue;
+      }
+
+      // Clear L10N attributes and textContent to not leave leftovers between country tests
+      for (let labelEl of mutatableLabels) {
+        labelEl.textContent = "";
+        delete labelEl.dataset.localization;
+      }
+
+      info(`Selecting '${countryOption.label}' (${countryOption.value})`);
+      EventUtils.synthesizeKey(countryOption.label, {}, win);
+
+      // Check that the labels were filled
+      for (let labelEl of mutatableLabels) {
+        if (!labelEl.textContent) {
+          await TestUtils.waitForCondition(() => labelEl.textContent,
+                                           "Wait for label to be populated by the mutation observer",
+                                           10);
+        }
+        isnot(labelEl.textContent, "",
+              "Ensure textContent is non-empty for: " + countryOption.value);
+        is(labelEl.dataset.localization, undefined,
+           "Ensure data-localization was removed: " + countryOption.value);
+      }
+    }
+
+    doc.querySelector("#cancel").click();
+  });
 });
 
 add_task(async function test_combined_name_fields() {
@@ -315,4 +424,58 @@ add_task(async function test_combined_name_fields_error() {
        "rgba(0, 0, 0, 0)", "Border should be transparent so that only the error outline shows");
     doc.querySelector("#cancel").click();
   });
+});
+
+add_task(async function test_hiddenFieldNotSaved() {
+  await testDialog(EDIT_ADDRESS_DIALOG_URL, win => {
+    let doc = win.document;
+    doc.querySelector("#address-level2").focus();
+    EventUtils.synthesizeKey(TEST_ADDRESS_1["address-level2"], {}, win);
+    doc.querySelector("#address-level1").focus();
+    EventUtils.synthesizeKey(TEST_ADDRESS_1["address-level1"], {}, win);
+    doc.querySelector("#country").focus();
+    EventUtils.synthesizeKey("Germany", {}, win);
+    doc.querySelector("#save").focus();
+    EventUtils.synthesizeKey("VK_RETURN", {}, win);
+  });
+  let addresses = await getAddresses();
+  is(addresses[0].country, "DE", "check country");
+  is(addresses[0]["address-level2"], TEST_ADDRESS_1["address-level2"], "check address-level2");
+  is(addresses[0]["address-level1"], undefined, "address-level1 should not be saved");
+
+  await removeAllRecords();
+});
+
+add_task(async function test_hiddenFieldRemovedWhenCountryChanged() {
+  let addresses = await getAddresses();
+  ok(!addresses.length, "no addresses at start of test");
+  await testDialog(EDIT_ADDRESS_DIALOG_URL, win => {
+    let doc = win.document;
+    doc.querySelector("#address-level2").focus();
+    EventUtils.synthesizeKey(TEST_ADDRESS_1["address-level2"], {}, win);
+    doc.querySelector("#address-level1").focus();
+    EventUtils.synthesizeKey(TEST_ADDRESS_1["address-level1"], {}, win);
+    doc.querySelector("#save").focus();
+    EventUtils.synthesizeKey("VK_RETURN", {}, win);
+  });
+  addresses = await getAddresses();
+  is(addresses[0].country, "US", "check country");
+  is(addresses[0]["address-level2"], TEST_ADDRESS_1["address-level2"], "check address-level2");
+  is(addresses[0]["address-level1"], TEST_ADDRESS_1["address-level1"], "check address-level1");
+
+  await testDialog(EDIT_ADDRESS_DIALOG_URL, win => {
+    let doc = win.document;
+    doc.querySelector("#country").focus();
+    EventUtils.synthesizeKey("Germany", {}, win);
+    win.document.querySelector("#save").click();
+  }, {
+    record: addresses[0],
+  });
+  addresses = await getAddresses();
+
+  is(addresses.length, 1, "only one address is in storage");
+  is(addresses[0]["address-level2"], TEST_ADDRESS_1["address-level2"], "check address-level2");
+  is(addresses[0]["address-level1"], undefined, "address-level1 should be removed");
+  is(addresses[0].country, "DE", "country changed");
+  await removeAllRecords();
 });

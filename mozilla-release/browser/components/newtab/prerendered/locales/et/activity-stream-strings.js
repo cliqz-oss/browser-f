@@ -75,7 +75,7 @@ window.gActivityStreamStrings = {
   "pocket_read_more": "Populaarsed teemad:",
   "pocket_read_even_more": "Rohkem lugusid",
   "pocket_more_reccommendations": "Rohkem soovitusi",
-  "pocket_how_it_works": "How it works",
+  "pocket_how_it_works": "Kuidas see töötab?",
   "pocket_cta_button": "Hangi Pocket",
   "pocket_cta_text": "Salvesta oma lemmiklood Pocketisse.",
   "highlights_empty_state": "Alusta veebilehitsemist ja me näitame siin häid artikleid, videoid ja muid lehti, mida hiljuti külastasid või järjehoidjatesse lisasid.",
@@ -107,5 +107,6 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "privaatsusreeglitega",
   "firstrun_continue_to_login": "Jätka",
   "firstrun_skip_login": "Jäta see samm vahele",
+  "context_menu_title": "Ava menüü",
   "pocket_learn_more": "Rohkem teavet"
 };

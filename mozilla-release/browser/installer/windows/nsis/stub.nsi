@@ -1878,8 +1878,14 @@ Function OpenManualDownloadURL
 FunctionEnd
 
 Function ShouldPromptForProfileCleanup
+<<<<<<< HEAD
   ; Call GetLatestReleasedVersion
 
+||||||| merged common ancestors
+  Call GetLatestReleasedVersion
+
+=======
+>>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
   ; This will be our return value.
   StrCpy $ProfileCleanupPromptType 0
 
@@ -2024,7 +2030,7 @@ Function GetLatestReleasedVersion
   ${Case} "nightly"
     StrCpy $1 "FIREFOX_NIGHTLY"
   ${Case} "aurora"
-    StrCpy $1 "FIREFOX_AURORA"
+    StrCpy $1 "FIREFOX_DEVEDITION"
   ${Case} "beta"
     StrCpy $1 "LATEST_FIREFOX_RELEASED_DEVEL_VERSION"
   ${Case} "release"

@@ -6,20 +6,20 @@
 
 DIRS += [
     'addon',
+    'targets',
 ]
 
 DevToolsModules(
     'accessibility.js',
     'actor-registry.js',
     'animation.js',
-    'call-watcher.js',
     'canvas.js',
     'css-properties.js',
     'csscoverage.js',
     'device.js',
     'emulation.js',
     'framerate.js',
-    'gcli.js',
+    'function-call.js',
     'highlighters.js',
     'inspector.js',
     'layout.js',

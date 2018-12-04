@@ -78,18 +78,19 @@
  *   message manager messages for frame message managers which are currently
  *   hosting a matching DOM window.
  *
- * - "allFrames": If "matches" is specified, this modifies its behavior to
- *   allow it to match sub-frames as well as top-level frames. If "allFrames" is
- *   not specified, it will match only top-level frames. See
- *   MozDocumentMather.webidl for more information.
+ * - "allFrames": this modifies its behavior to allow it to match sub-frames
+ *   as well as top-level frames. If "allFrames" is not specified, it will
+ *   match only top-level frames.
  *
  * - "matchAboutBlank": If "matches" is specified, this modifies its behavior to
- *   allow it to match about:blank pages. See MozDocumentMather.webidl for more
+ *   allow it to match about:blank pages. See MozDocumentMatcher.webidl for more
  *   information.
  *
- * [1]: For actors which specify "matches" to restrict them to a certain set of
- *      windows, the listener will be added to the DOM window rather than the
- *      frame message manager.
+ * [1]: For actors which specify "matches" or "allFrames", the listener will be
+ *      added to the DOM window rather than the frame message manager.
+ *
+ * If Fission is being simulated, and an actor needs to receive events from
+ * sub-frames, it must use "allFrames".
  */
 
 var EXPORTED_SYMBOLS = ["ActorManagerParent"];
@@ -261,6 +262,17 @@ let ACTORS = {
     },
   },
 
+  UAWidgets: {
+    child: {
+      module: "resource://gre/actors/UAWidgetsChild.jsm",
+      events: {
+        "UAWidgetBindToTree": {},
+        "UAWidgetAttributeChanged": {},
+        "UAWidgetUnbindFromTree": {},
+      },
+    },
+  },
+
   UnselectedTabHover: {
     child: {
       module: "resource://gre/actors/UnselectedTabHoverChild.jsm",
@@ -366,8 +378,8 @@ var ActorManagerParent = {
       let {child} = actor;
       {
         let actorSet;
-        if (child.matches) {
-          actorSet = this.singletons.get({matches: child.matches,
+        if (child.matches || child.allFrames) {
+          actorSet = this.singletons.get({matches: child.matches || ["<all_urls>"],
                                           allFrames: child.allFrames,
                                           matchAboutBlank: child.matchAboutBlank});
         } else {

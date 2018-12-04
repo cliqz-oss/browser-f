@@ -78,7 +78,6 @@
     real(CompileError,          InitViaClassSpec,       ERROR_CLASP(JSEXN_WASMCOMPILEERROR)) \
     real(LinkError,             InitViaClassSpec,       ERROR_CLASP(JSEXN_WASMLINKERROR)) \
     real(RuntimeError,          InitViaClassSpec,       ERROR_CLASP(JSEXN_WASMRUNTIMEERROR)) \
-    imaginary(Iterator,         dummy,                  dummy) \
     real(ArrayBuffer,           InitViaClassSpec,       OCLASP(ArrayBuffer)) \
     real(Int8Array,             InitViaClassSpec,       TYPED_ARRAY_CLASP(Int8)) \
     real(Uint8Array,            InitViaClassSpec,       TYPED_ARRAY_CLASP(Uint8)) \
@@ -107,10 +106,8 @@ IF_SAB(real,imaginary)(Atomics, InitAtomicsClass, OCLASP(Atomics)) \
     real(Promise,               InitViaClassSpec,       OCLASP(Promise)) \
     real(ReadableStream,        InitViaClassSpec,       &js::ReadableStream::class_) \
     real(ReadableStreamDefaultReader,           InitViaClassSpec, &js::ReadableStreamDefaultReader::class_) \
-    real(ReadableStreamBYOBReader,              InitViaClassSpec, &js::ReadableStreamBYOBReader::class_) \
     real(ReadableStreamDefaultController,       InitViaClassSpec, &js::ReadableStreamDefaultController::class_) \
     real(ReadableByteStreamController,          InitViaClassSpec, &js::ReadableByteStreamController::class_) \
-    real(ReadableStreamBYOBRequest,             InitViaClassSpec, &js::ReadableStreamBYOBRequest::class_) \
     imaginary(WritableStream,   dummy,                  dummy) \
     imaginary(WritableStreamDefaultWriter,      dummy,  dummy) \
     imaginary(WritableStreamDefaultController,  dummy,  dummy) \

@@ -7,15 +7,15 @@
 
 const defer = require("devtools/shared/defer");
 const protocol = require("devtools/shared/protocol");
-const {CallWatcherActor} = require("devtools/server/actors/call-watcher");
-const {CallWatcherFront} = require("devtools/shared/fronts/call-watcher");
+const {CallWatcher} = require("devtools/server/actors/utils/call-watcher");
+const {METHOD_FUNCTION, SETTER_FUNCTION} = require("devtools/shared/fronts/function-call");
 const {WebGLPrimitiveCounter} = require("devtools/server/actors/canvas/primitive");
 const {
   frameSnapshotSpec,
   canvasSpec,
   CANVAS_CONTEXTS,
   ANIMATION_GENERATORS,
-  LOOP_GENERATORS
+  LOOP_GENERATORS,
 } = require("devtools/shared/specs/canvas");
 const {CanvasFront} = require("devtools/shared/fronts/canvas");
 
@@ -57,8 +57,8 @@ var FrameSnapshotActor = protocol.ActorClassWithSpec(frameSnapshotSpec, {
         tris: this._primitive.tris,
         vertices: this._primitive.vertices,
         points: this._primitive.points,
-        lines: this._primitive.lines
-      }
+        lines: this._primitive.lines,
+      },
     };
   },
 
@@ -81,14 +81,14 @@ var FrameSnapshotActor = protocol.ActorClassWithSpec(frameSnapshotSpec, {
       canvas: canvas,
       calls: calls,
       first: 0,
-      last: index
+      last: index,
     });
 
     const {
       replayContext,
       replayContextScaling,
       lastDrawCallIndex,
-      doCleanup
+      doCleanup,
     } = replayData;
     const [left, top, width, height] = replayData.replayViewport;
     let screenshot;
@@ -111,7 +111,7 @@ var FrameSnapshotActor = protocol.ActorClassWithSpec(frameSnapshotSpec, {
     screenshot.scaling = replayContextScaling;
     screenshot.index = lastDrawCallIndex;
     return screenshot;
-  }
+  },
 });
 
 /**
@@ -148,13 +148,13 @@ exports.CanvasActor = protocol.ActorClassWithSpec(canvasSpec, {
     }
     this._initialized = true;
 
-    this._callWatcher = new CallWatcherActor(this.conn, this.targetActor);
+    this._callWatcher = new CallWatcher(this.conn, this.targetActor);
     this._callWatcher.onCall = this._onContentFunctionCall;
     this._callWatcher.setup({
       tracedGlobals: CANVAS_CONTEXTS,
       tracedFunctions: [...ANIMATION_GENERATORS, ...LOOP_GENERATORS],
       performReload: reload,
-      storeCalls: true
+      storeCalls: true,
     });
   },
 
@@ -302,7 +302,7 @@ exports.CanvasActor = protocol.ActorClassWithSpec(canvasSpec, {
       height: height,
       scaling: 1,
       flipped: flipped,
-      pixels: pixels.subarray(0, width * height * 4)
+      pixels: pixels.subarray(0, width * height * 4),
     };
 
     // Wrap the function calls and screenshot in a FrameSnapshotActor instance,
@@ -315,8 +315,8 @@ exports.CanvasActor = protocol.ActorClassWithSpec(canvasSpec, {
         tris: primitiveResult.tris,
         vertices: primitiveResult.vertices,
         points: primitiveResult.points,
-        lines: primitiveResult.lines
-      }
+        lines: primitiveResult.lines,
+      },
     });
 
     this._currentAnimationFrameSnapshot.resolve(frameSnapshot);
@@ -363,7 +363,7 @@ exports.CanvasActor = protocol.ActorClassWithSpec(canvasSpec, {
 
     functionCall._thumbnail = thumbnail;
     this._callWatcher.resumeRecording();
-  }
+  },
 });
 
 /**
@@ -488,7 +488,7 @@ var ContextUtils = {
     return {
       width: dstWidth,
       height: dstHeight,
-      pixels: isTransparent ? [] : new Uint8Array(dstPixels.buffer)
+      pixels: isTransparent ? [] : new Uint8Array(dstPixels.buffer),
     };
   },
 
@@ -509,8 +509,8 @@ var ContextUtils = {
    * In case of a 2D context, a new canvas is created, since there's no
    * intrinsic state that can't be easily duplicated.
    *
-   * @param number contexType
-   *        The type of context to use. See the CallWatcherFront scope types.
+   * @param number contextType
+   *        The type of context to use. See the FunctionCallFront constants.
    * @param HTMLCanvasElement canvas
    *        The canvas element which is the source of all context calls.
    * @param array calls
@@ -594,9 +594,9 @@ var ContextUtils = {
           continue;
         }
       }
-      if (type == CallWatcherFront.METHOD_FUNCTION) {
+      if (type == METHOD_FUNCTION) {
         replayContext[name].apply(replayContext, args);
-      } else if (type == CallWatcherFront.SETTER_FUNCTION) {
+      } else if (type == SETTER_FUNCTION) {
         replayContext[name] = args;
       }
       if (CanvasFront.DRAW_CALLS.has(name)) {
@@ -609,7 +609,7 @@ var ContextUtils = {
       replayContextScaling: replayContextScaling,
       replayViewport: customViewport,
       lastDrawCallIndex: lastDrawCallIndex,
-      doCleanup: doCleanup
+      doCleanup: doCleanup,
     };
   },
 
@@ -646,7 +646,7 @@ var ContextUtils = {
     const array32bit = new Uint32Array(buffer);
     this._currentPixelStorage = {
       "8bit": array8bit,
-      "32bit": array32bit
+      "32bit": array32bit,
     };
     return this._currentPixelStorage;
   },
@@ -710,7 +710,7 @@ var ContextUtils = {
     gl.viewport.apply(gl, newViewport);
 
     return { oldViewport, newViewport };
-  }
+  },
 };
 
 /**

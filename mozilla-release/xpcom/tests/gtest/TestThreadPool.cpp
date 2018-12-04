@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include "nsXPCOM.h"
 #include "nsXPCOMCIDInternal.h"
-#include "nsIThreadPool.h"
+#include "nsThreadPool.h"
 #include "nsComponentManagerUtils.h"
 #include "nsCOMPtr.h"
 #include "nsIRunnable.h"
@@ -49,8 +49,7 @@ mozilla::Atomic<int> Task::sCount;
 
 TEST(ThreadPool, Main)
 {
-  nsCOMPtr<nsIThreadPool> pool = do_CreateInstance(NS_THREADPOOL_CONTRACTID);
-  EXPECT_TRUE(pool);
+  nsCOMPtr<nsIThreadPool> pool = new nsThreadPool();
 
   for (int i = 0; i < 100; ++i) {
     nsCOMPtr<nsIRunnable> task = new Task(i);
@@ -65,8 +64,7 @@ TEST(ThreadPool, Main)
 
 TEST(ThreadPool, Parallelism)
 {
-  nsCOMPtr<nsIThreadPool> pool = do_CreateInstance(NS_THREADPOOL_CONTRACTID);
-  EXPECT_TRUE(pool);
+  nsCOMPtr<nsIThreadPool> pool = new nsThreadPool();
 
   // Dispatch and sleep to ensure we have an idle thread
   nsCOMPtr<nsIRunnable> r0 = new Runnable("TestRunnable");
@@ -129,4 +127,78 @@ TEST(ThreadPool, Parallelism)
   pool->Dispatch(r2, NS_DISPATCH_NORMAL);
 
   pool->Shutdown();
+}
+
+TEST(ThreadPool, ShutdownWithTimeout)
+{
+  Task::sCount = 0;
+  nsCOMPtr<nsIThreadPool> pool = new nsThreadPool();
+
+  for (int i = 0; i < 4; ++i) {
+    nsCOMPtr<nsIRunnable> task = new Task(i);
+    EXPECT_TRUE(task);
+
+    pool->Dispatch(task, NS_DISPATCH_NORMAL);
+  }
+
+  // Wait for a max of 300 ms. All threads should be done by then.
+  pool->ShutdownWithTimeout(300);
+  EXPECT_EQ(Task::sCount, 4);
+
+  Task::sCount = 0;
+  pool = new nsThreadPool();
+  for (int i = 0; i < 3; ++i) {
+    nsCOMPtr<nsIRunnable> task = new Task(i);
+    EXPECT_TRUE(task);
+
+    pool->Dispatch(task, NS_DISPATCH_NORMAL);
+  }
+
+  pool->Dispatch(NS_NewRunnableFunction("infinite-loop", []() {
+      printf("### running from thread that never ends: %p\n",
+             (void *) PR_GetCurrentThread());
+      while(true) {
+          PR_Sleep(PR_MillisecondsToInterval(100));
+      }
+      EXPECT_TRUE(false); // We should never get here.
+    }), NS_DISPATCH_NORMAL);
+
+  pool->ShutdownWithTimeout(1000);
+  EXPECT_EQ(Task::sCount, 3);
+}
+
+TEST(ThreadPool, ShutdownWithTimeoutThenSleep)
+{
+  Task::sCount = 0;
+  nsCOMPtr<nsIThreadPool> pool = new nsThreadPool();
+
+  for (int i = 0; i < 3; ++i) {
+    nsCOMPtr<nsIRunnable> task = new Task(i);
+    EXPECT_TRUE(task);
+
+    pool->Dispatch(task, NS_DISPATCH_NORMAL);
+  }
+
+  pool->Dispatch(NS_NewRunnableFunction("sleep-for-400-ms", []() {
+      printf("### running from thread that sleeps for 400ms: %p\n",
+             (void *) PR_GetCurrentThread());
+      PR_Sleep(PR_MillisecondsToInterval(400));
+      Task::sCount++;
+      printf("### thread awoke from long sleep: %p\n",
+             (void *) PR_GetCurrentThread());
+    }), NS_DISPATCH_NORMAL);
+
+
+  // Wait for a max of 300 ms. The thread should still be sleeping, and will
+  // be leaked.
+  pool->ShutdownWithTimeout(300);
+  EXPECT_EQ(Task::sCount, 3);
+
+  // Sleep for a bit, and wait for the last thread to finish up.
+  PR_Sleep(PR_MillisecondsToInterval(200));
+
+  // Process events so the shutdown ack is received
+  NS_ProcessPendingEvents(NS_GetCurrentThread());
+
+  EXPECT_EQ(Task::sCount, 4);
 }

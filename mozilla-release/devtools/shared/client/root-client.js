@@ -35,16 +35,13 @@ function RootClient(client, greeting) {
   this.traits = greeting.traits;
 
   // Cache root form as this will always be the same value.
-  //
-  // Note that rootForm is overloaded by DebuggerClient.checkRuntimeVersion
-  // in order to support <FF59 that doesn't support getRoot request.
   Object.defineProperty(this, "rootForm", {
     get() {
       delete this.rootForm;
       this.rootForm = this._getRoot();
       return this.rootForm;
     },
-    configurable: true
+    configurable: true,
   });
 
   // Cache of already created global scoped fronts
@@ -97,7 +94,7 @@ RootClient.prototype = {
    *        Called with the response packet.
    */
   listServiceWorkerRegistrations: DebuggerClient.requester({
-    type: "listServiceWorkerRegistrations"
+    type: "listServiceWorkerRegistrations",
   }),
 
   /**
@@ -107,6 +104,16 @@ RootClient.prototype = {
    *        Called with the response packet.
    */
   listProcesses: DebuggerClient.requester({ type: "listProcesses" }),
+
+  /**
+   * Fetch the ParentProcessTargetActor for the main process or ContentProcessTargetActor
+   * for a a given child process ID.
+   *
+   * @param number id
+   *        The ID for the process to attach (returned by `listProcesses`).
+   *        Connected to the main process if is 0.
+   */
+  getProcess: DebuggerClient.requester({ type: "getProcess", id: arg(0) }),
 
   /**
    * Retrieve all service worker registrations as well as workers from the parent and
@@ -141,11 +148,11 @@ RootClient.prototype = {
         if (process.parent) {
           continue;
         }
-        const { form } = await this._client.getProcess(process.id);
+        const { form } = await this.getProcess(process.id);
         const processActor = form.actor;
         const response = await this._client.request({
           to: processActor,
-          type: "listWorkers"
+          type: "listWorkers",
         });
         workers = workers.concat(response.workers);
       }
@@ -156,7 +163,7 @@ RootClient.prototype = {
     const result = {
       service: [],
       shared: [],
-      other: []
+      other: [],
     };
 
     registrations.forEach(form => {
@@ -167,7 +174,7 @@ RootClient.prototype = {
         fetch: form.fetch,
         registrationActor: form.actor,
         active: form.active,
-        lastUpdateTime: form.lastUpdateTime
+        lastUpdateTime: form.lastUpdateTime,
       });
     });
 
@@ -175,7 +182,7 @@ RootClient.prototype = {
       const worker = {
         name: form.url,
         url: form.url,
-        workerTargetActor: form.actor
+        workerTargetActor: form.actor,
       };
       switch (form.type) {
         case Ci.nsIWorkerDebugger.TYPE_SERVICE:
@@ -225,7 +232,7 @@ RootClient.prototype = {
   getTab: function(filter) {
     const packet = {
       to: this.actor,
-      type: "getTab"
+      type: "getTab",
     };
 
     if (filter) {
@@ -303,6 +310,26 @@ RootClient.prototype = {
    */
   protocolDescription: DebuggerClient.requester({ type: "protocolDescription" }),
 
+  /**
+   * Special request, actually supported by all actors to retrieve the list of all
+   * the request names supported by this actor.
+   */
+  requestTypes: DebuggerClient.requester({ type: "requestTypes" }),
+
+  /**
+   * Test request that returns the object passed as first argument.
+   *
+   * `echo` is special as all the property of the given object have to be passed
+   * on the packet object. That's not something that can be achieve by requester helper.
+   */
+  echo(object) {
+    const packet = Object.assign(object, {
+      to: this.actor,
+      type: "echo",
+    });
+    return this.request(packet);
+  },
+
   /*
    * Methods constructed by DebuggerClient.requester require these forwards
    * on their 'this'.
@@ -312,7 +339,7 @@ RootClient.prototype = {
   },
   get request() {
     return this._client.request;
-  }
+  },
 };
 
 module.exports = RootClient;

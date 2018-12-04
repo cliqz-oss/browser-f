@@ -296,10 +296,6 @@ var DebuggerController = {
   connectThread: function () {
     const { newSource, fetchEventListeners } = bindActionCreators(actions, this.dispatch);
 
-    // TODO: bug 806775, update the globals list using aPacket.hostAnnotations
-    // from bug 801084.
-    // this.client.addListener("newGlobal", ...);
-
     this.activeThread.addListener("newSource", (event, packet) => {
       newSource(packet.source);
 
@@ -344,7 +340,6 @@ var DebuggerController = {
       return;
     }
 
-    this.client.removeListener("newGlobal");
     this.activeThread.removeListener("newSource");
     this.activeThread.removeListener("blackboxchange");
 
@@ -473,7 +468,7 @@ function Workers() {
 }
 
 Workers.prototype = {
-  get _tabClient() {
+  get _targetFront() {
     return DebuggerController._target.activeTab;
   },
 
@@ -483,19 +478,30 @@ Workers.prototype = {
     }
 
     this._updateWorkerList();
-    this._tabClient.addListener("workerListChanged", this._onWorkerListChanged);
+
+    // `_targetFront` can be BrowsingContextTargetFront/WorkerTargetFront (protocol.js
+    // front) or DebuggerClient (old fashion client)
+    if (typeof(this._targetFront.on) == "function") {
+      this._targetFront.on("workerListChanged", this._onWorkerListChanged);
+    } else {
+      this._targetFront.addListener("workerListChanged", this._onWorkerListChanged);
+    }
   },
 
   disconnect: function () {
-    this._tabClient.removeListener("workerListChanged", this._onWorkerListChanged);
+    if (typeof(this._targetFront.on) == "function") {
+      this._targetFront.off("workerListChanged", this._onWorkerListChanged);
+    } else {
+      this._targetFront.removeListener("workerListChanged", this._onWorkerListChanged);
+    }
   },
 
   _updateWorkerList: function () {
-    if (!this._tabClient.listWorkers) {
+    if (!this._targetFront.listWorkers) {
       return;
     }
 
-    this._tabClient.listWorkers((response) => {
+    this._targetFront.listWorkers().then((response) => {
       let workerForms = Object.create(null);
       for (let worker of response.workers) {
         workerForms[worker.actor] = worker;
@@ -523,8 +529,8 @@ Workers.prototype = {
   },
 
   _onWorkerSelect: function (workerForm) {
-    DebuggerController.client.attachWorker(workerForm.actor).then(([response, workerClient]) => {
-      let toolbox = gDevTools.showToolbox(TargetFactory.forWorker(workerClient),
+    DebuggerController.client.attachWorker(workerForm.actor).then(([response, workerTargetFront]) => {
+      let toolbox = gDevTools.showToolbox(TargetFactory.forWorker(workerTargetFront),
                                           "jsdebugger", Toolbox.HostType.WINDOW);
       window.emit(EVENTS.WORKER_SELECTED, toolbox);
     });

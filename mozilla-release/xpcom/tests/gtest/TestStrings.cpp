@@ -1309,6 +1309,9 @@ TEST_F(Strings, append_string_with_capacity)
   s.SetCapacity(8000);
   const char16_t* ptr = s.BeginReading();
   EXPECT_NE(origPtr, ptr);
+  nsAutoString empty;
+  s.Append(empty);
+  EXPECT_EQ(s.BeginReading(), ptr);
   for (int i = 0; i < 100; i++) {
     s.Append(aa);
     EXPECT_EQ(s.BeginReading(), ptr);
@@ -1323,6 +1326,8 @@ TEST_F(Strings, append_literal_with_capacity)
   s.SetCapacity(8000);
   const char16_t* ptr = s.BeginReading();
   EXPECT_NE(origPtr, ptr);
+  s.AppendLiteral(u"");
+  EXPECT_EQ(s.BeginReading(), ptr);
   for (int i = 0; i < 100; i++) {
     s.AppendLiteral(u"aa");
     EXPECT_EQ(s.BeginReading(), ptr);
@@ -1330,6 +1335,9 @@ TEST_F(Strings, append_literal_with_capacity)
   }
 }
 
+// The following test is intentionally not memory
+// checking-clean.
+#if !(defined(MOZ_HAVE_MEM_CHECKS) || defined(MOZ_MSAN))
 TEST_F(Strings, legacy_set_length_semantics)
 {
   const char* foobar = "foobar";
@@ -1337,8 +1345,9 @@ TEST_F(Strings, legacy_set_length_semantics)
   s.SetCapacity(2048);
   memcpy(s.BeginWriting(), foobar, strlen(foobar));
   s.SetLength(strlen(foobar));
-  EXPECT_TRUE(s.EqualsASCII(foobar));
+  EXPECT_FALSE(s.EqualsASCII(foobar));
 }
+#endif
 
 TEST_F(Strings, bulk_write)
 {

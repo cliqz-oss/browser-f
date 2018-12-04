@@ -22,11 +22,13 @@
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsISupportsImpl.h"
 #include "nsISupportsUtils.h"
+#include "nsIXPConnect.h"
 #include "nsContentUtils.h"
 #include "nsDocShell.h"
 #include "nsGlobalWindow.h"
 #include "nsMixedContentBlocker.h"
 #include "nsRedirectHistoryEntry.h"
+#include "nsSandboxFlags.h"
 #include "LoadInfo.h"
 
 using namespace mozilla::dom;
@@ -92,6 +94,7 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
   , mIsTrackerBlocked(false)
   , mDocumentHasUserInteracted(false)
   , mDocumentHasLoaded(false)
+  , mIsFromProcessingFrameAttributes(false)
 {
   MOZ_ASSERT(mLoadingPrincipal);
   MOZ_ASSERT(mTriggeringPrincipal);
@@ -132,6 +135,9 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
     mSecurityFlags &= ~nsILoadInfo::SEC_FORCE_INHERIT_PRINCIPAL;
   }
 
+  uint32_t externalType =
+    nsContentUtils::InternalContentPolicyTypeToExternal(aContentPolicyType);
+
   if (aLoadingContext) {
     // Ensure that all network requests for a window client have the ClientInfo
     // properly set.  Workers must currently pass the loading ClientInfo explicitly.
@@ -161,8 +167,23 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
         nsGlobalWindowInner::Cast(contextOuter->GetCurrentInnerWindow());
       if (innerWindow) {
         mTopLevelPrincipal = innerWindow->GetTopLevelPrincipal();
-        mTopLevelStorageAreaPrincipal =
-          innerWindow->GetTopLevelStorageAreaPrincipal();
+
+        // The top-level-storage-area-principal is not null only for the first
+        // level of iframes (null for top-level contexts, and null for
+        // sub-iframes). If we are loading a sub-document resource, we must
+        // calculate what the top-level-storage-area-principal will be for the
+        // new context.
+        if (externalType != nsIContentPolicy::TYPE_SUBDOCUMENT) {
+          mTopLevelStorageAreaPrincipal =
+            innerWindow->GetTopLevelStorageAreaPrincipal();
+        } else if (contextOuter->IsTopLevelWindow()) {
+          nsIDocument* doc = innerWindow->GetExtantDoc();
+          if (!doc || ((doc->GetSandboxFlags() & SANDBOXED_STORAGE_ACCESS) == 0 &&
+                       !nsContentUtils::IsInPrivateBrowsing(doc))) {
+            mTopLevelStorageAreaPrincipal = innerWindow->GetPrincipal();
+          }
+        }
+
         mDocumentHasLoaded = innerWindow->IsDocumentLoaded();
 
         if (innerWindow->IsFrame()) {
@@ -216,8 +237,6 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
       (nsContentUtils::IsPreloadType(mInternalContentPolicyType) &&
        aLoadingContext->OwnerDoc()->GetUpgradeInsecureRequests(true));
 
-    uint32_t externalType =
-      nsContentUtils::InternalContentPolicyTypeToExternal(mInternalContentPolicyType);
     if (nsContentUtils::IsUpgradableDisplayType(externalType)) {
       nsCOMPtr<nsIURI> uri;
       mLoadingPrincipal->GetURI(getter_AddRefs(uri));
@@ -348,6 +367,7 @@ LoadInfo::LoadInfo(nsPIDOMWindowOuter* aOuterWindow,
   , mIsTrackerBlocked(false)
   , mDocumentHasUserInteracted(false)
   , mDocumentHasLoaded(false)
+  , mIsFromProcessingFrameAttributes(false)
 {
   // Top-level loads are never third-party
   // Grab the information we can out of the window.
@@ -374,8 +394,8 @@ LoadInfo::LoadInfo(nsPIDOMWindowOuter* aOuterWindow,
     nsGlobalWindowInner::Cast(aOuterWindow->GetCurrentInnerWindow());
   if (innerWindow) {
     mTopLevelPrincipal = innerWindow->GetTopLevelPrincipal();
-    mTopLevelStorageAreaPrincipal =
-      innerWindow->GetTopLevelStorageAreaPrincipal();
+    // mTopLevelStorageAreaPrincipal is always null for top-level document
+    // loading.
   }
 
   // get the docshell from the outerwindow, and then get the originattributes
@@ -450,6 +470,7 @@ LoadInfo::LoadInfo(const LoadInfo& rhs)
   , mIsTrackerBlocked(rhs.mIsTrackerBlocked)
   , mDocumentHasUserInteracted(rhs.mDocumentHasUserInteracted)
   , mDocumentHasLoaded(rhs.mDocumentHasLoaded)
+  , mIsFromProcessingFrameAttributes(rhs.mIsFromProcessingFrameAttributes)
 {
 }
 
@@ -544,6 +565,7 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
   , mIsTrackerBlocked(false)
   , mDocumentHasUserInteracted(aDocumentHasUserInteracted)
   , mDocumentHasLoaded(aDocumentHasLoaded)
+  , mIsFromProcessingFrameAttributes(false)
 {
   // Only top level TYPE_DOCUMENT loads can have a null loadingPrincipal
   MOZ_ASSERT(mLoadingPrincipal || aContentPolicyType == nsIContentPolicy::TYPE_DOCUMENT);
@@ -1196,7 +1218,7 @@ LoadInfo::GetRedirects(JSContext* aCx, JS::MutableHandle<JS::Value> aRedirects,
   JS::Rooted<JSObject*> global(aCx, JS::CurrentGlobalOrNull(aCx));
   NS_ENSURE_TRUE(global, NS_ERROR_UNEXPECTED);
 
-  nsCOMPtr<nsIXPConnect> xpc = mozilla::services::GetXPConnect();
+  nsCOMPtr<nsIXPConnect> xpc = nsIXPConnect::XPConnect();
 
   for (size_t idx = 0; idx < aArray.Length(); idx++) {
     JS::RootedObject jsobj(aCx);
@@ -1446,6 +1468,20 @@ LoadInfo::GetIsTopLevelLoad(bool *aResult)
 {
   *aResult = mFrameOuterWindowID ? mFrameOuterWindowID == mOuterWindowID
                                  : mParentOuterWindowID == mOuterWindowID;
+  return NS_OK;
+}
+
+void
+LoadInfo::SetIsFromProcessingFrameAttributes()
+{
+  mIsFromProcessingFrameAttributes = true;
+}
+
+NS_IMETHODIMP
+LoadInfo::GetIsFromProcessingFrameAttributes(bool *aIsFromProcessingFrameAttributes)
+{
+  MOZ_ASSERT(aIsFromProcessingFrameAttributes);
+  *aIsFromProcessingFrameAttributes = mIsFromProcessingFrameAttributes;
   return NS_OK;
 }
 

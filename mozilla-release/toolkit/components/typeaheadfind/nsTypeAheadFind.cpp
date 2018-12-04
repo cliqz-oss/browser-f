@@ -305,7 +305,7 @@ void
 nsTypeAheadFind::SaveFind()
 {
   if (mWebBrowserFind)
-    mWebBrowserFind->SetSearchString(mTypeAheadBuffer.get());
+    mWebBrowserFind->SetSearchString(mTypeAheadBuffer);
 
   // save the length of this find for "not found" sound
   mLastFindLength = mTypeAheadBuffer.Length();
@@ -562,8 +562,7 @@ nsTypeAheadFind::FindItNow(nsIPresShell *aPresShell, bool aIsLinksOnly,
           nsresult rv = fm->GetFocusedWindow(getter_AddRefs(focusedWindow));
           if (NS_SUCCEEDED(rv) && focusedWindow) {
             auto* fwPI = nsPIDOMWindowOuter::From(focusedWindow);
-            nsCOMPtr<nsIDocShellTreeItem> fwTreeItem
-              (do_QueryInterface(fwPI->GetDocShell(), &rv));
+            nsCOMPtr<nsIDocShellTreeItem> fwTreeItem(fwPI->GetDocShell());
             if (NS_SUCCEEDED(rv)) {
               nsCOMPtr<nsIDocShellTreeItem> fwRootTreeItem;
               rv = fwTreeItem->GetSameTypeRootTreeItem(getter_AddRefs(fwRootTreeItem));

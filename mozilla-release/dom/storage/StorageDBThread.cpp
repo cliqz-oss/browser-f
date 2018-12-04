@@ -25,8 +25,12 @@
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/ipc/BackgroundParent.h"
 #include "nsIObserverService.h"
+#include "nsThread.h"
+#include "nsThreadManager.h"
 #include "nsVariant.h"
+#include "mozilla/EventQueue.h"
 #include "mozilla/IOInterposer.h"
+#include "mozilla/ThreadEventQueue.h"
 #include "mozilla/Services.h"
 #include "mozilla/Tokenizer.h"
 #include "GeckoProfiler.h"
@@ -488,6 +492,12 @@ StorageDBThread::SetDefaultPriority()
 void
 StorageDBThread::ThreadFunc(void* aArg)
 {
+  {
+    auto queue = MakeRefPtr<ThreadEventQueue<EventQueue>>(MakeUnique<EventQueue>());
+    Unused <<
+      nsThreadManager::get().CreateCurrentThread(queue, nsThread::NOT_MAIN_THREAD);
+  }
+
   AUTO_PROFILER_REGISTER_THREAD("localStorage DB");
   NS_SetCurrentThreadName("localStorage DB");
   mozilla::IOInterposer::RegisterCurrentThread();
@@ -558,6 +568,7 @@ StorageDBThread::ThreadFunc()
         SetDefaultPriority(); // urgent preload unscheduled
       }
     } else if (MOZ_UNLIKELY(!mStopIOThread)) {
+      AUTO_PROFILER_LABEL("StorageDBThread::ThreadFunc::Wait", IDLE);
       lockMonitor.Wait(timeUntilFlush);
     }
   } // thread loop

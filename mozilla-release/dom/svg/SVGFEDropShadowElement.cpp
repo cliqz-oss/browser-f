@@ -24,19 +24,19 @@ SVGFEDropShadowElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenPro
 
 nsSVGElement::NumberInfo SVGFEDropShadowElement::sNumberInfo[2] =
 {
-  { &nsGkAtoms::dx, 2, false },
-  { &nsGkAtoms::dy, 2, false }
+  { nsGkAtoms::dx, 2, false },
+  { nsGkAtoms::dy, 2, false }
 };
 
 nsSVGElement::NumberPairInfo SVGFEDropShadowElement::sNumberPairInfo[1] =
 {
-  { &nsGkAtoms::stdDeviation, 2, 2 }
+  { nsGkAtoms::stdDeviation, 2, 2 }
 };
 
 nsSVGElement::StringInfo SVGFEDropShadowElement::sStringInfo[2] =
 {
-  { &nsGkAtoms::result, kNameSpaceID_None, true },
-  { &nsGkAtoms::in, kNameSpaceID_None, true }
+  { nsGkAtoms::result, kNameSpaceID_None, true },
+  { nsGkAtoms::in, kNameSpaceID_None, true }
 };
 
 //----------------------------------------------------------------------
@@ -95,7 +95,7 @@ SVGFEDropShadowElement::GetPrimitiveDescription(nsSVGFilterInstance* aInstance,
                                              &mNumberPairAttributes[STD_DEV],
                                              nsSVGNumberPair::eSecond);
   if (stdX < 0 || stdY < 0) {
-    return FilterPrimitiveDescription(PrimitiveType::Empty);
+    return FilterPrimitiveDescription();
   }
 
   IntPoint offset(int32_t(aInstance->GetPrimitiveNumber(
@@ -103,20 +103,20 @@ SVGFEDropShadowElement::GetPrimitiveDescription(nsSVGFilterInstance* aInstance,
                   int32_t(aInstance->GetPrimitiveNumber(
                             SVGContentUtils::Y, &mNumberAttributes[DY])));
 
-  FilterPrimitiveDescription descr(PrimitiveType::DropShadow);
-  descr.Attributes().Set(eDropShadowStdDeviation, Size(stdX, stdY));
-  descr.Attributes().Set(eDropShadowOffset, offset);
+  DropShadowAttributes atts;
+  atts.mStdDeviation = Size(stdX, stdY);
+  atts.mOffset = offset;
 
   nsIFrame* frame = GetPrimaryFrame();
   if (frame) {
     const nsStyleSVGReset* styleSVGReset = frame->Style()->StyleSVGReset();
     Color color(Color::FromABGR(styleSVGReset->mFloodColor.CalcColor(frame)));
     color.a *= styleSVGReset->mFloodOpacity;
-    descr.Attributes().Set(eDropShadowColor, color);
+    atts.mColor = color;
   } else {
-    descr.Attributes().Set(eDropShadowColor, Color());
+    atts.mColor = Color();
   }
-  return descr;
+  return FilterPrimitiveDescription(AsVariant(std::move(atts)));
 }
 
 bool

@@ -299,6 +299,9 @@ LoadContextOptions(const char* aPrefName, void* /* aClosure */)
                 .setWasm(GetWorkerPref<bool>(NS_LITERAL_CSTRING("wasm")))
                 .setWasmBaseline(GetWorkerPref<bool>(NS_LITERAL_CSTRING("wasm_baselinejit")))
                 .setWasmIon(GetWorkerPref<bool>(NS_LITERAL_CSTRING("wasm_ionjit")))
+#ifdef ENABLE_WASM_CRANELIFT
+                .setWasmForceCranelift(GetWorkerPref<bool>(NS_LITERAL_CSTRING("wasm_cranelift")))
+#endif
 #ifdef ENABLE_WASM_GC
                 .setWasmGc(GetWorkerPref<bool>(NS_LITERAL_CSTRING("wasm_gc")))
 #endif
@@ -312,7 +315,6 @@ LoadContextOptions(const char* aPrefName, void* /* aClosure */)
 #ifdef FUZZING
                 .setFuzzing(GetWorkerPref<bool>(NS_LITERAL_CSTRING("fuzzing.enabled")))
 #endif
-                .setStreams(GetWorkerPref<bool>(NS_LITERAL_CSTRING("streams")))
                 .setExtraWarnings(GetWorkerPref<bool>(NS_LITERAL_CSTRING("strict")));
 
   nsCOMPtr<nsIXULRuntime> xr = do_GetService("@mozilla.org/xre/runtime;1");
@@ -913,7 +915,7 @@ InitJSContextForWorker(WorkerPrivate* aWorkerPrivate, JSContext* aWorkerCx)
 }
 
 static bool
-PreserveWrapper(JSContext *cx, JSObject *obj)
+PreserveWrapper(JSContext *cx, JS::HandleObject obj)
 {
     MOZ_ASSERT(cx);
     MOZ_ASSERT(obj);
@@ -2758,12 +2760,9 @@ WorkerThreadPrimaryRunnable::Run()
       PROFILER_SET_JS_CONTEXT(cx);
 
       {
-        JSAutoRequest ar(cx);
-
         mWorkerPrivate->DoRunLoop(cx);
         // The AutoJSAPI in DoRunLoop should have reported any exceptions left
-        // on cx.  Note that we still need the JSAutoRequest above because
-        // AutoJSAPI on workers does NOT enter a request!
+        // on cx.
         MOZ_ASSERT(!JS_IsExceptionPending(cx));
       }
 

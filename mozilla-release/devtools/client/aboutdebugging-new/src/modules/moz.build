@@ -4,6 +4,9 @@
 
 DevToolsModules(
     'debug-target-collapsibilities.js',
+    'debug-target-support.js',
     'extensions-helper.js',
     'network-locations.js',
+    'runtimes-state-helper.js',
+    'usb-runtimes.js',
 )

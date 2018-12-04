@@ -215,22 +215,6 @@ class sessionrestore_many_windows(sessionrestore):
     profile_path = '${talos}/startup_test/sessionrestore/profile-manywindows'
 
 
-@register_test()
-class tresize(TsBase):
-    """
-    This test does some resize thing.
-    """
-    extensions = ['${talos}/startup_test/tresize/addon']
-    cycles = 20
-    url = 'startup_test/tresize/addon/content/tresize-test.html'
-    timeout = 150
-    gecko_profile_interval = 2
-    gecko_profile_entries = 1000000
-    tpmozafterpaint = True
-    filters = filter.ignore_first.prepare(5) + filter.median.prepare()
-    unit = 'ms'
-
-
 # pageloader tests(tp5, etc)
 
 # The overall test number is determined by first calculating the median
@@ -575,7 +559,8 @@ class tp5o_scroll(PageloaderTest):
     tpmozafterpaint = False
     preferences = {'layout.frame_rate': 0,
                    'docshell.event_starvation_delay_hint': 1,
-                   'dom.send_after_paint_to_content': False,
+                   'dom.send_after_paint_to_content': True,
+                   'apz.paint_skipping.enabled': False,
                    'layout.css.scroll-behavior.spring-constant': "'10'",
                    'toolkit.framesRecording.bufferSize': 10000}
     filters = filter.ignore_first.prepare(1) + filter.median.prepare()
@@ -684,6 +669,22 @@ class dromaeo_dom(dromaeo):
 
 
 @register_test()
+class tresize(PageloaderTest):
+    """
+    This test does some resize thing.
+    """
+    tpmanifest = '${talos}/tests/tresize/tresize.manifest'
+    extensions = ['${talos}/pageloader', '${talos}/tests/tresize/addon']
+    tppagecycles = 20
+    timeout = 900
+    gecko_profile_interval = 2
+    gecko_profile_entries = 1000000
+    tpmozafterpaint = True
+    filters = filter.ignore_first.prepare(5) + filter.median.prepare()
+    unit = 'ms'
+
+
+@register_test()
 class tsvgm(PageloaderTest):
     """
     An svg-only number that measures SVG rendering performance
@@ -773,7 +774,8 @@ class tscrollx(PageloaderTest):
     """ ASAP mode """
     preferences = {'layout.frame_rate': 0,
                    'docshell.event_starvation_delay_hint': 1,
-                   'dom.send_after_paint_to_content': False,
+                   'dom.send_after_paint_to_content': True,
+                   'apz.paint_skipping.enabled': False,
                    'layout.css.scroll-behavior.spring-constant': "'10'",
                    'toolkit.framesRecording.bufferSize': 10000}
     filters = filter.ignore_first.prepare(5) + filter.median.prepare()

@@ -100,8 +100,9 @@ WasmFrameIter::operator++()
     // just clear the trapping state.
 
     if (unwind_ == Unwind::True) {
-        if (activation_->isWasmTrapping())
+        if (activation_->isWasmTrapping()) {
             activation_->finishWasmTrap();
+        }
         activation_->setWasmExitFP(fp_);
     }
 
@@ -261,8 +262,9 @@ unsigned
 WasmFrameIter::computeLine(uint32_t* column) const
 {
     if (instance()->isAsmJS()) {
-        if (column)
+        if (column) {
             *column = 1;
+        }
         return lineOrBytecode_;
     }
 
@@ -279,8 +281,9 @@ WasmFrameIter::computeLine(uint32_t* column) const
     // breaking existing devtools code written when this used to be the case.
 
     MOZ_ASSERT(!(codeRange_->funcIndex() & ColumnBit));
-    if (column)
+    if (column) {
         *column = codeRange_->funcIndex() | ColumnBit;
+    }
     return lineOrBytecode_;
 }
 
@@ -497,11 +500,13 @@ static void
 GenerateCallableEpilogue(MacroAssembler& masm, unsigned framePushed, ExitReason reason,
                          uint32_t* ret)
 {
-    if (framePushed)
+    if (framePushed) {
         masm.freeStack(framePushed);
+    }
 
-    if (!reason.isNone())
+    if (!reason.isNone()) {
         ClearExitFP(masm, ABINonArgReturnVolatileReg);
+    }
 
     DebugOnly<uint32_t> poppedFP;
     DebugOnly<uint32_t> poppedTlsReg;
@@ -583,7 +588,7 @@ wasm::GenerateFunctionPrologue(MacroAssembler& masm, const FuncTypeIdDesc& funcT
     // the bytecode offset of the callsite by JitActivation::startWasmTrap.
     offsets->begin = masm.currentOffset();
     switch (funcTypeId.kind()) {
-      case FuncTypeIdDesc::Kind::Global: {
+      case FuncTypeIdDescKind::Global: {
         Register scratch = WasmTableCallScratchReg0;
         masm.loadWasmGlobalPtr(funcTypeId.globalDataOffset(), scratch);
         masm.branchPtr(Assembler::Condition::Equal, WasmTableCallSigReg, scratch,
@@ -591,13 +596,13 @@ wasm::GenerateFunctionPrologue(MacroAssembler& masm, const FuncTypeIdDesc& funcT
         masm.wasmTrap(Trap::IndirectCallBadSig, BytecodeOffset(0));
         break;
       }
-      case FuncTypeIdDesc::Kind::Immediate: {
+      case FuncTypeIdDescKind::Immediate: {
         masm.branch32(Assembler::Condition::Equal, WasmTableCallSigReg,
                       Imm32(funcTypeId.immediate()), &normalEntry);
         masm.wasmTrap(Trap::IndirectCallBadSig, BytecodeOffset(0));
         break;
       }
-      case FuncTypeIdDesc::Kind::None:
+      case FuncTypeIdDescKind::None:
         break;
     }
 
@@ -948,10 +953,11 @@ js::wasm::StartUnwinding(const RegisterState& registers, UnwindState* unwindStat
     // pc-at-normal-entry case.
     uint32_t offsetFromEntry;
     if (codeRange->isFunction()) {
-        if (offsetInCode < codeRange->funcNormalEntry())
+        if (offsetInCode < codeRange->funcNormalEntry()) {
             offsetFromEntry = 0;
-        else
+        } else {
             offsetFromEntry = offsetInCode - codeRange->funcNormalEntry();
+        }
     } else {
         offsetFromEntry = offsetInCode - codeRange->begin();
     }
@@ -1112,8 +1118,9 @@ js::wasm::StartUnwinding(const RegisterState& registers, UnwindState* unwindStat
 
         // On the error return path, FP might be set to FailFP. Ignore these
         // transient frames.
-        if (intptr_t(fixedFP) == (FailFP & ~ExitOrJitEntryFPTag))
+        if (intptr_t(fixedFP) == (FailFP & ~ExitOrJitEntryFPTag)) {
             return false;
+        }
         break;
       case CodeRange::Throw:
         // The throw stub executes a small number of instructions before popping
@@ -1382,12 +1389,24 @@ ThunkedNativeToDescription(SymbolicAddress func)
         return "jit call to int64 wasm function";
       case SymbolicAddress::MemCopy:
         return "call to native memory.copy function";
+      case SymbolicAddress::MemDrop:
+        return "call to native memory.drop function";
       case SymbolicAddress::MemFill:
         return "call to native memory.fill function";
-#ifdef ENABLE_WASM_GC
+      case SymbolicAddress::MemInit:
+        return "call to native memory.init function";
+      case SymbolicAddress::TableCopy:
+        return "call to native table.copy function";
+      case SymbolicAddress::TableDrop:
+        return "call to native table.drop function";
+      case SymbolicAddress::TableInit:
+        return "call to native table.init function";
       case SymbolicAddress::PostBarrier:
         return "call to native GC postbarrier (in wasm)";
-#endif
+      case SymbolicAddress::StructNew:
+        return "call to native struct.new (in wasm)";
+      case SymbolicAddress::StructNarrow:
+        return "call to native struct.narrow (in wasm)";
 #if defined(JS_CODEGEN_MIPS32)
       case SymbolicAddress::js_jit_gAtomic64Lock:
         MOZ_CRASH();
@@ -1412,8 +1431,9 @@ ProfilingFrameIterator::label() const
     static const char trapDescription[] = "trap handling (in wasm)";
     static const char debugTrapDescription[] = "debug trap handling (in wasm)";
 
-    if (!exitReason_.isFixed())
+    if (!exitReason_.isFixed()) {
         return ThunkedNativeToDescription(exitReason_.symbolic());
+    }
 
     switch (exitReason_.fixed()) {
       case ExitReason::Fixed::None:
@@ -1446,48 +1466,4 @@ ProfilingFrameIterator::label() const
     }
 
     MOZ_CRASH("bad code range kind");
-}
-
-Instance*
-wasm::LookupFaultingInstance(const ModuleSegment& codeSegment, void* pc, void* fp)
-{
-    // Assume bug-caused faults can be raised at any PC and apply the logic of
-    // ProfilingFrameIterator to reject any pc outside the (post-prologue,
-    // pre-epilogue) body of a wasm function. This is exhaustively tested by the
-    // simulators which call this function at every load/store before even
-    // knowing whether there is a fault.
-
-    const CodeRange* codeRange = codeSegment.code().lookupFuncRange(pc);
-    if (!codeRange)
-        return nullptr;
-
-    size_t offsetInModule = ((uint8_t*)pc) - codeSegment.base();
-    if ((offsetInModule >= codeRange->funcNormalEntry() &&
-         offsetInModule < codeRange->funcNormalEntry() + SetFP) ||
-        (offsetInModule >= codeRange->ret() - PoppedFP &&
-         offsetInModule <= codeRange->ret()))
-    {
-        return nullptr;
-    }
-
-    Instance* instance = reinterpret_cast<Frame*>(fp)->tls->instance;
-
-    // TODO: In the special case of a cross-instance indirect call bad-signature
-    // fault, fp can point to the caller frame which is in a different
-    // instance/module than pc. This special case should go away when old-style
-    // traps go away and signal handling is reworked.
-    //MOZ_RELEASE_ASSERT(&instance->code() == &codeSegment.code());
-
-    return instance;
-}
-
-bool
-wasm::InCompiledCode(void* pc)
-{
-    if (LookupCodeSegment(pc))
-        return true;
-
-    const CodeRange* codeRange;
-    uint8_t* codeBase;
-    return LookupBuiltinThunk(pc, &codeRange, &codeBase);
 }

@@ -6,12 +6,12 @@
 
 #include "ImageDocument.h"
 #include "mozilla/ComputedStyle.h"
-#include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/ImageDocumentBinding.h"
 #include "mozilla/dom/HTMLImageElement.h"
 #include "mozilla/dom/MouseEvent.h"
+#include "mozilla/StaticPrefs.h"
 #include "nsRect.h"
 #include "nsIImageLoadingContent.h"
 #include "nsGenericHTMLElement.h"
@@ -47,7 +47,7 @@
 //XXX A hack needed for Firefox's site specific zoom.
 static bool IsSiteSpecific()
 {
-  return !mozilla::dom::DOMPrefs::ResistFingerprintingEnabled() &&
+  return !mozilla::StaticPrefs::privacy_resistFingerprinting() &&
          mozilla::Preferences::GetBool("browser.zoom.siteSpecific", false);
 }
 
@@ -236,7 +236,7 @@ ImageDocument::Destroy()
 {
   if (mImageContent) {
     // Remove our event listener from the image content.
-    nsCOMPtr<EventTarget> target = do_QueryInterface(mImageContent);
+    nsCOMPtr<EventTarget> target = mImageContent;
     target->RemoveEventListener(NS_LITERAL_STRING("load"), this, false);
     target->RemoveEventListener(NS_LITERAL_STRING("click"), this, false);
 
@@ -282,7 +282,7 @@ ImageDocument::SetScriptGlobalObject(nsIScriptGlobalObject* aScriptGlobalObject)
         CreateSyntheticDocument();
       NS_ASSERTION(NS_SUCCEEDED(rv), "failed to create synthetic document");
 
-      target = do_QueryInterface(mImageContent);
+      target = mImageContent;
       target->AddEventListener(NS_LITERAL_STRING("load"), this, false);
       target->AddEventListener(NS_LITERAL_STRING("click"), this, false);
     }

@@ -157,6 +157,9 @@ task_description_schema = Schema({
     # See the attributes documentation for details.
     Optional('run-on-projects'): optionally_keyed_by('build-platform', [basestring]),
 
+    # Like `run_on_projects`, `run-on-hg-branches` defaults to "all".
+    Optional('run-on-hg-branches'): optionally_keyed_by('project', [basestring]),
+
     # The `shipping_phase` attribute, defaulting to None. This specifies the
     # release promotion phase that this task belongs to.
     Required('shipping-phase'): Any(
@@ -308,7 +311,7 @@ task_description_schema = Schema({
         Optional('skip-artifacts'): bool,
     }, {
         Required('implementation'): 'generic-worker',
-        Required('os'): Any('windows', 'macosx'),
+        Required('os'): Any('windows', 'macosx', 'linux'),
         # see http://schemas.taskcluster.net/generic-worker/v1/payload.json
         # and https://docs.taskcluster.net/reference/workers/generic-worker/payload
 
@@ -380,6 +383,9 @@ task_description_schema = Schema({
 
         # os user groups for test task workers
         Optional('os-groups'): [basestring],
+
+        # feature for test task to run as administarotr
+        Optional('run-as-administrator'): bool,
 
         # optional features
         Required('chain-of-trust'): bool,
@@ -540,15 +546,18 @@ task_description_schema = Schema({
         Optional('product'): basestring,
         Optional('platforms'): [basestring],
         Optional('release-eta'): basestring,
-        Optional('channel-names'): optionally_keyed_by('project', [basestring]),
+        Optional('channel-names'): optionally_keyed_by('release-type', [basestring]),
         Optional('require-mirrors'): bool,
-        Optional('publish-rules'): optionally_keyed_by('project', [int]),
-        Optional('rules-to-update'): optionally_keyed_by('project', [basestring]),
-        Optional('archive-domain'): optionally_keyed_by('project', basestring),
-        Optional('download-domain'): optionally_keyed_by('project', basestring),
+        Optional('publish-rules'): optionally_keyed_by('release-type', 'release-level', [int]),
+        Optional('rules-to-update'): optionally_keyed_by(
+            'release-type', 'release-level', [basestring]),
+        Optional('archive-domain'): optionally_keyed_by('release-level', basestring),
+        Optional('download-domain'): optionally_keyed_by('release-level', basestring),
         Optional('blob-suffix'): basestring,
         Optional('complete-mar-filename-pattern'): basestring,
         Optional('complete-mar-bouncer-product-pattern'): basestring,
+        Optional('update-line'): object,
+        Optional('suffixes'): [basestring],
 
         # list of artifact URLs for the artifacts that should be beetmoved
         Optional('upstream-artifacts'): [{
@@ -564,6 +573,9 @@ task_description_schema = Schema({
     }, {
         Required('implementation'): 'bouncer-aliases',
         Required('entries'): object,
+    }, {
+        Required('implementation'): 'bouncer-locations',
+        Required('bouncer-products'): [basestring],
     }, {
         Required('implementation'): 'bouncer-submission',
         Required('locales'): [basestring],
@@ -588,7 +600,7 @@ task_description_schema = Schema({
         }],
 
         # "Invalid" is a noop for try and other non-supported branches
-        Required('google-play-track'): Any('production', 'beta', 'alpha', 'rollout', 'invalid'),
+        Required('google-play-track'): Any('production', 'beta', 'alpha', 'rollout', 'internal'),
         Required('commit'): bool,
         Optional('rollout-percentage'): Any(int, None),
     }, {
@@ -690,10 +702,8 @@ SUPERSEDER_URL = 'https://coalesce.mozilla-releng.net/v1/list/{age}/{size}/{key}
 DEFAULT_BRANCH_PRIORITY = 'low'
 BRANCH_PRIORITIES = {
     'mozilla-release': 'highest',
-    'comm-esr45': 'highest',
-    'comm-esr52': 'highest',
-    'mozilla-esr45': 'very-high',
-    'mozilla-esr52': 'very-high',
+    'comm-esr60': 'highest',
+    'mozilla-esr60': 'very-high',
     'mozilla-beta': 'high',
     'comm-beta': 'high',
     'mozilla-central': 'medium',
@@ -818,6 +828,7 @@ def build_docker_worker_payload(config, task, task_def):
 
     if worker.get('taskcluster-proxy'):
         features['taskclusterProxy'] = True
+        worker['env']['TASKCLUSTER_PROXY_URL'] = 'http://taskcluster/'
 
     if worker.get('allow-ptrace'):
         features['allowPtrace'] = True
@@ -1023,9 +1034,14 @@ def build_generic_worker_payload(config, task, task_def):
     for mount in mounts:
         if 'cache-name' in mount:
             mount['cacheName'] = mount.pop('cache-name')
+            task_def['scopes'].append('generic-worker:cache:{}'.format(mount['cacheName']))
         if 'content' in mount:
             if 'task-id' in mount['content']:
                 mount['content']['taskId'] = mount['content'].pop('task-id')
+            if 'artifact' in mount['content']:
+                if not mount['content']['artifact'].startswith('public/'):
+                    task_def['scopes'].append(
+                        'queue:get-artifact:{}'.format(mount['content']['artifact']))
 
     if mounts:
         task_def['payload']['mounts'] = mounts
@@ -1040,6 +1056,10 @@ def build_generic_worker_payload(config, task, task_def):
 
     if worker.get('taskcluster-proxy'):
         features['taskclusterProxy'] = True
+        worker['env']['TASKCLUSTER_PROXY_URL'] = 'http://taskcluster/'
+
+    if worker.get('run-as-administrator', False):
+        features['runAsAdministrator'] = True
 
     if features:
         task_def['payload']['features'] = features
@@ -1147,7 +1167,8 @@ def build_balrog_payload(config, task, task_def):
 
     if worker['balrog-action'] == 'submit-locale':
         task_def['payload'] = {
-            'upstreamArtifacts':  worker['upstream-artifacts']
+            'upstreamArtifacts':  worker['upstream-artifacts'],
+            'suffixes': worker['suffixes'],
         }
     else:
         for prop in ('archive-domain', 'channel-names', 'download-domain',
@@ -1155,7 +1176,10 @@ def build_balrog_payload(config, task, task_def):
             if prop in worker:
                 resolve_keyed_by(
                     worker, prop, task['description'],
-                    **config.params
+                    **{
+                        'release-type': config.params['release_type'],
+                        'release-level': config.params.release_level(),
+                    }
                 )
         task_def['payload'] = {
             'build_number': release_config['build_number'],
@@ -1176,6 +1200,7 @@ def build_balrog_payload(config, task, task_def):
                 'platforms': worker['platforms'],
                 'rules_to_update': worker['rules-to-update'],
                 'require_mirrors': worker['require-mirrors'],
+                'update_line': worker['update-line'],
             })
         else:  # schedule / ship
             task_def['payload'].update({
@@ -1190,6 +1215,17 @@ def build_bouncer_aliases_payload(config, task, task_def):
 
     task_def['payload'] = {
         'aliases_entries': worker['entries']
+    }
+
+
+@payload_builder('bouncer-locations')
+def build_bouncer_locations_payload(config, task, task_def):
+    worker = task['worker']
+    release_config = get_release_config(config)
+
+    task_def['payload'] = {
+        'bouncer_products': worker['bouncer-products'],
+        'version': release_config['version'],
     }
 
 

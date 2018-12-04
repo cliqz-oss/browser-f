@@ -10,6 +10,7 @@ const Services = require("Services");
 const { NetUtil } = require("resource://gre/modules/NetUtil.jsm");
 const { Utils } = require("resource://gre/modules/sessionstore/Utils.jsm");
 const Telemetry = require("devtools/client/shared/telemetry");
+
 const telemetry = new Telemetry();
 
 function readInputStreamToString(stream) {
@@ -36,7 +37,7 @@ function BrowserElementWebNavigation(browser) {
 BrowserElementWebNavigation.prototype = {
 
   QueryInterface: ChromeUtils.generateQI([
-    Ci.nsIWebNavigation
+    Ci.nsIWebNavigation,
   ]),
 
   get _mm() {
@@ -63,7 +64,8 @@ BrowserElementWebNavigation.prototype = {
     // No equivalent in the current BrowserElement API
     this.loadURIWithOptions(uri, flags, referrer,
                             Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,
-                            postData, headers, null, null);
+                            postData, headers, null,
+                            Services.scriptSecurityManager.createNullPrincipal({}));
   },
 
   loadURIWithOptions(uri, flags, referrer, referrerPolicy, postData, headers,
@@ -79,7 +81,7 @@ BrowserElementWebNavigation.prototype = {
       baseURI: baseURI ? baseURI.spec : null,
       triggeringPrincipal: triggeringPrincipal
                            ? Utils.serializePrincipal(triggeringPrincipal)
-                           : null,
+                           : Services.scriptSecurityManager.createNullPrincipal({}),
       requestTime: telemetry.msSystemNow(),
     });
   },

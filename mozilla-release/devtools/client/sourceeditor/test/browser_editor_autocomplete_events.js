@@ -4,7 +4,6 @@
 
 "use strict";
 
-const {InspectorFront} = require("devtools/shared/fronts/inspector");
 const TEST_URI = "data:text/html;charset=UTF-8,<html><body><bar></bar>" +
                  "<div id='baz'></div><body></html>";
 
@@ -14,14 +13,14 @@ add_task(async function() {
 });
 
 async function runTests() {
-  const target = TargetFactory.forTab(gBrowser.selectedTab);
-  await target.makeRemote();
-  const inspector = InspectorFront(target.client, target.form);
+  const target = await TargetFactory.forTab(gBrowser.selectedTab);
+  await target.attach();
+  const inspector = target.getFront("inspector");
   const walker = await inspector.getWalker();
   const {ed, win, edWin} = await setup(null, {
     autocomplete: true,
     mode: Editor.modes.css,
-    autocompleteOpts: {walker: walker, cssProperties: getClientCssProperties()}
+    autocompleteOpts: {walker: walker, cssProperties: getClientCssProperties()},
   });
   await testMouse(ed, edWin);
   await testKeyboard(ed, edWin);

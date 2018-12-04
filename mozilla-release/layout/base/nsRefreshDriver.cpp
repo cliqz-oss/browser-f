@@ -43,6 +43,7 @@
 #include "jsapi.h"
 #include "nsContentUtils.h"
 #include "mozilla/PendingAnimationTracker.h"
+#include "mozilla/PendingFullscreenEvent.h"
 #include "mozilla/Preferences.h"
 #include "nsViewManager.h"
 #include "GeckoProfiler.h"
@@ -167,7 +168,7 @@ public:
     }
   }
 
-  virtual void RemoveRefreshDriver(nsRefreshDriver* aDriver)
+  void RemoveRefreshDriver(nsRefreshDriver* aDriver)
   {
     LOG("[%p] RemoveRefreshDriver %p", this, aDriver);
 
@@ -1110,7 +1111,8 @@ nsRefreshDriver::nsRefreshDriver(nsPresContext* aPresContext)
   : mActiveTimer(nullptr),
     mPresContext(aPresContext),
     mRootRefresh(nullptr),
-    mPendingTransaction{0},
+    mNextTransactionId{0},
+    mOutstandingTransactionId{0},
     mCompletedTransaction{0},
     mFreezeCount(0),
     mThrottledFrameRequestInterval(TimeDuration::FromMilliseconds(
@@ -1187,7 +1189,7 @@ nsRefreshDriver::RestoreNormalRefresh()
 {
   mTestControllingRefreshes = false;
   EnsureTimerStarted(eAllowTimeToGoBackwards);
-  mCompletedTransaction = mPendingTransaction;
+  mCompletedTransaction = mOutstandingTransactionId = mNextTransactionId;
 }
 
 TimeStamp
@@ -1202,14 +1204,13 @@ nsRefreshDriver::MostRecentRefresh() const
   return mMostRecentRefresh;
 }
 
-bool
+void
 nsRefreshDriver::AddRefreshObserver(nsARefreshObserver* aObserver,
                                     FlushType aFlushType)
 {
   ObserverArray& array = ArrayFor(aFlushType);
-  bool success = array.AppendElement(aObserver) != nullptr;
+  array.AppendElement(aObserver);
   EnsureTimerStarted();
-  return success;
 }
 
 bool
@@ -1220,21 +1221,20 @@ nsRefreshDriver::RemoveRefreshObserver(nsARefreshObserver* aObserver,
   return array.RemoveElement(aObserver);
 }
 
-bool
+void
 nsRefreshDriver::AddTimerAdjustmentObserver(
-  nsATimerAdjustmentObserver *aObserver)
+  nsATimerAdjustmentObserver* aObserver)
 {
   MOZ_ASSERT(!mTimerAdjustmentObservers.Contains(aObserver));
-
-  return mTimerAdjustmentObservers.AppendElement(aObserver) != nullptr;
+  mTimerAdjustmentObservers.AppendElement(aObserver);
 }
 
-bool
+void
 nsRefreshDriver::RemoveTimerAdjustmentObserver(
-  nsATimerAdjustmentObserver *aObserver)
+  nsATimerAdjustmentObserver* aObserver)
 {
   MOZ_ASSERT(mTimerAdjustmentObservers.Contains(aObserver));
-  return mTimerAdjustmentObservers.RemoveElement(aObserver);
+  mTimerAdjustmentObservers.RemoveElement(aObserver);
 }
 
 void
@@ -1420,7 +1420,7 @@ nsRefreshDriver::ObserverCount() const
   sum += mResizeEventFlushObservers.Length();
   sum += mStyleFlushObservers.Length();
   sum += mLayoutFlushObservers.Length();
-  sum += mPendingEvents.Length();
+  sum += mPendingFullscreenEvents.Length();
   sum += mFrameRequestCallbackDocs.Length();
   sum += mThrottledFrameRequestCallbackDocs.Length();
   sum += mViewManagerFlushIsPending;
@@ -1446,7 +1446,7 @@ nsRefreshDriver::HasObservers() const
          !mLayoutFlushObservers.IsEmpty() ||
          !mAnimationEventFlushObservers.IsEmpty() ||
          !mResizeEventFlushObservers.IsEmpty() ||
-         !mPendingEvents.IsEmpty() ||
+         !mPendingFullscreenEvents.IsEmpty() ||
          !mFrameRequestCallbackDocs.IsEmpty() ||
          !mThrottledFrameRequestCallbackDocs.IsEmpty() ||
          !mEarlyRunners.IsEmpty();
@@ -1582,13 +1582,15 @@ TakeFrameRequestCallbacksFrom(nsIDocument* aDocument,
   aDocument->TakeFrameRequestCallbacks(aTarget.LastElement().mCallbacks);
 }
 
+// https://fullscreen.spec.whatwg.org/#run-the-fullscreen-steps
 void
-nsRefreshDriver::DispatchPendingEvents()
+nsRefreshDriver::RunFullscreenSteps()
 {
   // Swap out the current pending events
-  nsTArray<PendingEvent> pendingEvents(std::move(mPendingEvents));
-  for (PendingEvent& event : pendingEvents) {
-    event.mTarget->DispatchEvent(*event.mEvent);
+  nsTArray<UniquePtr<PendingFullscreenEvent>>
+    pendings(std::move(mPendingFullscreenEvents));
+  for (UniquePtr<PendingFullscreenEvent>& event : pendings) {
+    event->Dispatch();
   }
 }
 
@@ -1881,7 +1883,7 @@ nsRefreshDriver::Tick(TimeStamp aNowTime)
 
       DispatchScrollEvents();
       DispatchAnimationEvents();
-      DispatchPendingEvents();
+      RunFullscreenSteps();
       RunFrameRequestCallbacks(aNowTime);
 
       if (mPresContext && mPresContext->GetPresShell()) {
@@ -2155,10 +2157,11 @@ nsRefreshDriver::FinishedWaitingForTransaction()
 mozilla::layers::TransactionId
 nsRefreshDriver::GetTransactionId(bool aThrottle)
 {
-  mPendingTransaction = mPendingTransaction.Next();
+  mOutstandingTransactionId = mOutstandingTransactionId.Next();
+  mNextTransactionId = mNextTransactionId.Next();
 
   if (aThrottle &&
-      mPendingTransaction - mCompletedTransaction >= 2 &&
+      mOutstandingTransactionId - mCompletedTransaction >= 2 &&
       !mWaitingForTransaction &&
       !mTestControllingRefreshes) {
     mWaitingForTransaction = true;
@@ -2166,38 +2169,48 @@ nsRefreshDriver::GetTransactionId(bool aThrottle)
     mWarningThreshold = 1;
   }
 
-  return mPendingTransaction;
+  return mNextTransactionId;
 }
 
 mozilla::layers::TransactionId
 nsRefreshDriver::LastTransactionId() const
 {
-  return mPendingTransaction;
+  return mNextTransactionId;
 }
 
 void
 nsRefreshDriver::RevokeTransactionId(mozilla::layers::TransactionId aTransactionId)
 {
-  MOZ_ASSERT(aTransactionId == mPendingTransaction);
-  if (mPendingTransaction - mCompletedTransaction == 2 &&
+  MOZ_ASSERT(aTransactionId == mNextTransactionId);
+  if (mOutstandingTransactionId - mCompletedTransaction == 2 &&
       mWaitingForTransaction) {
     MOZ_ASSERT(!mSkippedPaints, "How did we skip a paint when we're in the middle of one?");
     FinishedWaitingForTransaction();
   }
-  mPendingTransaction = mPendingTransaction.Prev();
+
+  // Notify the pres context so that it can deliver MozAfterPaint for this
+  // id if any caller was expecting it.
+  nsPresContext* pc = GetPresContext();
+  if (pc) {
+    pc->NotifyRevokingDidPaint(aTransactionId);
+  }
+  // Revert the outstanding transaction since we're no longer waiting on it to be
+  // completed, but don't revert mNextTransactionId since we can't use the id
+  // again.
+  mOutstandingTransactionId = mOutstandingTransactionId.Prev();
 }
 
 void
 nsRefreshDriver::ClearPendingTransactions()
 {
-  mCompletedTransaction = mPendingTransaction;
+  mCompletedTransaction = mOutstandingTransactionId = mNextTransactionId;
   mWaitingForTransaction = false;
 }
 
 void
 nsRefreshDriver::ResetInitialTransactionId(mozilla::layers::TransactionId aTransactionId)
 {
-  mCompletedTransaction = mPendingTransaction = aTransactionId;
+  mCompletedTransaction = mOutstandingTransactionId = mNextTransactionId = aTransactionId;
 }
 
 mozilla::TimeStamp
@@ -2210,13 +2223,18 @@ void
 nsRefreshDriver::NotifyTransactionCompleted(mozilla::layers::TransactionId aTransactionId)
 {
   if (aTransactionId > mCompletedTransaction) {
-    if (mPendingTransaction - mCompletedTransaction > 1 &&
+    if (mOutstandingTransactionId - mCompletedTransaction > 1 &&
         mWaitingForTransaction) {
       mCompletedTransaction = aTransactionId;
       FinishedWaitingForTransaction();
     } else {
       mCompletedTransaction = aTransactionId;
     }
+  }
+
+  // If completed transaction id get ahead of outstanding id, reset to distance id.
+  if (mCompletedTransaction > mOutstandingTransactionId) {
+    mOutstandingTransactionId = mCompletedTransaction;
   }
 }
 
@@ -2359,19 +2377,20 @@ nsRefreshDriver::RevokeFrameRequestCallbacks(nsIDocument* aDocument)
 }
 
 void
-nsRefreshDriver::ScheduleEventDispatch(nsINode* aTarget, dom::Event* aEvent)
+nsRefreshDriver::ScheduleFullscreenEvent(
+  UniquePtr<PendingFullscreenEvent> aEvent)
 {
-  mPendingEvents.AppendElement(PendingEvent{aTarget, aEvent});
+  mPendingFullscreenEvents.AppendElement(std::move(aEvent));
   // make sure that the timer is running
   EnsureTimerStarted();
 }
 
 void
-nsRefreshDriver::CancelPendingEvents(nsIDocument* aDocument)
+nsRefreshDriver::CancelPendingFullscreenEvents(nsIDocument* aDocument)
 {
-  for (auto i : Reversed(IntegerRange(mPendingEvents.Length()))) {
-    if (mPendingEvents[i].mTarget->OwnerDoc() == aDocument) {
-      mPendingEvents.RemoveElementAt(i);
+  for (auto i : Reversed(IntegerRange(mPendingFullscreenEvents.Length()))) {
+    if (mPendingFullscreenEvents[i]->Document() == aDocument) {
+      mPendingFullscreenEvents.RemoveElementAt(i);
     }
   }
 }

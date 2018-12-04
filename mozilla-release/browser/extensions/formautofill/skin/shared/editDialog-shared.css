@@ -30,7 +30,8 @@ select {
   padding-bottom: 5px;
 }
 
-form :-moz-any(label, div) {
+form label,
+form div {
   /* Positioned so that the .label-text and .error-text children will be
      positioned relative to this. */
   position: relative;
@@ -38,7 +39,7 @@ form :-moz-any(label, div) {
   line-height: 1em;
 }
 
-form :-moz-any(label, div) > .label-text {
+form :-moz-any(label, div) .label-text {
   position: absolute;
   color: GrayText;
   pointer-events: none;
@@ -48,8 +49,8 @@ form :-moz-any(label, div) > .label-text {
               font-size .2s var(--animation-easing-function);
 }
 
-form :-moz-any(label, div):focus-within > .label-text,
-form :-moz-any(label, div) > .label-text[field-populated] {
+form :-moz-any(label, div):focus-within .label-text,
+form :-moz-any(label, div) .label-text[field-populated] {
   top: 0;
   font-size: var(--in-field-label-size);
 }
@@ -64,8 +65,8 @@ form :-moz-any(input, select, textarea):focus:-moz-ui-invalid ~ .label-text {
   color: var(--in-content-text-color);
 }
 
-form div[required] > label > .label-text::after,
-form :-moz-any(label, div)[required] > .label-text::after {
+form div[required] > label .label-text::after,
+form :-moz-any(label, div)[required] .label-text::after {
   content: attr(fieldRequiredSymbol);
 }
 

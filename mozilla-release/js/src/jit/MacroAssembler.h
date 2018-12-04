@@ -350,6 +350,7 @@ class MacroAssembler : public MacroAssemblerSpecific
     void Push(RegisterOrSP reg);
 #endif
 
+    // clang-format off
     //{{{ check_macroassembler_decl_style
   public:
     // ===============================================================
@@ -1497,14 +1498,13 @@ class MacroAssembler : public MacroAssemblerSpecific
     void wasmReserveStackChecked(uint32_t amount, wasm::BytecodeOffset trapOffset);
 
     // Emit a bounds check against the wasm heap limit, jumping to 'label' if
-    // 'cond' holds. Required when WASM_HUGE_MEMORY is not defined. If
-    // JitOptions.spectreMaskIndex is true, in speculative executions 'index' is
-    // saturated in-place to 'boundsCheckLimit'.
+    // 'cond' holds. If JitOptions.spectreMaskIndex is true, in speculative
+    // executions 'index' is saturated in-place to 'boundsCheckLimit'.
     void wasmBoundsCheck(Condition cond, Register index, Register boundsCheckLimit, Label* label)
-        DEFINED_ON(arm, arm64, mips32, mips64, x86);
+        DEFINED_ON(arm, arm64, mips32, mips64, x86_shared);
 
     void wasmBoundsCheck(Condition cond, Register index, Address boundsCheckLimit, Label* label)
-        DEFINED_ON(arm, arm64, mips32, mips64, x86);
+        DEFINED_ON(arm, arm64, mips32, mips64, x86_shared);
 
     // Each wasm load/store instruction appends its own wasm::Trap::OutOfBounds.
     void wasmLoad(const wasm::MemoryAccessDesc& access, Operand srcAddr, AnyRegister out) DEFINED_ON(x86, x64);
@@ -2057,6 +2057,7 @@ class MacroAssembler : public MacroAssemblerSpecific
     void speculationBarrier() PER_SHARED_ARCH;
 
     //}}} check_macroassembler_decl_style
+    // clang-format on
   public:
 
     // Emits a test of a value against all types in a TypeSet. A scratch
@@ -2131,10 +2132,11 @@ class MacroAssembler : public MacroAssemblerSpecific
      */
     template <typename T>
     void storeChar(const T& src, Address dest, CharEncoding encoding) {
-        if (encoding == CharEncoding::Latin1)
+        if (encoding == CharEncoding::Latin1) {
             store8(src, dest);
-        else
+        } else {
             store16(src, dest);
+        }
     }
 
     /**
@@ -2142,10 +2144,11 @@ class MacroAssembler : public MacroAssemblerSpecific
      */
     template <typename T>
     void loadChar(const T& src, Register dest, CharEncoding encoding) {
-        if (encoding == CharEncoding::Latin1)
+        if (encoding == CharEncoding::Latin1) {
             load8ZeroExtend(src, dest);
-        else
+        } else {
             load16ZeroExtend(src, dest);
+        }
     }
 
     /**
@@ -2180,10 +2183,11 @@ class MacroAssembler : public MacroAssemblerSpecific
 
     template<typename T>
     void loadTypedOrValue(const T& src, TypedOrValueRegister dest) {
-        if (dest.hasValue())
+        if (dest.hasValue()) {
             loadValue(src, dest.valueReg());
-        else
+        } else {
             loadUnboxedValue(src, dest.type(), dest.typedReg());
+        }
     }
 
     template<typename T>
@@ -2191,11 +2195,13 @@ class MacroAssembler : public MacroAssemblerSpecific
                                  Label* hole) {
         if (dest.hasValue()) {
             loadValue(src, dest.valueReg());
-            if (holeCheck)
+            if (holeCheck) {
                 branchTestMagic(Assembler::Equal, dest.valueReg(), hole);
+            }
         } else {
-            if (holeCheck)
+            if (holeCheck) {
                 branchTestMagic(Assembler::Equal, src, hole);
+            }
             loadUnboxedValue(src, dest.type(), dest.typedReg());
         }
     }
@@ -2221,23 +2227,26 @@ class MacroAssembler : public MacroAssemblerSpecific
 
     template <typename T>
     void storeConstantOrRegister(const ConstantOrRegister& src, const T& dest) {
-        if (src.constant())
+        if (src.constant()) {
             storeValue(src.value(), dest);
-        else
+        } else {
             storeTypedOrValue(src.reg(), dest);
+        }
     }
 
     void storeCallPointerResult(Register reg) {
-        if (reg != ReturnReg)
+        if (reg != ReturnReg) {
             mov(ReturnReg, reg);
+        }
     }
 
     inline void storeCallBoolResult(Register reg);
     inline void storeCallInt32Result(Register reg);
 
     void storeCallFloatResult(FloatRegister reg) {
-        if (reg != ReturnDoubleReg)
+        if (reg != ReturnDoubleReg) {
             moveDouble(ReturnDoubleReg, reg);
+        }
     }
 
     inline void storeCallResultValue(AnyRegister dest, JSValueType type);
@@ -2264,8 +2273,9 @@ class MacroAssembler : public MacroAssemblerSpecific
             mov(JSReturnReg_Data, dest.payloadReg());
         }
 #elif defined(JS_PUNBOX64)
-        if (dest.valueReg() != JSReturnReg)
+        if (dest.valueReg() != JSReturnReg) {
             mov(JSReturnReg, dest.valueReg());
+        }
 #else
 #error "Bad architecture"
 #endif
@@ -2279,10 +2289,11 @@ class MacroAssembler : public MacroAssemblerSpecific
 
         branchTestNeedsIncrementalBarrier(Assembler::Zero, &done);
 
-        if (type == MIRType::Value)
+        if (type == MIRType::Value) {
             branchTestGCThing(Assembler::NotEqual, address, &done);
-        else if (type == MIRType::Object || type == MIRType::String)
+        } else if (type == MIRType::Object || type == MIRType::String) {
             branchPtr(Assembler::Equal, address, ImmWord(0), &done);
+        }
 
         Push(PreBarrierReg);
         computeEffectiveAddress(address, PreBarrierReg);
@@ -2349,16 +2360,18 @@ class MacroAssembler : public MacroAssemblerSpecific
 
     using MacroAssemblerSpecific::extractTag;
     MOZ_MUST_USE Register extractTag(const TypedOrValueRegister& reg, Register scratch) {
-        if (reg.hasValue())
+        if (reg.hasValue()) {
             return extractTag(reg.valueReg(), scratch);
+        }
         mov(ImmWord(MIRTypeToTag(reg.type())), scratch);
         return scratch;
     }
 
     using MacroAssemblerSpecific::extractObject;
     MOZ_MUST_USE Register extractObject(const TypedOrValueRegister& reg, Register scratch) {
-        if (reg.hasValue())
+        if (reg.hasValue()) {
             return extractObject(reg.valueReg(), scratch);
+        }
         MOZ_ASSERT(reg.type() == MIRType::Object);
         return reg.typedReg().gpr();
     }
@@ -2808,6 +2821,7 @@ class IonHeapMacroAssembler : public MacroAssembler
     }
 };
 
+// clang-format off
 //{{{ check_macroassembler_style
 inline uint32_t
 MacroAssembler::framePushed() const
@@ -2836,6 +2850,7 @@ MacroAssembler::implicitPop(uint32_t bytes)
     adjustFrame(-int32_t(bytes));
 }
 //}}} check_macroassembler_style
+// clang-format on
 
 static inline Assembler::DoubleCondition
 JSOpToDoubleCondition(JSOp op)

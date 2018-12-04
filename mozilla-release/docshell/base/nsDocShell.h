@@ -230,7 +230,8 @@ public:
   NS_IMETHOD SetPrivateBrowsing(bool) override;
   NS_IMETHOD GetUseRemoteTabs(bool*) override;
   NS_IMETHOD SetRemoteTabs(bool) override;
-  NS_IMETHOD GetScriptableOriginAttributes(JS::MutableHandle<JS::Value>) override;
+  NS_IMETHOD GetScriptableOriginAttributes(JSContext*,
+                                           JS::MutableHandle<JS::Value>) override;
   NS_IMETHOD_(void) GetOriginAttributes(mozilla::OriginAttributes& aAttrs) override;
 
   // Restores a cached presentation from history (mLSHE).
@@ -254,7 +255,7 @@ public:
                          LOCATION_CHANGE_SAME_DOCUMENT);
   }
 
-  nsresult HistoryTransactionRemoved(int32_t aIndex);
+  nsresult HistoryEntryRemoved(int32_t aIndex);
 
   // Notify Scroll observers when an async panning/zooming transform
   // has started being applied
@@ -525,6 +526,7 @@ private: // member functions
                      mozilla::Maybe<nsCOMPtr<nsIURI>> const& aResultPrincipalURI,
                      bool aKeepResultPrincipalURIIfSet,
                      bool aLoadReplace,
+                     bool aIsFromProcessingFrameAttributes,
                      bool aLoadFromExternal,
                      bool aForceAllowDataURI,
                      bool aOriginalFrameSrc,
@@ -935,6 +937,7 @@ private: // data members
   nsCOMPtr<nsIMutableArray> mRefreshURIList;
   nsCOMPtr<nsIMutableArray> mSavedRefreshURIList;
   nsCOMPtr<nsIDOMStorageManager> mSessionStorageManager;
+  uint64_t mContentWindowID;
   nsCOMPtr<nsIContentViewer> mContentViewer;
   nsCOMPtr<nsIWidget> mParentWidget;
   RefPtr<mozilla::dom::ChildSHistory> mSessionHistory;
@@ -1031,11 +1034,11 @@ private: // data members
   // Create() is called, the type is not expected to change.
   int32_t mItemType;
 
-  // Index into the SHTransaction list, indicating the previous and current
-  // transaction at the time that this DocShell begins to load. Consequently
+  // Index into the nsISHEntry array, indicating the previous and current
+  // entry at the time that this DocShell begins to load. Consequently
   // root docshell's indices can differ from child docshells'.
-  int32_t mPreviousTransIndex;
-  int32_t mLoadedTransIndex;
+  int32_t mPreviousEntryIndex;
+  int32_t mLoadedEntryIndex;
 
   // Offset in the parent's child list.
   // -1 if the docshell is added dynamically to the parent shell.
@@ -1078,6 +1081,10 @@ private: // data members
   // Whether or not touch events are overridden. Possible values are defined
   // as constants in the nsIDocShell.idl file.
   uint32_t mTouchEventsOverride;
+
+  // Whether or not handling of the <meta name="viewport"> tag is overridden.
+  // Possible values are defined as constants in nsIDocShell.idl.
+  uint32_t mMetaViewportOverride;
 
   // mFullscreenAllowed stores how we determine whether fullscreen is allowed
   // when GetFullscreenAllowed() is called. Fullscreen is allowed in a
@@ -1173,6 +1180,9 @@ private: // data members
   // We will check the innerWin's timing before creating a new one
   // in MaybeInitTiming()
   bool mBlankTiming : 1;
+
+  // This flag indicates when the title is valid for the current URI.
+  bool mTitleValidForCurrentURI : 1;
 };
 
 #endif /* nsDocShell_h__ */

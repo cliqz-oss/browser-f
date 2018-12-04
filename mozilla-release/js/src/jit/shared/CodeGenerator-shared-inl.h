@@ -8,7 +8,6 @@
 #define jit_shared_CodeGenerator_shared_inl_h
 
 #include "jit/shared/CodeGenerator-shared.h"
-#include "jit/Disassembler.h"
 
 #include "jit/MacroAssembler-inl.h"
 
@@ -19,15 +18,19 @@ static inline bool
 IsConstant(const LInt64Allocation& a)
 {
 #if JS_BITS_PER_WORD == 32
-    if (a.high().isConstantValue())
+    if (a.high().isConstantValue()) {
         return true;
-    if (a.high().isConstantIndex())
+    }
+    if (a.high().isConstantIndex()) {
         return true;
+    }
 #else
-    if (a.value().isConstantValue())
+    if (a.value().isConstantValue()) {
         return true;
-    if (a.value().isConstantIndex())
+    }
+    if (a.value().isConstantIndex()) {
         return true;
+    }
 #endif
     return false;
 }
@@ -35,20 +38,24 @@ IsConstant(const LInt64Allocation& a)
 static inline int32_t
 ToInt32(const LAllocation* a)
 {
-    if (a->isConstantValue())
+    if (a->isConstantValue()) {
         return a->toConstant()->toInt32();
-    if (a->isConstantIndex())
+    }
+    if (a->isConstantIndex()) {
         return a->toConstantIndex()->index();
+    }
     MOZ_CRASH("this is not a constant!");
 }
 
 static inline int64_t
 ToInt64(const LAllocation* a)
 {
-    if (a->isConstantValue())
+    if (a->isConstantValue()) {
         return a->toConstant()->toInt64();
-    if (a->isConstantIndex())
+    }
+    if (a->isConstantIndex()) {
         return a->toConstantIndex()->index();
+    }
     MOZ_CRASH("this is not a constant!");
 }
 
@@ -56,15 +63,19 @@ static inline int64_t
 ToInt64(const LInt64Allocation& a)
 {
 #if JS_BITS_PER_WORD == 32
-    if (a.high().isConstantValue())
+    if (a.high().isConstantValue()) {
         return a.high().toConstant()->toInt64();
-    if (a.high().isConstantIndex())
+    }
+    if (a.high().isConstantIndex()) {
         return a.high().toConstantIndex()->index();
+    }
 #else
-    if (a.value().isConstantValue())
+    if (a.value().isConstantValue()) {
         return a.value().toConstant()->toInt64();
-    if (a.value().isConstantIndex())
+    }
+    if (a.value().isConstantIndex()) {
         return a.value().toConstantIndex()->index();
+    }
 #endif
     MOZ_CRASH("this is not a constant!");
 }
@@ -119,8 +130,9 @@ ToRegister64(const LInt64Allocation& a)
 static inline Register
 ToTempRegisterOrInvalid(const LDefinition* def)
 {
-    if (def->isBogusTemp())
+    if (def->isBogusTemp()) {
         return InvalidReg;
+    }
     return ToRegister(def);
 }
 
@@ -158,8 +170,9 @@ ToFloatRegister(const LDefinition* def)
 static inline FloatRegister
 ToTempFloatRegisterOrInvalid(const LDefinition* def)
 {
-    if (def->isBogusTemp())
+    if (def->isBogusTemp()) {
         return InvalidFloatReg;
+    }
     return ToFloatRegister(def);
 }
 
@@ -167,8 +180,9 @@ static inline AnyRegister
 ToAnyRegister(const LAllocation& a)
 {
     MOZ_ASSERT(a.isGeneralReg() || a.isFloatReg());
-    if (a.isGeneralReg())
+    if (a.isGeneralReg()) {
         return AnyRegister(ToRegister(a));
+    }
     return AnyRegister(ToFloatRegister(a));
 }
 
@@ -263,8 +277,9 @@ CodeGeneratorShared::StackOffsetOfPassedArg(int32_t slot) const
 int32_t
 CodeGeneratorShared::ToStackOffset(LAllocation a) const
 {
-    if (a.isArgument())
+    if (a.isArgument()) {
         return ArgToStackOffset(a.toArgument()->index());
+    }
     return SlotToStackOffset(a.toStackSlot()->slot());
 }
 
@@ -329,79 +344,6 @@ CodeGeneratorShared::restoreLiveVolatile(LInstruction* ins)
     LiveRegisterSet regs;
     regs.set() = RegisterSet::Intersect(safepoint->liveRegs().set(), RegisterSet::Volatile());
     masm.PopRegsInMask(regs);
-}
-
-void
-CodeGeneratorShared::verifyHeapAccessDisassembly(uint32_t begin, uint32_t end, bool isLoad,
-                                                 Scalar::Type type, Operand mem, LAllocation alloc)
-{
-#ifdef DEBUG
-    using namespace Disassembler;
-
-    Disassembler::HeapAccess::Kind kind = isLoad ? HeapAccess::Load : HeapAccess::Store;
-    switch (type) {
-      case Scalar::Int8:
-      case Scalar::Int16:
-        if (kind == HeapAccess::Load)
-            kind = HeapAccess::LoadSext32;
-        break;
-      default:
-        break;
-    }
-
-    OtherOperand op;
-    switch (type) {
-      case Scalar::Int8:
-      case Scalar::Uint8:
-      case Scalar::Int16:
-      case Scalar::Uint16:
-      case Scalar::Int32:
-      case Scalar::Uint32:
-        if (!alloc.isConstant()) {
-            op = OtherOperand(ToRegister(alloc).encoding());
-        } else {
-            // x86 doesn't allow encoding an imm64 to memory move; the value
-            // is wrapped anyways.
-            int32_t i = ToInt32(&alloc);
-
-            // Sign-extend the immediate value out to 32 bits. We do this even
-            // for unsigned element types so that we match what the disassembly
-            // code does, as it doesn't know about signedness of stores.
-            unsigned shift = 32 - TypedArrayElemSize(type) * 8;
-            i = int32_t(uint32_t(i) << shift) >> shift;
-            op = OtherOperand(i);
-        }
-        break;
-      case Scalar::Int64:
-        // Can't encode an imm64-to-memory move.
-        op = OtherOperand(ToRegister(alloc).encoding());
-        break;
-      case Scalar::Float32:
-      case Scalar::Float64:
-        op = OtherOperand(ToFloatRegister(alloc).encoding());
-        break;
-      case Scalar::Uint8Clamped:
-      case Scalar::MaxTypedArrayViewType:
-        MOZ_CRASH("Unexpected array type");
-    }
-
-    HeapAccess access(kind, TypedArrayElemSize(type), ComplexAddress(mem), op);
-    masm.verifyHeapAccessDisassembly(begin, end, access);
-#endif
-}
-
-void
-CodeGeneratorShared::verifyLoadDisassembly(uint32_t begin, uint32_t end, Scalar::Type type,
-                                           Operand mem, LAllocation alloc)
-{
-    verifyHeapAccessDisassembly(begin, end, true, type, mem, alloc);
-}
-
-void
-CodeGeneratorShared::verifyStoreDisassembly(uint32_t begin, uint32_t end, Scalar::Type type,
-                                            Operand mem, LAllocation alloc)
-{
-    verifyHeapAccessDisassembly(begin, end, false, type, mem, alloc);
 }
 
 inline bool

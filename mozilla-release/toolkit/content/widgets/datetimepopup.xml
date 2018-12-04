@@ -11,9 +11,6 @@
    xmlns:xbl="http://www.mozilla.org/xbl">
   <binding id="datetime-popup"
            extends="chrome://global/content/bindings/popup.xml#arrowpanel">
-    <resources>
-      <stylesheet src="chrome://global/skin/datetimepopup.css"/>
-    </resources>
     <implementation>
       <property name="dateTimePopupFrame">
         <getter>
@@ -110,7 +107,7 @@
         <body><![CDATA[
           // TODO: When bug 1376616 lands, replace this.setGregorian with
           //       mozIntl.Locale for setting calendar to Gregorian
-          const locale = this.setGregorian(Services.locale.getAppLocaleAsBCP47());
+          const locale = this.setGregorian(Services.locale.appLocaleAsBCP47);
           const dir = this.mozIntl.getLocaleInfo(locale).direction;
 
           switch (this.type) {

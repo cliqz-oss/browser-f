@@ -29,7 +29,6 @@
 #include "mozilla/TimeStamp.h"
 
 #include "EventListenerService.h"
-#include "GeckoProfiler.h"
 #include "nsCOMArray.h"
 #include "nsCOMPtr.h"
 #include "nsContentUtils.h"
@@ -51,10 +50,6 @@
 #include "xpcpublic.h"
 #include "nsIFrame.h"
 #include "nsDisplayList.h"
-
-#ifdef MOZ_GECKO_PROFILER
-#include "ProfilerMarkerPayload.h"
-#endif
 
 namespace mozilla {
 
@@ -192,11 +187,11 @@ ImplCycleCollectionTraverse(nsCycleCollectionTraversalCallback& aCallback,
     nsAutoCString name;
     name.AppendASCII(aName);
     if (aField.mTypeAtom) {
-      name.AppendASCII(" event=");
+      name.AppendLiteral(" event=");
       name.Append(nsAtomCString(aField.mTypeAtom));
-      name.AppendASCII(" listenerType=");
+      name.AppendLiteral(" listenerType=");
       name.AppendInt(aField.mListenerType);
-      name.AppendASCII(" ");
+      name.AppendLiteral(" ");
     }
     CycleCollectionNoteChild(aCallback, aField.mListener.GetISupports(), name.get(),
                              aFlags);
@@ -1250,6 +1245,7 @@ EventListenerManager::HandleEventInternal(nsPresContext* aPresContext,
             (aEvent->IsTrusted() || listener->mFlags.mAllowUntrustedEvents)) {
           if (!*aDOMEvent) {
             // This is tiny bit slow, but happens only once per event.
+            // Similar code also in EventDispatcher.
             nsCOMPtr<EventTarget> et = aEvent->mOriginalTarget;
             RefPtr<Event> event = EventDispatcher::CreateEvent(et, aPresContext,
                                                                aEvent,
@@ -1302,46 +1298,16 @@ EventListenerManager::HandleEventInternal(nsPresContext* aPresContext,
               hasRemovedListener = true;
             }
 
-            nsresult rv = NS_OK;
             nsCOMPtr<nsPIDOMWindowInner> innerWindow =
               WindowFromListener(listener, aItemInShadowTree);
             mozilla::dom::Event* oldWindowEvent = nullptr;
             if (innerWindow) {
               oldWindowEvent = innerWindow->SetEvent(*aDOMEvent);
             }
-#ifdef MOZ_GECKO_PROFILER
-            if (profiler_is_active()) {
-              // Add a profiler label and a profiler marker for the actual
-              // dispatch of the event.
-              // This is a very hot code path, so we need to make sure not to
-              // do this extra work when we're not profiling.
-              nsAutoString typeStr;
-              (*aDOMEvent)->GetType(typeStr);
-              AUTO_PROFILER_LABEL_DYNAMIC_LOSSY_NSSTRING(
-                "EventListenerManager::HandleEventInternal", OTHER, typeStr);
 
-              uint16_t phase = (*aDOMEvent)->EventPhase();
-              profiler_add_marker(
-                "DOMEvent",
-                MakeUnique<DOMEventMarkerPayload>(typeStr, phase,
-                                                  aEvent->mTimeStamp,
-                                                  "DOMEvent",
-                                                  TRACING_INTERVAL_START));
+            nsresult rv =
+              HandleEventSubType(listener, *aDOMEvent, aCurrentTarget);
 
-              rv = HandleEventSubType(listener, *aDOMEvent, aCurrentTarget);
-
-              phase = (*aDOMEvent)->EventPhase();
-              profiler_add_marker(
-                "DOMEvent",
-                MakeUnique<DOMEventMarkerPayload>(typeStr, phase,
-                                                  aEvent->mTimeStamp,
-                                                  "DOMEvent",
-                                                  TRACING_INTERVAL_END));
-            } else
-#endif
-            {
-              rv = HandleEventSubType(listener, *aDOMEvent, aCurrentTarget);
-            }
             if (innerWindow) {
               Unused << innerWindow->SetEvent(oldWindowEvent);
             }

@@ -74,6 +74,7 @@ public:
                       const gfx::IntSize& aSize,
                       TransactionId aTransactionId,
                       const WebRenderScrollData& aScrollData,
+                      bool aContainsSVGroup,
                       const mozilla::TimeStamp& aRefreshStartTime,
                       const mozilla::TimeStamp& aTxnStartTime);
   void EndEmptyTransaction(const FocusTarget& aFocusTarget,
@@ -143,9 +144,10 @@ public:
                   bool aBackfaceVisible,
                   const wr::GlyphOptions* aGlyphOptions = nullptr);
 
-  wr::FontInstanceKey GetFontKeyForScaledFont(gfx::ScaledFont* aScaledFont);
-  wr::FontKey GetFontKeyForUnscaledFont(gfx::UnscaledFont* aUnscaledFont);
-
+  wr::FontInstanceKey GetFontKeyForScaledFont(gfx::ScaledFont* aScaledFont,
+                                              wr::IpcResourceUpdateQueue* aResources = nullptr);
+  wr::FontKey GetFontKeyForUnscaledFont(gfx::UnscaledFont* aUnscaledFont,
+                                        wr::IpcResourceUpdateQueue* aResources = nullptr);
   void RemoveExpiredFontKeys(wr::IpcResourceUpdateQueue& aResources);
 
   void BeginClearCachedResources();

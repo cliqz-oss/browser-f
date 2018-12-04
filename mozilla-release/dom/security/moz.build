@@ -9,8 +9,11 @@ with Files('*'):
 
 TEST_DIRS += ['test']
 
+DIRS += [ 'featurepolicy' ]
+
 EXPORTS.mozilla.dom += [
     'ContentVerifier.h',
+    'CSPEvalChecker.h',
     'FramingChecker.h',
     'nsContentSecurityManager.h',
     'nsCSPContext.h',
@@ -30,6 +33,7 @@ EXPORTS += [
 
 UNIFIED_SOURCES += [
     'ContentVerifier.cpp',
+    'CSPEvalChecker.cpp',
     'FramingChecker.cpp',
     'nsContentSecurityManager.cpp',
     'nsCSPContext.cpp',

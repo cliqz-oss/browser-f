@@ -12,7 +12,6 @@ from taskgraph.util.attributes import copy_attributes_from_dependent_job
 from taskgraph.util.schema import validate_schema, Schema
 from taskgraph.util.scriptworker import (get_beetmover_bucket_scope,
                                          get_beetmover_action_scope,
-                                         get_phase,
                                          get_worker_type_for_scope)
 from taskgraph.util.taskcluster import get_artifact_prefix
 from taskgraph.transforms.task import task_description_schema
@@ -78,9 +77,11 @@ _MOBILE_UPSTREAM_ARTIFACTS_SIGNED_MULTI = [
 # See example in bug 1348286
 UPSTREAM_ARTIFACT_UNSIGNED_PATHS = {
     'android-x86-nightly': _MOBILE_UPSTREAM_ARTIFACTS_UNSIGNED_EN_US,
+    'android-x86_64-nightly': _MOBILE_UPSTREAM_ARTIFACTS_UNSIGNED_EN_US,
     'android-aarch64-nightly': _MOBILE_UPSTREAM_ARTIFACTS_UNSIGNED_EN_US,
     'android-api-16-nightly': _MOBILE_UPSTREAM_ARTIFACTS_UNSIGNED_EN_US,
     'android-x86-nightly-multi': _MOBILE_UPSTREAM_ARTIFACTS_UNSIGNED_MULTI,
+    'android-x86_64-nightly-multi': _MOBILE_UPSTREAM_ARTIFACTS_UNSIGNED_MULTI,
     'android-aarch64-nightly-multi': _MOBILE_UPSTREAM_ARTIFACTS_UNSIGNED_MULTI,
     'android-api-16-nightly-l10n': [],
     'android-api-16-nightly-multi': _MOBILE_UPSTREAM_ARTIFACTS_UNSIGNED_MULTI,
@@ -91,9 +92,11 @@ UPSTREAM_ARTIFACT_UNSIGNED_PATHS = {
 # See example in bug 1348286
 UPSTREAM_ARTIFACT_SIGNED_PATHS = {
     'android-x86-nightly': ["en-US/target.apk"],
+    'android-x86_64-nightly': ["en-US/target.apk"],
     'android-aarch64-nightly': ["en-US/target.apk"],
     'android-api-16-nightly': ["en-US/target.apk"],
     'android-x86-nightly-multi': ["target.apk"],
+    'android-x86_64-nightly-multi': ["target.apk"],
     'android-aarch64-nightly-multi': ["target.apk"],
     'android-api-16-nightly-l10n': ["target.apk"],
     'android-api-16-nightly-multi': ["target.apk"],
@@ -136,7 +139,7 @@ beetmover_description_schema = Schema({
     # locale is passed only for l10n beetmoving
     Optional('locale'): basestring,
 
-    Optional('shipping-phase'): task_description_schema['shipping-phase'],
+    Required('shipping-phase'): task_description_schema['shipping-phase'],
     Optional('shipping-product'): task_description_schema['shipping-product'],
 })
 
@@ -194,7 +197,6 @@ def make_task_description(config, jobs):
 
         bucket_scope = get_beetmover_bucket_scope(config)
         action_scope = get_beetmover_action_scope(config)
-        phase = get_phase(config)
 
         task = {
             'label': label,
@@ -205,7 +207,7 @@ def make_task_description(config, jobs):
             'attributes': attributes,
             'run-on-projects': dep_job.attributes.get('run_on_projects'),
             'treeherder': treeherder,
-            'shipping-phase': phase,
+            'shipping-phase': job['shipping-phase'],
         }
 
         yield task

@@ -18,6 +18,7 @@
 
 namespace mozilla {
 class SVGGeometryFrame;
+class SVGMarkerObserver;
 namespace gfx {
 class DrawTarget;
 } // namespace gfx
@@ -29,7 +30,6 @@ class nsAtom;
 class nsIFrame;
 class nsIPresShell;
 class nsSVGMarkerFrame;
-class nsSVGMarkerProperty;
 
 struct nsRect;
 
@@ -129,25 +129,6 @@ private:
    */
   void PaintMarkers(gfxContext& aContext, const gfxMatrix& aMatrix,
                     imgDrawingParams& aImgParams);
-
-  struct MarkerProperties {
-    nsSVGMarkerProperty* mMarkerStart;
-    nsSVGMarkerProperty* mMarkerMid;
-    nsSVGMarkerProperty* mMarkerEnd;
-
-    bool MarkersExist() const {
-      return mMarkerStart || mMarkerMid || mMarkerEnd;
-    }
-
-    nsSVGMarkerFrame *GetMarkerStartFrame();
-    nsSVGMarkerFrame *GetMarkerMidFrame();
-    nsSVGMarkerFrame *GetMarkerEndFrame();
-  };
-
-  /**
-   * @param aFrame should be the first continuation
-   */
-  static MarkerProperties GetMarkerProperties(SVGGeometryFrame *aFrame);
 };
 } // namespace mozilla
 

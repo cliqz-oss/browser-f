@@ -12,12 +12,15 @@ const { Provider } = require("devtools/client/shared/vendor/react-redux");
 const actions = require("devtools/client/webconsole/actions/index");
 const { createContextMenu, createEditContextMenu } = require("devtools/client/webconsole/utils/context-menu");
 const { configureStore } = require("devtools/client/webconsole/store");
+
 const { isPacketPrivate } = require("devtools/client/webconsole/utils/messages");
 const { getAllMessagesById, getMessage } = require("devtools/client/webconsole/selectors/messages");
 const Telemetry = require("devtools/client/shared/telemetry");
 
 const EventEmitter = require("devtools/shared/event-emitter");
 const App = createFactory(require("devtools/client/webconsole/components/App"));
+const ObjectClient = require("devtools/shared/client/object-client");
+const LongStringClient = require("devtools/shared/client/long-string-client");
 
 let store = null;
 
@@ -38,12 +41,6 @@ function WebConsoleOutputWrapper(parentNode, hud, toolbox, owner, document) {
   this.throttledDispatchPromise = null;
 
   this.telemetry = new Telemetry();
-
-  store = configureStore(this.hud, {
-    // We may not have access to the toolbox (e.g. in the browser console).
-    sessionId: this.toolbox && this.toolbox.sessionId || -1,
-    telemetry: this.telemetry,
-  });
 }
 
 WebConsoleOutputWrapper.prototype = {
@@ -52,42 +49,8 @@ WebConsoleOutputWrapper.prototype = {
       const attachRefToHud = (id, node) => {
         this.hud[id] = node;
       };
-      // Focus the input line whenever the output area is clicked.
-      this.parentNode.addEventListener("click", (event) => {
-        // Do not focus on middle/right-click or 2+ clicks.
-        if (event.detail !== 1 || event.button !== 0) {
-          return;
-        }
-
-        // Do not focus if a link was clicked
-        const target = event.originalTarget || event.target;
-        if (target.closest("a")) {
-          return;
-        }
-
-        // Do not focus if an input field was clicked
-        if (target.closest("input")) {
-          return;
-        }
-
-        // Do not focus if something other than the output region was clicked
-        // (including e.g. the clear messages button in toolbar)
-        if (!target.closest(".webconsole-output-wrapper")) {
-          return;
-        }
-
-        // Do not focus if something is selected
-        const selection = this.document.defaultView.getSelection();
-        if (selection && !selection.isCollapsed) {
-          return;
-        }
-
-        if (this.hud && this.hud.jsterm) {
-          this.hud.jsterm.focus();
-        }
-      });
-
       const { hud } = this;
+      const debuggerClient = this.owner.target.client;
 
       const serviceContainer = {
         attachRefToHud,
@@ -101,6 +64,13 @@ WebConsoleOutputWrapper.prototype = {
         hudProxy: hud.proxy,
         openLink: (url, e) => {
           hud.owner.openLink(url, e);
+        },
+        canRewind: () => {
+          if (!(hud.owner && hud.owner.target && hud.owner.target.activeTab)) {
+            return false;
+          }
+
+          return hud.owner.target.activeTab.traits.canRewind;
         },
         createElement: nodename => {
           return this.document.createElement(nodename);
@@ -117,11 +87,26 @@ WebConsoleOutputWrapper.prototype = {
           }
         },
         recordTelemetryEvent: (eventName, extra = {}) => {
-          this.telemetry.recordEvent("devtools.main", eventName, "webconsole", null, {
+          this.telemetry.recordEvent(eventName, "webconsole", null, {
             ...extra,
-            "session_id": this.toolbox && this.toolbox.sessionId || -1
+            "session_id": this.toolbox && this.toolbox.sessionId || -1,
           });
-        }
+        },
+        createObjectClient: (object) => {
+          return new ObjectClient(debuggerClient, object);
+        },
+
+        createLongStringClient: (object) => {
+          return new LongStringClient(debuggerClient, object);
+        },
+
+        releaseActor: (actor) => {
+          if (!actor) {
+            return null;
+          }
+
+          return debuggerClient.release(actor);
+        },
       };
 
       // Set `openContextMenu` this way so, `serviceContainer` variable
@@ -188,10 +173,13 @@ WebConsoleOutputWrapper.prototype = {
       };
 
       if (this.toolbox) {
+        this.toolbox.threadClient.addListener("paused", this.dispatchPaused.bind(this));
+        this.toolbox.threadClient.addListener("resumed", this.dispatchResumed.bind(this));
+
         Object.assign(serviceContainer, {
           onViewSourceInDebugger: frame => {
             this.toolbox.viewSourceInDebugger(frame.url, frame.line).then(() => {
-              this.telemetry.recordEvent("devtools.main", "jump_to_source", "webconsole",
+              this.telemetry.recordEvent("jump_to_source", "webconsole",
                                          null, { "session_id": this.toolbox.sessionId }
               );
               this.hud.emit("source-in-debugger-opened");
@@ -201,7 +189,7 @@ WebConsoleOutputWrapper.prototype = {
             frame.url,
             frame.line
           ).then(() => {
-            this.telemetry.recordEvent("devtools.main", "jump_to_source", "webconsole",
+            this.telemetry.recordEvent("jump_to_source", "webconsole",
                                        null, { "session_id": this.toolbox.sessionId }
             );
           }),
@@ -209,7 +197,7 @@ WebConsoleOutputWrapper.prototype = {
             frame.url,
             frame.line
           ).then(() => {
-            this.telemetry.recordEvent("devtools.main", "jump_to_source", "webconsole",
+            this.telemetry.recordEvent("jump_to_source", "webconsole",
                                        null, { "session_id": this.toolbox.sessionId }
             );
           }),
@@ -234,7 +222,7 @@ WebConsoleOutputWrapper.prototype = {
             const onGripNodeToFront = this.toolbox.highlighterUtils.gripToNodeFront(grip);
             const [
               front,
-              inspector
+              inspector,
             ] = await Promise.all([onGripNodeToFront, onSelectInspector]);
 
             const onInspectorUpdated = inspector.once("inspector-updated");
@@ -242,23 +230,39 @@ WebConsoleOutputWrapper.prototype = {
               .setNodeFront(front, { reason: "console" });
 
             return Promise.all([onNodeFrontSet, onInspectorUpdated]);
-          }
+          },
+          jumpToExecutionPoint: executionPoint =>
+            this.toolbox.threadClient.timeWarp(executionPoint),
         });
       }
 
+      store = configureStore(this.hud, {
+        // We may not have access to the toolbox (e.g. in the browser console).
+        sessionId: this.toolbox && this.toolbox.sessionId || -1,
+        telemetry: this.telemetry,
+        services: serviceContainer,
+      });
+
+      const {prefs} = store.getState();
       const app = App({
         attachRefToHud,
         serviceContainer,
         hud,
         onFirstMeaningfulPaint: resolve,
         closeSplitConsole: this.closeSplitConsole.bind(this),
-        jstermCodeMirror: store.getState().prefs.jstermCodeMirror
+        jstermCodeMirror: prefs.jstermCodeMirror
           && !Services.appinfo.accessibilityEnabled,
+        jstermReverseSearch: prefs.jstermReverseSearch,
       });
 
       // Render the root Application component.
-      const provider = createElement(Provider, { store }, app);
-      this.body = ReactDOM.render(provider, this.parentNode);
+      if (this.parentNode) {
+        const provider = createElement(Provider, { store }, app);
+        this.body = ReactDOM.render(provider, this.parentNode);
+      } else {
+        // If there's no parentNode, we are in a test. So we can resolve immediately.
+        resolve();
+      }
     });
   },
 
@@ -354,6 +358,16 @@ WebConsoleOutputWrapper.prototype = {
     store.dispatch(actions.timestampsToggle(enabled));
   },
 
+  dispatchPaused: function(_, packet) {
+    if (packet.executionPoint) {
+      store.dispatch(actions.setPauseExecutionPoint(packet.executionPoint));
+    }
+  },
+
+  dispatchResumed: function(_, packet) {
+    store.dispatch(actions.setPauseExecutionPoint(null));
+  },
+
   dispatchMessageUpdate: function(message, res) {
     // network-message-updated will emit when all the update message arrives.
     // Since we can't ensure the order of the network update, we check
@@ -442,7 +456,7 @@ WebConsoleOutputWrapper.prototype = {
         // send it when we have one.
         if (this.toolbox) {
           this.telemetry.addEventProperty(
-            "devtools.main", "enter", "webconsole", null, "message_count", length);
+            this.toolbox, "enter", "webconsole", null, "message_count", length);
         }
 
         this.queuedMessageAdds = [];
@@ -482,7 +496,7 @@ WebConsoleOutputWrapper.prototype = {
   // Called by pushing close button.
   closeSplitConsole() {
     this.toolbox.closeSplitConsole();
-  }
+  },
 };
 
 // Exports from this module

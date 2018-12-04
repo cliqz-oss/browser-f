@@ -1,13 +1,16 @@
 from __future__ import absolute_import
 
 import argparse
-import json
 import os
 from datetime import datetime, timedelta
 import tarfile
-import vcs
 import requests
+import vcs
 from cStringIO import StringIO
+import logging
+
+HEADERS = {'User-Agent': "wpt manifest download"}
+
 
 def abs_path(path):
     return os.path.abspath(os.path.expanduser(path))
@@ -24,7 +27,7 @@ def git_commits(repo_root):
     git = vcs.Git.get_func(repo_root)
     for item in git("log", "--format=%H", "-n50", "testing/web-platform/tests",
                     "testing/web-platform/mozilla/tests").splitlines():
-        yield git("cinnabar", "git2hg", item)
+        yield git("cinnabar", "git2hg", item).strip()
 
 
 def get_commits(logger, repo_root):
@@ -38,18 +41,22 @@ def get_commits(logger, repo_root):
     return False
 
 
-def should_download(logger, manifest_path, rebuild_time=timedelta(days=5)):
+def should_download(logger, manifest_paths, rebuild_time=timedelta(days=5)):
     # TODO: Improve logic for when to download. Maybe if x revisions behind?
-    if not os.path.exists(manifest_path):
-        return True
-    mtime = datetime.fromtimestamp(os.path.getmtime(manifest_path))
-    if mtime < datetime.now() - rebuild_time:
-        return True
+    for manifest_path in manifest_paths:
+        if not os.path.exists(manifest_path):
+            return True
+        mtime = datetime.fromtimestamp(os.path.getmtime(manifest_path))
+        if mtime < datetime.now() - rebuild_time:
+            return True
+
     logger.info("Skipping manifest download because existing file is recent")
     return False
 
 
 def taskcluster_url(logger, commits):
+    artifact_path = '/artifacts/public/manifests.tar.gz'
+
     cset_url = ('https://hg.mozilla.org/mozilla-central/json-pushes?'
                 'changeset={changeset}&version=2&tipsonly=1')
 
@@ -57,41 +64,65 @@ def taskcluster_url(logger, commits):
               'revision.{changeset}.source.manifest-upload')
 
     for revision in commits:
-        req = requests.get(cset_url.format(changeset=revision),
-                           headers={'Accept': 'application/json'})
+        req = None
 
-        req.raise_for_status()
+        if revision == 40 * "0":
+            continue
+        try:
+            req_headers = HEADERS.copy()
+            req_headers.update({'Accept': 'application/json'})
+            req = requests.get(cset_url.format(changeset=revision),
+                               headers=req_headers)
+            req.raise_for_status()
+        except requests.exceptions.RequestException:
+            if req and req.status_code == 404:
+                # The API returns a 404 if it can't find a changeset for the revision.
+                continue
+            else:
+                return False
 
         result = req.json()
-        [cset] = result['pushes'].values()[0]['changesets']
-        req = requests.get(tc_url.format(changeset=cset))
+
+        pushes = result['pushes']
+        if not pushes:
+            continue
+        [cset] = pushes.values()[0]['changesets']
+
+        try:
+            req = requests.get(tc_url.format(changeset=cset),
+                               headers=HEADERS)
+        except requests.exceptions.RequestException:
+            return False
 
         if req.status_code == 200:
-            return tc_url.format(changeset=cset)
+            return tc_url.format(changeset=cset) + artifact_path
 
     logger.info("Can't find a commit-specific manifest so just using the most"
                 "recent one")
 
     return ("https://index.taskcluster.net/v1/task/gecko.v2.mozilla-central."
-            "latest.source.manifest-upload")
+            "latest.source.manifest-upload" +
+            artifact_path)
 
 
-def download_manifest(logger, wpt_dir, commits_func, url_func, force=False):
-    if not force and not should_download(logger, os.path.join(wpt_dir, "meta", "MANIFEST.json")):
-        return False
+def download_manifest(logger, test_paths, commits_func, url_func, force=False):
+    manifest_paths = [item["manifest_path"] for item in test_paths.itervalues()]
+
+    if not force and not should_download(logger, manifest_paths):
+        return True
 
     commits = commits_func()
     if not commits:
         return False
-    url = url_func(logger, commits) + "/artifacts/public/manifests.tar.gz"
 
+    url = url_func(logger, commits)
     if not url:
         logger.warning("No generated manifest found")
         return False
 
     logger.info("Downloading manifest from %s" % url)
     try:
-        req = requests.get(url)
+        req = requests.get(url, headers=HEADERS)
     except Exception:
         logger.warning("Downloading pregenerated manifest failed")
         return False
@@ -102,34 +133,31 @@ def download_manifest(logger, wpt_dir, commits_func, url_func, force=False):
         return False
 
     tar = tarfile.open(mode="r:gz", fileobj=StringIO(req.content))
-    try:
-        tar.extractall(path=wpt_dir)
-    except IOError:
-        logger.warning("Failed to decompress downloaded file")
-        return False
+    for paths in test_paths.itervalues():
+        try:
+            member = tar.getmember(paths["manifest_rel_path"].replace(os.path.sep, "/"))
+        except KeyError:
+            logger.warning("Failed to find downloaded manifest %s" % paths["manifest_rel_path"])
+        else:
+            try:
+                logger.debug("Unpacking %s to %s" % (member.name, paths["manifest_path"]))
+                src = tar.extractfile(member)
+                with open(paths["manifest_path"], "w") as dest:
+                    dest.write(src.read())
+                src.close()
+            except IOError:
+                import traceback
+                logger.warning("Failed to decompress %s:\n%s" % (paths["manifest_rel_path"], traceback.format_exc()))
+                return False
 
-    os.utime(os.path.join(wpt_dir, "meta", "MANIFEST.json"), None)
-    os.utime(os.path.join(wpt_dir, "mozilla", "meta", "MANIFEST.json"), None)
+        os.utime(paths["manifest_path"], None)
 
-    logger.info("Manifest downloaded")
     return True
 
 
-def create_parser():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-p", "--path", type=abs_path, help="Path to manifest file.")
-    parser.add_argument(
-        "--force", action="store_true",
-        help="Always download, even if the existing manifest is recent")
-    return parser
-
-
-def download_from_taskcluster(logger, wpt_dir, repo_root, force=False):
-    return download_manifest(logger, wpt_dir, lambda: get_commits(logger, repo_root),
-                             taskcluster_url, force)
-
-
-def run(logger, wpt_dir, repo_root, force=False):
-    success = download_from_taskcluster(logger, wpt_dir, repo_root, force)
-    return 0 if success else 1
+def download_from_taskcluster(logger, repo_root, test_paths, force=False):
+    return download_manifest(logger,
+                             test_paths,
+                             lambda: get_commits(logger, repo_root),
+                             taskcluster_url,
+                             force)

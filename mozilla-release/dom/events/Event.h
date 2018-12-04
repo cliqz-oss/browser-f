@@ -158,7 +158,8 @@ public:
 
   void InitEvent(const nsAString& aEventTypeArg,
                  mozilla::CanBubble,
-                 mozilla::Cancelable);
+                 mozilla::Cancelable,
+                 mozilla::Composed = mozilla::Composed::eDefault);
 
   void SetTarget(EventTarget* aTarget);
   virtual void DuplicatePrivateData();
@@ -212,6 +213,10 @@ public:
 
   EventTarget* GetTarget() const;
   EventTarget* GetCurrentTarget() const;
+
+  // This method returns the nsIDocument which is associated with the event
+  // target.
+  already_AddRefed<nsIDocument> GetDocument() const;
 
   void ComposedPath(nsTArray<RefPtr<EventTarget>>& aPath);
 

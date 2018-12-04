@@ -126,7 +126,7 @@ function testInit() {
 function takeInstrumentation() {
 
   let instrumentData = {
-    elements: {}
+    elements: {},
   };
 
   function pad(str, length) {
@@ -549,7 +549,7 @@ Tester.prototype = {
     // Remove stale tabs
     if (this.currentTest && window.gBrowser && gBrowser.tabs.length > 1) {
       while (gBrowser.tabs.length > 1) {
-        let lastTab = gBrowser.tabContainer.lastChild;
+        let lastTab = gBrowser.tabContainer.lastElementChild;
         if (!lastTab.closing) {
           // Report the stale tab as an error only when they're not closing.
           // Tests can finish without waiting for the closing tabs.
@@ -1192,7 +1192,7 @@ Tester.prototype = {
     }
   },
 
-  QueryInterface: ChromeUtils.generateQI(["nsIConsoleListener"])
+  QueryInterface: ChromeUtils.generateQI(["nsIConsoleListener"]),
 };
 
 /**
@@ -1322,7 +1322,7 @@ function testScope(aTester, aTest, expected) {
     Services.tm.dispatchToMainThread({
       run() {
         func();
-      }
+      },
     });
   };
 
@@ -1451,7 +1451,7 @@ testScope.prototype = {
           },
           set: (value) => {
             this[prop] = value;
-          }
+          },
         });
       }
     }
@@ -1503,5 +1503,5 @@ testScope.prototype = {
   destroy: function test_destroy() {
     for (let prop in this)
       delete this[prop];
-  }
+  },
 };

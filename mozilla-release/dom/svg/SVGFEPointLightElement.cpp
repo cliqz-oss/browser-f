@@ -23,9 +23,9 @@ SVGFEPointLightElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenPro
 
 nsSVGElement::NumberInfo SVGFEPointLightElement::sNumberInfo[3] =
 {
-  { &nsGkAtoms::x, 0, false },
-  { &nsGkAtoms::y, 0, false },
-  { &nsGkAtoms::z, 0, false }
+  { nsGkAtoms::x, 0, false },
+  { nsGkAtoms::y, 0, false },
+  { nsGkAtoms::z, 0, false }
 };
 
 //----------------------------------------------------------------------
@@ -48,16 +48,18 @@ SVGFEPointLightElement::AttributeAffectsRendering(int32_t aNameSpaceID,
 
 //----------------------------------------------------------------------
 
-AttributeMap
-SVGFEPointLightElement::ComputeLightAttributes(nsSVGFilterInstance* aInstance)
+LightType
+SVGFEPointLightElement::ComputeLightAttributes(nsSVGFilterInstance* aInstance,
+                                               nsTArray<float>& aFloatAttributes)
 {
   Point3D lightPos;
   GetAnimatedNumberValues(&lightPos.x, &lightPos.y, &lightPos.z, nullptr);
-
-  AttributeMap map;
-  map.Set(eLightType, (uint32_t)eLightTypePoint);
-  map.Set(ePointLightPosition, aInstance->ConvertLocation(lightPos));
-  return map;
+  lightPos = aInstance->ConvertLocation(lightPos);
+  aFloatAttributes.SetLength(kPointLightNumAttributes);
+  aFloatAttributes[kPointLightPositionXIndex] = lightPos.x;
+  aFloatAttributes[kPointLightPositionYIndex] = lightPos.y;
+  aFloatAttributes[kPointLightPositionZIndex] = lightPos.z;
+  return LightType::Point;
 }
 
 already_AddRefed<SVGAnimatedNumber>

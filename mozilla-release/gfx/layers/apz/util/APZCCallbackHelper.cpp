@@ -293,8 +293,8 @@ APZCCallbackHelper::UpdateRootFrame(FrameMetrics& aMetrics)
   if (gfxPrefs::APZAllowZooming() && aMetrics.GetScrollOffsetUpdated()) {
     // If zooming is disabled then we don't really want to let APZ fiddle
     // with these things. In theory setting the resolution here should be a
-    // no-op, but setting the SPCSPS is bad because it can cause a stale value
-    // to be returned by window.innerWidth/innerHeight (see bug 1187792).
+    // no-op, but setting the visual viewport size is bad because it can cause a
+    // stale value to be returned by window.innerWidth/innerHeight (see bug 1187792).
     //
     // We also skip this codepath unless the metrics has a scroll offset update
     // type other eNone, because eNone just means that this repaint request
@@ -676,12 +676,13 @@ PrepareForSetTargetAPZCNotification(nsIWidget* aWidget,
   nsPoint point =
     nsLayoutUtils::GetEventCoordinatesRelativeTo(aWidget, aRefPoint, aRootFrame);
   uint32_t flags = 0;
-#ifdef MOZ_WIDGET_ANDROID
-  // On Android, we need IGNORE_ROOT_SCROLL_FRAME for correct hit testing
-  // when zoomed out. On desktop, don't use it because it interferes with
-  // hit testing for some purposes such as scrollbar dragging.
-  flags = nsLayoutUtils::IGNORE_ROOT_SCROLL_FRAME;
-#endif
+  if (gfxPrefs::APZAllowZooming()) {
+    // If zooming is enabled, we need IGNORE_ROOT_SCROLL_FRAME for correct
+    // hit testing. Otherwise, don't use it because it interferes with
+    // hit testing for some purposes such as scrollbar dragging (this will
+    // need to be fixed before enabling zooming by default on desktop).
+    flags = nsLayoutUtils::IGNORE_ROOT_SCROLL_FRAME;
+  }
   nsIFrame* target =
     nsLayoutUtils::GetFrameForPoint(aRootFrame, point, flags);
   nsIScrollableFrame* scrollAncestor = target

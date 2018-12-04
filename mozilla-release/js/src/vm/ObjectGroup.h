@@ -16,7 +16,7 @@
 #include "js/GCHashTable.h"
 #include "js/TypeDecls.h"
 #include "vm/TaggedProto.h"
-#include "vm/TypeInference.h"
+#include "vm/TypeSet.h"
 
 namespace js {
 
@@ -25,7 +25,6 @@ class UnboxedLayout;
 
 class PreliminaryObjectArrayWithTemplate;
 class TypeNewScript;
-class HeapTypeSet;
 class AutoClearTypeInferenceStateOnOOM;
 class AutoSweepObjectGroup;
 class CompilerConstraintList;
@@ -278,8 +277,9 @@ class ObjectGroup : public gc::TenuredCell
     }
 
     TypeNewScript* newScriptDontCheckGeneration() const {
-        if (addendumKind() == Addendum_NewScript)
+        if (addendumKind() == Addendum_NewScript) {
             return reinterpret_cast<TypeNewScript*>(addendum_);
+        }
         return nullptr;
     }
 
@@ -309,8 +309,9 @@ class ObjectGroup : public gc::TenuredCell
     maybePreliminaryObjects(const AutoSweepObjectGroup& sweep);
 
     PreliminaryObjectArrayWithTemplate* maybePreliminaryObjectsDontCheckGeneration() {
-        if (addendumKind() == Addendum_PreliminaryObjects)
+        if (addendumKind() == Addendum_PreliminaryObjects) {
             return reinterpret_cast<PreliminaryObjectArrayWithTemplate*>(addendum_);
+        }
         return nullptr;
     }
 
@@ -323,17 +324,15 @@ class ObjectGroup : public gc::TenuredCell
         setAddendum(Addendum_None, nullptr);
     }
 
-    bool hasUnanalyzedPreliminaryObjects() {
-        return (newScriptDontCheckGeneration() && !newScriptDontCheckGeneration()->analyzed()) ||
-               maybePreliminaryObjectsDontCheckGeneration();
-    }
+    inline bool hasUnanalyzedPreliminaryObjects();
 
     inline UnboxedLayout* maybeUnboxedLayout(const AutoSweepObjectGroup& sweep);
     inline UnboxedLayout& unboxedLayout(const AutoSweepObjectGroup& sweep);
 
     UnboxedLayout* maybeUnboxedLayoutDontCheckGeneration() const {
-        if (addendumKind() == Addendum_UnboxedLayout)
+        if (addendumKind() == Addendum_UnboxedLayout) {
             return &unboxedLayoutDontCheckGeneration();
+        }
         return nullptr;
     }
 
@@ -347,8 +346,9 @@ class ObjectGroup : public gc::TenuredCell
     }
 
     ObjectGroup* maybeOriginalUnboxedGroup() const {
-        if (addendumKind() == Addendum_OriginalUnboxedGroup)
+        if (addendumKind() == Addendum_OriginalUnboxedGroup) {
             return reinterpret_cast<ObjectGroup*>(addendum_);
+        }
         return nullptr;
     }
 
@@ -359,8 +359,9 @@ class ObjectGroup : public gc::TenuredCell
     TypeDescr* maybeTypeDescr() {
         // Note: there is no need to sweep when accessing the type descriptor
         // of an object, as it is strongly held and immutable.
-        if (addendumKind() == Addendum_TypeDescr)
+        if (addendumKind() == Addendum_TypeDescr) {
             return &typeDescr();
+        }
         return nullptr;
     }
 
@@ -376,8 +377,9 @@ class ObjectGroup : public gc::TenuredCell
     JSFunction* maybeInterpretedFunction() {
         // Note: as with type descriptors, there is no need to sweep when
         // accessing the interpreted function associated with an object.
-        if (addendumKind() == Addendum_InterpretedFunction)
+        if (addendumKind() == Addendum_InterpretedFunction) {
             return reinterpret_cast<JSFunction*>(addendum_);
+        }
         return nullptr;
     }
 
@@ -476,7 +478,7 @@ class ObjectGroup : public gc::TenuredCell
     void traceChildren(JSTracer* trc);
 
     inline bool needsSweep();
-    void sweep(const AutoSweepObjectGroup& sweep, AutoClearTypeInferenceStateOnOOM* oom);
+    void sweep(const AutoSweepObjectGroup& sweep);
 
   private:
     uint32_t generation() {
@@ -586,7 +588,7 @@ class ObjectGroup : public gc::TenuredCell
     static ArrayObject* getCopyOnWriteObject(JSScript* script, jsbytecode* pc);
 
     // Returns false if not found.
-    static bool findAllocationSite(JSContext* cx, ObjectGroup* group,
+    static bool findAllocationSite(JSContext* cx, const ObjectGroup* group,
                                    JSScript** script, uint32_t* offset);
 
   private:
@@ -691,7 +693,7 @@ class ObjectGroupRealm
     ObjectGroupRealm(ObjectGroupRealm&) = delete;
     void operator=(ObjectGroupRealm&) = delete;
 
-    static ObjectGroupRealm& get(ObjectGroup* group);
+    static ObjectGroupRealm& get(const ObjectGroup* group);
     static ObjectGroupRealm& getForNewObject(JSContext* cx);
 
     void replaceAllocationSiteGroup(JSScript* script, jsbytecode* pc,

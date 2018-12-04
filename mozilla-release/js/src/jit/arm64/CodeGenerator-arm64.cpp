@@ -39,15 +39,16 @@ CodeGeneratorARM64::CodeGeneratorARM64(MIRGenerator* gen, LIRGraph* graph, Macro
 bool
 CodeGeneratorARM64::generateOutOfLineCode()
 {
-    if (!CodeGeneratorShared::generateOutOfLineCode())
+    if (!CodeGeneratorShared::generateOutOfLineCode()) {
         return false;
+    }
 
     if (deoptLabel_.used()) {
         // All non-table-based bailouts will go here.
         masm.bind(&deoptLabel_);
 
         // Store the frame size, so the handler can recover the IonScript.
-        masm.Mov(x30, frameSize());
+        masm.push(Imm32(frameSize()));
 
         TrampolinePtr handler = gen->jitRuntime()->getGenericBailoutHandler();
         masm.jump(handler);
@@ -88,8 +89,9 @@ CodeGenerator::visitTestIAndBranch(LTestIAndBranch* test)
         jumpToBlock(mirTrue, Assembler::NonZero);
     } else {
         jumpToBlock(mirFalse, Assembler::Zero);
-        if (!isNextBlock(mirTrue->lir()))
+        if (!isNextBlock(mirTrue->lir())) {
             jumpToBlock(mirTrue);
+        }
     }
 }
 
@@ -108,10 +110,11 @@ CodeGenerator::visitCompare(LCompare* comp)
         return;
     }
 
-    if (right->isConstant())
+    if (right->isConstant()) {
         masm.cmp32Set(cond, leftreg, Imm32(ToInt32(right)), defreg);
-    else
+    } else {
         masm.cmp32Set(cond, leftreg, ToRegister(right), defreg);
+    }
 }
 
 void
@@ -155,8 +158,8 @@ CodeGeneratorARM64::bailoutIf(Assembler::Condition condition, LSnapshot* snapsho
 void
 CodeGeneratorARM64::bailoutFrom(Label* label, LSnapshot* snapshot)
 {
-    MOZ_ASSERT(label->used());
-    MOZ_ASSERT(!label->bound());
+    MOZ_ASSERT_IF(!masm.oom(), label->used());
+    MOZ_ASSERT_IF(!masm.oom(), !label->bound());
 
     encode(snapshot);
 
@@ -241,20 +244,24 @@ toXRegister(const T* a)
 Operand
 toWOperand(const LAllocation* a)
 {
-    if (a->isConstant())
+    if (a->isConstant()) {
         return Operand(ToInt32(a));
+    }
     return Operand(toWRegister(a));
 }
 
 vixl::CPURegister
 ToCPURegister(const LAllocation* a, Scalar::Type type)
 {
-    if (a->isFloatReg() && type == Scalar::Float64)
+    if (a->isFloatReg() && type == Scalar::Float64) {
         return ARMFPRegister(ToFloatRegister(a), 64);
-    if (a->isFloatReg() && type == Scalar::Float32)
+    }
+    if (a->isFloatReg() && type == Scalar::Float32) {
         return ARMFPRegister(ToFloatRegister(a), 32);
-    if (a->isGeneralReg())
+    }
+    if (a->isGeneralReg()) {
         return ARMRegister(ToRegister(a), 32);
+    }
     MOZ_CRASH("Unknown LAllocation");
 }
 
@@ -353,14 +360,16 @@ CodeGenerator::visitMulI(LMulI* ins)
 
             masm.move32(Imm32(constant), scratch);
             masm.mul32(lhsreg, scratch, ToRegister(dest), onOverflow, onZero);
-            if (onZero || onOverflow)
+            if (onZero || onOverflow) {
                 bailoutFrom(&bailout, ins->snapshot());
+            }
             return; // escape overflow check;
         }
 
         // Overflow check.
-        if (mul->canOverflow())
+        if (mul->canOverflow()) {
             bailoutIf(Assembler::Overflow, ins->snapshot());
+        }
     } else {
         Register rhsreg = ToRegister(rhs);
 
@@ -370,8 +379,9 @@ CodeGenerator::visitMulI(LMulI* ins)
         Label* onOverflow = mul->canOverflow() ? &bailout : nullptr;
 
         masm.mul32(lhsreg, rhsreg, ToRegister(dest), onOverflow, onZero);
-        if (onZero || onOverflow)
+        if (onZero || onOverflow) {
             bailoutFrom(&bailout, ins->snapshot());
+        }
     }
 }
 
@@ -379,8 +389,84 @@ CodeGenerator::visitMulI(LMulI* ins)
 void
 CodeGenerator::visitDivI(LDivI* ins)
 {
-    MOZ_CRASH("visitDivI");
+    const Register lhs = ToRegister(ins->lhs());
+    const Register rhs = ToRegister(ins->rhs());
+    const Register output = ToRegister(ins->output());
 
+    const ARMRegister lhs32 = toWRegister(ins->lhs());
+    const ARMRegister rhs32 = toWRegister(ins->rhs());
+    const ARMRegister temp32 = toWRegister(ins->getTemp(0));
+    const ARMRegister output32 = toWRegister(ins->output());
+
+    MDiv* mir = ins->mir();
+
+    Label done;
+
+    // Handle division by zero.
+    if (mir->canBeDivideByZero()) {
+        masm.test32(rhs, rhs);
+        // TODO: x64 has an additional mir->canTruncateInfinities() handler
+        // TODO: to avoid taking a bailout.
+        if (mir->trapOnError()) {
+            Label nonZero;
+            masm.j(Assembler::NonZero, &nonZero);
+            masm.wasmTrap(wasm::Trap::IntegerDivideByZero, mir->bytecodeOffset());
+            masm.bind(&nonZero);
+        } else {
+            MOZ_ASSERT(mir->fallible());
+            bailoutIf(Assembler::Zero, ins->snapshot());
+        }
+    }
+
+    // Handle an integer overflow from (INT32_MIN / -1).
+    // The integer division gives INT32_MIN, but should be -(double)INT32_MIN.
+    if (mir->canBeNegativeOverflow()) {
+        Label notOverflow;
+
+        // Branch to handle the non-overflow cases.
+        masm.branch32(Assembler::NotEqual, lhs, Imm32(INT32_MIN), &notOverflow);
+        masm.branch32(Assembler::NotEqual, rhs, Imm32(-1), &notOverflow);
+
+        // Handle overflow.
+        if (mir->trapOnError()) {
+            masm.wasmTrap(wasm::Trap::IntegerOverflow, mir->bytecodeOffset());
+        } else if (mir->canTruncateOverflow()) {
+            // (-INT32_MIN)|0 == INT32_MIN, which is already in lhs.
+            masm.move32(lhs, output);
+            masm.jump(&done);
+        } else {
+            MOZ_ASSERT(mir->fallible());
+            bailout(ins->snapshot());
+        }
+        masm.bind(&notOverflow);
+    }
+
+    // Handle negative zero: lhs == 0 && rhs < 0.
+    if (!mir->canTruncateNegativeZero() && mir->canBeNegativeZero()) {
+        Label nonZero;
+        masm.branch32(Assembler::NotEqual, lhs, Imm32(0), &nonZero);
+        masm.cmp32(rhs, Imm32(0));
+        bailoutIf(Assembler::LessThan, ins->snapshot());
+        masm.bind(&nonZero);
+    }
+
+    // Perform integer division.
+    if (mir->canTruncateRemainder()) {
+        masm.Sdiv(output32, lhs32, rhs32);
+    } else {
+        vixl::UseScratchRegisterScope temps(&masm.asVIXL());
+        ARMRegister scratch32 = temps.AcquireW();
+
+        // ARM does not automatically calculate the remainder.
+        // The ISR suggests multiplication to determine whether a remainder exists.
+        masm.Sdiv(scratch32, lhs32, rhs32);
+        masm.Mul(temp32, scratch32, rhs32);
+        masm.Cmp(lhs32, temp32);
+        bailoutIf(Assembler::NotEqual, ins->snapshot());
+        masm.Mov(output32, scratch32);
+    }
+
+    masm.bind(&done);
 }
 
 void
@@ -500,10 +586,12 @@ CodeGenerator::visitPowHalfD(LPowHalfD* ins)
 MoveOperand
 CodeGeneratorARM64::toMoveOperand(const LAllocation a) const
 {
-    if (a.isGeneralReg())
+    if (a.isGeneralReg()) {
         return MoveOperand(ToRegister(a));
-    if (a.isFloatReg())
+    }
+    if (a.isFloatReg()) {
         return MoveOperand(ToFloatRegister(a));
+    }
     return MoveOperand(AsRegister(masm.getStackPointer()), ToStackOffset(a));
 }
 
@@ -929,8 +1017,9 @@ CodeGeneratorARM64::generateInvalidateEpilogue()
 {
     // Ensure that there is enough space in the buffer for the OsiPoint patching
     // to occur. Otherwise, we could overwrite the invalidation epilogue.
-    for (size_t i = 0; i < sizeof(void*); i += Assembler::NopSize())
+    for (size_t i = 0; i < sizeof(void*); i += Assembler::NopSize()) {
         masm.nop();
+    }
 
     masm.bind(&invalidate_);
 

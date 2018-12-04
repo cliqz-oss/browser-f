@@ -440,7 +440,8 @@ nsIContent::GetURLDataForStyleAttr(nsIPrincipal* aSubjectPrincipal) const
     // TODO: Cache this?
     return MakeAndAddRef<URLExtraData>(OwnerDoc()->GetDocBaseURI(),
                                        OwnerDoc()->GetDocumentURI(),
-                                       aSubjectPrincipal);
+                                       aSubjectPrincipal,
+                                       OwnerDoc()->GetReferrerPolicy());
   }
   // This also ignores the case that SVG inside XBL binding.
   // But it is probably fine.
@@ -856,13 +857,8 @@ FragmentOrElement::nsExtendedDOMSlots::SizeOfExcludingThis(MallocSizeOf aMallocS
   return n;
 }
 
-FragmentOrElement::FragmentOrElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-  : nsIContent(aNodeInfo)
-{
-}
-
 FragmentOrElement::FragmentOrElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
-  : nsIContent(aNodeInfo)
+  : nsIContent(std::move(aNodeInfo))
 {
 }
 
@@ -1487,9 +1483,10 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(FragmentOrElement)
     }
 
     if (tmp->IsHTMLElement() || tmp->IsSVGElement()) {
-      nsStaticAtom*** props = Element::HTMLSVGPropertiesToTraverseAndUnlink();
+      nsStaticAtom* const* props =
+        Element::HTMLSVGPropertiesToTraverseAndUnlink();
       for (uint32_t i = 0; props[i]; ++i) {
-        tmp->DeleteProperty(*props[i]);
+        tmp->DeleteProperty(props[i]);
       }
       if (tmp->MayHaveAnimations()) {
         nsAtom** effectProps = EffectSet::GetEffectSetPropertyAtoms();
@@ -2043,10 +2040,11 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(FragmentOrElement)
       }
     }
     if (tmp->IsHTMLElement() || tmp->IsSVGElement()) {
-      nsStaticAtom*** props = Element::HTMLSVGPropertiesToTraverseAndUnlink();
+      nsStaticAtom* const* props =
+        Element::HTMLSVGPropertiesToTraverseAndUnlink();
       for (uint32_t i = 0; props[i]; ++i) {
         nsISupports* property =
-          static_cast<nsISupports*>(tmp->GetProperty(*props[i]));
+          static_cast<nsISupports*>(tmp->GetProperty(props[i]));
         cb.NoteXPCOMChild(property);
       }
       if (tmp->MayHaveAnimations()) {

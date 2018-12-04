@@ -29,9 +29,10 @@ const {
 const promise = require("promise");
 const Services = require("Services");
 const EventEmitter = require("devtools/shared/event-emitter");
-const {Tools} = require("devtools/client/definitions");
-const {gDevTools} = require("devtools/client/framework/devtools");
 const CssLogic = require("devtools/shared/inspector/css-logic");
+
+loader.lazyRequireGetter(this, "Tools", "devtools/client/definitions", true);
+loader.lazyRequireGetter(this, "gDevTools", "devtools/client/framework/devtools", true);
 
 const STYLE_INSPECTOR_PROPERTIES = "devtools/shared/locales/styleinspector.properties";
 const {LocalizationHelper} = require("devtools/shared/l10n");
@@ -112,7 +113,6 @@ RuleEditor.prototype = {
 
   get isSelectorEditable() {
     const trait = this.isEditable &&
-      this.ruleView.inspector.target.client.traits.selectorEditable &&
       this.rule.domRule.type !== ELEMENT_STYLE &&
       this.rule.domRule.type !== CSSRule.KEYFRAME_RULE;
 
@@ -283,7 +283,12 @@ RuleEditor.prototype = {
     if (Tools.styleEditor.isTargetSupported(target)) {
       gDevTools.showToolbox(target, "styleeditor").then(toolbox => {
         const {url, line, column} = this._currentLocation;
-        toolbox.getCurrentPanel().selectStyleSheet(url, line, column);
+
+        if (!this.rule.sheet.href && this.rule.sheet.nodeHref) {
+          toolbox.getCurrentPanel().selectStyleSheet(this.rule.sheet, line, column);
+        } else {
+          toolbox.getCurrentPanel().selectStyleSheet(url, line, column);
+        }
       });
     }
   },
@@ -435,7 +440,7 @@ RuleEditor.prototype = {
               selectorClass = "ruleview-selector";
               break;
             case SELECTOR_PSEUDO_CLASS:
-              selectorClass = [":active", ":focus", ":hover"].some(
+              selectorClass = [":active", ":focus", ":focus-within", ":hover"].some(
                   pseudo => selectorText.value === pseudo) ?
                 "ruleview-selector-pseudo-class-lock" :
                 "ruleview-selector-pseudo-class";
@@ -604,7 +609,7 @@ RuleEditor.prototype = {
     // the field gets destroyed (see _newPropertyDestroy)
     this.editor.input.blur();
 
-    this.telemetry.recordEvent("devtools.main", "edit_rule", "ruleview", null, {
+    this.telemetry.recordEvent("edit_rule", "ruleview", null, {
       "session_id": this.toolbox.sessionId
     });
   },
@@ -652,22 +657,11 @@ RuleEditor.prototype = {
     const ruleView = this.ruleView;
     const elementStyle = ruleView._elementStyle;
     const element = elementStyle.element;
-    const supportsUnmatchedRules =
-      this.rule.domRule.supportsModifySelectorUnmatched;
 
     this.isEditing = true;
 
     try {
       const response = await this.rule.domRule.modifySelector(element, value);
-
-      if (!supportsUnmatchedRules) {
-        this.isEditing = false;
-
-        if (response) {
-          this.ruleView.refreshPanel();
-        }
-        return;
-      }
 
       // We recompute the list of applied styles, because editing a
       // selector might cause this rule's position to change.

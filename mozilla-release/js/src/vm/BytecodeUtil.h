@@ -64,28 +64,17 @@ enum {
     JOF_PROP            = 2 << 5,   /* obj.prop operation */
     JOF_ELEM            = 3 << 5,   /* obj[index] operation */
     JOF_MODEMASK        = 3 << 5,   /* mask for above addressing modes */
+
     JOF_PROPSET         = 1 << 7,   /* property/element/name set operation */
     JOF_PROPINIT        = 1 << 8,   /* property/element/name init operation */
-    /* 1 << 9 is unused */
-    /* 1 << 10 is unused */
-    /* 1 << 11 is unused */
-    /* 1 << 12 is unused */
-    /* 1 << 13 is unused */
-    JOF_DETECTING       = 1 << 14,  /* object detection for warning-quelling */
-    /* 1 << 15 is unused */
-    JOF_LEFTASSOC       = 1 << 16,  /* left-associative operator */
-    /* 1 << 17 is unused */
-    /* 1 << 18 is unused */
-    JOF_CHECKSLOPPY     = 1 << 19,  /* Op can only be generated in sloppy mode */
-    JOF_CHECKSTRICT     = 1 << 20,  /* Op can only be generated in strict mode */
-    JOF_INVOKE          = 1 << 21,  /* JSOP_CALL, JSOP_FUNCALL, JSOP_FUNAPPLY,
+    JOF_DETECTING       = 1 << 9,   /* object detection for warning-quelling */
+    JOF_CHECKSLOPPY     = 1 << 10,  /* Op can only be generated in sloppy mode */
+    JOF_CHECKSTRICT     = 1 << 11,  /* Op can only be generated in strict mode */
+    JOF_INVOKE          = 1 << 12,  /* JSOP_CALL, JSOP_FUNCALL, JSOP_FUNAPPLY,
                                        JSOP_NEW, JSOP_EVAL, JSOP_CALLITER */
-    /* 1 << 22 is unused */
-    /* 1 << 23 is unused */
-    /* 1 << 24 is unused */
-    JOF_GNAME           = 1 << 25,  /* predicted global name */
-    JOF_TYPESET         = 1 << 26,  /* has an entry in a script's type sets */
-    JOF_ARITH           = 1 << 27   /* unary or binary arithmetic opcode */
+    JOF_GNAME           = 1 << 13,  /* predicted global name */
+    JOF_TYPESET         = 1 << 14,  /* has an entry in a script's type sets */
+    JOF_ARITH           = 1 << 15   /* unary or binary arithmetic opcode */
 };
 
 /* Shorthand for type from format. */
@@ -457,8 +446,9 @@ StackUses(jsbytecode* pc)
 {
     JSOp op = JSOp(*pc);
     int nuses = CodeSpec[op].nuses;
-    if (nuses >= 0)
+    if (nuses >= 0) {
         return nuses;
+    }
 
     MOZ_ASSERT(nuses == -1);
     switch (op) {
@@ -532,7 +522,7 @@ DecompileValueGenerator(JSContext* cx, int spindex, HandleValue v,
  * Decompile the formal argument at formalIndex in the nearest non-builtin
  * stack frame, falling back with converting v to source.
  */
-UniqueChars
+JSString*
 DecompileArgument(JSContext* cx, int formalIndex, HandleValue v);
 
 static inline unsigned
@@ -541,8 +531,9 @@ GetBytecodeLength(jsbytecode* pc)
     JSOp op = (JSOp)*pc;
     MOZ_ASSERT(op < JSOP_LIMIT);
 
-    if (CodeSpec[op].length != -1)
+    if (CodeSpec[op].length != -1) {
         return CodeSpec[op].length;
+    }
     return GetVariableBytecodeLength(pc);
 }
 
@@ -558,27 +549,31 @@ BytecodeFlowsToBitop(jsbytecode* pc)
 {
     // Look for simple bytecode for integer conversions like (x | 0) or (x & -1).
     jsbytecode* next = pc + GetBytecodeLength(pc);
-    if (*next == JSOP_BITOR || *next == JSOP_BITAND)
+    if (*next == JSOP_BITOR || *next == JSOP_BITAND) {
         return true;
+    }
     if (*next == JSOP_INT8 && GET_INT8(next) == -1) {
         next += GetBytecodeLength(next);
-        if (*next == JSOP_BITAND)
+        if (*next == JSOP_BITAND) {
             return true;
+        }
         return false;
     }
     if (*next == JSOP_ONE) {
         next += GetBytecodeLength(next);
         if (*next == JSOP_NEG) {
             next += GetBytecodeLength(next);
-            if (*next == JSOP_BITAND)
+            if (*next == JSOP_BITAND) {
                 return true;
+            }
         }
         return false;
     }
     if (*next == JSOP_ZERO) {
         next += GetBytecodeLength(next);
-        if (*next == JSOP_BITOR)
+        if (*next == JSOP_BITOR) {
             return true;
+        }
         return false;
     }
     return false;

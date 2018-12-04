@@ -18,8 +18,8 @@ var toolbox;
 var target;
 
 function test() {
-  addTab(TEST_URL).then(tab => {
-    target = TargetFactory.forTab(tab);
+  addTab(TEST_URL).then(async (tab) => {
+    target = await TargetFactory.forTab(tab);
 
     gDevTools.showToolbox(target)
       .then(toolboxRegister)
@@ -62,7 +62,7 @@ function toolboxRegister(aToolbox) {
         },
       };
     },
-    key: "t"
+    key: "t",
   });
 }
 
@@ -105,7 +105,7 @@ function testUnregister() {
   toolbox.removeAdditionalTool(TOOL_ID);
 
   Promise.all([
-    waitForToolInstanceDestroyed
+    waitForToolInstanceDestroyed,
   ]).then(toolboxToolUnregistered);
 }
 

@@ -59,10 +59,11 @@ struct PackedAttribute
     uint8_t attribType;
     uint8_t semanticIndex;
     uint8_t vertexFormatType;
-    uint8_t divisor;
+    uint8_t dummyPadding;
+    uint32_t divisor;
 };
 
-} // anonymous namespace
+}  // anonymous namespace
 
 PackedAttributeLayout::PackedAttributeLayout() : numAttributes(0), flags(0), attributeData({})
 {
@@ -78,19 +79,21 @@ void PackedAttributeLayout::addAttributeData(GLenum glType,
     gl::AttributeType attribType = gl::GetAttributeType(glType);
 
     PackedAttribute packedAttrib;
-    packedAttrib.attribType = static_cast<uint8_t>(attribType);
-    packedAttrib.semanticIndex = static_cast<uint8_t>(semanticIndex);
+    packedAttrib.attribType       = static_cast<uint8_t>(attribType);
+    packedAttrib.semanticIndex    = static_cast<uint8_t>(semanticIndex);
     packedAttrib.vertexFormatType = static_cast<uint8_t>(vertexFormatType);
-    packedAttrib.divisor = static_cast<uint8_t>(divisor);
+    packedAttrib.dummyPadding     = 0u;
+    packedAttrib.divisor          = static_cast<uint32_t>(divisor);
 
     ASSERT(static_cast<gl::AttributeType>(packedAttrib.attribType) == attribType);
     ASSERT(static_cast<UINT>(packedAttrib.semanticIndex) == semanticIndex);
     ASSERT(static_cast<gl::VertexFormatType>(packedAttrib.vertexFormatType) == vertexFormatType);
     ASSERT(static_cast<unsigned int>(packedAttrib.divisor) == divisor);
 
-    static_assert(sizeof(uint32_t) == sizeof(PackedAttribute), "PackedAttributes must be 32-bits exactly.");
+    static_assert(sizeof(uint64_t) == sizeof(PackedAttribute),
+                  "PackedAttributes must be 64-bits exactly.");
 
-    attributeData[numAttributes++] = gl::bitCast<uint32_t>(packedAttrib);
+    attributeData[numAttributes++] = gl::bitCast<uint64_t>(packedAttrib);
 }
 
 bool PackedAttributeLayout::operator==(const PackedAttributeLayout &other) const
@@ -112,7 +115,8 @@ void InputLayoutCache::clear()
     mLayoutCache.Clear();
 }
 
-gl::Error InputLayoutCache::getInputLayout(
+angle::Result InputLayoutCache::getInputLayout(
+    const gl::Context *context,
     Renderer11 *renderer,
     const gl::State &state,
     const std::vector<const TranslatedAttribute *> &currentAttributes,
@@ -128,7 +132,7 @@ gl::Error InputLayoutCache::getInputLayout(
     bool programUsesInstancedPointSprites =
         programD3D->usesPointSize() && programD3D->usesInstancedPointSpriteEmulation();
     bool instancedPointSpritesActive =
-        programUsesInstancedPointSprites && (drawCallParams.mode() == GL_POINTS);
+        programUsesInstancedPointSprites && (drawCallParams.mode() == gl::PrimitiveMode::Points);
 
     if (programUsesInstancedPointSprites)
     {
@@ -156,9 +160,9 @@ gl::Error InputLayoutCache::getInputLayout(
         // This will prevent mismatched vertex shaders from using the same input layout
         GLenum glslElementType = GetGLSLAttributeType(shaderAttributes, attribIndex);
 
-        const auto &attrib = attribs[attribIndex];
+        const auto &attrib  = attribs[attribIndex];
         const auto &binding = bindings[attrib.bindingIndex];
-        int d3dSemantic    = locationToSemantic[attribIndex];
+        int d3dSemantic     = locationToSemantic[attribIndex];
 
         const auto &currentValue =
             state.getVertexAttribCurrentValue(static_cast<unsigned int>(attribIndex));
@@ -180,18 +184,19 @@ gl::Error InputLayoutCache::getInputLayout(
             angle::TrimCache(mLayoutCache.max_size() / 2, kGCLimit, "input layout", &mLayoutCache);
 
             d3d11::InputLayout newInputLayout;
-            ANGLE_TRY(createInputLayout(renderer, sortedSemanticIndices, currentAttributes, program,
-                                        drawCallParams, &newInputLayout));
+            ANGLE_TRY(createInputLayout(context, renderer, sortedSemanticIndices, currentAttributes,
+                                        program, drawCallParams, &newInputLayout));
 
-            auto insertIt = mLayoutCache.Put(layout, std::move(newInputLayout));
+            auto insertIt   = mLayoutCache.Put(layout, std::move(newInputLayout));
             *inputLayoutOut = &insertIt->second;
         }
     }
 
-    return gl::NoError();
+    return angle::Result::Continue();
 }
 
-gl::Error InputLayoutCache::createInputLayout(
+angle::Result InputLayoutCache::createInputLayout(
+    const gl::Context *context,
     Renderer11 *renderer,
     const AttribIndexArray &sortedSemanticIndices,
     const std::vector<const TranslatedAttribute *> &currentAttributes,
@@ -258,7 +263,7 @@ gl::Error InputLayoutCache::createInputLayout(
         {
             // If rendering points and instanced pointsprite emulation is being used, the
             // inputClass is required to be configured as per instance data
-            if (drawCallParams.mode() == GL_POINTS)
+            if (drawCallParams.mode() == gl::PrimitiveMode::Points)
             {
                 inputElements[elementIndex].InputSlotClass       = D3D11_INPUT_PER_INSTANCE_DATA;
                 inputElements[elementIndex].InstanceDataStepRate = 1;
@@ -290,15 +295,16 @@ gl::Error InputLayoutCache::createInputLayout(
     }
 
     ShaderExecutableD3D *shader = nullptr;
-    ANGLE_TRY(programD3D->getVertexExecutableForCachedInputLayout(&shader, nullptr));
+    ANGLE_TRY(programD3D->getVertexExecutableForCachedInputLayout(context, &shader, nullptr));
 
     ShaderExecutableD3D *shader11 = GetAs<ShaderExecutable11>(shader);
 
     InputElementArray inputElementArray(inputElements.data(), inputElementCount);
     ShaderData vertexShaderData(shader11->getFunction(), shader11->getLength());
 
-    ANGLE_TRY(renderer->allocateResource(inputElementArray, &vertexShaderData, inputLayoutOut));
-    return gl::NoError();
+    ANGLE_TRY(renderer->allocateResource(GetImplAs<Context11>(context), inputElementArray,
+                                         &vertexShaderData, inputLayoutOut));
+    return angle::Result::Continue();
 }
 
 void InputLayoutCache::setCacheSize(size_t newCacheSize)

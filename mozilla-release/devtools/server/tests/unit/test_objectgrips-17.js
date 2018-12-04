@@ -89,8 +89,15 @@ async function testPrincipal(globalPrincipal) {
     for (gGlobalIsInvisible of [true, false]) {
       gGlobal = Cu.Sandbox(globalPrincipal, {
         wantXrays: globalHasXrays,
-        invisibleToDebugger: gGlobalIsInvisible
+        invisibleToDebugger: gGlobalIsInvisible,
       });
+      // Previously, the Sandbox constructor would (bizarrely) waive xrays on
+      // the return Sandbox if wantXrays was false. This has now been fixed,
+      // but we need to mimic that behavior here to make the test continue
+      // to pass.
+      if (!globalHasXrays) {
+        gGlobal = Cu.waiveXrays(gGlobal);
+      }
       await test();
     }
   }

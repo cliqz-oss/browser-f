@@ -15,8 +15,8 @@ TEST_URL += "<iframe src=\"data:text/plain,iframe\"></iframe>";
 var doc = null, toolbox = null, panelWin = null, modifiedPrefs = [];
 
 function test() {
-  addTab(TEST_URL).then(tab => {
-    const target = TargetFactory.forTab(tab);
+  addTab(TEST_URL).then(async (tab) => {
+    const target = await TargetFactory.forTab(tab);
     gDevTools.showToolbox(target)
       .then(testSelectTool)
       .then(testToggleToolboxButtons)
@@ -25,13 +25,13 @@ function test() {
   });
 }
 
-function testPrefsAreRespectedWhenReopeningToolbox() {
-  const target = TargetFactory.forTab(gBrowser.selectedTab);
+async function testPrefsAreRespectedWhenReopeningToolbox() {
+  const target = await TargetFactory.forTab(gBrowser.selectedTab);
 
   return new Promise(resolve => {
     info("Closing toolbox to test after reopening");
-    gDevTools.closeToolbox(target).then(() => {
-      const tabTarget = TargetFactory.forTab(gBrowser.selectedTab);
+    gDevTools.closeToolbox(target).then(async () => {
+      const tabTarget = await TargetFactory.forTab(gBrowser.selectedTab);
       gDevTools.showToolbox(tabTarget)
         .then(testSelectTool)
         .then(() => {
@@ -72,8 +72,10 @@ function testPreferenceAndUIStateIsConsistent() {
       "Button visibility matches pref for " + tool.id);
 
     const check = checkNodes.filter(node => node.id === tool.id)[0];
-    is(check.checked, isVisible,
-      "Checkbox should be selected based on current pref for " + tool.id);
+    if (check) {
+      is(check.checked, isVisible,
+        "Checkbox should be selected based on current pref for " + tool.id);
+    }
   }
 }
 
@@ -85,7 +87,8 @@ function testToggleToolboxButtons() {
 
   const toolbarButtonNodes = [...doc.querySelectorAll(".command-button")];
 
-  is(checkNodes.length, toolbox.toolbarButtons.length,
+  // NOTE: the web-replay buttons are not checkboxes
+  is(checkNodes.length + 2, toolbox.toolbarButtons.length,
     "All of the buttons are toggleable.");
   is(visibleToolbarButtons.length, toolbarButtonNodes.length,
     "All of the DOM buttons are toggleable.");
@@ -94,9 +97,11 @@ function testToggleToolboxButtons() {
     const id = tool.id;
     const matchedCheckboxes = checkNodes.filter(node => node.id === id);
     const matchedButtons = toolbarButtonNodes.filter(button => button.id === id);
-    is(matchedCheckboxes.length, 1,
-      "There should be a single toggle checkbox for: " + id);
     if (tool.isVisible) {
+      is(matchedCheckboxes.length, 1,
+        "There should be a single toggle checkbox for: " + id);
+      is(matchedCheckboxes[0].nextSibling.textContent, tool.description,
+        "The label for checkbox matches the tool definition.");
       is(matchedButtons.length, 1,
         "There should be a DOM button for the visible: " + id);
       is(matchedButtons[0].getAttribute("title"), tool.description,
@@ -105,9 +110,6 @@ function testToggleToolboxButtons() {
       is(matchedButtons.length, 0,
         "There should not be a DOM button for the invisible: " + id);
     }
-
-    is(matchedCheckboxes[0].nextSibling.textContent, tool.description,
-      "The label for checkbox matches the tool definition.");
   }
 
   // Store modified pref names so that they can be cleared on error.
@@ -137,7 +139,11 @@ function testToggleToolboxButtons() {
 }
 
 function getBoolPref(key) {
-  return Services.prefs.getBoolPref(key);
+  try {
+    return Services.prefs.getBoolPref(key);
+  } catch (e) {
+    return false;
+  }
 }
 
 function cleanup() {

@@ -19,6 +19,7 @@ use super::{AllowQuirks, Number, Percentage, ToComputedValue};
 use values::{Auto, CSSFloat, Either, Normal};
 use values::computed::{self, CSSPixelLength, Context, ExtremumLength};
 use values::generics::NonNegative;
+use values::generics::length::{MaxLength as GenericMaxLength, MozLength as GenericMozLength};
 use values::specified::calc::CalcNode;
 
 pub use values::specified::calc::CalcLengthOrPercentage;
@@ -566,14 +567,16 @@ impl Length {
             match *token {
                 Token::Dimension {
                     value, ref unit, ..
-                } if num_context.is_ok(context.parsing_mode, value) =>
+                }
+                    if num_context.is_ok(context.parsing_mode, value) =>
                 {
                     return NoCalcLength::parse_dimension(context, value, unit)
                         .map(Length::NoCalc)
                         .map_err(|()| location.new_unexpected_token_error(token.clone()))
                 },
                 Token::Number { value, .. } if num_context.is_ok(context.parsing_mode, value) => {
-                    if value != 0. && !context.parsing_mode.allows_unitless_lengths() &&
+                    if value != 0. &&
+                        !context.parsing_mode.allows_unitless_lengths() &&
                         !allow_quirks.allowed(context.quirks_mode)
                     {
                         return Err(location.new_custom_error(StyleParseErrorKind::UnspecifiedError));
@@ -753,7 +756,8 @@ impl LengthOrPercentage {
             match *token {
                 Token::Dimension {
                     value, ref unit, ..
-                } if num_context.is_ok(context.parsing_mode, value) =>
+                }
+                    if num_context.is_ok(context.parsing_mode, value) =>
                 {
                     return NoCalcLength::parse_dimension(context, value, unit)
                         .map(LengthOrPercentage::Length)
@@ -767,7 +771,8 @@ impl LengthOrPercentage {
                     )))
                 },
                 Token::Number { value, .. } if num_context.is_ok(context.parsing_mode, value) => {
-                    if value != 0. && !context.parsing_mode.allows_unitless_lengths() &&
+                    if value != 0. &&
+                        !context.parsing_mode.allows_unitless_lengths() &&
                         !allow_quirks.allowed(context.quirks_mode)
                     {
                         return Err(location.new_unexpected_token_error(token.clone()));
@@ -780,8 +785,9 @@ impl LengthOrPercentage {
             }
         }
 
-        let calc = input
-            .parse_nested_block(|i| CalcNode::parse_length_or_percentage(context, i, num_context))?;
+        let calc = input.parse_nested_block(|i| {
+            CalcNode::parse_length_or_percentage(context, i, num_context)
+        })?;
         Ok(LengthOrPercentage::Calc(Box::new(calc)))
     }
 
@@ -871,7 +877,8 @@ impl LengthOrPercentageOrAuto {
             match *token {
                 Token::Dimension {
                     value, ref unit, ..
-                } if num_context.is_ok(context.parsing_mode, value) =>
+                }
+                    if num_context.is_ok(context.parsing_mode, value) =>
                 {
                     return NoCalcLength::parse_dimension(context, value, unit)
                         .map(LengthOrPercentageOrAuto::Length)
@@ -885,7 +892,8 @@ impl LengthOrPercentageOrAuto {
                     )))
                 },
                 Token::Number { value, .. } if num_context.is_ok(context.parsing_mode, value) => {
-                    if value != 0. && !context.parsing_mode.allows_unitless_lengths() &&
+                    if value != 0. &&
+                        !context.parsing_mode.allows_unitless_lengths() &&
                         !allow_quirks.allowed(context.quirks_mode)
                     {
                         return Err(location.new_custom_error(StyleParseErrorKind::UnspecifiedError));
@@ -902,8 +910,9 @@ impl LengthOrPercentageOrAuto {
             }
         }
 
-        let calc = input
-            .parse_nested_block(|i| CalcNode::parse_length_or_percentage(context, i, num_context))?;
+        let calc = input.parse_nested_block(|i| {
+            CalcNode::parse_length_or_percentage(context, i, num_context)
+        })?;
         Ok(LengthOrPercentageOrAuto::Calc(Box::new(calc)))
     }
 
@@ -998,8 +1007,7 @@ impl Parse for NonNegativeLengthOrPercentageOrAuto {
         input: &mut Parser<'i, 't>,
     ) -> Result<Self, ParseError<'i>> {
         Ok(NonNegative(LengthOrPercentageOrAuto::parse_non_negative(
-            context,
-            input,
+            context, input,
         )?))
     }
 }
@@ -1028,7 +1036,8 @@ impl LengthOrPercentageOrNone {
             match *token {
                 Token::Dimension {
                     value, ref unit, ..
-                } if num_context.is_ok(context.parsing_mode, value) =>
+                }
+                    if num_context.is_ok(context.parsing_mode, value) =>
                 {
                     return NoCalcLength::parse_dimension(context, value, unit)
                         .map(LengthOrPercentageOrNone::Length)
@@ -1042,7 +1051,8 @@ impl LengthOrPercentageOrNone {
                     )))
                 },
                 Token::Number { value, .. } if num_context.is_ok(context.parsing_mode, value) => {
-                    if value != 0. && !context.parsing_mode.allows_unitless_lengths() &&
+                    if value != 0. &&
+                        !context.parsing_mode.allows_unitless_lengths() &&
                         !allow_quirks.allowed(context.quirks_mode)
                     {
                         return Err(location.new_custom_error(StyleParseErrorKind::UnspecifiedError));
@@ -1059,8 +1069,9 @@ impl LengthOrPercentageOrNone {
             }
         }
 
-        let calc = input
-            .parse_nested_block(|i| CalcNode::parse_length_or_percentage(context, i, num_context))?;
+        let calc = input.parse_nested_block(|i| {
+            CalcNode::parse_length_or_percentage(context, i, num_context)
+        })?;
         Ok(LengthOrPercentageOrNone::Calc(Box::new(calc)))
     }
 
@@ -1178,18 +1189,8 @@ impl LengthOrNumber {
     }
 }
 
-/// A value suitable for a `min-width` or `min-height` property.
-///
-/// Unlike `max-width` or `max-height` properties, a MozLength can be `auto`,
-/// and cannot be `none`.
-///
-/// Note that it only accepts non-negative values.
-#[allow(missing_docs)]
-#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToCss)]
-pub enum MozLength {
-    LengthOrPercentageOrAuto(LengthOrPercentageOrAuto),
-    ExtremumLength(ExtremumLength),
-}
+/// A specified value for `min-width`, `min-height`, `width` or `height` property.
+pub type MozLength = GenericMozLength<LengthOrPercentageOrAuto>;
 
 impl Parse for MozLength {
     fn parse<'i, 't>(
@@ -1209,7 +1210,7 @@ impl MozLength {
         input: &mut Parser<'i, 't>,
     ) -> Result<Self, ParseError<'i>> {
         let length = LengthOrPercentageOrAuto::parse_non_negative(context, input)?;
-        Ok(MozLength::LengthOrPercentageOrAuto(length))
+        Ok(GenericMozLength::LengthOrPercentageOrAuto(length))
     }
 
     /// Parses, with quirks.
@@ -1219,34 +1220,29 @@ impl MozLength {
         allow_quirks: AllowQuirks,
     ) -> Result<Self, ParseError<'i>> {
         if let Ok(l) = input.try(ExtremumLength::parse) {
-            return Ok(MozLength::ExtremumLength(l));
+            return Ok(GenericMozLength::ExtremumLength(l));
         }
 
         let length =
             LengthOrPercentageOrAuto::parse_non_negative_quirky(context, input, allow_quirks)?;
-        Ok(MozLength::LengthOrPercentageOrAuto(length))
+        Ok(GenericMozLength::LengthOrPercentageOrAuto(length))
     }
 
     /// Returns `auto`.
     #[inline]
     pub fn auto() -> Self {
-        MozLength::LengthOrPercentageOrAuto(LengthOrPercentageOrAuto::auto())
+        GenericMozLength::LengthOrPercentageOrAuto(LengthOrPercentageOrAuto::auto())
     }
 
     /// Returns `0%`.
     #[inline]
     pub fn zero_percent() -> Self {
-        MozLength::LengthOrPercentageOrAuto(LengthOrPercentageOrAuto::zero_percent())
+        GenericMozLength::LengthOrPercentageOrAuto(LengthOrPercentageOrAuto::zero_percent())
     }
 }
 
-/// A value suitable for a `max-width` or `max-height` property.
-#[allow(missing_docs)]
-#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToCss)]
-pub enum MaxLength {
-    LengthOrPercentageOrNone(LengthOrPercentageOrNone),
-    ExtremumLength(ExtremumLength),
-}
+/// A specified value for `max-width` or `max-height` property.
+pub type MaxLength = GenericMaxLength<LengthOrPercentageOrNone>;
 
 impl Parse for MaxLength {
     fn parse<'i, 't>(
@@ -1266,7 +1262,7 @@ impl MaxLength {
         input: &mut Parser<'i, 't>,
     ) -> Result<Self, ParseError<'i>> {
         let length = LengthOrPercentageOrNone::parse_non_negative(context, input)?;
-        Ok(MaxLength::LengthOrPercentageOrNone(length))
+        Ok(GenericMaxLength::LengthOrPercentageOrNone(length))
     }
 
     /// Parses, with quirks.
@@ -1276,11 +1272,11 @@ impl MaxLength {
         allow_quirks: AllowQuirks,
     ) -> Result<Self, ParseError<'i>> {
         if let Ok(l) = input.try(ExtremumLength::parse) {
-            return Ok(MaxLength::ExtremumLength(l));
+            return Ok(GenericMaxLength::ExtremumLength(l));
         }
 
         let length =
             LengthOrPercentageOrNone::parse_non_negative_quirky(context, input, allow_quirks)?;
-        Ok(MaxLength::LengthOrPercentageOrNone(length))
+        Ok(GenericMaxLength::LengthOrPercentageOrNone(length))
     }
 }

@@ -304,7 +304,7 @@ private:
   virtual ~XMLHttpRequestMainThread();
 
   nsresult MaybeSilentSendFailure(nsresult aRv);
-  nsresult SendInternal(const BodyExtractorBase* aBody);
+  nsresult SendInternal(const BodyExtractorBase* aBody, bool aBodyIsDocumentOrString = false);
 
   bool IsCrossSiteCORSRequest() const;
   bool IsDeniedCrossSiteCORSRequest();
@@ -517,7 +517,7 @@ protected:
 
   nsresult OnRedirectVerifyCallback(nsresult result);
 
-  void SetTimerEventTarget(nsITimer* aTimer);
+  nsIEventTarget* GetTimerEventTarget();
 
   nsresult DispatchToMainThread(already_AddRefed<nsIRunnable> aRunnable);
 

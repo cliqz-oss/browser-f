@@ -7,7 +7,8 @@
 #ifndef MOZILLA_GFX_COMPOSITORHITTESTINFO_H_
 #define MOZILLA_GFX_COMPOSITORHITTESTINFO_H_
 
-#include "mozilla/TypedEnumBits.h"
+#include "mozilla/EnumSet.h"
+#include "mozilla/EnumTypeTraits.h"
 
 namespace mozilla {
 namespace gfx {
@@ -17,49 +18,76 @@ namespace gfx {
 // intentionally set up so that if all of them are 0 the item is effectively
 // invisible to hit-testing, and no information for this frame needs to be
 // sent to the compositor.
-enum class CompositorHitTestInfo : uint16_t {
-  // Shortcut for checking that none of the flags are set
-  eInvisibleToHitTest = 0,
-
+// Each enumerator is annotated with the value it contributes to an
+// EnumSet (2 ^ <value of enumerator>), in hexadecimal.
+enum class CompositorHitTestFlags : uint8_t {
   // The frame participates in hit-testing
-  eVisibleToHitTest = 1 << 0,
+  eVisibleToHitTest = 0,              // 0x001
   // The frame requires main-thread handling for events
-  eDispatchToContent = 1 << 1,
+  eDispatchToContent,                 // 0x002
 
   // The touch action flags are set up so that the default of
   // touch-action:auto on an element leaves all the flags as 0.
-  eTouchActionPanXDisabled = 1 << 2,
-  eTouchActionPanYDisabled = 1 << 3,
-  eTouchActionPinchZoomDisabled = 1 << 4,
-  eTouchActionDoubleTapZoomDisabled = 1 << 5,
-  // Mask to check for all the touch-action flags at once
-  eTouchActionMask = (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5),
+  eTouchActionPanXDisabled,           // 0x004
+  eTouchActionPanYDisabled,           // 0x008
+  eTouchActionPinchZoomDisabled,      // 0x010
+  eTouchActionDoubleTapZoomDisabled,  // 0x020
 
   // The frame is a scrollbar or a subframe inside a scrollbar (including
   // scroll thumbs)
-  eScrollbar = 1 << 6,
+  eScrollbar,                         // 0x040
   // The frame is a scrollthumb. If this is set then eScrollbar will also be
   // set, unless gecko somehow generates a scroll thumb without a containing
   // scrollbar.
-  eScrollbarThumb = 1 << 7,
+  eScrollbarThumb,                    // 0x080
   // If eScrollbar is set, this flag indicates if the scrollbar is a vertical
   // one (if set) or a horizontal one (if not set)
-  eScrollbarVertical = 1 << 8,
+  eScrollbarVertical,                 // 0x100
 
   // Events targeting this frame should only be processed if a target
   // confirmation is received from the main thread. If no such confirmation
   // is received within a timeout period, the event may be dropped.
   // Only meaningful in combination with eDispatchToContent.
-  eRequiresTargetConfirmation = 1 << 9,
-
-  // Used for IPDL serialization. This bitmask should include all the bits
-  // that are defined in the enum.
-  ALL_BITS = (1 << 10) - 1,
+  eRequiresTargetConfirmation,        // 0x200
 };
 
-MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(CompositorHitTestInfo)
+using CompositorHitTestInfo = EnumSet<CompositorHitTestFlags, uint32_t>;
+
+// A CompositorHitTestInfo with none of the flags set
+constexpr CompositorHitTestInfo CompositorHitTestInvisibleToHit;
+
+// Mask to check for all the touch-action flags at once
+constexpr CompositorHitTestInfo CompositorHitTestTouchActionMask(
+  CompositorHitTestFlags::eTouchActionPanXDisabled,
+  CompositorHitTestFlags::eTouchActionPanYDisabled,
+  CompositorHitTestFlags::eTouchActionPinchZoomDisabled,
+  CompositorHitTestFlags::eTouchActionDoubleTapZoomDisabled);
 
 } // namespace gfx
+
+
+// Used for IPDL serialization. The 'value' have to be the biggest enum from CompositorHitTestFlags.
+template <>
+struct MaxEnumValue<::mozilla::gfx::CompositorHitTestFlags>
+{
+  static constexpr unsigned int value = static_cast<unsigned int>(gfx::CompositorHitTestFlags::eRequiresTargetConfirmation);
+};
+
+namespace gfx {
+
+// Checks if the CompositorHitTestFlags max enum value is less than N.
+template <int N>
+static constexpr bool DoesCompositorHitTestInfoFitIntoBits()
+{
+    if (MaxEnumValue<CompositorHitTestInfo::valueType>::value < N)
+    {
+        return true;
+    }
+
+    return false;
+}
+} // namespace gfx
+
 } // namespace mozilla
 
 #endif /* MOZILLA_GFX_COMPOSITORHITTESTINFO_H_ */

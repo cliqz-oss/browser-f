@@ -33,6 +33,7 @@
 namespace js {
 namespace jit {
 
+// clang-format off
 //{{{ check_macroassembler_style
 // ===============================================================
 // Stack manipulation functions.
@@ -411,8 +412,9 @@ MacroAssembler::branchIfFunctionHasNoJitEntry(Register fun, bool isConstructing,
 
     Address address(fun, JSFunction::offsetOfNargs());
     int32_t bit = JSFunction::INTERPRETED;
-    if (!isConstructing)
+    if (!isConstructing) {
         bit |= JSFunction::WASM_OPTIMIZED;
+    }
     bit = IMM32_16ADJ(bit);
     branchTest32(Assembler::Zero, address, Imm32(bit), label);
 }
@@ -467,8 +469,9 @@ MacroAssembler::branchTestObjClass(Condition cond, Register obj, const js::Class
     loadPtr(Address(obj, JSObject::offsetOfGroup()), scratch);
     branchPtr(cond, Address(scratch, ObjectGroup::offsetOfClasp()), ImmPtr(clasp), label);
 
-    if (JitOptions.spectreObjectMitigationsMisc)
+    if (JitOptions.spectreObjectMitigationsMisc) {
         spectreZeroRegister(cond, scratch, spectreRegToZero);
+    }
 }
 
 void
@@ -491,8 +494,9 @@ MacroAssembler::branchTestObjClass(Condition cond, Register obj, const Address& 
     loadPtr(Address(scratch, ObjectGroup::offsetOfClasp()), scratch);
     branchPtr(cond, clasp, scratch, label);
 
-    if (JitOptions.spectreObjectMitigationsMisc)
+    if (JitOptions.spectreObjectMitigationsMisc) {
         spectreZeroRegister(cond, scratch, spectreRegToZero);
+    }
 }
 
 void
@@ -513,13 +517,15 @@ MacroAssembler::branchTestObjShape(Condition cond, Register obj, const Shape* sh
     MOZ_ASSERT(obj != scratch);
     MOZ_ASSERT(spectreRegToZero != scratch);
 
-    if (JitOptions.spectreObjectMitigationsMisc)
+    if (JitOptions.spectreObjectMitigationsMisc) {
         move32(Imm32(0), scratch);
+    }
 
     branchPtr(cond, Address(obj, ShapedObject::offsetOfShape()), ImmGCPtr(shape), label);
 
-    if (JitOptions.spectreObjectMitigationsMisc)
+    if (JitOptions.spectreObjectMitigationsMisc) {
         spectreMovePtr(cond, scratch, spectreRegToZero);
+    }
 }
 
 void
@@ -537,13 +543,15 @@ MacroAssembler::branchTestObjShape(Condition cond, Register obj, Register shape,
     MOZ_ASSERT(obj != shape);
     MOZ_ASSERT(spectreRegToZero != scratch);
 
-    if (JitOptions.spectreObjectMitigationsMisc)
+    if (JitOptions.spectreObjectMitigationsMisc) {
         move32(Imm32(0), scratch);
+    }
 
     branchPtr(cond, Address(obj, ShapedObject::offsetOfShape()), shape, label);
 
-    if (JitOptions.spectreObjectMitigationsMisc)
+    if (JitOptions.spectreObjectMitigationsMisc) {
         spectreMovePtr(cond, scratch, spectreRegToZero);
+    }
 }
 
 void
@@ -567,13 +575,15 @@ MacroAssembler::branchTestObjGroup(Condition cond, Register obj, const ObjectGro
     MOZ_ASSERT(obj != scratch);
     MOZ_ASSERT(spectreRegToZero != scratch);
 
-    if (JitOptions.spectreObjectMitigationsMisc)
+    if (JitOptions.spectreObjectMitigationsMisc) {
         move32(Imm32(0), scratch);
+    }
 
     branchPtr(cond, Address(obj, JSObject::offsetOfGroup()), ImmGCPtr(group), label);
 
-    if (JitOptions.spectreObjectMitigationsMisc)
+    if (JitOptions.spectreObjectMitigationsMisc) {
         spectreMovePtr(cond, scratch, spectreRegToZero);
+    }
 }
 
 void
@@ -598,13 +608,15 @@ MacroAssembler::branchTestObjGroup(Condition cond, Register obj, Register group,
     MOZ_ASSERT(obj != group);
     MOZ_ASSERT(spectreRegToZero != scratch);
 
-    if (JitOptions.spectreObjectMitigationsMisc)
+    if (JitOptions.spectreObjectMitigationsMisc) {
         move32(Imm32(0), scratch);
+    }
 
     branchPtr(cond, Address(obj, JSObject::offsetOfGroup()), group, label);
 
-    if (JitOptions.spectreObjectMitigationsMisc)
+    if (JitOptions.spectreObjectMitigationsMisc) {
         spectreMovePtr(cond, scratch, spectreRegToZero);
+    }
 }
 
 void
@@ -788,6 +800,7 @@ template void MacroAssembler::storeFloat32(FloatRegister src, const Address& des
 template void MacroAssembler::storeFloat32(FloatRegister src, const BaseIndex& dest);
 
 //}}} check_macroassembler_style
+// clang-format on
 // ===============================================================
 
 #ifndef JS_CODEGEN_ARM64
@@ -893,8 +906,9 @@ MacroAssembler::assertStackAlignment(uint32_t alignment, int32_t offset /* = 0 *
 
     // Wrap around the offset to be a non-negative number.
     offset %= alignment;
-    if (offset < 0)
+    if (offset < 0) {
         offset += alignment;
+    }
 
     // Test if each bit from offset is set.
     uint32_t off = offset;
@@ -916,8 +930,9 @@ MacroAssembler::assertStackAlignment(uint32_t alignment, int32_t offset /* = 0 *
 void
 MacroAssembler::storeCallBoolResult(Register reg)
 {
-    if (reg != ReturnReg)
+    if (reg != ReturnReg) {
         mov(ReturnReg, reg);
+    }
     // C++ compilers like to only use the bottom byte for bools, but we
     // need to maintain the entire register.
     and32(Imm32(0xFF), reg);
@@ -943,10 +958,11 @@ MacroAssembler::storeCallResultValue(AnyRegister dest, JSValueType type)
 void
 MacroAssembler::storeCallResultValue(TypedOrValueRegister dest)
 {
-    if (dest.hasValue())
+    if (dest.hasValue()) {
         storeCallResultValue(dest.valueReg());
-    else
+    } else {
         storeCallResultValue(dest.typedReg(), ValueTypeFromMIRType(dest.type()));
+    }
 }
 
 } // namespace jit

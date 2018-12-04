@@ -400,6 +400,52 @@ CallCreateThreadHook(bool aWasAllowed, void* aStartAddress)
   }
 }
 
+// This function does the work for gtest TestDllBlocklist.BlocklistIntegrity.
+// If the test fails, the return value is the pointer to a string description
+// of the failure. If the test passes, the return value is nullptr.
+const char*
+DllBlocklist_TestBlocklistIntegrity()
+{
+  mozilla::Vector<DLL_BLOCKLIST_STRING_TYPE> dupes;
+  DECLARE_POINTER_TO_FIRST_DLL_BLOCKLIST_ENTRY(pFirst);
+  DECLARE_POINTER_TO_LAST_DLL_BLOCKLIST_ENTRY(pLast);
+
+  if (pLast->name || pLast->maxVersion || pLast->flags) {
+    return "The last dll blocklist entry must be all-null.";
+  }
+
+  for (size_t i = 0; i < mozilla::ArrayLength(gWindowsDllBlocklist) - 1; ++i) {
+    auto pEntry = pFirst + i;
+
+    // Validate name
+    if (!pEntry->name) {
+      return "A dll blocklist entry contains a null name.";
+    }
+
+    if (strlen(pEntry->name) <= 2) {
+      return "Dll blocklist entry names must be longer than 2 characters.";
+    }
+    // Check the filename for valid characters.
+    for (auto pch = pEntry->name; *pch != 0; ++pch) {
+      if (*pch >= 'A' && *pch <= 'Z') {
+        return "Dll blocklist entry names cannot contain uppercase characters.";
+      }
+    }
+
+    // Check for duplicate entries
+    for (auto dupe : dupes) {
+      if (!stricmp(dupe, pEntry->name)) {
+        return "At least one duplicate dll blocklist entry was found.";
+      }
+    }
+    if (!dupes.append(pEntry->name)) {
+      return "Failed to append to duplicates list; test unable to continue.";
+    }
+  }
+
+  return nullptr;
+}
+
 #else // ENABLE_TESTS
 #define CallDllLoadHook(...)
 #define CallCreateThreadHook(...)
@@ -606,7 +652,7 @@ continue_loading:
 #endif
 
   NTSTATUS ret = stub_LdrLoadDll(filePath, flags, moduleFileName, handle);
-  CallDllLoadHook(true, ret, handle ? *handle : 0, moduleFileName);
+  CallDllLoadHook(NT_SUCCESS(ret), ret, handle ? *handle : 0, moduleFileName);
   return ret;
 }
 
@@ -750,22 +796,22 @@ DllBlocklist_Initialize(uint32_t aInitFlags)
 
     pProc = (void*)GetProcAddress(hKernel, "LoadLibraryA");
     if (pProc) {
-      gStartAddressesToBlock->append(pProc);
+      Unused << gStartAddressesToBlock->append(pProc);
     }
 
     pProc = (void*)GetProcAddress(hKernel, "LoadLibraryW");
     if (pProc) {
-      gStartAddressesToBlock->append(pProc);
+      Unused << gStartAddressesToBlock->append(pProc);
     }
 
     pProc = (void*)GetProcAddress(hKernel, "LoadLibraryExA");
     if (pProc) {
-      gStartAddressesToBlock->append(pProc);
+      Unused << gStartAddressesToBlock->append(pProc);
     }
 
     pProc = (void*)GetProcAddress(hKernel, "LoadLibraryExW");
     if (pProc) {
-      gStartAddressesToBlock->append(pProc);
+      Unused << gStartAddressesToBlock->append(pProc);
     }
   }
 #endif

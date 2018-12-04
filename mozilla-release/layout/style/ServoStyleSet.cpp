@@ -380,7 +380,6 @@ ServoStyleSet::SetAuthorStyleDisabled(bool aStyleDisabled)
 
 already_AddRefed<ComputedStyle>
 ServoStyleSet::ResolveStyleFor(Element* aElement,
-                               ComputedStyle* aParentContext,
                                LazyComputeBehavior aMayCompute)
 {
   if (aMayCompute == LazyComputeBehavior::Allow) {
@@ -674,7 +673,7 @@ ServoStyleSet::ResolveNonInheritingAnonymousBoxStyle(nsAtom* aPseudoTag)
 #ifdef MOZ_XUL
 already_AddRefed<ComputedStyle>
 ServoStyleSet::ResolveXULTreePseudoStyle(dom::Element* aParentElement,
-                                         nsICSSAnonBoxPseudo* aPseudoTag,
+                                         nsCSSAnonBoxPseudoStaticAtom* aPseudoTag,
                                          ComputedStyle* aParentContext,
                                          const AtomArray& aInputWord)
 {

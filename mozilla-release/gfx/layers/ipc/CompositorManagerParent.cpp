@@ -6,6 +6,7 @@
 
 #include "mozilla/layers/CompositorManagerParent.h"
 #include "mozilla/gfx/GPUParent.h"
+#include "mozilla/webrender/RenderThread.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "mozilla/layers/CrossProcessCompositorBridgeParent.h"
 #include "mozilla/layers/CompositorThread.h"
@@ -289,6 +290,15 @@ CompositorManagerParent::RecvRemoveSharedSurface(const wr::ExternalImageId& aId)
 }
 
 mozilla::ipc::IPCResult
+CompositorManagerParent::RecvReportSharedSurfacesMemory(ReportSharedSurfacesMemoryResolver&& aResolver)
+{
+  SharedSurfacesMemoryReport report;
+  SharedSurfacesParent::AccumulateMemoryReport(OtherPid(), report);
+  aResolver(std::move(report));
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
 CompositorManagerParent::RecvNotifyMemoryPressure()
 {
   nsTArray<PCompositorBridgeParent*> compositorBridges;
@@ -296,6 +306,38 @@ CompositorManagerParent::RecvNotifyMemoryPressure()
   for (auto bridge : compositorBridges) {
     static_cast<CompositorBridgeParentBase*>(bridge)->NotifyMemoryPressure();
   }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+CompositorManagerParent::RecvReportMemory(ReportMemoryResolver&& aResolver)
+{
+  MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
+  MemoryReport aggregate;
+  PodZero(&aggregate);
+
+  // Accumulate RenderBackend usage.
+  nsTArray<PCompositorBridgeParent*> compositorBridges;
+  ManagedPCompositorBridgeParent(compositorBridges);
+  for (auto bridge : compositorBridges) {
+    static_cast<CompositorBridgeParentBase*>(bridge)->AccumulateMemoryReport(&aggregate);
+  }
+
+  // Accumulate Renderer usage asynchronously, and resolve.
+  //
+  // Note that the IPDL machinery requires aResolver to be called on this
+  // thread, so we can't just pass it over to the renderer thread. We use
+  // an intermediate MozPromise instead.
+  wr::RenderThread::AccumulateMemoryReport(aggregate)->Then(
+    CompositorThreadHolder::Loop()->SerialEventTarget(), __func__,
+    [resolver = std::move(aResolver)](MemoryReport aReport) {
+      resolver(aReport);
+    },
+    [](bool) {
+      MOZ_ASSERT_UNREACHABLE("MemoryReport promises are never rejected");
+    }
+  );
+
   return IPC_OK();
 }
 

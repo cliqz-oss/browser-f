@@ -102,7 +102,7 @@ public:
 
   using nsIConstraintValidation::GetValidationMessage;
 
-  explicit HTMLSelectElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo,
+  explicit HTMLSelectElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo,
                              FromParser aFromParser = NOT_FROM_PARSER);
 
   NS_IMPL_FROMNODE_HTML_WITH_TAG(HTMLSelectElement, select)
@@ -391,7 +391,7 @@ public:
   void SetPreviewValue(const nsAString& aValue);
 
 protected:
-  virtual ~HTMLSelectElement();
+  virtual ~HTMLSelectElement() = default;
 
   friend class SafeOptionListMutation;
 

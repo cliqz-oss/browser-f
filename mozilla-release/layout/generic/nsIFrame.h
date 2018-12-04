@@ -356,10 +356,6 @@ public:
   bool FirstLetterComplete() const { return mFirstLetterComplete; }
   void SetFirstLetterComplete() { mFirstLetterComplete = true; }
 
-#ifdef DEBUG
-  nsCString ToString() const;
-#endif
-
 private:
   StyleClear mBreakType;
   InlineBreak mInlineBreak;
@@ -372,11 +368,9 @@ private:
 #define NS_FRAME_SET_TRUNCATION(aStatus, aReflowInput, aMetrics) \
   aStatus.UpdateTruncated(aReflowInput, aMetrics);
 
-#ifdef DEBUG
 // Convert nsReflowStatus to a human-readable string.
 std::ostream&
 operator<<(std::ostream& aStream, const nsReflowStatus& aStatus);
-#endif
 
 //----------------------------------------------------------------------
 
@@ -659,9 +653,6 @@ public:
       for (auto& content : mozilla::Reversed(mData.mAnonymousContent)) {
         nsIFrame::DestroyAnonymousContent(mPresContext, content.forget());
       }
-      for (auto& content : mozilla::Reversed(mData.mGeneratedContent)) {
-        content->UnbindFromTree();
-      }
     }
     nsPresContext* mPresContext;
     PostDestroyData mData;
@@ -874,12 +865,15 @@ public:
   /**
    * Gets the parent of a frame, using the parent of the placeholder for
    * out-of-flow frames.
-   *
-   * This is effectively the primary frame (or one of the continuations) of the
-   * closest flattened tree ancestor that has a frame (flattened tree ancestors
-   * may not have frames in presence of display: contents).
    */
   inline nsContainerFrame* GetInFlowParent() const;
+
+  /**
+   * Gets the primary frame of the closest flattened tree ancestor that has a
+   * frame (flattened tree ancestors may not have frames in presence of display:
+   * contents).
+   */
+  inline nsIFrame* GetClosestFlattenedTreeAncestorPrimaryFrame() const;
 
   /**
    * Return the placeholder for this frame (which must be out-of-flow).
@@ -1258,8 +1252,6 @@ public:
   NS_DECLARE_FRAME_PROPERTY_SMALL_VALUE(IBaselinePadProperty, nscoord)
   NS_DECLARE_FRAME_PROPERTY_SMALL_VALUE(BBaselinePadProperty, nscoord)
 
-  NS_DECLARE_FRAME_PROPERTY_DELETABLE(ModifiedFrameList, nsTArray<nsIFrame*>)
-  NS_DECLARE_FRAME_PROPERTY_DELETABLE(OverriddenDirtyRectFrameList, nsTArray<nsIFrame*>)
   NS_DECLARE_FRAME_PROPERTY_DELETABLE(DisplayItems, DisplayItemArray)
 
   NS_DECLARE_FRAME_PROPERTY_SMALL_VALUE(BidiDataProperty, mozilla::FrameBidiData)
@@ -3617,7 +3609,7 @@ public:
   // nsIFrames themselves are in the nsPresArena, and so are not measured here.
   // Instead, this measures heap-allocated things hanging off the nsIFrame, and
   // likewise for its descendants.
-  void AddSizeOfExcludingThisForTree(nsWindowSizes& aWindowSizes) const;
+  virtual void AddSizeOfExcludingThisForTree(nsWindowSizes& aWindowSizes) const;
 
   /**
    * Return true if and only if this frame obeys visibility:hidden.

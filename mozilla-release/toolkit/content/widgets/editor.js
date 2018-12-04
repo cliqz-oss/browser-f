@@ -4,6 +4,8 @@
 
 "use strict";
 
+// This is loaded into chrome windows with the subscript loader. Wrap in
+// a block to prevent accidentally leaking globals onto `window`.
 {
 
 /* globals XULFrameElement */
@@ -81,10 +83,6 @@ class MozEditor extends XULFrameElement {
 
   get currentURI() {
     return this.webNavigation.currentURI;
-  }
-
-  get contentWindowAsCPOW() {
-    return this.contentWindow;
   }
 
   get webBrowserFind() {

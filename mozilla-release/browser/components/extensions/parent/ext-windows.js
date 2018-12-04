@@ -2,19 +2,14 @@
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
 
-XPCOMUtils.defineLazyServiceGetter(this, "aboutNewTabService",
-                                   "@mozilla.org/browser/aboutnewtab-service;1",
-                                   "nsIAboutNewTabService");
+ChromeUtils.defineModuleGetter(this, "HomePage",
+                               "resource:///modules/HomePage.jsm");
 ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
                                "resource://gre/modules/PrivateBrowsingUtils.jsm");
 
 var {
   promiseObserved,
 } = ExtensionUtils;
-
-const onXULFrameLoaderCreated = ({target}) => {
-  target.messageManager.sendAsyncMessage("AllowScriptsToClose", {});
-};
 
 /**
  * An event manager API provider which listens for a DOM event in any browser
@@ -138,6 +133,7 @@ this.windows = class extends ExtensionAPI {
 
           let args = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
 
+          let principal = context.principal;
           if (createData.tabId !== null) {
             if (createData.url !== null) {
               return Promise.reject({message: "`tabId` may not be used in conjunction with `url`"});
@@ -155,10 +151,11 @@ this.windows = class extends ExtensionAPI {
             if (createData.incognito !== null && createData.incognito != incognito) {
               return Promise.reject({message: "`incognito` property must match the incognito state of tab"});
             }
-            if (createData.incognito && !PrivateBrowsingUtils.enabled) {
-              return Promise.reject({message: "`incognito` cannot be used if incognito mode is disabled"});
-            }
             createData.incognito = incognito;
+
+            if (createData.cookieStoreId && createData.cookieStoreId !== getCookieStoreIdForTab(createData, tab)) {
+              return Promise.reject({message: "`cookieStoreId` must match the tab's cookieStoreId"});
+            }
 
             args.appendElement(tab);
           } else if (createData.url !== null) {
@@ -172,8 +169,36 @@ this.windows = class extends ExtensionAPI {
               args.appendElement(mkstr(createData.url));
             }
           } else {
-            args.appendElement(mkstr(aboutNewTabService.newTabURL));
+            let url = createData.incognito && !PrivateBrowsingUtils.permanentPrivateBrowsing ?
+              "about:privatebrowsing" : HomePage.get().split("|", 1)[0];
+            args.appendElement(mkstr(url));
+
+            if (url.startsWith("about:") &&
+                !context.checkLoadURL(url, {dontReportErrors: true})) {
+              // The extension principal cannot directly load about:-URLs,
+              // except for about:blank. So use the system principal instead.
+              principal = Services.scriptSecurityManager.getSystemPrincipal();
+            }
           }
+
+          args.appendElement(null); // unused
+          args.appendElement(null); // referrer
+          args.appendElement(null); // postData
+          args.appendElement(null); // allowThirdPartyFixup
+          args.appendElement(null); // referrerPolicy
+
+          if (createData.cookieStoreId) {
+            let userContextIdSupports = Cc["@mozilla.org/supports-PRUint32;1"].createInstance(Ci.nsISupportsPRUint32);
+            // May throw if validation fails.
+            userContextIdSupports.data = getUserContextIdForCookieStoreId(extension, createData.cookieStoreId, createData.incognito);
+            args.appendElement(userContextIdSupports); // userContextId
+          } else {
+            args.appendElement(null);
+          }
+
+          args.appendElement(context.principal); // originPrincipal - not important.
+          args.appendElement(principal); // triggeringPrincipal
+          args.appendElement(Cc["@mozilla.org/supports-PRBool;1"].createInstance(Ci.nsISupportsPRBool)); // allowInheritPrincipal
 
           let features = ["chrome"];
 
@@ -186,6 +211,9 @@ this.windows = class extends ExtensionAPI {
 
           if (createData.incognito !== null) {
             if (createData.incognito) {
+              if (!PrivateBrowsingUtils.enabled) {
+                return Promise.reject({message: "`incognito` cannot be used if incognito mode is disabled"});
+              }
               features.push("private");
             } else {
               features.push("non-private");
@@ -206,19 +234,15 @@ this.windows = class extends ExtensionAPI {
           // TODO: focused, type
 
           return new Promise(resolve => {
-            window.addEventListener("load", function() {
+            window.addEventListener("DOMContentLoaded", function() {
+              if (allowScriptsToClose) {
+                window.gBrowserAllowScriptsToCloseInitialTabs = true;
+              }
               resolve(promiseObserved("browser-delayed-startup-finished", win => win == window));
             }, {once: true});
           }).then(() => {
             if (["minimized", "fullscreen", "docked", "normal", "maximized"].includes(createData.state)) {
               win.state = createData.state;
-            }
-            if (allowScriptsToClose) {
-              for (let {linkedBrowser} of window.gBrowser.tabs) {
-                onXULFrameLoaderCreated({target: linkedBrowser});
-                // eslint-disable-next-line mozilla/balanced-listeners
-                linkedBrowser.addEventListener("XULFrameLoaderCreated", onXULFrameLoaderCreated);
-              }
             }
             if (createData.titlePreface !== null) {
               win.setTitlePreface(createData.titlePreface);

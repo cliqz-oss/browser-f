@@ -14,14 +14,14 @@ describe("ASRouterFeed", () => {
     sandbox = sinon.sandbox.create();
     storage = {
       get: sandbox.stub().returns(Promise.resolve([])),
-      set: sandbox.stub().returns(Promise.resolve())
+      set: sandbox.stub().returns(Promise.resolve()),
     };
     feed = new ASRouterFeed({router: Router}, storage);
     channel = new FakeRemotePageManager();
     feed.store = {
       _messageChannel: {channel},
       getState: () => ({}),
-      dbStorage: {getDbTable: sandbox.stub().returns({})}
+      dbStorage: {getDbTable: sandbox.stub().returns({})},
     };
   });
   afterEach(() => {
@@ -63,7 +63,7 @@ describe("ASRouterFeed", () => {
     });
   });
   describe("#onAction: UNINIT", () => {
-    it("should uninitialize the ASRouter and restore onboarding", async () => {
+    it("should uninitialize the ASRouter", async () => {
       await Router.init(new FakeRemotePageManager(), storage, () => {});
       sinon.stub(Router, "uninit");
 

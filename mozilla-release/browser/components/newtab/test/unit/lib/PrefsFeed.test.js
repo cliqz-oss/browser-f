@@ -5,7 +5,6 @@ import {PrerenderData} from "common/PrerenderData.jsm";
 const {initialPrefs} = PrerenderData;
 
 const PRERENDER_PREF_NAME = "prerender";
-const ONBOARDING_FINISHED_PREF = "browser.onboarding.notification.finished";
 
 let overrider = new GlobalOverrider();
 
@@ -19,12 +18,12 @@ describe("PrefsFeed", () => {
     feed = new PrefsFeed(FAKE_PREFS);
     const storage = {
       getAll: sandbox.stub().resolves(),
-      set: sandbox.stub().resolves()
+      set: sandbox.stub().resolves(),
     };
     feed.store = {
       dispatch: sinon.spy(),
       getState() { return this.state; },
-      dbStorage: {getDbTable: sandbox.stub().returns(storage)}
+      dbStorage: {getDbTable: sandbox.stub().returns(storage)},
     };
     // Setup for tests that don't call `init`
     feed._storage = storage;
@@ -35,7 +34,7 @@ describe("PrefsFeed", () => {
       observeBranch: sinon.spy(),
       ignore: sinon.spy(),
       ignoreBranch: sinon.spy(),
-      reset: sinon.stub()
+      reset: sinon.stub(),
     };
     overrider.set({PrivateBrowsingUtils: {enabled: true}});
   });
@@ -115,50 +114,6 @@ describe("PrefsFeed", () => {
       await feed._setPrerenderPref();
 
       assert.calledWith(feed._prefs.set, PRERENDER_PREF_NAME, false);
-    });
-  });
-  describe("Onboarding", () => {
-    let defaultBranch;
-    beforeEach(() => {
-      defaultBranch = {setBoolPref: sandbox.stub()};
-      sandbox.stub(global.Services.prefs, "getDefaultBranch").returns(defaultBranch);
-    });
-    it("should call feed.init on INIT action", () => {
-      sandbox.stub(feed, "init");
-
-      feed.onAction({type: at.INIT});
-
-      assert.calledOnce(feed.init);
-    });
-    it("should set ONBOARDING_FINISHED_PREF to true if prefs.feeds.snippets if false", async () => {
-      FAKE_PREFS.set("feeds.snippets", false);
-
-      await feed.init();
-
-      assert.calledWith(defaultBranch.setBoolPref, ONBOARDING_FINISHED_PREF, true);
-    });
-    it("should not set ONBOARDING_FINISHED_PREF if prefs.feeds.snippets is true", async () => {
-      FAKE_PREFS.set("feeds.snippets", true);
-
-      await feed.init();
-
-      assert.notCalled(defaultBranch.setBoolPref);
-    });
-    it("should set ONBOARDING_FINISHED_PREF to true if the feeds.snippets pref changes to false", () => {
-      feed.onPrefChanged("feeds.snippets", false);
-      assert.calledWith(defaultBranch.setBoolPref, ONBOARDING_FINISHED_PREF, true);
-    });
-    it("should set ONBOARDING_FINISHED_PREF to false if the feeds.snippets pref changes to true", () => {
-      feed.onPrefChanged("feeds.snippets", true);
-      assert.calledWith(defaultBranch.setBoolPref, ONBOARDING_FINISHED_PREF, false);
-    });
-    it("should not set ONBOARDING_FINISHED_PREF if an unrelated pref changes", () => {
-      feed.onPrefChanged("foo", true);
-      assert.notCalled(defaultBranch.setBoolPref);
-    });
-    it("should set ONBOARDING_FINISHED_PREF to true if a DISABLE_ONBOARDING action was received", () => {
-      feed.onAction({type: at.DISABLE_ONBOARDING});
-      assert.calledWith(defaultBranch.setBoolPref, ONBOARDING_FINISHED_PREF, true);
     });
   });
   describe("indexedDB changes", () => {
@@ -251,7 +206,7 @@ describe("PrefsFeed", () => {
       assert.calledOnce(feed.store.dispatch);
       assert.calledWithExactly(feed.store.dispatch, ac.OnlyToMain({
         type: at.UPDATE_SECTION_PREFS,
-        data: {id: "topsites", value: {collapsed: true}}
+        data: {id: "topsites", value: {collapsed: true}},
       }));
     });
     it("should reset any migrated prefs", () => {

@@ -34,7 +34,7 @@ class AddonsPanel extends Component {
     return {
       client: PropTypes.instanceOf(DebuggerClient).isRequired,
       connect: PropTypes.object,
-      id: PropTypes.string.isRequired
+      id: PropTypes.string.isRequired,
     };
   }
 
@@ -184,11 +184,11 @@ class AddonsPanel extends Component {
       id: id + "-panel",
       className: "panel",
       role: "tabpanel",
-      "aria-labelledby": id + "-header"
+      "aria-labelledby": id + "-header",
     },
     PanelHeader({
       id: id + "-header",
-      name: Strings.GetStringFromName("addons")
+      name: Strings.GetStringFromName("addons"),
     }),
     AddonsControls({ debugDisabled }),
     dom.div({ id: "temporary-addons" },
@@ -200,7 +200,7 @@ class AddonsPanel extends Component {
         connect,
         debugDisabled,
         targetClass,
-        sort: true
+        sort: true,
       }),
       dom.div({ className: "addons-tip"},
         dom.div({ className: "addons-tip-icon"}),
@@ -221,7 +221,7 @@ class AddonsPanel extends Component {
         connect,
         debugDisabled,
         targetClass,
-        sort: true
+        sort: true,
       })
     ),
     showSystemAddons ?
@@ -234,7 +234,7 @@ class AddonsPanel extends Component {
           connect,
           debugDisabled,
           targetClass,
-          sort: true
+          sort: true,
         })
       ) : null,
     );

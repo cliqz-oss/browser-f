@@ -218,12 +218,11 @@ BrowserCLH.prototype = {
     }, options);
 
     aWindow.addEventListener("blur", event => {
-      if (shouldIgnoreLoginManagerEvent(event)) {
+      if (ChromeUtils.getClassName(event.target) !== "HTMLInputElement" ||
+          shouldIgnoreLoginManagerEvent(event)) {
         return;
       }
-      if (ChromeUtils.getClassName(event.target) === "HTMLInputElement") {
-        this.LoginManagerContent.onUsernameInput(event);
-      }
+      this.LoginManagerContent.onUsernameInput(event);
     }, options);
 
     aWindow.addEventListener("pageshow", event => {
@@ -238,7 +237,7 @@ BrowserCLH.prototype = {
   QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver]),
 
   // XPCOMUtils factory
-  classID: Components.ID("{be623d20-d305-11de-8a39-0800200c9a66}")
+  classID: Components.ID("{be623d20-d305-11de-8a39-0800200c9a66}"),
 };
 
 var components = [ BrowserCLH ];

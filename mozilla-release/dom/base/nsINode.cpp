@@ -152,8 +152,8 @@ nsINode::nsSlots::Unlink()
 //----------------------------------------------------------------------
 
 #ifdef MOZILLA_INTERNAL_API
-nsINode::nsINode(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-  : mNodeInfo(aNodeInfo)
+nsINode::nsINode(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
+  : mNodeInfo(std::move(aNodeInfo))
   , mParent(nullptr)
 #ifndef BOOL_FLAGS_ON_WRAPPER_CACHE
   , mBoolFlags(0)
@@ -1697,34 +1697,6 @@ nsINode::ComputeIndexOf(const nsINode* aChild) const
   }
 
   return -1;
-}
-
-Element*
-nsINode::GetPreviousElementSibling() const
-{
-  nsIContent* previousSibling = GetPreviousSibling();
-  while (previousSibling) {
-    if (previousSibling->IsElement()) {
-      return previousSibling->AsElement();
-    }
-    previousSibling = previousSibling->GetPreviousSibling();
-  }
-
-  return nullptr;
-}
-
-Element*
-nsINode::GetNextElementSibling() const
-{
-  nsIContent* nextSibling = GetNextSibling();
-  while (nextSibling) {
-    if (nextSibling->IsElement()) {
-      return nextSibling->AsElement();
-    }
-    nextSibling = nextSibling->GetNextSibling();
-  }
-
-  return nullptr;
 }
 
 static already_AddRefed<nsINode>

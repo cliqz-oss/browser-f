@@ -16,6 +16,7 @@ Services.prefs.setBoolPref("devtools.debugger.log", false);
 
 var { BrowserToolboxProcess } = ChromeUtils.import("resource://devtools/client/framework/ToolboxProcess.jsm", {});
 var { DebuggerServer } = require("devtools/server/main");
+var { ActorRegistry } = require("devtools/server/actors/utils/actor-registry");
 var { DebuggerClient } = require("devtools/shared/client/debugger-client");
 var ObjectClient = require("devtools/shared/client/object-client");
 var { AddonManager } = ChromeUtils.import("resource://gre/modules/AddonManager.jsm", {});
@@ -43,7 +44,7 @@ registerCleanupFunction(async function() {
 
   while (gBrowser && gBrowser.tabs && gBrowser.tabs.length > 1) {
     info("Destroying toolbox.");
-    let target = TargetFactory.forTab(gBrowser.selectedTab);
+    let target = await TargetFactory.forTab(gBrowser.selectedTab);
     await gDevTools.closeToolbox(target);
 
     info("Removing tab.");
@@ -62,7 +63,6 @@ registerCleanupFunction(async function() {
   });
 });
 
-// Import the GCLI test helper
 var testDir = gTestPath.substr(0, gTestPath.lastIndexOf("/"));
 testDir = testDir.replace(/\/\//g, "/");
 testDir = testDir.replace("chrome:/mochitest", "chrome://mochitest");
@@ -169,7 +169,7 @@ function getAddonActorForId(aClient, aAddonId) {
   info("Get addon actor for ID: " + aAddonId);
   let deferred = promise.defer();
 
-  aClient.listAddons(aResponse => {
+  aClient.listAddons().then(aResponse => {
     let addonTargetActor = aResponse.addons.filter(aGrip => aGrip.id == aAddonId).pop();
     info("got addon actor for ID: " + aAddonId);
     deferred.resolve(addonTargetActor);
@@ -180,8 +180,8 @@ function getAddonActorForId(aClient, aAddonId) {
 
 async function attachTargetActorForUrl(aClient, aUrl) {
   let grip = await getTargetActorForUrl(aClient, aUrl);
-  let [ response ] = await aClient.attachTab(grip.actor);
-  return [grip, response];
+  let [ response, front ] = await aClient.attachTarget(grip.actor);
+  return [grip, response, front];
 }
 
 async function attachThreadActorForUrl(aClient, aUrl) {
@@ -450,7 +450,7 @@ function ensureThreadClientState(aPanel, aState) {
 
 function reload(aPanel, aUrl) {
   let activeTab = aPanel.panelWin.DebuggerController._target.activeTab;
-  aUrl ? activeTab.navigateTo(aUrl) : activeTab.reload();
+  aUrl ? activeTab.navigateTo({ url: aUrl }) : activeTab.reload();
 }
 
 function navigateActiveTabTo(aPanel, aUrl, aWaitForEventName, aEventRepeat) {
@@ -553,8 +553,7 @@ let initDebugger = Task.async(function*(urlOrTab, options) {
   }
   info("Debugee tab added successfully: " + urlOrTab);
 
-  let debuggee = tab.linkedBrowser.contentWindowAsCPOW.wrappedJSObject;
-  let target = TargetFactory.forTab(tab);
+  let target = yield TargetFactory.forTab(tab);
 
   let toolbox = yield gDevTools.showToolbox(target, "jsdebugger");
   info("Debugger panel shown successfully.");
@@ -593,7 +592,7 @@ let initDebugger = Task.async(function*(urlOrTab, options) {
     yield onCaretUpdated;
   }
 
-  return [tab, debuggee, debuggerPanel, window];
+  return [tab, debuggerPanel, window];
 });
 
 // Creates an add-on debugger for a given add-on. The returned AddonDebugger
@@ -633,14 +632,13 @@ AddonDebugger.prototype = {
       form: addonTargetActor,
       client: this.client,
       chrome: true,
-      isBrowsingContext: false
     };
 
     let toolboxOptions = {
       customIframe: this.frame
     };
 
-    this.target = TargetFactory.forTab(targetOptions);
+    this.target = yield TargetFactory.forRemoteTab(targetOptions);
     let toolbox = yield gDevTools.showToolbox(this.target, "jsdebugger", Toolbox.HostType.CUSTOM, toolboxOptions);
 
     info("Addon debugger panel shown successfully.");
@@ -1086,18 +1084,14 @@ function findTab(tabs, url) {
   return null;
 }
 
-function attachTab(client, tab) {
+function attachTarget(client, tab) {
   info("Attaching to tab with url '" + tab.url + "'.");
-  return client.attachTab(tab.actor);
+  return client.attachTarget(tab.actor);
 }
 
-function listWorkers(tabClient) {
+function listWorkers(targetFront) {
   info("Listing workers.");
-  return new Promise(function (resolve) {
-    tabClient.listWorkers(function (response) {
-      resolve(response);
-    });
-  });
+  return targetFront.listWorkers();
 }
 
 function findWorker(workers, url) {
@@ -1110,34 +1104,25 @@ function findWorker(workers, url) {
   return null;
 }
 
-function attachWorker(tabClient, worker) {
+function attachWorker(targetFront, worker) {
   info("Attaching to worker with url '" + worker.url + "'.");
-  return tabClient.attachWorker(worker.actor);
+  return targetFront.attachWorker(worker.actor);
 }
 
-function waitForWorkerListChanged(tabClient) {
+function waitForWorkerListChanged(targetFront) {
   info("Waiting for worker list to change.");
-  return new Promise(function (resolve) {
-    tabClient.addListener("workerListChanged", function listener() {
-      tabClient.removeListener("workerListChanged", listener);
-      resolve();
-    });
-  });
+  return targetFront.once("workerListChanged");
 }
 
-function attachThread(workerClient, options) {
+function attachThread(workerTargetFront, options) {
   info("Attaching to thread.");
-  return workerClient.attachThread(options);
+  return workerTargetFront.attachThread(options);
 }
 
-function waitForWorkerClose(workerClient) {
+async function waitForWorkerClose(workerTargetFront) {
   info("Waiting for worker to close.");
-  return new Promise(function (resolve) {
-    workerClient.addOneTimeListener("close", function () {
-      info("Worker did close.");
-      resolve();
-    });
-  });
+  await workerTargetFront.once("close");
+  info("Worker did close.");
 }
 
 function resume(threadClient) {
@@ -1298,20 +1283,20 @@ async function initWorkerDebugger(TAB_URL, WORKER_URL) {
 
   let tab = await addTab(TAB_URL);
   let { tabs } = await listTabs(client);
-  let [, tabClient] = await attachTab(client, findTab(tabs, TAB_URL));
+  let [, targetFront] = await attachTarget(client, findTab(tabs, TAB_URL));
 
   await createWorkerInTab(tab, WORKER_URL);
 
-  let { workers } = await listWorkers(tabClient);
-  let [, workerClient] = await attachWorker(tabClient,
+  let { workers } = await listWorkers(targetFront);
+  let [, workerTargetFront] = await attachWorker(targetFront,
                                              findWorker(workers, WORKER_URL));
 
-  let toolbox = await gDevTools.showToolbox(TargetFactory.forWorker(workerClient),
+  let toolbox = await gDevTools.showToolbox(TargetFactory.forWorker(workerTargetFront),
                                             "jsdebugger",
                                             Toolbox.HostType.WINDOW);
 
   let debuggerPanel = toolbox.getCurrentPanel();
   let gDebugger = debuggerPanel.panelWin;
 
-  return {client, tab, tabClient, workerClient, toolbox, gDebugger};
+  return {client, tab, targetFront, workerTargetFront, toolbox, gDebugger};
 }

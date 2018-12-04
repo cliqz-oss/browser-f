@@ -4,7 +4,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 %endif
 
-@namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
 @namespace html url("http://www.w3.org/1999/xhtml");
 
 %include ../shared/browser.inc.css
@@ -498,7 +497,8 @@ notification[value="translation"] menulist > .menulist-dropmarker {
   }
 }
 
-.tabbrowser-tab:focus > .tab-stack > .tab-content {
+.keyboard-focused-tab > .tab-stack > .tab-content,
+.tabbrowser-tab:focus:not([aria-activedescendant]) > .tab-stack > .tab-content {
   outline: 1px dotted;
   outline-offset: -6px;
 }
@@ -571,7 +571,6 @@ notification[value="translation"] menulist > .menulist-dropmarker {
 
 %include ../shared/fullscreen/warning.inc.css
 %include ../shared/ctrlTab.inc.css
-%include ../shared/plugin-doorhanger.inc.css
 
 /* Customization mode */
 
@@ -638,6 +637,18 @@ notification[value="translation"] menulist > .menulist-dropmarker {
 
 /* We draw to titlebar when Gkt+ CSD is available */
 @media (-moz-gtk-csd-available) {
+  /* Some Gtk+ themes use non-rectangular toplevel windows. To fully support
+   * such themes we need to make toplevel window transparent.
+   * It may cause performanance issues so let's put it under a preference
+   * and enable it for desktop environment which do that by default.
+   * See nsWindow::TopLevelWindowUseARGBVisual() for details. */
+  @media (-moz-gtk-csd-transparent-background) {
+    :root[tabsintitlebar][sizemode="normal"]:not(:-moz-lwtheme) {
+      background-color: transparent;
+      -moz-appearance: none;
+    }
+  }
+
   :root[tabsintitlebar] > #titlebar:-moz-lwtheme {
     visibility: hidden;
   }

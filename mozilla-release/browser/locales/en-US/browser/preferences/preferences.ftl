@@ -61,11 +61,18 @@ pane-sync-title = Firefox Account
 category-sync =
     .tooltiptext = { pane-sync-title }
 
+<<<<<<< HEAD
 pane-connect-title = Connect
 category-connect =
     .tooltiptext = { pane-connect-title }
 
 help-button-label = Mozilla Support
+||||||| merged common ancestors
+help-button-label = { -brand-short-name } Support
+=======
+help-button-label = { -brand-short-name } Support
+addons-button-label = Extensions & Themes
+>>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
 
 focus-search =
     .key = f
@@ -99,6 +106,10 @@ extension-controlled-homepage-override = An extension, <img data-l10n-name="icon
 # This string is shown to notify the user that their new tab page
 # is being controlled by an extension.
 extension-controlled-new-tab-url = An extension, <img data-l10n-name="icon"/> { $name }, is controlling your New Tab page.
+
+# This string is shown to notify the user that their notifications permission
+# is being controlled by an extension.
+extension-controlled-web-notifications= An extension, <img data-l10n-name="icon"/> { $name }, is controlling this setting.
 
 # This string is shown to notify the user that the default search engine
 # is being controlled by an extension.
@@ -416,6 +427,12 @@ browsing-search-on-start-typing =
     .label = Search for text when you start typing
     .accesskey = x
 
+browsing-cfr-recommendations =
+    .label = Recommend extensions as you browse
+    .accesskey = R
+
+browsing-cfr-recommendations-learn-more = Learn More
+
 ## General Section - Proxy
 
 network-settings-title = Network Settings
@@ -667,7 +684,7 @@ privacy-header = Browser Privacy
 
 ## Privacy Section - Forms
 
-forms-header = Forms & Passwords
+logins-header = Logins & Passwords
 forms-ask-to-save-logins =
     .label = Ask to save logins and passwords for websites
     .accesskey = r
@@ -681,7 +698,7 @@ forms-master-pw-use =
     .label = Use a master password
     .accesskey = U
 forms-master-pw-change =
-    .label = Change Master Password
+    .label = Change Master Password…
     .accesskey = M
 
 ## Privacy Section - History
@@ -844,6 +861,9 @@ content-blocking-fastblock-slow-loading-trackers-label =
   .label = Slow-Loading Trackers
   .accesskey = S
 content-blocking-fastblock-new-description = Block just the trackers that keep pages from loading quickly.
+content-blocking-tracking-protection-trackers-label =
+  .label = Trackers
+  .accesskey = T
 content-blocking-tracking-protection-all-detected-trackers-label =
   .label = All Detected Trackers
   .accesskey = T

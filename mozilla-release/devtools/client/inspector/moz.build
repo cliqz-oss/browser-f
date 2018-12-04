@@ -4,8 +4,8 @@
 
 DIRS += [
     'animation',
-    'animation-old',
     'boxmodel',
+    'changes',
     'components',
     'computed',
     'extensions',

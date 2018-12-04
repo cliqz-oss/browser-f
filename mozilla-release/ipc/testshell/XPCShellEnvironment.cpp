@@ -16,7 +16,7 @@
 #include "base/basictypes.h"
 
 #include "jsapi.h"
-#include "js/AutoByteString.h"
+#include "js/CharacterEncoding.h"
 #include "js/CompilationAndEvaluation.h"
 #include "js/SourceBufferHolder.h"
 
@@ -83,10 +83,10 @@ Print(JSContext *cx, unsigned argc, JS::Value *vp)
         JSString *str = JS::ToString(cx, args[i]);
         if (!str)
             return false;
-        JSAutoByteString bytes(cx, str);
+        JS::UniqueChars bytes = JS_EncodeStringToLatin1(cx, str);
         if (!bytes)
             return false;
-        fprintf(stdout, "%s%s", i ? " " : "", bytes.ptr());
+        fprintf(stdout, "%s%s", i ? " " : "", bytes.get());
         fflush(stdout);
     }
     fputc('\n', stdout);
@@ -119,11 +119,11 @@ Dump(JSContext *cx, unsigned argc, JS::Value *vp)
     JSString *str = JS::ToString(cx, args[0]);
     if (!str)
         return false;
-    JSAutoByteString bytes(cx, str);
+    JS::UniqueChars bytes = JS_EncodeStringToLatin1(cx, str);
     if (!bytes)
       return false;
 
-    fputs(bytes.ptr(), stdout);
+    fputs(bytes.get(), stdout);
     fflush(stdout);
     return true;
 }
@@ -147,22 +147,23 @@ Load(JSContext *cx,
         JS::Rooted<JSString*> str(cx, JS::ToString(cx, args[i]));
         if (!str)
             return false;
-        JSAutoByteString filename(cx, str);
+        JS::UniqueChars filename = JS_EncodeStringToLatin1(cx, str);
         if (!filename)
             return false;
-        FILE *file = fopen(filename.ptr(), "r");
+        FILE *file = fopen(filename.get(), "r");
         if (!file) {
-            filename.clear();
-            if (!filename.encodeUtf8(cx, str))
+            filename = JS_EncodeStringToUTF8(cx, str);
+            if (!filename)
                 return false;
-            JS_ReportErrorUTF8(cx, "cannot open file '%s' for reading", filename.ptr());
+            JS_ReportErrorUTF8(cx, "cannot open file '%s' for reading", filename.get());
             return false;
         }
+
         JS::CompileOptions options(cx);
-        options.setUTF8(true)
-               .setFileAndLine(filename.ptr(), 1);
+        options.setFileAndLine(filename.get(), 1);
+
         JS::Rooted<JSScript*> script(cx);
-        bool ok = JS::Compile(cx, options, file, &script);
+        bool ok = JS::CompileUtf8File(cx, options, file, &script);
         fclose(file);
         if (!ok)
             return false;
@@ -200,7 +201,7 @@ DumpXPC(JSContext *cx,
             return false;
     }
 
-    nsCOMPtr<nsIXPConnect> xpc = do_GetService(nsIXPConnect::GetCID());
+    nsCOMPtr<nsIXPConnect> xpc = nsIXPConnect::XPConnect();
     if (xpc)
         xpc->DebugDump(int16_t(depth));
     args.rval().setUndefined();
@@ -301,10 +302,10 @@ XPCShellEnvironment::ProcessFile(JSContext *cx,
         ungetc(ch, file);
 
         JS::CompileOptions options(cx);
-        options.setUTF8(true)
-               .setFileAndLine(filename, 1);
+        options.setFileAndLine(filename, 1);
+
         JS::Rooted<JSScript*> script(cx);
-        if (JS::Compile(cx, options, file, &script))
+        if (JS::CompileUtf8File(cx, options, file, &script))
             (void)JS_ExecuteScript(cx, script, &result);
 
         return;
@@ -331,14 +332,16 @@ XPCShellEnvironment::ProcessFile(JSContext *cx,
             }
             bufp += strlen(bufp);
             lineno++;
-        } while (!JS_BufferIsCompilableUnit(cx, global, buffer, strlen(buffer)));
+        } while (!JS_Utf8BufferIsCompilableUnit(cx, global, buffer, strlen(buffer)));
 
         /* Clear any pending exception from previous failed compiles.  */
         JS_ClearPendingException(cx);
+
         JS::CompileOptions options(cx);
         options.setFileAndLine("typein", startline);
+
         JS::Rooted<JSScript*> script(cx);
-        if (JS_CompileScript(cx, buffer, strlen(buffer), options, &script)) {
+        if (JS::CompileUtf8(cx, options, buffer, strlen(buffer), &script)) {
             JS::WarningReporter older;
 
             ok = JS_ExecuteScript(cx, script, &result);
@@ -346,13 +349,13 @@ XPCShellEnvironment::ProcessFile(JSContext *cx,
                 /* Suppress warnings from JS::ToString(). */
                 older = JS::SetWarningReporter(cx, nullptr);
                 str = JS::ToString(cx, result);
-                JSAutoByteString bytes;
+                JS::UniqueChars bytes;
                 if (str)
-                    bytes.encodeLatin1(cx, str);
+                    bytes = JS_EncodeStringToLatin1(cx, str);
                 JS::SetWarningReporter(cx, older);
 
                 if (!!bytes)
-                    fprintf(stdout, "%s\n", bytes.ptr());
+                    fprintf(stdout, "%s\n", bytes.get());
                 else
                     ok = false;
             }
@@ -433,8 +436,7 @@ XPCShellEnvironment::Init()
 
     JS::RealmOptions options;
     options.creationOptions().setNewCompartmentInSystemZone();
-    if (xpc::SharedMemoryEnabled())
-        options.creationOptions().setSharedMemoryAndAtomicsEnabled(true);
+    xpc::SetPrefableRealmOptions(options);
 
     JS::Rooted<JSObject*> globalObj(cx);
     rv = xpc::InitClassesWithNewWrappedGlobal(cx,
@@ -489,10 +491,11 @@ XPCShellEnvironment::EvaluateString(const nsString& aString,
 
   JS::CompileOptions options(cx);
   options.setFileAndLine("typein", 0);
+
   JS::Rooted<JSScript*> script(cx);
   JS::SourceBufferHolder srcBuf(aString.get(), aString.Length(),
                                 JS::SourceBufferHolder::NoOwnership);
-  if (!JS_CompileUCScript(cx, srcBuf, options, &script))
+  if (!JS::Compile(cx, options, srcBuf, &script))
   {
      return false;
   }

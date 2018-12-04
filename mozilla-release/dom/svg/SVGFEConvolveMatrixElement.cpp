@@ -27,41 +27,41 @@ SVGFEConvolveMatrixElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGive
 
 nsSVGElement::NumberInfo SVGFEConvolveMatrixElement::sNumberInfo[2] =
 {
-  { &nsGkAtoms::divisor, 1, false },
-  { &nsGkAtoms::bias, 0, false }
+  { nsGkAtoms::divisor, 1, false },
+  { nsGkAtoms::bias, 0, false }
 };
 
 nsSVGElement::NumberPairInfo SVGFEConvolveMatrixElement::sNumberPairInfo[1] =
 {
-  { &nsGkAtoms::kernelUnitLength, 0, 0 }
+  { nsGkAtoms::kernelUnitLength, 0, 0 }
 };
 
 nsSVGElement::IntegerInfo SVGFEConvolveMatrixElement::sIntegerInfo[2] =
 {
-  { &nsGkAtoms::targetX, 0 },
-  { &nsGkAtoms::targetY, 0 }
+  { nsGkAtoms::targetX, 0 },
+  { nsGkAtoms::targetY, 0 }
 };
 
 nsSVGElement::IntegerPairInfo SVGFEConvolveMatrixElement::sIntegerPairInfo[1] =
 {
-  { &nsGkAtoms::order, 3, 3 }
+  { nsGkAtoms::order, 3, 3 }
 };
 
 nsSVGElement::BooleanInfo SVGFEConvolveMatrixElement::sBooleanInfo[1] =
 {
-  { &nsGkAtoms::preserveAlpha, false }
+  { nsGkAtoms::preserveAlpha, false }
 };
 
 nsSVGEnumMapping SVGFEConvolveMatrixElement::sEdgeModeMap[] = {
-  {&nsGkAtoms::duplicate, SVG_EDGEMODE_DUPLICATE},
-  {&nsGkAtoms::wrap, SVG_EDGEMODE_WRAP},
-  {&nsGkAtoms::none, SVG_EDGEMODE_NONE},
+  {nsGkAtoms::duplicate, SVG_EDGEMODE_DUPLICATE},
+  {nsGkAtoms::wrap, SVG_EDGEMODE_WRAP},
+  {nsGkAtoms::none, SVG_EDGEMODE_NONE},
   {nullptr, 0}
 };
 
 nsSVGElement::EnumInfo SVGFEConvolveMatrixElement::sEnumInfo[1] =
 {
-  { &nsGkAtoms::edgeMode,
+  { nsGkAtoms::edgeMode,
     sEdgeModeMap,
     SVG_EDGEMODE_DUPLICATE
   }
@@ -69,13 +69,13 @@ nsSVGElement::EnumInfo SVGFEConvolveMatrixElement::sEnumInfo[1] =
 
 nsSVGElement::StringInfo SVGFEConvolveMatrixElement::sStringInfo[2] =
 {
-  { &nsGkAtoms::result, kNameSpaceID_None, true },
-  { &nsGkAtoms::in, kNameSpaceID_None, true }
+  { nsGkAtoms::result, kNameSpaceID_None, true },
+  { nsGkAtoms::in, kNameSpaceID_None, true }
 };
 
 nsSVGElement::NumberListInfo SVGFEConvolveMatrixElement::sNumberListInfo[1] =
 {
-  { &nsGkAtoms::kernelMatrix }
+  { nsGkAtoms::kernelMatrix }
 };
 
 //----------------------------------------------------------------------
@@ -172,7 +172,7 @@ SVGFEConvolveMatrixElement::GetPrimitiveDescription(nsSVGFilterInstance* aInstan
                                                     const nsTArray<bool>& aInputsAreTainted,
                                                     nsTArray<RefPtr<SourceSurface>>& aInputImages)
 {
-  const FilterPrimitiveDescription failureDescription(PrimitiveType::Empty);
+  FilterPrimitiveDescription failureDescription;
 
   const SVGNumberList &kernelMatrix =
     mNumberListAttributes[KERNELMATRIX].GetAnimValue();
@@ -238,18 +238,17 @@ SVGFEConvolveMatrixElement::GetPrimitiveDescription(nsSVGFilterInstance* aInstan
     return failureDescription;
   }
 
-  FilterPrimitiveDescription descr(PrimitiveType::ConvolveMatrix);
-  AttributeMap& atts = descr.Attributes();
-  atts.Set(eConvolveMatrixKernelSize, IntSize(orderX, orderY));
-  atts.Set(eConvolveMatrixKernelMatrix, &kernelMatrix[0], kmLength);
-  atts.Set(eConvolveMatrixDivisor, divisor);
-  atts.Set(eConvolveMatrixBias, bias);
-  atts.Set(eConvolveMatrixTarget, IntPoint(targetX, targetY));
-  atts.Set(eConvolveMatrixEdgeMode, edgeMode);
-  atts.Set(eConvolveMatrixKernelUnitLength, kernelUnitLength);
-  atts.Set(eConvolveMatrixPreserveAlpha, preserveAlpha);
+  ConvolveMatrixAttributes atts;
+  atts.mKernelSize = IntSize(orderX, orderY);
+  atts.mKernelMatrix.AppendElements(&kernelMatrix[0], kmLength);
+  atts.mDivisor = divisor;
+  atts.mBias = bias;
+  atts.mTarget = IntPoint(targetX, targetY);
+  atts.mEdgeMode = edgeMode;
+  atts.mKernelUnitLength = kernelUnitLength;
+  atts.mPreserveAlpha = preserveAlpha;
 
-  return descr;
+  return FilterPrimitiveDescription(AsVariant(std::move(atts)));
 }
 
 bool

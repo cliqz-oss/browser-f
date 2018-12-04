@@ -34,7 +34,6 @@
 #include "vm/NativeObject-inl.h"
 
 using namespace js;
-using namespace js::gc;
 
 using mozilla::AssertedCast;
 using JS::CanonicalizeNaN;
@@ -54,8 +53,9 @@ DataViewObject::create(JSContext* cx, uint32_t byteOffset, uint32_t byteLength,
     MOZ_ASSERT(byteOffset + byteLength < UINT32_MAX);
 
     DataViewObject* obj = NewObjectWithClassProto<DataViewObject>(cx, proto);
-    if (!obj)
+    if (!obj) {
         return nullptr;
+    }
 
     // Caller should have established these preconditions, and no
     // (non-self-hosted) JS code has had an opportunity to run so nothing can
@@ -67,18 +67,16 @@ DataViewObject::create(JSContext* cx, uint32_t byteOffset, uint32_t byteLength,
     // BUFFER_SLOT or the private slot (if it does) must maintain it by always
     // setting those to reference shared memory.
     bool isSharedMemory = IsSharedArrayBuffer(arrayBuffer.get());
-    if (isSharedMemory)
+    if (isSharedMemory) {
         obj->setIsSharedMemory();
+    }
 
-    obj->setFixedSlot(TypedArrayObject::BYTEOFFSET_SLOT, Int32Value(byteOffset));
-    obj->setFixedSlot(TypedArrayObject::LENGTH_SLOT, Int32Value(byteLength));
-    obj->setFixedSlot(TypedArrayObject::BUFFER_SLOT, ObjectValue(*arrayBuffer));
+    obj->setFixedSlot(BYTEOFFSET_SLOT, Int32Value(byteOffset));
+    obj->setFixedSlot(LENGTH_SLOT, Int32Value(byteLength));
+    obj->setFixedSlot(BUFFER_SLOT, ObjectValue(*arrayBuffer));
 
     SharedMem<uint8_t*> ptr = arrayBuffer->dataPointerEither();
-    // A pointer to raw shared memory is exposed through the private slot.  This
-    // is safe so long as getPrivate() is not used willy-nilly.  It is wrapped in
-    // other accessors in TypedArrayObject.h.
-    obj->initPrivate(ptr.unwrap(/*safe - see above*/) + byteOffset);
+    obj->initDataPointer(ptr + byteOffset);
 
     // Include a barrier if the data view's data pointer is in the nursery, as
     // is done for typed arrays.
@@ -97,11 +95,12 @@ DataViewObject::create(JSContext* cx, uint32_t byteOffset, uint32_t byteLength,
     }
 
     // Verify that the private slot is at the expected place
-    MOZ_ASSERT(obj->numFixedSlots() == TypedArrayObject::DATA_SLOT);
+    MOZ_ASSERT(obj->numFixedSlots() == DATA_SLOT);
 
     if (arrayBuffer->is<ArrayBufferObject>()) {
-        if (!arrayBuffer->as<ArrayBufferObject>().addView(cx, obj))
+        if (!arrayBuffer->as<ArrayBufferObject>().addView(cx, obj)) {
             return nullptr;
+        }
     }
 
     return obj;
@@ -123,8 +122,9 @@ DataViewObject::getAndCheckConstructorArgs(JSContext* cx, HandleObject bufobj, c
 
     // Step 4.
     uint64_t offset;
-    if (!ToIndex(cx, args.get(1), &offset))
+    if (!ToIndex(cx, args.get(1), &offset)) {
         return false;
+    }
 
     // Step 5.
     if (buffer->isDetached()) {
@@ -146,8 +146,9 @@ DataViewObject::getAndCheckConstructorArgs(JSContext* cx, HandleObject bufobj, c
     uint64_t viewByteLength = bufferByteLength - offset;
     if (args.hasDefined(2)) {
         // Step 9.a.
-        if (!ToIndex(cx, args.get(2), &viewByteLength))
+        if (!ToIndex(cx, args.get(2), &viewByteLength)) {
             return false;
+        }
 
 
         MOZ_ASSERT(offset + viewByteLength >= offset,
@@ -174,17 +175,20 @@ DataViewObject::constructSameCompartment(JSContext* cx, HandleObject bufobj, con
     cx->check(bufobj);
 
     uint32_t byteOffset, byteLength;
-    if (!getAndCheckConstructorArgs(cx, bufobj, args, &byteOffset, &byteLength))
+    if (!getAndCheckConstructorArgs(cx, bufobj, args, &byteOffset, &byteLength)) {
         return false;
+    }
 
     RootedObject proto(cx);
-    if (!GetPrototypeFromBuiltinConstructor(cx, args, &proto))
+    if (!GetPrototypeFromBuiltinConstructor(cx, args, &proto)) {
         return false;
+    }
 
     Rooted<ArrayBufferObjectMaybeShared*> buffer(cx, &AsArrayBufferMaybeShared(bufobj));
     JSObject* obj = DataViewObject::create(cx, byteOffset, byteLength, buffer, proto);
-    if (!obj)
+    if (!obj) {
         return false;
+    }
     args.rval().setObject(*obj);
     return true;
 }
@@ -216,20 +220,23 @@ DataViewObject::constructWrapped(JSContext* cx, HandleObject bufobj, const CallA
 
     // NB: This entails the IsArrayBuffer check
     uint32_t byteOffset, byteLength;
-    if (!getAndCheckConstructorArgs(cx, unwrapped, args, &byteOffset, &byteLength))
+    if (!getAndCheckConstructorArgs(cx, unwrapped, args, &byteOffset, &byteLength)) {
         return false;
+    }
 
     // Make sure to get the [[Prototype]] for the created view from this
     // compartment.
     RootedObject proto(cx);
-    if (!GetPrototypeFromBuiltinConstructor(cx, args, &proto))
+    if (!GetPrototypeFromBuiltinConstructor(cx, args, &proto)) {
         return false;
+    }
 
     Rooted<GlobalObject*> global(cx, cx->realm()->maybeGlobal());
     if (!proto) {
         proto = GlobalObject::getOrCreateDataViewPrototype(cx, global);
-        if (!proto)
+        if (!proto) {
             return false;
+        }
     }
 
     RootedObject dv(cx);
@@ -240,16 +247,19 @@ DataViewObject::constructWrapped(JSContext* cx, HandleObject bufobj, const CallA
         buffer = &unwrapped->as<ArrayBufferObjectMaybeShared>();
 
         RootedObject wrappedProto(cx, proto);
-        if (!cx->compartment()->wrap(cx, &wrappedProto))
+        if (!cx->compartment()->wrap(cx, &wrappedProto)) {
             return false;
+        }
 
         dv = DataViewObject::create(cx, byteOffset, byteLength, buffer, wrappedProto);
-        if (!dv)
+        if (!dv) {
             return false;
+        }
     }
 
-    if (!cx->compartment()->wrap(cx, &dv))
+    if (!cx->compartment()->wrap(cx, &dv)) {
         return false;
+    }
 
     args.rval().setObject(*dv);
     return true;
@@ -260,15 +270,18 @@ DataViewObject::construct(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
 
-    if (!ThrowIfNotConstructing(cx, args, "DataView"))
+    if (!ThrowIfNotConstructing(cx, args, "DataView")) {
         return false;
+    }
 
     RootedObject bufobj(cx);
-    if (!GetFirstArgumentAsObject(cx, args, "DataView constructor", &bufobj))
+    if (!GetFirstArgumentAsObject(cx, args, "DataView constructor", &bufobj)) {
         return false;
+    }
 
-    if (bufobj->is<WrapperObject>())
+    if (bufobj->is<WrapperObject>()) {
         return constructWrapped(cx, bufobj, args);
+    }
     return constructSameCompartment(cx, bufobj, args);
 }
 
@@ -374,8 +387,9 @@ struct DataViewIO
     {
         MOZ_ASSERT((reinterpret_cast<uintptr_t>(src) & (Min<size_t>(MOZ_ALIGNOF(void*), sizeof(DataType)) - 1)) == 0);
         ReadWriteType temp = *reinterpret_cast<const ReadWriteType*>(src);
-        if (wantSwap)
+        if (wantSwap) {
             temp = swapBytes(temp);
+        }
         Memcpy(unalignedBuffer, (uint8_t*) &temp, sizeof(ReadWriteType));
     }
 };
@@ -390,14 +404,15 @@ DataViewObject::read(JSContext* cx, Handle<DataViewObject*> obj, const CallArgs&
 
     // Step 4.
     uint64_t getIndex;
-    if (!ToIndex(cx, args.get(0), &getIndex))
+    if (!ToIndex(cx, args.get(0), &getIndex)) {
         return false;
+    }
 
     // Step 5.
     bool isLittleEndian = args.length() >= 2 && ToBoolean(args[1]);
 
     // Steps 6-7.
-    if (obj->arrayBufferEither().isDetached()) {
+    if (obj->hasDetachedBuffer()) {
         JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_TYPED_ARRAY_DETACHED);
         return false;
     }
@@ -406,8 +421,9 @@ DataViewObject::read(JSContext* cx, Handle<DataViewObject*> obj, const CallArgs&
     bool isSharedMemory;
     SharedMem<uint8_t*> data = DataViewObject::getDataPointer<NativeType>(cx, obj, getIndex,
                                                                           &isSharedMemory);
-    if (!data)
+    if (!data) {
         return false;
+    }
 
     // Step 13.
     if (isSharedMemory) {
@@ -425,8 +441,9 @@ static inline bool
 WebIDLCast(JSContext* cx, HandleValue value, NativeType* out)
 {
     int32_t temp;
-    if (!ToInt32(cx, value, &temp))
+    if (!ToInt32(cx, value, &temp)) {
         return false;
+    }
     // Technically, the behavior of assigning an out of range value to a signed
     // variable is undefined. In practice, compilers seem to do what we want
     // without issuing any warnings.
@@ -439,8 +456,9 @@ inline bool
 WebIDLCast<float>(JSContext* cx, HandleValue value, float* out)
 {
     double temp;
-    if (!ToNumber(cx, value, &temp))
+    if (!ToNumber(cx, value, &temp)) {
         return false;
+    }
     *out = static_cast<float>(temp);
     return true;
 }
@@ -461,25 +479,28 @@ DataViewObject::write(JSContext* cx, Handle<DataViewObject*> obj, const CallArgs
 
     // Step 4.
     uint64_t getIndex;
-    if (!ToIndex(cx, args.get(0), &getIndex))
+    if (!ToIndex(cx, args.get(0), &getIndex)) {
         return false;
+    }
 
     // Step 5. Should just call ToNumber (unobservable)
     NativeType value;
-    if (!WebIDLCast(cx, args.get(1), &value))
+    if (!WebIDLCast(cx, args.get(1), &value)) {
         return false;
+    }
 
 #ifdef JS_MORE_DETERMINISTIC
     // See the comment in ElementSpecific::doubleToNative.
-    if (TypeIsFloatingPoint<NativeType>())
+    if (TypeIsFloatingPoint<NativeType>()) {
         value = JS::CanonicalizeNaN(value);
+    }
 #endif
 
     // Step 6.
     bool isLittleEndian = args.length() >= 3 && ToBoolean(args[2]);
 
     // Steps 7-8.
-    if (obj->arrayBufferEither().isDetached()) {
+    if (obj->hasDetachedBuffer()) {
         JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_TYPED_ARRAY_DETACHED);
         return false;
     }
@@ -488,8 +509,9 @@ DataViewObject::write(JSContext* cx, Handle<DataViewObject*> obj, const CallArgs
     bool isSharedMemory;
     SharedMem<uint8_t*> data = DataViewObject::getDataPointer<NativeType>(cx, obj, getIndex,
                                                                           &isSharedMemory);
-    if (!data)
+    if (!data) {
         return false;
+    }
 
     // Step 14.
     if (isSharedMemory) {
@@ -510,8 +532,9 @@ DataViewObject::getInt8Impl(JSContext* cx, const CallArgs& args)
     Rooted<DataViewObject*> thisView(cx, &args.thisv().toObject().as<DataViewObject>());
 
     int8_t val;
-    if (!read(cx, thisView, args, &val))
+    if (!read(cx, thisView, args, &val)) {
         return false;
+    }
     args.rval().setInt32(val);
     return true;
 }
@@ -531,8 +554,9 @@ DataViewObject::getUint8Impl(JSContext* cx, const CallArgs& args)
     Rooted<DataViewObject*> thisView(cx, &args.thisv().toObject().as<DataViewObject>());
 
     uint8_t val;
-    if (!read(cx, thisView, args, &val))
+    if (!read(cx, thisView, args, &val)) {
         return false;
+    }
     args.rval().setInt32(val);
     return true;
 }
@@ -552,8 +576,9 @@ DataViewObject::getInt16Impl(JSContext* cx, const CallArgs& args)
     Rooted<DataViewObject*> thisView(cx, &args.thisv().toObject().as<DataViewObject>());
 
     int16_t val;
-    if (!read(cx, thisView, args, &val))
+    if (!read(cx, thisView, args, &val)) {
         return false;
+    }
     args.rval().setInt32(val);
     return true;
 }
@@ -573,8 +598,9 @@ DataViewObject::getUint16Impl(JSContext* cx, const CallArgs& args)
     Rooted<DataViewObject*> thisView(cx, &args.thisv().toObject().as<DataViewObject>());
 
     uint16_t val;
-    if (!read(cx, thisView, args, &val))
+    if (!read(cx, thisView, args, &val)) {
         return false;
+    }
     args.rval().setInt32(val);
     return true;
 }
@@ -594,8 +620,9 @@ DataViewObject::getInt32Impl(JSContext* cx, const CallArgs& args)
     Rooted<DataViewObject*> thisView(cx, &args.thisv().toObject().as<DataViewObject>());
 
     int32_t val;
-    if (!read(cx, thisView, args, &val))
+    if (!read(cx, thisView, args, &val)) {
         return false;
+    }
     args.rval().setInt32(val);
     return true;
 }
@@ -615,8 +642,9 @@ DataViewObject::getUint32Impl(JSContext* cx, const CallArgs& args)
     Rooted<DataViewObject*> thisView(cx, &args.thisv().toObject().as<DataViewObject>());
 
     uint32_t val;
-    if (!read(cx, thisView, args, &val))
+    if (!read(cx, thisView, args, &val)) {
         return false;
+    }
     args.rval().setNumber(val);
     return true;
 }
@@ -636,8 +664,9 @@ DataViewObject::getFloat32Impl(JSContext* cx, const CallArgs& args)
     Rooted<DataViewObject*> thisView(cx, &args.thisv().toObject().as<DataViewObject>());
 
     float val;
-    if (!read(cx, thisView, args, &val))
+    if (!read(cx, thisView, args, &val)) {
         return false;
+    }
 
     args.rval().setDouble(CanonicalizeNaN(val));
     return true;
@@ -658,8 +687,9 @@ DataViewObject::getFloat64Impl(JSContext* cx, const CallArgs& args)
     Rooted<DataViewObject*> thisView(cx, &args.thisv().toObject().as<DataViewObject>());
 
     double val;
-    if (!read(cx, thisView, args, &val))
+    if (!read(cx, thisView, args, &val)) {
         return false;
+    }
 
     args.rval().setDouble(CanonicalizeNaN(val));
     return true;
@@ -679,8 +709,9 @@ DataViewObject::setInt8Impl(JSContext* cx, const CallArgs& args)
 
     Rooted<DataViewObject*> thisView(cx, &args.thisv().toObject().as<DataViewObject>());
 
-    if (!write<int8_t>(cx, thisView, args))
+    if (!write<int8_t>(cx, thisView, args)) {
         return false;
+    }
     args.rval().setUndefined();
     return true;
 }
@@ -699,8 +730,9 @@ DataViewObject::setUint8Impl(JSContext* cx, const CallArgs& args)
 
     Rooted<DataViewObject*> thisView(cx, &args.thisv().toObject().as<DataViewObject>());
 
-    if (!write<uint8_t>(cx, thisView, args))
+    if (!write<uint8_t>(cx, thisView, args)) {
         return false;
+    }
     args.rval().setUndefined();
     return true;
 }
@@ -719,8 +751,9 @@ DataViewObject::setInt16Impl(JSContext* cx, const CallArgs& args)
 
     Rooted<DataViewObject*> thisView(cx, &args.thisv().toObject().as<DataViewObject>());
 
-    if (!write<int16_t>(cx, thisView, args))
+    if (!write<int16_t>(cx, thisView, args)) {
         return false;
+    }
     args.rval().setUndefined();
     return true;
 }
@@ -739,8 +772,9 @@ DataViewObject::setUint16Impl(JSContext* cx, const CallArgs& args)
 
     Rooted<DataViewObject*> thisView(cx, &args.thisv().toObject().as<DataViewObject>());
 
-    if (!write<uint16_t>(cx, thisView, args))
+    if (!write<uint16_t>(cx, thisView, args)) {
         return false;
+    }
     args.rval().setUndefined();
     return true;
 }
@@ -759,8 +793,9 @@ DataViewObject::setInt32Impl(JSContext* cx, const CallArgs& args)
 
     Rooted<DataViewObject*> thisView(cx, &args.thisv().toObject().as<DataViewObject>());
 
-    if (!write<int32_t>(cx, thisView, args))
+    if (!write<int32_t>(cx, thisView, args)) {
         return false;
+    }
     args.rval().setUndefined();
     return true;
 }
@@ -779,8 +814,9 @@ DataViewObject::setUint32Impl(JSContext* cx, const CallArgs& args)
 
     Rooted<DataViewObject*> thisView(cx, &args.thisv().toObject().as<DataViewObject>());
 
-    if (!write<uint32_t>(cx, thisView, args))
+    if (!write<uint32_t>(cx, thisView, args)) {
         return false;
+    }
     args.rval().setUndefined();
     return true;
 }
@@ -799,8 +835,9 @@ DataViewObject::setFloat32Impl(JSContext* cx, const CallArgs& args)
 
     Rooted<DataViewObject*> thisView(cx, &args.thisv().toObject().as<DataViewObject>());
 
-    if (!write<float>(cx, thisView, args))
+    if (!write<float>(cx, thisView, args)) {
         return false;
+    }
     args.rval().setUndefined();
     return true;
 }
@@ -819,8 +856,9 @@ DataViewObject::setFloat64Impl(JSContext* cx, const CallArgs& args)
 
     Rooted<DataViewObject*> thisView(cx, &args.thisv().toObject().as<DataViewObject>());
 
-    if (!write<double>(cx, thisView, args))
+    if (!write<double>(cx, thisView, args)) {
         return false;
+    }
     args.rval().setUndefined();
     return true;
 }
@@ -854,7 +892,7 @@ DataViewObject::byteLengthGetterImpl(JSContext* cx, const CallArgs& args)
     Rooted<DataViewObject*> thisView(cx, &args.thisv().toObject().as<DataViewObject>());
 
     // Step 6.
-    if (thisView->arrayBufferEither().isDetached()) {
+    if (thisView->hasDetachedBuffer()) {
         JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_TYPED_ARRAY_DETACHED);
         return false;
     }
@@ -877,7 +915,7 @@ DataViewObject::byteOffsetGetterImpl(JSContext* cx, const CallArgs& args)
     Rooted<DataViewObject*> thisView(cx, &args.thisv().toObject().as<DataViewObject>());
 
     // Step 6.
-    if (thisView->arrayBufferEither().isDetached()) {
+    if (thisView->hasDetachedBuffer()) {
         JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_TYPED_ARRAY_DETACHED);
         return false;
     }
@@ -893,13 +931,6 @@ DataViewObject::byteOffsetGetter(JSContext* cx, unsigned argc, Value* vp)
     CallArgs args = CallArgsFromVp(argc, vp);
     return CallNonGenericMethod<is, byteOffsetGetterImpl>(cx, args);
 }
-
-const Class DataViewObject::protoClass_ = {
-    js_Object_str,
-    JSCLASS_HAS_CACHED_PROTO(JSProto_DataView),
-    JS_NULL_CLASS_OPS,
-    &DataViewObject::classSpec_
-};
 
 JSObject*
 DataViewObject::CreatePrototype(JSContext* cx, JSProtoKey key)
@@ -923,7 +954,7 @@ static const ClassOps DataViewObjectClassOps = {
 
 const ClassSpec DataViewObject::classSpec_ = {
     GenericCreateConstructor<DataViewObject::construct, 3, gc::AllocKind::FUNCTION>,
-    DataViewObject::CreatePrototype,
+    GenericCreatePrototype<DataViewObject>,
     nullptr,
     nullptr,
     DataViewObject::methods,
@@ -933,13 +964,21 @@ const ClassSpec DataViewObject::classSpec_ = {
 const Class DataViewObject::class_ = {
     "DataView",
     JSCLASS_HAS_PRIVATE |
-    JSCLASS_HAS_RESERVED_SLOTS(TypedArrayObject::RESERVED_SLOTS) |
+    JSCLASS_HAS_RESERVED_SLOTS(DataViewObject::RESERVED_SLOTS) |
     JSCLASS_HAS_CACHED_PROTO(JSProto_DataView),
     &DataViewObjectClassOps,
     &DataViewObject::classSpec_
 };
 
+const Class DataViewObject::protoClass_ = {
+    js_Object_str,
+    JSCLASS_HAS_CACHED_PROTO(JSProto_DataView),
+    JS_NULL_CLASS_OPS,
+    &DataViewObject::classSpec_
+};
+
 const JSFunctionSpec DataViewObject::methods[] = {
+    // clang-format off
     JS_FN("getInt8",    DataViewObject::fun_getInt8,      1,0),
     JS_FN("getUint8",   DataViewObject::fun_getUint8,     1,0),
     JS_FN("getInt16",   DataViewObject::fun_getInt16,     1,0),
@@ -957,6 +996,7 @@ const JSFunctionSpec DataViewObject::methods[] = {
     JS_FN("setFloat32", DataViewObject::fun_setFloat32,   2,0),
     JS_FN("setFloat64", DataViewObject::fun_setFloat64,   2,0),
     JS_FS_END
+    // clang-format on
 };
 
 const JSPropertySpec DataViewObject::properties[] = {
@@ -966,14 +1006,6 @@ const JSPropertySpec DataViewObject::properties[] = {
     JS_STRING_SYM_PS(toStringTag, "DataView", JSPROP_READONLY),
     JS_PS_END
 };
-
-void
-DataViewObject::notifyBufferDetached(void* newData)
-{
-    setFixedSlot(TypedArrayObject::LENGTH_SLOT, Int32Value(0));
-    setFixedSlot(TypedArrayObject::BYTEOFFSET_SLOT, Int32Value(0));
-    setPrivate(newData);
-}
 
 JS_FRIEND_API(bool)
 JS_IsDataViewObject(JSObject* obj)
@@ -986,8 +1018,9 @@ JS_FRIEND_API(uint32_t)
 JS_GetDataViewByteOffset(JSObject* obj)
 {
     obj = CheckedUnwrap(obj);
-    if (!obj)
+    if (!obj) {
         return 0;
+    }
     return obj->as<DataViewObject>().byteOffset();
 }
 
@@ -995,8 +1028,9 @@ JS_FRIEND_API(void*)
 JS_GetDataViewData(JSObject* obj, bool* isSharedMemory, const JS::AutoRequireNoGC&)
 {
     obj = CheckedUnwrap(obj);
-    if (!obj)
+    if (!obj) {
         return nullptr;
+    }
     DataViewObject& dv = obj->as<DataViewObject>();
     *isSharedMemory = dv.isSharedMemory();
     return dv.dataPointerEither().unwrap(/*safe - caller sees isSharedMemory*/);
@@ -1006,8 +1040,9 @@ JS_FRIEND_API(uint32_t)
 JS_GetDataViewByteLength(JSObject* obj)
 {
     obj = CheckedUnwrap(obj);
-    if (!obj)
+    if (!obj) {
         return 0;
+    }
     return obj->as<DataViewObject>().byteLength();
 }
 
@@ -1016,8 +1051,9 @@ JS_NewDataView(JSContext* cx, HandleObject buffer, uint32_t byteOffset, int32_t 
 {
     JSProtoKey key = JSCLASS_CACHED_PROTO_KEY(&DataViewObject::class_);
     RootedObject constructor(cx, GlobalObject::getOrCreateConstructor(cx, key));
-    if (!constructor)
+    if (!constructor) {
         return nullptr;
+    }
 
     FixedConstructArgs<3> cargs(cx);
 
@@ -1027,7 +1063,8 @@ JS_NewDataView(JSContext* cx, HandleObject buffer, uint32_t byteOffset, int32_t 
 
     RootedValue fun(cx, ObjectValue(*constructor));
     RootedObject obj(cx);
-    if (!Construct(cx, fun, cargs, fun, &obj))
+    if (!Construct(cx, fun, cargs, fun, &obj)) {
         return nullptr;
+    }
     return obj;
 }

@@ -58,8 +58,8 @@ impl SceneProperties {
     pub fn flush_pending_updates(&mut self) -> bool {
         let mut properties_changed = false;
 
-        if let Some(pending_properties) = self.pending_properties.take() {
-            if pending_properties != self.current_properties {
+        if let Some(ref pending_properties) = self.pending_properties {
+            if *pending_properties != self.current_properties {
                 self.transform_properties.clear();
                 self.float_properties.clear();
 
@@ -73,7 +73,7 @@ impl SceneProperties {
                         .insert(property.key.id, property.value);
                 }
 
-                self.current_properties = pending_properties;
+                self.current_properties = pending_properties.clone();
                 properties_changed = true;
             }
         }
@@ -188,6 +188,14 @@ impl Scene {
     pub fn update_epoch(&mut self, pipeline_id: PipelineId, epoch: Epoch) {
         self.pipeline_epochs.insert(pipeline_id, epoch);
     }
+
+    pub fn has_root_pipeline(&self) -> bool {
+        if let Some(ref root_id) = self.root_pipeline_id {
+            return self.pipelines.contains_key(root_id);
+        }
+
+        false
+    }
 }
 
 /// An arbitrary number which we assume opacity is invisible below.
@@ -211,7 +219,9 @@ impl FilterOpHelpers for FilterOp {
             FilterOp::Saturate(..) |
             FilterOp::Sepia(..) |
             FilterOp::DropShadow(..) |
-            FilterOp::ColorMatrix(..) => true,
+            FilterOp::ColorMatrix(..) |
+            FilterOp::SrgbToLinear |
+            FilterOp::LinearToSrgb  => true,
             FilterOp::Opacity(_, amount) => {
                 amount > OPACITY_EPSILON
             }
@@ -240,6 +250,7 @@ impl FilterOpHelpers for FilterOp {
                            0.0, 0.0, 0.0, 1.0,
                            0.0, 0.0, 0.0, 0.0]
             }
+            FilterOp::SrgbToLinear | FilterOp::LinearToSrgb => false,
         }
     }
 }

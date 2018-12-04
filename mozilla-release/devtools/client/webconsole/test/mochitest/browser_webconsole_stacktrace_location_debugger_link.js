@@ -19,17 +19,13 @@ const TEST_URI = "http://example.com/browser/devtools/client/webconsole/" +
                  "test-stacktrace-location-debugger-link.html";
 
 add_task(async function() {
-  // Force the new debugger UI, in case this gets uplifted with the old
-  // debugger still turned on
-  Services.prefs.setBoolPref("devtools.debugger.new-debugger-frontend", true);
   Services.prefs.setBoolPref("devtools.webconsole.filter.log", true);
   registerCleanupFunction(async function() {
-    Services.prefs.clearUserPref("devtools.debugger.new-debugger-frontend");
     Services.prefs.clearUserPref("devtools.webconsole.filter.log");
   });
 
   const hud = await openNewTabAndConsole(TEST_URI);
-  const target = TargetFactory.forTab(gBrowser.selectedTab);
+  const target = await TargetFactory.forTab(gBrowser.selectedTab);
   const toolbox = gDevTools.getToolbox(target);
 
   await testOpenInDebugger(hud, toolbox, "console.trace()");

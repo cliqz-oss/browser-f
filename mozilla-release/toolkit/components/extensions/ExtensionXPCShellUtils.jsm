@@ -131,7 +131,7 @@ class ContentPage {
 
     chromeShell.createAboutBlankContentViewer(system);
     chromeShell.useGlobalHistory = false;
-    chromeShell.loadURI("chrome://extensions/content/dummy.xul", 0, null, null, null);
+    chromeShell.loadURI("chrome://extensions/content/dummy.xul", 0, null, null, null, system);
 
     await promiseObserved("chrome-document-global-created",
                           win => win.document == chromeShell.document);
@@ -182,7 +182,9 @@ class ContentPage {
   async loadURL(url, redirectUrl = undefined) {
     await this.browserReady;
 
-    this.browser.loadURI(url);
+    this.browser.loadURI(url, {
+      triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+    });
     return promiseBrowserLoaded(this.browser, url, redirectUrl);
   }
 
@@ -572,11 +574,12 @@ class AOMExtensionWrapper extends ExtensionWrapper {
 }
 
 class InstallableWrapper extends AOMExtensionWrapper {
-  constructor(testScope, xpiFile, installType) {
+  constructor(testScope, xpiFile, installType, installTelemetryInfo) {
     super(testScope);
 
     this.file = xpiFile;
     this.installType = installType;
+    this.installTelemetryInfo = installTelemetryInfo;
 
     this.cleanupFiles = [xpiFile];
   }
@@ -614,7 +617,7 @@ class InstallableWrapper extends AOMExtensionWrapper {
         return Promise.reject(e);
       });
     } else if (this.installType === "permanent") {
-      return AddonManager.getInstallForFile(xpiFile).then(install => {
+      return AddonManager.getInstallForFile(xpiFile, null, this.installTelemetryInfo).then(install => {
         let listener = {
           onInstallFailed: () => {
             this.state = "unloaded";
@@ -770,7 +773,7 @@ var ExtensionTestUtils = {
     if (data.useAddonManager) {
       let xpiFile = Extension.generateXPI(data);
 
-      return this.loadExtensionXPI(xpiFile, data.useAddonManager);
+      return this.loadExtensionXPI(xpiFile, data.useAddonManager, data.amInstallTelemetryInfo);
     }
 
     let extension = Extension.generate(data);
@@ -778,8 +781,8 @@ var ExtensionTestUtils = {
     return new ExtensionWrapper(this.currentScope, extension);
   },
 
-  loadExtensionXPI(xpiFile, useAddonManager = "temporary") {
-    return new InstallableWrapper(this.currentScope, xpiFile, useAddonManager);
+  loadExtensionXPI(xpiFile, useAddonManager = "temporary", installTelemetryInfo) {
+    return new InstallableWrapper(this.currentScope, xpiFile, useAddonManager, installTelemetryInfo);
   },
 
   // Create a wrapper for a webextension that will be installed

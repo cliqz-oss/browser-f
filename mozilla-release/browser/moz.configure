@@ -6,6 +6,21 @@
 
 imply_option('MOZ_PLACES', True)
 imply_option('MOZ_SERVICES_HEALTHREPORT', True)
+<<<<<<< HEAD
 imply_option('MOZ_SERVICES_SYNC', False)
+||||||| merged common ancestors
+imply_option('MOZ_SERVICES_SYNC', True)
+=======
+imply_option('MOZ_SERVICES_SYNC', True)
+imply_option('MOZ_DEDICATED_PROFILES', True)
+imply_option('MOZ_BLOCK_PROFILE_DOWNGRADE', True)
+
+with only_when(target_is_linux & compile_environment):
+    option(env='MOZ_NO_PIE_COMPAT',
+           help='Enable non-PIE wrapper')
+
+    set_config('MOZ_NO_PIE_COMPAT',
+               depends_if('MOZ_NO_PIE_COMPAT')(lambda _: True))
+>>>>>>> 1252422770bd00baba4abc8db62a8fd3000e9627
 
 include('../toolkit/moz.configure')

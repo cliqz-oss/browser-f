@@ -18,9 +18,10 @@ async function ensurePreloaded(gBrowser) {
   gBrowser._createPreloadBrowser();
   // We cannot use the regular BrowserTestUtils helper for waiting here, since that
   // would try to insert the preloaded browser, which would only break things.
-  await BrowserTestUtils.waitForCondition( () => {
-    let doc = gBrowser._preloadedBrowser.contentDocumentAsCPOW;
-    return doc && doc.readyState == "complete";
+  await ContentTask.spawn(gBrowser._preloadedBrowser, null, async () => {
+    await ContentTaskUtils.waitForCondition(() => {
+      return content.document && content.document.readyState == "complete";
+    });
   });
 }
 
@@ -54,7 +55,7 @@ add_task(async function(){
   is(ppmm.childCount, originalChildCount, "Preloaded browser should (still) not create a new content process.")
 
   // Navigate to a content page from the parent side.
-  tab2.linkedBrowser.loadURI(TEST_URL);
+  BrowserTestUtils.loadURI(tab2.linkedBrowser, TEST_URL);
   await BrowserTestUtils.browserLoaded(tab2.linkedBrowser, false, TEST_URL);
   is(ppmm.childCount, originalChildCount + 1,
      "Navigating away from the preloaded browser (parent side) should create a new content process.")
@@ -97,7 +98,7 @@ add_task(async function preloaded_state_attribute() {
   is(preloadedTabState, PRELOADED_STATE, "The preloaded browser has the correct attribute");
 
   // Navigate away and check that the attribute has been removed altogether
-  gBrowser.selectedBrowser.loadURI(TEST_URL);
+  BrowserTestUtils.loadURI(gBrowser.selectedBrowser, TEST_URL);
   let navigatedTabHasState = gBrowser.selectedBrowser.hasAttribute("preloadedState");
   ok(!navigatedTabHasState, "Correctly removed the preloadState attribute when navigating away");
 
