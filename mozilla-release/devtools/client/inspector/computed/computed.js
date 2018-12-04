@@ -6,15 +6,15 @@
 
 "use strict";
 
+const promise = require("promise");
+const flags = require("devtools/shared/flags");
 const ToolDefinitions = require("devtools/client/definitions").Tools;
 const CssLogic = require("devtools/shared/inspector/css-logic");
 const {ELEMENT_STYLE} = require("devtools/shared/specs/styles");
-const promise = require("promise");
 const OutputParser = require("devtools/client/shared/output-parser");
 const {PrefObserver} = require("devtools/client/shared/prefs");
 const {createChild} = require("devtools/client/inspector/shared/utils");
 const {gDevTools} = require("devtools/client/framework/devtools");
-const {getCssProperties} = require("devtools/shared/fronts/css-properties");
 const {
   VIEW_NODE_SELECTOR_TYPE,
   VIEW_NODE_PROPERTY_TYPE,
@@ -157,8 +157,7 @@ function CssComputedView(inspector, document, pageStyle) {
 
   this.propertyViews = [];
 
-  const cssProperties = getCssProperties(inspector.toolbox);
-  this._outputParser = new OutputParser(document, cssProperties);
+  this._outputParser = new OutputParser(document, inspector.cssProperties);
 
   // Create bound methods.
   this.focusWindow = this.focusWindow.bind(this);
@@ -183,13 +182,19 @@ function CssComputedView(inspector, document, pageStyle) {
   this.styleDocument.addEventListener("mousedown", this.focusWindow);
   this.element.addEventListener("click", this._onClick);
   this.element.addEventListener("contextmenu", this._onContextMenu);
-  this.element.addEventListener("mousemove", () => {
-    this.addHighlightersToView();
-  }, { once: true });
   this.searchField.addEventListener("input", this._onFilterStyles);
   this.searchClearButton.addEventListener("click", this._onClearSearch);
   this.includeBrowserStylesCheckbox.addEventListener("input",
     this._onIncludeBrowserStyles);
+
+  if (flags.testing) {
+    // In tests, we start listening immediately to avoid having to simulate a mousemove.
+    this.highlighters.addToView(this);
+  } else {
+    this.element.addEventListener("mousemove", () => {
+      this.highlighters.addToView(this);
+    }, { once: true });
+  }
 
   this.searchClearButton.hidden = true;
 
@@ -730,14 +735,6 @@ CssComputedView.prototype = {
     } catch (e) {
       console.error(e);
     }
-  },
-
-  /**
-   * Adds the highlighters overlay to the computed view. This is called by the "mousemove"
-   * event handler and in shared-head.js when opening and selecting the computed view.
-   */
-  addHighlightersToView() {
-    this.highlighters.addToView(this);
   },
 
   /**

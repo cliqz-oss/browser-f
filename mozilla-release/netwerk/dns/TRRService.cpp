@@ -598,9 +598,14 @@ TRRService::Notify(nsITimer *aTimer)
 
 
 void
-TRRService::TRRIsOkay(bool aWorks)
+TRRService::TRRIsOkay(enum TrrOkay aReason)
 {
-  if (aWorks) {
+  Telemetry::AccumulateCategorical(aReason == OKAY_NORMAL ?
+                                   Telemetry::LABELS_DNS_TRR_SUCCESS::Fine :
+                                   (aReason == OKAY_TIMEOUT ?
+                                    Telemetry::LABELS_DNS_TRR_SUCCESS::Timeout :
+                                    Telemetry::LABELS_DNS_TRR_SUCCESS::Bad));
+  if (aReason == OKAY_NORMAL) {
     mTRRFailures = 0;
   } else if ((mMode == MODE_TRRFIRST) && (mConfirmationState == CONFIRM_OK)) {
     // only count failures while in OK state
@@ -664,6 +669,15 @@ TRRService::CompleteLookup(nsHostRecord *rec, nsresult status, AddrInfo *aNewRRS
     LOG(("TRR says %s doesn't resolve as NS!\n", newRRSet->mHostName.get()));
     TRRBlacklist(newRRSet->mHostName, pb, false);
   }
+  return LOOKUP_OK;
+}
+
+AHostResolver::LookupStatus
+TRRService::CompleteLookupByType(nsHostRecord *, nsresult,
+                                 const nsTArray<nsCString> *aResult,
+                                 uint32_t aTtl,
+                                 bool aPb)
+{
   return LOOKUP_OK;
 }
 

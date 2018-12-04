@@ -224,8 +224,9 @@ class Assembler : public AssemblerX86Shared
     }
     void addPendingJump(JmpSrc src, ImmPtr target, RelocationKind kind) {
         enoughMemory_ &= jumps_.append(RelativePatch(src.offset(), target.value, kind));
-        if (kind == RelocationKind::JITCODE)
+        if (kind == RelocationKind::JITCODE) {
             writeRelocation(src);
+        }
     }
 
   public:
@@ -313,10 +314,11 @@ class Assembler : public AssemblerX86Shared
         // Use xor for setting registers to zero, as it is specially optimized
         // for this purpose on modern hardware. Note that it does clobber FLAGS
         // though.
-        if (imm.value == 0)
+        if (imm.value == 0) {
             xorl(dest, dest);
-        else
+        } else {
             movl(imm, dest);
+        }
     }
     void mov(ImmPtr imm, Register dest) {
         mov(ImmWord(uintptr_t(imm.value)), dest);
@@ -457,20 +459,11 @@ class Assembler : public AssemblerX86Shared
         MOZ_ASSERT(dest.size() == 16);
         masm.vhaddpd_rr(src.encoding(), dest.encoding());
     }
-    void vsubpd(const Operand& src1, FloatRegister src0, FloatRegister dest) {
+    void vsubpd(FloatRegister src1, FloatRegister src0, FloatRegister dest) {
         MOZ_ASSERT(HasSSE2());
         MOZ_ASSERT(src0.size() == 16);
         MOZ_ASSERT(dest.size() == 16);
-        switch (src1.kind()) {
-          case Operand::MEM_REG_DISP:
-            masm.vsubpd_mr(src1.disp(), src1.base(), src0.encoding(), dest.encoding());
-            break;
-          case Operand::MEM_ADDRESS32:
-            masm.vsubpd_mr(src1.address(), src0.encoding(), dest.encoding());
-            break;
-          default:
-            MOZ_CRASH("unexpected operand kind");
-        }
+        masm.vsubpd_rr(src1.encoding(), src0.encoding(), dest.encoding());
     }
 
     void vpunpckldq(FloatRegister src1, FloatRegister src0, FloatRegister dest) {
@@ -1070,8 +1063,9 @@ class Assembler : public AssemblerX86Shared
 static inline bool
 GetTempRegForIntArg(uint32_t usedIntArgs, uint32_t usedFloatArgs, Register* out)
 {
-    if (usedIntArgs >= NumCallTempNonArgRegs)
+    if (usedIntArgs >= NumCallTempNonArgRegs) {
         return false;
+    }
     *out = CallTempNonArgRegs[usedIntArgs];
     return true;
 }

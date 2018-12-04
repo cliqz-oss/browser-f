@@ -23,10 +23,12 @@ LIRGeneratorShared::ShouldReorderCommutative(MDefinition* lhs, MDefinition* rhs,
     MOZ_ASSERT(rhs->hasDefUses());
 
     // Ensure that if there is a constant, then it is in rhs.
-    if (rhs->isConstant())
+    if (rhs->isConstant()) {
         return false;
-    if (lhs->isConstant())
+    }
+    if (lhs->isConstant()) {
         return true;
+    }
 
     // Since clobbering binary operations clobber the left operand, prefer a
     // non-constant lhs operand with no further uses. To be fully precise, we
@@ -35,11 +37,13 @@ LIRGeneratorShared::ShouldReorderCommutative(MDefinition* lhs, MDefinition* rhs,
     bool rhsSingleUse = rhs->hasOneDefUse();
     bool lhsSingleUse = lhs->hasOneDefUse();
     if (rhsSingleUse) {
-        if (!lhsSingleUse)
+        if (!lhsSingleUse) {
             return true;
+        }
     } else {
-        if (lhsSingleUse)
+        if (lhsSingleUse) {
             return false;
+        }
     }
 
     // If this is a reduction-style computation, such as
@@ -73,7 +77,7 @@ LIRGeneratorShared::ReorderCommutative(MDefinition** lhsp, MDefinition** rhsp, M
 }
 
 void
-LIRGeneratorShared::defineTypedPhi(MPhi* phi, size_t lirIndex)
+LIRGeneratorShared::definePhiOneRegister(MPhi* phi, size_t lirIndex)
 {
     LPhi* lir = current->getPhi(lirIndex);
 
@@ -83,6 +87,26 @@ LIRGeneratorShared::defineTypedPhi(MPhi* phi, size_t lirIndex)
     lir->setDef(0, LDefinition(vreg, LDefinition::TypeFrom(phi->type())));
     annotate(lir);
 }
+
+#ifdef JS_NUNBOX32
+void
+LIRGeneratorShared::definePhiTwoRegisters(MPhi* phi, size_t lirIndex)
+{
+    LPhi* type = current->getPhi(lirIndex + VREG_TYPE_OFFSET);
+    LPhi* payload = current->getPhi(lirIndex + VREG_DATA_OFFSET);
+
+    uint32_t typeVreg = getVirtualRegister();
+    phi->setVirtualRegister(typeVreg);
+
+    uint32_t payloadVreg = getVirtualRegister();
+    MOZ_ASSERT(typeVreg + 1 == payloadVreg);
+
+    type->setDef(0, LDefinition(typeVreg, LDefinition::TYPE));
+    payload->setDef(0, LDefinition(payloadVreg, LDefinition::PAYLOAD));
+    annotate(type);
+    annotate(payload);
+}
+#endif
 
 void
 LIRGeneratorShared::lowerTypedPhiInput(MPhi* phi, uint32_t inputPosition, LBlock* block, size_t lirIndex)
@@ -95,12 +119,14 @@ LIRGeneratorShared::lowerTypedPhiInput(MPhi* phi, uint32_t inputPosition, LBlock
 LRecoverInfo*
 LIRGeneratorShared::getRecoverInfo(MResumePoint* rp)
 {
-    if (cachedRecoverInfo_ && cachedRecoverInfo_->mir() == rp)
+    if (cachedRecoverInfo_ && cachedRecoverInfo_->mir() == rp) {
         return cachedRecoverInfo_;
+    }
 
     LRecoverInfo* recoverInfo = LRecoverInfo::New(gen, rp);
-    if (!recoverInfo)
+    if (!recoverInfo) {
         return nullptr;
+    }
 
     cachedRecoverInfo_ = recoverInfo;
     return recoverInfo;
@@ -130,12 +156,14 @@ LSnapshot*
 LIRGeneratorShared::buildSnapshot(LInstruction* ins, MResumePoint* rp, BailoutKind kind)
 {
     LRecoverInfo* recoverInfo = getRecoverInfo(rp);
-    if (!recoverInfo)
+    if (!recoverInfo) {
         return nullptr;
+    }
 
     LSnapshot* snapshot = LSnapshot::New(gen, recoverInfo, kind);
-    if (!snapshot)
+    if (!snapshot) {
         return nullptr;
+    }
 
     size_t index = 0;
     for (LRecoverInfo::OperandIter it(recoverInfo); !it; ++it) {
@@ -144,15 +172,17 @@ LIRGeneratorShared::buildSnapshot(LInstruction* ins, MResumePoint* rp, BailoutKi
 
         MDefinition* ins = *it;
 
-        if (ins->isRecoveredOnBailout())
+        if (ins->isRecoveredOnBailout()) {
             continue;
+        }
 
         LAllocation* type = snapshot->typeOfSlot(index);
         LAllocation* payload = snapshot->payloadOfSlot(index);
         ++index;
 
-        if (ins->isBox())
+        if (ins->isBox()) {
             ins = ins->toBox()->getOperand(0);
+        }
 
         // Guards should never be eliminated.
         MOZ_ASSERT_IF(ins->isUnused(), !ins->isGuard());
@@ -188,12 +218,14 @@ LSnapshot*
 LIRGeneratorShared::buildSnapshot(LInstruction* ins, MResumePoint* rp, BailoutKind kind)
 {
     LRecoverInfo* recoverInfo = getRecoverInfo(rp);
-    if (!recoverInfo)
+    if (!recoverInfo) {
         return nullptr;
+    }
 
     LSnapshot* snapshot = LSnapshot::New(gen, recoverInfo, kind);
-    if (!snapshot)
+    if (!snapshot) {
         return nullptr;
+    }
 
     size_t index = 0;
     for (LRecoverInfo::OperandIter it(recoverInfo); !it; ++it) {
@@ -202,11 +234,13 @@ LIRGeneratorShared::buildSnapshot(LInstruction* ins, MResumePoint* rp, BailoutKi
 
         MDefinition* def = *it;
 
-        if (def->isRecoveredOnBailout())
+        if (def->isRecoveredOnBailout()) {
             continue;
+        }
 
-        if (def->isBox())
+        if (def->isBox()) {
             def = def->toBox()->getOperand(0);
+        }
 
         // Guards should never be eliminated.
         MOZ_ASSERT_IF(def->isUnused(), !def->isGuard());
@@ -238,10 +272,12 @@ LIRGeneratorShared::assignSnapshot(LInstruction* ins, BailoutKind kind)
     MOZ_ASSERT(ins->id() == 0);
 
     LSnapshot* snapshot = buildSnapshot(ins, lastResumePoint_, kind);
-    if (snapshot)
-        ins->assignSnapshot(snapshot);
-    else
+    if (!snapshot) {
         abort(AbortReason::Alloc, "buildSnapshot failed");
+        return;
+    }
+
+    ins->assignSnapshot(snapshot);
 }
 
 void
@@ -261,7 +297,9 @@ LIRGeneratorShared::assignSafepoint(LInstruction* ins, MInstruction* mir, Bailou
 
     osiPoint_ = new(alloc()) LOsiPoint(ins->safepoint(), postSnapshot);
 
-    if (!lirGraph_.noteNeedsSafepoint(ins))
+    if (!lirGraph_.noteNeedsSafepoint(ins)) {
         abort(AbortReason::Alloc, "noteNeedsSafepoint failed");
+        return;
+    }
 }
 

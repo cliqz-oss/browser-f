@@ -21,8 +21,8 @@ function test() {
 
   let toolbox;
 
-  addTab(URL_1).then(function() {
-    let target = TargetFactory.forTab(gBrowser.selectedTab);
+  addTab(URL_1).then(async function() {
+    let target = await TargetFactory.forTab(gBrowser.selectedTab);
     gDevTools.showToolbox(target, null, Toolbox.HostType.BOTTOM)
       .then(function(aToolbox) {
         toolbox = aToolbox;
@@ -49,7 +49,7 @@ function test() {
     // navigate to different local url and check title
       .then(function() {
         const onTitleChanged = waitForTitleChange(toolbox);
-        gBrowser.loadURI(URL_2);
+        BrowserTestUtils.loadURI(gBrowser, URL_2);
         return onTitleChanged;
       })
       .then(checkTitle.bind(null, NAME_2, URL_2, "url changed"))
@@ -57,7 +57,7 @@ function test() {
     // navigate to a real url and check title
       .then(() => {
         const onTitleChanged = waitForTitleChange(toolbox);
-        gBrowser.loadURI(URL_3);
+        BrowserTestUtils.loadURI(gBrowser, URL_3);
         return onTitleChanged;
       })
       .then(checkTitle.bind(null, NAME_3, URL_3, "url changed"))
@@ -69,9 +69,9 @@ function test() {
         // destroying the toolbox.
         executeSoon(function() {
           toolbox.destroy()
-            .then(function() {
+            .then(async function() {
               // After destroying the toolbox, a fresh target is required.
-              target = TargetFactory.forTab(gBrowser.selectedTab);
+              target = await TargetFactory.forTab(gBrowser.selectedTab);
               return gDevTools.showToolbox(target, null, Toolbox.HostType.WINDOW);
             })
             .then(function(aToolbox) {

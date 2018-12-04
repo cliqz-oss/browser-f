@@ -44,7 +44,6 @@ browser.jar:
 #ifndef MOZILLA_OFFICIAL
         content/browser/browser-development-helpers.js (content/browser-development-helpers.js)
 #endif
-        content/browser/browser-feeds.js              (content/browser-feeds.js)
         content/browser/browser-fullScreenAndPointerLock.js  (content/browser-fullScreenAndPointerLock.js)
         content/browser/browser-fullZoom.js           (content/browser-fullZoom.js)
         content/browser/browser-gestureSupport.js     (content/browser-gestureSupport.js)
@@ -82,7 +81,6 @@ browser.jar:
 *       content/browser/pageinfo/pageInfo.xul         (content/pageinfo/pageInfo.xul)
         content/browser/pageinfo/pageInfo.js          (content/pageinfo/pageInfo.js)
         content/browser/pageinfo/pageInfo.css         (content/pageinfo/pageInfo.css)
-        content/browser/pageinfo/feeds.js             (content/pageinfo/feeds.js)
         content/browser/pageinfo/permissions.js       (content/pageinfo/permissions.js)
         content/browser/pageinfo/security.js          (content/pageinfo/security.js)
         content/browser/content-refreshblocker.js     (content/content-refreshblocker.js)

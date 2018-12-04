@@ -5,18 +5,18 @@ import org.mozilla.geckoview.GeckoResult.OnExceptionListener;
 import org.mozilla.geckoview.GeckoResult.OnValueListener;
 import org.mozilla.geckoview.test.util.UiThreadUtils;
 
+import android.os.Handler;
 import android.os.Looper;
-import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
 import android.support.test.annotation.UiThreadTest;
 import android.support.test.filters.MediumTest;
-import android.support.test.rule.UiThreadTestRule;
 import android.support.test.runner.AndroidJUnit4;
 
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.TimeoutException;
 
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertThat;
@@ -51,13 +51,6 @@ public class GeckoResultTest {
     @Before
     public void setup() {
         mDone = false;
-    }
-
-    @Test(expected = RuntimeException.class)
-    public void createWithoutLooper() {
-        // Without @UiThreadTest this will be run in a worker
-        // thread that does not have a Looper.
-        new GeckoResult<Integer>();
     }
 
     @Test
@@ -208,7 +201,7 @@ public class GeckoResultTest {
             }
         };
 
-        deferred.then(new OnExceptionListener<Void>() {
+        deferred.exceptionally(new OnExceptionListener<Void>() {
             @Override
             public GeckoResult<Void> onException(Throwable error) {
                 assertThat("Exception should match", error, equalTo(boom));
@@ -246,13 +239,13 @@ public class GeckoResultTest {
                 assertThat("Value should match", value, equalTo(42.0f));
                 return GeckoResult.fromException(new Exception("boom"));
             }
-        }).then(new OnExceptionListener<Void>() {
+        }).exceptionally(new OnExceptionListener<Void>() {
             @Override
             public GeckoResult<Void> onException(Throwable error) {
                 assertThat("Error message should match", error.getMessage(), equalTo("boom"));
                 throw new MockException();
             }
-        }).then(new OnExceptionListener<Void>() {
+        }).exceptionally(new OnExceptionListener<Void>() {
             @Override
             public GeckoResult<Void> onException(Throwable exception) {
                 assertThat("Exception should be MockException", exception, instanceOf(MockException.class));
@@ -269,7 +262,7 @@ public class GeckoResultTest {
     public void then_propagatedValue() {
         // The first GeckoResult only has an exception listener, so when the value 42 is
         // propagated to subsequent GeckoResult instances, the propagated value is coerced to null.
-        GeckoResult.fromValue(42).then(new OnExceptionListener<String>() {
+        GeckoResult.fromValue(42).exceptionally(new OnExceptionListener<String>() {
             @Override
             public GeckoResult<String> onException(Throwable exception) throws Throwable {
                 return null;
@@ -330,7 +323,7 @@ public class GeckoResultTest {
             public GeckoResult<Void> onValue(String value) throws Throwable {
                 return null;
             }
-        }).then(new OnExceptionListener<Void>() {
+        }).exceptionally(new OnExceptionListener<Void>() {
             @Override
             public GeckoResult<Void> onException(Throwable exception) throws Throwable {
                 assertThat("Exception should be expected",
@@ -341,5 +334,101 @@ public class GeckoResultTest {
         });
 
         waitUntilDone();
+    }
+
+    @Test(expected = IllegalThreadStateException.class)
+    public void noLooperThenThrows() {
+        assertThat("We shouldn't have a Looper", Looper.myLooper(), nullValue());
+        GeckoResult.fromValue(42).then(value -> null);
+    }
+
+    @Test
+    public void noLooperPoll() throws Throwable {
+        assertThat("We shouldn't have a Looper", Looper.myLooper(), nullValue());
+        assertThat("Value should match",
+                GeckoResult.fromValue(42).poll(0), equalTo(42));
+    }
+
+    @Test
+    public void withHandler() {
+
+        final SynchronousQueue<Handler> queue = new SynchronousQueue<>();
+        final Thread thread = new Thread(() -> {
+            Looper.prepare();
+
+            try {
+                queue.put(new Handler());
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+
+            Looper.loop();
+        });
+
+        thread.start();
+
+        final GeckoResult<Integer> result = GeckoResult.fromValue(42);
+        assertThat("We shouldn't have a Looper", result.getLooper(), nullValue());
+
+        try {
+            result.withHandler(queue.take()).then(value -> {
+                assertThat("Thread should match", Thread.currentThread(), equalTo(thread));
+                assertThat("Value should match", value, equalTo(42));
+                Looper.myLooper().quit();
+                return null;
+            });
+
+            thread.join();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    public void pollCompleteWithValue() throws Throwable {
+        assertThat("Value should match",
+                GeckoResult.fromValue(42).poll(0), equalTo(42));
+    }
+
+    @Test(expected = MockException.class)
+    public void pollCompleteWithError() throws Throwable {
+        GeckoResult.fromException(new MockException()).poll(0);
+    }
+
+    @Test
+    public void pollIncompleteWithValue() throws Throwable {
+        final GeckoResult<Integer> result = new GeckoResult<>();
+
+        final Thread thread = new Thread(() -> result.complete(42));
+
+        thread.start();
+        assertThat("Value should match", result.poll(), equalTo(42));
+    }
+
+    @Test(expected = MockException.class)
+    public void pollIncompleteWithError() throws Throwable {
+        final GeckoResult<Void> result = new GeckoResult<>();
+
+        final Thread thread = new Thread(() -> result.completeExceptionally(new MockException()));
+
+        thread.start();
+        result.poll();
+    }
+
+    @Test(expected = TimeoutException.class)
+    public void pollTimeout() throws Throwable {
+        new GeckoResult<Void>().poll(1);
+    }
+
+    @UiThreadTest
+    @Test(expected = TimeoutException.class)
+    public void pollTimeoutWithLooper() throws Throwable {
+        new GeckoResult<Void>().poll(1);
+    }
+
+    @UiThreadTest
+    @Test(expected = IllegalThreadStateException.class)
+    public void pollWithLooper() throws Throwable {
+        new GeckoResult<Void>().poll();
     }
 }

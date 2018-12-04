@@ -370,7 +370,7 @@ public:
   friend class AttrArray;
 
 #ifdef MOZILLA_INTERNAL_API
-  explicit nsINode(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
+  explicit nsINode(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
 #endif
 
   virtual ~nsINode();
@@ -1840,8 +1840,8 @@ public:
   }
 
   // ChildNode methods
-  mozilla::dom::Element* GetPreviousElementSibling() const;
-  mozilla::dom::Element* GetNextElementSibling() const;
+  inline mozilla::dom::Element* GetPreviousElementSibling() const;
+  inline mozilla::dom::Element* GetNextElementSibling() const;
 
   MOZ_CAN_RUN_SCRIPT void Before(const Sequence<OwningNodeOrString>& aNodes,
                                  ErrorResult& aRv);

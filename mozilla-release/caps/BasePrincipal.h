@@ -25,6 +25,39 @@ namespace extensions {
   class WebExtensionPolicy;
 }
 
+class BasePrincipal;
+
+// Codebase principals (and codebase principals embedded within expanded
+// principals) stored in SiteIdentifier are guaranteed to contain only the
+// eTLD+1 part of the original domain. This is used to determine whether two
+// origins are same-site: if it's possible for two origins to access each other
+// (maybe after mutating document.domain), then they must have the same site
+// identifier.
+class SiteIdentifier
+{
+public:
+  void Init(BasePrincipal* aPrincipal)
+  {
+    MOZ_ASSERT(aPrincipal);
+    mPrincipal = aPrincipal;
+  }
+
+  bool IsInitialized() const { return !!mPrincipal; }
+
+  bool Equals(const SiteIdentifier& aOther) const;
+
+private:
+  friend class ::ExpandedPrincipal;
+
+  BasePrincipal* GetPrincipal() const
+  {
+    MOZ_ASSERT(IsInitialized());
+    return mPrincipal;
+  }
+
+  RefPtr<BasePrincipal> mPrincipal;
+};
+
 /*
  * Base class from which all nsIPrincipal implementations inherit. Use this for
  * default implementations and other commonalities between principal
@@ -86,6 +119,7 @@ public:
   NS_IMETHOD GetIsInIsolatedMozBrowserElement(bool* aIsInIsolatedMozBrowserElement) final;
   NS_IMETHOD GetUserContextId(uint32_t* aUserContextId) final;
   NS_IMETHOD GetPrivateBrowsingId(uint32_t* aPrivateBrowsingId) final;
+  NS_IMETHOD GetSiteOrigin(nsACString& aOrigin) override;
 
   virtual bool AddonHasPermission(const nsAtom* aPerm);
 
@@ -128,6 +162,7 @@ public:
   inline bool FastEqualsConsideringDomain(nsIPrincipal* aOther);
   inline bool FastSubsumes(nsIPrincipal* aOther);
   inline bool FastSubsumesConsideringDomain(nsIPrincipal* aOther);
+  inline bool FastSubsumesIgnoringFPD(nsIPrincipal* aOther);
   inline bool FastSubsumesConsideringDomainIgnoringFPD(nsIPrincipal* aOther);
 
   // Returns the principal to inherit when a caller with this principal loads
@@ -165,6 +200,8 @@ public:
 
   uint32_t GetOriginNoSuffixHash() const { return mOriginNoSuffix->hash(); }
 
+  virtual nsresult GetSiteIdentifier(SiteIdentifier& aSite) = 0;
+
 protected:
   virtual ~BasePrincipal();
 
@@ -197,6 +234,9 @@ private:
   static already_AddRefed<BasePrincipal>
   CreateCodebasePrincipal(nsIURI* aURI, const OriginAttributes& aAttrs,
                           const nsACString& aOriginNoSuffix);
+
+  inline bool FastSubsumesIgnoringFPD(nsIPrincipal* aOther,
+                                      DocumentDomainConsideration aConsideration);
 
   RefPtr<nsAtom> mOriginNoSuffix;
   RefPtr<nsAtom> mOriginSuffix;
@@ -281,7 +321,8 @@ BasePrincipal::FastSubsumesConsideringDomain(nsIPrincipal* aOther)
 }
 
 inline bool
-BasePrincipal::FastSubsumesConsideringDomainIgnoringFPD(nsIPrincipal* aOther)
+BasePrincipal::FastSubsumesIgnoringFPD(nsIPrincipal* aOther,
+                                       DocumentDomainConsideration aConsideration)
 {
   if (Kind() == eCodebasePrincipal &&
       !dom::ChromeUtils::IsOriginAttributesEqualIgnoringFPD(
@@ -289,7 +330,19 @@ BasePrincipal::FastSubsumesConsideringDomainIgnoringFPD(nsIPrincipal* aOther)
     return false;
   }
 
- return SubsumesInternal(aOther, ConsiderDocumentDomain);
+  return SubsumesInternal(aOther, aConsideration);
+}
+
+inline bool
+BasePrincipal::FastSubsumesIgnoringFPD(nsIPrincipal* aOther)
+{
+  return FastSubsumesIgnoringFPD(aOther, DontConsiderDocumentDomain);
+}
+
+inline bool
+BasePrincipal::FastSubsumesConsideringDomainIgnoringFPD(nsIPrincipal* aOther)
+{
+  return FastSubsumesIgnoringFPD(aOther, ConsiderDocumentDomain);
 }
 
 } // namespace mozilla

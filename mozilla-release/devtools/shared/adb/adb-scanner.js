@@ -5,34 +5,57 @@
 "use strict";
 
 const EventEmitter = require("devtools/shared/event-emitter");
-const { ConnectionManager } =
-  require("devtools/shared/client/connection-manager");
 const { Devices } = require("devtools/shared/apps/Devices.jsm");
 const { dumpn } = require("devtools/shared/DevToolsUtils");
 const { RuntimeTypes } =
   require("devtools/client/webide/modules/runtime-types");
+const { ADB } = require("devtools/shared/adb/adb");
+loader.lazyRequireGetter(this, "Device", "devtools/shared/adb/adb-device");
 
-const ADBScanner = {
+class ADBScanner extends EventEmitter {
+  constructor() {
+    super();
+    this._runtimes = [];
 
-  _runtimes: [],
+    this._onDeviceConnected = this._onDeviceConnected.bind(this);
+    this._onDeviceDisconnected = this._onDeviceDisconnected.bind(this);
+    this._updateRuntimes = this._updateRuntimes.bind(this);
+  }
 
   enable() {
-    this._updateRuntimes = this._updateRuntimes.bind(this);
+    EventEmitter.on(ADB, "device-connected", this._onDeviceConnected);
+    EventEmitter.on(ADB, "device-disconnected", this._onDeviceDisconnected);
+
     Devices.on("register", this._updateRuntimes);
     Devices.on("unregister", this._updateRuntimes);
     Devices.on("addon-status-updated", this._updateRuntimes);
+
+    ADB.start().then(() => {
+      ADB.trackDevices();
+    });
     this._updateRuntimes();
-  },
+  }
 
   disable() {
+    EventEmitter.off(ADB, "device-connected", this._onDeviceConnected);
+    EventEmitter.off(ADB, "device-disconnected", this._onDeviceDisconnected);
     Devices.off("register", this._updateRuntimes);
     Devices.off("unregister", this._updateRuntimes);
     Devices.off("addon-status-updated", this._updateRuntimes);
-  },
+  }
 
   _emitUpdated() {
     this.emit("runtime-list-updated");
-  },
+  }
+
+  _onDeviceConnected(deviceId) {
+    const device = new Device(deviceId);
+    Devices.register(deviceId, device);
+  }
+
+  _onDeviceDisconnected(deviceId) {
+    Devices.unregister(deviceId);
+  }
 
   _updateRuntimes() {
     if (this._updatingPromise) {
@@ -52,26 +75,23 @@ const ADBScanner = {
       this._updatingPromise = null;
     });
     return this._updatingPromise;
-  },
+  }
 
-  _detectRuntimes: async function(device) {
+  async _detectRuntimes(device) {
     const model = await device.getModel();
     const detectedRuntimes =
       await FirefoxOnAndroidRuntime.detect(device, model);
     this._runtimes.push(...detectedRuntimes);
-  },
+  }
 
   scan() {
     return this._updateRuntimes();
-  },
+  }
 
   listRuntimes() {
     return this._runtimes;
   }
-
-};
-
-EventEmitter.decorate(ADBScanner);
+}
 
 function Runtime(device, model, socketPath) {
   this.device = device;
@@ -82,15 +102,7 @@ function Runtime(device, model, socketPath) {
 Runtime.prototype = {
   type: RuntimeTypes.USB,
   connect(connection) {
-    const port = ConnectionManager.getFreeTCPPort();
-    const local = "tcp:" + port;
-    let remote;
-    if (this._socketPath.startsWith("@")) {
-      remote = "localabstract:" + this._socketPath.substring(1);
-    } else {
-      remote = "localfilesystem:" + this._socketPath;
-    }
-    return this.device.forwardPort(local, remote).then(() => {
+    return ADB.prepareTCPConnection(this._socketPath).then(port => {
       connection.host = "localhost";
       connection.port = port;
       connection.connect();
@@ -132,38 +144,52 @@ FirefoxOnAndroidRuntime.detect = async function(device, model) {
 
 FirefoxOnAndroidRuntime.prototype = Object.create(Runtime.prototype);
 
+FirefoxOnAndroidRuntime.prototype._channel = function() {
+  const packageName = this._packageName();
+
+  switch (packageName) {
+    case "org.mozilla.firefox":
+      return "";
+    case "org.mozilla.firefox_beta":
+      return "Beta";
+    case "org.mozilla.fennec":
+    case "org.mozilla.fennec_aurora":
+      // This package name is now the one for Firefox Nightly distributed
+      // through the Google Play Store since "dawn project"
+      // cf. https://bugzilla.mozilla.org/show_bug.cgi?id=1357351#c8
+      return "Nightly";
+    default:
+      return "Custom";
+  }
+};
+
+FirefoxOnAndroidRuntime.prototype._packageName = function() {
+  // If using abstract socket address, it is "@org.mozilla.firefox/..."
+  // If using path base socket, it is "/data/data/<package>...""
+  // Until Fennec 62 only supports path based UNIX domain socket, but
+  // Fennec 63+ supports both path based and abstract socket.
+  return this._socketPath.startsWith("@") ?
+    this._socketPath.substr(1).split("/")[0] :
+    this._socketPath.split("/")[3];
+};
+
+Object.defineProperty(FirefoxOnAndroidRuntime.prototype, "shortName", {
+  get() {
+    return `Firefox ${this._channel()}`;
+  },
+});
+
+Object.defineProperty(FirefoxOnAndroidRuntime.prototype, "deviceName", {
+  get() {
+    return this._model || this.device.id;
+  },
+});
+
 Object.defineProperty(FirefoxOnAndroidRuntime.prototype, "name", {
   get() {
-    // If using abstract socket address, it is "@org.mozilla.firefox/..."
-    // If using path base socket, it is "/data/data/<package>...""
-    // Until Fennec 62 only supports path based UNIX domain socket, but
-    // Fennec 63+ supports both path based and abstract socket.
-    const packageName = this._socketPath.startsWith("@") ?
-                        this._socketPath.substr(1).split("/")[0] :
-                        this._socketPath.split("/")[3];
-    let channel;
-    switch (packageName) {
-      case "org.mozilla.firefox":
-        channel = "";
-        break;
-      case "org.mozilla.firefox_beta":
-        channel = " Beta";
-        break;
-      case "org.mozilla.fennec_aurora":
-        // This package name is now the one for Firefox Nightly distributed
-        // through the Google Play Store since "dawn project"
-        // cf. https://bugzilla.mozilla.org/show_bug.cgi?id=1357351#c8
-        channel = " Nightly";
-        break;
-      case "org.mozilla.fennec":
-        channel = " Nightly";
-        break;
-      default:
-        channel = " Custom";
-    }
-    return "Firefox" + channel + " on Android (" +
-           (this._model || this.device.id) + ")";
-  }
+    const channel = this._channel();
+    return "Firefox " + channel + " on Android (" + this.deviceName + ")";
+  },
 });
 
 exports.ADBScanner = ADBScanner;

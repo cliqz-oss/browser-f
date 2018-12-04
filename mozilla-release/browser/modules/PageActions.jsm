@@ -223,9 +223,10 @@ var PageActions = {
     } else if (action.__transient) {
       // A transient action.
       this._transientActions.push(action);
-    } else if (gBuiltInActions.find(a => a.id == action.id)) {
-      // A built-in action.  These are always added on init before all other
-      // actions, one after the other, so just push onto the array.
+    } else if (action._isBuiltIn) {
+      // A built-in action. These are mostly added on init before all other
+      // actions, one after the other. Extension actions load later and should
+      // be at the end, so just push onto the array.
       this._builtInActions.push(action);
     } else {
       // A non-built-in action, like a non-bundled extension potentially.
@@ -330,7 +331,7 @@ var PageActions = {
     let histogramID = "FX_PAGE_ACTION_" + type.toUpperCase();
     try {
       let histogram = Services.telemetry.getHistogramById(histogramID);
-      if (action._isBuiltIn) {
+      if (action._isMozillaAction) {
         histogram.add(action.labelForHistogram);
       } else {
         histogram.add("other");
@@ -791,7 +792,11 @@ Action.prototype = {
   },
 
   get labelForHistogram() {
-    return this._labelForHistogram || this._id;
+    // The histogram label value has a length limit of 20 and restricted to a
+    // pattern. See MAX_LABEL_LENGTH and CPP_IDENTIFIER_PATTERN in
+    // toolkit/components/telemetry/parse_histograms.py
+    return this._labelForHistogram
+      || this._id.replace(/_\w{1}/g, match => match[1].toUpperCase()).substr(0, 20);
   },
 
   /**
@@ -1034,10 +1039,13 @@ Action.prototype = {
   get _isBuiltIn() {
     let builtInIDs = [
       "pocket",
-      "screenshots",
-      "webcompat-reporter-button",
+      "screenshots_mozilla_org",
     ].concat(gBuiltInActions.filter(a => !a.__isSeparator).map(a => a.id));
     return builtInIDs.includes(this.id);
+  },
+
+  get _isMozillaAction() {
+    return this._isBuiltIn || this.id == "webcompat-reporter_mozilla_org";
   },
 };
 
@@ -1129,12 +1137,14 @@ var gBuiltInActions = [
   },
 ];
 
+// send to device
 if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
   gBuiltInActions.push(
-  // send to device
   {
     id: "sendToDevice",
-    title: "sendToDevice-title",
+    // The actual title is set by each window, per window, and depends on the
+    // number of tabs that are selected.
+    title: "sendToDevice",
     onBeforePlacedInWindow(browserWindow) {
       browserPageActions(browserWindow).sendToDevice
         .onBeforePlacedInWindow(browserWindow);
@@ -1154,9 +1164,9 @@ if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
   });
 }
 
+// share URL
 if (AppConstants.platform == "macosx") {
   gBuiltInActions.push(
-  // Share URL
   {
     id: "shareURL",
     title: "shareURL-title",
@@ -1171,6 +1181,21 @@ if (AppConstants.platform == "macosx") {
     onSubviewShowing(panelViewNode) {
         browserPageActions(panelViewNode).shareURL
           .onShowingSubview(panelViewNode);
+    },
+  });
+}
+
+if (AppConstants.isPlatformAndVersionAtLeast("win", "6.4")) {
+  gBuiltInActions.push(
+  // Share URL
+  {
+    id: "shareURL",
+    title: "shareURL-title",
+    onBeforePlacedInWindow(buttonNode) {
+      browserPageActions(buttonNode).shareURL.onBeforePlacedInWindow(buttonNode);
+    },
+    onCommand(event, buttonNode) {
+      browserPageActions(buttonNode).shareURL.onCommand(event, buttonNode);
     },
   });
 }

@@ -611,6 +611,9 @@ MediaFormatReader::DecoderFactory::DoCreateDecoder(Data& aData)
     case TrackType::kVideoTrack: {
       // Decoders use the layers backend to decide if they can use hardware decoding,
       // so specify LAYERS_NONE if we want to forcibly disable it.
+      using Option = CreateDecoderParams::Option;
+      using OptionSet = CreateDecoderParams::OptionSet;
+
       aData.mDecoder = platform->CreateDecoder(
         { *ownerData.GetCurrentInfo()->GetAsVideoInfo(),
           ownerData.mTaskQueue,
@@ -621,7 +624,10 @@ MediaFormatReader::DecoderFactory::DoCreateDecoder(Data& aData)
           &result,
           TrackType::kVideoTrack,
           &mOwner->OnTrackWaitingForKeyProducer(),
-          CreateDecoderParams::VideoFrameRate(ownerData.mMeanRate.Mean()) });
+          CreateDecoderParams::VideoFrameRate(ownerData.mMeanRate.Mean()),
+          OptionSet(ownerData.mHardwareDecodingDisabled
+                      ? Option::HardwareDecoderNotAllowed
+                      : Option::Default) });
       break;
     }
 
@@ -1150,7 +1156,10 @@ MediaFormatReader::Shutdown()
   if (HasAudio()) {
     mAudio.ResetDemuxer();
     mAudio.mTrackDemuxer->BreakCycles();
-    mAudio.mTrackDemuxer = nullptr;
+    {
+      MutexAutoLock lock(mAudio.mMutex);
+      mAudio.mTrackDemuxer = nullptr;
+    }
     mAudio.ResetState();
     ShutdownDecoder(TrackInfo::kAudioTrack);
   }
@@ -1158,7 +1167,10 @@ MediaFormatReader::Shutdown()
   if (HasVideo()) {
     mVideo.ResetDemuxer();
     mVideo.mTrackDemuxer->BreakCycles();
-    mVideo.mTrackDemuxer = nullptr;
+    {
+      MutexAutoLock lock(mVideo.mMutex);
+      mVideo.mTrackDemuxer = nullptr;
+    }
     mVideo.ResetState();
     ShutdownDecoder(TrackInfo::kVideoTrack);
   }
@@ -1387,6 +1399,7 @@ MediaFormatReader::OnDemuxerInitDone(const MediaResult& aResult)
 
   if (videoActive) {
     // We currently only handle the first video track.
+    MutexAutoLock lock(mVideo.mMutex);
     mVideo.mTrackDemuxer = mDemuxer->GetTrackDemuxer(TrackInfo::kVideoTrack, 0);
     if (!mVideo.mTrackDemuxer) {
       mMetadataPromise.Reject(NS_ERROR_DOM_MEDIA_METADATA_ERR, __func__);
@@ -1402,10 +1415,8 @@ MediaFormatReader::OnDemuxerInitDone(const MediaResult& aResult)
         mMetadataPromise.Reject(NS_ERROR_DOM_MEDIA_METADATA_ERR, __func__);
         return;
       }
-      {
-        MutexAutoLock lock(mVideo.mMutex);
-        mInfo.mVideo = *videoInfo->GetAsVideoInfo();
-      }
+      mInfo.mVideo = *videoInfo->GetAsVideoInfo();
+      mVideo.mWorkingInfo = MakeUnique<VideoInfo>(mInfo.mVideo);
       for (const MetadataTag& tag : videoInfo->mTags) {
         tags->Put(tag.mKey, tag.mValue);
       }
@@ -1419,6 +1430,7 @@ MediaFormatReader::OnDemuxerInitDone(const MediaResult& aResult)
 
   bool audioActive = !!mDemuxer->GetNumberTracks(TrackInfo::kAudioTrack);
   if (audioActive) {
+    MutexAutoLock lock(mAudio.mMutex);
     mAudio.mTrackDemuxer = mDemuxer->GetTrackDemuxer(TrackInfo::kAudioTrack, 0);
     if (!mAudio.mTrackDemuxer) {
       mMetadataPromise.Reject(NS_ERROR_DOM_MEDIA_METADATA_ERR, __func__);
@@ -1432,10 +1444,8 @@ MediaFormatReader::OnDemuxerInitDone(const MediaResult& aResult)
       (!platform || platform->SupportsMimeType(audioInfo->mMimeType, nullptr));
 
     if (audioActive) {
-      {
-        MutexAutoLock lock(mAudio.mMutex);
-        mInfo.mAudio = *audioInfo->GetAsAudioInfo();
-      }
+      mInfo.mAudio = *audioInfo->GetAsAudioInfo();
+      mAudio.mWorkingInfo = MakeUnique<AudioInfo>(mInfo.mAudio);
       for (const MetadataTag& tag : audioInfo->mTags) {
         tags->Put(tag.mKey, tag.mValue);
       }
@@ -1548,7 +1558,19 @@ MediaFormatReader::OnDemuxerInitFailed(const MediaResult& aError)
 void
 MediaFormatReader::ReadUpdatedMetadata(MediaInfo* aInfo)
 {
-  *aInfo = mInfo;
+  // Called on the MDSM's TaskQueue.
+  {
+    MutexAutoLock lock(mVideo.mMutex);
+    if (HasVideo()) {
+      aInfo->mVideo = *mVideo.GetWorkingInfo()->GetAsVideoInfo();
+    }
+  }
+  {
+    MutexAutoLock lock(mAudio.mMutex);
+    if (HasAudio()) {
+      aInfo->mAudio = *mAudio.GetWorkingInfo()->GetAsAudioInfo();
+    }
+  }
 }
 
 MediaFormatReader::DecoderData&
@@ -2194,7 +2216,8 @@ MediaFormatReader::HandleDemuxedSamples(
       bool recyclable =
         StaticPrefs::MediaDecoderRecycleEnabled() &&
         decoder.mDecoder->SupportDecoderRecycling() &&
-        (*info)->mCrypto.mValid == decoder.GetCurrentInfo()->mCrypto.mValid;
+        (*info)->mCrypto.mValid == decoder.GetCurrentInfo()->mCrypto.mValid &&
+        (*info)->mMimeType == decoder.GetCurrentInfo()->mMimeType;
       if (!recyclable && decoder.mTimeThreshold.isNothing() &&
           (decoder.mNextStreamSourceID.isNothing() ||
            decoder.mNextStreamSourceID.ref() != info->GetID())) {
@@ -2214,6 +2237,9 @@ MediaFormatReader::HandleDemuxedSamples(
       if (!recyclable) {
         LOG("Decoder does not support recycling, recreate decoder.");
         ShutdownDecoder(aTrack);
+        // We're going to be using a new decoder following the change of content
+        // We can attempt to use hardware decoding again.
+        decoder.mHardwareDecodingDisabled = false;
       } else if (decoder.HasWaitingPromise()) {
         decoder.Flush();
       }
@@ -2227,6 +2253,14 @@ MediaFormatReader::HandleDemuxedSamples(
     decoder.mNextStreamSourceID.reset();
     decoder.mLastStreamSourceID = info->GetID();
     decoder.mInfo = info;
+    {
+      MutexAutoLock lock(decoder.mMutex);
+      if (aTrack == TrackInfo::kAudioTrack) {
+        decoder.mWorkingInfo = MakeUnique<AudioInfo>(*info->GetAsAudioInfo());
+      } else if (aTrack == TrackInfo::kVideoTrack) {
+        decoder.mWorkingInfo = MakeUnique<VideoInfo>(*info->GetAsVideoInfo());
+      }
+    }
 
     decoder.mMeanRate.Reset();
 
@@ -2558,13 +2592,24 @@ MediaFormatReader::Update(TrackType aTrack)
   if (decoder.mError && !decoder.HasFatalError()) {
     MOZ_RELEASE_ASSERT(!decoder.HasInternalSeekPending(),
                        "No error can occur while an internal seek is pending");
+
+    nsCString error;
+    bool firstFrameDecodingFailedWithHardware =
+      decoder.mFirstFrameTime &&
+      decoder.mError.ref() == NS_ERROR_DOM_MEDIA_DECODE_ERR &&
+      decoder.mDecoder && decoder.mDecoder->IsHardwareAccelerated(error) &&
+      !decoder.mHardwareDecodingDisabled;
     bool needsNewDecoder =
-      decoder.mError.ref() == NS_ERROR_DOM_MEDIA_NEED_NEW_DECODER;
+      decoder.mError.ref() == NS_ERROR_DOM_MEDIA_NEED_NEW_DECODER ||
+      firstFrameDecodingFailedWithHardware;
     if (!needsNewDecoder &&
         ++decoder.mNumOfConsecutiveError > decoder.mMaxConsecutiveError) {
       DDLOG(DDLogCategory::Log, "too_many_decode_errors", decoder.mError.ref());
       NotifyError(aTrack, decoder.mError.ref());
       return;
+    }
+    if (firstFrameDecodingFailedWithHardware) {
+      decoder.mHardwareDecodingDisabled = true;
     }
     decoder.mError.reset();
 
@@ -2674,6 +2719,9 @@ MediaFormatReader::ReturnOutput(MediaData* aData, TrackType aTrack)
           audioData->mRate);
       mInfo.mAudio.mRate = audioData->mRate;
       mInfo.mAudio.mChannels = audioData->mChannels;
+      MutexAutoLock lock(mAudio.mMutex);
+      mAudio.mWorkingInfo->GetAsAudioInfo()->mRate = audioData->mRate;
+      mAudio.mWorkingInfo->GetAsAudioInfo()->mChannels = audioData->mChannels;
     }
     mAudio.ResolvePromise(audioData, __func__);
   } else if (aTrack == TrackInfo::kVideoTrack) {
@@ -2684,6 +2732,8 @@ MediaFormatReader::ReturnOutput(MediaData* aData, TrackType aTrack)
           mInfo.mVideo.mDisplay.width, mInfo.mVideo.mDisplay.height,
           videoData->mDisplay.width, videoData->mDisplay.height);
       mInfo.mVideo.mDisplay = videoData->mDisplay;
+      MutexAutoLock lock(mVideo.mMutex);
+      mVideo.mWorkingInfo->GetAsVideoInfo()->mDisplay = videoData->mDisplay;
     }
 
     TimeUnit nextKeyframe;
@@ -3301,26 +3351,26 @@ MediaFormatReader::GetMozDebugReaderData(nsACString& aString)
   nsAutoCString audioType("none");
   nsAutoCString videoType("none");
 
-  AudioInfo audioInfo = mAudio.GetCurrentInfo()
-                          ? *mAudio.GetCurrentInfo()->GetAsAudioInfo()
-                          : AudioInfo();
-  if (HasAudio())
+  AudioInfo audioInfo;
   {
     MutexAutoLock lock(mAudio.mMutex);
-    audioDecoderName = mAudio.mDecoder
-                       ? mAudio.mDecoder->GetDescriptionName()
-                       : mAudio.mDescription;
-    audioType = audioInfo.mMimeType;
+    if (HasAudio()) {
+      audioInfo = *mAudio.GetWorkingInfo()->GetAsAudioInfo();
+      audioDecoderName = mAudio.mDecoder ? mAudio.mDecoder->GetDescriptionName()
+                                         : mAudio.mDescription;
+      audioType = audioInfo.mMimeType;
+    }
   }
-  VideoInfo videoInfo = mVideo.GetCurrentInfo()
-                          ? *mVideo.GetCurrentInfo()->GetAsVideoInfo()
-                          : VideoInfo();
-  if (HasVideo()) {
-    MutexAutoLock mon(mVideo.mMutex);
-    videoDecoderName = mVideo.mDecoder
-                       ? mVideo.mDecoder->GetDescriptionName()
-                       : mVideo.mDescription;
-    videoType = videoInfo.mMimeType;
+
+  VideoInfo videoInfo;
+  {
+    MutexAutoLock lock(mVideo.mMutex);
+    if (HasVideo()) {
+      videoInfo = *mVideo.GetWorkingInfo()->GetAsVideoInfo();
+      videoDecoderName = mVideo.mDecoder ? mVideo.mDecoder->GetDescriptionName()
+                                         : mVideo.mDescription;
+      videoType = videoInfo.mMimeType;
+    }
   }
 
   result +=

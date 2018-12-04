@@ -123,9 +123,7 @@ class DesktopSingleLocale(LocalesMixin, AutomationMixin,
         self.bootstrap_env = None
         self.upload_env = None
         self.revision = None
-        self.version = None
         self.upload_urls = {}
-        self.locales_property = {}
         self.pushdate = None
         # upload_files is a dictionary of files to upload, keyed by locale.
         self.upload_files = {}
@@ -324,14 +322,6 @@ class DesktopSingleLocale(LocalesMixin, AutomationMixin,
         self.info('echo-variable-%s: %s' % (variable, output))
         return output
 
-    def query_version(self):
-        """Gets the version from the objdir.
-        Only valid after setup is run."""
-        if self.version:
-            return self.version
-        self.version = self._query_make_variable("MOZ_APP_VERSION")
-        return self.version
-
     def _map(self, func, items):
         """runs func for any item in items, calls the add_failure() for each
            error. It assumes that function returns 0 when successful.
@@ -347,33 +337,8 @@ class DesktopSingleLocale(LocalesMixin, AutomationMixin,
             else:
                 #  func failed...
                 message = 'failure: %s(%s)' % (name, item)
-                self._add_failure(item, message)
+                self.add_failure(item, message)
         return (success_count, total_count)
-
-    def _add_failure(self, locale, message, **kwargs):
-        """marks current step as failed"""
-        self.locales_property[locale] = FAILURE_STR
-        prop_key = "%s_failure" % locale
-        prop_value = self.query_property(prop_key)
-        if prop_value:
-            prop_value = "%s  %s" % (prop_value, message)
-        else:
-            prop_value = message
-        self.set_property(prop_key, prop_value)
-        AutomationMixin.add_failure(self, locale, message=message, **kwargs)
-
-    def query_failed_locales(self):
-        return [l for l, res in self.locales_property.items() if
-                res == FAILURE_STR]
-
-    def summary(self):
-        """generates a summary"""
-        BaseScript.summary(self)
-        # TODO we probably want to make this configurable on/off
-        locales = self.query_locales()
-        for locale in locales:
-            self.locales_property.setdefault(locale, SUCCESS_STR)
-        self.set_property("locales", json.dumps(self.locales_property))
 
     # Actions {{{2
     def clone_locales(self):

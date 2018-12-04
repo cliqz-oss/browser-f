@@ -1,6 +1,4 @@
-if (!wasmGcEnabled()) {
-    quit(0);
-}
+// |jit-test| skip-if: !wasmGcEnabled()
 
 load(libdir + "wasm-binary.js");
 
@@ -8,7 +6,10 @@ const v2vSig = {args:[], ret:VoidCode};
 const v2vSigSection = sigSection([v2vSig]);
 
 function checkInvalid(body, errorMessage) {
-    assertErrorMessage(() => new WebAssembly.Module(moduleWithSections([v2vSigSection, declSection([0]), bodySection([body])])), WebAssembly.CompileError, errorMessage);
+    assertErrorMessage(() => new WebAssembly.Module(
+        moduleWithSections([gcFeatureOptInSection(1), v2vSigSection, declSection([0]), bodySection([body])])),
+                       WebAssembly.CompileError,
+                       errorMessage);
 }
 
 const invalidRefNullBody = funcBody({locals:[], body:[
@@ -27,7 +28,7 @@ const invalidRefNullBody = funcBody({locals:[], body:[
     SelectCode,
     DropCode
 ]});
-checkInvalid(invalidRefNullBody, /invalid nullref type/);
+checkInvalid(invalidRefNullBody, /invalid reference type for ref.null/);
 
 const invalidRefBlockType = funcBody({locals:[], body:[
     BlockCode,

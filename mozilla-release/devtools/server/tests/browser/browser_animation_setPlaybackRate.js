@@ -8,7 +8,7 @@
 // can have their rates changed at the same time.
 
 add_task(async function() {
-  const {client, walker, animations} =
+  const {target, walker, animations} =
     await initAnimationsFrontForUrl(MAIN_DOMAIN + "animation.html");
 
   info("Retrieve an animated node");
@@ -17,17 +17,15 @@ add_task(async function() {
   info("Retrieve the animation player for the node");
   const [player] = await animations.getAnimationPlayersForNode(node);
 
-  ok(player.setPlaybackRate, "Player has the setPlaybackRate method");
-
   info("Change the rate to 10");
-  await player.setPlaybackRate(10);
+  await animations.setPlaybackRates([player], 10);
 
   info("Query the state again");
   let state = await player.getCurrentState();
   is(state.playbackRate, 10, "The playbackRate was updated");
 
   info("Change the rate back to 1");
-  await player.setPlaybackRate(1);
+  await animations.setPlaybackRates([player], 1);
 
   info("Query the state again");
   state = await player.getCurrentState();
@@ -46,6 +44,6 @@ add_task(async function() {
     is(animPlayerState.playbackRate, .5, "The playbackRate was updated");
   }
 
-  await client.close();
+  await target.destroy();
   gBrowser.removeCurrentTab();
 });

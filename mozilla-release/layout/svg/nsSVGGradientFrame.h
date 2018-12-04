@@ -29,10 +29,6 @@ class SVGRadialGradientElement;
 } // namespace dom
 } // namespace mozilla
 
-/**
- * Gradients can refer to other gradients. We create an nsSVGPaintingProperty
- * with property type nsGkAtoms::href to track the referenced gradient.
- */
 class nsSVGGradientFrame : public nsSVGPaintServerFrame
 {
   typedef mozilla::gfx::ExtendMode ExtendMode;
@@ -66,10 +62,10 @@ public:
 #endif // DEBUG
 
 private:
-
-  // Parse our xlink:href and set up our nsSVGPaintingProperty if we
-  // reference another gradient and we don't have a property. Return
-  // the referenced gradient's frame if available, null otherwise.
+  /**
+   * Parses this frame's href and - if it references another gradient - returns
+   * it.  It also makes this frame a rendering observer of the specified ID.
+   */
   nsSVGGradientFrame* GetReferencedGradient();
 
   // Optionally get a stop frame (returns stop index/count)
@@ -119,7 +115,7 @@ private:
 // Linear Gradients
 // -------------------------------------------------------------------------
 
-class nsSVGLinearGradientFrame : public nsSVGGradientFrame
+class nsSVGLinearGradientFrame final : public nsSVGGradientFrame
 {
   friend nsIFrame* NS_NewSVGLinearGradientFrame(nsIPresShell* aPresShell,
                                                 ComputedStyle* aStyle);
@@ -161,7 +157,7 @@ protected:
 // Radial Gradients
 // -------------------------------------------------------------------------
 
-class nsSVGRadialGradientFrame : public nsSVGGradientFrame
+class nsSVGRadialGradientFrame final : public nsSVGGradientFrame
 {
   friend nsIFrame* NS_NewSVGRadialGradientFrame(nsIPresShell* aPresShell,
                                                 ComputedStyle* aStyle);

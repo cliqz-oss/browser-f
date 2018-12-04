@@ -8,7 +8,7 @@ use atomic_refcell::{AtomicRef, AtomicRefCell, AtomicRefMut};
 use context::QuirksMode;
 use dom::TElement;
 use gecko_bindings::bindings::{self, RawServoStyleSet};
-use gecko_bindings::structs::{RawGeckoPresContextOwned, ServoStyleSetSizes, StyleSheet as DomStyleSheet};
+use gecko_bindings::structs::{RawGeckoPresContextBorrowed, ServoStyleSetSizes, StyleSheet as DomStyleSheet};
 use gecko_bindings::structs::{StyleSheetInfo, nsIDocument};
 use gecko_bindings::sugar::ownership::{HasArcFFI, HasBoxFFI, HasFFI, HasSimpleFFI};
 use invalidation::media_queries::{MediaListKey, ToMediaListKey};
@@ -29,7 +29,8 @@ pub struct GeckoStyleSheet(*const DomStyleSheet);
 impl fmt::Debug for GeckoStyleSheet {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let contents = self.contents();
-        formatter.debug_struct("GeckoStyleSheet")
+        formatter
+            .debug_struct("GeckoStyleSheet")
             .field("origin", &contents.origin)
             .field("url_data", &*contents.url_data.read())
             .finish()
@@ -66,9 +67,7 @@ impl GeckoStyleSheet {
     }
 
     fn inner(&self) -> &StyleSheetInfo {
-        unsafe {
-            &*(self.raw().mInner as *const StyleSheetInfo)
-        }
+        unsafe { &*(self.raw().mInner as *const StyleSheetInfo) }
     }
 
     /// Gets the StylesheetContents for this stylesheet.
@@ -144,7 +143,7 @@ pub struct PerDocumentStyleData(AtomicRefCell<PerDocumentStyleDataImpl>);
 
 impl PerDocumentStyleData {
     /// Create a dummy `PerDocumentStyleData`.
-    pub fn new(pres_context: RawGeckoPresContextOwned) -> Self {
+    pub fn new(pres_context: RawGeckoPresContextBorrowed) -> Self {
         let device = Device::new(pres_context);
 
         // FIXME(emilio, tlin): How is this supposed to work with XBL? This is
@@ -193,7 +192,8 @@ impl PerDocumentStyleDataImpl {
     /// Returns whether visited styles are enabled.
     #[inline]
     pub fn visited_styles_enabled(&self) -> bool {
-        let doc = self.stylist
+        let doc = self
+            .stylist
             .device()
             .pres_context()
             .mDocument

@@ -13,6 +13,7 @@
 
 #include "mozilla/Attributes.h"           // for final
 #include "mozilla/dom/NodeInfo.h"
+#include "mozilla/MruCache.h"
 #include "nsCOMPtr.h"                     // for member
 #include "nsCycleCollectionParticipant.h" // for NS_DECL_CYCLE_*
 #include "nsDataHashtable.h"
@@ -24,8 +25,6 @@ class nsIDocument;
 class nsIPrincipal;
 class nsWindowSizes;
 template<class T> struct already_AddRefed;
-
-#define RECENTLY_USED_NODEINFOS_SIZE 31
 
 class nsNodeInfoManager final
 {
@@ -149,9 +148,27 @@ private:
   {
   public:
     explicit NodeInfoInnerKey(KeyTypePointer aKey) : nsPtrHashKey(aKey) {}
+    NodeInfoInnerKey(NodeInfoInnerKey&&) = default;
     ~NodeInfoInnerKey() = default;
     bool KeyEquals(KeyTypePointer aKey) const { return *mKey == *aKey; }
     static PLDHashNumber HashKey(KeyTypePointer aKey) { return aKey->Hash(); }
+  };
+
+  struct NodeInfoCache : public mozilla::MruCache<
+                              mozilla::dom::NodeInfo::NodeInfoInner,
+                              mozilla::dom::NodeInfo*,
+                              NodeInfoCache>
+  {
+    static mozilla::HashNumber Hash(
+        const mozilla::dom::NodeInfo::NodeInfoInner& aKey)
+    {
+      return aKey.Hash();
+    }
+    static bool Match(const mozilla::dom::NodeInfo::NodeInfoInner& aKey,
+                      const mozilla::dom::NodeInfo* aVal)
+    {
+      return aKey == aVal->mInner;
+    }
   };
 
   nsDataHashtable<NodeInfoInnerKey, mozilla::dom::NodeInfo*> mNodeInfoHash;
@@ -163,7 +180,7 @@ private:
   mozilla::dom::NodeInfo * MOZ_NON_OWNING_REF mCommentNodeInfo; // WEAK to avoid circular ownership
   mozilla::dom::NodeInfo * MOZ_NON_OWNING_REF mDocumentNodeInfo; // WEAK to avoid circular ownership
   RefPtr<nsBindingManager> mBindingManager;
-  mozilla::dom::NodeInfo* mRecentlyUsedNodeInfos[RECENTLY_USED_NODEINFOS_SIZE];
+  NodeInfoCache mRecentlyUsedNodeInfos;
   Tri mSVGEnabled;
   Tri mMathMLEnabled;
 };

@@ -169,6 +169,8 @@ user_pref("identity.fxaccounts.auth.uri", "https://{server}/fxa-dummy/");
 user_pref("identity.fxaccounts.remote.root", "https://{server}/");
 user_pref("javascript.options.showInConsole", true);
 user_pref("layout.accessiblecaret.enabled_on_touch", false);
+// Enable CSS clip-path `path()` for testing
+user_pref("layout.css.clip-path-path.enabled", true);
 // Enable CSS 'contain' for testing
 user_pref("layout.css.contain.enabled", true);
 // Enable CSS Grid 'subgrid' feature for testing
@@ -277,3 +279,5 @@ user_pref("toolkit.telemetry.test.pref2", false);
 // Disable the caret blinking so we get stable snapshot
 user_pref("ui.caretBlinkTime", -1);
 user_pref("webextensions.tests", true);
+// Disable intermittent telemetry collection
+user_pref("toolkit.telemetry.initDelay", 99999999);

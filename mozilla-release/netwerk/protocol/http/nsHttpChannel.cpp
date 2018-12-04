@@ -15,6 +15,7 @@
 
 #include "nsHttp.h"
 #include "nsHttpChannel.h"
+#include "nsHttpChannelAuthProvider.h"
 #include "nsHttpHandler.h"
 #include "nsIApplicationCacheService.h"
 #include "nsIApplicationCacheContainer.h"
@@ -70,7 +71,6 @@
 #include "nsIPrincipal.h"
 #include "nsIScriptError.h"
 #include "nsIScriptSecurityManager.h"
-#include "nsISSLStatus.h"
 #include "nsITransportSecurityInfo.h"
 #include "nsIWebProgressListener.h"
 #include "LoadContextInfo.h"
@@ -109,6 +109,7 @@
 #include "nsMixedContentBlocker.h"
 #include "CacheStorageService.h"
 #include "HttpChannelParent.h"
+#include "HttpChannelParentListener.h"
 #include "InterceptedHttpChannel.h"
 #include "nsIBufferedStreams.h"
 #include "nsIFileStreams.h"
@@ -116,6 +117,10 @@
 #include "nsIMultiplexInputStream.h"
 #include "../../cache2/CacheFileUtils.h"
 #include "nsINetworkLinkService.h"
+#include "nsIRedirectProcessChooser.h"
+#include "mozilla/dom/PromiseNativeHandler.h"
+#include "mozilla/dom/Promise.h"
+#include "mozilla/dom/ServiceWorkerUtils.h"
 
 #ifdef MOZ_TASK_TRACER
 #include "GeckoTaskTracer.h"
@@ -125,7 +130,11 @@
 #include "ProfilerMarkerPayload.h"
 #endif
 
-namespace mozilla { namespace net {
+namespace mozilla {
+
+using namespace dom;
+
+namespace net {
 
 namespace {
 
@@ -166,6 +175,7 @@ static const struct {
   LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED mTelemetryLabel;
   const char* mHostName;
 } gFastBlockAnalyticsProviders[] = {
+  // clang-format off
   { LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED::googleanalytics, "google-analytics.com" },
   { LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED::scorecardresearch, "scorecardresearch.com" },
   { LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED::hotjar, "hotjar.com" },
@@ -176,6 +186,7 @@ static const struct {
   { LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED::yahooanalytics, "analytics.yahoo.com" },
   { LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED::statcounter, "statcounter.com" },
   { LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED::v12group, "v12group.com" }
+  // clang-format on
 };
 
 void
@@ -415,17 +426,6 @@ nsHttpChannel::Init(nsIURI *uri,
                                         proxyResolveFlags, proxyURI, channelId);
     if (NS_FAILED(rv))
         return rv;
-
-#ifdef MOZ_GECKO_PROFILER
-    mLastStatusReported = TimeStamp::Now(); // in case we enable the profiler after Init()
-    if (profiler_is_active()) {
-        int32_t priority = PRIORITY_NORMAL;
-        GetPriority(&priority);
-        profiler_add_network_marker(uri, priority, channelId, NetworkLoadType::LOAD_START,
-                                    mChannelCreationTimestamp, mLastStatusReported,
-                                    0);
-    }
-#endif
 
     LOG(("nsHttpChannel::Init [this=%p]\n", this));
 
@@ -1539,7 +1539,8 @@ EnsureMIMEOfScript(nsIURI* aURI, nsHttpResponseHead* aResponseHead, nsILoadInfo*
     aLoadInfo->LoadingPrincipal()->GetURI(getter_AddRefs(requestURI));
 
     nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
-    nsresult rv = ssm->CheckSameOriginURI(requestURI, aURI, false);
+    bool isPrivateWin = aLoadInfo->GetOriginAttributes().mPrivateBrowsingId > 0;
+    nsresult rv = ssm->CheckSameOriginURI(requestURI, aURI, false, isPrivateWin);
     if (NS_SUCCEEDED(rv)) {
         //same origin
         AccumulateCategorical(Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_2::same_origin);
@@ -1554,7 +1555,8 @@ EnsureMIMEOfScript(nsIURI* aURI, nsHttpResponseHead* aResponseHead, nsILoadInfo*
                 nsCOMPtr<nsIURI> corsOriginURI;
                 rv = NS_NewURI(getter_AddRefs(corsOriginURI), corsOrigin);
                 if (NS_SUCCEEDED(rv)) {
-                    rv = ssm->CheckSameOriginURI(requestURI, corsOriginURI, false);
+                    bool isPrivateWin = aLoadInfo->GetOriginAttributes().mPrivateBrowsingId > 0;
+                    rv = ssm->CheckSameOriginURI(requestURI, corsOriginURI, false, isPrivateWin);
                     if (NS_SUCCEEDED(rv)) {
                         cors = true;
                     }
@@ -2004,7 +2006,7 @@ GetPKPConsoleErrorTag(uint32_t failureResult, nsAString& consoleErrorTag)
  */
 nsresult
 nsHttpChannel::ProcessSingleSecurityHeader(uint32_t aType,
-                                           nsISSLStatus *aSSLStatus,
+                                           nsITransportSecurityInfo* aSecInfo,
                                            uint32_t aFlags)
 {
     nsHttpAtom atom;
@@ -2031,7 +2033,7 @@ nsHttpChannel::ProcessSingleSecurityHeader(uint32_t aType,
         NS_GetOriginAttributes(this, originAttributes);
         uint32_t failureResult;
         uint32_t headerSource = nsISiteSecurityService::SOURCE_ORGANIC_REQUEST;
-        rv = sss->ProcessHeader(aType, mURI, securityHeader, aSSLStatus,
+        rv = sss->ProcessHeader(aType, mURI, securityHeader, aSecInfo,
                                 aFlags, headerSource, originAttributes,
                                 nullptr, nullptr, &failureResult);
         if (NS_FAILED(rv)) {
@@ -2106,17 +2108,13 @@ nsHttpChannel::ProcessSecurityHeaders()
     // Get the TransportSecurityInfo
     nsCOMPtr<nsITransportSecurityInfo> transSecInfo = do_QueryInterface(mSecurityInfo);
     NS_ENSURE_TRUE(transSecInfo, NS_ERROR_FAILURE);
-    nsCOMPtr<nsISSLStatus> sslStatus;
-    rv = transSecInfo->GetSSLStatus(getter_AddRefs(sslStatus));
-    NS_ENSURE_SUCCESS(rv, rv);
-    NS_ENSURE_TRUE(sslStatus, NS_ERROR_FAILURE);
 
     rv = ProcessSingleSecurityHeader(nsISiteSecurityService::HEADER_HSTS,
-                                     sslStatus, flags);
+                                     transSecInfo, flags);
     NS_ENSURE_SUCCESS(rv, rv);
 
     rv = ProcessSingleSecurityHeader(nsISiteSecurityService::HEADER_HPKP,
-                                     sslStatus, flags);
+                                     transSecInfo, flags);
     NS_ENSURE_SUCCESS(rv, rv);
 
     return NS_OK;
@@ -2242,10 +2240,6 @@ nsHttpChannel::ProcessSSLInformation()
         do_QueryInterface(mSecurityInfo);
     if (!securityInfo)
         return;
-    nsCOMPtr<nsISSLStatus> sslstat;
-    securityInfo->GetSSLStatus(getter_AddRefs(sslstat));
-    if (!sslstat)
-        return;
 
     uint32_t state;
     if (securityInfo &&
@@ -2261,7 +2255,7 @@ nsHttpChannel::ProcessSSLInformation()
 
     // Send (SHA-1) signature algorithm errors to the web console
     nsCOMPtr<nsIX509Cert> cert;
-    sslstat->GetServerCert(getter_AddRefs(cert));
+    securityInfo->GetServerCert(getter_AddRefs(cert));
     if (cert) {
         UniqueCERTCertificate nssCert(cert->GetCert());
         if (nssCert) {
@@ -5009,12 +5003,31 @@ nsHttpChannel::OpenCacheInputStream(nsICacheEntry* cacheEntry, bool startBufferi
         altDataFromChild = !value.IsEmpty();
     }
 
-    if (!mPreferredCachedAltDataType.IsEmpty() && (altDataFromChild == mAltDataForChild)) {
-        rv = cacheEntry->OpenAlternativeInputStream(mPreferredCachedAltDataType,
+    nsAutoCString altDataType;
+    Unused << cacheEntry->GetAltDataType(altDataType);
+
+    nsAutoCString contentType;
+    mCachedResponseHead->ContentType(contentType);
+
+    bool foundAltData = false;
+    if (!altDataType.IsEmpty() &&
+        !mPreferredCachedAltDataTypes.IsEmpty() &&
+        altDataFromChild == mAltDataForChild) {
+        for (auto& pref : mPreferredCachedAltDataTypes) {
+            if (mozilla::Get<0>(pref) == altDataType &&
+                (mozilla::Get<1>(pref).IsEmpty() || mozilla::Get<1>(pref) == contentType)) {
+                foundAltData = true;
+                break;
+            }
+        }
+    }
+    if (foundAltData) {
+        rv = cacheEntry->OpenAlternativeInputStream(altDataType,
                                                     getter_AddRefs(stream));
         if (NS_SUCCEEDED(rv)) {
+            LOG(("Opened alt-data input stream type=%s", altDataType.get()));
             // We have succeeded.
-            mAvailableCachedAltDataType = mPreferredCachedAltDataType;
+            mAvailableCachedAltDataType = altDataType;
             // Set the correct data size on the channel.
             int64_t altDataSize;
             if (NS_SUCCEEDED(cacheEntry->GetAltDataSize(&altDataSize))) {
@@ -5022,6 +5035,7 @@ nsHttpChannel::OpenCacheInputStream(nsICacheEntry* cacheEntry, bool startBufferi
             }
         }
     }
+
 
     if (!stream) {
         rv = cacheEntry->OpenInputStream(0, getter_AddRefs(stream));
@@ -6301,11 +6315,18 @@ nsHttpChannel::AsyncOpen(nsIStreamListener *listener, nsISupports *context)
         uint64_t sourceEventId, parentTaskId;
         tasktracer::SourceEventType sourceEventType;
         GetCurTraceInfo(&sourceEventId, &parentTaskId, &sourceEventType);
-        nsCOMPtr<nsIURI> uri;
-        GetURI(getter_AddRefs(uri));
         nsAutoCString urispec;
-        uri->GetSpec(urispec);
+        mURI->GetSpec(urispec);
         tasktracer::AddLabel("nsHttpChannel::AsyncOpen %s", urispec.get());
+    }
+#endif
+
+#ifdef MOZ_GECKO_PROFILER
+    mLastStatusReported = TimeStamp::Now(); // in case we enable the profiler after AsyncOpen()
+    if (profiler_is_active()) {
+        profiler_add_network_marker(mURI, mPriority, mChannelId, NetworkLoadType::LOAD_START,
+                                    mChannelCreationTimestamp, mLastStatusReported,
+                                    0);
     }
 #endif
 
@@ -6573,11 +6594,8 @@ nsHttpChannel::BeginConnect()
         Telemetry::Accumulate(Telemetry::HTTP_TRANSACTION_USE_ALTSVC, false);
     }
 
-    mAuthProvider =
-        do_CreateInstance("@mozilla.org/network/http-channel-auth-provider;1",
-                          &rv);
-    if (NS_SUCCEEDED(rv))
-        rv = mAuthProvider->Init(this);
+    mAuthProvider = new nsHttpChannelAuthProvider();
+    rv = mAuthProvider->Init(this);
     if (NS_FAILED(rv)) {
         return rv;
     }
@@ -6786,7 +6804,7 @@ nsHttpChannel::ProcessId()
 }
 
 bool
-nsHttpChannel::AttachStreamFilter(ipc::Endpoint<extensions::PStreamFilterParent>&& aEndpoint)
+nsHttpChannel::AttachStreamFilter(mozilla::ipc::Endpoint<extensions::PStreamFilterParent>&& aEndpoint)
 
 {
   nsCOMPtr<nsIParentChannel> parentChannel;
@@ -7186,6 +7204,77 @@ nsHttpChannel::GetRequestMethod(nsACString& aMethod)
 // nsHttpChannel::nsIRequestObserver
 //-----------------------------------------------------------------------------
 
+// This class is used to convert from a DOM promise to a MozPromise.
+// Once we have a native implementation of nsIRedirectProcessChooser we can
+// remove it and use MozPromises directly.
+class DomPromiseListener final
+    : dom::PromiseNativeHandler
+{
+    NS_DECL_ISUPPORTS
+
+    static RefPtr<nsHttpChannel::TabPromise>
+    Create(dom::Promise* aDOMPromise)
+    {
+        MOZ_ASSERT(aDOMPromise);
+        RefPtr<DomPromiseListener> handler = new DomPromiseListener();
+        RefPtr<nsHttpChannel::TabPromise> promise = handler->mPromiseHolder.Ensure(__func__);
+        aDOMPromise->AppendNativeHandler(handler);
+        return promise;
+    }
+
+    virtual void
+    ResolvedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue) override
+    {
+        nsCOMPtr<nsITabParent> tabParent;
+        JS::Rooted<JSObject*> obj(aCx, &aValue.toObject());
+        nsresult rv = UnwrapArg<nsITabParent>(aCx, obj, getter_AddRefs(tabParent));
+        if (NS_FAILED(rv)) {
+            mPromiseHolder.Reject(rv, __func__);
+            return;
+        }
+        mPromiseHolder.Resolve(tabParent, __func__);
+    }
+
+    virtual void
+    RejectedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue) override
+    {
+        if (!aValue.isInt32()) {
+            mPromiseHolder.Reject(NS_ERROR_DOM_NOT_NUMBER_ERR, __func__);
+            return;
+        }
+        mPromiseHolder.Reject((nsresult) aValue.toInt32(), __func__);
+    }
+
+private:
+    DomPromiseListener() = default;
+    ~DomPromiseListener() = default;
+    MozPromiseHolder<nsHttpChannel::TabPromise> mPromiseHolder;
+};
+
+NS_IMPL_ISUPPORTS0(DomPromiseListener)
+
+nsresult
+nsHttpChannel::StartCrossProcessRedirect()
+{
+    nsresult rv = CheckRedirectLimit(nsIChannelEventSink::REDIRECT_INTERNAL);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    RefPtr<HttpChannelParentListener> listener = do_QueryObject(mCallbacks);
+    MOZ_ASSERT(listener);
+
+    nsCOMPtr<nsILoadInfo> redirectLoadInfo =
+      CloneLoadInfoForRedirect(mURI, nsIChannelEventSink::REDIRECT_INTERNAL);
+
+    listener->TriggerCrossProcessRedirect(this,
+                                          redirectLoadInfo,
+                                          mCrossProcessRedirectIdentifier);
+
+    // This will suspend the channel
+    rv = WaitForRedirectCallback();
+
+    return rv;
+}
+
 NS_IMETHODIMP
 nsHttpChannel::OnStartRequest(nsIRequest *request, nsISupports *ctxt)
 {
@@ -7289,6 +7378,32 @@ nsHttpChannel::OnStartRequest(nsIRequest *request, nsISupports *ctxt)
         rv = StartRedirectChannelToURI(mURI, nsIChannelEventSink::REDIRECT_INTERNAL);
         if (NS_SUCCEEDED(rv))
             return NS_OK;
+    }
+
+    // Check if the channel should be redirected to another process.
+    // If so, trigger a redirect, and the HttpChannelParentListener will
+    // redirect to the correct process
+    nsCOMPtr<nsIRedirectProcessChooser> requestChooser =
+        do_GetClassObject("@mozilla.org/network/processChooser");
+    if (requestChooser) {
+        nsCOMPtr<nsITabParent> tp;
+        nsCOMPtr<nsIParentChannel> parentChannel;
+        NS_QueryNotificationCallbacks(this, parentChannel);
+
+        RefPtr<dom::Promise> tabPromise;
+        rv = requestChooser->GetChannelRedirectTarget(this, parentChannel, &mCrossProcessRedirectIdentifier, getter_AddRefs(tabPromise));
+
+        if (NS_SUCCEEDED(rv) && tabPromise) {
+            // The promise will be handled in AsyncOnChannelRedirect.
+            mRedirectTabPromise = DomPromiseListener::Create(tabPromise);
+
+            PushRedirectAsyncFunc(&nsHttpChannel::ContinueOnStartRequest3);
+            rv = StartCrossProcessRedirect();
+            if (NS_SUCCEEDED(rv)) {
+                return NS_OK;
+            }
+            PopRedirectAsyncFunc(&nsHttpChannel::ContinueOnStartRequest3);
+        }
     }
 
     // avoid crashing if mListener happens to be null...
@@ -7769,7 +7884,7 @@ nsHttpChannel::OnStopRequest(nsIRequest *request, nsISupports *ctxt, nsresult st
     // interested in reading and/or writing the alt-data representation.
     // We need to hold a reference to the cache entry in case the listener calls
     // openAlternativeOutputStream() after CloseCacheEntry() clears mCacheEntry.
-    if (!mPreferredCachedAltDataType.IsEmpty()) {
+    if (!mPreferredCachedAltDataTypes.IsEmpty()) {
         mAltDataCacheEntry = mCacheEntry;
     }
 
@@ -8191,18 +8306,18 @@ nsHttpChannel::GetAllowStaleCacheContent(bool *aAllowStaleCacheContent)
 }
 
 NS_IMETHODIMP
-nsHttpChannel::PreferAlternativeDataType(const nsACString & aType)
+nsHttpChannel::PreferAlternativeDataType(const nsACString& aType,
+                                         const nsACString& aContentType)
 {
     ENSURE_CALLED_BEFORE_ASYNC_OPEN();
-    mPreferredCachedAltDataType = aType;
+    mPreferredCachedAltDataTypes.AppendElement(MakePair(nsCString(aType), nsCString(aContentType)));
     return NS_OK;
 }
 
-NS_IMETHODIMP
-nsHttpChannel::GetPreferredAlternativeDataType(nsACString & aType)
+const nsTArray<mozilla::Tuple<nsCString, nsCString>>&
+nsHttpChannel::PreferredAlternativeDataTypes()
 {
-  aType = mPreferredCachedAltDataType;
-  return NS_OK;
+    return mPreferredCachedAltDataTypes;
 }
 
 NS_IMETHODIMP
@@ -8232,6 +8347,23 @@ nsHttpChannel::OpenAlternativeOutputStream(const nsACString & type, int64_t pred
         cacheEntry->SetMetaDataElement("alt-data-from-child", nullptr);
     }
     return rv;
+}
+
+NS_IMETHODIMP
+nsHttpChannel::GetOriginalInputStream(nsIInputStreamReceiver *aReceiver)
+{
+    if (aReceiver == nullptr) {
+        return NS_ERROR_INVALID_ARG;
+    }
+    nsCOMPtr<nsIInputStream> inputStream;
+
+    nsCOMPtr<nsICacheEntry> cacheEntry = mCacheEntry ? mCacheEntry
+                                                     : mAltDataCacheEntry;
+    if (cacheEntry) {
+        cacheEntry->OpenInputStream(0, getter_AddRefs(inputStream));
+    }
+    aReceiver->OnInputStreamReady(inputStream);
+    return NS_OK;
 }
 
 //-----------------------------------------------------------------------------
@@ -8697,6 +8829,14 @@ nsHttpChannel::OnLookupComplete(nsICancelable *request,
         }
     }
 
+    return NS_OK;
+}
+
+NS_IMETHODIMP
+nsHttpChannel::OnLookupByTypeComplete(nsICancelable      *aRequest,
+                                      nsIDNSByTypeRecord *aRes,
+                                      nsresult            aStatus)
+{
     return NS_OK;
 }
 

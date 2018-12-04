@@ -25,6 +25,7 @@ const Services = require("Services");
 // Enable remote debugging for the relevant tests.
 Services.prefs.setBoolPref("devtools.debugger.remote-enabled", true);
 
+const { ActorRegistry } = require("devtools/server/actors/utils/actor-registry");
 const { DebuggerServer } = require("devtools/server/main");
 const { DebuggerClient } = require("devtools/shared/client/debugger-client");
 
@@ -81,7 +82,7 @@ var listener = {
     if (!(message.flags & Ci.nsIScriptError.strictFlag)) {
       do_throw("head_dbg.js got console message: " + string + "\n");
     }
-  }
+  },
 };
 
 Services.console.registerListener(listener);
@@ -90,10 +91,10 @@ Services.console.registerListener(listener);
  * Initialize the testing debugger server.
  */
 function initTestDebuggerServer() {
-  DebuggerServer.registerModule("devtools/server/actors/thread", {
+  ActorRegistry.registerModule("devtools/server/actors/thread", {
     prefix: "script",
     constructor: "ScriptActor",
-    type: { global: true, target: true }
+    type: { global: true, target: true },
   });
   const { createRootActor } = require("xpcshell-test/testactors");
   DebuggerServer.setRootActor(createRootActor);

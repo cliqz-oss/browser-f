@@ -27,6 +27,7 @@
 #include "nsIBrowserDOMWindow.h"
 #include "nsIInterfaceRequestor.h"
 #include "nsIDOMChromeWindow.h"
+#include "nsIObserver.h"
 #include "nsIScriptGlobalObject.h"
 #include "nsIScriptObjectPrincipal.h"
 #include "nsITimer.h"
@@ -90,7 +91,6 @@ struct IdleObserverHolder;
 namespace mozilla {
 class AbstractThread;
 class DOMEventTargetHelper;
-class ThrottledEventQueue;
 namespace dom {
 class BarProp;
 struct ChannelPixelLayout;
@@ -172,6 +172,7 @@ class nsGlobalWindowOuter final
   , public nsSupportsWeakReference
   , public nsIInterfaceRequestor
   , public PRCListStr
+  , public nsIObserver
 {
 public:
   typedef nsDataHashtable<nsUint64HashKey, nsGlobalWindowOuter*> OuterWindowByIdTable;
@@ -219,7 +220,7 @@ public:
     return (nsGlobalWindowOuter *)(mozilla::dom::EventTarget *)supports;
   }
 
-  static already_AddRefed<nsGlobalWindowOuter> Create(bool aIsChrome);
+  static already_AddRefed<nsGlobalWindowOuter> Create(nsIDocShell* aDocShell, bool aIsChrome);
 
   // public methods
   nsPIDOMWindowOuter* GetPrivateParent();
@@ -282,7 +283,7 @@ public:
   virtual nsIGlobalObject* GetOwnerGlobal() const override;
 
   EventTarget* GetTargetForEventTargetChain() override;
-  
+
   using mozilla::dom::EventTarget::DispatchEvent;
   bool DispatchEvent(mozilla::dom::Event& aEvent,
                      mozilla::dom::CallerType aCallerType,
@@ -320,7 +321,6 @@ public:
   // Outer windows only.
   bool WouldReuseInnerWindow(nsIDocument* aNewDocument);
 
-  void SetDocShell(nsIDocShell* aDocShell);
   void DetachFromDocShell();
 
   virtual nsresult SetNewDocument(nsIDocument *aDocument,
@@ -347,7 +347,7 @@ public:
   virtual bool DispatchCustomEvent(const nsAString& aEventName) override;
   bool DispatchResizeEvent(const mozilla::CSSIntSize& aSize);
 
-  // For accessing protected field mFullScreen
+  // For accessing protected field mFullscreen
   friend class FullscreenTransitionTask;
 
   // Outer windows only.
@@ -357,10 +357,13 @@ public:
   void FinishFullscreenChange(bool aIsFullscreen) final;
   bool SetWidgetFullscreen(FullscreenReason aReason, bool aIsFullscreen,
                            nsIWidget* aWidget, nsIScreen* aScreen);
-  bool FullScreen() const;
+  bool Fullscreen() const;
 
   // nsIInterfaceRequestor
   NS_DECL_NSIINTERFACEREQUESTOR
+
+  // nsIObserver
+  NS_DECL_NSIOBSERVER
 
   already_AddRefed<nsPIDOMWindowOuter> IndexedGetterOuter(uint32_t aIndex);
 
@@ -484,7 +487,9 @@ public:
 
   virtual void
   NotifyContentBlockingState(unsigned aState,
-                             nsIChannel* aChannel) override;
+                             nsIChannel* aChannel,
+                             bool aBlocked,
+                             nsIURI* aURIHint) override;
 
   virtual uint32_t GetSerial() override {
     return mSerial;
@@ -579,7 +584,6 @@ public:
 
   nsresult GetPrompter(nsIPrompt** aPrompt) override;
 protected:
-  explicit nsGlobalWindowOuter();
   nsPIDOMWindowOuter* GetOpenerWindowOuter();
   // Initializes the mWasOffline member variable
   void InitWasOffline();
@@ -658,10 +662,10 @@ public:
   float GetMozInnerScreenXOuter(mozilla::dom::CallerType aCallerType);
   float GetMozInnerScreenYOuter(mozilla::dom::CallerType aCallerType);
   double GetDevicePixelRatioOuter(mozilla::dom::CallerType aCallerType);
-  bool GetFullScreenOuter();
+  bool GetFullscreenOuter();
   bool GetFullScreen() override;
-  void SetFullScreenOuter(bool aFullScreen, mozilla::ErrorResult& aError);
-  nsresult SetFullScreen(bool aFullScreen) override;
+  void SetFullscreenOuter(bool aFullscreen, mozilla::ErrorResult& aError);
+  nsresult SetFullScreen(bool aFullscreen) override;
   bool FindOuter(const nsAString& aString, bool aCaseSensitive, bool aBackwards,
                  bool aWrapAround, bool aWholeWord, bool aSearchInFrames,
                  bool aShowDialog, mozilla::ErrorResult& aError);
@@ -730,6 +734,12 @@ public:
   virtual bool IsInSyncOperation() override
   {
     return GetExtantDoc() && GetExtantDoc()->IsInSyncOperation();
+  }
+
+  void ParentWindowChanged()
+  {
+    // Reset our storage access flag when we get reparented.
+    mHasStorageAccess = false;
   }
 
 public:
@@ -805,7 +815,8 @@ protected:
 
   inline void MaybeClearInnerWindow(nsGlobalWindowInner* aExpectedInner);
 
-  nsGlobalWindowInner *CallerInnerWindow();
+  // We need a JSContext to get prototypes inside CallerInnerWindow.
+  nsGlobalWindowInner* CallerInnerWindow(JSContext* aCx);
 
   // Get the parent, returns null if this is a toplevel window
   nsPIDOMWindowOuter* GetParentInternal();
@@ -828,6 +839,8 @@ protected:
                  nsPIDOMWindowOuter** _retval) override;
 
 private:
+  explicit nsGlobalWindowOuter(uint64_t aWindowID);
+
   /**
    * @param aUrl the URL we intend to load into the window.  If aNavigate is
    *        true, we'll actually load this URL into the window. Otherwise,
@@ -964,6 +977,15 @@ public:
 
   bool IsInModalState();
 
+  bool HasStorageAccess() const
+  {
+    return mHasStorageAccess;
+  }
+  void SetHasStorageAccess(bool aHasStorageAccess)
+  {
+    mHasStorageAccess = aHasStorageAccess;
+  }
+
   // Convenience functions for the many methods that need to scale
   // from device to CSS pixels or vice versa.  Note: if a presentation
   // context is not available, they will assume a 1:1 ratio.
@@ -1035,6 +1057,8 @@ private:
                               SecureContextFlags aFlags =
                                 SecureContextFlags::eDefault);
 
+  void SetDocShell(nsIDocShell* aDocShell);
+
   // nsPIDOMWindow{Inner,Outer} should be able to see these helper methods.
   friend class nsPIDOMWindowInner;
   friend class nsPIDOMWindowOuter;
@@ -1058,7 +1082,7 @@ public:
   virtual mozilla::AbstractThread*
   AbstractMainThreadFor(mozilla::TaskCategory aCategory) override;
 protected:
-  bool                          mFullScreen : 1;
+  bool                          mFullscreen : 1;
   bool                          mFullscreenMode : 1;
   bool                          mIsClosed : 1;
   bool                          mInClose : 1;
@@ -1087,6 +1111,9 @@ protected:
   bool                   mAllowScriptsToClose : 1;
 
   bool mTopLevelOuterContentWindow : 1;
+
+  // whether storage access has been granted to this frame.
+  bool mHasStorageAccess : 1;
 
   nsCOMPtr<nsIScriptContext>    mContext;
   nsWeakPtr                     mOpener;
@@ -1241,13 +1268,6 @@ nsGlobalWindowOuter::MaybeClearInnerWindow(nsGlobalWindowInner* aExpectedInner)
   if(mInnerWindow == aExpectedInner->AsInner()) {
     mInnerWindow = nullptr;
   }
-}
-
-/* factory function */
-inline already_AddRefed<nsGlobalWindowOuter>
-NS_NewScriptGlobalObject(bool aIsChrome)
-{
-  return nsGlobalWindowOuter::Create(aIsChrome);
 }
 
 #endif /* nsGlobalWindowOuter_h___ */

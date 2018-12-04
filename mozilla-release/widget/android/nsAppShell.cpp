@@ -64,6 +64,7 @@
 #include "GeckoNetworkManager.h"
 #include "GeckoProcessManager.h"
 #include "GeckoScreenOrientation.h"
+#include "GeckoSystemStateListener.h"
 #include "GeckoVRManager.h"
 #include "PrefsHelper.h"
 #include "fennec/MemoryMonitor.h"
@@ -411,6 +412,7 @@ nsAppShell::nsAppShell()
         if (jni::IsAvailable()) {
             GeckoThreadSupport::Init();
             GeckoAppShellSupport::Init();
+            mozilla::GeckoSystemStateListener::Init();
 
             // Set the corresponding state in GeckoThread.
             java::GeckoThread::SetState(java::GeckoThread::State::RUNNING());
@@ -430,6 +432,7 @@ nsAppShell::nsAppShell()
         mozilla::GeckoNetworkManager::Init();
         mozilla::GeckoProcessManager::Init();
         mozilla::GeckoScreenOrientation::Init();
+        mozilla::GeckoSystemStateListener::Init();
         mozilla::PrefsHelper::Init();
         nsWindow::InitNatives();
 

@@ -280,7 +280,6 @@ function checkPayload(payload, reason, successfulPings) {
   checkPayloadInfo(payload.info, reason);
 
   Assert.ok(payload.simpleMeasurements.totalTime >= 0);
-  Assert.ok(payload.simpleMeasurements.uptime >= 0);
   Assert.equal(payload.simpleMeasurements.startupInterrupted, 1);
   Assert.equal(payload.simpleMeasurements.shutdownDuration, SHUTDOWN_TIME);
   Assert.ok("maximalNumberOfConcurrentThreads" in payload.simpleMeasurements);
@@ -362,7 +361,7 @@ function checkPayload(payload, reason, successfulPings) {
   // memory reporters.  But we can at least check that the data is there.
   //
   // It's important to check for the presence of reporters with a mix of units,
-  // because TelemetryController has separate logic for each one.  But we can't
+  // because MemoryTelemetry has separate logic for each one.  But we can't
   // currently check UNITS_COUNT_CUMULATIVE or UNITS_PERCENTAGE because
   // Telemetry doesn't touch a memory reporter with these units that's
   // available on all platforms.
@@ -403,6 +402,11 @@ function checkPayload(payload, reason, successfulPings) {
 
   Assert.ok("processes" in payload, "The payload must have a processes section.");
   Assert.ok("parent" in payload.processes, "There must be at least a parent process.");
+
+  if (Services.prefs.getBoolPref("prio.enabled", false)) {
+    Assert.ok("prio" in payload, "The payload must have a prio section.");
+  }
+
   checkScalars(payload.processes);
 }
 
@@ -925,6 +929,39 @@ add_task(async function test_environmentChange() {
 
   Assert.ok(!(COUNT_ID in ping.payload.histograms));
   Assert.ok(!(KEYED_ID in ping.payload.keyedHistograms));
+
+  // Trigger and collect another ping. The histograms should be reset.
+  startHour = TelemetryUtils.truncateToHours(now);
+  gMonotonicNow = fakeMonotonicNow(gMonotonicNow + 10 * MILLISECONDS_PER_MINUTE);
+  now = fakeNow(futureDate(now, 10 * MILLISECONDS_PER_MINUTE));
+
+  if (Services.prefs.getBoolPref("prio.enabled", false)) {
+    fakePrioEncode();
+
+    // Set histograms to expected state.
+    let prioMeasures = [
+      "BROWSER_IS_USER_DEFAULT",
+      "NEWTAB_PAGE_ENABLED",
+    ];
+
+    for (let measure of prioMeasures) {
+      const value = Telemetry.getHistogramById(measure);
+      value.clear();
+      value.add(1);
+    }
+
+    let expectedPrioResult = {
+      "browserIsUserDefault": true,
+      "newTabPageEnabled": true,
+      "pdfViewerUsed": false,
+    };
+
+    Preferences.set(PREF_TEST, 3);
+    ping = await PingServer.promiseNextPing();
+    Assert.ok(!!ping);
+
+    Assert.deepEqual(ping.payload.prio, expectedPrioResult);
+  }
 
   await TelemetryController.testShutdown();
 });

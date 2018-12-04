@@ -9,7 +9,6 @@ const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const { translateNodeFrontToGrip } = require("devtools/client/inspector/shared/utils");
 
-// Reps
 const { REPS, MODE } = require("devtools/client/shared/components/reps/reps");
 const { Rep } = REPS;
 const ElementNode = REPS.ElementNode;
@@ -20,14 +19,18 @@ class FlexItem extends PureComponent {
   static get propTypes() {
     return {
       flexItem: PropTypes.shape(Types.flexItem).isRequired,
-      onToggleFlexItemShown: PropTypes.func.isRequired,
+      onHideBoxModelHighlighter: PropTypes.func.isRequired,
+      onShowBoxModelHighlighterForNode: PropTypes.func.isRequired,
+      setSelectedNode: PropTypes.func.isRequired,
     };
   }
 
   render() {
     const {
       flexItem,
-      onToggleFlexItemShown,
+      onHideBoxModelHighlighter,
+      onShowBoxModelHighlighterForNode,
+      setSelectedNode,
     } = this.props;
     const { nodeFront } = flexItem;
 
@@ -36,15 +39,18 @@ class FlexItem extends PureComponent {
         dom.button(
           {
             className: "devtools-button devtools-monospace",
-            onClick: () => onToggleFlexItemShown(nodeFront),
+            onClick: () => {
+              setSelectedNode(nodeFront);
+              onHideBoxModelHighlighter();
+            },
+            onMouseOut: () => onHideBoxModelHighlighter(),
+            onMouseOver: () => onShowBoxModelHighlighterForNode(nodeFront),
           },
-          Rep(
-            {
-              defaultRep: ElementNode,
-              mode: MODE.TINY,
-              object: translateNodeFrontToGrip(nodeFront)
-            }
-          )
+          Rep({
+            defaultRep: ElementNode,
+            mode: MODE.TINY,
+            object: translateNodeFrontToGrip(nodeFront),
+          })
         )
       )
     );

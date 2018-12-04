@@ -18,6 +18,10 @@ add_task(async function init() {
   registerCleanupFunction(async () => {
     BrowserTestUtils.removeTab(tab);
   });
+
+  // Ensure screenshots is really disabled (bug 1498738)
+  const addon = await AddonManager.getAddonByID("screenshots@mozilla.org");
+  await addon.disable({allowSystemAddons: true});
 });
 
 
@@ -1275,13 +1279,13 @@ add_task(async function contextMenu() {
   });
   await contextMenuPromise;
 
-  // The context menu should show the "don't show" item and the "manage" item.
-  // Click the "don't show" item.
+  // The context menu should show the "remove" item and the "manage" item.
+  // Click the "remove" item.
   let menuItems = collectContextMenuItems();
   Assert.equal(menuItems.length, 3,
                "Context menu has 3 children");
-  Assert.equal(menuItems[0].label, "Don\u2019t Show in Address Bar",
-               "Context menu is in the 'don't show' state");
+  Assert.equal(menuItems[0].label, "Remove from Address Bar",
+               "Context menu is in the 'remove' state");
   Assert.equal(menuItems[1].localName, "menuseparator",
                "menuseparator is present");
   Assert.equal(menuItems[2].label, "Manage Extension\u2026",
@@ -1304,13 +1308,13 @@ add_task(async function contextMenu() {
   });
   await contextMenuPromise;
 
-  // The context menu should show the "show" item and the "manage" item.  Click
-  // the "show" item.
+  // The context menu should show the "add" item and the "manage" item.  Click
+  // the "add" item.
   menuItems = collectContextMenuItems();
   Assert.equal(menuItems.length, 3,
                "Context menu has 3 children");
-  Assert.equal(menuItems[0].label, "Show in Address Bar",
-               "Context menu is in the 'show' state");
+  Assert.equal(menuItems[0].label, "Add to Address Bar",
+               "Context menu is in the 'add' state");
   Assert.equal(menuItems[1].localName, "menuseparator",
                "menuseparator is present");
   Assert.equal(menuItems[2].label, "Manage Extension\u2026",
@@ -1333,13 +1337,13 @@ add_task(async function contextMenu() {
   });
   await contextMenuPromise;
 
-  // The context menu should show the "don't show" item and the "manage" item.
+  // The context menu should show the "remove" item and the "manage" item.
   // Click the "manage" item.  about:addons should open.
   menuItems = collectContextMenuItems();
   Assert.equal(menuItems.length, 3,
                "Context menu has 3 children");
-  Assert.equal(menuItems[0].label, "Don\u2019t Show in Address Bar",
-               "Context menu is in the 'don't show' state");
+  Assert.equal(menuItems[0].label, "Remove from Address Bar",
+               "Context menu is in the 'remove' state");
   Assert.equal(menuItems[1].localName, "menuseparator",
                "menuseparator is present");
   Assert.equal(menuItems[2].label, "Manage Extension\u2026",
@@ -1361,13 +1365,13 @@ add_task(async function contextMenu() {
   });
   await contextMenuPromise;
 
-  // The context menu should show the "don't show" item and the "manage" item.
-  // Click the "don't show" item.
+  // The context menu should show the "remove" item and the "manage" item.
+  // Click the "remove" item.
   menuItems = collectContextMenuItems();
   Assert.equal(menuItems.length, 3,
                "Context menu has 3 children");
-  Assert.equal(menuItems[0].label, "Don\u2019t Show in Address Bar",
-               "Context menu is in the 'don't show' state");
+  Assert.equal(menuItems[0].label, "Remove from Address Bar",
+               "Context menu is in the 'remove' state");
   Assert.equal(menuItems[1].localName, "menuseparator",
                "menuseparator is present");
   Assert.equal(menuItems[2].label, "Manage Extension\u2026",
@@ -1390,13 +1394,13 @@ add_task(async function contextMenu() {
   });
   await contextMenuPromise;
 
-  // The context menu should show the "show" item and the "manage" item.  Click
-  // the "show" item.
+  // The context menu should show the "add" item and the "manage" item.  Click
+  // the "add" item.
   menuItems = collectContextMenuItems();
   Assert.equal(menuItems.length, 3,
                "Context menu has 3 children");
-  Assert.equal(menuItems[0].label, "Show in Address Bar",
-               "Context menu is in the 'show' state");
+  Assert.equal(menuItems[0].label, "Add to Address Bar",
+               "Context menu is in the 'add' state");
   Assert.equal(menuItems[1].localName, "menuseparator",
                "menuseparator is present");
   Assert.equal(menuItems[2].label, "Manage Extension\u2026",
@@ -1419,13 +1423,13 @@ add_task(async function contextMenu() {
   });
   await contextMenuPromise;
 
-  // The context menu should show the "don't show" item and the "manage" item.
+  // The context menu should show the "remove" item and the "manage" item.
   // Click the "manage" item.  about:addons should open.
   menuItems = collectContextMenuItems();
   Assert.equal(menuItems.length, 3,
                "Context menu has 3 children");
-  Assert.equal(menuItems[0].label, "Don\u2019t Show in Address Bar",
-               "Context menu is in the 'don't show' state");
+  Assert.equal(menuItems[0].label, "Remove from Address Bar",
+               "Context menu is in the 'remove' state");
   Assert.equal(menuItems[1].localName, "menuseparator",
                "menuseparator is present");
   Assert.equal(menuItems[2].label, "Manage Extension\u2026",

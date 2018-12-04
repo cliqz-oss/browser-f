@@ -8,7 +8,7 @@
 #define mozilla_dom_BindingUtils_h__
 
 #include "jsfriendapi.h"
-#include "js/AutoByteString.h"
+#include "js/CharacterEncoding.h"
 #include "js/Wrapper.h"
 #include "js/Conversions.h"
 #include "mozilla/ArrayUtils.h"
@@ -1313,12 +1313,12 @@ inline bool
 EnumValueNotFound<true>(JSContext* cx, JS::HandleString str, const char* type,
                         const char* sourceDescription)
 {
-  JSAutoByteString deflated;
-  if (!deflated.encodeUtf8(cx, str)) {
+  JS::UniqueChars deflated = JS_EncodeStringToUTF8(cx, str);
+  if (!deflated) {
     return false;
   }
   return ThrowErrorMessage(cx, MSG_INVALID_ENUM_VALUE, sourceDescription,
-                           deflated.ptr(), type);
+                           deflated.get(), type);
 }
 
 template<typename CharT>
@@ -1477,7 +1477,7 @@ UpdateWrapper(T* p, void*, JSObject* obj, const JSObject* old)
 // This operation will return false only for non-nsISupports cycle-collected
 // objects, because we cannot determine if they are wrappercached or not.
 bool
-TryPreserveWrapper(JSObject* obj);
+TryPreserveWrapper(JS::Handle<JSObject*> obj);
 
 // Can only be called with a DOM JSClass.
 bool
@@ -2822,7 +2822,6 @@ public:
       js::SetProxyReservedSlot(aReflector, DOM_OBJECT_SLOT, JS::PrivateValue(aNative));
       mNative = aNative;
       mReflector = aReflector;
-      RecordReplayRegisterDeferredFinalize<T>(aNative);
     }
 
     if (size_t mallocBytes = BindingJSObjectMallocBytes(aNative)) {
@@ -2840,7 +2839,6 @@ public:
       js::SetReservedSlot(aReflector, DOM_OBJECT_SLOT, JS::PrivateValue(aNative));
       mNative = aNative;
       mReflector = aReflector;
-      RecordReplayRegisterDeferredFinalize<T>(aNative);
     }
 
     if (size_t mallocBytes = BindingJSObjectMallocBytes(aNative)) {
@@ -2851,8 +2849,10 @@ public:
   void
   InitializationSucceeded()
   {
-    void* dummy;
-    mNative.forget(&dummy);
+    T* pointer;
+    mNative.forget(&pointer);
+    RecordReplayRegisterDeferredFinalize<T>(pointer);
+
     mReflector = nullptr;
   }
 
@@ -2868,15 +2868,23 @@ private:
     OwnedNative&
     operator=(T* aNative)
     {
+      mNative = aNative;
       return *this;
     }
 
     // This signature sucks, but it's the only one that will make a nsRefPtr
     // just forget about its pointer without warning.
     void
-    forget(void**)
+    forget(T** aResult)
     {
+      *aResult = mNative;
+      mNative = nullptr;
     }
+
+    // Keep track of the pointer for use in InitializationSucceeded().
+    // The caller (or, after initialization succeeds, the JS object) retains
+    // ownership of the object.
+    T* mNative;
   };
 
   JS::Rooted<JSObject*> mReflector;
@@ -2995,9 +3003,9 @@ RecordReplayRegisterDeferredFinalize(T* aObject)
   DeferredFinalizer<T>::RecordReplayRegisterDeferredFinalize(aObject);
 }
 
-// This returns T's CC participant if it participates in CC or null if it
-// doesn't. This also returns null for classes that don't inherit from
-// nsISupports (QI should be used to get the participant for those).
+// This returns T's CC participant if it participates in CC and does not inherit
+// from nsISupports. Otherwise, it returns null. QI should be used to get the
+// participant if T inherits from nsISupports.
 template<class T, bool isISupports=IsBaseOf<nsISupports, T>::value>
 class GetCCParticipant
 {
@@ -3021,7 +3029,7 @@ public:
   Get()
   {
     // Passing int() here will try to call the GetHelper that takes an int as
-    // its firt argument. If T doesn't participate in CC then substitution for
+    // its first argument. If T doesn't participate in CC then substitution for
     // the second argument (with a default value) will fail and because of
     // SFINAE the next best match (the variant taking a double) will be called.
     return GetHelper<T>(int());
@@ -3114,9 +3122,7 @@ CreateGlobal(JSContext* aCx, T* aNative, nsWrapperCache* aCache,
              JS::MutableHandle<JSObject*> aGlobal)
 {
   aOptions.creationOptions().setTrace(CreateGlobalOptions<T>::TraceGlobal);
-  if (xpc::SharedMemoryEnabled()) {
-    aOptions.creationOptions().setSharedMemoryAndAtomicsEnabled(true);
-  }
+  xpc::SetPrefableRealmOptions(aOptions);
 
   aGlobal.set(JS_NewGlobalObject(aCx, aClass, aPrincipal,
                                  JS::DontFireOnNewGlobalHook, aOptions));

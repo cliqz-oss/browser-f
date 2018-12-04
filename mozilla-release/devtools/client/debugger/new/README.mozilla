@@ -1,9 +1,9 @@
 This is the debugger.html project output.
 See https://github.com/devtools-html/debugger.html
 
-Version 85
+Version 92
 
-Comparison: https://github.com/devtools-html/debugger.html/compare/release-84...release-85
+Comparison: https://github.com/devtools-html/debugger.html/compare/release-91...release-92
 
 Packages:
 - babel-plugin-transform-es2015-modules-commonjs @6.26.2

@@ -14,7 +14,7 @@
 #include "mozilla/SyncRunnable.h"
 #include "mozilla/Unused.h"
 #include "gfxUtils.h"
-#include "nsIThreadPool.h"
+#include "nsThreadPool.h"
 #include "nsNetUtil.h"
 #include "nsXPCOMCIDInternal.h"
 #include "YCbCrUtils.h"
@@ -354,7 +354,9 @@ ImageEncoder::GetInputStream(int32_t aWidth,
                            nsDependentString(aEncoderOptions));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  return CallQueryInterface(aEncoder, aStream);
+  nsCOMPtr<imgIEncoder> encoder(aEncoder);
+  encoder.forget(aStream);
+  return NS_OK;
 }
 
 /* static */
@@ -455,7 +457,7 @@ ImageEncoder::ExtractDataInternal(const nsAString& aType,
     }
 
     if (NS_SUCCEEDED(rv)) {
-      imgStream = do_QueryInterface(aEncoder);
+      imgStream = aEncoder;
     }
   } else {
     if (BufferSizeFromDimensions(aSize.width, aSize.height, 4) == 0) {
@@ -491,7 +493,7 @@ ImageEncoder::ExtractDataInternal(const nsAString& aType,
                                 aOptions);
     emptyCanvas->Unmap();
     if (NS_SUCCEEDED(rv)) {
-      imgStream = do_QueryInterface(aEncoder);
+      imgStream = aEncoder;
     }
   }
   NS_ENSURE_SUCCESS(rv, rv);
@@ -558,7 +560,7 @@ nsresult
 ImageEncoder::EnsureThreadPool()
 {
   if (!sThreadPool) {
-    nsCOMPtr<nsIThreadPool> threadPool = do_CreateInstance(NS_THREADPOOL_CONTRACTID);
+    nsCOMPtr<nsIThreadPool> threadPool = new nsThreadPool();
     sThreadPool = threadPool;
 
     if (!NS_IsMainThread()) {

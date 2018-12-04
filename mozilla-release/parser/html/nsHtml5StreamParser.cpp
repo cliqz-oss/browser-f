@@ -9,6 +9,7 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/Encoding.h"
 #include "nsContentUtils.h"
+#include "nsCyrillicDetector.h"
 #include "nsHtml5Tokenizer.h"
 #include "nsIHttpChannel.h"
 #include "nsHtml5Parser.h"
@@ -31,6 +32,7 @@
 #include "nsIThreadRetargetableRequest.h"
 #include "nsPrintfCString.h"
 #include "nsNetUtil.h"
+#include "nsUdetXPCOMWrapper.h"
 #include "nsXULAppAPI.h"
 #include "mozilla/SchedulerGroup.h"
 #include "nsJSEnvironment.h"
@@ -175,14 +177,13 @@ nsHtml5StreamParser::nsHtml5StreamParser(nsHtml5TreeOpExecutor* aExecutor,
   , mFeedChardet(false)
   , mInitialEncodingWasFromParentFrame(false)
   , mHasHadErrors(false)
-  , mFlushTimer(NS_NewTimer())
+  , mFlushTimer(NS_NewTimer(mEventTarget))
   , mFlushTimerMutex("nsHtml5StreamParser mFlushTimerMutex")
   , mFlushTimerArmed(false)
   , mFlushTimerEverFired(false)
   , mMode(aMode)
 {
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
-  mFlushTimer->SetTarget(mEventTarget);
 #ifdef DEBUG
   mAtomTable.SetPermittedLookupEventTarget(mEventTarget);
 #endif
@@ -203,10 +204,17 @@ nsHtml5StreamParser::nsHtml5StreamParser(nsHtml5TreeOpExecutor* aExecutor,
   nsAutoCString detectorName;
   Preferences::GetLocalizedCString("intl.charset.detector", detectorName);
   if (!detectorName.IsEmpty()) {
-    nsAutoCString detectorContractID;
-    detectorContractID.AssignLiteral(NS_CHARSET_DETECTOR_CONTRACTID_BASE);
-    detectorContractID += detectorName;
-    if ((mChardet = do_CreateInstance(detectorContractID.get()))) {
+    // We recognize one of the three magic strings for the following languages.
+    if (detectorName.EqualsLiteral("ruprob")) {
+      mChardet = new nsRUProbDetector();
+    } else if (detectorName.EqualsLiteral("ukprob")) {
+      mChardet = new nsUKProbDetector();
+    } else if (detectorName.EqualsLiteral("ja_parallel_state_machine")) {
+      mChardet = new nsJAPSMDetector();
+    } else {
+      mChardet = nullptr;
+    }
+    if (mChardet) {
       (void)mChardet->Init(this);
       mFeedChardet = true;
     }
@@ -845,7 +853,7 @@ nsHtml5StreamParser::WriteStreamBytes(const uint8_t* aFromSegment,
     Tie(result, read, written, hadErrors) =
       mUnicodeDecoder->DecodeToUTF16(src, dst, false);
     if (recordreplay::IsRecordingOrReplaying()) {
-      recordreplay::AddContentParseData(this, dst.data(), written);
+      recordreplay::AddContentParseData16(this, dst.data(), written);
     }
     if (hadErrors && !mHasHadErrors) {
       mHasHadErrors = true;
@@ -1104,7 +1112,7 @@ nsHtml5StreamParser::DoStopRequest()
     Tie(result, read, written, hadErrors) =
       mUnicodeDecoder->DecodeToUTF16(src, dst, true);
     if (recordreplay::IsRecordingOrReplaying()) {
-      recordreplay::AddContentParseData(this, dst.data(), written);
+      recordreplay::AddContentParseData16(this, dst.data(), written);
     }
     if (hadErrors && !mHasHadErrors) {
       mHasHadErrors = true;

@@ -18,6 +18,7 @@
 
 #include "nsIDOMXULContainerElement.h"
 #include "nsIPersistentProperties2.h"
+#include "mozilla/a11y/PDocAccessibleChild.h"
 #include "mozilla/dom/Element.h"
 
 using namespace mozilla;
@@ -208,20 +209,19 @@ nsAccUtils::HasDefinedARIAToken(nsIContent *aContent, nsAtom *aAtom)
   return true;
 }
 
-nsAtom*
+nsStaticAtom*
 nsAccUtils::GetARIAToken(dom::Element* aElement, nsAtom* aAttr)
 {
   if (!HasDefinedARIAToken(aElement, aAttr))
     return nsGkAtoms::_empty;
 
   static Element::AttrValuesArray tokens[] =
-    { &nsGkAtoms::_false, &nsGkAtoms::_true,
-      &nsGkAtoms::mixed, nullptr};
+    { nsGkAtoms::_false, nsGkAtoms::_true, nsGkAtoms::mixed, nullptr};
 
   int32_t idx = aElement->FindAttrValueIn(kNameSpaceID_None,
                                           aAttr, tokens, eCaseMatters);
   if (idx >= 0)
-    return *(tokens[idx]);
+    return tokens[idx];
 
   return nullptr;
 }
@@ -457,4 +457,38 @@ nsAccUtils::MustPrune(Accessible* aAccessible)
      aAccessible->ContentChildCount() == 1 &&
      aAccessible->ContentChildAt(0)->IsTextLeaf()
     );
+}
+
+bool
+nsAccUtils::PersistentPropertiesToArray(nsIPersistentProperties* aProps,
+                                        nsTArray<Attribute>* aAttributes)
+{
+  if (!aProps) {
+    return true;
+  }
+  nsCOMPtr<nsISimpleEnumerator> propEnum;
+  nsresult rv = aProps->Enumerate(getter_AddRefs(propEnum));
+  NS_ENSURE_SUCCESS(rv, false);
+
+  bool hasMore;
+  while (NS_SUCCEEDED(propEnum->HasMoreElements(&hasMore)) && hasMore) {
+    nsCOMPtr<nsISupports> sup;
+    rv = propEnum->GetNext(getter_AddRefs(sup));
+    NS_ENSURE_SUCCESS(rv, false);
+
+    nsCOMPtr<nsIPropertyElement> propElem(do_QueryInterface(sup));
+    NS_ENSURE_TRUE(propElem, false);
+
+    nsAutoCString name;
+    rv = propElem->GetKey(name);
+    NS_ENSURE_SUCCESS(rv, false);
+
+    nsAutoString value;
+    rv = propElem->GetValue(value);
+    NS_ENSURE_SUCCESS(rv, false);
+
+    aAttributes->AppendElement(Attribute(name, value));
+    }
+
+  return true;
 }

@@ -26,11 +26,11 @@ add_task(async function() {
     window.addEventListener("message", onMessage);
   });
 
-  let iframe = document.createElement("iframe");
+  let iframe = document.createXULElement("iframe");
   document.documentElement.appendChild(iframe);
 
   const tab = await addTab(TEST_URL);
-  let target = TargetFactory.forTab(tab);
+  let target = await TargetFactory.forTab(tab);
   const options = { customIframe: iframe };
   let toolbox = await gDevTools.showToolbox(target, null, Toolbox.HostType.CUSTOM, options);
 

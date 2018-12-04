@@ -6,8 +6,6 @@
 
 #include "Lock.h"
 
-#include "mozilla/StaticMutex.h"
-
 #include "ChunkAllocator.h"
 #include "InfallibleVector.h"
 #include "SpinLock.h"
@@ -68,15 +66,12 @@ static ReadWriteSpinLock gLocksLock;
 /* static */ void
 Lock::New(void* aNativeLock)
 {
-  if (AreThreadEventsPassedThrough() || HasDivergedFromRecording()) {
+  Thread* thread = Thread::Current();
+  RecordingEventSection res(thread);
+  if (!res.CanAccessEvents()) {
     Destroy(aNativeLock); // Clean up any old lock, as below.
     return;
   }
-
-  MOZ_RELEASE_ASSERT(!AreThreadEventsDisallowed());
-  Thread* thread = Thread::Current();
-
-  RecordReplayAssert("CreateLock");
 
   thread->Events().RecordOrReplayThreadEvent(ThreadEvent::CreateLock);
 
@@ -94,7 +89,7 @@ Lock::New(void* aNativeLock)
   }
 
   // Tolerate new locks being created with identical pointers, even if there
-  // was no DestroyLock call for the old one.
+  // was no explicit Destroy() call for the old one.
   Destroy(aNativeLock);
 
   AutoWriteSpinLock ex(gLocksLock);
@@ -153,16 +148,17 @@ Lock::Find(void* aNativeLock)
 void
 Lock::Enter()
 {
-  MOZ_RELEASE_ASSERT(!AreThreadEventsPassedThrough() && !HasDivergedFromRecording());
-  MOZ_RELEASE_ASSERT(!AreThreadEventsDisallowed());
+  Thread* thread = Thread::Current();
 
-  RecordReplayAssert("Lock %d", (int) mId);
+  RecordingEventSection res(thread);
+  if (!res.CanAccessEvents()) {
+    return;
+  }
 
   // Include an event in each thread's record when a lock acquire begins. This
   // is not required by the replay but is used to check that lock acquire order
   // is consistent with the recording and that we will fail explicitly instead
   // of deadlocking.
-  Thread* thread = Thread::Current();
   thread->Events().RecordOrReplayThreadEvent(ThreadEvent::Lock);
   thread->Events().CheckInput(mId);
 
@@ -170,8 +166,9 @@ Lock::Enter()
   if (IsRecording()) {
     acquires->mAcquires->WriteScalar(thread->Id());
   } else {
-    // Wait until this thread is next in line to acquire the lock.
-    while (thread->Id() != acquires->mNextOwner) {
+    // Wait until this thread is next in line to acquire the lock, or until it
+    // has been instructed to diverge from the recording.
+    while (thread->Id() != acquires->mNextOwner && !thread->MaybeDivergeFromRecording()) {
       Thread::Wait();
     }
   }
@@ -180,10 +177,11 @@ Lock::Enter()
 void
 Lock::Exit()
 {
-  if (IsReplaying()) {
+  Thread* thread = Thread::Current();
+  if (IsReplaying() && !thread->HasDivergedFromRecording()) {
     // Notify the next owner before releasing the lock.
     LockAcquires* acquires = gLockAcquires.Get(mId);
-    acquires->ReadAndNotifyNextOwner(Thread::Current());
+    acquires->ReadAndNotifyNextOwner(thread);
   }
 }
 
@@ -193,19 +191,22 @@ struct AtomicLock : public detail::MutexImpl
   using detail::MutexImpl::unlock;
 };
 
-// Lock which is held during code sections that run atomically. This is a
-// PRLock instead of an OffTheBooksMutex because the latter performs atomic
-// operations during initialization.
+// Lock which is held during code sections that run atomically.
 static AtomicLock* gAtomicLock = nullptr;
 
 /* static */ void
 Lock::InitializeLocks()
 {
-  MOZ_RELEASE_ASSERT(!AreThreadEventsPassedThrough());
   gNumLocks = gAtomicLockId;
-
   gAtomicLock = new AtomicLock();
-  MOZ_RELEASE_ASSERT(!IsRecording() || gNumLocks == gAtomicLockId + 1);
+
+  AssertEventsAreNotPassedThrough();
+
+  // There should be exactly one recorded lock right now, unless we had an
+  // initialization failure and didn't record the lock just created.
+  MOZ_RELEASE_ASSERT(!IsRecording() ||
+                     gNumLocks == gAtomicLockId + 1 ||
+                     gInitializationFailureMessage);
 }
 
 /* static */ void

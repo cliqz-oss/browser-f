@@ -10,8 +10,8 @@ ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/ActorChild.jsm");
 
 class OfflineAppsChild extends ActorChild {
-  constructor(mm) {
-    super(mm);
+  constructor(dispatcher) {
+    super(dispatcher);
 
     this._docId = 0;
     this._docIdMap = new Map();
@@ -32,15 +32,6 @@ class OfflineAppsChild extends ActorChild {
 
   handleEvent(event) {
     if (event.type == "MozApplicationManifest") {
-      let doc = event.target;
-      let info = {
-        uri: doc.documentURI,
-        characterSet: doc.characterSet,
-        manifest: doc.documentElement.getAttribute("manifest"),
-        principal: doc.nodePrincipal,
-      };
-      this.mm.sendAsyncMessage("MozApplicationManifest", info);
-
       this.offlineAppRequested(event.originalTarget.defaultView);
     }
   }

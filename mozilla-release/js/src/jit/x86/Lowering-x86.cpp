@@ -97,8 +97,9 @@ LIRGenerator::visitUnbox(MUnbox* unbox)
 
     if (inner->type() == MIRType::ObjectOrNull) {
         LUnboxObjectOrNull* lir = new(alloc()) LUnboxObjectOrNull(useRegisterAtStart(inner));
-        if (unbox->fallible())
+        if (unbox->fallible()) {
             assignSnapshot(lir, unbox->bailoutKind());
+        }
         defineReuseInput(lir, unbox, 0);
         return;
     }
@@ -112,8 +113,9 @@ LIRGenerator::visitUnbox(MUnbox* unbox)
 
     if (IsFloatingPointType(unbox->type())) {
         LUnboxFloatingPoint* lir = new(alloc()) LUnboxFloatingPoint(useBox(inner), unbox->type());
-        if (unbox->fallible())
+        if (unbox->fallible()) {
             assignSnapshot(lir, unbox->bailoutKind());
+        }
         define(lir, unbox);
         return;
     }
@@ -131,18 +133,20 @@ LIRGenerator::visitUnbox(MUnbox* unbox)
         lir->setOperand(1, useType(inner, LUse::ANY));
     }
 
-    if (unbox->fallible())
+    if (unbox->fallible()) {
         assignSnapshot(lir, unbox->bailoutKind());
+    }
 
     // Types and payloads form two separate intervals. If the type becomes dead
     // before the payload, it could be used as a Value without the type being
     // recoverable. Unbox's purpose is to eagerly kill the definition of a type
     // tag, so keeping both alive (for the purpose of gcmaps) is unappealing.
     // Instead, we create a new virtual register.
-    if (reusePayloadReg)
+    if (reusePayloadReg) {
         defineReuseInput(lir, unbox, 0);
-    else
+    } else {
         define(lir, unbox);
+    }
 }
 
 void
@@ -156,25 +160,6 @@ LIRGenerator::visitReturn(MReturn* ret)
     ins->setOperand(1, LUse(JSReturnReg_Data));
     fillBoxUses(ins, 0, opd);
     add(ins);
-}
-
-void
-LIRGeneratorX86::defineUntypedPhi(MPhi* phi, size_t lirIndex)
-{
-    LPhi* type = current->getPhi(lirIndex + VREG_TYPE_OFFSET);
-    LPhi* payload = current->getPhi(lirIndex + VREG_DATA_OFFSET);
-
-    uint32_t typeVreg = getVirtualRegister();
-
-    phi->setVirtualRegister(typeVreg);
-
-    uint32_t payloadVreg = getVirtualRegister();
-    MOZ_ASSERT(typeVreg + 1 == payloadVreg);
-
-    type->setDef(0, LDefinition(typeVreg, LDefinition::TYPE));
-    payload->setDef(0, LDefinition(payloadVreg, LDefinition::PAYLOAD));
-    annotate(type);
-    annotate(payload);
 }
 
 void
@@ -234,17 +219,20 @@ LIRGeneratorX86::lowerForMulInt64(LMulI64* ins, MMul* mir, MDefinition* lhs, MDe
         int64_t constant = rhs->toConstant()->toInt64();
         int32_t shift = mozilla::FloorLog2(constant);
         // See special cases in CodeGeneratorX86Shared::visitMulI64.
-        if (constant >= -1 && constant <= 2)
+        if (constant >= -1 && constant <= 2) {
             needsTemp = false;
-        if (int64_t(1) << shift == constant)
+        }
+        if (constant > 0 && int64_t(1) << shift == constant) {
             needsTemp = false;
+        }
     }
 
     // MulI64 on x86 needs output to be in edx, eax;
     ins->setInt64Operand(0, useInt64Fixed(lhs, Register64(edx, eax), /*useAtStart = */ true));
     ins->setInt64Operand(INT64_PIECES, useInt64OrConstant(rhs));
-    if (needsTemp)
+    if (needsTemp) {
         ins->setTemp(0, temp());
+    }
 
     defineInt64Fixed(ins, mir, LInt64Allocation(LAllocation(AnyRegister(edx)),
                                                 LAllocation(AnyRegister(eax))));
@@ -308,8 +296,9 @@ LIRGenerator::visitWasmLoad(MWasmLoad* ins)
     // pointer to a register only if that can't happen.
 
     LAllocation baseAlloc;
-    if (!base->isConstant() || !(base->toConstant()->isInt32(0) || ins->access().offset() == 0))
+    if (!base->isConstant() || !(base->toConstant()->isInt32(0) || ins->access().offset() == 0)) {
         baseAlloc = ins->type() == MIRType::Int64 ? useRegister(base) : useRegisterAtStart(base);
+    }
 
     if (ins->type() != MIRType::Int64) {
         auto* lir = new(alloc()) LWasmLoad(baseAlloc, useRegisterAtStart(memoryBase));
@@ -359,8 +348,9 @@ LIRGenerator::visitWasmStore(MWasmStore* ins)
     // pointer to a register only if that can't happen.
 
     LAllocation baseAlloc;
-    if (!base->isConstant() || !(base->toConstant()->isInt32(0) || ins->access().offset() == 0))
+    if (!base->isConstant() || !(base->toConstant()->isInt32(0) || ins->access().offset() == 0)) {
         baseAlloc = useRegisterAtStart(base);
+    }
 
     LAllocation valueAlloc;
     switch (ins->access().type()) {
@@ -388,76 +378,6 @@ LIRGenerator::visitWasmStore(MWasmStore* ins)
     }
 
     auto* lir = new(alloc()) LWasmStore(baseAlloc, valueAlloc, useRegisterAtStart(memoryBase));
-    add(lir, ins);
-}
-
-void
-LIRGenerator::visitAsmJSLoadHeap(MAsmJSLoadHeap* ins)
-{
-    MDefinition* base = ins->base();
-    MOZ_ASSERT(base->type() == MIRType::Int32);
-
-    MDefinition* boundsCheckLimit = ins->boundsCheckLimit();
-    MOZ_ASSERT_IF(ins->needsBoundsCheck(), boundsCheckLimit->type() == MIRType::Int32);
-
-    MDefinition* memoryBase = ins->memoryBase();
-    MOZ_ASSERT(memoryBase->type() == MIRType::Pointer);
-
-    // For simplicity, require a register if we're going to emit a bounds-check
-    // branch, so that we don't have special cases for constants.
-    LAllocation baseAlloc = ins->needsBoundsCheck()
-                            ? useRegisterAtStart(base)
-                            : useRegisterOrZeroAtStart(base);
-    LAllocation limitAlloc = ins->needsBoundsCheck()
-                           ? useRegisterAtStart(boundsCheckLimit)
-                           : LAllocation();
-
-    auto* lir = new(alloc()) LAsmJSLoadHeap(baseAlloc, limitAlloc, useRegisterAtStart(memoryBase));
-    define(lir, ins);
-}
-
-void
-LIRGenerator::visitAsmJSStoreHeap(MAsmJSStoreHeap* ins)
-{
-    MDefinition* base = ins->base();
-    MOZ_ASSERT(base->type() == MIRType::Int32);
-
-    MDefinition* boundsCheckLimit = ins->boundsCheckLimit();
-    MOZ_ASSERT_IF(ins->needsBoundsCheck(), boundsCheckLimit->type() == MIRType::Int32);
-
-    MDefinition* memoryBase = ins->memoryBase();
-    MOZ_ASSERT(memoryBase->type() == MIRType::Pointer);
-
-    // For simplicity, require a register if we're going to emit a bounds-check
-    // branch, so that we don't have special cases for constants.
-    LAllocation baseAlloc = ins->needsBoundsCheck()
-                            ? useRegisterAtStart(base)
-                            : useRegisterOrZeroAtStart(base);
-    LAllocation limitAlloc = ins->needsBoundsCheck()
-                           ? useRegisterAtStart(boundsCheckLimit)
-                           : LAllocation();
-
-    LAsmJSStoreHeap* lir = nullptr;
-    switch (ins->access().type()) {
-      case Scalar::Int8: case Scalar::Uint8:
-        // See comment for LIRGeneratorX86::useByteOpRegister.
-        lir = new(alloc()) LAsmJSStoreHeap(baseAlloc, useFixed(ins->value(), eax),
-                                           limitAlloc, useRegisterAtStart(memoryBase));
-        break;
-      case Scalar::Int16: case Scalar::Uint16:
-      case Scalar::Int32: case Scalar::Uint32:
-      case Scalar::Float32: case Scalar::Float64:
-        // For now, don't allow constant values. The immediate operand affects
-        // instruction layout which affects patching.
-        lir = new (alloc()) LAsmJSStoreHeap(baseAlloc, useRegisterAtStart(ins->value()),
-                                            limitAlloc, useRegisterAtStart(memoryBase));
-        break;
-      case Scalar::Int64:
-        MOZ_CRASH("NYI");
-      case Scalar::Uint8Clamped:
-      case Scalar::MaxTypedArrayViewType:
-        MOZ_CRASH("unexpected array type");
-    }
     add(lir, ins);
 }
 
@@ -534,10 +454,11 @@ LIRGenerator::visitWasmAtomicExchangeHeap(MWasmAtomicExchangeHeap* ins)
         new(alloc()) LWasmAtomicExchangeHeap(base, value, useRegister(memoryBase));
 
     lir->setAddrTemp(temp());
-    if (byteSize(ins->access().type()) == 1)
+    if (byteSize(ins->access().type()) == 1) {
         defineFixed(lir, ins, LAllocation(AnyRegister(eax)));
-    else
+    } else {
         define(lir, ins);
+    }
 }
 
 void
@@ -572,10 +493,11 @@ LIRGenerator::visitWasmAtomicBinopHeap(MWasmAtomicBinopHeap* ins)
 
     if (!ins->hasUses()) {
         LAllocation value;
-        if (byteArray && !ins->value()->isConstant())
+        if (byteArray && !ins->value()->isConstant()) {
             value = useFixed(ins->value(), ebx);
-        else
+        } else {
             value = useRegisterOrConstant(ins->value());
+        }
         LWasmAtomicBinopHeapForEffect* lir =
             new(alloc()) LWasmAtomicBinopHeapForEffect(useRegister(base), value, LDefinition::BogusTemp(),
                                                        useRegister(memoryBase));
@@ -622,12 +544,14 @@ LIRGenerator::visitWasmAtomicBinopHeap(MWasmAtomicBinopHeap* ins)
 
     if (byteArray) {
         value = useFixed(ins->value(), ebx);
-        if (bitOp)
+        if (bitOp) {
             tempDef = tempFixed(ecx);
+        }
     } else if (bitOp || ins->value()->isConstant()) {
         value = useRegisterOrConstant(ins->value());
-        if (bitOp)
+        if (bitOp) {
             tempDef = temp();
+        }
     } else {
         value = useRegisterAtStart(ins->value());
     }
@@ -637,12 +561,13 @@ LIRGenerator::visitWasmAtomicBinopHeap(MWasmAtomicBinopHeap* ins)
                                           useRegister(memoryBase));
 
     lir->setAddrTemp(temp());
-    if (byteArray || bitOp)
+    if (byteArray || bitOp) {
         defineFixed(lir, ins, LAllocation(AnyRegister(eax)));
-    else if (ins->value()->isConstant())
+    } else if (ins->value()->isConstant()) {
         define(lir, ins);
-    else
+    } else {
         defineReuseInput(lir, ins, LWasmAtomicBinopHeap::valueOp);
+    }
 }
 
 void

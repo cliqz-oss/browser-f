@@ -49,7 +49,7 @@ struct ParamTraits<mozilla::wr::ImageDescriptor>
     WriteParam(aMsg, aParam.width);
     WriteParam(aMsg, aParam.height);
     WriteParam(aMsg, aParam.stride);
-    WriteParam(aMsg, aParam.is_opaque);
+    WriteParam(aMsg, aParam.opacity);
   }
 
   static bool
@@ -59,7 +59,7 @@ struct ParamTraits<mozilla::wr::ImageDescriptor>
         && ReadParam(aMsg, aIter, &aResult->width)
         && ReadParam(aMsg, aIter, &aResult->height)
         && ReadParam(aMsg, aIter, &aResult->stride)
-        && ReadParam(aMsg, aIter, &aResult->is_opaque);
+        && ReadParam(aMsg, aIter, &aResult->opacity);
   }
 };
 
@@ -174,6 +174,18 @@ struct ParamTraits<mozilla::wr::WebRenderError>
         mozilla::wr::WebRenderError,
         mozilla::wr::WebRenderError::INITIALIZE,
         mozilla::wr::WebRenderError::Sentinel>
+{
+};
+
+template<>
+struct ParamTraits<mozilla::wr::MemoryReport>
+  : public PlainOldDataSerializer<mozilla::wr::MemoryReport>
+{
+};
+
+template<>
+struct ParamTraits<mozilla::wr::OpacityType>
+  : public PlainOldDataSerializer<mozilla::wr::OpacityType>
 {
 };
 

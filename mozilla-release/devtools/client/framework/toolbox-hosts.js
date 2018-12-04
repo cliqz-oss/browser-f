@@ -11,7 +11,6 @@ const promise = require("promise");
 const Services = require("Services");
 const {DOMHelpers} = require("resource://devtools/client/shared/DOMHelpers.jsm");
 
-loader.lazyRequireGetter(this, "AppConstants", "resource://gre/modules/AppConstants.jsm", true);
 loader.lazyRequireGetter(this, "gDevToolsBrowser", "devtools/client/framework/devtools-browser", true);
 
 /* A host should always allow this much space for the page to be displayed.
@@ -116,7 +115,7 @@ BottomHost.prototype = {
     }
 
     return promise.resolve(null);
-  }
+  },
 };
 
 /**
@@ -257,14 +256,6 @@ WindowHost.prototype = {
         win.removeEventListener("load", frameLoad, true);
         win.focus();
 
-        let key;
-        if (AppConstants.platform === "macosx") {
-          key = win.document.getElementById("toolbox-key-toggle-osx");
-        } else {
-          key = win.document.getElementById("toolbox-key-toggle");
-        }
-        key.removeAttribute("disabled");
-
         this.frame = win.document.getElementById("toolbox-iframe");
         this.emit("ready", this.frame);
         resolve(this.frame);
@@ -315,7 +306,7 @@ WindowHost.prototype = {
     }
 
     return promise.resolve(null);
-  }
+  },
 };
 
 /**
@@ -375,7 +366,7 @@ CustomHost.prototype = {
       this._sendMessageToTopWindow("close");
     }
     return promise.resolve(null);
-  }
+  },
 };
 
 /**
@@ -392,6 +383,6 @@ exports.Hosts = {
   "left": LeftHost,
   "right": RightHost,
   "window": WindowHost,
-  "custom": CustomHost
+  "custom": CustomHost,
 };
 

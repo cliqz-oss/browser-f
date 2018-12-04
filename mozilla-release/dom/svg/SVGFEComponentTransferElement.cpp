@@ -25,8 +25,8 @@ SVGFEComponentTransferElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aG
 
 nsSVGElement::StringInfo SVGFEComponentTransferElement::sStringInfo[2] =
 {
-  { &nsGkAtoms::result, kNameSpaceID_None, true },
-  { &nsGkAtoms::in, kNameSpaceID_None, true }
+  { nsGkAtoms::result, kNameSpaceID_None, true },
+  { nsGkAtoms::in, kNameSpaceID_None, true }
 };
 
 //----------------------------------------------------------------------
@@ -72,25 +72,16 @@ SVGFEComponentTransferElement::GetPrimitiveDescription(nsSVGFilterInstance* aIns
     }
   }
 
-  static const AttributeName attributeNames[4] = {
-    eComponentTransferFunctionR,
-    eComponentTransferFunctionG,
-    eComponentTransferFunctionB,
-    eComponentTransferFunctionA
-  };
-
-  FilterPrimitiveDescription descr(PrimitiveType::ComponentTransfer);
+  ComponentTransferAttributes atts;
   for (int32_t i = 0; i < 4; i++) {
     if (childForChannel[i]) {
-      descr.Attributes().Set(attributeNames[i], childForChannel[i]->ComputeAttributes());
+      childForChannel[i]->ComputeAttributes(i, atts);
     } else {
-      AttributeMap functionAttributes;
-      functionAttributes.Set(eComponentTransferFunctionType,
-                             (uint32_t)SVG_FECOMPONENTTRANSFER_TYPE_IDENTITY);
-      descr.Attributes().Set(attributeNames[i], functionAttributes);
+      atts.mTypes[i] =
+        (uint8_t)SVG_FECOMPONENTTRANSFER_TYPE_IDENTITY;
     }
   }
-  return descr;
+  return FilterPrimitiveDescription(AsVariant(std::move(atts)));
 }
 
 bool

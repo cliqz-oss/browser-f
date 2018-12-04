@@ -20,7 +20,7 @@ add_task(async function task() {
   const hud = await openNewTabAndConsole(TEST_URI);
 
   const currentTab = gBrowser.selectedTab;
-  const target = TargetFactory.forTab(currentTab);
+  const target = await TargetFactory.forTab(currentTab);
   const toolbox = gDevTools.getToolbox(target);
   const {ui} = toolbox.getCurrentPanel().hud;
   const onNetworkMessageUpdate = ui.jsterm.hud.once("network-message-updated");
@@ -47,14 +47,14 @@ add_task(async function task() {
   const testCases = [
     { clickEvent: null, link: LEARN_MORE_URI, where: "tab" },
     { clickEvent: rightClickMouseEvent, link: null, where: null },
-    { clickEvent: rightClickCtrlOrCmdKeyMouseEvent, link: null, where: null }
+    { clickEvent: rightClickCtrlOrCmdKeyMouseEvent, link: null, where: null },
   ];
 
   for (const testCase of testCases) {
     const { clickEvent } = testCase;
     const onConsoleMenuOpened = [
       rightClickMouseEvent,
-      rightClickCtrlOrCmdKeyMouseEvent
+      rightClickCtrlOrCmdKeyMouseEvent,
     ].includes(clickEvent) ? hud.ui.consoleOutput.once("menu-open") : null;
 
     const { link, where } = await simulateLinkClick(statusCodeNode, testCase.clickEvent);
@@ -74,13 +74,13 @@ function getMouseEvents() {
   const rightClickMouseEvent = new MouseEvent("contextmenu", {
     bubbles: true,
     button: 2,
-    view: window
+    view: window,
   });
   const rightClickCtrlOrCmdKeyMouseEvent = new MouseEvent("contextmenu", {
     bubbles: true,
     button: 2,
     [isOSX ? "metaKey" : "ctrlKey"]: true,
-    view: window
+    view: window,
   });
 
   return {

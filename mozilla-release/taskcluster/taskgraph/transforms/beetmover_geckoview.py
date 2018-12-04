@@ -12,8 +12,7 @@ from taskgraph.transforms.beetmover import \
     craft_release_properties as beetmover_craft_release_properties
 from taskgraph.util.attributes import copy_attributes_from_dependent_job
 from taskgraph.util.schema import validate_schema, Schema, resolve_keyed_by, optionally_keyed_by
-from taskgraph.util.scriptworker import (get_phase,
-                                         get_worker_type_for_scope)
+from taskgraph.util.scriptworker import get_worker_type_for_scope
 from taskgraph.transforms.task import task_description_schema
 from voluptuous import Required, Optional
 
@@ -22,6 +21,7 @@ _ARTIFACT_ID_PER_PLATFORM = {
     'android-aarch64': 'geckoview{update_channel}-arm64-v8a',
     'android-api-16': 'geckoview{update_channel}-armeabi-v7a',
     'android-x86': 'geckoview{update_channel}-x86',
+    'android-x86_64': 'geckoview{update_channel}-x86_64',
 }
 
 _MOZ_UPDATE_CHANNEL_PER_BRANCH = {
@@ -42,8 +42,13 @@ beetmover_description_schema = Schema({
     Optional('label'): basestring,
     Optional('treeherder'): task_description_schema['treeherder'],
 
-    Optional('bucket-scope'): optionally_keyed_by('project', basestring),
-    Optional('shipping-phase'): task_description_schema['shipping-phase'],
+    Required('run-on-projects'): task_description_schema['run-on-projects'],
+    Required('run-on-hg-branches'): task_description_schema['run-on-hg-branches'],
+
+    Optional('bucket-scope'): optionally_keyed_by('release-level', basestring),
+    Optional('shipping-phase'): optionally_keyed_by(
+        'project', task_description_schema['shipping-phase']
+    ),
     Optional('shipping-product'): task_description_schema['shipping-product'],
 })
 
@@ -55,6 +60,22 @@ def validate(config, jobs):
         validate_schema(
             beetmover_description_schema, job,
             "In beetmover-geckoview ({!r} kind) task for {!r}:".format(config.kind, label))
+        yield job
+
+
+@transforms.add
+def resolve_keys(config, jobs):
+    for job in jobs:
+        resolve_keyed_by(
+            job, 'run-on-hg-branches', item_name=job['label'], project=config.params['project']
+        )
+        resolve_keyed_by(
+            job, 'shipping-phase', item_name=job['label'], project=config.params['project']
+        )
+        resolve_keyed_by(
+            job, 'bucket-scope', item_name=job['label'],
+            **{'release-level': config.params.release_level()}
+        )
         yield job
 
 
@@ -89,10 +110,7 @@ def make_task_description(config, jobs):
         if job.get('locale'):
             attributes['locale'] = job['locale']
 
-        resolve_keyed_by(
-            job, 'bucket-scope', item_name=job['label'],
-            project=config.params['project']
-        )
+        attributes['run_on_hg_branches'] = job['run-on-hg-branches']
 
         task = {
             'label': label,
@@ -101,9 +119,9 @@ def make_task_description(config, jobs):
             'scopes': [job['bucket-scope'], 'project:releng:beetmover:action:push-to-maven'],
             'dependencies': dependencies,
             'attributes': attributes,
-            'run-on-projects': ['mozilla-central'],
+            'run-on-projects': job['run-on-projects'],
             'treeherder': treeherder,
-            'shipping-phase': job.get('shipping-phase', get_phase(config)),
+            'shipping-phase': job['shipping-phase'],
         }
 
         yield task

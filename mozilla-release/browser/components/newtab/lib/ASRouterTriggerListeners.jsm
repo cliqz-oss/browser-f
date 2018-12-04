@@ -111,8 +111,8 @@ this.ASRouterTriggerListeners = new Map([
           }
           break;
       }
-    }
-  }]
+    },
+  }],
 ]);
 
 const EXPORTED_SYMBOLS = ["ASRouterTriggerListeners"];

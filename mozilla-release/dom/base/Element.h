@@ -16,7 +16,7 @@
 #include "mozilla/dom/FragmentOrElement.h" // for base class
 #include "nsChangeHint.h"                  // for enum
 #include "mozilla/EventStates.h"           // for member
-#include "mozilla/ServoTypes.h"
+#include "mozilla/RustCell.h"
 #include "mozilla/dom/DirectionalityUtils.h"
 #include "nsILinkHandler.h"
 #include "nsINodeList.h"
@@ -60,6 +60,7 @@ class nsDOMCSSAttributeDeclaration;
 class nsISMILAttr;
 class nsDocument;
 class nsDOMStringMap;
+struct ServoNodeData;
 
 namespace mozilla {
 class DeclarationBlock;
@@ -148,8 +149,8 @@ class Element : public FragmentOrElement
 {
 public:
 #ifdef MOZILLA_INTERNAL_API
-  explicit Element(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo) :
-    FragmentOrElement(aNodeInfo),
+  explicit Element(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo) :
+    FragmentOrElement(std::move(aNodeInfo)),
     mState(NS_EVENT_STATE_MOZ_READONLY | NS_EVENT_STATE_DEFINED)
   {
     MOZ_ASSERT(mNodeInfo->NodeType() == ELEMENT_NODE,
@@ -834,7 +835,7 @@ public:
    * @return ATTR_MISSING, ATTR_VALUE_NO_MATCH or the non-negative index
    * indicating the first value of aValues that matched
    */
-  typedef nsStaticAtom* const* const AttrValuesArray;
+  typedef nsStaticAtom* const AttrValuesArray;
   int32_t FindAttrValueIn(int32_t aNameSpaceID,
                                   nsAtom* aName,
                                   AttrValuesArray* aValues,
@@ -984,7 +985,7 @@ public:
    * Attribute Mapping Helpers
    */
   struct MappedAttributeEntry {
-    nsStaticAtom** attribute;
+    const nsStaticAtom* const attribute;
   };
 
   /**
@@ -1001,7 +1002,7 @@ public:
     return FindAttributeDependence(aAttribute, aMaps, N);
   }
 
-  static nsStaticAtom*** HTMLSVGPropertiesToTraverseAndUnlink();
+  static nsStaticAtom* const* HTMLSVGPropertiesToTraverseAndUnlink();
 
 private:
   void DescribeAttribute(uint32_t index, nsAString& aOutDescription) const;
@@ -1248,7 +1249,7 @@ public:
     }
   }
 
-  void RequestFullscreen(CallerType aCallerType, ErrorResult& aError);
+  already_AddRefed<Promise> RequestFullscreen(CallerType, ErrorResult&);
   void RequestPointerLock(CallerType aCallerType);
   Attr* GetAttributeNode(const nsAString& aName);
   already_AddRefed<Attr> SetAttributeNode(Attr& aNewAttr,
@@ -1968,7 +1969,7 @@ private:
 
   /**
    * GetCustomInterface is somewhat like a GetInterface, but it is expected
-   * that the implementation is provided by a custom element or via the 
+   * that the implementation is provided by a custom element or via the
    * the XBL implements keyword. To use this, create a public method that
    * wraps a call to GetCustomInterface.
    */
@@ -1984,7 +1985,7 @@ private:
   //
   // There should not be data on nodes that are in the flattened tree, or
   // descendants of display: none elements.
-  mozilla::ServoCell<ServoNodeData*> mServoData;
+  mozilla::RustCell<ServoNodeData*> mServoData;
 };
 
 class RemoveFromBindingManagerRunnable : public mozilla::Runnable
@@ -2044,21 +2045,52 @@ Element::AttrValueIs(int32_t aNameSpaceID,
 } // namespace dom
 } // namespace mozilla
 
-inline mozilla::dom::Element* nsINode::AsElement()
+inline mozilla::dom::Element*
+nsINode::AsElement()
 {
   MOZ_ASSERT(IsElement());
   return static_cast<mozilla::dom::Element*>(this);
 }
 
-inline const mozilla::dom::Element* nsINode::AsElement() const
+inline const mozilla::dom::Element*
+nsINode::AsElement() const
 {
   MOZ_ASSERT(IsElement());
   return static_cast<const mozilla::dom::Element*>(this);
 }
 
-inline mozilla::dom::Element* nsINode::GetParentElement() const
+inline mozilla::dom::Element*
+nsINode::GetParentElement() const
 {
   return mozilla::dom::Element::FromNodeOrNull(mParent);
+}
+
+inline mozilla::dom::Element*
+nsINode::GetPreviousElementSibling() const
+{
+  nsIContent* previousSibling = GetPreviousSibling();
+  while (previousSibling) {
+    if (previousSibling->IsElement()) {
+      return previousSibling->AsElement();
+    }
+    previousSibling = previousSibling->GetPreviousSibling();
+  }
+
+  return nullptr;
+}
+
+inline mozilla::dom::Element*
+nsINode::GetNextElementSibling() const
+{
+  nsIContent* nextSibling = GetNextSibling();
+  while (nextSibling) {
+    if (nextSibling->IsElement()) {
+      return nextSibling->AsElement();
+    }
+    nextSibling = nextSibling->GetNextSibling();
+  }
+
+  return nullptr;
 }
 
 /**
@@ -2070,9 +2102,8 @@ nsresult                                                                    \
 _elementName::Clone(mozilla::dom::NodeInfo* aNodeInfo, nsINode** aResult) const \
 {                                                                           \
   *aResult = nullptr;                                                       \
-  already_AddRefed<mozilla::dom::NodeInfo> ni =                             \
-    RefPtr<mozilla::dom::NodeInfo>(aNodeInfo).forget();                     \
-  _elementName *it = new _elementName(ni);                                  \
+  RefPtr<mozilla::dom::NodeInfo> ni(aNodeInfo);                             \
+  _elementName *it = new _elementName(ni.forget());                         \
   if (!it) {                                                                \
     return NS_ERROR_OUT_OF_MEMORY;                                          \
   }                                                                         \
@@ -2093,9 +2124,8 @@ _elementName::Clone(mozilla::dom::NodeInfo* aNodeInfo,                      \
                     nsINode** aResult) const                                \
 {                                                                           \
   *aResult = nullptr;                                                       \
-  already_AddRefed<mozilla::dom::NodeInfo> ni =                             \
-    RefPtr<mozilla::dom::NodeInfo>(aNodeInfo).forget();                     \
-  _elementName *it = new _elementName(ni EXPAND extra_args_);               \
+  RefPtr<mozilla::dom::NodeInfo> ni(aNodeInfo);                             \
+  _elementName *it = new _elementName(ni.forget() EXPAND extra_args_);      \
   if (!it) {                                                                \
     return NS_ERROR_OUT_OF_MEMORY;                                          \
   }                                                                         \

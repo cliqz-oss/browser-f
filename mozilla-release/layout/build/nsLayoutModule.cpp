@@ -24,7 +24,6 @@
 #include "nsIContentViewer.h"
 #include "nsIController.h"
 #include "nsIControllers.h"
-#include "nsIDocument.h"
 #include "nsIDocumentEncoder.h"
 #include "nsIFactory.h"
 #include "nsIIdleService.h"
@@ -39,7 +38,6 @@
 #include "nsXMLContentSerializer.h"
 #include "nsXHTMLContentSerializer.h"
 #include "nsContentAreaDragDrop.h"
-#include "nsBox.h"
 #include "nsIFrameTraversal.h"
 #include "nsLayoutCID.h"
 #include "nsStyleSheetService.h"
@@ -59,7 +57,6 @@
 #include "nsContentCreatorFunctions.h"
 
 #include "nsGlobalWindowCommands.h"
-#include "nsIControllerCommandTable.h"
 #include "nsJSProtocolHandler.h"
 #include "nsIControllerContext.h"
 #include "nsZipArchive.h"
@@ -71,7 +68,6 @@
 #include "mozilla/dom/network/UDPSocketChild.h"
 #include "mozilla/dom/quota/QuotaManagerService.h"
 #include "mozilla/dom/ServiceWorkerManager.h"
-#include "mozilla/dom/SessionStorageManager.h"
 #include "mozilla/dom/StorageActivityService.h"
 #include "mozilla/dom/WorkerDebuggerManager.h"
 #include "mozilla/dom/Notification.h"
@@ -89,9 +85,6 @@
 using mozilla::dom::PushNotifier;
 #define PUSHNOTIFIER_CID \
 { 0x2fc2d3e3, 0x020f, 0x404e, { 0xb0, 0x6a, 0x6e, 0xcf, 0x3e, 0xa2, 0x33, 0x4a } }
-
-#include "AudioChannelAgent.h"
-using mozilla::dom::AudioChannelAgent;
 
 // Editor stuff
 #include "mozilla/EditorController.h" //CID
@@ -117,17 +110,7 @@ class nsIDocumentLoaderFactory;
 #define NS_PLUGINDOCLOADERFACTORY_CID \
 { 0x0ddf4df8, 0x4dbb, 0x4133, { 0x8b, 0x79, 0x9a, 0xfb, 0x96, 0x65, 0x14, 0xf5 } }
 
-#define NS_WINDOWCOMMANDTABLE_CID \
- { /* 0DE2FBFA-6B7F-11D7-BBBA-0003938A9D96 */        \
-  0x0DE2FBFA, 0x6B7F, 0x11D7, {0xBB, 0xBA, 0x00, 0x03, 0x93, 0x8A, 0x9D, 0x96} }
-
-#include "nsIBoxObject.h"
 #include "inDeepTreeWalker.h"
-
-#ifdef MOZ_XUL
-#include "XULDocument.h"
-#include "nsIXULSortService.h"
-#endif
 
 static void Shutdown();
 
@@ -140,7 +123,6 @@ static void Shutdown();
 #include "nsIMediaManager.h"
 #include "mozilla/dom/nsMixedContentBlocker.h"
 
-#include "AudioChannelService.h"
 #include "mozilla/net/WebSocketEventService.h"
 
 #include "mozilla/dom/power/PowerManagerService.h"
@@ -155,6 +137,8 @@ static void Shutdown();
 #include "mozilla/dom/PresentationTCPSessionTransport.h"
 
 #include "nsScriptError.h"
+#include "nsBaseCommandController.h"
+#include "nsControllerCommandTable.h"
 
 #include "mozilla/TextInputProcessor.h"
 
@@ -164,14 +148,6 @@ using namespace mozilla::net;
 using mozilla::dom::power::PowerManagerService;
 using mozilla::dom::quota::QuotaManagerService;
 using mozilla::gmp::GeckoMediaPluginService;
-
-#define NS_EDITORCOMMANDTABLE_CID \
-{ 0x4f5e62b8, 0xd659, 0x4156, \
-  { 0x84, 0xfc, 0x2f, 0x60, 0x99, 0x40, 0x03, 0x69 } }
-
-#define NS_EDITINGCOMMANDTABLE_CID \
-{ 0xcb38a746, 0xbeb8, 0x43f3, \
-  { 0x94, 0x29, 0x77, 0x96, 0xe1, 0xa9, 0x3f, 0xb4 } }
 
 #define NS_HAPTICFEEDBACK_CID \
 { 0x1f15dbc8, 0xbfaa, 0x45de, \
@@ -193,7 +169,6 @@ already_AddRefed<nsIPresentationService> NS_CreatePresentationService();
 typedef mozilla::dom::BlobURL::Mutator BlobURLMutator;
 NS_GENERIC_FACTORY_CONSTRUCTOR(BlobURLMutator)
 NS_GENERIC_FACTORY_CONSTRUCTOR(LocalStorageManager)
-NS_GENERIC_FACTORY_CONSTRUCTOR(SessionStorageManager)
 NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(DOMRequestService,
                                          DOMRequestService::FactoryCreate)
 NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(QuotaManagerService,
@@ -209,8 +184,6 @@ NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(StorageActivityService,
 NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(nsSynthVoiceRegistry,
                                          nsSynthVoiceRegistry::GetInstanceForService)
 #endif
-
-NS_GENERIC_FACTORY_CONSTRUCTOR(AudioChannelAgent)
 
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsDeviceSensors)
 
@@ -291,13 +264,6 @@ Shutdown()
 nsresult NS_NewLayoutDebugger(nsILayoutDebugger** aResult);
 #endif
 
-nsresult NS_NewBoxObject(nsIBoxObject** aResult);
-
-#ifdef MOZ_XUL
-nsresult NS_NewMenuBoxObject(nsIBoxObject** aResult);
-nsresult NS_NewTreeBoxObject(nsIBoxObject** aResult);
-#endif
-
 nsresult NS_CreateFrameTraversal(nsIFrameTraversal** aResult);
 
 already_AddRefed<nsIContentViewer> NS_NewContentViewer();
@@ -310,8 +276,6 @@ nsresult NS_NewEventListenerService(nsIEventListenerService** aResult);
 nsresult NS_NewGlobalMessageManager(nsISupports** aResult);
 nsresult NS_NewParentProcessMessageManager(nsISupports** aResult);
 nsresult NS_NewChildProcessMessageManager(nsISupports** aResult);
-
-nsresult NS_NewXULControllers(nsISupports* aOuter, REFNSIID aIID, void** aResult);
 
 #define MAKE_CTOR(ctor_, iface_, func_)                   \
 static nsresult                                           \
@@ -351,20 +315,10 @@ MAKE_CTOR(CreateNewLayoutDebugger,        nsILayoutDebugger,           NS_NewLay
 #endif
 
 MAKE_CTOR(CreateNewFrameTraversal,      nsIFrameTraversal,      NS_CreateFrameTraversal)
-MAKE_CTOR(CreateNewBoxObject,           nsIBoxObject,           NS_NewBoxObject)
-
-#ifdef MOZ_XUL
-MAKE_CTOR(CreateNewMenuBoxObject,       nsIBoxObject,           NS_NewMenuBoxObject)
-MAKE_CTOR(CreateNewTreeBoxObject,       nsIBoxObject,           NS_NewTreeBoxObject)
-#endif // MOZ_XUL
 
 NS_GENERIC_FACTORY_CONSTRUCTOR(inDeepTreeWalker)
 
 MAKE_CTOR2(CreateContentViewer,           nsIContentViewer,            NS_NewContentViewer)
-MAKE_CTOR(CreateHTMLDocument,             nsIDocument,                 NS_NewHTMLDocument)
-MAKE_CTOR(CreateXMLDocument,              nsIDocument,                 NS_NewXMLDocument)
-MAKE_CTOR(CreateSVGDocument,              nsIDocument,                 NS_NewSVGDocument)
-MAKE_CTOR(CreateImageDocument,            nsIDocument,                 NS_NewImageDocument)
 MAKE_CTOR(CreateTextEncoder,              nsIDocumentEncoder,          NS_NewTextEncoder)
 MAKE_CTOR(CreateHTMLCopyTextEncoder,      nsIDocumentEncoder,          NS_NewHTMLCopyTextEncoder)
 MAKE_CTOR(CreateXMLContentSerializer,     nsIContentSerializer,        NS_NewXMLContentSerializer)
@@ -372,11 +326,6 @@ MAKE_CTOR(CreateHTMLContentSerializer,    nsIContentSerializer,        NS_NewHTM
 MAKE_CTOR(CreateXHTMLContentSerializer,   nsIContentSerializer,        NS_NewXHTMLContentSerializer)
 MAKE_CTOR(CreatePlainTextSerializer,      nsIContentSerializer,        NS_NewPlainTextSerializer)
 MAKE_CTOR(CreateContentPolicy,            nsIContentPolicy,            NS_NewContentPolicy)
-#ifdef MOZ_XUL
-MAKE_CTOR(CreateXULSortService,           nsIXULSortService,           NS_NewXULSortService)
-MAKE_CTOR(CreateXULDocument,              nsIDocument,                 NS_NewXULDocument)
-// NS_NewXULControllers
-#endif
 MAKE_CTOR(CreateContentDLF,               nsIDocumentLoaderFactory,    NS_NewContentDocumentLoaderFactory)
 MAKE_CTOR(CreateEventListenerService,     nsIEventListenerService,     NS_NewEventListenerService)
 MAKE_CTOR(CreateGlobalMessageManager,     nsISupports,                 NS_NewGlobalMessageManager)
@@ -384,8 +333,6 @@ MAKE_CTOR(CreateParentMessageManager,     nsISupports,                 NS_NewPar
 MAKE_CTOR(CreateChildMessageManager,      nsISupports,                 NS_NewChildProcessMessageManager)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsDataDocumentContentPolicy)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsNoDataProtocolContentPolicy)
-MAKE_CTOR(CreatePluginDocument,           nsIDocument,                 NS_NewPluginDocument)
-MAKE_CTOR(CreateVideoDocument,            nsIDocument,                 NS_NewVideoDocument)
 MAKE_CTOR(CreateFocusManager,             nsIFocusManager,      NS_NewFocusManager)
 
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsStyleSheetService, Init)
@@ -423,13 +370,8 @@ _InstanceClass##Constructor(nsISupports *aOuter, REFNSIID aIID,               \
 
 NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(Geolocation, Geolocation::NonWindowSingleton)
 
-#define NS_AUDIOCHANNEL_SERVICE_CID \
-  { 0xf712e983, 0x048a, 0x443f, { 0x88, 0x02, 0xfc, 0xc3, 0xd9, 0x27, 0xce, 0xac }}
-
 #define NS_WEBSOCKETEVENT_SERVICE_CID \
   { 0x31689828, 0xda66, 0x49a6, { 0x87, 0x0c, 0xdf, 0x62, 0xb8, 0x3f, 0xe7, 0x89 }}
-
-NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(AudioChannelService, AudioChannelService::GetOrCreate)
 
 NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(WebSocketEventService, WebSocketEventService::GetOrCreate)
 
@@ -485,17 +427,8 @@ Construct_nsIScriptSecurityManager(nsISupports *aOuter, REFNSIID aIID,
 NS_DEFINE_NAMED_CID(NS_LAYOUT_DEBUGGER_CID);
 #endif
 NS_DEFINE_NAMED_CID(NS_FRAMETRAVERSAL_CID);
-NS_DEFINE_NAMED_CID(NS_BOXOBJECT_CID);
-#ifdef MOZ_XUL
-NS_DEFINE_NAMED_CID(NS_MENUBOXOBJECT_CID);
-NS_DEFINE_NAMED_CID(NS_TREEBOXOBJECT_CID);
-#endif // MOZ_XUL
 NS_DEFINE_NAMED_CID(IN_DEEPTREEWALKER_CID);
 NS_DEFINE_NAMED_CID(NS_CONTENT_VIEWER_CID);
-NS_DEFINE_NAMED_CID(NS_HTMLDOCUMENT_CID);
-NS_DEFINE_NAMED_CID(NS_XMLDOCUMENT_CID);
-NS_DEFINE_NAMED_CID(NS_SVGDOCUMENT_CID);
-NS_DEFINE_NAMED_CID(NS_IMAGEDOCUMENT_CID);
 NS_DEFINE_NAMED_CID(NS_TEXT_ENCODER_CID);
 NS_DEFINE_NAMED_CID(NS_HTMLCOPY_TEXT_ENCODER_CID);
 NS_DEFINE_NAMED_CID(NS_XMLCONTENTSERIALIZER_CID);
@@ -507,25 +440,15 @@ NS_DEFINE_NAMED_CID(NS_SCRIPTABLEUNESCAPEHTML_CID);
 NS_DEFINE_NAMED_CID(NS_CONTENTPOLICY_CID);
 NS_DEFINE_NAMED_CID(NS_DATADOCUMENTCONTENTPOLICY_CID);
 NS_DEFINE_NAMED_CID(NS_NODATAPROTOCOLCONTENTPOLICY_CID);
-NS_DEFINE_NAMED_CID(NS_XULCONTROLLERS_CID);
-#ifdef MOZ_XUL
-NS_DEFINE_NAMED_CID(NS_XULSORTSERVICE_CID);
-NS_DEFINE_NAMED_CID(NS_XULDOCUMENT_CID);
-#endif
 NS_DEFINE_NAMED_CID(NS_CONTENT_DOCUMENT_LOADER_FACTORY_CID);
 NS_DEFINE_NAMED_CID(NS_JSPROTOCOLHANDLER_CID);
 NS_DEFINE_NAMED_CID(NS_JSURI_CID);
 NS_DEFINE_NAMED_CID(NS_JSURIMUTATOR_CID);
-NS_DEFINE_NAMED_CID(NS_WINDOWCOMMANDTABLE_CID);
-NS_DEFINE_NAMED_CID(NS_WINDOWCONTROLLER_CID);
 NS_DEFINE_NAMED_CID(NS_PLUGINDOCLOADERFACTORY_CID);
-NS_DEFINE_NAMED_CID(NS_PLUGINDOCUMENT_CID);
-NS_DEFINE_NAMED_CID(NS_VIDEODOCUMENT_CID);
 NS_DEFINE_NAMED_CID(NS_STYLESHEETSERVICE_CID);
 NS_DEFINE_NAMED_CID(NS_HOSTOBJECTURI_CID);
 NS_DEFINE_NAMED_CID(NS_HOSTOBJECTURIMUTATOR_CID);
 NS_DEFINE_NAMED_CID(NS_SDBCONNECTION_CID);
-NS_DEFINE_NAMED_CID(NS_DOMSESSIONSTORAGEMANAGER_CID);
 NS_DEFINE_NAMED_CID(NS_DOMLOCALSTORAGEMANAGER_CID);
 NS_DEFINE_NAMED_CID(DOMREQUEST_SERVICE_CID);
 NS_DEFINE_NAMED_CID(QUOTAMANAGER_SERVICE_CID);
@@ -534,13 +457,7 @@ NS_DEFINE_NAMED_CID(STORAGEACTIVITYSERVICE_CID);
 NS_DEFINE_NAMED_CID(NOTIFICATIONTELEMETRYSERVICE_CID);
 NS_DEFINE_NAMED_CID(PUSHNOTIFIER_CID);
 NS_DEFINE_NAMED_CID(WORKERDEBUGGERMANAGER_CID);
-NS_DEFINE_NAMED_CID(NS_AUDIOCHANNELAGENT_CID);
-NS_DEFINE_NAMED_CID(NS_EDITORCONTROLLER_CID);
-NS_DEFINE_NAMED_CID(NS_EDITINGCONTROLLER_CID);
-NS_DEFINE_NAMED_CID(NS_EDITORCOMMANDTABLE_CID);
-NS_DEFINE_NAMED_CID(NS_EDITINGCOMMANDTABLE_CID);
 NS_DEFINE_NAMED_CID(NS_GEOLOCATION_CID);
-NS_DEFINE_NAMED_CID(NS_AUDIOCHANNEL_SERVICE_CID);
 NS_DEFINE_NAMED_CID(NS_WEBSOCKETEVENT_SERVICE_CID);
 NS_DEFINE_NAMED_CID(NS_FOCUSMANAGER_CID);
 NS_DEFINE_NAMED_CID(NS_CONTENTSECURITYMANAGER_CID);
@@ -587,150 +504,15 @@ NS_DEFINE_NAMED_CID(TEXT_INPUT_PROCESSOR_CID);
 
 NS_DEFINE_NAMED_CID(NS_SCRIPTERROR_CID);
 
-static nsresult
-CreateWindowCommandTableConstructor(nsISupports *aOuter,
-                                    REFNSIID aIID, void **aResult)
-{
-  nsresult rv;
-  nsCOMPtr<nsIControllerCommandTable> commandTable =
-      do_CreateInstance(NS_CONTROLLERCOMMANDTABLE_CONTRACTID, &rv);
-  if (NS_FAILED(rv)) return rv;
-
-  rv = nsWindowCommandRegistration::RegisterWindowCommands(commandTable);
-  if (NS_FAILED(rv)) return rv;
-
-  return commandTable->QueryInterface(aIID, aResult);
-}
-
-static nsresult
-CreateWindowControllerWithSingletonCommandTable(nsISupports *aOuter,
-                                      REFNSIID aIID, void **aResult)
-{
-  nsresult rv;
-  nsCOMPtr<nsIController> controller =
-       do_CreateInstance("@mozilla.org/embedcomp/base-command-controller;1", &rv);
-
- if (NS_FAILED(rv)) return rv;
-
-  nsCOMPtr<nsIControllerCommandTable> windowCommandTable = do_GetService(kNS_WINDOWCOMMANDTABLE_CID, &rv);
-  if (NS_FAILED(rv)) return rv;
-
-  // this is a singleton; make it immutable
-  windowCommandTable->MakeImmutable();
-
-  nsCOMPtr<nsIControllerContext> controllerContext = do_QueryInterface(controller, &rv);
-  if (NS_FAILED(rv)) return rv;
-
-  controllerContext->Init(windowCommandTable);
-  if (NS_FAILED(rv)) return rv;
-
-  return controller->QueryInterface(aIID, aResult);
-}
-
-// Constructor of a controller which is set up to use, internally, a
-// singleton command-table pre-filled with editor commands.
-static nsresult
-EditorControllerConstructor(nsISupports* aOuter, REFNSIID aIID, void** aResult)
-{
-  nsresult rv;
-  nsCOMPtr<nsIController> controller = do_CreateInstance("@mozilla.org/embedcomp/base-command-controller;1", &rv);
-  if (NS_FAILED(rv)) return rv;
-
-  nsCOMPtr<nsIControllerCommandTable> editorCommandTable = do_GetService(kNS_EDITORCOMMANDTABLE_CID, &rv);
-  if (NS_FAILED(rv)) return rv;
-
-  // this guy is a singleton, so make it immutable
-  editorCommandTable->MakeImmutable();
-
-  nsCOMPtr<nsIControllerContext> controllerContext = do_QueryInterface(controller, &rv);
-  if (NS_FAILED(rv)) return rv;
-
-  rv = controllerContext->Init(editorCommandTable);
-  if (NS_FAILED(rv)) return rv;
-
-  return controller->QueryInterface(aIID, aResult);
-}
-
-// Constructor of a controller which is set up to use, internally, a
-// singleton command-table pre-filled with editing commands.
-static nsresult
-nsEditingControllerConstructor(nsISupports *aOuter, REFNSIID aIID,
-                                void **aResult)
-{
-  nsresult rv;
-  nsCOMPtr<nsIController> controller = do_CreateInstance("@mozilla.org/embedcomp/base-command-controller;1", &rv);
-  if (NS_FAILED(rv)) return rv;
-
-  nsCOMPtr<nsIControllerCommandTable> editingCommandTable = do_GetService(kNS_EDITINGCOMMANDTABLE_CID, &rv);
-  if (NS_FAILED(rv)) return rv;
-
-  // this guy is a singleton, so make it immutable
-  editingCommandTable->MakeImmutable();
-
-  nsCOMPtr<nsIControllerContext> controllerContext = do_QueryInterface(controller, &rv);
-  if (NS_FAILED(rv)) return rv;
-
-  rv = controllerContext->Init(editingCommandTable);
-  if (NS_FAILED(rv)) return rv;
-
-  return controller->QueryInterface(aIID, aResult);
-}
-
-// Constructor for a command-table pre-filled with editor commands
-static nsresult
-nsEditorCommandTableConstructor(nsISupports *aOuter, REFNSIID aIID,
-                                            void **aResult)
-{
-  nsresult rv;
-  nsCOMPtr<nsIControllerCommandTable> commandTable =
-      do_CreateInstance(NS_CONTROLLERCOMMANDTABLE_CONTRACTID, &rv);
-  if (NS_FAILED(rv)) return rv;
-
-  rv = EditorController::RegisterEditorCommands(commandTable);
-  if (NS_FAILED(rv)) return rv;
-
-  // we don't know here whether we're being created as an instance,
-  // or a service, so we can't become immutable
-
-  return commandTable->QueryInterface(aIID, aResult);
-}
-
-// Constructor for a command-table pre-filled with editing commands
-static nsresult
-nsEditingCommandTableConstructor(nsISupports *aOuter, REFNSIID aIID,
-                                              void **aResult)
-{
-  nsresult rv;
-  nsCOMPtr<nsIControllerCommandTable> commandTable =
-      do_CreateInstance(NS_CONTROLLERCOMMANDTABLE_CONTRACTID, &rv);
-  if (NS_FAILED(rv)) return rv;
-
-  rv = EditorController::RegisterEditingCommands(commandTable);
-  if (NS_FAILED(rv)) return rv;
-
-  // we don't know here whether we're being created as an instance,
-  // or a service, so we can't become immutable
-
-  return commandTable->QueryInterface(aIID, aResult);
-}
-
 static const mozilla::Module::CIDEntry kLayoutCIDs[] = {
+  // clang-format off
   XPCONNECT_CIDENTRIES
 #ifdef DEBUG
   { &kNS_LAYOUT_DEBUGGER_CID, false, nullptr, CreateNewLayoutDebugger },
 #endif
   { &kNS_FRAMETRAVERSAL_CID, false, nullptr, CreateNewFrameTraversal },
-  { &kNS_BOXOBJECT_CID, false, nullptr, CreateNewBoxObject },
-#ifdef MOZ_XUL
-  { &kNS_MENUBOXOBJECT_CID, false, nullptr, CreateNewMenuBoxObject },
-  { &kNS_TREEBOXOBJECT_CID, false, nullptr, CreateNewTreeBoxObject },
-#endif // MOZ_XUL
   { &kIN_DEEPTREEWALKER_CID, false, nullptr, inDeepTreeWalkerConstructor },
   { &kNS_CONTENT_VIEWER_CID, false, nullptr, CreateContentViewer },
-  { &kNS_HTMLDOCUMENT_CID, false, nullptr, CreateHTMLDocument },
-  { &kNS_XMLDOCUMENT_CID, false, nullptr, CreateXMLDocument },
-  { &kNS_SVGDOCUMENT_CID, false, nullptr, CreateSVGDocument },
-  { &kNS_IMAGEDOCUMENT_CID, false, nullptr, CreateImageDocument },
   { &kNS_TEXT_ENCODER_CID, false, nullptr, CreateTextEncoder },
   { &kNS_HTMLCOPY_TEXT_ENCODER_CID, false, nullptr, CreateHTMLCopyTextEncoder },
   { &kNS_XMLCONTENTSERIALIZER_CID, false, nullptr, CreateXMLContentSerializer },
@@ -742,25 +524,15 @@ static const mozilla::Module::CIDEntry kLayoutCIDs[] = {
   { &kNS_CONTENTPOLICY_CID, false, nullptr, CreateContentPolicy },
   { &kNS_DATADOCUMENTCONTENTPOLICY_CID, false, nullptr, nsDataDocumentContentPolicyConstructor },
   { &kNS_NODATAPROTOCOLCONTENTPOLICY_CID, false, nullptr, nsNoDataProtocolContentPolicyConstructor },
-  { &kNS_XULCONTROLLERS_CID, false, nullptr, NS_NewXULControllers },
-#ifdef MOZ_XUL
-  { &kNS_XULSORTSERVICE_CID, false, nullptr, CreateXULSortService },
-  { &kNS_XULDOCUMENT_CID, false, nullptr, CreateXULDocument },
-#endif
   { &kNS_CONTENT_DOCUMENT_LOADER_FACTORY_CID, false, nullptr, CreateContentDLF },
   { &kNS_JSPROTOCOLHANDLER_CID, false, nullptr, nsJSProtocolHandler::Create },
   { &kNS_JSURI_CID, false, nullptr, nsJSURIMutatorConstructor }, // do_CreateInstance returns mutator
   { &kNS_JSURIMUTATOR_CID, false, nullptr, nsJSURIMutatorConstructor },
-  { &kNS_WINDOWCOMMANDTABLE_CID, false, nullptr, CreateWindowCommandTableConstructor },
-  { &kNS_WINDOWCONTROLLER_CID, false, nullptr, CreateWindowControllerWithSingletonCommandTable },
   { &kNS_PLUGINDOCLOADERFACTORY_CID, false, nullptr, CreateContentDLF },
-  { &kNS_PLUGINDOCUMENT_CID, false, nullptr, CreatePluginDocument },
-  { &kNS_VIDEODOCUMENT_CID, false, nullptr, CreateVideoDocument },
   { &kNS_STYLESHEETSERVICE_CID, false, nullptr, nsStyleSheetServiceConstructor },
   { &kNS_HOSTOBJECTURI_CID, false, nullptr, BlobURLMutatorConstructor }, // do_CreateInstance returns mutator
   { &kNS_HOSTOBJECTURIMUTATOR_CID, false, nullptr, BlobURLMutatorConstructor },
   { &kNS_SDBCONNECTION_CID, false, nullptr, SDBConnection::Create },
-  { &kNS_DOMSESSIONSTORAGEMANAGER_CID, false, nullptr, SessionStorageManagerConstructor },
   { &kNS_DOMLOCALSTORAGEMANAGER_CID, false, nullptr, LocalStorageManagerConstructor },
   { &kDOMREQUEST_SERVICE_CID, false, nullptr, DOMRequestServiceConstructor },
   { &kQUOTAMANAGER_SERVICE_CID, false, nullptr, QuotaManagerServiceConstructor },
@@ -769,13 +541,7 @@ static const mozilla::Module::CIDEntry kLayoutCIDs[] = {
   { &kNOTIFICATIONTELEMETRYSERVICE_CID, false, nullptr, NotificationTelemetryServiceConstructor },
   { &kPUSHNOTIFIER_CID, false, nullptr, PushNotifierConstructor },
   { &kWORKERDEBUGGERMANAGER_CID, true, nullptr, WorkerDebuggerManagerConstructor },
-  { &kNS_AUDIOCHANNELAGENT_CID, true, nullptr, AudioChannelAgentConstructor },
-  { &kNS_EDITORCONTROLLER_CID, false, nullptr, EditorControllerConstructor },
-  { &kNS_EDITINGCONTROLLER_CID, false, nullptr, nsEditingControllerConstructor },
-  { &kNS_EDITORCOMMANDTABLE_CID, false, nullptr, nsEditorCommandTableConstructor },
-  { &kNS_EDITINGCOMMANDTABLE_CID, false, nullptr, nsEditingCommandTableConstructor },
   { &kNS_GEOLOCATION_CID, false, nullptr, GeolocationConstructor },
-  { &kNS_AUDIOCHANNEL_SERVICE_CID, false, nullptr, AudioChannelServiceConstructor },
   { &kNS_WEBSOCKETEVENT_SERVICE_CID, false, nullptr, WebSocketEventServiceConstructor },
   { &kNS_FOCUSMANAGER_CID, false, nullptr, CreateFocusManager },
 #ifdef MOZ_WEBSPEECH_TEST_BACKEND
@@ -817,18 +583,13 @@ static const mozilla::Module::CIDEntry kLayoutCIDs[] = {
   { &kTEXT_INPUT_PROCESSOR_CID, false, nullptr, TextInputProcessorConstructor },
   { &kNS_SCRIPTERROR_CID, false, nullptr, nsScriptErrorConstructor },
   { nullptr }
+  // clang-format on
 };
 
 static const mozilla::Module::ContractIDEntry kLayoutContracts[] = {
+  // clang-format off
   XPCONNECT_CONTRACTS
-  { "@mozilla.org/layout/xul-boxobject;1", &kNS_BOXOBJECT_CID },
-#ifdef MOZ_XUL
-  { "@mozilla.org/layout/xul-boxobject-menu;1", &kNS_MENUBOXOBJECT_CID },
-  { "@mozilla.org/layout/xul-boxobject-tree;1", &kNS_TREEBOXOBJECT_CID },
-#endif // MOZ_XUL
   { "@mozilla.org/inspector/deep-tree-walker;1", &kIN_DEEPTREEWALKER_CID },
-  { "@mozilla.org/xml/xml-document;1", &kNS_XMLDOCUMENT_CID },
-  { "@mozilla.org/svg/svg-document;1", &kNS_SVGDOCUMENT_CID },
   { NS_DOC_ENCODER_CONTRACTID_BASE "text/xml", &kNS_TEXT_ENCODER_CID },
   { NS_DOC_ENCODER_CONTRACTID_BASE "application/xml", &kNS_TEXT_ENCODER_CID },
   { NS_DOC_ENCODER_CONTRACTID_BASE "application/xhtml+xml", &kNS_TEXT_ENCODER_CID },
@@ -848,20 +609,12 @@ static const mozilla::Module::ContractIDEntry kLayoutContracts[] = {
   { NS_CONTENTPOLICY_CONTRACTID, &kNS_CONTENTPOLICY_CID },
   { NS_DATADOCUMENTCONTENTPOLICY_CONTRACTID, &kNS_DATADOCUMENTCONTENTPOLICY_CID },
   { NS_NODATAPROTOCOLCONTENTPOLICY_CONTRACTID, &kNS_NODATAPROTOCOLCONTENTPOLICY_CID },
-  { "@mozilla.org/xul/xul-controllers;1", &kNS_XULCONTROLLERS_CID },
-#ifdef MOZ_XUL
-  { "@mozilla.org/xul/xul-sort-service;1", &kNS_XULSORTSERVICE_CID },
-#endif
   { CONTENT_DLF_CONTRACTID, &kNS_CONTENT_DOCUMENT_LOADER_FACTORY_CID },
   { NS_JSPROTOCOLHANDLER_CONTRACTID, &kNS_JSPROTOCOLHANDLER_CID },
-  { NS_WINDOWCONTROLLER_CONTRACTID, &kNS_WINDOWCONTROLLER_CID },
   { PLUGIN_DLF_CONTRACTID, &kNS_PLUGINDOCLOADERFACTORY_CID },
   { NS_STYLESHEETSERVICE_CONTRACTID, &kNS_STYLESHEETSERVICE_CID },
   { NS_SDBCONNECTION_CONTRACTID, &kNS_SDBCONNECTION_CID },
   { "@mozilla.org/dom/localStorage-manager;1", &kNS_DOMLOCALSTORAGEMANAGER_CID },
-  // Keeping the old ContractID for backward compatibility
-  { "@mozilla.org/dom/storagemanager;1", &kNS_DOMLOCALSTORAGEMANAGER_CID },
-  { "@mozilla.org/dom/sessionStorage-manager;1", &kNS_DOMSESSIONSTORAGEMANAGER_CID },
   { DOMREQUEST_SERVICE_CONTRACTID, &kDOMREQUEST_SERVICE_CID },
   { QUOTAMANAGER_SERVICE_CONTRACTID, &kQUOTAMANAGER_SERVICE_CID },
   { SERVICEWORKERMANAGER_CONTRACTID, &kSERVICEWORKERMANAGER_CID },
@@ -869,11 +622,7 @@ static const mozilla::Module::ContractIDEntry kLayoutContracts[] = {
   { NOTIFICATIONTELEMETRYSERVICE_CONTRACTID, &kNOTIFICATIONTELEMETRYSERVICE_CID },
   { PUSHNOTIFIER_CONTRACTID, &kPUSHNOTIFIER_CID },
   { WORKERDEBUGGERMANAGER_CONTRACTID, &kWORKERDEBUGGERMANAGER_CID },
-  { NS_AUDIOCHANNELAGENT_CONTRACTID, &kNS_AUDIOCHANNELAGENT_CID },
-  { "@mozilla.org/editor/editorcontroller;1", &kNS_EDITORCONTROLLER_CID },
-  { "@mozilla.org/editor/editingcontroller;1", &kNS_EDITINGCONTROLLER_CID },
   { "@mozilla.org/geolocation;1", &kNS_GEOLOCATION_CID },
-  { "@mozilla.org/audiochannel/service;1", &kNS_AUDIOCHANNEL_SERVICE_CID },
   { "@mozilla.org/websocketevent/service;1", &kNS_WEBSOCKETEVENT_SERVICE_CID },
   { "@mozilla.org/focus-manager;1", &kNS_FOCUSMANAGER_CID },
 #ifdef MOZ_WEBSPEECH_TEST_BACKEND
@@ -935,6 +684,7 @@ static const mozilla::Module::CategoryEntry kLayoutCategories[] = {
   { "profile-after-change", "PresentationService", PRESENTATION_SERVICE_CONTRACTID },
   { "profile-after-change", "Notification Telemetry Service", NOTIFICATIONTELEMETRYSERVICE_CONTRACTID },
   { nullptr }
+  // clang-format on
 };
 
 static void

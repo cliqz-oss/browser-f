@@ -436,6 +436,7 @@ const {
 
 const dispatcher = new WorkerDispatcher();
 
+const setAssetRootURL = dispatcher.task("setAssetRootURL");
 const getOriginalURLs = dispatcher.task("getOriginalURLs");
 const getOriginalRanges = dispatcher.task("getOriginalRanges");
 const getGeneratedRanges = dispatcher.task("getGeneratedRanges", {
@@ -472,7 +473,10 @@ module.exports = {
   applySourceMap,
   clearSourceMaps,
   getOriginalStackFrames,
-  startSourceMapWorker: dispatcher.start.bind(dispatcher),
+  startSourceMapWorker(url, assetRoot) {
+    dispatcher.start(url);
+    setAssetRootURL(assetRoot);
+  },
   stopSourceMapWorker: dispatcher.stop.bind(dispatcher)
 };
 
@@ -593,6 +597,12 @@ function networkRequest(url, opts) {
     cache: opts.loadFromCache ? "default" : "no-cache"
   }).then(res => {
     if (res.status >= 200 && res.status < 300) {
+      if (res.headers.get("Content-Type") === "application/wasm") {
+        return res.arrayBuffer().then(buffer => ({
+          content: buffer,
+          isDwarf: true
+        }));
+      }
       return res.text().then(text => ({ content: text }));
     }
     return Promise.reject(`request failed with status ${res.status}`);
@@ -616,8 +626,8 @@ function WorkerDispatcher() {
    * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 WorkerDispatcher.prototype = {
-  start(url) {
-    this.worker = new Worker(url);
+  start(url, win = window) {
+    this.worker = new win.Worker(url);
     this.worker.onerror = () => {
       console.error(`Error in worker ${url}`);
     };
@@ -689,6 +699,10 @@ WorkerDispatcher.prototype = {
     };
 
     return (...args) => push(args);
+  },
+
+  invoke(method, ...args) {
+    return this.task(method)(...args);
   }
 };
 

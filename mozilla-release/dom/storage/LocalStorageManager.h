@@ -45,8 +45,8 @@ public:
   already_AddRefed<StorageUsage>
   GetOriginUsage(const nsACString& aOriginNoSuffix);
 
-  static nsCString CreateOrigin(const nsACString& aOriginSuffix,
-                                const nsACString& aOriginNoSuffix);
+  static nsAutoCString CreateOrigin(const nsACString& aOriginSuffix,
+                                    const nsACString& aOriginNoSuffix);
 
 private:
   ~LocalStorageManager();
@@ -66,8 +66,10 @@ private:
       , mCache(new LocalStorageCache(aKey))
     {}
 
-    LocalStorageCacheHashKey(const LocalStorageCacheHashKey& aOther)
-      : nsCStringHashKey(aOther)
+    LocalStorageCacheHashKey(LocalStorageCacheHashKey&& aOther)
+      : nsCStringHashKey(std::move(aOther))
+      , mCache(std::move(aOther.mCache))
+      , mCacheRef(std::move(aOther.mCacheRef))
     {
       NS_ERROR("Shouldn't be called");
     }
@@ -109,12 +111,6 @@ private:
   // Suffix->origin->cache map
   typedef nsTHashtable<LocalStorageCacheHashKey> CacheOriginHashtable;
   nsClassHashtable<nsCStringHashKey, CacheOriginHashtable> mCaches;
-
-  // If mLowDiskSpace is true it indicates a low device storage situation and
-  // so no localStorage writes are allowed. sessionStorage writes are still
-  // allowed.
-  bool mLowDiskSpace;
-  bool IsLowDiskSpace() const { return mLowDiskSpace; };
 
   void ClearCaches(uint32_t aUnloadFlags,
                    const OriginAttributesPattern& aPattern,

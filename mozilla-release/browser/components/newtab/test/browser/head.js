@@ -2,6 +2,8 @@
 
 ChromeUtils.defineModuleGetter(this, "PlacesTestUtils",
   "resource://testing-common/PlacesTestUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "QueryCache",
+  "resource://activity-stream/lib/ASRouterTargeting.jsm");
 
 function popPrefs() {
   return SpecialPowers.popPrefEnv();
@@ -17,11 +19,13 @@ async function setDefaultTopSites() { // eslint-disable-line no-unused-vars
   // Toggle the feed off and on as a workaround to read the new prefs.
   await pushPrefs(["browser.newtabpage.activity-stream.feeds.topsites", false]);
   await pushPrefs(["browser.newtabpage.activity-stream.feeds.topsites", true]);
+  await pushPrefs(["browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts", true]);
 }
 
 async function clearHistoryAndBookmarks() { // eslint-disable-line no-unused-vars
   await PlacesUtils.bookmarks.eraseEverything();
   await PlacesUtils.history.clear();
+  QueryCache.expireAll();
 }
 
 /**
@@ -53,7 +57,7 @@ async function addHighlightsBookmarks(count) { // eslint-disable-line no-unused-
   const bookmarks = new Array(count).fill(null).map((entry, i) => ({
     parentGuid: PlacesUtils.bookmarks.unfiledGuid,
     title: "foo",
-    url: `https://mozilla${i}.com/nowNew`
+    url: `https://mozilla${i}.com/nowNew`,
   }));
 
   for (let placeInfo of bookmarks) {
@@ -87,7 +91,7 @@ function addContentHelpers() {
       const contextMenu = item.querySelector(".context-menu");
       const contextMenuList = contextMenu.querySelector(".context-menu-list");
       return [...contextMenuList.getElementsByClassName("context-menu-item")];
-    }
+    },
   });
 }
 

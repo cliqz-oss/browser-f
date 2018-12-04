@@ -16,11 +16,11 @@ var _selectors = require("../selectors/index");
 
 var _promise = require("./utils/middleware/promise");
 
-var _devtoolsSourceMap = require("devtools/client/shared/source-map/index.js");
-
 var _expressions = require("../utils/expressions");
 
 var _prefs = require("../utils/prefs");
+
+var _source = require("../utils/source");
 
 var _parser = require("../workers/parser/index");
 
@@ -187,11 +187,14 @@ function evaluateExpression(expression) {
         location
       } = frame;
       const source = (0, _selectors.getSourceFromId)(getState(), location.sourceId);
-      const sourceId = source.id;
       const selectedSource = (0, _selectors.getSelectedSource)(getState());
 
-      if (selectedSource && !(0, _devtoolsSourceMap.isGeneratedId)(sourceId) && !(0, _devtoolsSourceMap.isGeneratedId)(selectedSource.id)) {
-        input = await dispatch(getMappedExpression(input));
+      if (selectedSource && (0, _source.isOriginal)(source) && (0, _source.isOriginal)(selectedSource)) {
+        const mapResult = await dispatch(getMappedExpression(input));
+
+        if (mapResult) {
+          input = mapResult.expression;
+        }
       }
     }
 
@@ -226,7 +229,7 @@ function getMappedExpression(expression) {
     // 3. does not contain `=` - we do not need to map assignments
 
     if (!mappings && !expression.match(/(await|=)/)) {
-      return expression;
+      return null;
     }
 
     return parser.mapExpression(expression, mappings, bindings || [], _prefs.features.mapExpressionBindings, _prefs.features.mapAwaitExpression);

@@ -37,25 +37,25 @@ const GENERIC_VARIABLES_VIEW_SETTINGS = {
   lazyEmptyDelay: 10,
   searchEnabled: true,
   searchPlaceholder: L10N.getStr("storage.search.placeholder"),
-  preventDescriptorModifiers: true
+  preventDescriptorModifiers: true,
 };
 
 const REASON = {
   NEW_ROW: "new-row",
   NEXT_50_ITEMS: "next-50-items",
   POPULATE: "populate",
-  UPDATE: "update"
+  UPDATE: "update",
 };
 
 const COOKIE_KEY_MAP = {
   path: "Path",
   host: "Domain",
   expires: "Expires",
+  hostOnly: "HostOnly",
   isSecure: "Secure",
   isHttpOnly: "HttpOnly",
-  isDomain: "HostOnly",
   creationTime: "CreationTime",
-  lastAccessed: "LastAccessed"
+  lastAccessed: "LastAccessed",
 };
 
 const SAFE_HOSTS_PREFIXES_REGEX = /^(about:|https?:|file:|moz-extension:)/;
@@ -90,7 +90,7 @@ class StorageUI {
     const treeNode = this._panelDoc.getElementById("storage-tree");
     this.tree = new TreeWidget(treeNode, {
       defaultType: "dir",
-      contextMenuId: "storage-tree-popup"
+      contextMenuId: "storage-tree-popup",
     });
     this.onHostSelect = this.onHostSelect.bind(this);
     this.tree.on("select", this.onHostSelect);
@@ -99,7 +99,7 @@ class StorageUI {
     this.table = new TableWidget(tableNode, {
       emptyText: L10N.getStr("table.emptyText"),
       highlightUpdated: true,
-      cellContextMenuId: "storage-table-popup"
+      cellContextMenuId: "storage-table-popup",
     });
 
     this.updateObjectSidebar = this.updateObjectSidebar.bind(this);
@@ -755,8 +755,7 @@ class StorageUI {
           }
 
           const cookieProp = COOKIE_KEY_MAP[prop] || prop;
-          // The pseduo property of HostOnly refers to converse of isDomain property
-          rawObject[cookieProp] = (prop === "isDomain") ? !item[prop] : item[prop];
+          rawObject[cookieProp] = item[prop];
         }
         itemVar.populate(rawObject, {sorted: true});
         itemVar.twisty = true;

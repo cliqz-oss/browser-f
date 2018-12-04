@@ -28,6 +28,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   ExtensionPageChild: "resource://gre/modules/ExtensionPageChild.jsm",
   MessageChannel: "resource://gre/modules/MessageChannel.jsm",
   NativeApp: "resource://gre/modules/NativeMessaging.jsm",
+  PerformanceCounters: "resource://gre/modules/PerformanceCounters.jsm",
   PromiseUtils: "resource://gre/modules/PromiseUtils.jsm",
 });
 
@@ -36,6 +37,10 @@ XPCOMUtils.defineLazyGetter(
   () => Cc["@mozilla.org/webextensions/extension-process-script;1"]
           .getService().wrappedJSObject);
 
+// We're using the pref to avoid loading PerformanceCounters.jsm for nothing.
+XPCOMUtils.defineLazyPreferenceGetter(this, "gTimingEnabled",
+                                      "extensions.webextensions.enablePerformanceCounters",
+                                      false);
 ChromeUtils.import("resource://gre/modules/ExtensionCommon.jsm");
 ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 
@@ -768,9 +773,20 @@ class BrowserExtensionContent extends EventEmitter {
   }
 
   hasPermission(perm) {
-    let match = /^manifest:(.*)/.exec(perm);
-    if (match) {
-      return this.manifest[match[1]] != null;
+    // If the permission is a "manifest property" permission, we check if the extension
+    // does have the required property in its manifest.
+    let manifest_ = "manifest:";
+    if (perm.startsWith(manifest_)) {
+      // Handle nested "manifest property" permission (e.g. as in "manifest:property.nested").
+      let value = this.manifest;
+      for (let prop of perm.substr(manifest_.length).split(".")) {
+        if (!value) {
+          break;
+        }
+        value = value[prop];
+      }
+
+      return value != null;
     }
     return this.permissions.has(perm);
   }
@@ -860,6 +876,39 @@ class ProxyAPIImplementation extends SchemaAPIInterface {
   hasListener(listener) {
     let map = this.childApiManager.listeners.get(this.path);
     return map.listeners.has(listener);
+  }
+}
+
+class ChildLocalAPIImplementation extends LocalAPIImplementation {
+  constructor(pathObj, name, childApiManager) {
+    super(pathObj, name, childApiManager.context);
+    this.childApiManagerId = childApiManager.id;
+  }
+
+  withTiming(callable) {
+    if (!gTimingEnabled) {
+      return callable();
+    }
+    let start = Cu.now() * 1000;
+    try {
+      return callable();
+    } finally {
+      let end = Cu.now() * 1000;
+      PerformanceCounters.storeExecutionTime(this.context.extension.id, this.name,
+                                             end - start, this.childApiManagerId);
+    }
+  }
+
+  callFunction(args) {
+    return this.withTiming(() => super.callFunction(args));
+  }
+
+  callFunctionNoReturn(args) {
+    return this.withTiming(() => super.callFunctionNoReturn(args));
+  }
+
+  callAsyncFunction(args, callback, requireUserInput) {
+    return this.withTiming(() => super.callAsyncFunction(args, callback, requireUserInput));
   }
 }
 
@@ -1072,6 +1121,12 @@ class ChildAPIManager {
       return false;
     }
 
+    // Do not generate content_only APIs, unless explicitly allowed.
+    if (this.context.envType !== "content_child" &&
+        allowedContexts.includes("content_only")) {
+      return false;
+    }
+
     return true;
   }
 
@@ -1080,7 +1135,7 @@ class ChildAPIManager {
     let obj = this.apiCan.findAPIPath(namespace);
 
     if (obj && name in obj) {
-      return new LocalAPIImplementation(obj, name, this.context);
+      return new ChildLocalAPIImplementation(obj, name, this);
     }
 
     return this.getFallbackImplementation(namespace, name);

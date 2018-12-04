@@ -33,7 +33,7 @@ struct nsGenConInitializer;
 class nsContainerFrame;
 class nsFirstLineFrame;
 class nsFirstLetterFrame;
-class nsICSSAnonBoxPseudo;
+class nsCSSAnonBoxPseudoStaticAtom;
 class nsIDocument;
 class nsPageContentFrame;
 struct PendingBinding;
@@ -716,6 +716,12 @@ private:
    * FCDATA_USE_CHILD_ITEMS is set.
    */
 #define FCDATA_IS_WRAPPER_ANON_BOX 0x400000
+  /**
+   * If FCDATA_MAY_NEED_BULLET is set, then the frame will be checked
+   * whether an nsBulletFrame needs to be created for it or not. Only the
+   * frames inherited from nsBlockFrame should have this bit set.
+   */
+#define FCDATA_MAY_NEED_BULLET 0x800000
 
   /* Structure representing information about how a frame should be
      constructed.  */
@@ -736,7 +742,7 @@ private:
     FrameFullConstructor mFullConstructor;
     // For cases when FCDATA_CREATE_BLOCK_WRAPPER_FOR_ALL_KIDS is set, the
     // anonymous box type to use for that wrapper.
-    nsICSSAnonBoxPseudo * const * const mAnonBoxPseudo;
+    nsCSSAnonBoxPseudoStaticAtom* const mAnonBoxPseudo;
   };
 
   /* Structure representing a mapping of an atom to a FrameConstructionData.
@@ -744,9 +750,7 @@ private:
      stored somewhere that this struct can point to (that is, a static
      nsAtom*) and that it's allocated before the struct is ever used. */
   struct FrameConstructionDataByTag {
-    // Pointer to nsStaticAtom* is used because we want to initialize this
-    // statically, so before our atom tables are set up.
-    const nsStaticAtom * const * const mTag;
+    const nsStaticAtom* const mTag;
     const FrameConstructionData mData;
   };
 
@@ -777,7 +781,7 @@ private:
      for a table pseudo-frame */
   struct PseudoParentData {
     const FrameConstructionData mFCData;
-    nsICSSAnonBoxPseudo * const * const mPseudoType;
+    nsCSSAnonBoxPseudoStaticAtom* const mPseudoType;
   };
   /* Array of such structures that we use to properly construct table
      pseudo-frames as needed */
@@ -798,7 +802,7 @@ private:
     XBLBindingLoadInfo(nsIContent&, ComputedStyle&);
 
     // For the case we actually load an XBL binding.
-    XBLBindingLoadInfo(already_AddRefed<ComputedStyle> aStyle,
+    XBLBindingLoadInfo(already_AddRefed<ComputedStyle>&& aStyle,
                        mozilla::UniquePtr<PendingBinding> aPendingBinding,
                        nsAtom* aTag);
 
@@ -901,7 +905,7 @@ private:
     {
       FrameConstructionItem* item =
         new (aFCtor) FrameConstructionItem(aFCData, aContent,
-                                           aPendingBinding, aComputedStyle,
+                                           aPendingBinding, std::move(aComputedStyle),
                                            aSuppressWhiteSpaceOptimizations);
       mItems.insertBack(item);
       ++mItemCount;
@@ -919,7 +923,7 @@ private:
     {
       FrameConstructionItem* item =
         new (aFCtor) FrameConstructionItem(aFCData, aContent,
-                                           aPendingBinding, aComputedStyle,
+                                           aPendingBinding, std::move(aComputedStyle),
                                            aSuppressWhiteSpaceOptimizations);
       mItems.insertFront(item);
       ++mItemCount;
@@ -1147,10 +1151,10 @@ private:
     FrameConstructionItem(const FrameConstructionData* aFCData,
                           nsIContent* aContent,
                           PendingBinding* aPendingBinding,
-                          already_AddRefed<ComputedStyle>& aComputedStyle,
+                          already_AddRefed<ComputedStyle>&& aComputedStyle,
                           bool aSuppressWhiteSpaceOptimizations)
     : mFCData(aFCData), mContent(aContent),
-      mPendingBinding(aPendingBinding), mComputedStyle(aComputedStyle),
+      mPendingBinding(aPendingBinding), mComputedStyle(std::move(aComputedStyle)),
       mSuppressWhiteSpaceOptimizations(aSuppressWhiteSpaceOptimizations),
       mIsText(false), mIsGeneratedContent(false),
       mIsAnonymousContentCreatorContent(false),
@@ -1582,7 +1586,7 @@ private:
                                   nsFrameItems&            aFrameItems,
                                   ContainerFrameCreationFunc aConstructor,
                                   ContainerFrameCreationFunc aInnerConstructor,
-                                  nsICSSAnonBoxPseudo*     aInnerPseudo,
+                                  nsCSSAnonBoxPseudoStaticAtom* aInnerPseudo,
                                   bool                     aCandidateRootFrame);
 
   /**
@@ -1870,6 +1874,8 @@ private:
                       nsFrameItems&            aFrameItems,
                       nsIFrame*                aPositionedFrameForAbsPosContainer,
                       PendingBinding*          aPendingBinding);
+
+  void CreateBulletFrameForListItemIfNeeded(nsBlockFrame* aBlockFrame);
 
   nsIFrame* ConstructInline(nsFrameConstructorState& aState,
                             FrameConstructionItem&   aItem,

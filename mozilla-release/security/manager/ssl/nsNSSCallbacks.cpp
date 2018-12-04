@@ -33,7 +33,7 @@
 #include "nsProtectedAuthThread.h"
 #include "nsProxyRelease.h"
 #include "nsStringStream.h"
-#include "pkix/pkixtypes.h"
+#include "mozpkix/pkixtypes.h"
 #include "ssl.h"
 #include "sslproto.h"
 
@@ -503,41 +503,28 @@ ShowProtectedAuthPrompt(PK11SlotInfo* slot, nsIInterfaceRequestor *ir)
                                 NS_TOKENDIALOGS_CONTRACTID);
   if (NS_SUCCEEDED(nsrv))
   {
-    nsProtectedAuthThread* protectedAuthRunnable = new nsProtectedAuthThread();
-    if (protectedAuthRunnable)
-    {
-      NS_ADDREF(protectedAuthRunnable);
+    RefPtr<nsProtectedAuthThread> protectedAuthRunnable = new nsProtectedAuthThread();
+    protectedAuthRunnable->SetParams(slot);
 
-      protectedAuthRunnable->SetParams(slot);
+    nsrv = dialogs->DisplayProtectedAuth(ir, protectedAuthRunnable);
 
-      nsCOMPtr<nsIProtectedAuthThread> runnable = do_QueryInterface(protectedAuthRunnable);
-      if (runnable)
-      {
-        nsrv = dialogs->DisplayProtectedAuth(ir, runnable);
+    // We call join on the thread,
+    // so we can be sure that no simultaneous access will happen.
+    protectedAuthRunnable->Join();
 
-        // We call join on the thread,
-        // so we can be sure that no simultaneous access will happen.
-        protectedAuthRunnable->Join();
-
-        if (NS_SUCCEEDED(nsrv))
-        {
-          SECStatus rv = protectedAuthRunnable->GetResult();
-          switch (rv)
-          {
-              case SECSuccess:
-                  protAuthRetVal = ToNewCString(nsDependentCString(PK11_PW_AUTHENTICATED));
-                  break;
-              case SECWouldBlock:
-                  protAuthRetVal = ToNewCString(nsDependentCString(PK11_PW_RETRY));
-                  break;
-              default:
-                  protAuthRetVal = nullptr;
-                  break;
-          }
-        }
+    if (NS_SUCCEEDED(nsrv)) {
+      SECStatus rv = protectedAuthRunnable->GetResult();
+      switch (rv) {
+        case SECSuccess:
+          protAuthRetVal = ToNewCString(nsDependentCString(PK11_PW_AUTHENTICATED));
+          break;
+        case SECWouldBlock:
+          protAuthRetVal = ToNewCString(nsDependentCString(PK11_PW_RETRY));
+          break;
+        default:
+          protAuthRetVal = nullptr;
+          break;
       }
-
-      NS_RELEASE(protectedAuthRunnable);
     }
   }
 
@@ -737,18 +724,12 @@ PreliminaryHandshakeDone(PRFileDesc* fd)
     SSLCipherSuiteInfo cipherInfo;
     if (SSL_GetCipherSuiteInfo(channelInfo.cipherSuite, &cipherInfo,
                                sizeof cipherInfo) == SECSuccess) {
-      /* Set the SSL Status information */
-      RefPtr<nsSSLStatus> status(infoObject->SSLStatus());
-      if (!status) {
-        status = new nsSSLStatus();
-        infoObject->SetSSLStatus(status);
-      }
-
-      status->mHaveCipherSuiteAndProtocol = true;
-      status->mCipherSuite = channelInfo.cipherSuite;
-      status->mProtocolVersion = channelInfo.protocolVersion & 0xFF;
-      status->mKeaGroup.Assign(getKeaGroupName(channelInfo.keaGroup));
-      status->mSignatureSchemeName.Assign(
+      /* Set the Status information */
+      infoObject->mHaveCipherSuiteAndProtocol = true;
+      infoObject->mCipherSuite = channelInfo.cipherSuite;
+      infoObject->mProtocolVersion = channelInfo.protocolVersion & 0xFF;
+      infoObject->mKeaGroup.Assign(getKeaGroupName(channelInfo.keaGroup));
+      infoObject->mSignatureSchemeName.Assign(
         getSignatureName(channelInfo.signatureScheme));
       infoObject->SetKEAUsed(channelInfo.keaType);
       infoObject->SetKEAKeyBits(channelInfo.keaKeyBits);
@@ -962,15 +943,13 @@ AccumulateCipherSuite(Telemetry::HistogramID probe, const SSLChannelInfo& channe
 // because we are on the socket thread, this must not cause any network
 // requests, hence the use of FLAG_LOCAL_ONLY.
 static void
-RebuildVerifiedCertificateInformation(RefPtr<nsSSLStatus> sslStatus,
-                                      PRFileDesc* fd,
+RebuildVerifiedCertificateInformation(PRFileDesc* fd,
                                       nsNSSSocketInfo* infoObject)
 {
-  MOZ_ASSERT(sslStatus);
   MOZ_ASSERT(fd);
   MOZ_ASSERT(infoObject);
 
-  if (!sslStatus || !fd || !infoObject) {
+  if (!fd || !infoObject) {
     return;
   }
 
@@ -1037,19 +1016,19 @@ RebuildVerifiedCertificateInformation(RefPtr<nsSSLStatus> sslStatus,
 
   RefPtr<nsNSSCertificate> nssc(nsNSSCertificate::Create(cert.get()));
   if (rv == Success && evOidPolicy != SEC_OID_UNKNOWN) {
-    sslStatus->SetCertificateTransparencyInfo(certificateTransparencyInfo);
+    infoObject->SetCertificateTransparencyInfo(certificateTransparencyInfo);
     MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
             ("HandshakeCallback using NEW cert %p (is EV)", nssc.get()));
-    sslStatus->SetServerCert(nssc, EVStatus::EV);
+    infoObject->SetServerCert(nssc, EVStatus::EV);
   } else {
     MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
             ("HandshakeCallback using NEW cert %p (is not EV)", nssc.get()));
-    sslStatus->SetServerCert(nssc, EVStatus::NotEV);
+    infoObject->SetServerCert(nssc, EVStatus::NotEV);
   }
 
   if (rv == Success) {
-    sslStatus->SetCertificateTransparencyInfo(certificateTransparencyInfo);
-    sslStatus->SetSucceededCertChain(std::move(builtChain));
+    infoObject->SetCertificateTransparencyInfo(certificateTransparencyInfo);
+    infoObject->SetSucceededCertChain(std::move(builtChain));
   }
 }
 
@@ -1224,15 +1203,7 @@ void HandshakeCallback(PRFileDesc* fd, void* client_data) {
                              ioLayerHelpers.treatUnsafeNegotiationAsBroken();
 
 
-  /* Set the SSL Status information */
-  RefPtr<nsSSLStatus> status(infoObject->SSLStatus());
-  if (!status) {
-    status = new nsSSLStatus();
-    infoObject->SetSSLStatus(status);
-  }
-
-  RememberCertErrorsTable::GetInstance().LookupCertErrorBits(infoObject,
-                                                             status);
+  RememberCertErrorsTable::GetInstance().LookupCertErrorBits(infoObject);
 
   uint32_t state;
   if (renegotiationUnsafe) {
@@ -1249,18 +1220,19 @@ void HandshakeCallback(PRFileDesc* fd, void* client_data) {
     }
   }
 
-  if (status->HasServerCert()) {
+  if (infoObject->HasServerCert()) {
     MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
            ("HandshakeCallback KEEPING existing cert\n"));
   } else {
-    RebuildVerifiedCertificateInformation(status, fd, infoObject);
+    RebuildVerifiedCertificateInformation(fd, infoObject);
   }
 
   nsCOMPtr<nsIX509CertList> succeededCertChain;
   // This always returns NS_OK, but the list could be empty. This is a
   // best-effort check for now. Bug 731478 will reduce the incidence of empty
   // succeeded cert chains through better caching.
-  Unused << status->GetSucceededCertChain(getter_AddRefs(succeededCertChain));
+  Unused << infoObject->GetSucceededCertChain(
+                          getter_AddRefs(succeededCertChain));
   bool distrustImminent;
   nsresult srv = IsCertificateDistrustImminent(succeededCertChain,
                                                distrustImminent);
@@ -1272,9 +1244,9 @@ void HandshakeCallback(PRFileDesc* fd, void* client_data) {
   bool untrusted;
   bool notValidAtThisTime;
   // These all return NS_OK, so don't even bother checking the return values.
-  Unused << status->GetIsDomainMismatch(&domainMismatch);
-  Unused << status->GetIsUntrusted(&untrusted);
-  Unused << status->GetIsNotValidAtThisTime(&notValidAtThisTime);
+  Unused << infoObject->GetIsDomainMismatch(&domainMismatch);
+  Unused << infoObject->GetIsUntrusted(&untrusted);
+  Unused << infoObject->GetIsNotValidAtThisTime(&notValidAtThisTime);
   // If we're here, the TLS handshake has succeeded. Thus if any of these
   // booleans are true, the user has added an override for a certificate error.
   if (domainMismatch || untrusted || notValidAtThisTime) {

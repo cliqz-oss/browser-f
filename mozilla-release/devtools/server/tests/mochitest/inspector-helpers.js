@@ -5,12 +5,11 @@
 "use strict";
 
 const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
-const {DebuggerClient} = require("devtools/shared/client/debugger-client");
+const {TargetFactory} = require("devtools/client/framework/target");
 const {DebuggerServer} = require("devtools/server/main");
+const {BrowserTestUtils} = require("resource://testing-common/BrowserTestUtils.jsm");
 
 const Services = require("Services");
-// promise is still used in tests using this helper
-const defer = require("devtools/shared/defer");
 const {DocumentWalker: _documentWalker} = require("devtools/server/actors/inspector/document-walker");
 
 // Always log packets when running tests.
@@ -36,66 +35,63 @@ SimpleTest.registerCleanupFunction(function() {
 });
 
 /**
+ * Add a new test tab in the browser and load the given url.
+ * @return Promise a promise that resolves to the new target representing
+ *         the page currently opened.
+ */
+
+async function getTargetForSelectedTab(gBrowser) {
+  const selectedTab = gBrowser.selectedTab;
+  await BrowserTestUtils.browserLoaded(selectedTab.linkedBrowser);
+  return TargetFactory.forTab(selectedTab);
+}
+
+/**
  * Open a tab, load the url, wait for it to signal its readiness,
  * find the tab with the debugger server, and call the callback.
  *
  * Returns a function which can be called to close the opened ta
  * and disconnect its debugger client.
  */
-function attachURL(url, callback) {
-  let win = window.open(url, "_blank");
-  let client = null;
+async function attachURL(url) {
+  // Get the current browser window
+  const gBrowser = Services.wm.getMostRecentWindow("navigator:browser").gBrowser;
 
-  const cleanup = () => {
-    if (client) {
-      client.close();
-      client = null;
+  // open the url in a new tab, save a reference to the new inner window global object
+  // and wait for it to load. The tests rely on this window object to send a "ready"
+  // event to its opener (the test page). This window reference is used within
+  // the test tab, to reference the webpage being tested against, which is in another
+  // tab.
+  const windowOpened = BrowserTestUtils.waitForNewTab(gBrowser, url);
+  const win = window.open(url, "_blank");
+  await windowOpened;
+
+  const target = await getTargetForSelectedTab(gBrowser);
+  await target.attach();
+
+  const cleanup = async function() {
+    if (target.client) {
+      await target.client.close();
     }
     if (win) {
       win.close();
-      win = null;
     }
   };
+
   gAttachCleanups.push(cleanup);
-
-  window.addEventListener("message", function loadListener(event) {
-    if (event.data === "ready") {
-      client = new DebuggerClient(DebuggerServer.connectPipe());
-      client.connect().then(([applicationType, traits]) => {
-        client.listTabs().then(response => {
-          for (const tab of response.tabs) {
-            if (tab.url === url) {
-              window.removeEventListener("message", loadListener);
-              // eslint-disable-next-line max-nested-callbacks
-              client.attachTab(tab.actor).then(function() {
-                try {
-                  callback(null, client, tab, win.document);
-                } catch (ex) {
-                  Cu.reportError(ex);
-                  dump(ex);
-                }
-              });
-              break;
-            }
-          }
-        });
-      });
-    }
-  });
-
-  return cleanup;
+  return { target, doc: win.document };
 }
 
 function promiseOnce(target, event) {
-  const deferred = defer();
-  target.on(event, (...args) => {
-    if (args.length === 1) {
-      deferred.resolve(args[0]);
-    } else {
-      deferred.resolve(args);
-    }
+  return new Promise(resolve => {
+    target.on(event, (...args) => {
+      if (args.length === 1) {
+        resolve(args[0]);
+      } else {
+        resolve(args);
+      }
+    });
   });
-  return deferred.promise;
 }
 
 function sortOwnershipChildren(children) {
@@ -120,7 +116,7 @@ function serverOwnershipSubtree(walker, node) {
   }
   return {
     name: actor.actorID,
-    children: sortOwnershipChildren(children)
+    children: sortOwnershipChildren(children),
   };
 }
 
@@ -132,7 +128,7 @@ function serverOwnershipTree(walker) {
     orphaned: [...serverWalker._orphaned]
               .map(o => serverOwnershipSubtree(serverWalker, o.rawNode)),
     retained: [...serverWalker._retainedOrphans]
-              .map(o => serverOwnershipSubtree(serverWalker, o.rawNode))
+              .map(o => serverOwnershipSubtree(serverWalker, o.rawNode)),
   };
 }
 
@@ -140,7 +136,7 @@ function clientOwnershipSubtree(node) {
   return {
     name: node.actorID,
     children: sortOwnershipChildren(node.treeChildren()
-              .map(child => clientOwnershipSubtree(child)))
+              .map(child => clientOwnershipSubtree(child))),
   };
 }
 
@@ -148,7 +144,7 @@ function clientOwnershipTree(walker) {
   return {
     root: clientOwnershipSubtree(walker.rootNode),
     orphaned: [...walker._orphaned].map(o => clientOwnershipSubtree(o)),
-    retained: [...walker._retainedOrphans].map(o => clientOwnershipSubtree(o))
+    retained: [...walker._retainedOrphans].map(o => clientOwnershipSubtree(o)),
   };
 }
 
@@ -170,38 +166,37 @@ function assertOwnershipTrees(walker) {
 }
 
 // Verify that an actorID is inaccessible both from the client library and the server.
-function checkMissing(client, actorID) {
-  let deferred = defer();
-  const front = client.getActor(actorID);
-  ok(!front, "Front shouldn't be accessible from the client for actorID: " + actorID);
+function checkMissing({client}, actorID) {
+  return new Promise(resolve => {
+    const front = client.getActor(actorID);
+    ok(!front, "Front shouldn't be accessible from the client for actorID: " + actorID);
 
-  deferred = defer();
-  client.request({
-    to: actorID,
-    type: "request",
-  }, response => {
-    is(response.error, "noSuchActor", "node list actor should no longer be contactable.");
-    deferred.resolve(undefined);
+    client.request({
+      to: actorID,
+      type: "request",
+    }, response => {
+      is(response.error, "noSuchActor",
+        "node list actor should no longer be contactable.");
+      resolve(undefined);
+    });
   });
-  return deferred.promise;
 }
 
 // Verify that an actorID is accessible both from the client library and the server.
-function checkAvailable(client, actorID) {
-  let deferred = defer();
-  const front = client.getActor(actorID);
-  ok(front, "Front should be accessible from the client for actorID: " + actorID);
+function checkAvailable({client}, actorID) {
+  return new Promise(resolve => {
+    const front = client.getActor(actorID);
+    ok(front, "Front should be accessible from the client for actorID: " + actorID);
 
-  deferred = defer();
-  client.request({
-    to: actorID,
-    type: "garbageAvailableTest",
-  }, response => {
-    is(response.error, "unrecognizedPacketType",
-       "node list actor should be contactable.");
-    deferred.resolve(undefined);
+    client.request({
+      to: actorID,
+      type: "garbageAvailableTest",
+    }, response => {
+      is(response.error, "unrecognizedPacketType",
+        "node list actor should be contactable.");
+      resolve(undefined);
+    });
   });
-  return deferred.promise;
 }
 
 function promiseDone(currentPromise) {
@@ -275,20 +270,20 @@ function assertChildList(mutations) {
 // Load mutations aren't predictable, so keep accumulating mutations until
 // the one we're looking for shows up.
 function waitForMutation(walker, test, mutations = []) {
-  const deferred = defer();
-  for (const change of mutations) {
-    if (test(change)) {
-      deferred.resolve(mutations);
+  return new Promise(resolve => {
+    for (const change of mutations) {
+      if (test(change)) {
+        resolve(mutations);
+      }
     }
-  }
 
-  walker.once("mutations", newMutations => {
-    waitForMutation(walker, test, mutations.concat(newMutations)).then(finalMutations => {
-      deferred.resolve(finalMutations);
+    walker.once("mutations", newMutations => {
+      waitForMutation(walker, test, mutations.concat(newMutations))
+        .then(finalMutations => {
+          resolve(finalMutations);
+        });
     });
   });
-
-  return deferred.promise;
 }
 
 var _tests = [];

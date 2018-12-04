@@ -23,6 +23,23 @@ using namespace js::jit;
 using namespace js::wasm;
 
 #ifdef DEBUG
+
+# ifdef ENABLE_WASM_GC
+#  define WASM_GC_OP(code) return code
+# else
+#  define WASM_GC_OP(code) break
+# endif
+# ifdef ENABLE_WASM_BULKMEM_OPS
+#  define WASM_BULK_OP(code) return code
+# else
+#  define WASM_BULK_OP(code) break
+# endif
+# ifdef ENABLE_WASM_THREAD_OPS
+#  define WASM_THREAD_OP(code) return code
+# else
+#  define WASM_THREAD_OP(code) break
+# endif
+
 OpKind
 wasm::Classify(OpBytes op)
 {
@@ -149,6 +166,7 @@ wasm::Classify(OpBytes op)
       case Op::F64Le:
       case Op::F64Gt:
       case Op::F64Ge:
+      case Op::RefEq:
         return OpKind::Comparison;
       case Op::I32Eqz:
       case Op::I32WrapI64:
@@ -240,10 +258,12 @@ wasm::Classify(OpBytes op)
       case Op::GrowMemory:
         return OpKind::GrowMemory;
       case Op::RefNull:
-        return OpKind::RefNull;
+        WASM_GC_OP(OpKind::RefNull);
       case Op::MiscPrefix: {
           switch (MiscOp(op.b1)) {
-#ifdef ENABLE_WASM_SATURATING_TRUNC_OPS
+            case MiscOp::Limit:
+              // Reject Limit for MiscPrefix encoding
+              break;
             case MiscOp::I32TruncSSatF32:
             case MiscOp::I32TruncUSatF32:
             case MiscOp::I32TruncSSatF64:
@@ -253,29 +273,38 @@ wasm::Classify(OpBytes op)
             case MiscOp::I64TruncSSatF64:
             case MiscOp::I64TruncUSatF64:
               return OpKind::Conversion;
-#endif
-#ifdef ENABLE_WASM_BULKMEM_OPS
             case MiscOp::MemCopy:
-              return OpKind::MemCopy;
+            case MiscOp::TableCopy:
+              WASM_BULK_OP(OpKind::MemOrTableCopy);
+            case MiscOp::MemDrop:
+            case MiscOp::TableDrop:
+              WASM_BULK_OP(OpKind::MemOrTableDrop);
             case MiscOp::MemFill:
-              return OpKind::MemFill;
-#endif
-            default:
-              break;
+              WASM_BULK_OP(OpKind::MemFill);
+            case MiscOp::MemInit:
+            case MiscOp::TableInit:
+              WASM_BULK_OP(OpKind::MemOrTableInit);
+            case MiscOp::StructNew:
+              WASM_GC_OP(OpKind::StructNew);
+            case MiscOp::StructGet:
+              WASM_GC_OP(OpKind::StructGet);
+            case MiscOp::StructSet:
+              WASM_GC_OP(OpKind::StructSet);
+            case MiscOp::StructNarrow:
+              WASM_GC_OP(OpKind::StructNarrow);
           }
           break;
       }
       case Op::ThreadPrefix: {
-#ifdef ENABLE_WASM_THREAD_OPS
           switch (ThreadOp(op.b1)) {
             case ThreadOp::Limit:
               // Reject Limit for ThreadPrefix encoding
               break;
             case ThreadOp::Wake:
-              return OpKind::Wake;
+              WASM_THREAD_OP(OpKind::Wake);
             case ThreadOp::I32Wait:
             case ThreadOp::I64Wait:
-              return OpKind::Wait;
+              WASM_THREAD_OP(OpKind::Wait);
             case ThreadOp::I32AtomicLoad:
             case ThreadOp::I64AtomicLoad:
             case ThreadOp::I32AtomicLoad8U:
@@ -283,7 +312,7 @@ wasm::Classify(OpBytes op)
             case ThreadOp::I64AtomicLoad8U:
             case ThreadOp::I64AtomicLoad16U:
             case ThreadOp::I64AtomicLoad32U:
-              return OpKind::AtomicLoad;
+              WASM_THREAD_OP(OpKind::AtomicLoad);
             case ThreadOp::I32AtomicStore:
             case ThreadOp::I64AtomicStore:
             case ThreadOp::I32AtomicStore8U:
@@ -291,7 +320,7 @@ wasm::Classify(OpBytes op)
             case ThreadOp::I64AtomicStore8U:
             case ThreadOp::I64AtomicStore16U:
             case ThreadOp::I64AtomicStore32U:
-              return OpKind::AtomicStore;
+              WASM_THREAD_OP(OpKind::AtomicStore);
             case ThreadOp::I32AtomicAdd:
             case ThreadOp::I64AtomicAdd:
             case ThreadOp::I32AtomicAdd8U:
@@ -334,7 +363,7 @@ wasm::Classify(OpBytes op)
             case ThreadOp::I64AtomicXchg8U:
             case ThreadOp::I64AtomicXchg16U:
             case ThreadOp::I64AtomicXchg32U:
-              return OpKind::AtomicBinOp;
+              WASM_THREAD_OP(OpKind::AtomicBinOp);
             case ThreadOp::I32AtomicCmpXchg:
             case ThreadOp::I64AtomicCmpXchg:
             case ThreadOp::I32AtomicCmpXchg8U:
@@ -342,11 +371,10 @@ wasm::Classify(OpBytes op)
             case ThreadOp::I64AtomicCmpXchg8U:
             case ThreadOp::I64AtomicCmpXchg16U:
             case ThreadOp::I64AtomicCmpXchg32U:
-              return OpKind::AtomicCompareExchange;
+              WASM_THREAD_OP(OpKind::AtomicCompareExchange);
             default:
               break;
           }
-#endif // ENABLE_WASM_THREAD_OPS
           break;
       }
       case Op::MozPrefix: {
@@ -397,4 +425,9 @@ wasm::Classify(OpBytes op)
     }
     MOZ_MAKE_COMPILER_ASSUME_IS_UNREACHABLE("unimplemented opcode");
 }
+
+# undef WASM_GC_OP
+# undef WASM_BULK_OP
+# undef WASM_THREAD_OP
+
 #endif

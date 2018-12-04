@@ -11,6 +11,8 @@
 <!ENTITY safeModeDescription3.label   "Der Abgesicherte Modus ist ein spezieller Modus von &brandShortName;, der zur Problembehebung genutzt werden kann.">
 <!ENTITY safeModeDescription4.label   "Ihre Add-ons und Benutzereinstellungen werden temporär deaktiviert.">
 
+<!ENTITY safeModeDescription5.label   "Ihre Add-ons werden temporär deaktiviert und Ihre Einstellungen vorübergehend zurückgesetzt, sodass sich Funktionen von &brandShortName; möglicherweise nicht wie gewohnt verhalten.">
+
 <!ENTITY refreshProfileInstead.label  "Sie können auch die Problembehebung überspringen und versuchen, &brandShortName; zu bereinigen.">
 
 <!-- LOCALIZATION NOTE (autoSafeModeDescription3.label): Shown on the safe mode dialog after multiple startup crashes. See also chrome/global/resetProfile.dtd -->

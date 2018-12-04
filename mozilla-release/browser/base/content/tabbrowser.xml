@@ -284,18 +284,18 @@
           if (!visibleTabs.length) {
             return;
           }
-          let selectedIndex = visibleTabs.indexOf(this.selectedItem);
-
+          let selectedTab = this.selectedItem;
+          let selectedIndex = visibleTabs.indexOf(selectedTab);
           if (this._beforeSelectedTab) {
             this._beforeSelectedTab.removeAttribute("beforeselected-visible");
           }
 
-          if (this.selectedItem.closing || selectedIndex <= 0) {
+          if (selectedTab.closing || selectedIndex <= 0) {
             this._beforeSelectedTab = null;
           } else {
             let beforeSelectedTab = visibleTabs[selectedIndex - 1];
             let separatedByScrollButton = this.getAttribute("overflow") == "true" &&
-              beforeSelectedTab.pinned && !this.selectedItem.pinned;
+              beforeSelectedTab.pinned && !selectedTab.pinned;
             if (!separatedByScrollButton) {
               this._beforeSelectedTab = beforeSelectedTab;
               this._beforeSelectedTab.setAttribute("beforeselected-visible",
@@ -400,10 +400,11 @@
       <method name="_handleTabSelect">
         <parameter name="aInstant"/>
         <body><![CDATA[
+          let selectedTab = this.selectedItem;
           if (this.getAttribute("overflow") == "true")
-            this.arrowScrollbox.ensureElementIsVisible(this.selectedItem, aInstant);
+            this.arrowScrollbox.ensureElementIsVisible(selectedTab, aInstant);
 
-          this.selectedItem._notselectedsinceload = false;
+          selectedTab._notselectedsinceload = false;
         ]]></body>
       </method>
 
@@ -585,6 +586,7 @@
         <parameter name="event"/>
         <body><![CDATA[
           let draggedTab = event.dataTransfer.mozGetDataAt(TAB_DROP_TYPE, 0);
+          let movingTabs = draggedTab._dragData.movingTabs;
 
           if (this.getAttribute("movingtab") != "true") {
             this.setAttribute("movingtab", "true");
@@ -611,7 +613,7 @@
           let tabs = this._getVisibleTabs()
                          .slice(pinned ? 0 : numPinned,
                                 pinned ? numPinned : undefined);
-          let movingTabs = draggedTab._dragData.movingTabs;
+
           if (rtl) {
             tabs.reverse();
             // Copy moving tabs array to avoid infinite reversing.
@@ -721,6 +723,180 @@
         ]]></body>
       </method>
 
+      <!--  Regroup all selected tabs around the
+            tab in param  -->
+      <method name="_groupSelectedTabs">
+        <parameter name="tab"/>
+        <body><![CDATA[
+          let draggedTabPos = tab._tPos;
+          let selectedTabs = gBrowser.selectedTabs;
+          let animate = gBrowser.animationsEnabled;
+
+          tab.groupingTabsData = {
+            finished: !animate,
+          };
+
+
+          // Animate left selected tabs
+
+          let insertAtPos = draggedTabPos - 1;
+          for (let i = selectedTabs.indexOf(tab) - 1; i > -1; i--) {
+            let movingTab = selectedTabs[i];
+            insertAtPos = newIndex(movingTab, insertAtPos);
+
+            if (animate) {
+              movingTab.groupingTabsData = {};
+              addAnimationData(movingTab, insertAtPos, "left");
+            } else {
+              gBrowser.moveTabTo(movingTab, insertAtPos);
+            }
+            insertAtPos--;
+          }
+
+          // Animate right selected tabs
+
+          insertAtPos = draggedTabPos + 1;
+          for (let i = selectedTabs.indexOf(tab) + 1; i < selectedTabs.length; i++) {
+            let movingTab = selectedTabs[i];
+            insertAtPos = newIndex(movingTab, insertAtPos);
+
+            if (animate) {
+              movingTab.groupingTabsData = {};
+              addAnimationData(movingTab, insertAtPos, "right");
+            } else {
+              gBrowser.moveTabTo(movingTab, insertAtPos);
+            }
+            insertAtPos++;
+          }
+
+          // Slide the relevant tabs to their new position.
+          let rtl = Services.locale.isAppLocaleRTL ? -1 : 1;
+          for (let t of this._getVisibleTabs()) {
+            if (t.groupingTabsData && t.groupingTabsData.translateX) {
+              let translateX = rtl * t.groupingTabsData.translateX;
+              t.style.transform = "translateX(" + translateX + "px)";
+            }
+          }
+
+          function newIndex(aTab, index) {
+            // Don't allow mixing pinned and unpinned tabs.
+            if (aTab.pinned) {
+              return Math.min(index, gBrowser._numPinnedTabs - 1);
+            }
+            return Math.max(index, gBrowser._numPinnedTabs);
+          }
+
+          function addAnimationData(movingTab, movingTabNewIndex, side) {
+            let movingTabOldIndex = movingTab._tPos;
+
+            if (movingTabOldIndex == movingTabNewIndex) {
+              // movingTab is already at the right position
+              // and thus don't need to be animated.
+              return;
+            }
+
+            let movingTabWidth = movingTab.boxObject.width;
+            let shift = (movingTabNewIndex - movingTabOldIndex) * movingTabWidth;
+
+            movingTab.groupingTabsData.animate = true;
+            movingTab.setAttribute("tab-grouping", "true");
+
+            movingTab.groupingTabsData.translateX = shift;
+
+            let onTransitionEnd = transitionendEvent => {
+              if (transitionendEvent.propertyName != "transform" ||
+                  transitionendEvent.originalTarget != movingTab) {
+                return;
+              }
+              movingTab.removeEventListener("transitionend", onTransitionEnd);
+              movingTab.groupingTabsData.newIndex = movingTabNewIndex;
+              movingTab.groupingTabsData.animate = false;
+            };
+
+            movingTab.addEventListener("transitionend", onTransitionEnd);
+
+            // Add animation data for tabs between movingTab (selected
+            // tab moving towards the dragged tab) and draggedTab.
+            // Those tabs in the middle should move in
+            // the opposite direction of movingTab.
+
+            let lowerIndex = Math.min(movingTabOldIndex, draggedTabPos);
+            let higherIndex = Math.max(movingTabOldIndex, draggedTabPos);
+
+            for (let i = lowerIndex + 1; i < higherIndex; i++) {
+              let middleTab = gBrowser.visibleTabs[i];
+
+              if (middleTab.pinned != movingTab.pinned) {
+                // Don't mix pinned and unpinned tabs
+                break;
+              }
+
+              if (middleTab.multiselected) {
+                // Skip because this selected tab should
+                // be shifted towards the dragged Tab.
+                continue;
+              }
+
+              if (!middleTab.groupingTabsData || !middleTab.groupingTabsData.translateX) {
+                middleTab.groupingTabsData = { translateX: 0};
+              }
+              if (side == "left") {
+                middleTab.groupingTabsData.translateX -= movingTabWidth;
+              } else {
+                middleTab.groupingTabsData.translateX += movingTabWidth;
+              }
+
+              middleTab.setAttribute("tab-grouping", "true");
+            }
+          }
+        ]]></body>
+      </method>
+
+      <method name="_finishGroupSelectedTabs">
+        <parameter name="tab"/>
+        <body><![CDATA[
+          if (!tab.groupingTabsData || tab.groupingTabsData.finished)
+            return;
+
+          tab.groupingTabsData.finished = true;
+
+          let selectedTabs = gBrowser.selectedTabs;
+          let tabIndex = selectedTabs.indexOf(tab);
+
+          // Moving left tabs
+          for (let i = tabIndex - 1; i > -1; i--) {
+            let movingTab = selectedTabs[i];
+            if (movingTab.groupingTabsData.newIndex) {
+              gBrowser.moveTabTo(movingTab, movingTab.groupingTabsData.newIndex);
+            }
+          }
+
+          // Moving right tabs
+          for (let i = tabIndex + 1; i < selectedTabs.length; i++) {
+            let movingTab = selectedTabs[i];
+            if (movingTab.groupingTabsData.newIndex) {
+              gBrowser.moveTabTo(movingTab, movingTab.groupingTabsData.newIndex);
+            }
+          }
+
+          for (let t of this._getVisibleTabs()) {
+            t.style.transform = "";
+            t.removeAttribute("tab-grouping");
+            delete t.groupingTabsData;
+          }
+        ]]></body>
+      </method>
+
+      <method name="_isGroupTabsAnimationOver">
+        <body><![CDATA[
+          for (let tab of gBrowser.selectedTabs) {
+            if (tab.groupingTabsData && tab.groupingTabsData.animate)
+              return false;
+          }
+          return true;
+        ]]></body>
+      </method>
+
       <method name="handleEvent">
         <parameter name="aEvent"/>
         <body><![CDATA[
@@ -767,8 +943,9 @@
             return;
 
           if (this.arrowScrollbox.smoothScroll) {
-            let selected = !this.selectedItem.pinned &&
-                           this.selectedItem.getBoundingClientRect();
+            let selectedTab = this.selectedItem;
+            let selected = !selectedTab.pinned &&
+                           selectedTab.getBoundingClientRect();
 
             // Can we make both the new tab and the selected tab completely visible?
             if (!selected ||
@@ -830,28 +1007,35 @@
         <parameter name="event"/>
         <body><![CDATA[
           var dt = event.dataTransfer;
-          if (dt.mozItemCount == 1) {
-            var types = dt.mozTypesAt(0);
+
+          let isMovingTabs = dt.mozItemCount > 0;
+          for (let i = 0; i < dt.mozItemCount; i++) {
             // tabs are always added as the first type
-            if (types[0] == TAB_DROP_TYPE) {
-              let sourceNode = dt.mozGetDataAt(TAB_DROP_TYPE, 0);
-              if (sourceNode instanceof XULElement &&
-                  sourceNode.localName == "tab" &&
-                  sourceNode.ownerGlobal.isChromeWindow &&
-                  sourceNode.ownerDocument.documentElement.getAttribute("windowtype") == "navigator:browser" &&
-                  sourceNode.ownerGlobal.gBrowser.tabContainer == sourceNode.parentNode) {
-                // Do not allow transfering a private tab to a non-private window
-                // and vice versa.
-                if (PrivateBrowsingUtils.isWindowPrivate(window) !=
-                    PrivateBrowsingUtils.isWindowPrivate(sourceNode.ownerGlobal))
-                  return "none";
+            let types = dt.mozTypesAt(0);
+            if (types[0] != TAB_DROP_TYPE) {
+              isMovingTabs = false;
+              break;
+            }
+          }
 
-                if (window.gMultiProcessBrowser !=
-                    sourceNode.ownerGlobal.gMultiProcessBrowser)
-                  return "none";
+          if (isMovingTabs) {
+            let sourceNode = dt.mozGetDataAt(TAB_DROP_TYPE, 0);
+            if (sourceNode instanceof XULElement &&
+                sourceNode.localName == "tab" &&
+                sourceNode.ownerGlobal.isChromeWindow &&
+                sourceNode.ownerDocument.documentElement.getAttribute("windowtype") == "navigator:browser" &&
+                sourceNode.ownerGlobal.gBrowser.tabContainer == sourceNode.parentNode) {
+              // Do not allow transfering a private tab to a non-private window
+              // and vice versa.
+              if (PrivateBrowsingUtils.isWindowPrivate(window) !=
+                  PrivateBrowsingUtils.isWindowPrivate(sourceNode.ownerGlobal))
+                return "none";
 
-                return dt.dropEffect == "copy" ? "copy" : "move";
-              }
+              if (window.gMultiProcessBrowser !=
+                  sourceNode.ownerGlobal.gMultiProcessBrowser)
+                return "none";
+
+              return dt.dropEffect == "copy" ? "copy" : "move";
             }
           }
 
@@ -1005,7 +1189,6 @@
     <handlers>
       <handler event="TabSelect"><![CDATA[
         this._handleTabSelect();
-        gBrowser.clearMultiSelectedTabs(true);
       ]]></handler>
 
       <handler event="TabClose"><![CDATA[
@@ -1157,44 +1340,96 @@
       ]]></handler>
 
       <handler event="keydown" group="system"><![CDATA[
-        if (event.altKey || event.shiftKey)
-          return;
+        let {altKey, shiftKey} = event;
+        let [accel, nonAccel] = AppConstants.platform == "macosx" ? [event.metaKey, event.ctrlKey] : [event.ctrlKey, event.metaKey];
 
-        let wrongModifiers;
-        if (AppConstants.platform == "macosx") {
-          wrongModifiers = !event.metaKey;
-        } else {
-          wrongModifiers = !event.ctrlKey || event.metaKey;
+        let keyComboForMove = accel && shiftKey && !altKey && !nonAccel;
+        let keyComboForFocus = accel && !shiftKey && !altKey && !nonAccel;
+
+        if (!keyComboForMove && !keyComboForFocus) {
+          return;
         }
-
-        if (wrongModifiers)
-          return;
 
         // Don't check if the event was already consumed because tab navigation
         // should work always for better user experience.
-
+        let {visibleTabs, selectedTab} = gBrowser;
+        let {arrowKeysShouldWrap} = this;
+        let focusedTabIndex = this.ariaFocusedIndex;
+        if (focusedTabIndex == -1) {
+          focusedTabIndex = visibleTabs.indexOf(selectedTab);
+        }
+        let lastFocusedTabIndex = focusedTabIndex;
         switch (event.keyCode) {
           case KeyEvent.DOM_VK_UP:
-            gBrowser.moveTabBackward();
+            if (keyComboForMove) {
+              gBrowser.moveTabBackward();
+            } else {
+              focusedTabIndex--;
+            }
             break;
           case KeyEvent.DOM_VK_DOWN:
-            gBrowser.moveTabForward();
+            if (keyComboForMove) {
+              gBrowser.moveTabForward();
+            } else {
+              focusedTabIndex++;
+            }
             break;
           case KeyEvent.DOM_VK_RIGHT:
           case KeyEvent.DOM_VK_LEFT:
-            gBrowser.moveTabOver(event);
+            if (keyComboForMove) {
+              gBrowser.moveTabOver(event);
+            } else {
+              let isRTL = Services.locale.isAppLocaleRTL;
+              if ((!isRTL && event.keyCode == KeyEvent.DOM_VK_RIGHT) ||
+                  (isRTL && event.keyCode == KeyEvent.DOM_VK_LEFT)) {
+                focusedTabIndex++;
+              } else {
+                focusedTabIndex--;
+              }
+            }
             break;
           case KeyEvent.DOM_VK_HOME:
-            gBrowser.moveTabToStart();
+            if (keyComboForMove) {
+              gBrowser.moveTabToStart();
+            } else {
+              focusedTabIndex = 0;
+            }
             break;
           case KeyEvent.DOM_VK_END:
-            gBrowser.moveTabToEnd();
+            if (keyComboForMove) {
+              gBrowser.moveTabToEnd();
+            } else {
+              focusedTabIndex = visibleTabs.length - 1;
+            }
+            break;
+          case KeyEvent.DOM_VK_SPACE:
+            if (visibleTabs[lastFocusedTabIndex].multiselected) {
+              gBrowser.removeFromMultiSelectedTabs(visibleTabs[lastFocusedTabIndex]);
+            } else {
+              gBrowser.addToMultiSelectedTabs(visibleTabs[lastFocusedTabIndex], false);
+            }
             break;
           default:
             // Consume the keydown event for the above keyboard
             // shortcuts only.
             return;
         }
+
+        if (arrowKeysShouldWrap) {
+          if (focusedTabIndex >= visibleTabs.length) {
+            focusedTabIndex = 0;
+          } else if (focusedTabIndex < 0) {
+            focusedTabIndex = visibleTabs.length - 1;
+          }
+        } else {
+          focusedTabIndex = Math.min(visibleTabs.length - 1, Math.max(0, focusedTabIndex));
+        }
+
+        if (keyComboForFocus &&
+            focusedTabIndex != lastFocusedTabIndex) {
+          this.ariaFocusedItem = visibleTabs[focusedTabIndex];
+        }
+
         event.preventDefault();
       ]]></handler>
 
@@ -1203,14 +1438,22 @@
         if (!tab || this._isCustomizing)
           return;
 
-        let dt = event.dataTransfer;
-        dt.mozSetDataAt(TAB_DROP_TYPE, tab, 0);
-        let browser = tab.linkedBrowser;
+        let selectedTabs = gBrowser.selectedTabs;
+        let otherSelectedTabs = selectedTabs.filter(selectedTab => selectedTab != tab);
+        let dataTransferOrderedTabs = [tab].concat(otherSelectedTabs);
 
-        // We must not set text/x-moz-url or text/plain data here,
-        // otherwise trying to deatch the tab by dropping it on the desktop
-        // may result in an "internet shortcut"
-        dt.mozSetDataAt("text/x-moz-text-internal", browser.currentURI.spec, 0);
+        let dt = event.dataTransfer;
+        for (let i = 0; i < dataTransferOrderedTabs.length; i++) {
+          let dtTab = dataTransferOrderedTabs[i];
+
+          dt.mozSetDataAt(TAB_DROP_TYPE, dtTab, i);
+          let dtBrowser = dtTab.linkedBrowser;
+
+          // We must not set text/x-moz-url or text/plain data here,
+          // otherwise trying to detach the tab by dropping it on the desktop
+          // may result in an "internet shortcut"
+          dt.mozSetDataAt("text/x-moz-text-internal", dtBrowser.currentURI.spec, i);
+        }
 
         // Set the cursor to an arrow during tab drags.
         dt.mozCursor = "default";
@@ -1219,27 +1462,8 @@
         // node to deliver the `dragend` event.  See bug 1345473.
         dt.addElement(tab);
 
-        // Regroup all selected tabs around the dragged tab
-        // for multiple tabs dragging
         if (tab.multiselected) {
-          let selectedTabs = gBrowser.selectedTabs;
-          let draggedTabPos = tab._tPos;
-
-          // Move left selected tabs
-          let insertAtPos = draggedTabPos - 1;
-          for (let i = selectedTabs.indexOf(tab) - 1; i > -1; i--) {
-            let movingTab = selectedTabs[i];
-            gBrowser.moveTabTo(movingTab, insertAtPos);
-            insertAtPos--;
-          }
-
-          // Move right selected tabs
-          insertAtPos = draggedTabPos + 1;
-          for (let i = selectedTabs.indexOf(tab) + 1; i < selectedTabs.length; i++) {
-            let movingTab = selectedTabs[i];
-            gBrowser.moveTabTo(movingTab, insertAtPos);
-            insertAtPos++;
-          }
+          this._groupSelectedTabs(tab);
         }
 
         // Create a canvas to which we capture the current tab.
@@ -1261,6 +1485,7 @@
         canvas.height = 90 * scale;
         let toDrag = canvas;
         let dragImageOffset = -16;
+        let browser = tab.linkedBrowser;
         if (gMultiProcessBrowser) {
           var context = canvas.getContext("2d");
           context.fillStyle = "white";
@@ -1355,11 +1580,21 @@
             arrowScrollbox.scrollByPixels((ltr ? 1 : -1) * pixelsToScroll, true);
         }
 
-        if (effects == "move" &&
-            this == event.dataTransfer.mozGetDataAt(TAB_DROP_TYPE, 0).parentNode) {
+        let draggedTab = event.dataTransfer.mozGetDataAt(TAB_DROP_TYPE, 0);
+        if ((effects == "move" || effects == "copy") &&
+            this == draggedTab.parentNode) {
           ind.collapsed = true;
-          this._animateTabMove(event);
-          return;
+
+          if (!this._isGroupTabsAnimationOver()) {
+            // Wait for grouping tabs animation to finish
+            return;
+          }
+          this._finishGroupSelectedTabs(draggedTab);
+
+          if (effects == "move") {
+            this._animateTabMove(event);
+            return;
+          }
         }
 
         this._finishAnimateTabMove();
@@ -1427,6 +1662,7 @@
           if (!draggedTab)
             return;
           movingTabs = draggedTab._dragData.movingTabs;
+          draggedTab.parentNode._finishGroupSelectedTabs(draggedTab);
         }
 
         this._tabDropIndicator.collapsed = true;
@@ -1567,6 +1803,7 @@
         if (draggedTab.hasAttribute("tabdrop-samewindow"))
           return;
 
+        this._finishGroupSelectedTabs(draggedTab);
         this._finishAnimateTabMove();
 
         if (dt.mozUserCancelled || dt.dropEffect != "none" || this._isCustomizing) {
@@ -1580,11 +1817,11 @@
         var wX = window.screenX;
         // check if the drop point is horizontally within the window
         if (eX > wX && eX < (wX + window.outerWidth)) {
-          let bo = this.arrowScrollbox.boxObject;
           // also avoid detaching if the the tab was dropped too close to
           // the tabbar (half a tab)
-          let endScreenY = bo.screenY + 1.5 * bo.height;
-          if (eY < endScreenY && eY > window.screenY)
+          let rect = window.windowUtils.getBoundsWithoutFlushing(this.arrowScrollbox);
+          let detachTabThresholdY = window.screenY + rect.top + 1.5 * rect.height;
+          if (eY < detachTabThresholdY && eY > window.screenY)
             return;
         }
 

@@ -121,15 +121,18 @@ typedef ExclusiveWaitableData<CompileTaskState> ExclusiveCompileTaskState;
 
 struct CompileTask
 {
-    const ModuleEnvironment&   env;
-    ExclusiveCompileTaskState& state;
-    LifoAlloc                  lifo;
-    FuncCompileInputVector     inputs;
-    CompiledCode               output;
+    const ModuleEnvironment&          env;
+    ExclusiveCompileTaskState&        state;
+    ExclusiveDeferredValidationState& dvs;
+    LifoAlloc                         lifo;
+    FuncCompileInputVector            inputs;
+    CompiledCode                      output;
 
-    CompileTask(const ModuleEnvironment& env, ExclusiveCompileTaskState& state, size_t defaultChunkSize)
+    CompileTask(const ModuleEnvironment& env, ExclusiveCompileTaskState& state,
+                ExclusiveDeferredValidationState& dvs, size_t defaultChunkSize)
       : env(env),
         state(state),
+        dvs(dvs),
         lifo(defaultChunkSize)
     {}
 
@@ -154,8 +157,7 @@ class MOZ_STACK_CLASS ModuleGenerator
     ModuleEnvironment* const        env_;
 
     // Data that is moved into the result of finish()
-    Assumptions                     assumptions_;
-    UniqueLinkDataTier              linkDataTier_;
+    UniqueLinkData                  linkData_;
     UniqueMetadataTier              metadataTier_;
     MutableMetadata                 metadata_;
 
@@ -172,6 +174,9 @@ class MOZ_STACK_CLASS ModuleGenerator
     uint32_t                        lastPatchedCallSite_;
     uint32_t                        startOfUnpatchedCallsites_;
     CodeOffsetVector                debugTrapFarJumps_;
+
+    // Data accumulated for deferred validation.  Is shared and mutable.
+    ExclusiveDeferredValidationState deferredValidationState_;
 
     // Parallel compilation
     bool                            parallel_;
@@ -194,13 +199,14 @@ class MOZ_STACK_CLASS ModuleGenerator
     bool finishTask(CompileTask* task);
     bool launchBatchCompile();
     bool finishOutstandingTask();
-    bool finishCode();
-    bool finishMetadata(const ShareableBytes& bytecode);
-    UniqueModuleSegment finish(const ShareableBytes& bytecode);
+    bool finishCodegen();
+    bool finishMetadataTier();
+    UniqueCodeTier finishCodeTier();
+    bool finishMetadata(const Bytes& bytecode);
 
     bool isAsmJS() const { return env_->isAsmJS(); }
-    Tier tier() const { return env_->tier; }
-    CompileMode mode() const { return env_->mode; }
+    Tier tier() const { return env_->tier(); }
+    CompileMode mode() const { return env_->mode(); }
     bool debugEnabled() const { return env_->debugEnabled(); }
 
   public:
@@ -225,8 +231,14 @@ class MOZ_STACK_CLASS ModuleGenerator
     // a new Module. Otherwise, if env->mode is Tier2, finishTier2() must be
     // called to augment the given Module with tier 2 code.
 
-    SharedModule finishModule(const ShareableBytes& bytecode);
-    MOZ_MUST_USE bool finishTier2(Module& module);
+    SharedModule finishModule(const ShareableBytes& bytecode,
+                              JS::OptimizedEncodingListener* maybeTier2Listener = nullptr,
+                              UniqueLinkData* maybeLinkDataOut = nullptr);
+    MOZ_MUST_USE bool finishTier2(const Module& module);
+
+    ExclusiveDeferredValidationState& deferredValidationState() {
+        return deferredValidationState_;
+    }
 };
 
 } // namespace wasm

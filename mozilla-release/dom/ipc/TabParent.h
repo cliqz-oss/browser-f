@@ -17,6 +17,7 @@
 #include "mozilla/dom/TabContext.h"
 #include "mozilla/EventForwards.h"
 #include "mozilla/dom/File.h"
+#include "mozilla/gfx/CrossProcessPaint.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/Move.h"
@@ -25,7 +26,6 @@
 #include "nsIBrowserDOMWindow.h"
 #include "nsIDOMEventListener.h"
 #include "nsIKeyEventInPluginCallback.h"
-#include "nsISecureBrowserUI.h"
 #include "nsITabParent.h"
 #include "nsIXULBrowserWindow.h"
 #include "nsRefreshDriver.h"
@@ -83,7 +83,6 @@ class TabParent final : public PBrowserParent
                       , public nsIDOMEventListener
                       , public nsITabParent
                       , public nsIAuthPromptProvider
-                      , public nsISecureBrowserUI
                       , public nsIKeyEventInPluginCallback
                       , public nsSupportsWeakReference
                       , public TabContext
@@ -487,7 +486,6 @@ public:
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSIAUTHPROMPTPROVIDER
-  NS_DECL_NSISECUREBROWSERUI
 
   void StartPersistence(uint64_t aOuterWindowID,
                         nsIWebBrowserPersistDocumentReceiver* aRecv,
@@ -564,6 +562,9 @@ public:
                             const bool& aRunInGlobalScope);
 
   void LayerTreeUpdate(const LayersObserverEpoch& aEpoch, bool aActive);
+
+  void RequestRootPaint(gfx::CrossProcessPaint* aPaint, IntRect aRect, float aScale, nscolor aBackgroundColor);
+  void RequestSubPaint(gfx::CrossProcessPaint* aPaint, float aScale, nscolor aBackgroundColor);
 
   virtual mozilla::ipc::IPCResult
   RecvInvokeDragSession(nsTArray<IPCDataTransfer>&& aTransfers,
@@ -777,6 +778,9 @@ private:
   // does not necessarily mean that the layers have finished rendering
   // and have uploaded - for that, use mHasLayers.
   bool mRenderLayers;
+
+  // Whether this is active for the ProcessPriorityManager or not.
+  bool mActiveInPriorityManager;
 
   // True if the compositor has reported that the TabChild has uploaded
   // layers.

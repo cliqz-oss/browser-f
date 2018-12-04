@@ -1,10 +1,9 @@
-if (!wasmGcEnabled()) {
-    quit(0);
-}
+// |jit-test| skip-if: !wasmGcEnabled()
 
 const { startProfiling, endProfiling, assertEqPreciseStacks, isSingleStepProfilingEnabled } = WasmHelpers;
 
 let e = wasmEvalText(`(module
+    (gc_feature_opt_in 1)
     (global $g (mut anyref) (ref.null anyref))
     (func (export "set") (param anyref) get_local 0 set_global $g)
 )`).exports;

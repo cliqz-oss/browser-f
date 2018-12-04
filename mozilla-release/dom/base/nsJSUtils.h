@@ -19,7 +19,6 @@
 #include "GeckoProfiler.h"
 #include "jsapi.h"
 #include "jsfriendapi.h"
-#include "js/AutoByteString.h"
 #include "js/Conversions.h"
 #include "js/StableStringChars.h"
 #include "nsString.h"
@@ -108,8 +107,7 @@ public:
    public:
 
     // Enter compartment in which the code would be executed.  The JSContext
-    // must come from an AutoEntryScript that has had
-    // TakeOwnershipOfErrorReporting() called on it.
+    // must come from an AutoEntryScript.
     ExecutionContext(JSContext* aCx, JS::Handle<JSObject*> aGlobal);
 
     ExecutionContext(const ExecutionContext&) = delete;
@@ -191,17 +189,17 @@ public:
                                 JS::SourceBufferHolder& aSrcBuf,
                                 JS::Handle<JSObject*> aEvaluationGlobal,
                                 JS::CompileOptions &aCompileOptions,
-                                JS::MutableHandle<JSScript*> aScript);
+                                JS::MutableHandle<JSObject*> aModule);
 
   static nsresult InitModuleSourceElement(JSContext* aCx,
-                                          JS::Handle<JSScript*> aScript,
+                                          JS::Handle<JSObject*> aModule,
                                           nsIScriptElement* aElement);
 
   static nsresult ModuleInstantiate(JSContext* aCx,
-                                    JS::Handle<JSScript*> aScript);
+                                    JS::Handle<JSObject*> aModule);
 
   static nsresult ModuleEvaluate(JSContext* aCx,
-                                 JS::Handle<JSScript*> aScript);
+                                 JS::Handle<JSObject*> aModule);
 
   // Returns false if an exception got thrown on aCx.  Passing a null
   // aElement is allowed; that wil produce an empty aScopeChain.

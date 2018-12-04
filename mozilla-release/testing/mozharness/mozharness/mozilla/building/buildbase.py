@@ -23,7 +23,9 @@ import glob
 import sys
 from datetime import datetime
 import re
-from mozharness.base.config import BaseConfig, parse_config_file, DEFAULT_CONFIG_PATH
+from mozharness.base.config import (
+    BaseConfig, parse_config_file, DEFAULT_CONFIG_PATH,
+)
 from mozharness.base.log import ERROR, OutputParser, FATAL
 from mozharness.base.script import PostScriptRun
 from mozharness.base.vcs.vcsbase import MercurialScript
@@ -31,7 +33,6 @@ from mozharness.mozilla.automation import (
     AutomationMixin,
     EXIT_STATUS_DICT,
     TBPL_STATUS_DICT,
-    TBPL_EXCEPTION,
     TBPL_FAILURE,
     TBPL_RETRY,
     TBPL_WARNING,
@@ -41,7 +42,6 @@ from mozharness.mozilla.automation import (
 from mozharness.mozilla.secrets import SecretsMixin
 from mozharness.mozilla.testing.errors import TinderBoxPrintRe
 from mozharness.mozilla.testing.unittest import tbox_print_summary
-from mozharness.mozilla.updates.balrog import BalrogMixin
 from mozharness.base.python import (
     PerfherderResourceOptionsMixin,
     VirtualenvMixin,
@@ -63,7 +63,7 @@ Skipping run_tooltool...',
 }
 
 
-### Output Parsers
+# Output Parsers
 
 TBPL_UPLOAD_ERRORS = [
     {
@@ -83,71 +83,13 @@ TBPL_UPLOAD_ERRORS = [
 
 class MakeUploadOutputParser(OutputParser):
     tbpl_error_list = TBPL_UPLOAD_ERRORS
-    # let's create a switch case using name-spaces/dict
-    # rather than a long if/else with duplicate code
-    property_conditions = [
-        # key: property name, value: condition
-        ('symbolsUrl', "m.endswith('crashreporter-symbols.zip') or "
-                       "m.endswith('crashreporter-symbols-full.zip')"),
-        ('testsUrl', "m.endswith(('tests.tar.bz2', 'tests.zip', 'tests.tar.gz'))"),
-        ('robocopApkUrl', "m.endswith('apk') and 'robocop' in m"),
-        ('jsshellUrl', "'jsshell-' in m and m.endswith('.zip')"),
-        ('partialMarUrl', "m.endswith('.mar') and '.partial.' in m"),
-        ('completeMarUrl', "m.endswith('.mar')"),
-        ('codeCoverageUrl', "m.endswith('code-coverage-gcno.zip')"),
-    ]
 
-    def __init__(self, use_package_as_marfile=False, package_filename=None, **kwargs):
+    def __init__(self, **kwargs):
         super(MakeUploadOutputParser, self).__init__(**kwargs)
-        self.matches = {}
         self.tbpl_status = TBPL_SUCCESS
-        self.use_package_as_marfile = use_package_as_marfile
-        self.package_filename = package_filename
 
     def parse_single_line(self, line):
-        prop_assigned = False
-        pat = r'''^(https?://.*?\.(?:tar\.bz2|dmg|zip|apk|rpm|mar|tar\.gz))$'''
-        m = re.compile(pat).match(line)
-        if m:
-            m = m.group(1)
-            for prop, condition in self.property_conditions:
-                if eval(condition):
-                    self.matches[prop] = m
-                    prop_assigned = True
-                    break
-            if not prop_assigned:
-                # if we found a match but haven't identified the prop then this
-                # is the packageURL. Alternatively, if we already know the
-                # package filename, then use that explicitly so we don't pick up
-                # just any random file and assume it's the package.
-                if not self.package_filename or m.endswith(self.package_filename):
-                    self.matches['packageUrl'] = m
-
-                    # For android builds, the package is also used as the mar file.
-                    # Grab the first one, since that is the one in the
-                    # nightly/YYYY/MM directory
-                    if self.use_package_as_marfile:
-                        if 'tinderbox-builds' in m or 'nightly/latest-' in m:
-                            self.info("Skipping wrong packageUrl: %s" % m)
-                        else:
-                            if 'completeMarUrl' in self.matches:
-                                self.fatal("Found multiple package URLs. Please update buildbase.py")
-                            self.info("Using package as mar file: %s" % m)
-                            self.matches['completeMarUrl'] = m
-                            u, self.package_filename = os.path.split(m)
-
-        if self.use_package_as_marfile and self.package_filename:
-            # The checksum file is also dumped during 'make upload'. Look
-            # through here to get the hash and filesize of the android package
-            # for balrog submission.
-            pat = r'''^([^ ]*) sha512 ([0-9]*) %s$''' % self.package_filename
-            m = re.compile(pat).match(line)
-            if m:
-                self.matches['completeMarHash'] = m.group(1)
-                self.matches['completeMarSize'] = m.group(2)
-                self.info("Using package as mar file and found package hash=%s size=%s" % (m.group(1), m.group(2)))
-
-        # now let's check for retry errors which will give log levels:
+        # let's check for retry errors which will give log levels:
         # tbpl status as RETRY and mozharness status as WARNING
         for error_check in self.tbpl_error_list:
             if error_check['regex'].search(line):
@@ -223,10 +165,12 @@ class CheckTestCompleteParser(OutputParser):
 
         return self.tbpl_status
 
+
 class MozconfigPathError(Exception):
     """
     There was an error getting a mozconfig path from a mozharness config.
     """
+
 
 def get_mozconfig_path(script, config, dirs):
     """
@@ -317,21 +261,19 @@ class BuildingConfig(BaseConfig):
         # not matter. ie: you can supply --branch before --build-pool
         # or vice versa and the hierarchy will not be different
 
-        #### The order from highest precedence to lowest is:
-        ## There can only be one of these...
+        # ### The order from highest precedence to lowest is:
+        # # There can only be one of these...
         # 1) build_pool: this can be either staging, pre-prod, and prod cfgs
         # 2) branch: eg: mozilla-central, cedar, cypress, etc
         # 3) build_variant: these could be known like asan and debug
         #                   or a custom config
-        ##
-        ## There can be many of these
+        #
+        # # There can be many of these
         # 4) all other configs: these are any configs that are passed with
         #                       --cfg and --opt-cfg. There order is kept in
         #                       which they were passed on the cmd line. This
         #                       behaviour is maintains what happens by default
         #                       in mozharness
-        ##
-        ####
 
         # so, let's first assign the configs that hold a known position of
         # importance (1 through 3)
@@ -379,8 +321,9 @@ class BuildingConfig(BaseConfig):
         if pool_cfg_file:
             # take only the specific pool. If we are here, the pool
             # must be present
-            build_pool_configs = parse_config_file(pool_cfg_file,
-                                                   search_path=config_paths + [DEFAULT_CONFIG_PATH])
+            build_pool_configs = parse_config_file(
+                pool_cfg_file,
+                search_path=config_paths + [DEFAULT_CONFIG_PATH])
             all_config_dicts.append(
                 (pool_cfg_file, build_pool_configs[options.build_pool])
             )
@@ -416,14 +359,13 @@ class BuildOptionParser(object):
         'fuzzing-debug': 'builds/releng_sub_%s_configs/%s_fuzzing_debug.py',
         'asan-and-debug': 'builds/releng_sub_%s_configs/%s_asan_and_debug.py',
         'asan-tc-and-debug': 'builds/releng_sub_%s_configs/%s_asan_tc_and_debug.py',
-        'lto-tc': 'builds/releng_sub_%s_configs/%s_lto_tc.py',
-        'lto-tc-and-debug': 'builds/releng_sub_%s_configs/%s_lto_tc_and_debug.py',
         'stat-and-debug': 'builds/releng_sub_%s_configs/%s_stat_and_debug.py',
         'code-coverage-debug': 'builds/releng_sub_%s_configs/%s_code_coverage_debug.py',
         'code-coverage-opt': 'builds/releng_sub_%s_configs/%s_code_coverage_opt.py',
         'source': 'builds/releng_sub_%s_configs/%s_source.py',
         'noopt-debug': 'builds/releng_sub_%s_configs/%s_noopt_debug.py',
-        'api-16-gradle-dependencies': 'builds/releng_sub_%s_configs/%s_api_16_gradle_dependencies.py',
+        'api-16-gradle-dependencies':
+            'builds/releng_sub_%s_configs/%s_api_16_gradle_dependencies.py',
         'api-16': 'builds/releng_sub_%s_configs/%s_api_16.py',
         'api-16-artifact': 'builds/releng_sub_%s_configs/%s_api_16_artifact.py',
         'api-16-debug': 'builds/releng_sub_%s_configs/%s_api_16_debug.py',
@@ -431,12 +373,15 @@ class BuildOptionParser(object):
         'api-16-debug-artifact': 'builds/releng_sub_%s_configs/%s_api_16_debug_artifact.py',
         'api-16-gradle': 'builds/releng_sub_%s_configs/%s_api_16_gradle.py',
         'api-16-gradle-artifact': 'builds/releng_sub_%s_configs/%s_api_16_gradle_artifact.py',
-        'api-16-without-google-play-services': 'builds/releng_sub_%s_configs/%s_api_16_without_google_play_services.py',
+        'api-16-without-google-play-services':
+            'builds/releng_sub_%s_configs/%s_api_16_without_google_play_services.py',
         'rusttests': 'builds/releng_sub_%s_configs/%s_rusttests.py',
         'rusttests-debug': 'builds/releng_sub_%s_configs/%s_rusttests_debug.py',
         'x86': 'builds/releng_sub_%s_configs/%s_x86.py',
         'x86-artifact': 'builds/releng_sub_%s_configs/%s_x86_artifact.py',
         'x86-fuzzing-debug': 'builds/releng_sub_%s_configs/%s_x86_fuzzing_debug.py',
+        'x86_64': 'builds/releng_sub_%s_configs/%s_x86_64.py',
+        'x86_64-artifact': 'builds/releng_sub_%s_configs/%s_x86_64_artifact.py',
         'api-16-partner-sample1': 'builds/releng_sub_%s_configs/%s_api_16_partner_sample1.py',
         'aarch64': 'builds/releng_sub_%s_configs/%s_aarch64.py',
         'android-test': 'builds/releng_sub_%s_configs/%s_test.py',
@@ -445,11 +390,9 @@ class BuildOptionParser(object):
         'android-lint': 'builds/releng_sub_%s_configs/%s_lint.py',
         'android-findbugs': 'builds/releng_sub_%s_configs/%s_findbugs.py',
         'android-geckoview-docs': 'builds/releng_sub_%s_configs/%s_geckoview_docs.py',
-        'valgrind' : 'builds/releng_sub_%s_configs/%s_valgrind.py',
+        'valgrind': 'builds/releng_sub_%s_configs/%s_valgrind.py',
         'artifact': 'builds/releng_sub_%s_configs/%s_artifact.py',
         'debug-artifact': 'builds/releng_sub_%s_configs/%s_debug_artifact.py',
-        'devedition': 'builds/releng_sub_%s_configs/%s_devedition.py',
-        'dmd': 'builds/releng_sub_%s_configs/%s_dmd.py',
         'tup': 'builds/releng_sub_%s_configs/%s_tup.py',
     }
     build_pool_cfg_file = 'builds/build_pool_specifics.py'
@@ -671,7 +614,7 @@ def generate_build_UID():
     return uuid.uuid4().hex
 
 
-class BuildScript(AutomationMixin, BalrogMixin,
+class BuildScript(AutomationMixin,
                   VirtualenvMixin, MercurialScript,
                   SecretsMixin, PerfherderResourceOptionsMixin):
     def __init__(self, **kwargs):
@@ -825,13 +768,12 @@ or run without that action (ie: --no-{action})"
             # dirs['abs_obj_dir'] can be different from env['MOZ_OBJDIR'] on
             # mac, and that confuses mach.
             del env['MOZ_OBJDIR']
-            return self.get_output_from_command(cmd,
-                cwd=dirs['abs_obj_dir'], env=env)
+            return self.get_output_from_command(
+                cmd, cwd=dirs['abs_obj_dir'], env=env)
         else:
             return None
 
     def query_buildid(self):
-        c = self.config
         if self.buildid:
             return self.buildid
 
@@ -843,9 +785,6 @@ or run without that action (ie: --no-{action})"
         if not buildid:
             self.info("Creating buildid through current time")
             buildid = generate_build_ID()
-
-        if c.get('is_automation') or os.environ.get("TASK_ID"):
-            self.set_property('buildid', buildid)
 
         self.buildid = buildid
         return self.buildid
@@ -902,26 +841,20 @@ or run without that action (ie: --no-{action})"
         env['MOZ_SOURCE_REPO'] = repo_path
 
         if self.query_is_nightly() or self.query_is_nightly_promotion():
-            if self.query_is_nightly():
-                # nightly promotion needs to set update_channel but not do all the 'IS_NIGHTLY'
-                # automation parts like uploading symbols for now
-                env["IS_NIGHTLY"] = "yes"
             # in branch_specifics.py we might set update_channel explicitly
             if c.get('update_channel'):
-                env["MOZ_UPDATE_CHANNEL"] = c['update_channel']
+                update_channel = c['update_channel']
+                if isinstance(update_channel, unicode):
+                    update_channel = update_channel.encode("utf-8")
+                env["MOZ_UPDATE_CHANNEL"] = update_channel
+            elif c.get('enable_release_promotion'):
+                env["MOZ_UPDATE_CHANNEL"] = self.branch
             else:  # let's just give the generic channel based on branch
                 env["MOZ_UPDATE_CHANNEL"] = "nightly-%s" % (self.branch,)
+            self.info("Update channel set to: {}".format(env["MOZ_UPDATE_CHANNEL"]))
 
         if self.config.get('pgo_build') or self._compile_against_pgo():
             env['MOZ_PGO'] = '1'
-
-        # to activate the right behaviour in mozonfigs while we transition
-        if c.get('enable_release_promotion'):
-            env['ENABLE_RELEASE_PROMOTION'] = "1"
-            update_channel = c.get('update_channel', self.branch)
-            self.info("Release promotion update channel: %s"
-                      % (update_channel,))
-            env["MOZ_UPDATE_CHANNEL"] = update_channel
 
         return env
 
@@ -1088,31 +1021,6 @@ or run without that action (ie: --no-{action})"
             )
         return revision.encode('ascii', 'replace') if revision else None
 
-    def _query_props_set_by_mach(self, console_output=True, error_level=FATAL):
-        mach_properties_path = os.path.join(
-            self.query_abs_dirs()['abs_obj_dir'], 'dist', 'mach_build_properties.json'
-        )
-        self.info("setting properties set by mach build. Looking in path: %s"
-                  % mach_properties_path)
-        if os.path.exists(mach_properties_path):
-            with self.opened(mach_properties_path, error_level=error_level) as (fh, err):
-                build_props = json.load(fh)
-                if err:
-                    self.log("%s exists but there was an error reading the "
-                             "properties. props: `%s` - error: "
-                             "`%s`" % (mach_properties_path,
-                                       build_props or 'None',
-                                       err or 'No error'),
-                             error_level)
-                if console_output:
-                    self.info("Properties set from 'mach build'")
-                    self.info(pprint.pformat(build_props))
-            for key, prop in build_props.iteritems():
-                if prop != 'UNKNOWN':
-                    self.set_property(key, prop)
-        else:
-            self.info("No mach_build_properties.json found - not importing properties.")
-
     def generate_build_props(self, console_output=True, halt_on_failure=False):
         """sets props found from mach build and, in addition, buildid,
         sourcestamp,  appVersion, and appName."""
@@ -1123,10 +1031,6 @@ or run without that action (ie: --no-{action})"
 
         if self.generated_build_props:
             return
-
-        # grab props set by mach if any
-        self._query_props_set_by_mach(console_output=console_output,
-                                      error_level=error_level)
 
         dirs = self.query_abs_dirs()
         print_conf_setting_path = os.path.join(dirs['abs_src_dir'],
@@ -1142,25 +1046,10 @@ or run without that action (ie: --no-{action})"
                                             dirs['abs_app_ini_path']),
                      level=error_level)
         self.info("Setting properties found in: %s" % dirs['abs_app_ini_path'])
-        base_cmd = [
-            sys.executable, os.path.join(dirs['abs_src_dir'], 'mach'), 'python',
-            print_conf_setting_path, dirs['abs_app_ini_path'], 'App'
-        ]
-        properties_needed = [
-            {'ini_name': 'SourceStamp', 'prop_name': 'sourcestamp'},
-            {'ini_name': 'Version', 'prop_name': 'appVersion'},
-            {'ini_name': 'Name', 'prop_name': 'appName'}
-        ]
         env = self.query_build_env()
         # dirs['abs_obj_dir'] can be different from env['MOZ_OBJDIR'] on
         # mac, and that confuses mach.
         del env['MOZ_OBJDIR']
-        for prop in properties_needed:
-            prop_val = self.get_output_from_command(
-                base_cmd + [prop['ini_name']], cwd=dirs['abs_obj_dir'],
-                halt_on_failure=halt_on_failure, env=env
-            )
-            self.set_property(prop['prop_name'], prop_val)
 
         if self.config.get('is_automation'):
             self.info("Verifying buildid from application.ini matches buildid "
@@ -1207,6 +1096,7 @@ or run without that action (ie: --no-{action})"
         self._get_mozconfig()
         self._run_tooltool()
         self._create_mozbuild_dir()
+        self._ensure_upload_path()
         mach_props = os.path.join(
             self.query_abs_dirs()['abs_obj_dir'], 'dist', 'mach_build_properties.json'
         )
@@ -1228,15 +1118,12 @@ or run without that action (ie: --no-{action})"
         self.preflight_build()
         self._run_mach_command_in_build_env(['static-analysis', 'autotest', '--intree-tool'])
 
-    def _run_mach_command_in_build_env(self, args):
-        """Run a mach command in a build context."""
-        env = self.query_build_env()
-        env.update(self.query_mach_build_env())
-
+    def _query_mach(self):
         dirs = self.query_abs_dirs()
 
         if 'MOZILLABUILD' in os.environ:
-            # We found many issues with intermittent build failures when not invoking mach via bash.
+            # We found many issues with intermittent build failures when not
+            # invoking mach via bash.
             # See bug 1364651 before considering changing.
             mach = [
                 os.path.join(os.environ['MOZILLABUILD'], 'msys', 'bin', 'bash.exe'),
@@ -1244,6 +1131,16 @@ or run without that action (ie: --no-{action})"
             ]
         else:
             mach = [sys.executable, 'mach']
+        return mach
+
+    def _run_mach_command_in_build_env(self, args):
+        """Run a mach command in a build context."""
+        env = self.query_build_env()
+        env.update(self.query_mach_build_env())
+
+        dirs = self.query_abs_dirs()
+
+        mach = self._query_mach()
 
         return_code = self.run_command(
             command=mach + ['--log-no-times'] + args,
@@ -1309,28 +1206,26 @@ or run without that action (ie: --no-{action})"
             cwd=objdir,
         )
         if not package_filename:
-            self.fatal("Unable to determine the package filename for the multi-l10n build. Was trying to run: %s" % package_cmd)
+            self.fatal(
+                "Unable to determine the package filename for the multi-l10n build. "
+                "Was trying to run: %s" % package_cmd)
 
         self.info('Multi-l10n package filename is: %s' % package_filename)
 
         parser = MakeUploadOutputParser(config=self.config,
                                         log_obj=self.log_obj,
-                                        use_package_as_marfile=True,
-                                        package_filename=package_filename,
                                         )
         upload_cmd = ['make', 'upload', 'AB_CD=multi']
         self.run_command(upload_cmd,
                          env=self.query_mach_build_env(multiLocale=False),
                          cwd=objdir, halt_on_failure=True,
                          output_parser=parser)
-        for prop in parser.matches:
-            self.set_property(prop, parser.matches[prop])
         upload_files_cmd = [
             'make',
             'echo-variable-UPLOAD_FILES',
             'AB_CD=multi',
         ]
-        output = self.get_output_from_command(
+        self.get_output_from_command(
             upload_files_cmd,
             cwd=objdir,
         )
@@ -1388,8 +1283,7 @@ or run without that action (ie: --no-{action})"
         env = self.query_build_env()
         env.update(self.query_check_test_env())
 
-        cmd = [
-            sys.executable, 'mach',
+        cmd = self._query_mach() + [
             '--log-no-times',
             'build',
             '-v',
@@ -1475,7 +1369,6 @@ or run without that action (ie: --no-{action})"
             })
 
         return data
-
 
     def _load_sccache_stats(self):
         stats_file = os.path.join(
@@ -1571,7 +1464,7 @@ or run without that action (ie: --no-{action})"
                                                         subtests[name]))
                     size_measurements.append(
                         {'name': name, 'value': subtests[name]})
-            except:
+            except Exception:
                 self.info('Unable to search %s for component sizes.' % installer)
                 size_measurements = []
 
@@ -1587,7 +1480,7 @@ or run without that action (ie: --no-{action})"
 
             return alert
 
-        if installer.endswith('.apk'): # Android
+        if installer.endswith('.apk'):  # Android
             yield filter_alert({
                 "name": "installer size",
                 "value": installer_size,
@@ -1608,8 +1501,6 @@ or run without that action (ie: --no-{action})"
         """
         Returns a dictionary of sections and their sizes.
         """
-        from StringIO import StringIO
-
         # Check for `rust_size`, our cross platform version of size. It should
         # be installed by tooltool in $abs_src_dir/rust-size/rust-size
         rust_size = os.path.join(self.query_abs_dirs()['abs_src_dir'],
@@ -1768,28 +1659,6 @@ or run without that action (ie: --no-{action})"
         if perfherder_data["suites"]:
             self.info('PERFHERDER_DATA: %s' % json.dumps(perfherder_data))
 
-    def update(self):
-        """ submit balrog update steps. """
-        if self.config.get('forced_artifact_build'):
-            self.info('Skipping due to forced artifact build.')
-            return
-        if not self.query_is_nightly():
-            self.info("Not a nightly build, skipping balrog submission.")
-            return
-
-        # grab any props available from this or previous unclobbered runs
-        self.generate_build_props(console_output=False,
-                                  halt_on_failure=False)
-
-        # generate balrog props as artifacts
-        if self.config.get('taskcluster_nightly'):
-            env = self.query_mach_build_env(multiLocale=False)
-            props_path = os.path.join(env["UPLOAD_PATH"],
-                    'balrog_props.json')
-            self.generate_balrog_props(props_path)
-            return
-
-
     def valgrind_test(self):
         '''Execute mach's valgrind-test for memory leaks'''
         env = self.query_build_env()
@@ -1808,19 +1677,29 @@ or run without that action (ie: --no-{action})"
             self.fatal("'mach valgrind-test' did not run successfully. Please check "
                        "log for errors.")
 
-    def ensure_upload_path(self):
+    def _ensure_upload_path(self):
         env = self.query_mach_build_env()
 
         # Some Taskcluster workers don't like it if an artifacts directory
         # is defined but no artifacts are uploaded. Guard against this by always
         # ensuring the artifacts directory exists.
         if 'UPLOAD_PATH' in env and not os.path.exists(env['UPLOAD_PATH']):
-            os.makedirs(env['UPLOAD_PATH'])
+            self.mkdir_p(env['UPLOAD_PATH'])
 
     def _post_fatal(self, message=None, exit_code=None):
         if not self.return_code:  # only overwrite return_code if it's 0
             self.error('setting return code to 2 because fatal was called')
             self.return_code = 2
+
+    @PostScriptRun
+    def _shutdown_sccache(self):
+        '''If sccache was in use for this build, shut down the sccache server.'''
+        if os.environ.get('USE_SCCACHE') == '1':
+            topsrcdir = self.query_abs_dirs()['abs_src_dir']
+            sccache = os.path.join(topsrcdir, 'sccache2', 'sccache')
+            if self._is_windows():
+                sccache += '.exe'
+            self.run_command([sccache, '--stop-server'], cwd=topsrcdir)
 
     @PostScriptRun
     def _summarize(self):

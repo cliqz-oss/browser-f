@@ -8,10 +8,9 @@
 
 
 @namespace url(http://www.w3.org/1999/xhtml); /* set default namespace to HTML */
-@namespace xul url(http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul);
 
 *|*::-moz-fieldset-content {
-  display: block; /* nsRuleNode::ComputeDisplayData overrules this in some cases */
+  display: block; /* StyleAdjuster::adjust_for_fieldset_content overrides this in some cases */
   unicode-bidi: inherit;
   text-overflow: inherit;
   overflow: inherit;
@@ -163,6 +162,7 @@ textarea > .preview-div {
   display: inline-block;
   ime-mode: inherit;
   resize: inherit;
+  scrollbar-width: inherit;
   -moz-control-character-visibility: visible;
   overflow-clip-box: inherit;
 }
@@ -225,13 +225,7 @@ select {
   background-color: -moz-Combobox;
   color: -moz-ComboboxText;
   font: -moz-list;
-  /*
-   * Note that the "UA !important" tests in
-   * layout/style/test/test_animations.html depend on this rule, because
-   * they need some UA !important rule to test.  If this changes, use a
-   * different one there.
-   */
-  line-height: normal !important;
+  line-height: initial;
   white-space: nowrap !important;
   word-wrap: normal !important;
   text-align: start;
@@ -273,7 +267,7 @@ select[size="1"] {
   background-color: -moz-Combobox;
   color: -moz-ComboboxText;
   vertical-align: baseline;
-  padding: 0;
+  padding: unset;
   -moz-appearance: menulist;
 }
 
@@ -318,10 +312,6 @@ select > button[orientation="right"]:active {
   background-image: url("arrowd-right.gif") !important;
 }
 
-select:empty {
-  inline-size: 2.5em;
-}
-
 *|*::-moz-display-comboboxcontrol-frame {
   overflow: -moz-hidden-unscrollable;
   /* This block-start/end padding plus the combobox block-start/end border need to
@@ -330,9 +320,9 @@ select:empty {
   padding-block-end: 1px;
   padding-inline-start: 4px;
   padding-inline-end: 0;
-  color: inherit;
+  color: unset;
   white-space: nowrap;
-  text-align: inherit;
+  text-align: unset;
   -moz-user-select: none;
   /* Make sure to size correctly if the combobox has a non-auto block-size. */
   block-size: 100% ! important;
@@ -345,6 +335,12 @@ option {
   float: none !important;
   position: static !important;
   min-block-size: 1em;
+  /*
+   * Note that the "UA !important" tests in
+   * layout/style/test/test_animations.html depend on this rule, because
+   * they need some UA !important rule to test.  If this changes, use a
+   * different one there.
+   */
   line-height: normal !important;
   -moz-user-select: none;
   text-indent: 0;
@@ -379,7 +375,7 @@ optgroup {
   line-height: normal !important;
   font-style: italic;
   font-weight: bold;
-  font-size: inherit;
+  font-size: unset;
   -moz-user-select: none;
   text-indent: 0;
   white-space: nowrap !important;
@@ -431,7 +427,7 @@ select:disabled:disabled /* Need the pseudo-class twice to have the specificity
 {
   color: GrayText;
   background-color: ThreeDLightShadow;
-  cursor: inherit;
+  cursor: unset;
 }
 
 input:disabled,
@@ -448,7 +444,7 @@ optgroup:disabled {
 input[type="hidden"] {
   -moz-appearance: none;
   display: none !important;
-  padding: 0;
+  padding: unset;
   border: 0;
   cursor: auto;
   -moz-user-focus: ignore;
@@ -458,7 +454,7 @@ input[type="hidden"] {
 /* image buttons */
 input[type="image"] {
   -moz-appearance: none;
-  padding: 0;
+  padding: unset;
   border: none;
   background-color: transparent;
   font-family: sans-serif;
@@ -468,7 +464,7 @@ input[type="image"] {
 }
 
 input[type="image"]:disabled {
-  cursor: inherit;
+  cursor: unset;
 }
 
 input[type="image"]:-moz-focusring {
@@ -479,10 +475,10 @@ input[type="image"]:-moz-focusring {
 /* file selector */
 input[type="file"] {
   display: inline-block;
-  white-space: nowrap;
+  white-space: nowrap !important;
   overflow: hidden;
   overflow-clip-box: padding-box;
-  color: inherit;
+  color: unset;
 
   /* Revert rules which apply on all inputs. */
   -moz-appearance: none;
@@ -491,31 +487,29 @@ input[type="file"] {
 
   border: none;
   background-color: transparent;
-  padding: 0;
+  padding: unset;
 }
 
-input[type="file"] > xul|label {
+input[type="file"] > label {
+  display: inline-block;
   min-inline-size: 12em;
   padding-inline-start: 5px;
   text-align: match-parent;
 
-  color: inherit;
-  font-size: inherit;
-  letter-spacing: inherit;
+  color: unset;
+  font-size: unset;
+  letter-spacing: unset;
 
-  /*
-   * Force the text to have LTR directionality. Otherwise filenames containing
-   * RTL characters will be reordered with chaotic results.
-   */
-  direction: ltr !important;
+  -moz-user-select: none;
+  unicode-bidi: plaintext;
 }
 
 /* button part of file selector */
 input[type="file"] > button[type="button"] {
   block-size: inherit;
-  font-size: inherit;
-  letter-spacing: inherit;
-  cursor: inherit;
+  font-size: unset;
+  letter-spacing: unset;
+  cursor: unset;
 }
 
 /* colored part of the color selector button */
@@ -529,14 +523,6 @@ input[type="color"]::-moz-color-swatch {
   box-sizing: border-box;
   border: 1px solid grey;
   display: block;
-}
-
-/* Try to make RTL <input type='file'> look nicer. */
-/* TODO: find a better solution than forcing direction: ltr on all file
-   input labels and remove this override -- bug 1161482 */
-input[type="file"]:dir(rtl) > xul|label {
-  padding-inline-start: 0px;
-  padding-inline-end: 5px;
 }
 
 /* radio buttons */
@@ -581,7 +567,7 @@ input[type="checkbox"]:disabled,
 input[type="checkbox"]:disabled:active,
 input[type="checkbox"]:disabled:hover,
 input[type="checkbox"]:disabled:hover:active {
-  cursor: inherit;
+  cursor: unset;
 }
 
 % On Mac, the native theme takes care of this.
@@ -648,7 +634,7 @@ input[type="color"] {
 
 button {
   /* Buttons should lay out like "normal" html, mostly */
-  white-space: inherit;
+  white-space: unset;
   text-indent: 0;
   /* But no text-decoration reaching inside, by default */
   display: inline-block;
@@ -766,7 +752,7 @@ input[type="submit"]:disabled {
   padding-block-end: 0px;
   padding-inline-start: 8px;
   border: 2px outset ThreeDLightShadow;
-  cursor: inherit;
+  cursor: unset;
 }
 
 button:disabled:active, button:disabled,
@@ -1057,12 +1043,12 @@ input[type=number]::-moz-number-text {
    * above. We want to inherit its value from its <input type=number>
    * ancestor, not have that general CSS rule reset it.
    */
-  text-align: inherit;
+  text-align: unset;
   text-decoration: inherit;
   ime-mode: inherit;
   flex: 1;
   min-inline-size: 0;
-  padding: 0;
+  padding: unset;
   border: 0;
   margin: 0;
 }
@@ -1133,6 +1119,7 @@ input[type="date"],
 input[type="time"] {
   overflow: hidden !important;
   font-family: -moz-fixed;
+  cursor: default;
 }
 
 :-moz-autofill, :-moz-autofill-preview {

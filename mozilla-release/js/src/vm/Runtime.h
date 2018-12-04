@@ -230,7 +230,14 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     friend class js::jit::JitActivation;
     friend class js::jit::CompileRuntime;
 
+    /* Space for interpreter frames. */
+    js::MainThreadData<js::InterpreterStack> interpreterStack_;
+
   public:
+    js::InterpreterStack& interpreterStack() {
+        return interpreterStack_.ref();
+    }
+
     /*
      * If non-null, another runtime guaranteed to outlive this one and whose
      * permanent data may be used by this one where possible.
@@ -249,13 +256,15 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
         explicit AutoUpdateChildRuntimeCount(JSRuntime* parent)
           : parent_(parent)
         {
-            if (parent_)
+            if (parent_) {
                 parent_->childRuntimeCount++;
+            }
         }
 
         ~AutoUpdateChildRuntimeCount() {
-            if (parent_)
+            if (parent_) {
                 parent_->childRuntimeCount--;
+            }
         }
     };
 
@@ -400,8 +409,6 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     void finishRoots();
 
   public:
-    js::UnprotectedData<JS::BuildIdOp> buildIdOp;
-
     /* AsmJSCache callbacks are runtime-wide. */
     js::UnprotectedData<JS::AsmJSCacheOps> asmJSCacheOps;
 
@@ -497,8 +504,9 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
 
 #ifdef DEBUG
     bool currentThreadHasScriptDataAccess() const {
-        if (!hasHelperThreadZones())
+        if (!hasHelperThreadZones()) {
             return CurrentThreadCanAccessRuntime(this) && activeThreadHasScriptDataAccess;
+        }
 
         return scriptDataLock.ownedByCurrentThread();
     }
@@ -1078,8 +1086,9 @@ class MOZ_RAII AutoLockGCBgAlloc : public AutoLockGC
          * the helper lock which could cause lock inversion if we still held
          * the GC lock.
          */
-        if (startBgAlloc)
+        if (startBgAlloc) {
             runtime()->gc.startBackgroundAllocTaskIfIdle(); // Ignore failure.
+        }
     }
 
     /*
@@ -1127,8 +1136,9 @@ static MOZ_ALWAYS_INLINE void
 MakeRangeGCSafe(Value* vec, size_t len)
 {
     // Don't PodZero here because JS::Value is non-trivial.
-    for (size_t i = 0; i < len; i++)
+    for (size_t i = 0; i < len; i++) {
         vec[i].setDouble(+0.0);
+    }
 }
 
 static MOZ_ALWAYS_INLINE void
@@ -1164,8 +1174,9 @@ MakeRangeGCSafe(Shape** vec, size_t len)
 static MOZ_ALWAYS_INLINE void
 SetValueRangeToUndefined(Value* beg, Value* end)
 {
-    for (Value* v = beg; v != end; ++v)
+    for (Value* v = beg; v != end; ++v) {
         v->setUndefined();
+    }
 }
 
 static MOZ_ALWAYS_INLINE void
@@ -1177,8 +1188,9 @@ SetValueRangeToUndefined(Value* vec, size_t len)
 static MOZ_ALWAYS_INLINE void
 SetValueRangeToNull(Value* beg, Value* end)
 {
-    for (Value* v = beg; v != end; ++v)
+    for (Value* v = beg; v != end; ++v) {
         v->setNull();
+    }
 }
 
 static MOZ_ALWAYS_INLINE void
@@ -1192,6 +1204,9 @@ extern const JSSecurityCallbacks NullSecurityCallbacks;
 // This callback is set by JS::SetProcessLargeAllocationFailureCallback
 // and may be null. See comment in jsapi.h.
 extern mozilla::Atomic<JS::LargeAllocationFailureCallback> OnLargeAllocationFailure;
+
+// This callback is set by JS::SetBuildIdOp and may be null. See comment in jsapi.h.
+extern mozilla::Atomic<JS::BuildIdOp> GetBuildId;
 
 } /* namespace js */
 

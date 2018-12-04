@@ -63,13 +63,10 @@ if (outerRect.width == outer.clientWidth &&
 } else {
   SimpleTest.waitForExplicitFinish();
   SpecialPowers.pushPrefEnv({
-    "set": [["layout.css.scrollbar-colors.enabled", true]],
+    "set": [["layout.css.scrollbar-color.enabled", true]],
   }, function() {
     document.querySelector('#style').textContent = `
-      .outer {
-        scrollbar-face-color: blue;
-        scrollbar-track-color: cyan;
-      }
+      .outer { scrollbar-color: blue cyan; }
     `;
 
     let canvas = snapshotRect(window, outerRect);

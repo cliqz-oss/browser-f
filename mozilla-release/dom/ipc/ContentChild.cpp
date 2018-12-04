@@ -516,7 +516,7 @@ ConsoleListener::Observe(nsIConsoleMessage* aMessage)
   }
 
   nsString msg;
-  nsresult rv = aMessage->GetMessageMoz(getter_Copies(msg));
+  nsresult rv = aMessage->GetMessageMoz(msg);
   NS_ENSURE_SUCCESS(rv, rv);
   mChild->SendConsoleMessage(msg);
   return NS_OK;
@@ -3100,7 +3100,7 @@ ContentChild::StartForceKillTimer()
     return;
   }
 
-  int32_t timeoutSecs = Preferences::GetInt("dom.ipc.tabs.shutdownTimeoutSecs", 5);
+  int32_t timeoutSecs = StaticPrefs::dom_ipc_tabs_shutdownTimeoutSecs();
   if (timeoutSecs > 0) {
     NS_NewTimerWithFuncCallback(getter_AddRefs(mForceKillTimer),
                                 ContentChild::ForceKillTimerCallback,
@@ -3805,22 +3805,10 @@ ContentChild::RecvShareCodeCoverageMutex(const CrossProcessMutexHandle& aHandle)
 }
 
 mozilla::ipc::IPCResult
-ContentChild::RecvDumpCodeCoverageCounters(DumpCodeCoverageCountersResolver&& aResolver)
+ContentChild::RecvFlushCodeCoverageCounters(FlushCodeCoverageCountersResolver&& aResolver)
 {
 #ifdef MOZ_CODE_COVERAGE
-  CodeCoverageHandler::DumpCounters();
-  aResolver(/* unused */ true);
-  return IPC_OK();
-#else
-  MOZ_CRASH("Shouldn't receive this message in non-code coverage builds!");
-#endif
-}
-
-mozilla::ipc::IPCResult
-ContentChild::RecvResetCodeCoverageCounters(ResetCodeCoverageCountersResolver&& aResolver)
-{
-#ifdef MOZ_CODE_COVERAGE
-  CodeCoverageHandler::ResetCounters();
+  CodeCoverageHandler::FlushCounters();
   aResolver(/* unused */ true);
   return IPC_OK();
 #else

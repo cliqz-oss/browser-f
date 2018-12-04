@@ -24,12 +24,18 @@ if CONFIG['MOZ_ASAN']:
         'AsanOptions.cpp',
     ]
 
+if CONFIG['MOZ_UBSAN']:
+    SOURCES += [
+        'UbsanOptions.cpp',
+    ]
+
 if CONFIG['OS_TARGET'] == 'WINNT':
-    DEFFILE = 'mozglue.def'
+    DEFFILE = '!mozglue.def'
     # We'll break the DLL blocklist if we immediately load user32.dll
     DELAYLOAD_DLLS += [
         'user32.dll',
     ]
+    RCINCLUDE = 'mozglue.rc'
 
     if CONFIG['MOZ_PGO'] and CONFIG['CC_TYPE'] == 'clang-cl':
         SOURCES += ['cygprofile.cpp']

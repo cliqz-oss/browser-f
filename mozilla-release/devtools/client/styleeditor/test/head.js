@@ -46,7 +46,7 @@ var navigateTo = function(url) {
   info(`Navigating to ${url}`);
   const browser = gBrowser.selectedBrowser;
 
-  browser.loadURI(url);
+  BrowserTestUtils.loadURI(browser, url);
   return BrowserTestUtils.browserLoaded(browser);
 };
 
@@ -72,7 +72,7 @@ var openStyleEditor = async function(tab) {
   if (!tab) {
     tab = gBrowser.selectedTab;
   }
-  const target = TargetFactory.forTab(tab);
+  const target = await TargetFactory.forTab(tab);
   const toolbox = await gDevTools.showToolbox(target, "styleeditor");
   const panel = toolbox.getPanel("styleeditor");
   const ui = panel.UI;
@@ -115,3 +115,30 @@ var getComputedStyleProperty = async function(args) {
     }
   );
 };
+
+/**
+ * Wait for "media-list-changed" events to settle on StyleEditorUI.
+ * Returns a promise that resolves the number of events caught while waiting.
+ *
+ * @param {StyleEditorUI} ui
+ *        Current StyleEditorUI on which media-list-changed events should be fired.
+ * @param {Number} delay
+ */
+function waitForManyEvents(ui, delay) {
+  return new Promise(resolve => {
+    let timer;
+    let count = 0;
+    const onEvent = () => {
+      count++;
+      clearTimeout(timer);
+
+      // Wait for some time to catch subsequent events.
+      timer = setTimeout(() => {
+        // Remove the listener and resolve.
+        ui.off("media-list-changed", onEvent);
+        resolve(count);
+      }, delay);
+    };
+    ui.on("media-list-changed", onEvent);
+  });
+}

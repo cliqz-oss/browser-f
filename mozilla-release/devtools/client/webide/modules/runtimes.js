@@ -5,12 +5,17 @@
 "use strict";
 
 const Services = require("Services");
-const {Devices} = require("resource://devtools/shared/apps/Devices.jsm");
 const {DebuggerServer} = require("devtools/server/main");
 const discovery = require("devtools/shared/discovery/discovery");
 const EventEmitter = require("devtools/shared/event-emitter");
 const {RuntimeTypes} = require("devtools/client/webide/modules/runtime-types");
 const promise = require("promise");
+
+loader.lazyGetter(this, "adbScanner", () => {
+  const { AddonAwareADBScanner } = require("devtools/shared/adb/addon-aware-adb-scanner");
+  return new AddonAwareADBScanner();
+});
+
 loader.lazyRequireGetter(this, "AuthenticationResult",
   "devtools/shared/security/auth", true);
 loader.lazyRequireGetter(this, "DevToolsUtils",
@@ -193,34 +198,9 @@ exports.RuntimeScanners = RuntimeScanners;
 
 /* SCANNERS */
 
-/**
- * This is a lazy ADB scanner shim which only tells the ADB Helper to start and
- * stop as needed.  The real scanner that lists devices lives in ADB Helper.
- * ADB Helper 0.8.0 and later wait until these signals are received before
- * starting ADB polling.  For earlier versions, they have no effect.
- */
-var LazyAdbScanner = {
-
-  enable() {
-    Devices.emit("adb-start-polling");
-  },
-
-  disable() {
-    Devices.emit("adb-stop-polling");
-  },
-
-  scan() {
-    return promise.resolve();
-  },
-
-  listRuntimes: function() {
-    return [];
-  }
-
-};
-
-EventEmitter.decorate(LazyAdbScanner);
-RuntimeScanners.add(LazyAdbScanner);
+// The adb-scanner will automatically start and stop when the ADB extension is installed
+// and uninstalled, so the scanner itself can always be used.
+RuntimeScanners.add(adbScanner);
 
 var WiFiScanner = {
 
@@ -286,7 +266,7 @@ var WiFiScanner = {
       return;
     }
     WiFiScanner.updateRegistration();
-  }
+  },
 
 };
 
@@ -307,7 +287,7 @@ var StaticScanner = {
       runtimes.push(gLocalRuntime);
     }
     return runtimes;
-  }
+  },
 };
 
 EventEmitter.decorate(StaticScanner);
@@ -415,9 +395,9 @@ WiFiRuntime.prototype = {
         }
         promptWindow.close();
         promptWindow = null;
-      }
+      },
     };
-  }
+  },
 };
 
 // For testing use only

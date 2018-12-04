@@ -3,7 +3,7 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 <!ENTITY addons.windowTitle                   "Add-ons Manager">
 
-<!ENTITY search.placeholder2                  "Search on addons.mozilla.org">
+<!ENTITY search.placeholder3                  "Search addons.mozilla.org">
 <!ENTITY search.buttonlabel                   "Search">
 <!-- LOCALIZATION NOTE (search.commandkey):
      The search command key should match findOnCmd.commandkey from browser.dtd -->
@@ -18,9 +18,6 @@
 <!ENTITY installAddonFromFile.label           "Install Add-on From File…">
 <!ENTITY installAddonFromFile.accesskey       "I">
 <!ENTITY toolsMenu.tooltip                    "Tools for all add-ons">
-
-<!ENTITY getThemes.description                "Looking to personalize your browser?">
-<!ENTITY getThemes.learnMore                  "Choose from thousands of themes.">
 
 
 <!ENTITY showUnsignedExtensions.button.label  "Some extensions could not be verified">
@@ -41,6 +38,10 @@
 <!ENTITY view.discover.label                  "Get Add-ons">
 <!ENTITY view.recentUpdates.label             "Recent Updates">
 <!ENTITY view.availableUpdates.label          "Available Updates">
+
+<!ENTITY helpButton.label                      "Add-ons Support">
+<!ENTITY preferencesWin.label                  "&brandShortName; Options">
+<!ENTITY preferencesUnix.label                 "&brandShortName; Preferences">
 
 <!-- addon updates -->
 <!ENTITY updates.checkForUpdates.label        "Check for Updates">

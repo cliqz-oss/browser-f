@@ -148,7 +148,7 @@ class AutoPrintEventDispatcher;
 
 // a small delegate class used to avoid circular references
 
-class nsDocViewerSelectionListener : public nsISelectionListener
+class nsDocViewerSelectionListener final : public nsISelectionListener
 {
 public:
 
@@ -180,7 +180,7 @@ protected:
 
 /** editor Implementation of the FocusListener interface
  */
-class nsDocViewerFocusListener : public nsIDOMEventListener
+class nsDocViewerFocusListener final : public nsIDOMEventListener
 {
 public:
   /** default constructor
@@ -1034,7 +1034,6 @@ nsDocumentViewer::InitInternal(nsIWidget* aParentWidget,
           Destroy();
           return rv;
         }
-        nsJSContext::LoadStart();
       }
     }
   }
@@ -1217,8 +1216,6 @@ nsDocumentViewer::LoadComplete(nsresult aStatus)
   if (mDocument && mDocument->ScriptLoader()) {
     mDocument->ScriptLoader()->LoadEventFired();
   }
-
-  nsJSContext::LoadEnd();
 
   // It's probably a good idea to GC soon since we have finished loading.
   nsJSContext::PokeGC(JS::gcreason::LOAD_END,
@@ -2247,8 +2244,8 @@ nsDocumentViewer::Show(void)
       if (history) {
         int32_t prevIndex,loadedIndex;
         nsCOMPtr<nsIDocShell> docShell = do_QueryInterface(treeItem);
-        docShell->GetPreviousTransIndex(&prevIndex);
-        docShell->GetLoadedTransIndex(&loadedIndex);
+        docShell->GetPreviousEntryIndex(&prevIndex);
+        docShell->GetLoadedEntryIndex(&loadedIndex);
 #ifdef DEBUG_PAGE_CACHE
         printf("About to evict content viewers: prev=%d, loaded=%d\n",
                prevIndex, loadedIndex);
@@ -4287,7 +4284,7 @@ nsDocumentViewer::SetIsPrintingInDocShellTree(nsIDocShellTreeItem* aParentNode,
                                                 bool                 aIsPrintingOrPP,
                                                 bool                 aStartAtTop)
 {
-  nsCOMPtr<nsIDocShellTreeItem> parentItem(do_QueryInterface(aParentNode));
+  nsCOMPtr<nsIDocShellTreeItem> parentItem(aParentNode);
 
   // find top of "same parent" tree
   if (aStartAtTop) {
@@ -4298,7 +4295,7 @@ nsDocumentViewer::SetIsPrintingInDocShellTree(nsIDocShellTreeItem* aParentNode,
         if (!parent) {
           break;
         }
-        parentItem = do_QueryInterface(parent);
+        parentItem = parent;
       }
       mTopContainerWhilePrinting = do_GetWeakReference(parentItem);
     } else {
@@ -4548,7 +4545,7 @@ nsDocumentViewer::OnDonePrinting()
     if (mDeferredWindowClose) {
       mDeferredWindowClose = false;
       if (mContainer) {
-        if (nsCOMPtr<nsPIDOMWindowOuter> win = do_QueryInterface(mContainer->GetWindow())) {
+        if (nsCOMPtr<nsPIDOMWindowOuter> win = mContainer->GetWindow()) {
           win->Close();
         }
       }

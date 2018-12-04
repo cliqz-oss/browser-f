@@ -25,8 +25,9 @@ template <>
 struct GCPolicy<Realm*> : public NonGCPointerPolicy<Realm*>
 {
     static void trace(JSTracer* trc, Realm** vp, const char* name) {
-        if (*vp)
+        if (*vp) {
             ::js::gc::TraceRealm(trc, *vp, name);
+        }
     }
     static bool needsSweep(Realm** vp) {
         return *vp && ::js::gc::RealmNeedsSweep(*vp);
@@ -72,11 +73,6 @@ GetCompartmentForRealm(Realm* realm)
 // a cross-compartment wrapper.
 extern JS_PUBLIC_API(Realm*)
 GetObjectRealmOrNull(JSObject* obj);
-
-// Return a script's realm. All scripts are created in a particular realm, which
-// never changes.
-extern JS_PUBLIC_API(Realm*)
-GetScriptRealm(JSScript* script);
 
 // Get the value of the "private data" internal field of the given Realm.
 // This field is initially null and is set using SetRealmPrivate.

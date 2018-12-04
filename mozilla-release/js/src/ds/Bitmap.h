@@ -59,8 +59,9 @@ class DenseBitmap
     }
 
     void bitwiseOrRangeInto(size_t wordStart, size_t numWords, uintptr_t* target) const {
-        for (size_t i = 0; i < numWords; i++)
+        for (size_t i = 0; i < numWords; i++) {
             target[i] |= data[wordStart + i];
+        }
     }
 };
 
@@ -90,6 +91,8 @@ class SparseBitmap
 
     BitBlock& createBlock(Data::AddPtr p, size_t blockId, AutoEnterOOMUnsafeRegion& oomUnsafe);
 
+    BitBlock* createBlock(Data::AddPtr p, size_t blockId);
+
     MOZ_ALWAYS_INLINE BitBlock* getBlock(size_t blockId) const {
         Data::Ptr p = data.lookup(blockId);
         return p ? p->value() : nullptr;
@@ -100,9 +103,18 @@ class SparseBitmap
         // the add() within createBlock().
         AutoEnterOOMUnsafeRegion oomUnsafe;
         Data::AddPtr p = data.lookupForAdd(blockId);
-        if (p)
+        if (p) {
             return *p->value();
+        }
         return createBlock(p, blockId, oomUnsafe);
+    }
+
+    MOZ_ALWAYS_INLINE BitBlock* getOrCreateBlockFallible(size_t blockId) {
+        Data::AddPtr p = data.lookupForAdd(blockId);
+        if (p) {
+            return p->value();
+        }
+        return createBlock(p, blockId);
     }
 
   public:
@@ -115,6 +127,17 @@ class SparseBitmap
         size_t blockWord = blockStartWord(word);
         BitBlock& block = getOrCreateBlock(blockWord / WordsInBlock);
         block[word - blockWord] |= uintptr_t(1) << (bit % JS_BITS_PER_WORD);
+    }
+
+    MOZ_ALWAYS_INLINE bool setBitFallible(size_t bit) {
+        size_t word = bit / JS_BITS_PER_WORD;
+        size_t blockWord = blockStartWord(word);
+        BitBlock* block = getOrCreateBlockFallible(blockWord / WordsInBlock);
+        if (!block) {
+            return false;
+        }
+        (*block)[word - blockWord] |= uintptr_t(1) << (bit % JS_BITS_PER_WORD);
+        return true;
     }
 
     bool getBit(size_t bit) const;

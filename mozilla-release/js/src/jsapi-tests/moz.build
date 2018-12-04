@@ -6,6 +6,8 @@
 
 GeckoProgram('jsapi-tests', linkage=None)
 
+include('../js-cxxflags.mozbuild')
+
 UNIFIED_SOURCES += [
     'selfTest.cpp',
     'testAddPropertyPropcache.cpp',
@@ -82,6 +84,7 @@ UNIFIED_SOURCES += [
     'testProfileStrings.cpp',
     'testPromise.cpp',
     'testPropCache.cpp',
+    'testReadableStream.cpp',
     'testRegExp.cpp',
     'testResolveRecursion.cpp',
     'tests.cpp',
@@ -94,6 +97,7 @@ UNIFIED_SOURCES += [
     'testSharedImmutableStringsCache.cpp',
     'testSourcePolicy.cpp',
     'testStringBuffer.cpp',
+    'testStringIsArrayIndex.cpp',
     'testStructuredClone.cpp',
     'testSymbol.cpp',
     'testThreadingConditionVariable.cpp',
@@ -133,23 +137,19 @@ if CONFIG['ENABLE_ION']:
         'testJitRValueAlloc.cpp',
     ]
 
-if CONFIG['ENABLE_STREAMS']:
-    UNIFIED_SOURCES += [
-        'testReadableStream.cpp',
-    ]
-
-
 if CONFIG['NIGHTLY_BUILD']:
     # The Error interceptor only exists on Nightly.
     UNIFIED_SOURCES += [
         'testErrorInterceptor.cpp',
     ]
 
-if CONFIG['JS_BUILD_BINAST'] and CONFIG['JS_STANDALONE']:
+if CONFIG['JS_BUILD_BINAST'] and CONFIG['JS_STANDALONE'] and not CONFIG['FUZZING']:
     # Standalone builds leave the source directory untouched,
     # which lets us run tests with the data files intact.
     # Otherwise, in the current state of the build system,
     # we can't have data files in js/src tests.
+    # Also, fuzzing builds modify the const matching in the
+    # token reader and hence affect the correctness of the tests.
     UNIFIED_SOURCES += [
         'testBinASTReader.cpp',
         'testBinTokenReaderTester.cpp'
@@ -167,17 +167,15 @@ USE_LIBS += [
     'static:js',
 ]
 
+if CONFIG['ENABLE_WASM_CRANELIFT']:
+    USE_LIBS += [
+        'jsrust'
+    ]
+
 if CONFIG['MOZ_NEEDS_LIBATOMIC']:
     OS_LIBS += ['atomic']
 
 OS_LIBS += CONFIG['MOZ_ZLIB_LIBS']
-
-if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
-    CXXFLAGS += ['-Wno-shadow', '-Werror=format', '-fno-strict-aliasing']
-
-# This is intended as a temporary workaround to enable VS2015.
-if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
-    CXXFLAGS += ['-wd4312']
 
 DEFINES['topsrcdir'] = '%s/js/src' % TOPSRCDIR
 OBJDIR_PP_FILES.js.src['jsapi-tests'] += ['jsapi-tests-gdb.py.in']

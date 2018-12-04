@@ -509,16 +509,12 @@ protected:
    */
   bool IsVisualFormControl(nsPresContext* aPresContext);
 
+public:
   /**
    * Helper function to create bullet frame.
-   * @param aCreateBulletList true to create bullet list; otherwise number list.
-   * @param aListStylePositionInside true to put the list position inside;
-   * otherwise outside.
    */
-  void CreateBulletFrameForListItem(bool aCreateBulletList,
-                                    bool aListStylePositionInside);
+  void CreateBulletFrameForListItem();
 
-public:
   /**
    * Does all the real work for removing aDeletedFrame
    * -- finds the line containing aDeletedFrame
@@ -595,6 +591,10 @@ public:
                                    int32_t aDepth,
                                    int32_t aIncrement,
                                    bool aForCounting) override;
+
+  // @see nsIFrame::AddSizeOfExcludingThisForTree
+  void AddSizeOfExcludingThisForTree(nsWindowSizes&) const override;
+
 protected:
   /** @see DoRemoveFrame */
   void DoRemoveFrameInternal(nsIFrame* aDeletedFrame, uint32_t aFlags,
@@ -951,6 +951,8 @@ protected:
   int32_t GetDepth() const;
 #endif
 
+  // FIXME The two variables should go through a renaming refactoring to reflect
+  // the fact that they mean an inline size, not a width.
   nscoord mMinWidth, mPrefWidth;
 
   nsLineList mLines;

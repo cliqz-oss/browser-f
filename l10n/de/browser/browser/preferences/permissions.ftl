@@ -56,6 +56,15 @@ permissions-capabilities-block =
 permissions-capabilities-prompt =
     .label = Immer fragen
 
+permissions-capabilities-listitem-allow =
+    .value = Erlauben
+permissions-capabilities-listitem-block =
+    .value = Blockieren
+permissions-capabilities-listitem-allow-first-party =
+    .value = Nur als aufgerufene Seite erlauben
+permissions-capabilities-listitem-allow-session =
+    .value = Für diese Sitzung erlauben
+
 ## Invalid Hostname Dialog
 
 permissions-invalid-uri-title = Ungültiger Hostname eingetragen
@@ -67,6 +76,11 @@ permissions-exceptions-tracking-protection-window =
     .title = Ausnahmen - Schutz vor Aktivitätenverfolgung
     .style = { permissions-window.style }
 permissions-exceptions-tracking-protection-desc = Sie haben den Schutz vor Aktivitätenverfolgung auf folgenden Seiten deaktiviert.
+
+permissions-exceptions-content-blocking-window =
+    .title = Ausnahmen - Blockieren von Seitenelementen
+    .style = { permissions-window.style }
+permissions-exceptions-content-blocking-desc = Sie haben das Blockieren von Seitenelementen auf diesen Websites deaktiviert.
 
 ## Exceptions - Cookies
 
@@ -97,11 +111,6 @@ permissions-exceptions-addons-window =
 permissions-exceptions-addons-desc = Sie können festlegen, welchen Websites Sie erlauben möchten, Add-ons zu installieren. Geben Sie bitte die exakte Adresse der Website ein, der Sie das erlauben möchten, und klicken Sie dann auf Erlauben.
 
 ## Exceptions - Autoplay Media
-
-permissions-exceptions-autoplay-media-window =
-    .title = Berechtigte Websites - Automatische Wiedergabe
-    .style = { permissions-window.style }
-permissions-exceptions-autoplay-media-desc = Hier können die Websites festgelegt werden, welche automatisch Medien mit Ton wiedergeben dürfen. Geben Sie die exakte Adresse der zu erlaubenden Website ein und klicken Sie dann auf &quot;Erlauben&quot;.
 
 permissions-exceptions-autoplay-media-window2 =
     .title = Ausnahmen - Automatische Wiedergabe

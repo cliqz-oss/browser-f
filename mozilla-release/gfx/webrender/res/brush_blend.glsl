@@ -21,24 +21,26 @@ void brush_vs(
     int prim_address,
     RectWithSize local_rect,
     RectWithSize segment_rect,
-    ivec3 user_data,
+    ivec4 user_data,
     mat4 transform,
     PictureTask pic_task,
     int brush_flags,
     vec4 unused
 ) {
-    PictureTask src_task = fetch_picture_task(user_data.x);
-    vec2 texture_size = vec2(textureSize(sColor0, 0).xy);
-    vec2 uv = snap_device_pos(vi) +
-        src_task.common_data.task_rect.p0 -
-        src_task.content_origin;
-    vUv = vec3(
-        uv * gl_Position.w / texture_size, // multiply by W to compensate for perspective interpolation
-        src_task.common_data.texture_layer_index
-    );
+    ImageResource res = fetch_image_resource(user_data.x);
+    vec2 uv0 = res.uv_rect.p0;
+    vec2 uv1 = res.uv_rect.p1;
 
-    vec2 uv0 = src_task.common_data.task_rect.p0;
-    vec2 uv1 = uv0 + src_task.common_data.task_rect.size;
+    // PictureTask src_task = fetch_picture_task(user_data.x);
+    vec2 texture_size = vec2(textureSize(sColor0, 0).xy);
+    vec2 f = (vi.local_pos - local_rect.p0) / local_rect.size;
+    ImageResourceExtra extra_data = fetch_image_resource_extra(user_data.x);
+    vec2 x = mix(extra_data.st_tl, extra_data.st_tr, f.x);
+    vec2 y = mix(extra_data.st_bl, extra_data.st_br, f.x);
+    f = mix(x, y, f.y);
+    vec2 uv = mix(uv0, uv1, f);
+    vUv = vec3(uv / texture_size, res.layer);
+
     vUvClipBounds = vec4(uv0, uv1) / texture_size.xyxy;
 
     float lumR = 0.2126;
@@ -99,8 +101,8 @@ void brush_vs(
         }
         case 10: {
             // Color Matrix
-            vec4 mat_data[3] = fetch_from_resource_cache_3(user_data.z);
-            vec4 offset_data = fetch_from_resource_cache_1(user_data.z + 4);
+            vec4 mat_data[3] = fetch_from_gpu_cache_3(user_data.z);
+            vec4 offset_data = fetch_from_gpu_cache_1(user_data.z + 4);
             vColorMat = mat3(mat_data[0].xyz, mat_data[1].xyz, mat_data[2].xyz);
             vColorOffset = offset_data.rgb;
             break;
@@ -126,9 +128,25 @@ vec3 Brightness(vec3 Cs, float amount) {
     return clamp(Cs.rgb * amount, vec3(0.0), vec3(1.0));
 }
 
+// Based on the Gecko's implementation in
+// https://hg.mozilla.org/mozilla-central/file/91b4c3687d75/gfx/src/FilterSupport.cpp#l24
+// These could be made faster by sampling a lookup table stored in a float texture
+// with linear interpolation.
+
+vec3 SrgbToLinear(vec3 color) {
+    vec3 c1 = color / 12.92;
+    vec3 c2 = pow(color / 1.055 + vec3(0.055 / 1.055), vec3(2.4));
+    return mix(c1, c2, lessThanEqual(color, vec3(0.04045)));
+}
+
+vec3 LinearToSrgb(vec3 color) {
+    vec3 c1 = color * 12.92;
+    vec3 c2 = vec3(1.055) * pow(color, vec3(1.0 / 2.4)) - vec3(0.055);
+    return mix(c1, c2, lessThanEqual(color, vec3(0.0031308)));
+}
+
 Fragment brush_fs() {
-    vec2 base_uv = vUv.xy * gl_FragCoord.w;
-    vec4 Cs = texture(sColor0, vec3(base_uv, vUv.z));
+    vec4 Cs = texture(sColor0, vUv);
 
     if (Cs.a == 0.0) {
         return Fragment(vec4(0.0)); // could also `discard`
@@ -153,13 +171,19 @@ Fragment brush_fs() {
         case 8: // Opacity
             alpha *= vAmount;
             break;
+        case 11:
+            color = SrgbToLinear(color);
+            break;
+        case 12:
+            color = LinearToSrgb(color);
+            break;
         default:
             color = vColorMat * color + vColorOffset;
     }
 
     // Fail-safe to ensure that we don't sample outside the rendered
     // portion of a blend source.
-    alpha *= point_inside_rect(base_uv, vUvClipBounds.xy, vUvClipBounds.zw);
+    alpha *= point_inside_rect(vUv.xy, vUvClipBounds.xy, vUvClipBounds.zw);
 
     // Pre-multiply the alpha into the output value.
     return Fragment(alpha * vec4(color, 1.0));

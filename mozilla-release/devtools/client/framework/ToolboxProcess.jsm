@@ -6,7 +6,7 @@
 
 "use strict";
 
-const DBG_XUL = "chrome://devtools/content/framework/toolbox-process-window.xul";
+const DBG_XUL = "chrome://devtools/content/framework/toolbox-process-window.html";
 const CHROME_DEBUGGER_PROFILE_NAME = "chrome_debugger_profile";
 
 const { require, DevToolsLoader } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
@@ -270,7 +270,7 @@ BrowserToolboxProcess.prototype = {
       "-no-remote",
       "-foreground",
       "-profile", this._dbgProfilePath,
-      "-chrome", DBG_XUL
+      "-chrome", DBG_XUL,
     ];
     const environment = {
       // Disable safe mode for the new process in case this was opened via the
@@ -302,7 +302,9 @@ BrowserToolboxProcess.prototype = {
     }).then(proc => {
       this._dbgProcess = proc;
 
-      this._telemetry.toolOpened("jsbrowserdebugger");
+      // jsbrowserdebugger is not connected with a toolbox so we pass -1 as the
+      // toolbox session id.
+      this._telemetry.toolOpened("jsbrowserdebugger", -1, this);
 
       dumpn("Chrome toolbox is now running...");
       this.emit("run", this);
@@ -355,7 +357,9 @@ BrowserToolboxProcess.prototype = {
     this._dbgProcess.stdout.close();
     await this._dbgProcess.kill();
 
-    this._telemetry.toolClosed("jsbrowserdebugger");
+    // jsbrowserdebugger is not connected with a toolbox so we pass -1 as the
+    // toolbox session id.
+    this._telemetry.toolClosed("jsbrowserdebugger", -1, this);
 
     if (this.debuggerServer) {
       this.debuggerServer.off("connectionchange", this._onConnectionChange);
@@ -374,7 +378,7 @@ BrowserToolboxProcess.prototype = {
     }
     this.loader = null;
     this._telemetry = null;
-  }
+  },
 };
 
 /**
@@ -392,12 +396,12 @@ var wantLogging = Services.prefs.getBoolPref("devtools.debugger.log");
 Services.prefs.addObserver("devtools.debugger.log", {
   observe: (...args) => {
     wantLogging = Services.prefs.getBoolPref(args.pop());
-  }
+  },
 });
 
 Services.prefs.addObserver("toolbox-update-addon-options", {
   observe: (subject) => {
     const {id, options} = subject.wrappedJSObject;
     BrowserToolboxProcess.setAddonOptions(id, options);
-  }
+  },
 });

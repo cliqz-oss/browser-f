@@ -53,6 +53,15 @@
     "high": 60000,
     "n_buckets": 50
   },
+  "ABOUT_CONFIG_FEATURES_USAGE": {
+    "record_in_processes": ["main"],
+    "alert_emails": ["pamadini@mozilla.com"],
+    "expires_in_version": "67",
+    "kind": "categorical",
+    "labels": ["Show", "Search", "RegexSearch", "SortByName", "SortByStatus", "SortByType", "SortByValue", "ModifyValue", "Copy", "CopyName", "CopyValue", "CreateNew", "Reset"],
+    "bug_numbers": [1493445],
+    "description": "Record number of times particular features on about:config are used"
+  },
   "ADDON_MANAGER_UPGRADE_UI_SHOWN": {
     "record_in_processes": ["main", "content"],
     "expires_in_version": "53",
@@ -164,6 +173,18 @@
     "n_values": 8,
     "description": "Application reputation remote verdict (0=SAFE, 1=DANGEROUS, 2=UNCOMMON, 3=POTENTIALLY_UNWANTED, 4=DANGEROUS_HOST, 5=UNKNOWN)"
   },
+  "APPLICATION_REPUTATION_REMOTE_LOOKUP_RESPONSE_TIME": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": ["dlee@mozilla.com", "safebrowsing-telemetry@mozilla.org"],
+    "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1479898],
+    "kind": "linear",
+    "low": 1000,
+    "high": 15000,
+    "n_buckets": 17,
+    "description": "Server response time to remote lookup request (ms)."
+  },
   "APPLICATION_REPUTATION_REMOTE_LOOKUP_TIMEOUT": {
     "record_in_processes": ["main", "content"],
     "alert_emails": ["francois@mozilla.com", "safebrowsing-telemetry@mozilla.org"],
@@ -198,45 +219,6 @@
     "n_values": 16,
     "description": "The operating system audio back-end used when successfully opening an audio stream, or whether the failure occurred on the first try or not <https://dxr.mozilla.org/mozilla-central/search?q=AUDIOSTREAM_BACKEND_ID_STR>",
     "releaseChannelCollection": "opt-out"
-  },
-  "AUSHELPER_CPU_ERROR_CODE": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": ["application-update-telemetry-alerts@mozilla.com"],
-    "bug_numbers": [1296630],
-    "expires_in_version": "60",
-    "kind": "enumerated",
-    "n_values": 16,
-    "releaseChannelCollection": "opt-out",
-    "description": "The error code from the aushelper system add-on when querying the registry for CPU information for bug 1296630 (see browser/extensions/aushelper/bootstrap.js)."
-  },
-  "AUSHELPER_CPU_RESULT_CODE": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": ["application-update-telemetry-alerts@mozilla.com"],
-    "bug_numbers": [1296630],
-    "expires_in_version": "60",
-    "kind": "enumerated",
-    "n_values": 5,
-    "releaseChannelCollection": "opt-out",
-    "description": "Whether the system is affected by bug 1296630 (1=No, 2=Yes, 3=Error, and 4=Unknown)."
-  },
-  "AUSHELPER_WEBSENSE_ERROR_CODE": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": ["application-update-telemetry-alerts@mozilla.com"],
-    "bug_numbers": [1305847],
-    "expires_in_version": "60",
-    "kind": "enumerated",
-    "n_values": 8,
-    "releaseChannelCollection": "opt-out",
-    "description": "The error code from the aushelper system add-on when gathering information on Websense (see browser/extensions/aushelper/bootstrap.js)."
-  },
-  "AUSHELPER_WEBSENSE_REG_EXISTS": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": ["application-update-telemetry-alerts@mozilla.com"],
-    "bug_numbers": [1305847],
-    "expires_in_version": "60",
-    "kind": "boolean",
-    "releaseChannelCollection": "opt-out",
-    "description": "Whether the system has a Websense InstallVersion registry value (see browser/extensions/aushelper/bootstrap.js)."
   },
   "BACKGROUNDFILESAVER_THREAD_COUNT": {
     "record_in_processes": ["main", "content"],
@@ -559,7 +541,7 @@
   },
   "FULLSCREEN_TRANSITION_BLACK_MS": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["xquan@mozilla.com"],
+    "alert_emails": ["mozilla-telemetry@upsuper.org"],
     "expires_in_version": "never",
     "kind": "exponential",
     "low": 100,
@@ -570,7 +552,7 @@
   },
   "FULLSCREEN_CHANGE_MS": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["xquan@mozilla.com"],
+    "alert_emails": ["mozilla-telemetry@upsuper.org"],
     "expires_in_version": "never",
     "kind": "exponential",
     "low": 100,
@@ -614,11 +596,13 @@
   },
   "GC_ANIMATION_MS": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["dev-telemetry-gc-alerts@mozilla.org"],
+    "alert_emails": ["dev-telemetry-gc-alerts@mozilla.org", "jcoppeard@mozilla.com", "sdetar@mozilla.com"],
     "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 10000,
     "n_buckets": 50,
+    "bug_numbers": [1489524],
     "description": "Time spent running JS GC when animating (ms)"
   },
   "GC_MAX_PAUSE_MS_2": {
@@ -905,9 +889,10 @@
   },
   "GPU_PROCESS_LAUNCH_TIME_MS_2" : {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["gfx-telemetry-alerts@mozilla.com", "rhunt@mozilla.com"],
-    "expires_in_version": "66",
-    "bug_numbers": [1297790, 1317796],
+    "alert_emails": ["gfx-telemetry-alerts@mozilla.com", "rhunt@mozilla.com", "dbolter@mozilla.com"],
+    "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1297790, 1317796, 1489524],
     "kind": "exponential",
     "high": 64000,
     "n_buckets": 100,
@@ -915,9 +900,10 @@
   },
   "GPU_PROCESS_INITIALIZATION_TIME_MS" : {
     "record_in_processes": ["main", "content", "gpu"],
-    "alert_emails": ["gfx-telemetry-alerts@mozilla.com", "rhunt@mozilla.com"],
-    "expires_in_version": "66",
-    "bug_numbers": [1324095],
+    "alert_emails": ["gfx-telemetry-alerts@mozilla.com", "rhunt@mozilla.com", "dbolter@mozilla.com"],
+    "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1324095, 1489524],
     "kind": "exponential",
     "high": 64000,
     "n_buckets": 100,
@@ -1004,6 +990,17 @@
     "high": 16777216,
     "n_buckets": 100,
     "description": "Unique Set Size (KB)"
+  },
+  "MEMORY_UNIQUE_CONTENT_STARTUP": {
+    "record_in_processes": ["content"],
+    "alert_emails": ["erahm@mozilla.com", "memshrink-telemetry-alerts@mozilla.com"],
+    "bug_numbers": [1494827],
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "low": 2048,
+    "high": 131072,
+    "n_buckets": 100,
+    "description": "Unique Set Size of Content Process at Startup (KB)"
   },
   "MEMORY_VSIZE": {
     "record_in_processes": ["main", "content"],
@@ -1722,6 +1719,23 @@
     "kind": "boolean",
     "description": "Whether a HTTP transaction routed via Alt-Svc was scheme=http"
   },
+  "HTTP_ALTSVC_ENTRIES_PER_HEADER": {
+    "record_in_processes": ["main", "content"],
+    "expires_in_version": "never",
+    "bug_numbers": [1499149],
+    "alert_emails": ["hurley@mozilla.com"],
+    "kind": "enumerated",
+    "n_values": 5,
+    "description": "How many alt-svc productions were seen in a single Alt-Svc header"
+  },
+  "HTTP_ALTSVC_MAPPING_CHANGED_TARGET": {
+    "record_in_processes": ["main", "content"],
+    "expires_in_version": "never",
+    "bug_numbers": [1499149],
+    "alert_emails": ["hurley@mozilla.com"],
+    "kind": "boolean",
+    "description": "Whether or not a new alt-svc mapping would change the target hostname of the existing mapping"
+  },
   "HTTP_SCHEME_UPGRADE_TYPE": {
     "record_in_processes": ["main", "content"],
     "alert_emails": ["seceng-telemetry@mozilla.com", "jkt@mozilla.com"],
@@ -1984,13 +1998,14 @@
     "labels": ["NotSent", "CachedContentUsed", "CachedContentNotUsed"],
     "description": "Stats for validation requests when cache won the race."
   },
-  "NETWORK_BACK_PRESSURE_SUSPENSION_RATE": {
+  "NETWORK_BACK_PRESSURE_SUSPENSION_RATE_V2": {
     "record_in_processes": ["main"],
     "expires_in_version": "68",
     "alert_emails": ["necko@mozilla.com", "junior@mozilla.com"],
-    "bug_numbers": [1280629],
-    "kind": "boolean",
-    "description": "Collect whether the flow control to enable e10s back pressure triggers the suspension (true) or not (false)"
+    "bug_numbers": [1280629, 1494133],
+    "kind": "categorical",
+    "labels": ["Suspended", "NotSuspended", "SuspendedLocal", "NotSuspendedLocal"],
+    "description": "Collect whether the resource is suspended by back pressure. And split by local-ness."
   },
   "NETWORK_HTTP_REDIRECT_TO_SCHEME" :{
     "record_in_processes": ["main"],
@@ -2083,6 +2098,36 @@
     "description": "Amount of bytes sent using TLS early data at the start of a TLS connection for a given channel.",
     "alert_emails": ["necko@mozilla.com", "ddamjanovic@mozilla.com"],
     "bug_numbers": [1296288]
+  },
+  "ESNI_KEYS_RECORD_FETCH_DELAYS": {
+    "record_in_processes": ["main"],
+    "expires_in_version": "70",
+    "kind": "exponential",
+    "high": 60000,
+    "n_buckets": 100,
+    "description": "Added delays caused the esni keys fetching.(ms)",
+    "alert_emails": ["necko@mozilla.com", "ddamjanovic@mozilla.com"],
+    "bug_numbers": [1473736],
+    "releaseChannelCollection": "opt-out"
+  },
+  "ESNI_KEYS_RECORDS_FOUND": {
+    "record_in_processes": ["main"],
+    "expires_in_version": "70",
+    "kind": "boolean",
+    "description": "ESNI Keys found rate.",
+    "alert_emails": ["necko@mozilla.com", "ddamjanovic@mozilla.com"],
+    "bug_numbers": [1473736],
+    "releaseChannelCollection": "opt-out"
+  },
+  "ESNI_NOESNI_TLS_SUCCESS_RATE": {
+    "record_in_processes": ["main"],
+    "expires_in_version": "70",
+    "kind": "categorical",
+    "labels": ["EsniTLSSucceeded", "EsniTLSFailed", "NoEsniTLSSucceeded", "NoEsniTLSFailed"],
+    "description": "TLS handshake with and without esni success rate.",
+    "alert_emails": ["necko@mozilla.com", "ddamjanovic@mozilla.com"],
+    "bug_numbers": [1473736],
+    "releaseChannelCollection": "opt-out"
   },
   "SSL_HANDSHAKE_VERSION": {
     "record_in_processes": ["main", "content"],
@@ -3254,6 +3299,17 @@
     "n_buckets": 50,
     "description": "DNS Cache Entry Age at Removal Time (minutes)"
   },
+  "DNS_BY_TYPE_CLEANUP_AGE": {
+    "record_in_processes": ["main"],
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 1440,
+    "alert_emails": ["necko@mozilla.com", "ddamjanovic@mozilla.com"],
+    "bug_numbers": [1481251],
+    "releaseChannelCollection": "opt-out",
+    "n_buckets": 50,
+    "description": "DNS Cache Entry Age for by-type queries at Removal Time (minutes)"
+  },
   "DNS_PREMATURE_EVICTION": {
     "record_in_processes": ["main"],
     "expires_in_version": "never",
@@ -3264,6 +3320,17 @@
     "bug_numbers": [1460305],
     "n_buckets": 50,
     "description": "DNS Cache Entry Age at Removal Time of non-expired entries (minutes)"
+  },
+  "DNS_BY_TYPE_PREMATURE_EVICTION": {
+    "record_in_processes": ["main"],
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 1440,
+    "releaseChannelCollection": "opt-out",
+    "alert_emails": ["necko@mozilla.com", "ddamjanovic@mozilla.com"],
+    "bug_numbers": [1481251],
+    "n_buckets": 50,
+    "description": "DNS Cache Entry Age for by-type queries at Removal Time of non-expired entries (minutes)"
   },
   "DNS_LOOKUP_TIME": {
     "record_in_processes": ["main"],
@@ -3297,6 +3364,28 @@
     "n_buckets": 50,
     "description": "Time for a completed native name resolution (msec)"
   },
+  "DNS_BY_TYPE_FAILED_LOOKUP_TIME": {
+    "record_in_processes": ["main"],
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 60000,
+    "releaseChannelCollection": "opt-out",
+    "alert_emails": ["necko@mozilla.com", "ddamjanovic@mozilla.com"],
+    "bug_numbers": [1481251],
+    "n_buckets": 50,
+    "description": "Time for a completed by-type resolution that has a negative answer (msec)."
+  },
+  "DNS_BY_TYPE_SUCCEEDED_LOOKUP_TIME": {
+    "record_in_processes": ["main"],
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 60000,
+    "releaseChannelCollection": "opt-out",
+    "alert_emails": ["necko@mozilla.com", "ddamjanovic@mozilla.com"],
+    "bug_numbers": [1481251],
+    "n_buckets": 50,
+    "description": "Time for a completed by-type resolution that succeeded (msec)."
+  },
   "DNS_NATIVE_QUEUING": {
     "record_in_processes": ["main"],
     "expires_in_version": "never",
@@ -3327,14 +3416,14 @@
     "bug_numbers": [1460589],
     "description": "DNS: success distribution when both native and TRR were used"
   },
-  "DNS_TRR_FIRST": {
+  "DNS_TRR_FIRST2": {
     "record_in_processes": ["main"],
     "alert_emails": ["necko@mozilla.com", "dstenberg@mozilla.com"],
     "expires_in_version": "never",
     "kind": "categorical",
-    "labels": ["TRRWorked", "NativeFallback", "BothFailed"],
-    "bug_numbers": [1472659],
-    "description": "TRR-first mode distribution. 0=Worked, 1=fell back to native, 2=both failed"
+    "labels": ["TRR", "NativeAfterTRR", "Native", "BothFailed"],
+    "bug_numbers": [1497252],
+    "description": "TRR-first mode distribution. 0=Worked, 1=fell back fine after TRR fail, 2=native worked, 3=both failed"
   },
   "DNS_TRR_DISABLED": {
     "record_in_processes": ["main"],
@@ -3369,6 +3458,15 @@
     "n_buckets": 100,
     "bug_numbers": [1470853],
     "description": "Number of DOH requests per connection"
+  },
+  "DNS_TRR_SUCCESS": {
+    "record_in_processes": ["main"],
+    "expires_in_version": "never",
+    "kind": "categorical",
+    "labels": ["Fine", "Timeout", "Bad"],
+    "description": "How often TRR (Trusted Recursive Resolver) requests are fine, time-out or error.",
+    "bug_numbers": [1497438],
+    "alert_emails": ["necko@mozilla.com", "dstenberg@mozilla.com"]
   },
   "DNS_LOOKUP_ALGORITHM": {
     "record_in_processes": ["main"],
@@ -3735,10 +3833,10 @@
     "description": "How many speculative connections are made needlessly"
   },
   "TAB_COUNT": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": [],
-    "bug_numbers": [1361855],
-    "expires_in_version": "65",
+    "record_in_processes": ["main"],
+    "alert_emails": ["gijs@mozilla.com"],
+    "bug_numbers": [1361855, 1488945],
+    "expires_in_version": "never",
     "kind": "exponential",
     "high": 1000,
     "n_buckets": 100,
@@ -5207,12 +5305,15 @@
     "description": "PLACES: Time for first autocomplete result if > 50ms (ms)"
   },
   "PLACES_AUTOCOMPLETE_6_FIRST_RESULTS_TIME_MS": {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["main"],
+    "alert_emails": ["mdeboer@mozilla.com", "dolske@mozilla.com"],
+    "releaseChannelCollection": "opt-out",
     "expires_in_version": "never",
     "kind": "exponential",
     "low": 50,
     "high": 1000,
     "n_buckets": 30,
+    "bug_numbers": [1489524],
     "description": "PLACES: Time for the 6 first autocomplete results (ms)"
   },
   "HISTORY_LASTVISITED_TREE_QUERY_TIME_MS": {
@@ -5293,6 +5394,7 @@
     "expires_in_version": "never",
     "kind": "count",
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: count of no updates were found for a background update check (externally initiated)"
   },
   "UPDATE_CHECK_NO_UPDATE_NOTIFY" : {
@@ -5301,6 +5403,7 @@
     "expires_in_version": "never",
     "kind": "count",
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: count of no updates were found for a background update check (timer initiated)"
   },
   "UPDATE_CHECK_CODE_EXTERNAL": {
@@ -5310,6 +5413,7 @@
     "kind": "enumerated",
     "n_values": 50,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: background update check result code except for no updates found (externally initiated)"
   },
   "UPDATE_CHECK_CODE_NOTIFY": {
@@ -5319,6 +5423,7 @@
     "kind": "enumerated",
     "n_values": 50,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: background update check result code except for no updates found (timer initiated)"
   },
   "UPDATE_CHECK_EXTENDED_ERROR_EXTERNAL": {
@@ -5328,6 +5433,7 @@
     "kind": "count",
     "keyed": true,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: keyed count (key names are prefixed with AUS_CHECK_EX_ERR_) of background update check extended error code (externally initiated)"
   },
   "UPDATE_CHECK_EXTENDED_ERROR_NOTIFY": {
@@ -5337,6 +5443,7 @@
     "kind": "count",
     "keyed": true,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: keyed count (key names are prefixed with AUS_CHECK_EX_ERR_) of background update check extended error code (timer initiated)"
   },
   "UPDATE_INVALID_LASTUPDATETIME_EXTERNAL": {
@@ -5345,6 +5452,7 @@
     "expires_in_version": "never",
     "kind": "count",
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: count of systems that have a last update time greater than the current time (externally initiated)"
   },
   "UPDATE_INVALID_LASTUPDATETIME_NOTIFY": {
@@ -5353,6 +5461,7 @@
     "expires_in_version": "never",
     "kind": "count",
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: count of systems that have a last update time greater than the current time (timer initiated)"
   },
   "UPDATE_LAST_NOTIFY_INTERVAL_DAYS_EXTERNAL": {
@@ -5363,6 +5472,7 @@
     "n_buckets": 60,
     "high": 365,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: interval in days since the last background update check (externally initiated)"
   },
   "UPDATE_LAST_NOTIFY_INTERVAL_DAYS_NOTIFY": {
@@ -5373,6 +5483,7 @@
     "n_buckets": 30,
     "high": 180,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: interval in days since the last background update check (timer initiated)"
   },
   "UPDATE_PING_COUNT_EXTERNAL": {
@@ -5381,6 +5492,7 @@
     "expires_in_version": "never",
     "kind": "count",
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1151267],
     "description": "Update: count of systems for this ping for comparison with other pings (externally initiated)"
   },
   "UPDATE_PING_COUNT_NOTIFY": {
@@ -5389,6 +5501,7 @@
     "expires_in_version": "never",
     "kind": "count",
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1151267],
     "description": "Update: count of systems for this ping for comparison with other pings (timer initiated)"
   },
   "UPDATE_SERVICE_INSTALLED_EXTERNAL": {
@@ -5397,6 +5510,7 @@
     "expires_in_version": "never",
     "kind": "boolean",
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: whether the service is installed (externally initiated)"
   },
   "UPDATE_SERVICE_INSTALLED_NOTIFY": {
@@ -5405,6 +5519,7 @@
     "expires_in_version": "never",
     "kind": "boolean",
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: whether the service is installed (timer initiated)"
   },
   "UPDATE_SERVICE_MANUALLY_UNINSTALLED_EXTERNAL": {
@@ -5413,6 +5528,7 @@
     "expires_in_version": "never",
     "kind": "count",
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: count of systems that manually uninstalled the service (externally initiated)"
   },
   "UPDATE_SERVICE_MANUALLY_UNINSTALLED_NOTIFY": {
@@ -5421,6 +5537,7 @@
     "expires_in_version": "never",
     "kind": "count",
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: count of systems that manually uninstalled the service (timer initiated)"
   },
   "UPDATE_UNABLE_TO_APPLY_EXTERNAL": {
@@ -5429,6 +5546,7 @@
     "expires_in_version": "never",
     "kind": "count",
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1151267],
     "description": "Update: count of systems that cannot apply updates (externally initiated)"
   },
   "UPDATE_UNABLE_TO_APPLY_NOTIFY": {
@@ -5437,6 +5555,7 @@
     "expires_in_version": "never",
     "kind": "count",
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1151267],
     "description": "Update: count of systems that cannot apply updates (timer initiated)"
   },
   "UPDATE_CANNOT_STAGE_EXTERNAL": {
@@ -5445,6 +5564,7 @@
     "expires_in_version": "never",
     "kind": "count",
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: count of systems that cannot stage updates (externally initiated)"
   },
   "UPDATE_CANNOT_STAGE_NOTIFY": {
@@ -5453,6 +5573,7 @@
     "expires_in_version": "never",
     "kind": "count",
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: count of systems that cannot stage updates (timer initiated)"
   },
   "UPDATE_PREF_UPDATE_CANCELATIONS_EXTERNAL": {
@@ -5462,6 +5583,7 @@
     "kind": "enumerated",
     "n_values": 100,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: number of sequential update elevation request cancelations greater than 0 (externally initiated)"
   },
   "UPDATE_PREF_UPDATE_CANCELATIONS_NOTIFY": {
@@ -5471,6 +5593,7 @@
     "kind": "enumerated",
     "n_values": 100,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: number of sequential update elevation request cancelations greater than 0 (timer initiated)"
   },
   "UPDATE_PREF_SERVICE_ERRORS_EXTERNAL": {
@@ -5480,6 +5603,7 @@
     "kind": "enumerated",
     "n_values": 30,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: number of sequential update service errors greater than 0 (externally initiated)"
   },
   "UPDATE_PREF_SERVICE_ERRORS_NOTIFY": {
@@ -5489,6 +5613,7 @@
     "kind": "enumerated",
     "n_values": 30,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: number of sequential update service errors greater than 0 (timer initiated)"
   },
   "UPDATE_NOT_PREF_UPDATE_AUTO_EXTERNAL": {
@@ -5497,6 +5622,7 @@
     "expires_in_version": "never",
     "kind": "count",
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: count of when the app.update.auto boolean preference is not the default value of true (true values are not submitted)"
   },
   "UPDATE_NOT_PREF_UPDATE_AUTO_NOTIFY": {
@@ -5505,6 +5631,7 @@
     "expires_in_version": "never",
     "kind": "count",
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: count of when the app.update.auto boolean preference is not the default value of true (true values are not submitted)"
   },
   "UPDATE_NOT_PREF_UPDATE_STAGING_ENABLED_EXTERNAL": {
@@ -5513,6 +5640,7 @@
     "expires_in_version": "never",
     "kind": "count",
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: count of when the app.update.staging.enabled boolean preference is not the default value of true (true values are not submitted)"
   },
   "UPDATE_NOT_PREF_UPDATE_STAGING_ENABLED_NOTIFY": {
@@ -5521,6 +5649,7 @@
     "expires_in_version": "never",
     "kind": "count",
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: count of when the app.update.staging.enabled boolean preference is not the default value of true (true values are not submitted)"
   },
   "UPDATE_NOT_PREF_UPDATE_SERVICE_ENABLED_EXTERNAL": {
@@ -5529,6 +5658,7 @@
     "expires_in_version": "never",
     "kind": "count",
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: count of when the app.update.service.enabled boolean preference is not the default value of true (true values are not submitted)"
   },
   "UPDATE_NOT_PREF_UPDATE_SERVICE_ENABLED_NOTIFY": {
@@ -5537,6 +5667,7 @@
     "expires_in_version": "never",
     "kind": "count",
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: count of when the app.update.service.enabled boolean preference is not the default value of true (true values are not submitted)"
   },
   "UPDATE_DOWNLOAD_CODE_COMPLETE": {
@@ -5546,7 +5677,8 @@
     "kind": "enumerated",
     "n_values": 50,
     "releaseChannelCollection": "opt-out",
-    "description": "Update: complete patch download result code"
+    "bug_numbers": [1137447],
+    "description": "Update: complete patch type download result code"
   },
   "UPDATE_DOWNLOAD_CODE_PARTIAL": {
     "record_in_processes": ["main"],
@@ -5555,7 +5687,18 @@
     "kind": "enumerated",
     "n_values": 50,
     "releaseChannelCollection": "opt-out",
-    "description": "Update: partial patch download result code"
+    "bug_numbers": [1137447],
+    "description": "Update: partial patch type download result code"
+  },
+  "UPDATE_DOWNLOAD_CODE_UNKNOWN": {
+    "record_in_processes": ["main"],
+    "alert_emails": ["application-update-telemetry-alerts@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "enumerated",
+    "n_values": 50,
+    "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
+    "description": "Update: unknown patch type download result code"
   },
   "UPDATE_STATE_CODE_COMPLETE_STARTUP": {
     "record_in_processes": ["main"],
@@ -5564,6 +5707,7 @@
     "kind": "enumerated",
     "n_values": 20,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: the state of a complete update from update.status on startup"
   },
   "UPDATE_STATE_CODE_PARTIAL_STARTUP": {
@@ -5573,6 +5717,7 @@
     "kind": "enumerated",
     "n_values": 20,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: the state of a partial patch update from update.status on startup"
   },
   "UPDATE_STATE_CODE_UNKNOWN_STARTUP": {
@@ -5582,6 +5727,7 @@
     "kind": "enumerated",
     "n_values": 20,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: the state of an unknown patch update from update.status on startup"
   },
   "UPDATE_STATE_CODE_COMPLETE_STAGE": {
@@ -5591,6 +5737,7 @@
     "kind": "enumerated",
     "n_values": 20,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: the state of a complete patch update from update.status after staging"
   },
   "UPDATE_STATE_CODE_PARTIAL_STAGE": {
@@ -5600,6 +5747,7 @@
     "kind": "enumerated",
     "n_values": 20,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: the state of a partial patch update from update.status after staging"
   },
   "UPDATE_STATE_CODE_UNKNOWN_STAGE": {
@@ -5609,6 +5757,7 @@
     "kind": "enumerated",
     "n_values": 20,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: the state of an unknown patch update from update.status after staging"
   },
   "UPDATE_STATUS_ERROR_CODE_COMPLETE_STARTUP": {
@@ -5618,6 +5767,7 @@
     "kind": "enumerated",
     "n_values": 100,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: the status error code for a failed complete patch update from update.status on startup"
   },
   "UPDATE_STATUS_ERROR_CODE_PARTIAL_STARTUP": {
@@ -5627,6 +5777,7 @@
     "kind": "enumerated",
     "n_values": 100,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: the status error code for a failed partial patch update from update.status on startup"
   },
   "UPDATE_STATUS_ERROR_CODE_UNKNOWN_STARTUP": {
@@ -5636,6 +5787,7 @@
     "kind": "enumerated",
     "n_values": 100,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: the status error code for a failed unknown patch update from update.status on startup"
   },
   "UPDATE_STATUS_ERROR_CODE_COMPLETE_STAGE": {
@@ -5645,6 +5797,7 @@
     "kind": "enumerated",
     "n_values": 100,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: the status error code for a failed complete patch update from update.status after staging"
   },
   "UPDATE_STATUS_ERROR_CODE_PARTIAL_STAGE": {
@@ -5654,6 +5807,7 @@
     "kind": "enumerated",
     "n_values": 100,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: the status error code for a failed partial patch update from update.status after staging"
   },
   "UPDATE_STATUS_ERROR_CODE_UNKNOWN_STAGE": {
@@ -5663,6 +5817,7 @@
     "kind": "enumerated",
     "n_values": 100,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: the status error code for a failed unknown patch update from update.status after staging"
   },
   "UPDATE_WIZ_LAST_PAGE_CODE": {
@@ -5672,6 +5827,7 @@
     "kind": "enumerated",
     "n_values": 30,
     "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1137447],
     "description": "Update: the update wizard page displayed when the UI was closed (mapped in toolkit/mozapps/update/UpdateTelemetry.jsm)"
   },
   "UPTAKE_REMOTE_CONTENT_RESULT_1": {
@@ -5776,10 +5932,10 @@
     "description": "Firefox: Time taken to kick off image compression of the canvas that will be used during swiping through history (ms)."
   },
   "FX_TAB_CLOSE_TIME_ANIM_MS": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": ["mconley@mozilla.com", "hkirschner@mozilla.com", "sphilp@mozilla.com"],
-    "bug_numbers": [1340842],
-    "expires_in_version": "65",
+    "record_in_processes": ["main"],
+    "alert_emails": ["mconley@mozilla.com", "dolske@mozilla.com"],
+    "bug_numbers": [1340842, 1488952],
+    "expires_in_version": "never",
     "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 10000,
@@ -5787,20 +5943,20 @@
     "description": "Firefox: Time taken from the point of closing a tab (with animation), to the browser element being removed from the DOM. (ms)."
   },
   "FX_TAB_CLOSE_TIME_NO_ANIM_MS": {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["main"],
     "alert_emails": ["mconley@mozilla.com", "hkirschner@mozilla.com"],
     "bug_numbers": [1340842],
-    "expires_in_version": "65",
+    "expires_in_version": "68",
     "kind": "exponential",
     "high": 10000,
     "n_buckets": 50,
     "description": "Firefox: Time taken from the point of closing a tab (without animation) to the browser element being removed from the DOM. (ms)."
   },
   "FX_TAB_CLOSE_PERMIT_UNLOAD_TIME_MS": {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["main"],
     "alert_emails": ["mconley@mozilla.com", "hkirschner@mozilla.com"],
     "bug_numbers": [1340842],
-    "expires_in_version": "65",
+    "expires_in_version": "68",
     "kind": "exponential",
     "high": 10000,
     "n_buckets": 50,
@@ -5837,22 +5993,24 @@
     "description": "Delay in ms between the target and the actual handling time of the frame at refresh driver while scrolling synchronously."
   },
   "FX_TAB_SWITCH_UPDATE_MS": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": ["perf-telemetry-alerts@mozilla.com"],
+    "record_in_processes": ["main"],
+    "alert_emails": ["perf-telemetry-alerts@mozilla.com", "mconley@mozilla.com", "dolske@mozilla.com"],
     "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 1000,
     "n_buckets": 20,
+    "bug_numbers": [1489524],
     "description": "Firefox: Time in ms spent updating UI in response to a tab switch"
   },
   "FX_TAB_SWITCH_TOTAL_E10S_MS": {
     "record_in_processes": ["main"],
-    "alert_emails": ["mconley@mozilla.com"],
-    "expires_in_version": "70",
+    "alert_emails": ["mconley@mozilla.com", "dolske@mozilla.com"],
+    "expires_in_version": "never",
     "kind": "exponential",
     "high": 1000,
     "n_buckets": 20,
-    "bug_numbers": [1156592],
+    "bug_numbers": [1156592, 1489524],
     "releaseChannelCollection": "opt-out",
     "description": "Firefox: Time in ms between tab selection and tab content paint in e10s windows"
   },
@@ -5950,13 +6108,14 @@
     "description": "The number of times that a session enters browser fullscreen (f11-fullscreen)"
   },
   "FX_NEW_WINDOW_MS": {
-    "record_in_processes": ["main", "content"],
-    "expires_in_version": "default",
-    "alert_emails": ["mconley@mozilla.com", "hkirschner@mozilla.com", "sphilp@mozilla.com"],
+    "record_in_processes": ["main"],
+    "expires_in_version": "never",
+    "alert_emails": ["mconley@mozilla.com", "dolske@mozilla.com"],
     "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 10000,
     "n_buckets": 20,
+    "bug_numbers": [1489524],
     "description": "Firefox: Time taken to open a new browser window (ms)"
   },
   "FX_PAGE_LOAD_MS": {
@@ -6175,131 +6334,6 @@
     "releaseChannelCollection": "opt-out",
     "description": "The browser that was the default on the initial profile migration. The values correspond to the internal browser ID (see MigrationUtils.jsm)"
   },
-  "FX_STARTUP_MIGRATION_AUTOMATED_IMPORT_PROCESS_SUCCESS": {
-    "record_in_processes": ["main", "content"],
-    "bug_numbers": [1271775],
-    "alert_emails": ["gijs@mozilla.com"],
-    "expires_in_version": "65",
-    "kind": "enumerated",
-    "n_values": 27,
-    "releaseChannelCollection": "opt-out",
-    "description": "Where automatic migration was attempted, indicates to what degree we succeeded. Values 0-25 indicate progress through the automatic migration sequence, with 25 indicating the migration finished. 26 is only used when the migration produced errors before it finished."
-  },
-  "FX_STARTUP_MIGRATION_AUTOMATED_IMPORT_UNDO": {
-    "record_in_processes": ["main", "content"],
-    "bug_numbers": [1283565],
-    "alert_emails": ["gijs@mozilla.com"],
-    "expires_in_version": "65",
-    "kind": "enumerated",
-    "n_values": 31,
-    "releaseChannelCollection": "opt-out",
-    "description": "Where undo of the automatic migration was attempted, indicates to what degree we succeeded to undo. 0 means we started to undo, 5 means we bailed out from the undo because it was not possible to complete it (there was nothing to undo or the user was signed in to sync). All higher values indicate progression through the undo sequence, with 30 indicating we finished the undo without exceptions in the middle."
-  },
-  "FX_STARTUP_MIGRATION_UNDO_REASON": {
-    "record_in_processes": ["main", "content"],
-    "bug_numbers": [1289906],
-    "alert_emails": ["gijs@mozilla.com"],
-    "expires_in_version": "65",
-    "keyed": true,
-    "kind": "enumerated",
-    "n_values": 10,
-    "releaseChannelCollection": "opt-out",
-    "description": "Why the undo functionality of an automatic migration was disabled: 0 means we used undo, 1 means the user signed in to sync, 2 means the user created/modified a password, 3 means the user created/modified a bookmark (item or folder), 4 means we showed an undo option repeatedly and the user did not use it, 5 means we showed an undo option and the user actively elected to keep the data. The whole thing is keyed to the identifiers of different browsers (so 'chrome', 'ie', 'edge', 'safari', etc.)."
-  },
-  "FX_STARTUP_MIGRATION_UNDO_OFFERED": {
-    "record_in_processes": ["main", "content"],
-    "bug_numbers": [1309617],
-    "alert_emails": ["gijs@mozilla.com"],
-    "expires_in_version": "65",
-    "kind": "enumerated",
-    "n_values": 5,
-    "releaseChannelCollection": "opt-out",
-    "description": "Indicates we showed a 'would you like to undo this automatic migration?' notification bar. The bucket indicates which nth day we're on (1st/2nd/3rd, by default - 0 would be indicative the pref didn't get set which shouldn't happen). After 3 days on which the notification gets shown, it will get disabled and never shown again."
-  },
-  "FX_STARTUP_MIGRATION_UNDO_BOOKMARKS_ERRORCOUNT": {
-    "record_in_processes": ["main", "content"],
-    "bug_numbers": [1333233],
-    "alert_emails": ["gijs@mozilla.com"],
-    "expires_in_version": "65",
-    "keyed": true,
-    "kind": "exponential",
-    "n_buckets": 20,
-    "high": 100,
-    "releaseChannelCollection": "opt-out",
-    "description": "Indicates how many errors we find when trying to 'undo' bookmarks import. Keys are internal ids of browsers we import from, e.g. 'chrome' or 'ie', etc."
-  },
-  "FX_STARTUP_MIGRATION_UNDO_LOGINS_ERRORCOUNT": {
-    "record_in_processes": ["main", "content"],
-    "bug_numbers": [1333233],
-    "alert_emails": ["gijs@mozilla.com"],
-    "expires_in_version": "65",
-    "keyed": true,
-    "kind": "exponential",
-    "n_buckets": 20,
-    "high": 100,
-    "releaseChannelCollection": "opt-out",
-    "description": "Indicates how many errors we find when trying to 'undo' login (password) import. Keys are internal ids of browsers we import from, e.g. 'chrome' or 'ie', etc."
-  },
-  "FX_STARTUP_MIGRATION_UNDO_VISITS_ERRORCOUNT": {
-    "record_in_processes": ["main", "content"],
-    "bug_numbers": [1333233],
-    "alert_emails": ["gijs@mozilla.com"],
-    "expires_in_version": "65",
-    "keyed": true,
-    "kind": "exponential",
-    "n_buckets": 20,
-    "high": 100,
-    "releaseChannelCollection": "opt-out",
-    "description": "Indicates how many errors we find when trying to 'undo' history import. Keys are internal ids of browsers we import from, e.g. 'chrome' or 'ie', etc."
-  },
-  "FX_STARTUP_MIGRATION_UNDO_BOOKMARKS_MS": {
-    "record_in_processes": ["main", "content"],
-    "bug_numbers": [1333233],
-    "alert_emails": ["gijs@mozilla.com"],
-    "expires_in_version": "65",
-    "keyed": true,
-    "kind": "exponential",
-    "n_buckets": 20,
-    "high": 60000,
-    "releaseChannelCollection": "opt-out",
-    "description": "Indicates how long it took to undo the startup import of bookmarks, in ms. Keys are internal ids of browsers we import from, e.g. 'chrome' or 'ie', etc."
-  },
-  "FX_STARTUP_MIGRATION_UNDO_LOGINS_MS": {
-    "record_in_processes": ["main", "content"],
-    "bug_numbers": [1333233],
-    "alert_emails": ["gijs@mozilla.com"],
-    "expires_in_version": "65",
-    "keyed": true,
-    "kind": "exponential",
-    "n_buckets": 20,
-    "high": 60000,
-    "releaseChannelCollection": "opt-out",
-    "description": "Indicates how long it took to undo the startup import of logins, in ms. Keys are internal ids of browsers we import from, e.g. 'chrome' or 'ie', etc."
-  },
-  "FX_STARTUP_MIGRATION_UNDO_VISITS_MS": {
-    "record_in_processes": ["main", "content"],
-    "bug_numbers": [1333233],
-    "alert_emails": ["gijs@mozilla.com"],
-    "expires_in_version": "65",
-    "keyed": true,
-    "kind": "exponential",
-    "n_buckets": 20,
-    "high": 60000,
-    "releaseChannelCollection": "opt-out",
-    "description": "Indicates how long it took to undo the startup import of visits (history), in ms. Keys are internal ids of browsers we import from, e.g. 'chrome' or 'ie', etc."
-  },
-  "FX_STARTUP_MIGRATION_UNDO_TOTAL_MS": {
-    "record_in_processes": ["main", "content"],
-    "bug_numbers": [1333233],
-    "alert_emails": ["gijs@mozilla.com"],
-    "expires_in_version": "65",
-    "keyed": true,
-    "kind": "exponential",
-    "n_buckets": 20,
-    "high": 60000,
-    "releaseChannelCollection": "opt-out",
-    "description": "Indicates how long it took to undo the entirety of the startup undo, in ms. Keys are internal ids of browsers we import from, e.g. 'chrome' or 'ie', etc."
-  },
   "FX_STARTUP_MIGRATION_DATA_RECENCY": {
     "record_in_processes": ["main", "content"],
     "bug_numbers": [1276694],
@@ -6359,7 +6393,7 @@
     "expires_in_version": "64",
     "kind": "categorical",
     "labels": ["bookmark", "pocket", "screenshots", "webcompat", "copyURL", "emailLink",
-               "sendToDevice", "other", "addSearchEngine", "shareURL"],
+               "sendToDevice", "other", "addSearchEngine", "shareURL", "screenshotsMozillaOr"],
     "description": "Count how many times people add items to the url bar"
   },
   "FX_PAGE_ACTION_REMOVED": {
@@ -6369,7 +6403,7 @@
     "expires_in_version": "64",
     "kind": "categorical",
     "labels": ["bookmark", "pocket", "screenshots", "webcompat", "copyURL", "emailLink",
-               "sendToDevice", "other", "addSearchEngine", "shareURL"],
+               "sendToDevice", "other", "addSearchEngine", "shareURL", "screenshotsMozillaOr"],
     "description": "Count how many times people remove items from the url bar"
   },
   "FX_PAGE_ACTION_MANAGED": {
@@ -6379,7 +6413,7 @@
     "expires_in_version": "64",
     "kind": "categorical",
     "labels": ["bookmark", "pocket", "screenshots", "webcompat", "copyURL", "emailLink",
-               "sendToDevice", "other", "addSearchEngine", "shareURL"],
+               "sendToDevice", "other", "addSearchEngine", "shareURL", "screenshotsMozillaOr"],
     "description": "Count how many times people manage extensions via their actions in the url bar"
   },
   "FX_PAGE_ACTION_URLBAR_USED": {
@@ -6389,7 +6423,7 @@
     "expires_in_version": "64",
     "kind": "categorical",
     "labels": ["bookmark", "pocket", "screenshots", "webcompat", "copyURL", "emailLink",
-               "sendToDevice", "other", "addSearchEngine", "shareURL"],
+               "sendToDevice", "other", "addSearchEngine", "shareURL", "screenshotsMozillaOr"],
     "description": "Count how many times people use items in the url bar"
   },
   "FX_PAGE_ACTION_PANEL_USED": {
@@ -6399,7 +6433,7 @@
     "expires_in_version": "64",
     "kind": "categorical",
     "labels": ["bookmark", "pocket", "screenshots", "webcompat", "copyURL", "emailLink",
-               "sendToDevice", "other", "addSearchEngine", "shareURL"],
+               "sendToDevice", "other", "addSearchEngine", "shareURL", "screenshotsMozillaOr"],
     "description": "Count how many times people use items from the main page action button"
   },
   "INPUT_EVENT_RESPONSE_MS": {
@@ -6414,9 +6448,9 @@
   },
   "INPUT_EVENT_RESPONSE_COALESCED_MS": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["perf-telemetry-alerts@mozilla.com"],
-    "bug_numbers": [1357457],
-    "expires_in_version": "61",
+    "alert_emails": ["perf-telemetry-alerts@mozilla.com", "chutten@mozilla.com", "gfritzsche@mozilla.com"],
+    "bug_numbers": [1357457, 1489524],
+    "expires_in_version": "never",
     "kind": "exponential",
     "high": 10000,
     "n_buckets": 50,
@@ -6466,21 +6500,25 @@
     "description": "Widget: Time it takes for the message before a UI message (ms)"
   },
   "FX_SESSION_RESTORE_STARTUP_INIT_SESSION_MS": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": ["session-restore-telemetry-alerts@mozilla.com"],
-    "expires_in_version": "default",
+    "record_in_processes": ["main"],
+    "alert_emails": ["session-restore-telemetry-alerts@mozilla.com", "mdeboer@mozilla.com", "dolske@mozilla.com"],
+    "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 30000,
     "n_buckets": 20,
+    "bug_numbers": [1489524],
     "description": "Session restore: Time it takes to prepare the data structures for restoring a session (ms)"
   },
   "FX_SESSION_RESTORE_STARTUP_ONLOAD_INITIAL_WINDOW_MS": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": ["session-restore-telemetry-alerts@mozilla.com"],
+    "record_in_processes": ["main"],
+    "alert_emails": ["session-restore-telemetry-alerts@mozilla.com", "mdeboer@mozilla.com", "dolske@mozilla.com"],
     "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 30000,
     "n_buckets": 20,
+    "bug_numbers": [1489524],
     "description": "Session restore: Time it takes to finish restoration once we have first opened a window (ms)"
   },
   "FX_SESSION_RESTORE_COLLECT_ALL_WINDOWS_DATA_MS": {
@@ -6572,12 +6610,14 @@
     "description": "Session restore: Whether none of the backup files contained parse-able JSON"
   },
   "FX_SESSION_RESTORE_RESTORE_WINDOW_MS": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": ["session-restore-telemetry-alerts@mozilla.com"],
-    "expires_in_version": "default",
+    "record_in_processes": ["main"],
+    "alert_emails": ["session-restore-telemetry-alerts@mozilla.com", "mdeboer@mozilla.com", "dolske@mozilla.com"],
+    "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 3000,
     "n_buckets": 10,
+    "bug_numbers": [1489524],
     "description": "Session restore: Time spent blocking the main thread while restoring a window state (ms)"
   },
   "FX_SESSION_RESTORE_SEND_UPDATE_CAUSED_OOM": {
@@ -7923,7 +7963,9 @@
     "kind": "count",
     "keyed": true,
     "releaseChannelCollection": "opt-out",
-    "description": "Records search counts for search access points and in content searches. For search access points, the format is: <engine-name>.<search-access-point> For in content searches, the format is <provider>.in-content:[sap|sap-follow-on|organic]:[code|none]"
+    "alert_emails": ["adw@mozilla.com"],
+    "bug_numbers": [1089670, 1482158, 1499193],
+    "description": "Records search counts for search access points and in content searches. For search access points in general and for the urlbar when an internal @engine shorcut is not used, the format is: <engine-name>.<search-access-point> For the urlbar when an internal @engine shortcut is used, the format is: <engine-name>.alias For in content searches, the format is <provider>.in-content:[sap|sap-follow-on|organic]:[code|none]"
   },
   "SEARCH_RESET_RESULT": {
     "record_in_processes": ["main", "content"],
@@ -7936,11 +7978,14 @@
     "description": "Result of showing the search reset prompt to the user. 0=restored original default, 1=kept current engine, 2=changed engine, 3=closed the page, 4=opened search settings"
   },
   "SEARCH_SERVICE_INIT_MS": {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["main"],
+    "alert_emails": ["mdeboer@mozilla.com", "dolske@mozilla.com"],
     "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 1000,
     "n_buckets": 15,
+    "bug_numbers": [1489524],
     "description": "Time (ms) it takes to initialize the search service"
   },
   "SEARCH_SERVICE_INIT_SYNC": {
@@ -7949,17 +7994,6 @@
     "expires_in_version": "never",
     "kind": "boolean",
     "description": "search service has been initialized synchronously"
-  },
-  "SEARCH_SERVICE_ENGINE_COUNT": {
-    "record_in_processes": ["main", "content"],
-    "releaseChannelCollection": "opt-out",
-    "alert_emails": ["florian@mozilla.com"],
-    "expires_in_version": "60",
-    "bug_numbers": [1268424],
-    "kind": "linear",
-    "high": 200,
-    "n_buckets": 50,
-    "description": "Recorded once per session near startup: records the search plugin count, including both built-in plugins (including the ones the user has hidden) and user-installed plugins."
   },
   "SEARCH_SERVICE_COUNTRY_FETCH_TIME_MS": {
     "record_in_processes": ["main", "content"],
@@ -8208,42 +8242,6 @@
     "n_values": 8,
     "description": "User actions taken in the plugin notification: 0: allownow 1: allowalways 2: block 3: blockalways",
     "bug_numbers": [902075, 1345894, 1398972],
-    "alert_emails": ["flashvideo-2015@mozilla.com"]
-  },
-  "PLUGINS_INFOBAR_SHOWN": {
-    "record_in_processes": ["main"],
-    "releaseChannelCollection": "opt-out",
-    "expires_in_version": "never",
-    "kind": "boolean",
-    "description": "Count of when the hidden-plugin infobar was displayed.",
-    "bug_numbers": [902075, 1345894],
-    "alert_emails": ["flashvideo-2015@mozilla.com"]
-  },
-  "PLUGINS_INFOBAR_BLOCK": {
-    "record_in_processes": ["main"],
-    "releaseChannelCollection": "opt-out",
-    "expires_in_version": "never",
-    "kind": "boolean",
-    "description": "Count the number of times the user clicked 'block' on the hidden-plugin infobar.",
-    "bug_numbers": [902075, 1345894],
-    "alert_emails": ["flashvideo-2015@mozilla.com"]
-  },
-  "PLUGINS_INFOBAR_ALLOW": {
-    "record_in_processes": ["main"],
-    "releaseChannelCollection": "opt-out",
-    "expires_in_version": "never",
-    "kind": "boolean",
-    "description": "Count the number of times the user clicked 'allow' on the hidden-plugin infobar.",
-    "bug_numbers": [902075, 1345894],
-    "alert_emails": ["flashvideo-2015@mozilla.com"]
-  },
-  "PLUGINS_INFOBAR_DISMISSED": {
-    "record_in_processes": ["main"],
-    "releaseChannelCollection": "opt-out",
-    "expires_in_version": "never",
-    "kind": "boolean",
-    "description": "Count the number of times the user explicitly dismisses the hidden-plugin infobar without choosing allow or continue-blocking.",
-    "bug_numbers": [1368060],
     "alert_emails": ["flashvideo-2015@mozilla.com"]
   },
   "POPUP_NOTIFICATION_STATS": {
@@ -8729,6 +8727,15 @@
     "kind": "enumerated",
     "n_values": 14,
     "description": "The DTLS cipher (as integer) negotiated for a RTCPeerConnection. See TransportLayerDtls::RecordCipherTelemetry for the meaning of the values"
+  },
+  "WEBRTC_SRTP_CIPHER": {
+    "record_in_processes": ["content"],
+    "alert_emails": ["webrtc-dtls-telemetry-alerts@mozilla.com", "nohlmeier@mozilla.com"],
+    "bug_numbers": [1491511],
+    "expires_in_version": "67",
+    "kind": "categorical",
+    "labels": ["Unknown", "Aes128CmHmacSha1_80", "Aes128CmHmacSha1_32", "AeadAes128Gcm", "AeadAes256Gcm"],
+    "description": "The SRTP cipher (as integer) negotiated for a RTCPeerConnection. See TransportLayerDtls::RecordCipherTelemetry for the meaning of the values"
   },
   "WEBRTC_ICE_FINAL_CONNECTION_STATE": {
     "record_in_processes": ["main", "content"],
@@ -9366,7 +9373,7 @@
     "alert_emails": ["dev-developer-tools@lists.mozilla.org", "apoirot@mozilla.com"],
     "expires_in_version": "never",
     "kind": "categorical",
-    "labels": ["KeyShortcut", "SystemMenu", "HamburgerMenu", "ContextMenu", "CommandLine", "DeveloperToolbar", "SessionRestore"],
+    "labels": ["KeyShortcut", "SystemMenu", "HamburgerMenu", "ContextMenu", "CommandLine", "SessionRestore"],
     "releaseChannelCollection": "opt-out",
     "description": "Records how the user is triggering Developer Tools startup."
   },
@@ -9620,15 +9627,6 @@
     "kind": "count",
     "bug_numbers": [1247985],
     "description": "Number of times the DevTools Eyedropper has been opened via the color picker.",
-    "releaseChannelCollection": "opt-out"
-  },
-  "DEVTOOLS_DEVELOPERTOOLBAR_OPENED_COUNT": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": ["dev-developer-tools@lists.mozilla.org"],
-    "expires_in_version": "never",
-    "kind": "count",
-    "bug_numbers": [1247985],
-    "description": "Number of times the DevTools Developer Toolbar / GCLI has been opened.",
     "releaseChannelCollection": "opt-out"
   },
   "DEVTOOLS_ABOUTDEBUGGING_OPENED_COUNT": {
@@ -9984,17 +9982,6 @@
     "releaseChannelCollection": "opt-out",
     "description": "How long has the responsive view been active (seconds)"
   },
-  "DEVTOOLS_DEVELOPERTOOLBAR_TIME_ACTIVE_SECONDS": {
-    "record_in_processes": ["main", "content"],
-    "expires_in_version": "never",
-    "kind": "exponential",
-    "high": 10000000,
-    "n_buckets": 100,
-    "bug_numbers": [1446496],
-    "alert_emails": ["dev-developer-tools@lists.mozilla.org", "jryans@mozilla.com"],
-    "releaseChannelCollection": "opt-out",
-    "description": "How long has the developer toolbar been active (seconds)"
-  },
   "DEVTOOLS_ABOUTDEBUGGING_TIME_ACTIVE_SECONDS": {
     "record_in_processes": ["main", "content"],
     "expires_in_version": "never",
@@ -10280,15 +10267,6 @@
     "releaseChannelCollection": "opt-out",
     "description": "Records DevTools toolbox host each time the toolbox is opened and when the host is changed (0:Bottom, 1:Side, 2:Window, 3:Custom, 9:Unknown)."
   },
-  "DEVTOOLS_GCLI_COMMANDS_KEYED": {
-    "record_in_processes": ["main", "content"],
-    "bug_numbers": [1347517],
-    "alert_emails": ["dev-developer-tools@lists.mozilla.org"],
-    "expires_in_version": "never",
-    "keyed": true,
-    "kind": "count",
-    "description": "Reports the command name used in GCLI e.g. 'screenshot'"
-  },
   "DEVTOOLS_NUMBER_OF_CSS_GRIDS_IN_A_PAGE": {
     "record_in_processes": ["main", "content"],
     "alert_emails": ["dev-developer-tools@lists.mozilla.org"],
@@ -10536,18 +10514,24 @@
   },
   "NETWORK_CACHE_V2_MISS_TIME_MS": {
     "record_in_processes": ["main", "content"],
+    "alert_emails": ["hbambas@mozilla.com", "mnovotny@mozilla.com", "jduell@mozilla.com"],
     "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 10000,
     "n_buckets": 50,
+    "bug_numbers": [1489524],
     "description": "Time spent to find out a cache entry file is missing"
   },
   "NETWORK_CACHE_V2_HIT_TIME_MS": {
     "record_in_processes": ["main", "content"],
+    "alert_emails": ["hbambas@mozilla.com", "mnovotny@mozilla.com", "jduell@mozilla.com"],
     "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 10000,
     "n_buckets": 50,
+    "bug_numbers": [1489524],
     "description": "Time spent to open an existing file"
   },
   "NETWORK_CACHE_V1_TRUNCATE_TIME_MS": {
@@ -10866,10 +10850,12 @@
   },
   "SSL_CERT_VERIFICATION_ERRORS": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["seceng@mozilla.org"],
-    "expires_in_version": "default",
+    "alert_emails": ["jhofmann@mozilla.com", "rtestard@mozilla.com", "seceng@mozilla.org"],
+    "expires_in_version": "never",
     "kind": "enumerated",
     "n_values": 100,
+    "bug_numbers": [1503572],
+    "releaseChannelCollection": "opt-out",
     "description": "If certificate verification failed in a TLS handshake, what was the error? (see MapCertErrorToProbeValue in security/manager/ssl/SSLServerCertVerification.cpp and the values in security/pkix/include/pkix/Result.h)"
   },
   "SSL_CT_POLICY_COMPLIANCE_OF_EV_CERTS": {
@@ -11110,7 +11096,7 @@
   },
   "WEAVE_LOGIN_FAILED_FOR": {
     "record_in_processes": ["main"],
-    "expires_in_version": "65",
+    "expires_in_version": "68",
     "alert_emails": ["sync-dev@mozilla.org"],
     "kind": "exponential",
     "high": 20000,
@@ -11249,21 +11235,31 @@
     "alert_emails": ["mobile-frontend@mozilla.com"],
     "bug_numbers": [1235061]
   },
+  "COOKIE_BEHAVIOR": {
+    "record_in_processes": ["main"],
+    "expires_in_version": "70",
+    "releaseChannelCollection": "opt-out",
+    "kind": "enumerated",
+    "n_values": 15,
+    "description": "Records the cookie behavior pref at startup.",
+    "alert_emails": ["jhofmann@mozilla.com", "pdol@mozilla.com", "seceng-telemetry@mozilla.com"],
+    "bug_numbers": [1484251]
+  },
   "TRACKING_PROTECTION_ENABLED": {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["main"],
     "expires_in_version": "never",
     "releaseChannelCollection": "opt-out",
     "kind": "boolean",
-    "description": "True if tracking protection is enabled globally at the time that a non-Private-Browsing session is initialized.",
+    "description": "True if tracking protection is enabled globally at startup.",
     "alert_emails": ["pdol@mozilla.com", "safebrowsing-telemetry@mozilla.org"],
     "bug_numbers": [1058133]
   },
   "TRACKING_PROTECTION_PBM_DISABLED": {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["main"],
     "expires_in_version": "never",
     "releaseChannelCollection": "opt-out",
     "kind": "boolean",
-    "description": "True if tracking protection in Private Browsing mode is disabled at the time that a non-Private-Browsing session is initialized.",
+    "description": "True if tracking protection in Private Browsing mode is disabled at startup.",
     "alert_emails": ["pdol@mozilla.com", "safebrowsing-telemetry@mozilla.org"],
     "bug_numbers": [1200944]
   },
@@ -11291,9 +11287,10 @@
     "expires_in_version": "never",
     "kind": "enumerated",
     "n_values": 3,
-    "description": "A value of 0 is sent when the security UI changes on pages loaded outside of Private Browsing mode, a value of 1 is sent when users manually disable TP on that page, and 2 is sent when users manually re-enable TP on that page.",
+    "description": "(Fennec Only) A value of 0 is sent when the security UI changes on pages loaded outside of Private Browsing mode, a value of 1 is sent when users manually disable TP on that page, and 2 is sent when users manually re-enable TP on that page.",
     "alert_emails": ["safebrowsing-telemetry@mozilla.org"],
-    "bug_numbers": [1058133]
+    "bug_numbers": [1058133],
+    "products": ["fennec"]
   },
   "SERVICE_WORKER_LAUNCH_TIME": {
     "record_in_processes": ["main", "content"],
@@ -12849,8 +12846,8 @@
   },
   "STORAGE_SYNC_GET_OPS_SIZE": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["eglassercamp@mozilla.com"],
-    "expires_in_version": "64",
+    "alert_emails": ["addons-dev-internal@mozilla.com", "eglassercamp@mozilla.com", "lgreco@mozilla.com"],
+    "expires_in_version": "67",
     "bug_numbers": [1328974],
     "kind": "exponential",
     "high": 100000,
@@ -12861,8 +12858,8 @@
   },
   "STORAGE_SYNC_SET_OPS_SIZE": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["eglassercamp@mozilla.com"],
-    "expires_in_version": "64",
+    "alert_emails": ["addons-dev-internal@mozilla.com", "eglassercamp@mozilla.com", "lgreco@mozilla.com"],
+    "expires_in_version": "67",
     "bug_numbers": [1328974],
     "kind": "exponential",
     "high": 100000,
@@ -12873,8 +12870,8 @@
   },
   "STORAGE_SYNC_REMOVE_OPS": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["eglassercamp@mozilla.com"],
-    "expires_in_version": "64",
+    "alert_emails": ["addons-dev-internal@mozilla.com", "eglassercamp@mozilla.com", "lgreco@mozilla.com"],
+    "expires_in_version": "67",
     "bug_numbers": [1328974],
     "kind": "count",
     "keyed": true,
@@ -12959,9 +12956,10 @@
   },
   "TIME_TO_FIRST_INTERACTION_MS": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["hkirschner@mozilla.com"],
-    "bug_numbers": [1332511],
-    "expires_in_version": "58",
+    "alert_emails": ["hkirschner@mozilla.com", "vchin@mozilla.com", "sphilp@mozilla.com", "dstrohmeier@mozilla.com"],
+    "bug_numbers": [1332511, 1489524],
+    "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 50000,
     "n_buckets": 100,
@@ -12969,9 +12967,10 @@
   },
   "CONTENT_PAINT_TIME": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["gfx-telemetry-alerts@mozilla.com", "mwoodrow@mozilla.com"],
-    "bug_numbers": [1309442],
-    "expires_in_version": "66",
+    "alert_emails": ["gfx-telemetry-alerts@mozilla.com", "mwoodrow@mozilla.com", "dbolter@mozilla.com"],
+    "bug_numbers": [1309442, 1489524],
+    "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 1000,
     "n_buckets": 50,
@@ -12986,6 +12985,16 @@
     "high": 5000,
     "n_buckets": 50,
     "description": "The time, in percentage of a vsync interval, spent from beginning a paint in the content process until that frame is presented in the compositor."
+  },
+  "CONTENT_FRAME_TIME_WITH_SVG": {
+    "record_in_processes": ["main", "gpu"],
+    "alert_emails": ["gfx-telemetry-alerts@mozilla.com", "mwoodrow@mozilla.com"],
+    "bug_numbers": [1483549],
+    "expires_in_version": "66",
+    "kind": "exponential",
+    "high": 5000,
+    "n_buckets": 50,
+    "description": "The time, in percentage of a vsync interval, spent from beginning a paint in the content process until that frame is presented in the compositor, for frames that contained an SVG to be drawn by WebRender"
   },
   "CONTENT_LARGE_PAINT_PHASE_WEIGHT": {
     "record_in_processes": ["main", "content"],
@@ -13046,12 +13055,13 @@
   },
   "TIME_TO_NON_BLANK_PAINT_MS": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["hkirschner@mozilla.com"],
-    "expires_in_version": "60",
+    "alert_emails": ["hkirschner@mozilla.com", "vchin@mozilla.com", "sphilp@mozilla.com", "dstrohmeier@mozilla.com"],
+    "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 100000,
     "n_buckets": 100,
-    "bug_numbers": [1307242],
+    "bug_numbers": [1307242, 1489524],
     "description": "The time between navigation start and the first non-blank paint of a foreground root content document, in milliseconds. This only records documents that were in an active docshell throughout the whole time between navigation start and non-blank paint. The non-blank paint timestamp is taken during display list building and does not include rasterization or compositing of that paint."
   },
   "TIME_TO_NON_BLANK_PAINT_NETOPT_MS": {
@@ -13106,9 +13116,9 @@
     "description": "XMLHttpRequest.responseType set to moz-chunked-arraybuffer"
   },
   "BUSY_TAB_ABANDONED": {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["main"],
     "alert_emails": ["hkirschner@mozilla.com"],
-    "expires_in_version": "65",
+    "expires_in_version": "68",
     "kind": "categorical",
     "bug_numbers": [1307689],
     "description": "Records a value each time a tab that is showing the loading throbber is interrupted. Desktop only.",
@@ -13208,69 +13218,26 @@
     "keyed": true,
     "description": "Measures the number of milliseconds we spend waiting for sync message manager IPC messages to finish sending, keyed by message name. Note: only messages that wait for more than 500 microseconds are included in this probe."
   },
-  "TIMEOUT_EXECUTION_FG_MS":
-  {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": ["farre@mozilla.com"],
-    "bug_numbers": [1355480],
-    "expires_in_version": "61",
-    "kind": "exponential",
-    "high": 1000,
-    "n_buckets": 20,
-    "description": "Time in ms used to execute callbacks from setTimeout/setInterval, when the script belongs to a tab in the foreground and the script is not on the tracking list. Multiple events are aggregated over a 1s interval."
-  },
-  "TIMEOUT_EXECUTION_FG_TRACKING_MS":
-  {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": ["farre@mozilla.com"],
-    "bug_numbers": [1355480],
-    "expires_in_version": "61",
-    "kind": "exponential",
-    "high": 1000,
-    "n_buckets": 20,
-    "description": "Time in ms used to execute callbacks from setTimeout/setInterval, when the script belongs to a tab in the foreground and the script is on the tracking list. Multiple events are aggregated over a 1s interval."
-  },
-  "TIMEOUT_EXECUTION_BG_MS":
-  {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": ["farre@mozilla.com"],
-    "bug_numbers": [1355480],
-    "expires_in_version": "61",
-    "kind": "exponential",
-    "high": 1000,
-    "n_buckets": 20,
-    "description": "Time in ms used to execute callbacks from setTimeout/setInterval, when the script belongs to a tab in the background and the script is not on the tracking list. Multiple events are aggregated over a 1s interval."
-  },
-  "TIMEOUT_EXECUTION_BG_TRACKING_MS":
-  {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": ["farre@mozilla.com"],
-    "bug_numbers": [1355480],
-    "expires_in_version": "61",
-    "kind": "exponential",
-    "low": 1,
-    "high": 1000,
-    "n_buckets": 10,
-    "description": "Time in ms used to execute callbacks from setTimeout/setInterval, when the script belongs to a tab in the background and the script is on the tracking list. Multiple events are aggregated over a 1s interval."
-  },
   "TIME_TO_DOM_LOADING_MS": {
     "record_in_processes": ["content"],
-    "alert_emails": ["wpan@mozilla.com"],
-    "expires_in_version": "60",
+    "alert_emails": ["hbambas@mozilla.com", "vgosu@mozilla.com", "jduell@mozilla.com"],
+    "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 50000,
     "n_buckets": 100,
-    "bug_numbers": [1344893],
+    "bug_numbers": [1344893, 1489524],
     "description": "Time in milliseconds from navigationStart to domLoading."
   },
   "TIME_TO_DOM_INTERACTIVE_MS": {
     "record_in_processes": ["content"],
-    "alert_emails": ["wpan@mozilla.com"],
-    "expires_in_version": "60",
+    "alert_emails": ["hbambas@mozilla.com", "vgosu@mozilla.com", "jduell@mozilla.com"],
+    "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 50000,
     "n_buckets": 100,
-    "bug_numbers": [1344893],
+    "bug_numbers": [1344893, 1489524],
     "description": "Time in milliseconds from navigationStart to domInteractive."
   },
   "TIME_TO_DOM_CONTENT_LOADED_START_MS": {
@@ -13305,22 +13272,24 @@
   },
   "TIME_TO_DOM_CONTENT_LOADED_END_MS": {
     "record_in_processes": ["content"],
-    "alert_emails": ["wpan@mozilla.com"],
-    "expires_in_version": "60",
+    "alert_emails": ["hkirschner@mozilla.com", "vchin@mozilla.com", "sphilp@mozilla.com", "dstrohmeier@mozilla.com"],
+    "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 50000,
     "n_buckets": 100,
-    "bug_numbers": [1344893],
+    "bug_numbers": [1344893, 1489524],
     "description": "Time in milliseconds from navigationStart to domContentLoadedEventEnd."
   },
   "TIME_TO_DOM_COMPLETE_MS": {
     "record_in_processes": ["content"],
-    "alert_emails": ["wpan@mozilla.com"],
-    "expires_in_version": "60",
+    "alert_emails": ["hbambas@mozilla.com", "vgosu@mozilla.com", "jduell@mozilla.com"],
+    "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 50000,
     "n_buckets": 100,
-    "bug_numbers": [1344893],
+    "bug_numbers": [1344893, 1489524],
     "description": "Time in milliseconds from navigationStart to domComplete."
   },
   "TIME_TO_LOAD_EVENT_START_MS": {
@@ -13355,22 +13324,24 @@
   },
   "TIME_TO_LOAD_EVENT_END_MS": {
     "record_in_processes": ["content"],
-    "alert_emails": ["wpan@mozilla.com"],
-    "expires_in_version": "60",
+    "alert_emails": ["hkirschner@mozilla.com", "vchin@mozilla.com", "sphilp@mozilla.com", "dstrohmeier@mozilla.com"],
+    "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 50000,
     "n_buckets": 100,
-    "bug_numbers": [1344893],
+    "bug_numbers": [1344893, 1489524],
     "description": "Time in milliseconds from navigationStart to loadEventEnd."
   },
   "TIME_TO_RESPONSE_START_MS": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["wpan@mozilla.com"],
-    "expires_in_version": "60",
+    "alert_emails": ["hkirschner@mozilla.com", "vchin@mozilla.com", "sphilp@mozilla.com", "dstrohmeier@mozilla.com"],
+    "expires_in_version": "never",
+    "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 50000,
     "n_buckets": 100,
-    "bug_numbers": [1344893],
+    "bug_numbers": [1344893, 1489524],
     "description": "Time in milliseconds from navigationStart to responseStart."
   },
   "INPUT_EVENT_HANDLED_MOUSE_UP_MS": {
@@ -13524,14 +13495,26 @@
   },
   "WEBEXT_BACKGROUND_PAGE_LOAD_MS": {
     "record_in_processes": ["main"],
-    "alert_emails": ["addons-dev-internal@mozilla.com"],
-    "bug_numbers": [1353172],
-    "expires_in_version": "67",
+    "alert_emails": ["addons-dev-internal@mozilla.com", "ddurst@mozilla.com", "ckarlof@mozilla.com"],
+    "bug_numbers": [1353172, 1489524],
+    "expires_in_version": "never",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 60000,
     "n_buckets": 100,
     "description": "The amount of time it takes to load a WebExtensions background page, from when the build function is called to when the page has finished processing the onload event."
+  },
+  "WEBEXT_BACKGROUND_PAGE_LOAD_MS_BY_ADDONID": {
+    "record_in_processes": ["main"],
+    "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
+    "bug_numbers": [1483002],
+    "expires_in_version": "67",
+    "kind": "exponential",
+    "releaseChannelCollection": "opt-out",
+    "high": 60000,
+    "n_buckets": 100,
+    "description": "The amount of time it takes to load a WebExtensions background page, from when the build function is called to when the page has finished processing the onload event, keyed by addon id.",
+    "keyed": true
   },
   "WEBEXT_BROWSERACTION_POPUP_OPEN_MS": {
     "record_in_processes": ["main"],
@@ -13544,6 +13527,18 @@
     "n_buckets": 100,
     "description": "The amount of time it takes for a BrowserAction popup to open."
   },
+  "WEBEXT_BROWSERACTION_POPUP_OPEN_MS_BY_ADDONID": {
+    "record_in_processes": ["main"],
+    "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
+    "bug_numbers": [1483002],
+    "expires_in_version": "67",
+    "kind": "exponential",
+    "releaseChannelCollection": "opt-out",
+    "high": 50000,
+    "n_buckets": 100,
+    "description": "The amount of time it takes for a BrowserAction popup to open, keyed by addon id.",
+    "keyed": true
+  },
   "WEBEXT_BROWSERACTION_POPUP_PRELOAD_RESULT_COUNT": {
     "record_in_processes": ["main"],
     "alert_emails": ["addons-dev-internal@mozilla.com"],
@@ -13554,27 +13549,62 @@
     "releaseChannelCollection": "opt-out",
     "description": "The number of times a browserAction popup is preloaded and results in one of the categories."
   },
+  "WEBEXT_BROWSERACTION_POPUP_PRELOAD_RESULT_COUNT_BY_ADDONID": {
+    "record_in_processes": ["main"],
+    "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
+    "bug_numbers": [1483002],
+    "expires_in_version": "67",
+    "kind": "categorical",
+    "labels": ["popupShown", "clearAfterHover", "clearAfterMousedown"],
+    "releaseChannelCollection": "opt-out",
+    "description": "The number of times a browserAction popup is preloaded and results in one of the categories, keyed by addon id.",
+    "keyed": true
+  },
   "WEBEXT_CONTENT_SCRIPT_INJECTION_MS": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["addons-dev-internal@mozilla.com"],
-    "bug_numbers": [1356323],
-    "expires_in_version": "67",
+    "alert_emails": ["addons-dev-internal@mozilla.com", "ddurst@mozilla.com", "ckarlof@mozilla.com"],
+    "bug_numbers": [1356323, 1489524],
+    "expires_in_version": "never",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
     "n_buckets": 100,
     "description": "The amount of time it takes for content scripts from a WebExtension to be injected into a window."
   },
-  "WEBEXT_EXTENSION_STARTUP_MS": {
-    "record_in_processes": ["main"],
-    "alert_emails": ["addons-dev-internal@mozilla.com"],
-    "bug_numbers": [1353171],
+  "WEBEXT_CONTENT_SCRIPT_INJECTION_MS_BY_ADDONID": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
+    "bug_numbers": [1483002],
     "expires_in_version": "67",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
     "n_buckets": 100,
+    "description": "The amount of time it takes for content scripts from a WebExtension to be injected into a window, keyed by addon id.",
+    "keyed": true
+  },
+  "WEBEXT_EXTENSION_STARTUP_MS": {
+    "record_in_processes": ["main"],
+    "alert_emails": ["addons-dev-internal@mozilla.com", "ddurst@mozilla.com", "ckarlof@mozilla.com"],
+    "bug_numbers": [1353171, 1489524],
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "releaseChannelCollection": "opt-out",
+    "high": 50000,
+    "n_buckets": 100,
     "description": "The amount of time it takes for a WebExtension to start up, from when the startup function is called to when the startup promise resolves."
+  },
+   "WEBEXT_EXTENSION_STARTUP_MS_BY_ADDONID": {
+    "record_in_processes": ["main"],
+     "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
+    "bug_numbers": [1483002],
+    "expires_in_version": "67",
+    "kind": "exponential",
+    "releaseChannelCollection": "opt-out",
+    "high": 50000,
+    "n_buckets": 100,
+    "description": "The amount of time it takes for a WebExtension to start up, from when the startup function is called to when the startup promise resolves, keyed by addon id.",
+    "keyed": true
   },
   "WEBEXT_PAGEACTION_POPUP_OPEN_MS": {
     "record_in_processes": ["main"],
@@ -13587,6 +13617,18 @@
     "n_buckets": 100,
     "description": "The amount of time it takes for a PageAction popup to open."
   },
+  "WEBEXT_PAGEACTION_POPUP_OPEN_MS_BY_ADDONID": {
+    "record_in_processes": ["main"],
+    "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
+    "bug_numbers": [1483002],
+    "expires_in_version": "67",
+    "kind": "exponential",
+    "releaseChannelCollection": "opt-out",
+    "high": 50000,
+    "n_buckets": 100,
+    "description": "The amount of time it takes for a PageAction popup to open, keyed by addon id.",
+    "keyed": true
+  },
   "WEBEXT_STORAGE_LOCAL_GET_MS": {
     "record_in_processes": ["main", "content"],
     "alert_emails": ["addons-dev-internal@mozilla.com"],
@@ -13597,6 +13639,18 @@
     "high": 50000,
     "n_buckets": 100,
     "description": "The amount of time it takes to perform a get via storage.local using the JSONFile backend."
+  },
+  "WEBEXT_STORAGE_LOCAL_GET_MS_BY_ADDONID": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
+    "bug_numbers": [1483002],
+    "expires_in_version": "67",
+    "kind": "exponential",
+    "releaseChannelCollection": "opt-out",
+    "high": 50000,
+    "n_buckets": 100,
+    "description": "The amount of time it takes to perform a get via storage.local using the JSONFile backend, keyed by addon id.",
+    "keyed": true
   },
   "WEBEXT_STORAGE_LOCAL_SET_MS": {
     "record_in_processes": ["main", "content"],
@@ -13609,6 +13663,18 @@
     "n_buckets": 100,
     "description": "The amount of time it takes to perform a set via storage.local using the JSONFile backend."
   },
+  "WEBEXT_STORAGE_LOCAL_SET_MS_BY_ADDONID": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
+    "bug_numbers": [1483002],
+    "expires_in_version": "67",
+    "kind": "exponential",
+    "releaseChannelCollection": "opt-out",
+    "high": 50000,
+    "n_buckets": 100,
+    "description": "The amount of time it takes to perform a set via storage.local using the JSONFile backend, keyed by addon id.",
+    "keyed": true
+  },
   "WEBEXT_STORAGE_LOCAL_IDB_GET_MS": {
     "record_in_processes": ["main", "content"],
     "alert_emails": ["addons-dev-internal@mozilla.com"],
@@ -13619,6 +13685,18 @@
     "high": 50000,
     "n_buckets": 100,
     "description": "The amount of time it takes to perform a get via storage.local using the IndexedDB backend."
+  },
+  "WEBEXT_STORAGE_LOCAL_IDB_GET_MS_BY_ADDONID": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
+    "bug_numbers": [1483002],
+    "expires_in_version": "67",
+    "kind": "exponential",
+    "releaseChannelCollection": "opt-out",
+    "high": 50000,
+    "n_buckets": 100,
+    "description": "The amount of time it takes to perform a get via storage.local using the IndexedDB backend, keyed by addon id.",
+    "keyed": true
   },
   "WEBEXT_STORAGE_LOCAL_IDB_SET_MS": {
     "record_in_processes": ["main", "content"],
@@ -13631,6 +13709,18 @@
     "n_buckets": 100,
     "description": "The amount of time it takes to perform a set via storage.local using the IndexedDB backend."
   },
+  "WEBEXT_STORAGE_LOCAL_IDB_SET_MS_BY_ADDONID": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
+    "bug_numbers": [1483002],
+    "expires_in_version": "67",
+    "kind": "exponential",
+    "releaseChannelCollection": "opt-out",
+    "high": 50000,
+    "n_buckets": 100,
+    "description": "The amount of time it takes to perform a set via storage.local using the IndexedDB backend, keyed by addon id.",
+    "keyed": true
+  },
   "WEBEXT_STORAGE_LOCAL_IDB_MIGRATE_RESULT_COUNT": {
     "record_in_processes": ["main"],
     "bug_numbers": [1465129],
@@ -13640,6 +13730,29 @@
     "labels": ["success", "failure"],
     "releaseChannelCollection": "opt-out",
     "description": "The number of times a storage.local backend data migration has been completed and results in one of the categories."
+  },
+  "WEBEXT_USER_SCRIPT_INJECTION_MS": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
+    "bug_numbers": [1470466],
+    "expires_in_version": "67",
+    "kind": "exponential",
+    "releaseChannelCollection": "opt-out",
+    "high": 50000,
+    "n_buckets": 100,
+    "description": "The amount of time it takes for userScripts from a WebExtension to be injected into a window."
+  },
+  "WEBEXT_USER_SCRIPT_INJECTION_MS_BY_ADDONID": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
+    "bug_numbers": [1470466],
+    "expires_in_version": "67",
+    "kind": "exponential",
+    "releaseChannelCollection": "opt-out",
+    "high": 50000,
+    "n_buckets": 100,
+    "description": "The amount of time it takes for userScripts from a WebExtension to be injected into a window, keyed by addon id.",
+    "keyed": true
   },
   "EXTENSION_UPDATE_TYPE": {
     "record_in_processes": ["main"],
@@ -13892,8 +14005,8 @@
   "PERMISSION_REQUEST_ORIGIN_SCHEME": {
     "record_in_processes": ["main"],
     "alert_emails": ["jhofmann@mozilla.com"],
-    "bug_numbers": [1286118],
-    "expires_in_version": "64",
+    "bug_numbers": [1345077, 1494589],
+    "expires_in_version": "70",
     "kind": "enumerated",
     "n_values": 10,
     "keyed": true,
@@ -13902,8 +14015,8 @@
   "PERMISSION_REQUEST_THIRD_PARTY_ORIGIN": {
     "record_in_processes": ["main"],
     "alert_emails": ["jhofmann@mozilla.com"],
-    "bug_numbers": [1286118],
-    "expires_in_version": "64",
+    "bug_numbers": [1345077, 1494589],
+    "expires_in_version": "70",
     "kind": "boolean",
     "keyed": true,
     "description": "Permission requests (showing a permission prompt) by whether they come from a third party origin."
@@ -13911,8 +14024,8 @@
   "PERMISSION_REQUEST_HANDLING_USER_INPUT": {
     "record_in_processes": ["main"],
     "alert_emails": ["jhofmann@mozilla.com"],
-    "bug_numbers": [1286118],
-    "expires_in_version": "64",
+    "bug_numbers": [1345077, 1494589],
+    "expires_in_version": "70",
     "kind": "boolean",
     "keyed": true,
     "description": "Permission requests (showing a permission prompt) by whether they were requested from code handling a user input event."
@@ -14009,7 +14122,7 @@
   },
   "HIDDEN_VIEWPORT_OVERFLOW_TYPE": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["xquan@mozilla.com", "botond@mozilla.com"],
+    "alert_emails": ["mozilla-telemetry@upsuper.org", "botond@mozilla.com"],
     "bug_numbers": [1423013, 1423017],
     "expires_in_version": "65",
     "kind": "categorical",
@@ -14061,5 +14174,32 @@
     "bug_numbers": [1482259],
     "description": "In order to know how many silent audio track in the web comparing to other normal media, we record the silence proportion of audio track of media element. The range of value is from 0% - 100%.",
     "releaseChannelCollection": "opt-out"
+  },
+  "WEB_AUDIO_BECOMES_AUDIBLE_TIME": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": [
+      "alwu@mozilla.com",
+      "cpearce@mozilla.com",
+      "nohlmeier@mozilla.com",
+      "padenot@mozilla.com"
+    ],
+    "expires_in_version": "69",
+    "kind": "linear",
+    "high": 60,
+    "n_buckets": 10,
+    "bug_numbers": [1490074],
+    "description": "How long the AudioContext would become audible since it was created, time unit is seconds.",
+    "releaseChannelCollection": "opt-out"
+  },
+  "QM_REPOSITORIES_INITIALIZATION_TIME": {
+    "record_in_processes": ["main"],
+    "expires_in_version": "68",
+    "bug_numbers": [1481716],
+    "kind": "exponential",
+    "high": 30000,
+    "n_buckets": 30,
+    "releaseChannelCollection": "opt-out",
+    "alert_emails": ["ttung@mozilla.com"],
+    "description": "Time (ms) for the QuotaManager to initialize repositories."
   }
 }

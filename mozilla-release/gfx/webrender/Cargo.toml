@@ -20,19 +20,19 @@ serialize_program = ["serde"]
 
 [dependencies]
 app_units = "0.7"
-base64 = { optional = true, version = "0.6" }
+base64 = { optional = true, version = "0.9" }
 bincode = "1.0"
 bitflags = "1.0"
 byteorder = "1.0"
 cfg-if = "0.1.2"
 euclid = "0.19"
 fxhash = "0.2.1"
-gleam = "0.6"
+gleam = "0.6.3"
 image = { optional = true, version = "0.19" }
 lazy_static = "1"
 log = "0.4"
 num-traits = "0.2"
-plane-split = "0.12.1"
+plane-split = "0.13.2"
 png = { optional = true, version = "0.12" }
 rayon = "1"
 ron = { optional = true, version = "0.1.7" }
@@ -46,20 +46,24 @@ ws = { optional = true, version = "0.7.3" }
 
 [dependencies.pathfinder_font_renderer]
 git = "https://github.com/pcwalton/pathfinder"
+branch = "webrender"
 optional = true
 # Uncomment to test FreeType on macOS:
 # features = ["freetype"]
 
 [dependencies.pathfinder_gfx_utils]
 git = "https://github.com/pcwalton/pathfinder"
+branch = "webrender"
 optional = true
 
 [dependencies.pathfinder_partitioner]
 git = "https://github.com/pcwalton/pathfinder"
+branch = "webrender"
 optional = true
 
 [dependencies.pathfinder_path_utils]
 git = "https://github.com/pcwalton/pathfinder"
+branch = "webrender"
 optional = true
 
 [dev-dependencies]
@@ -69,9 +73,9 @@ mozangle = "0.1"
 freetype = { version = "0.4", default-features = false }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-dwrote = "0.4.1"
+dwrote = "0.5.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.6"
-core-graphics = "0.16"
-core-text = { version = "11", default-features = false }
+core-graphics = "0.17.1"
+core-text = { version = "13", default-features = false }

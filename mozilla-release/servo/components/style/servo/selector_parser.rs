@@ -137,7 +137,9 @@ impl PseudoElement {
 
     /// Whether this is an unknown ::-webkit- pseudo-element.
     #[inline]
-    pub fn is_unknown_webkit_pseudo_element(&self) -> bool { false }
+    pub fn is_unknown_webkit_pseudo_element(&self) -> bool {
+        false
+    }
 
     /// Whether this pseudo-element is the ::before pseudo.
     #[inline]
@@ -216,43 +218,6 @@ impl PseudoElement {
             PseudoElement::ServoAnonymousBlock |
             PseudoElement::ServoInlineBlockWrapper |
             PseudoElement::ServoInlineAbsolute => PseudoElementCascadeType::Precomputed,
-        }
-    }
-
-    /// For most (but not all) anon-boxes, we inherit all values from the
-    /// parent, this is the hook in the style system to allow this.
-    ///
-    /// FIXME(emilio): It's likely that this is broken in a variety of
-    /// situations, and what it really wants is just inherit some reset
-    /// properties...  Also, I guess it just could do all: inherit on the
-    /// stylesheet, though chances are that'd be kinda slow if we don't cache
-    /// them...
-    pub fn inherits_all(&self) -> bool {
-        match *self {
-            PseudoElement::After |
-            PseudoElement::Before |
-            PseudoElement::Selection |
-            PseudoElement::DetailsContent |
-            PseudoElement::DetailsSummary |
-            // Anonymous table flows shouldn't inherit their parents properties in order
-            // to avoid doubling up styles such as transformations.
-            PseudoElement::ServoAnonymousTableCell |
-            PseudoElement::ServoAnonymousTableRow |
-            PseudoElement::ServoText |
-            PseudoElement::ServoInputText => false,
-
-            // For tables, we do want style to inherit, because TableWrapper is
-            // responsible for handling clipping and scrolling, while Table is
-            // responsible for creating stacking contexts.
-            //
-            // StackingContextCollectionFlags makes sure this is processed
-            // properly.
-            PseudoElement::ServoAnonymousTable |
-            PseudoElement::ServoAnonymousTableWrapper |
-            PseudoElement::ServoTableWrapper |
-            PseudoElement::ServoAnonymousBlock |
-            PseudoElement::ServoInlineBlockWrapper |
-            PseudoElement::ServoInlineAbsolute => true,
         }
     }
 
@@ -583,7 +548,7 @@ impl<'a, 'i> ::selectors::Parser<'i> for SelectorParser<'a> {
                 }
                 ServoInlineBlockWrapper
             },
-            "-servo-input-absolute" => {
+            "-servo-inline-absolute" => {
                 if !self.in_user_agent_stylesheet() {
                     return Err(location.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(name.clone())))
                 }
@@ -766,7 +731,8 @@ impl ServoElementSnapshot {
         operation: &AttrSelectorOperation<&String>,
     ) -> bool {
         match *ns {
-            NamespaceConstraint::Specific(ref ns) => self.get_attr(ns, local_name)
+            NamespaceConstraint::Specific(ref ns) => self
+                .get_attr(ns, local_name)
                 .map_or(false, |value| value.eval_selector(operation)),
             NamespaceConstraint::Any => {
                 self.any_attr_ignore_ns(local_name, |value| value.eval_selector(operation))

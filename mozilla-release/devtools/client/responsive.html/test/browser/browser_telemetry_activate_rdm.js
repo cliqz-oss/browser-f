@@ -13,8 +13,8 @@ const DATA = [
     value: null,
     extra: {
       host: "none",
-      width: "1300"
-    }
+      width: "1300",
+    },
   }, {
     timestamp: null,
     category: "devtools.main",
@@ -23,8 +23,8 @@ const DATA = [
     value: null,
     extra: {
       host: "none",
-      width: "1300"
-    }
+      width: "1300",
+    },
   }, {
     timestamp: null,
     category: "devtools.main",
@@ -33,8 +33,8 @@ const DATA = [
     value: null,
     extra: {
       host: "bottom",
-      width: "1300"
-    }
+      width: "1300",
+    },
   }, {
     timestamp: null,
     category: "devtools.main",
@@ -43,9 +43,9 @@ const DATA = [
     value: null,
     extra: {
       host: "bottom",
-      width: "1300"
-    }
-  }
+      width: "1300",
+    },
+  },
 ];
 
 add_task(async function() {
@@ -57,7 +57,7 @@ add_task(async function() {
   ok(!snapshot.parent, "No events have been logged for the main process");
 
   const tab = await addTab(URL);
-  const target = TargetFactory.forTab(tab);
+  const target = await TargetFactory.forTab(tab);
 
   await openCloseRDM(tab);
   await gDevTools.showToolbox(target, "inspector");

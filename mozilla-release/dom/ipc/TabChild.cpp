@@ -26,6 +26,7 @@
 #include "mozilla/dom/MessageManagerBinding.h"
 #include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/dom/PaymentRequestChild.h"
+#include "mozilla/gfx/CrossProcessPaint.h"
 #include "mozilla/IMEStateManager.h"
 #include "mozilla/ipc/URIUtils.h"
 #include "mozilla/layers/APZChild.h"
@@ -720,22 +721,6 @@ TabChild::SetStatus(uint32_t aStatusType, const char16_t* aStatus)
 }
 
 NS_IMETHODIMP
-TabChild::GetWebBrowser(nsIWebBrowser** aWebBrowser)
-{
-  NS_WARNING("TabChild::GetWebBrowser not supported in TabChild");
-
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP
-TabChild::SetWebBrowser(nsIWebBrowser* aWebBrowser)
-{
-  NS_WARNING("TabChild::SetWebBrowser not supported in TabChild");
-
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP
 TabChild::GetChromeFlags(uint32_t* aChromeFlags)
 {
   *aChromeFlags = mChromeFlags;
@@ -746,14 +731,6 @@ NS_IMETHODIMP
 TabChild::SetChromeFlags(uint32_t aChromeFlags)
 {
   NS_WARNING("trying to SetChromeFlags from content process?");
-
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP
-TabChild::DestroyBrowserWindow()
-{
-  NS_WARNING("TabChild::DestroyBrowserWindow not supported in TabChild");
 
   return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -815,14 +792,6 @@ TabChild::RemoteDropLinks(uint32_t aLinksCount,
 }
 
 NS_IMETHODIMP
-TabChild::SizeBrowserTo(int32_t aWidth, int32_t aHeight)
-{
-  NS_WARNING("TabChild::SizeBrowserTo not supported in TabChild");
-
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP
 TabChild::ShowAsModal()
 {
   NS_WARNING("TabChild::ShowAsModal not supported in TabChild");
@@ -835,14 +804,6 @@ TabChild::IsWindowModal(bool* aRetVal)
 {
   *aRetVal = false;
   return NS_OK;
-}
-
-NS_IMETHODIMP
-TabChild::ExitModalEventLoop(nsresult aStatus)
-{
-  NS_WARNING("TabChild::ExitModalEventLoop not supported in TabChild");
-
-  return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 NS_IMETHODIMP
@@ -1157,7 +1118,7 @@ TabChild::RecvLoadURL(const nsCString& aURI,
   }
 
   nsresult rv =
-    WebNavigation()->LoadURI(NS_ConvertUTF8toUTF16(aURI).get(),
+    WebNavigation()->LoadURI(NS_ConvertUTF8toUTF16(aURI),
                              nsIWebNavigation::LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP |
                              nsIWebNavigation::LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL,
                              nullptr, nullptr, nullptr, nsContentUtils::GetSystemPrincipal());
@@ -1265,10 +1226,10 @@ TabChild::RecvShow(const ScreenIntSize& aSize,
   }
 
   // We have now done enough initialization for the record/replay system to
-  // create checkpoints. Try to create the initial checkpoint now, in case this
-  // process never paints later on (the usual place where checkpoints occur).
+  // create checkpoints. Create a checkpoint now, in case this process never
+  // paints later on (the usual place where checkpoints occur).
   if (recordreplay::IsRecordingOrReplaying()) {
-    recordreplay::child::MaybeCreateInitialCheckpoint();
+    recordreplay::child::CreateCheckpoint();
   }
 
   return IPC_OK();
@@ -1618,12 +1579,8 @@ TabChild::RecvRealMouseMoveEvent(const WidgetMouseEvent& aEvent,
                                  const uint64_t& aInputBlockId)
 {
   if (mCoalesceMouseMoveEvents && mCoalescedMouseEventFlusher) {
-    CoalescedMouseData* data = nullptr;
-    mCoalescedMouseData.Get(aEvent.pointerId, &data);
-    if (!data) {
-      data = new CoalescedMouseData();
-      mCoalescedMouseData.Put(aEvent.pointerId, data);
-    }
+    CoalescedMouseData* data = mCoalescedMouseData.LookupOrAdd(aEvent.pointerId);
+    MOZ_ASSERT(data);
     if (data->CanCoalesce(aEvent, aGuid, aInputBlockId)) {
       data->Coalesce(aEvent, aGuid, aInputBlockId);
       mCoalescedMouseEventFlusher->StartObserver();
@@ -1632,7 +1589,6 @@ TabChild::RecvRealMouseMoveEvent(const WidgetMouseEvent& aEvent,
     // Can't coalesce current mousemove event. Put the coalesced mousemove data
     // with the same pointer id to mToBeDispatchedMouseData, coalesce the
     // current one, and process all pending data in mToBeDispatchedMouseData.
-    MOZ_ASSERT(data);
     UniquePtr<CoalescedMouseData> dispatchData =
       MakeUnique<CoalescedMouseData>();
 
@@ -2713,6 +2669,31 @@ TabChild::RecvRenderLayers(const bool& aEnabled, const bool& aForceRepaint, cons
 }
 
 mozilla::ipc::IPCResult
+TabChild::RecvRequestRootPaint(const IntRect& aRect, const float& aScale, const nscolor& aBackgroundColor, RequestRootPaintResolver&& aResolve)
+{
+  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(WebNavigation());
+  if (!docShell) {
+    return IPC_OK();
+  }
+
+  aResolve(gfx::PaintFragment::Record(docShell, aRect, aScale, aBackgroundColor));
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+TabChild::RecvRequestSubPaint(const float& aScale, const nscolor& aBackgroundColor, RequestSubPaintResolver&& aResolve)
+{
+  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(WebNavigation());
+  if (!docShell) {
+    return IPC_OK();
+  }
+
+  gfx::IntRect rect = gfx::RoundedIn(gfx::Rect(0.0f, 0.0f, mUnscaledInnerSize.width, mUnscaledInnerSize.height));
+  aResolve(gfx::PaintFragment::Record(docShell, rect, aScale, aBackgroundColor));
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
 TabChild::RecvNavigateByKey(const bool& aForward, const bool& aForDocumentNavigation)
 {
   nsIFocusManager* fm = nsFocusManager::GetFocusManager();
@@ -3211,6 +3192,25 @@ TabChild::InvalidateLayers()
 }
 
 void
+TabChild::SchedulePaint()
+{
+  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(WebNavigation());
+  if (!docShell) {
+    return;
+  }
+
+  // We don't use TabChildBase::GetPresShell() here because that would create
+  // a content viewer if one doesn't exist yet. Creating a content viewer can
+  // cause JS to run, which we want to avoid. nsIDocShell::GetPresShell
+  // returns null if no content viewer exists yet.
+  if (nsCOMPtr<nsIPresShell> presShell = docShell->GetPresShell()) {
+    if (nsIFrame* root = presShell->GetRootFrame()) {
+      root->SchedulePaint();
+    }
+  }
+}
+
+void
 TabChild::ReinitRendering()
 {
   MOZ_ASSERT(mLayersId.IsValid());
@@ -3379,6 +3379,16 @@ TabChild::RecvSetWindowName(const nsString& aName)
   nsCOMPtr<nsIDocShellTreeItem> item = do_QueryInterface(WebNavigation());
   if (item) {
     item->SetName(aName);
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+TabChild::RecvAllowScriptsToClose()
+{
+  nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(WebNavigation());
+  if (window) {
+    nsGlobalWindowOuter::Cast(window)->AllowScriptsToClose();
   }
   return IPC_OK();
 }

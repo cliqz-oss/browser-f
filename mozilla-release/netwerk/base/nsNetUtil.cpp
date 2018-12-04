@@ -19,6 +19,7 @@
 #include "mozilla/Telemetry.h"
 #include "nsCategoryCache.h"
 #include "nsContentUtils.h"
+#include "nsFileStreams.h"
 #include "nsHashKeys.h"
 #include "nsHttp.h"
 #include "nsIAsyncStreamCopier.h"
@@ -43,7 +44,7 @@
 #include "nsINode.h"
 #include "nsIObjectLoadingContent.h"
 #include "nsIOfflineCacheUpdate.h"
-#include "nsIPersistentProperties2.h"
+#include "nsPersistentProperties.h"
 #include "nsIPrivateBrowsingChannel.h"
 #include "nsIPropertyBag2.h"
 #include "nsIProtocolProxyService.h"
@@ -1513,13 +1514,10 @@ NS_NewLocalFileStream(nsIFileStream **result,
                       int32_t         perm          /* = -1 */,
                       int32_t         behaviorFlags /* = 0 */)
 {
-    nsresult rv;
-    nsCOMPtr<nsIFileStream> stream =
-        do_CreateInstance(NS_LOCALFILESTREAM_CONTRACTID, &rv);
+    nsCOMPtr<nsIFileStream> stream = new nsFileStream();
+    nsresult rv = stream->Init(file, ioFlags, perm, behaviorFlags);
     if (NS_SUCCEEDED(rv)) {
-        rv = stream->Init(file, ioFlags, perm, behaviorFlags);
-        if (NS_SUCCEEDED(rv))
-            stream.forget(result);
+        stream.forget(result);
     }
     return rv;
 }
@@ -2031,9 +2029,7 @@ NS_LoadPersistentPropertiesFromURISpec(nsIPersistentProperties **outResult,
     rv = channel->Open2(getter_AddRefs(in));
     NS_ENSURE_SUCCESS(rv, rv);
 
-    nsCOMPtr<nsIPersistentProperties> properties =
-      do_CreateInstance(NS_PERSISTENTPROPERTIES_CONTRACTID, &rv);
-    NS_ENSURE_SUCCESS(rv, rv);
+    nsCOMPtr<nsIPersistentProperties> properties = new nsPersistentProperties();
     rv = properties->Load(in);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2993,7 +2989,7 @@ NS_ShouldSecureUpgrade(nsIURI* aURI,
         nsAutoCString scheme;
         aURI->GetScheme(scheme);
         // append the additional 's' for security to the scheme :-)
-        scheme.AppendASCII("s");
+        scheme.AppendLiteral("s");
         NS_ConvertUTF8toUTF16 reportSpec(aURI->GetSpecOrDefault());
         NS_ConvertUTF8toUTF16 reportScheme(scheme);
 

@@ -17,8 +17,8 @@ NS_IMPL_NS_NEW_HTML_ELEMENT(BR)
 namespace mozilla {
 namespace dom {
 
-HTMLBRElement::HTMLBRElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-  : nsGenericHTMLElement(aNodeInfo)
+HTMLBRElement::HTMLBRElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
+  : nsGenericHTMLElement(std::move(aNodeInfo))
 {
 }
 
@@ -67,7 +67,7 @@ NS_IMETHODIMP_(bool)
 HTMLBRElement::IsAttributeMapped(const nsAtom* aAttribute) const
 {
   static const MappedAttributeEntry attributes[] = {
-    { &nsGkAtoms::clear },
+    { nsGkAtoms::clear },
     { nullptr }
   };
 

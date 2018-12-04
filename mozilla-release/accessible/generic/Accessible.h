@@ -555,7 +555,7 @@ public:
   /**
    * Scroll the accessible into view.
    */
-  void ScrollTo(uint32_t aHow) const;
+  virtual void ScrollTo(uint32_t aHow) const;
 
   /**
    * Scroll the accessible to the given point.
@@ -1195,7 +1195,6 @@ private:
   Accessible() = delete;
   Accessible(const Accessible&) = delete;
   Accessible& operator =(const Accessible&) = delete;
-
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(Accessible,

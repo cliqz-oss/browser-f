@@ -20,6 +20,7 @@
 <!ENTITY aboutPrivateBrowsing.info.saved.after2          ":">
 <!ENTITY aboutPrivateBrowsing.info.downloads   "Downloads">
 <!ENTITY aboutPrivateBrowsing.info.bookmarks   "Lesezeichen">
+<!ENTITY aboutPrivateBrowsing.info.clipboard             "Kopierten Text">
 <!ENTITY aboutPrivateBrowsing.note.before                "Privates Surfen ">
 <!ENTITY aboutPrivateBrowsing.note.emphasize             "anonymisiert Sie nicht">
 <!ENTITY aboutPrivateBrowsing.note.after                 " im Internet. Ihr Arbeitgeber oder Ihr Internetanbieter können weiterhin verfolgen, welche Seiten Sie besuchen.">
@@ -29,6 +30,7 @@
 
 <!ENTITY trackingProtection.title              "Schutz vor Aktivitätenverfolgung">
 <!ENTITY trackingProtection.description2                 "Einige Websites verwenden Seiteninhalte, um Ihre Aktivitäten durch das ganze Internet zu verfolgen. Beim Schutz vor Aktivitätenverfolgung blockiert Firefox viele dieser verfolgenden Seiteninhalte, welche Informationen über Ihre Internetaktivitäten aufzeichnen könnten.">
+
 <!ENTITY trackingProtection.startTour1         "Wie es funktioniert">
 
 <!ENTITY contentBlocking.title                           "Blockieren von Seitenelementen">

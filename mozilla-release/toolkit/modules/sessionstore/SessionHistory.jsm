@@ -81,18 +81,15 @@ var SessionHistoryInternal = {
     let skippedCount = 0, entryCount = 0;
 
     if (history && history.count > 0) {
-      // Loop over the transactions so we can get the persist property for each
-      // one.
       let shistory = history.legacySHistory.QueryInterface(Ci.nsISHistory);
       let count = shistory.count;
       for ( ; entryCount < count; entryCount++) {
-        let txn = shistory.GetTransactionAtIndex(entryCount);
+        let shEntry = shistory.getEntryAtIndex(entryCount);
         if (entryCount <= aFromIdx) {
           skippedCount++;
           continue;
         }
-        let entry = this.serializeEntry(txn.sHEntry);
-        entry.persist = txn.persist;
+        let entry = this.serializeEntry(shEntry);
         data.entries.push(entry);
       }
 
@@ -252,6 +249,8 @@ var SessionHistoryInternal = {
       }
     }
 
+    entry.persist = shEntry.persist;
+
     return entry;
   },
 
@@ -315,7 +314,7 @@ var SessionHistoryInternal = {
     // Select the right history entry.
     let index = tabData.index - 1;
     if (index < history.count && history.index != index) {
-      history.getEntryAtIndex(index, true);
+      history.index = index;
     }
     return history;
   },
@@ -336,19 +335,19 @@ var SessionHistoryInternal = {
     var shEntry = Cc["@mozilla.org/browser/session-history-entry;1"].
                   createInstance(Ci.nsISHEntry);
 
-    shEntry.setURI(Utils.makeURI(entry.url));
-    shEntry.setTitle(entry.title || entry.url);
+    shEntry.URI = Services.io.newURI(entry.url);
+    shEntry.title = entry.title || entry.url;
     if (entry.subframe)
-      shEntry.setIsSubFrame(entry.subframe || false);
-    shEntry.setAsHistoryLoad();
+      shEntry.isSubFrame = entry.subframe || false;
+    shEntry.setLoadTypeAsHistory();
     if (entry.contentType)
       shEntry.contentType = entry.contentType;
     if (entry.referrer) {
-      shEntry.referrerURI = Utils.makeURI(entry.referrer);
+      shEntry.referrerURI = Services.io.newURI(entry.referrer);
       shEntry.referrerPolicy = entry.referrerPolicy;
     }
     if (entry.originalURI) {
-      shEntry.originalURI = Utils.makeURI(entry.originalURI);
+      shEntry.originalURI = Services.io.newURI(entry.originalURI);
     }
     if (typeof entry.resultPrincipalURI === "undefined" && entry.loadReplace) {
       // This is backward compatibility code for stored sessions saved prior to
@@ -357,7 +356,7 @@ var SessionHistoryInternal = {
       // was set.
       shEntry.resultPrincipalURI = shEntry.URI;
     } else if (entry.resultPrincipalURI) {
-      shEntry.resultPrincipalURI = Utils.makeURI(entry.resultPrincipalURI);
+      shEntry.resultPrincipalURI = Services.io.newURI(entry.resultPrincipalURI);
     }
     if (entry.loadReplace2) {
       shEntry.loadReplace = entry.loadReplace2;
@@ -365,7 +364,7 @@ var SessionHistoryInternal = {
     if (entry.isSrcdocEntry)
       shEntry.srcdocData = entry.srcdocData;
     if (entry.baseURI)
-      shEntry.baseURI = Utils.makeURI(entry.baseURI);
+      shEntry.baseURI = Services.io.newURI(entry.baseURI);
 
     if (entry.cacheKey) {
       shEntry.cacheKey = entry.cacheKey;

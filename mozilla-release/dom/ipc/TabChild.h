@@ -540,6 +540,7 @@ public:
 
   void ClearCachedResources();
   void InvalidateLayers();
+  void SchedulePaint();
   void ReinitRendering();
   void ReinitRenderingForDeviceReset();
 
@@ -723,6 +724,10 @@ protected:
 
   virtual mozilla::ipc::IPCResult RecvRenderLayers(const bool& aEnabled, const bool& aForce, const layers::LayersObserverEpoch& aEpoch) override;
 
+  virtual mozilla::ipc::IPCResult RecvRequestRootPaint(const IntRect& aRect, const float& aScale, const nscolor& aBackgroundColor, RequestRootPaintResolver&& aResolve) override;
+
+  virtual mozilla::ipc::IPCResult RecvRequestSubPaint(const float& aScale, const nscolor& aBackgroundColor, RequestSubPaintResolver&& aResolve) override;
+
   virtual mozilla::ipc::IPCResult RecvNavigateByKey(const bool& aForward,
                                                     const bool& aForDocumentNavigation) override;
 
@@ -740,6 +745,8 @@ protected:
   virtual mozilla::ipc::IPCResult RecvAwaitLargeAlloc() override;
 
   virtual mozilla::ipc::IPCResult RecvSetWindowName(const nsString& aName) override;
+
+  virtual mozilla::ipc::IPCResult RecvAllowScriptsToClose() override;
 
   virtual mozilla::ipc::IPCResult RecvSetOriginAttributes(const OriginAttributes& aOriginAttributes) override;
 

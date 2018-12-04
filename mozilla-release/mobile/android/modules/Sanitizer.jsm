@@ -6,10 +6,10 @@
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Integration.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   Accounts: "resource://gre/modules/Accounts.jsm",
-  DownloadIntegration: "resource://gre/modules/DownloadIntegration.jsm",
   Downloads: "resource://gre/modules/Downloads.jsm",
   EventDispatcher: "resource://gre/modules/Messaging.jsm",
   FormHistory: "resource://gre/modules/FormHistory.jsm",
@@ -23,6 +23,10 @@ XPCOMUtils.defineLazyModuleGetters(this, {
 XPCOMUtils.defineLazyServiceGetters(this, {
   quotaManagerService: ["@mozilla.org/dom/quota-manager-service;1", "nsIQuotaManagerService"],
 });
+
+/* global DownloadIntegration */
+Integration.downloads.defineModuleGetter(this, "DownloadIntegration",
+            "resource://gre/modules/DownloadIntegration.jsm");
 
 
 var EXPORTED_SYMBOLS = ["Sanitizer"];
@@ -102,7 +106,7 @@ Sanitizer.prototype = {
 
       get canClear() {
         return true;
-      }
+      },
     },
 
     // Compared to desktop, we don't clear plugin data, as plugins
@@ -130,7 +134,7 @@ Sanitizer.prototype = {
 
       get canClear() {
         return true;
-      }
+      },
     },
 
     // Same as desktop Firefox.
@@ -170,7 +174,7 @@ Sanitizer.prototype = {
 
       get canClear() {
         return true;
-      }
+      },
     },
 
     // Same as desktop Firefox.
@@ -216,7 +220,7 @@ Sanitizer.prototype = {
 
       get canClear() {
           return true;
-      }
+      },
     },
 
     // History on Android is implemented by the Java frontend and requires
@@ -245,7 +249,7 @@ Sanitizer.prototype = {
         // bug 347231: Always allow clearing history due to dependencies on
         // the browser:purge-session-history notification. (like error console)
         return true;
-      }
+      },
     },
 
     // Equivalent to openWindows on desktop, but specific to Fennec's implementation
@@ -268,7 +272,7 @@ Sanitizer.prototype = {
 
       get canClear() {
         return true;
-      }
+      },
     },
 
     // Specific to Fennec.
@@ -280,7 +284,7 @@ Sanitizer.prototype = {
 
       get canClear() {
         return true;
-      }
+      },
     },
 
     // Browser search is handled by searchHistory above and the find bar doesn't
@@ -295,12 +299,12 @@ Sanitizer.prototype = {
           let time = startTime * 1000;
           FormHistory.update({
             op: "remove",
-            firstUsedStart: time
+            firstUsedStart: time,
           }, {
             handleCompletion() {
               TelemetryStopwatch.finish("FX_SANITIZE_FORMDATA", refObj);
               resolve();
-            }
+            },
           });
         });
       },
@@ -310,10 +314,10 @@ Sanitizer.prototype = {
         let countDone = {
           handleResult: function(aResult) { count = aResult; },
           handleError: function(aError) { Cu.reportError(aError); },
-          handleCompletion: function(aReason) { aCallback(aReason == 0 && count > 0); }
+          handleCompletion: function(aReason) { aCallback(aReason == 0 && count > 0); },
         };
         FormHistory.count({}, countDone);
-      }
+      },
     },
 
     // Adapted from desktop, but heavily modified - see comments below.
@@ -363,7 +367,7 @@ Sanitizer.prototype = {
 
       get canClear() {
         return true;
-      }
+      },
     },
 
     // Specific to Fennec.
@@ -378,7 +382,7 @@ Sanitizer.prototype = {
       get canClear() {
         let count = Services.logins.countLogins("", "", ""); // count all logins
         return (count > 0);
-      }
+      },
     },
 
     // Same as desktop Firefox.
@@ -402,7 +406,7 @@ Sanitizer.prototype = {
 
       get canClear() {
         return true;
-      }
+      },
     },
 
     // Specific to Fennec.
@@ -418,10 +422,10 @@ Sanitizer.prototype = {
             Cu.reportError("Java-side synced tabs clearing failed: " + err);
             aCallback(false);
           });
-      }
-    }
+      },
+    },
 
-  }
+  },
 };
 
 var Sanitizer = new Sanitizer();

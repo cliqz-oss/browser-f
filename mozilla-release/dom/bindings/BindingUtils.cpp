@@ -52,7 +52,9 @@
 #include "mozilla/dom/HTMLEmbedElementBinding.h"
 #include "mozilla/dom/XULElementBinding.h"
 #include "mozilla/dom/XULFrameElementBinding.h"
+#include "mozilla/dom/XULMenuElementBinding.h"
 #include "mozilla/dom/XULPopupElementBinding.h"
+#include "mozilla/dom/XULTextElementBinding.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/ResolveSystemBinding.h"
 #include "mozilla/dom/WebIDLGlobalNameHash.h"
@@ -1147,10 +1149,13 @@ NativeInterface2JSObjectAndThrowIfFailed(JSContext* aCx,
 }
 
 bool
-TryPreserveWrapper(JSObject* obj)
+TryPreserveWrapper(JS::Handle<JSObject*> obj)
 {
   MOZ_ASSERT(IsDOMObject(obj));
 
+  // nsISupports objects are special cased because DOM proxies are nsISupports
+  // and have addProperty hooks that do more than wrapper preservation (so we
+  // don't want to call them).
   if (nsISupports* native = UnwrapDOMObjectToISupports(obj)) {
     nsWrapperCache* cache = nullptr;
     CallQueryInterface(native, &cache);
@@ -1160,11 +1165,25 @@ TryPreserveWrapper(JSObject* obj)
     return true;
   }
 
-  // If this DOMClass is not cycle collected, then it isn't wrappercached,
-  // so it does not need to be preserved. If it is cycle collected, then
-  // we can't tell if it is wrappercached or not, so we just return false.
+  // The addProperty hook for WebIDL classes does wrapper preservation, and
+  // nothing else, so call it, if present.
   const DOMJSClass* domClass = GetDOMClass(obj);
-  return domClass && !domClass->mParticipant;
+  const JSClass* clasp = domClass->ToJSClass();
+  JSAddPropertyOp addProperty = clasp->getAddProperty();
+
+  // We expect all proxies to be nsISupports.
+  MOZ_RELEASE_ASSERT(!js::Valueify(clasp)->isProxy(), "Should not call addProperty for proxies.");
+
+  // The class should have an addProperty hook iff it is a CC participant.
+  MOZ_RELEASE_ASSERT(bool(domClass->mParticipant) == bool(addProperty));
+
+  if (!addProperty) {
+    return true;
+  }
+
+  JS::Rooted<jsid> dummyId(RootingCx());
+  JS::Rooted<JS::Value> dummyValue(RootingCx());
+  return addProperty(nullptr, obj, dummyId, dummyValue);
 }
 
 // Can only be called with a DOM JSClass.
@@ -3377,9 +3396,19 @@ bool
 CreateGlobalOptionsWithXPConnect::PostCreateGlobal(JSContext* aCx,
                                                    JS::Handle<JSObject*> aGlobal)
 {
+  JSPrincipals* principals =
+    JS::GetRealmPrincipals(js::GetNonCCWObjectRealm(aGlobal));
+  nsIPrincipal* principal = nsJSPrincipals::get(principals);
+
+  // We create the SiteIdentifier here instead of in the XPCWrappedNativeScope
+  // constructor because this is fallible.
+  SiteIdentifier site;
+  nsresult rv = BasePrincipal::Cast(principal)->GetSiteIdentifier(site);
+  NS_ENSURE_SUCCESS(rv, false);
+
   // Invoking the XPCWrappedNativeScope constructor automatically hooks it
-  // up to the compartment of aGlobal.
-  (void) new XPCWrappedNativeScope(aCx, aGlobal);
+  // up to the realm of aGlobal.
+  (void) new XPCWrappedNativeScope(aCx, aGlobal, site);
   return true;
 }
 
@@ -3842,15 +3871,21 @@ HTMLConstructor(JSContext* aCx, unsigned aArgc, JS::Value* aVp,
 
   constructorGetterCallback cb = nullptr;
   if (ns == kNameSpaceID_XUL) {
-    if (definition->mLocalName == nsGkAtoms::menupopup ||
-        definition->mLocalName == nsGkAtoms::popup ||
-        definition->mLocalName == nsGkAtoms::panel ||
-        definition->mLocalName == nsGkAtoms::tooltip) {
+    if (definition->mLocalName == nsGkAtoms::description ||
+        definition->mLocalName == nsGkAtoms::label) {
+      cb = XULTextElement_Binding::GetConstructorObject;
+    } else if (definition->mLocalName == nsGkAtoms::menupopup ||
+               definition->mLocalName == nsGkAtoms::popup ||
+               definition->mLocalName == nsGkAtoms::panel ||
+               definition->mLocalName == nsGkAtoms::tooltip) {
       cb = XULPopupElement_Binding::GetConstructorObject;
     } else if (definition->mLocalName == nsGkAtoms::iframe ||
                 definition->mLocalName == nsGkAtoms::browser ||
                 definition->mLocalName == nsGkAtoms::editor) {
       cb = XULFrameElement_Binding::GetConstructorObject;
+    } else if (definition->mLocalName == nsGkAtoms::menu ||
+               definition->mLocalName == nsGkAtoms::menulist) {
+      cb = XULMenuElement_Binding::GetConstructorObject;
     } else if (definition->mLocalName == nsGkAtoms::scrollbox) {
       cb = XULScrollElement_Binding::GetConstructorObject;
     } else {

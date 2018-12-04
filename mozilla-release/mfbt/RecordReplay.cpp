@@ -9,6 +9,7 @@
 #include "js/GCAnnotations.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Casting.h"
+#include "mozilla/Utf8.h"
 
 #include <stdlib.h>
 
@@ -47,12 +48,11 @@ namespace recordreplay {
   Macro(InternalEndPassThroughThreadEvents, (), ())             \
   Macro(InternalBeginDisallowThreadEvents, (), ())              \
   Macro(InternalEndDisallowThreadEvents, (), ())                \
-  Macro(InternalBeginCaptureEventStacks, (), ())                \
-  Macro(InternalEndCaptureEventStacks, (), ())                  \
   Macro(InternalRecordReplayBytes,                              \
         (void* aData, size_t aSize), (aData, aSize))            \
   Macro(NotifyUnrecordedWait,                                   \
-        (const std::function<void()>& aCallback), (aCallback))  \
+        (const std::function<void()>& aCallback, bool aOnlyWhenDiverged), \
+        (aCallback, aOnlyWhenDiverged))                         \
   Macro(MaybeWaitForCheckpointSave, (), ())                     \
   Macro(InternalInvalidateRecording, (const char* aWhy), (aWhy)) \
   Macro(InternalDestroyPLDHashTableCallbacks,                   \
@@ -78,7 +78,10 @@ namespace recordreplay {
   Macro(BeginContentParse,                                      \
         (const void* aToken, const char* aURL, const char* aContentType), \
         (aToken, aURL, aContentType))                           \
-  Macro(AddContentParseData,                                    \
+  Macro(AddContentParseData8,                                   \
+        (const void* aToken, const mozilla::Utf8Unit* aUtf8Buffer, size_t aLength), \
+        (aToken, aUtf8Buffer, aLength))                         \
+  Macro(AddContentParseData16,                                  \
         (const void* aToken, const char16_t* aBuffer, size_t aLength), \
         (aToken, aBuffer, aLength))                             \
   Macro(EndContentParse, (const void* aToken), (aToken))

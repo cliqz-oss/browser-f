@@ -5,7 +5,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "gc/Marking.h"
-#include "jit/Disassembler.h"
 #include "jit/JitRealm.h"
 #if defined(JS_CODEGEN_X86)
 # include "jit/x86/MacroAssembler-x86.h"
@@ -28,15 +27,17 @@ using namespace js::jit;
 void
 AssemblerX86Shared::copyJumpRelocationTable(uint8_t* dest)
 {
-    if (jumpRelocations_.length())
+    if (jumpRelocations_.length()) {
         memcpy(dest, jumpRelocations_.buffer(), jumpRelocations_.length());
+    }
 }
 
 void
 AssemblerX86Shared::copyDataRelocationTable(uint8_t* dest)
 {
-    if (dataRelocations_.length())
+    if (dataRelocations_.length()) {
         memcpy(dest, dataRelocations_.buffer(), dataRelocations_.length());
+    }
 }
 
 /* static */ void
@@ -69,8 +70,9 @@ AssemblerX86Shared::TraceDataRelocations(JSTracer* trc, JitCode* code, CompactBu
         gc::Cell* cell = static_cast<gc::Cell*>(data);
         MOZ_ASSERT(gc::IsCellPointerValid(cell));
         TraceManuallyBarrieredGenericPointerEdge(trc, &cell, "jit-masm-ptr");
-        if (cell != data)
+        if (cell != data) {
             X86Encoding::SetPointer(src, cell);
+        }
     }
 }
 
@@ -86,19 +88,23 @@ AssemblerX86Shared::executableCopy(void* buffer)
     size_t len = size();
 
     for (size_t i = 0; i < len; i += MinPoisoned) {
-        if (bytes[i] != 0xE5)
+        if (bytes[i] != 0xE5) {
             continue;
+        }
 
         size_t startOffset = i;
-        while (startOffset > 0 && bytes[startOffset - 1] == 0xE5)
+        while (startOffset > 0 && bytes[startOffset - 1] == 0xE5) {
             startOffset--;
+        }
 
         size_t endOffset = i;
-        while (endOffset + 1 < len && bytes[endOffset + 1] == 0xE5)
+        while (endOffset + 1 < len && bytes[endOffset + 1] == 0xE5) {
             endOffset++;
+        }
 
-        if (endOffset - startOffset < MinPoisoned)
+        if (endOffset - startOffset < MinPoisoned) {
             continue;
+        }
 
         volatile uintptr_t dump[5];
         blackbox = dump;
@@ -226,18 +232,6 @@ AssemblerX86Shared::InvertCondition(DoubleCondition cond)
     }
 }
 
-void
-AssemblerX86Shared::verifyHeapAccessDisassembly(uint32_t begin, uint32_t end,
-                                                const Disassembler::HeapAccess& heapAccess)
-{
-#ifdef DEBUG
-    if (masm.oom())
-        return;
-    unsigned char* code = masm.data();
-    Disassembler::VerifyHeapAccess(code + begin, code + end, heapAccess);
-#endif
-}
-
 CPUInfo::SSEVersion CPUInfo::maxSSEVersion = UnknownSSE;
 CPUInfo::SSEVersion CPUInfo::maxEnabledSSEVersion = UnknownSSE;
 bool CPUInfo::avxPresent = false;
@@ -326,8 +320,9 @@ CPUInfo::SetSSEVersion()
     else if (flagsEDX & SSEBit)   maxSSEVersion = SSE;
     else                          maxSSEVersion = NoSSE;
 
-    if (maxEnabledSSEVersion != UnknownSSE)
+    if (maxEnabledSSEVersion != UnknownSSE) {
         maxSSEVersion = Min(maxSSEVersion, maxEnabledSSEVersion);
+    }
 
     static const int AVXBit = 1 << 28;
     static const int XSAVEBit = 1 << 27;

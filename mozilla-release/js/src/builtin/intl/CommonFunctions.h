@@ -66,11 +66,15 @@ StringsAreEqual(const char* s1, const char* s2)
 static inline const char*
 IcuLocale(const char* locale)
 {
-    if (StringsAreEqual(locale, "und"))
+    if (StringsAreEqual(locale, "und")) {
         return ""; // ICU root locale
+    }
 
     return locale;
 }
+
+extern UniqueChars
+EncodeLocale(JSContext* cx, JSString* locale);
 
 // Starting with ICU 59, UChar defaults to char16_t.
 static_assert(mozilla::IsSame<UChar, char16_t>::value,
@@ -91,8 +95,9 @@ CallICU(JSContext* cx, const ICUStringFunction& strFn, Vector<char16_t, InlineCa
     int32_t size = strFn(chars.begin(), chars.length(), &status);
     if (status == U_BUFFER_OVERFLOW_ERROR) {
         MOZ_ASSERT(size >= 0);
-        if (!chars.resize(size_t(size)))
+        if (!chars.resize(size_t(size))) {
             return -1;
+        }
         status = U_ZERO_ERROR;
         strFn(chars.begin(), size, &status);
     }
@@ -113,8 +118,9 @@ CallICU(JSContext* cx, const ICUStringFunction& strFn)
     MOZ_ALWAYS_TRUE(chars.resize(INITIAL_CHAR_BUFFER_SIZE));
 
     int32_t size = CallICU(cx, strFn, chars);
-    if (size < 0)
+    if (size < 0) {
         return nullptr;
+    }
 
     return NewStringCopyN<CanGC>(cx, chars.begin(), size_t(size));
 }
@@ -131,8 +137,9 @@ using GetAvailable = const char* (*)(int32_t localeIndex);
  * returns the corresponding locale as a borrowed string.  For example:
  *
  *   RootedValue v(cx);
- *   if (!GetAvailableLocales(cx, unum_countAvailable, unum_getAvailable, &v))
+ *   if (!GetAvailableLocales(cx, unum_countAvailable, unum_getAvailable, &v)) {
  *       return false;
+ *   }
  */
 extern bool
 GetAvailableLocales(JSContext* cx, CountAvailable countAvailable, GetAvailable getAvailable,

@@ -1,6 +1,5 @@
 import json
 import os
-import socket
 import threading
 import traceback
 import urlparse
@@ -20,7 +19,8 @@ from .base import (CallbackHandler,
                    WebDriverProtocol,
                    extra_timeout,
                    strip_server)
-from .protocol import (AssertsProtocolPart,
+from .protocol import (ActionSequenceProtocolPart,
+                       AssertsProtocolPart,
                        BaseProtocolPart,
                        TestharnessProtocolPart,
                        PrefsProtocolPart,
@@ -85,7 +85,7 @@ class MarionetteBaseProtocolPart(BaseProtocolPart):
         if socket_timeout:
             try:
                 self.marionette.timeout.script = socket_timeout / 2
-            except (socket.error, IOError):
+            except IOError:
                 self.logger.debug("Socket closed")
                 return
 
@@ -98,7 +98,7 @@ class MarionetteBaseProtocolPart(BaseProtocolPart):
             except errors.ScriptTimeoutException:
                 self.logger.debug("Script timed out")
                 pass
-            except (socket.timeout, IOError):
+            except IOError:
                 self.logger.debug("Socket closed")
                 break
             except Exception as e:
@@ -110,6 +110,8 @@ class MarionetteTestharnessProtocolPart(TestharnessProtocolPart):
     def __init__(self, parent):
         super(MarionetteTestharnessProtocolPart, self).__init__(parent)
         self.runner_handle = None
+        with open(os.path.join(here, "runner.js")) as f:
+            self.runner_script = f.read()
 
     def setup(self):
         self.marionette = self.parent.marionette
@@ -130,8 +132,8 @@ class MarionetteTestharnessProtocolPart(TestharnessProtocolPart):
                 "that your firewall rules or network setup does not "
                 "prevent access.\e%s" % (url, traceback.format_exc(e)))
             raise
-        self.parent.base.execute_script(
-            "document.title = '%s'" % threading.current_thread().name.replace("'", '"'))
+        format_map = {"title": threading.current_thread().name.replace("'", '"')}
+        self.parent.base.execute_script(self.runner_script % format_map)
 
     def close_old_windows(self, url_protocol):
         handles = self.marionette.window_handles
@@ -316,7 +318,7 @@ class MarionetteAssertsProtocolPart(AssertsProtocolPart):
             except errors.NoSuchWindowException:
                 # If the window was already closed
                 self.parent.logger.warning("Failed to get assertion count; window was closed")
-            except (errors.MarionetteException, socket.error):
+            except (errors.MarionetteException, IOError):
                 # This usually happens if the process crashed
                 pass
 
@@ -356,6 +358,16 @@ class MarionetteSendKeysProtocolPart(SendKeysProtocolPart):
 
     def send_keys(self, element, keys):
         return element.send_keys(keys)
+
+
+class MarionetteActionSequenceProtocolPart(ActionSequenceProtocolPart):
+    def setup(self):
+        self.marionette = self.parent.marionette
+
+    def send_actions(self, actions):
+        actions = self.marionette._to_json(actions)
+        self.logger.info(actions)
+        self.marionette._send_message("WebDriver:PerformActions", actions)
 
 
 class MarionetteTestDriverProtocolPart(TestDriverProtocolPart):
@@ -399,7 +411,7 @@ class MarionetteCoverageProtocolPart(CoverageProtocolPart):
                 error = self.marionette.execute_async_script(script)
                 if error is not None:
                     raise Exception('Failure while resetting counters: %s' % json.dumps(error))
-            except (errors.MarionetteException, socket.error):
+            except (errors.MarionetteException, IOError):
                 # This usually happens if the process crashed
                 pass
 
@@ -419,7 +431,7 @@ class MarionetteCoverageProtocolPart(CoverageProtocolPart):
                 error = self.marionette.execute_async_script(script)
                 if error is not None:
                     raise Exception('Failure while dumping counters: %s' % json.dumps(error))
-            except (errors.MarionetteException, socket.error):
+            except (errors.MarionetteException, IOError):
                 # This usually happens if the process crashed
                 pass
 
@@ -432,6 +444,7 @@ class MarionetteProtocol(Protocol):
                   MarionetteSelectorProtocolPart,
                   MarionetteClickProtocolPart,
                   MarionetteSendKeysProtocolPart,
+                  MarionetteActionSequenceProtocolPart,
                   MarionetteTestDriverProtocolPart,
                   MarionetteAssertsProtocolPart,
                   MarionetteCoverageProtocolPart]
@@ -567,7 +580,7 @@ class ExecuteAsyncScriptRun(object):
         except errors.ScriptTimeoutException:
             self.logger.debug("Got a marionette timeout")
             self.result = False, ("EXTERNAL-TIMEOUT", None)
-        except (socket.timeout, IOError):
+        except IOError:
             # This can happen on a crash
             # Also, should check after the test if the firefox process is still running
             # and otherwise ignore any other result and set it to crash

@@ -14,18 +14,28 @@ const events = require("devtools/shared/event-emitter");
 const {
   accessibleSpec,
   accessibleWalkerSpec,
-  accessibilitySpec
+  accessibilitySpec,
 } = require("devtools/shared/specs/accessibility");
 
 const { isXUL } = require("devtools/server/actors/highlighters/utils/markup");
 const { isWindowIncluded } = require("devtools/shared/layout/utils");
 const { CustomHighlighterActor, register } =
   require("devtools/server/actors/highlighters");
+const { getContrastRatioFor } = require("devtools/server/actors/utils/accessibility");
 const PREF_ACCESSIBILITY_FORCE_DISABLED = "accessibility.force_disabled";
 
 const nsIAccessibleEvent = Ci.nsIAccessibleEvent;
 const nsIAccessibleStateChangeEvent = Ci.nsIAccessibleStateChangeEvent;
+const nsIAccessibleRelation = Ci.nsIAccessibleRelation;
 const nsIAccessibleRole = Ci.nsIAccessibleRole;
+
+const RELATIONS_TO_IGNORE = new Set([
+  nsIAccessibleRelation.RELATION_CONTAINING_APPLICATION,
+  nsIAccessibleRelation.RELATION_CONTAINING_TAB_PANE,
+  nsIAccessibleRelation.RELATION_CONTAINING_WINDOW,
+  nsIAccessibleRelation.RELATION_PARENT_WINDOW_OF,
+  nsIAccessibleRelation.RELATION_SUBWINDOW_OF,
+]);
 
 const {
   EVENT_TEXT_CHANGED,
@@ -42,7 +52,7 @@ const {
   EVENT_REORDER,
   EVENT_STATE_CHANGE,
   EVENT_TEXT_ATTRIBUTE_CHANGED,
-  EVENT_VALUE_CHANGE
+  EVENT_VALUE_CHANGE,
 } = nsIAccessibleEvent;
 
 // TODO: We do not need this once bug 1422913 is fixed. We also would not need
@@ -92,7 +102,7 @@ const NAME_FROM_SUBTREE_RULE_ROLES = new Set([
   nsIAccessibleRole.ROLE_TEAR_OFF_MENU_ITEM,
   nsIAccessibleRole.ROLE_TERM,
   nsIAccessibleRole.ROLE_TOGGLE_BUTTON,
-  nsIAccessibleRole.ROLE_TOOLTIP
+  nsIAccessibleRole.ROLE_TOOLTIP,
 ]);
 
 const IS_OSX = Services.appinfo.OS === "Darwin";
@@ -187,7 +197,7 @@ const AccessibleActor = ActorClassWithSpec(accessibleSpec, {
 
         return defunct;
       },
-      configurable: true
+      configurable: true,
     });
   },
 
@@ -311,7 +321,7 @@ const AccessibleActor = ActorClassWithSpec(accessibleSpec, {
     const extState = {};
     this.rawAccessible.getState(state, extState);
     return [
-      ...this.walker.a11yService.getStringStates(state.value, extState.value)
+      ...this.walker.a11yService.getStringStates(state.value, extState.value),
     ];
   },
 
@@ -353,6 +363,57 @@ const AccessibleActor = ActorClassWithSpec(accessibleSpec, {
     return { x, y, w, h };
   },
 
+  async getRelations() {
+    const relationObjects = [];
+    if (this.isDefunct) {
+      return relationObjects;
+    }
+
+    const relations =
+      [...this.rawAccessible.getRelations().enumerate(nsIAccessibleRelation)];
+    if (relations.length === 0) {
+      return relationObjects;
+    }
+
+    const doc = await this.walker.getDocument();
+    relations.forEach(relation => {
+      if (RELATIONS_TO_IGNORE.has(relation.relationType)) {
+        return;
+      }
+
+      const type = this.walker.a11yService.getStringRelationType(relation.relationType);
+      const targets = [...relation.getTargets().enumerate(Ci.nsIAccessible)];
+      let relationObject;
+      for (const target of targets) {
+        // Target of the relation is not part of the current root document.
+        if (target.rootDocument !== doc.rawAccessible) {
+          continue;
+        }
+
+        let targetAcc;
+        try {
+          targetAcc = this.walker.attachAccessible(target, doc);
+        } catch (e) {
+          // Target is not available.
+        }
+
+        if (targetAcc) {
+          if (!relationObject) {
+            relationObject = { type, targets: [] };
+          }
+
+          relationObject.targets.push(targetAcc);
+        }
+      }
+
+      if (relationObject) {
+        relationObjects.push(relationObject);
+      }
+    });
+
+    return relationObjects;
+  },
+
   form() {
     return {
       actor: this.actorID,
@@ -366,9 +427,39 @@ const AccessibleActor = ActorClassWithSpec(accessibleSpec, {
       indexInParent: this.indexInParent,
       states: this.states,
       actions: this.actions,
-      attributes: this.attributes
+      attributes: this.attributes,
     };
-  }
+  },
+
+  _isValidTextLeaf(rawAccessible) {
+    return !isDefunct(rawAccessible) &&
+           rawAccessible.role === nsIAccessibleRole.ROLE_TEXT_LEAF &&
+           rawAccessible.name && rawAccessible.name.trim().length > 0;
+  },
+
+  get _nonEmptyTextLeafs() {
+    return this.children().filter(child => this._isValidTextLeaf(child.rawAccessible));
+  },
+
+  /**
+   * Calculate the contrast ratio of the given accessible.
+   */
+  _getContrastRatio() {
+    return getContrastRatioFor(this._isValidTextLeaf(this.rawAccessible) ?
+      this.rawAccessible.DOMNode.parentNode : this.rawAccessible.DOMNode);
+  },
+
+  /**
+   * Audit the state of the accessible object.
+   *
+   * @return {Object|null}
+   *         Audit results for the accessible object.
+  */
+  get audit() {
+    return this.isDefunct ? null : {
+      contrastRatio: this._getContrastRatio(),
+    };
+  },
 });
 
 /**
@@ -577,6 +668,10 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
     }
     const doc = await this.getDocument();
     const ancestry = [];
+    if (accessible === doc) {
+      return ancestry;
+    }
+
     try {
       let parent = accessible;
       while (parent && (parent = parent.parentAcc) && parent != doc) {
@@ -710,13 +805,14 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
    *         True if highlighter shows the accessible object.
    */
   highlightAccessible(accessible, options = {}) {
-    const { bounds, name, role } = accessible;
+    const { bounds } = accessible;
     if (!bounds) {
       return false;
     }
 
+    const { audit, name, role } = accessible;
     return this.highlighter.show({ rawNode: accessible.rawAccessible.DOMNode },
-                                 { ...options, ...bounds, name, role });
+                                 { ...options, ...bounds, name, role, audit });
   },
 
   /**
@@ -803,15 +899,7 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
     }
 
     if (this._currentAccessible !== accessible) {
-      const { bounds, role, name } = accessible;
-      if (bounds) {
-        this.highlighter.show({ rawNode: event.originalTarget || event.target }, {
-          ...bounds,
-          role,
-          name
-        });
-      }
-
+      this.highlightAccessible(accessible);
       events.emit(this, "picker-accessible-hovered", accessible);
       this._currentAccessible = accessible;
     }
@@ -878,6 +966,29 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
     this.rootWin.focus();
   },
 
+  attachAccessible(rawAccessible, accessibleDocument) {
+    // If raw accessible object is defunct or detached, no need to cache it and
+    // its ancestry.
+    if (!rawAccessible || isDefunct(rawAccessible) || rawAccessible.indexInParent < 0) {
+      return null;
+    }
+
+    const accessible = this.addRef(rawAccessible);
+    // There is a chance that ancestry lookup can fail if the accessible is in
+    // the detached subtree. At that point the root accessible object would be
+    // defunct and accessing it via parent property will throw.
+    try {
+      let parent = accessible;
+      while (parent && parent != accessibleDocument) {
+        parent = parent.parentAcc;
+      }
+    } catch (error) {
+      throw new Error(`Failed to get ancestor for ${accessible}: ${error}`);
+    }
+
+    return accessible;
+  },
+
   /**
    * Find accessible object that corresponds to a DOMNode and attach (lookup its
    * ancestry to the root doc) to the AccessibilityWalker tree.
@@ -898,27 +1009,9 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
       rawAccessible = this.getRawAccessibleFor(target);
       target = target.parentNode;
     }
-    // If raw accessible object is defunct or detached, no need to cache it and
-    // its ancestry.
-    if (!rawAccessible || isDefunct(rawAccessible) || rawAccessible.indexInParent < 0) {
-      return null;
-    }
 
     const doc = await this.getDocument();
-    const accessible = this.addRef(rawAccessible);
-    // There is a chance that ancestry lookup can fail if the accessible is in
-    // the detached subtree. At that point the root accessible object would be
-    // defunct and accessing it via parent property will throw.
-    try {
-      let parent = accessible;
-      while (parent && parent != doc) {
-        parent = parent.parentAcc;
-      }
-    } catch (error) {
-      throw new Error(`Failed to get ancestor for ${accessible}: ${error}`);
-    }
-
-    return accessible;
+    return this.attachAccessible(rawAccessible, doc);
   },
 
   /**
@@ -965,7 +1058,7 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
       this._isPicking = false;
       this._currentAccessible = null;
     }
-  }
+  },
 });
 
 /**
@@ -983,7 +1076,7 @@ const AccessibilityActor = ActorClassWithSpec(accessibilitySpec, {
       this._msgName = `debug:${this.conn.prefix}accessibility`;
       this.conn.setupInParent({
         module: "devtools/server/actors/accessibility-parent",
-        setupParent: "setupParentProcess"
+        setupParent: "setupParentProcess",
       });
 
       this.onMessage = this.onMessage.bind(this);
@@ -1003,7 +1096,7 @@ const AccessibilityActor = ActorClassWithSpec(accessibilitySpec, {
     return this.initializedDeferred.promise.then(() => ({
       enabled: this.enabled,
       canBeEnabled: this.canBeEnabled,
-      canBeDisabled: this.canBeDisabled
+      canBeDisabled: this.canBeDisabled,
     }));
   },
 
@@ -1225,7 +1318,7 @@ const AccessibilityActor = ActorClassWithSpec(accessibilitySpec, {
     this.walker = null;
     this.targetActor = null;
     resolver();
-  }
+  },
 });
 
 exports.AccessibleActor = AccessibleActor;

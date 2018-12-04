@@ -15,6 +15,7 @@
 {
   let c = Object.getOwnPropertyDescriptor(this, "Components");
   if ((!c || !c.value || c.writable) && typeof SpecialPowers === "object")
+    // eslint-disable-next-line no-global-assign
     Components = SpecialPowers.wrap(SpecialPowers.Components);
 }
 
@@ -147,7 +148,7 @@ _Timer.prototype = {
     // undershoots.
     var newDelay = this._delay - elapsed;
     do_timeout(newDelay, this._func);
-  }
+  },
 };
 
 function _do_quit() {
@@ -223,7 +224,7 @@ function do_execute_soon(callback) {
       } finally {
         do_test_finished();
       }
-    }
+    },
   });
 }
 

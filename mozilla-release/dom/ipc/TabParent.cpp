@@ -133,7 +133,6 @@ TabParent::LayerToTabParentTable* TabParent::sLayerToTabParentTable = nullptr;
 NS_IMPL_ISUPPORTS(TabParent,
                   nsITabParent,
                   nsIAuthPromptProvider,
-                  nsISecureBrowserUI,
                   nsISupportsWeakReference)
 
 TabParent::TabParent(nsIContentParent* aManager,
@@ -171,6 +170,7 @@ TabParent::TabParent(nsIContentParent* aManager,
   , mLayerTreeEpoch{1}
   , mPreserveLayers(false)
   , mRenderLayers(true)
+  , mActiveInPriorityManager(false)
   , mHasLayers(false)
   , mHasPresented(false)
   , mHasBeforeUnload(false)
@@ -232,7 +232,7 @@ TabParent::CacheFrameLoader(nsFrameLoader* aFrameLoader)
 already_AddRefed<nsPIDOMWindowOuter>
 TabParent::GetParentWindowOuter()
 {
-  nsCOMPtr<nsIContent> frame = do_QueryInterface(GetOwnerElement());
+  nsCOMPtr<nsIContent> frame = GetOwnerElement();
   if (!frame) {
     return nullptr;
   }
@@ -585,7 +585,7 @@ TabParent::RecvEvent(const RemoteDOMEvent& aEvent)
   RefPtr<Event> event = aEvent.mEvent;
   NS_ENSURE_TRUE(event, IPC_OK());
 
-  nsCOMPtr<mozilla::dom::EventTarget> target = do_QueryInterface(mFrameElement);
+  nsCOMPtr<mozilla::dom::EventTarget> target = mFrameElement;
   NS_ENSURE_TRUE(target, IPC_OK());
 
   event->SetOwner(target);
@@ -878,38 +878,6 @@ TabParent::Deactivate()
   }
 }
 
-NS_IMETHODIMP
-TabParent::Init(mozIDOMWindowProxy *window)
-{
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-TabParent::GetState(uint32_t *aState)
-{
-  NS_ENSURE_ARG(aState);
-  NS_WARNING("SecurityState not valid here");
-  *aState = 0;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-TabParent::GetSecInfo(nsITransportSecurityInfo** _result)
-{
-  NS_ENSURE_ARG_POINTER(_result);
-  NS_WARNING("TransportSecurityInfo not valid here");
-  *_result = nullptr;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-TabParent::SetDocShell(nsIDocShell *aDocShell)
-{
-  NS_ENSURE_ARG(aDocShell);
-  NS_WARNING("No mDocShell member in TabParent so there is no docShell to set");
-  return NS_OK;
-}
-
   a11y::PDocAccessibleParent*
 TabParent::AllocPDocAccessibleParent(PDocAccessibleParent* aParent,
                                      const uint64_t&, const uint32_t&,
@@ -1178,8 +1146,7 @@ TabParent::SendRealMouseEvent(WidgetMouseEvent& aEvent)
 LayoutDeviceToCSSScale
 TabParent::GetLayoutDeviceToCSSScale()
 {
-  nsCOMPtr<nsIContent> content = do_QueryInterface(mFrameElement);
-  nsIDocument* doc = (content ? content->OwnerDoc() : nullptr);
+  nsIDocument* doc = (mFrameElement ? mFrameElement->OwnerDoc() : nullptr);
   nsPresContext* ctx = (doc ? doc->GetPresContext() : nullptr);
   return LayoutDeviceToCSSScale(ctx
     ? (float)ctx->AppUnitsPerDevPixel() / AppUnitsPerCSSPixel()
@@ -2060,8 +2027,7 @@ TabParent::RecvRequestFocus(const bool& aCanRaise)
     return IPC_OK();
   }
 
-  nsCOMPtr<nsIContent> content = do_QueryInterface(mFrameElement);
-  if (!content || !content->OwnerDoc()) {
+  if (!mFrameElement || !mFrameElement->OwnerDoc()) {
     return IPC_OK();
   }
 
@@ -2517,7 +2483,7 @@ TabParent::RecvSetInputContext(
 already_AddRefed<nsIWidget>
 TabParent::GetTopLevelWidget()
 {
-  nsCOMPtr<nsIContent> content = do_QueryInterface(mFrameElement);
+  nsCOMPtr<nsIContent> content = mFrameElement;
   if (content) {
     nsIPresShell* shell = content->OwnerDoc()->GetShell();
     if (shell) {
@@ -2598,7 +2564,7 @@ TabParent::GetAuthPrompt(uint32_t aPromptReason, const nsIID& iid,
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsCOMPtr<nsPIDOMWindowOuter> window;
-  nsCOMPtr<nsIContent> frame = do_QueryInterface(mFrameElement);
+  nsCOMPtr<nsIContent> frame = mFrameElement;
   if (frame)
     window = frame->OwnerDoc()->GetWindow();
 
@@ -2891,10 +2857,6 @@ TabParent::SetDocShellIsActive(bool isActive)
   }
 #endif
 
-  // Let's inform the priority manager. This operation can end up with the
-  // changing of the process priority.
-  ProcessPriorityManager::TabActivityChanged(this, isActive);
-
   // Keep track of how many active recording/replaying tabs there are.
   if (Manager()->AsContentParent()->IsRecordingOrReplaying()) {
     SetIsActiveRecordReplayTab(isActive);
@@ -2913,6 +2875,13 @@ TabParent::GetDocShellIsActive(bool* aIsActive)
 NS_IMETHODIMP
 TabParent::SetRenderLayers(bool aEnabled)
 {
+  if (mActiveInPriorityManager != aEnabled) {
+    mActiveInPriorityManager = aEnabled;
+    // Let's inform the priority manager. This operation can end up with the
+    // changing of the process priority.
+    ProcessPriorityManager::TabActivityChanged(this, aEnabled);
+  }
+
   if (aEnabled == mRenderLayers) {
     if (aEnabled && mHasLayers && mPreserveLayers) {
       // RenderLayers might be called when we've been preserving layers,
@@ -2959,8 +2928,26 @@ TabParent::GetHasLayers(bool* aResult)
 }
 
 NS_IMETHODIMP
+TabParent::Deprioritize()
+{
+  if (mActiveInPriorityManager)   {
+    ProcessPriorityManager::TabActivityChanged(this, false);
+    mActiveInPriorityManager = false;
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 TabParent::ForceRepaint()
 {
+  if (!mActiveInPriorityManager) {
+    // If a tab is left and then returned to very rapidly, it can be
+    // deprioritized without losing its loaded status. In this case we won't
+    // go through SetRenderLayers.
+    mActiveInPriorityManager = true;
+    ProcessPriorityManager::TabActivityChanged(this, true);
+  }
+
   SetRenderLayersInternal(true /* aEnabled */,
                           true /* aForceRepaint */);
   return NS_OK;
@@ -3091,7 +3078,7 @@ TabParent::LayerTreeUpdate(const LayersObserverEpoch& aEpoch, bool aActive)
     return;
   }
 
-  nsCOMPtr<mozilla::dom::EventTarget> target = do_QueryInterface(mFrameElement);
+  nsCOMPtr<mozilla::dom::EventTarget> target = mFrameElement;
   if (!target) {
     NS_WARNING("Could not locate target for layer tree message.");
     return;
@@ -3111,6 +3098,38 @@ TabParent::LayerTreeUpdate(const LayersObserverEpoch& aEpoch, bool aActive)
   mFrameElement->DispatchEvent(*event);
 }
 
+void
+TabParent::RequestRootPaint(gfx::CrossProcessPaint* aPaint, IntRect aRect, float aScale, nscolor aBackgroundColor)
+{
+  auto promise = SendRequestRootPaint(aRect, aScale, aBackgroundColor);
+
+  RefPtr<gfx::CrossProcessPaint> paint(aPaint);
+  TabId tabId(GetTabId());
+  promise->Then(GetMainThreadSerialEventTarget(), __func__,
+                [paint, tabId] (PaintFragment&& aFragment) {
+                  paint->ReceiveFragment(tabId, std::move(aFragment));
+                },
+                [paint, tabId] (ResponseRejectReason aReason) {
+                  paint->LostFragment(tabId);
+                });
+}
+
+void
+TabParent::RequestSubPaint(gfx::CrossProcessPaint* aPaint, float aScale, nscolor aBackgroundColor)
+{
+  auto promise = SendRequestSubPaint(aScale, aBackgroundColor);
+
+  RefPtr<gfx::CrossProcessPaint> paint(aPaint);
+  TabId tabId(GetTabId());
+  promise->Then(GetMainThreadSerialEventTarget(), __func__,
+                [paint, tabId] (PaintFragment&& aFragment) {
+                  paint->ReceiveFragment(tabId, std::move(aFragment));
+                },
+                [paint, tabId] (ResponseRejectReason aReason) {
+                  paint->LostFragment(tabId);
+                });
+}
+
 mozilla::ipc::IPCResult
 TabParent::RecvPaintWhileInterruptingJSNoOp(const LayersObserverEpoch& aEpoch)
 {
@@ -3124,7 +3143,7 @@ TabParent::RecvPaintWhileInterruptingJSNoOp(const LayersObserverEpoch& aEpoch)
 mozilla::ipc::IPCResult
 TabParent::RecvRemotePaintIsReady()
 {
-  nsCOMPtr<mozilla::dom::EventTarget> target = do_QueryInterface(mFrameElement);
+  nsCOMPtr<mozilla::dom::EventTarget> target = mFrameElement;
   if (!target) {
     NS_WARNING("Could not locate target for MozAfterRemotePaint message.");
     return IPC_OK();
@@ -3286,7 +3305,7 @@ public:
   NS_IMETHOD SetUsePrivateBrowsing(bool) NO_IMPL
   NS_IMETHOD SetPrivateBrowsing(bool) NO_IMPL
   NS_IMETHOD GetIsInIsolatedMozBrowserElement(bool*) NO_IMPL
-  NS_IMETHOD GetScriptableOriginAttributes(JS::MutableHandleValue) NO_IMPL
+  NS_IMETHOD GetScriptableOriginAttributes(JSContext*, JS::MutableHandleValue) NO_IMPL
   NS_IMETHOD_(void) GetOriginAttributes(mozilla::OriginAttributes& aAttrs) override {}
   NS_IMETHOD GetUseRemoteTabs(bool*) NO_IMPL
   NS_IMETHOD SetRemoteTabs(bool) NO_IMPL

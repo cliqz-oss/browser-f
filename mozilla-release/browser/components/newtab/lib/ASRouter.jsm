@@ -8,17 +8,21 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 XPCOMUtils.defineLazyGlobalGetters(this, ["fetch"]);
 XPCOMUtils.defineLazyModuleGetters(this, {
   AddonManager: "resource://gre/modules/AddonManager.jsm",
-  UITour: "resource:///modules/UITour.jsm"
+  UITour: "resource:///modules/UITour.jsm",
+  FxAccounts: "resource://gre/modules/FxAccounts.jsm",
 });
-const {ASRouterActions: ra, actionCreators: ac, actionTypes: at} = ChromeUtils.import("resource://activity-stream/common/Actions.jsm", {});
+const {ASRouterActions: ra, actionTypes: at, actionCreators: ac} = ChromeUtils.import("resource://activity-stream/common/Actions.jsm", {});
 const {CFRMessageProvider} = ChromeUtils.import("resource://activity-stream/lib/CFRMessageProvider.jsm", {});
 const {OnboardingMessageProvider} = ChromeUtils.import("resource://activity-stream/lib/OnboardingMessageProvider.jsm", {});
+const {SnippetsTestMessageProvider} = ChromeUtils.import("resource://activity-stream/lib/SnippetsTestMessageProvider.jsm", {});
 const {RemoteSettings} = ChromeUtils.import("resource://services-settings/remote-settings.js", {});
 const {CFRPageActions} = ChromeUtils.import("resource://activity-stream/lib/CFRPageActions.jsm", {});
 
 ChromeUtils.defineModuleGetter(this, "ASRouterPreferences",
   "resource://activity-stream/lib/ASRouterPreferences.jsm");
 ChromeUtils.defineModuleGetter(this, "ASRouterTargeting",
+  "resource://activity-stream/lib/ASRouterTargeting.jsm");
+ChromeUtils.defineModuleGetter(this, "QueryCache",
   "resource://activity-stream/lib/ASRouterTargeting.jsm");
 ChromeUtils.defineModuleGetter(this, "ASRouterTriggerListeners",
   "resource://activity-stream/lib/ASRouterTriggerListeners.jsm");
@@ -30,17 +34,19 @@ const ONE_DAY_IN_MS = 24 * 60 * 60 * 1000;
 // Key is allowed host, value is a name for the endpoint host.
 const DEFAULT_WHITELIST_HOSTS = {
   "activity-stream-icons.services.mozilla.com": "production",
-  "snippets-admin.mozilla.org": "preview"
+  "snippets-admin.mozilla.org": "preview",
 };
-const ONBOARDING_FINISHED_PREF = "browser.onboarding.notification.finished";
 const SNIPPETS_ENDPOINT_WHITELIST = "browser.newtab.activity-stream.asrouter.whitelistHosts";
 // Max possible impressions cap for any message
 const MAX_MESSAGE_LIFETIME_CAP = 100;
 
-const LOCAL_MESSAGE_PROVIDERS = {OnboardingMessageProvider, CFRMessageProvider};
-const STARTPAGE_VERSION = "0.1.0";
+const LOCAL_MESSAGE_PROVIDERS = {OnboardingMessageProvider, CFRMessageProvider, SnippetsTestMessageProvider};
+const STARTPAGE_VERSION = "6";
 
 const MessageLoaderUtils = {
+  STARTPAGE_VERSION,
+  REMOTE_LOADER_CACHE_KEY: "RemoteLoaderCache",
+
   /**
    * _localLoader - Loads messages for a local provider (i.e. one that lives in mozilla central)
    *
@@ -52,26 +58,74 @@ const MessageLoaderUtils = {
     return provider.messages;
   },
 
+  async _remoteLoaderCache(storage) {
+    let allCached;
+    try {
+      allCached = await storage.get(MessageLoaderUtils.REMOTE_LOADER_CACHE_KEY) || {};
+    } catch (e) {
+      // istanbul ignore next
+      Cu.reportError(e);
+      // istanbul ignore next
+      allCached = {};
+    }
+    return allCached;
+  },
+
   /**
    * _remoteLoader - Loads messages for a remote provider
    *
    * @param {obj} provider An AS router provider
    * @param {string} provider.url An endpoint that returns an array of messages as JSON
+   * @param {obj} storage A storage object with get() and set() methods for caching.
    * @returns {Promise} resolves with an array of messages, or an empty array if none could be fetched
    */
-  async _remoteLoader(provider) {
+  async _remoteLoader(provider, storage) {
     let remoteMessages = [];
     if (provider.url) {
+      const allCached = await MessageLoaderUtils._remoteLoaderCache(storage);
+      const cached = allCached[provider.id];
+      let etag;
+
+      if (cached && cached.url === provider.url && cached.version === STARTPAGE_VERSION) {
+        const {lastFetched, messages} = cached;
+        if (!MessageLoaderUtils.shouldProviderUpdate({...provider, lastUpdated: lastFetched})) {
+          // Cached messages haven't expired, return early.
+          return messages;
+        }
+        etag = cached.etag;
+        remoteMessages = messages;
+      }
+
+      let headers = new Headers();
+      if (etag) {
+        headers.set("If-None-Match", etag);
+      }
+
       try {
-        const response = await fetch(provider.url);
+        const response = await fetch(provider.url, {headers});
         if (
           // Empty response
           response.status !== 204 &&
+          // Not modified
+          response.status !== 304 &&
           (response.ok || response.status === 302)
         ) {
           remoteMessages = (await response.json())
             .messages
             .map(msg => ({...msg, provider_url: provider.url}));
+
+          // Cache the results if this isn't a preview URL.
+          if (provider.updateCycleInMs > 0) {
+            etag = response.headers.get("ETag");
+            const cacheInfo = {
+              messages: remoteMessages,
+              etag,
+              lastFetched: Date.now(),
+              version: STARTPAGE_VERSION,
+            };
+
+            storage.set(MessageLoaderUtils.REMOTE_LOADER_CACHE_KEY, {...allCached, [provider.id]: cacheInfo});
+          }
         }
       } catch (e) {
         Cu.reportError(e);
@@ -100,7 +154,7 @@ const MessageLoaderUtils = {
   },
 
   _getRemoteSettingsMessages(bucket) {
-    return RemoteSettings(bucket).get({filters: {locale: Services.locale.getAppLocaleAsLangTag()}});
+    return RemoteSettings(bucket).get({filters: {locale: Services.locale.appLocaleAsLangTag}});
   },
 
   /**
@@ -139,29 +193,59 @@ const MessageLoaderUtils = {
    *
    * @param {obj} provider An AS Router provider
    * @param {string} provider.type An AS Router provider type (defaults to "local")
+   * @param {obj} storage A storage object with get() and set() methods for caching.
    * @returns {obj} Returns an object with .messages (an array of messages) and .lastUpdated (the time the messages were updated)
    */
-  async loadMessagesForProvider(provider) {
+  async loadMessagesForProvider(provider, storage) {
     const loader = this._getMessageLoader(provider);
-    let messages = await loader(provider);
+    let messages = await loader(provider, storage);
     // istanbul ignore if
     if (!messages) {
       messages = [];
       Cu.reportError(new Error(`Tried to load messages for ${provider.id} but the result was not an Array.`));
     }
     const lastUpdated = Date.now();
-    return {messages: messages.map(msg => ({...msg, provider: provider.id})), lastUpdated};
+    return {
+      messages: messages.map(msg => ({weight: 100, ...msg, provider: provider.id}))
+                        .filter(message => message.weight > 0),
+      lastUpdated,
+    };
   },
 
   async installAddonFromURL(browser, url) {
     try {
       const aUri = Services.io.newURI(url);
       const systemPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
-      const install = await AddonManager.getInstallForURL(aUri.spec, "application/x-xpinstall");
+
+      // AddonManager installation source associated to the addons installed from activitystream
+      // (See Bug 1496167 for a rationale).
+      const amTelemetryInfo = {source: "activitystream"};
+      const install = await AddonManager.getInstallForURL(aUri.spec, "application/x-xpinstall", null,
+                                                          null, null, null, null, amTelemetryInfo);
       await AddonManager.installAddonFromWebpage("application/x-xpinstall", browser,
         systemPrincipal, install);
     } catch (e) {}
-  }
+  },
+
+  /**
+   * cleanupCache - Removes cached data of removed providers.
+   *
+   * @param {Array} providers A list of activer AS Router providers
+   */
+  async cleanupCache(providers, storage) {
+    const ids = providers.filter(p => p.type === "remote").map(p => p.id);
+    const cache = await MessageLoaderUtils._remoteLoaderCache(storage);
+    let dirty = false;
+    for (let id in cache) {
+      if (!ids.includes(id)) {
+        delete cache[id];
+        dirty = true;
+      }
+    }
+    if (dirty) {
+      await storage.set(MessageLoaderUtils.REMOTE_LOADER_CACHE_KEY, cache);
+    }
+  },
 };
 
 this.MessageLoaderUtils = MessageLoaderUtils;
@@ -188,7 +272,7 @@ class _ASRouter {
       providerBlockList: [],
       messageImpressions: {},
       providerImpressions: {},
-      messages: []
+      messages: [],
     };
     this._triggerHandler = this._triggerHandler.bind(this);
     this._localProviders = localProviders;
@@ -197,30 +281,9 @@ class _ASRouter {
     this.onPrefChange = this.onPrefChange.bind(this);
   }
 
-  /**
-   * Turns legacy onboarding off or on using the ONBOARDING_FINISHED_PREF.
-   * This is required since ASRouter also shows snippets and onboarding, which
-   * interferes with legacy onboarding.
-   *
-   * Note that when this pref is true, legacy onboarding does NOT show up;
-   * when it is false, iegacy onboarding may show up if the profile age etc.
-   * is appropriate for the user to see it.
-   */
-  overrideOrEnableLegacyOnboarding() {
-    const {allowLegacyOnboarding} = ASRouterPreferences.specialConditions;
-    const onboardingFinished = Services.prefs.getBoolPref(ONBOARDING_FINISHED_PREF, true);
-
-    if (!allowLegacyOnboarding && onboardingFinished === false) {
-      Services.prefs.setBoolPref(ONBOARDING_FINISHED_PREF, true);
-    } else if (allowLegacyOnboarding && onboardingFinished === true) {
-      Services.prefs.setBoolPref(ONBOARDING_FINISHED_PREF, false);
-    }
-  }
-
   // Update message providers and fetch new messages on pref change
   async onPrefChange() {
     this._updateMessageProviders();
-    this.overrideOrEnableLegacyOnboarding();
     await this.loadMessagesFromAllProviders();
     this.dispatchToAS(ac.BroadcastToContent({type: at.AS_ROUTER_PREF_CHANGED, data: ASRouterPreferences.specialConditions}));
   }
@@ -239,10 +302,15 @@ class _ASRouter {
 
   // Fetch and decode the message provider pref JSON, and update the message providers
   _updateMessageProviders() {
+    const previousProviders =  this.state.providers;
     const providers = [
       // If we have added a `preview` provider, hold onto it
-      ...this.state.providers.filter(p => p.id === "preview"),
-      ...ASRouterPreferences.providers.filter(p => p.enabled)
+      ...previousProviders.filter(p => p.id === "preview"),
+      // The provider should be enabled and not have a user preference set to false
+      ...ASRouterPreferences.providers.filter(p => (
+        p.enabled &&
+        ASRouterPreferences.getUserPreference(p.id) !== false)
+      ),
     ].map(_provider => {
       // make a copy so we don't modify the source of the pref
       const provider = {..._provider};
@@ -263,10 +331,18 @@ class _ASRouter {
     });
 
     const providerIDs = providers.map(p => p.id);
+
+    // Clear old messages for providers that are no longer enabled
+    for (const prevProvider of previousProviders) {
+      if (!providerIDs.includes(prevProvider.id)) {
+        this.messageChannel.sendAsyncMessage(OUTGOING_MESSAGE_NAME, {type: "CLEAR_PROVIDER", data: {id: prevProvider.id}});
+      }
+    }
+
     this.setState(prevState => ({
       providers,
       // Clear any messages from removed providers
-      messages: [...prevState.messages.filter(message => providerIDs.includes(message.provider))]
+      messages: [...prevState.messages.filter(message => providerIDs.includes(message.provider))],
     }));
   }
 
@@ -308,7 +384,7 @@ class _ASRouter {
       let newState = {messages: [], providers: []};
       for (const provider of this.state.providers) {
         if (needsUpdate.includes(provider)) {
-          const {messages, lastUpdated} = await MessageLoaderUtils.loadMessagesForProvider(provider);
+          const {messages, lastUpdated} = await MessageLoaderUtils.loadMessagesForProvider(provider, this._storage);
           newState.providers.push({...provider, lastUpdated});
           newState.messages = [...newState.messages, ...messages];
         } else {
@@ -367,10 +443,11 @@ class _ASRouter {
     const providerBlockList = await this._storage.get("providerBlockList") || [];
     const messageImpressions = await this._storage.get("messageImpressions") || {};
     const providerImpressions = await this._storage.get("providerImpressions") || {};
-    await this.setState({messageBlockList, providerBlockList, messageImpressions, providerImpressions});
+    const previousSessionEnd = await this._storage.get("previousSessionEnd") || 0;
+    await this.setState({messageBlockList, providerBlockList, messageImpressions, providerImpressions, previousSessionEnd});
     this._updateMessageProviders();
-    this.overrideOrEnableLegacyOnboarding();
     await this.loadMessagesFromAllProviders();
+    await MessageLoaderUtils.cleanupCache(this.state.providers, storage);
 
     // set necessary state in the rest of AS
     this.dispatchToAS(ac.BroadcastToContent({type: at.AS_ROUTER_INITIALIZED, data: ASRouterPreferences.specialConditions}));
@@ -380,12 +457,12 @@ class _ASRouter {
   }
 
   uninit() {
+    this._storage.set("previousSessionEnd", Date.now());
+
     this.messageChannel.sendAsyncMessage(OUTGOING_MESSAGE_NAME, {type: "CLEAR_ALL"});
     this.messageChannel.removeMessageListener(INCOMING_MESSAGE_NAME, this.onMessage);
     this.messageChannel = null;
     this.dispatchToAS = null;
-
-    this.overrideOrEnableLegacyOnboarding();
 
     ASRouterPreferences.removeListener(this.onPrefChange);
     ASRouterPreferences.uninit();
@@ -414,8 +491,19 @@ class _ASRouter {
 
   _onStateChanged(state) {
     if (ASRouterPreferences.devtoolsEnabled) {
-      this.messageChannel.sendAsyncMessage(OUTGOING_MESSAGE_NAME, {type: "ADMIN_SET_STATE", data: this.state});
+      this._updateAdminState();
     }
+  }
+
+  _updateAdminState(target) {
+    const channel = target || this.messageChannel;
+    channel.sendAsyncMessage(OUTGOING_MESSAGE_NAME, {
+      type: "ADMIN_SET_STATE",
+      data: {
+        ...this.state,
+        providerPrefs: ASRouterPreferences.providers,
+      },
+    });
   }
 
   _handleTargetingError(type, error, message) {
@@ -425,17 +513,28 @@ class _ASRouter {
         message_id: message.id,
         action: "asrouter_undesired_event",
         event: "TARGETING_EXPRESSION_ERROR",
-        value: type
+        value: type,
       }));
     }
   }
 
+  // Return an object containing targeting parameters used to select messages
+  _getMessagesContext() {
+    const {previousSessionEnd} = this.state;
+    return {
+      get previousSessionEnd() {
+        return previousSessionEnd;
+      },
+    };
+  }
+
   _findMessage(candidateMessages, trigger) {
     const messages = candidateMessages.filter(m => this.isBelowFrequencyCaps(m));
+    const context = this._getMessagesContext();
 
      // Find a message that matches the targeting context as well as the trigger context (if one is provided)
      // If no trigger is provided, we should find a message WITHOUT a trigger property defined.
-    return ASRouterTargeting.findMatchingMessage({messages, trigger, onError: this._handleTargetingError});
+    return ASRouterTargeting.findMatchingMessage({messages, trigger, context, onError: this._handleTargetingError});
   }
 
   _orderBundle(bundle) {
@@ -518,13 +617,33 @@ class _ASRouter {
       return null;
     }
 
-    return {bundle: this._orderBundle(result), provider: originalMessage.provider, template: originalMessage.template};
+    // The bundle may have some extra attributes, like a header, or a dismiss button, so attempt to get those strings now
+    // This is a temporary solution until we can use Fluent strings in the content process, in which case the content can
+    // handle finding these strings on its own. See bug 1488973
+    const extraTemplateStrings = await this._extraTemplateStrings(originalMessage);
+
+    return {bundle: this._orderBundle(result), ...(extraTemplateStrings && {extraTemplateStrings}), provider: originalMessage.provider, template: originalMessage.template};
+  }
+
+  async _extraTemplateStrings(originalMessage) {
+    let extraTemplateStrings;
+    let localProvider = this._findProvider(originalMessage.provider);
+    if (localProvider && localProvider.getExtraAttributes) {
+      extraTemplateStrings = await localProvider.getExtraAttributes();
+    }
+
+    return extraTemplateStrings;
+  }
+
+  _findProvider(providerID) {
+    return this._localProviders[this.state.providers.find(i => i.id === providerID).localProvider];
   }
 
   _getUnblockedMessages() {
     let {state} = this;
     return state.messages.filter(item =>
       !state.messageBlockList.includes(item.id) &&
+      (!item.campaign || !state.messageBlockList.includes(item.campaign)) &&
       !state.providerBlockList.includes(item.provider)
     );
   }
@@ -662,7 +781,7 @@ class _ASRouter {
       // We don't want to cache preview messages, remove them after we selected the message to show
       await this.setState(state => ({
         lastMessageId: message.id,
-        messages: state.messages.filter(m => m.id !== message.id)
+        messages: state.messages.filter(m => m.id !== message.id),
       }));
     } else {
       await this.setState({lastMessageId: message ? message.id : null});
@@ -681,10 +800,20 @@ class _ASRouter {
     const idsToBlock = Array.isArray(idOrIds) ? idOrIds : [idOrIds];
 
     await this.setState(state => {
-      const messageBlockList = [...state.messageBlockList, ...idsToBlock];
-      // When a message is blocked, its impressions should be cleared as well
+      const messageBlockList = [...state.messageBlockList];
       const messageImpressions = {...state.messageImpressions};
-      idsToBlock.forEach(id => delete messageImpressions[id]);
+
+      idsToBlock.forEach(id => {
+        const message = state.messages.find(m => m.id === id);
+        const idToBlock = (message && message.campaign) ? message.campaign : id;
+        if (!messageBlockList.includes(idToBlock)) {
+          messageBlockList.push(idToBlock);
+        }
+
+        // When a message is blocked, its impressions should be cleared as well
+        delete messageImpressions[id];
+      });
+
       this._storage.set("messageBlockList", messageBlockList);
       return {messageBlockList, messageImpressions};
     });
@@ -752,9 +881,11 @@ class _ASRouter {
     return state;
   }
 
-  async _addPreviewEndpoint(url) {
+  async _addPreviewEndpoint(url, portID) {
+    // When you view a preview snippet we want to hide all real content
     const providers = [...this.state.providers];
     if (this._validPreviewEndpoint(url) && !providers.find(p => p.url === url)) {
+      this.dispatchToAS(ac.OnlyToOneContent({type: at.SNIPPETS_PREVIEW_MODE}, portID));
       providers.push({id: "preview", type: "remote", url, updateCycleInMs: 0});
       await this.setState({providers});
     }
@@ -767,19 +898,30 @@ class _ASRouter {
         target.browser.ownerGlobal.OpenBrowserWindow({private: true});
         break;
       case ra.OPEN_URL:
-        target.browser.ownerGlobal.openLinkIn(action.data.url, "tabshifted", {
+        target.browser.ownerGlobal.openLinkIn(action.data.args, "tabshifted", {
           private: false,
-          triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({})
+          triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}),
         });
         break;
       case ra.OPEN_ABOUT_PAGE:
-        target.browser.ownerGlobal.openTrustedLinkIn(`about:${action.data.page}`, "tab");
+        target.browser.ownerGlobal.openTrustedLinkIn(`about:${action.data.args}`, "tab");
+        break;
+      case ra.OPEN_PREFERENCES_PAGE:
+        target.browser.ownerGlobal.openPreferences(action.data.category, {origin: action.data.origin});
         break;
       case ra.OPEN_APPLICATIONS_MENU:
-        UITour.showMenu(target.browser.ownerGlobal, action.data.target);
+        UITour.showMenu(target.browser.ownerGlobal, action.data.args);
         break;
       case ra.INSTALL_ADDON_FROM_URL:
         await MessageLoaderUtils.installAddonFromURL(target.browser, action.data.url);
+        break;
+      case ra.SHOW_FIREFOX_ACCOUNTS:
+        const url = await FxAccounts.config.promiseSignUpURI("snippets");
+        // We want to replace the current tab.
+        target.browser.ownerGlobal.openLinkIn(url, "tabshifted", {
+          private: false,
+          triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}),
+        });
         break;
     }
   }
@@ -795,13 +937,12 @@ class _ASRouter {
           await this.handleUserAction({data: action.data, target});
         }
         break;
-      case "CONNECT_UI_REQUEST":
-      case "GET_NEXT_MESSAGE":
+      case "SNIPPETS_REQUEST":
       case "TRIGGER":
         // Wait for our initial message loading to be done before responding to any UI requests
         await this.waitForInitialized;
         if (action.data && action.data.endpoint) {
-          await this._addPreviewEndpoint(action.data.endpoint.url);
+          await this._addPreviewEndpoint(action.data.endpoint.url, target.portID);
         }
         // Check if any updates are needed first
         await this.loadMessagesFromAllProviders();
@@ -809,6 +950,14 @@ class _ASRouter {
         break;
       case "BLOCK_MESSAGE_BY_ID":
         await this.blockMessageById(action.data.id);
+        // Block the message but don't dismiss it in case the action taken has
+        // another state that needs to be visible
+        if (action.data.preventDismiss) {
+          break;
+        }
+        this.messageChannel.sendAsyncMessage(OUTGOING_MESSAGE_NAME, {type: "CLEAR_MESSAGE", data: {id: action.data.id}});
+        break;
+      case "DISMISS_MESSAGE_BY_ID":
         this.messageChannel.sendAsyncMessage(OUTGOING_MESSAGE_NAME, {type: "CLEAR_MESSAGE", data: {id: action.data.id}});
         break;
       case "BLOCK_PROVIDER_BY_ID":
@@ -822,7 +971,9 @@ class _ASRouter {
       case "UNBLOCK_MESSAGE_BY_ID":
         await this.setState(state => {
           const messageBlockList = [...state.messageBlockList];
-          messageBlockList.splice(messageBlockList.indexOf(action.data.id), 1);
+          const message = state.messages.find(m => m.id === action.data.id);
+          const idToUnblock = (message && message.campaign) ? message.campaign : action.data.id;
+          messageBlockList.splice(messageBlockList.indexOf(idToUnblock), 1);
           this._storage.set("messageBlockList", messageBlockList);
           return {messageBlockList};
         });
@@ -850,10 +1001,10 @@ class _ASRouter {
         break;
       case "ADMIN_CONNECT_STATE":
         if (action.data && action.data.endpoint) {
-          this._addPreviewEndpoint(action.data.endpoint.url);
+          this._addPreviewEndpoint(action.data.endpoint.url, target.portID);
           await this.loadMessagesFromAllProviders();
         } else {
-          target.sendAsyncMessage(OUTGOING_MESSAGE_NAME, {type: "ADMIN_SET_STATE", data: this.state});
+          this._updateAdminState(target);
         }
         break;
       case "IMPRESSION":
@@ -863,6 +1014,18 @@ class _ASRouter {
         if (this.dispatchToAS) {
           this.dispatchToAS(ac.ASRouterUserEvent(action.data));
         }
+        break;
+      case "EXPIRE_QUERY_CACHE":
+        QueryCache.expireAll();
+        break;
+      case "ENABLE_PROVIDER":
+        ASRouterPreferences.enableOrDisableProvider(action.data, true);
+        break;
+      case "DISABLE_PROVIDER":
+        ASRouterPreferences.enableOrDisableProvider(action.data, false);
+        break;
+      case "RESET_PROVIDER_PREF":
+        ASRouterPreferences.resetProviderPref();
         break;
     }
   }

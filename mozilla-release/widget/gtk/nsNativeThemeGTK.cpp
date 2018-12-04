@@ -4,6 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsNativeThemeGTK.h"
+#include "HeadlessThemeGTK.h"
 #include "nsStyleConsts.h"
 #include "gtkdrawing.h"
 #include "ScreenHelperGTK.h"
@@ -25,6 +26,7 @@
 #include "nsAttrValueInlines.h"
 
 #include "mozilla/dom/HTMLInputElement.h"
+#include "mozilla/ClearOnShutdown.h"
 #include "mozilla/EventStates.h"
 #include "mozilla/Services.h"
 
@@ -41,6 +43,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/layers/StackingContextHelper.h"
 #include "mozilla/StaticPrefs.h"
+#include "nsWindow.h"
 
 #ifdef MOZ_X11
 #  ifdef CAIRO_HAS_XLIB_SURFACE
@@ -63,6 +66,9 @@ NS_IMPL_ISUPPORTS_INHERITED(nsNativeThemeGTK, nsNativeTheme, nsITheme,
                                                              nsIObserver)
 
 static int gLastGdkError;
+
+// from nsWindow.cpp
+extern bool gDisableNativeTheme;
 
 // Return scale factor of the monitor where the window is located
 // by the most part or layout.css.devPixelsPerPx pref if set to > 0.
@@ -237,6 +243,8 @@ nsNativeThemeGTK::GetGtkWidgetAndState(StyleAppearance aWidgetType, nsIFrame* aF
   }
 
   if (aState) {
+    memset(aState, 0, sizeof(GtkWidgetState));
+
     // For XUL checkboxes and radio buttons, the state of the parent
     // determines our state.
     nsIFrame *stateFrame = aFrame;
@@ -290,11 +298,9 @@ nsNativeThemeGTK::GetGtkWidgetAndState(StyleAppearance aWidgetType, nsIFrame* aF
     aState->disabled = IsDisabled(aFrame, eventState) || IsReadOnly(aFrame);
     aState->active  = eventState.HasState(NS_EVENT_STATE_ACTIVE);
     aState->focused = eventState.HasState(NS_EVENT_STATE_FOCUS);
-    aState->selected = FALSE;
     aState->inHover = eventState.HasState(NS_EVENT_STATE_HOVER);
     aState->isDefault = IsDefaultButton(aFrame);
     aState->canDefault = FALSE; // XXX fix me
-    aState->depressed = FALSE;
 
     if (aWidgetType == StyleAppearance::FocusOutline) {
       aState->disabled = FALSE;
@@ -319,8 +325,8 @@ nsNativeThemeGTK::GetGtkWidgetAndState(StyleAppearance aWidgetType, nsIFrame* aF
       if (treeBodyFrame) {
         const mozilla::AtomArray& atoms =
           treeBodyFrame->GetPropertyArrayForCurrentDrawingItem();
-        aState->selected = atoms.Contains(nsGkAtoms::selected);
-        aState->inHover = atoms.Contains(nsGkAtoms::hover);
+        aState->selected = atoms.Contains((nsStaticAtom*)nsGkAtoms::selected);
+        aState->inHover = atoms.Contains((nsStaticAtom*)nsGkAtoms::hover);
       }
     }
 
@@ -443,6 +449,32 @@ nsNativeThemeGTK::GetGtkWidgetAndState(StyleAppearance aWidgetType, nsIFrame* aF
           aWidgetFlags) {
         *aWidgetFlags = CheckBooleanAttr(aFrame, nsGkAtoms::parentfocused);
       }
+    }
+
+    //Disabled due to Bug 1497534
+    /*
+    if (aWidgetType == StyleAppearance::MozWindowTitlebar ||
+        aWidgetType == StyleAppearance::MozWindowTitlebarMaximized ||
+        aWidgetType == StyleAppearance::MozWindowButtonClose ||
+        aWidgetType == StyleAppearance::MozWindowButtonMinimize ||
+        aWidgetType == StyleAppearance::MozWindowButtonMaximize ||
+        aWidgetType == StyleAppearance::MozWindowButtonRestore) {
+      aState->backdrop = !nsWindow::GetTopLevelWindowActiveState(aFrame);
+    }
+    */
+
+    if (aWidgetType ==  StyleAppearance::ScrollbarbuttonUp ||
+        aWidgetType ==  StyleAppearance::ScrollbarbuttonDown ||
+        aWidgetType ==  StyleAppearance::ScrollbarbuttonLeft ||
+        aWidgetType ==  StyleAppearance::ScrollbarbuttonRight ||
+        aWidgetType == StyleAppearance::ScrollbarVertical ||
+        aWidgetType == StyleAppearance::ScrollbarHorizontal ||
+        aWidgetType == StyleAppearance::ScrollbartrackHorizontal ||
+        aWidgetType == StyleAppearance::ScrollbartrackVertical ||
+        aWidgetType == StyleAppearance::ScrollbarthumbVertical||
+        aWidgetType == StyleAppearance::ScrollbarthumbHorizontal) {
+      EventStates docState = aFrame->GetContent()->OwnerDoc()->GetDocumentState();
+      aState->backdrop = docState.HasState(NS_DOCUMENT_STATE_WINDOW_INACTIVE);
     }
   }
 
@@ -770,6 +802,9 @@ nsNativeThemeGTK::GetGtkWidgetAndState(StyleAppearance aWidgetType, nsIFrame* aF
     break;
   case StyleAppearance::MozWindowTitlebarMaximized:
     aGtkWidgetType = MOZ_GTK_HEADER_BAR_MAXIMIZED;
+    break;
+  case StyleAppearance::MozWindowButtonBox:
+    aGtkWidgetType = MOZ_GTK_HEADER_BAR_BUTTON_BOX;
     break;
   case StyleAppearance::MozWindowButtonClose:
     aGtkWidgetType = MOZ_GTK_HEADER_BAR_BUTTON_CLOSE;
@@ -1110,6 +1145,18 @@ nsNativeThemeGTK::GetExtraSizeForWidget(nsIFrame* aFrame,
   return true;
 }
 
+bool
+nsNativeThemeGTK::IsWidgetVisible(WidgetType aWidgetType)
+{
+  switch (aWidgetType) {
+  case StyleAppearance::MozWindowButtonBox:
+    return false;
+  default:
+    break;
+  }
+  return true;
+}
+
 NS_IMETHODIMP
 nsNativeThemeGTK::DrawWidgetBackground(gfxContext* aContext,
                                        nsIFrame* aFrame,
@@ -1121,9 +1168,12 @@ nsNativeThemeGTK::DrawWidgetBackground(gfxContext* aContext,
   WidgetNodeType gtkWidgetType;
   GtkTextDirection direction = GetTextDirection(aFrame);
   gint flags;
-  if (!GetGtkWidgetAndState(aWidgetType, aFrame, gtkWidgetType, &state,
-                            &flags))
+
+  if (!IsWidgetVisible(aWidgetType) ||
+      !GetGtkWidgetAndState(aWidgetType, aFrame, gtkWidgetType, &state,
+                            &flags)) {
     return NS_OK;
+  }
 
   gfxContext* ctx = aContext;
   nsPresContext *presContext = aFrame->PresContext();
@@ -1406,6 +1456,7 @@ nsNativeThemeGTK::GetWidgetPadding(nsDeviceContext* aContext,
   switch (aWidgetType) {
     case StyleAppearance::ButtonFocus:
     case StyleAppearance::Toolbarbutton:
+    case StyleAppearance::MozWindowButtonBox:
     case StyleAppearance::MozWindowButtonClose:
     case StyleAppearance::MozWindowButtonMinimize:
     case StyleAppearance::MozWindowButtonMaximize:
@@ -1708,6 +1759,7 @@ nsNativeThemeGTK::GetMinimumWidgetSize(nsPresContext* aPresContext,
     }
     break;
 #ifdef MOZ_WIDGET_GTK
+  case StyleAppearance::MenulistTextfield:
   case StyleAppearance::NumberInput:
   case StyleAppearance::Textfield:
     {
@@ -1783,6 +1835,17 @@ nsNativeThemeGTK::WidgetStateChanged(nsIFrame* aFrame,
       aWidgetType == StyleAppearance::Menuseparator ||
       aWidgetType == StyleAppearance::Window ||
       aWidgetType == StyleAppearance::Dialog) {
+    *aShouldRepaint = false;
+    return NS_OK;
+  }
+
+  if (aWidgetType == StyleAppearance::MozWindowTitlebar ||
+      aWidgetType == StyleAppearance::MozWindowTitlebarMaximized ||
+      aWidgetType == StyleAppearance::MozWindowButtonClose ||
+      aWidgetType == StyleAppearance::MozWindowButtonMinimize ||
+      aWidgetType == StyleAppearance::MozWindowButtonMaximize ||
+      aWidgetType == StyleAppearance::MozWindowButtonRestore) {
+    //Disabled due to Bug 1497534
     *aShouldRepaint = false;
     return NS_OK;
   }
@@ -1884,7 +1947,6 @@ nsNativeThemeGTK::ThemeSupportsWidget(nsPresContext* aPresContext,
   // Combobox dropdowns don't support native theming in vertical mode.
   case StyleAppearance::Menulist:
   case StyleAppearance::MenulistText:
-  case StyleAppearance::MenulistTextfield:
     if (aFrame && aFrame->GetWritingMode().IsVertical()) {
       return false;
     }
@@ -1946,6 +2008,7 @@ nsNativeThemeGTK::ThemeSupportsWidget(nsPresContext* aPresContext,
   case StyleAppearance::ScrollbartrackVertical:
   case StyleAppearance::ScrollbarthumbHorizontal:
   case StyleAppearance::ScrollbarthumbVertical:
+  case StyleAppearance::MenulistTextfield:
   case StyleAppearance::NumberInput:
   case StyleAppearance::Textfield:
   case StyleAppearance::TextfieldMultiline:
@@ -1977,6 +2040,7 @@ nsNativeThemeGTK::ThemeSupportsWidget(nsPresContext* aPresContext,
 #endif
     return !IsWidgetStyled(aPresContext, aFrame, aWidgetType);
 
+  case StyleAppearance::MozWindowButtonBox:
   case StyleAppearance::MozWindowButtonClose:
   case StyleAppearance::MozWindowButtonMinimize:
   case StyleAppearance::MozWindowButtonMaximize:
@@ -2082,4 +2146,53 @@ nsNativeThemeGTK::GetWidgetTransparency(nsIFrame* aFrame,
     return eUnknownTransparency;
   }
 
+}
+
+bool
+nsNativeThemeGTK::WidgetAppearanceDependsOnWindowFocus(StyleAppearance aWidgetType)
+{
+  switch (aWidgetType) {
+    case StyleAppearance::MozWindowTitlebar:
+    case StyleAppearance::MozWindowTitlebarMaximized:
+    case StyleAppearance::MozWindowButtonClose:
+    case StyleAppearance::MozWindowButtonMinimize:
+    case StyleAppearance::MozWindowButtonMaximize:
+    case StyleAppearance::MozWindowButtonRestore:
+      // Disabled due to Bug 1497534
+      return false;
+    case StyleAppearance::ScrollbarbuttonUp:
+    case StyleAppearance::ScrollbarbuttonDown:
+    case StyleAppearance::ScrollbarbuttonLeft:
+    case StyleAppearance::ScrollbarbuttonRight:
+    case StyleAppearance::ScrollbarVertical:
+    case StyleAppearance::ScrollbarHorizontal:
+    case StyleAppearance::ScrollbartrackHorizontal:
+    case StyleAppearance::ScrollbartrackVertical:
+    case StyleAppearance::ScrollbarthumbVertical:
+    case StyleAppearance::ScrollbarthumbHorizontal:
+      return true;
+    default:
+      return false;
+  }
+}
+
+already_AddRefed<nsITheme>
+do_GetNativeTheme()
+{
+  if (gDisableNativeTheme) {
+    return nullptr;
+  }
+
+  static nsCOMPtr<nsITheme> inst;
+
+  if (!inst) {
+    if (gfxPlatform::IsHeadless()) {
+      inst = new HeadlessThemeGTK();
+    } else {
+      inst = new nsNativeThemeGTK();
+    }
+    ClearOnShutdown(&inst);
+  }
+
+  return do_AddRef(inst);
 }

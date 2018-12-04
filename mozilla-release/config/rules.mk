@@ -31,7 +31,7 @@ ifdef REBUILD_CHECK
 REPORT_BUILD = $(info $(shell $(PYTHON) $(MOZILLA_DIR)/config/rebuild_check.py $@ $^))
 REPORT_BUILD_VERBOSE = $(REPORT_BUILD)
 else
-REPORT_BUILD = $(info $(notdir $@))
+REPORT_BUILD = $(info $(relativesrcdir)/$(notdir $@))
 
 ifdef BUILD_VERBOSE_LOG
 REPORT_BUILD_VERBOSE = $(REPORT_BUILD)
@@ -47,7 +47,7 @@ EXEC			= exec
 # prints out failed commands anyway, so ELOG just makes things worse by
 # forcing shell invocations.
 ifneq (,$(findstring -s, $(filter-out --%, $(MAKEFLAGS))))
-  ELOG := $(EXEC) sh $(BUILD_TOOLS)/print-failed-commands.sh
+  ELOG := $(EXEC) sh $(MOZILLA_DIR)/build/unix/print-failed-commands.sh
 else
   ELOG :=
 endif # -s
@@ -126,6 +126,9 @@ endif # MKSHLIB
 endif # FORCE_SHARED_LIB
 
 ifeq ($(OS_ARCH),WINNT)
+
+LINK_PDBFILE ?= $(basename $(@F)).pdb
+
 ifndef GNU_CC
 
 #
@@ -147,20 +150,22 @@ endif
 COMPILE_CFLAGS += $(COMPILE_PDB_FLAG)
 COMPILE_CXXFLAGS += $(COMPILE_PDB_FLAG)
 
-LINK_PDBFILE ?= $(basename $(@F)).pdb
 ifdef MOZ_DEBUG
 CODFILE=$(basename $(@F)).cod
 endif
 
 endif # !GNU_CC
-
-EXTRA_DEPS += $(DEFFILE)
-
 endif # WINNT
 
 ifeq (arm-Darwin,$(CPU_ARCH)-$(OS_TARGET))
 ifdef PROGRAM
 MOZ_PROGRAM_LDFLAGS += -Wl,-rpath -Wl,@executable_path/Frameworks
+endif
+endif
+
+ifeq ($(OS_ARCH),WINNT)
+ifeq ($(CC_TYPE),clang)
+MOZ_PROGRAM_LDFLAGS += -Wl,-pdb,$(dir $@)/$(LINK_PDBFILE)
 endif
 endif
 
@@ -379,12 +384,6 @@ else
 OUTOPTION = -o # eol
 endif # WINNT && !GNU_CC
 
-ifneq (,$(filter ml%,$(AS)))
-ASOUTOPTION = -Fo# eol
-else
-ASOUTOPTION = -o # eol
-endif
-
 ifeq (,$(CROSS_COMPILE))
 HOST_OUTOPTION = $(OUTOPTION)
 else
@@ -549,27 +548,34 @@ define EXPAND_CC_OR_CXX
 $(if $(PROG_IS_C_ONLY_$(1)),$(CC),$(CCC))
 endef
 
+# Workaround a bug of MSVC 2017 Update 8 (see bug 1485224)
+ifeq ($(CC_TYPE)_$(HOST_OS_ARCH)_$(MOZ_PROFILE_GENERATE),msvc_WINNT_1)
+LINKER_OUT=$(subst /,\,$1)
+else
+LINKER_OUT=$1
+endif
+
 #
 # PROGRAM = Foo
 # creates OBJS, links with LIBS to create Foo
 #
-$(PROGRAM): $(PROGOBJS) $(STATIC_LIBS) $(EXTRA_DEPS) $(RESFILE) $(GLOBAL_DEPS) $(call mkdir_deps,$(FINAL_TARGET))
+$(PROGRAM): $(PROGOBJS) $(STATIC_LIBS) $(RUST_STATIC_LIB) $(EXTRA_DEPS) $(RESFILE) $(GLOBAL_DEPS) $(call mkdir_deps,$(FINAL_TARGET))
 	$(REPORT_BUILD)
 	@$(RM) $@.manifest
 ifeq (_WINNT,$(GNU_CC)_$(OS_ARCH))
-	$(LINKER) -NOLOGO -OUT:$@ -PDB:$(LINK_PDBFILE) -IMPLIB:$(basename $(@F)).lib $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(MOZ_PROGRAM_LDFLAGS) $($(notdir $@)_$(OBJS_VAR_SUFFIX)) $(RESFILE) $(STATIC_LIBS) $(SHARED_LIBS) $(OS_LIBS)
+	$(LINKER) -NOLOGO -OUT:$(call LINKER_OUT,$@) -PDB:$(LINK_PDBFILE) -IMPLIB:$(basename $(@F)).lib $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(MOZ_PROGRAM_LDFLAGS) $($(notdir $@)_$(OBJS_VAR_SUFFIX)) $(RESFILE) $(STATIC_LIBS) $(RUST_STATIC_LIB) $(SHARED_LIBS) $(OS_LIBS)
 ifdef MSMANIFEST_TOOL
 	@if test -f $@.manifest; then \
 		if test -f '$(srcdir)/$(notdir $@).manifest'; then \
-			echo 'Embedding manifest from $(srcdir)/$(notdir $@).manifest and $@.manifest'; \
-			$(MT) -NOLOGO -MANIFEST '$(win_srcdir)/$(notdir $@).manifest' $@.manifest -OUTPUTRESOURCE:$@\;1; \
+			echo 'Embedding manifest from $(srcdir_rel)/$(notdir $@).manifest and $@.manifest'; \
+			$(MT) -NOLOGO -MANIFEST '$(srcdir_rel)/$(notdir $@).manifest' $@.manifest -OUTPUTRESOURCE:$@\;1; \
 		else \
 			echo 'Embedding manifest from $@.manifest'; \
 			$(MT) -NOLOGO -MANIFEST $@.manifest -OUTPUTRESOURCE:$@\;1; \
 		fi; \
 	elif test -f '$(srcdir)/$(notdir $@).manifest'; then \
-		echo 'Embedding manifest from $(srcdir)/$(notdir $@).manifest'; \
-		$(MT) -NOLOGO -MANIFEST '$(win_srcdir)/$(notdir $@).manifest' -OUTPUTRESOURCE:$@\;1; \
+		echo 'Embedding manifest from $(srcdir_rel)/$(notdir $@).manifest'; \
+		$(MT) -NOLOGO -MANIFEST '$(srcdir_rel)/$(notdir $@).manifest' -OUTPUTRESOURCE:$@\;1; \
 	fi
 endif	# MSVC with manifest tool
 ifdef MOZ_PROFILE_GENERATE
@@ -578,7 +584,7 @@ ifdef MOZ_PROFILE_GENERATE
 	touch -t `date +%Y%m%d%H%M.%S -d 'now+5seconds'` pgo.relink
 endif
 else # !WINNT || GNU_CC
-	$(call EXPAND_CC_OR_CXX,$@) -o $@ $(COMPUTED_CXX_LDFLAGS) $(PGO_CFLAGS) $($(notdir $@)_$(OBJS_VAR_SUFFIX)) $(RESFILE) $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(STATIC_LIBS) $(MOZ_PROGRAM_LDFLAGS) $(SHARED_LIBS) $(OS_LIBS)
+	$(call EXPAND_CC_OR_CXX,$@) -o $@ $(COMPUTED_CXX_LDFLAGS) $(PGO_CFLAGS) $($(notdir $@)_$(OBJS_VAR_SUFFIX)) $(RESFILE) $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(STATIC_LIBS) $(RUST_STATIC_LIB) $(MOZ_PROGRAM_LDFLAGS) $(SHARED_LIBS) $(OS_LIBS)
 	$(call py_action,check_binary,--target $@)
 endif # WINNT && !GNU_CC
 
@@ -596,15 +602,15 @@ ifeq (_WINNT,$(GNU_CC)_$(HOST_OS_ARCH))
 ifdef MSMANIFEST_TOOL
 	@if test -f $@.manifest; then \
 		if test -f '$(srcdir)/$(notdir $@).manifest'; then \
-			echo 'Embedding manifest from $(srcdir)/$(notdir $@).manifest and $@.manifest'; \
-			$(MT) -NOLOGO -MANIFEST '$(win_srcdir)/$(notdir $@).manifest' $@.manifest -OUTPUTRESOURCE:$@\;1; \
+			echo 'Embedding manifest from $(srcdir_rel)/$(notdir $@).manifest and $@.manifest'; \
+			$(MT) -NOLOGO -MANIFEST '$(srcdir_rel)/$(notdir $@).manifest' $@.manifest -OUTPUTRESOURCE:$@\;1; \
 		else \
 			echo 'Embedding manifest from $@.manifest'; \
 			$(MT) -NOLOGO -MANIFEST $@.manifest -OUTPUTRESOURCE:$@\;1; \
 		fi; \
 	elif test -f '$(srcdir)/$(notdir $@).manifest'; then \
-		echo 'Embedding manifest from $(srcdir)/$(notdir $@).manifest'; \
-		$(MT) -NOLOGO -MANIFEST '$(win_srcdir)/$(notdir $@).manifest' -OUTPUTRESOURCE:$@\;1; \
+		echo 'Embedding manifest from $(srcdir_rel)/$(notdir $@).manifest'; \
+		$(MT) -NOLOGO -MANIFEST '$(srcdir_rel)/$(notdir $@).manifest' -OUTPUTRESOURCE:$@\;1; \
 	fi
 endif	# MSVC with manifest tool
 else
@@ -635,7 +641,7 @@ ifdef MSMANIFEST_TOOL
 		$(MT) -NOLOGO -MANIFEST $@.manifest -OUTPUTRESOURCE:$@\;1; \
 		rm -f $@.manifest; \
 	elif test -f '$(srcdir)/$(notdir $@).manifest'; then \
-		$(MT) -NOLOGO -MANIFEST '$(win_srcdir)/$(notdir $@).manifest' -OUTPUTRESOURCE:$@\;1; \
+		$(MT) -NOLOGO -MANIFEST '$(srcdir_rel)/$(notdir $@).manifest' -OUTPUTRESOURCE:$@\;1; \
 	fi
 endif	# MSVC with manifest tool
 else
@@ -700,12 +706,12 @@ endif
 # symlinks back to the originals. The symlinks are a no-op for stabs debugging,
 # so no need to conditionalize on OS version or debugging format.
 
-$(SHARED_LIBRARY): $(OBJS) $(RESFILE) $(RUST_STATIC_LIB_FOR_SHARED_LIB) $(STATIC_LIBS) $(EXTRA_DEPS) $(GLOBAL_DEPS)
+$(SHARED_LIBRARY): $(OBJS) $(RESFILE) $(RUST_STATIC_LIB) $(STATIC_LIBS) $(EXTRA_DEPS) $(GLOBAL_DEPS)
 	$(REPORT_BUILD)
 ifndef INCREMENTAL_LINKER
 	$(RM) $@
 endif
-	$(MKSHLIB) $($@_$(OBJS_VAR_SUFFIX)) $(RESFILE) $(LDFLAGS) $(STATIC_LIBS) $(RUST_STATIC_LIB_FOR_SHARED_LIB) $(SHARED_LIBS) $(EXTRA_DSO_LDOPTS) $(MOZ_GLUE_LDFLAGS) $(OS_LIBS)
+	$(MKSHLIB) $($@_$(OBJS_VAR_SUFFIX)) $(RESFILE) $(LDFLAGS) $(STATIC_LIBS) $(RUST_STATIC_LIB) $(SHARED_LIBS) $(EXTRA_DSO_LDOPTS) $(MOZ_GLUE_LDFLAGS) $(OS_LIBS)
 	$(call py_action,check_binary,--target $@)
 
 ifeq (_WINNT,$(GNU_CC)_$(OS_ARCH))
@@ -713,15 +719,15 @@ ifdef MSMANIFEST_TOOL
 ifdef EMBED_MANIFEST_AT
 	@if test -f $@.manifest; then \
 		if test -f '$(srcdir)/$@.manifest'; then \
-			echo 'Embedding manifest from $(srcdir)/$@.manifest and $@.manifest'; \
-			$(MT) -NOLOGO -MANIFEST '$(win_srcdir)/$@.manifest' $@.manifest -OUTPUTRESOURCE:$@\;$(EMBED_MANIFEST_AT); \
+			echo 'Embedding manifest from $(srcdir_rel)/$@.manifest and $@.manifest'; \
+			$(MT) -NOLOGO -MANIFEST '$(srcdir_rel)/$@.manifest' $@.manifest -OUTPUTRESOURCE:$@\;$(EMBED_MANIFEST_AT); \
 		else \
 			echo 'Embedding manifest from $@.manifest'; \
 			$(MT) -NOLOGO -MANIFEST $@.manifest -OUTPUTRESOURCE:$@\;$(EMBED_MANIFEST_AT); \
 		fi; \
 	elif test -f '$(srcdir)/$@.manifest'; then \
-		echo 'Embedding manifest from $(srcdir)/$@.manifest'; \
-		$(MT) -NOLOGO -MANIFEST '$(win_srcdir)/$@.manifest' -OUTPUTRESOURCE:$@\;$(EMBED_MANIFEST_AT); \
+		echo 'Embedding manifest from $(srcdir_rel)/$@.manifest'; \
+		$(MT) -NOLOGO -MANIFEST '$(srcdir_rel)/$@.manifest' -OUTPUTRESOURCE:$@\;$(EMBED_MANIFEST_AT); \
 	fi
 endif   # EMBED_MANIFEST_AT
 endif	# MSVC with manifest tool
@@ -821,13 +827,13 @@ DUMP_SYMS_TARGETS :=
 endif
 endif
 
-ifdef MOZ_CRASHREPORTER
-$(foreach file,$(DUMP_SYMS_TARGETS),$(eval $(call syms_template,$(file),$(notdir $(file))_syms.track)))
-else ifneq (,$(and $(LLVM_SYMBOLIZER),$(filter WINNT,$(OS_ARCH)),$(MOZ_AUTOMATION)))
+ifdef MOZ_COPY_PDBS
 PDB_FILES = $(addsuffix .pdb,$(basename $(DUMP_SYMS_TARGETS)))
 PDB_DEST ?= $(FINAL_TARGET)
 PDB_TARGET = syms
 INSTALL_TARGETS += PDB
+else ifdef MOZ_CRASHREPORTER
+$(foreach file,$(DUMP_SYMS_TARGETS),$(eval $(call syms_template,$(file),$(notdir $(file))_syms.track)))
 endif
 
 cargo_host_flag := --target=$(RUST_HOST_TARGET)
@@ -838,7 +844,14 @@ cargo_build_flags = $(CARGOFLAGS)
 ifndef MOZ_DEBUG_RUST
 cargo_build_flags += --release
 endif
+
+# The Spidermonkey library can be built from a package tarball outside the
+# tree, so we want to let Cargo create lock files in this case. When built
+# within a tree, the Rust dependencies have been vendored in so Cargo won't
+# touch the lock file.
+ifndef JS_STANDALONE
 cargo_build_flags += --frozen
+endif
 
 cargo_build_flags += --manifest-path $(CARGO_FILE)
 ifdef BUILD_VERBOSE_LOG
@@ -895,18 +908,15 @@ else
 environment_cleaner =
 endif
 
-rust_unlock_unstable =
-ifdef MOZ_RUST_SIMD
-rust_unlock_unstable += RUSTC_BOOTSTRAP=1
-endif
-
 ifdef MOZ_USING_SCCACHE
 sccache_wrap := RUSTC_WRAPPER='$(CCACHE)'
 endif
 
 ifndef MOZ_ASAN
 ifndef MOZ_TSAN
+ifndef MOZ_UBSAN
 ifndef MOZ_CODE_COVERAGE
+ifndef FUZZING_INTERFACES
 # Pass the compilers and flags in use to cargo for use in build scripts.
 # * Don't do this for ASAN/TSAN builds because we don't pass our custom linker (see below)
 #   which will muck things up.
@@ -938,7 +948,9 @@ cargo_c_compiler_envs := \
  AR_$(rust_cc_env_name)="$(AR)" \
  $(NULL)
 endif # WINNT
+endif # FUZZING_INTERFACES
 endif # MOZ_CODE_COVERAGE
+endif # MOZ_UBSAN
 endif # MOZ_TSAN
 endif # MOZ_ASAN
 
@@ -946,7 +958,7 @@ endif # MOZ_ASAN
 # don't use the prefix when make -n is used, so that cargo doesn't run
 # in that case)
 define RUN_CARGO
-$(if $(findstring n,$(filter-out --%, $(MAKEFLAGS))),,+)env $(environment_cleaner) $(rust_unlock_unstable) $(sccache_wrap) \
+$(if $(findstring n,$(filter-out --%, $(MAKEFLAGS))),,+)env $(environment_cleaner) $(sccache_wrap) \
 	CARGO_TARGET_DIR=$(CARGO_TARGET_DIR) \
 	RUSTFLAGS='$(2)' \
 	RUSTC=$(RUSTC) \
@@ -1001,6 +1013,8 @@ ifneq (WINNT,$(OS_ARCH))
 # some crates's build scripts (!), so disable it for now.
 ifndef MOZ_ASAN
 ifndef MOZ_TSAN
+ifndef MOZ_UBSAN
+ifndef FUZZING_INTERFACES
 # Cargo needs the same linker flags as the C/C++ compiler,
 # but not the final libraries. Filter those out because they
 # cause problems on macOS 10.7; see bug 1365993 for details.
@@ -1009,6 +1023,8 @@ target_cargo_env_vars := \
 	MOZ_CARGO_WRAP_LDFLAGS="$(filter-out -fsanitize=cfi% -framework Cocoa -lobjc AudioToolbox ExceptionHandling -fprofile-%,$(LDFLAGS))" \
 	MOZ_CARGO_WRAP_LD="$(CC)" \
 	$(cargo_linker_env_var)=$(topsrcdir)/build/cargo-linker
+endif # FUZZING_INTERFACES
+endif # MOZ_UBSAN
 endif # MOZ_TSAN
 endif # MOZ_ASAN
 

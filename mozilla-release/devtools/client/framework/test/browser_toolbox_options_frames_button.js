@@ -16,7 +16,7 @@ add_task(async function() {
   await pushPref(FRAME_BUTTON_PREF, false);
 
   const tab = await addTab(TEST_URL);
-  const target = TargetFactory.forTab(tab);
+  const target = await TargetFactory.forTab(tab);
 
   info("Open the toolbox on the Options panel");
   const toolbox = await gDevTools.showToolbox(target, "options");
@@ -51,8 +51,10 @@ add_task(async function() {
   framesButton = doc.getElementById("command-button-frames");
   ok(framesButton, "Frames button is still rendered.");
 
-  await waitUntil(() => !framesButton.disabled);
-  ok(!framesButton.disabled, "Frames button is not disabled.");
+  await waitUntil(() => {
+    framesButton = doc.getElementById("command-button-frames");
+    return framesButton && !framesButton.disabled;
+  });
 
   Services.prefs.clearUserPref(FRAME_BUTTON_PREF);
 });

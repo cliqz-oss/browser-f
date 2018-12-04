@@ -4,6 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "gfxPrefs.h"
 #include "gfxUtils.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/Range.h"
@@ -26,17 +27,18 @@
 #endif
 
 namespace std {
-  template <>
-    struct hash<mozilla::wr::FontKey>{
-      public :
-        size_t operator()(const mozilla::wr::FontKey &key ) const
-        {
-          return hash<size_t>()(mozilla::wr::AsUint64(key));
-        }
-    };
+  template <> struct hash<mozilla::wr::FontKey> {
+    size_t operator()(const mozilla::wr::FontKey& key) const {
+      return hash<size_t>()(mozilla::wr::AsUint64(key));
+    }
+  };
+
+  template <> struct hash<mozilla::wr::FontInstanceKey> {
+    size_t operator()(const mozilla::wr::FontInstanceKey& key) const {
+      return hash<size_t>()(mozilla::wr::AsUint64(key));
+    }
+  };
 };
-
-
 
 namespace mozilla {
 
@@ -65,8 +67,24 @@ struct FontTemplate {
   }
 };
 
+struct FontInstanceData {
+  WrFontKey mFontKey;
+  float mSize;
+  Maybe<FontInstanceOptions> mOptions;
+  Maybe<FontInstancePlatformOptions> mPlatformOptions;
+  UniquePtr<gfx::FontVariation[]> mVariations;
+  size_t mNumVariations;
+  RefPtr<ScaledFont> mScaledFont;
+
+  FontInstanceData()
+    : mSize(0)
+    , mNumVariations(0)
+  {}
+};
+
 StaticMutex sFontDataTableLock;
-std::unordered_map<FontKey, FontTemplate> sFontDataTable;
+std::unordered_map<WrFontKey, FontTemplate> sFontDataTable;
+std::unordered_map<WrFontInstanceKey, FontInstanceData> sBlobFontTable;
 
 // Fixed-size ring buffer logging font deletion events to aid debugging.
 static struct FontDeleteLog {
@@ -118,6 +136,7 @@ void
 ClearAllBlobImageResources() {
   StaticMutexAutoLock lock(sFontDataTableLock);
   sFontDeleteLog.AddAll();
+  sBlobFontTable.clear();
   sFontDataTable.clear();
 }
 
@@ -126,6 +145,13 @@ void
 ClearBlobImageResources(WrIdNamespace aNamespace) {
   StaticMutexAutoLock lock(sFontDataTableLock);
   sFontDeleteLog.Add(aNamespace);
+  for (auto i = sBlobFontTable.begin(); i != sBlobFontTable.end();) {
+    if (i->first.mNamespace == aNamespace) {
+      i = sBlobFontTable.erase(i);
+    } else {
+      i++;
+    }
+  }
   for (auto i = sFontDataTable.begin(); i != sFontDataTable.end();) {
     if (i->first.mNamespace == aNamespace) {
       i = sFontDataTable.erase(i);
@@ -175,15 +201,55 @@ DeleteFontData(WrFontKey aKey) {
     sFontDataTable.erase(i);
   }
 }
+
+void
+AddBlobFont(WrFontInstanceKey aInstanceKey,
+            WrFontKey aFontKey,
+            float aSize,
+            const FontInstanceOptions* aOptions,
+            const FontInstancePlatformOptions* aPlatformOptions,
+            const FontVariation* aVariations,
+            size_t aNumVariations)
+{
+  StaticMutexAutoLock lock(sFontDataTableLock);
+  auto i = sBlobFontTable.find(aInstanceKey);
+  if (i == sBlobFontTable.end()) {
+    FontInstanceData& font = sBlobFontTable[aInstanceKey];
+    font.mFontKey = aFontKey;
+    font.mSize = aSize;
+    if (aOptions) {
+      font.mOptions = Some(*aOptions);
+    }
+    if (aPlatformOptions) {
+      font.mPlatformOptions = Some(*aPlatformOptions);
+    }
+    if (aNumVariations) {
+      font.mNumVariations = aNumVariations;
+      font.mVariations.reset(new gfx::FontVariation[aNumVariations]);
+      PodCopy(font.mVariations.get(), reinterpret_cast<const gfx::FontVariation*>(aVariations), aNumVariations);
+    }
+  }
 }
 
-RefPtr<UnscaledFont>
-GetUnscaledFont(Translator *aTranslator, wr::FontKey key) {
+void
+DeleteBlobFont(WrFontInstanceKey aKey)
+{
   StaticMutexAutoLock lock(sFontDataTableLock);
-  auto i = sFontDataTable.find(key);
+  auto i = sBlobFontTable.find(aKey);
+  if (i != sBlobFontTable.end()) {
+    sBlobFontTable.erase(i);
+  }
+}
+
+} // extern
+
+static RefPtr<UnscaledFont>
+GetUnscaledFont(Translator* aTranslator, WrFontKey aKey)
+{
+  auto i = sFontDataTable.find(aKey);
   if (i == sFontDataTable.end()) {
-    gfxDevCrash(LogReason::UnscaledFontNotFound) << "Failed to get UnscaledFont entry for FontKey " << key.mHandle
-                                                 << " because " << sFontDeleteLog.Find(key);
+    gfxDevCrash(LogReason::UnscaledFontNotFound) << "Failed to get UnscaledFont entry for FontKey " << aKey.mHandle
+                                                 << " because " << sFontDeleteLog.Find(aKey);
     return nullptr;
   }
   FontTemplate &data = i->second;
@@ -208,17 +274,47 @@ GetUnscaledFont(Translator *aTranslator, wr::FontKey key) {
                                                                               aTranslator->GetFontContext());
   RefPtr<UnscaledFont> unscaledFont;
   if (!fontResource) {
-    gfxDevCrash(LogReason::NativeFontResourceNotFound) << "Failed to create NativeFontResource for FontKey " << key.mHandle;
+    gfxDevCrash(LogReason::NativeFontResourceNotFound) << "Failed to create NativeFontResource for FontKey " << aKey.mHandle;
   } else {
     // Instance data is only needed for GDI fonts which webrender does not
     // support.
     unscaledFont = fontResource->CreateUnscaledFont(data.mIndex, nullptr, 0);
     if (!unscaledFont) {
-      gfxDevCrash(LogReason::UnscaledFontNotFound) << "Failed to create UnscaledFont for FontKey " << key.mHandle;
+      gfxDevCrash(LogReason::UnscaledFontNotFound) << "Failed to create UnscaledFont for FontKey " << aKey.mHandle;
     }
   }
   data.mUnscaledFont = unscaledFont;
   return unscaledFont;
+}
+
+static RefPtr<ScaledFont>
+GetScaledFont(Translator* aTranslator, WrFontInstanceKey aKey)
+{
+  StaticMutexAutoLock lock(sFontDataTableLock);
+  auto i = sBlobFontTable.find(aKey);
+  if (i == sBlobFontTable.end()) {
+    gfxDevCrash(LogReason::ScaledFontNotFound) << "Failed to get ScaledFont entry for FontInstanceKey " << aKey.mHandle;
+    return nullptr;
+  }
+  FontInstanceData &data = i->second;
+  if (data.mScaledFont) {
+    return data.mScaledFont;
+  }
+  RefPtr<UnscaledFont> unscaled = GetUnscaledFont(aTranslator, data.mFontKey);
+  if (!unscaled) {
+    return nullptr;
+  }
+  RefPtr<ScaledFont> scaled =
+    unscaled->CreateScaledFontFromWRFont(data.mSize,
+                                         data.mOptions.ptrOr(nullptr),
+                                         data.mPlatformOptions.ptrOr(nullptr),
+                                         data.mVariations.get(),
+                                         data.mNumVariations);
+  if (!scaled) {
+    gfxDevCrash(LogReason::ScaledFontNotFound) << "Failed to create ScaledFont for FontKey " << aKey.mHandle;
+  }
+  data.mScaledFont = scaled;
+  return data.mScaledFont;
 }
 
 static bool Moz2DRenderCallback(const Range<const uint8_t> aBlob,
@@ -306,14 +402,24 @@ static bool Moz2DRenderCallback(const Range<const uint8_t> aBlob,
       return IntRectAbsolute(x1, y1, x2, y2);
     }
 
+    layers::BlobFont ReadBlobFont() {
+      MOZ_RELEASE_ASSERT(pos + sizeof(layers::BlobFont) <= len);
+      layers::BlobFont ret;
+      memcpy(&ret, buf + pos, sizeof(ret));
+      pos += sizeof(ret);
+      return ret;
+    }
+
   };
 
-  MOZ_RELEASE_ASSERT(aBlob.length() > sizeof(size_t));
+  // We try hard to not have empty blobs but we can end up with
+  // them because of CompositorHitTestInfo and merging.
+  MOZ_RELEASE_ASSERT(aBlob.length() >= sizeof(size_t));
   size_t indexOffset = *(size_t*)(aBlob.end().get()-sizeof(size_t));
-  MOZ_RELEASE_ASSERT(indexOffset + sizeof(size_t) <= aBlob.length());
+  MOZ_RELEASE_ASSERT(indexOffset <= aBlob.length() - sizeof(size_t));
   Reader reader(aBlob.begin().get()+indexOffset, aBlob.length()-sizeof(size_t)-indexOffset);
 
-  bool ret;
+  bool ret = true;
   size_t offset = 0;
   auto absBounds = IntRectAbsolute::FromRect(bounds);
   while (reader.pos < reader.len) {
@@ -327,25 +433,29 @@ static bool Moz2DRenderCallback(const Range<const uint8_t> aBlob,
 
     layers::WebRenderTranslator translator(dt);
 
-    size_t count = *(size_t*)(aBlob.begin().get() + end);
+    MOZ_RELEASE_ASSERT(extra_end >= end);
+    MOZ_RELEASE_ASSERT(extra_end < aBlob.length());
+    Reader fontReader(aBlob.begin().get() + end, extra_end - end);
+    size_t count = fontReader.ReadSize();
     for (size_t i = 0; i < count; i++) {
-      wr::FontKey key = *(wr::FontKey*)(aBlob.begin() + end + sizeof(count) + sizeof(wr::FontKey)*i).get();
-      RefPtr<UnscaledFont> font = GetUnscaledFont(&translator, key);
-      translator.AddUnscaledFont(0, font);
+      layers::BlobFont blobFont = fontReader.ReadBlobFont();
+      RefPtr<ScaledFont> scaledFont = GetScaledFont(&translator, blobFont.mFontInstanceKey);
+      translator.AddScaledFont(blobFont.mScaledFontPtr, scaledFont);
     }
+
     Range<const uint8_t> blob(aBlob.begin() + offset, aBlob.begin() + end);
     ret = translator.TranslateRecording((char*)blob.begin().get(), blob.length());
     MOZ_RELEASE_ASSERT(ret);
     offset = extra_end;
   }
 
-#if 0
-  dt->SetTransform(gfx::Matrix());
-  float r = float(rand()) / RAND_MAX;
-  float g = float(rand()) / RAND_MAX;
-  float b = float(rand()) / RAND_MAX;
-  dt->FillRect(gfx::Rect(0, 0, aSize.width, aSize.height), gfx::ColorPattern(gfx::Color(r, g, b, 0.5)));
-#endif
+  if (gfxPrefs::WebRenderBlobPaintFlashing()) {
+    dt->SetTransform(gfx::Matrix());
+    float r = float(rand()) / RAND_MAX;
+    float g = float(rand()) / RAND_MAX;
+    float b = float(rand()) / RAND_MAX;
+    dt->FillRect(gfx::Rect(origin.x, origin.y, aSize.width, aSize.height), gfx::ColorPattern(gfx::Color(r, g, b, 0.5)));
+  }
 
   if (aDirtyRect) {
     dt->PopClip();
@@ -384,5 +494,4 @@ bool wr_moz2d_render_cb(const mozilla::wr::ByteSlice blob,
 }
 
 } // extern
-
 

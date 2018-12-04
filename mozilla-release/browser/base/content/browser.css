@@ -47,10 +47,6 @@
   min-width: -moz-fit-content;
 }
 
-searchbar {
-  -moz-binding: url("chrome://browser/content/search/search.xml#searchbar");
-}
-
 .searchbar-textbox {
   -moz-binding: url("chrome://browser/content/search/search.xml#searchbar-textbox");
 }
@@ -79,10 +75,6 @@ toolbar[customizable="true"] {
   -moz-binding: url("chrome://browser/content/customizableui/toolbar.xml#toolbar-menubar-stub");
 }
 %endif
-
-#toolbar-menubar[autohide="true"] {
-  -moz-binding: url("chrome://browser/content/customizableui/toolbar.xml#toolbar-menubar-autohide");
-}
 
 panelmultiview {
   -moz-box-align: start;
@@ -220,9 +212,14 @@ panelview[mainview] > .panel-header {
   pointer-events: none; /* avoid blocking dragover events on scroll buttons */
 }
 
+.tabbrowser-tab[tab-grouping],
 .tabbrowser-tab[tabdrop-samewindow],
 #tabbrowser-tabs[movingtab] > .tabbrowser-tab[fadein]:not([selected]):not([multiselected]) {
   transition: transform 200ms var(--animation-easing-function);
+}
+
+.tabbrowser-tab[tab-grouping][multiselected]:not([selected]) {
+  z-index: 2;
 }
 
 /* The next 3 rules allow dragging tabs slightly outside of the tabstrip
@@ -488,10 +485,6 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
   -moz-box-flex: 1;
 }
 
-#PanelUI-feeds > .feed-toolbarbutton:-moz-locale-dir(rtl) {
-  direction: rtl;
-}
-
 #appMenu_historyMenu > .bookmark-item,
 #appMenu-library-recentlyClosedTabs > .panel-subview-body > .bookmark-item,
 #appMenu-library-recentlyClosedWindows > .panel-subview-body > .bookmark-item,
@@ -505,13 +498,6 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
   padding-top: 0; /* override drawintitlebar="true" */
 }
 %endif
-
-:root[lwthemefooter=true] #browser-bottombox:-moz-lwtheme {
-  background-repeat: no-repeat;
-  background-position: bottom left;
-  background-color: var(--lwt-accent-color);
-  background-image: var(--lwt-footer-image);
-}
 
 /* Hide menu elements intended for keyboard access support */
 #main-menubar[openedwithkey=false] .show-only-for-keyboard {
@@ -536,6 +522,10 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
 }
 
 #urlbar {
+  -moz-binding: url(chrome://browser/content/urlbarBindings.xml#legacy-urlbar);
+}
+
+#urlbar[quantumbar] {
   -moz-binding: url(chrome://browser/content/urlbarBindings.xml#urlbar);
 }
 
@@ -645,9 +635,12 @@ html|input.urlbar-input {
   display: none;
 }
 
-/* Only show the "Search with" label on hover or selection. */
-#PopupAutoCompleteRichResult > richlistbox > richlistitem:not([selected]):not(:hover) > .ac-action[actiontype=searchengine],
-#PopupAutoCompleteRichResult > richlistbox > richlistitem:not([selected]):not(:hover) > .ac-separator[actiontype=searchengine] {
+/* Normally we want to show the "Search with Engine" label only on hover or
+   selection, but we also want to show it for "alias offer" results -- that is,
+   non-heuristic search engine results that have an alias and empty query.
+   These results tell the user that they can be used to search. */
+#PopupAutoCompleteRichResult > richlistbox > richlistitem:not([selected]):not(:hover):not(.aliasOffer) > .ac-action[actiontype=searchengine],
+#PopupAutoCompleteRichResult > richlistbox > richlistitem:not([selected]):not(:hover):not(.aliasOffer) > .ac-separator[actiontype=searchengine] {
   display: none;
 }
 

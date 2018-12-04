@@ -31,8 +31,7 @@ ComputedStyleContainsFont(ComputedStyle* aComputedStyle,
   }
 
   // first, check if the family name is in the fontlist
-  const nsString& familyName = aFont->FamilyName();
-  if (!aComputedStyle->StyleFont()->mFont.fontlist.Contains(familyName)) {
+  if (!aComputedStyle->StyleFont()->mFont.fontlist.Contains(aFont->FamilyName())) {
     return false;
   }
 

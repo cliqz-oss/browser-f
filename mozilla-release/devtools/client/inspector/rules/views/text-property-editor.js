@@ -5,23 +5,18 @@
 "use strict";
 
 const Services = require("Services");
-
 const { l10n } = require("devtools/shared/inspector/css-logic");
-const {getCssProperties} = require("devtools/shared/fronts/css-properties");
-const {InplaceEditor, editableField} =
-      require("devtools/client/shared/inplace-editor");
+const { InplaceEditor, editableField } = require("devtools/client/shared/inplace-editor");
 const {
   createChild,
   appendText,
   advanceValidate,
-  blurOnMultipleProperties
+  blurOnMultipleProperties,
 } = require("devtools/client/inspector/shared/utils");
-const {
-  parseDeclarations,
-  parseSingleValue,
-} = require("devtools/shared/css/parsing-utils");
 
 loader.lazyRequireGetter(this, "openContentLink", "devtools/client/shared/link", true);
+loader.lazyRequireGetter(this, "parseDeclarations", "devtools/shared/css/parsing-utils", true);
+loader.lazyRequireGetter(this, "parseSingleValue", "devtools/shared/css/parsing-utils", true);
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 
@@ -75,18 +70,19 @@ const GENERIC_FONT_FAMILIES = [
 function TextPropertyEditor(ruleEditor, property) {
   this.ruleEditor = ruleEditor;
   this.ruleView = this.ruleEditor.ruleView;
+  this.cssProperties = this.ruleView.cssProperties;
   this.doc = this.ruleEditor.doc;
   this.popup = this.ruleView.popup;
   this.prop = property;
   this.prop.editor = this;
   this.browserWindow = this.doc.defaultView.top;
+
   this._populatedComputed = false;
   this._hasPendingClick = false;
   this._clickedElementOptions = null;
 
   this.toolbox = this.ruleView.inspector.toolbox;
   this.telemetry = this.toolbox.telemetry;
-  this.cssProperties = getCssProperties(this.toolbox);
 
   this.getGridlineNames = this.getGridlineNames.bind(this);
   this.update = this.update.bind(this);
@@ -526,22 +522,22 @@ TextPropertyEditor.prototype = {
       }
     }
 
+    const nodeFront = this.ruleView.inspector.selection.nodeFront;
+
     const flexToggle = this.valueSpan.querySelector(".ruleview-flex");
     if (flexToggle) {
       flexToggle.setAttribute("title", l10n("rule.flexToggle.tooltip"));
-      if (this.ruleView.highlighters.flexboxHighlighterShown ===
-          this.ruleView.inspector.selection.nodeFront) {
-        flexToggle.classList.add("active");
-      }
+      flexToggle.classList.toggle("active",
+        this.ruleView.highlighters.flexboxHighlighterShown === nodeFront);
     }
 
     const gridToggle = this.valueSpan.querySelector(".ruleview-grid");
     if (gridToggle) {
       gridToggle.setAttribute("title", l10n("rule.gridToggle.tooltip"));
-      if (this.ruleView.highlighters.gridHighlighterShown ===
-          this.ruleView.inspector.selection.nodeFront) {
-        gridToggle.classList.add("active");
-      }
+      gridToggle.classList.toggle("active",
+        this.ruleView.highlighters.gridHighlighters.has(nodeFront));
+      gridToggle.toggleAttribute("disabled",
+        !this.ruleView.highlighters.canGridHighlighterToggle(nodeFront));
     }
 
     const shapeToggle = this.valueSpan.querySelector(".ruleview-shapeswatch");
@@ -754,7 +750,7 @@ TextPropertyEditor.prototype = {
     }
     this.prop.setEnabled(!checked);
     event.stopPropagation();
-    this.telemetry.recordEvent("devtools.main", "edit_rule", "ruleview", null, {
+    this.telemetry.recordEvent("edit_rule", "ruleview", null, {
       "session_id": this.toolbox.sessionId
     });
   },
@@ -827,7 +823,7 @@ TextPropertyEditor.prototype = {
       return;
     }
 
-    this.telemetry.recordEvent("devtools.main", "edit_rule", "ruleview", null, {
+    this.telemetry.recordEvent("edit_rule", "ruleview", null, {
       "session_id": this.toolbox.sessionId
     });
 
@@ -922,18 +918,19 @@ TextPropertyEditor.prototype = {
       return;
     }
 
-    this.telemetry.recordEvent("devtools.main", "edit_rule", "ruleview", null, {
+    this.telemetry.recordEvent("edit_rule", "ruleview", null, {
       "session_id": this.toolbox.sessionId
     });
 
-    // Since the value was changed, check if the original propertywas a flex or grid
+    // Since the value was changed, check if the original property was a flex or grid
     // display declaration and hide their respective highlighters.
     if (this.isDisplayFlex()) {
       this.ruleView.highlighters.hideFlexboxHighlighter();
     }
 
     if (this.isDisplayGrid()) {
-      this.ruleView.highlighters.hideGridHighlighter();
+      this.ruleView.highlighters.hideGridHighlighter(
+        this.ruleView.inspector.selection.nodeFront);
     }
 
     // First, set this property value (common case, only modified a property)

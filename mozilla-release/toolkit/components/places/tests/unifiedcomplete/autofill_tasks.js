@@ -874,7 +874,6 @@ async function getOriginAutofillThreshold() {
   if (count == 1) {
     return sum;
   }
-  let stddevMultiplier =
-    Services.prefs.getFloatPref("browser.urlbar.autoFill.stddevMultiplier", 0.0);
+  let stddevMultiplier = UrlbarPrefs.get("autoFill.stddevMultiplier");
   return (sum / count) + (stddevMultiplier * Math.sqrt((squares - ((sum * sum) / count)) / count));
 }

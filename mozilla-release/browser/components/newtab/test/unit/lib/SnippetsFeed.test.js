@@ -13,7 +13,7 @@ const FAKE_ADDONS = {
     isSystem: false,
     isWebExtension: true,
     userDisabled: false,
-    installDate: 1231921
+    installDate: 1231921,
   },
   bar: {
     name: "Bar",
@@ -22,8 +22,8 @@ const FAKE_ADDONS = {
     isSystem: false,
     isWebExtension: false,
     userDisabled: false,
-    installDate: 1231921
-  }
+    installDate: 1231921,
+  },
 };
 
 let overrider = new GlobalOverrider();
@@ -35,14 +35,12 @@ describe("SnippetsFeed", () => {
     clock = sinon.useFakeTimers();
     sandbox = sinon.sandbox.create();
     overrider.set({
-      ProfileAge: class ProfileAge {
-        constructor() {
-          this.created = Promise.resolve(0);
-          this.reset = Promise.resolve(WEEK_IN_MS);
-        }
-      },
+      ProfileAge: () => Promise.resolve({
+        created: Promise.resolve(0),
+        reset: Promise.resolve(WEEK_IN_MS),
+      }),
       FxAccounts: {config: {promiseSignUpURI: sandbox.stub().returns(Promise.resolve(signUpUrl))}},
-      NewTabUtils: {activityStreamProvider: {getTotalBookmarksCount: () => Promise.resolve(42)}}
+      NewTabUtils: {activityStreamProvider: {getTotalBookmarksCount: () => Promise.resolve(42)}},
     });
   });
   afterEach(() => {
@@ -55,9 +53,7 @@ describe("SnippetsFeed", () => {
     sandbox.stub(global.Services.prefs, "getStringPref").returns(url);
     sandbox.stub(global.Services.prefs, "getBoolPref")
       .withArgs("datareporting.healthreport.uploadEnabled")
-      .returns(true)
-      .withArgs("browser.onboarding.notification.finished")
-      .returns(false);
+      .returns(true);
     sandbox.stub(global.Services.prefs, "prefHasUserValue")
       .withArgs("services.sync.username")
       .returns(true);
@@ -71,7 +67,7 @@ describe("SnippetsFeed", () => {
     const feed = new SnippetsFeed();
     feed.store = {
       dispatch: sandbox.stub(),
-      dbStorage: {getDbTable: sandbox.stub().returns({get: getStub})}
+      dbStorage: {getDbTable: sandbox.stub().returns({get: getStub})},
     };
 
     clock.tick(WEEK_IN_MS * 2);
@@ -90,7 +86,6 @@ describe("SnippetsFeed", () => {
     assert.propertyVal(action.data, "profileCreatedWeeksAgo", 2);
     assert.propertyVal(action.data, "profileResetWeeksAgo", 1);
     assert.propertyVal(action.data, "telemetryEnabled", true);
-    assert.propertyVal(action.data, "onboardingFinished", false);
     assert.propertyVal(action.data, "fxaccount", true);
     assert.property(action.data, "selectedSearchEngine");
     assert.deepEqual(action.data.selectedSearchEngine, searchData);
@@ -219,9 +214,9 @@ describe("SnippetsFeed", () => {
       .resolves({
         addons: [
           Object.assign({id: "foo"}, FAKE_ADDONS.foo),
-          Object.assign({id: "bar"}, FAKE_ADDONS.bar)
+          Object.assign({id: "bar"}, FAKE_ADDONS.bar),
         ],
-        fullData: true
+        fullData: true,
       });
     const portId = "1234";
     const feed = new SnippetsFeed();
@@ -230,8 +225,8 @@ describe("SnippetsFeed", () => {
       type: at.ADDONS_INFO_RESPONSE,
       data: {
         isFullData: true,
-        addons: FAKE_ADDONS
-      }
+        addons: FAKE_ADDONS,
+      },
     };
 
     await feed.onAction({type: at.ADDONS_INFO_REQUEST, meta: {fromTarget: portId}});

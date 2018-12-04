@@ -188,10 +188,10 @@ CLANGXX_3_3 = CLANGXX('3.3.0')
 CLANG_3_6 = CLANG('3.6.2') + DEFAULT_C11
 CLANGXX_3_6 = CLANGXX('3.6.2') + {
     '-std=gnu++11': {
-        '__has_feature(cxx_alignof)': '1',
+        '__has_builtin(__builtin_bitreverse8)': '1',
     },
     '-std=gnu++14': {
-        '__has_feature(cxx_alignof)': '1',
+        '__has_builtin(__builtin_bitreverse8)': '1',
     },
 }
 DEFAULT_CLANG = CLANG_3_6
@@ -242,6 +242,7 @@ VS_2015u2 = VS('19.00.23918')
 VS_2015u3 = VS('19.00.24213')
 VS_2017u4 = VS('19.11.25547')
 VS_2017u6 = VS('19.13.26128')
+VS_2017u8 = VS('19.15.26726')
 
 VS_PLATFORM_X86 = {
     '_M_IX86': 600,
@@ -262,7 +263,7 @@ CLANG_CL_3_9 = (CLANG_BASE('3.9.0') + VS('18.00.00000') + DEFAULT_C11 +
         '__STDC_VERSION__': False,
         '__cplusplus': '201103L',
     },
-    '-fms-compatibility-version=19.13.26128': VS('19.13.26128')[None],
+    '-fms-compatibility-version=19.15.26726': VS('19.15.26726')[None],
 }
 
 CLANG_CL_PLATFORM_X86 = FakeCompiler(VS_PLATFORM_X86, GCC_PLATFORM_X86[None])
@@ -487,7 +488,7 @@ class LinuxToolchainTest(BaseToolchainTest):
         compiler='/usr/bin/clang-3.3',
         language='C',
     )
-    CLANGXX_3_3_RESULT = 'Only clang/llvm 3.6 or newer is supported.'
+    CLANGXX_3_3_RESULT = 'Only clang/llvm 3.9 or newer is supported.'
     CLANG_3_6_RESULT = CompilerResult(
         flags=['-std=gnu99'],
         version='3.6.2',
@@ -505,11 +506,20 @@ class LinuxToolchainTest(BaseToolchainTest):
     DEFAULT_CLANG_RESULT = CLANG_3_6_RESULT + {'compiler': '/usr/bin/clang'}
     DEFAULT_CLANGXX_RESULT = CLANGXX_3_6_RESULT + {'compiler': '/usr/bin/clang++'}
 
+    def test_default(self):
+        # We'll try clang and gcc, and find clang first.
+        self.do_toolchain_test(self.PATHS, {
+            'c_compiler': self.DEFAULT_CLANG_RESULT,
+            'cxx_compiler': self.DEFAULT_CLANGXX_RESULT,
+        })
+
     def test_gcc(self):
-        # We'll try gcc and clang, and find gcc first.
         self.do_toolchain_test(self.PATHS, {
             'c_compiler': self.DEFAULT_GCC_RESULT,
             'cxx_compiler': self.DEFAULT_GXX_RESULT,
+        }, environ={
+            'CC': 'gcc',
+            'CXX': 'g++',
         })
 
     def test_unsupported_gcc(self):
@@ -525,6 +535,7 @@ class LinuxToolchainTest(BaseToolchainTest):
             'c_compiler': self.DEFAULT_GCC_RESULT,
             'cxx_compiler': self.GXX_4_9_RESULT,
         }, environ={
+            'CC': 'gcc',
             'CXX': 'g++-4.9',
         })
 
@@ -554,6 +565,7 @@ class LinuxToolchainTest(BaseToolchainTest):
                 'C++ compiler is version 7.3.0. Need to use the same compiler '
                 'version.'),
         }, environ={
+            'CC': 'gcc',
             'CXX': 'g++-7',
         })
 
@@ -566,28 +578,29 @@ class LinuxToolchainTest(BaseToolchainTest):
                 'C++ compiler is version 7.3.0. Need to use the same compiler '
                 'version.'),
         }, environ={
+            'CC': 'gcc',
             'HOST_CXX': 'g++-7',
         })
 
     def test_mismatched_compiler(self):
         self.do_toolchain_test(self.PATHS, {
-            'c_compiler': self.DEFAULT_GCC_RESULT,
+            'c_compiler': self.DEFAULT_CLANG_RESULT,
             'cxx_compiler': (
-                'The target C compiler is gcc, while the target C++ compiler '
-                'is clang. Need to use the same compiler suite.'),
+                'The target C compiler is clang, while the target C++ compiler '
+                'is gcc. Need to use the same compiler suite.'),
         }, environ={
-            'CXX': 'clang++',
+            'CXX': 'g++',
         })
 
         self.do_toolchain_test(self.PATHS, {
-            'c_compiler': self.DEFAULT_GCC_RESULT,
-            'cxx_compiler': self.DEFAULT_GXX_RESULT,
-            'host_c_compiler': self.DEFAULT_GCC_RESULT,
+            'c_compiler': self.DEFAULT_CLANG_RESULT,
+            'cxx_compiler': self.DEFAULT_CLANGXX_RESULT,
+            'host_c_compiler': self.DEFAULT_CLANG_RESULT,
             'host_cxx_compiler': (
-                'The host C compiler is gcc, while the host C++ compiler '
-                'is clang. Need to use the same compiler suite.'),
+                'The host C compiler is clang, while the host C++ compiler '
+                'is gcc. Need to use the same compiler suite.'),
         }, environ={
-            'HOST_CXX': 'clang++',
+            'HOST_CXX': 'g++',
         })
 
         self.do_toolchain_test(self.PATHS, {
@@ -598,11 +611,11 @@ class LinuxToolchainTest(BaseToolchainTest):
         })
 
         self.do_toolchain_test(self.PATHS, {
-            'c_compiler': self.DEFAULT_GCC_RESULT,
+            'c_compiler': self.DEFAULT_CLANG_RESULT,
             'cxx_compiler': '`%s` is not a C++ compiler.'
-            % mozpath.abspath('/usr/bin/gcc'),
+            % mozpath.abspath('/usr/bin/clang'),
         }, environ={
-            'CXX': 'gcc',
+            'CXX': 'clang',
         })
 
     def test_clang(self):
@@ -729,6 +742,8 @@ class LinuxSimpleCrossToolchainTest(BaseToolchainTest):
             },
             'host_c_compiler': self.DEFAULT_GCC_RESULT,
             'host_cxx_compiler': self.DEFAULT_GXX_RESULT,
+        }, environ={
+            'CC': 'gcc'
         })
 
     def test_cross_clang(self):
@@ -741,8 +756,6 @@ class LinuxSimpleCrossToolchainTest(BaseToolchainTest):
             },
             'host_c_compiler': self.DEFAULT_CLANG_RESULT,
             'host_cxx_compiler': self.DEFAULT_CLANGXX_RESULT,
-        }, environ={
-            'CC': 'clang',
         })
 
 
@@ -770,6 +783,8 @@ class LinuxX86_64CrossToolchainTest(BaseToolchainTest):
             },
             'host_c_compiler': self.DEFAULT_GCC_RESULT,
             'host_cxx_compiler': self.DEFAULT_GXX_RESULT,
+        }, environ={
+            'CC': 'gcc',
         })
 
     def test_cross_clang(self):
@@ -782,8 +797,6 @@ class LinuxX86_64CrossToolchainTest(BaseToolchainTest):
             },
             'host_c_compiler': self.DEFAULT_CLANG_RESULT,
             'host_cxx_compiler': self.DEFAULT_CLANGXX_RESULT,
-        }, environ={
-            'CC': 'clang',
         })
 
 
@@ -869,7 +882,8 @@ class WindowsToolchainTest(BaseToolchainTest):
         '/opt/VS_2015u2/bin/cl': VS_2015u2 + VS_PLATFORM_X86,
         '/opt/VS_2015u3/bin/cl': VS_2015u3 + VS_PLATFORM_X86,
         '/opt/VS_2017u4/bin/cl': VS_2017u4 + VS_PLATFORM_X86,
-        '/usr/bin/cl': VS_2017u6 + VS_PLATFORM_X86,
+        '/opt/VS_2017u6/bin/cl': VS_2017u6 + VS_PLATFORM_X86,
+        '/usr/bin/cl': VS_2017u8 + VS_PLATFORM_X86,
         '/usr/bin/clang-cl': CLANG_CL_3_9 + CLANG_CL_PLATFORM_X86,
         '/usr/bin/gcc': DEFAULT_GCC + GCC_PLATFORM_X86_WIN,
         '/usr/bin/g++': DEFAULT_GXX + GCC_PLATFORM_X86_WIN,
@@ -887,67 +901,44 @@ class WindowsToolchainTest(BaseToolchainTest):
         '/usr/bin/clang++-3.3': CLANGXX_3_3 + CLANG_PLATFORM_X86_WIN,
     }
 
-    VS_2013u2_RESULT = (
-        'This version (18.00.30501) of the MSVC compiler is not supported.\n'
-        'You must install Visual C++ 2017 Update 6 or Update 8 or later'
-        ' in order to build.\n'
+    VS_FAILURE_MESSAGE = (
+        'This version (%s) of the MSVC compiler is not supported.\nYou must'
+        ' install Visual C++ 2017 Update 8 or later in order to build.\n'
         'See https://developer.mozilla.org/en/Windows_Build_Prerequisites')
-    VS_2013u3_RESULT = (
-        'This version (18.00.30723) of the MSVC compiler is not supported.\n'
-        'You must install Visual C++ 2017 Update 6 or Update 8 or later'
-        ' in order to build.\n'
-        'See https://developer.mozilla.org/en/Windows_Build_Prerequisites')
-    VS_2015_RESULT = (
-        'This version (19.00.23026) of the MSVC compiler is not supported.\n'
-        'You must install Visual C++ 2017 Update 6 or Update 8 or later'
-        ' in order to build.\n'
-        'See https://developer.mozilla.org/en/Windows_Build_Prerequisites')
-    VS_2015u1_RESULT = (
-        'This version (19.00.23506) of the MSVC compiler is not supported.\n'
-        'You must install Visual C++ 2017 Update 6 or Update 8 or later'
-        ' in order to build.\n'
-        'See https://developer.mozilla.org/en/Windows_Build_Prerequisites')
-    VS_2015u2_RESULT = (
-        'This version (19.00.23918) of the MSVC compiler is not supported.\n'
-        'You must install Visual C++ 2017 Update 6 or Update 8 or later'
-        ' in order to build.\n'
-        'See https://developer.mozilla.org/en/Windows_Build_Prerequisites')
-    VS_2015u3_RESULT = (
-        'This version (19.00.24213) of the MSVC compiler is not supported.\n'
-        'You must install Visual C++ 2017 Update 6 or Update 8 or later'
-        ' in order to build.\n'
-        'See https://developer.mozilla.org/en/Windows_Build_Prerequisites')
-    VS_2017u4_RESULT = (
-        'This version (19.11.25547) of the MSVC compiler is not supported.\n'
-        'You must install Visual C++ 2017 Update 6 or Update 8 or later'
-        ' in order to build.\n'
-        'See https://developer.mozilla.org/en/Windows_Build_Prerequisites')
-    VS_2017u6_RESULT = CompilerResult(
+    VS_2013u2_RESULT = VS_FAILURE_MESSAGE % '18.00.30501'
+    VS_2013u3_RESULT = VS_FAILURE_MESSAGE % '18.00.30723'
+    VS_2015_RESULT = VS_FAILURE_MESSAGE % '19.00.23026'
+    VS_2015u1_RESULT = VS_FAILURE_MESSAGE % '19.00.23506'
+    VS_2015u2_RESULT = VS_FAILURE_MESSAGE % '19.00.23918'
+    VS_2015u3_RESULT = VS_FAILURE_MESSAGE % '19.00.24213'
+    VS_2017u4_RESULT = VS_FAILURE_MESSAGE % '19.11.25547'
+    VS_2017u6_RESULT = VS_FAILURE_MESSAGE % '19.13.26128'
+    VS_2017u8_RESULT = CompilerResult(
         flags=[],
-        version='19.13.26128',
+        version='19.15.26726',
         type='msvc',
         compiler='/usr/bin/cl',
         language='C',
     )
-    VSXX_2017u6_RESULT = CompilerResult(
+    VSXX_2017u8_RESULT = CompilerResult(
         flags=[],
-        version='19.13.26128',
+        version='19.15.26726',
         type='msvc',
         compiler='/usr/bin/cl',
         language='C++',
     )
     CLANG_CL_3_9_RESULT = CompilerResult(
         flags=['-Xclang', '-std=gnu99',
-               '-fms-compatibility-version=19.13.26128'],
-        version='19.13.26128',
+               '-fms-compatibility-version=19.15.26726'],
+        version='19.15.26726',
         type='clang-cl',
         compiler='/usr/bin/clang-cl',
         language='C',
     )
     CLANGXX_CL_3_9_RESULT = CompilerResult(
         flags=['-Xclang', '-std=c++14',
-               '-fms-compatibility-version=19.13.26128'],
-        version='19.13.26128',
+               '-fms-compatibility-version=19.15.26726'],
+        version='19.15.26726',
         type='clang-cl',
         compiler='/usr/bin/clang-cl',
         language='C++',
@@ -973,11 +964,17 @@ class WindowsToolchainTest(BaseToolchainTest):
             if os.path.basename(k) != 'clang-cl'
         }
         self.do_toolchain_test(paths, {
-            'c_compiler': self.VS_2017u6_RESULT,
-            'cxx_compiler': self.VSXX_2017u6_RESULT,
+            'c_compiler': self.VS_2017u8_RESULT,
+            'cxx_compiler': self.VSXX_2017u8_RESULT,
         })
 
     def test_unsupported_msvc(self):
+        self.do_toolchain_test(self.PATHS, {
+            'c_compiler': self.VS_2017u6_RESULT,
+        }, environ={
+            'CC': '/opt/VS_2017u6/bin/cl',
+        })
+
         self.do_toolchain_test(self.PATHS, {
             'c_compiler': self.VS_2017u4_RESULT,
         }, environ={
@@ -1068,7 +1065,7 @@ class WindowsToolchainTest(BaseToolchainTest):
 
     def test_cannot_cross(self):
         paths = {
-            '/usr/bin/cl': VS_2017u6 + VS_PLATFORM_X86_64,
+            '/usr/bin/cl': VS_2017u8 + VS_PLATFORM_X86_64,
         }
         self.do_toolchain_test(paths, {
             'c_compiler': ('Target C compiler target CPU (x86_64) '
@@ -1089,7 +1086,8 @@ class Windows64ToolchainTest(WindowsToolchainTest):
         '/opt/VS_2015u2/bin/cl': VS_2015u2 + VS_PLATFORM_X86_64,
         '/opt/VS_2015u3/bin/cl': VS_2015u3 + VS_PLATFORM_X86_64,
         '/opt/VS_2017u4/bin/cl': VS_2017u4 + VS_PLATFORM_X86_64,
-        '/usr/bin/cl': VS_2017u6 + VS_PLATFORM_X86_64,
+        '/opt/VS_2017u6/bin/cl': VS_2017u6 + VS_PLATFORM_X86_64,
+        '/usr/bin/cl': VS_2017u8 + VS_PLATFORM_X86_64,
         '/usr/bin/clang-cl': CLANG_CL_3_9 + CLANG_CL_PLATFORM_X86_64,
         '/usr/bin/gcc': DEFAULT_GCC + GCC_PLATFORM_X86_64_WIN,
         '/usr/bin/g++': DEFAULT_GXX + GCC_PLATFORM_X86_64_WIN,
@@ -1111,7 +1109,7 @@ class Windows64ToolchainTest(WindowsToolchainTest):
 
     def test_cannot_cross(self):
         paths = {
-            '/usr/bin/cl': VS_2017u6 + VS_PLATFORM_X86,
+            '/usr/bin/cl': VS_2017u8 + VS_PLATFORM_X86,
         }
         self.do_toolchain_test(paths, {
             'c_compiler': ('Target C compiler target CPU (x86) '
@@ -1451,6 +1449,36 @@ class OSXCrossToolchainTest(BaseToolchainTest):
                           'match --target kernel (Darwin)',
         }, environ={
             'CC': 'gcc',
+        })
+
+
+class WindowsCrossToolchainTest(BaseToolchainTest):
+    TARGET = 'x86_64-pc-mingw32'
+    DEFAULT_CLANG_RESULT = LinuxToolchainTest.DEFAULT_CLANG_RESULT
+    DEFAULT_CLANGXX_RESULT = LinuxToolchainTest.DEFAULT_CLANGXX_RESULT
+
+    def test_wsl_cross(self):
+        paths = {
+            '/usr/bin/cl': VS_2017u8 + VS_PLATFORM_X86_64,
+        }
+        paths.update(LinuxToolchainTest.PATHS)
+        self.do_toolchain_test(paths, {
+            'c_compiler': WindowsToolchainTest.VS_2017u8_RESULT,
+            'cxx_compiler': WindowsToolchainTest.VSXX_2017u8_RESULT,
+            'host_c_compiler': self.DEFAULT_CLANG_RESULT,
+            'host_cxx_compiler': self.DEFAULT_CLANGXX_RESULT,
+        })
+
+    def test_clang_cl_cross(self):
+        paths = {
+            '/usr/bin/clang-cl': CLANG_CL_3_9 + CLANG_CL_PLATFORM_X86_64,
+        }
+        paths.update(LinuxToolchainTest.PATHS)
+        self.do_toolchain_test(paths, {
+            'c_compiler': WindowsToolchainTest.CLANG_CL_3_9_RESULT,
+            'cxx_compiler': WindowsToolchainTest.CLANGXX_CL_3_9_RESULT,
+            'host_c_compiler': self.DEFAULT_CLANG_RESULT,
+            'host_cxx_compiler': self.DEFAULT_CLANGXX_RESULT,
         })
 
 

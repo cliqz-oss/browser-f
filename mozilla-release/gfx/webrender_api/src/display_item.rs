@@ -8,7 +8,12 @@ use euclid::{SideOffsets2D, TypedRect};
 use std::ops::Not;
 use {ColorF, FontInstanceKey, GlyphOptions, ImageKey, LayoutPixel, LayoutPoint};
 use {LayoutRect, LayoutSize, LayoutTransform, LayoutVector2D, PipelineId, PropertyBinding};
+use LayoutSideOffsets;
+use image::ColorDepth;
 
+// Maximum blur radius.
+// Taken from nsCSSRendering.cpp in Gecko.
+pub const MAX_BLUR_RADIUS: f32 = 300.;
 
 // NOTE: some of these structs have an "IMPLICIT" comment.
 // This indicates that the BuiltDisplayList will have serialized
@@ -232,14 +237,14 @@ pub struct LineDisplayItem {
 }
 
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize, Eq, Hash)]
 pub enum LineOrientation {
     Vertical,
     Horizontal,
 }
 
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize, Eq, Hash)]
 pub enum LineStyle {
     Solid,
     Dotted,
@@ -261,6 +266,11 @@ pub struct NormalBorder {
     pub top: BorderSide,
     pub bottom: BorderSide,
     pub radius: BorderRadius,
+    /// Whether to apply anti-aliasing on the border corners.
+    ///
+    /// Note that for this to be `false` and work, this requires the borders to
+    /// be solid, and no border-radius.
+    pub do_aa: bool,
 }
 
 impl NormalBorder {
@@ -272,6 +282,48 @@ impl NormalBorder {
         b.top.color = color;
         b.bottom.color = color;
         b
+    }
+
+    fn can_disable_antialiasing(&self) -> bool {
+        fn is_valid(style: BorderStyle) -> bool {
+            style == BorderStyle::Solid || style == BorderStyle::None
+        }
+
+        self.radius.is_zero() &&
+            is_valid(self.top.style) &&
+            is_valid(self.left.style) &&
+            is_valid(self.bottom.style) &&
+            is_valid(self.right.style)
+    }
+
+    /// Normalizes a border so that we don't render disallowed stuff, like inset
+    /// borders that are less than two pixels wide.
+    #[inline]
+    pub fn normalize(&mut self, widths: &LayoutSideOffsets) {
+        debug_assert!(
+            self.do_aa || self.can_disable_antialiasing(),
+            "Unexpected disabled-antialising in a border, likely won't work or will be ignored"
+        );
+
+        #[inline]
+        fn renders_small_border_solid(style: BorderStyle) -> bool {
+            match style {
+                BorderStyle::Groove |
+                BorderStyle::Ridge => true,
+                _ => false,
+            }
+        }
+
+        let normalize_side = |side: &mut BorderSide, width: f32| {
+            if renders_small_border_solid(side.style) && width < 2. {
+                side.style = BorderStyle::Solid;
+            }
+        };
+
+        normalize_side(&mut self.left, widths.left);
+        normalize_side(&mut self.right, widths.right);
+        normalize_side(&mut self.top, widths.top);
+        normalize_side(&mut self.bottom, widths.bottom);
     }
 }
 
@@ -337,7 +389,7 @@ pub enum BorderDetails {
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BorderDisplayItem {
-    pub widths: BorderWidths,
+    pub widths: LayoutSideOffsets,
     pub details: BorderDetails,
 }
 
@@ -355,15 +407,6 @@ pub struct BorderRadius {
     pub top_right: LayoutSize,
     pub bottom_left: LayoutSize,
     pub bottom_right: LayoutSize,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
-pub struct BorderWidths {
-    pub left: f32,
-    pub top: f32,
-    pub right: f32,
-    pub bottom: f32,
 }
 
 #[repr(C)]
@@ -391,6 +434,29 @@ pub enum BorderStyle {
 impl BorderStyle {
     pub fn is_hidden(&self) -> bool {
         *self == BorderStyle::Hidden || *self == BorderStyle::None
+    }
+
+    /// Returns true if the border style itself is opaque. Other
+    /// factors (such as color, or border radii) may mean that
+    /// the border segment isn't opaque regardless of this.
+    pub fn is_opaque(&self) -> bool {
+        match *self {
+            BorderStyle::None |
+            BorderStyle::Double |
+            BorderStyle::Dotted |
+            BorderStyle::Dashed |
+            BorderStyle::Hidden => {
+                false
+            }
+
+            BorderStyle::Solid |
+            BorderStyle::Groove |
+            BorderStyle::Ridge |
+            BorderStyle::Inset |
+            BorderStyle::Outset => {
+                true
+            }
+        }
     }
 }
 
@@ -492,7 +558,7 @@ pub struct StackingContext {
     pub transform_style: TransformStyle,
     pub mix_blend_mode: MixBlendMode,
     pub clip_node_id: Option<ClipId>,
-    pub glyph_raster_space: GlyphRasterSpace,
+    pub raster_space: RasterSpace,
 } // IMPLICIT: filters: Vec<FilterOp>
 
 
@@ -503,21 +569,33 @@ pub enum TransformStyle {
     Preserve3D = 1,
 }
 
-// TODO(gw): In the future, we may modify this to apply to all elements
-//           within a stacking context, rather than just the glyphs. If
-//           this change occurs, we'll update the naming of this.
+/// Configure whether the contents of a stacking context
+/// should be rasterized in local space or screen space.
+/// Local space rasterized pictures are typically used
+/// when we want to cache the output, and performance is
+/// important. Note that this is a performance hint only,
+/// which WR may choose to ignore.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[repr(u32)]
-pub enum GlyphRasterSpace {
-    // Rasterize glyphs in local-space, applying supplied scale to glyph sizes.
+pub enum RasterSpace {
+    // Rasterize in local-space, applying supplied scale to primitives.
     // Best performance, but lower quality.
     Local(f32),
 
-    // Rasterize the glyphs in screen-space, including rotation / skew etc in
-    // the rasterized glyph. Best quality, but slower performance. Note that
+    // Rasterize the picture in screen-space, including rotation / skew etc in
+    // the rasterized element. Best quality, but slower performance. Note that
     // any stacking context with a perspective transform will be rasterized
     // in local-space, even if this is set.
     Screen,
+}
+
+impl RasterSpace {
+    pub fn local_scale(&self) -> Option<f32> {
+        match *self {
+            RasterSpace::Local(scale) => Some(scale),
+            RasterSpace::Screen => None,
+        }
+    }
 }
 
 #[repr(u32)]
@@ -557,6 +635,26 @@ pub enum FilterOp {
     Sepia(f32),
     DropShadow(LayoutVector2D, f32, ColorF),
     ColorMatrix([f32; 20]),
+    SrgbToLinear,
+    LinearToSrgb,
+}
+
+impl FilterOp {
+    /// Ensure that the parameters for a filter operation
+    /// are sensible.
+    pub fn sanitize(self) -> FilterOp {
+        match self {
+            FilterOp::Blur(radius) => {
+                let radius = radius.min(MAX_BLUR_RADIUS);
+                FilterOp::Blur(radius)
+            }
+            FilterOp::DropShadow(offset, radius, color) => {
+                let radius = radius.min(MAX_BLUR_RADIUS);
+                FilterOp::DropShadow(offset, radius, color)
+            }
+            filter => filter,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
@@ -593,6 +691,7 @@ pub enum AlphaType {
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct YuvImageDisplayItem {
     pub yuv_data: YuvData,
+    pub color_depth: ColorDepth,
     pub color_space: YuvColorSpace,
     pub image_rendering: ImageRendering,
 }
@@ -669,59 +768,8 @@ pub struct ImageMask {
     pub repeat: bool,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
-pub enum LocalClip {
-    Rect(LayoutRect),
-    RoundedRect(LayoutRect, ComplexClipRegion),
-}
-
-impl From<LayoutRect> for LocalClip {
-    fn from(rect: LayoutRect) -> Self {
-        LocalClip::Rect(rect)
-    }
-}
-
-impl LocalClip {
-    pub fn clip_rect(&self) -> &LayoutRect {
-        match *self {
-            LocalClip::Rect(ref rect) => rect,
-            LocalClip::RoundedRect(ref rect, _) => rect,
-        }
-    }
-
-    pub fn create_with_offset(&self, offset: &LayoutVector2D) -> LocalClip {
-        match *self {
-            LocalClip::Rect(rect) => LocalClip::from(rect.translate(offset)),
-            LocalClip::RoundedRect(rect, complex) => LocalClip::RoundedRect(
-                rect.translate(offset),
-                ComplexClipRegion {
-                    rect: complex.rect.translate(offset),
-                    radii: complex.radii,
-                    mode: complex.mode,
-                },
-            ),
-        }
-    }
-
-    pub fn clip_by(&self, rect: &LayoutRect) -> LocalClip {
-        match *self {
-            LocalClip::Rect(clip_rect) => {
-                LocalClip::Rect(
-                    clip_rect.intersection(rect).unwrap_or_else(LayoutRect::zero)
-                )
-            }
-            LocalClip::RoundedRect(clip_rect, complex) => {
-                LocalClip::RoundedRect(
-                    clip_rect.intersection(rect).unwrap_or_else(LayoutRect::zero),
-                    complex,
-                )
-            }
-        }
-    }
-}
-
 #[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize, Eq, Hash)]
 pub enum ClipMode {
     Clip,    // Pixels inside the region are visible.
     ClipOut, // Pixels outside the region are visible.

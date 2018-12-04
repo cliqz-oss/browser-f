@@ -46,10 +46,12 @@
 #include "nsCOMArray.h"
 #include "mozilla/net/ChannelEventQueue.h"
 #include "mozilla/Move.h"
+#include "mozilla/Tuple.h"
 #include "nsIThrottledInputChannel.h"
 #include "nsTArray.h"
 #include "nsCOMPtr.h"
 #include "mozilla/IntegerPrintfMacros.h"
+#include "nsStringEnumerator.h"
 
 #define HTTP_BASE_CHANNEL_IID \
 { 0x9d5cde03, 0xe6e9, 0x4612, \
@@ -69,6 +71,8 @@ class LogCollector;
 
 namespace net {
 extern mozilla::LazyLogModule gHttpLog;
+
+typedef nsTArray<Tuple<nsCString, nsCString>> ArrayOfStringPairs;
 
 /*
  * This class is a partial implementation of nsIHttpChannel.  It contains code
@@ -322,11 +326,13 @@ public:
   void
   ClearConsoleReports() override;
 
-  class nsContentEncodings : public nsIUTF8StringEnumerator
+  class nsContentEncodings : public nsStringEnumeratorBase
     {
     public:
         NS_DECL_ISUPPORTS
         NS_DECL_NSIUTF8STRINGENUMERATOR
+
+        using nsStringEnumeratorBase::GetNext;
 
         nsContentEncodings(nsIHttpChannel* aChannel, const char* aEncodingHeader);
 
@@ -550,8 +556,8 @@ protected:
   // The initiator type (for this resource) - how was the resource referenced in
   // the HTML file.
   nsString mInitiatorType;
-  // Holds the name of the preferred alt-data type.
-  nsCString mPreferredCachedAltDataType;
+  // Holds the name of the preferred alt-data type for each contentType.
+  ArrayOfStringPairs mPreferredCachedAltDataTypes;
   // Holds the name of the alternative data type the channel returned.
   nsCString mAvailableCachedAltDataType;
   nsString mIntegrityMetadata;

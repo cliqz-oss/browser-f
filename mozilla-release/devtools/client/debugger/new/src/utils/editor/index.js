@@ -63,6 +63,8 @@ Object.defineProperty(exports, "onMouseOver", {
 });
 exports.getEditor = getEditor;
 exports.removeEditor = removeEditor;
+exports.startOperation = startOperation;
+exports.endOperation = endOperation;
 exports.shouldShowPrettyPrint = shouldShowPrettyPrint;
 exports.shouldShowFooter = shouldShowFooter;
 exports.traverseResults = traverseResults;
@@ -86,8 +88,6 @@ var _source = require("../source");
 
 var _wasm = require("../wasm");
 
-var _devtoolsSourceMap = require("devtools/client/shared/source-map/index.js");
-
 let editor;
 
 function getEditor() {
@@ -101,6 +101,30 @@ function getEditor() {
 
 function removeEditor() {
   editor = null;
+}
+
+function getCodeMirror() {
+  return editor && editor.codeMirror;
+}
+
+function startOperation() {
+  const codeMirror = getCodeMirror();
+
+  if (!codeMirror) {
+    return;
+  }
+
+  codeMirror.startOperation();
+}
+
+function endOperation() {
+  const codeMirror = getCodeMirror();
+
+  if (!codeMirror) {
+    return;
+  }
+
+  codeMirror.endOperation();
 }
 
 function shouldShowPrettyPrint(selectedSource) {
@@ -120,7 +144,7 @@ function shouldShowFooter(selectedSource, horizontal) {
     return false;
   }
 
-  return shouldShowPrettyPrint(selectedSource) || (0, _devtoolsSourceMap.isOriginalId)(selectedSource.id);
+  return shouldShowPrettyPrint(selectedSource) || (0, _source.isOriginal)(selectedSource);
 }
 
 function traverseResults(e, ctx, query, dir, modifiers) {

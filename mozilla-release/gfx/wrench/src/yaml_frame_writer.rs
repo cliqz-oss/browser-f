@@ -206,15 +206,15 @@ fn write_stacking_context(
 ) {
     enum_node(parent, "transform-style", sc.transform_style);
 
-    let glyph_raster_space = match sc.glyph_raster_space {
-        GlyphRasterSpace::Local(scale) => {
+    let raster_space = match sc.raster_space {
+        RasterSpace::Local(scale) => {
             format!("local({})", scale)
         }
-        GlyphRasterSpace::Screen => {
+        RasterSpace::Screen => {
             "screen".to_owned()
         }
     };
-    str_node(parent, "glyph-raster-space", &glyph_raster_space);
+    str_node(parent, "raster-space", &raster_space);
 
     if let Some(clip_node_id) = sc.clip_node_id {
         yaml_node(parent, "clip-node", clip_id_mapper.map_id(&clip_node_id));
@@ -249,6 +249,12 @@ fn write_stacking_context(
             }
             FilterOp::ColorMatrix(matrix) => {
                 filters.push(Yaml::String(format!("color-matrix({:?})", matrix)))
+            }
+            FilterOp::SrgbToLinear => {
+                filters.push(Yaml::String("srgb-to-linear".to_string()))
+            }
+            FilterOp::LinearToSrgb => {
+                filters.push(Yaml::String("linear-to-srgb".to_string()))
             }
         }
     }
@@ -869,6 +875,7 @@ impl YamlFrameWriter {
                             str_node(&mut v, "border-type", "normal");
                             yaml_node(&mut v, "color", string_vec_yaml(&colors, true));
                             yaml_node(&mut v, "style", string_vec_yaml(&styles, true));
+                            bool_node(&mut v, "do_aa", details.do_aa);
                             if let Some(radius_node) = maybe_radius_yaml(&details.radius) {
                                 yaml_node(&mut v, "radius", radius_node);
                             }

@@ -19,7 +19,7 @@ function test() {
     },
   }));
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
-  gBrowser.loadURI(TESTROOT + "installtrigger.html?" + triggers);
+  BrowserTestUtils.loadURI(gBrowser, TESTROOT + "installtrigger.html?" + triggers);
 }
 
 function confirm_install(panel) {
@@ -28,6 +28,8 @@ function confirm_install(panel) {
 }
 
 function install_ended(install, addon) {
+  Assert.deepEqual(install.installTelemetryInfo, {source: "test-host", method: "installTrigger"},
+                   "Got the expected install.installTelemetryInfo");
   install.cancel();
 }
 

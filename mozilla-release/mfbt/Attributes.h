@@ -598,6 +598,10 @@
  *   or constexpr constructor and a trivial destructor. Setting this attribute
  *   on a class makes it a compile-time error for that class to get a
  *   non-trivial constructor or destructor for any reason.
+ * MOZ_ALLOW_TEMPORARY: Applies to constructors. This indicates that using the
+ *   constructor is allowed in temporary expressions, if it would have otherwise
+ *   been forbidden by the type being a MOZ_NON_TEMPORARY_CLASS. Useful for
+ *   constructors like Maybe(Nothing).
  * MOZ_HEAP_ALLOCATOR: Applies to any function. This indicates that the return
  *   value is allocated on the heap, and will as a result check such allocations
  *   during MOZ_STACK_CLASS and MOZ_NONHEAP_CLASS annotation checking.
@@ -721,6 +725,7 @@
 #  define MOZ_NON_TEMPORARY_CLASS __attribute__((annotate("moz_non_temporary_class")))
 #  define MOZ_TEMPORARY_CLASS __attribute__((annotate("moz_temporary_class")))
 #  define MOZ_TRIVIAL_CTOR_DTOR __attribute__((annotate("moz_trivial_ctor_dtor")))
+#  define MOZ_ALLOW_TEMPORARY __attribute__((annotate("moz_allow_temporary")))
 #  ifdef DEBUG
      /* in debug builds, these classes do have non-trivial constructors. */
 #    define MOZ_ONLY_USED_TO_AVOID_STATIC_CONSTRUCTORS __attribute__((annotate("moz_global_class")))
@@ -730,12 +735,11 @@
 #  endif
 #  define MOZ_IMPLICIT __attribute__((annotate("moz_implicit")))
 #  define MOZ_IS_SMARTPTR_TO_REFCOUNTED __attribute__((annotate("moz_is_smartptr_to_refcounted")))
-#  define MOZ_IS_REFPTR __attribute__((annotate("moz_is_refptr"))) \
-                        MOZ_IS_SMARTPTR_TO_REFCOUNTED
+#  define MOZ_IS_REFPTR MOZ_IS_SMARTPTR_TO_REFCOUNTED
 #  define MOZ_NO_ARITHMETIC_EXPR_IN_ARGUMENT __attribute__((annotate("moz_no_arith_expr_in_arg")))
-#  define MOZ_OWNING_REF __attribute__((annotate("moz_strong_ref")))
-#  define MOZ_NON_OWNING_REF __attribute__((annotate("moz_weak_ref")))
-#  define MOZ_UNSAFE_REF(reason) __attribute__((annotate("moz_weak_ref")))
+#  define MOZ_OWNING_REF
+#  define MOZ_NON_OWNING_REF
+#  define MOZ_UNSAFE_REF(reason)
 #  define MOZ_NO_ADDREF_RELEASE_ON_RETURN __attribute__((annotate("moz_no_addref_release_on_return")))
 #  define MOZ_MUST_USE_TYPE __attribute__((annotate("moz_must_use_type")))
 #  define MOZ_NEEDS_NO_VTABLE_TYPE __attribute__((annotate("moz_needs_no_vtable_type")))
@@ -746,10 +750,8 @@
 #  define MOZ_INHERIT_TYPE_ANNOTATIONS_FROM_TEMPLATE_ARGS \
     __attribute__((annotate("moz_inherit_type_annotations_from_template_args")))
 #  define MOZ_NON_AUTOABLE __attribute__((annotate("moz_non_autoable")))
-#  define MOZ_INIT_OUTSIDE_CTOR \
-    __attribute__((annotate("moz_ignore_ctor_initialization")))
-#  define MOZ_IS_CLASS_INIT \
-    __attribute__((annotate("moz_is_class_init")))
+#  define MOZ_INIT_OUTSIDE_CTOR
+#  define MOZ_IS_CLASS_INIT
 #  define MOZ_NON_PARAM \
     __attribute__((annotate("moz_non_param")))
 #  define MOZ_REQUIRED_BASE_METHOD \
@@ -779,6 +781,7 @@
 #  define MOZ_NON_TEMPORARY_CLASS /* nothing */
 #  define MOZ_TEMPORARY_CLASS /* nothing */
 #  define MOZ_TRIVIAL_CTOR_DTOR /* nothing */
+#  define MOZ_ALLOW_TEMPORARY /* nothing */
 #  define MOZ_ONLY_USED_TO_AVOID_STATIC_CONSTRUCTORS /* nothing */
 #  define MOZ_IMPLICIT /* nothing */
 #  define MOZ_IS_SMARTPTR_TO_REFCOUNTED /* nothing */

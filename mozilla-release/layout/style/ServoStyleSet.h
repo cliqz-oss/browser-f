@@ -145,11 +145,9 @@ public:
 
   void SetAuthorStyleDisabled(bool aStyleDisabled);
 
-  // FIXME(emilio): All the callers pass Allow here, and aParentContext isn't
-  // used...
+  // FIXME(emilio): All the callers pass Allow here
   already_AddRefed<ComputedStyle>
   ResolveStyleFor(dom::Element* aElement,
-                  ComputedStyle* aParentContext,
                   LazyComputeBehavior aMayCompute);
 
   // Get a CopmutedStyle for a text node (which no rules will match).
@@ -223,7 +221,7 @@ public:
 #ifdef MOZ_XUL
   already_AddRefed<ComputedStyle>
   ResolveXULTreePseudoStyle(dom::Element* aParentElement,
-                            nsICSSAnonBoxPseudo* aPseudoTag,
+                            nsCSSAnonBoxPseudoStaticAtom* aPseudoTag,
                             ComputedStyle* aParentContext,
                             const AtomArray& aInputWord);
 #endif

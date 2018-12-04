@@ -11,8 +11,11 @@
 #include "mozilla/MozPromise.h"
 #include "mozilla/RefPtr.h"
 
+#define USER_INTERACTION_PERM "storageAccessAPI"
+
 class nsIChannel;
 class nsIHttpChannel;
+class nsIPermission;
 class nsIPrincipal;
 class nsIURI;
 class nsPIDOMWindowInner;
@@ -81,6 +84,12 @@ public:
   static bool
   IsFirstPartyStorageAccessGrantedFor(nsIPrincipal* aPrincipal);
 
+  enum StorageAccessGrantedReason
+  {
+    eStorageAccessAPI,
+    eHeuristic,
+  };
+
   // Grant the permission for aOrigin to have access to the first party storage.
   // This method can handle 2 different scenarios:
   // - aParentWindow is a 3rd party context, it opens an aOrigin window and the
@@ -98,8 +107,20 @@ public:
   //   example.net.
   typedef MozPromise<bool, bool, false> StorageAccessGrantPromise;
   static MOZ_MUST_USE RefPtr<StorageAccessGrantPromise>
-  AddFirstPartyStorageAccessGrantedFor(const nsAString& aOrigin,
-                                       nsPIDOMWindowInner* aParentWindow);
+  AddFirstPartyStorageAccessGrantedFor(nsIPrincipal* aPrincipal,
+                                       nsPIDOMWindowInner* aParentWindow,
+                                       StorageAccessGrantedReason aReason);
+
+  // Returns true if the permission passed in is a storage access permission
+  // for the passed in principal argument.
+  static bool
+  IsStorageAccessPermission(nsIPermission* aPermission, nsIPrincipal* aPrincipal);
+
+  static void
+  StoreUserInteractionFor(nsIPrincipal* aPrincipal);
+
+  static bool
+  HasUserInteraction(nsIPrincipal* aPrincipal);
 
   // For IPC only.
   static void

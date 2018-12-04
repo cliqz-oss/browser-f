@@ -20,6 +20,7 @@ for example - use `all_tests.py` instead.
 from __future__ import absolute_import, print_function, unicode_literals
 
 from taskgraph.transforms.base import TransformSequence
+from taskgraph.util.attributes import match_run_on_projects
 from taskgraph.util.schema import resolve_keyed_by, OptimizationSchema
 from taskgraph.util.treeherder import split_symbol, join_symbol, add_suffix
 from taskgraph.util.platforms import platform_family
@@ -72,11 +73,6 @@ WINDOWS_WORKER_TYPES = {
       'virtual-with-gpu': 'aws-provisioner-v1/gecko-t-win7-32-gpu',
       'hardware': 'releng-hardware/gecko-t-win10-64-hw',
     },
-    'windows7-32-msvc': {
-      'virtual': 'aws-provisioner-v1/gecko-t-win7-32',
-      'virtual-with-gpu': 'aws-provisioner-v1/gecko-t-win7-32-gpu',
-      'hardware': 'releng-hardware/gecko-t-win10-64-hw',
-    },
     'windows10-64': {
       'virtual': 'aws-provisioner-v1/gecko-t-win10-64',
       'virtual-with-gpu': 'aws-provisioner-v1/gecko-t-win10-64-gpu',
@@ -103,11 +99,6 @@ WINDOWS_WORKER_TYPES = {
       'hardware': 'releng-hardware/gecko-t-win10-64-hw',
     },
     'windows10-64-asan': {
-      'virtual': 'aws-provisioner-v1/gecko-t-win10-64',
-      'virtual-with-gpu': 'aws-provisioner-v1/gecko-t-win10-64-gpu',
-      'hardware': 'releng-hardware/gecko-t-win10-64-hw',
-    },
-    'windows10-64-msvc': {
       'virtual': 'aws-provisioner-v1/gecko-t-win10-64',
       'virtual-with-gpu': 'aws-provisioner-v1/gecko-t-win10-64-gpu',
       'hardware': 'releng-hardware/gecko-t-win10-64-hw',
@@ -147,7 +138,9 @@ test_description_schema = Schema({
         basestring),
 
     # base work directory used to set up the task.
-    Optional('workdir'): basestring,
+    Optional('workdir'): optionally_keyed_by(
+        'test-platform',
+        Any(basestring, 'default')),
 
     # the name by which this test suite is addressed in try syntax; defaults to
     # the test-name.  This will translate to the `unittest_try_name` or
@@ -199,6 +192,14 @@ test_description_schema = Schema({
     # the time (with unit) after which this task is deleted; default depends on
     # the branch (see below)
     Optional('expires-after'): basestring,
+
+    # Whether to run this task with the serviceworker e10s redesign enabled
+    # (desktop-test only).  If 'both', run one task with and one task without.
+    # Tasks with this enabled have have "-sw" appended to the test name and
+    # treeherder group.
+    Optional('serviceworker-e10s'): optionally_keyed_by(
+        'test-platform', 'project',
+        Any(bool, 'both')),
 
     # Whether to run this task with e10s (desktop-test only).  If false, run
     # without e10s; if true, run with e10s; if 'both', run one task with and
@@ -341,6 +342,10 @@ test_description_schema = Schema({
         'test-platform',
         [basestring]),
 
+    Optional('run-as-administrator'): optionally_keyed_by(
+        'test-platform',
+        bool),
+
     # -- values supplied by the task-generation infrastructure
 
     # the platform of the build this task is testing
@@ -443,6 +448,7 @@ def set_defaults(config, tests):
         test.setdefault('try-name', test['test-name'])
 
         test.setdefault('os-groups', [])
+        test.setdefault('run-as-administrator', False)
         test.setdefault('chunks', 1)
         test.setdefault('run-on-projects', 'built-projects')
         test.setdefault('instance-size', 'default')
@@ -453,6 +459,7 @@ def set_defaults(config, tests):
         test.setdefault('loopback-video', False)
         test.setdefault('docker-image', {'in-tree': 'desktop1604-test'})
         test.setdefault('checkout', False)
+        test.setdefault('serviceworker-e10s', False)
 
         test['mozharness'].setdefault('extra-options', [])
         test['mozharness'].setdefault('requires-signed-builds', False)
@@ -679,15 +686,18 @@ def handle_keyed_by(config, tests):
         'docker-image',
         'max-run-time',
         'chunks',
+        'serviceworker-e10s',
         'e10s',
         'suite',
         'run-on-projects',
         'os-groups',
+        'run-as-administrator',
         'mozharness.chunked',
         'mozharness.config',
         'mozharness.extra-options',
         'mozharness.requires-signed-builds',
         'mozharness.script',
+        'workdir',
         'worker-type',
         'virtualization',
     ]
@@ -732,7 +742,7 @@ def handle_suite_category(config, tests):
 
 @transforms.add
 def enable_code_coverage(config, tests):
-    """Enable code coverage for the ccov and jsdcov build-platforms"""
+    """Enable code coverage for the ccov build-platforms"""
     for test in tests:
         if 'ccov' in test['build-platform']:
             # Do not run tests on fuzzing or opt build
@@ -741,7 +751,7 @@ def enable_code_coverage(config, tests):
                 continue
             # Skip this transform for android code coverage builds.
             if 'android' in test['build-platform']:
-                test.setdefault('fetches', {}).setdefault('fetch', []).append('grcov-linux-x86_64')
+                test.setdefault('fetches', {}).setdefault('toolchain', []).append('linux64-grcov')
                 test['mozharness'].setdefault('extra-options', []).append('--java-code-coverage')
                 yield test
                 continue
@@ -758,17 +768,18 @@ def enable_code_coverage(config, tests):
             test.pop('when', None)
             test['optimization'] = None
 
-            # Add a fetch task for the grcov binary.
+            # Add a toolchain and a fetch task for the grcov binary.
             if any(p in test['build-platform'] for p in ('linux', 'osx', 'win')):
                 test.setdefault('fetches', {})
                 test['fetches'].setdefault('fetch', [])
+                test['fetches'].setdefault('toolchain', [])
 
             if 'linux' in test['build-platform']:
-                test['fetches']['fetch'].append('grcov-linux-x86_64')
+                test['fetches']['toolchain'].append('linux64-grcov')
             elif 'osx' in test['build-platform']:
-                test['fetches']['fetch'].append('grcov-osx-x86_64')
+                test['fetches']['toolchain'].append('macosx64-grcov')
             elif 'win' in test['build-platform']:
-                test['fetches']['fetch'].append('grcov-win-x86_64')
+                test['fetches']['toolchain'].append('win64-grcov')
 
             if 'talos' in test['test-name']:
                 test['max-run-time'] = 7200
@@ -786,12 +797,6 @@ def enable_code_coverage(config, tests):
                 test['max-run-time'] = 1800
                 if 'linux' in test['build-platform']:
                     test['docker-image'] = {"in-tree": "desktop1604-test"}
-        elif 'jsdcov' in test['build-platform']:
-            # Ensure we always run on the projects defined by the build, unless the test
-            # is try only or shouldn't run at all.
-            if test['run-on-projects'] not in [[], ['try']]:
-                test['run-on-projects'] = 'built-projects'
-            test['mozharness'].setdefault('extra-options', []).append('--jsd-code-coverage')
         yield test
 
 
@@ -801,6 +806,40 @@ def handle_run_on_projects(config, tests):
     for test in tests:
         if test['run-on-projects'] == 'built-projects':
             test['run-on-projects'] = test['build-attributes'].get('run_on_projects', ['all'])
+        yield test
+
+
+@transforms.add
+def split_serviceworker_e10s(config, tests):
+    for test in tests:
+        sw = test.pop('serviceworker-e10s')
+
+        test['serviceworker-e10s'] = False
+        test['attributes']['serviceworker_e10s'] = False
+
+        if sw == 'both':
+            yield copy.deepcopy(test)
+            sw = True
+        if sw:
+            if not match_run_on_projects('mozilla-central', test['run-on-projects']):
+                continue
+
+            test['description'] += " with serviceworker-e10s redesign enabled"
+            test['run-on-projects'] = ['mozilla-central']
+            test['test-name'] += '-sw'
+            test['try-name'] += '-sw'
+            test['attributes']['serviceworker_e10s'] = True
+            group, symbol = split_symbol(test['treeherder-symbol'])
+            if group != '?':
+                group += '-sw'
+            else:
+                symbol += '-sw'
+            test['treeherder-symbol'] = join_symbol(group, symbol)
+            test['mozharness']['extra-options'].append(
+                '--setpref="dom.serviceWorkers.parent_intercept=true"')
+
+            if 'web-platform' in test['suite']:
+                test['tier'] = 2
         yield test
 
 
@@ -939,7 +978,7 @@ def set_tag(config, tests):
 @transforms.add
 def set_test_type(config, tests):
     for test in tests:
-        for test_type in ['mochitest', 'reftest']:
+        for test_type in ['mochitest', 'reftest', 'talos', 'raptor']:
             if test_type in test['suite'] and 'web-platform' not in test['suite']:
                 test.setdefault('tags', {})['test-type'] = test_type
         yield test
@@ -999,7 +1038,7 @@ def set_worker_type(config, tests):
         elif test_platform.startswith('linux') or test_platform.startswith('android'):
             if test.get('suite', '') in ['talos', 'raptor'] and \
                  not test['build-platform'].startswith('linux64-ccov'):
-                test['worker-type'] = 'releng-hardware/gecko-t-linux-talos-tw'
+                test['worker-type'] = 'releng-hardware/gecko-t-linux-talos'
             else:
                 test['worker-type'] = LINUX_WORKER_TYPES[test['instance-size']]
         else:

@@ -129,9 +129,14 @@ nsSVGFilterInstance::GetFilterFrame(nsIFrame* aTargetFrame)
 
   // aTargetFrame can be null if this filter belongs to a
   // CanvasRenderingContext2D.
-  nsCOMPtr<nsIURI> url = aTargetFrame
-    ? SVGObserverUtils::GetFilterURI(aTargetFrame, mFilter)
-    : mFilter.GetURL()->ResolveLocalRef(mTargetContent);
+  nsCOMPtr<nsIURI> url;
+  if(aTargetFrame) {
+    RefPtr<URLAndReferrerInfo> urlExtraReferrer =
+      SVGObserverUtils::GetFilterURI(aTargetFrame, mFilter);
+    url = urlExtraReferrer->GetURI();
+  } else {
+    url = mFilter.GetURL()->ResolveLocalRef(mTargetContent);
+  }
 
   if (!url) {
     MOZ_ASSERT_UNREACHABLE("an nsStyleFilter of type URL should have a non-null URL");
@@ -141,7 +146,10 @@ nsSVGFilterInstance::GetFilterFrame(nsIFrame* aTargetFrame)
   // Look up the filter element by URL.
   IDTracker filterElement;
   bool watch = false;
-  filterElement.Reset(mTargetContent, url, watch);
+  filterElement.Reset(mTargetContent, url,
+                      mFilter.GetURL()->ExtraData()->GetReferrer(),
+                      mFilter.GetURL()->ExtraData()->GetReferrerPolicy(),
+                      watch);
   Element* element = filterElement.get();
   if (!element) {
     // The URL points to no element.
@@ -301,7 +309,7 @@ nsSVGFilterInstance::GetOrCreateSourceAlphaIndex(nsTArray<FilterPrimitiveDescrip
 
   // Otherwise, create a primitive description to turn the previous filter's
   // output into a SourceAlpha input.
-  FilterPrimitiveDescription descr(PrimitiveType::ToAlpha);
+  FilterPrimitiveDescription descr(AsVariant(ToAlphaAttributes()));
   descr.SetInputPrimitive(0, mSourceGraphicIndex);
 
   const FilterPrimitiveDescription& sourcePrimitiveDescr =
@@ -313,7 +321,7 @@ nsSVGFilterInstance::GetOrCreateSourceAlphaIndex(nsTArray<FilterPrimitiveDescrip
   descr.SetInputColorSpace(0, colorSpace);
   descr.SetOutputColorSpace(colorSpace);
 
-  aPrimitiveDescrs.AppendElement(descr);
+  aPrimitiveDescrs.AppendElement(std::move(descr));
   mSourceAlphaIndex = aPrimitiveDescrs.Length() - 1;
   mSourceAlphaAvailable = true;
   return mSourceAlphaIndex;
@@ -348,8 +356,9 @@ nsSVGFilterInstance::GetSourceIndices(nsSVGFE* aPrimitiveElement,
       sourceIndex = GetLastResultIndex(aPrimitiveDescrs);
     } else {
       bool inputExists = aImageTable.Get(str, &sourceIndex);
-      if (!inputExists)
-        return NS_ERROR_FAILURE;
+      if (!inputExists) {
+        sourceIndex = GetLastResultIndex(aPrimitiveDescrs);
+      }
     }
 
     aSourceIndices.AppendElement(sourceIndex);
@@ -432,7 +441,7 @@ nsSVGFilterInstance::BuildPrimitives(nsTArray<FilterPrimitiveDescription>& aPrim
       descr.SetOutputColorSpace(filter->GetOutputColorSpace());
     }
 
-    aPrimitiveDescrs.AppendElement(descr);
+    aPrimitiveDescrs.AppendElement(std::move(descr));
     uint32_t primitiveDescrIndex = aPrimitiveDescrs.Length() - 1;
 
     nsAutoString str;

@@ -33,6 +33,7 @@ skip-if(!asyncPan) == sticky-pos-scrollable-3.html sticky-pos-scrollable-3-ref.h
 skip-if(!asyncPan) == sticky-pos-scrollable-4.html sticky-pos-scrollable-4-ref.html
 skip-if(!asyncPan) == sticky-pos-scrollable-5.html sticky-pos-scrollable-5-ref.html
 skip-if(!asyncPan) == sticky-pos-scrollable-6.html sticky-pos-scrollable-6-ref.html
+skip-if(!asyncPan||Android) == sticky-pos-scrollable-7.html sticky-pos-scrollable-7-ref.html # Bug 1430787 for the Android failure
 skip-if(!asyncPan) == fixed-pos-scrollable-1.html fixed-pos-scrollable-1-ref.html
 skip-if(!asyncPan) == culling-1.html culling-1-ref.html
 skip-if(!asyncPan) == position-fixed-iframe-1.html position-fixed-iframe-1-ref.html
@@ -51,7 +52,7 @@ fuzzy-if(Android,0-6,0-4) skip == offscreen-clipped-blendmode-3.html offscreen-c
 fuzzy-if(Android,0-6,0-4) skip-if(!asyncPan) == offscreen-clipped-blendmode-4.html offscreen-clipped-blendmode-ref.html
 fuzzy-if(Android,0-7,0-4) skip-if(!asyncPan) == perspective-scrolling-1.html perspective-scrolling-1-ref.html
 fuzzy-if(Android,0-7,0-4) skip-if(!asyncPan) == perspective-scrolling-2.html perspective-scrolling-2-ref.html
-fuzzy-if(Android,0-7,0-4) fails-if(webrender) skip-if(!asyncPan) == perspective-scrolling-3.html perspective-scrolling-3-ref.html # bug 1361720 for webrender
+fuzzy-if(Android,0-7,0-4) skip-if(!asyncPan) == perspective-scrolling-3.html perspective-scrolling-3-ref.html
 fuzzy-if(Android,0-7,0-4) skip-if(!asyncPan) == perspective-scrolling-4.html perspective-scrolling-4-ref.html
 pref(apz.disable_for_scroll_linked_effects,true) skip-if(!asyncPan) == disable-apz-for-sle-pages.html disable-apz-for-sle-pages-ref.html
 fuzzy-if(browserIsRemote&&d2d,0-1,0-20) skip-if(!asyncPan) == background-blend-mode-1.html background-blend-mode-1-ref.html
@@ -66,6 +67,7 @@ skip-if(!asyncPan) == position-sticky-bug1434250.html position-sticky-bug1434250
 fuzzy-if(Android,0-6,0-4) skip-if(!asyncPan) == position-sticky-scrolled-clip-1.html position-sticky-scrolled-clip-1-ref.html
 fuzzy-if(Android,0-6,0-4) skip == position-sticky-scrolled-clip-2.html position-sticky-scrolled-clip-2-ref.html # bug ?????? - incorrectly applying clip to sticky contents
 fuzzy-if(Android,0-2,0-4) skip-if(!asyncPan) == curtain-effect-1.html curtain-effect-1-ref.html
+fuzzy-if(Android,0-1,0-4) skip-if(!asyncPan) == transformed-1.html transformed-1-ref.html
 
 # for the following tests, we want to disable the low-precision buffer
 # as it will expand the displayport beyond what the test specifies in

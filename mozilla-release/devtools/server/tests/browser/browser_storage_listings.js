@@ -4,7 +4,6 @@
 
 "use strict";
 
-const {StorageFront} = require("devtools/shared/fronts/storage");
 /* import-globals-from storage-helpers.js */
 Services.scriptloader.loadSubScript("chrome://mochitests/content/browser/devtools/server/tests/browser/storage-helpers.js", this);
 
@@ -17,7 +16,7 @@ const storeMap = {
         expires: 2000000000000,
         path: "/browser",
         host: "test1.example.org",
-        isDomain: false,
+        hostOnly: true,
         isSecure: false,
       },
       {
@@ -26,7 +25,7 @@ const storeMap = {
         path: "/",
         host: ".example.org",
         expires: 0,
-        isDomain: true,
+        hostOnly: false,
         isSecure: false,
       },
       {
@@ -35,9 +34,9 @@ const storeMap = {
         expires: 2000000001000,
         path: "/",
         host: "test1.example.org",
-        isDomain: false,
+        hostOnly: true,
         isSecure: true,
-      }
+      },
     ],
 
     "http://sectest1.example.org": [
@@ -47,7 +46,7 @@ const storeMap = {
         path: "/",
         host: ".example.org",
         expires: 0,
-        isDomain: true,
+        hostOnly: false,
         isSecure: false,
       },
       {
@@ -56,9 +55,9 @@ const storeMap = {
         path: "/browser/devtools/server/tests/browser/",
         host: "sectest1.example.org",
         expires: 0,
-        isDomain: false,
+        hostOnly: true,
         isSecure: false,
-      }
+      },
     ],
 
     "https://sectest1.example.org": [
@@ -68,7 +67,7 @@ const storeMap = {
         host: ".example.org",
         path: "/",
         expires: 0,
-        isDomain: true,
+        hostOnly: false,
         isSecure: true,
       },
       {
@@ -77,7 +76,7 @@ const storeMap = {
         path: "/",
         host: ".example.org",
         expires: 0,
-        isDomain: true,
+        hostOnly: false,
         isSecure: false,
       },
       {
@@ -86,71 +85,71 @@ const storeMap = {
         path: "/browser/devtools/server/tests/browser/",
         host: "sectest1.example.org",
         expires: 0,
-        isDomain: false,
+        hostOnly: true,
         isSecure: false,
-      }
-    ]
+      },
+    ],
   },
   localStorage: {
     "http://test1.example.org": [
       {
         name: "ls1",
-        value: "foobar"
+        value: "foobar",
       },
       {
         name: "ls2",
-        value: "foobar-2"
-      }
+        value: "foobar-2",
+      },
     ],
     "http://sectest1.example.org": [
       {
         name: "iframe-u-ls1",
-        value: "foobar"
-      }
+        value: "foobar",
+      },
     ],
     "https://sectest1.example.org": [
       {
         name: "iframe-s-ls1",
-        value: "foobar"
-      }
-    ]
+        value: "foobar",
+      },
+    ],
   },
   sessionStorage: {
     "http://test1.example.org": [
       {
         name: "ss1",
-        value: "foobar-3"
-      }
+        value: "foobar-3",
+      },
     ],
     "http://sectest1.example.org": [
       {
         name: "iframe-u-ss1",
-        value: "foobar1"
+        value: "foobar1",
       },
       {
         name: "iframe-u-ss2",
-        value: "foobar2"
-      }
+        value: "foobar2",
+      },
     ],
     "https://sectest1.example.org": [
       {
         name: "iframe-s-ss1",
-        value: "foobar-2"
-      }
-    ]
-  }
+        value: "foobar-2",
+      },
+    ],
+  },
 };
 
 const IDBValues = {
   listStoresResponse: {
     "http://test1.example.org": [
-      ["idb1 (default)", "obj1"], ["idb1 (default)", "obj2"], ["idb2 (default)", "obj3"]
+      ["idb1 (default)", "obj1"], ["idb1 (default)", "obj2"], ["idb2 (default)", "obj3"],
     ],
     "http://sectest1.example.org": [
     ],
     "https://sectest1.example.org": [
-      ["idb-s1 (default)", "obj-s1"], ["idb-s2 (default)", "obj-s2"]
-    ]
+      ["idb-s1 (default)", "obj-s1"], ["idb-s2 (default)", "obj-s2"],
+    ],
   },
   dbDetails: {
     "http://test1.example.org": [
@@ -158,13 +157,13 @@ const IDBValues = {
         db: "idb1 (default)",
         origin: "http://test1.example.org",
         version: 1,
-        objectStores: 2
+        objectStores: 2,
       },
       {
         db: "idb2 (default)",
         origin: "http://test1.example.org",
         version: 1,
-        objectStores: 1
+        objectStores: 1,
       },
     ],
     "http://sectest1.example.org": [
@@ -174,15 +173,15 @@ const IDBValues = {
         db: "idb-s1 (default)",
         origin: "https://sectest1.example.org",
         version: 1,
-        objectStores: 1
+        objectStores: 1,
       },
       {
         db: "idb-s2 (default)",
         origin: "https://sectest1.example.org",
         version: 1,
-        objectStores: 1
+        objectStores: 1,
       },
-    ]
+    ],
   },
   objectStoreDetails: {
     "http://test1.example.org": {
@@ -204,14 +203,14 @@ const IDBValues = {
               "unique": true,
               multiEntry: false,
             },
-          ]
+          ],
         },
         {
           objectStore: "obj2",
           keyPath: "id2",
           autoIncrement: false,
-          indexes: []
-        }
+          indexes: [],
+        },
       ],
       "idb2 (default)": [
         {
@@ -224,10 +223,10 @@ const IDBValues = {
               keyPath: "name2",
               "unique": true,
               multiEntry: false,
-            }
-          ]
+            },
+          ],
         },
-      ]
+      ],
     },
     "http://sectest1.example.org": {},
     "https://sectest1.example.org": {
@@ -236,7 +235,7 @@ const IDBValues = {
           objectStore: "obj-s1",
           keyPath: "id",
           autoIncrement: false,
-          indexes: []
+          indexes: [],
         },
       ],
       "idb-s2 (default)": [
@@ -250,11 +249,11 @@ const IDBValues = {
               keyPath: "name2",
               "unique": true,
               multiEntry: false,
-            }
-          ]
+            },
+          ],
         },
-      ]
-    }
+      ],
+    },
 
   },
   entries: {
@@ -266,7 +265,7 @@ const IDBValues = {
             id: 1,
             name: "foo",
             email: "foo@bar.com",
-          }
+          },
         },
         {
           name: 2,
@@ -274,7 +273,7 @@ const IDBValues = {
             id: 2,
             name: "foo2",
             email: "foo2@bar.com",
-          }
+          },
         },
         {
           name: 3,
@@ -282,8 +281,8 @@ const IDBValues = {
             id: 3,
             name: "foo2",
             email: "foo3@bar.com",
-          }
-        }
+          },
+        },
       ],
       "idb1 (default)#obj2": [
         {
@@ -292,11 +291,11 @@ const IDBValues = {
             id2: 1,
             name: "foo",
             email: "foo@bar.com",
-            extra: "baz"
-          }
-        }
+            extra: "baz",
+          },
+        },
       ],
-      "idb2 (default)#obj3": []
+      "idb2 (default)#obj3": [],
     },
     "http://sectest1.example.org": {},
     "https://sectest1.example.org": {
@@ -307,7 +306,7 @@ const IDBValues = {
             id: 6,
             name: "foo",
             email: "foo@bar.com",
-          }
+          },
         },
         {
           name: 7,
@@ -315,8 +314,8 @@ const IDBValues = {
             id: 7,
             name: "foo2",
             email: "foo2@bar.com",
-          }
-        }
+          },
+        },
       ],
       "idb-s2 (default)#obj-s2": [
         {
@@ -325,11 +324,11 @@ const IDBValues = {
             id2: 13,
             name2: "foo",
             email: "foo@bar.com",
-          }
-        }
-      ]
-    }
-  }
+          },
+        },
+      ],
+    },
+  },
 };
 
 async function testStores(data) {
@@ -372,7 +371,7 @@ var testCookiesObjects = async function(index, hosts, cookiesActor) {
           is(item.path, toMatch.path, "The path matches.");
           is(item.host, toMatch.host, "The host matches.");
           is(item.isSecure, toMatch.isSecure, "The isSecure value matches.");
-          is(item.isDomain, toMatch.isDomain, "The isDomain value matches.");
+          is(item.hostOnly, toMatch.hostOnly, "The hostOnly value matches.");
           break;
         }
       }
@@ -598,12 +597,9 @@ var testIDBEntries = async function(index, hosts, indexedDBActor) {
 };
 
 add_task(async function() {
-  await openTabAndSetupStorage(MAIN_DOMAIN + "storage-listings.html");
+  const { target, front } =
+    await openTabAndSetupStorage(MAIN_DOMAIN + "storage-listings.html");
 
-  initDebuggerServer();
-  const client = new DebuggerClient(DebuggerServer.connectPipe());
-  const form = await connectDebuggerClient(client);
-  const front = StorageFront(client, form);
   const data = await front.listStores();
   await testStores(data);
 
@@ -611,7 +607,7 @@ add_task(async function() {
 
   // Forcing GC/CC to get rid of docshells and windows created by this test.
   forceCollections();
-  await client.close();
+  await target.destroy();
   forceCollections();
   DebuggerServer.destroy();
   forceCollections();

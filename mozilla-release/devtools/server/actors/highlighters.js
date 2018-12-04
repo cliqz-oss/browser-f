@@ -113,9 +113,6 @@ exports.HighlighterActor = protocol.ActorClassWithSpec(highlighterSpec, {
   form: function() {
     return {
       actor: this.actorID,
-      traits: {
-        autoHideOnDestroy: true
-      }
     };
   },
 
@@ -425,7 +422,7 @@ exports.HighlighterActor = protocol.ActorClassWithSpec(highlighterSpec, {
       this._isPicking = false;
       this._hoveredNode = null;
     }
-  }
+  },
 });
 
 /**
@@ -540,7 +537,7 @@ exports.CustomHighlighterActor = protocol.ActorClassWithSpec(customHighlighterSp
       this._highlighterEnv.destroy();
       this._highlighterEnv = null;
     }
-  }
+  },
 });
 
 /**
@@ -553,8 +550,7 @@ exports.CustomHighlighterActor = protocol.ActorClassWithSpec(customHighlighterSp
  * most frequent way of using it, since highlighters are usually initialized by
  * the HighlighterActor or CustomHighlighterActor, which have a targetActor
  * reference). It can also be initialized just with a window object (which is
- * useful for when a highlighter is used outside of the debugger server context,
- * for instance from a gcli command).
+ * useful for when a highlighter is used outside of the debugger server context.
  */
 function HighlighterEnvironment() {
   this.relayTargetActorWindowReady = this.relayTargetActorWindowReady.bind(this);
@@ -583,7 +579,7 @@ HighlighterEnvironment.prototype = {
     this.listener = {
       QueryInterface: ChromeUtils.generateQI([
         Ci.nsIWebProgressListener,
-        Ci.nsISupportsWeakReference
+        Ci.nsISupportsWeakReference,
       ]),
 
       onStateChange: function(progress, request, flag) {
@@ -601,16 +597,16 @@ HighlighterEnvironment.prototype = {
           // in this window.
           self.emit("will-navigate", {
             window: win,
-            isTopLevel: true
+            isTopLevel: true,
           });
         }
         if (isWindow && isStop) {
           self.emit("navigate", {
             window: win,
-            isTopLevel: true
+            isTopLevel: true,
           });
         }
-      }
+      },
     };
 
     this.webProgress.addProgressListener(this.listener,
@@ -701,7 +697,7 @@ HighlighterEnvironment.prototype = {
 
     this._targetActor = null;
     this._win = null;
-  }
+  },
 };
 
 register("BoxModelHighlighter", "box-model");

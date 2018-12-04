@@ -1,12 +1,6 @@
 import os
 
 config = {
-    'default_actions': [
-        'clobber',
-        'build',
-        'check-test',
-#        'update',
-    ],
     'stage_platform': 'macosx64-add-on-devel',
     #### 64 bit build specific #####
     'env': {
@@ -23,6 +17,5 @@ config = {
                 '/bin:/usr/sbin:/sbin:/usr/local/bin:/usr/X11/bin',
         ##
     },
-    'mozconfig_variant': 'add-on-devel',
     #######################
 }

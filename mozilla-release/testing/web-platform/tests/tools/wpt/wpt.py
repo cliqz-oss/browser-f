@@ -4,7 +4,7 @@ import logging
 import os
 import sys
 
-from tools import localpaths  #noqa: flake8
+from tools import localpaths  # noqa: flake8
 
 from six import iteritems
 from . import virtualenv
@@ -100,9 +100,6 @@ def main(prog=None, argv=None):
     commands = load_commands()
 
     main_args, command_args = parse_args(argv, commands)
-
-    if not(len(argv) and argv[0] in commands):
-        sys.exit(1)
 
     command = main_args.command
     props = commands[command]

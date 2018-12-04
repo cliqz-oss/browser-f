@@ -82,14 +82,6 @@ searchfox
 
 Searchfox builds generate C++ index data for Searchfox.
 
-static-analysis
----------------
-
-Static analysis builds use the compiler to perform some detailed analysis of
-the source code while building.  The useful output from these tasks are their
-build logs, and while they produce a binary, they do not upload it as an
-artifact.
-
 static-analysis-autotest
 ------------------------
 
@@ -295,6 +287,10 @@ release-notify-promote
 ----------------------
 Notify when a release has been promoted.
 
+release-notify-started
+-------------------
+Notify when a release has been started.
+
 release-bouncer-sub
 -------------------
 Submits bouncer updates for releases.
@@ -314,6 +310,10 @@ Update Bouncer's (download.mozilla.org) "latest" aliases.
 cron-bouncer-check
 ------------------
 Checks Bouncer (download.mozilla.org) uptake.
+
+bouncer-locations
+-----------------
+Updates nightly bouncer locations for version bump
 
 release-bouncer-check
 ---------------------

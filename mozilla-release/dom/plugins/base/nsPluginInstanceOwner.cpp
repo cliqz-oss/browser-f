@@ -437,10 +437,10 @@ NS_IMETHODIMP nsPluginInstanceOwner::GetURL(const char *aURL,
   nsAutoString unitarget;
   if ((0 == PL_strcmp(aTarget, "newwindow")) ||
       (0 == PL_strcmp(aTarget, "_new"))) {
-    unitarget.AssignASCII("_blank");
+    unitarget.AssignLiteral("_blank");
   }
   else if (0 == PL_strcmp(aTarget, "_current")) {
-    unitarget.AssignASCII("_self");
+    unitarget.AssignLiteral("_self");
   }
   else {
     unitarget.AssignASCII(aTarget); // XXX could this be nonascii?
@@ -464,7 +464,7 @@ NS_IMETHODIMP nsPluginInstanceOwner::GetURL(const char *aURL,
 
     rv = sis->SetData((char *)aHeadersData, aHeadersDataLen);
     NS_ENSURE_SUCCESS(rv, rv);
-    headersDataStream = do_QueryInterface(sis);
+    headersDataStream = sis;
   }
 
   int32_t blockPopups =

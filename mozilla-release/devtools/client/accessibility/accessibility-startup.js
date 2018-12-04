@@ -4,11 +4,6 @@
 
 "use strict";
 
-const Services = require("Services");
-
-// @remove after release 63 (See Bug 1482461)
-const PROMOTE_COUNT_PREF = "devtools.promote.accessibility";
-
 /**
  * Component responsible for all accessibility panel startup steps before the panel is
  * actually opened.
@@ -52,11 +47,14 @@ class AccessibilityStartup {
         // oreder to be able to check actor's backward compatibility via actorHasMethod.
         // See targe.js@getActorDescription for more information.
         this._walker = await this._accessibility.getWalker();
+        this._supports = {};
         // Only works with FF61+ targets
-        this._supportsLatestAccessibility =
+        this._supports.enableDisable =
           await this.target.actorHasMethod("accessibility", "enable");
 
-        if (this._supportsLatestAccessibility) {
+        if (this._supports.enableDisable) {
+          this._supports.relations =
+            await this.target.actorHasMethod("accessible", "getRelations");
           await this._accessibility.bootstrap();
         }
 
@@ -111,11 +109,6 @@ class AccessibilityStartup {
     } else if (!this._accessibility.enabled && isHighlighted) {
       this.toolbox.unhighlightTool("accessibility");
     }
-  }
-
-  // @remove after release 63 (See Bug 1482461)
-  updatePanelPromoteCount() {
-    Services.prefs.setIntPref(PROMOTE_COUNT_PREF, 0);
   }
 
   async destroy() {

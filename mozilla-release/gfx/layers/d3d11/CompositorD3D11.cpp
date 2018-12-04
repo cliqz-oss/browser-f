@@ -48,16 +48,6 @@ bool CanUsePartialPresents(ID3D11Device* aDevice);
 
 const FLOAT sBlendFactor[] = { 0, 0, 0, 0 };
 
-namespace TexSlot {
-  static const int RGB = 0;
-  static const int Y = 1;
-  static const int Cb = 2;
-  static const int Cr = 3;
-  static const int RGBWhite = 4;
-  static const int Mask = 5;
-  static const int Backdrop = 6;
-}
-
 CompositorD3D11::CompositorD3D11(CompositorBridgeParent* aParent, widget::CompositorWidget* aWidget)
   : Compositor(aWidget, aParent)
   , mAttachments(nullptr)
@@ -858,25 +848,36 @@ CompositorD3D11::DrawGeometry(const Geometry& aGeometry,
         NS_WARNING("No texture found in texture source!");
       }
 
+      D3D11_TEXTURE2D_DESC sourceDesc;
+      texture->GetDesc(&sourceDesc);
+      MOZ_DIAGNOSTIC_ASSERT(sourceDesc.Format == DXGI_FORMAT_NV12 ||
+                            sourceDesc.Format == DXGI_FORMAT_P010 ||
+                            sourceDesc.Format == DXGI_FORMAT_P016);
+
       // Might want to cache these for efficiency.
       RefPtr<ID3D11ShaderResourceView> srViewY;
       RefPtr<ID3D11ShaderResourceView> srViewCbCr;
       D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc =
         CD3D11_SHADER_RESOURCE_VIEW_DESC(D3D11_SRV_DIMENSION_TEXTURE2D,
-                                         DXGI_FORMAT_R8_UNORM);
-      mDevice->CreateShaderResourceView(texture,
-                                        &srvDesc,
-                                        getter_AddRefs(srViewY));
-      srvDesc.Format = DXGI_FORMAT_R8G8_UNORM;
-      mDevice->CreateShaderResourceView(texture,
-                                        &srvDesc,
-                                        getter_AddRefs(srViewCbCr));
+                                         sourceDesc.Format == DXGI_FORMAT_NV12
+                                           ? DXGI_FORMAT_R8_UNORM
+                                           : DXGI_FORMAT_R16_UNORM);
+      mDevice->CreateShaderResourceView(
+        texture, &srvDesc, getter_AddRefs(srViewY));
+      srvDesc.Format = sourceDesc.Format == DXGI_FORMAT_NV12
+                         ? DXGI_FORMAT_R8G8_UNORM
+                         : DXGI_FORMAT_R16G16_UNORM;
+      mDevice->CreateShaderResourceView(
+        texture, &srvDesc, getter_AddRefs(srViewCbCr));
 
       ID3D11ShaderResourceView* views[] = { srViewY, srViewCbCr };
       mContext->PSSetShaderResources(TexSlot::Y, 2, views);
 
       const float* yuvToRgb = gfxUtils::YuvToRgbMatrix4x3RowMajor(YUVColorSpace::BT601);
       memcpy(&mPSConstants.yuvColorMatrix, yuvToRgb, sizeof(mPSConstants.yuvColorMatrix));
+      // TOTO: need to handle color depth properly. this assumes data is always
+      // 8 or 16 bits.
+      mPSConstants.vCoefficient[0] = 1.0;
 
       SetSamplerForSamplingFilter(texturedEffect->mSamplingFilter);
     }
@@ -906,7 +907,11 @@ CompositorD3D11::DrawGeometry(const Geometry& aGeometry,
       const float* yuvToRgb = gfxUtils::YuvToRgbMatrix4x3RowMajor(ycbcrEffect->mYUVColorSpace);
       memcpy(&mPSConstants.yuvColorMatrix, yuvToRgb, sizeof(mPSConstants.yuvColorMatrix));
 
-      TextureSourceD3D11* sourceY  = source->GetSubSource(Y)->AsSourceD3D11();
+      // Adjust range according to the bit depth.
+      mPSConstants.vCoefficient[0] =
+        RescalingFactorForColorDepth(ycbcrEffect->mColorDepth);
+
+      TextureSourceD3D11* sourceY = source->GetSubSource(Y)->AsSourceD3D11();
       TextureSourceD3D11* sourceCb = source->GetSubSource(Cb)->AsSourceD3D11();
       TextureSourceD3D11* sourceCr = source->GetSubSource(Cr)->AsSourceD3D11();
 

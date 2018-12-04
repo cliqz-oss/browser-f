@@ -29,12 +29,17 @@
        when hover styles overlap. See https://bugzilla.mozilla.org/show_bug.cgi?id=1378427 .
        -->
   <menupopup id="customizationPanelItemContextMenu"
-             onpopupshowing="gCustomizeMode.onPanelContextMenuShowing(event); UpdateManageExtension(this)">
-    <menuitem oncommand="openAboutAddonsForContextAction(this.parentElement)"
+             onpopupshowing="gCustomizeMode.onPanelContextMenuShowing(event); ToolbarContextMenu.updateExtension(this)">
+    <menuitem oncommand="ToolbarContextMenu.openAboutAddonsForContextAction(this.parentElement)"
               accesskey="&customizeMenu.manageExtension.accesskey;"
               label="&customizeMenu.manageExtension.label;"
               contexttype="toolbaritem"
               class="customize-context-manageExtension"/>
+    <menuitem oncommand="ToolbarContextMenu.removeExtensionForContextAction(this.parentElement)"
+              accesskey="&customizeMenu.removeExtension.accesskey;"
+              label="&customizeMenu.removeExtension.label;"
+              contexttype="toolbaritem"
+              class="customize-context-removeExtension"/>
     <menuseparator/>
     <menuitem oncommand="gCustomizeMode.addToPanel(document.popupNode)"
               id="customizationPanelItemContextMenuPin"
@@ -140,6 +145,19 @@
                      hidden="true">
     <popupnotificationcontent id="update-restart-notification-content" orient="vertical">
       <description id="update-restart-description">&updateRestart.message2;</description>
+    </popupnotificationcontent>
+  </popupnotification>
+
+  <popupnotification id="appMenu-addon-installed-notification"
+                     popupid="addon-installed"
+                     closebuttonhidden="true"
+                     secondarybuttonhidden="true"
+                     dropmarkerhidden="true"
+                     checkboxhidden="true"
+                     buttonhighlight="true"
+                     hidden="true">
+    <popupnotificationcontent class="addon-installed-notification-content" orient="vertical">
+      <description>&addonPostInstallMessage.label;</description>
     </popupnotificationcontent>
   </popupnotification>
 </panel>
@@ -553,9 +571,6 @@
                      onclick="PanelUI.hide();"/>
     </panelview>
 
-    <panelview id="PanelUI-feeds" flex="1" oncommand="FeedHandler.subscribeToFeed(null, event);">
-    </panelview>
-
     <panelview id="PanelUI-containers" flex="1">
       <vbox id="PanelUI-containersItems"/>
     </panelview>
@@ -618,6 +633,10 @@
 
     <panelview id="appMenu-moreView" title="&moreMenu.label;" class="PanelUI-subView">
       <vbox class="panel-subview-body">
+        <toolbarbutton id="appMenu-taskmanager-button"
+                       class="subviewbutton subviewbutton-iconic"
+                       label="&taskManagerCmd.label;"
+                       oncommand="switchToTabHavingURI('about:performance', true)"/>
         <toolbarbutton id="appMenu-characterencoding-button"
                        class="subviewbutton subviewbutton-nav"
                        label="&charsetMenu2.label;"

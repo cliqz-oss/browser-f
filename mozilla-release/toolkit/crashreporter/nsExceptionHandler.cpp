@@ -12,6 +12,7 @@
 #include "nsDirectoryService.h"
 #include "nsDataHashtable.h"
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/DebugOnly.h"
 #include "mozilla/EnumeratedRange.h"
 #include "mozilla/Services.h"
 #include "nsIObserverService.h"
@@ -227,9 +228,6 @@ static char* androidUserSerial = nullptr;
 // Before Android 8 we needed to use "startservice" to start the crash reporting service.
 // After Android 8 we need to use "start-foreground-service"
 static const char* androidStartServiceCommand = nullptr;
-// After targeting API 26 (Oreo) we ned to use a JobIntentService for the background
-// work regarding crash reporting. That Service needs a unique Job Id.
-static const char* androidCrashReporterJobId = nullptr;
 #endif
 
 // this holds additional data sent via the API
@@ -836,35 +834,43 @@ LaunchProgram(const XP_CHAR* aProgramPath, const XP_CHAR* aMinidumpPath)
  */
 
 static bool
-LaunchCrashReporterActivity(XP_CHAR* aProgramPath, XP_CHAR* aMinidumpPath,
-                            bool aSucceeded)
+LaunchCrashHandlerService(XP_CHAR* aProgramPath, XP_CHAR* aMinidumpPath,
+                          bool aSucceeded)
 {
+  static XP_CHAR extrasPath[XP_PATH_MAX];
+  size_t size = XP_PATH_MAX;
+
+  XP_CHAR* p = Concat(extrasPath, aMinidumpPath, &size);
+  p = Concat(p - 3, "extra", &size);
+
   pid_t pid = sys_fork();
 
   if (pid == -1)
     return false;
   else if (pid == 0) {
-    // Invoke the reportCrash activity using am
+    // Invoke the crash handler service using am
     if (androidUserSerial) {
       Unused << execlp("/system/bin/am",
                        "/system/bin/am",
                        androidStartServiceCommand,
                        "--user", androidUserSerial,
-                       "-a", "org.mozilla.gecko.reportCrash",
+                       "-a", "org.mozilla.gecko.ACTION_CRASHED",
                        "-n", aProgramPath,
                        "--es", "minidumpPath", aMinidumpPath,
-                       "--ei", "jobId", androidCrashReporterJobId,
+                       "--es", "extrasPath", extrasPath,
                        "--ez", "minidumpSuccess", aSucceeded ? "true" : "false",
+                       "--ez", "fatal", "true",
                        (char*)0);
     } else {
       Unused << execlp("/system/bin/am",
                        "/system/bin/am",
                        androidStartServiceCommand,
-                       "-a", "org.mozilla.gecko.reportCrash",
+                       "-a", "org.mozilla.gecko.ACTION_CRASHED",
                        "-n", aProgramPath,
                        "--es", "minidumpPath", aMinidumpPath,
-                       "--ei", "jobId", androidCrashReporterJobId,
+                       "--es", "extrasPath", extrasPath,
                        "--ez", "minidumpSuccess", aSucceeded ? "true" : "false",
+                       "--ez", "fatal", "true",
                        (char*)0);
     }
     _exit(1);
@@ -880,6 +886,42 @@ LaunchCrashReporterActivity(XP_CHAR* aProgramPath, XP_CHAR* aMinidumpPath,
 }
 
 #endif
+
+void
+WriteEscapedMozCrashReason(PlatformWriter& aWriter)
+{
+  const char *reason;
+  size_t len;
+  char *rust_panic_reason;
+  bool rust_panic = get_rust_panic_reason(&rust_panic_reason, &len);
+
+  if (rust_panic) {
+    reason = rust_panic_reason;
+  } else if (gMozCrashReason != nullptr) {
+    reason = gMozCrashReason;
+    len = strlen(reason);
+  } else {
+    return; // No crash reason, bail out
+  }
+
+  WriteString(aWriter, AnnotationToString(Annotation::MozCrashReason));
+  WriteLiteral(aWriter, "=");
+
+  // The crash reason might be non-null-terminated in the case of a rust panic,
+  // it has also not being escaped so escape it one character at a time and
+  // write out the resulting string.
+  for (size_t i = 0; i < len; i++) {
+    if (reason[i] == '\\') {
+      WriteLiteral(aWriter, "\\\\");
+    } else if (reason[i] == '\n') {
+      WriteLiteral(aWriter, "\\n");
+    } else {
+      aWriter.WriteBuffer(reason + i, 1);
+    }
+  }
+
+  WriteLiteral(aWriter, "\n");
+}
 
 // Callback invoked from breakpad's exception handler, this writes out the
 // last annotations after a crash occurs and launches the crash reporter client.
@@ -1082,18 +1124,8 @@ MinidumpCallback(
     WriteGlobalMemoryStatus(&apiData, &eventFile);
 #endif // XP_WIN
 
-    char* rust_panic_reason;
-    size_t rust_panic_len;
-    if (get_rust_panic_reason(&rust_panic_reason, &rust_panic_len)) {
-      // rust_panic_reason is not null-terminated.
-      WriteAnnotation(apiData, Annotation::MozCrashReason, rust_panic_reason,
-                      rust_panic_len);
-      WriteAnnotation(eventFile, Annotation::MozCrashReason, rust_panic_reason,
-                      rust_panic_len);
-    } else if (gMozCrashReason) {
-      WriteAnnotation(apiData, Annotation::MozCrashReason, gMozCrashReason);
-      WriteAnnotation(eventFile, Annotation::MozCrashReason, gMozCrashReason);
-    }
+    WriteEscapedMozCrashReason(apiData);
+    WriteEscapedMozCrashReason(eventFile);
 
     if (oomAllocationSizeBuffer[0]) {
       WriteAnnotation(apiData, Annotation::OOMAllocationSize,
@@ -1130,8 +1162,8 @@ MinidumpCallback(
   }
 
 #if defined(MOZ_WIDGET_ANDROID) // Android
-  returnValue = LaunchCrashReporterActivity(crashReporterPath, minidumpPath,
-                                            succeeded);
+  returnValue = LaunchCrashHandlerService(crashReporterPath, minidumpPath,
+                                          succeeded);
 #else // Windows, Mac, Linux, etc...
   returnValue = LaunchProgram(crashReporterPath, minidumpPath);
 #ifdef XP_WIN
@@ -1287,15 +1319,7 @@ PrepareChildExceptionTimeAnnotations(void* context)
                     oomAllocationSizeBuffer);
   }
 
-  char* rust_panic_reason;
-  size_t rust_panic_len;
-  if (get_rust_panic_reason(&rust_panic_reason, &rust_panic_len)) {
-    // rust_panic_reason is not null-terminated.
-    WriteAnnotation(apiData, Annotation::MozCrashReason, rust_panic_reason,
-                    rust_panic_len);
-  } else if (gMozCrashReason) {
-    WriteAnnotation(apiData, Annotation::MozCrashReason, gMozCrashReason);
-  }
+  WriteEscapedMozCrashReason(apiData);
 
   std::function<void(const char*)> getThreadAnnotationCB =
     [&] (const char * aValue) -> void {
@@ -1323,6 +1347,8 @@ FreeBreakpadVM()
     VirtualFree(gBreakpadReservedVM, 0, MEM_RELEASE);
   }
 }
+
+#if defined(XP_WIN)
 
 /**
  * Filters out floating point exceptions which are handled by nsSigHandlers.cpp
@@ -1374,16 +1400,18 @@ ChildFPEFilter(void* context, EXCEPTION_POINTERS* exinfo,
   return result;
 }
 
+#endif // defined(XP_WIN)
+
 static MINIDUMP_TYPE
 GetMinidumpType()
 {
-  MINIDUMP_TYPE minidump_type = MiniDumpWithFullMemoryInfo;
+  MINIDUMP_TYPE minidump_type = static_cast<MINIDUMP_TYPE>(
+      MiniDumpWithFullMemoryInfo | MiniDumpWithUnloadedModules);
 
 #ifdef NIGHTLY_BUILD
   // This is Nightly only because this doubles the size of minidumps based
   // on the experimental data.
   minidump_type = static_cast<MINIDUMP_TYPE>(minidump_type |
-      MiniDumpWithUnloadedModules |
       MiniDumpWithProcessThreadData);
 
   // dbghelp.dll on Win7 can't handle overlapping memory regions so we only
@@ -1423,6 +1451,8 @@ static bool ShouldReport()
   return true;
 }
 
+#if !defined(XP_WIN)
+
 static bool
 Filter(void* context)
 {
@@ -1442,6 +1472,8 @@ ChildFilter(void* context)
   }
   return result;
 }
+
+#endif // !defined(XP_WIN)
 
 static void
 TerminateHandler()
@@ -1549,17 +1581,12 @@ nsresult SetExceptionHandler(nsIFile* aXREDirectory,
 #endif
 #endif // XP_WIN32
 #else
-  // On Android, we launch using the application package name instead of a
-  // filename, so use the dynamically set MOZ_ANDROID_PACKAGE_NAME, or fall
-  // back to the static ANDROID_PACKAGE_NAME.
-  const char* androidPackageName = PR_GetEnv("MOZ_ANDROID_PACKAGE_NAME");
-  if (androidPackageName != nullptr) {
-    nsCString package(androidPackageName);
-    package.AppendLiteral("/org.mozilla.gecko.CrashReporterService");
-    crashReporterPath = ToNewCString(package);
+  // On Android, we launch a service defined via MOZ_ANDROID_CRASH_HANDLER
+  const char* androidCrashHandler = PR_GetEnv("MOZ_ANDROID_CRASH_HANDLER");
+  if (androidCrashHandler) {
+    crashReporterPath = strdup(androidCrashHandler);
   } else {
-    nsCString package(ANDROID_PACKAGE_NAME "/org.mozilla.gecko.CrashReporterService");
-    crashReporterPath = ToNewCString(package);
+    NS_WARNING("No Android crash handler set");
   }
 
   const char *deviceAndroidVersion = PR_GetEnv("MOZ_ANDROID_DEVICE_SDK_VERSION");
@@ -1570,11 +1597,6 @@ nsresult SetExceptionHandler(nsIFile* aXREDirectory,
     } else {
       androidStartServiceCommand = (char*)"startservice";
     }
-  }
-
-  const char *crashReporterJobId = PR_GetEnv("MOZ_ANDROID_CRASH_REPORTER_JOB_ID");
-  if (crashReporterJobId != nullptr) {
-    androidCrashReporterJobId = crashReporterJobId;
   }
 #endif // !defined(MOZ_WIDGET_ANDROID)
 
@@ -1590,6 +1612,9 @@ nsresult SetExceptionHandler(nsIFile* aXREDirectory,
 
 #ifdef XP_WIN32
   ReserveBreakpadVM();
+
+  // Pre-load psapi.dll to prevent it from being loaded during exception handling.
+  ::LoadLibraryW(L"psapi.dll");
 #endif // XP_WIN32
 
 #ifdef MOZ_WIDGET_ANDROID
@@ -1664,9 +1689,10 @@ nsresult SetExceptionHandler(nsIFile* aXREDirectory,
   // protect the crash reporter from being unloaded
   gBlockUnhandledExceptionFilter = true;
   gKernel32Intercept.Init("kernel32.dll");
-  bool ok = stub_SetUnhandledExceptionFilter.Set(gKernel32Intercept,
-                                                 "SetUnhandledExceptionFilter",
-                                                 &patched_SetUnhandledExceptionFilter);
+  DebugOnly<bool> ok =
+    stub_SetUnhandledExceptionFilter.Set(gKernel32Intercept,
+                                         "SetUnhandledExceptionFilter",
+                                         &patched_SetUnhandledExceptionFilter);
 
 #ifdef DEBUG
   if (!ok)
@@ -2128,8 +2154,8 @@ EnqueueDelayedNote(DelayedNote* aNote)
   gDelayedAnnotations->AppendElement(aNote);
 }
 
-static void
-RunAndCleanUpDelayedNotes()
+void
+NotifyCrashReporterClientCreated()
 {
   if (gDelayedAnnotations) {
     for (nsAutoPtr<DelayedNote>& note : *gDelayedAnnotations) {
@@ -3048,7 +3074,7 @@ IsDataEscaped(char* aData)
   }
   char* pos = aData;
   while ((pos = strchr(pos, '\\'))) {
-    if (*(pos + 1) != '\\') {
+    if (*(pos + 1) != '\\' && *(pos + 1) != 'n') {
       return false;
     }
     // Add 2 to account for the second pos
@@ -3562,7 +3588,6 @@ SetRemoteExceptionHandler(const nsACString& crashPipe,
     NS_ConvertASCIItoUTF16(crashPipe).get(),
     nullptr);
   gExceptionHandler->set_handle_debug_exceptions(true);
-  RunAndCleanUpDelayedNotes();
 
 #ifdef _WIN64
   SetJitExceptionHandler();
@@ -3615,7 +3640,6 @@ SetRemoteExceptionHandler()
                      nullptr,    // no callback context
                      true,       // install signal handlers
                      gMagicChildCrashReportFd);
-  RunAndCleanUpDelayedNotes();
 
   mozalloc_set_oom_abort_handler(AnnotateOOMAllocationSize);
 
@@ -3646,7 +3670,6 @@ SetRemoteExceptionHandler(const nsACString& crashPipe)
                      nullptr,    // no callback context
                      true,       // install signal handlers
                      crashPipe.BeginReading());
-  RunAndCleanUpDelayedNotes();
 
   mozalloc_set_oom_abort_handler(AnnotateOOMAllocationSize);
 

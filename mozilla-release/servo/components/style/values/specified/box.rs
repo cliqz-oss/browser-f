@@ -21,26 +21,23 @@ use values::specified::length::{LengthOrPercentage, NonNegativeLength};
 
 fn in_ua_or_chrome_sheet(context: &ParserContext) -> bool {
     use stylesheets::Origin;
-    context.stylesheet_origin == Origin::UserAgent ||
-    context.chrome_rules_enabled()
+    context.stylesheet_origin == Origin::UserAgent || context.chrome_rules_enabled()
 }
 
 #[cfg(feature = "gecko")]
 fn moz_display_values_enabled(context: &ParserContext) -> bool {
     use gecko_bindings::structs;
     in_ua_or_chrome_sheet(context) ||
-    unsafe {
-        structs::StaticPrefs_sVarCache_layout_css_xul_display_values_content_enabled
-    }
+        unsafe { structs::StaticPrefs_sVarCache_layout_css_xul_display_values_content_enabled }
 }
 
 #[cfg(feature = "gecko")]
 fn moz_box_display_values_enabled(context: &ParserContext) -> bool {
     use gecko_bindings::structs;
     in_ua_or_chrome_sheet(context) ||
-    unsafe {
-        structs::StaticPrefs_sVarCache_layout_css_xul_box_display_values_content_enabled
-    }
+        unsafe {
+            structs::StaticPrefs_sVarCache_layout_css_xul_box_display_values_content_enabled
+        }
 }
 
 /// Defines an element’s display type, which consists of
@@ -57,8 +54,20 @@ fn moz_box_display_values_enabled(context: &ParserContext) -> bool {
 /// Also, when you change this from Gecko you may need to regenerate the
 /// C++-side bindings (see components/style/cbindgen.toml).
 #[allow(missing_docs)]
-#[derive(Clone, Copy, Debug, Eq, FromPrimitive, Hash, MallocSizeOf, Parse,
-         PartialEq, SpecifiedValueInfo, ToComputedValue, ToCss)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    FromPrimitive,
+    Hash,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+)]
 #[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
 #[repr(u8)]
 pub enum Display {
@@ -200,7 +209,10 @@ impl Display {
     pub fn is_ruby_type(&self) -> bool {
         matches!(
             *self,
-            Display::Ruby | Display::RubyBase | Display::RubyText | Display::RubyBaseContainer |
+            Display::Ruby |
+                Display::RubyBase |
+                Display::RubyText |
+                Display::RubyBaseContainer |
                 Display::RubyTextContainer
         )
     }
@@ -346,8 +358,7 @@ impl AnimationIterationCount {
 }
 
 /// A value for the `animation-name` property.
-#[derive(Clone, Debug, Eq, Hash, MallocSizeOf, PartialEq, SpecifiedValueInfo,
-         ToComputedValue)]
+#[derive(Clone, Debug, Eq, Hash, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToComputedValue)]
 #[value_info(other_values = "none")]
 pub struct AnimationName(pub Option<KeyframesName>);
 
@@ -391,8 +402,18 @@ impl Parse for AnimationName {
 
 #[allow(missing_docs)]
 #[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
-#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, Parse, PartialEq,
-         SpecifiedValueInfo, ToComputedValue, ToCss)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+)]
 pub enum ScrollSnapType {
     None,
     Mandatory,
@@ -401,8 +422,18 @@ pub enum ScrollSnapType {
 
 #[allow(missing_docs)]
 #[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
-#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, Parse, PartialEq,
-         SpecifiedValueInfo, ToComputedValue, ToCss)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+)]
 pub enum OverscrollBehavior {
     Auto,
     Contain,
@@ -411,15 +442,24 @@ pub enum OverscrollBehavior {
 
 #[allow(missing_docs)]
 #[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
-#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, Parse, PartialEq,
-         SpecifiedValueInfo, ToComputedValue, ToCss)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+)]
 pub enum OverflowClipBox {
     PaddingBox,
     ContentBox,
 }
 
-#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo,
-         ToComputedValue, ToCss)]
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToComputedValue, ToCss)]
 /// Provides a rendering hint to the user agent,
 /// stating what kinds of changes the author expects
 /// to perform on the element
@@ -497,11 +537,11 @@ fn change_bits_for_maybe_property(ident: &str, context: &ParserContext) -> WillC
     };
 
     match id.as_shorthand() {
-        Ok(shorthand) => {
-            shorthand.longhands().fold(WillChangeBits::empty(), |flags, p| {
+        Ok(shorthand) => shorthand
+            .longhands()
+            .fold(WillChangeBits::empty(), |flags, p| {
                 flags | change_bits_for_longhand(p)
-            })
-        }
+            }),
         Err(PropertyDeclarationId::Longhand(longhand)) => change_bits_for_longhand(longhand),
         Err(PropertyDeclarationId::Custom(..)) => WillChangeBits::empty(),
     }
@@ -581,9 +621,8 @@ impl ToCss for TouchAction {
             TouchAction::TOUCH_ACTION_NONE => dest.write_str("none"),
             TouchAction::TOUCH_ACTION_AUTO => dest.write_str("auto"),
             TouchAction::TOUCH_ACTION_MANIPULATION => dest.write_str("manipulation"),
-            _ if self.contains(
-                TouchAction::TOUCH_ACTION_PAN_X | TouchAction::TOUCH_ACTION_PAN_Y,
-            ) =>
+            _ if self
+                .contains(TouchAction::TOUCH_ACTION_PAN_X | TouchAction::TOUCH_ACTION_PAN_Y) =>
             {
                 dest.write_str("pan-x pan-y")
             },
@@ -756,8 +795,7 @@ impl Parse for Perspective {
             return Ok(GenericPerspective::None);
         }
         Ok(GenericPerspective::Length(NonNegativeLength::parse(
-            context,
-            input,
+            context, input,
         )?))
     }
 }
@@ -789,7 +827,7 @@ impl ToCss for TransitionProperty {
             TransitionProperty::Custom(ref name) => {
                 dest.write_str("--")?;
                 serialize_atom_name(name, dest)
-            }
+            },
             TransitionProperty::Unsupported(ref i) => i.to_css(dest),
         }
     }
@@ -805,21 +843,21 @@ impl Parse for TransitionProperty {
 
         let id = match PropertyId::parse_ignoring_rule_type(&ident, context) {
             Ok(id) => id,
-            Err(..) => return Ok(TransitionProperty::Unsupported(
-                CustomIdent::from_ident(location, ident, &["none"])?,
-            )),
+            Err(..) => {
+                return Ok(TransitionProperty::Unsupported(CustomIdent::from_ident(
+                    location,
+                    ident,
+                    &["none"],
+                )?))
+            },
         };
 
         Ok(match id.as_shorthand() {
             Ok(s) => TransitionProperty::Shorthand(s),
-            Err(longhand_or_custom) => {
-                match longhand_or_custom {
-                    PropertyDeclarationId::Longhand(id) => TransitionProperty::Longhand(id),
-                    PropertyDeclarationId::Custom(custom) => {
-                        TransitionProperty::Custom(custom.clone())
-                    }
-                }
-            }
+            Err(longhand_or_custom) => match longhand_or_custom {
+                PropertyDeclarationId::Longhand(id) => TransitionProperty::Longhand(id),
+                PropertyDeclarationId::Custom(custom) => TransitionProperty::Custom(custom.clone()),
+            },
         })
     }
 }
@@ -846,19 +884,19 @@ impl TransitionProperty {
         Ok(match *self {
             TransitionProperty::Shorthand(ShorthandId::All) => {
                 ::gecko_bindings::structs::nsCSSPropertyID::eCSSPropertyExtra_all_properties
-            }
+            },
             TransitionProperty::Shorthand(ref id) => id.to_nscsspropertyid(),
             TransitionProperty::Longhand(ref id) => id.to_nscsspropertyid(),
-            TransitionProperty::Custom(..) |
-            TransitionProperty::Unsupported(..) => return Err(()),
+            TransitionProperty::Custom(..) | TransitionProperty::Unsupported(..) => return Err(()),
         })
     }
 }
 
 #[allow(missing_docs)]
 #[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
-#[derive(Clone, Copy, Debug, Eq, Hash, MallocSizeOf, Parse, PartialEq,
-         SpecifiedValueInfo, ToCss)]
+#[derive(
+    Clone, Copy, Debug, Eq, Hash, MallocSizeOf, Parse, PartialEq, SpecifiedValueInfo, ToCss,
+)]
 /// https://drafts.csswg.org/css-box/#propdef-float
 pub enum Float {
     Left,
@@ -866,13 +904,14 @@ pub enum Float {
     None,
     // https://drafts.csswg.org/css-logical-props/#float-clear
     InlineStart,
-    InlineEnd
+    InlineEnd,
 }
 
 #[allow(missing_docs)]
 #[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
-#[derive(Clone, Copy, Debug, Eq, Hash, MallocSizeOf, Parse, PartialEq,
-         SpecifiedValueInfo, ToCss)]
+#[derive(
+    Clone, Copy, Debug, Eq, Hash, MallocSizeOf, Parse, PartialEq, SpecifiedValueInfo, ToCss,
+)]
 /// https://drafts.csswg.org/css-box/#propdef-clear
 pub enum Clear {
     None,
@@ -881,14 +920,15 @@ pub enum Clear {
     Both,
     // https://drafts.csswg.org/css-logical-props/#float-clear
     InlineStart,
-    InlineEnd
+    InlineEnd,
 }
 
 /// https://drafts.csswg.org/css-ui/#propdef-resize
 #[allow(missing_docs)]
 #[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
-#[derive(Clone, Copy, Debug, Eq, Hash, MallocSizeOf, Parse, PartialEq,
-         SpecifiedValueInfo, ToCss)]
+#[derive(
+    Clone, Copy, Debug, Eq, Hash, MallocSizeOf, Parse, PartialEq, SpecifiedValueInfo, ToCss,
+)]
 pub enum Resize {
     None,
     Both,
@@ -906,8 +946,19 @@ pub enum Resize {
 /// NOTE(emilio): When changing this you may want to regenerate the C++ bindings
 /// (see components/style/cbindgen.toml)
 #[allow(missing_docs)]
-#[derive(Clone, Copy, Debug, Eq, Hash, MallocSizeOf, Parse, PartialEq,
-         SpecifiedValueInfo, ToCss, ToComputedValue)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToCss,
+    ToComputedValue,
+)]
 #[repr(u8)]
 pub enum Appearance {
     /// No appearance at all.
@@ -915,20 +966,27 @@ pub enum Appearance {
     /// A typical dialog button.
     Button,
     /// Various arrows that go in buttons
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     ButtonArrowDown,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     ButtonArrowNext,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     ButtonArrowPrevious,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     ButtonArrowUp,
     /// A rectangular button that contains complex content
     /// like images (e.g. HTML <button> elements)
     ButtonBevel,
     /// The focus outline box inside of a button.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     ButtonFocus,
     /// The caret of a text area
     Caret,
     /// A dual toolbar button (e.g., a Back button with a dropdown)
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Dualbutton,
     /// A groupbox.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Groupbox,
     /// A inner-spin button.
     InnerSpinButton,
@@ -937,12 +995,17 @@ pub enum Appearance {
     /// A listbox item.
     Listitem,
     /// Menu Bar background
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Menubar,
     /// <menu> and <menuitem> appearances
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Menuitem,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Checkmenuitem,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Radiomenuitem,
     /// For text on non-iconic menuitems only
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Menuitemtext,
     /// A dropdown list.
     Menulist,
@@ -953,13 +1016,19 @@ pub enum Appearance {
     /// An editable textfield with a dropdown list (a combobox).
     MenulistTextfield,
     /// Menu Popup background.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Menupopup,
     /// menu checkbox/radio appearances
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Menucheckbox,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Menuradio,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Menuseparator,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Menuarrow,
     /// An image in the menu gutter, like in bookmarks or history.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Menuimage,
     /// A horizontal meter bar.
     Meterbar,
@@ -984,19 +1053,25 @@ pub enum Appearance {
     Radio,
     /// A generic container that always repaints on state changes. This is a
     /// hack to make XUL checkboxes and radio buttons work.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     CheckboxContainer,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     RadioContainer,
     /// The label part of a checkbox or radio button, used for painting a focus
     /// outline.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     CheckboxLabel,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     RadioLabel,
     /// nsRangeFrame and its subparts
     Range,
     RangeThumb,
     /// The resizer background area in a status bar for the resizer widget in
     /// the corner of a window.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Resizerpanel,
     /// The resizer itself.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Resizer,
     /// A slider.
     ScaleHorizontal,
@@ -1010,18 +1085,26 @@ pub enum Appearance {
     /// The ticks for a slider.
     Scalethumbtick,
     /// A scrollbar.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Scrollbar,
     /// A small scrollbar.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     ScrollbarSmall,
     /// The scrollbar slider
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     ScrollbarHorizontal,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     ScrollbarVertical,
     /// A scrollbar button (up/down/left/right).
     /// Keep these in order (some code casts these values to `int` in order to
     /// compare them against each other).
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     ScrollbarbuttonUp,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     ScrollbarbuttonDown,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     ScrollbarbuttonLeft,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     ScrollbarbuttonRight,
     /// The scrollbar thumb.
     ScrollbarthumbHorizontal,
@@ -1030,107 +1113,166 @@ pub enum Appearance {
     ScrollbartrackHorizontal,
     ScrollbartrackVertical,
     /// The scroll corner
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Scrollcorner,
     /// A searchfield.
     Searchfield,
     /// A separator.  Can be horizontal or vertical.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Separator,
     /// A spin control (up/down control for time/date pickers).
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Spinner,
     /// The up button of a spin control.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     SpinnerUpbutton,
     /// The down button of a spin control.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     SpinnerDownbutton,
     /// The textfield of a spin control
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     SpinnerTextfield,
     /// A splitter.  Can be horizontal or vertical.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Splitter,
     /// A status bar in a main application window.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Statusbar,
     /// A single pane of a status bar.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Statusbarpanel,
     /// A single tab in a tab widget.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Tab,
     /// A single pane (inside the tabpanels container).
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Tabpanel,
     /// The tab panels container.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Tabpanels,
     /// The tabs scroll arrows (left/right).
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     TabScrollArrowBack,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     TabScrollArrowForward,
     /// A textfield or text area.
     Textfield,
     /// A multiline text field.
     TextfieldMultiline,
     /// A toolbar in an application window.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Toolbar,
     /// A single toolbar button (with no associated dropdown).
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Toolbarbutton,
     /// The dropdown portion of a toolbar button
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     ToolbarbuttonDropdown,
     /// The gripper for a toolbar.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Toolbargripper,
     /// The toolbox that contains the toolbars.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Toolbox,
     /// A tooltip.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Tooltip,
     /// A listbox or tree widget header
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Treeheader,
     /// An individual header cell
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Treeheadercell,
     /// The sort arrow for a header.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Treeheadersortarrow,
     /// A tree item.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Treeitem,
     /// A tree widget branch line
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Treeline,
     /// A tree widget twisty.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Treetwisty,
     /// Open tree widget twisty.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Treetwistyopen,
     /// A tree widget.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Treeview,
     /// Window and dialog backgrounds.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Window,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     Dialog,
 
     /// Vista Rebars.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozWinCommunicationsToolbox,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozWinMediaToolbox,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozWinBrowsertabbarToolbox,
     /// Vista glass.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozWinGlass,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozWinBorderlessGlass,
     /// -moz-apperance style used in setting proper glass margins.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozWinExcludeGlass,
 
     /// Titlebar elements on the Mac.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozMacFullscreenButton,
     /// Mac help button.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozMacHelpButton,
 
     /// Windows themed window frame elements.
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozWindowButtonBox,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozWindowButtonBoxMaximized,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozWindowButtonClose,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozWindowButtonMaximize,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozWindowButtonMinimize,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozWindowButtonRestore,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozWindowFrameBottom,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozWindowFrameLeft,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozWindowFrameRight,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozWindowTitlebar,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozWindowTitlebarMaximized,
 
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozGtkInfoBar,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozMacActiveSourceListSelection,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozMacDisclosureButtonClosed,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozMacDisclosureButtonOpen,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozMacSourceList,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozMacSourceListSelection,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozMacVibrancyDark,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozMacVibrancyLight,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozMacVibrantTitlebarDark,
+    #[parse(condition = "in_ua_or_chrome_sheet")]
     MozMacVibrantTitlebarLight,
 
     /// A non-disappearing scrollbar.

@@ -4,21 +4,19 @@
 
 "use strict";
 
-const PREVIEW_MAX_DIM_PREF = "devtools.inspector.imagePreviewTooltipSize";
-
 const promise = require("promise");
 const Services = require("Services");
-const nodeConstants = require("devtools/shared/dom-node-constants");
-const clipboardHelper = require("devtools/shared/platform/clipboard");
-const {setImageTooltip, setBrokenImageTooltip} =
-      require("devtools/client/shared/widgets/tooltip/ImageTooltipHelper");
 const MarkupContainer = require("devtools/client/inspector/markup/views/markup-container");
 const ElementEditor = require("devtools/client/inspector/markup/views/element-editor");
+const {ELEMENT_NODE} = require("devtools/shared/dom-node-constants");
 const {extend} = require("devtools/shared/extend");
 
-// Lazy load this module as _buildEventTooltipContent is only called on click
-loader.lazyRequireGetter(this, "setEventTooltip",
-  "devtools/client/shared/widgets/tooltip/EventTooltipHelper", true);
+loader.lazyRequireGetter(this, "setEventTooltip", "devtools/client/shared/widgets/tooltip/EventTooltipHelper", true);
+loader.lazyRequireGetter(this, "setImageTooltip", "devtools/client/shared/widgets/tooltip/ImageTooltipHelper", true);
+loader.lazyRequireGetter(this, "setBrokenImageTooltip", "devtools/client/shared/widgets/tooltip/ImageTooltipHelper", true);
+loader.lazyRequireGetter(this, "clipboardHelper", "devtools/shared/platform/clipboard");
+
+const PREVIEW_MAX_DIM_PREF = "devtools.inspector.imagePreviewTooltipSize";
 
 /**
  * An implementation of MarkupContainer for Elements that can contain
@@ -34,17 +32,7 @@ function MarkupElementContainer(markupView, node) {
   MarkupContainer.prototype.initialize.call(this, markupView, node,
     "elementcontainer");
 
-  this.onFlexboxHighlighterChange = this.onFlexboxHighlighterChange.bind(this);
-  this.onGridHighlighterChange = this.onGridHighlighterChange.bind(this);
-
-  this.markup.highlighters.on("flexbox-highlighter-hidden",
-    this.onFlexboxHighlighterChange);
-  this.markup.highlighters.on("flexbox-highlighter-shown",
-    this.onFlexboxHighlighterChange);
-  this.markup.highlighters.on("grid-highlighter-hidden", this.onGridHighlighterChange);
-  this.markup.highlighters.on("grid-highlighter-shown", this.onGridHighlighterChange);
-
-  if (node.nodeType === nodeConstants.ELEMENT_NODE) {
+  if (node.nodeType === ELEMENT_NODE) {
     this.editor = new ElementEditor(this, node);
   } else {
     throw new Error("Invalid node for MarkupElementContainer");
@@ -54,49 +42,12 @@ function MarkupElementContainer(markupView, node) {
 }
 
 MarkupElementContainer.prototype = extend(MarkupContainer.prototype, {
-  destroy: function() {
-    this.markup.highlighters.off("flexbox-highlighter-hidden",
-      this.onFlexboxHighlighterChange);
-    this.markup.highlighters.off("flexbox-highlighter-shown",
-      this.onFlexboxHighlighterChange);
-    this.markup.highlighters.off("grid-highlighter-hidden", this.onGridHighlighterChange);
-    this.markup.highlighters.off("grid-highlighter-shown", this.onGridHighlighterChange);
-
-    MarkupContainer.prototype.destroy.call(this);
-  },
-
   onContainerClick: function(event) {
     if (!event.target.hasAttribute("data-event")) {
       return;
     }
 
     this._buildEventTooltipContent(event.target);
-  },
-
-  /**
-   * Handler for "flexbox-highlighter-hidden" and "flexbox-highlighter-shown" event
-   * emitted from the HighlightersOverlay. Toggles the active state of the display badge
-   * if it matches the highlighted flex container node.
-   */
-  onFlexboxHighlighterChange: function() {
-    if (!this.editor._displayBadge) {
-      return;
-    }
-    this.editor._displayBadge.classList.toggle("active",
-      this.markup.highlighters.flexboxHighlighterShown === this.node);
-  },
-
-  /**
-   * Handler for "grid-highlighter-hidden" and "grid-highlighter-shown" event emitted from
-   * the HighlightersOverlay. Toggles the active state of the display badge if it matches
-   * the highlighted grid node.
-   */
-  onGridHighlighterChange: function() {
-    if (!this.editor._displayBadge) {
-      return;
-    }
-    this.editor._displayBadge.classList.toggle("active",
-      this.markup.highlighters.gridHighlighterShown === this.node);
   },
 
   async _buildEventTooltipContent(target) {

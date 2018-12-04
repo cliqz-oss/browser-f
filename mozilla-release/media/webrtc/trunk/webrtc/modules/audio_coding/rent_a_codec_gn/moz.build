@@ -204,10 +204,6 @@ if not CONFIG["MOZ_DEBUG"] and CONFIG["OS_TARGET"] == "OpenBSD":
 
     DEFINES["_FORTIFY_SOURCE"] = "2"
 
-if CONFIG["MOZ_DEBUG"] == "1" and CONFIG["OS_TARGET"] == "WINNT":
-
-    DEFINES["_HAS_ITERATOR_DEBUGGING"] = "0"
-
 if CONFIG["CPU_ARCH"] == "aarch64" and CONFIG["OS_TARGET"] == "Android":
 
     LOCAL_INCLUDES += [
@@ -219,6 +215,12 @@ if CONFIG["CPU_ARCH"] == "x86" and CONFIG["OS_TARGET"] == "Android":
     CXXFLAGS += [
         "-msse2"
     ]
+
+    LOCAL_INCLUDES += [
+        "/media/webrtc/trunk/webrtc/modules/audio_coding/codecs/isac/main/include/"
+    ]
+
+if CONFIG["CPU_ARCH"] == "x86_64" and CONFIG["OS_TARGET"] == "Android":
 
     LOCAL_INCLUDES += [
         "/media/webrtc/trunk/webrtc/modules/audio_coding/codecs/isac/main/include/"

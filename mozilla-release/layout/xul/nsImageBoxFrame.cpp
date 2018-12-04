@@ -301,7 +301,7 @@ void
 nsImageBoxFrame::UpdateLoadFlags()
 {
   static Element::AttrValuesArray strings[] =
-    {&nsGkAtoms::always, &nsGkAtoms::never, nullptr};
+    {nsGkAtoms::always, nsGkAtoms::never, nullptr};
   switch (mContent->AsElement()->FindAttrValueIn(kNameSpaceID_None,
                                                  nsGkAtoms::validate, strings,
                                                  eCaseMatters)) {
@@ -418,7 +418,7 @@ nsImageBoxFrame::PaintImage(gfxContext& aRenderingContext,
            hasSubRect ? &mSubRect : nullptr);
 }
 
-Maybe<ImgDrawResult>
+ImgDrawResult
 nsImageBoxFrame::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,
                                          mozilla::wr::IpcResourceUpdateQueue& aResources,
                                          const StackingContextHelper& aSc,
@@ -434,7 +434,7 @@ nsImageBoxFrame::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuild
                                                                 anchorPoint,
                                                                 dest);
   if (!imgCon) {
-    return Nothing();
+    return result;
   }
 
   uint32_t containerFlags = imgIContainer::FLAG_ASYNC_NOTIFY;
@@ -452,29 +452,35 @@ nsImageBoxFrame::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuild
   gfx::IntSize decodeSize =
     nsLayoutUtils::ComputeImageContainerDrawingParameters(imgCon, aItem->Frame(), fillRect,
                                                           aSc, containerFlags, svgContext);
-  RefPtr<layers::ImageContainer> container =
-    imgCon->GetImageContainerAtSize(aManager, decodeSize, svgContext, containerFlags);
+
+  RefPtr<layers::ImageContainer> container;
+  result = imgCon->GetImageContainerAtSize(aManager, decodeSize, svgContext,
+                                           containerFlags, getter_AddRefs(container));
   if (!container) {
     NS_WARNING("Failed to get image container");
-    return Nothing();
+    return result;
   }
 
+  mozilla::wr::ImageRendering rendering = wr::ToImageRendering(
+    nsLayoutUtils::GetSamplingFilterForFrame(aItem->Frame()));
   gfx::IntSize size;
-  Maybe<wr::ImageKey> key = aManager->CommandBuilder().CreateImageKey(aItem, container,
-                                                                      aBuilder, aResources,
-                                                                      aSc, size, Nothing());
+  Maybe<wr::ImageKey> key = aManager->CommandBuilder().CreateImageKey(
+    aItem, container, aBuilder, aResources, rendering, aSc, size, Nothing());
   if (key.isNothing()) {
-    return Some(ImgDrawResult::NOT_READY);
+    return result;
   }
   wr::LayoutRect fill = wr::ToRoundedLayoutRect(fillRect);
 
   LayoutDeviceSize gapSize(0, 0);
-  SamplingFilter sampleFilter = nsLayoutUtils::GetSamplingFilterForFrame(aItem->Frame());
-  aBuilder.PushImage(fill, fill, !BackfaceIsHidden(),
-                     wr::ToLayoutSize(fillRect.Size()), wr::ToLayoutSize(gapSize),
-                     wr::ToImageRendering(sampleFilter), key.value());
+  aBuilder.PushImage(fill,
+                     fill,
+                     !BackfaceIsHidden(),
+                     wr::ToLayoutSize(fillRect.Size()),
+                     wr::ToLayoutSize(gapSize),
+                     rendering,
+                     key.value());
 
-  return Some(ImgDrawResult::SUCCESS);
+  return result;
 }
 
 nsRect
@@ -565,13 +571,13 @@ nsDisplayXULImage::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBui
     flags |= imgIContainer::FLAG_HIGH_QUALITY_SCALING;
   }
 
-  Maybe<ImgDrawResult> result = imageFrame->
+  ImgDrawResult result = imageFrame->
     CreateWebRenderCommands(aBuilder, aResources, aSc, aManager, this, ToReferenceFrame(), flags);
-  if (!result) {
+  if (result == ImgDrawResult::NOT_SUPPORTED) {
     return false;
   }
 
-  nsDisplayItemGenericImageGeometry::UpdateDrawResult(this, *result);
+  nsDisplayItemGenericImageGeometry::UpdateDrawResult(this, result);
   return true;
 }
 
@@ -844,6 +850,8 @@ nsImageBoxFrame::OnSizeAvailable(imgIRequest* aRequest, imgIContainer* aImage)
   // corresponding call to Decrement for this. This Increment will be
   // 'cleaned up' by the Request when it is destroyed, but only then.
   aRequest->IncrementAnimationConsumers();
+
+  aImage->SetAnimationMode(PresContext()->ImageAnimationMode());
 
   nscoord w, h;
   aImage->GetWidth(&w);

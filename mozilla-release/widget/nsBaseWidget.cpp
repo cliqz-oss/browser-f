@@ -1313,6 +1313,12 @@ nsBaseWidget::CreateCompositorSession(int aWidth,
   do {
     CreateCompositorVsyncDispatcher();
 
+    gfx::GPUProcessManager* gpu = gfx::GPUProcessManager::Get();
+    // Make sure GPU process is ready for use.
+    // If it failed to connect to GPU process, GPU process usage is disabled in EnsureGPUReady().
+    // It could update gfxVars and gfxConfigs.
+    gpu->EnsureGPUReady();
+
     // If widget type does not supports acceleration, we use ClientLayerManager
     // even when gfxVars::UseWebRender() is true. WebRender could coexist only
     // with BasicCompositor.
@@ -1338,7 +1344,6 @@ nsBaseWidget::CreateCompositorSession(int aWidth,
     }
 
     bool retry = false;
-    gfx::GPUProcessManager* gpu = gfx::GPUProcessManager::Get();
     mCompositorSession = gpu->CreateTopLevelCompositor(
       this,
       lm,
@@ -2481,6 +2486,24 @@ nsIWidget::GetEditCommands(nsIWidget::NativeKeyBindingsType aType,
   MOZ_ASSERT(aEvent.IsTrusted());
   MOZ_ASSERT(aCommands.IsEmpty());
 }
+
+already_AddRefed<nsIBidiKeyboard>
+nsIWidget::CreateBidiKeyboard()
+{
+  if (XRE_IsContentProcess()) {
+    return CreateBidiKeyboardContentProcess();
+  }
+  return CreateBidiKeyboardInner();
+}
+
+#ifdef ANDROID
+already_AddRefed<nsIBidiKeyboard>
+nsIWidget::CreateBidiKeyboardInner()
+{
+  // no bidi keyboard implementation
+  return nullptr;
+}
+#endif
 
 namespace mozilla {
 namespace widget {

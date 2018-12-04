@@ -70,22 +70,49 @@ linux64-clang-7:
     toolchains:
         - linux64-gcc-4.9
 
-linux64-clang-7-mingw:
-    description: "MinGW-Clang 7 x86 toolchain build"
+linux64-clang-trunk-mingw-x86:
+    description: "MinGW-Clang Trunk x86 toolchain build"
     treeherder:
         kind: build
         platform: toolchains/opt
-        symbol: TMW(clang7-32)
+        symbol: TMW(clang-x86)
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux-xlarge
     worker:
         max-run-time: 7200
     run:
         using: toolchain-script
-        script: build-clang-7-mingw.sh
+        script: build-clang-trunk-mingw.sh
+        arguments: [
+            'x86'
+        ]
         resources:
             - 'build/build-clang/build-clang.py'
-            - 'build/build-clang/clang-7-mingw.json'
+            - 'build/build-clang/clang-trunk-mingw.json'
+            - 'taskcluster/scripts/misc/tooltool-download.sh'
+        toolchain-artifact: public/build/clangmingw.tar.xz
+    toolchains:
+        - linux64-gcc-4.9
+
+linux64-clang-trunk-mingw-x64:
+    description: "MinGW-Clang Trunk x64 toolchain build"
+    treeherder:
+        kind: build
+        platform: toolchains/opt
+        symbol: TMW(clang-x64)
+        tier: 2
+    worker-type: aws-provisioner-v1/gecko-{level}-b-linux-xlarge
+    worker:
+        max-run-time: 7200
+    run:
+        using: toolchain-script
+        script: build-clang-trunk-mingw.sh
+        arguments: [
+            'x64'
+        ]
+        resources:
+            - 'build/build-clang/build-clang.py'
+            - 'build/build-clang/clang-trunk-mingw.json'
             - 'taskcluster/scripts/misc/tooltool-download.sh'
         toolchain-artifact: public/build/clangmingw.tar.xz
     toolchains:
@@ -464,7 +491,7 @@ linux64-rust-1.28:
     treeherder:
         kind: build
         platform: toolchains/opt
-        symbol: TL(rust)
+        symbol: TL(rust-1.28)
         tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
@@ -476,6 +503,29 @@ linux64-rust-1.28:
         script: repack_rust.py
         arguments: [
             '--channel', '1.28.0',
+            '--host', 'x86_64-unknown-linux-gnu',
+            '--target', 'x86_64-unknown-linux-gnu',
+            '--target', 'i686-unknown-linux-gnu',
+        ]
+        toolchain-artifact: public/build/rustc.tar.xz
+
+linux64-rust-1.29:
+    description: "rust repack"
+    treeherder:
+        kind: build
+        platform: toolchains/opt
+        symbol: TL(rust)
+        tier: 1
+    worker-type: aws-provisioner-v1/gecko-{level}-b-linux
+    worker:
+        max-run-time: 7200
+        env:
+            UPLOAD_DIR: artifacts
+    run:
+        using: toolchain-script
+        script: repack_rust.py
+        arguments: [
+            '--channel', '1.29.2',
             '--host', 'x86_64-unknown-linux-gnu',
             '--target', 'x86_64-unknown-linux-gnu',
             '--target', 'i686-unknown-linux-gnu',
@@ -499,14 +549,14 @@ linux64-rust-nightly:
         using: toolchain-script
         script: repack_rust.py
         arguments: [
-            '--channel', 'nightly-2018-08-18',
+            '--channel', 'nightly-2018-09-16',
             '--host', 'x86_64-unknown-linux-gnu',
             '--target', 'x86_64-unknown-linux-gnu',
             '--target', 'i686-unknown-linux-gnu',
         ]
         toolchain-artifact: public/build/rustc.tar.xz
 
-linux64-rust-macos-1.28:
+linux64-rust-macos-1.29:
     description: "rust repack with macos-cross support"
     treeherder:
         kind: build
@@ -522,7 +572,7 @@ linux64-rust-macos-1.28:
         using: toolchain-script
         script: repack_rust.py
         arguments: [
-            '--channel', '1.28.0',
+            '--channel', '1.29.2',
             '--host', 'x86_64-unknown-linux-gnu',
             '--target', 'x86_64-unknown-linux-gnu',
             '--target', 'x86_64-apple-darwin',
@@ -530,7 +580,7 @@ linux64-rust-macos-1.28:
         toolchain-alias: linux64-rust-macos
         toolchain-artifact: public/build/rustc.tar.xz
 
-linux64-rust-android-1.28:
+linux64-rust-android-1.29:
     description: "rust repack with android-cross support"
     treeherder:
         kind: build
@@ -546,12 +596,13 @@ linux64-rust-android-1.28:
         using: toolchain-script
         script: repack_rust.py
         arguments: [
-            '--channel', '1.28.0',
+            '--channel', '1.29.2',
             '--host', 'x86_64-unknown-linux-gnu',
             '--target', 'x86_64-unknown-linux-gnu',
             '--target', 'armv7-linux-androideabi',
             '--target', 'aarch64-linux-android',
             '--target', 'i686-linux-android',
+            '--target', 'x86_64-linux-android',
         ]
         toolchain-alias: linux64-rust-android
         toolchain-artifact: public/build/rustc.tar.xz
@@ -614,6 +665,26 @@ linux64-rust-size:
     toolchains:
         - linux64-rust-1.28
 
+linux64-grcov:
+    description: "grcov toolchain build"
+    treeherder:
+        kind: build
+        platform: toolchains/opt
+        symbol: TL(grcov)
+        tier: 1
+    worker-type: aws-provisioner-v1/gecko-{level}-b-linux
+    worker:
+        max-run-time: 1800
+    run:
+        using: toolchain-script
+        script: build-grcov.sh
+        resources:
+            - 'taskcluster/scripts/misc/tooltool-download.sh'
+        toolchain-artifact: public/build/grcov.tar.xz
+    toolchains:
+        - linux64-rust-1.28
+        - linux64-clang-7
+
 linux64-gn:
     description: "gn toolchain build"
     treeherder:
@@ -644,7 +715,7 @@ linux64-tup:
         kind: build
         platform: toolchains/opt
         symbol: TL(tup)
-        tier: 2
+        tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 3600

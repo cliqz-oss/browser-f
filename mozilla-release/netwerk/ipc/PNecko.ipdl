@@ -26,6 +26,7 @@ include protocol PChildToParentStream; //FIXME: bug #792908
 include protocol PParentToChildStream; //FIXME: bug #792908
 include protocol PStunAddrsRequest;
 include protocol PFileChannel;
+include protocol PTrackingDummyChannel;
 
 include IPCStream;
 include URIParams;
@@ -37,6 +38,7 @@ using class IPC::SerializedLoadContext from "SerializedLoadContext.h";
 using mozilla::dom::TabId from "mozilla/dom/ipc/IdType.h";
 using class IPC::Principal from "mozilla/dom/PermissionMessageUtils.h";
 using refcounted class nsIInputStream from "mozilla/ipc/IPCStreamUtils.h";
+using refcounted class nsIURI from "mozilla/ipc/URIUtils.h";
 
 namespace mozilla {
 namespace net {
@@ -62,6 +64,7 @@ nested(upto inside_cpow) sync protocol PNecko
   manages PTransportProvider;
   manages PAltDataOutputStream;
   manages PStunAddrsRequest;
+  manages PTrackingDummyChannel;
 
 parent:
   async __delete__();
@@ -93,9 +96,10 @@ parent:
   async PredReset();
 
   async SpeculativeConnect(URIParams uri, Principal principal, bool anonymous);
-  async HTMLDNSPrefetch(nsString hostname, OriginAttributes originAttributes,
-                        uint16_t flags);
-  async CancelHTMLDNSPrefetch(nsString hostname, OriginAttributes originAttributes,
+  async HTMLDNSPrefetch(nsString hostname, bool isHttps,
+                        OriginAttributes originAttributes, uint16_t flags);
+  async CancelHTMLDNSPrefetch(nsString hostname, bool isHttps,
+                              OriginAttributes originAttributes,
                               uint16_t flags, nsresult reason);
 
   /**
@@ -107,6 +111,10 @@ parent:
   async PFileChannel(uint32_t channelId);
 
   async PChannelDiverter(ChannelDiverterArgs channel);
+
+  async PTrackingDummyChannel(nsIURI uri, nsIURI aTopWindowURI,
+                              nsresult aTopWindowURIResult,
+                              OptionalLoadInfoArgs loadInfo);
 
   /**
    * These are called from the child with the results of the auth prompt.
@@ -152,6 +160,17 @@ child:
   prio(high) async NetworkChangeNotification(nsCString type);
 
   async PTransportProvider();
+
+  // This message is sent to PNecko and triggers the creation of a new
+  // HttpChannelChild that will be connected to the parent channel represented
+  // by registrarId.
+  async CrossProcessRedirect(uint32_t aRegistrarId,
+                             nsIURI aURI,
+                             uint32_t aNewLoadFlags,
+                             OptionalLoadInfoArgs aLoadInfo,
+                             uint64_t aChannelId,
+                             nsIURI aOriginalURI,
+                             uint64_t aIdentifier);
 
 both:
   // Actually we need PTCPSocket() for parent. But ipdl disallows us having different

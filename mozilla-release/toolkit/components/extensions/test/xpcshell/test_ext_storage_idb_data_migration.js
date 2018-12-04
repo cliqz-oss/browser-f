@@ -14,8 +14,11 @@ ChromeUtils.import("resource://gre/modules/TelemetryController.jsm");
 
 const {
   ExtensionStorageIDB,
-  DataMigrationTelemetry,
 } = ChromeUtils.import("resource://gre/modules/ExtensionStorageIDB.jsm", {});
+
+const {
+  getTrimmedString,
+} = ChromeUtils.import("resource://gre/modules/ExtensionTelemetry.jsm", {});
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   OS: "resource://gre/modules/osfile.jsm",
@@ -80,7 +83,6 @@ function assertTelemetryEvents(extensionId, expectedEvents) {
 
 add_task(async function setup() {
   Services.prefs.setBoolPref(ExtensionStorageIDB.BACKEND_ENABLED_PREF, true);
-  setLowDiskMode(false);
 
   await promiseStartupManager();
 
@@ -203,7 +205,9 @@ add_task(async function test_storage_local_data_migration() {
 
   // No new telemetry events recorded for the extension.
   const snapshot = Services.telemetry.snapshotEvents(Ci.nsITelemetry.DATASET_RELEASE_CHANNEL_OPTIN, true);
-  ok(!snapshot.parent || snapshot.parent.length === 0,
+  const filterByCategory = ([timestamp, category]) => category === EVENT_CATEGORY;
+
+  ok(!snapshot.parent || snapshot.parent.filter(filterByCategory).length === 0,
      "No telemetry events should be recorded for an already migrated extension");
 
   Services.prefs.setBoolPref(LEAVE_STORAGE_PREF, false);
@@ -252,7 +256,7 @@ add_task(async function test_extensionId_trimmed_in_telemetry_event() {
 
   await extension.awaitMessage("storage-local-data-migrated");
 
-  const expectedTrimmedExtensionId = DataMigrationTelemetry.getTrimmedString(EXTENSION_ID);
+  const expectedTrimmedExtensionId = getTrimmedString(EXTENSION_ID);
 
   equal(expectedTrimmedExtensionId.length, 80, "The trimmed version of the extensionId should be 80 chars long");
 
@@ -355,72 +359,10 @@ add_task(async function test_storage_local_corrupted_data_migration() {
   await extension.unload();
 });
 
-// Test that if the data migration fails because of a QuotaExceededError raised when creating the
-// storage into the IndexedDB backend, the extension does not migrate to the new backend if
-// there was a JSONFile to migrate.
-add_task(async function test_storage_local_data_migration_quota_exceeded_error() {
-  const EXTENSION_ID = "extension-quota-exceeded-error@mozilla.org";
-  const data = {"test_key_string": "test_value"};
-
-  // Set the low disk mode to force the quota manager to raise a QuotaExceededError.
-  setLowDiskMode(true);
-
-  // Store some fake data in the storage.local file backend before starting the extension.
-  await createExtensionJSONFileWithData(EXTENSION_ID, data);
-
-  async function background() {
-    const result = await browser.storage.local.get("test_key_string");
-    browser.test.assertEq("test_value", result.test_key_string,
-                          "Got the expected storage.local.get result");
-
-    browser.test.sendMessage("storage-local-quota-exceeded");
-  }
-
-  clearMigrationHistogram();
-
-  let extension = ExtensionTestUtils.loadExtension({
-    manifest: {
-      permissions: ["storage"],
-      applications: {
-        gecko: {
-          id: EXTENSION_ID,
-        },
-      },
-    },
-    background,
-  });
-
-  await extension.startup();
-
-  await extension.awaitMessage("storage-local-quota-exceeded");
-
-  equal(Services.prefs.getBoolPref(`${IDB_MIGRATED_PREF_BRANCH}.${EXTENSION_ID}`, false),
-        false, `Got ${IDB_MIGRATED_PREF_BRANCH} preference set to false as expected`);
-
-  await extension.unload();
-
-  assertTelemetryEvents(EXTENSION_ID, [
-    {
-      method: "migrateResult",
-      extra: {
-        backend: "JSONFile",
-        error_name: "QuotaExceededError",
-      },
-    },
-  ]);
-
-  assertMigrationHistogramCount("success", 0);
-  assertMigrationHistogramCount("failure", 1);
-});
-
 // Test that if the data migration fails to store the old data into the IndexedDB backend
 // then the expected telemetry histogram is being updated.
 add_task(async function test_storage_local_data_migration_failure() {
   const EXTENSION_ID = "extension-data-migration-failure@mozilla.org";
-
-  // Reset the low disk mode, we don't want the quota manager to raise a QuotaExceededError
-  // during this test case.
-  setLowDiskMode(false);
 
   // Create the file under the expected directory tree.
   const {
@@ -488,7 +430,6 @@ add_task(async function test_storage_local_data_migration_clear_pref() {
   Services.prefs.clearUserPref(LEAVE_STORAGE_PREF);
   Services.prefs.clearUserPref(LEAVE_UUID_PREF);
   Services.prefs.clearUserPref(ExtensionStorageIDB.BACKEND_ENABLED_PREF);
-  setLowDiskMode(false);
   await promiseShutdownManager();
   await TelemetryController.testShutdown();
 });

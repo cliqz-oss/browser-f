@@ -11,7 +11,7 @@ function test() {
     openScratchpad(runTests, {"state": {"text": ""}});
   });
 
-  gBrowser.loadURI("data:text/html,<p>test that exceptions are output as " +
+  BrowserTestUtils.loadURI(gBrowser, "data:text/html,<p>test that exceptions are output as " +
                    "comments for 'display' and not sent to the console in Scratchpad");
 }
 
@@ -28,7 +28,7 @@ function runTests() {
     method: "display",
     code: message,
     result: message + openComment + "Hello World!" + closeComment,
-    label: "message display output"
+    label: "message display output",
   },
   {
       method: "display",

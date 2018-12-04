@@ -35,10 +35,17 @@ function sortWithClones(requests, sorter, a, b) {
   return sorter(a, b);
 }
 
-const getFilterFn = createSelector(
+/**
+ * Take clones into account when filtering. If a request is
+ * a clone, it's not filtered out.
+ */
+const getFilterWithCloneFn = createSelector(
   state => state.filters,
   filters => r => {
     const matchesType = Object.keys(filters.requestFilterTypes).some(filter => {
+      if (r.id.endsWith("-clone")) {
+        return true;
+      }
       return filters.requestFilterTypes[filter] && Filters[filter] && Filters[filter](r);
     });
     return matchesType && isFreetextMatch(r, filters.requestFilterText);
@@ -78,7 +85,7 @@ const getSortedRequests = createSelector(
 
 const getDisplayedRequests = createSelector(
   state => state.requests,
-  getFilterFn,
+  getFilterWithCloneFn,
   getSortFn,
   ({ requests }, filterFn, sortFn) => {
     const arr = [...requests.values()].filter(filterFn).sort(sortFn);
@@ -108,7 +115,8 @@ const getDisplayedRequestsSummary = createSelector(
         totals.contentSize += item.contentSize;
       }
 
-      if (typeof item.transferredSize == "number" && !item.fromCache) {
+      if (typeof item.transferredSize == "number" &&
+        !(item.fromCache || item.status === "304")) {
         totals.transferredSize += item.transferredSize;
       }
 

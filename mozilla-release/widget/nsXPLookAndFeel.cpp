@@ -126,6 +126,9 @@ nsLookAndFeelIntPref nsXPLookAndFeel::sIntPrefs[] =
   { "ui.GtkCSDAvailable",
     eIntID_GTKCSDAvailable,
     false, 0 },
+  { "ui.GtkCSDTransparentBackground",
+    eIntID_GTKCSDTransparentBackground,
+    false, 0 },
   { "ui.GtkCSDMinimizeButton",
     eIntID_GTKCSDMinimizeButton,
     false, 0 },
@@ -141,6 +144,12 @@ nsLookAndFeelIntPref nsXPLookAndFeel::sIntPrefs[] =
   { "ui.prefersReducedMotion",
     eIntID_PrefersReducedMotion,
     false, 0 },
+  { "ui.primaryPointerCapabilities",
+    eIntID_PrimaryPointerCapabilities,
+    false, 6 /* fine and hover-capable pointer, i.e. mouse-type */ },
+  { "ui.allPointerCapabilities",
+    eIntID_AllPointerCapabilities,
+    false, 6 /* fine and hover-capable pointer, i.e. mouse-type */ },
 };
 
 nsLookAndFeelFloatPref nsXPLookAndFeel::sFloatPrefs[] =

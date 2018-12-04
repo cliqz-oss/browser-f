@@ -1785,7 +1785,7 @@ class BootstrapScope {
 
   async _install(reason, callUpdate, startup, extraArgs) {
     if (callUpdate) {
-      this.callBootstrapMethod("update", reason, extraArgs);
+      await this.callBootstrapMethod("update", reason, extraArgs);
     } else {
       this.callBootstrapMethod("install", reason, extraArgs);
     }

@@ -4,6 +4,8 @@
 
 "use strict";
 
+const Services = require("Services");
+
 const {
   ADD_VIEWPORT,
   CHANGE_DEVICE,
@@ -13,6 +15,10 @@ const {
   ROTATE_VIEWPORT,
 } = require("../actions/index");
 
+const VIEWPORT_WIDTH_PREF = "devtools.responsive.viewport.width";
+const VIEWPORT_HEIGHT_PREF = "devtools.responsive.viewport.height";
+const VIEWPORT_PIXEL_RATIO_PREF = "devtools.responsive.viewport.pixelRatio";
+
 let nextViewportId = 0;
 
 const INITIAL_VIEWPORTS = [];
@@ -20,11 +26,9 @@ const INITIAL_VIEWPORT = {
   id: nextViewportId++,
   device: "",
   deviceType: "",
-  width: 320,
-  height: 480,
-  pixelRatio: {
-    value: 0,
-  },
+  height: Services.prefs.getIntPref(VIEWPORT_HEIGHT_PREF, 480),
+  width: Services.prefs.getIntPref(VIEWPORT_WIDTH_PREF, 320),
+  pixelRatio: Services.prefs.getIntPref(VIEWPORT_PIXEL_RATIO_PREF, 0),
   userContextId: 0,
 };
 
@@ -35,9 +39,14 @@ const reducers = {
     if (viewports.length === 1) {
       return viewports;
     }
-    return [...viewports, Object.assign({}, INITIAL_VIEWPORT, {
-      userContextId,
-    })];
+
+    return [
+      ...viewports,
+      {
+        ...INITIAL_VIEWPORT,
+        userContextId,
+      },
+    ];
   },
 
   [CHANGE_DEVICE](viewports, { id, device, deviceType }) {
@@ -46,10 +55,11 @@ const reducers = {
         return viewport;
       }
 
-      return Object.assign({}, viewport, {
+      return {
+        ...viewport,
         device,
         deviceType,
-      });
+      };
     });
   },
 
@@ -59,11 +69,12 @@ const reducers = {
         return viewport;
       }
 
-      return Object.assign({}, viewport, {
-        pixelRatio: {
-          value: pixelRatio
-        },
-      });
+      Services.prefs.setIntPref(VIEWPORT_PIXEL_RATIO_PREF, pixelRatio);
+
+      return {
+        ...viewport,
+        pixelRatio,
+      };
     });
   },
 
@@ -73,10 +84,11 @@ const reducers = {
         return viewport;
       }
 
-      return Object.assign({}, viewport, {
+      return {
+        ...viewport,
         device: "",
         deviceType: "",
-      });
+      };
     });
   },
 
@@ -86,17 +98,22 @@ const reducers = {
         return viewport;
       }
 
-      if (!width) {
-        width = viewport.width;
-      }
       if (!height) {
         height = viewport.height;
       }
 
-      return Object.assign({}, viewport, {
-        width,
+      if (!width) {
+        width = viewport.width;
+      }
+
+      Services.prefs.setIntPref(VIEWPORT_WIDTH_PREF, width);
+      Services.prefs.setIntPref(VIEWPORT_HEIGHT_PREF, height);
+
+      return {
+        ...viewport,
         height,
-      });
+        width,
+      };
     });
   },
 
@@ -106,10 +123,11 @@ const reducers = {
         return viewport;
       }
 
-      return Object.assign({}, viewport, {
-        width: viewport.height,
+      return {
+        ...viewport,
         height: viewport.width,
-      });
+        width: viewport.height,
+      };
     });
   },
 

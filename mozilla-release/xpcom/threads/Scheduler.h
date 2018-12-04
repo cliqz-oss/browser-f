@@ -14,6 +14,7 @@
 #include "mozilla/UniquePtr.h"
 #include "nsTArray.h"
 #include "nsILabelableRunnable.h"
+#include "nsPrintfCString.h"
 
 // Windows silliness. winbase.h defines an empty no-argument Yield macro.
 #undef Yield
@@ -62,7 +63,7 @@ public:
 
   // Scheduler prefs need to be handled differently because the scheduler needs
   // to start up in the content process before the normal preferences service.
-  static nsCString GetPrefs();
+  static nsPrintfCString GetPrefs();
   static void SetPrefs(const char* aPrefs);
 
   static bool IsSchedulerEnabled();

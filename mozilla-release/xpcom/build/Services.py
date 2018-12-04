@@ -20,8 +20,6 @@ service('ObserverService', 'nsIObserverService',
         "@mozilla.org/observer-service;1")
 service('StringBundleService', 'nsIStringBundleService',
         "@mozilla.org/intl/stringbundle;1")
-service('XPConnect', 'nsIXPConnect',
-        "@mozilla.org/js/xpc/XPConnect;1")
 service('PermissionManager', 'nsIPermissionManager',
         "@mozilla.org/permissionmanager;1")
 service('ServiceWorkerManager', 'nsIServiceWorkerManager',
@@ -46,6 +44,8 @@ service('HistoryService', 'mozilla::IHistory',
         "@mozilla.org/browser/history;1")
 service('ThirdPartyUtil', 'mozIThirdPartyUtil',
         "@mozilla.org/thirdpartyutil;1")
+service('URIFixup', 'nsIURIFixup',
+        "@mozilla.org/docshell/urifixup;1")
 
 # The definition file needs access to the definitions of the particular
 # interfaces. If you add a new interface here, make sure the necessary includes
@@ -76,6 +76,7 @@ CPP_INCLUDES = """
 #include "nsIAsyncShutdown.h"
 #include "nsIUUIDGenerator.h"
 #include "nsIGfxInfo.h"
+#include "nsIURIFixup.h"
 """
 
 #####

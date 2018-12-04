@@ -80,8 +80,11 @@
 #include "mozilla/dom/ChromeMessageSender.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/FrameLoaderBinding.h"
+#include "mozilla/gfx/CrossProcessPaint.h"
 #include "mozilla/jsipc/CrossProcessObjectWrappers.h"
 #include "mozilla/layout/RenderFrameParent.h"
+#include "mozilla/ServoCSSParser.h"
+#include "mozilla/ServoStyleSet.h"
 #include "nsGenericHTMLFrameElement.h"
 #include "GeckoProfiler.h"
 
@@ -95,7 +98,6 @@
 #include "mozilla/WebBrowserPersistLocalDocument.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/PromiseNativeHandler.h"
-#include "mozilla/dom/GroupedHistoryEvent.h"
 #include "mozilla/dom/ParentSHistory.h"
 #include "mozilla/dom/ChildSHistory.h"
 
@@ -130,8 +132,8 @@ typedef FrameMetrics::ViewID ViewID;
 //             itself.  Note that "#foo" on the end of URL doesn't affect
 //             whether it's considered identical, but "?foo" or ";foo" are
 //             considered and compared.
-// Bug 228829: Limit this to 1, like IE does.
-#define MAX_SAME_URL_CONTENT_FRAMES 1
+// Limit this to 2, like chromium does.
+#define MAX_SAME_URL_CONTENT_FRAMES 2
 
 // Bug 8065: Limit content frame depth to some reasonable level. This
 // does not count chrome frames when determining depth, nor does it
@@ -166,7 +168,6 @@ nsFrameLoader::nsFrameLoader(Element* aOwner, nsPIDOMWindowOuter* aOpener,
   , mRemoteBrowser(nullptr)
   , mChildID(0)
   , mJSPluginID(aJSPluginID)
-  , mBrowserChangingProcessBlockers(nullptr)
   , mDepthTooGreat(false)
   , mIsTopLevelContent(false)
   , mDestroyCalled(false)
@@ -244,6 +245,7 @@ nsFrameLoader::LoadFrame(bool aOriginalSrc)
                   mOwnerContent->HasAttr(kNameSpaceID_None, nsGkAtoms::srcdoc);
   if (isSrcdoc) {
     src.AssignLiteral("about:srcdoc");
+    principal = mOwnerContent->NodePrincipal();
   }
   else {
     GetURL(src, getter_AddRefs(principal));
@@ -260,6 +262,7 @@ nsFrameLoader::LoadFrame(bool aOriginalSrc)
         return;
       }
       src.AssignLiteral("about:blank");
+      principal = mOwnerContent->NodePrincipal();
     }
   }
 
@@ -309,18 +312,13 @@ nsFrameLoader::FireErrorEvent()
 }
 
 nsresult
-nsFrameLoader::LoadURI(nsIURI* aURI, bool aOriginalSrc)
-{
-  return LoadURI(aURI, nullptr, aOriginalSrc);
-}
-
-nsresult
 nsFrameLoader::LoadURI(nsIURI* aURI, nsIPrincipal* aTriggeringPrincipal,
                        bool aOriginalSrc)
 {
   if (!aURI)
     return NS_ERROR_INVALID_POINTER;
   NS_ENSURE_STATE(!mDestroyCalled && mOwnerContent);
+  MOZ_ASSERT(aTriggeringPrincipal, "Must have an explicit triggeringPrincipal to nsFrameLoader::LoadURI.");
 
   mLoadingOriginalSrc = aOriginalSrc;
 
@@ -344,85 +342,6 @@ nsFrameLoader::LoadURI(nsIURI* aURI, nsIPrincipal* aTriggeringPrincipal,
     mTriggeringPrincipal = nullptr;
   }
   return rv;
-}
-
-bool
-nsFrameLoader::SwapBrowsersAndNotify(nsFrameLoader* aOther)
-{
-  // Cache the owner content before calling SwapBrowsers, which will change
-  // these member variables.
-  RefPtr<mozilla::dom::Element> primaryContent = mOwnerContent;
-  RefPtr<mozilla::dom::Element> secondaryContent = aOther->mOwnerContent;
-
-  // Swap loaders through our owner, so the owner's listeners will be correctly
-  // setup.
-  nsCOMPtr<nsIBrowser> ourBrowser = do_QueryInterface(primaryContent);
-  nsCOMPtr<nsIBrowser> otherBrowser = do_QueryInterface(secondaryContent);
-  if (NS_WARN_IF(!ourBrowser || !otherBrowser)) {
-    return false;
-  }
-  nsresult rv = ourBrowser->SwapBrowsers(otherBrowser, nsIBrowser::SWAP_KEEP_PERMANENT_KEY);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return false;
-  }
-
-  // Dispatch the BrowserChangedProcess event to tell JS that the process swap
-  // has occurred.
-  GroupedHistoryEventInit eventInit;
-  eventInit.mBubbles = true;
-  eventInit.mCancelable= false;
-  eventInit.mOtherBrowser = secondaryContent;
-  RefPtr<GroupedHistoryEvent> event =
-    GroupedHistoryEvent::Constructor(primaryContent,
-                                     NS_LITERAL_STRING("BrowserChangedProcess"),
-                                     eventInit);
-  event->SetTrusted(true);
-  primaryContent->DispatchEvent(*event);
-
-  return true;
-}
-
-already_AddRefed<Promise>
-nsFrameLoader::FireWillChangeProcessEvent()
-{
-  AutoJSAPI jsapi;
-  if (NS_WARN_IF(!jsapi.Init(mOwnerContent->GetOwnerGlobal()))) {
-    return nullptr;
-  }
-  JSContext* cx = jsapi.cx();
-
-  // Set our mBrowserChangingProcessBlockers property to refer to the blockers
-  // list. We will synchronously dispatch a DOM event to collect this list of
-  // blockers.
-  nsTArray<RefPtr<Promise>> blockers;
-  mBrowserChangingProcessBlockers = &blockers;
-
-  GroupedHistoryEventInit eventInit;
-  eventInit.mBubbles = true;
-  eventInit.mCancelable = false;
-  eventInit.mOtherBrowser = nullptr;
-  RefPtr<GroupedHistoryEvent> event =
-    GroupedHistoryEvent::Constructor(mOwnerContent,
-                                     NS_LITERAL_STRING("BrowserWillChangeProcess"),
-                                     eventInit);
-  event->SetTrusted(true);
-  mOwnerContent->DispatchEvent(*event);
-
-  mBrowserChangingProcessBlockers = nullptr;
-
-  ErrorResult rv;
-  RefPtr<Promise> allPromise = Promise::All(cx, blockers, rv);
-  return allPromise.forget();
-}
-
-void
-nsFrameLoader::AddProcessChangeBlockingPromise(Promise& aPromise, ErrorResult& aRv)
-{
-  if (NS_WARN_IF(!mBrowserChangingProcessBlockers)) {
-    aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
-  } else {
-    mBrowserChangingProcessBlockers->AppendElement(&aPromise);
-  }
 }
 
 nsresult
@@ -544,6 +463,8 @@ nsFrameLoader::ReallyStartLoadingInternal()
     flags = nsIWebNavigation::LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP |
             nsIWebNavigation::LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL;
   }
+
+  loadInfo->SetIsFromProcessingFrameAttributes();
 
   // Kick off the load...
   bool tmpState = mNeedsAsyncDestroy;
@@ -2109,6 +2030,13 @@ nsFrameLoader::MaybeCreateDocShell()
     }
   }
 
+  // Allow scripts to close the docshell if specified.
+  if (win_private && mOwnerContent->IsXULElement(nsGkAtoms::browser) &&
+      mOwnerContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::allowscriptstoclose,
+                                 nsGkAtoms::_true, eCaseMatters)) {
+    nsGlobalWindowOuter::Cast(win_private)->AllowScriptsToClose();
+  }
+
   // This is kinda whacky, this call doesn't really create anything,
   // but it must be called to make sure things are properly
   // initialized.
@@ -2265,10 +2193,15 @@ nsFrameLoader::GetURL(nsString& aURI, nsIPrincipal** aTriggeringPrincipal)
 
   if (mOwnerContent->IsHTMLElement(nsGkAtoms::object)) {
     mOwnerContent->GetAttr(kNameSpaceID_None, nsGkAtoms::data, aURI);
+    nsCOMPtr<nsIPrincipal> prin = mOwnerContent->NodePrincipal();
+    prin.forget(aTriggeringPrincipal);
   } else {
     mOwnerContent->GetAttr(kNameSpaceID_None, nsGkAtoms::src, aURI);
     if (RefPtr<nsGenericHTMLFrameElement> frame = do_QueryObject(mOwnerContent)) {
       nsCOMPtr<nsIPrincipal> prin = frame->GetSrcTriggeringPrincipal();
+      prin.forget(aTriggeringPrincipal);
+    } else {
+      nsCOMPtr<nsIPrincipal> prin = mOwnerContent->NodePrincipal();
       prin.forget(aTriggeringPrincipal);
     }
   }
@@ -2702,13 +2635,19 @@ nsFrameLoader::TryRemoteBrowser()
     mParentSHistory = new ParentSHistory(this);
   }
 
-  // Send down the name of the browser through mRemoteBrowser if it is set.
-  // Only do this on xul:browsers for now.
+  // For xul:browsers, update some settings based on attributes:
   if (mOwnerContent->IsXULElement()) {
+    // Send down the name of the browser through mRemoteBrowser if it is set.
     nsAutoString frameName;
     mOwnerContent->GetAttr(kNameSpaceID_None, nsGkAtoms::name, frameName);
     if (nsContentUtils::IsOverridingWindowName(frameName)) {
       Unused << mRemoteBrowser->SendSetWindowName(frameName);
+    }
+    // Allow scripts to close the window if the browser specified so:
+    if (mOwnerContent->AttrValueIs(kNameSpaceID_None,
+                                   nsGkAtoms::allowscriptstoclose,
+                                   nsGkAtoms::_true, eCaseMatters)) {
+      Unused << mRemoteBrowser->SendAllowScriptsToClose();
     }
   }
 
@@ -3110,22 +3049,6 @@ nsFrameLoader::RequestNotifyAfterRemotePaint()
 }
 
 void
-nsFrameLoader::RequestFrameLoaderClose(ErrorResult& aRv)
-{
-  nsCOMPtr<nsIBrowser> browser = do_QueryInterface(mOwnerContent);
-  if (NS_WARN_IF(!browser)) {
-    // OwnerElement other than nsIBrowser is not supported yet.
-    aRv.Throw(NS_ERROR_NOT_IMPLEMENTED);
-    return;
-  }
-
-  nsresult rv = browser->CloseBrowser();
-  if (NS_FAILED(rv)) {
-    aRv.Throw(rv);
-  }
-}
-
-void
 nsFrameLoader::RequestUpdatePosition(ErrorResult& aRv)
 {
   if (auto* tabParent = TabParent::GetFrom(GetRemoteBrowser())) {
@@ -3183,6 +3106,64 @@ nsFrameLoader::Print(uint64_t aOuterWindowID,
     return;
   }
 #endif
+}
+
+already_AddRefed<mozilla::dom::Promise>
+nsFrameLoader::DrawSnapshot(double aX,
+                            double aY,
+                            double aW,
+                            double aH,
+                            double aScale,
+                            const nsAString& aBackgroundColor,
+                            mozilla::ErrorResult& aRv)
+{
+  RefPtr<nsIGlobalObject> global = GetOwnerContent()->GetOwnerGlobal();
+  RefPtr<Promise> promise = Promise::Create(global, aRv);
+  if (NS_WARN_IF(aRv.Failed())) {
+    return nullptr;
+  }
+
+  RefPtr<nsIDocument> document = GetOwnerContent()->GetOwnerDocument();
+  if (NS_WARN_IF(!document)) {
+    aRv = NS_ERROR_FAILURE;
+    return nullptr;
+  }
+  nsIPresShell* presShell = document->GetShell();
+  if (NS_WARN_IF(!presShell)) {
+    aRv = NS_ERROR_FAILURE;
+    return nullptr;
+  }
+
+  nscolor color;
+  css::Loader* loader = document->CSSLoader();
+  ServoStyleSet* set = presShell->StyleSet();
+  if (NS_WARN_IF(!ServoCSSParser::ComputeColor(set,
+                                               NS_RGB(0, 0, 0),
+                                               aBackgroundColor,
+                                               &color,
+                                               nullptr,
+                                               loader))) {
+    aRv = NS_ERROR_FAILURE;
+    return nullptr;
+  }
+
+  gfx::IntRect rect = gfx::IntRect::RoundOut(gfx::Rect(aX, aY, aW, aH));
+
+  if (IsRemoteFrame()) {
+    gfx::CrossProcessPaint::StartRemote(mRemoteBrowser->GetTabId(),
+                                        rect,
+                                        aScale,
+                                        color,
+                                        promise);
+  } else {
+    gfx::CrossProcessPaint::StartLocal(mDocShell,
+                                       rect,
+                                       aScale,
+                                       color,
+                                       promise);
+  }
+
+  return promise.forget();
 }
 
 already_AddRefed<nsITabParent>

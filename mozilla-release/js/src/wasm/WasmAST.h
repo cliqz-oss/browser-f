@@ -61,10 +61,12 @@ class AstName
     bool empty() const { return begin_ == nullptr; }
 
     bool operator==(AstName rhs) const {
-        if (length() != rhs.length())
+        if (length() != rhs.length()) {
             return false;
-        if (begin() == rhs.begin())
+        }
+        if (begin() == rhs.begin()) {
             return true;
+        }
         return EqualChars(begin(), rhs.begin(), length());
     }
     bool operator!=(AstName rhs) const {
@@ -158,8 +160,9 @@ class AstValType
     }
 
     ValType::Code code() const {
-        if (which_ == IsValType)
+        if (which_ == IsValType) {
             return type_.code();
+        }
         return ValType::Ref;
     }
 
@@ -169,10 +172,12 @@ class AstValType
     }
 
     bool operator==(const AstValType& that) const {
-        if (which_ != that.which_)
+        if (which_ != that.which_) {
             return false;
-        if (which_ == IsValType)
+        }
+        if (which_ == IsValType) {
             return type_ == that.type_;
+        }
         return ref_ == that.ref_;
     }
 
@@ -240,22 +245,26 @@ class AstExprType
     }
 
     ExprType::Code code() const {
-        if (which_ == IsExprType)
+        if (which_ == IsExprType) {
             return type_.code();
+        }
         return ExprType::Ref;
     }
 
     ExprType type() const {
-        if (which_ == IsExprType)
+        if (which_ == IsExprType) {
             return type_;
+        }
         return ExprType(vt_.type());
     }
 
     bool operator==(const AstExprType& that) const {
-        if (which_ != that.which_)
+        if (which_ != that.which_) {
             return false;
-        if (which_ == IsExprType)
+        }
+        if (which_ == IsExprType) {
             return type_ == that.type_;
+        }
         return vt_ == that.vt_;
     }
 
@@ -357,14 +366,17 @@ class AstFuncType : public AstTypeDef
         return name_;
     }
     bool operator==(const AstFuncType& rhs) const {
-        if (ret() != rhs.ret())
+        if (ret() != rhs.ret()) {
             return false;
+        }
         size_t len = args().length();
-        if (rhs.args().length() != len)
+        if (rhs.args().length() != len) {
             return false;
+        }
         for (size_t i=0; i < len; i++) {
-            if (args()[i] != rhs.args()[i])
+            if (args()[i] != rhs.args()[i]) {
                 return false;
+            }
         }
         return true;
     }
@@ -372,8 +384,9 @@ class AstFuncType : public AstTypeDef
     typedef const AstFuncType& Lookup;
     static HashNumber hash(Lookup ft) {
         HashNumber hn = HashNumber(ft.ret().code());
-        for (const AstValType& vt : ft.args())
+        for (const AstValType& vt : ft.args()) {
             hn = mozilla::AddToHash(hn, uint32_t(vt.code()));
+        }
         return hn;
     }
     static bool match(const AstFuncType* lhs, Lookup rhs) {
@@ -470,9 +483,7 @@ enum class AstExprKind
     ConversionOperator,
     CurrentMemory,
     Drop,
-#ifdef ENABLE_WASM_SATURATING_TRUNC_OPS
     ExtraConversionOperator,
-#endif
     First,
     GetGlobal,
     GetLocal,
@@ -480,8 +491,16 @@ enum class AstExprKind
     If,
     Load,
 #ifdef ENABLE_WASM_BULKMEM_OPS
-    MemCopy,
+    MemOrTableCopy,
+    MemOrTableDrop,
     MemFill,
+    MemOrTableInit,
+#endif
+#ifdef ENABLE_WASM_GC
+    StructNew,
+    StructGet,
+    StructSet,
+    StructNarrow,
 #endif
     Nop,
     Pop,
@@ -951,24 +970,44 @@ class AstWake : public AstExpr
 };
 
 #ifdef ENABLE_WASM_BULKMEM_OPS
-class AstMemCopy : public AstExpr
+class AstMemOrTableCopy : public AstExpr
 {
+    bool     isMem_;
     AstExpr* dest_;
     AstExpr* src_;
     AstExpr* len_;
 
   public:
-    static const AstExprKind Kind = AstExprKind::MemCopy;
-    explicit AstMemCopy(AstExpr* dest, AstExpr* src, AstExpr* len)
-      : AstExpr(Kind, ExprType::I32),
+    static const AstExprKind Kind = AstExprKind::MemOrTableCopy;
+    explicit AstMemOrTableCopy(bool isMem, AstExpr* dest, AstExpr* src, AstExpr* len)
+      : AstExpr(Kind, ExprType::Void),
+        isMem_(isMem),
         dest_(dest),
         src_(src),
         len_(len)
     {}
 
-    AstExpr& dest() const { return *dest_; }
-    AstExpr& src()  const { return *src_; }
-    AstExpr& len()  const { return *len_; }
+    bool     isMem() const { return isMem_; }
+    AstExpr& dest()  const { return *dest_; }
+    AstExpr& src()   const { return *src_; }
+    AstExpr& len()   const { return *len_; }
+};
+
+class AstMemOrTableDrop : public AstExpr
+{
+    bool     isMem_;
+    uint32_t segIndex_;
+
+  public:
+    static const AstExprKind Kind = AstExprKind::MemOrTableDrop;
+    explicit AstMemOrTableDrop(bool isMem, uint32_t segIndex)
+      : AstExpr(Kind, ExprType::Void),
+        isMem_(isMem),
+        segIndex_(segIndex)
+    {}
+
+    bool     isMem()    const { return isMem_; }
+    uint32_t segIndex() const { return segIndex_; }
 };
 
 class AstMemFill : public AstExpr
@@ -980,7 +1019,7 @@ class AstMemFill : public AstExpr
   public:
     static const AstExprKind Kind = AstExprKind::MemFill;
     explicit AstMemFill(AstExpr* start, AstExpr* val, AstExpr* len)
-      : AstExpr(Kind, ExprType::I32),
+      : AstExpr(Kind, ExprType::Void),
         start_(start),
         val_(val),
         len_(len)
@@ -989,6 +1028,108 @@ class AstMemFill : public AstExpr
     AstExpr& start() const { return *start_; }
     AstExpr& val()   const { return *val_; }
     AstExpr& len()   const { return *len_; }
+};
+
+class AstMemOrTableInit : public AstExpr
+{
+    bool     isMem_;
+    uint32_t segIndex_;
+    AstExpr* dst_;
+    AstExpr* src_;
+    AstExpr* len_;
+
+  public:
+    static const AstExprKind Kind = AstExprKind::MemOrTableInit;
+    explicit AstMemOrTableInit(bool isMem, uint32_t segIndex, AstExpr* dst, AstExpr* src, AstExpr* len)
+      : AstExpr(Kind, ExprType::Void),
+        isMem_(isMem),
+        segIndex_(segIndex),
+        dst_(dst),
+        src_(src),
+        len_(len)
+    {}
+
+    bool     isMem()    const { return isMem_; }
+    uint32_t segIndex() const { return segIndex_; }
+    AstExpr& dst()      const { return *dst_; }
+    AstExpr& src()      const { return *src_; }
+    AstExpr& len()      const { return *len_; }
+};
+#endif
+
+#ifdef ENABLE_WASM_GC
+class AstStructNew : public AstExpr
+{
+    AstRef structType_;
+    AstExprVector fieldValues_;
+
+  public:
+    static const AstExprKind Kind = AstExprKind::StructNew;
+    AstStructNew(AstRef structType, AstExprType type, AstExprVector&& fieldVals)
+      : AstExpr(Kind, type), structType_(structType), fieldValues_(std::move(fieldVals))
+    {}
+    AstRef& structType() { return structType_; }
+    const AstExprVector& fieldValues() const { return fieldValues_; }
+};
+
+class AstStructGet : public AstExpr
+{
+    AstRef   structType_;
+    AstRef   fieldName_;
+    AstExpr* ptr_;
+
+  public:
+    static const AstExprKind Kind = AstExprKind::StructGet;
+    AstStructGet(AstRef structType, AstRef fieldName, AstExprType type, AstExpr* ptr)
+      : AstExpr(Kind, type),
+        structType_(structType),
+        fieldName_(fieldName),
+        ptr_(ptr)
+    {}
+    AstRef& structType() { return structType_; }
+    AstRef& fieldName() { return fieldName_; }
+    AstExpr& ptr() const { return *ptr_; }
+};
+
+class AstStructSet : public AstExpr
+{
+    AstRef   structType_;
+    AstRef   fieldName_;
+    AstExpr* ptr_;
+    AstExpr* value_;
+
+  public:
+    static const AstExprKind Kind = AstExprKind::StructSet;
+    AstStructSet(AstRef structType, AstRef fieldName, AstExpr* ptr, AstExpr* value)
+      : AstExpr(Kind, ExprType::Void),
+        structType_(structType),
+        fieldName_(fieldName),
+        ptr_(ptr),
+        value_(value)
+    {}
+    AstRef& structType() { return structType_; }
+    AstRef& fieldName() { return fieldName_; }
+    AstExpr& ptr() const { return *ptr_; }
+    AstExpr& value() const { return *value_; }
+};
+
+class AstStructNarrow : public AstExpr
+{
+    AstValType inputStruct_;
+    AstValType outputStruct_;
+    AstExpr*   ptr_;
+
+  public:
+    static const AstExprKind Kind = AstExprKind::StructNarrow;
+    AstStructNarrow(AstValType inputStruct, AstValType outputStruct, AstExpr* ptr)
+      : AstExpr(Kind, AstExprType(outputStruct)),
+        inputStruct_(inputStruct),
+        outputStruct_(outputStruct),
+        ptr_(ptr)
+    {}
+    AstValType& inputStruct() { return inputStruct_; }
+    AstValType& outputStruct() { return outputStruct_; }
+    AstExpr& ptr() const { return *ptr_; }
 };
 #endif
 
@@ -1155,15 +1296,16 @@ class AstExport : public AstNode
 
 class AstDataSegment : public AstNode
 {
-    AstExpr* offset_;
+    AstExpr* offsetIfActive_;
     AstNameVector fragments_;
 
   public:
-    AstDataSegment(AstExpr* offset, AstNameVector&& fragments)
-      : offset_(offset), fragments_(std::move(fragments))
+    AstDataSegment(AstExpr* offsetIfActive, AstNameVector&& fragments)
+      : offsetIfActive_(offsetIfActive),
+        fragments_(std::move(fragments))
     {}
 
-    AstExpr* offset() const { return offset_; }
+    AstExpr* offsetIfActive() const { return offsetIfActive_; }
     const AstNameVector& fragments() const { return fragments_; }
 };
 
@@ -1171,15 +1313,16 @@ typedef AstVector<AstDataSegment*> AstDataSegmentVector;
 
 class AstElemSegment : public AstNode
 {
-    AstExpr* offset_;
+    AstExpr* offsetIfActive_;
     AstRefVector elems_;
 
   public:
-    AstElemSegment(AstExpr* offset, AstRefVector&& elems)
-      : offset_(offset), elems_(std::move(elems))
+    AstElemSegment(AstExpr* offsetIfActive, AstRefVector&& elems)
+      : offsetIfActive_(offsetIfActive),
+        elems_(std::move(elems))
     {}
 
-    AstExpr* offset() const { return offset_; }
+    AstExpr* offsetIfActive() const { return offsetIfActive_; }
     AstRefVector& elems() { return elems_; }
     const AstRefVector& elems() const { return elems_; }
 };
@@ -1233,6 +1376,9 @@ class AstModule : public AstNode
     NameVector           funcImportNames_;
     AstResizableVector   tables_;
     AstResizableVector   memories_;
+#ifdef ENABLE_WASM_GC
+    uint32_t             gcFeatureOptIn_;
+#endif
     ExportVector         exports_;
     Maybe<AstStartFunc>  startFunc_;
     FuncVector           funcs_;
@@ -1251,6 +1397,9 @@ class AstModule : public AstNode
         funcImportNames_(lifo),
         tables_(lifo),
         memories_(lifo),
+#ifdef ENABLE_WASM_GC
+        gcFeatureOptIn_(0),
+#endif
         exports_(lifo),
         funcs_(lifo),
         dataSegments_(lifo),
@@ -1267,6 +1416,15 @@ class AstModule : public AstNode
     const AstResizableVector& memories() const {
         return memories_;
     }
+#ifdef ENABLE_WASM_GC
+    bool addGcFeatureOptIn(uint32_t version) {
+        gcFeatureOptIn_ = version;
+        return true;
+    }
+    uint32_t gcFeatureOptIn() const {
+        return gcFeatureOptIn_;
+    }
+#endif
     bool addTable(AstName name, const Limits& table) {
         return tables_.append(AstResizable(table, false, name));
     }
@@ -1292,8 +1450,9 @@ class AstModule : public AstNode
         return !!startFunc_;
     }
     bool setStartFunc(AstStartFunc startFunc) {
-        if (startFunc_)
+        if (startFunc_) {
             return false;
+        }
         startFunc_.emplace(startFunc);
         return true;
     }
@@ -1314,8 +1473,9 @@ class AstModule : public AstNode
     }
     bool append(AstFuncType* funcType) {
         uint32_t funcTypeIndex = types_.length();
-        if (!types_.append(funcType))
+        if (!types_.append(funcType)) {
             return false;
+        }
         FuncTypeMap::AddPtr p = funcTypeMap_.lookupForAdd(*funcType);
         return p || funcTypeMap_.add(p, funcType, funcTypeIndex);
     }
@@ -1332,25 +1492,30 @@ class AstModule : public AstNode
         return types_.append(str);
     }
     bool append(AstTypeDef* td) {
-        if (td->isFuncType())
+        if (td->isFuncType()) {
             return append(&td->asFuncType());
-        if (td->isStructType())
+        }
+        if (td->isStructType()) {
             return append(&td->asStructType());
+        }
         MOZ_CRASH("Bad type");
     }
     bool append(AstImport* imp) {
         switch (imp->kind()) {
           case DefinitionKind::Function:
-            if (!funcImportNames_.append(imp->name()))
+            if (!funcImportNames_.append(imp->name())) {
                 return false;
+            }
             break;
           case DefinitionKind::Table:
-            if (!tables_.append(AstResizable(imp->limits(), true)))
+            if (!tables_.append(AstResizable(imp->limits(), true))) {
                 return false;
+            }
             break;
           case DefinitionKind::Memory:
-            if (!memories_.append(AstResizable(imp->limits(), true)))
+            if (!memories_.append(AstResizable(imp->limits(), true))) {
                 return false;
+            }
             break;
           case DefinitionKind::Global:
             numGlobalImports_++;
@@ -1472,7 +1637,6 @@ class AstConversionOperator final : public AstExpr
     AstExpr* operand() const { return operand_; }
 };
 
-#ifdef ENABLE_WASM_SATURATING_TRUNC_OPS
 // Like AstConversionOperator, but for opcodes encoded with the Misc prefix.
 class AstExtraConversionOperator final : public AstExpr
 {
@@ -1489,7 +1653,6 @@ class AstExtraConversionOperator final : public AstExpr
     MiscOp op() const { return op_; }
     AstExpr* operand() const { return operand_; }
 };
-#endif
 
 class AstRefNull final : public AstExpr
 {

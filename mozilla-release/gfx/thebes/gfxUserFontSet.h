@@ -17,6 +17,7 @@
 #include "nsIScriptError.h"
 #include "nsURIHashKey.h"
 #include "mozilla/FontPropertyTypes.h"
+#include "mozilla/ServoStyleConsts.h"
 #include "mozilla/net/ReferrerPolicy.h"
 #include "gfxFontConstants.h"
 
@@ -57,7 +58,7 @@ struct gfxFontFaceSrc {
     // see FLAG_FORMAT_* enum values below
     uint32_t               mFormatFlags;
 
-    nsString               mLocalName;     // full font name if local
+    nsCString              mLocalName;     // full font name if local
     RefPtr<gfxFontSrcURI>  mURI;           // uri if url
     nsCOMPtr<nsIURI>       mReferrer;      // referrer url if url
     mozilla::net::ReferrerPolicy mReferrerPolicy;
@@ -119,8 +120,8 @@ public:
     nsTArray<uint8_t> mMetadata;  // woff metadata block (compressed), if any
     RefPtr<gfxFontSrcURI>  mURI;       // URI of the source, if it was url()
     RefPtr<gfxFontSrcPrincipal> mPrincipal; // principal for the download, if url()
-    nsString          mLocalName; // font name used for the source, if local()
-    nsString          mRealName;  // original fullname from the font resource
+    nsCString         mLocalName; // font name used for the source, if local()
+    nsCString         mRealName;  // original fullname from the font resource
     uint32_t          mSrcIndex;  // index in the rule's source list
     uint32_t          mFormat;    // format hint for the source used, if any
     uint32_t          mMetaOrigLen; // length needed to decompress metadata
@@ -142,7 +143,7 @@ class gfxUserFontFamily : public gfxFontFamily {
 public:
     friend class gfxUserFontSet;
 
-    explicit gfxUserFontFamily(const nsAString& aName)
+    explicit gfxUserFontFamily(const nsACString& aName)
         : gfxFontFamily(aName) { }
 
     virtual ~gfxUserFontFamily();
@@ -161,8 +162,8 @@ public:
             aFontEntry->mFamilyName = Name();
         } else {
 #ifdef DEBUG
-            nsString thisName = Name();
-            nsString entryName = aFontEntry->mFamilyName;
+            nsCString thisName = Name();
+            nsCString entryName = aFontEntry->mFamilyName;
             ToLowerCase(thisName);
             ToLowerCase(entryName);
             MOZ_ASSERT(thisName.Equals(entryName));
@@ -233,7 +234,7 @@ public:
     // weight - [100, 900] (multiples of 100)
     // stretch = [FontStretch::UltraCondensed(), FontStretch::UltraExpanded()]
     // italic style = constants in gfxFontConstants.h, e.g. NS_FONT_STYLE_NORMAL
-    // language override = result of calling nsRuleNode::ParseFontLanguageOverride
+    // language override = result of calling nsLayoutUtils::ParseFontLanguageOverride
     // TODO: support for unicode ranges not yet implemented
     virtual already_AddRefed<gfxUserFontEntry> CreateUserFontEntry(
                               const nsTArray<gfxFontFaceSrc>& aFontFaceSrcList,
@@ -244,13 +245,13 @@ public:
                               const nsTArray<gfxFontVariation>& aVariationSettings,
                               uint32_t aLanguageOverride,
                               gfxCharacterMap* aUnicodeRanges,
-                              uint8_t aFontDisplay,
+                              mozilla::StyleFontDisplay aFontDisplay,
                               RangeFlags aRangeFlags) = 0;
 
     // creates a font face for the specified family, or returns an existing
     // matching entry on the family if there is one
     already_AddRefed<gfxUserFontEntry> FindOrCreateUserFontEntry(
-                               const nsAString& aFamilyName,
+                               const nsACString& aFamilyName,
                                const nsTArray<gfxFontFaceSrc>& aFontFaceSrcList,
                                WeightRange aWeight,
                                StretchRange aStretch,
@@ -259,22 +260,22 @@ public:
                                const nsTArray<gfxFontVariation>& aVariationSettings,
                                uint32_t aLanguageOverride,
                                gfxCharacterMap* aUnicodeRanges,
-                               uint8_t aFontDisplay,
+                               mozilla::StyleFontDisplay aFontDisplay,
                                RangeFlags aRangeFlags);
 
     // add in a font face for which we have the gfxUserFontEntry already
-    void AddUserFontEntry(const nsAString& aFamilyName,
+    void AddUserFontEntry(const nsCString& aFamilyName,
                           gfxUserFontEntry* aUserFontEntry);
 
     // Whether there is a face with this family name
-    bool HasFamily(const nsAString& aFamilyName) const
+    bool HasFamily(const nsACString& aFamilyName) const
     {
         return LookupFamily(aFamilyName) != nullptr;
     }
 
     // Look up and return the gfxUserFontFamily in mFontFamilies with
     // the given name
-    gfxUserFontFamily* LookupFamily(const nsAString& aName) const;
+    gfxUserFontFamily* LookupFamily(const nsACString& aName) const;
 
     // Look up names in a fontlist and return true if any are in the set
     bool ContainsUserFontSetFonts(const mozilla::FontFamilyList& aFontList) const;
@@ -394,7 +395,8 @@ public:
             { }
 
             Entry(Entry&& aOther)
-                : mURI(std::move(aOther.mURI))
+                : PLDHashEntryHdr(std::move(aOther))
+                , mURI(std::move(aOther.mURI))
                 , mPrincipal(std::move(aOther.mPrincipal))
                 , mFontEntry(std::move(aOther.mFontEntry))
                 , mPrivate(std::move(aOther.mPrivate))
@@ -514,15 +516,15 @@ protected:
                                    const nsTArray<gfxFontVariation>& aVariationSettings,
                                    uint32_t aLanguageOverride,
                                    gfxCharacterMap* aUnicodeRanges,
-                                   uint8_t aFontDisplay,
+                                   mozilla::StyleFontDisplay aFontDisplay,
                                    RangeFlags aRangeFlags);
 
     // creates a new gfxUserFontFamily in mFontFamilies, or returns an existing
     // family if there is one
-    gfxUserFontFamily* GetFamily(const nsAString& aFamilyName);
+    gfxUserFontFamily* GetFamily(const nsACString& aFamilyName);
 
     // font families defined by @font-face rules
-    nsRefPtrHashtable<nsStringHashKey, gfxUserFontFamily> mFontFamilies;
+    nsRefPtrHashtable<nsCStringHashKey, gfxUserFontFamily> mFontFamilies;
 
     uint64_t        mGeneration;        // bumped on any font load change
     uint64_t        mRebuildGeneration; // only bumped on rebuilds
@@ -565,7 +567,7 @@ public:
                      const nsTArray<gfxFontVariation>& aVariationSettings,
                      uint32_t aLanguageOverride,
                      gfxCharacterMap* aUnicodeRanges,
-                     uint8_t aFontDisplay,
+                     mozilla::StyleFontDisplay aFontDisplay,
                      RangeFlags aRangeFlags);
 
     virtual ~gfxUserFontEntry();
@@ -579,7 +581,7 @@ public:
                  const nsTArray<gfxFontVariation>& aVariationSettings,
                  uint32_t aLanguageOverride,
                  gfxCharacterMap* aUnicodeRanges,
-                 uint8_t aFontDisplay,
+                 mozilla::StyleFontDisplay aFontDisplay,
                  RangeFlags aRangeFlags);
 
     gfxFont* CreateFontInstance(const gfxFontStyle* aFontStyle) override;
@@ -616,7 +618,7 @@ public:
         return mCharacterMap.get();
     }
 
-    uint8_t GetFontDisplay() const { return mFontDisplay; }
+    mozilla::StyleFontDisplay GetFontDisplay() const { return mFontDisplay; }
 
     // load the font - starts the loading of sources which continues until
     // a valid font resource is found or all sources fail
@@ -689,7 +691,7 @@ protected:
     // store metadata and src details for current src into aFontEntry
     void StoreUserFontData(gfxFontEntry*      aFontEntry,
                            bool               aPrivate,
-                           const nsAString&   aOriginalName,
+                           const nsACString&  aOriginalName,
                            FallibleTArray<uint8_t>* aMetadata,
                            uint32_t           aMetaOrigLen,
                            uint8_t            aCompression);
@@ -721,8 +723,8 @@ protected:
     };
     FontDataLoadingState     mFontDataLoadingState;
 
-    bool                     mUnsupportedFormat;
-    uint8_t                  mFontDisplay; // timing of userfont fallback
+    bool mUnsupportedFormat;
+    mozilla::StyleFontDisplay mFontDisplay; // timing of userfont fallback
 
     RefPtr<gfxFontEntry>   mPlatformFontEntry;
     nsTArray<gfxFontFaceSrc> mSrcList;

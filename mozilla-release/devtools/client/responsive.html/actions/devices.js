@@ -4,6 +4,9 @@
 
 "use strict";
 
+const Services = require("Services");
+const asyncStorage = require("devtools/shared/async-storage");
+
 const {
   ADD_DEVICE,
   ADD_DEVICE_TYPE,
@@ -14,11 +17,12 @@ const {
   UPDATE_DEVICE_DISPLAYED,
   UPDATE_DEVICE_MODAL,
 } = require("./index");
-const { removeDeviceAssociation } = require("./viewports");
+const { post } = require("../utils/message");
 
 const { addDevice, getDevices, removeDevice } = require("devtools/client/shared/devices");
+const { changeUserAgent, toggleTouchSimulation } = require("./ui");
+const { changeDevice, changePixelRatio, resizeViewport } = require("./viewports");
 
-const Services = require("Services");
 const DISPLAYED_DEVICES_PREF = "devtools.responsive.html.displayedDeviceList";
 
 /**
@@ -101,15 +105,7 @@ module.exports = {
   },
 
   removeCustomDevice(device) {
-    return async function(dispatch, getState) {
-      // Check if the custom device is currently associated with any viewports
-      const { viewports } = getState();
-      for (const viewport of viewports) {
-        if (viewport.device == device.name) {
-          dispatch(removeDeviceAssociation(viewport.id));
-        }
-      }
-
+    return async function(dispatch) {
       // Remove custom device from device storage
       await removeDevice(device, "custom");
       dispatch({
@@ -165,6 +161,45 @@ module.exports = {
       }
 
       dispatch({ type: LOAD_DEVICE_LIST_END });
+    };
+  },
+
+  restoreDeviceState() {
+    return async function(dispatch, getState) {
+      const deviceState = await asyncStorage.getItem("devtools.responsive.deviceState");
+      if (!deviceState) {
+        return;
+      }
+
+      const { id, device: deviceName, deviceType } = deviceState;
+      const devices = getState().devices;
+
+      if (!devices.types.includes(deviceType)) {
+        // Can't find matching device type.
+        return;
+      }
+
+      const device = devices[deviceType].find(d => d.name === deviceName);
+      if (!device) {
+        // Can't find device with the same device name.
+        return;
+      }
+
+      post(window, {
+        type: "viewport-resize",
+        width: device.width,
+        height: device.height,
+      });
+      post(window, {
+        type: "change-device",
+        device,
+      });
+
+      dispatch(resizeViewport(id, device.width, device.height));
+      dispatch(changeDevice(id, device.name, deviceType));
+      dispatch(changePixelRatio(id, device.pixelRatio));
+      dispatch(changeUserAgent(device.userAgent));
+      dispatch(toggleTouchSimulation(device.touch));
     };
   },
 

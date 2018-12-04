@@ -24,7 +24,6 @@ Prepare your env:
 
 ~~~
 export PATH="$PATH:/path/to/depot_tools"
-export DEPOT_TOOLS_WIN_TOOLCHAIN=0
 ~~~
 
 If this is a new repo, don't forget:
@@ -77,6 +76,11 @@ ACTION_PREFIX = ''
 if DRY_RUN:
     ACTION_PREFIX = '(not) '
 
+GN_ENV = dict(os.environ)
+GN_ENV['DEPOT_TOOLS_WIN_TOOLCHAIN'] = '0'
+
+(MERGE_BASE_ORIGIN, ) = sys.argv[1:] # Not always 'origin'!
+
 # --------------------------------------
 
 def sorted_items(x):
@@ -127,9 +131,8 @@ def traverse(roots, pre_recurse_func, key_func=id):
 
 # --------------------------------------
 
-MERGE_BASE = sys.argv[1]
 if not DRY_RUN:
-    record_cherry_picks(GECKO_ANGLE_DIR, MERGE_BASE)
+    record_cherry_picks(GECKO_ANGLE_DIR, MERGE_BASE_ORIGIN)
 
 # --
 
@@ -137,7 +140,7 @@ print_now('Importing graph')
 
 shutil.rmtree(OUT_DIR, True)
 
-run_checked('gn', 'gen', OUT_DIR, shell=True)
+run_checked('gn', 'gen', OUT_DIR, shell=True, env=GN_ENV)
 
 GN_ARGS = '''
 # Build arguments go here.
@@ -154,7 +157,7 @@ with open(OUT_DIR + '/args.gn', 'wb') as f:
 # --
 
 p = run_checked('gn', 'desc', '--format=json', OUT_DIR, '*', stdout=subprocess.PIPE,
-                shell=True)
+                shell=True, env=GN_ENV)
 
 print_now('Processing graph')
 descs = json.loads(p.stdout.decode())
@@ -509,7 +512,7 @@ def export_target(root):
             total_used_files.add(def_path)
 
             def_rel_path = list(fixup_paths([def_path]))[0]
-            extras['DEFFILE'] = "SRCDIR + '/{}'".format(def_rel_path)
+            extras['DEFFILE'] = "'{}'".format(def_rel_path)
 
     os_libs = list(map( lambda x: x[:-len('.lib')], set(accum_desc.get('libs', [])) ))
 

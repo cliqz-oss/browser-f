@@ -85,7 +85,7 @@ VRManagerParent::UnregisterFromManager()
 /* static */ bool
 VRManagerParent::CreateForContent(Endpoint<PVRManagerParent>&& aEndpoint)
 {
-  MessageLoop* loop = VRListenerThreadHolder::Loop();
+  MessageLoop* loop = CompositorThreadHolder::Loop();
 
   RefPtr<VRManagerParent> vmp = new VRManagerParent(aEndpoint.OtherPid(), true);
   loop->PostTask(NewRunnableMethod<Endpoint<PVRManagerParent>&&>(
@@ -109,7 +109,7 @@ VRManagerParent::Bind(Endpoint<PVRManagerParent>&& aEndpoint)
 }
 
 /*static*/ void
-VRManagerParent::RegisterVRManagerInVRListenerThread(VRManagerParent* aVRManager)
+VRManagerParent::RegisterVRManagerInCompositorThread(VRManagerParent* aVRManager)
 {
   aVRManager->RegisterWithManager();
 }
@@ -117,22 +117,23 @@ VRManagerParent::RegisterVRManagerInVRListenerThread(VRManagerParent* aVRManager
 /*static*/ VRManagerParent*
 VRManagerParent::CreateSameProcess()
 {
-  MessageLoop* loop = VRListenerThreadHolder::Loop();
+  MessageLoop* loop = CompositorThreadHolder::Loop();
   RefPtr<VRManagerParent> vmp = new VRManagerParent(base::GetCurrentProcId(), false);
-  vmp->mVRListenerThreadHolder = VRListenerThreadHolder::GetSingleton();
+  vmp->mCompositorThreadHolder = CompositorThreadHolder::GetSingleton();
   vmp->mSelfRef = vmp;
-  loop->PostTask(NewRunnableFunction("RegisterVRManagerInVRListenerThreadRunnable",
-                                     RegisterVRManagerInVRListenerThread, vmp.get()));
+  loop->PostTask(NewRunnableFunction("RegisterVRManagerIncompositorThreadRunnable",
+                                     RegisterVRManagerInCompositorThread, vmp.get()));
   return vmp.get();
 }
 
 bool
 VRManagerParent::CreateForGPUProcess(Endpoint<PVRManagerParent>&& aEndpoint)
 {
-  MessageLoop* loop = VRListenerThreadHolder::Loop();
+  MessageLoop* loop = CompositorThreadHolder::Loop();
 
   RefPtr<VRManagerParent> vmp = new VRManagerParent(aEndpoint.OtherPid(), false);
-  vmp->mVRListenerThreadHolder = VRListenerThreadHolder::GetSingleton();
+  vmp->mCompositorThreadHolder = CompositorThreadHolder::GetSingleton();
+  vmp->mSelfRef = vmp;
   loop->PostTask(NewRunnableMethod<Endpoint<PVRManagerParent>&&>(
     "gfx::VRManagerParent::Bind",
     vmp,
@@ -144,7 +145,7 @@ VRManagerParent::CreateForGPUProcess(Endpoint<PVRManagerParent>&& aEndpoint)
 void
 VRManagerParent::DeferredDestroy()
 {
-  mVRListenerThreadHolder = nullptr;
+  mCompositorThreadHolder = nullptr;
   mSelfRef = nullptr;
 }
 
@@ -161,15 +162,12 @@ VRManagerParent::ActorDestroy(ActorDestroyReason why)
 void
 VRManagerParent::OnChannelConnected(int32_t aPid)
 {
-  mVRListenerThreadHolder = VRListenerThreadHolder::GetSingleton();
+  mCompositorThreadHolder = CompositorThreadHolder::GetSingleton();
 }
 
 mozilla::ipc::IPCResult
 VRManagerParent::RecvRefreshDisplays()
 {
-  // TODO: Bug 1406327, Launch VR listener thread here.
-  MOZ_ASSERT(VRListenerThreadHolder::IsInVRListenerThread());
-
   // This is called to refresh the VR Displays for Navigator.GetVRDevices().
   // We must pass "true" to VRManager::RefreshVRDisplays()
   // to ensure that the promise returned by Navigator.GetVRDevices
@@ -226,7 +224,6 @@ mozilla::ipc::IPCResult
 VRManagerParent::RecvControllerListenerAdded()
 {
   // Force update the available controllers for GamepadManager,
-  // remove the existing controllers and sync them by NotifyVsync().
   VRManager* vm = VRManager::Get();
   vm->RemoveControllers();
   mHaveControllerListener = true;
@@ -276,25 +273,47 @@ VRManagerParent::RecvCreateVRServiceTestController(const nsCString& aID, const u
   VRManager* vm = VRManager::Get();
 
   /**
-   * When running headless mochitests on some of our automated test
-   * infrastructure, 2d display vsyncs are not always generated.
-   * In this case, the test controllers can't be created immediately
-   * after the VR display was created as the state of the VR displays
-   * are updated during vsync.
-   * To workaround, we produce a vsync manually.
+   * The controller is created asynchronously.
+   * We will wait up to kMaxControllerCreationTime milliseconds before
+   * assuming that the controller will never be created.
    */
-  vm->NotifyVsync(TimeStamp::Now());
+  const int kMaxControllerCreationTime = 1000;
+  /**
+   * min(100ms, kVRIdleTaskInterval) * 10 as a very
+   * pessimistic estimation of the maximum duration possible.
+   * It's possible that the IPC message queues could be so busy
+   * that this time is elapsed while still succeeding to create
+   * the controllers; however, in this case the browser would be
+   * locking up for more than a second at a time and something else
+   * has gone horribly wrong.
+   */
+   const int kTestInterval = 10;
+  /**
+   * We will keep checking every kTestInterval milliseconds until
+   * we see the controllers or kMaxControllerCreationTime milliseconds
+   * have elapsed and we will give up.
+   */
 
-  // Get VRControllerPuppet from VRManager
-  vm->GetVRControllerInfo(controllerInfoArray);
-  for (auto& controllerInfo : controllerInfoArray) {
-    if (controllerInfo.GetType() == VRDeviceType::Puppet) {
-      if (controllerIdx == mControllerTestID) {
-        controllerPuppet = static_cast<impl::VRControllerPuppet*>(
-                           vm->GetController(controllerInfo.GetControllerID()).get());
-        break;
+  int testDuration = 0;
+  while (!controllerPuppet && testDuration < kMaxControllerCreationTime) {
+    testDuration += kTestInterval;
+#ifdef XP_WIN
+    Sleep(kTestInterval);
+#else
+    sleep(kTestInterval);
+#endif
+
+    // Get VRControllerPuppet from VRManager
+    vm->GetVRControllerInfo(controllerInfoArray);
+    for (auto& controllerInfo : controllerInfoArray) {
+      if (controllerInfo.GetType() == VRDeviceType::Puppet) {
+        if (controllerIdx == mControllerTestID) {
+          controllerPuppet = static_cast<impl::VRControllerPuppet*>(
+                             vm->GetController(controllerInfo.GetControllerID()).get());
+          break;
+        }
+        ++controllerIdx;
       }
-      ++controllerIdx;
     }
   }
 

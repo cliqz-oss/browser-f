@@ -19,6 +19,7 @@
 #include "TreeWalker.h"
 #include "xpcAccessibleDocument.h"
 
+#include "nsContentUtils.h"
 #include "nsIMutableArray.h"
 #include "nsICommandManager.h"
 #include "nsIDocShell.h"
@@ -54,17 +55,17 @@ using namespace mozilla::a11y;
 ////////////////////////////////////////////////////////////////////////////////
 // Static member initialization
 
-static nsStaticAtom** kRelationAttrs[] =
+static nsStaticAtom* const kRelationAttrs[] =
 {
-  &nsGkAtoms::aria_labelledby,
-  &nsGkAtoms::aria_describedby,
-  &nsGkAtoms::aria_details,
-  &nsGkAtoms::aria_owns,
-  &nsGkAtoms::aria_controls,
-  &nsGkAtoms::aria_flowto,
-  &nsGkAtoms::aria_errormessage,
-  &nsGkAtoms::_for,
-  &nsGkAtoms::control
+  nsGkAtoms::aria_labelledby,
+  nsGkAtoms::aria_describedby,
+  nsGkAtoms::aria_details,
+  nsGkAtoms::aria_owns,
+  nsGkAtoms::aria_controls,
+  nsGkAtoms::aria_flowto,
+  nsGkAtoms::aria_errormessage,
+  nsGkAtoms::_for,
+  nsGkAtoms::control
 };
 
 static const uint32_t kRelationAttrsLen = ArrayLength(kRelationAttrs);
@@ -776,10 +777,8 @@ DocAccessible::AttributeChanged(dom::Element* aElement,
   if (aAttribute == nsGkAtoms::aria_hidden) {
     if (aria::HasDefinedARIAHidden(aElement)) {
       ContentRemoved(aElement);
-    }
-    else {
-      ContentInserted(aElement->GetFlattenedTreeParent(),
-                      aElement, aElement->GetNextSibling());
+    } else {
+      ContentInserted(aElement, aElement->GetNextSibling());
     }
     return;
   }
@@ -921,6 +920,7 @@ DocAccessible::AttributeChangedImpl(Accessible* aAccessible,
 
   if (aAttribute == nsGkAtoms::id) {
     RelocateARIAOwnedIfNeeded(elm);
+    ARIAActiveDescendantIDMaybeMoved(elm);
   }
 
   // ARIA or XUL selection
@@ -1351,8 +1351,7 @@ DocAccessible::UnbindFromDocument(Accessible* aAccessible)
 }
 
 void
-DocAccessible::ContentInserted(nsIContent* aContainerNode,
-                               nsIContent* aStartChildNode,
+DocAccessible::ContentInserted(nsIContent* aStartChildNode,
                                nsIContent* aEndChildNode)
 {
   // Ignore content insertions until we constructed accessible tree. Otherwise
@@ -1360,14 +1359,8 @@ DocAccessible::ContentInserted(nsIContent* aContainerNode,
   if (mNotificationController && HasLoadState(eTreeConstructed)) {
     // Update the whole tree of this document accessible when the container is
     // null (document element is inserted or removed).
-    Accessible* container = aContainerNode ?
-      AccessibleOrTrueContainer(aContainerNode) : this;
-    if (container) {
-      // Ignore notification if the container node is no longer in the DOM tree.
-      mNotificationController->ScheduleContentInsertion(container,
-                                                        aStartChildNode,
-                                                        aEndChildNode);
-    }
+    mNotificationController->ScheduleContentInsertion(aStartChildNode,
+                                                      aEndChildNode);
   }
 }
 
@@ -1386,10 +1379,8 @@ DocAccessible::RecreateAccessible(nsIContent* aContent)
   // subclass hide and show events to handle them separately and implement their
   // coalescence with normal hide and show events. Note, in this case they
   // should be coalesced with normal show/hide events.
-
-  nsIContent* parent = aContent->GetFlattenedTreeParent();
   ContentRemoved(aContent);
-  ContentInserted(parent, aContent, aContent->GetNextSibling());
+  ContentInserted(aContent, aContent->GetNextSibling());
 }
 
 void
@@ -1581,7 +1572,7 @@ DocAccessible::AddDependentIDsFor(Accessible* aRelProvider, nsAtom* aRelAttr)
     return;
 
   for (uint32_t idx = 0; idx < kRelationAttrsLen; idx++) {
-    nsAtom* relAttr = *kRelationAttrs[idx];
+    nsStaticAtom* relAttr = kRelationAttrs[idx];
     if (aRelAttr && aRelAttr != relAttr)
       continue;
 
@@ -1653,8 +1644,8 @@ DocAccessible::RemoveDependentIDsFor(Accessible* aRelProvider,
     return;
 
   for (uint32_t idx = 0; idx < kRelationAttrsLen; idx++) {
-    nsAtom* relAttr = *kRelationAttrs[idx];
-    if (aRelAttr && aRelAttr != *kRelationAttrs[idx])
+    nsStaticAtom* relAttr = kRelationAttrs[idx];
+    if (aRelAttr && aRelAttr != kRelationAttrs[idx])
       continue;
 
     IDRefsIterator iter(this, relProviderElm, relAttr);
@@ -2088,6 +2079,11 @@ DocAccessible::DoARIAOwnsRelocation(Accessible* aOwner)
 
     // Make an attempt to create an accessible if it wasn't created yet.
     if (!child) {
+      // An owned child cannot be an ancestor of the owner.
+      if (nsContentUtils::ContentIsDescendantOf(aOwner->Elm(), childEl)) {
+        continue;
+      }
+
       if (aOwner->IsAcceptableChild(childEl)) {
         child = GetAccService()->CreateAccessible(childEl, aOwner);
         if (child) {
@@ -2477,4 +2473,47 @@ DocAccessible::DispatchScrollingEvent(uint32_t aEventType)
                                                  scrollRange.height);
 
   nsEventShell::FireEvent(event);
+}
+
+void
+DocAccessible::ARIAActiveDescendantIDMaybeMoved(dom::Element* aElm)
+{
+  nsINode* focusNode = FocusMgr()->FocusedDOMNode();
+  // The focused element must be within this document.
+  if (!focusNode || focusNode->OwnerDoc() != mDocumentNode) {
+    return;
+  }
+
+  dom::Element* focusElm = nullptr;
+  if (focusNode == mDocumentNode) {
+    // The document is focused, so look for aria-activedescendant on the
+    // body/root.
+    focusElm = Elm();
+    if (!focusElm) {
+      return;
+    }
+  } else {
+    MOZ_ASSERT(focusNode->IsElement());
+    focusElm = focusNode->AsElement();
+  }
+
+  // Check if the focus has aria-activedescendant and whether
+  // it refers to the id just set on aElm.
+  nsAutoString id;
+  aElm->GetAttr(kNameSpaceID_None, nsGkAtoms::id, id);
+  if (!focusElm->AttrValueIs(kNameSpaceID_None,
+      nsGkAtoms::aria_activedescendant, id, eCaseMatters)) {
+    return;
+  }
+
+  // The aria-activedescendant target has probably changed.
+  Accessible* acc = GetAccessibleEvenIfNotInMapOrContainer(focusNode);
+  if (!acc) {
+    return;
+  }
+
+  // The active descendant might have just been inserted and may not be in the
+  // tree yet. Therefore, schedule this async to ensure the tree is up to date.
+  mNotificationController->ScheduleNotification<DocAccessible, Accessible>
+    (this, &DocAccessible::ARIAActiveDescendantChanged, acc);
 }

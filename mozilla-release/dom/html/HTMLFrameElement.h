@@ -19,7 +19,7 @@ class HTMLFrameElement final : public nsGenericHTMLFrameElement
 public:
   using nsGenericHTMLFrameElement::SwapFrameLoaders;
 
-  explicit HTMLFrameElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo,
+  explicit HTMLFrameElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo,
                             FromParser aFromParser = NOT_FROM_PARSER);
 
   // nsISupports
@@ -111,6 +111,8 @@ public:
 
   using nsGenericHTMLFrameElement::GetContentDocument;
   using nsGenericHTMLFrameElement::GetContentWindow;
+
+  NS_FORWARD_NSIFRAMELOADEROWNER(nsGenericHTMLFrameElement::)
 
 protected:
   virtual ~HTMLFrameElement();

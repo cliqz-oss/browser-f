@@ -12,6 +12,7 @@
 #include "mozilla/Encoding.h"
 #include "prprf.h"
 #include "nsCRT.h"
+#include "nsDirIndex.h"
 #include "nsEscape.h"
 #include "nsIDirIndex.h"
 #include "nsIInputStream.h"
@@ -142,7 +143,6 @@ nsDirIndexParser::ParseFormat(const char* aFormatStr)
     int32_t     len = 0;
     while (aFormatStr[len] && !nsCRT::IsAsciiSpace(char16_t(aFormatStr[len])))
       ++len;
-    name.SetCapacity(len + 1);
     name.Append(aFormatStr, len);
     aFormatStr += len;
 
@@ -246,9 +246,9 @@ nsDirIndexParser::ParseData(nsIDirIndex *aIdx, char* aDataStr, int32_t aLineLen)
         if (NS_SUCCEEDED(rv = gTextToSubURI->UnEscapeAndConvert(
                            mEncoding, filename, result))) {
           if (!result.IsEmpty()) {
-            aIdx->SetLocation(filename.get());
+            aIdx->SetLocation(filename);
             if (!mHasDescription)
-              aIdx->SetDescription(result.get());
+              aIdx->SetDescription(result);
             success = true;
           }
         } else {
@@ -261,16 +261,16 @@ nsDirIndexParser::ParseData(nsIDirIndex *aIdx, char* aDataStr, int32_t aLineLen)
         // just fallback to unescape'ing in-place
         // XXX - this shouldn't be using UTF8, should it?
         // when can we fail to get the service, anyway? - bbaetz
-        aIdx->SetLocation(filename.get());
+        aIdx->SetLocation(filename);
         if (!mHasDescription) {
-          aIdx->SetDescription(NS_ConvertUTF8toUTF16(value).get());
+          aIdx->SetDescription(NS_ConvertUTF8toUTF16(value));
         }
       }
     }
       break;
     case FIELD_DESCRIPTION:
       nsUnescape(value);
-      aIdx->SetDescription(NS_ConvertUTF8toUTF16(value).get());
+      aIdx->SetDescription(NS_ConvertUTF8toUTF16(value));
       break;
     case FIELD_CONTENTLENGTH:
       {
@@ -292,7 +292,7 @@ nsDirIndexParser::ParseData(nsIDirIndex *aIdx, char* aDataStr, int32_t aLineLen)
       }
       break;
     case FIELD_CONTENTTYPE:
-      aIdx->SetContentType(value);
+      aIdx->SetContentType(nsDependentCString(value));
       break;
     case FIELD_FILETYPE:
       // unescape in-place
@@ -395,9 +395,7 @@ nsDirIndexParser::ProcessData(nsIRequest *aRequest, nsISupports *aCtxt) {
             }
           } else if (buf[2] == '1' && buf[3] == ':') {
             // 201. Field data
-            nsCOMPtr<nsIDirIndex> idx = do_CreateInstance("@mozilla.org/dirIndex;1",&rv);
-            if (NS_FAILED(rv))
-              return rv;
+            nsCOMPtr<nsIDirIndex> idx = new nsDirIndex();
 
             rv = ParseData(idx, ((char *)buf) + 4, lineLen - 4);
             if (NS_FAILED(rv)) {

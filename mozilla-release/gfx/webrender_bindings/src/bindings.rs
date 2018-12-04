@@ -2,7 +2,9 @@ use std::ffi::{CStr, CString};
 use std::{mem, slice, ptr, env};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::cell::RefCell;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::os::raw::{c_void, c_char, c_float};
 use gleam::gl;
 
@@ -13,6 +15,7 @@ use webrender::DebugFlags;
 use webrender::{ApiRecordingReceiver, BinaryRecorder};
 use webrender::{AsyncPropertySampler, PipelineInfo, SceneBuilderHooks};
 use webrender::{UploadMethod, VertexUsageHint};
+use webrender::{Device, Shaders, WrShaders, ShaderPrecacheFlags};
 use thread_profiler::register_thread_with_profiler;
 use moz2d_renderer::Moz2dBlobImageHandler;
 use program_cache::{WrProgramCache, remove_disk_cache};
@@ -29,6 +32,21 @@ use core_foundation::string::CFString;
 #[cfg(target_os = "macos")]
 use core_graphics::font::CGFont;
 
+/// The unique id for WR resource identification.
+static NEXT_NAMESPACE_ID: AtomicUsize = AtomicUsize::new(1);
+
+fn next_namespace_id() -> IdNamespace {
+    IdNamespace(NEXT_NAMESPACE_ID.fetch_add(1, Ordering::Relaxed) as u32)
+}
+
+/// Whether a border should be antialiased.
+#[repr(C)]
+#[derive(Eq, PartialEq, Copy, Clone)]
+pub enum AntialiasBorder {
+    No = 0,
+    Yes,
+}
+
 #[repr(C)]
 pub enum WrExternalImageBufferType {
     TextureHandle = 0,
@@ -36,6 +54,14 @@ pub enum WrExternalImageBufferType {
     TextureArrayHandle = 2,
     TextureExternalHandle = 3,
     ExternalBuffer = 4,
+}
+
+/// Used to indicate if an image is opaque, or has an alpha channel.
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum OpacityType {
+    Opaque = 0,
+    HasAlphaChannel = 1,
 }
 
 impl WrExternalImageBufferType {
@@ -73,9 +99,11 @@ type WrImageKey = ImageKey;
 /// cbindgen:field-names=[mNamespace, mHandle]
 pub type WrFontKey = FontKey;
 /// cbindgen:field-names=[mNamespace, mHandle]
-type WrFontInstanceKey = FontInstanceKey;
+pub type WrFontInstanceKey = FontInstanceKey;
 /// cbindgen:field-names=[mNamespace, mHandle]
 type WrYuvColorSpace = YuvColorSpace;
+/// cbindgen:field-names=[mNamespace, mHandle]
+type WrColorDepth = ColorDepth;
 
 fn make_slice<'a, T>(ptr: *const T, len: usize) -> &'a [T] {
     if ptr.is_null() {
@@ -283,7 +311,7 @@ pub struct WrImageDescriptor {
     pub width: u32,
     pub height: u32,
     pub stride: u32,
-    pub is_opaque: bool,
+    pub opacity: OpacityType,
 }
 
 impl<'a> Into<ImageDescriptor> for &'a WrImageDescriptor {
@@ -296,7 +324,7 @@ impl<'a> Into<ImageDescriptor> for &'a WrImageDescriptor {
                 None
             },
             format: self.format,
-            is_opaque: self.is_opaque,
+            is_opaque: self.opacity == OpacityType::Opaque,
             offset: 0,
             allow_mipmaps: false,
         }
@@ -344,7 +372,7 @@ struct WrExternalImage {
     size: usize,
 }
 
-type LockExternalImageCallback = unsafe extern "C" fn(*mut c_void, WrExternalImageId, u8) -> WrExternalImage;
+type LockExternalImageCallback = unsafe extern "C" fn(*mut c_void, WrExternalImageId, u8, ImageRendering) -> WrExternalImage;
 type UnlockExternalImageCallback = unsafe extern "C" fn(*mut c_void, WrExternalImageId, u8);
 
 #[repr(C)]
@@ -357,10 +385,11 @@ pub struct WrExternalImageHandler {
 impl ExternalImageHandler for WrExternalImageHandler {
     fn lock(&mut self,
             id: ExternalImageId,
-            channel_index: u8)
+            channel_index: u8,
+            rendering: ImageRendering)
             -> ExternalImage {
 
-        let image = unsafe { (self.lock_func)(self.external_image_obj, id.into(), channel_index) };
+        let image = unsafe { (self.lock_func)(self.external_image_obj, id.into(), channel_index, rendering) };
         ExternalImage {
             uv: TexelRect::new(image.u0, image.v0, image.u1, image.v1),
             source: match image.image_type {
@@ -503,6 +532,8 @@ extern "C" {
     fn wr_notifier_external_event(window_id: WrWindowId,
                                   raw_event: usize);
     fn wr_schedule_render(window_id: WrWindowId);
+
+    fn wr_transaction_notification_notified(handler: usize, when: Checkpoint);
 }
 
 impl RenderNotifier for CppNotifier {
@@ -635,6 +666,12 @@ pub unsafe extern "C" fn wr_renderer_delete(renderer: *mut Renderer) {
     let renderer = Box::from_raw(renderer);
     renderer.deinit();
     // let renderer go out of scope and get dropped
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wr_renderer_accumulate_memory_report(renderer: &mut Renderer,
+                                                              report: &mut MemoryReport) {
+    *report += renderer.report_memory();
 }
 
 // cbindgen doesn't support tuples, so we have a little struct instead, with
@@ -889,12 +926,59 @@ fn env_var_to_bool(key: &'static str) -> bool {
 }
 
 // Call MakeCurrent before this.
+fn wr_device_new(gl_context: *mut c_void, pc: Option<&mut WrProgramCache>)
+    -> Device
+{
+    assert!(unsafe { is_in_render_thread() });
+
+    let gl;
+    if unsafe { is_glcontext_egl(gl_context) } {
+        gl = unsafe { gl::GlesFns::load_with(|symbol| get_proc_address(gl_context, symbol)) };
+    } else {
+        gl = unsafe { gl::GlFns::load_with(|symbol| get_proc_address(gl_context, symbol)) };
+    }
+
+    let version = gl.get_string(gl::VERSION);
+
+    info!("WebRender - OpenGL version new {}", version);
+
+    let upload_method = if unsafe { is_glcontext_angle(gl_context) } {
+        UploadMethod::Immediate
+    } else {
+        UploadMethod::PixelBuffer(VertexUsageHint::Dynamic)
+    };
+
+    let resource_override_path = unsafe {
+        let override_charptr = gfx_wr_resource_path_override();
+        if override_charptr.is_null() {
+            None
+        } else {
+            match CStr::from_ptr(override_charptr).to_str() {
+                Ok(override_str) => Some(PathBuf::from(override_str)),
+                _ => None
+            }
+        }
+    };
+
+    let cached_programs = match pc {
+      Some(cached_programs) => Some(Rc::clone(cached_programs.rc_get())),
+      None => None,
+    };
+
+    Device::new(gl, resource_override_path, upload_method, cached_programs)
+}
+
+// Call MakeCurrent before this.
 #[no_mangle]
 pub extern "C" fn wr_window_new(window_id: WrWindowId,
                                 window_width: u32,
                                 window_height: u32,
+                                support_low_priority_transactions: bool,
                                 gl_context: *mut c_void,
+                                program_cache: Option<&mut WrProgramCache>,
+                                shaders: Option<&mut WrShaders>,
                                 thread_pool: *mut WrThreadPool,
+                                size_of_op: VoidPtrToSizeFn,
                                 out_handle: &mut *mut DocumentHandle,
                                 out_renderer: &mut *mut Renderer,
                                 out_max_texture_size: *mut u32)
@@ -930,14 +1014,27 @@ pub extern "C" fn wr_window_new(window_id: WrWindowId,
         UploadMethod::PixelBuffer(VertexUsageHint::Dynamic)
     };
 
+    let precache_flags = if env_var_to_bool("MOZ_WR_PRECACHE_SHADERS") {
+        ShaderPrecacheFlags::FULL_COMPILE
+    } else {
+        ShaderPrecacheFlags::empty()
+    };
+
+    let cached_programs = match program_cache {
+        Some(program_cache) => Some(Rc::clone(&program_cache.rc_get())),
+        None => None,
+    };
+
     let opts = RendererOptions {
         enable_aa: true,
         enable_subpixel_aa: true,
+        support_low_priority_transactions,
         recorder: recorder,
         blob_image_handler: Some(Box::new(Moz2dBlobImageHandler::new(workers.clone()))),
         workers: Some(workers.clone()),
         thread_listener: Some(Box::new(GeckoProfilerThreadListener::new())),
-        enable_render_on_scroll: false,
+        size_of_op: Some(size_of_op),
+        cached_programs,
         resource_override_path: unsafe {
             let override_charptr = gfx_wr_resource_path_override();
             if override_charptr.is_null() {
@@ -955,14 +1052,15 @@ pub extern "C" fn wr_window_new(window_id: WrWindowId,
         sampler: Some(Box::new(SamplerCallback::new(window_id))),
         max_texture_size: Some(8192), // Moz2D doesn't like textures bigger than this
         clear_color: Some(ColorF::new(0.0, 0.0, 0.0, 0.0)),
-        precache_shaders: env_var_to_bool("MOZ_WR_PRECACHE_SHADERS"),
+        precache_flags,
+        namespace_alloc_by_client: true,
         ..Default::default()
     };
 
     let notifier = Box::new(CppNotifier {
         window_id: window_id,
     });
-    let (renderer, sender) = match Renderer::new(gl, notifier, opts) {
+    let (renderer, sender) = match Renderer::new(gl, notifier, opts, shaders) {
         Ok((renderer, sender)) => (renderer, sender),
         Err(e) => {
             warn!(" Failed to create a Renderer: {:?}", e);
@@ -980,7 +1078,7 @@ pub extern "C" fn wr_window_new(window_id: WrWindowId,
     let window_size = DeviceUintSize::new(window_width, window_height);
     let layer = 0;
     *out_handle = Box::into_raw(Box::new(
-            DocumentHandle::new(sender.create_api(), window_size, layer)));
+            DocumentHandle::new(sender.create_api_by_client(next_namespace_id()), window_size, layer)));
     *out_renderer = Box::into_raw(Box::new(renderer));
 
     return true;
@@ -996,7 +1094,7 @@ pub extern "C" fn wr_api_create_document(
     assert!(unsafe { is_in_compositor_thread() });
 
     *out_handle = Box::into_raw(Box::new(DocumentHandle::new(
-        root_dh.api.clone_sender().create_api(),
+        root_dh.api.clone_sender().create_api_by_client(next_namespace_id()),
         doc_size,
         layer
     )));
@@ -1016,7 +1114,7 @@ pub extern "C" fn wr_api_clone(
     assert!(unsafe { is_in_compositor_thread() });
 
     let handle = DocumentHandle {
-        api: dh.api.clone_sender().create_api(),
+        api: dh.api.clone_sender().create_api_by_client(next_namespace_id()),
         document_id: dh.document_id,
     };
     *out_handle = Box::into_raw(Box::new(handle));
@@ -1037,6 +1135,14 @@ pub unsafe extern "C" fn wr_api_shut_down(dh: &mut DocumentHandle) {
 #[no_mangle]
 pub unsafe extern "C" fn wr_api_notify_memory_pressure(dh: &mut DocumentHandle) {
     dh.api.notify_memory_pressure();
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wr_api_accumulate_memory_report(
+    dh: &mut DocumentHandle,
+    report: &mut MemoryReport
+) {
+    *report += dh.api.report_memory();
 }
 
 /// cbindgen:postfix=WR_DESTRUCTOR_SAFE_FUNC
@@ -1070,8 +1176,28 @@ pub extern "C" fn wr_transaction_delete(txn: *mut Transaction) {
 }
 
 #[no_mangle]
+pub extern "C" fn wr_transaction_set_low_priority(txn: &mut Transaction, low_priority: bool) {
+    txn.set_low_priority(low_priority);
+}
+
+#[no_mangle]
 pub extern "C" fn wr_transaction_is_empty(txn: &Transaction) -> bool {
     txn.is_empty()
+}
+
+#[no_mangle]
+pub extern "C" fn wr_transaction_notify(txn: &mut Transaction, when: Checkpoint, event: usize) {
+    struct GeckoNotification(usize);
+    impl NotificationHandler for GeckoNotification {
+        fn notify(&self, when: Checkpoint) {
+            unsafe {
+                wr_transaction_notification_notified(self.0, when);
+            }
+        }
+    }
+
+    let handler = Box::new(GeckoNotification(event));
+    txn.notify(NotificationRequest::new(when, handler));
 }
 
 #[no_mangle]
@@ -1146,6 +1272,11 @@ pub extern "C" fn wr_transaction_set_window_parameters(
 #[no_mangle]
 pub extern "C" fn wr_transaction_generate_frame(txn: &mut Transaction) {
     txn.generate_frame();
+}
+
+#[no_mangle]
+pub extern "C" fn wr_transaction_invalidate_rendered_frame(txn: &mut Transaction) {
+    txn.invalidate_rendered_frame();
 }
 
 #[no_mangle]
@@ -1230,6 +1361,14 @@ pub extern "C" fn wr_transaction_scroll_layer(
 }
 
 #[no_mangle]
+pub extern "C" fn wr_transaction_pinch_zoom(
+    txn: &mut Transaction,
+    pinch_zoom: f32
+) {
+    txn.set_pinch_zoom(ZoomFactor::new(pinch_zoom));
+}
+
+#[no_mangle]
 pub extern "C" fn wr_resource_updates_add_image(
     txn: &mut Transaction,
     image_key: WrImageKey,
@@ -1301,7 +1440,7 @@ pub extern "C" fn wr_resource_updates_update_image(
 pub extern "C" fn wr_resource_updates_set_image_visible_area(
     txn: &mut Transaction,
     key: WrImageKey,
-    area: &NormalizedRect,
+    area: &DeviceUintRect,
 ) {
     txn.set_image_visible_area(key, *area);
 }
@@ -1438,7 +1577,19 @@ pub extern "C" fn wr_api_capture(
     use std::io::Write;
 
     let cstr = unsafe { CStr::from_ptr(path) };
-    let path = PathBuf::from(&*cstr.to_string_lossy());
+    let mut path = PathBuf::from(&*cstr.to_string_lossy());
+
+    // Increment the extension until we find a fresh path
+    while path.is_dir() {
+        let count: u32 = path.extension()
+            .and_then(|x| x.to_str())
+            .and_then(|x| x.parse().ok())
+            .unwrap_or(0);
+        path.set_extension((count + 1).to_string());
+    }
+
+    let border = "--------------------------\n";
+    print!("{} Capturing WR state to: {:?}\n{}", &border, &path, &border);
 
     let _ = create_dir_all(&path);
     match File::create(path.join("wr.txt")) {
@@ -1656,7 +1807,7 @@ pub extern "C" fn wr_dp_push_stacking_context(state: &mut WrState,
                                               filters: *const WrFilterOp,
                                               filter_count: usize,
                                               is_backface_visible: bool,
-                                              glyph_raster_space: GlyphRasterSpace,
+                                              glyph_raster_space: RasterSpace,
                                               out_is_reference_frame: &mut bool,
                                               out_reference_frame_id: &mut usize) {
     debug_assert!(unsafe { !is_in_render_thread() });
@@ -1921,12 +2072,13 @@ pub extern "C" fn wr_dp_pop_clip_and_scroll_info(state: &mut WrState) {
 #[no_mangle]
 pub extern "C" fn wr_dp_push_iframe(state: &mut WrState,
                                     rect: LayoutRect,
+                                    clip: LayoutRect,
                                     is_backface_visible: bool,
                                     pipeline_id: WrPipelineId,
                                     ignore_missing_pipeline: bool) {
     debug_assert!(unsafe { is_in_main_thread() });
 
-    let mut prim_info = LayoutPrimitiveInfo::new(rect);
+    let mut prim_info = LayoutPrimitiveInfo::with_clip_rect(rect, clip.into());
     prim_info.is_backface_visible = is_backface_visible;
     prim_info.tag = state.current_tag;
     state.frame_builder.dl_builder.push_iframe(&prim_info, pipeline_id, ignore_missing_pipeline);
@@ -1949,10 +2101,11 @@ pub extern "C" fn wr_dp_push_rect(state: &mut WrState,
 
 #[no_mangle]
 pub extern "C" fn wr_dp_push_clear_rect(state: &mut WrState,
-                                        rect: LayoutRect) {
+                                        rect: LayoutRect,
+                                        clip: LayoutRect) {
     debug_assert!(unsafe { !is_in_render_thread() });
 
-    let prim_info = LayoutPrimitiveInfo::new(rect);
+    let prim_info = LayoutPrimitiveInfo::with_clip_rect(rect, clip.into());
     state.frame_builder.dl_builder.push_clear_rect(&prim_info);
 }
 
@@ -1997,6 +2150,7 @@ pub extern "C" fn wr_dp_push_yuv_planar_image(state: &mut WrState,
                                               image_key_0: WrImageKey,
                                               image_key_1: WrImageKey,
                                               image_key_2: WrImageKey,
+                                              color_depth: WrColorDepth,
                                               color_space: WrYuvColorSpace,
                                               image_rendering: ImageRendering) {
     debug_assert!(unsafe { is_in_main_thread() || is_in_compositor_thread() });
@@ -2008,6 +2162,7 @@ pub extern "C" fn wr_dp_push_yuv_planar_image(state: &mut WrState,
          .dl_builder
          .push_yuv_image(&prim_info,
                          YuvData::PlanarYCbCr(image_key_0, image_key_1, image_key_2),
+                         color_depth,
                          color_space,
                          image_rendering);
 }
@@ -2020,6 +2175,7 @@ pub extern "C" fn wr_dp_push_yuv_NV12_image(state: &mut WrState,
                                             is_backface_visible: bool,
                                             image_key_0: WrImageKey,
                                             image_key_1: WrImageKey,
+                                            color_depth: WrColorDepth,
                                             color_space: WrYuvColorSpace,
                                             image_rendering: ImageRendering) {
     debug_assert!(unsafe { is_in_main_thread() || is_in_compositor_thread() });
@@ -2031,6 +2187,7 @@ pub extern "C" fn wr_dp_push_yuv_NV12_image(state: &mut WrState,
          .dl_builder
          .push_yuv_image(&prim_info,
                          YuvData::NV12(image_key_0, image_key_1),
+                         color_depth,
                          color_space,
                          image_rendering);
 }
@@ -2042,6 +2199,7 @@ pub extern "C" fn wr_dp_push_yuv_interleaved_image(state: &mut WrState,
                                                    clip: LayoutRect,
                                                    is_backface_visible: bool,
                                                    image_key_0: WrImageKey,
+                                                   color_depth: WrColorDepth,
                                                    color_space: WrYuvColorSpace,
                                                    image_rendering: ImageRendering) {
     debug_assert!(unsafe { is_in_main_thread() || is_in_compositor_thread() });
@@ -2053,6 +2211,7 @@ pub extern "C" fn wr_dp_push_yuv_interleaved_image(state: &mut WrState,
          .dl_builder
          .push_yuv_image(&prim_info,
                          YuvData::InterleavedYCbCr(image_key_0),
+                         color_depth,
                          color_space,
                          image_rendering);
 }
@@ -2133,7 +2292,8 @@ pub extern "C" fn wr_dp_push_border(state: &mut WrState,
                                     rect: LayoutRect,
                                     clip: LayoutRect,
                                     is_backface_visible: bool,
-                                    widths: BorderWidths,
+                                    do_aa: AntialiasBorder,
+                                    widths: LayoutSideOffsets,
                                     top: BorderSide,
                                     right: BorderSide,
                                     bottom: BorderSide,
@@ -2142,12 +2302,14 @@ pub extern "C" fn wr_dp_push_border(state: &mut WrState,
     debug_assert!(unsafe { is_in_main_thread() });
 
     let border_details = BorderDetails::Normal(NormalBorder {
-                                                   left: left.into(),
-                                                   right: right.into(),
-                                                   top: top.into(),
-                                                   bottom: bottom.into(),
-                                                   radius: radius.into(),
-                                               });
+        left: left.into(),
+        right: right.into(),
+        top: top.into(),
+        bottom: bottom.into(),
+        radius: radius.into(),
+        do_aa: do_aa == AntialiasBorder::Yes,
+    });
+
     let mut prim_info = LayoutPrimitiveInfo::with_clip_rect(rect, clip.into());
     prim_info.is_backface_visible = is_backface_visible;
     prim_info.tag = state.current_tag;
@@ -2163,7 +2325,7 @@ pub extern "C" fn wr_dp_push_border_image(state: &mut WrState,
                                           rect: LayoutRect,
                                           clip: LayoutRect,
                                           is_backface_visible: bool,
-                                          widths: BorderWidths,
+                                          widths: LayoutSideOffsets,
                                           image: WrImageKey,
                                           width: u32,
                                           height: u32,
@@ -2194,7 +2356,7 @@ pub extern "C" fn wr_dp_push_border_gradient(state: &mut WrState,
                                              rect: LayoutRect,
                                              clip: LayoutRect,
                                              is_backface_visible: bool,
-                                             widths: BorderWidths,
+                                             widths: LayoutSideOffsets,
                                              width: u32,
                                              height: u32,
                                              slice: SideOffsets2D<u32>,
@@ -2240,7 +2402,7 @@ pub extern "C" fn wr_dp_push_border_radial_gradient(state: &mut WrState,
                                                     rect: LayoutRect,
                                                     clip: LayoutRect,
                                                     is_backface_visible: bool,
-                                                    widths: BorderWidths,
+                                                    widths: LayoutSideOffsets,
                                                     center: LayoutPoint,
                                                     radius: LayoutSize,
                                                     stops: *const GradientStop,
@@ -2429,8 +2591,8 @@ pub extern "C" fn wr_api_hit_test(dh: &mut DocumentHandle,
     let result = dh.api.hit_test(dh.document_id, None, point, HitTestFlags::empty());
     for item in &result.items {
         // For now we should never be getting results back for which the tag is
-        // 0 (== CompositorHitTestInfo::eInvisibleToHitTest). In the future if
-        // we allow this, we'll want to |continue| on the loop in this scenario.
+        // 0 (== CompositorHitTestInvisibleToHit). In the future if we allow this,
+        // we'll want to |continue| on the loop in this scenario.
         debug_assert!(item.tag.1 != 0);
         *out_pipeline_id = item.pipeline;
         *out_scroll_id = item.tag.0;
@@ -2463,9 +2625,9 @@ extern "C" {
                                width: u32,
                                height: u32,
                                format: ImageFormat,
-                               tile_size: *const u16,
-                               tile_offset: *const TileOffset,
-                               dirty_rect: *const DeviceUintRect,
+                               tile_size: Option<&u16>,
+                               tile_offset: Option<&TileOffset>,
+                               dirty_rect: Option<&DeviceUintRect>,
                                output: MutByteSlice)
                                -> bool;
 }
@@ -2497,4 +2659,59 @@ fn unpack_clip_id(id: usize, pipeline_id: PipelineId) -> ClipId {
         1 => ClipId::Clip(id, pipeline_id),
         _ => unreachable!("Got a bizarre value for the clip type"),
     }
+}
+
+/// cbindgen:postfix=WR_DESTRUCTOR_SAFE_FUNC
+#[no_mangle]
+pub unsafe extern "C" fn wr_device_delete(device: *mut Device) {
+    Box::from_raw(device);
+}
+
+// Call MakeCurrent before this.
+#[no_mangle]
+pub extern "C" fn wr_shaders_new(gl_context: *mut c_void,
+                                 program_cache: Option<&mut WrProgramCache>) -> *mut WrShaders {
+    let mut device = wr_device_new(gl_context, program_cache);
+
+    let precache_flags = if env_var_to_bool("MOZ_WR_PRECACHE_SHADERS") {
+        ShaderPrecacheFlags::FULL_COMPILE
+    } else {
+        ShaderPrecacheFlags::ASYNC_COMPILE
+    };
+
+    let opts = RendererOptions {
+        precache_flags,
+        ..Default::default()
+    };
+
+    let gl_type = device.gl().get_type();
+    device.begin_frame();
+
+    let shaders = Rc::new(RefCell::new(match Shaders::new(&mut device, gl_type, &opts) {
+        Ok(shaders) => shaders,
+        Err(e) => {
+            warn!(" Failed to create a Shaders: {:?}", e);
+            let msg = CString::new(format!("wr_shaders_new: {:?}", e)).unwrap();
+            unsafe {
+                gfx_critical_note(msg.as_ptr());
+            }
+            return ptr::null_mut();
+        }
+    }));
+
+    let shaders = WrShaders { shaders };
+
+    device.end_frame();
+    Box::into_raw(Box::new(shaders))
+}
+
+/// cbindgen:postfix=WR_DESTRUCTOR_SAFE_FUNC
+#[no_mangle]
+pub unsafe extern "C" fn wr_shaders_delete(shaders: *mut WrShaders, gl_context: *mut c_void) {
+    let mut device = wr_device_new(gl_context, None);
+    let shaders = Box::from_raw(shaders);
+    if let Ok(shaders) = Rc::try_unwrap(shaders.shaders) {
+      shaders.into_inner().deinit(&mut device);
+    }
+    // let shaders go out of scope and get dropped
 }

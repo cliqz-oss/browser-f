@@ -30,42 +30,42 @@ SVGFETurbulenceElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenPro
 
 nsSVGElement::NumberInfo SVGFETurbulenceElement::sNumberInfo[1] =
 {
-  { &nsGkAtoms::seed, 0, false }
+  { nsGkAtoms::seed, 0, false }
 };
 
 nsSVGElement::NumberPairInfo SVGFETurbulenceElement::sNumberPairInfo[1] =
 {
-  { &nsGkAtoms::baseFrequency, 0, 0 }
+  { nsGkAtoms::baseFrequency, 0, 0 }
 };
 
 nsSVGElement::IntegerInfo SVGFETurbulenceElement::sIntegerInfo[1] =
 {
-  { &nsGkAtoms::numOctaves, 1 }
+  { nsGkAtoms::numOctaves, 1 }
 };
 
 nsSVGEnumMapping SVGFETurbulenceElement::sTypeMap[] = {
-  {&nsGkAtoms::fractalNoise,
+  {nsGkAtoms::fractalNoise,
    SVG_TURBULENCE_TYPE_FRACTALNOISE},
-  {&nsGkAtoms::turbulence,
+  {nsGkAtoms::turbulence,
    SVG_TURBULENCE_TYPE_TURBULENCE},
   {nullptr, 0}
 };
 
 nsSVGEnumMapping SVGFETurbulenceElement::sStitchTilesMap[] = {
-  {&nsGkAtoms::stitch,
+  {nsGkAtoms::stitch,
    SVG_STITCHTYPE_STITCH},
-  {&nsGkAtoms::noStitch,
+  {nsGkAtoms::noStitch,
    SVG_STITCHTYPE_NOSTITCH},
   {nullptr, 0}
 };
 
 nsSVGElement::EnumInfo SVGFETurbulenceElement::sEnumInfo[2] =
 {
-  { &nsGkAtoms::type,
+  { nsGkAtoms::type,
     sTypeMap,
     SVG_TURBULENCE_TYPE_TURBULENCE
   },
-  { &nsGkAtoms::stitchTiles,
+  { nsGkAtoms::stitchTiles,
     sStitchTilesMap,
     SVG_STITCHTYPE_NOSTITCH
   }
@@ -73,7 +73,7 @@ nsSVGElement::EnumInfo SVGFETurbulenceElement::sEnumInfo[2] =
 
 nsSVGElement::StringInfo SVGFETurbulenceElement::sStringInfo[1] =
 {
-  { &nsGkAtoms::result, kNameSpaceID_None, true }
+  { nsGkAtoms::result, kNameSpaceID_None, true }
 };
 
 //----------------------------------------------------------------------
@@ -136,11 +136,11 @@ SVGFETurbulenceElement::GetPrimitiveDescription(nsSVGFilterInstance* aInstance,
     // A base frequency of zero results in transparent black for
     // type="turbulence" and in 50% alpha 50% gray for type="fractalNoise".
     if (type == SVG_TURBULENCE_TYPE_TURBULENCE) {
-      return FilterPrimitiveDescription(PrimitiveType::Empty);
+      return FilterPrimitiveDescription();
     }
-    FilterPrimitiveDescription descr(PrimitiveType::Flood);
-    descr.Attributes().Set(eFloodColor, Color(0.5, 0.5, 0.5, 0.5));
-    return descr;
+    FloodAttributes atts;
+    atts.mColor = Color(0.5, 0.5, 0.5, 0.5);
+    return FilterPrimitiveDescription(AsVariant(std::move(atts)));
   }
 
   // We interpret the base frequency as relative to user space units. In other
@@ -160,14 +160,14 @@ SVGFETurbulenceElement::GetPrimitiveDescription(nsSVGFilterInstance* aInstance,
                               fY == 0 ? 0 : (1 / firstPeriodInFilterSpace.height));
   gfxPoint offset = firstPeriodInFilterSpace.TopLeft();
 
-  FilterPrimitiveDescription descr(PrimitiveType::Turbulence);
-  descr.Attributes().Set(eTurbulenceOffset, IntPoint::Truncate(offset.x, offset.y));
-  descr.Attributes().Set(eTurbulenceBaseFrequency, frequencyInFilterSpace);
-  descr.Attributes().Set(eTurbulenceSeed, seed);
-  descr.Attributes().Set(eTurbulenceNumOctaves, octaves);
-  descr.Attributes().Set(eTurbulenceStitchable, stitch == SVG_STITCHTYPE_STITCH);
-  descr.Attributes().Set(eTurbulenceType, type);
-  return descr;
+  TurbulenceAttributes atts;
+  atts.mOffset = IntPoint::Truncate(offset.x, offset.y);
+  atts.mBaseFrequency = frequencyInFilterSpace;
+  atts.mSeed = seed;
+  atts.mOctaves = octaves;
+  atts.mStitchable = stitch == SVG_STITCHTYPE_STITCH;
+  atts.mType = type;
+  return FilterPrimitiveDescription(AsVariant(std::move(atts)));
 }
 
 bool

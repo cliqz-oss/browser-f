@@ -75,7 +75,7 @@ CompileOffThreadModule(JSContext* cx, const ReadOnlyCompileOptions& options,
                        SourceBufferHolder& srcBuf, OffThreadCompileCallback callback,
                        void* callbackData);
 
-extern JS_PUBLIC_API(JSScript*)
+extern JS_PUBLIC_API(JSObject*)
 FinishOffThreadModule(JSContext* cx, OffThreadToken* token);
 
 extern JS_PUBLIC_API(void)
@@ -108,6 +108,13 @@ FinishMultiOffThreadScriptsDecoder(JSContext* cx, OffThreadToken* token,
 
 extern JS_PUBLIC_API(void)
 CancelMultiOffThreadScriptsDecoder(JSContext* cx, OffThreadToken* token);
+
+#if defined(JS_BUILD_BINAST)
+
+extern JS_PUBLIC_API(bool)
+CanDecodeBinASTOffThread(JSContext* cx, const ReadOnlyCompileOptions& options, size_t length);
+
+#endif // defined(JS_BUILD_BINAST)
 
 } // namespace JS
 

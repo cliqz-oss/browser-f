@@ -65,6 +65,7 @@
 #include "nsIServiceManager.h"
 #include "nsWhitespaceTokenizer.h"
 #include "nsAttrName.h"
+#include "nsPersistentProperties.h"
 
 #include "mozilla/Assertions.h"
 #include "mozilla/BasicEvents.h"
@@ -803,20 +804,15 @@ Accessible::XULElmName(DocAccessible* aDocument,
    */
 
   // CASE #1 (via label attribute) -- great majority of the cases
-  nsCOMPtr<nsIDOMXULLabeledControlElement> labeledEl = do_QueryInterface(aElm);
-  if (labeledEl) {
-    labeledEl->GetLabel(aName);
+  nsCOMPtr<nsIDOMXULSelectControlItemElement> itemEl = do_QueryInterface(aElm);
+  if (itemEl) {
+    itemEl->GetLabel(aName);
   } else {
-    nsCOMPtr<nsIDOMXULSelectControlItemElement> itemEl = do_QueryInterface(aElm);
-    if (itemEl) {
-      itemEl->GetLabel(aName);
-    } else {
-      nsCOMPtr<nsIDOMXULSelectControlElement> select = do_QueryInterface(aElm);
-      // Use label if this is not a select control element which
-      // uses label attribute to indicate which option is selected
-      if (!select && aElm->IsElement()) {
-        aElm->AsElement()->GetAttribute(NS_LITERAL_STRING("label"), aName);
-      }
+    // Use @label if this is not a select control element, which uses label
+    // attribute to indicate, which option is selected.
+    nsCOMPtr<nsIDOMXULSelectControlElement> select = do_QueryInterface(aElm);
+    if (!select) {
+      aElm->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::label, aName);
     }
   }
 
@@ -1019,8 +1015,7 @@ Accessible::Attributes()
 already_AddRefed<nsIPersistentProperties>
 Accessible::NativeAttributes()
 {
-  nsCOMPtr<nsIPersistentProperties> attributes =
-    do_CreateInstance(NS_PERSISTENTPROPERTIES_CONTRACTID);
+  RefPtr<nsPersistentProperties> attributes = new nsPersistentProperties();
 
   nsAutoString unused;
 
@@ -1052,6 +1047,20 @@ Accessible::NativeAttributes()
   GroupPos groupPos = GroupPosition();
   nsAccUtils::SetAccGroupAttrs(attributes, groupPos.level,
                                groupPos.setSize, groupPos.posInSet);
+
+  bool hierarchical = false;
+  uint32_t itemCount = AccGroupInfo::TotalItemCount(this, &hierarchical);
+  if (itemCount) {
+    nsAutoString itemCountStr;
+    itemCountStr.AppendInt(itemCount);
+    attributes->SetStringProperty(NS_LITERAL_CSTRING("child-item-count"),
+      itemCountStr, unused);
+  }
+
+  if (hierarchical) {
+    attributes->SetStringProperty(NS_LITERAL_CSTRING("hierarchical"),
+      NS_LITERAL_STRING("true"), unused);
+  }
 
   // If the accessible doesn't have own content (such as list item bullet or
   // xul tree item) then don't calculate content based attributes.
@@ -1540,8 +1549,9 @@ nsAtom*
 Accessible::LandmarkRole() const
 {
   const nsRoleMapEntry* roleMapEntry = ARIARoleMap();
-  return roleMapEntry && roleMapEntry->IsOfType(eLandmark) ?
-    *(roleMapEntry->roleAtom) : nullptr;
+  return roleMapEntry && roleMapEntry->IsOfType(eLandmark)
+       ? roleMapEntry->roleAtom
+       : nullptr;
 }
 
 role

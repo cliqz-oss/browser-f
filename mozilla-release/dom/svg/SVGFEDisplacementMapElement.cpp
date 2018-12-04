@@ -24,24 +24,24 @@ SVGFEDisplacementMapElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGiv
 
 nsSVGElement::NumberInfo SVGFEDisplacementMapElement::sNumberInfo[1] =
 {
-  { &nsGkAtoms::scale, 0, false },
+  { nsGkAtoms::scale, 0, false },
 };
 
 nsSVGEnumMapping SVGFEDisplacementMapElement::sChannelMap[] = {
-  {&nsGkAtoms::R, SVG_CHANNEL_R},
-  {&nsGkAtoms::G, SVG_CHANNEL_G},
-  {&nsGkAtoms::B, SVG_CHANNEL_B},
-  {&nsGkAtoms::A, SVG_CHANNEL_A},
+  {nsGkAtoms::R, SVG_CHANNEL_R},
+  {nsGkAtoms::G, SVG_CHANNEL_G},
+  {nsGkAtoms::B, SVG_CHANNEL_B},
+  {nsGkAtoms::A, SVG_CHANNEL_A},
   {nullptr, 0}
 };
 
 nsSVGElement::EnumInfo SVGFEDisplacementMapElement::sEnumInfo[2] =
 {
-  { &nsGkAtoms::xChannelSelector,
+  { nsGkAtoms::xChannelSelector,
     sChannelMap,
     SVG_CHANNEL_A
   },
-  { &nsGkAtoms::yChannelSelector,
+  { nsGkAtoms::yChannelSelector,
     sChannelMap,
     SVG_CHANNEL_A
   }
@@ -49,9 +49,9 @@ nsSVGElement::EnumInfo SVGFEDisplacementMapElement::sEnumInfo[2] =
 
 nsSVGElement::StringInfo SVGFEDisplacementMapElement::sStringInfo[3] =
 {
-  { &nsGkAtoms::result, kNameSpaceID_None, true },
-  { &nsGkAtoms::in, kNameSpaceID_None, true },
-  { &nsGkAtoms::in2, kNameSpaceID_None, true }
+  { nsGkAtoms::result, kNameSpaceID_None, true },
+  { nsGkAtoms::in, kNameSpaceID_None, true },
+  { nsGkAtoms::in2, kNameSpaceID_None, true }
 };
 
 //----------------------------------------------------------------------
@@ -100,20 +100,20 @@ SVGFEDisplacementMapElement::GetPrimitiveDescription(nsSVGFilterInstance* aInsta
   if (aInputsAreTainted[1]) {
     // If the map is tainted, refuse to apply the effect and act as a
     // pass-through filter instead, as required by the spec.
-    FilterPrimitiveDescription descr(PrimitiveType::Offset);
-    descr.Attributes().Set(eOffsetOffset, IntPoint(0, 0));
-    return descr;
+    OffsetAttributes atts;
+    atts.mValue = IntPoint(0, 0);
+    return FilterPrimitiveDescription(AsVariant(std::move(atts)));
   }
 
   float scale = aInstance->GetPrimitiveNumber(SVGContentUtils::XY,
                                               &mNumberAttributes[SCALE]);
   uint32_t xChannel = mEnumAttributes[CHANNEL_X].GetAnimValue();
   uint32_t yChannel = mEnumAttributes[CHANNEL_Y].GetAnimValue();
-  FilterPrimitiveDescription descr(PrimitiveType::DisplacementMap);
-  descr.Attributes().Set(eDisplacementMapScale, scale);
-  descr.Attributes().Set(eDisplacementMapXChannel, xChannel);
-  descr.Attributes().Set(eDisplacementMapYChannel, yChannel);
-  return descr;
+  DisplacementMapAttributes atts;
+  atts.mScale = scale;
+  atts.mXChannel = xChannel;
+  atts.mYChannel = yChannel;
+  return FilterPrimitiveDescription(AsVariant(std::move(atts)));
 }
 
 bool

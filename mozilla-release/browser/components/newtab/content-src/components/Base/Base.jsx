@@ -71,7 +71,7 @@ export class _Base extends React.PureComponent {
       // If we skipped the about:welcome overlay and removed the CSS classes
       // we don't want to add them back to the Activity Stream view
       document.body.classList.contains("welcome") ? "welcome" : "",
-      document.body.classList.contains("hide-main") ? "hide-main" : ""
+      document.body.classList.contains("hide-main") ? "hide-main" : "",
     ].filter(v => v).join(" ");
     global.document.body.className = bodyClassName;
   }
@@ -82,8 +82,11 @@ export class _Base extends React.PureComponent {
     const {initialized} = App;
 
     const prefs = props.Prefs.values;
-    if (prefs["asrouter.devtoolsEnabled"] && window.location.hash === "#asrouter") {
-      return (<ASRouterAdmin />);
+    if (prefs["asrouter.devtoolsEnabled"]) {
+      if (window.location.hash === "#asrouter") {
+        return (<ASRouterAdmin />);
+      }
+      console.log("ASRouter devtools enabled. To access visit %cabout:newtab#asrouter", "font-weight: bold"); // eslint-disable-line no-console
     }
 
     if (!props.isPrerendered && !initialized) {
@@ -135,11 +138,13 @@ export class BaseContent extends React.PureComponent {
     const prefs = props.Prefs.values;
 
     const shouldBeFixedToTop = PrerenderData.arePrefsValid(name => prefs[name]);
+    const noSectionsEnabled = !prefs["feeds.topsites"] && props.Sections.filter(section => section.enabled).length === 0;
 
     const outerClassName = [
       "outer-wrapper",
       shouldBeFixedToTop && "fixed-to-top",
-      prefs.showSearch && this.state.fixedSearch && "fixed-search"
+      prefs.showSearch && this.state.fixedSearch && !noSectionsEnabled && "fixed-search",
+      prefs.showSearch && noSectionsEnabled && "only-search",
     ].filter(v => v).join(" ");
 
     return (
@@ -149,7 +154,7 @@ export class BaseContent extends React.PureComponent {
             {prefs.showSearch &&
               <div className="non-collapsible-section">
                 <ErrorBoundary>
-                  <Search />
+                  <Search showLogo={noSectionsEnabled} />
                 </ErrorBoundary>
               </div>
             }

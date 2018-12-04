@@ -10,9 +10,10 @@
 <!ENTITY returnToPreviousPage.label "Zurück">
 <!ENTITY returnToPreviousPage1.label "Zurück (empfohlen)">
 <!ENTITY advanced.label "Erweitert">
-
 <!ENTITY continue2.label "Mehr…">
 <!ENTITY moreInformation.label "Weitere Informationen">
+
+<!ENTITY viewCertificate.label "Zertifikat anzeigen">
 
 <!-- Specific error messages -->
 
@@ -151,14 +152,20 @@
 
 <!ENTITY certerror.longpagetitle1 "Diese Verbindung ist nicht sicher">
 <!ENTITY certerror.longpagetitle2 "Warnung: Mögliches Sicherheitsrisiko erkannt">
+<!ENTITY certerror.sts.longpagetitle  "Kein Verbindungsversuch unternommen: Mögliches Sicherheitsproblem">
 <!-- Localization note (certerror.introPara, certerror.introPara2) - The text content of the span tag
 will be replaced at runtime with the name of the server to which the user
 was trying to connect. -->
 <!ENTITY certerror.introPara "Der Inhaber von <span class='hostname'/> hat die Website nicht richtig konfiguriert. &brandShortName; hat keine Verbindung mit dieser Website aufgebaut, um Ihre Informationen vor Diebstahl zu schützen.">
-
 <!ENTITY certerror.introPara2 "&brandShortName; hat ein mögliches Sicherheitsrisiko erkannt und <span class='hostname'/> nicht geladen. Falls Sie die Website besuchen, könnten Angreifer versuchen, Passwörter, E-Mails oder Kreditkartendaten zu stehlen.">
 
 <!ENTITY certerror.expiredCert.secondPara "Am wahrscheinlichsten sind Datum- und/oder Uhrzeit auf Ihrem Computer nicht korrekt, was &brandShortName; daran hindert, eine gesicherte Verbindung zu nutzen.">
+
+<!ENTITY certerror.sts.introPara "&brandShortName; hat ein mögliches Sicherheitsrisiko erkannt und daher <span class='hostname'/> nicht aufgerufen, denn die Website benötigt eine verschlüsselte Verbindung.">
+
+<!ENTITY certerror.expiredCert.introPara "&brandShortName; hat ein Problem erkannt und <span class='hostname'/> nicht aufgerufen. Entweder ist die Website falsch eingerichtet oder Datum und/oder Uhrzeit auf diesem Computer sind nicht korrekt.">
+<!ENTITY certerror.expiredCert.secondPara2 "Das Zertifikat der Website ist wahrscheinlich abgelaufen, weshalb &brandShortName; keine verschlüsselte Verbindung aufbauen kann. Falls Sie die Website besuchen, könnten Angreifer versuchen, Passwörter, E-Mails oder Kreditkartendaten zu stehlen.">
+<!ENTITY certerror.expiredCert.sts.secondPara "Das Zertifikat der Website ist wahrscheinlich abgelaufen, weshalb &brandShortName; keine verschlüsselte Verbindung aufbauen kann.">
 
 <!ENTITY certerror.whatCanYouDoAboutItTitle "Was können Sie dagegen tun?">
 
@@ -195,7 +202,6 @@ was trying to connect. -->
 
 
 <!ENTITY securityOverride.exceptionButtonLabel "Ausnahme hinzufügen…">
-
 <!ENTITY securityOverride.exceptionButton1Label "Risiko akzeptieren und fortfahren">
 
 <!ENTITY errorReporting.automatic2 "Fehler an Mozilla melden, um beim Identifizieren und Blockieren böswilliger Websites zu helfen">
@@ -217,6 +223,7 @@ was trying to connect. -->
 
 <!ENTITY certerror.pagetitle1  "Nicht gesicherte Verbindung">
 <!ENTITY certerror.pagetitle2  "Warnung: Mögliches Sicherheitsrisiko erkannt">
+<!ENTITY certerror.sts.pagetitle  "Keine Verbindung aufgebaut: Mögliches Sicherheitsproblem">
 <!ENTITY certerror.whatShouldIDo.badStsCertExplanation "Diese Website verwendet HTTP Strict Transport Security (HSTS), um mitzuteilen, dass &brandShortName; nur über gesicherte Verbindungen mit ihr kommunizieren soll. Daher ist es nicht möglich, eine Ausnahme für dieses Zertifikat anzulegen.">
 <!ENTITY certerror.whatShouldIDo.badStsCertExplanation1 "<span class='hostname'></span> verwendet eine Sicherheitstechnologie namens &quot;HTTP Strict Transport Security (HSTS)&quot;, durch welche &brandShortName; nur über gesicherte Verbindungen mit der Website verbinden darf. Daher kann keine Ausnahme für die Website hinzugefügt werden.">
 <!ENTITY certerror.copyToClipboard.label "In Zwischenablage kopieren">
@@ -233,3 +240,5 @@ was trying to connect. -->
 
 <!ENTITY prefReset.longDesc "Dies könnte durch die Netzwerk-Sicherheitseinstellungen verursacht werden. Sollen die Standardeinstellungen wiederhergestellt werden?">
 <!ENTITY prefReset.label "Standardeinstellungen wiederherstellen">
+
+<!ENTITY networkProtocolError.title "Netzwerkprotokoll-Fehler">

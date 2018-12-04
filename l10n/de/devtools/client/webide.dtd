@@ -43,6 +43,9 @@
 <!ENTITY runtimeMenu_showSettings_label "Einstellungen der Apps auf dem Gerät">
 <!ENTITY runtimeMenu_showSettings_accesskey "A">
 
+<!ENTITY runtimeMenu_showPerformancePanel_label "Laufzeitanalyse">
+<!ENTITY runtimeMenu_showPerformancePanel_accesskey "L">
+
 <!ENTITY viewMenu_label "Ansicht">
 <!ENTITY viewMenu_accesskey "A">
 <!ENTITY viewMenu_zoomin_label "Vergrößern">

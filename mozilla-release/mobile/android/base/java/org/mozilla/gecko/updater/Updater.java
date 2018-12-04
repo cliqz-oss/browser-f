@@ -125,6 +125,14 @@ public class Updater {
     void startUpdate(final int flags) {
         prefs.setLastAttemptDate();
 
+        if (!UpdateServiceHelper.isUpdaterEnabled(context)) {
+            if (DEBUG) {
+                Log.i(logtag, "Updater not enabled");
+            }
+            sendCheckUpdateResult(CheckUpdateResult.NOT_AVAILABLE);
+            return;
+        }
+
         NetworkInfo netInfo = connectivityManager.getActiveNetworkInfo();
         if (netInfo == null || !netInfo.isConnected()) {
             if (DEBUG) {
@@ -455,10 +463,7 @@ public class Updater {
     private void showDownloadNotification(File downloadFile) {
 
         Intent notificationIntent = new Intent(UpdateServiceHelper.ACTION_APPLY_UPDATE);
-        notificationIntent.setClass(context, UserUpdatesReceiver.class);
-
         Intent cancelIntent = new Intent(UpdateServiceHelper.ACTION_CANCEL_DOWNLOAD);
-        cancelIntent.setClass(context, UserUpdatesReceiver.class);
 
         if (downloadFile != null)
             notificationIntent.putExtra(UpdateServiceHelper.EXTRA_PACKAGE_PATH_NAME, downloadFile.getAbsolutePath());

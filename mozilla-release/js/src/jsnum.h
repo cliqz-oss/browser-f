@@ -60,12 +60,18 @@ template <AllowGC allowGC>
 extern JSString*
 NumberToString(JSContext* cx, double d);
 
+extern JSString*
+NumberToStringHelperPure(JSContext* cx, double d);
+
 extern JSAtom*
 NumberToAtom(JSContext* cx, double d);
 
 template <AllowGC allowGC>
 extern JSFlatString*
 Int32ToString(JSContext* cx, int32_t i);
+
+extern JSFlatString*
+Int32ToStringHelperPure(JSContext* cx, int32_t i);
 
 extern JSAtom*
 Int32ToAtom(JSContext* cx, int32_t si);
@@ -192,16 +198,21 @@ GetDecimalInteger(JSContext* cx, const CharT* start, const CharT* end, double* d
 extern MOZ_MUST_USE bool
 StringToNumber(JSContext* cx, JSString* str, double* result);
 
+extern MOZ_MUST_USE bool
+StringToNumberPure(JSContext* cx, JSString* str, double* result);
+
 /* ES5 9.3 ToNumber, overwriting *vp with the appropriate number value. */
 MOZ_ALWAYS_INLINE MOZ_MUST_USE bool
 ToNumber(JSContext* cx, JS::MutableHandleValue vp)
 {
-    if (vp.isNumber())
+    if (vp.isNumber()) {
         return true;
+    }
     double d;
     extern JS_PUBLIC_API(bool) ToNumberSlow(JSContext* cx, HandleValue v, double* dp);
-    if (!ToNumberSlow(cx, vp, &d))
+    if (!ToNumberSlow(cx, vp, &d)) {
         return false;
+    }
 
     vp.setNumber(d);
     return true;
@@ -214,13 +225,27 @@ ToNumericSlow(JSContext* cx, JS::MutableHandleValue vp);
 MOZ_ALWAYS_INLINE MOZ_MUST_USE bool
 ToNumeric(JSContext* cx, JS::MutableHandleValue vp)
 {
-    if (vp.isNumber())
+    if (vp.isNumber()) {
         return true;
+    }
 #ifdef ENABLE_BIGINT
-    if (vp.isBigInt())
+    if (vp.isBigInt()) {
         return true;
+    }
 #endif
     return ToNumericSlow(cx, vp);
+}
+
+bool
+ToInt32OrBigIntSlow(JSContext* cx, JS::MutableHandleValue vp);
+
+MOZ_ALWAYS_INLINE MOZ_MUST_USE bool
+ToInt32OrBigInt(JSContext* cx, JS::MutableHandleValue vp)
+{
+    if (vp.isInt32()) {
+        return true;
+    }
+    return ToInt32OrBigIntSlow(cx, vp);
 }
 
 MOZ_MUST_USE bool
@@ -328,8 +353,9 @@ ToInteger(JSContext* cx, HandleValue v, double* dp)
         return true;
     } else {
         extern JS_PUBLIC_API(bool) ToNumberSlow(JSContext* cx, HandleValue v, double* dp);
-        if (!ToNumberSlow(cx, v, dp))
+        if (!ToNumberSlow(cx, v, dp)) {
             return false;
+        }
     }
     *dp = JS::ToInteger(*dp);
     return true;

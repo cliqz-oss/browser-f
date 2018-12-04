@@ -37,16 +37,18 @@ template<typename T>
 static inline T*
 checkPtr(T* ptr)
 {
-  if (! ptr)
+  if (! ptr) {
     abort();
+  }
   return ptr;
 }
 
 static void
 checkBool(bool success)
 {
-  if (! success)
+  if (! success) {
     abort();
+  }
 }
 
 /* The warning reporter callback. */
@@ -81,8 +83,6 @@ main(int argc, const char** argv)
 
     checkBool(JS::InitSelfHostedCode(cx));
     JS::SetWarningReporter(cx, reportWarning);
-
-    JSAutoRequest areq(cx);
 
     /* Create the global object. */
     JS::RealmOptions options;

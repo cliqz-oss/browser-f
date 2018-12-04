@@ -39,9 +39,11 @@ function ConsoleApiCall(props) {
     serviceContainer,
     timestampsVisible,
     repeat,
+    isPaused,
   } = props;
   const {
     id: messageId,
+    executionPoint,
     indent,
     source,
     type,
@@ -66,7 +68,14 @@ function ConsoleApiCall(props) {
   };
 
   if (type === "trace") {
-    messageBody = dom.span({className: "cm-variable"}, "console.trace()");
+    const traceParametersBody = Array.isArray(parameters) && parameters.length > 0
+      ? [" "].concat(formatReps(messageBodyConfig))
+      : [];
+
+    messageBody = [
+      dom.span({className: "cm-variable"}, "console.trace()"),
+      ...traceParametersBody,
+    ];
   } else if (type === "assert") {
     const reps = formatReps(messageBodyConfig);
     messageBody = dom.span({ className: "cm-variable" }, "Assertion failed: ", reps);
@@ -77,7 +86,7 @@ function ConsoleApiCall(props) {
     messageBody = formatReps(messageBodyConfig);
     if (prefix) {
       messageBody.unshift(dom.span({
-        className: "console-message-prefix"
+        className: "console-message-prefix",
       }, `${prefix}: `));
     }
   } else {
@@ -106,6 +115,8 @@ function ConsoleApiCall(props) {
 
   return Message({
     messageId,
+    executionPoint,
+    isPaused,
     open,
     collapsible,
     collapseTitle,

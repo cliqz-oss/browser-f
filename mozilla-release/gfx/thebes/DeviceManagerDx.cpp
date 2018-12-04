@@ -201,7 +201,15 @@ DeviceManagerDx::CreateCompositorDevices()
     return false;
   }
 
-  PreloadAttachmentsOnCompositorThread();
+  // When WR is used, do not preload attachments for D3D11 Non-WR compositor.
+  //
+  // Fallback from WR to D3D11 Non-WR compositor without re-creating gpu process
+  // could happen when WR causes error. In this case, the attachments are loaded
+  // synchronously.
+  if (!gfx::gfxVars::UseWebRender()) {
+    PreloadAttachmentsOnCompositorThread();
+  }
+
   return true;
 }
 
@@ -506,19 +514,18 @@ DeviceManagerDx::CreateCompositorDevice(FeatureState& d3d11)
   }
 
   uint32_t featureLevel = device->GetFeatureLevel();
-  bool useNV12 = D3D11Checks::DoesNV12Work(device);
+  auto formatOptions = D3D11Checks::FormatOptions(device);
   {
     MutexAutoLock lock(mDeviceLock);
     mCompositorDevice = device;
 
     int32_t sequenceNumber = GetNextDeviceCounter();
-    mDeviceStatus = Some(D3D11DeviceStatus(
-      false,
-      textureSharingWorks,
-      featureLevel,
-      DxgiAdapterDesc::From(desc),
-      sequenceNumber,
-      useNV12));
+    mDeviceStatus = Some(D3D11DeviceStatus(false,
+                                           textureSharingWorks,
+                                           featureLevel,
+                                           DxgiAdapterDesc::From(desc),
+                                           sequenceNumber,
+                                           formatOptions));
   }
   mCompositorDevice->SetExceptionMode(0);
 }
@@ -615,19 +622,18 @@ DeviceManagerDx::CreateWARPCompositorDevice()
 
   int featureLevel = device->GetFeatureLevel();
 
-  bool useNV12 = D3D11Checks::DoesNV12Work(device);
+  auto formatOptions = D3D11Checks::FormatOptions(device);
   {
     MutexAutoLock lock(mDeviceLock);
     mCompositorDevice = device;
 
     int32_t sequenceNumber = GetNextDeviceCounter();
-    mDeviceStatus = Some(D3D11DeviceStatus(
-      true,
-      textureSharingWorks,
-      featureLevel,
-      nullAdapter,
-      sequenceNumber,
-      useNV12));
+    mDeviceStatus = Some(D3D11DeviceStatus(true,
+                                           textureSharingWorks,
+                                           featureLevel,
+                                           nullAdapter,
+                                           sequenceNumber,
+                                           formatOptions));
   }
   mCompositorDevice->SetExceptionMode(0);
 
@@ -1171,7 +1177,30 @@ DeviceManagerDx::CanUseNV12()
   if (!mDeviceStatus) {
     return false;
   }
-  return mDeviceStatus->useNV12();
+  return mDeviceStatus->formatOptions().contains(
+    D3D11Checks::VideoFormatOption::NV12);
+}
+
+bool
+DeviceManagerDx::CanUseP010()
+{
+  MutexAutoLock lock(mDeviceLock);
+  if (!mDeviceStatus) {
+    return false;
+  }
+  return mDeviceStatus->formatOptions().contains(
+    D3D11Checks::VideoFormatOption::P010);
+}
+
+bool
+DeviceManagerDx::CanUseP016()
+{
+  MutexAutoLock lock(mDeviceLock);
+  if (!mDeviceStatus) {
+    return false;
+  }
+  return mDeviceStatus->formatOptions().contains(
+    D3D11Checks::VideoFormatOption::P016);
 }
 
 bool

@@ -8,6 +8,7 @@
 #define MOZILLA_LAYERS_RENDEREROGL_H
 
 #include "mozilla/layers/CompositorTypes.h"
+#include "mozilla/gfx/Point.h"
 #include "mozilla/webrender/RenderThread.h"
 #include "mozilla/webrender/WebRenderTypes.h"
 #include "mozilla/webrender/webrender_ffi.h"
@@ -43,7 +44,10 @@ class RenderTextureHost;
 /// on the render thread instead of the compositor thread.
 class RendererOGL
 {
-  friend wr::WrExternalImage LockExternalImage(void* aObj, wr::WrExternalImageId aId, uint8_t aChannelIndex);
+  friend wr::WrExternalImage LockExternalImage(void* aObj,
+                                               wr::WrExternalImageId aId,
+                                               uint8_t aChannelIndex,
+                                               wr::ImageRendering);
   friend void UnlockExternalImage(void* aObj, wr::WrExternalImageId aId, uint8_t aChannelIndex);
 
 public:
@@ -53,7 +57,7 @@ public:
   void Update();
 
   /// This can be called on the render thread only.
-  bool UpdateAndRender(bool aReadback);
+  bool UpdateAndRender(const Maybe<gfx::IntSize>& aReadbackSize, const Maybe<Range<uint8_t>>& aReadbackBuffer);
 
   /// This can be called on the render thread only.
   bool RenderToTarget(gfx::DrawTarget& aTarget);

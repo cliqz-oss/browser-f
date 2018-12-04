@@ -11,6 +11,8 @@ import yaml
 from .errors import LinterNotFound, LinterParseError
 from .types import supported_types
 
+GLOBAL_SUPPORT_FILES = []
+
 
 class Parser(object):
     """Reads and validates lint configuration files."""
@@ -53,6 +55,9 @@ class Parser(object):
             invalid_paths = set()
             for path in linter[attr]:
                 if '*' in path:
+                    if attr == 'include':
+                        raise LinterParseError(relpath, "Paths in the include directive cannot "
+                                                        "contain globs:\n  {}".format(path))
                     continue
 
                 abspath = path
@@ -100,6 +105,7 @@ class Parser(object):
             linter['name'] = name
             linter['path'] = path
             self._validate(linter)
-            linter.setdefault('support-files', []).append(path)
+            linter.setdefault('support-files', []).extend(GLOBAL_SUPPORT_FILES + [path])
+            linter.setdefault('include', ['.'])
             linters.append(linter)
         return linters

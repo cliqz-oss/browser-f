@@ -15,9 +15,6 @@
    xmlns:xbl="http://www.mozilla.org/xbl">
 
   <binding id="tree-base" extends="chrome://global/content/bindings/general.xml#basecontrol">
-    <resources>
-      <stylesheet src="chrome://global/skin/tree.css"/>
-    </resources>
     <implementation>
       <method name="_isAccelPressed">
         <parameter name="aEvent"/>
@@ -370,11 +367,9 @@
             input.hidden = false;
 
             input.value = this.view.getCellText(row, column);
-            var selectText = function selectText() {
-              input.select();
-              input.inputField.focus();
-            };
-            setTimeout(selectText, 0);
+
+            input.select();
+            input.inputField.focus();
 
             this._editingRow = row;
             this._editingColumn = column;
@@ -931,9 +926,6 @@
   </binding>
 
   <binding id="treecols">
-    <resources>
-      <stylesheet src="chrome://global/skin/tree.css"/>
-    </resources>
     <content orient="horizontal">
       <xul:hbox class="tree-scrollable-columns" flex="1">
         <children includes="treecol|splitter"/>

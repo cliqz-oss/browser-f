@@ -105,7 +105,8 @@ nsNativeTheme::GetContentState(nsIFrame* aFrame, StyleAppearance aWidgetType)
   // focus something in the window.
 #if defined(XP_MACOSX)
   // Mac always draws focus rings for textboxes and lists.
-  if (aWidgetType == StyleAppearance::NumberInput ||
+  if (aWidgetType == StyleAppearance::MenulistTextfield ||
+      aWidgetType == StyleAppearance::NumberInput ||
       aWidgetType == StyleAppearance::Textfield ||
       aWidgetType == StyleAppearance::TextfieldMultiline ||
       aWidgetType == StyleAppearance::Searchfield ||
@@ -347,6 +348,7 @@ nsNativeTheme::IsWidgetStyled(nsPresContext* aPresContext, nsIFrame* aFrame,
 
   return (aWidgetType == StyleAppearance::NumberInput ||
           aWidgetType == StyleAppearance::Button ||
+          aWidgetType == StyleAppearance::MenulistTextfield ||
           aWidgetType == StyleAppearance::Textfield ||
           aWidgetType == StyleAppearance::TextfieldMultiline ||
           aWidgetType == StyleAppearance::Listbox ||
@@ -413,8 +415,8 @@ nsNativeTheme::GetScrollbarButtonType(nsIFrame* aFrame)
     return 0;
 
   static Element::AttrValuesArray strings[] =
-    {&nsGkAtoms::scrollbarDownBottom, &nsGkAtoms::scrollbarDownTop,
-     &nsGkAtoms::scrollbarUpBottom, &nsGkAtoms::scrollbarUpTop,
+    {nsGkAtoms::scrollbarDownBottom, nsGkAtoms::scrollbarDownTop,
+     nsGkAtoms::scrollbarUpBottom, nsGkAtoms::scrollbarUpTop,
      nullptr};
 
   nsIContent* content = aFrame->GetContent();
@@ -442,7 +444,7 @@ nsNativeTheme::GetTreeSortDirection(nsIFrame* aFrame)
     return eTreeSortDirection_Natural;
 
   static Element::AttrValuesArray strings[] =
-    {&nsGkAtoms::descending, &nsGkAtoms::ascending, nullptr};
+    {nsGkAtoms::descending, nsGkAtoms::ascending, nullptr};
 
   nsIContent* content = aFrame->GetContent();
   if (content->IsElement()) {

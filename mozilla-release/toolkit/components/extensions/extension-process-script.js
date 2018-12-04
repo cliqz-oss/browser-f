@@ -163,6 +163,13 @@ ExtensionManager = {
 
       for (let [scriptId, options] of getData(extension, "contentScripts") || []) {
         const script = new WebExtensionContentScript(policy, options);
+
+        // If the script is a userScript, add the additional userScriptOptions
+        // property to the WebExtensionContentScript instance.
+        if ("userScriptOptions" in options) {
+          script.userScriptOptions = options.userScriptOptions;
+        }
+
         policy.registerContentScript(script);
         registeredContentScripts.set(scriptId, script);
       }
@@ -213,12 +220,20 @@ ExtensionManager = {
 
           if (policy) {
             const registeredContentScripts = this.registeredContentScripts.get(policy);
+            const type = "userScriptOptions" in data.options ? "userScript" : "contentScript";
 
             if (registeredContentScripts.has(data.scriptId)) {
               Cu.reportError(new Error(
-                `Registering content script ${data.scriptId} on ${data.id} more than once`));
+                `Registering ${type} ${data.scriptId} on ${data.id} more than once`));
             } else {
               const script = new WebExtensionContentScript(policy, data.options);
+
+              // If the script is a userScript, add the additional userScriptOptions
+              // property to the WebExtensionContentScript instance.
+              if (type === "userScript") {
+                script.userScriptOptions = data.options.userScriptOptions;
+              }
+
               policy.registerContentScript(script);
               registeredContentScripts.set(data.scriptId, script);
             }

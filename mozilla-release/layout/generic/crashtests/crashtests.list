@@ -115,7 +115,7 @@ load 382199-1.html
 load 382208-1.xhtml
 load 382262-1.html
 load 382396-1.xhtml
-load 382745-1.xhtml
+asserts(1) load 382745-1.xhtml # Bug 758695
 load 383089-1.html
 load 385265-1.xhtml
 load 385295-1.xhtml
@@ -611,6 +611,7 @@ load 1156257.html
 load 1157011.html
 load 1169420-1.html
 load 1169420-2.html
+load 1178783-1.html
 load 1183431.html
 load 1186147-1.html
 load 1221112-1.html
@@ -706,7 +707,13 @@ load 1474768.html
 load 1478178.html
 load 1483972.html
 load 1486457.html
-load 1489770.html
-load 1490032.html
 load 1489287.html
 load 1489863.html
+load 1489770.html
+load 1490032.html
+load 1490685.html
+load 1493708.html
+load 1493710.html
+load 1493741.html
+load 1494380.html
+load 1505817.html

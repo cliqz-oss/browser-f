@@ -10,11 +10,13 @@ var _react2 = _interopRequireDefault(_react);
 
 var _reactRedux = require("devtools/client/shared/vendor/react-redux");
 
-var _devtoolsSourceMap = require("devtools/client/shared/source-map/index.js");
-
 var _classnames = require("devtools/client/debugger/new/dist/vendors").vendored["classnames"];
 
 var _classnames2 = _interopRequireDefault(_classnames);
+
+var _Svg = require("devtools/client/debugger/new/dist/vendors").vendored["Svg"];
+
+var _Svg2 = _interopRequireDefault(_Svg);
 
 var _actions = require("../../actions/index");
 
@@ -43,13 +45,21 @@ class SourceFooter extends _react.PureComponent {
       selectedSource,
       togglePrettyPrint
     } = this.props;
-    const sourceLoaded = selectedSource && (0, _source.isLoaded)(selectedSource);
+
+    if ((0, _source.isLoading)(selectedSource) && selectedSource.isPrettyPrinted) {
+      return _react2.default.createElement("div", {
+        className: "loader"
+      }, _react2.default.createElement(_Svg2.default, {
+        name: "loader"
+      }));
+    }
 
     if (!(0, _editor.shouldShowPrettyPrint)(selectedSource)) {
       return;
     }
 
     const tooltip = L10N.getStr("sourceTabs.prettyPrint");
+    const sourceLoaded = selectedSource && (0, _source.isLoaded)(selectedSource);
     const type = "prettyPrint";
     return _react2.default.createElement("button", {
       onClick: () => togglePrettyPrint(selectedSource.id),
@@ -150,7 +160,7 @@ class SourceFooter extends _react.PureComponent {
       selectedSource
     } = this.props;
 
-    if (!mappedSource || !(0, _devtoolsSourceMap.isOriginalId)(selectedSource.id)) {
+    if (!mappedSource || !(0, _source.isOriginal)(selectedSource)) {
       return null;
     }
 

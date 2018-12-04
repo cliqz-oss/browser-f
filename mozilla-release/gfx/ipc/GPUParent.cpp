@@ -13,6 +13,7 @@
 #include "gfxPrefs.h"
 #include "GLContextProvider.h"
 #include "GPUProcessHost.h"
+#include "GPUProcessManager.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/TimeStamp.h"
@@ -21,6 +22,7 @@
 #include "mozilla/dom/VideoDecoderManagerParent.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/gfxVars.h"
+#include "mozilla/image/ImageMemoryReporter.h"
 #include "mozilla/ipc/CrashReporterClient.h"
 #include "mozilla/ipc/ProcessChild.h"
 #include "mozilla/layers/APZInputBridgeParent.h"
@@ -44,7 +46,6 @@
 #include "VRGPUChild.h"
 #include "VRManager.h"
 #include "VRManagerParent.h"
-#include "VRThread.h"
 #include "VsyncBridgeParent.h"
 #if defined(XP_WIN)
 # include "mozilla/gfx/DeviceManagerDx.h"
@@ -132,8 +133,6 @@ GPUParent::Init(base::ProcessId aParentPid,
   }
 
   CompositorThreadHolder::Start();
-  // TODO: Bug 1406327, Start VRListenerThreadHolder when loading VR content.
-  VRListenerThreadHolder::Start();
   APZThreadUtils::SetControllerThread(MessageLoop::current());
   apz::InitializeGlobalState();
   LayerTreeOwnerTracker::Initialize();
@@ -267,6 +266,7 @@ GPUParent::RecvInit(nsTArray<GfxPrefSetting>&& prefs,
   // Make sure to do this *after* we update gfxVars above.
   if (gfxVars::UseWebRender()) {
     wr::RenderThread::Start();
+    image::ImageMemoryReporter::InitForWebRender();
   }
 
   VRManager::ManagerInit();
@@ -460,13 +460,30 @@ GPUParent::RecvNotifyGpuObservers(const nsCString& aTopic)
   return IPC_OK();
 }
 
+/* static */ void
+GPUParent::GetGPUProcessName(nsACString& aStr)
+{
+  auto processType = XRE_GetProcessType();
+  unsigned pid = 0;
+  if (processType == GeckoProcessType_GPU) {
+    pid = getpid();
+  } else {
+    MOZ_DIAGNOSTIC_ASSERT(processType == GeckoProcessType_Default);
+    pid = GPUProcessManager::Get()->GPUProcessPid();
+  }
+
+  nsPrintfCString processName("GPU (pid %u)", pid);
+  aStr.Assign(processName);
+}
+
 mozilla::ipc::IPCResult
 GPUParent::RecvRequestMemoryReport(const uint32_t& aGeneration,
                                    const bool& aAnonymize,
                                    const bool& aMinimizeMemoryUsage,
                                    const MaybeFileDesc& aDMDFile)
 {
-  nsPrintfCString processName("GPU (pid %u)", (unsigned)getpid());
+  nsAutoCString processName;
+  GetGPUProcessName(processName);
 
   mozilla::dom::MemoryReportRequestClient::Start(
     aGeneration, aAnonymize, aMinimizeMemoryUsage, aDMDFile, processName);
@@ -513,12 +530,13 @@ GPUParent::ActorDestroy(ActorDestroyReason aWhy)
   }
   dom::VideoDecoderManagerParent::ShutdownVideoBridge();
   CompositorThreadHolder::Shutdown();
-  VRListenerThreadHolder::Shutdown();
   // There is a case that RenderThread exists when gfxVars::UseWebRender() is false.
   // This could happen when WebRender was fallbacked to compositor.
   if (wr::RenderThread::Get()) {
     wr::RenderThread::ShutDown();
   }
+
+  image::ImageMemoryReporter::ShutdownForWebRender();
 
   // Shut down the default GL context provider.
   gl::GLContextProvider::Shutdown();

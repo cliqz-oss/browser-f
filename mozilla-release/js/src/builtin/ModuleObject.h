@@ -26,6 +26,8 @@ class ModuleEnvironmentObject;
 class ModuleObject;
 
 namespace frontend {
+class BinaryNode;
+class ListNode;
 class ParseNode;
 class TokenStreamAnyChars;
 } /* namespace frontend */
@@ -145,11 +147,13 @@ class IndirectBindingMap
 
     template <typename Func>
     void forEachExportedName(Func func) const {
-        if (!map_)
+        if (!map_) {
             return;
+        }
 
-        for (auto r = map_->all(); !r.empty(); r.popFront())
+        for (auto r = map_->all(); !r.empty(); r.popFront()) {
             func(r.front().key());
+        }
     }
 
   private:
@@ -256,6 +260,7 @@ class ModuleObject : public NativeObject
         StatusSlot,
         EvaluationErrorSlot,
         MetaObjectSlot,
+        ScriptSourceObjectSlot,
         RequestedModulesSlot,
         ImportEntriesSlot,
         LocalExportEntriesSlot,
@@ -297,6 +302,7 @@ class ModuleObject : public NativeObject
 #endif
     void fixEnvironmentsAfterCompartmentMerge();
 
+    JSScript* maybeScript() const;
     JSScript* script() const;
     Scope* enclosingScope() const;
     ModuleEnvironmentObject& initialEnvironment() const;
@@ -306,6 +312,7 @@ class ModuleObject : public NativeObject
     bool hadEvaluationError() const;
     Value evaluationError() const;
     JSObject* metaObject() const;
+    ScriptSourceObject* scriptSourceObject() const;
     ArrayObject& requestedModules() const;
     ArrayObject& importEntries() const;
     ArrayObject& localExportEntries() const;
@@ -340,7 +347,6 @@ class ModuleObject : public NativeObject
     static void trace(JSTracer* trc, JSObject* obj);
     static void finalize(js::FreeOp* fop, JSObject* obj);
 
-    bool hasScript() const;
     bool hasImportBindings() const;
     FunctionDeclarationVector* functionDeclarations();
 };
@@ -353,9 +359,9 @@ class MOZ_STACK_CLASS ModuleBuilder
     explicit ModuleBuilder(JSContext* cx, HandleModuleObject module,
                            const frontend::TokenStreamAnyChars& tokenStream);
 
-    bool processImport(frontend::ParseNode* pn);
-    bool processExport(frontend::ParseNode* pn);
-    bool processExportFrom(frontend::ParseNode* pn);
+    bool processImport(frontend::BinaryNode* importNode);
+    bool processExport(frontend::ParseNode* exportNode);
+    bool processExportFrom(frontend::BinaryNode* exportNode);
 
     bool hasExportedName(JSAtom* name) const;
 
@@ -391,8 +397,8 @@ class MOZ_STACK_CLASS ModuleBuilder
     ImportEntryObject* importEntryFor(JSAtom* localName) const;
 
     bool processExportBinding(frontend::ParseNode* pn);
-    bool processExportArrayBinding(frontend::ParseNode* pn);
-    bool processExportObjectBinding(frontend::ParseNode* pn);
+    bool processExportArrayBinding(frontend::ListNode* array);
+    bool processExportObjectBinding(frontend::ListNode* obj);
 
     bool appendImportEntryObject(HandleImportEntryObject importEntry);
 
@@ -411,7 +417,7 @@ class MOZ_STACK_CLASS ModuleBuilder
 };
 
 JSObject*
-GetOrCreateModuleMetaObject(JSContext* cx, HandleScript script);
+GetOrCreateModuleMetaObject(JSContext* cx, HandleObject module);
 
 } // namespace js
 

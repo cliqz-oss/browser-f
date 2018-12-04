@@ -67,10 +67,6 @@ DLL_BLOCKLIST_ENTRY("babyfox.dll", ALL_VERSIONS)
 // sprotector.dll crashes, bug 957258
 DLL_BLOCKLIST_ENTRY("sprotector.dll", ALL_VERSIONS)
 
-// leave these two in always for tests
-DLL_BLOCKLIST_ENTRY("mozdllblockingtest.dll", ALL_VERSIONS)
-DLL_BLOCKLIST_ENTRY("mozdllblockingtest_versioned.dll", 0x0000000400000000ULL)
-
 // Windows Media Foundation FLAC decoder and type sniffer (bug 839031).
 DLL_BLOCKLIST_ENTRY("mfflac.dll", ALL_VERSIONS)
 
@@ -203,6 +199,15 @@ DLL_BLOCKLIST_ENTRY("dbroverlayiconbackuped.dll", MAKE_VERSION(1, 8, 0, 9))
 
 // NVIDIA nView Desktop Management causes crashes, bug 1465787
 DLL_BLOCKLIST_ENTRY("nviewh64.dll", MAKE_VERSION(6, 14, 10, 14847))
+
+#ifdef ENABLE_TESTS
+
+// DLLs used by TestDllBlocklist* gTests
+DLL_BLOCKLIST_ENTRY("testdllblocklist_matchbyname.dll", ALL_VERSIONS)
+DLL_BLOCKLIST_ENTRY("testdllblocklist_matchbyversion.dll", MAKE_VERSION(5, 5, 5, 5))
+DLL_BLOCKLIST_ENTRY("testdllblocklist_allowbyversion.dll", MAKE_VERSION(5, 5, 5, 5))
+
+#endif // ENABLE_TESTS
 
 DLL_BLOCKLIST_DEFINITIONS_END
 

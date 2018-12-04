@@ -293,14 +293,14 @@
       <button id="manageBrowserLanguagesButton"
               class="accessory-button"
               data-l10n-id="manage-browser-languages-button"
-              oncommand="gMainPane.showBrowserLanguages()"/>
+              oncommand="gMainPane.showBrowserLanguages({search: false})"/>
     </hbox>
   </vbox>
   <hbox id="confirmBrowserLanguage" class="message-bar" align="center" hidden="true">
     <image class="message-bar-icon"/>
     <hbox class="message-bar-content" align="center" flex="1">
       <description class="message-bar-description" flex="1"/>
-      <button class="message-bar-button" oncommand="gMainPane.confirmBrowserLanguageChange()"/>
+      <button class="message-bar-button" oncommand="gMainPane.confirmBrowserLanguageChange(event)"/>
     </hbox>
   </hbox>
 
@@ -613,6 +613,7 @@
           <menuitem label="5" value="5"/>
           <menuitem label="6" value="6"/>
           <menuitem label="7" value="7"/>
+          <menuitem label="8" value="8"/>
         </menupopup>
       </menulist>
     </hbox>
@@ -653,6 +654,13 @@
   <checkbox id="searchStartTyping"
             data-l10n-id="browsing-search-on-start-typing"
             preference="accessibility.typeaheadfind"/>
+  <hbox align="center" data-subcategory="cfr">
+    <checkbox id="cfrRecommendations"
+            class="tail-with-learn-more"
+            data-l10n-id="browsing-cfr-recommendations"
+            preference="browser.newtabpage.activity-stream.asrouter.userprefs.cfr"/>
+    <label id="cfrLearnMore" class="learnMore text-link" data-l10n-id="browsing-cfr-recommendations-learn-more"/>
+  </hbox>
 </groupbox>
 
 <hbox id="networkProxyCategory"

@@ -3,11 +3,11 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 <!ENTITY addons.windowTitle                   "Add-ons-Verwaltung">
 
-<!ENTITY search.placeholder                   "Alle Add-ons durchsuchen">
-
 <!ENTITY search.placeholder2                  "Auf addons.mozilla.org suchen">
+
+<!ENTITY search.placeholder3                  "Auf addons.mozilla.org suchen">
 <!ENTITY search.buttonlabel                   "Suchen">
-<!-- LOCALIZATION NOTE (search.commandKey):
+<!-- LOCALIZATION NOTE (search.commandkey):
      The search command key should match findOnCmd.commandkey from browser.dtd -->
 <!ENTITY search.commandkey                    "f">
 
@@ -16,7 +16,6 @@
 <!ENTITY listEmpty.availableUpdates.label     "Keine Updates gefunden">
 <!ENTITY listEmpty.recentUpdates.label        "Sie haben in letzter Zeit keine Add-ons aktualisiert">
 <!ENTITY listEmpty.findUpdates.label          "Nach Updates suchen">
-<!ENTITY listEmpty.search.label               "Es konnten keine übereinstimmenden Add-ons gefunden werden">
 <!ENTITY listEmpty.button.label               "Mehr über Add-ons erfahren">
 <!ENTITY installAddonFromFile.label           "Add-on aus Datei installieren…">
 <!ENTITY installAddonFromFile.accesskey       "A">
@@ -24,9 +23,6 @@
 
 <!ENTITY getThemes.description                "Wollen Sie Ihren Browser anpassen?">
 <!ENTITY getThemes.learnMore                  "Wählen Sie aus Tausenden von Themes.">
-
-<!ENTITY cmd.back.tooltip                     "Eine Seite zurück">
-<!ENTITY cmd.forward.tooltip                  "Eine Seite vor">
 
 
 <!ENTITY showUnsignedExtensions.button.label  "Einige Erweiterungen konnten nicht verifiziert werden.">
@@ -44,10 +40,13 @@
 <!ENTITY warning.updatesecurity.enable.tooltip     "Überprüfung auf Sicherheitsupdates für Add-ons aktivieren">
 
 <!-- categories / views -->
-<!ENTITY view.search.label                    "Suchen">
 <!ENTITY view.discover.label                  "Add-ons entdecken">
 <!ENTITY view.recentUpdates.label             "Zuletzt durchgeführte Updates">
 <!ENTITY view.availableUpdates.label          "Verfügbare Updates">
+
+<!ENTITY helpButton.label                      "Hilfe für Add-ons">
+<!ENTITY preferencesWin.label                  "&brandShortName;-Einstellungen">
+<!ENTITY preferencesUnix.label                 "&brandShortName;-Einstellungen">
 
 <!-- addon updates -->
 <!ENTITY updates.checkForUpdates.label        "Auf Updates überprüfen">
@@ -87,9 +86,8 @@
 <!ENTITY cmd.preferencesWin.accesskey         "E">
 <!ENTITY cmd.preferencesUnix.label            "Einstellungen">
 <!ENTITY cmd.preferencesUnix.accesskey        "E">
-<!ENTITY cmd.about.label                      "Über">
-<!ENTITY cmd.about.accesskey                  "b">
 
+<!-- addon actions -->
 <!ENTITY cmd.enableAddon.label                "Aktivieren">
 <!ENTITY cmd.enableAddon.accesskey            "A">
 <!ENTITY cmd.disableAddon.label               "Deaktivieren">
@@ -98,6 +96,7 @@
 <!ENTITY cmd.enableTheme.accesskey            "T">
 <!ENTITY cmd.disableTheme.label               "Theme ablegen">
 <!ENTITY cmd.disableTheme.accesskey           "T">
+
 <!ENTITY cmd.askToActivate.label              "Nachfragen, ob aktiviert werden soll">
 <!ENTITY cmd.askToActivate.tooltip            "Jedes Mal nachfragen, ob das Add-on aktiviert werden soll">
 <!ENTITY cmd.alwaysActivate.label             "Immer aktivieren">
@@ -107,6 +106,7 @@
 <!ENTITY cmd.stateMenu.tooltip                "Ändern, wann das Add-on verwendet wird">
 <!ENTITY cmd.installAddon.label               "Installieren">
 <!ENTITY cmd.installAddon.accesskey           "I">
+
 <!ENTITY cmd.uninstallAddon.label             "Entfernen">
 <!ENTITY cmd.uninstallAddon.accesskey         "n">
 <!ENTITY cmd.showPreferencesWin.label         "Einstellungen">
@@ -138,7 +138,6 @@ einige der besten und populärsten Add-ons zum Ausprobieren anbieten.">
 <!ENTITY detail.lastupdated.label             "Zuletzt aktualisiert">
 <!ENTITY detail.creator.label                 "Entwickler">
 <!ENTITY detail.homepage.label                "Homepage">
-<!ENTITY detail.numberOfDownloads.label       "Downloads">
 
 <!ENTITY detail.contributions.description     "Der Entwickler dieses Add-ons bittet Sie, dass Sie die Entwicklung unterstützen, indem Sie einen kleinen Betrag spenden.">
 
@@ -169,26 +168,12 @@ einige der besten und populärsten Add-ons zum Ausprobieren anbieten.">
 
 <!-- download/install progress -->
 <!ENTITY progress.pause.tooltip               "Pause">
+
+<!-- download/install progress -->
 <!ENTITY progress.cancel.tooltip              "Abbrechen">
 
-
-<!-- list sorting -->
-<!ENTITY sort.name.label                      "Name">
-<!ENTITY sort.name.tooltip                    "Nach Name sortieren">
-<!ENTITY sort.dateUpdated.label               "Zuletzt aktualisiert">
-<!ENTITY sort.dateUpdated.tooltip             "Nach Aktualisierungsdatum sortieren">
-<!ENTITY sort.relevance.label                 "Bester Treffer">
-<!ENTITY sort.relevance.tooltip               "Nach Relevanz sortieren">
-<!ENTITY sort.price.label                     "Preis">
-<!ENTITY sort.price.tooltip                   "Nach Preis sortieren">
-
-<!ENTITY search.filter2.label                 "Suchen:">
-<!ENTITY search.filter2.installed.label       "Meine Add-ons">
-<!ENTITY search.filter2.installed.tooltip     "Installierte Add-ons anzeigen">
-<!ENTITY search.filter2.available.label       "Verfügbare Add-ons">
-<!ENTITY search.filter2.available.tooltip     "Zur Installation verfügbare Add-ons anzeigen">
-
 <!ENTITY addon.homepage                       "Homepage">
+
 <!ENTITY addon.details.label                  "Mehr">
 <!ENTITY addon.details.tooltip                "Mehr Details über dieses Add-on anzeigen">
 <!ENTITY addon.unknownDate                    "Unbekannt">
@@ -210,6 +195,7 @@ einige der besten und populärsten Add-ons zum Ausprobieren anbieten.">
 <!ENTITY addon.undoRemove.label               "Rückgängig">
 <!ENTITY addon.undoRemove.tooltip             "Dieses Add-on installiert lassen">
 <!ENTITY addon.restartNow.label               "Jetzt neu starten">
+
 <!ENTITY addon.install.label                  "Installieren">
 <!ENTITY addon.install.tooltip                "Dieses Add-on installieren">
 <!ENTITY addon.updateNow.label                "Jetzt aktualisieren">
@@ -229,17 +215,6 @@ einige der besten und populärsten Add-ons zum Ausprobieren anbieten.">
 <!ENTITY eula.accept                          "Akzeptieren und installieren…">
 
 <!ENTITY settings.path.button.label           "Durchsuchen…">
-
-<!-- LOCALIZATION NOTE (experiment.info.label): The strings related to
-     experiments are present on the "Experiments" tab of the add-ons manager.
-     This tab won't be displayed unless an Experiment add-on is installed.
-     Install https://people.mozilla.org/~gszorc/dummy-experiment-addon.xpi
-     to cause this tab to appear. -->
-<!ENTITY experiment.info.label "Telemetrie darf von Zeit zu Zeit Experimente installieren und laufen lassen.">
-<!ENTITY experiment.info.learnmore "Weitere Informationen">
-<!ENTITY experiment.info.learnmore.accesskey "W">
-<!ENTITY experiment.info.changetelemetry "Telemetrie-Einstellungen">
-<!ENTITY experiment.info.changetelemetry.accesskey "T">
 
 <!ENTITY setting.learnmore "Weitere Informationen…">
 

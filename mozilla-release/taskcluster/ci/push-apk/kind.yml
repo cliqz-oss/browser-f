@@ -21,42 +21,29 @@ jobs:
       shipping-phase: ship
       shipping-product: fennec
       worker-type:
-         by-project:
-            mozilla-central: scriptworker-prov-v1/pushapk-v1
-            mozilla-beta: scriptworker-prov-v1/pushapk-v1
-            mozilla-release: scriptworker-prov-v1/pushapk-v1
-            default: scriptworker-prov-v1/dep-pushapk
+         by-release-level:
+            production: scriptworker-prov-v1/pushapk-v1
+            staging: scriptworker-prov-v1/dep-pushapk
       worker:
          upstream-artifacts:  # see transforms
          google-play-track:
             # See https://github.com/mozilla-releng/pushapkscript#aurora-beta-release-vs-alpha-beta-production
-            by-project:
-               mozilla-central: 'beta'
-               mozilla-beta: 'production'
-               mozilla-release: 'rollout'
-               default: 'invalid'
-         rc-google-play-track:
-            by-project:
-               mozilla-release: 'rollout'
-               birch: 'rollout'
-               default: 'invalid'
+            by-release-type:
+               nightly: 'beta'
+               beta: 'production'
+               release(-rc)?: 'rollout'
+               default: 'internal'
          implementation: push-apk
          commit:
-            by-project:
-               mozilla-central: true
-               mozilla-beta: true
-               mozilla-release: true
-               default: false
+            by-release-level:
+               production: true
+               staging: false
          rollout-percentage:
-            by-project:
+            by-release-type:
                # XXX Please make sure to change PUSH_APK_GOOGLE_PLAY_TRACT to
                # 'rollout' if you add a new supported project
-               mozilla-release: 10
-               default: null
-         rc-rollout-percentage:
-            by-project:
-               mozilla-release: 5
-               birch: 5
+               release: 10
+               release-rc: 5
                default: null
       requires: all-resolved
       scopes:  # see transforms

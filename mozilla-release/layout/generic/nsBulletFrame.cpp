@@ -241,7 +241,7 @@ public:
     MOZ_ASSERT(IsTextType());
   }
 
-  bool
+  ImgDrawResult
   CreateWebRenderCommands(nsDisplayItem* aItem,
                           wr::DisplayListBuilder& aBuilder,
                           wr::IpcResourceUpdateQueue& aResources,
@@ -291,7 +291,7 @@ public:
   IsImageContainerAvailable(layers::LayerManager* aManager, uint32_t aFlags);
 
 private:
-  bool
+  ImgDrawResult
   CreateWebRenderCommandsForImage(nsDisplayItem* aItem,
                                   wr::DisplayListBuilder& aBuilder,
                                   wr::IpcResourceUpdateQueue& aResources,
@@ -349,7 +349,7 @@ private:
   int32_t mListStyleType;
 };
 
-bool
+ImgDrawResult
 BulletRenderer::CreateWebRenderCommands(nsDisplayItem* aItem,
                                         wr::DisplayListBuilder& aBuilder,
                                         wr::IpcResourceUpdateQueue& aResources,
@@ -360,14 +360,19 @@ BulletRenderer::CreateWebRenderCommands(nsDisplayItem* aItem,
   if (IsImageType()) {
     return CreateWebRenderCommandsForImage(aItem, aBuilder, aResources,
                                     aSc, aManager, aDisplayListBuilder);
-  } else if (IsPathType()) {
-    return CreateWebRenderCommandsForPath(aItem, aBuilder, aResources,
-                                   aSc, aManager, aDisplayListBuilder);
+  }
+
+  bool success;
+  if (IsPathType()) {
+    success = CreateWebRenderCommandsForPath(aItem, aBuilder, aResources, aSc,
+                                             aManager, aDisplayListBuilder);
   } else {
     MOZ_ASSERT(IsTextType());
-    return CreateWebRenderCommandsForText(aItem, aBuilder, aResources, aSc,
-                                          aManager, aDisplayListBuilder);
+    success = CreateWebRenderCommandsForText(aItem, aBuilder, aResources, aSc,
+                                             aManager, aDisplayListBuilder);
   }
+
+  return success ? ImgDrawResult::SUCCESS : ImgDrawResult::NOT_SUPPORTED;
 }
 
 ImgDrawResult
@@ -454,7 +459,7 @@ BulletRenderer::IsImageContainerAvailable(layers::LayerManager* aManager, uint32
   return mImage->IsImageContainerAvailable(aManager, aFlags);
 }
 
-bool
+ImgDrawResult
 BulletRenderer::CreateWebRenderCommandsForImage(nsDisplayItem* aItem,
                                                 wr::DisplayListBuilder& aBuilder,
                                                 wr::IpcResourceUpdateQueue& aResources,
@@ -479,28 +484,30 @@ BulletRenderer::CreateWebRenderCommandsForImage(nsDisplayItem* aItem,
   gfx::IntSize decodeSize =
     nsLayoutUtils::ComputeImageContainerDrawingParameters(mImage, aItem->Frame(), destRect,
                                                           aSc, flags, svgContext);
-  RefPtr<layers::ImageContainer> container =
-    mImage->GetImageContainerAtSize(aManager, decodeSize, svgContext, flags);
+
+  RefPtr<layers::ImageContainer> container;
+  ImgDrawResult drawResult =
+    mImage->GetImageContainerAtSize(aManager, decodeSize, svgContext,
+                                    flags, getter_AddRefs(container));
   if (!container) {
-    return false;
+    return drawResult;
   }
 
+  mozilla::wr::ImageRendering rendering = wr::ToImageRendering(
+    nsLayoutUtils::GetSamplingFilterForFrame(aItem->Frame()));
   gfx::IntSize size;
-  Maybe<wr::ImageKey> key = aManager->CommandBuilder().CreateImageKey(aItem, container, aBuilder, aResources,
-                                                                      aSc, size, Nothing());
+  Maybe<wr::ImageKey> key = aManager->CommandBuilder().CreateImageKey(
+    aItem, container, aBuilder, aResources, rendering, aSc, size, Nothing());
   if (key.isNothing()) {
-    return true;  // Nothing to do
+    return drawResult;
   }
 
   wr::LayoutRect dest = wr::ToRoundedLayoutRect(destRect);
 
-  aBuilder.PushImage(dest,
-                     dest,
-                     !aItem->BackfaceIsHidden(),
-                     wr::ImageRendering::Auto,
-                     key.value());
+  aBuilder.PushImage(
+    dest, dest, !aItem->BackfaceIsHidden(), rendering, key.value());
 
-  return true;
+  return drawResult;
 }
 
 bool
@@ -528,11 +535,8 @@ BulletRenderer::CreateWebRenderCommandsForPath(nsDisplayItem* aItem,
       return true;
     }
     case NS_STYLE_LIST_STYLE_DISC: {
-      nsTArray<wr::ComplexClipRegion> clips;
-      clips.AppendElement(wr::ToComplexClipRegion(
-        RoundedRect(mPathRect.ToUnknownRect(),
-                    RectCornerRadii(dest.size.width / 2.0))
-      ));
+      AutoTArray<wr::ComplexClipRegion, 1> clips;
+      clips.AppendElement(wr::SimpleRadii(dest, dest.size.width / 2));
       auto clipId = aBuilder.DefineClip(Nothing(), dest, &clips, nullptr);
       aBuilder.PushClip(clipId);
       aBuilder.PushRect(dest, dest, isBackfaceVisible, color);
@@ -669,8 +673,15 @@ nsDisplayBullet::CreateWebRenderCommands(wr::DisplayListBuilder& aBuilder,
     return false;
   }
 
-  return br->CreateWebRenderCommands(this, aBuilder, aResources, aSc,
-                                     aManager, aDisplayListBuilder);
+  ImgDrawResult drawResult =
+    br->CreateWebRenderCommands(this, aBuilder, aResources, aSc,
+                                aManager, aDisplayListBuilder);
+  if (drawResult == ImgDrawResult::NOT_SUPPORTED) {
+    return false;
+  }
+
+  nsDisplayBulletGeometry::UpdateDrawResult(this, drawResult);
+  return true;
 }
 
 void nsDisplayBullet::Paint(nsDisplayListBuilder* aBuilder,
@@ -1081,7 +1092,7 @@ nsBulletFrame::GetMinISize(gfxContext *aRenderingContext)
 {
   WritingMode wm = GetWritingMode();
   ReflowOutput reflowOutput(wm);
-  DISPLAY_MIN_WIDTH(this, reflowOutput.ISize(wm));
+  DISPLAY_MIN_INLINE_SIZE(this, reflowOutput.ISize(wm));
   LogicalMargin padding(wm);
   GetDesiredSize(PresContext(), aRenderingContext, reflowOutput, 1.0f, &padding);
   reflowOutput.ISize(wm) += padding.IStartEnd(wm);
@@ -1093,7 +1104,7 @@ nsBulletFrame::GetPrefISize(gfxContext *aRenderingContext)
 {
   WritingMode wm = GetWritingMode();
   ReflowOutput metrics(wm);
-  DISPLAY_PREF_WIDTH(this, metrics.ISize(wm));
+  DISPLAY_PREF_INLINE_SIZE(this, metrics.ISize(wm));
   LogicalMargin padding(wm);
   GetDesiredSize(PresContext(), aRenderingContext, metrics, 1.0f, &padding);
   metrics.ISize(wm) += padding.IStartEnd(wm);
@@ -1175,7 +1186,8 @@ nsBulletFrame::Notify(imgIRequest *aRequest, int32_t aType, const nsIntRect* aDa
 
       // Request a decode at that size.
       container->RequestDecodeForSize(IntSize(width, height),
-                                      imgIContainer::DECODE_FLAGS_DEFAULT);
+                                      imgIContainer::DECODE_FLAGS_DEFAULT |
+                                      imgIContainer::FLAG_HIGH_QUALITY_SCALING);
     }
 
     InvalidateFrame();

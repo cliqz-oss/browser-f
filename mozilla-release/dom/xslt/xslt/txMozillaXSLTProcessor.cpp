@@ -38,8 +38,6 @@
 using namespace mozilla;
 using namespace mozilla::dom;
 
-static NS_DEFINE_CID(kXMLDocumentCID, NS_XMLDOCUMENT_CID);
-
 /**
  * Output Handler Factories
  */
@@ -780,7 +778,6 @@ txMozillaXSLTProcessor::SetParameter(const nsAString& aNamespaceURI,
         // String
         case nsIDataType::VTYPE_CHAR:
         case nsIDataType::VTYPE_WCHAR:
-        case nsIDataType::VTYPE_DOMSTRING:
         case nsIDataType::VTYPE_CHAR_STR:
         case nsIDataType::VTYPE_WCHAR_STR:
         case nsIDataType::VTYPE_STRING_SIZE_IS:
@@ -1108,9 +1105,10 @@ txMozillaXSLTProcessor::reportError(nsresult aResult,
 void
 txMozillaXSLTProcessor::notifyError()
 {
-    nsCOMPtr<nsIDocument> document = do_CreateInstance(kXMLDocumentCID);
-    if (!document) {
-        return;
+    nsCOMPtr<nsIDocument> document;
+    {
+      nsresult rv = NS_NewXMLDocument(getter_AddRefs(document));
+      NS_ENSURE_SUCCESS_VOID(rv);
     }
 
     URIUtils::ResetWithSource(document, mSource);
@@ -1358,7 +1356,6 @@ txVariable::Convert(nsIVariant *aValue, txAExprResult** aResult)
         // String
         case nsIDataType::VTYPE_CHAR:
         case nsIDataType::VTYPE_WCHAR:
-        case nsIDataType::VTYPE_DOMSTRING:
         case nsIDataType::VTYPE_CHAR_STR:
         case nsIDataType::VTYPE_WCHAR_STR:
         case nsIDataType::VTYPE_STRING_SIZE_IS:

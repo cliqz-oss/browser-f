@@ -95,8 +95,8 @@ static const nsAttrValue::EnumTable* kFormDefaultAutocomplete = &kFormAutocomple
 bool HTMLFormElement::gFirstFormSubmitted = false;
 bool HTMLFormElement::gPasswordManagerInitialized = false;
 
-HTMLFormElement::HTMLFormElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-  : nsGenericHTMLElement(aNodeInfo),
+HTMLFormElement::HTMLFormElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
+  : nsGenericHTMLElement(std::move(aNodeInfo)),
     mControls(new HTMLFormControlsCollection(this)),
     mSelectedRadioButtons(2),
     mRequiredRadioButtonCounts(2),
@@ -2131,7 +2131,9 @@ HTMLFormElement::OnStatusChange(nsIWebProgress* aWebProgress,
 NS_IMETHODIMP
 HTMLFormElement::OnSecurityChange(nsIWebProgress* aWebProgress,
                                   nsIRequest* aRequest,
-                                  uint32_t state)
+                                  uint32_t aOldState,
+                                  uint32_t aState,
+                                  const nsAString& aContentBlockingLogJSON)
 {
   MOZ_ASSERT_UNREACHABLE("notification excluded in AddProgressListener(...)");
   return NS_OK;

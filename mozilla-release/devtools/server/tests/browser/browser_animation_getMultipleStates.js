@@ -8,12 +8,12 @@
 // multiple animations.
 
 add_task(async function() {
-  const {client, walker, animations} =
+  const {target, walker, animations} =
     await initAnimationsFrontForUrl(MAIN_DOMAIN + "animation.html");
 
   await playerHasAnInitialState(walker, animations);
 
-  await client.close();
+  await target.destroy();
   gBrowser.removeCurrentTab();
 });
 
@@ -43,7 +43,6 @@ async function getAnimationStateForNode(walker, animations, selector, playerInde
   const node = await walker.querySelector(walker.rootNode, selector);
   const players = await animations.getAnimationPlayersForNode(node);
   const player = players[playerIndex];
-  await player.ready();
   const state = await player.getCurrentState();
   return state;
 }

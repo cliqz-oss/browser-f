@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{FontInstanceFlags, FontKey, FontRenderMode};
+use api::{FontInstanceFlags, FontKey, FontRenderMode, FontVariation};
 use api::{ColorU, GlyphDimensions};
 use dwrote;
 use gamma_lut::ColorLut;
@@ -32,7 +32,7 @@ lazy_static! {
 
 pub struct FontContext {
     fonts: FastHashMap<FontKey, dwrote::FontFace>,
-    simulations: FastHashMap<(FontKey, dwrote::DWRITE_FONT_SIMULATIONS), dwrote::FontFace>,
+    variations: FastHashMap<(FontKey, dwrote::DWRITE_FONT_SIMULATIONS, Vec<FontVariation>), dwrote::FontFace>,
     #[cfg(not(feature = "pathfinder"))]
     gamma_luts: FastHashMap<(u16, u16), GammaLut>,
 }
@@ -100,7 +100,7 @@ impl FontContext {
     pub fn new() -> Result<FontContext, ResourceCacheError> {
         Ok(FontContext {
             fonts: FastHashMap::default(),
-            simulations: FastHashMap::default(),
+            variations: FastHashMap::default(),
             #[cfg(not(feature = "pathfinder"))]
             gamma_luts: FastHashMap::default(),
         })
@@ -115,7 +115,7 @@ impl FontContext {
             return;
         }
 
-        if let Some(font_file) = dwrote::FontFile::new_from_data(&**data) {
+        if let Some(font_file) = dwrote::FontFile::new_from_data(data) {
             let face = font_file.create_face(index, dwrote::DWRITE_FONT_SIMULATIONS_NONE);
             self.fonts.insert(*font_key, face);
         } else {
@@ -131,9 +131,20 @@ impl FontContext {
         }
 
         let system_fc = dwrote::FontCollection::system();
-        let font = match system_fc.get_font_from_descriptor(&font_handle) {
-            Some(font) => font,
-            None => { panic!("missing descriptor {:?}", font_handle) }
+        // A version of get_font_from_descriptor() that panics early to help with bug 1455848
+        let font = if let Some(family) = system_fc.get_font_family_by_name(&font_handle.family_name) {
+            let font = family.get_first_matching_font(font_handle.weight, font_handle.stretch, font_handle.style);
+            // Exact matches only here
+            if font.weight() == font_handle.weight &&
+                font.stretch() == font_handle.stretch &&
+                font.style() == font_handle.style
+            {
+                font
+            } else {
+                panic!("font mismatch for descriptor {:?} {:?}", font_handle, font.to_descriptor())
+            }
+        } else {
+            panic!("missing font family for descriptor {:?}", font_handle)
         };
         let face = font.create_font_face();
         self.fonts.insert(*font_key, face);
@@ -141,7 +152,19 @@ impl FontContext {
 
     pub fn delete_font(&mut self, font_key: &FontKey) {
         if let Some(_) = self.fonts.remove(font_key) {
-            self.simulations.retain(|k, _| k.0 != *font_key);
+            self.variations.retain(|k, _| k.0 != *font_key);
+        }
+    }
+
+    pub fn delete_font_instance(&mut self, instance: &FontInstance) {
+        // Ensure we don't keep around excessive amounts of stale variations.
+        if !instance.variations.is_empty() {
+            let sims = if instance.flags.contains(FontInstanceFlags::SYNTHETIC_BOLD) {
+                dwrote::DWRITE_FONT_SIMULATIONS_BOLD
+            } else {
+                dwrote::DWRITE_FONT_SIMULATIONS_NONE
+            };
+            self.variations.remove(&(instance.font_key, sims, instance.variations.clone()));
         }
     }
 
@@ -167,14 +190,33 @@ impl FontContext {
         &mut self,
         font: &FontInstance,
     ) -> &dwrote::FontFace {
-        if !font.flags.contains(FontInstanceFlags::SYNTHETIC_BOLD) {
+        if !font.flags.contains(FontInstanceFlags::SYNTHETIC_BOLD) &&
+           font.variations.is_empty() {
             return self.fonts.get(&font.font_key).unwrap();
         }
-        let sims = dwrote::DWRITE_FONT_SIMULATIONS_BOLD;
-        match self.simulations.entry((font.font_key, sims)) {
+        let sims = if font.flags.contains(FontInstanceFlags::SYNTHETIC_BOLD) {
+            dwrote::DWRITE_FONT_SIMULATIONS_BOLD
+        } else {
+            dwrote::DWRITE_FONT_SIMULATIONS_NONE
+        };
+        match self.variations.entry((font.font_key, sims, font.variations.clone())) {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
                 let normal_face = self.fonts.get(&font.font_key).unwrap();
+                if !font.variations.is_empty() {
+                    if let Some(var_face) = normal_face.create_font_face_with_variations(
+                        sims,
+                        &font.variations.iter().map(|var| {
+                            dwrote::DWRITE_FONT_AXIS_VALUE {
+                                // OpenType tags are big-endian, but DWrite wants little-endian.
+                                axisTag: var.tag.swap_bytes(),
+                                value: var.value,
+                            }
+                        }).collect::<Vec<_>>(),
+                    ) {
+                        return entry.insert(var_face);
+                    }
+                }
                 entry.insert(normal_face.create_font_face_with_simulations(sims))
             }
         }

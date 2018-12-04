@@ -28,18 +28,18 @@ TestBulkActor.prototype = {
     Assert.equal(length, really_long().length);
 
     return {
-      allDone: true
+      allDone: true,
     };
-  }
+  },
 
 };
 
 TestBulkActor.prototype.requestTypes = {
-  "jsonReply": TestBulkActor.prototype.jsonReply
+  "jsonReply": TestBulkActor.prototype.jsonReply,
 };
 
 function add_test_bulk_actor() {
-  DebuggerServer.addGlobalActor({
+  ActorRegistry.addGlobalActor({
     constructorName: "TestBulkActor",
     constructorFun: TestBulkActor,
   }, "testBulk");
@@ -70,7 +70,7 @@ function json_reply(client, response) {
   const request = client.startBulkRequest({
     actor: response.testBulk,
     type: "jsonReply",
-    length: reallyLong.length
+    length: reallyLong.length,
   });
 
   // Send bulk data to server

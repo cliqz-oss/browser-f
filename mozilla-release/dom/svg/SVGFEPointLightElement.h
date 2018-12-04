@@ -23,14 +23,15 @@ class SVGFEPointLightElement : public SVGFEPointLightElementBase
   friend nsresult (::NS_NewSVGFEPointLightElement(nsIContent **aResult,
                                                   already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo));
 protected:
-  explicit SVGFEPointLightElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-    : SVGFEPointLightElementBase(aNodeInfo)
+  explicit SVGFEPointLightElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
+    : SVGFEPointLightElementBase(std::move(aNodeInfo))
   {
   }
   virtual JSObject* WrapNode(JSContext *cx, JS::Handle<JSObject*> aGivenProto) override;
 
 public:
-  virtual AttributeMap ComputeLightAttributes(nsSVGFilterInstance* aInstance) override;
+  virtual mozilla::gfx::LightType ComputeLightAttributes(nsSVGFilterInstance* aInstance,
+                                                         nsTArray<float>& aFloatAttributes) override;
   virtual bool AttributeAffectsRendering(
           int32_t aNameSpaceID, nsAtom* aAttribute) const override;
 

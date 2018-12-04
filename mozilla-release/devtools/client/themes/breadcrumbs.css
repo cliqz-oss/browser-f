@@ -28,6 +28,7 @@
   list-style-image: none;
   margin: 0;
   padding: 0;
+  visibility: collapse;
 }
 
 .scrollbutton-up > .toolbarbutton-icon,
@@ -104,10 +105,6 @@
 
 :root[platform="win"] .breadcrumbs-widget-item:-moz-focusring > .button-box {
   border-width: 0;
-}
-
-#debugger-toolbar .breadcrumbs-widget-item::before {
-  --background-color: var(--theme-toolbar-background);
 }
 
 .breadcrumbs-widget-item:first-child::before {

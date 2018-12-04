@@ -321,7 +321,7 @@ class FunctionBox : public ObjectBox, public SharedContext
     void initWithEnclosingScope(Scope* enclosingScope);
 
   public:
-    ParseNode*      functionNode;           /* back pointer used by asm.js for error messages */
+    CodeNode*      functionNode;            /* back pointer used by asm.js for error messages */
     uint32_t        bufStart;
     uint32_t        bufEnd;
     uint32_t        startLine;
@@ -456,8 +456,9 @@ class FunctionBox : public ObjectBox, public SharedContext
         // If this FunctionBox is a lazy child of the function we're actually
         // compiling, then it is not the outermost SharedContext, so this
         // method should return nullptr."
-        if (isLazyFunctionWithoutEnclosingScope())
+        if (isLazyFunctionWithoutEnclosingScope()) {
             return nullptr;
+        }
 
         return enclosingScope_;
     }

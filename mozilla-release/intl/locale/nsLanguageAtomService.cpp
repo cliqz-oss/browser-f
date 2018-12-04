@@ -65,8 +65,8 @@ nsLanguageAtomService::GetLocaleLanguage()
   do {
     if (!mLocaleLanguage) {
       AutoTArray<nsCString, 10> regionalPrefsLocales;
-      if (OSPreferences::GetInstance()->GetRegionalPrefsLocales(
-                                          regionalPrefsLocales)) {
+      if (NS_SUCCEEDED(OSPreferences::GetInstance()->GetRegionalPrefsLocales(
+            regionalPrefsLocales))) {
         // use lowercase for all language atoms
         ToLowerCase(regionalPrefsLocales[0]);
         mLocaleLanguage = NS_Atomize(regionalPrefsLocales[0]);
@@ -96,7 +96,7 @@ nsLanguageAtomService::GetLanguageGroup(nsAtom *aLanguage, bool* aNeedsToCache)
     RefPtr<nsAtom> uncached = GetUncachedLanguageGroup(aLanguage);
     retVal = uncached.get();
 
-    AssertIsMainThreadOrServoLangFontPrefsCacheLocked();
+    AssertIsMainThreadOrServoFontMetricsLocked();
     // The hashtable will keep an owning reference to the atom
     mLangToGroup.Put(aLanguage, uncached);
   }

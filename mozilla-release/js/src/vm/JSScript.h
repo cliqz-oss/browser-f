@@ -12,11 +12,19 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Maybe.h"
+#include "mozilla/MaybeOneOf.h"
 #include "mozilla/MemoryReporting.h"
+#include "mozilla/Span.h"
+#include "mozilla/UniquePtr.h"
+#include "mozilla/Utf8.h"
 #include "mozilla/Variant.h"
+
+#include <type_traits> // std::is_same
+#include <utility> // std::move
 
 #include "jstypes.h"
 
+#include "frontend/BinSourceRuntimeSupport.h"
 #include "frontend/NameAnalysisTypes.h"
 #include "gc/Barrier.h"
 #include "gc/Rooting.h"
@@ -24,6 +32,7 @@
 #include "js/CompileOptions.h"
 #include "js/UbiNode.h"
 #include "js/UniquePtr.h"
+#include "js/Utility.h"
 #include "vm/BytecodeUtil.h"
 #include "vm/JSAtom.h"
 #include "vm/NativeObject.h"
@@ -49,6 +58,8 @@ namespace jit {
 
 # define BASELINE_DISABLED_SCRIPT ((js::jit::BaselineScript*)0x1)
 
+class AutoKeepTypeScripts;
+class AutoSweepTypeScript;
 class BreakpointSite;
 class Debugger;
 class LazyScript;
@@ -56,6 +67,7 @@ class ModuleObject;
 class RegExpObject;
 class SourceCompressionTask;
 class Shape;
+class TypeScript;
 
 namespace frontend {
     struct BytecodeEmitter;
@@ -290,17 +302,17 @@ class ScriptSource;
 
 struct ScriptSourceChunk
 {
-    ScriptSource* ss;
-    uint32_t chunk;
+    ScriptSource* ss = nullptr;
+    uint32_t chunk = 0;
 
-    ScriptSourceChunk()
-      : ss(nullptr), chunk(0)
-    {}
+    ScriptSourceChunk() = default;
+
     ScriptSourceChunk(ScriptSource* ss, uint32_t chunk)
       : ss(ss), chunk(chunk)
     {
-        MOZ_ASSERT(valid());;
+        MOZ_ASSERT(valid());
     }
+
     bool valid() const { return ss != nullptr; }
 
     bool operator==(const ScriptSourceChunk& other) const {
@@ -320,40 +332,103 @@ struct ScriptSourceChunkHasher
     }
 };
 
+template<typename Unit>
+using EntryUnits = mozilla::UniquePtr<Unit[], JS::FreePolicy>;
+
+// The uncompressed source cache contains *either* UTF-8 source data *or*
+// UTF-16 source data.  ScriptSourceChunk implies a ScriptSource that
+// contains either UTF-8 data or UTF-16 data, so the nature of the key to
+// Map below indicates how each SourceData ought to be interpreted.
+using SourceData = mozilla::UniquePtr<void, JS::FreePolicy>;
+
+template<typename Unit>
+inline SourceData
+ToSourceData(EntryUnits<Unit> chars)
+{
+    static_assert(std::is_same<SourceData::DeleterType,
+                               typename EntryUnits<Unit>::DeleterType>::value,
+                  "EntryUnits and SourceData must share the same deleter "
+                  "type, that need not know the type of the data being freed, "
+                  "for the upcast below to be safe");
+    return SourceData(chars.release());
+}
+
 class UncompressedSourceCache
 {
-    typedef HashMap<ScriptSourceChunk,
-                    UniqueTwoByteChars,
-                    ScriptSourceChunkHasher,
-                    SystemAllocPolicy> Map;
+    using Map = HashMap<ScriptSourceChunk,
+                        SourceData,
+                        ScriptSourceChunkHasher,
+                        SystemAllocPolicy>;
 
   public:
     // Hold an entry in the source data cache and prevent it from being purged on GC.
     class AutoHoldEntry
     {
-        UncompressedSourceCache* cache_;
-        ScriptSourceChunk sourceChunk_;
-        UniqueTwoByteChars charsToFree_;
+        UncompressedSourceCache* cache_ = nullptr;
+        ScriptSourceChunk sourceChunk_ = {};
+        SourceData data_ = nullptr;
+
       public:
-        explicit AutoHoldEntry();
-        ~AutoHoldEntry();
-        void holdChars(UniqueTwoByteChars chars);
+        explicit AutoHoldEntry() = default;
+
+        ~AutoHoldEntry() {
+            if (cache_) {
+                MOZ_ASSERT(sourceChunk_.valid());
+                cache_->releaseEntry(*this);
+            }
+        }
+
+        template<typename Unit>
+        void holdUnits(EntryUnits<Unit> units) {
+            MOZ_ASSERT(!cache_);
+            MOZ_ASSERT(!sourceChunk_.valid());
+            MOZ_ASSERT(!data_);
+
+            data_ = ToSourceData(std::move(units));
+        }
+
       private:
-        void holdEntry(UncompressedSourceCache* cache, const ScriptSourceChunk& sourceChunk);
-        void deferDelete(UniqueTwoByteChars chars);
+        void holdEntry(UncompressedSourceCache* cache, const ScriptSourceChunk& sourceChunk) {
+            // Initialise the holder for a specific cache and script source.
+            // This will hold on to the cached source chars in the event that
+            // the cache is purged.
+            MOZ_ASSERT(!cache_);
+            MOZ_ASSERT(!sourceChunk_.valid());
+            MOZ_ASSERT(!data_);
+
+            cache_ = cache;
+            sourceChunk_ = sourceChunk;
+        }
+
+        void deferDelete(SourceData data) {
+            // Take ownership of source chars now the cache is being purged. Remove our
+            // reference to the ScriptSource which might soon be destroyed.
+            MOZ_ASSERT(cache_);
+            MOZ_ASSERT(sourceChunk_.valid());
+            MOZ_ASSERT(!data_);
+
+            cache_ = nullptr;
+            sourceChunk_ = ScriptSourceChunk();
+
+            data_ = std::move(data);
+        }
+
+
         const ScriptSourceChunk& sourceChunk() const { return sourceChunk_; }
         friend class UncompressedSourceCache;
     };
 
   private:
-    UniquePtr<Map> map_;
-    AutoHoldEntry* holder_;
+    UniquePtr<Map> map_ = nullptr;
+    AutoHoldEntry* holder_ = nullptr;
 
   public:
-    UncompressedSourceCache() : holder_(nullptr) {}
+    UncompressedSourceCache() = default;
 
-    const char16_t* lookup(const ScriptSourceChunk& ssc, AutoHoldEntry& asp);
-    bool put(const ScriptSourceChunk& ssc, UniqueTwoByteChars chars, AutoHoldEntry& asp);
+    template<typename Unit>
+    const Unit* lookup(const ScriptSourceChunk& ssc, AutoHoldEntry& asp);
+
+    bool put(const ScriptSourceChunk& ssc, SourceData data, AutoHoldEntry& asp);
 
     void purge();
 
@@ -364,33 +439,95 @@ class UncompressedSourceCache
     void releaseEntry(AutoHoldEntry& holder);
 };
 
+template<typename Unit>
+struct SourceTypeTraits;
+
+template<>
+struct SourceTypeTraits<mozilla::Utf8Unit>
+{
+    using CharT = char;
+    using SharedImmutableString = js::SharedImmutableString;
+
+    static const mozilla::Utf8Unit* units(const SharedImmutableString& string) {
+        // Casting |char| data to |Utf8Unit| is safe because |Utf8Unit|
+        // contains a |char|.  See the long comment in |Utf8Unit|'s definition.
+        return reinterpret_cast<const mozilla::Utf8Unit*>(string.chars());
+    }
+
+    static char* toString(const mozilla::Utf8Unit* units) {
+        auto asUnsigned = const_cast<unsigned char*>(mozilla::Utf8AsUnsignedChars(units));
+        return reinterpret_cast<char*>(asUnsigned);
+    }
+
+    static UniqueChars toCacheable(EntryUnits<mozilla::Utf8Unit> str) {
+        // The cache only stores strings of |char| or |char16_t|, and right now
+        // it seems best not to gunk up the cache with |Utf8Unit| too.  So
+        // cache |Utf8Unit| strings by interpreting them as |char| strings.
+        char* chars = toString(str.release());
+        return UniqueChars(chars);
+    }
+};
+
+template<>
+struct SourceTypeTraits<char16_t>
+{
+    using CharT = char16_t;
+    using SharedImmutableString = js::SharedImmutableTwoByteString;
+
+    static const char16_t* units(const SharedImmutableString& string) {
+        return string.chars();
+    }
+
+    static char16_t* toString(const char16_t* units) {
+        return const_cast<char16_t*>(units);
+    }
+
+    static UniqueTwoByteChars toCacheable(EntryUnits<char16_t> str) {
+        return UniqueTwoByteChars(std::move(str));
+    }
+};
+
 class ScriptSource
 {
     friend class SourceCompressionTask;
 
+    class PinnedUnitsBase
+    {
+      protected:
+        PinnedUnitsBase** stack_ = nullptr;
+        PinnedUnitsBase* prev_ = nullptr;
+
+        ScriptSource* source_;
+
+        explicit PinnedUnitsBase(ScriptSource* source)
+          : source_(source)
+        {}
+    };
+
   public:
     // Any users that wish to manipulate the char buffer of the ScriptSource
-    // needs to do so via PinnedChars for GC safety. A GC may compress
+    // needs to do so via PinnedUnits for GC safety. A GC may compress
     // ScriptSources. If the source were initially uncompressed, then any raw
     // pointers to the char buffer would now point to the freed, uncompressed
     // chars. This is analogous to Rooted.
-    class PinnedChars
+    template<typename Unit>
+    class PinnedUnits : public PinnedUnitsBase
     {
-        PinnedChars** stack_;
-        PinnedChars* prev_;
-
-        ScriptSource* source_;
-        const char16_t* chars_;
+        const Unit* units_;
 
       public:
-        PinnedChars(JSContext* cx, ScriptSource* source,
+        PinnedUnits(JSContext* cx, ScriptSource* source,
                     UncompressedSourceCache::AutoHoldEntry& holder,
                     size_t begin, size_t len);
 
-        ~PinnedChars();
+        ~PinnedUnits();
 
-        const char16_t* get() const {
-            return chars_;
+        const Unit* get() const {
+            return units_;
+        }
+
+        const typename SourceTypeTraits<Unit>::CharT* asChars() const {
+            return SourceTypeTraits<Unit>::toString(get());
         }
     };
 
@@ -403,37 +540,62 @@ class ScriptSource
     // on the main thread.
 
     // Indicate which field in the |data| union is active.
-
     struct Missing { };
 
-    struct Uncompressed
+    template<typename Unit>
+    class Uncompressed
     {
-        SharedImmutableTwoByteString string;
+        typename SourceTypeTraits<Unit>::SharedImmutableString string_;
 
-        explicit Uncompressed(SharedImmutableTwoByteString&& str)
+
+      public:
+        explicit Uncompressed(typename SourceTypeTraits<Unit>::SharedImmutableString str)
+          : string_(std::move(str))
+        {}
+
+        const Unit* units() const {
+            return SourceTypeTraits<Unit>::units(string_);
+        }
+
+        size_t length() const {
+            return string_.length();
+        }
+    };
+
+    template<typename Unit>
+    struct Compressed
+    {
+        // Single-byte compressed text, regardless whether the original text
+        // was single-byte or two-byte.
+        SharedImmutableString raw;
+        size_t uncompressedLength;
+
+        Compressed(SharedImmutableString raw, size_t uncompressedLength)
+          : raw(std::move(raw)),
+            uncompressedLength(uncompressedLength)
+        { }
+    };
+
+    struct BinAST
+    {
+        SharedImmutableString string;
+        explicit BinAST(SharedImmutableString&& str)
           : string(std::move(str))
         { }
     };
 
-    struct Compressed
-    {
-        SharedImmutableString raw;
-        size_t uncompressedLength;
-
-        Compressed(SharedImmutableString&& raw, size_t uncompressedLength)
-          : raw(std::move(raw))
-          , uncompressedLength(uncompressedLength)
-        { }
-    };
-
-    using SourceType = mozilla::Variant<Missing, Uncompressed, Compressed>;
+    using SourceType =
+        mozilla::Variant<Compressed<mozilla::Utf8Unit>, Uncompressed<mozilla::Utf8Unit>,
+                         Compressed<char16_t>, Uncompressed<char16_t>,
+                         Missing,
+                         BinAST>;
     SourceType data;
 
-    // If the GC attempts to call setCompressedSource with PinnedChars
-    // present, the first PinnedChars (that is, bottom of the stack) will set
+    // If the GC attempts to call setCompressedSource with PinnedUnits
+    // present, the first PinnedUnits (that is, bottom of the stack) will set
     // the compressed chars upon destruction.
-    PinnedChars* pinnedCharsStack_;
-    mozilla::Maybe<Compressed> pendingCompressed_;
+    PinnedUnitsBase* pinnedUnitsStack_;
+    mozilla::MaybeOneOf<Compressed<mozilla::Utf8Unit>, Compressed<char16_t>> pendingCompressed_;
 
     // The filename of this script.
     UniqueChars filename_;
@@ -491,23 +653,28 @@ class ScriptSource
     mozilla::TimeStamp parseEnded_;
 
     // True if we can call JSRuntime::sourceHook to load the source on
-    // demand. If sourceRetrievable_ and hasSourceData() are false, it is not
+    // demand. If sourceRetrievable_ and hasSourceText() are false, it is not
     // possible to get source at all.
     bool sourceRetrievable_:1;
     bool hasIntroductionOffset_:1;
     bool containsAsmJS_:1;
 
-    const char16_t* chunkChars(JSContext* cx, UncompressedSourceCache::AutoHoldEntry& holder,
-                               size_t chunk);
+    UniquePtr<frontend::BinASTSourceMetadata> binASTMetadata_;
+
+    template<typename Unit>
+    const Unit* chunkUnits(JSContext* cx, UncompressedSourceCache::AutoHoldEntry& holder,
+                           size_t chunk);
 
     // Return a string containing the chars starting at |begin| and ending at
     // |begin + len|.
     //
     // Warning: this is *not* GC-safe! Any chars to be handed out should use
-    // PinnedChars. See comment below.
-    const char16_t* chars(JSContext* cx, UncompressedSourceCache::AutoHoldEntry& asp,
-                          size_t begin, size_t len);
+    // PinnedUnits. See comment below.
+    template<typename Unit>
+    const Unit* units(JSContext* cx, UncompressedSourceCache::AutoHoldEntry& asp,
+                      size_t begin, size_t len);
 
+    template<typename Unit>
     void movePendingCompressedSource();
 
   public:
@@ -518,7 +685,7 @@ class ScriptSource
     explicit ScriptSource()
       : refs(0),
         data(SourceType(Missing())),
-        pinnedCharsStack_(nullptr),
+        pinnedUnitsStack_(nullptr),
         filename_(nullptr),
         displayURL_(nullptr),
         sourceMapURL_(nullptr),
@@ -541,8 +708,9 @@ class ScriptSource
     void incref() { refs++; }
     void decref() {
         MOZ_ASSERT(refs != 0);
-        if (--refs == 0)
+        if (--refs == 0) {
             js_delete(this);
+        }
     }
     MOZ_MUST_USE bool initFromOptions(JSContext* cx,
                                       const JS::ReadOnlyCompileOptions& options,
@@ -550,29 +718,249 @@ class ScriptSource
     MOZ_MUST_USE bool setSourceCopy(JSContext* cx, JS::SourceBufferHolder& srcBuf);
     void setSourceRetrievable() { sourceRetrievable_ = true; }
     bool sourceRetrievable() const { return sourceRetrievable_; }
-    bool hasSourceData() const { return !data.is<Missing>(); }
-    bool hasUncompressedSource() const { return data.is<Uncompressed>(); }
-    bool hasCompressedSource() const { return data.is<Compressed>(); }
+    bool hasSourceText() const { return hasUncompressedSource() || hasCompressedSource(); }
+    bool hasBinASTSource() const { return data.is<BinAST>(); }
 
+    void setBinASTSourceMetadata(frontend::BinASTSourceMetadata* metadata) {
+        MOZ_ASSERT(hasBinASTSource());
+        binASTMetadata_.reset(metadata);
+    }
+    frontend::BinASTSourceMetadata* binASTSourceMetadata() const {
+        MOZ_ASSERT(hasBinASTSource());
+        return binASTMetadata_.get();
+    }
+
+  private:
+    struct UncompressedDataMatcher
+    {
+        template<typename Unit>
+        const void* match(const Uncompressed<Unit>& u) {
+            return u.units();
+        }
+
+        template<typename T>
+        const void* match(const T&) {
+            MOZ_CRASH("attempting to access uncompressed data in a "
+                      "ScriptSource not containing it");
+            return nullptr;
+        }
+    };
+
+  public:
+    template<typename Unit>
+    const Unit* uncompressedData() {
+        return static_cast<const Unit*>(data.match(UncompressedDataMatcher()));
+    }
+
+  private:
+    struct CompressedDataMatcher
+    {
+        template<typename Unit>
+        char* match(const Compressed<Unit>& c) {
+            return const_cast<char*>(c.raw.chars());
+        }
+
+        template<typename T>
+        char* match(const T&) {
+            MOZ_CRASH("attempting to access compressed data in a ScriptSource "
+                      "not containing it");
+            return nullptr;
+        }
+    };
+
+  public:
+    template<typename Unit>
+    char* compressedData() {
+        return data.match(CompressedDataMatcher());
+    }
+
+  private:
+    struct BinASTDataMatcher
+    {
+        void* match(const BinAST& b) {
+            return const_cast<char*>(b.string.chars());
+        }
+
+        void notBinAST() {
+            MOZ_CRASH("ScriptSource isn't backed by BinAST data");
+        }
+
+        template<typename T>
+        void* match(const T&) {
+            notBinAST();
+            return nullptr;
+        }
+    };
+
+  public:
+    void* binASTData() {
+        return data.match(BinASTDataMatcher());
+    }
+
+  private:
+    struct HasUncompressedSource
+    {
+        template<typename Unit>
+        bool match(const Uncompressed<Unit>&) { return true; }
+
+        template<typename Unit>
+        bool match(const Compressed<Unit>&) { return false; }
+
+        bool match(const BinAST&) { return false; }
+
+        bool match(const Missing&) { return false; }
+    };
+
+  public:
+    bool hasUncompressedSource() const {
+        return data.match(HasUncompressedSource());
+    }
+
+    template<typename Unit>
+    bool uncompressedSourceIs() const {
+        MOZ_ASSERT(hasUncompressedSource());
+        return data.is<Uncompressed<Unit>>();
+    }
+
+  private:
+    struct HasCompressedSource
+    {
+        template<typename Unit>
+        bool match(const Compressed<Unit>&) { return true; }
+
+        template<typename Unit>
+        bool match(const Uncompressed<Unit>&) { return false; }
+
+        bool match(const BinAST&) { return false; }
+
+        bool match(const Missing&) { return false; }
+    };
+
+  public:
+    bool hasCompressedSource() const {
+        return data.match(HasCompressedSource());
+    }
+
+    template<typename Unit>
+    bool compressedSourceIs() const {
+        MOZ_ASSERT(hasCompressedSource());
+        return data.is<Compressed<Unit>>();
+    }
+
+  private:
+    template<typename Unit>
+    struct SourceTypeMatcher
+    {
+        template<template<typename C> class Data>
+        bool match(const Data<Unit>&) {
+            return true;
+        }
+
+        template<template<typename C> class Data, typename NotUnit>
+        bool match(const Data<NotUnit>&) {
+            return false;
+        }
+
+        bool match(const BinAST&) {
+            MOZ_CRASH("doesn't make sense to ask source type of BinAST data");
+            return false;
+        }
+
+        bool match(const Missing&) {
+            MOZ_CRASH("doesn't make sense to ask source type when missing");
+            return false;
+        }
+    };
+
+  public:
+    template<typename Unit>
+    bool hasSourceType() const {
+        return data.match(SourceTypeMatcher<Unit>());
+    }
+
+  private:
+    struct SourceCharSizeMatcher
+    {
+        template<template<typename C> class Data, typename Unit>
+        uint8_t match(const Data<Unit>& data) {
+            static_assert(std::is_same<Unit, mozilla::Utf8Unit>::value ||
+                          std::is_same<Unit, char16_t>::value,
+                          "should only have UTF-8 or UTF-16 source char");
+            return sizeof(Unit);
+        }
+
+        uint8_t match(const BinAST&) {
+            MOZ_CRASH("BinAST source has no source-char size");
+            return 0;
+        }
+
+        uint8_t match(const Missing&) {
+            MOZ_CRASH("missing source has no source-char size");
+            return 0;
+        }
+    };
+
+  public:
+    uint8_t sourceCharSize() const {
+        return data.match(SourceCharSizeMatcher());
+    }
+
+  private:
+    struct UncompressedLengthMatcher
+    {
+        template<typename Unit>
+        size_t match(const Uncompressed<Unit>& u) {
+            return u.length();
+        }
+
+        template<typename Unit>
+        size_t match(const Compressed<Unit>& u) {
+            return u.uncompressedLength;
+        }
+
+        size_t match(const BinAST& b) {
+            return b.string.length();
+        }
+
+        size_t match(const Missing& m) {
+            MOZ_CRASH("ScriptSource::length on a missing source");
+            return 0;
+        }
+    };
+
+  public:
     size_t length() const {
-        struct LengthMatcher
-        {
-            size_t match(const Uncompressed& u) {
-                return u.string.length();
-            }
+        MOZ_ASSERT(hasSourceText() || hasBinASTSource());
+        return data.match(UncompressedLengthMatcher());
+    }
 
-            size_t match(const Compressed& c) {
-                return c.uncompressedLength;
-            }
+  private:
+    struct CompressedLengthOrZeroMatcher
+    {
+        template<typename Unit>
+        size_t match(const Uncompressed<Unit>&) {
+            return 0;
+        }
 
-            size_t match(const Missing& m) {
-                MOZ_CRASH("ScriptSource::length on a missing source");
-                return 0;
-            }
-        };
+        template<typename Unit>
+        size_t match(const Compressed<Unit>& c) {
+            return c.raw.length();
+        }
 
-        MOZ_ASSERT(hasSourceData());
-        return data.match(LengthMatcher());
+        size_t match(const BinAST&) {
+            MOZ_CRASH("trying to get compressed length for BinAST data");
+            return 0;
+        }
+
+        size_t match(const Missing&) {
+            MOZ_CRASH("missing source data");
+            return 0;
+        }
+    };
+
+  public:
+    size_t compressedLengthOrZero() const {
+        return data.match(CompressedLengthOrZeroMatcher());
     }
 
     JSFlatString* substring(JSContext* cx, size_t start, size_t stop);
@@ -588,23 +976,99 @@ class ScriptSource
     void addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf,
                                 JS::ScriptSourceInfo* info) const;
 
+    template<typename Unit>
     MOZ_MUST_USE bool setSource(JSContext* cx,
-                                UniqueTwoByteChars&& source,
+                                EntryUnits<Unit>&& source,
                                 size_t length);
-    void setSource(SharedImmutableTwoByteString&& string);
+
+    template<typename Unit>
+    void setSource(typename SourceTypeTraits<Unit>::SharedImmutableString uncompressed);
 
     MOZ_MUST_USE bool tryCompressOffThread(JSContext* cx);
 
-    MOZ_MUST_USE bool setCompressedSource(JSContext* cx,
-                                          UniqueChars&& raw,
-                                          size_t rawLength,
-                                          size_t sourceLength);
-    void setCompressedSource(SharedImmutableString&& raw, size_t sourceLength);
+    // The Unit parameter determines which type of compressed source is
+    // recorded, but raw compressed source is always single-byte.
+    template<typename Unit>
+    void setCompressedSource(SharedImmutableString compressed, size_t sourceLength);
 
+    template<typename Unit>
+    MOZ_MUST_USE bool setCompressedSource(JSContext* cx, UniqueChars&& raw, size_t rawLength,
+                                          size_t sourceLength);
+
+#if defined(JS_BUILD_BINAST)
+
+    /*
+     * Do not take ownership of the given `buf`. Store the canonical, shared
+     * and de-duplicated version. If there is no extant shared version of
+     * `buf`, make a copy.
+     */
+    MOZ_MUST_USE bool setBinASTSourceCopy(JSContext* cx, const uint8_t* buf, size_t len);
+
+    /*
+     * Take ownership of the given `buf` and return the canonical, shared and
+     * de-duplicated version.
+     */
+    MOZ_MUST_USE bool setBinASTSource(JSContext* cx, UniqueChars&& buf, size_t len);
+
+    const uint8_t* binASTSource();
+
+#endif /* JS_BUILD_BINAST */
+
+  private:
+    void performTaskWork(SourceCompressionTask* task);
+
+    struct SetCompressedSourceFromTask
+    {
+        ScriptSource* const source_;
+        SharedImmutableString& compressed_;
+
+        SetCompressedSourceFromTask(ScriptSource* source, SharedImmutableString& compressed)
+          : source_(source),
+            compressed_(compressed)
+        {}
+
+        template<typename Unit>
+        void match(const Uncompressed<Unit>&) {
+            source_->setCompressedSource<Unit>(std::move(compressed_), source_->length());
+        }
+
+        template<typename Unit>
+        void match(const Compressed<Unit>&) {
+            MOZ_CRASH("can't set compressed source when source is already "
+                      "compressed -- ScriptSource::tryCompressOffThread "
+                      "shouldn't have queued up this task?");
+        }
+
+        void match(const BinAST&) {
+            MOZ_CRASH("doesn't make sense to set compressed source for BinAST "
+                      "data");
+        }
+
+        void match(const Missing&) {
+            MOZ_CRASH("doesn't make sense to set compressed source for "
+                      "missing source -- ScriptSource::tryCompressOffThread "
+                      "shouldn't have queued up this task?");
+        }
+    };
+
+    void setCompressedSourceFromTask(SharedImmutableString compressed);
+
+  public:
     // XDR handling
     template <XDRMode mode>
     MOZ_MUST_USE XDRResult performXDR(XDRState<mode>* xdr);
 
+  private:
+    // It'd be better to make this function take <XDRMode, Unit>, as both
+    // specializations of this function contain nested Unit-parametrized
+    // helper classes that do everything the function needs to do.  But then
+    // we'd need template function partial specialization to hold XDRMode
+    // constant while varying Unit, so that idea's no dice.
+    template <XDRMode mode>
+    MOZ_MUST_USE XDRResult xdrUncompressedSource(XDRState<mode>* xdr, uint8_t sourceCharSize,
+                                                 uint32_t uncompressedLength);
+
+  public:
     MOZ_MUST_USE bool setFilename(JSContext* cx, const char* filename);
     const char* introducerFilename() const {
         return introducerFilename_ ? introducerFilename_.get() : filename_.get();
@@ -686,6 +1150,8 @@ class ScriptSource
         MOZ_ASSERT(parseEnded_.IsNull());
         parseEnded_ = ReallyNow();
     }
+
+    void trace(JSTracer* trc);
 };
 
 class ScriptSourceHolder
@@ -702,15 +1168,18 @@ class ScriptSourceHolder
     }
     ~ScriptSourceHolder()
     {
-        if (ss)
+        if (ss) {
             ss->decref();
+        }
     }
     void reset(ScriptSource* newss) {
         // incref before decref just in case ss == newss.
-        if (newss)
+        if (newss) {
             newss->incref();
-        if (ss)
+        }
+        if (ss) {
             ss->decref();
+        }
         ss = newss;
     }
     ScriptSource* get() const {
@@ -737,6 +1206,9 @@ class ScriptSourceObject : public NativeObject
     static bool initElementProperties(JSContext* cx, HandleScriptSourceObject source,
                                       HandleObject element, HandleString elementAttrName);
 
+    bool hasSource() const {
+        return !getReservedSlot(SOURCE_SLOT).isUndefined();
+    }
     ScriptSource* source() const {
         return static_cast<ScriptSource*>(getReservedSlot(SOURCE_SLOT).toPrivate());
     }
@@ -749,17 +1221,28 @@ class ScriptSourceObject : public NativeObject
     }
     JSScript* introductionScript() const {
         Value value = getReservedSlot(INTRODUCTION_SCRIPT_SLOT);
-        if (value.isUndefined())
+        if (value.isUndefined()) {
             return nullptr;
+        }
         return value.toGCThing()->as<JSScript>();
     }
 
+    void setPrivate(const Value& value) {
+        setReservedSlot(PRIVATE_SLOT, value);
+    }
+    Value getPrivate() const {
+        return getReservedSlot(PRIVATE_SLOT);
+    }
+
   private:
-    static const uint32_t SOURCE_SLOT = 0;
-    static const uint32_t ELEMENT_SLOT = 1;
-    static const uint32_t ELEMENT_PROPERTY_SLOT = 2;
-    static const uint32_t INTRODUCTION_SCRIPT_SLOT = 3;
-    static const uint32_t RESERVED_SLOTS = 4;
+    enum {
+        SOURCE_SLOT = 0,
+        ELEMENT_SLOT,
+        ELEMENT_PROPERTY_SLOT,
+        INTRODUCTION_SCRIPT_SLOT,
+        PRIVATE_SLOT,
+        RESERVED_SLOTS
+    };
 };
 
 enum class GeneratorKind : bool { NotGenerator, Generator };
@@ -818,8 +1301,9 @@ class SharedScriptData
     void decRefCount() {
         MOZ_ASSERT(refCount_ != 0);
         uint32_t remain = --refCount_;
-        if (remain == 0)
+        if (remain == 0) {
             js_free(this);
+        }
     }
 
     size_t dataLength() const {
@@ -836,8 +1320,9 @@ class SharedScriptData
         return natoms_;
     }
     GCPtrAtom* atoms() {
-        if (!natoms_)
+        if (!natoms_) {
             return nullptr;
+        }
         return reinterpret_cast<GCPtrAtom*>(data());
     }
 
@@ -881,12 +1366,15 @@ struct ScriptBytecodeHasher
     }
     static bool match(SharedScriptData* entry, const Lookup& lookup) {
         const SharedScriptData* data = lookup.scriptData;
-        if (entry->natoms() != data->natoms())
+        if (entry->natoms() != data->natoms()) {
             return false;
-        if (entry->codeLength() != data->codeLength())
+        }
+        if (entry->codeLength() != data->codeLength()) {
             return false;
-        if (entry->numNotes() != data->numNotes())
+        }
+        if (entry->numNotes() != data->numNotes()) {
             return false;
+        }
         return mozilla::ArrayEqual<uint8_t>(entry->data(), data->data(), data->dataLength());
     }
 };
@@ -1255,8 +1743,9 @@ class JSScript : public js::gc::TenuredCell
 
     // Script bytecode is immutable after creation.
     jsbytecode* code() const {
-        if (!scriptData_)
+        if (!scriptData_) {
             return nullptr;
+        }
         return scriptData_->code();
     }
     bool isUncompleted() const {
@@ -1315,10 +1804,12 @@ class JSScript : public js::gc::TenuredCell
     // Number of fixed slots reserved for slots that are always live. Only
     // nonzero for function or module code.
     size_t numAlwaysLiveFixedSlots() const {
-        if (bodyScope()->is<js::FunctionScope>())
+        if (bodyScope()->is<js::FunctionScope>()) {
             return bodyScope()->as<js::FunctionScope>().nextFrameSlot();
-        if (bodyScope()->is<js::ModuleScope>())
+        }
+        if (bodyScope()->is<js::ModuleScope>()) {
             return bodyScope()->as<js::ModuleScope>().nextFrameSlot();
+        }
         return 0;
     }
 
@@ -1330,8 +1821,9 @@ class JSScript : public js::gc::TenuredCell
     }
 
     unsigned numArgs() const {
-        if (bodyScope()->is<js::FunctionScope>())
+        if (bodyScope()->is<js::FunctionScope>()) {
             return bodyScope()->as<js::FunctionScope>().numPositionalFormalParameters();
+        }
         return 0;
     }
 
@@ -1340,8 +1832,9 @@ class JSScript : public js::gc::TenuredCell
     bool functionHasParameterExprs() const {
         // Only functions have parameters.
         js::Scope* scope = bodyScope();
-        if (!scope->is<js::FunctionScope>())
+        if (!scope->is<js::FunctionScope>()) {
             return false;
+        }
         return scope->as<js::FunctionScope>().hasParameterExprs();
     }
 
@@ -1685,8 +2178,9 @@ class JSScript : public js::gc::TenuredCell
      */
     inline JSFunction* functionDelazifying() const;
     JSFunction* functionNonDelazifying() const {
-        if (bodyScope()->is<js::FunctionScope>())
+        if (bodyScope()->is<js::FunctionScope>()) {
             return bodyScope()->as<js::FunctionScope>().canonicalFunction();
+        }
         return nullptr;
     }
     /*
@@ -1695,9 +2189,11 @@ class JSScript : public js::gc::TenuredCell
      */
     inline void ensureNonLazyCanonicalFunction();
 
+    bool isModule() const { return bodyScope()->is<js::ModuleScope>(); }
     js::ModuleObject* module() const {
-        if (bodyScope()->is<js::ModuleScope>())
+        if (isModule()) {
             return bodyScope()->as<js::ModuleScope>().module();
+        }
         return nullptr;
     }
 
@@ -1747,8 +2243,9 @@ class JSScript : public js::gc::TenuredCell
 
     /* Return whether this is a 'direct eval' script in a function scope. */
     bool isDirectEvalInFunction() const {
-        if (!isForEval())
+        if (!isForEval()) {
             return false;
+        }
         return bodyScope()->hasOnChain(js::ScopeKind::Function);
     }
 
@@ -1761,13 +2258,8 @@ class JSScript : public js::gc::TenuredCell
      *
      * If this script has a function associated to it, then it is not the
      * top-level of a file.
-     *
-     * Note that this can returns true for eval scripts as well as global
-     * scripts and modules.
      */
-    bool isTopLevel() const {
-        return code() && !functionNonDelazifying();
-    }
+    bool isTopLevel() { return code() && !functionNonDelazifying(); }
 
     /* Ensure the script has a TypeScript. */
     inline bool ensureHasTypes(JSContext* cx, js::AutoKeepTypeScripts&);
@@ -1776,8 +2268,7 @@ class JSScript : public js::gc::TenuredCell
 
     inline bool typesNeedsSweep() const;
 
-    void sweepTypes(const js::AutoSweepTypeScript& sweep,
-                    js::AutoClearTypeInferenceStateOnOOM* oom);
+    void sweepTypes(const js::AutoSweepTypeScript& sweep);
 
     inline js::GlobalObject& global() const;
     js::GlobalObject& uninlinedGlobal() const;
@@ -1804,19 +2295,19 @@ class JSScript : public js::gc::TenuredCell
 
     js::VarScope* functionExtraBodyVarScope() const {
         MOZ_ASSERT(functionHasExtraBodyVarScope());
-        for (uint32_t i = 0; i < scopes()->length; i++) {
-            js::Scope* scope = getScope(i);
-            if (scope->kind() == js::ScopeKind::FunctionBodyVar)
+        for (js::Scope* scope : scopes()) {
+            if (scope->kind() == js::ScopeKind::FunctionBodyVar) {
                 return &scope->as<js::VarScope>();
+            }
         }
         MOZ_CRASH("Function extra body var scope not found");
     }
 
     bool needsBodyEnvironment() const {
-        for (uint32_t i = 0; i < scopes()->length; i++) {
-            js::Scope* scope = getScope(i);
-            if (ScopeKindIsInBody(scope->kind()) && scope->hasEnvironment())
+        for (js::Scope* scope : scopes()) {
+            if (ScopeKindIsInBody(scope->kind()) && scope->hasEnvironment()) {
                 return true;
+            }
         }
         return false;
     }
@@ -1908,34 +2399,68 @@ class JSScript : public js::gc::TenuredCell
 
     size_t dataSize() const { return dataSize_; }
 
-    js::ConstArray* consts() {
+  private:
+
+    js::ConstArray* constsRaw() const {
         MOZ_ASSERT(hasConsts());
         return reinterpret_cast<js::ConstArray*>(data + constsOffset());
     }
 
-    js::ObjectArray* objects() {
+    js::ObjectArray* objectsRaw() const {
         MOZ_ASSERT(hasObjects());
         return reinterpret_cast<js::ObjectArray*>(data + objectsOffset());
     }
 
-    js::ScopeArray* scopes() const {
+    js::ScopeArray* scopesRaw() const {
         return reinterpret_cast<js::ScopeArray*>(data + scopesOffset());
     }
 
-    js::TryNoteArray* trynotes() const {
+    js::TryNoteArray* trynotesRaw() const {
         MOZ_ASSERT(hasTrynotes());
         return reinterpret_cast<js::TryNoteArray*>(data + trynotesOffset());
     }
 
-    js::ScopeNoteArray* scopeNotes() {
+    js::ScopeNoteArray* scopeNotesRaw() const {
         MOZ_ASSERT(hasScopeNotes());
         return reinterpret_cast<js::ScopeNoteArray*>(data + scopeNotesOffset());
     }
 
-    js::YieldAndAwaitOffsetArray& yieldAndAwaitOffsets() {
+    js::YieldAndAwaitOffsetArray& yieldAndAwaitOffsetsRaw() const {
         MOZ_ASSERT(hasYieldAndAwaitOffsets());
         return *reinterpret_cast<js::YieldAndAwaitOffsetArray*>(data +
                                                                 yieldAndAwaitOffsetsOffset());
+    }
+
+  public:
+
+    mozilla::Span<js::GCPtrValue> consts() const {
+        js::ConstArray* array = constsRaw();
+        return mozilla::MakeSpan(array->vector, array->length);
+    }
+
+    mozilla::Span<js::GCPtrObject> objects() const {
+        js::ObjectArray* array = objectsRaw();
+        return mozilla::MakeSpan(array->vector, array->length);
+    }
+
+    mozilla::Span<js::GCPtrScope> scopes() const {
+        js::ScopeArray* array = scopesRaw();
+        return mozilla::MakeSpan(array->vector, array->length);
+    }
+
+    mozilla::Span<JSTryNote> trynotes() const {
+        js::TryNoteArray* array = trynotesRaw();
+        return mozilla::MakeSpan(array->vector, array->length);
+    }
+
+    mozilla::Span<js::ScopeNote> scopeNotes() const {
+        js::ScopeNoteArray* array = scopeNotesRaw();
+        return mozilla::MakeSpan(array->vector, array->length);
+    }
+
+    mozilla::Span<uint32_t> yieldAndAwaitOffsets() const {
+        js::YieldAndAwaitOffsetArray& array = yieldAndAwaitOffsetsRaw();
+        return mozilla::MakeSpan(&array[0], array.length());
     }
 
     bool hasLoops();
@@ -1978,10 +2503,8 @@ class JSScript : public js::gc::TenuredCell
     }
 
     JSObject* getObject(size_t index) {
-        js::ObjectArray* arr = objects();
-        MOZ_ASSERT(index < arr->length);
-        MOZ_ASSERT(arr->vector[index]->isTenured());
-        return arr->vector[index];
+        MOZ_ASSERT(objects()[index]->isTenured());
+        return objects()[index];
     }
 
     JSObject* getObject(jsbytecode* pc) {
@@ -1990,9 +2513,7 @@ class JSScript : public js::gc::TenuredCell
     }
 
     js::Scope* getScope(size_t index) const {
-        js::ScopeArray* array = scopes();
-        MOZ_ASSERT(index < array->length);
-        return array->vector[index];
+        return scopes()[index];
     }
 
     js::Scope* getScope(jsbytecode* pc) const {
@@ -2007,8 +2528,9 @@ class JSScript : public js::gc::TenuredCell
 
     inline JSFunction* getFunction(size_t index);
     JSFunction* function() const {
-        if (functionNonDelazifying())
+        if (functionNonDelazifying()) {
             return functionNonDelazifying();
+        }
         return nullptr;
     }
 
@@ -2016,9 +2538,7 @@ class JSScript : public js::gc::TenuredCell
     inline js::RegExpObject* getRegExp(jsbytecode* pc);
 
     const js::Value& getConst(size_t index) {
-        js::ConstArray* arr = consts();
-        MOZ_ASSERT(index < arr->length);
-        return arr->vector[index];
+        return consts()[index];
     }
 
     // The following 3 functions find the static scope just before the
@@ -2035,12 +2555,14 @@ class JSScript : public js::gc::TenuredCell
      * JSVAL_VOID, or any other effects.
      */
     bool isEmpty() const {
-        if (length() > 3)
+        if (length() > 3) {
             return false;
+        }
 
         jsbytecode* pc = code();
-        if (noScriptRval() && JSOp(*pc) == JSOP_FALSE)
+        if (noScriptRval() && JSOp(*pc) == JSOP_FALSE) {
             ++pc;
+        }
         return JSOp(*pc) == JSOP_RETRVAL;
     }
 
@@ -2089,12 +2611,6 @@ class JSScript : public js::gc::TenuredCell
 #ifdef DEBUG
     uint32_t stepModeCount() { return bitFields_.hasDebugScript_ ? debugScript()->stepMode : 0; }
 #endif
-
-    // Set/get a embedding pointer that can be associated with top-level (global
-    // or module) scripts. Note that although isTopLevel() can return true for
-    // eval scripts, these are not supported.
-    void setTopLevelPrivate(void* value);
-    void* maybeTopLevelPrivate() const;
 
     void finalize(js::FreeOp* fop);
 
@@ -2257,6 +2773,7 @@ class LazyScript : public gc::TenuredCell
         uint32_t shouldDeclareArguments : 1;
         uint32_t hasThisBinding : 1;
         uint32_t isAsync : 1;
+        uint32_t isBinAST : 1;
 
         uint32_t numClosedOverBindings : NumClosedOverBindingsBits;
 
@@ -2443,6 +2960,13 @@ class LazyScript : public gc::TenuredCell
 
     frontend::ParseGoal parseGoal() const {
         return frontend::ParseGoal(p_.parseGoal);
+    }
+
+    bool isBinAST() const {
+        return p_.isBinAST;
+    }
+    void setIsBinAST() {
+        p_.isBinAST = true;
     }
 
     bool strict() const {

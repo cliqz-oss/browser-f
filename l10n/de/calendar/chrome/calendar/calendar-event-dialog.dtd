@@ -108,8 +108,8 @@
 <!ENTITY  event.menu.edit.copy.accesskey                  "K">
 <!ENTITY  event.menu.edit.paste.label                     "Einfügen">
 <!ENTITY  event.menu.edit.paste.accesskey                 "i">
-<!ENTITY  event.menu.edit.select.all.label                "Alles markieren">
-<!ENTITY  event.menu.edit.select.all.accesskey            "m">
+<!ENTITY  event.menu.edit.select.all.label                "Alles auswählen">
+<!ENTITY  event.menu.edit.select.all.accesskey            "u">
 
 <!ENTITY  event.menu.view.label                           "Ansicht">
 <!ENTITY  event.menu.view.accesskey                       "A">

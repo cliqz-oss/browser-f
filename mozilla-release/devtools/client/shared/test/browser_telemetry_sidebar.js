@@ -11,13 +11,6 @@ const OPTOUT = Ci.nsITelemetry.DATASET_RELEASE_CHANNEL_OPTOUT;
 // opened we make use of setTimeout() to create tool active times.
 const TOOL_DELAY = 200;
 
-var animationPanelId;
-if (Services.prefs.getBoolPref("devtools.new-animationinspector.enabled")) {
-  animationPanelId = "newanimationinspector";
-} else {
-  animationPanelId = "animationinspector";
-}
-
 const DATA = [
   {
     timestamp: null,
@@ -26,9 +19,9 @@ const DATA = [
     object: "inspector",
     value: null,
     extra: {
-      oldpanel: "computedview",
-      newpanel: animationPanelId
-    }
+      oldpanel: "layoutview",
+      newpanel: "animationinspector",
+    },
   },
   {
     timestamp: null,
@@ -37,9 +30,9 @@ const DATA = [
     object: "inspector",
     value: null,
     extra: {
-      oldpanel: animationPanelId,
-      newpanel: "fontinspector"
-    }
+      oldpanel: "animationinspector",
+      newpanel: "fontinspector",
+    },
   },
   {
     timestamp: null,
@@ -49,8 +42,8 @@ const DATA = [
     value: null,
     extra: {
       oldpanel: "fontinspector",
-      newpanel: "layoutview"
-    }
+      newpanel: "layoutview",
+    },
   },
   {
     timestamp: null,
@@ -60,8 +53,8 @@ const DATA = [
     value: null,
     extra: {
       oldpanel: "layoutview",
-      newpanel: "computedview"
-    }
+      newpanel: "computedview",
+    },
   },
   {
     timestamp: null,
@@ -71,8 +64,8 @@ const DATA = [
     value: null,
     extra: {
       oldpanel: "computedview",
-      newpanel: animationPanelId
-    }
+      newpanel: "animationinspector",
+    },
   },
   {
     timestamp: null,
@@ -81,9 +74,9 @@ const DATA = [
     object: "inspector",
     value: null,
     extra: {
-      oldpanel: animationPanelId,
-      newpanel: "fontinspector"
-    }
+      oldpanel: "animationinspector",
+      newpanel: "fontinspector",
+    },
   },
   {
     timestamp: null,
@@ -93,8 +86,8 @@ const DATA = [
     value: null,
     extra: {
       oldpanel: "fontinspector",
-      newpanel: "layoutview"
-    }
+      newpanel: "layoutview",
+    },
   },
   {
     timestamp: null,
@@ -104,9 +97,9 @@ const DATA = [
     value: null,
     extra: {
       oldpanel: "layoutview",
-      newpanel: "computedview"
-    }
-  }
+      newpanel: "computedview",
+    },
+  },
 ];
 
 add_task(async function() {
@@ -120,7 +113,7 @@ add_task(async function() {
   await addTab(TEST_URI);
   startTelemetry();
 
-  const target = TargetFactory.forTab(gBrowser.selectedTab);
+  const target = await TargetFactory.forTab(gBrowser.selectedTab);
   const toolbox = await gDevTools.showToolbox(target, "inspector");
   info("inspector opened");
 
@@ -137,7 +130,7 @@ function testSidebar(toolbox) {
 
   const inspector = toolbox.getCurrentPanel();
   let sidebarTools = ["computedview", "layoutview", "fontinspector",
-                      animationPanelId];
+                      "animationinspector"];
 
   // Concatenate the array with itself so that we can open each tool twice.
   sidebarTools = [...sidebarTools, ...sidebarTools];
@@ -163,8 +156,8 @@ function checkResults() {
   // here.
   checkTelemetry("DEVTOOLS_INSPECTOR_OPENED_COUNT", "", [1, 0, 0], "array");
   checkTelemetry("DEVTOOLS_RULEVIEW_OPENED_COUNT", "", [1, 0, 0], "array");
-  checkTelemetry("DEVTOOLS_COMPUTEDVIEW_OPENED_COUNT", "", [3, 0, 0], "array");
-  checkTelemetry("DEVTOOLS_LAYOUTVIEW_OPENED_COUNT", "", [2, 0, 0], "array");
+  checkTelemetry("DEVTOOLS_COMPUTEDVIEW_OPENED_COUNT", "", [2, 0, 0], "array");
+  checkTelemetry("DEVTOOLS_LAYOUTVIEW_OPENED_COUNT", "", [3, 0, 0], "array");
   checkTelemetry("DEVTOOLS_FONTINSPECTOR_OPENED_COUNT", "", [2, 0, 0], "array");
   checkTelemetry("DEVTOOLS_COMPUTEDVIEW_TIME_ACTIVE_SECONDS", "", null, "hasentries");
   checkTelemetry("DEVTOOLS_LAYOUTVIEW_TIME_ACTIVE_SECONDS", "", null, "hasentries");

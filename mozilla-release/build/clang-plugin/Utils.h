@@ -5,6 +5,7 @@
 #ifndef Utils_h__
 #define Utils_h__
 
+#include "CustomAttributes.h"
 #include "ThirdPartyPaths.h"
 #include "plugin.h"
 
@@ -333,31 +334,28 @@ inline const FieldDecl *getBaseRefCntMember(QualType T) {
   return Clazz ? getBaseRefCntMember(Clazz) : 0;
 }
 
-inline bool hasCustomAnnotation(const Decl *D, StringRef Spelling) {
-  iterator_range<specific_attr_iterator<AnnotateAttr>> Attrs =
-      D->specific_attrs<AnnotateAttr>();
-
-  for (AnnotateAttr *Attr : Attrs) {
-    if (Attr->getAnnotation() == Spelling) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 inline bool isPlacementNew(const CXXNewExpr *Expression) {
   // Regular new expressions aren't placement new
   if (Expression->getNumPlacementArgs() == 0)
     return false;
   const FunctionDecl *Declaration = Expression->getOperatorNew();
-  if (Declaration && hasCustomAnnotation(Declaration, "moz_heap_allocator")) {
+  if (Declaration && hasCustomAttribute<moz_heap_allocator>(Declaration)) {
     return false;
   }
   return true;
 }
 
+extern DenseMap<unsigned, bool> InThirdPartyPathCache;
+
 inline bool inThirdPartyPath(SourceLocation Loc, const SourceManager &SM) {
+  Loc = SM.getFileLoc(Loc);
+
+  unsigned id = SM.getFileID(Loc).getHashValue();
+  auto pair = InThirdPartyPathCache.find(id);
+  if (pair != InThirdPartyPathCache.end()) {
+    return pair->second;
+  }
+
   SmallString<1024> FileName = SM.getFilename(Loc);
   llvm::sys::fs::make_absolute(FileName);
 
@@ -382,11 +380,13 @@ inline bool inThirdPartyPath(SourceLocation Loc, const SourceManager &SM) {
 
       // We found a match!
       if (IThirdPartyB == ThirdPartyE) {
+        InThirdPartyPathCache.insert(std::make_pair(id, true));
         return true;
       }
     }
   }
 
+  InThirdPartyPathCache.insert(std::make_pair(id, false));
   return false;
 }
 

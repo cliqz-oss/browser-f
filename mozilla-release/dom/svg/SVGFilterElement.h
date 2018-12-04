@@ -33,16 +33,13 @@ class SVGFilterElement : public SVGFilterElementBase
 protected:
   friend nsresult (::NS_NewSVGFilterElement(nsIContent **aResult,
                                             already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo));
-  explicit SVGFilterElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
+  explicit SVGFilterElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
   virtual JSObject* WrapNode(JSContext *cx, JS::Handle<JSObject*> aGivenProto) override;
 
 public:
   // nsIContent
   virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
   NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
-
-  // Invalidate users of this filter
-  void Invalidate();
 
   // nsSVGSVGElement methods:
   virtual bool HasValidDimensions() const override;

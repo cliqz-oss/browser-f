@@ -61,6 +61,11 @@ void
 HTMLSharedElement::DoneAddingChildren(bool aHaveNotified)
 {
   if (mNodeInfo->Equals(nsGkAtoms::head)) {
+    nsCOMPtr<nsIDocument> doc = GetUncomposedDoc();
+    if (doc) {
+      doc->OnL10nResourceContainerParsed();
+    }
+
     RefPtr<AsyncEventDispatcher> asyncDispatcher =
       new AsyncEventDispatcher(this,
                               NS_LITERAL_STRING("DOMHeadElementParsed"),
@@ -117,8 +122,8 @@ HTMLSharedElement::IsAttributeMapped(const nsAtom* aAttribute) const
 {
   if (mNodeInfo->Equals(nsGkAtoms::dir)) {
     static const MappedAttributeEntry attributes[] = {
-      { &nsGkAtoms::type },
-      // { &nsGkAtoms::compact }, // XXX
+      { nsGkAtoms::type },
+      // { nsGkAtoms::compact }, // XXX
       { nullptr}
     };
 

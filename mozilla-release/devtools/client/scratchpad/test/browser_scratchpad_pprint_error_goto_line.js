@@ -13,7 +13,7 @@ function test() {
     openScratchpad(runTests);
   });
 
-  gBrowser.loadURI("data:text/html;charset=utf8,"
+  BrowserTestUtils.loadURI(gBrowser, "data:text/html;charset=utf8,"
                    + "test Scratchpad pretty print error goto line.");
 }
 
@@ -54,7 +54,7 @@ function runTests(sw, sp) {
     "var re = /a bad /regexp/; // line 3 is an obvious syntax error!",
     "// line 4",
     "// line 5",
-    ""
+    "",
   ].join("\n"));
 
   sp.prettyPrint().then(aFulfill => {

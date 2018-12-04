@@ -1,7 +1,4 @@
-// |jit-test| error: out of memory; slow;
-
-if (!('oomTest' in this))
-    throw new Error("out of memory");
+// |jit-test| slow; skip-if: !('oomTest' in this)
 
 var g = newGlobal();
 var dbg = new Debugger(g);

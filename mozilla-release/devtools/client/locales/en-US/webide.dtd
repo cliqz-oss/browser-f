@@ -40,6 +40,8 @@
 <!ENTITY runtimeMenu_showDevicePrefs_accesskey "D">
 <!ENTITY runtimeMenu_showSettings_label "Device Settings">
 <!ENTITY runtimeMenu_showSettings_accesskey "s">
+<!ENTITY runtimeMenu_showPerformancePanel_label "Performance">
+<!ENTITY runtimeMenu_showPerformancePanel_accesskey "p">
 
 <!ENTITY viewMenu_label "View">
 <!ENTITY viewMenu_accesskey "V">
@@ -74,7 +76,6 @@
 <!ENTITY runtimePanel_usb "USB Devices">
 <!ENTITY runtimePanel_wifi "Wi-Fi Devices">
 <!ENTITY runtimePanel_other "Other">
-<!ENTITY runtimePanel_noadbhelper "Install ADB Helper">
 <!ENTITY runtimePanel_nousbdevice "Can’t see your device?">
 <!ENTITY runtimePanel_refreshDevices_label "Refresh Devices">
 

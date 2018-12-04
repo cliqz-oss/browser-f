@@ -73,8 +73,9 @@ LIRGenerator::visitUnbox(MUnbox* unbox)
 
     if (inner->type() == MIRType::ObjectOrNull) {
         LUnboxObjectOrNull* lir = new(alloc()) LUnboxObjectOrNull(useRegisterAtStart(inner));
-        if (unbox->fallible())
+        if (unbox->fallible()) {
             assignSnapshot(lir, unbox->bailoutKind());
+        }
         defineReuseInput(lir, unbox, 0);
         return;
     }
@@ -88,8 +89,9 @@ LIRGenerator::visitUnbox(MUnbox* unbox)
 
     if (IsFloatingPointType(unbox->type())) {
         LUnboxFloatingPoint* lir = new(alloc()) LUnboxFloatingPoint(useBox(inner), unbox->type());
-        if (unbox->fallible())
+        if (unbox->fallible()) {
             assignSnapshot(lir, unbox->bailoutKind());
+        }
         define(lir, unbox);
         return;
     }
@@ -100,8 +102,9 @@ LIRGenerator::visitUnbox(MUnbox* unbox)
     lir->setOperand(0, usePayloadInRegisterAtStart(inner));
     lir->setOperand(1, useType(inner, LUse::REGISTER));
 
-    if (unbox->fallible())
+    if (unbox->fallible()) {
         assignSnapshot(lir, unbox->bailoutKind());
+    }
 
     // Types and payloads form two separate intervals. If the type becomes dead
     // before the payload, it could be used as a Value without the type being
@@ -122,24 +125,6 @@ LIRGenerator::visitReturn(MReturn* ret)
     ins->setOperand(1, LUse(JSReturnReg_Data));
     fillBoxUses(ins, 0, opd);
     add(ins);
-}
-
-void
-LIRGeneratorMIPS::defineUntypedPhi(MPhi* phi, size_t lirIndex)
-{
-    LPhi* type = current->getPhi(lirIndex + VREG_TYPE_OFFSET);
-    LPhi* payload = current->getPhi(lirIndex + VREG_DATA_OFFSET);
-
-    uint32_t typeVreg = getVirtualRegister();
-    phi->setVirtualRegister(typeVreg);
-
-    uint32_t payloadVreg = getVirtualRegister();
-    MOZ_ASSERT(typeVreg + 1 == payloadVreg);
-
-    type->setDef(0, LDefinition(typeVreg, LDefinition::TYPE));
-    payload->setDef(0, LDefinition(payloadVreg, LDefinition::PAYLOAD));
-    annotate(type);
-    annotate(payload);
 }
 
 void

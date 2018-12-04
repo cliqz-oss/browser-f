@@ -24,8 +24,6 @@
 #include "gc/FreeOp.h"
 #include "jit/ExecutableAllocator.h"
 #include "jit/MacroAssembler.h"
-#include "util/StringBuffer.h"
-#include "util/Text.h"
 #include "vm/Debugger.h"
 #include "wasm/WasmInstance.h"
 #include "wasm/WasmValidate.h"
@@ -36,25 +34,15 @@ using namespace js::wasm;
 
 using mozilla::BinarySearchIf;
 
-DebugState::DebugState(SharedCode code,
-                       const ShareableBytes* maybeBytecode,
-                       bool binarySource)
-  : code_(std::move(code)),
-    maybeBytecode_(maybeBytecode),
+DebugState::DebugState(const Code& code, const Module& module, bool binarySource)
+  : code_(&code),
+    module_(&module),
     binarySource_(binarySource),
+    enterFrameTrapsEnabled_(false),
     enterAndLeaveFrameTrapsCounter_(0)
 {
-    MOZ_ASSERT_IF(debugEnabled(), maybeBytecode);
+    MOZ_ASSERT(code.metadata().debugEnabled);
 }
-
-const char enabledMessage[] =
-    "Restart with developer tools open to view WebAssembly source.";
-
-const char noBinarySource[] =
-    "Configure the debugger to display WebAssembly bytecode.";
-
-const char notGeneratedMessage[] =
-    "WebAssembly text generation was disabled.";
 
 static const uint32_t DefaultBinarySourceColumnNumber = 1;
 
@@ -62,86 +50,62 @@ static const CallSite*
 SlowCallSiteSearchByOffset(const MetadataTier& metadata, uint32_t offset)
 {
     for (const CallSite& callSite : metadata.callSites) {
-        if (callSite.lineOrBytecode() == offset && callSite.kind() == CallSiteDesc::Breakpoint)
+        if (callSite.lineOrBytecode() == offset && callSite.kind() == CallSiteDesc::Breakpoint) {
             return &callSite;
+        }
     }
     return nullptr;
-}
-
-JSString*
-DebugState::createText(JSContext* cx)
-{
-    StringBuffer buffer(cx);
-    if (!maybeBytecode_) {
-        if (!buffer.append(enabledMessage))
-            return nullptr;
-    } else if (binarySource_) {
-        if (!buffer.append(notGeneratedMessage))
-            return nullptr;
-    } else {
-        if (!buffer.append(noBinarySource))
-            return nullptr;
-    }
-    return buffer.finishString();
 }
 
 bool
 DebugState::getLineOffsets(JSContext* cx, size_t lineno, Vector<uint32_t>* offsets)
 {
-    if (!debugEnabled())
+    if (!binarySource_) {
         return true;
-    if (!binarySource_)
-        return true;
+    }
     const CallSite* callsite = SlowCallSiteSearchByOffset(metadata(Tier::Debug), lineno);
-    if (callsite && !offsets->append(lineno))
+    if (callsite && !offsets->append(lineno)) {
         return false;
+    }
     return true;
 }
 
 bool
 DebugState::getAllColumnOffsets(JSContext* cx, Vector<ExprLoc>* offsets)
 {
-    if (!metadata().debugEnabled)
+    if (!binarySource_) {
         return true;
-    if (!binarySource_)
-        return true;
+    }
     for (const CallSite& callSite : metadata(Tier::Debug).callSites) {
-        if (callSite.kind() != CallSite::Breakpoint)
+        if (callSite.kind() != CallSite::Breakpoint) {
             continue;
+        }
         uint32_t offset = callSite.lineOrBytecode();
-        if (!offsets->emplaceBack(offset, DefaultBinarySourceColumnNumber, offset))
+        if (!offsets->emplaceBack(offset, DefaultBinarySourceColumnNumber, offset)) {
             return false;
+        }
     }
     return true;
 }
 
 bool
-DebugState::getOffsetLocation(JSContext* cx, uint32_t offset, bool* found, size_t* lineno, size_t* column)
+DebugState::getOffsetLocation(uint32_t offset, size_t* lineno, size_t* column)
 {
-    *found = false;
-    if (!debugEnabled())
-        return true;
-    if (!binarySource_)
-        return true;
-    if (!SlowCallSiteSearchByOffset(metadata(Tier::Debug), offset))
-        return true; // offset was not found
-    *found = true;
+    if (!binarySource_) {
+        return false;
+    }
+    if (!SlowCallSiteSearchByOffset(metadata(Tier::Debug), offset)) {
+        return false;
+    }
     *lineno = offset;
     *column = DefaultBinarySourceColumnNumber;
     return true;
 }
 
-bool
-DebugState::totalSourceLines(JSContext* cx, uint32_t* count)
+uint32_t
+DebugState::totalSourceLines()
 {
-    *count = 0;
-    if (!debugEnabled())
-        return true;
-    if (!binarySource_)
-        return true;
-    if (maybeBytecode_)
-        *count = maybeBytecode_->length();
-    return true;
+    return binarySource_ ? bytecode().length() : 0;
 }
 
 bool
@@ -153,8 +117,7 @@ DebugState::stepModeEnabled(uint32_t funcIndex) const
 bool
 DebugState::incrementStepModeCount(JSContext* cx, uint32_t funcIndex)
 {
-    MOZ_ASSERT(debugEnabled());
-    const CodeRange& codeRange = codeRanges(Tier::Debug)[debugFuncToCodeRangeIndex(funcIndex)];
+    const CodeRange& codeRange = codeRanges(Tier::Debug)[funcToCodeRangeIndex(funcIndex)];
     MOZ_ASSERT(codeRange.isFunction());
 
     StepModeCounters::AddPtr p = stepModeCounters_.lookupForAdd(funcIndex);
@@ -173,11 +136,13 @@ DebugState::incrementStepModeCount(JSContext* cx, uint32_t funcIndex)
     AutoFlushICache afc("Code::incrementStepModeCount");
 
     for (const CallSite& callSite : callSites(Tier::Debug)) {
-        if (callSite.kind() != CallSite::Breakpoint)
+        if (callSite.kind() != CallSite::Breakpoint) {
             continue;
+        }
         uint32_t offset = callSite.returnAddressOffset();
-        if (codeRange.begin() <= offset && offset <= codeRange.end())
+        if (codeRange.begin() <= offset && offset <= codeRange.end()) {
             toggleDebugTrap(offset, true);
+        }
     }
     return true;
 }
@@ -185,15 +150,15 @@ DebugState::incrementStepModeCount(JSContext* cx, uint32_t funcIndex)
 bool
 DebugState::decrementStepModeCount(FreeOp* fop, uint32_t funcIndex)
 {
-    MOZ_ASSERT(debugEnabled());
-    const CodeRange& codeRange = codeRanges(Tier::Debug)[debugFuncToCodeRangeIndex(funcIndex)];
+    const CodeRange& codeRange = codeRanges(Tier::Debug)[funcToCodeRangeIndex(funcIndex)];
     MOZ_ASSERT(codeRange.isFunction());
 
     MOZ_ASSERT(!stepModeCounters_.empty());
     StepModeCounters::Ptr p = stepModeCounters_.lookup(funcIndex);
     MOZ_ASSERT(p);
-    if (--p->value())
+    if (--p->value()) {
         return true;
+    }
 
     stepModeCounters_.remove(p);
 
@@ -202,8 +167,9 @@ DebugState::decrementStepModeCount(FreeOp* fop, uint32_t funcIndex)
     AutoFlushICache afc("Code::decrementStepModeCount");
 
     for (const CallSite& callSite : callSites(Tier::Debug)) {
-        if (callSite.kind() != CallSite::Breakpoint)
+        if (callSite.kind() != CallSite::Breakpoint) {
             continue;
+        }
         uint32_t offset = callSite.returnAddressOffset();
         if (codeRange.begin() <= offset && offset <= codeRange.end()) {
             bool enabled = breakpointSites_.has(offset);
@@ -216,26 +182,25 @@ DebugState::decrementStepModeCount(FreeOp* fop, uint32_t funcIndex)
 bool
 DebugState::hasBreakpointTrapAtOffset(uint32_t offset)
 {
-    if (!debugEnabled())
-        return false;
     return SlowCallSiteSearchByOffset(metadata(Tier::Debug), offset);
 }
 
 void
 DebugState::toggleBreakpointTrap(JSRuntime* rt, uint32_t offset, bool enabled)
 {
-    MOZ_ASSERT(debugEnabled());
     const CallSite* callSite = SlowCallSiteSearchByOffset(metadata(Tier::Debug), offset);
-    if (!callSite)
+    if (!callSite) {
         return;
+    }
     size_t debugTrapOffset = callSite->returnAddressOffset();
 
     const ModuleSegment& codeSegment = code_->segment(Tier::Debug);
     const CodeRange* codeRange = code_->lookupFuncRange(codeSegment.base() + debugTrapOffset);
     MOZ_ASSERT(codeRange);
 
-    if (stepModeCounters_.lookup(codeRange->funcIndex()))
+    if (stepModeCounters_.lookup(codeRange->funcIndex())) {
         return; // no need to toggle when step mode is enabled
+    }
 
     AutoWritableJitCode awjc(rt, codeSegment.base(), codeSegment.length());
     AutoFlushICache afc("Code::toggleBreakpointTrap");
@@ -251,8 +216,9 @@ DebugState::getOrCreateBreakpointSite(JSContext* cx, uint32_t offset)
     WasmBreakpointSiteMap::AddPtr p = breakpointSites_.lookupForAdd(offset);
     if (!p) {
         site = cx->new_<WasmBreakpointSite>(this, offset);
-        if (!site)
+        if (!site) {
             return nullptr;
+        }
 
         if (!breakpointSites_.add(p, offset, site)) {
             js_delete(site);
@@ -280,23 +246,16 @@ DebugState::destroyBreakpointSite(FreeOp* fop, uint32_t offset)
     breakpointSites_.remove(p);
 }
 
-bool
-DebugState::clearBreakpointsIn(JSContext* cx, WasmInstanceObject* instance, js::Debugger* dbg, JSObject* handler)
+void
+DebugState::clearBreakpointsIn(FreeOp* fop, WasmInstanceObject* instance, js::Debugger* dbg,
+                               JSObject* handler)
 {
     MOZ_ASSERT(instance);
-    if (breakpointSites_.empty())
-        return true;
-
-    // Make copy of all sites list, so breakpointSites_ can be modified by
-    // destroyBreakpointSite calls.
-    Vector<WasmBreakpointSite*> sites(cx);
-    if (!sites.resize(breakpointSites_.count()))
-        return false;
-    size_t i = 0;
-    for (WasmBreakpointSiteMap::Range r = breakpointSites_.all(); !r.empty(); r.popFront())
-        sites[i++] = r.front().value();
-
-    for (WasmBreakpointSite* site : sites) {
+    if (breakpointSites_.empty()) {
+        return;
+    }
+    for (WasmBreakpointSiteMap::Enum e(breakpointSites_); !e.empty(); e.popFront()) {
+        WasmBreakpointSite* site = e.front().value();
         Breakpoint* nextbp;
         for (Breakpoint* bp = site->firstBreakpoint(); bp; bp = nextbp) {
             nextbp = bp->nextInSite();
@@ -304,11 +263,20 @@ DebugState::clearBreakpointsIn(JSContext* cx, WasmInstanceObject* instance, js::
                 (!dbg || bp->debugger == dbg) &&
                 (!handler || bp->getHandler() == handler))
             {
-                bp->destroy(cx->runtime()->defaultFreeOp());
+                bp->destroy(fop, Breakpoint::MayDestroySite::False);
             }
         }
+        if (site->isEmpty()) {
+            fop->delete_(site);
+            e.removeFront();
+        }
     }
-    return true;
+}
+
+void
+DebugState::clearAllBreakpoints(FreeOp* fop, WasmInstanceObject* instance)
+{
+    clearBreakpointsIn(fop, instance, nullptr, nullptr);
 }
 
 void
@@ -320,8 +288,9 @@ DebugState::toggleDebugTrap(uint32_t offset, bool enabled)
     if (enabled) {
         MOZ_ASSERT(farJumpOffsets.length() > 0);
         size_t i = 0;
-        while (i < farJumpOffsets.length() && offset < farJumpOffsets[i])
+        while (i < farJumpOffsets.length() && offset < farJumpOffsets[i]) {
             i++;
+        }
         if (i >= farJumpOffsets.length() ||
             (i > 0 && offset - farJumpOffsets[i - 1] < farJumpOffsets[i] - offset))
             i--;
@@ -335,53 +304,64 @@ DebugState::toggleDebugTrap(uint32_t offset, bool enabled)
 void
 DebugState::adjustEnterAndLeaveFrameTrapsState(JSContext* cx, bool enabled)
 {
-    MOZ_ASSERT(debugEnabled());
     MOZ_ASSERT_IF(!enabled, enterAndLeaveFrameTrapsCounter_ > 0);
 
     bool wasEnabled = enterAndLeaveFrameTrapsCounter_ > 0;
-    if (enabled)
+    if (enabled) {
         ++enterAndLeaveFrameTrapsCounter_;
-    else
+    } else {
         --enterAndLeaveFrameTrapsCounter_;
+    }
     bool stillEnabled = enterAndLeaveFrameTrapsCounter_ > 0;
-    if (wasEnabled == stillEnabled)
+    if (wasEnabled == stillEnabled) {
         return;
+    }
 
     const ModuleSegment& codeSegment = code_->segment(Tier::Debug);
     AutoWritableJitCode awjc(cx->runtime(), codeSegment.base(), codeSegment.length());
     AutoFlushICache afc("Code::adjustEnterAndLeaveFrameTrapsState");
     AutoFlushICache::setRange(uintptr_t(codeSegment.base()), codeSegment.length());
     for (const CallSite& callSite : callSites(Tier::Debug)) {
-        if (callSite.kind() != CallSite::EnterFrame && callSite.kind() != CallSite::LeaveFrame)
+        if (callSite.kind() != CallSite::EnterFrame && callSite.kind() != CallSite::LeaveFrame) {
             continue;
+        }
         toggleDebugTrap(callSite.returnAddressOffset(), stillEnabled);
     }
+}
+
+void
+DebugState::ensureEnterFrameTrapsState(JSContext* cx, bool enabled)
+{
+    if (enterFrameTrapsEnabled_ == enabled) {
+        return;
+    }
+
+    adjustEnterAndLeaveFrameTrapsState(cx, enabled);
+
+    enterFrameTrapsEnabled_ = enabled;
 }
 
 bool
 DebugState::debugGetLocalTypes(uint32_t funcIndex, ValTypeVector* locals, size_t* argsLength)
 {
-    MOZ_ASSERT(debugEnabled());
-
     const ValTypeVector& args = metadata().debugFuncArgTypes[funcIndex];
     *argsLength = args.length();
-    if (!locals->appendAll(args))
+    if (!locals->appendAll(args)) {
         return false;
+    }
 
     // Decode local var types from wasm binary function body.
-    const CodeRange& range = codeRanges(Tier::Debug)[debugFuncToCodeRangeIndex(funcIndex)];
+    const CodeRange& range = codeRanges(Tier::Debug)[funcToCodeRangeIndex(funcIndex)];
     // In wasm, the Code points to the function start via funcLineOrBytecode.
-    MOZ_ASSERT(!metadata().isAsmJS() && maybeBytecode_);
     size_t offsetInModule = range.funcLineOrBytecode();
-    Decoder d(maybeBytecode_->begin() + offsetInModule,  maybeBytecode_->end(),
-              offsetInModule, /* error = */ nullptr);
+    Decoder d(bytecode().begin() + offsetInModule,  bytecode().end(), offsetInModule,
+              /* error = */ nullptr);
     return DecodeValidatedLocalEntries(d, locals);
 }
 
 ExprType
 DebugState::debugGetResultType(uint32_t funcIndex)
 {
-    MOZ_ASSERT(debugEnabled());
     return metadata().debugFuncReturnTypes[funcIndex];
 }
 
@@ -414,8 +394,9 @@ DebugState::getGlobal(Instance& instance, uint32_t globalIndex, MutableHandleVal
 
     uint8_t* globalData = instance.globalData();
     void* dataPtr = globalData + global.offset();
-    if (global.isIndirect())
+    if (global.isIndirect()) {
         dataPtr = *static_cast<void**>(dataPtr);
+    }
     switch (global.type().code()) {
       case ValType::I32: {
         vp.set(Int32Value(*static_cast<int32_t*>(dataPtr)));
@@ -441,81 +422,36 @@ DebugState::getGlobal(Instance& instance, uint32_t globalIndex, MutableHandleVal
     return true;
 }
 
-
-JSString*
-DebugState::debugDisplayURL(JSContext* cx) const
-{
-    // Build wasm module URL from following parts:
-    // - "wasm:" as protocol;
-    // - URI encoded filename from metadata (if can be encoded), plus ":";
-    // - 64-bit hash of the module bytes (as hex dump).
-
-    js::StringBuffer result(cx);
-    if (!result.append("wasm:"))
-        return nullptr;
-
-    if (const char* filename = metadata().filename.get()) {
-        js::StringBuffer filenamePrefix(cx);
-        // EncodeURI returns false due to invalid chars or OOM -- fail only
-        // during OOM.
-        if (!EncodeURI(cx, filenamePrefix, filename, strlen(filename))) {
-            if (!cx->isExceptionPending())
-                return nullptr;
-            cx->clearPendingException(); // ignore invalid URI
-        } else if (!result.append(filenamePrefix.finishString())) {
-            return nullptr;
-        }
-    }
-
-    if (metadata().debugEnabled) {
-        if (!result.append(":"))
-            return nullptr;
-
-        const ModuleHash& hash = metadata().debugHash;
-        for (size_t i = 0; i < sizeof(ModuleHash); i++) {
-            char digit1 = hash[i] / 16, digit2 = hash[i] % 16;
-            if (!result.append((char)(digit1 < 10 ? digit1 + '0' : digit1 + 'a' - 10)))
-                return nullptr;
-            if (!result.append((char)(digit2 < 10 ? digit2 + '0' : digit2 + 'a' - 10)))
-                return nullptr;
-        }
-    }
-
-    return result.finishString();
-}
-
 bool
 DebugState::getSourceMappingURL(JSContext* cx, MutableHandleString result) const
 {
     result.set(nullptr);
-    if (!maybeBytecode_)
-        return true;
 
-    for (const CustomSection& customSection : metadata().customSections) {
-        const NameInBytecode& sectionName = customSection.name;
-        if (strlen(SourceMappingURLSectionName) != sectionName.length ||
-            memcmp(SourceMappingURLSectionName, maybeBytecode_->begin() + sectionName.offset,
-                   sectionName.length) != 0)
+    for (const CustomSection& customSection : module_->customSections()) {
+        const Bytes& sectionName = customSection.name;
+        if (strlen(SourceMappingURLSectionName) != sectionName.length() ||
+            memcmp(SourceMappingURLSectionName, sectionName.begin(), sectionName.length()) != 0)
         {
             continue;
         }
 
         // Parse found "SourceMappingURL" custom section.
-        Decoder d(maybeBytecode_->begin() + customSection.offset,
-                  maybeBytecode_->begin() + customSection.offset + customSection.length,
-                  customSection.offset,
+        Decoder d(customSection.payload->begin(), customSection.payload->end(), 0,
                   /* error = */ nullptr);
         uint32_t nchars;
-        if (!d.readVarU32(&nchars))
+        if (!d.readVarU32(&nchars)) {
             return true; // ignoring invalid section data
+        }
         const uint8_t* chars;
-        if (!d.readBytes(nchars, &chars) || d.currentPosition() != d.end())
+        if (!d.readBytes(nchars, &chars) || d.currentPosition() != d.end()) {
             return true; // ignoring invalid section data
+        }
 
         UTF8Chars utf8Chars(reinterpret_cast<const char*>(chars), nchars);
         JSString* str = JS_NewStringCopyUTF8N(cx, utf8Chars);
-        if (!str)
+        if (!str) {
             return false;
+        }
         result.set(str);
         return true;
     }
@@ -525,8 +461,9 @@ DebugState::getSourceMappingURL(JSContext* cx, MutableHandleString result) const
     if (sourceMapURL && strlen(sourceMapURL)) {
         UTF8Chars utf8Chars(sourceMapURL, strlen(sourceMapURL));
         JSString* str = JS_NewStringCopyUTF8N(cx, utf8Chars);
-        if (!str)
+        if (!str) {
             return false;
+        }
         result.set(str);
     }
     return true;
@@ -541,6 +478,5 @@ DebugState::addSizeOfMisc(MallocSizeOf mallocSizeOf,
                           size_t* data) const
 {
     code_->addSizeOfMiscIfNotSeen(mallocSizeOf, seenMetadata, seenCode, code, data);
-    if (maybeBytecode_)
-        *data += maybeBytecode_->sizeOfIncludingThisIfNotSeen(mallocSizeOf, seenBytes);
+    module_->addSizeOfMisc(mallocSizeOf, seenMetadata, seenBytes, seenCode, code, data);
 }

@@ -6,6 +6,6 @@ function f() {
     } catch (e) {
         msg = '' + e;
     }
-    assertEq(msg, "TypeError: x is undefined");
+    assertEq(msg, `TypeError: x is undefined; can't access its "foo" property`);
 }
 f();

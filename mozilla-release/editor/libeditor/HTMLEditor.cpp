@@ -462,8 +462,8 @@ HTMLEditor::UpdateRootElement()
   }
 }
 
-already_AddRefed<nsIContent>
-HTMLEditor::FindSelectionRoot(nsINode* aNode)
+Element*
+HTMLEditor::FindSelectionRoot(nsINode* aNode) const
 {
   if (NS_WARN_IF(!aNode)) {
     return nullptr;
@@ -472,42 +472,38 @@ HTMLEditor::FindSelectionRoot(nsINode* aNode)
   MOZ_ASSERT(aNode->IsDocument() || aNode->IsContent(),
              "aNode must be content or document node");
 
-  nsCOMPtr<nsIDocument> doc = aNode->GetComposedDoc();
+  nsIDocument* doc = aNode->GetComposedDoc();
   if (!doc) {
     return nullptr;
   }
 
-  nsCOMPtr<nsIContent> content;
   if (aNode->IsInUncomposedDoc() &&
       (doc->HasFlag(NODE_IS_EDITABLE) || !aNode->IsContent())) {
-    content = doc->GetRootElement();
-    return content.forget();
+    return doc->GetRootElement();
   }
-  content = aNode->AsContent();
 
   // XXX If we have readonly flag, shouldn't return the element which has
   // contenteditable="true"?  However, such case isn't there without chrome
   // permission script.
   if (IsReadonly()) {
     // We still want to allow selection in a readonly editor.
-    content = do_QueryInterface(GetRoot());
-    return content.forget();
+    return GetRoot();
   }
 
+  nsIContent* content = aNode->AsContent();
   if (!content->HasFlag(NODE_IS_EDITABLE)) {
     // If the content is in read-write state but is not editable itself,
     // return it as the selection root.
     if (content->IsElement() &&
         content->AsElement()->State().HasState(NS_EVENT_STATE_MOZ_READWRITE)) {
-      return content.forget();
+      return content->AsElement();
     }
     return nullptr;
   }
 
   // For non-readonly editors we want to find the root of the editable subtree
   // containing aContent.
-  content = content->GetEditingHost();
-  return content.forget();
+  return content->GetEditingHost();
 }
 
 void
@@ -1183,8 +1179,10 @@ HTMLEditor::TabInTable(bool inIsShift,
   if (!(*outHandled) && !inIsShift) {
     // If we haven't handled it yet, then we must have run off the end of the
     // table.  Insert a new row.
-    rv = InsertTableRow(1, true);
-    NS_ENSURE_SUCCESS(rv, rv);
+    rv = InsertTableRowsWithTransaction(1, InsertPosition::eAfterSelectedCell);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
     *outHandled = true;
     // Put selection in right place.  Use table code to get selection and index
     // to new row...
@@ -2036,15 +2034,21 @@ HTMLEditor::GetHTMLBackgroundColorState(bool* aMixed,
   *aMixed = false;
   aOutColor.Truncate();
 
-  RefPtr<Element> element;
-  int32_t selectedCount;
-  nsAutoString tagName;
-  nsresult rv = GetSelectedOrParentTableElement(tagName,
-                                                &selectedCount,
-                                                getter_AddRefs(element));
-  NS_ENSURE_SUCCESS(rv, rv);
+  RefPtr<Selection> selection = GetSelection();
+  if (NS_WARN_IF(!selection)) {
+    return NS_ERROR_FAILURE;
+  }
 
-  while (element) {
+  ErrorResult error;
+  RefPtr<Element> cellOrRowOrTableElement =
+    GetSelectedOrParentTableElement(*selection, error);
+  if (NS_WARN_IF(error.Failed())) {
+    return error.StealNSResult();
+  }
+
+  for (RefPtr<Element> element = std::move(cellOrRowOrTableElement);
+       element;
+       element = element->GetParentElement()) {
     // We are in a cell or selected table
     element->GetAttr(kNameSpaceID_None, nsGkAtoms::bgcolor, aOutColor);
 
@@ -2059,8 +2063,8 @@ HTMLEditor::GetHTMLBackgroundColorState(bool* aMixed,
     }
 
     // No color is set, but we need to report visible color inherited
-    // from nested cells/tables, so search up parent chain
-    element = element->GetParentElement();
+    // from nested cells/tables, so search up parent chain so that
+    // let's keep checking the ancestors.
   }
 
   // If no table or cell found, get page body
@@ -2990,31 +2994,41 @@ HTMLEditor::SetHTMLBackgroundColorWithTransaction(const nsAString& aColor)
 {
   MOZ_ASSERT(IsInitialized(), "The HTMLEditor hasn't been initialized yet");
 
+  RefPtr<Selection> selection = GetSelection();
+  if (NS_WARN_IF(!selection)) {
+    return NS_ERROR_FAILURE;
+  }
+
   // Find a selected or enclosing table element to set background on
-  RefPtr<Element> element;
-  int32_t selectedCount;
-  nsAutoString tagName;
-  nsresult rv = GetSelectedOrParentTableElement(tagName, &selectedCount,
-                                                getter_AddRefs(element));
-  NS_ENSURE_SUCCESS(rv, rv);
+  ErrorResult error;
+  bool isCellSelected = false;
+  RefPtr<Element> cellOrRowOrTableElement =
+    GetSelectedOrParentTableElement(*selection, error, &isCellSelected);
+  if (NS_WARN_IF(error.Failed())) {
+    return error.StealNSResult();
+  }
 
   bool setColor = !aColor.IsEmpty();
-
-  RefPtr<nsAtom> bgColorAtom = NS_Atomize("bgcolor");
-  if (element) {
-    if (selectedCount > 0) {
-      RefPtr<Selection> selection = GetSelection();
-      if (NS_WARN_IF(!selection)) {
-        return NS_ERROR_FAILURE;
-      }
+  RefPtr<Element> rootElementOfBackgroundColor;
+  if (cellOrRowOrTableElement) {
+    rootElementOfBackgroundColor = std::move(cellOrRowOrTableElement);
+    // Needs to set or remove background color of each selected cell elements.
+    // Therefore, just the cell contains selection range, we don't need to
+    // do this.  Note that users can select each cell, but with Selection API,
+    // web apps can select <tr> and <td> at same time. With <table>, looks
+    // odd, though.
+    if (isCellSelected ||
+        rootElementOfBackgroundColor->IsAnyOfHTMLElements(nsGkAtoms::table,
+                                                          nsGkAtoms::tr)) {
       IgnoredErrorResult ignoredError;
       RefPtr<Element> cellElement =
         GetFirstSelectedTableCellElement(*selection, ignoredError);
       if (cellElement) {
         if (setColor) {
           while (cellElement) {
-            rv =
-              SetAttributeWithTransaction(*cellElement, *bgColorAtom, aColor);
+            nsresult rv =
+              SetAttributeWithTransaction(*cellElement, *nsGkAtoms::bgcolor,
+                                          aColor);
             if (NS_WARN_IF(NS_FAILED(rv))) {
               return rv;
             }
@@ -3024,7 +3038,8 @@ HTMLEditor::SetHTMLBackgroundColorWithTransaction(const nsAString& aColor)
           return NS_OK;
         }
         while (cellElement) {
-          rv = RemoveAttributeWithTransaction(*cellElement, *bgColorAtom);
+          nsresult rv =
+            RemoveAttributeWithTransaction(*cellElement, *nsGkAtoms::bgcolor);
           if (NS_FAILED(rv)) {
             return rv;
           }
@@ -3037,15 +3052,17 @@ HTMLEditor::SetHTMLBackgroundColorWithTransaction(const nsAString& aColor)
     // If we failed to find a cell, fall through to use originally-found element
   } else {
     // No table element -- set the background color on the body tag
-    element = GetRoot();
-    if (NS_WARN_IF(!element)) {
+    rootElementOfBackgroundColor = GetRoot();
+    if (NS_WARN_IF(!rootElementOfBackgroundColor)) {
       return NS_ERROR_FAILURE;
     }
   }
   // Use the editor method that goes through the transaction system
   return setColor ?
-           SetAttributeWithTransaction(*element, *bgColorAtom, aColor) :
-           RemoveAttributeWithTransaction(*element, *bgColorAtom);
+           SetAttributeWithTransaction(*rootElementOfBackgroundColor,
+                                       *nsGkAtoms::bgcolor, aColor) :
+           RemoveAttributeWithTransaction(*rootElementOfBackgroundColor,
+                                          *nsGkAtoms::bgcolor);
 }
 
 NS_IMETHODIMP
@@ -3303,50 +3320,6 @@ HTMLEditor::GetStyleSheetForURL(const nsAString& aURL)
   return mStyleSheets[foundIndex];
 }
 
-NS_IMETHODIMP
-HTMLEditor::GetEmbeddedObjects(nsIArray** aNodeList)
-{
-  if (NS_WARN_IF(!aNodeList)) {
-    return NS_ERROR_INVALID_ARG;
-  }
-
-  nsresult rv;
-  nsCOMPtr<nsIMutableArray> nodes = do_CreateInstance(NS_ARRAY_CONTRACTID, &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  nsCOMPtr<nsIContentIterator> iter = NS_NewContentIterator();
-
-  nsCOMPtr<nsIDocument> doc = GetDocument();
-  if (NS_WARN_IF(!doc)) {
-    return NS_ERROR_UNEXPECTED;
-  }
-
-  iter->Init(doc->GetRootElement());
-
-  // Loop through the content iterator for each content node.
-  while (!iter->IsDone()) {
-    nsINode* node = iter->GetCurrentNode();
-    if (node->IsElement()) {
-      dom::Element* element = node->AsElement();
-
-      // See if it's an image or an embed and also include all links.
-      // Let mail decide which link to send or not
-      if (element->IsAnyOfHTMLElements(nsGkAtoms::img, nsGkAtoms::embed,
-                                       nsGkAtoms::a) ||
-          (element->IsHTMLElement(nsGkAtoms::body) &&
-           element->HasAttr(kNameSpaceID_None, nsGkAtoms::background))) {
-        nodes->AppendElement(node);
-       }
-     }
-     iter->Next();
-   }
-
-  nodes.forget(aNodeList);
-  return NS_OK;
-}
-
 nsresult
 HTMLEditor::DeleteSelectionWithTransaction(EDirection aAction,
                                            EStripWrappers aStripWrappers)
@@ -3419,6 +3392,23 @@ HTMLEditor::DeleteNodeWithTransaction(nsINode& aNode)
   nsresult rv = EditorBase::DeleteNodeWithTransaction(aNode);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
+  }
+  return NS_OK;
+}
+
+nsresult
+HTMLEditor::DeleteAllChildrenWithTransaction(Element& aElement)
+{
+  // Prevent rules testing until we're done
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, EditSubAction::eDeleteNode,
+                                      nsIEditor::eNext);
+
+  while (nsCOMPtr<nsINode> child = aElement.GetLastChild()) {
+    nsresult rv = DeleteNodeWithTransaction(*child);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
   }
   return NS_OK;
 }

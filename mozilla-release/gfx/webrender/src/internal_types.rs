@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use api::{DebugCommand, DeviceUintRect, DocumentId, ExternalImageData, ExternalImageId};
-use api::ImageFormat;
+use api::{ImageFormat, NotificationRequest};
 use device::TextureFilter;
 use renderer::PipelineInfo;
 use gpu_cache::GpuCacheUpdateList;
@@ -25,20 +25,38 @@ use tiling;
 pub type FastHashMap<K, V> = HashMap<K, V, BuildHasherDefault<FxHasher>>;
 pub type FastHashSet<K> = HashSet<K, BuildHasherDefault<FxHasher>>;
 
-// An ID for a texture that is owned by the
-// texture cache module. This can include atlases
-// or standalone textures allocated via the
-// texture cache (e.g. if an image is too large
-// to be added to an atlas). The texture cache
-// manages the allocation and freeing of these
-// IDs, and the rendering thread maintains a
-// map from cache texture ID to native texture.
-
+/// An ID for a texture that is owned by the `texture_cache` module.
+///
+/// This can include atlases or standalone textures allocated via the texture
+/// cache (e.g.  if an image is too large to be added to an atlas). The texture
+/// cache manages the allocation and freeing of these IDs, and the rendering
+/// thread maintains a map from cache texture ID to native texture.
+///
+/// We never reuse IDs, so we use a u64 here to be safe.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
-pub struct CacheTextureId(pub usize);
+pub struct CacheTextureId(pub u64);
 
+/// Canonical type for texture layer indices.
+///
+/// WebRender is currently not very consistent about layer index types. Some
+/// places use i32 (since that's the type used in various OpenGL APIs), some
+/// places use u32 (since having it be signed is non-sensical, but the
+/// underlying graphics APIs generally operate on 32-bit integers) and some
+/// places use usize (since that's most natural in Rust).
+///
+/// Going forward, we aim to us usize throughout the codebase, since that allows
+/// operations like indexing without a cast, and convert to the required type in
+/// the device module when making calls into the platform layer.
+pub type LayerIndex = usize;
+
+/// Identifies a render pass target that is persisted until the end of the frame.
+///
+/// By default, only the targets of the immediately-preceding pass are bound as
+/// inputs to the next pass. However, tasks can opt into having their target
+/// preserved in a list until the end of the frame, and this type specifies the
+/// index in that list.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
@@ -48,26 +66,29 @@ impl SavedTargetIndex {
     pub const PENDING: Self = SavedTargetIndex(!0);
 }
 
-// Represents the source for a texture.
-// These are passed from throughout the
-// pipeline until they reach the rendering
-// thread, where they are resolved to a
-// native texture ID.
-
+/// Identifies the source of an input texture to a shader.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
-pub enum SourceTexture {
+pub enum TextureSource {
+    /// Equivalent to `None`, allowing us to avoid using `Option`s everywhere.
     Invalid,
+    /// An entry in the texture cache.
     TextureCache(CacheTextureId),
+    /// An external image texture, mananged by the embedding.
     External(ExternalImageData),
-    CacheA8,
-    CacheRGBA8,
+    /// The alpha target of the immediately-preceding pass.
+    PrevPassAlpha,
+    /// The color target of the immediately-preceding pass.
+    PrevPassColor,
+    /// A render target from an earlier pass. Unlike the immediately-preceding
+    /// passes, these are not made available automatically, but are instead
+    /// opt-in by the `RenderTask` (see `mark_for_saving()`).
     RenderTaskCache(SavedTargetIndex),
 }
 
-pub const ORTHO_NEAR_PLANE: f32 = -1000000.0;
-pub const ORTHO_FAR_PLANE: f32 = 1000000.0;
+pub const ORTHO_NEAR_PLANE: f32 = -100000.0;
+pub const ORTHO_FAR_PLANE: f32 = 100000.0;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
@@ -144,6 +165,7 @@ pub enum DebugOutput {
     LoadCapture(PathBuf, Vec<PlainExternalImage>),
 }
 
+#[allow(dead_code)]
 pub enum ResultMsg {
     DebugCommand(DebugCommand),
     DebugOutput(DebugOutput),
@@ -151,7 +173,7 @@ pub enum ResultMsg {
     UpdateGpuCache(GpuCacheUpdateList),
     UpdateResources {
         updates: TextureUpdateList,
-        cancel_rendering: bool,
+        memory_pressure: bool,
     },
     PublishPipelineInfo(PipelineInfo),
     PublishDocument(
@@ -160,6 +182,7 @@ pub enum ResultMsg {
         TextureUpdateList,
         BackendProfileCounters,
     ),
+    AppendNotificationRequests(Vec<NotificationRequest>),
 }
 
 #[derive(Clone, Debug)]

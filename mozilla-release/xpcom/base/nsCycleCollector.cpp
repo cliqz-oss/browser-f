@@ -157,12 +157,14 @@
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/CycleCollectedJSRuntime.h"
 #include "mozilla/DebugOnly.h"
+#include "mozilla/HashFunctions.h"
 #include "mozilla/HashTable.h"
 #include "mozilla/HoldDropJSObjects.h"
 /* This must occur *after* base/process_util.h to avoid typedefs conflicts. */
 #include "mozilla/LinkedList.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Move.h"
+#include "mozilla/MruCache.h"
 #include "mozilla/SegmentedVector.h"
 
 #include "nsCycleCollectionParticipant.h"
@@ -2092,6 +2094,17 @@ private:
   nsAutoPtr<NodePool::Enumerator> mCurrNode;
   uint32_t mNoteChildCount;
 
+  struct PtrInfoCache : public MruCache<void*, PtrInfo*, PtrInfoCache, 491>
+  {
+    static HashNumber Hash(const void* aKey) { return HashGeneric(aKey); }
+    static bool Match(const void* aKey, const PtrInfo* aVal)
+    {
+      return aVal->mPointer == aKey;
+    }
+  };
+
+  PtrInfoCache mGraphCache;
+
 public:
   CCGraphBuilder(CCGraph& aGraph,
                  CycleCollectorResults& aResults,
@@ -2113,6 +2126,10 @@ public:
   // Do some work traversing nodes in the graph. Returns true if this graph building is finished.
   bool BuildGraph(SliceBudget& aBudget);
 
+  void RemoveCachedEntry(void* aPtr)
+  {
+    mGraphCache.Remove(aPtr);
+  }
 private:
   PtrInfo* AddNode(void* aPtr, nsCycleCollectionParticipant* aParticipant);
   PtrInfo* AddWeakMapNode(JS::GCCellPtr aThing);
@@ -2210,6 +2227,10 @@ CCGraphBuilder::CCGraphBuilder(CCGraph& aGraph,
   , mMergeZones(aMergeZones)
   , mNoteChildCount(0)
 {
+  // 4096 is an allocation bucket size.
+  static_assert(sizeof(CCGraphBuilder) <= 4096,
+                "Don't create too large CCGraphBuilder objects");
+
   if (aCCRuntime) {
     mJSParticipant = aCCRuntime->GCThingParticipant();
     mJSZoneParticipant = aCCRuntime->ZoneParticipant();
@@ -2240,6 +2261,13 @@ CCGraphBuilder::AddNode(void* aPtr, nsCycleCollectionParticipant* aParticipant)
     return nullptr;
   }
 
+  PtrInfoCache::Entry cached = mGraphCache.Lookup(aPtr);
+  if (cached) {
+    MOZ_ASSERT(cached.Data()->mParticipant == aParticipant,
+               "nsCycleCollectionParticipant shouldn't change!");
+    return cached.Data();
+  }
+
   PtrInfo* result;
   auto p = mGraph.mPtrInfoMap.lookupForAdd(aPtr);
   if (!p) {
@@ -2262,6 +2290,8 @@ CCGraphBuilder::AddNode(void* aPtr, nsCycleCollectionParticipant* aParticipant)
     MOZ_ASSERT(result->mParticipant == aParticipant,
                "nsCycleCollectionParticipant shouldn't change!");
   }
+
+  cached.Set(result);
 
   return result;
 }
@@ -4044,6 +4074,9 @@ nsCycleCollector::RemoveObjectFromGraph(void* aObj)
   }
 
   mGraph.RemoveObjectFromMap(aObj);
+  if (mBuilder) {
+    mBuilder->RemoveCachedEntry(aObj);
+  }
 }
 
 void

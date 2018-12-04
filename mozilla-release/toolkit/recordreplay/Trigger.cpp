@@ -58,17 +58,14 @@ extern "C" {
 MOZ_EXPORT void
 RecordReplayInterface_RegisterTrigger(void* aObj, const std::function<void()>& aCallback)
 {
-  MOZ_ASSERT(IsRecordingOrReplaying());
-  MOZ_RELEASE_ASSERT(!AreThreadEventsPassedThrough());
   MOZ_RELEASE_ASSERT(aObj);
+  MOZ_RELEASE_ASSERT(!AreThreadEventsPassedThrough());
 
-  if (HasDivergedFromRecording()) {
+  Thread* thread = Thread::Current();
+  if (thread->HasDivergedFromRecording()) {
     return;
   }
-
-  MOZ_RELEASE_ASSERT(!AreThreadEventsDisallowed());
-
-  size_t threadId = Thread::Current()->Id();
+  MOZ_RELEASE_ASSERT(thread->CanAccessRecording());
 
   size_t id;
   {
@@ -78,17 +75,21 @@ RecordReplayInterface_RegisterTrigger(void* aObj, const std::function<void()>& a
     TriggerInfoMap::iterator iter = gTriggerInfoMap->find(aObj);
     if (iter != gTriggerInfoMap->end()) {
       id = gTriggers->GetIndex(aObj);
-      MOZ_RELEASE_ASSERT(iter->second.mThreadId == threadId);
+      MOZ_RELEASE_ASSERT(iter->second.mThreadId == thread->Id());
       iter->second.mCallback = aCallback;
       iter->second.mRegisterCount++;
     } else {
       id = gTriggers->Insert(aObj);
-      TriggerInfo info(threadId, aCallback);
+      TriggerInfo info(thread->Id(), aCallback);
       gTriggerInfoMap->insert(TriggerInfoMap::value_type(aObj, info));
     }
   }
 
-  RecordReplayAssert("RegisterTrigger %zu", id);
+  RecordingEventSection res(thread);
+  MOZ_RELEASE_ASSERT(res.CanAccessEvents());
+
+  thread->Events().RecordOrReplayThreadEvent(ThreadEvent::RegisterTrigger);
+  thread->Events().CheckInput(id);
 }
 
 MOZ_EXPORT void
@@ -159,13 +160,11 @@ RemoveTriggerCallbackForThreadId(size_t aThreadId)
 MOZ_EXPORT void
 RecordReplayInterface_ExecuteTriggers()
 {
-  MOZ_ASSERT(IsRecordingOrReplaying());
-  MOZ_RELEASE_ASSERT(!AreThreadEventsPassedThrough());
-  MOZ_RELEASE_ASSERT(!AreThreadEventsDisallowed());
-
   Thread* thread = Thread::Current();
-
-  RecordReplayAssert("ExecuteTriggers");
+  RecordingEventSection res(thread);
+  if (!res.CanAccessEvents()) {
+    return;
+  }
 
   if (IsRecording()) {
     // Invoke the callbacks for any triggers waiting for execution, including
@@ -176,11 +175,11 @@ RecordReplayInterface_ExecuteTriggers()
         break;
       }
 
-      thread->Events().RecordOrReplayThreadEvent(ThreadEvent::ExecuteTrigger);
+      thread->Events().WriteScalar((size_t) ThreadEvent::ExecuteTrigger);
       thread->Events().WriteScalar(id.ref());
       InvokeTriggerCallback(id.ref());
     }
-    thread->Events().RecordOrReplayThreadEvent(ThreadEvent::ExecuteTriggersFinished);
+    thread->Events().WriteScalar((size_t) ThreadEvent::ExecuteTriggersFinished);
   } else {
     // Execute the same callbacks which were executed at this point while
     // recording.
@@ -197,8 +196,6 @@ RecordReplayInterface_ExecuteTriggers()
       InvokeTriggerCallback(id);
     }
   }
-
-  RecordReplayAssert("ExecuteTriggers DONE");
 }
 
 } // extern "C"

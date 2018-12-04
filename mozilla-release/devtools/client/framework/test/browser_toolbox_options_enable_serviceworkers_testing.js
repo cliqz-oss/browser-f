@@ -24,13 +24,13 @@ function test() {
   SpecialPowers.pushPrefEnv({"set": [
     ["dom.serviceWorkers.exemptFromPerDomainMax", true],
     ["dom.serviceWorkers.enabled", true],
-    ["dom.serviceWorkers.testing.enabled", false]
+    ["dom.serviceWorkers.testing.enabled", false],
   ]}, init);
 }
 
 function init() {
-  addTab(TEST_URI).then(tab => {
-    const target = TargetFactory.forTab(tab);
+  addTab(TEST_URI).then(async tab => {
+    const target = await TargetFactory.forTab(tab);
     const linkedBrowser = tab.linkedBrowser;
 
     loadFrameScriptUtils(linkedBrowser);

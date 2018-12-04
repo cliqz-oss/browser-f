@@ -50,6 +50,7 @@ class CustomRequestPanel extends Component {
 
   componentDidMount() {
     const { request, connector } = this.props;
+    this.initialRequestMethod = request.method;
     fetchNetworkUpdatePacket(connector.requestData, request, [
       "requestHeaders",
       "responseHeaders",
@@ -74,7 +75,7 @@ class CustomRequestPanel extends Component {
    * @return {array} array of headers info {name, value}
    */
   parseRequestText(text, namereg, divider) {
-    const regex = new RegExp(`(${namereg})\\${divider}\\s*(.+)`);
+    const regex = new RegExp(`(${namereg})\\${divider}\\s*(\\S.*)`);
     const pairs = [];
 
     for (const line of text.split("\n")) {
@@ -104,18 +105,22 @@ class CustomRequestPanel extends Component {
           requestHeaders: {
             customHeadersValue: val || "",
             // Parse text representation of multiple HTTP headers
-            headers: this.parseRequestText(val, "\\S+?", ":")
+            headers: this.parseRequestText(val, "\\S+?", ":"),
           },
         };
         break;
       case "custom-method-value":
-        data = { method: val.trim() };
+        // If val is empty when leaving the "method" field, set the method to
+        // its original value
+        data = (evt.type === "blur" && val === "") ?
+          { method: this.initialRequestMethod } :
+          { method: val.trim() };
         break;
       case "custom-postdata-value":
         data = {
           requestPostData: {
             postData: { text: val },
-          }
+          },
         };
         break;
       case "custom-query-value":
@@ -141,7 +146,7 @@ class CustomRequestPanel extends Component {
       case "custom-url-value":
         data = {
           customQueryValue: null,
-          url: val
+          url: val,
         };
         break;
       default:
@@ -212,7 +217,9 @@ class CustomRequestPanel extends Component {
             id: "custom-method-value",
             onChange: (evt) =>
               this.updateCustomRequestFields(evt, request, updateRequest),
-            value: method || "GET",
+            onBlur: (evt) =>
+              this.updateCustomRequestFields(evt, request, updateRequest),
+            value: method,
           }),
           input({
             className: "custom-url-value",

@@ -13,7 +13,6 @@ config = {
         'clobber',
         'build',
         'check-test',
-        'update',  # decided by query_is_nightly()
     ],
     'app_ini_path': '%(obj_dir)s/dist/bin/application.ini',
     # decides whether we want to use moz_sign_cmd in env
@@ -37,7 +36,6 @@ config = {
 
     #########################################################################
     ###### 32 bit specific ######
-    'base_name': 'Linux_%(branch)s',
     'platform': 'linux',
     'stage_platform': 'linux',
     'env': {

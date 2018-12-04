@@ -24,13 +24,13 @@ SVGFEGaussianBlurElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenP
 
 nsSVGElement::NumberPairInfo SVGFEGaussianBlurElement::sNumberPairInfo[1] =
 {
-  { &nsGkAtoms::stdDeviation, 0, 0 }
+  { nsGkAtoms::stdDeviation, 0, 0 }
 };
 
 nsSVGElement::StringInfo SVGFEGaussianBlurElement::sStringInfo[2] =
 {
-  { &nsGkAtoms::result, kNameSpaceID_None, true },
-  { &nsGkAtoms::in, kNameSpaceID_None, true }
+  { nsGkAtoms::result, kNameSpaceID_None, true },
+  { nsGkAtoms::in, kNameSpaceID_None, true }
 };
 
 //----------------------------------------------------------------------
@@ -77,12 +77,12 @@ SVGFEGaussianBlurElement::GetPrimitiveDescription(nsSVGFilterInstance* aInstance
                                              &mNumberPairAttributes[STD_DEV],
                                              nsSVGNumberPair::eSecond);
   if (stdX < 0 || stdY < 0) {
-    return FilterPrimitiveDescription(PrimitiveType::Empty);
+    return FilterPrimitiveDescription();
   }
 
-  FilterPrimitiveDescription descr(PrimitiveType::GaussianBlur);
-  descr.Attributes().Set(eGaussianBlurStdDeviation, Size(stdX, stdY));
-  return descr;
+  GaussianBlurAttributes atts;
+  atts.mStdDeviation = Size(stdX, stdY);
+  return FilterPrimitiveDescription(AsVariant(std::move(atts)));
 }
 
 bool

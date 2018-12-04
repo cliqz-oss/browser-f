@@ -328,7 +328,7 @@ AppendUTF16toUTF8(mozilla::Span<const char16_t> aSource, nsACString& aDest)
 // value as an unsigned byte. (This is not windows-1252!) If there are code
 // points above U+00FF, memory-safely produces garbage and will likely start
 // asserting in future debug builds. The nature of the garbage may differ
-// based on CPU architecture and must not be relied upon. The names say 
+// based on CPU architecture and must not be relied upon. The names say
 // "ASCII" instead of "Latin1" for legacy reasons.
 
 inline MOZ_MUST_USE bool
@@ -782,14 +782,6 @@ bool FindCharInReadable(char16_t aChar, nsAString::const_iterator& aSearchStart,
 bool FindCharInReadable(char aChar, nsACString::const_iterator& aSearchStart,
                         const nsACString::const_iterator& aSearchEnd);
 
-/**
-* Finds the number of occurences of |aChar| in the string |aStr|
-*/
-uint32_t CountCharInReadable(const nsAString& aStr,
-                             char16_t aChar);
-uint32_t CountCharInReadable(const nsACString& aStr,
-                             char aChar);
-
 bool StringBeginsWith(const nsAString& aSource, const nsAString& aSubstring);
 bool StringBeginsWith(const nsAString& aSource, const nsAString& aSubstring,
                       const nsStringComparator& aComparator);
@@ -824,13 +816,5 @@ CompareUTF8toUTF16(const nsACString& aUTF8String,
                    bool* aErr = nullptr);
 
 void AppendUCS4ToUTF16(const uint32_t aSource, nsAString& aDest);
-
-template<class T>
-inline bool
-EnsureStringLength(T& aStr, uint32_t aLen)
-{
-  aStr.SetLength(aLen);
-  return (aStr.Length() == aLen);
-}
 
 #endif // !defined(nsReadableUtils_h___)

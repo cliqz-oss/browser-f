@@ -17,6 +17,7 @@ namespace jit {
 
 const OptimizationLevelInfo IonOptimizations;
 
+// Duplicated in all.js - ensure both match.
 const uint32_t OptimizationInfo::CompilerWarmupThreshold = 1000;
 const uint32_t OptimizationInfo::CompilerSmallFunctionWarmupThreshold = CompilerWarmupThreshold;
 
@@ -80,8 +81,9 @@ OptimizationInfo::compilerWarmUpThreshold(JSScript* script, jsbytecode* pc) cons
 {
     MOZ_ASSERT(pc == nullptr || pc == script->code() || JSOp(*pc) == JSOP_LOOPENTRY);
 
-    if (pc == script->code())
+    if (pc == script->code()) {
         pc = nullptr;
+    }
 
     uint32_t warmUpThreshold = JitOptions.forcedDefaultIonWarmUpThreshold
         .valueOr(compilerWarmUpThreshold_);
@@ -96,15 +98,18 @@ OptimizationInfo::compilerWarmUpThreshold(JSScript* script, jsbytecode* pc) cons
     // threshold to improve the compilation's type information and hopefully
     // avoid later recompilation.
 
-    if (script->length() > MAX_MAIN_THREAD_SCRIPT_SIZE)
+    if (script->length() > MAX_MAIN_THREAD_SCRIPT_SIZE) {
         warmUpThreshold *= (script->length() / double(MAX_MAIN_THREAD_SCRIPT_SIZE));
+    }
 
     uint32_t numLocalsAndArgs = NumLocalsAndArgs(script);
-    if (numLocalsAndArgs > MAX_MAIN_THREAD_LOCALS_AND_ARGS)
+    if (numLocalsAndArgs > MAX_MAIN_THREAD_LOCALS_AND_ARGS) {
         warmUpThreshold *= (numLocalsAndArgs / double(MAX_MAIN_THREAD_LOCALS_AND_ARGS));
+    }
 
-    if (!pc || JitOptions.eagerCompilation)
+    if (!pc || JitOptions.eagerCompilation) {
         return warmUpThreshold;
+    }
 
     // It's more efficient to enter outer loops, rather than inner loops, via OSR.
     // To accomplish this, we use a slightly higher threshold for inner loops.
@@ -163,8 +168,9 @@ OptimizationLevelInfo::levelForScript(JSScript* script, jsbytecode* pc) const
     while (!isLastLevel(prev)) {
         OptimizationLevel level = nextLevel(prev);
         const OptimizationInfo* info = get(level);
-        if (script->getWarmUpCount() < info->compilerWarmUpThreshold(script, pc))
+        if (script->getWarmUpCount() < info->compilerWarmUpThreshold(script, pc)) {
             return prev;
+        }
 
         prev = level;
     }

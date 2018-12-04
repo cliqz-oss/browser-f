@@ -588,12 +588,17 @@ public:
   ScreenPoint GetCurrentMousePosition() const;
 
   /**
-   * Process touch velocity.
-   * Sometimes the touch move event will have a velocity even though no scrolling
-   * is occurring such as when the toolbar is being hidden/shown in Fennec.
-   * This function can be called to have the y axis' velocity queue updated.
+   * Process a movement of the dynamic toolbar by |aDeltaY| over the time
+   * period from |aStartTimestampMs| to |aEndTimestampMs|.
+   * This is used to track velocities accurately in the presence of movement
+   * of the dynamic toolbar, since in such cases the finger can be moving
+   * relative to the screen even though no scrolling is occurring.
+   * Note that this function expects "spatial coordinates" (i.e. toolbar
+   * moves up --> negative delta).
    */
-  void ProcessTouchVelocity(uint32_t aTimestampMs, float aSpeedY);
+  void ProcessDynamicToolbarMovement(uint32_t aStartTimestampMs,
+                                     uint32_t aEndTimestampMs,
+                                     ScreenCoord aDeltaY);
 private:
   typedef bool (*GuidComparator)(const ScrollableLayerGuid&, const ScrollableLayerGuid&);
 

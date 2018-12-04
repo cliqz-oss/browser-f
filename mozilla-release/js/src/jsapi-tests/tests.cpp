@@ -17,16 +17,18 @@ JSAPITest* JSAPITest::list;
 bool JSAPITest::init()
 {
     cx = createContext();
-    if (!cx)
+    if (!cx) {
         return false;
+    }
     js::UseInternalJobQueues(cx);
-    if (!JS::InitSelfHostedCode(cx))
+    if (!JS::InitSelfHostedCode(cx)) {
         return false;
-    JS_BeginRequest(cx);
+    }
     global.init(cx);
     createGlobal();
-    if (!global)
+    if (!global) {
         return false;
+    }
     JS::EnterRealm(cx, global);
     return true;
 }
@@ -38,37 +40,39 @@ void JSAPITest::uninit()
         global = nullptr;
     }
     if (cx) {
-        JS_EndRequest(cx);
         destroyContext();
         cx = nullptr;
     }
     msgs.clear();
 }
 
-bool JSAPITest::exec(const char* bytes, const char* filename, int lineno)
+bool JSAPITest::exec(const char* utf8, const char* filename, int lineno)
 {
-    JS::RootedValue v(cx);
     JS::CompileOptions opts(cx);
     opts.setFileAndLine(filename, lineno);
-    return JS::Evaluate(cx, opts, bytes, strlen(bytes), &v) ||
-        fail(JSAPITestString(bytes), filename, lineno);
+
+    JS::RootedValue v(cx);
+    return JS::EvaluateUtf8(cx, opts, utf8, strlen(utf8), &v) ||
+           fail(JSAPITestString(utf8), filename, lineno);
 }
 
-bool JSAPITest::execDontReport(const char* bytes, const char* filename, int lineno)
+bool JSAPITest::execDontReport(const char* utf8, const char* filename, int lineno)
 {
-    JS::RootedValue v(cx);
     JS::CompileOptions opts(cx);
     opts.setFileAndLine(filename, lineno);
-    return JS::Evaluate(cx, opts, bytes, strlen(bytes), &v);
+
+    JS::RootedValue v(cx);
+    return JS::EvaluateUtf8(cx, opts, utf8, strlen(utf8), &v);
 }
 
-bool JSAPITest::evaluate(const char* bytes, const char* filename, int lineno,
+bool JSAPITest::evaluate(const char* utf8, const char* filename, int lineno,
                          JS::MutableHandleValue vp)
 {
     JS::CompileOptions opts(cx);
     opts.setFileAndLine(filename, lineno);
-    return JS::Evaluate(cx, opts, bytes, strlen(bytes), vp) ||
-        fail(JSAPITestString(bytes), filename, lineno);
+
+    return JS::EvaluateUtf8(cx, opts, utf8, strlen(utf8), vp) ||
+           fail(JSAPITestString(utf8), filename, lineno);
 }
 
 bool JSAPITest::definePrint()
@@ -81,20 +85,20 @@ JSObject* JSAPITest::createGlobal(JSPrincipals* principals)
     /* Create the global object. */
     JS::RootedObject newGlobal(cx);
     JS::RealmOptions options;
-#ifdef ENABLE_STREAMS
     options.creationOptions().setStreamsEnabled(true);
-#endif
     newGlobal = JS_NewGlobalObject(cx, getGlobalClass(), principals, JS::FireOnNewGlobalHook,
                                    options);
-    if (!newGlobal)
+    if (!newGlobal) {
         return nullptr;
+    }
 
     JSAutoRealm ar(cx, newGlobal);
 
     // Populate the global object with the standard globals like Object and
     // Array.
-    if (!JS::InitRealmStandardClasses(cx))
+    if (!JS::InitRealmStandardClasses(cx)) {
         return nullptr;
+    }
 
     global = newGlobal;
     return newGlobal;
@@ -113,8 +117,9 @@ int main(int argc, char* argv[])
 
     for (JSAPITest* test = JSAPITest::list; test; test = test->next) {
         const char* name = test->name();
-        if (filter && strstr(name, filter) == nullptr)
+        if (filter && strstr(name, filter) == nullptr) {
             continue;
+        }
 
         total += 1;
 
@@ -133,8 +138,9 @@ int main(int argc, char* argv[])
             printf("%s | %s | %.*s\n",
                    (test->knownFail ? "TEST-KNOWN-FAIL" : "TEST-UNEXPECTED-FAIL"),
                    name, (int) messages.length(), messages.begin());
-            if (!test->knownFail)
+            if (!test->knownFail) {
                 failures++;
+            }
         }
         test->uninit();
     }

@@ -443,16 +443,6 @@ class FennecInstance(GeckoInstance):
             exc, val, tb = sys.exc_info()
             message = "Error possibly due to runner or device args: {}"
             reraise(exc, message.format(e.message), tb)
-        # gecko_log comes from logcat when running with device/emulator
-        logcat_args = {
-            "filterspec": "Gecko",
-            "serial": self.runner.device.app_ctx.device_serial
-        }
-        if self.gecko_log == "-":
-            logcat_args["stream"] = sys.stdout
-        else:
-            logcat_args["logfile"] = self.gecko_log
-        self.runner.device.start_logcat(**logcat_args)
 
         # forward marionette port
         self.runner.device.device.forward(
@@ -510,6 +500,10 @@ class DesktopInstance(GeckoInstance):
         # the line below can be removed as well.
         "app.update.enabled": False,
 
+        # Don't show the content blocking introduction panel
+        # We use a larger number than the default 22 to have some buffer
+        "browser.contentblocking.introCount": 99,
+
         # Enable output of dump()
         "browser.dom.window.dump.enabled": True,
 
@@ -519,6 +513,9 @@ class DesktopInstance(GeckoInstance):
 
         # Do not show the EULA notification which can interfer with tests
         "browser.EULA.override": True,
+
+        # Always display a blank page
+        "browser.newtabpage.enabled": False,
 
         # Background thumbnails in particular cause grief, and disabling thumbnails
         # in general can"t hurt - we re-enable them when tests need them
@@ -568,6 +565,9 @@ class DesktopInstance(GeckoInstance):
         # Turn off the location bar search suggestions opt-in.  It interferes with
         # tests that don't expect it to be there.
         "browser.urlbar.userMadeSearchSuggestionsChoice": True,
+
+        # Don't warn when exiting the browser
+        "browser.warnOnQuit": False,
 
         # Disable first-run welcome page
         "startup.homepage_welcome_url": "about:blank",

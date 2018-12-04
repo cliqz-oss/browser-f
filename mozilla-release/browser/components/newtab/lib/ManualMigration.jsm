@@ -8,7 +8,6 @@ const {actionCreators: ac, actionTypes: at} = ChromeUtils.import("resource://act
 const MIGRATION_ENDED_EVENT = "Migration:Ended";
 const MS_PER_DAY = 86400000;
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 ChromeUtils.defineModuleGetter(this, "MigrationUtils", "resource:///modules/MigrationUtils.jsm");
@@ -40,7 +39,7 @@ this.ManualMigration = class ManualMigration {
   }
 
   async isMigrationMessageExpired() {
-    let profileAge = new ProfileAge();
+    let profileAge = await ProfileAge();
     let profileCreationDate = await profileAge.created;
     let daysSinceProfileCreation = (Date.now() - profileCreationDate) / MS_PER_DAY;
 
@@ -94,10 +93,10 @@ this.ManualMigration = class ManualMigration {
     this.store.dispatch({type: at.MIGRATION_COMPLETED});
   }
 
-  onAction(action) {
+  async onAction(action) {
     switch (action.type) {
       case at.PREFS_INITIAL_VALUES:
-        this.expireIfNecessary(action.data.migrationExpired);
+        await this.expireIfNecessary(action.data.migrationExpired);
         break;
       case at.MIGRATION_START:
         MigrationUtils.showMigrationWizard(action._target.browser.ownerGlobal, [MigrationUtils.MIGRATION_ENTRYPOINT_NEWTAB]);

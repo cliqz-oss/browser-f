@@ -9,8 +9,8 @@ use device::TextureFilter;
 use freelist::{FreeList, FreeListHandle, UpsertResult, WeakFreeListHandle};
 use gpu_cache::{GpuCache, GpuCacheHandle};
 use gpu_types::{ImageSource, UvRectKind};
-use internal_types::{CacheTextureId, FastHashMap, TextureUpdateList, TextureUpdateSource};
-use internal_types::{RenderTargetInfo, SourceTexture, TextureUpdate, TextureUpdateOp};
+use internal_types::{CacheTextureId, LayerIndex, TextureUpdateList, TextureUpdateSource};
+use internal_types::{RenderTargetInfo, TextureSource, TextureUpdate, TextureUpdateOp};
 use profiler::{ResourceProfileCounter, TextureCacheProfileCounters};
 use render_backend::FrameId;
 use resource_cache::CacheItem;
@@ -19,52 +19,8 @@ use std::cmp;
 use std::mem;
 use std::rc::Rc;
 
-// The fixed number of layers for the shared texture cache.
-// There is one array texture per image format, allocated lazily.
-const TEXTURE_ARRAY_LAYERS_LINEAR: usize = 4;
-const TEXTURE_ARRAY_LAYERS_NEAREST: usize = 1;
-
-// The dimensions of each layer in the texture cache.
-const TEXTURE_LAYER_DIMENSIONS: u32 = 2048;
-
 // The size of each region (page) in a texture layer.
 const TEXTURE_REGION_DIMENSIONS: u32 = 512;
-
-// Maintains a simple freelist of texture IDs that are mapped
-// to real API-specific texture IDs in the renderer.
-#[cfg_attr(feature = "capture", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
-struct CacheTextureIdList {
-    free_lists: FastHashMap<ImageFormat, Vec<CacheTextureId>>,
-    next_id: usize,
-}
-
-impl CacheTextureIdList {
-    fn new() -> Self {
-        CacheTextureIdList {
-            next_id: 0,
-            free_lists: FastHashMap::default(),
-        }
-    }
-
-    fn allocate(&mut self, format: ImageFormat) -> CacheTextureId {
-        // If nothing on the free list of texture IDs,
-        // allocate a new one.
-        self.free_lists.get_mut(&format)
-            .and_then(|fl| fl.pop())
-            .unwrap_or_else(|| {
-                self.next_id += 1;
-                CacheTextureId(self.next_id - 1)
-            })
-    }
-
-    fn free(&mut self, id: CacheTextureId, format: ImageFormat) {
-        self.free_lists
-            .entry(format)
-            .or_insert(Vec::new())
-            .push(id);
-    }
-}
 
 // Items in the texture cache can either be standalone textures,
 // or a sub-rect inside the shared cache.
@@ -238,16 +194,14 @@ pub struct TextureCache {
     // each format the texture cache supports.
     array_rgba8_nearest: TextureArray,
     array_a8_linear: TextureArray,
+    array_a16_linear: TextureArray,
     array_rgba8_linear: TextureArray,
 
     // Maximum texture size supported by hardware.
     max_texture_size: u32,
 
-    // A list of texture IDs that represent native
-    // texture handles. This indirection allows the texture
-    // cache to create / destroy / reuse texture handles
-    // without knowing anything about the device code.
-    cache_textures: CacheTextureIdList,
+    // The next unused virtual texture ID. Monotonically increasing.
+    next_id: CacheTextureId,
 
     // A list of updates that need to be applied to the
     // texture cache in the rendering thread this frame.
@@ -276,22 +230,46 @@ impl TextureCache {
     pub fn new(max_texture_size: u32) -> Self {
         TextureCache {
             max_texture_size,
+            // Used primarily for cached shadow masks. There can be lots of
+            // these on some pages like francine, but most pages don't use it
+            // much.
             array_a8_linear: TextureArray::new(
                 ImageFormat::R8,
                 TextureFilter::Linear,
-                TEXTURE_ARRAY_LAYERS_LINEAR,
+                1024,
+                1,
             ),
+            // Used for experimental hdr yuv texture support, but not used in
+            // production Firefox.
+            array_a16_linear: TextureArray::new(
+                ImageFormat::R16,
+                TextureFilter::Linear,
+                1024,
+                1,
+            ),
+            // The primary cache for images, glyphs, etc.
             array_rgba8_linear: TextureArray::new(
                 ImageFormat::BGRA8,
                 TextureFilter::Linear,
-                TEXTURE_ARRAY_LAYERS_LINEAR,
+                2048,
+                4,
             ),
+            // Used for image-rendering: crisp. This is mostly favicons, which
+            // are small. Some other images use it too, but those tend to be
+            // larger than 512x512 and thus don't use the shared cache anyway.
+            //
+            // Ideally we'd use 512 as the dimensions here, since we don't really
+            // need more. But once a page gets something of a given size bucket
+            // assigned to it, all further allocations need to be of that size.
+            // So using 1024 gives us 4 buckets instead of 1, which in practice
+            // is probably enough.
             array_rgba8_nearest: TextureArray::new(
                 ImageFormat::BGRA8,
                 TextureFilter::Nearest,
-                TEXTURE_ARRAY_LAYERS_NEAREST,
+                1024,
+                1,
             ),
-            cache_textures: CacheTextureIdList::new(),
+            next_id: CacheTextureId(1),
             pending_updates: TextureUpdateList::new(),
             frame_id: FrameId(0),
             entries: FreeList::new(),
@@ -330,7 +308,13 @@ impl TextureCache {
                 id: texture_id,
                 op: TextureUpdateOp::Free,
             });
-            self.cache_textures.free(texture_id, self.array_a8_linear.format);
+        }
+
+        if let Some(texture_id) = self.array_a16_linear.clear() {
+            self.pending_updates.push(TextureUpdate {
+                id: texture_id,
+                op: TextureUpdateOp::Free,
+            });
         }
 
         if let Some(texture_id) = self.array_rgba8_linear.clear() {
@@ -338,7 +322,6 @@ impl TextureCache {
                 id: texture_id,
                 op: TextureUpdateOp::Free,
             });
-            self.cache_textures.free(texture_id, self.array_rgba8_linear.format);
         }
 
         if let Some(texture_id) = self.array_rgba8_nearest.clear() {
@@ -346,7 +329,6 @@ impl TextureCache {
                 id: texture_id,
                 op: TextureUpdateOp::Free,
             });
-            self.cache_textures.free(texture_id, self.array_rgba8_nearest.format);
         }
     }
 
@@ -359,6 +341,8 @@ impl TextureCache {
 
         self.array_a8_linear
             .update_profile(&mut texture_cache_profile.pages_a8_linear);
+        self.array_a16_linear
+            .update_profile(&mut texture_cache_profile.pages_a16_linear);
         self.array_rgba8_linear
             .update_profile(&mut texture_cache_profile.pages_rgba8_linear);
         self.array_rgba8_nearest
@@ -511,6 +495,7 @@ impl TextureCache {
     ) -> &mut TextureRegion {
         let texture_array = match (format, filter) {
             (ImageFormat::R8, TextureFilter::Linear) => &mut self.array_a8_linear,
+            (ImageFormat::R16, TextureFilter::Linear) => &mut self.array_a16_linear,
             (ImageFormat::BGRA8, TextureFilter::Linear) => &mut self.array_rgba8_linear,
             (ImageFormat::BGRA8, TextureFilter::Nearest) => &mut self.array_rgba8_nearest,
             (ImageFormat::RGBAF32, _) |
@@ -518,6 +503,8 @@ impl TextureCache {
             (ImageFormat::RGBAI32, _) |
             (ImageFormat::R8, TextureFilter::Nearest) |
             (ImageFormat::R8, TextureFilter::Trilinear) |
+            (ImageFormat::R16, TextureFilter::Nearest) |
+            (ImageFormat::R16, TextureFilter::Trilinear) |
             (ImageFormat::BGRA8, TextureFilter::Trilinear) => unreachable!(),
         };
 
@@ -556,7 +543,7 @@ impl TextureCache {
                 };
                 CacheItem {
                     uv_rect_handle: entry.uv_rect_handle,
-                    texture_id: SourceTexture::TextureCache(entry.texture_id),
+                    texture_id: TextureSource::TextureCache(entry.texture_id),
                     uv_rect: DeviceUintRect::new(origin, entry.size),
                     texture_layer: layer_index as i32,
                 }
@@ -565,12 +552,14 @@ impl TextureCache {
         }
     }
 
-    // A more detailed version of get(). This allows access to the actual
-    // device rect of the cache allocation.
+    /// A more detailed version of get(). This allows access to the actual
+    /// device rect of the cache allocation.
+    ///
+    /// Returns a tuple identifying the texture, the layer, and the region.
     pub fn get_cache_location(
         &self,
         handle: &TextureCacheHandle,
-    ) -> (SourceTexture, i32, DeviceUintRect) {
+    ) -> (CacheTextureId, LayerIndex, DeviceUintRect) {
         let handle = handle
             .entry
             .as_ref()
@@ -590,8 +579,8 @@ impl TextureCache {
                 ..
             } => (layer_index, origin),
         };
-        (SourceTexture::TextureCache(entry.texture_id),
-         layer_index as i32,
+        (entry.texture_id,
+         layer_index as usize,
          DeviceUintRect::new(origin, entry.size))
     }
 
@@ -660,7 +649,7 @@ impl TextureCache {
         // anything not used this frame).
         for handle in self.shared_entry_handles.drain(..) {
             let entry = self.entries.get(&handle);
-            if entry.last_access == self.frame_id {
+            if entry.eviction == Eviction::Manual || entry.last_access == self.frame_id {
                 retained_entries.push(handle);
             } else {
                 eviction_candidates.push(handle);
@@ -717,7 +706,6 @@ impl TextureCache {
                     id: entry.texture_id,
                     op: TextureUpdateOp::Free,
                 });
-                self.cache_textures.free(entry.texture_id, entry.format);
                 None
             }
             EntryKind::Cache {
@@ -748,25 +736,29 @@ impl TextureCache {
         // Work out which cache it goes in, based on format.
         let texture_array = match (descriptor.format, filter) {
             (ImageFormat::R8, TextureFilter::Linear) => &mut self.array_a8_linear,
+            (ImageFormat::R16, TextureFilter::Linear) => &mut self.array_a16_linear,
             (ImageFormat::BGRA8, TextureFilter::Linear) => &mut self.array_rgba8_linear,
             (ImageFormat::BGRA8, TextureFilter::Nearest) => &mut self.array_rgba8_nearest,
             (ImageFormat::RGBAF32, _) |
             (ImageFormat::RGBAI32, _) |
             (ImageFormat::R8, TextureFilter::Nearest) |
             (ImageFormat::R8, TextureFilter::Trilinear) |
+            (ImageFormat::R16, TextureFilter::Nearest) |
+            (ImageFormat::R16, TextureFilter::Trilinear) |
             (ImageFormat::BGRA8, TextureFilter::Trilinear) |
             (ImageFormat::RG8, _) => unreachable!(),
         };
 
         // Lazy initialize this texture array if required.
         if texture_array.texture_id.is_none() {
-            let texture_id = self.cache_textures.allocate(descriptor.format);
+            let texture_id = self.next_id;
+            self.next_id.0 += 1;
 
             let update_op = TextureUpdate {
                 id: texture_id,
                 op: TextureUpdateOp::Create {
-                    width: TEXTURE_LAYER_DIMENSIONS,
-                    height: TEXTURE_LAYER_DIMENSIONS,
+                    width: texture_array.dimensions,
+                    height: texture_array.dimensions,
                     format: descriptor.format,
                     filter: texture_array.filter,
                     // TODO(gw): Creating a render target here is only used
@@ -873,7 +865,8 @@ impl TextureCache {
         // will just have to be in a unique texture. This hurts batching but should
         // only occur on a small number of images (or pathological test cases!).
         if new_cache_entry.is_none() {
-            let texture_id = self.cache_textures.allocate(descriptor.format);
+            let texture_id = self.next_id;
+            self.next_id.0 += 1;
 
             // Create an update operation to allocate device storage
             // of the right size / format.
@@ -1099,6 +1092,7 @@ impl TextureRegion {
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 struct TextureArray {
     filter: TextureFilter,
+    dimensions: u32,
     layer_count: usize,
     format: ImageFormat,
     is_allocated: bool,
@@ -1110,11 +1104,13 @@ impl TextureArray {
     fn new(
         format: ImageFormat,
         filter: TextureFilter,
-        layer_count: usize
+        dimensions: u32,
+        layer_count: usize,
     ) -> Self {
         TextureArray {
             format,
             filter,
+            dimensions,
             layer_count,
             is_allocated: false,
             regions: Vec::new(),
@@ -1130,8 +1126,8 @@ impl TextureArray {
 
     fn update_profile(&self, counter: &mut ResourceProfileCounter) {
         if self.is_allocated {
-            let size = self.layer_count as u32 * TEXTURE_LAYER_DIMENSIONS *
-                TEXTURE_LAYER_DIMENSIONS * self.format.bytes_per_pixel();
+            let size = self.layer_count as u32 * self.dimensions *
+                self.dimensions * self.format.bytes_per_pixel();
             counter.set(self.layer_count as usize, size as usize);
         } else {
             counter.set(0, 0);
@@ -1150,8 +1146,8 @@ impl TextureArray {
         // This means that very rarely used image formats can be
         // added but won't allocate a cache if never used.
         if !self.is_allocated {
-            debug_assert!(TEXTURE_LAYER_DIMENSIONS % TEXTURE_REGION_DIMENSIONS == 0);
-            let regions_per_axis = TEXTURE_LAYER_DIMENSIONS / TEXTURE_REGION_DIMENSIONS;
+            debug_assert!(self.dimensions % TEXTURE_REGION_DIMENSIONS == 0);
+            let regions_per_axis = self.dimensions / TEXTURE_REGION_DIMENSIONS;
             for layer_index in 0 .. self.layer_count {
                 for y in 0 .. regions_per_axis {
                     for x in 0 .. regions_per_axis {

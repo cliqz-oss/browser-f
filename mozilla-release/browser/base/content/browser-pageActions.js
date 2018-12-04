@@ -822,7 +822,7 @@ var BrowserPageActions = {
     }
 
     let state;
-    if (this._contextAction._isBuiltIn) {
+    if (this._contextAction._isMozillaAction) {
       state =
         this._contextAction.pinnedToUrlbar ?
         "builtInPinned" :
@@ -994,8 +994,21 @@ BrowserPageActions.emailLink = {
 // send to device
 BrowserPageActions.sendToDevice = {
   onBeforePlacedInWindow(browserWindow) {
+    this._updateTitle();
+    gBrowser.addEventListener("TabMultiSelect", event => {
+      this._updateTitle();
+    });
+  },
+
+  // The action's title in this window depends on the number of tabs that are
+  // selected.
+  _updateTitle() {
     let action = PageActions.actionForID("sendToDevice");
-    BrowserPageActions.takeActionTitleFromPanel(action);
+    let string =
+      gBrowserBundle.GetStringFromName("pageAction.sendTabsToDevice.label");
+    let tabCount = gBrowser.selectedTabs.length;
+    let title = PluralForm.get(tabCount, string).replace("#1", tabCount);
+    action.setTitle(title, window);
   },
 
   onSubviewPlaced(panelViewNode) {
@@ -1023,16 +1036,16 @@ BrowserPageActions.sendToDevice = {
   },
 
   onShowingSubview(panelViewNode) {
+    let bodyNode = panelViewNode.querySelector(".panel-subview-body");
+    let panelNode = panelViewNode.closest("panel");
     let browser = gBrowser.selectedBrowser;
     let url = browser.currentURI.spec;
     let title = browser.contentTitle;
-
-    let bodyNode = panelViewNode.querySelector(".panel-subview-body");
-    let panelNode = panelViewNode.closest("panel");
+    let multiselected = gBrowser.selectedTab.multiselected;
 
     // This is on top because it also clears the device list between state
     // changes.
-    gSync.populateSendTabToDevicesMenu(bodyNode, url, title, (clientId, name, clientType, lastModified) => {
+    gSync.populateSendTabToDevicesMenu(bodyNode, url, title, multiselected, (clientId, name, clientType, lastModified) => {
       if (!name) {
         return document.createXULElement("toolbarseparator");
       }
@@ -1162,7 +1175,7 @@ BrowserPageActions.addSearchEngine = {
   },
 
   _installEngine(uri, image) {
-    Services.search.addEngine(uri, null, image, false, {
+    Services.search.addEngine(uri, image, false, {
       onSuccess: engine => {
         showBrowserPageActionFeedback(this.action);
       },
@@ -1190,6 +1203,12 @@ BrowserPageActions.addSearchEngine = {
 
 // share URL
 BrowserPageActions.shareURL = {
+  onCommand(event, buttonNode) {
+    let browser = gBrowser.selectedBrowser;
+    let currentURI = gURLBar.makeURIReadable(browser.currentURI).displaySpec;
+    this._windowsUIUtils.shareUrl(currentURI, browser.contentTitle);
+  },
+
   onShowingInPanel(buttonNode) {
     this._cached = false;
   },
@@ -1251,7 +1270,7 @@ BrowserPageActions.shareURL = {
 };
 
 // Attach sharingService here so tests can override the implementation
-XPCOMUtils.defineLazyServiceGetter(BrowserPageActions.shareURL,
-                                   "_sharingService",
-                                   "@mozilla.org/widget/macsharingservice;1",
-                                   "nsIMacSharingService");
+XPCOMUtils.defineLazyServiceGetters(BrowserPageActions.shareURL, {
+  _sharingService: ["@mozilla.org/widget/macsharingservice;1", "nsIMacSharingService"],
+  _windowsUIUtils: ["@mozilla.org/windows-ui-utils;1", "nsIWindowsUIUtils"],
+});

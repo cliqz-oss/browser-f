@@ -8,43 +8,39 @@ const { PureComponent } = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 
-const Actions = require("../../actions/index");
-
 /**
- * This component displays an item of the Sidebar component.
+ * This component is used as a wrapper by items in the sidebar.
  */
 class SidebarItem extends PureComponent {
   static get propTypes() {
     return {
-      dispatch: PropTypes.func.isRequired,
-      icon: PropTypes.string.isRequired,
-      id: PropTypes.string.isRequired,
+      children: PropTypes.arrayOf(PropTypes.element).isRequired,
+      className: PropTypes.string,
       isSelected: PropTypes.bool.isRequired,
-      name: PropTypes.string.isRequired,
-      selectable: PropTypes.boolean,
+      selectable: PropTypes.bool.isRequired,
+      onSelect: PropTypes.func.isRequired,
     };
   }
 
   onItemClick() {
-    this.props.dispatch(Actions.selectPage(this.props.id));
+    this.props.onSelect();
   }
 
   render() {
-    const { icon, isSelected, name, selectable } = this.props;
+    const {children, className, isSelected, selectable } = this.props;
 
     return dom.li(
       {
-        className: "sidebar-item" +
-                   (isSelected ? " sidebar-item--selected" : "") +
+        className: "sidebar-item js-sidebar-item" +
+                   (className ? ` ${className}` : "") +
+                   (isSelected ?
+                      " sidebar-item--selected js-sidebar-item-selected" :
+                      ""
+                   ) +
                    (selectable ? " sidebar-item--selectable" : ""),
-        onClick: selectable ? () => this.onItemClick() : null
+        onClick: selectable ? () => this.onItemClick() : null,
       },
-      dom.img({
-        className: "sidebar-item__icon" +
-                   (isSelected ? " sidebar-item__icon--selected" : ""),
-        src: icon,
-      }),
-      name
+      children
     );
   }
 }

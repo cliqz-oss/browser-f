@@ -286,17 +286,17 @@ void
 HTMLEditor::HideAnonymousEditingUIs()
 {
   if (mAbsolutelyPositionedObject) {
-    HideGrabber();
+    HideGrabberInternal();
     NS_ASSERTION(!mAbsolutelyPositionedObject, "HideGrabber failed");
   }
   if (mInlineEditedCell) {
-    HideInlineTableEditingUI();
-    NS_ASSERTION(!mInlineEditedCell, "HideInlineTableEditingUI failed");
+    HideInlineTableEditingUIInternal();
+    NS_ASSERTION(!mInlineEditedCell, "HideInlineTableEditingUIInternal failed");
   }
   if (mResizedObject) {
-    DebugOnly<nsresult> rv = HideResizers();
-    NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "HideResizers() failed");
-    NS_ASSERTION(!mResizedObject, "HideResizers failed");
+    DebugOnly<nsresult> rv = HideResizersInternal();
+    NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "HideResizersInternal() failed");
+    NS_ASSERTION(!mResizedObject, "HideResizersInternal() failed");
   }
 }
 
@@ -309,21 +309,21 @@ HTMLEditor::HideAnonymousEditingUIsIfUnnecessary()
   if (!IsAbsolutePositionEditorEnabled() && mAbsolutelyPositionedObject) {
     // XXX If we're moving something, we need to cancel or commit the
     //     operation now.
-    HideGrabber();
+    HideGrabberInternal();
     NS_ASSERTION(!mAbsolutelyPositionedObject, "HideGrabber failed");
   }
   if (!IsInlineTableEditorEnabled() && mInlineEditedCell) {
     // XXX If we're resizing a table element, we need to cancel or commit the
     //     operation now.
-    HideInlineTableEditingUI();
-    NS_ASSERTION(!mInlineEditedCell, "HideInlineTableEditingUI failed");
+    HideInlineTableEditingUIInternal();
+    NS_ASSERTION(!mInlineEditedCell, "HideInlineTableEditingUIInternal failed");
   }
   if (!IsObjectResizerEnabled() && mResizedObject) {
     // XXX If we're resizing something, we need to cancel or commit the
     //     operation now.
-    DebugOnly<nsresult> rv = HideResizers();
-    NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "HideResizers() failed");
-    NS_ASSERTION(!mResizedObject, "HideResizers failed");
+    DebugOnly<nsresult> rv = HideResizersInternal();
+    NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "HideResizersInternal() failed");
+    NS_ASSERTION(!mResizedObject, "HideResizersInternal() failed");
   }
 }
 
@@ -420,28 +420,26 @@ HTMLEditor::RefereshEditingUI(Selection& aSelection)
 
   if (IsAbsolutePositionEditorEnabled() && mAbsolutelyPositionedObject &&
       absPosElement != mAbsolutelyPositionedObject) {
-    HideGrabber();
+    HideGrabberInternal();
     NS_ASSERTION(!mAbsolutelyPositionedObject, "HideGrabber failed");
   }
 
   if (IsObjectResizerEnabled() && mResizedObject &&
       mResizedObject != focusElement) {
-    // Perhaps, even if HideResizers() failed, we should try to hide inline
-    // table editing UI.  However, it returns error only when we cannot do
-    // anything.  So, it's okay for now.
-    nsresult rv = HideResizers();
+    // Perhaps, even if HideResizersInternal() failed, we should try to hide
+    // inline table editing UI.  However, it returns error only when we cannot
+    // do anything.  So, it's okay for now.
+    nsresult rv = HideResizersInternal();
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
-    NS_ASSERTION(!mResizedObject, "HideResizers failed");
+    NS_ASSERTION(!mResizedObject, "HideResizersInternal() failed");
   }
 
   if (IsInlineTableEditorEnabled() && mInlineEditedCell &&
       mInlineEditedCell != cellElement) {
-    // XXX HideInlineTableEditingUI() won't return error.  Should be change it
-    //     void later.
-    HideInlineTableEditingUI();
-    NS_ASSERTION(!mInlineEditedCell, "HideInlineTableEditingUI failed");
+    HideInlineTableEditingUIInternal();
+    NS_ASSERTION(!mInlineEditedCell, "HideInlineTableEditingUIInternal failed");
   }
 
   // now, let's display all contextual UI for good
@@ -453,12 +451,12 @@ HTMLEditor::RefereshEditingUI(Selection& aSelection)
       mResizedObjectIsAnImage = true;
     }
     if (mResizedObject) {
-      nsresult rv = RefreshResizers();
+      nsresult rv = RefreshResizersInternal();
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
     } else {
-      nsresult rv = ShowResizers(*focusElement);
+      nsresult rv = ShowResizersInternal(*focusElement);
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
@@ -468,12 +466,12 @@ HTMLEditor::RefereshEditingUI(Selection& aSelection)
   if (IsAbsolutePositionEditorEnabled() && absPosElement &&
       IsModifiableNode(*absPosElement) && absPosElement != hostContent) {
     if (mAbsolutelyPositionedObject) {
-      nsresult rv = RefreshGrabber();
+      nsresult rv = RefreshGrabberInternal();
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
     } else {
-      nsresult rv = ShowGrabber(*absPosElement);
+      nsresult rv = ShowGrabberInternal(*absPosElement);
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
@@ -483,12 +481,12 @@ HTMLEditor::RefereshEditingUI(Selection& aSelection)
   if (IsInlineTableEditorEnabled() && cellElement &&
       IsModifiableNode(*cellElement) && cellElement != hostContent) {
     if (mInlineEditedCell) {
-      nsresult rv = RefreshInlineTableEditingUI();
+      nsresult rv = RefreshInlineTableEditingUIInternal();
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
     } else {
-      nsresult rv = ShowInlineTableEditingUI(cellElement);
+      nsresult rv = ShowInlineTableEditingUIInternal(*cellElement);
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }

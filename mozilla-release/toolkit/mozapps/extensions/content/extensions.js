@@ -125,14 +125,6 @@ function initialize(event) {
     gViewController.doCommand(event.target.id);
   });
 
-  let detailScreenshot = document.getElementById("detail-screenshot");
-  detailScreenshot.addEventListener("load", function(event) {
-    this.removeAttribute("loading");
-  });
-  detailScreenshot.addEventListener("error", function(event) {
-    this.setAttribute("loading", "error");
-  });
-
   let addonPage = document.getElementById("addons-page");
   addonPage.addEventListener("dragenter", function(event) {
     gDragDrop.onDragOver(event);
@@ -149,6 +141,20 @@ function initialize(event) {
   if (!isDiscoverEnabled()) {
     gViewDefault = "addons://list/extension";
   }
+
+  let helpButton = document.getElementById("helpButton");
+  let helpUrl = Services.urlFormatter.formatURLPref("app.support.baseURL") + "addons-help";
+  helpButton.setAttribute("href", helpUrl);
+
+  document.getElementById("preferencesButton")
+    .addEventListener("click", () => {
+      let mainWindow = getMainWindow();
+      if ("switchToTabHavingURI" in mainWindow) {
+        mainWindow.switchToTabHavingURI("about:preferences", true, {
+          triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+        });
+      }
+    });
 
   gViewController.initialize();
   gCategories.initialize();
@@ -270,6 +276,32 @@ function isDiscoverEnabled() {
   }
 
   return true;
+}
+
+function setSearchLabel(type) {
+  let searchLabel = document.getElementById("search-label");
+  if (type == "extension" || type == "theme") {
+    searchLabel
+      .textContent = gStrings.ext.GetStringFromName(`searchLabel.${type}`);
+    searchLabel.hidden = false;
+  } else {
+    searchLabel.textContent = "";
+    searchLabel.hidden = true;
+  }
+}
+
+function setThemeScreenshot(addon, node) {
+  let screenshot = node.querySelector(".theme-screenshot")
+    || document.getAnonymousElementByAttribute(node, "anonid", "theme-screenshot");
+  // There's a test that doesn't have this for some reason, but it's doing weird things.
+  if (!screenshot)
+    return;
+  if (addon.type == "theme" && addon.screenshots && addon.screenshots.length > 0) {
+    screenshot.setAttribute("src", addon.screenshots[0].url);
+    screenshot.hidden = false;
+  } else {
+    screenshot.hidden = true;
+  }
 }
 
 /**
@@ -640,6 +672,9 @@ function attachUpdateHandler(install) {
             type: "update",
             addon: info.addon,
             icon: info.addon.icon,
+            // Reference to the related AddonInstall object (used in AMTelemetry to
+            // link the recorded event to the other events from the same install flow).
+            install,
             permissions: difference,
             resolve,
             reject,
@@ -830,6 +865,16 @@ var gViewController = {
     this.displayedView = this.currentViewObj;
     this.currentViewObj.node.setAttribute("loading", "true");
     this.currentViewObj.node.focus();
+
+    let headingName = document.getElementById("heading-name");
+    try {
+      headingName.textContent = gStrings.ext.GetStringFromName(`listHeading.${view.param}`);
+      setSearchLabel(view.param);
+    } catch (e) {
+      // In tests we sometimes render this view with a type we don't support, that's fine.
+      headingName.textContent = "";
+    }
+
 
     if (aViewId == aPreviousView)
       this.currentViewObj.refresh(view.param, ++this.currentViewRequest, aState);
@@ -1132,7 +1177,10 @@ var gViewController = {
                   addon: aAddon,
                   icon: aAddon.iconURL,
                   permissions: perms,
-                  resolve() { aAddon.enable(); },
+                  resolve() {
+                    aAddon.markAsSeen();
+                    aAddon.enable();
+                  },
                   reject() {},
                 },
               },
@@ -1241,9 +1289,14 @@ var gViewController = {
           if (result != nsIFilePicker.returnOK)
             return;
 
+          let installTelemetryInfo = {
+            source: "about:addons",
+            method: "install-from-file",
+          };
+
           let browser = getBrowserElement();
           for (let file of fp.files) {
-            let install = await AddonManager.getInstallForFile(file);
+            let install = await AddonManager.getInstallForFile(file, null, installTelemetryInfo);
             AddonManager.installAddonFromAOM(browser, document.documentURIObject, install);
           }
         });
@@ -1448,7 +1501,7 @@ function shouldShowVersionNumber(aAddon) {
 function createItem(aObj, aIsInstall) {
   let item = document.createXULElement("richlistitem");
 
-  item.setAttribute("class", "addon addon-view");
+  item.setAttribute("class", "addon addon-view card");
   item.setAttribute("name", aObj.name);
   item.setAttribute("type", aObj.type);
 
@@ -1612,8 +1665,8 @@ function sortList(aList, aSortBy, aAscending) {
   var elements = Array.slice(aList.childNodes, 0);
   sortElements(elements, [aSortBy], aAscending);
 
-  while (aList.listChild)
-    aList.removeChild(aList.lastChild);
+  while (aList.lastChild)
+    aList.lastChild.remove();
 
   for (let element of elements)
     aList.appendChild(element);
@@ -1714,7 +1767,7 @@ var gCategories = {
     category.setAttribute("hidden", aStartHidden);
 
     var node;
-    for (node of this.node.children) {
+    for (node of this.node.itemChildren) {
       var nodePriority = parseInt(node.getAttribute("priority"));
       // If the new type's priority is higher than this one then this is the
       // insertion point
@@ -1978,7 +2031,8 @@ var gDiscoverView = {
       this._browser.addProgressListener(this);
 
       if (this.loaded)
-        this._loadURL(this.homepageURL.spec, false, notifyInitialized);
+        this._loadURL(this.homepageURL.spec, false, notifyInitialized,
+                      Services.scriptSecurityManager.getSystemPrincipal());
       else
         notifyInitialized();
     };
@@ -1989,7 +2043,7 @@ var gDiscoverView = {
     }
 
     gPendingInitializations++;
-    let aAddons = await AddonManager.getAllAddons();
+    let aAddons = await AddonManager.getAddonsByTypes(["extension", "theme"]);
     var list = {};
     for (let addon of aAddons) {
       var prefName = PREF_GETADDONS_CACHE_ID_ENABLED.replace("%ID%",
@@ -2047,7 +2101,8 @@ var gDiscoverView = {
     }
 
     this._loadURL(this.homepageURL.spec, aIsRefresh,
-                  gViewController.notifyViewChanged.bind(gViewController));
+                  gViewController.notifyViewChanged.bind(gViewController),
+                  Services.scriptSecurityManager.getSystemPrincipal());
   },
 
   canRefresh() {
@@ -2067,8 +2122,8 @@ var gDiscoverView = {
     this.node.selectedPanel = this._error;
   },
 
-  _loadURL(aURL, aKeepHistory, aCallback) {
-    if (this._browser.currentURI.spec == aURL) {
+  _loadURL(aURL, aKeepHistory, aCallback, aPrincipal) {
+    if (this._browser.currentURI && this._browser.currentURI.spec == aURL) {
       if (aCallback)
         aCallback();
       return;
@@ -2081,7 +2136,10 @@ var gDiscoverView = {
     if (!aKeepHistory)
       flags |= Ci.nsIWebNavigation.LOAD_FLAGS_REPLACE_HISTORY;
 
-    this._browser.loadURI(aURL, { flags });
+    this._browser.loadURI(aURL, {
+      flags,
+      triggeringPrincipal: aPrincipal || Services.scriptSecurityManager.createNullPrincipal({}),
+    });
   },
 
   onLocationChange(aWebProgress, aRequest, aLocation, aFlags) {
@@ -2122,7 +2180,8 @@ var gDiscoverView = {
     aRequest.cancel(Cr.NS_BINDING_ABORTED);
   },
 
-  onSecurityChange(aWebProgress, aRequest, aState) {
+  onSecurityChange(aWebProgress, aRequest, aOldState, aState,
+                   aContentBlockingLogJSON) {
     // Don't care about security if the page is not https
     if (!this.homepageURL.schemeIs("https"))
       return;
@@ -2334,13 +2393,6 @@ var gListView = {
     } else {
       document.getElementById("plugindeprecation-notice").hidden = true;
     }
-
-    if (Preferences.get("extensions.getAddons.themes.browseURL", "")) {
-      document.getElementById("getthemes-learnmore-link")
-        .setAttribute("href", Services.urlFormatter.formatURLPref("extensions.getAddons.themes.browseURL"));
-    } else {
-      document.getElementById("getthemes-container").hidden = true;
-    }
   },
 
   show(aType, aRequest) {
@@ -2388,8 +2440,10 @@ var gListView = {
       this.showEmptyNotice(elements.length == 0);
       if (elements.length > 0) {
         sortElements(elements, ["uiState", "name"], true);
-        for (let element of elements)
+        for (let element of elements) {
           this._listBox.appendChild(element);
+          setThemeScreenshot(element.mAddon, element);
+        }
       }
 
       this.filterDisabledUnsigned(showOnlyDisabledUnsigned);
@@ -2555,6 +2609,9 @@ var gDetailView = {
   },
 
   _updateView(aAddon, aIsRemote, aScrollToPreferences) {
+    setSearchLabel(aAddon.type);
+    setThemeScreenshot(aAddon, this.node);
+
     AddonManager.addManagerListener(this);
     this.clearLoading();
 
@@ -2577,7 +2634,7 @@ var gDetailView = {
     gCategories.select(category);
 
     document.getElementById("detail-name").textContent = aAddon.name;
-    var icon = AddonManager.getPreferredIconURL(aAddon, 64, window);
+    var icon = AddonManager.getPreferredIconURL(aAddon, 32, window);
     document.getElementById("detail-icon").src = icon ? icon : "";
     document.getElementById("detail-creator").setCreator(aAddon.creator, aAddon.homepageURL);
 
@@ -2587,24 +2644,6 @@ var gDetailView = {
       version.value = aAddon.version;
     } else {
       version.hidden = true;
-    }
-
-    var screenshotbox = document.getElementById("detail-screenshot-box");
-    var screenshot = document.getElementById("detail-screenshot");
-    if (aAddon.screenshots && aAddon.screenshots.length > 0) {
-      if (aAddon.screenshots[0].thumbnailURL) {
-        screenshot.src = aAddon.screenshots[0].thumbnailURL;
-        screenshot.width = aAddon.screenshots[0].thumbnailWidth;
-        screenshot.height = aAddon.screenshots[0].thumbnailHeight;
-      } else {
-        screenshot.src = aAddon.screenshots[0].url;
-        screenshot.width = aAddon.screenshots[0].width;
-        screenshot.height = aAddon.screenshots[0].height;
-      }
-      screenshot.setAttribute("loading", "true");
-      screenshotbox.hidden = false;
-    } else {
-      screenshotbox.hidden = true;
     }
 
     var desc = document.getElementById("detail-desc");
@@ -3111,7 +3150,9 @@ var gDetailView = {
 
       mm.sendAsyncMessage("Extension:InitBrowser", browserOptions);
 
-      browser.loadURI(optionsURL);
+      browser.loadURI(optionsURL, {
+        triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+      });
     });
   },
 
@@ -3433,7 +3474,11 @@ var gDragDrop = {
       }
 
       if (url) {
-        let install = await AddonManager.getInstallForURL(url, "application/x-xpinstall");
+        let install = await AddonManager.getInstallForURL(url, "application/x-xpinstall",
+                                                          null, null, null, null, null, {
+                                                            source: "about:addons",
+                                                            method: "drag-and-drop",
+                                                          });
         AddonManager.installAddonFromAOM(browser, document.documentURIObject, install);
       }
     }

@@ -28,8 +28,8 @@ def WebglSuite(name):
         'aliases': (name,),
         'mach_command': 'mochitest',
         'kwargs': {'flavor': 'plain', 'subsuite': name, 'test_paths': None},
-        'task_regex': ['mochitest-' + name + '(?:-e10s)?(?:-1)?$',
-                       'test-verify(?:-gpu)?(?:-e10s)?(?:-1)?$'],
+        'task_regex': ['mochitest-' + name + '($|.*(-1|[^0-9])$)',
+                       'test-verify($|.*(-1|[^0-9])$)'],
     }
 
 
@@ -74,63 +74,63 @@ TEST_SUITES = {
         'aliases': ('a11y', 'ally'),
         'mach_command': 'mochitest',
         'kwargs': {'flavor': 'a11y', 'test_paths': None},
-        'task_regex': ['mochitest-a11y(?:-1)?$',
-                       'test-verify(?:-e10s)?(?:-1)?$'],
+        'task_regex': ['mochitest-a11y($|.*(-1|[^0-9])$)',
+                       'test-verify($|.*(-1|[^0-9])$)'],
     },
     'mochitest-browser': {
         'aliases': ('bc', 'browser-chrome'),
         'mach_command': 'mochitest',
         'kwargs': {'flavor': 'browser-chrome', 'test_paths': None},
-        'task_regex': ['mochitest-browser-chrome(?:-e10s)?(?:-1)?$',
-                       'test-verify(?:-e10s)?(?:-1)?$'],
+        'task_regex': ['mochitest-browser-chrome($|.*(-1|[^0-9])$)',
+                       'test-verify($|.*(-1|[^0-9])$)'],
     },
     'mochitest-chrome': {
         'aliases': ('mc',),
         'mach_command': 'mochitest',
         'kwargs': {'flavor': 'chrome', 'test_paths': None},
-        'task_regex': ['mochitest-chrome(?:-e10s)?(?:-1)?$',
-                       'test-verify(?:-e10s)?(?:-1)?$'],
+        'task_regex': ['mochitest-chrome($|.*(-1|[^0-9])$)',
+                       'test-verify($|.*(-1|[^0-9])$)'],
     },
     'mochitest-clipboard': {
         'aliases': ('cl', 'clipboard',),
         'mach_command': 'mochitest',
         'kwargs': {'subsuite': 'clipboard', 'test_paths': None},
-        'task_regex': ['mochitest-clipboard(?:-e10s)?(?:-1)?$',
-                       'test-verify(?:-e10s)?(?:-1)?$'],
+        'task_regex': ['mochitest-clipboard($|.*(-1|[^0-9])$)',
+                       'test-verify($|.*(-1|[^0-9])$)'],
     },
     'mochitest-devtools': {
         'aliases': ('dt', 'devtools-chrome'),
         'mach_command': 'mochitest',
         'kwargs': {'flavor': 'browser-chrome', 'subsuite': 'devtools', 'test_paths': None},
-        'task_regex': ['mochitest-devtools-chrome(?:-e10s)?(?:-1)?$',
-                       'test-verify(?:-e10s)?(?:-1)?$'],
+        'task_regex': ['mochitest-devtools-chrome($|.*(-1|[^0-9])$)',
+                       'test-verify($|.*(-1|[^0-9])$)'],
     },
     'mochitest-gpu': {
         'aliases': ('gpu',),
         'mach_command': 'mochitest',
         'kwargs': {'subsuite': 'gpu', 'test_paths': None},
-        'task_regex': ['mochitest-gpu(?:-e10s)?(?:-1)?$',
-                       'test-verify(?:-gpu)?(?:-e10s)?(?:-1)?$'],
+        'task_regex': ['mochitest-gpu($|.*(-1|[^0-9])$)',
+                       'test-verify($|.*(-1|[^0-9])$)'],
     },
     'mochitest-media': {
         'aliases': ('mpm', 'plain-media'),
         'mach_command': 'mochitest',
         'kwargs': {'flavor': 'plain', 'subsuite': 'media', 'test_paths': None},
-        'task_regex': ['mochitest-media(?:-e10s)?(?:-1)?$',
-                       'test-verify(?:-e10s)?(?:-1)?$'],
+        'task_regex': ['mochitest-media($|.*(-1|[^0-9])$)',
+                       'test-verify($|.*(-1|[^0-9])$)'],
     },
     'mochitest-plain': {
         'aliases': ('mp', 'plain',),
         'mach_command': 'mochitest',
         'kwargs': {'flavor': 'plain', 'test_paths': None},
-        'task_regex': ['mochitest(?:-e10s)?(?:-1)?$',
-                       'test-verify(?:-e10s)?(?:-1)?$'],
+        'task_regex': ['mochitest(?!-a11y|-browser|-chrome|-clip|-devtools|-gpu|-media|-screen)($|.*(-1|[^0-9])$)',  # noqa
+                       'test-verify($|.*(-1|[^0-9])$)'],
     },
     'mochitest-screenshots': {
         'aliases': ('ss', 'screenshots-chrome'),
         'mach_command': 'mochitest',
         'kwargs': {'flavor': 'browser-chrome', 'subsuite': 'screenshots', 'test_paths': None},
-        'task_regex': ['browser-screenshots(?:-e10s)?(?:-1)?$'],
+        'task_regex': ['browser-screenshots($|.*(-1|[^0-9])$)'],
     },
     'mochitest-webgl1-core': WebglSuite('webgl1-core'),
     'mochitest-webgl1-ext': WebglSuite('webgl1-ext'),
@@ -145,19 +145,40 @@ TEST_SUITES = {
         'aliases': ('rr',),
         'mach_command': 'reftest',
         'kwargs': {'tests': None},
-        'task_regex': ['(opt|debug)-reftest(?:-no-accel|-gpu|-stylo)?(?:-e10s)?(?:-1)?$',
-                       'test-verify-gpu(?:-e10s)?(?:-1)?$'],
+        'task_regex': ['(opt|debug)-reftest($|.*(-1|[^0-9])$)',
+                       'test-verify-gpu($|.*(-1|[^0-9])$)'],
     },
     'robocop': {
         'mach_command': 'robocop',
         'kwargs': {'test_paths': None},
-        'task_regex': ['robocop(?:-e10s)?(?:-1)?$'],
+        'task_regex': ['robocop($|.*(-1|[^0-9])$)'],
     },
     'web-platform-tests': {
         'aliases': ('wpt',),
         'mach_command': 'web-platform-tests',
         'kwargs': {'include': []},
-        'task_regex': ['web-platform-tests(?:-reftests|-wdspec)?(?:-e10s)?(?:-1)?$',
+        'task_regex': ['web-platform-tests($|.*(-1|[^0-9])$)',
+                       'test-verify-wpt-e10s'],
+    },
+    'web-platform-tests-testharness': {
+        'aliases': ('wpt',),
+        'mach_command': 'web-platform-tests',
+        'kwargs': {'include': []},
+        'task_regex': ['web-platform-tests(?!-reftest|-wdspec)($|.*(-1|[^0-9])$)',
+                       'test-verify-wpt-e10s'],
+    },
+    'web-platform-tests-reftest': {
+        'aliases': ('wpt',),
+        'mach_command': 'web-platform-tests',
+        'kwargs': {'include': []},
+        'task_regex': ['web-platform-tests-reftests($|.*(-1|[^0-9])$)',
+                       'test-verify-wpt-e10s'],
+    },
+    'web-platform-tests-wdspec': {
+        'aliases': ('wpt',),
+        'mach_command': 'web-platform-tests',
+        'kwargs': {'include': []},
+        'task_regex': ['web-platform-tests-wdspec($|.*(-1|[^0-9])$)',
                        'test-verify-wpt-e10s'],
     },
     'valgrind': {
@@ -169,7 +190,8 @@ TEST_SUITES = {
         'aliases': ('x',),
         'mach_command': 'xpcshell-test',
         'kwargs': {'test_file': 'all'},
-        'task_regex': ['xpcshell(?:-1)?$', 'test-verify(?:-1)?$'],
+        'task_regex': ['xpcshell($|.*(-1|[^0-9])$)',
+                       'test-verify($|.*(-1|[^0-9])$)'],
     },
 }
 
@@ -219,6 +241,9 @@ _test_subsuites = {
     ('mochitest', 'webgl2-core'): 'mochitest-webgl2-core',
     ('mochitest', 'webgl2-ext'): 'mochitest-webgl2-ext',
     ('mochitest', 'webgl2-deqp'): 'mochitest-webgl2-deqp',
+    ('web-platform-tests', 'testharness'): 'web-platform-tests-testharness',
+    ('web-platform-tests', 'reftest'): 'web-platform-tests-reftest',
+    ('web-platform-tests', 'wdspec'): 'web-platform-tests-wdspec',
 }
 
 
@@ -282,10 +307,13 @@ class TestMetadata(object):
     configuration.
     """
 
-    def __init__(self, all_tests, test_defaults=None):
+    def __init__(self, all_tests, srcdir, test_defaults=None):
         self._tests_by_path = OrderedDefaultDict(list)
         self._tests_by_flavor = defaultdict(set)
         self._test_dirs = set()
+        self._objdir = os.path.abspath(os.path.join(all_tests, os.pardir))
+        self._wpt_loaded = False
+        self._srcdir = srcdir
 
         with open(all_tests, 'rb') as fh:
             test_data = pickle.load(fh)
@@ -378,6 +406,9 @@ class TestMetadata(object):
 
         candidate_paths = set()
 
+        if any(self.is_wpt_path(path) for path in paths):
+            self.add_wpt_manifest_data()
+
         for path in sorted(paths):
             if path is None:
                 candidate_paths |= set(self._tests_by_path.keys())
@@ -405,6 +436,58 @@ class TestMetadata(object):
             for test in fltr(tests):
                 yield test
 
+    def is_wpt_path(self, path):
+        if path is None:
+            return True
+        if mozpath.match(path, "testing/web-platform/tests/**"):
+            return True
+        if mozpath.match(path, "testing/web-platform/mozilla/tests/**"):
+            return True
+        return False
+
+    def add_wpt_manifest_data(self):
+        if self._wpt_loaded:
+            return
+
+        wpt_path = os.path.join(self._srcdir, "testing", "web-platform")
+        sys.path = [wpt_path] + sys.path
+
+        import manifestupdate
+        # Set up a logger that will drop all the output
+        import logging
+        logger = logging.getLogger("manifestupdate")
+        logger.propogate = False
+
+        manifests = manifestupdate.run(self._srcdir, self._objdir, rebuild=False, download=True,
+                                       config_path=None, rewrite_config=True, update=True,
+                                       logger=logger)
+        if not manifests:
+            print("Loading wpt manifest failed")
+            return
+
+        for manifest, data in manifests.iteritems():
+            tests_root = data["tests_path"]
+            for test_type, path, tests in manifest:
+                full_path = os.path.join(tests_root, path)
+                src_path = os.path.relpath(full_path, self._srcdir)
+                if test_type not in ["testharness", "reftest", "wdspec"]:
+                    continue
+                for test in tests:
+                    self._tests_by_path[src_path].append({
+                        "path": full_path,
+                        "flavor": "web-platform-tests",
+                        "here": os.path.dirname(path),
+                        "manifest": data["manifest_path"],
+                        "name": test.id,
+                        "file_relpath": path,
+                        "head": "",
+                        "support-files": "",
+                        "subsuite": test_type,
+                        "dir_relpath": os.path.dirname(src_path),
+                        })
+
+        self._wpt_loaded = True
+
 
 class TestResolver(MozbuildObject):
     """Helper to resolve tests from the current environment to test files."""
@@ -428,6 +511,7 @@ class TestResolver(MozbuildObject):
 
         self._tests = TestMetadata(os.path.join(self.topobjdir,
                                                 'all-tests.pkl'),
+                                   self.topsrcdir,
                                    test_defaults=os.path.join(self.topobjdir,
                                                               'test-defaults.pkl'))
 
@@ -440,8 +524,6 @@ class TestResolver(MozbuildObject):
                                    'mochitest', 'chrome'),
             'mochitest': os.path.join(self.topobjdir, '_tests', 'testing',
                                       'mochitest', 'tests'),
-            'web-platform-tests': os.path.join(self.topobjdir, '_tests', 'testing',
-                                               'web-platform'),
             'xpcshell': os.path.join(self.topobjdir, '_tests', 'xpcshell'),
         }
         self._vcs = None

@@ -96,17 +96,17 @@ describe("ConsoleAPICall component:", () => {
         "functionName": "initialize",
         "timeStamp": 1519311532912,
         "arguments": [
-          "Initializing"
+          "Initializing",
         ],
         "prefix": "MyNicePrefix",
         "workerType": "none",
         "styles": [],
         "category": "webdev",
-        "_type": "ConsoleAPI"
+        "_type": "ConsoleAPI",
       };
       const wrapper = render(ConsoleApiCall({
         message: prepareMessage(stub, {getNextId: () => "p"}),
-        serviceContainer
+        serviceContainer,
       }));
       const prefix = wrapper.find(".console-message-prefix");
       expect(prefix.text()).toBe("MyNicePrefix: ");
@@ -124,7 +124,7 @@ describe("ConsoleAPICall component:", () => {
       const wrapper = render(ConsoleApiCall({
         message,
         serviceContainer,
-        repeat: 107
+        repeat: 107,
       }));
 
       expect(wrapper.find(".message-repeats").text()).toBe("107");
@@ -141,7 +141,7 @@ describe("ConsoleAPICall component:", () => {
       const indent = 10;
       let wrapper = render(ConsoleApiCall({
         message: Object.assign({}, message, {indent}),
-        serviceContainer
+        serviceContainer,
       }));
       let indentEl = wrapper.find(".indent");
       expect(indentEl.prop("style").width).toBe(`${indent * INDENT_WIDTH}px`);
@@ -223,7 +223,11 @@ describe("ConsoleAPICall component:", () => {
     it("renders", () => {
       const message = stubPreparedMessages.get(
         "console.assert(false, {message: 'foobar'})");
-      const wrapper = render(ConsoleApiCall({ message, serviceContainer }));
+
+      // We need to wrap the ConsoleApiElement in a Provider in order for the
+      // ObjectInspector to work.
+      const wrapper = render(Provider({ store: setupStore() },
+        ConsoleApiCall({ message, serviceContainer })));
 
       expect(wrapper.find(".message-body").text())
         .toBe("Assertion failed: Object { message: \"foobar\" }");
@@ -248,13 +252,19 @@ describe("ConsoleAPICall component:", () => {
   describe("console.timeLog", () => {
     it("renders as expected", () => {
       let message = stubPreparedMessages.get("console.timeLog('bar') - 1");
-      let wrapper = render(ConsoleApiCall({ message, serviceContainer }));
+      // We need to wrap the ConsoleApiElement in a Provider in order for the
+      // ObjectInspector to work.
+      let wrapper = render(Provider({ store: setupStore() },
+        ConsoleApiCall({ message, serviceContainer })));
 
       expect(wrapper.find(".message-body").text()).toBe(message.parameters[0]);
       expect(wrapper.find(".message-body").text()).toMatch(/^bar: \d+(\.\d+)?ms$/);
 
       message = stubPreparedMessages.get("console.timeLog('bar') - 2");
-      wrapper = render(ConsoleApiCall({ message, serviceContainer }));
+      // We need to wrap the ConsoleApiElement in a Provider in order for the
+      // ObjectInspector to work.
+      wrapper = render(Provider({ store: setupStore() },
+        ConsoleApiCall({ message, serviceContainer })));
       expect(wrapper.find(".message-body").text())
         .toMatch(/^bar: \d+(\.\d+)?ms second call Object \{ state\: 1 \}$/);
     });
@@ -298,6 +308,42 @@ describe("ConsoleAPICall component:", () => {
 
       expect(frameLinks.eq(0).find(".frame-link-function-display-name").text())
         .toBe("testStacktraceFiltering");
+      expect(frameLinks.eq(0).find(".frame-link-filename").text())
+        .toBe(filepath);
+
+      expect(frameLinks.eq(1).find(".frame-link-function-display-name").text())
+        .toBe("foo");
+      expect(frameLinks.eq(1).find(".frame-link-filename").text())
+        .toBe(filepath);
+
+      expect(frameLinks.eq(2).find(".frame-link-function-display-name").text())
+        .toBe("triggerPacket");
+      expect(frameLinks.eq(2).find(".frame-link-filename").text())
+        .toBe(filepath);
+
+      // it should not be collapsible.
+      expect(wrapper.find(`.theme-twisty`).length).toBe(0);
+    });
+    it("render with arguments", () => {
+      const message = stubPreparedMessages.get(
+        "console.trace('bar', {'foo': 'bar'}, [1,2,3])");
+      // We need to wrap the ConsoleApiElement in a Provider in order for the
+      // ObjectInspector to work.
+      const wrapper = render(Provider({ store: setupStore() },
+        ConsoleApiCall({ message, serviceContainer, open: true })));
+
+      const filepath = "http://example.com/browser/devtools/client/webconsole/" +
+                       "test/fixtures/stub-generators/test-console-api.html";
+
+      expect(wrapper.find(".message-body").text())
+        .toBe("console.trace() bar Object { foo: \"bar\" } Array(3) [ 1, 2, 3 ]");
+
+      const frameLinks = wrapper.find(
+        `.stack-trace span.frame-link[data-url]`);
+      expect(frameLinks.length).toBe(3);
+
+      expect(frameLinks.eq(0).find(".frame-link-function-display-name").text())
+        .toBe("testStacktraceWithLog");
       expect(frameLinks.eq(0).find(".frame-link-filename").text())
         .toBe(filepath);
 
@@ -366,7 +412,7 @@ describe("ConsoleAPICall component:", () => {
       let call = store.dispatch.getCall(0);
       expect(call.args[0]).toEqual({
         id: message.id,
-        type: MESSAGE_CLOSE
+        type: MESSAGE_CLOSE,
       });
 
       wrapper = mount(Provider({store},
@@ -381,7 +427,7 @@ describe("ConsoleAPICall component:", () => {
       call = store.dispatch.getCall(1);
       expect(call.args[0]).toEqual({
         id: message.id,
-        type: MESSAGE_OPEN
+        type: MESSAGE_OPEN,
       });
     });
 
@@ -402,7 +448,7 @@ describe("ConsoleAPICall component:", () => {
       let call = store.dispatch.getCall(0);
       expect(call.args[0]).toEqual({
         id: message.id,
-        type: MESSAGE_CLOSE
+        type: MESSAGE_CLOSE,
       });
 
       wrapper = mount(Provider({store},
@@ -417,7 +463,7 @@ describe("ConsoleAPICall component:", () => {
       call = store.dispatch.getCall(1);
       expect(call.args[0]).toEqual({
         id: message.id,
-        type: MESSAGE_OPEN
+        type: MESSAGE_OPEN,
       });
     });
 
@@ -486,7 +532,10 @@ describe("ConsoleAPICall component:", () => {
   describe("console.dirxml", () => {
     it("renders", () => {
       const message = stubPreparedMessages.get("console.dirxml(window)");
-      const wrapper = render(ConsoleApiCall({ message, serviceContainer }));
+      // We need to wrap the ConsoleApiElement in a Provider in order for the
+      // ObjectInspector to work.
+      const wrapper = render(Provider({ store: setupStore() },
+        ConsoleApiCall({ message, serviceContainer })));
 
       expect(wrapper.find(".message-body").text())
         .toBe("Window http://example.com/browser/devtools/client/webconsole/test/fixtures/stub-generators/test-console-api.html");
@@ -496,7 +545,11 @@ describe("ConsoleAPICall component:", () => {
   describe("console.dir", () => {
     it("renders", () => {
       const message = stubPreparedMessages.get("console.dir({C, M, Y, K})");
-      const wrapper = render(ConsoleApiCall({ message, serviceContainer }));
+
+      // We need to wrap the ConsoleApiElement in a Provider in order for the
+      // ObjectInspector to work.
+      const wrapper = render(Provider({ store: setupStore() },
+        ConsoleApiCall({ message, serviceContainer })));
 
       expect(wrapper.find(".message-body").text())
         .toBe(`Object { cyan: "C", magenta: "M", yellow: "Y", black: "K" }`);

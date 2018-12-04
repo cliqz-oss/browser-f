@@ -1,60 +1,3 @@
-[build]
-args = [
-    "-x", "c++", "-std=gnu++14", "-fno-sized-deallocation",
-    "-DTRACING=1", "-DIMPL_LIBXUL", "-DMOZ_STYLO_BINDINGS=1",
-    "-DMOZILLA_INTERNAL_API", "-DRUST_BINDGEN"
-]
-"family=unix" = ["-DOS_POSIX=1"]
-"os=solaris" = ["-DOS_SOLARIS=1"]
-"os=dragonfly" = ["-DOS_BSD=1", "-DOS_DRAGONFLY=1"]
-"os=freebsd" = ["-DOS_BSD=1", "-DOS_FREEBSD=1"]
-"os=netbsd" = ["-DOS_BSD=1", "-DOS_NETBSD=1"]
-"os=openbsd" = ["-DOS_BSD=1", "-DOS_OPENBSD=1"]
-"os=macos" = [
-    "-DOS_MACOSX=1", "-stdlib=libc++",
-    # To disable the fixup bindgen applies which adds search
-    # paths from clang command line in order to avoid potential
-    # conflict with -stdlib=libc++.
-    "--target=x86_64-apple-darwin",
-]
-
-[build."os=linux"]
-args = ["-DOS_LINUX=1"]
-"arch=x86" = ["-m32"]
-"arch=x86_64" = ["-m64"]
-
-[build."os=android"]
-args = ["-DOS_ANDROID=1"]
-"arch=aarch64" = ["--target=aarch64-linux-android"]
-"arch=arm" = ["--target=armv7-linux-androideabi"]
-"arch=x86" = ["--target=i686-linux-android"]
-
-[build."os=windows"]
-args = [
-    "-DOS_WIN=1", "-DWIN32=1",
-]
-
-[build."os=windows"."env=msvc"]
-args = [
-    # For compatibility with MSVC 2015
-    "-fms-compatibility-version=19",
-    # To enable the builtin __builtin_offsetof so that CRT wouldn't
-    # use reinterpret_cast in offsetof() which is not allowed inside
-    # static_assert().
-    "-D_CRT_USE_BUILTIN_OFFSETOF",
-    # Enable hidden attribute (which is not supported by MSVC and
-    # thus not enabled by default with a MSVC-compatibile build)
-    # to exclude hidden symbols from the generated file.
-    "-DHAVE_VISIBILITY_HIDDEN_ATTRIBUTE=1",
-]
-"arch=x86" = ["--target=i686-pc-win32"]
-"arch=x86_64" = ["--target=x86_64-pc-win32"]
-"arch=aarch64" = ["--target=aarch64-pc-windows-msvc"]
-
-[build."os=windows"."env=gnu"]
-"arch=x86" = ["--target=i686-pc-mingw32"]
-"arch=x86_64" = ["--target=x86_64-w64-mingw32"]
-
 [structs]
 headers = [
     "nsStyleStruct.h",
@@ -82,7 +25,7 @@ headers = [
     "mozilla/dom/NameSpaceConstants.h",
     "mozilla/LookAndFeel.h",
     "mozilla/StaticPrefs.h",
-    "mozilla/ServoBindings.h",
+    "mozilla/GeckoBindings.h",
     "mozilla/ComputedStyle.h",
     "mozilla/ServoTraversalStatistics.h",
     "mozilla/SizeOfState.h",
@@ -226,7 +169,8 @@ whitelist-vars = [
 ]
 whitelist-types = [
     "RawGecko.*",
-    "DeclarationBlockMutationClosure",
+    "RawServoAnimationValueMap",  # TODO(heycam): Handle this elsewhere.
+    "mozilla::DeclarationBlockMutationClosure",
     "mozilla::AnimationPropertySegment",
     "mozilla::AnonymousCounterStyle",
     "mozilla::AtomArray",
@@ -257,10 +201,20 @@ whitelist-types = [
     "mozilla::StyleShapeRadius",
     "mozilla::StyleGrid.*",
     "mozilla::UpdateAnimationsTasks",
+    "mozilla::PointerCapabilities",
     "mozilla::LookAndFeel",
     "mozilla::gfx::Float",
     "mozilla::gfx::FontVariation",
     "mozilla::StyleImageLayerAttachment",
+    "mozilla::StyleComputedFontStretchRange",
+    "mozilla::StyleComputedFontStyleDescriptor",
+    "mozilla::StyleComputedFontWeightRange",
+    "mozilla::StyleFontDisplay",
+    "mozilla::StyleUnicodeRange",
+    "mozilla::StyleFontLanguageOverride",
+    "mozilla::StyleFontFaceSourceListComponent",
+    "gfxFontFeature",
+    "gfxFontVariation",
     ".*ThreadSafe.*Holder",
     "AnonymousContent",
     "AudioContext",
@@ -270,21 +224,19 @@ whitelist-types = [
     "Element",
     "FontFamilyList",
     "FontFamilyName",
-    "FontSizePrefs",
+    "mozilla::FontSizePrefs",
     "FragmentOrURL",
     "FrameRequestCallback",
     "GeckoParserExtraData",
     "GeckoFontMetrics",
     "gfxAlternateValue",
-    "gfxFontFeature",
     "gfxFontFeatureValueSet",
-    "gfxFontVariation",
     "GridNamedArea",
     "mozilla::HalfCorner",
     "Image",
     "ImageURL",
     "Keyframe",
-    "MediumFeaturesChangedResult",
+    "mozilla::MediumFeaturesChangedResult",
     "nsAttrName",
     "nsAttrValue",
     "nscolor",
@@ -360,7 +312,6 @@ whitelist-types = [
     "PropertyValuePair",
     "Runnable",
     "ServoAttrSnapshot",
-    "ServoBundledURI",
     "ServoComputedData",
     "ServoComputedDataBorrowed",
     "ServoElementSnapshot",
@@ -433,8 +384,7 @@ opaque-types = [
     "mozilla::SchedulerGroup", # Non-standard-layout packing of field into superclass
 ]
 mapped-generic-types = [
-    { generic = true, gecko = "mozilla::ServoUnsafeCell", servo = "::std::cell::UnsafeCell" },
-    { generic = true, gecko = "mozilla::ServoCell", servo = "::std::cell::Cell" },
+    { generic = true, gecko = "mozilla::RustCell", servo = "::std::cell::Cell" },
     { generic = false, gecko = "ServoNodeData", servo = "AtomicRefCell<ElementData>" },
     { generic = false, gecko = "mozilla::ServoWritingMode", servo = "::logical_geometry::WritingMode" },
     { generic = false, gecko = "mozilla::ServoCustomPropertiesMap", servo = "Option<::servo_arc::Arc<::custom_properties::CustomPropertiesMap>>" },
@@ -450,7 +400,12 @@ fixups = [
 ]
 
 [bindings]
-headers = ["mozilla/ServoBindings.h"]
+headers = [
+    "mozilla/GeckoBindings.h",
+    # We include ServoBindings.h so we can type check the C function declarations
+    # in there against the function definitions in servo/ports/gecko/glue.rs.
+    "mozilla/ServoBindings.h",
+]
 hide-types = [
     "nsACString_internal",
     "nsAString_internal",
@@ -471,9 +426,7 @@ raw-lines = [
 whitelist-functions = ["Servo_.*", "Gecko_.*"]
 structs-types = [
     "mozilla::css::GridTemplateAreasValue",
-    "mozilla::css::ImageValue",
     "mozilla::css::URLValue",
-    "mozilla::css::URLValueData",
     "mozilla::dom::CallerType",
     "mozilla::dom::ShadowRoot",
     "mozilla::AnonymousCounterStyle",
@@ -487,15 +440,23 @@ structs-types = [
     "mozilla::StyleMotion",
     "mozilla::UniquePtr",
     "mozilla::StyleDisplayMode",
-    "ServoRawOffsetArc",
-    "DeclarationBlockMutationClosure",
+    "mozilla::StyleComputedFontStretchRange",
+    "mozilla::StyleComputedFontStyleDescriptor",
+    "mozilla::StyleComputedFontWeightRange",
+    "mozilla::StyleFontDisplay",
+    "mozilla::StyleUnicodeRange",
+    "mozilla::StyleFontLanguageOverride",
+    "mozilla::StyleFontFaceSourceListComponent",
+    "gfxFontFeature",
+    "mozilla::gfx::FontVariation",
+    "mozilla::DeclarationBlockMutationClosure",
     "nsAttrValue",
     "nsIContent",
     "nsINode",
     "nsIDocument",
     "nsIDocument_DocumentTheme",
     "nsSimpleContentList",
-    "MediumFeaturesChangedResult",
+    "mozilla::MediumFeaturesChangedResult",
     "RawGeckoAnimationPropertySegment",
     "RawGeckoComputedTiming",
     "RawGeckoCSSPropertyIDList",
@@ -515,7 +476,6 @@ structs-types = [
     "RawServoDeclarationBlock",
     "RawServoStyleRule",
     "RawGeckoPresContext",
-    "RawGeckoPresContextOwned",
     "RawGeckoStyleAnimationList",
     "RawGeckoStyleChildrenIterator",
     "RawGeckoServoStyleRuleList",
@@ -524,20 +484,18 @@ structs-types = [
     "RawServoSelectorList",
     "RawServoSourceSizeList",
     "RefPtr",
-    "RustString",
     "StyleUseCounters",
     "CSSPseudoElementType",
     "ServoTraversalFlags",
     "ComputedTimingFunction_BeforeFlag",
     "CounterStylePtr",
     "FontFamilyType",
-    "FontSizePrefs",
+    "mozilla::FontSizePrefs",
     "GeckoFontMetrics",
     "IterationCompositeOperation",
     "Keyframe",
     "PropertyValuePair",
     "SeenPtrs",
-    "ServoBundledURI",
     "ServoElementSnapshot",
     "ServoElementSnapshotTable",
     "ServoStyleSetSizes",
@@ -620,6 +578,7 @@ structs-types = [
     "ComputedStyleStrong",
     "EffectCompositor_CascadeLevel",
     "UpdateAnimationsTasks",
+    "PointerCapabilities",
     "ParsingMode",
     "InheritTarget",
     "DocumentMatchingFunction",
@@ -629,42 +588,17 @@ structs-types = [
     "RawGeckoGfxMatrix4x4",
     "FontFamilyName",
     "mozilla::SharedFontList",
+    "RawServoAnimationValueMap",
+    "RawServoCssUrlData",
 ]
 array-types = [
     { cpp-type = "uintptr_t", rust-type = "usize" },
 ]
-servo-owned-types = [
-    { name = "RawServoStyleSet", opaque = true },
-    { name = "RawServoAuthorStyles", opaque = true },
-    { name = "RawServoSelectorList", opaque = false },
-    { name = "RawServoSourceSizeList", opaque = false },
-    { name = "StyleUseCounters", opaque = false },
-    { name = "ServoElementSnapshot", opaque = false },
-    { name = "RawServoAnimationValueMap", opaque = true },
-]
 servo-immutable-borrow-types = [
-    "RawGeckoNode",
-    "RawGeckoElement",
-    "RawGeckoDocument",
     "RawServoDeclarationBlockStrong",
-    "RawGeckoPresContext",
-    "RawGeckoXBLBinding",
 ]
 servo-borrow-types = [
-    "nsCSSPropertyIDSet",
-    "nsCSSValue",
-    "nsTimingFunction",
-    "RawGeckoAnimationPropertySegment",
-    "RawGeckoComputedTiming",
-    "RawGeckoCSSPropertyIDList",
-    "RawGeckoKeyframeList",
-    "RawGeckoPropertyValuePairList",
-    "RawGeckoComputedKeyframeValuesList",
-    "RawGeckoFontFaceRuleList",
-    "RawGeckoServoStyleRuleList",
-    "RawGeckoServoAnimationValueList",
-    "RawGeckoStyleAnimationList",
-    "RawGeckoStyleChildrenIterator",
+    "RawServoAnimationValueMap",  # FIXME(heycam): Try to get rid of this.
 ]
 fixups = [
     # Remap the templated string type to the helper type

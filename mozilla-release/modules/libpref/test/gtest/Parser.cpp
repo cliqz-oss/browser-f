@@ -51,16 +51,19 @@ user_pref("string", "value");
   );
 
   // Totally empty input.
-  DEFAULT("",
-    ""
-  );
+  DEFAULT("", "");
 
   // Whitespace-only input.
-  DEFAULT(R"(   
-		
+  DEFAULT(R"(
+
     )" "\v \t \v \f",
     ""
   );
+
+  // Comment-only inputs.
+  DEFAULT(R"(// blah)", "");
+  DEFAULT(R"(# blah)", "");
+  DEFAULT(R"(/* blah */)", "");
 
   //-------------------------------------------------------------------------
   // All the lexing errors. (To be pedantic, some of the integer literal
@@ -196,14 +199,24 @@ pref("int.ok", 0);
     "test:2: prefs parse error: expected low surrogate after high surrogate\n"
   );
 
-  // High surrogate followed by invalid low surrogate value.
+  // High surrogate followed by invalid low surrogate.
   // (The string literal is broken in two so that MSVC doesn't complain about
   // an invalid universal-character-name.)
   DEFAULT(R"(
 pref("string.bad-u-surrogate", "foo\)" R"(ud83c\u1234");
 pref("int.ok", 0);
     )",
-    "test:2: prefs parse error: invalid low surrogate value after high surrogate\n"
+    "test:2: prefs parse error: invalid low surrogate after high surrogate\n"
+  );
+
+  // Low surrogate not preceded by high surrogate.
+  // (The string literal is broken in two so that MSVC doesn't complain about
+  // an invalid universal-character-name.)
+  DEFAULT(R"(
+pref("string.bad-u-surrogate", "foo\)" R"(udc00");
+pref("int.ok", 0);
+    )",
+    "test:2: prefs parse error: expected high surrogate before low surrogate\n"
   );
 
   // Unlike in JavaScript, \b, \f, \t, \v aren't allowed.

@@ -14,11 +14,11 @@
       "use strict";
 
       const ctx = new AudioContext();
-      const osc = ctx.createOscillator();
+      const panner = ctx.createStereoPanner();
 
       function throwError() {
         try {
-          osc.connect({});
+          panner.connect({});
         } catch (e) {
           return {
             lineNumber: e.lineNumber,
@@ -27,14 +27,14 @@
             message: e.message,
             instanceof: e instanceof TypeError,
             stringified: e.toString(),
-            name: e.name
+            name: e.name,
           };
         }
       }
 
       function throwDOMException() {
         try {
-          osc.frequency.setValueAtTime(0, -1);
+          panner.channelCount = 3;
         } catch (e) {
           return {
             lineNumber: e.lineNumber,
@@ -45,7 +45,7 @@
             result: e.result,
             instanceof: e instanceof DOMException,
             stringified: e.toString(),
-            name: e.name
+            name: e.name,
           };
         }
       }

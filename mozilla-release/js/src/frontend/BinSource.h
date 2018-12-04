@@ -36,7 +36,8 @@ namespace frontend {
 class BinASTParserBase: private JS::AutoGCRooter
 {
   public:
-    BinASTParserBase(JSContext* cx, LifoAlloc& alloc, UsedNameTracker& usedNames);
+    BinASTParserBase(JSContext* cx, LifoAlloc& alloc, UsedNameTracker& usedNames,
+                     HandleScriptSourceObject sourceObject, Handle<LazyScript*> lazyScript);
     ~BinASTParserBase();
 
   public:
@@ -47,8 +48,11 @@ class BinASTParserBase: private JS::AutoGCRooter
 
     // --- GC.
 
+    virtual void doTrace(JSTracer* trc) {}
+
     void trace(JSTracer* trc) {
         ObjectBox::TraceList(trc, traceListHead_);
+        doTrace(trc);
     }
 
 
@@ -80,6 +84,8 @@ class BinASTParserBase: private JS::AutoGCRooter
     // Root atoms and objects allocated for the parse tree.
     AutoKeepAtoms keepAtoms_;
 
+    RootedScriptSourceObject sourceObject_;
+    Rooted<LazyScript*> lazyScript_;
     ParseContext* parseContext_;
     FullParseHandler factory_;
 
@@ -105,8 +111,9 @@ class BinASTParser : public BinASTParserBase, public ErrorReporter, public BCEPa
     using Chars = typename Tokenizer::Chars;
 
   public:
-    BinASTParser(JSContext* cx, LifoAlloc& alloc, UsedNameTracker& usedNames, const JS::ReadOnlyCompileOptions& options)
-        : BinASTParserBase(cx, alloc, usedNames)
+    BinASTParser(JSContext* cx, LifoAlloc& alloc, UsedNameTracker& usedNames, const JS::ReadOnlyCompileOptions& options,
+                 HandleScriptSourceObject sourceObject, Handle<LazyScript*> lazyScript = nullptr)
+        : BinASTParserBase(cx, alloc, usedNames, sourceObject, lazyScript)
         , options_(options)
         , variableDeclarationKind_(VariableDeclarationKind::Var)
     {
@@ -124,17 +131,23 @@ class BinASTParser : public BinASTParserBase, public ErrorReporter, public BCEPa
      *
      * In case of error, the parser reports the JS error.
      */
-    JS::Result<ParseNode*> parse(const uint8_t* start, const size_t length);
-    JS::Result<ParseNode*> parse(const Vector<uint8_t>& data);
+    JS::Result<ParseNode*> parse(GlobalSharedContext* globalsc,
+                                 const uint8_t* start, const size_t length,
+                                 BinASTSourceMetadata** metadataPtr = nullptr);
+    JS::Result<ParseNode*> parse(GlobalSharedContext* globalsc, const Vector<uint8_t>& data,
+                                 BinASTSourceMetadata** metadataPtr = nullptr);
+
+    JS::Result<ParseNode*> parseLazyFunction(ScriptSource* src, const size_t firstOffset);
 
   private:
-    MOZ_MUST_USE JS::Result<ParseNode*> parseAux(const uint8_t* start, const size_t length);
+    MOZ_MUST_USE JS::Result<ParseNode*> parseAux(GlobalSharedContext* globalsc,
+                                                 const uint8_t* start, const size_t length,
+                                                 BinASTSourceMetadata** metadataPtr = nullptr);
 
     // --- Raise errors.
     //
     // These methods return a (failed) JS::Result for convenience.
 
-    MOZ_MUST_USE mozilla::GenericErrorResult<JS::Error&> raiseUndeclaredCapture(JSAtom* name);
     MOZ_MUST_USE mozilla::GenericErrorResult<JS::Error&> raiseInvalidClosedVar(JSAtom* name);
     MOZ_MUST_USE mozilla::GenericErrorResult<JS::Error&> raiseMissingVariableInAssertedScope(JSAtom* name);
     MOZ_MUST_USE mozilla::GenericErrorResult<JS::Error&> raiseMissingDirectEvalInAssertedScope();
@@ -154,26 +167,54 @@ class BinASTParser : public BinASTParserBase, public ErrorReporter, public BCEPa
     // Ensure that this parser will never be used again.
     void poison();
 
+    // The owner or the target of Asserted*Scope.
+    enum class AssertedScopeKind {
+        Block,
+        Catch,
+        Global,
+        Parameter,
+        Var,
+    };
+
     // Auto-generated methods
 #include "frontend/BinSource-auto.h"
 
     // --- Auxiliary parsing functions
 
     // Build a function object for a function-producing production. Called AFTER creating the scope.
+    JS::Result<CodeNode*>
+    makeEmptyFunctionNode(const size_t start, const BinKind kind, FunctionBox* funbox);
     JS::Result<ParseNode*>
-    buildFunction(const size_t start, const BinKind kind, ParseNode* name, ParseNode* params,
-        ParseNode* body, FunctionBox* funbox);
+    buildFunction(const size_t start, const BinKind kind, ParseNode* name, ListNode* params,
+                  ParseNode* body, FunctionBox* funbox);
     JS::Result<FunctionBox*>
     buildFunctionBox(GeneratorKind generatorKind, FunctionAsyncKind functionAsyncKind, FunctionSyntaxKind syntax, ParseNode* name);
 
-    // Parse full scope information to a specific var scope / let scope combination.
-    MOZ_MUST_USE JS::Result<Ok> parseAndUpdateScope(ParseContext::Scope& varScope,
-        ParseContext::Scope& letScope);
-    // Parse a list of names and add it to a given scope.
-    MOZ_MUST_USE JS::Result<Ok> parseAndUpdateScopeNames(ParseContext::Scope& scope,
-        DeclarationKind kind);
-    MOZ_MUST_USE JS::Result<Ok> parseAndUpdateCapturedNames(const BinKind kind);
+    // Add name to a given scope.
+    MOZ_MUST_USE JS::Result<Ok> addScopeName(AssertedScopeKind scopeKind, HandleAtom name,
+                                             ParseContext::Scope* scope,
+                                             DeclarationKind declKind,
+                                             bool isCaptured);
+
+    void captureFunctionName();
+
+    // Map AssertedScopeKind and AssertedDeclaredKind for single binding to
+    // corresponding ParseContext::Scope to store the binding, and
+    // DeclarationKind for the binding.
+    MOZ_MUST_USE JS::Result<Ok> getDeclaredScope(AssertedScopeKind scopeKind,
+                                                 AssertedDeclaredKind kind,
+                                                 ParseContext::Scope*& scope,
+                                                 DeclarationKind& declKind);
+    MOZ_MUST_USE JS::Result<Ok> getBoundScope(AssertedScopeKind scopeKind,
+                                              ParseContext::Scope*& scope,
+                                              DeclarationKind& declKind);
+
     MOZ_MUST_USE JS::Result<Ok> checkBinding(JSAtom* name);
+
+    MOZ_MUST_USE JS::Result<Ok> checkPositionalParameterIndices(Handle<GCVector<JSAtom*>> positionalParams,
+                                                                ListNode* params);
+
+    MOZ_MUST_USE JS::Result<Ok> checkFunctionLength(uint32_t expectedLength);
 
     // When leaving a scope, check that none of its bindings are known closed over and un-marked.
     MOZ_MUST_USE JS::Result<Ok> checkClosedVars(ParseContext::Scope& scope);
@@ -183,8 +224,12 @@ class BinASTParser : public BinASTParserBase, public ErrorReporter, public BCEPa
 
     // --- Utilities.
 
-    MOZ_MUST_USE JS::Result<ParseNode*> appendDirectivesToBody(ParseNode* body,
-        ParseNode* directives);
+    MOZ_MUST_USE JS::Result<ParseNode*> appendDirectivesToBody(ListNode* body,
+        ListNode* directives);
+
+    // Optionally force a strict context without restarting the parse when we see a strict
+    // directive.
+    void forceStrictIfNecessary(SharedContext* sc, ListNode* directives);
 
   private: // Implement ErrorReporter
     const JS::ReadOnlyCompileOptions& options_;
@@ -192,6 +237,8 @@ class BinASTParser : public BinASTParserBase, public ErrorReporter, public BCEPa
     const JS::ReadOnlyCompileOptions& options() const override {
         return this->options_;
     }
+
+    void doTrace(JSTracer* trc) final;
 
   public:
     virtual ObjectBox* newObjectBox(JSObject* obj) override {
@@ -240,8 +287,9 @@ class BinASTParser : public BinASTParserBase, public ErrorReporter, public BCEPa
     }
 
     virtual bool isOnThisLine(size_t offset, uint32_t lineNum, bool *isOnSameLine) const override {
-        if (lineNum != 0)
+        if (lineNum != 0) {
             return false;
+        }
         *isOnSameLine = true;
         return true;
     }
@@ -251,8 +299,9 @@ class BinASTParser : public BinASTParserBase, public ErrorReporter, public BCEPa
         *column = offset();
     }
     size_t offset() const {
-        if (tokenizer_.isSome())
+        if (tokenizer_.isSome()) {
             return tokenizer_->offset();
+        }
 
         return 0;
     }

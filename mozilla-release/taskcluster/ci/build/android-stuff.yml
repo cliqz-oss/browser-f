@@ -1,3 +1,7 @@
+job-defaults:
+    run:
+        mozconfig-variant: null
+
 android-test/opt:
     description: "Android armv7 unit tests"
     index:
@@ -82,8 +86,11 @@ android-test-ccov/opt:
         - android-sdk-linux
         - linux64-node
     fetches:
-        fetch:
-            - grcov-linux-x86_64
+        # We use a fetch instead of toolchains here, because mozharness expects
+        # it there (since the code is shared with tests that don't support
+        # `toolchains`).
+        toolchain:
+            - linux64-grcov
 
 android-lint/opt:
     description: "Android lint"

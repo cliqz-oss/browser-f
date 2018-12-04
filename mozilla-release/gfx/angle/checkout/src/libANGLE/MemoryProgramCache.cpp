@@ -80,8 +80,8 @@ void WriteShaderVariableBuffer(BinaryOutputStream *stream, const ShaderVariableB
 
 void LoadShaderVariableBuffer(BinaryInputStream *stream, ShaderVariableBuffer *var)
 {
-    var->binding           = stream->readInt<int>();
-    var->dataSize          = stream->readInt<unsigned int>();
+    var->binding  = stream->readInt<int>();
+    var->dataSize = stream->readInt<unsigned int>();
 
     for (ShaderType shaderType : AllShaderTypes())
     {
@@ -208,7 +208,7 @@ MemoryProgramCache::~MemoryProgramCache()
 }
 
 // static
-LinkResult MemoryProgramCache::Deserialize(const Context *context,
+std::unique_ptr<rx::LinkEvent> MemoryProgramCache::Deserialize(const Context *context,
                                            const Program *program,
                                            ProgramState *state,
                                            const uint8_t *binary,
@@ -223,7 +223,7 @@ LinkResult MemoryProgramCache::Deserialize(const Context *context,
         0)
     {
         infoLog << "Invalid program binary version.";
-        return false;
+        return std::make_unique<rx::LinkEventDone>(false);
     }
 
     int majorVersion = stream.readInt<int>();
@@ -232,15 +232,15 @@ LinkResult MemoryProgramCache::Deserialize(const Context *context,
         minorVersion != context->getClientMinorVersion())
     {
         infoLog << "Cannot load program binaries across different ES context versions.";
-        return false;
+        return std::make_unique<rx::LinkEventDone>(false);
     }
 
     state->mComputeShaderLocalSize[0] = stream.readInt<int>();
     state->mComputeShaderLocalSize[1] = stream.readInt<int>();
     state->mComputeShaderLocalSize[2] = stream.readInt<int>();
 
-    state->mGeometryShaderInputPrimitiveType  = stream.readInt<GLenum>();
-    state->mGeometryShaderOutputPrimitiveType = stream.readInt<GLenum>();
+    state->mGeometryShaderInputPrimitiveType  = stream.readEnum<PrimitiveMode>();
+    state->mGeometryShaderOutputPrimitiveType = stream.readEnum<PrimitiveMode>();
     state->mGeometryShaderInvocations         = stream.readInt<int>();
     state->mGeometryShaderMaxVertices         = stream.readInt<int>();
 
@@ -344,7 +344,7 @@ LinkResult MemoryProgramCache::Deserialize(const Context *context,
         context->getWorkarounds().disableProgramCachingForTransformFeedback)
     {
         infoLog << "Current driver does not support transform feedback in binary programs.";
-        return false;
+        return std::make_unique<rx::LinkEventDone>(false);
     }
 
     ASSERT(state->mLinkedTransformFeedbackVaryings.empty());
@@ -400,19 +400,19 @@ LinkResult MemoryProgramCache::Deserialize(const Context *context,
     unsigned int samplerRangeLow  = stream.readInt<unsigned int>();
     unsigned int samplerRangeHigh = stream.readInt<unsigned int>();
     state->mSamplerUniformRange   = RangeUI(samplerRangeLow, samplerRangeHigh);
-    unsigned int samplerCount = stream.readInt<unsigned int>();
+    unsigned int samplerCount     = stream.readInt<unsigned int>();
     for (unsigned int samplerIndex = 0; samplerIndex < samplerCount; ++samplerIndex)
     {
         TextureType textureType = stream.readEnum<TextureType>();
-        size_t bindingCount = stream.readInt<size_t>();
-        bool unreferenced   = stream.readBool();
+        size_t bindingCount     = stream.readInt<size_t>();
+        bool unreferenced       = stream.readBool();
         state->mSamplerBindings.emplace_back(
             SamplerBinding(textureType, bindingCount, unreferenced));
     }
 
-    unsigned int imageRangeLow  = stream.readInt<unsigned int>();
-    unsigned int imageRangeHigh = stream.readInt<unsigned int>();
-    state->mImageUniformRange   = RangeUI(imageRangeLow, imageRangeHigh);
+    unsigned int imageRangeLow     = stream.readInt<unsigned int>();
+    unsigned int imageRangeHigh    = stream.readInt<unsigned int>();
+    state->mImageUniformRange      = RangeUI(imageRangeLow, imageRangeHigh);
     unsigned int imageBindingCount = stream.readInt<unsigned int>();
     for (unsigned int imageIndex = 0; imageIndex < imageBindingCount; ++imageIndex)
     {
@@ -431,9 +431,10 @@ LinkResult MemoryProgramCache::Deserialize(const Context *context,
 
     static_assert(static_cast<unsigned long>(ShaderType::EnumCount) <= sizeof(unsigned long) * 8,
                   "Too many shader types");
-    state->mLinkedShaderStages = stream.readInt<gl::ShaderBitSet>();
+    state->mLinkedShaderStages = ShaderBitSet(stream.readInt<uint8_t>());
 
     state->updateTransformFeedbackStrides();
+    state->updateActiveSamplers();
 
     return program->getImplementation()->load(context, infoLog, &stream);
 }
@@ -469,8 +470,8 @@ void MemoryProgramCache::Serialize(const Context *context,
     stream.writeInt(computeLocalSize[2]);
 
     ASSERT(state.mGeometryShaderInvocations >= 1 && state.mGeometryShaderMaxVertices >= 0);
-    stream.writeInt(state.mGeometryShaderInputPrimitiveType);
-    stream.writeInt(state.mGeometryShaderOutputPrimitiveType);
+    stream.writeEnum(state.mGeometryShaderInputPrimitiveType);
+    stream.writeEnum(state.mGeometryShaderOutputPrimitiveType);
     stream.writeInt(state.mGeometryShaderInvocations);
     stream.writeInt(state.mGeometryShaderMaxVertices);
 
@@ -658,10 +659,9 @@ LinkResult MemoryProgramCache::getProgram(const Context *context,
     if (get(*hashOut, &binaryProgram))
     {
         InfoLog infoLog;
-        ANGLE_TRY_RESULT(Deserialize(context, program, state, binaryProgram->data(),
-                                     binaryProgram->size(), infoLog),
-                         result);
-        ANGLE_HISTOGRAM_BOOLEAN("GPU.ANGLE.ProgramCache.LoadBinarySuccess", result.getResult());
+        auto event = Deserialize(context, program, state, binaryProgram->data(),
+                                 binaryProgram->size(), infoLog);
+        result = event->wait();
         if (!result.getResult())
         {
             // Cache load failed, evict.

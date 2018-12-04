@@ -119,8 +119,14 @@ class ProjectSearch extends _react.Component {
       const query = sanitizeQuery(this.state.inputValue);
 
       if (query) {
-        this.props.searchSources(query);
+        this.doSearch(query);
       }
+    };
+
+    this.onHistoryScroll = query => {
+      this.setState({
+        inputValue: query
+      });
     };
 
     this.onEnterPress = () => {
@@ -169,8 +175,7 @@ class ProjectSearch extends _react.Component {
         className: (0, _classnames2.default)("file-result", {
           focused
         }),
-        key: file.sourceId,
-        onClick: e => setExpanded(file, !expanded)
+        key: file.sourceId
       }, _react2.default.createElement(_Svg2.default, {
         name: "arrow",
         className: (0, _classnames2.default)({
@@ -277,6 +282,10 @@ class ProjectSearch extends _react.Component {
     }
   }
 
+  doSearch(searchTerm) {
+    this.props.searchSources(searchTerm);
+  }
+
   shouldShowErrorEmoji() {
     return !this.getResultCount() && this.props.status === _projectTextSearch.statusType.done;
   }
@@ -297,6 +306,7 @@ class ProjectSearch extends _react.Component {
         inputFocused: false
       }),
       onKeyDown: this.onKeyDown,
+      onHistoryScroll: this.onHistoryScroll,
       handleClose: this.props.closeProjectSearch,
       ref: "searchInput"
     });

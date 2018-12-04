@@ -20,6 +20,7 @@
 <!ENTITY aboutPrivateBrowsing.info.saved.after2          " your:">
 <!ENTITY aboutPrivateBrowsing.info.downloads             "downloads">
 <!ENTITY aboutPrivateBrowsing.info.bookmarks             "bookmarks">
+<!ENTITY aboutPrivateBrowsing.info.clipboard             "copied text">
 <!ENTITY aboutPrivateBrowsing.note.before                "Private Browsing ">
 <!ENTITY aboutPrivateBrowsing.note.emphasize             "doesn’t make you anonymous">
 <!ENTITY aboutPrivateBrowsing.note.after                 " on the Internet. Your employer or Internet service provider can still know what page you visit.">
@@ -32,4 +33,4 @@
 <!ENTITY trackingProtection.startTour1                   "See how it works">
 
 <!ENTITY contentBlocking.title                           "Content Blocking">
-<!ENTITY contentBlocking.description                     "Some websites use trackers that can monitor your activity across the Internet. In private windows Firefox Content Blocking automatically blocks many trackers that can collect information about your browsing behavior.">
+<!ENTITY contentBlocking.description                     "Some websites use trackers that can monitor your activity across the Internet. In private windows, Firefox Content Blocking automatically blocks many trackers that can collect information about your browsing behavior.">

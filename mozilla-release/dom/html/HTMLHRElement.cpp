@@ -14,8 +14,8 @@ NS_IMPL_NS_NEW_HTML_ELEMENT(HR)
 namespace mozilla {
 namespace dom {
 
-HTMLHRElement::HTMLHRElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-  : nsGenericHTMLElement(aNodeInfo)
+HTMLHRElement::HTMLHRElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
+  : nsGenericHTMLElement(std::move(aNodeInfo))
 {
 }
 
@@ -173,11 +173,11 @@ NS_IMETHODIMP_(bool)
 HTMLHRElement::IsAttributeMapped(const nsAtom* aAttribute) const
 {
   static const MappedAttributeEntry attributes[] = {
-    { &nsGkAtoms::align },
-    { &nsGkAtoms::width },
-    { &nsGkAtoms::size },
-    { &nsGkAtoms::color },
-    { &nsGkAtoms::noshade },
+    { nsGkAtoms::align },
+    { nsGkAtoms::width },
+    { nsGkAtoms::size },
+    { nsGkAtoms::color },
+    { nsGkAtoms::noshade },
     { nullptr },
   };
 

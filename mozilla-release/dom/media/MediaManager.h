@@ -71,17 +71,16 @@ public:
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIMEDIADEVICE
 
-  explicit MediaDevice(MediaEngineSource* aSource,
+  explicit MediaDevice(const RefPtr<MediaEngineSource>& aSource,
                        const nsString& aName,
                        const nsString& aID,
-                       const nsString& aRawID = NS_LITERAL_STRING(""));
+                       const nsString& aRawID);
 
-  explicit MediaDevice(const nsString& aName,
-                       const dom::MediaDeviceKind aKind,
+  explicit MediaDevice(const RefPtr<AudioDeviceInfo>& aAudioDeviceInfo,
                        const nsString& aID,
                        const nsString& aRawID = NS_LITERAL_STRING(""));
 
-  explicit MediaDevice(const MediaDevice* aOther,
+  explicit MediaDevice(const RefPtr<MediaDevice>& aOther,
                        const nsString& aID,
                        const nsString& aRawID);
 
@@ -129,6 +128,7 @@ private:
 
 public:
   const RefPtr<MediaEngineSource> mSource;
+  const RefPtr<AudioDeviceInfo> mSinkInfo;
   const dom::MediaDeviceKind mKind;
   const bool mScary;
   const nsString mType;
@@ -138,6 +138,7 @@ public:
 };
 
 typedef nsRefPtrHashtable<nsUint64HashKey, GetUserMediaWindowListener> WindowTable;
+typedef MozPromise<RefPtr<AudioDeviceInfo>, nsresult, true> SinkInfoPromise;
 
 class MediaManager final : public nsIMediaManagerService,
                            public nsIObserver
@@ -227,20 +228,37 @@ public:
                             dom::CallerType aCallerType);
 
   nsresult EnumerateDevices(nsPIDOMWindowInner* aWindow, dom::Promise& aPromise);
+
+  // Get the sink that corresponds to the given device id.
+  // It is resposible to check if an application is
+  // authorized to play audio through the requested device.
+  // The returned promise will be resolved with the device
+  // information if the device id matches one and operation is
+  // allowed. The default device is always allowed. Non default
+  // devices are allowed only in secure context. It is pending to
+  // implement an user authorization model. The promise will be
+  // rejected in the following cases:
+  // NS_ERROR_NOT_AVAILABLE: Device id does not exist.
+  // NS_ERROR_DOM_MEDIA_NOT_ALLOWED_ERR:
+  //   The requested device exists but it is not allowed to be used.
+  //   Currently, this happens only on non-default default devices
+  //   and non https connections. TODO, authorization model to allow
+  //   an application to play audio through the device (Bug 1493982).
+  // NS_ERROR_ABORT: General error.
+  RefPtr<SinkInfoPromise> GetSinkDevice(nsPIDOMWindowInner* aWindow,
+                                        const nsString& aDeviceId);
+
   void OnNavigation(uint64_t aWindowID);
   bool IsActivelyCapturingOrHasAPermission(uint64_t aWindowId);
 
   MediaEnginePrefs mPrefs;
 
   typedef nsTArray<RefPtr<MediaDevice>> MediaDeviceSet;
+  typedef media::Refcountable<UniquePtr<MediaDeviceSet>> MediaDeviceSetRefCnt;
 
   virtual int AddDeviceChangeCallback(DeviceChangeCallback* aCallback) override;
   virtual void OnDeviceChange() override;
 private:
-  typedef media::Pledge<MediaDeviceSet*, dom::MediaStreamError*> PledgeMediaDeviceSet;
-  typedef media::Pledge<const char*, dom::MediaStreamError*> PledgeChar;
-  typedef media::Pledge<bool, dom::MediaStreamError*> PledgeVoid;
-
   static nsresult GenerateUUID(nsAString& aResult);
   static nsresult AnonymizeId(nsAString& aId, const nsACString& aOriginKey);
 public: // TODO: make private once we upgrade to GCC 4.8+ on linux.
@@ -253,25 +271,31 @@ private:
     Loopback /* Enumeration should return loopback device(s) (possibly in
              addition to normal devices) */
   };
-  already_AddRefed<PledgeMediaDeviceSet>
+
+  typedef MozPromise<RefPtr<MediaDeviceSetRefCnt>, RefPtr<dom::MediaStreamError>, true> MediaDeviceSetPromise;
+  typedef MozPromise<const char*, nsresult, false> BadConstraintsPromise;
+
+  RefPtr<MediaDeviceSetPromise>
   EnumerateRawDevices(uint64_t aWindowId,
                       dom::MediaSourceEnum      aVideoInputType,
                       dom::MediaSourceEnum      aAudioInputType,
                       MediaSinkEnum             aAudioOutputType,
                       DeviceEnumerationType     aVideoInputEnumType = DeviceEnumerationType::Normal,
                       DeviceEnumerationType     aAudioInputEnumType = DeviceEnumerationType::Normal);
-  already_AddRefed<PledgeMediaDeviceSet>
+
+  RefPtr<MediaDeviceSetPromise>
   EnumerateDevicesImpl(uint64_t aWindowId,
                        dom::MediaSourceEnum      aVideoInputType,
                        dom::MediaSourceEnum      aAudioInputType,
                        MediaSinkEnum             aAudioOutputType,
                        DeviceEnumerationType     aVideoInputEnumType,
                        DeviceEnumerationType     aAudioInputEnumType);
-  already_AddRefed<PledgeChar>
+
+  RefPtr<BadConstraintsPromise>
   SelectSettings(
       dom::MediaStreamConstraints& aConstraints,
       bool aIsChrome,
-      RefPtr<media::Refcountable<UniquePtr<MediaDeviceSet>>>& aSources);
+      const RefPtr<MediaDeviceSetRefCnt>& aSources);
 
   void GetPref(nsIPrefBranch *aBranch, const char *aPref,
                const char *aData, int32_t *aVal);
@@ -313,11 +337,8 @@ private:
 
   static StaticRefPtr<MediaManager> sSingleton;
 
-  media::CoatCheck<PledgeMediaDeviceSet> mOutstandingPledges;
-  media::CoatCheck<PledgeChar> mOutstandingCharPledges;
   nsTArray<nsString> mDeviceIDs;
 public:
-  media::CoatCheck<media::Pledge<nsCString>> mGetPrincipalKeyPledges;
   RefPtr<media::Parent<media::NonE10s>> mNonE10sParent;
 };
 

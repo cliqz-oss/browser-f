@@ -65,6 +65,7 @@ function openContextMenu(aMessage) {
                               loginFillInfo: data.loginFillInfo,
                               parentAllowsMixedContent: data.parentAllowsMixedContent,
                               userContextId: data.userContextId,
+                              webExtContextData: data.webExtContextData,
                             };
 
   let popup = browser.ownerDocument.getElementById("contentAreaContextMenu");
@@ -128,12 +129,15 @@ nsContextMenu.prototype = {
         linkUrl: this.linkURL,
         selectionText: this.isTextSelected ? this.selectionInfo.fullText : undefined,
         frameId: this.frameOuterWindowID,
+        webExtBrowserType: this.webExtBrowserType,
+        webExtContextData: gContextMenuContentData ? gContextMenuContentData.webExtContextData : undefined,
       };
       subject.wrappedJSObject = subject;
       Services.obs.notifyObservers(subject, "on-build-contextmenu");
     }
 
-    this.isFrameImage = document.getElementById("isFrameImage");
+    this.viewFrameSourceElement =
+         document.getElementById("context-viewframesource");
     this.ellipsis = "\u2026";
     try {
       this.ellipsis = Services.prefs.getComplexValue("intl.ellipsis",
@@ -166,7 +170,7 @@ nsContextMenu.prototype = {
     this.shouldDisplay = context.shouldDisplay;
     this.timeStamp = context.timeStamp;
 
-    // Assign what's _possibly_ needed from `context` sent by ContextMenu.jsm
+    // Assign what's _possibly_ needed from `context` sent by ContextMenuChild.jsm
     // Keep this consistent with the similar code in ContextMenu's _setContext
     this.bgImageURL          = context.bgImageURL;
     this.imageDescURL        = context.imageDescURL;
@@ -531,9 +535,9 @@ nsContextMenu.prototype = {
     // Hide menu entries for images, show otherwise
     if (this.inFrame) {
       if (BrowserUtils.mimeTypeIsTextBased(this.target.ownerDocument.contentType))
-        this.isFrameImage.removeAttribute("hidden");
+        this.viewFrameSourceElement.removeAttribute("hidden");
       else
-        this.isFrameImage.setAttribute("hidden", "true");
+        this.viewFrameSourceElement.setAttribute("hidden", "true");
     }
 
     // BiDi UI
@@ -805,7 +809,8 @@ nsContextMenu.prototype = {
       const sm = Services.scriptSecurityManager;
       try {
         let targetURI = this.linkURI;
-        sm.checkSameOriginURI(referrerURI, targetURI, false);
+        let isPrivateWin = this.browser.contentPrincipal.originAttributes.privateBrowsingId > 0;
+        sm.checkSameOriginURI(referrerURI, targetURI, false, isPrivateWin);
         persistAllowMixedContentInChildTab = true;
       } catch (e) { }
     }

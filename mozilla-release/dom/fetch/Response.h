@@ -112,6 +112,22 @@ public:
 
   using FetchBody::GetBody;
 
+  using FetchBody::BodyBlobURISpec;
+
+  const nsACString&
+  BodyBlobURISpec() const
+  {
+    return mInternalResponse->BodyBlobURISpec();
+  }
+
+  using FetchBody::BodyLocalPath;
+
+  const nsAString&
+  BodyLocalPath() const
+  {
+    return mInternalResponse->BodyLocalPath();
+  }
+
   static already_AddRefed<Response>
   Error(const GlobalObject& aGlobal);
 

@@ -467,7 +467,7 @@ public:
   Maybe<mozilla::layers::ScrollMetadata> ComputeScrollMetadata(
     LayerManager* aLayerManager,
     const nsIFrame* aContainerReferenceFrame,
-    const ContainerLayerParameters& aParameters,
+    const Maybe<ContainerLayerParameters>& aParameters,
     const mozilla::DisplayItemClip* aClip) const;
   void ClipLayerToDisplayPort(Layer* aLayer,
                               const mozilla::DisplayItemClip* aClip,
@@ -687,6 +687,8 @@ protected:
   }
   bool HasBgAttachmentLocal() const;
   uint8_t GetScrolledFrameDir() const;
+
+  bool IsForTextControlWithNoScrollbars() const;
 
   // Removes any RefreshDriver observers we might have registered.
   void RemoveObservers();
@@ -983,7 +985,7 @@ public:
   virtual mozilla::Maybe<mozilla::layers::ScrollMetadata> ComputeScrollMetadata(
     LayerManager* aLayerManager,
     const nsIFrame* aContainerReferenceFrame,
-    const ContainerLayerParameters& aParameters,
+    const Maybe<ContainerLayerParameters>& aParameters,
     const mozilla::DisplayItemClip* aClip) const override
   {
     return mHelper.ComputeScrollMetadata(aLayerManager, aContainerReferenceFrame, aParameters, aClip);
@@ -1434,7 +1436,7 @@ public:
   virtual mozilla::Maybe<mozilla::layers::ScrollMetadata> ComputeScrollMetadata(
     LayerManager* aLayerManager,
     const nsIFrame* aContainerReferenceFrame,
-    const ContainerLayerParameters& aParameters,
+    const Maybe<ContainerLayerParameters>& aParameters,
     const mozilla::DisplayItemClip* aClip) const override
   {
     return mHelper.ComputeScrollMetadata(aLayerManager, aContainerReferenceFrame, aParameters, aClip);

@@ -61,6 +61,7 @@ public:
   void SetEarlyDataAccepted(bool aAccepted);
 
   void SetHandshakeCompleted();
+  bool IsHandshakeCompleted() const { return mHandshakeCompleted; }
   void NoteTimeUntilReady();
 
 
@@ -182,6 +183,7 @@ private:
   nsresult ActivateSSL();
 
   nsCString mNegotiatedNPN;
+  nsCString mEsniTxt;
   bool      mNPNCompleted;
   bool      mEarlyDataAccepted;
   bool      mDenyClientCert;

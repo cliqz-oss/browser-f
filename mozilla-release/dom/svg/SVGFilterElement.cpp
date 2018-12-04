@@ -12,7 +12,9 @@
 #include "mozilla/dom/SVGFilterElementBinding.h"
 #include "mozilla/dom/SVGLengthBinding.h"
 #include "mozilla/dom/SVGUnitTypesBinding.h"
+#include "nsQueryObject.h"
 #include "nsSVGUtils.h"
+#include "SVGObserverUtils.h"
 
 NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(Filter)
 
@@ -29,19 +31,19 @@ SVGFilterElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 
 nsSVGElement::LengthInfo SVGFilterElement::sLengthInfo[4] =
 {
-  { &nsGkAtoms::x, -10, SVGLength_Binding::SVG_LENGTHTYPE_PERCENTAGE, SVGContentUtils::X },
-  { &nsGkAtoms::y, -10, SVGLength_Binding::SVG_LENGTHTYPE_PERCENTAGE, SVGContentUtils::Y },
-  { &nsGkAtoms::width, 120, SVGLength_Binding::SVG_LENGTHTYPE_PERCENTAGE, SVGContentUtils::X },
-  { &nsGkAtoms::height, 120, SVGLength_Binding::SVG_LENGTHTYPE_PERCENTAGE, SVGContentUtils::Y },
+  { nsGkAtoms::x, -10, SVGLength_Binding::SVG_LENGTHTYPE_PERCENTAGE, SVGContentUtils::X },
+  { nsGkAtoms::y, -10, SVGLength_Binding::SVG_LENGTHTYPE_PERCENTAGE, SVGContentUtils::Y },
+  { nsGkAtoms::width, 120, SVGLength_Binding::SVG_LENGTHTYPE_PERCENTAGE, SVGContentUtils::X },
+  { nsGkAtoms::height, 120, SVGLength_Binding::SVG_LENGTHTYPE_PERCENTAGE, SVGContentUtils::Y },
 };
 
 nsSVGElement::EnumInfo SVGFilterElement::sEnumInfo[2] =
 {
-  { &nsGkAtoms::filterUnits,
+  { nsGkAtoms::filterUnits,
     sSVGUnitTypesMap,
     SVG_UNIT_TYPE_OBJECTBOUNDINGBOX
   },
-  { &nsGkAtoms::primitiveUnits,
+  { nsGkAtoms::primitiveUnits,
     sSVGUnitTypesMap,
     SVG_UNIT_TYPE_USERSPACEONUSE
   }
@@ -49,15 +51,15 @@ nsSVGElement::EnumInfo SVGFilterElement::sEnumInfo[2] =
 
 nsSVGElement::StringInfo SVGFilterElement::sStringInfo[2] =
 {
-  { &nsGkAtoms::href, kNameSpaceID_None, true },
-  { &nsGkAtoms::href, kNameSpaceID_XLink, true }
+  { nsGkAtoms::href, kNameSpaceID_None, true },
+  { nsGkAtoms::href, kNameSpaceID_XLink, true }
 };
 
 //----------------------------------------------------------------------
 // Implementation
 
-SVGFilterElement::SVGFilterElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-  : SVGFilterElementBase(aNodeInfo)
+SVGFilterElement::SVGFilterElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
+  : SVGFilterElementBase(std::move(aNodeInfo))
 {
 }
 
@@ -133,22 +135,6 @@ SVGFilterElement::IsAttributeMapped(const nsAtom* name) const
   };
   return FindAttributeDependence(name, map) ||
     SVGFilterElementBase::IsAttributeMapped(name);
-}
-
-void
-SVGFilterElement::Invalidate()
-{
-  nsAutoTObserverArray<nsIMutationObserver*, 1> *observers = GetMutationObservers();
-
-  if (observers && !observers->IsEmpty()) {
-    nsAutoTObserverArray<nsIMutationObserver*, 1>::ForwardIterator iter(*observers);
-    while (iter.HasMore()) {
-      nsCOMPtr<nsIMutationObserver> obs(iter.GetNext());
-      nsCOMPtr<nsISVGFilterReference> filter = do_QueryInterface(obs);
-      if (filter)
-        filter->Invalidate();
-    }
-  }
 }
 
 //----------------------------------------------------------------------

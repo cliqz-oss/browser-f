@@ -6,7 +6,6 @@
 "use strict";
 
 const EventEmitter = require("devtools/shared/event-emitter");
-const { WebGLFront } = require("devtools/shared/fronts/webgl");
 const { EventsHandler, ShadersListView, ShadersEditorsView, EVENTS, $, L10N } =
   require("./shadereditor");
 
@@ -34,12 +33,7 @@ ShaderEditorPanel.prototype = {
    *         A promise that is resolved when the Shader Editor completes opening.
    */
   async open() {
-    // Local debugging needs to make the target remote.
-    if (!this.target.isRemote) {
-      await this.target.makeRemote();
-    }
-
-    this.front = new WebGLFront(this.target.client, this.target.form);
+    this.front = this.target.getFront("webgl");
     this.shadersListView = new ShadersListView();
     this.eventsHandler = new EventsHandler();
     this.shadersEditorsView = new ShadersEditorsView();
@@ -73,5 +67,5 @@ ShaderEditorPanel.prototype = {
       this.front.destroy();
       this.emit("destroyed");
     })());
-  }
+  },
 };

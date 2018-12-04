@@ -10,6 +10,7 @@
 #include "mozilla/FontPropertyTypes.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/MathAlgorithms.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/SVGContextPaint.h"
 
 #include "mozilla/Logging.h"
@@ -362,7 +363,7 @@ gfxFontCache::AddSizeOfIncludingThis(MallocSizeOf aMallocSizeOf,
 
 static void
 LookupAlternateValues(gfxFontFeatureValueSet *featureLookup,
-                      const nsAString& aFamily,
+                      const nsACString& aFamily,
                       const nsTArray<gfxAlternateValue>& altValue,
                       nsTArray<gfxFontFeature>& aFontFeatures)
 {
@@ -450,7 +451,7 @@ gfxFontShaper::MergeFontFeatures(
     const gfxFontStyle *aStyle,
     const nsTArray<gfxFontFeature>& aFontFeatures,
     bool aDisableLigatures,
-    const nsAString& aFamilyName,
+    const nsACString& aFamilyName,
     bool aAddSmallCaps,
     void (*aHandleFeature)(const uint32_t&, uint32_t&, void*),
     void* aHandleFeatureData)
@@ -827,6 +828,13 @@ gfxFont::gfxFont(const RefPtr<UnscaledFont>& aUnscaledFont,
 #ifdef DEBUG_TEXT_RUN_STORAGE_METRICS
     ++gFontCount;
 #endif
+
+    // Turn off AA for Ahem for testing purposes when requested.
+    if (MOZ_UNLIKELY(StaticPrefs::gfx_font_ahem_antialias_none() &&
+                     mFontEntry->FamilyName().EqualsLiteral("Ahem"))) {
+        mAntialiasOption = kAntialiasNone;
+    }
+
     mKerningSet = HasFeatureSet(HB_TAG('k','e','r','n'), mKerningEnabled);
 }
 
@@ -1330,7 +1338,7 @@ gfxFont::CheckForFeaturesInvolvingSpace()
             "subst default: %8.8x %8.8x %8.8x %8.8x "
             "subst non-default: %8.8x %8.8x %8.8x %8.8x "
             "kerning: %s non-kerning: %s time: %6.3f\n",
-            NS_ConvertUTF16toUTF8(mFontEntry->Name()).get(),
+            mFontEntry->Name().get(),
             mFontEntry->mDefaultSubSpaceFeatures[3],
             mFontEntry->mDefaultSubSpaceFeatures[2],
             mFontEntry->mDefaultSubSpaceFeatures[1],

@@ -172,15 +172,18 @@ function restoreSession() {
     Services.obs.removeObserver(observe, topic);
     SessionStore.setWindowState(newWindow, stateString, true);
 
-    var tabbrowser = top.gBrowser;
-    var tabIndex = tabbrowser.getBrowserIndexForDocument(document);
-    tabbrowser.removeTab(tabbrowser.tabs[tabIndex]);
+    let tabbrowser = top.gBrowser;
+    let browser = window.docShell.chromeEventHandler;
+    let tab = tabbrowser.getTabForBrowser(browser);
+    tabbrowser.removeTab(tab);
   }, "browser-delayed-startup-finished");
 }
 
 function startNewSession() {
   if (Services.prefs.getIntPref("browser.startup.page") == 0)
-    getBrowserWindow().gBrowser.loadURI("about:blank");
+    getBrowserWindow().gBrowser.loadURI("about:blank", {
+      triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}),
+    });
   else
     getBrowserWindow().BrowserHome();
 }

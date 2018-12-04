@@ -11,8 +11,7 @@ varying vec2 vLocalPos;
 #endif
 
 // Interpolated uv coordinates in xy, and layer in z.
-// W is 1 when perspective interpolation is enabled.
-varying vec4 vUv;
+varying vec3 vUv;
 // Normalized bounds of the source image in the texture.
 flat varying vec4 vUvBounds;
 // Normalized bounds of the source image in the texture, adjusted to avoid
@@ -34,7 +33,7 @@ struct ImageBrushData {
 };
 
 ImageBrushData fetch_image_data(int address) {
-    vec4[3] raw_data = fetch_from_resource_cache_3(address);
+    vec4[3] raw_data = fetch_from_gpu_cache_3(address);
     ImageBrushData data = ImageBrushData(
         raw_data[0],
         raw_data[1],
@@ -43,30 +42,16 @@ ImageBrushData fetch_image_data(int address) {
     return data;
 }
 
-#ifdef WR_FEATURE_ALPHA_PASS
-vec2 transform_point_snapped(
-    vec2 local_pos,
-    RectWithSize local_rect,
-    mat4 transform
-) {
-    vec2 snap_offset = compute_snap_offset(local_pos, transform, local_rect, vec2(0.5));
-    vec4 world_pos = transform * vec4(local_pos, 0.0, 1.0);
-    vec2 device_pos = world_pos.xy / world_pos.w * uDevicePixelRatio;
-
-    return device_pos + snap_offset;
-}
-#endif
-
 void brush_vs(
     VertexInfo vi,
     int prim_address,
     RectWithSize prim_rect,
     RectWithSize segment_rect,
-    ivec3 user_data,
+    ivec4 user_data,
     mat4 transform,
     PictureTask pic_task,
     int brush_flags,
-    vec4 texel_rect
+    vec4 segment_data
 ) {
     ImageBrushData image_data = fetch_image_data(prim_address);
 
@@ -78,7 +63,7 @@ void brush_vs(
     vec2 texture_size = vec2(textureSize(sColor0, 0));
 #endif
 
-    ImageResource res = fetch_image_resource(user_data.x);
+    ImageResource res = fetch_image_resource(user_data.w);
     vec2 uv0 = res.uv_rect.p0;
     vec2 uv1 = res.uv_rect.p1;
 
@@ -91,23 +76,21 @@ void brush_vs(
         local_rect = segment_rect;
         stretch_size = local_rect.size;
 
-        // Note: Here we can assume that texels in device
-        //       space map to local space, due to how border-image
-        //       works. That assumption may not hold if this
-        //       is used for other purposes in the future.
         if ((brush_flags & BRUSH_FLAG_SEGMENT_REPEAT_X) != 0) {
-            stretch_size.x = (texel_rect.z - texel_rect.x) / uDevicePixelRatio;
+            stretch_size.x = (segment_data.z - segment_data.x);
         }
         if ((brush_flags & BRUSH_FLAG_SEGMENT_REPEAT_Y) != 0) {
-            stretch_size.y = (texel_rect.w - texel_rect.y) / uDevicePixelRatio;
+            stretch_size.y = (segment_data.w - segment_data.y);
         }
 
-        uv0 = res.uv_rect.p0 + texel_rect.xy;
-        uv1 = res.uv_rect.p0 + texel_rect.zw;
+        // If the extra data is a texel rect, modify the UVs.
+        if ((brush_flags & BRUSH_FLAG_TEXEL_RECT) != 0) {
+            uv0 = res.uv_rect.p0 + segment_data.xy;
+            uv1 = res.uv_rect.p0 + segment_data.zw;
+        }
     }
 
     vUv.z = res.layer;
-    vUv.w = (brush_flags & BRUSH_FLAG_PERSPECTIVE_INTERPOLATION) != 0 ? 1.0 : 0.0;
 
     // Handle case where the UV coords are inverted (e.g. from an
     // external image).
@@ -122,8 +105,8 @@ void brush_vs(
     vec2 f = (vi.local_pos - local_rect.p0) / local_rect.size;
 
 #ifdef WR_FEATURE_ALPHA_PASS
-    int color_mode = user_data.y >> 16;
-    int raster_space = user_data.y & 0xffff;
+    int color_mode = user_data.x;
+    int raster_space = user_data.y;
 
     if (color_mode == COLOR_MODE_FROM_PASS) {
         color_mode = uMode;
@@ -137,7 +120,7 @@ void brush_vs(
             // Since the screen space UVs specify an arbitrary quad, do
             // a bilinear interpolation to get the correct UV for this
             // local position.
-            ImageResourceExtra extra_data = fetch_image_resource_extra(user_data.x);
+            ImageResourceExtra extra_data = fetch_image_resource_extra(user_data.w);
             vec2 x = mix(extra_data.st_tl, extra_data.st_tr, f.x);
             vec2 y = mix(extra_data.st_bl, extra_data.st_br, f.x);
             f = mix(x, y, f.y);
@@ -153,10 +136,6 @@ void brush_vs(
     vUv.xy = mix(uv0, uv1, f) - min_uv;
     vUv.xy /= texture_size;
     vUv.xy *= repeat.xy;
-    if ((brush_flags & BRUSH_FLAG_PERSPECTIVE_INTERPOLATION) == 0) {
-        // Multiply by W to compensate for perspective interpolation.
-        vUv.xy *= gl_Position.w;
-    }
 
 #ifdef WR_FEATURE_TEXTURE_RECT
     vUvBounds = vec4(0.0, 0.0, vec2(textureSize(sColor0)));
@@ -203,14 +182,12 @@ void brush_vs(
 
 Fragment brush_fs() {
     vec2 uv_size = vUvBounds.zw - vUvBounds.xy;
-    // Unapply the W scaler when no perspective interpolation is enabled.
-    vec2 base_uv = vUv.xy * mix(gl_FragCoord.w, 1.0, vUv.w);
 
 #ifdef WR_FEATURE_ALPHA_PASS
     // This prevents the uv on the top and left parts of the primitive that was inflated
     // for anti-aliasing purposes from going beyound the range covered by the regular
     // (non-inflated) primitive.
-    vec2 local_uv = max(base_uv, vec2(0.0));
+    vec2 local_uv = max(vUv.xy, vec2(0.0));
 
     // Handle horizontal and vertical repetitions.
     vec2 repeated_uv = mod(local_uv, uv_size) + vUvBounds.xy;
@@ -226,7 +203,7 @@ Fragment brush_fs() {
     }
 #else
     // Handle horizontal and vertical repetitions.
-    vec2 repeated_uv = mod(base_uv, uv_size) + vUvBounds.xy;
+    vec2 repeated_uv = mod(vUv.xy, uv_size) + vUvBounds.xy;
 #endif
 
     // Clamp the uvs to avoid sampling artifacts.

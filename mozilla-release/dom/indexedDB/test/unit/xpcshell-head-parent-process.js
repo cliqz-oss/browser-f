@@ -61,9 +61,6 @@ function finishTest()
   if (SpecialPowers.isMainProcess()) {
     resetExperimental();
     resetTesting();
-
-    SpecialPowers.notifyObserversInParentProcess(null, "disk-space-watcher",
-                                                 "free");
   }
 
   SpecialPowers.removeFiles();
@@ -132,7 +129,7 @@ ExpectError.prototype = {
       event.stopPropagation();
     }
     grabEventAndContinueHandler(event);
-  }
+  },
 };
 
 function continueToNextStepSync()
@@ -226,7 +223,7 @@ function setTimeout(fun, timeout) {
   var event = {
     notify(timer) {
       fun();
-    }
+    },
   };
   timer.initWithCallback(event, timeout,
                          Ci.nsITimer.TYPE_ONE_SHOT);
@@ -289,9 +286,7 @@ function installPackagedProfile(packageName)
   zipReader.open(packageFile);
 
   let entryNames = [];
-  let entries = zipReader.findEntries(null);
-  while (entries.hasMore()) {
-    let entry = entries.getNext();
+  for (let entry of zipReader.findEntries(null)) {
     if (entry != "create_db.html") {
       entryNames.push(entry);
     }

@@ -42,6 +42,7 @@
 #include "mozilla/Logging.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/net/HttpBaseChannel.h"
+#include "mozilla/net/TrackingDummyChannel.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticPrefs.h"
@@ -328,6 +329,11 @@ SetIsTrackingResourceHelper(nsIChannel* aChannel, bool aIsThirdParty)
   RefPtr<HttpBaseChannel> httpChannel = do_QueryObject(aChannel);
   if (httpChannel) {
     httpChannel->SetIsTrackingResource(aIsThirdParty);
+  }
+
+  RefPtr<TrackingDummyChannel> dummyChannel = do_QueryObject(aChannel);
+  if (dummyChannel) {
+    dummyChannel->SetIsTrackingResource();
   }
 }
 
@@ -624,8 +630,9 @@ nsChannelClassifier::NotifyTrackingProtectionDisabled(nsIChannel *aChannel)
     }
     doc->SetHasTrackingContentLoaded(true);
     securityUI->GetState(&state);
+    const uint32_t oldState = state;
     state |= nsIWebProgressListener::STATE_LOADED_TRACKING_CONTENT;
-    eventSink->OnSecurityChange(nullptr, state);
+    eventSink->OnSecurityChange(nullptr, oldState, state, doc->GetContentBlockingLog());
 
     return NS_OK;
 }
@@ -916,17 +923,17 @@ nsChannelClassifier::SetBlockedContent(nsIChannel *channel,
   nsCOMPtr<nsIDocument> doc = docShell->GetDocument();
   NS_ENSURE_TRUE(doc, NS_OK);
 
+  nsCOMPtr<nsIURI> uri;
+  channel->GetURI(getter_AddRefs(uri));
   unsigned state;
   if (aErrorCode == NS_ERROR_TRACKING_URI) {
     state = nsIWebProgressListener::STATE_BLOCKED_TRACKING_CONTENT;
   } else {
     state = nsIWebProgressListener::STATE_BLOCKED_UNSAFE_CONTENT;
   }
-  pwin->NotifyContentBlockingState(state, channel);
+  pwin->NotifyContentBlockingState(state, channel, true, uri);
 
   // Log a warning to the web console.
-  nsCOMPtr<nsIURI> uri;
-  channel->GetURI(getter_AddRefs(uri));
   NS_ConvertUTF8toUTF16 spec(uri->GetSpecOrDefault());
   const char16_t* params[] = { spec.get() };
   const char* message = (aErrorCode == NS_ERROR_TRACKING_URI) ?

@@ -60,10 +60,6 @@ static const RedirEntry kRedirMap[] = {
     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
     nsIAboutModule::ALLOW_SCRIPT |
     nsIAboutModule::HIDE_FROM_ABOUTABOUT },
-  { "feeds", "chrome://browser/content/feeds/subscribe.xhtml",
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
   { "policies", "chrome://browser/content/policies/aboutPolicies.xhtml",
     nsIAboutModule::ALLOW_SCRIPT },
   { "privatebrowsing", "chrome://browser/content/aboutPrivateBrowsing.xhtml",
@@ -183,7 +179,7 @@ AboutRedirector::NewChannel(nsIURI* aURI,
       }
 
       if (sNewCertErrorPageEnabled && path.EqualsLiteral("certerror")) {
-        url.AssignASCII("chrome://browser/content/aboutNetError-new.xhtml");
+        url.AssignLiteral("chrome://browser/content/aboutNetError-new.xhtml");
       }
 
       // fall back to the specified url in the map

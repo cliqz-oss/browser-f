@@ -198,7 +198,7 @@ this.VideoControlsImplPageWidget = class {
         // If we have metadata, check if this is a <video> without
         // video data, or a video with no audio track.
         if (this.video.readyState >= this.video.HAVE_METADATA) {
-          if (this.video instanceof this.window.HTMLVideoElement &&
+          if (this.video.localName == "video" &&
               (this.video.videoWidth == 0 || this.video.videoHeight == 0)) {
             this.isAudioOnly = true;
           }
@@ -247,6 +247,12 @@ this.VideoControlsImplPageWidget = class {
           this.clickToPlay,
         ];
 
+        let throwOnGet = {
+          get() {
+            throw new Error("Please don't trigger reflow. See bug 1493525.");
+          },
+        };
+
         for (let control of adjustableControls) {
           if (!control) {
             break;
@@ -276,6 +282,17 @@ this.VideoControlsImplPageWidget = class {
                 return parseInt(preDefinedSize, 10);
               },
             },
+            offsetLeft: throwOnGet,
+            offsetTop: throwOnGet,
+            offsetWidth: throwOnGet,
+            offsetHeight: throwOnGet,
+            offsetParent: throwOnGet,
+            clientLeft: throwOnGet,
+            clientTop: throwOnGet,
+            clientWidth: throwOnGet,
+            clientHeight: throwOnGet,
+            getClientRects: throwOnGet,
+            getBoundingClientRect: throwOnGet,
             isAdjustableControl: {
               value: true,
             },
@@ -429,7 +446,7 @@ this.VideoControlsImplPageWidget = class {
           case "play":
             this.setPlayButtonState(false);
             this.setupStatusFader();
-            if (!this._triggeredByControls && this.dynamicControls && this.videocontrols.isTouchControls) {
+            if (!this._triggeredByControls && this.dynamicControls && this.isTouchControls) {
               this.startFadeOut(this.controlBar);
             }
             if (!this._triggeredByControls) {
@@ -471,7 +488,7 @@ this.VideoControlsImplPageWidget = class {
           case "loadedmetadata":
             // If a <video> doesn't have any video data, treat it as <audio>
             // and show the controls (they won't fade back out)
-            if (this.video instanceof this.window.HTMLVideoElement &&
+            if (this.video.localName == "video" &&
                 (this.video.videoWidth == 0 || this.video.videoHeight == 0)) {
               this.isAudioOnly = true;
               this.startFadeOut(this.clickToPlay, true);
@@ -494,7 +511,7 @@ this.VideoControlsImplPageWidget = class {
             this.controlsSpacer.removeAttribute("aria-label");
             this.statusOverlay.removeAttribute("error");
             this.statusIcon.setAttribute("type", "throbber");
-            this.isAudioOnly = this.video instanceof this.window.HTMLAudioElement;
+            this.isAudioOnly = this.video.localName == "audio";
             this.setPlayButtonState(true);
             this.setupNewLoadState();
             this.setupStatusFader();
@@ -631,6 +648,12 @@ this.VideoControlsImplPageWidget = class {
             this.toggleFullscreen();
             break;
           case "resizevideocontrols":
+            // Since this event come from the layout, this is the only place
+            // we are sure of that probing into layout won't trigger or force
+            // reflow.
+            this.reflowTriggeringCallValidator.isReflowTriggeringPropsAllowed = true;
+            this.updateReflowedDimensions();
+            this.reflowTriggeringCallValidator.isReflowTriggeringPropsAllowed = false;
             this.adjustControlSize();
             break;
           case "fullscreenchange":
@@ -979,6 +1002,18 @@ this.VideoControlsImplPageWidget = class {
         }
       },
       HIDE_CONTROLS_TIMEOUT_MS: 2000,
+      isMouseOverControlBar(event) {
+        // XXX: this triggers reflow too, but the layout should only be dirty
+        // if the web content touches it while the mouse is moving.
+        let el = this.shadowRoot.elementFromPoint(event.clientX, event.clientY);
+        while (el && el !== this.shadowRoot) {
+          if (el == this.controlBar) {
+            return true;
+          }
+          el = el.parentNode;
+        }
+        return false;
+      },
       onMouseMove(event) {
         // If the controls are static, don't change anything.
         if (!this.dynamicControls) {
@@ -1007,7 +1042,7 @@ this.VideoControlsImplPageWidget = class {
         // Hide the controls if the mouse cursor is left on top of the video
         // but above the control bar and if the click-to-play overlay is hidden.
         if ((this._controlsHiddenByTimeout ||
-            event.clientY < this.controlBar.getBoundingClientRect().top) &&
+            !this.isMouseOverControlBar(event)) &&
             this.clickToPlay.hidden) {
           this._hideControlsTimeout = this.window.setTimeout(
             () => this._hideControlsFn(),
@@ -1034,12 +1069,7 @@ this.VideoControlsImplPageWidget = class {
         }
 
         var isMouseOver = (event.type == "mouseover");
-
-        var controlRect = this.controlBar.getBoundingClientRect();
-        var isMouseInControls = event.clientY > controlRect.top &&
-        event.clientY < controlRect.bottom &&
-        event.clientX > controlRect.left &&
-        event.clientX < controlRect.right;
+        var isMouseInControls = this.isMouseOverControlBar(event);
 
         // Suppress fading out the controls until the video has rendered
         // its first frame. But since autoplay videos start off with no
@@ -1147,8 +1177,9 @@ this.VideoControlsImplPageWidget = class {
           // Unhide
           element.hidden = false;
         } else {
-          if (element == this.controlBar && !this.hasError() &&
-              this.document.mozFullScreenElement == this.video) {
+          if (element == this.controlBar &&
+              !this.hasError() &&
+              this.isVideoInFullScreen) {
             this.controlsSpacer.setAttribute("hideCursor", true);
           }
 
@@ -1255,7 +1286,7 @@ this.VideoControlsImplPageWidget = class {
       },
 
       get isVideoInFullScreen() {
-        return this.document.mozFullScreenElement == this.video;
+        return this.document.mozFullScreenElement == this.shadowRoot.host;
       },
 
       toggleFullscreen() {
@@ -1342,8 +1373,8 @@ this.VideoControlsImplPageWidget = class {
         }
       },
       hideClickToPlay() {
-        let videoHeight = this.video.clientHeight;
-        let videoWidth = this.video.clientWidth;
+        let videoHeight = this.reflowedDimensions.videoHeight;
+        let videoWidth = this.reflowedDimensions.videoWidth;
 
         // The play button will animate to 3x its size. This
         // shows the animation unless the video is too small
@@ -1384,11 +1415,6 @@ this.VideoControlsImplPageWidget = class {
         var attrName = muted ? "unmutelabel" : "mutelabel";
         var value = this.muteButton.getAttribute(attrName);
         this.muteButton.setAttribute("aria-label", value);
-      },
-
-      _getComputedPropertyValueAsInt(element, property) {
-        let value = this.window.getComputedStyle(element).getPropertyValue(property);
-        return parseInt(value, 10);
       },
 
       keyHandler(event) {
@@ -1719,6 +1745,79 @@ this.VideoControlsImplPageWidget = class {
 
       controlBarMinHeight: 40,
       controlBarMinVisibleHeight: 28,
+
+      reflowTriggeringCallValidator: {
+        isReflowTriggeringPropsAllowed: false,
+        reflowTriggeringProps: Object.freeze([
+          "offsetLeft", "offsetTop", "offsetWidth", "offsetHeight", "offsetParent",
+          "clientLeft", "clientTop", "clientWidth", "clientHeight",
+          "getClientRects", "getBoundingClientRect"]),
+        get(obj, prop) {
+          if (!this.isReflowTriggeringPropsAllowed &&
+              this.reflowTriggeringProps.includes(prop)) {
+            throw new Error("Please don't trigger reflow. See bug 1493525.");
+          }
+          let val = obj[prop];
+          if (typeof val == "function") {
+            return function() { return val.apply(obj, arguments); };
+          }
+          return val;
+        },
+
+        set(obj, prop, value) {
+          return Reflect.set(obj, prop, value);
+        },
+      },
+
+      installReflowCallValidator(element) {
+        return new Proxy(element, this.reflowTriggeringCallValidator);
+      },
+
+      reflowedDimensions: {
+        // Set the dimensions to intrinsic <video> dimensions before the first
+        // update.
+        // These values are not picked up by <audio> in adjustControlSize()
+        // (except for the fact that they are non-zero),
+        // it takes controlBarMinHeight and the value below instead.
+        videoHeight: 150,
+        videoWidth: 300,
+
+        // <audio> takes this width to grow/shrink controls.
+        // The initial value has to be smaller than the calculated minRequiredWidth
+        // so that we don't run into bug 1495821 (see comment on adjustControlSize()
+        // below)
+        videocontrolsWidth: 0,
+      },
+
+      updateReflowedDimensions() {
+        this.reflowedDimensions.videoHeight = this.video.clientHeight;
+        this.reflowedDimensions.videoWidth = this.video.clientWidth;
+        this.reflowedDimensions.videocontrolsWidth = this.videocontrols.clientWidth;
+      },
+
+      /**
+       * adjustControlSize() considers outer dimensions of the <video>/<audio> element
+       * from layout, and accordingly, sets/hides the controls, and adjusts
+       * the width/height of the control bar.
+       *
+       * It's important to remember that for <audio>, layout (specifically,
+       * nsVideoFrame) rely on us to expose the intrinsic dimensions of the
+       * control bar to properly size the <audio> element. We interact with layout
+       * by:
+       *
+       * 1) When the element has a non-zero height, explicitly set the height
+       *    of the control bar to a size between controlBarMinHeight and
+       *    controlBarMinVisibleHeight in response.
+       *    Note: the logic here is flawed and had caused the end height to be
+       *    depend on its previous state, see bug 1495817.
+       * 2) When the element has a outer width smaller or equal to minControlBarPaddingWidth,
+       *    explicitly set the control bar to minRequiredWidth, so that when the
+       *    outer width is unset, the audio element could go back to minRequiredWidth.
+       *    Otherwise, set the width of the control bar to be the current outer width.
+       *    Note: the logic here is also flawed; when the control bar is set to
+       *    the current outer width, it never go back when the width is unset,
+       *    see bug 1495821.
+       */
       adjustControlSize() {
         const minControlBarPaddingWidth = 18;
 
@@ -1735,12 +1834,12 @@ this.VideoControlsImplPageWidget = class {
           return;
         }
 
-        let givenHeight = this.video.clientHeight;
+        let givenHeight = this.reflowedDimensions.videoHeight;
         let videoWidth = (this.isAudioOnly ?
-                          this.videocontrols.clientWidth :
-                          this.video.clientWidth) || minRequiredWidth;
+                          this.reflowedDimensions.videocontrolsWidth :
+                          this.reflowedDimensions.videoWidth) || minRequiredWidth;
         let videoHeight = this.isAudioOnly ? this.controlBarMinHeight : givenHeight;
-        let videocontrolsWidth = this.videocontrols.clientWidth;
+        let videocontrolsWidth = this.reflowedDimensions.videocontrolsWidth;
 
         let widthUsed = minControlBarPaddingWidth;
         let preventAppendControl = false;
@@ -1768,7 +1867,7 @@ this.VideoControlsImplPageWidget = class {
 
         // Since the size of videocontrols is expanded with controlBar in <audio>, we
         // should fix the dimensions in order not to recursively trigger reflow afterwards.
-        if (this.video instanceof this.window.HTMLAudioElement) {
+        if (this.video.localName == "audio") {
           if (givenHeight) {
             // The height of controlBar should be capped with the bounds between controlBarMinHeight
             // and controlBarMinVisibleHeight.
@@ -1815,8 +1914,8 @@ this.VideoControlsImplPageWidget = class {
 
       init(shadowRoot) {
         this.shadowRoot = shadowRoot;
-        this.video = shadowRoot.host;
-        this.videocontrols = shadowRoot.firstChild;
+        this.video = this.installReflowCallValidator(shadowRoot.host);
+        this.videocontrols = this.installReflowCallValidator(shadowRoot.firstChild);
         this.document = this.videocontrols.ownerDocument;
         this.window = this.document.defaultView;
         this.shadowRoot = shadowRoot;
@@ -1855,11 +1954,14 @@ this.VideoControlsImplPageWidget = class {
         }
 
         // TODO: Switch to touch controls on touch-based desktops (bug 1447547)
-        this.videocontrols.isTouchControls = isMobile;
-        if (this.videocontrols.isTouchControls) {
+        this.isTouchControls = isMobile;
+        if (this.isTouchControls) {
           this.controlsContainer.classList.add("touch");
         }
 
+        // XXX: Calling getComputedStyle() here by itself doesn't cause any reflow,
+        // but there is no guard proventing accessing any properties and methods
+        // of this saved CSSStyleDeclaration instance that could trigger reflow.
         this.controlBarComputedStyles = this.window.getComputedStyle(this.controlBar);
 
         // Hide and show control in certain order.
@@ -1875,7 +1977,7 @@ this.VideoControlsImplPageWidget = class {
           this.volumeStack,
         ];
 
-        this.isAudioOnly = this.video instanceof this.window.HTMLAudioElement;
+        this.isAudioOnly = this.video.localName == "audio";
         this.setupInitialState();
         this.setupNewLoadState();
         this.initTextTracks();
@@ -1932,8 +2034,8 @@ this.VideoControlsImplPageWidget = class {
 
         for (let { el, type, nonTouchOnly = false, touchOnly = false,
                    mozSystemGroup = true, capture = false } of this.controlsEvents) {
-          if ((this.videocontrols.isTouchControls && nonTouchOnly) ||
-              (!this.videocontrols.isTouchControls && touchOnly)) {
+          if ((this.isTouchControls && nonTouchOnly) ||
+              (!this.isTouchControls && touchOnly)) {
             continue;
           }
           el.addEventListener(type, this, { mozSystemGroup, capture });
@@ -1948,10 +2050,6 @@ this.VideoControlsImplPageWidget = class {
       video: null,
       controlsTimer: null,
       controlsTimeout: 5000,
-
-      get Utils() {
-        return this.videocontrols.Utils;
-      },
 
       get visible() {
         return !this.Utils.controlBar.hasAttribute("fadeout") &&
@@ -2039,9 +2137,12 @@ this.VideoControlsImplPageWidget = class {
         this.clearTimer();
       },
 
-      init(shadowRoot) {
-        this.videocontrols = shadowRoot.firstChild;
-        this.video = shadowRoot.host;
+      init(shadowRoot, utils) {
+        this.Utils = utils;
+        this.videocontrols = this.Utils.videocontrols;
+        this.video = this.Utils.video;
+        this.document = this.videocontrols.ownerDocument;
+        this.window = this.document.defaultView;
         this.shadowRoot = shadowRoot;
 
         this.controlsEvents = [
@@ -2078,8 +2179,8 @@ this.VideoControlsImplPageWidget = class {
     };
 
     this.Utils.init(this.shadowRoot);
-    if (this.isTouchControls) {
-      this.TouchUtils.init(this.shadowRoot);
+    if (this.Utils.isTouchControls) {
+      this.TouchUtils.init(this.shadowRoot, this.Utils);
     }
     this.shadowRoot.firstChild.dispatchEvent(new this.window.CustomEvent("VideoBindingAttached"));
 
@@ -2096,7 +2197,7 @@ this.VideoControlsImplPageWidget = class {
       <!ENTITY % videocontrolsDTD SYSTEM "chrome://global/locale/videocontrols.dtd">
       %videocontrolsDTD;
       ]>
-      <div class="videocontrols" xmlns="http://www.w3.org/1999/xhtml">
+      <div class="videocontrols" xmlns="http://www.w3.org/1999/xhtml" role="none">
         <link rel="stylesheet" type="text/css" href="chrome://global/skin/media/videocontrols.css" />
         <div id="controlsContainer" class="controlsContainer" role="none">
           <div id="statusOverlay" class="statusOverlay stackItem" hidden="true">
@@ -2142,7 +2243,8 @@ this.VideoControlsImplPageWidget = class {
                       unmutelabel="&muteButton.unmuteLabel;"
                       tabindex="-1"/>
               <div id="volumeStack" class="volumeStack progressContainer" role="none">
-                <input type="range" id="volumeControl" class="volumeControl" min="0" max="100" step="1" tabindex="-1"/>
+                <input type="range" id="volumeControl" class="volumeControl" min="0" max="100" step="1" tabindex="-1"
+                       aria-label="&volumeScrubber.label;"/>
               </div>
               <button id="castingButton" class="button castingButton"
                       aria-label="&castingButton.castingLabel;"/>
@@ -2167,19 +2269,19 @@ this.VideoControlsImplPageWidget = class {
 
   _setupEventListeners() {
     this.shadowRoot.firstChild.addEventListener("mouseover", event => {
-      if (!this.isTouchControls) {
+      if (!this.Utils.isTouchControls) {
         this.Utils.onMouseInOut(event);
       }
     });
 
     this.shadowRoot.firstChild.addEventListener("mouseout", event => {
-      if (!this.isTouchControls) {
+      if (!this.Utils.isTouchControls) {
         this.Utils.onMouseInOut(event);
       }
     });
 
     this.shadowRoot.firstChild.addEventListener("mousemove", event => {
-      if (!this.isTouchControls) {
+      if (!this.Utils.isTouchControls) {
         this.Utils.onMouseMove(event);
       }
     });
@@ -2270,8 +2372,8 @@ this.NoControlsImplPageWidget = class {
         }
 
         // TODO: Switch to touch controls on touch-based desktops (bug 1447547)
-        this.videocontrols.isTouchControls = isMobile;
-        if (this.videocontrols.isTouchControls) {
+        this.isTouchControls = isMobile;
+        if (this.isTouchControls) {
           this.controlsContainer.classList.add("touch");
         }
 
@@ -2303,7 +2405,7 @@ this.NoControlsImplPageWidget = class {
       <!ENTITY % videocontrolsDTD SYSTEM "chrome://global/locale/videocontrols.dtd">
       %videocontrolsDTD;
       ]>
-      <div class="videocontrols" xmlns="http://www.w3.org/1999/xhtml">
+      <div class="videocontrols" xmlns="http://www.w3.org/1999/xhtml" role="none">
         <link rel="stylesheet" type="text/css" href="chrome://global/skin/media/videocontrols.css" />
         <div id="controlsContainer" class="controlsContainer" role="none" hidden="true">
           <div class="controlsOverlay stackItem">

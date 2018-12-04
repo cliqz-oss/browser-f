@@ -36,7 +36,7 @@ function promiseTabLoadEvent(tab, url) {
   let browser = tab.linkedBrowser;
 
   if (url) {
-    browser.loadURI(url);
+    BrowserTestUtils.loadURI(browser, url);
   }
 
   return BrowserTestUtils.browserLoaded(browser, false, url);
@@ -289,7 +289,7 @@ function triggerSecondaryCommand(popup, index) {
   }
 
   // Extra secondary actions appear in a menu.
-  notification.secondaryButton.nextSibling.nextSibling.focus();
+  notification.secondaryButton.nextElementSibling.nextElementSibling.focus();
 
   popup.addEventListener("popupshown", function() {
     info("Command popup open for notification " + notification.id);

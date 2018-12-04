@@ -190,6 +190,10 @@
   --theme-focus-border-color-textbox: #0675d3;
   --theme-textbox-box-shadow: rgba(97,181,255,.75);
 
+  /* Text sizes */
+  --theme-body-font-size: 11px;
+  --theme-code-font-size: 11px;
+
   /* For accessibility purposes we want to enhance the focus styling. This
    * should improve keyboard navigation usability. */
   --theme-focus-outline: 1px dotted var(--theme-focus-outline-color);
@@ -214,9 +218,11 @@
   --theme-pane-collapse-image: url(chrome://devtools/skin/images/pane-collapse.svg);
   --theme-pane-expand-image: url(chrome://devtools/skin/images/pane-expand.svg);
   --theme-console-alert-image: url(chrome://devtools/skin/images/webconsole/alert.svg);
+  --theme-console-navigation-image: url(chrome://devtools/skin/images/webconsole/globe.svg);
   --theme-console-info-image: url(chrome://devtools/skin/images/webconsole/info.svg);
   --theme-console-input-image: url(chrome://devtools/skin/images/webconsole/input.svg);
   --theme-console-return-image: url(chrome://devtools/skin/images/webconsole/return.svg);
+  --theme-console-jump-image: url(chrome://devtools/skin/images/webconsole/jump.svg);
 
   /* Firefox Colors CSS Variables v1.0.3
    * Colors are taken from: https://github.com/FirefoxUX/design-tokens

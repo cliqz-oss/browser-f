@@ -41,6 +41,9 @@ var gExceptionPaths = [
 
   // Exclude all search-plugins because they aren't referenced by filename
   "resource://search-plugins/",
+
+  // This is only in Nightly, and accessed using a direct chrome URL
+  "chrome://browser/content/aboutconfig/",
 ];
 
 // These are not part of the omni.ja file, so we find them only when running
@@ -129,8 +132,6 @@ var whitelist = [
    platforms: ["linux", "macosx"]},
   // Bug 1356031 (only used by devtools)
   {file: "chrome://global/skin/icons/error-16.png"},
-  // Bug 1348362
-  {file: "chrome://global/skin/icons/warning-64.png", platforms: ["linux"]},
   // Bug 1348526
   {file: "chrome://global/skin/tree/sort-asc-classic.png", platforms: ["linux"]},
   {file: "chrome://global/skin/tree/sort-asc.png", platforms: ["linux"]},
@@ -165,11 +166,20 @@ var whitelist = [
   {file: "resource://gre/modules/Promise.jsm"},
   // Still used by WebIDE, which is going away but not entirely gone.
   {file: "resource://gre/modules/ZipUtils.jsm"},
-  // Bug 1463225 (on Mac this is only used by a test)
+  // Bug 1463225 (on Mac and Windows this is only used by a test)
   {file: "chrome://global/content/bindings/toolbar.xml",
-   platforms: ["macosx"]},
+   platforms: ["macosx", "win"]},
   // Bug 1483277 (temporarily unreferenced)
   {file: "chrome://browser/content/browser.xhtml"},
+  // Bug 1494170
+  // (The references to these files are dynamically generated, so the test can't
+  // find the references)
+  {file: "chrome://devtools/skin/images/aboutdebugging-firefox-aurora.svg",
+   isFromDevTools: true},
+  {file: "chrome://devtools/skin/images/aboutdebugging-firefox-beta.svg",
+   isFromDevTools: true},
+  {file: "chrome://devtools/skin/images/aboutdebugging-firefox-release.svg",
+   isFromDevTools: true},
 ];
 
 whitelist = new Set(whitelist.filter(item =>
@@ -265,7 +275,14 @@ function parseManifest(manifestUri) {
       let [type, ...argv] = line.split(/\s+/);
       if (type == "content" || type == "skin" || type == "locale") {
         let chromeUri = `chrome://${argv[0]}/${type}/`;
-        trackChromeUri(chromeUri);
+        // The webcompat reporter's locale directory may not exist if
+        // the addon is preffed-off, and since it's a hack until we
+        // get bz1425104 landed, we'll just skip it for now.
+        if (chromeUri === "chrome://webcompat-reporter/locale/") {
+          gChromeMap.set("chrome://webcompat-reporter/locale/", true);
+        } else {
+          trackChromeUri(chromeUri);
+        }
       } else if (type == "override" || type == "overlay") {
         // Overlays aren't really overrides, but behave the same in
         // that the overlay is only referenced if the original xul
@@ -409,14 +426,13 @@ function parseCodeFile(fileUri) {
 
         if (isDevtools) {
           let rules = [
-            ["gcli", "resource://devtools/shared/gcli/source/lib/gcli"],
             ["devtools/client/locales", "chrome://devtools/locale"],
             ["devtools/shared/locales", "chrome://devtools-shared/locale"],
             ["devtools/shared/platform", "resource://devtools/shared/platform/chrome"],
             ["devtools", "resource://devtools"],
           ];
 
-          match = line.match(/["']((?:devtools|gcli)\/[^\\#"']+)["']/);
+          match = line.match(/["']((?:devtools)\/[^\\#"']+)["']/);
           if (match && match[1]) {
             let path = match[1];
             for (let rule of rules) {

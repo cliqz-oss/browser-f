@@ -35,7 +35,7 @@ function eventTelemetryMiddleware(telemetry, sessionId, store) {
         state,
         oldState,
         telemetry,
-        sessionId
+        sessionId,
       });
     }
 
@@ -69,11 +69,11 @@ function filterChange({action, state, oldState, telemetry, sessionId}) {
     trigger = "text";
   }
 
-  telemetry.recordEvent("devtools.main", "filters_changed", "webconsole", null, {
+  telemetry.recordEvent("filters_changed", "webconsole", null, {
     "trigger": trigger,
     "active": activeFilters.join(","),
     "inactive": inactiveFilters.join(","),
-    "session_id": sessionId
+    "session_id": sessionId,
   });
 }
 

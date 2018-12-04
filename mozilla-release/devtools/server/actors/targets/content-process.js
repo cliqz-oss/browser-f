@@ -18,11 +18,13 @@ const { ChromeDebuggerActor } = require("devtools/server/actors/thread");
 const { WebConsoleActor } = require("devtools/server/actors/webconsole");
 const makeDebugger = require("devtools/server/actors/utils/make-debugger");
 const { ActorPool } = require("devtools/server/actors/common");
+const { Pool } = require("devtools/shared/protocol");
 const { assert } = require("devtools/shared/DevToolsUtils");
 const { TabSources } = require("devtools/server/actors/utils/TabSources");
 
 loader.lazyRequireGetter(this, "WorkerTargetActorList", "devtools/server/actors/worker/worker-list", true);
 loader.lazyRequireGetter(this, "MemoryActor", "devtools/server/actors/memory", true);
+loader.lazyRequireGetter(this, "PromisesActor", "devtools/server/actors/promises", true);
 
 function ContentProcessTargetActor(connection) {
   this.conn = connection;
@@ -33,7 +35,7 @@ function ContentProcessTargetActor(connection) {
   // Use a see-everything debugger
   this.makeDebugger = makeDebugger.bind(null, {
     findDebuggees: dbg => dbg.findAllGlobals(),
-    shouldAddNewGlobalAsDebuggee: global => true
+    shouldAddNewGlobalAsDebuggee: global => true,
   });
 
   const sandboxPrototype = {
@@ -49,6 +51,7 @@ function ContentProcessTargetActor(connection) {
     .createInstance(Ci.nsIPrincipal);
   const sandbox = Cu.Sandbox(systemPrincipal, {
     sandboxPrototype,
+    wantGlobalProperties: ["ChromeUtils"],
   });
   this._consoleScope = sandbox;
 
@@ -99,6 +102,13 @@ ContentProcessTargetActor.prototype = {
       this.memoryActor = new MemoryActor(this.conn, this);
       this._contextPool.addActor(this.memoryActor);
     }
+    // Promises actor is being tested by xpcshell test, which uses the content process
+    // target actor. But this actor isn't being used outside of tests yet.
+    if (!this._promisesActor) {
+      this._promisesActor = new PromisesActor(this.conn, this);
+      this._contextPool.addActor(this._promisesActor);
+    }
+
     return {
       actor: this.actorID,
       name: "Content process",
@@ -106,9 +116,9 @@ ContentProcessTargetActor.prototype = {
       consoleActor: this._consoleActor.actorID,
       chromeDebugger: this.threadActor.actorID,
       memoryActor: this.memoryActor.actorID,
+      promisesActor: this._promisesActor.actorID,
 
       traits: {
-        highlightable: false,
         networkMonitor: false,
       },
     };
@@ -119,20 +129,23 @@ ContentProcessTargetActor.prototype = {
       this._workerList = new WorkerTargetActorList(this.conn, {});
     }
     return this._workerList.getList().then(actors => {
-      const pool = new ActorPool(this.conn);
+      const pool = new Pool(this.conn);
       for (const actor of actors) {
-        pool.addActor(actor);
+        pool.manage(actor);
       }
 
-      this.conn.removeActorPool(this._workerTargetActorPool);
-      this._workerTargetActorPool = pool;
-      this.conn.addActorPool(this._workerTargetActorPool);
+      // Do not destroy the pool before transfering ownership to the newly created
+      // pool, so that we do not accidently destroy actors that are still in use.
+      if (this._workerTargetActorPool) {
+        this._workerTargetActorPool.destroy();
+      }
 
+      this._workerTargetActorPool = pool;
       this._workerList.onListChanged = this._onWorkerListChanged;
 
       return {
         "from": this.actorID,
-        "workers": actors.map(actor => actor.form())
+        "workers": actors.map(actor => actor.form()),
       };
     });
   },

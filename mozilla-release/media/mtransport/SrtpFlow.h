@@ -7,17 +7,25 @@
 #ifndef srtpflow_h__
 #define srtpflow_h__
 
-#include "ssl.h"
-#include "sslproto.h"
 #include "mozilla/RefPtr.h"
 #include "nsISupportsImpl.h"
 #include "srtp.h"
 
 namespace mozilla {
 
-#define SRTP_MASTER_KEY_LENGTH 16
-#define SRTP_MASTER_SALT_LENGTH 14
-#define SRTP_TOTAL_KEY_LENGTH (SRTP_MASTER_KEY_LENGTH + SRTP_MASTER_SALT_LENGTH)
+#define SRTP_ICM_MASTER_KEY_LENGTH 16
+#define SRTP_ICM_MASTER_SALT_LENGTH 14
+#define SRTP_ICM_MAX_MASTER_LENGTH (SRTP_ICM_MASTER_KEY_LENGTH + SRTP_ICM_MASTER_SALT_LENGTH)
+
+#define SRTP_GCM_MASTER_KEY_MIN_LENGTH 16
+#define SRTP_GCM_MASTER_KEY_MAX_LENGTH 32
+#define SRTP_GCM_MASTER_SALT_LENGTH 12
+
+#define SRTP_GCM_MIN_MASTER_LENGTH (SRTP_GCM_MASTER_KEY_MIN_LENGTH + SRTP_GCM_MASTER_SALT_LENGTH)
+#define SRTP_GCM_MAX_MASTER_LENGTH (SRTP_GCM_MASTER_KEY_MAX_LENGTH + SRTP_GCM_MASTER_SALT_LENGTH)
+
+#define SRTP_MIN_KEY_LENGTH SRTP_GCM_MIN_MASTER_LENGTH 
+#define SRTP_MAX_KEY_LENGTH SRTP_GCM_MAX_MASTER_LENGTH 
 
 // SRTCP requires an auth tag *plus* a 4-byte index-plus-'E'-bit value (see
 // RFC 3711)
@@ -28,6 +36,8 @@ class SrtpFlow {
   ~SrtpFlow();
  public:
 
+  static unsigned int KeySize(int cipher_suite);
+  static unsigned int SaltSize(int cipher_suite);
 
   static RefPtr<SrtpFlow> Create(int cipher_suite,
                                           bool inbound,

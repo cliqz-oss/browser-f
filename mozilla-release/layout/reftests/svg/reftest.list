@@ -218,7 +218,7 @@ fuzzy-if(/^Windows\x20NT\x2010\.0/.test(http.oscpu)||skiaContent,0-1,0-800000) =
 == foreignObject-ancestor-style-change-01.svg foreignObject-ancestor-style-change-01-ref.svg
 == foreignObject-change-transform-01.svg pass.svg
 == foreignObject-display-01.svg pass.svg
-fuzzy-if(webrender,160-255,229-1552) == foreignObject-form-theme.svg foreignObject-form-theme-ref.html # Bug 1439980
+== foreignObject-form-theme.svg foreignObject-form-theme-ref.html
 == foreignObject-img.html foreignObject-img-ref.html
 == foreignObject-img-form-theme.html foreignObject-img-form-theme-ref.html
 == foreignObject-move-repaint-01.svg pass.svg
@@ -552,6 +552,8 @@ fuzzy-if(skiaContent,0-1,0-100) == tspan-xy-anchor-end-01.svg tspan-xy-anchor-en
 == currentColor-override-flood.svg pass.svg
 == currentColor-override-lighting.svg currentColor-override-lighting-ref.svg
 == currentColor-override-stop.svg pass.svg
+
+== mask-invalidation.html mask-invalidation-ref.html
 
 # Shadow DOM id tracking.
 pref(dom.webcomponents.shadowdom.enabled,true) random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == fragid-shadow-1.html fragid-shadow-ref.html # Bug 1392106

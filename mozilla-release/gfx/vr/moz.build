@@ -51,11 +51,6 @@ UNIFIED_SOURCES += [
     'VRThread.cpp',
 ]
 
-if CONFIG['OS_TARGET'] != 'Android':
-    UNIFIED_SOURCES += [
-        'gfxVROSVR.cpp',
-    ]
-
 # VRDisplayHost includes MacIOSurface.h which includes Mac headers
 # which define Size and Points types in the root namespace that
 # often conflict with our own types.
@@ -70,7 +65,6 @@ SOURCES += [
 if CONFIG['OS_TARGET'] in ('WINNT', 'Linux', 'Darwin'):
     DIRS += [
         'openvr',
-        'service',
     ]
     SOURCES += [
         'gfxVROpenVR.cpp',
@@ -83,6 +77,10 @@ if CONFIG['OS_TARGET'] == 'WINNT':
 
 if CONFIG['OS_TARGET'] == 'Android':
     LOCAL_INCLUDES += ['/widget/android']
+else:
+    DIRS += [
+        'service',
+    ]
 
 IPDL_SOURCES = [
     'ipc/PVR.ipdl',

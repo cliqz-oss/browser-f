@@ -45,13 +45,13 @@ window.onload = function() {
         geckobuildid: appInfo.platformBuildID,
         geckoversion: appInfo.platformVersion,
         useragent: window.navigator.userAgent,
-        locale: Services.locale.getAppLocaleAsLangTag(),
+        locale: Services.locale.appLocaleAsLangTag,
         os: appInfo.OS,
         processor: appInfo.XPCOMABI.split("-")[0],
         compiler: appInfo.XPCOMABI.split("-")[1],
         dpi: utils.displayDPI,
         width: window.screen.width,
-        height: window.screen.height
+        height: window.screen.height,
       };
 
       function checkValues() {

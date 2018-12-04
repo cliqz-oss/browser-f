@@ -58,6 +58,9 @@ public:
                          bool aRequestShipping,
                          bool aDeferredShow);
   nsresult ClosePayment(PaymentRequest* aRequest);
+  nsresult RetryPayment(JSContext* aCx,
+                        PaymentRequest* aRequest,
+                        const PaymentValidationErrors& aErrors);
 
   nsresult RespondPayment(PaymentRequest* aRequest,
                           const IPCPaymentActionResponse& aResponse);
@@ -65,6 +68,11 @@ public:
                                  const IPCPaymentAddress& aAddress);
   nsresult ChangeShippingOption(PaymentRequest* aRequest,
                                 const nsAString& aOption);
+
+  nsresult ChangePayerDetail(PaymentRequest* aRequest,
+                             const nsAString& aPayerName,
+                             const nsAString& aPayerEmail,
+                             const nsAString& aPayerPhone);
 
   // Called to ensure that we don't "leak" aRequest if we shut down while it had
   // an active request to the parent.
@@ -87,7 +95,6 @@ private:
 
   // Strong pointer to requests with ongoing IPC messages to the parent.
   nsDataHashtable<nsRefPtrHashKey<PaymentRequest>, uint32_t> mActivePayments;
-  RefPtr<PaymentRequest> mShowingRequest;
 };
 
 } // end of namespace dom

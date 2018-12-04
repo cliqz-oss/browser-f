@@ -18,7 +18,7 @@ add_task(async function() {
   const { Chart } = windowRequire("devtools/client/shared/widgets/Chart");
 
   const wait = waitForNetworkEvents(monitor, 1);
-  tab.linkedBrowser.loadURI(SIMPLE_URL);
+  BrowserTestUtils.loadURI(tab.linkedBrowser, SIMPLE_URL);
   await wait;
 
   const table = Chart.Table(document, {
@@ -26,12 +26,12 @@ add_task(async function() {
     data: null,
     totals: {
       label1: value => "Hello " + L10N.numberWithDecimals(value, 2),
-      label2: value => "World " + L10N.numberWithDecimals(value, 2)
+      label2: value => "World " + L10N.numberWithDecimals(value, 2),
     },
     header: {
       label1: "",
-      label2: ""
-    }
+      label2: "",
+    },
   });
 
   const node = table.node;
@@ -52,7 +52,7 @@ add_task(async function() {
   is(rows.length, 2, "There should be 1 table chart row and a 1 header created.");
 
   ok(rows[1].querySelector(".table-chart-row-box.chart-colored-blob"),
-    "A colored blob exists for the firt row.");
+    "A colored blob exists for the first row.");
   is(rows[1].querySelectorAll("span")[0].getAttribute("name"), "size",
     "The first column of the first row exists.");
   is(rows[1].querySelectorAll("span")[1].getAttribute("name"), "label",

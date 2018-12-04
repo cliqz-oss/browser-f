@@ -5,36 +5,29 @@ import {GlobalOverrider} from "test/unit/utils";
 describe("Downloads Manager", () => {
   let downloadsManager;
   let globals;
-  let download;
-  let sandbox;
   const DOWNLOAD_URL = "https://site.com/download.mov";
 
   beforeEach(() => {
     globals = new GlobalOverrider();
-    sandbox = globals.sandbox;
-    global.Cc["@mozilla.org/widget/clipboardhelper;1"] = {
-      getService() {
-        return {copyString: sinon.stub()};
-      }
-    };
     global.Cc["@mozilla.org/timer;1"] = {
       createInstance() {
         return {
           initWithCallback: sinon.stub().callsFake(callback => callback()),
-          cancel: sinon.spy()
+          cancel: sinon.spy(),
         };
-      }
+      },
     };
 
     globals.set("DownloadsCommon", {
       getData: sinon.stub().returns({
         addView: sinon.stub(),
-        removeView: sinon.stub()
-      })
+        removeView: sinon.stub(),
+      }),
+      copyDownloadLink: sinon.stub(),
+      deleteDownload: sinon.stub().returns(Promise.resolve()),
+      openDownloadedFile: sinon.stub(),
+      showDownloadedFile: sinon.stub(),
     });
-    sandbox.stub(global.DownloadsViewUI.DownloadElementShell.prototype, "downloadsCmd_open");
-    sandbox.stub(global.DownloadsViewUI.DownloadElementShell.prototype, "downloadsCmd_show");
-    sandbox.stub(global.DownloadsViewUI.DownloadElementShell.prototype, "downloadsCmd_delete");
 
     downloadsManager = new DownloadsManager();
     downloadsManager.init({dispatch() {}});
@@ -43,12 +36,12 @@ describe("Downloads Manager", () => {
       endTime: Date.now(),
       target: {path: "/path/to/download.mov", exists: true},
       succeeded: true,
-      refresh: async () => {}
+      refresh: async () => {},
     });
-    download = downloadsManager._viewableDownloadItems.get(DOWNLOAD_URL);
+    assert.ok(downloadsManager._downloadItems.has(DOWNLOAD_URL));
   });
   afterEach(() => {
-    downloadsManager._viewableDownloadItems.clear();
+    downloadsManager._downloadItems.clear();
     globals.restore();
   });
   describe("#init", () => {
@@ -59,21 +52,20 @@ describe("Downloads Manager", () => {
   });
   describe("#onAction", () => {
     it("should copy the file on COPY_DOWNLOAD_LINK", () => {
-      sinon.spy(download, "downloadsCmd_copyLocation");
       downloadsManager.onAction({type: at.COPY_DOWNLOAD_LINK, data: {url: DOWNLOAD_URL}});
-      assert.calledOnce(download.downloadsCmd_copyLocation);
+      assert.calledOnce(global.DownloadsCommon.copyDownloadLink);
     });
     it("should remove the file on REMOVE_DOWNLOAD_FILE", () => {
       downloadsManager.onAction({type: at.REMOVE_DOWNLOAD_FILE, data: {url: DOWNLOAD_URL}});
-      assert.calledOnce(download.downloadsCmd_delete);
+      assert.calledOnce(global.DownloadsCommon.deleteDownload);
     });
     it("should show the file on SHOW_DOWNLOAD_FILE", () => {
       downloadsManager.onAction({type: at.SHOW_DOWNLOAD_FILE, data: {url: DOWNLOAD_URL}});
-      assert.calledOnce(download.downloadsCmd_show);
+      assert.calledOnce(global.DownloadsCommon.showDownloadedFile);
     });
     it("should open the file on OPEN_DOWNLOAD_FILE if the type is download", () => {
       downloadsManager.onAction({type: at.OPEN_DOWNLOAD_FILE, data: {url: DOWNLOAD_URL, type: "download"}});
-      assert.calledOnce(download.downloadsCmd_open);
+      assert.calledOnce(global.DownloadsCommon.openDownloadedFile);
     });
     it("should copy the file on UNINIT", () => {
       // DownloadsManager._downloadData needs to exist first
@@ -82,36 +74,34 @@ describe("Downloads Manager", () => {
     });
     it("should not execute a download command if we do not have the correct url", () => {
       downloadsManager.onAction({type: at.SHOW_DOWNLOAD_FILE, data: {url: "unknown_url"}});
-      assert.notCalled(download.downloadsCmd_show);
+      assert.notCalled(global.DownloadsCommon.showDownloadedFile);
     });
   });
   describe("#onDownloadAdded", () => {
     let newDownload;
     beforeEach(() => {
-      downloadsManager._viewableDownloadItems.clear();
+      downloadsManager._downloadItems.clear();
       newDownload = {
         source: {url: "https://site.com/newDownload.mov"},
         endTime: Date.now(),
         target: {path: "/path/to/newDownload.mov", exists: true},
         succeeded: true,
-        refresh: async () => {}
+        refresh: async () => {},
       };
     });
     afterEach(() => {
-      downloadsManager._viewableDownloadItems.clear();
+      downloadsManager._downloadItems.clear();
     });
     it("should add a download on onDownloadAdded", () => {
       downloadsManager.onDownloadAdded(newDownload);
-      const result = downloadsManager._viewableDownloadItems.get("https://site.com/newDownload.mov");
-      assert.ok(result);
-      assert.instanceOf(result, global.DownloadsViewUI.DownloadElementShell);
+      assert.ok(downloadsManager._downloadItems.has("https://site.com/newDownload.mov"));
     });
     it("should not add a download if it already exists", () => {
       downloadsManager.onDownloadAdded(newDownload);
       downloadsManager.onDownloadAdded(newDownload);
       downloadsManager.onDownloadAdded(newDownload);
       downloadsManager.onDownloadAdded(newDownload);
-      const results = downloadsManager._viewableDownloadItems;
+      const results = downloadsManager._downloadItems;
       assert.equal(results.size, 1);
     });
     it("should not return any downloads if no threshold is provided", async () => {
@@ -125,7 +115,7 @@ describe("Downloads Manager", () => {
         endTime: Date.now(),
         target: {path: "/path/to/aDownload.pdf", exists: true},
         succeeded: true,
-        refresh: async () => {}
+        refresh: async () => {},
       };
       downloadsManager.onDownloadAdded(aDownload);
       downloadsManager.onDownloadAdded(newDownload);
@@ -139,7 +129,7 @@ describe("Downloads Manager", () => {
         endTime: Date.now() - 40 * 60 * 60 * 1000,
         target: {path: "/path/to/oldDownload.pdf", exists: true},
         succeeded: true,
-        refresh: async () => {}
+        refresh: async () => {},
       };
       // Add an old download (older than 36 hours in this case)
       downloadsManager.onDownloadAdded(oldDownload);
@@ -161,7 +151,7 @@ describe("Downloads Manager", () => {
         endTime: Date.now() - 40 * 60 * 60 * 1000,
         target: {path: "/path/to/aDownload.pdf", exists: true},
         succeeded: true,
-        refresh: () => {}
+        refresh: () => {},
       };
       sinon.stub(aDownload, "refresh").returns(Promise.resolve());
       downloadsManager.onDownloadAdded(aDownload);
@@ -174,7 +164,7 @@ describe("Downloads Manager", () => {
         endTime: Date.now() - 40 * 60 * 60 * 1000,
         target: {path: "/path/to/aDownload.pdf", exists: true},
         succeeded: true,
-        refresh: () => {}
+        refresh: () => {},
       };
       sinon.stub(aDownload, "refresh").returns(Promise.resolve());
       downloadsManager.onDownloadAdded(aDownload);
@@ -187,7 +177,7 @@ describe("Downloads Manager", () => {
         endTime: Date.now() - 40 * 60 * 60 * 1000,
         target: {path: "/path/to/nonExistantDownload.pdf", exists: false},
         succeeded: true,
-        refresh: async () => {}
+        refresh: async () => {},
       };
       downloadsManager.onDownloadAdded(newDownload);
       downloadsManager.onDownloadAdded(nonExistantDownload);
@@ -201,7 +191,7 @@ describe("Downloads Manager", () => {
         endTime: Date.now() - 40 * 60 * 60 * 1000,
         target: {path: "/path/to/nonExistantDownload.pdf", exists: false},
         succeeded: true,
-        refresh: async () => {}
+        refresh: async () => {},
       };
       downloadsManager.onDownloadAdded(newDownload);
       downloadsManager.onDownloadAdded(nonExistantDownload);
@@ -216,7 +206,7 @@ describe("Downloads Manager", () => {
         endTime: Date.now() - 40 * 60 * 60 * 1000,
         target: {path: "/path/to/nonSuccessfulDownload.pdf", exists: false},
         succeeded: false,
-        refresh: async () => {}
+        refresh: async () => {},
       };
       downloadsManager.onDownloadAdded(newDownload);
       downloadsManager.onDownloadAdded(nonSuccessfulDownload);
@@ -230,7 +220,7 @@ describe("Downloads Manager", () => {
         endTime: Date.now() - 40 * 60 * 60 * 1000,
         target: {path: "/path/to/nonExistantDownload.pdf", exists: true},
         succeeded: false,
-        refresh: async () => {}
+        refresh: async () => {},
       };
       downloadsManager.onDownloadAdded(newDownload);
       downloadsManager.onDownloadAdded(nonExistantDownload);
@@ -245,14 +235,14 @@ describe("Downloads Manager", () => {
         endTime: Date.now() - 2 * 60 * 60 * 1000, // 2 hours ago
         target: {path: "/path/to/oldDownload1.pdf", exists: true},
         succeeded: true,
-        refresh: async () => {}
+        refresh: async () => {},
       };
       const olderDownload2 = {
         source: {url: "https://site.com/oldDownload2.pdf"},
         endTime: Date.now() - 60 * 60 * 1000, // 1 hour ago
         target: {path: "/path/to/oldDownload2.pdf", exists: true},
         succeeded: true,
-        refresh: async () => {}
+        refresh: async () => {},
       };
       // Add some older downloads and check that they are in order
       downloadsManager.onDownloadAdded(olderDownload1);
@@ -275,13 +265,13 @@ describe("Downloads Manager", () => {
   describe("#onDownloadRemoved", () => {
     let newDownload;
     beforeEach(() => {
-      downloadsManager._viewableDownloadItems.clear();
+      downloadsManager._downloadItems.clear();
       newDownload = {
         source: {url: "https://site.com/removeMe.mov"},
         endTime: Date.now(),
         target: {path: "/path/to/removeMe.mov", exists: true},
         succeeded: true,
-        refresh: async () => {}
+        refresh: async () => {},
       };
       downloadsManager.onDownloadAdded(newDownload);
     });

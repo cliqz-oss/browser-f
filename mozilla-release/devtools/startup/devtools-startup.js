@@ -23,7 +23,7 @@
 
 const kDebuggerPrefs = [
   "devtools.debugger.remote-enabled",
-  "devtools.chrome.enabled"
+  "devtools.chrome.enabled",
 ];
 
 const DEVTOOLS_ENABLED_PREF = "devtools.enabled";
@@ -80,43 +80,43 @@ XPCOMUtils.defineLazyGetter(this, "KeyShortcuts", function() {
     {
       id: "toggleToolbox",
       shortcut: KeyShortcutsBundle.GetStringFromName("toggleToolbox.commandkey"),
-      modifiers
+      modifiers,
     },
     // All locales are using F12
     {
       id: "toggleToolboxF12",
       shortcut: KeyShortcutsBundle.GetStringFromName("toggleToolboxF12.commandkey"),
-      modifiers: "" // F12 is the only one without modifiers
+      modifiers: "", // F12 is the only one without modifiers
     },
     // Open WebIDE window
     {
       id: "webide",
       shortcut: KeyShortcutsBundle.GetStringFromName("webide.commandkey"),
-      modifiers: "shift"
+      modifiers: "shift",
     },
     // Open the Browser Toolbox
     {
       id: "browserToolbox",
       shortcut: KeyShortcutsBundle.GetStringFromName("browserToolbox.commandkey"),
-      modifiers: "accel,alt,shift"
+      modifiers: "accel,alt,shift",
     },
     // Open the Browser Console
     {
       id: "browserConsole",
       shortcut: KeyShortcutsBundle.GetStringFromName("browserConsole.commandkey"),
-      modifiers: "accel,shift"
+      modifiers: "accel,shift",
     },
     // Toggle the Responsive Design Mode
     {
       id: "responsiveDesignMode",
       shortcut: KeyShortcutsBundle.GetStringFromName("responsiveDesignMode.commandkey"),
-      modifiers
+      modifiers,
     },
     // Open ScratchPad window
     {
       id: "scratchpad",
       shortcut: KeyShortcutsBundle.GetStringFromName("scratchpad.commandkey"),
-      modifiers: "shift"
+      modifiers: "shift",
     },
 
     // The following keys are also registered in /client/definitions.js
@@ -126,49 +126,49 @@ XPCOMUtils.defineLazyGetter(this, "KeyShortcuts", function() {
     {
       toolId: "inspector",
       shortcut: KeyShortcutsBundle.GetStringFromName("inspector.commandkey"),
-      modifiers
+      modifiers,
     },
     // Key for opening the Web Console
     {
       toolId: "webconsole",
       shortcut: KeyShortcutsBundle.GetStringFromName("webconsole.commandkey"),
-      modifiers
+      modifiers,
     },
     // Key for opening the Debugger
     {
       toolId: "jsdebugger",
       shortcut: KeyShortcutsBundle.GetStringFromName("debugger.commandkey"),
-      modifiers
+      modifiers,
     },
     // Key for opening the Network Monitor
     {
       toolId: "netmonitor",
       shortcut: KeyShortcutsBundle.GetStringFromName("netmonitor.commandkey"),
-      modifiers
+      modifiers,
     },
     // Key for opening the Style Editor
     {
       toolId: "styleeditor",
       shortcut: KeyShortcutsBundle.GetStringFromName("styleeditor.commandkey"),
-      modifiers: "shift"
+      modifiers: "shift",
     },
     // Key for opening the Performance Panel
     {
       toolId: "performance",
       shortcut: KeyShortcutsBundle.GetStringFromName("performance.commandkey"),
-      modifiers: "shift"
+      modifiers: "shift",
     },
     // Key for opening the Storage Panel
     {
       toolId: "storage",
       shortcut: KeyShortcutsBundle.GetStringFromName("storage.commandkey"),
-      modifiers: "shift"
+      modifiers: "shift",
     },
     // Key for opening the DOM Panel
     {
       toolId: "dom",
       shortcut: KeyShortcutsBundle.GetStringFromName("dom.commandkey"),
-      modifiers
+      modifiers,
     },
   ];
 
@@ -178,7 +178,7 @@ XPCOMUtils.defineLazyGetter(this, "KeyShortcuts", function() {
     shortcuts.push({
       id: "inspectorMac",
       shortcut: KeyShortcutsBundle.GetStringFromName("inspector.commandkey"),
-      modifiers: "accel,shift"
+      modifiers: "accel,shift",
     });
   }
 
@@ -207,7 +207,7 @@ DevToolsStartup.prototype = {
   get telemetry() {
     if (!this._telemetry) {
       this._telemetry = new Telemetry();
-      this._telemetry.setEventRecordingEnabled("devtools.main", true);
+      this._telemetry.setEventRecordingEnabled(true);
     }
     return this._telemetry;
   },
@@ -247,9 +247,11 @@ DevToolsStartup.prototype = {
     }
 
     if (flags.console) {
+      this.commandLine = true;
       this.handleConsoleFlag(cmdLine);
     }
     if (flags.debugger) {
+      this.commandLine = true;
       this.handleDebuggerFlag(cmdLine);
     }
 
@@ -314,6 +316,13 @@ DevToolsStartup.prototype = {
   onFirstWindowReady(window) {
     if (this.devtoolsFlag) {
       this.handleDevToolsFlag(window);
+
+      // In the case of the --jsconsole and --jsdebugger command line parameters
+      // there was no browser window when they were processed so we act on the
+      // this.commandline flag instead.
+      if (this.commandLine) {
+        this.sendEntryPointTelemetry("CommandLine");
+      }
     }
 
     // Wait until we get a window before sending a ping to telemetry to avoid slowing down
@@ -438,7 +447,7 @@ DevToolsStartup.prototype = {
         panel.setAttribute("class", "panel-subview-body");
         view.appendChild(panel);
         doc.getElementById("PanelUI-multiView").appendChild(view);
-      }
+      },
     };
     CustomizableUI.createWidget(item);
     CustomizableWidgets.push(item);
@@ -582,18 +591,22 @@ DevToolsStartup.prototype = {
     mainKeyset.parentNode.insertBefore(keyset, mainKeyset);
   },
 
-  onKey(window, key) {
-    if (!Services.prefs.getBoolPref(DEVTOOLS_ENABLED_PREF)) {
-      const id = key.toolId || key.id;
-      this.openInstallPage("KeyShortcut", id);
-    } else {
-      // Record the timing at which this event started in order to compute later in
-      // gDevTools.showToolbox, the complete time it takes to open the toolbox.
-      // i.e. especially take `initDevTools` into account.
-      const startTime = Cu.now();
-      const require = this.initDevTools("KeyShortcut", key);
-      const { gDevToolsBrowser } = require("devtools/client/framework/devtools-browser");
-      gDevToolsBrowser.onKeyShortcut(window, key, startTime);
+  async onKey(window, key) {
+    try {
+      if (!Services.prefs.getBoolPref(DEVTOOLS_ENABLED_PREF)) {
+        const id = key.toolId || key.id;
+        this.openInstallPage("KeyShortcut", id);
+      } else {
+        // Record the timing at which this event started in order to compute later in
+        // gDevTools.showToolbox, the complete time it takes to open the toolbox.
+        // i.e. especially take `initDevTools` into account.
+        const startTime = Cu.now();
+        const require = this.initDevTools("KeyShortcut", key);
+        const { gDevToolsBrowser } = require("devtools/client/framework/devtools-browser");
+        await gDevToolsBrowser.onKeyShortcut(window, key, startTime);
+      }
+    } catch (e) {
+      console.error(`Exception while trigerring key ${key}: ${e}\n${e.stack}`);
     }
   },
 
@@ -626,7 +639,11 @@ DevToolsStartup.prototype = {
       return null;
     }
 
-    this.sendEntryPointTelemetry(reason, key);
+    // In the case of the --jsconsole and --jsdebugger command line parameters
+    // there is no browser window yet so we don't send any telemetry yet.
+    if (reason !== "CommandLine") {
+      this.sendEntryPointTelemetry(reason, key);
+    }
 
     this.initialized = true;
     const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
@@ -709,11 +726,11 @@ DevToolsStartup.prototype = {
   },
 
   // Open the toolbox on the selected tab once the browser starts up.
-  handleDevToolsFlag: function(window) {
+  handleDevToolsFlag: async function(window) {
     const require = this.initDevTools("CommandLine");
     const {gDevTools} = require("devtools/client/framework/devtools");
     const {TargetFactory} = require("devtools/client/framework/target");
-    const target = TargetFactory.forTab(window.gBrowser.selectedTab);
+    const target = await TargetFactory.forTab(window.gBrowser.selectedTab);
     gDevTools.showToolbox(target);
   },
 
@@ -752,8 +769,6 @@ DevToolsStartup.prototype = {
       };
       Services.obs.addObserver(observe, "devtools-thread-resumed");
     }
-
-    this.sendEntryPointTelemetry("CommandLine");
 
     const { BrowserToolboxProcess } = ChromeUtils.import("resource://devtools/client/framework/ToolboxProcess.jsm", {});
     BrowserToolboxProcess.init();
@@ -870,13 +885,10 @@ DevToolsStartup.prototype = {
       keys = `${modifiers}+${shortcut}`;
     }
 
-    this.telemetry.addEventProperty(
-      "devtools.main", "open", "tools", null, "shortcut", keys
-    );
+    const window = Services.wm.getMostRecentWindow("navigator:browser");
 
-    this.telemetry.addEventProperty(
-      "devtools.main", "open", "tools", null, "entrypoint", reason
-    );
+    this.telemetry.addEventProperty(window, "open", "tools", null, "shortcut", keys);
+    this.telemetry.addEventProperty(window, "open", "tools", null, "entrypoint", reason);
 
     if (this.recorded) {
       return;
@@ -989,10 +1001,10 @@ const JsonView = {
         },
         onError(status) {
           throw new Error("JSON Viewer's onSave failed in startPersistence");
-        }
+        },
       });
     }
-  }
+  },
 };
 
 this.NSGetFactory = XPCOMUtils.generateNSGetFactory(

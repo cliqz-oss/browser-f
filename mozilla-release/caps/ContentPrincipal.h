@@ -29,6 +29,7 @@ public:
   NS_IMETHOD SetDomain(nsIURI* aDomain) override;
   NS_IMETHOD GetBaseDomain(nsACString& aBaseDomain) override;
   NS_IMETHOD GetAddonId(nsAString& aAddonId) override;
+  NS_IMETHOD GetSiteOrigin(nsACString& aSiteOrigin) override;
   bool IsCodebasePrincipal() const override { return true; }
 
   ContentPrincipal();
@@ -41,6 +42,8 @@ public:
                 const nsACString& aOriginNoSuffix);
 
   virtual nsresult GetScriptLocation(nsACString& aStr) override;
+
+  nsresult GetSiteIdentifier(SiteIdentifier& aSite) override;
 
   static nsresult
   GenerateOriginNoSuffixFromURI(nsIURI* aURI, nsACString& aOrigin);

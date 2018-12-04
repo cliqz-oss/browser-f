@@ -811,38 +811,6 @@ function cleanupActiveUpdate() {
 }
 
 /**
- * An enumeration of items in a JS array.
- * @constructor
- */
-function ArrayEnumerator(aItems) {
-  this._index = 0;
-  if (aItems) {
-    for (var i = 0; i < aItems.length; ++i) {
-      if (!aItems[i])
-        aItems.splice(i, 1);
-    }
-  }
-  this._contents = aItems;
-}
-
-ArrayEnumerator.prototype = {
-  _index: 0,
-  _contents: [],
-
-  [Symbol.iterator]() {
-    return this._contents.values();
-  },
-
-  hasMoreElements: function ArrayEnumerator_hasMoreElements() {
-    return this._index < this._contents.length;
-  },
-
-  getNext: function ArrayEnumerator_getNext() {
-    return this._contents[this._index++];
-  },
-};
-
-/**
  * Writes a string of text to a file.  A newline will be appended to the data
  * written to the file.  This function only works with ASCII text.
  */
@@ -1158,10 +1126,16 @@ UpdatePatch.prototype = {
    * See nsIPropertyBag.idl
    */
   get enumerator() {
-    var properties = [];
-    for (var p in this._properties)
-      properties.push(this._properties[p].data);
-    return new ArrayEnumerator(properties);
+    return this.enumerate();
+  },
+
+  * enumerate() {
+    for (var p in this._properties) {
+      let prop = this.properties[p].data;
+      if (prop) {
+        yield prop;
+      }
+    }
   },
 
   /**
@@ -1479,11 +1453,16 @@ Update.prototype = {
    * See nsIPropertyBag.idl
    */
   get enumerator() {
-    var properties = [];
-    for (let p in this._properties) {
-      properties.push(this._properties[p].data);
+    return this.enumerate();
+  },
+
+  * enumerate() {
+    for (var p in this._properties) {
+      let prop = this.properties[p].data;
+      if (prop) {
+        yield prop;
+      }
     }
-    return new ArrayEnumerator(properties);
   },
 
   /**
@@ -3128,15 +3107,13 @@ Checker.prototype = {
 
     // Set MitM pref.
     try {
-      var sslStatus = request.channel.QueryInterface(Ci.nsIRequest)
-                        .securityInfo.QueryInterface(Ci.nsITransportSecurityInfo)
-                        .SSLStatus.QueryInterface(Ci.nsISSLStatus);
-      if (sslStatus && sslStatus.serverCert && sslStatus.serverCert.issuerName) {
+      var secInfo = request.channel.securityInfo.QueryInterface(Ci.nsITransportSecurityInfo);
+      if (secInfo.serverCert && secInfo.serverCert.issuerName) {
         Services.prefs.setStringPref("security.pki.mitm_canary_issuer",
-                                     sslStatus.serverCert.issuerName);
+                                     secInfo.serverCert.issuerName);
       }
     } catch (e) {
-      LOG("Checker:onError - Getting sslStatus failed.");
+      LOG("Checker:onError - Getting secInfo failed.");
     }
 
     // If we can't find an error string specific to this status code,

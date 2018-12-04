@@ -20,7 +20,7 @@ add_task(async function() {
 
   info("Load iframe page for checking the frame menu with x1.4 zoom.");
   await addTab(TEST_URL);
-  const target = TargetFactory.forTab(gBrowser.selectedTab);
+  const target = await TargetFactory.forTab(gBrowser.selectedTab);
   const toolbox = await gDevTools.showToolbox(target,
                                             "inspector",
                                             Toolbox.HostType.WINDOW);
@@ -118,7 +118,13 @@ add_task(async function() {
  */
 async function getButtonAndMenuInfo(doc, menuButton) {
   info("Show popup menu with click event.");
-  menuButton.click();
+  EventUtils.sendMouseEvent(
+    {
+      type: "click",
+      screenX: 1,
+    },
+    menuButton,
+    doc.defaultView);
 
   let menuPopup;
   let menuType;

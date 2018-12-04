@@ -10,8 +10,8 @@ Test the address-picker component
   <script type="application/javascript" src="/tests/SimpleTest/AddTask.js"></script>
   <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
   <script src="payments_common.js"></script>
-  <script src="../../res/vendor/custom-elements.min.js"></script>
   <script src="../../res/unprivileged-fallbacks.js"></script>
+  <script src="autofillEditForms.js"></script>
 
   <link rel="stylesheet" type="text/css" href="../../res/containers/rich-picker.css"/>
   <link rel="stylesheet" type="text/css" href="../../res/components/rich-select.css"/>
@@ -21,6 +21,8 @@ Test the address-picker component
 <body>
   <p id="display">
     <address-picker id="picker1"
+                    data-field-separator=", "
+                    data-invalid-label="Picker1: Missing or Invalid"
                     selected-state-key="selectedShippingAddress"></address-picker>
   </p>
 <div id="content" style="display: none">
@@ -55,6 +57,7 @@ add_task(async function test_initialSet() {
         "postal-code": "90210",
         "street-address": "123 Sesame Street,\nApt 40",
         "tel": "+1 519 555-5555",
+        timeLastUsed: 200,
       },
       "68gjdh354j": {
         "address-level1": "CA",
@@ -65,21 +68,23 @@ add_task(async function test_initialSet() {
         "postal-code": "94041",
         "street-address": "P.O. Box 123",
         "tel": "+1 650 555-5555",
+        timeLastUsed: 300,
       },
       "abcde12345": {
         "address-level2": "Mountain View",
         "country": "US",
         "guid": "abcde12345",
         "name": "Mrs. Fields",
+        timeLastUsed: 100,
       },
     },
   });
   await asyncElementRendered();
   let options = picker1.dropdown.popupBox.children;
   is(options.length, 3, "Check dropdown has all addresses");
-  ok(options[0].textContent.includes("Mr. Foo"), "Check first address");
-  ok(options[1].textContent.includes("Mrs. Bar"), "Check second address");
-  ok(options[2].textContent.includes("Mrs. Fields"), "Check third address");
+  ok(options[0].textContent.includes("Mrs. Bar"), "Check first address based on timeLastUsed");
+  ok(options[1].textContent.includes("Mr. Foo"), "Check second address based on timeLastUsed");
+  ok(options[2].textContent.includes("Mrs. Fields"), "Check third address based on timeLastUsed");
 });
 
 add_task(async function test_update() {
@@ -148,6 +153,7 @@ add_task(async function test_change_selected_address() {
   // The third option is missing some fields. Make sure that it is marked as such.
   ok(picker1.classList.contains("invalid-selected-option"), "The third option is missing fields");
   ok(!isHidden(picker1.invalidLabel), "The invalid label should be visible");
+  is(picker1.invalidLabel.innerText, picker1.dataset.invalidLabel, "Check displayed error text");
 
   picker1.dropdown.popupBox.focus();
   synthesizeKey(options[1].getAttribute("name"), {});
@@ -162,13 +168,13 @@ add_task(async function test_change_selected_address() {
   ok(isHidden(picker1.invalidLabel), "The invalid label should be hidden");
 });
 
-add_task(async function test_streetAddress_combines_street_level2_level1_postalCode_country() {
+add_task(async function test_address_combines_name_street_level2_level1_postalCode_country() {
   let options = picker1.dropdown.popupBox.children;
   let richoption1 = picker1.dropdown.querySelector(".rich-select-selected-option");
-  let streetAddress = richoption1.querySelector(".street-address");
   /* eslint-disable max-len */
-  is(streetAddress.textContent,
-     `${options[1].getAttribute("street-address")} ${options[1].getAttribute("address-level2")} ${options[1].getAttribute("address-level1")} ${options[1].getAttribute("postal-code")} ${options[1].getAttribute("country")}`,
+  is(richoption1.innerText,
+     `${options[1].getAttribute("name")}, ${options[1].getAttribute("street-address")}
+${options[1].getAttribute("address-level2")}, ${options[1].getAttribute("address-level1")}, ${options[1].getAttribute("postal-code")}, ${options[1].getAttribute("country")}`,
      "The address shown should be human readable and include all fields");
   /* eslint-enable max-len */
 
@@ -177,8 +183,8 @@ add_task(async function test_streetAddress_combines_street_level2_level1_postalC
   await asyncElementRendered();
 
   richoption1 = picker1.dropdown.querySelector(".rich-select-selected-option");
-  streetAddress = richoption1.querySelector(".street-address");
-  is(streetAddress.textContent, " Mountain View   US",
+  // "Missing …" text is rendered via a pseudo element content and isn't included in innerText
+  is(richoption1.innerText, "Mrs. Fields, \nMountain View, , US",
      "The address shown should be human readable and include all fields");
 
   picker1.dropdown.popupBox.focus();
@@ -206,6 +212,66 @@ add_task(async function test_delete() {
   let options = picker1.dropdown.popupBox.children;
   is(options.length, 1, "Check dropdown has one remaining address");
   ok(options[0].textContent.includes("Mrs. Bar"), "Check remaining address");
+});
+
+add_task(async function test_merchantError() {
+  picker1.requestStore.setState({
+    selectedShippingAddress: "68gjdh354j",
+  });
+  await asyncElementRendered();
+
+  is(picker1.selectedStateKey, "selectedShippingAddress", "Check selectedStateKey");
+
+  let state = picker1.requestStore.getState();
+  let {
+    request,
+  } = state;
+  ok(!picker1.classList.contains("invalid-selected-option"), "No validation on a valid option");
+  ok(isHidden(picker1.invalidLabel), "The invalid label should be hidden");
+
+  let requestWithShippingAddressErrors = deepClone(request);
+  Object.assign(requestWithShippingAddressErrors.paymentDetails, {
+    shippingAddressErrors: {
+      country: "Your country is not supported",
+    },
+  });
+  picker1.requestStore.setState({
+    request: requestWithShippingAddressErrors,
+  });
+  await asyncElementRendered();
+
+  ok(picker1.classList.contains("invalid-selected-option"), "The merchant error applies");
+  ok(!isHidden(picker1.invalidLabel), "The merchant error should be visible");
+  is(picker1.invalidLabel.innerText, "Your country is not supported", "Check displayed error text");
+
+  info("update the request to remove the errors");
+  picker1.requestStore.setState({
+    request,
+  });
+  await asyncElementRendered();
+  ok(!picker1.classList.contains("invalid-selected-option"),
+     "No errors visible when merchant errors cleared");
+  ok(isHidden(picker1.invalidLabel), "The invalid label should be hidden");
+
+  info("Set billing address and payer errors which aren't relevant to this picker");
+  let requestWithNonShippingAddressErrors = deepClone(request);
+  Object.assign(requestWithNonShippingAddressErrors.paymentDetails, {
+    payer: {
+      name: "Your name is too short",
+    },
+    paymentMethod: {
+      billingAddress: {
+        country: "Your billing country is not supported",
+      },
+    },
+    shippingAddressErrors: {},
+  });
+  picker1.requestStore.setState({
+    request: requestWithNonShippingAddressErrors,
+  });
+  await asyncElementRendered();
+  ok(!picker1.classList.contains("invalid-selected-option"), "No errors on a shipping picker");
+  ok(isHidden(picker1.invalidLabel), "The invalid label should still be hidden");
 });
 </script>
 

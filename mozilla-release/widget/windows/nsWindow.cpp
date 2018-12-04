@@ -6,7 +6,7 @@
 
 /*
  * nsWindow - Native window management and event handling.
- * 
+ *
  * nsWindow is organized into a set of major blocks and
  * block subsections. The layout is as follows:
  *
@@ -77,6 +77,7 @@
 #include <wtsapi32.h>
 #include <process.h>
 #include <commctrl.h>
+#include <dbt.h>
 #include <unknwn.h>
 #include <psapi.h>
 
@@ -119,6 +120,7 @@
 #include "nsIServiceManager.h"
 #include "nsWindowGfx.h"
 #include "gfxWindowsPlatform.h"
+#include "gfxDWriteFonts.h"
 #include "Layers.h"
 #include "nsPrintfCString.h"
 #include "mozilla/Preferences.h"
@@ -143,6 +145,7 @@
 #include "nsStyleConsts.h"
 #include "gfxConfig.h"
 #include "InProcessWinCompositorWidget.h"
+#include "InputDeviceUtils.h"
 #include "ScreenHelperWin.h"
 
 #include "nsIGfxInfo.h"
@@ -225,7 +228,7 @@ using namespace mozilla::plugins;
  **
  ** BLOCK: Variables
  **
- ** nsWindow Class static initializations and global variables. 
+ ** nsWindow Class static initializations and global variables.
  **
  **************************************************************
  **************************************************************/
@@ -604,6 +607,7 @@ nsWindow::nsWindow(bool aIsChildWindow)
   mPaintDC              = nullptr;
   mPrevWndProc          = nullptr;
   mNativeDragTarget     = nullptr;
+  mDeviceNotifyHandle   = nullptr;
   mInDtor               = false;
   mIsVisible            = false;
   mIsTopWidgetWindow    = false;
@@ -848,6 +852,9 @@ nsWindow::Create(nsIWidget* aParent,
     NS_WARNING("nsWindow CreateWindowEx failed.");
     return NS_ERROR_FAILURE;
   }
+
+  mDeviceNotifyHandle = InputDeviceUtils::RegisterNotification(mWnd);
+
   // If mDefaultScale is set before mWnd has been set, it will have the scale of the
   // primary monitor, rather than the monitor that the window is actually on. For
   // non-popup windows this gets corrected by the WM_DPICHANGED message which resets
@@ -858,7 +865,7 @@ nsWindow::Create(nsIWidget* aParent,
   mDefaultScale = -1.0;
 
   if (mIsRTL) {
-    DWORD dwAttribute = TRUE;    
+    DWORD dwAttribute = TRUE;
     DwmSetWindowAttribute(mWnd, DWMWA_NONCLIENT_RTL_LAYOUT, &dwAttribute, sizeof dwAttribute);
   }
 
@@ -981,6 +988,9 @@ void nsWindow::Destroy()
    * delete the nsWindow. */
   ClearCachedResources();
 
+  InputDeviceUtils::UnregisterNotification(mDeviceNotifyHandle);
+  mDeviceNotifyHandle = nullptr;
+
   // The DestroyWindow function destroys the specified window. The function sends WM_DESTROY
   // and WM_NCDESTROY messages to the window to deactivate it and remove the keyboard focus
   // from it. The function also destroys the window's menu, flushes the thread message queue,
@@ -992,7 +1002,7 @@ void nsWindow::Destroy()
   // function first destroys child or owned windows, and then it destroys the parent or owner
   // window.
   VERIFY(::DestroyWindow(mWnd));
-  
+
   // Our windows can be subclassed which may prevent us receiving WM_DESTROY. If OnDestroy()
   // didn't get called, call it now.
   if (false == mOnDestroyCalled) {
@@ -1381,7 +1391,7 @@ nsWindow::GetParentWindowBase(bool aIncludeOwner)
 
   return static_cast<nsWindowBase*>(widget);
 }
- 
+
 BOOL CALLBACK
 nsWindow::EnumAllChildWindProc(HWND aWnd, LPARAM aParam)
 {
@@ -1708,7 +1718,7 @@ void nsWindow::SetThemeRegion()
        (mPopupType == ePopupTypeTooltip || mPopupType == ePopupTypePanel))) {
     HRGN hRgn = nullptr;
     RECT rect = {0,0,mBounds.Width(),mBounds.Height()};
-    
+
     HDC dc = ::GetDC(mWnd);
     GetThemeBackgroundRegion(nsUXThemeData::GetTheme(eUXTooltip), dc, TTP_STANDARD, TS_NORMAL, &rect, &hRgn);
     if (hRgn) {
@@ -1977,6 +1987,15 @@ nsWindow::Resize(double aX, double aY, double aWidth,
     Invalidate();
 
   NotifyRollupGeometryChange();
+}
+
+mozilla::Maybe<bool>
+nsWindow::IsResizingNativeWidget()
+{
+  if (mResizeState == RESIZING) {
+    return Some(true);
+  }
+  return Some(false);
 }
 
 nsresult
@@ -2482,13 +2501,13 @@ GetWindowInfoHook(HWND hWnd, PWINDOWINFO pwi)
     NS_ASSERTION(FALSE, "Something is horribly wrong in GetWindowInfoHook!");
     return FALSE;
   }
-  int windowStatus = 
+  int windowStatus =
     reinterpret_cast<LONG_PTR>(GetPropW(hWnd, kManageWindowInfoProperty));
   // No property set, return the default data.
   if (!windowStatus)
     return sGetWindowInfoPtrStub(hWnd, pwi);
   // Call GetWindowInfo and update dwWindowStatus with our
-  // internally tracked value. 
+  // internally tracked value.
   BOOL result = sGetWindowInfoPtrStub(hWnd, pwi);
   if (result && pwi)
     pwi->dwWindowStatus = (windowStatus == 1 ? 0 : WS_ACTIVECAPTION);
@@ -2757,7 +2776,7 @@ nsWindow::InvalidateNonClientRegion()
   // | |      app content      | | } area we don't want to invalidate
   // | +-----------------------+ | }
   // | |   app client chrome   | | }
-  // | +-----------------------+ | 
+  // | +-----------------------+ |
   // +---------------------------+ <
   //  ^                         ^    windows non-client chrome
   // client area = app *
@@ -2975,7 +2994,7 @@ nsWindow::SetCursor(nsCursor aCursor)
   if (nullptr != newCursor) {
     mCursor = aCursor;
     HCURSOR oldCursor = ::SetCursor(newCursor);
-    
+
     if (sHCursor == oldCursor) {
       NS_IF_RELEASE(sCursorImgContainer);
       if (sHCursor != nullptr)
@@ -3702,7 +3721,7 @@ nsWindow::SetIcon(const nsAString& aIconSpec)
   else {
     NS_LossyConvertUTF16toASCII cPath(iconPath);
     MOZ_LOG(gWindowsLog, LogLevel::Info,
-           ("\nIcon load error; icon=%s, rc=0x%08X\n\n", 
+           ("\nIcon load error; icon=%s, rc=0x%08X\n\n",
             cPath.get(), ::GetLastError()));
   }
 #endif
@@ -3716,7 +3735,7 @@ nsWindow::SetIcon(const nsAString& aIconSpec)
   else {
     NS_LossyConvertUTF16toASCII cPath(iconPath);
     MOZ_LOG(gWindowsLog, LogLevel::Info,
-           ("\nSmall icon load error; icon=%s, rc=0x%08X\n\n", 
+           ("\nSmall icon load error; icon=%s, rc=0x%08X\n\n",
             cPath.get(), ::GetLastError()));
   }
 #endif
@@ -3862,7 +3881,7 @@ nsWindow::GetAttention(int32_t aCycleCount)
   HWND fgWnd = ::GetForegroundWindow();
   // Don't flash if the flash count is 0 or if the foreground window is our
   // window handle or that of our owned-most window.
-  if (aCycleCount == 0 || 
+  if (aCycleCount == 0 ||
       flashWnd == fgWnd ||
       flashWnd == WinUtils::GetTopLevelHWND(fgWnd, false, false)) {
     return NS_OK;
@@ -4120,7 +4139,7 @@ nsWindow::SetWindowClass(const nsAString& xulWinType)
  **
  ** BLOCK: Moz Events
  **
- ** Moz GUI event management. 
+ ** Moz GUI event management.
  **
  **************************************************************
  **************************************************************/
@@ -4649,7 +4668,7 @@ nsWindow::DispatchMouseEvent(EventMessage aEventMessage, WPARAM wParam,
           if ((nullptr != sCurrentWindow) && (!sCurrentWindow->mInDtor)) {
             LPARAM pos = sCurrentWindow->lParamToClient(lParamToScreen(lParam));
             sCurrentWindow->DispatchMouseEvent(eMouseExitFromWidget,
-                                               wParam, pos, false, 
+                                               wParam, pos, false,
                                                WidgetMouseEvent::eLeftButton,
                                                aInputSource, aPointerInfo);
           }
@@ -5100,22 +5119,6 @@ static void ForceFontUpdate()
   Preferences::SetBool(kPrefName, !fontInternalChange);
 }
 
-static bool CleartypeSettingChanged()
-{
-  static int currentQuality = -1;
-  BYTE quality = cairo_win32_get_system_text_quality();
-
-  if (currentQuality == quality)
-    return false;
-
-  if (currentQuality < 0) {
-    currentQuality = quality;
-    return false;
-  }
-  currentQuality = quality;
-  return true;
-}
-
 bool
 nsWindow::ExternalHandlerProcessMessage(UINT aMessage,
                                         WPARAM& aWParam,
@@ -5263,7 +5266,7 @@ nsWindow::ProcessMessage(UINT msg, WPARAM& wParam, LPARAM& lParam,
 
     case WM_THEMECHANGED:
     {
-      // Update non-client margin offsets 
+      // Update non-client margin offsets
       UpdateNonClientMargins();
       nsUXThemeData::UpdateNativeThemeInfo();
 
@@ -5319,6 +5322,10 @@ nsWindow::ProcessMessage(UINT msg, WPARAM& wParam, LPARAM& lParam,
         NotifyThemeChanged();
         break;
       }
+      if (wParam == SPI_SETFONTSMOOTHING || wParam == SPI_SETFONTSMOOTHINGTYPE) {
+        gfxDWriteFont::UpdateSystemTextQuality();
+        break;
+      }
       if (lParam) {
         auto lParamString = reinterpret_cast<const wchar_t*>(lParam);
         if (!wcscmp(lParamString, L"ImmersiveColorSet")) {
@@ -5339,6 +5346,22 @@ nsWindow::ProcessMessage(UINT msg, WPARAM& wParam, LPARAM& lParam,
               uiUtils->UpdateTabletModeState();
             }
           }
+        }
+      }
+    }
+    break;
+
+    case WM_DEVICECHANGE:
+    {
+      if (wParam == DBT_DEVICEARRIVAL ||
+          wParam == DBT_DEVICEREMOVECOMPLETE) {
+        DEV_BROADCAST_HDR* hdr = reinterpret_cast<DEV_BROADCAST_HDR*>(lParam);
+        // Check dbch_devicetype explicitly since we will get other device types
+        // (e.g. DBT_DEVTYP_VOLUME) for some reasons even if we specify
+        // DBT_DEVTYP_DEVICEINTERFACE in the filter for
+        // RegisterDeviceNotification.
+        if (hdr->dbch_devicetype == DBT_DEVTYP_DEVICEINTERFACE) {
+          NotifyThemeChanged();
         }
       }
     }
@@ -5494,6 +5517,12 @@ nsWindow::ProcessMessage(UINT msg, WPARAM& wParam, LPARAM& lParam,
     case WM_NCPAINT:
     {
       /*
+       * ClearType changes often don't send a WM_SETTINGCHANGE message. But they
+       * do seem to always send a WM_NCPAINT message, so let's update on that.
+       */
+      gfxDWriteFont::UpdateSystemTextQuality();
+
+      /*
        * Reset the non-client paint region so that it excludes the
        * non-client areas we paint manually. Then call defwndproc
        * to do the actual painting.
@@ -5544,13 +5573,6 @@ nsWindow::ProcessMessage(UINT msg, WPARAM& wParam, LPARAM& lParam,
       break;
 
     case WM_PAINT:
-      if (CleartypeSettingChanged()) {
-        ForceFontUpdate();
-        gfxFontCache *fc = gfxFontCache::GetCache();
-        if (fc) {
-          fc->Flush();
-        }
-      }
       *aRetValue = (int) OnPaint(nullptr, 0);
       result = true;
       break;
@@ -5949,7 +5971,7 @@ nsWindow::ProcessMessage(UINT msg, WPARAM& wParam, LPARAM& lParam,
       DispatchMouseEvent(eMouseDoubleClick, 0, lParamToClient(lParam),
                          false, WidgetMouseEvent::eLeftButton,
                          MOUSE_INPUT_SOURCE());
-      result = 
+      result =
         DispatchMouseEvent(eMouseUp, 0, lParamToClient(lParam),
                            false, WidgetMouseEvent::eLeftButton,
                            MOUSE_INPUT_SOURCE());
@@ -6371,7 +6393,7 @@ BOOL CALLBACK nsWindow::BroadcastMsg(HWND aTopWindow, LPARAM aMsg)
  *
  * SECTION: Event processing helpers
  *
- * Special processing for certain event types and 
+ * Special processing for certain event types and
  * synthesized events.
  *
  **************************************************************/
@@ -6730,15 +6752,15 @@ void nsWindow::OnWindowPosChanged(WINDOWPOS* wp)
 #ifdef WINSTATE_DEBUG_OUTPUT
     switch (mSizeMode) {
       case nsSizeMode_Normal:
-          MOZ_LOG(gWindowsLog, LogLevel::Info, 
+          MOZ_LOG(gWindowsLog, LogLevel::Info,
                  ("*** mSizeMode: nsSizeMode_Normal\n"));
         break;
       case nsSizeMode_Minimized:
-        MOZ_LOG(gWindowsLog, LogLevel::Info, 
+        MOZ_LOG(gWindowsLog, LogLevel::Info,
                ("*** mSizeMode: nsSizeMode_Minimized\n"));
         break;
       case nsSizeMode_Maximized:
-          MOZ_LOG(gWindowsLog, LogLevel::Info, 
+          MOZ_LOG(gWindowsLog, LogLevel::Info,
                  ("*** mSizeMode: nsSizeMode_Maximized\n"));
         break;
       default:
@@ -6750,7 +6772,7 @@ void nsWindow::OnWindowPosChanged(WINDOWPOS* wp)
     if (mWidgetListener && mSizeMode != previousSizeMode)
       mWidgetListener->SizeModeChanged(mSizeMode);
 
-    // If window was restored, window activation was bypassed during the 
+    // If window was restored, window activation was bypassed during the
     // SetSizeMode call originating from OnWindowPosChanging to avoid saving
     // pre-restore attributes. Force activation now to get correct attributes.
     if (mLastSizeMode != nsSizeMode_Normal && mSizeMode == nsSizeMode_Normal)
@@ -6819,8 +6841,8 @@ void nsWindow::OnWindowPosChanged(WINDOWPOS* wp)
     mLastSize.height = newHeight;
 
 #ifdef WINSTATE_DEBUG_OUTPUT
-    MOZ_LOG(gWindowsLog, LogLevel::Info, 
-           ("*** Resize window: %d x %d x %d x %d\n", wp->x, wp->y, 
+    MOZ_LOG(gWindowsLog, LogLevel::Info,
+           ("*** Resize window: %d x %d x %d x %d\n", wp->x, wp->y,
             newWidth, newHeight));
 #endif
 
@@ -6860,7 +6882,7 @@ void nsWindow::OnWindowPosChanging(LPWINDOWPOS& info)
   // Update non-client margins if the frame size is changing, and let the
   // browser know we are changing size modes, so alternative css can kick in.
   // If we're going into fullscreen mode, ignore this, since it'll reset
-  // margins to normal mode. 
+  // margins to normal mode.
   if ((info->flags & SWP_FRAMECHANGED && !(info->flags & SWP_NOSIZE)) &&
       mSizeMode != nsSizeMode_Fullscreen) {
     WINDOWPLACEMENT pl;
@@ -7092,7 +7114,7 @@ bool nsWindow::OnGesture(WPARAM wParam, LPARAM lParam)
   if ( !mGesture.ProcessGestureMessage(mWnd, wParam, lParam, event) ) {
     return false; // fall through to DefWndProc
   }
-  
+
   // Polish up and send off the new event
   ModifierKeyState modifierKeyState;
   modifierKeyState.InitInputEvent(event);
@@ -7234,7 +7256,7 @@ void nsWindow::OnDestroy()
 
   // Make sure we don't get destroyed in the process of tearing down.
   nsCOMPtr<nsIWidget> kungFuDeathGrip(this);
-  
+
   // Dispatch the destroy notification.
   if (!mInDtor)
     NotifyWindowDestroyed();
@@ -7260,7 +7282,7 @@ void nsWindow::OnDestroy()
 
   // Release references to children, device context, toolkit, and app shell.
   nsBaseWidget::OnDestroy();
-  
+
   // Clear our native parent handle.
   // XXX Windows will take care of this in the proper order, and SetParent(nullptr)'s
   // remove child on the parent already took place in nsBaseWidget's Destroy call above.
@@ -7661,14 +7683,14 @@ LRESULT CALLBACK nsWindow::MozSpecialMsgFilter(int code, WPARAM wParam, LPARAM l
     if (code != gLastMsgCode) {
       if (gMSGFEvents[inx].mId == code) {
 #ifdef DEBUG
-        MOZ_LOG(gWindowsLog, LogLevel::Info, 
-               ("MozSpecialMessageProc - code: 0x%X  - %s  hw: %p\n", 
+        MOZ_LOG(gWindowsLog, LogLevel::Info,
+               ("MozSpecialMessageProc - code: 0x%X  - %s  hw: %p\n",
                 code, gMSGFEvents[inx].mStr, pMsg->hwnd));
 #endif
       } else {
 #ifdef DEBUG
-        MOZ_LOG(gWindowsLog, LogLevel::Info, 
-               ("MozSpecialMessageProc - code: 0x%X  - %d  hw: %p\n", 
+        MOZ_LOG(gWindowsLog, LogLevel::Info,
+               ("MozSpecialMessageProc - code: 0x%X  - %d  hw: %p\n",
                 code, gMSGFEvents[inx].mId, pMsg->hwnd));
 #endif
       }
@@ -7753,7 +7775,7 @@ void nsWindow::RegisterSpecialDropdownHooks()
                                       nullptr, GetCurrentThreadId());
 #ifdef POPUP_ROLLUP_DEBUG_OUTPUT
     if (!sMsgFilterHook) {
-      MOZ_LOG(gWindowsLog, LogLevel::Info, 
+      MOZ_LOG(gWindowsLog, LogLevel::Info,
              ("***** SetWindowsHookEx is NOT installed for WH_MSGFILTER!\n"));
     }
 #endif
@@ -7766,7 +7788,7 @@ void nsWindow::RegisterSpecialDropdownHooks()
                                       nullptr, GetCurrentThreadId());
 #ifdef POPUP_ROLLUP_DEBUG_OUTPUT
     if (!sCallProcHook) {
-      MOZ_LOG(gWindowsLog, LogLevel::Info, 
+      MOZ_LOG(gWindowsLog, LogLevel::Info,
              ("***** SetWindowsHookEx is NOT installed for WH_CALLWNDPROC!\n"));
     }
 #endif
@@ -7779,7 +7801,7 @@ void nsWindow::RegisterSpecialDropdownHooks()
                                        nullptr, GetCurrentThreadId());
 #ifdef POPUP_ROLLUP_DEBUG_OUTPUT
     if (!sCallMouseHook) {
-      MOZ_LOG(gWindowsLog, LogLevel::Info, 
+      MOZ_LOG(gWindowsLog, LogLevel::Info,
              ("***** SetWindowsHookEx is NOT installed for WH_MOUSE!\n"));
     }
 #endif
@@ -7847,7 +7869,7 @@ BOOL CALLBACK nsWindow::ClearResourcesCallback(HWND aWnd, LPARAM aMsg)
     nsWindow *window = WinUtils::GetNSWindowPtr(aWnd);
     if (window) {
         window->ClearCachedResources();
-    }  
+    }
     return TRUE;
 }
 

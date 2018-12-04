@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use api::{BorderRadius, BoxShadowClipMode, ClipMode, ColorF, DeviceIntSize, LayoutPrimitiveInfo};
-use api::{LayoutRect, LayoutSize, LayoutVector2D};
-use clip::ClipItem;
+use api::{LayoutRect, LayoutSize, LayoutVector2D, MAX_BLUR_RADIUS};
+use clip::ClipItemKey;
 use display_list_flattener::DisplayListFlattener;
 use gpu_cache::GpuCacheHandle;
 use gpu_types::BoxShadowStretchMode;
@@ -13,7 +13,9 @@ use prim_store::ScrollNodeAndClipChain;
 use render_task::RenderTaskCacheEntryHandle;
 use util::RectHelpers;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct BoxShadowClipSource {
     // Parameters that define the shadow and are constant.
     pub shadow_radius: BorderRadius,
@@ -42,10 +44,6 @@ pub struct BoxShadowClipSource {
 
 // The blur shader samples BLUR_SAMPLE_SCALE * blur_radius surrounding texels.
 pub const BLUR_SAMPLE_SCALE: f32 = 3.0;
-
-// Maximum blur radius.
-// Taken from https://searchfox.org/mozilla-central/rev/c633ffa4c4611f202ca11270dcddb7b29edddff8/layout/painting/nsCSSRendering.cpp#4412
-pub const MAX_BLUR_RADIUS : f32 = 300.;
 
 // A cache key that uniquely identifies a minimally sized
 // and blurred box-shadow rect that can be stored in the
@@ -122,7 +120,7 @@ impl<'a> DisplayListFlattener<'a> {
                     }
 
                     // TODO(gw): Add a fast path for ClipOut + zero border radius!
-                    clips.push(ClipItem::new_rounded_rect(
+                    clips.push(ClipItemKey::rounded_rect(
                         prim_info.rect,
                         border_radius,
                         ClipMode::ClipOut
@@ -132,7 +130,7 @@ impl<'a> DisplayListFlattener<'a> {
                 }
                 BoxShadowClipMode::Inset => {
                     if shadow_rect.is_well_formed_and_nonempty() {
-                        clips.push(ClipItem::new_rounded_rect(
+                        clips.push(ClipItemKey::rounded_rect(
                             shadow_rect,
                             shadow_radius,
                             ClipMode::ClipOut
@@ -143,7 +141,11 @@ impl<'a> DisplayListFlattener<'a> {
                 }
             };
 
-            clips.push(ClipItem::new_rounded_rect(final_prim_rect, clip_radius, ClipMode::Clip));
+            clips.push(ClipItemKey::rounded_rect(
+                final_prim_rect,
+                clip_radius,
+                ClipMode::Clip,
+            ));
 
             self.add_primitive(
                 clip_and_scroll,
@@ -163,7 +165,7 @@ impl<'a> DisplayListFlattener<'a> {
 
             // Add a normal clip mask to clip out the contents
             // of the surrounding primitive.
-            extra_clips.push(ClipItem::new_rounded_rect(
+            extra_clips.push(ClipItemKey::rounded_rect(
                 prim_info.rect,
                 border_radius,
                 prim_clip_mode,
@@ -181,7 +183,7 @@ impl<'a> DisplayListFlattener<'a> {
             );
 
             // Create the box-shadow clip item.
-            let shadow_clip_source = ClipItem::new_box_shadow(
+            let shadow_clip_source = ClipItemKey::box_shadow(
                 shadow_rect,
                 shadow_radius,
                 dest_rect,

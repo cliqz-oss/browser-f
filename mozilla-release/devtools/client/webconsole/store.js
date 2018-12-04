@@ -12,7 +12,7 @@ const { UiState } = require("devtools/client/webconsole/reducers/ui");
 const {
   applyMiddleware,
   compose,
-  createStore
+  createStore,
 } = require("devtools/client/shared/vendor/redux");
 
 // Prefs
@@ -49,6 +49,7 @@ function configureStore(hud, options = {}) {
     || Math.max(getIntPref("devtools.hud.loglimit"), 1);
   const sidebarToggle = getBoolPref(PREFS.FEATURES.SIDEBAR_TOGGLE);
   const jstermCodeMirror = getBoolPref(PREFS.FEATURES.JSTERM_CODE_MIRROR);
+  const jstermReverseSearch = getBoolPref(PREFS.FEATURES.JSTERM_REVERSE_SEARCH);
   const historyCount = getIntPref(PREFS.UI.INPUT_HISTORY_COUNT);
 
   const initialState = {
@@ -56,6 +57,7 @@ function configureStore(hud, options = {}) {
       logLimit,
       sidebarToggle,
       jstermCodeMirror,
+      jstermReverseSearch,
       historyCount,
     }),
     filters: FilterState({
@@ -72,12 +74,12 @@ function configureStore(hud, options = {}) {
       filterBarVisible: getBoolPref(PREFS.UI.FILTER_BAR),
       networkMessageActiveTabId: "headers",
       persistLogs: getBoolPref(PREFS.UI.PERSIST),
-    })
+    }),
   };
 
   // Prepare middleware.
   const middleware = applyMiddleware(
-    thunk.bind(null, {prefsService}),
+    thunk.bind(null, {prefsService, client: (options.services || {})}),
     historyPersistence,
     eventTelemetry.bind(null, options.telemetry, options.sessionId),
   );

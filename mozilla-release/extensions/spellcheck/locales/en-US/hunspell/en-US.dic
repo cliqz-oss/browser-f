@@ -1,4 +1,4 @@
-52869
+52926
 0/nm
 0th/pt
 1/n1
@@ -904,6 +904,7 @@ Assamese/M
 Assembly
 Assisi/M
 Assyria/M
+Assyriaca/M
 Assyrian/SM
 Astaire/M
 Astana/M
@@ -4099,6 +4100,7 @@ Eurasian/MS
 Euripides/M
 Eurodollar/SM
 Europa/M
+Europaea/M
 Europe/M
 European/MS
 Eurydice/M
@@ -5614,6 +5616,7 @@ Hirohito/M
 Hiroshima/M
 Hirsch/M
 Hispanic/SM
+Hispanica/M
 Hispaniola/M
 Hiss/M
 Hitachi/M
@@ -5652,6 +5655,7 @@ Holiday/M
 Holiness
 Holland/ZSMR
 Hollander/M
+Hollandica/M
 Hollerith/M
 Holley/M
 Hollie/M
@@ -6033,6 +6037,7 @@ Isis/M
 Islam/MS
 Islamabad/M
 Islamic/M
+Islamica/M
 Islamism/M
 Islamist/M
 Islamophobia
@@ -6706,6 +6711,7 @@ Kharkov/M
 Khartoum/M
 Khayyam/M
 Khazar/M
+Khazarica/M
 Khmer/M
 Khoikhoi/M
 Khoisan/M
@@ -7042,6 +7048,7 @@ Latham/M
 Latin/MRS
 Latina
 Latino/SM
+Latinx
 Latisha/M
 Latonya/M
 Latoya/M
@@ -8528,6 +8535,7 @@ Mongol/SM
 Mongolia/M
 Mongolian/SM
 Mongolic/M
+Mongolica/M
 Mongoloid
 Monica/M
 Monika/M
@@ -8984,6 +8992,7 @@ Nicaraguan/SM
 Niccolo/M
 Nice/M
 Nicene/M
+Nicephori/M
 Nichiren/M
 Nichol/SM
 Nicholas/M
@@ -9019,6 +9028,7 @@ Nigel/M
 Niger/M
 Nigeria/M
 Nigerian/MS
+Nigeriana/M
 Nigerien/M
 Nightingale/M
 Nijinsky/M
@@ -9173,6 +9183,7 @@ OHSA/M
 OJ
 OK/SMDG
 OMB/M
+OMG
 ON
 OPEC/M
 OR
@@ -9389,6 +9400,7 @@ Ottawa/SM
 Ottilie/M
 Otto/M
 Ottoman/M
+Ottomana/M
 Ouagadougou/M
 Ouija/MS
 Ovid/M
@@ -9946,6 +9958,7 @@ Pr/M
 Prada/M
 Prado/M
 Praetorian/M
+Praetoriana/M
 Prague/M
 Praia/M
 Prakrit/M
@@ -10567,6 +10580,7 @@ Rom
 Roma/M
 Romain/M
 Roman/MS
+Romana/M
 Romanesque/MS
 Romania/M
 Romanian/MS
@@ -11368,6 +11382,7 @@ Singer/M
 Singh/M
 Singleton/M
 Sinhalese/M
+Sinica/M
 Sinkiang/M
 Siobhan/M
 Sioux/M
@@ -11495,6 +11510,7 @@ Southey/M
 Souths
 Southwest/MS
 Soviet/M
+Sovietica/M
 Soweto/M
 Soyinka/M
 Soyuz/M
@@ -11699,6 +11715,7 @@ Sumatra/M
 Sumatran/SM
 Sumeria/M
 Sumerian/SM
+Sumerica/M
 Summer/MS
 Summers/M
 Sumner/M
@@ -11797,6 +11814,7 @@ Syracuse/M
 Syria/M
 Syriac/M
 Syrian/MS
+Syriana/M
 Szilard/M
 Szymborska/M
 Sèvres/M
@@ -13610,7 +13628,7 @@ accordion/MS
 accordionist/MS
 accost/GMDS
 account/MDSBG
-accountability/M
+accountability/MS
 accountable/U
 accountancy/M
 accountant/MS
@@ -13651,6 +13669,8 @@ acerbate/DSG
 acerbic
 acerbically
 acerbity/M
+acetabular
+acetabulum
 acetaminophen/M
 acetate/MS
 acetic
@@ -13868,6 +13888,7 @@ adoption/SM
 adorableness/M
 adorably
 adoration/M
+adorbs
 adore/BZGDRS
 adorer/M
 adoring/Y
@@ -14009,6 +14030,7 @@ affluent/Y
 afford/GDSB
 affordability
 affordably
+affordance/S
 afforest/EGSD
 afforestation/M
 affray/MS
@@ -15226,6 +15248,7 @@ arras/MS
 array/EGMDS
 arrears/M
 arrest/AGMDS
+arrestee/S
 arrhythmia/M
 arrhythmic
 arrhythmical
@@ -15254,6 +15277,7 @@ artful/PY
 artfulness/M
 arthritic/MS
 arthritis/M
+arthroplasty
 arthropod/MS
 arthroscope/SM
 arthroscopic
@@ -15720,6 +15744,7 @@ avidity/M
 avionic/S
 avionics/M
 avitaminosis/M
+avo/S
 avocado/SM
 avocation/MS
 avocational
@@ -16771,6 +16796,7 @@ bindery/SM
 binding/MS
 bindweed/M
 binge/MGDS
+bingeable
 bingeing
 bingo/M
 binman
@@ -16796,6 +16822,8 @@ biographer/SM
 biographic
 biographical/Y
 biography/SM
+biohacker/MS
+biohacking
 bioinformatic/MS
 biol
 biologic
@@ -17305,6 +17333,7 @@ bonito/MS
 bonk/SZGD
 bonnet/MS
 bonny/TR
+bono
 bonobo/MS
 bonsai/M
 bonus/MS
@@ -17440,6 +17469,7 @@ bougainvillea/MS
 bough/M
 boughs
 bought
+bougie/S
 bouillabaisse/SM
 bouillon/MS
 boulder/SM
@@ -21590,6 +21620,7 @@ crime/SM
 crimeware/M
 criminal/MYS
 criminality/M
+criminalization
 criminalize/CGDS
 criminologist/MS
 criminology/M
@@ -21939,7 +21970,7 @@ customary/U
 customer/M
 customhouse/SM
 customization/M
-customize/DSG
+customize/DSGB
 cut/TSMR
 cutaneous
 cutaway/MS
@@ -22299,6 +22330,7 @@ decimeter/MS
 decipherable/UI
 decision/IM
 decisions
+decisis
 decisive/IPY
 decisiveness/IM
 deck/SGMD
@@ -25097,6 +25129,8 @@ erelong
 eremite/MS
 erg/SM
 ergo
+ergodic
+ergodicity
 ergonomic/S
 ergonomically
 ergonomics/M
@@ -26020,6 +26054,7 @@ fauna/SM
 fauvism/M
 fauvist/SM
 faux
+fav/S
 fave/S
 favor/ESMDG
 favorable/U
@@ -26371,6 +26406,8 @@ finite/IY
 fink/MDGS
 finned
 finny
+fintech
+fintechs
 fir/ZGSJMDRH
 fire/MS
 firearm/SM
@@ -28243,6 +28280,7 @@ goblet/SM
 goblin/SM
 gobsmacked
 gobstopper/S
+gochujang
 god/SM
 godawful
 godchild/M
@@ -28728,6 +28766,7 @@ grungy/RT
 grunion/SM
 grunt/SGMD
 gt
+guac
 guacamole/M
 guanine/M
 guano/M
@@ -30000,6 +30039,7 @@ hopeful/PSMY
 hopefulness/M
 hopeless/YP
 hopelessness/M
+hophead/S
 hopped
 hopper/MS
 hopping
@@ -30465,6 +30505,8 @@ iamb/MS
 iambi
 iambic/SM
 iambus/MS
+iatrogenesis
+iatrogenic
 ibex/MS
 ibid
 ibidem
@@ -30549,6 +30591,7 @@ idyllically
 if/SM
 iffiness/M
 iffy/RTP
+iftar/S
 igloo/SM
 igneous
 ignite/ZGNBXDRS
@@ -34404,6 +34447,7 @@ masquerader/M
 mass/MDSGV
 massacre/MGDS
 massage/DSMG
+masse
 masseur/SM
 masseuse/MS
 massif/MS
@@ -34759,6 +34803,7 @@ merchandise/MZGDRS
 merchandiser/M
 merchandising/M
 merchant/MBSG
+merchantability
 merchantman/M
 merchantmen
 merciful/UY
@@ -35247,6 +35292,7 @@ misdo/JG
 misdoes
 misdoing/M
 misdone
+mise/S
 miser/SBMY
 miserableness/M
 miserably
@@ -35411,6 +35457,7 @@ mocker/M
 mockery/SM
 mocking/Y
 mockingbird/SM
+mocktail/S
 mod/STM
 modal/SM
 modality/S
@@ -37968,6 +38015,7 @@ overbook/DGS
 overbore
 overborne
 overbought
+overbroad
 overbuild/SG
 overbuilt
 overburden/GSD
@@ -38805,6 +38853,7 @@ pawnbroker/MS
 pawnbroking/M
 pawnshop/MS
 pawpaw/MS
+pax
 pay's
 pay/ASGBL
 payback/SM
@@ -41870,6 +41919,7 @@ rancor/M
 rancorous/Y
 rand/M
 randiness/M
+rando/S
 random/PSY
 randomization/M
 randomize/DSG
@@ -42911,6 +42961,7 @@ ribald
 ribaldry/M
 ribbed
 ribber/SM
+ribbie/S
 ribbing
 ribbon/SM
 riboflavin/M
@@ -43480,6 +43531,7 @@ saith
 sake/M
 saki/M
 salaam/SMDG
+salability
 salable/U
 salacious/PY
 salaciousness/M
@@ -47442,6 +47494,7 @@ suck/MDRZGS
 sucker/GMD
 suckle/DSJG
 suckling/M
+sucky
 sucrose/M
 suction/SMDG
 sudden/PY
@@ -49991,6 +50044,7 @@ tunefulness/M
 tuneless/Y
 tuner/M
 tuneup/SM
+tung
 tungsten/M
 tunic/SM
 tunnel/JSMDRZG
@@ -52242,6 +52296,8 @@ winnower/M
 wino/MS
 winsome/YTRP
 winsomeness/M
+winsorization
+winsorize/SGD
 winter/GSMD
 wintergreen/M
 winterize/GDS
@@ -52856,6 +52912,7 @@ zorch
 zoster
 zounds
 zucchini/MS
+zuke/S
 zwieback/M
 zydeco/M
 zygote/SM

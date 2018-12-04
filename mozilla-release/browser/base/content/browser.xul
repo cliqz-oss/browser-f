@@ -11,6 +11,12 @@
      both "content" and "skin" packages, which bug 1385444 will unify later. -->
 <?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
 
+<!-- While these stylesheets are defined in Toolkit, they are only used in the
+     main browser window, so we can load them here. Bug 1474241 is on file to
+     consider moving these widgets to the "browser" folder. -->
+<?xml-stylesheet href="chrome://global/content/tabprompts.css" type="text/css"?>
+<?xml-stylesheet href="chrome://global/skin/tabprompts.css" type="text/css"?>
+
 <?xml-stylesheet href="chrome://browser/content/browser.css" type="text/css"?>
 <?xml-stylesheet href="chrome://browser/content/tabbrowser.css" type="text/css"?>
 <?xml-stylesheet href="chrome://browser/content/downloads/downloads.css" type="text/css"?>
@@ -64,7 +70,11 @@
         fullscreenbutton="true"
         sizemode="normal"
         retargetdocumentfocus="urlbar"
-        persist="screenX screenY width height sizemode">
+        persist="screenX screenY width height sizemode"
+#ifdef BROWSER_XHTML
+        hidden="true"
+#endif
+        >
 
 # All JS files which are needed by browser.xul and other top level windows to
 # support MacOS specific features *must* go into the global-scripts.inc file so
@@ -82,9 +92,14 @@ xmlns="http://www.w3.org/1999/xhtml"
   window.onload = gBrowserInit.onLoad.bind(gBrowserInit);
   window.onunload = gBrowserInit.onUnload.bind(gBrowserInit);
   window.onclose = WindowIsClosing;
+
 #ifdef BROWSER_XHTML
-  window.addEventListener("DOMContentLoaded",
-    gBrowserInit.onBeforeInitialXULLayout.bind(gBrowserInit), { once: true });
+  window.addEventListener("readystatechange", () => {
+    // We initially hide the window to prevent layouts during parse. This lets us
+    // avoid accidental XBL construction and better match browser.xul (see Bug 1497975).
+    gBrowserInit.onBeforeInitialXULLayout();
+    document.documentElement.removeAttribute("hidden");
+  }, { once: true, capture: true });
 #else
   window.addEventListener("MozBeforeInitialXULLayout",
     gBrowserInit.onBeforeInitialXULLayout.bind(gBrowserInit), { once: true });
@@ -108,13 +123,12 @@ xmlns="http://www.w3.org/1999/xhtml"
                onpopuphidden="if (event.target == this) TabContextMenu.contextTab = null;">
       <menuitem id="context_reloadTab" label="&reloadTab.label;" accesskey="&reloadTab.accesskey;"
                 oncommand="gBrowser.reloadTab(TabContextMenu.contextTab);"/>
-      <menuitem id="context_reloadSelectedTabs" label="&reloadSelectedTabs.label;" hidden="true"
-                accesskey="&reloadSelectedTabs.accesskey;"
+      <menuitem id="context_reloadSelectedTabs" label="&reloadTabs.label;" hidden="true"
+                accesskey="&reloadTabs.accesskey;"
                 oncommand="gBrowser.reloadMultiSelectedTabs();"/>
       <menuitem id="context_toggleMuteTab" oncommand="TabContextMenu.contextTab.toggleMuteAudio();"/>
       <menuitem id="context_toggleMuteSelectedTabs" hidden="true"
                 oncommand="gBrowser.toggleMuteAudioOnMultiSelectedTabs(TabContextMenu.contextTab);"/>
-      <menuseparator/>
       <menuitem id="context_pinTab" label="&pinTab.label;"
                 accesskey="&pinTab.accesskey;"
                 oncommand="gBrowser.pinTab(TabContextMenu.contextTab);"/>
@@ -130,6 +144,18 @@ xmlns="http://www.w3.org/1999/xhtml"
       <menuitem id="context_duplicateTab" label="&duplicateTab.label;"
                 accesskey="&duplicateTab.accesskey;"
                 oncommand="duplicateTabIn(TabContextMenu.contextTab, 'tab');"/>
+      <menuseparator/>
+      <menuitem id="context_selectAllTabs" label="&selectAllTabs.label;" accesskey="&selectAllTabs.accesskey;"
+                oncommand="gBrowser.selectAllTabs();"/>
+      <menuitem id="context_bookmarkSelectedTabs"
+                hidden="true"
+                label="&bookmarkSelectedTabs.label;"
+                accesskey="&bookmarkSelectedTabs.accesskey;"
+                oncommand="PlacesCommandHook.bookmarkPages(PlacesCommandHook.uniqueSelectedPages);"/>
+      <menuitem id="context_bookmarkTab"
+                label="&bookmarkTab.label;"
+                accesskey="&bookmarkTab.accesskey;"
+                oncommand="PlacesCommandHook.bookmarkPages(PlacesCommandHook.getUniquePages([TabContextMenu.contextTab]));"/>
       <menu id="context_reopenInContainer"
             label="&reopenInContainer.label;"
             accesskey="&reopenInContainer.accesskey;"
@@ -137,43 +163,46 @@ xmlns="http://www.w3.org/1999/xhtml"
         <menupopup oncommand="TabContextMenu.reopenInContainer(event);"
                    onpopupshowing="TabContextMenu.createReopenInContainerMenu(event);"/>
       </menu>
-      <menuitem id="context_openTabInWindow" label="&moveToNewWindow.label;"
-                accesskey="&moveToNewWindow.accesskey;"
-                tbattr="tabbrowser-multiple"
-                oncommand="gBrowser.replaceTabsWithWindow(TabContextMenu.contextTab);"/>
-      <menuseparator id="context_sendTabToDevice_separator" class="sync-ui-item"/>
-      <menu id="context_sendTabToDevice" label="&sendTabToDevice.label;"
-            class="sync-ui-item"
-            accesskey="&sendTabToDevice.accesskey;">
+      <menu id="context_moveTabOptions"
+            multiselectcontextlabel="&moveSelectedTabOptions.label;"
+            multiselectcontextaccesskey="&moveSelectedTabOptions.accesskey;"
+            nonmultiselectcontextlabel="&moveTabOptions.label;"
+            nonmultiselectcontextaccesskey="&moveTabOptions.accesskey;">
+        <menupopup id="moveTabOptionsMenu">
+          <menuitem id="context_moveToStart"
+                    label="&moveToStart.label;"
+                    accesskey="&moveToStart.accesskey;"
+                    tbattr="tabbrowser-multiple"
+                    oncommand="gBrowser.moveTabsToStart(TabContextMenu.contextTab);"/>
+          <menuitem id="context_moveToEnd"
+                    label="&moveToEnd.label;"
+                    accesskey="&moveToEnd.accesskey;"
+                    tbattr="tabbrowser-multiple"
+                    oncommand="gBrowser.moveTabsToEnd(TabContextMenu.contextTab);"/>
+          <menuitem id="context_openTabInWindow" label="&moveToNewWindow.label;"
+                    accesskey="&moveToNewWindow.accesskey;"
+                    tbattr="tabbrowser-multiple"
+                    oncommand="gBrowser.replaceTabsWithWindow(TabContextMenu.contextTab);"/>
+        </menupopup>
+      </menu>
+      <menu id="context_sendTabToDevice"
+            class="sync-ui-item">
         <menupopup id="context_sendTabToDevicePopupMenu"
-                   onpopupshowing="gSync.populateSendTabToDevicesMenu(event.target, TabContextMenu.contextTab.linkedBrowser.currentURI.spec, TabContextMenu.contextTab.linkedBrowser.contentTitle);"/>
+                   onpopupshowing="gSync.populateSendTabToDevicesMenu(event.target, TabContextMenu.contextTab.linkedBrowser.currentURI.spec, TabContextMenu.contextTab.linkedBrowser.contentTitle, TabContextMenu.contextTab.multiselected);"/>
       </menu>
       <menuseparator/>
-      <menuitem id="context_reloadAllTabs" label="&reloadAllTabs.label;" accesskey="&reloadAllTabs.accesskey;"
-                tbattr="tabbrowser-multiple-visible"
-                oncommand="gBrowser.reloadAllTabs();"/>
-       <menuitem id="context_bookmarkSelectedTabs"
-                hidden="true"
-                label="&bookmarkSelectedTabs.label;"
-                accesskey="&bookmarkSelectedTabs.accesskey;"
-                oncommand="PlacesCommandHook.bookmarkPages(PlacesCommandHook.uniqueSelectedPages);"/>
-      <menuitem id="context_bookmarkAllTabs"
-                label="&bookmarkAllTabs.label;"
-                accesskey="&bookmarkAllTabs.accesskey;"
-                command="Browser:BookmarkAllTabs"/>
       <menuitem id="context_closeTabsToTheEnd" label="&closeTabsToTheEnd.label;" accesskey="&closeTabsToTheEnd.accesskey;"
                 oncommand="gBrowser.removeTabsToTheEndFrom(TabContextMenu.contextTab, {animate: true});"/>
       <menuitem id="context_closeOtherTabs" label="&closeOtherTabs.label;" accesskey="&closeOtherTabs.accesskey;"
                 oncommand="gBrowser.removeAllTabsBut(TabContextMenu.contextTab);"/>
-      <menuseparator/>
       <menuitem id="context_undoCloseTab"
                 label="&undoCloseTab.label;"
                 accesskey="&undoCloseTab.accesskey;"
                 observes="History:UndoCloseTab"/>
       <menuitem id="context_closeTab" label="&closeTab.label;" accesskey="&closeTab.accesskey;"
                 oncommand="gBrowser.removeTab(TabContextMenu.contextTab, { animate: true });"/>
-      <menuitem id="context_closeSelectedTabs" label="&closeSelectedTabs.label;"
-                hidden="true" accesskey="&closeSelectedTabs.accesskey;"
+      <menuitem id="context_closeSelectedTabs" label="&closeTabs.label;"
+                hidden="true" accesskey="&closeTabs.accesskey;"
                 oncommand="gBrowser.removeMultiSelectedTabs();"/>
     </menupopup>
 
@@ -213,6 +242,22 @@ xmlns="http://www.w3.org/1999/xhtml"
            flip="none"
            level="parent"
            overflowpadding="15" />
+
+    <!-- for url bar autocomplete -->
+    <panel id="urlbar-results"
+           role="group"
+           noautofocus="true"
+           hidden="true"
+           flip="none"
+           level="parent">
+      <html:div class="urlbarView-body-outer">
+        <html:div class="urlbarView-body-inner">
+          <!-- TODO: add search suggestions notification -->
+          <html:div class="urlbarView-results"/>
+          <!-- TODO: add footer -->
+        </html:div>
+      </html:div>
+    </panel>
 
    <!-- for date/time picker. consumeoutsideclicks is set to never, so that
         clicks on the anchored input box are never consumed. -->
@@ -366,19 +411,24 @@ xmlns="http://www.w3.org/1999/xhtml"
     </panel>
 
     <menupopup id="toolbar-context-menu"
-               onpopupshowing="onViewToolbarsPopupShowing(event, document.getElementById('viewToolbarsMenuSeparator')); UpdateDownloadsAutoHide(this); UpdateManageExtension(this)">
-      <menuitem oncommand="openAboutAddonsForContextAction(this.parentElement)"
+               onpopupshowing="onViewToolbarsPopupShowing(event, document.getElementById('viewToolbarsMenuSeparator')); ToolbarContextMenu.updateDownloadsAutoHide(this); ToolbarContextMenu.updateExtension(this)">
+      <menuitem oncommand="ToolbarContextMenu.openAboutAddonsForContextAction(this.parentElement)"
                 accesskey="&customizeMenu.manageExtension.accesskey;"
                 label="&customizeMenu.manageExtension.label;"
                 contexttype="toolbaritem"
                 class="customize-context-manageExtension"/>
+      <menuitem oncommand="ToolbarContextMenu.removeExtensionForContextAction(this.parentElement)"
+                accesskey="&customizeMenu.removeExtension.accesskey;"
+                label="&customizeMenu.removeExtension.label;"
+                contexttype="toolbaritem"
+                class="customize-context-removeExtension"/>
       <menuseparator/>
       <menuitem oncommand="gCustomizeMode.addToPanel(document.popupNode)"
                 accesskey="&customizeMenu.pinToOverflowMenu.accesskey;"
                 label="&customizeMenu.pinToOverflowMenu.label;"
                 contexttype="toolbaritem"
                 class="customize-context-moveToPanel"/>
-      <menuitem oncommand="onDownloadsAutoHideChange(event)"
+      <menuitem oncommand="ToolbarContextMenu.onDownloadsAutoHideChange(event)"
                 type="checkbox"
                 accesskey="&customizeMenu.autoHideDownloadsButton.accesskey;"
                 label="&customizeMenu.autoHideDownloadsButton.label;"
@@ -389,18 +439,36 @@ xmlns="http://www.w3.org/1999/xhtml"
                 label="&customizeMenu.removeFromToolbar.label;"
                 contexttype="toolbaritem"
                 class="customize-context-removeFromToolbar"/>
-      <menuitem id="toolbar-context-reloadAllTabs"
+      <menuitem id="toolbar-context-reloadSelectedTab"
                 class="toolbaritem-tabsmenu"
                 contexttype="tabbar"
-                oncommand="gBrowser.reloadAllTabs();"
-                label="&toolbarContextMenu.reloadAllTabs.label;"
-                accesskey="&toolbarContextMenu.reloadAllTabs.accesskey;"/>
-      <menuitem id="toolbar-context-bookmarkAllTabs"
+                oncommand="gBrowser.reloadMultiSelectedTabs();"
+                label="&toolbarContextMenu.reloadSelectedTab.label;"
+                accesskey="&toolbarContextMenu.reloadSelectedTab.accesskey;"/>
+      <menuitem id="toolbar-context-reloadSelectedTabs"
                 class="toolbaritem-tabsmenu"
                 contexttype="tabbar"
-                command="Browser:BookmarkAllTabs"
-                label="&toolbarContextMenu.bookmarkAllTabs.label;"
-                accesskey="&toolbarContextMenu.bookmarkAllTabs.accesskey;"/>
+                oncommand="gBrowser.reloadMultiSelectedTabs();"
+                label="&toolbarContextMenu.reloadSelectedTabs.label;"
+                accesskey="&toolbarContextMenu.reloadSelectedTabs.accesskey;"/>
+      <menuitem id="toolbar-context-bookmarkSelectedTab"
+                class="toolbaritem-tabsmenu"
+                contexttype="tabbar"
+                oncommand="PlacesCommandHook.bookmarkPages(PlacesCommandHook.uniqueSelectedPages);"
+                label="&toolbarContextMenu.bookmarkSelectedTab.label;"
+                accesskey="&toolbarContextMenu.bookmarkSelectedTab.accesskey;"/>
+      <menuitem id="toolbar-context-bookmarkSelectedTabs"
+                class="toolbaritem-tabsmenu"
+                contexttype="tabbar"
+                oncommand="PlacesCommandHook.bookmarkPages(PlacesCommandHook.uniqueSelectedPages);"
+                label="&toolbarContextMenu.bookmarkSelectedTabs.label;"
+                accesskey="&toolbarContextMenu.bookmarkSelectedTabs.accesskey;"/>
+      <menuitem id="toolbar-context-selectAllTabs"
+                class="toolbaritem-tabsmenu"
+                contexttype="tabbar"
+                oncommand="gBrowser.selectAllTabs();"
+                label="&toolbarContextMenu.selectAllTabs.label;"
+                accesskey="&toolbarContextMenu.selectAllTabs.accesskey;"/>
       <menuitem id="toolbar-context-undoCloseTab"
                 class="toolbaritem-tabsmenu"
                 contexttype="tabbar"
@@ -488,7 +556,6 @@ xmlns="http://www.w3.org/1999/xhtml"
            noautofocus="true"
            copyURL-title="&pageAction.copyLink.label;"
            emailLink-title="&emailPageCmd.label;"
-           sendToDevice-title="&pageAction.sendTabToDevice.label;"
            sendToDevice-notReadyTitle="&sendToDevice.syncNotReady.label;"
            shareURL-title="&pageAction.shareUrl.label;"
            shareMore-label="&pageAction.shareMore.label;">
@@ -526,10 +593,10 @@ xmlns="http://www.w3.org/1999/xhtml"
                 label="&pageAction.removeFromUrlbar.label;"
                 oncommand="BrowserPageActions.togglePinningForContextAction();"/>
       <menuitem class="pageActionContextMenuItem extensionUnpinned"
-                label="&pageAction.allowInUrlbar.label;"
+                label="&pageAction.addToUrlbar.label;"
                 oncommand="BrowserPageActions.togglePinningForContextAction();"/>
       <menuitem class="pageActionContextMenuItem extensionPinned"
-                label="&pageAction.disallowInUrlbar.label;"
+                label="&pageAction.removeFromUrlbar.label;"
                 oncommand="BrowserPageActions.togglePinningForContextAction();"/>
       <menuseparator class="pageActionContextMenuItem extensionPinned extensionUnpinned"/>
       <menuitem class="pageActionContextMenuItem extensionPinned extensionUnpinned"
@@ -542,20 +609,20 @@ xmlns="http://www.w3.org/1999/xhtml"
     <tooltip id="tabbrowser-tab-tooltip" onpopupshowing="gBrowser.createTooltip(event);"/>
 
     <tooltip id="back-button-tooltip">
-      <label class="tooltip-label" value="&backButton.tooltip;"/>
+      <description class="tooltip-label" value="&backButton.tooltip;"/>
 #ifdef XP_MACOSX
-      <label class="tooltip-label" value="&backForwardButtonMenuMac.tooltip;"/>
+      <description class="tooltip-label" value="&backForwardButtonMenuMac.tooltip;"/>
 #else
-      <label class="tooltip-label" value="&backForwardButtonMenu.tooltip;"/>
+      <description class="tooltip-label" value="&backForwardButtonMenu.tooltip;"/>
 #endif
     </tooltip>
 
     <tooltip id="forward-button-tooltip">
-      <label class="tooltip-label" value="&forwardButton.tooltip;"/>
+      <description class="tooltip-label" value="&forwardButton.tooltip;"/>
 #ifdef XP_MACOSX
-      <label class="tooltip-label" value="&backForwardButtonMenuMac.tooltip;"/>
+      <description class="tooltip-label" value="&backForwardButtonMenuMac.tooltip;"/>
 #else
-      <label class="tooltip-label" value="&backForwardButtonMenu.tooltip;"/>
+      <description class="tooltip-label" value="&backForwardButtonMenu.tooltip;"/>
 #endif
     </tooltip>
 
@@ -809,7 +876,7 @@ xmlns="http://www.w3.org/1999/xhtml"
                        ondrop="homeButtonObserver.onDrop(event)"
                        ondragexit="homeButtonObserver.onDragExit(event)"
                        key="goHome"
-                       onclick="BrowserGoHome(event);"
+                       onclick="BrowserHome(event);"
                        cui-areatype="toolbar"
                        tooltiptext="&homeButton.defaultPage.tooltip;"/>
         <toolbarspring cui-areatype="toolbar" class="chromeclass-toolbar-additional"/>

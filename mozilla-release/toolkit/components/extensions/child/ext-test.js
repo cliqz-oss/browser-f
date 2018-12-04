@@ -19,6 +19,11 @@
  *        True if the error matches the expected error.
  */
 const errorMatches = (error, expectedError, context) => {
+  if (typeof error === "object" && error !== null &&
+      !context.principal.subsumes(Cu.getObjectPrincipal(error))) {
+    Cu.reportError("Error object belongs to the wrong scope.");
+    return false;
+  }
   if (expectedError === null) {
     return true;
   }
@@ -75,7 +80,7 @@ this.test = class extends ExtensionAPI {
     const {extension} = context;
 
     function getStack() {
-      return new context.cloneScope.Error().stack.replace(/^/gm, "    ");
+      return new context.Error().stack.replace(/^/gm, "    ");
     }
 
     function assertTrue(value, msg) {

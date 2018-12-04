@@ -8,8 +8,8 @@
 #include "SrtpFlow.h"
 
 #include "srtp.h"
-#include "ssl.h"
-#include "sslproto.h"
+
+#include "transportlayerdtls.h"
 
 #include "mozilla/RefPtr.h"
 
@@ -24,6 +24,16 @@ SrtpFlow::~SrtpFlow() {
   if (session_) {
     srtp_dealloc(session_);
   }
+}
+
+unsigned int SrtpFlow::KeySize(int cipher_suite) {
+  srtp_profile_t profile = static_cast<srtp_profile_t>(cipher_suite);
+  return srtp_profile_get_master_key_length(profile);
+}
+
+unsigned int SrtpFlow::SaltSize(int cipher_suite) {
+  srtp_profile_t profile = static_cast<srtp_profile_t>(cipher_suite);
+  return srtp_profile_get_master_salt_length(profile);
 }
 
 RefPtr<SrtpFlow> SrtpFlow::Create(int cipher_suite,
@@ -41,8 +51,9 @@ RefPtr<SrtpFlow> SrtpFlow::Create(int cipher_suite,
     return nullptr;
   }
 
-  if (key_len != SRTP_TOTAL_KEY_LENGTH) {
-    MOZ_MTLOG(ML_ERROR, "Invalid SRTP key length");
+  if ((key_len > SRTP_MAX_KEY_LENGTH) ||
+      (key_len < SRTP_MIN_KEY_LENGTH)) {
+    MOZ_ASSERT(false, "Invalid SRTP key length");
     return nullptr;
   }
 
@@ -52,13 +63,25 @@ RefPtr<SrtpFlow> SrtpFlow::Create(int cipher_suite,
   // Note that we set the same cipher suite for RTP and RTCP
   // since any flow can only have one cipher suite with DTLS-SRTP
   switch (cipher_suite) {
-    case SRTP_AES128_CM_HMAC_SHA1_80:
+    case kDtlsSrtpAeadAes256Gcm:
+      MOZ_MTLOG(ML_DEBUG,
+                  "Setting SRTP cipher suite SRTP_AEAD_AES_256_GCM");
+      srtp_crypto_policy_set_aes_gcm_256_16_auth(&policy.rtp);
+      srtp_crypto_policy_set_aes_gcm_256_16_auth(&policy.rtcp);
+      break;
+    case kDtlsSrtpAeadAes128Gcm:
+      MOZ_MTLOG(ML_DEBUG,
+                  "Setting SRTP cipher suite SRTP_AEAD_AES_128_GCM");
+      srtp_crypto_policy_set_aes_gcm_128_16_auth(&policy.rtp);
+      srtp_crypto_policy_set_aes_gcm_128_16_auth(&policy.rtcp);
+      break;
+    case kDtlsSrtpAes128CmHmacSha1_80:
       MOZ_MTLOG(ML_DEBUG,
                   "Setting SRTP cipher suite SRTP_AES128_CM_HMAC_SHA1_80");
       srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&policy.rtp);
       srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&policy.rtcp);
       break;
-    case SRTP_AES128_CM_HMAC_SHA1_32:
+    case kDtlsSrtpAes128CmHmacSha1_32:
       MOZ_MTLOG(ML_DEBUG,
                   "Setting SRTP cipher suite SRTP_AES128_CM_HMAC_SHA1_32");
       srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&policy.rtp);

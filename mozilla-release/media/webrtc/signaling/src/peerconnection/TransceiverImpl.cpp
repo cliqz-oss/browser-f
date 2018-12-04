@@ -102,7 +102,7 @@ TransceiverImpl::InitAudio()
 void
 TransceiverImpl::InitVideo()
 {
-  mConduit = VideoSessionConduit::Create(mCallWrapper);
+  mConduit = VideoSessionConduit::Create(mCallWrapper, mStsThread);
 
   if (!mConduit) {
     MOZ_MTLOG(ML_ERROR, mPCHandle << "[" << mMid << "]: " << __FUNCTION__ <<
@@ -479,9 +479,13 @@ TransceiverImpl::SyncWithJS(dom::RTCRtpTransceiver& aJsTransceiver,
     }
   }
 
-  // TODO: Update conduits?
-
-  mJsepTransceiver->mSendTrack.SetJsConstraints(constraints);
+  if (mJsepTransceiver->mSendTrack.SetJsConstraints(constraints)) {
+    if (mTransmitPipeline->Transmitting()) {
+      WebrtcGmpPCHandleSetter setter(mPCHandle);
+      DebugOnly<nsresult> rv = UpdateConduit();
+      MOZ_ASSERT(NS_SUCCEEDED(rv));
+    }
+  }
 
   // Update webrtc track id in JS; the ids in SDP are not surfaced to content,
   // because they don't follow the rules that track/stream ids must. Our JS
@@ -877,7 +881,9 @@ TransceiverImpl::UpdateVideoConduit()
   if (mJsepTransceiver->HasBundleLevel() &&
       (!mJsepTransceiver->mRecvTrack.GetNegotiatedDetails() ||
        !mJsepTransceiver->mRecvTrack.GetNegotiatedDetails()->GetExt(webrtc::RtpExtension::kMIdUri))) {
-    conduit->DisableSsrcChanges();
+    mStsThread->Dispatch(NewRunnableMethod(
+      "VideoSessionConduit::DisableSsrcChanges",
+      conduit, &VideoSessionConduit::DisableSsrcChanges));
   }
 
   if (mJsepTransceiver->mRecvTrack.GetNegotiatedDetails() &&

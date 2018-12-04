@@ -294,6 +294,26 @@ MLGDevice::GetBufferForColorSpace(YUVColorSpace aColorSpace)
   return resource;
 }
 
+RefPtr<MLGBuffer>
+MLGDevice::GetBufferForColorDepthCoefficient(ColorDepth aColorDepth)
+{
+  if (mColorDepthBuffers[aColorDepth]) {
+    return mColorDepthBuffers[aColorDepth];
+  }
+
+  YCbCrColorDepthConstants buffer;
+  buffer.coefficient = gfx::RescalingFactorForColorDepth(aColorDepth);
+
+  RefPtr<MLGBuffer> resource = CreateBuffer(
+    MLGBufferType::Constant, sizeof(buffer), MLGUsage::Immutable, &buffer);
+  if (!resource) {
+    return nullptr;
+  }
+
+  mColorDepthBuffers[aColorDepth] = resource;
+  return resource;
+}
+
 bool
 MLGDevice::Synchronize()
 {

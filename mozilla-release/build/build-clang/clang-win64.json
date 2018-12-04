@@ -15,6 +15,10 @@
     "ml": "ml64.exe",
     "patches": [
       "workaround-issue38586.patch",
+      "r342649-hotpatch-8-byte-nops.patch",
+      "r342652-unpoison-thread-stacks.patch",
+      "r343123-pin-asan-dll.patch",
+      "aarch64-vastart-checking.patch",
       "loosen-msvc-detection.patch"
     ]
 }
