@@ -19,7 +19,8 @@
 <!ENTITY installAddonFromFile.accesskey       "I">
 <!ENTITY toolsMenu.tooltip                    "Tools for all add-ons">
 <!ENTITY recommendedAddon.label               "Recommended Add-ons">
-<!ENTITY installedAddon.label                 "Installed Add-ons">
+<!ENTITY installAddonDisclaimer.label         "Proceed with caution when installing add-ons. ">
+<!ENTITY installAddonDisclaimer.learnMore     "Learn more about the risks">
 
 
 <!ENTITY showUnsignedExtensions.button.label  "Some extensions could not be verified">

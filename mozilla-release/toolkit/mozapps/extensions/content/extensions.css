@@ -194,6 +194,10 @@ richlistitem:not([selected]) * {
   display: none;
 }
 
+#addon-list {
+  margin-bottom: 20px;
+}
+
 #recommended-addon-list {
   margin: 10px 0;
   padding: 0 48px;

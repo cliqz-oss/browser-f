@@ -2413,7 +2413,6 @@ var gListView = {
   async initialize() {
     this.node = document.getElementById("list-view");
     this._listBox = document.getElementById("addon-list");
-    this._listBoxHeadng = document.getElementById("addon-list-heading");
     this._emptyNotice = document.getElementById("addon-list-empty");
 
     this._listBox.addEventListener("keydown", (aEvent) => {
@@ -2452,7 +2451,8 @@ var gListView = {
     }
 
     // CLIQZ-SPECIAL extensions.getAddons.themes.browseURL was removed by FF 64
-    await this.initializeRecommended();
+    await this.handleRecommended();
+    document.getElementById("installAddonDisclaimer-learnmore-link").setAttribute("href", "https://cliqz.com");
   },
 
   show(aType, aRequest) {
@@ -2468,6 +2468,14 @@ var gListView = {
     this._type = aType;
     this.node.setAttribute("type", aType);
     this.showEmptyNotice(false);
+    if (aType !== 'extension') {
+      document.getElementById('installAddonDisclaimer').hidden = true;
+      this.toggleRecommended(true);
+    } else {
+      document.getElementById('installAddonDisclaimer').hidden = false;
+      this.toggleRecommended(false);
+    }
+    
 
     this._listBox.textContent = "";
 
@@ -2557,7 +2565,6 @@ var gListView = {
     this._emptyNotice.hidden = !aShow;
 #endif
     this._listBox.hidden = aShow;
-    this._listBoxHeadng.hidden = aShow;
   },
 
   onSortChanged(aSortBy, aAscending) {
@@ -2645,7 +2652,8 @@ var gListView = {
     return null;
   },
 
-  async initializeRecommended() {
+  async handleRecommended() {
+    const viewType = this.node.getAttribute("type");
     const installedAddons = await AddonManager.getAddonsByTypes(["extension"]);
     const installedAddonsIds = installedAddons.map(a => a.id);
     const recommendedDiv = document.getElementById("recommended-addon-list");
@@ -2653,16 +2661,23 @@ var gListView = {
       recommendedDiv.removeChild(recommendedDiv.firstChild);
     }
     const recommendedAddons = Object.keys(RECOMMENDED_ADDONS).filter(a => !installedAddonsIds.includes(a));
-    if(recommendedAddons.length > 0) {
-      document.getElementById('recommendedBlock').hidden = false;
+    if (recommendedAddons.length > 0) {
+      if (viewType === 'extension') {
+        this.toggleRecommended(false);
+      }
       recommendedAddons.forEach(async rAddon => {
         const addon = RECOMMENDED_ADDONS[rAddon];
         let _installed_addon = new ItemHandler(addon);
         recommendedDiv.appendChild(_installed_addon.listItem);
       })
     } else {
-      document.getElementById('recommendedBlock').hidden = true;
+      this.toggleRecommended(true);
     }
+  },
+
+  toggleRecommended(isHidden) {
+    const recommendedBlock = document.getElementById('recommendedBlock');
+    recommendedBlock.hidden = isHidden;
   }
 };
 
@@ -3655,7 +3670,7 @@ ItemHandler.prototype = {
             self.onFaliure(self, reloadTimeout);
           },
           onInstallEnded: async function(aInstall, aAddon) {
-            await gListView.initializeRecommended();
+            await gListView.handleRecommended();
           }
         });
         addon.install();

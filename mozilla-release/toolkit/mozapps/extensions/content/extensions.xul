@@ -371,6 +371,14 @@
                 <spacer class="alert-spacer-after"/>
               </vbox>
 #endif
+              <vbox class="alert-container" id="installAddonDisclaimer">
+                <vbox class="alert">
+                  <description>&installAddonDisclaimer.label;
+                    <label class="text-link plain" id="installAddonDisclaimer-learnmore-link">&installAddonDisclaimer.learnMore;</label>
+                  </description>
+                </vbox>
+              </vbox>
+              <richlistbox id="addon-list" class="list"/>
               <vbox id="recommendedBlock" hidden="true">
                 <hbox class="subcategory">
                   <label class="header-name" flex="1">
@@ -379,12 +387,6 @@
                 </hbox>
                 <richlistbox id="recommended-addon-list" class="list" flex="1"/>
               </vbox>
-              <hbox class="subcategory" id="addon-list-heading">
-                <label class="header-name" flex="1">
-                  &installedAddon.label;
-                </label>
-              </hbox>
-              <richlistbox id="addon-list" class="list" flex="1"/>
             </vbox>
 
             <!-- legacy extensions view -->
