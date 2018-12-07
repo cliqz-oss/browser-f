@@ -119,18 +119,8 @@ impl<T, U> Polygon<T, U> where
     U: fmt::Debug,
 {
     /// Construct a polygon from points that are already transformed.
-    #[deprecated(since = "0.12.1", note = "Use try_from_points instead")]
-    pub fn from_points(
-        points: [TypedPoint3D<T, U>; 4],
-        anchor: usize,
-    ) -> Self {
-        Self::try_from_points(points, anchor).unwrap()
-    }
-
-    /// Construct a polygon from points that are already transformed.
     /// Return None if the polygon doesn't contain any space.
-    /// This method will be removed in `from_points` in the next breaking release.
-    pub fn try_from_points(
+    pub fn from_points(
         points: [TypedPoint3D<T, U>; 4],
         anchor: usize,
     ) -> Option<Self> {
@@ -171,15 +161,19 @@ impl<T, U> Polygon<T, U> where
 
     /// Construct a polygon from a non-transformed rectangle.
     pub fn from_rect(rect: TypedRect<T, U>, anchor: usize) -> Self {
-        Self::from_points(
-            [
+        Polygon {
+            points: [
                 rect.origin.to_3d(),
                 rect.top_right().to_3d(),
                 rect.bottom_right().to_3d(),
                 rect.bottom_left().to_3d(),
             ],
+            plane: Plane {
+                normal: TypedVector3D::new(T::zero(), T::zero(), T::one()),
+                offset: T::zero(),
+            },
             anchor,
-        )
+        }
     }
 
     /// Construct a polygon from a rectangle with 3D transform.
@@ -197,11 +191,46 @@ impl<T, U> Polygon<T, U> where
             transform.transform_point3d(&rect.bottom_right().to_3d())?,
             transform.transform_point3d(&rect.bottom_left().to_3d())?,
         ];
+        Self::from_points(points, anchor)
+    }
 
-        //Note: this code path could be more efficient if we had inverse-transpose
-        //let n4 = transform.transform_point4d(&TypedPoint4D::new(T::zero(), T::zero(), T::one(), T::zero()));
-        //let normal = TypedPoint3D::new(n4.x, n4.y, n4.z);
-        Self::try_from_points(points, anchor)
+    /// Construct a polygon from a rectangle with an invertible 3D transform.
+    pub fn from_transformed_rect_with_inverse<V>(
+        rect: TypedRect<T, V>,
+        transform: &TypedTransform3D<T, V, U>,
+        inv_transform: &TypedTransform3D<T, U, V>,
+        anchor: usize,
+    ) -> Option<Self>
+    where
+        T: Trig + ops::Neg<Output=T>,
+    {
+        let points = [
+            transform.transform_point3d(&rect.origin.to_3d())?,
+            transform.transform_point3d(&rect.top_right().to_3d())?,
+            transform.transform_point3d(&rect.bottom_right().to_3d())?,
+            transform.transform_point3d(&rect.bottom_left().to_3d())?,
+        ];
+
+        // Compute the normal directly from the transformation. This guarantees consistent polygons
+        // generated from various local rectanges on the same geometry plane.
+        let normal_raw = TypedVector3D::new(inv_transform.m13, inv_transform.m23, inv_transform.m33);
+        let normal_sql = normal_raw.square_length();
+        if normal_sql.approx_eq(&T::zero()) || transform.m44.approx_eq(&T::zero()) {
+            None
+        } else {
+            let normal = normal_raw / normal_sql.sqrt();
+            let offset = -TypedVector3D::new(transform.m41, transform.m42, transform.m43)
+                .dot(normal) / transform.m44;
+
+            Some(Polygon {
+                points,
+                plane: Plane {
+                    normal,
+                    offset,
+                },
+                anchor,
+            })
+        }
     }
 
     /// Bring a point into the local coordinate space, returning
@@ -243,7 +272,7 @@ impl<T, U> Polygon<T, U> where
         //Note: this code path could be more efficient if we had inverse-transpose
         //let n4 = transform.transform_point4d(&TypedPoint4D::new(T::zero(), T::zero(), T::one(), T::zero()));
         //let normal = TypedPoint3D::new(n4.x, n4.y, n4.z);
-        Polygon::try_from_points(points, self.anchor)
+        Polygon::from_points(points, self.anchor)
     }
 
     /// Check if all the points are indeed placed on the plane defined by

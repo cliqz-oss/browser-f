@@ -269,7 +269,11 @@ var SafeBrowsing = {
     this.downloadsEnabled = Services.prefs.getBoolPref("browser.safebrowsing.downloads.enabled");
     this.passwordsEnabled = Services.prefs.getBoolPref("browser.safebrowsing.passwords.enabled");
 #if 0
-    this.trackingEnabled = contentBlockingEnabled && (Services.prefs.getBoolPref("privacy.trackingprotection.enabled") || Services.prefs.getBoolPref("privacy.trackingprotection.pbmode.enabled"));
+    this.trackingEnabled = contentBlockingEnabled &&
+                           (Services.prefs.getBoolPref("toolkit.telemetry.isGeckoViewMode", false) ||
+                            Services.prefs.getBoolPref("privacy.trackingprotection.enabled") ||
+                            Services.prefs.getBoolPref("privacy.trackingprotection.pbmode.enabled"));
+    this.blockedEnabled = Services.prefs.getBoolPref("browser.safebrowsing.blockedURIs.enabled");
     this.trackingAnnotations = Services.prefs.getBoolPref("privacy.trackingprotection.annotate_channels");
 #endif
     this.blockedEnabled = Services.prefs.getBoolPref("browser.safebrowsing.blockedURIs.enabled");

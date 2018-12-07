@@ -33,7 +33,7 @@ function checkMenuEntries(expectedValues) {
 function getMenuEntries() {
   // Could perhaps pull values directly from the controller, but it seems
   // more reliable to test the values that are actually in the richlistbox?
-  return Array.map(searchBar.textbox.popup.richlistbox.children,
+  return Array.map(searchBar.textbox.popup.richlistbox.itemChildren,
                    item => item.getAttribute("ac-value"));
 }
 
@@ -70,8 +70,7 @@ function promiseSetEngine() {
         case "engine-current":
           ok(ss.currentEngine.name == "Bug 426329", "currentEngine set");
           searchBar = BrowserSearch.searchBar;
-          searchButton = document.getAnonymousElementByAttribute(searchBar,
-                             "anonid", "search-go-button");
+          searchButton = searchBar.querySelector(".search-go-button");
           ok(searchButton, "got search-go-button");
           searchBar.value = "test";
 
@@ -83,7 +82,7 @@ function promiseSetEngine() {
 
     Services.obs.addObserver(observer, "browser-search-engine-modified");
     ss.addEngine("http://mochi.test:8888/browser/browser/components/search/test/426329.xml",
-                 null, "data:image/x-icon,%00", false);
+                 "data:image/x-icon,%00", false);
   });
 }
 
@@ -117,7 +116,7 @@ async function prepareTest() {
   if (document.activeElement == searchBar)
     return;
 
-  let focusPromise = BrowserTestUtils.waitForEvent(searchBar, "focus");
+  let focusPromise = BrowserTestUtils.waitForEvent(searchBar.textbox, "focus");
   gURLBar.focus();
   searchBar.focus();
   await focusPromise;
@@ -201,7 +200,9 @@ add_task(async function testShiftMiddleClick() {
 
 add_task(async function testRightClick() {
   preTabNo = gBrowser.tabs.length;
-  gBrowser.selectedBrowser.loadURI("about:blank");
+  BrowserTestUtils.loadURI(gBrowser.selectedBrowser, "about:blank", {
+    triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}),
+  });
   await new Promise(resolve => {
     setTimeout(function() {
       is(gBrowser.tabs.length, preTabNo, "RightClick did not open new tab");
@@ -255,7 +256,9 @@ add_task(async function asyncCleanup() {
   while (gBrowser.tabs.length != 1) {
     gBrowser.removeTab(gBrowser.tabs[0], {animate: false});
   }
-  gBrowser.selectedBrowser.loadURI("about:blank");
+  BrowserTestUtils.loadURI(gBrowser.selectedBrowser, "about:blank", {
+    triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}),
+  });
   await promiseRemoveEngine();
 });
 

@@ -23,14 +23,14 @@ SVGFEOffsetElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 
 nsSVGElement::NumberInfo SVGFEOffsetElement::sNumberInfo[2] =
 {
-  { &nsGkAtoms::dx, 0, false },
-  { &nsGkAtoms::dy, 0, false }
+  { nsGkAtoms::dx, 0, false },
+  { nsGkAtoms::dy, 0, false }
 };
 
 nsSVGElement::StringInfo SVGFEOffsetElement::sStringInfo[2] =
 {
-  { &nsGkAtoms::result, kNameSpaceID_None, true },
-  { &nsGkAtoms::in, kNameSpaceID_None, true }
+  { nsGkAtoms::result, kNameSpaceID_None, true },
+  { nsGkAtoms::in, kNameSpaceID_None, true }
 };
 
 //----------------------------------------------------------------------
@@ -66,13 +66,13 @@ SVGFEOffsetElement::GetPrimitiveDescription(nsSVGFilterInstance* aInstance,
                                             const nsTArray<bool>& aInputsAreTainted,
                                             nsTArray<RefPtr<SourceSurface>>& aInputImages)
 {
-  FilterPrimitiveDescription descr(PrimitiveType::Offset);
+  OffsetAttributes atts;
   IntPoint offset(int32_t(aInstance->GetPrimitiveNumber(
                             SVGContentUtils::X, &mNumberAttributes[DX])),
                   int32_t(aInstance->GetPrimitiveNumber(
                             SVGContentUtils::Y, &mNumberAttributes[DY])));
-  descr.Attributes().Set(eOffsetOffset, offset);
-  return descr;
+  atts.mValue = offset;
+  return FilterPrimitiveDescription(AsVariant(std::move(atts)));
 }
 
 bool

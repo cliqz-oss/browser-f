@@ -42,6 +42,9 @@ with Files("AboutNewTab.jsm"):
     BUG_COMPONENT = ("Firefox", "New Tab Page")
 #endif
 
+with Files("AsanReporter.jsm"):
+    BUG_COMPONENT = ("Firefox Build System", "General")
+
 with Files('AsyncTabSwitcher.jsm'):
     BUG_COMPONENT = ('Firefox', 'Tabbed Browser')
 
@@ -62,6 +65,9 @@ with Files("ExtensionsUI.jsm"):
 
 with Files("LaterRun.jsm"):
     BUG_COMPONENT = ("Firefox", "Tours")
+
+with Files("LiveBookmarkMigrator.jsm"):
+    BUG_COMPONENT = ("Firefox", "RSS Discovery and Preview")
 
 with Files("OpenInTabsUtils.jsm"):
     BUG_COMPONENT = ("Firefox", "Tabbed Browser")
@@ -131,6 +137,7 @@ EXTRA_JS_MODULES += [
     'FormValidationHandler.jsm',
     'HomePage.jsm',
     'LaterRun.jsm',
+    'LiveBookmarkMigrator.jsm',
     'OpenInTabsUtils.jsm',
     'PermissionUI.jsm',
     'PingCentre.jsm',
@@ -157,6 +164,11 @@ if CONFIG['MOZ_ACTIVITY_STREAM']:
         'AboutNewTab.jsm',
     ]
 
+
+if CONFIG['MOZ_ASAN_REPORTER']:
+    EXTRA_JS_MODULES += [
+        'AsanReporter.jsm',
+    ]
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
     EXTRA_JS_MODULES += [

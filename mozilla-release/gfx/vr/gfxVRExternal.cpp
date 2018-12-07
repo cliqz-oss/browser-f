@@ -54,6 +54,7 @@ using namespace mozilla::dom;
 
 VRDisplayExternal::VRDisplayExternal(const VRDisplayState& aDisplayState)
   : VRDisplayHost(VRDeviceType::External)
+  , mHapticPulseRemaining{}
   , mBrowserState{}
   , mLastSensorState{}
 {
@@ -73,6 +74,7 @@ VRDisplayExternal::~VRDisplayExternal()
 void
 VRDisplayExternal::Destroy()
 {
+  StopAllHaptics();
   StopPresentation();
 }
 
@@ -82,16 +84,32 @@ VRDisplayExternal::ZeroSensor()
 }
 
 void
-VRDisplayExternal::Refresh()
+VRDisplayExternal::Run1msTasks(double aDeltaTime)
 {
+  VRDisplayHost::Run1msTasks(aDeltaTime);
+  UpdateHaptics(aDeltaTime);
+}
 
+void
+VRDisplayExternal::Run10msTasks()
+{
+  VRDisplayHost::Run10msTasks();
+  ExpireNavigationTransition();
+  PullState();
+  PushState();
+
+  // 1ms tasks will always be run before
+  // the 10ms tasks, so no need to include
+  // them here as well.
+}
+
+void
+VRDisplayExternal::ExpireNavigationTransition()
+{
   if (!mVRNavigationTransitionEnd.IsNull() &&
       TimeStamp::Now() > mVRNavigationTransitionEnd) {
     mBrowserState.navigationTransitionActive = false;
   }
-
-  PullState();
-  PushState();
 }
 
 VRHMDSensorState
@@ -114,46 +132,16 @@ VRDisplayExternal::StartPresentation()
   mBrowserState.layerState[0].type = VRLayerType::LayerType_Stereo_Immersive;
   PushState();
 
+  mDisplayInfo.mDisplayState.mLastSubmittedFrameId = 0;
+  if (mDisplayInfo.mDisplayState.mReportsDroppedFrames) {
+    mTelemetry.mLastDroppedFrameCount = mDisplayInfo.mDisplayState.mDroppedFrameCount;
+  }
+
 #if defined(MOZ_WIDGET_ANDROID)
   mLastSubmittedFrameId = 0;
   mLastStartedFrame = 0;
-  /**
-   * Android compositor is paused when presentation starts. That causes VRManager::NotifyVsync() not to be called.
-   * We post a VRTask to call VRManager::NotifyVsync() while the compositor is paused on Android.
-   * VRManager::NotifyVsync() should be called constinuosly while the compositor is paused because Gecko WebVR Architecture
-   * relies on that to act as a "watchdog" in order to avoid render loop stalls and recover from SubmitFrame call timeouts.
-   */
-  PostVRTask();
 #endif
-  // TODO - Implement telemetry:
-
-  // mTelemetry.mLastDroppedFrameCount = stats.m_nNumReprojectedFrames;
 }
-
-#if defined(MOZ_WIDGET_ANDROID)
-void
-VRDisplayExternal::PostVRTask() {
-  MessageLoop * vrLoop = VRListenerThreadHolder::Loop();
-  if (!vrLoop || !mBrowserState.presentationActive) {
-    return;
-  }
-  RefPtr<Runnable> task = NewRunnableMethod(
-    "VRDisplayExternal::RunVRTask",
-    this,
-    &VRDisplayExternal::RunVRTask);
-  VRListenerThreadHolder::Loop()->PostDelayedTask(task.forget(), 50);
-}
-
-void
-VRDisplayExternal::RunVRTask() {
-  if (mBrowserState.presentationActive) {
-    VRManager *vm = VRManager::Get();
-    vm->NotifyVsync(TimeStamp::Now());
-    PostVRTask();
-  }
-}
-
-#endif // defined(MOZ_WIDGET_ANDROID)
 
 void
 VRDisplayExternal::StopPresentation()
@@ -168,20 +156,31 @@ VRDisplayExternal::StopPresentation()
 
   PushState(true);
 
-  // TODO - Implement telemetry:
+  Telemetry::HistogramID timeSpentID = Telemetry::HistogramCount;
+  Telemetry::HistogramID droppedFramesID = Telemetry::HistogramCount;
+  int viewIn = 0;
 
-/*
-  const TimeDuration duration = TimeStamp::Now() - mTelemetry.mPresentationStart;
-  Telemetry::Accumulate(Telemetry::WEBVR_USERS_VIEW_IN, 2);
-  Telemetry::Accumulate(Telemetry::WEBVR_TIME_SPENT_VIEWING_IN_OPENVR,
-                        duration.ToMilliseconds());
+  if (mDisplayInfo.mDisplayState.mEightCC == GFX_VR_EIGHTCC('O', 'c', 'u', 'l', 'u', 's', ' ', 'D')) {
+    // Oculus Desktop API
+    timeSpentID = Telemetry::WEBVR_TIME_SPENT_VIEWING_IN_OCULUS;
+    droppedFramesID = Telemetry::WEBVR_DROPPED_FRAMES_IN_OCULUS;
+    viewIn = 1;
+  } else if (mDisplayInfo.mDisplayState.mEightCC == GFX_VR_EIGHTCC('O', 'p', 'e', 'n', 'V', 'R', ' ', ' ')) {
+    // OpenVR API
+    timeSpentID = Telemetry::WEBVR_TIME_SPENT_VIEWING_IN_OPENVR;
+    droppedFramesID = Telemetry::WEBVR_DROPPED_FRAMES_IN_OPENVR;
+    viewIn = 2;
+  }
 
-  ::vr::Compositor_CumulativeStats stats;
-  mVRCompositor->GetCumulativeStats(&stats, sizeof(::vr::Compositor_CumulativeStats));
-  const uint32_t droppedFramesPerSec = (stats.m_nNumReprojectedFrames -
-                                        mTelemetry.mLastDroppedFrameCount) / duration.ToSeconds();
-  Telemetry::Accumulate(Telemetry::WEBVR_DROPPED_FRAMES_IN_OPENVR, droppedFramesPerSec);
-*/
+  if (viewIn) {
+    const TimeDuration duration = TimeStamp::Now() - mTelemetry.mPresentationStart;
+    Telemetry::Accumulate(Telemetry::WEBVR_USERS_VIEW_IN, viewIn);
+    Telemetry::Accumulate(timeSpentID,
+                          duration.ToMilliseconds());
+    const uint32_t droppedFramesPerSec = (mDisplayInfo.mDisplayState.mDroppedFrameCount -
+                                          mTelemetry.mLastDroppedFrameCount) / duration.ToSeconds();
+    Telemetry::Accumulate(droppedFramesID, droppedFramesPerSec);
+  }
 }
 
 void
@@ -218,16 +217,11 @@ VRDisplayExternal::PopulateLayerTexture(const layers::SurfaceDescriptor& aTextur
     }
 #elif defined(XP_MACOSX)
     case SurfaceDescriptor::TSurfaceDescriptorMacIOSurface: {
+      // MacIOSurface ptr can't be fetched or used at different threads.
+      // Both of fetching and using this MacIOSurface are at the VRService thread.
       const auto& desc = aTexture.get_SurfaceDescriptorMacIOSurface();
-      RefPtr<MacIOSurface> surf = MacIOSurface::LookupSurface(desc.surfaceId(),
-                                                              desc.scaleFactor(),
-                                                              !desc.isOpaque());
-      if (!surf) {
-        NS_WARNING("VRDisplayHost::SubmitFrame failed to get a MacIOSurface");
-        return false;
-      }
       *aTextureType = VRLayerTextureType::LayerTextureType_MacIOSurface;
-      *aTextureHandle = (void *)surf->GetIOSurfacePtr();
+      *aTextureHandle = desc.surfaceId();
       return true;
     }
 #elif defined(MOZ_WIDGET_ANDROID)
@@ -306,6 +300,125 @@ VRDisplayExternal::SubmitFrame(const layers::SurfaceDescriptor& aTexture,
 }
 
 void
+VRDisplayExternal::VibrateHaptic(uint32_t aControllerIdx,
+                                 uint32_t aHapticIndex,
+                                 double aIntensity,
+                                 double aDuration,
+                                 const VRManagerPromise& aPromise)
+{
+  TimeStamp now = TimeStamp::Now();
+  size_t bestSlotIndex = 0;
+  // Default to an empty slot, or the slot holding the oldest haptic pulse
+  for (size_t i = 0; i < mozilla::ArrayLength(mBrowserState.hapticState); i++) {
+    const VRHapticState& state = mBrowserState.hapticState[i];
+    if (state.inputFrameID == 0) {
+      // Unused slot, use it
+      bestSlotIndex = i;
+      break;
+    }
+    if (mHapticPulseRemaining[i] < mHapticPulseRemaining[bestSlotIndex]) {
+      // If no empty slots are available, fall back to overriding
+      // the pulse which is ending soonest.
+      bestSlotIndex = i;
+    }
+  }
+  // Override the last pulse on the same actuator if present.
+  for (size_t i = 0; i < mozilla::ArrayLength(mBrowserState.hapticState); i++) {
+    const VRHapticState& state = mBrowserState.hapticState[i];
+    if (state.inputFrameID == 0) {
+      // This is an empty slot -- no match
+      continue;
+    }
+    if (state.controllerIndex == aControllerIdx &&
+        state.hapticIndex == aHapticIndex) {
+      // Found pulse on same actuator -- let's override it.
+      bestSlotIndex = i;
+    }
+  }
+  ClearHapticSlot(bestSlotIndex);
+
+  // Populate the selected slot with new haptic state
+  size_t bufferIndex = mDisplayInfo.mFrameId % kVRMaxLatencyFrames;
+  VRHapticState& bestSlot = mBrowserState.hapticState[bestSlotIndex];
+  bestSlot.inputFrameID =
+    mDisplayInfo.mLastSensorState[bufferIndex].inputFrameID;
+  bestSlot.controllerIndex = aControllerIdx;
+  bestSlot.hapticIndex = aHapticIndex;
+  bestSlot.pulseStart =
+    (now - mDisplayInfo.mLastFrameStart[bufferIndex]).ToSeconds();
+  bestSlot.pulseDuration = aDuration;
+  bestSlot.pulseIntensity = aIntensity;
+   // Convert from seconds to ms
+  mHapticPulseRemaining[bestSlotIndex] = aDuration * 1000.0f;
+  MOZ_ASSERT(bestSlotIndex <= mHapticPromises.Length());
+  if (bestSlotIndex == mHapticPromises.Length()) {
+    mHapticPromises.AppendElement(
+      UniquePtr<VRManagerPromise>(new VRManagerPromise(aPromise)));
+  } else {
+    mHapticPromises[bestSlotIndex] =
+      UniquePtr<VRManagerPromise>(new VRManagerPromise(aPromise));
+  }
+  PushState();
+}
+
+void
+VRDisplayExternal::ClearHapticSlot(size_t aSlot)
+{
+  MOZ_ASSERT(aSlot < mozilla::ArrayLength(mBrowserState.hapticState));
+  memset(&mBrowserState.hapticState[aSlot], 0, sizeof(VRHapticState));
+  mHapticPulseRemaining[aSlot] = 0.0f;
+  if (aSlot < mHapticPromises.Length() && mHapticPromises[aSlot]) {
+    VRManager* vm = VRManager::Get();
+    vm->NotifyVibrateHapticCompleted(*mHapticPromises[aSlot]);
+    mHapticPromises[aSlot] = nullptr;
+  }
+}
+
+void
+VRDisplayExternal::UpdateHaptics(double aDeltaTime)
+{
+  bool bNeedPush = false;
+  // Check for any haptic pulses that have ended and clear them
+  for (size_t i = 0; i < mozilla::ArrayLength(mBrowserState.hapticState); i++) {
+    const VRHapticState& state = mBrowserState.hapticState[i];
+    if (state.inputFrameID == 0) {
+      // Nothing in this slot
+      continue;
+    }
+    mHapticPulseRemaining[i] -= aDeltaTime;
+    if (mHapticPulseRemaining[i] <= 0.0f) {
+      // The pulse has finished
+      ClearHapticSlot(i);
+      bNeedPush = true;
+    }
+  }
+  if (bNeedPush) {
+    PushState();
+  }
+}
+
+void
+VRDisplayExternal::StopVibrateHaptic(uint32_t aControllerIdx)
+{
+  for (size_t i = 0; i < mozilla::ArrayLength(mBrowserState.hapticState); i++) {
+    VRHapticState& state = mBrowserState.hapticState[i];
+    if (state.controllerIndex == aControllerIdx) {
+      memset(&state, 0, sizeof(VRHapticState));
+    }
+  }
+  PushState();
+}
+
+void
+VRDisplayExternal::StopAllHaptics()
+{
+  for (size_t i = 0; i < mozilla::ArrayLength(mBrowserState.hapticState); i++) {
+    ClearHapticSlot(i);
+  }
+  PushState();
+}
+
+void
 VRDisplayExternal::PushState(bool aNotifyCond)
 {
   VRManager *vm = VRManager::Get();
@@ -347,10 +460,10 @@ VRSystemManagerExternal::VRSystemManagerExternal(VRExternalShmem* aAPIShmem /* =
 #elif defined(XP_WIN)
   mShmemFile = NULL;
 #elif defined(MOZ_WIDGET_ANDROID)
-  mDoShutdown = false;
   mExternalStructFailed = false;
   mEnumerationCompleted = false;
 #endif
+  mDoShutdown = false;
 
   if (!aAPIShmem) {
     OpenShmem();
@@ -459,17 +572,9 @@ VRSystemManagerExternal::OpenShmem()
 void
 VRSystemManagerExternal::CheckForShutdown()
 {
-#if defined(MOZ_WIDGET_ANDROID)
   if (mDoShutdown) {
     Shutdown();
   }
-#else
-  if (mExternalShmem) {
-    if (mExternalShmem->generationA == -1 && mExternalShmem->generationB == -1) {
-      Shutdown();
-    }
-  }
-#endif // defined(MOZ_WIDGET_ANDROID)
 }
 
 void
@@ -537,21 +642,18 @@ VRSystemManagerExternal::Shutdown()
     mDisplay = nullptr;
   }
   CloseShmem();
-#if defined(MOZ_WIDGET_ANDROID)
   mDoShutdown = false;
-#endif
 }
 
 void
-VRSystemManagerExternal::NotifyVSync()
+VRSystemManagerExternal::Run100msTasks()
 {
-  VRSystemManager::NotifyVSync();
+  VRSystemManager::Run100msTasks();
+  // 1ms and 10ms tasks will always be run before
+  // the 100ms tasks, so no need to run them
+  // redundantly here.
 
   CheckForShutdown();
-
-  if (mDisplay) {
-    mDisplay->Refresh();
-  }
 }
 
 void
@@ -592,6 +694,13 @@ VRSystemManagerExternal::ShouldInhibitEnumeration()
   if (VRSystemManager::ShouldInhibitEnumeration()) {
     return true;
   }
+  if (!mEarliestRestartTime.IsNull() && mEarliestRestartTime > TimeStamp::Now()) {
+    // When the VR Service shuts down it informs us of how long we
+    // must wait until we can re-start it.
+    // We must wait until mEarliestRestartTime before attempting
+    // to enumerate again.
+    return true;
+  }
   if (mDisplay) {
     // When we find an a VR device, don't
     // allow any further enumeration as it
@@ -623,53 +732,72 @@ VRSystemManagerExternal::GetIsPresenting()
 
 void
 VRSystemManagerExternal::VibrateHaptic(uint32_t aControllerIdx,
-                                      uint32_t aHapticIndex,
-                                      double aIntensity,
-                                      double aDuration,
-                                      const VRManagerPromise& aPromise)
+                                       uint32_t aHapticIndex,
+                                       double aIntensity,
+                                       double aDuration,
+                                       const VRManagerPromise& aPromise)
 {
-  // TODO - Implement this
+  if (mDisplay) {
+    // VRDisplayClient::FireGamepadEvents() assigns a controller ID with ranges
+    // based on displayID.  We must translate this to the indexes understood by
+    // VRDisplayExternal.
+    uint32_t controllerBaseIndex =
+      kVRControllerMaxCount * mDisplay->GetDisplayInfo().mDisplayID;
+    uint32_t controllerIndex = aControllerIdx - controllerBaseIndex;
+    double aDurationSeconds = aDuration * 0.001f;
+    mDisplay->VibrateHaptic(
+      controllerIndex, aHapticIndex, aIntensity, aDurationSeconds, aPromise);
+  }
 }
 
 void
 VRSystemManagerExternal::StopVibrateHaptic(uint32_t aControllerIdx)
 {
-  // TODO - Implement this
+  if (mDisplay) {
+    // VRDisplayClient::FireGamepadEvents() assigns a controller ID with ranges
+    // based on displayID.  We must translate this to the indexes understood by
+    // VRDisplayExternal.
+    uint32_t controllerBaseIndex =
+      kVRControllerMaxCount * mDisplay->GetDisplayInfo().mDisplayID;
+    uint32_t controllerIndex = aControllerIdx - controllerBaseIndex;
+    mDisplay->StopVibrateHaptic(controllerIndex);
+  }
 }
 
 void
-VRSystemManagerExternal::GetControllers(nsTArray<RefPtr<VRControllerHost>>& aControllerResult)
+VRSystemManagerExternal::GetControllers(
+  nsTArray<RefPtr<VRControllerHost>>& aControllerResult)
 {
-  // Controller updates are handled in VRDisplayClient for VRSystemManagerExternal
+  // Controller updates are handled in VRDisplayClient for
+  // VRSystemManagerExternal
   aControllerResult.Clear();
 }
 
 void
 VRSystemManagerExternal::ScanForControllers()
 {
-  // Controller updates are handled in VRDisplayClient for VRSystemManagerExternal
-  if (mDisplay) {
-    mDisplay->Refresh();
-  }
+  // Controller updates are handled in VRDisplayClient for
+  // VRSystemManagerExternal
   return;
 }
 
 void
 VRSystemManagerExternal::HandleInput()
 {
-  // Controller updates are handled in VRDisplayClient for VRSystemManagerExternal
-  if (mDisplay) {
-    mDisplay->Refresh();
-  }
+  // Controller updates are handled in VRDisplayClient for
+  // VRSystemManagerExternal
   return;
 }
 
 void
 VRSystemManagerExternal::RemoveControllers()
 {
-  // Controller updates are handled in VRDisplayClient for VRSystemManagerExternal
+  if (mDisplay) {
+    mDisplay->StopAllHaptics();
+  }
+  // Controller updates are handled in VRDisplayClient for
+  // VRSystemManagerExternal
 }
-
 
 #if defined(MOZ_WIDGET_ANDROID)
 bool
@@ -694,7 +822,13 @@ VRSystemManagerExternal::PullState(VRDisplayState* aDisplayState,
           memcpy(aControllerState, (void*)&(mExternalShmem->state.controllerState), sizeof(VRControllerState) * kVRControllerMaxCount);
         }
         mEnumerationCompleted = mExternalShmem->state.enumerationCompleted;
-        mDoShutdown = aDisplayState->shutdown;
+        if (aDisplayState->shutdown) {
+          mDoShutdown = true;
+          TimeStamp now = TimeStamp::Now();
+          if (!mEarliestRestartTime.IsNull() && mEarliestRestartTime < now) {
+            mEarliestRestartTime = now + TimeDuration::FromMilliseconds((double)aDisplayState->mMinRestartInterval);
+          }
+        }
         if (!aWaitCondition || aWaitCondition()) {
           done = true;
           break;
@@ -730,6 +864,13 @@ VRSystemManagerExternal::PullState(VRDisplayState* aDisplayState,
       if (aControllerState) {
         memcpy(aControllerState, (void*)&(mExternalShmem->state.controllerState), sizeof(VRControllerState) * kVRControllerMaxCount);
       }
+      if (aDisplayState->shutdown) {
+        mDoShutdown = true;
+        TimeStamp now = TimeStamp::Now();
+        if (!mEarliestRestartTime.IsNull() && mEarliestRestartTime < now) {
+          mEarliestRestartTime = now + TimeDuration::FromMilliseconds((double)aDisplayState->mMinRestartInterval);
+        }
+      }
       success = true;
     }
   }
@@ -737,7 +878,6 @@ VRSystemManagerExternal::PullState(VRDisplayState* aDisplayState,
   return success;
 }
 #endif // defined(MOZ_WIDGET_ANDROID)
-
 
 void
 VRSystemManagerExternal::PushState(VRBrowserState* aBrowserState, bool aNotifyCond)

@@ -407,7 +407,10 @@ Http2Decompressor::DecodeHeaderBlock(const uint8_t *data, uint32_t datalen,
   mData = data;
   mDataLen = datalen;
   mOutput = &output;
+  // Add in some space to hopefully not have to reallocate while decompressing
+  // the headers. 512 bytes seems like a good enough number.
   mOutput->Truncate();
+  mOutput->SetCapacity(datalen + 512);
   mHeaderStatus.Truncate();
   mHeaderHost.Truncate();
   mHeaderScheme.Truncate();
@@ -1113,7 +1116,6 @@ Http2Compressor::EncodeHeaderBlock(const nsCString &nvInput,
   mSetInitialMaxBufferSizeAllowed = false;
   mOutput = &output;
   output.Truncate();
-  output.SetCapacity(1024);
   mParsedContentLength = -1;
 
   // first thing's first - context size updates (if necessary)

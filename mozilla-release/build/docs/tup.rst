@@ -13,7 +13,7 @@ future.
 
 As part of the mozbuild architecture, the Tup backend shares a significant
 portion of frontend (developer-facing) code in the build system. When using the
-Tup backend, ``mach build`` is still the entry point to run the build system,
+Tup backend, ``./mach build`` is still the entry point to run the build system,
 and moz.build files are still used for the build description. Familiar parts of
 the build system like configure and generating the build files (the
 ``Reticulating splines...`` step) are virtually identical in both backends. The
@@ -32,9 +32,10 @@ Installation
 ============
 
 You'll need to install the Tup executable, as well as the nightly rust/cargo
-toolchain::
+toolchain (Note: Replace $topsrcdir with the path to your mozilla-central
+source tree)::
 
-   cd ~/.mozbuild && mach artifact toolchain --from-build linux64-tup
+   cd ~/.mozbuild && $topsrcdir/mach artifact toolchain --from-build linux64-tup
    rustup install nightly
    rustup default nightly
 
@@ -47,15 +48,23 @@ PATH, and enable the Tup backend::
    export TUP=~/.mozbuild/tup/tup
    ac_add_options --enable-build-backends=Tup
 
+Configuring Parallel Jobs
+-------------------------
+
+To override the default number of jobs run in parallel, set MOZ_PARALLEL_BUILD
+in your mozconfig::
+
+    mk_add_options MOZ_PARALLEL_BUILD=8
+
 What Works
 ==========
 
 You should expect a Linux desktop build to generate a working Firefox binary
-from a ``mach build``, and be able to run test suites against it (eg:
+from a ``./mach build``, and be able to run test suites against it (eg:
 mochitests, xpcshell, gtest). Top-level incremental builds should be fast
 enough to use them during a regular compile/edit/test cycle. If you wish to
 stop compilation partway through the build to more quickly iterate on a
-particular file, you can expect ``mach build objdir/path/to/file.o`` to
+particular file, you can expect ``./mach build objdir/path/to/file.o`` to
 correctly produce all inputs required to build file.o before compiling it. For
 example, you don't have to run the build system in various subdirectories to
 get generated headers built in the right order.
@@ -82,6 +91,61 @@ the future according to developer demand and build team availability.
 * Packaging in automation - This is still quite intertwined with Makefiles
 
 * Tests in automation - Requires packaging
+
+Multiple object directories and object directories outside of the source tree
+=============================================================================
+
+Common workflows involving multiple object directories which may be outside of
+the source directory are supported by Tup, however there are some things to
+consider when using these configurations.
+
+* Using multiple object directories works as expected, however you may find
+  pulling and attempting to build will fail due to tup attempting to
+  parse a Tupfile in an object directory other than the active object
+  directory. As a workaround, activate the object directory containing the
+  failing file and run configure before proceeding.
+* If the currently active object directory is located outside of the source
+  directory, the tup backend will prompt the user to run ``tup init --no-sync``
+  in a common ancestor directory of the source directory and object directory.
+  If this ancestor contains too many files (it's the home directory, for
+  instance), this will slow down tup's initial file scan. Anecdotally multiple
+  object directories will only incur marginal scanning overhead, but care
+  should be exercised when choosing a directory layout.
+
+Tup builds in automation
+========================
+
+Tup builds run on integration branches as ``Btup`` in treeherder. There are
+some aspects of the Tup builds that are currently implemented outside of the
+make build system, and divergences may cause the ``Btup`` job to fail until
+the build is completely integrated. There are two known situations this has
+come up.
+
+* Changes to the xpidl/webidl/ipdl build - these are given special treatment
+  by the make backend that is re-created in the tup backend. An update to a
+  Makefile implementing one of these parts of the build may require a
+  corresponding change to ``python/mozbuild/mozbuild/backend/tup.py``
+* Build scripts generating new outputs - due to the implementation of Tup,
+  outputs from ``build.rs`` that run during the build must be known to Tup
+  before the build starts. The current outputs are enumerated in
+  ``python/mozbuild/mozbuild/backend/cargo_build_defs.py``. Modifying the set
+  of outputs from a build script will require a corresponding update to this
+  file.
+
+
+Partial tree builds in tup
+==========================
+
+Partial tree builds are possible in tup by invoking
+``./mach build <relative srcdir path>``, however the behavior differs from the
+make backend. A partial tree build will result in running the commands in
+Tupfiles in the specified subtree, building ``.o`` files and other outputs, but
+unlike make it will take changed dependencies into account and build everything
+necessary to update those outputs as well. Also unlike make it will not
+attempt to find downstream commands that depend on these files, i.e.
+programs and libraries from other parts of the tree will not be linked. A
+top level incremental build should be performed to run all commands that depend
+on changes to the local tree.
 
 How to Contribute
 =================

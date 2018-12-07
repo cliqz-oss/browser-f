@@ -22,7 +22,7 @@ class HTMLObjectElement final : public nsGenericHTMLFormElement
                               , public nsIConstraintValidation
 {
 public:
-  explicit HTMLObjectElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo,
+  explicit HTMLObjectElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo,
                              FromParser aFromParser = NOT_FROM_PARSER);
 
   // nsISupports
@@ -242,6 +242,8 @@ public:
    * Calls LoadObject with the correct arguments to start the plugin load.
    */
   void StartObjectLoad(bool aNotify, bool aForceLoad);
+
+  NS_FORWARD_NSIFRAMELOADEROWNER(nsObjectLoadingContent::)
 
 protected:
   // Override for nsImageLoadingContent.

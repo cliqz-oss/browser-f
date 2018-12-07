@@ -18,13 +18,8 @@ toolbarbutton {
   padding: 3px;
 }
 
-.toolbarbutton-icon[label]:not([label=""]),
-.toolbarbutton-icon[type="menu"] {
-  margin-inline-end: 5px;
-}
-
 .toolbarbutton-text {
-  margin: 0 !important; /* !important for overriding global.css */
+  margin: 0;
   text-align: center;
 }
 
@@ -33,20 +28,8 @@ toolbarbutton.tabbable {
 }
 
 toolbarbutton:-moz-focusring {
-  /* -moz-appearance looks redundant here but is necessary.
-      Without it, the outline won't appear. */
-  -moz-appearance: toolbarbutton;
-  outline: 1px dotted -moz-DialogText;
+  outline: 1px dotted;
   outline-offset: -2px;
-}
-
-toolbarbutton:hover:active:not([disabled="true"]),
-toolbarbutton[open="true"]:hover,
-toolbarbutton[open="true"] {
-  padding-top: 4px;
-  padding-bottom: 2px;
-  padding-inline-start: 4px;
-  padding-inline-end: 2px;
 }
 
 toolbarbutton[disabled="true"] {
@@ -59,13 +42,6 @@ toolbarbutton[disabled="true"] {
     color: ThreeDShadow;
     text-shadow: 1px 1px ThreeDHighlight;
   }
-}
-
-toolbarbutton[checked="true"]:not([disabled="true"]) {
-  padding-top: 4px;
-  padding-bottom: 2px;
-  padding-inline-start: 4px;
-  padding-inline-end: 2px;
 }
 
 @media (-moz-windows-default-theme) {
@@ -91,11 +67,12 @@ toolbarbutton[checked="true"]:not([disabled="true"]) {
 /* ::::: toolbarbutton menu ::::: */
 
 .toolbarbutton-menu-dropmarker {
-  -moz-appearance: none !important;
-  padding: 0;
-  width: auto;
-  height: auto;
-  margin-top: 1px;
+  -moz-appearance: none;
+  list-style-image: url("chrome://global/skin/icons/arrow-dropdown-12.svg");
+  -moz-context-properties: fill;
+  fill: currentColor;
+  width: 12px;
+  height: 12px;
 }
 
 /* ::::: toolbarbutton badged ::::: */

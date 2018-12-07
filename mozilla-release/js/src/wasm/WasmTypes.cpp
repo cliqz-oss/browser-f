@@ -97,8 +97,9 @@ Val::writePayload(uint8_t* dst) const
         // an instance is effectively a field of the WasmInstanceObject.
         // - WasmGlobalObjects are always tenured, and they have a Cell field,
         // so a post-barrier may be needed for the same reason as above.
-        if (u.ptr_)
+        if (u.ptr_) {
             JSObject::writeBarrierPost((JSObject**)dst, nullptr, u.ptr_);
+        }
         return;
     }
     MOZ_CRASH("unexpected Val type");
@@ -107,8 +108,9 @@ Val::writePayload(uint8_t* dst) const
 void
 Val::trace(JSTracer* trc)
 {
-    if (type_.isValid() && type_.isRefOrAnyRef() && u.ptr_)
+    if (type_.isValid() && type_.isRefOrAnyRef() && u.ptr_) {
         TraceManuallyBarrieredEdge(trc, &u.ptr_, "wasm ref/anyref global");
+    }
 }
 
 bool
@@ -134,44 +136,6 @@ wasm::IsRoundingFunction(SymbolicAddress callee, jit::RoundingMode* mode)
       default:
         return false;
     }
-}
-
-static uint32_t
-GetCPUID()
-{
-    enum Arch {
-        X86 = 0x1,
-        X64 = 0x2,
-        ARM = 0x3,
-        MIPS = 0x4,
-        MIPS64 = 0x5,
-        ARM64 = 0x6,
-        ARCH_BITS = 3
-    };
-
-#if defined(JS_CODEGEN_X86)
-    MOZ_ASSERT(uint32_t(jit::CPUInfo::GetSSEVersion()) <= (UINT32_MAX >> ARCH_BITS));
-    return X86 | (uint32_t(jit::CPUInfo::GetSSEVersion()) << ARCH_BITS);
-#elif defined(JS_CODEGEN_X64)
-    MOZ_ASSERT(uint32_t(jit::CPUInfo::GetSSEVersion()) <= (UINT32_MAX >> ARCH_BITS));
-    return X64 | (uint32_t(jit::CPUInfo::GetSSEVersion()) << ARCH_BITS);
-#elif defined(JS_CODEGEN_ARM)
-    MOZ_ASSERT(jit::GetARMFlags() <= (UINT32_MAX >> ARCH_BITS));
-    return ARM | (jit::GetARMFlags() << ARCH_BITS);
-#elif defined(JS_CODEGEN_ARM64)
-    MOZ_ASSERT(jit::GetARM64Flags() <= (UINT32_MAX >> ARCH_BITS));
-    return ARM64 | (jit::GetARM64Flags() << ARCH_BITS);
-#elif defined(JS_CODEGEN_MIPS32)
-    MOZ_ASSERT(jit::GetMIPSFlags() <= (UINT32_MAX >> ARCH_BITS));
-    return MIPS | (jit::GetMIPSFlags() << ARCH_BITS);
-#elif defined(JS_CODEGEN_MIPS64)
-    MOZ_ASSERT(jit::GetMIPSFlags() <= (UINT32_MAX >> ARCH_BITS));
-    return MIPS64 | (jit::GetMIPSFlags() << ARCH_BITS);
-#elif defined(JS_CODEGEN_NONE)
-    return 0;
-#else
-# error "unknown architecture"
-#endif
 }
 
 size_t
@@ -268,15 +232,18 @@ FuncTypeIdDesc::isGlobal(const FuncType& funcType)
 {
     unsigned numTypes = (funcType.ret() == ExprType::Void ? 0 : 1) +
                         (funcType.args().length());
-    if (numTypes > sMaxTypes)
+    if (numTypes > sMaxTypes) {
         return true;
+    }
 
-    if (funcType.ret() != ExprType::Void && !IsImmediateType(NonVoidToValType(funcType.ret())))
+    if (funcType.ret() != ExprType::Void && !IsImmediateType(NonVoidToValType(funcType.ret()))) {
         return true;
+    }
 
     for (ValType v : funcType.args()) {
-        if (!IsImmediateType(v))
+        if (!IsImmediateType(v)) {
             return true;
+        }
     }
 
     return false;
@@ -286,7 +253,7 @@ FuncTypeIdDesc::isGlobal(const FuncType& funcType)
 FuncTypeIdDesc::global(const FuncType& funcType, uint32_t globalDataOffset)
 {
     MOZ_ASSERT(isGlobal(funcType));
-    return FuncTypeIdDesc(Kind::Global, globalDataOffset);
+    return FuncTypeIdDesc(FuncTypeIdDescKind::Global, globalDataOffset);
 }
 
 static ImmediateType
@@ -322,7 +289,7 @@ FuncTypeIdDesc::immediate(const FuncType& funcType)
     }
 
     MOZ_ASSERT(shift <= sTotalBits);
-    return FuncTypeIdDesc(Kind::Immediate, immediate);
+    return FuncTypeIdDesc(FuncTypeIdDescKind::Immediate, immediate);
 }
 
 size_t
@@ -359,8 +326,9 @@ FuncTypeWithId::sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const
 bool
 StructType::hasPrefix(const StructType& other) const
 {
-    if (fields_.length() < other.fields_.length())
+    if (fields_.length() < other.fields_.length()) {
         return false;
+    }
     uint32_t limit = other.fields_.length();
     for (uint32_t i = 0; i < limit; i++) {
         if (fields_[i].type != other.fields_[i].type ||
@@ -492,18 +460,16 @@ size_t
 ElemSegment::serializedSize() const
 {
     return sizeof(tableIndex) +
-           sizeof(offset) +
-           SerializedPodVectorSize(elemFuncIndices) +
-           SerializedPodVectorSize(elemCodeRangeIndices(Tier::Serialized));
+           sizeof(offsetIfActive) +
+           SerializedPodVectorSize(elemFuncIndices);
 }
 
 uint8_t*
 ElemSegment::serialize(uint8_t* cursor) const
 {
     cursor = WriteBytes(cursor, &tableIndex, sizeof(tableIndex));
-    cursor = WriteBytes(cursor, &offset, sizeof(offset));
+    cursor = WriteBytes(cursor, &offsetIfActive, sizeof(offsetIfActive));
     cursor = SerializePodVector(cursor, elemFuncIndices);
-    cursor = SerializePodVector(cursor, elemCodeRangeIndices(Tier::Serialized));
     return cursor;
 }
 
@@ -511,85 +477,88 @@ const uint8_t*
 ElemSegment::deserialize(const uint8_t* cursor)
 {
     (cursor = ReadBytes(cursor, &tableIndex, sizeof(tableIndex))) &&
-    (cursor = ReadBytes(cursor, &offset, sizeof(offset))) &&
-    (cursor = DeserializePodVector(cursor, &elemFuncIndices)) &&
-    (cursor = DeserializePodVector(cursor, &elemCodeRangeIndices(Tier::Serialized)));
+    (cursor = ReadBytes(cursor, &offsetIfActive, sizeof(offsetIfActive))) &&
+    (cursor = DeserializePodVector(cursor, &elemFuncIndices));
     return cursor;
 }
 
 size_t
 ElemSegment::sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const
 {
-    return elemFuncIndices.sizeOfExcludingThis(mallocSizeOf) +
-           elemCodeRangeIndices(Tier::Serialized).sizeOfExcludingThis(mallocSizeOf);
-}
-
-Assumptions::Assumptions(JS::BuildIdCharVector&& buildId)
-  : cpuId(GetCPUID()),
-    buildId(std::move(buildId))
-{}
-
-Assumptions::Assumptions()
-  : cpuId(GetCPUID()),
-    buildId()
-{}
-
-bool
-Assumptions::initBuildIdFromContext(JSContext* cx)
-{
-    if (!cx->buildIdOp() || !cx->buildIdOp()(&buildId)) {
-        ReportOutOfMemory(cx);
-        return false;
-    }
-    return true;
-}
-
-bool
-Assumptions::clone(const Assumptions& other)
-{
-    cpuId = other.cpuId;
-    return buildId.appendAll(other.buildId);
-}
-
-bool
-Assumptions::operator==(const Assumptions& rhs) const
-{
-    return cpuId == rhs.cpuId &&
-           buildId.length() == rhs.buildId.length() &&
-           ArrayEqual(buildId.begin(), rhs.buildId.begin(), buildId.length());
+    return elemFuncIndices.sizeOfExcludingThis(mallocSizeOf);
 }
 
 size_t
-Assumptions::serializedSize() const
+DataSegment::serializedSize() const
 {
-    return sizeof(uint32_t) +
-           SerializedPodVectorSize(buildId);
+    return sizeof(offsetIfActive) +
+           SerializedPodVectorSize(bytes);
 }
 
 uint8_t*
-Assumptions::serialize(uint8_t* cursor) const
+DataSegment::serialize(uint8_t* cursor) const
 {
-    // The format of serialized Assumptions must never change in a way that
-    // would cause old cache files written with by an old build-id to match the
-    // assumptions of a different build-id.
-
-    cursor = WriteScalar<uint32_t>(cursor, cpuId);
-    cursor = SerializePodVector(cursor, buildId);
+    cursor = WriteBytes(cursor, &offsetIfActive, sizeof(offsetIfActive));
+    cursor = SerializePodVector(cursor, bytes);
     return cursor;
 }
 
 const uint8_t*
-Assumptions::deserialize(const uint8_t* cursor, size_t remain)
+DataSegment::deserialize(const uint8_t* cursor)
 {
-    (cursor = ReadScalarChecked<uint32_t>(cursor, &remain, &cpuId)) &&
-    (cursor = DeserializePodVectorChecked(cursor, &remain, &buildId));
+    (cursor = ReadBytes(cursor, &offsetIfActive, sizeof(offsetIfActive))) &&
+    (cursor = DeserializePodVector(cursor, &bytes));
     return cursor;
 }
 
 size_t
-Assumptions::sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const
+DataSegment::sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const
 {
-    return buildId.sizeOfExcludingThis(mallocSizeOf);
+    return bytes.sizeOfExcludingThis(mallocSizeOf);
+}
+
+size_t
+CustomSection::serializedSize() const
+{
+    return SerializedPodVectorSize(name) +
+           SerializedPodVectorSize(payload->bytes);
+}
+
+uint8_t*
+CustomSection::serialize(uint8_t* cursor) const
+{
+    cursor = SerializePodVector(cursor, name);
+    cursor = SerializePodVector(cursor, payload->bytes);
+    return cursor;
+}
+
+const uint8_t*
+CustomSection::deserialize(const uint8_t* cursor)
+{
+    cursor = DeserializePodVector(cursor, &name);
+    if (!cursor) {
+        return nullptr;
+    }
+
+    Bytes bytes;
+    cursor = DeserializePodVector(cursor, &bytes);
+    if (!cursor) {
+        return nullptr;
+    }
+    payload = js_new<ShareableBytes>(std::move(bytes));
+    if (!payload) {
+        return nullptr;
+    }
+
+    return cursor;
+}
+
+size_t
+CustomSection::sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const
+{
+    return name.sizeOfExcludingThis(mallocSizeOf) +
+           sizeof(*payload) +
+           payload->sizeOfExcludingThis(mallocSizeOf);
 }
 
 //  Heap length on ARM should fit in an ARM immediate. We approximate the set
@@ -613,10 +582,11 @@ wasm::RoundUpToNextValidARMImmediate(uint32_t i)
 {
     MOZ_ASSERT(i <= 0xff000000);
 
-    if (i <= 16 * 1024 * 1024)
+    if (i <= 16 * 1024 * 1024) {
         i = i ? mozilla::RoundUpPow2(i) : 0;
-    else
+    } else {
         i = (i + 0x00ffffff) & ~0x00ffffff;
+    }
 
     MOZ_ASSERT(IsValidARMImmediate(i));
 
@@ -703,12 +673,14 @@ DebugFrame::getLocal(uint32_t localIndex, MutableHandleValue vp)
 {
     ValTypeVector locals;
     size_t argsLength;
-    if (!instance()->debug().debugGetLocalTypes(funcIndex(), &locals, &argsLength))
+    if (!instance()->debug().debugGetLocalTypes(funcIndex(), &locals, &argsLength)) {
         return false;
+    }
 
     BaseLocalIter iter(locals, argsLength, /* debugEnabled = */ true);
-    while (!iter.done() && iter.index() < localIndex)
+    while (!iter.done() && iter.index() < localIndex) {
         iter++;
+    }
     MOZ_ALWAYS_TRUE(!iter.done());
 
     uint8_t* frame = static_cast<uint8_t*>((void*)this) + offsetOfFrame();
@@ -803,8 +775,9 @@ bool
 TrapSiteVectorArray::empty() const
 {
     for (Trap trap : MakeEnumeratedRange(Trap::Limit)) {
-        if (!(*this)[trap].empty())
+        if (!(*this)[trap].empty()) {
             return false;
+        }
     }
 
     return true;
@@ -813,38 +786,43 @@ TrapSiteVectorArray::empty() const
 void
 TrapSiteVectorArray::clear()
 {
-    for (Trap trap : MakeEnumeratedRange(Trap::Limit))
+    for (Trap trap : MakeEnumeratedRange(Trap::Limit)) {
         (*this)[trap].clear();
+    }
 }
 
 void
 TrapSiteVectorArray::swap(TrapSiteVectorArray& rhs)
 {
-    for (Trap trap : MakeEnumeratedRange(Trap::Limit))
+    for (Trap trap : MakeEnumeratedRange(Trap::Limit)) {
         (*this)[trap].swap(rhs[trap]);
+    }
 }
 
 void
 TrapSiteVectorArray::podResizeToFit()
 {
-    for (Trap trap : MakeEnumeratedRange(Trap::Limit))
+    for (Trap trap : MakeEnumeratedRange(Trap::Limit)) {
         (*this)[trap].podResizeToFit();
+    }
 }
 
 size_t
 TrapSiteVectorArray::serializedSize() const
 {
     size_t ret = 0;
-    for (Trap trap : MakeEnumeratedRange(Trap::Limit))
+    for (Trap trap : MakeEnumeratedRange(Trap::Limit)) {
         ret += SerializedPodVectorSize((*this)[trap]);
+    }
     return ret;
 }
 
 uint8_t*
 TrapSiteVectorArray::serialize(uint8_t* cursor) const
 {
-    for (Trap trap : MakeEnumeratedRange(Trap::Limit))
+    for (Trap trap : MakeEnumeratedRange(Trap::Limit)) {
         cursor = SerializePodVector(cursor, (*this)[trap]);
+    }
     return cursor;
 }
 
@@ -853,8 +831,9 @@ TrapSiteVectorArray::deserialize(const uint8_t* cursor)
 {
     for (Trap trap : MakeEnumeratedRange(Trap::Limit)) {
         cursor = DeserializePodVector(cursor, &(*this)[trap]);
-        if (!cursor)
+        if (!cursor) {
             return nullptr;
+        }
     }
     return cursor;
 }
@@ -863,8 +842,9 @@ size_t
 TrapSiteVectorArray::sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const
 {
     size_t ret = 0;
-    for (Trap trap : MakeEnumeratedRange(Trap::Limit))
+    for (Trap trap : MakeEnumeratedRange(Trap::Limit)) {
         ret += (*this)[trap].sizeOfExcludingThis(mallocSizeOf);
+    }
     return ret;
 }
 
@@ -976,8 +956,9 @@ wasm::LookupInSorted(const CodeRangeVector& codeRanges, CodeRange::OffsetInCode 
     size_t upperBound = codeRanges.length();
 
     size_t match;
-    if (!BinarySearch(codeRanges, lowerBound, upperBound, target, &match))
+    if (!BinarySearch(codeRanges, lowerBound, upperBound, target, &match)) {
         return nullptr;
+    }
 
     return &codeRanges[match];
 }
@@ -985,11 +966,10 @@ wasm::LookupInSorted(const CodeRangeVector& codeRanges, CodeRange::OffsetInCode 
 UniqueTlsData
 wasm::CreateTlsData(uint32_t globalDataLength)
 {
-    MOZ_ASSERT(globalDataLength % gc::SystemPageSize() == 0);
-
     void* allocatedBase = js_calloc(TlsDataAlign + offsetof(TlsData, globalArea) + globalDataLength);
-    if (!allocatedBase)
+    if (!allocatedBase) {
         return nullptr;
+    }
 
     auto* tlsData = reinterpret_cast<TlsData*>(AlignBytes(uintptr_t(allocatedBase), TlsDataAlign));
     tlsData->allocatedBase = allocatedBase;

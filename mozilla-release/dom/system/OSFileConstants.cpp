@@ -105,32 +105,6 @@ OSFileConstantsService::Paths
   nsString tmpDir;
   nsString profileDir;
   nsString localProfileDir;
-  /**
-   * The user's home directory
-   */
-  nsString homeDir;
-  /**
-   * The user's 'application data' directory.
-   * Windows:
-   *   HOME = Documents and Settings\$USER\Application Data
-   *   UAppData = $HOME[\$vendor]\$name
-   *
-   * Unix:
-   *   HOME = ~
-   *   UAppData = $HOME/.[$vendor/]$name
-   *
-   * Mac:
-   *   HOME = ~
-   *   UAppData = $HOME/Library/Application Support/$name
-   */
-  nsString userApplicationDataDir;
-
-#if defined(XP_MACOSX)
-  /**
-   * The user's Library directory.
-   */
-  nsString macUserLibDir;
-#endif // defined(XP_MACOSX)
 
   Paths()
   {
@@ -138,12 +112,6 @@ OSFileConstantsService::Paths
     tmpDir.SetIsVoid(true);
     profileDir.SetIsVoid(true);
     localProfileDir.SetIsVoid(true);
-    homeDir.SetIsVoid(true);
-    userApplicationDataDir.SetIsVoid(true);
-
-#if defined(XP_MACOSX)
-    macUserLibDir.SetIsVoid(true);
-#endif // defined(XP_MACOSX)
   }
 };
 
@@ -251,16 +219,7 @@ OSFileConstantsService::InitOSFileConstants()
     }
   }
 
-  // For other directories, ignore errors (they may be undefined on
-  // some platforms or in non-Firefox embeddings of Gecko).
-
   GetPathToSpecialDir(NS_OS_TEMP_DIR, paths->tmpDir);
-  GetPathToSpecialDir(NS_OS_HOME_DIR, paths->homeDir);
-  GetPathToSpecialDir(XRE_USER_APP_DATA_DIR, paths->userApplicationDataDir);
-
-#if defined(XP_MACOSX)
-  GetPathToSpecialDir(NS_MAC_USER_LIB_DIR, paths->macUserLibDir);
-#endif // defined(XP_MACOSX)
 
   mPaths = std::move(paths);
 
@@ -906,9 +865,9 @@ OSFileConstantsService::DefineOSFileConstants(JSContext* aCx,
   // On other platforms, libxul is a library "xul" with regular
   // library prefix/suffix.
   nsAutoString libxul;
-  libxul.AppendLiteral(DLL_PREFIX);
+  libxul.AppendLiteral(MOZ_DLL_PREFIX);
   libxul.AppendLiteral("xul");
-  libxul.AppendLiteral(DLL_SUFFIX);
+  libxul.AppendLiteral(MOZ_DLL_SUFFIX);
 #endif // defined(XP_MACOSX)
 
   if (!SetStringProperty(aCx, objPath, "libxul", libxul)) {
@@ -935,32 +894,18 @@ OSFileConstantsService::DefineOSFileConstants(JSContext* aCx,
     return false;
   }
 
-  if (!SetStringProperty(aCx, objPath, "homeDir", mPaths->homeDir)) {
-    return false;
-  }
-
-  if (!SetStringProperty(aCx, objPath, "userApplicationDataDir", mPaths->userApplicationDataDir)) {
-    return false;
-  }
-
-#if defined(XP_MACOSX)
-  if (!SetStringProperty(aCx, objPath, "macUserLibDir", mPaths->macUserLibDir)) {
-    return false;
-  }
-#endif // defined(XP_MACOSX)
-
   // sqlite3 is linked from different places depending on the platform
   nsAutoString libsqlite3;
 #if defined(ANDROID)
   // On Android, we use the system's libsqlite3
-  libsqlite3.AppendLiteral(DLL_PREFIX);
+  libsqlite3.AppendLiteral(MOZ_DLL_PREFIX);
   libsqlite3.AppendLiteral("sqlite3");
-  libsqlite3.AppendLiteral(DLL_SUFFIX);
+  libsqlite3.AppendLiteral(MOZ_DLL_SUFFIX);
 #elif defined(XP_WIN)
   // On Windows, for some reason, this is part of nss3.dll
-  libsqlite3.AppendLiteral(DLL_PREFIX);
+  libsqlite3.AppendLiteral(MOZ_DLL_PREFIX);
   libsqlite3.AppendLiteral("nss3");
-  libsqlite3.AppendLiteral(DLL_SUFFIX);
+  libsqlite3.AppendLiteral(MOZ_DLL_SUFFIX);
 #else
     // On other platforms, we link sqlite3 into libxul
   libsqlite3 = libxul;

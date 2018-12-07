@@ -26,6 +26,26 @@ function testAbsentAttrs(aAccOrElmOrID, aAbsentAttrs) {
 }
 
 /**
+ * Test object attributes that aren't right, but should be (todo)
+ *
+ * @param aAccOrElmOrID         [in] the accessible identifier
+ * @param aKey                  [in] attribute name
+ * @param aExpectedValue        [in] expected attribute value
+ */
+function todoAttr(aAccOrElmOrID, aKey, aExpectedValue) {
+  var accessible = getAccessible(aAccOrElmOrID);
+  if (!accessible)
+    return;
+
+  var attrs = null;
+  try {
+    attrs = accessible.attributes;
+  } catch (e) { }
+
+  todo_is(attrs.getStringProperty(aKey), aExpectedValue, "attributes match");
+}
+
+/**
  * Test CSS based object attributes.
  */
 function testCSSAttrs(aID) {
@@ -39,7 +59,7 @@ function testCSSAttrs(aID) {
     "margin-left": computedStyle.marginLeft,
     "margin-right": computedStyle.marginRight,
     "margin-top": computedStyle.marginTop,
-    "margin-bottom": computedStyle.marginBottom
+    "margin-bottom": computedStyle.marginBottom,
   };
   testAttrs(aID, attrs, true);
 }
@@ -55,7 +75,7 @@ function testAbsentCSSAttrs(aID) {
     "margin-left": "",
     "margin-right": "",
     "margin-top": "",
-    "margin-bottom": ""
+    "margin-bottom": "",
   };
   testAbsentAttrs(aID, attrs);
 }
@@ -82,7 +102,7 @@ function testGroupAttrs(aAccOrElmOrID, aPosInSet, aSetSize, aLevel) {
 
     let attrs = {
       "posinset": String(aPosInSet),
-      "setsize": String(aSetSize)
+      "setsize": String(aSetSize),
     };
     testAttrs(aAccOrElmOrID, attrs, true);
   }
@@ -93,6 +113,16 @@ function testGroupAttrs(aAccOrElmOrID, aPosInSet, aSetSize, aLevel) {
 
     let attrs = { "level": String(aLevel) };
     testAttrs(aAccOrElmOrID, attrs, true);
+  }
+}
+
+function testGroupParentAttrs(aAccOrElmOrID, aChildItemCount, aIsHierarchical) {
+  testAttrs(aAccOrElmOrID, { "child-item-count": String(aChildItemCount) }, true);
+
+  if (aIsHierarchical) {
+    testAttrs(aAccOrElmOrID, { "hierarchical": "true" }, true);
+  } else {
+    testAbsentAttrs(aAccOrElmOrID, { "hierarchical": "true" });
   }
 }
 
@@ -269,7 +299,7 @@ function buildDefaultTextAttrs(aID, aFontSize, aFontWeight, aFontFamily) {
     "font-weight": aFontWeight ? aFontWeight : kNormalFontWeight,
     "color": computedStyle.color,
     "font-family": aFontFamily ? aFontFamily : fontFamily(computedStyle),
-    "text-position": computedStyle.verticalAlign
+    "text-position": computedStyle.verticalAlign,
   };
 
   return defAttrs;

@@ -93,7 +93,7 @@ BEGIN_TEST(test_ubiNodeZone)
     RootedString string1(cx, JS_NewStringCopyZ(cx, "Simpson's Individual Stringettes!"));
     CHECK(string1);
     RootedScript script1(cx);
-    CHECK(JS::Compile(cx, options, "", 0, &script1));
+    CHECK(JS::CompileUtf8(cx, options, "", 0, &script1));
 
     {
         // ... and then enter global2's zone and create a string and script
@@ -103,7 +103,7 @@ BEGIN_TEST(test_ubiNodeZone)
         RootedString string2(cx, JS_NewStringCopyZ(cx, "A million household uses!"));
         CHECK(string2);
         RootedScript script2(cx);
-        CHECK(JS::Compile(cx, options, "", 0, &script2));
+        CHECK(JS::CompileUtf8(cx, options, "", 0, &script2));
 
         CHECK(JS::ubi::Node(string1).zone() == global1->zone());
         CHECK(JS::ubi::Node(script1).zone() == global1->zone());
@@ -138,7 +138,7 @@ BEGIN_TEST(test_ubiNodeCompartment)
 
     // Create a script in the original realm...
     RootedScript script1(cx);
-    CHECK(JS::Compile(cx, options, "", 0, &script1));
+    CHECK(JS::CompileUtf8(cx, options, "", 0, &script1));
 
     {
         // ... and then enter global2's realm and create a script
@@ -146,7 +146,7 @@ BEGIN_TEST(test_ubiNodeCompartment)
         JSAutoRealm ar(cx, global2);
 
         RootedScript script2(cx);
-        CHECK(JS::Compile(cx, options, "", 0, &script2));
+        CHECK(JS::CompileUtf8(cx, options, "", 0, &script2));
 
         CHECK(JS::ubi::Node(script1).compartment() == global1->compartment());
         CHECK(JS::ubi::Node(script2).compartment() == global2->compartment());
@@ -419,8 +419,9 @@ BEGIN_TEST(test_ubiPostOrder)
     }
 
     fprintf(stderr, "visited.length() = %lu\n", (unsigned long) visited.length());
-    for (size_t i = 0; i < visited.length(); i++)
+    for (size_t i = 0; i < visited.length(); i++) {
         fprintf(stderr, "visited[%lu] = '%c'\n", (unsigned long) i, visited[i]);
+    }
 
     CHECK(visited.length() == 8);
     CHECK(visited[0] == 'g');

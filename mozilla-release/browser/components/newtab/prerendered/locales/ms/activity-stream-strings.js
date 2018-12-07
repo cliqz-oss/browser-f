@@ -75,7 +75,7 @@ window.gActivityStreamStrings = {
   "pocket_read_more": "Topik Popular:",
   "pocket_read_even_more": "Papar Kisah Selanjutnya",
   "pocket_more_reccommendations": "Saranan Lain",
-  "pocket_how_it_works": "How it works",
+  "pocket_how_it_works": "Cara pelaksanaan",
   "pocket_cta_button": "Dapatkan Pocket",
   "pocket_cta_text": "Simpan cerita yang anda suka dalam Pocket dan jana minda dengan bahan bacaan yang menarik.",
   "highlights_empty_state": "Mulakan melayar dan kami akan paparkan beberapa artikel, video dan halaman menarik lain yang sudah anda layari dan tandabuku di sini.",
@@ -107,5 +107,6 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Notis Privasi",
   "firstrun_continue_to_login": "Teruskan",
   "firstrun_skip_login": "Langkau langkah ini",
+  "context_menu_title": "Buka menu",
   "pocket_learn_more": "Ketahui Selanjutnya"
 };

@@ -161,9 +161,9 @@ Test is finished.
 promise_test(test_function, name, properties)
 ```
 
-`test_function` is a function that receives a test as an argument and returns a
-promise. The test completes when the returned promise resolves. The test fails
-if the returned promise rejects.
+`test_function` is a function that receives a test as an argument. It must
+return a promise. The test completes when the returned promise resolves. The
+test fails if the returned promise rejects.
 
 E.g.:
 
@@ -792,14 +792,6 @@ asserts that one `assert_func(actual, expected_array_N, extra_arg1, ..., extra_a
   with multiple allowed pass conditions are bad practice unless the spec specifically
   allows multiple behaviours. Test authors should not use this method simply to hide
   UA bugs.
-
-### `assert_exists(object, property_name, description)`
-**deprecated**
-asserts that object has an own property `property_name`
-
-### `assert_not_exists(object, property_name, description)`
-**deprecated**
-assert that object does not have own property `property_name`
 
 ## Metadata ##
 

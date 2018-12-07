@@ -194,8 +194,9 @@ class ChainedIter
     }
     T get() const {
         MOZ_ASSERT(!done());
-        if (!iter0_.done())
+        if (!iter0_.done()) {
             return iter0_.get();
+        }
         MOZ_ASSERT(!iter1_.done());
         return iter1_.get();
     }
@@ -206,7 +207,7 @@ class ChainedIter
 
 typedef HashMap<Value*, const char*, DefaultHasher<Value*>, SystemAllocPolicy> RootedValueMap;
 
-using AllocKinds = mozilla::EnumSet<AllocKind>;
+using AllocKinds = mozilla::EnumSet<AllocKind, uint32_t>;
 
 // A singly linked list of zones.
 class ZoneList
@@ -298,6 +299,7 @@ class GCRuntime
     }
     void getZealBits(uint32_t* zealBits, uint32_t* frequency, uint32_t* nextScheduled);
     void setZeal(uint8_t zeal, uint32_t frequency);
+    void unsetZeal(uint8_t zeal);
     bool parseAndSetZeal(const char* str);
     void setNextScheduled(uint32_t count);
     void verifyPreBarriers();
@@ -382,11 +384,13 @@ class GCRuntime
     bool updateMallocCounter(size_t nbytes) {
         mallocCounter.update(nbytes);
         TriggerKind trigger = mallocCounter.shouldTriggerGC(tunables);
-        if (MOZ_LIKELY(trigger == NoTrigger) || trigger <= mallocCounter.triggered())
+        if (MOZ_LIKELY(trigger == NoTrigger) || trigger <= mallocCounter.triggered()) {
             return false;
+        }
 
-        if (!triggerGC(JS::gcreason::TOO_MUCH_MALLOC))
+        if (!triggerGC(JS::gcreason::TOO_MUCH_MALLOC)) {
             return false;
+        }
 
         // Even though this method may be called off the main thread it is safe
         // to access mallocCounter here since triggerGC() will return false in

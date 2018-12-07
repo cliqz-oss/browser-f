@@ -19,8 +19,7 @@ add_task(async function() {
 });
 
 async function performTests() {
-  const toolbox = await openNewTabAndToolbox(TEST_URI, "webconsole");
-  const hud = toolbox.getCurrentPanel().hud;
+  const hud = await openNewTabAndConsole(TEST_URI);
 
   const jsterm = hud.jsterm;
 
@@ -42,7 +41,7 @@ async function performTests() {
   if (windowOiNodes.length === 1) {
     // If this is the case, we wait for the properties to be fetched and displayed.
     await waitForNodeMutation(windowOi, {
-      childList: true
+      childList: true,
     });
     windowOiNodes = windowOi.querySelectorAll(".node");
   }

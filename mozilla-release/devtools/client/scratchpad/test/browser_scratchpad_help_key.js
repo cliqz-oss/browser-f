@@ -7,7 +7,7 @@ function test() {
   waitForExplicitFinish();
 
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
-  gBrowser.loadURI("data:text/html,Test keybindings for opening Scratchpad MDN Documentation, bug 650760");
+  BrowserTestUtils.loadURI(gBrowser, "data:text/html,Test keybindings for opening Scratchpad MDN Documentation, bug 650760");
   BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser).then(function() {
     openScratchpad(runTest);
   });
@@ -35,7 +35,7 @@ function runTest() {
     ctrlKey: modifiers.match("ctrl"),
     altKey: modifiers.match("alt"),
     metaKey: modifiers.match("meta"),
-    accelKey: modifiers.match("accel")
+    accelKey: modifiers.match("accel"),
   };
 
   info("check that the MDN page is opened on \"F1\"");

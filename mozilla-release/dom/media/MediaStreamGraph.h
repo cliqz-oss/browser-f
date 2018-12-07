@@ -825,12 +825,10 @@ public:
   void RemoveAllDirectListenersImpl() override;
 
   /**
-   * End all tracks and Finish() this stream.  Used to voluntarily revoke access
-   * to a LocalMediaStream.
+   * End all tracks and Finish() this stream. Used to voluntarily revoke access
+   * to a MediaStream.
    */
   void EndAllTrackAndFinish();
-
-  void RegisterForAudioMixing();
 
   /**
    * Returns true if this SourceMediaStream contains at least one audio track
@@ -938,7 +936,6 @@ protected:
   nsTArray<TrackBound<DirectMediaStreamTrackListener>> mDirectTrackListeners;
   bool mPullEnabled;
   bool mFinishPending;
-  bool mNeedsMixing;
 };
 
 /**

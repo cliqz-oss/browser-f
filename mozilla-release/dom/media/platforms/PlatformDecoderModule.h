@@ -13,6 +13,7 @@
 #include "MediaInfo.h"
 #include "MediaResult.h"
 #include "mozilla/EnumSet.h"
+#include "mozilla/EnumTypeTraits.h"
 #include "mozilla/MozPromise.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/TaskQueue.h"
@@ -50,6 +51,7 @@ struct MOZ_STACK_CLASS CreateDecoderParams final
   {
     Default,
     LowLatency,
+    HardwareDecoderNotAllowed,
   };
   using OptionSet = EnumSet<Option>;
 
@@ -158,6 +160,15 @@ private:
   }
 };
 
+// Used for IPDL serialization.
+// The 'value' have to be the biggest enum from CreateDecoderParams::Option.
+template <>
+struct MaxEnumValue<::mozilla::CreateDecoderParams::Option>
+{
+  static constexpr unsigned int value = static_cast<unsigned int>(CreateDecoderParams::Option::HardwareDecoderNotAllowed);
+};
+
+
 // The PlatformDecoderModule interface is used by the MediaFormatReader to
 // abstract access to decoders provided by various
 // platforms.
@@ -194,7 +205,7 @@ public:
       return false;
     }
     const auto videoInfo = aTrackInfo.GetAsVideoInfo();
-    return !videoInfo || SupportsBitDepth(videoInfo->mBitDepth, aDiagnostics);
+    return !videoInfo || SupportsColorDepth(videoInfo->mColorDepth, aDiagnostics);
   }
 
 protected:
@@ -206,12 +217,12 @@ protected:
   friend class dom::RemoteDecoderModule;
   friend class EMEDecoderModule;
 
-  // Indicates if the PlatformDecoderModule supports decoding of aBitDepth.
-  // Should override this method when the platform can support bitDepth != 8.
-  virtual bool SupportsBitDepth(const uint8_t aBitDepth,
-                                DecoderDoctorDiagnostics* aDiagnostics) const
+  // Indicates if the PlatformDecoderModule supports decoding of aColorDepth.
+  // Should override this method when the platform can support color depth != 8.
+  virtual bool SupportsColorDepth(gfx::ColorDepth aColorDepth,
+                                  DecoderDoctorDiagnostics* aDiagnostics) const
   {
-    return aBitDepth == 8;
+    return aColorDepth == gfx::ColorDepth::COLOR_8;
   }
 
   // Creates a Video decoder. The layers backend is passed in so that

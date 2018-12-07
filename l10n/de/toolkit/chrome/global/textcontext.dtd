@@ -10,8 +10,8 @@
 <!ENTITY pasteCmd.accesskey "E">
 <!ENTITY undoCmd.label "Rückgängig">
 <!ENTITY undoCmd.accesskey "R">
-<!ENTITY selectAllCmd.label "Alles markieren">
-<!ENTITY selectAllCmd.accesskey "m">
+<!ENTITY selectAllCmd.label "Alles auswählen">
+<!ENTITY selectAllCmd.accesskey "u">
 <!ENTITY deleteCmd.label "Löschen">
 <!ENTITY deleteCmd.accesskey "L">
 

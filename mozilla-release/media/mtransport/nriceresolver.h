@@ -51,6 +51,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "nsIDNSService.h"
 #include "nsIDNSListener.h"
 #include "nsICancelable.h"
+#include "nricectx.h"
 
 typedef struct nr_resolver_ nr_resolver;
 typedef struct nr_resolver_vtbl_ nr_resolver_vtbl;
@@ -98,6 +99,12 @@ class NrIceResolver
         cb_(cb), cb_arg_(cb_arg) {}
     NS_IMETHOD OnLookupComplete(nsICancelable *request, nsIDNSRecord *record,
                                 nsresult status) override;
+    NS_IMETHOD OnLookupByTypeComplete(nsICancelable *request,
+                                      nsIDNSByTypeRecord *res,
+                                      nsresult status) override
+    {
+      return NS_OK;
+    }
     int cancel();
     nsCOMPtr<nsICancelable> request_;
     NS_DECL_THREADSAFE_ISUPPORTS

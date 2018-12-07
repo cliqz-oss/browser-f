@@ -22,7 +22,7 @@ const DampTestFront = protocol.FrontClassWithSpec(dampTestSpec, {
     protocol.Front.prototype.initialize.call(this, client);
     // Root owns itself.
     this.manage(this);
-  }
+  },
 });
 
 module.exports = async function() {
@@ -34,8 +34,8 @@ module.exports = async function() {
     `function () {
       const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 
-      const { DebuggerServer } = require("devtools/server/main");
-      DebuggerServer.registerModule("chrome://damp/content/tests/server/actor.js", {
+      const { ActorRegistry } = require("devtools/server/actors/utils/actor-registry");
+      ActorRegistry.registerModule("chrome://damp/content/tests/server/actor.js", {
         prefix: "dampTest",
         constructor: "DampTestActor",
         type: { target: true }

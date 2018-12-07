@@ -4,11 +4,6 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-WEB_PLATFORM_TESTS_MANIFESTS += [
-    ('meta/MANIFEST.json', 'tests/'),
-    ('mozilla/meta/MANIFEST.json', 'mozilla/tests/')
-]
-
 TEST_HARNESS_FILES['web-platform'] += [
     'mach_commands_base.py',
     'mach_test_package_commands.py',
@@ -221,10 +216,10 @@ with Files("tests/css/css-cascade/**"):
     BUG_COMPONENT = ("Core", "CSS Parsing and Computation")
 
 with Files("tests/css/css-font-loading/**"):
-    BUG_COMPONENT = ("Core", "Layout: Text")
+    BUG_COMPONENT = ("Core", "Layout: Text and Fonts")
 
 with Files("tests/css/css-fonts/**"):
-    BUG_COMPONENT = ("Core", "Layout: Text")
+    BUG_COMPONENT = ("Core", "Layout: Text and Fonts")
 
 with Files("tests/css/css-paint-api/**"):
     BUG_COMPONENT = ("Core", "Layout: Web Painting")

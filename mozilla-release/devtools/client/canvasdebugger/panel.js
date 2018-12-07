@@ -27,31 +27,16 @@ CanvasDebuggerPanel.prototype = {
    * @return object
    *         A promise that is resolved when the Canvas Debugger completes opening.
    */
-  open: function() {
-    let targetPromise;
+  open: async function() {
+    this.panelWin.gToolbox = this._toolbox;
+    this.panelWin.gTarget = this.target;
+    this.panelWin.gFront = new CanvasFront(this.target.client, this.target.form);
 
-    // Local debugging needs to make the target remote.
-    if (!this.target.isRemote) {
-      targetPromise = this.target.makeRemote();
-    } else {
-      targetPromise = Promise.resolve(this.target);
-    }
+    await this.panelWin.startupCanvasDebugger();
 
-    return targetPromise
-      .then(() => {
-        this.panelWin.gToolbox = this._toolbox;
-        this.panelWin.gTarget = this.target;
-        this.panelWin.gFront = new CanvasFront(this.target.client, this.target.form);
-        return this.panelWin.startupCanvasDebugger();
-      })
-      .then(() => {
-        this.isReady = true;
-        this.emit("ready");
-        return this;
-      })
-      .catch(function onError(aReason) {
-        DevToolsUtils.reportException("CanvasDebuggerPanel.prototype.open", aReason);
-      });
+    this.isReady = true;
+    this.emit("ready");
+    return this;
   },
 
   // DevToolPanel API
@@ -71,5 +56,5 @@ CanvasDebuggerPanel.prototype = {
       this.panelWin.gFront.destroy();
       this.emit("destroyed");
     });
-  }
+  },
 };

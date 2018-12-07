@@ -31,7 +31,7 @@ pub trait YamlHelper {
     fn as_border_radius_component(&self) -> LayoutSize;
     fn as_border_radius(&self) -> Option<BorderRadius>;
     fn as_transform_style(&self) -> Option<TransformStyle>;
-    fn as_glyph_raster_space(&self) -> Option<GlyphRasterSpace>;
+    fn as_raster_space(&self) -> Option<RasterSpace>;
     fn as_clip_mode(&self) -> Option<ClipMode>;
     fn as_mix_blend_mode(&self) -> Option<MixBlendMode>;
     fn as_filter_op(&self) -> Option<FilterOp>;
@@ -46,6 +46,7 @@ fn string_to_color(color: &str) -> Option<ColorF> {
         "white" => Some(ColorF::new(1.0, 1.0, 1.0, 1.0)),
         "black" => Some(ColorF::new(0.0, 0.0, 0.0, 1.0)),
         "yellow" => Some(ColorF::new(1.0, 1.0, 0.0, 1.0)),
+        "transparent" => Some(ColorF::new(1.0, 1.0, 1.0, 0.0)),
         s => {
             let items: Vec<f32> = s.split_whitespace()
                 .map(|s| f32::from_str(s).unwrap())
@@ -517,17 +518,17 @@ impl YamlHelper for Yaml {
         self.as_str().and_then(|x| StringEnum::from_str(x))
     }
 
-    fn as_glyph_raster_space(&self) -> Option<GlyphRasterSpace> {
+    fn as_raster_space(&self) -> Option<RasterSpace> {
         self.as_str().and_then(|s| {
             match parse_function(s) {
                 ("screen", _, _) => {
-                    Some(GlyphRasterSpace::Screen)
+                    Some(RasterSpace::Screen)
                 }
                 ("local", ref args, _) if args.len() == 1 => {
-                    Some(GlyphRasterSpace::Local(args[0].parse().unwrap()))
+                    Some(RasterSpace::Local(args[0].parse().unwrap()))
                 }
                 f => {
-                    panic!("error parsing glyph raster space {:?}", f);
+                    panic!("error parsing raster space {:?}", f);
                 }
             }
         })
@@ -575,6 +576,8 @@ impl YamlHelper for Yaml {
                 ("sepia", ref args, _) if args.len() == 1 => {
                     Some(FilterOp::Sepia(args[0].parse().unwrap()))
                 }
+                ("srgb-to-linear", _, _)  => Some(FilterOp::SrgbToLinear),
+                ("linear-to-srgb", _, _)  => Some(FilterOp::LinearToSrgb),
                 ("drop-shadow", ref args, _) if args.len() == 3 => {
                     let str = format!("---\noffset: {}\nblur-radius: {}\ncolor: {}\n", args[0], args[1], args[2]);
                     let mut yaml_doc = YamlLoader::load_from_str(&str).expect("Failed to parse drop-shadow");

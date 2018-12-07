@@ -108,11 +108,10 @@ public:
   typedef nsTSubstringTuple<T> substring_tuple_type;
 
   typedef nsReadingIterator<char_type> const_iterator;
-  typedef nsWritingIterator<char_type> iterator;
+  typedef char_type* iterator;
 
   typedef nsTStringComparator<char_type> comparator_type;
 
-  typedef char_type* char_iterator;
   typedef const char_type* const_char_iterator;
 
   typedef uint32_t index_type;
@@ -258,11 +257,14 @@ public:
   // null-terminated.
   bool NS_FASTCALL EqualsASCII(const char* aData) const;
 
-  // EqualsLiteral must ONLY be applied to an actual literal string, or
-  // a char array *constant* declared without an explicit size.
-  // Do not attempt to use it with a regular char* pointer, or with a
-  // non-constant char array variable. Use EqualsASCII for them.
-  // The template trick to acquire the array length at compile time without
+  // EqualsLiteral must ONLY be called with an actual literal string, or
+  // a char array *constant* declared without an explicit size and with an
+  // initializer that is a string literal or is otherwise null-terminated.
+  // Use EqualsASCII for other char array variables.
+  // (Although this method may happen to produce expected results for other
+  // char arrays that have bound one greater than the sequence of interest,
+  // such use is discouraged for reasons of readability and maintainability.)
+  // The template trick to acquire the array bound at compile time without
   // using a macro is due to Corey Kosak, with much thanks.
   template<int N>
   inline bool EqualsLiteral(const char (&aStr)[N]) const
@@ -280,11 +282,13 @@ public:
                                         size_type aLen) const;
   bool NS_FASTCALL LowerCaseEqualsASCII(const char* aData) const;
 
-  // LowerCaseEqualsLiteral must ONLY be applied to an actual
-  // literal string, or a char array *constant* declared without an
-  // explicit size.  Do not attempt to use it with a regular char*
-  // pointer, or with a non-constant char array variable. Use
-  // LowerCaseEqualsASCII for them.
+  // LowerCaseEqualsLiteral must ONLY be called with an actual literal string,
+  // or a char array *constant* declared without an explicit size and with an
+  // initializer that is a string literal or is otherwise null-terminated.
+  // Use LowerCaseEqualsASCII for other char array variables.
+  // (Although this method may happen to produce expected results for other
+  // char arrays that have bound one greater than the sequence of interest,
+  // such use is discouraged for reasons of readability and maintainability.)
   template<int N>
   bool LowerCaseEqualsLiteral(const char (&aStr)[N]) const
   {
@@ -294,13 +298,23 @@ public:
   // Returns true if this string overlaps with the given string fragment.
   bool IsDependentOn(const char_type* aStart, const char_type* aEnd) const
   {
-     // If it _isn't_ the case that one fragment starts after the other ends,
-     // or ends before the other starts, then, they conflict:
-     //
-     //   !(f2.begin >= f1.aEnd || f2.aEnd <= f1.begin)
-     //
-     // Simplified, that gives us:
-    return (aStart < (mData + mLength) && aEnd > mData);
+    // If it _isn't_ the case that one fragment starts after the other ends,
+    // or ends before the other starts, then, they conflict:
+    //
+    //   !(f2.begin >= f1.aEnd || f2.aEnd <= f1.begin)
+    //
+    // Simplified, that gives us (To avoid relying on Undefined Behavior
+    // from comparing pointers from different allocations (which in
+    // principle gives the optimizer the permission to assume elsewhere
+    // that the pointers are from the same allocation), the comparisons
+    // are done on integers, which merely relies on implementation-defined
+    // behavior of converting pointers to integers. std::less and
+    // std::greater implementations don't actually provide the guarantees
+    // that they should.):
+    return (reinterpret_cast<uintptr_t>(aStart) <
+              reinterpret_cast<uintptr_t>(mData + mLength) &&
+            reinterpret_cast<uintptr_t>(aEnd) >
+              reinterpret_cast<uintptr_t>(mData));
   }
 
 protected:

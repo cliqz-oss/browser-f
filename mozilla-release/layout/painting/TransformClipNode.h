@@ -21,8 +21,10 @@ namespace mozilla {
  * They can be used to transform and clip a display item inside a flattened
  * nsDisplayTransform to the coordinate space of that nsDisplayTransform.
  */
-class TransformClipNode {
+class TransformClipNode
+{
   NS_INLINE_DECL_REFCOUNTING(TransformClipNode);
+
 public:
   TransformClipNode(const RefPtr<TransformClipNode>& aParent,
                     const gfx::Matrix4x4Flagged& aTransform,
@@ -37,10 +39,7 @@ public:
   /**
    * Returns the parent node, or nullptr if this is the root node.
    */
-  const RefPtr<TransformClipNode>& Parent() const
-  {
-    return mParent;
-  }
+  const RefPtr<TransformClipNode>& Parent() const { return mParent; }
 
   /**
    * Transforms and clips |aRect| up to the root transform node.
@@ -116,10 +115,7 @@ protected:
    * Returns the matrix that transforms the item bounds to the coordinate space
    * of the flattened nsDisplayTransform.
    */
-  const gfx::Matrix4x4Flagged& Transform() const
-  {
-    return mTransform;
-  }
+  const gfx::Matrix4x4Flagged& Transform() const { return mTransform; }
 
   void TransformRect(gfx::Rect& aRect)
   {
@@ -138,10 +134,7 @@ protected:
   }
 
 private:
-  ~TransformClipNode()
-  {
-    MOZ_COUNT_DTOR(TransformClipNode);
-  }
+  ~TransformClipNode() { MOZ_COUNT_DTOR(TransformClipNode); }
 
   const RefPtr<TransformClipNode> mParent;
   const gfx::Matrix4x4Flagged mTransform;

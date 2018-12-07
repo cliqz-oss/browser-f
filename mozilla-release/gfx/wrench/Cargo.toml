@@ -6,12 +6,12 @@ build = "build.rs"
 license = "MPL-2.0"
 
 [dependencies]
-base64 = "0.6"
+base64 = "0.9"
 bincode = "1.0"
 byteorder = "1.0"
 env_logger = { version = "0.5", optional = true }
 euclid = "0.19"
-gleam = "0.6"
+gleam = "0.6.2"
 glutin = "0.17"
 app_units = "0.7"
 image = "0.19"
@@ -31,7 +31,7 @@ winit = "0.16"
 serde = {version = "1.0", features = ["derive"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-core-graphics = "0.16"
+core-graphics = "0.17.1"
 core-foundation = "0.6"
 
 [features]
@@ -39,7 +39,7 @@ headless = [ "osmesa-sys", "osmesa-src" ]
 pathfinder = [ "webrender/pathfinder" ]
 
 [target.'cfg(target_os = "windows")'.dependencies]
-dwrote = "0.4.1"
+dwrote = "0.5.2"
 mozangle = {version = "0.1.5", features = ["egl"]}
 
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]

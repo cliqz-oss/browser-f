@@ -21,8 +21,9 @@ function triggerClickOn(target, options) {
   return promise;
 }
 
-async function addTab(url = "http://mochi.test:8888/") {
-  const tab = BrowserTestUtils.addTab(gBrowser, url, { skipAnimation: true });
+async function addTab(url = "http://mochi.test:8888/", params = {}) {
+  params.skipAnimation = true;
+  const tab = BrowserTestUtils.addTab(gBrowser, url, params);
   const browser = gBrowser.getBrowserForTab(tab);
   await BrowserTestUtils.browserLoaded(browser);
   return tab;
@@ -174,6 +175,8 @@ async function dragAndDrop(tab1, tab2, copy, destWindow = window) {
 
   let originalTPos = tab1._tPos;
   EventUtils.synthesizeDrop(tab1, tab2, null, copy ? "copy" : "move", window, destWindow, event);
+  // Ensure dnd suppression is cleared.
+  EventUtils.synthesizeMouseAtCenter(tab2, { type: "mouseup" }, destWindow);
   if (!copy && destWindow == window) {
     await BrowserTestUtils.waitForCondition(() => tab1._tPos != originalTPos,
       "Waiting for tab position to be updated");

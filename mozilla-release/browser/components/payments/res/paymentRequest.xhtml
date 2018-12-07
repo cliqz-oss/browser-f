@@ -19,10 +19,11 @@
   <!ENTITY shippingOptionsLabel       "Shipping Options">
   <!ENTITY deliveryOptionsLabel       "Delivery Options">
   <!ENTITY pickupOptionsLabel         "Pickup Options">
-  <!ENTITY shippingGenericError       "Can't ship to this address. Select a different address.">
-  <!ENTITY deliveryGenericError       "Can't deliver to this address. Select a different address.">
-  <!ENTITY pickupGenericError         "Can't pick up from this address. Select a different address.">
+  <!ENTITY shippingGenericError       "Can’t ship to this address. Select a different address.">
+  <!ENTITY deliveryGenericError       "Can’t deliver to this address. Select a different address.">
+  <!ENTITY pickupGenericError         "Can’t pick up from this address. Select a different address.">
   <!ENTITY paymentMethodsLabel        "Payment Method">
+  <!ENTITY address.fieldSeparator     ", ">
   <!ENTITY address.addLink.label      "Add">
   <!ENTITY address.editLink.label     "Edit">
   <!ENTITY basicCard.addLink.label    "Add">
@@ -39,10 +40,14 @@
   <!ENTITY billingAddress.editPage.title  "Edit Billing Address">
   <!ENTITY basicCard.addPage.title    "Add Credit Card">
   <!ENTITY basicCard.editPage.title   "Edit Credit Card">
-  <!ENTITY basicCard.cvv.placeholder  "CVV&fieldRequiredSymbol;">
+  <!ENTITY basicCard.csc.placeholder  "CVV">
+  <!ENTITY basicCard.csc.back.infoTooltip   "3 digit number found on the back of your credit card.">
+  <!ENTITY basicCard.csc.front.infoTooltip  "3 digit number found on the front of your credit card.">
   <!ENTITY payer.addPage.title        "Add Payer Contact">
   <!ENTITY payer.editPage.title       "Edit Payer Contact">
   <!ENTITY payerLabel                 "Contact Information">
+  <!ENTITY manageInPreferences        "Manage saved address and credit card information in <a>&brandShortName; Preferences</a>.">
+  <!ENTITY manageInOptions            "Manage saved address and credit card information in <a>&brandShortName; Options</a>.">
   <!ENTITY cancelPaymentButton.label   "Cancel">
   <!ENTITY approvePaymentButton.label  "Pay">
   <!ENTITY processingPaymentButton.label "Processing">
@@ -54,27 +59,29 @@
   <!ENTITY basicCardPage.addressAddLink.label "Add">
   <!ENTITY basicCardPage.addressEditLink.label "Edit">
   <!ENTITY basicCardPage.backButton.label     "Back">
-  <!ENTITY basicCardPage.addButton.label      "Add">
+  <!ENTITY basicCardPage.nextButton.label     "Next">
   <!ENTITY basicCardPage.updateButton.label   "Update">
-  <!ENTITY basicCardPage.persistCheckbox.label     "Save credit card to &brandShortName; (Security code will not be saved)">
+  <!ENTITY basicCardPage.persistCheckbox.label     "Save credit card to &brandShortName; (CVV will not be saved)">
+  <!ENTITY basicCardPage.persistCheckbox.infoTooltip  "&brandShortName; can securely store your credit card information to use in forms like this, so you don’t have to enter it every time.">
   <!ENTITY addressPage.error.genericSave      "There was an error saving the address.">
   <!ENTITY addressPage.cancelButton.label     "Cancel">
   <!ENTITY addressPage.backButton.label       "Back">
-  <!ENTITY addressPage.addButton.label        "Add">
+  <!ENTITY addressPage.nextButton.label       "Next">
   <!ENTITY addressPage.updateButton.label     "Update">
   <!ENTITY addressPage.persistCheckbox.label  "Save address to &brandShortName;">
-  <!ENTITY failErrorPage.title  "Sorry! Something went wrong with the payment process.">
-  <!ENTITY failErrorPage.suggestion1  "Check your credit card has not expired.">
-  <!ENTITY failErrorPage.suggestion2  "Make sure your credit card information is accurate.">
-  <!ENTITY failErrorPage.suggestion3  "If no other solutions work, check with **host-name**.">
-  <!ENTITY failErrorPage.doneButton.label     "OK">
-  <!ENTITY timeoutErrorPage.title  "Whoops! **host-name** took too long to respond.">
-  <!ENTITY timeoutErrorPage.suggestion1  "Try again later.">
-  <!ENTITY timeoutErrorPage.suggestion2  "Check your network connection." >
-  <!ENTITY timeoutErrorPage.suggestion3  "If no other solutions work, check with **host-name**.">
-  <!ENTITY timeoutErrorPage.doneButton.label     "OK">
+  <!ENTITY addressPage.persistCheckbox.infoTooltip  "&brandShortName; can add your address to forms like this, so you don’t have to type it every time.">
+  <!ENTITY failErrorPage.title                "We couldn’t complete your payment to **host-name**">
+  <!ENTITY failErrorPage.suggestionHeading    "The most likely cause is a hiccup with your credit card.">
+  <!ENTITY failErrorPage.suggestion1          "Make sure the card you’re using hasn’t expired">
+  <!ENTITY failErrorPage.suggestion2          "Double check the card number and expiration date">
+  <!ENTITY failErrorPage.suggestion3          "If your credit card information is correct, contact the merchant for more information">
+  <!ENTITY failErrorPage.doneButton.label     "Close">
+  <!ENTITY timeoutErrorPage.title             "**host-name** is taking too long to respond.">
+  <!ENTITY timeoutErrorPage.suggestionHeading "The most likely cause is a temporary connection hiccup. Open a new tab to check your network connection or click “Close” to try again.">
+  <!ENTITY timeoutErrorPage.doneButton.label     "Close">
   <!ENTITY webPaymentsBranding.label             "&brandShortName; Checkout">
   <!ENTITY invalidOption.label                   "Missing or invalid information">
+  <!ENTITY acceptedCards.label                   "Merchant accepts:">
 ]>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -94,6 +101,7 @@
   <link rel="stylesheet" href="components/basic-card-option.css"/>
   <link rel="stylesheet" href="components/shipping-option.css"/>
   <link rel="stylesheet" href="components/payment-details-item.css"/>
+  <link rel="stylesheet" href="components/accepted-cards.css"/>
   <link rel="stylesheet" href="containers/address-form.css"/>
   <link rel="stylesheet" href="containers/basic-card-form.css"/>
   <link rel="stylesheet" href="containers/order-details.css"/>
@@ -129,6 +137,7 @@
           <address-picker class="shipping-related"
                           data-add-link-label="&address.addLink.label;"
                           data-edit-link-label="&address.editLink.label;"
+                          data-field-separator="&address.fieldSeparator;"
                           data-shipping-address-label="&shippingAddressLabel;"
                           data-delivery-address-label="&deliveryAddressLabel;"
                           data-pickup-address-label="&pickupAddressLabel;"
@@ -143,20 +152,29 @@
           <payment-method-picker selected-state-key="selectedPaymentCard"
                                  data-add-link-label="&basicCard.addLink.label;"
                                  data-edit-link-label="&basicCard.editLink.label;"
-                                 data-cvv-placeholder="&basicCard.cvv.placeholder;"
+                                 data-csc-placeholder="&basicCard.csc.placeholder;"
+                                 data-csc-back-tooltip="&basicCard.csc.back.infoTooltip;"
+                                 data-csc-front-tooltip="&basicCard.csc.front.infoTooltip;"
                                  data-invalid-label="&invalidOption.label;"
                                  label="&paymentMethodsLabel;">
           </payment-method-picker>
+          <accepted-cards hidden="hidden" label="&acceptedCards.label;"></accepted-cards>
           <address-picker class="payer-related"
                           label="&payerLabel;"
                           data-add-link-label="&payer.addLink.label;"
                           data-edit-link-label="&payer.editLink.label;"
+                          data-field-separator="&address.fieldSeparator;"
                           data-invalid-label="&invalidOption.label;"
                           selected-state-key="selectedPayerAddress"></address-picker>
+
+          <p class="manage-text">
+            <span hidden="hidden" data-os="mac">&manageInPreferences;</span>
+            <span hidden="hidden">&manageInOptions;</span>
+          </p>
         </div>
 
         <footer>
-          <span id="branding">&webPaymentsBranding.label;</span>
+          <span class="branding">&webPaymentsBranding.label;</span>
           <button id="cancel">&cancelPaymentButton.label;</button>
           <button id="pay"
                   class="primary"
@@ -180,10 +198,15 @@
                        data-billing-address-title-add="&billingAddress.addPage.title;"
                        data-billing-address-title-edit="&billingAddress.editPage.title;"
                        data-back-button-label="&basicCardPage.backButton.label;"
-                       data-add-button-label="&basicCardPage.addButton.label;"
+                       data-next-button-label="&basicCardPage.nextButton.label;"
                        data-update-button-label="&basicCardPage.updateButton.label;"
                        data-cancel-button-label="&cancelPaymentButton.label;"
                        data-persist-checkbox-label="&basicCardPage.persistCheckbox.label;"
+                       data-persist-checkbox-info-tooltip="&basicCardPage.persistCheckbox.infoTooltip;"
+                       data-csc-placeholder="&basicCard.csc.placeholder;"
+                       data-csc-back-info-tooltip="&basicCard.csc.back.infoTooltip;"
+                       data-csc-front-info-tooltip="&basicCard.csc.front.infoTooltip;"
+                       data-accepted-cards-label="&acceptedCards.label;"
                        data-field-required-symbol="&fieldRequiredSymbol;"
                        hidden="hidden"></basic-card-form>
 
@@ -191,24 +214,26 @@
                     data-error-generic-save="&addressPage.error.genericSave;"
                     data-cancel-button-label="&addressPage.cancelButton.label;"
                     data-back-button-label="&addressPage.backButton.label;"
-                    data-add-button-label="&addressPage.addButton.label;"
+                    data-next-button-label="&addressPage.nextButton.label;"
                     data-update-button-label="&addressPage.updateButton.label;"
                     data-persist-checkbox-label="&addressPage.persistCheckbox.label;"
+                    data-persist-checkbox-info-tooltip="&addressPage.persistCheckbox.infoTooltip;"
                     data-field-required-symbol="&fieldRequiredSymbol;"
                     hidden="hidden"></address-form>
 
       <completion-error-page id="completion-timeout-error" class="illustrated"
                   data-page-title="&timeoutErrorPage.title;"
-                  data-suggestion-1="&timeoutErrorPage.suggestion1;"
-                  data-suggestion-2="&timeoutErrorPage.suggestion2;"
-                  data-suggestion-3="&timeoutErrorPage.suggestion3;"
+                  data-suggestion-heading="&timeoutErrorPage.suggestionHeading;"
+                  data-branding-label="&webPaymentsBranding.label;"
                   data-done-button-label="&timeoutErrorPage.doneButton.label;"
                   hidden="hidden"></completion-error-page>
       <completion-error-page id="completion-fail-error" class="illustrated"
                   data-page-title="&failErrorPage.title;"
+                  data-suggestion-heading="&failErrorPage.suggestionHeading;"
                   data-suggestion-1="&failErrorPage.suggestion1;"
                   data-suggestion-2="&failErrorPage.suggestion2;"
                   data-suggestion-3="&failErrorPage.suggestion3;"
+                  data-branding-label="&webPaymentsBranding.label;"
                   data-done-button-label="&failErrorPage.doneButton.label;"
                   hidden="hidden"></completion-error-page>
     </div>

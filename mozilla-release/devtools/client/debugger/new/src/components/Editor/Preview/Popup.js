@@ -47,19 +47,24 @@ const {
     Rep
   },
   MODE,
-  ObjectInspector,
-  ObjectInspectorUtils
+  objectInspector
 } = _devtoolsReps2.default;
 const {
-  createNode,
-  getChildren,
-  getValue,
-  nodeIsPrimitive,
-  NODE_TYPES
-} = ObjectInspectorUtils.node;
+  ObjectInspector,
+  utils
+} = objectInspector;
 const {
-  loadItemProperties
-} = ObjectInspectorUtils.loadProperties;
+  node: {
+    createNode,
+    getChildren,
+    getValue,
+    nodeIsPrimitive,
+    NODE_TYPES
+  },
+  loadProperties: {
+    loadItemProperties
+  }
+} = utils;
 
 function inPreview(event) {
   const relatedTarget = event.relatedTarget;
@@ -236,7 +241,8 @@ class Popup extends _react.Component {
 
   renderObjectPreview() {
     const {
-      extra
+      extra,
+      value
     } = this.props;
     const root = this.getRoot();
 
@@ -252,12 +258,10 @@ class Popup extends _react.Component {
 
     let header = null;
 
-    if ((0, _preview.isImmutable)(this.getObjectProperties())) {
+    if (extra.immutable && (0, _preview.isImmutablePreview)(value)) {
       header = this.renderImmutable(extra.immutable);
       roots = roots.filter(r => r.type != NODE_TYPES.PROTOTYPE);
-    }
-
-    if (extra.react && (0, _preview.isReactComponent)(this.getObjectProperties())) {
+    } else if (extra.react && (0, _preview.isReactComponent)(this.getObjectProperties())) {
       header = this.renderReact(extra.react);
       roots = roots.filter(r => ["state", "props"].includes(r.name));
     }

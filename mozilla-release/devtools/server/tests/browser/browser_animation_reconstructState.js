@@ -8,19 +8,18 @@
 // state that change, the front reconstructs the whole state everytime.
 
 add_task(async function() {
-  const {client, walker, animations} =
+  const {target, walker, animations} =
     await initAnimationsFrontForUrl(MAIN_DOMAIN + "animation.html");
 
   await playerHasCompleteStateAtAllTimes(walker, animations);
 
-  await client.close();
+  await target.destroy();
   gBrowser.removeCurrentTab();
 });
 
 async function playerHasCompleteStateAtAllTimes(walker, animations) {
   const node = await walker.querySelector(walker.rootNode, ".simple-animation");
   const [player] = await animations.getAnimationPlayersForNode(node);
-  await player.ready();
 
   // Get the list of state key names from the initialstate.
   const keys = Object.keys(player.initialState);

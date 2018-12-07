@@ -81,10 +81,13 @@ private:
   nsresult RegisterObservers();
 
   void MaybeImportEnterpriseRoots();
+  void ImportEnterpriseRoots();
   void UnloadEnterpriseRoots();
 
-  void MaybeEnableFamilySafetyCompatibility();
+  void MaybeEnableFamilySafetyCompatibility(uint32_t familySafetyMode);
   void UnloadFamilySafetyRoot();
+
+  nsresult TrustLoaded3rdPartyRoots();
 
 #ifdef XP_WIN
   nsresult MaybeImportFamilySafetyRoot(PCCERT_CONTEXT certificate,

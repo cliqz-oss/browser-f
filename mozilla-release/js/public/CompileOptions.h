@@ -106,7 +106,6 @@ class JS_PUBLIC_API(TransitiveCompileOptions)
 
   public:
     // POD options.
-    bool utf8 = false;
     bool selfHostingMode = false;
     bool canLazilyParse = true;
     bool strictOption = false;
@@ -249,7 +248,7 @@ class JS_PUBLIC_API(OwningCompileOptions) final
     bool copy(JSContext* cx, const ReadOnlyCompileOptions& rhs);
 
     /* These setters make copies of their string arguments and are fallible. */
-    bool setFile(JSContext* cx, const char* f);
+    MOZ_MUST_USE bool setFile(JSContext* cx, const char* f);
     MOZ_MUST_USE bool setFileAndLine(JSContext* cx, const char* f, unsigned l);
     MOZ_MUST_USE bool setSourceMapURL(JSContext* cx, const char16_t* s);
     MOZ_MUST_USE bool setIntroducerFilename(JSContext* cx, const char* s);
@@ -278,11 +277,6 @@ class JS_PUBLIC_API(OwningCompileOptions) final
 
     OwningCompileOptions& setMutedErrors(bool mute) {
         mutedErrors_ = mute;
-        return *this;
-    }
-
-    OwningCompileOptions& setUTF8(bool u) {
-        utf8 = u;
         return *this;
     }
 
@@ -340,8 +334,9 @@ class JS_PUBLIC_API(OwningCompileOptions) final
                              const char* intro, unsigned line,
                              JSScript* script, uint32_t offset)
     {
-        if (!setIntroducerFilename(cx, introducerFn))
+        if (!setIntroducerFilename(cx, introducerFn)) {
             return false;
+        }
 
         introductionType = intro;
         introductionLineno = line;
@@ -457,11 +452,6 @@ class MOZ_STACK_CLASS JS_PUBLIC_API(CompileOptions) final
 
     CompileOptions& setMutedErrors(bool mute) {
         mutedErrors_ = mute;
-        return *this;
-    }
-
-    CompileOptions& setUTF8(bool u) {
-        utf8 = u;
         return *this;
     }
 

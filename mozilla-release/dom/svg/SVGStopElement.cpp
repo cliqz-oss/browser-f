@@ -19,13 +19,13 @@ SVGStopElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 }
 
 nsSVGElement::NumberInfo SVGStopElement::sNumberInfo =
-{ &nsGkAtoms::offset, 0, true };
+{ nsGkAtoms::offset, 0, true };
 
 //----------------------------------------------------------------------
 // Implementation
 
-SVGStopElement::SVGStopElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-  : SVGStopElementBase(aNodeInfo)
+SVGStopElement::SVGStopElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
+  : SVGStopElementBase(std::move(aNodeInfo))
 {
 }
 

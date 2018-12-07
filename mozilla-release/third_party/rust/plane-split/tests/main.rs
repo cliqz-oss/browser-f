@@ -3,7 +3,7 @@ extern crate plane_split;
 
 use euclid::{Angle, TypedRect, TypedSize2D, TypedTransform3D, point2, point3, vec3};
 use euclid::approxeq::ApproxEq;
-use plane_split::{Intersection, Line, LineProjection, Plane, Polygon};
+use plane_split::{Intersection, Line, LineProjection, NegativeHemisphereError, Plane, Polygon};
 
 
 #[test]
@@ -60,7 +60,7 @@ fn valid() {
 
 #[test]
 fn empty() {
-    let poly = Polygon::<f32, ()>::try_from_points(
+    let poly = Polygon::<f32, ()>::from_points(
         [
             point3(0.0, 0.0, 1.0),
             point3(0.0, 0.0, 1.0),
@@ -72,14 +72,34 @@ fn empty() {
     assert_eq!(None, poly);
 }
 
+fn test_trasnformed(rect: TypedRect<f32, ()>, transform: TypedTransform3D<f32, (), ()>) {
+    let poly = Polygon::from_transformed_rect(rect, transform, 0).unwrap();
+    assert!(poly.is_valid());
+
+    let inv_transform = transform.inverse().unwrap();
+    let poly2 = Polygon::from_transformed_rect_with_inverse(rect, &transform, &inv_transform, 0).unwrap();
+    assert_eq!(poly.points, poly2.points);
+    assert!(poly.plane.offset.approx_eq(&poly2.plane.offset));
+    assert!(poly.plane.normal.dot(poly2.plane.normal).approx_eq(&1.0));
+}
+
 #[test]
 fn from_transformed_rect() {
-    let rect: TypedRect<f32, ()> = TypedRect::new(point2(10.0, 10.0), TypedSize2D::new(20.0, 30.0));
-    let transform: TypedTransform3D<f32, (), ()> =
+    let rect = TypedRect::new(point2(10.0, 10.0), TypedSize2D::new(20.0, 30.0));
+    let transform =
         TypedTransform3D::create_rotation(0.5f32.sqrt(), 0.0, 0.5f32.sqrt(), Angle::radians(5.0))
         .pre_translate(vec3(0.0, 0.0, 10.0));
-    let poly = Polygon::from_transformed_rect(rect, transform, 0);
-    assert!(poly.is_some() && poly.unwrap().is_valid());
+    test_trasnformed(rect, transform);
+}
+
+#[test]
+fn from_transformed_rect_perspective() {
+    let rect = TypedRect::new(point2(-10.0, -5.0), TypedSize2D::new(20.0, 30.0));
+    let mut transform =
+        TypedTransform3D::create_perspective(400.0)
+        .pre_translate(vec3(0.0, 0.0, 100.0));
+    transform.m44 = 0.7; //for fun
+    test_trasnformed(rect, transform);
 }
 
 #[test]
@@ -262,11 +282,17 @@ fn split() {
 
 #[test]
 fn plane_unnormalized() {
-    let mut plane: Option<Plane<f32, ()>> = Plane::from_unnormalized(vec3(0.0, 0.0, 0.0), 1.0);
-    assert_eq!(plane, None);
+    let zero_vec = vec3(0.0000001, 0.0, 0.0);
+    let mut plane: Result<Option<Plane<f32, ()>>, _> = Plane::from_unnormalized(zero_vec, 1.0);
+    assert_eq!(plane, Ok(None));
+    plane = Plane::from_unnormalized(zero_vec, 0.0);
+    assert_eq!(plane, Err(NegativeHemisphereError));
+    plane = Plane::from_unnormalized(zero_vec, -0.5);
+    assert_eq!(plane, Err(NegativeHemisphereError));
+
     plane = Plane::from_unnormalized(vec3(-3.0, 4.0, 0.0), 2.0);
-    assert_eq!(plane, Some(Plane {
+    assert_eq!(plane, Ok(Some(Plane {
         normal: vec3(-3.0/5.0, 4.0/5.0, 0.0),
         offset: 2.0/5.0,
-    }));
+    })));
 }

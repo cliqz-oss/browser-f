@@ -45,6 +45,13 @@ class nsSVGIntegrationUtils final
 
 public:
   /**
+   * Returns true if SVG effects that affect the overflow of the given frame
+   * are currently applied to the frame.
+   */
+  static bool
+  UsingOverflowAffectingEffects(const nsIFrame* aFrame);
+
+  /**
    * Returns true if SVG effects are currently applied to this frame.
    */
   static bool
@@ -165,6 +172,11 @@ public:
    */
   static void
   PaintMaskAndClipPath(const PaintFramesParams& aParams);
+
+  // This should use FunctionRef instead of std::function because we don't need
+  // to take ownership of the function. See bug 1490781.
+  static void
+  PaintMaskAndClipPath(const PaintFramesParams& aParams, const std::function<void()>& aPaintChild);
 
   /**
    * Paint mask of non-SVG frame onto a given context, aParams.ctx.

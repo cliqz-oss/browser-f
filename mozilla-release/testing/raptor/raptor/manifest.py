@@ -76,12 +76,16 @@ def write_test_settings_json(test_details, oskey):
 
     if test_details['type'] == "pageload":
         test_settings['raptor-options']['measure'] = {}
+        if "dcf" in test_details['measure']:
+            test_settings['raptor-options']['measure']['dcf'] = True
         if "fnbpaint" in test_details['measure']:
             test_settings['raptor-options']['measure']['fnbpaint'] = True
         if "fcp" in test_details['measure']:
             test_settings['raptor-options']['measure']['fcp'] = True
         if "hero" in test_details['measure']:
             test_settings['raptor-options']['measure']['hero'] = test_details['hero'].split()
+        if "ttfi" in test_details['measure']:
+            test_settings['raptor-options']['measure']['ttfi'] = True
     if test_details.get("page_timeout", None) is not None:
         test_settings['raptor-options']['page_timeout'] = int(test_details['page_timeout'])
     test_settings['raptor-options']['unit'] = test_details.get("unit", "ms")

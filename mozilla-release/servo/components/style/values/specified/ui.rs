@@ -52,9 +52,8 @@ impl Parse for CursorKind {
     ) -> Result<Self, ParseError<'i>> {
         let location = input.current_source_location();
         let ident = input.expect_ident()?;
-        CursorKind::from_css_keyword(&ident).map_err(|_| {
-            location.new_custom_error(StyleParseErrorKind::UnspecifiedError)
-        })
+        CursorKind::from_css_keyword(&ident)
+            .map_err(|_| location.new_custom_error(StyleParseErrorKind::UnspecifiedError))
     }
 }
 
@@ -74,8 +73,7 @@ impl Parse for CursorImage {
 }
 
 /// Specified value of `-moz-force-broken-image-icon`
-#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo,
-         ToComputedValue)]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToComputedValue)]
 pub struct MozForceBrokenImageIcon(pub bool);
 
 impl MozForceBrokenImageIcon {
@@ -122,5 +120,23 @@ impl From<MozForceBrokenImageIcon> for u8 {
         } else {
             0
         }
+    }
+}
+
+/// A specified value for `scrollbar-color` property
+pub type ScrollbarColor = generics::ScrollbarColor<Color>;
+
+impl Parse for ScrollbarColor {
+    fn parse<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
+        if input.try(|i| i.expect_ident_matching("auto")).is_ok() {
+            return Ok(generics::ScrollbarColor::Auto);
+        }
+        Ok(generics::ScrollbarColor::Colors {
+            thumb: Color::parse(context, input)?,
+            track: Color::parse(context, input)?,
+        })
     }
 }

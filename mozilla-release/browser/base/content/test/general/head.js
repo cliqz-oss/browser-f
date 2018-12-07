@@ -200,13 +200,6 @@ function resetBlocklist() {
   Services.prefs.setCharPref("extensions.blocklist.url", _originalTestBlocklistURL);
 }
 
-function whenNewWindowLoaded(aOptions, aCallback) {
-  let win = OpenBrowserWindow(aOptions);
-  win.addEventListener("load", function() {
-    aCallback(win);
-  }, {once: true});
-}
-
 function promiseWindowClosed(win) {
   let promise = BrowserTestUtils.domWindowClosed(win);
   win.close();
@@ -233,17 +226,20 @@ function promiseOpenAndLoadWindow(aOptions, aWaitForDelayedStartup = false) {
   });
 }
 
-function whenNewTabLoaded(aWindow, aCallback) {
+async function whenNewTabLoaded(aWindow, aCallback) {
   aWindow.BrowserOpenTab();
 
+  let expectedURL = aboutNewTabService.newTabURL;
   let browser = aWindow.gBrowser.selectedBrowser;
-  let doc = browser.contentDocumentAsCPOW;
-  if (doc && doc.readyState === "complete") {
-    aCallback();
-    return;
+  let loadPromise = BrowserTestUtils.browserLoaded(browser, false, expectedURL);
+  let alreadyLoaded = await ContentTask.spawn(browser, expectedURL, url => {
+    let doc = content.document;
+    return doc && doc.readyState === "complete" && doc.location.href == url;
+  });
+  if (!alreadyLoaded) {
+    await loadPromise;
   }
-
-  whenTabLoaded(aWindow.gBrowser.selectedTab, aCallback);
+  aCallback();
 }
 
 function whenTabLoaded(aTab, aCallback) {
@@ -303,7 +299,7 @@ var FullZoomHelper = {
           resolve();
       });
 
-      tab.linkedBrowser.loadURI(url);
+      BrowserTestUtils.loadURI(tab.linkedBrowser, url);
     });
   },
 
@@ -469,28 +465,18 @@ function promiseNotificationShown(notification) {
  */
 function promiseOnBookmarkItemAdded(aExpectedURI) {
   return new Promise((resolve, reject) => {
-    let bookmarksObserver = {
-      onItemAdded(aItemId, aFolderId, aIndex, aItemType, aURI) {
-        info("Added a bookmark to " + aURI.spec);
-        PlacesUtils.bookmarks.removeObserver(bookmarksObserver);
-        if (aURI.equals(aExpectedURI)) {
-          resolve();
-        } else {
-          reject(new Error("Added an unexpected bookmark"));
-        }
-      },
-      onBeginUpdateBatch() {},
-      onEndUpdateBatch() {},
-      onItemRemoved() {},
-      onItemChanged() {},
-      onItemVisited() {},
-      onItemMoved() {},
-      QueryInterface: ChromeUtils.generateQI([
-        Ci.nsINavBookmarkObserver,
-      ]),
+    let listener = events => {
+      is(events.length, 1, "Should only receive one event.");
+      info("Added a bookmark to " + events[0].url);
+      PlacesUtils.observers.removeListener(["bookmark-added"], listener);
+      if (events[0].url == aExpectedURI.spec) {
+        resolve();
+      } else {
+        reject(new Error("Added an unexpected bookmark"));
+      }
     };
     info("Waiting for a bookmark to be added");
-    PlacesUtils.bookmarks.addObserver(bookmarksObserver);
+    PlacesUtils.observers.addListener(["bookmark-added"], listener);
   });
 }
 

@@ -683,11 +683,17 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
         return aCallback(true);
 
       // And record the fact a migration (ie, a reset) happened.
-      let timesAccessor = new ProfileAge(currentProfileDir.path);
-      timesAccessor.recordProfileReset().then(
-        () => aCallback(true),
-        () => aCallback(false)
-      );
+      let recordMigration = async () => {
+        try {
+          let profileTimes = await ProfileAge(currentProfileDir.path);
+          await profileTimes.recordProfileReset();
+          aCallback(true);
+        } catch (e) {
+          aCallback(false);
+        }
+      };
+
+      recordMigration();
     },
   };
   let telemetry = {

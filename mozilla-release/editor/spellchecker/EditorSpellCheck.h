@@ -16,16 +16,8 @@
 #include "nscore.h"                     // for nsresult
 
 class mozSpellChecker;
-class nsComposeTxtSrvFilter;
 class nsIEditor;
 class nsISpellChecker;
-class nsITextServicesFilter;
-
-#define NS_EDITORSPELLCHECK_CID                     \
-{ /* {75656ad9-bd13-4c5d-939a-ec6351eea0cc} */        \
-    0x75656ad9, 0xbd13, 0x4c5d,                       \
-    { 0x93, 0x9a, 0xec, 0x63, 0x51, 0xee, 0xa0, 0xcc }\
-}
 
 namespace mozilla {
 
@@ -58,7 +50,6 @@ protected:
   virtual ~EditorSpellCheck();
 
   RefPtr<mozSpellChecker> mSpellChecker;
-  RefPtr<nsComposeTxtSrvFilter> mTxtSrvFilter;
   RefPtr<EditorBase> mEditor;
 
   nsTArray<nsString> mSuggestedWordList;
@@ -69,6 +60,7 @@ protected:
 
   nsString mPreferredLang;
 
+  uint32_t mTxtSrvFilterType;
   int32_t mSuggestedWordIndex;
   int32_t mDictionaryIndex;
   uint32_t mDictionaryFetcherGroup;

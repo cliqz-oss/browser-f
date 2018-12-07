@@ -21,7 +21,7 @@ function test() {
   testRestoreFromFileUnsaved();
 
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
-  gBrowser.loadURI("data:text/html,<p>test star* UI for unsaved file changes");
+  BrowserTestUtils.loadURI(gBrowser, "data:text/html,<p>test star* UI for unsaved file changes");
 }
 
 function testListeners() {
@@ -56,7 +56,7 @@ function testListeners() {
 function testRestoreNotFromFile() {
   const session = [{
     text: "test1",
-    executionContext: 1
+    executionContext: 1,
   }];
 
   const [win] = ScratchpadManager.restoreSession(session);
@@ -74,7 +74,7 @@ function testRestoreFromFileSaved() {
     filename: "test.js",
     text: "test1",
     executionContext: 1,
-    saved: true
+    saved: true,
   }];
 
   const [win] = ScratchpadManager.restoreSession(session);
@@ -94,7 +94,7 @@ function testRestoreFromFileUnsaved() {
     filename: "test.js",
     text: "test1",
     executionContext: 1,
-    saved: false
+    saved: false,
   }];
 
   const [win] = ScratchpadManager.restoreSession(session);

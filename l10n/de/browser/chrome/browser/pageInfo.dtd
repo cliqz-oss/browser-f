@@ -9,8 +9,8 @@
 <!ENTITY  copy.label            "Kopieren">
 <!ENTITY  copy.accesskey        "K">
 <!ENTITY  selectall.key         "A">
-<!ENTITY  selectall.label       "Alles markieren">
-<!ENTITY  selectall.accesskey   "A">
+<!ENTITY  selectall.label       "Alles auswählen">
+<!ENTITY  selectall.accesskey   "u">
 <!ENTITY  closeWindow.key       "w">
 
 <!ENTITY  generalTab            "Allgemein">

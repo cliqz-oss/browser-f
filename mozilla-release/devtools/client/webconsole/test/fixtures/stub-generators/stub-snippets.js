@@ -58,6 +58,19 @@ function foo() {
 foo()
 `});
 
+consoleApi.set("console.trace('bar', {'foo': 'bar'}, [1,2,3])", {
+  keys: ["console.trace('bar', {'foo': 'bar'}, [1,2,3])"],
+  code: `
+function testStacktraceWithLog() {
+  console.trace('bar', {'foo': 'bar'}, [1,2,3])
+}
+function foo() {
+  testStacktraceWithLog()
+}
+
+foo()
+`});
+
 consoleApi.set("console.time('bar')", {
   keys: [
     "console.time('bar')",
@@ -154,7 +167,7 @@ console.groupEnd();
 
 consoleApi.set("console.dir({C, M, Y, K})", {
   keys: ["console.dir({C, M, Y, K})"],
-  code: "console.dir({cyan: 'C', magenta: 'M', yellow: 'Y', black: 'K'});"
+  code: "console.dir({cyan: 'C', magenta: 'M', yellow: 'Y', black: 'K'});",
 });
 
 consoleApi.set("console.count", {
@@ -205,7 +218,7 @@ const evaluationResultCommands = [
   "1 + @",
   "inspect({a: 1})",
   "cd(document)",
-  "undefined"
+  "undefined",
 ];
 
 const evaluationResult = new Map(evaluationResultCommands.map(cmd => [cmd, cmd]));

@@ -27,14 +27,14 @@ class StringOrOpenPopupOptions;
 nsXULElement*
 NS_NewXULPopupElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
 
-class XULPopupElement final : public nsXULElement
+class XULPopupElement : public nsXULElement
 {
 private:
   nsIFrame* GetFrame(bool aFlushLayout);
 
 public:
-  explicit XULPopupElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-    : nsXULElement(aNodeInfo)
+  explicit XULPopupElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
+    : nsXULElement(std::move(aNodeInfo))
   {
   }
 

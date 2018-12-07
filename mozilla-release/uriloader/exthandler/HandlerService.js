@@ -88,7 +88,7 @@ HandlerService.prototype = {
 
     try {
       prefsDefaultHandlersVersion = Number(prefsDefaultHandlersVersion.data);
-      let locale = Services.locale.getAppLocaleAsLangTag();
+      let locale = Services.locale.appLocaleAsLangTag;
 
       let defaultHandlersVersion =
           this._store.data.defaultHandlersVersion[locale] || 0;
@@ -277,10 +277,9 @@ HandlerService.prototype = {
     }
 
     if (this._isMIMEInfo(handlerInfo)) {
-      let extEnumerator = handlerInfo.getFileExtensions();
       let extensions = storedHandlerInfo.extensions || [];
-      while (extEnumerator.hasMore()) {
-        let extension = extEnumerator.getNext().toLowerCase();
+      for (let extension of handlerInfo.getFileExtensions()) {
+        extension = extension.toLowerCase();
         // If the caller stored duplicate extensions, we save them only once.
         if (!extensions.includes(extension)) {
           extensions.push(extension);

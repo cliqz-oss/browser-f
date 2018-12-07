@@ -8,14 +8,13 @@
 //! [image]: https://drafts.csswg.org/css-images/#image-values
 
 use Atom;
-use cssparser::{Parser, Token};
+use cssparser::{Parser, Token, Delimiter};
 use custom_properties::SpecifiedValue;
 use parser::{Parse, ParserContext};
 use selectors::parser::SelectorParseErrorKind;
 #[cfg(feature = "servo")]
 use servo_url::ServoUrl;
 use std::cmp::Ordering;
-use std::f32::consts::PI;
 use std::fmt::{self, Write};
 use style_traits::{CssType, CssWriter, KeywordsCollectFn, ParseError};
 use style_traits::{StyleParseErrorKind, SpecifiedValueInfo, ToCss};
@@ -32,6 +31,20 @@ use values::specified::url::SpecifiedImageUrl;
 
 /// A specified image layer.
 pub type ImageLayer = Either<None_, Image>;
+
+impl ImageLayer {
+    /// This is a specialization of Either with an alternative parse
+    /// method to provide anonymous CORS headers for the Image url fetch.
+    pub fn parse_with_cors_anonymous<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
+        if let Ok(v) = input.try(|i| None_::parse(context, i)) {
+            return Ok(Either::First(v));
+        }
+        Image::parse_with_cors_anonymous(context, input).map(Either::Second)
+    }
+}
 
 /// Specified values for an image according to CSS-IMAGES.
 /// <https://drafts.csswg.org/css-images/#image-values>
@@ -55,19 +68,19 @@ impl SpecifiedValueInfo for Gradient {
     fn collect_completion_keywords(f: KeywordsCollectFn) {
         // This list here should keep sync with that in Gradient::parse.
         f(&[
-          "linear-gradient",
-          "-webkit-linear-gradient",
-          "-moz-linear-gradient",
-          "repeating-linear-gradient",
-          "-webkit-repeating-linear-gradient",
-          "-moz-repeating-linear-gradient",
-          "radial-gradient",
-          "-webkit-radial-gradient",
-          "-moz-radial-gradient",
-          "repeating-radial-gradient",
-          "-webkit-repeating-radial-gradient",
-          "-moz-repeating-radial-gradient",
-          "-webkit-gradient",
+            "linear-gradient",
+            "-webkit-linear-gradient",
+            "-moz-linear-gradient",
+            "repeating-linear-gradient",
+            "-webkit-repeating-linear-gradient",
+            "-moz-repeating-linear-gradient",
+            "radial-gradient",
+            "-webkit-radial-gradient",
+            "-moz-radial-gradient",
+            "repeating-radial-gradient",
+            "-webkit-repeating-radial-gradient",
+            "-moz-repeating-radial-gradient",
+            "-webkit-gradient",
         ]);
     }
 }
@@ -167,8 +180,11 @@ impl Image {
         })
     }
 
-    /// Provides an alternate method for parsing that associates the URL
-    /// with anonymous CORS headers.
+    /// Provides an alternate method for parsing that associates the URL with
+    /// anonymous CORS headers.
+    ///
+    /// FIXME(emilio): It'd be nicer for this to pass a `CorsMode` parameter to
+    /// a shared function instead.
     pub fn parse_with_cors_anonymous<'i, 't>(
         context: &ParserContext,
         input: &mut Parser<'i, 't>,
@@ -251,9 +267,9 @@ impl Parse for Gradient {
         #[cfg(feature = "gecko")]
         {
             use gecko_bindings::structs;
-            if compat_mode == CompatMode::Moz && !unsafe {
-                structs::StaticPrefs_sVarCache_layout_css_prefixes_gradients
-            } {
+            if compat_mode == CompatMode::Moz &&
+                !unsafe { structs::StaticPrefs_sVarCache_layout_css_prefixes_gradients }
+            {
                 return Err(input.new_custom_error(StyleParseErrorKind::UnexpectedFunction(func)));
             }
         }
@@ -662,7 +678,7 @@ impl GradientKind {
 impl generic::LineDirection for LineDirection {
     fn points_downwards(&self, compat_mode: CompatMode) -> bool {
         match *self {
-            LineDirection::Angle(ref angle) => angle.radians() == PI,
+            LineDirection::Angle(ref angle) => angle.degrees() == 180.0,
             LineDirection::Vertical(Y::Bottom) if compat_mode == CompatMode::Modern => true,
             LineDirection::Vertical(Y::Top) if compat_mode != CompatMode::Modern => true,
             #[cfg(feature = "gecko")]
@@ -772,9 +788,9 @@ impl LineDirection {
                 // There is no `to` keyword in webkit prefixed syntax. If it's consumed,
                 // parsing should throw an error.
                 CompatMode::WebKit if to_ident.is_ok() => {
-                    return Err(i.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(
-                        "to".into(),
-                    )))
+                    return Err(
+                        i.new_custom_error(SelectorParseErrorKind::UnexpectedIdent("to".into()))
+                    )
                 },
                 _ => {},
             }
@@ -939,17 +955,43 @@ impl GradientItem {
         context: &ParserContext,
         input: &mut Parser<'i, 't>,
     ) -> Result<Vec<Self>, ParseError<'i>> {
+        let mut items = Vec::new();
         let mut seen_stop = false;
-        let items = input.parse_comma_separated(|input| {
-            if seen_stop {
-                if let Ok(hint) = input.try(|i| LengthOrPercentage::parse(context, i)) {
-                    seen_stop = false;
-                    return Ok(generic::GradientItem::InterpolationHint(hint));
+
+        loop {
+            input.parse_until_before(Delimiter::Comma, |input| {
+                if seen_stop {
+                    if let Ok(hint) = input.try(|i| LengthOrPercentage::parse(context, i)) {
+                        seen_stop = false;
+                        items.push(generic::GradientItem::InterpolationHint(hint));
+                        return Ok(());
+                    }
                 }
+
+                let stop = ColorStop::parse(context, input)?;
+
+                if let Ok(multi_position) = input.try(|i| LengthOrPercentage::parse(context, i)) {
+                    let stop_color = stop.color.clone();
+                    items.push(generic::GradientItem::ColorStop(stop));
+                    items.push(generic::GradientItem::ColorStop(ColorStop {
+                        color: stop_color,
+                        position: Some(multi_position),
+                    }));
+                } else {
+                    items.push(generic::GradientItem::ColorStop(stop));
+                }
+
+                seen_stop = true;
+                Ok(())
+            })?;
+
+            match input.next() {
+                Err(_) => break,
+                Ok(&Token::Comma) => continue,
+                Ok(_) => unreachable!(),
             }
-            seen_stop = true;
-            ColorStop::parse(context, input).map(generic::GradientItem::ColorStop)
-        })?;
+        }
+
         if !seen_stop || items.len() < 2 {
             return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
         }
@@ -981,8 +1023,7 @@ impl Parse for PaintWorklet {
                 .try(|input| {
                     input.expect_comma()?;
                     input.parse_comma_separated(|input| SpecifiedValue::parse(input))
-                })
-                .unwrap_or(vec![]);
+                }).unwrap_or(vec![]);
             Ok(PaintWorklet { name, arguments })
         })
     }

@@ -4,10 +4,12 @@
 
 "use strict";
 
+const Services = require("Services");
 const {AppManager} = require("devtools/client/webide/modules/app-manager");
 const EventEmitter = require("devtools/shared/event-emitter");
 const {RuntimeScanners, WiFiScanner} = require("devtools/client/webide/modules/runtimes");
 const {Devices} = require("resource://devtools/shared/apps/Devices.jsm");
+const Strings = Services.strings.createBundle("chrome://devtools/locale/webide.properties");
 
 var RuntimeList;
 
@@ -69,6 +71,10 @@ RuntimeList.prototype = {
     this._Cmds.showSettings();
   },
 
+  showPerformancePanel: function() {
+    this._Cmds.showPerformancePanel();
+  },
+
   showTroubleShooting: function() {
     this._Cmds.showTroubleShooting();
   },
@@ -90,6 +96,10 @@ RuntimeList.prototype = {
     const disconnectCmd = doc.querySelector("#runtime-disconnect");
     const devicePrefsCmd = doc.querySelector("#runtime-preferences");
     const settingsCmd = doc.querySelector("#runtime-settings");
+    const performanceCmd = doc.querySelector("#runtime-performance");
+
+    // Display the performance button only if the pref is enabled
+    performanceCmd.hidden = !Services.prefs.getBoolPref("devtools.performance.new-panel-enabled", false);
 
     if (AppManager.connected) {
       if (AppManager.deviceFront) {
@@ -100,12 +110,16 @@ RuntimeList.prototype = {
         devicePrefsCmd.removeAttribute("disabled");
       }
       disconnectCmd.removeAttribute("disabled");
+      if (AppManager.perfFront) {
+        performanceCmd.removeAttribute("disabled");
+      }
     } else {
       detailsCmd.setAttribute("disabled", "true");
       screenshotCmd.setAttribute("disabled", "true");
       disconnectCmd.setAttribute("disabled", "true");
       devicePrefsCmd.setAttribute("disabled", "true");
       settingsCmd.setAttribute("disabled", "true");
+      performanceCmd.setAttribute("disabled", "true");
     }
   },
 
@@ -122,13 +136,15 @@ RuntimeList.prototype = {
     const usbListNode = doc.querySelector("#runtime-panel-usb");
     const wifiListNode = doc.querySelector("#runtime-panel-wifi");
     const otherListNode = doc.querySelector("#runtime-panel-other");
-    const noHelperNode = doc.querySelector("#runtime-panel-noadbhelper");
+    const noADBExtensionNode = doc.querySelector("#runtime-panel-noadbextension");
     const noUSBNode = doc.querySelector("#runtime-panel-nousbdevice");
+    noADBExtensionNode.textContent =
+      Strings.formatStringFromName("runtimePanel_noadbextension", ["ADB Extension"], 1);
 
-    if (Devices.helperAddonInstalled) {
-      noHelperNode.setAttribute("hidden", "true");
+    if (Devices.adbExtensionInstalled) {
+      noADBExtensionNode.setAttribute("hidden", "true");
     } else {
-      noHelperNode.removeAttribute("hidden");
+      noADBExtensionNode.removeAttribute("hidden");
     }
 
     const runtimeList = AppManager.runtimeList;
@@ -137,7 +153,7 @@ RuntimeList.prototype = {
       return;
     }
 
-    if (runtimeList.usb.length === 0 && Devices.helperAddonInstalled) {
+    if (runtimeList.usb.length === 0 && Devices.adbExtensionInstalled) {
       noUSBNode.removeAttribute("hidden");
     } else {
       noUSBNode.setAttribute("hidden", "true");
@@ -186,5 +202,5 @@ RuntimeList.prototype = {
     this._Cmds = null;
     this._parentWindow = null;
     this._panelNodeEl = null;
-  }
+  },
 };

@@ -64,7 +64,8 @@
                   unmutelabel="&muteButton.unmuteLabel;"
                   tabindex="-1"/>
           <div anonid="volumeStack" class="volumeStack progressContainer" role="none">
-            <input type="range" anonid="volumeControl" class="volumeControl" min="0" max="100" step="1" tabindex="-1"/>
+            <input type="range" anonid="volumeControl" class="volumeControl" min="0" max="100" step="1" tabindex="-1"
+                   aria-label="&volumeScrubber.label;"/>
           </div>
           <button anonid="castingButton" class="button castingButton"
                   aria-label="&castingButton.castingLabel;"/>
@@ -1428,11 +1429,6 @@
         var attrName = muted ? "unmutelabel" : "mutelabel";
         var value = this.muteButton.getAttribute(attrName);
         this.muteButton.setAttribute("aria-label", value);
-      },
-
-      _getComputedPropertyValueAsInt(element, property) {
-        let value = getComputedStyle(element, null).getPropertyValue(property);
-        return parseInt(value, 10);
       },
 
       keyHandler(event) {

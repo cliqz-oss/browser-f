@@ -413,7 +413,7 @@ EditorBase::InstallEventListeners()
   // Initialize the event target.
   nsCOMPtr<nsIContent> rootContent = GetRoot();
   NS_ENSURE_TRUE(rootContent, NS_ERROR_NOT_AVAILABLE);
-  mEventTarget = do_QueryInterface(rootContent->GetParent());
+  mEventTarget = rootContent->GetParent();
   NS_ENSURE_TRUE(mEventTarget, NS_ERROR_NOT_AVAILABLE);
 
   nsresult rv = mEventListener->Connect(this);
@@ -1201,7 +1201,7 @@ EditorBase::CanDelete(bool* aCanDelete)
 NS_IMETHODIMP
 EditorBase::Paste(int32_t aClipboardType)
 {
-  nsresult rv = AsTextEditor()->PasteAsAction(aClipboardType);
+  nsresult rv = AsTextEditor()->PasteAsAction(aClipboardType, true);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -4667,11 +4667,10 @@ EditorBase::HandleInlineSpellCheck(EditSubAction aEditSubAction,
                                 aEndOffset);
 }
 
-already_AddRefed<nsIContent>
-EditorBase::FindSelectionRoot(nsINode* aNode)
+Element*
+EditorBase::FindSelectionRoot(nsINode* aNode) const
 {
-  nsCOMPtr<nsIContent> rootContent = GetRoot();
-  return rootContent.forget();
+  return GetRoot();
 }
 
 void

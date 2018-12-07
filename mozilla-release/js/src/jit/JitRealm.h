@@ -520,8 +520,9 @@ class JitRealm
   public:
     JitCode* getStubCode(uint32_t key) {
         ICStubCodeMap::Ptr p = stubCodes_->lookup(key);
-        if (p)
+        if (p) {
             return p->value();
+        }
         return nullptr;
     }
     MOZ_MUST_USE bool putStubCode(JSContext* cx, uint32_t key, Handle<JitCode*> stubCode) {
@@ -548,8 +549,9 @@ class JitRealm
 
     // Initialize code stubs only used by Ion, not Baseline.
     MOZ_MUST_USE bool ensureIonStubsExist(JSContext* cx) {
-        if (stubs_[StringConcat])
+        if (stubs_[StringConcat]) {
             return true;
+        }
         stubs_[StringConcat] = generateStringConcatStub(cx);
         return stubs_[StringConcat];
     }
@@ -557,8 +559,9 @@ class JitRealm
     void sweep(JS::Realm* realm);
 
     void discardStubs() {
-        for (ReadBarrieredJitCode& stubRef : stubs_)
+        for (ReadBarrieredJitCode& stubRef : stubs_) {
             stubRef = nullptr;
+        }
     }
 
     JitCode* stringConcatStubNoBarrier(uint32_t* requiredBarriersOut) const {
@@ -570,8 +573,9 @@ class JitRealm
     }
 
     MOZ_MUST_USE bool ensureRegExpMatcherStubExists(JSContext* cx) {
-        if (stubs_[RegExpMatcher])
+        if (stubs_[RegExpMatcher]) {
             return true;
+        }
         stubs_[RegExpMatcher] = generateRegExpMatcherStub(cx);
         return stubs_[RegExpMatcher];
     }
@@ -581,8 +585,9 @@ class JitRealm
     }
 
     MOZ_MUST_USE bool ensureRegExpSearcherStubExists(JSContext* cx) {
-        if (stubs_[RegExpSearcher])
+        if (stubs_[RegExpSearcher]) {
             return true;
+        }
         stubs_[RegExpSearcher] = generateRegExpSearcherStub(cx);
         return stubs_[RegExpSearcher];
     }
@@ -592,8 +597,9 @@ class JitRealm
     }
 
     MOZ_MUST_USE bool ensureRegExpTesterStubExists(JSContext* cx) {
-        if (stubs_[RegExpTester])
+        if (stubs_[RegExpTester]) {
             return true;
+        }
         stubs_[RegExpTester] = generateRegExpTesterStub(cx);
         return stubs_[RegExpTester];
     }
@@ -621,34 +627,64 @@ void FinishInvalidation(FreeOp* fop, JSScript* script);
 const unsigned WINDOWS_BIG_FRAME_TOUCH_INCREMENT = 4096 - 1;
 #endif
 
-// If NON_WRITABLE_JIT_CODE is enabled, this class will ensure
-// JIT code is writable (has RW permissions) in its scope.
-// Otherwise it's a no-op.
-class MOZ_STACK_CLASS AutoWritableJitCode
+// This class ensures JIT code is executable on its destruction. Creators
+// must call makeWritable(), and not attempt to write to the buffer if it fails.
+//
+// AutoWritableJitCodeFallible may only fail to make code writable; it cannot fail to
+// make JIT code executable (because the creating code has no chance to
+// recover from a failed destructor).
+class MOZ_RAII AutoWritableJitCodeFallible
 {
     JSRuntime* rt_;
     void* addr_;
     size_t size_;
 
   public:
-    AutoWritableJitCode(JSRuntime* rt, void* addr, size_t size)
+    AutoWritableJitCodeFallible(JSRuntime* rt, void* addr, size_t size)
       : rt_(rt), addr_(addr), size_(size)
     {
         rt_->toggleAutoWritableJitCodeActive(true);
-        if (!ExecutableAllocator::makeWritable(addr_, size_))
-            MOZ_CRASH();
     }
+
+    AutoWritableJitCodeFallible(void* addr, size_t size)
+      : AutoWritableJitCodeFallible(TlsContext.get()->runtime(), addr, size)
+    {
+    }
+
+    explicit AutoWritableJitCodeFallible(JitCode* code)
+      : AutoWritableJitCodeFallible(code->runtimeFromMainThread(), code->raw(), code->bufferSize())
+    {}
+
+    MOZ_MUST_USE bool makeWritable() {
+        return ExecutableAllocator::makeWritable(addr_, size_);
+    }
+
+    ~AutoWritableJitCodeFallible() {
+        if (!ExecutableAllocator::makeExecutable(addr_, size_)) {
+            MOZ_CRASH();
+        }
+        rt_->toggleAutoWritableJitCodeActive(false);
+    }
+
+};
+
+// Infallible variant of AutoWritableJitCodeFallible, ensures writable during construction
+class MOZ_RAII AutoWritableJitCode : private AutoWritableJitCodeFallible
+{
+  public:
+    AutoWritableJitCode(JSRuntime* rt, void* addr, size_t size)
+      : AutoWritableJitCodeFallible(rt, addr, size)
+    {
+        MOZ_RELEASE_ASSERT(makeWritable());
+    }
+
     AutoWritableJitCode(void* addr, size_t size)
       : AutoWritableJitCode(TlsContext.get()->runtime(), addr, size)
     {}
+
     explicit AutoWritableJitCode(JitCode* code)
       : AutoWritableJitCode(code->runtimeFromMainThread(), code->raw(), code->bufferSize())
     {}
-    ~AutoWritableJitCode() {
-        if (!ExecutableAllocator::makeExecutable(addr_, size_))
-            MOZ_CRASH();
-        rt_->toggleAutoWritableJitCodeActive(false);
-    }
 };
 
 class MOZ_STACK_CLASS MaybeAutoWritableJitCode
@@ -657,12 +693,14 @@ class MOZ_STACK_CLASS MaybeAutoWritableJitCode
 
   public:
     MaybeAutoWritableJitCode(void* addr, size_t size, ReprotectCode reprotect) {
-        if (reprotect)
+        if (reprotect) {
             awjc_.emplace(addr, size);
+        }
     }
     MaybeAutoWritableJitCode(JitCode* code, ReprotectCode reprotect) {
-        if (reprotect)
+        if (reprotect) {
             awjc_.emplace(code);
+        }
     }
 };
 

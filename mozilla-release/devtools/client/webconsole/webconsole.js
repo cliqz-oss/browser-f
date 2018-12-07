@@ -84,14 +84,6 @@ WebConsole.prototype = {
   },
 
   /**
-   * Getter for the xul:popupset that holds any popups we open.
-   * @type Element
-   */
-  get mainPopupSet() {
-    return this.chromeUtilsWindow.document.getElementById("mainPopupSet");
-  },
-
-  /**
    * Getter for the output element that holds messages we display.
    * @type Element
    */
@@ -234,18 +226,54 @@ WebConsole.prototype = {
     return panel.getFrames();
   },
 
-  async getMappedExpression(expression) {
+  /**
+   * Given an expression, returns an object containing a new expression, mapped by the
+   * parser worker to provide additional feature for the user (top-level await,
+   * original languages mapping, …).
+   *
+   * @param {String} expression: The input to maybe map.
+   * @returns {Object|null}
+   *          Returns null if the input can't be mapped.
+   *          If it can, returns an object containing the following:
+   *            - {String} expression: The mapped expression
+   *            - {Object} mapped: An object containing the different mapping that could
+   *                               be done and if they were applied on the input.
+   *                               At the moment, contains `await`, `bindings` and
+   *                               `originalExpression`.
+   */
+  getMappedExpression(expression) {
     const toolbox = gDevTools.getToolbox(this.target);
-    if (!toolbox) {
-      return expression;
-    }
-    const panel = toolbox.getPanel("jsdebugger");
 
-    if (!panel) {
-      return expression;
+    // We need to check if the debugger is open, since it may perform a variable name
+    // substitution for sourcemapped script (i.e. evaluated `myVar.trim()` might need to
+    // be transformed into `a.trim()`).
+    const panel = toolbox && toolbox.getPanel("jsdebugger");
+    if (panel) {
+      return panel.getMappedExpression(expression);
     }
 
-    return panel.getMappedExpression(expression);
+    if (this.parserService && expression.includes("await ")) {
+      return this.parserService.mapExpression(expression);
+    }
+
+    return null;
+  },
+
+  /**
+   * A common access point for the client-side parser service that any panel can use.
+   */
+  get parserService() {
+    if (this._parserService) {
+      return this._parserService;
+    }
+
+    this._parserService =
+      require("devtools/client/debugger/new/src/workers/parser/index");
+
+    this._parserService.start(
+      "resource://devtools/client/debugger/new/dist/parser-worker.js",
+      this.chromeUtilsWindow);
+    return this._parserService;
   },
 
   /**
@@ -286,15 +314,6 @@ WebConsole.prototype = {
     this._destroyer = (async () => {
       this.hudService.consoles.delete(this.hudId);
 
-      // The document may already be removed
-      if (this.chromeUtilsWindow && this.mainPopupSet) {
-        const popupset = this.mainPopupSet;
-        const panels = popupset.querySelectorAll("panel[hudId=" + this.hudId + "]");
-        for (const panel of panels) {
-          panel.hidePopup();
-        }
-      }
-
       if (this.ui) {
         await this.ui.destroy();
       }
@@ -305,6 +324,11 @@ WebConsole.prototype = {
         } catch (ex) {
           // Tab focus can fail if the tab or target is closed.
         }
+      }
+
+      if (this._parserService) {
+        this._parserService.stop();
+        this._parserService = null;
       }
 
       const id = Utils.supportsString(this.hudId);

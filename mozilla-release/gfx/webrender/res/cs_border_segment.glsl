@@ -61,9 +61,10 @@ varying vec2 vPos;
 #define BORDER_STYLE_INSET        8
 #define BORDER_STYLE_OUTSET       9
 
-#define CLIP_NONE   0
-#define CLIP_DASH   1
-#define CLIP_DOT    2
+#define CLIP_NONE        0
+#define CLIP_DASH_CORNER 1
+#define CLIP_DASH_EDGE   2
+#define CLIP_DOT         3
 
 #ifdef WR_VERTEX_SHADER
 
@@ -94,7 +95,7 @@ vec2 get_outer_corner_scale(int segment) {
             p = vec2(0.0, 1.0);
             break;
         default:
-            // Should never get hit
+            // The result is only used for non-default segment cases
             p = vec2(0.0);
             break;
     }
@@ -102,22 +103,41 @@ vec2 get_outer_corner_scale(int segment) {
     return p;
 }
 
-vec4 mod_color(vec4 color, float f) {
-    return vec4(clamp(color.rgb * f, vec3(0.0), vec3(color.a)), color.a);
+// NOTE(emilio): If you change this algorithm, do the same change
+// in border.rs
+vec4 mod_color(vec4 color, bool is_black, bool lighter) {
+    const float light_black = 0.7;
+    const float dark_black = 0.3;
+
+    const float dark_scale = 0.66666666;
+    const float light_scale = 1.0;
+
+    if (is_black) {
+        if (lighter) {
+            return vec4(vec3(light_black), color.a);
+        }
+        return vec4(vec3(dark_black), color.a);
+    }
+
+    if (lighter) {
+        return vec4(color.rgb * light_scale, color.a);
+    }
+    return vec4(color.rgb * dark_scale, color.a);
 }
 
 vec4[2] get_colors_for_side(vec4 color, int style) {
     vec4 result[2];
-    const vec2 f = vec2(1.3, 0.7);
+
+    bool is_black = color.rgb == vec3(0.0, 0.0, 0.0);
 
     switch (style) {
         case BORDER_STYLE_GROOVE:
-            result[0] = mod_color(color, f.x);
-            result[1] = mod_color(color, f.y);
+            result[0] = mod_color(color, is_black, true);
+            result[1] = mod_color(color, is_black, false);
             break;
         case BORDER_STYLE_RIDGE:
-            result[0] = mod_color(color, f.y);
-            result[1] = mod_color(color, f.x);
+            result[0] = mod_color(color, is_black, false);
+            result[1] = mod_color(color, is_black, true);
             break;
         default:
             result[0] = color;
@@ -132,7 +152,7 @@ void main(void) {
     int segment = aFlags & 0xff;
     int style0 = (aFlags >> 8) & 0xff;
     int style1 = (aFlags >> 16) & 0xff;
-    int clip_mode = (aFlags >> 24) & 0xff;
+    int clip_mode = (aFlags >> 24) & 0x0f;
 
     vec2 outer_scale = get_outer_corner_scale(segment);
     vec2 outer = outer_scale * aRect.zw;
@@ -140,10 +160,10 @@ void main(void) {
 
     // Set some flags used by the FS to determine the
     // orientation of the two edges in this corner.
-    ivec2 edge_axis;
+    ivec2 edge_axis = ivec2(0, 0);
     // Derive the positions for the edge clips, which must be handled
     // differently between corners and edges.
-    vec2 edge_reference;
+    vec2 edge_reference = vec2(0.0);
     switch (segment) {
         case SEGMENT_TOP_LEFT:
             edge_axis = ivec2(0, 1);
@@ -164,13 +184,10 @@ void main(void) {
         case SEGMENT_TOP:
         case SEGMENT_BOTTOM:
             edge_axis = ivec2(1, 1);
-            edge_reference = vec2(0.0);
             break;
         case SEGMENT_LEFT:
         case SEGMENT_RIGHT:
         default:
-            edge_axis = ivec2(0, 0);
-            edge_reference = vec2(0.0);
             break;
     }
 
@@ -201,10 +218,14 @@ void main(void) {
     // TODO(gw): We should do something similar in the future for
     //           dash clips!
     if (clip_mode == CLIP_DOT) {
+        float radius = aClipParams1.z;
+
         // Expand by a small amount to allow room for AA around
-        // the dot.
-        float expanded_radius = aClipParams1.z + 2.0;
-        vPos = vClipParams1.xy + expanded_radius * (2.0 * aPosition.xy - 1.0);
+        // the dot if it's big enough.
+        if (radius > 0.5)
+            radius += 2.0;
+
+        vPos = vClipParams1.xy + radius * (2.0 * aPosition.xy - 1.0);
         vPos = clamp(vPos, vec2(0.0), aRect.zw);
     }
 
@@ -240,8 +261,8 @@ vec4 evaluate_color_for_style_in_corner(
                 aa_range
             );
             float d = min(-d_radii_a, d_radii_b);
-            float alpha = distance_aa(aa_range, d);
-            return alpha * color0;
+            color0 *= distance_aa(aa_range, d);
+            break;
         }
         case BORDER_STYLE_GROOVE:
         case BORDER_STYLE_RIDGE: {
@@ -261,7 +282,8 @@ vec4 evaluate_color_for_style_in_corner(
             };
             vec4 c0 = mix(color1, color0, swizzled_factor);
             vec4 c1 = mix(color0, color1, swizzled_factor);
-            return mix(c0, c1, alpha);
+            color0 = mix(c0, c1, alpha);
+            break;
         }
         default:
             break;
@@ -271,35 +293,36 @@ vec4 evaluate_color_for_style_in_corner(
 }
 
 vec4 evaluate_color_for_style_in_edge(
-    vec2 pos,
+    vec2 pos_vec,
     int style,
     vec4 color0,
     vec4 color1,
     float aa_range,
-    int edge_axis
+    int edge_axis_id
 ) {
+    vec2 edge_axis = edge_axis_id != 0 ? vec2(0.0, 1.0) : vec2(1.0, 0.0);
+    float pos = dot(pos_vec, edge_axis);
     switch (style) {
         case BORDER_STYLE_DOUBLE: {
-            float d0 = -1.0;
-            float d1 = -1.0;
-            if (vPartialWidths[edge_axis] > 1.0) {
+            float d = -1.0;
+            float partial_width = dot(vPartialWidths.xy, edge_axis);
+            if (partial_width > 1.0) {
                 vec2 ref = vec2(
-                    vEdgeReference[edge_axis] + vPartialWidths[edge_axis],
-                    vEdgeReference[edge_axis+2] - vPartialWidths[edge_axis]
+                    dot(vEdgeReference.xy, edge_axis) + partial_width,
+                    dot(vEdgeReference.zw, edge_axis) - partial_width
                 );
-                d0 = pos[edge_axis] - ref.x;
-                d1 = ref.y - pos[edge_axis];
+                d = min(pos - ref.x, ref.y - pos);
             }
-            float d = min(d0, d1);
-            float alpha = distance_aa(aa_range, d);
-            return alpha * color0;
+            color0 *= distance_aa(aa_range, d);
+            break;
         }
         case BORDER_STYLE_GROOVE:
         case BORDER_STYLE_RIDGE: {
-            float ref = vEdgeReference[edge_axis] + vPartialWidths[edge_axis+2];
-            float d = pos[edge_axis] - ref;
+            float ref = dot(vEdgeReference.xy + vPartialWidths.zw, edge_axis);
+            float d = pos - ref;
             float alpha = distance_aa(aa_range, d);
-            return mix(color0, color1, alpha);
+            color0 = mix(color0, color1, alpha);
+            break;
         }
         default:
             break;
@@ -334,7 +357,21 @@ void main(void) {
             d = distance(vClipParams1.xy, vPos) - vClipParams1.z;
             break;
         }
-        case CLIP_DASH: {
+        case CLIP_DASH_EDGE: {
+            bool is_vertical = vClipParams1.x == 0.;
+            float half_dash = is_vertical ? vClipParams1.y : vClipParams1.x;
+            // We want to draw something like:
+            // +---+---+---+---+
+            // |xxx|   |   |xxx|
+            // +---+---+---+---+
+            float pos = is_vertical ? vPos.y : vPos.x;
+            bool in_dash = pos < half_dash || pos > 3.0 * half_dash;
+            if (!in_dash) {
+                d = 1.;
+            }
+            break;
+        }
+        case CLIP_DASH_CORNER: {
             // Get SDF for the two line/tangent clip lines,
             // do SDF subtract to get clip distance.
             float d0 = distance_to_line(vClipParams1.xy,

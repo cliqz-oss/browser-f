@@ -29,6 +29,7 @@ const { _loadPreferredDevices } = require("devtools/client/responsive.html/actio
 const { getStr } = require("devtools/client/responsive.html/utils/l10n");
 const { getTopLevelWindow } = require("devtools/client/responsive.html/utils/window");
 const { addDevice, removeDevice, removeLocalDevices } = require("devtools/client/shared/devices");
+const { KeyCodes } = require("devtools/client/shared/keycodes");
 const asyncStorage = require("devtools/shared/async-storage");
 
 loader.lazyRequireGetter(this, "ResponsiveUIManager", "devtools/client/responsive.html/manager", true);
@@ -36,6 +37,9 @@ loader.lazyRequireGetter(this, "ResponsiveUIManager", "devtools/client/responsiv
 const E10S_MULTI_ENABLED = Services.prefs.getIntPref("dom.ipc.processCount") > 1;
 const TEST_URI_ROOT = "http://example.com/browser/devtools/client/responsive.html/test/browser/";
 const RELOAD_CONDITION_PREF_PREFIX = "devtools.responsive.reloadConditions.";
+const DEFAULT_UA = Cc["@mozilla.org/network/protocol;1?name=http"]
+  .getService(Ci.nsIHttpProtocolHandler)
+  .userAgent;
 
 SimpleTest.requestCompleteLog();
 SimpleTest.waitForExplicitFinish();
@@ -51,6 +55,7 @@ Services.prefs.setCharPref("devtools.devices.url", TEST_URI_ROOT + "devices.json
 Services.prefs.setBoolPref("devtools.responsive.reloadNotification.enabled", false);
 // Don't show the setting onboarding tooltip in the test suites.
 Services.prefs.setBoolPref("devtools.responsive.show-setting-tooltip", false);
+Services.prefs.setBoolPref("devtools.responsive.showUserAgentInput", true);
 
 registerCleanupFunction(async () => {
   Services.prefs.clearUserPref("devtools.devices.url");
@@ -59,7 +64,14 @@ registerCleanupFunction(async () => {
   Services.prefs.clearUserPref("devtools.responsive.reloadConditions.touchSimulation");
   Services.prefs.clearUserPref("devtools.responsive.reloadConditions.userAgent");
   Services.prefs.clearUserPref("devtools.responsive.show-setting-tooltip");
+  Services.prefs.clearUserPref("devtools.responsive.showUserAgentInput");
+  Services.prefs.clearUserPref("devtools.responsive.touchSimulation.enabled");
+  Services.prefs.clearUserPref("devtools.responsive.userAgent");
+  Services.prefs.clearUserPref("devtools.responsive.viewport.height");
+  Services.prefs.clearUserPref("devtools.responsive.viewport.pixelRatio");
+  Services.prefs.clearUserPref("devtools.responsive.viewport.width");
   await asyncStorage.removeItem("devtools.devices.url_cache");
+  await asyncStorage.removeItem("devtools.responsive.deviceState");
   await removeLocalDevices();
 });
 
@@ -131,35 +143,39 @@ function waitForViewportResizeTo(ui, width, height) {
     const isSizeMatching = data => data.width == width && data.height == height;
 
     // If the viewport has already the expected size, we resolve the promise immediately.
-    const size = await getContentSize(ui);
+    const size = ui.getViewportSize();
     if (isSizeMatching(size)) {
-      info(`Content already resized to ${width} x ${height}`);
+      info(`Viewport already resized to ${width} x ${height}`);
       resolve();
       return;
     }
 
-    // Otherwise, we'll listen to both content's resize event and browser's load end;
-    // since a racing condition can happen, where the content's listener is added after
-    // the resize, because the content's document was reloaded; therefore the test would
-    // hang forever. See bug 1302879.
+    // Otherwise, we'll listen to the content's resize event, the viewport's resize event,
+    // and the browser's load end; since a racing condition can happen, where the
+    // content's listener is added after the resize, because the content's document was
+    // reloaded; therefore the test would hang forever. See bug 1302879.
     const browser = ui.getViewportBrowser();
 
     const onResize = data => {
       if (!isSizeMatching(data)) {
         return;
       }
+      ui.off("viewport-resize", onResize);
       ui.off("content-resize", onResize);
       browser.removeEventListener("mozbrowserloadend", onBrowserLoadEnd);
-      info(`Got content-resize to ${width} x ${height}`);
+      info(`Got content-resize or viewport-resize to ${width} x ${height}`);
       resolve();
     };
 
     const onBrowserLoadEnd = async function() {
-      const data = await getContentSize(ui);
+      const data = ui.getViewportSize(ui);
       onResize(data);
     };
 
-    info(`Waiting for content-resize to ${width} x ${height}`);
+    info(`Waiting for content-resize or viewport-resize to ${width} x ${height}`);
+    // Depending on whether or not the viewport is overridden, we'll either get a
+    // viewport-resize event or a content-resize event.
+    ui.on("viewport-resize", onResize);
     ui.on("content-resize", onResize);
     browser.addEventListener("mozbrowserloadend",
       onBrowserLoadEnd, { once: true });
@@ -288,7 +304,7 @@ function testMenuItems(toolWindow, button, testFn) {
 
 const selectDevice = (ui, value) => Promise.all([
   once(ui, "device-changed"),
-  selectMenuItem(ui, "#device-selector", value)
+  selectMenuItem(ui, "#device-selector", value),
 ]);
 
 const selectDevicePixelRatio = (ui, value) =>
@@ -296,7 +312,7 @@ const selectDevicePixelRatio = (ui, value) =>
 
 const selectNetworkThrottling = (ui, value) => Promise.all([
   once(ui, "network-throttling-changed"),
-  selectMenuItem(ui, "#network-throttling-menu", value)
+  selectMenuItem(ui, "#network-throttling-menu", value),
 ]);
 
 function getSessionHistory(browser) {
@@ -312,7 +328,7 @@ function getSessionHistory(browser) {
 function getContentSize(ui) {
   return spawnViewportTask(ui, {}, () => ({
     width: content.screen.width,
-    height: content.screen.height
+    height: content.screen.height,
   }));
 }
 
@@ -335,7 +351,7 @@ function waitForViewportLoad(ui) {
 
 function load(browser, url) {
   const loaded = BrowserTestUtils.browserLoaded(browser, false, url);
-  browser.loadURI(url);
+  BrowserTestUtils.loadURI(browser, url);
   return loaded;
 }
 
@@ -367,6 +383,11 @@ async function waitForClientClose(ui) {
   info("RDM's debugger client is now closed");
 }
 
+async function testDevicePixelRatio(ui, expected) {
+  const dppx = await getViewportDevicePixelRatio(ui);
+  is(dppx, expected, `devicePixelRatio should be set to ${expected}`);
+}
+
 async function testTouchEventsOverride(ui, expected) {
   const { document } = ui.toolWindow;
   const touchButton = document.getElementById("touch-simulation-button");
@@ -394,8 +415,17 @@ async function toggleTouchSimulation(ui) {
   await Promise.all([ changed, loaded ]);
 }
 
-function testUserAgent(ui, expected) {
-  testUserAgentFromBrowser(ui.getViewportBrowser(), expected);
+async function testUserAgent(ui, expected) {
+  const { document } = ui.toolWindow;
+  const userAgentInput = document.getElementById("user-agent-input");
+
+  if (expected === DEFAULT_UA) {
+    is(userAgentInput.value, "", "UA input should be empty");
+  } else {
+    is(userAgentInput.value, expected, `UA input should be set to ${expected}`);
+  }
+
+  await testUserAgentFromBrowser(ui.getViewportBrowser(), expected);
 }
 
 async function testUserAgentFromBrowser(browser, expected) {
@@ -403,6 +433,31 @@ async function testUserAgentFromBrowser(browser, expected) {
     return content.navigator.userAgent;
   });
   is(ua, expected, `UA should be set to ${expected}`);
+}
+
+function testViewportDimensions(ui, w, h) {
+  const viewport = ui.toolWindow.document.querySelector(".viewport-content");
+
+  is(ui.toolWindow.getComputedStyle(viewport).getPropertyValue("width"),
+     `${w}px`, `Viewport should have width of ${w}px`);
+  is(ui.toolWindow.getComputedStyle(viewport).getPropertyValue("height"),
+     `${h}px`, `Viewport should have height of ${h}px`);
+}
+
+async function changeUserAgentInput(ui, value) {
+  const { Simulate } =
+    ui.toolWindow.require("devtools/client/shared/vendor/react-dom-test-utils");
+  const { document, store } = ui.toolWindow;
+
+  const userAgentInput = document.getElementById("user-agent-input");
+  userAgentInput.value = value;
+  Simulate.change(userAgentInput);
+
+  const userAgentChanged = waitUntilState(store, state => state.ui.userAgent === value);
+  const changed = once(ui, "user-agent-changed");
+  const loaded = waitForViewportLoad(ui);
+  Simulate.keyUp(userAgentInput, { keyCode: KeyCodes.DOM_VK_RETURN });
+  await Promise.all([ changed, loaded, userAgentChanged ]);
 }
 
 /**

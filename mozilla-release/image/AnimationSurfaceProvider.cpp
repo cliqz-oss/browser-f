@@ -32,10 +32,10 @@ AnimationSurfaceProvider::AnimationSurfaceProvider(NotNull<RasterImage*> aImage,
   MOZ_ASSERT(!mDecoder->IsFirstFrameDecode(),
              "Use DecodedSurfaceProvider for single-frame image decodes");
 
-  // We still produce paletted surfaces for GIF which means the frames are
-  // smaller than one would expect for APNG. This may be removed if/when
-  // bug 1337111 lands and it is enabled by default.
-  size_t pixelSize = aDecoder->GetType() == DecoderType::GIF
+  // We may produce paletted surfaces for GIF which means the frames are smaller
+  // than one would expect.
+  size_t pixelSize = !aDecoder->ShouldBlendAnimation() &&
+                     aDecoder->GetType() == DecoderType::GIF
                      ? sizeof(uint8_t) : sizeof(uint32_t);
 
   // Calculate how many frames we need to decode in this animation before we
@@ -206,19 +206,23 @@ AnimationSurfaceProvider::LogicalSizeInBytes() const
 
 void
 AnimationSurfaceProvider::AddSizeOfExcludingThis(MallocSizeOf aMallocSizeOf,
-                                                 size_t& aHeapSizeOut,
-                                                 size_t& aNonHeapSizeOut,
-                                                 size_t& aExtHandlesOut)
+                                                 const AddSizeOfCb& aCallback)
 {
   // Note that the surface cache lock is already held here, and then we acquire
   // mFramesMutex. For this method, this ordering is unavoidable, which means
   // that we must be careful to always use the same ordering elsewhere.
   MutexAutoLock lock(mFramesMutex);
 
+  size_t i = 0;
   for (const RawAccessFrameRef& frame : mFrames.Frames()) {
+    ++i;
     if (frame) {
-      frame->AddSizeOfExcludingThis(aMallocSizeOf, aHeapSizeOut,
-                                    aNonHeapSizeOut, aExtHandlesOut);
+      frame->AddSizeOfExcludingThis(aMallocSizeOf,
+        [&](AddSizeOfCbData& aMetadata) {
+          aMetadata.index = i;
+          aCallback(aMetadata);
+        }
+      );
     }
   }
 }

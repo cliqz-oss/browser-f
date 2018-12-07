@@ -30,6 +30,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/Services.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/dom/ScriptSettings.h"
 
 #include "nsContentUtils.h"
@@ -132,12 +133,14 @@ class Watchdog
     {
         MOZ_ASSERT(NS_IsMainThread());
         mLock = PR_NewLock();
-        if (!mLock)
+        if (!mLock) {
             MOZ_CRASH("PR_NewLock failed.");
+        }
 
         mWakeup = PR_NewCondVar(mLock);
-        if (!mWakeup)
+        if (!mWakeup) {
             MOZ_CRASH("PR_NewCondVar failed.");
+        }
 
         {
             AutoLockWatchdog lock(this);
@@ -148,8 +151,9 @@ class Watchdog
             mThread = PR_CreateThread(PR_USER_THREAD, WatchdogMain, this,
                                       PR_PRIORITY_NORMAL, PR_GLOBAL_THREAD,
                                       PR_JOINABLE_THREAD, kWatchdogStackSize);
-            if (!mThread)
+            if (!mThread) {
                 MOZ_CRASH("PR_CreateThread failed!");
+            }
 
             // WatchdogMain acquires the lock and then asserts mInitialized. So
             // make sure to set mInitialized before releasing the lock here so
@@ -331,8 +335,9 @@ class WatchdogManager
 
         // The watchdog may be hibernating, waiting for the context to go
         // active. Wake it up if necessary.
-        if (active && mWatchdog && mWatchdog->Hibernating())
+        if (active && mWatchdog && mWatchdog->Hibernating()) {
             mWatchdog->WakeUp();
+        }
     }
 
     bool IsAnyContextActive()
@@ -383,22 +388,26 @@ class WatchdogManager
     {
         bool wantWatchdog = Preferences::GetBool("dom.use_watchdog", true);
         if (wantWatchdog != !!mWatchdog) {
-            if (wantWatchdog)
+            if (wantWatchdog) {
                 StartWatchdog();
-            else
+            } else {
                 StopWatchdog();
+            }
         }
 
         if (mWatchdog) {
             int32_t contentTime = Preferences::GetInt(PREF_MAX_SCRIPT_RUN_TIME_CONTENT, 10);
-            if (contentTime <= 0)
+            if (contentTime <= 0) {
                 contentTime = INT32_MAX;
+            }
             int32_t chromeTime = Preferences::GetInt(PREF_MAX_SCRIPT_RUN_TIME_CHROME, 20);
-            if (chromeTime <= 0)
+            if (chromeTime <= 0) {
                 chromeTime = INT32_MAX;
+            }
             int32_t extTime = Preferences::GetInt(PREF_MAX_SCRIPT_RUN_TIME_EXT_CONTENT, 5);
-            if (extTime <= 0)
+            if (extTime <= 0) {
                 extTime = INT32_MAX;
+            }
             mWatchdog->SetMinScriptRunTimeSeconds(std::min({contentTime, chromeTime, extTime}));
         }
     }
@@ -519,8 +528,9 @@ WatchdogMain(void* arg)
         if (!self->ShuttingDown() && manager->IsAnyContextActive()) {
             bool debuggerAttached = false;
             nsCOMPtr<nsIDebug2> dbg = do_GetService("@mozilla.org/xpcom/debug;1");
-            if (dbg)
+            if (dbg) {
                 dbg->GetIsDebuggerAttached(&debuggerAttached);
+            }
             if (debuggerAttached) {
                 // We won't be interrupting these scripts anyway.
                 continue;
@@ -551,28 +561,49 @@ XPCJSContext::GetWatchdogTimestamp(WatchdogTimestampCategory aCategory)
         mWatchdogManager->GetTimestamp(aCategory, lock);
 }
 
-void
-xpc::SimulateActivityCallback(bool aActive)
-{
-    XPCJSContext::ActivityCallback(XPCJSContext::Get(), aActive);
-}
-
 // static
-void
-XPCJSContext::ActivityCallback(void* arg, bool active)
+bool
+XPCJSContext::RecordScriptActivity(bool aActive)
 {
+    MOZ_ASSERT(NS_IsMainThread());
+
+    XPCJSContext* xpccx = XPCJSContext::Get();
+    if (!xpccx) {
+        // mozilla::SpinEventLoopUntil may use AutoScriptActivity(false) after
+        // we destroyed the XPCJSContext.
+        MOZ_ASSERT(!aActive);
+        return false;
+    }
+
+    bool oldValue = xpccx->SetHasScriptActivity(aActive);
+    if (aActive == oldValue) {
+        // Nothing to do.
+        return oldValue;
+    }
+
     // Since the slow script dialog never activates if we are recording or
     // replaying, don't record/replay JS activity notifications.
     if (recordreplay::IsRecordingOrReplaying()) {
-        return;
+        return oldValue;
     }
 
-    if (!active) {
+    if (!aActive) {
         ProcessHangMonitor::ClearHang();
     }
+    xpccx->mWatchdogManager->RecordContextActivity(xpccx, aActive);
 
-    XPCJSContext* self = static_cast<XPCJSContext*>(arg);
-    self->mWatchdogManager->RecordContextActivity(self, active);
+    return oldValue;
+}
+
+AutoScriptActivity::AutoScriptActivity(bool aActive)
+  : mActive(aActive)
+  , mOldValue(XPCJSContext::RecordScriptActivity(aActive))
+{
+}
+
+AutoScriptActivity::~AutoScriptActivity()
+{
+    MOZ_ALWAYS_TRUE(mActive == XPCJSContext::RecordScriptActivity(mOldValue));
 }
 
 // static
@@ -603,8 +634,9 @@ XPCJSContext::InterruptCallback(JSContext* cx)
 
     // Sometimes we get called back during XPConnect initialization, before Gecko
     // has finished bootstrapping. Avoid crashing in nsContentUtils below.
-    if (!nsContentUtils::IsInitialized())
+    if (!nsContentUtils::IsInitialized()) {
         return true;
+    }
 
     // This is at least the second interrupt callback we've received since
     // returning to the event loop. See how long it's been, and what the limit
@@ -630,8 +662,9 @@ XPCJSContext::InterruptCallback(JSContext* cx)
     }
 
     // If there's no limit, or we're within the limit, let it go.
-    if (limit == 0 || duration.ToSeconds() < limit / 2.0)
+    if (limit == 0 || duration.ToSeconds() < limit / 2.0) {
         return true;
+    }
 
     self->mSlowScriptActualWait += duration;
 
@@ -657,8 +690,9 @@ XPCJSContext::InterruptCallback(JSContext* cx)
         // sandboxPrototype, use that DOMWindow. This supports GreaseMonkey
         // and JetPack content scripts.
         JS::Rooted<JSObject*> proto(cx);
-        if (!JS_GetPrototype(cx, global, &proto))
+        if (!JS_GetPrototype(cx, global, &proto)) {
             return false;
+        }
         if (proto && xpc::IsSandboxPrototypeProxy(proto) &&
             (proto = js::CheckedUnwrap(proto, /* stopAtWindowProxy = */ false)))
         {
@@ -689,15 +723,17 @@ XPCJSContext::InterruptCallback(JSContext* cx)
     // Show the prompt to the user, and kill if requested.
     nsGlobalWindowInner::SlowScriptResponse response = win->ShowSlowScriptDialog(addonId);
     if (response == nsGlobalWindowInner::KillSlowScript) {
-        if (Preferences::GetBool("dom.global_stop_script", true))
+        if (Preferences::GetBool("dom.global_stop_script", true)) {
             xpc::Scriptability::Get(global).Block();
+        }
         return false;
     }
     if (response == nsGlobalWindowInner::KillScriptGlobal) {
         nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
 
-        if (!IsSandbox(global) || !obs)
+        if (!IsSandbox(global) || !obs) {
             return false;
+        }
 
         // Notify the extensions framework that the sandbox should be killed.
         nsIXPConnect* xpc = nsContentUtils::XPConnect();
@@ -718,11 +754,13 @@ XPCJSContext::InterruptCallback(JSContext* cx)
 
     // The user chose to continue the script. Reset the timer, and disable this
     // machinery with a pref of the user opted out of future slow-script dialogs.
-    if (response != nsGlobalWindowInner::ContinueSlowScriptAndKeepNotifying)
+    if (response != nsGlobalWindowInner::ContinueSlowScriptAndKeepNotifying) {
         self->mSlowScriptCheckpoint = TimeStamp::NowLoRes();
+    }
 
-    if (response == nsGlobalWindowInner::AlwaysContinueSlowScript)
+    if (response == nsGlobalWindowInner::AlwaysContinueSlowScript) {
         Preferences::SetInt(prefName, 0);
+    }
 
     return true;
 }
@@ -742,9 +780,14 @@ bool xpc::ExtraWarningsForSystemJS() { return false; }
 #endif
 
 static mozilla::Atomic<bool> sSharedMemoryEnabled(false);
+static mozilla::Atomic<bool> sStreamsEnabled(false);
 
-bool
-xpc::SharedMemoryEnabled() { return sSharedMemoryEnabled; }
+void
+xpc::SetPrefableRealmOptions(JS::RealmOptions &options)
+{
+    options.creationOptions().setSharedMemoryAndAtomicsEnabled(sSharedMemoryEnabled)
+                             .setStreamsEnabled(sStreamsEnabled);
+}
 
 static void
 ReloadPrefsCallback(const char* pref, XPCJSContext* xpccx)
@@ -757,6 +800,9 @@ ReloadPrefsCallback(const char* pref, XPCJSContext* xpccx)
     bool useWasm = Preferences::GetBool(JS_OPTIONS_DOT_STR "wasm");
     bool useWasmIon = Preferences::GetBool(JS_OPTIONS_DOT_STR "wasm_ionjit");
     bool useWasmBaseline = Preferences::GetBool(JS_OPTIONS_DOT_STR "wasm_baselinejit");
+#ifdef ENABLE_WASM_CRANELIFT
+    bool useWasmCranelift = Preferences::GetBool(JS_OPTIONS_DOT_STR "wasm_cranelift");
+#endif
 #ifdef ENABLE_WASM_GC
     bool useWasmGc = Preferences::GetBool(JS_OPTIONS_DOT_STR "wasm_gc");
 #endif
@@ -776,6 +822,7 @@ ReloadPrefsCallback(const char* pref, XPCJSContext* xpccx)
 
     int32_t baselineThreshold = Preferences::GetInt(JS_OPTIONS_DOT_STR "baselinejit.threshold", -1);
     int32_t ionThreshold = Preferences::GetInt(JS_OPTIONS_DOT_STR "ion.threshold", -1);
+    int32_t ionFrequentBailoutThreshold = Preferences::GetInt(JS_OPTIONS_DOT_STR "ion.frequent_bailout_threshold", -1);
 
     sDiscardSystemSource = Preferences::GetBool(JS_OPTIONS_DOT_STR "discardSystemSource");
 
@@ -791,8 +838,6 @@ ReloadPrefsCallback(const char* pref, XPCJSContext* xpccx)
 
     bool extraWarnings = Preferences::GetBool(JS_OPTIONS_DOT_STR "strict");
 
-    bool streams = Preferences::GetBool(JS_OPTIONS_DOT_STR "streams");
-
     bool spectreIndexMasking = Preferences::GetBool(JS_OPTIONS_DOT_STR "spectre.index_masking");
     bool spectreObjectMitigationsBarriers =
         Preferences::GetBool(JS_OPTIONS_DOT_STR "spectre.object_mitigations.barriers");
@@ -804,6 +849,7 @@ ReloadPrefsCallback(const char* pref, XPCJSContext* xpccx)
     bool spectreJitToCxxCalls = Preferences::GetBool(JS_OPTIONS_DOT_STR "spectre.jit_to_C++_calls");
 
     sSharedMemoryEnabled = Preferences::GetBool(JS_OPTIONS_DOT_STR "shared_memory");
+    sStreamsEnabled = Preferences::GetBool(JS_OPTIONS_DOT_STR "streams");
 
 #ifdef DEBUG
     sExtraWarningsForSystemJS = Preferences::GetBool(JS_OPTIONS_DOT_STR "strict.debug");
@@ -820,7 +866,7 @@ ReloadPrefsCallback(const char* pref, XPCJSContext* xpccx)
 #endif // JS_GC_ZEAL
 
 #ifdef FUZZING
-    bool fuzzingEnabled = Preferences::GetBool("fuzzing.enabled");
+    bool fuzzingEnabled = StaticPrefs::fuzzing_enabled();
 #endif
 
     JS::ContextOptionsRef(cx).setBaseline(useBaseline)
@@ -829,6 +875,9 @@ ReloadPrefsCallback(const char* pref, XPCJSContext* xpccx)
                              .setWasm(useWasm)
                              .setWasmIon(useWasmIon)
                              .setWasmBaseline(useWasmBaseline)
+#ifdef ENABLE_WASM_CRANELIFT
+                             .setWasmForceCranelift(useWasmCranelift)
+#endif
 #ifdef ENABLE_WASM_GC
                              .setWasmGc(useWasmGc)
 #endif
@@ -841,7 +890,6 @@ ReloadPrefsCallback(const char* pref, XPCJSContext* xpccx)
 #ifdef FUZZING
                              .setFuzzing(fuzzingEnabled)
 #endif
-                             .setStreams(streams)
                              .setExtraWarnings(extraWarnings);
 
     nsCOMPtr<nsIXULRuntime> xr = do_GetService("@mozilla.org/xre/runtime;1");
@@ -859,6 +907,9 @@ ReloadPrefsCallback(const char* pref, XPCJSContext* xpccx)
                                   useBaselineEager ? 0 : baselineThreshold);
     JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_ION_WARMUP_TRIGGER,
                                   useIonEager ? 0 : ionThreshold);
+    JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_ION_FREQUENT_BAILOUT_THRESHOLD,
+                                  ionFrequentBailoutThreshold);
+
 #ifdef DEBUG
     JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_FULL_DEBUG_CHECKS, fullJitDebugChecks);
 #endif
@@ -890,8 +941,6 @@ XPCJSContext::~XPCJSContext()
     Preferences::UnregisterCallback(ReloadPrefsCallback, "fuzzing.enabled", this);
 #endif
 
-    js::SetActivityCallback(Context(), nullptr, nullptr);
-
     // Clear any pending exception.  It might be an XPCWrappedJS, and if we try
     // to destroy it later we will crash.
     SetPendingException(nullptr);
@@ -910,8 +959,9 @@ XPCJSContext::~XPCJSContext()
         mWatchdogManager->UnregisterContext(this);
     }
 
-    if (mCallContext)
+    if (mCallContext) {
         mCallContext->SystemIsBeingShutDown();
+    }
 
     PROFILER_CLEAR_JS_CONTEXT();
 
@@ -926,6 +976,7 @@ XPCJSContext::XPCJSContext()
    mWatchdogManager(GetWatchdogManager()),
    mSlowScriptSecondHalf(false),
    mTimeoutAccumulated(false),
+   mHasScriptActivity(false),
    mPendingResult(NS_OK),
    mActive(CONTEXT_INACTIVE),
    mLastStateChange(PR_Now())
@@ -963,8 +1014,9 @@ GetWindowsStackSize()
     // because that's the size of the committed area and we're also interested
     // in the reserved pages below that.
     MEMORY_BASIC_INFORMATION mbi;
-    if (!VirtualQuery(&mbi, &mbi, sizeof(mbi)))
+    if (!VirtualQuery(&mbi, &mbi, sizeof(mbi))) {
         MOZ_CRASH("VirtualQuery failed");
+    }
 
     const uint8_t* stackBottom = reinterpret_cast<const uint8_t*>(mbi.AllocationBase);
 
@@ -1140,7 +1192,6 @@ XPCJSContext::Initialize(XPCJSContext* aPrimaryContext)
 
     PROFILER_SET_JS_CONTEXT(cx);
 
-    js::SetActivityCallback(cx, ActivityCallback, this);
     JS_AddInterruptCallback(cx, InterruptCallback);
 
     if (!aPrimaryContext) {
@@ -1198,8 +1249,9 @@ XPCJSContext::NewXPCJSContext(XPCJSContext* aPrimaryContext)
         MOZ_CRASH("new XPCJSContext failed to initialize.");
     }
 
-    if (self->Context())
+    if (self->Context()) {
         return self;
+    }
 
     MOZ_CRASH("new XPCJSContext failed to initialize.");
 }

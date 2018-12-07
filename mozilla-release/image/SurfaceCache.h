@@ -232,7 +232,8 @@ struct SurfaceCache
    *                        if the cache entry was found.
    */
   static LookupResult Lookup(const ImageKey    aImageKey,
-                             const SurfaceKey& aSurfaceKey);
+                             const SurfaceKey& aSurfaceKey,
+                             bool aMarkUsed);
 
   /**
    * Looks up the best matching cache entry and returns a drawable reference to
@@ -251,7 +252,8 @@ struct SurfaceCache
    *                        returned surface exactly matches @aSurfaceKey.
    */
   static LookupResult LookupBestMatch(const ImageKey    aImageKey,
-                                      const SurfaceKey& aSurfaceKey);
+                                      const SurfaceKey& aSurfaceKey,
+                                      bool aMarkUsed);
 
   /**
    * Insert an ISurfaceProvider into the cache. If an entry with the same
@@ -442,6 +444,11 @@ struct SurfaceCache
    * for use by tests; normal code should use CanHold() instead.
    */
   static size_t MaximumCapacity();
+
+  /**
+   * @return true if the given size is valid.
+   */
+  static bool IsLegalSize(const IntSize& aSize);
 
 private:
   virtual ~SurfaceCache() = 0;  // Forbid instantiation.

@@ -28,6 +28,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   MessageManagerProxy: "resource://gre/modules/MessageManagerProxy.jsm",
   NativeApp: "resource://gre/modules/NativeMessaging.jsm",
   OS: "resource://gre/modules/osfile.jsm",
+  PerformanceCounters: "resource://gre/modules/PerformanceCounters.jsm",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
   Schemas: "resource://gre/modules/Schemas.jsm",
 });
@@ -36,6 +37,10 @@ XPCOMUtils.defineLazyServiceGetters(this, {
   aomStartup: ["@mozilla.org/addons/addon-manager-startup;1", "amIAddonManagerStartup"],
 });
 
+// We're using the pref to avoid loading PerformanceCounters.jsm for nothing.
+XPCOMUtils.defineLazyPreferenceGetter(this, "gTimingEnabled",
+                                      "extensions.webextensions.enablePerformanceCounters",
+                                      false);
 ChromeUtils.import("resource://gre/modules/ExtensionCommon.jsm");
 ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 
@@ -60,7 +65,6 @@ const BASE_SCHEMA = "chrome://extensions/content/schemas/manifest.json";
 const CATEGORY_EXTENSION_MODULES = "webextension-modules";
 const CATEGORY_EXTENSION_SCHEMAS = "webextension-schemas";
 const CATEGORY_EXTENSION_SCRIPTS = "webextension-scripts";
-const TIMING_ENABLED_PREF = "extensions.webextensions.enablePerformanceCounters";
 
 let schemaURLs = new Set();
 
@@ -481,6 +485,15 @@ ProxyMessenger = {
       return {messageManager: browser.messageManager, xulBrowser: browser};
     }
 
+    // port.postMessage / port.disconnect to non-tab contexts.
+    if (recipient.envType === "content_child") {
+      let childId = `${recipient.extensionId}.${recipient.contextId}`;
+      let context = ParentAPIManager.proxyContexts.get(childId);
+      if (context) {
+        return {messageManager: context.parentMessageManager, xulBrowser: context.xulBrowser};
+      }
+    }
+
     // runtime.sendMessage / runtime.connect
     let extension = GlobalManager.extensionMap.get(recipient.extensionId);
     if (extension) {
@@ -504,8 +517,8 @@ GlobalManager = {
       ProxyMessenger.init();
       apiManager.on("extension-browser-inserted", this._onExtensionBrowser);
       this.initialized = true;
+      Services.ppmm.addMessageListener("Extension:SendPerformanceCounter", this);
     }
-
     this.extensionMap.set(extension.id, extension);
   },
 
@@ -515,6 +528,15 @@ GlobalManager = {
     if (this.extensionMap.size == 0 && this.initialized) {
       apiManager.off("extension-browser-inserted", this._onExtensionBrowser);
       this.initialized = false;
+      Services.ppmm.removeMessageListener("Extension:SendPerformanceCounter", this);
+    }
+  },
+
+  async receiveMessage({name, data}) {
+    switch (name) {
+      case "Extension:SendPerformanceCounter":
+        PerformanceCounters.merge(data.counters);
+        break;
     }
   },
 
@@ -722,24 +744,24 @@ class DevToolsExtensionPageContextParent extends ExtensionPageContextParent {
     return this._devToolsToolbox;
   }
 
-  set devToolsTarget(contextDevToolsTarget) {
-    if (this._devToolsTarget) {
+  set devToolsTargetPromise(promise) {
+    if (this._devToolsTargetPromise) {
       throw new Error("Cannot set the context DevTools target twice");
     }
 
-    this._devToolsTarget = contextDevToolsTarget;
+    this._devToolsTargetPromise = promise;
 
-    return contextDevToolsTarget;
+    return promise;
   }
 
-  get devToolsTarget() {
-    return this._devToolsTarget;
+  get devToolsTargetPromise() {
+    return this._devToolsTargetPromise;
   }
 
   shutdown() {
-    if (this._devToolsTarget) {
-      this._devToolsTarget.destroy();
-      this._devToolsTarget = null;
+    if (this._devToolsTargetPromise) {
+      this._devToolsTargetPromise.then(target => target.destroy());
+      this._devToolsTargetPromise = null;
     }
 
     this._devToolsToolbox = null;
@@ -749,9 +771,6 @@ class DevToolsExtensionPageContextParent extends ExtensionPageContextParent {
 }
 
 ParentAPIManager = {
-  // stores dispatches counts per web extension and API
-  performanceCounters: new DefaultMap(() => new DefaultMap(() => ({duration: 0, calls: 0}))),
-
   proxyContexts: new Map(),
 
   init() {
@@ -762,7 +781,6 @@ ParentAPIManager = {
     Services.mm.addMessageListener("API:Call", this);
     Services.mm.addMessageListener("API:AddListener", this);
     Services.mm.addMessageListener("API:RemoveListener", this);
-    XPCOMUtils.defineLazyPreferenceGetter(this, "_timingEnabled", TIMING_ENABLED_PREF, false);
   },
 
   attachMessageManager(extension, processMessageManager) {
@@ -880,23 +898,23 @@ ParentAPIManager = {
     }
   },
 
-  storeExecutionTime(webExtensionId, apiPath, duration) {
-    let apiCounter = this.performanceCounters.get(webExtensionId).get(apiPath);
-    apiCounter.duration += duration;
-    apiCounter.calls += 1;
+  async retrievePerformanceCounters() {
+    // getting the parent counters
+    return PerformanceCounters.getData();
   },
 
   async withTiming(data, callable) {
-    if (!this._timingEnabled) {
+    if (!gTimingEnabled) {
       return callable();
     }
-    let webExtId = data.childId.split(".")[0];
-    let start = Cu.now();
+    let childId = data.childId;
+    let webExtId = childId.slice(0, childId.lastIndexOf("."));
+    let start = Cu.now() * 1000;
     try {
       return callable();
     } finally {
-      let end = Cu.now();
-      this.storeExecutionTime(webExtId, data.path, end - start);
+      let end = Cu.now() * 1000;
+      PerformanceCounters.storeExecutionTime(webExtId, data.path, end - start);
     }
   },
 
@@ -1094,7 +1112,7 @@ class HiddenXULWindow {
     let system = Services.scriptSecurityManager.getSystemPrincipal();
     this.chromeShell.createAboutBlankContentViewer(system);
     this.chromeShell.useGlobalHistory = false;
-    this.chromeShell.loadURI("chrome://extensions/content/dummy.xul", 0, null, null, null);
+    this.chromeShell.loadURI("chrome://extensions/content/dummy.xul", 0, null, null, null, system);
 
     await promiseObserved("chrome-document-global-created",
                           win => win.document == this.chromeShell.document);

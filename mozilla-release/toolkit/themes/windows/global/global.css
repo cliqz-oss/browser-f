@@ -71,7 +71,9 @@ window.dialog {
 
 .alert-dialog #infoIcon,
 .alert-icon {
-  list-style-image: url("chrome://global/skin/icons/Warning.png");
+  list-style-image: url("chrome://global/skin/icons/warning.svg");
+  width: 32px;
+  height: 32px;
 }
 
 .error-icon {
@@ -79,18 +81,7 @@ window.dialog {
 }
 
 .question-icon {
-  list-style-image: url("chrome://global/skin/icons/Question.png");
-}
-
-@media (min-resolution: 1.1dppx) {
-  .alert-dialog #info\.icon,
-  .alert-icon {
-    list-style-image: url("chrome://global/skin/icons/warning-64.png");
-  }
-
-  .question-icon {
-    list-style-image: url("chrome://global/skin/icons/question-64.png");
-  }
+  list-style-image: url("chrome://global/skin/icons/help.svg");
 }
 
 /* ::::: iframe ::::: */

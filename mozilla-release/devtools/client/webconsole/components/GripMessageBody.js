@@ -16,7 +16,7 @@ const { getObjectInspector } = require("devtools/client/webconsole/utils/object-
 const actions = require("devtools/client/webconsole/actions/index");
 
 const reps = require("devtools/client/shared/components/reps/reps");
-const { MODE, ObjectInspectorUtils } = reps;
+const { MODE, objectInspector: {utils} } = reps;
 
 GripMessageBody.displayName = "GripMessageBody";
 
@@ -66,18 +66,18 @@ function GripMessageBody(props) {
     // fixed the issue (See Bug 1456060).
     focusable: false,
     onCmdCtrlClick: (node, { depth, event, focused, expanded }) => {
-      const value = ObjectInspectorUtils.node.getValue(node);
+      const value = utils.node.getValue(node);
       if (value) {
         dispatch(actions.showObjectInSidebar(value));
       }
-    }
+    },
   };
 
   if (typeof grip === "string" || (grip && grip.type === "longString")) {
     Object.assign(objectInspectorProps, {
       useQuotes,
       escapeWhitespace,
-      style: styleObject
+      style: styleObject,
     });
   }
 
@@ -115,7 +115,7 @@ function cleanupStyle(userProvidedStyle, createElement) {
     })
     .reduce((object, name) => {
       return Object.assign({
-        [name]: dummy.style[name]
+        [name]: dummy.style[name],
       }, object);
     }, {});
 }

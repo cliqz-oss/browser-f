@@ -21,6 +21,7 @@ namespace js {
 
 class LazyScript;
 class LifoAlloc;
+class ModuleObject;
 class ScriptSourceObject;
 
 namespace frontend {
@@ -43,6 +44,9 @@ CompileGlobalBinASTScript(JSContext *cx, LifoAlloc& alloc,
                           const uint8_t* src, size_t len,
                           ScriptSourceObject** sourceObjectOut = nullptr);
 
+MOZ_MUST_USE bool
+CompileLazyBinASTFunction(JSContext* cx, Handle<LazyScript*> lazy, const uint8_t* buf, size_t length);
+
 #endif // JS_BUILD_BINAST
 
 JSScript*
@@ -52,11 +56,11 @@ CompileEvalScript(JSContext* cx, LifoAlloc& alloc,
                   JS::SourceBufferHolder& srcBuf,
                   ScriptSourceObject** sourceObjectOut = nullptr);
 
-JSScript*
+ModuleObject*
 CompileModule(JSContext* cx, const JS::ReadOnlyCompileOptions& options,
               JS::SourceBufferHolder& srcBuf);
 
-JSScript*
+ModuleObject*
 CompileModule(JSContext* cx, const JS::ReadOnlyCompileOptions& options,
               JS::SourceBufferHolder& srcBuf, LifoAlloc& alloc,
               ScriptSourceObject** sourceObjectOut = nullptr);

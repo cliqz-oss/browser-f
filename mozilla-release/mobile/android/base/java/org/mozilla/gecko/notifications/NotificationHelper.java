@@ -17,7 +17,6 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
 import android.net.Uri;
-import android.os.StrictMode;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.util.SimpleArrayMap;
 import android.util.Log;
@@ -28,16 +27,19 @@ import org.mozilla.gecko.GeckoActivityMonitor;
 import org.mozilla.gecko.GeckoAppShell;
 import org.mozilla.gecko.R;
 import org.mozilla.gecko.mozglue.SafeIntent;
+import org.mozilla.gecko.updater.UpdateServiceHelper;
 import org.mozilla.gecko.util.BitmapUtils;
 import org.mozilla.gecko.util.BundleEventListener;
 import org.mozilla.gecko.util.EventCallback;
 import org.mozilla.gecko.util.GeckoBundle;
+import org.mozilla.gecko.util.StrictModeContext;
 import org.mozilla.gecko.util.ThreadUtils;
 
 import java.io.File;
 import java.io.UnsupportedEncodingException;
 import java.net.URLConnection;
 import java.net.URLDecoder;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -114,11 +116,18 @@ public final class NotificationHelper implements BundleEventListener {
          * Leanplum notification channel - use only when <code>AppConstants.MOZ_ANDROID_MMA</code> is true.
          */
         LP_DEFAULT,
+        /**
+         * HTML5 web site notifications
+         */
+        SITE_NOTIFICATIONS,
     }
 
     // Holds the mapping between the Channel enum used by the rest of our codebase and the
     // channel ID used for communication with the system NotificationManager.
-    private final Map<Channel, String> mDefinedNotificationChannels = new HashMap<Channel, String>(7) {{
+    // How to determine the initialCapacity: Count all channels (including the Updater, which is
+    // only added further down in initNotificationChannels), multiply by 4/3 for a maximum load
+    // factor of 75 % and round up to the next multiple of two.
+    private final Map<Channel, String> mDefinedNotificationChannels = new HashMap<Channel, String>(16) {{
         final String DEFAULT_CHANNEL_TAG = "default2-notification-channel";
         put(Channel.DEFAULT, DEFAULT_CHANNEL_TAG);
 
@@ -136,20 +145,18 @@ public final class NotificationHelper implements BundleEventListener {
             put(Channel.LP_DEFAULT, LP_DEFAULT_CHANNEL_TAG);
         }
 
-        if (AppConstants.MOZ_UPDATER) {
-            final String UPDATER_CHANNEL_TAG = "updater-notification-channel";
-            put(Channel.UPDATER, UPDATER_CHANNEL_TAG);
-        }
-
         final String SYNCED_TABS_CHANNEL_TAG = "synced-tabs-notification-channel";
         put(Channel.SYNCED_TABS, SYNCED_TABS_CHANNEL_TAG);
+
+        final String SITE_NOTIFICATIONS_CHANNEL_TAG = "site-notifications";
+        put(Channel.SITE_NOTIFICATIONS, SITE_NOTIFICATIONS_CHANNEL_TAG);
     }};
 
     // These are channels we no longer require and want to retire from Android's settings UI.
-    private final List<String> mDeprecatedNotificationChannels = Arrays.asList(
+    private final List<String> mDeprecatedNotificationChannels = new ArrayList<>(Arrays.asList(
             "default-notification-channel",
             null
-    );
+    ));
 
     // Holds a list of notifications that should be cleared if the Fennec Activity is shut down.
     // Will not include ongoing or persistent notifications that are tied to Gecko's lifecycle.
@@ -192,6 +199,13 @@ public final class NotificationHelper implements BundleEventListener {
     }
 
     private void initNotificationChannels() {
+        final String UPDATER_CHANNEL_TAG = "updater-notification-channel";
+        if (UpdateServiceHelper.isUpdaterEnabled(mContext)) {
+            mDefinedNotificationChannels.put(Channel.UPDATER, UPDATER_CHANNEL_TAG);
+        } else {
+            mDeprecatedNotificationChannels.add(UPDATER_CHANNEL_TAG);
+        }
+
         final NotificationManager notificationManager =
                 (NotificationManager) mContext.getSystemService(Context.NOTIFICATION_SERVICE);
 
@@ -251,6 +265,13 @@ public final class NotificationHelper implements BundleEventListener {
                     channel = new NotificationChannel(mDefinedNotificationChannels.get(definedChannel),
                             mContext.getString(R.string.leanplum_default_notifications_channel),
                             NotificationManager.IMPORTANCE_LOW);
+                }
+                break;
+
+                case SITE_NOTIFICATIONS: {
+                    channel = new NotificationChannel(mDefinedNotificationChannels.get(definedChannel),
+                            mContext.getString(R.string.site_notifications_channel),
+                            NotificationManager.IMPORTANCE_DEFAULT);
                 }
                 break;
 
@@ -399,7 +420,7 @@ public final class NotificationHelper implements BundleEventListener {
         return res;
     }
 
-    @SuppressWarnings("NewApi")
+    @SuppressWarnings({"NewApi", "try"})
     private void showNotification(final GeckoBundle message) {
         ThreadUtils.assertOnUiThread();
 
@@ -476,13 +497,12 @@ public final class NotificationHelper implements BundleEventListener {
             // Bug 1450449 - Downloaded files already are already in a public directory and aren't
             // really owned exclusively by Firefox, so there's no real benefit to using
             // content:// URIs here.
-            StrictMode.VmPolicy prevPolicy = StrictMode.getVmPolicy();
-            StrictMode.setVmPolicy(StrictMode.VmPolicy.LAX);
-            final PendingIntent pIntent = PendingIntent.getActivity(
-                    mContext, 0, viewFileIntent, PendingIntent.FLAG_UPDATE_CURRENT);
-            StrictMode.setVmPolicy(prevPolicy);
-            builder.setAutoCancel(true);
-            builder.setContentIntent(pIntent);
+            try (StrictModeContext unused = StrictModeContext.allowAllVmPolicies()) {
+                final PendingIntent pIntent = PendingIntent.getActivity(
+                        mContext, 0, viewFileIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+                builder.setAutoCancel(true);
+                builder.setContentIntent(pIntent);
+            }
 
         } else {
             final PendingIntent pi = buildNotificationPendingIntent(message, CLICK_EVENT);
@@ -500,6 +520,8 @@ public final class NotificationHelper implements BundleEventListener {
         // them when geckoapp is destroyed.
         if (!persistent && !mClearableNotifications.containsKey(id)) {
             mClearableNotifications.put(id, message);
+        } else if (persistent && mClearableNotifications.containsKey(id)) {
+            mClearableNotifications.remove(id);
         }
     }
 

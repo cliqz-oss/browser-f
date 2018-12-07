@@ -51,6 +51,8 @@ Http2Stream::Http2Stream(nsAHttpTransaction *httpTransaction,
   , mAllHeadersReceived(0)
   , mQueued(0)
   , mSocketTransport(session->SocketTransport())
+  , mCurrentForegroundTabOuterContentWindowId(windowId)
+  , mTransactionTabId(0)
   , mTransaction(httpTransaction)
   , mChunkSize(session->SendingChunkSize())
   , mRequestBlockedOnRead(0)
@@ -73,8 +75,6 @@ Http2Stream::Http2Stream(nsAHttpTransaction *httpTransaction,
   , mTotalRead(0)
   , mPushSource(nullptr)
   , mAttempting0RTT(false)
-  , mCurrentForegroundTabOuterContentWindowId(windowId)
-  , mTransactionTabId(0)
   , mIsTunnel(false)
   , mPlainTextTunnel(false)
 {
@@ -556,7 +556,7 @@ Http2Stream::GenerateOpen()
   // Now we need to convert the flat http headers into a set
   // of HTTP/2 headers by writing to mTxInlineFrame{sz}
 
-  nsCString compressedData;
+  nsAutoCStringN<1025> compressedData;
   nsAutoCString authorityHeader;
   nsresult rv = head->GetHeader(nsHttp::Host, authorityHeader);
   if (NS_FAILED(rv)) {
@@ -789,6 +789,9 @@ Http2Stream::AdjustPushedPriority()
   if (mPushSource->RecvdFin() || mPushSource->RecvdReset())
     return;
 
+  // Ensure we pick up the right dependency to place the pushed stream under.
+  UpdatePriorityDependency();
+
   EnsureBuffer(mTxInlineFrame, mTxInlineFrameUsed + Http2Session::kFrameHeaderBytes + 5,
                mTxInlineFrameUsed, mTxInlineFrameSize);
   uint8_t *packet = mTxInlineFrame.get() + mTxInlineFrameUsed;
@@ -798,12 +801,13 @@ Http2Stream::AdjustPushedPriority()
                               Http2Session::FRAME_TYPE_PRIORITY, 0,
                               mPushSource->mStreamID);
 
-  mPushSource->SetPriority(mPriority);
-  memset(packet + Http2Session::kFrameHeaderBytes, 0, 4);
+  mPushSource->SetPriorityDependency(mPriority, mPriorityDependency);
+  uint32_t wireDep = PR_htonl(mPriorityDependency);
+  memcpy(packet + Http2Session::kFrameHeaderBytes, &wireDep, 4);
   memcpy(packet + Http2Session::kFrameHeaderBytes + 4, &mPriorityWeight, 1);
 
-  LOG3(("AdjustPushedPriority %p id 0x%X to weight %X\n", this, mPushSource->mStreamID,
-        mPriorityWeight));
+  LOG3(("AdjustPushedPriority %p id 0x%X to dep %X weight %X\n", this, mPushSource->mStreamID,
+        mPriorityDependency, mPriorityWeight));
 }
 
 void
@@ -1029,11 +1033,6 @@ Http2Stream::ConvertResponseHeaders(Http2Decompressor *decompressor,
                                     nsACString &aHeadersOut,
                                     int32_t &httpResponseCode)
 {
-  aHeadersOut.Truncate();
-  // Add in some space to hopefully not have to reallocate while decompressing
-  // the headers. 512 bytes seems like a good enough number.
-  aHeadersOut.SetCapacity(aHeadersIn.Length() + 512);
-
   nsresult rv =
     decompressor->DecodeHeaderBlock(reinterpret_cast<const uint8_t *>(aHeadersIn.BeginReading()),
                                     aHeadersIn.Length(),
@@ -1114,10 +1113,6 @@ Http2Stream::ConvertPushHeaders(Http2Decompressor *decompressor,
                                 nsACString &aHeadersIn,
                                 nsACString &aHeadersOut)
 {
-  aHeadersOut.Truncate();
-  // Add in some space to hopefully not have to reallocate while decompressing
-  // the headers. 512 bytes seems like a good enough number.
-  aHeadersOut.SetCapacity(aHeadersIn.Length() + 512);
   nsresult rv =
     decompressor->DecodeHeaderBlock(reinterpret_cast<const uint8_t *>(aHeadersIn.BeginReading()),
                                     aHeadersIn.Length(),
@@ -1159,9 +1154,6 @@ Http2Stream::ConvertResponseTrailers(Http2Decompressor *decompressor,
 {
   LOG3(("Http2Stream::ConvertResponseTrailers %p", this));
   nsAutoCString flatTrailers;
-  // Add in some space to hopefully not have to reallocate while decompressing
-  // the headers. 512 bytes seems like a good enough number.
-  flatTrailers.SetCapacity(aTrailersIn.Length() + 512);
 
   nsresult rv =
     decompressor->DecodeHeaderBlock(reinterpret_cast<const uint8_t *>(aTrailersIn.BeginReading()),
@@ -1253,13 +1245,10 @@ Http2Stream::SetPriority(uint32_t newPriority)
 }
 
 void
-Http2Stream::SetPriorityDependency(uint32_t newDependency, uint8_t newWeight,
-                                   bool exclusive)
+Http2Stream::SetPriorityDependency(uint32_t newPriority, uint32_t newDependency)
 {
-  // undefined what it means when the server sends a priority frame. ignore it.
-  LOG3(("Http2Stream::SetPriorityDependency %p 0x%X received dependency=0x%X "
-        "weight=%u exclusive=%d", this, mStreamID, newDependency, newWeight,
-        exclusive));
+  SetPriority(newPriority);
+  mPriorityDependency = newDependency;
 }
 
 static uint32_t
@@ -1345,6 +1334,19 @@ Http2Stream::UpdatePriorityDependency()
 void
 Http2Stream::TopLevelOuterContentWindowIdChanged(uint64_t windowId)
 {
+  if (!mStreamID) {
+    // For pushed streams, we ignore the direct call from the session and
+    // instead let it come to the internal function from the pushed stream, so
+    // we don't accidentally send two PRIORITY frames for the same stream.
+    return;
+  }
+
+  TopLevelOuterContentWindowIdChangedInternal(windowId);
+}
+
+void
+Http2Stream::TopLevelOuterContentWindowIdChangedInternal(uint64_t windowId)
+{
   MOZ_ASSERT(gHttpHandler->ActiveTabPriority());
 
   LOG3(("Http2Stream::TopLevelOuterContentWindowIdChanged "
@@ -1380,8 +1382,12 @@ Http2Stream::TopLevelOuterContentWindowIdChanged(uint64_t windowId)
           "depends on stream 0x%X\n", this, mPriorityDependency));
   }
 
-  if (mStreamID) {
-    mSession->SendPriorityFrame(mStreamID, mPriorityDependency, mPriorityWeight);
+  uint32_t modifyStreamID = mStreamID;
+  if (!modifyStreamID && mPushSource) {
+    modifyStreamID = mPushSource->StreamID();
+  }
+  if (modifyStreamID) {
+    mSession->SendPriorityFrame(modifyStreamID, mPriorityDependency, mPriorityWeight);
   }
 }
 

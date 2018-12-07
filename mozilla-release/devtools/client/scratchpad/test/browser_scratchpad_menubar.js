@@ -10,7 +10,7 @@ add_task(async function() {
   // Now open the scratchpad as window.
   info("Test existence of menu bar of scratchpad.");
   const options = {
-    tabContent: "Sanity test for scratchpad panel."
+    tabContent: "Sanity test for scratchpad panel.",
   };
 
   info("Open scratchpad.");
@@ -28,7 +28,7 @@ add_task(async function() {
   });
 
   info("Open devtools on the Scratchpad.");
-  const target = TargetFactory.forTab(gBrowser.selectedTab);
+  const target = await TargetFactory.forTab(gBrowser.selectedTab);
   const toolbox = await gDevTools.showToolbox(target, "scratchpad");
 
   const menuToolbar = toolbox.doc.getElementById("sp-menu-toolbar");

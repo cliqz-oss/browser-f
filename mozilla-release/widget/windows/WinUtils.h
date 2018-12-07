@@ -103,8 +103,10 @@ AreDpiAwarenessContextsEqual(DPI_AWARENESS_CONTEXT, DPI_AWARENESS_CONTEXT);
 #endif /* WINVER < 0x0605 */
 typedef DPI_AWARENESS_CONTEXT(WINAPI * SetThreadDpiAwarenessContextProc)(DPI_AWARENESS_CONTEXT);
 typedef BOOL(WINAPI * EnableNonClientDpiScalingProc)(HWND);
+typedef int (WINAPI * GetSystemMetricsForDpiProc)(int, UINT);
 
 namespace mozilla {
+enum class PointerCapabilities : uint8_t;
 #if defined(ACCESSIBILITY)
 namespace a11y {
 class Accessible;
@@ -162,6 +164,7 @@ class WinUtils
   // the Win10 update version -- will be set up in Initialize().
   static SetThreadDpiAwarenessContextProc sSetThreadDpiAwarenessContext;
   static EnableNonClientDpiScalingProc sEnableNonClientDpiScaling;
+  static GetSystemMetricsForDpiProc sGetSystemMetricsForDpi;
 
 public:
   class AutoSystemDpiAware
@@ -225,6 +228,9 @@ public:
   static int32_t LogToPhys(HMONITOR aMonitor, double aValue);
   static HMONITOR GetPrimaryMonitor();
   static HMONITOR MonitorFromRect(const gfx::Rect& rect);
+
+  static bool HasSystemMetricsForDpi();
+  static int GetSystemMetricsForDpi(int nIndex, UINT dpi);
 
   /**
    * Logging helpers that dump output to prlog module 'Widget', console, and
@@ -470,6 +476,16 @@ public:
   static uint32_t GetMaxTouchPoints();
 
   /**
+   * Returns the windows power platform role, which is useful for detecting tablets.
+   */
+  static POWER_PLATFORM_ROLE GetPowerPlatformRole();
+
+  // For pointer and hover media queries features.
+  static PointerCapabilities GetPrimaryPointerCapabilities();
+  // For any-pointer and any-hover media queries features.
+  static PointerCapabilities GetAllPointerCapabilities();
+
+  /**
    * Fully resolves a path to its final path name. So if path contains
    * junction points or symlinks to other folders, we'll resolve the path
    * fully to the actual path that the links target.
@@ -489,6 +505,11 @@ public:
   static bool RunningFromANetworkDrive();
 
   static void Initialize();
+
+  static nsresult WriteBitmap(nsIFile* aFile, mozilla::gfx::SourceSurface* surface);
+  // This function is a helper, but it cannot be called from the main thread.
+  // Use the one above!
+  static nsresult WriteBitmap(nsIFile* aFile, imgIContainer* aImage);
 
   /**
    * This function normalizes the input path, converts short filenames to long

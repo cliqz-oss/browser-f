@@ -63,7 +63,8 @@ IntrinsicRatioFromCanvasSize(const nsIntSize& aCanvasSizeInPx)
                 nsPresContext::CSSPixelsToAppUnits(aCanvasSizeInPx.height));
 }
 
-class nsDisplayCanvas : public nsDisplayItem {
+class nsDisplayCanvas final : public nsDisplayItem
+{
 public:
   nsDisplayCanvas(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame)
     : nsDisplayItem(aBuilder, aFrame)
@@ -278,7 +279,7 @@ nsHTMLCanvasFrame::GetMinISize(gfxContext *aRenderingContext)
   bool vertical = GetWritingMode().IsVertical();
   nscoord result = nsPresContext::CSSPixelsToAppUnits(
     vertical ? GetCanvasSize().height : GetCanvasSize().width);
-  DISPLAY_MIN_WIDTH(this, result);
+  DISPLAY_MIN_INLINE_SIZE(this, result);
   return result;
 }
 
@@ -290,7 +291,7 @@ nsHTMLCanvasFrame::GetPrefISize(gfxContext *aRenderingContext)
   bool vertical = GetWritingMode().IsVertical();
   nscoord result = nsPresContext::CSSPixelsToAppUnits(
     vertical ? GetCanvasSize().height : GetCanvasSize().width);
-  DISPLAY_PREF_WIDTH(this, result);
+  DISPLAY_PREF_INLINE_SIZE(this, result);
   return result;
 }
 
@@ -348,9 +349,7 @@ nsHTMLCanvasFrame::Reflow(nsPresContext*           aPresContext,
   MOZ_ASSERT(mState & NS_FRAME_IN_REFLOW, "frame is not in reflow");
 
   WritingMode wm = aReflowInput.GetWritingMode();
-  LogicalSize finalSize(wm,
-                        aReflowInput.ComputedISize(),
-                        aReflowInput.ComputedBSize());
+  LogicalSize finalSize = aReflowInput.ComputedSize();
 
   // stash this away so we can compute our inner area later
   mBorderPadding   = aReflowInput.ComputedLogicalBorderPadding();

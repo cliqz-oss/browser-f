@@ -22,8 +22,9 @@
 inline void
 js::AssertObjectIsSavedFrameOrWrapper(JSContext* cx, HandleObject stack)
 {
-    if (stack)
-        MOZ_RELEASE_ASSERT(js::SavedFrame::isSavedFrameOrWrapperAndNotProto(*stack));
+    if (stack) {
+        MOZ_RELEASE_ASSERT(js::SavedFrame::isSavedFrameOrWrapper(*stack));
+    }
 }
 
 #endif // vm_SavedStacksInl_h

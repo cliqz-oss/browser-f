@@ -171,11 +171,13 @@ class DebuggerWeakMap : private WeakMap<HeapPtr<UnbarrieredKey>, HeapPtr<JSObjec
         CheckDebuggeeThing(k, InvisibleKeysOk);
 #endif
         MOZ_ASSERT(!Base::has(k));
-        if (!incZoneCount(k->zone()))
+        if (!incZoneCount(k->zone())) {
             return false;
+        }
         bool ok = Base::relookupOrAdd(p, k, v);
-        if (!ok)
+        if (!ok) {
             decZoneCount(k->zone());
+        }
         return ok;
     }
 
@@ -192,8 +194,9 @@ class DebuggerWeakMap : private WeakMap<HeapPtr<UnbarrieredKey>, HeapPtr<JSObjec
             traceValueEdges(tracer, e.front().value());
             Key key = e.front().key();
             TraceEdge(tracer, &key, "Debugger WeakMap key");
-            if (key != e.front().key())
+            if (key != e.front().key()) {
                 e.rekeyFront(key);
+            }
             key.unsafeSet(nullptr);
         }
     }
@@ -221,8 +224,9 @@ class DebuggerWeakMap : private WeakMap<HeapPtr<UnbarrieredKey>, HeapPtr<JSObjec
 
     MOZ_MUST_USE bool incZoneCount(JS::Zone* zone) {
         CountMap::AddPtr p = zoneCounts.lookupForAdd(zone);
-        if (!p && !zoneCounts.add(p, zone, 0))
+        if (!p && !zoneCounts.add(p, zone, 0)) {
             return false;   // OOM'd while adding
+        }
         ++p->value();
         return true;
     }
@@ -232,8 +236,9 @@ class DebuggerWeakMap : private WeakMap<HeapPtr<UnbarrieredKey>, HeapPtr<JSObjec
         MOZ_ASSERT(p);
         MOZ_ASSERT(p->value() > 0);
         --p->value();
-        if (p->value() == 0)
+        if (p->value() == 0) {
             zoneCounts.remove(zone);
+        }
     }
 };
 
@@ -566,7 +571,9 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
     uint32_t traceLoggerScriptedCallsLastDrainedSize;
     uint32_t traceLoggerScriptedCallsLastDrainedIteration;
 
+    class QueryBase;
     class ScriptQuery;
+    class SourceQuery;
     class ObjectQuery;
 
     MOZ_MUST_USE bool addDebuggeeGlobal(JSContext* cx, Handle<GlobalObject*> obj);
@@ -718,6 +725,7 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
     static bool getNewestFrame(JSContext* cx, unsigned argc, Value* vp);
     static bool clearAllBreakpoints(JSContext* cx, unsigned argc, Value* vp);
     static bool findScripts(JSContext* cx, unsigned argc, Value* vp);
+    static bool findSources(JSContext* cx, unsigned argc, Value* vp);
     static bool findObjects(JSContext* cx, unsigned argc, Value* vp);
     static bool findAllGlobals(JSContext* cx, unsigned argc, Value* vp);
     static bool makeGlobalObjectReference(JSContext* cx, unsigned argc, Value* vp);
@@ -1471,6 +1479,11 @@ class DebuggerObject : public NativeObject
                                           bool& result);
     static MOZ_MUST_USE bool isSealed(JSContext* cx, HandleDebuggerObject object, bool& result);
     static MOZ_MUST_USE bool isFrozen(JSContext* cx, HandleDebuggerObject object, bool& result);
+    static MOZ_MUST_USE bool getProperty(JSContext* cx, HandleDebuggerObject object,
+                                         HandleId id, MutableHandleValue result);
+    static MOZ_MUST_USE bool setProperty(JSContext* cx, HandleDebuggerObject object,
+                                         HandleId id, HandleValue value,
+                                         MutableHandleValue result);
     static MOZ_MUST_USE bool getPrototypeOf(JSContext* cx, HandleDebuggerObject object,
                                             MutableHandleDebuggerObject result);
     static MOZ_MUST_USE bool getOwnPropertyNames(JSContext* cx, HandleDebuggerObject object,
@@ -1588,6 +1601,8 @@ class DebuggerObject : public NativeObject
     static MOZ_MUST_USE bool isExtensibleMethod(JSContext* cx, unsigned argc, Value* vp);
     static MOZ_MUST_USE bool isSealedMethod(JSContext* cx, unsigned argc, Value* vp);
     static MOZ_MUST_USE bool isFrozenMethod(JSContext* cx, unsigned argc, Value* vp);
+    static MOZ_MUST_USE bool getPropertyMethod(JSContext* cx, unsigned argc, Value* vp);
+    static MOZ_MUST_USE bool setPropertyMethod(JSContext* cx, unsigned argc, Value* vp);
     static MOZ_MUST_USE bool getOwnPropertyNamesMethod(JSContext* cx, unsigned argc, Value* vp);
     static MOZ_MUST_USE bool getOwnPropertySymbolsMethod(JSContext* cx, unsigned argc, Value* vp);
     static MOZ_MUST_USE bool getOwnPropertyDescriptorMethod(JSContext* cx, unsigned argc, Value* vp);
@@ -1641,7 +1656,6 @@ class BreakpointSite {
 
   protected:
     virtual void recompile(FreeOp* fop) = 0;
-    bool isEmpty() const;
     inline bool isEnabled() const { return enabledCount > 0; }
 
   public:
@@ -1653,6 +1667,7 @@ class BreakpointSite {
 
     void inc(FreeOp* fop);
     void dec(FreeOp* fop);
+    bool isEmpty() const;
     virtual void destroyIfEmpty(FreeOp* fop) = 0;
 
     inline JSBreakpointSite* asJS();
@@ -1696,7 +1711,13 @@ class Breakpoint {
 
   public:
     Breakpoint(Debugger* debugger, BreakpointSite* site, JSObject* handler);
-    void destroy(FreeOp* fop);
+
+    enum MayDestroySite {
+        False,
+        True
+    };
+    void destroy(FreeOp* fop, MayDestroySite mayDestroySite = MayDestroySite::True);
+
     Breakpoint* nextInDebugger();
     Breakpoint* nextInSite();
     const PreBarrieredObject& getHandler() const { return handler; }
@@ -1772,8 +1793,9 @@ Breakpoint::asWasm()
 Breakpoint*
 Debugger::firstBreakpoint() const
 {
-    if (breakpoints.isEmpty())
+    if (breakpoints.isEmpty()) {
         return nullptr;
+    }
     return &(*breakpoints.begin());
 }
 
@@ -1826,11 +1848,13 @@ Debugger::onNewScript(JSContext* cx, HandleScript script)
                   script->realm()->firedOnNewGlobalObject);
 
     // The script may not be ready to be interrogated by the debugger.
-    if (script->hideScriptFromDebugger())
+    if (script->hideScriptFromDebugger()) {
         return;
+    }
 
-    if (script->realm()->isDebuggee())
+    if (script->realm()->isDebuggee()) {
         slowPathOnNewScript(cx, script);
+    }
 }
 
 /* static */ void
@@ -1840,16 +1864,18 @@ Debugger::onNewGlobalObject(JSContext* cx, Handle<GlobalObject*> global)
 #ifdef DEBUG
     global->realm()->firedOnNewGlobalObject = true;
 #endif
-    if (!cx->runtime()->onNewGlobalObjectWatchers().isEmpty())
+    if (!cx->runtime()->onNewGlobalObjectWatchers().isEmpty()) {
         Debugger::slowPathOnNewGlobalObject(cx, global);
+    }
 }
 
 /* static */ bool
 Debugger::onLogAllocationSite(JSContext* cx, JSObject* obj, HandleSavedFrame frame, mozilla::TimeStamp when)
 {
     GlobalObject::DebuggerVector* dbgs = cx->global()->getDebuggers();
-    if (!dbgs || dbgs->empty())
+    if (!dbgs || dbgs->empty()) {
         return true;
+    }
     RootedObject hobj(cx, obj);
     return Debugger::slowPathOnLogAllocationSite(cx, hobj, frame, when, *dbgs);
 }

@@ -11,36 +11,41 @@
 
 #include "gc/Allocator.h"
 #include "gc/GCTrace.h"
+#include "js/CharacterEncoding.h"
 #include "vm/EnvironmentObject.h"
 
 #include "vm/JSObject-inl.h"
-
-class JSAutoByteString;
+#include "vm/NativeObject-inl.h"
 
 namespace js {
 
 inline const char*
-GetFunctionNameBytes(JSContext* cx, JSFunction* fun, JSAutoByteString* bytes)
+GetFunctionNameBytes(JSContext* cx, JSFunction* fun, UniqueChars* bytes)
 {
-    if (JSAtom* name = fun->explicitName())
-        return bytes->encodeLatin1(cx, name);
+    if (JSAtom* name = fun->explicitName()) {
+        *bytes = StringToNewUTF8CharsZ(cx, *name);
+        return bytes->get();
+    }
     return js_anonymous_str;
 }
 
 inline bool
 CanReuseFunctionForClone(JSContext* cx, HandleFunction fun)
 {
-    if (!fun->isSingleton())
+    if (!fun->isSingleton()) {
         return false;
+    }
     if (fun->isInterpretedLazy()) {
         LazyScript* lazy = fun->lazyScript();
-        if (lazy->hasBeenCloned())
+        if (lazy->hasBeenCloned()) {
             return false;
+        }
         lazy->setHasBeenCloned();
     } else {
         JSScript* script = fun->nonLazyScript();
-        if (script->hasBeenCloned())
+        if (script->hasBeenCloned()) {
             return false;
+        }
         script->setHasBeenCloned();
     }
     return true;
@@ -65,8 +70,9 @@ CloneFunctionObjectIfNotSingleton(JSContext* cx, HandleFunction fun, HandleObjec
      */
     if (CanReuseFunctionForClone(cx, fun)) {
         ObjectOpResult succeeded;
-        if (proto && !SetPrototype(cx, fun, proto, succeeded))
+        if (proto && !SetPrototype(cx, fun, proto, succeeded)) {
             return nullptr;
+        }
         MOZ_ASSERT(!proto || succeeded);
         fun->setEnvironment(parent);
         return fun;
@@ -80,12 +86,14 @@ CloneFunctionObjectIfNotSingleton(JSContext* cx, HandleFunction fun, HandleObjec
                          ? extendedFinalizeKind
                          : finalizeKind;
 
-    if (CanReuseScriptForClone(cx->realm(), fun, parent))
+    if (CanReuseScriptForClone(cx->realm(), fun, parent)) {
         return CloneFunctionReuseScript(cx, fun, parent, kind, newKind, proto);
+    }
 
     RootedScript script(cx, JSFunction::getOrCreateScript(cx, fun));
-    if (!script)
+    if (!script) {
         return nullptr;
+    }
     RootedScope enclosingScope(cx, script->enclosingScope());
     return CloneFunctionAndScript(cx, fun, parent, enclosingScope, kind, proto);
 }
@@ -109,8 +117,9 @@ JSFunction::create(JSContext* cx, js::gc::AllocKind kind, js::gc::InitialHeap he
                NumDynamicSlots);
 
     JSObject* obj = js::Allocate<JSObject>(cx, kind, NumDynamicSlots, heap, clasp);
-    if (!obj)
+    if (!obj) {
         return cx->alreadyReportedOOM();
+    }
 
     NativeObject* nobj = static_cast<NativeObject*>(obj);
     nobj->initGroup(group);
@@ -134,8 +143,9 @@ JSFunction::create(JSContext* cx, js::gc::AllocKind kind, js::gc::InitialHeap he
 
     if (kind == js::gc::AllocKind::FUNCTION_EXTENDED) {
         fun->setFlags(JSFunction::EXTENDED);
-        for (js::GCPtrValue& extendedSlot : fun->toExtended()->extendedSlots)
+        for (js::GCPtrValue& extendedSlot : fun->toExtended()->extendedSlots) {
             extendedSlot.unsafeSet(JS::DoubleValue(+0.0));
+        }
     } else {
         fun->setFlags(0);
     }

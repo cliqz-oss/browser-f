@@ -35,10 +35,10 @@ var gIdentityHandler = {
   _isSecureInternalUI: false,
 
   /**
-   * nsISSLStatus metadata provided by gBrowser.securityUI the last time the
-   * identity UI was updated, or null if the connection is not secure.
+   * nsITransportSecurityInfo metadata provided by gBrowser.securityUI the last
+   * time the identity UI was updated, or null if the connection is not secure.
    */
-  _sslStatus: null,
+  _secInfo: null,
 
   /**
    * Bitmask provided by nsIWebProgressListener.onSecurityChange.
@@ -115,15 +115,14 @@ var gIdentityHandler = {
     delete this._identityPopupMainView;
     return this._identityPopupMainView = document.getElementById("identity-popup-mainView");
   },
-  get _identityPopupContentHosts() {
-    delete this._identityPopupContentHosts;
-    return this._identityPopupContentHosts =
-      [...document.querySelectorAll(".identity-popup-host")];
+  get _identityPopupMainViewHeaderLabel() {
+    delete this._identityPopupMainViewHeaderLabel;
+    return this._identityPopupMainViewHeaderLabel =
+      document.getElementById("identity-popup-mainView-panel-header-span");
   },
-  get _identityPopupContentHostless() {
-    delete this._identityPopupContentHostless;
-    return this._identityPopupContentHostless =
-      [...document.querySelectorAll(".identity-popup-hostless")];
+  get _identityPopupContentHost() {
+    delete this._identityPopupContentHost;
+    return this._identityPopupContentHost = document.getElementById("identity-popup-host");
   },
   get _identityPopupContentOwner() {
     delete this._identityPopupContentOwner;
@@ -245,6 +244,14 @@ var gIdentityHandler = {
     openPreferences("privacy-permissions", { origin: "identityPopup-permissions-PreferencesButton" });
   },
 
+  recordClick(object) {
+    let extra = {};
+    for (let blocker of ContentBlocking.blockers) {
+      extra[blocker.telemetryIdentifier] = blocker.activated ? "true" : "false";
+    }
+    Services.telemetry.recordEvent("security.ui.identitypopup", "click", object, null, extra);
+  },
+
   /**
    * Handler for mouseclicks on the "More Information" button in the
    * "identity-popup" panel.
@@ -297,12 +304,12 @@ var gIdentityHandler = {
   },
 
   /**
-   * Helper to parse out the important parts of _sslStatus (of the SSL cert in
+   * Helper to parse out the important parts of _secInfo (of the SSL cert in
    * particular) for use in constructing identity UI strings
   */
   getIdentityData() {
     var result = {};
-    var cert = this._sslStatus.serverCert;
+    var cert = this._secInfo.serverCert;
 
     // Human readable name of Subject
     result.subjectOrg = cert.organization;
@@ -347,8 +354,7 @@ var gIdentityHandler = {
     // Firstly, populate the state properties required to display the UI. See
     // the documentation of the individual properties for details.
     this.setURI(uri);
-    this._sslStatus = gBrowser.securityUI.secInfo &&
-                      gBrowser.securityUI.secInfo.SSLStatus;
+    this._secInfo = gBrowser.securityUI.secInfo;
 
     // Then, update the user interface with the available data.
     this.refreshIdentityBlock();
@@ -704,7 +710,6 @@ var gIdentityHandler = {
     let verifier = "";
     let host = "";
     let owner = "";
-    let hostless = false;
 
     try {
       host = this.getEffectiveHost();
@@ -712,16 +717,13 @@ var gIdentityHandler = {
       // Some URIs might have no hosts.
     }
 
+    if (this._pageExtensionPolicy) {
+      host = this._pageExtensionPolicy.name;
+    }
+
     // Fallback for special protocols.
     if (!host) {
       host = this._uri.specIgnoringRef;
-      // Special URIs without a host (eg, about:) should crop the end so
-      // the protocol can be seen.
-      hostless = true;
-    }
-
-    if (this._pageExtensionPolicy) {
-      host = this._pageExtensionPolicy.name;
     }
 
     // Fill in the CA name if we have a valid TLS certificate.
@@ -748,14 +750,9 @@ var gIdentityHandler = {
     }
 
     // Push the appropriate strings out to the UI.
-    this._identityPopupContentHosts.forEach((el) => {
-      el.textContent = host;
-      el.hidden = hostless;
-    });
-    this._identityPopupContentHostless.forEach((el) => {
-      el.setAttribute("value", host);
-      el.hidden = !hostless;
-    });
+    this._identityPopupMainViewHeaderLabel.textContent =
+      gNavigatorBundle.getFormattedString("identity.headerWithHost", [host]);
+    this._identityPopupContentHost.textContent = host;
     this._identityPopupContentOwner.textContent = owner;
     this._identityPopupContentSupp.textContent = supplemental;
     this._identityPopupContentVerif.textContent = verifier;
@@ -852,6 +849,14 @@ var gIdentityHandler = {
     if (event.target == this._identityPopup) {
       window.addEventListener("focus", this, true);
     }
+
+    let extra = {};
+    for (let blocker of ContentBlocking.blockers) {
+      extra[blocker.telemetryIdentifier] = blocker.activated ? "true" : "false";
+    }
+
+    let shieldStatus = ContentBlocking.iconBox.hasAttribute("active") ? "shield-showing" : "shield-hidden";
+    Services.telemetry.recordEvent("security.ui.identitypopup", "open", "identity_popup", shieldStatus, extra);
   },
 
   onPopupHidden(event) {

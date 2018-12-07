@@ -564,10 +564,11 @@ MacroAssemblerMIPSShared::ma_load_unaligned(const wasm::MemoryAccessDesc& access
     BufferOffset load;
     switch (size) {
       case SizeHalfWord:
-        if (extension != ZeroExtend)
+        if (extension != ZeroExtend) {
             load = as_lbu(temp, base, hiOffset);
-        else
+        } else {
             load = as_lb(temp, base, hiOffset);
+        }
         as_lbu(dest, base, lowOffset);
         ma_ins(dest, temp, 8, 24);
         break;
@@ -575,8 +576,9 @@ MacroAssemblerMIPSShared::ma_load_unaligned(const wasm::MemoryAccessDesc& access
         load = as_lwl(dest, base, hiOffset);
         as_lwr(dest, base, lowOffset);
 #ifdef JS_CODEGEN_MIPS64
-        if (extension != ZeroExtend)
+        if (extension != ZeroExtend) {
             as_dext(dest, dest, 0, 32);
+        }
 #endif
         break;
 #ifdef JS_CODEGEN_MIPS64
@@ -769,12 +771,13 @@ MacroAssemblerMIPSShared::ma_b(Register lhs, Imm32 imm, Label* label, Condition 
 {
     MOZ_ASSERT(c != Overflow);
     if (imm.value == 0) {
-        if (c == Always || c == AboveOrEqual)
+        if (c == Always || c == AboveOrEqual) {
             ma_b(label, jumpKind);
-        else if (c == Below)
+        } else if (c == Below) {
             ; // This condition is always false. No branch required.
-        else
+        } else {
             asMasm().branchWithCode(getBranchCode(lhs, c), label, jumpKind);
+        }
     } else {
       switch (c) {
         case Equal:
@@ -1080,10 +1083,11 @@ MacroAssemblerMIPSShared::ma_cmp_set_double(Register dest, FloatRegister lhs, Fl
 
     ma_li(dest, Imm32(1));
 
-    if (moveCondition == TestForTrue)
+    if (moveCondition == TestForTrue) {
         as_movf(dest, zero);
-    else
+    } else {
         as_movt(dest, zero);
+    }
 }
 
 void
@@ -1095,10 +1099,11 @@ MacroAssemblerMIPSShared::ma_cmp_set_float32(Register dest, FloatRegister lhs, F
 
     ma_li(dest, Imm32(1));
 
-    if (moveCondition == TestForTrue)
+    if (moveCondition == TestForTrue) {
         as_movf(dest, zero);
-    else
+    } else {
         as_movt(dest, zero);
+    }
 }
 
 void
@@ -1121,14 +1126,16 @@ MacroAssemblerMIPSShared::ma_cmp_set(Register rd, Register rs, Imm32 imm, Condit
           case GreaterThan:
           case LessThanOrEqual:
             as_slt(rd, zero, rs);
-            if (c == LessThanOrEqual)
+            if (c == LessThanOrEqual) {
                 as_xori(rd, rd, 1);
+            }
             break;
           case LessThan:
           case GreaterThanOrEqual:
             as_slt(rd, rs, zero);
-            if (c == GreaterThanOrEqual)
+            if (c == GreaterThanOrEqual) {
                 as_xori(rd, rd, 1);
+            }
             break;
           case Zero:
             as_sltiu(rd, rs, 1);
@@ -1154,10 +1161,11 @@ MacroAssemblerMIPSShared::ma_cmp_set(Register rd, Register rs, Imm32 imm, Condit
       case NotEqual:
         MOZ_ASSERT(rs != ScratchRegister);
         ma_xor(rd, rs, imm);
-        if (c == Equal)
+        if (c == Equal) {
             as_sltiu(rd, rd, 1);
-        else
+        } else {
             as_sltu(rd, zero, rd);
+        }
         break;
       case Zero:
       case NonZero:
@@ -1431,6 +1439,7 @@ MacroAssemblerMIPSShared::asMasm() const
     return *static_cast<const MacroAssembler*>(this);
 }
 
+// clang-format off
 //{{{ check_macroassembler_style
 // ===============================================================
 // MacroAssembler high-level usage.
@@ -1708,8 +1717,9 @@ MacroAssembler::pushFakeReturnAddress(Register scratch)
 void
 MacroAssembler::loadStoreBuffer(Register ptr, Register buffer)
 {
-    if (ptr != buffer)
+    if (ptr != buffer) {
         movePtr(ptr, buffer);
+    }
     orPtr(Imm32(gc::ChunkMask), buffer);
     loadPtr(Address(buffer, gc::ChunkStoreBufferOffsetFromLastByte), buffer);
 }
@@ -1809,12 +1819,13 @@ MacroAssemblerMIPSShared::outOfLineWasmTruncateToInt32Check(FloatRegister input,
     bool isUnsigned = flags & TRUNC_UNSIGNED;
     bool isSaturating = flags & TRUNC_SATURATING;
 
-    if(isSaturating) {
+    if (isSaturating) {
 
-        if(fromType == MIRType::Double)
+        if (fromType == MIRType::Double) {
             asMasm().loadConstantDouble(0.0, ScratchDoubleReg);
-        else
+        } else {
             asMasm().loadConstantFloat32(0.0f, ScratchFloat32Reg);
+        }
 
         if(isUnsigned) {
 
@@ -1859,10 +1870,11 @@ MacroAssemblerMIPSShared::outOfLineWasmTruncateToInt32Check(FloatRegister input,
 
     Label inputIsNaN;
 
-    if (fromType == MIRType::Double)
+    if (fromType == MIRType::Double) {
         asMasm().branchDouble(Assembler::DoubleUnordered, input, input, &inputIsNaN);
-    else if (fromType == MIRType::Float32)
+    } else if (fromType == MIRType::Float32) {
         asMasm().branchFloat(Assembler::DoubleUnordered, input, input, &inputIsNaN);
+    }
 
     asMasm().wasmTrap(wasm::Trap::IntegerOverflow, trapOffset);
     asMasm().bind(&inputIsNaN);
@@ -1886,10 +1898,11 @@ MacroAssemblerMIPSShared::outOfLineWasmTruncateToInt64Check(FloatRegister input,
 #else
         Register output = output_.reg;
 
-        if(fromType == MIRType::Double)
+        if (fromType == MIRType::Double) {
             asMasm().loadConstantDouble(0.0, ScratchDoubleReg);
-        else
+        } else {
             asMasm().loadConstantFloat32(0.0f, ScratchFloat32Reg);
+        }
 
         if(isUnsigned) {
 
@@ -1936,10 +1949,11 @@ MacroAssemblerMIPSShared::outOfLineWasmTruncateToInt64Check(FloatRegister input,
 
     Label inputIsNaN;
 
-    if (fromType == MIRType::Double)
+    if (fromType == MIRType::Double) {
         asMasm().branchDouble(Assembler::DoubleUnordered, input, input, &inputIsNaN);
-    else if (fromType == MIRType::Float32)
+    } else if (fromType == MIRType::Float32) {
         asMasm().branchFloat(Assembler::DoubleUnordered, input, input, &inputIsNaN);
+    }
 
 #if defined(JS_CODEGEN_MIPS32)
 
@@ -2043,10 +2057,11 @@ MacroAssemblerMIPSShared::wasmLoadImpl(const wasm::MemoryAccessDesc& access, Reg
     if (IsUnaligned(access)) {
         MOZ_ASSERT(tmp != InvalidReg);
         if (isFloat) {
-            if (byteSize == 4)
+            if (byteSize == 4) {
                 asMasm().loadUnalignedFloat32(access, address, tmp, output.fpu());
-            else
+            } else {
                 asMasm().loadUnalignedDouble(access, address, tmp, output.fpu());
+            }
         } else {
             asMasm().ma_load_unaligned(access, output.gpr(), address, tmp,
                                        static_cast<LoadStoreSize>(8 * byteSize),
@@ -2057,10 +2072,11 @@ MacroAssemblerMIPSShared::wasmLoadImpl(const wasm::MemoryAccessDesc& access, Reg
 
     asMasm().memoryBarrierBefore(access.sync());
     if (isFloat) {
-        if (byteSize == 4)
+        if (byteSize == 4) {
             asMasm().ma_ls(output.fpu(), address);
-         else
+         } else {
             asMasm().ma_ld(output.fpu(), address);
+         }
     } else {
         asMasm().ma_load(output.gpr(), address, static_cast<LoadStoreSize>(8 * byteSize),
                          isSigned ? SignExtend : ZeroExtend);
@@ -2105,10 +2121,11 @@ MacroAssemblerMIPSShared::wasmStoreImpl(const wasm::MemoryAccessDesc& access, An
     if (IsUnaligned(access)) {
         MOZ_ASSERT(tmp != InvalidReg);
         if (isFloat) {
-            if (byteSize == 4)
+            if (byteSize == 4) {
                 asMasm().storeUnalignedFloat32(access, value.fpu(), tmp, address);
-            else
+            } else {
                 asMasm().storeUnalignedDouble(access, value.fpu(), tmp, address);
+            }
         } else {
             asMasm().ma_store_unaligned(access, value.gpr(), address, tmp,
                                         static_cast<LoadStoreSize>(8 * byteSize),
@@ -2119,10 +2136,11 @@ MacroAssemblerMIPSShared::wasmStoreImpl(const wasm::MemoryAccessDesc& access, An
 
     asMasm().memoryBarrierBefore(access.sync());
     if (isFloat) {
-        if (byteSize == 4)
+        if (byteSize == 4) {
             asMasm().ma_ss(value.fpu(), address);
-        else
+        } else {
             asMasm().ma_sd(value.fpu(), address);
+        }
     } else {
         asMasm().ma_store(value.gpr(), address,
                       static_cast<LoadStoreSize>(8 * byteSize),
@@ -2169,12 +2187,15 @@ CompareExchange(MacroAssembler& masm, const wasm::MemoryAccessDesc* access,
 
     masm.computeEffectiveAddress(mem, SecondScratchReg);
 
-    // FIXME: emit signal handling information if access != nullptr.
 
     if (nbytes == 4) {
 
         masm.memoryBarrierBefore(sync);
         masm.bind(&again);
+
+        if (access) {
+            masm.append(*access, masm.size());
+        }
 
         masm.as_ll(output, SecondScratchReg, 0);
         masm.ma_b(output, oldval, &end, Assembler::NotEqual, ShortJump);
@@ -2201,6 +2222,10 @@ CompareExchange(MacroAssembler& masm, const wasm::MemoryAccessDesc* access,
     masm.memoryBarrierBefore(sync);
 
     masm.bind(&again);
+
+    if (access) {
+        masm.append(*access, masm.size());
+    }
 
     masm.as_ll(ScratchRegister, SecondScratchReg, 0);
 
@@ -2308,12 +2333,14 @@ AtomicExchange(MacroAssembler& masm, const wasm::MemoryAccessDesc* access,
 
     masm.computeEffectiveAddress(mem, SecondScratchReg);
 
-    // FIXME: emit signal handling information if access != nullptr.
-
     if (nbytes == 4) {
 
         masm.memoryBarrierBefore(sync);
         masm.bind(&again);
+
+        if (access) {
+            masm.append(*access, masm.size());
+        }
 
         masm.as_ll(output, SecondScratchReg, 0);
         masm.ma_move(ScratchRegister, value);
@@ -2347,6 +2374,10 @@ AtomicExchange(MacroAssembler& masm, const wasm::MemoryAccessDesc* access,
     masm.memoryBarrierBefore(sync);
 
     masm.bind(&again);
+
+    if (access) {
+        masm.append(*access, masm.size());
+    }
 
     masm.as_ll(output, SecondScratchReg, 0);
     masm.as_and(ScratchRegister, output, maskTemp);
@@ -2440,12 +2471,14 @@ AtomicFetchOp(MacroAssembler& masm, const wasm::MemoryAccessDesc* access,
 
     masm.computeEffectiveAddress(mem, SecondScratchReg);
 
-    // FIXME: emit signal handling information if access != nullptr.
-
     if (nbytes == 4) {
 
         masm.memoryBarrierBefore(sync);
         masm.bind(&again);
+
+        if (access) {
+            masm.append(*access, masm.size());
+        }
 
         masm.as_ll(output, SecondScratchReg, 0);
 
@@ -2491,6 +2524,10 @@ AtomicFetchOp(MacroAssembler& masm, const wasm::MemoryAccessDesc* access,
     masm.memoryBarrierBefore(sync);
 
     masm.bind(&again);
+
+    if (access) {
+        masm.append(*access, masm.size());
+    }
 
     masm.as_ll(ScratchRegister, SecondScratchReg, 0);
     masm.as_srlv(output, ScratchRegister, offsetTemp);
@@ -2612,12 +2649,14 @@ AtomicEffectOp(MacroAssembler& masm, const wasm::MemoryAccessDesc* access, Scala
 
     masm.computeEffectiveAddress(mem, SecondScratchReg);
 
-    // FIXME: emit signal handling information if access != nullptr.
-
     if (nbytes == 4) {
 
         masm.memoryBarrierBefore(sync);
         masm.bind(&again);
+
+        if (access) {
+            masm.append(*access, masm.size());
+        }
 
         masm.as_ll(ScratchRegister, SecondScratchReg, 0);
 
@@ -2662,6 +2701,10 @@ AtomicEffectOp(MacroAssembler& masm, const wasm::MemoryAccessDesc* access, Scala
     masm.memoryBarrierBefore(sync);
 
     masm.bind(&again);
+
+    if (access) {
+        masm.append(*access, masm.size());
+    }
 
     masm.as_ll(ScratchRegister, SecondScratchReg, 0);
     masm.as_srlv(valueTemp, ScratchRegister, offsetTemp);
@@ -2868,10 +2911,11 @@ void
 MacroAssembler::flexibleDivMod32(Register rhs, Register srcDest, Register remOutput,
                                  bool isUnsigned, const LiveRegisterSet&)
 {
-    if (isUnsigned)
+    if (isUnsigned) {
         as_divu(srcDest, rhs);
-    else
+    } else {
         as_div(srcDest, rhs);
+    }
     as_mfhi(remOutput);
     as_mflo(srcDest);
 }
@@ -2884,3 +2928,5 @@ MacroAssembler::speculationBarrier()
 {
     MOZ_CRASH();
 }
+//}}} check_macroassembler_style
+// clang-format on

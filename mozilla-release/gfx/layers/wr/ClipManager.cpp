@@ -13,6 +13,7 @@
 #include "mozilla/layers/WebRenderLayerManager.h"
 #include "mozilla/webrender/WebRenderAPI.h"
 #include "nsDisplayList.h"
+#include "nsStyleStructInlines.h"
 #include "UnitTransforms.h"
 
 #define CLIP_LOG(...)
@@ -62,7 +63,7 @@ ClipManager::BeginList(const StackingContextHelper& aStackingContext)
         aStackingContext.ReferenceFrameId());
   }
 
-  ItemClips clips(nullptr, nullptr);
+  ItemClips clips(nullptr, nullptr, false);
   if (!mItemClipStack.empty()) {
     clips.CopyOutputsFrom(mItemClipStack.top());
   }
@@ -86,9 +87,7 @@ void
 ClipManager::PushOverrideForASR(const ActiveScrolledRoot* aASR,
                                 const Maybe<wr::WrClipId>& aClipId)
 {
-  layers::FrameMetrics::ViewID viewId = aASR
-      ? aASR->GetViewId() : layers::FrameMetrics::NULL_SCROLL_ID;
-  Maybe<wr::WrClipId> scrollId = mBuilder->GetScrollIdForDefinedScrollLayer(viewId);
+  Maybe<wr::WrClipId> scrollId = GetScrollLayer(aASR);
   MOZ_ASSERT(scrollId.isSome());
 
   CLIP_LOG("Pushing override %zu -> %s\n", scrollId->id,
@@ -106,9 +105,7 @@ ClipManager::PopOverrideForASR(const ActiveScrolledRoot* aASR)
   MOZ_ASSERT(!mCacheStack.empty());
   mCacheStack.pop();
 
-  layers::FrameMetrics::ViewID viewId = aASR
-      ? aASR->GetViewId() : layers::FrameMetrics::NULL_SCROLL_ID;
-  Maybe<wr::WrClipId> scrollId = mBuilder->GetScrollIdForDefinedScrollLayer(viewId);
+  Maybe<wr::WrClipId> scrollId = GetScrollLayer(aASR);
   MOZ_ASSERT(scrollId.isSome());
 
   auto it = mASROverride.find(*scrollId);
@@ -146,7 +143,8 @@ ClipManager::BeginItem(nsDisplayItem* aItem,
 
   const DisplayItemClipChain* clip = aItem->GetClipChain();
   const ActiveScrolledRoot* asr = aItem->GetActiveScrolledRoot();
-  if (aItem->GetType() == DisplayItemType::TYPE_STICKY_POSITION) {
+  DisplayItemType type = aItem->GetType();
+  if (type == DisplayItemType::TYPE_STICKY_POSITION) {
     // For sticky position items, the ASR is computed differently depending
     // on whether the item has a fixed descendant or not. But for WebRender
     // purposes we always want to use the ASR that would have been used if it
@@ -155,7 +153,24 @@ ClipManager::BeginItem(nsDisplayItem* aItem,
     asr = static_cast<nsDisplayStickyPosition*>(aItem)->GetContainerASR();
   }
 
-  ItemClips clips(asr, clip);
+  // In most cases we can combine the leaf of the clip chain with the clip rect
+  // of the display item. This reduces the number of clip items, which avoids
+  // some overhead further down the pipeline.
+  bool separateLeaf = false;
+  if (clip && clip->mASR == asr && clip->mClip.GetRoundedRectCount() == 0) {
+    if (type == DisplayItemType::TYPE_TEXT) {
+      // Text with shadows interprets the text display item clip rect and
+      // clips from the clip chain differently.
+      separateLeaf = !aItem->Frame()->StyleText()->HasTextShadow();
+    } else {
+      // Container display items are not currently supported because the clip
+      // rect of a stacking context is not handled the same as normal display
+      // items.
+      separateLeaf = aItem->GetChildren() == nullptr;
+    }
+  }
+
+  ItemClips clips(asr, clip, separateLeaf);
   MOZ_ASSERT(!mItemClipStack.empty());
   if (clips.HasSameInputs(mItemClipStack.top())) {
     // Early-exit because if the clips are the same as aItem's previous sibling,
@@ -167,6 +182,7 @@ ClipManager::BeginItem(nsDisplayItem* aItem,
     CLIP_LOG("early-exit for %p\n", aItem);
     return;
   }
+
   // Pop aItem's previous sibling's stuff from mBuilder in preparation for
   // pushing aItem's stuff.
   mItemClipStack.top().Unapply(mBuilder);
@@ -175,9 +191,17 @@ ClipManager::BeginItem(nsDisplayItem* aItem,
   // Zoom display items report their bounds etc using the parent document's
   // APD because zoom items act as a conversion layer between the two different
   // APDs.
-  int32_t auPerDevPixel = aItem->Frame()->PresContext()->AppUnitsPerDevPixel();
-  if (aItem->GetType() == DisplayItemType::TYPE_ZOOM) {
+  int32_t auPerDevPixel;
+  if (type == DisplayItemType::TYPE_ZOOM) {
     auPerDevPixel = static_cast<nsDisplayZoom*>(aItem)->GetParentAppUnitsPerDevPixel();
+  } else {
+    auPerDevPixel = aItem->Frame()->PresContext()->AppUnitsPerDevPixel();
+  }
+
+  // If the leaf of the clip chain is going to be merged with the display item's
+  // clip rect, then we should create a clip chain id from the leaf's parent.
+  if (separateLeaf) {
+    clip = clip->mParent;
   }
 
   // There are two ASR chains here that we need to be fully defined. One is the
@@ -219,11 +243,7 @@ ClipManager::BeginItem(nsDisplayItem* aItem,
   } else if (clip) {
     // If the clip's ASR is different, then we need to set the scroll id
     // explicitly to match the desired ASR.
-    FrameMetrics::ViewID viewId = asr
-        ? asr->GetViewId()
-        : FrameMetrics::NULL_SCROLL_ID;
-    Maybe<wr::WrClipId> scrollId =
-        mBuilder->GetScrollIdForDefinedScrollLayer(viewId);
+    Maybe<wr::WrClipId> scrollId = GetScrollLayer(asr);
     MOZ_ASSERT(scrollId.isSome());
     clips.mScrollId = ClipIdAfterOverride(scrollId);
   } else {
@@ -238,10 +258,31 @@ ClipManager::BeginItem(nsDisplayItem* aItem,
 
   // Now that we have the scroll id and a clip id for the item, push it onto
   // the WR stack.
-  clips.Apply(mBuilder);
+  clips.Apply(mBuilder, auPerDevPixel);
   mItemClipStack.push(clips);
 
   CLIP_LOG("done setup for %p\n", aItem);
+}
+
+Maybe<wr::WrClipId>
+ClipManager::GetScrollLayer(const ActiveScrolledRoot* aASR)
+{
+  for (const ActiveScrolledRoot* asr = aASR; asr; asr = asr->mParent) {
+    Maybe<wr::WrClipId> scrollId =
+      mBuilder->GetScrollIdForDefinedScrollLayer(asr->GetViewId());
+    if (scrollId) {
+      return scrollId;
+    }
+
+    // If this ASR doesn't have a scroll ID, then we should check its ancestor.
+    // There may not be one defined because the ASR may not be scrollable or we
+    // failed to get the scroll metadata.
+  }
+
+  Maybe<wr::WrClipId> scrollId =
+    mBuilder->GetScrollIdForDefinedScrollLayer(FrameMetrics::NULL_SCROLL_ID);
+  MOZ_ASSERT(scrollId.isSome());
+  return scrollId;
 }
 
 Maybe<wr::WrClipId>
@@ -263,10 +304,13 @@ ClipManager::DefineScrollLayers(const ActiveScrolledRoot* aASR,
   Maybe<wr::WrClipId> ancestorScrollId = DefineScrollLayers(aASR->mParent, aItem, aSc);
 
   Maybe<ScrollMetadata> metadata = aASR->mScrollableFrame->ComputeScrollMetadata(
-      mManager, aItem->ReferenceFrame(), ContainerLayerParameters(), nullptr);
-  MOZ_ASSERT(metadata);
-  FrameMetrics& metrics = metadata->GetMetrics();
+      mManager, aItem->ReferenceFrame(), Nothing(), nullptr);
+  if (!metadata) {
+    MOZ_ASSERT_UNREACHABLE("Expected scroll metadata to be available!");
+    return ancestorScrollId;
+  }
 
+  FrameMetrics& metrics = metadata->GetMetrics();
   if (!metrics.IsScrollable()) {
     // This item is a scrolling no-op, skip over it in the ASR chain.
     return ancestorScrollId;
@@ -323,11 +367,7 @@ ClipManager::DefineClipChain(const DisplayItemClipChain* aChain,
     nsTArray<wr::ComplexClipRegion> wrRoundedRects;
     chain->mClip.ToComplexClipRegions(aAppUnitsPerDevPixel, aSc, wrRoundedRects);
 
-    FrameMetrics::ViewID viewId = chain->mASR
-        ? chain->mASR->GetViewId()
-        : FrameMetrics::NULL_SCROLL_ID;
-    Maybe<wr::WrClipId> scrollId =
-      mBuilder->GetScrollIdForDefinedScrollLayer(viewId);
+    Maybe<wr::WrClipId> scrollId = GetScrollLayer(chain->mASR);
     // Before calling DefineClipChain we defined the ASRs by calling
     // DefineScrollLayers, so we must have a scrollId here.
     MOZ_ASSERT(scrollId.isSome());
@@ -368,22 +408,32 @@ ClipManager::~ClipManager()
 }
 
 ClipManager::ItemClips::ItemClips(const ActiveScrolledRoot* aASR,
-                                  const DisplayItemClipChain* aChain)
+                                  const DisplayItemClipChain* aChain,
+                                  bool aSeparateLeaf)
   : mASR(aASR)
   , mChain(aChain)
+  , mSeparateLeaf(aSeparateLeaf)
   , mApplied(false)
 {
 }
 
 void
-ClipManager::ItemClips::Apply(wr::DisplayListBuilder* aBuilder)
+ClipManager::ItemClips::Apply(wr::DisplayListBuilder* aBuilder,
+                              int32_t aAppUnitsPerDevPixel)
 {
   MOZ_ASSERT(!mApplied);
   mApplied = true;
-  if (mScrollId) {
-    aBuilder->PushClipAndScrollInfo(*mScrollId,
-                                    mClipChainId.ptrOr(nullptr));
+
+  Maybe<wr::LayoutRect> clipLeaf;
+  if (mSeparateLeaf) {
+    MOZ_ASSERT(mChain);
+    clipLeaf.emplace(wr::ToRoundedLayoutRect(LayoutDeviceRect::FromAppUnits(
+      mChain->mClip.GetClipRect(), aAppUnitsPerDevPixel)));
   }
+
+  aBuilder->PushClipAndScrollInfo(mScrollId.ptrOr(nullptr),
+                                  mClipChainId.ptrOr(nullptr),
+                                  clipLeaf);
 }
 
 void
@@ -391,9 +441,7 @@ ClipManager::ItemClips::Unapply(wr::DisplayListBuilder* aBuilder)
 {
   if (mApplied) {
     mApplied = false;
-    if (mScrollId) {
-      aBuilder->PopClipAndScrollInfo();
-    }
+    aBuilder->PopClipAndScrollInfo(mScrollId.ptrOr(nullptr));
   }
 }
 
@@ -401,7 +449,8 @@ bool
 ClipManager::ItemClips::HasSameInputs(const ItemClips& aOther)
 {
   return mASR == aOther.mASR &&
-         mChain == aOther.mChain;
+         mChain == aOther.mChain &&
+         mSeparateLeaf == aOther.mSeparateLeaf;
 }
 
 void
@@ -409,6 +458,7 @@ ClipManager::ItemClips::CopyOutputsFrom(const ItemClips& aOther)
 {
   mScrollId = aOther.mScrollId;
   mClipChainId = aOther.mClipChainId;
+  mSeparateLeaf = aOther.mSeparateLeaf;
 }
 
 } // namespace layers

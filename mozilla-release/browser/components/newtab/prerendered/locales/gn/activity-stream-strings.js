@@ -75,7 +75,7 @@ window.gActivityStreamStrings = {
   "pocket_read_more": "Ñe'ẽmbyrã Ojehayhuvéva:",
   "pocket_read_even_more": "Ahechaseve Mombe'upy",
   "pocket_more_reccommendations": "Hetave je’eporã",
-  "pocket_how_it_works": "How it works",
+  "pocket_how_it_works": "Mba’éichapa omba’apo",
   "pocket_cta_button": "Eguereko Pocket",
   "pocket_cta_text": "Eñongatu umi eipotáva tembiasakue Pocket-pe ha emombarete ne akã ñemoñe’ẽ ha’evévape.",
   "highlights_empty_state": "Eñepyrũ eikundaha ha rohechaukáta ndéve mba'ehai, mba'erecharã oĩva ha ambue ñandutirenda reikeva'ekue ýrõ rembotechaukava'ekue.",
@@ -107,5 +107,6 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Ñemigua purureko",
   "firstrun_continue_to_login": "Eku'ejey",
   "firstrun_skip_login": "Ehejánte kóva",
+  "context_menu_title": "Eike poravorãme",
   "pocket_learn_more": "Kuaave"
 };

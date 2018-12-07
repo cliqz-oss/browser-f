@@ -41,46 +41,85 @@ ChromiumCDMParent::ChromiumCDMParent(GMPContentParent* aContentParent,
     aPluginId);
 }
 
-bool
+RefPtr<ChromiumCDMParent::InitPromise>
 ChromiumCDMParent::Init(ChromiumCDMCallback* aCDMCallback,
                         bool aAllowDistinctiveIdentifier,
                         bool aAllowPersistentState,
-                        nsIEventTarget* aMainThread,
-                        nsCString& aOutFailureReason)
+                        nsIEventTarget* aMainThread)
 {
-  GMP_LOG("ChromiumCDMParent::Init(this=%p) shutdown=%d abormalShutdown=%d "
-          "actorDestroyed=%d",
+  GMP_LOG("ChromiumCDMParent::Init(this=%p) shutdown=%s abormalShutdown=%s "
+          "actorDestroyed=%s",
           this,
-          mIsShutdown,
-          mAbnormalShutdown,
-          mActorDestroyed);
+          mIsShutdown ? "true" : "false",
+          mAbnormalShutdown ? "true" : "false",
+          mActorDestroyed ? "true" : "false");
   if (!aCDMCallback || !aMainThread) {
-    aOutFailureReason = nsPrintfCString("ChromiumCDMParent::Init() failed "
-                                        "nullCallback=%d nullMainThread=%d",
-                                        !aCDMCallback,
-                                        !aMainThread);
-    GMP_LOG("ChromiumCDMParent::Init(this=%p) failure since aCDMCallback(%p) or"
-            " aMainThread(%p) is nullptr", this, aCDMCallback, aMainThread);
-    return false;
+    GMP_LOG("ChromiumCDMParent::Init(this=%p) failed "
+            "nullCallback=%s nullMainThread=%s",
+            this,
+            !aCDMCallback ? "true" : "false",
+            !aMainThread ? "true" : "false");
+
+    return ChromiumCDMParent::InitPromise::CreateAndReject(
+      MediaResult(NS_ERROR_FAILURE,
+                  nsPrintfCString("ChromiumCDMParent::Init() failed "
+                                  "nullCallback=%s nullMainThread=%s",
+                                  !aCDMCallback ? "true" : "false",
+                                  !aMainThread ? "true" : "false")),
+      __func__);
   }
   mCDMCallback = aCDMCallback;
   mMainThread = aMainThread;
 
-  if (SendInit(aAllowDistinctiveIdentifier, aAllowPersistentState)) {
-    return true;
-  }
-
-  RefPtr<gmp::GeckoMediaPluginService> service =
-    gmp::GeckoMediaPluginService::GetGeckoMediaPluginService();
-  bool xpcomWillShutdown = service && service->XPCOMWillShutdownReceived();
-  aOutFailureReason = nsPrintfCString(
-    "ChromiumCDMParent::Init() failed "
-    "shutdown=%d cdmCrash=%d actorDestroyed=%d browserShutdown=%d",
-    mIsShutdown,
-    mAbnormalShutdown,
-    mActorDestroyed,
-    xpcomWillShutdown);
-  return false;
+  RefPtr<ChromiumCDMParent::InitPromise> promise =
+    mInitPromise.Ensure(__func__);
+  RefPtr<ChromiumCDMParent> self = this;
+  SendInit(aAllowDistinctiveIdentifier, aAllowPersistentState)
+    ->Then(AbstractThread::GetCurrent(),
+           __func__,
+           [self](bool aSuccess) {
+             if (!aSuccess) {
+               GMP_LOG("ChromiumCDMParent::Init() failed with callback from "
+                       "child indicating CDM failed init");
+               self->mInitPromise.RejectIfExists(
+                 MediaResult(NS_ERROR_FAILURE,
+                             "ChromiumCDMParent::Init() failed with callback "
+                             "from child indicating CDM failed init"),
+                 __func__);
+               return;
+             }
+             GMP_LOG(
+               "ChromiumCDMParent::Init() succeeded with callback from child");
+             self->mInitPromise.ResolveIfExists(true /* unused */, __func__);
+           },
+           [self](ResponseRejectReason aReason) {
+             RefPtr<gmp::GeckoMediaPluginService> service =
+               gmp::GeckoMediaPluginService::GetGeckoMediaPluginService();
+             bool xpcomWillShutdown =
+               service && service->XPCOMWillShutdownReceived();
+             GMP_LOG("ChromiumCDMParent::Init(this=%p) failed "
+                     "shutdown=%s cdmCrash=%s actorDestroyed=%s "
+                     "browserShutdown=%s promiseRejectReason=%d",
+                     self.get(),
+                     self->mIsShutdown ? "true" : "false",
+                     self->mAbnormalShutdown ? "true" : "false",
+                     self->mActorDestroyed ? "true" : "false",
+                     xpcomWillShutdown ? "true" : "false",
+                     static_cast<int>(aReason));
+             self->mInitPromise.RejectIfExists(
+               MediaResult(
+                 NS_ERROR_FAILURE,
+                 nsPrintfCString("ChromiumCDMParent::Init() failed "
+                                 "shutdown=%s cdmCrash=%s actorDestroyed=%s "
+                                 "browserShutdown=%s promiseRejectReason=%d",
+                                 self->mIsShutdown ? "true" : "false",
+                                 self->mAbnormalShutdown ? "true" : "false",
+                                 self->mActorDestroyed ? "true" : "false",
+                                 xpcomWillShutdown ? "true" : "false",
+                                 static_cast<int>(aReason))),
+               __func__);
+           });
+  return promise;
 }
 
 void
@@ -253,7 +292,14 @@ ChromiumCDMParent::InitCDMInputBuffer(gmp::CDMInputBuffer& aBuffer,
                                 aSample->mDuration.ToMicroseconds(),
                                 crypto.mPlainSizes,
                                 crypto.mEncryptedSizes,
-                                crypto.mValid);
+                                crypto.mValid
+                                  ? GMPEncryptionScheme::kGMPEncryptionCenc
+                                  : GMPEncryptionScheme::kGMPEncryptionNone);
+  MOZ_ASSERT(
+    aBuffer.mEncryptionScheme() == GMPEncryptionScheme::kGMPEncryptionNone ||
+      aBuffer.mEncryptionScheme() == GMPEncryptionScheme::kGMPEncryptionCenc,
+    "aBuffer should use either no encryption or cenc, other kinds are not yet "
+    "supported");
   return true;
 }
 
@@ -406,7 +452,7 @@ ChromiumCDMParent::RecvOnResolvePromise(const uint32_t& aPromiseId)
 
 void
 ChromiumCDMParent::RejectPromise(uint32_t aPromiseId,
-                                 nsresult aError,
+                                 nsresult aException,
                                  const nsCString& aErrorMessage)
 {
   GMP_LOG(
@@ -417,7 +463,7 @@ ChromiumCDMParent::RejectPromise(uint32_t aPromiseId,
     return;
   }
 
-  mCDMCallback->RejectPromise(aPromiseId, aError, aErrorMessage);
+  mCDMCallback->RejectPromise(aPromiseId, aException, aErrorMessage);
 }
 
 static nsresult
@@ -439,11 +485,11 @@ ToNsresult(uint32_t aException)
 
 ipc::IPCResult
 ChromiumCDMParent::RecvOnRejectPromise(const uint32_t& aPromiseId,
-                                       const uint32_t& aError,
+                                       const uint32_t& aException,
                                        const uint32_t& aSystemCode,
                                        const nsCString& aErrorMessage)
 {
-  RejectPromise(aPromiseId, ToNsresult(aError), aErrorMessage);
+  RejectPromise(aPromiseId, ToNsresult(aException), aErrorMessage);
   return IPC_OK();
 }
 
@@ -504,26 +550,10 @@ ChromiumCDMParent::RecvOnSessionClosed(const nsCString& aSessionId)
   return IPC_OK();
 }
 
-ipc::IPCResult
-ChromiumCDMParent::RecvOnLegacySessionError(const nsCString& aSessionId,
-                                            const uint32_t& aError,
-                                            const uint32_t& aSystemCode,
-                                            const nsCString& aMessage)
-{
-  GMP_LOG("ChromiumCDMParent::RecvOnLegacySessionError(this=%p)", this);
-  if (!mCDMCallback || mIsShutdown) {
-    return IPC_OK();
-  }
-
-  mCDMCallback->LegacySessionError(
-    aSessionId, ToNsresult(aError), aSystemCode, aMessage);
-  return IPC_OK();
-}
-
 DecryptStatus
-ToDecryptStatus(uint32_t aError)
+ToDecryptStatus(uint32_t aStatus)
 {
-  switch (static_cast<cdm::Status>(aError)) {
+  switch (static_cast<cdm::Status>(aStatus)) {
     case cdm::kSuccess:
       return DecryptStatus::Ok;
     case cdm::kNoKey:
@@ -941,12 +971,11 @@ ChromiumCDMParent::InitializeVideoDecoder(
       __func__);
   }
 
-  mMaxRefFrames =
-    (aConfig.mCodec() == cdm::VideoDecoderConfig::kCodecH264)
-      ? H264::HasSPS(aInfo.mExtraData)
-          ? H264::ComputeMaxRefFrames(aInfo.mExtraData)
-          : 16
-      : 0;
+  mMaxRefFrames = (aConfig.mCodec() == cdm::VideoCodec::kCodecH264)
+                    ? H264::HasSPS(aInfo.mExtraData)
+                        ? H264::ComputeMaxRefFrames(aInfo.mExtraData)
+                        : 16
+                    : 0;
 
   mVideoDecoderInitialized = true;
   mImageContainer = aImageContainer;
@@ -1147,6 +1176,11 @@ ChromiumCDMParent::Shutdown()
 
   // Note: MediaKeys rejects all outstanding promises when it initiates shutdown.
   mPromiseToCreateSessionToken.Clear();
+
+  mInitPromise.RejectIfExists(
+    MediaResult(NS_ERROR_DOM_ABORT_ERR,
+                RESULT_DETAIL("ChromiumCDMParent is shutdown")),
+    __func__);
 
   mInitVideoDecoderPromise.RejectIfExists(
     MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,

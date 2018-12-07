@@ -492,7 +492,6 @@ var gPrivacyPane = {
     }
 
     this.initSiteDataControls();
-
     setEventListener("clearSiteDataButton", "command",
       gPrivacyPane.clearSiteData);
     setEventListener("siteDataSettings", "command",

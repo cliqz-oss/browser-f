@@ -54,7 +54,6 @@ pub enum WebDriverCommand<T: WebDriverExtensionCommand> {
     GetTimeouts,
     SetTimeouts(TimeoutsParameters),
     ElementClick(WebElement),
-    ElementTap(WebElement),
     ElementClear(WebElement),
     ElementSendKeys(WebElement, SendKeysParameters),
     PerformActions(ActionsParameters),
@@ -264,15 +263,6 @@ impl<U: WebDriverExtensionRoute> WebDriverMessage<U> {
                 let element = WebElement::new(element_id.as_str().into());
                 WebDriverCommand::ElementClick(element)
             }
-            Route::ElementTap => {
-                let element_id = try_opt!(
-                    params.name("elementId"),
-                    ErrorStatus::InvalidArgument,
-                    "Missing elementId parameter"
-                );
-                let element = WebElement::new(element_id.as_str().into());
-                WebDriverCommand::ElementTap(element)
-            }
             Route::ElementClear => {
                 let element_id = try_opt!(
                     params.name("elementId"),
@@ -436,13 +426,12 @@ pub struct LocatorParameters {
     pub value: String,
 }
 
-/// Wrapper around the two supported variants of new session paramters
+/// Wrapper around the two supported variants of new session paramters.
 ///
 /// The Spec variant is used for storing spec-compliant parameters whereas
-/// the legacy variant is used to store desiredCapabilities/requiredCapabilities
+/// the legacy variant is used to store `desiredCapabilities`/`requiredCapabilities`
 /// parameters, and is intended to minimise breakage as we transition users to
 /// the spec design.
-
 #[derive(Debug, PartialEq)]
 pub enum NewSessionParameters {
     Spec(SpecNewSessionParameters),
@@ -460,6 +449,7 @@ impl<'de> Deserialize<'de> for NewSessionParameters {
             return Ok(NewSessionParameters::Spec(caps));
         }
 
+        warn!("You are using deprecated legacy session negotiation patterns (desiredCapabilities/requiredCapabilities), see https://developer.mozilla.org/en-US/docs/Web/WebDriver/Capabilities#Legacy");
         let legacy = LegacyNewSessionParameters::deserialize(value).map_err(de::Error::custom)?;
         Ok(NewSessionParameters::Legacy(legacy))
     }
@@ -471,8 +461,8 @@ impl CapabilitiesMatching for NewSessionParameters {
         browser_capabilities: &mut T,
     ) -> WebDriverResult<Option<Capabilities>> {
         match self {
-            &NewSessionParameters::Spec(ref x) => x.match_browser(browser_capabilities),
-            &NewSessionParameters::Legacy(ref x) => x.match_browser(browser_capabilities),
+            NewSessionParameters::Spec(x) => x.match_browser(browser_capabilities),
+            NewSessionParameters::Legacy(x) => x.match_browser(browser_capabilities),
         }
     }
 }
@@ -556,13 +546,29 @@ where
 /// [`screenY`]: https://w3c.github.io/webdriver/webdriver-spec.html#dfn-screeny
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct WindowRectParameters {
-    #[serde(default, deserialize_with = "deserialize_to_i32")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_to_i32"
+    )]
     pub x: Option<i32>,
-    #[serde(default, deserialize_with = "deserialize_to_i32")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_to_i32"
+    )]
     pub y: Option<i32>,
-    #[serde(default, deserialize_with = "deserialize_to_positive_i32")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_to_positive_i32"
+    )]
     pub width: Option<i32>,
-    #[serde(default, deserialize_with = "deserialize_to_positive_i32")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_to_positive_i32"
+    )]
     pub height: Option<i32>,
 }
 

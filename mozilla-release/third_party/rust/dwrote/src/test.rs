@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use super::*;
+use std::sync::Arc;
 
 #[test]
 fn test_system_family_iter() {
@@ -46,6 +47,24 @@ fn test_get_font_file_bytes() {
 }
 
 #[test]
+fn test_font_file_is_monospace() {
+    let system_fc = FontCollection::system();
+
+    let arial_family = system_fc.get_font_family_by_name("Arial").unwrap();
+    let arial_font = arial_family.get_first_matching_font(FontWeight::Regular,
+                                                          FontStretch::Normal,
+                                                          FontStyle::Normal);
+    assert!(arial_font.is_monospace() == Some(false));
+
+    let courier_new_family = system_fc.get_font_family_by_name("Courier New").unwrap();
+    let courier_new_font = courier_new_family.get_first_matching_font(FontWeight::Regular,
+                                                          FontStretch::Normal,
+                                                          FontStyle::Normal);
+    assert!(courier_new_font.is_monospace() == Some(true));
+}
+
+
+#[test]
 fn test_create_font_file_from_bytes() {
     let system_fc = FontCollection::system();
 
@@ -61,7 +80,7 @@ fn test_create_font_file_from_bytes() {
     assert!(bytes.len() > 0);
 
     // now go back
-    let new_font = FontFile::new_from_data(&bytes);
+    let new_font = FontFile::new_from_data(Arc::new(bytes));
     assert!(new_font.is_some());
 
     let new_font = new_font.unwrap();
@@ -79,10 +98,8 @@ fn test_glyph_image() {
     let a_index = face.get_glyph_indices(&['A' as u32])[0];
 
     let metrics = face.get_metrics();
-    println!("Metrics:\n======\n{:?}\n======", metrics);
 
     let gm = face.get_design_glyph_metrics(&[a_index], false)[0];
-    println!("Glyph metrics:\n======\n{:?}\n======", gm);
 
     let device_pixel_ratio = 1.0f32;
     let em_size = 10.0f32;

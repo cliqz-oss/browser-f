@@ -78,6 +78,8 @@ function AutoRefreshHighlighter(highlighterEnv) {
 }
 
 AutoRefreshHighlighter.prototype = {
+  _ignoreZoom: false,
+
   /**
    * Window corresponding to the current highlighterEnv
    */
@@ -177,7 +179,7 @@ AutoRefreshHighlighter.prototype = {
     for (const region of BOX_MODEL_REGIONS) {
       this.currentQuads[region] = getAdjustedQuads(
         this.win,
-        this.currentNode, region);
+        this.currentNode, region, {ignoreZoom: this._ignoreZoom});
     }
   },
 
@@ -199,6 +201,10 @@ AutoRefreshHighlighter.prototype = {
    * @return {Boolean}
    */
   _hasWindowScrolled: function() {
+    if (!this.win) {
+      return false;
+    }
+
     const { pageXOffset, pageYOffset } = this.win;
     const hasChanged = this._scroll.x !== pageXOffset ||
                      this._scroll.y !== pageYOffset;
@@ -288,6 +294,6 @@ AutoRefreshHighlighter.prototype = {
 
     this.highlighterEnv = null;
     this.currentNode = null;
-  }
+  },
 };
 exports.AutoRefreshHighlighter = AutoRefreshHighlighter;

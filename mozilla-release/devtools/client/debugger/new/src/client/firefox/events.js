@@ -41,7 +41,13 @@ function setupEvents(dependencies) {
     });
 
     if (threadClient._parent) {
-      threadClient._parent.addListener("workerListChanged", workerListChanged);
+      // Parent may be BrowsingContextTargetFront/WorkerTargetFront and be protocol.js.
+      // Or DebuggerClient and still be old fashion actor.
+      if (threadClient._parent.on) {
+        threadClient._parent.on("workerListChanged", workerListChanged);
+      } else {
+        threadClient._parent.addListener("workerListChanged", workerListChanged);
+      }
     }
   }
 }
@@ -57,10 +63,22 @@ async function paused(_, packet) {
   if (why.type === "interrupted" && !packet.why.onNext) {
     isInterrupted = true;
     return;
-  } // Eagerly fetch the frames
+  }
+
+  let response;
+
+  try {
+    // Eagerly fetch the frames
+    response = await threadClient.getFrames(0, CALL_STACK_PAGE_SIZE);
+  } catch (e) {
+    console.log(e);
+    return;
+  } // NOTE: this happens if we fetch frames and then immediately navigate
 
 
-  const response = await threadClient.getFrames(0, CALL_STACK_PAGE_SIZE);
+  if (!response.hasOwnProperty("frames")) {
+    return;
+  }
 
   if (why.type != "alreadyPaused") {
     const pause = (0, _create.createPause)(packet, response);

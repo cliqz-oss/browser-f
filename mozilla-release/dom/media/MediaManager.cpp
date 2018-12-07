@@ -7,6 +7,7 @@
 #include "MediaManager.h"
 
 #include "AllocationHandle.h"
+#include "AudioDeviceInfo.h"
 #include "MediaStreamGraph.h"
 #include "MediaTimer.h"
 #include "mozilla/dom/MediaStreamTrack.h"
@@ -44,6 +45,7 @@
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/FeaturePolicyUtils.h"
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/MediaStreamBinding.h"
 #include "mozilla/dom/MediaStreamTrackBinding.h"
@@ -57,7 +59,6 @@
 #include "MediaTrackConstraints.h"
 #include "VideoUtils.h"
 #include "ThreadSafeRefcountingWithMainThreadDestruction.h"
-#include "Latency.h"
 #include "nsProxyRelease.h"
 #include "nsVariant.h"
 
@@ -915,11 +916,12 @@ private:
  */
 NS_IMPL_ISUPPORTS(MediaDevice, nsIMediaDevice)
 
-MediaDevice::MediaDevice(MediaEngineSource* aSource,
+MediaDevice::MediaDevice(const RefPtr<MediaEngineSource>& aSource,
                          const nsString& aName,
                          const nsString& aID,
                          const nsString& aRawID)
   : mSource(aSource)
+  , mSinkInfo(nullptr)
   , mKind((mSource && MediaEngineSource::IsVideo(mSource->GetMediaSource())) ?
           dom::MediaDeviceKind::Videoinput : dom::MediaDeviceKind::Audioinput)
   , mScary(mSource->GetScary())
@@ -931,15 +933,16 @@ MediaDevice::MediaDevice(MediaEngineSource* aSource,
   MOZ_ASSERT(mSource);
 }
 
-MediaDevice::MediaDevice(const nsString& aName,
-                         const dom::MediaDeviceKind aKind,
+MediaDevice::MediaDevice(const RefPtr<AudioDeviceInfo>& aAudioDeviceInfo,
                          const nsString& aID,
                          const nsString& aRawID)
   : mSource(nullptr)
-  , mKind(aKind)
+  , mSinkInfo(aAudioDeviceInfo)
+  , mKind(mSinkInfo->Type() == AudioDeviceInfo::TYPE_INPUT ? dom::MediaDeviceKind::Audioinput
+                                                           : dom::MediaDeviceKind::Audiooutput)
   , mScary(false)
   , mType(NS_ConvertUTF8toUTF16(dom::MediaDeviceKindValues::strings[uint32_t(mKind)].value))
-  , mName(aName)
+  , mName(mSinkInfo->Name())
   , mID(aID)
   , mRawID(aRawID)
 {
@@ -948,12 +951,14 @@ MediaDevice::MediaDevice(const nsString& aName,
   // when we do not instantiate a MediaEngineSource
   // during EnumerateDevices.
   MOZ_ASSERT(mKind == dom::MediaDeviceKind::Audiooutput);
+  MOZ_ASSERT(mSinkInfo);
 }
 
-MediaDevice::MediaDevice(const MediaDevice* aOther,
+MediaDevice::MediaDevice(const RefPtr<MediaDevice>& aOther,
                          const nsString& aID,
                          const nsString& aRawID)
   : mSource(aOther->mSource)
+  , mSinkInfo(aOther->mSinkInfo)
   , mKind(aOther->mKind)
   , mScary(aOther->mScary)
   , mType(aOther->mType)
@@ -1515,8 +1520,8 @@ public:
       // fake tracks. Apart from them gUM never adds tracks dynamically.
       domStream = new nsMainThreadPtrHolder<DOMMediaStream>(
         "GetUserMediaStreamRunnable::DOMMediaStreamMainThreadHolder",
-        DOMLocalMediaStream::CreateSourceStreamAsInput(window, msg,
-                                                       new FakeTrackSourceGetter(principal)));
+        DOMMediaStream::CreateSourceStreamAsInput(window, msg,
+                                                  new FakeTrackSourceGetter(principal)));
       stream = domStream->GetInputStream()->AsSourceStream();
 
       if (mAudioDevice) {
@@ -1614,8 +1619,13 @@ public:
     if (!IsPincipalInfoPrivate(mPrincipalInfo)) {
       // Call GetPrincipalKey again, this time w/persist = true, to promote
       // deviceIds to persistent, in case they're not already. Fire'n'forget.
-      RefPtr<Pledge<nsCString>> p =
-        media::GetPrincipalKey(mPrincipalInfo, true);
+      media::GetPrincipalKey(mPrincipalInfo, true)
+        ->Then(GetCurrentThreadSerialEventTarget(), __func__,
+        [](const PrincipalKeyPromise::ResolveOrRejectValue& aValue) {
+          if (aValue.IsReject()) {
+            LOG(("Failed get Principal key. Persisting of deviceIds will be broken"));
+          }
+        });
     }
     return NS_OK;
   }
@@ -1640,7 +1650,7 @@ static void
 GetMediaDevices(MediaEngine *aEngine,
                 uint64_t aWindowId,
                 MediaSourceEnum aSrcType,
-                nsTArray<RefPtr<MediaDevice>>& aResult,
+                MediaManager::MediaDeviceSet& aResult,
                 const char* aMediaDeviceName = nullptr)
 {
   MOZ_ASSERT(MediaManager::IsInMediaThread());
@@ -1682,21 +1692,21 @@ GetMediaDevices(MediaEngine *aEngine,
 static auto& MediaManager_ToJSArray = MediaManager::ToJSArray;
 static auto& MediaManager_AnonymizeDevices = MediaManager::AnonymizeDevices;
 
-already_AddRefed<MediaManager::PledgeChar>
+RefPtr<MediaManager::BadConstraintsPromise>
 MediaManager::SelectSettings(
     MediaStreamConstraints& aConstraints,
     bool aIsChrome,
-    RefPtr<Refcountable<UniquePtr<MediaDeviceSet>>>& aSources)
+    const RefPtr<MediaDeviceSetRefCnt>& aSources)
 {
   MOZ_ASSERT(NS_IsMainThread());
-  RefPtr<PledgeChar> p = new PledgeChar();
-  uint32_t id = mOutstandingCharPledges.Append(*p);
 
   // Algorithm accesses device capabilities code and must run on media thread.
   // Modifies passed-in aSources.
 
-  MediaManager::PostTask(NewTaskFrom([id, aConstraints,
-                                      aSources, aIsChrome]() mutable {
+  return MediaManager::PostTask<BadConstraintsPromise>(
+      __func__,
+      [aConstraints, aSources,
+       aIsChrome](MozPromiseHolder<BadConstraintsPromise>& holder) mutable {
     auto& sources = **aSources;
 
     // Since the advanced part of the constraints algorithm needs to know when
@@ -1740,19 +1750,8 @@ MediaManager::SelectSettings(
         sources.AppendElement(audio);
       }
     }
-    NS_DispatchToMainThread(NewRunnableFrom([id, badConstraint]() mutable {
-      MediaManager* mgr = MediaManager::GetIfExists();
-      if (!mgr) {
-        return NS_OK;
-      }
-      RefPtr<PledgeChar> p = mgr->mOutstandingCharPledges.Remove(id);
-      if (p) {
-        p->Resolve(badConstraint);
-      }
-      return NS_OK;
-    }));
-  }));
-  return p.forget();
+    holder.Resolve(badConstraint, __func__);
+  });
 }
 
 /**
@@ -2015,7 +2014,7 @@ private:
  * satisfy passed-in constraints. List contains raw id's.
  */
 
-already_AddRefed<MediaManager::PledgeMediaDeviceSet>
+RefPtr<MediaManager::MediaDeviceSetPromise>
 MediaManager::EnumerateRawDevices(uint64_t aWindowId,
                                   MediaSourceEnum aVideoInputType,
                                   MediaSourceEnum aAudioInputType,
@@ -2050,8 +2049,9 @@ MediaManager::EnumerateRawDevices(uint64_t aWindowId,
        __func__, aWindowId,
        static_cast<uint8_t>(aVideoInputType), static_cast<uint8_t>(aAudioInputType),
        static_cast<uint8_t>(aVideoInputEnumType), static_cast<uint8_t>(aAudioInputEnumType)));
-  RefPtr<PledgeMediaDeviceSet> p = new PledgeMediaDeviceSet();
-  uint32_t id = mOutstandingPledges.Append(*p);
+
+  auto holder = MakeUnique<MozPromiseHolder<MediaDeviceSetPromise>>();
+  RefPtr<MediaDeviceSetPromise> promise = holder->Ensure(__func__);
 
   bool hasVideo = aVideoInputType != MediaSourceEnum::Other;
   bool hasAudio = aAudioInputType != MediaSourceEnum::Other;
@@ -2074,8 +2074,8 @@ MediaManager::EnumerateRawDevices(uint64_t aWindowId,
     Preferences::GetCString("media.audio_loopback_dev", audioLoopDev);
   }
 
-  RefPtr<Runnable> task = NewTaskFrom([id, aWindowId, aVideoInputType, aAudioInputType,
-                                       aVideoInputEnumType, aAudioInputEnumType,
+  RefPtr<Runnable> task = NewTaskFrom([holder = std::move(holder), aWindowId, aVideoInputType,
+                                       aAudioInputType, aVideoInputEnumType, aAudioInputEnumType,
                                        videoLoopDev, audioLoopDev,
                                        hasVideo, hasAudio, hasAudioOutput,
                                        fakeDeviceRequested, realDeviceRequested]() {
@@ -2090,7 +2090,7 @@ MediaManager::EnumerateRawDevices(uint64_t aWindowId,
       realBackend = manager->GetBackend(aWindowId);
     }
 
-    auto result = MakeUnique<MediaDeviceSet>();
+    auto result = MakeRefPtr<MediaDeviceSetRefCnt>(new MediaDeviceSet);
 
     if (hasVideo) {
       MediaDeviceSet videos;
@@ -2098,7 +2098,7 @@ MediaManager::EnumerateRawDevices(uint64_t aWindowId,
            aVideoInputEnumType == DeviceEnumerationType::Fake ? "fake" : "real"));
       GetMediaDevices(aVideoInputEnumType == DeviceEnumerationType::Fake ? fakeBackend : realBackend,
                       aWindowId, aVideoInputType, videos, videoLoopDev.get());
-      result->AppendElements(videos);
+      (*result)->AppendElements(videos);
     }
     if (hasAudio) {
       MediaDeviceSet audios;
@@ -2106,7 +2106,7 @@ MediaManager::EnumerateRawDevices(uint64_t aWindowId,
            aAudioInputEnumType == DeviceEnumerationType::Fake ? "fake" : "real"));
       GetMediaDevices(aAudioInputEnumType == DeviceEnumerationType::Fake ? fakeBackend : realBackend,
                       aWindowId, aAudioInputType, audios, audioLoopDev.get());
-      result->AppendElements(audios);
+      (*result)->AppendElements(audios);
     }
     if (hasAudioOutput) {
       MediaDeviceSet outputs;
@@ -2115,20 +2115,10 @@ MediaManager::EnumerateRawDevices(uint64_t aWindowId,
                                     MediaSourceEnum::Other,
                                     MediaSinkEnum::Speaker,
                                     &outputs);
-      result->AppendElements(outputs);
+      (*result)->AppendElements(outputs);
     }
 
-    NS_DispatchToMainThread(NewRunnableFrom([id, result = std::move(result)]() mutable {
-      MediaManager* mgr = MediaManager::GetIfExists();
-      if (!mgr) {
-        return NS_OK;
-      }
-      RefPtr<PledgeMediaDeviceSet> p = mgr->mOutstandingPledges.Remove(id);
-      if (p) {
-        p->Resolve(result.release());
-      }
-      return NS_OK;
-    }));
+    holder->Resolve(std::move(result), __func__);
   });
 
   if (realDeviceRequested &&
@@ -2149,7 +2139,7 @@ MediaManager::EnumerateRawDevices(uint64_t aWindowId,
     MediaManager::PostTask(task.forget());
   }
 
-  return p.forget();
+  return promise;
 }
 
 MediaManager::MediaManager()
@@ -2275,6 +2265,7 @@ MediaManager::Get() {
       obs->AddObserver(sSingleton, "getUserMedia:privileged:allow", false);
       obs->AddObserver(sSingleton, "getUserMedia:response:allow", false);
       obs->AddObserver(sSingleton, "getUserMedia:response:deny", false);
+      obs->AddObserver(sSingleton, "getUserMedia:response:noOSPermission", false);
       obs->AddObserver(sSingleton, "getUserMedia:revoke", false);
     }
     // else MediaManager won't work properly and will leak (see bug 837874)
@@ -2460,15 +2451,21 @@ void MediaManager::OnDeviceChange() {
     // On some Windows machine, if we call EnumerateRawDevices immediately after receiving
     // devicechange event, sometimes we would get outdated devices list.
     PR_Sleep(PR_MillisecondsToInterval(100));
-    RefPtr<PledgeMediaDeviceSet> p = self->EnumerateRawDevices(0,
+    RefPtr<MediaDeviceSetPromise> p = self->EnumerateRawDevices(0,
                                                                MediaSourceEnum::Camera,
                                                                MediaSourceEnum::Microphone,
                                                                MediaSinkEnum::Speaker);
-    p->Then([self](MediaDeviceSet*& aDevices) mutable {
-      UniquePtr<MediaDeviceSet> devices(aDevices);
+    p->Then(GetCurrentThreadSerialEventTarget(),
+            __func__,
+            [self](RefPtr<MediaDeviceSetRefCnt>&& aDevices) mutable {
+      MediaManager* mgr = MediaManager::GetIfExists();
+      if (!mgr) {
+        return;
+      }
+
       nsTArray<nsString> deviceIDs;
 
-      for (auto& device : *devices) {
+      for (auto& device : **aDevices) {
         nsString id;
         device->GetId(id);
         id.ReplaceSubstring(NS_LITERAL_STRING("default: "), NS_LITERAL_STRING(""));
@@ -2500,7 +2497,7 @@ void MediaManager::OnDeviceChange() {
       }
 
       self->mDeviceIDs = deviceIDs;
-    }, [](MediaStreamError*& reason) {});
+    }, [](RefPtr<MediaStreamError>&& reason) {});
     return NS_OK;
   }));
 }
@@ -2693,6 +2690,11 @@ MediaManager::GetUserMedia(nsPIDOMWindowInner* aWindow,
     return NS_ERROR_FAILURE;
   }
 
+  nsIDocument* doc = aWindow->GetExtantDoc();
+  if (NS_WARN_IF(!doc)) {
+    return NS_ERROR_FAILURE;
+  }
+
   // This principal needs to be sent to different threads and so via IPC.
   // For this reason it's better to convert it to PrincipalInfo right now.
   ipc::PrincipalInfo principalInfo;
@@ -2797,14 +2799,6 @@ MediaManager::GetUserMedia(nsPIDOMWindowInner* aWindow,
 
   if (c.mAudio.IsMediaTrackConstraints()) {
     auto& ac = c.mAudio.GetAsMediaTrackConstraints();
-    MediaConstraintsHelper::ConvertOldWithWarning(ac.mMozAutoGainControl,
-                                                  ac.mAutoGainControl,
-                                                  "MozAutoGainControlWarning",
-                                                  aWindow);
-    MediaConstraintsHelper::ConvertOldWithWarning(ac.mMozNoiseSuppression,
-                                                  ac.mNoiseSuppression,
-                                                  "MozNoiseSuppressionWarning",
-                                                  aWindow);
     audioType = StringToEnum(dom::MediaSourceEnumValues::strings,
                              ac.mMediaSource,
                              MediaSourceEnum::Other);
@@ -2883,25 +2877,38 @@ MediaManager::GetUserMedia(nsPIDOMWindowInner* aWindow,
 
     uint32_t audioPerm = nsIPermissionManager::UNKNOWN_ACTION;
     if (IsOn(c.mAudio)) {
-      if (audioType == MediaSourceEnum::Microphone &&
-          Preferences::GetBool("media.getusermedia.microphone.deny", false)) {
-        audioPerm = nsIPermissionManager::DENY_ACTION;
+      if (audioType == MediaSourceEnum::Microphone) {
+        if (Preferences::GetBool("media.getusermedia.microphone.deny", false) ||
+            !dom::FeaturePolicyUtils::IsFeatureAllowed(doc,
+                                                       NS_LITERAL_STRING("microphone"))) {
+          audioPerm = nsIPermissionManager::DENY_ACTION;
+        } else {
+          rv = permManager->TestExactPermissionFromPrincipal(
+            principal, "microphone", &audioPerm);
+          NS_ENSURE_SUCCESS(rv, rv);
+        }
       } else {
         rv = permManager->TestExactPermissionFromPrincipal(
-          principal, "microphone", &audioPerm);
+          principal, "screen", &audioPerm);
         NS_ENSURE_SUCCESS(rv, rv);
       }
     }
 
     uint32_t videoPerm = nsIPermissionManager::UNKNOWN_ACTION;
     if (IsOn(c.mVideo)) {
-      if (videoType == MediaSourceEnum::Camera &&
-          Preferences::GetBool("media.getusermedia.camera.deny", false)) {
-        videoPerm = nsIPermissionManager::DENY_ACTION;
+      if (videoType == MediaSourceEnum::Camera) {
+        if (Preferences::GetBool("media.getusermedia.camera.deny", false) ||
+            !dom::FeaturePolicyUtils::IsFeatureAllowed(doc,
+                                                       NS_LITERAL_STRING("camera"))) {
+          videoPerm = nsIPermissionManager::DENY_ACTION;
+        } else {
+          rv = permManager->TestExactPermissionFromPrincipal(
+            principal, "camera", &videoPerm);
+          NS_ENSURE_SUCCESS(rv, rv);
+        }
       } else {
         rv = permManager->TestExactPermissionFromPrincipal(
-          principal, videoType == MediaSourceEnum::Camera ? "camera" : "screen",
-          &videoPerm);
+          principal, "screen", &videoPerm);
         NS_ENSURE_SUCCESS(rv, rv);
       }
     }
@@ -2971,48 +2978,51 @@ MediaManager::GetUserMedia(nsPIDOMWindowInner* aWindow,
        static_cast<uint8_t>(videoEnumerationType), static_cast<uint8_t>(audioEnumerationType),
        askPermission ? "true" : "false"));
 
-  RefPtr<PledgeMediaDeviceSet> p = EnumerateDevicesImpl(windowID,
-                                                        videoType,
-                                                        audioType,
-                                                        MediaSinkEnum::Other,
-                                                        videoEnumerationType,
-                                                        audioEnumerationType);
+  RefPtr<MediaDeviceSetPromise> p = EnumerateDevicesImpl(windowID,
+                                                         videoType,
+                                                         audioType,
+                                                         MediaSinkEnum::Other,
+                                                         videoEnumerationType,
+                                                         audioEnumerationType);
   RefPtr<MediaManager> self = this;
-  p->Then([self, onSuccess, onFailure, windowID, c, windowListener,
-           sourceListener, askPermission, prefs, isHTTPS, isHandlingUserInput,
-           callID, principalInfo, isChrome, resistFingerprinting](MediaDeviceSet*& aDevices) mutable {
-    LOG(("GetUserMedia: post enumeration pledge success callback starting"));
-    // grab result
-    auto devices = MakeRefPtr<Refcountable<UniquePtr<MediaDeviceSet>>>(aDevices);
+  p->Then(GetCurrentThreadSerialEventTarget(), __func__,
+          [self, onSuccess, onFailure, windowID, c, windowListener,
+          sourceListener, askPermission, prefs, isHTTPS, isHandlingUserInput,
+          callID, principalInfo, isChrome, resistFingerprinting](RefPtr<MediaDeviceSetRefCnt>&& aDevices) mutable {
+    LOG(("GetUserMedia: post enumeration promise success callback starting"));
 
     // Ensure that our windowID is still good.
-    if (!nsGlobalWindowInner::GetInnerWindowWithId(windowID)) {
-      LOG(("GetUserMedia: bad windowID found in post enumeration pledge "
-           " success callback! Bailing out!"));
+    if (!nsGlobalWindowInner::GetInnerWindowWithId(windowID) ||
+        !self->IsWindowListenerStillActive(windowListener)) {
+      LOG(("GetUserMedia: bad window (%" PRIu64 ") in post enumeration "
+           "success callback!", windowID));
       return;
     }
 
     // Apply any constraints. This modifies the passed-in list.
-    RefPtr<PledgeChar> p2 = self->SelectSettings(c, isChrome, devices);
+    RefPtr<BadConstraintsPromise> p2 = self->SelectSettings(c, isChrome, aDevices);
 
-    p2->Then([self, onSuccess, onFailure, windowID, c,
+    p2->Then(GetCurrentThreadSerialEventTarget(), __func__,
+             [self, onSuccess, onFailure, windowID, c,
               windowListener, sourceListener, askPermission, prefs, isHTTPS,
-              isHandlingUserInput, callID, principalInfo, isChrome, devices,
+              isHandlingUserInput, callID, principalInfo, isChrome, aDevices,
               resistFingerprinting
-             ](const char*& badConstraint) mutable {
-      LOG(("GetUserMedia: starting post enumeration pledge2 success "
+             ](const char* badConstraint) mutable {
+      LOG(("GetUserMedia: starting post enumeration promise2 success "
            "callback!"));
 
-      // Ensure that the captured 'this' pointer and our windowID are still good.
+      // Ensure that the window is still good.
       auto* globalWindow = nsGlobalWindowInner::GetInnerWindowWithId(windowID);
       RefPtr<nsPIDOMWindowInner> window = globalWindow ? globalWindow->AsInner()
                                                        : nullptr;
-      if (!MediaManager::Exists() || !window) {
+      if (!window || !self->IsWindowListenerStillActive(windowListener)) {
+        LOG(("GetUserMedia: bad window (%" PRIu64 ") in post enumeration "
+             "success callback 2!", windowID));
         return;
       }
 
       if (badConstraint) {
-        LOG(("GetUserMedia: bad constraint found in post enumeration pledge2 "
+        LOG(("GetUserMedia: bad constraint found in post enumeration promise2 "
              "success callback! Calling error handler!"));
         nsString constraint;
         constraint.AssignASCII(badConstraint);
@@ -3024,8 +3034,8 @@ MediaManager::GetUserMedia(nsPIDOMWindowInner* aWindow,
         CallOnError(onFailure, *error);
         return;
       }
-      if (!(*devices)->Length()) {
-        LOG(("GetUserMedia: no devices found in post enumeration pledge2 "
+      if (!(*aDevices)->Length()) {
+        LOG(("GetUserMedia: no devices found in post enumeration promise2 "
              "success callback! Calling error handler!"));
         RefPtr<MediaStreamError> error =
             new MediaStreamError(
@@ -3041,7 +3051,7 @@ MediaManager::GetUserMedia(nsPIDOMWindowInner* aWindow,
 
       nsCOMPtr<nsIMutableArray> devicesCopy = nsArray::Create(); // before we give up devices below
       if (!askPermission) {
-        for (auto& device : **devices) {
+        for (auto& device : **aDevices) {
           nsresult rv = devicesCopy->AppendElement(device);
           if (NS_WARN_IF(NS_FAILED(rv))) {
             return;
@@ -3062,7 +3072,7 @@ MediaManager::GetUserMedia(nsPIDOMWindowInner* aWindow,
                                                           prefs,
                                                           principalInfo,
                                                           isChrome,
-                                                          devices->release(),
+                                                          aDevices->release(),
                                                           focusSource));
       // Store the task w/callbacks.
       self->mActiveCallbacks.Put(callID, task.forget());
@@ -3094,12 +3104,15 @@ MediaManager::GetUserMedia(nsPIDOMWindowInner* aWindow,
 #ifdef MOZ_WEBRTC
       EnableWebRtcLog();
 #endif
-    }, [onFailure](MediaStreamError*& reason) mutable {
-      LOG(("GetUserMedia: post enumeration pledge2 failure callback called!"));
-      CallOnError(onFailure, *reason);
+    }, [onFailure, windowID](nsresult reason) mutable {
+      LOG(("GetUserMedia: post enumeration promse2 failure callback called!"));
+      nsPIDOMWindowInner* window =
+        nsGlobalWindowInner::GetInnerWindowWithId(windowID)->AsInner();
+      auto error = MakeRefPtr<MediaStreamError>(window, MediaStreamError::Name::AbortError);
+      CallOnError(onFailure, *error);
     });
-  }, [onFailure](MediaStreamError*& reason) mutable {
-    LOG(("GetUserMedia: post enumeration pledge failure callback called!"));
+  }, [onFailure](RefPtr<MediaStreamError>&& reason) mutable {
+    LOG(("GetUserMedia: post enumeration promise failure callback called!"));
     CallOnError(onFailure, *reason);
   });
   return NS_OK;
@@ -3190,7 +3203,7 @@ MediaManager::ToJSArray(MediaDeviceSet& aDevices)
   return var.forget();
 }
 
-already_AddRefed<MediaManager::PledgeMediaDeviceSet>
+RefPtr<MediaManager::MediaDeviceSetPromise>
 MediaManager::EnumerateDevicesImpl(uint64_t aWindowId,
                                    MediaSourceEnum       aVideoInputType,
                                    MediaSourceEnum       aAudioInputType,
@@ -3208,10 +3221,6 @@ MediaManager::EnumerateDevicesImpl(uint64_t aWindowId,
   nsPIDOMWindowInner* window =
     nsGlobalWindowInner::GetInnerWindowWithId(aWindowId)->AsInner();
 
-  // This function returns a pledge, a promise-like object with the future result
-  RefPtr<PledgeMediaDeviceSet> pledge = new PledgeMediaDeviceSet();
-  uint32_t id = mOutstandingPledges.Append(*pledge);
-
   // To get a device list anonymized for a particular origin, we must:
   // 1. Get an origin-key (for either regular or private browsing)
   // 2. Get the raw devices list
@@ -3224,48 +3233,52 @@ MediaManager::EnumerateDevicesImpl(uint64_t aWindowId,
   ipc::PrincipalInfo principalInfo;
   nsresult rv = PrincipalToPrincipalInfo(principal, &principalInfo);
   if (NS_WARN_IF(NS_FAILED(rv))) {
-    RefPtr<PledgeMediaDeviceSet> p = new PledgeMediaDeviceSet();
-    RefPtr<MediaStreamError> error =
-      new MediaStreamError(window, MediaStreamError::Name::NotAllowedError);
-    p->Reject(error);
-    return p.forget();
+    nsPIDOMWindowInner* window =
+      nsGlobalWindowInner::GetInnerWindowWithId(aWindowId)->AsInner();
+    return MediaDeviceSetPromise::CreateAndReject(
+        MakeRefPtr<MediaStreamError>(window, MediaStreamError::Name::NotAllowedError), __func__);
   }
 
   bool persist = IsActivelyCapturingOrHasAPermission(aWindowId);
 
-  // GetPrincipalKey is an async API that returns a pledge (a promise-like
-  // pattern). We use .Then() to pass in a lambda to run back on this same
+  // GetPrincipalKey is an async API that returns a promise.
+  // We use .Then() to pass in a lambda to run back on this same
   // thread later once GetPrincipalKey resolves. Needed variables are "captured"
   // (passed by value) safely into the lambda.
-
-  RefPtr<Pledge<nsCString>> p = media::GetPrincipalKey(principalInfo, persist);
-  p->Then([id, aWindowId, aVideoInputType, aAudioInputType,
-          aVideoInputEnumType, aAudioInputEnumType, aAudioOutputType](const nsCString& aOriginKey) mutable {
+  return media::GetPrincipalKey(principalInfo, persist)
+    ->Then(GetMainThreadSerialEventTarget(), __func__,
+           [aWindowId, aVideoInputType,
+           aAudioInputType, aVideoInputEnumType,
+           aAudioInputEnumType, aAudioOutputType](const nsCString& aOriginKey) -> RefPtr<MediaDeviceSetPromise> {
     MOZ_ASSERT(NS_IsMainThread());
     MediaManager* mgr = MediaManager::GetIfExists();
-    if (!mgr) {
-      return;
+    MOZ_ASSERT(mgr);
+    if (!mgr->IsWindowStillActive(aWindowId)) {
+      nsPIDOMWindowInner* window =
+        nsGlobalWindowInner::GetInnerWindowWithId(aWindowId)->AsInner();
+      return MediaDeviceSetPromise::CreateAndReject(
+          MakeRefPtr<MediaStreamError>(window, MediaStreamError::Name::AbortError), __func__);
     }
 
-    RefPtr<PledgeMediaDeviceSet> p = mgr->EnumerateRawDevices(aWindowId,
-                                                              aVideoInputType,
-                                                              aAudioInputType,
-                                                              aAudioOutputType,
-                                                              aVideoInputEnumType,
-                                                              aAudioInputEnumType);
-    p->Then([id,
-             aWindowId,
-             aOriginKey,
+    return mgr->EnumerateRawDevices(aWindowId,
+                                    aVideoInputType,
+                                    aAudioInputType,
+                                    aAudioOutputType,
+                                    aVideoInputEnumType,
+                                    aAudioInputEnumType)
+      ->Then(GetMainThreadSerialEventTarget(), __func__,
+            [aWindowId, aOriginKey,
              aVideoInputEnumType,
              aAudioInputEnumType,
              aVideoInputType,
-             aAudioInputType](MediaDeviceSet*& aDevices) mutable {
-      UniquePtr<MediaDeviceSet> devices(aDevices); // secondary result
-
+             aAudioInputType](RefPtr<MediaDeviceSetRefCnt>&& aDevices) -> RefPtr<MediaDeviceSetPromise> {
       // Only run if window is still on our active list.
       MediaManager* mgr = MediaManager::GetIfExists();
-      if (!mgr) {
-        return NS_OK;
+      if (!mgr || !mgr->IsWindowStillActive(aWindowId)) {
+        nsPIDOMWindowInner* window =
+          nsGlobalWindowInner::GetInnerWindowWithId(aWindowId)->AsInner();
+        return MediaDeviceSetPromise::CreateAndReject(
+            MakeRefPtr<MediaStreamError>(window, MediaStreamError::Name::AbortError), __func__);
       }
 
       // If we fetched any real cameras or mics, remove the "default" part of
@@ -3275,7 +3288,7 @@ MediaManager::EnumerateDevicesImpl(uint64_t aWindowId,
           (aVideoInputEnumType != DeviceEnumerationType::Fake ||
            aAudioInputEnumType != DeviceEnumerationType::Fake)) {
         mgr->mDeviceIDs.Clear();
-        for (auto& device : *devices) {
+        for (auto& device : **aDevices) {
           nsString id;
           device->GetId(id);
           id.ReplaceSubstring(NS_LITERAL_STRING("default: "), NS_LITERAL_STRING(""));
@@ -3285,16 +3298,27 @@ MediaManager::EnumerateDevicesImpl(uint64_t aWindowId,
         }
       }
 
-      RefPtr<PledgeMediaDeviceSet> p = mgr->mOutstandingPledges.Remove(id);
-      if (!p || !mgr->IsWindowStillActive(aWindowId)) {
-        return NS_OK;
+      if (!mgr->IsWindowStillActive(aWindowId)) {
+        nsPIDOMWindowInner* window =
+          nsGlobalWindowInner::GetInnerWindowWithId(aWindowId)->AsInner();
+        return MediaDeviceSetPromise::CreateAndReject(
+            MakeRefPtr<MediaStreamError>(window, MediaStreamError::Name::AbortError), __func__);
       }
-      MediaManager_AnonymizeDevices(*devices, aOriginKey);
-      p->Resolve(devices.release());
-      return NS_OK;
+
+      MediaManager_AnonymizeDevices(**aDevices, aOriginKey);
+      return MediaDeviceSetPromise::CreateAndResolve(std::move(aDevices), __func__);
+    },
+    [](RefPtr<MediaStreamError>&& reason) {
+      return MediaDeviceSetPromise::CreateAndReject(std::move(reason), __func__);
     });
+  },
+  [aWindowId](nsresult rs) {
+    NS_WARNING("EnumerateDevicesImpl failed to get Principal Key. Enumeration will not continue.");
+    nsPIDOMWindowInner* window =
+      nsGlobalWindowInner::GetInnerWindowWithId(aWindowId)->AsInner();
+    return MediaDeviceSetPromise::CreateAndReject(
+        MakeRefPtr<MediaStreamError>(window, MediaStreamError::Name::AbortError), __func__);
   });
-  return pledge.forget();
 }
 
 nsresult
@@ -3362,24 +3386,87 @@ MediaManager::EnumerateDevices(nsPIDOMWindowInner* aWindow,
   if (Preferences::GetBool("media.setsinkid.enabled")) {
     audioOutputType = MediaSinkEnum::Speaker;
   }
-  RefPtr<PledgeMediaDeviceSet> p = EnumerateDevicesImpl(windowId,
-                                                        MediaSourceEnum::Camera,
-                                                        MediaSourceEnum::Microphone,
-                                                        audioOutputType,
-                                                        videoEnumerationType,
-                                                        audioEnumerationType);
-  p->Then([onSuccess, windowListener, sourceListener](MediaDeviceSet*& aDevices) mutable {
-    UniquePtr<MediaDeviceSet> devices(aDevices); // grab result
+  RefPtr<MediaDeviceSetPromise> p = EnumerateDevicesImpl(windowId,
+                                                         MediaSourceEnum::Camera,
+                                                         MediaSourceEnum::Microphone,
+                                                         audioOutputType,
+                                                         videoEnumerationType,
+                                                         audioEnumerationType);
+  p->Then(GetCurrentThreadSerialEventTarget(), __func__,
+          [onSuccess, windowListener, sourceListener](RefPtr<MediaDeviceSetRefCnt>&& aDevices) mutable {
     DebugOnly<bool> rv = windowListener->Remove(sourceListener);
     MOZ_ASSERT(rv);
-    nsCOMPtr<nsIWritableVariant> array = MediaManager_ToJSArray(*devices);
+    nsCOMPtr<nsIWritableVariant> array = MediaManager_ToJSArray(**aDevices);
     onSuccess->OnSuccess(array);
-  }, [onFailure, windowListener, sourceListener](MediaStreamError*& reason) mutable {
-    DebugOnly<bool> rv = windowListener->Remove(sourceListener);
-    MOZ_ASSERT(rv);
+  }, [onFailure, windowListener, sourceListener, windowId](RefPtr<MediaStreamError>&& reason) mutable {
+    MediaManager* mgr = MediaManager::GetIfExists();
+    if (!mgr || !mgr->IsWindowStillActive(windowId)) {
+      // If an error happened, like navigate away
+      // leave the promise pending.
+      return;
+    }
+    // This may fail, if a new doc has been set the OnNavigation method should
+    // have removed all previous active listeners. Attempt to clean it here,
+    // just in case, but ignore the return value.
+    windowListener->Remove(sourceListener);
     onFailure->OnError(reason);
   });
   return NS_OK;
+}
+
+RefPtr<SinkInfoPromise>
+MediaManager::GetSinkDevice(nsPIDOMWindowInner* aWindow,
+                            const nsString& aDeviceId)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aWindow);
+
+  // We have to add the window id here because enumerate methods
+  // check for that and abort silently if it does not exist.
+  uint64_t windowId = aWindow->WindowID();
+  nsIPrincipal* principal = aWindow->GetExtantDoc()->NodePrincipal();
+  RefPtr<GetUserMediaWindowListener> windowListener = GetWindowListener(windowId);
+  if (windowListener) {
+    PrincipalHandle existingPrincipalHandle =
+      windowListener->GetPrincipalHandle();
+    MOZ_ASSERT(PrincipalHandleMatches(existingPrincipalHandle, principal));
+  } else {
+    windowListener = new GetUserMediaWindowListener(mMediaThread, windowId,
+                                                    MakePrincipalHandle(principal));
+    AddWindowID(windowId, windowListener);
+  }
+  // Create an inactive SourceListener to act as a placeholder, so the
+  // window listener doesn't clean itself up until we're done.
+  RefPtr<SourceListener> sourceListener = new SourceListener();
+  windowListener->Register(sourceListener);
+
+  bool isSecure = aWindow->IsSecureContext();
+
+  return EnumerateDevicesImpl(aWindow->WindowID(),
+                              MediaSourceEnum::Other,
+                              MediaSourceEnum::Other,
+                              MediaSinkEnum::Speaker,
+                              DeviceEnumerationType::Normal,
+                              DeviceEnumerationType::Normal)
+  ->Then(GetCurrentThreadSerialEventTarget(), __func__,
+         [aDeviceId, isSecure](RefPtr<MediaDeviceSetRefCnt>&& aDevices) {
+    for (RefPtr<MediaDevice>& device : **aDevices) {
+      if (aDeviceId.IsEmpty() && device->mSinkInfo->Preferred()) {
+        return SinkInfoPromise::CreateAndResolve(device->mSinkInfo, __func__);
+      }
+      if (device->mID.Equals(aDeviceId)) {
+        // TODO: Check if the application is authorized to play audio
+        // through this device (Bug 1493982).
+        if (isSecure || device->mSinkInfo->Preferred()) {
+          return SinkInfoPromise::CreateAndResolve(device->mSinkInfo, __func__);
+        }
+        return SinkInfoPromise::CreateAndReject(NS_ERROR_DOM_MEDIA_NOT_ALLOWED_ERR, __func__);
+      }
+    }
+    return SinkInfoPromise::CreateAndReject(NS_ERROR_NOT_AVAILABLE, __func__);
+  }, [](RefPtr<MediaStreamError>&& reason) {
+    return SinkInfoPromise::CreateAndReject(NS_ERROR_NOT_AVAILABLE, __func__);
+  });
 }
 
 /*
@@ -3618,6 +3705,7 @@ MediaManager::Shutdown()
   obs->RemoveObserver(this, "getUserMedia:privileged:allow");
   obs->RemoveObserver(this, "getUserMedia:response:allow");
   obs->RemoveObserver(this, "getUserMedia:response:deny");
+  obs->RemoveObserver(this, "getUserMedia:response:noOSPermission");
   obs->RemoveObserver(this, "getUserMedia:revoke");
 
   nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
@@ -3753,11 +3841,29 @@ MediaManager::SendPendingGUMRequest()
   }
 }
 
+bool
+IsGUMResponseNoAccess(const char* aTopic, MediaMgrError::Name& aErrorName)
+{
+  if (!strcmp(aTopic, "getUserMedia:response:deny")) {
+    aErrorName = MediaMgrError::Name::NotAllowedError;
+    return true;
+  }
+
+  if (!strcmp(aTopic, "getUserMedia:response:noOSPermission")) {
+    aErrorName = MediaMgrError::Name::NotFoundError;
+    return true;
+  }
+
+  return false;
+}
+
 nsresult
 MediaManager::Observe(nsISupports* aSubject, const char* aTopic,
   const char16_t* aData)
 {
   MOZ_ASSERT(NS_IsMainThread());
+
+  MediaMgrError::Name gumNoAccessError = MediaMgrError::Name::NotAllowedError;
 
   if (!strcmp(aTopic, NS_PREFBRANCH_PREFCHANGE_TOPIC_ID)) {
     nsCOMPtr<nsIPrefBranch> branch( do_QueryInterface(aSubject) );
@@ -3844,12 +3950,12 @@ MediaManager::Observe(nsISupports* aSubject, const char* aTopic,
     MediaManager::PostTask(task.forget());
     return NS_OK;
 
-  } else if (!strcmp(aTopic, "getUserMedia:response:deny")) {
+  } else if (IsGUMResponseNoAccess(aTopic, gumNoAccessError)) {
     nsString key(aData);
     RefPtr<GetUserMediaTask> task;
     mActiveCallbacks.Remove(key, getter_AddRefs(task));
     if (task) {
-      task->Denied(MediaMgrError::Name::NotAllowedError);
+      task->Denied(gumNoAccessError);
       nsTArray<nsString>* array;
       if (!mCallIds.Get(task->GetWindowID(), &array)) {
         return NS_OK;
@@ -4092,6 +4198,17 @@ MediaManager::IsActivelyCapturingOrHasAPermission(uint64_t aWindowId)
   if (NS_WARN_IF(!window) || NS_WARN_IF(!window->GetPrincipal())) {
     return false;
   }
+
+  nsIDocument* doc = window->GetExtantDoc();
+  if (NS_WARN_IF(!doc)) {
+    return false;
+  }
+
+  nsIPrincipal* principal = window->GetPrincipal();
+  if (NS_WARN_IF(!principal)) {
+    return false;
+  }
+
   // Check if this site has persistent permissions.
   nsresult rv;
   nsCOMPtr<nsIPermissionManager> mgr =
@@ -4103,14 +4220,23 @@ MediaManager::IsActivelyCapturingOrHasAPermission(uint64_t aWindowId)
   uint32_t audio = nsIPermissionManager::UNKNOWN_ACTION;
   uint32_t video = nsIPermissionManager::UNKNOWN_ACTION;
   {
-    auto* principal = window->GetPrincipal();
-    rv = mgr->TestExactPermissionFromPrincipal(principal, "microphone", &audio);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return false;
+    if (!dom::FeaturePolicyUtils::IsFeatureAllowed(doc, NS_LITERAL_STRING("microphone"))) {
+      audio = nsIPermissionManager::DENY_ACTION;
+    } else {
+      rv = mgr->TestExactPermissionFromPrincipal(principal, "microphone", &audio);
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return false;
+      }
     }
-    rv = mgr->TestExactPermissionFromPrincipal(principal, "camera", &video);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return false;
+
+    if (!dom::FeaturePolicyUtils::IsFeatureAllowed(doc,
+                                                   NS_LITERAL_STRING("camera"))) {
+      video = nsIPermissionManager::DENY_ACTION;
+    } else {
+      rv = mgr->TestExactPermissionFromPrincipal(principal, "camera", &video);
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return false;
+      }
     }
   }
   return audio == nsIPermissionManager::ALLOW_ACTION ||
@@ -4194,12 +4320,12 @@ SourceListener::InitializeAsync()
         if (NS_FAILED(rv)) {
           nsString log;
           if (rv == NS_ERROR_NOT_AVAILABLE) {
-            log.AssignASCII("Concurrent mic process limit.");
+            log.AssignLiteral("Concurrent mic process limit.");
             aHolder.Reject(MakeRefPtr<MediaMgrError>(
                   MediaMgrError::Name::NotReadableError, log), __func__);
             return;
           }
-          log.AssignASCII("Starting audio failed");
+          log.AssignLiteral("Starting audio failed");
           aHolder.Reject(MakeRefPtr<MediaMgrError>(
                 MediaMgrError::Name::AbortError, log), __func__);
           return;
@@ -4218,7 +4344,7 @@ SourceListener::InitializeAsync()
             }
           }
           nsString log;
-          log.AssignASCII("Starting video failed");
+          log.AssignLiteral("Starting video failed");
           aHolder.Reject(MakeRefPtr<MediaMgrError>(MediaMgrError::Name::AbortError, log), __func__);
           return;
         }
@@ -4696,7 +4822,7 @@ RefPtr<SourceListener::ApplyConstraintsPromise>
 SourceListener::ApplyConstraintsToTrack(
     nsPIDOMWindowInner* aWindow,
     TrackID aTrackID,
-    const MediaTrackConstraints& aConstraintsPassedIn,
+    const MediaTrackConstraints& aConstraints,
     dom::CallerType aCallerType)
 {
   MOZ_ASSERT(NS_IsMainThread());
@@ -4708,37 +4834,27 @@ SourceListener::ApplyConstraintsToTrack(
     return ApplyConstraintsPromise::CreateAndResolve(false, __func__);
   }
 
-  MediaTrackConstraints c(aConstraintsPassedIn); // use a modifiable copy
-  MediaConstraintsHelper::ConvertOldWithWarning(c.mMozAutoGainControl,
-                                                c.mAutoGainControl,
-                                                "MozAutoGainControlWarning",
-                                                aWindow);
-  MediaConstraintsHelper::ConvertOldWithWarning(c.mMozNoiseSuppression,
-                                                c.mNoiseSuppression,
-                                                "MozNoiseSuppressionWarning",
-                                                aWindow);
-
   MediaManager* mgr = MediaManager::GetIfExists();
   if (!mgr) {
     return ApplyConstraintsPromise::CreateAndResolve(false, __func__);
   }
 
   return MediaManager::PostTask<ApplyConstraintsPromise>(__func__,
-      [device = state.mDevice, c,
+      [device = state.mDevice, aConstraints,
        isChrome = aCallerType == dom::CallerType::System]
       (MozPromiseHolder<ApplyConstraintsPromise>& aHolder) mutable {
     MOZ_ASSERT(MediaManager::IsInMediaThread());
     MediaManager* mgr = MediaManager::GetIfExists();
     MOZ_RELEASE_ASSERT(mgr); // Must exist while media thread is alive
     const char* badConstraint = nullptr;
-    nsresult rv = device->Reconfigure(c, mgr->mPrefs, &badConstraint);
+    nsresult rv = device->Reconfigure(aConstraints, mgr->mPrefs, &badConstraint);
     if (rv == NS_ERROR_INVALID_ARG) {
       // Reconfigure failed due to constraints
       if (!badConstraint) {
         nsTArray<RefPtr<MediaDevice>> devices;
         devices.AppendElement(device);
         badConstraint = MediaConstraintsHelper::SelectSettings(
-            NormalizedConstraints(c), devices, isChrome);
+            NormalizedConstraints(aConstraints), devices, isChrome);
       }
 
       aHolder.Reject(Some(NS_ConvertASCIItoUTF16(badConstraint)), __func__);

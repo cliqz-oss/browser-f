@@ -9,6 +9,7 @@
     "label    edit     add"
     "dropdown dropdown dropdown"
     "invalid  invalid  invalid";
+  padding-top: 8px;
 }
 
 .rich-picker > label {
@@ -28,15 +29,15 @@
 
 .rich-picker > .edit-link {
   grid-area: edit;
-  border-right: 1px solid #0C0C0D33;
+  border-inline-end: 1px solid #0C0C0D33;
 }
 
 .rich-picker > rich-select {
   grid-area: dropdown;
 }
 
-.invalid-selected-option > rich-select {
-  outline: 1px solid #c70011;
+.invalid-selected-option > rich-select > select {
+  border: 1px solid #c70011;
 }
 
 .rich-picker > .invalid-label {
@@ -54,14 +55,29 @@ payment-method-picker.rich-picker {
   grid-template-columns: 20fr 1fr auto auto;
   grid-template-areas:
     "label    spacer edit add"
-    "dropdown cvv    cvv  cvv"
+    "dropdown csc    csc  csc"
     "invalid  invalid invalid invalid";
 }
 
-payment-method-picker > input {
+.security-code-container {
+  display: flex;
+  flex-grow: 1;
+  grid-area: csc;
+  margin: 10px 0; /* Has to be same as rich-select */
+}
+
+.rich-picker .security-code {
   border: 1px solid #0C0C0D33;
-  border-left: none;
-  grid-area: cvv;
-  margin: 14px 0; /* Has to be same as rich-select */
+  /* Underlap the 1px border from common.css */
+  margin-inline-start: -1px;
+  flex-grow: 1;
   padding: 8px;
+}
+
+.rich-picker .security-code:-moz-ui-invalid,
+.rich-picker .security-code:focus {
+  /* So the error outline and focus ring appear above the adjacent dropdown when appropriate. */
+  /* We don't want to always be on top or we will cover the error outline or focus outline from the
+     dropdown. */
+  z-index: 1;
 }

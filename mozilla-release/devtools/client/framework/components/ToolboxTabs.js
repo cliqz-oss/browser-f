@@ -3,17 +3,24 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const { Component, createFactory } = require("devtools/client/shared/vendor/react");
+const { Component, createFactory, createRef } = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
-const { findDOMNode } = require("devtools/client/shared/vendor/react-dom");
+const { ToolboxTabsOrderManager } = require("devtools/client/framework/toolbox-tabs-order-manager");
+
 const { div } = dom;
 
-const MenuButton = createFactory(require("devtools/client/shared/components/menu/MenuButton"));
-const MenuItem = createFactory(require("devtools/client/shared/components/menu/MenuItem"));
-const MenuList = createFactory(require("devtools/client/shared/components/menu/MenuList"));
 const ToolboxTab = createFactory(require("devtools/client/framework/components/ToolboxTab"));
-const { ToolboxTabsOrderManager } = require("devtools/client/framework/toolbox-tabs-order-manager");
+
+loader.lazyGetter(this, "MenuButton", function() {
+  return createFactory(require("devtools/client/shared/components/menu/MenuButton"));
+});
+loader.lazyGetter(this, "MenuItem", function() {
+  return createFactory(require("devtools/client/shared/components/menu/MenuItem"));
+});
+loader.lazyGetter(this, "MenuList", function() {
+  return createFactory(require("devtools/client/shared/components/menu/MenuList"));
+});
 
 // 26px is chevron devtools button width.(i.e. tools-chevronmenu)
 const CHEVRON_BUTTON_WIDTH = 26;
@@ -43,6 +50,8 @@ class ToolboxTabs extends Component {
       overflowedTabIds: [],
     };
 
+    this.wrapperEl = createRef();
+
     // Map with tool Id and its width size. This lifecycle is out of React's
     // lifecycle. If a tool is registered, ToolboxTabs will add target tool id
     // to this map. ToolboxTabs will never remove tool id from this cache.
@@ -51,7 +60,8 @@ class ToolboxTabs extends Component {
     this._resizeTimerId = null;
     this.resizeHandler = this.resizeHandler.bind(this);
 
-    this._tabsOrderManager = new ToolboxTabsOrderManager(props.onTabsOrderUpdated);
+    this._tabsOrderManager =
+      new ToolboxTabsOrderManager(props.onTabsOrderUpdated, props.panelDefinitions);
   }
 
   componentDidMount() {
@@ -72,6 +82,7 @@ class ToolboxTabs extends Component {
     if (this.shouldUpdateToolboxTabs(prevProps, this.props)) {
       this.updateCachedToolTabsWidthMap();
       this.updateOverflowedTabs();
+      this._tabsOrderManager.setCurrentPanelDefinitions(this.props.panelDefinitions);
     }
   }
 
@@ -112,12 +123,11 @@ class ToolboxTabs extends Component {
    * Update the Map of tool id and tool tab width.
    */
   updateCachedToolTabsWidthMap() {
-    const thisNode = findDOMNode(this);
     const utils = window.windowUtils;
     // Force a reflow before calling getBoundingWithoutFlushing on each tab.
-    thisNode.clientWidth;
+    this.wrapperEl.current.clientWidth;
 
-    for (const tab of thisNode.querySelectorAll(".devtools-tab")) {
+    for (const tab of this.wrapperEl.current.querySelectorAll(".devtools-tab")) {
       const tabId = tab.id.replace("toolbox-tab-", "");
       if (!this._cachedToolTabsWidthMap.has(tabId)) {
         const rect = utils.getBoundsWithoutFlushing(tab);
@@ -132,8 +142,7 @@ class ToolboxTabs extends Component {
    * function will not update state.
    */
   updateOverflowedTabs() {
-    const node = findDOMNode(this);
-    const toolboxWidth = parseInt(getComputedStyle(node).width, 10);
+    const toolboxWidth = parseInt(getComputedStyle(this.wrapperEl.current).width, 10);
     const { currentToolId } = this.props;
     const enabledTabs = this.props.panelDefinitions.map(def => def.id);
     let sumWidth = 0;
@@ -248,8 +257,6 @@ class ToolboxTabs extends Component {
       selectTool,
     } = this.props;
 
-    this._tabsOrderManager.setCurrentPanelDefinitions(panelDefinitions);
-
     const tabs = panelDefinitions.map(panelDefinition => {
       // Don't display overflowed tab.
       if (!this.state.overflowedTabIds.includes(panelDefinition.id)) {
@@ -268,7 +275,8 @@ class ToolboxTabs extends Component {
 
     return div(
       {
-        className: "toolbox-tabs-wrapper"
+        className: "toolbox-tabs-wrapper",
+        ref: this.wrapperEl,
       },
       div(
         {

@@ -41,8 +41,6 @@ class FxDesktopBuild(BuildScript, TryToolsMixin, object):
                 'valgrind-test',
                 'multi-l10n',
                 'package-source',
-                'update',
-                'ensure-upload-path',
             ],
             'require_config_file': True,
             # Default configuration

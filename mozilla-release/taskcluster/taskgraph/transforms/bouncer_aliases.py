@@ -23,10 +23,12 @@ transforms = TransformSequence()
 def make_task_worker(config, jobs):
     for job in jobs:
         resolve_keyed_by(
-            job, 'worker-type', item_name=job['name'], project=config.params['project']
+            job, 'worker-type', item_name=job['name'],
+            **{'release-level': config.params.release_level()}
         )
         resolve_keyed_by(
-            job, 'scopes', item_name=job['name'], project=config.params['project']
+            job, 'scopes', item_name=job['name'],
+            **{'release-level': config.params.release_level()}
         )
         resolve_keyed_by(
             job, 'bouncer-products-per-alias',
@@ -48,10 +50,6 @@ def craft_bouncer_entries(config, job):
     release_config = get_release_config(config)
 
     product = job['shipping-product']
-    release_type = config.params['release_type']
-    # The release_type is defined but may point to None.
-    if not release_type:
-        release_type = ''
     current_version = release_config['version']
     bouncer_products_per_alias = job['bouncer-products-per-alias']
 

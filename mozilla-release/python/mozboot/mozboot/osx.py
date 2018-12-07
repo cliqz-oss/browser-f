@@ -24,14 +24,14 @@ XCODE_LEGACY = ('https://developer.apple.com/downloads/download.action?path=Deve
                 'xcode_3.2.6_and_ios_sdk_4.3__final/xcode_3.2.6_and_ios_sdk_4.3.dmg')
 
 MACPORTS_URL = {
-    '13': 'https://distfiles.macports.org/MacPorts/MacPorts-2.4.2-10.13-HighSierra.pkg',
-    '12': 'https://distfiles.macports.org/MacPorts/MacPorts-2.4.2-10.12-Sierra.pkg',
-    '11': 'https://distfiles.macports.org/MacPorts/MacPorts-2.4.2-10.11-ElCapitan.pkg',
-    '10': 'https://distfiles.macports.org/MacPorts/MacPorts-2.4.2-10.10-Yosemite.pkg',
-    '9': 'https://distfiles.macports.org/MacPorts/MacPorts-2.4.2-10.9-Mavericks.pkg',
-    '8': 'https://distfiles.macports.org/MacPorts/MacPorts-2.4.2-10.8-MountainLion.pkg',
-    '7': 'https://distfiles.macports.org/MacPorts/MacPorts-2.4.2-10.7-Lion.pkg',
-    '6': 'https://distfiles.macports.org/MacPorts/MacPorts-2.4.2-10.6-SnowLeopard.pkg', }
+    '13': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.3-10.13-HighSierra.pkg',
+    '12': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.3-10.12-Sierra.pkg',
+    '11': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.3-10.11-ElCapitan.pkg',
+    '10': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.3-10.10-Yosemite.pkg',
+    '9': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.3-10.9-Mavericks.pkg',
+    '8': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.3-10.8-MountainLion.pkg',
+    '7': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.3-10.7-Lion.pkg',
+    '6': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.3-10.6-SnowLeopard.pkg', }
 
 RE_CLANG_VERSION = re.compile('Apple (?:clang|LLVM) version (\d+\.\d+)')
 
@@ -503,8 +503,9 @@ class OSXBootstrapper(BaseBootstrapper):
         return active_name.lower()
 
     def ensure_stylo_packages(self, state_dir, checkout_root):
+        cbindgen_min_version = '0.6.4'
         # We installed clang via homebrew earlier.
-        self.ensure_rust_package('cbindgen')
+        self.ensure_rust_package('cbindgen', cbindgen_min_version)
 
     def ensure_node_packages(self, state_dir, checkout_root):
         # XXX from necessary?

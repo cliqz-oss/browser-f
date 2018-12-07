@@ -7,6 +7,7 @@
 const { Cu, CC } = require("chrome");
 
 const { DebuggerServer } = require("devtools/server/main");
+const { ActorRegistry } = require("devtools/server/actors/utils/actor-registry");
 
 /**
  * Support for actor registration. Main used by ActorRegistryActor
@@ -24,7 +25,7 @@ exports.registerActor = function(sourceText, fileName, options) {
     module: "devtools/server/actors/utils/actor-registry-utils",
     setupChild: "registerActorInCurrentProcess",
     args: [sourceText, fileName, options],
-    waitForEval: true
+    waitForEval: true,
   });
 };
 
@@ -38,17 +39,17 @@ exports.registerActorInCurrentProcess = function(sourceText, fileName, options) 
 
   const { prefix, constructor, type } = options;
 
-  if (type.global && !DebuggerServer.globalActorFactories.hasOwnProperty(prefix)) {
-    DebuggerServer.addGlobalActor({
+  if (type.global && !ActorRegistry.globalActorFactories.hasOwnProperty(prefix)) {
+    ActorRegistry.addGlobalActor({
       constructorName: constructor,
-      constructorFun: sandbox[constructor]
+      constructorFun: sandbox[constructor],
     }, prefix);
   }
 
-  if (type.target && !DebuggerServer.targetScopedActorFactories.hasOwnProperty(prefix)) {
-    DebuggerServer.addTargetScopedActor({
+  if (type.target && !ActorRegistry.targetScopedActorFactories.hasOwnProperty(prefix)) {
+    ActorRegistry.addTargetScopedActor({
       constructorName: constructor,
-      constructorFun: sandbox[constructor]
+      constructorFun: sandbox[constructor],
     }, prefix);
   }
 };
@@ -60,16 +61,16 @@ exports.unregisterActor = function(options) {
   DebuggerServer.setupInChild({
     module: "devtools/server/actors/utils/actor-registry-utils",
     setupChild: "unregisterActorInCurrentProcess",
-    args: [options]
+    args: [options],
   });
 };
 
 exports.unregisterActorInCurrentProcess = function(options) {
   if (options.target) {
-    DebuggerServer.removeTargetScopedActor(options);
+    ActorRegistry.removeTargetScopedActor(options);
   }
 
   if (options.global) {
-    DebuggerServer.removeGlobalActor(options);
+    ActorRegistry.removeGlobalActor(options);
   }
 };

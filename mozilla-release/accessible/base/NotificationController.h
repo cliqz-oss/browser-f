@@ -195,8 +195,7 @@ public:
   /**
    * Pend accessible tree update for content insertion.
    */
-  void ScheduleContentInsertion(Accessible* aContainer,
-                                nsIContent* aStartChildNode,
+  void ScheduleContentInsertion(nsIContent* aStartChildNode,
                                 nsIContent* aEndChildNode);
 
   /**
@@ -367,7 +366,10 @@ private:
     typedef const T* KeyTypePointer;
 
     explicit nsCOMPtrHashKey(const T* aKey) : mKey(const_cast<T*>(aKey)) {}
-    explicit nsCOMPtrHashKey(const nsPtrHashKey<T> &aToCopy) : mKey(aToCopy.mKey) {}
+    nsCOMPtrHashKey(nsCOMPtrHashKey<T>&& aOther)
+      : PLDHashEntryHdr(std::move(aOther))
+      , mKey(std::move(aOther.mKey))
+    {}
     ~nsCOMPtrHashKey() { }
 
     KeyType GetKey() const { return mKey; }

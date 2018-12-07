@@ -10,7 +10,7 @@ var { WebAudioFront } =
   require("devtools/shared/fronts/webaudio");
 
 async function testTarget(client, target) {
-  await target.makeRemote();
+  await target.attach();
 
   is(target.hasActor("timeline"), true, "target.hasActor() true when actor exists.");
   is(target.hasActor("webaudio"), true, "target.hasActor() true when actor exists.");
@@ -56,7 +56,7 @@ function test() {
     const options = {
       form: response,
       client: client,
-      chrome: true
+      chrome: true,
     };
 
     TargetFactory.forRemoteTab(options).then(testTarget.bind(null, client));

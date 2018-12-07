@@ -4,7 +4,12 @@
 
 "use strict";
 
-const { PureComponent, createFactory } = require("devtools/client/shared/vendor/react");
+const {
+  createElement,
+  createFactory,
+  Fragment,
+  PureComponent,
+} = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const { connect } = require("devtools/client/shared/vendor/react-redux");
@@ -15,6 +20,10 @@ const NetworkThrottlingMenu = createFactory(require("devtools/client/shared/comp
 const SettingsMenu = createFactory(require("./SettingsMenu"));
 const ViewportDimension = createFactory(require("./ViewportDimension"));
 
+loader.lazyGetter(this, "UserAgentInput", function() {
+  return createFactory(require("./UserAgentInput"));
+});
+
 const { getStr } = require("../utils/l10n");
 const Types = require("../types");
 
@@ -22,28 +31,49 @@ class Toolbar extends PureComponent {
   static get propTypes() {
     return {
       devices: PropTypes.shape(Types.devices).isRequired,
-      displayPixelRatio: Types.pixelRatio.value.isRequired,
+      displayPixelRatio: PropTypes.number.isRequired,
       leftAlignmentEnabled: PropTypes.bool.isRequired,
       networkThrottling: PropTypes.shape(Types.networkThrottling).isRequired,
       onChangeDevice: PropTypes.func.isRequired,
       onChangeNetworkThrottling: PropTypes.func.isRequired,
       onChangePixelRatio: PropTypes.func.isRequired,
-      onChangeReloadCondition: PropTypes.func.isRequired,
       onChangeTouchSimulation: PropTypes.func.isRequired,
+      onChangeUserAgent: PropTypes.func.isRequired,
       onExit: PropTypes.func.isRequired,
       onRemoveDeviceAssociation: PropTypes.func.isRequired,
       onResizeViewport: PropTypes.func.isRequired,
       onRotateViewport: PropTypes.func.isRequired,
       onScreenshot: PropTypes.func.isRequired,
       onToggleLeftAlignment: PropTypes.func.isRequired,
+      onToggleReloadOnTouchSimulation: PropTypes.func.isRequired,
+      onToggleReloadOnUserAgent: PropTypes.func.isRequired,
+      onToggleUserAgentInput: PropTypes.func.isRequired,
       onUpdateDeviceModal: PropTypes.func.isRequired,
-      reloadConditions: PropTypes.shape(Types.reloadConditions).isRequired,
       screenshot: PropTypes.shape(Types.screenshot).isRequired,
       selectedDevice: PropTypes.string.isRequired,
-      selectedPixelRatio: PropTypes.shape(Types.pixelRatio).isRequired,
-      touchSimulation: PropTypes.shape(Types.touchSimulation).isRequired,
+      selectedPixelRatio: PropTypes.number.isRequired,
+      showUserAgentInput: PropTypes.bool.isRequired,
+      touchSimulationEnabled: PropTypes.bool.isRequired,
       viewport: PropTypes.shape(Types.viewport).isRequired,
     };
+  }
+
+  renderUserAgent() {
+    const {
+      onChangeUserAgent,
+      showUserAgentInput,
+    } = this.props;
+
+    if (!showUserAgentInput) {
+      return null;
+    }
+
+    return createElement(Fragment, null,
+      UserAgentInput({
+        onChangeUserAgent,
+      }),
+      dom.div({ className: "devtools-separator" }),
+    );
   }
 
   render() {
@@ -55,7 +85,6 @@ class Toolbar extends PureComponent {
       onChangeDevice,
       onChangeNetworkThrottling,
       onChangePixelRatio,
-      onChangeReloadCondition,
       onChangeTouchSimulation,
       onExit,
       onRemoveDeviceAssociation,
@@ -63,21 +92,20 @@ class Toolbar extends PureComponent {
       onRotateViewport,
       onScreenshot,
       onToggleLeftAlignment,
+      onToggleReloadOnTouchSimulation,
+      onToggleReloadOnUserAgent,
+      onToggleUserAgentInput,
       onUpdateDeviceModal,
-      reloadConditions,
       screenshot,
       selectedDevice,
       selectedPixelRatio,
-      touchSimulation,
+      touchSimulationEnabled,
       viewport,
     } = this.props;
 
     return (
       dom.header(
-        {
-          id: "toolbar",
-          className: leftAlignmentEnabled ? "left-aligned" : "",
-        },
+        { id: "toolbar" },
         DeviceSelector({
           devices,
           onChangeDevice,
@@ -91,7 +119,10 @@ class Toolbar extends PureComponent {
           :
           null,
         dom.div(
-          { id: "toolbar-center-controls" },
+          {
+            id: "toolbar-center-controls",
+            className: leftAlignmentEnabled ? "left-aligned" : "",
+          },
           ViewportDimension({
             onRemoveDeviceAssociation,
             onResizeViewport,
@@ -118,13 +149,14 @@ class Toolbar extends PureComponent {
             useTopLevelWindow: true,
           }),
           dom.div({ className: "devtools-separator" }),
+          this.renderUserAgent(),
           dom.button({
             id: "touch-simulation-button",
             className: "devtools-button" +
-                       (touchSimulation.enabled ? " checked" : ""),
-            title: (touchSimulation.enabled ?
+                       (touchSimulationEnabled ? " checked" : ""),
+            title: (touchSimulationEnabled ?
               getStr("responsive.disableTouch") : getStr("responsive.enableTouch")),
-            onClick: () => onChangeTouchSimulation(!touchSimulation.enabled),
+            onClick: () => onChangeTouchSimulation(!touchSimulationEnabled),
           })
         ),
         dom.div(
@@ -137,9 +169,10 @@ class Toolbar extends PureComponent {
             disabled: screenshot.isCapturing,
           }),
           SettingsMenu({
-            reloadConditions,
-            onChangeReloadCondition,
             onToggleLeftAlignment,
+            onToggleReloadOnTouchSimulation,
+            onToggleReloadOnUserAgent,
+            onToggleUserAgentInput,
           }),
           dom.div({ className: "devtools-separator" }),
           dom.button({
@@ -156,7 +189,10 @@ class Toolbar extends PureComponent {
 
 const mapStateToProps = state => {
   return {
+    displayPixelRatio: state.ui.displayPixelRatio,
     leftAlignmentEnabled: state.ui.leftAlignmentEnabled,
+    showUserAgentInput: state.ui.showUserAgentInput,
+    touchSimulationEnabled: state.ui.touchSimulationEnabled,
   };
 };
 

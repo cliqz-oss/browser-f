@@ -25,8 +25,8 @@ window.gActivityStreamStrings = {
   "menu_action_delete_pocket": "Slett frå Pocket",
   "menu_action_archive_pocket": "Arkiver i Pocket",
   "menu_action_show_file_mac_os": "Vis i Finder",
-  "menu_action_show_file_windows": "Opne mappa med fila",
-  "menu_action_show_file_linux": "Opne mappa med fila",
+  "menu_action_show_file_windows": "Opne innhaldsmappe",
+  "menu_action_show_file_linux": "Opne innhaldsmappe",
   "menu_action_show_file_default": "Vis fil",
   "menu_action_open_file": "Opne fil",
   "menu_action_copy_download_link": "Kopier nedlastingslenke",
@@ -75,7 +75,7 @@ window.gActivityStreamStrings = {
   "pocket_read_more": "Populære emne:",
   "pocket_read_even_more": "Vis fleire saker",
   "pocket_more_reccommendations": "Fleire tilrådingar",
-  "pocket_how_it_works": "How it works",
+  "pocket_how_it_works": "Korleis det fungerar",
   "pocket_cta_button": "Last ned Pocket",
   "pocket_cta_text": "Lagre artiklane du synest er interessante i Pocket, og stimuler tankane dine med fasinerande lesemateriell.",
   "highlights_empty_state": "Begynn å surfe, og vi vil vise deg nokre av dei beste artiklane, videoane og andre sider du nyleg har besøkt eller bokmerka her.",
@@ -107,5 +107,6 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Personvernpraksis",
   "firstrun_continue_to_login": "Fortset",
   "firstrun_skip_login": "Hopp over dette steget",
+  "context_menu_title": "Opne meny",
   "pocket_learn_more": "Les meir"
 };

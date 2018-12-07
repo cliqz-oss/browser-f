@@ -22,6 +22,8 @@
 namespace js {
 namespace frontend {
 
+class BinASTSourceMetadata;
+
 /**
  * A token reader for a simple, alternative serialization format for BinAST.
  *
@@ -62,20 +64,23 @@ class MOZ_STACK_CLASS BinTokenReaderTester: public BinTokenReaderBase
     class AutoTuple;
     class AutoTaggedTuple;
 
+    // The maximum number of fields in single tagged tuple.
+    static const uint32_t FIELD_NUM_MAX = 32;
+
   public:
     /**
      * Construct a token reader.
      *
      * Does NOT copy the buffer.
      */
-    BinTokenReaderTester(JSContext* cx, const uint8_t* start, const size_t length);
+    BinTokenReaderTester(JSContext* cx, ErrorReporter* er, const uint8_t* start, const size_t length);
 
     /**
      * Construct a token reader.
      *
      * Does NOT copy the buffer.
      */
-    BinTokenReaderTester(JSContext* cx, const Vector<uint8_t>& chars);
+    BinTokenReaderTester(JSContext* cx, ErrorReporter* er, const Vector<uint8_t>& chars);
 
     /**
      * Read the header of the file.
@@ -121,6 +126,18 @@ class MOZ_STACK_CLASS BinTokenReaderTester: public BinTokenReaderBase
      * The returned `JSAtom*` is never `nullptr`.
      */
     MOZ_MUST_USE JS::Result<JSAtom*> readAtom();
+
+    /**
+     * Read a single IdentifierName value.
+     */
+    MOZ_MUST_USE JS::Result<JSAtom*> readMaybeIdentifierName();
+    MOZ_MUST_USE JS::Result<JSAtom*> readIdentifierName();
+
+    /**
+     * Read a single PropertyKey value.
+     */
+    MOZ_MUST_USE JS::Result<JSAtom*> readMaybePropertyKey();
+    MOZ_MUST_USE JS::Result<JSAtom*> readPropertyKey();
 
 
     /**
@@ -202,9 +219,21 @@ class MOZ_STACK_CLASS BinTokenReaderTester: public BinTokenReaderBase
     MOZ_MUST_USE JS::Result<Ok> enterUntaggedTuple(AutoTuple& guard);
 
     /**
+     * Read a single unsigned long.
+     */
+    MOZ_MUST_USE JS::Result<uint32_t> readUnsignedLong() {
+        return readInternalUint32();
+    }
+
+    /**
      * Read a single uint32_t.
      */
     MOZ_MUST_USE JS::Result<uint32_t> readInternalUint32();
+
+  public:
+    void traceMetadata(JSTracer*) {}
+    BinASTSourceMetadata* takeMetadata() { MOZ_CRASH("Tester format has no metadata to take!"); }
+    MOZ_MUST_USE JS::Result<Ok> initFromScriptSource(ScriptSource*) { MOZ_CRASH("Tester format not for dynamic use"); }
 
   public:
     // The following classes are used whenever we encounter a tuple/tagged tuple/list
@@ -276,11 +305,13 @@ class MOZ_STACK_CLASS BinTokenReaderTester: public BinTokenReaderBase
     static bool equals(const Chars& left, const char (&right)[N]) {
         MOZ_ASSERT(N > 0);
         MOZ_ASSERT(right[N - 1] == 0);
-        if (left.length() + 1 /* implicit NUL */ != N)
+        if (left.length() + 1 /* implicit NUL */ != N) {
             return false;
+        }
 
-        if (!std::equal(left.begin(), left.end(), right))
+        if (!std::equal(left.begin(), left.end(), right)) {
           return false;
+        }
 
         return true;
     }
@@ -290,12 +321,14 @@ class MOZ_STACK_CLASS BinTokenReaderTester: public BinTokenReaderBase
     JS::Result<Ok, JS::Error&> checkFields(const BinKind kind, const BinFields& actual,
                                                   const BinField (&expected)[N])
     {
-        if (actual.length() != N)
+        if (actual.length() != N) {
             return raiseInvalidNumberOfFields(kind, N, actual.length());
+        }
 
         for (size_t i = 0; i < N; ++i) {
-            if (actual[i] != expected[i])
+            if (actual[i] != expected[i]) {
                 return raiseInvalidField(describeBinKind(kind), actual[i]);
+            }
         }
 
         return Ok();
@@ -304,8 +337,9 @@ class MOZ_STACK_CLASS BinTokenReaderTester: public BinTokenReaderBase
     // Special case for N=0, as empty arrays are not permitted in C++
     JS::Result<Ok, JS::Error&> checkFields0(const BinKind kind, const BinFields& actual)
     {
-        if (actual.length() != 0)
+        if (actual.length() != 0) {
             return raiseInvalidNumberOfFields(kind, 0, actual.length());
+        }
 
         return Ok();
     }

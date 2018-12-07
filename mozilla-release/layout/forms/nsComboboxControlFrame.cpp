@@ -18,7 +18,7 @@
 #include "nsHTMLParts.h"
 #include "nsIFormControl.h"
 #include "nsNameSpaceManager.h"
-#include "nsIListControlFrame.h"
+#include "nsListControlFrame.h"
 #include "nsPIDOMWindow.h"
 #include "nsIPresShell.h"
 #include "mozilla/PresState.h"
@@ -32,7 +32,6 @@
 #include "mozilla/dom/HTMLSelectElement.h"
 #include "nsIDocument.h"
 #include "nsIScrollableFrame.h"
-#include "nsListControlFrame.h"
 #include "mozilla/ServoStyleSet.h"
 #include "nsNodeInfoManager.h"
 #include "nsContentCreatorFunctions.h"
@@ -89,7 +88,7 @@ nsComboboxControlFrame::RedisplayTextEvent::Run()
  * combo box is toggled to open or close. this is used by Accessibility which presses
  * that button Programmatically.
  */
-class nsComboButtonListener : public nsIDOMEventListener
+class nsComboButtonListener final : public nsIDOMEventListener
 {
 private:
   virtual ~nsComboButtonListener() {}
@@ -252,7 +251,6 @@ nsComboboxControlFrame::~nsComboboxControlFrame()
 
 NS_QUERYFRAME_HEAD(nsComboboxControlFrame)
   NS_QUERYFRAME_ENTRY(nsComboboxControlFrame)
-  NS_QUERYFRAME_ENTRY(nsIComboboxControlFrame)
   NS_QUERYFRAME_ENTRY(nsIFormControlFrame)
   NS_QUERYFRAME_ENTRY(nsIAnonymousContentCreator)
   NS_QUERYFRAME_ENTRY(nsISelectControlFrame)
@@ -823,7 +821,7 @@ nscoord
 nsComboboxControlFrame::GetMinISize(gfxContext *aRenderingContext)
 {
   nscoord minISize;
-  DISPLAY_MIN_WIDTH(this, minISize);
+  DISPLAY_MIN_INLINE_SIZE(this, minISize);
   minISize = GetIntrinsicISize(aRenderingContext, nsLayoutUtils::MIN_ISIZE);
   return minISize;
 }
@@ -832,7 +830,7 @@ nscoord
 nsComboboxControlFrame::GetPrefISize(gfxContext *aRenderingContext)
 {
   nscoord prefISize;
-  DISPLAY_PREF_WIDTH(this, prefISize);
+  DISPLAY_PREF_INLINE_SIZE(this, prefISize);
   prefISize = GetIntrinsicISize(aRenderingContext, nsLayoutUtils::PREF_ISIZE);
   return prefISize;
 }
@@ -936,9 +934,6 @@ nsComboboxControlFrame::GetFrameName(nsAString& aResult) const
 #endif
 
 
-//----------------------------------------------------------------------
-// nsIComboboxControlFrame
-//----------------------------------------------------------------------
 void
 nsComboboxControlFrame::ShowDropDown(bool aDoDropDown)
 {
@@ -991,7 +986,7 @@ nsComboboxControlFrame::GetDropDown()
 ///////////////////////////////////////////////////////////////
 
 
-NS_IMETHODIMP
+nsresult
 nsComboboxControlFrame::RedisplaySelectedText()
 {
   nsAutoScriptBlocker scriptBlocker;
@@ -1065,6 +1060,10 @@ nsComboboxControlFrame::HandleRedisplayTextEvent()
   mRedisplayTextEvent.Forget();
 
   ActuallyDisplayText(true);
+  if (!weakThis.IsAlive()) {
+    return;
+  }
+
   // XXXbz This should perhaps be eResize.  Check.
   PresShell()->FrameNeedsReflow(mDisplayFrame,
                                                nsIPresShell::eStyleChange,
@@ -1076,13 +1075,14 @@ nsComboboxControlFrame::HandleRedisplayTextEvent()
 void
 nsComboboxControlFrame::ActuallyDisplayText(bool aNotify)
 {
+  RefPtr<nsTextNode> displayContent = mDisplayContent;
   if (mDisplayedOptionTextOrPreview.IsEmpty()) {
     // Have to use a non-breaking space for line-block-size calculations
     // to be right
     static const char16_t space = 0xA0;
-    mDisplayContent->SetText(&space, 1, aNotify);
+    displayContent->SetText(&space, 1, aNotify);
   } else {
-    mDisplayContent->SetText(mDisplayedOptionTextOrPreview, aNotify);
+    displayContent->SetText(mDisplayedOptionTextOrPreview, aNotify);
   }
 }
 
@@ -1304,7 +1304,8 @@ nsComboboxControlFrame::GetDisplayNode() const
 
 // XXXbz this is a for-now hack.  Now that display:inline-block works,
 // need to revisit this.
-class nsComboboxDisplayFrame : public nsBlockFrame {
+class nsComboboxDisplayFrame final : public nsBlockFrame
+{
 public:
   NS_DECL_FRAMEARENA_HELPERS(nsComboboxDisplayFrame)
 
@@ -1342,19 +1343,26 @@ protected:
 NS_IMPL_FRAMEARENA_HELPERS(nsComboboxDisplayFrame)
 
 void
-nsComboboxDisplayFrame::Reflow(nsPresContext*           aPresContext,
-                               ReflowOutput&     aDesiredSize,
+nsComboboxDisplayFrame::Reflow(nsPresContext*     aPresContext,
+                               ReflowOutput&      aDesiredSize,
                                const ReflowInput& aReflowInput,
-                               nsReflowStatus&          aStatus)
+                               nsReflowStatus&    aStatus)
 {
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   ReflowInput state(aReflowInput);
   if (state.ComputedBSize() == NS_INTRINSICSIZE) {
-    // Note that the only way we can have a computed block size here is
-    // if the combobox had a specified block size.  If it didn't, size
-    // based on what our rows look like, for lack of anything better.
-    state.SetComputedBSize(mComboBox->mListControlFrame->GetBSizeOfARow());
+    float inflation = nsLayoutUtils::FontSizeInflationFor(mComboBox);
+    // We intentionally use the combobox frame's style here, which has
+    // the 'line-height' specified by the author, if any.
+    // (This frame has 'line-height: -moz-block-height' in the UA
+    // sheet which is suitable when there's a specified block-size.)
+    auto lh = ReflowInput::CalcLineHeight(mComboBox->GetContent(),
+                                          mComboBox->Style(),
+                                          aPresContext,
+                                          NS_UNCONSTRAINEDSIZE,
+                                          inflation);
+    state.SetComputedBSize(lh);
   }
   WritingMode wm = aReflowInput.GetWritingMode();
   nscoord computedISize = mComboBox->mDisplayISize -
@@ -1554,7 +1562,8 @@ nsComboboxControlFrame::UpdateRecentIndex(int32_t aIndex)
   return index;
 }
 
-class nsDisplayComboboxFocus : public nsDisplayItem {
+class nsDisplayComboboxFocus : public nsDisplayItem
+{
 public:
   nsDisplayComboboxFocus(nsDisplayListBuilder* aBuilder,
                          nsComboboxControlFrame* aFrame)

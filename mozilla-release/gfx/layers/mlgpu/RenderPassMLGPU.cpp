@@ -120,8 +120,9 @@ RenderPassMLGPU::GetPreferredPassType(FrameBuilder* aBuilder, const ItemInfo& aI
     ImageHost* host = layer->AsTexturedLayerMLGPU()->GetImageHost();
     TextureHost* texture = host->CurrentTextureHost();
     if (texture->GetReadFormat() == SurfaceFormat::YUV ||
-        texture->GetReadFormat() == SurfaceFormat::NV12)
-    {
+        texture->GetReadFormat() == SurfaceFormat::NV12 ||
+        texture->GetReadFormat() == SurfaceFormat::P010 ||
+        texture->GetReadFormat() == SurfaceFormat::P016) {
       return RenderPassType::Video;
     }
     return RenderPassType::SingleTexture;
@@ -805,6 +806,9 @@ VideoRenderPass::SetupPipeline()
     break;
   }
   case SurfaceFormat::NV12:
+  case SurfaceFormat::P010:
+  case SurfaceFormat::P016:
+    // TODO. BT601 is very unlikely to be the right value for high-def content.
     colorSpace = YUVColorSpace::BT601;
     break;
   default:
@@ -815,6 +819,12 @@ VideoRenderPass::SetupPipeline()
 
   RefPtr<MLGBuffer> ps1 = mDevice->GetBufferForColorSpace(colorSpace);
   if (!ps1) {
+    return;
+  }
+
+  RefPtr<MLGBuffer> ps2 =
+    mDevice->GetBufferForColorDepthCoefficient(mHost->GetColorDepth());
+  if (!ps2) {
     return;
   }
 
@@ -835,6 +845,8 @@ VideoRenderPass::SetupPipeline()
     break;
   }
   case SurfaceFormat::NV12:
+  case SurfaceFormat::P010:
+  case SurfaceFormat::P016:
     if (mGeometry == GeometryMode::UnitQuad)
       mDevice->SetPixelShader(PixelShaderID::TexturedQuadNV12);
     else
@@ -848,6 +860,7 @@ VideoRenderPass::SetupPipeline()
 
   mDevice->SetSamplerMode(kDefaultSamplerSlot, mSamplerMode);
   mDevice->SetPSConstantBuffer(1, ps1);
+  mDevice->SetPSConstantBuffer(2, ps2);
 }
 
 RenderViewPass::RenderViewPass(FrameBuilder* aBuilder, const ItemInfo& aItem)

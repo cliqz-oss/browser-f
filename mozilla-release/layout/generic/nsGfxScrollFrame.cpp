@@ -866,7 +866,7 @@ nsHTMLScrollFrame::GetIntrinsicVScrollbarWidth(gfxContext *aRenderingContext)
 nsHTMLScrollFrame::GetMinISize(gfxContext *aRenderingContext)
 {
   nscoord result = mHelper.mScrolledFrame->GetMinISize(aRenderingContext);
-  DISPLAY_MIN_WIDTH(this, result);
+  DISPLAY_MIN_INLINE_SIZE(this, result);
   return result + GetIntrinsicVScrollbarWidth(aRenderingContext);
 }
 
@@ -874,7 +874,7 @@ nsHTMLScrollFrame::GetMinISize(gfxContext *aRenderingContext)
 nsHTMLScrollFrame::GetPrefISize(gfxContext *aRenderingContext)
 {
   nscoord result = mHelper.mScrolledFrame->GetPrefISize(aRenderingContext);
-  DISPLAY_PREF_WIDTH(this, result);
+  DISPLAY_PREF_INLINE_SIZE(this, result);
   return NSCoordSaturatingAdd(result, GetIntrinsicVScrollbarWidth(aRenderingContext));
 }
 
@@ -1413,8 +1413,9 @@ ScrollFrameHelper::WantAsyncScroll() const
                        (styles.mHorizontal != NS_STYLE_OVERFLOW_HIDDEN);
 
 #if defined(MOZ_WIDGET_ANDROID)
-  // Mobile platforms need focus to scroll.
-  bool canScrollWithoutScrollbars = IsFocused(mOuter->GetContent());
+  // Mobile platforms need focus to scroll text inputs.
+  bool canScrollWithoutScrollbars =
+    !IsForTextControlWithNoScrollbars() || IsFocused(mOuter->GetContent());
 #else
   bool canScrollWithoutScrollbars = true;
 #endif
@@ -1840,17 +1841,12 @@ public:
   /*
    * Set a refresh observer for smooth scroll iterations (and start observing).
    * Should be used at most once during the lifetime of this object.
-   * Return value: true on success, false otherwise.
    */
-  bool SetRefreshObserver(ScrollFrameHelper *aCallee) {
+  void SetRefreshObserver(ScrollFrameHelper* aCallee) {
     NS_ASSERTION(aCallee && !mCallee, "AsyncSmoothMSDScroll::SetRefreshObserver - Invalid usage.");
 
-    if (!RefreshDriver(aCallee)->AddRefreshObserver(this, FlushType::Style)) {
-      return false;
-    }
-
+    RefreshDriver(aCallee)->AddRefreshObserver(this, FlushType::Style);
     mCallee = aCallee;
-    return true;
   }
 
   /**
@@ -1953,20 +1949,15 @@ public:
   /*
    * Set a refresh observer for smooth scroll iterations (and start observing).
    * Should be used at most once during the lifetime of this object.
-   * Return value: true on success, false otherwise.
    */
-  bool SetRefreshObserver(ScrollFrameHelper *aCallee) {
+  void SetRefreshObserver(ScrollFrameHelper* aCallee) {
     NS_ASSERTION(aCallee && !mCallee, "AsyncScroll::SetRefreshObserver - Invalid usage.");
 
-    if (!RefreshDriver(aCallee)->AddRefreshObserver(this, FlushType::Style)) {
-      return false;
-    }
-
+    RefreshDriver(aCallee)->AddRefreshObserver(this, FlushType::Style);
     mCallee = aCallee;
     nsIPresShell* shell = mCallee->mOuter->PresShell();
     MOZ_ASSERT(shell);
     shell->SuppressDisplayport(true);
-    return true;
   }
 
   virtual void WillRefresh(mozilla::TimeStamp aTime) override {
@@ -2469,11 +2460,7 @@ ScrollFrameHelper::ScrollToWithOrigin(nsPoint aScrollPosition,
                                    currentVelocity, GetScrollRangeForClamping(),
                                    now, presContext);
 
-        if (!mAsyncSmoothMSDScroll->SetRefreshObserver(this)) {
-          // Observer setup failed. Scroll the normal way.
-          CompleteAsyncScroll(range, aOrigin);
-          return;
-        }
+        mAsyncSmoothMSDScroll->SetRefreshObserver(this);
       } else {
         // A previous smooth MSD scroll is still in progress, so we just need to
         // update its range and destination.
@@ -2492,11 +2479,7 @@ ScrollFrameHelper::ScrollToWithOrigin(nsPoint aScrollPosition,
 
   if (!mAsyncScroll) {
     mAsyncScroll = new AsyncScroll();
-    if (!mAsyncScroll->SetRefreshObserver(this)) {
-      // Observer setup failed. Scroll the normal way.
-      CompleteAsyncScroll(range, aOrigin);
-      return;
-    }
+    mAsyncScroll->SetRefreshObserver(this);
   }
 
   if (isSmoothScroll) {
@@ -3672,7 +3655,7 @@ ScrollFrameHelper::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
       // if we are checkerboarding.
       if (aBuilder->BuildCompositorHitTestInfo()) {
         CompositorHitTestInfo info = mScrolledFrame->GetCompositorHitTestInfo(aBuilder);
-        if (info != CompositorHitTestInfo::eInvisibleToHitTest) {
+        if (info != CompositorHitTestInvisibleToHit) {
           nsDisplayCompositorHitTestInfo* hitInfo =
               MakeDisplayItem<nsDisplayCompositorHitTestInfo>(aBuilder, mScrolledFrame, info, 1);
           aBuilder->SetCompositorHitTestInfo(hitInfo);
@@ -3780,8 +3763,8 @@ ScrollFrameHelper::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     // a displayport for this frame. We'll add the item later on.
     if (!mWillBuildScrollableLayer) {
       if (aBuilder->BuildCompositorHitTestInfo()) {
-        CompositorHitTestInfo info = CompositorHitTestInfo::eVisibleToHitTest
-                                   | CompositorHitTestInfo::eDispatchToContent;
+        CompositorHitTestInfo info(CompositorHitTestFlags::eVisibleToHitTest,
+                                   CompositorHitTestFlags::eDispatchToContent);
         // If the scroll frame has non-default overscroll-behavior, instruct
         // APZ to require a target confirmation before processing events that
         // hit this scroll frame (that is, to drop the events if a confirmation
@@ -3791,7 +3774,7 @@ ScrollFrameHelper::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
         ScrollStyles scrollStyles = GetScrollStylesFromFrame();
         if (scrollStyles.mOverscrollBehaviorX != StyleOverscrollBehavior::Auto ||
             scrollStyles.mOverscrollBehaviorY != StyleOverscrollBehavior::Auto) {
-          info |= CompositorHitTestInfo::eRequiresTargetConfirmation;
+          info += CompositorHitTestFlags::eRequiresTargetConfirmation;
         }
         nsDisplayCompositorHitTestInfo* hitInfo =
             MakeDisplayItem<nsDisplayCompositorHitTestInfo>(aBuilder, mScrolledFrame, info, 1,
@@ -3975,7 +3958,7 @@ ScrollFrameHelper::DecideScrollableLayer(nsDisplayListBuilder* aBuilder,
 Maybe<ScrollMetadata>
 ScrollFrameHelper::ComputeScrollMetadata(LayerManager* aLayerManager,
                                          const nsIFrame* aContainerReferenceFrame,
-                                         const ContainerLayerParameters& aParameters,
+                                         const Maybe<ContainerLayerParameters>& aParameters,
                                          const DisplayItemClip* aClip) const
 {
   if (!mWillBuildScrollableLayer || mIsScrollableLayerInRootContainer) {
@@ -4665,12 +4648,28 @@ ScrollFrameHelper::ReloadChildFrames()
   }
 }
 
+bool
+ScrollFrameHelper::IsForTextControlWithNoScrollbars() const
+{
+  nsIFrame* parent = mOuter->GetParent();
+  // The anonymous <div> used by <inputs> never gets scrollbars.
+  nsITextControlFrame* textFrame = do_QueryFrame(parent);
+  if (textFrame) {
+    // Make sure we are not a text area.
+    HTMLTextAreaElement* textAreaElement =
+      HTMLTextAreaElement::FromNode(parent->GetContent());
+    if (!textAreaElement) {
+      return true;
+    }
+  }
+  return false;
+}
+
 nsresult
 ScrollFrameHelper::CreateAnonymousContent(
   nsTArray<nsIAnonymousContentCreator::ContentInfo>& aElements)
 {
   nsPresContext* presContext = mOuter->PresContext();
-  nsIFrame* parent = mOuter->GetParent();
 
   // Don't create scrollbars if we're an SVG document being used as an image,
   // or if we're printing/print previewing.
@@ -4723,16 +4722,9 @@ ScrollFrameHelper::CreateAnonymousContent(
     canHaveVertical = true;
   }
 
-  // The anonymous <div> used by <inputs> never gets scrollbars.
-  nsITextControlFrame* textFrame = do_QueryFrame(parent);
-  if (textFrame) {
-    // Make sure we are not a text area.
-    HTMLTextAreaElement* textAreaElement =
-      HTMLTextAreaElement::FromNode(parent->GetContent());
-    if (!textAreaElement) {
-      mNeverHasVerticalScrollbar = mNeverHasHorizontalScrollbar = true;
-      return NS_OK;
-    }
+  if (IsForTextControlWithNoScrollbars()) {
+    mNeverHasVerticalScrollbar = mNeverHasHorizontalScrollbar = true;
+    return NS_OK;
   }
 
   nsNodeInfoManager* nodeInfoManager = presContext->Document()->NodeInfoManager();

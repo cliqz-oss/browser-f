@@ -78,7 +78,6 @@ module.exports = {
     "camelcase": 0,
     "capitalized-comments": 0,
     "class-methods-use-this": 0,
-    "comma-dangle": [2, "never"],
     "consistent-this": [2, "use-bind"],
     "curly": [2, "all"],
     "default-case": 0,
@@ -190,7 +189,7 @@ module.exports = {
     "no-void": 2,
     "no-warning-comments": 0, // TODO: Change to `1`?
     "nonblock-statement-body-position": 2,
-    "object-curly-newline": [2, {"multiline": true}],
+    "object-curly-newline": [2, {"multiline": true, "consistent": true}],
     "object-curly-spacing": [2, "never"],
     "object-property-newline": [2, {"allowMultiplePropertiesPerLine": true}],
     "one-var": [2, "never"],

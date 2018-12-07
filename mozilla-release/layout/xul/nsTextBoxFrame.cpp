@@ -22,7 +22,6 @@
 #include "nsMenuBarListener.h"
 #include "nsString.h"
 #include "nsIServiceManager.h"
-#include "nsIDOMXULLabelElement.h"
 #include "mozilla/EventStateManager.h"
 #include "nsITheme.h"
 #include "nsUnicharUtils.h"
@@ -200,17 +199,9 @@ bool
 nsTextBoxFrame::UpdateAccesskey(WeakFrame& aWeakThis)
 {
     nsAutoString accesskey;
-    nsCOMPtr<nsIDOMXULLabelElement> labelElement = do_QueryInterface(mContent);
-    NS_ENSURE_TRUE(aWeakThis.IsAlive(), false);
-    if (labelElement) {
-        // Accesskey may be stored on control.
-        labelElement->GetAccessKey(accesskey);
-        NS_ENSURE_TRUE(aWeakThis.IsAlive(), false);
-    } else {
-        mContent->AsElement()->GetAttr(kNameSpaceID_None,
-                                       nsGkAtoms::accesskey,
-                                       accesskey);
-    }
+    mContent->AsElement()->GetAttr(kNameSpaceID_None,
+                                   nsGkAtoms::accesskey,
+                                   accesskey);
 
     if (!accesskey.Equals(mAccessKey)) {
         // Need to get clean mTitle.
@@ -236,8 +227,8 @@ nsTextBoxFrame::UpdateAttributes(nsAtom*         aAttribute,
 
     if (aAttribute == nullptr || aAttribute == nsGkAtoms::crop) {
         static Element::AttrValuesArray strings[] =
-          {&nsGkAtoms::left, &nsGkAtoms::start, &nsGkAtoms::center,
-           &nsGkAtoms::right, &nsGkAtoms::end, &nsGkAtoms::none, nullptr};
+          {nsGkAtoms::left, nsGkAtoms::start, nsGkAtoms::center,
+           nsGkAtoms::right, nsGkAtoms::end, nsGkAtoms::none, nullptr};
         CroppingStyle cropType;
         switch (mContent->AsElement()->FindAttrValueIn(kNameSpaceID_None,
                                                        nsGkAtoms::crop, strings,
@@ -376,7 +367,7 @@ nsDisplayXULTextBox::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aB
   gfx::Point deviceOffset = LayoutDevicePoint::FromAppUnits(
       bounds.TopLeft(), appUnitsPerDevPixel).ToUnknownPoint();
 
-  RefPtr<mozilla::layout::TextDrawTarget> textDrawer = 
+  RefPtr<mozilla::layout::TextDrawTarget> textDrawer =
       new mozilla::layout::TextDrawTarget(aBuilder, aResources, aSc, aManager, this, bounds);
   RefPtr<gfxContext> captureCtx = gfxContext::CreateOrNull(textDrawer, deviceOffset);
 

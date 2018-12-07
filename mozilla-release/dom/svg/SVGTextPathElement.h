@@ -35,7 +35,7 @@ friend class ::SVGTextFrame;
 protected:
   friend nsresult (::NS_NewSVGTextPathElement(nsIContent **aResult,
                                               already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo));
-  explicit SVGTextPathElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
+  explicit SVGTextPathElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
   virtual JSObject* WrapNode(JSContext *cx, JS::Handle<JSObject*> aGivenProto) override;
 
 public:
@@ -48,7 +48,7 @@ public:
     return &mPath;
   }
 
-  nsAtom* GetPathDataAttrName() const override {
+  nsStaticAtom* GetPathDataAttrName() const override {
     return nsGkAtoms::path;
   }
 
@@ -58,6 +58,8 @@ public:
   already_AddRefed<SVGAnimatedEnumeration> Spacing();
   already_AddRefed<SVGAnimatedEnumeration> Side();
   already_AddRefed<SVGAnimatedString> Href();
+
+  void HrefAsString(nsAString& aHref);
 
  protected:
 

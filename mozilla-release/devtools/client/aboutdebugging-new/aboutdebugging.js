@@ -4,12 +4,6 @@
 
 "use strict";
 
-const { BrowserLoader } =
-  ChromeUtils.import("resource://devtools/client/shared/browser-loader.js", {});
-const { require } = BrowserLoader({
-  baseURI: "resource://devtools/client/aboutdebugging-new/",
-  window,
-});
 const Services = require("Services");
 
 const { bindActionCreators } = require("devtools/client/shared/vendor/redux");
@@ -30,11 +24,21 @@ const {
 const {
   addNetworkLocationsObserver,
   getNetworkLocations,
+  removeNetworkLocationsObserver,
 } = require("./src/modules/network-locations");
+const {
+  addUSBRuntimesObserver,
+  disableUSBRuntimes,
+  enableUSBRuntimes,
+  getUSBRuntimes,
+  removeUSBRuntimesObserver,
+} = require("./src/modules/usb-runtimes");
+
+loader.lazyRequireGetter(this, "adbAddon", "devtools/shared/adb/adb-addon", true);
 
 const App = createFactory(require("./src/components/App"));
 
-const { PAGES } = require("./src/constants");
+const { PAGES, RUNTIMES } = require("./src/constants");
 
 const AboutDebugging = {
   async init() {
@@ -44,23 +48,32 @@ const AboutDebugging = {
       return;
     }
 
+    this.onAdbAddonUpdated = this.onAdbAddonUpdated.bind(this);
+    this.onNetworkLocationsUpdated = this.onNetworkLocationsUpdated.bind(this);
+    this.onUSBRuntimesUpdated = this.onUSBRuntimesUpdated.bind(this);
+
     this.store = configureStore();
     this.actions = bindActionCreators(actions, this.store.dispatch);
 
-    const messageContexts = await this.createMessageContexts();
+    const fluentBundles = await this.createFluentBundles();
 
     render(
-      Provider({ store: this.store }, App({ messageContexts })),
+      Provider({ store: this.store }, App({ fluentBundles })),
       this.mount
     );
 
-    this.actions.selectPage(PAGES.THIS_FIREFOX);
-    addNetworkLocationsObserver(() => {
-      this.actions.updateNetworkLocations(getNetworkLocations());
-    });
+    this.actions.selectPage(PAGES.THIS_FIREFOX, RUNTIMES.THIS_FIREFOX);
+    this.actions.updateNetworkLocations(getNetworkLocations());
+
+    addNetworkLocationsObserver(this.onNetworkLocationsUpdated);
+    addUSBRuntimesObserver(this.onUSBRuntimesUpdated);
+    await enableUSBRuntimes();
+
+    adbAddon.on("update", this.onAdbAddonUpdated);
+    this.onAdbAddonUpdated();
   },
 
-  async createMessageContexts() {
+  async createFluentBundles() {
     // XXX Until the strings for the updated about:debugging stabilize, we
     // locate them outside the regular directory for locale resources so that
     // they don't get picked up by localization tools.
@@ -73,20 +86,45 @@ const AboutDebugging = {
       L10nRegistry.registerSource(temporarySource);
     }
 
-    const locales = Services.locale.getAppLocalesAsBCP47();
+    const locales = Services.locale.appLocalesAsBCP47;
     const generator =
-      L10nRegistry.generateContexts(locales, ["aboutdebugging.ftl"]);
+      L10nRegistry.generateBundles(locales, ["aboutdebugging.ftl"]);
 
-    const contexts = [];
-    for await (const context of generator) {
-      contexts.push(context);
+    const bundles = [];
+    for await (const bundle of generator) {
+      bundles.push(bundle);
     }
 
-    return contexts;
+    return bundles;
   },
 
-  destroy() {
-    setDebugTargetCollapsibilities(this.store.getState().ui.debugTargetCollapsibilities);
+  onAdbAddonUpdated() {
+    this.actions.updateAdbAddonStatus(adbAddon.status);
+  },
+
+  onNetworkLocationsUpdated() {
+    this.actions.updateNetworkLocations(getNetworkLocations());
+  },
+
+  onUSBRuntimesUpdated() {
+    this.actions.updateUSBRuntimes(getUSBRuntimes());
+  },
+
+  async destroy() {
+    const state = this.store.getState();
+
+    L10nRegistry.removeSource("aboutdebugging");
+
+    const currentRuntimeId = state.runtimes.selectedRuntimeId;
+    if (currentRuntimeId) {
+      await this.actions.unwatchRuntime(currentRuntimeId);
+    }
+
+    removeNetworkLocationsObserver(this.onNetworkLocationsUpdated);
+    removeUSBRuntimesObserver(this.onUSBRuntimesUpdated);
+    disableUSBRuntimes();
+    adbAddon.off("update", this.onAdbAddonUpdated);
+    setDebugTargetCollapsibilities(state.ui.debugTargetCollapsibilities);
     unmountComponentAtNode(this.mount);
   },
 

@@ -1,6 +1,4 @@
-if (!wasmGcEnabled() || typeof WebAssembly.Global !== 'function') {
-    quit(0);
-}
+// |jit-test| skip-if: !wasmGcEnabled() || typeof WebAssembly.Global !== 'function'
 
 // Dummy object.
 function Baguette(calories) {
@@ -47,9 +45,8 @@ assertEq(new WebAssembly.Global({value: "anyref"}) instanceof WebAssembly.Global
     assertEq(g.value instanceof Symbol, true);
     assertEq(g.value.toString(), "Symbol(status)");
 
-    assertErrorMessage(() => new WebAssembly.Global({value: "anyref"}, undefined),
-                       TypeError,
-                       "can't convert undefined to object");
+    g = new WebAssembly.Global({value: "anyref"}, undefined);
+    assertEq(g.value, null);
 })();
 
 (function() {

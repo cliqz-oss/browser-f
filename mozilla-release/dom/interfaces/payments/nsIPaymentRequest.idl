@@ -30,7 +30,6 @@ interface nsIPaymentItem : nsISupports
   readonly attribute AString label;
   readonly attribute nsIPaymentCurrencyAmount amount;
   readonly attribute boolean pending;
-  readonly attribute AString type;
 };
 
 [scriptable, builtinclass, uuid(74259861-c318-40e8-b3d5-518e701bed80)]
@@ -63,9 +62,10 @@ interface nsIPaymentDetails : nsISupports
   readonly attribute AString error;
   [implicit_jscontext]
   readonly attribute jsval shippingAddressErrors;
-
-  void update(in nsIPaymentDetails aDetails, in boolean aRequestShipping);
-  AString shippingAddressErrorsJSON();
+  [implicit_jscontext]
+  readonly attribute jsval payer;
+  [implicit_jscontext]
+  readonly attribute jsval paymentMethod;
 };
 
 [scriptable, builtinclass, uuid(d53f9f20-138e-47cc-9fd5-db16a3f6d301)]
@@ -89,8 +89,4 @@ interface nsIPaymentRequest : nsISupports
   readonly attribute nsIPaymentDetails paymentDetails;
   readonly attribute nsIPaymentOptions paymentOptions;
   readonly attribute AString shippingOption;
-
-  [noscript] void setCompleteStatus(in AString aCompleteStatus);
-  void updatePaymentDetails(in nsIPaymentDetails aDetails,
-                            in AString aShippingOption);
 };

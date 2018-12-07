@@ -29,7 +29,7 @@ window.gActivityStreamStrings = {
   "menu_action_show_file_linux": "შემცველი საქაღალდის გახსნა",
   "menu_action_show_file_default": "ფაილის ჩვენება",
   "menu_action_open_file": "ფაილის გახსნა",
-  "menu_action_copy_download_link": "ჩამოტვირთვის ბმულის დაკოპირება",
+  "menu_action_copy_download_link": "ჩამოტვირთვის ბმულის ასლი",
   "menu_action_go_to_download_page": "გადასვლა ჩამოტვირთვის გვერდზე",
   "menu_action_remove_download": "ისტორიიდან ამოშლა",
   "search_button": "ძიება",
@@ -75,7 +75,7 @@ window.gActivityStreamStrings = {
   "pocket_read_more": "პოპულარული თემები:",
   "pocket_read_even_more": "მეტი სიახლის ნახვა",
   "pocket_more_reccommendations": "მეტი შემოთავაზებები",
-  "pocket_how_it_works": "How it works",
+  "pocket_how_it_works": "როგორ მუშაობს",
   "pocket_cta_button": "გამოიყენეთ Pocket",
   "pocket_cta_text": "გადაინახეთ სასურველი შიგთავსი Pocket-ში და მიეცით გონებას საკვები, შთამბეჭდავი საკითხავი მასალის სახით.",
   "highlights_empty_state": "დაიწყეთ გვერდების დათვალიერება და აქ გამოჩნდება თქვენთვის სასურველი სტატიები, ვიდეოები და ბოლოს მონახულებული ან ჩანიშნული საიტები.",
@@ -107,5 +107,6 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "პირადი მონაცემების დაცვის განაცხადს",
   "firstrun_continue_to_login": "გაგრძელება",
   "firstrun_skip_login": "გამოტოვება",
+  "context_menu_title": "მენიუს გახსნა",
   "pocket_learn_more": "იხილეთ ვრცლად"
 };

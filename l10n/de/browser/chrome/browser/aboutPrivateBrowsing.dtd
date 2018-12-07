@@ -22,6 +22,7 @@
 <!ENTITY aboutPrivateBrowsing.info.saved.after2          ":">
 <!ENTITY aboutPrivateBrowsing.info.downloads   "Downloads">
 <!ENTITY aboutPrivateBrowsing.info.bookmarks   "Lesezeichen">
+<!ENTITY aboutPrivateBrowsing.info.clipboard             "Kopierten Text">
 <!ENTITY aboutPrivateBrowsing.note.before                "Privates Surfen ">
 <!ENTITY aboutPrivateBrowsing.note.emphasize             "anonymisiert Sie nicht">
 <!ENTITY aboutPrivateBrowsing.note.after                 " im Internet. Ihr Arbeitgeber oder Ihr Internetanbieter können weiterhin verfolgen, welche Seiten Sie besuchen.">

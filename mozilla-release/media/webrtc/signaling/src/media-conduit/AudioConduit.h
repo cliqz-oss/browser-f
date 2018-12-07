@@ -185,7 +185,6 @@ public:
                       mDtmfEnabled(false),
                       mCodecMutex("AudioConduit codec db"),
                       mCaptureDelay(150),
-                      mLastTimestamp(0),
                       mSamples(0),
                       mLastSyncLog(0)
   {
@@ -203,7 +202,7 @@ public:
    *   this list should contain only a single ssrc.
    */
   bool SetLocalSSRCs(const std::vector<unsigned int>& aSSRCs) override;
-  std::vector<unsigned int> GetLocalSSRCs() const override;
+  std::vector<unsigned int> GetLocalSSRCs() override;
   bool SetRemoteSSRC(unsigned int ssrc) override
   {
     return false;
@@ -338,8 +337,6 @@ private:
 
   // Current "capture" delay (really output plus input delay)
   int32_t mCaptureDelay;
-
-  uint32_t mLastTimestamp;
 
   webrtc::AudioFrame mAudioFrame; // for output pulls
 

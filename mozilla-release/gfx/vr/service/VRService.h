@@ -8,8 +8,8 @@
 #define GFX_VR_SERVICE_VRSERVICE_H
 
 #include "mozilla/Atomics.h"
-
 #include "moz_external_vr.h"
+#include "base/process.h" // for base::ProcessHandle
 
 namespace base {
 class Thread;
@@ -19,12 +19,15 @@ namespace gfx {
 
 class VRSession;
 
+static const int kVRFrameTimingHistoryDepth = 100;
+
 class VRService
 {
 public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(VRService)
   static already_AddRefed<VRService> Create();
 
+  void Refresh();
   void Start();
   void Stop();
   VRExternalShmem* GetAPIShmem();
@@ -51,6 +54,7 @@ private:
    * mBrowserState is memcpy'ed from the Shmem atomically
    */
   VRBrowserState mBrowserState;
+  int64_t mBrowserGeneration;
 
   UniquePtr<VRSession> mSession;
   base::Thread* mServiceThread;
@@ -58,8 +62,16 @@ private:
 
   VRExternalShmem* MOZ_OWNING_REF mAPIShmem;
   base::ProcessHandle mTargetShmemFile;
+  VRHapticState mLastHapticState[kVRHapticsMaxCount];
+  TimeStamp mFrameStartTime[kVRFrameTimingHistoryDepth];
+  // We store the value of gfxPrefs::VRProcessEnabled() in mVRProcessEnabled.
+  // This allows us to read the value in the VRService destructor, after
+  // gfxPrefs has been shut down.  We should investigate why gfxPrefs
+  // is shutting down earlier - See bug xxx
+  bool mVRProcessEnabled;
 
   bool IsInServiceThread();
+  void UpdateHaptics();
 
   /**
    * The VR Service thread is a state machine that always has one

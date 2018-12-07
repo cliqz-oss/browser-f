@@ -47,11 +47,17 @@ class LIRGeneratorShared
         return gen;
     }
 
-    // Needed to capture the abort error out of the visitInstruction methods.
+    // Abort errors are caught at end of visitInstruction. It is possible for
+    // multiple errors to be detected before the end of visitInstruction. In
+    // this case, we only report the first back to the MIRGenerator.
     bool errored() {
         return gen->getOffThreadStatus().isErr();
     }
     void abort(AbortReason r, const char* message, ...) MOZ_FORMAT_PRINTF(3, 4) {
+        if (errored()) {
+            return;
+        }
+
         va_list ap;
         va_start(ap, message);
         auto reason_ = gen->abortFmt(r, message, ap);
@@ -59,6 +65,10 @@ class LIRGeneratorShared
         gen->setOffThreadStatus(reason_);
     }
     void abort(AbortReason r) {
+        if (errored()) {
+            return;
+        }
+
         auto reason_ = gen->abort(r);
         gen->setOffThreadStatus(reason_);
     }
@@ -257,7 +267,25 @@ class LIRGeneratorShared
     template <typename T> void add(T* ins, MInstruction* mir = nullptr);
 
     void lowerTypedPhiInput(MPhi* phi, uint32_t inputPosition, LBlock* block, size_t lirIndex);
-    void defineTypedPhi(MPhi* phi, size_t lirIndex);
+
+    void definePhiOneRegister(MPhi* phi, size_t lirIndex);
+#ifdef JS_NUNBOX32
+    void definePhiTwoRegisters(MPhi* phi, size_t lirIndex);
+#endif
+
+    void defineTypedPhi(MPhi* phi, size_t lirIndex) {
+        // One register containing the payload.
+        definePhiOneRegister(phi, lirIndex);
+    }
+    void defineUntypedPhi(MPhi* phi, size_t lirIndex) {
+#ifdef JS_NUNBOX32
+        // Two registers: one for the type, one for the payload.
+        definePhiTwoRegisters(phi, lirIndex);
+#else
+        // One register containing the full Value.
+        definePhiOneRegister(phi, lirIndex);
+#endif
+    }
 
     LOsiPoint* popOsiPoint() {
         LOsiPoint* tmp = osiPoint_;

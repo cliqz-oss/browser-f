@@ -102,6 +102,9 @@ def idlTypeNeedsCycleCollection(type):
         raise CycleCollectionUnsupported("Don't know whether to cycle-collect type %s" % type)
 
 
+# TryPreserveWrapper uses the addProperty hook to preserve the wrapper of
+# non-nsISupports cycle collected objects, so if wantsAddProperty is changed
+# to not cover that case then TryPreserveWrapper will need to be changed.
 def wantsAddProperty(desc):
     return (desc.concrete and desc.wrapperCache and not desc.isGlobal())
 
@@ -1683,6 +1686,10 @@ class CGAddPropertyHook(CGAbstractClassHook):
 
     def generate_code(self):
         assert self.descriptor.wrapperCache
+        # This hook is also called by TryPreserveWrapper on non-nsISupports
+        # cycle collected objects, so if addProperty is ever changed to do
+        # anything more or less than preserve the wrapper, TryPreserveWrapper
+        # will need to be changed.
         return dedent("""
             // We don't want to preserve if we don't have a wrapper, and we
             // obviously can't preserve if we're not initialized.
@@ -5911,12 +5918,13 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
         return handleJSObjectType(type, isMember, failureCode, exceptionCode, sourceDescription)
 
     if type.isDictionary():
-        # There are no nullable dictionary arguments or dictionary members
+        # There are no nullable dictionary-typed arguments or dictionary-typed
+        # dictionary members.
         assert(not type.nullable() or isCallbackReturnValue or
                (isMember and isMember != "Dictionary"))
-        # All optional dictionaries always have default values, so we
-        # should be able to assume not isOptional here.
-        assert not isOptional
+        # All optional dictionary-typed arguments always have default values,
+        # but dictionary-typed dictionary members can be optional.
+        assert not isOptional or isMember == "Dictionary"
         # In the callback return value case we never have to worry
         # about a default value; we always have a value.
         assert not isCallbackReturnValue or defaultValue is None
@@ -5997,7 +6005,8 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
             declArgs = None
 
         return JSToNativeConversionInfo(template, declType=declType,
-                                        declArgs=declArgs)
+                                        declArgs=declArgs,
+                                        dealWithOptional=isOptional)
 
     if type.isVoid():
         assert not isOptional
@@ -7207,7 +7216,20 @@ class CGCallGenerator(CGThing):
         if not static:
             call = CGWrapper(call, pre="%s->" % object)
         call = CGList([call, CGWrapper(args, pre="(", post=")")])
-        if resultConversion is not None:
+        if ((returnType is None or returnType.isVoid() or
+             resultOutParam is not None) and
+            # This check for TreeBoxObject is here due to bug 1434641.  Once
+            # nsITreeBoxObject is gone, it can go away.
+            descriptor.name != "TreeBoxObject"):
+            assert resultConversion is None
+            call = CGList([
+                CGWrapper(
+                    call,
+                    pre=("// NOTE: This assert does NOT call the function.\n"
+                         "static_assert(mozilla::IsVoid<decltype("),
+                    post=')>::value, "Should be returning void here");'),
+                call], "\n")
+        elif resultConversion is not None:
             call = CGList([resultConversion, CGWrapper(call, pre="(", post=")")])
         if resultVar is None and result is not None:
             needResultDecl = True
@@ -13986,6 +14008,7 @@ class CGBindingRoot(CGThing):
                    callbacks)
         bindingHeaders["mozilla/dom/BindingUtils.h"] = hasCode
         bindingHeaders["mozilla/OwningNonNull.h"] = hasCode
+        bindingHeaders["mozilla/TypeTraits.h"] = hasCode
         bindingHeaders["mozilla/dom/BindingDeclarations.h"] = (
             not hasCode and enums)
 

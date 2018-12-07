@@ -159,6 +159,14 @@ a more complex example like:
 The above, of course, is a particular selection of complex strings intended to exemplify
 the new features and concepts introduced by Fluent.
 
+.. important::
+
+  While in Fluent it’s possible to use both lowercase and uppercase characters in message
+  identifiers, the naming convention in Gecko is to use lowercase and hyphens, avoiding
+  CamelCase and underscores. For example, `allow-button` should be preferred to
+  `allow_button` or `allowButton`, unless there are technically constraints – like
+  identifiers generated at run-time from external sources – that make this impractical.
+
 In order to ensure the quality of the output, a lot of new checks and tooling
 has been added to the build system.
 `Pontoon`_, the main localization tool used to translate Firefox, has been rebuilding
@@ -484,7 +492,7 @@ At the moment Fluent supports two formatters that match JS Intl API counterparts
 
 With time more formatters will be added.
 
-__ http://projectfluent.org/fluent/guide/functions.html#partial-arguments
+__ https://projectfluent.org/fluent/guide/functions.html#partial-arguments
 __ https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/NumberFormat
 __ https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DateTimeFormat
 
@@ -507,27 +515,15 @@ register the browser's `/localization/` directory and make all files inside it
 available to be referenced.
 
 To make the document localized using Fluent, all the developer has to do is add
-a single polyfill for the Fluent API to the source and list the resources
-that will be used:
+localizable resources for Fluent API to use:
 
 .. code-block:: html
 
   <link rel="localization" href="branding/brand.ftl"/>
   <link rel="localization" href="browser/preferences/preferences.ftl"/>
-  <script src="chrome://global/content/l10n.js"></script>
-
-For performance reasons the :html:`<link/>` elements have to be specified above the
-:html:`<script/>`, and the :html:`<script/>` itself has to be synchronous in order to ensure
-that the localization happens before first paint.
-
-This allows Fluent to trigger asynchronous resource loading early enough to
-perform the initial DOM translation before the initial layout.
 
 The URI provided to the :html:`<link/>` element are relative paths within the localization
 system.
-
-Notice that only the registration of the script is synchronous. All the I/O and
-translation happen asynchronously.
 
 
 Custom Contexts
@@ -660,6 +656,7 @@ select the strategy to be used:
 
    This strategy replaces all Latin characters with their 180 degree rotated versions
    and enforces right to left text flow using Unicode UAX#9 `Explicit Directional Embeddings`__.
+   In this mode, the UI directionality will also be set to right-to-left.
 
 __ https://www.unicode.org/reports/tr9/#Explicit_Directional_Embeddings
 
@@ -671,11 +668,10 @@ since the class and file names may show up during debugging or profiling,
 below is a list of major components, each with a corresponding file in `/intl/l10n`
 modules in Gecko.
 
-
-MessageContext
+FluentBundle
 --------------
 
-MessageContext is the lowest level API. It's fully synchronous, contains a parser for the
+FluentBundle is the lowest level API. It's fully synchronous, contains a parser for the
 FTL file format and a resolver for the logic. It is not meant to be used by
 consumers directly.
 
@@ -688,7 +684,7 @@ That part of the codebase is also the first that we'll be looking to port to Rus
 Localization
 ------------
 
-Localization is a higher level API which uses :js:`MessageContext` internally but
+Localization is a higher level API which uses :js:`FluentBundle` internally but
 provides a full layer of compound message formatting and robust error fall-backing.
 
 It is intended for use in runtime code and contains all fundamental localization
@@ -701,25 +697,28 @@ DOMLocalization
 DOMLocalization extends :js:`Localization` with functionality to operate on HTML, XUL
 and the DOM directly including DOM Overlays and Mutation Observers.
 
+mozDOMLocalization
+------------------
 
-l10n.js
--------
+mozDOMLocalization is a wrapper on DOMLocalization which exposes it via XPIDL
+to allow DocumentL10n and nsIDocument to communicate with it.
 
-l10n.js is a small runtime code which fetches the :html:`<link>` elements specified
-in the document and initializes the main :js:`DOMLocalization` context
-on :js:`document.l10n`.
+DocumentL10n
+------------
 
+DocumentL10n implements the DocumentL10n WebIDL API and allows nsIDocument
+to communicate with mozDOMLocalization.
 
 L10nRegistry
 ------------
 
 L10nRegistry is our resource management service. It replaces :js:`ChromeRegistry` and
 maintains the state of resources packaged into the build and language packs,
-providing an asynchronous iterator of :js:`MessageContext` objects for a given locale set
+providing an asynchronous iterator of :js:`FluentBundle` objects for a given locale set
 and resources that the :js:`Localization` class uses.
 
 
-.. _Fluent: http://projectfluent.org/
+.. _Fluent: https://projectfluent.org/
 .. _DTD: https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Tutorial/Localization
 .. _StringBundle: https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Tutorial/Property_Files
 .. _Firefox Preferences: https://bugzilla.mozilla.org/show_bug.cgi?id=1415730
@@ -728,6 +727,6 @@ and resources that the :js:`Localization` class uses.
 .. _CLDR: http://cldr.unicode.org/
 .. _ICU: http://site.icu-project.org/
 .. _Unicode: https://www.unicode.org/
-.. _Fluent Syntax Guide: http://projectfluent.org/fluent/guide/
+.. _Fluent Syntax Guide: https://projectfluent.org/fluent/guide/
 .. _Pontoon: https://pontoon.mozilla.org/
 .. _Plural Rules: http://cldr.unicode.org/index/cldr-spec/plural-rules

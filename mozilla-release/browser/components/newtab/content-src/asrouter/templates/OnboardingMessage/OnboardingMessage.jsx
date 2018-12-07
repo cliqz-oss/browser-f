@@ -12,7 +12,7 @@ class OnboardingCard extends React.PureComponent {
     const ping = {
       event: "CLICK_BUTTON",
       message_id: props.id,
-      id: props.UISurface
+      id: props.UISurface,
     };
     props.sendUserActionTelemetry(ping);
     props.onAction(props.content.button_action);
@@ -40,8 +40,9 @@ class OnboardingCard extends React.PureComponent {
 export class OnboardingMessage extends React.PureComponent {
   render() {
     const {props} = this;
+    const {button_label, header} = props.extraTemplateStrings;
     return (
-      <ModalOverlay {...props} button_label={"Start Browsing"} title={"Welcome to Firefox"}>
+      <ModalOverlay {...props} button_label={button_label} title={header}>
         <div className="onboardingMessageContainer">
           {props.bundle.map(message => (
             <OnboardingCard key={message.id}

@@ -236,10 +236,6 @@ if not CONFIG["MOZ_DEBUG"] and CONFIG["OS_TARGET"] == "OpenBSD":
 
     DEFINES["_FORTIFY_SOURCE"] = "2"
 
-if CONFIG["MOZ_DEBUG"] == "1" and CONFIG["OS_TARGET"] == "WINNT":
-
-    DEFINES["_HAS_ITERATOR_DEBUGGING"] = "0"
-
 if CONFIG["CPU_ARCH"] == "aarch64" and CONFIG["OS_TARGET"] == "Android":
 
     UNIFIED_SOURCES += [
@@ -253,6 +249,14 @@ if CONFIG["CPU_ARCH"] == "x86" and CONFIG["OS_TARGET"] == "Android":
     CFLAGS += [
         "-msse2"
     ]
+
+    UNIFIED_SOURCES += [
+        "/media/webrtc/trunk/webrtc/common_audio/signal_processing/complex_bit_reverse.c",
+        "/media/webrtc/trunk/webrtc/common_audio/signal_processing/filter_ar_fast_q12.c",
+        "/media/webrtc/trunk/webrtc/common_audio/signal_processing/spl_sqrt_floor.c"
+    ]
+
+if CONFIG["CPU_ARCH"] == "x86_64" and CONFIG["OS_TARGET"] == "Android":
 
     UNIFIED_SOURCES += [
         "/media/webrtc/trunk/webrtc/common_audio/signal_processing/complex_bit_reverse.c",

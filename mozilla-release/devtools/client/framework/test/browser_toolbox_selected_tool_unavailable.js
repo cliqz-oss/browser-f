@@ -20,15 +20,15 @@ const testToolDefinition = {
         toolbox: toolbox,
         isReady: true,
         destroy: () => {},
-        panelDoc: iframeWindow.document
+        panelDoc: iframeWindow.document,
     };
-  }
+  },
 };
 
 add_task(async function() {
   gDevTools.registerTool(testToolDefinition);
   let tab = await addTab("about:blank");
-  let target = TargetFactory.forTab(tab);
+  let target = await TargetFactory.forTab(tab);
 
   let toolbox = await gDevTools.showToolbox(target, testToolDefinition.id);
   is(toolbox.currentToolId, "testTool", "test-tool was selected");
@@ -37,7 +37,7 @@ add_task(async function() {
   // Make the previously selected tool unavailable.
   testToolDefinition.isTargetSupported = () => false;
 
-  target = TargetFactory.forTab(tab);
+  target = await TargetFactory.forTab(tab);
   toolbox = await gDevTools.showToolbox(target);
   is(toolbox.currentToolId, "webconsole", "web console was selected");
 

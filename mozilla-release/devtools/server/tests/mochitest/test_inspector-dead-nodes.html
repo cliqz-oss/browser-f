@@ -23,18 +23,10 @@ let gDoc = null;
 
 addAsyncTest(async function() {
   const url = document.getElementById("inspectorContent").href;
-
-  const def = defer();
-  attachURL(url, function(err, client, tab, doc) {
-    def.resolve({client, tab, doc});
-  });
-  const {client, tab, doc} = await def.promise;
+  const { target, doc } = await attachURL(url);
   gDoc = doc;
-
-  const {InspectorFront} = require("devtools/shared/fronts/inspector");
-  const inspector = InspectorFront(client, tab);
+  const inspector = target.getInspector();
   gWalker = await inspector.getWalker();
-
   runNextTest();
 });
 

@@ -87,57 +87,6 @@ Distance(Point aA, Point aB)
   return hypotf(aB.x - aA.x, aB.y - aA.y);
 }
 
-static inline int
-BytesPerPixel(SurfaceFormat aFormat)
-{
-  switch (aFormat) {
-  case SurfaceFormat::A8:
-    return 1;
-  case SurfaceFormat::R5G6B5_UINT16:
-  case SurfaceFormat::A16:
-    return 2;
-  case SurfaceFormat::R8G8B8:
-  case SurfaceFormat::B8G8R8:
-    return 3;
-  case SurfaceFormat::HSV:
-  case SurfaceFormat::Lab:
-    return 3 * sizeof(float);
-  case SurfaceFormat::Depth:
-    return sizeof(uint16_t);
-  default:
-    return 4;
-  }
-}
-
-static inline SurfaceFormat
-SurfaceFormatForAlphaBitDepth(uint32_t aBitDepth)
-{
-  if (aBitDepth == 8) {
-    return SurfaceFormat::A8;
-  } else if (aBitDepth == 10 ||
-             aBitDepth == 12) {
-    return SurfaceFormat::A16;
-  }
-  MOZ_ASSERT_UNREACHABLE("Unsupported alpha bit depth");
-  return SurfaceFormat::UNKNOWN;
-}
-
-static inline bool
-IsOpaqueFormat(SurfaceFormat aFormat) {
-  switch (aFormat) {
-    case SurfaceFormat::B8G8R8X8:
-    case SurfaceFormat::R8G8B8X8:
-    case SurfaceFormat::X8R8G8B8:
-    case SurfaceFormat::YUV:
-    case SurfaceFormat::NV12:
-    case SurfaceFormat::YUV422:
-    case SurfaceFormat::R5G6B5_UINT16:
-      return true;
-    default:
-      return false;
-  }
-}
-
 template<typename T, int alignment = 16>
 struct AlignedArray
 {

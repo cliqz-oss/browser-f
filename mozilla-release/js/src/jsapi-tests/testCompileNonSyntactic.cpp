@@ -21,8 +21,9 @@ struct OffThreadTask
 
     OffThreadToken* waitUntilDone(JSContext* cx)
     {
-        if (OffThreadParsingMustWaitForGC(cx->runtime()))
+        if (OffThreadParsingMustWaitForGC(cx->runtime())) {
             js::gc::FinishGC(cx);
+        }
 
         AutoLockMonitor alm(monitor);
         while (!token) {
@@ -70,21 +71,19 @@ testCompile(bool nonSyntactic)
     static_assert(sizeof(src_16) / sizeof(*src_16) - 1 == length,
                   "Source buffers must be same length");
 
-
-    JS::SourceBufferHolder buf(src_16, length, JS::SourceBufferHolder::NoOwnership);
-
     JS::CompileOptions options(cx);
     options.setNonSyntacticScope(nonSyntactic);
 
     JS::RootedScript script(cx);
 
+    JS::SourceBufferHolder buf(src_16, length, JS::SourceBufferHolder::NoOwnership);
 
     // Check explicit non-syntactic compilation first to make sure it doesn't
     // modify our options object.
     CHECK(CompileForNonSyntacticScope(cx, options, buf, &script));
     CHECK_EQUAL(script->hasNonSyntacticScope(), true);
 
-    CHECK(CompileForNonSyntacticScope(cx, options, src, length, &script));
+    CHECK(CompileLatin1ForNonSyntacticScope(cx, options, src, length, &script));
     CHECK_EQUAL(script->hasNonSyntacticScope(), true);
 
     {
@@ -97,7 +96,7 @@ testCompile(bool nonSyntactic)
     CHECK(Compile(cx, options, buf, &script));
     CHECK_EQUAL(script->hasNonSyntacticScope(), nonSyntactic);
 
-    CHECK(Compile(cx, options, src, length, &script));
+    CHECK(CompileLatin1(cx, options, src, length, &script));
     CHECK_EQUAL(script->hasNonSyntacticScope(), nonSyntactic);
 
     {

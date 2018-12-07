@@ -10,6 +10,11 @@
 #include <stdint.h>
 #include "nsStringFwd.h"
 
+#if defined(ANDROID)
+#include "nsTArray.h"
+#include "nsRect.h"
+#endif
+
 namespace mozilla {
 namespace a11y {
 
@@ -114,10 +119,18 @@ void ProxyVirtualCursorChangeEvent(ProxyAccessible* aTarget,
                                    int16_t aReason, int16_t aBoundaryType,
                                    bool aFromUser);
 
-void ProxyScrollingEvent(ProxyAccessible* aTarget,
+void ProxyScrollingEvent(ProxyAccessible* aTarget, uint32_t aEventType,
                          uint32_t aScrollX, uint32_t aScrollY,
                          uint32_t aMaxScrollX, uint32_t aMaxScrollY);
+
+class BatchData;
+
+void ProxyBatch(ProxyAccessible* aDocument,
+                const uint64_t aBatchType,
+                const nsTArray<ProxyAccessible*>& aAccessibles,
+                const nsTArray<BatchData>& aData);
 #endif
+
 } // namespace a11y
 } // namespace mozilla
 

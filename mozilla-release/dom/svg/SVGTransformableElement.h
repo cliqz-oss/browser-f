@@ -26,8 +26,8 @@ struct SVGBoundingBoxOptions;
 class SVGTransformableElement : public nsSVGElement
 {
 public:
-  explicit SVGTransformableElement(already_AddRefed<dom::NodeInfo>& aNodeInfo)
-    : nsSVGElement(aNodeInfo) {}
+  explicit SVGTransformableElement(already_AddRefed<dom::NodeInfo>&& aNodeInfo)
+    : nsSVGElement(std::move(aNodeInfo)) {}
   virtual ~SVGTransformableElement() {}
 
   virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override = 0;
@@ -63,7 +63,7 @@ public:
 
   virtual nsSVGAnimatedTransformList*
     GetAnimatedTransformList(uint32_t aFlags = 0) override;
-  virtual nsAtom* GetTransformListAttrName() const override {
+  virtual nsStaticAtom* GetTransformListAttrName() const override {
     return nsGkAtoms::transform;
   }
 

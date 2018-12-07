@@ -14,7 +14,7 @@ const GRID_FRAGMENT_DATA = {
       name: "header",
       rowEnd: 2,
       rowStart: 1,
-      type: "explicit"
+      type: "explicit",
     },
     {
       columnEnd: 2,
@@ -22,7 +22,7 @@ const GRID_FRAGMENT_DATA = {
       name: "sidebar",
       rowEnd: 3,
       rowStart: 2,
-      type: "explicit"
+      type: "explicit",
     },
     {
       columnEnd: 3,
@@ -30,8 +30,8 @@ const GRID_FRAGMENT_DATA = {
       name: "content",
       rowEnd: 3,
       rowStart: 2,
-      type: "explicit"
-    }
+      type: "explicit",
+    },
   ],
   cols: {
     lines: [
@@ -39,35 +39,35 @@ const GRID_FRAGMENT_DATA = {
         breadth: 0,
         names: ["col-1", "col-start-1", "sidebar-start"],
         number: 1,
-        start: 0
+        start: 0,
       },
       {
         breadth: 0,
         names: ["col-2", "header-start", "sidebar-end", "content-start"],
         number: 2,
-        start: 100
+        start: 100,
       },
       {
         breadth: 0,
         names: ["header-end", "content-end"],
         number: 3,
-        start: 200
-      }
+        start: 200,
+      },
     ],
     tracks: [
       {
         breadth: 100,
         start: 0,
         state: "static",
-        type: "explicit"
+        type: "explicit",
       },
       {
         breadth: 100,
         start: 100,
         state: "static",
-        type: "explicit"
-      }
-    ]
+        type: "explicit",
+      },
+    ],
   },
   rows: {
     lines: [
@@ -75,40 +75,40 @@ const GRID_FRAGMENT_DATA = {
         breadth: 0,
         names: ["header-start"],
         number: 1,
-        start: 0
+        start: 0,
       },
       {
         breadth: 0,
         names: ["header-end", "sidebar-start", "content-start"],
         number: 2,
-        start: 100
+        start: 100,
       },
       {
         breadth: 0,
         names: ["sidebar-end", "content-end"],
         number: 3,
-        start: 200
-      }
+        start: 200,
+      },
     ],
     tracks: [
       {
         breadth: 100,
         start: 0,
         state: "static",
-        type: "explicit"
+        type: "explicit",
       },
       {
         breadth: 100,
         start: 100,
         state: "static",
-        type: "explicit"
-      }
-    ]
-  }
+        type: "explicit",
+      },
+    ],
+  },
 };
 
 add_task(async function() {
-  const { client, walker, layout } =
+  const { target, walker, layout } =
     await initLayoutFrontForUrl(MAIN_DOMAIN + "grid.html");
   const grids = await layout.getGrids(walker.rootNode);
   const grid = grids[0];
@@ -129,6 +129,6 @@ add_task(async function() {
     ok(false, "Did not get grid container node front.");
   }
 
-  await client.close();
+  await target.destroy();
   gBrowser.removeCurrentTab();
 });

@@ -245,12 +245,6 @@ LocalStorageCache::ProcessUsageDelta(uint32_t aGetDataSetIndex,
                                      const int64_t aDelta,
                                      const MutationSource aSource)
 {
-  // Check if we are in a low disk space situation
-  if (aSource == ContentMutation &&
-      aDelta > 0 && mManager && mManager->IsLowDiskSpace()) {
-    return false;
-  }
-
   // Check limit per this origin
   Data& data = mData[aGetDataSetIndex];
   uint64_t newOriginUsage = data.mOriginQuotaUsage + aDelta;
@@ -430,7 +424,7 @@ LocalStorageCache::SetItem(const LocalStorage* aStorage, const nsAString& aKey,
            static_cast<int64_t>(aOld.Length());
 
   if (!ProcessUsageDelta(aStorage, delta, aSource)) {
-    return NS_ERROR_DOM_QUOTA_REACHED;
+    return NS_ERROR_DOM_QUOTA_EXCEEDED_ERR;
   }
 
   if (aValue == aOld && DOMStringIsNull(aValue) == DOMStringIsNull(aOld)) {

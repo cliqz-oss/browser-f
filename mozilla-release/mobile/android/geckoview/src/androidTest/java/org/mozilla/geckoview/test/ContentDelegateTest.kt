@@ -6,8 +6,10 @@ package org.mozilla.geckoview.test
 
 import android.app.assist.AssistStructure
 import android.os.Build
+import org.mozilla.geckoview.AllowOrDeny
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.GeckoSession.NavigationDelegate.LoadRequest
 import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.AssertCalled
 import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.IgnoreCrash
 import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.ReuseSession
@@ -54,8 +56,9 @@ class ContentDelegateTest : BaseSessionTest() {
         sessionRule.waitUntilCalled(object : Callbacks.NavigationDelegate, Callbacks.ContentDelegate {
 
             @AssertCalled(count = 2)
-            override fun onLoadRequest(session: GeckoSession, uri: String,
-                                       where: Int, flags: Int): GeckoResult<Boolean>? {
+            override fun onLoadRequest(session: GeckoSession,
+                                       request: LoadRequest):
+                                       GeckoResult<AllowOrDeny>? {
                 return null
             }
 
@@ -424,10 +427,10 @@ class ContentDelegateTest : BaseSessionTest() {
         })
         assertThat("Should have one focused field",
                    countAutoFillNodes({ it.isFocused }), equalTo(1))
-        // The focused field, its siblings, and its parent should be visible.
-        assertThat("Should have at least six visible fields",
+        // The focused field, its siblings, its parent, and the root node should be visible.
+        assertThat("Should have seven visible nodes",
                    countAutoFillNodes({ node -> node.width > 0 && node.height > 0 }),
-                   greaterThanOrEqualTo(6))
+                   equalTo(7))
 
         mainSession.evaluateJS("$('#pass1').blur()")
         sessionRule.waitUntilCalled(object : Callbacks.TextInputDelegate {

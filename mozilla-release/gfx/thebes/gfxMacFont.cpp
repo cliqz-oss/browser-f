@@ -7,6 +7,7 @@
 
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Sprintf.h"
+#include "mozilla/StaticPrefs.h"
 
 #include "gfxCoreTextShaper.h"
 #include <algorithm>
@@ -136,7 +137,7 @@ gfxMacFont::gfxMacFont(const RefPtr<UnscaledFontMac>& aUnscaledFont,
         char warnBuf[1024];
         SprintfLiteral(warnBuf,
                        "Failed to create Cairo font face: %s status: %d",
-                       NS_ConvertUTF16toUTF8(GetName()).get(), cairoerr);
+                       GetName().get(), cairoerr);
         NS_WARNING(warnBuf);
 #endif
         return;
@@ -149,8 +150,11 @@ gfxMacFont::gfxMacFont(const RefPtr<UnscaledFontMac>& aUnscaledFont,
     cairo_font_options_t *fontOptions = cairo_font_options_create();
 
     // turn off font anti-aliasing based on user pref setting
-    if (mAdjustedSize <=
-        (gfxFloat)gfxPlatformMac::GetPlatform()->GetAntiAliasingThreshold()) {
+    if ((mAdjustedSize <=
+         (gfxFloat)gfxPlatformMac::GetPlatform()->GetAntiAliasingThreshold()) ||
+        // Turn off AA for Ahem for testing purposes when requested.
+        MOZ_UNLIKELY(StaticPrefs::gfx_font_ahem_antialias_none() &&
+                     mFontEntry->FamilyName().EqualsLiteral("Ahem"))) {
         cairo_font_options_set_antialias(fontOptions, CAIRO_ANTIALIAS_NONE);
         mAntialiasOption = kAntialiasNone;
     } else if (mStyle.useGrayscaleAntialiasing) {
@@ -168,7 +172,7 @@ gfxMacFont::gfxMacFont(const RefPtr<UnscaledFontMac>& aUnscaledFont,
 #ifdef DEBUG
         char warnBuf[1024];
         SprintfLiteral(warnBuf, "Failed to create scaled font: %s status: %d",
-                       NS_ConvertUTF16toUTF8(GetName()).get(), cairoerr);
+                       GetName().get(), cairoerr);
         NS_WARNING(warnBuf);
 #endif
     }
@@ -313,7 +317,7 @@ gfxMacFont::InitMetrics()
         char warnBuf[1024];
         SprintfLiteral(warnBuf,
                        "Bad font metrics for: %s (invalid unitsPerEm value)",
-                       NS_ConvertUTF16toUTF8(mFontEntry->Name()).get());
+                       mFontEntry->Name().get());
         NS_WARNING(warnBuf);
 #endif
         return;

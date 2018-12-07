@@ -28,8 +28,8 @@ window.onload = function() {
     "set": [
       // Always log packets when running tests.
       ["devtools.debugger.log", true],
-      ["dom.mozBrowserFramesEnabled", true]
-    ]
+      ["dom.mozBrowserFramesEnabled", true],
+    ],
   }, runTests);
 };
 
@@ -47,6 +47,7 @@ function runTests() {
     /* eslint-disable no-shadow */
     const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
     const { DebuggerServer } = require("devtools/server/main");
+    const { ActorRegistry } = require("devtools/server/actors/utils/actor-registry");
     /* eslint-enable no-shadow */
 
     DebuggerServer.init();
@@ -62,12 +63,12 @@ function runTests() {
       },
       hello: function() {
         return {msg: "world"};
-      }
+      },
     };
     TestActor.prototype.requestTypes = {
-      "hello": TestActor.prototype.hello
+      "hello": TestActor.prototype.hello,
     };
-    DebuggerServer.addTargetScopedActor({
+    ActorRegistry.addTargetScopedActor({
       constructorName: "TestActor",
       constructorFun: TestActor,
     }, "testActor");

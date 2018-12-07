@@ -3,7 +3,7 @@ import {
   addSnippetsSubscriber,
   SNIPPETS_UPDATE_INTERVAL_MS,
   SnippetsMap,
-  SnippetsProvider
+  SnippetsProvider,
 } from "content-src/lib/snippets.js";
 import {combineReducers, createStore} from "redux";
 import {GlobalOverrider} from "test/unit/utils";
@@ -140,13 +140,6 @@ describe("SnippetsMap", () => {
       assert.equal(dispatch.firstCall.args[0].type, at.SHOW_FIREFOX_ACCOUNTS);
     });
   });
-  describe("#disableOnboarding", () => {
-    it("should dispatch a DISABLE_ONBOARDING action", () => {
-      snippetsMap.disableOnboarding();
-      assert.calledOnce(dispatch);
-      assert.equal(dispatch.firstCall.args[0].type, at.DISABLE_ONBOARDING);
-    });
-  });
   describe("#getTotalBookmarksCount", () => {
     it("should dispatch a TOTAL_BOOKMARKS_REQUEST and resolve with the right data", async () => {
       const bookmarksPromise = snippetsMap.getTotalBookmarksCount();
@@ -264,15 +257,6 @@ describe("SnippetsProvider", () => {
       assert.calledOnce(spy);
       window.removeEventListener("Snippets:Enabled", spy);
     });
-    it("should show the onboarding element if it exists", async () => {
-      const fakeEl = {style: {display: "none"}};
-      sandbox.stub(global.document, "getElementById").returns(fakeEl);
-      snippets = new SnippetsProvider(dispatch);
-
-      await snippets.init({connect: false});
-
-      assert.equal(fakeEl.style.display, "");
-    });
     it("should add a message listener for incoming messages", async () => {
       await snippets.init({connect: false});
       assert.calledWith(global.RPMAddMessageListener, INCOMING_MESSAGE_NAME, snippets._onAction);
@@ -297,11 +281,6 @@ describe("SnippetsProvider", () => {
       snippets.uninit();
       assert.calledOnce(spy);
       window.removeEventListener("Snippets:Disabled", spy);
-    });
-    it("should hide the onboarding element if it exists", () => {
-      snippets = new SnippetsProvider(dispatch);
-      snippets.uninit();
-      assert.equal(fakeEl.style.display, "none");
     });
     it("should remove the message listener for incoming messages", () => {
       snippets = new SnippetsProvider(dispatch);
@@ -475,7 +454,7 @@ describe("addSnippetsSubscriber", () => {
     asrIntialized = true,
     allowLegacySnippets = true,
     forceDisablePrefOn = false,
-    userPrefOn = true
+    userPrefOn = true,
   } = {}) {
     [
       // The snippets feed should be initialized;
@@ -487,7 +466,7 @@ describe("addSnippetsSubscriber", () => {
       // Force disable pref is on
       {type: at.PREF_CHANGED, data: {name: "disableSnippets", value: forceDisablePrefOn}},
       // Is the user setting for snippets on?
-      {type: at.PREF_CHANGED, data: {name: "feeds.snippets", value: userPrefOn}}
+      {type: at.PREF_CHANGED, data: {name: "feeds.snippets", value: userPrefOn}},
     ].filter(a => a).forEach(action => store.dispatch(action));
   }
 

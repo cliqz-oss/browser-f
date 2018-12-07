@@ -14,6 +14,7 @@
 #include "mozilla/dom/HTMLCanvasElement.h"
 #include "mozilla/dom/TabChild.h"
 #include "mozilla/EventStateManager.h"
+#include "mozilla/StaticPrefs.h"
 #include "nsIPrincipal.h"
 
 #include "nsGfxCIID.h"
@@ -142,7 +143,8 @@ bool IsImageExtractionAllowed(nsIDocument *aDocument, JSContext *aCx, nsIPrincip
     // At this point, permission is unknown (nsIPermissionManager::UNKNOWN_ACTION).
 
     // Check if the request is in response to user input
-    if (DOMPrefs::EnableAutoDeclineCanvasPrompts() && !EventStateManager::IsHandlingUserInput()) {
+    if (StaticPrefs::privacy_resistFingerprinting_autoDeclineNoUserInputCanvasPrompts() &&
+        !EventStateManager::IsHandlingUserInput()) {
         nsAutoCString message;
         message.AppendPrintf("Blocked %s in page %s from extracting canvas data because no user input was detected.",
                              docURISpec.get(), topLevelDocURISpec.get());
@@ -231,8 +233,9 @@ DoDrawImageSecurityCheck(dom::HTMLCanvasElement *aCanvasElement,
         return;
     }
 
-    if (aCanvasElement->IsWriteOnly())
+    if (aCanvasElement->IsWriteOnly() && !aCanvasElement->mExpandedReader) {
         return;
+    }
 
     // If we explicitly set WriteOnly just do it and get out
     if (forceWriteOnly) {
@@ -249,6 +252,25 @@ DoDrawImageSecurityCheck(dom::HTMLCanvasElement *aCanvasElement,
     if (aCanvasElement->NodePrincipal()->Subsumes(aPrincipal)) {
         // This canvas has access to that image anyway
         return;
+    }
+
+    if (BasePrincipal::Cast(aPrincipal)->AddonPolicy()) {
+        // This is a resource from an extension content script principal.
+
+        if (aCanvasElement->mExpandedReader &&
+            aCanvasElement->mExpandedReader->Subsumes(aPrincipal)) {
+            // This canvas already allows reading from this principal.
+            return;
+        }
+
+        if (!aCanvasElement->mExpandedReader) {
+            // Allow future reads from this same princial only.
+            aCanvasElement->SetWriteOnly(aPrincipal);
+            return;
+        }
+
+        // If we got here, this must be the *second* extension tainting
+        // the canvas.  Fall through to mark it WriteOnly for everyone.
     }
 
     aCanvasElement->SetWriteOnly();

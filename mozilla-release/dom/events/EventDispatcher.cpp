@@ -66,6 +66,10 @@
 using namespace mozilla::tasktracer;
 #endif
 
+#ifdef MOZ_GECKO_PROFILER
+#include "ProfilerMarkerPayload.h"
+#endif
+
 namespace mozilla {
 
 using namespace dom;
@@ -867,7 +871,7 @@ EventDispatcher::Dispatch(nsISupports* aTarget,
     nsCOMPtr<nsIContent> content = do_QueryInterface(target);
     if (content && content->IsInNativeAnonymousSubtree()) {
       nsCOMPtr<EventTarget> newTarget =
-        do_QueryInterface(content->FindFirstNonChromeOnlyAccessContent());
+        content->FindFirstNonChromeOnlyAccessContent();
       NS_ENSURE_STATE(newTarget);
 
       aEvent->mOriginalTarget = target;
@@ -901,10 +905,10 @@ EventDispatcher::Dispatch(nsISupports* aTarget,
       !nsContentUtils::IsSafeToRunScript()) {
     nsCOMPtr<nsINode> node = do_QueryInterface(target);
     if (!node) {
-      // If the target is not a node, just go ahead and assert that this is
-      // unsafe.  There really shouldn't be any other event targets in documents
-      // that are not being rendered or scripted.
-      NS_ERROR("This is unsafe! Fix the caller!");
+      // If the target is not a node, just go ahead and crash. There really
+      // shouldn't be any other event targets in documents that are not being
+      // rendered or scripted.
+      MOZ_CRASH("This is unsafe! Fix the caller!");
     } else {
       // If this is a node, it's possible that this is some sort of DOM tree
       // that is never accessed by script (for example an SVG image or XBL
@@ -920,7 +924,7 @@ EventDispatcher::Dispatch(nsISupports* aTarget,
         if (nsContentUtils::IsChromeDoc(doc)) {
           NS_WARNING("Fix the caller!");
         } else {
-          NS_ERROR("This is unsafe! Fix the caller!");
+          MOZ_CRASH("This is unsafe! Fix the caller!");
         }
       }
     }
@@ -1109,8 +1113,49 @@ EventDispatcher::Dispatch(nsISupports* aTarget,
         EventChainPostVisitor postVisitor(preVisitor);
         MOZ_RELEASE_ASSERT(!aEvent->mPath);
         aEvent->mPath = &chain;
-        EventTargetChainItem::HandleEventTargetChain(chain, postVisitor,
-                                                     aCallback, cd);
+
+#ifdef MOZ_GECKO_PROFILER
+        if (profiler_is_active()) {
+          // Add a profiler label and a profiler marker for the actual
+          // dispatch of the event.
+          // This is a very hot code path, so we need to make sure not to
+          // do this extra work when we're not profiling.
+          if (!postVisitor.mDOMEvent) {
+            // This is tiny bit slow, but happens only once per event.
+            // Similar code also in EventListenerManager.
+            nsCOMPtr<EventTarget> et = aEvent->mOriginalTarget;
+            RefPtr<Event> event = EventDispatcher::CreateEvent(et, aPresContext,
+                                                               aEvent,
+                                                               EmptyString());
+            event.swap(postVisitor.mDOMEvent);
+          }
+          nsAutoString typeStr;
+          postVisitor.mDOMEvent->GetType(typeStr);
+          AUTO_PROFILER_LABEL_DYNAMIC_LOSSY_NSSTRING(
+            "EventDispatcher::Dispatch", OTHER, typeStr);
+
+          profiler_add_marker(
+            "DOMEvent",
+            MakeUnique<DOMEventMarkerPayload>(typeStr,
+                                              aEvent->mTimeStamp,
+                                              "DOMEvent",
+                                              TRACING_INTERVAL_START));
+
+          EventTargetChainItem::HandleEventTargetChain(chain, postVisitor,
+                                                       aCallback, cd);
+
+          profiler_add_marker(
+            "DOMEvent",
+            MakeUnique<DOMEventMarkerPayload>(typeStr,
+                                              aEvent->mTimeStamp,
+                                              "DOMEvent",
+                                              TRACING_INTERVAL_END));
+        } else
+#endif
+        {
+          EventTargetChainItem::HandleEventTargetChain(chain, postVisitor,
+                                                       aCallback, cd);
+        }
         aEvent->mPath = nullptr;
 
         preVisitor.mEventStatus = postVisitor.mEventStatus;

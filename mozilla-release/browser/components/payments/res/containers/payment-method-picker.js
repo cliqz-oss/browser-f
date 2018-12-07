@@ -3,8 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import BasicCardOption from "../components/basic-card-option.js";
+import CscInput from "../components/csc-input.js";
 import RichPicker from "./rich-picker.js";
 import paymentRequest from "../paymentRequest.js";
+/* import-globals-from ../unprivileged-fallbacks.js */
 
 /**
  * <payment-method-picker></payment-method-picker>
@@ -16,12 +18,13 @@ export default class PaymentMethodPicker extends RichPicker {
   constructor() {
     super();
     this.dropdown.setAttribute("option-type", "basic-card-option");
-    this.securityCodeInput = document.createElement("input");
-    this.securityCodeInput.autocomplete = "off";
-    this.securityCodeInput.placeholder = this.dataset.cvvPlaceholder;
-    this.securityCodeInput.size = 3;
-    this.securityCodeInput.classList.add("security-code");
+    this.securityCodeInput = new CscInput();
+    this.securityCodeInput.className = "security-code-container";
+    this.securityCodeInput.placeholder = this.dataset.cscPlaceholder;
+    this.securityCodeInput.backTooltip = this.dataset.cscBackTooltip;
+    this.securityCodeInput.frontTooltip = this.dataset.cscFrontTooltip;
     this.securityCodeInput.addEventListener("change", this);
+    this.securityCodeInput.addEventListener("input", this);
   }
 
   connectedCallback() {
@@ -31,8 +34,6 @@ export default class PaymentMethodPicker extends RichPicker {
 
   get fieldNames() {
     let fieldNames = [...BasicCardOption.recordAttributes];
-    // Type is not a required field though it may be present.
-    fieldNames.splice(fieldNames.indexOf("type"), 1);
     return fieldNames;
   }
 
@@ -73,7 +74,37 @@ export default class PaymentMethodPicker extends RichPicker {
                       `does not exist in the payment method picker`);
     }
 
+    let securityCodeState = state[this.selectedStateKey + "SecurityCode"];
+    if (securityCodeState && securityCodeState != this.securityCodeInput.value) {
+      this.securityCodeInput.defaultValue = securityCodeState;
+    }
+
+    let selectedCardType = (basicCards[selectedPaymentCardGUID] &&
+                            basicCards[selectedPaymentCardGUID]["cc-type"]) || "";
+    this.securityCodeInput.cardType = selectedCardType;
+
     super.render(state);
+  }
+
+  errorForSelectedOption(state) {
+    let superError = super.errorForSelectedOption(state);
+    if (superError) {
+      return superError;
+    }
+    let selectedOption = this.selectedOption;
+    if (!selectedOption) {
+      return "";
+    }
+
+    let basicCardMethod = state.request.paymentMethods
+      .find(method => method.supportedMethods == "basic-card");
+    let merchantNetworks = basicCardMethod && basicCardMethod.data &&
+                           basicCardMethod.data.supportedNetworks;
+    let acceptedNetworks = merchantNetworks || PaymentDialogUtils.getCreditCardNetworks();
+    let selectedCard = paymentRequest.getBasicCards(state)[selectedOption.value];
+    let isSupported = selectedCard["cc-type"] &&
+                      acceptedNetworks.includes(selectedCard["cc-type"]);
+    return isSupported ? "" : this.dataset.invalidLabel;
   }
 
   get selectedStateKey() {
@@ -82,8 +113,9 @@ export default class PaymentMethodPicker extends RichPicker {
 
   handleEvent(event) {
     switch (event.type) {
+      case "input":
       case "change": {
-        this.onChange(event);
+        this.onInputOrChange(event);
         break;
       }
       case "click": {
@@ -93,7 +125,7 @@ export default class PaymentMethodPicker extends RichPicker {
     }
   }
 
-  onChange({target}) {
+  onInputOrChange({currentTarget}) {
     let selectedKey = this.selectedStateKey;
     let stateChange = {};
 
@@ -101,8 +133,8 @@ export default class PaymentMethodPicker extends RichPicker {
       return;
     }
 
-    switch (target) {
-      case this.dropdown.popupBox: {
+    switch (currentTarget) {
+      case this.dropdown: {
         stateChange[selectedKey] = this.dropdown.value;
         break;
       }
@@ -123,7 +155,9 @@ export default class PaymentMethodPicker extends RichPicker {
       page: {
         id: "basic-card-page",
       },
-      "basic-card-page": {},
+      "basic-card-page": {
+        selectedStateKey: this.selectedStateKey,
+      },
     };
 
     switch (target) {

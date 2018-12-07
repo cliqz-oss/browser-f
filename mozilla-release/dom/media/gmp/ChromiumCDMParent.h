@@ -34,17 +34,18 @@ class ChromiumCDMParent final
   , public GMPCrashHelperHolder
 {
 public:
+  typedef MozPromise<bool, MediaResult, /* IsExclusive = */ true> InitPromise;
+
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(ChromiumCDMParent)
 
   ChromiumCDMParent(GMPContentParent* aContentParent, uint32_t aPluginId);
 
   uint32_t PluginId() const { return mPluginId; }
 
-  bool Init(ChromiumCDMCallback* aCDMCallback,
-            bool aAllowDistinctiveIdentifier,
-            bool aAllowPersistentState,
-            nsIEventTarget* aMainThread,
-            nsCString& aOutFailureReason);
+  RefPtr<InitPromise> Init(ChromiumCDMCallback* aCDMCallback,
+                           bool aAllowDistinctiveIdentifier,
+                           bool aAllowPersistentState,
+                           nsIEventTarget* aMainThread);
 
   void CreateSession(uint32_t aCreateSessionToken,
                      uint32_t aSessionType,
@@ -118,10 +119,6 @@ protected:
     const nsCString& aSessionId,
     const double& aSecondsSinceEpoch) override;
   ipc::IPCResult RecvOnSessionClosed(const nsCString& aSessionId) override;
-  ipc::IPCResult RecvOnLegacySessionError(const nsCString& aSessionId,
-                                          const uint32_t& aError,
-                                          const uint32_t& aSystemCode,
-                                          const nsCString& aMessage) override;
   ipc::IPCResult RecvDecrypted(const uint32_t& aId,
                                const uint32_t& aStatus,
                                ipc::Shmem&& aData) override;
@@ -162,6 +159,8 @@ protected:
   ChromiumCDMCallback* mCDMCallback = nullptr;
   nsDataHashtable<nsUint32HashKey, uint32_t> mPromiseToCreateSessionToken;
   nsTArray<RefPtr<DecryptJob>> mDecrypts;
+
+  MozPromiseHolder<InitPromise> mInitPromise;
 
   MozPromiseHolder<MediaDataDecoder::InitPromise> mInitVideoDecoderPromise;
   MozPromiseHolder<MediaDataDecoder::DecodePromise> mDecodePromise;

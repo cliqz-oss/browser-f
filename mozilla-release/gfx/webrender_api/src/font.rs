@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use app_units::Au;
 #[cfg(target_os = "macos")]
 use core_foundation::string::CFString;
 #[cfg(target_os = "macos")]
@@ -79,7 +80,13 @@ impl FontKey {
     }
 }
 
-
+/// Container for the raw data describing a font. This might be a stream of
+/// bytes corresponding to a downloaded font, or a handle to a native font from
+/// the operating system.
+///
+/// Note that fonts need to be instantiated before being used, which involves
+/// assigning size and various other options. The word 'template' here is
+/// intended to distinguish this data from instance-specific data.
 #[derive(Clone)]
 pub enum FontTemplate {
     Raw(Arc<Vec<u8>>, u32),
@@ -345,6 +352,19 @@ impl FontInstanceKey {
     pub fn new(namespace: IdNamespace, key: u32) -> FontInstanceKey {
         FontInstanceKey(namespace, key)
     }
+}
+
+/// Data corresponding to an instantiation of a font, with size and
+/// other options specified.
+///
+/// Note that the actual font is stored out-of-band in `FontTemplate`.
+#[derive(Clone)]
+pub struct FontInstanceData {
+    pub font_key: FontKey,
+    pub size: Au,
+    pub options: Option<FontInstanceOptions>,
+    pub platform_options: Option<FontInstancePlatformOptions>,
+    pub variations: Vec<FontVariation>,
 }
 
 pub type GlyphIndex = u32;

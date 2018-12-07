@@ -61,12 +61,8 @@ WebRenderLayerManager::Initialize(PCompositorBridgeChild* aCBChild,
   MOZ_ASSERT(aTextureFactoryIdentifier);
 
   LayoutDeviceIntSize size = mWidget->GetClientSize();
-  TextureFactoryIdentifier textureFactoryIdentifier;
-  wr::IdNamespace id_namespace;
   PWebRenderBridgeChild* bridge = aCBChild->SendPWebRenderBridgeConstructor(aLayersId,
-                                                                            size,
-                                                                            &textureFactoryIdentifier,
-                                                                            &id_namespace);
+                                                                            size);
   if (!bridge) {
     // This should only fail if we attempt to access a layer we don't have
     // permission for, or more likely, the GPU process crashed again during
@@ -76,11 +72,20 @@ WebRenderLayerManager::Initialize(PCompositorBridgeChild* aCBChild,
     return false;
   }
 
+  TextureFactoryIdentifier textureFactoryIdentifier;
+  wr::MaybeIdNamespace idNamespace;
+  // Sync ipc
+  bridge->SendEnsureConnected(&textureFactoryIdentifier, &idNamespace);
+  if (textureFactoryIdentifier.mParentBackend == LayersBackend::LAYERS_NONE ||
+      idNamespace.isNothing()) {
+    gfxCriticalNote << "Failed to connect WebRenderBridgeChild.";
+    return false;
+  }
+
   mWrChild = static_cast<WebRenderBridgeChild*>(bridge);
   WrBridge()->SetWebRenderLayerManager(this);
-  WrBridge()->SendCreate(size.ToUnknownSize());
   WrBridge()->IdentifyTextureHost(textureFactoryIdentifier);
-  WrBridge()->SetNamespace(id_namespace);
+  WrBridge()->SetNamespace(idNamespace.ref());
   *aTextureFactoryIdentifier = textureFactoryIdentifier;
   return true;
 }
@@ -149,6 +154,28 @@ WebRenderLayerManager::GetCompositorBridgeChild()
   return WrBridge()->GetCompositorBridgeChild();
 }
 
+uint32_t
+WebRenderLayerManager::StartFrameTimeRecording(int32_t aBufferSize)
+{
+  CompositorBridgeChild* renderer = GetCompositorBridgeChild();
+  if (renderer) {
+    uint32_t startIndex;
+    renderer->SendStartFrameTimeRecording(aBufferSize, &startIndex);
+    return startIndex;
+  }
+  return -1;
+}
+
+void
+WebRenderLayerManager::StopFrameTimeRecording(uint32_t         aStartIndex,
+                                              nsTArray<float>& aFrameIntervals)
+{
+  CompositorBridgeChild* renderer = GetCompositorBridgeChild();
+  if (renderer) {
+    renderer->SendStopFrameTimeRecording(aStartIndex, &aFrameIntervals);
+  }
+}
+
 bool
 WebRenderLayerManager::BeginTransactionWithTarget(gfxContext* aTarget)
 {
@@ -192,11 +219,15 @@ WebRenderLayerManager::EndEmptyTransaction(EndTransactionFlags aFlags)
   // Since we don't do repeat transactions right now, just set the time
   mAnimationReadyTime = TimeStamp::Now();
 
-  if (aFlags & EndTransactionFlags::END_NO_COMPOSITE && 
+  mLatestTransactionId = mTransactionIdAllocator->GetTransactionId(/*aThrottle*/ true);
+
+  if (aFlags & EndTransactionFlags::END_NO_COMPOSITE &&
       !mWebRenderCommandBuilder.NeedsEmptyTransaction() &&
       mPendingScrollUpdates.empty()) {
     MOZ_ASSERT(!mTarget);
     WrBridge()->SendSetFocusTarget(mFocusTarget);
+    // Revoke TransactionId to trigger next paint.
+    mTransactionIdAllocator->RevokeTransactionId(mLatestTransactionId);
     return true;
   }
 
@@ -205,7 +236,6 @@ WebRenderLayerManager::EndEmptyTransaction(EndTransactionFlags aFlags)
 
   mWebRenderCommandBuilder.EmptyTransaction();
 
-  mLatestTransactionId = mTransactionIdAllocator->GetTransactionId(/*aThrottle*/ true);
   TimeStamp refreshStart = mTransactionIdAllocator->GetTransactionStart();
 
   // Skip the synchronization for buffer since we also skip the painting during
@@ -245,10 +275,6 @@ WebRenderLayerManager::EndTransactionWithoutLayer(nsDisplayList* aDisplayList,
 {
   AUTO_PROFILER_TRACING("Paint", "RenderLayers");
 
-#ifdef XP_WIN
-  gfxDWriteFont::UpdateClearTypeUsage();
-#endif
-
   // Since we don't do repeat transactions right now, just set the time
   mAnimationReadyTime = TimeStamp::Now();
 
@@ -259,6 +285,7 @@ WebRenderLayerManager::EndTransactionWithoutLayer(nsDisplayList* aDisplayList,
   wr::DisplayListBuilder builder(WrBridge()->GetPipeline(), contentSize, mLastDisplayListSize);
   wr::IpcResourceUpdateQueue resourceUpdates(WrBridge());
   wr::usize builderDumpIndex = 0;
+  bool containsSVGGroup = false;
   bool dumpEnabled = mWebRenderCommandBuilder.ShouldDumpDisplayList();
   if (dumpEnabled) {
     printf_stderr("-- WebRender display list build --\n");
@@ -278,6 +305,7 @@ WebRenderLayerManager::EndTransactionWithoutLayer(nsDisplayList* aDisplayList,
                                                     contentSize,
                                                     aFilters);
     builderDumpIndex = mWebRenderCommandBuilder.GetBuilderDumpIndex();
+    containsSVGGroup = mWebRenderCommandBuilder.GetContainsSVGGroup();
   } else {
     // ViewToPaint does not have frame yet, then render only background clolor.
     MOZ_ASSERT(!aDisplayListBuilder && aBackground);
@@ -338,7 +366,8 @@ WebRenderLayerManager::EndTransactionWithoutLayer(nsDisplayList* aDisplayList,
   {
     AUTO_PROFILER_TRACING("Paint", "ForwardDPTransaction");
     WrBridge()->EndTransaction(contentSize, dl, resourceUpdates, size.ToUnknownSize(),
-                               mLatestTransactionId, mScrollData, refreshStart, mTransactionStart);
+                               mLatestTransactionId, mScrollData, containsSVGGroup,
+                               refreshStart, mTransactionStart);
   }
 
   mTransactionStart = TimeStamp();
@@ -541,6 +570,12 @@ WebRenderLayerManager::WrUpdated()
 {
   mWebRenderCommandBuilder.ClearCachedResources();
   DiscardLocalImages();
+
+  if (mWidget) {
+    if (dom::TabChild* tabChild = mWidget->GetOwningTabChild()) {
+      tabChild->SchedulePaint();
+    }
+  }
 }
 
 dom::TabGroup*
@@ -615,8 +650,12 @@ WebRenderLayerManager::FlushRendering()
   }
   MOZ_ASSERT(mWidget);
 
-  // When DirectComposition and compositor window are used, we do not need to do sync FlushRendering.
-  if (WrBridge()->GetCompositorUseDComp()) {
+  // If value of IsResizingNativeWidget() is nothing, we assume that resizing might happen.
+  bool resizing = mWidget && mWidget->IsResizingNativeWidget().valueOr(true);
+
+  // Limit async FlushRendering to !resizing and Win DComp.
+  // XXX relax the limitation
+  if (WrBridge()->GetCompositorUseDComp() && !resizing) {
     cBridge->SendFlushRenderingAsync();
   } else if (mWidget->SynchronouslyRepaintOnResize() || gfxPrefs::LayersForceSynchronousResize()) {
     cBridge->SendFlushRendering();

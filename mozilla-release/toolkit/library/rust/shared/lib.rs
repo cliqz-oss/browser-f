@@ -15,6 +15,8 @@ extern crate nserror;
 extern crate xpcom;
 extern crate netwerk_helper;
 extern crate prefs_parser;
+#[cfg(feature = "gecko_profiler")]
+extern crate profiler_helper;
 extern crate mozurl;
 #[cfg(feature = "quantum_render")]
 extern crate webrender_bindings;
@@ -31,6 +33,8 @@ extern crate u2fhid;
 extern crate log;
 extern crate cosec;
 extern crate rsdparsa_capi;
+#[cfg(feature = "spidermonkey_rust")]
+extern crate jsrust_shared;
 
 use std::boxed::Box;
 use std::env;

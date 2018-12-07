@@ -1,4 +1,5 @@
 {
+  "AboutPagesUtils.jsm": ["AboutPagesUtils"],
   "AddonManager.jsm": ["AddonManager", "AddonManagerPrivate"],
   "addons.js": ["AddonsEngine", "AddonValidator"],
   "addons.jsm": ["Addon", "STATE_ENABLED", "STATE_DISABLED"],
@@ -11,7 +12,6 @@
   "AppInfo.jsm": ["newAppInfo", "getAppInfo", "updateAppInfo"],
   "async.js": ["Async"],
   "AsyncSpellCheckTestHelper.jsm": ["onSpellCheck"],
-  "AutoMigrate.jsm": ["AutoMigrate"],
   "Battery.jsm": ["GetBattery", "Battery"],
   "blocklist-clients.js": ["AddonBlocklistClient", "GfxBlocklistClient", "OneCRLBlocklistClient", "PluginBlocklistClient"],
   "blocklist-updater.js": ["checkVersions", "addTestBlocklistClient"],
@@ -208,6 +208,7 @@
   "Traversal.jsm": ["TraversalRules", "TraversalHelper"],
   "UpdateTelemetry.jsm": ["AUSTLMY"],
   "UpdateTopLevelContentWindowIDHelper.jsm": ["trackBrowserWindow"],
+  "UrlbarController.jsm": ["QueryContext", "UrlbarController"],
   "util.js": ["getChromeWindow", "Utils", "Svc", "SerializableSet"],
   "utils.js": ["btoa", "encryptPayload", "makeIdentityConfig", "makeFxAccountsInternalMock", "configureFxAccountIdentity", "configureIdentity", "SyncTestingInfrastructure", "waitForZeroTimer", "Promise", "MockFxaStorageManager", "AccountState", "sumHistogram", "CommonUtils", "CryptoUtils", "TestingUtils", "promiseZeroTimer", "promiseNamedTimer", "getLoginTelemetryScalar", "syncTestLogging"],
   "Utils.jsm": ["Utils", "Logger", "PivotContext", "PrefCache"],

@@ -184,8 +184,9 @@ class Nursery
     MOZ_ALWAYS_INLINE bool isInside(gc::Cell* cellp) const = delete;
     MOZ_ALWAYS_INLINE bool isInside(const void* p) const {
         for (auto chunk : chunks_) {
-            if (uintptr_t(p) - uintptr_t(chunk) < gc::ChunkSize)
+            if (uintptr_t(p) - uintptr_t(chunk) < gc::ChunkSize) {
                 return true;
+            }
         }
         return false;
     }
@@ -291,8 +292,9 @@ class Nursery
     }
     size_t sizeOfMallocedBuffers(mozilla::MallocSizeOf mallocSizeOf) const {
         size_t total = 0;
-        for (MallocedBuffersSet::Range r = mallocedBuffers.all(); !r.empty(); r.popFront())
+        for (MallocedBuffersSet::Range r = mallocedBuffers.all(); !r.empty(); r.popFront()) {
             total += mallocSizeOf(r.front());
+        }
         total += mallocedBuffers.shallowSizeOfExcludingThis(mallocSizeOf);
         return total;
     }
@@ -393,9 +395,6 @@ class Nursery
     unsigned chunkCountLimit_;
 
     mozilla::TimeDuration timeInChunkAlloc_;
-
-    /* Promotion rate for the previous minor collection. */
-    float previousPromotionRate_;
 
     /* Report minor collections taking at least this long, if enabled. */
     mozilla::TimeDuration profileThreshold_;
@@ -510,7 +509,14 @@ class Nursery
         return *chunks_[index];
     }
 
-    void setCurrentChunk(unsigned chunkno);
+    /*
+     * Set the current chunk. This updates the currentChunk_, position_
+     * currentEnd_ and currentStringEnd_ values as approprite. It'll also
+     * poison the chunk, either a portion of the chunk if it is already the
+     * current chunk, or the whole chunk if fullPoison is true or it is not
+     * the current chunk.
+     */
+    void setCurrentChunk(unsigned chunkno, bool fullPoison = false);
     void setStartPosition();
 
     /*

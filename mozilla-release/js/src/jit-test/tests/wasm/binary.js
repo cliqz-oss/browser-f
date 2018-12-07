@@ -47,9 +47,9 @@ assertErrorMessage(() => wasmEval(toU8(moduleHeaderThen(codeId))), CompileError,
 assertErrorMessage(() => wasmEval(toU8(moduleHeaderThen(dataId))), CompileError, sectionError("data"));
 
 // unknown sections are unconditionally rejected
-assertErrorMessage(() => wasmEval(toU8(moduleHeaderThen(42))), CompileError, unknownSection);
-assertErrorMessage(() => wasmEval(toU8(moduleHeaderThen(42, 0))), CompileError, unknownSection);
-assertErrorMessage(() => wasmEval(toU8(moduleHeaderThen(42, 1, 0))), CompileError, unknownSection);
+assertErrorMessage(() => wasmEval(toU8(moduleHeaderThen(37))), CompileError, unknownSection);
+assertErrorMessage(() => wasmEval(toU8(moduleHeaderThen(37, 0))), CompileError, unknownSection);
+assertErrorMessage(() => wasmEval(toU8(moduleHeaderThen(37, 1, 0))), CompileError, unknownSection);
 
 // user sections have special rules
 assertErrorMessage(() => wasmEval(toU8(moduleHeaderThen(0))), CompileError, sectionError("custom"));  // no length
@@ -275,17 +275,18 @@ for (let i = 3; i < 0x10; i++)
 for (let i = 0x4f; i < 0x100; i++)
     checkIllegalPrefixed(ThreadPrefix, i);
 
-// Illegal Numeric opcodes
-//
-// Feb 2018 numeric draft:
-//
-//  0x00 .. 0x07 are saturating truncation ops.  0x40 and 0x41 are
-//  from the bulk memory proposal.  0x40/0x41 are unofficial values,
-//  until such time as there is an official assignment for memory.copy/fill
-//  subopcodes.
+// Illegal Misc opcodes
+
+var reservedMisc =
+    { // Saturating conversions (standardized)
+      0x00: true, 0x01: true, 0x02: true, 0x03: true, 0x04: true, 0x05: true, 0x06: true, 0x07: true,
+      // Bulk memory (proposed)
+      0x08: true, 0x09: true, 0x0a: true, 0x0b: true, 0x0c: true, 0x0d: true, 0x0e: true,
+      // Structure operations (experimental, internal)
+      0x50: true, 0x51: true, 0x52: true, 0x53: true };
 
 for (let i = 0; i < 256; i++) {
-    if (i <= 0x07 || i == 0x40 || i == 0x41)
+    if (reservedMisc.hasOwnProperty(i))
         continue;
     checkIllegalPrefixed(MiscPrefix, i);
 }
@@ -299,9 +300,10 @@ for (let i = 0; i < 256; i++)
     checkIllegalPrefixed(MozPrefix, i);
 
 for (let prefix of [ThreadPrefix, MiscPrefix, SimdPrefix, MozPrefix]) {
-    // Prefix without a subsequent opcode
-    let binary = moduleWithSections([v2vSigSection, declSection([0]), bodySection([funcBody({locals:[], body:[prefix]})])]);
-    assertErrorMessage(() => wasmEval(binary), CompileError, /unrecognized opcode/);
+    // Prefix without a subsequent opcode.  We must ask funcBody not to add an
+    // End code after the prefix, so the body really is just the prefix byte.
+    let binary = moduleWithSections([v2vSigSection, declSection([0]), bodySection([funcBody({locals:[], body:[prefix]}, /*withEndCode=*/false)])]);
+    assertErrorMessage(() => wasmEval(binary), CompileError, /unable to read opcode/);
     assertEq(WebAssembly.validate(binary), false);
 }
 

@@ -250,7 +250,7 @@ interface nsIWebNavigation : nsISupports
    *        aReferrer is also null docShell peforms a load using the
    *        SystemPrincipal as the triggeringPrincipal.
    */
-  void loadURI(in wstring                  aURI,
+  void loadURI(in AString                  aURI,
                in unsigned long            aLoadFlags,
                in nsIURI                   aReferrer,
                in nsIInputStream           aPostData,
@@ -307,15 +307,15 @@ interface nsIWebNavigation : nsISupports
    *        TODO: Remove this argument. Should not be necessary after
    *        "mozprivatebrowsing" attribute for xul:browser is introduced.
    */
-  void loadURIWithOptions(in wstring        aURI,
-                          in unsigned long  aLoadFlags,
-                          in nsIURI         aReferrer,
-                          in unsigned long  aReferrerPolicy,
-                          in nsIInputStream aPostData,
-                          in nsIInputStream aHeaders,
-                          in nsIURI         aBaseURI,
-                          in nsIPrincipal   aTriggeringPrincipal,
-                          in boolean        aEnsurePrivate);
+  void loadURIWithOptions(in AString                  aURI,
+                          in unsigned long            aLoadFlags,
+                          in nsIURI                   aReferrer,
+                          in unsigned long            aReferrerPolicy,
+                          in nsIInputStream           aPostData,
+                          in nsIInputStream           aHeaders,
+                          in nsIURI                   aBaseURI,
+                          [optional] in nsIPrincipal  aTriggeringPrincipal,
+                          in boolean                  aEnsurePrivate);
 
   /**
    * Tells the Object to reload the current page.  There may be cases where the

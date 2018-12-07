@@ -1,7 +1,4 @@
-// |jit-test| error: out of memory
-
-if (!('oomTest' in this))
-  throw new Error("out of memory");
+// |jit-test| skip-if: !('oomTest' in this)
 
 var dbg = new Debugger;
 dbg.onNewGlobalObject = function(global) {

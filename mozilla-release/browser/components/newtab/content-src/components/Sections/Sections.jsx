@@ -40,7 +40,7 @@ export class Section extends React.PureComponent {
     if (this.needsImpressionStats(cards)) {
       props.dispatch(ac.ImpressionStats({
         source: props.eventSource,
-        tiles: cards.map(link => ({id: link.guid}))
+        tiles: cards.map(link => ({id: link.guid})),
       }));
       this.impressionCardGuids = cards.map(link => link.guid);
     }
@@ -146,7 +146,7 @@ export class Section extends React.PureComponent {
       id, eventSource, title, icon, rows, Pocket, topics,
       emptyState, dispatch, compactCards, read_more_endpoint,
       contextMenuOptions, initialized, learnMore,
-      pref, privacyNoticeURL, isFirst, isLast
+      pref, privacyNoticeURL, isFirst, isLast,
     } = this.props;
 
     const waitingForSpoc = id === "topstories" && this.props.Pocket.waitingForSpoc;
@@ -162,14 +162,18 @@ export class Section extends React.PureComponent {
     // to avoid a flash of logged out state while we render.
     const isPocketLoggedInDefined = (isUserLoggedIn === true || isUserLoggedIn === false);
 
+    const hasTopics = topics && topics.length > 0;
+
     const shouldShowPocketCta = (id === "topstories" &&
       useCta && isUserLoggedIn === false);
 
     // Show topics only for top stories and if it has loaded with topics.
     // The classs .top-stories-bottom-container ensures content doesn't shift as things load.
-    const shouldShowTopics = (id === "topstories" &&
-      (topics && topics.length > 0) &&
+    const shouldShowTopics = (id === "topstories" && hasTopics &&
       ((useCta && isUserLoggedIn === true) || (!useCta && isPocketLoggedInDefined)));
+
+    // We use topics to determine language support for read more.
+    const shouldShowReadMore = read_more_endpoint && hasTopics;
 
     const realRows = rows.slice(0, maxCards);
 
@@ -208,7 +212,7 @@ export class Section extends React.PureComponent {
 
     const sectionClassName = [
       "section",
-      compactCards ? "compact-cards" : "normal-cards"
+      compactCards ? "compact-cards" : "normal-cards",
     ].join(" ");
 
     // <Section> <-- React component
@@ -246,7 +250,7 @@ export class Section extends React.PureComponent {
           <div className="top-stories-bottom-container">
             {shouldShowTopics && <Topics topics={this.props.topics} />}
             {shouldShowPocketCta && <PocketLoggedInCta />}
-            {read_more_endpoint &&
+            {shouldShowReadMore &&
               <MoreRecommendations read_more_endpoint={read_more_endpoint} />}
           </div>}
       </CollapsibleSection>
@@ -259,7 +263,7 @@ Section.defaultProps = {
   rows: [],
   emptyState: {},
   pref: {},
-  title: ""
+  title: "",
 };
 
 export const SectionIntl = connect(state => ({Prefs: state.Prefs, Pocket: state.Pocket}))(injectIntl(Section));
@@ -276,7 +280,7 @@ export class _Sections extends React.PureComponent {
       const commonProps = {
         key: sectionId,
         isFirst: sections.length === 0,
-        isLast: sections.length === expectedCount - 1
+        isLast: sections.length === expectedCount - 1,
       };
       if (sectionId === "topsites" && showTopSites) {
         sections.push(<TopSites {...commonProps} />);

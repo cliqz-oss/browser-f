@@ -2,17 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{ExternalScrollId, LayoutPoint, LayoutRect, LayoutVector2D, LayoutVector3D};
+use api::{ExternalScrollId, LayoutPoint, LayoutRect, LayoutVector2D};
 use api::{PipelineId, ScrollClamping, ScrollNodeState, ScrollLocation};
 use api::{LayoutSize, LayoutTransform, PropertyBinding, ScrollSensitivity, WorldPoint};
-use clip::{ClipStore};
 use gpu_types::TransformPalette;
 use internal_types::{FastHashMap, FastHashSet};
 use print_tree::{PrintTree, PrintTreePrinter};
 use scene::SceneProperties;
 use smallvec::SmallVec;
 use spatial_node::{ScrollFrameInfo, SpatialNode, SpatialNodeType, StickyFrameInfo};
-use util::LayoutToWorldFastTransform;
+use util::{LayoutToWorldFastTransform, ScaleOffset};
 
 pub type ScrollStates = FastHashMap<ExternalScrollId, ScrollFrameInfo>;
 
@@ -29,7 +28,6 @@ pub struct CoordinateSystemId(pub u32);
 /// transforms.
 #[derive(Debug)]
 pub struct CoordinateSystem {
-    pub offset: LayoutVector3D,
     pub transform: LayoutTransform,
     pub parent: Option<CoordinateSystemId>,
 }
@@ -37,19 +35,18 @@ pub struct CoordinateSystem {
 impl CoordinateSystem {
     fn root() -> Self {
         CoordinateSystem {
-            offset: LayoutVector3D::zero(),
             transform: LayoutTransform::identity(),
             parent: None,
         }
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, Hash, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, Hash, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct SpatialNodeIndex(pub usize);
 
-const ROOT_REFERENCE_FRAME_INDEX: SpatialNodeIndex = SpatialNodeIndex(0);
+pub const ROOT_SPATIAL_NODE_INDEX: SpatialNodeIndex = SpatialNodeIndex(0);
 const TOPMOST_SCROLL_NODE_INDEX: SpatialNodeIndex = SpatialNodeIndex(1);
 
 impl CoordinateSystemId {
@@ -66,13 +63,16 @@ pub struct ClipScrollTree {
     /// A list of transforms that establish new coordinate systems.
     /// Spatial nodes only establish a new coordinate system when
     /// they have a transform that is not a simple 2d translation.
-    pub coord_systems: Vec<CoordinateSystem>,
+    coord_systems: Vec<CoordinateSystem>,
 
     pub pending_scroll_offsets: FastHashMap<ExternalScrollId, (LayoutPoint, ScrollClamping)>,
 
     /// A set of pipelines which should be discarded the next time this
     /// tree is drained.
     pub pipelines_to_discard: FastHashSet<PipelineId>,
+
+    /// Temporary stack of nodes to update when traversing the tree.
+    nodes_to_update: Vec<(SpatialNodeIndex, TransformUpdateState)>,
 }
 
 #[derive(Clone)]
@@ -88,8 +88,8 @@ pub struct TransformUpdateState {
     /// coordinate systems which are relatively axis aligned.
     pub current_coordinate_system_id: CoordinateSystemId,
 
-    /// Offset from the coordinate system that started this compatible coordinate system.
-    pub coordinate_system_relative_offset: LayoutVector2D,
+    /// Scale and offset from the coordinate system that started this compatible coordinate system.
+    pub coordinate_system_relative_scale_offset: ScaleOffset,
 
     /// True if this node is transformed by an invertible transform.  If not, display items
     /// transformed by this node will not be displayed and display items not transformed by this
@@ -104,6 +104,7 @@ impl ClipScrollTree {
             coord_systems: Vec::new(),
             pending_scroll_offsets: FastHashMap::default(),
             pipelines_to_discard: FastHashSet::default(),
+            nodes_to_update: Vec::new(),
         }
     }
 
@@ -136,24 +137,17 @@ impl ClipScrollTree {
 
         nodes.reverse();
 
-        let mut transform = LayoutTransform::create_translation(
-            -parent.coordinate_system_relative_offset.x,
-            -parent.coordinate_system_relative_offset.y,
-            0.0,
-        );
+        let mut transform = parent.coordinate_system_relative_scale_offset
+                                  .inverse()
+                                  .to_transform();
 
         for node in nodes {
             let coord_system = &self.coord_systems[node.0 as usize];
-            transform = transform.pre_translate(coord_system.offset)
-                                 .pre_mul(&coord_system.transform);
+            transform = transform.pre_mul(&coord_system.transform);
         }
 
-        let transform = transform.post_translate(
-            LayoutVector3D::new(
-                child.coordinate_system_relative_offset.x,
-                child.coordinate_system_relative_offset.y,
-                0.0,
-            )
+        let transform = transform.pre_mul(
+            &child.coordinate_system_relative_scale_offset.to_transform(),
         );
 
         if inverse {
@@ -168,7 +162,7 @@ impl ClipScrollTree {
     pub fn root_reference_frame_index(&self) -> SpatialNodeIndex {
         // TODO(mrobinson): We should eventually make this impossible to misuse.
         debug_assert!(!self.spatial_nodes.is_empty());
-        ROOT_REFERENCE_FRAME_INDEX
+        ROOT_SPATIAL_NODE_INDEX
     }
 
     /// The root scroll node which is the first child of the root reference frame.
@@ -259,70 +253,51 @@ impl ClipScrollTree {
         &mut self,
         pan: WorldPoint,
         scene_properties: &SceneProperties,
-    ) -> TransformPalette {
-        let mut transform_palette = TransformPalette::new(self.spatial_nodes.len());
+        mut transform_palette: Option<&mut TransformPalette>,
+    ) {
         if self.spatial_nodes.is_empty() {
-            return transform_palette;
+            return;
+        }
+
+        if let Some(ref mut palette) = transform_palette {
+            palette.allocate(self.spatial_nodes.len());
         }
 
         self.coord_systems.clear();
         self.coord_systems.push(CoordinateSystem::root());
 
-        let root_reference_frame_index = self.root_reference_frame_index();
-        let mut state = TransformUpdateState {
+        let root_node_index = self.root_reference_frame_index();
+        let state = TransformUpdateState {
             parent_reference_frame_transform: LayoutVector2D::new(pan.x, pan.y).into(),
             parent_accumulated_scroll_offset: LayoutVector2D::zero(),
             nearest_scrolling_ancestor_offset: LayoutVector2D::zero(),
             nearest_scrolling_ancestor_viewport: LayoutRect::zero(),
             current_coordinate_system_id: CoordinateSystemId::root(),
-            coordinate_system_relative_offset: LayoutVector2D::zero(),
+            coordinate_system_relative_scale_offset: ScaleOffset::identity(),
             invertible: true,
         };
+        debug_assert!(self.nodes_to_update.is_empty());
+        self.nodes_to_update.push((root_node_index, state));
 
-        self.update_node(
-            root_reference_frame_index,
-            &mut state,
-            &mut transform_palette,
-            scene_properties,
-        );
-
-        transform_palette
-    }
-
-    fn update_node(
-        &mut self,
-        node_index: SpatialNodeIndex,
-        state: &mut TransformUpdateState,
-        transform_palette: &mut TransformPalette,
-        scene_properties: &SceneProperties,
-    ) {
-        // TODO(gw): This is an ugly borrow check workaround to clone these.
-        //           Restructure this to avoid the clones!
-        let mut state = state.clone();
-        let node_children = {
+        while let Some((node_index, mut state)) = self.nodes_to_update.pop() {
             let node = match self.spatial_nodes.get_mut(node_index.0) {
                 Some(node) => node,
-                None => return,
+                None => continue,
             };
 
             node.update(&mut state, &mut self.coord_systems, scene_properties);
-            node.push_gpu_data(transform_palette, node_index);
-
-            if node.children.is_empty() {
-                return;
+            if let Some(ref mut palette) = transform_palette {
+                node.push_gpu_data(palette, node_index);
             }
 
-            node.prepare_state_for_children(&mut state);
-            node.children.clone()
-        };
-
-        for child_node_index in node_children {
-            self.update_node(
-                child_node_index,
-                &mut state,
-                transform_palette,
-                scene_properties,
-            );
+            if !node.children.is_empty() {
+                node.prepare_state_for_children(&mut state);
+                self.nodes_to_update.extend(node.children
+                    .iter()
+                    .rev()
+                    .map(|child_index| (*child_index, state.clone()))
+                );
+            }
         }
     }
 
@@ -415,7 +390,6 @@ impl ClipScrollTree {
         &self,
         index: SpatialNodeIndex,
         pt: &mut T,
-        clip_store: &ClipStore
     ) {
         let node = &self.spatial_nodes[index.0];
         match node.node_type {
@@ -431,8 +405,8 @@ impl ClipScrollTree {
                 pt.add_item(format!("scrollable_size: {:?}", scrolling_info.scrollable_size));
                 pt.add_item(format!("scroll offset: {:?}", scrolling_info.offset));
             }
-            SpatialNodeType::ReferenceFrame(ref info) => {
-                pt.new_level(format!("ReferenceFrame {:?}", info.resolved_transform));
+            SpatialNodeType::ReferenceFrame(ref _info) => {
+                pt.new_level(format!("ReferenceFrame"));
                 pt.add_item(format!("index: {:?}", index));
             }
         }
@@ -442,23 +416,23 @@ impl ClipScrollTree {
         pt.add_item(format!("coordinate_system_id: {:?}", node.coordinate_system_id));
 
         for child_index in &node.children {
-            self.print_node(*child_index, pt, clip_store);
+            self.print_node(*child_index, pt);
         }
 
         pt.end_level();
     }
 
     #[allow(dead_code)]
-    pub fn print(&self, clip_store: &ClipStore) {
+    pub fn print(&self) {
         if !self.spatial_nodes.is_empty() {
             let mut pt = PrintTree::new("clip_scroll tree");
-            self.print_with(clip_store, &mut pt);
+            self.print_with(&mut pt);
         }
     }
 
-    pub fn print_with<T: PrintTreePrinter>(&self, clip_store: &ClipStore, pt: &mut T) {
+    pub fn print_with<T: PrintTreePrinter>(&self, pt: &mut T) {
         if !self.spatial_nodes.is_empty() {
-            self.print_node(self.root_reference_frame_index(), pt, clip_store);
+            self.print_node(self.root_reference_frame_index(), pt);
         }
     }
 }
@@ -536,7 +510,7 @@ fn test_cst_simple_translation() {
         LayoutVector2D::zero(),
     );
 
-    cst.update_tree(WorldPoint::zero(), &SceneProperties::new());
+    cst.update_tree(WorldPoint::zero(), &SceneProperties::new(), None);
 
     test_pt(100.0, 100.0, &cst, child1, root, 200.0, 100.0);
     test_pt(100.0, 100.0, &cst, root, child1, 0.0, 100.0);
@@ -581,7 +555,7 @@ fn test_cst_simple_scale() {
         LayoutVector2D::zero(),
     );
 
-    cst.update_tree(WorldPoint::zero(), &SceneProperties::new());
+    cst.update_tree(WorldPoint::zero(), &SceneProperties::new(), None);
 
     test_pt(100.0, 100.0, &cst, child1, root, 400.0, 100.0);
     test_pt(100.0, 100.0, &cst, root, child1, 25.0, 100.0);
@@ -635,7 +609,7 @@ fn test_cst_scale_translation() {
         LayoutVector2D::zero(),
     );
 
-    cst.update_tree(WorldPoint::zero(), &SceneProperties::new());
+    cst.update_tree(WorldPoint::zero(), &SceneProperties::new(), None);
 
     test_pt(100.0, 100.0, &cst, child1, root, 200.0, 150.0);
     test_pt(100.0, 100.0, &cst, child2, root, 300.0, 450.0);
@@ -649,8 +623,8 @@ fn test_cst_scale_translation() {
     test_pt(100.0, 100.0, &cst, child2, child1, 200.0, 400.0);
     test_pt(200.0, 400.0, &cst, child1, child2, 100.0, 100.0);
 
-    test_pt(100.0, 100.0, &cst, child3, child1, 400.0, 300.0);
-    test_pt(400.0, 300.0, &cst, child1, child3, 100.0, 100.0);
+    test_pt(100.0, 100.0, &cst, child3, child1, 600.0, 0.0);
+    test_pt(400.0, 300.0, &cst, child1, child3, 0.0, 175.0);
 }
 
 #[test]
@@ -674,7 +648,7 @@ fn test_cst_translation_rotate() {
         LayoutVector2D::zero(),
     );
 
-    cst.update_tree(WorldPoint::zero(), &SceneProperties::new());
+    cst.update_tree(WorldPoint::zero(), &SceneProperties::new(), None);
 
     test_pt(100.0, 0.0, &cst, child1, root, 0.0, -100.0);
 }

@@ -23,10 +23,10 @@ endif
 
 # TARGET_OS/TARGET_CPU may be unintuitive, so we hardcode some special formats
 ifeq ($(OS_ARCH),WINNT)
-ifeq ($(TARGET_CPU),x86_64)
-MOZ_PKG_PLATFORM := win64
-else
+ifeq ($(CPU_ARCH),x86)
 MOZ_PKG_PLATFORM := win32
+else
+MOZ_PKG_PLATFORM := win64
 endif
 endif
 ifeq ($(OS_ARCH),Darwin)
@@ -62,8 +62,6 @@ CHECKSUMS_FILE_BASENAME = $(PKG_BASENAME)
 MOZ_INFO_BASENAME = $(PKG_BASENAME)
 PKG_UPDATE_PATH = update/
 COMPLETE_MAR = $(PKG_UPDATE_PATH)$(PKG_UPDATE_BASENAME).complete.mar
-# PARTIAL_MAR needs to be processed by $(wildcard) before you use it.
-PARTIAL_MAR = $(PKG_UPDATE_PATH)$(PKG_UPDATE_BASENAME).partial.*.mar
 ifdef MOZ_SIMPLE_PACKAGE_NAME
 PKG_LANGPACK_BASENAME = $(MOZ_SIMPLE_PACKAGE_NAME).langpack
 PKG_LANGPACK_PATH =

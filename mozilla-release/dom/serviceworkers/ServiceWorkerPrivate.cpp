@@ -28,7 +28,6 @@
 #include "mozilla/JSObjectHolder.h"
 #include "mozilla/dom/Client.h"
 #include "mozilla/dom/ClientIPCTypes.h"
-#include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/FetchUtil.h"
 #include "mozilla/dom/IndexedDatabaseManager.h"
 #include "mozilla/dom/InternalHeaders.h"
@@ -41,6 +40,7 @@
 #include "mozilla/dom/WorkerRunnable.h"
 #include "mozilla/dom/WorkerScope.h"
 #include "mozilla/dom/ipc/StructuredCloneData.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/Unused.h"
 
 using namespace mozilla;
@@ -1587,11 +1587,11 @@ private:
     nsresult rv = mInterceptedChannel->GetChannel(getter_AddRefs(channel));
     NS_ENSURE_SUCCESS(rv, false);
 
-    nsAutoCString alternativeDataType;
     nsCOMPtr<nsICacheInfoChannel> cic = do_QueryInterface(channel);
-    if (cic &&
-        NS_SUCCEEDED(cic->GetPreferredAlternativeDataType(alternativeDataType)) &&
-        !alternativeDataType.IsEmpty()) {
+    if (cic && !cic->PreferredAlternativeDataTypes().IsEmpty()) {
+      // TODO: the internal request probably needs all the preferred types.
+      nsAutoCString alternativeDataType;
+      alternativeDataType.Assign(mozilla::Get<0>(cic->PreferredAlternativeDataTypes()[0]));
       internalReq->SetPreferredAlternativeDataType(alternativeDataType);
     }
 
@@ -1933,7 +1933,7 @@ ServiceWorkerPrivate::TerminateWorker()
   mIdleWorkerTimer->Cancel();
   mIdleKeepAliveToken = nullptr;
   if (mWorkerPrivate) {
-    if (DOMPrefs::ServiceWorkersTestingEnabled()) {
+    if (StaticPrefs::dom_serviceWorkers_testing_enabled()) {
       nsCOMPtr<nsIObserverService> os = services::GetObserverService();
       if (os) {
         os->NotifyObservers(nullptr, "service-worker-shutdown", nullptr);
@@ -2029,7 +2029,7 @@ ServiceWorkerPrivate::GetDebugger(nsIWorkerDebugger** aResult)
 
   MOZ_ASSERT(mWorkerPrivate);
 
-  nsCOMPtr<nsIWorkerDebugger> debugger = do_QueryInterface(mWorkerPrivate->Debugger());
+  nsCOMPtr<nsIWorkerDebugger> debugger = mWorkerPrivate->Debugger();
   debugger.forget(aResult);
 
   return NS_OK;

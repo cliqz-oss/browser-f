@@ -13,7 +13,7 @@ Object.defineProperty(this, "NetworkHelper", {
   },
   configurable: true,
   writeable: false,
-  enumerable: true
+  enumerable: true,
 });
 
 const wpl = Ci.nsIWebProgressListener;
@@ -29,19 +29,17 @@ const MockCertificate = {
   validity: {
     notBeforeLocalDay: "yesterday",
     notAfterLocalDay: "tomorrow",
-  }
+  },
 };
 
 const MockSecurityInfo = {
   QueryInterface: ChromeUtils.generateQI([Ci.nsITransportSecurityInfo]),
   securityState: wpl.STATE_IS_SECURE,
   errorCode: 0,
-  SSLStatus: {
-    cipherSuite: "TLS_ECDH_ECDSA_WITH_AES_128_GCM_SHA256",
-    // TLS_VERSION_1_2
-    protocolVersion: 3,
-    serverCert: MockCertificate,
-  }
+  cipherName: "TLS_ECDH_ECDSA_WITH_AES_128_GCM_SHA256",
+  // TLS_VERSION_1_2
+  protocolVersion: 3,
+  serverCert: MockCertificate,
 };
 
 function run_test() {
@@ -49,7 +47,7 @@ function run_test() {
 
   equal(result.state, "secure", "State is correct.");
 
-  equal(result.cipherSuite, MockSecurityInfo.cipherSuite,
+  equal(result.cipherSuite, MockSecurityInfo.cipherName,
     "Cipher suite is correct.");
 
   equal(result.protocolVersion, "TLSv1.2", "Protocol version is correct.");

@@ -19,7 +19,7 @@ function get_remote_history(browser) {
     };
 
     for (let i = 0; i < sessionHistory.count; i++) {
-      let entry = sessionHistory.legacySHistory.getEntryAtIndex(i, false);
+      let entry = sessionHistory.legacySHistory.getEntryAtIndex(i);
       result.entries.push({
         uri: entry.URI.spec,
         title: entry.title,
@@ -48,6 +48,7 @@ var check_history = async function() {
 
   for (let i = 0; i < count; i++) {
     let entry = sessionHistory.entries[i];
+    info("Checking History Entry:", entry.uri);
     is(entry.uri, gExpectedHistory.entries[i].uri, "Should have the right URI");
     is(entry.title, gExpectedHistory.entries[i].title, "Should have the right title");
   }
@@ -77,7 +78,10 @@ var waitForLoad = async function(uri) {
 // Waits for a load and updates the known history
 var waitForLoadWithFlags = async function(uri, flags = Ci.nsIWebNavigation.LOAD_FLAGS_NONE) {
   info("Loading " + uri + " flags = " + flags);
-  gBrowser.selectedBrowser.loadURI(uri, { flags });
+  gBrowser.selectedBrowser.loadURI(uri, {
+    flags,
+    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+  });
 
   await BrowserTestUtils.browserStopped(gBrowser);
   if (!(flags & Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_HISTORY)) {

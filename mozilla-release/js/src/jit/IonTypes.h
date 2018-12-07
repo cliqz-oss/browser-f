@@ -10,6 +10,7 @@
 #include "mozilla/HashFunctions.h"
 
 #include <algorithm>
+#include <stdint.h>
 
 #include "jsfriendapi.h"
 #include "jstypes.h"
@@ -18,6 +19,29 @@
 #include "vm/StringType.h"
 
 namespace js {
+
+// Each IonScript has a unique compilation id. This is used to sweep/ignore
+// constraints for IonScripts that have been invalidated/destroyed.
+class IonCompilationId
+{
+    // Use two 32-bit integers instead of uint64_t to avoid 8-byte alignment on
+    // some 32-bit platforms.
+    uint32_t idLo_;
+    uint32_t idHi_;
+
+  public:
+    explicit IonCompilationId(uint64_t id)
+      : idLo_(id & UINT32_MAX),
+        idHi_(id >> 32)
+    {}
+    bool operator==(const IonCompilationId& other) const {
+        return idLo_ == other.idLo_ && idHi_ == other.idHi_;
+    }
+    bool operator!=(const IonCompilationId& other) const {
+        return !operator==(other);
+    }
+};
+
 namespace jit {
 
 typedef uint32_t RecoverOffset;
@@ -379,8 +403,9 @@ class SimdConstant {
 
     bool operator==(const SimdConstant& rhs) const {
         MOZ_ASSERT(defined() && rhs.defined());
-        if (type() != rhs.type())
+        if (type() != rhs.type()) {
             return false;
+        }
         // Takes negative zero into accuont, as it's a bit comparison.
         return memcmp(&u, &rhs.u, sizeof(u)) == 0;
     }
@@ -723,8 +748,9 @@ static inline const char*
 PropertyNameToExtraName(PropertyName* name)
 {
     JS::AutoCheckCannotGC nogc;
-    if (!name->hasLatin1Chars())
+    if (!name->hasLatin1Chars()) {
         return nullptr;
+    }
     return reinterpret_cast<const char *>(name->latin1Chars(nogc));
 }
 

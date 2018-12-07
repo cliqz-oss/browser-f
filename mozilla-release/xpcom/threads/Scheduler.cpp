@@ -16,7 +16,6 @@
 #include "mozilla/SchedulerGroup.h"
 #include "nsCycleCollector.h"
 #include "nsIThread.h"
-#include "nsPrintfCString.h"
 #include "nsThread.h"
 #include "nsThreadManager.h"
 #include "PrioritizedEventQueue.h"
@@ -780,7 +779,7 @@ Scheduler::Shutdown()
   }
 }
 
-/* static */ nsCString
+/* static */ nsPrintfCString
 Scheduler::GetPrefs()
 {
   MOZ_ASSERT(XRE_IsParentProcess());

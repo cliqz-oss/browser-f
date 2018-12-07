@@ -55,7 +55,7 @@ NewProcessSelector.prototype = {
 
   provideProcess() {
     return Ci.nsIContentProcessProvider.NEW_PROCESS;
-  }
+  },
 };
 
 let registrar = Components.manager.QueryInterface(Ci.nsIComponentRegistrar);
@@ -103,7 +103,7 @@ var BrowserTestUtils = {
     if (typeof(options) == "string") {
       options = {
         gBrowser: Services.wm.getMostRecentWindow("navigator:browser").gBrowser,
-        url: options
+        url: options,
       };
     }
     let tab = await BrowserTestUtils.openNewForegroundTab(options);
@@ -179,7 +179,7 @@ var BrowserTestUtils = {
 
     let { opening: opening,
           waitForLoad: aWaitForLoad,
-          waitForStateStop: aWaitForStateStop
+          waitForStateStop: aWaitForStateStop,
     } = options;
 
     let promises, tab;
@@ -202,7 +202,7 @@ var BrowserTestUtils = {
           } else {
             tabbrowser.selectedTab = tab = BrowserTestUtils.addTab(tabbrowser, opening);
           }
-        })
+        }),
       ];
 
       if (aWaitForLoad) {
@@ -633,7 +633,9 @@ var BrowserTestUtils = {
    */
   async loadURI(browser, uri) {
     // Load the new URI.
-    browser.loadURI(uri);
+    browser.loadURI(uri, {
+      triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+    });
 
     // Nothing to do in non-e10s mode.
     if (!browser.ownerGlobal.gMultiProcessBrowser) {
@@ -724,19 +726,22 @@ var BrowserTestUtils = {
     }
     let win = currentWin.OpenBrowserWindow(options);
 
+    let promises = [this.waitForEvent(win, "focus"), this.waitForEvent(win, "activate")];
+
     // Wait for browser-delayed-startup-finished notification, it indicates
     // that the window has loaded completely and is ready to be used for
     // testing.
-    let startupPromise =
+    promises.push(
       TestUtils.topicObserved("browser-delayed-startup-finished",
-                              subject => subject == win).then(() => win);
+                              subject => subject == win).then(() => win)
+    );
 
-    let loadPromise = this.firstBrowserLoaded(win, !options.waitForTabURL, browser => {
+
+    promises.push(this.firstBrowserLoaded(win, !options.waitForTabURL, browser => {
       return !options.waitForTabURL || options.waitForTabURL == browser.currentURI.spec;
-    });
+    }));
 
-    await startupPromise;
-    await loadPromise;
+    await Promise.all(promises);
 
     return win;
   },
@@ -1445,7 +1450,7 @@ var BrowserTestUtils = {
 
       mm.sendAsyncMessage("Test:SendChar", {
         char,
-        seq
+        seq,
       });
     });
   },
@@ -1765,5 +1770,5 @@ var BrowserTestUtils = {
       }, {once: true});
     }
     return tabbrowser.addTab(uri, params);
-  }
+  },
 };

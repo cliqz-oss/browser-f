@@ -23,7 +23,7 @@
 #include "nsIWeakReference.h"
 #include "nsGTKToolkit.h"
 #include "nsICommandLineRunner.h"
-#include "nsICommandLine.h"
+#include "nsCommandLine.h"
 #include "nsString.h"
 #include "nsIFile.h"
 
@@ -34,19 +34,17 @@ NS_IMPL_ISUPPORTS(nsRemoteService,
 NS_IMETHODIMP
 nsRemoteService::Startup(const char* aAppName, const char* aProfileName)
 {
-#if defined(MOZ_ENABLE_DBUS)
+#if defined(MOZ_ENABLE_DBUS) && defined(MOZ_WAYLAND)
     nsresult rv;
     mDBusRemoteService = new nsDBusRemoteService();
     rv = mDBusRemoteService->Startup(aAppName, aProfileName);
     if (NS_FAILED(rv)) {
         mDBusRemoteService = nullptr;
     }
+#elif !defined(MOZ_WAYLAND)
+    mGtkRemoteService = new nsGTKRemoteService();
+    mGtkRemoteService->Startup(aAppName, aProfileName);
 #endif
-
-    if (GDK_IS_X11_DISPLAY(gdk_display_get_default())) {
-        mGtkRemoteService = new nsGTKRemoteService();
-        mGtkRemoteService->Startup(aAppName, aProfileName);
-    }
 
     if (!mDBusRemoteService && !mGtkRemoteService)
         return NS_ERROR_FAILURE;
@@ -73,7 +71,7 @@ nsRemoteService::RegisterWindow(mozIDOMWindow* aWindow)
 NS_IMETHODIMP
 nsRemoteService::Shutdown()
 {
-#if defined(MOZ_ENABLE_DBUS)
+#if defined(MOZ_ENABLE_DBUS) && defined(MOZ_WAYLAND)
     if (mDBusRemoteService) {
         mDBusRemoteService->Shutdown();
         mDBusRemoteService = nullptr;
@@ -155,12 +153,7 @@ const char*
 nsRemoteService::HandleCommandLine(const char* aBuffer, nsIDOMWindow* aWindow,
                                    uint32_t aTimestamp)
 {
-  nsresult rv;
-
-  nsCOMPtr<nsICommandLineRunner> cmdline
-    (do_CreateInstance("@mozilla.org/toolkit/command-line;1", &rv));
-  if (NS_FAILED(rv))
-    return "509 internal error";
+  nsCOMPtr<nsICommandLineRunner> cmdline(new nsCommandLine());
 
   // the commandline property is constructed as an array of int32_t
   // followed by a series of null-terminated strings:
@@ -172,8 +165,8 @@ nsRemoteService::HandleCommandLine(const char* aBuffer, nsIDOMWindow* aWindow,
   const char *wd   = aBuffer + ((argc + 1) * sizeof(int32_t));
 
   nsCOMPtr<nsIFile> lf;
-  rv = NS_NewNativeLocalFile(nsDependentCString(wd), true,
-                             getter_AddRefs(lf));
+  nsresult rv = NS_NewNativeLocalFile(nsDependentCString(wd), true,
+                                      getter_AddRefs(lf));
   if (NS_FAILED(rv))
     return "509 internal error";
 

@@ -253,9 +253,6 @@ class ICEntry
         // handler via the over-recursion check on function entry.
         Kind_StackCheck,
 
-        // As above, but for the early check. See emitStackCheck.
-        Kind_EarlyStackCheck,
-
         // A fake IC entry for returning from DebugTrapHandler.
         Kind_DebugTrap,
 
@@ -510,11 +507,13 @@ class ICStub
 
     template <typename T, typename... Args>
     static T* New(JSContext* cx, ICStubSpace* space, JitCode* code, Args&&... args) {
-        if (!code)
+        if (!code) {
             return nullptr;
+        }
         T* result = space->allocate<T>(code, std::forward<Args>(args)...);
-        if (!result)
+        if (!result) {
             ReportOutOfMemory(cx);
+        }
         return result;
     }
 
@@ -664,8 +663,9 @@ class ICStub
     // This method is not valid on TypeUpdate stub chains!
     inline ICFallbackStub* getChainFallback() {
         ICStub* lastStub = this;
-        while (lastStub->next_)
+        while (lastStub->next_) {
             lastStub = lastStub->next_;
+        }
         MOZ_ASSERT(lastStub->isFallback());
         return lastStub->toFallbackStub();
     }
@@ -788,8 +788,9 @@ class ICFallbackStub : public ICStub
 
     bool hasStub(ICStub::Kind kind) const {
         for (ICStubConstIterator iter = beginChainConst(); !iter.atEnd(); iter++) {
-            if (iter->kind() == kind)
+            if (iter->kind() == kind) {
                 return true;
+            }
         }
         return false;
     }
@@ -797,8 +798,9 @@ class ICFallbackStub : public ICStub
     unsigned numStubsWithKind(ICStub::Kind kind) const {
         unsigned count = 0;
         for (ICStubConstIterator iter = beginChainConst(); !iter.atEnd(); iter++) {
-            if (iter->kind() == kind)
+            if (iter->kind() == kind) {
                 count++;
+            }
         }
         return count;
     }
@@ -900,16 +902,16 @@ class ICCacheIR_Monitored : public ICMonitoredStub
 class ICUpdatedStub : public ICStub
 {
   protected:
-    // Pointer to the start of the type updating stub chain.
-    ICStub* firstUpdateStub_;
-
     static const uint32_t MAX_OPTIMIZED_STUBS = 8;
     uint32_t numOptimizedStubs_;
 
+    // Pointer to the start of the type updating stub chain.
+    ICStub* firstUpdateStub_;
+
     ICUpdatedStub(Kind kind, JitCode* stubCode)
       : ICStub(kind, ICStub::Updated, stubCode),
-        firstUpdateStub_(nullptr),
-        numOptimizedStubs_(0)
+        numOptimizedStubs_(0),
+        firstUpdateStub_(nullptr)
     {}
 
   public:
@@ -925,8 +927,9 @@ class ICUpdatedStub : public ICStub
         } else {
             ICStub* iter = firstUpdateStub_;
             MOZ_ASSERT(iter->next() != nullptr);
-            while (!iter->next()->isTypeUpdate_Fallback())
+            while (!iter->next()->isTypeUpdate_Fallback()) {
                 iter = iter->next();
+            }
             MOZ_ASSERT(iter->next()->next() == nullptr);
             stub->setNext(iter->next());
             iter->setNext(stub);
@@ -944,8 +947,9 @@ class ICUpdatedStub : public ICStub
     bool hasTypeUpdateStub(ICStub::Kind kind) {
         ICStub* stub = firstUpdateStub_;
         do {
-            if (stub->kind() == kind)
+            if (stub->kind() == kind) {
                 return true;
+            }
 
             stub = stub->next();
         } while (stub);
@@ -1162,8 +1166,9 @@ class ICMonitoredFallbackStub : public ICFallbackStub
         return fallbackMonitorStub_;
     }
     ICTypeMonitor_Fallback* getFallbackMonitorStub(JSContext* cx, JSScript* script) {
-        if (!fallbackMonitorStub_ && !initMonitoringChain(cx, script))
+        if (!fallbackMonitorStub_ && !initMonitoringChain(cx, script)) {
             return nullptr;
+        }
         MOZ_ASSERT(fallbackMonitorStub_);
         return fallbackMonitorStub_;
     }
@@ -1199,8 +1204,9 @@ class TypeCheckPrimitiveSetStub : public ICStub
 
     TypeCheckPrimitiveSetStub* updateTypesAndCode(uint16_t flags, JitCode* code) {
         MOZ_ASSERT(flags && !(flags & ~ValidFlags()));
-        if (!code)
+        if (!code) {
             return nullptr;
+        }
         extra_ = flags;
         updateCode(code);
         return this;
@@ -1318,8 +1324,9 @@ class ICTypeMonitor_Fallback : public ICStub
         MOZ_ASSERT((lastMonitorStubPtrAddr_ != nullptr) ==
                    (numOptimizedMonitorStubs_ || !hasFallbackStub_));
 
-        if (lastMonitorStubPtrAddr_)
+        if (lastMonitorStubPtrAddr_) {
             *lastMonitorStubPtrAddr_ = stub;
+        }
 
         if (numOptimizedMonitorStubs_ == 0) {
             MOZ_ASSERT(firstMonitorStub_ == this);
@@ -1336,8 +1343,9 @@ class ICTypeMonitor_Fallback : public ICStub
     bool hasStub(ICStub::Kind kind) {
         ICStub* stub = firstMonitorStub_;
         do {
-            if (stub->kind() == kind)
+            if (stub->kind() == kind) {
                 return true;
+            }
 
             stub = stub->next();
         } while (stub);
@@ -1457,8 +1465,9 @@ class ICTypeMonitor_PrimitiveSet : public TypeCheckPrimitiveSetStub
         ICTypeMonitor_PrimitiveSet* updateStub() {
             TypeCheckPrimitiveSetStub* stub =
                 this->TypeCheckPrimitiveSetStub::Compiler::updateStub();
-            if (!stub)
+            if (!stub) {
                 return nullptr;
+            }
             return stub->toMonitorStub();
         }
 
@@ -1614,8 +1623,9 @@ class ICTypeUpdate_PrimitiveSet : public TypeCheckPrimitiveSetStub
         ICTypeUpdate_PrimitiveSet* updateStub() {
             TypeCheckPrimitiveSetStub* stub =
                 this->TypeCheckPrimitiveSetStub::Compiler::updateStub();
-            if (!stub)
+            if (!stub) {
                 return nullptr;
+            }
             return stub->toUpdateStub();
         }
 
@@ -1787,7 +1797,6 @@ class ICGetElem_Fallback : public ICMonitoredFallbackStub
     { }
 
     static const uint16_t EXTRA_NEGATIVE_INDEX = 0x1;
-    static const uint16_t EXTRA_UNOPTIMIZABLE_ACCESS = 0x2;
 
   public:
     void noteNegativeIndex() {
@@ -1795,12 +1804,6 @@ class ICGetElem_Fallback : public ICMonitoredFallbackStub
     }
     bool hasNegativeIndex() const {
         return extra_ & EXTRA_NEGATIVE_INDEX;
-    }
-    void noteUnoptimizableAccess() {
-        extra_ |= EXTRA_UNOPTIMIZABLE_ACCESS;
-    }
-    bool hadUnoptimizableAccess() const {
-        return extra_ & EXTRA_UNOPTIMIZABLE_ACCESS;
     }
 
     // Compiler for this stub kind.
@@ -1928,15 +1931,6 @@ class ICGetName_Fallback : public ICMonitoredFallbackStub
     { }
 
   public:
-    static const size_t UNOPTIMIZABLE_ACCESS_BIT = 0;
-
-    void noteUnoptimizableAccess() {
-        extra_ |= (1u << UNOPTIMIZABLE_ACCESS_BIT);
-    }
-    bool hadUnoptimizableAccess() const {
-        return extra_ & (1u << UNOPTIMIZABLE_ACCESS_BIT);
-    }
-
     class Compiler : public ICStubCompiler {
       protected:
         MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
@@ -2017,15 +2011,7 @@ class ICGetProp_Fallback : public ICMonitoredFallbackStub
     { }
 
   public:
-    static const size_t UNOPTIMIZABLE_ACCESS_BIT = 0;
     static const size_t ACCESSED_GETTER_BIT = 1;
-
-    void noteUnoptimizableAccess() {
-        extra_ |= (1u << UNOPTIMIZABLE_ACCESS_BIT);
-    }
-    bool hadUnoptimizableAccess() const {
-        return extra_ & (1u << UNOPTIMIZABLE_ACCESS_BIT);
-    }
 
     void noteAccessedGetter() {
         extra_ |= (1u << ACCESSED_GETTER_BIT);
@@ -2074,14 +2060,6 @@ class ICSetProp_Fallback : public ICFallbackStub
     { }
 
   public:
-    static const size_t UNOPTIMIZABLE_ACCESS_BIT = 0;
-    void noteUnoptimizableAccess() {
-        extra_ |= (1u << UNOPTIMIZABLE_ACCESS_BIT);
-    }
-    bool hadUnoptimizableAccess() const {
-        return extra_ & (1u << UNOPTIMIZABLE_ACCESS_BIT);
-    }
-
     class Compiler : public ICStubCompiler {
       protected:
         CodeOffset bailoutReturnOffset_;
@@ -2139,8 +2117,6 @@ class ICCall_Fallback : public ICMonitoredFallbackStub
 {
     friend class ICStubSpace;
   public:
-    static const unsigned UNOPTIMIZABLE_CALL_FLAG = 0x1;
-
     static const uint32_t MAX_OPTIMIZED_STUBS = 16;
 
   private:
@@ -2149,13 +2125,6 @@ class ICCall_Fallback : public ICMonitoredFallbackStub
     {}
 
   public:
-    void noteUnoptimizableCall() {
-        extra_ |= UNOPTIMIZABLE_CALL_FLAG;
-    }
-    bool hadUnoptimizableCall() const {
-        return extra_ & UNOPTIMIZABLE_CALL_FLAG;
-    }
-
     bool scriptedStubsAreGeneralized() const {
         return hasStub(Call_AnyScripted);
     }
@@ -2846,17 +2815,7 @@ class ICInstanceOf_Fallback : public ICFallbackStub
       : ICFallbackStub(ICStub::InstanceOf_Fallback, stubCode)
     { }
 
-    static const uint16_t UNOPTIMIZABLE_ACCESS_BIT = 0x1;
-
   public:
-
-    void noteUnoptimizableAccess() {
-        extra_ |= UNOPTIMIZABLE_ACCESS_BIT;
-    }
-    bool hadUnoptimizableAccess() const {
-        return extra_ & UNOPTIMIZABLE_ACCESS_BIT;
-    }
-
     class Compiler : public ICStubCompiler {
       protected:
         MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
@@ -3061,16 +3020,6 @@ class ICCompare_Fallback : public ICFallbackStub
       : ICFallbackStub(ICStub::Compare_Fallback, stubCode) {}
 
   public:
-    static const uint32_t MAX_OPTIMIZED_STUBS = 8;
-
-    static const size_t UNOPTIMIZABLE_ACCESS_BIT = 0;
-    void noteUnoptimizableAccess() {
-        extra_ |= (1u << UNOPTIMIZABLE_ACCESS_BIT);
-    }
-    bool hadUnoptimizableAccess() const {
-        return extra_ & (1u << UNOPTIMIZABLE_ACCESS_BIT);
-    }
-
     // Compiler for this stub kind.
     class Compiler : public ICStubCompiler {
       protected:
@@ -3103,7 +3052,6 @@ class ICBinaryArith_Fallback : public ICFallbackStub
     }
 
     static const uint16_t SAW_DOUBLE_RESULT_BIT = 0x1;
-    static const uint16_t UNOPTIMIZABLE_OPERANDS_BIT = 0x2;
 
   public:
     static const uint32_t MAX_OPTIMIZED_STUBS = 8;
@@ -3113,12 +3061,6 @@ class ICBinaryArith_Fallback : public ICFallbackStub
     }
     void setSawDoubleResult() {
         extra_ |= SAW_DOUBLE_RESULT_BIT;
-    }
-    bool hadUnoptimizableOperands() const {
-        return extra_ & UNOPTIMIZABLE_OPERANDS_BIT;
-    }
-    void noteUnoptimizableOperands() {
-        extra_ |= UNOPTIMIZABLE_OPERANDS_BIT;
     }
 
     // Compiler for this stub kind.
@@ -3227,8 +3169,9 @@ class ICNewObject_Fallback : public ICFallbackStub
 inline bool
 IsCacheableDOMProxy(JSObject* obj)
 {
-    if (!obj->is<ProxyObject>())
+    if (!obj->is<ProxyObject>()) {
         return false;
+    }
 
     const BaseProxyHandler* handler = obj->as<ProxyObject>().handler();
     return handler->family() == GetDOMProxyHandlerFamily();

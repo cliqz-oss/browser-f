@@ -106,8 +106,9 @@ class GlobalObject;
 template <typename T>
 static T ConvertScalar(double d)
 {
-    if (TypeIsFloatingPoint<T>())
+    if (TypeIsFloatingPoint<T>()) {
         return T(d);
+    }
     if (TypeIsUnsigned<T>()) {
         uint32_t n = JS::ToUint32(d);
         return T(n);
@@ -402,6 +403,13 @@ class ArrayTypeDescr : public ComplexTypeDescr
     }
 };
 
+struct StructFieldProps
+{
+    StructFieldProps() : isMutable(0), alignAsInt64(0) {}
+    uint32_t isMutable:1;
+    uint32_t alignAsInt64:1;
+};
+
 /*
  * Properties and methods of the `StructType` meta type object. There
  * is no `class_` field because `StructType` is just a native
@@ -423,7 +431,7 @@ class StructMetaTypeDescr : public NativeObject
                                              bool allowConstruct,
                                              AutoIdVector& ids,
                                              AutoValueVector& fieldTypeObjs,
-                                             Vector<bool>& fieldMutabilities);
+                                             Vector<StructFieldProps>& fieldProps);
 
     // Properties and methods to be installed on StructType.prototype,
     // and hence inherited by all struct type objects:
@@ -505,6 +513,11 @@ class TypedObjectModuleObject : public NativeObject {
     enum Slot {
         ArrayTypePrototype,
         StructTypePrototype,
+        Int32Desc,
+        Int64Desc,
+        Float32Desc,
+        Float64Desc,
+        ObjectDesc,
         SlotCount
     };
 

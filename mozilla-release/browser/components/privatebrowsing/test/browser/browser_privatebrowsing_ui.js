@@ -8,6 +8,8 @@
 function test() {
   // initialization
   waitForExplicitFinish();
+  SpecialPowers.pushPrefEnv({"set": [["security.allow_eval_with_system_principal",
+                                      true]]});
   let windowsToClose = [];
   let testURI = "about:blank";
   let pbMenuItem;
@@ -32,7 +34,7 @@ function test() {
       aCallback();
     });
 
-    aWindow.gBrowser.selectedBrowser.loadURI(testURI);
+    BrowserTestUtils.loadURI(aWindow.gBrowser.selectedBrowser, testURI);
   }
 
   function openPrivateBrowsingModeByUI(aWindow, aCallback) {

@@ -12,11 +12,11 @@
 #include "mozilla/dom/Date.h"
 #include "mozilla/dom/Directory.h"
 #include "mozilla/dom/DocumentOrShadowRoot.h"
-#include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/HTMLFormSubmission.h"
 #include "mozilla/dom/FileSystemUtils.h"
 #include "mozilla/dom/GetFilesHelper.h"
 #include "mozilla/dom/WheelEventBinding.h"
+#include "mozilla/StaticPrefs.h"
 #include "nsAttrValueInlines.h"
 #include "nsCRTGlue.h"
 #include "nsQueryObject.h"
@@ -114,6 +114,8 @@
 #include "nsIController.h"
 #include "nsIMIMEInfo.h"
 #include "nsFrameSelection.h"
+#include "nsBaseCommandController.h"
+#include "nsXULControllers.h"
 
 // input type=date
 #include "js/Date.h"
@@ -121,8 +123,6 @@
 NS_IMPL_NS_NEW_HTML_ELEMENT_CHECK_PARSER(Input)
 
 // XXX align=left, hspace, vspace, border? other nav4 attrs
-
-static NS_DEFINE_CID(kXULControllersCID,  NS_XULCONTROLLERS_CID);
 
 namespace mozilla {
 namespace dom {
@@ -562,7 +562,7 @@ HTMLInputElement::nsFilePickerShownCallback::Done(int16_t aResult)
   RefPtr<DispatchChangeEventCallback> dispatchChangeEventCallback =
     new DispatchChangeEventCallback(mInput);
 
-  if (DOMPrefs::WebkitBlinkDirectoryPickerEnabled() &&
+  if (StaticPrefs::dom_webkitBlink_dirPicker_enabled() &&
       mInput->HasAttr(kNameSpaceID_None, nsGkAtoms::webkitdirectory)) {
     ErrorResult error;
     GetFilesHelper* helper = mInput->GetOrCreateGetFilesHelper(true, error);
@@ -989,9 +989,9 @@ HTMLInputElement::Shutdown()
 // construction, destruction
 //
 
-HTMLInputElement::HTMLInputElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo,
+HTMLInputElement::HTMLInputElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo,
                                    FromParser aFromParser, FromClone aFromClone)
-  : nsGenericHTMLFormElementWithState(aNodeInfo, kInputDefaultType->value)
+  : nsGenericHTMLFormElementWithState(std::move(aNodeInfo), kInputDefaultType->value)
   , mAutocompleteAttrState(nsContentUtils::eAutocompleteAttrState_Unknown)
   , mAutocompleteInfoState(nsContentUtils::eAutocompleteAttrState_Unknown)
   , mDisabledChanged(false)
@@ -1131,8 +1131,8 @@ HTMLInputElement::Clone(dom::NodeInfo* aNodeInfo, nsINode** aResult) const
 {
   *aResult = nullptr;
 
-  already_AddRefed<mozilla::dom::NodeInfo> ni = RefPtr<mozilla::dom::NodeInfo>(aNodeInfo).forget();
-  RefPtr<HTMLInputElement> it = new HTMLInputElement(ni, NOT_FROM_PARSER,
+  RefPtr<HTMLInputElement> it = new HTMLInputElement(do_AddRef(aNodeInfo),
+                                                     NOT_FROM_PARSER,
                                                      FromClone::yes);
 
   nsresult rv = const_cast<HTMLInputElement*>(this)->CopyInnerTo(it);
@@ -2542,7 +2542,7 @@ HTMLInputElement::GetDisplayFileName(nsAString& aValue) const
 
   if (mFileData->mFilesOrDirectories.IsEmpty()) {
     if ((IsDirPickerEnabled() && Allowdirs()) ||
-        (DOMPrefs::WebkitBlinkDirectoryPickerEnabled() &&
+        (StaticPrefs::dom_webkitBlink_dirPicker_enabled() &&
          HasAttr(kNameSpaceID_None, nsGkAtoms::webkitdirectory))) {
       nsContentUtils::GetLocalizedString(nsContentUtils::eFORMS_PROPERTIES,
                                          "NoDirSelected", value);
@@ -2633,7 +2633,7 @@ HTMLInputElement::MozSetDndFilesAndDirectories(const nsTArray<OwningFileOrDirect
   RefPtr<DispatchChangeEventCallback> dispatchChangeEventCallback =
     new DispatchChangeEventCallback(this);
 
-  if (DOMPrefs::WebkitBlinkDirectoryPickerEnabled() &&
+  if (StaticPrefs::dom_webkitBlink_dirPicker_enabled() &&
       HasAttr(kNameSpaceID_None, nsGkAtoms::webkitdirectory)) {
     ErrorResult rv;
     GetFilesHelper* helper = GetOrCreateGetFilesHelper(true /* recursionFlag */,
@@ -2716,7 +2716,7 @@ HTMLInputElement::GetFiles()
   }
 
   if (IsDirPickerEnabled() && Allowdirs() &&
-      (!DOMPrefs::WebkitBlinkDirectoryPickerEnabled() ||
+      (!StaticPrefs::dom_webkitBlink_dirPicker_enabled() ||
        !HasAttr(kNameSpaceID_None, nsGkAtoms::webkitdirectory))) {
     return nullptr;
   }
@@ -3971,7 +3971,7 @@ HTMLInputElement::MaybeInitPickers(EventChainPostVisitor& aVisitor)
     if (target &&
         target->FindFirstNonChromeOnlyAccessContent() == this &&
         ((IsDirPickerEnabled() && Allowdirs()) ||
-         (DOMPrefs::WebkitBlinkDirectoryPickerEnabled() &&
+         (StaticPrefs::dom_webkitBlink_dirPicker_enabled() &&
           HasAttr(kNameSpaceID_None, nsGkAtoms::webkitdirectory)))) {
       type = FILE_PICKER_DIRECTORY;
     }
@@ -5652,7 +5652,7 @@ NS_IMETHODIMP_(bool)
 HTMLInputElement::IsAttributeMapped(const nsAtom* aAttribute) const
 {
   static const MappedAttributeEntry attributes[] = {
-    { &nsGkAtoms::align },
+    { nsGkAtoms::align },
     { nullptr },
   };
 
@@ -5804,27 +5804,24 @@ HTMLInputElement::GetControllers(ErrorResult& aRv)
   {
     if (!mControllers)
     {
-      nsresult rv;
-      mControllers = do_CreateInstance(kXULControllersCID, &rv);
-      if (NS_FAILED(rv)) {
-        aRv.Throw(rv);
+      mControllers = new nsXULControllers();
+      if (!mControllers) {
+        aRv.Throw(NS_ERROR_FAILURE);
         return nullptr;
       }
 
-      nsCOMPtr<nsIController>
-        controller(do_CreateInstance("@mozilla.org/editor/editorcontroller;1",
-                                     &rv));
-      if (NS_FAILED(rv)) {
-        aRv.Throw(rv);
+      nsCOMPtr<nsIController> controller =
+        nsBaseCommandController::CreateEditorController();
+      if (!controller) {
+        aRv.Throw(NS_ERROR_FAILURE);
         return nullptr;
       }
 
       mControllers->AppendController(controller);
 
-      controller = do_CreateInstance("@mozilla.org/editor/editingcontroller;1",
-                                     &rv);
-      if (NS_FAILED(rv)) {
-        aRv.Throw(rv);
+      controller = nsBaseCommandController::CreateEditingController();
+      if (!controller) {
+        aRv.Throw(NS_ERROR_FAILURE);
         return nullptr;
       }
 

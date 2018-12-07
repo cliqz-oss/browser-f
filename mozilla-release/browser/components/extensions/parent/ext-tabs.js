@@ -403,7 +403,7 @@ this.tabs = class extends ExtensionAPI {
           name: "tabs.onCreated",
           register: fire => {
             let listener = (eventName, event) => {
-              fire.async(tabManager.convert(event.nativeTab, event.currentTab));
+              fire.async(tabManager.convert(event.nativeTab, event.currentTabSize));
             };
 
             tabTracker.on("tab-created", listener);
@@ -525,34 +525,10 @@ this.tabs = class extends ExtensionAPI {
             let url;
             let principal = context.principal;
 
-
-            if (createProperties.cookieStoreId && !extension.hasPermission("cookies")) {
-              return Promise.reject({message: `No permission for cookieStoreId: ${createProperties.cookieStoreId}`});
-            }
-
             let options = {};
             if (createProperties.cookieStoreId) {
-              if (!global.isValidCookieStoreId(createProperties.cookieStoreId)) {
-                return Promise.reject({message: `Illegal cookieStoreId: ${createProperties.cookieStoreId}`});
-              }
-
-              let privateWindow = PrivateBrowsingUtils.isBrowserPrivate(window.gBrowser);
-              if (privateWindow && !global.isPrivateCookieStoreId(createProperties.cookieStoreId)) {
-                return Promise.reject({message: `Illegal to set non-private cookieStoreId in a private window`});
-              }
-
-              if (!privateWindow && global.isPrivateCookieStoreId(createProperties.cookieStoreId)) {
-                return Promise.reject({message: `Illegal to set private cookieStoreId in a non-private window`});
-              }
-
-              if (global.isContainerCookieStoreId(createProperties.cookieStoreId)) {
-                let containerId = global.getContainerForCookieStoreId(createProperties.cookieStoreId);
-                if (!containerId) {
-                  return Promise.reject({message: `No cookie store exists with ID ${createProperties.cookieStoreId}`});
-                }
-
-                options.userContextId = containerId;
-              }
+              // May throw if validation fails.
+              options.userContextId = getUserContextIdForCookieStoreId(extension, createProperties.cookieStoreId, PrivateBrowsingUtils.isBrowserPrivate(window.gBrowser));
             }
 
             if (createProperties.url !== null) {
@@ -588,7 +564,12 @@ this.tabs = class extends ExtensionAPI {
             }
 
             tabListener.initTabReady();
-            let currentTab = window.gBrowser.selectedTab;
+            const currentTab = window.gBrowser.selectedTab;
+            const {frameLoader} = currentTab.linkedBrowser;
+            const currentTabSize = {
+              width: frameLoader.lazyWidth,
+              height: frameLoader.lazyHeight,
+            };
 
             if (createProperties.openerTabId !== null) {
               options.ownerTab = tabTracker.getTab(createProperties.openerTabId);
@@ -655,7 +636,7 @@ this.tabs = class extends ExtensionAPI {
               tabListener.initializingTabs.add(nativeTab);
             }
 
-            return tabManager.convert(nativeTab, currentTab);
+            return tabManager.convert(nativeTab, currentTabSize);
           });
         },
 
@@ -1225,7 +1206,8 @@ this.tabs = class extends ExtensionAPI {
                 let printProgressListener = {
                   onLocationChange(webProgress, request, location, flags) { },
                   onProgressChange(webProgress, request, curSelfProgress, maxSelfProgress, curTotalProgress, maxTotalProgress) { },
-                  onSecurityChange(webProgress, request, state) { },
+                  onSecurityChange(webProgress, request, oldState, state,
+                                   contentBlockingLogJSON) { },
                   onStateChange(webProgress, request, flags, status) {
                     if ((flags & Ci.nsIWebProgressListener.STATE_STOP) && (flags & Ci.nsIWebProgressListener.STATE_IS_DOCUMENT)) {
                       resolve(retval == 0 ? "saved" : "replaced");

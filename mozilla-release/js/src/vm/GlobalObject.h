@@ -26,6 +26,8 @@ class TypedObjectModuleObject;
 class LexicalEnvironmentObject;
 class RegExpStatics;
 
+enum class ReferenceType;
+
 /*
  * Global object slots are reserved as follows:
  *
@@ -144,28 +146,39 @@ class GlobalObject : public NativeObject
                                        JSProtoKey key, HandleObject ctor, HandleObject proto);
 
   private:
-    static bool resolveConstructor(JSContext* cx, Handle<GlobalObject*> global, JSProtoKey key);
+    enum class IfClassIsDisabled {
+        DoNothing,
+        Throw
+    };
+
+    static bool resolveConstructor(JSContext* cx,
+                                   Handle<GlobalObject*> global,
+                                   JSProtoKey key,
+                                   IfClassIsDisabled mode);
 
   public:
     static bool ensureConstructor(JSContext* cx, Handle<GlobalObject*> global, JSProtoKey key) {
-        if (global->isStandardClassResolved(key))
+        if (global->isStandardClassResolved(key)) {
             return true;
-        return resolveConstructor(cx, global, key);
+        }
+        return resolveConstructor(cx, global, key, IfClassIsDisabled::Throw);
     }
 
     static JSObject* getOrCreateConstructor(JSContext* cx, JSProtoKey key) {
         MOZ_ASSERT(key != JSProto_Null);
         Handle<GlobalObject*> global = cx->global();
-        if (!GlobalObject::ensureConstructor(cx, global, key))
+        if (!GlobalObject::ensureConstructor(cx, global, key)) {
             return nullptr;
+        }
         return &global->getConstructor(key).toObject();
     }
 
     static JSObject* getOrCreatePrototype(JSContext* cx, JSProtoKey key) {
         MOZ_ASSERT(key != JSProto_Null);
         Handle<GlobalObject*> global = cx->global();
-        if (!GlobalObject::ensureConstructor(cx, global, key))
+        if (!GlobalObject::ensureConstructor(cx, global, key)) {
             return nullptr;
+        }
         return &global->getPrototype(key).toObject();
     }
 
@@ -296,108 +309,125 @@ class GlobalObject : public NativeObject
 
     static NativeObject*
     getOrCreateObjectPrototype(JSContext* cx, Handle<GlobalObject*> global) {
-        if (global->functionObjectClassesInitialized())
+        if (global->functionObjectClassesInitialized()) {
             return &global->getPrototype(JSProto_Object).toObject().as<NativeObject>();
-        if (!ensureConstructor(cx, global, JSProto_Object))
+        }
+        if (!ensureConstructor(cx, global, JSProto_Object)) {
             return nullptr;
+        }
         return &global->getPrototype(JSProto_Object).toObject().as<NativeObject>();
     }
 
     static NativeObject*
     getOrCreateFunctionPrototype(JSContext* cx, Handle<GlobalObject*> global) {
-        if (global->functionObjectClassesInitialized())
+        if (global->functionObjectClassesInitialized()) {
             return &global->getPrototype(JSProto_Function).toObject().as<NativeObject>();
-        if (!ensureConstructor(cx, global, JSProto_Object))
+        }
+        if (!ensureConstructor(cx, global, JSProto_Object)) {
             return nullptr;
+        }
         return &global->getPrototype(JSProto_Function).toObject().as<NativeObject>();
     }
 
     static NativeObject*
     getOrCreateArrayPrototype(JSContext* cx, Handle<GlobalObject*> global) {
-        if (!ensureConstructor(cx, global, JSProto_Array))
+        if (!ensureConstructor(cx, global, JSProto_Array)) {
             return nullptr;
+        }
         return &global->getPrototype(JSProto_Array).toObject().as<NativeObject>();
     }
 
     NativeObject* maybeGetArrayPrototype() {
-        if (arrayClassInitialized())
+        if (arrayClassInitialized()) {
             return &getPrototype(JSProto_Array).toObject().as<NativeObject>();
+        }
         return nullptr;
     }
 
     static NativeObject*
     getOrCreateBooleanPrototype(JSContext* cx, Handle<GlobalObject*> global) {
-        if (!ensureConstructor(cx, global, JSProto_Boolean))
+        if (!ensureConstructor(cx, global, JSProto_Boolean)) {
             return nullptr;
+        }
         return &global->getPrototype(JSProto_Boolean).toObject().as<NativeObject>();
     }
 
     static NativeObject*
     getOrCreateNumberPrototype(JSContext* cx, Handle<GlobalObject*> global) {
-        if (!ensureConstructor(cx, global, JSProto_Number))
+        if (!ensureConstructor(cx, global, JSProto_Number)) {
             return nullptr;
+        }
         return &global->getPrototype(JSProto_Number).toObject().as<NativeObject>();
     }
 
     static NativeObject*
     getOrCreateStringPrototype(JSContext* cx, Handle<GlobalObject*> global) {
-        if (!ensureConstructor(cx, global, JSProto_String))
+        if (!ensureConstructor(cx, global, JSProto_String)) {
             return nullptr;
+        }
         return &global->getPrototype(JSProto_String).toObject().as<NativeObject>();
     }
 
     static NativeObject*
     getOrCreateSymbolPrototype(JSContext* cx, Handle<GlobalObject*> global) {
-        if (!ensureConstructor(cx, global, JSProto_Symbol))
+        if (!ensureConstructor(cx, global, JSProto_Symbol)) {
             return nullptr;
+        }
         return &global->getPrototype(JSProto_Symbol).toObject().as<NativeObject>();
     }
 
     static NativeObject*
     getOrCreatePromisePrototype(JSContext* cx, Handle<GlobalObject*> global) {
-        if (!ensureConstructor(cx, global, JSProto_Promise))
+        if (!ensureConstructor(cx, global, JSProto_Promise)) {
             return nullptr;
+        }
         return &global->getPrototype(JSProto_Promise).toObject().as<NativeObject>();
     }
 
     static NativeObject*
     getOrCreateRegExpPrototype(JSContext* cx, Handle<GlobalObject*> global) {
-        if (!ensureConstructor(cx, global, JSProto_RegExp))
+        if (!ensureConstructor(cx, global, JSProto_RegExp)) {
             return nullptr;
+        }
         return &global->getPrototype(JSProto_RegExp).toObject().as<NativeObject>();
     }
 
     JSObject* maybeGetRegExpPrototype() {
-        if (regexpClassInitialized())
+        if (regexpClassInitialized()) {
             return &getPrototype(JSProto_RegExp).toObject();
+        }
         return nullptr;
     }
 
     static NativeObject*
     getOrCreateSavedFramePrototype(JSContext* cx, Handle<GlobalObject*> global) {
-        if (!ensureConstructor(cx, global, JSProto_SavedFrame))
+        if (!ensureConstructor(cx, global, JSProto_SavedFrame)) {
             return nullptr;
+        }
         return &global->getPrototype(JSProto_SavedFrame).toObject().as<NativeObject>();
     }
 
     static JSFunction*
     getOrCreateArrayBufferConstructor(JSContext* cx, Handle<GlobalObject*> global) {
-        if (!ensureConstructor(cx, global, JSProto_ArrayBuffer))
+        if (!ensureConstructor(cx, global, JSProto_ArrayBuffer)) {
             return nullptr;
+        }
         return &global->getConstructor(JSProto_ArrayBuffer).toObject().as<JSFunction>();
     }
 
     static JSObject*
     getOrCreateArrayBufferPrototype(JSContext* cx, Handle<GlobalObject*> global) {
-        if (!ensureConstructor(cx, global, JSProto_ArrayBuffer))
+        if (!ensureConstructor(cx, global, JSProto_ArrayBuffer)) {
             return nullptr;
+        }
         return &global->getPrototype(JSProto_ArrayBuffer).toObject();
     }
 
     static JSObject*
     getOrCreateSharedArrayBufferPrototype(JSContext* cx, Handle<GlobalObject*> global) {
-        if (!ensureConstructor(cx, global, JSProto_SharedArrayBuffer))
+        if (!ensureConstructor(cx, global, JSProto_SharedArrayBuffer)) {
             return nullptr;
+        }
         return &global->getPrototype(JSProto_SharedArrayBuffer).toObject();
     }
 
@@ -406,15 +436,17 @@ class GlobalObject : public NativeObject
                                     JSExnType exnType)
     {
         JSProtoKey key = GetExceptionProtoKey(exnType);
-        if (!ensureConstructor(cx, global, key))
+        if (!ensureConstructor(cx, global, key)) {
             return nullptr;
+        }
         return &global->getPrototype(key).toObject();
     }
 
     static JSFunction*
     getOrCreateErrorConstructor(JSContext* cx, Handle<GlobalObject*> global) {
-        if (!ensureConstructor(cx, global, JSProto_Error))
+        if (!ensureConstructor(cx, global, JSProto_Error)) {
             return nullptr;
+        }
         return &global->getConstructor(JSProto_Error).toObject().as<JSFunction>();
     }
 
@@ -425,15 +457,17 @@ class GlobalObject : public NativeObject
 
     static NativeObject*
     getOrCreateSetPrototype(JSContext* cx, Handle<GlobalObject*> global) {
-        if (!ensureConstructor(cx, global, JSProto_Set))
+        if (!ensureConstructor(cx, global, JSProto_Set)) {
             return nullptr;
+        }
         return &global->getPrototype(JSProto_Set).toObject().as<NativeObject>();
     }
 
     static NativeObject*
     getOrCreateWeakSetPrototype(JSContext* cx, Handle<GlobalObject*> global) {
-        if (!ensureConstructor(cx, global, JSProto_WeakSet))
+        if (!ensureConstructor(cx, global, JSProto_WeakSet)) {
             return nullptr;
+        }
         return &global->getPrototype(JSProto_WeakSet).toObject().as<NativeObject>();
     }
 
@@ -447,6 +481,14 @@ class GlobalObject : public NativeObject
         return getOrCreateObject(cx, global, APPLICATION_SLOTS + JSProto_TypedObject,
                                  initTypedObjectModule);
     }
+
+    static TypeDescr*
+    getOrCreateScalarTypeDescr(JSContext* cx, Handle<GlobalObject*> global,
+                               Scalar::Type scalarType);
+
+    static TypeDescr*
+    getOrCreateReferenceTypeDescr(JSContext* cx, Handle<GlobalObject*> global,
+                                  ReferenceType type);
 
     TypedObjectModuleObject& getTypedObjectModule() const;
 
@@ -511,15 +553,17 @@ class GlobalObject : public NativeObject
 
     static JSFunction*
     getOrCreateTypedArrayConstructor(JSContext* cx, Handle<GlobalObject*> global) {
-        if (!ensureConstructor(cx, global, JSProto_TypedArray))
+        if (!ensureConstructor(cx, global, JSProto_TypedArray)) {
             return nullptr;
+        }
         return &global->getConstructor(JSProto_TypedArray).toObject().as<JSFunction>();
     }
 
     static JSObject*
     getOrCreateTypedArrayPrototype(JSContext* cx, Handle<GlobalObject*> global) {
-        if (!ensureConstructor(cx, global, JSProto_TypedArray))
+        if (!ensureConstructor(cx, global, JSProto_TypedArray)) {
             return nullptr;
+        }
         return &global->getPrototype(JSProto_TypedArray).toObject();
     }
 
@@ -531,8 +575,9 @@ class GlobalObject : public NativeObject
                       ObjectInitOp init)
     {
         Value v = global->getSlotRef(slot);
-        if (v.isObject())
+        if (v.isObject()) {
             return &v.toObject();
+        }
 
         return createObject(cx, global, slot, init);
     }
@@ -628,15 +673,17 @@ class GlobalObject : public NativeObject
 
     static JSObject*
     getOrCreateDataViewPrototype(JSContext* cx, Handle<GlobalObject*> global) {
-        if (!ensureConstructor(cx, global, JSProto_DataView))
+        if (!ensureConstructor(cx, global, JSProto_DataView)) {
             return nullptr;
+        }
         return &global->getPrototype(JSProto_DataView).toObject();
     }
 
     static JSFunction*
     getOrCreatePromiseConstructor(JSContext* cx, Handle<GlobalObject*> global) {
-        if (!ensureConstructor(cx, global, JSProto_Promise))
+        if (!ensureConstructor(cx, global, JSProto_Promise)) {
             return nullptr;
+        }
         return &global->getConstructor(JSProto_Promise).toObject().as<JSFunction>();
     }
 
@@ -675,8 +722,9 @@ class GlobalObject : public NativeObject
                            MutableHandleValue vp, bool* exists)
     {
         NativeObject* holder = getIntrinsicsHolder(cx, global);
-        if (!holder)
+        if (!holder) {
             return false;
+        }
 
         if (Shape* shape = holder->lookup(cx, name)) {
             vp.set(holder->getSlot(shape->slot()));
@@ -693,27 +741,23 @@ class GlobalObject : public NativeObject
                       HandlePropertyName name, MutableHandleValue value)
     {
         bool exists = false;
-        if (!GlobalObject::maybeGetIntrinsicValue(cx, global, name, value, &exists))
+        if (!GlobalObject::maybeGetIntrinsicValue(cx, global, name, value, &exists)) {
             return false;
-        if (exists)
+        }
+        if (exists) {
             return true;
-        if (!cx->runtime()->cloneSelfHostedValue(cx, name, value))
+        }
+        if (!cx->runtime()->cloneSelfHostedValue(cx, name, value)) {
             return false;
+        }
         return GlobalObject::addIntrinsicValue(cx, global, name, value);
     }
 
     static bool addIntrinsicValue(JSContext* cx, Handle<GlobalObject*> global,
                                   HandlePropertyName name, HandleValue value);
 
-    static bool setIntrinsicValue(JSContext* cx, Handle<GlobalObject*> global,
-                                  HandlePropertyName name, HandleValue value)
-    {
-        MOZ_ASSERT(cx->runtime()->isSelfHostingGlobal(global));
-        RootedObject holder(cx, GlobalObject::getIntrinsicsHolder(cx, global));
-        if (!holder)
-            return false;
-        return SetProperty(cx, holder, name, value);
-    }
+    static inline bool setIntrinsicValue(JSContext* cx, Handle<GlobalObject*> global,
+                                         HandlePropertyName name, HandleValue value);
 
     static bool getSelfHostedFunction(JSContext* cx, Handle<GlobalObject*> global,
                                       HandlePropertyName selfHostedName, HandleAtom name,
@@ -786,8 +830,9 @@ class GlobalObject : public NativeObject
 
     inline NativeObject* getForOfPICObject() {
         Value forOfPIC = getReservedSlot(FOR_OF_PIC_CHAIN);
-        if (forOfPIC.isUndefined())
+        if (forOfPIC.isUndefined()) {
             return nullptr;
+        }
         return &forOfPIC.toObject().as<NativeObject>();
     }
     static NativeObject* getOrCreateForOfPICObject(JSContext* cx, Handle<GlobalObject*> global);
@@ -864,17 +909,17 @@ GenericCreateConstructor(JSContext* cx, JSProtoKey key)
     return GlobalObject::createConstructor(cx, ctor, name, length, kind, jitInfo);
 }
 
-inline JSObject*
+template<typename T>
+JSObject*
 GenericCreatePrototype(JSContext* cx, JSProtoKey key)
 {
-    MOZ_ASSERT(key != JSProto_Object);
-    const Class* clasp = ProtoKeyToClass(key);
-    MOZ_ASSERT(clasp);
-    JSProtoKey protoKey = InheritanceProtoKeyForStandardClass(key);
-    if (!GlobalObject::ensureConstructor(cx, cx->global(), protoKey))
-        return nullptr;
-    RootedObject parentProto(cx, &cx->global()->getPrototype(protoKey).toObject());
-    return GlobalObject::createBlankPrototypeInheriting(cx, clasp, parentProto);
+    static_assert(!std::is_same<T, PlainObject>::value,
+                  "creating Object.prototype is very special and isn't handled here");
+    MOZ_ASSERT(&T::class_ == ProtoKeyToClass(key),
+               "type mismatch--probably too much copy/paste in your ClassSpec");
+    MOZ_ASSERT(InheritanceProtoKeyForStandardClass(key) == JSProto_Object,
+               "subclasses (of anything but Object) can't use GenericCreatePrototype");
+    return GlobalObject::createBlankPrototype(cx, cx->global(), &T::protoClass_);
 }
 
 inline JSProtoKey

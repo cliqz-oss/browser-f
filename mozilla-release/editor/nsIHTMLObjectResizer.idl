@@ -24,28 +24,20 @@ interface nsIHTMLObjectResizer : nsISupports
   const short eBottomRight = 7;
 
   /**
-   * the element currently displaying resizers
-   */
-  readonly attribute Element resizedObject;
-
-  /**
    * a boolean indicating if object resizing is enabled in the editor
    */
   attribute boolean objectResizingEnabled;
 
   /**
-   * Shows active resizers around an element's frame
-   * @param aResizedElement [IN] a DOM Element
-   */
-  void showResizers(in Element aResizedElement);
-
-  /**
-   * Hide resizers if they are visible
+   * Hide resizers if they are visible.  If this is called while there is no
+   * visible resizers, this does not throw exception, just does nothing.
    */
   void hideResizers();
 
   /**
-   * Refresh visible resizers
+   * Refresh positions of resizers.  If you change size of target of resizers,
+   * you need to refresh position of resizers with calling this.
+   * FYI: Current user in script is only BlueGriffon.
    */
   void refreshResizers();
 };

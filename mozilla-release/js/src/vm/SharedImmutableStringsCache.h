@@ -12,6 +12,7 @@
 
 #include <cstring>
 #include <new> // for placement new
+#include <utility> // std::move
 
 #include "builtin/String.h"
 
@@ -29,9 +30,9 @@ class SharedImmutableString;
 class SharedImmutableTwoByteString;
 
 /**
- * The `SharedImmutableStringsCache` allows for safely sharing and deduplicating
- * immutable strings (either `const char*` or `const char16_t*`) between
- * threads.
+ * The `SharedImmutableStringsCache` allows safely sharing and deduplicating
+ * immutable strings (either `const char*` [any encoding, not restricted to
+ * only Latin-1 or only UTF-8] or `const char16_t*`) between threads.
  *
  * The locking mechanism is dead-simple and coarse grained: a single lock guards
  * all of the internal table itself, the table's entries, and the entries'
@@ -146,8 +147,9 @@ class SharedImmutableStringsCache
         // Sizes of the strings and their boxes.
         for (auto r = locked->set.all(); !r.empty(); r.popFront()) {
             n += mallocSizeOf(r.front().get());
-            if (const char* chars = r.front()->chars())
+            if (const char* chars = r.front()->chars()) {
                 n += mallocSizeOf(chars);
+            }
         }
 
         return n;
@@ -159,8 +161,9 @@ class SharedImmutableStringsCache
      */
     static mozilla::Maybe<SharedImmutableStringsCache> Create() {
         auto inner = js_new<ExclusiveData<Inner>>(mutexid::SharedImmutableStringsCache);
-        if (!inner)
+        if (!inner) {
             return mozilla::Nothing();
+        }
 
         auto locked = inner->lock();
         return mozilla::Some(SharedImmutableStringsCache(locked));
@@ -188,8 +191,9 @@ class SharedImmutableStringsCache
     }
 
     ~SharedImmutableStringsCache() {
-        if (!inner_)
+        if (!inner_) {
             return;
+        }
 
         bool shouldDestroy = false;
         {
@@ -198,11 +202,13 @@ class SharedImmutableStringsCache
             auto locked = inner_->lock();
             MOZ_ASSERT(locked->refcount > 0);
             locked->refcount--;
-            if (locked->refcount == 0)
+            if (locked->refcount == 0) {
                 shouldDestroy = true;
+            }
         }
-        if (shouldDestroy)
+        if (shouldDestroy) {
             js_delete(inner_);
+        }
     }
 
     /**
@@ -315,11 +321,13 @@ class SharedImmutableStringsCache
         static bool match(const StringBox::Ptr& key, const Lookup& lookup) {
             MOZ_ASSERT(lookup.chars_);
 
-            if (!key->chars() || key->length() != lookup.length_)
+            if (!key->chars() || key->length() != lookup.length_) {
                 return false;
+            }
 
-            if (key->chars() == lookup.chars_)
+            if (key->chars() == lookup.chars_) {
                 return true;
+            }
 
             return memcmp(key->chars(), lookup.chars_, key->length()) == 0;
         }

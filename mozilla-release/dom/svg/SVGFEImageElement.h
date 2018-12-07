@@ -28,7 +28,7 @@ class SVGFEImageElement final : public SVGFEImageElementBase,
 protected:
   friend nsresult (::NS_NewSVGFEImageElement(nsIContent **aResult,
                                              already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo));
-  explicit SVGFEImageElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
+  explicit SVGFEImageElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
   virtual ~SVGFEImageElement();
   virtual JSObject* WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto) override;
 
@@ -69,6 +69,9 @@ public:
 
   NS_IMETHOD Notify(imgIRequest *aRequest, int32_t aType, const nsIntRect* aData) override;
 
+  // Override for nsIImageLoadingContent.
+  NS_IMETHOD_(void) FrameCreated(nsIFrame* aFrame) override;
+
   void MaybeLoadSVGImage();
 
   // WebIDL
@@ -76,9 +79,6 @@ public:
   already_AddRefed<DOMSVGAnimatedPreserveAspectRatio> PreserveAspectRatio();
 
 private:
-  // Invalidate users of the filter containing this element.
-  void Invalidate();
-
   nsresult LoadSVGImage(bool aForce, bool aNotify);
 
 protected:
@@ -95,6 +95,7 @@ protected:
   static StringInfo sStringInfo[3];
 
   SVGAnimatedPreserveAspectRatio mPreserveAspectRatio;
+  uint16_t mImageAnimationMode;
 };
 
 } // namespace dom

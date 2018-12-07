@@ -23,7 +23,7 @@ const DEFAULT_MAX_USED_THEMES_COUNT = 30;
 const MAX_PREVIEW_SECONDS = 30;
 
 const MANDATORY = ["id", "name"];
-const OPTIONAL = ["headerURL", "footerURL", "textcolor", "accentcolor",
+const OPTIONAL = ["headerURL", "textcolor", "accentcolor",
                   "iconURL", "previewURL", "author", "description",
                   "homepageURL", "updateURL", "version"];
 
@@ -31,7 +31,6 @@ const PERSIST_ENABLED = true;
 const PERSIST_BYPASS_CACHE = false;
 const PERSIST_FILES = {
   headerURL: "lightweighttheme-header",
-  footerURL: "lightweighttheme-footer",
 };
 
 ChromeUtils.defineModuleGetter(this, "LightweightThemeImageOptimizer",
@@ -79,25 +78,6 @@ var _defaultThemeIsInDarkMode = false;
 // the default theme is selected.
 var _defaultDarkThemeID = null;
 
-// Convert from the old storage format (in which the order of usedThemes
-// was combined with isThemeSelected to determine which theme was selected)
-// to the new one (where a selectedThemeID determines which theme is selected).
-(function() {
-  let wasThemeSelected = _prefs.getBoolPref("isThemeSelected", false);
-
-  if (wasThemeSelected) {
-    _prefs.clearUserPref("isThemeSelected");
-    let themes = [];
-    try {
-      themes = JSON.parse(_prefs.getStringPref("usedThemes"));
-    } catch (e) { }
-
-    if (Array.isArray(themes) && themes[0]) {
-      _prefs.setCharPref("selectedThemeID", themes[0].id);
-    }
-  }
-})();
-
 var LightweightThemeManager = {
   get name() {
     return "LightweightThemeManager";
@@ -120,6 +100,10 @@ var LightweightThemeManager = {
   // will always show up at the top of the list.
   _builtInThemes: new Map(),
 
+  isBuiltIn(theme) {
+    return this._builtInThemes.has(theme.id);
+  },
+
   get usedThemes() {
     let themes = [];
     try {
@@ -141,16 +125,7 @@ var LightweightThemeManager = {
   },
 
   get currentThemeForDisplay() {
-    var data = this.currentTheme;
-
-    if (!data || data.id == DEFAULT_THEME_ID) {
-      if (_fallbackThemeData) {
-        return _fallbackThemeData;
-      }
-      if (_defaultThemeIsInDarkMode && _defaultDarkThemeID) {
-        return this.getUsedTheme(_defaultDarkThemeID);
-      }
-    }
+    var data = _substituteDefaulThemeIfNeeded(this.currentTheme);
 
     if (data && PERSIST_ENABLED) {
       for (let key in PERSIST_FILES) {
@@ -237,6 +212,8 @@ var LightweightThemeManager = {
   },
 
   previewTheme(aData) {
+    aData = _substituteDefaulThemeIfNeeded(aData);
+
     let cancel = Cc["@mozilla.org/supports-PRBool;1"].createInstance(Ci.nsISupportsPRBool);
     cancel.data = false;
     Services.obs.notifyObservers(cancel, "lightweight-theme-preview-requested",
@@ -309,7 +286,8 @@ var LightweightThemeManager = {
 
     if ("converted_theme" in parsed) {
       const {url, hash} = parsed.converted_theme;
-      let install = await AddonManager.getInstallForURL(url, "application/x-xpinstall", hash);
+      let install = await AddonManager.getInstallForURL(url, "application/x-xpinstall", hash,
+                                                        null, null, null, null, {source: "lwt-converted-theme"});
 
       install.addListener({
         onDownloadEnded() {
@@ -685,6 +663,14 @@ AddonWrapper.prototype = {
     return false;
   },
 
+  get installTelemetryInfo() {
+    if (LightweightThemeManager.isBuiltIn(themeFor(this))) {
+      return {source: "builtin-theme"};
+    }
+
+    return {source: "lightweight-theme"};
+  },
+
   uninstall() {
     LightweightThemeManager.forgetUsedTheme(themeFor(this).id);
   },
@@ -905,6 +891,19 @@ function _updateUsedThemes(aList) {
 function _notifyWindows(aThemeData) {
   Services.obs.notifyObservers(null, "lightweight-theme-styling-update",
                                JSON.stringify({theme: aThemeData}));
+}
+
+function _substituteDefaulThemeIfNeeded(aThemeData) {
+  if (!aThemeData || aThemeData.id == DEFAULT_THEME_ID) {
+    if (_fallbackThemeData) {
+      return _fallbackThemeData;
+    }
+    if (_defaultThemeIsInDarkMode && _defaultDarkThemeID) {
+      return LightweightThemeManager.getUsedTheme(_defaultDarkThemeID);
+    }
+  }
+
+  return aThemeData;
 }
 
 var _previewTimer;

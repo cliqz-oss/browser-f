@@ -27,7 +27,7 @@
 #include "nsIPrefBranch.h"
 #include "nsIPrefService.h"
 #include "nsIScriptError.h"
-#include "nsICookiePermission.h"
+#include "nsCookiePermission.h"
 #include "nsIURI.h"
 #include "nsIURL.h"
 #include "nsIChannel.h"
@@ -684,11 +684,7 @@ nsCookieService::Init()
   os->AddObserver(this, "profile-do-change", true);
   os->AddObserver(this, "last-pb-context-exited", true);
 
-  mPermissionService = do_GetService(NS_COOKIEPERMISSION_CONTRACTID);
-  if (!mPermissionService) {
-    NS_WARNING("nsICookiePermission implementation not available - some features won't work!");
-    COOKIE_LOGSTRING(LogLevel::Warning, ("Init(): nsICookiePermission implementation not available"));
-  }
+  mPermissionService = nsCookiePermission::GetOrCreate();
 
   return NS_OK;
 }
@@ -2586,45 +2582,6 @@ nsCookieService::GetSessionEnumerator(nsISimpleEnumerator **aEnumerator)
   return NS_NewArrayEnumerator(aEnumerator, cookieList, NS_GET_IID(nsICookie2));
 }
 
-static nsresult
-InitializeOriginAttributes(OriginAttributes* aAttrs,
-                           JS::HandleValue aOriginAttributes,
-                           JSContext* aCx,
-                           uint8_t aArgc,
-                           const char16_t* aAPI,
-                           const char16_t* aInterfaceSuffix)
-{
-  MOZ_ASSERT(aAttrs);
-  MOZ_ASSERT(aCx);
-  MOZ_ASSERT(aAPI);
-  MOZ_ASSERT(aInterfaceSuffix);
-
-  if (aArgc == 0) {
-    const char16_t* params[] = {
-      aAPI,
-      aInterfaceSuffix
-    };
-
-    // This is supposed to be temporary and in 1 or 2 releases we want to
-    // have originAttributes param as mandatory. But for now, we don't want to
-    // break existing addons, so we write a console message to inform the addon
-    // developers about it.
-    nsContentUtils::ReportToConsole(nsIScriptError::warningFlag,
-                                    NS_LITERAL_CSTRING("Cookie Manager"),
-                                    nullptr,
-                                    nsContentUtils::eNECKO_PROPERTIES,
-                                    "nsICookieManagerAPIDeprecated",
-                                    params, ArrayLength(params));
-  } else if (aArgc == 1) {
-    if (!aOriginAttributes.isObject() ||
-        !aAttrs->Init(aCx, aOriginAttributes)) {
-      return NS_ERROR_INVALID_ARG;
-    }
-  }
-
-  return NS_OK;
-}
-
 NS_IMETHODIMP
 nsCookieService::Add(const nsACString &aHost,
                      const nsACString &aPath,
@@ -2636,19 +2593,14 @@ nsCookieService::Add(const nsACString &aHost,
                      int64_t           aExpiry,
                      JS::HandleValue   aOriginAttributes,
                      int32_t           aSameSite,
-                     JSContext*        aCx,
-                     uint8_t           aArgc)
+                     JSContext*        aCx)
 {
-  MOZ_ASSERT(aArgc == 0 || aArgc == 1 || aArgc == 2);
-
   OriginAttributes attrs;
-  nsresult rv = InitializeOriginAttributes(&attrs,
-                                           aOriginAttributes,
-                                           aCx,
-                                           aArgc == 0 ? 0 : 1,
-                                           u"nsICookieManager.add()",
-                                           u"2");
-  NS_ENSURE_SUCCESS(rv, rv);
+
+  if (!aOriginAttributes.isObject() ||
+      !attrs.Init(aCx, aOriginAttributes)) {
+    return NS_ERROR_INVALID_ARG;
+  }
 
   return AddNative(aHost, aPath, aName, aValue, aIsSecure, aIsHttpOnly,
                    aIsSession, aExpiry, &attrs, aSameSite);
@@ -2777,19 +2729,14 @@ nsCookieService::Remove(const nsACString &aHost,
                         const nsACString &aPath,
                         bool             aBlocked,
                         JS::HandleValue  aOriginAttributes,
-                        JSContext*       aCx,
-                        uint8_t          aArgc)
+                        JSContext*       aCx)
 {
-  MOZ_ASSERT(aArgc == 0 || aArgc == 1);
-
   OriginAttributes attrs;
-  nsresult rv = InitializeOriginAttributes(&attrs,
-                                           aOriginAttributes,
-                                           aCx,
-                                           aArgc,
-                                           u"nsICookieManager.remove()",
-                                           u"");
-  NS_ENSURE_SUCCESS(rv, rv);
+
+  if (!aOriginAttributes.isObject() ||
+      !attrs.Init(aCx, aOriginAttributes)) {
+    return NS_ERROR_INVALID_ARG;
+  }
 
   return RemoveNative(aHost, aName, aPath, aBlocked, &attrs);
 }
@@ -2962,7 +2909,7 @@ nsCookieService::Read()
 
     nsCookieKey key(baseDomain, attrs);
     CookieDomainTuple* tuple = mReadArray.AppendElement();
-    tuple->key = key;
+    tuple->key = std::move(key);
     tuple->cookie = GetCookieFromRow(stmt, attrs);
   }
 
@@ -3001,7 +2948,6 @@ nsCookieService::ImportCookies(nsIFile *aCookieFile)
   nsAutoCString buffer, baseDomain;
   bool isMore = true;
   int32_t hostIndex, isDomainIndex, pathIndex, secureIndex, expiresIndex, nameIndex, cookieIndex;
-  nsACString::char_iterator iter;
   int32_t numInts;
   int64_t expires;
   bool isDomain, isHttpOnly = false;
@@ -3069,8 +3015,8 @@ nsCookieService::ImportCookies(nsIFile *aCookieFile)
 
     // check the expirytime first - if it's expired, ignore
     // nullstomp the trailing tab, to avoid copying the string
-    buffer.BeginWriting(iter);
-    *(iter += nameIndex - 1) = char(0);
+    auto iter = buffer.BeginWriting() + nameIndex - 1;
+    *iter = char(0);
     numInts = PR_sscanf(buffer.get() + expiresIndex, "%lld", &expires);
     if (numInts != 1 || expires < currentTime) {
       continue;
@@ -4443,7 +4389,7 @@ nsCookieService::CheckDomain(nsCookieAttributes &aCookieAttributes,
   return true;
 }
 
-nsCString
+nsAutoCString
 nsCookieService::GetPathFromURI(nsIURI* aHostURI)
 {
   // strip down everything after the last slash to get the path,
@@ -4751,35 +4697,31 @@ nsCookieService::PurgeCookies(int64_t aCurrentTimeInUsec)
 // find whether a given cookie has been previously set. this is provided by the
 // nsICookieManager interface.
 NS_IMETHODIMP
-nsCookieService::CookieExists(nsICookie2* aCookie,
+nsCookieService::CookieExists(const nsACString& aHost,
+                              const nsACString& aPath,
+                              const nsACString& aName,
                               JS::HandleValue aOriginAttributes,
                               JSContext* aCx,
-                              uint8_t aArgc,
                               bool* aFoundCookie)
 {
-  NS_ENSURE_ARG_POINTER(aCookie);
   NS_ENSURE_ARG_POINTER(aCx);
   NS_ENSURE_ARG_POINTER(aFoundCookie);
-  MOZ_ASSERT(aArgc == 0 || aArgc == 1);
 
   OriginAttributes attrs;
-  nsresult rv = InitializeOriginAttributes(&attrs,
-                                           aOriginAttributes,
-                                           aCx,
-                                           aArgc,
-                                           u"nsICookieManager.cookieExists()",
-                                           u"2");
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  return CookieExistsNative(aCookie, &attrs, aFoundCookie);
+  if (!aOriginAttributes.isObject() ||
+      !attrs.Init(aCx, aOriginAttributes)) {
+    return NS_ERROR_INVALID_ARG;
+  }
+  return CookieExistsNative(aHost, aPath, aName, &attrs, aFoundCookie);
 }
 
 NS_IMETHODIMP_(nsresult)
-nsCookieService::CookieExistsNative(nsICookie2* aCookie,
+nsCookieService::CookieExistsNative(const nsACString& aHost,
+                                    const nsACString& aPath,
+                                    const nsACString& aName,
                                     OriginAttributes* aOriginAttributes,
                                     bool* aFoundCookie)
 {
-  NS_ENSURE_ARG_POINTER(aCookie);
   NS_ENSURE_ARG_POINTER(aOriginAttributes);
   NS_ENSURE_ARG_POINTER(aFoundCookie);
 
@@ -4793,21 +4735,15 @@ nsCookieService::CookieExistsNative(nsICookie2* aCookie,
   AutoRestore<DBState*> savePrevDBState(mDBState);
   mDBState = (aOriginAttributes->mPrivateBrowsingId > 0) ? mPrivateDBState : mDefaultDBState;
 
-  nsAutoCString host, name, path;
-  nsresult rv = aCookie->GetHost(host);
-  NS_ENSURE_SUCCESS(rv, rv);
-  rv = aCookie->GetName(name);
-  NS_ENSURE_SUCCESS(rv, rv);
-  rv = aCookie->GetPath(path);
-  NS_ENSURE_SUCCESS(rv, rv);
-
   nsAutoCString baseDomain;
-  rv = GetBaseDomainFromHost(mTLDService, host, baseDomain);
+  nsresult rv = GetBaseDomainFromHost(mTLDService, aHost, baseDomain);
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsListIter iter;
   *aFoundCookie = FindCookie(nsCookieKey(baseDomain, *aOriginAttributes),
-                             host, name, path, iter);
+                             PromiseFlatCString(aHost),
+                             PromiseFlatCString(aName),
+                             PromiseFlatCString(aPath), iter);
   return NS_OK;
 }
 
@@ -4937,11 +4873,8 @@ NS_IMETHODIMP
 nsCookieService::GetCookiesFromHost(const nsACString     &aHost,
                                     JS::HandleValue       aOriginAttributes,
                                     JSContext*            aCx,
-                                    uint8_t               aArgc,
                                     nsISimpleEnumerator **aEnumerator)
 {
-  MOZ_ASSERT(aArgc == 0 || aArgc == 1);
-
   if (!mDBState) {
     NS_WARNING("No DBState! Profile already closed?");
     return NS_ERROR_NOT_AVAILABLE;
@@ -4959,13 +4892,10 @@ nsCookieService::GetCookiesFromHost(const nsACString     &aHost,
   NS_ENSURE_SUCCESS(rv, rv);
 
   OriginAttributes attrs;
-  rv = InitializeOriginAttributes(&attrs,
-                                  aOriginAttributes,
-                                  aCx,
-                                  aArgc,
-                                  u"nsICookieManager.getCookiesFromHost()",
-                                  u"2");
-  NS_ENSURE_SUCCESS(rv, rv);
+  if (!aOriginAttributes.isObject() ||
+      !attrs.Init(aCx, aOriginAttributes)) {
+    return NS_ERROR_INVALID_ARG;
+  }
 
   AutoRestore<DBState*> savePrevDBState(mDBState);
   mDBState = (attrs.mPrivateBrowsingId > 0) ? mPrivateDBState : mDefaultDBState;

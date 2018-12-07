@@ -19,10 +19,11 @@ import mozfile
 from mach.decorators import CommandProvider, Command
 from mozboot.util import get_state_dir
 from mozbuild.base import MozbuildObject, MachCommandBase
+from mozbuild.base import MachCommandConditions as conditions
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 BENCHMARK_REPOSITORY = 'https://github.com/mozilla/perf-automation'
-BENCHMARK_REVISION = '4befd28725c687b91ce749420eab29352ecbcab4'
+BENCHMARK_REVISION = '2720cdc790828952964524bb44ce8b4c14670e90'
 
 
 class RaptorRunner(MozbuildObject):
@@ -161,11 +162,12 @@ class MachRaptor(MachCommandBase):
              parser=create_parser)
     def run_raptor_test(self, **kwargs):
 
-        from mozrunner.devices.android_device import verify_android_device
-
         build_obj = MozbuildObject.from_environment(cwd=HERE)
-        if not verify_android_device(build_obj, install=True, app=kwargs['binary']):
-            return 1
+
+        if conditions.is_android(build_obj) or kwargs['app'] == 'geckoview':
+            from mozrunner.devices.android_device import verify_android_device
+            if not verify_android_device(build_obj, install=True, app=kwargs['binary']):
+                return 1
 
         debug_command = '--debug-command'
         if debug_command in sys.argv:

@@ -31,8 +31,9 @@ FRAGMENT(unwind, simple) {
     using namespace JS;
 
     JS::Rooted<JSObject*> global(cx, JS::CurrentGlobalOrNull(cx));
-    if (!JS_DefineFunctionsWithHelp(cx, global, unwind_functions))
+    if (!JS_DefineFunctionsWithHelp(cx, global, unwind_functions)) {
         return;
+    }
 
     // baseline-eager.
     uint32_t saveThreshold = js::jit::JitOptions.baselineWarmUpThreshold;
@@ -52,8 +53,9 @@ FRAGMENT(unwind, simple) {
 
     JS::CompileOptions opts(cx);
     opts.setFileAndLine(__FILE__, line0 + 1);
+
     JS::Rooted<JS::Value> rval(cx);
-    JS::Evaluate(cx, opts, bytes, strlen(bytes), &rval);
+    JS::EvaluateUtf8(cx, opts, bytes, strlen(bytes), &rval);
 
     js::jit::JitOptions.baselineWarmUpThreshold = saveThreshold;
 }

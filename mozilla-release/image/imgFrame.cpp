@@ -7,6 +7,7 @@
 #include "imgFrame.h"
 #include "ImageRegion.h"
 #include "ShutdownTracker.h"
+#include "SurfaceCache.h"
 
 #include "prenv.h"
 
@@ -108,22 +109,21 @@ ShouldUseHeap(const IntSize& aSize,
 static already_AddRefed<DataSourceSurface>
 AllocateBufferForImage(const IntSize& size,
                        SurfaceFormat format,
-                       bool aIsAnimated = false)
+                       bool aIsAnimated = false,
+                       bool aIsFullFrame = true)
 {
   int32_t stride = VolatileSurfaceStride(size, format);
 
-  if (ShouldUseHeap(size, stride, aIsAnimated)) {
+  if (gfxVars::GetUseWebRenderOrDefault() &&
+      gfxPrefs::ImageMemShared() && aIsFullFrame) {
+    RefPtr<SourceSurfaceSharedData> newSurf = new SourceSurfaceSharedData();
+    if (newSurf->Init(size, stride, format)) {
+      return newSurf.forget();
+    }
+  } else if (ShouldUseHeap(size, stride, aIsAnimated)) {
     RefPtr<SourceSurfaceAlignedRawData> newSurf =
       new SourceSurfaceAlignedRawData();
     if (newSurf->Init(size, format, false, 0, stride)) {
-      return newSurf.forget();
-    }
-  }
-
-  if (!aIsAnimated && gfxVars::GetUseWebRenderOrDefault()
-                   && gfxPrefs::ImageMemShared()) {
-    RefPtr<SourceSurfaceSharedData> newSurf = new SourceSurfaceSharedData();
-    if (newSurf->Init(size, stride, format)) {
       return newSurf.forget();
     }
   } else {
@@ -158,38 +158,13 @@ ClearSurface(DataSourceSurface* aSurface, const IntSize& aSize, SurfaceFormat aF
   return true;
 }
 
-// Returns true if an image of aWidth x aHeight is allowed and legal.
-static bool
-AllowedImageSize(int32_t aWidth, int32_t aHeight)
-{
-  // reject over-wide or over-tall images
-  const int32_t k64KLimit = 0x0000FFFF;
-  if (MOZ_UNLIKELY(aWidth > k64KLimit || aHeight > k64KLimit )) {
-    NS_WARNING("image too big");
-    return false;
-  }
-
-  // protect against invalid sizes
-  if (MOZ_UNLIKELY(aHeight <= 0 || aWidth <= 0)) {
-    return false;
-  }
-
-  // check to make sure we don't overflow a 32-bit
-  CheckedInt32 requiredBytes = CheckedInt32(aWidth) * CheckedInt32(aHeight) * 4;
-  if (MOZ_UNLIKELY(!requiredBytes.isValid())) {
-    NS_WARNING("width or height too large");
-    return false;
-  }
-  return true;
-}
-
 static bool AllowedImageAndFrameDimensions(const nsIntSize& aImageSize,
                                            const nsIntRect& aFrameRect)
 {
-  if (!AllowedImageSize(aImageSize.width, aImageSize.height)) {
+  if (!SurfaceCache::IsLegalSize(aImageSize)) {
     return false;
   }
-  if (!AllowedImageSize(aFrameRect.Width(), aFrameRect.Height())) {
+  if (!SurfaceCache::IsLegalSize(aFrameRect.Size())) {
     return false;
   }
   nsIntRect imageRect(0, 0, aImageSize.width, aImageSize.height);
@@ -213,6 +188,7 @@ imgFrame::imgFrame()
   , mPalettedImageData(nullptr)
   , mPaletteDepth(0)
   , mNonPremult(false)
+  , mIsFullFrame(false)
   , mCompositingFailed(false)
 {
 }
@@ -235,7 +211,8 @@ imgFrame::InitForDecoder(const nsIntSize& aImageSize,
                          SurfaceFormat aFormat,
                          uint8_t aPaletteDepth /* = 0 */,
                          bool aNonPremult /* = false */,
-                         const Maybe<AnimationParams>& aAnimParams /* = Nothing() */)
+                         const Maybe<AnimationParams>& aAnimParams /* = Nothing() */,
+                         bool aIsFullFrame /* = false */)
 {
   // Assert for properties that should be verified by decoders,
   // warn for properties related to bad content.
@@ -248,13 +225,20 @@ imgFrame::InitForDecoder(const nsIntSize& aImageSize,
   mImageSize = aImageSize;
   mFrameRect = aRect;
 
+  // May be updated shortly after InitForDecoder by BlendAnimationFilter
+  // because it needs to take into consideration the previous frames to
+  // properly calculate. We start with the whole frame as dirty.
+  mDirtyRect = aRect;
+
   if (aAnimParams) {
     mBlendRect = aAnimParams->mBlendRect;
     mTimeout = aAnimParams->mTimeout;
     mBlendMethod = aAnimParams->mBlendMethod;
     mDisposalMethod = aAnimParams->mDisposalMethod;
+    mIsFullFrame = aAnimParams->mFrameNum == 0 || aIsFullFrame;
   } else {
     mBlendRect = aRect;
+    mIsFullFrame = true;
   }
 
   // We only allow a non-trivial frame rect (i.e., a frame rect that doesn't
@@ -295,7 +279,8 @@ imgFrame::InitForDecoder(const nsIntSize& aImageSize,
     MOZ_ASSERT(!mLockedSurface, "Called imgFrame::InitForDecoder() twice?");
 
     bool postFirstFrame = aAnimParams && aAnimParams->mFrameNum > 0;
-    mRawSurface = AllocateBufferForImage(mFrameRect.Size(), mFormat, postFirstFrame);
+    mRawSurface = AllocateBufferForImage(mFrameRect.Size(), mFormat,
+                                         postFirstFrame, mIsFullFrame);
     if (!mRawSurface) {
       mAborted = true;
       return NS_ERROR_OUT_OF_MEMORY;
@@ -328,7 +313,7 @@ imgFrame::InitWithDrawable(gfxDrawable* aDrawable,
 {
   // Assert for properties that should be verified by decoders,
   // warn for properties related to bad content.
-  if (!AllowedImageSize(aSize.width, aSize.height)) {
+  if (!SurfaceCache::IsLegalSize(aSize)) {
     NS_WARNING("Should have legal image size");
     mAborted = true;
     return NS_ERROR_FAILURE;
@@ -957,26 +942,28 @@ imgFrame::SetCompositingFailed(bool val)
 
 void
 imgFrame::AddSizeOfExcludingThis(MallocSizeOf aMallocSizeOf,
-                                 size_t& aHeapSizeOut,
-                                 size_t& aNonHeapSizeOut,
-                                 size_t& aExtHandlesOut) const
+                                 const AddSizeOfCb& aCallback) const
 {
   MonitorAutoLock lock(mMonitor);
 
+  AddSizeOfCbData metadata;
   if (mPalettedImageData) {
-    aHeapSizeOut += aMallocSizeOf(mPalettedImageData);
+    metadata.heap += aMallocSizeOf(mPalettedImageData);
   }
   if (mLockedSurface) {
-    aHeapSizeOut += aMallocSizeOf(mLockedSurface);
+    metadata.heap += aMallocSizeOf(mLockedSurface);
   }
   if (mOptSurface) {
-    aHeapSizeOut += aMallocSizeOf(mOptSurface);
+    metadata.heap += aMallocSizeOf(mOptSurface);
   }
   if (mRawSurface) {
-    aHeapSizeOut += aMallocSizeOf(mRawSurface);
-    mRawSurface->AddSizeOfExcludingThis(aMallocSizeOf, aHeapSizeOut,
-                                        aNonHeapSizeOut, aExtHandlesOut);
+    metadata.heap += aMallocSizeOf(mRawSurface);
+    mRawSurface->AddSizeOfExcludingThis(aMallocSizeOf, metadata.heap,
+                                        metadata.nonHeap, metadata.handles,
+                                        metadata.externalId);
   }
+
+  aCallback(metadata);
 }
 
 } // namespace image

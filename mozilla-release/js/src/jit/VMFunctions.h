@@ -667,8 +667,9 @@ class AutoDetectInvalidation
     }
 
     ~AutoDetectInvalidation() {
-        if (MOZ_UNLIKELY(shouldSetReturnOverride()))
+        if (MOZ_UNLIKELY(shouldSetReturnOverride())) {
             setReturnOverride();
+        }
     }
 };
 
@@ -683,8 +684,7 @@ class InterpreterStubExitFrameLayout;
 bool InvokeFromInterpreterStub(JSContext* cx, InterpreterStubExitFrameLayout* frame);
 
 bool CheckOverRecursed(JSContext* cx);
-bool CheckOverRecursedWithExtra(JSContext* cx, BaselineFrame* frame,
-                                uint32_t extra, uint32_t earlyCheck);
+bool CheckOverRecursedBaseline(JSContext* cx, BaselineFrame* frame);
 
 JSObject* BindVar(JSContext* cx, HandleObject scopeChain);
 MOZ_MUST_USE bool
@@ -750,7 +750,7 @@ GetIntrinsicValue(JSContext* cx, HandlePropertyName name, MutableHandleValue rva
 MOZ_MUST_USE bool
 CreateThis(JSContext* cx, HandleObject callee, HandleObject newTarget, MutableHandleValue rval);
 
-void GetDynamicName(JSContext* cx, JSObject* scopeChain, JSString* str, Value* vp);
+bool GetDynamicNamePure(JSContext* cx, JSObject* scopeChain, JSString* str, Value* vp);
 
 void PostWriteBarrier(JSRuntime* rt, js::gc::Cell* cell);
 void PostGlobalWriteBarrier(JSRuntime* rt, GlobalObject* obj);
@@ -917,32 +917,32 @@ CallNativeSetter(JSContext* cx, HandleFunction callee, HandleObject obj,
                  HandleValue rhs);
 
 MOZ_MUST_USE bool
-EqualStringsHelper(JSString* str1, JSString* str2);
+EqualStringsHelperPure(JSString* str1, JSString* str2);
 
 MOZ_MUST_USE bool
 CheckIsCallable(JSContext* cx, HandleValue v, CheckIsCallableKind kind);
 
 template <bool HandleMissing>
 bool
-GetNativeDataProperty(JSContext* cx, JSObject* obj, PropertyName* name, Value* vp);
+GetNativeDataPropertyPure(JSContext* cx, JSObject* obj, PropertyName* name, Value* vp);
 
 template <bool HandleMissing>
 bool
-GetNativeDataPropertyByValue(JSContext* cx, JSObject* obj, Value* vp);
+GetNativeDataPropertyByValuePure(JSContext* cx, JSObject* obj, Value* vp);
 
 template <bool HasOwn>
 bool
-HasNativeDataProperty(JSContext* cx, JSObject* obj, Value* vp);
+HasNativeDataPropertyPure(JSContext* cx, JSObject* obj, Value* vp);
 
 bool
-HasNativeElement(JSContext* cx, NativeObject* obj, int32_t index, Value* vp);
+HasNativeElementPure(JSContext* cx, NativeObject* obj, int32_t index, Value* vp);
 
 template <bool NeedsTypeBarrier>
 bool
-SetNativeDataProperty(JSContext* cx, JSObject* obj, PropertyName* name, Value* val);
+SetNativeDataPropertyPure(JSContext* cx, JSObject* obj, PropertyName* name, Value* val);
 
 bool
-ObjectHasGetterSetter(JSContext* cx, JSObject* obj, Shape* propShape);
+ObjectHasGetterSetterPure(JSContext* cx, JSObject* obj, Shape* propShape);
 
 JSString*
 TypeOfObject(JSObject* obj, JSRuntime* rt);
@@ -979,6 +979,8 @@ extern const VMFunction ProxySetPropertyInfo;
 extern const VMFunction ProxySetPropertyByValueInfo;
 extern const VMFunction ProxyHasInfo;
 extern const VMFunction ProxyHasOwnInfo;
+
+extern const VMFunction NativeGetElementInfo;
 
 // TailCall VMFunctions
 extern const VMFunction DoConcatStringObjectInfo;

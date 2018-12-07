@@ -29,7 +29,9 @@ RenderDXGITextureHostOGL::RenderDXGITextureHostOGL(WindowsHandle aHandle,
   , mLocked(false)
 {
   MOZ_COUNT_CTOR_INHERITED(RenderDXGITextureHostOGL, RenderTextureHostOGL);
-  MOZ_ASSERT(mFormat != gfx::SurfaceFormat::NV12 ||
+  MOZ_ASSERT((mFormat != gfx::SurfaceFormat::NV12 &&
+              mFormat != gfx::SurfaceFormat::P010 &&
+              mFormat != gfx::SurfaceFormat::P016) ||
              (mSize.width % 2 == 0 && mSize.height % 2 == 0));
   MOZ_ASSERT(aHandle);
 }
@@ -41,9 +43,29 @@ RenderDXGITextureHostOGL::~RenderDXGITextureHostOGL()
 }
 
 bool
-RenderDXGITextureHostOGL::EnsureLockable()
+RenderDXGITextureHostOGL::EnsureLockable(wr::ImageRendering aRendering)
 {
   if (mTextureHandle[0]) {
+    // Update filter if filter was changed.
+    if (IsFilterUpdateNecessary(aRendering)) {
+      ActivateBindAndTexParameteri(mGL,
+                                   LOCAL_GL_TEXTURE0,
+                                   LOCAL_GL_TEXTURE_EXTERNAL_OES,
+                                   mTextureHandle[0],
+                                   aRendering);
+      // Cache new rendering filter.
+      mCachedRendering = aRendering;
+      // NV12 and P016 uses two handles.
+      if (mFormat == gfx::SurfaceFormat::NV12 ||
+          mFormat == gfx::SurfaceFormat::P010 ||
+          mFormat == gfx::SurfaceFormat::P016) {
+        ActivateBindAndTexParameteri(mGL,
+                                     LOCAL_GL_TEXTURE1,
+                                     LOCAL_GL_TEXTURE_EXTERNAL_OES,
+                                     mTextureHandle[1],
+                                     aRendering);
+      }
+    }
     return true;
   }
 
@@ -82,18 +104,23 @@ RenderDXGITextureHostOGL::EnsureLockable()
   mStream = egl->fCreateStreamKHR(egl->Display(), nullptr);
   MOZ_ASSERT(mStream);
 
-  if (mFormat != gfx::SurfaceFormat::NV12) {
+  if (mFormat != gfx::SurfaceFormat::NV12 &&
+      mFormat != gfx::SurfaceFormat::P010 &&
+      mFormat != gfx::SurfaceFormat::P016) {
     // The non-nv12 format.
 
     mGL->fGenTextures(1, mTextureHandle);
-    mGL->fActiveTexture(LOCAL_GL_TEXTURE0);
-    mGL->fBindTexture(LOCAL_GL_TEXTURE_EXTERNAL_OES, mTextureHandle[0]);
-    mGL->fTexParameteri(LOCAL_GL_TEXTURE_EXTERNAL_OES, LOCAL_GL_TEXTURE_MIN_FILTER, LOCAL_GL_LINEAR);
-
+    ActivateBindAndTexParameteri(mGL,
+                                 LOCAL_GL_TEXTURE0,
+                                 LOCAL_GL_TEXTURE_EXTERNAL_OES,
+                                 mTextureHandle[0],
+                                 aRendering);
+    // Cache new rendering filter.
+    mCachedRendering = aRendering;
     MOZ_ALWAYS_TRUE(egl->fStreamConsumerGLTextureExternalAttribsNV(egl->Display(), mStream, nullptr));
     MOZ_ALWAYS_TRUE(egl->fCreateStreamProducerD3DTextureANGLE(egl->Display(), mStream, nullptr));
   } else {
-    // The nv12 format.
+    // The nv12/p016 format.
 
     // Setup the NV12 stream consumer/producer.
     EGLAttrib consumerAttributes[] = {
@@ -108,12 +135,18 @@ RenderDXGITextureHostOGL::EnsureLockable()
         LOCAL_EGL_NONE,
     };
     mGL->fGenTextures(2, mTextureHandle);
-    mGL->fActiveTexture(LOCAL_GL_TEXTURE0);
-    mGL->fBindTexture(LOCAL_GL_TEXTURE_EXTERNAL_OES, mTextureHandle[0]);
-    mGL->fTexParameteri(LOCAL_GL_TEXTURE_EXTERNAL_OES, LOCAL_GL_TEXTURE_MIN_FILTER, LOCAL_GL_LINEAR);
-    mGL->fActiveTexture(LOCAL_GL_TEXTURE1);
-    mGL->fBindTexture(LOCAL_GL_TEXTURE_EXTERNAL_OES, mTextureHandle[1]);
-    mGL->fTexParameteri(LOCAL_GL_TEXTURE_EXTERNAL_OES, LOCAL_GL_TEXTURE_MIN_FILTER, LOCAL_GL_LINEAR);
+    ActivateBindAndTexParameteri(mGL,
+                                 LOCAL_GL_TEXTURE0,
+                                 LOCAL_GL_TEXTURE_EXTERNAL_OES,
+                                 mTextureHandle[0],
+                                 aRendering);
+    ActivateBindAndTexParameteri(mGL,
+                                 LOCAL_GL_TEXTURE1,
+                                 LOCAL_GL_TEXTURE_EXTERNAL_OES,
+                                 mTextureHandle[1],
+                                 aRendering);
+    // Cache new rendering filter.
+    mCachedRendering = aRendering;
     MOZ_ALWAYS_TRUE(egl->fStreamConsumerGLTextureExternalAttribsNV(egl->Display(), mStream, consumerAttributes));
     MOZ_ALWAYS_TRUE(egl->fCreateStreamProducerD3DTextureANGLE(egl->Display(), mStream, nullptr));
   }
@@ -129,7 +162,9 @@ RenderDXGITextureHostOGL::EnsureLockable()
 }
 
 wr::WrExternalImage
-RenderDXGITextureHostOGL::Lock(uint8_t aChannelIndex, gl::GLContext* aGL)
+RenderDXGITextureHostOGL::Lock(uint8_t aChannelIndex,
+                               gl::GLContext* aGL,
+                               wr::ImageRendering aRendering)
 {
   if (mGL.get() != aGL) {
     // Release the texture handle in the previous gl context.
@@ -138,7 +173,7 @@ RenderDXGITextureHostOGL::Lock(uint8_t aChannelIndex, gl::GLContext* aGL)
     mGL->MakeCurrent();
   }
 
-  if (!EnsureLockable()) {
+  if (!EnsureLockable(aRendering)) {
     return InvalidToWrExternalImage();
   }
 
@@ -207,17 +242,22 @@ RenderDXGITextureHostOGL::DeleteTextureHandle()
 GLuint
 RenderDXGITextureHostOGL::GetGLHandle(uint8_t aChannelIndex) const
 {
-  MOZ_ASSERT(mFormat != gfx::SurfaceFormat::NV12 || aChannelIndex < 2);
-  MOZ_ASSERT(mFormat == gfx::SurfaceFormat::NV12 || aChannelIndex < 1);
-
+  MOZ_ASSERT(((mFormat == gfx::SurfaceFormat::NV12 ||
+               mFormat == gfx::SurfaceFormat::P010 ||
+               mFormat == gfx::SurfaceFormat::P016) &&
+              aChannelIndex < 2) ||
+             aChannelIndex < 1);
   return mTextureHandle[aChannelIndex];
 }
 
 gfx::IntSize
 RenderDXGITextureHostOGL::GetSize(uint8_t aChannelIndex) const
 {
-  MOZ_ASSERT(mFormat != gfx::SurfaceFormat::NV12 || aChannelIndex < 2);
-  MOZ_ASSERT(mFormat == gfx::SurfaceFormat::NV12 || aChannelIndex < 1);
+  MOZ_ASSERT(((mFormat == gfx::SurfaceFormat::NV12 ||
+               mFormat == gfx::SurfaceFormat::P010 ||
+               mFormat == gfx::SurfaceFormat::P016) &&
+              aChannelIndex < 2) ||
+             aChannelIndex < 1);
 
   if (aChannelIndex == 0) {
     return mSize;
@@ -254,9 +294,21 @@ RenderDXGIYCbCrTextureHostOGL::~RenderDXGIYCbCrTextureHostOGL()
 }
 
 bool
-RenderDXGIYCbCrTextureHostOGL::EnsureLockable()
+RenderDXGIYCbCrTextureHostOGL::EnsureLockable(wr::ImageRendering aRendering)
 {
   if (mTextureHandles[0]) {
+    // Update filter if filter was changed.
+    if (IsFilterUpdateNecessary(aRendering)) {
+      for (int i = 0; i < 3; ++i) {
+        ActivateBindAndTexParameteri(mGL,
+                                     LOCAL_GL_TEXTURE0 + i,
+                                     LOCAL_GL_TEXTURE_EXTERNAL_OES,
+                                     mTextureHandles[i],
+                                     aRendering);
+        // Cache new rendering filter.
+        mCachedRendering = aRendering;
+      }
+    }
     return true;
   }
 
@@ -298,9 +350,13 @@ RenderDXGIYCbCrTextureHostOGL::EnsureLockable()
 
   mGL->fGenTextures(3, mTextureHandles);
   for (int i = 0; i < 3; ++i) {
-    mGL->fActiveTexture(LOCAL_GL_TEXTURE0 + i);
-    mGL->fBindTexture(LOCAL_GL_TEXTURE_EXTERNAL_OES, mTextureHandles[i]);
-    mGL->fTexParameteri(LOCAL_GL_TEXTURE_EXTERNAL_OES, LOCAL_GL_TEXTURE_MIN_FILTER, LOCAL_GL_LINEAR);
+    ActivateBindAndTexParameteri(mGL,
+                                 LOCAL_GL_TEXTURE0 + i,
+                                 LOCAL_GL_TEXTURE_EXTERNAL_OES,
+                                 mTextureHandles[i],
+                                 aRendering);
+    // Cache new rendering filter.
+    mCachedRendering = aRendering;
 
     // Create the EGLStream.
     mStreams[i] = egl->fCreateStreamKHR(egl->Display(), nullptr);
@@ -321,7 +377,9 @@ RenderDXGIYCbCrTextureHostOGL::EnsureLockable()
 }
 
 wr::WrExternalImage
-RenderDXGIYCbCrTextureHostOGL::Lock(uint8_t aChannelIndex, gl::GLContext* aGL)
+RenderDXGIYCbCrTextureHostOGL::Lock(uint8_t aChannelIndex,
+                                    gl::GLContext* aGL,
+                                    wr::ImageRendering aRendering)
 {
   if (mGL.get() != aGL) {
     // Release the texture handle in the previous gl context.
@@ -330,7 +388,7 @@ RenderDXGIYCbCrTextureHostOGL::Lock(uint8_t aChannelIndex, gl::GLContext* aGL)
     mGL->MakeCurrent();
   }
 
-  if (!EnsureLockable()) {
+  if (!EnsureLockable(aRendering)) {
     return InvalidToWrExternalImage();
   }
 

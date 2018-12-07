@@ -75,6 +75,7 @@ public:
   virtual AsyncPanZoomAnimation* CreateFlingAnimation(AsyncPanZoomController& aApzc,
                                                       const FlingHandoffState& aHandoffState,
                                                       float aPLPPI);
+  virtual UniquePtr<VelocityTracker> CreateVelocityTracker(Axis* aAxis);
 
   static void InitializeGlobalState() {}
 };
@@ -356,12 +357,15 @@ public:
   nsEventStatus HandleGestureEvent(const InputData& aEvent);
 
   /**
-   * Handler for touch velocity.
-   * Sometimes the touch move event will have a velocity even though no scrolling
-   * is occurring such as when the toolbar is being hidden/shown in Fennec.
-   * This function can be called to have the y axis' velocity queue updated.
+   * Handle movement of the dynamic toolbar by |aDeltaY| over the time
+   * period from |aStartTimestampMs| to |aEndTimestampMs|.
+   * This is used to track velocities accurately in the presence of movement
+   * of the dynamic toolbar, since in such cases the finger can be moving
+   * relative to the screen even though no scrolling is occurring.
    */
-  void HandleTouchVelocity(uint32_t aTimesampMs, float aSpeedY);
+  void HandleDynamicToolbarMovement(uint32_t aStartTimestampMs,
+                                    uint32_t aEndTimestampMs,
+                                    ParentLayerCoord aDeltaY);
 
   /**
    * Start autoscrolling this APZC, anchored at the provided location.
@@ -943,6 +947,10 @@ private:
   CSSPoint mCompositedScrollOffset;
   CSSToParentLayerScale2D mCompositedZoom;
 
+  // Groups state variables that are specific to a platform.
+  // Initialized on first use.
+  UniquePtr<PlatformSpecificStateBase> mPlatformSpecificState;
+
   AxisX mX;
   AxisY mY;
 
@@ -973,10 +981,6 @@ private:
   RefPtr<AsyncPanZoomAnimation> mAnimation;
 
   UniquePtr<OverscrollEffectBase> mOverscrollEffect;
-
-  // Groups state variables that are specific to a platform.
-  // Initialized on first use.
-  UniquePtr<PlatformSpecificStateBase> mPlatformSpecificState;
 
   friend class Axis;
 
@@ -1075,6 +1079,13 @@ public:
    * any transform due to axis over-scroll.
    */
   AsyncTransformComponentMatrix GetCurrentAsyncTransformWithOverscroll(AsyncTransformConsumer aMode) const;
+
+  /**
+   * Returns the "zoom" bits of the transform. This includes both the rasterized
+   * (layout device to layer scale) and async (layer scale to parent layer
+   * scale) components of the zoom.
+   */
+  LayoutDeviceToParentLayerScale GetCurrentPinchZoomScale(AsyncTransformConsumer aMode) const;
 
 private:
   /**

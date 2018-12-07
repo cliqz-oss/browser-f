@@ -1,7 +1,6 @@
 MOZ_AUTOMATION_L10N_CHECK=0
 
 ac_add_options --enable-update-channel=${MOZ_UPDATE_CHANNEL}
-MOZ_AUTOMATION_UPDATE_PACKAGING=${MOZ_AUTOMATION_UPDATE_PACKAGING-1}
 if [ -f /c/builds/gapi.data ]; then
   _gapi_keyfile=c:/builds/gapi.data
 else
@@ -34,9 +33,5 @@ ac_add_options --disable-sandbox
 # in the respective override pref (toolkit.telemetry.overrideUpdateChannel),
 # while the build otherwise identifies as "nightly" to receive its updates.
 export MOZ_TELEMETRY_REPORTING=1
-
-# Disable stack instrumentation until we can tackle bug 1477490
-export CFLAGS="-mllvm -asan-stack=0"
-export CXXFLAGS="-mllvm -asan-stack=0"
 
 . "$topsrcdir/build/mozconfig.common.override"

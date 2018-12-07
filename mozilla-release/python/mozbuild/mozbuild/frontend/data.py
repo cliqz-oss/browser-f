@@ -414,8 +414,8 @@ class Linkable(ContextDerived):
         # errors from duplicate symbols.
         if isinstance(obj, RustLibrary) and any(isinstance(l, RustLibrary)
                                                 for l in self.linked_libraries):
-            raise LinkageMultipleRustLibrariesError("Cannot link multiple Rust libraries into %s",
-                                                    self)
+            raise LinkageMultipleRustLibrariesError("Cannot link multiple Rust libraries into %s"
+                                                    % self)
         self.linked_libraries.append(obj)
         if obj.cxx_link and not isinstance(obj, SharedLibrary):
             self.cxx_link = True
@@ -425,7 +425,9 @@ class Linkable(ContextDerived):
         # The '$' check is here as a special temporary rule, allowing the
         # inherited use of make variables, most notably in TK_LIBS.
         if not lib.startswith('$') and not lib.startswith('-'):
-            if self.config.substs.get('GNU_CC'):
+            type_var = 'HOST_CC_TYPE' if self.KIND == 'host' else 'CC_TYPE'
+            compiler_type = self.config.substs.get(type_var)
+            if compiler_type in ('gcc', 'clang'):
                 lib = '-l%s' % lib
             else:
                 lib = '%s%s%s' % (
@@ -1168,9 +1170,9 @@ class GeneratedFile(ContextDerived):
             '.inc',
             '.py',
             '.rs',
-            'new', # 'new' is an output from make-stl-wrappers.py
+            'node.stub', # To avoid VPATH issues with installing node files: https://bugzilla.mozilla.org/show_bug.cgi?id=1461714#c55
         )
-        self.required_for_compile = any(f.endswith(suffixes) for f in self.outputs)
+        self.required_for_compile = [f for f in self.outputs if f.endswith(suffixes) or 'stl_wrappers/' in f]
 
 
 class ChromeManifestEntry(ContextDerived):

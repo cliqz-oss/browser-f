@@ -9,8 +9,7 @@
 const TEST_URI = "data:text/html;charset=utf8,<h1>test console.dir</h1>";
 
 add_task(async function() {
-  const toolbox = await openNewTabAndToolbox(TEST_URI, "webconsole");
-  const hud = toolbox.getCurrentPanel().hud;
+  const hud = await openNewTabAndConsole(TEST_URI);
 
   logAllStoreChanges(hud);
 
@@ -30,7 +29,7 @@ add_task(async function() {
   if (arrayOiNodes.length === 1) {
     // If this is the case, we wait for the properties to be fetched and displayed.
     await waitForNodeMutation(arrayOi, {
-      childList: true
+      childList: true,
     });
     arrayOiNodes = arrayOi.querySelectorAll(".node");
   }
@@ -59,7 +58,7 @@ add_task(async function() {
   if (objectOiNodes.length === 1) {
     // If this is the case, we wait for the properties to be fetched and displayed.
     await waitForNodeMutation(objectOi, {
-      childList: true
+      childList: true,
     });
     objectOiNodes = objectOi.querySelectorAll(".node");
   }

@@ -269,8 +269,9 @@ class ExecuteState : public RunState
     InterpreterFrame* pushInterpreterFrame(JSContext* cx);
 
     void setReturnValue(const Value& v) {
-        if (result_)
+        if (result_) {
             *result_ = v;
+        }
     }
 };
 
@@ -300,10 +301,11 @@ class InvokeState final : public RunState
 inline void
 RunState::setReturnValue(const Value& v)
 {
-    if (isInvoke())
+    if (isInvoke()) {
         asInvoke()->setReturnValue(v);
-    else
+    } else {
         asExecute()->setReturnValue(v);
+    }
 }
 
 extern bool
@@ -343,22 +345,24 @@ UnwindAllEnvironmentsInFrame(JSContext* cx, EnvironmentIter& ei);
 // Compute the pc needed to unwind the scope to the beginning of the block
 // pointed to by the try note.
 extern jsbytecode*
-UnwindEnvironmentToTryPc(JSScript* script, JSTryNote* tn);
+UnwindEnvironmentToTryPc(JSScript* script, const JSTryNote* tn);
 
 template <class StackDepthOp>
 class MOZ_STACK_CLASS TryNoteIter
 {
     RootedScript script_;
     uint32_t pcOffset_;
-    JSTryNote* tn_;
-    JSTryNote* tnEnd_;
     StackDepthOp getStackDepth_;
+
+    const JSTryNote* tn_;
+    const JSTryNote* tnEnd_;
 
     void settle() {
         for (; tn_ != tnEnd_; ++tn_) {
             /* If pc is out of range, try the next one. */
-            if (pcOffset_ - tn_->start >= tn_->length)
+            if (pcOffset_ - tn_->start >= tn_->length) {
                 continue;
+            }
 
             /*
              * We have a note that covers the exception pc but we must check
@@ -379,8 +383,9 @@ class MOZ_STACK_CLASS TryNoteIter
              * depth exceeding the current one and this condition is what we use to
              * filter them out.
              */
-            if (tn_->stackDepth <= getStackDepth_())
+            if (tn_->stackDepth <= getStackDepth_()) {
                 break;
+            }
         }
     }
 
@@ -392,8 +397,11 @@ class MOZ_STACK_CLASS TryNoteIter
         getStackDepth_(getStackDepth)
     {
         if (script->hasTrynotes()) {
-            tn_ = script->trynotes()->vector;
-            tnEnd_ = tn_ + script->trynotes()->length;
+            // NOTE: The Span is a temporary so we can't use begin()/end()
+            // here or the iterator will outlive the span.
+            auto trynotes = script->trynotes();
+            tn_ = trynotes.data();
+            tnEnd_ = tn_ + trynotes.size();
         } else {
             tn_ = tnEnd_ = nullptr;
         }
@@ -406,7 +414,7 @@ class MOZ_STACK_CLASS TryNoteIter
     }
 
     bool done() const { return tn_ == tnEnd_; }
-    JSTryNote* operator*() const { return tn_; }
+    const JSTryNote* operator*() const { return tn_; }
 };
 
 bool

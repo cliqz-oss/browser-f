@@ -4,7 +4,6 @@
 
 "use strict";
 
-const { AnimationsFront } = require("devtools/shared/fronts/animation");
 const { createElement, createFactory } = require("devtools/client/shared/vendor/react");
 const { Provider } = require("devtools/client/shared/vendor/react-redux");
 
@@ -102,7 +101,7 @@ class AnimationInspector {
 
     const target = this.inspector.target;
     const direction = this.win.document.dir;
-    this.animationsFront = new AnimationsFront(target.client, target.form);
+    this.animationsFront = target.getFront("animations");
     this.animationsFront.setWalkerActor(this.inspector.walker);
 
     this.animationsCurrentTimeListeners = [];
@@ -110,8 +109,8 @@ class AnimationInspector {
 
     const provider = createElement(Provider,
       {
-        id: "newanimationinspector",
-        key: "newanimationinspector",
+        id: "animationinspector",
+        key: "animationinspector",
         store: this.inspector.store
       },
       App(
@@ -191,18 +190,13 @@ class AnimationInspector {
   }
 
   /**
-   * This function calls AnimationsFront.setCurrentTimes with considering the createdTime
-   * which was introduced bug 1454392.
+   * This function calls AnimationsFront.setCurrentTimes with considering the createdTime.
    *
    * @param {Number} currentTime
    */
   async doSetCurrentTimes(currentTime) {
     const { animations, timeScale } = this.state;
-
-    // If currentTime is not defined in timeScale (which happens when connected
-    // to server older than FF62), set currentTime as it is. See bug 1454392.
-    currentTime = typeof timeScale.currentTime === "undefined"
-                    ? currentTime : currentTime + timeScale.minStartTime;
+    currentTime = currentTime + timeScale.minStartTime;
     await this.animationsFront.setCurrentTimes(animations, currentTime, true,
                                                { relativeToCreatedTime: true });
   }
@@ -275,7 +269,7 @@ class AnimationInspector {
   isPanelVisible() {
     return this.inspector && this.inspector.toolbox && this.inspector.sidebar &&
            this.inspector.toolbox.currentToolId === "inspector" &&
-           this.inspector.sidebar.getCurrentTabID() === "newanimationinspector";
+           this.inspector.sidebar.getCurrentTabID() === "animationinspector";
   }
 
   onAnimationStateChanged() {
@@ -318,10 +312,21 @@ class AnimationInspector {
 
     for (const {type, player: animation} of changes) {
       if (type === "added") {
+        if (!animation.state.type) {
+          // This animation was added but removed immediately.
+          continue;
+        }
+
         addedAnimations.push(animation);
         animation.on("changed", this.onAnimationStateChanged);
       } else if (type === "removed") {
         const index = animations.indexOf(animation);
+
+        if (index < 0) {
+          // This animation was added but removed immediately.
+          continue;
+        }
+
         animations.splice(index, 1);
         animation.off("changed", this.onAnimationStateChanged);
       }
@@ -331,7 +336,12 @@ class AnimationInspector {
     // sice the scrubber position is related the currentTime.
     // Also, don't update the state of removed animations since React components
     // may refer to the same instance still.
-    animations = await this.updateAnimations(animations);
+    try {
+      animations = await this.updateAnimations(animations);
+    } catch (_) {
+      console.error(`Updating Animations failed`);
+      return;
+    }
 
     this.updateState(animations.concat(addedAnimations));
   }
@@ -625,7 +635,7 @@ class AnimationInspector {
   }
 
   async update() {
-    const done = this.inspector.updating("newanimationinspector");
+    const done = this.inspector.updating("animationinspector");
 
     const selection = this.inspector.selection;
     const animations =

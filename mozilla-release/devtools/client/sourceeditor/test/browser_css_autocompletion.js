@@ -5,7 +5,6 @@
 "use strict";
 
 const CSSCompleter = require("devtools/client/sourceeditor/css-autocompleter");
-const {InspectorFront} = require("devtools/shared/fronts/inspector");
 
 const CSS_URI = "http://mochi.test:8888/browser/devtools/client/sourceeditor" +
                 "/test/css_statemachine_testcases.css";
@@ -67,7 +66,7 @@ const TEST_URI = "data:text/html;charset=UTF-8," + encodeURIComponent(
    "  <div class='devtools-toolbarbutton' label='true'>",
    "   <hbox class='toolbarbutton-menubutton-button'></hbox></div>",
    " </body>",
-   " </html>"
+   " </html>",
   ].join("\n"));
 
 let browser;
@@ -84,9 +83,9 @@ add_task(async function test() {
 });
 
 async function runTests() {
-  const target = TargetFactory.forTab(gBrowser.selectedTab);
-  await target.makeRemote();
-  inspector = InspectorFront(target.client, target.form);
+  const target = await TargetFactory.forTab(gBrowser.selectedTab);
+  await target.attach();
+  inspector = target.getFront("inspector");
   const walker = await inspector.getWalker();
   completer = new CSSCompleter({walker: walker,
                                 cssProperties: getClientCssProperties()});

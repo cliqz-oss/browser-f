@@ -16,21 +16,19 @@ nsGenericHTMLElement*
 NS_NewHTMLSlotElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo,
                       mozilla::dom::FromParser aFromParser)
 {
-  RefPtr<mozilla::dom::NodeInfo> nodeInfo(aNodeInfo);
+  RefPtr<mozilla::dom::NodeInfo> nodeInfo(std::move(aNodeInfo));
   if (nsDocument::IsShadowDOMEnabled(nodeInfo->GetDocument())) {
-    already_AddRefed<mozilla::dom::NodeInfo> nodeInfoArg(nodeInfo.forget());
-    return new mozilla::dom::HTMLSlotElement(nodeInfoArg);
+    return new mozilla::dom::HTMLSlotElement(nodeInfo.forget());
   }
 
-  already_AddRefed<mozilla::dom::NodeInfo> nodeInfoArg(nodeInfo.forget());
-  return new mozilla::dom::HTMLUnknownElement(nodeInfoArg);
+  return new mozilla::dom::HTMLUnknownElement(nodeInfo.forget());
 }
 
 namespace mozilla {
 namespace dom {
 
-HTMLSlotElement::HTMLSlotElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-  : nsGenericHTMLElement(aNodeInfo)
+HTMLSlotElement::HTMLSlotElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
+  : nsGenericHTMLElement(std::move(aNodeInfo))
 {
 }
 
@@ -145,7 +143,8 @@ FlattenAssignedNodes(HTMLSlotElement* aSlot, nsTArray<RefPtr<nsINode>>& aNodes)
   }
 
   for (const RefPtr<nsINode>& assignedNode : assignedNodes) {
-    if (auto* slot = HTMLSlotElement::FromNode(assignedNode)) {
+    auto* slot = HTMLSlotElement::FromNode(assignedNode);
+    if (slot && slot->GetContainingShadow()) {
       FlattenAssignedNodes(slot, aNodes);
     } else {
       aNodes.AppendElement(assignedNode);

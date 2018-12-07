@@ -17,32 +17,32 @@ add_task(async function() {
   const { Chart } = windowRequire("devtools/client/shared/widgets/Chart");
 
   const wait = waitForNetworkEvents(monitor, 1);
-  tab.linkedBrowser.loadURI(SIMPLE_URL);
+  BrowserTestUtils.loadURI(tab.linkedBrowser, SIMPLE_URL);
   await wait;
 
   const table = Chart.Table(document, {
     title: "Table title",
     data: [{
       label1: 1,
-      label2: 11.1
+      label2: 11.1,
     }, {
       label1: 2,
-      label2: 12.2
+      label2: 12.2,
     }, {
       label1: 3,
-      label2: 13.3
+      label2: 13.3,
     }],
     strings: {
-      label2: (value, index) => value + ["foo", "bar", "baz"][index]
+      label2: (value, index) => value + ["foo", "bar", "baz"][index],
     },
     totals: {
       label1: value => "Hello " + L10N.numberWithDecimals(value, 2),
-      label2: value => "World " + L10N.numberWithDecimals(value, 2)
+      label2: value => "World " + L10N.numberWithDecimals(value, 2),
     },
     header: {
       label1: "label1header",
       label2: "label2header",
-    }
+    },
   });
 
   const node = table.node;
@@ -72,7 +72,7 @@ add_task(async function() {
     "The second column of the header displays the correct text.");
 
   ok(rows[1].querySelector(".table-chart-row-box.chart-colored-blob"),
-    "A colored blob exists for the firt row.");
+    "A colored blob exists for the first row.");
   is(rows[1].querySelectorAll("span")[0].getAttribute("name"), "label1",
     "The first column of the first row exists.");
   is(rows[1].querySelectorAll("span")[1].getAttribute("name"), "label2",

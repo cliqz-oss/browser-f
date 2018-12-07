@@ -12,7 +12,7 @@ use euclid::TypedScale;
 use gecko::values::{convert_nscolor_to_rgba, convert_rgba_to_nscolor};
 use gecko_bindings::bindings;
 use gecko_bindings::structs;
-use gecko_bindings::structs::{nsPresContext, RawGeckoPresContextOwned};
+use gecko_bindings::structs::{nsPresContext, RawGeckoPresContextBorrowed};
 use media_queries::MediaType;
 use properties::ComputedValues;
 use servo_arc::Arc;
@@ -30,7 +30,7 @@ pub struct Device {
     /// NB: The pres context lifetime is tied to the styleset, who owns the
     /// stylist, and thus the `Device`, so having a raw pres context pointer
     /// here is fine.
-    pres_context: RawGeckoPresContextOwned,
+    pres_context: RawGeckoPresContextBorrowed,
     default_values: Arc<ComputedValues>,
     /// The font size of the root element
     /// This is set when computing the style of the root
@@ -77,7 +77,7 @@ unsafe impl Send for Device {}
 
 impl Device {
     /// Trivially constructs a new `Device`.
-    pub fn new(pres_context: RawGeckoPresContextOwned) -> Self {
+    pub fn new(pres_context: RawGeckoPresContextBorrowed) -> Self {
         assert!(!pres_context.is_null());
         Device {
             pres_context,
@@ -126,7 +126,8 @@ impl Device {
 
     /// Set the font size of the root element (for rem)
     pub fn set_root_font_size(&self, size: Au) {
-        self.root_font_size.store(size.0 as isize, Ordering::Relaxed)
+        self.root_font_size
+            .store(size.0 as isize, Ordering::Relaxed)
     }
 
     /// Sets the body text color for the "inherit color from body" quirk.
@@ -233,10 +234,13 @@ impl Device {
     }
 
     /// Applies text zoom to a font-size or line-height value (see nsStyleFont::ZoomText).
+    #[inline]
     pub fn zoom_text(&self, size: Au) -> Au {
         size.scale_by(self.pres_context().mEffectiveTextZoom)
     }
-    /// Un-apply text zoom (see nsStyleFont::UnzoomText).
+
+    /// Un-apply text zoom.
+    #[inline]
     pub fn unzoom_text(&self, size: Au) -> Au {
         size.scale_by(1. / self.pres_context().mEffectiveTextZoom)
     }

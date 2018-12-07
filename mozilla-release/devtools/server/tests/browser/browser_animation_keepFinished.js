@@ -11,7 +11,7 @@
 // AnimationPlayerActor.
 
 add_task(async function() {
-  const {client, walker, animations} =
+  const {target, walker, animations} =
     await initAnimationsFrontForUrl(MAIN_DOMAIN + "animation.html");
 
   info("Retrieve a non-animated node");
@@ -30,7 +30,7 @@ add_task(async function() {
 
   info("Add a short animation on the node");
   await node.modifyAttributes([
-    {attributeName: "class", newValue: "short-animation"}
+    {attributeName: "class", newValue: "short-animation"},
   ]);
 
   info("Wait for longer than the animation's duration");
@@ -44,7 +44,7 @@ add_task(async function() {
 
   animations.off("mutations", onMutations);
 
-  await client.close();
+  await target.destroy();
   gBrowser.removeCurrentTab();
 });
 

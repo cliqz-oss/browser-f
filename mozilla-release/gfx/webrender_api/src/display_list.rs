@@ -13,18 +13,18 @@ use std::io::{Read, Write};
 use std::marker::PhantomData;
 use std::{io, mem, ptr, slice};
 use time::precise_time_ns;
-use {AlphaType, BorderDetails, BorderDisplayItem, BorderRadius, BorderWidths, BoxShadowClipMode};
+use {AlphaType, BorderDetails, BorderDisplayItem, BorderRadius, BoxShadowClipMode};
 use {BoxShadowDisplayItem, ClipAndScrollInfo, ClipChainId, ClipChainItem, ClipDisplayItem, ClipId};
 use {ColorF, ComplexClipRegion, DisplayItem, ExtendMode, ExternalScrollId, FilterOp};
-use {FontInstanceKey, GlyphInstance, GlyphOptions, GlyphRasterSpace, Gradient, GradientBuilder};
+use {FontInstanceKey, GlyphInstance, GlyphOptions, RasterSpace, Gradient, GradientBuilder};
 use {GradientDisplayItem, GradientStop, IframeDisplayItem, ImageDisplayItem, ImageKey, ImageMask};
-use {ImageRendering, LayoutPoint, LayoutPrimitiveInfo, LayoutRect, LayoutSize, LayoutTransform};
-use {LayoutVector2D, LineDisplayItem, LineOrientation, LineStyle, MixBlendMode, PipelineId};
-use {PropertyBinding, PushReferenceFrameDisplayListItem, PushStackingContextDisplayItem};
-use {RadialGradient, RadialGradientDisplayItem, RectangleDisplayItem, ReferenceFrame};
-use {ScrollFrameDisplayItem, ScrollSensitivity, Shadow, SpecificDisplayItem, StackingContext};
-use {StickyFrameDisplayItem, StickyOffsetBounds, TextDisplayItem, TransformStyle, YuvColorSpace};
-use {YuvData, YuvImageDisplayItem};
+use {ImageRendering, LayoutPoint, LayoutPrimitiveInfo, LayoutRect, LayoutSideOffsets, LayoutSize};
+use {LayoutTransform, LayoutVector2D, LineDisplayItem, LineOrientation, LineStyle, MixBlendMode};
+use {PipelineId, PropertyBinding, PushReferenceFrameDisplayListItem};
+use {PushStackingContextDisplayItem, RadialGradient, RadialGradientDisplayItem};
+use {RectangleDisplayItem, ReferenceFrame, ScrollFrameDisplayItem, ScrollSensitivity, Shadow};
+use {SpecificDisplayItem, StackingContext, StickyFrameDisplayItem, StickyOffsetBounds};
+use {TextDisplayItem, TransformStyle, YuvColorSpace, YuvData, YuvImageDisplayItem, ColorDepth};
 
 // We don't want to push a long text-run. If a text-run is too long, split it into several parts.
 // This needs to be set to (renderer::MAX_VERTEX_TEXTURE_WIDTH - VECS_PER_TEXT_RUN) * 2
@@ -88,6 +88,8 @@ pub struct BuiltDisplayListDescriptor {
     total_clip_nodes: usize,
     /// The amount of spatial nodes created while building this display list.
     total_spatial_nodes: usize,
+    /// An estimate of the number of primitives that will be created by this display list.
+    prim_count_estimate: usize,
 }
 
 pub struct BuiltDisplayListIter<'a> {
@@ -143,6 +145,10 @@ impl BuiltDisplayList {
 
     pub fn descriptor(&self) -> &BuiltDisplayListDescriptor {
         &self.descriptor
+    }
+
+    pub fn prim_count_estimate(&self) -> usize {
+        self.descriptor.prim_count_estimate
     }
 
     pub fn times(&self) -> (u64, u64, u64) {
@@ -603,6 +609,7 @@ impl<'de> Deserialize<'de> for BuiltDisplayList {
                 send_start_time: 0,
                 total_clip_nodes,
                 total_spatial_nodes,
+                prim_count_estimate: 0,
             },
         })
     }
@@ -839,6 +846,7 @@ pub struct DisplayListBuilder {
     clip_stack: Vec<ClipAndScrollInfo>,
     next_clip_index: usize,
     next_spatial_index: usize,
+    prim_count_estimate: usize,
     next_clip_chain_id: u64,
     builder_start_time: u64,
 
@@ -868,6 +876,7 @@ impl DisplayListBuilder {
             ],
             next_clip_index: FIRST_CLIP_NODE_INDEX,
             next_spatial_index: FIRST_SPATIAL_NODE_INDEX,
+            prim_count_estimate: 0,
             next_clip_chain_id: 0,
             builder_start_time: start_time,
             content_size,
@@ -953,6 +962,7 @@ impl DisplayListBuilder {
     /// display items. Pushing unexpected or invalid items here may
     /// result in WebRender panicking or behaving in unexpected ways.
     pub fn push_item(&mut self, item: SpecificDisplayItem, info: &LayoutPrimitiveInfo) {
+        self.prim_count_estimate += 1;
         serialize_fast(
             &mut self.data,
             &DisplayItem {
@@ -969,6 +979,7 @@ impl DisplayListBuilder {
         info: &LayoutPrimitiveInfo,
         scrollinfo: ClipAndScrollInfo
     ) {
+        self.prim_count_estimate += 1;
         serialize_fast(
             &mut self.data,
             &DisplayItem {
@@ -1090,11 +1101,13 @@ impl DisplayListBuilder {
         &mut self,
         info: &LayoutPrimitiveInfo,
         yuv_data: YuvData,
+        color_depth: ColorDepth,
         color_space: YuvColorSpace,
         image_rendering: ImageRendering,
     ) {
         let item = SpecificDisplayItem::YuvImage(YuvImageDisplayItem {
             yuv_data,
+            color_depth,
             color_space,
             image_rendering,
         });
@@ -1154,7 +1167,7 @@ impl DisplayListBuilder {
     pub fn push_border(
         &mut self,
         info: &LayoutPrimitiveInfo,
-        widths: BorderWidths,
+        widths: LayoutSideOffsets,
         details: BorderDetails,
     ) {
         let item = SpecificDisplayItem::Border(BorderDisplayItem { details, widths });
@@ -1264,14 +1277,14 @@ impl DisplayListBuilder {
         transform_style: TransformStyle,
         mix_blend_mode: MixBlendMode,
         filters: Vec<FilterOp>,
-        glyph_raster_space: GlyphRasterSpace,
+        raster_space: RasterSpace,
     ) {
         let item = SpecificDisplayItem::PushStackingContext(PushStackingContextDisplayItem {
             stacking_context: StackingContext {
                 transform_style,
                 mix_blend_mode,
                 clip_node_id,
-                glyph_raster_space,
+                raster_space,
             },
         });
 
@@ -1501,6 +1514,7 @@ impl DisplayListBuilder {
                     send_start_time: 0,
                     total_clip_nodes: self.next_clip_index,
                     total_spatial_nodes: self.next_spatial_index,
+                    prim_count_estimate: self.prim_count_estimate,
                 },
                 data: self.data,
             },

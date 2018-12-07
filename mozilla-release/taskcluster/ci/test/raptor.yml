@@ -1,11 +1,15 @@
 job-defaults:
     max-run-time: 1800
     suite: raptor
-    workdir: /home/cltbld
+    workdir:
+        by-test-platform:
+            android-hw.*: /builds/worker
+            default: /home/cltbld
     tier:
         by-test-platform:
             windows10-64-ccov/.*: 3
             linux64-ccov/.*: 3
+            android-hw-g5.*: 3
             default: 2
     virtualization:
         by-test-platform:
@@ -23,6 +27,8 @@ job-defaults:
                     - raptor/windows_vm_config.py
                 linux64-ccov/opt:
                     - raptor/linux64_config_taskcluster.py
+                android-hw.*:
+                    - raptor/android_hw_config.py
                 default:
                     - raptor/linux_config.py
 
@@ -30,8 +36,8 @@ raptor-tp6-firefox:
     description: "Raptor tp6 on Firefox"
     try-name: raptor-tp6-firefox
     treeherder-symbol: Rap(tp6)
-    run-on-projects: ['try', 'mozilla-central']
-    max-run-time: 1200
+    run-on-projects: ['try', 'mozilla-central', 'mozilla-beta']
+    max-run-time: 1800
     mozharness:
         extra-options:
             - --test=raptor-tp6
@@ -40,7 +46,11 @@ raptor-tp6-chrome:
     description: "Raptor tp6 on Chrome"
     try-name: raptor-tp6-chrome
     treeherder-symbol: Rap-C(tp6)
-    run-on-projects: ['try']
+    run-on-projects: ['try', 'mozilla-central']
+    tier:
+        by-test-platform:
+            linux64.*: 3
+            default: 2
     max-run-time: 1200
     mozharness:
         extra-options:
@@ -51,11 +61,26 @@ raptor-speedometer-firefox:
     description: "Raptor Speedometer on Firefox"
     try-name: raptor-speedometer-firefox
     treeherder-symbol: Rap(sp)
-    run-on-projects: ['try', 'mozilla-central']
+    run-on-projects: ['try', 'mozilla-central', 'mozilla-inbound', 'autoland']
     max-run-time: 1500
     mozharness:
         extra-options:
             - --test=raptor-speedometer
+
+raptor-speedometer-geckoview:
+    description: "Raptor Speedometer on Geckoview"
+    try-name: raptor-speedometer-geckoview
+    treeherder-symbol: Rap(sp)
+    target: geckoview_example.apk
+    run-on-projects:
+        by-test-platform:
+            android-hw.*: ['try', 'mozilla-central']
+    max-run-time: 900
+    mozharness:
+        extra-options:
+            - --test=raptor-speedometer
+            - --app=geckoview
+            - --binary=org.mozilla.geckoview_example
 
 raptor-speedometer-chrome:
     description: "Raptor Speedometer on Chrome"
@@ -156,8 +181,8 @@ raptor-gdocs-firefox:
     description: "Raptor gdocs on Firefox"
     try-name: raptor-gdocs-firefox
     treeherder-symbol: Rap(gdocs)
-    run-on-projects: ['try', 'mozilla-central']
-    max-run-time: 1800
+    run-on-projects: ['try', 'mozilla-central', 'mozilla-inbound', 'autoland']
+    max-run-time: 1200
     mozharness:
         extra-options:
             - --test=raptor-gdocs
@@ -203,6 +228,24 @@ raptor-unity-webgl-firefox:
     mozharness:
         extra-options:
             - --test=raptor-unity-webgl
+    fetches:
+        fetch:
+            - unity-webgl
+
+raptor-unity-webgl-geckoview:
+    description: "Raptor Unity WebGL on Geckoview"
+    try-name: raptor-unity-webgl-geckoview
+    treeherder-symbol: Rap(ugl)
+    target: geckoview_example.apk
+    run-on-projects:
+        by-test-platform:
+            android-hw-.*arm7.*: ['try', 'mozilla-central']
+    max-run-time: 900
+    mozharness:
+        extra-options:
+            - --test=raptor-unity-webgl
+            - --app=geckoview
+            - --binary=org.mozilla.geckoview_example
     fetches:
         fetch:
             - unity-webgl
@@ -279,7 +322,7 @@ raptor-assorted-dom-firefox:
     try-name: raptor-assorted-dom-firefox
     treeherder-symbol: Rap(dom)
     run-on-projects: ['try', 'mozilla-central']
-    tier: 3
+    tier: 2
     max-run-time: 1500
     mozharness:
         extra-options:
@@ -293,7 +336,7 @@ raptor-assorted-dom-chrome:
     try-name: raptor-assorted-dom-chrome
     treeherder-symbol: Rap-C(dom)
     run-on-projects: ['try', 'mozilla-central']
-    tier: 3
+    tier: 2
     max-run-time: 1500
     mozharness:
         extra-options:

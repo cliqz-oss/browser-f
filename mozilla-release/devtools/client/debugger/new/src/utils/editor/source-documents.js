@@ -93,17 +93,19 @@ function clearEditor(editor) {
 }
 
 function showLoading(editor) {
-  if (hasDocument("loading")) {
-    return;
-  }
+  let doc = getDocument("loading");
 
-  const doc = editor.createDocument();
-  setDocument("loading", doc);
-  editor.replaceDocument(doc);
-  editor.setText(L10N.getStr("loadingText"));
-  editor.setMode({
-    name: "text"
-  });
+  if (doc) {
+    editor.replaceDocument(doc);
+  } else {
+    doc = editor.createDocument();
+    setDocument("loading", doc);
+    doc.setValue(L10N.getStr("loadingText"));
+    editor.replaceDocument(doc);
+    editor.setMode({
+      name: "text"
+    });
+  }
 }
 
 function showErrorMessage(editor, msg) {
@@ -142,6 +144,15 @@ function setEditorText(editor, source) {
     editor.setText(text);
   }
 }
+
+function setMode(editor, source, symbols) {
+  const mode = (0, _source.getMode)(source, symbols);
+  const currentMode = editor.codeMirror.getOption("mode");
+
+  if (!currentMode || currentMode.name != mode.name) {
+    editor.setMode(mode);
+  }
+}
 /**
  * Handle getting the source document or creating a new
  * document with the correct mode and text.
@@ -157,19 +168,13 @@ function showSourceText(editor, source, symbols) {
     const doc = getDocument(source.id);
 
     if (editor.codeMirror.doc === doc) {
-      const mode = (0, _source.getMode)(source, symbols);
-      const currentMode = editor.codeMirror.getOption("mode");
-
-      if (currentMode.name != mode.name) {
-        editor.setMode(mode);
-      }
-
+      setMode(editor, source, symbols);
       return;
     }
 
     editor.replaceDocument(doc);
     updateLineNumberFormat(editor, source.id);
-    editor.setMode((0, _source.getMode)(source, symbols));
+    setMode(editor, source, symbols);
     return doc;
   }
 
@@ -177,6 +182,6 @@ function showSourceText(editor, source, symbols) {
   setDocument(source.id, doc);
   editor.replaceDocument(doc);
   setEditorText(editor, source);
-  editor.setMode((0, _source.getMode)(source, symbols));
+  setMode(editor, source, symbols);
   updateLineNumberFormat(editor, source.id);
 }

@@ -48,8 +48,9 @@ MessageParameterCount(const char* format)
 {
     unsigned numfmtspecs = 0;
     for (const char* fmt = format; *fmt != '\0'; fmt++) {
-        if (*fmt == '{' && isdigit(fmt[1]))
+        if (*fmt == '{' && isdigit(fmt[1])) {
             ++numfmtspecs;
+        }
     }
     return numfmtspecs;
 }
@@ -112,6 +113,8 @@ JS::detail::InitWithFailureDiagnostic(bool isDebugBuild)
 
     RETURN_IF_FAIL(js::Mutex::Init());
 
+    RETURN_IF_FAIL(js::wasm::Init());
+
     js::gc::InitMemorySubsystem(); // Ensure gc::SystemPageSize() works.
 
     RETURN_IF_FAIL(js::jit::InitProcessExecutableMemory());
@@ -129,8 +132,9 @@ JS::detail::InitWithFailureDiagnostic(bool isDebugBuild)
 #if EXPOSE_INTL_API
     UErrorCode err = U_ZERO_ERROR;
     u_init(&err);
-    if (U_FAILURE(err))
+    if (U_FAILURE(err)) {
         return "u_init() failed";
+    }
 #endif // EXPOSE_INTL_API
 
     RETURN_IF_FAIL(js::CreateHelperThreadsState());

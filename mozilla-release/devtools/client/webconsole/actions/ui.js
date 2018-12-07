@@ -14,15 +14,16 @@ const {
   INITIALIZE,
   PERSIST_TOGGLE,
   PREFS,
+  REVERSE_SEARCH_INPUT_TOGGLE,
   SELECT_NETWORK_MESSAGE_TAB,
-  SIDEBAR_CLOSE,
   SHOW_OBJECT_IN_SIDEBAR,
-  TIMESTAMPS_TOGGLE,
+  SIDEBAR_CLOSE,
   SPLIT_CONSOLE_CLOSE_BUTTON_TOGGLE,
+  TIMESTAMPS_TOGGLE,
 } = require("devtools/client/webconsole/constants");
 
-function filterBarToggle(show) {
-  return (dispatch, getState, {prefsService}) => {
+function filterBarToggle() {
+  return ({dispatch, getState, prefsService}) => {
     dispatch({
       type: FILTER_BAR_TOGGLE,
     });
@@ -31,8 +32,8 @@ function filterBarToggle(show) {
   };
 }
 
-function persistToggle(show) {
-  return (dispatch, getState, {prefsService}) => {
+function persistToggle() {
+  return ({dispatch, getState, prefsService}) => {
     dispatch({
       type: PERSIST_TOGGLE,
     });
@@ -57,7 +58,7 @@ function selectNetworkMessageTab(id) {
 
 function initialize() {
   return {
-    type: INITIALIZE
+    type: INITIALIZE,
   };
 }
 
@@ -82,7 +83,7 @@ function splitConsoleCloseButtonToggle(shouldDisplayButton) {
  * @param {String} messageId: id of the message containing the {actor} parameter.
  */
 function showMessageObjectInSidebar(actor, messageId) {
-  return (dispatch, getState) => {
+  return ({dispatch, getState}) => {
     const { parameters } = getMessage(getState(), messageId);
     if (Array.isArray(parameters)) {
       for (const parameter of parameters) {
@@ -102,14 +103,21 @@ function showObjectInSidebar(grip) {
   };
 }
 
+function reverseSearchInputToggle() {
+  return {
+    type: REVERSE_SEARCH_INPUT_TOGGLE,
+  };
+}
+
 module.exports = {
   filterBarToggle,
   initialize,
   persistToggle,
+  reverseSearchInputToggle,
   selectNetworkMessageTab,
-  sidebarClose,
   showMessageObjectInSidebar,
   showObjectInSidebar,
-  timestampsToggle,
+  sidebarClose,
   splitConsoleCloseButtonToggle,
+  timestampsToggle,
 };

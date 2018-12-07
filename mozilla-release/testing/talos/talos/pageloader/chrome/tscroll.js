@@ -48,7 +48,7 @@ function testScroll(target, stepSize, opt_reportFunc, opt_numSteps) {
               data: arg,
             },
             listeningTo: replyEvent,
-          }
+          },
         })
       );
     },
@@ -111,6 +111,12 @@ function testScroll(target, stepSize, opt_reportFunc, opt_numSteps) {
   function P_rAF() {
     return new Promise(function(resolve) {
       rAF(resolve);
+    });
+  }
+
+  function P_MozAfterPaint() {
+    return new Promise(function(resolve) {
+      win.addEventListener("MozAfterPaint", () => resolve(), { once: true});
     });
   }
 
@@ -196,7 +202,7 @@ function testScroll(target, stepSize, opt_reportFunc, opt_numSteps) {
         }
 
         lastScrollPos = getPos();
-        rAF(tick);
+        P_MozAfterPaint().then(tick);
       }
 
       if (typeof(TalosContentProfiler) !== "undefined") {

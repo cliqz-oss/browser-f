@@ -28,7 +28,7 @@ const BOX_MODEL_SIDES = ["top", "right", "bottom", "left"];
 // Width of boxmodelhighlighter guides
 const GUIDE_STROKE_WIDTH = 1;
 // FIXME: add ":visited" and ":link" after bug 713106 is fixed
-const PSEUDO_CLASSES = [":hover", ":active", ":focus"];
+const PSEUDO_CLASSES = [":hover", ":active", ":focus", ":focus-within"];
 
 /**
  * The BoxModelHighlighter draws the box model regions on top of a node.
@@ -128,9 +128,9 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
       attributes: {
         "id": "root",
         "class": "root",
-        "role": "presentation"
+        "role": "presentation",
       },
-      prefix: this.ID_CLASS_PREFIX
+      prefix: this.ID_CLASS_PREFIX,
     });
 
     // Building the SVG element with its polygons and lines
@@ -143,9 +143,9 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
         "width": "100%",
         "height": "100%",
         "hidden": "true",
-        "role": "presentation"
+        "role": "presentation",
       },
-      prefix: this.ID_CLASS_PREFIX
+      prefix: this.ID_CLASS_PREFIX,
     });
 
     const regions = createSVGNode(this.win, {
@@ -153,9 +153,9 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
       parent: svg,
       attributes: {
         "class": "regions",
-        "role": "presentation"
+        "role": "presentation",
       },
-      prefix: this.ID_CLASS_PREFIX
+      prefix: this.ID_CLASS_PREFIX,
     });
 
     for (const region of BOX_MODEL_REGIONS) {
@@ -165,9 +165,9 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
         attributes: {
           "class": region,
           "id": region,
-          "role": "presentation"
+          "role": "presentation",
         },
-        prefix: this.ID_CLASS_PREFIX
+        prefix: this.ID_CLASS_PREFIX,
       });
     }
 
@@ -179,9 +179,9 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
           "class": "guide-" + side,
           "id": "guide-" + side,
           "stroke-width": GUIDE_STROKE_WIDTH,
-          "role": "presentation"
+          "role": "presentation",
         },
-        prefix: this.ID_CLASS_PREFIX
+        prefix: this.ID_CLASS_PREFIX,
       });
     }
 
@@ -193,70 +193,70 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
         "class": "infobar-container",
         "id": "infobar-container",
         "position": "top",
-        "hidden": "true"
+        "hidden": "true",
       },
-      prefix: this.ID_CLASS_PREFIX
+      prefix: this.ID_CLASS_PREFIX,
     });
 
     const infobar = createNode(this.win, {
       parent: infobarContainer,
       attributes: {
-        "class": "infobar"
+        "class": "infobar",
       },
-      prefix: this.ID_CLASS_PREFIX
+      prefix: this.ID_CLASS_PREFIX,
     });
 
     const texthbox = createNode(this.win, {
       parent: infobar,
       attributes: {
-        "class": "infobar-text"
+        "class": "infobar-text",
       },
-      prefix: this.ID_CLASS_PREFIX
+      prefix: this.ID_CLASS_PREFIX,
     });
     createNode(this.win, {
       nodeType: "span",
       parent: texthbox,
       attributes: {
         "class": "infobar-tagname",
-        "id": "infobar-tagname"
+        "id": "infobar-tagname",
       },
-      prefix: this.ID_CLASS_PREFIX
+      prefix: this.ID_CLASS_PREFIX,
     });
     createNode(this.win, {
       nodeType: "span",
       parent: texthbox,
       attributes: {
         "class": "infobar-id",
-        "id": "infobar-id"
+        "id": "infobar-id",
       },
-      prefix: this.ID_CLASS_PREFIX
+      prefix: this.ID_CLASS_PREFIX,
     });
     createNode(this.win, {
       nodeType: "span",
       parent: texthbox,
       attributes: {
         "class": "infobar-classes",
-        "id": "infobar-classes"
+        "id": "infobar-classes",
       },
-      prefix: this.ID_CLASS_PREFIX
+      prefix: this.ID_CLASS_PREFIX,
     });
     createNode(this.win, {
       nodeType: "span",
       parent: texthbox,
       attributes: {
         "class": "infobar-pseudo-classes",
-        "id": "infobar-pseudo-classes"
+        "id": "infobar-pseudo-classes",
       },
-      prefix: this.ID_CLASS_PREFIX
+      prefix: this.ID_CLASS_PREFIX,
     });
     createNode(this.win, {
       nodeType: "span",
       parent: texthbox,
       attributes: {
         "class": "infobar-dimensions",
-        "id": "infobar-dimensions"
+        "id": "infobar-dimensions",
       },
-      prefix: this.ID_CLASS_PREFIX
+      prefix: this.ID_CLASS_PREFIX,
     });
 
     return highlighterContainer;
@@ -413,7 +413,7 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
    */
   _getOuterQuad(region) {
     const quads = this.currentQuads[region];
-    if (!quads.length) {
+    if (!quads || !quads.length) {
       return null;
     }
 
@@ -431,7 +431,7 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
         width: 0,
         x: 0,
         y: 0,
-      }
+      },
     };
 
     for (const q of quads) {
@@ -585,7 +585,7 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
       top: 0,
       width: 0,
       x: 0,
-      y: 0
+      y: 0,
     };
   }
 
@@ -595,7 +595,14 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
    * @param {String} region The region around which the guides should be shown.
    */
   _showGuides(region) {
-    const {p1, p2, p3, p4} = this._getOuterQuad(region);
+    const quad = this._getOuterQuad(region);
+
+    if (!quad) {
+      // Invisible element such as a script tag.
+      return;
+    }
+
+    const {p1, p2, p3, p4} = quad;
 
     const allX = [p1.x, p2.x, p3.x, p4.x].sort((a, b) => a - b);
     const allY = [p1.y, p2.y, p3.y, p4.y].sort((a, b) => a - b);
@@ -694,7 +701,13 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
     // by any zoom. Since the infobar can be displayed also for text nodes, we can't
     // access the computed style for that, and this is why we recalculate them here.
     const zoom = getCurrentZoom(this.win);
-    const { width, height } = this._getOuterQuad("border").bounds;
+    const quad = this._getOuterQuad("border");
+
+    if (!quad) {
+      return;
+    }
+
+    const { width, height } = quad.bounds;
     const dim = parseFloat((width / zoom).toPrecision(6)) +
               " \u00D7 " +
               parseFloat((height / zoom).toPrecision(6));

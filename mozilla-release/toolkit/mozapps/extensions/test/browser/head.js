@@ -30,11 +30,9 @@ const PREF_DISCOVER_ENABLED = "extensions.getAddons.showPane";
 const PREF_XPI_ENABLED = "xpinstall.enabled";
 const PREF_UPDATEURL = "extensions.update.url";
 const PREF_GETADDONS_CACHE_ENABLED = "extensions.getAddons.cache.enabled";
-const PREF_CUSTOM_XPINSTALL_CONFIRMATION_UI = "xpinstall.customConfirmationUI";
 const PREF_UI_LASTCATEGORY = "extensions.ui.lastCategory";
 
 const MANAGER_URI = "about:addons";
-const INSTALL_URI = "chrome://mozapps/content/xpinstall/xpinstallConfirm.xul";
 const PREF_LOGGING_ENABLED = "extensions.logging.enabled";
 const PREF_STRICT_COMPAT = "extensions.strictCompatibility";
 
@@ -57,7 +55,6 @@ var gTestsRun = 0;
 var gTestStart = null;
 
 var gRestorePrefs = [{name: PREF_LOGGING_ENABLED},
-                     {name: PREF_CUSTOM_XPINSTALL_CONFIRMATION_UI},
                      {name: "extensions.webservice.discoverURL"},
                      {name: "extensions.update.url"},
                      {name: "extensions.update.background.url"},
@@ -86,8 +83,6 @@ for (let pref of gRestorePrefs) {
 
 // Turn logging on for all tests
 Services.prefs.setBoolPref(PREF_LOGGING_ENABLED, true);
-
-Services.prefs.setBoolPref(PREF_CUSTOM_XPINSTALL_CONFIRMATION_UI, false);
 
 function promiseFocus(window) {
   return new Promise(resolve => waitForFocus(resolve, window));
@@ -619,9 +614,8 @@ CertOverrideListener.prototype = {
 
   QueryInterface: ChromeUtils.generateQI(["nsIBadCertListener2", "nsIInterfaceRequestor"]),
 
-  notifyCertProblem(socketInfo, sslStatus, targetHost) {
-    var cert = sslStatus.QueryInterface(Ci.nsISSLStatus)
-                        .serverCert;
+  notifyCertProblem(socketInfo, secInfo, targetHost) {
+    var cert = secInfo.serverCert;
     var cos = Cc["@mozilla.org/security/certoverride;1"].
               getService(Ci.nsICertOverrideService);
     cos.rememberValidityOverride(this.host, -1, cert, this.bits, false);
@@ -1386,10 +1380,57 @@ function promiseNotification(id = "addon-webext-permissions") {
       let notification = PopupNotifications.getNotification(id);
       if (notification) {
         PopupNotifications.panel.removeEventListener("popupshown", popupshown);
-        PopupNotifications.panel.firstChild.button.click();
+        PopupNotifications.panel.firstElementChild.button.click();
         resolve();
       }
     }
     PopupNotifications.panel.addEventListener("popupshown", popupshown);
+  });
+}
+
+/**
+ * Wait for the given PopupNotification to display
+ *
+ * @param {string} name
+ *        The name of the notification to wait for.
+ *
+ * @returns {Promise}
+ *          Resolves with the notification window.
+ */
+function promisePopupNotificationShown(name = "addon-webext-permissions") {
+  return new Promise(resolve => {
+    function popupshown() {
+      let notification = PopupNotifications.getNotification(name);
+      if (!notification) { return; }
+
+      ok(notification, `${name} notification shown`);
+      ok(PopupNotifications.isPanelOpen, "notification panel open");
+
+      PopupNotifications.panel.removeEventListener("popupshown", popupshown);
+      resolve(PopupNotifications.panel.firstChild);
+    }
+    PopupNotifications.panel.addEventListener("popupshown", popupshown);
+  });
+}
+
+function acceptAppMenuNotificationWhenShown(id) {
+  ChromeUtils.import("resource://gre/modules/AppMenuNotifications.jsm");
+  return new Promise(resolve => {
+    function popupshown() {
+      let notification = AppMenuNotifications.activeNotification;
+      if (!notification) { return; }
+
+      is(notification.id, id, `${id} notification shown`);
+      ok(PanelUI.isNotificationPanelOpen, "notification panel open");
+
+      PanelUI.notificationPanel.removeEventListener("popupshown", popupshown);
+
+      let popupnotificationID = PanelUI._getPopupId(notification);
+      let popupnotification = document.getElementById(popupnotificationID);
+      popupnotification.button.click();
+
+      resolve();
+    }
+    PanelUI.notificationPanel.addEventListener("popupshown", popupshown);
   });
 }

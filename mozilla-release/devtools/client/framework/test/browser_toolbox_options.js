@@ -18,7 +18,7 @@ add_task(async function() {
               "and unregistering tools";
   registerNewTool();
   const tab = await addTab(URL);
-  const target = TargetFactory.forTab(tab);
+  const target = await TargetFactory.forTab(tab);
   toolbox = await gDevTools.showToolbox(target);
 
   doc = toolbox.doc;
@@ -43,7 +43,7 @@ function registerNewTool() {
     isTargetSupported: () => true,
     visibilityswitch: "devtools.test-tool.enabled",
     url: "about:blank",
-    label: "someLabel"
+    label: "someLabel",
   };
 
   ok(gDevTools, "gDevTools exists");
@@ -77,7 +77,7 @@ function registerNewPerToolboxTool() {
     isTargetSupported: () => true,
     visibilityswitch: "devtools.test-pertoolbox-tool.enabled",
     url: "about:blank",
-    label: "perToolboxSomeLabel"
+    label: "perToolboxSomeLabel",
   };
 
   ok(gDevTools, "gDevTools exists");

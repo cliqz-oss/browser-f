@@ -400,7 +400,7 @@ struct BaselineScript
     ICEntry& icEntryFromPCOffset(uint32_t pcOffset);
     ICEntry& icEntryFromPCOffset(uint32_t pcOffset, ICEntry* prevLookedUpEntry);
     ICEntry& callVMEntryFromPCOffset(uint32_t pcOffset);
-    ICEntry& stackCheckICEntry(bool earlyCheck);
+    ICEntry& stackCheckICEntry();
     ICEntry& warmupCountICEntry();
     ICEntry& icEntryFromReturnAddress(uint8_t* returnAddr);
     uint8_t* returnAddressForIC(const ICEntry& ent);
@@ -495,8 +495,9 @@ struct BaselineScript
         return inlinedBytecodeLength_;
     }
     void setInlinedBytecodeLength(uint32_t len) {
-        if (len > UINT16_MAX)
+        if (len > UINT16_MAX) {
             len = UINT16_MAX;
+        }
         inlinedBytecodeLength_ = len;
     }
 
@@ -512,8 +513,9 @@ struct BaselineScript
         MOZ_ASSERT(script->baselineScript() == this);
         MOZ_ASSERT(!builder || !hasPendingIonBuilder());
 
-        if (script->isIonCompilingOffThread())
+        if (script->isIonCompilingOffThread()) {
             script->setIonScript(rt, ION_PENDING_SCRIPT);
+        }
 
         pendingBuilder_ = builder;
 
@@ -524,8 +526,9 @@ struct BaselineScript
     }
     void removePendingIonBuilder(JSRuntime* rt, JSScript* script) {
         setPendingIonBuilder(rt, script, nullptr);
-        if (script->maybeIonScript() == ION_PENDING_SCRIPT)
+        if (script->maybeIonScript() == ION_PENDING_SCRIPT) {
             script->setIonScript(rt, nullptr);
+        }
     }
 
     const ControlFlowGraph* controlFlowGraph() const {
@@ -546,7 +549,8 @@ IsBaselineEnabled(JSContext* cx)
 #ifdef JS_CODEGEN_NONE
     return false;
 #else
-    return cx->options().baseline();
+    return cx->options().baseline() &&
+           cx->runtime()->jitSupportsFloatingPoint;
 #endif
 }
 

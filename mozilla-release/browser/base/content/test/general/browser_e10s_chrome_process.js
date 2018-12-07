@@ -14,13 +14,13 @@ function makeTest(name, startURL, startProcessIsRemote, endURL, endProcessIsRemo
 
     // Load the initial URL and make sure we are in the right initial process
     info("Loading initial URL");
-    browser.loadURI(startURL);
-    await BrowserTestUtils.browserLoaded(browser);
+    BrowserTestUtils.loadURI(browser, startURL);
+    await BrowserTestUtils.browserLoaded(browser, false, startURL);
 
     is(browser.currentURI.spec, startURL, "Shouldn't have been redirected");
     is(browser.isRemoteBrowser, startProcessIsRemote, "Should be displayed in the right process");
 
-    let docLoadedPromise = BrowserTestUtils.browserLoaded(browser);
+    let docLoadedPromise = BrowserTestUtils.browserLoaded(browser, false, endURL);
     let expectSyncChange = await transitionTask(browser, endURL);
     if (expectSyncChange) {
       is(browser.isRemoteBrowser, endProcessIsRemote, "Should have switched to the right process synchronously");

@@ -420,7 +420,7 @@ public:
   void AddUserData(UserDataKey *key, void *userData, void (*destroy)(void*)) {
     mUserData.Add(key, userData, destroy);
   }
-  void *GetUserData(UserDataKey *key) {
+  void *GetUserData(UserDataKey *key) const {
     return mUserData.Get(key);
   }
   void RemoveUserData(UserDataKey *key) {
@@ -587,7 +587,8 @@ public:
   virtual void AddSizeOfExcludingThis(MallocSizeOf aMallocSizeOf,
                                       size_t& aHeapSizeOut,
                                       size_t& aNonHeapSizeOut,
-                                      size_t& aExtHandlesOut) const
+                                      size_t& aExtHandlesOut,
+                                      uint64_t& aExtIdOut) const
   {
   }
 
@@ -824,6 +825,16 @@ public:
     return nullptr;
   }
 
+  virtual already_AddRefed<ScaledFont>
+    CreateScaledFontFromWRFont(Float aGlyphSize,
+                               const wr::FontInstanceOptions* aOptions,
+                               const wr::FontInstancePlatformOptions* aPlatformOptions,
+                               const FontVariation* aVariations,
+                               uint32_t aNumVariations)
+  {
+    return CreateScaledFont(aGlyphSize, nullptr, 0, aVariations, aNumVariations);
+  }
+
 protected:
   UnscaledFont() {}
 
@@ -1025,6 +1036,12 @@ public:
                            const Rect &aSource,
                            const DrawSurfaceOptions &aSurfOptions = DrawSurfaceOptions(),
                            const DrawOptions &aOptions = DrawOptions()) = 0;
+
+  virtual void DrawDependentSurface(uint64_t aId,
+                                    const Rect &aDest,
+                                    const DrawSurfaceOptions &aSurfOptions = DrawSurfaceOptions(),
+                                    const DrawOptions &aOptions = DrawOptions())
+  { MOZ_CRASH("GFX: DrawDependentSurface"); }
 
   /**
    * Draw the output of a FilterNode to the DrawTarget.
@@ -1849,7 +1866,7 @@ public:
                                   Float aGamma,
                                   Float aContrast);
 
-  static void UpdateSystemTextQuality();
+  static void SetSystemTextQuality(uint8_t aQuality);
 
 private:
   static StaticRefPtr<ID2D1Device> mD2D1Device;

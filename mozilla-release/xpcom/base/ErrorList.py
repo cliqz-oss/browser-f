@@ -639,7 +639,6 @@ with modules["DOM"]:
     errors["NS_ERROR_DOM_XPCONNECT_ACCESS_DENIED"] = FAILURE(1011)
     errors["NS_ERROR_DOM_BAD_URI"] = FAILURE(1012)
     errors["NS_ERROR_DOM_RETVAL_UNDEFINED"] = FAILURE(1013)
-    errors["NS_ERROR_DOM_QUOTA_REACHED"] = FAILURE(1014)
 
     # A way to represent uncatchable exceptions
     errors["NS_ERROR_UNCATCHABLE_EXCEPTION"] = FAILURE(1015)
@@ -864,7 +863,6 @@ with modules["CONTENT"]:
     # Error codes for FindBroadcaster in XULDocument.cpp
     errors["NS_FINDBROADCASTER_NOT_FOUND"] = SUCCESS(12)
     errors["NS_FINDBROADCASTER_FOUND"] = SUCCESS(13)
-    errors["NS_FINDBROADCASTER_AWAIT_OVERLAYS"] = SUCCESS(14)
 
 
 # =======================================================================
@@ -977,6 +975,8 @@ with modules["DOM_INDEXEDDB"]:
     errors["NS_ERROR_DOM_INDEXEDDB_VERSION_ERR"] = FAILURE(12)
     errors["NS_ERROR_DOM_INDEXEDDB_RECOVERABLE_ERR"] = FAILURE(1001)
     errors["NS_ERROR_DOM_INDEXEDDB_KEY_ERR"] = FAILURE(1002)
+    errors["NS_ERROR_DOM_INDEXEDDB_RENAME_OBJECT_STORE_ERR"] = FAILURE(1003)
+    errors["NS_ERROR_DOM_INDEXEDDB_RENAME_INDEX_ERR"] = FAILURE(1004)
 
 
 # =======================================================================
@@ -1093,6 +1093,7 @@ with modules["URL_CLASSIFIER"]:
     errors["NS_ERROR_UC_PARSER_MISSING_PARAM"] = FAILURE(12)
     errors["NS_ERROR_UC_PARSER_DECODE_FAILURE"] = FAILURE(13)
     errors["NS_ERROR_UC_PARSER_UNKNOWN_THREAT"] = FAILURE(14)
+    errors["NS_ERROR_UC_PARSER_MISSING_VALUE"] = FAILURE(15)
 
 
 # =======================================================================
@@ -1242,10 +1243,12 @@ use super::nsresult;
 
 """)
 
-    output.write("pub const NS_ERROR_MODULE_BASE_OFFSET: u32 = {};\n".format(MODULE_BASE_OFFSET))
+    output.write("pub const NS_ERROR_MODULE_BASE_OFFSET: nsresult = nsresult({});\n"
+                 .format(MODULE_BASE_OFFSET))
 
     for mod, val in modules.iteritems():
-        output.write("pub const NS_ERROR_MODULE_{}: u16 = {};\n".format(mod, val.num))
+        output.write("pub const NS_ERROR_MODULE_{}: nsresult = nsresult({});\n"
+                     .format(mod, val.num))
 
     for error, val in errors.iteritems():
-        output.write("pub const {}: nsresult = 0x{:X};\n".format(error, val))
+        output.write("pub const {}: nsresult = nsresult(0x{:X});\n".format(error, val))

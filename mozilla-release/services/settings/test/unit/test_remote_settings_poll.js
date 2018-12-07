@@ -78,11 +78,11 @@ add_task(async function test_check_success() {
   }]));
 
   // add a test kinto client that will respond to lastModified information
-  // for a collection called 'test-collection'
+  // for a collection called 'test-collection'.
+  // Let's use a bucket that is not the default one (`test-bucket`).
+  Services.prefs.setCharPref("services.settings.test_bucket", "test-bucket");
+  const c = RemoteSettings("test-collection", { bucketNamePref: "services.settings.test_bucket" });
   let maybeSyncCalled = false;
-  const c = RemoteSettings("test-collection", {
-    bucketName: "test-bucket",
-  });
   c.maybeSync = () => { maybeSyncCalled = true; };
 
   // Ensure that the remote-settings-changes-polled notification works
@@ -197,6 +197,37 @@ add_task(async function test_check_up_to_date() {
 add_task(clear_state);
 
 
+add_task(async function test_expected_timestamp() {
+  function withCacheBust(request, response) {
+    const entries = [{
+      id: "695c2407-de79-4408-91c7-70720dd59d78",
+      last_modified: 1100,
+      host: "localhost",
+      bucket: "main",
+      collection: "with-cache-busting",
+    }];
+    if (request.queryString == `_expected=${encodeURIComponent('"42"')}`) {
+      response.write(JSON.stringify({
+        data: entries,
+      }));
+    }
+    response.setHeader("ETag", '"1100"');
+    response.setHeader("Date", (new Date()).toUTCString());
+    response.setStatusLine(null, 200, "OK");
+  }
+  server.registerPathHandler(CHANGES_PATH, withCacheBust);
+
+  const c = RemoteSettings("with-cache-busting");
+  let maybeSyncCalled = false;
+  c.maybeSync = () => { maybeSyncCalled = true; };
+
+  await RemoteSettings.pollChanges({ expectedTimestamp: '"42"'});
+
+  Assert.ok(maybeSyncCalled, "maybeSync was called");
+});
+add_task(clear_state);
+
+
 add_task(async function test_success_with_partial_list() {
   function partialList(request, response) {
     const entries = [{
@@ -210,7 +241,7 @@ add_task(async function test_success_with_partial_list() {
       last_modified: 42,
       host: "localhost",
       bucket: "main",
-      collection: "test-collection",
+      collection: "poll-test-collection",
     }];
     if (request.queryString == `_since=${encodeURIComponent('"42"')}`) {
       response.write(JSON.stringify({
@@ -228,14 +259,14 @@ add_task(async function test_success_with_partial_list() {
   }
   server.registerPathHandler(CHANGES_PATH, partialList);
 
-  const c = RemoteSettings("test-collection");
+  const c = RemoteSettings("poll-test-collection");
   let maybeSyncCount = 0;
   c.maybeSync = () => { maybeSyncCount++; };
 
   await RemoteSettings.pollChanges();
   await RemoteSettings.pollChanges();
 
-  // On the second call, the server does not mention the test-collection
+  // On the second call, the server does not mention the poll-test-collection
   // and maybeSync() is not called.
   Assert.equal(maybeSyncCount, 1, "maybeSync should not be called twice");
 });
@@ -257,6 +288,19 @@ add_task(async function test_server_bad_json() {
     error = e;
   }
   Assert.ok(/JSON.parse: unexpected character/.test(error.message));
+});
+add_task(clear_state);
+
+
+add_task(async function test_server_404_response() {
+  function simulateDummy404(request, response) {
+    response.setHeader("Content-Type", "application/json; charset=UTF-8");
+    response.write("<html></html>");
+    response.setStatusLine(null, 404, "OK");
+  }
+  server.registerPathHandler(CHANGES_PATH, simulateDummy404);
+
+  await RemoteSettings.pollChanges(); // Does not fail when running from tests.
 });
 add_task(clear_state);
 
@@ -459,8 +503,9 @@ add_task(async function test_syncs_clients_with_local_database() {
   // This simulates what remote-settings would do when initializing a local database.
   // We don't want to instantiate a client using the RemoteSettings() API
   // since we want to test «unknown» clients that have a local database.
-  await (new Kinto.adapters.IDB("blocklists/addons")).saveLastModified(42);
-  await (new Kinto.adapters.IDB("main/recipes")).saveLastModified(43);
+  const dbName = "remote-settings";
+  await (new Kinto.adapters.IDB("blocklists/addons", { dbName })).saveLastModified(42);
+  await (new Kinto.adapters.IDB("main/recipes", { dbName })).saveLastModified(43);
 
   let error;
   try {

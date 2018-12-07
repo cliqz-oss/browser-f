@@ -92,6 +92,8 @@ SurfaceFormatToDXGIFormat(gfx::SurfaceFormat aFormat)
       return DXGI_FORMAT_R8G8B8A8_UNORM;
     case SurfaceFormat::A8:
       return DXGI_FORMAT_R8_UNORM;
+    case SurfaceFormat::A16:
+      return DXGI_FORMAT_R16_UNORM;
     default:
       MOZ_ASSERT(false, "unsupported format");
       return DXGI_FORMAT_UNKNOWN;
@@ -466,6 +468,10 @@ D3D11TextureData::Create(IntSize aSize, SurfaceFormat aFormat, SourceSurface* aS
 
   if (aFormat == SurfaceFormat::NV12) {
     newDesc.Format = DXGI_FORMAT_NV12;
+  } else if (aFormat == SurfaceFormat::P010) {
+    newDesc.Format = DXGI_FORMAT_P010;
+  } else if (aFormat == SurfaceFormat::P016) {
+    newDesc.Format = DXGI_FORMAT_P016;
   }
 
   newDesc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
@@ -624,6 +630,7 @@ DXGIYCbCrTextureData::Create(IDirect3DTexture9* aTextureY,
                              const gfx::IntSize& aSize,
                              const gfx::IntSize& aSizeY,
                              const gfx::IntSize& aSizeCbCr,
+                             gfx::ColorDepth aColorDepth,
                              YUVColorSpace aYUVColorSpace)
 {
   if (!aHandleY || !aHandleCb || !aHandleCr ||
@@ -641,6 +648,7 @@ DXGIYCbCrTextureData::Create(IDirect3DTexture9* aTextureY,
   texture->mSize = aSize;
   texture->mSizeY = aSizeY;
   texture->mSizeCbCr = aSizeCbCr;
+  texture->mColorDepth = aColorDepth;
   texture->mYUVColorSpace = aYUVColorSpace;
 
   return texture;
@@ -653,6 +661,7 @@ DXGIYCbCrTextureData::Create(ID3D11Texture2D* aTextureY,
                              const gfx::IntSize& aSize,
                              const gfx::IntSize& aSizeY,
                              const gfx::IntSize& aSizeCbCr,
+                             gfx::ColorDepth aColorDepth,
                              YUVColorSpace aYUVColorSpace)
 {
   if (!aTextureY || !aTextureCb || !aTextureCr) {
@@ -701,6 +710,7 @@ DXGIYCbCrTextureData::Create(ID3D11Texture2D* aTextureY,
   texture->mSize = aSize;
   texture->mSizeY = aSizeY;
   texture->mSizeCbCr = aSizeCbCr;
+  texture->mColorDepth = aColorDepth;
   texture->mYUVColorSpace = aYUVColorSpace;
 
   return texture;
@@ -719,10 +729,14 @@ DXGIYCbCrTextureData::FillInfo(TextureData::Info& aInfo) const
 void
 DXGIYCbCrTextureData::SerializeSpecific(SurfaceDescriptorDXGIYCbCr* const aOutDesc)
 {
-  *aOutDesc = SurfaceDescriptorDXGIYCbCr(
-    (WindowsHandle)mHandles[0], (WindowsHandle)mHandles[1], (WindowsHandle)mHandles[2],
-    mSize, mSizeY, mSizeCbCr, mYUVColorSpace
-  );
+  *aOutDesc = SurfaceDescriptorDXGIYCbCr((WindowsHandle)mHandles[0],
+                                         (WindowsHandle)mHandles[1],
+                                         (WindowsHandle)mHandles[2],
+                                         mSize,
+                                         mSizeY,
+                                         mSizeCbCr,
+                                         mColorDepth,
+                                         mYUVColorSpace);
 }
 
 bool
@@ -1075,7 +1089,9 @@ DXGITextureHostD3D11::NumSubTextures() const
     case gfx::SurfaceFormat::B8G8R8X8: {
       return 1;
     }
-    case gfx::SurfaceFormat::NV12: {
+    case gfx::SurfaceFormat::NV12:
+    case gfx::SurfaceFormat::P010:
+    case gfx::SurfaceFormat::P016: {
       return 2;
     }
     default: {
@@ -1116,6 +1132,8 @@ DXGITextureHostD3D11::PushResourceUpdates(wr::TransactionBuilder& aResources,
       MOZ_ASSERT(mSize.width % 2 == 0);
       MOZ_ASSERT(mSize.height % 2 == 0);
 
+      // For now, no software decoder can output 10/12 bits NV12 images
+      // So forcing A8 is okay.
       wr::ImageDescriptor descriptor0(mSize, gfx::SurfaceFormat::A8);
       wr::ImageDescriptor descriptor1(mSize / 2, gfx::SurfaceFormat::R8G8);
       auto bufferType = wr::WrExternalImageBufferType::TextureExternalHandle;
@@ -1152,6 +1170,20 @@ DXGITextureHostD3D11::PushDisplayItems(wr::DisplayListBuilder& aBuilder,
                              true,
                              aImageKeys[0],
                              aImageKeys[1],
+                             wr::ColorDepth::Color8,
+                             wr::ToWrYuvColorSpace(YUVColorSpace::BT601),
+                             aFilter);
+      break;
+    }
+    case gfx::SurfaceFormat::P010:
+    case gfx::SurfaceFormat::P016: {
+      MOZ_ASSERT(aImageKeys.length() == 2);
+      aBuilder.PushNV12Image(aBounds,
+                             aClip,
+                             true,
+                             aImageKeys[0],
+                             aImageKeys[1],
+                             wr::ColorDepth::Color16,
                              wr::ToWrYuvColorSpace(YUVColorSpace::BT601),
                              aFilter);
       break;
@@ -1168,6 +1200,7 @@ DXGIYCbCrTextureHostD3D11::DXGIYCbCrTextureHostD3D11(TextureFlags aFlags,
   , mSize(aDescriptor.size())
   , mSizeCbCr(aDescriptor.sizeCbCr())
   , mIsLocked(false)
+  , mColorDepth(aDescriptor.colorDepth())
   , mYUVColorSpace(aDescriptor.yUVColorSpace())
 {
   mHandles[0] = aDescriptor.handleY();
@@ -1383,6 +1416,7 @@ DXGIYCbCrTextureHostD3D11::PushDisplayItems(wr::DisplayListBuilder& aBuilder,
                                 aImageKeys[0],
                                 aImageKeys[1],
                                 aImageKeys[2],
+                                wr::ToWrColorDepth(mColorDepth),
                                 wr::ToWrYuvColorSpace(mYUVColorSpace),
                                 aFilter);
 }
@@ -1701,21 +1735,23 @@ SyncObjectD3D11Host::GetSyncHandle()
 }
 
 bool
-SyncObjectD3D11Host::Synchronize()
+SyncObjectD3D11Host::Synchronize(bool aFallible)
 {
   HRESULT hr;
   AutoTextureLock lock(mKeyedMutex, hr, 10000);
 
   if (hr == WAIT_TIMEOUT) {
     hr = mDevice->GetDeviceRemovedReason();
-    if (hr == S_OK) {
+    if (hr != S_OK ) {
+      // Since the timeout is related to the driver-removed. Return false for
+      // error handling.
+      gfxCriticalNote << "GFX: D3D11 timeout with device-removed:" << gfx::hexa(hr);
+    } else if (aFallible) {
+      gfxCriticalNote << "GFX: D3D11 timeout on the D3D11 sync lock.";
+    } else {
       // There is no driver-removed event. Crash with this timeout.
       MOZ_CRASH("GFX: D3D11 normal status timeout");
     }
-
-    // Since the timeout is related to the driver-removed. Return false for
-    // error handling.
-    gfxCriticalNote << "GFX: D3D11 timeout with device-removed:" << gfx::hexa(hr);
 
     return false;
   }

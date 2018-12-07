@@ -7,8 +7,8 @@ export const baseKeys = {
   addon_version: Joi.string().required(),
   locale: Joi.string().required(),
   session_id: Joi.string(),
-  page: Joi.valid(["about:home", "about:newtab", "about:welcome", "unknown"]),
-  user_prefs: Joi.number().integer().required()
+  page: Joi.valid(["about:home", "about:newtab", "about:welcome", "both", "unknown"]),
+  user_prefs: Joi.number().integer().required(),
 };
 
 export const BasePing = Joi.object().keys(baseKeys).options({allowUnknown: true});
@@ -18,18 +18,24 @@ export const eventsTelemetryExtraKeys = Joi.object().keys({
   page: baseKeys.page.required(),
   addon_version: baseKeys.addon_version.required(),
   user_prefs: baseKeys.user_prefs.required(),
-  action_position: Joi.string().optional()
+  action_position: Joi.string().optional(),
 }).options({allowUnknown: false});
 
 export const UserEventPing = Joi.object().keys(Object.assign({}, baseKeys, {
   session_id: baseKeys.session_id.required(),
   page: baseKeys.page.required(),
-  source: Joi.string().required(),
+  source: Joi.string(),
   event: Joi.string().required(),
   action: Joi.valid("activity_stream_user_event").required(),
   metadata_source: Joi.string(),
   highlight_type: Joi.valid(["bookmarks", "recommendation", "history"]),
-  recommender_type: Joi.string()
+  recommender_type: Joi.string(),
+  value: Joi.object().keys({
+    newtab_url_category: Joi.string(),
+    newtab_extension_id: Joi.string(),
+    home_url_category: Joi.string(),
+    home_extension_id: Joi.string(),
+  }),
 }));
 
 export const UTUserEventPing = Joi.array().items(
@@ -51,7 +57,7 @@ export const UTUserEventPing = Joi.array().items(
     "BOOKMARK_ADD",
     "PIN",
     "UNPIN",
-    "SAVE_TO_POCKET"
+    "SAVE_TO_POCKET",
   ]),
   Joi.string().required(),
   eventsTelemetryExtraKeys
@@ -91,7 +97,7 @@ export const UserEventAction = Joi.object().keys({
       "DELETE_FROM_POCKET",
       "ARCHIVE_FROM_POCKET",
       "SKIPPED_SIGNIN",
-      "SUBMIT_EMAIL"
+      "SUBMIT_EMAIL",
     ]).required(),
     source: Joi.valid(["TOP_SITES", "TOP_STORIES", "HIGHLIGHTS"]),
     action_position: Joi.number().integer(),
@@ -99,25 +105,25 @@ export const UserEventAction = Joi.object().keys({
       icon_type: Joi.valid(["tippytop", "rich_icon", "screenshot_with_icon", "screenshot", "no_image"]),
       card_type: Joi.valid(["bookmark", "trending", "pinned", "pocket", "search"]),
       search_vendor: Joi.valid(["google", "amazon"]),
-      has_flow_params: Joi.bool()
-    })
+      has_flow_params: Joi.bool(),
+    }),
   }).required(),
   meta: Joi.object().keys({
     to: Joi.valid(MAIN_MESSAGE_TYPE).required(),
-    from: Joi.valid(CONTENT_MESSAGE_TYPE).required()
-  }).required()
+    from: Joi.valid(CONTENT_MESSAGE_TYPE).required(),
+  }).required(),
 });
 
 export const UndesiredPing = Joi.object().keys(Object.assign({}, baseKeys, {
   source: Joi.string().required(),
   event: Joi.string().required(),
   action: Joi.valid("activity_stream_undesired_event").required(),
-  value: Joi.number().required()
+  value: Joi.number().required(),
 }));
 
 export const TileSchema = Joi.object().keys({
   id: Joi.number().integer().required(),
-  pos: Joi.number().integer()
+  pos: Joi.number().integer(),
 });
 
 export const ImpressionStatsPing = Joi.object().keys(Object.assign({}, baseKeys, {
@@ -129,14 +135,14 @@ export const ImpressionStatsPing = Joi.object().keys(Object.assign({}, baseKeys,
   tiles: Joi.array().items(TileSchema).required(),
   click: Joi.number().integer(),
   block: Joi.number().integer(),
-  pocket: Joi.number().integer()
+  pocket: Joi.number().integer(),
 }));
 
 export const PerfPing = Joi.object().keys(Object.assign({}, baseKeys, {
   source: Joi.string(),
   event: Joi.string().required(),
   action: Joi.valid("activity_stream_performance_event").required(),
-  value: Joi.number().required()
+  value: Joi.number().required(),
 }));
 
 export const SessionPing = Joi.object().keys(Object.assign({}, baseKeys, {
@@ -181,7 +187,7 @@ export const SessionPing = Joi.object().keys(Object.assign({}, baseKeys, {
       screenshot: Joi.number(),
       screenshot_with_icon: Joi.number(),
       tippytop: Joi.number(),
-      no_image: Joi.number()
+      no_image: Joi.number(),
     }),
 
     // The count of pinned Top Sites.
@@ -203,8 +209,8 @@ export const SessionPing = Joi.object().keys(Object.assign({}, baseKeys, {
     is_preloaded: Joi.bool().required(),
 
     // The boolean to signify whether the page is prerendered or not.
-    is_prerendered: Joi.bool().required()
-  }).required()
+    is_prerendered: Joi.bool().required(),
+  }).required(),
 }));
 
 export const ASRouterEventPing = Joi.object().keys({
@@ -215,7 +221,7 @@ export const ASRouterEventPing = Joi.object().keys({
   addon_version: Joi.string().required(),
   locale: Joi.string().required(),
   message_id: Joi.string().required(),
-  event: Joi.string().required()
+  event: Joi.string().required(),
 });
 
 export const UTSessionPing = Joi.array().items(
@@ -255,7 +261,7 @@ export function chaiAssertions(_chai, utils) {
      */
     isUserEventAction(actual) {
       new Assertion(actual).validate(UserEventAction, "UserEventAction");
-    }
+    },
   };
 
   Object.assign(_chai.assert, assertions);

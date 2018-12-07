@@ -84,6 +84,7 @@ private:
   gfx::IntSize mYSize;
   gfx::IntSize mCbCrSize;
   gfx::IntRect mPictureRect;
+  gfx::ColorDepth mColorDepth;
   YUVColorSpace mColorSpace;
   RefPtr<TextureClient> mTextureClient;
 };

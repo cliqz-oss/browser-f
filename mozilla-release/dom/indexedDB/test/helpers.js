@@ -17,7 +17,7 @@ var testGenerator = testSteps();
 // is whether the property is read-only or not.
 var c = Object.getOwnPropertyDescriptor(this, "Components");
 if ((!c || !c.value || c.writable) && typeof SpecialPowers === "object") {
-  // eslint-disable-next-line no-native-reassign
+  // eslint-disable-next-line no-global-assign
   Components = SpecialPowers.wrap(SpecialPowers.Components);
 }
 
@@ -26,7 +26,7 @@ function executeSoon(aFun)
   SpecialPowers.Services.tm.dispatchToMainThread({
     run() {
       aFun();
-    }
+    },
   });
 }
 
@@ -72,8 +72,8 @@ function* testHarnessSteps() {
       "set": [
         ["dom.indexedDB.testing", true],
         ["dom.indexedDB.experimental", true],
-        ["javascript.options.wasm_baselinejit", true]  // This can be removed when on by default
-      ]
+        ["javascript.options.wasm_baselinejit", true],  // This can be removed when on by default
+      ],
     },
     nextTestHarnessStep
   );
@@ -86,8 +86,8 @@ function* testHarnessSteps() {
       {
         type: "indexedDB",
         allow: true,
-        context: document
-      }
+        context: document,
+      },
     ],
     nextTestHarnessStep
   );
@@ -212,10 +212,6 @@ if (!window.runTest) {
 
 function finishTest()
 {
-  SpecialPowers.notifyObserversInParentProcess(null,
-                                               "disk-space-watcher",
-                                               "free");
-
   SimpleTest.executeSoon(function() {
     clearAllDatabases(function() { SimpleTest.finish(); });
   });
@@ -302,7 +298,7 @@ ExpectError.prototype = {
       event.stopPropagation();
     }
     grabEventAndContinueHandler(event);
-  }
+  },
 };
 
 function compareKeys(_k1_, _k2_) {
@@ -503,7 +499,7 @@ function workerScript() {
         _event_.stopPropagation();
       }
       grabEventAndContinueHandler(_event_);
-    }
+    },
   };
 
   self.compareKeys = function(_k1_, _k2_) {

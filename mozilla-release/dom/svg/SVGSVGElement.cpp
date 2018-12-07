@@ -36,14 +36,14 @@ using namespace SVGPreserveAspectRatio_Binding;
 using namespace SVGSVGElement_Binding;
 
 nsSVGEnumMapping SVGSVGElement::sZoomAndPanMap[] = {
-  {&nsGkAtoms::disable, SVG_ZOOMANDPAN_DISABLE},
-  {&nsGkAtoms::magnify, SVG_ZOOMANDPAN_MAGNIFY},
+  {nsGkAtoms::disable, SVG_ZOOMANDPAN_DISABLE},
+  {nsGkAtoms::magnify, SVG_ZOOMANDPAN_MAGNIFY},
   {nullptr, 0}
 };
 
 nsSVGElement::EnumInfo SVGSVGElement::sEnumInfo[1] =
 {
-  { &nsGkAtoms::zoomAndPan,
+  { nsGkAtoms::zoomAndPan,
     sZoomAndPanMap,
     SVG_ZOOMANDPAN_MAGNIFY
   }
@@ -137,9 +137,9 @@ SVGView::SVGView()
 //----------------------------------------------------------------------
 // Implementation
 
-SVGSVGElement::SVGSVGElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo,
+SVGSVGElement::SVGSVGElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo,
                              FromParser aFromParser)
-  : SVGSVGElementBase(aNodeInfo),
+  : SVGSVGElementBase(std::move(aNodeInfo)),
     mCurrentTranslate(0.0f, 0.0f),
     mCurrentScale(1.0f),
     mPreviousTranslate(0.0f, 0.0f),

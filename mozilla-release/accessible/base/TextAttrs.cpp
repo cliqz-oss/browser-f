@@ -303,7 +303,7 @@ TextAttrsMgr::InvalidTextAttr::
   do {
     if (nsAccUtils::HasDefinedARIAToken(elm, nsGkAtoms::aria_invalid)) {
       static Element::AttrValuesArray tokens[] =
-        { &nsGkAtoms::_false, &nsGkAtoms::grammar, &nsGkAtoms::spelling,
+        { nsGkAtoms::_false, nsGkAtoms::grammar, nsGkAtoms::spelling,
           nullptr };
 
       int32_t idx = elm->AsElement()->FindAttrValueIn(kNameSpaceID_None,
@@ -480,7 +480,7 @@ TextAttrsMgr::FontFamilyTextAttr::
   gfxFontGroup* fontGroup = fm->GetThebesFontGroup();
   gfxFont* font = fontGroup->GetFirstValidFont();
   gfxFontEntry* fontEntry = font->GetFontEntry();
-  aFamily = fontEntry->FamilyName();
+  aFamily.Append(NS_ConvertUTF8toUTF16(fontEntry->FamilyName()));
   return true;
 }
 
@@ -876,9 +876,6 @@ TextAttrsMgr::TextPosTextAttr::
     case eStyleUnit_None:
     case eStyleUnit_Factor:
     case eStyleUnit_Degree:
-    case eStyleUnit_Grad:
-    case eStyleUnit_Radian:
-    case eStyleUnit_Turn:
     case eStyleUnit_FlexFraction:
     case eStyleUnit_Integer:
     case eStyleUnit_Calc:

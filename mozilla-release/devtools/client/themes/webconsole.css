@@ -77,6 +77,20 @@ a {
   border-inline-start: solid 3px transparent;
   font-size: var(--console-output-font-size);
   line-height: var(--console-output-line-height);
+  position: relative;
+}
+
+/*
+ * By default, prevent any element in message to overflow.
+ * This makes console reflows faster (See Bug 1487457).
+ */
+.message * {
+  overflow: hidden;
+}
+
+/* Reset the overflow for the network info panel (when a network message is expanded) */
+.message .network-info * {
+  overflow: unset;
 }
 
 .message:hover {
@@ -88,9 +102,30 @@ a {
   background-color: var(--error-background-color);
 }
 
+.message.navigationMarker {
+  border-top: 1px solid var(--theme-emphasized-splitter-color);
+  color: var(--object-color);
+}
+
 .message.warn {
   color: var(--warning-color);
   background-color: var(--warning-background-color);
+}
+
+.message.paused::before {
+  background: #d8461f;
+  opacity: 0.6;
+  width: 100vw;
+  height: 1px;
+  bottom: 0px;
+  left: -3px;
+  display: block;
+  content: "";
+  position: absolute;
+}
+
+.message.paused ~ .message {
+  opacity: 0.5;
 }
 
 .message.startGroup,
@@ -174,6 +209,18 @@ a {
 .message.warn > .icon {
   color: var(--console-output-icon-warning);
   background-image: var(--theme-console-alert-image);
+}
+
+.message.navigationMarker > .icon {
+  color: var(--object-color);
+  background-image: var(--theme-console-navigation-image);
+}
+
+
+.message:hover > .icon.rewindable {
+  background-image:var(--theme-console-jump-image);
+  background-size: 14px 14px;
+  cursor: pointer;
 }
 
 .message > .message-body-wrapper {
@@ -277,7 +324,7 @@ a {
   flex: none;
 }
 
-.message.network:not(.navigation-marker) .url {
+.message.network .url {
   flex: 1 1 auto;
   /* Make sure the URL is very small initially, let flex change width as needed. */
   width: 100px;
@@ -410,25 +457,6 @@ textarea.jsterm-input-node:focus {
 
 /* Security styles */
 
-.navigation-marker {
-  color: #aaa;
-  background: linear-gradient(#aaa, #aaa) no-repeat left 50%;
-  background-size: 100% 2px;
-  margin-block-start: 6px;
-  margin-block-end: 6px;
-  font-size: 0.9em;
-}
-
-.navigation-marker .url {
-  padding-inline-end: 9px;
-  text-decoration: none;
-  background: var(--theme-body-background);
-}
-
-.theme-light .navigation-marker .url {
-  background: #fff;
-}
-
 .stacktrace {
   display: none;
   overflow-y: auto;
@@ -491,10 +519,6 @@ a.learn-more-link.webconsole-learn-more-link {
 
 .open-inspector:active {
   filter: var(--theme-icon-checked-filter) brightness(0.9);
-}
-
-#output-container {
-  height: 100%;
 }
 
 /*
@@ -685,7 +709,7 @@ a.learn-more-link.webconsole-learn-more-link {
   line-height: inherit;
 }
 
-.webconsole-output-wrapper .message.network:not(.navigation-marker) .url {
+.webconsole-output-wrapper .message.network .url {
   color: var(--theme-comment);
   font-style: inherit;
 }
@@ -812,24 +836,15 @@ a.learn-more-link.webconsole-learn-more-link {
 
 html,
 body {
-  height: 100%;
+  height: 100vh;
   margin: 0;
   padding: 0;
-}
-
-body {
   overflow: hidden;
 }
 
 #app-wrapper {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-body #output-container {
-  flex: 1;
-  overflow: hidden;
+  height: 100vh;
+  max-height: 100vh;
 }
 
 
@@ -867,10 +882,12 @@ body #output-container {
 
 .webconsole-flex-wrapper .webconsole-filteringbar-wrapper {
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .webconsole-flex-wrapper .webconsole-output {
   flex-shrink: 100000;
+  overflow-x: hidden;
 }
 
 .webconsole-flex-wrapper > .webconsole-output:not(:empty) {
@@ -883,7 +900,9 @@ body #output-container {
 
 .webconsole-output-wrapper .jsterm-input-container {
   min-height: 28px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex-grow: 1;
 }
 
 .jsterm-cm .jsterm-input-container {
@@ -894,14 +913,10 @@ body #output-container {
   border-top: none;
 }
 
-/* Last item in the flex wrapper should take the whole remaining height */
-.webconsole-flex-wrapper > :last-child {
-  flex-grow: 1;
-}
-
 /* Object Inspector */
 .webconsole-output-wrapper .object-inspector.tree {
   display: inline-block;
+  max-width: 100%;
 }
 
 .webconsole-output-wrapper .object-inspector.tree .tree-indent {

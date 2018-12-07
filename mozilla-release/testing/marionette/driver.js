@@ -58,6 +58,7 @@ const {MarionettePrefs} = ChromeUtils.import("chrome://marionette/content/prefs.
 ChromeUtils.import("chrome://marionette/content/proxy.js");
 ChromeUtils.import("chrome://marionette/content/reftest.js");
 const {
+  IdlePromise,
   PollPromise,
   TimedPromise,
 } = ChromeUtils.import("chrome://marionette/content/sync.js", {});
@@ -1063,8 +1064,8 @@ GeckoDriver.prototype.get = async function(cmd) {
 
   let get = this.listener.get({url, pageTimeout: this.timeouts.pageLoad});
 
-  // If a reload of the frame script interrupts our page load, this will
-  // never return. We need to re-issue this request to correctly poll for
+  // If a process change of the frame script interrupts our page load, this
+  // will never return. We need to re-issue this request to correctly poll for
   // readyState and send errors.
   this.curBrowser.pendingCommands.push(() => {
     let parameters = {
@@ -1182,8 +1183,8 @@ GeckoDriver.prototype.goBack = async function() {
   let lastURL = this.currentURL;
   let goBack = this.listener.goBack({pageTimeout: this.timeouts.pageLoad});
 
-  // If a reload of the frame script interrupts our page load, this will
-  // never return. We need to re-issue this request to correctly poll for
+  // If a process change of the frame script interrupts our page load, this
+  // will never return. We need to re-issue this request to correctly poll for
   // readyState and send errors.
   this.curBrowser.pendingCommands.push(() => {
     let parameters = {
@@ -1225,8 +1226,8 @@ GeckoDriver.prototype.goForward = async function() {
   let goForward = this.listener.goForward(
       {pageTimeout: this.timeouts.pageLoad});
 
-  // If a reload of the frame script interrupts our page load, this will
-  // never return. We need to re-issue this request to correctly poll for
+  // If a process change of the frame script interrupts our page load, this
+  // will never return. We need to re-issue this request to correctly poll for
   // readyState and send errors.
   this.curBrowser.pendingCommands.push(() => {
     let parameters = {
@@ -1262,8 +1263,8 @@ GeckoDriver.prototype.refresh = async function() {
   let refresh = this.listener.refresh(
       {pageTimeout: this.timeouts.pageLoad});
 
-  // If a reload of the frame script interrupts our page load, this will
-  // never return. We need to re-issue this request to correctly poll for
+  // If a process change of the frame script interrupts our page load, this
+  // will never return. We need to re-issue this request to correctly poll for
   // readyState and send errors.
   this.curBrowser.pendingCommands.push(() => {
     let parameters = {
@@ -1445,10 +1446,11 @@ GeckoDriver.prototype.setWindowRect = async function(cmd) {
 
   // Synchronous resize to |width| and |height| dimensions.
   async function resizeWindow(width, height) {
-    return new Promise(resolve => {
-      win.addEventListener("resize", whenIdle(win, resolve), {once: true});
+    await new Promise(resolve => {
+      win.addEventListener("resize", resolve, {once: true});
       win.resizeTo(width, height);
     });
+    await new IdlePromise(win);
   }
 
   // Wait until window size has changed.  We can't wait for the
@@ -2143,9 +2145,9 @@ GeckoDriver.prototype.clickElement = async function(cmd) {
       let click = this.listener.clickElement(
           {webElRef: webEl.toJSON(), pageTimeout: this.timeouts.pageLoad});
 
-      // If a reload of the frame script interrupts our page load, this will
-      // never return. We need to re-issue this request to correctly poll for
-      // readyState and send errors.
+      // If a process change of the frame script interrupts our page load,
+      // this will never return. We need to re-issue this request to correctly
+      // poll for readyState and send errors.
       this.curBrowser.pendingCommands.push(() => {
         let parameters = {
           // TODO(ato): Bug 1242595
@@ -3142,10 +3144,11 @@ GeckoDriver.prototype.dismissDialog = async function() {
   this._checkIfAlertIsPresent();
 
   await new Promise(resolve => {
-    win.addEventListener("DOMModalDialogClosed", whenIdle(win, () => {
+    win.addEventListener("DOMModalDialogClosed", async () => {
+      await new IdlePromise(win);
       this.dialog = null;
       resolve();
-    }), {once: true});
+    }, {once: true});
 
     let {button0, button1} = this.dialog.ui;
     (button1 ? button1 : button0).click();
@@ -3161,10 +3164,11 @@ GeckoDriver.prototype.acceptDialog = async function() {
   this._checkIfAlertIsPresent();
 
   await new Promise(resolve => {
-    win.addEventListener("DOMModalDialogClosed", whenIdle(win, () => {
+    win.addEventListener("DOMModalDialogClosed", async () => {
+      await new IdlePromise(win);
       this.dialog = null;
       resolve();
-    }), {once: true});
+    }, {once: true});
 
     let {button0} = this.dialog.ui;
     button0.click();
@@ -3400,10 +3404,6 @@ GeckoDriver.prototype.receiveMessage = function(message) {
 
     case "Marionette:ListenersAttached":
       if (message.json.outerWindowID === this.curBrowser.curFrameId) {
-        // If the frame script gets reloaded we need to call newSession.
-        // In the case of desktop this just sets up a small amount of state
-        // that doesn't change over the course of a session.
-        this.sendAsync("newSession");
         this.curBrowser.flushPendingCommands();
       }
       break;
@@ -3547,9 +3547,9 @@ GeckoDriver.prototype.commands = {
   "Marionette:ActionChain": GeckoDriver.prototype.actionChain,
   "Marionette:MultiAction": GeckoDriver.prototype.multiAction,
   "Marionette:SingleTap": GeckoDriver.prototype.singleTap,
+
   // deprecated Marionette commands, remove in Firefox 63
   "actionChain": GeckoDriver.prototype.actionChain,
-  "acceptConnections": GeckoDriver.prototype.acceptConnections,
   "closeChromeWindow": GeckoDriver.prototype.closeChromeWindow,
   "getChromeWindowHandles": GeckoDriver.prototype.getChromeWindowHandles,
   "getContext": GeckoDriver.prototype.getContext,
@@ -3561,7 +3561,6 @@ GeckoDriver.prototype.commands = {
   "quitApplication": GeckoDriver.prototype.quit,
   "setContext": GeckoDriver.prototype.setContext,
   "setScreenOrientation": GeckoDriver.prototype.setScreenOrientation,
-  "singleTap": GeckoDriver.prototype.singleTap,
 
   // Addon service
   "Addon:Install": GeckoDriver.prototype.installAddon,
@@ -3648,16 +3647,17 @@ function getOuterWindowId(win) {
 }
 
 /**
- * Exit fullscreen and wait for <var>window</var> to resize.
+ * Exit fullscreen and wait for `window` to resize.
  *
  * @param {ChromeWindow} window
  *     Window to exit fullscreen.
  */
 async function exitFullscreen(window) {
-  return new Promise(resolve => {
-    window.addEventListener("sizemodechange", whenIdle(window, resolve), {once: true});
+  await new Promise(resolve => {
+    window.addEventListener("sizemodechange", () => resolve(), {once: true});
     window.fullScreen = false;
   });
+  await new IdlePromise(window);
 }
 
 /**
@@ -3672,25 +3672,5 @@ async function restoreWindow(chromeWindow, contentWindow) {
   return new Promise(resolve => {
     contentWindow.addEventListener("visibilitychange", resolve, {once: true});
     chromeWindow.restore();
-  });
-}
-
-/**
- * Throttle <var>callback</var> until the main thread is idle and
- * <var>window</var> has performed an animation frame.
- *
- * @param {ChromeWindow} window
- *     Window to request the animation frame from.
- * @param {function()} callback
- *     Called when done.
- *
- * @return {function()}
- *     Anonymous function that when invoked will wait for the main
- *     thread to clear up and request an animation frame before calling
- *     <var>callback</var>.
- */
-function whenIdle(window, callback) {
-  return () => Services.tm.idleDispatchToMainThread(() => {
-    window.requestAnimationFrame(callback);
   });
 }

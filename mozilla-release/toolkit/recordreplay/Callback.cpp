@@ -29,8 +29,6 @@ RegisterCallbackData(void* aData)
     return;
   }
 
-  RecordReplayAssert("RegisterCallbackData");
-
   AutoOrderedAtomicAccess at;
   StaticMutexAutoLock lock(gCallbackMutex);
   if (!gCallbackData) {
@@ -50,6 +48,9 @@ BeginCallback(size_t aCallbackId)
     child::EndIdleTime();
   }
   thread->SetPassThrough(false);
+
+  RecordingEventSection res(thread);
+  MOZ_RELEASE_ASSERT(res.CanAccessEvents());
 
   thread->Events().RecordOrReplayThreadEvent(ThreadEvent::ExecuteCallback);
   thread->Events().WriteScalar(aCallbackId);
@@ -72,14 +73,11 @@ EndCallback()
 void
 SaveOrRestoreCallbackData(void** aData)
 {
-  MOZ_RELEASE_ASSERT(IsRecordingOrReplaying());
-  MOZ_RELEASE_ASSERT(!AreThreadEventsPassedThrough());
-  MOZ_RELEASE_ASSERT(!AreThreadEventsDisallowed());
   MOZ_RELEASE_ASSERT(gCallbackData);
 
   Thread* thread = Thread::Current();
-
-  RecordReplayAssert("RestoreCallbackData");
+  RecordingEventSection res(thread);
+  MOZ_RELEASE_ASSERT(res.CanAccessEvents());
 
   thread->Events().RecordOrReplayThreadEvent(ThreadEvent::RestoreCallbackData);
 
@@ -107,10 +105,9 @@ RemoveCallbackData(void* aData)
 void
 PassThroughThreadEventsAllowCallbacks(const std::function<void()>& aFn)
 {
-  MOZ_RELEASE_ASSERT(IsRecordingOrReplaying());
-  MOZ_RELEASE_ASSERT(!AreThreadEventsDisallowed());
-
   Thread* thread = Thread::Current();
+  RecordingEventSection res(thread);
+  MOZ_RELEASE_ASSERT(res.CanAccessEvents());
 
   if (IsRecording()) {
     if (thread->IsMainThread()) {

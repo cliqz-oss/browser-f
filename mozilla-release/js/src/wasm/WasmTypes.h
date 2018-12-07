@@ -37,7 +37,7 @@
 #include "js/Utility.h"
 #include "js/Vector.h"
 #include "vm/MallocProvider.h"
-#include "wasm/WasmBinaryConstants.h"
+#include "wasm/WasmConstants.h"
 
 namespace js {
 
@@ -73,6 +73,9 @@ typedef MutableHandle<WasmTableObject*> MutableHandleWasmTableObject;
 class WasmGlobalObject;
 typedef GCVector<WasmGlobalObject*, 0, SystemAllocPolicy> WasmGlobalObjectVector;
 typedef Rooted<WasmGlobalObject*> RootedWasmGlobalObject;
+
+class StructTypeDescr;
+typedef GCVector<HeapPtr<StructTypeDescr*>, 0, SystemAllocPolicy> StructTypeDescrVector;
 
 namespace wasm {
 
@@ -138,6 +141,21 @@ typedef Vector<Type, 0, SystemAllocPolicy> VectorName;
     const uint8_t* deserialize(const uint8_t* cursor) override;                 \
     size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const override;
 
+template <class T>
+struct SerializableRefPtr : RefPtr<T>
+{
+    using RefPtr<T>::operator=;
+
+    SerializableRefPtr() = default;
+
+    template <class U>
+    MOZ_IMPLICIT SerializableRefPtr(U&& u)
+      : RefPtr<T>(std::forward<U>(u))
+    {}
+
+    WASM_DECLARE_SERIALIZABLE(SerializableRefPtr)
+};
+
 // This reusable base class factors out the logic for a resource that is shared
 // by multiple instances/modules but should only be counted once when computing
 // about:memory stats.
@@ -150,13 +168,37 @@ struct ShareableBase : AtomicRefCounted<T>
     size_t sizeOfIncludingThisIfNotSeen(MallocSizeOf mallocSizeOf, SeenSet* seen) const {
         const T* self = static_cast<const T*>(this);
         typename SeenSet::AddPtr p = seen->lookupForAdd(self);
-        if (p)
+        if (p) {
             return 0;
+        }
         bool ok = seen->add(p, self);
         (void)ok;  // oh well
         return mallocSizeOf(self) + self->sizeOfExcludingThis(mallocSizeOf);
     }
 };
+
+// ShareableBytes is a reference-counted Vector of bytes.
+
+struct ShareableBytes : ShareableBase<ShareableBytes>
+{
+    // Vector is 'final', so instead make Vector a member and add boilerplate.
+    Bytes bytes;
+
+    ShareableBytes() = default;
+    explicit ShareableBytes(Bytes&& bytes) : bytes(std::move(bytes)) {}
+    size_t sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const {
+        return bytes.sizeOfExcludingThis(mallocSizeOf);
+    }
+    const uint8_t* begin() const { return bytes.begin(); }
+    const uint8_t* end() const { return bytes.end(); }
+    size_t length() const { return bytes.length(); }
+    bool append(const uint8_t* start, uint32_t len) {
+        return bytes.append(start, len);
+    }
+};
+
+typedef RefPtr<ShareableBytes> MutableBytes;
+typedef RefPtr<const ShareableBytes> SharedBytes;
 
 // A PackedTypeCode represents a TypeCode paired with a refTypeIndex (valid only
 // for TypeCode::Ref).  PackedTypeCode is guaranteed to be POD.
@@ -556,8 +598,16 @@ enum class Tier
 {
     Baseline,
     Debug = Baseline,
+    Optimized,
+    Serialized = Optimized
+};
+
+// Which backend to use in the case of the optimized tier.
+
+enum class OptimizedBackend
+{
     Ion,
-    Serialized = Ion
+    Cranelift,
 };
 
 // The CompileMode controls how compilation of a module is performed (notably,
@@ -734,8 +784,9 @@ class FuncType
 
     HashNumber hash() const {
         HashNumber hn = HashNumber(ret_.code());
-        for (const ValType& vt : args_)
+        for (const ValType& vt : args_) {
             hn = mozilla::AddToHash(hn, HashNumber(vt.code()));
+        }
         return hn;
     }
     bool operator==(const FuncType& rhs) const {
@@ -746,28 +797,33 @@ class FuncType
     }
 
     bool hasI64ArgOrRet() const {
-        if (ret() == ExprType::I64)
+        if (ret() == ExprType::I64) {
             return true;
+        }
         for (ValType arg : args()) {
-            if (arg == ValType::I64)
+            if (arg == ValType::I64) {
                 return true;
+            }
         }
         return false;
     }
     bool temporarilyUnsupportedAnyRef() const {
-        if (ret().isRefOrAnyRef())
+        if (ret().isRefOrAnyRef()) {
             return true;
+        }
         for (ValType arg : args()) {
-            if (arg.isRefOrAnyRef())
+            if (arg.isRefOrAnyRef()) {
                 return true;
+            }
         }
         return false;
     }
 #ifdef WASM_PRIVATE_REFTYPES
     bool exposesRef() const {
         for (const ValType& arg : args()) {
-            if (arg.isRef())
+            if (arg.isRef()) {
                 return true;
+            }
         }
         return ret().isRef();
     }
@@ -785,9 +841,9 @@ struct FuncTypeHashPolicy
 
 // Structure type.
 //
-// The Module owns a dense array of Struct values that represent the structure
-// types that the module knows about.  It is created from the sparse array of
-// types in the ModuleEnvironment when the Module is created.
+// The Module owns a dense array of StructType values that represent the
+// structure types that the module knows about.  It is created from the sparse
+// array of types in the ModuleEnvironment when the Module is created.
 
 struct StructField
 {
@@ -801,14 +857,30 @@ typedef Vector<StructField, 0, SystemAllocPolicy> StructFieldVector;
 class StructType
 {
   public:
-    StructFieldVector fields_;
-
+    StructFieldVector fields_; // Field type, offset, and mutability
+    uint32_t moduleIndex_;     // Index in a dense array of structs in the module
+    bool isInline_;            // True if this is an InlineTypedObject and we
+                               //   interpret the offsets from the object pointer;
+                               //   if false this is an OutlineTypedObject and we
+                               //   interpret everything relative to the pointer to
+                               //   the attached storage.
   public:
-    StructType() : fields_() {}
+    StructType() : fields_(), moduleIndex_(0), isInline_(true) {}
 
-    explicit StructType(StructFieldVector&& fields)
-      : fields_(std::move(fields))
+    StructType(StructFieldVector&& fields, uint32_t index, bool isInline)
+      : fields_(std::move(fields)),
+        moduleIndex_(index),
+        isInline_(isInline)
     {}
+
+    bool copyFrom(const StructType& src) {
+        if (!fields_.appendAll(src.fields_)) {
+            return false;
+        }
+        moduleIndex_ = src.moduleIndex_;
+        isInline_ = src.isInline_;
+        return true;
+    }
 
     bool hasPrefix(const StructType& other) const;
 
@@ -830,6 +902,7 @@ class InitExpr
     };
 
   private:
+    // Note: all this private data is currently (de)serialized via memcpy().
     Kind kind_;
     union U {
         LitVal val_;
@@ -1018,8 +1091,9 @@ class GlobalDesc
     }
 
     void setIsExport() {
-        if (!isConstant())
+        if (!isConstant()) {
             u.var.isExport_ = true;
+        }
     }
 
     GlobalKind kind() const { return kind_; }
@@ -1057,70 +1131,122 @@ class GlobalDesc
 
 typedef Vector<GlobalDesc, 0, SystemAllocPolicy> GlobalDescVector;
 
-// ElemSegment represents an element segment in the module where each element
-// describes both its function index and its code range.
-//
-// The codeRangeIndices are laid out in a nondeterminstic order as a result of
-// parallel compilation.
+// When a ElemSegment is "passive" it is shared between a wasm::Module and its
+// wasm::Instances. To allow each segment to be released as soon as the last
+// Instance table.drops it and the Module is destroyed, each ElemSegment is
+// individually atomically ref-counted.
 
-struct ElemSegment
+struct ElemSegment : AtomicRefCounted<ElemSegment>
 {
     uint32_t tableIndex;
-    InitExpr offset;
+    Maybe<InitExpr> offsetIfActive;
     Uint32Vector elemFuncIndices;
-    Uint32Vector elemCodeRangeIndices1_;
-    mutable Uint32Vector elemCodeRangeIndices2_;
 
-    ElemSegment() = default;
-    ElemSegment(uint32_t tableIndex, InitExpr offset, Uint32Vector&& elemFuncIndices)
-      : tableIndex(tableIndex), offset(offset), elemFuncIndices(std::move(elemFuncIndices))
-    {}
-
-    Uint32Vector& elemCodeRangeIndices(Tier t) {
-        switch (t) {
-          case Tier::Baseline:
-            return elemCodeRangeIndices1_;
-          case Tier::Ion:
-            return elemCodeRangeIndices2_;
-          default:
-            MOZ_CRASH("No such tier");
-        }
+    bool active() const {
+        return !!offsetIfActive;
     }
 
-    const Uint32Vector& elemCodeRangeIndices(Tier t) const {
-        switch (t) {
-          case Tier::Baseline:
-            return elemCodeRangeIndices1_;
-          case Tier::Ion:
-            return elemCodeRangeIndices2_;
-          default:
-            MOZ_CRASH("No such tier");
-        }
+    InitExpr offset() const {
+        return *offsetIfActive;
     }
 
-    void setTier2(Uint32Vector&& elemCodeRangeIndices) const {
-        MOZ_ASSERT(elemCodeRangeIndices2_.length() == 0);
-        elemCodeRangeIndices2_ = std::move(elemCodeRangeIndices);
+    size_t length() const {
+        return elemFuncIndices.length();
     }
 
     WASM_DECLARE_SERIALIZABLE(ElemSegment)
 };
 
-// The ElemSegmentVector is laid out in a deterministic order.
+typedef RefPtr<ElemSegment> MutableElemSegment;
+typedef SerializableRefPtr<const ElemSegment> SharedElemSegment;
+typedef Vector<SharedElemSegment, 0, SystemAllocPolicy> ElemSegmentVector;
 
-typedef Vector<ElemSegment, 0, SystemAllocPolicy> ElemSegmentVector;
+// DataSegmentEnv holds the initial results of decoding a data segment from the
+// bytecode and is stored in the ModuleEnvironment during compilation. When
+// compilation completes, (non-Env) DataSegments are created and stored in
+// the wasm::Module which contain copies of the data segment payload. This
+// allows non-compilation uses of wasm validation to avoid expensive copies.
+//
+// When a DataSegment is "passive" it is shared between a wasm::Module and its
+// wasm::Instances. To allow each segment to be released as soon as the last
+// Instance mem.drops it and the Module is destroyed, each DataSegment is
+// individually atomically ref-counted.
 
-// DataSegment describes the offset of a data segment in the bytecode that is
-// to be copied at a given offset into linear memory upon instantiation.
-
-struct DataSegment
+struct DataSegmentEnv
 {
-    InitExpr offset;
+    Maybe<InitExpr> offsetIfActive;
     uint32_t bytecodeOffset;
     uint32_t length;
 };
 
-typedef Vector<DataSegment, 0, SystemAllocPolicy> DataSegmentVector;
+typedef Vector<DataSegmentEnv, 0, SystemAllocPolicy> DataSegmentEnvVector;
+
+struct DataSegment : AtomicRefCounted<DataSegment>
+{
+    Maybe<InitExpr> offsetIfActive;
+    Bytes bytes;
+
+    DataSegment() = default;
+    explicit DataSegment(const DataSegmentEnv& src)
+      : offsetIfActive(src.offsetIfActive)
+    {}
+
+    bool active() const {
+        return !!offsetIfActive;
+    }
+
+    InitExpr offset() const {
+        return *offsetIfActive;
+    }
+
+    WASM_DECLARE_SERIALIZABLE(DataSegment)
+};
+
+typedef RefPtr<DataSegment> MutableDataSegment;
+typedef SerializableRefPtr<const DataSegment> SharedDataSegment;
+typedef Vector<SharedDataSegment, 0, SystemAllocPolicy> DataSegmentVector;
+
+// The CustomSection(Env) structs are like DataSegment(Env): CustomSectionEnv is
+// stored in the ModuleEnvironment and CustomSection holds a copy of the payload
+// and is stored in the wasm::Module.
+
+struct CustomSectionEnv
+{
+    uint32_t nameOffset;
+    uint32_t nameLength;
+    uint32_t payloadOffset;
+    uint32_t payloadLength;
+};
+
+typedef Vector<CustomSectionEnv, 0, SystemAllocPolicy> CustomSectionEnvVector;
+
+struct CustomSection
+{
+    Bytes name;
+    SharedBytes payload;
+
+    WASM_DECLARE_SERIALIZABLE(CustomSection)
+};
+
+typedef Vector<CustomSection, 0, SystemAllocPolicy> CustomSectionVector;
+
+// A Name represents a string of utf8 chars embedded within the name custom
+// section. The offset of a name is expressed relative to the beginning of the
+// name section's payload so that Names can stored in wasm::Code, which only
+// holds the name section's bytes, not the whole bytecode.
+
+struct Name
+{
+    // All fields are treated as cacheable POD:
+    uint32_t offsetInNamePayload;
+    uint32_t length;
+
+    Name()
+      : offsetInNamePayload(UINT32_MAX), length(0)
+    {}
+};
+
+typedef Vector<Name, 0, SystemAllocPolicy> NameVector;
 
 // FuncTypeIdDesc describes a function type that can be used by call_indirect
 // and table-entry prologues to structurally compare whether the caller and
@@ -1136,27 +1262,32 @@ typedef Vector<DataSegment, 0, SystemAllocPolicy> DataSegmentVector;
 class FuncTypeIdDesc
 {
   public:
-    enum class Kind { None, Immediate, Global };
     static const uintptr_t ImmediateBit = 0x1;
 
   private:
-    Kind kind_;
+    FuncTypeIdDescKind kind_;
     size_t bits_;
 
-    FuncTypeIdDesc(Kind kind, size_t bits) : kind_(kind), bits_(bits) {}
+    FuncTypeIdDesc(FuncTypeIdDescKind kind, size_t bits) : kind_(kind), bits_(bits) {}
 
   public:
-    Kind kind() const { return kind_; }
+    FuncTypeIdDescKind kind() const { return kind_; }
     static bool isGlobal(const FuncType& funcType);
 
-    FuncTypeIdDesc() : kind_(Kind::None), bits_(0) {}
+    FuncTypeIdDesc() : kind_(FuncTypeIdDescKind::None), bits_(0) {}
     static FuncTypeIdDesc global(const FuncType& funcType, uint32_t globalDataOffset);
     static FuncTypeIdDesc immediate(const FuncType& funcType);
 
-    bool isGlobal() const { return kind_ == Kind::Global; }
+    bool isGlobal() const { return kind_ == FuncTypeIdDescKind::Global; }
 
-    size_t immediate() const { MOZ_ASSERT(kind_ == Kind::Immediate); return bits_; }
-    uint32_t globalDataOffset() const { MOZ_ASSERT(kind_ == Kind::Global); return bits_; }
+    size_t immediate() const {
+        MOZ_ASSERT(kind_ == FuncTypeIdDescKind::Immediate);
+        return bits_;
+    }
+    uint32_t globalDataOffset() const {
+        MOZ_ASSERT(kind_ == FuncTypeIdDescKind::Global);
+        return bits_;
+    }
 };
 
 // FuncTypeWithId pairs a FuncType with FuncTypeIdDesc, describing either how to
@@ -1295,46 +1426,6 @@ class TypeDef
 
 typedef Vector<TypeDef, 0, SystemAllocPolicy> TypeDefVector;
 
-// A wasm::Trap represents a wasm-defined trap that can occur during execution
-// which triggers a WebAssembly.RuntimeError. Generated code may jump to a Trap
-// symbolically, passing the bytecode offset to report as the trap offset. The
-// generated jump will be bound to a tiny stub which fills the offset and
-// then jumps to a per-Trap shared stub at the end of the module.
-
-enum class Trap
-{
-    // The Unreachable opcode has been executed.
-    Unreachable,
-    // An integer arithmetic operation led to an overflow.
-    IntegerOverflow,
-    // Trying to coerce NaN to an integer.
-    InvalidConversionToInteger,
-    // Integer division by zero.
-    IntegerDivideByZero,
-    // Out of bounds on wasm memory accesses.
-    OutOfBounds,
-    // Unaligned on wasm atomic accesses; also used for non-standard ARM
-    // unaligned access faults.
-    UnalignedAccess,
-    // call_indirect to null.
-    IndirectCallToNull,
-    // call_indirect signature mismatch.
-    IndirectCallBadSig,
-
-    // The internal stack space was exhausted. For compatibility, this throws
-    // the same over-recursed error as JS.
-    StackOverflow,
-
-    // The wasm execution has potentially run too long and the engine must call
-    // CheckForInterrupt(). This trap is resumable.
-    CheckInterrupt,
-
-    // Signal an error that was reported in C++ code.
-    ThrowReported,
-
-    Limit
-};
-
 // A wrapper around the bytecode offset of a wasm instruction within a whole
 // module, used for trap offsets or call offsets. These offsets should refer to
 // the first byte of the instruction that triggered the trap / did the call and
@@ -1381,6 +1472,24 @@ struct TrapSiteVectorArray : EnumeratedArray<Trap, Trap::Limit, TrapSiteVector>
     void podResizeToFit();
 
     WASM_DECLARE_SERIALIZABLE(TrapSiteVectorArray)
+};
+
+// On trap, the bytecode offset to be reported in callstacks is saved.
+
+struct TrapData
+{
+    // The resumePC indicates where, if the trap doesn't throw, the trap stub
+    // should jump to after restoring all register state.
+    void* resumePC;
+
+    // The unwoundPC is the PC after adjustment by wasm::StartUnwinding(), which
+    // basically unwinds partially-construted wasm::Frames when pc is in the
+    // prologue/epilogue. Stack traces during a trap should use this PC since
+    // it corresponds to the JitActivation::wasmExitFP.
+    void* unwoundPC;
+
+    Trap trap;
+    uint32_t bytecodeOffset;
 };
 
 // The (,Callable,Func)Offsets classes are used to record the offsets of
@@ -1502,8 +1611,9 @@ class CodeRange
     void offsetBy(uint32_t offset) {
         begin_ += offset;
         end_ += offset;
-        if (hasReturn())
+        if (hasReturn()) {
             ret_ += offset;
+        }
     }
 
     // All CodeRanges have a begin and end.
@@ -1802,10 +1912,15 @@ enum class SymbolicAddress
     WaitI64,
     Wake,
     MemCopy,
+    MemDrop,
     MemFill,
-#ifdef ENABLE_WASM_GC
+    MemInit,
+    TableCopy,
+    TableDrop,
+    TableInit,
     PostBarrier,
-#endif
+    StructNew,
+    StructNarrow,
 #if defined(JS_CODEGEN_MIPS32)
     js_jit_gAtomic64Lock,
 #endif
@@ -1814,33 +1929,6 @@ enum class SymbolicAddress
 
 bool
 IsRoundingFunction(SymbolicAddress callee, jit::RoundingMode* mode);
-
-// Assumptions captures ambient state that must be the same when compiling and
-// deserializing a module for the compiled code to be valid. If it's not, then
-// the module must be recompiled from scratch.
-
-struct Assumptions
-{
-    uint32_t              cpuId;
-    JS::BuildIdCharVector buildId;
-
-    explicit Assumptions(JS::BuildIdCharVector&& buildId);
-
-    // If Assumptions is constructed without arguments, initBuildIdFromContext()
-    // must be called to complete initialization.
-    Assumptions();
-    bool initBuildIdFromContext(JSContext* cx);
-
-    bool clone(const Assumptions& other);
-
-    bool operator==(const Assumptions& rhs) const;
-    bool operator!=(const Assumptions& rhs) const { return !(*this == rhs); }
-
-    size_t serializedSize() const;
-    uint8_t* serialize(uint8_t* cursor) const;
-    const uint8_t* deserialize(const uint8_t* cursor, size_t remain);
-    size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
-};
 
 // Represents the resizable limits of memories and tables.
 
@@ -1915,10 +2003,8 @@ struct TlsData
     // Pointer to the base of the default memory (or null if there is none).
     uint8_t* memoryBase;
 
-#ifndef WASM_HUGE_MEMORY
     // Bounds check limit of memory, in bytes (or zero if there is no memory).
     uint32_t boundsCheckLimit;
-#endif
 
     // Pointer to the Instance that contains this TLS data.
     Instance* instance;
@@ -1937,9 +2023,7 @@ struct TlsData
     // Set to 1 when wasm should call CheckForInterrupt.
     Atomic<uint32_t, mozilla::Relaxed> interrupt;
 
-#ifdef ENABLE_WASM_GC
     uint8_t* addressOfNeedsIncrementalBarrier;
-#endif
 
     // Methods to set, test and clear the above two fields. Both interrupt
     // fields are Relaxed and so no consistency/ordering can be assumed.
@@ -2006,11 +2090,10 @@ struct FuncImportTls
     // for bidirectional registration purposes.
     jit::BaselineScript* baselineScript;
 
-    // A GC pointer which keeps the callee alive. For imported wasm functions,
-    // this points to the wasm function's WasmInstanceObject. For all other
-    // imported functions, 'obj' points to the JSFunction.
-    GCPtrObject obj;
-    static_assert(sizeof(GCPtrObject) == sizeof(void*), "for JIT access");
+    // A GC pointer which keeps the callee alive and is used to recover import
+    // values for lazy table initialization.
+    GCPtrFunction fun;
+    static_assert(sizeof(GCPtrFunction) == sizeof(void*), "for JIT access");
 };
 
 // TableTls describes the region of wasm global memory allocated in the

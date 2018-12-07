@@ -17,8 +17,13 @@ import sys
 # The first argument is the atom's identifier.
 # The second argument is the atom's string value.
 #
+# Please keep the Atom() definitions on one line as this is parsed by the
+#   htmlparser: parser/html/java/htmlparser
+# Please keep "START ATOMS" and "END ATOMS" comments as the parser uses them.
+#
 # It is not possible to conditionally define static atoms with #ifdef etc.
 STATIC_ATOMS = [
+    # START ATOMS
     # --------------------------------------------------------------------------
     # Generic atoms
     # --------------------------------------------------------------------------
@@ -63,6 +68,7 @@ STATIC_ATOMS = [
     Atom("after", "after"),
     Atom("align", "align"),
     Atom("alink", "alink"),
+    Atom("allow", "allow"),
     Atom("allowdirs", "allowdirs"),
     Atom("allowevents", "allowevents"),
     Atom("allowforms", "allow-forms"),
@@ -74,8 +80,10 @@ STATIC_ATOMS = [
     Atom("allowpopupstoescapesandbox", "allow-popups-to-escape-sandbox"),
     Atom("allowpopups", "allow-popups"),
     Atom("allowpresentation", "allow-presentation"),
+    Atom("allowstorageaccessbyuseractivatetion", "allow-storage-access-by-user-activation"),
     Atom("allowsameorigin", "allow-same-origin"),
     Atom("allowscripts", "allow-scripts"),
+    Atom("allowscriptstoclose", "allowscriptstoclose"),
     Atom("allowtopnavigation", "allow-top-navigation"),
     Atom("allowuntrusted", "allowuntrusted"),
     Atom("alt", "alt"),
@@ -89,6 +97,8 @@ STATIC_ATOMS = [
     Atom("anonid", "anonid"),
     Atom("anonlocation", "anonlocation"),
     Atom("any", "any"),
+    Atom("any_hover", "any-hover"),
+    Atom("any_pointer", "any-pointer"),
     Atom("applet", "applet"),
     Atom("applyImports", "apply-imports"),
     Atom("applyTemplates", "apply-templates"),
@@ -159,6 +169,7 @@ STATIC_ATOMS = [
     Atom("bindToUntrustedContent", "bindToUntrustedContent"),
     Atom("block", "block"),
     Atom("blockquote", "blockquote"),
+    Atom("blur", "blur"),
     Atom("body", "body"),
     Atom("boolean", "boolean"),
     Atom("border", "border"),
@@ -546,6 +557,7 @@ STATIC_ATOMS = [
     Atom("li", "li"),
     Atom("line", "line"),
     Atom("link", "link"),
+    Atom("linkset", "linkset"),
     # Atom("list", "list"),  # "list" is present below
     Atom("listbox", "listbox"),
     Atom("listener", "listener"),
@@ -556,6 +568,7 @@ STATIC_ATOMS = [
     Atom("triggeringprincipal", "triggeringprincipal"),
     Atom("localedir", "localedir"),
     Atom("localName", "local-name"),
+    Atom("localization", "localization"),
     Atom("longdesc", "longdesc"),
     Atom("loop", "loop"),
     Atom("low", "low"),
@@ -760,6 +773,7 @@ STATIC_ATOMS = [
     Atom("onloadingerror", "onloadingerror"),
     Atom("onpopstate", "onpopstate"),
     Atom("only", "only"),               # this one is not an event
+    Atom("onmerchantvalidation", "onmerchantvalidation"),
     Atom("onmessage", "onmessage"),
     Atom("onmessageerror", "onmessageerror"),
     Atom("onmidimessage", "onmidimessage"),
@@ -794,6 +808,7 @@ STATIC_ATOMS = [
     Atom("onpagehide", "onpagehide"),
     Atom("onpageshow", "onpageshow"),
     Atom("onpaste", "onpaste"),
+    Atom("onpayerdetailchange", "onpayerdetailchange"),
     Atom("onpaymentmethodchange", "onpaymentmethodchange"),
     Atom("onpointerlockchange", "onpointerlockchange"),
     Atom("onpointerlockerror", "onpointerlockerror"),
@@ -941,7 +956,7 @@ STATIC_ATOMS = [
     Atom("rem", "rem"),
     Atom("remote", "remote"),
     Atom("removeelement", "removeelement"),
-    Atom("renderingobserverlist", "renderingobserverlist"),
+    Atom("renderingobserverset", "renderingobserverset"),
     Atom("repeat", "repeat"),
     Atom("replace", "replace"),
     Atom("requestcontextid", "requestcontextid"),
@@ -1230,7 +1245,6 @@ STATIC_ATOMS = [
     Atom("colorDodge", "color-dodge"),
     Atom("colorInterpolation", "color-interpolation"),
     Atom("colorInterpolationFilters", "color-interpolation-filters"),
-    Atom("colorpicker", "colorpicker"),
     Atom("colorProfile", "color-profile"),
     Atom("cursor", "cursor"),
     Atom("cx", "cx"),
@@ -1381,6 +1395,7 @@ STATIC_ATOMS = [
     Atom("patternTransform", "patternTransform"),
     Atom("patternUnits", "patternUnits"),
     Atom("pc", "pc"),
+    Atom("pointer", "pointer"),
     Atom("pointer_events", "pointer-events"),
     Atom("points", "points"),
     Atom("pointsAtX", "pointsAtX"),
@@ -2012,6 +2027,7 @@ STATIC_ATOMS = [
     Atom("_moz_is_resource_document", "-moz-is-resource-document"),
     Atom("_moz_swipe_animation_enabled", "-moz-swipe-animation-enabled"),
     Atom("_moz_gtk_csd_available", "-moz-gtk-csd-available"),
+    Atom("_moz_gtk_csd_transparent_background", "-moz-gtk-csd-transparent-background"),
     Atom("_moz_gtk_csd_minimize_button", "-moz-gtk-csd-minimize-button"),
     Atom("_moz_gtk_csd_maximize_button", "-moz-gtk-csd-maximize-button"),
     Atom("_moz_gtk_csd_close_button", "-moz-gtk-csd-close-button"),
@@ -2177,7 +2193,7 @@ STATIC_ATOMS = [
     Atom("onaddsourcebuffer", "onaddsourcebuffer"),
     Atom("onremovesourcebuffer", "onremovesourcebuffer"),
 
-    # RDF
+    # RDF (not used by mozilla-central, but still used by comm-central)
     Atom("about", "about"),
     Atom("ID", "ID"),
     Atom("nodeID", "nodeID"),
@@ -2304,6 +2320,7 @@ STATIC_ATOMS = [
     InheritingAnonBoxAtom("AnonBox_mozSVGOuterSVGAnonChild", ":-moz-svg-outer-svg-anon-child"),
     InheritingAnonBoxAtom("AnonBox_mozSVGForeignContent", ":-moz-svg-foreign-content"),
     InheritingAnonBoxAtom("AnonBox_mozSVGText", ":-moz-svg-text"),
+    # END ATOMS
 ] + HTML_PARSER_ATOMS
 
 

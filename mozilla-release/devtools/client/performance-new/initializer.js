@@ -9,7 +9,7 @@ const BrowserLoaderModule = {};
 ChromeUtils.import("resource://devtools/client/shared/browser-loader.js", BrowserLoaderModule);
 const { require } = BrowserLoaderModule.BrowserLoader({
   baseURI: "resource://devtools/client/memory/",
-  window
+  window,
 });
 const Perf = require("devtools/client/performance-new/components/Perf");
 const ReactDOM = require("devtools/client/shared/vendor/react-dom");
@@ -22,22 +22,21 @@ const { Provider } = require("devtools/client/shared/vendor/react-redux");
 const {
   receiveProfile,
   getRecordingPreferences,
-  setRecordingPreferences
+  setRecordingPreferences,
 } = require("devtools/client/performance-new/browser");
 
 /**
  * Initialize the panel by creating a redux store, and render the root component.
  *
- * @param toolbox - The toolbox
  * @param perfFront - The Perf actor's front. Used to start and stop recordings.
+ * @param preferenceFront - Used to get the recording preferences from the device.
  */
-async function gInit(toolbox, perfFront, preferenceFront) {
+async function gInit(perfFront, preferenceFront) {
   const store = createStore(reducers);
 
   // Do some initialization, especially with privileged things that are part of the
   // the browser.
   store.dispatch(actions.initializeStore({
-    toolbox,
     perfFront,
     receiveProfile,
     // Pull the default recording settings from the reducer, and update them according
@@ -53,7 +52,7 @@ async function gInit(toolbox, perfFront, preferenceFront) {
     setRecordingPreferences: () => setRecordingPreferences(
       preferenceFront,
       selectors.getRecordingSettings(store.getState())
-    )
+    ),
   }));
 
   ReactDOM.render(

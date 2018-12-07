@@ -36,8 +36,9 @@ NS_IMPL_ISUPPORTS(BackstagePass,
 JSObject*
 BackstagePass::GetGlobalJSObject()
 {
-    if (mWrapper)
+    if (mWrapper) {
         return mWrapper->GetFlatJSObject();
+    }
     return nullptr;
 }
 
@@ -128,7 +129,7 @@ BackstagePass::GetClassIDNoAlloc(nsCID* aClassIDNoAlloc)
 NS_IMETHODIMP
 BackstagePass::Finalize(nsIXPConnectWrappedNative* wrapper, JSFreeOp * fop, JSObject * obj)
 {
-    nsCOMPtr<nsIGlobalObject> bsp(do_QueryWrappedNative(wrapper));
+    nsCOMPtr<nsIGlobalObject> bsp(do_QueryInterface(wrapper->Native()));
     MOZ_ASSERT(bsp);
     static_cast<BackstagePass*>(bsp.get())->ForgetGlobalObject();
     return NS_OK;
@@ -145,8 +146,9 @@ BackstagePass::PreCreate(nsISupports* nativeObj, JSContext* cx,
     MOZ_ASSERT(global, "nativeObj not a global object!");
 
     JSObject* jsglobal = global->GetGlobalJSObject();
-    if (jsglobal)
+    if (jsglobal) {
         *parentObj = jsglobal;
+    }
     return NS_OK;
 }
 

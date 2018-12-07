@@ -32,13 +32,16 @@ import org.mozilla.gecko.annotation.WrapForJNI;
 import org.mozilla.gecko.util.BitmapUtils;
 import org.mozilla.gecko.util.HardwareCodecCapabilityUtils;
 import org.mozilla.gecko.util.HardwareUtils;
+import org.mozilla.gecko.util.InputDeviceUtils;
 import org.mozilla.gecko.util.IOUtils;
 import org.mozilla.gecko.util.ProxySelector;
+import org.mozilla.gecko.util.StrictModeContext;
 import org.mozilla.gecko.util.ThreadUtils;
 import org.mozilla.geckoview.BuildConfig;
 
 import android.annotation.SuppressLint;
 import android.app.ActivityManager;
+import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -70,7 +73,6 @@ import android.os.Bundle;
 import android.os.LocaleList;
 import android.os.Looper;
 import android.os.PowerManager;
-import android.os.StrictMode;
 import android.os.Vibrator;
 import android.provider.Settings;
 import android.support.annotation.Nullable;
@@ -81,6 +83,7 @@ import android.util.Log;
 import android.view.ContextThemeWrapper;
 import android.view.Display;
 import android.view.HapticFeedbackConstants;
+import android.view.InputDevice;
 import android.view.WindowManager;
 import android.webkit.MimeTypeMap;
 
@@ -92,6 +95,11 @@ public class GeckoAppShell
     private GeckoAppShell() { }
 
     private static class GeckoCrashHandler extends CrashHandler {
+
+        public GeckoCrashHandler(final Class<? extends Service> handlerService) {
+            super(handlerService);
+        }
+
         @Override
         protected String getAppPackageName() {
             final Context appContext = getAppContext();
@@ -156,12 +164,21 @@ public class GeckoAppShell
     private static String sAppNotes;
     private static CrashHandler sCrashHandler;
 
-    public static synchronized CrashHandler ensureCrashHandling() {
+    public static synchronized CrashHandler ensureCrashHandling(final Class<? extends Service> handler) {
         if (sCrashHandler == null) {
-            sCrashHandler = new GeckoCrashHandler();
+            sCrashHandler = new GeckoCrashHandler(handler);
         }
 
         return sCrashHandler;
+    }
+
+    private static Class<? extends Service> sCrashHandlerService;
+    public static synchronized void setCrashHandlerService(final Class<? extends Service> handlerService) {
+        sCrashHandlerService = handlerService;
+    }
+
+    public static synchronized Class<? extends Service> getCrashHandlerService() {
+        return sCrashHandlerService;
     }
 
     public static synchronized boolean isCrashHandlingEnabled() {
@@ -914,6 +931,7 @@ public class GeckoAppShell
         return type + "/" + subType;
     }
 
+    @SuppressWarnings("try")
     @WrapForJNI(calledFrom = "gecko")
     private static boolean openUriExternal(String targetURI,
                                            String mimeType,
@@ -928,11 +946,9 @@ public class GeckoAppShell
         // Bug 1450449 - Downloaded files already are already in a public directory and aren't
         // really owned exclusively by Firefox, so there's no real benefit to using
         // content:// URIs here.
-        StrictMode.VmPolicy prevPolicy = StrictMode.getVmPolicy();
-        StrictMode.setVmPolicy(StrictMode.VmPolicy.LAX);
-        boolean success = geckoInterface.openUriExternal(targetURI, mimeType, packageName, className, action, title);
-        StrictMode.setVmPolicy(prevPolicy);
-        return success;
+        try (StrictModeContext unused = StrictModeContext.allowAllVmPolicies()) {
+            return geckoInterface.openUriExternal(targetURI, mimeType, packageName, className, action, title);
+        }
     }
 
     @WrapForJNI(dispatchTo = "gecko")
@@ -1843,6 +1859,81 @@ public class GeckoAppShell
             return 1;
         }
         return 0;
+    }
+
+    /*
+     * Keep in sync with PointerCapabilities in ServoTypes.h
+    */
+    static private final int NO_POINTER            = 0x00000000;
+    static private final int COARSE_POINTER        = 0x00000001;
+    static private final int FINE_POINTER          = 0x00000002;
+    static private final int HOVER_CAPABLE_POINTER = 0x00000004;
+    private static int getPointerCapabilities(InputDevice inputDevice) {
+        int result = NO_POINTER;
+        int sources = inputDevice.getSources();
+
+        if (hasInputDeviceSource(sources, InputDevice.SOURCE_TOUCHSCREEN) ||
+            hasInputDeviceSource(sources, InputDevice.SOURCE_JOYSTICK)) {
+            result |= COARSE_POINTER;
+        } else if (hasInputDeviceSource(sources, InputDevice.SOURCE_MOUSE) ||
+                   hasInputDeviceSource(sources, InputDevice.SOURCE_STYLUS) ||
+                   hasInputDeviceSource(sources, InputDevice.SOURCE_TOUCHPAD) ||
+                   hasInputDeviceSource(sources, InputDevice.SOURCE_TRACKBALL)) {
+            result |= FINE_POINTER;
+        }
+
+        if (hasInputDeviceSource(sources, InputDevice.SOURCE_MOUSE) ||
+            hasInputDeviceSource(sources, InputDevice.SOURCE_TOUCHPAD) ||
+            hasInputDeviceSource(sources, InputDevice.SOURCE_TRACKBALL) ||
+            hasInputDeviceSource(sources, InputDevice.SOURCE_JOYSTICK)) {
+            result |= HOVER_CAPABLE_POINTER;
+        }
+
+        return result;
+    }
+
+    @WrapForJNI(calledFrom = "gecko")
+    // For any-pointer and any-hover media queries features.
+    private static int getAllPointerCapabilities() {
+        int result = NO_POINTER;
+
+        for (int deviceId : InputDevice.getDeviceIds()) {
+            InputDevice inputDevice = InputDevice.getDevice(deviceId);
+            if (inputDevice == null ||
+                !InputDeviceUtils.isPointerTypeDevice(inputDevice)) {
+                continue;
+            }
+
+            result |= getPointerCapabilities(inputDevice);
+        }
+
+        return result;
+    }
+
+    @WrapForJNI(calledFrom = "gecko")
+    // For pointer and hover media queries features.
+    private static int getPrimaryPointerCapabilities() {
+        int result = NO_POINTER;
+
+        for (int deviceId : InputDevice.getDeviceIds()) {
+            InputDevice inputDevice = InputDevice.getDevice(deviceId);
+            if (inputDevice == null ||
+                !InputDeviceUtils.isPointerTypeDevice(inputDevice)) {
+                continue;
+            }
+
+            result = getPointerCapabilities(inputDevice);
+
+            // We need information only for the primary pointer.
+            // (Assumes that the primary pointer appears first in the list)
+            break;
+        }
+
+        return result;
+    }
+
+    private static boolean hasInputDeviceSource(int sources, int inputDeviceSource) {
+        return (sources & inputDeviceSource) == inputDeviceSource;
     }
 
     public static synchronized void setScreenSizeOverride(final Rect size) {

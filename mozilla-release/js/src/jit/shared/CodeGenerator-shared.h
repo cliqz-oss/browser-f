@@ -254,8 +254,9 @@ class CodeGeneratorShared : public LElementVisitor
         masm.propagateOOM(allocateData(sizeof(mozilla::AlignedStorage2<T>), &index));
         masm.propagateOOM(icList_.append(index));
         masm.propagateOOM(icInfo_.append(CompileTimeICInfo()));
-        if (masm.oom())
+        if (masm.oom()) {
             return SIZE_MAX;
+        }
         // Use the copy constructor on the allocated space.
         MOZ_ASSERT(index == icList_.back());
         new (&runtimeData_[index]) T(cache);
@@ -330,12 +331,14 @@ class CodeGeneratorShared : public LElementVisitor
     inline bool isNextBlock(LBlock* block) {
         uint32_t target = skipTrivialBlocks(block->mir())->id();
         uint32_t i = current->mir()->id() + 1;
-        if (target < i)
+        if (target < i) {
             return false;
+        }
         // Trivial blocks can be crossed via fallthrough.
         for (; i != target; ++i) {
-            if (!graph.getBlock(i)->isTrivial())
+            if (!graph.getBlock(i)->isTrivial()) {
                 return false;
+            }
         }
         return true;
     }
@@ -518,16 +521,6 @@ class CodeGeneratorShared : public LElementVisitor
     void emitTracelogIonStart() {}
     void emitTracelogIonStop() {}
 #endif
-
-  protected:
-    inline void verifyHeapAccessDisassembly(uint32_t begin, uint32_t end, bool isLoad,
-                                            Scalar::Type type, Operand mem, LAllocation alloc);
-
-  public:
-    inline void verifyLoadDisassembly(uint32_t begin, uint32_t end, Scalar::Type type,
-                                      Operand mem, LAllocation alloc);
-    inline void verifyStoreDisassembly(uint32_t begin, uint32_t end, Scalar::Type type,
-                                       Operand mem, LAllocation alloc);
 
     bool isGlobalObject(JSObject* object);
 };

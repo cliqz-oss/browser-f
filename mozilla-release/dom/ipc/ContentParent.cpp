@@ -37,6 +37,7 @@
 #include "mozilla/devtools/HeapSnapshotTempFileHelperParent.h"
 #include "mozilla/docshell/OfflineCacheUpdateParent.h"
 #include "mozilla/dom/BrowsingContext.h"
+#include "mozilla/dom/ChromeBrowsingContext.h"
 #include "mozilla/dom/ClientManager.h"
 #include "mozilla/dom/ClientOpenWindowOpActors.h"
 #include "mozilla/dom/DataTransfer.h"
@@ -152,7 +153,7 @@
 #include "nsIScriptSecurityManager.h"
 #include "nsISiteSecurityService.h"
 #include "nsISound.h"
-#include "nsISpellChecker.h"
+#include "mozilla/mozSpellChecker.h"
 #include "nsIStringBundle.h"
 #include "nsISupportsPrimitives.h"
 #include "nsITimer.h"
@@ -1591,7 +1592,7 @@ ContentParent::MarkAsDead()
 void
 ContentParent::OnChannelError()
 {
-  RefPtr<ContentParent> content(this);
+  RefPtr<ContentParent> kungFuDeathGrip(this);
   PContentParent::OnChannelError();
 }
 
@@ -1730,28 +1731,14 @@ DelayedDeleteSubprocess(GeckoChildProcessHost* aSubprocess)
   XRE_GetIOMessageLoop()->PostTask(task.forget());
 }
 
-// This runnable only exists to delegate ownership of the
-// ContentParent to this runnable, until it's deleted by the event
-// system.
-struct DelayedDeleteContentParentTask : public Runnable
-{
-  explicit DelayedDeleteContentParentTask(ContentParent* aObj)
-    : Runnable("dom::DelayedDeleteContentParentTask")
-    , mObj(aObj)
-  {
-  }
-
-  // No-op
-  NS_IMETHOD Run() override { return NS_OK; }
-
-  RefPtr<ContentParent> mObj;
-};
-
 } // namespace
 
 void
 ContentParent::ActorDestroy(ActorDestroyReason why)
 {
+  RefPtr<ContentParent> kungFuDeathGrip(mSelfRef.forget());
+  MOZ_RELEASE_ASSERT(kungFuDeathGrip);
+
   if (mForceKillTimer) {
     mForceKillTimer->Cancel();
     mForceKillTimer = nullptr;
@@ -1782,7 +1769,6 @@ ContentParent::ActorDestroy(ActorDestroyReason why)
   ShutDownProcess(why == NormalShutdown ? CLOSE_CHANNEL
                                         : CLOSE_CHANNEL_WITH_ERROR);
 
-  RefPtr<ContentParent> kungFuDeathGrip(this);
   nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
   if (obs) {
     size_t length = ArrayLength(sObserverTopics);
@@ -1869,7 +1855,9 @@ ContentParent::ActorDestroy(ActorDestroyReason why)
   //
   // This runnable ensures that a reference to |this| lives on at
   // least until after the current task finishes running.
-  NS_DispatchToCurrentThread(new DelayedDeleteContentParentTask(this));
+  NS_DispatchToCurrentThread(
+    NS_NewRunnableFunction("DelayedReleaseContentParent",
+                           [kungFuDeathGrip] { }));
 
   ContentProcessManager* cpm = ContentProcessManager::GetSingleton();
   nsTArray<ContentParentId> childIDArray =
@@ -1901,7 +1889,7 @@ ContentParent::ActorDestroy(ActorDestroyReason why)
   a11y::AccessibleWrap::ReleaseContentProcessIdFor(ChildID());
 #endif
 
-  BrowsingContext::CleanupContexts(ChildID());
+  ChromeBrowsingContext::CleanupContexts(ChildID());
 }
 
 bool
@@ -2012,7 +2000,7 @@ ContentParent::StartForceKillTimer()
     return;
   }
 
-  int32_t timeoutSecs = Preferences::GetInt("dom.ipc.tabs.shutdownTimeoutSecs", 5);
+  int32_t timeoutSecs = StaticPrefs::dom_ipc_tabs_shutdownTimeoutSecs();
   if (timeoutSecs > 0) {
     NS_NewTimerWithFuncCallback(getter_AddRefs(mForceKillTimer),
                                 ContentParent::ForceKillTimerCallback,
@@ -2098,21 +2086,6 @@ ContentParent::RecvCreateReplayingProcess(const uint32_t& aChannelId)
     return IPC_FAIL_NO_REASON(this);
   }
 
-  return IPC_OK();
-}
-
-mozilla::ipc::IPCResult
-ContentParent::RecvTerminateReplayingProcess(const uint32_t& aChannelId)
-{
-  // We should only get this message from the child if it is recording or replaying.
-  if (!this->IsRecordingOrReplaying()) {
-    return IPC_FAIL_NO_REASON(this);
-  }
-
-  if (aChannelId < mReplayingChildren.length() && mReplayingChildren[aChannelId]) {
-    DelayedDeleteSubprocess(mReplayingChildren[aChannelId]);
-    mReplayingChildren[aChannelId] = nullptr;
-  }
   return IPC_OK();
 }
 
@@ -2224,7 +2197,7 @@ ContentParent::LaunchSubprocess(ProcessPriority aInitialPriority /* = PROCESS_PR
 
   // Scheduler prefs need to be handled differently because the scheduler needs
   // to start up in the content process before the normal preferences service.
-  nsCString schedulerPrefs = Scheduler::GetPrefs();
+  nsPrintfCString schedulerPrefs = Scheduler::GetPrefs();
   extraArgs.push_back("-schedulerPrefs");
   extraArgs.push_back(schedulerPrefs.get());
 
@@ -2258,6 +2231,9 @@ ContentParent::LaunchSubprocess(ProcessPriority aInitialPriority /* = PROCESS_PR
     MarkAsDead();
     return false;
   }
+
+  // See also ActorDestroy.
+  mSelfRef = this;
 
 #ifdef ASYNC_CONTENTPROC_LAUNCH
   OpenWithAsyncPid(mSubprocess->GetChannel());
@@ -2305,6 +2281,7 @@ ContentParent::ContentParent(ContentParent* aOpener,
                              const nsAString& aRecordingFile,
                              int32_t aJSPluginID)
   : nsIContentParent()
+  , mSelfRef(nullptr)
   , mSubprocess(nullptr)
   , mLaunchTS(TimeStamp::Now())
   , mActivateTS(TimeStamp::Now())
@@ -2405,7 +2382,7 @@ ContentParent::InitInternal(ProcessPriority aInitialPriority)
     bidi->GetHaveBidiKeyboards(&xpcomInit.haveBidiKeyboards());
   }
 
-  nsCOMPtr<nsISpellChecker> spellChecker(do_GetService(NS_SPELLCHECKER_CONTRACTID));
+  nsCOMPtr<nsISpellChecker> spellChecker(mozSpellChecker::Create());
   MOZ_ASSERT(spellChecker, "No spell checker?");
 
   spellChecker->GetDictionaryList(&xpcomInit.dictionaries());
@@ -2957,26 +2934,6 @@ ContentParent::RecvPlayEventSound(const uint32_t& aEventId)
 }
 
 mozilla::ipc::IPCResult
-ContentParent::RecvGetSystemColors(const uint32_t& colorsCount,
-                                   InfallibleTArray<uint32_t>* colors)
-{
-#ifdef MOZ_WIDGET_ANDROID
-  NS_ASSERTION(AndroidBridge::Bridge() != nullptr, "AndroidBridge is not available");
-  if (AndroidBridge::Bridge() == nullptr) {
-    // Do not fail - the colors won't be right, but it's not critical
-    return IPC_OK();
-  }
-
-  colors->AppendElements(colorsCount);
-
-  // The array elements correspond to the members of AndroidSystemColors structure,
-  // so just pass the pointer to the elements buffer
-  AndroidBridge::Bridge()->GetSystemColors((AndroidSystemColors*)colors->Elements());
-#endif
-  return IPC_OK();
-}
-
-mozilla::ipc::IPCResult
 ContentParent::RecvGetIconForExtension(const nsCString& aFileExt,
                                        const uint32_t& aIconSize,
                                        InfallibleTArray<uint8_t>* bits)
@@ -3041,6 +2998,8 @@ ContentParent::Observe(nsISupports* aSubject,
 {
   if (mSubprocess && (!strcmp(aTopic, "profile-before-change") ||
                       !strcmp(aTopic, "xpcom-shutdown"))) {
+    mShuttingDown = true;
+
     // Make sure that our process will get scheduled.
     ProcessPriorityManager::SetProcessPriority(this,
                                                PROCESS_PRIORITY_FOREGROUND);
@@ -3343,31 +3302,14 @@ ContentParent::ForceKillTimerCallback(nsITimer* aTimer, void* aClosure)
   self->KillHard("ShutDownKill");
 }
 
-// WARNING: aReason appears in telemetry, so any new value passed in requires
-// data review.
 void
-ContentParent::KillHard(const char* aReason)
+ContentParent::GeneratePairedMinidump(const char* aReason)
 {
-  AUTO_PROFILER_LABEL("ContentParent::KillHard", OTHER);
-
-  // On Windows, calling KillHard multiple times causes problems - the
-  // process handle becomes invalid on the first call, causing a second call
-  // to crash our process - more details in bug 890840.
-  if (mCalledKillHard) {
-    return;
-  }
-  mCalledKillHard = true;
-  mForceKillTimer = nullptr;
-
-  MessageChannel* channel = GetIPCChannel();
-  if (channel) {
-    channel->SetInKillHardShutdown();
-  }
-
   // We're about to kill the child process associated with this content.
   // Something has gone wrong to get us here, so we generate a minidump
-  // of the parent and child for submission to the crash server.
-  if (mCrashReporter) {
+  // of the parent and child for submission to the crash server unless we're
+  // already shutting down.
+  if (mCrashReporter && !mShuttingDown) {
     // GeneratePairedMinidump creates two minidumps for us - the main
     // one is for the content process we're about to kill, and the other
     // one is for the main browser process. That second one is the extra
@@ -3390,6 +3332,25 @@ ContentParent::KillHard(const char* aReason)
 
     Telemetry::Accumulate(Telemetry::SUBPROCESS_KILL_HARD, reason, 1);
   }
+}
+
+// WARNING: aReason appears in telemetry, so any new value passed in requires
+// data review.
+void
+ContentParent::KillHard(const char* aReason)
+{
+  AUTO_PROFILER_LABEL("ContentParent::KillHard", OTHER);
+
+  // On Windows, calling KillHard multiple times causes problems - the
+  // process handle becomes invalid on the first call, causing a second call
+  // to crash our process - more details in bug 890840.
+  if (mCalledKillHard) {
+    return;
+  }
+  mCalledKillHard = true;
+  mForceKillTimer = nullptr;
+
+  GeneratePairedMinidump(aReason);
 
   ProcessHandle otherProcessHandle;
   if (!base::OpenProcessHandle(OtherPid(), &otherProcessHandle)) {
@@ -4603,7 +4564,7 @@ ContentParent::IgnoreIPCPrincipal()
 void
 ContentParent::NotifyUpdatedDictionaries()
 {
-  nsCOMPtr<nsISpellChecker> spellChecker(do_GetService(NS_SPELLCHECKER_CONTRACTID));
+  nsCOMPtr<nsISpellChecker> spellChecker(mozSpellChecker::Create());
   MOZ_ASSERT(spellChecker, "No spell checker?");
 
   InfallibleTArray<nsString> dictionaries;
@@ -4881,7 +4842,7 @@ ContentParent::CommonCreateWindow(PBrowserParent* aThisTab,
   TabParent* thisTabParent = TabParent::GetFrom(aThisTab);
   nsCOMPtr<nsIContent> frame;
   if (thisTabParent) {
-    frame = do_QueryInterface(thisTabParent->GetOwnerElement());
+    frame = thisTabParent->GetOwnerElement();
 
     if (NS_WARN_IF(thisTabParent->IsMozBrowser())) {
       return IPC_FAIL(this, "aThisTab is not a MozBrowser");
@@ -5954,12 +5915,19 @@ ContentParent::RecvFirstPartyStorageAccessGrantedForOrigin(const Principal& aPar
 }
 
 mozilla::ipc::IPCResult
+ContentParent::RecvStoreUserInteractionAsPermission(const Principal& aPrincipal)
+{
+  AntiTrackingCommon::StoreUserInteractionFor(aPrincipal);
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
 ContentParent::RecvAttachBrowsingContext(
   const BrowsingContextId& aParentId,
   const BrowsingContextId& aChildId,
   const nsString& aName)
 {
-  RefPtr<BrowsingContext> parent = BrowsingContext::Get(aParentId);
+  RefPtr<ChromeBrowsingContext> parent = ChromeBrowsingContext::Get(aParentId);
   if (aParentId && !parent) {
     // Unless 'aParentId' is 0 (which it is when the child is a root
     // BrowsingContext) there should always be a corresponding
@@ -5981,7 +5949,7 @@ ContentParent::RecvAttachBrowsingContext(
     return IPC_OK();
   }
 
-  if (parent && parent->OwnerProcessId() != ChildID()) {
+  if (parent && !parent->IsOwnedByProcess(ChildID())) {
     // Where trying attach a child BrowsingContext to a parent
     // BrowsingContext in another process. This is illegal since the
     // only thing that could create that child BrowsingContext is a
@@ -6019,7 +5987,7 @@ ContentParent::RecvAttachBrowsingContext(
   }
 
   if (!child) {
-    child = new BrowsingContext(aChildId, aName, Some(ChildID()));
+    child = ChromeBrowsingContext::Create(aChildId, aName, ChildID());
   }
   child->Attach(parent);
 
@@ -6030,7 +5998,7 @@ mozilla::ipc::IPCResult
 ContentParent::RecvDetachBrowsingContext(const BrowsingContextId& aContextId,
                                          const bool& aMoveToBFCache)
 {
-  RefPtr<BrowsingContext> context = BrowsingContext::Get(aContextId);
+  RefPtr<ChromeBrowsingContext> context = ChromeBrowsingContext::Get(aContextId);
 
   if (!context) {
     MOZ_LOG(BrowsingContext::GetLog(),
@@ -6040,7 +6008,7 @@ ContentParent::RecvDetachBrowsingContext(const BrowsingContextId& aContextId,
     return IPC_OK();
   }
 
-  if (context->OwnerProcessId() != ChildID()) {
+  if (!context->IsOwnedByProcess(ChildID())) {
     // Where trying to detach a child BrowsingContext in another child
     // process. This is illegal since the owner of the BrowsingContext
     // is the proccess with the in-process docshell, which is tracked

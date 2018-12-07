@@ -8,6 +8,7 @@
 
 const promise = require("promise");
 const Services = require("Services");
+const flags = require("devtools/shared/flags");
 const {l10n} = require("devtools/shared/inspector/css-logic");
 const {ELEMENT_STYLE} = require("devtools/shared/specs/styles");
 const OutputParser = require("devtools/client/shared/output-parser");
@@ -15,7 +16,6 @@ const {PrefObserver} = require("devtools/client/shared/prefs");
 const ElementStyle = require("devtools/client/inspector/rules/models/element-style");
 const Rule = require("devtools/client/inspector/rules/models/rule");
 const RuleEditor = require("devtools/client/inspector/rules/views/rule-editor");
-const {getCssProperties} = require("devtools/shared/fronts/css-properties");
 const {
   VIEW_NODE_SELECTOR_TYPE,
   VIEW_NODE_PROPERTY_TYPE,
@@ -97,25 +97,22 @@ const INSET_POINT_TYPES = ["top", "right", "bottom", "left"];
  *        The CSS rule view can use this object to store metadata
  *        that might outlast the rule view, particularly the current
  *        set of disabled properties.
- * @param {PageStyleFront} pageStyle
- *        The PageStyleFront for communicating with the remote server.
  */
-function CssRuleView(inspector, document, store, pageStyle) {
+function CssRuleView(inspector, document, store) {
   EventEmitter.decorate(this);
 
   this.inspector = inspector;
+  this.cssProperties = inspector.cssProperties;
   this.styleDocument = document;
   this.styleWindow = this.styleDocument.defaultView;
   this.store = store || {};
   // References to rules marked by various editors where they intend to write changes.
   // @see selectRule(), unselectRule()
   this.selectedRules = new Map();
-  this.pageStyle = pageStyle;
+  this.pageStyle = inspector.pageStyle;
 
   // Allow tests to override debouncing behavior, as this can cause intermittents.
   this.debounce = debounce;
-
-  this.cssProperties = getCssProperties(inspector.toolbox);
 
   this._outputParser = new OutputParser(document, this.cssProperties);
 
@@ -140,6 +137,7 @@ function CssRuleView(inspector, document, store, pageStyle) {
   this.hoverCheckbox = doc.getElementById("pseudo-hover-toggle");
   this.activeCheckbox = doc.getElementById("pseudo-active-toggle");
   this.focusCheckbox = doc.getElementById("pseudo-focus-toggle");
+  this.focusWithinCheckbox = doc.getElementById("pseudo-focus-within-toggle");
 
   this.searchClearButton.hidden = true;
 
@@ -151,9 +149,6 @@ function CssRuleView(inspector, document, store, pageStyle) {
   this.shortcuts.on("CmdOrCtrl+F", event => this._onShortcut("CmdOrCtrl+F", event));
   this.element.addEventListener("copy", this._onCopy);
   this.element.addEventListener("contextmenu", this._onContextMenu);
-  this.element.addEventListener("mousemove", () => {
-    this.addHighlightersToView();
-  }, { once: true });
   this.addRuleButton.addEventListener("click", this._onAddRule);
   this.searchField.addEventListener("input", this._onFilterStyles);
   this.searchClearButton.addEventListener("click", this._onClearSearch);
@@ -162,6 +157,16 @@ function CssRuleView(inspector, document, store, pageStyle) {
   this.hoverCheckbox.addEventListener("click", this._onTogglePseudoClass);
   this.activeCheckbox.addEventListener("click", this._onTogglePseudoClass);
   this.focusCheckbox.addEventListener("click", this._onTogglePseudoClass);
+  this.focusWithinCheckbox.addEventListener("click", this._onTogglePseudoClass);
+
+  if (flags.testing) {
+    // In tests, we start listening immediately to avoid having to simulate a mousemove.
+    this.highlighters.addToView(this);
+  } else {
+    this.element.addEventListener("mousemove", () => {
+      this.highlighters.addToView(this);
+    }, { once: true });
+  }
 
   this._handlePrefChange = this._handlePrefChange.bind(this);
   this._handleUAStylePrefChange = this._handleUAStylePrefChange.bind(this);
@@ -173,8 +178,6 @@ function CssRuleView(inspector, document, store, pageStyle) {
   this._prefObserver.on(PREF_DEFAULT_COLOR_UNIT, this._handleDefaultColorUnitPrefChange);
 
   this.showUserAgentStyles = Services.prefs.getBoolPref(PREF_UA_STYLES);
-
-  this._showEmpty();
 
   // Add the tooltips and highlighters to the view
   this.tooltips = new TooltipsOverlay(this);
@@ -775,6 +778,7 @@ CssRuleView.prototype = {
     this.hoverCheckbox.removeEventListener("click", this._onTogglePseudoClass);
     this.activeCheckbox.removeEventListener("click", this._onTogglePseudoClass);
     this.focusCheckbox.removeEventListener("click", this._onTogglePseudoClass);
+    this.focusWithinCheckbox.removeEventListener("click", this._onTogglePseudoClass);
 
     this.searchField = null;
     this.searchClearButton = null;
@@ -785,6 +789,7 @@ CssRuleView.prototype = {
     this.hoverCheckbox = null;
     this.activeCheckbox = null;
     this.focusCheckbox = null;
+    this.focusWithinCheckbox = null;
 
     this.inspector = null;
     this.styleDocument = null;
@@ -924,6 +929,7 @@ CssRuleView.prototype = {
     this.hoverCheckbox.checked = this.hoverCheckbox.disabled = false;
     this.activeCheckbox.checked = this.activeCheckbox.disabled = false;
     this.focusCheckbox.checked = this.focusCheckbox.disabled = false;
+    this.focusWithinCheckbox.checked = this.focusWithinCheckbox.disabled = false;
   },
 
   /**
@@ -934,6 +940,7 @@ CssRuleView.prototype = {
       this.hoverCheckbox.disabled = true;
       this.activeCheckbox.disabled = true;
       this.focusCheckbox.disabled = true;
+      this.focusWithinCheckbox.disabled = true;
       return;
     }
 
@@ -949,6 +956,10 @@ CssRuleView.prototype = {
         }
         case ":focus": {
           this.focusCheckbox.checked = true;
+          break;
+        }
+        case ":focus-within": {
+          this.focusWithinCheckbox.checked = true;
           break;
         }
       }
@@ -1566,6 +1577,7 @@ CssRuleView.prototype = {
     this.hoverCheckbox.setAttribute("tabindex", "0");
     this.activeCheckbox.setAttribute("tabindex", "0");
     this.focusCheckbox.setAttribute("tabindex", "0");
+    this.focusWithinCheckbox.setAttribute("tabindex", "0");
 
     this.pseudoClassPanel.hidden = false;
   },
@@ -1575,6 +1587,7 @@ CssRuleView.prototype = {
     this.hoverCheckbox.setAttribute("tabindex", "-1");
     this.activeCheckbox.setAttribute("tabindex", "-1");
     this.focusCheckbox.setAttribute("tabindex", "-1");
+    this.focusWithinCheckbox.setAttribute("tabindex", "-1");
 
     this.pseudoClassPanel.hidden = true;
   },
@@ -1636,14 +1649,6 @@ CssRuleView.prototype = {
       event.preventDefault();
       event.stopPropagation();
     }
-  },
-
-  /**
-   * Adds the highlighters overlay to the rule view. This is called by the "mousemove"
-   * event handler and in shared-head.js when opening and selecting the rule view.
-   */
-  addHighlightersToView() {
-    this.highlighters.addToView(this);
   },
 };
 

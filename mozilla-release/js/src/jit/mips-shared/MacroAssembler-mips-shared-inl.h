@@ -12,6 +12,7 @@
 namespace js {
 namespace jit {
 
+// clang-format off
 //{{{ check_macroassembler_style
 
 void
@@ -231,20 +232,22 @@ MacroAssembler::mulDoublePtr(ImmPtr imm, Register temp, FloatRegister dest)
 void
 MacroAssembler::quotient32(Register rhs, Register srcDest, bool isUnsigned)
 {
-    if (isUnsigned)
+    if (isUnsigned) {
         as_divu(srcDest, rhs);
-    else
+    } else {
         as_div(srcDest, rhs);
+    }
     as_mflo(srcDest);
 }
 
 void
 MacroAssembler::remainder32(Register rhs, Register srcDest, bool isUnsigned)
 {
-    if (isUnsigned)
+    if (isUnsigned) {
         as_divu(srcDest, rhs);
-    else
+    } else {
         as_div(srcDest, rhs);
+    }
     as_mfhi(srcDest);
 }
 
@@ -388,10 +391,11 @@ MacroAssembler::rshift32Arithmetic(Imm32 imm, Register dest)
 void
 MacroAssembler::rotateLeft(Imm32 count, Register input, Register dest)
 {
-    if (count.value)
+    if (count.value) {
         ma_rol(dest, input, count);
-    else
+    } else {
         ma_move(dest, input);
+    }
 }
 void
 MacroAssembler::rotateLeft(Register count, Register input, Register dest)
@@ -401,10 +405,11 @@ MacroAssembler::rotateLeft(Register count, Register input, Register dest)
 void
 MacroAssembler::rotateRight(Imm32 count, Register input, Register dest)
 {
-    if (count.value)
+    if (count.value) {
         ma_ror(dest, input, count);
-    else
+    } else {
         ma_move(dest, input);
+    }
 }
 void
 MacroAssembler::rotateRight(Register count, Register input, Register dest)
@@ -1084,8 +1089,9 @@ MacroAssembler::storeUncanonicalizedFloat32(FloatRegister src, const BaseIndex& 
 void
 MacroAssembler::memoryBarrier(MemoryBarrierBits barrier)
 {
-    if (barrier)
+    if (barrier) {
         as_sync();
+    }
 }
 
 // ===============================================================
@@ -1105,6 +1111,7 @@ MacroAssembler::clampIntToUint8(Register reg)
 }
 
 //}}} check_macroassembler_style
+// clang-format on
 // ===============================================================
 
 } // namespace jit

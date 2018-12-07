@@ -145,6 +145,9 @@ interface nsIDocShell : nsIDocShellTreeItem
    * @param aLoadReplace         - If set LOAD_REPLACE flag will be set on the
    *                               channel. aOriginalURI is null, this argument is
    *                               ignored.
+   * @param aIsFromProcessingFrameAttributes
+   *          - If this is a load triggered by changing frame attributes.
+   *            See nsILoadInfo.isFromProcessingFrameAttributes
    * @param aReferrer            - Referring URI
    * @param aReferrerPolicy      - Referrer policy
    * @param aTriggeringPrincipal - A non-null principal that initiated that load.
@@ -192,6 +195,7 @@ interface nsIDocShell : nsIDocShellTreeItem
                               [const] in MaybeURI aResultPrincipalURI,
                               in bool aKeepResultPrincipalURIIfSet,
                               in boolean aLoadReplace,
+                              in boolean aIsFromProcessingFrameAttributes,
                               in nsIURI aReferrer,
                               in unsigned long aReferrerPolicy,
                               in nsIPrincipal aTriggeringPrincipal,
@@ -216,8 +220,8 @@ interface nsIDocShell : nsIDocShellTreeItem
    * depending on the value of aReplace.
    */
   [implicit_jscontext]
-  void addState(in jsval aData, in DOMString aTitle,
-                in DOMString aURL, in boolean aReplace);
+  void addState(in jsval aData, in AString aTitle,
+                in AString aURL, in boolean aReplace);
 
   /**
    * Reset state to a new content model within the current document and the document
@@ -266,6 +270,11 @@ interface nsIDocShell : nsIDocShellTreeItem
   readonly attribute nsIContentViewer contentViewer;
 
   /**
+   * Get the id of the outer window that is or will be in this docshell.
+   */
+  [infallible] readonly attribute unsigned long long outerWindowID;
+
+  /**
    * This attribute allows chrome to tie in to handle DOM events that may
    * be of interest to chrome.
    */
@@ -274,7 +283,7 @@ interface nsIDocShell : nsIDocShellTreeItem
   /**
    * This allows chrome to set a custom User agent on a specific docshell
    */
-  attribute DOMString customUserAgent;
+  attribute AString customUserAgent;
 
   /**
    * Whether CSS error reporting is enabled.
@@ -536,12 +545,12 @@ interface nsIDocShell : nsIDocShellTreeItem
   readonly attribute nsIChannel failedChannel;
 
   /**
-   * Keeps track of the previous SHTransaction index and the current
-   * SHTransaction index at the time that the doc shell begins to load.
+   * Keeps track of the previous nsISHEntry index and the current
+   * nsISHEntry index at the time that the doc shell begins to load.
    * Used for ContentViewer eviction.
    */
-  readonly attribute long previousTransIndex;
-  readonly attribute long loadedTransIndex;
+  readonly attribute long previousEntryIndex;
+  readonly attribute long loadedEntryIndex;
 
   /**
    * Notification that entries have been removed from the beginning of a
@@ -1152,6 +1161,28 @@ interface nsIDocShell : nsIDocShellTreeItem
    * Don't override the platform/pref default behaviour for touch events.
    */
   const unsigned long TOUCHEVENTS_OVERRIDE_NONE = 2;
+
+  /**
+   * Override platform/pref default behaviour and force-disable support for
+   * <meta name="viewport">.
+   */
+  const unsigned long META_VIEWPORT_OVERRIDE_DISABLED = 0;
+  /**
+   * Override platform/pref default behaviour and force-enable support for
+   * <meta name="viewport">.
+   */
+  const unsigned long META_VIEWPORT_OVERRIDE_ENABLED = 1;
+  /**
+   * Don't override the platform/pref default behaviour for support for
+   * <meta name="viewport">.
+   */
+  const unsigned long META_VIEWPORT_OVERRIDE_NONE = 2;
+  /**
+   * This allows chrome to override the default choice of whether the
+   * <meta name="viewport"> tag is respected in a specific docshell.
+   * Possible values are listed above.
+   */
+  attribute unsigned long metaViewportOverride;
 
   /**
    * This value is `true` if its corresponding unit of related browsing contexts

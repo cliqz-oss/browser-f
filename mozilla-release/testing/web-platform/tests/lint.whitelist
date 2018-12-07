@@ -162,12 +162,14 @@ SET TIMEOUT: html/semantics/embedded-content/the-iframe-element/*
 SET TIMEOUT: html/semantics/embedded-content/the-img-element/*
 SET TIMEOUT: html/semantics/scripting-1/the-script-element/*
 SET TIMEOUT: html/webappapis/dynamic-markup-insertion/opening-the-input-stream/0*
+SET TIMEOUT: html/webappapis/dynamic-markup-insertion/opening-the-input-stream/resources/history-frame.html
 SET TIMEOUT: html/webappapis/dynamic-markup-insertion/opening-the-input-stream/tasks.window.js
 SET TIMEOUT: html/webappapis/scripting/event-loops/*
 SET TIMEOUT: html/webappapis/scripting/events/event-handler-processing-algorithm-error/*
 SET TIMEOUT: html/webappapis/scripting/processing-model-2/*
 SET TIMEOUT: IndexedDB/*
 SET TIMEOUT: infrastructure/*
+SET TIMEOUT: intersection-observer/target-in-different-window.html
 SET TIMEOUT: media-source/mediasource-util.js
 SET TIMEOUT: media-source/URL-createObjectURL-revoke.html
 SET TIMEOUT: mixed-content/generic/sanity-checker.js
@@ -207,6 +209,8 @@ SET TIMEOUT: streams/piping/general.js
 SET TIMEOUT: streams/readable-streams/cancel.js
 SET TIMEOUT: streams/resources/rs-utils.js
 SET TIMEOUT: streams/writable-streams/byte-length-queuing-strategy.js
+SET TIMEOUT: trusted-types/block-string-assignment-to-DOMWindowTimers-setTimeout-setInterval.tentative.html
+SET TIMEOUT: trusted-types/DOMWindowTimers-setTimeout-setInterval.tentative.html
 SET TIMEOUT: user-timing/*
 SET TIMEOUT: webaudio/the-audio-api/the-mediaelementaudiosourcenode-interface/mediaElementAudioSourceToScriptProcessorTest.html
 SET TIMEOUT: webauthn/*timeout.https.html
@@ -264,6 +268,9 @@ GENERATE_TESTS: dom/traversal/TreeWalker.html
 GENERATE_TESTS: domparsing/createContextualFragment.html
 GENERATE_TESTS: domxpath/001.html
 GENERATE_TESTS: domxpath/002.html
+GENERATE_TESTS: mediacapture-image/MediaStreamTrack-applyConstraints-reject.html
+GENERATE_TESTS: mediacapture-image/MediaStreamTrack-getConstraints-fast.html
+GENERATE_TESTS: mediacapture-image/setOptions-reject.html
 GENERATE_TESTS: html/semantics/scripting-1/the-template-element/template-element/template-as-a-descendant.html
 GENERATE_TESTS: html/syntax/parsing/Document.getElementsByTagName-foreign-01.html
 GENERATE_TESTS: html/syntax/parsing/template/clearing-the-stack-back-to-a-given-context/clearing-stack-back-to-a-table-body-context.html
@@ -646,7 +653,11 @@ CSS-COLLIDING-REF-NAME: css/css-flexbox/reference/percentage-size-subitems-001-r
 CSS-COLLIDING-REF-NAME: css/css-grid/grid-items/percentage-size-subitems-001-ref.html
 CSS-COLLIDING-REF-NAME: css/css-contain/reference/contain-size-button-001-ref.html
 CSS-COLLIDING-REF-NAME: css/vendor-imports/mozilla/mozilla-central-reftests/contain/contain-size-button-001-ref.html
+CSS-COLLIDING-REF-NAME: css/css-contain/reference/contain-size-grid-001-ref.html
+CSS-COLLIDING-REF-NAME: css/vendor-imports/mozilla/mozilla-central-reftests/contain/contain-size-grid-001-ref.html
 CSS-COLLIDING-SUPPORT-NAME: css/css-backgrounds/support/red.png
+CSS-COLLIDING-REF-NAME: css/css-contain/reference/contain-size-fieldset-001-ref.html
+CSS-COLLIDING-REF-NAME: css/vendor-imports/mozilla/mozilla-central-reftests/contain/contain-size-fieldset-001-ref.html
 CSS-COLLIDING-SUPPORT-NAME: css/compositing/mix-blend-mode/support/red.png
 CSS-COLLIDING-SUPPORT-NAME: css/compositing/background-blending/support/red.png
 CSS-COLLIDING-SUPPORT-NAME: css/CSS2/normal-flow/support/replaced-min-max-3.png
@@ -783,3 +794,7 @@ MISSING-LINK: css/filter-effects/*.any.js
 # Tests that use WebKit/Blink testing APIs
 LAYOUTTESTS APIS: css/css-regions/interactivity/*
 LAYOUTTESTS APIS: resources/chromium/generic_sensor_mocks.js
+
+# Gecko additons to remove
+CSS-COLLIDING-REF-NAME: css/css-contain/reference/contain-size-fieldset-001-ref.html
+CSS-COLLIDING-REF-NAME: css/vendor-imports/mozilla/mozilla-central-reftests/contain/contain-size-fieldset-001-ref.html

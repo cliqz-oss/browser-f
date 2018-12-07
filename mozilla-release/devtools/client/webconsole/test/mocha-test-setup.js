@@ -20,11 +20,12 @@ pref("devtools.webconsole.filter.css", false);
 pref("devtools.webconsole.filter.net", false);
 pref("devtools.webconsole.filter.netxhr", false);
 pref("devtools.webconsole.ui.filterbar", false);
-pref("devtools.webconsole.inputHistoryCount", 50);
+pref("devtools.webconsole.inputHistoryCount", 300);
 pref("devtools.webconsole.persistlog", false);
 pref("devtools.webconsole.timestampMessages", false);
 pref("devtools.webconsole.sidebarToggle", true);
 pref("devtools.webconsole.jsterm.codeMirror", true);
+pref("devtools.webconsole.jsterm.reverse-search", true);
 
 global.loader = {
   lazyServiceGetter: () => {},
@@ -32,7 +33,7 @@ global.loader = {
     if (path === "devtools/shared/async-storage") {
       global[name] = require("devtools/client/webconsole/test/fixtures/async-storage");
     }
-  }
+  },
 };
 
 // Point to vendored-in files and mocks when needed.

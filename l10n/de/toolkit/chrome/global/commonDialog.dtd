@@ -1,3 +1,7 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
 <!ENTITY header.label     "Kurztitel"> 
 <!ENTITY message.label    "Beispieltext erscheint hier.">
 <!ENTITY editfield0.label "Benutzername:"> 
@@ -5,5 +9,5 @@
 <!ENTITY checkbox.label   "prüfen">
 <!ENTITY copyCmd.label    "Kopieren">
 <!ENTITY copyCmd.accesskey "K">
-<!ENTITY selectAllCmd.label "Alles markieren">
-<!ENTITY selectAllCmd.accesskey "A">
+<!ENTITY selectAllCmd.label "Alles auswählen">
+<!ENTITY selectAllCmd.accesskey "u">

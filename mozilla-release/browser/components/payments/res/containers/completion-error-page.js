@@ -20,9 +20,15 @@ export default class CompletionErrorPage extends PaymentStateSubscriberMixin(Pay
     super();
 
     this.classList.add("error-page");
+    this.suggestionHeading = document.createElement("p");
+    this.body.append(this.suggestionHeading);
     this.suggestionsList = document.createElement("ul");
     this.suggestions = [];
     this.body.append(this.suggestionsList);
+
+    this.brandingSpan = document.createElement("span");
+    this.brandingSpan.classList.add("branding");
+    this.footer.appendChild(this.brandingSpan);
 
     this.doneButton = document.createElement("button");
     this.doneButton.classList.add("done-button", "primary");
@@ -41,17 +47,29 @@ export default class CompletionErrorPage extends PaymentStateSubscriberMixin(Pay
 
     let {request} = this.requestStore.getState();
     let {displayHost} = request.topLevelPrincipal.URI;
-    for (let key of ["pageTitle", "suggestion-1", "suggestion-2", "suggestion-3"]) {
-      this.dataset[key] = this.dataset[key].replace("**host-name**", displayHost);
+    for (let key of [
+      "pageTitle", "suggestion-heading", "suggestion-1", "suggestion-2", "suggestion-3",
+    ]) {
+      if (this.dataset[key] && displayHost) {
+        this.dataset[key] = this.dataset[key].replace("**host-name**", displayHost);
+      }
     }
 
     this.pageTitleHeading.textContent = this.dataset.pageTitle;
+    this.suggestionHeading.textContent = this.dataset.suggestionHeading;
+    this.brandingSpan.textContent = this.dataset.brandingLabel;
     this.doneButton.textContent = this.dataset.doneButtonLabel;
 
     this.suggestionsList.textContent = "";
-    this.suggestions[0] = this.dataset["suggestion-1"];
-    this.suggestions[1] = this.dataset["suggestion-2"];
-    this.suggestions[2] = this.dataset["suggestion-3"];
+    if (this.dataset["suggestion-1"]) {
+      this.suggestions[0] = this.dataset["suggestion-1"];
+    }
+    if (this.dataset["suggestion-2"]) {
+      this.suggestions[1] = this.dataset["suggestion-2"];
+    }
+    if (this.dataset["suggestion-3"]) {
+      this.suggestions[2] = this.dataset["suggestion-3"];
+    }
 
     let suggestionsFragment = document.createDocumentFragment();
     for (let suggestionText of this.suggestions) {

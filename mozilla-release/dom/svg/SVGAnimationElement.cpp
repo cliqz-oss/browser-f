@@ -35,8 +35,8 @@ NS_IMPL_CYCLE_COLLECTION_INHERITED(SVGAnimationElement,
 //----------------------------------------------------------------------
 // Implementation
 
-SVGAnimationElement::SVGAnimationElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-  : SVGAnimationElementBase(aNodeInfo),
+SVGAnimationElement::SVGAnimationElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
+  : SVGAnimationElementBase(std::move(aNodeInfo)),
     mHrefTarget(this)
 {
 }
@@ -414,7 +414,11 @@ SVGAnimationElement::UpdateHrefTarget(const nsAString& aHrefStr)
   nsCOMPtr<nsIURI> baseURI = GetBaseURI();
   nsContentUtils::NewURIWithDocumentCharset(getter_AddRefs(targetURI),
                                             aHrefStr, OwnerDoc(), baseURI);
-  mHrefTarget.Reset(this, targetURI);
+  // Bug 1415044 to investigate which referrer we should use
+  mHrefTarget.Reset(this,
+                    targetURI,
+                    OwnerDoc()->GetDocumentURI(),
+                    OwnerDoc()->GetReferrerPolicy());
   AnimationTargetChanged();
 }
 

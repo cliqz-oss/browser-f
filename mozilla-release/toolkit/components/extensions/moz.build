@@ -22,6 +22,7 @@ EXTRA_JS_MODULES += [
     'ExtensionStorage.jsm',
     'ExtensionStorageIDB.jsm',
     'ExtensionStorageSync.jsm',
+    'ExtensionTelemetry.jsm',
     'ExtensionUtils.jsm',
     'FindContent.jsm',
     'LegacyExtensionsUtils.jsm',
@@ -29,6 +30,7 @@ EXTRA_JS_MODULES += [
     'MessageManagerProxy.jsm',
     'NativeManifests.jsm',
     'NativeMessaging.jsm',
+    'PerformanceCounters.jsm',
     'ProxyScriptContext.jsm',
     'Schemas.jsm',
 ]
@@ -99,6 +101,3 @@ with Files('docs/**'):
     SCHEDULES.exclusive = ['docs']
 
 include('/ipc/chromium/chromium-config.mozbuild')
-
-if CONFIG['CC_TYPE'] == 'clang-cl':
-    AllowCompilerWarnings()  # workaround for bug 1090497

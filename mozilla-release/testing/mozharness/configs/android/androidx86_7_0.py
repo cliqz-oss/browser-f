@@ -8,13 +8,14 @@ config = {
     "emulator_manifest": """
         [
         {
-        "size": 135064025,
-        "digest": "125678c5b0d93ead8bbf01ba94253e532909417b40637460624cfca34e92f431534fc77a0225e9c4728dcbcf2884a8f7fa1ee059efdfa82d827ca20477d41705",
+        "size": 131698372,
+        "digest": "2f62e4f39e2bd858f640b53bbb6cd33de6646f21419d1a9531d9ab5528a7ca6ab6f4cfe370cbb72c4fd475cb9db842a89acdbb9b647d9c0861ee85bc5901dfed",
         "algorithm": "sha512",
-        "filename": "android-sdk_r27.1.12-linux-x86emu.tar.gz",
+        "filename": "android-sdk_r27.3.10-linux-x86emu.tar.gz",
         "unpack": "True"
         }
         ] """,
+    "emulator_avd_name": "test-1",
     "emulator_process_name": "emulator64-x86",
     "emulator_extra_args": "-gpu swiftshader_indirect -skip-adb-auth -verbose -show-kernel -use-system-libs -ranchu -selinux permissive -memory 3072 -cores 4",
     "exes": {
@@ -25,10 +26,6 @@ config = {
         "PATH": "%(PATH)s:%(abs_work_dir)s/android-sdk-linux/emulator:%(abs_work_dir)s/android-sdk-linux/tools:%(abs_work_dir)s/android-sdk-linux/platform-tools",
         "MINIDUMP_SAVEPATH": "%(abs_work_dir)s/../minidumps",
         # "LIBGL_DEBUG": "verbose"
-    },
-    "emulator": {
-        "name": "test-1",
-        "device_id": "emulator-5554",
     },
     "marionette_extra": "--emulator",
 }

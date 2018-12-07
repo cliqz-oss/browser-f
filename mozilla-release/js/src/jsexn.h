@@ -17,8 +17,6 @@
 #include "js/UniquePtr.h"
 #include "vm/JSContext.h"
 
-class JSAutoByteString;
-
 namespace js {
 class ErrorObject;
 
@@ -119,22 +117,8 @@ class AutoClearPendingException
     }
 };
 
-class AutoAssertNoPendingException
-{
-    mozilla::DebugOnly<JSContext*> cx;
-
-  public:
-    explicit AutoAssertNoPendingException(JSContext* cxArg)
-      : cx(cxArg)
-    { }
-
-    ~AutoAssertNoPendingException() {
-        MOZ_ASSERT(!JS_IsExceptionPending(cx));
-    }
-};
-
 extern const char*
-ValueToSourceForError(JSContext* cx, HandleValue val, JSAutoByteString& bytes);
+ValueToSourceForError(JSContext* cx, HandleValue val, JS::UniqueChars& bytes);
 
 bool
 GetInternalError(JSContext* cx, unsigned errorNumber, MutableHandleValue error);

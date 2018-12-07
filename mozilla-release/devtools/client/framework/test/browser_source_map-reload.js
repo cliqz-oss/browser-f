@@ -16,8 +16,6 @@ const GENERATED_LINE = 86;
 const ORIGINAL_LINE = 13;
 
 add_task(async function() {
-  await pushPref("devtools.debugger.new-debugger-frontend", true);
-
   // Start with the empty page, then navigate, so that we can properly
   // listen for new sources arriving.
   const toolbox = await openNewTabAndToolbox(INITIAL_URL, "webconsole");
@@ -25,7 +23,7 @@ add_task(async function() {
   const tab = toolbox.target.tab;
 
   let sourceSeen = waitForSourceLoad(toolbox, JS_URL);
-  tab.linkedBrowser.loadURI(PAGE_URL);
+  BrowserTestUtils.loadURI(tab.linkedBrowser, PAGE_URL);
   await sourceSeen;
 
   info(`checking original location for ${JS_URL}:${GENERATED_LINE}`);

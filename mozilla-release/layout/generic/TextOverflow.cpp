@@ -162,7 +162,7 @@ IsFrameDescendantOfAny(nsIFrame* aChild,
   return false;
 }
 
-class nsDisplayTextOverflowMarker : public nsDisplayItem
+class nsDisplayTextOverflowMarker final : public nsDisplayItem
 {
 public:
   nsDisplayTextOverflowMarker(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame,
@@ -370,7 +370,7 @@ TextOverflow::TextOverflow(nsDisplayListBuilder* aBuilder,
   // has overflow on that side.
 }
 
-/* static */ UniquePtr<TextOverflow>
+/* static */ Maybe<TextOverflow>
 TextOverflow::WillProcessLines(nsDisplayListBuilder*   aBuilder,
                                nsIFrame*               aBlockFrame)
 {
@@ -378,14 +378,14 @@ TextOverflow::WillProcessLines(nsDisplayListBuilder*   aBuilder,
   if (aBuilder->IsForEventDelivery() ||
       aBuilder->IsForFrameVisibility() ||
       !CanHaveTextOverflow(aBlockFrame)) {
-    return nullptr;
+    return Nothing();
   }
   nsIScrollableFrame* scrollableFrame = nsLayoutUtils::GetScrollableFrameFor(aBlockFrame);
   if (scrollableFrame && scrollableFrame->IsTransformingByAPZ()) {
     // If the APZ is actively scrolling this, don't bother with markers.
-    return nullptr;
+    return Nothing();
   }
-  return MakeUnique<TextOverflow>(aBuilder, aBlockFrame);
+  return Some(TextOverflow(aBuilder, aBlockFrame));
 }
 
 void

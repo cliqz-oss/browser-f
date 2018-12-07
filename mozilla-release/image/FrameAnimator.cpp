@@ -37,7 +37,8 @@ AnimationState::UpdateState(bool aAnimationFinished,
     SurfaceCache::Lookup(ImageKey(aImage),
                          RasterSurfaceKey(aSize,
                                           DefaultSurfaceFlags(),
-                                          PlaybackType::eAnimated));
+                                          PlaybackType::eAnimated),
+                         /* aMarkUsed = */ false);
 
   return UpdateStateInternal(result, aAnimationFinished, aSize, aAllowInvalidation);
 }
@@ -316,10 +317,10 @@ FrameAnimator::AdvanceFrame(AnimationState& aState,
   }
 
   if (nextFrameIndex == 0) {
+    MOZ_ASSERT(nextFrame->IsFullFrame());
     ret.mDirtyRect = aState.FirstFrameRefreshArea();
-  } else {
+  } else if (!nextFrame->IsFullFrame()) {
     MOZ_ASSERT(nextFrameIndex == currentFrameIndex + 1);
-
     // Change frame
     if (!DoBlend(aCurrentFrame, nextFrame, nextFrameIndex, &ret.mDirtyRect)) {
       // something went wrong, move on to next
@@ -336,6 +337,8 @@ FrameAnimator::AdvanceFrame(AnimationState& aState,
     }
 
     nextFrame->SetCompositingFailed(false);
+  } else {
+    ret.mDirtyRect = nextFrame->GetDirtyRect();
   }
 
   aState.mCurrentAnimationFrameTime =
@@ -396,7 +399,8 @@ FrameAnimator::ResetAnimation(AnimationState& aState)
     SurfaceCache::Lookup(ImageKey(mImage),
                          RasterSurfaceKey(mSize,
                                           DefaultSurfaceFlags(),
-                                          PlaybackType::eAnimated));
+                                          PlaybackType::eAnimated),
+                         /* aMarkUsed = */ false);
   if (!result) {
     return;
   }
@@ -425,7 +429,8 @@ FrameAnimator::RequestRefresh(AnimationState& aState,
     SurfaceCache::Lookup(ImageKey(mImage),
                          RasterSurfaceKey(mSize,
                                           DefaultSurfaceFlags(),
-                                          PlaybackType::eAnimated));
+                                          PlaybackType::eAnimated),
+                         /* aMarkUsed = */ true);
 
   ret.mDirtyRect = aState.UpdateStateInternal(result, aAnimationFinished, mSize);
   if (aState.IsDiscarded() || !result) {
@@ -483,8 +488,13 @@ FrameAnimator::RequestRefresh(AnimationState& aState,
     }
   }
 
-  // Advanced to the correct frame, the composited frame is now valid to be drawn.
-  if (currentFrameEndTime > aTime) {
+  // We should only mark the composited frame as valid and reset the dirty rect
+  // if we advanced (meaning the next frame was actually produced somehow), the
+  // composited frame was previously invalid (so we may need to repaint
+  // everything) and the frame index is valid (to know we were doing blending
+  // on the main thread, instead of on the decoder threads in advance).
+  if (currentFrameEndTime > aTime && aState.mCompositedFrameInvalid &&
+      mLastCompositedFrameIndex >= 0) {
     aState.mCompositedFrameInvalid = false;
     ret.mDirtyRect = IntRect(IntPoint(0,0), mSize);
   }
@@ -495,7 +505,7 @@ FrameAnimator::RequestRefresh(AnimationState& aState,
 }
 
 LookupResult
-FrameAnimator::GetCompositedFrame(AnimationState& aState)
+FrameAnimator::GetCompositedFrame(AnimationState& aState, bool aMarkUsed)
 {
   aState.mCompositedFrameRequested = true;
 
@@ -510,7 +520,8 @@ FrameAnimator::GetCompositedFrame(AnimationState& aState)
     SurfaceCache::Lookup(ImageKey(mImage),
                          RasterSurfaceKey(mSize,
                                           DefaultSurfaceFlags(),
-                                          PlaybackType::eAnimated));
+                                          PlaybackType::eAnimated),
+                         aMarkUsed);
 
   if (aState.mCompositedFrameInvalid) {
     MOZ_ASSERT(gfxPrefs::ImageMemAnimatedDiscardable());
@@ -554,20 +565,24 @@ DoCollectSizeOfCompositingSurfaces(const RawAccessFrameRef& aSurface,
                                     DefaultSurfaceFlags(),
                                     PlaybackType::eStatic);
 
-  // Create a counter for this surface.
-  SurfaceMemoryCounter counter(key, /* aIsLocked = */ true,
-                               /* aCannotSubstitute */ false,
-                               /* aIsFactor2 */ false, aType);
-
   // Extract the surface's memory usage information.
-  size_t heap = 0, nonHeap = 0, handles = 0;
-  aSurface->AddSizeOfExcludingThis(aMallocSizeOf, heap, nonHeap, handles);
-  counter.Values().SetDecodedHeap(heap);
-  counter.Values().SetDecodedNonHeap(nonHeap);
-  counter.Values().SetExternalHandles(handles);
+  aSurface->AddSizeOfExcludingThis(aMallocSizeOf,
+    [&](imgFrame::AddSizeOfCbData& aMetadata) {
+      // Create a counter for this surface.
+      SurfaceMemoryCounter counter(key, /* aIsLocked = */ true,
+                                   /* aCannotSubstitute */ false,
+                                   /* aIsFactor2 */ false, aType);
 
-  // Record it.
-  aCounters.AppendElement(counter);
+      // Record it.
+      counter.Values().SetDecodedHeap(aMetadata.heap);
+      counter.Values().SetDecodedNonHeap(aMetadata.nonHeap);
+      counter.Values().SetExternalHandles(aMetadata.handles);
+      counter.Values().SetFrameIndex(aMetadata.index);
+      counter.Values().SetExternalId(aMetadata.externalId);
+
+      aCounters.AppendElement(counter);
+    }
+  );
 }
 
 void

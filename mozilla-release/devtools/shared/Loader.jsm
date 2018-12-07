@@ -33,8 +33,6 @@ BuiltinProvider.prototype = {
       // ⚠ DISCUSSION ON DEV-DEVELOPER-TOOLS REQUIRED BEFORE MODIFYING ⚠
       "devtools": "resource://devtools",
       // ⚠ DISCUSSION ON DEV-DEVELOPER-TOOLS REQUIRED BEFORE MODIFYING ⚠
-      "gcli": "resource://devtools/shared/gcli/source/lib/gcli",
-      // ⚠ DISCUSSION ON DEV-DEVELOPER-TOOLS REQUIRED BEFORE MODIFYING ⚠
       "acorn": "resource://devtools/shared/acorn",
       // ⚠ DISCUSSION ON DEV-DEVELOPER-TOOLS REQUIRED BEFORE MODIFYING ⚠
       "acorn/util/walk": "resource://devtools/shared/acorn/walk.js",
@@ -177,7 +175,7 @@ DevToolsLoader.prototype = {
       loader.modules[uri] = {
         get exports() {
           return modules[id];
-        }
+        },
       };
     }
 
@@ -221,7 +219,7 @@ DevToolsLoader.prototype = {
    * loader instance.
    * @see devtools/client/framework/ToolboxProcess.jsm
    */
-  invisibleToDebugger: Services.appinfo.name !== "Firefox"
+  invisibleToDebugger: Services.appinfo.name !== "Firefox",
 };
 
 // Export the standard instance of DevToolsLoader used by the tools.
@@ -231,8 +229,8 @@ this.require = this.devtools.require.bind(this.devtools);
 
 // For compatibility reasons, expose these symbols on "devtools":
 Object.defineProperty(this.devtools, "Toolbox", {
-  get: () => this.require("devtools/client/framework/toolbox").Toolbox
+  get: () => this.require("devtools/client/framework/toolbox").Toolbox,
 });
 Object.defineProperty(this.devtools, "TargetFactory", {
-  get: () => this.require("devtools/client/framework/target").TargetFactory
+  get: () => this.require("devtools/client/framework/target").TargetFactory,
 });

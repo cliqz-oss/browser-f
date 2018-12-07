@@ -24,6 +24,7 @@
 #include "mozilla/StyleSheetInlines.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/MemoryReporting.h"
+#include "mozilla/Move.h"
 #include "mozilla/StyleSheet.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/net/ReferrerPolicy.h"
@@ -69,14 +70,18 @@ public:
   {
     MOZ_COUNT_CTOR(URIPrincipalReferrerPolicyAndCORSModeHashKey);
   }
-  URIPrincipalReferrerPolicyAndCORSModeHashKey(const URIPrincipalReferrerPolicyAndCORSModeHashKey& toCopy)
-    : nsURIHashKey(toCopy),
-      mPrincipal(toCopy.mPrincipal),
-      mCORSMode(toCopy.mCORSMode),
-      mReferrerPolicy(toCopy.mReferrerPolicy)
+
+  URIPrincipalReferrerPolicyAndCORSModeHashKey(URIPrincipalReferrerPolicyAndCORSModeHashKey&& toMove)
+    : nsURIHashKey(std::move(toMove)),
+      mPrincipal(std::move(toMove.mPrincipal)),
+      mCORSMode(std::move(toMove.mCORSMode)),
+      mReferrerPolicy(std::move(toMove.mReferrerPolicy))
   {
     MOZ_COUNT_CTOR(URIPrincipalReferrerPolicyAndCORSModeHashKey);
   }
+
+  explicit URIPrincipalReferrerPolicyAndCORSModeHashKey(css::SheetLoadData* aLoadData);
+
   ~URIPrincipalReferrerPolicyAndCORSModeHashKey()
   {
     MOZ_COUNT_DTOR(URIPrincipalReferrerPolicyAndCORSModeHashKey);
@@ -424,7 +429,7 @@ public:
    *
    * aObserver must not be null.
    */
-  nsresult AddObserver(nsICSSLoaderObserver* aObserver);
+  void AddObserver(nsICSSLoaderObserver* aObserver);
 
   /**
    * Remove an observer added via AddObserver.
@@ -576,6 +581,11 @@ private:
   // transitively, as failed.  The idea is to mark as failed any load that was
   // directly or indirectly @importing the sheet this SheetLoadData represents.
   void MarkLoadTreeFailed(SheetLoadData* aLoadData);
+
+  // If there's Referrer-Policy reponse header, the loading data and key should
+  // be updated with the referer policy parsed from the header.
+  void UpdateLoadingData(URIPrincipalReferrerPolicyAndCORSModeHashKey* aOldKey,
+                         SheetLoadData* aData);
 
   struct Sheets {
     nsBaseHashtable<URIPrincipalReferrerPolicyAndCORSModeHashKey,

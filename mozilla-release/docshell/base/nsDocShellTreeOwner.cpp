@@ -402,7 +402,10 @@ nsDocShellTreeOwner::SizeShellTo(nsIDocShellTreeItem* aShellItem,
       shellAsWin->GetSize(&width, &height);
       return tabChild->RemoteSizeShellTo(aCX, aCY, width, height);
     }
-    return webBrowserChrome->SizeBrowserTo(aCX, aCY);
+    // XXX: this is weird, but we used to call a method here
+    // (webBrowserChrome->SizeBrowserTo()) whose implementations all failed
+    // like this, so...
+    return NS_ERROR_NOT_IMPLEMENTED;
   }
 
   NS_ENSURE_TRUE(aShellItem, NS_ERROR_FAILURE);
@@ -430,12 +433,10 @@ nsDocShellTreeOwner::SizeShellTo(nsIDocShellTreeItem* aShellItem,
     presShell->ResizeReflow(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE),
     NS_ERROR_FAILURE);
 
-  nsRect shellArea = presContext->GetVisibleArea();
-
-  int32_t browserCX = presContext->AppUnitsToDevPixels(shellArea.Width());
-  int32_t browserCY = presContext->AppUnitsToDevPixels(shellArea.Height());
-
-  return webBrowserChrome->SizeBrowserTo(browserCX, browserCY);
+  // XXX: this is weird, but we used to call a method here
+  // (webBrowserChrome->SizeBrowserTo()) whose implementations all failed like
+  // this, so...
+  return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 NS_IMETHODIMP
@@ -495,7 +496,10 @@ nsDocShellTreeOwner::Destroy()
 {
   nsCOMPtr<nsIWebBrowserChrome> webBrowserChrome = GetWebBrowserChrome();
   if (webBrowserChrome) {
-    return webBrowserChrome->DestroyBrowserWindow();
+    // XXX: this is weird, but we used to call a method here
+    // (webBrowserChrome->DestroyBrowserWindow()) whose implementations all
+    // failed like this, so...
+    return NS_ERROR_NOT_IMPLEMENTED;
   }
 
   return NS_ERROR_NULL_POINTER;
@@ -767,7 +771,9 @@ nsDocShellTreeOwner::OnStatusChange(nsIWebProgress* aWebProgress,
 NS_IMETHODIMP
 nsDocShellTreeOwner::OnSecurityChange(nsIWebProgress* aWebProgress,
                                       nsIRequest* aRequest,
-                                      uint32_t aState)
+                                      uint32_t aOldState,
+                                      uint32_t aState,
+                                      const nsAString& aContentBlockingLogJSON)
 {
   return NS_OK;
 }
@@ -972,7 +978,7 @@ nsDocShellTreeOwner::HandleEvent(Event* aEvent)
           nsAutoString url;
           if (NS_SUCCEEDED(links[0]->GetUrl(url))) {
             if (!url.IsEmpty()) {
-              webnav->LoadURI(url.get(), 0, nullptr, nullptr, nullptr,
+              webnav->LoadURI(url, 0, nullptr, nullptr, nullptr,
                               triggeringPrincipal);
             }
           }
@@ -1213,13 +1219,12 @@ ChromeTooltipListener::MouseMove(Event* aMouseEvent)
 
   if (mTooltipTimer) {
     mTooltipTimer->Cancel();
+    mTooltipTimer = nullptr;
   }
 
-  if (!mShowingTooltip && !mTooltipShownOnce) {
+  if (!mShowingTooltip) {
     nsIEventTarget* target = nullptr;
-
-    nsCOMPtr<EventTarget> eventTarget = aMouseEvent->GetComposedTarget();
-    if (eventTarget) {
+    if (nsCOMPtr<EventTarget> eventTarget = aMouseEvent->GetComposedTarget()) {
       mPossibleTooltipNode = do_QueryInterface(eventTarget);
       nsCOMPtr<nsIGlobalObject> global(eventTarget->GetOwnerGlobal());
       if (global) {
@@ -1365,7 +1370,9 @@ ChromeTooltipListener::sTooltipCallback(nsITimer* aTimer,
         self->mPossibleTooltipNode, getter_Copies(tooltipText),
         getter_Copies(directionText), &textFound);
 
-      if (textFound) {
+      if (textFound &&
+          (!self->mTooltipShownOnce ||
+           tooltipText != self->mLastShownTooltipText)) {
         LayoutDeviceIntPoint screenDot = widget->WidgetToScreenOffset();
         double scaleFactor = 1.0;
         if (shell->GetPresContext()) {
@@ -1377,6 +1384,7 @@ ChromeTooltipListener::sTooltipCallback(nsITimer* aTimer,
         self->ShowTooltip(self->mMouseScreenX - screenDot.x / scaleFactor,
                           self->mMouseScreenY - screenDot.y / scaleFactor,
                           tooltipText, directionText);
+        self->mLastShownTooltipText = std::move(tooltipText);
       }
     }
 

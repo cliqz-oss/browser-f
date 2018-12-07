@@ -9,8 +9,7 @@
 const TEST_URI = "data:text/html;charset=utf8,<h1>test Object Inspector</h1>";
 
 add_task(async function() {
-  const toolbox = await openNewTabAndToolbox(TEST_URI, "webconsole");
-  const hud = toolbox.getCurrentPanel().hud;
+  const hud = await openNewTabAndConsole(TEST_URI);
 
   logAllStoreChanges(hud);
 
@@ -31,7 +30,7 @@ add_task(async function() {
   info("Expanding the array object inspector");
 
   let onArrayOiMutation = waitForNodeMutation(arrayOi, {
-    childList: true
+    childList: true,
   });
 
   arrayOi.querySelector(".arrow").click();
@@ -54,7 +53,7 @@ add_task(async function() {
   info("Expanding a leaf of the array object inspector");
   let arrayOiNestedObject = arrayOiNodes[3];
   onArrayOiMutation = waitForNodeMutation(arrayOi, {
-    childList: true
+    childList: true,
   });
 
   arrayOiNestedObject.querySelector(".arrow").click();
@@ -79,7 +78,7 @@ add_task(async function() {
 
   info("Collapsing the root");
   onArrayOiMutation = waitForNodeMutation(arrayOi, {
-    childList: true
+    childList: true,
   });
   arrayOi.querySelector(".arrow").click();
 
@@ -91,7 +90,7 @@ add_task(async function() {
 
   info("Expanding the root again");
   onArrayOiMutation = waitForNodeMutation(arrayOi, {
-    childList: true
+    childList: true,
   });
   arrayOi.querySelector(".arrow").click();
 
@@ -106,7 +105,7 @@ add_task(async function() {
   is(arrayOiNodes.length, 9, "There is the expected number of nodes in the tree");
 
   const onObjectOiMutation = waitForNodeMutation(objectOi, {
-    childList: true
+    childList: true,
   });
 
   objectOi.querySelector(".arrow").click();

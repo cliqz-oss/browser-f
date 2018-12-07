@@ -9,8 +9,12 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/PodOperations.h"
 #include "mozilla/ScopeExit.h"
+#include "mozilla/Utf8.h"
 
+#include <algorithm> // std::transform
 #include <string.h>
+#include <type_traits> // std::is_same
+#include <utility> // std::move
 
 #include "jsapi.h"
 #include "jsutil.h"
@@ -22,7 +26,9 @@
 #include "vm/TraceLogging.h"
 
 using namespace js;
+
 using mozilla::ArrayEqual;
+using mozilla::Utf8Unit;
 
 template<XDRMode mode>
 LifoAlloc&
@@ -36,27 +42,52 @@ XDRCoderBase::validateResultCode(JSContext* cx, JS::TranscodeResult code) const
 {
     // NOTE: This function is called to verify that we do not have a pending
     // exception on the JSContext at the same time as a TranscodeResult failure.
-    if (cx->helperThread())
+    if (cx->helperThread()) {
         return true;
+    }
     return cx->isExceptionPending() == bool(code == JS::TranscodeResult_Throw);
 }
 #endif
 
 template<XDRMode mode>
 XDRResult
-XDRState<mode>::codeChars(const Latin1Char* chars, size_t nchars)
+XDRState<mode>::codeChars(Latin1Char* chars, size_t nchars)
 {
-    static_assert(sizeof(Latin1Char) == sizeof(uint8_t), "Latin1Char must fit in 1 byte");
+    static_assert(sizeof(Latin1Char) == 1,
+                  "Latin1Char must be 1 byte for nchars below to be the "
+                  "proper count of bytes");
+    static_assert(std::is_same<Latin1Char, unsigned char>::value,
+                  "Latin1Char must be unsigned char to C++-safely reinterpret "
+                  "the bytes generically copied below as Latin1Char");
+    return codeBytes(chars, nchars);
+}
 
-    MOZ_ASSERT(mode == XDR_ENCODE);
-
-    if (nchars == 0)
+template<XDRMode mode>
+XDRResult
+XDRState<mode>::codeChars(Utf8Unit* units, size_t count)
+{
+    if (count == 0) {
         return Ok();
-    uint8_t* ptr = buf.write(nchars);
-    if (!ptr)
-        return fail(JS::TranscodeResult_Throw);
+    }
 
-    mozilla::PodCopy(ptr, chars, nchars);
+    if (mode == XDR_ENCODE) {
+        uint8_t* ptr = buf.write(count);
+        if (!ptr) {
+            return fail(JS::TranscodeResult_Throw);
+        }
+
+        std::transform(units, units + count,
+                       ptr, [](const Utf8Unit& unit) { return unit.toUint8(); });
+    } else {
+        const uint8_t* ptr = buf.read(count);
+        if (!ptr) {
+            return fail(JS::TranscodeResult_Failure_BadDecode);
+        }
+
+        std::transform(ptr, ptr + count,
+                       units, [](const uint8_t& value) { return Utf8Unit(value); });
+    }
+
     return Ok();
 }
 
@@ -64,18 +95,25 @@ template<XDRMode mode>
 XDRResult
 XDRState<mode>::codeChars(char16_t* chars, size_t nchars)
 {
-    if (nchars == 0)
+    if (nchars == 0) {
         return Ok();
+    }
+
+    // Align the buffer to avoid unaligned loads.
+    MOZ_TRY(codeAlign(sizeof(char16_t)));
+
     size_t nbytes = nchars * sizeof(char16_t);
     if (mode == XDR_ENCODE) {
         uint8_t* ptr = buf.write(nbytes);
-        if (!ptr)
+        if (!ptr) {
             return fail(JS::TranscodeResult_Throw);
+        }
         mozilla::NativeEndian::copyAndSwapToLittleEndian(ptr, chars, nchars);
     } else {
         const uint8_t* ptr = buf.read(nbytes);
-        if (!ptr)
+        if (!ptr) {
             return fail(JS::TranscodeResult_Failure_BadDecode);
+        }
         mozilla::NativeEndian::copyAndSwapFromLittleEndian(chars, ptr, nchars);
     }
     return Ok();
@@ -86,21 +124,23 @@ static XDRResult
 VersionCheck(XDRState<mode>* xdr)
 {
     JS::BuildIdCharVector buildId;
-    MOZ_ASSERT(xdr->cx()->buildIdOp());
-    if (!xdr->cx()->buildIdOp()(&buildId)) {
+    MOZ_ASSERT(GetBuildId);
+    if (!GetBuildId(&buildId)) {
         ReportOutOfMemory(xdr->cx());
         return xdr->fail(JS::TranscodeResult_Throw);
     }
     MOZ_ASSERT(!buildId.empty());
 
     uint32_t buildIdLength;
-    if (mode == XDR_ENCODE)
+    if (mode == XDR_ENCODE) {
         buildIdLength = buildId.length();
+    }
 
     MOZ_TRY(xdr->codeUint32(&buildIdLength));
 
-    if (mode == XDR_DECODE && buildIdLength != buildId.length())
+    if (mode == XDR_DECODE && buildIdLength != buildId.length()) {
         return xdr->fail(JS::TranscodeResult_Failure_BadBuildId);
+    }
 
     if (mode == XDR_ENCODE) {
         MOZ_TRY(xdr->codeBytes(buildId.begin(), buildIdLength));
@@ -117,8 +157,9 @@ VersionCheck(XDRState<mode>* xdr)
         MOZ_TRY(xdr->codeBytes(decodedBuildId.begin(), buildIdLength));
 
         // We do not provide binary compatibility with older scripts.
-        if (!ArrayEqual(decodedBuildId.begin(), buildId.begin(), buildIdLength))
+        if (!ArrayEqual(decodedBuildId.begin(), buildId.begin(), buildIdLength)) {
             return xdr->fail(JS::TranscodeResult_Failure_BadBuildId);
+        }
     }
 
     return Ok();
@@ -181,10 +222,11 @@ XDRState<mode>::codeScript(MutableHandleScript scriptp)
     MOZ_TRY(codeAlign(sizeof(js::XDRAlignment)));
     AutoXDRTree scriptTree(this, getTopLevelTreeKey());
 
-    if (mode == XDR_DECODE)
+    if (mode == XDR_DECODE) {
         scriptp.set(nullptr);
-    else
+    } else {
         MOZ_ASSERT(!scriptp->enclosingScope());
+    }
 
     MOZ_TRY(VersionCheck(this));
     MOZ_TRY(XDRScript(this, nullptr, nullptr, nullptr, scriptp));
@@ -204,8 +246,9 @@ AutoXDRTree::AutoXDRTree(XDRCoderBase* xdr, AutoXDRTree::Key key)
 {
     // Expect sub-tree to start with the maximum alignment required.
     MOZ_ASSERT(xdr->isAligned(sizeof(js::XDRAlignment)));
-    if (key_ != AutoXDRTree::noKey)
+    if (key_ != AutoXDRTree::noKey) {
         xdr->createOrReplaceSubTree(this);
+    }
 }
 
 AutoXDRTree::~AutoXDRTree()
@@ -213,8 +256,9 @@ AutoXDRTree::~AutoXDRTree()
     // Expect sub-tree to end with the maximum alignment required.
     MOZ_ASSERT_IF(xdr_->resultCode() == JS::TranscodeResult_Ok,
                   xdr_->isAligned(sizeof(js::XDRAlignment)));
-    if (key_ != AutoXDRTree::noKey)
+    if (key_ != AutoXDRTree::noKey) {
         xdr_->endSubTree();
+    }
 }
 
 constexpr AutoXDRTree::Key AutoXDRTree::noKey;
@@ -253,8 +297,9 @@ XDRIncrementalEncoder::createOrReplaceSubTree(AutoXDRTree* child)
     AutoXDRTree* parent = scope_;
     child->parent_ = parent;
     scope_ = child;
-    if (oom_)
+    if (oom_) {
         return;
+    }
 
     size_t cursor = buf.cursor();
 
@@ -285,8 +330,9 @@ XDRIncrementalEncoder::createOrReplaceSubTree(AutoXDRTree* child)
 
     // Add content to the root of the new sub-tree,
     // i-e an empty slice with no children.
-    if (!node_->append(Slice { cursor, 0, AutoXDRTree::noSubTree }))
+    if (!node_->append(Slice { cursor, 0, AutoXDRTree::noSubTree })) {
         MOZ_CRASH("SlicesNode have a reserved space of 1.");
+    }
 }
 
 void
@@ -295,8 +341,9 @@ XDRIncrementalEncoder::endSubTree()
     AutoXDRTree* child = scope_;
     AutoXDRTree* parent = child->parent_;
     scope_ = parent;
-    if (oom_)
+    if (oom_) {
         return;
+    }
 
     size_t cursor = buf.cursor();
 
@@ -362,8 +409,9 @@ XDRIncrementalEncoder::linearize(JS::TranscodeBuffer& buffer)
         // These fields have different meaning, but they should be correlated if
         // the tree is well formatted.
         MOZ_ASSERT_IF(slice.child == AutoXDRTree::noSubTree, iter.empty());
-        if (iter.empty())
+        if (iter.empty()) {
             depthFirst.popBack();
+        }
 
         // Copy the bytes associated with the current slice to the transcode
         // buffer which would be serialized.
@@ -377,8 +425,9 @@ XDRIncrementalEncoder::linearize(JS::TranscodeBuffer& buffer)
         }
 
         // If we are at the end, go to back to the parent script.
-        if (slice.child == AutoXDRTree::noSubTree)
+        if (slice.child == AutoXDRTree::noSubTree) {
             continue;
+        }
 
         // Visit the sub-parts before visiting the rest of the current slice.
         SlicesTree::Ptr p = tree_.lookup(slice.child);

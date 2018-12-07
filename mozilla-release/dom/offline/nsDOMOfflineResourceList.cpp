@@ -21,6 +21,7 @@
 #include "nsIObserverService.h"
 #include "nsIScriptGlobalObject.h"
 #include "nsIWebNavigation.h"
+#include "nsOfflineCacheUpdate.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/OfflineResourceListBinding.h"
 #include "mozilla/EventDispatcher.h"
@@ -109,9 +110,12 @@ nsDOMOfflineResourceList::Init()
   }
 
   mManifestURI->GetAsciiSpec(mManifestSpec);
+  bool isPrivateWin = mLoadingPrincipal
+    ? mLoadingPrincipal->OriginAttributesRef().mPrivateBrowsingId > 0
+    : false;
 
   nsresult rv = nsContentUtils::GetSecurityManager()->
-                   CheckSameOriginURI(mManifestURI, mDocumentURI, true);
+                   CheckSameOriginURI(mManifestURI, mDocumentURI, true, isPrivateWin);
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Dynamically-managed resources are stored as a separate ownership list
@@ -390,12 +394,7 @@ nsDOMOfflineResourceList::MozAdd(const nsAString& aURI, ErrorResult& aRv)
 
   ClearCachedKeys();
 
-  nsCOMPtr<nsIOfflineCacheUpdate> update =
-    do_CreateInstance(NS_OFFLINECACHEUPDATE_CONTRACTID, &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    aRv.Throw(rv);
-    return;
-  }
+  nsCOMPtr<nsIOfflineCacheUpdate> update = new nsOfflineCacheUpdate();
 
   nsAutoCString clientID;
   rv = appCache->GetClientID(clientID);

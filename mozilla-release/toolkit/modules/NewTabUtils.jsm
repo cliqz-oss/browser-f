@@ -31,11 +31,13 @@ ChromeUtils.defineModuleGetter(this, "PageThumbs",
 ChromeUtils.defineModuleGetter(this, "BinarySearch",
   "resource://gre/modules/BinarySearch.jsm");
 
+#if 0
 ChromeUtils.defineModuleGetter(this, "pktApi",
   "chrome://pocket/content/pktApi.jsm");
 
 ChromeUtils.defineModuleGetter(this, "Pocket",
   "chrome://pocket/content/Pocket.jsm");
+#endif
 
 XPCOMUtils.defineLazyGetter(this, "gCryptoHash", function() {
   return Cc["@mozilla.org/security/hash;1"].createInstance(Ci.nsICryptoHash);
@@ -920,6 +922,8 @@ var ActivityStreamProvider = {
    * saved Pocket items.
    */
   fetchSavedPocketItems(requestData) {
+    return Promise.reject(null);
+#if 0
     const latestSince = (Services.prefs.getStringPref(PREF_POCKET_LATEST_SINCE, 0) * 1000);
 
     // Do not fetch Pocket items for users that have been inactive for too long, or are not logged in
@@ -937,6 +941,7 @@ var ActivityStreamProvider = {
         },
       });
     });
+#endif
   },
 
   /**
@@ -1375,8 +1380,11 @@ var ActivityStreamLinks = {
    *@returns {Promise} Returns a promise at completion
    */
   deletePocketEntry(aItemID) {
+    return Promise.reject(null);
+#if 0
     this._savedPocketStories = null;
     return new Promise((success, error) => pktApi.deleteItem(aItemID, {success, error}));
+#endif
   },
 
   /**
@@ -1389,8 +1397,11 @@ var ActivityStreamLinks = {
    *@returns {Promise} Returns a promise at completion
    */
   archivePocketEntry(aItemID) {
+    return Promise.reject(null);
+#if 0
     this._savedPocketStories = null;
     return new Promise((success, error) => pktApi.archiveItem(aItemID, {success, error}));
+#endif
   },
 
   /**
@@ -1408,6 +1419,8 @@ var ActivityStreamLinks = {
    *@returns {Promise} Returns a promise at completion
    */
   addPocketEntry(aUrl, aTitle, aBrowser) {
+    return Promise.reject(null);
+#if 0
     // If the user is not logged in, show the panel to prompt them to log in
     if (!pktApi.isUserLoggedIn()) {
       Pocket.savePage(aBrowser, aUrl, aTitle);
@@ -1424,6 +1437,7 @@ var ActivityStreamLinks = {
         error,
       });
     });
+#endif
   },
 
   /**

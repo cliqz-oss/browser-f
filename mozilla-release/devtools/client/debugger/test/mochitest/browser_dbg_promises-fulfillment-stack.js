@@ -40,14 +40,14 @@ function test() {
       source: TAB_URL,
       line: 1
     };
-    const [ tab,, panel ] = yield initDebugger(TAB_URL, options);
+    const [ tab, panel ] = yield initDebugger(TAB_URL, options);
 
     let client = new DebuggerClient(DebuggerServer.connectPipe());
     yield connect(client);
 
     let { tabs } = yield listTabs(client);
     let targetTab = findTab(tabs, TAB_URL);
-    yield attachTab(client, targetTab);
+    yield attachTarget(client, targetTab);
 
     yield testGetFulfillmentStack(client, targetTab, tab);
 

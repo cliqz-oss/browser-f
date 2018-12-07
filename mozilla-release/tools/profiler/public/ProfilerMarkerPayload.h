@@ -59,6 +59,7 @@ public:
   mozilla::TimeStamp GetStartTime() const { return mStartTime; }
 
 protected:
+  void StreamType(const char* aMarkerType, SpliceableJSONWriter& aWriter);
   void StreamCommonProps(const char* aMarkerType,
                          SpliceableJSONWriter& aWriter,
                          const mozilla::TimeStamp& aProcessStartTime,
@@ -124,13 +125,12 @@ private:
 class DOMEventMarkerPayload : public TracingMarkerPayload
 {
 public:
-  DOMEventMarkerPayload(const nsAString& aEventType, uint16_t aPhase,
+  DOMEventMarkerPayload(const nsAString& aEventType,
                         const mozilla::TimeStamp& aTimeStamp,
                         const char* aCategory, TracingKind aKind)
     : TracingMarkerPayload(aCategory, aKind)
     , mTimeStamp(aTimeStamp)
     , mEventType(aEventType)
-    , mPhase(aPhase)
   {}
 
   DECL_STREAM_PAYLOAD
@@ -138,7 +138,6 @@ public:
 private:
   mozilla::TimeStamp mTimeStamp;
   nsString mEventType;
-  uint16_t mPhase;
 };
 
 class UserTimingMarkerPayload : public ProfilerMarkerPayload
@@ -346,6 +345,18 @@ public:
 
 private:
   mozilla::ServoTraversalStatistics mStats;
+};
+
+class LongTaskMarkerPayload : public ProfilerMarkerPayload
+{
+public:
+  LongTaskMarkerPayload(const mozilla::TimeStamp& aStartTime,
+                        const mozilla::TimeStamp& aEndTime)
+    : ProfilerMarkerPayload(aStartTime, aEndTime)
+  {
+  }
+
+  DECL_STREAM_PAYLOAD
 };
 
 #endif // ProfilerMarkerPayload_h

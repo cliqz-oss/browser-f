@@ -2,13 +2,12 @@
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
 
+ChromeUtils.defineModuleGetter(this, "ExtensionTelemetry",
+                               "resource://gre/modules/ExtensionTelemetry.jsm");
 ChromeUtils.defineModuleGetter(this, "PageActions",
                                "resource:///modules/PageActions.jsm");
 ChromeUtils.defineModuleGetter(this, "PanelPopup",
                                "resource:///modules/ExtensionPopups.jsm");
-ChromeUtils.defineModuleGetter(this, "TelemetryStopwatch",
-                               "resource://gre/modules/TelemetryStopwatch.jsm");
-
 
 ChromeUtils.import("resource://gre/modules/ExtensionParent.jsm");
 
@@ -20,8 +19,6 @@ var {
 var {
   DefaultWeakMap,
 } = ExtensionUtils;
-
-const popupOpenTimingHistogram = "WEBEXT_PAGEACTION_POPUP_OPEN_MS";
 
 // WeakMap[Extension -> PageAction]
 let pageActionMap = new WeakMap();
@@ -68,6 +65,7 @@ this.pageAction = class extends ExtensionAPI {
       hideMatches,
       title: options.default_title || extension.name,
       popup: options.default_popup || "",
+      pinned: options.pinned,
     };
 
     this.browserStyle = options.browser_style;
@@ -90,7 +88,7 @@ this.pageAction = class extends ExtensionAPI {
         extensionID: extension.id,
         title: this.defaults.title,
         iconURL: this.defaults.icon,
-        pinnedToUrlbar: true,
+        pinnedToUrlbar: this.defaults.pinned,
         disabled: !this.defaults.show,
         onCommand: (event, buttonNode) => {
           this.handleClick(event.target.ownerGlobal);
@@ -264,7 +262,9 @@ this.pageAction = class extends ExtensionAPI {
   // that URL. Otherwise, a "click" event is emitted, and dispatched to
   // the any click listeners in the add-on.
   async handleClick(window) {
-    TelemetryStopwatch.start(popupOpenTimingHistogram, this);
+    const {extension} = this;
+
+    ExtensionTelemetry.pageActionPopupOpen.stopwatchStart(extension, this);
     let tab = window.gBrowser.selectedTab;
     let popupURL = this.tabContext.get(tab).popup;
 
@@ -277,13 +277,13 @@ this.pageAction = class extends ExtensionAPI {
     if (popupURL) {
       if (this.popupNode && this.popupNode.panel.state !== "closed") {
         // The panel is being toggled closed.
-        TelemetryStopwatch.cancel(popupOpenTimingHistogram, this);
+        ExtensionTelemetry.pageActionPopupOpen.stopwatchCancel(extension, this);
         window.BrowserPageActions.togglePanelForAction(this.browserPageAction,
                                                        this.popupNode.panel);
         return;
       }
 
-      this.popupNode = new PanelPopup(this.extension, window.document, popupURL,
+      this.popupNode = new PanelPopup(extension, window.document, popupURL,
                                       this.browserStyle);
       // Remove popupNode when it is closed.
       this.popupNode.panel.addEventListener("popuphiding", () => {
@@ -292,9 +292,9 @@ this.pageAction = class extends ExtensionAPI {
       await this.popupNode.contentReady;
       window.BrowserPageActions.togglePanelForAction(this.browserPageAction,
                                                      this.popupNode.panel);
-      TelemetryStopwatch.finish(popupOpenTimingHistogram, this);
+      ExtensionTelemetry.pageActionPopupOpen.stopwatchFinish(extension, this);
     } else {
-      TelemetryStopwatch.cancel(popupOpenTimingHistogram, this);
+      ExtensionTelemetry.pageActionPopupOpen.stopwatchCancel(extension, this);
       this.emit("click", tab);
     }
   }

@@ -110,8 +110,7 @@ class Raptor(object):
         if self.config['app'] == "geckoview":
             self.log.info("making the raptor control server port available to device")
             _tcp_port = "tcp:%s" % self.control_server.port
-            _cmd = ["reverse", _tcp_port, _tcp_port]
-            self.device.command_output(_cmd)
+            self.device.create_socket_connection('reverse', _tcp_port, _tcp_port)
 
     def get_playback_config(self, test):
         self.config['playback_tool'] = test.get('playback')
@@ -146,8 +145,7 @@ class Raptor(object):
         if self.config['app'] == "geckoview":
             self.log.info("making the raptor benchmarks server port available to device")
             _tcp_port = "tcp:%s" % benchmark_port
-            _cmd = ["reverse", _tcp_port, _tcp_port]
-            self.device.command_output(_cmd)
+            self.device.create_socket_connection('reverse', _tcp_port, _tcp_port)
 
         # must intall raptor addon each time because we dynamically update some content
         raptor_webext = os.path.join(webext_dir, 'raptor')
@@ -211,14 +209,35 @@ class Raptor(object):
             self.control_server.app_name = self.config['binary']
 
         else:
+            # For Firefox we need to set MOZ_MOZ_DISABLE_NONLOCAL_CONNECTIONS=1 env var before
+            # startup. This is because of restrictions on moz-beta that require webext to be
+            # signed unless disable non-local connections
+            if self.config['app'] == "firefox":
+                self.log.info("setting MOZ_DISABLE_NONLOCAL_CONNECTIONS=1")
+                os.environ['MOZ_DISABLE_NONLOCAL_CONNECTIONS'] = "1"
+
             # now start the desktop browser
             self.log.info("starting %s" % self.config['app'])
+
+            # if running a pageload test on google chrome, add the cmd line options
+            # to turn on the proxy and ignore security certificate errors
+            if self.config['app'] == "chrome" and test.get('playback', None) is not None:
+                chrome_args = [
+                    '--proxy-server="http=127.0.0.1:8080;https=127.0.0.1:8080;ssl=127.0.0.1:8080"',
+                    '--ignore-certificate-errors'
+                ]
+                self.runner.cmdargs.extend(chrome_args)
 
             self.runner.start()
             proc = self.runner.process_handler
             self.output_handler.proc = proc
 
             self.control_server.browser_proc = proc
+
+            # pageload tests need to be able to access non-local connections via mitmproxy
+            if self.config['app'] == "firefox" and test.get('playback', None) is not None:
+                self.log.info("setting MOZ_DISABLE_NONLOCAL_CONNECTIONS=0")
+                os.environ['MOZ_DISABLE_NONLOCAL_CONNECTIONS'] = "0"
 
         # set our cs flag to indicate we are running the browser/app
         self.control_server._finished = False
@@ -272,10 +291,18 @@ class Raptor(object):
         self.config['raptor_json_path'] = raptor_json_path
         return self.results_handler.summarize_and_output(self.config)
 
+    def get_page_timeout_list(self):
+        return self.results_handler.page_timeout_list
+
     def clean_up(self):
         self.control_server.stop()
         if self.config['app'] != "geckoview":
             self.runner.stop()
+        elif self.config['app'] == 'geckoview':
+            self.log.info('removing reverse socket connections')
+            self.device.remove_socket_connections('reverse')
+        else:
+            pass
         self.log.info("finished")
 
 
@@ -316,7 +343,17 @@ def main(args=sys.argv[1:]):
 
     if not success:
         # didn't get test results; test timed out or crashed, etc. we want job to fail
-        LOG.critical("error: no raptor test results were found")
+        LOG.critical("TEST-UNEXPECTED-FAIL: no raptor test results were found")
+        os.sys.exit(1)
+
+    # if we have results but one test page timed out (i.e. one tp6 test page didn't load
+    # but others did) we still dumped PERFHERDER_DATA for the successfull pages but we
+    # want the overall test job to marked as a failure
+    pages_that_timed_out = raptor.get_page_timeout_list()
+    if len(pages_that_timed_out) > 0:
+        for _page in pages_that_timed_out:
+            LOG.critical("TEST-UNEXPECTED-FAIL: test '%s' timed out loading test page: %s"
+                         % (_page['test_name'], _page['url']))
         os.sys.exit(1)
 
 

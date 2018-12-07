@@ -187,8 +187,12 @@ MediaEngineRemoteVideoSource::Allocate(
   LOG((__PRETTY_FUNCTION__));
   AssertIsOnOwningThread();
 
-  MOZ_ASSERT(mInitDone);
   MOZ_ASSERT(mState == kReleased);
+
+  if (!mInitDone) {
+    LOG(("Init not done"));
+    return NS_ERROR_FAILURE;
+  }
 
   NormalizedConstraints constraints(aConstraints);
   webrtc::CaptureCapability newCapability;
@@ -292,8 +296,8 @@ MediaEngineRemoteVideoSource::Start(const RefPtr<const AllocationHandle>& aHandl
   LOG((__PRETTY_FUNCTION__));
   AssertIsOnOwningThread();
 
-  MOZ_ASSERT(mInitDone);
   MOZ_ASSERT(mState == kAllocated || mState == kStopped);
+  MOZ_ASSERT(mInitDone);
   MOZ_ASSERT(mStream);
   MOZ_ASSERT(IsTrackIDExplicit(mTrackID));
 
@@ -550,8 +554,10 @@ MediaEngineRemoteVideoSource::DeliverFrame(uint8_t* aBuffer,
     std::swap(req_ideal_width, req_ideal_height);
   }
 
-  int32_t dst_max_width = std::min(req_max_width, aProps.width());
-  int32_t dst_max_height = std::min(req_max_height, aProps.height());
+  int32_t dst_max_width = req_max_width == 0 ? aProps.width() :
+    std::min(req_max_width, aProps.width());
+  int32_t dst_max_height = req_max_height == 0 ? aProps.height() :
+    std::min(req_max_height, aProps.height());
   // This logic works for both camera and screen sharing case.
   // for camera case, req_ideal_width and req_ideal_height is 0.
   // The following snippet will set dst_width to dst_max_width and dst_height to dst_max_height
@@ -791,36 +797,6 @@ MediaEngineRemoteVideoSource::GetBestFitnessDistance(
 }
 
 static void
-LogConstraints(const NormalizedConstraintSet& aConstraints)
-{
-  auto& c = aConstraints;
-  if (c.mWidth.mIdeal.isSome()) {
-    LOG(("Constraints: width: { min: %d, max: %d, ideal: %d }",
-         c.mWidth.mMin, c.mWidth.mMax,
-         c.mWidth.mIdeal.valueOr(0)));
-  } else {
-    LOG(("Constraints: width: { min: %d, max: %d }",
-         c.mWidth.mMin, c.mWidth.mMax));
-  }
-  if (c.mHeight.mIdeal.isSome()) {
-    LOG(("             height: { min: %d, max: %d, ideal: %d }",
-         c.mHeight.mMin, c.mHeight.mMax,
-         c.mHeight.mIdeal.valueOr(0)));
-  } else {
-    LOG(("             height: { min: %d, max: %d }",
-         c.mHeight.mMin, c.mHeight.mMax));
-  }
-  if (c.mFrameRate.mIdeal.isSome()) {
-    LOG(("             frameRate: { min: %f, max: %f, ideal: %f }",
-         c.mFrameRate.mMin, c.mFrameRate.mMax,
-         c.mFrameRate.mIdeal.valueOr(0)));
-  } else {
-    LOG(("             frameRate: { min: %f, max: %f }",
-         c.mFrameRate.mMin, c.mFrameRate.mMax));
-  }
-}
-
-static void
 LogCapability(const char* aHeader,
               const webrtc::CaptureCapability &aCapability,
               uint32_t aDistance)
@@ -879,11 +855,11 @@ MediaEngineRemoteVideoSource::ChooseCapability(
     LOG(("ChooseCapability: prefs: %dx%d @%dfps",
          aPrefs.GetWidth(), aPrefs.GetHeight(),
          aPrefs.mFPS));
-    LogConstraints(aConstraints);
+    MediaConstraintsHelper::LogConstraints(aConstraints);
     if (!aConstraints.mAdvanced.empty()) {
       LOG(("Advanced array[%zu]:", aConstraints.mAdvanced.size()));
       for (auto& advanced : aConstraints.mAdvanced) {
-        LogConstraints(advanced);
+        MediaConstraintsHelper::LogConstraints(advanced);
       }
     }
   }
@@ -899,9 +875,11 @@ MediaEngineRemoteVideoSource::ChooseCapability(
       // algorithm there.
       // TODO: This can be removed in bug 1453269.
       aCapability.width =
-        (c.mWidth.mIdeal.valueOr(0) & 0xffff) << 16 | (c.mWidth.mMax & 0xffff);
+        (std::min(0xffff, c.mWidth.mIdeal.valueOr(0)) & 0xffff) << 16 |
+        (std::min(0xffff, c.mWidth.mMax) & 0xffff);
       aCapability.height =
-        (c.mHeight.mIdeal.valueOr(0) & 0xffff) << 16 | (c.mHeight.mMax & 0xffff);
+        (std::min(0xffff, c.mHeight.mIdeal.valueOr(0)) & 0xffff) << 16 |
+        (std::min(0xffff, c.mHeight.mMax) & 0xffff);
       aCapability.maxFPS =
         c.mFrameRate.Clamp(c.mFrameRate.mIdeal.valueOr(aPrefs.mFPS));
       return true;
@@ -1013,9 +991,9 @@ MediaEngineRemoteVideoSource::ChooseCapability(
   uint32_t sameDistance = candidateSet[0].mDistance;
   {
     MediaTrackConstraintSet prefs;
-    prefs.mWidth.SetAsLong() = aPrefs.GetWidth();
-    prefs.mHeight.SetAsLong() = aPrefs.GetHeight();
-    prefs.mFrameRate.SetAsDouble() = aPrefs.mFPS;
+    prefs.mWidth.Construct().SetAsLong() = aPrefs.GetWidth();
+    prefs.mHeight.Construct().SetAsLong() = aPrefs.GetHeight();
+    prefs.mFrameRate.Construct().SetAsDouble() = aPrefs.mFPS;
     NormalizedConstraintSet normPrefs(prefs, false);
 
     for (auto& candidate : candidateSet) {

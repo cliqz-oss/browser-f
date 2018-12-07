@@ -18,11 +18,14 @@ function test() {
 
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, "about:blank");
   BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser).then(() => {
-    gBrowser.loadURI(xpipath);
+    BrowserTestUtils.loadURI(gBrowser, xpipath);
   });
 }
 
 function install_ended(install, addon) {
+  Assert.deepEqual(install.installTelemetryInfo, {source: "file-url"},
+                   "Got the expected install.installTelemetryInfo");
+
   install.cancel();
 }
 

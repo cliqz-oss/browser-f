@@ -43,11 +43,6 @@ if CONFIG["MOZ_DEBUG"] == "1":
 
 if CONFIG["OS_TARGET"] == "Android":
 
-    CXXFLAGS += [
-        "-msse2",
-        "-msse2"
-    ]
-
     DEFINES["ANDROID"] = True
     DEFINES["ANDROID_NDK_VERSION"] = "r12b"
     DEFINES["DISABLE_NACL"] = True
@@ -166,9 +161,18 @@ if not CONFIG["MOZ_DEBUG"] and CONFIG["OS_TARGET"] == "OpenBSD":
 
     DEFINES["_FORTIFY_SOURCE"] = "2"
 
-if CONFIG["MOZ_DEBUG"] == "1" and CONFIG["OS_TARGET"] == "WINNT":
+if CONFIG["CPU_ARCH"] == "x86" and CONFIG["OS_TARGET"] == "Android":
 
-    DEFINES["_HAS_ITERATOR_DEBUGGING"] = "0"
+    CXXFLAGS += [
+        "-msse2",
+        "-msse2"
+    ]
+
+if CONFIG["CPU_ARCH"] == "x86_64" and CONFIG["OS_TARGET"] == "Android":
+
+    CXXFLAGS += [
+        "-msse2"
+    ]
 
 if CONFIG["CPU_ARCH"] == "x86" and CONFIG["OS_TARGET"] == "FreeBSD":
 

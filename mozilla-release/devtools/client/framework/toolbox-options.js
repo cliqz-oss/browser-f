@@ -82,11 +82,6 @@ OptionsPanel.prototype = {
   },
 
   async open() {
-    // For local debugging we need to make the target remote.
-    if (!this.target.isRemote) {
-      await this.target.makeRemote();
-    }
-
     this.setupToolsList();
     this.setupToolbarButtonsList();
     this.setupThemeList();
@@ -266,9 +261,14 @@ OptionsPanel.prototype = {
       return tool.visibilityswitch && !tool.hiddenInOptions;
     });
 
+    const fragment = this.panelDoc.createDocumentFragment();
     for (const tool of toggleableTools) {
-      defaultToolsBox.appendChild(createToolCheckbox(tool));
+      fragment.appendChild(createToolCheckbox(tool));
     }
+
+    const toolsNotSupportedLabelNode =
+      this.panelDoc.getElementById("tools-not-supported-label");
+    defaultToolsBox.insertBefore(fragment, toolsNotSupportedLabelNode);
 
     // Clean up any existent additional tools content.
     for (const label of additionalToolsBox.querySelectorAll("label")) {
@@ -368,15 +368,10 @@ OptionsPanel.prototype = {
     // Labels for these new buttons are nightly only and mostly intended for working on
     // devtools.
     const prefDefinitions = [{
-      pref: "devtools.debugger.new-debugger-frontend",
-      label: L10N.getStr("toolbox.options.enableNewDebugger.label"),
-      id: "devtools-new-debugger",
-      parentId: "debugger-options"
-    }, {
       pref: "devtools.performance.new-panel-enabled",
       label: "Enable new performance recorder (then re-open DevTools)",
       id: "devtools-new-performance",
-      parentId: "context-options"
+      parentId: "context-options",
     }];
 
     const createPreferenceOption = ({pref, label, id}) => {
@@ -401,7 +396,15 @@ OptionsPanel.prototype = {
 
     for (const prefDefinition of prefDefinitions) {
       const parent = this.panelDoc.getElementById(prefDefinition.parentId);
-      parent.appendChild(createPreferenceOption(prefDefinition));
+      // We want to insert the new definition after the last existing
+      // definition, but before any other element.
+      // For example in the "Advanced Settings" column there's indeed a <span>
+      // text at the end, and we want that it stays at the end.
+      // The reference element can be `null` if there's no label or if there's
+      // no element after the last label. But that's OK and it will do what we
+      // want.
+      const referenceElement = parent.querySelector("label:last-of-type + *");
+      parent.insertBefore(createPreferenceOption(prefDefinition), referenceElement);
       parent.removeAttribute("hidden");
     }
   },
@@ -457,13 +460,16 @@ OptionsPanel.prototype = {
     }
 
     if (this.target.activeTab && !this.target.chrome) {
-      const [ response ] = await this.target.client.attachTab(this.target.activeTab._actor);
-      this._origJavascriptEnabled = !response.javascriptEnabled;
-      this.disableJSNode.checked = this._origJavascriptEnabled;
+      this.disableJSNode.checked =
+        !this.target.activeTab.configureOptions.javascriptEnabled;
       this.disableJSNode.addEventListener("click", this._disableJSClicked);
     } else {
       // Hide the checkbox and label
       this.disableJSNode.parentNode.style.display = "none";
+
+      const triggersPageRefreshLabel =
+        this.panelDoc.getElementById("triggers-page-refresh-label");
+      triggersPageRefreshLabel.style.display = "none";
     }
   },
 
@@ -502,39 +508,24 @@ OptionsPanel.prototype = {
     const checked = event.target.checked;
 
     const options = {
-      "javascriptEnabled": !checked
+      "javascriptEnabled": !checked,
     };
 
-    this.target.activeTab.reconfigure(options);
+    this.target.activeTab.reconfigure({ options });
   },
 
   destroy: function() {
-    if (this.destroyPromise) {
-      return this.destroyPromise;
+    if (this.destroyed) {
+      return;
     }
+    this.destroyed = true;
 
     this._removeListeners();
 
-    this.destroyPromise = new Promise(resolve => {
-      if (this.target.activeTab) {
-        this.disableJSNode.removeEventListener("click", this._disableJSClicked);
-        // FF41+ automatically cleans up state in actor on disconnect
-        if (!this.target.activeTab.traits.noTabReconfigureOnClose) {
-          const options = {
-            "javascriptEnabled": this._origJavascriptEnabled,
-            "performReload": false
-          };
-          this.target.activeTab.reconfigure(options, resolve);
-        } else {
-          resolve();
-        }
-      } else {
-        resolve();
-      }
-    });
+    if (this.target.activeTab) {
+      this.disableJSNode.removeEventListener("click", this._disableJSClicked);
+    }
 
     this.panelWin = this.panelDoc = this.disableJSNode = this.toolbox = null;
-
-    return this.destroyPromise;
-  }
+  },
 };

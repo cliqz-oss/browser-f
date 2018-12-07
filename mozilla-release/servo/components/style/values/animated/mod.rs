@@ -292,8 +292,9 @@ impl ToAnimatedValue for ComputedMaxLength {
     #[inline]
     fn from_animated_value(animated: Self::AnimatedValue) -> Self {
         use values::computed::{Length, LengthOrPercentageOrNone, Percentage};
+        use values::generics::length::MaxLength as GenericMaxLength;
         match animated {
-            ComputedMaxLength::LengthOrPercentageOrNone(lopn) => {
+            GenericMaxLength::LengthOrPercentageOrNone(lopn) => {
                 let result = match lopn {
                     LengthOrPercentageOrNone::Length(px) => {
                         LengthOrPercentageOrNone::Length(Length::new(px.px().max(0.)))
@@ -303,7 +304,7 @@ impl ToAnimatedValue for ComputedMaxLength {
                     },
                     _ => lopn,
                 };
-                ComputedMaxLength::LengthOrPercentageOrNone(result)
+                GenericMaxLength::LengthOrPercentageOrNone(result)
             },
             _ => animated,
         }
@@ -321,8 +322,9 @@ impl ToAnimatedValue for ComputedMozLength {
     #[inline]
     fn from_animated_value(animated: Self::AnimatedValue) -> Self {
         use values::computed::{Length, LengthOrPercentageOrAuto, Percentage};
+        use values::generics::length::MozLength as GenericMozLength;
         match animated {
-            ComputedMozLength::LengthOrPercentageOrAuto(lopa) => {
+            GenericMozLength::LengthOrPercentageOrAuto(lopa) => {
                 let result = match lopa {
                     LengthOrPercentageOrAuto::Length(px) => {
                         LengthOrPercentageOrAuto::Length(Length::new(px.px().max(0.)))
@@ -332,7 +334,7 @@ impl ToAnimatedValue for ComputedMozLength {
                     },
                     _ => lopa,
                 };
-                ComputedMozLength::LengthOrPercentageOrAuto(result)
+                GenericMozLength::LengthOrPercentageOrAuto(result)
             },
             _ => animated,
         }
@@ -390,5 +392,19 @@ where
             self.width.to_animated_zero()?,
             self.height.to_animated_zero()?,
         ))
+    }
+}
+
+impl<T> ToAnimatedZero for Box<[T]>
+where
+    T: ToAnimatedZero,
+{
+    #[inline]
+    fn to_animated_zero(&self) -> Result<Self, ()> {
+        let v = self
+            .iter()
+            .map(|v| v.to_animated_zero())
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(v.into_boxed_slice())
     }
 }

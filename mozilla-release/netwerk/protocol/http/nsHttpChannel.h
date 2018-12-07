@@ -32,12 +32,13 @@
 #include "nsIRaceCacheWithNetwork.h"
 #include "mozilla/extensions/PStreamFilterParent.h"
 #include "mozilla/Mutex.h"
+#include "nsITabParent.h"
 
 class nsDNSPrefetch;
 class nsICancelable;
 class nsIHttpChannelAuthProvider;
 class nsInputStreamPump;
-class nsISSLStatus;
+class nsITransportSecurityInfo;
 
 namespace mozilla { namespace net {
 
@@ -278,6 +279,10 @@ public:
     void SetTransactionObserver(TransactionObserver *arg) { mTransactionObserver = arg; }
     TransactionObserver *GetTransactionObserver() { return mTransactionObserver; }
 
+    typedef MozPromise<nsCOMPtr<nsITabParent>, nsresult, false> TabPromise;
+    already_AddRefed<TabPromise> TakeRedirectTabPromise() { return mRedirectTabPromise.forget(); }
+    uint64_t CrossProcessRedirectIdentifier() { return mCrossProcessRedirectIdentifier; }
+
 protected:
     virtual ~nsHttpChannel();
 
@@ -347,6 +352,7 @@ private:
     virtual MOZ_MUST_USE nsresult
     SetupReplacementChannel(nsIURI *, nsIChannel *, bool preserveMethod,
                             uint32_t redirectFlags) override;
+    nsresult StartCrossProcessRedirect();
 
     // proxy specific methods
     MOZ_MUST_USE nsresult ProxyFailover();
@@ -433,8 +439,8 @@ private:
      * from ProcessSecurityHeaders.
      */
     MOZ_MUST_USE nsresult ProcessSingleSecurityHeader(uint32_t aType,
-                                                      nsISSLStatus *aSSLStatus,
-                                                      uint32_t aFlags);
+      nsITransportSecurityInfo* aSecInfo,
+      uint32_t aFlags);
 
     void InvalidateCacheEntryForLocation(const char *location);
     void AssembleCacheKey(const char *spec, uint32_t postID, nsACString &key);
@@ -506,6 +512,12 @@ private:
     nsCOMPtr<nsIURI> mRedirectURI;
     nsCOMPtr<nsIChannel> mRedirectChannel;
     nsCOMPtr<nsIChannel> mPreflightChannel;
+
+    // The associated childChannel is getting relocated to another process.
+    // This promise will be resolved when that process is set up.
+    RefPtr<TabPromise> mRedirectTabPromise;
+    // This identifier is passed to the childChannel in order to identify it.
+    uint64_t mCrossProcessRedirectIdentifier = 0;
 
     // nsChannelClassifier checks this channel's URI against
     // the URI classifier service.

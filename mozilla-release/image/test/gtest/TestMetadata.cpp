@@ -108,6 +108,7 @@ CheckMetadata(const ImageTestCase& aTestCase,
   // Create a full decoder, so we can compare the result.
   decoder =
     DecoderFactory::CreateAnonymousDecoder(decoderType, sourceBuffer, Nothing(),
+                                           DecoderFlags::FIRST_FRAME_ONLY,
                                            DefaultSurfaceFlags());
   ASSERT_TRUE(decoder != nullptr);
   task = new AnonymousDecodingTask(WrapNotNull(decoder));
@@ -249,7 +250,8 @@ TEST_F(ImageDecoderMetadata, NoFrameDelayGIFFullDecode)
     SurfaceCache::Lookup(ImageKey(image.get()),
                          RasterSurfaceKey(imageSize,
                                           DefaultSurfaceFlags(),
-                                          PlaybackType::eAnimated));
+                                          PlaybackType::eAnimated),
+                         /* aMarkUsed = */ true);
   ASSERT_EQ(MatchType::EXACT, result.Type());
 
   EXPECT_TRUE(NS_SUCCEEDED(result.Surface().Seek(0)));

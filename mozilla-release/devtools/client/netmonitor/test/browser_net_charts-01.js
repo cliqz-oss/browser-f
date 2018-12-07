@@ -16,7 +16,7 @@ add_task(async function() {
   const { Chart } = windowRequire("devtools/client/shared/widgets/Chart");
 
   const wait = waitForNetworkEvents(monitor, 1);
-  tab.linkedBrowser.loadURI(SIMPLE_URL);
+  BrowserTestUtils.loadURI(tab.linkedBrowser, SIMPLE_URL);
   await wait;
 
   const pie = Chart.Pie(document, {
@@ -24,14 +24,14 @@ add_task(async function() {
     height: 100,
     data: [{
       size: 1,
-      label: "foo"
+      label: "foo",
     }, {
       size: 2,
-      label: "bar"
+      label: "bar",
     }, {
       size: 3,
-      label: "baz"
-    }]
+      label: "baz",
+    }],
   });
 
   const node = pie.node;

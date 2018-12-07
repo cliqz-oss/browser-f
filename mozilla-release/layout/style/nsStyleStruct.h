@@ -89,7 +89,6 @@ struct Position {
 
 struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleFont
 {
-  nsStyleFont(const nsFont& aFont, const nsPresContext* aContext);
   nsStyleFont(const nsStyleFont& aStyleFont);
   explicit nsStyleFont(const nsPresContext* aContext);
   ~nsStyleFont() {
@@ -106,15 +105,7 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleFont
    * negative results.  The result is clamped to nscoord_MIN .. nscoord_MAX.
    */
   static nscoord ZoomText(const nsPresContext* aPresContext, nscoord aSize);
-  /**
-   * Return aSize divided by the current text zoom factor (in aPresContext).
-   * aSize is allowed to be negative, but the caller is expected to deal with
-   * negative results.  The result is clamped to nscoord_MIN .. nscoord_MAX.
-   */
-  static nscoord UnZoomText(nsPresContext* aPresContext, nscoord aSize);
   static already_AddRefed<nsAtom> GetLanguage(const nsPresContext* aPresContext);
-
-  void EnableZoom(nsPresContext* aContext, bool aEnable);
 
   nsFont  mFont;
   nscoord mSize;        // Our "computed size". Can be different
@@ -228,15 +219,13 @@ private:
  * RequestDiscard() are made to the imgRequestProxy and ImageTracker as
  * appropriate, according to the mode flags passed in to the constructor.
  *
- * The constructor receives a css::ImageValue to represent the url()
+ * The constructor receives a css::URLValue to represent the url()
  * information, which is held on to for the comparisons done in
  * DefinitelyEquals().
  */
 class nsStyleImageRequest
 {
 public:
-  typedef mozilla::css::URLValueData URLValueData;
-
   // Flags describing whether the imgRequestProxy must be tracked in the
   // ImageTracker, whether LockImage/UnlockImage calls will be made
   // when obtaining and releasing the imgRequestProxy, and whether
@@ -260,7 +249,7 @@ public:
 
   // Can be called from any thread, but Resolve() must be called later
   // on the main thread before get() can be used.
-  nsStyleImageRequest(Mode aModeFlags, mozilla::css::ImageValue* aImageValue);
+  nsStyleImageRequest(Mode aModeFlags, mozilla::css::URLValue* aImageValue);
 
   bool Resolve(nsPresContext*, const nsStyleImageRequest* aOldImageRequest);
   bool IsResolved() const { return mResolved; }
@@ -274,11 +263,11 @@ public:
     return const_cast<nsStyleImageRequest*>(this)->get();
   }
 
-  // Returns whether the ImageValue objects in the two nsStyleImageRequests
-  // return true from URLValueData::DefinitelyEqualURIs.
+  // Returns whether the URLValue objects in the two nsStyleImageRequests
+  // return true from URLValue::DefinitelyEqualURIs.
   bool DefinitelyEquals(const nsStyleImageRequest& aOther) const;
 
-  mozilla::css::ImageValue* GetImageValue() const { return mImageValue; }
+  mozilla::css::URLValue* GetImageValue() const { return mImageValue; }
 
   already_AddRefed<nsIURI> GetImageURI() const;
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(nsStyleImageRequest);
@@ -290,7 +279,7 @@ private:
   void MaybeTrackAndLock();
 
   RefPtr<imgRequestProxy> mRequestProxy;
-  RefPtr<mozilla::css::ImageValue> mImageValue;
+  RefPtr<mozilla::css::URLValue> mImageValue;
   RefPtr<mozilla::dom::ImageTracker> mImageTracker;
 
   // Cache DocGroup for dispatching events in the destructor.
@@ -344,8 +333,7 @@ private:
  */
 struct nsStyleImage
 {
-  typedef mozilla::css::URLValue     URLValue;
-  typedef mozilla::css::URLValueData URLValueData;
+  typedef mozilla::css::URLValue URLValue;
 
   nsStyleImage();
   ~nsStyleImage();
@@ -399,7 +387,7 @@ struct nsStyleImage
 
   already_AddRefed<nsIURI> GetImageURI() const;
 
-  URLValueData* GetURLValue() const;
+  URLValue* GetURLValue() const;
 
   /**
    * Compute the actual crop rect in pixels, using the source image bounds.
@@ -975,13 +963,6 @@ private:
 // one device pixel.
 #define NS_ROUND_BORDER_TO_PIXELS(l,tpp) \
   ((l) == 0) ? 0 : std::max((tpp), (l) / (tpp) * (tpp))
-// Outline offset is rounded to the nearest integer number of pixels, but values
-// between zero and one device pixels are always rounded up to one device pixel.
-// Note that the offset can be negative.
-#define NS_ROUND_OFFSET_TO_PIXELS(l,tpp) \
-  (((l) == 0) ? 0 : \
-    ((l) > 0) ? std::max( (tpp), ((l) + ((tpp) / 2)) / (tpp) * (tpp)) : \
-                std::min(-(tpp), ((l) - ((tpp) / 2)) / (tpp) * (tpp)))
 
 // Returns if the given border style type is visible or not
 static bool IsVisibleBorderStyle(uint8_t aStyle)
@@ -1242,9 +1223,9 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleList
   nsChangeHint CalcDifference(const nsStyleList& aNewData,
                               const nsStyleDisplay* aOldDisplay) const;
 
-  static void Shutdown() {
+  static void Shutdown()
+  {
     sInitialQuotes = nullptr;
-    sNoneQuotes = nullptr;
   }
 
   imgRequestProxy* GetListStyleImage() const
@@ -1254,12 +1235,10 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleList
 
   already_AddRefed<nsIURI> GetListStyleImageURI() const;
 
-  const nsStyleQuoteValues::QuotePairArray& GetQuotePairs() const;
-
-  void SetQuotesInherit(const nsStyleList* aOther);
-  void SetQuotesInitial();
-  void SetQuotesNone();
-  void SetQuotes(nsStyleQuoteValues::QuotePairArray&& aValues);
+  const nsStyleQuoteValues::QuotePairArray& GetQuotePairs() const
+  {
+    return mQuotes->mQuotePairs;
+  }
 
   uint8_t mListStylePosition;
   RefPtr<nsStyleImageRequest> mListStyleImage;
@@ -1275,7 +1254,6 @@ public:
 private:
   // nsStyleQuoteValues objects representing two common values, for sharing.
   static mozilla::StaticRefPtr<nsStyleQuoteValues> sInitialQuotes;
-  static mozilla::StaticRefPtr<nsStyleQuoteValues> sNoneQuotes;
 };
 
 struct nsStyleGridLine
@@ -1318,23 +1296,9 @@ struct nsStyleGridLine
            mLineName != aOther.mLineName;
   }
 
-  void SetToInteger(uint32_t value)
-  {
-    mHasSpan = false;
-    mInteger = value;
-    mLineName.Truncate();
-  }
-
-  void SetAuto()
-  {
-    mHasSpan = false;
-    mInteger = 0;
-    mLineName.Truncate();
-  }
-
   bool IsAuto() const
   {
-    bool haveInitialValues =  mInteger == 0 && mLineName.IsEmpty();
+    bool haveInitialValues = mInteger == 0 && mLineName.IsEmpty();
     MOZ_ASSERT(!(haveInitialValues && mHasSpan),
                "should not have 'span' when other components are "
                "at their initial values");
@@ -1498,50 +1462,6 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStylePosition
   nsStyleCoord    mColumnGap;       // normal, coord, percent, calc
   nsStyleCoord    mRowGap;          // normal, coord, percent, calc
 
-  // FIXME: Logical-coordinate equivalents to these WidthDepends... and
-  // HeightDepends... methods have been introduced (see below); we probably
-  // want to work towards removing the physical methods, and using the logical
-  // ones in all cases.
-
-  bool WidthDependsOnContainer() const
-    {
-      return mWidth.GetUnit() == eStyleUnit_Auto ||
-        WidthCoordDependsOnContainer(mWidth);
-    }
-
-  // NOTE: For a flex item, "min-width:auto" is supposed to behave like
-  // "min-content", which does depend on the container, so you might think we'd
-  // need a special case for "flex item && min-width:auto" here.  However,
-  // we don't actually need that special-case code, because flex items are
-  // explicitly supposed to *ignore* their min-width (i.e. behave like it's 0)
-  // until the flex container explicitly considers it.  So -- since the flex
-  // container doesn't rely on this method, we don't need to worry about
-  // special behavior for flex items' "min-width:auto" values here.
-  bool MinWidthDependsOnContainer() const
-    { return WidthCoordDependsOnContainer(mMinWidth); }
-  bool MaxWidthDependsOnContainer() const
-    { return WidthCoordDependsOnContainer(mMaxWidth); }
-
-  // Note that these functions count 'auto' as depending on the
-  // container since that's the case for absolutely positioned elements.
-  // However, some callers do not care about this case and should check
-  // for it, since it is the most common case.
-  // FIXME: We should probably change the assumption to be the other way
-  // around.
-  // Consider this as part of moving to the logical-coordinate APIs.
-  bool HeightDependsOnContainer() const
-    {
-      return mHeight.GetUnit() == eStyleUnit_Auto || // CSS 2.1, 10.6.4, item (5)
-        HeightCoordDependsOnContainer(mHeight);
-    }
-
-  // NOTE: The comment above MinWidthDependsOnContainer about flex items
-  // applies here, too.
-  bool MinHeightDependsOnContainer() const
-    { return HeightCoordDependsOnContainer(mMinHeight); }
-  bool MaxHeightDependsOnContainer() const
-    { return HeightCoordDependsOnContainer(mMaxHeight); }
-
   bool OffsetHasPercent(mozilla::Side aSide) const
   {
     return mOffset.Get(aSide).HasPercent();
@@ -1574,9 +1494,17 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStylePosition
   const nsStyleGridTemplate& GridTemplateRows() const;
 
 private:
-  static bool WidthCoordDependsOnContainer(const nsStyleCoord &aCoord);
-  static bool HeightCoordDependsOnContainer(const nsStyleCoord &aCoord)
-    { return aCoord.HasPercent(); }
+  static bool ISizeCoordDependsOnContainer(const nsStyleCoord &aCoord)
+  {
+    return aCoord.HasPercent() ||
+           (aCoord.GetUnit() == eStyleUnit_Enumerated &&
+            (aCoord.GetIntValue() == NS_STYLE_WIDTH_FIT_CONTENT ||
+             aCoord.GetIntValue() == NS_STYLE_WIDTH_AVAILABLE));
+  }
+  static bool BSizeCoordDependsOnContainer(const nsStyleCoord &aCoord)
+  {
+    return aCoord.HasPercent();
+  }
 };
 
 struct nsStyleTextOverflowSide
@@ -1812,13 +1740,6 @@ struct StyleTransition
   nsCSSPropertyID GetProperty() const { return mProperty; }
   nsAtom* GetUnknownProperty() const { return mUnknownProperty; }
 
-  void SetTimingFunction(const nsTimingFunction& aTimingFunction)
-    { mTimingFunction = aTimingFunction; }
-  void SetDelay(float aDelay) { mDelay = aDelay; }
-  void SetDuration(float aDuration) { mDuration = aDuration; }
-
-  nsTimingFunction& TimingFunctionSlot() { return mTimingFunction; }
-
   bool operator==(const StyleTransition& aOther) const;
   bool operator!=(const StyleTransition& aOther) const
     { return !(*this == aOther); }
@@ -1851,19 +1772,8 @@ struct StyleAnimation
   uint8_t GetPlayState() const { return mPlayState; }
   float GetIterationCount() const { return mIterationCount; }
 
-  void SetTimingFunction(const nsTimingFunction& aTimingFunction)
-    { mTimingFunction = aTimingFunction; }
-  void SetDelay(float aDelay) { mDelay = aDelay; }
-  void SetDuration(float aDuration) { mDuration = aDuration; }
   void SetName(already_AddRefed<nsAtom> aName) { mName = aName; }
   void SetName(nsAtom* aName) { mName = aName; }
-  void SetDirection(dom::PlaybackDirection aDirection) { mDirection = aDirection; }
-  void SetFillMode(dom::FillMode aFillMode) { mFillMode = aFillMode; }
-  void SetPlayState(uint8_t aPlayState) { mPlayState = aPlayState; }
-  void SetIterationCount(float aIterationCount)
-    { mIterationCount = aIterationCount; }
-
-  nsTimingFunction& TimingFunctionSlot() { return mTimingFunction; }
 
   bool operator==(const StyleAnimation& aOther) const;
   bool operator!=(const StyleAnimation& aOther) const
@@ -1894,18 +1804,7 @@ public:
   nsCSSKeyword GetShapeTypeName() const;
 
   StyleFillRule GetFillRule() const { return mFillRule; }
-  void SetFillRule(StyleFillRule aFillRule)
-  {
-    MOZ_ASSERT(mType == StyleBasicShapeType::Polygon, "expected polygon");
-    mFillRule = aFillRule;
-  }
 
-  mozilla::Position& GetPosition() {
-    MOZ_ASSERT(mType == StyleBasicShapeType::Circle ||
-               mType == StyleBasicShapeType::Ellipse,
-               "expected circle or ellipse");
-    return mPosition;
-  }
   const mozilla::Position& GetPosition() const {
     MOZ_ASSERT(mType == StyleBasicShapeType::Circle ||
                mType == StyleBasicShapeType::Ellipse,
@@ -1913,7 +1812,8 @@ public:
     return mPosition;
   }
 
-  bool HasRadius() const {
+  bool HasRadius() const
+  {
     MOZ_ASSERT(mType == StyleBasicShapeType::Inset, "expected inset");
     nsStyleCoord zero;
     zero.SetCoordValue(0);
@@ -1924,22 +1824,15 @@ public:
     }
     return false;
   }
-  nsStyleCorners& GetRadius() {
-    MOZ_ASSERT(mType == StyleBasicShapeType::Inset, "expected inset");
-    return mRadius;
-  }
-  const nsStyleCorners& GetRadius() const {
+
+  const nsStyleCorners& GetRadius() const
+  {
     MOZ_ASSERT(mType == StyleBasicShapeType::Inset, "expected inset");
     return mRadius;
   }
 
   // mCoordinates has coordinates for polygon or radii for
   // ellipse and circle.
-  nsTArray<nsStyleCoord>& Coordinates()
-  {
-    return mCoordinates;
-  }
-
   const nsTArray<nsStyleCoord>& Coordinates() const
   {
     return mCoordinates;
@@ -2658,28 +2551,6 @@ public:
     return ImageRequest()->get();
   }
 
-  void SetKeyword(StyleContentType aType)
-  {
-    MOZ_ASSERT(aType == StyleContentType::OpenQuote ||
-               aType == StyleContentType::CloseQuote ||
-               aType == StyleContentType::NoOpenQuote ||
-               aType == StyleContentType::NoCloseQuote ||
-               aType == StyleContentType::AltContent);
-    MOZ_ASSERT(mType == StyleContentType::Uninitialized,
-               "should only initialize nsStyleContentData once");
-    mType = aType;
-  }
-
-  void SetString(StyleContentType aType, const char16_t* aString)
-  {
-    MOZ_ASSERT(aType == StyleContentType::String);
-    MOZ_ASSERT(aString);
-    MOZ_ASSERT(mType == StyleContentType::Uninitialized,
-               "should only initialize nsStyleContentData once");
-    mType = aType;
-    mContent.mString = NS_xstrdup(aString);
-  }
-
   void SetCounters(StyleContentType aType,
                    already_AddRefed<CounterFunction> aCounterFunction)
   {
@@ -2909,10 +2780,6 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleColumn
   mozilla::StyleColumnFill mColumnFill = mozilla::StyleColumnFill::Balance;
   mozilla::StyleColumnSpan mColumnSpan = mozilla::StyleColumnSpan::None;
 
-  void SetColumnRuleWidth(nscoord aWidth) {
-    mColumnRuleWidth = NS_ROUND_BORDER_TO_PIXELS(aWidth, mTwipsPerPixel);
-  }
-
   nscoord GetComputedColumnRuleWidth() const {
     return (IsVisibleBorderStyle(mColumnRuleStyle) ? mColumnRuleWidth : 0);
   }
@@ -3072,27 +2939,6 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleSVG
   }
   bool StrokeWidthFromObject() const {
     return mContextFlags & STROKE_WIDTH_CONTEXT;
-  }
-
-  void SetFillOpacitySource(nsStyleSVGOpacitySource aValue) {
-    mContextFlags = (mContextFlags & ~FILL_OPACITY_SOURCE_MASK) |
-                    (aValue << FILL_OPACITY_SOURCE_SHIFT);
-  }
-  void SetStrokeOpacitySource(nsStyleSVGOpacitySource aValue) {
-    mContextFlags = (mContextFlags & ~STROKE_OPACITY_SOURCE_MASK) |
-                    (aValue << STROKE_OPACITY_SOURCE_SHIFT);
-  }
-  void SetStrokeDasharrayFromObject(bool aValue) {
-    mContextFlags = (mContextFlags & ~STROKE_DASHARRAY_CONTEXT) |
-                    (aValue ? STROKE_DASHARRAY_CONTEXT : 0);
-  }
-  void SetStrokeDashoffsetFromObject(bool aValue) {
-    mContextFlags = (mContextFlags & ~STROKE_DASHOFFSET_CONTEXT) |
-                    (aValue ? STROKE_DASHOFFSET_CONTEXT : 0);
-  }
-  void SetStrokeWidthFromObject(bool aValue) {
-    mContextFlags = (mContextFlags & ~STROKE_WIDTH_CONTEXT) |
-                    (aValue ? STROKE_WIDTH_CONTEXT : 0);
   }
 
   bool HasMarker() const {

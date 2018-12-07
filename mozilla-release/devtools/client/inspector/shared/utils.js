@@ -6,11 +6,11 @@
 
 "use strict";
 
-const {parseDeclarations} = require("devtools/shared/css/parsing-utils");
 const promise = require("promise");
-const {getCSSLexer} = require("devtools/shared/css/lexer");
-const {KeyCodes} = require("devtools/client/shared/keycodes");
-const {throttle} = require("devtools/shared/throttle");
+
+loader.lazyRequireGetter(this, "KeyCodes", "devtools/client/shared/keycodes", true);
+loader.lazyRequireGetter(this, "getCSSLexer", "devtools/shared/css/lexer", true);
+loader.lazyRequireGetter(this, "parseDeclarations", "devtools/shared/css/parsing-utils", true);
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 
@@ -110,6 +110,43 @@ function createChild(parent, tagName, attributes = {}) {
 }
 
 /**
+ * Returns a selector of the Element Rep from the grip. This is based on the
+ * getElements() function in our devtools-reps component for a ElementNode.
+ *
+ * @param  {Object} grip
+ *         Grip-like object that can be used with Reps.
+ * @return {String} selector of the element node.
+ */
+function getSelectorFromGrip(grip) {
+  const {
+    attributes,
+    nodeName,
+    isAfterPseudoElement,
+    isBeforePseudoElement
+  } = grip.preview;
+
+  if (isAfterPseudoElement || isBeforePseudoElement) {
+    return `::${isAfterPseudoElement ? "after" : "before"}`;
+  }
+
+  let selector = nodeName;
+
+  if (attributes.id) {
+    selector += `#${attributes.id}`;
+  }
+
+  if (attributes.class) {
+    selector += attributes.class
+      .trim()
+      .split(/\s+/)
+      .map(cls => `.${cls}`)
+      .join("");
+  }
+
+  return selector;
+}
+
+/**
  * Log the provided error to the console and return a rejected Promise for
  * this error.
  *
@@ -160,6 +197,6 @@ exports.advanceValidate = advanceValidate;
 exports.appendText = appendText;
 exports.blurOnMultipleProperties = blurOnMultipleProperties;
 exports.createChild = createChild;
+exports.getSelectorFromGrip = getSelectorFromGrip;
 exports.promiseWarn = promiseWarn;
-exports.throttle = throttle;
 exports.translateNodeFrontToGrip = translateNodeFrontToGrip;

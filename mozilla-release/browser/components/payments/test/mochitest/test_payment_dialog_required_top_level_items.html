@@ -10,16 +10,17 @@ Test the payment-dialog custom element
   <script type="application/javascript" src="/tests/SimpleTest/AddTask.js"></script>
   <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
   <script src="payments_common.js"></script>
-  <script src="../../res/vendor/custom-elements.min.js"></script>
   <script src="../../res/unprivileged-fallbacks.js"></script>
+  <script src="autofillEditForms.js"></script>
 
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
   <link rel="stylesheet" type="text/css" href="../../res/paymentRequest.css"/>
   <link rel="stylesheet" type="text/css" href="../../res/containers/rich-picker.css"/>
 </head>
 <body>
-  <p id="display">
-    <iframe id="templateFrame" src="../../res/paymentRequest.xhtml" width="0" height="0"></iframe>
+  <p id="display" style="height: 100vh; margin: 0;">
+    <iframe id="templateFrame" src="paymentRequest.xhtml" width="0" height="0"
+            style="float: left;"></iframe>
   </p>
 <div id="content" style="display: none">
 
@@ -40,11 +41,7 @@ add_task(async function setupOnce() {
   await SimpleTest.promiseFocus(templateFrame.contentWindow);
 
   let displayEl = document.getElementById("display");
-  // Import the templates from the real shipping dialog to avoid duplication.
-  for (let template of templateFrame.contentDocument.querySelectorAll("template")) {
-    let imported = document.importNode(template, true);
-    displayEl.appendChild(imported);
-  }
+  importDialogDependencies(templateFrame, displayEl);
 
   el1 = new PaymentDialog();
   displayEl.appendChild(el1);
@@ -67,7 +64,7 @@ async function setup({shippingRequired, payerRequired}) {
       currency: "USD",
       value: 20,
     },
-    selected: false,
+    selected: true,
   }] : null;
   state.request.paymentOptions.requestShipping = shippingRequired;
   state.request.paymentOptions.requestPayerName = payerRequired;
@@ -98,7 +95,7 @@ async function setup({shippingRequired, payerRequired}) {
       "address-level2": "Mountain View",
       "country": "US",
       "guid": "abcdef1234",
-      "name": "Mrs. Fields",
+      "name": "Jane Fields",
     },
   } : {};
   state.savedBasicCards = {
@@ -117,14 +114,24 @@ async function setup({shippingRequired, payerRequired}) {
   state.selectedShippingAddress = null;
   state.selectedShippingOption = null;
   await el1.requestStore.setState(state);
+
+  // Fill the security code input so it doesn't interfere with checking the pay
+  // button state for dropdown changes.
+  el1._paymentMethodPicker.securityCodeInput.querySelector("input").select();
+  sendString("123");
   await asyncElementRendered();
 }
 
 function selectFirstItemOfPicker(picker) {
   picker.dropdown.popupBox.focus();
   let options = picker.dropdown.popupBox.children;
+  if (options[0].selected) {
+    ok(false, `"${options[0].textContent}" was already selected`);
+    return;
+  }
   info(`Selecting "${options[0].textContent}" from the options`);
-  synthesizeKey(options[0].textContent, {});
+
+  synthesizeKey(options[0].textContent.trim().split(/\s+/)[0], {});
   ok(picker.dropdown.selectedOption, `Option should be selected for ${picker.localName}`);
 }
 
@@ -132,7 +139,12 @@ function selectLastItemOfPicker(picker) {
   picker.dropdown.popupBox.focus();
   let options = picker.dropdown.popupBox.children;
   let lastOption = options[options.length - 1];
-  synthesizeKey(lastOption.textContent, {});
+  if (lastOption.selected) {
+    ok(false, `"${lastOption.textContent}" was already selected`);
+    return;
+  }
+
+  synthesizeKey(lastOption.textContent.trim().split(/\s+/)[0], {});
   ok(picker.dropdown.selectedOption, `Option should be selected for ${picker.localName}`);
 }
 
@@ -187,14 +199,19 @@ add_task(async function runTests() {
     // Individually toggle each picker to see how the missing fields affects Pay button.
     for (let picker of testCase.pickers) {
       // There is no "invalid" option for shipping options.
-      if (picker != allPickers.shippingOption) {
-        stateChangedPromise = promiseStateChange(el1.requestStore);
-        selectLastItemOfPicker(picker);
-        await stateChangedPromise;
-
-        ok(payButton.disabled, "Button is disabled when selected option has missing fields");
+      if (picker == allPickers.shippingOption) {
+        continue;
       }
+      info(`picker: ${picker.localName} with className: ${picker.className}`);
 
+      // Setup the invalid state
+      stateChangedPromise = promiseStateChange(el1.requestStore);
+      selectLastItemOfPicker(picker);
+      await stateChangedPromise;
+
+      ok(payButton.disabled, "Button is disabled when selected option has missing fields");
+
+      // Now setup the valid state
       stateChangedPromise = promiseStateChange(el1.requestStore);
       selectFirstItemOfPicker(picker);
       await stateChangedPromise;
@@ -202,6 +219,34 @@ add_task(async function runTests() {
       ok(!payButton.disabled, "Button is enabled when selected option has all required fields");
     }
   }
+});
+
+add_task(async function test_securityCodeRequired() {
+  await setup({
+    payerRequired: false,
+    shippingRequired: false,
+  });
+
+  let picker = el1._paymentMethodPicker;
+  let payButton = document.getElementById("pay");
+
+  let stateChangedPromise = promiseStateChange(el1.requestStore);
+  selectFirstItemOfPicker(picker);
+  await stateChangedPromise;
+
+  picker.securityCodeInput.querySelector("input").select();
+  stateChangedPromise = promiseStateChange(el1.requestStore);
+  synthesizeKey("VK_DELETE");
+  await stateChangedPromise;
+
+  ok(payButton.disabled, "Button is disabled when CVV is empty");
+
+  picker.securityCodeInput.querySelector("input").select();
+  stateChangedPromise = promiseStateChange(el1.requestStore);
+  sendString("123");
+  await stateChangedPromise;
+
+  ok(!payButton.disabled, "Button is enabled when CVV is filled");
 });
 </script>
 

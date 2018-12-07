@@ -127,6 +127,21 @@ nsTSubstring<T>::StartBulkWriteImpl(size_type aCapacity,
       char_traits::move(this->mData + aNewSuffixStart,
                         this->mData + aOldSuffixStart,
                         aSuffixLength);
+      if (aSuffixLength) {
+        char_traits::uninitialize(
+          this->mData + aPrefixToPreserve,
+          XPCOM_MIN(size_t(aNewSuffixStart - aPrefixToPreserve),
+                    kNsStringBufferMaxPoison));
+        char_traits::uninitialize(
+          this->mData + aNewSuffixStart + aSuffixLength,
+          XPCOM_MIN(size_t(curCapacity + 1 - aNewSuffixStart - aSuffixLength),
+                    kNsStringBufferMaxPoison));
+      } else {
+        char_traits::uninitialize(
+          this->mData + aPrefixToPreserve,
+          XPCOM_MIN(size_t(curCapacity + 1 - aPrefixToPreserve),
+                    kNsStringBufferMaxPoison));
+      }
       return curCapacity;
     }
   }
@@ -224,6 +239,21 @@ nsTSubstring<T>::StartBulkWriteImpl(size_type aCapacity,
   if (oldData == newData) {
     char_traits::move(
       newData + aNewSuffixStart, oldData + aOldSuffixStart, aSuffixLength);
+    if (aSuffixLength) {
+      char_traits::uninitialize(
+        this->mData + aPrefixToPreserve,
+        XPCOM_MIN(size_t(aNewSuffixStart - aPrefixToPreserve),
+                  kNsStringBufferMaxPoison));
+      char_traits::uninitialize(
+        this->mData + aNewSuffixStart + aSuffixLength,
+        XPCOM_MIN(size_t(newCapacity + 1 - aNewSuffixStart - aSuffixLength),
+                  kNsStringBufferMaxPoison));
+    } else {
+      char_traits::uninitialize(
+        this->mData + aPrefixToPreserve,
+        XPCOM_MIN(size_t(newCapacity + 1 - aPrefixToPreserve),
+                  kNsStringBufferMaxPoison));
+    }
   } else {
     char_traits::copy(newData, oldData, aPrefixToPreserve);
     char_traits::copy(
@@ -240,8 +270,7 @@ nsTSubstring<T>::FinishBulkWriteImpl(size_type aLength)
 {
   MOZ_ASSERT(aLength != UINT32_MAX, "OOM magic value passed as length.");
   if (aLength) {
-    this->mData[aLength] = char_type(0);
-    this->mLength = aLength;
+    FinishBulkWriteImplImpl(aLength);
   } else {
     ::ReleaseData(this->mData, this->mDataFlags);
     SetToEmptyBuffer();
@@ -356,49 +385,40 @@ template <typename T>
 void
 nsTSubstring<T>::Assign(char_type aChar)
 {
-  if (!ReplacePrep(0, this->mLength, 1)) {
-    AllocFailed(this->mLength);
+  if (MOZ_UNLIKELY(!Assign(aChar, mozilla::fallible))) {
+    AllocFailed(1);
   }
-
-  *this->mData = aChar;
 }
 
 template <typename T>
 bool
 nsTSubstring<T>::Assign(char_type aChar, const fallible_t&)
 {
-  if (!ReplacePrep(0, this->mLength, 1)) {
+  auto r = StartBulkWriteImpl(1, 0, true);
+  if (MOZ_UNLIKELY(r.isErr())) {
     return false;
   }
-
   *this->mData = aChar;
+  FinishBulkWriteImpl(1);
   return true;
-}
-
-template <typename T>
-void
-nsTSubstring<T>::Assign(const char_type* aData)
-{
-  if (!Assign(aData, mozilla::fallible)) {
-    AllocFailed(char_traits::length(aData));
-  }
-}
-
-template <typename T>
-bool
-nsTSubstring<T>::Assign(const char_type* aData, const fallible_t&)
-{
-  return Assign(aData, size_type(-1), mozilla::fallible);
 }
 
 template <typename T>
 void
 nsTSubstring<T>::Assign(const char_type* aData, size_type aLength)
 {
-  if (!Assign(aData, aLength, mozilla::fallible)) {
+  if (MOZ_UNLIKELY(!Assign(aData, aLength, mozilla::fallible))) {
     AllocFailed(aLength == size_type(-1) ? char_traits::length(aData)
                                          : aLength);
   }
+}
+
+template <typename T>
+bool
+nsTSubstring<T>::Assign(const char_type* aData,
+                        const fallible_t& aFallible)
+{
+  return Assign(aData, size_type(-1), aFallible);
 }
 
 template <typename T>
@@ -411,19 +431,20 @@ nsTSubstring<T>::Assign(const char_type* aData, size_type aLength,
     return true;
   }
 
-  if (aLength == size_type(-1)) {
+  if (MOZ_UNLIKELY(aLength == size_type(-1))) {
     aLength = char_traits::length(aData);
   }
 
-  if (this->IsDependentOn(aData, aData + aLength)) {
+  if (MOZ_UNLIKELY(this->IsDependentOn(aData, aData + aLength))) {
     return Assign(string_type(aData, aLength), aFallible);
   }
 
-  if (!ReplacePrep(0, this->mLength, aLength)) {
+  auto r = StartBulkWriteImpl(aLength, 0, true);
+  if (MOZ_UNLIKELY(r.isErr())) {
     return false;
   }
-
   char_traits::copy(this->mData, aData, aLength);
+  FinishBulkWriteImpl(aLength);
   return true;
 }
 
@@ -431,7 +452,7 @@ template <typename T>
 void
 nsTSubstring<T>::AssignASCII(const char* aData, size_type aLength)
 {
-  if (!AssignASCII(aData, aLength, mozilla::fallible)) {
+  if (MOZ_UNLIKELY(!AssignASCII(aData, aLength, mozilla::fallible))) {
     AllocFailed(aLength);
   }
 }
@@ -441,6 +462,8 @@ bool
 nsTSubstring<T>::AssignASCII(const char* aData, size_type aLength,
                                 const fallible_t& aFallible)
 {
+  MOZ_ASSERT(aLength != size_type(-1));
+
   // A Unicode string can't depend on an ASCII string buffer,
   // so this dependence check only applies to CStrings.
 #ifdef CharT_is_char
@@ -449,11 +472,12 @@ nsTSubstring<T>::AssignASCII(const char* aData, size_type aLength,
   }
 #endif
 
-  if (!ReplacePrep(0, this->mLength, aLength)) {
+  auto r = StartBulkWriteImpl(aLength, 0, true);
+  if (MOZ_UNLIKELY(r.isErr())) {
     return false;
   }
-
   char_traits::copyASCII(this->mData, aData, aLength);
+  FinishBulkWriteImpl(aLength);
   return true;
 }
 
@@ -777,6 +801,190 @@ nsTSubstring<T>::ReplaceLiteral(index_type aCutStart, size_type aCutLength,
 
 template <typename T>
 void
+nsTSubstring<T>::Append(char_type aChar)
+{
+  if (MOZ_UNLIKELY(!Append(aChar, mozilla::fallible))) {
+    AllocFailed(this->mLength + 1);
+  }
+}
+
+template <typename T>
+bool
+nsTSubstring<T>::Append(char_type aChar,
+                        const fallible_t& aFallible)
+{
+  size_type oldLen = this->mLength;
+  size_type newLen = oldLen + 1; // Can't overflow
+  auto r = StartBulkWriteImpl(newLen, oldLen, false);
+  if (MOZ_UNLIKELY(r.isErr())) {
+    return false;
+  }
+  this->mData[oldLen] = aChar;
+  FinishBulkWriteImpl(newLen);
+  return true;
+}
+
+template <typename T>
+void
+nsTSubstring<T>::Append(const char_type* aData, size_type aLength)
+{
+  if (MOZ_UNLIKELY(!Append(aData, aLength, mozilla::fallible))) {
+    AllocFailed(this->mLength + (aLength == size_type(-1)
+                                 ? char_traits::length(aData)
+                                 : aLength));
+  }
+}
+
+template <typename T>
+bool
+nsTSubstring<T>::Append(const char_type* aData, size_type aLength,
+                        const fallible_t& aFallible)
+{
+  if (MOZ_UNLIKELY(aLength == size_type(-1))) {
+    aLength = char_traits::length(aData);
+  }
+
+  if (MOZ_UNLIKELY(!aLength)) {
+    // Avoid undoing the effect of SetCapacity() if both
+    // mLength and aLength are zero.
+    return true;
+  }
+
+  if (MOZ_UNLIKELY(this->IsDependentOn(aData, aData + aLength))) {
+    return Append(string_type(aData, aLength), mozilla::fallible);
+  }
+  size_type oldLen = this->mLength;
+  mozilla::CheckedInt<size_type> newLen(oldLen);
+  newLen += aLength;
+  if (MOZ_UNLIKELY(!newLen.isValid())) {
+    return false;
+  }
+  auto r = StartBulkWriteImpl(newLen.value(), oldLen, false);
+  if (MOZ_UNLIKELY(r.isErr())) {
+    return false;
+  }
+  char_traits::copy(this->mData + oldLen, aData, aLength);
+  FinishBulkWriteImpl(newLen.value());
+  return true;
+}
+
+template <typename T>
+void
+nsTSubstring<T>::AppendASCII(const char* aData, size_type aLength)
+{
+  if (MOZ_UNLIKELY(!AppendASCII(aData, aLength, mozilla::fallible))) {
+    AllocFailed(this->mLength +
+                (aLength == size_type(-1) ? strlen(aData) : aLength));
+  }
+}
+
+template <typename T>
+bool
+nsTSubstring<T>::AppendASCII(const char* aData,
+                             const fallible_t& aFallible)
+{
+  return AppendASCII(aData, size_type(-1), aFallible);
+}
+
+template <typename T>
+bool
+nsTSubstring<T>::AppendASCII(const char* aData, size_type aLength,
+                             const fallible_t& aFallible)
+{
+  if (MOZ_UNLIKELY(aLength == size_type(-1))) {
+    aLength = strlen(aData);
+  }
+
+  if (MOZ_UNLIKELY(!aLength)) {
+    // Avoid undoing the effect of SetCapacity() if both
+    // mLength and aLength are zero.
+    return true;
+  }
+
+#ifdef CharT_is_char
+  // 16-bit string can't depend on an 8-bit buffer
+  if (MOZ_UNLIKELY(this->IsDependentOn(aData, aData + aLength))) {
+    return Append(string_type(aData, aLength), mozilla::fallible);
+  }
+#endif
+  size_type oldLen = this->mLength;
+  mozilla::CheckedInt<size_type> newLen(oldLen);
+  newLen += aLength;
+  if (MOZ_UNLIKELY(!newLen.isValid())) {
+    return false;
+  }
+  auto r = StartBulkWriteImpl(newLen.value(), oldLen, false);
+  if (MOZ_UNLIKELY(r.isErr())) {
+    return false;
+  }
+  char_traits::copyASCII(this->mData + oldLen, aData, aLength);
+  FinishBulkWriteImpl(newLen.value());
+  return true;
+}
+
+template <typename T>
+void
+nsTSubstring<T>::Append(const self_type& aStr)
+{
+  if (MOZ_UNLIKELY(!Append(aStr, mozilla::fallible))) {
+    AllocFailed(this->mLength + aStr.Length());
+  }
+}
+
+template <typename T>
+bool
+nsTSubstring<T>::Append(const self_type& aStr, const fallible_t& aFallible)
+{
+  // Check refcounted to avoid undoing the effects of SetCapacity().
+  if (MOZ_UNLIKELY(!this->mLength && !(this->mDataFlags & DataFlags::REFCOUNTED))) {
+    return Assign(aStr, mozilla::fallible);
+  }
+  return Append(aStr.BeginReading(), aStr.Length(), mozilla::fallible);
+}
+
+template <typename T>
+void
+nsTSubstring<T>::Append(const substring_tuple_type& aTuple)
+{
+  if (MOZ_UNLIKELY(!Append(aTuple, mozilla::fallible))) {
+    AllocFailed(this->mLength + aTuple.Length());
+  }
+}
+
+template <typename T>
+bool
+nsTSubstring<T>::Append(const substring_tuple_type& aTuple,
+                        const fallible_t& aFallible)
+{
+  size_type tupleLength = aTuple.Length();
+
+  if (MOZ_UNLIKELY(!tupleLength)) {
+    // Avoid undoing the effect of SetCapacity() if both
+    // mLength and tupleLength are zero.
+    return true;
+  }
+
+  if (MOZ_UNLIKELY(aTuple.IsDependentOn(this->mData, this->mData + this->mLength))) {
+    return Append(string_type(aTuple), aFallible);
+  }
+
+  size_type oldLen = this->mLength;
+  mozilla::CheckedInt<size_type> newLen(oldLen);
+  newLen += tupleLength;
+  if (MOZ_UNLIKELY(!newLen.isValid())) {
+    return false;
+  }
+  auto r = StartBulkWriteImpl(newLen.value(), oldLen, false);
+  if (MOZ_UNLIKELY(r.isErr())) {
+    return false;
+  }
+  aTuple.WriteTo(this->mData + oldLen, tupleLength);
+  FinishBulkWriteImpl(newLen.value());
+  return true;
+}
+
+template <typename T>
+void
 nsTSubstring<T>::SetCapacity(size_type aCapacity)
 {
   if (!SetCapacity(aCapacity, mozilla::fallible)) {
@@ -788,55 +996,35 @@ template <typename T>
 bool
 nsTSubstring<T>::SetCapacity(size_type aCapacity, const fallible_t&)
 {
-  // capacity does not include room for the terminating null char
+  size_type length = this->mLength;
+  // This method can no longer be used to shorten the
+  // logical length.
+  size_type capacity = XPCOM_MAX(aCapacity, length);
 
-  // Sadly, existing callers assume that it's valid to
-  // first call SetCapacity(), then write past mLength
-  // and then call SetLength() with the assumption that
-  // SetLength still preserves the written data past
-  // mLength!!!
-
-  size_type preserve;
-  if (this->mDataFlags & DataFlags::REFCOUNTED) {
-    nsStringBuffer* hdr = nsStringBuffer::FromData(this->mData);
-    preserve = (hdr->StorageSize() / sizeof(char_type)) - 1;
-  } else if (this->mDataFlags & DataFlags::INLINE) {
-    preserve = AsAutoString(this)->mInlineCapacity;
-  } else {
-    preserve = this->mLength;
-  }
-
-  if (preserve > aCapacity) {
-    preserve = aCapacity;
-  }
-
-  mozilla::Result<uint32_t, nsresult> r = StartBulkWriteImpl(aCapacity, preserve);
+  mozilla::Result<uint32_t, nsresult> r =
+    StartBulkWriteImpl(capacity, length, true);
   if (r.isErr()) {
     return false;
   }
-  if (r.unwrap()) {
-    // In the zero case StartBulkWrite already put the string
-    // in a valid state.
 
-    // Otherwise, instead of calling FinishBulkWrite,
-    // intentionally replicate the legacy semantics of
-    // this method:
-    // If requested capacity was smaller than the pre-existing
-    // length, set length to the requested capacity and
-    // zero-terminate there. Otherwise, zero-terminate at
-    // the requested capacity. (This latter behavior was
-    // designated as a legacy compatibility measure by the
-    // previous implementation of this method.)
-    if (aCapacity < this->mLength) {
-      // aCapacity not capacity for legacy reasons;
-      // maybe capacity would work, too.
-      this->mLength = aCapacity;
-    }
-    // Note that we can't write a terminator at
-    // mData[mLength], because doing so would overwrite
-    // data when this method is called from SetLength.
-    this->mData[aCapacity] = char_type(0);
+  if (MOZ_UNLIKELY(!capacity)) {
+    // Zero capacity was requested on a zero-length
+    // string. In this special case, we are pointing
+    // to the special empty buffer, which is already
+    // zero-terminated and not writable, so we must
+    // not attempt to zero-terminate it.
+    AssertValid();
+    return true;
   }
+
+  // FinishBulkWriteImpl with argument zero releases
+  // the heap-allocated buffer. However, SetCapacity()
+  // is a special case that allows mLength to be zero
+  // while a heap-allocated buffer exists.
+  // By calling FinishBulkWriteImplImpl, we skip the
+  // zero case handling that's inappropriate in the
+  // SetCapacity() case.
+  FinishBulkWriteImplImpl(length);
   return true;
 }
 
@@ -844,20 +1032,34 @@ template <typename T>
 void
 nsTSubstring<T>::SetLength(size_type aLength)
 {
-  SetCapacity(aLength);
-  this->mLength = aLength;
+  if (!SetLength(aLength, mozilla::fallible)) {
+    AllocFailed(aLength);
+  }
 }
 
 template <typename T>
 bool
 nsTSubstring<T>::SetLength(size_type aLength, const fallible_t& aFallible)
 {
-  if (!SetCapacity(aLength, aFallible)) {
+  size_type preserve = XPCOM_MIN(aLength, this->mLength);
+  mozilla::Result<uint32_t, nsresult> r =
+    StartBulkWriteImpl(aLength, preserve, true);
+  if (r.isErr()) {
     return false;
   }
 
-  this->mLength = aLength;
+  FinishBulkWriteImpl(aLength);
+
   return true;
+}
+
+template<typename T>
+void
+nsTSubstring<T>::Truncate()
+{
+  ::ReleaseData(this->mData, this->mDataFlags);
+  SetToEmptyBuffer();
+  AssertValid();
 }
 
 template <typename T>

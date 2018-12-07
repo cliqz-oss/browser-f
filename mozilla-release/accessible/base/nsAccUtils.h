@@ -25,6 +25,7 @@ namespace a11y {
 
 class HyperTextAccessible;
 class DocAccessible;
+class Attribute;
 
 class nsAccUtils
 {
@@ -101,7 +102,8 @@ public:
   /**
    * Return atomic value of ARIA attribute of boolean or NMTOKEN type.
    */
-  static nsAtom* GetARIAToken(mozilla::dom::Element* aElement, nsAtom* aAttr);
+  static nsStaticAtom* GetARIAToken(mozilla::dom::Element* aElement,
+                                    nsAtom* aAttr);
 
   /**
    * Return document accessible for the given DOM node.
@@ -142,7 +144,7 @@ public:
    * with a value of "true".
    */
   static bool IsDOMAttrTrue(const Accessible* aAccessible, nsAtom* aAttr);
-  
+
   /**
    * Return true if the DOM node of given accessible has aria-selected="true"
    * attribute.
@@ -252,6 +254,10 @@ public:
    * to platform accessibility APIs, should the children be pruned off?
    */
   static bool MustPrune(Accessible* aAccessible);
+
+  static bool PersistentPropertiesToArray(nsIPersistentProperties* aProps,
+                                          nsTArray<Attribute>* aAttributes);
+
 };
 
 } // namespace a11y

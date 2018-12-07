@@ -12,6 +12,7 @@
  * https://w3c.github.io/page-visibility/#extensions-to-the-document-interface
  * https://drafts.csswg.org/cssom/#extensions-to-the-document-interface
  * https://drafts.csswg.org/cssom-view/#extensions-to-the-document-interface
+ * https://wicg.github.io/feature-policy/#policy
  */
 
 interface WindowProxy;
@@ -269,10 +270,10 @@ partial interface Document {
   [BinaryName="fullscreenEnabled", NeedsCallerType]
   readonly attribute boolean mozFullScreenEnabled;
 
-  [Func="nsDocument::IsUnprefixedFullscreenEnabled"]
-  void exitFullscreen();
-  [BinaryName="exitFullscreen"]
-  void mozCancelFullScreen();
+  [Throws, Func="nsDocument::IsUnprefixedFullscreenEnabled"]
+  Promise<void> exitFullscreen();
+  [Throws, BinaryName="exitFullscreen"]
+  Promise<void> mozCancelFullScreen();
 
   // Events handlers
   [Func="nsDocument::IsUnprefixedFullscreenEnabled"]
@@ -483,6 +484,14 @@ partial interface Document {
   Selection? getSelection();
 };
 
+// https://github.com/whatwg/html/issues/3338
+partial interface Document {
+  [Pref="dom.storage_access.enabled", Throws]
+  Promise<boolean> hasStorageAccess();
+  [Pref="dom.storage_access.enabled", Throws]
+  Promise<void> requestStorageAccess();
+};
+
 // Extension to give chrome JS the ability to determine whether
 // the user has interacted with the document or not.
 partial interface Document {
@@ -525,6 +534,10 @@ partial interface Document {
   [ChromeOnly] readonly attribute unsigned long numTrackersBlocked;
 };
 
+partial interface Document {
+  [Func="nsDocument::DocumentSupportsL10n"] readonly attribute DocumentL10n? l10n;
+};
+
 Document implements XPathEvaluator;
 Document implements GlobalEventHandlers;
 Document implements DocumentAndElementEventHandlers;
@@ -534,3 +547,9 @@ Document implements OnErrorEventHandlerForNodes;
 Document implements GeometryUtils;
 Document implements FontFaceSource;
 Document implements DocumentOrShadowRoot;
+
+// https://wicg.github.io/feature-policy/#policy
+partial interface Document {
+    [SameObject, Pref="dom.security.featurePolicy.enabled"]
+    readonly attribute Policy policy;
+};

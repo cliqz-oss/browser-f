@@ -6,20 +6,15 @@
 
 const Services = require("Services");
 const TextEditor = require("devtools/client/inspector/markup/views/text-editor");
-const {
-  getAutocompleteMaxWidth,
-  flashElementOn,
-  flashElementOff,
-  parseAttributeValues,
-} = require("devtools/client/inspector/markup/utils");
 const { truncateString } = require("devtools/shared/inspector/utils");
-const {editableField, InplaceEditor} =
-      require("devtools/client/shared/inplace-editor");
-const {parseAttribute} =
-      require("devtools/client/shared/node-attribute-parser");
-const {getCssProperties} = require("devtools/shared/fronts/css-properties");
+const { editableField, InplaceEditor } = require("devtools/client/shared/inplace-editor");
+const { parseAttribute } = require("devtools/client/shared/node-attribute-parser");
 
-// Global tooltip inspector
+loader.lazyRequireGetter(this, "flashElementOn", "devtools/client/inspector/markup/utils", true);
+loader.lazyRequireGetter(this, "flashElementOff", "devtools/client/inspector/markup/utils", true);
+loader.lazyRequireGetter(this, "getAutocompleteMaxWidth", "devtools/client/inspector/markup/utils", true);
+loader.lazyRequireGetter(this, "parseAttributeValues", "devtools/client/inspector/markup/utils", true);
+
 const {LocalizationHelper} = require("devtools/shared/l10n");
 const INSPECTOR_L10N =
   new LocalizationHelper("devtools/client/locales/inspector.properties");
@@ -62,7 +57,7 @@ function ElementEditor(container, node) {
   this.doc = this.markup.doc;
   this.inspector = this.markup.inspector;
   this.highlighters = this.markup.highlighters;
-  this._cssProperties = getCssProperties(this.markup.toolbox);
+  this._cssProperties = this.inspector.cssProperties;
 
   this.attrElements = new Map();
   this.animationTimers = {};
@@ -77,6 +72,8 @@ function ElementEditor(container, node) {
   this.onCustomBadgeClick = this.onCustomBadgeClick.bind(this);
   this.onDisplayBadgeClick = this.onDisplayBadgeClick.bind(this);
   this.onExpandBadgeClick = this.onExpandBadgeClick.bind(this);
+  this.onFlexboxHighlighterChange = this.onFlexboxHighlighterChange.bind(this);
+  this.onGridHighlighterChange = this.onGridHighlighterChange.bind(this);
   this.onTagEdit = this.onTagEdit.bind(this);
 
   // Create the main editor
@@ -302,14 +299,20 @@ ElementEditor.prototype = {
    * Update the markup display badge.
    */
   updateDisplayBadge: function() {
-    const showDisplayBadge = this.node.displayType in DISPLAY_TYPES;
+    const displayType = this.node.displayType;
+    const showDisplayBadge = displayType in DISPLAY_TYPES;
+
     if (this._displayBadge && !showDisplayBadge) {
+      this.stopTrackingFlexboxHighlighterEvents();
+      this.stopTrackingGridHighlighterEvents();
+
       this._displayBadge.remove();
       this._displayBadge = null;
     } else if (showDisplayBadge) {
       if (!this._displayBadge) {
         this._createDisplayBadge();
       }
+
       this._updateDisplayBadgeContent();
     }
   },
@@ -320,18 +323,27 @@ ElementEditor.prototype = {
     this._displayBadge.addEventListener("click", this.onDisplayBadgeClick);
     // Badges order is [event][display][custom], insert display badge before custom.
     this.elt.insertBefore(this._displayBadge, this._customBadge);
+
+    this.startTrackingFlexboxHighlighterEvents();
+    this.startTrackingGridHighlighterEvents();
   },
 
   _updateDisplayBadgeContent: function() {
-    this._displayBadge.textContent = this.node.displayType;
-    this._displayBadge.dataset.display = this.node.displayType;
-    this._displayBadge.title = DISPLAY_TYPES[this.node.displayType];
+    const displayType = this.node.displayType;
+    this._displayBadge.textContent = displayType;
+    this._displayBadge.dataset.display = displayType;
+    this._displayBadge.title = DISPLAY_TYPES[displayType];
     this._displayBadge.classList.toggle("active",
       this.highlighters.flexboxHighlighterShown === this.node ||
-      this.highlighters.gridHighlighterShown === this.node);
-    this._displayBadge.classList.toggle("interactive",
-      Services.prefs.getBoolPref("devtools.inspector.flexboxHighlighter.enabled") &&
-      (this.node.displayType === "flex" || this.node.displayType === "inline-flex"));
+      this.highlighters.gridHighlighters.has(this.node));
+
+    if (displayType === "flex" || displayType === "inline-flex") {
+      this._displayBadge.classList.toggle("interactive",
+        Services.prefs.getBoolPref("devtools.inspector.flexboxHighlighter.enabled"));
+    } else if (displayType === "grid" || displayType === "inline-grid") {
+      this._displayBadge.classList.toggle("interactive",
+        this.highlighters.canGridHighlighterToggle(this.node));
+    }
   },
 
   /**
@@ -700,26 +712,60 @@ ElementEditor.prototype = {
     this.markup.inspector.once("markupmutation", onMutations);
   },
 
+  startTrackingFlexboxHighlighterEvents() {
+    this.highlighters.on("flexbox-highlighter-hidden", this.onFlexboxHighlighterChange);
+    this.highlighters.on("flexbox-highlighter-shown", this.onFlexboxHighlighterChange);
+  },
+
+  startTrackingGridHighlighterEvents() {
+    this.highlighters.on("grid-highlighter-hidden", this.onGridHighlighterChange);
+    this.highlighters.on("grid-highlighter-shown", this.onGridHighlighterChange);
+  },
+
+  stopTrackingFlexboxHighlighterEvents() {
+    this.highlighters.off("flexbox-highlighter-hidden", this.onFlexboxHighlighterChange);
+    this.highlighters.off("flexbox-highlighter-shown", this.onFlexboxHighlighterChange);
+  },
+
+  stopTrackingGridHighlighterEvents() {
+    this.highlighters.off("grid-highlighter-hidden", this.onGridHighlighterChange);
+    this.highlighters.off("grid-highlighter-shown", this.onGridHighlighterChange);
+  },
+
   /**
-   * Called when the display badge is clicked. Toggles on the grid highlighter for the
-   * selected node if it is a grid container.
+   * Called when the display badge is clicked. Toggles on the flex/grid highlighter for
+   * the selected node if it is a grid container.
    */
-  onDisplayBadgeClick: function(event) {
+  onDisplayBadgeClick: async function(event) {
     event.stopPropagation();
 
     const target = event.target;
 
     if (Services.prefs.getBoolPref("devtools.inspector.flexboxHighlighter.enabled") &&
         (target.dataset.display === "flex" || target.dataset.display === "inline-flex")) {
-      this._displayBadge.classList.add("active");
-      this.highlighters.toggleFlexboxHighlighter(this.inspector.selection.nodeFront,
-        "markup");
+      // Stop tracking highlighter events to avoid flickering of the active class.
+      this.stopTrackingFlexboxHighlighterEvents();
+
+      this._displayBadge.classList.toggle("active");
+      await this.highlighters.toggleFlexboxHighlighter(this.node);
+
+      this.startTrackingFlexboxHighlighterEvents();
     }
 
     if (target.dataset.display === "grid" || target.dataset.display === "inline-grid") {
-      this._displayBadge.classList.add("active");
-      this.highlighters.toggleGridHighlighter(this.inspector.selection.nodeFront,
-        "markup");
+      // Don't toggle the grid highlighter if the max number of new grid highlighters
+      // allowed has been reached.
+      if (!this.highlighters.canGridHighlighterToggle(this.node)) {
+        return;
+      }
+
+      // Stop tracking highlighter events to avoid flickering of the active class.
+      this.stopTrackingGridHighlighterEvents();
+
+      this._displayBadge.classList.toggle("active");
+      await this.highlighters.toggleGridHighlighter(this.node, "markup");
+
+      this.startTrackingGridHighlighterEvents();
     }
   },
 
@@ -730,6 +776,36 @@ ElementEditor.prototype = {
 
   onExpandBadgeClick: function() {
     this.container.expandContainer();
+  },
+
+  /**
+   * Handler for "flexbox-highlighter-hidden" and "flexbox-highlighter-shown" event
+   * emitted from the HighlightersOverlay. Toggles the active state of the display badge
+   * if it matches the highlighted flex container node.
+   */
+  onFlexboxHighlighterChange: function() {
+    if (!this._displayBadge) {
+      return;
+    }
+
+    this._displayBadge.classList.toggle("active",
+      this.highlighters.flexboxHighlighterShown === this.node);
+  },
+
+  /**
+   * Handler for "grid-highlighter-hidden" and "grid-highlighter-shown" event emitted from
+   * the HighlightersOverlay. Toggles the active state of the display badge if it matches
+   * the highlighted grid node.
+   */
+  onGridHighlighterChange: function() {
+    if (!this._displayBadge) {
+      return;
+    }
+
+    this._displayBadge.classList.toggle("active",
+      this.highlighters.gridHighlighters.has(this.node));
+
+    this._updateDisplayBadgeContent();
   },
 
   /**
@@ -754,7 +830,10 @@ ElementEditor.prototype = {
   destroy: function() {
     if (this._displayBadge) {
       this._displayBadge.removeEventListener("click", this.onDisplayBadgeClick);
+      this.stopTrackingFlexboxHighlighterEvents();
+      this.stopTrackingGridHighlighterEvents();
     }
+
     if (this._customBadge) {
       this._customBadge.removeEventListener("click", this.onCustomBadgeClick);
     }

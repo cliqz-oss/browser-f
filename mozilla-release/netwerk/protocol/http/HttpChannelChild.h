@@ -28,7 +28,6 @@
 #include "nsIResumableChannel.h"
 #include "nsIProxiedChannel.h"
 #include "nsIAsyncVerifyRedirectCallback.h"
-#include "nsIAssociatedContentSecurity.h"
 #include "nsIChildChannel.h"
 #include "nsIHttpChannelChild.h"
 #include "nsIDivertableChannel.h"
@@ -40,6 +39,10 @@ using mozilla::Telemetry::LABELS_HTTP_CHILD_OMT_STATS;
 class nsIEventTarget;
 class nsInputStreamPump;
 class nsIInterceptedBodyCallback;
+
+#define HTTP_CHANNEL_CHILD_IID  \
+{ 0x321bd99e, 0x2242, 0x4dc6, \
+  { 0xbb, 0xec, 0xd5, 0x06, 0x29, 0x7c, 0x39, 0x83 } }
 
 namespace mozilla {
 namespace net {
@@ -56,7 +59,6 @@ class HttpChannelChild final : public PHttpChannelChild
                              , public nsIProxiedChannel
                              , public nsIApplicationCacheChannel
                              , public nsIAsyncVerifyRedirectCallback
-                             , public nsIAssociatedContentSecurity
                              , public nsIChildChannel
                              , public nsIHttpChannelChild
                              , public nsIDivertableChannel
@@ -71,11 +73,11 @@ public:
   NS_DECL_NSIAPPLICATIONCACHECONTAINER
   NS_DECL_NSIAPPLICATIONCACHECHANNEL
   NS_DECL_NSIASYNCVERIFYREDIRECTCALLBACK
-  NS_DECL_NSIASSOCIATEDCONTENTSECURITY
   NS_DECL_NSICHILDCHANNEL
   NS_DECL_NSIHTTPCHANNELCHILD
   NS_DECL_NSIDIVERTABLECHANNEL
   NS_DECL_NSITHREADRETARGETABLEREQUEST
+  NS_DECLARE_STATIC_IID_ACCESSOR(HTTP_CHANNEL_CHILD_IID)
 
   HttpChannelChild();
 
@@ -127,6 +129,8 @@ public:
   // Callback while background channel is destroyed.
   void OnBackgroundChildDestroyed(HttpBackgroundChannelChild* aBgChild);
 
+  nsresult CrossProcessRedirectFinished(nsresult aStatus);
+
 protected:
   mozilla::ipc::IPCResult RecvOnStartRequest(const nsresult& channelStatus,
                                              const nsHttpResponseHead& responseHead,
@@ -176,10 +180,12 @@ protected:
 
   mozilla::ipc::IPCResult RecvCancelDiversion() override;
 
+  mozilla::ipc::IPCResult RecvCancelRedirected() override;
+
+  mozilla::ipc::IPCResult RecvOriginalCacheInputStreamAvailable(const OptionalIPCStream& aStream) override;
+
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
-  MOZ_MUST_USE bool
-  GetAssociatedContentSecurity(nsIAssociatedContentSecurity** res = nullptr);
   virtual void DoNotifyListenerCleanup() override;
 
   virtual void DoAsyncAbort(nsresult aStatus) override;
@@ -322,6 +328,8 @@ private:
   nsCOMPtr<nsIInterceptedBodyCallback> mSynthesizedCallback;
   nsCOMPtr<nsICacheInfoChannel> mSynthesizedCacheInfo;
   RefPtr<ChannelEventQueue> mEventQ;
+
+  nsCOMPtr<nsIInputStreamReceiver> mInputStreamReceiver;
 
   // Used to ensure atomicity of mBgChild and mBgInitFailCallback
   Mutex mBgChildMutex;
@@ -516,6 +524,9 @@ private:
   friend class HttpBackgroundChannelChild;
   friend class NeckoTargetChannelEvent<HttpChannelChild>;
 };
+
+NS_DEFINE_STATIC_IID_ACCESSOR(HttpChannelChild,
+                              HTTP_CHANNEL_CHILD_IID)
 
 // A stream listener interposed between the nsInputStreamPump used for intercepted channels
 // and this channel's original listener. This is only used to ensure the original listener

@@ -22,18 +22,6 @@ function col(text, className) {
   return column;
 }
 
-function machine_only_col(text) {
-  let icon = document.createElement("span");
-  icon.classList.add("icon");
-  icon.classList.add("machine-only");
-  icon.setAttribute("data-l10n-id", "gpo-machine-only");
-  let column = document.createElement("td");
-  let content = document.createTextNode(text);
-  column.appendChild(content);
-  column.appendChild(icon);
-  return column;
-}
-
 function addMissingColumns() {
   const table = document.getElementById("activeContent");
   let maxColumns = 0;
@@ -205,7 +193,8 @@ function generateErrors() {
                     "Enterprise Policies Child",
                     "BookmarksPolicies.jsm",
                     "ProxyPolicies.jsm",
-                    "WebsiteFilter Policy"];
+                    "WebsiteFilter Policy",
+                    "macOSPoliciesParser.jsm"];
 
   let new_cont = document.getElementById("errorsContent");
   new_cont.classList.add("errors");
@@ -230,6 +219,13 @@ function generateDocumentation() {
   let new_cont = document.getElementById("documentationContent");
   new_cont.setAttribute("id", "documentationContent");
 
+  // map specific policies to a different string ID, to allow updates to
+  // existing descriptions
+  let string_mapping = {
+    "DisableSetDesktopBackground": "DisableSetAsDesktopBackground",
+    "Certificates": "CertificatesDescription",
+  };
+
   for (let policyName in schema.properties) {
     let main_tbody = document.createElement("tbody");
     main_tbody.classList.add("collapsible");
@@ -238,14 +234,10 @@ function generateDocumentation() {
       content.classList.toggle("content");
     });
     let row = document.createElement("tr");
-    if (AppConstants.platform == "win" &&
-        schema.properties[policyName].machine_only) {
-      row.appendChild(machine_only_col(policyName));
-    } else {
-      row.appendChild(col(policyName));
-    }
+    row.appendChild(col(policyName));
     let descriptionColumn = col("");
-    descriptionColumn.setAttribute("data-l10n-id", `policy-${policyName}`);
+    let stringID = string_mapping[policyName] || policyName;
+    descriptionColumn.setAttribute("data-l10n-id", `policy-${stringID}`);
     row.appendChild(descriptionColumn);
     main_tbody.appendChild(row);
     let sec_tbody = document.createElement("tbody");

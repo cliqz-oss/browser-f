@@ -75,6 +75,18 @@
         PRÖP: "",
         pröp: "",
       }));
+
+      window.elementAccessTestCase = Object.create(null, Object.getOwnPropertyDescriptors({
+        bar: "",
+        BAR: "",
+        dataTest: "",
+        "data-test": "",
+        'da"ta"test': "",
+        'da\`ta\`test': "",
+        "da'ta'test": "",
+      }));
+
+      window.varify = true;
     `;
     await state.client.evaluateJSAsync(script);
 
@@ -90,13 +102,21 @@
       doAutocompleteDotSurroundedBySpaces,
       doAutocompleteAfterOr,
       doInsensitiveAutocomplete,
+      doElementAccessAutocomplete,
+      doAutocompleteAfterOperator,
+      dontAutocompleteAfterDeclaration,
+      doKeywordsAutocomplete,
     ];
 
     if (!isWorker) {
       // `Cu` is not defined in workers, then we can't test `Cu.Sandbox`
       tests.push(doAutocompleteSandbox);
-      // Array literal completion isn't handled in Workers yet.
-      tests.push(doAutocompleteArray);
+      // Array literal, string and commands completion aren't handled in Workers yet.
+      tests.push(
+        doAutocompleteArray,
+        doAutocompleteString,
+        doAutocompleteCommands,
+      );
     }
 
     for (const test of tests) {
@@ -210,6 +230,46 @@
     ok(matches.includes("length") && matches.includes("filter"),
       "Array autocomplete contains expected results");
     ok(!matches.includes("copy"), "Array autocomplete does not contain helpers");
+
+    info("test autocomplete for '[1,2,3]['");
+    matches = (await client.autocomplete("[1,2,3][")).matches;
+    ok(matches.length > 1);
+    ok(matches.includes('"length"') && matches.includes('"filter"'),
+      "Array autocomplete contains expected results, surrounded by quotes");
+
+    info("test autocomplete for '[1,2,3]['");
+    matches = (await client.autocomplete("[1,2,3]['")).matches;
+    ok(matches.length > 1);
+    ok(matches.includes("'length'") && matches.includes("'filter'"),
+      "Array autocomplete contains expected results, surrounded by quotes");
+
+    info("test autocomplete for '[1,2,3][l");
+    matches = (await client.autocomplete("[1,2,3][l")).matches;
+    ok(matches.length >= 1);
+    ok(matches.includes('"length"'),
+      "Array autocomplete contains expected results, surrounded by quotes");
+
+    info("test autocomplete for '[1,2,3]['l");
+    matches = (await client.autocomplete("[1,2,3]['l")).matches;
+    ok(matches.length >= 1);
+    ok(matches.includes("'length'"),
+      "Array autocomplete contains expected results, surrounded by quotes");
+  }
+
+  async function doAutocompleteString(client) {
+    info(`test autocomplete for "foo".`);
+    let response = await client.autocomplete(`"foo".`);
+    let {matches} = response;
+
+    ok(matches.length > 0, "There are completion results for the string");
+    ok(matches.includes("substr") && matches.includes("trim"),
+      "String autocomplete contains expected results");
+
+    info("test autocomplete for `foo`[");
+    matches = (await client.autocomplete("`foo`[")).matches;
+    ok(matches.length > 1, "autocomplete string with bracket works");
+    ok(matches.includes('"substr"') && matches.includes('"trim"'),
+      "String autocomplete contains expected results, surrounded by quotes");
   }
 
   async function doAutocompleteDotSurroundedBySpaces(client) {
@@ -286,6 +346,201 @@
     info("test autocomplete for 'window.insensitiveTestCase.PRÖ'");
     matches = (await client.autocomplete("window.insensitiveTestCase.PRÖ")).matches;
     is(matches.join("-"), "PRÖP", "expected result with uppercase diacritic");
+  }
+
+  async function doElementAccessAutocomplete(client) {
+    info("test autocomplete for 'window.elementAccessTestCase['");
+    let res = (await client.autocomplete("window.elementAccessTestCase["));
+    is(
+      res.matches.join("|"),
+      `"bar"|"da'ta'test"|"da\\"ta\\"test"|"da\`ta\`test"|"data-test"|"dataTest"|"BAR"`,
+      "autocomplete returns the expected items, wrapped in quotes");
+    is(res.isElementAccess, true);
+
+    info("test autocomplete for 'window.elementAccessTestCase[d'");
+    res = await client.autocomplete("window.elementAccessTestCase[d");
+    is(
+      res.matches.join("|"),
+      `"da'ta'test"|"da\\"ta\\"test"|"da\`ta\`test"|"data-test"|"dataTest"`,
+      "autocomplete returns the expected filtered items");
+    is(res.isElementAccess, true);
+
+    info(`test autocomplete for 'window.elementAccessTestCase["d'`);
+    res = await client.autocomplete(`window.elementAccessTestCase["d`);
+    is(
+      res.matches.join("|"),
+      `"da'ta'test"|"da\\"ta\\"test"|"da\`ta\`test"|"data-test"|"dataTest"`,
+      "autocomplete returns the expected items, wrapped in quotes");
+    is(res.isElementAccess, true);
+
+    info(`test autocomplete for 'window.elementAccessTestCase["data-`);
+    res = await client.autocomplete(`window.elementAccessTestCase["data-`);
+    is(res.matches.join("|"), `"data-test"`,
+      "autocomplete returns the expected items, wrapped in quotes");
+    is(res.isElementAccess, true);
+
+    info(`test autocomplete for 'window.elementAccessTestCase['d'`);
+    res = await client.autocomplete(`window.elementAccessTestCase['d`);
+    is(
+      res.matches.join("|"),
+      `'da"ta"test'|'da\\'ta\\'test'|'da\`ta\`test'|'data-test'|'dataTest'`,
+      "autocomplete returns the expected items, wrapped in the same quotes the user entered");
+    is(res.isElementAccess, true);
+
+    info("test autocomplete for 'window.elementAccessTestCase[`d'");
+    res = await client.autocomplete("window.elementAccessTestCase[`d");
+    is(
+      res.matches.join("|"),
+      "`da\"ta\"test`|`da'ta'test`|`da\\`ta\\`test`|`data-test`|`dataTest`",
+      "autocomplete returns the expected items, wrapped in the same quotes the user entered");
+    is(res.isElementAccess, true);
+
+    info(`test autocomplete for '['`);
+    res = await client.autocomplete(`[`);
+    is(res.matches.length, 0, "it does not return anything");
+    is(res.isElementAccess, false);
+
+    info(`test autocomplete for '[1,2,3'`);
+    res = await client.autocomplete(`[1,2,3`);
+    is(res.matches.length, 0, "it does not return anything");
+    is(res.isElementAccess, false);
+
+    info(`test autocomplete for '["'`);
+    res = await client.autocomplete(`["`);
+    is(res.matches.length, 0, "it does not return anything");
+    is(res.isElementAccess, false);
+
+    info(`test autocomplete for '[;'`);
+    res = await client.autocomplete(`[;`);
+    is(res.matches.length, 0, "it does not return anything");
+    is(res.isElementAccess, false);
+  }
+
+  async function doAutocompleteCommands(client) {
+    info("test autocomplete for 'c'");
+    let matches = (await client.autocomplete("c")).matches;
+    ok(matches.includes("cd") && matches.includes("clear"), "commands are returned");
+
+    info("test autocomplete for 's'");
+    matches = (await client.autocomplete("s")).matches;
+    is(matches.includes("screenshot"), false, "screenshot is not returned");
+
+    info("test autocomplete for ':s'");
+    matches = (await client.autocomplete(":s")).matches;
+    is(matches.includes(":screenshot"), true, "screenshot is returned");
+
+    info("test autocomplete for 'window.c'");
+    matches = (await client.autocomplete("window.c")).matches;
+    ok(!matches.includes("cd") && !matches.includes("clear"), "commands are not returned");
+
+    info("test autocomplete for 'window[c'");
+    matches = (await client.autocomplete("window[c")).matches;
+    ok(!matches.includes("cd") && !matches.includes("clear"), "commands are not returned");
+
+    info(`test autocomplete for 'window["c'`);
+    matches = (await client.autocomplete(`window["c`)).matches;
+    ok(!matches.includes("cd") && !matches.includes("clear"), "commands are not returned");
+
+    info(`test autocomplete for 'window["c'`);
+    matches = (await client.autocomplete(`window["c`)).matches;
+    ok(!matches.includes("cd") && !matches.includes("clear"), "commands are not returned");
+
+    info(`test autocomplete for 'window[";c'`);
+    matches = (await client.autocomplete(`window[";c`)).matches;
+    ok(!matches.includes("cd") && !matches.includes("clear"), "commands are not returned");
+
+    info(`test autocomplete for 'window[;c'`);
+    matches = (await client.autocomplete(`window[;c`)).matches;
+    ok(!matches.includes("cd") && !matches.includes("clear"), "commands are not returned");
+  }
+
+  async function doAutocompleteAfterOperator(client) {
+    const inputs = [
+      "true;foob",
+      "true,foob",
+      "({key:foob",
+      "a=foob",
+      "if(a<foob",
+      "if(a>foob",
+      "1+foob",
+      "1-foob",
+      "++foob",
+      "--foob",
+      "1*foob",
+      "2**foob",
+      "1/foob",
+      "1%foob",
+      "1|foob",
+      "1&foob",
+      "1^foob",
+      "~foob",
+      "1<<foob",
+      "1>>foob",
+      "1>>>foob",
+      "false||foob",
+      "false&&foob",
+      "x=true?foob",
+      "x=false?1:foob",
+      "!foob",
+    ];
+
+    for (const input of inputs) {
+      info(`test autocomplete for "${input}"`);
+      let matches = (await client.autocomplete(input)).matches;
+      ok(matches.includes("foobarObject"), `Expected autocomplete result for ${input}"`);
+    }
+  }
+
+  async function dontAutocompleteAfterDeclaration(client) {
+    info("test autocomplete for 'var win'");
+    let matches = (await client.autocomplete("var win")).matches;
+    is(matches.length, 0, "no autocompletion on a var declaration");
+
+    info("test autocomplete for 'const win'");
+    matches = (await client.autocomplete("const win")).matches;
+    is(matches.length, 0, "no autocompletion on a const declaration");
+
+    info("test autocomplete for 'let win'");
+    matches = (await client.autocomplete("let win")).matches;
+    is(matches.length, 0, "no autocompletion on a let declaration");
+
+    info("test autocomplete for 'function win'");
+    matches = (await client.autocomplete("function win")).matches;
+    is(matches.length, 0, "no autocompletion on a function declaration");
+
+    info("test autocomplete for 'class win'");
+    matches = (await client.autocomplete("class win")).matches;
+    is(matches.length, 0, "no autocompletion on a class declaration");
+
+    info("test autocomplete for 'const win = win'");
+    matches = (await client.autocomplete("const win = win")).matches;
+    ok(matches.includes("window"), "autocompletion still happens after the `=` sign");
+
+    info("test autocomplete for 'in var'");
+    matches = (await client.autocomplete("in var")).matches;
+    ok(matches.includes("varify"),
+      "autocompletion still happens with a property name starting with 'var'");
+}
+
+async function doKeywordsAutocomplete(client) {
+  info("test autocomplete for 'func'");
+  let matches = (await client.autocomplete("func")).matches;
+  ok(matches.includes("function"), "keywords are returned");
+
+  info("test autocomplete for ':func'");
+  matches = (await client.autocomplete(":func")).matches;
+  is(!matches.includes("function"), true,
+    "'function' is not returned when prefixed with ':'");
+
+  info("test autocomplete for 'window.func'");
+  matches = (await client.autocomplete("window.func")).matches;
+  ok(!matches.includes("function"),
+    "'function' is not returned when doing a property access");
+
+  info("test autocomplete for 'window[func'");
+  matches = (await client.autocomplete("window[func")).matches;
+  ok(!matches.includes("function"),
+    "'function' is not returned when doing an element access");
   }
 </script>
 </body>

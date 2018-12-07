@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-@namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
 @namespace html url("http://www.w3.org/1999/xhtml");
 
 %include ../shared/browser.inc.css
@@ -598,6 +597,11 @@ html|*.urlbar-input:-moz-lwtheme::placeholder,
   color: GrayText;
 }
 
+#pageAction-urlbar-shareURL,
+#pageAction-panel-shareURL {
+  list-style-image: url("chrome://browser/skin/share.svg");
+}
+
 %include ../shared/urlbarSearchSuggestionsNotification.inc.css
 
 #search-container {
@@ -691,7 +695,8 @@ html|*.urlbar-input:-moz-lwtheme::placeholder,
 }
 
 /* tabbrowser-tab focus ring */
-.tabbrowser-tab:focus > .tab-stack > .tab-content {
+.keyboard-focused-tab > .tab-stack > .tab-content,
+.tabbrowser-tab:focus:not([aria-activedescendant]) > .tab-stack > .tab-content {
   outline: 1px dotted;
   outline-offset: -6px;
 }
@@ -882,11 +887,6 @@ notification[value="translation"] {
 }
 
 /* Bookmarks roots menu-items */
-#subscribeToPageMenuitem:not([disabled]),
-#subscribeToPageMenupopup {
-  list-style-image: url("chrome://browser/skin/feeds/feedIcon16.png");
-}
-
 #bookmarksToolbarFolderMenu,
 #BMB_bookmarksToolbar,
 #panelMenu_bookmarksToolbar {
@@ -940,7 +940,6 @@ notification[value="translation"] {
 
 %include ../shared/fullscreen/warning.inc.css
 %include ../shared/ctrlTab.inc.css
-%include ../shared/plugin-doorhanger.inc.css
 
 /* Customization mode */
 

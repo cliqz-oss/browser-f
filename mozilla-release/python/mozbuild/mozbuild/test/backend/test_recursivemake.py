@@ -225,6 +225,7 @@ class TestRecursiveMakeBackend(BackendTester):
             'topobjdir := %s' % env.topobjdir,
             'topsrcdir := %s' % env.topsrcdir,
             'srcdir := %s' % env.topsrcdir,
+            'srcdir_rel := %s' % mozpath.relpath(env.topsrcdir, env.topobjdir),
             'VPATH := %s' % env.topsrcdir,
             'relativesrcdir := .',
             'include $(DEPTH)/config/autoconf.mk',
@@ -242,7 +243,7 @@ class TestRecursiveMakeBackend(BackendTester):
         self.assertTrue(os.path.exists(p))
 
         lines = [l.strip() for l in open(p, 'rt').readlines()]
-        self.assertEqual(len(lines), 10)
+        self.assertEqual(len(lines), 11)
 
         self.assertTrue(lines[0].startswith('# THIS FILE WAS AUTOMATICALLY'))
 
@@ -325,8 +326,10 @@ class TestRecursiveMakeBackend(BackendTester):
             'RCINCLUDE': [
                 'RCINCLUDE := bar.rc',
             ],
-            'DEFFILE': [
-                'DEFFILE := baz.def',
+            'EXTRA_DEPS': [
+                'EXTRA_DEPS += %s' % mozpath.join(mozpath.relpath(env.topsrcdir,
+                                                                  env.topobjdir),
+                                                  'baz.def'),
             ],
             'WIN32_EXE_LDFLAGS': [
                 'WIN32_EXE_LDFLAGS += -subsystem:console',
@@ -834,7 +837,7 @@ class TestRecursiveMakeBackend(BackendTester):
                  if not l.startswith('COMPUTED_')]
 
         expected = [
-            'RUST_LIBRARY_FILE := ./x86_64-unknown-linux-gnu/release/libtest_library.a',
+            'RUST_LIBRARY_FILE := %s/x86_64-unknown-linux-gnu/release/libtest_library.a' % env.topobjdir,
             'CARGO_FILE := $(srcdir)/Cargo.toml',
             'CARGO_TARGET_DIR := %s' % env.topobjdir,
         ]
@@ -851,7 +854,7 @@ class TestRecursiveMakeBackend(BackendTester):
                  if not l.startswith('COMPUTED_')]
 
         expected = [
-            'HOST_RUST_LIBRARY_FILE := ./x86_64-unknown-linux-gnu/release/libhostrusttool.a',
+            'HOST_RUST_LIBRARY_FILE := %s/x86_64-unknown-linux-gnu/release/libhostrusttool.a' % env.topobjdir,
             'CARGO_FILE := $(srcdir)/Cargo.toml',
             'CARGO_TARGET_DIR := %s' % env.topobjdir,
         ]
@@ -868,7 +871,7 @@ class TestRecursiveMakeBackend(BackendTester):
                  if not l.startswith('COMPUTED_')]
 
         expected = [
-            'HOST_RUST_LIBRARY_FILE := ./x86_64-unknown-linux-gnu/release/libhostrusttool.a',
+            'HOST_RUST_LIBRARY_FILE := %s/x86_64-unknown-linux-gnu/release/libhostrusttool.a' % env.topobjdir,
             'CARGO_FILE := $(srcdir)/Cargo.toml',
             'CARGO_TARGET_DIR := %s' % env.topobjdir,
             'HOST_RUST_LIBRARY_FEATURES := musthave cantlivewithout',
@@ -886,7 +889,7 @@ class TestRecursiveMakeBackend(BackendTester):
                  if not l.startswith('COMPUTED_')]
 
         expected = [
-            'RUST_LIBRARY_FILE := ./x86_64-unknown-linux-gnu/release/libfeature_library.a',
+            'RUST_LIBRARY_FILE := %s/x86_64-unknown-linux-gnu/release/libfeature_library.a' % env.topobjdir,
             'CARGO_FILE := $(srcdir)/Cargo.toml',
             'CARGO_TARGET_DIR := %s' % env.topobjdir,
             'RUST_LIBRARY_FEATURES := musthave cantlivewithout',

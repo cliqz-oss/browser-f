@@ -14,8 +14,9 @@
 class TestTracer : public JS::CallbackTracer
 {
     void onChild(const JS::GCCellPtr& thing) override {
-        if (thing.asCell() == expectedCell && thing.kind() == expectedKind)
+        if (thing.asCell() == expectedCell && thing.kind() == expectedKind) {
             found = true;
+        }
     }
 
   public:
@@ -42,11 +43,13 @@ BEGIN_TEST(testPrivateGCThingValue)
     CHECK(obj);
 
     // Make a JSScript to stick into a PrivateGCThingValue.
-    JS::RootedScript script(cx);
     const char code[] = "'objet petit a'";
+
     JS::CompileOptions options(cx);
     options.setFileAndLine(__FILE__, __LINE__);
-    CHECK(JS_CompileScript(cx, code, sizeof(code) - 1, options, &script));
+
+    JS::RootedScript script(cx);
+    CHECK(JS::CompileUtf8(cx, options, code, sizeof(code) - 1, &script));
     JS_SetReservedSlot(obj, 0, PrivateGCThingValue(script));
 
     TestTracer trc(cx);

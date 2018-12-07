@@ -267,6 +267,7 @@ const chromeModifierKeyMap = {
   "Shift": "shift",
 };
 
+
 var ExtensionUtils = {
   chromeModifierKeyMap,
   flushJarCache,

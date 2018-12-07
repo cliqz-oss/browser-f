@@ -106,7 +106,7 @@ DirectoryProvider.prototype = {
       return;
 
     let curLocale = "";
-    let reqLocales = Services.locale.getRequestedLocales();
+    let reqLocales = Services.locale.requestedLocales;
     if (reqLocales.length > 0) {
       curLocale = reqLocales[0];
     }
@@ -137,19 +137,7 @@ DirectoryProvider.prototype = {
 
     let result = [];
     this._appendDistroSearchDirs(result);
-
-    return {
-      QueryInterface: ChromeUtils.generateQI([Ci.nsISimpleEnumerator]),
-      [Symbol.iterator]() {
-        return result.values();
-      },
-      hasMoreElements: function() {
-        return result.length > 0;
-      },
-      getNext: function() {
-        return result.shift();
-      }
-    };
+    return result.values();
   },
 
   _getDistributionDirectories: function() {
@@ -162,7 +150,7 @@ DirectoryProvider.prototype = {
     });
 
     return directories;
-  }
+  },
 };
 
 this.NSGetFactory = XPCOMUtils.generateNSGetFactory([DirectoryProvider]);

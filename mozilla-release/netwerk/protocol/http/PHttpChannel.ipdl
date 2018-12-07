@@ -12,6 +12,7 @@ include URIParams;
 include PBackgroundSharedTypes;
 include NeckoChannelParams;
 include IPCServiceWorkerDescriptor;
+include IPCStream;
 
 include "mozilla/net/NeckoMessageUtils.h";
 
@@ -35,8 +36,6 @@ parent:
 
   async SetCacheTokenCachedCharset(nsCString charset);
 
-  async UpdateAssociatedContentSecurity(int32_t broken,
-                                        int32_t no);
   async Suspend();
   async Resume();
 
@@ -50,6 +49,10 @@ parent:
                         OptionalURIParams apiRedirectTo,
                         OptionalCorsPreflightArgs corsPreflightArgs,
                         bool chooseAppcache);
+
+  // Sent to the parent in order signal that the child side listeners have been
+  // set up and the parent side of the channel can be opened.
+  async CrossProcessRedirectDone(nsresult result);
 
   // For document loads we keep this protocol open after child's
   // OnStopRequest, and send this msg (instead of __delete__) to allow
@@ -90,6 +93,9 @@ parent:
   // After receiving this message, the parent calls SendDeleteSelf, and makes
   // sure not to send any more messages after that.
   async DeletingChannel();
+
+  // Called to get the input stream when altData was delivered.
+  async OpenOriginalCacheInputStream();
 
   // Tell the parent the amount bytes read by child for the e10s back pressure
   // flow control
@@ -146,6 +152,11 @@ child:
   // channel.
   async ReportSecurityMessage(nsString messageTag, nsString messageCategory);
 
+  // This message is sent to a child that has been redirected to another process.
+  // As a consequence, it should cleanup the channel listeners and remove the
+  // request from the loadGroup.
+  async CancelRedirected();
+
   // Tell child to delete channel (all IPDL deletes must be done from child to
   // avoid races: see bug 591708).
   async DeleteSelf();
@@ -163,6 +174,7 @@ child:
   // See ADivertableParentChannel::CancelDiversion
   async CancelDiversion();
 
+  async OriginalCacheInputStreamAvailable(OptionalIPCStream stream);
 both:
   // After receiving this message, the parent also calls
   // SendFinishInterceptedRedirect, and makes sure not to send any more messages

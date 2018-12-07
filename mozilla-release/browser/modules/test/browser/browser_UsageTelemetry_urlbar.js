@@ -82,7 +82,7 @@ function clickURLBarSuggestion(entryName, button = 1) {
 async function withNewSearchEngine(taskFn) {
   const url = getRootDirectory(gTestPath) + "usageTelemetrySearchSuggestions.xml";
   let suggestionEngine = await new Promise((resolve, reject) => {
-    Services.search.addEngine(url, null, "", false, {
+    Services.search.addEngine(url, "", false, {
       onSuccess(engine) { resolve(engine); },
       onError() { reject(); },
     });
@@ -108,6 +108,9 @@ add_task(async function setup() {
   let engine = Services.search.getEngineByName("MozSearch");
   let originalEngine = Services.search.currentEngine;
   Services.search.currentEngine = engine;
+
+  // Give it some mock internal aliases.
+  engine.wrappedJSObject.__internalAliases = ["@mozaliasfoo", "@mozaliasbar"];
 
   // And the first one-off engine.
   Services.search.moveEngine(engine, 0);
@@ -175,6 +178,7 @@ add_task(async function test_simpleQuery() {
 
   // Make sure SEARCH_COUNTS contains identical values.
   checkKeyedHistogram(search_hist, "other-MozSearch.urlbar", 1);
+  checkKeyedHistogram(search_hist, "other-MozSearch.alias", undefined);
 
   // Also check events.
   let events = Services.telemetry.snapshotEvents(Ci.nsITelemetry.DATASET_RELEASE_CHANNEL_OPTIN, false);
@@ -229,6 +233,7 @@ add_task(async function test_searchAlias() {
 
   // Make sure SEARCH_COUNTS contains identical values.
   checkKeyedHistogram(search_hist, "other-MozSearch.urlbar", 1);
+  checkKeyedHistogram(search_hist, "other-MozSearch.alias", undefined);
 
   // Also check events.
   let events = Services.telemetry.snapshotEvents(Ci.nsITelemetry.DATASET_RELEASE_CHANNEL_OPTIN, false);
@@ -253,6 +258,32 @@ add_task(async function test_searchAlias() {
   checkHistogramResults(resultMethods,
     URLBAR_SELECTED_RESULT_METHODS.enter,
     "FX_URLBAR_SELECTED_RESULT_METHOD");
+
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function test_internalSearchAlias() {
+  let search_hist = getAndClearKeyedHistogram("SEARCH_COUNTS");
+
+  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:blank");
+
+  info("Search using an internal search alias.");
+  let p = BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+  await searchInAwesomebar("@mozaliasfoo query");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await p;
+
+  checkKeyedHistogram(search_hist, "other-MozSearch.urlbar", 1);
+  checkKeyedHistogram(search_hist, "other-MozSearch.alias", 1);
+
+  info("Search using the other internal search alias.");
+  p = BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+  await searchInAwesomebar("@mozaliasbar query");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await p;
+
+  checkKeyedHistogram(search_hist, "other-MozSearch.urlbar", 2);
+  checkKeyedHistogram(search_hist, "other-MozSearch.alias", 2);
 
   BrowserTestUtils.removeTab(tab);
 });
@@ -288,6 +319,7 @@ add_task(async function test_oneOff_enter() {
 
   // Make sure SEARCH_COUNTS contains identical values.
   checkKeyedHistogram(search_hist, "other-MozSearch.urlbar", 1);
+  checkKeyedHistogram(search_hist, "other-MozSearch.alias", undefined);
 
   // Also check events.
   let events = Services.telemetry.snapshotEvents(Ci.nsITelemetry.DATASET_RELEASE_CHANNEL_OPTIN, false);
@@ -534,19 +566,38 @@ add_task(async function test_suggestion_rightclick() {
 });
 
 add_task(async function test_privateWindow() {
+  // Mock the search service's search provider info so that its
+  // recordSearchURLTelemetry() function adds the in-content SEARCH_COUNTS
+  // telemetry for our test engine.
+  Services.search.QueryInterface(Ci.nsIObserver).observe(
+    null,
+    "test:setSearchProviderInfo",
+    JSON.stringify({
+      "example": {
+        "regexp": "^http://example\\.com/",
+        "queryParam": "q",
+      },
+    })
+  );
+
   let search_hist = getAndClearKeyedHistogram("SEARCH_COUNTS");
+
+  let engine = Services.search.getEngineByName("MozSearch");
+  let expectedURL = engine.getSubmission("query").uri.spec;
 
   // First, do a bunch of searches in a private window.
   let win = await BrowserTestUtils.openNewBrowserWindow({ private: true });
 
   info("Search in a private window and the pref does not exist");
-  let p = BrowserTestUtils.browserLoaded(win.gBrowser.selectedBrowser);
+  let p = BrowserTestUtils.browserLoaded(win.gBrowser.selectedBrowser, false,
+                                         expectedURL);
   await searchInAwesomebar("query", win);
   EventUtils.synthesizeKey("KEY_Enter", undefined, win);
   await p;
 
   // SEARCH_COUNTS should be incremented.
   checkKeyedHistogram(search_hist, "other-MozSearch.urlbar", 1);
+  checkKeyedHistogram(search_hist, "example.in-content:organic:none", 1);
 
   info("Search again in a private window after setting the pref to true");
   Services.prefs.setBoolPref("browser.engagement.search_counts.pbm", true);
@@ -557,6 +608,7 @@ add_task(async function test_privateWindow() {
 
   // SEARCH_COUNTS should *not* be incremented.
   checkKeyedHistogram(search_hist, "other-MozSearch.urlbar", 1);
+  checkKeyedHistogram(search_hist, "example.in-content:organic:none", 1);
 
   info("Search again in a private window after setting the pref to false");
   Services.prefs.setBoolPref("browser.engagement.search_counts.pbm", false);
@@ -567,6 +619,7 @@ add_task(async function test_privateWindow() {
 
   // SEARCH_COUNTS should be incremented.
   checkKeyedHistogram(search_hist, "other-MozSearch.urlbar", 2);
+  checkKeyedHistogram(search_hist, "example.in-content:organic:none", 2);
 
   info("Search again in a private window after clearing the pref");
   Services.prefs.clearUserPref("browser.engagement.search_counts.pbm");
@@ -577,6 +630,7 @@ add_task(async function test_privateWindow() {
 
   // SEARCH_COUNTS should be incremented.
   checkKeyedHistogram(search_hist, "other-MozSearch.urlbar", 3);
+  checkKeyedHistogram(search_hist, "example.in-content:organic:none", 3);
 
   await BrowserTestUtils.closeWindow(win);
 
@@ -585,13 +639,15 @@ add_task(async function test_privateWindow() {
   win = await BrowserTestUtils.openNewBrowserWindow();
 
   info("Search in a non-private window and the pref does not exist");
-  p = BrowserTestUtils.browserLoaded(win.gBrowser.selectedBrowser);
+  p = BrowserTestUtils.browserLoaded(win.gBrowser.selectedBrowser, false,
+                                     expectedURL);
   await searchInAwesomebar("query", win);
   EventUtils.synthesizeKey("KEY_Enter", undefined, win);
   await p;
 
   // SEARCH_COUNTS should be incremented.
   checkKeyedHistogram(search_hist, "other-MozSearch.urlbar", 4);
+  checkKeyedHistogram(search_hist, "example.in-content:organic:none", 4);
 
   info("Search again in a non-private window after setting the pref to true");
   Services.prefs.setBoolPref("browser.engagement.search_counts.pbm", true);
@@ -602,6 +658,7 @@ add_task(async function test_privateWindow() {
 
   // SEARCH_COUNTS should be incremented.
   checkKeyedHistogram(search_hist, "other-MozSearch.urlbar", 5);
+  checkKeyedHistogram(search_hist, "example.in-content:organic:none", 5);
 
   info("Search again in a non-private window after setting the pref to false");
   Services.prefs.setBoolPref("browser.engagement.search_counts.pbm", false);
@@ -612,6 +669,7 @@ add_task(async function test_privateWindow() {
 
   // SEARCH_COUNTS should be incremented.
   checkKeyedHistogram(search_hist, "other-MozSearch.urlbar", 6);
+  checkKeyedHistogram(search_hist, "example.in-content:organic:none", 6);
 
   info("Search again in a non-private window after clearing the pref");
   Services.prefs.clearUserPref("browser.engagement.search_counts.pbm");
@@ -622,6 +680,11 @@ add_task(async function test_privateWindow() {
 
   // SEARCH_COUNTS should be incremented.
   checkKeyedHistogram(search_hist, "other-MozSearch.urlbar", 7);
+  checkKeyedHistogram(search_hist, "example.in-content:organic:none", 7);
 
   await BrowserTestUtils.closeWindow(win);
+
+  // Reset the search provider info.
+  Services.search.QueryInterface(Ci.nsIObserver)
+    .observe(null, "test:setSearchProviderInfo", "");
 });
