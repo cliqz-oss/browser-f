@@ -16,11 +16,13 @@
 <!ENTITY enableSafeBrowsingLearnMore.label "Weitere Informationen">
 
 <!-- Forget mode -->
-<!ENTITY  forgetMode.caption "Automatischer Vergessen Modus">
+<!ENTITY  forgetMode.caption             "Automatischer Vergessen Modus">
 <!ENTITY  forgetMode.enableCheckboxLabel "Automatischen Vergessen Modus aktivieren">
-<!ENTITY  forgetMode.explanation1 "Der automatische Vergessen Modus öffnet Websites mit expliziten (pornographischen) Inhalten automatisch im Vergessen Modus, so dass sie nicht in der Chronik gespeichert werden. Für umfassendere Privatsphäre ist es besser, entsprechende Websites immer in einem <b>Vergessen Fenster</b> zu öffnen, weil dort u.a. temporäre Dateien zuverlässiger entfernt werden können.">
-<!ENTITY  forgetMode.explanation2 "Im Tab-Kontextmenü kannst du selbst wählen, welche Websites automatisch im Vergessen Modus geöffnet werden sollen. Das Tab-Kontextmenü öffnet sich durch einen Klick mit der rechten Maustaste auf den geöffneten Tab.">
-<!ENTITY  forgetMode.learnMore "Mehr erfahren">
+<!ENTITY  forgetMode.explanation1        "Öffnet Websites mit expliziten (pornographischen) Inhalten automatisch im Vergessen Modus, so dass sie nicht in der Chronik gespeichert werden.">
+<!ENTITY  forgetMode.explanation2        "Kann im Tab-Kontextmenü (rechter Mausklick auf Tab in Tableiste) für jede Website eingestellt werden.">
+<!ENTITY  forgetMode.explanation3        "Funktioniert nicht in Verbindung mit 'Containers' Add-on.">
+<!ENTITY  forgetMode.note                "Hinweis: Für umfassendere Privatsphäre bitte Websites in einem <b>Vergessen Fenster</b> öffnen, weil dort u.a. temporäre Dateien zuverlässiger entfernt werden können.">
+<!ENTITY  forgetMode.learnMore           "Mehr erfahren">
 
 <!-- Cliqz addition -->
 <!ENTITY  cliqzFirefoxPrivacy.label "Der Cliqz Browser baut auf dem <label class='text-link' href='https://www.mozilla.org/de/'>Mozilla Open Source Projekt</label> auf. Es gilt die <label class='text-link' href='https://www.mozilla.org/de/privacy/firefox'>Firefox Datenschutzhinweis</label>, wenn nicht anders in der Cliqz <label class='text-link' href='https://cliqz.com/privacy-browser'>Datenschutzerklärung</label> festgestellt.">

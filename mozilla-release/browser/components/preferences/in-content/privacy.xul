@@ -499,9 +499,14 @@
         id="forgetModeEnable"
         label="&forgetMode.enableCheckboxLabel;"
         preference="browser.privatebrowsing.apt"/>
-    <description>&forgetMode.explanation1;</description>
+    <html:ul>
+      <html:li><description>&forgetMode.explanation1;</description></html:li>
+      <html:li><description>&forgetMode.explanation2;</description></html:li>
+      <html:li><description>&forgetMode.explanation3;</description></html:li>
+    </html:ul>
     <separator class="thin"/>
-    <description>&forgetMode.explanation2;</description>
+    <description>&forgetMode.note;</description>
+    <separator class="thin"/>
     <html:a href="https://cliqz.com/support/automatic-forget-mode">
       &forgetMode.learnMore;
     </html:a>

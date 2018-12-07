@@ -528,7 +528,7 @@ this.tabs = class extends ExtensionAPI {
             let options = {};
             if (createProperties.cookieStoreId) {
               // May throw if validation fails.
-              options.userContextId = getUserContextIdForCookieStoreId(extension, createProperties.cookieStoreId, PrivateBrowsingUtils.isBrowserPrivate(window.gBrowser));
+              options.userContextId = getUserContextIdForCookieStoreId(extension, createProperties.cookieStoreId, PrivateBrowsingUtils.isBrowserPrivate(window.gBrowser, true));
             }
 
             if (createProperties.url !== null) {
