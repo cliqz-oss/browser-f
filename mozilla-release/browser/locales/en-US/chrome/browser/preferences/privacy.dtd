@@ -97,11 +97,13 @@
 <!ENTITY enableSafeBrowsingLearnMore.label "Learn more">
 
 <!-- Forget mode -->
-<!ENTITY  forgetMode.caption "Forget Mode">
+<!ENTITY  forgetMode.caption             "Automatic Forget Mode">
 <!ENTITY  forgetMode.enableCheckboxLabel "Enable automatic forget mode">
-<!ENTITY  forgetMode.explanation1 "Automatic forget mode will automatically open websites with adult content inside a forget tab, so that these websites will not be saved in your history and temporary web files including cookies will not be stored.">
-<!ENTITY  forgetMode.explanation2 "Via the tab context menu, you can select whether a website should be opened in forget mode automatically or not. The tab context menu can be opened by right-clicking on the respective tab.">
-<!ENTITY  forgetMode.learnMore "Learn more">
+<!ENTITY  forgetMode.explanation1        "Automatically opens websites with adult content inside a forget tab, so that these websites will not be saved in your history.">
+<!ENTITY  forgetMode.explanation2        "Behavior can be changed for each website via the tab context menu (right-click on respective tab in tab bar)">
+<!ENTITY  forgetMode.explanation3        "May not work in combination with 'Containers' add-on.">
+<!ENTITY  forgetMode.note                "Note: for improved privacy, it is recommended to always open websites with sensitive content in <b>Forget Windows</b> which allow for more reliable removal of temporary files.">
+<!ENTITY  forgetMode.learnMore           "Learn more">
 
 <!-- Cliqz addition -->
 <!ENTITY  cliqzFirefoxPrivacy.label "Parts of the Cliqz Browser are building upon the <label class='text-link' href='https://www.mozilla.org/en-US/'>Mozilla open source project</label>. The <label class='text-link' href='https://www.mozilla.org/en-US/privacy/firefox'>Firefox Privacy Notice</label> applies, unless otherwise stated in the Cliqz <label class='text-link' href='https://cliqz.com/en/privacy-browser'>Privacy Statement</label>.">
