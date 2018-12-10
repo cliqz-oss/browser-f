@@ -725,6 +725,12 @@ pref("browser.preferences.defaultPerformanceSettings.enabled", true);
 pref("browser.download.show_plugins_in_list", true);
 pref("browser.download.hide_plugins_without_extensions", true);
 
+// CLIQZ-SPECIAL
+// By default we do not show console logs for extensions;
+// Enable it for beta update channel only;
+// See nsBrowserGlue.js
+pref("extensions.cliqz.showConsoleLogs", false);
+
 // Backspace and Shift+Backspace behavior
 // 0 goes Back/Forward
 // 1 act like PgUp/PgDown

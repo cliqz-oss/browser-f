@@ -347,4 +347,6 @@ this.AppConstants = Object.freeze({
 #else
     false,
 #endif
+
+  BETA: 'beta'
 });

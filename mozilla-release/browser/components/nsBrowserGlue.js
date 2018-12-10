@@ -8,6 +8,8 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
+ChromeUtils.import("resource://gre/modules/UpdateUtils.jsm");
+
 ChromeUtils.defineModuleGetter(this, "ActorManagerParent",
                                "resource://gre/modules/ActorManagerParent.jsm");
 
@@ -912,6 +914,11 @@ BrowserGlue.prototype = {
   // initialization (called on application startup)
   _init: function BG__init() {
     let os = Services.obs;
+
+    if (UpdateUtils.getUpdateChannel() === AppConstants.BETA) {
+      Services.prefs.setBoolPref('extensions.cliqz.showConsoleLogs', true);
+    }
+
     os.addObserver(this, "notifications-open-settings");
     os.addObserver(this, "final-ui-startup");
     os.addObserver(this, "browser-delayed-startup-finished");
