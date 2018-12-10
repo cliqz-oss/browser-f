@@ -3627,7 +3627,7 @@ ItemHandler.prototype = {
 
   createItem: function(aObj) {
     let item = document.createElement("richlistitem");
-    item.setAttribute("class", "cliqz-recommended-addons");
+    item.setAttribute("class", "cliqz-recommended-addons addon addon-view card");
     item.mAddon = aObj;
     return item;
   },

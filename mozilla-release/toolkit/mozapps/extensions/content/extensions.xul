@@ -382,7 +382,7 @@
               </vbox>
               <richlistbox id="addon-list" class="list"/>
               <vbox id="recommendedBlock" hidden="true">
-                <hbox class="subcategory">
+                <hbox class="heading-inner">
                   <label class="header-name" flex="1">
                     &recommendedAddon.label;
                   </label>
