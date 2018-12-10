@@ -371,12 +371,14 @@
                 <spacer class="alert-spacer-after"/>
               </vbox>
 #endif
-              <vbox class="alert-container" id="installAddonDisclaimer">
-                <vbox class="alert">
-                  <description>&installAddonDisclaimer.label;
+              <vbox id="installAddonDisclaimer" class="list-view-notice" align="start">
+                <hbox class="message-bar">
+                  <image class="message-bar-icon"/>
+                  <description class="message-bar-description">
+                    &installAddonDisclaimer.label;
                     <label class="text-link plain" id="installAddonDisclaimer-learnmore-link">&installAddonDisclaimer.learnMore;</label>
                   </description>
-                </vbox>
+                </hbox>
               </vbox>
               <richlistbox id="addon-list" class="list"/>
               <vbox id="recommendedBlock" hidden="true">
