@@ -66,7 +66,7 @@ category-connect =
     .tooltiptext = { pane-connect-title }
 
 help-button-label = { -brand-short-name } Support
-addons-button-label = Extensions & Themes
+addons-button-label = Extensions
 
 focus-search =
     .key = f
