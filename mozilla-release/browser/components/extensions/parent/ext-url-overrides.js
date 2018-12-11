@@ -57,8 +57,8 @@ XPCOMUtils.defineLazyGetter(this, "newTabPopup", () => {
   });
 });
 
-function setNewTabURL(extensionId, url) {
-  if (extensionId) {
+function setNewTabURL(extensionId, url, isSystem) {
+  if (extensionId && !isSystem) {
     newTabPopup.addObserver(extensionId);
   } else {
     newTabPopup.removeObserver();
@@ -121,9 +121,15 @@ this.urlOverrides = class extends ExtensionAPI {
         item = ExtensionSettingsStore.enable(extension.id, STORE_TYPE, NEW_TAB_SETTING_NAME);
       }
 
-      // Set the newTabURL to the current value of the setting.
-      if (item) {
-        setNewTabURL(item.id, item.value || item.initialValue);
+      try {
+        // CLIQZ: if its system addon do not add notification observer
+        const isSystem = extension.addonData.signedState == 3;
+        // Set the newTabURL to the current value of the setting.
+        if (item) {
+          setNewTabURL(item.id, item.value || item.initialValue, isSystem);
+        }
+      } catch(e) {
+        // is case there is no SignedState
       }
     }
   }
