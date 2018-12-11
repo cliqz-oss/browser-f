@@ -551,9 +551,14 @@ button.warning {
   background-color: var(--in-content-box-background);
 }
 
-.list:focus > .addon[selected] {
+/* CLIQZ-SPECIAL  mods for suppressing blue shadow in recommended addons*/
+.list:focus > .addon[selected]:not(.cliqz-recommended-addons) {
   box-shadow: var(--card-shadow-focus);
   color: var(--in-content-text-color);
+}
+
+.cliqz-recommended-addons {
+  color: var(--in-content-text-color) !important;
 }
 
 #addon-list .addon[active="false"] > .content-container > .content-inner-container {
