@@ -460,8 +460,16 @@ var gIdentityHandler = {
     let tooltip = "";
     let icon_country_label = "";
     let icon_labels_dir = "ltr";
+    let isSystemAddon;
 
-    if (this._isSecureInternalUI) {
+    // CLIQZ: use brand name and logo if its system addon
+    try {
+      isSystemAddon = this._pageExtensionPolicy.extension.addonData.signedState  == 3
+    } catch(e) {
+      isSystemAddon = false;
+    }
+
+    if (this._isSecureInternalUI || isSystemAddon) {
       this._identityBox.className = "chromeUI";
       let brandBundle = document.getElementById("bundle_brand");
       icon_label = brandBundle.getString("brandShorterName");
