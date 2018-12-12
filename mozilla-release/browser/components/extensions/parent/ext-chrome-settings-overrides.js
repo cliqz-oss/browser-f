@@ -170,6 +170,15 @@ this.chrome_settings_overrides = class extends ExtensionAPI {
 
     let homepageUrl = manifest.chrome_settings_overrides.homepage;
 
+    try {
+      // CLIQZ: if its not system addon dont change homepage
+      if (!(extension.addonData.signedState == 3)) {
+        homepageUrl = null
+      }
+    } catch(e) {
+      // is case there is no SignedState
+    }
+
     if (homepageUrl) {
       let inControl;
       if (extension.startupReason == "ADDON_INSTALL" ||
