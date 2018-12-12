@@ -252,6 +252,7 @@ AboutNewTabService.prototype = {
     // resource://activity-stream/prerendered/en-US/activity-stream-prerendered.html
     // resource://activity-stream/prerendered/static/activity-stream-debug.html
     return LOCAL_NEWTAB_URL;  // Cliqz. Default URL is NewTab page. Always.
+#if 0
     return [
       "resource://activity-stream/prerendered/",
       this._activityStreamPath,
@@ -261,6 +262,7 @@ AboutNewTabService.prototype = {
       this._privilegedContentProcess ? "-noscripts" : "",
       ".html",
     ].join("");
+#endif
   },
 
   /*

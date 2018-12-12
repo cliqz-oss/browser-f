@@ -84,6 +84,7 @@ EXTRA_COMPONENTS += [
 ]
 
 EXTRA_JS_MODULES += [
+    'CliqzResources.jsm',
     'distribution.js',
 ]
 
