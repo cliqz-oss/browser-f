@@ -26,6 +26,7 @@
 
 #include "AboutRedirector.h"
 #include "nsIAboutModule.h"
+#include "nsFirefoxPasswordMigrator.h"
 
 #include "nsNetCID.h"
 
@@ -50,6 +51,9 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsMacAttributionService)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsIEHistoryEnumerator)
 #endif
 
+NS_GENERIC_FACTORY_CONSTRUCTOR(nsFirefoxPasswordMigrator)
+NS_DEFINE_NAMED_CID(NS_FIREFOXPASSWORDMIGRATOR_CID);
+
 NS_DEFINE_NAMED_CID(NS_BROWSERDIRECTORYPROVIDER_CID);
 #if defined(XP_WIN)
 NS_DEFINE_NAMED_CID(NS_SHELLSERVICE_CID);
@@ -69,6 +73,7 @@ NS_DEFINE_NAMED_CID(NS_MACATTRIBUTIONSERVICE_CID);
 static const mozilla::Module::CIDEntry kBrowserCIDs[] = {
     // clang-format off
     { &kNS_BROWSERDIRECTORYPROVIDER_CID, false, nullptr, DirectoryProviderConstructor },
+    { &kNS_FIREFOXPASSWORDMIGRATOR_CID, false, nullptr, nsFirefoxPasswordMigratorConstructor },
 #if defined(XP_WIN)
     { &kNS_SHELLSERVICE_CID, false, nullptr, nsWindowsShellServiceConstructor },
 #elif defined(MOZ_WIDGET_GTK)
@@ -95,6 +100,7 @@ static const mozilla::Module::ContractIDEntry kBrowserContracts[] = {
 #elif defined(MOZ_WIDGET_GTK)
     { NS_SHELLSERVICE_CONTRACTID, &kNS_SHELLSERVICE_CID },
 #endif
+    { NS_FIREFOXPASSWORDMIGRATOR_CONTRACTID, &kNS_FIREFOXPASSWORDMIGRATOR_CID },
     { NS_ABOUT_MODULE_CONTRACTID_PREFIX "blocked", &kNS_BROWSER_ABOUT_REDIRECTOR_CID },
     { NS_ABOUT_MODULE_CONTRACTID_PREFIX "certerror", &kNS_BROWSER_ABOUT_REDIRECTOR_CID },
     { NS_ABOUT_MODULE_CONTRACTID_PREFIX "tabcrashed", &kNS_BROWSER_ABOUT_REDIRECTOR_CID },

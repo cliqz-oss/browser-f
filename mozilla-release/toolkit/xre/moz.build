@@ -101,6 +101,7 @@ UNIFIED_SOURCES += [
     'AutoSQLiteLifetime.cpp',
     'Bootstrap.cpp',
     'CreateAppData.cpp',
+    'MigratePwdFirefox.cpp',
     'nsAppStartupNotifier.cpp',
     'nsConsoleWriter.cpp',
     'nsEmbeddingModule.cpp',
