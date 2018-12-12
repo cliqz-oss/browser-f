@@ -305,8 +305,6 @@ Section "Uninstall"
   ${un.RegCleanProtocolHandler} "ftp"
   ${un.RegCleanProtocolHandler} "http"
   ${un.RegCleanProtocolHandler} "https"
-  ${un.RegCleanProtocolHandler} "mailto"
-
   ${un.RegCleanFileHandler}  ".htm"   "CliqzHTML-$AppUserModelID"
   ${un.RegCleanFileHandler}  ".html"  "CliqzHTML-$AppUserModelID"
   ${un.RegCleanFileHandler}  ".shtml" "CliqzHTML-$AppUserModelID"
