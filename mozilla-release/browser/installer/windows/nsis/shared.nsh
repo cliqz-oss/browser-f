@@ -466,7 +466,6 @@
   ${AddDisabledDDEHandlerValues} "ftp" "$2" "$8,1" "" ""
   ${AddDisabledDDEHandlerValues} "http" "$2" "$8,1" "" ""
   ${AddDisabledDDEHandlerValues} "https" "$2" "$8,1" "" ""
-  ${AddDisabledDDEHandlerValues} "mailto" "$2" "$8,1" "" ""
 !macroend
 !define SetHandlers "!insertmacro SetHandlers"
 
@@ -542,7 +541,6 @@
   WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "CliqzURL$2"
   WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "CliqzURL$2"
   WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "CliqzURL$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "mailto" "CliqzURL$2"
 
   ; Registered Application
   WriteRegStr ${RegKey} "Software\RegisteredApplications" "$1" "$0\Capabilities"
@@ -888,11 +886,6 @@
   ${IsHandlerForInstallDir} "https" $R9
   ${If} "$R9" == "true"
     ${AddDisabledDDEHandlerValues} "https" "$2" "$8,1" "" ""
-  ${EndIf}
-
-  ${IsHandlerForInstallDir} "mailto" $R9
-  ${If} "$R9" == "true"
-    ${AddDisabledDDEHandlerValues} "mailto" "$2" "$8,1" "" ""
   ${EndIf}
 !macroend
 !define UpdateProtocolHandlers "!insertmacro UpdateProtocolHandlers"
