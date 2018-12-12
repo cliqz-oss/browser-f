@@ -191,11 +191,11 @@ ifeq ($(OS_ARCH), Linux)
 		--define '_datadir $(datadir)' \
 		--define '_installdir $(installdir)'
 
-	ifdef ENABLE_TESTS
-		RPM_CMD += \
-			--define 'createtests yes' \
-			--define '_testsinstalldir $(shell basename $(installdir))'
-	endif
+#	ifdef ENABLE_TESTS
+#		RPM_CMD += \
+#			--define 'createtests yes' \
+#			--define '_testsinstalldir $(shell basename $(installdir))'
+#	endif
 
 	#For each of the main, tests, sdk rpms we want to make sure that
 	#if they exist that they are in objdir/dist/ and that they get
