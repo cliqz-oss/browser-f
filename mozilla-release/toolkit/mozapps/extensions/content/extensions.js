@@ -2452,7 +2452,7 @@ var gListView = {
 
     // CLIQZ-SPECIAL extensions.getAddons.themes.browseURL was removed by FF 64
     await this.handleRecommended();
-    document.getElementById("installAddonDisclaimer-learnmore-link").setAttribute("href", "https://cliqz.com");
+    document.getElementById("installAddonDisclaimer-learnmore-link").setAttribute("href", "https://cliqz.com/support/add-ons");
   },
 
   show(aType, aRequest) {
