@@ -67,7 +67,7 @@ category-connect =
 
 help-button-label = Mozilla Support
 
-addons-button-label = Erweiterungen & Themes
+addons-button-label = Erweiterungen
 
 focus-search =
     .key = f

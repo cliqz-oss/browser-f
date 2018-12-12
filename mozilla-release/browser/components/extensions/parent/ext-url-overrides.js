@@ -58,13 +58,19 @@ XPCOMUtils.defineLazyGetter(this, "newTabPopup", () => {
   });
 });
 
-function setNewTabURL(extensionId, url) {
+function setNewTabURL(extensionId, url, isSystem) {
+  /*
+  CLIQZ: Do not allow any addon except system addon to change newtab and stop newtab doorhanger totally.
   if (extensionId) {
     newTabPopup.addObserver(extensionId);
   } else {
     newTabPopup.removeObserver();
   }
-  aboutNewTabService.newTabURL = url;
+  */
+
+  if (isSystem) {
+    aboutNewTabService.newTabURL = url;
+  }
 }
 
 this.urlOverrides = class extends ExtensionAPI {
@@ -125,9 +131,16 @@ this.urlOverrides = class extends ExtensionAPI {
       if (extension.id === 'cliqz@cliqz.com') {
         CliqzResources.setExtensionVersion(extension.version);
       }
-      // Set the newTabURL to the current value of the setting.
-      if (item) {
-        setNewTabURL(item.id, item.value || item.initialValue);
+
+      try {
+        // CLIQZ: if its system addon do not add notification observer
+        const isSystem = extension.addonData.signedState == 3;
+        // Set the newTabURL to the current value of the setting.
+        if (item) {
+          setNewTabURL(item.id, item.value || item.initialValue, isSystem);
+        }
+      } catch(e) {
+        // is case there is no SignedState
       }
     }
   }

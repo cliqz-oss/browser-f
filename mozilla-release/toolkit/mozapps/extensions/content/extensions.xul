@@ -380,7 +380,7 @@
                   </description>
                 </hbox>
               </vbox>
-              <richlistbox id="addon-list" class="list"/>
+              <richlistbox id="addon-list" class="list" flex="1"/>
               <vbox id="recommendedBlock" hidden="true">
                 <hbox class="heading-inner">
                   <label class="header-name" flex="1">

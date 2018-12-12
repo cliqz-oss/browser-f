@@ -194,28 +194,38 @@ richlistitem:not([selected]) * {
   display: none;
 }
 
+/* CLIQZ-SPECIAL recommended addons design */
 #addon-list {
   margin-bottom: 20px;
 }
 
 #recommended-addon-list {
-  margin: 10px 0;
-  padding: 0 48px;
+  margin-bottom: 25px;
+  padding: 0 24px;
+}
+
+#recommended-addon-list .scrollbox-innerbox {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  max-width: 675px;
 }
 
 .cliqz-recommended-addons {
   -moz-box-orient: vertical;
   -moz-binding: url("chrome://mozapps/content/extensions/extensions.xml#cliqz-recommended-feature");
-  padding: 5px;
   background: #fff;
+  padding: 5px;
+}
+
+.cliqz-recommended-addons .content-container{
+  width: 100%;
 }
 
 .cliqz-recommended-addons .icon {
-  width: 48px;
-  height: 48px;
-  margin: 3px 7px;
   -moz-box-align: center;
   -moz-box-pack: center;
+  max-height: 32px;
+  max-width: 32px;
 }
 
 .cliqz-recommended-addons .name {
@@ -224,4 +234,24 @@ richlistitem:not([selected]) * {
 
 .cliqz-recommended-addons .homepage-container {
   margin-right: 10px;
+}
+
+.cliqz-recommended-addons button {
+  background: #0078CA;
+  border: 0;
+  color: #fff;
+  cursor: pointer;
+}
+
+.cliqz-recommended-addons button:hover {
+  background: #2B5993 !important;
+}
+/* Override to extract some more space */
+.list-view-notice {
+  margin-bottom: 10px;
+}
+
+#heading {
+  margin-bottom: 10px !important;
+  margin-top: 15px !important;
 }
