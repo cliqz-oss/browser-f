@@ -1128,7 +1128,6 @@ function _createNullPrincipalFromTabUserContextId(tab = gBrowser.selectedTab) {
 // load a URI or redirect it to the correct process.
 function _loadURI(browser, uri, params = {}) {
   let tab = gBrowser.getTabForBrowser(browser);
-
   // Preloaded browsers don't have tabs, so we ignore those.
   if (tab) {
     maybeRecordAbandonmentTelemetry(tab, "newURI");
