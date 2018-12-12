@@ -664,6 +664,17 @@ var gIdentityHandler = {
       connection = "secure";
     }
 
+    let isSystemAddon;
+
+    // CLIQZ: treat system addon page as secure internal page
+    try {
+      if (this._pageExtensionPolicy && this._pageExtensionPolicy.extension.addonData.signedState  == 3) {
+        connection = "chrome";
+      }
+    } catch(e) {
+      // if there is no signed state
+    }
+
     // Determine if there are insecure login forms.
     let loginforms = "secure";
     if (this._hasInsecureLoginForms) {
@@ -857,6 +868,9 @@ var gIdentityHandler = {
     if (event.target == this._identityPopup) {
       window.addEventListener("focus", this, true);
     }
+
+    /* CLIQZ: we do not support shield study */
+    return ;
 
     let extra = {};
     for (let blocker of ContentBlocking.blockers) {

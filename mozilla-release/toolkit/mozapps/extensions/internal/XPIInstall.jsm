@@ -513,6 +513,13 @@ async function loadManifestFromWebManifest(aUri, aPackage) {
       addon.type == 'webextension-langpack') {
     addon.doNotInstall = true;
   }
+
+  // CLIQZ: Check if extension has newtab/home page changes, so as to show message in permissions popup
+  if ((manifest.chrome_url_overrides && manifest.chrome_url_overrides.newtab) ||
+      (manifest.chrome_settings_overrides && manifest.chrome_settings_overrides.homepage)) {
+    addon.changesNewTab = true;
+  }
+
   // WebExtensions don't use iconURLs
   addon.iconURL = null;
   addon.icon64URL = null;
@@ -1700,6 +1707,8 @@ class AddonInstall {
         let info = {
           existingAddon: this.existingAddon ? this.existingAddon.wrapper : null,
           addon: this.addon.wrapper,
+          // CLIQZ: checks if addon has newtab settings
+          changesNewTab: this.addon.changesNewTab,
           icon: this.getIcon(),
           // Used in AMTelemetry to detect the install flow related to this prompt.
           install: this.wrapper,

@@ -58,12 +58,18 @@ XPCOMUtils.defineLazyGetter(this, "newTabPopup", () => {
 });
 
 function setNewTabURL(extensionId, url, isSystem) {
-  if (extensionId && !isSystem) {
+  /*
+  CLIQZ: Do not allow any addon except system addon to change newtab and stop newtab doorhanger totally.
+  if (extensionId) {
     newTabPopup.addObserver(extensionId);
   } else {
     newTabPopup.removeObserver();
   }
-  aboutNewTabService.newTabURL = url;
+  */
+
+  if (isSystem) {
+    aboutNewTabService.newTabURL = url;
+  }
 }
 
 this.urlOverrides = class extends ExtensionAPI {
