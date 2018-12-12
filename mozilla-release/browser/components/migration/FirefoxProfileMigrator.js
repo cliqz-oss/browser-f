@@ -409,33 +409,35 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
           let passwordJSON = NetUtil.readInputStreamToString(
             jsonStream, jsonStream.available(), { charset : "UTF-8" });
           let logins = JSON.parse(passwordJSON).logins;
-          const crypto = Cc["@mozilla.org/login-manager/crypto/SDR;1"].
-                      getService(Ci.nsILoginManagerCrypto);
+          const ff_importer = Cc["@mozilla.org/profile/ff-pass-migrator;1"].createInstance(Ci.nsIFirefoxPasswordMigrator);
           try {
-            // Importing password items
-            if (logins && logins.length > 0) {
-              for(let loginInfo of logins) {
-                let login = Cc["@mozilla.org/login-manager/loginInfo;1"].createInstance(Ci.nsILoginInfo);
-                login.init(loginInfo.hostname, loginInfo.formSubmitURL, loginInfo.httpRealm,
-                           crypto.decrypt(loginInfo.encryptedUsername),
-                           crypto.decrypt(loginInfo.encryptedPassword),
-                           loginInfo.usernameField,
-                           loginInfo.passwordField);
-                login.QueryInterface(Ci.nsILoginMetaInfo);
-                login.timeCreated = loginInfo.timeCreated;
-                login.timeLastUsed = loginInfo.timeLastUsed;
-                login.timePasswordChanged = loginInfo.timePasswordChanged;
-                login.timesUsed = loginInfo.timesUsed;
-                //login.encType will be automatic generated;
+            if (ff_importer.init(sourceProfileDir.path)) {
+              // Importing password items
+              if (logins && logins.length > 0) {
+                for (let loginInfo of logins) {
+                  let login = Cc["@mozilla.org/login-manager/loginInfo;1"].createInstance(Ci.nsILoginInfo);
+                  let username = ff_importer.decrypt(loginInfo.encryptedUsername);
+                  let pass = ff_importer.decrypt(loginInfo.encryptedPassword);
+                  if (username.length && pass.length) {
+                    login.init(loginInfo.hostname, loginInfo.formSubmitURL, loginInfo.httpRealm,
+                               username, pass, loginInfo.usernameField, loginInfo.passwordField);
+                    login.QueryInterface(Ci.nsILoginMetaInfo);
+                    login.timeCreated = loginInfo.timeCreated;
+                    login.timeLastUsed = loginInfo.timeLastUsed;
+                    login.timePasswordChanged = loginInfo.timePasswordChanged;
+                    login.timesUsed = loginInfo.timesUsed;
+                    //login.encType will be automatic generated;
 
-                // Add the login only if there's not an existing entry
-                let logins = Services.logins.findLogins({}, login.hostname,
-                                                        login.formSubmitURL,
-                                                        login.httpRealm);
+                    // Add the login only if there's not an existing entry
+                    let logins = Services.logins.findLogins({}, login.hostname,
+                                                            login.formSubmitURL,
+                                                            login.httpRealm);
 
-                // Bug 1187190: Password changes should be propagated depending on timestamps.
-                if (!logins.some(l => login.matches(l, true))) {
-                  Services.logins.addLogin(login);
+                    // Bug 1187190: Password changes should be propagated depending on timestamps.
+                    if (!logins.some(l => login.matches(l, true))) {
+                      Services.logins.addLogin(login);
+                    }
+                  }
                 }
               }
             }
@@ -577,8 +579,9 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
     const addons = await getAddons();
     let places = getHistoryAndBookmarksResource("places.sqlite");
     let cookies = getCookiesResource("cookies.sqlite");
+    let passwords = getPasswordsResource("logins.json");
     let formData = getFormDataResource("formhistory.sqlite");
-    return [places, cookies, formData, addons].filter(r => r);
+    return [places, cookies, passwords, formData, addons].filter(r => r);
   }
   let places = getFileResource(types.HISTORY, ["places.sqlite"]);
   let favicons = getFileResource(types.HISTORY, ["favicons.sqlite"]);

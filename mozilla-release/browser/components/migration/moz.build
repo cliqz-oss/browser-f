@@ -12,9 +12,14 @@ JAR_MANIFESTS += ['jar.mn']
 
 XPIDL_SOURCES += [
     'nsIBrowserProfileMigrator.idl',
+    'nsIFirefoxPasswordMigrator.idl',
 ]
 
 XPIDL_MODULE = 'migration'
+
+UNIFIED_SOURCES += [
+    'nsFirefoxPasswordMigrator.cpp'
+]
 
 EXTRA_COMPONENTS += [
     'ChromeProfileMigrator.js',
@@ -55,6 +60,8 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     DEFINES['HAS_SAFARI_MIGRATOR'] = True
 
 FINAL_LIBRARY = 'browsercomps'
+
+include('/ipc/chromium/chromium-config.mozbuild')
 
 with Files('**'):
     BUG_COMPONENT = ('Firefox', 'Migration')
