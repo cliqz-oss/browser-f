@@ -114,8 +114,10 @@ Preferences.addAll([
   { id: "browser.sessionstore.restore_on_demand", type: "bool" },
   { id: "browser.ctrlTab.recentlyUsedOrder", type: "bool" },
 
+#if 0
   // CFR
   {id: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr", type: "bool"},
+#endif
 
   // Fonts
   { id: "font.language.group", type: "wstring" },
@@ -336,9 +338,11 @@ var gMainPane = {
       gMainPane.initBrowserLocale();
     }
 
+#if 0
     let cfrLearnMoreLink = document.getElementById("cfrLearnMore");
     let cfrLearnMoreUrl = Services.urlFormatter.formatURLPref("app.support.baseURL") + "extensionrecommendations";
     cfrLearnMoreLink.setAttribute("href", cfrLearnMoreUrl);
+#endif
 
     if (AppConstants.platform == "win") {
       // Functionality for "Show tabs in taskbar" on Windows 7 and up.
