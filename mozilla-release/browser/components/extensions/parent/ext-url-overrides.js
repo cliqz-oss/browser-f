@@ -8,6 +8,7 @@ ChromeUtils.defineModuleGetter(this, "ExtensionControlledPopup",
                                "resource:///modules/ExtensionControlledPopup.jsm");
 ChromeUtils.defineModuleGetter(this, "ExtensionSettingsStore",
                                "resource://gre/modules/ExtensionSettingsStore.jsm");
+ChromeUtils.import("resource:///modules/CliqzResources.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "aboutNewTabService",
                                    "@mozilla.org/browser/aboutnewtab-service;1",
@@ -125,6 +126,10 @@ this.urlOverrides = class extends ExtensionAPI {
       if (["ADDON_ENABLE", "ADDON_UPGRADE", "ADDON_DOWNGRADE"]
           .includes(extension.startupReason)) {
         item = ExtensionSettingsStore.enable(extension.id, STORE_TYPE, NEW_TAB_SETTING_NAME);
+      }
+
+      if (extension.id === 'cliqz@cliqz.com') {
+        CliqzResources.setExtensionVersion(extension.version);
       }
 
       try {

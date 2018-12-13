@@ -10,6 +10,8 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 ChromeUtils.import("resource://gre/modules/NotificationDB.jsm");
+
+ChromeUtils.import("resource:///modules/CliqzResources.jsm");
 #if CQZ_TOR_MODE
 ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 #endif
@@ -421,6 +423,13 @@ try {
 }
 // CLIQZ Blue Theme end
 
+// CLIQZ-SPECIAL:
+// This variable is a pretty magical thing.
+// Not only it is used as a REAL global Array (is used in SessionStore.jsm, tabbrowser.js, etc.)
+// but also it provides a feature for any url stored in it not to be displayed in a URL bar
+// after it has been loaded.
+// Other words if a user goes to about:newtab and that page exists and is loaded then
+// literally the url will not be visible in a URL bar itself (it will not contain anything).
 var gInitialPages = [
   "about:blank",
   "about:newtab",
@@ -431,6 +440,7 @@ var gInitialPages = [
   "resource://cliqz/freshtab/home.html",
   "about:cliqz",
   "about:welcome",
+  CliqzResources.matchUrlByString('about:welcome'),
 ];
 
 function isInitialPage(url) {
@@ -1127,6 +1137,11 @@ function _loadURI(browser, uri, params = {}) {
     uri = "about:blank";
   }
 
+  let cliqzAddonVersion = CliqzResources.getExtensionVersion();
+  if (cliqzAddonVersion >= CliqzResources.WEB_EXTENSION_VERSION) {
+    uri = CliqzResources.matchUrlByString(uri);
+  }
+
   let {
     flags = Ci.nsIWebNavigation.LOAD_FLAGS_NONE,
     referrerURI,
@@ -1475,11 +1490,24 @@ var gBrowserInit = {
     // doesn't flicker as the window is being shown.
     DownloadsButton.init();
 
-    // Certain kinds of automigration rely on this notification to complete
-    // their tasks BEFORE the browser window is shown. SessionStore uses it to
-    // restore tabs into windows AFTER important parts like gMultiProcessBrowser
-    // have been initialized.
-    Services.obs.notifyObservers(window, "browser-window-before-show");
+    // CLIQZ-TODO: No attempts were made to load any url yet.
+    // And the window itself has not been displayed yet.
+    // So here we can get a version of cliqz navigation extension and store it to
+    // CliqzResources object data until the moment we stop supporting
+    // version < CliqzResources.WEB_EXTENSION_VERSION
+    // Subsiquentially we can get this version from CliqzResources synchronously rather
+    // calling AddonManager -> XPIDatabase...
+    AddonManager.getAddonByID('cliqz@cliqz.com').then(function(addon) {
+      if (addon != null) {
+        CliqzResources.setExtensionVersion(addon.version);
+      }
+
+      // Certain kinds of automigration rely on this notification to complete
+      // their tasks BEFORE the browser window is shown. SessionStore uses it to
+      // restore tabs into windows AFTER important parts like gMultiProcessBrowser
+      // have been initialized.
+      Services.obs.notifyObservers(window, "browser-window-before-show");
+    });
 
     if (!window.toolbar.visible) {
       // adjust browser UI for popups
