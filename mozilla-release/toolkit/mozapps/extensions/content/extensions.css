@@ -196,7 +196,11 @@ richlistitem:not([selected]) * {
 
 /* CLIQZ-SPECIAL recommended addons design */
 #addon-list {
-  margin-bottom: 20px;
+  margin-bottom: 15px;
+}
+
+#recommendedBlock {
+  margin-top: 5px;
 }
 
 #recommended-addon-list {
@@ -245,13 +249,4 @@ richlistitem:not([selected]) * {
 
 .cliqz-recommended-addons button:hover {
   background: #2B5993 !important;
-}
-/* Override to extract some more space */
-.list-view-notice {
-  margin-bottom: 10px;
-}
-
-#heading {
-  margin-bottom: 10px !important;
-  margin-top: 15px !important;
 }

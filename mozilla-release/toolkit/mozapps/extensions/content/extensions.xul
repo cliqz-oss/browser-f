@@ -389,6 +389,7 @@
                 </hbox>
                 <richlistbox id="recommended-addon-list" class="list" flex="1"/>
               </vbox>
+              <spacer flex="5000" /> <!-- Necessary to push recommended section next to installed addons -->
             </vbox>
 
             <!-- legacy extensions view -->
