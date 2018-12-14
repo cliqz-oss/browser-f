@@ -18,7 +18,7 @@
 <!-- Forget mode -->
 <!ENTITY  forgetMode.caption             "Automatischer Vergessen Modus">
 <!ENTITY  forgetMode.enableCheckboxLabel "Automatischen Vergessen Modus aktivieren">
-<!ENTITY  forgetMode.explanation1        "Öffnet Websites mit expliziten (pornographischen) Inhalten automatisch im Vergessen Modus, so dass sie nicht in der Chronik gespeichert werden.">
+<!ENTITY  forgetMode.explanation1        "Öffnet Websites mit expliziten Inhalten automatisch im Vergessen Modus, so dass sie nicht in der Chronik gespeichert werden.">
 <!ENTITY  forgetMode.explanation2        "Kann im Tab-Kontextmenü (rechter Mausklick auf Tab in Tableiste) für jede Website eingestellt werden.">
 <!ENTITY  forgetMode.explanation3        "Funktioniert nicht in Verbindung mit 'Containers' Add-on.">
 <!ENTITY  forgetMode.note                "Hinweis: Für umfassendere Privatsphäre bitte Websites in einem <b>Vergessen Fenster</b> öffnen, weil dort u.a. temporäre Dateien zuverlässiger entfernt werden können.">

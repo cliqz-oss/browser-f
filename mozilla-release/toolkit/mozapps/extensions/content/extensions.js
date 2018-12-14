@@ -29,9 +29,6 @@ ChromeUtils.defineModuleGetter(this, "PluralForm",
 ChromeUtils.defineModuleGetter(this, "Preferences",
                                "resource://gre/modules/Preferences.jsm");
 
-ChromeUtils.defineModuleGetter(this, "AddonRepository",
-                               "resource://gre/modules/addons/AddonRepository.jsm");
-
 XPCOMUtils.defineLazyPreferenceGetter(this, "WEBEXT_PERMISSION_PROMPTS",
                                       "extensions.webextPermissionPrompts", false);
 XPCOMUtils.defineLazyPreferenceGetter(this, "XPINSTALL_ENABLED",
@@ -63,8 +60,6 @@ const RECOMMENDED_ADDONS = {
     },
     "name": "Ghostery",
     "homepageURL": "https://www.ghostery.com",
-    // CLIQZ-TODO: this needs to be removed only when Ghostery implements chrome.runtime.isCliqz
-    "sourceURI": "https://s3.amazonaws.com/cdncliqz/update/browser/firefox@ghostery.com/latest.xpi",
   },
   "support@lastpass.com": {
     "id": "support@lastpass.com",
@@ -3643,8 +3638,7 @@ ItemHandler.prototype = {
     } else {
       // To make sure we can get XPI url from AMO
       try {
-        const rAddon = await AddonRepository.getAddonsByIDs([this._addon.id]);
-        addonURI = rAddon[0].sourceURI.spec;
+        addonURI = await AddonRepository.getInstallURLfromAMO(this._addon.id);
       } catch(e) {
         const errorText = gStrings.ext.GetStringFromName("installFailed");
         this.listItem.changeButtonLabel(errorText);
