@@ -441,6 +441,7 @@ var gInitialPages = [
   "about:cliqz",
   "about:welcome",
   CliqzResources.matchUrlByString('about:welcome'),
+  CliqzResources.matchUrlByString('about:home'),
 ];
 
 function isInitialPage(url) {
@@ -1137,8 +1138,7 @@ function _loadURI(browser, uri, params = {}) {
     uri = "about:blank";
   }
 
-  let cliqzAddonVersion = CliqzResources.getExtensionVersion();
-  if (cliqzAddonVersion >= CliqzResources.WEB_EXTENSION_VERSION) {
+  if (CliqzResources.isWebExtensionAPI()) {
     uri = CliqzResources.matchUrlByString(uri);
   }
 
@@ -1490,24 +1490,11 @@ var gBrowserInit = {
     // doesn't flicker as the window is being shown.
     DownloadsButton.init();
 
-    // CLIQZ-TODO: No attempts were made to load any url yet.
-    // And the window itself has not been displayed yet.
-    // So here we can get a version of cliqz navigation extension and store it to
-    // CliqzResources object data until the moment we stop supporting
-    // version < CliqzResources.WEB_EXTENSION_VERSION
-    // Subsiquentially we can get this version from CliqzResources synchronously rather
-    // calling AddonManager -> XPIDatabase...
-    AddonManager.getAddonByID('cliqz@cliqz.com').then(function(addon) {
-      if (addon != null) {
-        CliqzResources.setExtensionVersion(addon.version);
-      }
-
-      // Certain kinds of automigration rely on this notification to complete
-      // their tasks BEFORE the browser window is shown. SessionStore uses it to
-      // restore tabs into windows AFTER important parts like gMultiProcessBrowser
-      // have been initialized.
-      Services.obs.notifyObservers(window, "browser-window-before-show");
-    });
+    // Certain kinds of automigration rely on this notification to complete
+    // their tasks BEFORE the browser window is shown. SessionStore uses it to
+    // restore tabs into windows AFTER important parts like gMultiProcessBrowser
+    // have been initialized.
+    Services.obs.notifyObservers(window, "browser-window-before-show");
 
     if (!window.toolbar.visible) {
       // adjust browser UI for popups
