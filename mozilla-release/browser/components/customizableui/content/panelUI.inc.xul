@@ -201,6 +201,15 @@
                        oncommand="PanelUI._onBannerItemSelected(event)"
                        wrap="true"
                        hidden="true"/>
+        <toolbarbutton
+                       id="addon-enabled-banner"
+                       class="panel-banner-item"
+                       label="&allowAddons.panelUI.label;"
+                       key="key_openAddons"
+                       command="Tools:Addons"
+                       wrap="true"
+                       hidden="true"
+                       />
         <toolbarbutton id="appMenu-cliqz-connect-button"
                        label="&connect.panelUI.label;"
                        class="subviewbutton subviewbutton-iconic"
