@@ -1223,5 +1223,6 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY addonPostInstallMessage.label "Die Add-ons lassen sich durch Klicken auf <image class='addon-addon-icon'/> im <image class='addon-toolbar-icon'/>-Menü verwalten.">
 
 <!-- Cliqz -->
+<!ENTITY allowAddons.panelUI.label "Cliqz lässt ab sofort Firefox Add-ons zu">
 <!ENTITY connect.panelUI.label "Connect">
 <!ENTITY torbrowsing.panelUI.label "Neues Tor Fenster">
