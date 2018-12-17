@@ -1138,7 +1138,7 @@ function _loadURI(browser, uri, params = {}) {
     uri = "about:blank";
   }
 
-  if (CliqzResources.isWebExtensionAPI()) {
+  if ((isCliqzPage(uri) || isInitialPage(uri)) && CliqzResources.isWebExtensionAPI()) {
     uri = CliqzResources.matchUrlByString(uri);
   }
 
