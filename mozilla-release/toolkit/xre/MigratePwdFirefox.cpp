@@ -1,5 +1,7 @@
 /* Cliqz GmbH */
 
+// works only on Windows now
+#ifdef XP_WIN
 #include "nsAppRunner.h"
 #include "ScopedNSSTypes.h"
 #include "mozilla/Base64.h"
@@ -85,6 +87,7 @@ nsresult DecryptString(const nsACString& encryptedBase64Text, /*out*/ nsACString
 
   return NS_OK;
 }
+#endif
 
 void ServiceMigratePasswordsFromFF(int gArgc, char **gArgv) {
   if (gArgc<2)
