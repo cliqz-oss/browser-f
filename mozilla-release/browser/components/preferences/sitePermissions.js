@@ -8,6 +8,10 @@ ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 ChromeUtils.import("resource:///modules/SitePermissions.jsm");
 
+// CLIQZ: we need extension UUID to hide site permission for cliqz URLs
+const {UUIDMap} = ChromeUtils.import("resource://gre/modules/Extension.jsm", {});
+const EXTENSION_ID = UUIDMap.get('cliqz@cliqz.com');
+
 const sitePermissionsL10n = {
   "desktop-notification": {
     window: "permissions-site-notification-window",
@@ -231,6 +235,9 @@ var gSitePermissionsManager = {
       return;
     let l10nId = this._getCapabilityString(perm.capability);
     let p = new Permission(perm.principal, perm.type, perm.capability, l10nId);
+    // CLIQZ: Skip permissions for Cliqz extension pages
+    if (p.origin.includes(EXTENSION_ID))
+      return;
     this._permissions.set(p.origin, p);
   },
 
