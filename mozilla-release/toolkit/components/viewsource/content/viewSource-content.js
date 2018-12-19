@@ -605,7 +605,7 @@ var ViewSourceContent = {
                               null, referrerPolicy, // referrer
                               null, null, // postData, headers
                               Services.io.newURI(baseURI), null, false);
-                              Services.scriptSecurityManager.getSystemPrincipal());
+                              Services.scriptSecurityManager.getSystemPrincipal();
   },
 
   /**
