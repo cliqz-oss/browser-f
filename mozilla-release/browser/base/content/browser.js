@@ -1125,6 +1125,21 @@ function _createNullPrincipalFromTabUserContextId(tab = gBrowser.selectedTab) {
   });
 }
 
+function _delayURILoadingInitially(/* browser is expected to be the 1st argument */) {
+  let browser = arguments[0]; // browser;
+  let args = Array.prototype.slice.call(arguments, 1);
+
+  setTimeout(function() {
+    browser.webNavigation.loadURIWithOptions.apply(browser.webNavigation, args);
+  }, 250);
+
+  _delayURILoadingInitially = function(/* browser is expected to be the 1st argument */) {
+    let browser = arguments[0]; // browser;
+    let args = Array.prototype.slice.call(arguments, 1);
+    browser.webNavigation.loadURIWithOptions.apply(browser.webNavigation, args);
+  };
+}
+
 // A shared function used by both remote and non-remote browser XBL bindings to
 // load a URI or redirect it to the correct process.
 function _loadURI(browser, uri, params = {}) {
@@ -1182,11 +1197,14 @@ function _loadURI(browser, uri, params = {}) {
       if (userContextId) {
         browser.webNavigation.setOriginAttributesBeforeLoading({ userContextId });
       }
-
-      browser.webNavigation.loadURIWithOptions(uri, flags,
-                                               referrerURI, referrerPolicy,
-                                               postData, null, null,
-                                               triggeringPrincipal, !!params.ensurePrivate);
+      // CLIQZ-TODO: remove this timer after it is clear why home page loads with it
+      // initially correctly.
+      // This function loads a uri asynchronously only once.
+      // Any subsequential call results in regular execution without Timeout.
+      _delayURILoadingInitially(browser, uri, flags,
+                                referrerURI, referrerPolicy,
+                                postData, null, null,
+                                triggeringPrincipal, !!params.ensurePrivate);
     } else {
       // Check if the current browser is allowed to unload.
       let {permitUnload, timedOut} = browser.permitUnload();
