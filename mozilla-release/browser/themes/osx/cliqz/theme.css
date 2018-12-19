@@ -83,6 +83,10 @@
   /* Remove 1px margin bottom on the newtab-button */
   /* Remove the first tab's left border in full screen */
 }
+#navigator-toolbox #TabsToolbar:-moz-lwtheme {
+  -moz-appearance: none;
+  background-color: #000;
+}
 #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext {
   -moz-appearance: none;
   background-color: #D1D1D1;
