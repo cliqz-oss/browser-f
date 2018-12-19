@@ -1553,8 +1553,10 @@ BrowserGlue.prototype = {
     this._idleService.addIdleObserver(
       this._lateTasksIdleObserver, LATE_TASKS_IDLE_TIME_SEC);
 
+#if 0
     this._monitorScreenshotsPref();
     this._monitorWebcompatReporterPref();
+#endif
   },
 
   /**

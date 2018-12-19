@@ -212,7 +212,7 @@ const PanelUI = {
         triggerEvent: domEvent,
       });
       // CLIQZ: check if enabled addons message is there for doorhanger notification
-      const hasEnabledAddonFlag = this._notifications.filter(n => n.id == 'allow-addons');
+      const hasEnabledAddonFlag = this._notifications ? this._notifications.filter(n => n.id == 'allow-addons') : [];
       this._checkEnableAddonMsg(!!(hasEnabledAddonFlag.length > 0));
     })().catch(Cu.reportError);
   },
