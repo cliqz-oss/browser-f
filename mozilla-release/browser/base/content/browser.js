@@ -1138,10 +1138,6 @@ function _loadURI(browser, uri, params = {}) {
     uri = "about:blank";
   }
 
-  if ((isCliqzPage(uri) || isInitialPage(uri)) && CliqzResources.isWebExtensionAPI()) {
-    uri = CliqzResources.matchUrlByString(uri);
-  }
-
   let {
     flags = Ci.nsIWebNavigation.LOAD_FLAGS_NONE,
     referrerURI,
@@ -1162,6 +1158,11 @@ function _loadURI(browser, uri, params = {}) {
     newFrameloader,
   } = E10SUtils.shouldLoadURIInBrowser(browser, uri, gMultiProcessBrowser,
                                        flags);
+
+  if ((isCliqzPage(uri) || isInitialPage(uri)) && CliqzResources.isWebExtensionAPI()) {
+    uri = CliqzResources.matchUrlByString(uri);
+  }
+
   if (uriObject && handleUriInChrome(browser, uriObject)) {
     // If we've handled the URI in Chrome then just return here.
     return;
