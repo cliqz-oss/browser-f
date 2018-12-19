@@ -604,8 +604,9 @@ var ViewSourceContent = {
     webNav.loadURIWithOptions(uri, loadFlags,
                               null, referrerPolicy, // referrer
                               null, null, // postData, headers
-                              Services.io.newURI(baseURI), null, false);
-                              Services.scriptSecurityManager.getSystemPrincipal());
+                              Services.io.newURI(baseURI),
+                              Services.scriptSecurityManager.getSystemPrincipal(),
+                              false);
   },
 
   /**
