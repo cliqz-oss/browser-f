@@ -144,7 +144,7 @@ search-results-empty-message =
        *[other] Keine Treffer in den Einstellungen für "<span data-l10n-name="query"></span>".
     }
 
-search-results-help-link = Benötigst du Hilfe? Dann besuche die <a data-l10n-name="url">Hilfeseite für { -brand-short-name }</a>.
+search-results-help-link = Benötigst du Hilfe? Dann besuche die <a data-l10n-name="url">Mozilla Support</a>.
 
 ## General Section
 

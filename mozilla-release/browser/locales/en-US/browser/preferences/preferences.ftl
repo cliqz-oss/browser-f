@@ -65,7 +65,7 @@ pane-connect-title = Connect
 category-connect =
     .tooltiptext = { pane-connect-title }
 
-help-button-label = { -brand-short-name } Support
+help-button-label = Mozilla Support
 addons-button-label = Extensions
 
 focus-search =
@@ -143,7 +143,7 @@ search-results-empty-message =
        *[other] Sorry! There are no results in Preferences for “<span data-l10n-name="query"></span>”.
     }
 
-search-results-help-link = Need help? Visit <a data-l10n-name="url">{ -brand-short-name } Support</a>
+search-results-help-link = Need help? Visit <a data-l10n-name="url">Mozilla Support</a>
 
 ## General Section
 
