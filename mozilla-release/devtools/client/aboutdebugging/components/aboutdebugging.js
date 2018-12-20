@@ -12,10 +12,8 @@ const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const Services = require("Services");
 
 const PanelMenu = createFactory(require("./PanelMenu"));
-#if MOZ_UPDATE_CHANNEL != release
 loader.lazyGetter(this, "AddonsPanel",
   () => createFactory(require("./addons/Panel")));
-#endif
 loader.lazyGetter(this, "TabsPanel",
   () => createFactory(require("./tabs/Panel")));
 loader.lazyGetter(this, "WorkersPanel",
@@ -30,13 +28,11 @@ const Strings = Services.strings.createBundle(
   "chrome://devtools/locale/aboutdebugging.properties");
 
 const panels = [{
-#if MOZ_UPDATE_CHANNEL != release
   id: "addons",
   name: Strings.GetStringFromName("addons"),
   icon: "chrome://devtools/skin/images/debugging-addons.svg",
   component: AddonsPanel,
 }, {
-#endif
   id: "tabs",
   name: Strings.GetStringFromName("tabs"),
   icon: "chrome://devtools/skin/images/debugging-tabs.svg",
@@ -48,11 +44,7 @@ const panels = [{
   component: WorkersPanel,
 }];
 
-#if MOZ_UPDATE_CHANNEL != release
 const defaultPanelId = "addons";
-#else
-const defaultPanelId = "tabs";
-#endif
 
 class AboutDebuggingApp extends Component {
   static get propTypes() {
