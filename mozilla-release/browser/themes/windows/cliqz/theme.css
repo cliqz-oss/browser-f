@@ -28,6 +28,7 @@
   background-color: var(--toolbarbutton-hover-background) !important;
   box-shadow: unset;
 }
+:root:not([uidensity=touch]) .tabs-newtab-button .toolbarbutton-icon,
 :root:not([uidensity=touch]) .tabs-newtab-button:hover .toolbarbutton-icon, :root:not([uidensity=touch]) .tabs-newtab-button[open=true] .toolbarbutton-icon, :root:not([uidensity=touch]) #new-tab-button:hover .toolbarbutton-icon, :root:not([uidensity=touch]) #new-tab-button[open=true] .toolbarbutton-icon {
   margin-left: 3px;
   margin-right: 3px;
