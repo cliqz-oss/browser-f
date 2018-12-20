@@ -329,6 +329,3 @@ devtools.jar:
     # Devtools-reps
     skin/images/devtools-reps/jump-definition.svg (themes/images/devtools-reps/jump-definition.svg)
     skin/images/devtools-reps/open-inspector.svg (themes/images/devtools-reps/open-inspector.svg)
-
-    # DB-1276. For hiding addons on about:debugging page in release build
-*   modules/devtools/client/aboutdebugging/components/Aboutdebugging.js (aboutdebugging/components/Aboutdebugging.js)
