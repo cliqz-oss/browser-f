@@ -199,7 +199,6 @@ button > hbox > label {
   font-weight: 600;
 }
 
-<<<<<<< HEAD
 #startupPageBox {
   padding-top: 32px;
 }
@@ -210,16 +209,6 @@ button > hbox > label {
   margin-bottom: 4px;
 }
 
-.homepage-button:first-of-type {
-  margin-inline-start: 0;
-}
-
-.homepage-button:last-of-type {
-  margin-inline-end: 0;
-}
-
-||||||| merged common ancestors
-=======
 .extension-controlled {
   margin-top: 18px !important;
   margin-bottom: 18px !important;
@@ -239,7 +228,6 @@ button > hbox > label {
   background-position-x: right 10px;
 }
 
->>>>>>> origin/upstream-releases
 .extension-controlled-icon {
   height: 20px;
   margin: 2px 0 6px;
