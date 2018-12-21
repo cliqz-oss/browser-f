@@ -5443,7 +5443,7 @@ var TabContextMenu = {
     contextPinSelectedTabs.hidden = this.contextTab.pinned || !multiselectionContext;
     let contextUnpinSelectedTabs = document.getElementById("context_unpinSelectedTabs");
     contextUnpinSelectedTabs.hidden = !this.contextTab.pinned || !multiselectionContext;
-
+#if 0
     let contextMoveTabOptions = document.getElementById("context_moveTabOptions");
     contextMoveTabOptions.disabled = gBrowser.allTabsSelected();
     let moveTabOptionsStringPrefix = multiselectionContext ? "multiselectcontext" : "nonmultiselectcontext";
@@ -5469,7 +5469,7 @@ var TabContextMenu = {
     let isFirstTab = tabsToMove[0] == visibleTabs[0] ||
                      tabsToMove[0] == visibleTabs[gBrowser._numPinnedTabs];
     contextMoveTabToStart.disabled = isFirstTab && allSelectedTabsAdjacent;
-
+#endif
     // Hide the "Duplicate Tab" if there is a selection present
     let contextDuplicateTab = document.getElementById("context_duplicateTab");
     contextDuplicateTab.hidden = multiselectionContext;
