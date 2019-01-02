@@ -25,7 +25,7 @@
     <command id="cmd_newNavigatorTab" oncommand="BrowserOpenTab(event);"/>
     <command id="cmd_newNavigatorTabNoEvent" oncommand="BrowserOpenTab();"/>
     <command id="cmd_newForgetTab" oncommand="BrowserOpenPrivateTab();"/>
-#if CQZ_TOR_MODE
+#ifdef CQZ_TOR_MODE
     <command id="cmd_newTorWindow" oncommand="BrowserOpenTorWindow();"/>
 #endif
     <command id="Browser:OpenFile"  oncommand="BrowserOpenFileWindow();"/>

@@ -39,6 +39,9 @@ export('DIST_SUBDIR')
 # These defines are read in firefox.js
 DEFINES['APP_VERSION'] = CONFIG['MOZ_APP_VERSION']
 
+if CONFIG['CQZ_TOR_MODE']:
+    DEFINES['CQZ_TOR_MODE'] = 1
+
 for cdm in CONFIG['MOZ_EME_MODULES']:
     DEFINES['MOZ_%s_EME' % cdm.upper()] = True
 

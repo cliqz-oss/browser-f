@@ -8,7 +8,8 @@ for var in (
         'MOZ_APP_NAME',
         'MOZ_MACBUNDLE_NAME',
         'MOZ_SERVICES_SYNC',
-        'CQZ_AUTO_PRIVATE_TAB'):
+        'CQZ_AUTO_PRIVATE_TAB',
+        'CQZ_TOR_MODE'):
     DEFINES[var] = CONFIG[var]
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'gtk3', 'cocoa'):

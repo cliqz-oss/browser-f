@@ -12,7 +12,7 @@ ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 ChromeUtils.import("resource://gre/modules/NotificationDB.jsm");
 
 ChromeUtils.import("resource:///modules/CliqzResources.jsm");
-#if CQZ_TOR_MODE
+#ifdef CQZ_TOR_MODE
 ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 #endif
 const {WebExtensionPolicy} = Cu.getGlobalForObject(Services);
@@ -380,6 +380,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "PrivateTabUI",
 try {
   var THEME_PREF = "extensions.cliqz.freshtab.blueTheme.enabled",
       THEME_CLASS = "cliqz-blue",
+      THEME_ONION_CLASS = "cliqz-purple",
       FRESHTAB_CONFIG = "extensions.cliqz.freshtabConfig",
       branch = Services.prefs.getBranch('');
 
@@ -393,10 +394,12 @@ try {
 
   function setThemeState(enabled) {
     var win = window.document.getElementById('main-window');
+    const env = Cc['@mozilla.org/process/environment;1'].getService(Ci.nsIEnvironment);
+    const themeClass = env.get('MOZ_CLIQZ_PRIVATE_MODE') ? THEME_ONION_CLASS : THEME_CLASS;
     if (enabled) {
-      win.classList.add(THEME_CLASS);
+      win.classList.add(themeClass);
     } else {
-      win.classList.remove(THEME_CLASS);
+      win.classList.remove(themeClass);
     }
   }
 
@@ -2500,7 +2503,7 @@ function BrowserOpenPrivateTab() {
 }
 #endif
 
-#if CQZ_TOR_MODE
+#ifdef CQZ_TOR_MODE
 function BrowserOpenTorWindow() {
   Services.mm.broadcastAsyncMessage('MessageChannel:Messages', [{
     messageName: 'Extension:Message',
