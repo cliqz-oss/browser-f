@@ -600,6 +600,9 @@ var gEventManager = {
     for (let listener of this._listeners[addon.id]) {
       tryListener(listener);
     }
+    // CLIQZ-SPECIAL: prevent error due to legacy addon handlers
+    if(!this._listeners["ANY"]) return;
+
     // eslint-disable-next-line dot-notation
     for (let listener of this._listeners["ANY"]) {
       tryListener(listener);
