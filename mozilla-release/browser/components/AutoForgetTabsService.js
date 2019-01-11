@@ -6,8 +6,6 @@ const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 
 const XPC_ID = "{998eec19-ade7-4b42-ad3f-5d19d98de71d}";
 const ADULT_DOMAINS_BF_FILE_NAME = "adult-domains.bin";
-const ADULT_DOMAINS_BF_RESOURCE_PATH =
-    "chrome://cliqz/content/freshtab/adult-domains.bin";
 const USR_BLACKLIST_FILE_NAME = "apt-extra-domains.json";
 const USR_WHITELIST_FILE_NAME = "apt-white-domains.json";
 const NOTIFICATION_TIMEOUT_MS = 60000;  // 1 minute.
@@ -18,8 +16,6 @@ ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Preferences.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
-
 ChromeUtils.import("resource:///modules/AutoForgetTabs-utils.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "ForgetAboutSite",
@@ -261,25 +257,10 @@ AutoForgetTabsService.prototype = {
 
   _load: function AFTSvc_load() {
     let stream;
-    try {
-      let adultDomainsURI = Services.io.newURI(ADULT_DOMAINS_BF_RESOURCE_PATH);
-      let channel = NetUtil.newChannel({
-        uri: adultDomainsURI,
-        loadingPrincipal: Services.scriptSecurityManager.createCodebasePrincipal(adultDomainsURI, {}),
-        securityFlags: Ci.nsILoadInfo.SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL,
-        contentPolicyType: Ci.nsIContentPolicy.TYPE_INTERNAL_XMLHTTPREQUEST
-      });
-      stream = channel.open();
-    }
-    catch(e) {
-      Cu.reportError("There are no AFT file in extension. Trying to load from file.\n");
-    }
 
-    if (!stream) {
-      const bfFile = FileUtils.getFile("XCurProcD", [ADULT_DOMAINS_BF_FILE_NAME]);
-      if (bfFile.exists() && bfFile.isFile()) {
-        stream = FileUtils.openFileInputStream(bfFile);
-      }
+    const bfFile = FileUtils.getFile("XCurProcD", [ADULT_DOMAINS_BF_FILE_NAME]);
+    if (bfFile.exists() && bfFile.isFile()) {
+      stream = FileUtils.openFileInputStream(bfFile);
     }
 
     if (stream) {
