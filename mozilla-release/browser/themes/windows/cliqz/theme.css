@@ -378,7 +378,7 @@
   background-color: unset;
 }
 #main-window.cliqz-blue #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab[visuallyselected=true]:-moz-lwtheme-darktext .tab-content {
-  background-color: #f2f2f2;
+  background-color: var(--toolbar-bgcolor, #f2f2f2);
 }
 #main-window.cliqz-blue #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab:hover:not([visuallyselected=true]) .tab-content {
   background-color: #009bd6;
