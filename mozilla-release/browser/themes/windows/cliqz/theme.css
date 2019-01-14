@@ -195,6 +195,9 @@
   background-color: #f2f2f2;
   /* Change box-shadow and background color when focused and hovering */
 }
+#navigator-toolbox[on_private_tab="true"] #nav-bar #urlbar-container #urlbar:-moz-lwtheme-darktext {
+  background-color: #BBC6D4;
+}
 #navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme-darktext:hover, #navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme-darktext[focused=true] {
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
   background-color: #fff;
