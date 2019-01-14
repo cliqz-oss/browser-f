@@ -2675,7 +2675,9 @@ var gListView = {
 
   toggleRecommended(isHidden) {
     const recommendedBlock = document.getElementById('recommendedBlock');
+    const recommendedPadding = document.getElementById('recommendedPadding');
     recommendedBlock.hidden = isHidden;
+    recommendedPadding.hidden = isHidden;
   }
 };
 

@@ -614,6 +614,9 @@
         <xul:vbox class="content-inner-container" flex="1">
           <xul:hbox class="basicinfo-container">
               <xul:hbox class="name-container">
+                <!-- CLIQZ-SPECIAL: Need to ellipsis name; stop second line (only for extensions page not for plugins page, creating name/nameTrim hiding one depending on page type) -->
+                <xul:description anonid="nameTrim" class="name" crop="end" flex="1"
+                          tooltip="addonitem-tooltip" />
                 <xul:label anonid="name" class="name" crop="end" flex="1"
                            tooltip="addonitem-tooltip" xbl:inherits="xbl:text=name"/>
                 <xul:label anonid="legacy" class="legacy-warning text-link" value="&addon.legacy.label;"/>
@@ -797,6 +800,14 @@
         document.getAnonymousElementByAttribute(this, "anonid",
                                                 "description");
       </field>
+      <field name="_nameTrim">
+        document.getAnonymousElementByAttribute(this, "anonid",
+                                                "nameTrim");
+      </field>
+      <field name="_name">
+        document.getAnonymousElementByAttribute(this, "anonid",
+                                                "name");
+      </field>
       <field name="_stateMenulist">
         document.getAnonymousElementByAttribute(this, "anonid",
                                                 "state-menulist");
@@ -917,6 +928,19 @@
             this._icon.src = iconURL;
           else
             this._icon.src = "";
+
+          if (this.mAddon.name)
+            this._nameTrim.value = this.mAddon.name;
+
+          var pageType = this.getAttribute("type");
+
+          if (pageType === 'extension') {
+            this._name.hidden = true;
+            this._nameTrim.hidden = false;
+          } else {
+            this._name.hidden = false;
+            this._nameTrim.hidden = true;
+          }
 
           if (this.mAddon.description)
             this._description.value = this.mAddon.description;

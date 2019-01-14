@@ -424,6 +424,10 @@ button.warning {
   font-size: 1rem;
 }
 
+.name {
+  margin-inline-start: 0;
+}
+
 .description {
   margin: 0;
 }
