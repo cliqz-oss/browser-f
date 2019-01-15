@@ -5,13 +5,12 @@ var EXPORTED_SYMBOLS = ["CliqzResources"];
 const {NetUtil} = ChromeUtils.import("resource://gre/modules/NetUtil.jsm", {});
 const {UUIDMap} = ChromeUtils.import("resource://gre/modules/Extension.jsm", {});
 const EXTENSION_ID = UUIDMap.get('cliqz@cliqz.com');
-const FRESHTAB_URL =
-  'moz-extension://' + EXTENSION_ID + '/modules/freshtab/home.html';
-const WELCOME_URL =
-  'moz-extension://' + EXTENSION_ID + '/modules/onboarding-v3/index.html';
-
-let WEB_EXTENSION_API = false;
+const webextPrefix = `moz-extension://${EXTENSION_ID}/modules/`;
+const legacyPrefix = `chrome://cliqz/content/`;
+const FRESHTAB_URL = `${webextPrefix}freshtab/home.html`;
+const WELCOME_URL = `${webextPrefix}onboarding-v3/index.html`;
 const OLD_EXTENSION_APP_BUNDLE_URI = 'chrome://cliqz/content/core/app.bundle.js';
+let WEB_EXTENSION_API = false;
 
 const CliqzResources = {
   matchUrlByString: function(key) {
@@ -36,7 +35,6 @@ const CliqzResources = {
       return true;
     }
 
-    let stream;
     try {
       // CLIQZ-SPECIAL:
       // Legacy Extension can be served at uri OLD_EXTENSION_APP_BUNDLE_URI;
@@ -52,13 +50,13 @@ const CliqzResources = {
         securityFlags: Ci.nsILoadInfo.SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL,
         contentPolicyType: Ci.nsIContentPolicy.TYPE_INTERNAL_XMLHTTPREQUEST
       });
-      stream = channel.open();
-    }
-    catch(e) {
+      channel.open();
+    } catch(e) {
       WEB_EXTENSION_API = true;
       return true;
     }
 
     return false;
   },
+  whatIstheURL: u => CliqzResources.isWebExtensionAPI() ? `${webextPrefix}${u}` : `${legacyPrefix}${u}`
 };

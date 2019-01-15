@@ -19,6 +19,7 @@
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource:///modules/CliqzResources.jsm");
 
 ChromeUtils.defineModuleGetter(this, "formAutofillParent",
                                "resource://formautofill/FormAutofillParent.jsm");
@@ -72,7 +73,7 @@ function init_all() {
   if (!Services.prefs.getBoolPref("extensions.cliqz.onion-mode", false)) {
     register_module("paneConnect", gConnectPane);
     try {
-      fetch('chrome://cliqz/content/pairing/index.html').then( function(res) {
+      fetch(CliqzResources.whatIstheURL('pairing/index.html')).then( function(res) {
         if(res.status === 200) {
           document.getElementById('category-connect').hidden = false;
         }
@@ -166,6 +167,10 @@ function gotoPref(aCategory) {
     category = kDefaultCategoryInternalName;
     document.location.hash = kDefaultCategory;
     gSearchResultsPane.query = null;
+  }
+
+  if (category === "paneConnect" && gConnectPane && gConnectPane.loadFrame) {
+    gConnectPane.loadFrame();
   }
 
   // Updating the hash (below) or changing the selected category

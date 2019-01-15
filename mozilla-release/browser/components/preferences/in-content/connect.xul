@@ -10,5 +10,5 @@
 
 <hbox id="connectBox" hidden="true"
       data-category="paneConnect">
-	<iframe flex="1" src="chrome://cliqz/content/pairing/index.html" height="850"/>
+	<iframe id="theConnectFrame" flex="1" height="850"/>
 </hbox>
