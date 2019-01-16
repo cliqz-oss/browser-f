@@ -479,7 +479,8 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
                                    row.getResultByName("isHttpOnly"),
                                    false,
                                    row.getResultByName("expiry"),
-                                   {});
+                                   {},
+                                   Ci.nsICookie2.SAMESITE_UNSET);
             }
           } finally {
             yield db.close();
