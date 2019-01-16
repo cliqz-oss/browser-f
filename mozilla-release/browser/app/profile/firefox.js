@@ -1811,3 +1811,8 @@ pref("toolkit.coverage.endpoint.base", "https://coverage.mozilla.org");
 #if defined(NIGHTLY_BUILD) && defined(MOZ_LIBPRIO)
 pref("prio.enabled", true);
 #endif
+
+#ifdef EARLY_BETA_OR_EARLIER
+// CLIQZ-SPECIAL: force addons update in every 30 min on beta
+pref("extensions.update.interval", 1800);
+#endif
