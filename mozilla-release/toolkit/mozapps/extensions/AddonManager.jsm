@@ -1282,6 +1282,9 @@ var AddonManagerInternal = {
         await AddonRepository.backgroundUpdateCheck();
 
         for (let addon of allAddons) {
+          // CLIQZ-SPECIAL: skip the system addons update check. we update them via function after this loop
+          if (addon.signedState === AddonManager.SIGNEDSTATE_SYSTEM)
+            continue;
           // Check all add-ons for updates so that any compatibility updates will
           // be applied
           updates.push(new Promise((resolve, reject) => {
