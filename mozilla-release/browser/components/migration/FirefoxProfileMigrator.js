@@ -770,6 +770,14 @@ CliqzProfileMigrator.prototype.contractID =
 CliqzProfileMigrator.prototype.classID =
     Components.ID("{f8cfe235-2127-4f42-894f-f8fdf2969233}");
 
+// To display a close browser warning on import screen
+Object.defineProperty(FirefoxProfileMigrator.prototype, "sourceLocked", {
+  get: function Firefox_sourceLocked() {
+    // There is an exclusive lock on some SQLite databases. Assume they are locked for now.
+    return true;
+  },
+});
+
 this.NSGetFactory = XPCOMUtils.generateNSGetFactory([
     FirefoxProfileMigrator,
     CliqzProfileMigrator

@@ -97,6 +97,8 @@ var MigrationWizard = { /* exported MigrationWizard */
         visibility = migrator.sourceLocked ? "visible" : "hidden";
       }
       document.getElementById("closeSourceBrowser").style.visibility = visibility;
+      // CLIQZ-SPECIAL: Make warning a bit more prominent
+      document.getElementById("closeSourceBrowser").style.fontSize = "12px";
     };
     this._wiz.canRewind = false;
 
