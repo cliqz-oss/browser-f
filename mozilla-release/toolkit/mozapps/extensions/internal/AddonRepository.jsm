@@ -91,8 +91,7 @@ function convertHTMLToPlainText(html) {
   input.data = html.replace(/\n/g, "<br>");
 
   var output = {};
-  converter.convert("text/html", input, input.data.length, "text/unicode",
-                    output, {});
+  converter.convert("text/html", input, "text/unicode", output);
 
   if (output.value instanceof Ci.nsISupportsString)
     return output.value.data.replace(/\r\n/g, "\n");
@@ -917,13 +916,11 @@ var AddonDatabase = {
     this.connectionPromise = null;
     this._loaded = false;
 
-    if (aSkipFlush || !this._saveTask) {
+    if (aSkipFlush) {
       return Promise.resolve();
     }
 
-    let promise = this._saveTask.finalize();
-    this._saveTask = null;
-    return promise;
+    return this.flush();
   },
 
   /**
@@ -974,14 +971,7 @@ var AddonDatabase = {
 
       if (!this._blockerAdded) {
         AsyncShutdown.profileBeforeChange.addBlocker(
-          "Flush AddonRepository",
-          async () => {
-            if (!this._saveTask) {
-              return;
-            }
-            await this._saveTask.finalize();
-            this._saveTask = null;
-          });
+          "Flush AddonRepository", () => this.flush());
         this._blockerAdded = true;
       }
     }

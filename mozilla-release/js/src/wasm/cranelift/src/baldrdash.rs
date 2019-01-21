@@ -16,39 +16,26 @@
 // Safe wrappers to the low-level ABI.  This re-exports all types in
 // baldrapi but none of the functions.
 
-// TODO: Should many u32 arguments and return values here really be
-// usize, to be more conventional?
-
-use cranelift_codegen::binemit::CodeOffset;
-use cranelift_codegen::cursor::{Cursor, FuncCursor};
+use baldrapi::CraneliftModuleEnvironment;
+use cranelift_codegen::cursor::FuncCursor;
 use cranelift_codegen::entity::EntityRef;
 use cranelift_codegen::ir::immediates::{Ieee32, Ieee64};
-use cranelift_codegen::ir::stackslot::StackSize;
 use cranelift_codegen::ir::{self, InstBuilder};
-use cranelift_codegen::{CodegenError, CodegenResult};
 use cranelift_wasm::{FuncIndex, GlobalIndex, SignatureIndex, TableIndex};
 use std::mem;
 use std::slice;
-use baldrapi::CraneliftModuleEnvironment;
 
 use baldrapi;
 
+pub use baldrapi::BD_SymbolicAddress as SymbolicAddress;
 pub use baldrapi::BD_ValType as ValType;
 pub use baldrapi::CraneliftCompiledFunc as CompiledFunc;
 pub use baldrapi::CraneliftFuncCompileInput as FuncCompileInput;
 pub use baldrapi::CraneliftMetadataEntry as MetadataEntry;
 pub use baldrapi::CraneliftStaticEnvironment as StaticEnvironment;
 pub use baldrapi::FuncTypeIdDescKind;
-pub use baldrapi::BD_SymbolicAddress as SymbolicAddress;
 pub use baldrapi::Trap;
 pub use baldrapi::TypeCode;
-
-pub enum ConstantValue {
-    I32(i32),
-    I64(i64),
-    F32(f32),
-    F64(f64),
-}
 
 /// Convert a `TypeCode` into the equivalent Cranelift type.
 ///
@@ -72,7 +59,7 @@ impl Into<ir::Type> for TypeCode {
     fn into(self) -> ir::Type {
         match self.into() {
             Some(t) => t,
-            None => panic!("unexpected void type")
+            None => panic!("unexpected void type"),
         }
     }
 }
@@ -114,7 +101,7 @@ impl GlobalDesc {
             let v = baldrapi::global_constantValue(self.0);
             // Note that the floating point constants below
             match v.t {
-                TypeCode::I32 => pos.ins().iconst(ir::types::I32, v.u.i32 as i64),
+                TypeCode::I32 => pos.ins().iconst(ir::types::I32, i64::from(v.u.i32)),
                 TypeCode::I64 => pos.ins().iconst(ir::types::I64, v.u.i64),
                 TypeCode::F32 => pos.ins().f32const(Ieee32::with_bits(v.u.i32 as u32)),
                 TypeCode::F64 => pos.ins().f64const(Ieee64::with_bits(v.u.i64 as u64)),
@@ -136,11 +123,6 @@ impl TableDesc {
     /// Get the offset from the `WasmTlsReg` to the `wasm::TableTls` representing this table.
     pub fn tls_offset(self) -> usize {
         unsafe { baldrapi::table_tlsOffset(self.0) }
-    }
-
-    /// Is this an external table?
-    pub fn is_external(self) -> bool {
-        unsafe { baldrapi::table_isExternal(self.0) }
     }
 }
 
@@ -183,10 +165,10 @@ impl FuncTypeWithId {
 /// Thin wrapper for the CraneliftModuleEnvironment structure.
 
 pub struct ModuleEnvironment<'a> {
-    env: &'a CraneliftModuleEnvironment
+    env: &'a CraneliftModuleEnvironment,
 }
 
-impl <'a> ModuleEnvironment<'a> {
+impl<'a> ModuleEnvironment<'a> {
     pub fn new(env: &'a CraneliftModuleEnvironment) -> Self {
         Self { env }
     }
@@ -200,15 +182,15 @@ impl <'a> ModuleEnvironment<'a> {
         unsafe { baldrapi::env_func_is_import(self.env, func_index.index()) }
     }
     pub fn signature(&self, sig_index: SignatureIndex) -> FuncTypeWithId {
-        FuncTypeWithId(unsafe { baldrapi::env_signature(self.env, sig_index) })
+        FuncTypeWithId(unsafe { baldrapi::env_signature(self.env, sig_index.index()) })
     }
     pub fn table(&self, table_index: TableIndex) -> TableDesc {
-        TableDesc(unsafe { baldrapi::env_table(self.env, table_index) })
+        TableDesc(unsafe { baldrapi::env_table(self.env, table_index.index()) })
     }
     pub fn global(&self, global_index: GlobalIndex) -> GlobalDesc {
-        GlobalDesc(unsafe { baldrapi::env_global(self.env, global_index) })
+        GlobalDesc(unsafe { baldrapi::env_global(self.env, global_index.index()) })
     }
     pub fn min_memory_length(&self) -> i64 {
-        self.env.min_memory_length as i64
+        i64::from(self.env.min_memory_length)
     }
 }

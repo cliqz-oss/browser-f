@@ -14,12 +14,9 @@
 % locale browser @AB_CD@ %locale/browser/
 # bookmarks.html is produced by LOCALIZED_GENERATED_FILES.
     locale/browser/bookmarks.html                  (bookmarks.html)
-    locale/browser/aboutDialog.dtd                 (%chrome/browser/aboutDialog.dtd)
     locale/browser/aboutPrivateBrowsing.dtd        (%chrome/browser/aboutPrivateBrowsing.dtd)
     locale/browser/aboutRobots.dtd                 (%chrome/browser/aboutRobots.dtd)
     locale/browser/accounts.properties             (%chrome/browser/accounts.properties)
-    locale/browser/aboutSearchReset.dtd            (%chrome/browser/aboutSearchReset.dtd)
-    locale/browser/aboutSessionRestore.dtd         (%chrome/browser/aboutSessionRestore.dtd)
     locale/browser/aboutTabCrashed.dtd             (%chrome/browser/aboutTabCrashed.dtd)
     locale/browser/browser.dtd                     (%chrome/browser/browser.dtd)
     locale/browser/baseMenuOverlay.dtd             (%chrome/browser/baseMenuOverlay.dtd)
@@ -30,7 +27,6 @@
     locale/browser/pageInfo.dtd                    (%chrome/browser/pageInfo.dtd)
     locale/browser/pageInfo.properties             (%chrome/browser/pageInfo.properties)
     locale/browser/safeMode.dtd                    (%chrome/browser/safeMode.dtd)
-    locale/browser/sanitize.dtd                    (%chrome/browser/sanitize.dtd)
     locale/browser/search.properties               (%chrome/browser/search.properties)
     locale/browser/siteData.properties             (%chrome/browser/siteData.properties)
     locale/browser/sitePermissions.properties      (%chrome/browser/sitePermissions.properties)

@@ -1,36 +1,36 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Types and traits used to access the DOM from style calculation.
 
 #![allow(unsafe_code)]
 #![deny(missing_docs)]
 
-use {Atom, LocalName, Namespace, WeakAtom};
-use applicable_declarations::ApplicableDeclarationBlock;
 use atomic_refcell::{AtomicRef, AtomicRefCell, AtomicRefMut};
+use crate::applicable_declarations::ApplicableDeclarationBlock;
 #[cfg(feature = "gecko")]
-use context::PostAnimationTasks;
+use crate::context::PostAnimationTasks;
 #[cfg(feature = "gecko")]
-use context::UpdateAnimationsTasks;
-use data::ElementData;
-use element_state::ElementState;
-use font_metrics::FontMetricsProvider;
-use media_queries::Device;
-use properties::{AnimationRules, ComputedValues, PropertyDeclarationBlock};
-use selector_parser::{AttrValue, Lang, PseudoElement, SelectorImpl};
-use selectors::Element as SelectorsElement;
+use crate::context::UpdateAnimationsTasks;
+use crate::data::ElementData;
+use crate::element_state::ElementState;
+use crate::font_metrics::FontMetricsProvider;
+use crate::media_queries::Device;
+use crate::properties::{AnimationRules, ComputedValues, PropertyDeclarationBlock};
+use crate::selector_parser::{AttrValue, Lang, PseudoElement, SelectorImpl};
+use crate::shared_lock::Locked;
+use crate::stylist::CascadeData;
+use crate::traversal_flags::TraversalFlags;
+use crate::{Atom, LocalName, Namespace, WeakAtom};
 use selectors::matching::{ElementSelectorFlags, QuirksMode, VisitedHandlingMode};
 use selectors::sink::Push;
+use selectors::Element as SelectorsElement;
 use servo_arc::{Arc, ArcBorrow};
-use shared_lock::Locked;
 use std::fmt;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Deref;
-use stylist::CascadeData;
-use traversal_flags::TraversalFlags;
 
 /// An opaque handle to a node, which, unlike UnsafeNode, cannot be transformed
 /// back into a non-opaque representation. The only safe operation that can be

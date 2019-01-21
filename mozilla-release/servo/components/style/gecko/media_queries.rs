@@ -1,28 +1,29 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Gecko's media-query device and expression representation.
 
-use app_units::AU_PER_PX;
 use app_units::Au;
+use app_units::AU_PER_PX;
+use crate::custom_properties::CssEnvironment;
+use crate::gecko::values::{convert_nscolor_to_rgba, convert_rgba_to_nscolor};
+use crate::gecko_bindings::bindings;
+use crate::gecko_bindings::structs;
+use crate::gecko_bindings::structs::{nsPresContext, RawGeckoPresContextBorrowed};
+use crate::media_queries::MediaType;
+use crate::properties::ComputedValues;
+use crate::string_cache::Atom;
+use crate::values::computed::font::FontSize;
+use crate::values::{CustomIdent, KeyframesName};
 use cssparser::RGBA;
 use euclid::Size2D;
 use euclid::TypedScale;
-use gecko::values::{convert_nscolor_to_rgba, convert_rgba_to_nscolor};
-use gecko_bindings::bindings;
-use gecko_bindings::structs;
-use gecko_bindings::structs::{nsPresContext, RawGeckoPresContextBorrowed};
-use media_queries::MediaType;
-use properties::ComputedValues;
 use servo_arc::Arc;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
-use string_cache::Atom;
-use style_traits::{CSSPixel, DevicePixel};
 use style_traits::viewport::ViewportConstraints;
-use values::{CustomIdent, KeyframesName};
-use values::computed::font::FontSize;
+use style_traits::{CSSPixel, DevicePixel};
 
 /// The `Device` in Gecko wraps a pres context, has a default values computed,
 /// and contains all the viewport rule state.
@@ -52,6 +53,9 @@ pub struct Device {
     /// Whether any styles computed in the document relied on the viewport size
     /// by using vw/vh/vmin/vmax units.
     used_viewport_size: AtomicBool,
+    /// The CssEnvironment object responsible of getting CSS environment
+    /// variables.
+    environment: CssEnvironment,
 }
 
 impl fmt::Debug for Device {
@@ -87,7 +91,14 @@ impl Device {
             body_text_color: AtomicUsize::new(unsafe { &*pres_context }.mDefaultColor as usize),
             used_root_font_size: AtomicBool::new(false),
             used_viewport_size: AtomicBool::new(false),
+            environment: CssEnvironment,
         }
+    }
+
+    /// Get the relevant environment to resolve `env()` functions.
+    #[inline]
+    pub fn environment(&self) -> &CssEnvironment {
+        &self.environment
     }
 
     /// Tells the device that a new viewport rule has been found, and stores the

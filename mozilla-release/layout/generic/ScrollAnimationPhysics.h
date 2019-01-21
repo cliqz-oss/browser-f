@@ -9,15 +9,16 @@
 
 #include "mozilla/TimeStamp.h"
 #include "nsPoint.h"
+#include "Units.h"
 
 namespace mozilla {
 
-class ScrollAnimationPhysics
-{
-public:
-  virtual void Update(const TimeStamp& aTime,
-                      const nsPoint& aDestination,
+class ScrollAnimationPhysics {
+ public:
+  virtual void Update(const TimeStamp& aTime, const nsPoint& aDestination,
                       const nsSize& aCurrentVelocity) = 0;
+
+  virtual void ApplyContentShift(const CSSPoint& aShiftDelta) = 0;
 
   // Get the velocity at a point in time in nscoords/sec.
   virtual nsSize VelocityAt(const TimeStamp& aTime) = 0;
@@ -33,17 +34,17 @@ public:
 
 // Helper for accelerated wheel deltas. This can be called from the main thread
 // or the APZ Controller thread.
-static inline double
-ComputeAcceleratedWheelDelta(double aDelta, int32_t aCounter, int32_t aFactor)
-{
+static inline double ComputeAcceleratedWheelDelta(double aDelta,
+                                                  int32_t aCounter,
+                                                  int32_t aFactor) {
   if (!aDelta) {
     return aDelta;
   }
   return (aDelta * aCounter * double(aFactor) / 10);
 }
 
-static const uint32_t kScrollSeriesTimeoutMs = 80; // in milliseconds
+static const uint32_t kScrollSeriesTimeoutMs = 80;  // in milliseconds
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // mozilla_layout_ScrollAnimationPhysics_h_
+#endif  // mozilla_layout_ScrollAnimationPhysics_h_

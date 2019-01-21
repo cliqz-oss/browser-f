@@ -207,6 +207,8 @@ const PREFS_CONFIG = new Map([
       type: "local",
       localProvider: "OnboardingMessageProvider",
       enabled: true,
+      // Block specific messages from this local provider
+      exclude: ["RETURN_TO_AMO_1"],
     }),
   }],
   // See browser/app/profile/firefox.js for other ASR preferences. They must be defined there to enable roll-outs.
@@ -441,7 +443,7 @@ this.ActivityStream = class ActivityStream {
       // If there's an existing value and it has changed, that means we need to
       // overwrite the default with the new value.
       if (prefConfig.value !== undefined && prefConfig.value !== newValue) {
-        this._defaultPrefs.setDefaultPref(pref, newValue);
+        this._defaultPrefs.set(pref, newValue);
       }
 
       prefConfig.value = newValue;

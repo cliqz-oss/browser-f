@@ -18,13 +18,11 @@ function assertBpInGutter(dbg, lineNumber) {
 // This source map does not have source contents, so it's fetched separately
 add_task(async function() {
   // NOTE: the CORS call makes the test run times inconsistent
-  const dbg = await initDebugger("doc-sourcemaps2.html");
+  const dbg = await initDebugger("doc-sourcemaps2.html", "main.js", "main.min.js");
   const {
-    selectors: { getBreakpoint, getBreakpoints },
+    selectors: { getBreakpoint, getBreakpointCount },
     getState
   } = dbg;
-
-  await waitForSources(dbg, "main.js", "main.min.js");
 
   ok(true, "Original sources exist");
   const mainSrc = findSource(dbg, "main.js");
@@ -33,7 +31,7 @@ add_task(async function() {
 
   // Test that breakpoint is not off by a line.
   await addBreakpoint(dbg, mainSrc, 4);
-  is(getBreakpoints(getState()).size, 1, "One breakpoint exists");
+  is(getBreakpointCount(getState()), 1, "One breakpoint exists");
   ok(
     getBreakpoint(getState(), { sourceId: mainSrc.id, line: 4, column: 2 }),
     "Breakpoint has correct line"

@@ -1783,6 +1783,7 @@ function setupPageHeader() {
     "https://docs.telemetry.mozilla.org/",
     "https://firefox-source-docs.mozilla.org/toolkit/components/telemetry/telemetry/index.html",
     "https://telemetry.mozilla.org/",
+    "https://telemetry.mozilla.org/probe-dictionary/",
   ];
   let htmlLink = document.querySelectorAll("#home-section > ul > li > a");
   htmlLink.forEach((a, index) => {
@@ -2062,6 +2063,7 @@ function openJsonInFirefoxJsonViewer(json) {
 
 function onLoad() {
   window.removeEventListener("load", onLoad);
+  Telemetry.scalarAdd("telemetry.about_telemetry_pageload", 1);
 
   // Set the text in the page header
   setupPageHeader();

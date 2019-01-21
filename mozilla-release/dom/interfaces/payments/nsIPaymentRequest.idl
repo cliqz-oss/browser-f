@@ -63,9 +63,9 @@ interface nsIPaymentDetails : nsISupports
   [implicit_jscontext]
   readonly attribute jsval shippingAddressErrors;
   [implicit_jscontext]
-  readonly attribute jsval payer;
+  readonly attribute jsval payerErrors;
   [implicit_jscontext]
-  readonly attribute jsval paymentMethod;
+  readonly attribute jsval paymentMethodErrors;
 };
 
 [scriptable, builtinclass, uuid(d53f9f20-138e-47cc-9fd5-db16a3f6d301)]
@@ -75,13 +75,14 @@ interface nsIPaymentOptions : nsISupports
   readonly attribute boolean requestPayerEmail;
   readonly attribute boolean requestPayerPhone;
   readonly attribute boolean requestShipping;
+  readonly attribute boolean requestBillingAddress;
   readonly attribute AString shippingType;
 };
 
 [scriptable, builtinclass, uuid(2fa36783-d684-4487-b7a8-9def6ae3128f)]
 interface nsIPaymentRequest : nsISupports
 {
-  readonly attribute uint64_t tabId;
+  readonly attribute uint64_t topOuterWindowId;
   readonly attribute nsIPrincipal topLevelPrincipal;
   readonly attribute AString requestId;
   readonly attribute AString completeStatus;

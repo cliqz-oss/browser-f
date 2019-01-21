@@ -167,8 +167,8 @@ CustomizeMode.prototype = {
     let lwthemeButton = this.$("customization-lwtheme-button");
     let lwthemeIcon = this.document.getAnonymousElementByAttribute(lwthemeButton,
                         "class", "button-icon");
-    lwthemeIcon.style.backgroundImage = LightweightThemeManager.currentTheme ?
-      "url(" + LightweightThemeManager.currentTheme.iconURL + ")" : "";
+    let theme = LightweightThemeManager.currentTheme;
+    lwthemeIcon.style.backgroundImage = theme ? "url(" + theme.iconURL + ")" : "";
   },
 
   setTab(aTab) {
@@ -344,6 +344,7 @@ CustomizeMode.prototype = {
       this._updateEmptyPaletteNotice();
 
       this._updateLWThemeButtonIcon();
+      Services.obs.addObserver(this, "lightweight-theme-changed");
 
       this._setupDownloadAutoHideToggle();
 
@@ -386,6 +387,7 @@ CustomizeMode.prototype = {
 
     this._teardownDownloadAutoHideToggle();
 
+    Services.obs.removeObserver(this, "lightweight-theme-changed");
     CustomizableUI.removeListener(this);
 
     this.document.removeEventListener("keypress", this);
@@ -424,14 +426,6 @@ CustomizeMode.prototype = {
       this._teardownPaletteDragging();
 
       await this._unwrapToolbarItems();
-
-      if (this._changed) {
-        // XXXmconley: At first, it seems strange to also persist the old way with
-        //             currentset - but this might actually be useful for switching
-        //             to old builds. We might want to keep this around for a little
-        //             bit.
-        this.persistCurrentSets();
-      }
 
       // And drop all area references.
       this.areas.clear();
@@ -518,7 +512,7 @@ CustomizeMode.prototype = {
     for (let i = 0; i < numberOfAreas; i++) {
       let area = areas[i];
       let areaNode = aNode.ownerDocument.getElementById(area);
-      let customizationTarget = areaNode && areaNode.customizationTarget;
+      let customizationTarget = CustomizableUI.getCustomizationTarget(areaNode);
       if (customizationTarget && customizationTarget != areaNode) {
         areas.push(customizationTarget.id);
       }
@@ -1065,19 +1059,6 @@ CustomizeMode.prototype = {
     })().catch(log.error);
   },
 
-  persistCurrentSets(aSetBeforePersisting) {
-    let document = this.document;
-    let toolbars = document.querySelectorAll("toolbar[customizable='true'][currentset]");
-    for (let toolbar of toolbars) {
-      if (aSetBeforePersisting) {
-        let set = toolbar.currentSet;
-        toolbar.setAttribute("currentset", set);
-      }
-      // Persist the currentset attribute directly on hardcoded toolbars.
-      Services.xulStore.persist(toolbar, "currentset");
-    }
-  },
-
   reset() {
     this.resetting = true;
     // Disable the reset button temporarily while resetting:
@@ -1089,12 +1070,8 @@ CustomizeMode.prototype = {
 
       CustomizableUI.reset();
 
-      this._updateLWThemeButtonIcon();
-
       await this._wrapToolbarItems();
       this.populatePalette();
-
-      this.persistCurrentSets(true);
 
       this._updateResetButton();
       this._updateUndoResetButton();
@@ -1116,12 +1093,8 @@ CustomizeMode.prototype = {
 
       CustomizableUI.undoReset();
 
-      this._updateLWThemeButtonIcon();
-
       await this._wrapToolbarItems();
       this.populatePalette();
-
-      this.persistCurrentSets(true);
 
       this._updateResetButton();
       this._updateUndoResetButton();
@@ -1353,8 +1326,9 @@ CustomizeMode.prototype = {
     }
 
     let onThemeSelected = panel => {
-      this._updateLWThemeButtonIcon();
-      this._onUIChange();
+      // This causes us to call _onUIChange when the LWT actually changes,
+      // so the restore defaults / undo reset button is updated correctly.
+      this._nextThemeChangeUserTriggered = true;
       panel.hidePopup();
     };
 
@@ -1593,6 +1567,13 @@ CustomizeMode.prototype = {
           this._updateDragSpaceCheckbox();
         }
         break;
+      case "lightweight-theme-changed":
+        this._updateLWThemeButtonIcon();
+        if (this._nextThemeChangeUserTriggered) {
+          this._onUIChange();
+        }
+        this._nextThemeChangeUserTriggered = false;
+        break;
     }
   },
 
@@ -1647,13 +1628,6 @@ CustomizeMode.prototype = {
 
   _getBoundsWithoutFlushing(element) {
     return this.window.windowUtils.getBoundsWithoutFlushing(element);
-  },
-
-  get _dir() {
-    if (!this.__dir) {
-      this.__dir = this.window.getComputedStyle(this.document.documentElement).direction;
-    }
-    return this.__dir;
   },
 
   _onDragStart(aEvent) {
@@ -1761,7 +1735,7 @@ CustomizeMode.prototype = {
     // We need to determine the place that the widget is being dropped in
     // the target.
     let dragOverItem, dragValue;
-    if (targetNode == targetArea.customizationTarget) {
+    if (targetNode == CustomizableUI.getCustomizationTarget(targetArea)) {
       // We'll assume if the user is dragging directly over the target, that
       // they're attempting to append a child to that target.
       dragOverItem = (targetAreaType == "toolbar"
@@ -1784,13 +1758,13 @@ CustomizeMode.prototype = {
           let itemRect = this._getBoundsWithoutFlushing(dragOverItem);
           let dropTargetCenter = itemRect.left + (itemRect.width / 2);
           let existingDir = dragOverItem.getAttribute("dragover");
-          let dirFactor = this._dir == "ltr" ? 1 : -1;
+          let dirFactor = this.window.RTL_UI ? -1 : 1;
           if (existingDir == "before") {
             dropTargetCenter += (parseInt(dragOverItem.style.borderInlineStartWidth) || 0) / 2 * dirFactor;
           } else {
             dropTargetCenter -= (parseInt(dragOverItem.style.borderInlineEndWidth) || 0) / 2 * dirFactor;
           }
-          let before = this._dir == "ltr" ? aEvent.clientX < dropTargetCenter : aEvent.clientX > dropTargetCenter;
+          let before = this.window.RTL_UI ? aEvent.clientX > dropTargetCenter : aEvent.clientX < dropTargetCenter;
           dragValue = before ? "before" : "after";
         } else if (targetAreaType == "menu-panel") {
           let itemRect = this._getBoundsWithoutFlushing(dragOverItem);
@@ -1813,7 +1787,7 @@ CustomizeMode.prototype = {
     }
 
     if (dragOverItem != this._dragOverItem || dragValue != dragOverItem.getAttribute("dragover")) {
-      if (dragOverItem != targetArea.customizationTarget) {
+      if (dragOverItem != CustomizableUI.getCustomizationTarget(targetArea)) {
         this._setDragActive(dragOverItem, dragValue, draggedItemId, targetAreaType);
       }
       this._dragOverItem = dragOverItem;
@@ -1925,6 +1899,8 @@ CustomizeMode.prototype = {
     }
 
     // Skipintoolbarset items won't really be moved:
+    let areaCustomizationTarget =
+      CustomizableUI.getCustomizationTarget(aTargetArea);
     if (draggedItem.getAttribute("skipintoolbarset") == "true") {
       // These items should never leave their area:
       if (aTargetArea != aOriginArea) {
@@ -1932,11 +1908,11 @@ CustomizeMode.prototype = {
       }
       let place = draggedItem.parentNode.getAttribute("place");
       this.unwrapToolbarItem(draggedItem.parentNode);
-      if (aTargetNode == aTargetArea.customizationTarget) {
-        aTargetArea.customizationTarget.appendChild(draggedItem);
+      if (aTargetNode == areaCustomizationTarget) {
+        areaCustomizationTarget.appendChild(draggedItem);
       } else {
         this.unwrapToolbarItem(aTargetNode.parentNode);
-        aTargetArea.customizationTarget.insertBefore(draggedItem, aTargetNode);
+        areaCustomizationTarget.insertBefore(draggedItem, aTargetNode);
         this.wrapToolbarItem(aTargetNode, place);
       }
       this.wrapToolbarItem(draggedItem, place);
@@ -1945,7 +1921,7 @@ CustomizeMode.prototype = {
 
     // Is the target the customization area itself? If so, we just add the
     // widget to the end of the area.
-    if (aTargetNode == aTargetArea.customizationTarget) {
+    if (aTargetNode == areaCustomizationTarget) {
       CustomizableUI.addWidgetToArea(aDraggedItemId, aTargetArea.id);
       this._onDragEnd(aEvent);
       return;
@@ -2252,7 +2228,8 @@ CustomizeMode.prototype = {
   },
 
   _getDragOverNode(aEvent, aAreaElement, aAreaType, aDraggedItemId) {
-    let expectedParent = aAreaElement.customizationTarget || aAreaElement;
+    let expectedParent =
+      CustomizableUI.getCustomizationTarget(aAreaElement) || aAreaElement;
     if (!expectedParent.contains(aEvent.target)) {
       return expectedParent;
     }
@@ -2498,8 +2475,8 @@ CustomizeMode.prototype = {
     function updatePlayers() {
       if (keydown) {
         let p1Adj = 1;
-        if ((keydown == 37 && !isRTL) ||
-            (keydown == 39 && isRTL)) {
+        if ((keydown == 37 && !window.RTL_UI) ||
+            (keydown == 39 && window.RTL_UI)) {
           p1Adj = -1;
         }
         p1 += p1Adj * 10 * keydownAdj;
@@ -2534,7 +2511,7 @@ CustomizeMode.prototype = {
     }
 
     function draw() {
-      let xAdj = isRTL ? -1 : 1;
+      let xAdj = window.RTL_UI ? -1 : 1;
       elements["wp-player1"].style.transform = "translate(" + (xAdj * p1) + "px, -37px)";
       elements["wp-player2"].style.transform = "translate(" + (xAdj * p2) + "px, " + gameSide + "px)";
       elements["wp-ball"].style.transform = "translate(" + (xAdj * ball[0]) + "px, " + ball[1] + "px)";
@@ -2543,7 +2520,7 @@ CustomizeMode.prototype = {
       if (score >= winScore) {
         let arena = elements.arena;
         let image = "url(chrome://browser/skin/customizableui/whimsy.png)";
-        let position = `${(isRTL ? gameSide : 0) + (xAdj * ball[0]) - 10}px ${ball[1] - 10}px`;
+        let position = `${(window.RTL_UI ? gameSide : 0) + (xAdj * ball[0]) - 10}px ${ball[1] - 10}px`;
         let repeat = "no-repeat";
         let size = "20px";
         if (arena.style.backgroundImage) {
@@ -2644,7 +2621,6 @@ CustomizeMode.prototype = {
     let elements = {
       arena: document.getElementById("customization-pong-arena"),
     };
-    let isRTL = document.documentElement.matches(":-moz-locale-dir(rtl)");
 
     document.addEventListener("keydown", onkeydown);
     document.addEventListener("keyup", onkeyup);

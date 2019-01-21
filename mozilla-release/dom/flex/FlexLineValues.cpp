@@ -21,37 +21,22 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(FlexLineValues)
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
-FlexLineValues::FlexLineValues(Flex* aParent,
-                               const ComputedFlexLineInfo* aLine)
-  : mParent(aParent)
-{
+FlexLineValues::FlexLineValues(Flex* aParent, const ComputedFlexLineInfo* aLine)
+    : mParent(aParent) {
   MOZ_ASSERT(aLine,
-    "Should never be instantiated with a null ComputedFlexLineInfo.");
+             "Should never be instantiated with a null ComputedFlexLineInfo.");
 
   // Eagerly copy values from aLine, because we're not
   // going to keep it around.
-  switch (aLine->mGrowthState) {
-    case ComputedFlexLineInfo::GrowthState::SHRINKING:
-      mGrowthState = FlexLineGrowthState::Shrinking;
-      break;
-
-    case ComputedFlexLineInfo::GrowthState::GROWING:
-      mGrowthState = FlexLineGrowthState::Growing;
-      break;
-
-    default:
-      mGrowthState = FlexLineGrowthState::Unchanged;
-  };
+  mGrowthState = aLine->mGrowthState;
 
   // Convert all the app unit values into css pixels.
-  mCrossStart = nsPresContext::AppUnitsToDoubleCSSPixels(
-    aLine->mCrossStart);
-  mCrossSize = nsPresContext::AppUnitsToDoubleCSSPixels(
-    aLine->mCrossSize);
-  mFirstBaselineOffset = nsPresContext::AppUnitsToDoubleCSSPixels(
-    aLine->mFirstBaselineOffset);
-  mLastBaselineOffset = nsPresContext::AppUnitsToDoubleCSSPixels(
-    aLine->mLastBaselineOffset);
+  mCrossStart = nsPresContext::AppUnitsToDoubleCSSPixels(aLine->mCrossStart);
+  mCrossSize = nsPresContext::AppUnitsToDoubleCSSPixels(aLine->mCrossSize);
+  mFirstBaselineOffset =
+      nsPresContext::AppUnitsToDoubleCSSPixels(aLine->mFirstBaselineOffset);
+  mLastBaselineOffset =
+      nsPresContext::AppUnitsToDoubleCSSPixels(aLine->mLastBaselineOffset);
 
   mItems.SetLength(aLine->mItems.Length());
   uint32_t index = 0;
@@ -62,47 +47,28 @@ FlexLineValues::FlexLineValues(Flex* aParent,
   }
 }
 
-JSObject*
-FlexLineValues::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
-{
+JSObject* FlexLineValues::WrapObject(JSContext* aCx,
+                                     JS::Handle<JSObject*> aGivenProto) {
   return FlexLineValues_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-FlexLineGrowthState
-FlexLineValues::GrowthState() const
-{
-  return mGrowthState;
-}
+FlexLineGrowthState FlexLineValues::GrowthState() const { return mGrowthState; }
 
-double
-FlexLineValues::CrossStart() const
-{
-  return mCrossStart;
-}
+double FlexLineValues::CrossStart() const { return mCrossStart; }
 
-double
-FlexLineValues::CrossSize() const
-{
-  return mCrossSize;
-}
+double FlexLineValues::CrossSize() const { return mCrossSize; }
 
-double
-FlexLineValues::FirstBaselineOffset() const
-{
+double FlexLineValues::FirstBaselineOffset() const {
   return mFirstBaselineOffset;
 }
 
-double
-FlexLineValues::LastBaselineOffset() const
-{
+double FlexLineValues::LastBaselineOffset() const {
   return mLastBaselineOffset;
 }
 
-void
-FlexLineValues::GetItems(nsTArray<RefPtr<FlexItemValues>>& aResult)
-{
+void FlexLineValues::GetItems(nsTArray<RefPtr<FlexItemValues>>& aResult) {
   aResult.AppendElements(mItems);
 }
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla

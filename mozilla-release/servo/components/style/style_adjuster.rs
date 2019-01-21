@@ -1,20 +1,18 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! A struct to encapsulate all the style fixups and flags propagations
 //! a computed style needs in order for it to adhere to the CSS spec.
 
 use app_units::Au;
-use dom::TElement;
-use properties::{self, ComputedValues, StyleBuilder};
-use properties::computed_value_flags::ComputedValueFlags;
-use properties::longhands::_moz_appearance::computed_value::T as Appearance;
-use properties::longhands::display::computed_value::T as Display;
-use properties::longhands::float::computed_value::T as Float;
-use properties::longhands::line_height::computed_value::T as LineHeight;
-use properties::longhands::overflow_x::computed_value::T as Overflow;
-use properties::longhands::position::computed_value::T as Position;
+use crate::dom::TElement;
+use crate::properties::computed_value_flags::ComputedValueFlags;
+use crate::properties::longhands::display::computed_value::T as Display;
+use crate::properties::longhands::float::computed_value::T as Float;
+use crate::properties::longhands::overflow_x::computed_value::T as Overflow;
+use crate::properties::longhands::position::computed_value::T as Position;
+use crate::properties::{self, ComputedValues, StyleBuilder};
 
 /// A struct that implements all the adjustment methods.
 ///
@@ -61,7 +59,7 @@ fn is_effective_display_none_for_display_contents<E>(element: E) -> bool
 where
     E: TElement,
 {
-    use Atom;
+    use crate::Atom;
 
     // FIXME(emilio): This should be an actual static.
     lazy_static! {
@@ -274,8 +272,8 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
     /// mutating writing-mode change the potential physical sides chosen?
     #[cfg(feature = "gecko")]
     fn adjust_for_text_combine_upright(&mut self) {
-        use computed_values::text_combine_upright::T as TextCombineUpright;
-        use computed_values::writing_mode::T as WritingMode;
+        use crate::computed_values::text_combine_upright::T as TextCombineUpright;
+        use crate::computed_values::writing_mode::T as WritingMode;
 
         let writing_mode = self.style.get_inherited_box().clone_writing_mode();
         let text_combine_upright = self.style.get_inherited_text().clone_text_combine_upright();
@@ -348,9 +346,9 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
     /// both forced to "normal".
     #[cfg(feature = "gecko")]
     fn adjust_for_mathvariant(&mut self) {
-        use properties::longhands::_moz_math_variant::computed_value::T as MozMathVariant;
-        use properties::longhands::font_weight::computed_value::T as FontWeight;
-        use values::generics::font::FontStyle;
+        use crate::properties::longhands::_moz_math_variant::computed_value::T as MozMathVariant;
+        use crate::properties::longhands::font_weight::computed_value::T as FontWeight;
+        use crate::values::generics::font::FontStyle;
         if self.style.get_font().clone__moz_math_variant() != MozMathVariant::None {
             let font_style = self.style.mutate_font();
             font_style.set_font_weight(FontWeight::normal());
@@ -364,8 +362,8 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
     /// See https://github.com/servo/servo/issues/15229
     #[cfg(feature = "servo")]
     fn adjust_for_alignment(&mut self, layout_parent_style: &ComputedValues) {
-        use computed_values::align_items::T as AlignItems;
-        use computed_values::align_self::T as AlignSelf;
+        use crate::computed_values::align_items::T as AlignItems;
+        use crate::computed_values::align_self::T as AlignSelf;
 
         if self.style.get_position().clone_align_self() == AlignSelf::Auto &&
             !self.style.out_of_flow_positioned()
@@ -514,7 +512,7 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
     /// table.
     #[cfg(feature = "gecko")]
     fn adjust_for_table_text_align(&mut self) {
-        use properties::longhands::text_align::computed_value::T as TextAlign;
+        use crate::properties::longhands::text_align::computed_value::T as TextAlign;
         if self.style.get_box().clone_display() != Display::Table {
             return;
         }
@@ -536,7 +534,7 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
     /// and Blink have with this very same thing.
     #[cfg(feature = "servo")]
     fn adjust_for_text_decorations_in_effect(&mut self) {
-        use values::computed::text::TextDecorationsInEffect;
+        use crate::values::computed::text::TextDecorationsInEffect;
 
         let decorations_in_effect = TextDecorationsInEffect::from_style(&self.style);
         if self.style.get_inherited_text().text_decorations_in_effect != decorations_in_effect {
@@ -589,7 +587,7 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
     where
         E: TElement,
     {
-        use properties::longhands::unicode_bidi::computed_value::T as UnicodeBidi;
+        use crate::properties::longhands::unicode_bidi::computed_value::T as UnicodeBidi;
 
         let self_display = self.style.get_box().clone_display();
         // Check whether line break should be suppressed for this element.
@@ -671,7 +669,7 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
     /// <https://drafts.csswg.org/css-align/#valdef-justify-items-legacy>
     #[cfg(feature = "gecko")]
     fn adjust_for_justify_items(&mut self) {
-        use values::specified::align;
+        use crate::values::specified::align;
         let justify_items = self.style.get_position().clone_justify_items();
         if justify_items.specified.0 != align::AlignFlags::LEGACY {
             return;
@@ -696,20 +694,34 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
             .set_computed_justify_items(parent_justify_items.computed);
     }
 
-    ///
     /// If '-webkit-appearance' is 'menulist' on a <select> element then
     /// the computed value of 'line-height' is 'normal'.
     ///
     /// https://github.com/w3c/csswg-drafts/issues/3257
-    fn adjust_for_line_height<E>(&mut self, element: Option<E>)
+    #[cfg(feature = "gecko")]
+    fn adjust_for_appearance<E>(&mut self, element: Option<E>)
     where
         E: TElement,
     {
-        if self.style.get_box().clone__moz_appearance() == Appearance::Menulist &&
-            self.style.get_inherited_text().clone_line_height() != LineHeight::normal() &&
-            element.map_or(false, |e| e.is_html_element() &&
-                           e.local_name().as_ptr() == local_name!("select").as_ptr()) {
-            self.style.mutate_inherited_text().set_line_height(LineHeight::normal());
+        use crate::properties::longhands::_moz_appearance::computed_value::T as Appearance;
+        use crate::properties::longhands::line_height::computed_value::T as LineHeight;
+
+        if self.style.get_box().clone__moz_appearance() == Appearance::Menulist {
+            if self.style.get_inherited_text().clone_line_height() == LineHeight::normal() {
+                return;
+            }
+            if self.style.pseudo.is_some() {
+                return;
+            }
+            let is_html_select_element = element.map_or(false, |e| {
+                e.is_html_element() && e.local_name() == &*local_name!("select")
+            });
+            if !is_html_select_element {
+                return;
+            }
+            self.style
+                .mutate_inherited_text()
+                .set_line_height(LineHeight::normal());
         }
     }
 
@@ -774,7 +786,10 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
         {
             self.adjust_for_text_decorations_in_effect();
         }
-        self.adjust_for_line_height(element);
+        #[cfg(feature = "gecko")]
+        {
+            self.adjust_for_appearance(element);
+        }
         self.set_bits();
     }
 }

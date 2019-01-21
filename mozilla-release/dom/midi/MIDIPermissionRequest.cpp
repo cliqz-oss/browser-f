@@ -14,25 +14,25 @@
 // MIDI Permission Requests
 //-------------------------------------------------
 
-NS_IMPL_CYCLE_COLLECTION(MIDIPermissionRequest, mWindow, mPromise)
+NS_IMPL_CYCLE_COLLECTION_INHERITED(MIDIPermissionRequest,
+                                   ContentPermissionRequestBase, mPromise)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(MIDIPermissionRequest)
-NS_INTERFACE_MAP_ENTRY(nsIContentPermissionRequest)
-NS_INTERFACE_MAP_ENTRY(nsIRunnable)
-NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIContentPermissionRequest)
-NS_INTERFACE_MAP_END
+NS_IMPL_QUERY_INTERFACE_CYCLE_COLLECTION_INHERITED(MIDIPermissionRequest,
+                                                   ContentPermissionRequestBase,
+                                                   nsIRunnable)
 
-NS_IMPL_CYCLE_COLLECTING_ADDREF(MIDIPermissionRequest)
-NS_IMPL_CYCLE_COLLECTING_RELEASE(MIDIPermissionRequest)
+NS_IMPL_ADDREF_INHERITED(MIDIPermissionRequest, ContentPermissionRequestBase)
+NS_IMPL_RELEASE_INHERITED(MIDIPermissionRequest, ContentPermissionRequestBase)
 
 MIDIPermissionRequest::MIDIPermissionRequest(nsPIDOMWindowInner* aWindow,
                                              Promise* aPromise,
                                              const MIDIOptions& aOptions)
-: mWindow(aWindow),
-  mPromise(aPromise),
-  mNeedsSysex(aOptions.mSysex),
-  mRequester(new nsContentPermissionRequester(mWindow))
-{
+    : ContentPermissionRequestBase(
+          aWindow->GetDoc()->NodePrincipal(), true, aWindow,
+          NS_LITERAL_CSTRING(""),  // We check prefs in a custom way here
+          NS_LITERAL_CSTRING("midi")),
+      mPromise(aPromise),
+      mNeedsSysex(aOptions.mSysex) {
   MOZ_ASSERT(aWindow);
   MOZ_ASSERT(aPromise, "aPromise should not be null!");
   MOZ_ASSERT(aWindow->GetDoc());
@@ -40,74 +40,25 @@ MIDIPermissionRequest::MIDIPermissionRequest(nsPIDOMWindowInner* aWindow,
   MOZ_ASSERT(mPrincipal);
 }
 
-MIDIPermissionRequest::~MIDIPermissionRequest()
-{
-}
-
 NS_IMETHODIMP
-MIDIPermissionRequest::GetIsHandlingUserInput(bool* aHandlingInput)
-{
-  *aHandlingInput = true;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-MIDIPermissionRequest::GetRequester(nsIContentPermissionRequester** aRequester)
-{
-  NS_ENSURE_ARG_POINTER(aRequester);
-  nsCOMPtr<nsIContentPermissionRequester> requester = mRequester;
-  requester.forget(aRequester);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-MIDIPermissionRequest::GetTypes(nsIArray** aTypes)
-{
+MIDIPermissionRequest::GetTypes(nsIArray** aTypes) {
   NS_ENSURE_ARG_POINTER(aTypes);
   nsTArray<nsString> options;
   if (mNeedsSysex) {
     options.AppendElement(NS_LITERAL_STRING("sysex"));
   }
-  return nsContentPermissionUtils::CreatePermissionArray(NS_LITERAL_CSTRING("midi"),
-                                                         NS_LITERAL_CSTRING("unused"),
-                                                         options,
+  return nsContentPermissionUtils::CreatePermissionArray(mType, options,
                                                          aTypes);
 }
 
 NS_IMETHODIMP
-MIDIPermissionRequest::GetPrincipal(nsIPrincipal** aRequestingPrincipal)
-{
-  NS_ENSURE_ARG_POINTER(aRequestingPrincipal);
-  NS_IF_ADDREF(*aRequestingPrincipal = mPrincipal);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-MIDIPermissionRequest::GetWindow(mozIDOMWindow** aRequestingWindow)
-{
-  NS_ENSURE_ARG_POINTER(aRequestingWindow);
-  NS_IF_ADDREF(*aRequestingWindow = mWindow);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-MIDIPermissionRequest::GetElement(Element** aRequestingElement)
-{
-  NS_ENSURE_ARG_POINTER(aRequestingElement);
-  *aRequestingElement = nullptr;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-MIDIPermissionRequest::Cancel()
-{
+MIDIPermissionRequest::Cancel() {
   mPromise->MaybeReject(NS_ERROR_DOM_SECURITY_ERR);
   return NS_OK;
 }
 
 NS_IMETHODIMP
-MIDIPermissionRequest::Allow(JS::HandleValue aChoices)
-{
+MIDIPermissionRequest::Allow(JS::HandleValue aChoices) {
   MOZ_ASSERT(aChoices.isUndefined());
   MIDIAccessManager* mgr = MIDIAccessManager::Get();
   mgr->CreateMIDIAccess(mWindow, mNeedsSysex, mPromise);
@@ -115,11 +66,11 @@ MIDIPermissionRequest::Allow(JS::HandleValue aChoices)
 }
 
 NS_IMETHODIMP
-MIDIPermissionRequest::Run()
-{
+MIDIPermissionRequest::Run() {
   // If the testing flag is true, skip dialog
   if (Preferences::GetBool("midi.prompt.testing", false)) {
-    bool allow = Preferences::GetBool("media.navigator.permission.disabled", false);
+    bool allow =
+        Preferences::GetBool("media.navigator.permission.disabled", false);
     if (allow) {
       Allow(JS::UndefinedHandleValue);
     } else {
@@ -141,4 +92,3 @@ MIDIPermissionRequest::Run()
   }
   return NS_OK;
 }
-

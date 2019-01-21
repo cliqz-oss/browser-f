@@ -64,7 +64,7 @@ async function getTargetForTab(tab) {
 
 async function initAnimationsFrontForUrl(url) {
   const { inspector, walker, target } = await initInspectorFront(url);
-  const animations = target.getFront("animations");
+  const animations = await target.getFront("animations");
 
   return {inspector, walker, animations, target};
 }
@@ -78,9 +78,9 @@ async function initLayoutFrontForUrl(url) {
 
 async function initAccessibilityFrontForUrl(url) {
   const target = await addTabTarget(url);
-  const inspector = target.getFront("inspector");
-  const walker = await inspector.getWalker();
-  const accessibility = target.getFront("accessibility");
+  const inspector = await target.getInspector();
+  const walker = inspector.walker;
+  const accessibility = await target.getFront("accessibility");
 
   await accessibility.bootstrap();
 
@@ -110,19 +110,10 @@ async function initPerfFront() {
 async function initInspectorFront(url) {
   const target = await addTabTarget(url);
 
-  const inspector = target.getFront("inspector");
-  const walker = await inspector.getWalker();
+  const inspector = await target.getInspector();
+  const walker = inspector.walker;
 
   return {inspector, walker, target};
-}
-
-/**
- * Gets the RootActor form from a DebuggerClient.
- * @param {DebuggerClient} client
- * @return {RootActor} Resolves when connected.
- */
-function getRootForm(client) {
-  return client.listTabs();
 }
 
 /**
@@ -134,21 +125,6 @@ function waitUntilClientConnected(client) {
   return new Promise(resolve => {
     client.addOneTimeListener("connected", resolve);
   });
-}
-
-/**
- * Connect a debugger client.
- *
- * @param {DebuggerClient}
- * @return {Promise} Resolves to the targetActor form for the selected tab when the client
- *         is connected.
- */
-function connectDebuggerClient(client) {
-  return client.connect()
-    .then(() => client.listTabs())
-    .then(tabs => {
-      return tabs.tabs[tabs.selected];
-    });
 }
 
 /**

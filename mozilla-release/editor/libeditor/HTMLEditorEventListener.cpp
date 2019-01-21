@@ -24,9 +24,7 @@ namespace mozilla {
 
 using namespace dom;
 
-nsresult
-HTMLEditorEventListener::Connect(EditorBase* aEditorBase)
-{
+nsresult HTMLEditorEventListener::Connect(EditorBase* aEditorBase) {
   if (NS_WARN_IF(!aEditorBase)) {
     return NS_ERROR_INVALID_ARG;
   }
@@ -38,9 +36,192 @@ HTMLEditorEventListener::Connect(EditorBase* aEditorBase)
   return EditorEventListener::Connect(htmlEditor);
 }
 
-nsresult
-HTMLEditorEventListener::MouseUp(MouseEvent* aMouseEvent)
-{
+void HTMLEditorEventListener::Disconnect() {
+  if (DetachedFromEditor()) {
+    EditorEventListener::Disconnect();
+  }
+
+  if (mListeningToMouseMoveEventForResizers) {
+    DebugOnly<nsresult> rvIgnored = ListenToMouseMoveEventForResizers(false);
+    NS_WARNING_ASSERTION(NS_SUCCEEDED(rvIgnored),
+                         "Failed to remove resize event listener of resizers");
+  }
+  if (mListeningToMouseMoveEventForGrabber) {
+    DebugOnly<nsresult> rvIgnored = ListenToMouseMoveEventForGrabber(false);
+    NS_WARNING_ASSERTION(NS_SUCCEEDED(rvIgnored),
+                         "Failed to remove resize event listener of grabber");
+  }
+  if (mListeningToResizeEvent) {
+    DebugOnly<nsresult> rvIgnored = ListenToWindowResizeEvent(false);
+    NS_WARNING_ASSERTION(NS_SUCCEEDED(rvIgnored),
+                         "Failed to remove resize event listener");
+  }
+
+  EditorEventListener::Disconnect();
+}
+
+NS_IMETHODIMP
+HTMLEditorEventListener::HandleEvent(Event* aEvent) {
+  WidgetEvent* internalEvent = aEvent->WidgetEventPtr();
+  switch (internalEvent->mMessage) {
+    case eMouseMove: {
+      if (DetachedFromEditor()) {
+        return NS_OK;
+      }
+
+      RefPtr<MouseEvent> mouseEvent = aEvent->AsMouseEvent();
+      if (NS_WARN_IF(!mouseEvent)) {
+        return NS_ERROR_FAILURE;
+      }
+
+      RefPtr<HTMLEditor> htmlEditor = mEditorBase->AsHTMLEditor();
+      MOZ_ASSERT(htmlEditor);
+      DebugOnly<nsresult> rvIgnored = htmlEditor->OnMouseMove(mouseEvent);
+      NS_WARNING_ASSERTION(NS_SUCCEEDED(rvIgnored),
+                           "Resizers failed to handle mousemove events");
+      return NS_OK;
+    }
+    case eResize: {
+      if (DetachedFromEditor()) {
+        return NS_OK;
+      }
+
+      RefPtr<HTMLEditor> htmlEditor = mEditorBase->AsHTMLEditor();
+      MOZ_ASSERT(htmlEditor);
+      nsresult rv = htmlEditor->RefreshResizers();
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return rv;
+      }
+      return NS_OK;
+    }
+    default:
+      nsresult rv = EditorEventListener::HandleEvent(aEvent);
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return rv;
+      }
+      return NS_OK;
+  }
+}
+
+nsresult HTMLEditorEventListener::ListenToMouseMoveEventForResizersOrGrabber(
+    bool aListen, bool aForGrabber) {
+  MOZ_ASSERT(aForGrabber ? mListeningToMouseMoveEventForGrabber != aListen
+                         : mListeningToMouseMoveEventForResizers != aListen);
+
+  if (NS_WARN_IF(DetachedFromEditor())) {
+    return aListen ? NS_ERROR_FAILURE : NS_OK;
+  }
+
+  if (aListen) {
+    if (aForGrabber && mListeningToMouseMoveEventForResizers) {
+      // We've already added mousemove event listener for resizers.
+      mListeningToMouseMoveEventForGrabber = true;
+      return NS_OK;
+    }
+    if (!aForGrabber && mListeningToMouseMoveEventForGrabber) {
+      // We've already added mousemove event listener for grabber.
+      mListeningToMouseMoveEventForResizers = true;
+      return NS_OK;
+    }
+  } else {
+    if (aForGrabber && mListeningToMouseMoveEventForResizers) {
+      // We need to keep listening to mousemove event listener for resizers.
+      mListeningToMouseMoveEventForGrabber = false;
+      return NS_OK;
+    }
+    if (!aForGrabber && mListeningToMouseMoveEventForGrabber) {
+      // We need to keep listening to mousemove event listener for grabber.
+      mListeningToMouseMoveEventForResizers = false;
+      return NS_OK;
+    }
+  }
+
+  EventTarget* target = mEditorBase->AsHTMLEditor()->GetDOMEventTarget();
+  if (NS_WARN_IF(!target)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  // Listen to mousemove events in the system group since web apps may stop
+  // propagation before we receive the events.
+  EventListenerManager* eventListenerManager =
+      target->GetOrCreateListenerManager();
+  if (NS_WARN_IF(!eventListenerManager)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  if (aListen) {
+    eventListenerManager->AddEventListenerByType(
+        this, NS_LITERAL_STRING("mousemove"),
+        TrustedEventsAtSystemGroupBubble());
+    if (aForGrabber) {
+      mListeningToMouseMoveEventForGrabber = true;
+    } else {
+      mListeningToMouseMoveEventForResizers = true;
+    }
+    return NS_OK;
+  }
+
+  eventListenerManager->RemoveEventListenerByType(
+      this, NS_LITERAL_STRING("mousemove"), TrustedEventsAtSystemGroupBubble());
+  if (aForGrabber) {
+    mListeningToMouseMoveEventForGrabber = false;
+  } else {
+    mListeningToMouseMoveEventForResizers = false;
+  }
+  return NS_OK;
+}
+
+nsresult HTMLEditorEventListener::ListenToWindowResizeEvent(bool aListen) {
+  if (mListeningToResizeEvent == aListen) {
+    return NS_OK;
+  }
+
+  if (DetachedFromEditor()) {
+    return aListen ? NS_ERROR_FAILURE : NS_OK;
+  }
+
+  nsIDocument* document = mEditorBase->AsHTMLEditor()->GetDocument();
+  if (NS_WARN_IF(!document)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  // nsIDocument::GetWindow() may return nullptr when HTMLEditor is destroyed
+  // while the document is being unloaded.  If we cannot retrieve window as
+  // expected, let's ignore it.
+  nsPIDOMWindowOuter* window = document->GetWindow();
+  if (!window) {
+    NS_WARNING_ASSERTION(!aListen,
+                         "There should be window when adding event listener");
+    return NS_ERROR_FAILURE;
+  }
+
+  nsCOMPtr<EventTarget> target = do_QueryInterface(window);
+  if (NS_WARN_IF(!target)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  // Listen to resize events in the system group since web apps may stop
+  // propagation before we receive the events.
+  EventListenerManager* eventListenerManager =
+      target->GetOrCreateListenerManager();
+  if (NS_WARN_IF(!eventListenerManager)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  if (aListen) {
+    eventListenerManager->AddEventListenerByType(
+        this, NS_LITERAL_STRING("resize"), TrustedEventsAtSystemGroupBubble());
+    mListeningToResizeEvent = true;
+    return NS_OK;
+  }
+
+  eventListenerManager->RemoveEventListenerByType(
+      this, NS_LITERAL_STRING("resize"), TrustedEventsAtSystemGroupBubble());
+  mListeningToResizeEvent = false;
+  return NS_OK;
+}
+
+nsresult HTMLEditorEventListener::MouseUp(MouseEvent* aMouseEvent) {
   if (DetachedFromEditor()) {
     return NS_OK;
   }
@@ -61,9 +242,7 @@ HTMLEditorEventListener::MouseUp(MouseEvent* aMouseEvent)
   return EditorEventListener::MouseUp(aMouseEvent);
 }
 
-nsresult
-HTMLEditorEventListener::MouseDown(MouseEvent* aMouseEvent)
-{
+nsresult HTMLEditorEventListener::MouseDown(MouseEvent* aMouseEvent) {
   if (NS_WARN_IF(!aMouseEvent) || DetachedFromEditor()) {
     return NS_OK;
   }
@@ -77,7 +256,7 @@ HTMLEditorEventListener::MouseDown(MouseEvent* aMouseEvent)
   }
 
   WidgetMouseEvent* mousedownEvent =
-    aMouseEvent->WidgetEventPtr()->AsMouseEvent();
+      aMouseEvent->WidgetEventPtr()->AsMouseEvent();
 
   HTMLEditor* htmlEditor = mEditorBase->AsHTMLEditor();
   MOZ_ASSERT(htmlEditor);
@@ -126,7 +305,7 @@ HTMLEditorEventListener::MouseDown(MouseEvent* aMouseEvent)
 
         IgnoredErrorResult err;
         nodeIsInSelection =
-          range->IsPointInRange(*parent, offset, err) && !err.Failed();
+            range->IsPointInRange(*parent, offset, err) && !err.Failed();
 
         // Done when we find a range that we are in
         if (nodeIsInSelection) {
@@ -143,7 +322,7 @@ HTMLEditorEventListener::MouseDown(MouseEvent* aMouseEvent)
         } else {
           // Get enclosing link if in text so we can select the link
           Element* linkElement =
-            htmlEditor->GetElementOrParentByTagName(*nsGkAtoms::href, node);
+              htmlEditor->GetElementOrParentByTagName(*nsGkAtoms::href, node);
           if (linkElement) {
             element = linkElement;
           }
@@ -164,7 +343,7 @@ HTMLEditorEventListener::MouseDown(MouseEvent* aMouseEvent)
     }
     // HACK !!! Context click places the caret but the context menu consumes
     // the event; so we need to check resizing state ourselves
-    htmlEditor->CheckSelectionStateForAnonymousButtons(selection);
+    htmlEditor->CheckSelectionStateForAnonymousButtons();
 
     // Prevent bubbling if we changed selection or
     //   for all context clicks
@@ -182,9 +361,8 @@ HTMLEditorEventListener::MouseDown(MouseEvent* aMouseEvent)
   return EditorEventListener::MouseDown(aMouseEvent);
 }
 
-nsresult
-HTMLEditorEventListener::MouseClick(WidgetMouseEvent* aMouseClickEvent)
-{
+nsresult HTMLEditorEventListener::MouseClick(
+    WidgetMouseEvent* aMouseClickEvent) {
   if (NS_WARN_IF(DetachedFromEditor())) {
     return NS_OK;
   }
@@ -210,4 +388,4 @@ HTMLEditorEventListener::MouseClick(WidgetMouseEvent* aMouseClickEvent)
   return EditorEventListener::MouseClick(aMouseClickEvent);
 }
 
-} // namespace mozilla
+}  // namespace mozilla

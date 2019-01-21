@@ -235,6 +235,16 @@ Optional. This field is a list of products this histogram can be recorded on. Cu
 
 If this field is left out it defaults to ``all``.
 
+``record_into_store``
+---------------------
+
+.. note::
+
+   This field is not yet ready for use.
+
+Optional. This field is a list of stores this histogram should be recorded into.
+If this field is left out it defaults to ``[main]``.
+
 Changing a histogram
 ====================
 Changing histogram declarations after the histogram has been released is tricky. Many tools (like `the aggregator <https://github.com/mozilla/python_mozaggregator>`_) assume histograms don't change. The current recommended procedure is to change the name of the histogram.
@@ -272,7 +282,7 @@ Note that ``nsITelemetry.getHistogramById()`` will throw an ``NS_ERROR_FAILURE``
 
   Adding a new Telemetry probe is not possible with Artifact builds. A full build is needed.
 
-For histograms measuring time, `TelemetryStopwatch <https://dxr.mozilla.org/mozilla-central/source/toolkit/components/telemetry/TelemetryStopwatch.jsm>`_ can be used to avoid working with Dates manually:
+For histograms measuring time, TelemetryStopwatch can be used to avoid working with Dates manually:
 
 .. code-block:: js
 

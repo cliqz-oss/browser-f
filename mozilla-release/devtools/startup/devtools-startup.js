@@ -170,6 +170,12 @@ XPCOMUtils.defineLazyGetter(this, "KeyShortcuts", function() {
       shortcut: KeyShortcutsBundle.GetStringFromName("dom.commandkey"),
       modifiers,
     },
+    // Key for opening the Accessibility Panel
+    {
+      toolId: "accessibility",
+      shortcut: KeyShortcutsBundle.GetStringFromName("accessibilityF12.commandkey"),
+      modifiers: "shift",
+    },
   ];
 
   if (isMac) {
@@ -836,13 +842,13 @@ DevToolsStartup.prototype = {
       serverLoader.invisibleToDebugger = true;
       const { DebuggerServer: debuggerServer } =
         serverLoader.require("devtools/server/main");
+      const { SocketListener } = serverLoader.require("devtools/shared/security/socket");
       debuggerServer.init();
       debuggerServer.registerAllActors();
       debuggerServer.allowChromeProcess = true;
+      const socketOptions = { portOrPath, webSocket };
 
-      const listener = debuggerServer.createListener();
-      listener.portOrPath = portOrPath;
-      listener.webSocket = webSocket;
+      const listener = new SocketListener(debuggerServer, socketOptions);
       listener.open();
       dump("Started debugger server on " + portOrPath + "\n");
     } catch (e) {

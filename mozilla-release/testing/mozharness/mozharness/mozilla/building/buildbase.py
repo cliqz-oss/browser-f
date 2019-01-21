@@ -26,6 +26,7 @@ import re
 from mozharness.base.config import (
     BaseConfig, parse_config_file, DEFAULT_CONFIG_PATH,
 )
+from mozharness.base.errors import MakefileErrorList
 from mozharness.base.log import ERROR, OutputParser, FATAL
 from mozharness.base.script import PostScriptRun
 from mozharness.base.vcs.vcsbase import MercurialScript
@@ -148,7 +149,8 @@ class CheckTestCompleteParser(OutputParser):
                                                 levels=TBPL_WORST_LEVEL_TUPLE)
 
         # Account for the possibility that no test summary was output.
-        if self.pass_count == 0 and self.fail_count == 0:
+        if (self.pass_count == 0 and self.fail_count == 0 and
+           os.environ.get('TRY_SELECTOR') != 'coverage'):
             self.error('No tests run or test summary not found')
             self.tbpl_status = self.worst_level(TBPL_WARNING, self.tbpl_status,
                                                 levels=TBPL_WORST_LEVEL_TUPLE)
@@ -382,11 +384,17 @@ class BuildOptionParser(object):
         'x86-fuzzing-debug': 'builds/releng_sub_%s_configs/%s_x86_fuzzing_debug.py',
         'x86_64': 'builds/releng_sub_%s_configs/%s_x86_64.py',
         'x86_64-artifact': 'builds/releng_sub_%s_configs/%s_x86_64_artifact.py',
+        'x86_64-debug': 'builds/releng_sub_%s_configs/%s_x86_64_debug.py',
+        'x86_64-debug-artifact': 'builds/releng_sub_%s_configs/%s_x86_64_debug_artifact.py',
         'api-16-partner-sample1': 'builds/releng_sub_%s_configs/%s_api_16_partner_sample1.py',
         'aarch64': 'builds/releng_sub_%s_configs/%s_aarch64.py',
+        'aarch64-artifact': 'builds/releng_sub_%s_configs/%s_aarch64_artifact.py',
+        'aarch64-debug': 'builds/releng_sub_%s_configs/%s_aarch64_debug.py',
+        'aarch64-debug-artifact': 'builds/releng_sub_%s_configs/%s_aarch64_debug_artifact.py',
         'android-test': 'builds/releng_sub_%s_configs/%s_test.py',
         'android-test-ccov': 'builds/releng_sub_%s_configs/%s_test_ccov.py',
         'android-checkstyle': 'builds/releng_sub_%s_configs/%s_checkstyle.py',
+        'android-api-lint': 'builds/releng_sub_%s_configs/%s_api_lint.py',
         'android-lint': 'builds/releng_sub_%s_configs/%s_lint.py',
         'android-findbugs': 'builds/releng_sub_%s_configs/%s_findbugs.py',
         'android-geckoview-docs': 'builds/releng_sub_%s_configs/%s_geckoview_docs.py',
@@ -1002,25 +1010,6 @@ or run without that action (ie: --no-{action})"
         self.run_command(cmd, cwd=dirs['abs_src_dir'], halt_on_failure=True,
                          env=env)
 
-    def query_revision(self, source_path=None):
-        """ returns the revision of the build
-
-         This method is used both to figure out what revision to check out and
-         to figure out what revision *was* checked out.
-        """
-        revision = None
-        if not source_path:
-            dirs = self.query_abs_dirs()
-            source_path = dirs['abs_src_dir']  # let's take the default
-
-        # Look at what we have checked out
-        if os.path.exists(source_path):
-            hg = self.query_exe('hg', return_type='list')
-            revision = self.get_output_from_command(
-                hg + ['parent', '--template', '{node}'], cwd=source_path
-            )
-        return revision.encode('ascii', 'replace') if revision else None
-
     def generate_build_props(self, console_output=True, halt_on_failure=False):
         """sets props found from mach build and, in addition, buildid,
         sourcestamp,  appVersion, and appName."""
@@ -1107,16 +1096,27 @@ or run without that action (ie: --no-{action})"
     def build(self):
         """builds application."""
 
-        # This will error on non-0 exit code.
-        self._run_mach_command_in_build_env(['build', '-v'])
+        args = ['build', '-v']
 
-        self.generate_build_props(console_output=True, halt_on_failure=True)
+        custom_build_targets = self.config.get('build_targets')
+        if custom_build_targets:
+            args += custom_build_targets
+
+        # This will error on non-0 exit code.
+        self._run_mach_command_in_build_env(args)
+
+        if not custom_build_targets:
+            self.generate_build_props(console_output=True, halt_on_failure=True)
+
         self._generate_build_stats()
 
     def static_analysis_autotest(self):
         """Run mach static-analysis autotest, in order to make sure we dont regress"""
         self.preflight_build()
-        self._run_mach_command_in_build_env(['static-analysis', 'autotest', '--intree-tool'])
+        self._run_mach_command_in_build_env(['configure'])
+        self._run_mach_command_in_build_env(['static-analysis', 'autotest',
+                                             '--intree-tool'],
+                                            use_subprocess=True)
 
     def _query_mach(self):
         dirs = self.query_abs_dirs()
@@ -1133,7 +1133,7 @@ or run without that action (ie: --no-{action})"
             mach = [sys.executable, 'mach']
         return mach
 
-    def _run_mach_command_in_build_env(self, args):
+    def _run_mach_command_in_build_env(self, args, use_subprocess=False):
         """Run a mach command in a build context."""
         env = self.query_build_env()
         env.update(self.query_mach_build_env())
@@ -1142,12 +1142,22 @@ or run without that action (ie: --no-{action})"
 
         mach = self._query_mach()
 
-        return_code = self.run_command(
-            command=mach + ['--log-no-times'] + args,
-            cwd=dirs['abs_src_dir'],
-            env=env,
-            output_timeout=self.config.get('max_build_output_timeout', 60 * 40)
-        )
+        # XXX See bug 1483883
+        # Work around an interaction between Gradle and mozharness
+        # Not using `subprocess` causes gradle to hang
+        if use_subprocess:
+            import subprocess
+            return_code = subprocess.call(mach + ['--log-no-times'] + args,
+                                          env=env, cwd=dirs['abs_src_dir'])
+        else:
+            return_code = self.run_command(
+                command=mach + ['--log-no-times'] + args,
+                cwd=dirs['abs_src_dir'],
+                env=env,
+                error_list=MakefileErrorList,
+                output_timeout=self.config.get('max_build_output_timeout',
+                                               60 * 40)
+            )
 
         if return_code:
             self.return_code = self.worst_level(

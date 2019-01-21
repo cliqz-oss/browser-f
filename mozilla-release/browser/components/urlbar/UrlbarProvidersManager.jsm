@@ -26,7 +26,12 @@ XPCOMUtils.defineLazyGetter(this, "logger", () =>
 // List of available local providers, each is implemented in its own jsm module
 // and will track different queries internally by queryContext.
 var localProviderModules = {
-  UrlbarProviderOpenTabs: "resource:///modules/UrlbarProviderOpenTabs.jsm",
+  UrlbarProviderUnifiedComplete: "resource:///modules/UrlbarProviderUnifiedComplete.jsm",
+};
+
+// List of available local muxers, each is implemented in its own jsm module.
+var localMuxerModules = {
+  UrlbarMuxerUnifiedComplete: "resource:///modules/UrlbarMuxerUnifiedComplete.jsm",
 };
 
 // To improve dataflow and reduce UI work, when a match is added by a
@@ -59,6 +64,13 @@ class ProvidersManager {
     // running a query that shouldn't be interrupted, and if so it should
     // bump this through disableInterrupt and enableInterrupt.
     this.interruptLevel = 0;
+
+    // This maps muxer names to muxers.
+    this.muxers = new Map();
+    for (let [symbol, module] of Object.entries(localMuxerModules)) {
+      let {[symbol]: muxer} = ChromeUtils.import(module, {});
+      this.registerMuxer(muxer);
+    }
   }
 
   /**
@@ -66,10 +78,15 @@ class ProvidersManager {
    * @param {object} provider
    */
   registerProvider(provider) {
-    logger.info(`Registering provider ${provider.name}`);
+    if (!provider || !provider.name ||
+        (typeof provider.startQuery != "function") ||
+        (typeof provider.cancelQuery != "function")) {
+      throw new Error(`Trying to register an invalid provider`);
+    }
     if (!Object.values(UrlbarUtils.PROVIDER_TYPE).includes(provider.type)) {
       throw new Error(`Unknown provider type ${provider.type}`);
     }
+    logger.info(`Registering provider ${provider.name}`);
     this.providers.get(provider.type).set(provider.name, provider);
   }
 
@@ -83,13 +100,41 @@ class ProvidersManager {
   }
 
   /**
+   * Registers a muxer object with the manager.
+   * @param {object} muxer a UrlbarMuxer object
+   */
+  registerMuxer(muxer) {
+    if (!muxer || !muxer.name || (typeof muxer.sort != "function")) {
+      throw new Error(`Trying to register an invalid muxer`);
+    }
+    logger.info(`Registering muxer ${muxer.name}`);
+    this.muxers.set(muxer.name, muxer);
+  }
+
+  /**
+   * Unregisters a previously registered muxer object.
+   * @param {object} muxer a UrlbarMuxer object or name.
+   */
+  unregisterMuxer(muxer) {
+    let muxerName = typeof muxer == "string" ? muxer : muxer.name;
+    logger.info(`Unregistering muxer ${muxerName}`);
+    this.muxers.delete(muxerName);
+  }
+
+  /**
    * Starts querying.
    * @param {object} queryContext The query context object
    * @param {object} controller a UrlbarController instance
    */
   async startQuery(queryContext, controller) {
     logger.info(`Query start ${queryContext.searchString}`);
-    let query = new Query(queryContext, controller, this.providers);
+    let muxerName = queryContext.muxer || "MuxerUnifiedComplete";
+    logger.info(`Using muxer ${muxerName}`);
+    let muxer = this.muxers.get(muxerName);
+    if (!muxer) {
+      throw new Error(`Muxer with name ${muxerName} not found`);
+    }
+    let query = new Query(queryContext, controller, muxer, this.providers);
     this.queries.set(queryContext, query);
     await query.start();
   }
@@ -145,17 +190,25 @@ class Query {
    *        The query context
    * @param {object} controller
    *        The controller to be notified
+   * @param {object} muxer
+   *        The muxer to sort matches
    * @param {object} providers
    *        Map of all the providers by type and name
    */
-  constructor(queryContext, controller, providers) {
+  constructor(queryContext, controller, muxer, providers) {
     this.context = queryContext;
     this.context.results = [];
+    this.muxer = muxer;
     this.controller = controller;
     this.providers = providers;
     this.started = false;
     this.canceled = false;
     this.complete = false;
+    // Array of acceptable MATCH_SOURCE values for this query. Providers not
+    // returning any of these will be skipped, as well as matches not part of
+    // this subset (Note we still expect the provider to do its own internal
+    // filtering, our additional filtering will be for sanity).
+    this.acceptableSources = [];
   }
 
   /**
@@ -167,13 +220,17 @@ class Query {
     }
     this.started = true;
     UrlbarTokenizer.tokenize(this.context);
+    this.acceptableSources = getAcceptableMatchSources(this.context);
+    logger.debug(`Acceptable sources ${this.acceptableSources}`);
 
     let promises = [];
     for (let provider of this.providers.get(UrlbarUtils.PROVIDER_TYPE.IMMEDIATE).values()) {
       if (this.canceled) {
         break;
       }
-      promises.push(provider.startQuery(this.context, this.add));
+      if (this._providerHasAcceptableSources(provider)) {
+        promises.push(provider.startQuery(this.context, this.add.bind(this)));
+      }
     }
 
     // Tracks the delay timer. We will fire (in this specific case, cancel would
@@ -189,15 +246,20 @@ class Query {
         if (this.canceled) {
           break;
         }
-        promises.push(provider.startQuery(this.context, this.add.bind(this)));
+        if (this._providerHasAcceptableSources(provider)) {
+          promises.push(provider.startQuery(this.context, this.add.bind(this)));
+        }
       }
     }
 
-    await Promise.all(promises.map(p => p.catch(Cu.reportError)));
+    logger.info(`Queried ${promises.length} providers`);
+    if (promises.length) {
+      await Promise.all(promises.map(p => p.catch(Cu.reportError)));
 
-    if (this._chunkTimer) {
-      // All the providers are done returning results, so we can stop chunking.
-      await this._chunkTimer.fire();
+      if (this._chunkTimer) {
+        // All the providers are done returning results, so we can stop chunking.
+        await this._chunkTimer.fire();
+      }
     }
 
     // Nothing should be failing above, since we catch all the promises, thus
@@ -234,19 +296,26 @@ class Query {
    */
   add(provider, match) {
     // Stop returning results as soon as we've been canceled.
-    if (this.canceled) {
+    if (this.canceled || !this.acceptableSources.includes(match.source)) {
       return;
     }
-    this.context.results.push(match);
 
+    // Filter out javascript results for safety. The provider is supposed to do
+    // it, but we don't want to risk leaking these out.
+    if (match.payload.url && match.payload.url.startsWith("javascript:") &&
+        !this.context.searchString.startsWith("javascript:") &&
+        UrlbarPrefs.get("filter.javascript")) {
+      return;
+    }
+
+    this.context.results.push(match);
 
     let notifyResults = () => {
       if (this._chunkTimer) {
         this._chunkTimer.cancel().catch(Cu.reportError);
         delete this._chunkTimer;
       }
-      // TODO:
-      //  * pass results to a muxer before sending them back to the controller.
+      this.muxer.sort(this.context);
       this.controller.receiveResults(this.context);
     };
 
@@ -257,6 +326,15 @@ class Query {
     } else if (!this._chunkTimer) {
       this._chunkTimer = new SkippableTimer(notifyResults, CHUNK_MATCHES_DELAY_MS);
     }
+  }
+
+  /**
+   * Returns whether a provider's sources are acceptable for this query.
+   * @param {object} provider A provider object.
+   * @returns {boolean}whether the provider sources are acceptable.
+   */
+  _providerHasAcceptableSources(provider) {
+    return provider.sources.some(s => this.acceptableSources.includes(s));
   }
 }
 
@@ -316,4 +394,64 @@ class SkippableTimer {
     delete this._timer;
     return this.fire();
   }
+}
+
+/**
+ * Gets an array of the provider sources accepted for a given QueryContext.
+ * @param {object} context The QueryContext to examine
+ * @returns {array} Array of accepted sources
+ */
+function getAcceptableMatchSources(context) {
+  let acceptedSources = [];
+  // There can be only one restrict token about sources.
+  let restrictToken = context.tokens.find(t => [ UrlbarTokenizer.TYPE.RESTRICT_HISTORY,
+                                                 UrlbarTokenizer.TYPE.RESTRICT_BOOKMARK,
+                                                 UrlbarTokenizer.TYPE.RESTRICT_TAG,
+                                                 UrlbarTokenizer.TYPE.RESTRICT_OPENPAGE,
+                                                 UrlbarTokenizer.TYPE.RESTRICT_SEARCH,
+                                               ].includes(t.type));
+  let restrictTokenType = restrictToken ? restrictToken.type : undefined;
+  for (let source of Object.values(UrlbarUtils.MATCH_SOURCE)) {
+    switch (source) {
+      case UrlbarUtils.MATCH_SOURCE.BOOKMARKS:
+        if (UrlbarPrefs.get("suggest.bookmark") &&
+            (!restrictTokenType ||
+             restrictTokenType === UrlbarTokenizer.TYPE.RESTRICT_BOOKMARK ||
+             restrictTokenType === UrlbarTokenizer.TYPE.RESTRICT_TAG)) {
+          acceptedSources.push(source);
+        }
+        break;
+      case UrlbarUtils.MATCH_SOURCE.HISTORY:
+        if (UrlbarPrefs.get("suggest.history") &&
+            (!restrictTokenType ||
+             restrictTokenType === UrlbarTokenizer.TYPE.RESTRICT_HISTORY)) {
+          acceptedSources.push(source);
+        }
+        break;
+      case UrlbarUtils.MATCH_SOURCE.SEARCH:
+        if (UrlbarPrefs.get("suggest.searches") &&
+            (!restrictTokenType ||
+             restrictTokenType === UrlbarTokenizer.TYPE.RESTRICT_SEARCH)) {
+          acceptedSources.push(source);
+        }
+        break;
+      case UrlbarUtils.MATCH_SOURCE.TABS:
+        if (UrlbarPrefs.get("suggest.openpage") &&
+            (!restrictTokenType ||
+             restrictTokenType === UrlbarTokenizer.TYPE.RESTRICT_OPENPAGE)) {
+          acceptedSources.push(source);
+        }
+        break;
+      case UrlbarUtils.MATCH_SOURCE.OTHER_NETWORK:
+        if (!context.isPrivate) {
+          acceptedSources.push(source);
+        }
+        break;
+      case UrlbarUtils.MATCH_SOURCE.OTHER_LOCAL:
+      default:
+        acceptedSources.push(source);
+        break;
+    }
+  }
+  return acceptedSources;
 }

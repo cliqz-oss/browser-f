@@ -8,16 +8,17 @@
 #define mozilla_dom_FallbackEncoding_h_
 
 #include "mozilla/NotNull.h"
+#include "mozilla/StaticPtr.h"
 #include "nsIObserver.h"
 #include "nsString.h"
+#include "nsWeakReference.h"
 
 namespace mozilla {
 class Encoding;
 namespace dom {
 
-class FallbackEncoding : public nsIObserver
-{
-public:
+class FallbackEncoding : public nsIObserver, nsSupportsWeakReference {
+ public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIOBSERVER
 
@@ -70,23 +71,19 @@ public:
    */
   static void Shutdown();
 
-private:
-
+ private:
   /**
    * The fallback cache.
    */
-  static FallbackEncoding* sInstance;
+  static StaticRefPtr<FallbackEncoding> sInstance;
 
   FallbackEncoding();
-  virtual ~FallbackEncoding() {};
+  virtual ~FallbackEncoding(){};
 
   /**
    * Invalidates the cache.
    */
-  void Invalidate()
-  {
-    mFallback = nullptr;
-  }
+  void Invalidate() { mFallback = nullptr; }
 
   static void PrefChanged(const char*, void*);
 
@@ -99,8 +96,7 @@ private:
   const Encoding* mFallback;
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
-#endif // mozilla_dom_FallbackEncoding_h_
-
+#endif  // mozilla_dom_FallbackEncoding_h_

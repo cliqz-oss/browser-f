@@ -9,6 +9,8 @@
 %include shared.inc
 @namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
 
+%include ../../shared/global.inc.css
+
 /* ::::: XBL bindings ::::: */
 
 menulist > menupopup {
@@ -18,7 +20,7 @@ menulist > menupopup {
 /* ::::: Variables ::::: */
 :root {
   --arrowpanel-padding: 16px;
-  --default-arrowpanel-background: hsla(0,0%,99%,.975);
+  --default-arrowpanel-background: #fff;
   --default-arrowpanel-color: hsl(0,0%,10%);
   --default-arrowpanel-border-color: hsla(210,4%,10%,.05);
   --arrowpanel-background: var(--default-arrowpanel-background);
@@ -218,7 +220,7 @@ label[disabled="true"] {
   box-shadow: var(--focus-ring-box-shadow);
 }
 
-notification > button {
+notification > hbox > button {
   margin: 0 3px;
   padding: 1px 10px;
   min-width: 60px;
@@ -228,25 +230,25 @@ notification > button {
   border: @roundButtonBorderWidth@ @roundButtonBorderStyle@ @roundButtonBorderColor@;
   text-shadow: @loweredShadow@;
   color: @roundButtonColor@;
-  background: @roundButtonBackground@;
+  background: @roundButtonBackgroundImage@;
   box-shadow: @roundButtonShadow@;
 }
 
-notification > button:active:hover {
+notification > hbox > button:active:hover {
   color: @roundButtonColor@;
-  background: @roundButtonPressedBackground@;
+  background: @roundButtonPressedBackgroundImage@;
   box-shadow: @roundButtonPressedShadow@;
 }
 
-notification > button:-moz-focusring {
+notification > hbox > button:-moz-focusring {
   box-shadow: var(--focus-ring-box-shadow), @roundButtonShadow@;
 }
 
-notification > button:active:hover:-moz-focusring {
+notification > hbox > button:active:hover:-moz-focusring {
   box-shadow: var(--focus-ring-box-shadow), @roundButtonPressedShadow@;
 }
 
-notification > button > .button-box > .button-text {
+notification > hbox > button > .button-box > .button-text {
   margin: 0 !important;
 }
 
@@ -320,6 +322,3 @@ popupnotificationcontent {
   visibility: collapse;
 }
 
-/* :::::: Close button icons ::::: */
-
-%include ../../shared/close-icon.inc.css

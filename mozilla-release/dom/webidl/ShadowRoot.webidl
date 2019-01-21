@@ -17,7 +17,6 @@ enum ShadowRootMode {
 };
 
 // https://dom.spec.whatwg.org/#shadowroot
-[Func="nsDocument::IsShadowDOMEnabled"]
 interface ShadowRoot : DocumentFragment
 {
   // Shadow DOM v1
@@ -48,6 +47,8 @@ interface ShadowRoot : DocumentFragment
   // For triggering UA Widget scope in tests.
   [ChromeOnly]
   void setIsUAWidget();
+  [ChromeOnly]
+  boolean isUAWidget();
 };
 
 ShadowRoot implements DocumentOrShadowRoot;

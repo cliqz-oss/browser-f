@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 <%namespace name="helpers" file="/helpers.mako.rs" />
 <% from data import Keyword, Method, PHYSICAL_SIDES, ALL_SIDES, maybe_moz_logical_alias %>
@@ -48,8 +48,8 @@
     ${helpers.predefined_type(
         "border-%s-width" % side_name,
         "BorderSideWidth",
-        "::values::computed::NonNegativeLength::new(3.)",
-        computed_type="::values::computed::NonNegativeLength",
+        "crate::values::computed::NonNegativeLength::new(3.)",
+        computed_type="crate::values::computed::NonNegativeLength",
         alias=maybe_moz_logical_alias(product, side, "-moz-border-%s-width"),
         spec=maybe_logical_spec(side, "width"),
         animation_value_type="NonNegativeLength",
@@ -63,8 +63,10 @@
 
 ${helpers.gecko_keyword_conversion(
     Keyword('border-style',
-    "none solid double dotted dashed hidden groove ridge inset outset"),
-    type="::values::specified::BorderStyle",
+    "none solid double dotted dashed hidden groove ridge inset outset",
+    gecko_enum_prefix="StyleBorderStyle",
+    gecko_inexhaustive=True),
+    type="crate::values::specified::BorderStyle",
 )}
 
 // FIXME(#4126): when gfx supports painting it, make this Size2D<LengthOrPercentage>
@@ -112,6 +114,7 @@ ${helpers.predefined_type(
     animation_value_type="discrete",
     flags="APPLIES_TO_FIRST_LETTER",
     boxed=product == "servo",
+    ignored_when_colors_disabled=True
 )}
 
 ${helpers.predefined_type(
@@ -159,11 +162,11 @@ ${helpers.predefined_type(
 )}
 
 #[cfg(feature = "gecko")]
-impl ::values::computed::BorderImageWidth {
-    pub fn to_gecko_rect(&self, sides: &mut ::gecko_bindings::structs::nsStyleSides) {
-        use gecko_bindings::sugar::ns_style_coord::{CoordDataMut, CoordDataValue};
-        use gecko::values::GeckoStyleCoordConvertible;
-        use values::generics::border::BorderImageSideWidth;
+impl crate::values::computed::BorderImageWidth {
+    pub fn to_gecko_rect(&self, sides: &mut crate::gecko_bindings::structs::nsStyleSides) {
+        use crate::gecko_bindings::sugar::ns_style_coord::{CoordDataMut, CoordDataValue};
+        use crate::gecko::values::GeckoStyleCoordConvertible;
+        use crate::values::generics::border::BorderImageSideWidth;
 
         % for i in range(0, 4):
         match self.${i} {
@@ -181,16 +184,16 @@ impl ::values::computed::BorderImageWidth {
     }
 
     pub fn from_gecko_rect(
-        sides: &::gecko_bindings::structs::nsStyleSides,
-    ) -> Option<::values::computed::BorderImageWidth> {
-        use gecko_bindings::structs::nsStyleUnit::{eStyleUnit_Factor, eStyleUnit_Auto};
-        use gecko_bindings::sugar::ns_style_coord::CoordData;
-        use gecko::values::GeckoStyleCoordConvertible;
-        use values::computed::{LengthOrPercentage, Number};
-        use values::generics::border::BorderImageSideWidth;
+        sides: &crate::gecko_bindings::structs::nsStyleSides,
+    ) -> Option<crate::values::computed::BorderImageWidth> {
+        use crate::gecko_bindings::structs::nsStyleUnit::{eStyleUnit_Factor, eStyleUnit_Auto};
+        use crate::gecko_bindings::sugar::ns_style_coord::CoordData;
+        use crate::gecko::values::GeckoStyleCoordConvertible;
+        use crate::values::computed::{LengthOrPercentage, Number};
+        use crate::values::generics::border::BorderImageSideWidth;
 
         Some(
-            ::values::computed::BorderImageWidth::new(
+            crate::values::computed::BorderImageWidth::new(
                 % for i in range(0, 4):
                 match sides.data_at(${i}).unit() {
                     eStyleUnit_Auto => {

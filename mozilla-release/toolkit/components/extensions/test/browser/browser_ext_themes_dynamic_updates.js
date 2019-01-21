@@ -63,36 +63,33 @@ add_task(async function test_dynamic_theme_updates() {
   let defaultStyle = window.getComputedStyle(window.document.documentElement);
   await extension.startup();
 
-  let docEl = window.document.documentElement;
-  let transitionPromise = waitForTransition(docEl, "background-color");
   extension.sendMessage("update-theme", {
     "images": {
-      "headerURL": "image1.png",
+      "theme_frame": "image1.png",
     },
     "colors": {
-      "accentcolor": ACCENT_COLOR_1,
-      "textcolor": TEXT_COLOR_1,
+      "frame": ACCENT_COLOR_1,
+      "tab_background_text": TEXT_COLOR_1,
     },
   });
 
   await extension.awaitMessage("theme-updated");
-  await transitionPromise;
 
   validateTheme("image1.png", ACCENT_COLOR_1, TEXT_COLOR_1, true);
 
-  transitionPromise = waitForTransition(docEl, "background-color");
+  // Check with the LWT aliases (to update on Firefox 69, because the
+  // LWT aliases are going to be removed).
   extension.sendMessage("update-theme", {
     "images": {
-      "headerURL": "image2.png",
+      "theme_frame": "image2.png",
     },
     "colors": {
-      "accentcolor": ACCENT_COLOR_2,
-      "textcolor": TEXT_COLOR_2,
+      "frame": ACCENT_COLOR_2,
+      "tab_background_text": TEXT_COLOR_2,
     },
   });
 
   await extension.awaitMessage("theme-updated");
-  await transitionPromise;
 
   validateTheme("image2.png", ACCENT_COLOR_2, TEXT_COLOR_2, true);
 
@@ -105,6 +102,7 @@ add_task(async function test_dynamic_theme_updates() {
 
   await extension.unload();
 
+  let docEl = window.document.documentElement;
   Assert.ok(!docEl.hasAttribute("lwtheme"), "LWT attribute should not be set");
 });
 
@@ -131,36 +129,31 @@ add_task(async function test_dynamic_theme_updates_with_data_url() {
   let defaultStyle = window.getComputedStyle(window.document.documentElement);
   await extension.startup();
 
-  let docEl = window.document.documentElement;
-  let transitionPromise = waitForTransition(docEl, "background-color");
   extension.sendMessage("update-theme", {
     "images": {
-      "headerURL": BACKGROUND_1,
+      "theme_frame": BACKGROUND_1,
     },
     "colors": {
-      "accentcolor": ACCENT_COLOR_1,
-      "textcolor": TEXT_COLOR_1,
+      "frame": ACCENT_COLOR_1,
+      "tab_background_text": TEXT_COLOR_1,
     },
   });
 
   await extension.awaitMessage("theme-updated");
-  await transitionPromise;
 
   validateTheme(BACKGROUND_1, ACCENT_COLOR_1, TEXT_COLOR_1, true);
 
-  transitionPromise = waitForTransition(docEl, "background-color");
   extension.sendMessage("update-theme", {
     "images": {
-      "headerURL": BACKGROUND_2,
+      "theme_frame": BACKGROUND_2,
     },
     "colors": {
-      "accentcolor": ACCENT_COLOR_2,
-      "textcolor": TEXT_COLOR_2,
+      "frame": ACCENT_COLOR_2,
+      "tab_background_text": TEXT_COLOR_2,
     },
   });
 
   await extension.awaitMessage("theme-updated");
-  await transitionPromise;
 
   validateTheme(BACKGROUND_2, ACCENT_COLOR_2, TEXT_COLOR_2, true);
 
@@ -173,5 +166,6 @@ add_task(async function test_dynamic_theme_updates_with_data_url() {
 
   await extension.unload();
 
+  let docEl = window.document.documentElement;
   Assert.ok(!docEl.hasAttribute("lwtheme"), "LWT attribute should not be set");
 });

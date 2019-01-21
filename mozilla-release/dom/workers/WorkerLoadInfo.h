@@ -31,15 +31,15 @@ namespace mozilla {
 
 namespace ipc {
 class PrincipalInfo;
-} // namespace ipc
+}  // namespace ipc
 
 namespace dom {
 
 class WorkerPrivate;
 
-struct WorkerLoadInfo
-{
-  // All of these should be released in WorkerPrivateParent::ForgetMainThreadObjects.
+struct WorkerLoadInfoData {
+  // All of these should be released in
+  // WorkerPrivateParent::ForgetMainThreadObjects.
   nsCOMPtr<nsIURI> mBaseURI;
   nsCOMPtr<nsIURI> mResolvedScriptURI;
 
@@ -56,17 +56,22 @@ struct WorkerLoadInfo
   nsCOMPtr<nsIChannel> mChannel;
   nsCOMPtr<nsILoadGroup> mLoadGroup;
 
-  class InterfaceRequestor final : public nsIInterfaceRequestor
-  {
+  class InterfaceRequestor final : public nsIInterfaceRequestor {
     NS_DECL_ISUPPORTS
 
-  public:
+   public:
     InterfaceRequestor(nsIPrincipal* aPrincipal, nsILoadGroup* aLoadGroup);
     void MaybeAddTabChild(nsILoadGroup* aLoadGroup);
     NS_IMETHOD GetInterface(const nsIID& aIID, void** aSink) override;
 
-  private:
-    ~InterfaceRequestor() { }
+    void SetOuterRequestor(nsIInterfaceRequestor* aOuterRequestor) {
+      MOZ_ASSERT(!mOuterRequestor);
+      MOZ_ASSERT(aOuterRequestor);
+      mOuterRequestor = aOuterRequestor;
+    }
+
+   private:
+    ~InterfaceRequestor() {}
 
     already_AddRefed<nsITabChild> GetAnyLiveTabChild();
 
@@ -83,11 +88,12 @@ struct WorkerLoadInfo
 
   nsAutoPtr<mozilla::ipc::PrincipalInfo> mPrincipalInfo;
   nsCString mDomain;
-  nsString mOrigin; // Derived from mPrincipal; can be used on worker thread.
+  nsString mOrigin;  // Derived from mPrincipal; can be used on worker thread.
 
   nsString mServiceWorkerCacheName;
   Maybe<ServiceWorkerDescriptor> mServiceWorkerDescriptor;
-  Maybe<ServiceWorkerRegistrationDescriptor> mServiceWorkerRegistrationDescriptor;
+  Maybe<ServiceWorkerRegistrationDescriptor>
+      mServiceWorkerRegistrationDescriptor;
 
   Maybe<ServiceWorkerDescriptor> mParentController;
 
@@ -107,42 +113,50 @@ struct WorkerLoadInfo
   bool mServiceWorkersTestingInWindow;
   OriginAttributes mOriginAttributes;
 
-  WorkerLoadInfo();
-  ~WorkerLoadInfo();
+  enum {
+    eNotSet,
+    eInsecureContext,
+    eSecureContext,
+  } mSecureContext;
 
-  void StealFrom(WorkerLoadInfo& aOther);
+  WorkerLoadInfoData();
+  WorkerLoadInfoData(WorkerLoadInfoData&& aOther) = default;
 
-  nsresult
-  SetPrincipalOnMainThread(nsIPrincipal* aPrincipal, nsILoadGroup* aLoadGroup);
-
-  nsresult
-  GetPrincipalAndLoadGroupFromChannel(nsIChannel* aChannel,
-                                      nsIPrincipal** aPrincipalOut,
-                                      nsILoadGroup** aLoadGroupOut);
-
-  nsresult
-  SetPrincipalFromChannel(nsIChannel* aChannel);
-
-  bool
-  FinalChannelPrincipalIsValid(nsIChannel* aChannel);
-
-#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
-  bool
-  PrincipalIsValid() const;
-
-  bool
-  PrincipalURIMatchesScriptURL();
-#endif
-
-  bool
-  ProxyReleaseMainThreadObjects(WorkerPrivate* aWorkerPrivate);
-
-  bool
-  ProxyReleaseMainThreadObjects(WorkerPrivate* aWorkerPrivate,
-                                nsCOMPtr<nsILoadGroup>& aLoadGroupToCancel);
+  WorkerLoadInfoData& operator=(WorkerLoadInfoData&& aOther) = default;
 };
 
-} // dom namespace
-} // mozilla namespace
+struct WorkerLoadInfo : WorkerLoadInfoData {
+  WorkerLoadInfo();
+  WorkerLoadInfo(WorkerLoadInfo&& aOther) noexcept;
+  ~WorkerLoadInfo();
 
-#endif // mozilla_dom_workers_WorkerLoadInfo_h
+  WorkerLoadInfo& operator=(WorkerLoadInfo&& aOther) = default;
+
+  nsresult SetPrincipalOnMainThread(nsIPrincipal* aPrincipal,
+                                    nsILoadGroup* aLoadGroup);
+
+  nsresult GetPrincipalAndLoadGroupFromChannel(nsIChannel* aChannel,
+                                               nsIPrincipal** aPrincipalOut,
+                                               nsILoadGroup** aLoadGroupOut);
+
+  nsresult SetPrincipalFromChannel(nsIChannel* aChannel);
+
+  bool FinalChannelPrincipalIsValid(nsIChannel* aChannel);
+
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+  bool PrincipalIsValid() const;
+
+  bool PrincipalURIMatchesScriptURL();
+#endif
+
+  bool ProxyReleaseMainThreadObjects(WorkerPrivate* aWorkerPrivate);
+
+  bool ProxyReleaseMainThreadObjects(
+      WorkerPrivate* aWorkerPrivate,
+      nsCOMPtr<nsILoadGroup>& aLoadGroupToCancel);
+};
+
+}  // namespace dom
+}  // namespace mozilla
+
+#endif  // mozilla_dom_workers_WorkerLoadInfo_h

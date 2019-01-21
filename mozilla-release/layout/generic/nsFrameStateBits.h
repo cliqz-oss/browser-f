@@ -12,18 +12,20 @@
   in nsIFrame::mState -- and groups of frame state bits and which
   classes they apply to.
 
-  There are two macros that can be defined before #including this
+  There are three macros that can be defined before #including this
   file:
 
-  FRAME_STATE_GROUP(name_, class_)
+  FRAME_STATE_GROUP_NAME(name_)
 
     This denotes the existence of a named group of frame state bits.
-    name_ is the name of the group and class_ is the name of a frame
-    class that uses the frame state bits that are a part of the group.
 
     The main group of frame state bits is named "Generic" and is
     defined to apply to nsIFrame, i.e. all frames.  All of the global
     frame state bits -- bits 0..19 and 32..59 -- are in this group.
+
+  FRAME_STATE_GROUP_CLASS(group_, class_)
+    class_ is the name of a frame class that uses the frame state bits
+    that are a part of the group.
 
   FRAME_STATE_BIT(group_, value_, name_)
 
@@ -38,15 +40,25 @@
 
  ******/
 
-#ifndef FRAME_STATE_GROUP
-#define FRAME_STATE_GROUP(name_, class_) /* nothing */
-#define DEFINED_FRAME_STATE_GROUP
+#ifndef FRAME_STATE_GROUP_NAME
+#define FRAME_STATE_GROUP_NAME(name_) /* nothing */
+#define DEFINED_FRAME_STATE_GROUP_NAME
+#endif
+
+#ifndef FRAME_STATE_GROUP_CLASS
+#define FRAME_STATE_GROUP_CLASS(name_, class_) /* nothing */
+#define DEFINED_FRAME_STATE_GROUP_CLASS
 #endif
 
 #ifndef FRAME_STATE_BIT
 #define FRAME_STATE_BIT(group_, value_, name_) /* nothing */
 #define DEFINED_FRAME_STATE_BIT
 #endif
+
+// Helper macro for the common case of a single class
+#define FRAME_STATE_GROUP(name_, class_) \
+  FRAME_STATE_GROUP_NAME(name_)          \
+  FRAME_STATE_GROUP_CLASS(name_, class_)
 
 // == Frame state bits that apply to all frames ===============================
 
@@ -181,7 +193,8 @@ FRAME_STATE_BIT(Generic, 33, NS_FRAME_DRAWING_AS_PAINTSERVER)
 // Intrinsic ISize depending on the frame's BSize is rare but possible.
 // This flag indicates that the frame has (or once had) a descendant in that
 // situation (possibly the frame itself).
-FRAME_STATE_BIT(Generic, 34, NS_FRAME_DESCENDANT_INTRINSIC_ISIZE_DEPENDS_ON_BSIZE)
+FRAME_STATE_BIT(Generic, 34,
+                NS_FRAME_DESCENDANT_INTRINSIC_ISIZE_DEPENDS_ON_BSIZE)
 
 // A flag that tells us we can take the common path with respect to style
 // properties for this frame when building event regions. This flag is cleared
@@ -224,7 +237,18 @@ FRAME_STATE_BIT(Generic, 42, NS_FRAME_FONT_INFLATION_FLOW_ROOT)
 // this does not include nsSVGOuterSVGFrame since it takes part is CSS layout.
 FRAME_STATE_BIT(Generic, 43, NS_FRAME_SVG_LAYOUT)
 
-// Bits 44 and 45 are currently unused, but be kind and check with bug 1465474
+// This bit is set if a frame has a multi-column ancestor (i.e.
+// ColumnSetWrapperFrame) within the same block formatting context. A top-level
+// ColumnSetWrapperFrame doesn't have this bit set, whereas a
+// ColumnSetWrapperFrame nested inside a column does have this bit set.
+//
+// All the children of the column-spanners or any other type of frames which
+// create their own block formatting context do not have this bit set because
+// they are not in the same block formatting context created by a multi-column
+// ancestor.
+FRAME_STATE_BIT(Generic, 44, NS_FRAME_HAS_MULTI_COLUMN_ANCESTOR)
+
+// Bits 45 is currently unused, but be kind and check with bug 1465474
 // first please :-)
 
 // This bit indicates that we're tracking visibility for this frame, and that
@@ -285,8 +309,7 @@ FRAME_STATE_BIT(Generic, 59, NS_FRAME_IS_IN_SINGLE_CHAR_MI)
 // NOTE: Bits 20-31 and 60-63 of the frame state are reserved for specific
 // frame classes.
 
-// NOTE: Bits 44 and 45 are currently unused.
-
+// NOTE: Currently unused and available bit(s): 45.
 
 // == Frame state bits that apply to box frames ===============================
 
@@ -305,14 +328,14 @@ FRAME_STATE_BIT(Box, 31, NS_STATE_IS_DIRECTION_NORMAL)
 FRAME_STATE_BIT(Box, 60, NS_FRAME_MOUSE_THROUGH_ALWAYS)
 FRAME_STATE_BIT(Box, 61, NS_FRAME_MOUSE_THROUGH_NEVER)
 
-
 // == Frame state bits that apply to flex container frames ====================
 
 FRAME_STATE_GROUP(FlexContainer, nsFlexContainerFrame)
 
 // True iff the normal flow children are already in CSS 'order' in the
 // order they occur in the child frame list.
-FRAME_STATE_BIT(FlexContainer, 20, NS_STATE_FLEX_NORMAL_FLOW_CHILDREN_IN_CSS_ORDER)
+FRAME_STATE_BIT(FlexContainer, 20,
+                NS_STATE_FLEX_NORMAL_FLOW_CHILDREN_IN_CSS_ORDER)
 
 // Set for a flex container that is emulating a legacy
 // 'display:-webkit-{inline-}box' or 'display:-moz-{inline-}box' container.
@@ -330,7 +353,8 @@ FRAME_STATE_GROUP(GridContainer, nsGridContainerFrame)
 
 // True iff the normal flow children are already in CSS 'order' in the
 // order they occur in the child frame list.
-FRAME_STATE_BIT(GridContainer, 20, NS_STATE_GRID_NORMAL_FLOW_CHILDREN_IN_CSS_ORDER)
+FRAME_STATE_BIT(GridContainer, 20,
+                NS_STATE_GRID_NORMAL_FLOW_CHILDREN_IN_CSS_ORDER)
 
 // True iff some first-in-flow in-flow children were pushed.
 // Note that those child frames may have been removed without this bit
@@ -341,7 +365,8 @@ FRAME_STATE_BIT(GridContainer, 21, NS_STATE_GRID_DID_PUSH_ITEMS)
 // True iff computed grid values should be generated on the next reflow.
 FRAME_STATE_BIT(GridContainer, 22, NS_STATE_GRID_GENERATE_COMPUTED_VALUES)
 
-// True if the container has no grid items; may lie if there is a pending reflow.
+// True if the container has no grid items; may lie if there is a pending
+// reflow.
 FRAME_STATE_BIT(GridContainer, 23, NS_STATE_GRID_SYNTHESIZE_BASELINE)
 
 // True if the container is a subgrid in its inline axis.
@@ -361,8 +386,9 @@ FRAME_STATE_BIT(GridContainer, 28, NS_STATE_GRID_HAS_CHILD_NIFS)
 
 // == Frame state bits that apply to SVG frames ===============================
 
-FRAME_STATE_GROUP(SVG, nsSVGDisplayableFrame)
-FRAME_STATE_GROUP(SVG, nsSVGContainerFrame)
+FRAME_STATE_GROUP_NAME(SVG)
+FRAME_STATE_GROUP_CLASS(SVG, nsSVGDisplayableFrame)
+FRAME_STATE_GROUP_CLASS(SVG, nsSVGContainerFrame)
 
 FRAME_STATE_BIT(SVG, 20, NS_STATE_IS_OUTER_SVG)
 
@@ -485,7 +511,6 @@ FRAME_STATE_BIT(Text, 62, TEXT_NO_RENDERED_GLYPHS)
 // (OffsetToFrameProperty)
 FRAME_STATE_BIT(Text, 63, TEXT_IN_OFFSET_CACHE)
 
-
 // == Frame state bits that apply to block frames =============================
 
 FRAME_STATE_GROUP(Block, nsBlockFrame)
@@ -513,7 +538,8 @@ FRAME_STATE_BIT(Block, 22, NS_BLOCK_MARGIN_ROOT)
 FRAME_STATE_BIT(Block, 23, NS_BLOCK_FLOAT_MGR)
 
 // For setting the relevant bits on a block formatting context:
-#define NS_BLOCK_FORMATTING_CONTEXT_STATE_BITS (NS_BLOCK_FLOAT_MGR | NS_BLOCK_MARGIN_ROOT)
+#define NS_BLOCK_FORMATTING_CONTEXT_STATE_BITS \
+  (NS_BLOCK_FLOAT_MGR | NS_BLOCK_MARGIN_ROOT)
 
 FRAME_STATE_BIT(Block, 24, NS_BLOCK_HAS_LINE_CURSOR)
 
@@ -561,21 +587,18 @@ FRAME_STATE_BIT(Block, 62, NS_BLOCK_FRAME_INTRINSICS_INFLATED)
 // bit is not set. This bit is set on the first continuation only.
 FRAME_STATE_BIT(Block, 63, NS_BLOCK_HAS_FIRST_LETTER_CHILD)
 
-
 // == Frame state bits that apply to bullet frames ============================
 
 FRAME_STATE_GROUP(Bullet, nsBulletFrame)
 
-FRAME_STATE_BIT(Block, 62, BULLET_FRAME_HAS_FONT_INFLATION)
-FRAME_STATE_BIT(Block, 63, BULLET_FRAME_IMAGE_LOADING)
-
+FRAME_STATE_BIT(Bullet, 62, BULLET_FRAME_HAS_FONT_INFLATION)
+FRAME_STATE_BIT(Bullet, 63, BULLET_FRAME_IMAGE_LOADING)
 
 // == Frame state bits that apply to image frames =============================
 
 FRAME_STATE_GROUP(Image, nsImageFrame)
 
 FRAME_STATE_BIT(Image, 20, IMAGE_SIZECONSTRAINED)
-
 
 // == Frame state bits that apply to inline frames ============================
 
@@ -592,7 +615,6 @@ FRAME_STATE_BIT(Inline, 22, NS_INLINE_FRAME_BIDI_VISUAL_IS_FIRST)
 FRAME_STATE_BIT(Inline, 23, NS_INLINE_FRAME_BIDI_VISUAL_IS_LAST)
 // nsRubyTextFrame inherits from nsInlineFrame
 
-
 // == Frame state bits that apply to ruby text frames =========================
 
 FRAME_STATE_GROUP(RubyText, nsRubyTextFrame)
@@ -600,13 +622,11 @@ FRAME_STATE_GROUP(RubyText, nsRubyTextFrame)
 // inherits from nsInlineFrame
 FRAME_STATE_BIT(RubyText, 24, NS_RUBY_TEXT_FRAME_AUTOHIDE)
 
-
 // == Frame state bits that apply to ruby text container frames ===============
 
 FRAME_STATE_GROUP(RubyTextContainer, nsRubyTextContainerFrame)
 
 FRAME_STATE_BIT(RubyTextContainer, 20, NS_RUBY_TEXT_CONTAINER_IS_SPAN)
-
 
 // == Frame state bits that apply to placeholder frames =======================
 
@@ -643,25 +663,22 @@ FRAME_STATE_BIT(TableCell, 28, NS_TABLE_CELL_HAS_PCT_OVER_BSIZE)
 FRAME_STATE_BIT(TableCell, 29, NS_TABLE_CELL_HAD_SPECIAL_REFLOW)
 FRAME_STATE_BIT(TableCell, 31, NS_TABLE_CELL_CONTENT_EMPTY)
 
-
 // == Frame state bits that apply to table column frames ======================
 
 // Bits 28-31 on nsTableColFrames are used to store the column type.
-
 
 // == Frame state bits that apply to table column group frames ================
 
 // Bits 30-31 on nsTableColGroupFrames are used to store the column type.
 
-
 // == Frame state bits that apply to table rows and table row group frames ====
 
-FRAME_STATE_GROUP(TableRowAndRowGroup, nsTableRowFrame)
-FRAME_STATE_GROUP(TableRowAndRowGroup, nsTableRowGroupFrame)
+FRAME_STATE_GROUP_NAME(TableRowAndRowGroup)
+FRAME_STATE_GROUP_CLASS(TableRowAndRowGroup, nsTableRowFrame)
+FRAME_STATE_GROUP_CLASS(TableRowAndRowGroup, nsTableRowGroupFrame)
 
 // see nsTableRowGroupFrame::InitRepeatedFrame
 FRAME_STATE_BIT(TableRowAndRowGroup, 28, NS_REPEATED_ROW_OR_ROWGROUP)
-
 
 // == Frame state bits that apply to table row frames =========================
 
@@ -672,7 +689,6 @@ FRAME_STATE_GROUP(TableRow, nsTableRowFrame)
 FRAME_STATE_BIT(TableRow, 29, NS_ROW_HAS_CELL_WITH_STYLE_BSIZE)
 
 FRAME_STATE_BIT(TableRow, 30, NS_TABLE_ROW_HAS_UNPAGINATED_BSIZE)
-
 
 // == Frame state bits that apply to table row group frames ===================
 
@@ -688,9 +704,16 @@ FRAME_STATE_GROUP(Table, nsTableFrame)
 
 FRAME_STATE_BIT(Table, 28, NS_TABLE_PART_HAS_FIXED_BACKGROUND)
 
-#ifdef DEFINED_FRAME_STATE_GROUP
-#undef DEFINED_FRAME_STATE_GROUP
 #undef FRAME_STATE_GROUP
+
+#ifdef DEFINED_FRAME_STATE_GROUP_NAME
+#undef DEFINED_FRAME_STATE_GROUP_NAME
+#undef FRAME_STATE_GROUP_NAME
+#endif
+
+#ifdef DEFINED_FRAME_STATE_GROUP_CLASS
+#undef DEFINED_FRAME_STATE_GROUP_CLASS
+#undef FRAME_STATE_GROUP_CLASS
 #endif
 
 #ifdef DEFINED_FRAME_STATE_BIT

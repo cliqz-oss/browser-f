@@ -14,13 +14,11 @@
 namespace mozilla {
 namespace dom {
 
-class PaymentRequestParent final : public PPaymentRequestParent
-{
+class PaymentRequestParent final : public PPaymentRequestParent {
   NS_INLINE_DECL_REFCOUNTING(PaymentRequestParent)
-public:
-  explicit PaymentRequestParent(uint64_t aTabId);
+ public:
+  PaymentRequestParent();
 
-  uint64_t GetTabId();
   nsresult RespondPayment(nsIPaymentActionResponse* aResponse);
   nsresult ChangeShippingAddress(const nsAString& aRequestId,
                                  nsIPaymentAddress* aAddress);
@@ -30,23 +28,31 @@ public:
                              const nsAString& aPayerName,
                              const nsAString& aPayerEmail,
                              const nsAString& aPayerPhone);
+  nsresult ChangePaymentMethod(const nsAString& aRequestId,
+                               const nsAString& aMethodName,
+                               nsIMethodChangeDetails* aMethodDetails);
 
-protected:
-  mozilla::ipc::IPCResult
-  RecvRequestPayment(const IPCPaymentActionRequest& aRequest) override;
+ protected:
+  mozilla::ipc::IPCResult RecvRequestPayment(
+      const IPCPaymentActionRequest& aRequest) override;
 
   mozilla::ipc::IPCResult Recv__delete__() override;
 
   void ActorDestroy(ActorDestroyReason aWhy) override;
-private:
+
+ private:
   ~PaymentRequestParent() = default;
 
+  nsresult SerializeAddress(IPCPaymentAddress& ipcAddress,
+                            nsIPaymentAddress* aAddress);
+  nsresult SerializeResponseData(IPCPaymentResponseData& ipcData,
+                                 nsIPaymentResponseData* aData);
+
   bool mActorAlive;
-  uint64_t mTabId;
   nsString mRequestId;
 };
 
-} // end of namespace dom
-} // end of namespace mozilla
+}  // end of namespace dom
+}  // end of namespace mozilla
 
 #endif

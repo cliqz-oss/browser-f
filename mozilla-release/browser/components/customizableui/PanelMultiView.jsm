@@ -391,10 +391,6 @@ var PanelMultiView = class extends AssociatedToNode {
     this._panel.addEventListener("popuppositioned", this);
     this._panel.addEventListener("popuphidden", this);
     this._panel.addEventListener("popupshown", this);
-    let cs = this.window.getComputedStyle(this.document.documentElement);
-    // Set CSS-determined attributes now to prevent a layout flush when we do
-    // it when transitioning between panels.
-    this._dir = cs.direction;
 
     // Proxy these public properties and methods, as used elsewhere by various
     // parts of the browser, to this instance.
@@ -443,8 +439,14 @@ var PanelMultiView = class extends AssociatedToNode {
    * this method is called, but the containing panel must have its display
    * turned on, for example it shouldn't have the "hidden" attribute.
    *
+   * @param anchor
+   *        The node to anchor the popup to.
+   * @param options
+   *        Either options to use or a string position. This is forwarded to
+   *        the openPopup method of the panel.
    * @param args
-   *        Arguments to be forwarded to the openPopup method of the panel.
+   *        Additional arguments to be forwarded to the openPopup method of the
+   *        panel.
    *
    * @resolves With true as soon as the request to display the panel has been
    *           sent, or with false if the operation was canceled. The state of
@@ -453,7 +455,7 @@ var PanelMultiView = class extends AssociatedToNode {
    * @rejects If an exception is thrown at any point in the process before the
    *          request to display the panel is sent.
    */
-  async openPopup(...args) {
+  async openPopup(anchor, options, ...args) {
     // Set up the function that allows hidePopup or a second call to showPopup
     // to cancel the specific panel opening operation that we're starting below.
     // This function must be synchronous, meaning we can't use Promise.race,
@@ -515,7 +517,7 @@ var PanelMultiView = class extends AssociatedToNode {
       // "popuphidden" event even if canCancel was set to false.
       try {
         canCancel = false;
-        this._panel.openPopup(...args);
+        this._panel.openPopup(anchor, options, ...args);
 
         // On Windows, if another popup is hiding while we call openPopup, the
         // call won't fail but the popup won't open. In this case, we have to
@@ -523,6 +525,13 @@ var PanelMultiView = class extends AssociatedToNode {
         if (this._panel.state == "closed" && this.openViews.length) {
           this.dispatchCustomEvent("popuphidden");
           return false;
+        }
+
+        if (options && typeof options == "object" && options.triggerEvent &&
+            options.triggerEvent.type == "keypress" &&
+            this.openViews.length) {
+          // This was opened via the keyboard, so focus the first item.
+          this.openViews[0].focusWhenActive = true;
         }
 
         return true;
@@ -793,6 +802,10 @@ var PanelMultiView = class extends AssociatedToNode {
   _activateView(panelView) {
     if (panelView.isOpenIn(this)) {
       panelView.active = true;
+      if (panelView.focusWhenActive) {
+        panelView.focusFirstNavigableElement();
+        panelView.focusWhenActive = false;
+      }
       panelView.dispatchCustomEvent("ViewShown");
     }
   }
@@ -913,7 +926,7 @@ var PanelMultiView = class extends AssociatedToNode {
     details.phase = TRANSITION_PHASES.PREPARE;
 
     // The 'magic' part: build up the amount of pixels to move right or left.
-    let moveToLeft = (this._dir == "rtl" && !reverse) || (this._dir == "ltr" && reverse);
+    let moveToLeft = (this.window.RTL_UI && !reverse) || (!this.window.RTL_UI && reverse);
     let deltaX = prevPanelView.knownWidth;
     let deepestNode = reverse ? previousViewNode : viewNode;
 
@@ -1077,7 +1090,7 @@ var PanelMultiView = class extends AssociatedToNode {
         // already showing and stop listening when the panel is hidden, we
         // always have at least one view open.
         let currentView = this.openViews[this.openViews.length - 1];
-        currentView.keyNavigation(aEvent, this._dir);
+        currentView.keyNavigation(aEvent);
         break;
       case "mousemove":
         this.openViews.forEach(panelView => panelView.clearNavigation());
@@ -1153,6 +1166,15 @@ var PanelView = class extends AssociatedToNode {
      * wait for the ViewShown event to know when the view becomes active.
      */
     this.active = false;
+
+    /**
+     * Specifies whether the view should be focused when active. When this
+     * is true, the first navigable element in the view will be focused
+     * when the view becomes active. This should be set to true when the view
+     * is activated from the keyboard. It will be set to false once the view
+     * is active.
+     */
+    this.focusWhenActive = false;
   }
 
   /**
@@ -1186,6 +1208,7 @@ var PanelView = class extends AssociatedToNode {
     } else {
       this.node.removeAttribute("visible");
       this.active = false;
+      this.focusWhenActive = false;
     }
   }
 
@@ -1494,10 +1517,8 @@ var PanelView = class extends AssociatedToNode {
    * method will return early if it is invoked during a sliding transition.
    *
    * @param {KeyEvent} event
-   * @param {String} dir
-   *        Direction for arrow navigation, either "ltr" or "rtl".
    */
-  keyNavigation(event, dir) {
+  keyNavigation(event) {
     if (!this.active) {
       return;
     }
@@ -1535,8 +1556,8 @@ var PanelView = class extends AssociatedToNode {
       case "ArrowLeft":
       case "ArrowRight": {
         stop();
-        if ((dir == "ltr" && keyCode == "ArrowLeft") ||
-            (dir == "rtl" && keyCode == "ArrowRight")) {
+        if ((!this.window.RTL_UI && keyCode == "ArrowLeft") ||
+            (this.window.RTL_UI && keyCode == "ArrowRight")) {
           this.node.panelMultiView.goBack();
           break;
         }

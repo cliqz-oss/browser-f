@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
- * vim: set ts=8 sts=4 et sw=4 tw=99: */
+ * vim: set ts=8 sts=2 et sw=2 tw=80: */
 
 // Copyright 2012 the V8 project authors. All rights reserved.
 // Redistribution and use in source and binary forms, with or without
@@ -1958,8 +1958,6 @@ static bool
 ParsePatternSyntax(frontend::TokenStreamAnyChars& ts, LifoAlloc& alloc,
                    const CharT* chars, size_t length, bool unicode)
 {
-    LifoAllocScope scope(&alloc);
-
     RegExpParser<CharT> parser(ts, &alloc, chars, chars + length, false, unicode, false);
     return parser.ParsePattern() != nullptr;
 }

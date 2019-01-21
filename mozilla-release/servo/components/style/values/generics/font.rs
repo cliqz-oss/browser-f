@@ -1,14 +1,14 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Generic types for font stuff.
 
 use app_units::Au;
 use byteorder::{BigEndian, ReadBytesExt};
+use crate::parser::{Parse, ParserContext};
 use cssparser::Parser;
 use num_traits::One;
-use parser::{Parse, ParserContext};
 use std::fmt::{self, Write};
 use std::io::Cursor;
 use style_traits::{CssWriter, KeywordsCollectFn, ParseError};

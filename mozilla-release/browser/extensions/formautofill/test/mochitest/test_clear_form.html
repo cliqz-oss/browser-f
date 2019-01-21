@@ -67,7 +67,15 @@ function checkIsFormCleared(patch = {}) {
 async function confirmClear(selector) {
   info("Await for clearing input");
   let promise = new Promise(resolve =>
-    document.querySelector(selector).addEventListener("input", resolve, {once: true})
+    document.querySelector(selector).addEventListener("input", (event) => {
+      ok(event instanceof InputEvent,
+         '"input" event should be dispatched with InputEvent interface');
+      is(event.cancelable, false,
+         '"input" event should be never cancelable');
+      is(event.bubbles, true,
+         '"input" event should always bubble');
+      resolve();
+    }, {once: true})
   );
   synthesizeKey("KEY_Enter");
   await promise;
@@ -103,9 +111,16 @@ add_task(async function clear_modified_form() {
 });
 
 add_task(async function clear_distinct_section() {
+  if (!(await canTestOSKeyStoreLogin())) {
+    todo(false, "Cannot test OS key store login on official builds.");
+    return;
+  }
+
   document.getElementById("form1").reset();
   await triggerPopupAndHoverItem("#cc-name", 0);
+  let osKeyStoreLoginShown = waitForOSKeyStoreLogin(true);
   await triggerAutofillAndCheckProfile(MOCK_CC_STORAGE[0]);
+  await osKeyStoreLoginShown;
 
   await triggerPopupAndHoverItem("#organization", 0);
   await triggerAutofillAndCheckProfile(MOCK_ADDR_STORAGE[0]);

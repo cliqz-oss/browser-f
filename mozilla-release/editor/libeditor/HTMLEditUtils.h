@@ -8,13 +8,13 @@
 
 #include <stdint.h>
 
+class nsAtom;
 class nsINode;
 
 namespace mozilla {
 
-class HTMLEditUtils final
-{
-public:
+class HTMLEditUtils final {
+ public:
   static bool IsInlineStyle(nsINode* aNode);
   static bool IsFormatNode(nsINode* aNode);
   static bool IsNodeThatCanOutdent(nsINode* aNode);
@@ -45,9 +45,16 @@ public:
    */
   static bool IsNonListSingleLineContainer(nsINode& aNode);
   static bool IsSingleLineContainer(nsINode& aNode);
+
+  static EditAction GetEditActionForInsert(const nsAtom& aTagName);
+  static EditAction GetEditActionForRemoveList(const nsAtom& aTagName);
+  static EditAction GetEditActionForInsert(const Element& aElement);
+  static EditAction GetEditActionForFormatText(const nsAtom& aProperty,
+                                               const nsAtom* aAttribute,
+                                               bool aToSetStyle);
+  static EditAction GetEditActionForAlignment(const nsAString& aAlignType);
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // #ifndef HTMLEditUtils_h
-
+#endif  // #ifndef HTMLEditUtils_h

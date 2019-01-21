@@ -1,20 +1,19 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Global style data
 
-use context::StyleSystemOptions;
-use gecko_bindings::bindings::{Gecko_RegisterProfilerThread, Gecko_UnregisterProfilerThread};
-use gecko_bindings::bindings::Gecko_SetJemallocThreadLocalArena;
+use crate::context::StyleSystemOptions;
+use crate::gecko_bindings::bindings;
+use crate::parallel::STYLE_THREAD_STACK_SIZE_KB;
+use crate::shared_lock::SharedRwLock;
+use crate::thread_state;
 use num_cpus;
-use parallel::STYLE_THREAD_STACK_SIZE_KB;
 use rayon;
-use shared_lock::SharedRwLock;
 use std::cmp;
 use std::env;
 use std::ffi::CString;
-use thread_state;
 
 /// Global style data
 pub struct GlobalStyleData {
@@ -41,20 +40,20 @@ fn thread_name(index: usize) -> String {
 fn thread_startup(index: usize) {
     thread_state::initialize_layout_worker_thread();
     unsafe {
-        Gecko_SetJemallocThreadLocalArena(true);
+        bindings::Gecko_SetJemallocThreadLocalArena(true);
     }
     let name = thread_name(index);
     let name = CString::new(name).unwrap();
     unsafe {
         // Gecko_RegisterProfilerThread copies the passed name here.
-        Gecko_RegisterProfilerThread(name.as_ptr());
+        bindings::Gecko_RegisterProfilerThread(name.as_ptr());
     }
 }
 
 fn thread_shutdown(_: usize) {
     unsafe {
-        Gecko_UnregisterProfilerThread();
-        Gecko_SetJemallocThreadLocalArena(false);
+        bindings::Gecko_UnregisterProfilerThread();
+        bindings::Gecko_SetJemallocThreadLocalArena(false);
     }
 }
 

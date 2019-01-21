@@ -22,8 +22,6 @@ loader.lazyRequireGetter(this, "DebuggerTransport",
   "devtools/shared/transport/transport", true);
 loader.lazyRequireGetter(this, "WebSocketDebuggerTransport",
   "devtools/shared/transport/websocket-transport");
-loader.lazyRequireGetter(this, "DebuggerServer",
-  "devtools/server/main", true);
 loader.lazyRequireGetter(this, "discovery",
   "devtools/shared/discovery/discovery");
 loader.lazyRequireGetter(this, "cert",
@@ -32,6 +30,7 @@ loader.lazyRequireGetter(this, "Authenticators",
   "devtools/shared/security/auth", true);
 loader.lazyRequireGetter(this, "AuthenticationResult",
   "devtools/shared/security/auth", true);
+loader.lazyRequireGetter(this, "EventEmitter", "devtools/shared/event-emitter");
 
 DevToolsUtils.defineLazyGetter(this, "nsFile", () => {
   return CC("@mozilla.org/file/local;1", "nsIFile", "initWithPath");
@@ -365,40 +364,68 @@ function _storeCertOverride(s, host, port) {
  * Creates a new socket listener for remote connections to the DebuggerServer.
  * This helps contain and organize the parts of the server that may differ or
  * are particular to one given listener mechanism vs. another.
+ * This can be closed at any later time by calling |close|.
+ * If remote connections are disabled, an error is thrown.
+ *
+ * @param {DebuggerServer} debuggerServer
+ * @param {Object} socketOptions
+ *        options of socket as follows
+ *        {
+ *          authenticator:
+ *            Controls the |Authenticator| used, which hooks various socket steps to
+ *            implement an authentication policy.  It is expected that different use
+ *            cases may override pieces of the |Authenticator|.  See auth.js.
+ *            We set the default |Authenticator|, which is |Prompt|.
+ *          discoverable:
+ *            Controls whether this listener is announced via the service discovery
+ *            mechanism. Defaults is false.
+ *          encryption:
+ *            Controls whether this listener's transport uses encryption.
+ *            Defaults is false.
+ *          portOrPath:
+ *            The port or path to listen on.
+ *            If given an integer, the port to listen on.  Use -1 to choose any available
+ *            port. Otherwise, the path to the unix socket domain file to listen on.
+ *            Defaults is null.
+ *          webSocket:
+ *            Whether to use WebSocket protocol. Defaults is false.
+ *        }
  */
-function SocketListener() {}
+function SocketListener(debuggerServer, socketOptions) {
+  this._debuggerServer = debuggerServer;
+
+  // Set socket options with default value
+  this._socketOptions = {
+    authenticator: socketOptions.authenticator || new (Authenticators.get().Server)(),
+    discoverable: !!socketOptions.discoverable,
+    encryption: !!socketOptions.encryption,
+    portOrPath: socketOptions.portOrPath || null,
+    webSocket: !!socketOptions.webSocket,
+  };
+
+  EventEmitter.decorate(this);
+}
 
 SocketListener.prototype = {
+  get authenticator() {
+    return this._socketOptions.authenticator;
+  },
 
-  /* Socket Options */
+  get discoverable() {
+    return this._socketOptions.discoverable;
+  },
 
-  /**
-   * The port or path to listen on.
-   *
-   * If given an integer, the port to listen on.  Use -1 to choose any available
-   * port. Otherwise, the path to the unix socket domain file to listen on.
-   */
-  portOrPath: null,
+  get encryption() {
+    return this._socketOptions.encryption;
+  },
 
-  /**
-   * Controls whether this listener is announced via the service discovery
-   * mechanism.
-   */
-  discoverable: false,
+  get portOrPath() {
+    return this._socketOptions.portOrPath;
+  },
 
-  /**
-   * Controls whether this listener's transport uses encryption.
-   */
-  encryption: false,
-
-  /**
-   * Controls the |Authenticator| used, which hooks various socket steps to
-   * implement an authentication policy.  It is expected that different use
-   * cases may override pieces of the |Authenticator|.  See auth.js.
-   *
-   * Here we set the default |Authenticator|, which is |Prompt|.
-   */
-  authenticator: new (Authenticators.get().Server)(),
+  get webSocket() {
+    return this._socketOptions.webSocket;
+  },
 
   /**
    * Validate that all options have been set to a supported configuration.
@@ -421,7 +448,7 @@ SocketListener.prototype = {
    */
   open: function() {
     this._validateOptions();
-    DebuggerServer._addListener(this);
+    this._debuggerServer.addSocketListener(this);
 
     let flags = Ci.nsIServerSocket.KeepWhenOffline;
     // A preference setting can force binding on the loopback interface.
@@ -504,7 +531,7 @@ SocketListener.prototype = {
       this._socket.close();
       this._socket = null;
     }
-    DebuggerServer._removeListener(this);
+    this._debuggerServer.removeSocketListener(this);
   },
 
   get host() {
@@ -544,11 +571,17 @@ SocketListener.prototype = {
     };
   },
 
+  onAllowedConnection(transport) {
+    dumpn("onAllowedConnection, transport: " + transport);
+    this.emit("accepted", transport, this);
+  },
+
   // nsIServerSocketListener implementation
 
   onSocketAccepted:
   DevToolsUtils.makeInfallible(function(socket, socketTransport) {
-    new ServerSocketConnection(this, socketTransport);
+    const connection = new ServerSocketConnection(this, socketTransport);
+    connection.once("allowed", this.onAllowedConnection.bind(this));
   }, "SocketListener.onSocketAccepted"),
 
   onStopListening: function(socket, status) {
@@ -572,6 +605,7 @@ function ServerSocketConnection(listener, socketTransport) {
   this._listener = listener;
   this._socketTransport = socketTransport;
   this._handle();
+  EventEmitter.decorate(this);
 }
 
 ServerSocketConnection.prototype = {
@@ -628,15 +662,17 @@ ServerSocketConnection.prototype = {
    * the connection is denied.  If the entire process resolves successfully,
    * the connection is finally handed off to the |DebuggerServer|.
    */
-  _handle() {
+  async _handle() {
     dumpn("Debugging connection starting authentication on " + this.address);
-    const self = this;
-    (async function() {
-      self._listenForTLSHandshake();
-      await self._createTransport();
-      await self._awaitTLSHandshake();
-      await self._authenticate();
-    })().then(() => this.allow()).catch(e => this.deny(e));
+    try {
+      this._listenForTLSHandshake();
+      await this._createTransport();
+      await this._awaitTLSHandshake();
+      await this._authenticate();
+      this.allow();
+    } catch (e) {
+      this.deny(e);
+    }
   },
 
   /**
@@ -735,7 +771,7 @@ ServerSocketConnection.prototype = {
     });
     switch (result) {
       case AuthenticationResult.DISABLE_ALL:
-        DebuggerServer.closeAllListeners();
+        this._listener._debuggerServer.closeAllSocketListeners();
         Services.prefs.setBoolPref("devtools.debugger.remote-enabled", false);
         return promise.reject(Cr.NS_ERROR_CONNECTION_REFUSED);
       case AuthenticationResult.DENY:
@@ -774,7 +810,7 @@ ServerSocketConnection.prototype = {
       return;
     }
     dumpn("Debugging connection allowed on " + this.address);
-    DebuggerServer._onConnection(this._transport);
+    this.emit("allowed", this._transport);
     this.destroy();
   },
 
@@ -790,8 +826,5 @@ ServerSocketConnection.prototype = {
 
 };
 
-DebuggerSocket.createListener = function() {
-  return new SocketListener();
-};
-
 exports.DebuggerSocket = DebuggerSocket;
+exports.SocketListener = SocketListener;

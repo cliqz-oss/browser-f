@@ -11,14 +11,12 @@ chrome/toolkit/skin/classic/global/checkbox.css
 chrome/toolkit/skin/classic/global/dialog.css
 chrome/toolkit/skin/classic/global/dropmarker.css
 chrome/toolkit/skin/classic/global/global.css
-chrome/toolkit/skin/classic/global/groupbox.css
 chrome/toolkit/skin/classic/global/listbox.css
 chrome/toolkit/skin/classic/global/menu.css
 chrome/toolkit/skin/classic/global/menulist.css
 chrome/toolkit/skin/classic/global/numberbox.css
 chrome/toolkit/skin/classic/global/popup.css
 chrome/toolkit/skin/classic/global/preferences.css
-chrome/toolkit/skin/classic/global/progressmeter.css
 chrome/toolkit/skin/classic/global/radio.css
 chrome/toolkit/skin/classic/global/richlistbox.css
 chrome/toolkit/skin/classic/global/scrollbars.css

@@ -1,13 +1,13 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Gecko-specific bits for the styling DOM traversal.
 
-use context::{SharedStyleContext, StyleContext};
-use dom::{TElement, TNode};
-use gecko::wrapper::{GeckoElement, GeckoNode};
-use traversal::{recalc_style_at, DomTraversal, PerLevelTraversalData};
+use crate::context::{SharedStyleContext, StyleContext};
+use crate::dom::{TElement, TNode};
+use crate::gecko::wrapper::{GeckoElement, GeckoNode};
+use crate::traversal::{recalc_style_at, DomTraversal, PerLevelTraversalData};
 
 /// This is the simple struct that Gecko uses to encapsulate a DOM traversal for
 /// styling.

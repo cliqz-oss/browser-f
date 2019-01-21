@@ -1,19 +1,19 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Specified types for UI properties.
 
+use crate::parser::{Parse, ParserContext};
+use crate::values::generics::ui as generics;
+use crate::values::specified::color::Color;
+use crate::values::specified::url::SpecifiedImageUrl;
+use crate::values::specified::Number;
+use crate::values::{Auto, Either};
 use cssparser::Parser;
-use parser::{Parse, ParserContext};
 use std::fmt::{self, Write};
-use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
 use style_traits::cursor::CursorKind;
-use values::{Auto, Either};
-use values::generics::ui as generics;
-use values::specified::Number;
-use values::specified::color::Color;
-use values::specified::url::SpecifiedImageUrl;
+use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
 
 /// auto | <color>
 pub type ColorOrAuto = Either<Color, Auto>;
@@ -139,4 +139,30 @@ impl Parse for ScrollbarColor {
             track: Color::parse(context, input)?,
         })
     }
+}
+
+/// The specified value for the `user-select` property.
+///
+/// https://drafts.csswg.org/css-ui-4/#propdef-user-select
+#[allow(missing_docs)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+)]
+#[repr(u8)]
+pub enum UserSelect {
+    Auto,
+    Text,
+    #[parse(aliases = "-moz-none")]
+    None,
+    /// Force selection of all children.
+    All,
 }

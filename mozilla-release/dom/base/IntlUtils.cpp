@@ -21,28 +21,22 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(IntlUtils)
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
-IntlUtils::IntlUtils(nsPIDOMWindowInner* aWindow)
-  : mWindow(aWindow)
-{
-}
+IntlUtils::IntlUtils(nsPIDOMWindowInner* aWindow) : mWindow(aWindow) {}
 
-IntlUtils::~IntlUtils()
-{
-}
+IntlUtils::~IntlUtils() {}
 
-JSObject*
-IntlUtils::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
-{
+JSObject* IntlUtils::WrapObject(JSContext* aCx,
+                                JS::Handle<JSObject*> aGivenProto) {
   return IntlUtils_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-void
-IntlUtils::GetDisplayNames(const Sequence<nsString>& aLocales,
-                           const DisplayNameOptions& aOptions,
-                           DisplayNameResult& aResult, ErrorResult& aError)
-{
+void IntlUtils::GetDisplayNames(const Sequence<nsString>& aLocales,
+                                const DisplayNameOptions& aOptions,
+                                DisplayNameResult& aResult,
+                                ErrorResult& aError) {
   MOZ_ASSERT(nsContentUtils::IsCallerChrome() ||
-             nsContentUtils::IsCallerContentXBL());
+             nsContentUtils::IsCallerContentXBL() ||
+             nsContentUtils::IsCallerUAWidget());
 
   nsCOMPtr<mozIMozIntl> mozIntl = do_GetService("@mozilla.org/mozintl;1");
   if (!mozIntl) {
@@ -93,12 +87,11 @@ IntlUtils::GetDisplayNames(const Sequence<nsString>& aLocales,
   }
 }
 
-void
-IntlUtils::GetLocaleInfo(const Sequence<nsString>& aLocales,
-                         LocaleInfo& aResult, ErrorResult& aError)
-{
+void IntlUtils::GetLocaleInfo(const Sequence<nsString>& aLocales,
+                              LocaleInfo& aResult, ErrorResult& aError) {
   MOZ_ASSERT(nsContentUtils::IsCallerChrome() ||
-             nsContentUtils::IsCallerContentXBL());
+             nsContentUtils::IsCallerContentXBL() ||
+             nsContentUtils::IsCallerUAWidget());
 
   nsCOMPtr<mozIMozIntl> mozIntl = do_GetService("@mozilla.org/mozintl;1");
   if (!mozIntl) {
@@ -139,5 +132,5 @@ IntlUtils::GetLocaleInfo(const Sequence<nsString>& aLocales,
   }
 }
 
-} // dom namespace
-} // mozilla namespace
+}  // namespace dom
+}  // namespace mozilla

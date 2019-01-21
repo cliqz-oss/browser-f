@@ -1,30 +1,30 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! A property declaration block.
 
 #![deny(missing_docs)]
 
-use context::QuirksMode;
+use crate::context::QuirksMode;
 use cssparser::{DeclarationListParser, parse_important, ParserInput, CowRcStr};
 use cssparser::{Parser, AtRuleParser, DeclarationParser, Delimiter, ParseErrorKind};
-use custom_properties::CustomPropertiesBuilder;
-use error_reporting::{ParseErrorReporter, ContextualParseError};
+use crate::custom_properties::{CustomPropertiesBuilder, CssEnvironment};
+use crate::error_reporting::{ParseErrorReporter, ContextualParseError};
 use itertools::Itertools;
-use parser::ParserContext;
-use properties::animated_properties::{AnimationValue, AnimationValueMap};
-use shared_lock::Locked;
+use crate::parser::ParserContext;
+use crate::properties::animated_properties::{AnimationValue, AnimationValueMap};
+use crate::shared_lock::Locked;
 use smallbitvec::{self, SmallBitVec};
 use smallvec::SmallVec;
 use std::fmt::{self, Write};
 use std::iter::{DoubleEndedIterator, Zip};
 use std::slice::Iter;
-use str::{CssString, CssStringBorrow, CssStringWriter};
+use crate::str::{CssString, CssStringBorrow, CssStringWriter};
 use style_traits::{CssWriter, ParseError, ParsingMode, StyleParseErrorKind, ToCss};
-use stylesheets::{CssRuleType, Origin, UrlExtraData};
+use crate::stylesheets::{CssRuleType, Origin, UrlExtraData};
 use super::*;
-use values::computed::Context;
+use crate::values::computed::Context;
 
 /// The animation rules.
 ///
@@ -144,7 +144,7 @@ pub struct AnimationValueIterator<'a, 'cx, 'cx_a:'cx> {
     context: &'cx mut Context<'cx_a>,
     default_values: &'a ComputedValues,
     /// Custom properties in a keyframe if exists.
-    extra_custom_properties: Option<&'a Arc<::custom_properties::CustomPropertiesMap>>,
+    extra_custom_properties: Option<&'a Arc<crate::custom_properties::CustomPropertiesMap>>,
 }
 
 impl<'a, 'cx, 'cx_a:'cx> AnimationValueIterator<'a, 'cx, 'cx_a> {
@@ -152,7 +152,7 @@ impl<'a, 'cx, 'cx_a:'cx> AnimationValueIterator<'a, 'cx, 'cx_a> {
         declarations: &'a PropertyDeclarationBlock,
         context: &'cx mut Context<'cx_a>,
         default_values: &'a ComputedValues,
-        extra_custom_properties: Option<&'a Arc<::custom_properties::CustomPropertiesMap>>,
+        extra_custom_properties: Option<&'a Arc<crate::custom_properties::CustomPropertiesMap>>,
     ) -> AnimationValueIterator<'a, 'cx, 'cx_a> {
         AnimationValueIterator {
             iter: declarations.declaration_importance_iter(),
@@ -258,7 +258,7 @@ impl PropertyDeclarationBlock {
         &'a self,
         context: &'cx mut Context<'cx_a>,
         default_values: &'a ComputedValues,
-        extra_custom_properties: Option<&'a Arc<::custom_properties::CustomPropertiesMap>>,
+        extra_custom_properties: Option<&'a Arc<crate::custom_properties::CustomPropertiesMap>>,
     ) -> AnimationValueIterator<'a, 'cx, 'cx_a> {
         AnimationValueIterator::new(self, context, default_values, extra_custom_properties)
     }
@@ -309,7 +309,9 @@ impl PropertyDeclarationBlock {
             .find(|(declaration, _)| declaration.id() == property)
     }
 
-    fn shorthand_to_css(
+    /// Tries to serialize a given shorthand from the declarations in this
+    /// block.
+    pub fn shorthand_to_css(
         &self,
         shorthand: ShorthandId,
         dest: &mut CssStringWriter,
@@ -458,22 +460,6 @@ impl PropertyDeclarationBlock {
                 // shouldn't override existing important one.
                 if important && !importance.important() {
                     return false;
-                }
-
-                // As a compatibility hack, specially on Android,
-                // don't allow to override a prefixed webkit display
-                // value with an unprefixed version from parsing
-                // code.
-                //
-                // TODO(emilio): Unship.
-                if let PropertyDeclaration::Display(old_display) = *slot {
-                    use properties::longhands::display::computed_value::T as display;
-
-                    if let PropertyDeclaration::Display(new_display) = declaration {
-                        if display::should_ignore_parsed_value(old_display, new_display) {
-                            return false;
-                        }
-                    }
                 }
 
                 index_to_remove = Some(i);
@@ -760,13 +746,19 @@ impl PropertyDeclarationBlock {
             None => return Err(fmt::Error),
         };
 
+        // TODO(emilio): When we implement any environment variable without
+        // hard-coding the values we're going to need to get something
+        // meaningful out of here... All this code path is so terribly hacky
+        // ;_;.
+        let env = CssEnvironment;
+
         let custom_properties = if let Some(cv) = computed_values {
             // If there are extra custom properties for this declaration block,
             // factor them in too.
             if let Some(block) = custom_properties_block {
                 // FIXME(emilio): This is not super-efficient here, and all this
                 // feels like a hack anyway...
-                block.cascade_custom_properties(cv.custom_properties())
+                block.cascade_custom_properties(cv.custom_properties(), &env)
             } else {
                 cv.custom_properties().cloned()
             }
@@ -790,6 +782,7 @@ impl PropertyDeclarationBlock {
                     declaration.id,
                     custom_properties.as_ref(),
                     QuirksMode::NoQuirks,
+                    &env,
                 ).to_css(dest)
             },
             (ref d, _) => d.to_css(dest),
@@ -834,18 +827,25 @@ impl PropertyDeclarationBlock {
     pub fn cascade_custom_properties_with_context(
         &self,
         context: &Context,
-    ) -> Option<Arc<::custom_properties::CustomPropertiesMap>> {
-        self.cascade_custom_properties(context.style().custom_properties())
+    ) -> Option<Arc<crate::custom_properties::CustomPropertiesMap>> {
+        self.cascade_custom_properties(
+            context.style().custom_properties(),
+            context.device().environment(),
+        )
     }
 
     /// Returns a custom properties map which is the result of cascading custom
     /// properties in this declaration block along with the given custom
     /// properties.
-    pub fn cascade_custom_properties(
+    fn cascade_custom_properties(
         &self,
-        inherited_custom_properties: Option<&Arc<::custom_properties::CustomPropertiesMap>>,
-    ) -> Option<Arc<::custom_properties::CustomPropertiesMap>> {
-        let mut builder = CustomPropertiesBuilder::new(inherited_custom_properties);
+        inherited_custom_properties: Option<&Arc<crate::custom_properties::CustomPropertiesMap>>,
+        environment: &CssEnvironment,
+    ) -> Option<Arc<crate::custom_properties::CustomPropertiesMap>> {
+        let mut builder = CustomPropertiesBuilder::new(
+            inherited_custom_properties,
+            environment,
+        );
 
         for declaration in self.normal_declaration_iter() {
             if let PropertyDeclaration::Custom(ref declaration) = *declaration {
@@ -916,6 +916,10 @@ impl PropertyDeclarationBlock {
                     continue;
                 }
                 already_serialized.insert(shorthand.into());
+
+                if shorthand.is_legacy_shorthand() {
+                    continue;
+                }
 
                 // Substep 2 & 3
                 let mut current_longhands = SmallVec::<[_; 10]>::new();

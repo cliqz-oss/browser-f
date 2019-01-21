@@ -16,7 +16,8 @@
 
 namespace mozilla {
 class MediaData;
-template <class T> class MediaQueue;
+template <class T>
+class MediaQueue;
 
 namespace media {
 
@@ -28,7 +29,7 @@ class AudioSink;
 class AudioSinkWrapper : public MediaSink {
   // An AudioSink factory.
   class Creator {
-  public:
+   public:
     virtual ~Creator() {}
     virtual AudioSink* Create() = 0;
   };
@@ -36,23 +37,28 @@ class AudioSinkWrapper : public MediaSink {
   // Wrap around a function object which creates AudioSinks.
   template <typename Function>
   class CreatorImpl : public Creator {
-  public:
+   public:
     explicit CreatorImpl(const Function& aFunc) : mFunction(aFunc) {}
     AudioSink* Create() override { return mFunction(); }
-  private:
+
+   private:
     Function mFunction;
   };
 
-public:
+ public:
   template <typename Function>
-  AudioSinkWrapper(AbstractThread* aOwnerThread, const Function& aFunc)
-    : mOwnerThread(aOwnerThread)
-    , mCreator(new CreatorImpl<Function>(aFunc))
-    , mIsStarted(false)
-    // Give an invalid value to facilitate debug if used before playback starts.
-    , mPlayDuration(TimeUnit::Invalid())
-    , mAudioEnded(true)
-  {}
+  AudioSinkWrapper(AbstractThread* aOwnerThread,
+                   const MediaQueue<AudioData>& aAudioQueue,
+                   const Function& aFunc)
+      : mOwnerThread(aOwnerThread),
+        mCreator(new CreatorImpl<Function>(aFunc)),
+        mIsStarted(false)
+        // Give an invalid value to facilitate debug if used before playback
+        // starts.
+        ,
+        mPlayDuration(TimeUnit::Invalid()),
+        mAudioEnded(true),
+        mAudioQueue(aAudioQueue) {}
 
   const PlaybackParams& GetPlaybackParams() const override;
   void SetPlaybackParams(const PlaybackParams& aParams) override;
@@ -76,7 +82,7 @@ public:
 
   nsCString GetDebugInfo() override;
 
-private:
+ private:
   virtual ~AudioSinkWrapper();
 
   void AssertOwnerThread() const {
@@ -87,9 +93,12 @@ private:
 
   void OnAudioEnded();
 
+  bool IsAudioSourceEnded(const MediaInfo& aInfo) const;
+
   const RefPtr<AbstractThread> mOwnerThread;
   UniquePtr<Creator> mCreator;
   UniquePtr<AudioSink> mAudioSink;
+  // Will only exist when media has an audio track.
   RefPtr<GenericPromise> mEndPromise;
 
   bool mIsStarted;
@@ -100,9 +109,10 @@ private:
 
   bool mAudioEnded;
   MozPromiseRequestHolder<GenericPromise> mAudioSinkPromise;
+  const MediaQueue<AudioData>& mAudioQueue;
 };
 
-} // namespace media
-} // namespace mozilla
+}  // namespace media
+}  // namespace mozilla
 
-#endif //AudioSinkWrapper_h_
+#endif  // AudioSinkWrapper_h_

@@ -12,7 +12,8 @@
 namespace mozilla {
 namespace dom {
 
-NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(FlexItemValues, mParent)
+NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(FlexItemValues, mParent, mNode,
+                                      mFrameRect)
 NS_IMPL_CYCLE_COLLECTING_ADDREF(FlexItemValues)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(FlexItemValues)
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(FlexItemValues)
@@ -29,9 +30,7 @@ NS_INTERFACE_MAP_END
  * sometimes legitimately (rather than arbitrarily/accidentally) contain the
  * sentinel value NS_UNCONSTRAINEDSIZE -- e.g. to handle "max-width: none".
  */
-static double
-ToPossiblyUnconstrainedPixels(nscoord aSize)
-{
+static double ToPossiblyUnconstrainedPixels(nscoord aSize) {
   if (aSize == NS_UNCONSTRAINEDSIZE) {
     return std::numeric_limits<double>::infinity();
   }
@@ -40,75 +39,58 @@ ToPossiblyUnconstrainedPixels(nscoord aSize)
 
 FlexItemValues::FlexItemValues(FlexLineValues* aParent,
                                const ComputedFlexItemInfo* aItem)
-  : mParent(aParent)
-{
+    : mParent(aParent) {
   MOZ_ASSERT(aItem,
-    "Should never be instantiated with a null ComputedFlexLineInfo.");
+             "Should never be instantiated with a null ComputedFlexLineInfo.");
 
   // Eagerly copy values from aItem, because we're not
   // going to keep it around.
   mNode = aItem->mNode;
 
+  // Since mNode might be null, we associate the mFrameRect with
+  // our parent.
+  mFrameRect = new DOMRectReadOnly(
+      mParent, nsPresContext::AppUnitsToDoubleCSSPixels(aItem->mFrameRect.X()),
+      nsPresContext::AppUnitsToDoubleCSSPixels(aItem->mFrameRect.Y()),
+      nsPresContext::AppUnitsToDoubleCSSPixels(aItem->mFrameRect.Width()),
+      nsPresContext::AppUnitsToDoubleCSSPixels(aItem->mFrameRect.Height()));
+
   // Convert app unit sizes to css pixel sizes.
-  mMainBaseSize = nsPresContext::AppUnitsToDoubleCSSPixels(
-    aItem->mMainBaseSize);
-  mMainDeltaSize = nsPresContext::AppUnitsToDoubleCSSPixels(
-    aItem->mMainDeltaSize);
-  mMainMinSize = nsPresContext::AppUnitsToDoubleCSSPixels(
-    aItem->mMainMinSize);
+  mMainBaseSize =
+      nsPresContext::AppUnitsToDoubleCSSPixels(aItem->mMainBaseSize);
+  mMainDeltaSize =
+      nsPresContext::AppUnitsToDoubleCSSPixels(aItem->mMainDeltaSize);
+  mMainMinSize = nsPresContext::AppUnitsToDoubleCSSPixels(aItem->mMainMinSize);
   mMainMaxSize = ToPossiblyUnconstrainedPixels(aItem->mMainMaxSize);
-  mCrossMinSize = nsPresContext::AppUnitsToDoubleCSSPixels(
-    aItem->mCrossMinSize);
+  mCrossMinSize =
+      nsPresContext::AppUnitsToDoubleCSSPixels(aItem->mCrossMinSize);
   mCrossMaxSize = ToPossiblyUnconstrainedPixels(aItem->mCrossMaxSize);
+
+  mClampState = aItem->mClampState;
 }
 
-JSObject*
-FlexItemValues::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
-{
+JSObject* FlexItemValues::WrapObject(JSContext* aCx,
+                                     JS::Handle<JSObject*> aGivenProto) {
   return FlexItemValues_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-nsINode*
-FlexItemValues::GetNode() const
-{
-  return mNode;
-}
+nsINode* FlexItemValues::GetNode() const { return mNode; }
 
-double
-FlexItemValues::MainBaseSize() const
-{
-  return mMainBaseSize;
-}
+DOMRectReadOnly* FlexItemValues::FrameRect() const { return mFrameRect; }
 
-double
-FlexItemValues::MainDeltaSize() const
-{
-  return mMainDeltaSize;
-}
+double FlexItemValues::MainBaseSize() const { return mMainBaseSize; }
 
-double
-FlexItemValues::MainMinSize() const
-{
-  return mMainMinSize;
-}
+double FlexItemValues::MainDeltaSize() const { return mMainDeltaSize; }
 
-double
-FlexItemValues::MainMaxSize() const
-{
-  return mMainMaxSize;
-}
+double FlexItemValues::MainMinSize() const { return mMainMinSize; }
 
-double
-FlexItemValues::CrossMinSize() const
-{
-  return mCrossMinSize;
-}
+double FlexItemValues::MainMaxSize() const { return mMainMaxSize; }
 
-double
-FlexItemValues::CrossMaxSize() const
-{
-  return mCrossMaxSize;
-}
+double FlexItemValues::CrossMinSize() const { return mCrossMinSize; }
 
-} // namespace dom
-} // namespace mozilla
+double FlexItemValues::CrossMaxSize() const { return mCrossMaxSize; }
+
+FlexItemClampState FlexItemValues::ClampState() const { return mClampState; }
+
+}  // namespace dom
+}  // namespace mozilla

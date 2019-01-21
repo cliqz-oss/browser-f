@@ -1,17 +1,17 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Access to font metrics from the style system.
 
 #![deny(missing_docs)]
 
-use Atom;
 use app_units::Au;
-use context::SharedStyleContext;
-use logical_geometry::WritingMode;
-use media_queries::Device;
-use properties::style_structs::Font;
+use crate::context::SharedStyleContext;
+use crate::logical_geometry::WritingMode;
+use crate::media_queries::Device;
+use crate::properties::style_structs::Font;
+use crate::Atom;
 
 /// Represents the font metrics that style needs from a font to compute the
 /// value of certain CSS units like `ex`.
@@ -86,8 +86,8 @@ impl FontMetricsProvider for ServoMetricsProvider {
 
 #[cfg(feature = "gecko")]
 /// Construct a font metrics provider for the current product
-pub fn get_metrics_provider_for_product() -> ::gecko::wrapper::GeckoFontMetricsProvider {
-    ::gecko::wrapper::GeckoFontMetricsProvider::new()
+pub fn get_metrics_provider_for_product() -> crate::gecko::wrapper::GeckoFontMetricsProvider {
+    crate::gecko::wrapper::GeckoFontMetricsProvider::new()
 }
 
 #[cfg(feature = "servo")]

@@ -1241,13 +1241,6 @@ module.exports = "<!-- This Source Code Form is subject to the terms of the Mozi
 
 /***/ }),
 
-/***/ 1309:
-/***/ (function(module, exports) {
-
-// removed by extract-text-webpack-plugin
-
-/***/ }),
-
 /***/ 1310:
 /***/ (function(module, exports) {
 
@@ -1669,15 +1662,6 @@ module.exports = {
 
 /***/ }),
 
-/***/ 1440:
-/***/ (function(module, exports, __webpack_require__) {
-
-const SplitBox = __webpack_require__(1536);
-
-module.exports = SplitBox;
-
-/***/ }),
-
 /***/ 1461:
 /***/ (function(module, exports, __webpack_require__) {
 
@@ -1856,6 +1840,10 @@ Menu.prototype.insert = function (pos, menuItem) {
 Menu.prototype.popup = function (screenX, screenY, toolbox) {
   let doc = toolbox.doc;
   let popupset = doc.querySelector("popupset");
+  if (!popupset) {
+    popupset = doc.createXULElement("popupset");
+    doc.documentElement.appendChild(popupset);
+  }
   // See bug 1285229, on Windows, opening the same popup multiple times in a
   // row ends up duplicating the popup. The newly inserted popup doesn't
   // dismiss the old one. So remove any previously displayed popup before
@@ -2552,329 +2540,6 @@ exports.register = function (window) {};
 
 /***/ }),
 
-/***/ 1536:
-/***/ (function(module, exports, __webpack_require__) {
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-const React = __webpack_require__(0);
-const ReactDOM = __webpack_require__(4);
-const Draggable = React.createFactory(__webpack_require__(1537));
-const { Component } = React;
-const PropTypes = __webpack_require__(3642);
-const dom = __webpack_require__(3643);
-
-__webpack_require__(1309);
-
-/**
- * This component represents a Splitter. The splitter supports vertical
- * as well as horizontal mode.
- */
-class SplitBox extends Component {
-  static get propTypes() {
-    return {
-      // Custom class name. You can use more names separated by a space.
-      className: PropTypes.string,
-      // Initial size of controlled panel.
-      initialSize: PropTypes.any,
-      // Optional initial width of controlled panel.
-      initialWidth: PropTypes.number,
-      // Optional initial height of controlled panel.
-      initialHeight: PropTypes.number,
-      // Left/top panel
-      startPanel: PropTypes.any,
-      // Left/top panel collapse state.
-      startPanelCollapsed: PropTypes.bool,
-      // Min panel size.
-      minSize: PropTypes.any,
-      // Max panel size.
-      maxSize: PropTypes.any,
-      // Right/bottom panel
-      endPanel: PropTypes.any,
-      // Right/bottom panel collapse state.
-      endPanelCollapsed: PropTypes.bool,
-      // True if the right/bottom panel should be controlled.
-      endPanelControl: PropTypes.bool,
-      // Size of the splitter handle bar.
-      splitterSize: PropTypes.number,
-      // True if the splitter bar is vertical (default is vertical).
-      vert: PropTypes.bool,
-      // Optional style properties passed into the splitbox
-      style: PropTypes.object,
-      // Optional callback when splitbox resize stops
-      onResizeEnd: PropTypes.func
-    };
-  }
-
-  static get defaultProps() {
-    return {
-      splitterSize: 5,
-      vert: true,
-      endPanelControl: false,
-      endPanelCollapsed: false,
-      startPanelCollapsed: false
-    };
-  }
-
-  constructor(props) {
-    super(props);
-
-    this.state = {
-      vert: props.vert,
-      // We use integers for these properties
-      width: parseInt(props.initialWidth || props.initialSize, 10),
-      height: parseInt(props.initialHeight || props.initialSize, 10)
-    };
-
-    this.onStartMove = this.onStartMove.bind(this);
-    this.onStopMove = this.onStopMove.bind(this);
-    this.onMove = this.onMove.bind(this);
-    this.preparePanelStyles = this.preparePanelStyles.bind(this);
-  }
-
-  componentWillReceiveProps(nextProps) {
-    if (this.props.vert !== nextProps.vert) {
-      this.setState({ vert: nextProps.vert });
-    }
-    if (this.props.initialSize !== nextProps.initialSize || this.props.initialWidth !== nextProps.initialWidth || this.props.initialHeight !== nextProps.initialHeight) {
-      this.setState({
-        width: parseInt(nextProps.initialWidth || nextProps.initialSize, 10),
-        height: parseInt(nextProps.initialHeight || nextProps.initialSize, 10)
-      });
-    }
-  }
-
-  // Dragging Events
-
-  /**
-   * Set 'resizing' cursor on entire document during splitter dragging.
-   * This avoids cursor-flickering that happens when the mouse leaves
-   * the splitter bar area (happens frequently).
-   */
-  onStartMove() {
-    const splitBox = ReactDOM.findDOMNode(this);
-    const doc = splitBox.ownerDocument;
-    let defaultCursor = doc.documentElement.style.cursor;
-    doc.documentElement.style.cursor = this.state.vert ? "ew-resize" : "ns-resize";
-
-    splitBox.classList.add("dragging");
-
-    this.setState({
-      defaultCursor: defaultCursor
-    });
-  }
-
-  onStopMove() {
-    const splitBox = ReactDOM.findDOMNode(this);
-    const doc = splitBox.ownerDocument;
-    doc.documentElement.style.cursor = this.state.defaultCursor;
-
-    splitBox.classList.remove("dragging");
-
-    if (this.props.onResizeEnd) {
-      this.props.onResizeEnd(this.state.vert ? this.state.width : this.state.height);
-    }
-  }
-
-  /**
-   * Adjust size of the controlled panel. Depending on the current
-   * orientation we either remember the width or height of
-   * the splitter box.
-   */
-  onMove({ movementX, movementY }) {
-    const node = ReactDOM.findDOMNode(this);
-    const doc = node.ownerDocument;
-
-    if (this.props.endPanelControl) {
-      // For the end panel we need to increase the width/height when the
-      // movement is towards the left/top.
-      movementX = -movementX;
-      movementY = -movementY;
-    }
-
-    if (this.state.vert) {
-      const isRtl = doc.dir === "rtl";
-      if (isRtl) {
-        // In RTL we need to reverse the movement again -- but only for vertical
-        // splitters
-        movementX = -movementX;
-      }
-
-      this.setState((state, props) => ({
-        width: state.width + movementX
-      }));
-    } else {
-      this.setState((state, props) => ({
-        height: state.height + movementY
-      }));
-    }
-  }
-
-  // Rendering
-  preparePanelStyles() {
-    const vert = this.state.vert;
-    const {
-      minSize,
-      maxSize,
-      startPanelCollapsed,
-      endPanelControl,
-      endPanelCollapsed
-    } = this.props;
-    let leftPanelStyle, rightPanelStyle;
-
-    // Set proper size for panels depending on the current state.
-    if (vert) {
-      let startWidth = endPanelControl ? null : this.state.width,
-          endWidth = endPanelControl ? this.state.width : null;
-
-      leftPanelStyle = {
-        maxWidth: endPanelControl ? null : maxSize,
-        minWidth: endPanelControl ? null : minSize,
-        width: startPanelCollapsed ? 0 : startWidth
-      };
-      rightPanelStyle = {
-        maxWidth: endPanelControl ? maxSize : null,
-        minWidth: endPanelControl ? minSize : null,
-        width: endPanelCollapsed ? 0 : endWidth
-      };
-    } else {
-      let startHeight = endPanelControl ? null : this.state.height,
-          endHeight = endPanelControl ? this.state.height : null;
-
-      leftPanelStyle = {
-        maxHeight: endPanelControl ? null : maxSize,
-        minHeight: endPanelControl ? null : minSize,
-        height: endPanelCollapsed ? maxSize : startHeight
-      };
-      rightPanelStyle = {
-        maxHeight: endPanelControl ? maxSize : null,
-        minHeight: endPanelControl ? minSize : null,
-        height: startPanelCollapsed ? maxSize : endHeight
-      };
-    }
-
-    return { leftPanelStyle, rightPanelStyle };
-  }
-
-  render() {
-    const vert = this.state.vert;
-    const {
-      startPanelCollapsed,
-      startPanel,
-      endPanel,
-      endPanelControl,
-      splitterSize,
-      endPanelCollapsed
-    } = this.props;
-
-    let style = Object.assign({}, this.props.style);
-
-    // Calculate class names list.
-    let classNames = ["split-box"];
-    classNames.push(vert ? "vert" : "horz");
-    if (this.props.className) {
-      classNames = classNames.concat(this.props.className.split(" "));
-    }
-
-    const { leftPanelStyle, rightPanelStyle } = this.preparePanelStyles();
-
-    // Calculate splitter size
-    let splitterStyle = {
-      flex: `0 0 ${splitterSize}px`
-    };
-
-    return dom.div({
-      className: classNames.join(" "),
-      style: style
-    }, !startPanelCollapsed ? dom.div({
-      className: endPanelControl ? "uncontrolled" : "controlled",
-      style: leftPanelStyle
-    }, startPanel) : null, Draggable({
-      className: "splitter",
-      style: splitterStyle,
-      onStart: this.onStartMove,
-      onStop: this.onStopMove,
-      onMove: this.onMove
-    }), !endPanelCollapsed ? dom.div({
-      className: endPanelControl ? "controlled" : "uncontrolled",
-      style: rightPanelStyle
-    }, endPanel) : null);
-  }
-}
-
-module.exports = SplitBox;
-
-/***/ }),
-
-/***/ 1537:
-/***/ (function(module, exports, __webpack_require__) {
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this file,
- * You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-const React = __webpack_require__(0);
-const ReactDOM = __webpack_require__(4);
-const { Component } = React;
-const PropTypes = __webpack_require__(3642);
-const dom = __webpack_require__(3643);
-
-class Draggable extends Component {
-  static get propTypes() {
-    return {
-      onMove: PropTypes.func.isRequired,
-      onStart: PropTypes.func,
-      onStop: PropTypes.func,
-      style: PropTypes.object,
-      className: PropTypes.string
-    };
-  }
-
-  constructor(props) {
-    super(props);
-    this.startDragging = this.startDragging.bind(this);
-    this.onMove = this.onMove.bind(this);
-    this.onUp = this.onUp.bind(this);
-  }
-
-  startDragging(ev) {
-    ev.preventDefault();
-    const doc = ReactDOM.findDOMNode(this).ownerDocument;
-    doc.addEventListener("mousemove", this.onMove);
-    doc.addEventListener("mouseup", this.onUp);
-    this.props.onStart && this.props.onStart();
-  }
-
-  onMove(ev) {
-    ev.preventDefault();
-    // We pass the whole event because we don't know which properties
-    // the callee needs.
-    this.props.onMove(ev);
-  }
-
-  onUp(ev) {
-    ev.preventDefault();
-    const doc = ReactDOM.findDOMNode(this).ownerDocument;
-    doc.removeEventListener("mousemove", this.onMove);
-    doc.removeEventListener("mouseup", this.onUp);
-    this.props.onStop && this.props.onStop();
-  }
-
-  render() {
-    return dom.div({
-      style: this.props.style,
-      className: this.props.className,
-      onMouseDown: this.startDragging
-    });
-  }
-}
-
-module.exports = Draggable;
-
-/***/ }),
-
 /***/ 1540:
 /***/ (function(module, exports, __webpack_require__) {
 
@@ -2904,6 +2569,7 @@ const svg = {
   breadcrumb: __webpack_require__(3603),
   breakpoint: __webpack_require__(350),
   "column-breakpoint": __webpack_require__(998),
+  "column-marker": __webpack_require__(3801),
   "case-match": __webpack_require__(351),
   choo: __webpack_require__(1290),
   close: __webpack_require__(352),
@@ -4886,7 +4552,7 @@ module.exports = "<!-- This Source Code Form is subject to the terms of the Mozi
 /***/ 348:
 /***/ (function(module, exports) {
 
-module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 16 16\"><path d=\"M8 13.4c-.5 0-.9-.2-1.2-.6L.4 5.2C0 4.7-.1 4.3.2 3.7S1 3 1.6 3h12.8c.6 0 1.2.1 1.4.7.3.6.2 1.1-.2 1.6l-6.4 7.6c-.3.4-.7.5-1.2.5z\"></path></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 16 16\" fill=\"context-fill #9B9B9B\"><path d=\"M8 13.4c-.5 0-.9-.2-1.2-.6L.4 5.2C0 4.7-.1 4.3.2 3.7S1 3 1.6 3h12.8c.6 0 1.2.1 1.4.7.3.6.2 1.1-.2 1.6l-6.4 7.6c-.3.4-.7.5-1.2.5z\"></path></svg>"
 
 /***/ }),
 
@@ -4956,7 +4622,7 @@ module.exports = "<!-- This Source Code Form is subject to the terms of the Mozi
 /***/ 358:
 /***/ (function(module, exports) {
 
-module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\"><g fill-rule=\"evenodd\"><path d=\"M5 12.503l.052-9a.5.5 0 0 0-1-.006l-.052 9a.5.5 0 0 0 1 .006zM12 12.497l-.05-9A.488.488 0 0 0 11.474 3a.488.488 0 0 0-.473.503l.05 9a.488.488 0 0 0 .477.497.488.488 0 0 0 .473-.503z\"></path></g></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg version=\"1.1\" xmlns:svg=\"http://www.w3.org/2000/svg\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 16 16\"><path d=\"M5,13.5C5,13.8,4.7,14,4.5,14C4.2,14,4,13.8,4,13.5V2.6c0-0.3,0.2-0.5,0.5-0.5C4.7,2.1,5,2.3,5,2.6V13.5z\"></path><path d=\"M11.9,13.5c0,0.3-0.2,0.5-0.5,0.5s-0.5-0.2-0.5-0.5V2.6c0-0.3,0.2-0.5,0.5-0.5s0.5,0.2,0.5,0.5V13.5z\"></path></svg>"
 
 /***/ }),
 
@@ -5012,7 +4678,7 @@ module.exports = "<!-- This Source Code Form is subject to the terms of the Mozi
 /***/ 363:
 /***/ (function(module, exports) {
 
-module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:svg=\"http://www.w3.org/2000/svg\"><path fill=\"black\" id=\"svg_1\" fill-rule=\"evenodd\" d=\"m4.55195,12.97461l7.4,-5l-7.4,-5l0,10zm-0.925,0l0,-10c0,-0.785 0.8,-1.264 1.415,-0.848l7.4,5c0.58,0.392 0.58,1.304 0,1.696l-7.4,5c-0.615,0.416 -1.415,-0.063 -1.415,-0.848z\"></path></svg>"
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:svg=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 16 16\"><path fill=\"black\" id=\"svg_1\" fill-rule=\"evenodd\" d=\"m4.55195,12.97461l7.4,-5l-7.4,-5l0,10zm-0.925,0l0,-10c0,-0.785 0.8,-1.264 1.415,-0.848l7.4,5c0.58,0.392 0.58,1.304 0,1.696l-7.4,5c-0.615,0.416 -1.415,-0.063 -1.415,-0.848z\"></path></svg>"
 
 /***/ }),
 
@@ -5367,7 +5033,7 @@ module.exports = {
 
 
 
-const punycode = __webpack_require__(916);
+const punycode = __webpack_require__(3641);
 
 /**
  * Gets a readble Unicode hostname from a hostname.
@@ -5470,6 +5136,546 @@ module.exports = {
 /***/ (function(module, exports) {
 
 module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 33 12\"><path id=\"base-path\" d=\"M27.1,0H1C0.4,0,0,0.4,0,1v10c0,0.6,0.4,1,1,1h26.1 c0.6,0,1.2-0.3,1.5-0.7L33,6l-4.4-5.3C28.2,0.3,27.7,0,27.1,0z\"></path></svg>"
+
+/***/ }),
+
+/***/ 3641:
+/***/ (function(module, exports, __webpack_require__) {
+
+/* WEBPACK VAR INJECTION */(function(module, global) {var __WEBPACK_AMD_DEFINE_RESULT__;/*! https://mths.be/punycode v1.4.1 by @mathias */
+;(function(root) {
+
+	/** Detect free variables */
+	var freeExports = typeof exports == 'object' && exports &&
+		!exports.nodeType && exports;
+	var freeModule = typeof module == 'object' && module &&
+		!module.nodeType && module;
+	var freeGlobal = typeof global == 'object' && global;
+	if (
+		freeGlobal.global === freeGlobal ||
+		freeGlobal.window === freeGlobal ||
+		freeGlobal.self === freeGlobal
+	) {
+		root = freeGlobal;
+	}
+
+	/**
+	 * The `punycode` object.
+	 * @name punycode
+	 * @type Object
+	 */
+	var punycode,
+
+	/** Highest positive signed 32-bit float value */
+	maxInt = 2147483647, // aka. 0x7FFFFFFF or 2^31-1
+
+	/** Bootstring parameters */
+	base = 36,
+	tMin = 1,
+	tMax = 26,
+	skew = 38,
+	damp = 700,
+	initialBias = 72,
+	initialN = 128, // 0x80
+	delimiter = '-', // '\x2D'
+
+	/** Regular expressions */
+	regexPunycode = /^xn--/,
+	regexNonASCII = /[^\x20-\x7E]/, // unprintable ASCII chars + non-ASCII chars
+	regexSeparators = /[\x2E\u3002\uFF0E\uFF61]/g, // RFC 3490 separators
+
+	/** Error messages */
+	errors = {
+		'overflow': 'Overflow: input needs wider integers to process',
+		'not-basic': 'Illegal input >= 0x80 (not a basic code point)',
+		'invalid-input': 'Invalid input'
+	},
+
+	/** Convenience shortcuts */
+	baseMinusTMin = base - tMin,
+	floor = Math.floor,
+	stringFromCharCode = String.fromCharCode,
+
+	/** Temporary variable */
+	key;
+
+	/*--------------------------------------------------------------------------*/
+
+	/**
+	 * A generic error utility function.
+	 * @private
+	 * @param {String} type The error type.
+	 * @returns {Error} Throws a `RangeError` with the applicable error message.
+	 */
+	function error(type) {
+		throw new RangeError(errors[type]);
+	}
+
+	/**
+	 * A generic `Array#map` utility function.
+	 * @private
+	 * @param {Array} array The array to iterate over.
+	 * @param {Function} callback The function that gets called for every array
+	 * item.
+	 * @returns {Array} A new array of values returned by the callback function.
+	 */
+	function map(array, fn) {
+		var length = array.length;
+		var result = [];
+		while (length--) {
+			result[length] = fn(array[length]);
+		}
+		return result;
+	}
+
+	/**
+	 * A simple `Array#map`-like wrapper to work with domain name strings or email
+	 * addresses.
+	 * @private
+	 * @param {String} domain The domain name or email address.
+	 * @param {Function} callback The function that gets called for every
+	 * character.
+	 * @returns {Array} A new string of characters returned by the callback
+	 * function.
+	 */
+	function mapDomain(string, fn) {
+		var parts = string.split('@');
+		var result = '';
+		if (parts.length > 1) {
+			// In email addresses, only the domain name should be punycoded. Leave
+			// the local part (i.e. everything up to `@`) intact.
+			result = parts[0] + '@';
+			string = parts[1];
+		}
+		// Avoid `split(regex)` for IE8 compatibility. See #17.
+		string = string.replace(regexSeparators, '\x2E');
+		var labels = string.split('.');
+		var encoded = map(labels, fn).join('.');
+		return result + encoded;
+	}
+
+	/**
+	 * Creates an array containing the numeric code points of each Unicode
+	 * character in the string. While JavaScript uses UCS-2 internally,
+	 * this function will convert a pair of surrogate halves (each of which
+	 * UCS-2 exposes as separate characters) into a single code point,
+	 * matching UTF-16.
+	 * @see `punycode.ucs2.encode`
+	 * @see <https://mathiasbynens.be/notes/javascript-encoding>
+	 * @memberOf punycode.ucs2
+	 * @name decode
+	 * @param {String} string The Unicode input string (UCS-2).
+	 * @returns {Array} The new array of code points.
+	 */
+	function ucs2decode(string) {
+		var output = [],
+		    counter = 0,
+		    length = string.length,
+		    value,
+		    extra;
+		while (counter < length) {
+			value = string.charCodeAt(counter++);
+			if (value >= 0xD800 && value <= 0xDBFF && counter < length) {
+				// high surrogate, and there is a next character
+				extra = string.charCodeAt(counter++);
+				if ((extra & 0xFC00) == 0xDC00) { // low surrogate
+					output.push(((value & 0x3FF) << 10) + (extra & 0x3FF) + 0x10000);
+				} else {
+					// unmatched surrogate; only append this code unit, in case the next
+					// code unit is the high surrogate of a surrogate pair
+					output.push(value);
+					counter--;
+				}
+			} else {
+				output.push(value);
+			}
+		}
+		return output;
+	}
+
+	/**
+	 * Creates a string based on an array of numeric code points.
+	 * @see `punycode.ucs2.decode`
+	 * @memberOf punycode.ucs2
+	 * @name encode
+	 * @param {Array} codePoints The array of numeric code points.
+	 * @returns {String} The new Unicode string (UCS-2).
+	 */
+	function ucs2encode(array) {
+		return map(array, function(value) {
+			var output = '';
+			if (value > 0xFFFF) {
+				value -= 0x10000;
+				output += stringFromCharCode(value >>> 10 & 0x3FF | 0xD800);
+				value = 0xDC00 | value & 0x3FF;
+			}
+			output += stringFromCharCode(value);
+			return output;
+		}).join('');
+	}
+
+	/**
+	 * Converts a basic code point into a digit/integer.
+	 * @see `digitToBasic()`
+	 * @private
+	 * @param {Number} codePoint The basic numeric code point value.
+	 * @returns {Number} The numeric value of a basic code point (for use in
+	 * representing integers) in the range `0` to `base - 1`, or `base` if
+	 * the code point does not represent a value.
+	 */
+	function basicToDigit(codePoint) {
+		if (codePoint - 48 < 10) {
+			return codePoint - 22;
+		}
+		if (codePoint - 65 < 26) {
+			return codePoint - 65;
+		}
+		if (codePoint - 97 < 26) {
+			return codePoint - 97;
+		}
+		return base;
+	}
+
+	/**
+	 * Converts a digit/integer into a basic code point.
+	 * @see `basicToDigit()`
+	 * @private
+	 * @param {Number} digit The numeric value of a basic code point.
+	 * @returns {Number} The basic code point whose value (when used for
+	 * representing integers) is `digit`, which needs to be in the range
+	 * `0` to `base - 1`. If `flag` is non-zero, the uppercase form is
+	 * used; else, the lowercase form is used. The behavior is undefined
+	 * if `flag` is non-zero and `digit` has no uppercase form.
+	 */
+	function digitToBasic(digit, flag) {
+		//  0..25 map to ASCII a..z or A..Z
+		// 26..35 map to ASCII 0..9
+		return digit + 22 + 75 * (digit < 26) - ((flag != 0) << 5);
+	}
+
+	/**
+	 * Bias adaptation function as per section 3.4 of RFC 3492.
+	 * https://tools.ietf.org/html/rfc3492#section-3.4
+	 * @private
+	 */
+	function adapt(delta, numPoints, firstTime) {
+		var k = 0;
+		delta = firstTime ? floor(delta / damp) : delta >> 1;
+		delta += floor(delta / numPoints);
+		for (/* no initialization */; delta > baseMinusTMin * tMax >> 1; k += base) {
+			delta = floor(delta / baseMinusTMin);
+		}
+		return floor(k + (baseMinusTMin + 1) * delta / (delta + skew));
+	}
+
+	/**
+	 * Converts a Punycode string of ASCII-only symbols to a string of Unicode
+	 * symbols.
+	 * @memberOf punycode
+	 * @param {String} input The Punycode string of ASCII-only symbols.
+	 * @returns {String} The resulting string of Unicode symbols.
+	 */
+	function decode(input) {
+		// Don't use UCS-2
+		var output = [],
+		    inputLength = input.length,
+		    out,
+		    i = 0,
+		    n = initialN,
+		    bias = initialBias,
+		    basic,
+		    j,
+		    index,
+		    oldi,
+		    w,
+		    k,
+		    digit,
+		    t,
+		    /** Cached calculation results */
+		    baseMinusT;
+
+		// Handle the basic code points: let `basic` be the number of input code
+		// points before the last delimiter, or `0` if there is none, then copy
+		// the first basic code points to the output.
+
+		basic = input.lastIndexOf(delimiter);
+		if (basic < 0) {
+			basic = 0;
+		}
+
+		for (j = 0; j < basic; ++j) {
+			// if it's not a basic code point
+			if (input.charCodeAt(j) >= 0x80) {
+				error('not-basic');
+			}
+			output.push(input.charCodeAt(j));
+		}
+
+		// Main decoding loop: start just after the last delimiter if any basic code
+		// points were copied; start at the beginning otherwise.
+
+		for (index = basic > 0 ? basic + 1 : 0; index < inputLength; /* no final expression */) {
+
+			// `index` is the index of the next character to be consumed.
+			// Decode a generalized variable-length integer into `delta`,
+			// which gets added to `i`. The overflow checking is easier
+			// if we increase `i` as we go, then subtract off its starting
+			// value at the end to obtain `delta`.
+			for (oldi = i, w = 1, k = base; /* no condition */; k += base) {
+
+				if (index >= inputLength) {
+					error('invalid-input');
+				}
+
+				digit = basicToDigit(input.charCodeAt(index++));
+
+				if (digit >= base || digit > floor((maxInt - i) / w)) {
+					error('overflow');
+				}
+
+				i += digit * w;
+				t = k <= bias ? tMin : (k >= bias + tMax ? tMax : k - bias);
+
+				if (digit < t) {
+					break;
+				}
+
+				baseMinusT = base - t;
+				if (w > floor(maxInt / baseMinusT)) {
+					error('overflow');
+				}
+
+				w *= baseMinusT;
+
+			}
+
+			out = output.length + 1;
+			bias = adapt(i - oldi, out, oldi == 0);
+
+			// `i` was supposed to wrap around from `out` to `0`,
+			// incrementing `n` each time, so we'll fix that now:
+			if (floor(i / out) > maxInt - n) {
+				error('overflow');
+			}
+
+			n += floor(i / out);
+			i %= out;
+
+			// Insert `n` at position `i` of the output
+			output.splice(i++, 0, n);
+
+		}
+
+		return ucs2encode(output);
+	}
+
+	/**
+	 * Converts a string of Unicode symbols (e.g. a domain name label) to a
+	 * Punycode string of ASCII-only symbols.
+	 * @memberOf punycode
+	 * @param {String} input The string of Unicode symbols.
+	 * @returns {String} The resulting Punycode string of ASCII-only symbols.
+	 */
+	function encode(input) {
+		var n,
+		    delta,
+		    handledCPCount,
+		    basicLength,
+		    bias,
+		    j,
+		    m,
+		    q,
+		    k,
+		    t,
+		    currentValue,
+		    output = [],
+		    /** `inputLength` will hold the number of code points in `input`. */
+		    inputLength,
+		    /** Cached calculation results */
+		    handledCPCountPlusOne,
+		    baseMinusT,
+		    qMinusT;
+
+		// Convert the input in UCS-2 to Unicode
+		input = ucs2decode(input);
+
+		// Cache the length
+		inputLength = input.length;
+
+		// Initialize the state
+		n = initialN;
+		delta = 0;
+		bias = initialBias;
+
+		// Handle the basic code points
+		for (j = 0; j < inputLength; ++j) {
+			currentValue = input[j];
+			if (currentValue < 0x80) {
+				output.push(stringFromCharCode(currentValue));
+			}
+		}
+
+		handledCPCount = basicLength = output.length;
+
+		// `handledCPCount` is the number of code points that have been handled;
+		// `basicLength` is the number of basic code points.
+
+		// Finish the basic string - if it is not empty - with a delimiter
+		if (basicLength) {
+			output.push(delimiter);
+		}
+
+		// Main encoding loop:
+		while (handledCPCount < inputLength) {
+
+			// All non-basic code points < n have been handled already. Find the next
+			// larger one:
+			for (m = maxInt, j = 0; j < inputLength; ++j) {
+				currentValue = input[j];
+				if (currentValue >= n && currentValue < m) {
+					m = currentValue;
+				}
+			}
+
+			// Increase `delta` enough to advance the decoder's <n,i> state to <m,0>,
+			// but guard against overflow
+			handledCPCountPlusOne = handledCPCount + 1;
+			if (m - n > floor((maxInt - delta) / handledCPCountPlusOne)) {
+				error('overflow');
+			}
+
+			delta += (m - n) * handledCPCountPlusOne;
+			n = m;
+
+			for (j = 0; j < inputLength; ++j) {
+				currentValue = input[j];
+
+				if (currentValue < n && ++delta > maxInt) {
+					error('overflow');
+				}
+
+				if (currentValue == n) {
+					// Represent delta as a generalized variable-length integer
+					for (q = delta, k = base; /* no condition */; k += base) {
+						t = k <= bias ? tMin : (k >= bias + tMax ? tMax : k - bias);
+						if (q < t) {
+							break;
+						}
+						qMinusT = q - t;
+						baseMinusT = base - t;
+						output.push(
+							stringFromCharCode(digitToBasic(t + qMinusT % baseMinusT, 0))
+						);
+						q = floor(qMinusT / baseMinusT);
+					}
+
+					output.push(stringFromCharCode(digitToBasic(q, 0)));
+					bias = adapt(delta, handledCPCountPlusOne, handledCPCount == basicLength);
+					delta = 0;
+					++handledCPCount;
+				}
+			}
+
+			++delta;
+			++n;
+
+		}
+		return output.join('');
+	}
+
+	/**
+	 * Converts a Punycode string representing a domain name or an email address
+	 * to Unicode. Only the Punycoded parts of the input will be converted, i.e.
+	 * it doesn't matter if you call it on a string that has already been
+	 * converted to Unicode.
+	 * @memberOf punycode
+	 * @param {String} input The Punycoded domain name or email address to
+	 * convert to Unicode.
+	 * @returns {String} The Unicode representation of the given Punycode
+	 * string.
+	 */
+	function toUnicode(input) {
+		return mapDomain(input, function(string) {
+			return regexPunycode.test(string)
+				? decode(string.slice(4).toLowerCase())
+				: string;
+		});
+	}
+
+	/**
+	 * Converts a Unicode string representing a domain name or an email address to
+	 * Punycode. Only the non-ASCII parts of the domain name will be converted,
+	 * i.e. it doesn't matter if you call it with a domain that's already in
+	 * ASCII.
+	 * @memberOf punycode
+	 * @param {String} input The domain name or email address to convert, as a
+	 * Unicode string.
+	 * @returns {String} The Punycode representation of the given domain name or
+	 * email address.
+	 */
+	function toASCII(input) {
+		return mapDomain(input, function(string) {
+			return regexNonASCII.test(string)
+				? 'xn--' + encode(string)
+				: string;
+		});
+	}
+
+	/*--------------------------------------------------------------------------*/
+
+	/** Define the public API */
+	punycode = {
+		/**
+		 * A string representing the current Punycode.js version number.
+		 * @memberOf punycode
+		 * @type String
+		 */
+		'version': '1.4.1',
+		/**
+		 * An object of methods to convert from JavaScript's internal character
+		 * representation (UCS-2) to Unicode code points, and back.
+		 * @see <https://mathiasbynens.be/notes/javascript-encoding>
+		 * @memberOf punycode
+		 * @type Object
+		 */
+		'ucs2': {
+			'decode': ucs2decode,
+			'encode': ucs2encode
+		},
+		'decode': decode,
+		'encode': encode,
+		'toASCII': toASCII,
+		'toUnicode': toUnicode
+	};
+
+	/** Expose `punycode` */
+	// Some AMD build optimizers, like r.js, check for specific condition patterns
+	// like the following:
+	if (
+		true
+	) {
+		!(__WEBPACK_AMD_DEFINE_RESULT__ = (function() {
+			return punycode;
+		}).call(exports, __webpack_require__, exports, module),
+				__WEBPACK_AMD_DEFINE_RESULT__ !== undefined && (module.exports = __WEBPACK_AMD_DEFINE_RESULT__));
+	} else if (freeExports && freeModule) {
+		if (module.exports == freeExports) {
+			// in Node.js, io.js, or RingoJS v0.8.0+
+			freeModule.exports = punycode;
+		} else {
+			// in Narwhal or RingoJS v0.7.0-
+			for (key in punycode) {
+				punycode.hasOwnProperty(key) && (freeExports[key] = punycode[key]);
+			}
+		}
+	} else {
+		// in Rhino or a web browser
+		root.punycode = punycode;
+	}
+
+}(this));
+
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(793)(module), __webpack_require__(792)))
 
 /***/ }),
 
@@ -5806,7 +6012,7 @@ class ArrowExpander extends Component {
     if (expanded) {
       classNames.push("expanded");
     }
-    return _reactDomFactories2.default.img({
+    return _reactDomFactories2.default.button({
       className: classNames.join(" ")
     });
   }
@@ -6734,7 +6940,7 @@ var _classnames = __webpack_require__(175);
 
 var _classnames2 = _interopRequireDefault(_classnames);
 
-var _devtoolsSplitter = __webpack_require__(1440);
+var _devtoolsSplitter = __webpack_require__(3802);
 
 var _devtoolsSplitter2 = _interopRequireDefault(_devtoolsSplitter);
 
@@ -8224,6 +8430,360 @@ function createStructuredSelector(selectors) {
 
 /***/ }),
 
+/***/ 3801:
+/***/ (function(module, exports) {
+
+module.exports = "<svg viewBox=\"0 0 9 12\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\"><g id=\"columnmarkergroup\" stroke-width=\"1\" fill-rule=\"evenodd\"><polygon id=\"columnmarker\" points=\"0 0 4 0 9 6 4 12 0 12\"></polygon></g></svg>"
+
+/***/ }),
+
+/***/ 3802:
+/***/ (function(module, exports, __webpack_require__) {
+
+const SplitBox = __webpack_require__(3803);
+
+module.exports = SplitBox;
+
+/***/ }),
+
+/***/ 3803:
+/***/ (function(module, exports, __webpack_require__) {
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+const React = __webpack_require__(0);
+const ReactDOM = __webpack_require__(4);
+const Draggable = React.createFactory(__webpack_require__(3804));
+const { Component } = React;
+const PropTypes = __webpack_require__(3642);
+const dom = __webpack_require__(3643);
+
+__webpack_require__(3805);
+
+/**
+ * This component represents a Splitter. The splitter supports vertical
+ * as well as horizontal mode.
+ */
+class SplitBox extends Component {
+  static get propTypes() {
+    return {
+      // Custom class name. You can use more names separated by a space.
+      className: PropTypes.string,
+      // Initial size of controlled panel.
+      initialSize: PropTypes.any,
+      // Optional initial width of controlled panel.
+      initialWidth: PropTypes.number,
+      // Optional initial height of controlled panel.
+      initialHeight: PropTypes.number,
+      // Left/top panel
+      startPanel: PropTypes.any,
+      // Left/top panel collapse state.
+      startPanelCollapsed: PropTypes.bool,
+      // Min panel size.
+      minSize: PropTypes.any,
+      // Max panel size.
+      maxSize: PropTypes.any,
+      // Right/bottom panel
+      endPanel: PropTypes.any,
+      // Right/bottom panel collapse state.
+      endPanelCollapsed: PropTypes.bool,
+      // True if the right/bottom panel should be controlled.
+      endPanelControl: PropTypes.bool,
+      // Size of the splitter handle bar.
+      splitterSize: PropTypes.number,
+      // True if the splitter bar is vertical (default is vertical).
+      vert: PropTypes.bool,
+      // Optional style properties passed into the splitbox
+      style: PropTypes.object,
+      // Optional callback when splitbox resize stops
+      onResizeEnd: PropTypes.func
+    };
+  }
+
+  static get defaultProps() {
+    return {
+      splitterSize: 5,
+      vert: true,
+      endPanelControl: false,
+      endPanelCollapsed: false,
+      startPanelCollapsed: false
+    };
+  }
+
+  constructor(props) {
+    super(props);
+
+    this.state = {
+      vert: props.vert,
+      // We use integers for these properties
+      width: parseInt(props.initialWidth || props.initialSize, 10),
+      height: parseInt(props.initialHeight || props.initialSize, 10)
+    };
+
+    this.onStartMove = this.onStartMove.bind(this);
+    this.onStopMove = this.onStopMove.bind(this);
+    this.onMove = this.onMove.bind(this);
+    this.preparePanelStyles = this.preparePanelStyles.bind(this);
+  }
+
+  componentWillReceiveProps(nextProps) {
+    if (this.props.vert !== nextProps.vert) {
+      this.setState({ vert: nextProps.vert });
+    }
+    if (this.props.initialSize !== nextProps.initialSize || this.props.initialWidth !== nextProps.initialWidth || this.props.initialHeight !== nextProps.initialHeight) {
+      this.setState({
+        width: parseInt(nextProps.initialWidth || nextProps.initialSize, 10),
+        height: parseInt(nextProps.initialHeight || nextProps.initialSize, 10)
+      });
+    }
+  }
+
+  // Dragging Events
+
+  /**
+   * Set 'resizing' cursor on entire document during splitter dragging.
+   * This avoids cursor-flickering that happens when the mouse leaves
+   * the splitter bar area (happens frequently).
+   */
+  onStartMove() {
+    const splitBox = ReactDOM.findDOMNode(this);
+    const doc = splitBox.ownerDocument;
+    const defaultCursor = doc.documentElement.style.cursor;
+    doc.documentElement.style.cursor = this.state.vert ? "ew-resize" : "ns-resize";
+
+    splitBox.classList.add("dragging");
+    document.dispatchEvent(new CustomEvent("drag:start"));
+
+    this.setState({
+      defaultCursor: defaultCursor
+    });
+  }
+
+  onStopMove() {
+    const splitBox = ReactDOM.findDOMNode(this);
+    const doc = splitBox.ownerDocument;
+    doc.documentElement.style.cursor = this.state.defaultCursor;
+
+    splitBox.classList.remove("dragging");
+    document.dispatchEvent(new CustomEvent("drag:end"));
+
+    if (this.props.onResizeEnd) {
+      this.props.onResizeEnd(this.state.vert ? this.state.width : this.state.height);
+    }
+  }
+
+  /**
+   * Adjust size of the controlled panel. Depending on the current
+   * orientation we either remember the width or height of
+   * the splitter box.
+   */
+  onMove({ movementX, movementY }) {
+    const node = ReactDOM.findDOMNode(this);
+    const doc = node.ownerDocument;
+
+    if (this.props.endPanelControl) {
+      // For the end panel we need to increase the width/height when the
+      // movement is towards the left/top.
+      movementX = -movementX;
+      movementY = -movementY;
+    }
+
+    if (this.state.vert) {
+      const isRtl = doc.dir === "rtl";
+      if (isRtl) {
+        // In RTL we need to reverse the movement again -- but only for vertical
+        // splitters
+        movementX = -movementX;
+      }
+
+      this.setState((state, props) => ({
+        width: state.width + movementX
+      }));
+    } else {
+      this.setState((state, props) => ({
+        height: state.height + movementY
+      }));
+    }
+  }
+
+  // Rendering
+  preparePanelStyles() {
+    const vert = this.state.vert;
+    const {
+      minSize,
+      maxSize,
+      startPanelCollapsed,
+      endPanelControl,
+      endPanelCollapsed
+    } = this.props;
+    let leftPanelStyle, rightPanelStyle;
+
+    // Set proper size for panels depending on the current state.
+    if (vert) {
+      const startWidth = endPanelControl ? null : this.state.width,
+            endWidth = endPanelControl ? this.state.width : null;
+
+      leftPanelStyle = {
+        maxWidth: endPanelControl ? null : maxSize,
+        minWidth: endPanelControl ? null : minSize,
+        width: startPanelCollapsed ? 0 : startWidth
+      };
+      rightPanelStyle = {
+        maxWidth: endPanelControl ? maxSize : null,
+        minWidth: endPanelControl ? minSize : null,
+        width: endPanelCollapsed ? 0 : endWidth
+      };
+    } else {
+      const startHeight = endPanelControl ? null : this.state.height,
+            endHeight = endPanelControl ? this.state.height : null;
+
+      leftPanelStyle = {
+        maxHeight: endPanelControl ? null : maxSize,
+        minHeight: endPanelControl ? null : minSize,
+        height: endPanelCollapsed ? maxSize : startHeight
+      };
+      rightPanelStyle = {
+        maxHeight: endPanelControl ? maxSize : null,
+        minHeight: endPanelControl ? minSize : null,
+        height: startPanelCollapsed ? maxSize : endHeight
+      };
+    }
+
+    return { leftPanelStyle, rightPanelStyle };
+  }
+
+  render() {
+    const vert = this.state.vert;
+    const {
+      startPanelCollapsed,
+      startPanel,
+      endPanel,
+      endPanelControl,
+      splitterSize,
+      endPanelCollapsed
+    } = this.props;
+
+    const style = Object.assign({}, this.props.style);
+
+    // Calculate class names list.
+    let classNames = ["split-box"];
+    classNames.push(vert ? "vert" : "horz");
+    if (this.props.className) {
+      classNames = classNames.concat(this.props.className.split(" "));
+    }
+
+    const { leftPanelStyle, rightPanelStyle } = this.preparePanelStyles();
+
+    // Calculate splitter size
+    const splitterStyle = {
+      flex: `0 0 ${splitterSize}px`
+    };
+
+    return dom.div({
+      className: classNames.join(" "),
+      style: style
+    }, !startPanelCollapsed ? dom.div({
+      className: endPanelControl ? "uncontrolled" : "controlled",
+      style: leftPanelStyle
+    }, startPanel) : null, Draggable({
+      className: "splitter",
+      style: splitterStyle,
+      onStart: this.onStartMove,
+      onStop: this.onStopMove,
+      onMove: this.onMove
+    }), !endPanelCollapsed ? dom.div({
+      className: endPanelControl ? "controlled" : "uncontrolled",
+      style: rightPanelStyle
+    }, endPanel) : null);
+  }
+}
+
+module.exports = SplitBox;
+
+/***/ }),
+
+/***/ 3804:
+/***/ (function(module, exports, __webpack_require__) {
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+const React = __webpack_require__(0);
+const ReactDOM = __webpack_require__(4);
+const { Component } = React;
+const PropTypes = __webpack_require__(3642);
+const dom = __webpack_require__(3643);
+
+class Draggable extends Component {
+  static get propTypes() {
+    return {
+      onMove: PropTypes.func.isRequired,
+      onStart: PropTypes.func,
+      onStop: PropTypes.func,
+      style: PropTypes.object,
+      className: PropTypes.string
+    };
+  }
+
+  constructor(props) {
+    super(props);
+    this.startDragging = this.startDragging.bind(this);
+    this.onMove = this.onMove.bind(this);
+    this.onUp = this.onUp.bind(this);
+  }
+
+  startDragging(ev) {
+    ev.preventDefault();
+    const doc = ReactDOM.findDOMNode(this).ownerDocument;
+    doc.addEventListener("mousemove", this.onMove);
+    doc.addEventListener("mouseup", this.onUp);
+    this.props.onStart && this.props.onStart();
+  }
+
+  onMove(ev) {
+    ev.preventDefault();
+
+    // When the target is outside of the document, its tagName is undefined
+    if (!ev.target.tagName) {
+      return;
+    }
+
+    // We pass the whole event because we don't know which properties
+    // the callee needs.
+    this.props.onMove(ev);
+  }
+
+  onUp(ev) {
+    ev.preventDefault();
+    const doc = ReactDOM.findDOMNode(this).ownerDocument;
+    doc.removeEventListener("mousemove", this.onMove);
+    doc.removeEventListener("mouseup", this.onUp);
+    this.props.onStop && this.props.onStop();
+  }
+
+  render() {
+    return dom.div({
+      style: this.props.style,
+      className: this.props.className,
+      onMouseDown: this.startDragging
+    });
+  }
+}
+
+module.exports = Draggable;
+
+/***/ }),
+
+/***/ 3805:
+/***/ (function(module, exports) {
+
+// removed by extract-text-webpack-plugin
+
+/***/ }),
+
 /***/ 4:
 /***/ (function(module, exports) {
 
@@ -9211,546 +9771,6 @@ function hashHas(key) {
 
 module.exports = hashHas;
 
-
-/***/ }),
-
-/***/ 916:
-/***/ (function(module, exports, __webpack_require__) {
-
-/* WEBPACK VAR INJECTION */(function(module, global) {var __WEBPACK_AMD_DEFINE_RESULT__;/*! https://mths.be/punycode v1.4.1 by @mathias */
-;(function(root) {
-
-	/** Detect free variables */
-	var freeExports = typeof exports == 'object' && exports &&
-		!exports.nodeType && exports;
-	var freeModule = typeof module == 'object' && module &&
-		!module.nodeType && module;
-	var freeGlobal = typeof global == 'object' && global;
-	if (
-		freeGlobal.global === freeGlobal ||
-		freeGlobal.window === freeGlobal ||
-		freeGlobal.self === freeGlobal
-	) {
-		root = freeGlobal;
-	}
-
-	/**
-	 * The `punycode` object.
-	 * @name punycode
-	 * @type Object
-	 */
-	var punycode,
-
-	/** Highest positive signed 32-bit float value */
-	maxInt = 2147483647, // aka. 0x7FFFFFFF or 2^31-1
-
-	/** Bootstring parameters */
-	base = 36,
-	tMin = 1,
-	tMax = 26,
-	skew = 38,
-	damp = 700,
-	initialBias = 72,
-	initialN = 128, // 0x80
-	delimiter = '-', // '\x2D'
-
-	/** Regular expressions */
-	regexPunycode = /^xn--/,
-	regexNonASCII = /[^\x20-\x7E]/, // unprintable ASCII chars + non-ASCII chars
-	regexSeparators = /[\x2E\u3002\uFF0E\uFF61]/g, // RFC 3490 separators
-
-	/** Error messages */
-	errors = {
-		'overflow': 'Overflow: input needs wider integers to process',
-		'not-basic': 'Illegal input >= 0x80 (not a basic code point)',
-		'invalid-input': 'Invalid input'
-	},
-
-	/** Convenience shortcuts */
-	baseMinusTMin = base - tMin,
-	floor = Math.floor,
-	stringFromCharCode = String.fromCharCode,
-
-	/** Temporary variable */
-	key;
-
-	/*--------------------------------------------------------------------------*/
-
-	/**
-	 * A generic error utility function.
-	 * @private
-	 * @param {String} type The error type.
-	 * @returns {Error} Throws a `RangeError` with the applicable error message.
-	 */
-	function error(type) {
-		throw new RangeError(errors[type]);
-	}
-
-	/**
-	 * A generic `Array#map` utility function.
-	 * @private
-	 * @param {Array} array The array to iterate over.
-	 * @param {Function} callback The function that gets called for every array
-	 * item.
-	 * @returns {Array} A new array of values returned by the callback function.
-	 */
-	function map(array, fn) {
-		var length = array.length;
-		var result = [];
-		while (length--) {
-			result[length] = fn(array[length]);
-		}
-		return result;
-	}
-
-	/**
-	 * A simple `Array#map`-like wrapper to work with domain name strings or email
-	 * addresses.
-	 * @private
-	 * @param {String} domain The domain name or email address.
-	 * @param {Function} callback The function that gets called for every
-	 * character.
-	 * @returns {Array} A new string of characters returned by the callback
-	 * function.
-	 */
-	function mapDomain(string, fn) {
-		var parts = string.split('@');
-		var result = '';
-		if (parts.length > 1) {
-			// In email addresses, only the domain name should be punycoded. Leave
-			// the local part (i.e. everything up to `@`) intact.
-			result = parts[0] + '@';
-			string = parts[1];
-		}
-		// Avoid `split(regex)` for IE8 compatibility. See #17.
-		string = string.replace(regexSeparators, '\x2E');
-		var labels = string.split('.');
-		var encoded = map(labels, fn).join('.');
-		return result + encoded;
-	}
-
-	/**
-	 * Creates an array containing the numeric code points of each Unicode
-	 * character in the string. While JavaScript uses UCS-2 internally,
-	 * this function will convert a pair of surrogate halves (each of which
-	 * UCS-2 exposes as separate characters) into a single code point,
-	 * matching UTF-16.
-	 * @see `punycode.ucs2.encode`
-	 * @see <https://mathiasbynens.be/notes/javascript-encoding>
-	 * @memberOf punycode.ucs2
-	 * @name decode
-	 * @param {String} string The Unicode input string (UCS-2).
-	 * @returns {Array} The new array of code points.
-	 */
-	function ucs2decode(string) {
-		var output = [],
-		    counter = 0,
-		    length = string.length,
-		    value,
-		    extra;
-		while (counter < length) {
-			value = string.charCodeAt(counter++);
-			if (value >= 0xD800 && value <= 0xDBFF && counter < length) {
-				// high surrogate, and there is a next character
-				extra = string.charCodeAt(counter++);
-				if ((extra & 0xFC00) == 0xDC00) { // low surrogate
-					output.push(((value & 0x3FF) << 10) + (extra & 0x3FF) + 0x10000);
-				} else {
-					// unmatched surrogate; only append this code unit, in case the next
-					// code unit is the high surrogate of a surrogate pair
-					output.push(value);
-					counter--;
-				}
-			} else {
-				output.push(value);
-			}
-		}
-		return output;
-	}
-
-	/**
-	 * Creates a string based on an array of numeric code points.
-	 * @see `punycode.ucs2.decode`
-	 * @memberOf punycode.ucs2
-	 * @name encode
-	 * @param {Array} codePoints The array of numeric code points.
-	 * @returns {String} The new Unicode string (UCS-2).
-	 */
-	function ucs2encode(array) {
-		return map(array, function(value) {
-			var output = '';
-			if (value > 0xFFFF) {
-				value -= 0x10000;
-				output += stringFromCharCode(value >>> 10 & 0x3FF | 0xD800);
-				value = 0xDC00 | value & 0x3FF;
-			}
-			output += stringFromCharCode(value);
-			return output;
-		}).join('');
-	}
-
-	/**
-	 * Converts a basic code point into a digit/integer.
-	 * @see `digitToBasic()`
-	 * @private
-	 * @param {Number} codePoint The basic numeric code point value.
-	 * @returns {Number} The numeric value of a basic code point (for use in
-	 * representing integers) in the range `0` to `base - 1`, or `base` if
-	 * the code point does not represent a value.
-	 */
-	function basicToDigit(codePoint) {
-		if (codePoint - 48 < 10) {
-			return codePoint - 22;
-		}
-		if (codePoint - 65 < 26) {
-			return codePoint - 65;
-		}
-		if (codePoint - 97 < 26) {
-			return codePoint - 97;
-		}
-		return base;
-	}
-
-	/**
-	 * Converts a digit/integer into a basic code point.
-	 * @see `basicToDigit()`
-	 * @private
-	 * @param {Number} digit The numeric value of a basic code point.
-	 * @returns {Number} The basic code point whose value (when used for
-	 * representing integers) is `digit`, which needs to be in the range
-	 * `0` to `base - 1`. If `flag` is non-zero, the uppercase form is
-	 * used; else, the lowercase form is used. The behavior is undefined
-	 * if `flag` is non-zero and `digit` has no uppercase form.
-	 */
-	function digitToBasic(digit, flag) {
-		//  0..25 map to ASCII a..z or A..Z
-		// 26..35 map to ASCII 0..9
-		return digit + 22 + 75 * (digit < 26) - ((flag != 0) << 5);
-	}
-
-	/**
-	 * Bias adaptation function as per section 3.4 of RFC 3492.
-	 * https://tools.ietf.org/html/rfc3492#section-3.4
-	 * @private
-	 */
-	function adapt(delta, numPoints, firstTime) {
-		var k = 0;
-		delta = firstTime ? floor(delta / damp) : delta >> 1;
-		delta += floor(delta / numPoints);
-		for (/* no initialization */; delta > baseMinusTMin * tMax >> 1; k += base) {
-			delta = floor(delta / baseMinusTMin);
-		}
-		return floor(k + (baseMinusTMin + 1) * delta / (delta + skew));
-	}
-
-	/**
-	 * Converts a Punycode string of ASCII-only symbols to a string of Unicode
-	 * symbols.
-	 * @memberOf punycode
-	 * @param {String} input The Punycode string of ASCII-only symbols.
-	 * @returns {String} The resulting string of Unicode symbols.
-	 */
-	function decode(input) {
-		// Don't use UCS-2
-		var output = [],
-		    inputLength = input.length,
-		    out,
-		    i = 0,
-		    n = initialN,
-		    bias = initialBias,
-		    basic,
-		    j,
-		    index,
-		    oldi,
-		    w,
-		    k,
-		    digit,
-		    t,
-		    /** Cached calculation results */
-		    baseMinusT;
-
-		// Handle the basic code points: let `basic` be the number of input code
-		// points before the last delimiter, or `0` if there is none, then copy
-		// the first basic code points to the output.
-
-		basic = input.lastIndexOf(delimiter);
-		if (basic < 0) {
-			basic = 0;
-		}
-
-		for (j = 0; j < basic; ++j) {
-			// if it's not a basic code point
-			if (input.charCodeAt(j) >= 0x80) {
-				error('not-basic');
-			}
-			output.push(input.charCodeAt(j));
-		}
-
-		// Main decoding loop: start just after the last delimiter if any basic code
-		// points were copied; start at the beginning otherwise.
-
-		for (index = basic > 0 ? basic + 1 : 0; index < inputLength; /* no final expression */) {
-
-			// `index` is the index of the next character to be consumed.
-			// Decode a generalized variable-length integer into `delta`,
-			// which gets added to `i`. The overflow checking is easier
-			// if we increase `i` as we go, then subtract off its starting
-			// value at the end to obtain `delta`.
-			for (oldi = i, w = 1, k = base; /* no condition */; k += base) {
-
-				if (index >= inputLength) {
-					error('invalid-input');
-				}
-
-				digit = basicToDigit(input.charCodeAt(index++));
-
-				if (digit >= base || digit > floor((maxInt - i) / w)) {
-					error('overflow');
-				}
-
-				i += digit * w;
-				t = k <= bias ? tMin : (k >= bias + tMax ? tMax : k - bias);
-
-				if (digit < t) {
-					break;
-				}
-
-				baseMinusT = base - t;
-				if (w > floor(maxInt / baseMinusT)) {
-					error('overflow');
-				}
-
-				w *= baseMinusT;
-
-			}
-
-			out = output.length + 1;
-			bias = adapt(i - oldi, out, oldi == 0);
-
-			// `i` was supposed to wrap around from `out` to `0`,
-			// incrementing `n` each time, so we'll fix that now:
-			if (floor(i / out) > maxInt - n) {
-				error('overflow');
-			}
-
-			n += floor(i / out);
-			i %= out;
-
-			// Insert `n` at position `i` of the output
-			output.splice(i++, 0, n);
-
-		}
-
-		return ucs2encode(output);
-	}
-
-	/**
-	 * Converts a string of Unicode symbols (e.g. a domain name label) to a
-	 * Punycode string of ASCII-only symbols.
-	 * @memberOf punycode
-	 * @param {String} input The string of Unicode symbols.
-	 * @returns {String} The resulting Punycode string of ASCII-only symbols.
-	 */
-	function encode(input) {
-		var n,
-		    delta,
-		    handledCPCount,
-		    basicLength,
-		    bias,
-		    j,
-		    m,
-		    q,
-		    k,
-		    t,
-		    currentValue,
-		    output = [],
-		    /** `inputLength` will hold the number of code points in `input`. */
-		    inputLength,
-		    /** Cached calculation results */
-		    handledCPCountPlusOne,
-		    baseMinusT,
-		    qMinusT;
-
-		// Convert the input in UCS-2 to Unicode
-		input = ucs2decode(input);
-
-		// Cache the length
-		inputLength = input.length;
-
-		// Initialize the state
-		n = initialN;
-		delta = 0;
-		bias = initialBias;
-
-		// Handle the basic code points
-		for (j = 0; j < inputLength; ++j) {
-			currentValue = input[j];
-			if (currentValue < 0x80) {
-				output.push(stringFromCharCode(currentValue));
-			}
-		}
-
-		handledCPCount = basicLength = output.length;
-
-		// `handledCPCount` is the number of code points that have been handled;
-		// `basicLength` is the number of basic code points.
-
-		// Finish the basic string - if it is not empty - with a delimiter
-		if (basicLength) {
-			output.push(delimiter);
-		}
-
-		// Main encoding loop:
-		while (handledCPCount < inputLength) {
-
-			// All non-basic code points < n have been handled already. Find the next
-			// larger one:
-			for (m = maxInt, j = 0; j < inputLength; ++j) {
-				currentValue = input[j];
-				if (currentValue >= n && currentValue < m) {
-					m = currentValue;
-				}
-			}
-
-			// Increase `delta` enough to advance the decoder's <n,i> state to <m,0>,
-			// but guard against overflow
-			handledCPCountPlusOne = handledCPCount + 1;
-			if (m - n > floor((maxInt - delta) / handledCPCountPlusOne)) {
-				error('overflow');
-			}
-
-			delta += (m - n) * handledCPCountPlusOne;
-			n = m;
-
-			for (j = 0; j < inputLength; ++j) {
-				currentValue = input[j];
-
-				if (currentValue < n && ++delta > maxInt) {
-					error('overflow');
-				}
-
-				if (currentValue == n) {
-					// Represent delta as a generalized variable-length integer
-					for (q = delta, k = base; /* no condition */; k += base) {
-						t = k <= bias ? tMin : (k >= bias + tMax ? tMax : k - bias);
-						if (q < t) {
-							break;
-						}
-						qMinusT = q - t;
-						baseMinusT = base - t;
-						output.push(
-							stringFromCharCode(digitToBasic(t + qMinusT % baseMinusT, 0))
-						);
-						q = floor(qMinusT / baseMinusT);
-					}
-
-					output.push(stringFromCharCode(digitToBasic(q, 0)));
-					bias = adapt(delta, handledCPCountPlusOne, handledCPCount == basicLength);
-					delta = 0;
-					++handledCPCount;
-				}
-			}
-
-			++delta;
-			++n;
-
-		}
-		return output.join('');
-	}
-
-	/**
-	 * Converts a Punycode string representing a domain name or an email address
-	 * to Unicode. Only the Punycoded parts of the input will be converted, i.e.
-	 * it doesn't matter if you call it on a string that has already been
-	 * converted to Unicode.
-	 * @memberOf punycode
-	 * @param {String} input The Punycoded domain name or email address to
-	 * convert to Unicode.
-	 * @returns {String} The Unicode representation of the given Punycode
-	 * string.
-	 */
-	function toUnicode(input) {
-		return mapDomain(input, function(string) {
-			return regexPunycode.test(string)
-				? decode(string.slice(4).toLowerCase())
-				: string;
-		});
-	}
-
-	/**
-	 * Converts a Unicode string representing a domain name or an email address to
-	 * Punycode. Only the non-ASCII parts of the domain name will be converted,
-	 * i.e. it doesn't matter if you call it with a domain that's already in
-	 * ASCII.
-	 * @memberOf punycode
-	 * @param {String} input The domain name or email address to convert, as a
-	 * Unicode string.
-	 * @returns {String} The Punycode representation of the given domain name or
-	 * email address.
-	 */
-	function toASCII(input) {
-		return mapDomain(input, function(string) {
-			return regexNonASCII.test(string)
-				? 'xn--' + encode(string)
-				: string;
-		});
-	}
-
-	/*--------------------------------------------------------------------------*/
-
-	/** Define the public API */
-	punycode = {
-		/**
-		 * A string representing the current Punycode.js version number.
-		 * @memberOf punycode
-		 * @type String
-		 */
-		'version': '1.4.1',
-		/**
-		 * An object of methods to convert from JavaScript's internal character
-		 * representation (UCS-2) to Unicode code points, and back.
-		 * @see <https://mathiasbynens.be/notes/javascript-encoding>
-		 * @memberOf punycode
-		 * @type Object
-		 */
-		'ucs2': {
-			'decode': ucs2decode,
-			'encode': ucs2encode
-		},
-		'decode': decode,
-		'encode': encode,
-		'toASCII': toASCII,
-		'toUnicode': toUnicode
-	};
-
-	/** Expose `punycode` */
-	// Some AMD build optimizers, like r.js, check for specific condition patterns
-	// like the following:
-	if (
-		true
-	) {
-		!(__WEBPACK_AMD_DEFINE_RESULT__ = (function() {
-			return punycode;
-		}).call(exports, __webpack_require__, exports, module),
-				__WEBPACK_AMD_DEFINE_RESULT__ !== undefined && (module.exports = __WEBPACK_AMD_DEFINE_RESULT__));
-	} else if (freeExports && freeModule) {
-		if (module.exports == freeExports) {
-			// in Node.js, io.js, or RingoJS v0.8.0+
-			freeModule.exports = punycode;
-		} else {
-			// in Narwhal or RingoJS v0.7.0-
-			for (key in punycode) {
-				punycode.hasOwnProperty(key) && (freeExports[key] = punycode[key]);
-			}
-		}
-	} else {
-		// in Rhino or a web browser
-		root.punycode = punycode;
-	}
-
-}(this));
-
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(793)(module), __webpack_require__(792)))
 
 /***/ }),
 

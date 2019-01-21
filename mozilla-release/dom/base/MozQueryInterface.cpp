@@ -19,19 +19,18 @@ namespace dom {
 
 constexpr size_t IID_SIZE = sizeof(nsIID);
 
-static_assert(IID_SIZE == 16,
-              "Size of nsID struct changed. Please ensure this code is still valid.");
+static_assert(
+    IID_SIZE == 16,
+    "Size of nsID struct changed. Please ensure this code is still valid.");
 
-static int
-CompareIIDs(const nsIID& aA, const nsIID &aB)
-{
+static int CompareIIDs(const nsIID& aA, const nsIID& aB) {
   return memcmp((void*)&aA.m0, (void*)&aB.m0, IID_SIZE);
 }
 
 /* static */
-MozQueryInterface*
-ChromeUtils::GenerateQI(const GlobalObject& aGlobal, const Sequence<OwningStringOrIID>& aInterfaces, ErrorResult& aRv)
-{
+MozQueryInterface* ChromeUtils::GenerateQI(
+    const GlobalObject& aGlobal, const Sequence<OwningStringOrIID>& aInterfaces,
+    ErrorResult& aRv) {
   JSContext* cx = aGlobal.Context();
   JS::RootedObject xpcIfaces(cx);
 
@@ -74,7 +73,8 @@ ChromeUtils::GenerateQI(const GlobalObject& aGlobal, const Sequence<OwningString
       return nullptr;
     }
 
-    nsCOMPtr<nsISupports> base = xpc::UnwrapReflectorToISupports(&val.toObject());
+    nsCOMPtr<nsISupports> base =
+        xpc::UnwrapReflectorToISupports(&val.toObject());
     nsCOMPtr<nsIJSID> iid = do_QueryInterface(base);
     if (!iid) {
       aRv.Throw(NS_ERROR_INVALID_ARG);
@@ -91,18 +91,14 @@ ChromeUtils::GenerateQI(const GlobalObject& aGlobal, const Sequence<OwningString
   return new MozQueryInterface(std::move(ifaces));
 }
 
-bool
-MozQueryInterface::QueriesTo(const nsIID& aIID) const
-{
+bool MozQueryInterface::QueriesTo(const nsIID& aIID) const {
   return mInterfaces.ContainsSorted(aIID, CompareIIDs);
 }
 
-void
-MozQueryInterface::LegacyCall(JSContext* cx, JS::Handle<JS::Value> thisv,
-                              nsIJSID* aIID,
-                              JS::MutableHandle<JS::Value> aResult,
-                              ErrorResult& aRv) const
-{
+void MozQueryInterface::LegacyCall(JSContext* cx, JS::Handle<JS::Value> thisv,
+                                   nsIJSID* aIID,
+                                   JS::MutableHandle<JS::Value> aResult,
+                                   ErrorResult& aRv) const {
   if (!QueriesTo(*aIID->GetID())) {
     aRv.Throw(NS_ERROR_NO_INTERFACE);
   } else {
@@ -110,12 +106,11 @@ MozQueryInterface::LegacyCall(JSContext* cx, JS::Handle<JS::Value> thisv,
   }
 }
 
-bool
-MozQueryInterface::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto, JS::MutableHandle<JSObject*> aReflector)
-{
+bool MozQueryInterface::WrapObject(JSContext* aCx,
+                                   JS::Handle<JSObject*> aGivenProto,
+                                   JS::MutableHandle<JSObject*> aReflector) {
   return MozQueryInterface_Binding::Wrap(aCx, this, aGivenProto, aReflector);
 }
 
-} // namespace dom
-} // namespace mozilla
-
+}  // namespace dom
+}  // namespace mozilla

@@ -1,24 +1,24 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! [@document rules](https://www.w3.org/TR/2012/WD-css3-conditional-20120911/#at-document)
 //! initially in CSS Conditional Rules Module Level 3, @document has been postponed to the level 4.
 //! We implement the prefixed `@-moz-document`.
 
+use crate::media_queries::Device;
+use crate::parser::{Parse, ParserContext};
+use crate::shared_lock::{DeepCloneParams, DeepCloneWithLock, Locked};
+use crate::shared_lock::{SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard};
+use crate::str::CssStringWriter;
+use crate::stylesheets::CssRules;
+use crate::values::CssUrl;
 use cssparser::{Parser, SourceLocation};
 #[cfg(feature = "gecko")]
 use malloc_size_of::{MallocSizeOfOps, MallocUnconditionalShallowSizeOf};
-use media_queries::Device;
-use parser::{Parse, ParserContext};
 use servo_arc::Arc;
-use shared_lock::{DeepCloneParams, DeepCloneWithLock, Locked};
-use shared_lock::{SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard};
 use std::fmt::{self, Write};
-use str::CssStringWriter;
 use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
-use stylesheets::CssRules;
-use values::CssUrl;
 
 #[derive(Debug)]
 /// A @-moz-document rule
@@ -120,7 +120,8 @@ macro_rules! parse_quoted_or_unquoted_string {
                 .parse_entirely(|input| {
                     let string = input.expect_string()?;
                     Ok($url_matching_function(string.as_ref().to_owned()))
-                }).or_else(|_: ParseError| {
+                })
+                .or_else(|_: ParseError| {
                     while let Ok(_) = input.next() {}
                     Ok($url_matching_function(input.slice_from(start).to_string()))
                 })
@@ -171,8 +172,8 @@ impl DocumentMatchingFunction {
     #[cfg(feature = "gecko")]
     /// Evaluate a URL matching function.
     pub fn evaluate(&self, device: &Device) -> bool {
-        use gecko_bindings::bindings::Gecko_DocumentRule_UseForPresentation;
-        use gecko_bindings::structs::DocumentMatchingFunction as GeckoDocumentMatchingFunction;
+        use crate::gecko_bindings::bindings::Gecko_DocumentRule_UseForPresentation;
+        use crate::gecko_bindings::structs::DocumentMatchingFunction as GeckoDocumentMatchingFunction;
         use nsstring::nsCStr;
 
         let func = match *self {
@@ -252,8 +253,8 @@ impl DocumentCondition {
 
     #[cfg(feature = "gecko")]
     fn allowed_in(&self, context: &ParserContext) -> bool {
-        use gecko_bindings::structs;
-        use stylesheets::Origin;
+        use crate::gecko_bindings::structs;
+        use crate::stylesheets::Origin;
 
         if context.stylesheet_origin != Origin::Author {
             return true;

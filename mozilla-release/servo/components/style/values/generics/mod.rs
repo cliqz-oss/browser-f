@@ -1,16 +1,16 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Generic types that share their serialization implementations
 //! for both specified and computed values.
 
-use counter_style::{parse_counter_style_name, Symbols};
+use super::CustomIdent;
+use crate::counter_style::{parse_counter_style_name, Symbols};
+use crate::parser::{Parse, ParserContext};
 use cssparser::Parser;
-use parser::{Parse, ParserContext};
 use style_traits::{KeywordsCollectFn, ParseError};
 use style_traits::{SpecifiedValueInfo, StyleParseErrorKind};
-use super::CustomIdent;
 
 pub mod background;
 pub mod basic_shape;
@@ -20,6 +20,7 @@ pub mod box_;
 pub mod color;
 pub mod column;
 pub mod counters;
+pub mod easing;
 pub mod effects;
 pub mod flex;
 pub mod font;
@@ -53,7 +54,7 @@ pub enum SymbolsType {
 impl SymbolsType {
     /// Convert symbols type to their corresponding Gecko values.
     pub fn to_gecko_keyword(self) -> u8 {
-        use gecko_bindings::structs;
+        use crate::gecko_bindings::structs;
         match self {
             SymbolsType::Cyclic => structs::NS_STYLE_COUNTER_SYSTEM_CYCLIC as u8,
             SymbolsType::Numeric => structs::NS_STYLE_COUNTER_SYSTEM_NUMERIC as u8,
@@ -65,7 +66,7 @@ impl SymbolsType {
 
     /// Convert Gecko value to symbol type.
     pub fn from_gecko_keyword(gecko_value: u32) -> SymbolsType {
-        use gecko_bindings::structs;
+        use crate::gecko_bindings::structs;
         match gecko_value {
             structs::NS_STYLE_COUNTER_SYSTEM_CYCLIC => SymbolsType::Cyclic,
             structs::NS_STYLE_COUNTER_SYSTEM_NUMERIC => SymbolsType::Numeric,

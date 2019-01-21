@@ -20,6 +20,10 @@ import "./shipping-option-picker.js";
 
 /**
  * <payment-dialog></payment-dialog>
+ *
+ * Warning: Do not import this module from any other module as it will import
+ * everything else (see above) and ruin element independence. This can stop
+ * being exported once tests stop depending on it.
  */
 
 export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLElement) {
@@ -299,12 +303,15 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
   _renderPayerFields(state) {
     let paymentOptions = state.request.paymentOptions;
     let payerRequested = this._isPayerRequested(paymentOptions);
+    let payerAddressForm =
+      this.querySelector("address-form[selected-state-key='selectedPayerAddress']");
+
     for (let element of this._payerRelatedEls) {
       element.hidden = !payerRequested;
     }
 
     if (payerRequested) {
-      let fieldNames = new Set(); // default: ["name", "tel", "email"]
+      let fieldNames = new Set();
       if (paymentOptions.requestPayerName) {
         fieldNames.add("name");
       }
@@ -314,7 +321,12 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
       if (paymentOptions.requestPayerPhone) {
         fieldNames.add("tel");
       }
-      this._payerAddressPicker.setAttribute("address-fields", [...fieldNames].join(" "));
+      let addressFields = [...fieldNames].join(" ");
+      this._payerAddressPicker.setAttribute("address-fields", addressFields);
+      if (payerAddressForm.form) {
+        payerAddressForm.form.dataset.extraRequiredFields = addressFields;
+      }
+
       // For the payer picker we want to have a line break after the name field (#1)
       // if all three fields are requested.
       if (fieldNames.size == 3) {
@@ -325,8 +337,6 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
     } else {
       this._payerAddressPicker.removeAttribute("address-fields");
     }
-    this._payerAddressPicker.dataset.addAddressTitle = this.dataset.payerTitleAdd;
-    this._payerAddressPicker.dataset.editAddressTitle = this.dataset.payerTitleEdit;
   }
 
   stateChangeCallback(state) {
@@ -358,14 +368,15 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
     this._viewAllButton.hidden = !displayItems.length && !additionalItems.length;
 
     let shippingType = state.request.paymentOptions.shippingType || "shipping";
-    this._shippingAddressPicker.dataset.addAddressTitle =
-      this.dataset[shippingType + "AddressTitleAdd"];
-    this._shippingAddressPicker.dataset.editAddressTitle =
-      this.dataset[shippingType + "AddressTitleEdit"];
     let addressPickerLabel = this._shippingAddressPicker.dataset[shippingType + "AddressLabel"];
     this._shippingAddressPicker.setAttribute("label", addressPickerLabel);
     let optionPickerLabel = this._shippingOptionPicker.dataset[shippingType + "OptionsLabel"];
     this._shippingOptionPicker.setAttribute("label", optionPickerLabel);
+
+    let shippingAddressForm =
+      this.querySelector("address-form[selected-state-key='selectedShippingAddress']");
+    shippingAddressForm.dataset.titleAdd = this.dataset[shippingType + "AddressTitleAdd"];
+    shippingAddressForm.dataset.titleEdit = this.dataset[shippingType + "AddressTitleEdit"];
 
     let totalItem = paymentRequest.getTotalItem(state);
     let totalAmountEl = this.querySelector("#total > currency-amount");
@@ -414,16 +425,6 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
     }
     this.setAttribute("complete-status", request.completeStatus);
     this._disabledOverlay.hidden = !state.changesPrevented;
-  }
-
-  static maybeCreateFieldErrorElement(container) {
-    let span = container.querySelector(".error-text");
-    if (!span) {
-      span = document.createElement("span");
-      span.className = "error-text";
-      container.appendChild(span);
-    }
-    return span;
   }
 }
 

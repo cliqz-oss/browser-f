@@ -14,8 +14,7 @@
   height: 100%;
 }
 
-.network-monitor .panel-container,
-.network-monitor .properties-view {
+.network-monitor .panel-container {
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
@@ -28,6 +27,8 @@
 }
 
 .network-monitor .properties-view {
+  display: flex;
+  flex-direction: column;
   flex-grow: 1;
 }
 
@@ -378,18 +379,14 @@
 }
 
 .network-monitor .security-warning-icon {
-  background-image: url(chrome://devtools/skin/images/alerticon-warning.png);
-  background-size: 13px 12px;
-  margin-inline-start: 5px;
-  vertical-align: top;
-  width: 13px;
+  width: 12px;
   height: 12px;
-}
-
-@media (min-resolution: 1.1dppx) {
-  .network-monitor .security-warning-icon {
-    background-image: url(chrome://devtools/skin/images/alerticon-warning@2x.png);
-  }
+  vertical-align: -1px;
+  margin-inline-start: 5px;
+  background-image: url(chrome://devtools/skin/images/alert.svg);
+  background-size: cover;
+  -moz-context-properties: fill;
+  fill: var(--yellow-60);
 }
 
 /* Custom request panel */

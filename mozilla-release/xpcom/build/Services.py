@@ -46,6 +46,8 @@ service('ThirdPartyUtil', 'mozIThirdPartyUtil',
         "@mozilla.org/thirdpartyutil;1")
 service('URIFixup', 'nsIURIFixup',
         "@mozilla.org/docshell/urifixup;1")
+service('EffectiveTLDService', 'nsIEffectiveTLDService',
+        "@mozilla.org/network/effective-tld-service;1")
 
 # The definition file needs access to the definitions of the particular
 # interfaces. If you add a new interface here, make sure the necessary includes
@@ -77,6 +79,7 @@ CPP_INCLUDES = """
 #include "nsIUUIDGenerator.h"
 #include "nsIGfxInfo.h"
 #include "nsIURIFixup.h"
+#include "nsIEffectiveTLDService.h"
 """
 
 #####
@@ -114,7 +117,7 @@ def services_h(output):
 #ifdef MOZILLA_INTERNAL_API
 extern "C" {
 /**
- * NOTE: Don't call this method directly, instead call mozilla::services::Get{0}.
+ * NOTE: Don't call this method directly, instead call mozilla::services::Get%(name)s.
  * It is used to expose XPCOM services to rust code. The return value is already addrefed.
  */
 %(type)s* XPCOMService_Get%(name)s();
@@ -154,7 +157,7 @@ static %(type)s* g%(name)s = nullptr;
 
 extern "C" {
 /**
- * NOTE: Don't call this method directly, instead call `mozilla::services::Get{0}`.
+ * NOTE: Don't call this method directly, instead call `mozilla::services::Get%(name)s`.
  * This method is extern "C" to expose XPCOM services to rust code.
  * The return value is already addrefed.
  */

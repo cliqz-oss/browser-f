@@ -140,7 +140,7 @@ AccessibilityPanel.prototype = {
     if (this.front.enabled) {
       this._telemetry.start(A11Y_SERVICE_DURATION, this);
     } else {
-      this._telemetry.finish(A11Y_SERVICE_DURATION, this);
+      this._telemetry.finish(A11Y_SERVICE_DURATION, this, true);
     }
   },
 
@@ -240,8 +240,11 @@ AccessibilityPanel.prototype = {
     this.panelWin.off(EVENTS.ACCESSIBILITY_INSPECTOR_UPDATED,
       this.onAccessibilityInspectorUpdated);
 
-    this.picker.release();
-    this.picker = null;
+    // Older versions of debugger server do not support picker functionality.
+    if (this.picker) {
+      this.picker.release();
+      this.picker = null;
+    }
 
     if (this.front) {
       this.front.off("init", this.updateA11YServiceDurationTimer);

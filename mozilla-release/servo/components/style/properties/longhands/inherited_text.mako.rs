@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 <%namespace name="helpers" file="/helpers.mako.rs" />
 <% from data import Keyword %>
@@ -61,15 +61,16 @@ ${helpers.predefined_type(
     servo_restyle_damage = "reflow",
 )}
 
-// Also known as "word-wrap" (which is more popular because of IE), but this is the preferred
-// name per CSS-TEXT 6.2.
-${helpers.single_keyword(
+// Also known as "word-wrap" (which is more popular because of IE), but this is
+// the preferred name per CSS-TEXT 6.2.
+${helpers.predefined_type(
     "overflow-wrap",
-    "normal break-word",
-    gecko_constant_prefix="NS_STYLE_OVERFLOWWRAP",
+    "OverflowWrap",
+    "computed::OverflowWrap::Normal",
     animation_value_type="discrete",
     spec="https://drafts.csswg.org/css-text/#propdef-overflow-wrap",
     alias="word-wrap",
+    needs_context=False,
     servo_restyle_damage="rebuild_and_reflow",
 )}
 
@@ -136,7 +137,7 @@ ${helpers.single_keyword(
 ${helpers.predefined_type(
     "text-align",
     "TextAlign",
-    "computed::TextAlign::start()",
+    "computed::TextAlign::Start",
     animation_value_type="discrete",
     flags="APPLIES_TO_PLACEHOLDER",
     spec="https://drafts.csswg.org/css-text/#propdef-text-align",
@@ -293,9 +294,9 @@ ${helpers.predefined_type(
 ${helpers.predefined_type(
     "-webkit-text-stroke-width",
     "BorderSideWidth",
-    "::values::computed::NonNegativeLength::new(0.)",
+    "crate::values::computed::NonNegativeLength::new(0.)",
     initial_specified_value="specified::BorderSideWidth::Length(specified::Length::zero())",
-    computed_type="::values::computed::NonNegativeLength",
+    computed_type="crate::values::computed::NonNegativeLength",
     products="gecko",
     gecko_pref="layout.css.prefixes.webkit",
     flags="APPLIES_TO_FIRST_LETTER APPLIES_TO_FIRST_LINE APPLIES_TO_PLACEHOLDER",
@@ -336,6 +337,7 @@ ${helpers.single_keyword(
 ${helpers.single_keyword(
     "text-rendering",
     "auto optimizespeed optimizelegibility geometricprecision",
+    gecko_enum_prefix="StyleTextRendering",
     animation_value_type="discrete",
     spec="https://www.w3.org/TR/SVG11/painting.html#TextRenderingProperty",
     servo_restyle_damage="rebuild_and_reflow",

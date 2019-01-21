@@ -12,7 +12,6 @@
 <!ENTITY advanced.label "Erweitert">
 <!ENTITY continue2.label "Mehr…">
 <!ENTITY moreInformation.label "Weitere Informationen">
-
 <!ENTITY viewCertificate.label "Zertifikat anzeigen">
 
 <!-- Specific error messages -->
@@ -235,6 +234,13 @@ was trying to connect. -->
 
 <!ENTITY blockedByPolicy.title "Blockierte Seite">
 
+<!ENTITY certerror.mitm.title "Software hindert &brandShortName; am Aufbauen einer sicheren Verbindung mit dieser Website">
+<!ENTITY certerror.mitm.longDesc "<span class='hostname'></span> ist wahrscheinlich eine sichere Website, aber es konnte keine sichere Verbindung aufgebaut werden. Dies wird durch <span class='mitm-name'/> verursacht, welches entweder auf dem Computer installierte Software oder Ihr Netzwerk ist.">
+<!ENTITY certerror.mitm.whatCanYouDoAboutIt1 "Falls die verwendete Antivirus-Software eine Funktion zum Untersuchen verschlüsselter Verbindungen enthält (oft als &quot;Browser Safety&quot; oder &quot;Untersuchung von sicheren Verbindungen&quot; bezeichnet), können Sie diese Funktion deaktivieren. Falls dies das Problem nicht behebt, können Sie die Antivirus-Software deinstallieren und neu installieren.">
+<!ENTITY certerror.mitm.whatCanYouDoAboutIt2 "Falls Sie ein Firmennetzwerk verwenden, kontaktieren Sie bitte Ihre IT-Abteilung.">
+<!ENTITY certerror.mitm.whatCanYouDoAboutIt3 "Falls Sie mit <span class='mitm-name'/> nicht vertraut sind, könnte dies ein Angriff sein und Sie sollten nicht mit dem Laden dieser Website fortfahren.">
+<!ENTITY certerror.mitm.sts.whatCanYouDoAboutIt3 "Falls Sie mit <span class='mitm-name'/> nicht vertraut sind, könnte dies ein Angriff sein und Sie können nichts unternehmen, um diese Seite zu laden.">
+
 <!ENTITY clockSkewError.title "Datum- und/oder Uhrzeit Ihres Computers sind nicht korrekt">
 <!ENTITY clockSkewError.longDesc "Datum- und Uhrzeit Ihres Computer sind auf <span id='wrongSystemTime_systemDate1'/> gesetzt, was &brandShortName; am Herstellen einer gesicherten Verbindung hindert. Setzen Sie Datum, Uhrzeit und Zeitzone in den Systemeinstellungen korrekt und laden Sie anschließend <span class='hostname'></span> neu.">
 
@@ -242,3 +248,4 @@ was trying to connect. -->
 <!ENTITY prefReset.label "Standardeinstellungen wiederherstellen">
 
 <!ENTITY networkProtocolError.title "Netzwerkprotokoll-Fehler">
+<!ENTITY networkProtocolError.longDesc "<p>Die angeforderte Seite kann nicht angezeigt werden, da ein Fehler bei der Verwendung des Netzwerkprotokolls erkannt wurde.</p><ul><li>Kontaktieren Sie bitte den Inhaber der Website, um ihn über dieses Problem zu informieren.</li></ul>">

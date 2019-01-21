@@ -1,16 +1,16 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! A rust helper to ease the use of Gecko's refcounted types.
 
-use Atom;
-use gecko_bindings::{structs, bindings};
-use gecko_bindings::sugar::ownership::HasArcFFI;
+use crate::gecko_bindings::sugar::ownership::HasArcFFI;
+use crate::gecko_bindings::{bindings, structs};
+use crate::Atom;
 use servo_arc::Arc;
-use std::{fmt, mem, ptr};
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
+use std::{fmt, mem, ptr};
 
 /// Trait for all objects that have Addref() and Release
 /// methods and can be placed inside RefPtr<T>
@@ -211,6 +211,18 @@ impl<T: RefCounted> structs::RefPtr<T> {
 }
 
 impl<T> structs::RefPtr<T> {
+    /// Sets the contents to an `Arc<T>`, releasing the old value in `self` if
+    /// necessary.
+    pub fn set_arc<U>(&mut self, other: Arc<U>)
+    where
+        U: HasArcFFI<FFIType = T>,
+    {
+        unsafe {
+            U::release_opt(self.mRawPtr.as_ref());
+        }
+        self.set_arc_leaky(other);
+    }
+
     /// Sets the contents to an Arc<T>
     /// will leak existing contents
     pub fn set_arc_leaky<U>(&mut self, other: Arc<U>)
@@ -276,11 +288,6 @@ impl_threadsafe_refcount!(
     structs::RawGeckoURLExtraData,
     bindings::Gecko_AddRefURLExtraDataArbitraryThread,
     bindings::Gecko_ReleaseURLExtraDataArbitraryThread
-);
-impl_threadsafe_refcount!(
-    structs::nsStyleQuoteValues,
-    bindings::Gecko_AddRefQuoteValuesArbitraryThread,
-    bindings::Gecko_ReleaseQuoteValuesArbitraryThread
 );
 impl_threadsafe_refcount!(
     structs::nsCSSValueSharedList,

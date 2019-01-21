@@ -1,15 +1,15 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Types used to report parsing errors.
 
 #![deny(missing_docs)]
 
+use crate::stylesheets::UrlExtraData;
 use cssparser::{BasicParseErrorKind, ParseErrorKind, SourceLocation, Token};
 use std::fmt;
 use style_traits::ParseError;
-use stylesheets::UrlExtraData;
 
 /// Errors that can be encountered while parsing CSS.
 #[derive(Debug)]

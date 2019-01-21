@@ -4,33 +4,18 @@
 
 "use strict";
 
-async function run_test() {
-  try {
-    do_test_pending();
-    await run_test_with_server(DebuggerServer);
-    await run_test_with_server(WorkerDebuggerServer);
-  } finally {
-    do_test_finished();
-  }
-}
+Services.prefs.setBoolPref("security.allow_eval_with_system_principal", true);
+registerCleanupFunction(() => {
+  Services.prefs.clearUserPref("security.allow_eval_with_system_principal");
+});
 
-async function run_test_with_server(server) {
-  initTestDebuggerServer(server);
-  const debuggee = addTestGlobal("test-grips", server);
-  debuggee.eval(`
-    function stopMe(arg1) {
-      debugger;
-    }
-  `);
-
-  const dbgClient = new DebuggerClient(server.connectPipe());
-  await dbgClient.connect();
-  const [,, threadClient] = await attachTestTabAndResume(dbgClient, "test-grips");
+add_task(threadClientTest(async ({ threadClient, debuggee, client }) => {
+  debuggee.eval(function stopMe(arg1) {
+    debugger;
+  }.toString());
 
   await test_object_grip(debuggee, threadClient);
-
-  await dbgClient.close();
-}
+}));
 
 async function test_object_grip(debuggee, threadClient) {
   await assert_object_argument(
@@ -114,7 +99,7 @@ async function test_object_grip(debuggee, threadClient) {
       };
 
       for (const [key, expected] of Object.entries(expectedValues)) {
-        const { value } = await objClient.getPropertyValue(key);
+        const { value } = await objClient.getPropertyValue(key, null);
 
         assert_completion(value, expected);
       }

@@ -6,6 +6,7 @@
 # ***** END LICENSE BLOCK *****
 
 import copy
+import json
 import os
 import sys
 
@@ -95,6 +96,20 @@ class MarionetteTest(TestingMixin, MercurialScript, TransferMixin,
          "dest": "headless",
          "default": False,
          "help": "Run tests in headless mode.",
+         }
+    ], [
+        ["--headless-width"],
+        {"action": "store",
+         "dest": "headless_width",
+         "default": "1600",
+         "help": "Specify headless virtual screen width (default: 1600).",
+         }
+    ], [
+        ["--headless-height"],
+        {"action": "store",
+         "dest": "headless_height",
+         "default": "1200",
+         "help": "Specify headless virtual screen height (default: 1200).",
          }
     ], [
        ["--allow-software-gl-layers"],
@@ -291,9 +306,6 @@ class MarionetteTest(TestingMixin, MercurialScript, TransferMixin,
         if not self.config['e10s']:
             cmd.append('--disable-e10s')
 
-        if self.config['headless']:
-            cmd.append('--headless')
-
         cmd.append('--gecko-log=-')
 
         if self.config.get("structured_output"):
@@ -306,8 +318,12 @@ class MarionetteTest(TestingMixin, MercurialScript, TransferMixin,
             # Make sure that the logging directory exists
             self.fatal("Could not create blobber upload directory")
 
-        if os.environ.get('MOZHARNESS_TEST_PATHS'):
-            cmd.extend(os.environ['MOZHARNESS_TEST_PATHS'].split(':'))
+        test_paths = json.loads(os.environ.get('MOZHARNESS_TEST_PATHS', '""'))
+
+        if test_paths and 'marionette' in test_paths:
+            paths = [os.path.join(dirs['abs_test_install_dir'], 'marionette', 'tests', p)
+                     for p in test_paths['marionette']]
+            cmd.extend(paths)
         else:
             cmd.append(manifest)
 
@@ -327,6 +343,11 @@ class MarionetteTest(TestingMixin, MercurialScript, TransferMixin,
         if self.config['enable_webrender']:
             env['MOZ_WEBRENDER'] = '1'
             env['MOZ_ACCELERATED'] = '1'
+
+        if self.config['headless']:
+            env['MOZ_HEADLESS'] = '1'
+            env['MOZ_HEADLESS_WIDTH'] = self.config['headless_width']
+            env['MOZ_HEADLESS_HEIGHT'] = self.config['headless_height']
 
         if not os.path.isdir(env['MOZ_UPLOAD_DIR']):
             self.mkdir_p(env['MOZ_UPLOAD_DIR'])

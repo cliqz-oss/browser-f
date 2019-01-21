@@ -1,50 +1,56 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Specified values.
 //!
 //! TODO(emilio): Enhance docs.
 
-use {Atom, Namespace, Prefix};
-use context::QuirksMode;
-use cssparser::{Parser, Token};
-use num_traits::One;
-use parser::{Parse, ParserContext};
-use std::f32;
-use std::fmt::{self, Write};
-use style_traits::{CssWriter, ParseError, SpecifiedValueInfo, StyleParseErrorKind, ToCss};
-use style_traits::values::specified::AllowedNumericType;
-use super::{Auto, CSSFloat, CSSInteger, Either};
+use super::computed::transform::DirectionVector;
 use super::computed::{Context, ToComputedValue};
-use super::generics::{GreaterThanOrEqualToOne, NonNegative};
 use super::generics::grid::{GridLine as GenericGridLine, TrackBreadth as GenericTrackBreadth};
 use super::generics::grid::{TrackList as GenericTrackList, TrackSize as GenericTrackSize};
-use values::serialize_atom_identifier;
-use values::specified::calc::CalcNode;
+use super::generics::transform::IsParallelTo;
+use super::generics::{GreaterThanOrEqualToOne, NonNegative};
+use super::{Auto, CSSFloat, CSSInteger, Either};
+use crate::context::QuirksMode;
+use crate::parser::{Parse, ParserContext};
+use crate::values::serialize_atom_identifier;
+use crate::values::specified::calc::CalcNode;
+use crate::{Atom, Namespace, Prefix};
+use cssparser::{Parser, Token};
+use num_traits::One;
+use std::f32;
+use std::fmt::{self, Write};
+use style_traits::values::specified::AllowedNumericType;
+use style_traits::{CssWriter, ParseError, SpecifiedValueInfo, StyleParseErrorKind, ToCss};
 
-pub use self::angle::Angle;
 #[cfg(feature = "gecko")]
 pub use self::align::{AlignContent, AlignItems, AlignSelf, ContentDistribution};
 #[cfg(feature = "gecko")]
 pub use self::align::{JustifyContent, JustifyItems, JustifySelf, SelfAlignment};
+pub use self::angle::Angle;
 pub use self::background::{BackgroundRepeat, BackgroundSize};
+pub use self::basic_shape::FillRule;
 pub use self::border::{BorderCornerRadius, BorderImageSlice, BorderImageWidth};
 pub use self::border::{BorderImageRepeat, BorderImageSideWidth};
-pub use self::border::{BorderRadius, BorderSideWidth, BorderSpacing};
-pub use self::column::ColumnCount;
-pub use self::font::{FontSize, FontSizeAdjust, FontStretch, FontSynthesis, FontVariantAlternates, FontWeight};
-pub use self::font::{FontFamily, FontLanguageOverride, FontStyle, FontVariantEastAsian, FontVariationSettings};
-pub use self::font::{FontFeatureSettings, FontVariantLigatures, FontVariantNumeric};
-pub use self::font::{MozScriptLevel, MozScriptMinSize, MozScriptSizeMultiplier, XLang, XTextZoom};
+pub use self::border::{BorderRadius, BorderSideWidth, BorderSpacing, BorderStyle};
 pub use self::box_::{AnimationIterationCount, AnimationName, Contain, Display};
-pub use self::box_::{Appearance, Clear, Float};
+pub use self::box_::{Appearance, BreakBetween, BreakWithin, Clear, Float};
 pub use self::box_::{OverflowClipBox, OverscrollBehavior, Perspective, Resize};
 pub use self::box_::{ScrollSnapType, TouchAction, TransitionProperty, VerticalAlign, WillChange};
 pub use self::color::{Color, ColorPropertyValue, RGBAColor};
+pub use self::column::ColumnCount;
 pub use self::counters::{Content, ContentItem, CounterIncrement, CounterReset};
+pub use self::easing::TimingFunction;
 pub use self::effects::{BoxShadow, Filter, SimpleShadow};
 pub use self::flex::FlexBasis;
+pub use self::font::{FontFamily, FontLanguageOverride, FontStyle};
+pub use self::font::{FontFeatureSettings, FontVariantLigatures, FontVariantNumeric};
+pub use self::font::{FontSize, FontSizeAdjust, FontStretch, FontSynthesis};
+pub use self::font::{FontVariantAlternates, FontWeight};
+pub use self::font::{FontVariantEastAsian, FontVariationSettings};
+pub use self::font::{MozScriptLevel, MozScriptMinSize, MozScriptSizeMultiplier, XLang, XTextZoom};
 #[cfg(feature = "gecko")]
 pub use self::gecko::ScrollSnapPoint;
 pub use self::image::{ColorStop, EndingShape as GradientEndingShape, Gradient};
@@ -55,30 +61,30 @@ pub use self::length::{LengthOrPercentage, LengthOrPercentageOrAuto};
 pub use self::length::{LengthOrPercentageOrNone, MaxLength, MozLength};
 pub use self::length::{NoCalcLength, ViewportPercentageLength};
 pub use self::length::{NonNegativeLengthOrPercentage, NonNegativeLengthOrPercentageOrAuto};
-pub use self::list::Quotes;
 #[cfg(feature = "gecko")]
 pub use self::list::ListStyleType;
+pub use self::list::{QuotePair, Quotes};
 pub use self::motion::OffsetPath;
 pub use self::outline::OutlineStyle;
-pub use self::rect::LengthOrNumberRect;
-pub use self::resolution::Resolution;
 pub use self::percentage::Percentage;
 pub use self::position::{GridAutoFlow, GridTemplateAreas, Position};
 pub use self::position::{PositionComponent, ZIndex};
+pub use self::rect::LengthOrNumberRect;
+pub use self::resolution::Resolution;
+pub use self::svg::MozContextProperties;
 pub use self::svg::{SVGLength, SVGOpacity, SVGPaint, SVGPaintKind};
 pub use self::svg::{SVGPaintOrder, SVGStrokeDashArray, SVGWidth};
-pub use self::svg::MozContextProperties;
 pub use self::svg_path::SVGPathData;
 pub use self::table::XSpan;
 pub use self::text::{InitialLetter, LetterSpacing, LineHeight, MozTabSize, TextAlign};
-pub use self::text::{TextEmphasisPosition, TextEmphasisStyle};
+pub use self::text::{OverflowWrap, TextEmphasisPosition, TextEmphasisStyle};
 pub use self::text::{TextAlignKeyword, TextDecorationLine, TextOverflow, WordSpacing};
 pub use self::time::Time;
-pub use self::transform::{Rotate, Scale, TimingFunction, Transform};
+pub use self::transform::{Rotate, Scale, Transform};
 pub use self::transform::{TransformOrigin, TransformStyle, Translate};
-pub use self::ui::{ColorOrAuto, Cursor, MozForceBrokenImageIcon};
 #[cfg(feature = "gecko")]
 pub use self::ui::CursorImage;
+pub use self::ui::{ColorOrAuto, Cursor, MozForceBrokenImageIcon, UserSelect};
 pub use super::generics::grid::GridTemplateComponent as GenericGridTemplateComponent;
 
 #[cfg(feature = "gecko")]
@@ -93,6 +99,7 @@ pub mod calc;
 pub mod color;
 pub mod column;
 pub mod counters;
+pub mod easing;
 pub mod effects;
 pub mod flex;
 pub mod font;
@@ -143,46 +150,6 @@ fn parse_number_with_clamping_mode<'i, 't>(
         value: result.min(f32::MAX).max(f32::MIN),
         calc_clamping_mode: Some(clamping_mode),
     })
-}
-
-// The integer values here correspond to the border conflict resolution rules in CSS 2.1 §
-// 17.6.2.1. Higher values override lower values.
-//
-// FIXME(emilio): Should move to border.rs
-#[allow(missing_docs)]
-#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    MallocSizeOf,
-    Ord,
-    Parse,
-    PartialEq,
-    PartialOrd,
-    SpecifiedValueInfo,
-    ToComputedValue,
-    ToCss,
-)]
-pub enum BorderStyle {
-    None = -1,
-    Solid = 6,
-    Double = 7,
-    Dotted = 4,
-    Dashed = 5,
-    Hidden = -2,
-    Groove = 1,
-    Ridge = 3,
-    Inset = 0,
-    Outset = 2,
-}
-
-impl BorderStyle {
-    /// Whether this border style is either none or hidden.
-    pub fn none_or_hidden(&self) -> bool {
-        matches!(*self, BorderStyle::None | BorderStyle::Hidden)
-    }
 }
 
 /// A CSS `<number>` specified value.
@@ -284,6 +251,19 @@ impl ToCss for Number {
             dest.write_str(")")?;
         }
         Ok(())
+    }
+}
+
+impl IsParallelTo for (Number, Number, Number) {
+    fn is_parallel_to(&self, vector: &DirectionVector) -> bool {
+        use euclid::approxeq::ApproxEq;
+        // If a and b is parallel, the angle between them is 0deg, so
+        // a x b = |a|*|b|*sin(0)*n = 0 * n, |a x b| == 0.
+        let self_vector = DirectionVector::new(self.0.get(), self.1.get(), self.2.get());
+        self_vector
+            .cross(*vector)
+            .square_length()
+            .approx_eq(&0.0f32)
     }
 }
 
@@ -690,7 +670,7 @@ impl ClipRect {
         input: &mut Parser<'i, 't>,
         allow_quirks: AllowQuirks,
     ) -> Result<Self, ParseError<'i>> {
-        use values::specified::Length;
+        use crate::values::specified::Length;
 
         fn parse_argument<'i, 't>(
             context: &ParserContext,

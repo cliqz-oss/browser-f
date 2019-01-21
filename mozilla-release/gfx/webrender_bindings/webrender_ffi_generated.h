@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Generated with cbindgen:0.6.6 */
+/* Generated with cbindgen:0.6.7 */
 
 /* DO NOT MODIFY THIS MANUALLY! This file was generated using cbindgen.
  * To generate this file:
@@ -50,6 +50,7 @@ enum class BoxShadowClipMode : uint32_t {
 enum class Checkpoint : uint32_t {
   SceneBuilt,
   FrameBuilt,
+  FrameTexturesUpdated,
   FrameRendered,
   // NotificationRequests get notified with this if they get dropped without having been
   // notified. This provides the guarantee that if a request is created it will get notified.
@@ -79,7 +80,7 @@ enum class ColorDepth : uint8_t {
   Sentinel /* this must be last for serialization purposes. */
 };
 
-enum class ExtendMode : uint32_t {
+enum class ExtendMode : uint8_t {
   Clamp,
   Repeat,
 
@@ -134,6 +135,8 @@ enum class ImageFormat : uint32_t {
   RG8 = 5,
   // Four channels, signed integer storage.
   RGBAI32 = 6,
+  // Four channels, byte storage.
+  RGBA8 = 7,
 
   Sentinel /* this must be last for serialization purposes. */
 };
@@ -252,6 +255,8 @@ enum class WrFilterOpType : uint32_t {
   Sepia = 8,
   DropShadow = 9,
   ColorMatrix = 10,
+  SrgbToLinear = 11,
+  LinearToSrgb = 12,
 
   Sentinel /* this must be last for serialization purposes. */
 };
@@ -284,8 +289,8 @@ struct LayoutPixel;
 // one per OS window), and all instances share the same thread.
 struct Renderer;
 
-// Offset in number of tiles.
-struct Tiles;
+// Unit for tile coordinates.
+struct TileCoordinate;
 
 // Represents the work associated to a transaction before scene building.
 struct Transaction;
@@ -534,11 +539,13 @@ struct MemoryReport {
   uintptr_t fonts;
   uintptr_t images;
   uintptr_t rasterized_blobs;
+  uintptr_t shader_cache;
   uintptr_t gpu_cache_textures;
   uintptr_t vertex_data_textures;
   uintptr_t render_target_textures;
   uintptr_t texture_cache_textures;
   uintptr_t depth_target_textures;
+  uintptr_t swap_chain;
 
   bool operator==(const MemoryReport& aOther) const {
     return primitive_stores == aOther.primitive_stores &&
@@ -550,11 +557,13 @@ struct MemoryReport {
            fonts == aOther.fonts &&
            images == aOther.images &&
            rasterized_blobs == aOther.rasterized_blobs &&
+           shader_cache == aOther.shader_cache &&
            gpu_cache_textures == aOther.gpu_cache_textures &&
            vertex_data_textures == aOther.vertex_data_textures &&
            render_target_textures == aOther.render_target_textures &&
            texture_cache_textures == aOther.texture_cache_textures &&
-           depth_target_textures == aOther.depth_target_textures;
+           depth_target_textures == aOther.depth_target_textures &&
+           swap_chain == aOther.swap_chain;
   }
 };
 
@@ -569,7 +578,7 @@ struct TypedSize2D {
   }
 };
 
-using DeviceUintSize = TypedSize2D<uint32_t, DevicePixel>;
+using DeviceIntSize = TypedSize2D<int32_t, DevicePixel>;
 
 using LayoutSize = TypedSize2D<float, LayoutPixel>;
 
@@ -588,16 +597,13 @@ struct BuiltDisplayListDescriptor {
   uintptr_t total_clip_nodes;
   // The amount of spatial nodes created while building this display list.
   uintptr_t total_spatial_nodes;
-  // An estimate of the number of primitives that will be created by this display list.
-  uintptr_t prim_count_estimate;
 
   bool operator==(const BuiltDisplayListDescriptor& aOther) const {
     return builder_start_time == aOther.builder_start_time &&
            builder_finish_time == aOther.builder_finish_time &&
            send_start_time == aOther.send_start_time &&
            total_clip_nodes == aOther.total_clip_nodes &&
-           total_spatial_nodes == aOther.total_spatial_nodes &&
-           prim_count_estimate == aOther.prim_count_estimate;
+           total_spatial_nodes == aOther.total_spatial_nodes;
   }
 };
 
@@ -626,6 +632,22 @@ struct TypedPoint2D {
 };
 
 using WorldPoint = TypedPoint2D<float, WorldPixel>;
+
+struct WrDebugFlags {
+  uint32_t mBits;
+
+  bool operator==(const WrDebugFlags& aOther) const {
+    return mBits == aOther.mBits;
+  }
+};
+
+struct WrClipId {
+  uintptr_t id;
+
+  bool operator==(const WrClipId& aOther) const {
+    return id == aOther.id;
+  }
+};
 
 // A 2d Rectangle optionally tagged with a unit.
 template<typename T, typename U>
@@ -972,9 +994,9 @@ struct ByteSlice {
   }
 };
 
-using TileOffset = TypedPoint2D<uint16_t, Tiles>;
+using TileOffset = TypedPoint2D<int32_t, TileCoordinate>;
 
-using DeviceUintRect = TypedRect<uint32_t, DevicePixel>;
+using LayoutIntRect = TypedRect<int32_t, LayoutPixel>;
 
 struct MutByteSlice {
   uint8_t *buffer;
@@ -986,11 +1008,27 @@ struct MutByteSlice {
   }
 };
 
-struct WrDebugFlags {
-  uint32_t mBits;
+// A C function that takes a pointer to a heap allocation and returns its size.
+//
+// This is borrowed from the malloc_size_of crate, upon which we want to avoid
+// a dependency from WebRender.
+using VoidPtrToSizeFn = uintptr_t(*)(const void*);
 
-  bool operator==(const WrDebugFlags& aOther) const {
-    return mBits == aOther.mBits;
+struct RendererStats {
+  uintptr_t total_draw_calls;
+  uintptr_t alpha_target_count;
+  uintptr_t color_target_count;
+  uintptr_t texture_upload_kb;
+  uint64_t resource_upload_time;
+  uint64_t gpu_cache_upload_time;
+
+  bool operator==(const RendererStats& aOther) const {
+    return total_draw_calls == aOther.total_draw_calls &&
+           alpha_target_count == aOther.alpha_target_count &&
+           color_target_count == aOther.color_target_count &&
+           texture_upload_kb == aOther.texture_upload_kb &&
+           resource_upload_time == aOther.resource_upload_time &&
+           gpu_cache_upload_time == aOther.gpu_cache_upload_time;
   }
 };
 
@@ -1040,11 +1078,22 @@ struct WrExternalImageHandler {
   }
 };
 
+// An opaque identifier describing a blob image registered with WebRender.
+// This is used as a handle to reference blob images, and can be used as an
+// image in display items.
+struct BlobImageKey {
+  ImageKey _0;
+
+  bool operator==(const BlobImageKey& aOther) const {
+    return _0 == aOther._0;
+  }
+};
+
 struct WrImageDescriptor {
   ImageFormat format;
-  uint32_t width;
-  uint32_t height;
-  uint32_t stride;
+  int32_t width;
+  int32_t height;
+  int32_t stride;
   OpacityType opacity;
 
   bool operator==(const WrImageDescriptor& aOther) const {
@@ -1055,6 +1104,8 @@ struct WrImageDescriptor {
            opacity == aOther.opacity;
   }
 };
+
+using DeviceIntRect = TypedRect<int32_t, DevicePixel>;
 
 struct WrTransformProperty {
   uint64_t id;
@@ -1070,12 +1121,6 @@ struct WrOpacityProperty {
            opacity == aOther.opacity;
   }
 };
-
-// A C function that takes a pointer to a heap allocation and returns its size.
-//
-// This is borrowed from the malloc_size_of crate, upon which we want to avoid
-// a dependency from WebRender.
-using VoidPtrToSizeFn = uintptr_t(*)(const void*);
 
 extern "C" {
 
@@ -1103,6 +1148,12 @@ extern void DeleteBlobFont(WrFontInstanceKey aKey);
 
 extern void DeleteFontData(WrFontKey aKey);
 
+#if defined(ANDROID)
+extern int __android_log_write(int aPrio,
+                               const char *aTag,
+                               const char *aText);
+#endif
+
 extern void apz_deregister_sampler(WrWindowId aWindowId);
 
 extern void apz_deregister_updater(WrWindowId aWindowId);
@@ -1121,7 +1172,11 @@ extern void apz_run_updater(WrWindowId aWindowId);
 extern void apz_sample_transforms(WrWindowId aWindowId,
                                   Transaction *aTransaction);
 
+extern void gecko_profiler_end_marker(const char *aName);
+
 extern void gecko_profiler_register_thread(const char *aName);
+
+extern void gecko_profiler_start_marker(const char *aName);
 
 extern void gecko_profiler_unregister_thread();
 
@@ -1177,7 +1232,7 @@ WR_FUNC;
 WR_INLINE
 void wr_api_create_document(DocumentHandle *aRootDh,
                             DocumentHandle **aOutHandle,
-                            DeviceUintSize aDocSize,
+                            DeviceIntSize aDocSize,
                             int8_t aLayer)
 WR_FUNC;
 
@@ -1228,6 +1283,11 @@ void wr_api_send_transaction(DocumentHandle *aDh,
 WR_FUNC;
 
 WR_INLINE
+void wr_api_set_debug_flags(DocumentHandle *aDh,
+                            WrDebugFlags aFlags)
+WR_FUNC;
+
+WR_INLINE
 void wr_api_shut_down(DocumentHandle *aDh)
 WR_DESTRUCTOR_SAFE_FUNC;
 
@@ -1253,7 +1313,7 @@ WR_FUNC;
 
 WR_INLINE
 uintptr_t wr_dp_define_clip(WrState *aState,
-                            const uintptr_t *aParentId,
+                            const WrClipId *aParentId,
                             LayoutRect aClipRect,
                             const ComplexClipRegion *aComplex,
                             uintptr_t aComplexCount,
@@ -1263,14 +1323,14 @@ WR_FUNC;
 WR_INLINE
 uint64_t wr_dp_define_clipchain(WrState *aState,
                                 const uint64_t *aParentClipchainId,
-                                const uintptr_t *aClips,
+                                const WrClipId *aClips,
                                 uintptr_t aClipsCount)
 WR_FUNC;
 
 WR_INLINE
 uintptr_t wr_dp_define_scroll_layer(WrState *aState,
                                     uint64_t aScrollId,
-                                    const uintptr_t *aParentId,
+                                    const WrClipId *aParentId,
                                     LayoutRect aContentRect,
                                     LayoutRect aClipRect)
 WR_FUNC;
@@ -1328,9 +1388,9 @@ void wr_dp_push_border_gradient(WrState *aState,
                                 LayoutRect aClip,
                                 bool aIsBackfaceVisible,
                                 LayoutSideOffsets aWidths,
-                                uint32_t aWidth,
-                                uint32_t aHeight,
-                                SideOffsets2D<uint32_t> aSlice,
+                                int32_t aWidth,
+                                int32_t aHeight,
+                                SideOffsets2D<int32_t> aSlice,
                                 LayoutPoint aStartPoint,
                                 LayoutPoint aEndPoint,
                                 const GradientStop *aStops,
@@ -1346,9 +1406,9 @@ void wr_dp_push_border_image(WrState *aState,
                              bool aIsBackfaceVisible,
                              LayoutSideOffsets aWidths,
                              WrImageKey aImage,
-                             uint32_t aWidth,
-                             uint32_t aHeight,
-                             SideOffsets2D<uint32_t> aSlice,
+                             int32_t aWidth,
+                             int32_t aHeight,
+                             SideOffsets2D<int32_t> aSlice,
                              SideOffsets2D<float> aOutset,
                              RepeatMode aRepeatHorizontal,
                              RepeatMode aRepeatVertical)
@@ -1390,12 +1450,12 @@ WR_FUNC;
 
 WR_INLINE
 void wr_dp_push_clip(WrState *aState,
-                     uintptr_t aClipId)
+                     WrClipId aClipId)
 WR_FUNC;
 
 WR_INLINE
 void wr_dp_push_clip_and_scroll_info(WrState *aState,
-                                     uintptr_t aScrollId,
+                                     WrClipId aScrollId,
                                      const uint64_t *aClipChainId)
 WR_FUNC;
 
@@ -1470,7 +1530,7 @@ WR_FUNC;
 
 WR_INLINE
 void wr_dp_push_scroll_layer(WrState *aState,
-                             uintptr_t aScrollId)
+                             WrClipId aScrollId)
 WR_FUNC;
 
 WR_INLINE
@@ -1484,7 +1544,7 @@ WR_FUNC;
 WR_INLINE
 void wr_dp_push_stacking_context(WrState *aState,
                                  LayoutRect aBounds,
-                                 const uintptr_t *aClipNodeId,
+                                 const WrClipId *aClipNodeId,
                                  const WrAnimationProperty *aAnimation,
                                  const float *aOpacity,
                                  const LayoutTransform *aTransform,
@@ -1566,12 +1626,12 @@ uintptr_t wr_dump_display_list(WrState *aState,
 WR_FUNC;
 
 extern bool wr_moz2d_render_cb(ByteSlice aBlob,
-                               uint32_t aWidth,
-                               uint32_t aHeight,
+                               int32_t aWidth,
+                               int32_t aHeight,
                                ImageFormat aFormat,
                                const uint16_t *aTileSize,
                                const TileOffset *aTileOffset,
-                               const DeviceUintRect *aDirtyRect,
+                               const LayoutIntRect *aDirtyRect,
                                MutByteSlice aOutput);
 
 extern void wr_notifier_external_event(WrWindowId aWindowId,
@@ -1597,6 +1657,11 @@ WrProgramCache *wr_program_cache_new(const nsAString *aProfPath,
 WR_FUNC;
 
 WR_INLINE
+uintptr_t wr_program_cache_report_memory(const WrProgramCache *aCache,
+                                         VoidPtrToSizeFn aSizeOfOp)
+WR_FUNC;
+
+WR_INLINE
 void wr_renderer_accumulate_memory_report(Renderer *aRenderer,
                                           MemoryReport *aReport)
 WR_FUNC;
@@ -1616,26 +1681,19 @@ WrPipelineInfo wr_renderer_flush_pipeline_info(Renderer *aRenderer)
 WR_FUNC;
 
 WR_INLINE
-WrDebugFlags wr_renderer_get_debug_flags(Renderer *aRenderer)
-WR_FUNC;
-
-WR_INLINE
 void wr_renderer_readback(Renderer *aRenderer,
-                          uint32_t aWidth,
-                          uint32_t aHeight,
+                          int32_t aWidth,
+                          int32_t aHeight,
                           uint8_t *aDstBuffer,
                           uintptr_t aBufferSize)
 WR_FUNC;
 
 WR_INLINE
 bool wr_renderer_render(Renderer *aRenderer,
-                        uint32_t aWidth,
-                        uint32_t aHeight)
-WR_FUNC;
-
-WR_INLINE
-void wr_renderer_set_debug_flags(Renderer *aRenderer,
-                                 WrDebugFlags aFlags)
+                        int32_t aWidth,
+                        int32_t aHeight,
+                        bool aHadSlowFrame,
+                        RendererStats *aOutStats)
 WR_FUNC;
 
 WR_INLINE
@@ -1654,7 +1712,7 @@ WR_FUNC;
 
 WR_INLINE
 void wr_resource_updates_add_blob_image(Transaction *aTxn,
-                                        WrImageKey aImageKey,
+                                        BlobImageKey aImageKey,
                                         const WrImageDescriptor *aDescriptor,
                                         WrVecU8 *aBytes)
 WR_FUNC;
@@ -1704,6 +1762,11 @@ void wr_resource_updates_clear(Transaction *aTxn)
 WR_FUNC;
 
 WR_INLINE
+void wr_resource_updates_delete_blob_image(Transaction *aTxn,
+                                           BlobImageKey aKey)
+WR_FUNC;
+
+WR_INLINE
 void wr_resource_updates_delete_font(Transaction *aTxn,
                                      WrFontKey aKey)
 WR_FUNC;
@@ -1719,17 +1782,17 @@ void wr_resource_updates_delete_image(Transaction *aTxn,
 WR_FUNC;
 
 WR_INLINE
-void wr_resource_updates_set_image_visible_area(Transaction *aTxn,
-                                                WrImageKey aKey,
-                                                const DeviceUintRect *aArea)
+void wr_resource_updates_set_blob_image_visible_area(Transaction *aTxn,
+                                                     BlobImageKey aKey,
+                                                     const DeviceIntRect *aArea)
 WR_FUNC;
 
 WR_INLINE
 void wr_resource_updates_update_blob_image(Transaction *aTxn,
-                                           WrImageKey aImageKey,
+                                           BlobImageKey aImageKey,
                                            const WrImageDescriptor *aDescriptor,
                                            WrVecU8 *aBytes,
-                                           DeviceUintRect aDirtyRect)
+                                           LayoutIntRect aDirtyRect)
 WR_FUNC;
 
 WR_INLINE
@@ -1748,7 +1811,7 @@ void wr_resource_updates_update_external_image_with_dirty_rect(Transaction *aTxn
                                                                WrExternalImageId aExternalImageId,
                                                                WrExternalImageBufferType aImageType,
                                                                uint8_t aChannelIndex,
-                                                               DeviceUintRect aDirtyRect)
+                                                               DeviceIntRect aDirtyRect)
 WR_FUNC;
 
 WR_INLINE
@@ -1850,6 +1913,10 @@ void wr_transaction_remove_pipeline(Transaction *aTxn,
 WR_FUNC;
 
 WR_INLINE
+bool wr_transaction_resource_updates_is_empty(const Transaction *aTxn)
+WR_FUNC;
+
+WR_INLINE
 void wr_transaction_scroll_layer(Transaction *aTxn,
                                  WrPipelineId aPipelineId,
                                  uint64_t aScrollId,
@@ -1880,8 +1947,8 @@ WR_FUNC;
 
 WR_INLINE
 void wr_transaction_set_window_parameters(Transaction *aTxn,
-                                          const DeviceUintSize *aWindowSize,
-                                          const DeviceUintRect *aDocRect)
+                                          const DeviceIntSize *aWindowSize,
+                                          const DeviceIntRect *aDocRect)
 WR_FUNC;
 
 WR_INLINE
@@ -1913,9 +1980,10 @@ WR_FUNC;
 
 WR_INLINE
 bool wr_window_new(WrWindowId aWindowId,
-                   uint32_t aWindowWidth,
-                   uint32_t aWindowHeight,
+                   int32_t aWindowWidth,
+                   int32_t aWindowHeight,
                    bool aSupportLowPriorityTransactions,
+                   bool aEnablePictureCaching,
                    void *aGlContext,
                    WrProgramCache *aProgramCache,
                    WrShaders *aShaders,
@@ -1923,7 +1991,7 @@ bool wr_window_new(WrWindowId aWindowId,
                    VoidPtrToSizeFn aSizeOfOp,
                    DocumentHandle **aOutHandle,
                    Renderer **aOutRenderer,
-                   uint32_t *aOutMaxTextureSize)
+                   int32_t *aOutMaxTextureSize)
 WR_FUNC;
 
 } // extern "C"

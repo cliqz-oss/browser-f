@@ -252,6 +252,16 @@ let ACTORS = {
     },
   },
 
+  SearchTelemetry: {
+    child: {
+      module: "resource:///actors/SearchTelemetryChild.jsm",
+      events: {
+        DOMContentLoaded: {},
+        "pageshow": {mozSystemGroup: true},
+      },
+    },
+  },
+
   ShieldFrame: {
     child: {
       module: "resource://normandy-content/ShieldFrameChild.jsm",
@@ -391,6 +401,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   ContextualIdentityService: "resource://gre/modules/ContextualIdentityService.jsm",
   CustomizableUI: "resource:///modules/CustomizableUI.jsm",
   DateTimePickerParent: "resource://gre/modules/DateTimePickerParent.jsm",
+  Discovery: "resource:///modules/Discovery.jsm",
   ExtensionsUI: "resource:///modules/ExtensionsUI.jsm",
   Feeds: "resource:///modules/Feeds.jsm",
   FileSource: "resource://gre/modules/L10nRegistry.jsm",
@@ -425,6 +436,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   SafeBrowsing: "resource://gre/modules/SafeBrowsing.jsm",
   Sanitizer: "resource:///modules/Sanitizer.jsm",
   SaveToPocket: "chrome://pocket/content/SaveToPocket.jsm",
+  SearchTelemetry: "resource:///modules/SearchTelemetry.jsm",
   SessionStartup: "resource:///modules/sessionstore/SessionStartup.jsm",
   SessionStore: "resource:///modules/sessionstore/SessionStore.jsm",
   ShellService: "resource:///modules/ShellService.jsm",
@@ -634,6 +646,11 @@ BrowserGlue.prototype = {
     const MAX_DELAY = 300;
     let delay = 3;
     for (let win of Services.wm.getEnumerator("navigator:browser")) {
+      // browser windows without a gBrowser almost certainly means we are
+      // shutting down, so instead of just ignoring that window we abort.
+      if (win.closed || !win.gBrowser) {
+        return;
+      }
       delay += win.gBrowser.tabs.length;
     }
     delay = delay <= MAX_DELAY ? delay : MAX_DELAY;
@@ -989,6 +1006,12 @@ BrowserGlue.prototype = {
     os.removeObserver(this, "xpi-signature-changed");
     os.removeObserver(this, "sync-ui-state:update");
     os.removeObserver(this, "shield-init-complete");
+
+    Services.prefs.removeObserver("privacy.trackingprotection.enabled", this._matchCBCategory);
+    Services.prefs.removeObserver("privacy.trackingprotection.pbmode.enabled", this._matchCBCategory);
+    Services.prefs.removeObserver("urlclassifier.trackingTable", this._matchCBCategory);
+    Services.prefs.removeObserver("network.cookie.cookieBehavior", this._matchCBCategory);
+    Services.prefs.removeObserver(ContentBlockingCategoriesPrefs.PREF_CB_CATEGORY, this._updateCBCategory);
   },
 
   // runs on startup, before the first command line handler is invoked
@@ -1027,7 +1050,8 @@ BrowserGlue.prototype = {
       name: gBrowserBundle.GetStringFromName("lightTheme.name"),
       description: gBrowserBundle.GetStringFromName("lightTheme.description"),
       iconURL: "resource:///chrome/browser/content/browser/defaultthemes/light.icon.svg",
-      textcolor: "#18191a",
+      textcolor: "rgb(24, 25, 26)",
+      icon_color: "rgb(24, 25, 26, 0.7)",
       accentcolor: "#E3E4E6",
       popup: "#fff",
       popup_text: "#0c0c0d",
@@ -1045,6 +1069,7 @@ BrowserGlue.prototype = {
       description: gBrowserBundle.GetStringFromName("darkTheme.description"),
       iconURL: "resource:///chrome/browser/content/browser/defaultthemes/dark.icon.svg",
       textcolor: "rgb(249, 249, 250)",
+      icon_color: "rgb(249, 249, 250, 0.7)",
       accentcolor: "hsl(240, 5%, 5%)",
       popup: "#4a4a4f",
       popup_text: "rgb(249, 249, 250)",
@@ -1204,10 +1229,9 @@ BrowserGlue.prototype = {
       },
     ];
 
-    let nb = win.document.getElementById("global-notificationbox");
-    nb.appendNotification(message, "slow-startup",
-                          "chrome://browser/skin/slowStartup-16.png",
-                          nb.PRIORITY_INFO_LOW, buttons);
+    win.gNotificationBox.appendNotification(message, "slow-startup",
+      "chrome://browser/skin/slowStartup-16.png",
+      win.gNotificationBox.PRIORITY_INFO_LOW, buttons);
   },
 
   /**
@@ -1248,10 +1272,9 @@ BrowserGlue.prototype = {
       },
     ];
 
-    let nb = win.document.getElementById("global-notificationbox");
-    nb.appendNotification(message, "reset-profile-notification",
-                          "chrome://global/skin/icons/question-16.png",
-                          nb.PRIORITY_INFO_LOW, buttons);
+    win.gNotificationBox.appendNotification(message, "reset-profile-notification",
+      "chrome://global/skin/icons/question-16.png",
+      win.gNotificationBox.PRIORITY_INFO_LOW, buttons);
   },
 
   _notifyUnsignedAddonsDisabled() {
@@ -1270,9 +1293,9 @@ BrowserGlue.prototype = {
       },
     ];
 
-    let nb = win.document.getElementById("high-priority-global-notificationbox");
-    nb.appendNotification(message, "unsigned-addons-disabled", "",
-                          nb.PRIORITY_WARNING_MEDIUM, buttons);
+    win.gHighPriorityNotificationBox.appendNotification(message,
+      "unsigned-addons-disabled", "",
+      win.gHighPriorityNotificationBox.PRIORITY_WARNING_MEDIUM, buttons);
   },
 
   _firstWindowTelemetry(aWindow) {
@@ -1359,6 +1382,21 @@ BrowserGlue.prototype = {
 
     // Set the default favicon size for UI views that use the page-icon protocol.
     PlacesUtils.favicons.setDefaultIconURIPreferredSize(16 * aWindow.devicePixelRatio);
+
+    this._matchCBCategory();
+    Services.prefs.addObserver("privacy.trackingprotection.enabled", this._matchCBCategory);
+    Services.prefs.addObserver("privacy.trackingprotection.pbmode.enabled", this._matchCBCategory);
+    Services.prefs.addObserver("urlclassifier.trackingTable", this._matchCBCategory);
+    Services.prefs.addObserver("network.cookie.cookieBehavior", this._matchCBCategory);
+    Services.prefs.addObserver(ContentBlockingCategoriesPrefs.PREF_CB_CATEGORY, this._updateCBCategory);
+  },
+
+  _matchCBCategory() {
+    ContentBlockingCategoriesPrefs.matchCBCategory();
+  },
+
+  _updateCBCategory() {
+    ContentBlockingCategoriesPrefs.updateCBCategory();
   },
 
   _recordContentBlockingTelemetry() {
@@ -1373,12 +1411,6 @@ BrowserGlue.prototype = {
 
     let cookieBehavior = Services.prefs.getIntPref("network.cookie.cookieBehavior");
     Services.telemetry.getHistogramById("COOKIE_BEHAVIOR").add(cookieBehavior);
-
-    let fastBlockEnabled = Services.prefs.getBoolPref("browser.fastblock.enabled");
-    Services.telemetry.scalarSet("contentblocking.fastblock_enabled", fastBlockEnabled);
-
-    let contentBlockingEnabled = Services.prefs.getBoolPref("browser.contentblocking.enabled");
-    Services.telemetry.scalarSet("contentblocking.enabled", contentBlockingEnabled);
 
     let exceptions = 0;
     for (let permission of Services.perms.enumerator) {
@@ -1423,6 +1455,7 @@ BrowserGlue.prototype = {
     }
 
     BrowserUsageTelemetry.uninit();
+    SearchTelemetry.uninit();
     // Only uninit PingCentre if the getter has initialized it
     if (Object.prototype.hasOwnProperty.call(this, "pingCentre")) {
       this.pingCentre.uninit();
@@ -1490,6 +1523,7 @@ BrowserGlue.prototype = {
     }
 
     BrowserUsageTelemetry.init();
+    SearchTelemetry.init();
 
     // Show update notification, if needed.
     if (Services.prefs.prefHasUserValue("app.update.postupdate"))
@@ -1558,8 +1592,9 @@ BrowserGlue.prototype = {
    * to the other ones scheduled together.
    */
   _scheduleStartupIdleTasks() {
-    Services.tm.idleDispatchToMainThread(() => {
-      ContextualIdentityService.load();
+    Services.tm.idleDispatchToMainThread(async () => {
+      await ContextualIdentityService.load();
+      Discovery.update();
     });
 
     Services.tm.idleDispatchToMainThread(() => {
@@ -1736,11 +1771,13 @@ BrowserGlue.prototype = {
 
     // There are several cases where we won't show a dialog here:
     // 1. There is only 1 tab open in 1 window
-    // 2. The session will be restored at startup, indicated by
-    //    browser.startup.page == 3 or browser.sessionstore.resume_session_once == true
-    // 3. browser.warnOnQuit == false
-    // 4. The browser is currently in Private Browsing mode
-    // 5. The browser will be restarted.
+    // 2. browser.warnOnQuit == false
+    // 3. The browser is currently in Private Browsing mode
+    // 4. The browser will be restarted.
+    // 5. The user has automatic session restore enabled and
+    //    browser.sessionstore.warnOnQuit is not set to true.
+    // 6. The user doesn't have automatic session restore enabled
+    //    and browser.tabs.warnOnClose is not set to true.
     //
     // Otherwise, we will show the "closing multiple tabs" dialog.
     //
@@ -1772,32 +1809,65 @@ BrowserGlue.prototype = {
       aQuitType = "quit";
 
     // browser.warnOnQuit is a hidden global boolean to override all quit prompts
-    // browser.showQuitWarning specifically covers quitting
-    // browser.tabs.warnOnClose is the global "warn when closing multiple tabs" pref
-
-    var sessionWillBeRestored = Services.prefs.getIntPref("browser.startup.page") == 3 ||
-                                Services.prefs.getBoolPref("browser.sessionstore.resume_session_once");
-    if (sessionWillBeRestored || !Services.prefs.getBoolPref("browser.warnOnQuit") ||
-        !Services.prefs.getBoolPref("browser.tabs.warnOnClose"))
+    if (!Services.prefs.getBoolPref("browser.warnOnQuit"))
       return;
+
+    // If we're going to automatically restore the session, only warn if the user asked for that.
+    let sessionWillBeRestored = Services.prefs.getIntPref("browser.startup.page") == 3 ||
+                                Services.prefs.getBoolPref("browser.sessionstore.resume_session_once");
+    // In the sessionWillBeRestored case, we only check the sessionstore-specific pref:
+    if (sessionWillBeRestored) {
+      if (!Services.prefs.getBoolPref("browser.sessionstore.warnOnQuit", false)) {
+        return;
+      }
+    // Otherwise, we check browser.tabs.warnOnClose
+    } else if (!Services.prefs.getBoolPref("browser.tabs.warnOnClose")) {
+      return;
+    }
 
     let win = BrowserWindowTracker.getTopWindow();
 
-    // warnAboutClosingTabs checks browser.tabs.warnOnClose and returns if it's
-    // ok to close the window. It doesn't actually close the window.
-    if (windowcount == 1) {
-      aCancelQuit.data =
-        !win.gBrowser.warnAboutClosingTabs(pagecount, win.gBrowser.closingTabsEnum.ALL);
-    } else {
-      // More than 1 window. Compose our own message.
+    let warningMessage;
+    // More than 1 window. Compose our own message.
+    if (windowcount > 1) {
       let tabSubstring = gTabbrowserBundle.GetStringFromName("tabs.closeWarningMultipleWindowsTabSnippet");
       tabSubstring = PluralForm.get(pagecount, tabSubstring).replace(/#1/, pagecount);
-      let windowString = gTabbrowserBundle.GetStringFromName("tabs.closeWarningMultipleWindows");
+
+      let stringID = sessionWillBeRestored ? "tabs.closeWarningMultipleWindowsSessionRestore"
+                                           : "tabs.closeWarningMultipleWindows";
+      let windowString = gTabbrowserBundle.GetStringFromName(stringID);
       windowString = PluralForm.get(windowcount, windowString).replace(/#1/, windowcount);
-      windowString = windowString.replace(/%(?:1\$)?S/i, tabSubstring);
-      aCancelQuit.data =
-        !win.gBrowser.warnAboutClosingTabs(pagecount, win.gBrowser.closingTabsEnum.ALL, windowString);
+      warningMessage = windowString.replace(/%(?:1\$)?S/i, tabSubstring);
+    } else {
+      let stringID = sessionWillBeRestored ? "tabs.closeWarningMultipleSessionRestore"
+                                           : "tabs.closeWarningMultiple";
+      warningMessage = gTabbrowserBundle.GetStringFromName(stringID);
+      warningMessage = PluralForm.get(pagecount, warningMessage).replace("#1", pagecount);
     }
+
+    let warnOnClose = {value: true};
+    let titleId = AppConstants.platform == "win" ? "tabs.closeAndQuitTitleTabsWin"
+                                                 : "tabs.closeAndQuitTitleTabs";
+    let flags = (Services.prompt.BUTTON_TITLE_IS_STRING * Services.prompt.BUTTON_POS_0) +
+      (Services.prompt.BUTTON_TITLE_CANCEL * Services.prompt.BUTTON_POS_1);
+    // Only display the checkbox in the non-sessionrestore case.
+    let checkboxLabel = !sessionWillBeRestored ?
+      gTabbrowserBundle.GetStringFromName("tabs.closeWarningPromptMe") : null;
+
+    // buttonPressed will be 0 for closing, 1 for cancel (don't close/quit)
+    let buttonPressed = Services.prompt.confirmEx(win,
+      gTabbrowserBundle.GetStringFromName(titleId),
+      warningMessage, flags,
+      gTabbrowserBundle.GetStringFromName("tabs.closeButtonMultiple"),
+      null, null,
+      checkboxLabel,
+      warnOnClose);
+    // If the user has unticked the box, and has confirmed closing, stop showing
+    // the warning.
+    if (!sessionWillBeRestored && buttonPressed == 0 && !warnOnClose.value) {
+      Services.prefs.setBoolPref("browser.tabs.warnOnClose", false);
+    }
+    aCancelQuit.data = buttonPressed != 0;
   },
 
   _showUpdateNotification: function BG__showUpdateNotification() {
@@ -1847,7 +1917,6 @@ BrowserGlue.prototype = {
                                  stringName: "pu.notifyButton.accesskey"});
 
       let win = BrowserWindowTracker.getTopWindow();
-      let notifyBox = win.document.getElementById("high-priority-global-notificationbox");
 
       let buttons = [
                       {
@@ -1860,9 +1929,9 @@ BrowserGlue.prototype = {
                       },
                     ];
 
-      notifyBox.appendNotification(text, "post-update-notification",
-                                   null, notifyBox.PRIORITY_INFO_LOW,
-                                   buttons);
+      win.gHighPriorityNotificationBox.appendNotification(text,
+        "post-update-notification", null,
+        win.gHighPriorityNotificationBox.PRIORITY_INFO_LOW, buttons);
     }
 
     if (!actions.includes("showAlert"))
@@ -2199,7 +2268,7 @@ BrowserGlue.prototype = {
   _migrateUI: function BG__migrateUI() {
     // Use an increasing number to keep track of the current migration state.
     // Completely unrelated to the current Firefox release number.
-    const UI_VERSION = 76;
+    const UI_VERSION = 77;
     const BROWSER_DOCURL = AppConstants.BROWSER_CHROME_URL;
 
     let currentUIVersion;
@@ -2381,7 +2450,7 @@ BrowserGlue.prototype = {
         }, SEARCH_SERVICE_TOPIC);
       });
       searchInitializedPromise.then(() => {
-        let currentEngine = Services.search.currentEngine.wrappedJSObject;
+        let currentEngine = Services.search.defaultEngine.wrappedJSObject;
         // Only reset the current engine if it wasn't set by a WebExtension
         // and it is not one of the default engines.
         // If the original default is not a default, the user has a weird
@@ -2557,6 +2626,14 @@ BrowserGlue.prototype = {
         for (let item of onboardingPrefsArray) {
           Services.prefs.clearUserPref("browser.onboarding." + item);
         }
+      }
+    }
+
+    if (currentUIVersion < 77) {
+      // Remove currentset from all the toolbars
+      let toolbars = ["nav-bar", "PersonalToolbar", "TabsToolbar", "toolbar-menubar"];
+      for (let toolbarId of toolbars) {
+        xulStore.removeValue(BROWSER_DOCURL, toolbarId, "currentset");
       }
     }
 
@@ -2933,9 +3010,9 @@ BrowserGlue.prototype = {
         win.openTrustedLinkIn("https://support.mozilla.org/kb/flash-protected-mode-autodisabled", "tab");
       },
     }];
-    let nb = win.document.getElementById("global-notificationbox");
-    nb.appendNotification(message, "flash-hang", null,
-                          nb.PRIORITY_INFO_MEDIUM, buttons);
+
+    win.gNotificationBox.appendNotification(message, "flash-hang", null,
+      win.gNotificationBox.PRIORITY_INFO_MEDIUM, buttons);
   },
 
   _updateFxaBadges() {
@@ -2955,6 +3032,111 @@ BrowserGlue.prototype = {
                                           Ci.nsISupportsWeakReference]),
 
   _xpcom_factory: XPCOMUtils.generateSingletonFactory(BrowserGlue),
+};
+
+var ContentBlockingCategoriesPrefs = {
+  PREF_CB_CATEGORY: "browser.contentblocking.category",
+  // The prefs inside CATEGORY_PREFS set expected value for each CB category.
+  // A null value means that pref is default.
+  CATEGORY_PREFS: {
+    strict: [
+      ["urlclassifier.trackingTable", null],
+      ["network.cookie.cookieBehavior", Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER],
+      ["privacy.trackingprotection.pbmode.enabled", true],
+      ["privacy.trackingprotection.enabled", true],
+    ],
+    standard: [
+      ["urlclassifier.trackingTable", null],
+      ["network.cookie.cookieBehavior", null],
+      ["privacy.trackingprotection.pbmode.enabled", null],
+      ["privacy.trackingprotection.enabled", null],
+    ],
+  },
+  switchingCategory: false,
+
+  /**
+   * Checks if CB prefs match perfectly with one of our pre-defined categories.
+   */
+  prefsMatch(category) {
+    // The category pref must be either unset, or match.
+    if (Services.prefs.prefHasUserValue(this.PREF_CB_CATEGORY) &&
+        Services.prefs.getStringPref(this.PREF_CB_CATEGORY) != category) {
+      return false;
+    }
+    for (let [pref, value] of this.CATEGORY_PREFS[category]) {
+      if (!value) {
+        if (Services.prefs.prefHasUserValue(pref)) {
+          return false;
+        }
+      } else {
+        let prefType = Services.prefs.getPrefType(pref);
+        if ((prefType == Services.prefs.PREF_BOOL && Services.prefs.getBoolPref(pref) != value) ||
+            (prefType == Services.prefs.PREF_INT && Services.prefs.getIntPref(pref) != value) ||
+            (prefType == Services.prefs.PREF_STRING && Services.prefs.getStringPref(pref) != value)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  },
+
+  matchCBCategory() {
+    if (this.switchingCategory) {
+      return;
+    }
+    // If PREF_CB_CATEGORY is not set match users to a Content Blocking category. Check if prefs fit
+    // perfectly into strict or standard, otherwise match with custom. If PREF_CB_CATEGORY has previously been set,
+    // a change of one of these prefs necessarily puts us in "custom".
+    if (this.prefsMatch("standard")) {
+      Services.prefs.setStringPref(this.PREF_CB_CATEGORY, "standard");
+    } else if (this.prefsMatch("strict")) {
+      Services.prefs.setStringPref(this.PREF_CB_CATEGORY, "strict");
+    } else {
+      Services.prefs.setStringPref(this.PREF_CB_CATEGORY, "custom");
+    }
+  },
+
+  updateCBCategory() {
+    if (this.switchingCategory || !Services.prefs.prefHasUserValue(this.PREF_CB_CATEGORY)) {
+      return;
+    }
+    // Turn on switchingCategory flag, to ensure that when the individual prefs that change as a result
+    // of the category change do not trigger yet another category change.
+    this.switchingCategory = true;
+    let value = Services.prefs.getStringPref(this.PREF_CB_CATEGORY);
+    this.setPrefsToCategory(value);
+    this.switchingCategory = false;
+  },
+
+  /**
+   * Sets all user-exposed content blocking preferences to values that match the selected category.
+   */
+  setPrefsToCategory(category) {
+    // Leave prefs as they were if we are switching to "custom" category.
+    if (category == "custom") {
+      return;
+    }
+
+    for (let [pref, value] of this.CATEGORY_PREFS[category]) {
+      if (!Services.prefs.prefIsLocked(pref)) {
+        if (!value) {
+          Services.prefs.clearUserPref(pref);
+        } else {
+          switch (Services.prefs.getPrefType(pref)) {
+          case Services.prefs.PREF_BOOL:
+            Services.prefs.setBoolPref(pref, value);
+            break;
+          case Services.prefs.PREF_INT:
+            Services.prefs.setIntPref(pref, value);
+            break;
+          case Services.prefs.PREF_STRING:
+            Services.prefs.setStringPref(pref, value);
+            break;
+          }
+        }
+      }
+    }
+  },
 };
 
 /**
@@ -3003,6 +3185,9 @@ const ContentPermissionIntegration = {
       }
       case "autoplay-media": {
         return new PermissionUI.AutoplayPermissionPrompt(request);
+      }
+      case "storage-access": {
+        return new PermissionUI.StorageAccessPermissionPrompt(request);
       }
     }
     return undefined;
@@ -3193,8 +3378,6 @@ var DefaultBrowserCheck = {
       let yesButtonKey = shellBundle.getString("setDefaultBrowserConfirm.accesskey");
       let notNowButtonKey = shellBundle.getString("setDefaultBrowserNotNow.accesskey");
 
-      let notificationBox = win.document.getElementById("high-priority-global-notificationbox");
-
       this._createPopup(win, {
         label: notNowButton,
         accesskey: notNowButtonKey,
@@ -3221,11 +3404,10 @@ var DefaultBrowserCheck = {
 
       let iconPixels = win.devicePixelRatio > 1 ? "32" : "16";
       let iconURL = "chrome://branding/content/icon" + iconPixels + ".png";
-      const priority = notificationBox.PRIORITY_WARNING_HIGH;
+      const priority = win.gHighPriorityNotificationBox.PRIORITY_WARNING_HIGH;
       let callback = this._onNotificationEvent.bind(this);
-      this._notification = notificationBox.appendNotification(promptMessage, "default-browser",
-                                                              iconURL, priority, buttons,
-                                                              callback);
+      this._notification = win.gHighPriorityNotificationBox.appendNotification(
+        promptMessage, "default-browser", iconURL, priority, buttons, callback);
     } else {
       // Modal prompt
       let promptTitle = shellBundle.getString("setDefaultBrowserTitle");

@@ -1,21 +1,21 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Specified types for legacy Gecko-only properties.
 
+use crate::gecko::values::GeckoStyleCoordConvertible;
+use crate::gecko_bindings::sugar::ns_style_coord::{CoordData, CoordDataMut};
+use crate::parser::{Parse, ParserContext};
+use crate::values::computed;
+use crate::values::computed::length::CSSPixelLength;
+use crate::values::generics::gecko::ScrollSnapPoint as GenericScrollSnapPoint;
+use crate::values::generics::rect::Rect;
+use crate::values::specified::length::LengthOrPercentage;
 use cssparser::{Parser, Token};
-use gecko::values::GeckoStyleCoordConvertible;
-use gecko_bindings::sugar::ns_style_coord::{CoordData, CoordDataMut};
-use parser::{Parse, ParserContext};
 use std::fmt;
-use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
 use style_traits::values::SequenceWriter;
-use values::computed;
-use values::computed::length::CSSPixelLength;
-use values::generics::gecko::ScrollSnapPoint as GenericScrollSnapPoint;
-use values::generics::rect::Rect;
-use values::specified::length::LengthOrPercentage;
+use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
 
 /// A specified type for scroll snap points.
 pub type ScrollSnapPoint = GenericScrollSnapPoint<LengthOrPercentage>;

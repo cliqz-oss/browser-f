@@ -27,16 +27,17 @@ class CompositorWidget;
 
 namespace wr {
 
-class RenderCompositor
-{
-public:
-  static UniquePtr<RenderCompositor> Create(RefPtr<widget::CompositorWidget>&& aWidget);
+class RenderCompositor {
+ public:
+  static UniquePtr<RenderCompositor> Create(
+      RefPtr<widget::CompositorWidget>&& aWidget);
 
   RenderCompositor(RefPtr<widget::CompositorWidget>&& aWidget);
   virtual ~RenderCompositor();
 
   virtual bool BeginFrame() = 0;
   virtual void EndFrame() = 0;
+  virtual void WaitForGPU() = 0;
   virtual void Pause() = 0;
   virtual bool Resume() = 0;
 
@@ -48,18 +49,20 @@ public:
 
   virtual bool UseDComp() const { return false; }
 
+  virtual bool UseTripleBuffering() const { return false; }
+
   virtual LayoutDeviceIntSize GetBufferSize() = 0;
 
   widget::CompositorWidget* GetWidget() const { return mWidget; }
 
   layers::SyncObjectHost* GetSyncObject() const { return mSyncObject.get(); }
 
-protected:
+ protected:
   RefPtr<widget::CompositorWidget> mWidget;
   RefPtr<layers::SyncObjectHost> mSyncObject;
 };
 
-} // namespace wr
-} // namespace mozilla
+}  // namespace wr
+}  // namespace mozilla
 
 #endif

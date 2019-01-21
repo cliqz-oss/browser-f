@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -14,39 +14,37 @@
 
 namespace mozilla {
 
-class WebGLSampler final
-    : public nsWrapperCache
-    , public WebGLRefCountedObject<WebGLSampler>
-    , public LinkedListElement<WebGLSampler>
-    , public CacheInvalidator
-{
-    friend class WebGLContext2;
-    friend class WebGLTexture;
+class WebGLSampler final : public nsWrapperCache,
+                           public WebGLRefCountedObject<WebGLSampler>,
+                           public LinkedListElement<WebGLSampler>,
+                           public CacheInvalidator {
+  NS_INLINE_DECL_CYCLE_COLLECTING_NATIVE_REFCOUNTING(WebGLSampler)
+  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_NATIVE_CLASS(WebGLSampler)
 
-    NS_INLINE_DECL_CYCLE_COLLECTING_NATIVE_REFCOUNTING(WebGLSampler)
-    NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_NATIVE_CLASS(WebGLSampler)
+ public:
+  const GLuint mGLName;
 
-public:
-    const GLuint mGLName;
-private:
-    webgl::SamplingState mState;
+ private:
+  webgl::SamplingState mState;
 
-public:
-    explicit WebGLSampler(WebGLContext* webgl);
-private:
-    ~WebGLSampler();
+ public:
+  explicit WebGLSampler(WebGLContext* webgl);
 
-public:
-    void Delete();
-    WebGLContext* GetParentObject() const;
+ private:
+  ~WebGLSampler();
 
-    virtual JSObject* WrapObject(JSContext* cx, JS::Handle<JSObject*> givenProto) override;
+ public:
+  void Delete();
+  WebGLContext* GetParentObject() const;
 
-    void SamplerParameter(GLenum pname, const FloatOrInt& param);
+  virtual JSObject* WrapObject(JSContext* cx,
+                               JS::Handle<JSObject*> givenProto) override;
 
-    const auto& State() const { return mState; }
+  void SamplerParameter(GLenum pname, const FloatOrInt& param);
+
+  const auto& State() const { return mState; }
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // WEBGL_SAMPLER_H_
+#endif  // WEBGL_SAMPLER_H_

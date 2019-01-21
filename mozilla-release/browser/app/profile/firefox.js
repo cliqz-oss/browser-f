@@ -134,8 +134,14 @@ pref("app.update.download.promptMaxAttempts", 2);
 pref("app.update.elevation.promptMaxAttempts", 2);
 
 // If set to true, the Update Service will automatically download updates if the
-// user can apply updates.
+// user can apply updates. This pref is no longer used on Windows, except as the
+// default value to migrate to the new location that this data is now stored
+// (which is in a file in the update directory). Because of this, this pref
+// should no longer be used directly. Instead, getAppUpdateAutoEnabled and
+// getAppUpdateAutoEnabled from UpdateUtils.jsm should be used.
+#ifndef XP_WIN
 pref("app.update.auto", true);
+#endif
 
 // If set to true, the Update Service will present no UI for any event.
 pref("app.update.silent", false);
@@ -206,9 +212,6 @@ pref("general.autoScroll", true);
 #endif
 
 pref("browser.stopReloadAnimation.enabled", true);
-pref("browser.schedulePressure.enabled", true);
-pref("browser.schedulePressure.defaultCount", 3);
-pref("browser.schedulePressure.timeoutMs", 300);
 
 // UI density of the browser chrome. This mostly affects toolbarbutton
 // and urlbar spacing. The possible values are 0=normal, 1=compact, 2=touch.
@@ -279,11 +282,9 @@ pref("browser.urlbar.ctrlCanonizesURLs", true);
 pref("browser.urlbar.autoFill", true);
 pref("browser.urlbar.speculativeConnect.enabled", true);
 
-// 0: Match anywhere (e.g., middle of words)
-// 1: Match on word boundaries and then try matching anywhere
-// 2: Match only on word boundaries (e.g., after / or .)
-// 3: Match at the beginning of the url or title
-pref("browser.urlbar.matchBehavior", 1);
+// Whether bookmarklets should be filtered out of Address Bar matches.
+// This is enabled for security reasons, when true it is still possible to
+// search for bookmarklets typing "javascript: " followed by the actual query.
 pref("browser.urlbar.filter.javascript", true);
 
 // the maximum number of results to show in autocomplete when doing richResults
@@ -312,10 +313,6 @@ pref("browser.urlbar.timesBeforeHidingSuggestionsHint", 4);
 // suggestions.
 pref("browser.urlbar.maxCharsForSearchSuggestions", 20);
 
-// Restrictions to current suggestions can also be applied (intersection).
-// Typed suggestion works only if history is set to true.
-pref("browser.urlbar.suggest.history.onlyTyped",    false);
-
 pref("browser.urlbar.formatting.enabled", true);
 pref("browser.urlbar.trimURLs", true);
 
@@ -333,6 +330,11 @@ pref("browser.urlbar.switchTabs.adoptIntoActiveWindow", false);
 // should be opened in new tabs by default.
 pref("browser.urlbar.openintab", false);
 
+// This is disabled until Bug 1340663 figures out the remaining requirements.
+pref("browser.urlbar.usepreloadedtopurls.enabled", false);
+pref("browser.urlbar.usepreloadedtopurls.expire_days", 14);
+
+// Toggle the new work in progress Address Bar code.
 pref("browser.urlbar.quantumbar", false);
 
 pref("browser.altClickSave", false);
@@ -429,8 +431,6 @@ pref("browser.link.open_newwindow.disabled_in_fullscreen", false);
 
 // Tabbed browser
 pref("browser.tabs.multiselect", true);
-pref("browser.tabs.20FpsThrobber", false);
-pref("browser.tabs.30FpsThrobber", false);
 pref("browser.tabs.closeTabByDblclick", false);
 pref("browser.tabs.closeWindowWithLastTab", true);
 // Open related links to a tab, e.g., link in current tab, at next to the
@@ -473,6 +473,11 @@ pref("browser.tabs.selectOwnerOnClose", true);
 pref("browser.tabs.showAudioPlayingIcon", true);
 // This should match Chromium's audio indicator delay.
 pref("browser.tabs.delayHidingAudioPlayingIconMS", 3000);
+
+// Pref to control whether we use separate privileged content processes.
+#if defined(NIGHTLY_BUILD) && !defined(MOZ_ASAN)
+pref("browser.tabs.remote.separatePrivilegedContentProcess", true);
+#endif
 
 pref("browser.ctrlTab.recentlyUsedOrder", true);
 
@@ -852,6 +857,9 @@ pref("browser.sessionstore.dom_storage_limit", 2048);
 // Amount of failed SessionFile writes until we restart the worker.
 pref("browser.sessionstore.max_write_failures", 5);
 
+// Whether to warn the user when quitting, even though their tabs will be restored.
+pref("browser.sessionstore.warnOnQuit", false);
+
 // allow META refresh by default
 pref("accessibility.blockautorefresh", false);
 
@@ -945,11 +953,13 @@ pref("app.productInfo.baseURL", "https://www.mozilla.org/firefox/features/");
 // Name of alternate about: page for certificate errors (when undefined, defaults to about:neterror)
 pref("security.alternate_certificate_error_page", "certerror");
 
-// Enable the new certificate error page only for Nightly
-#if defined(NIGHTLY_BUILD)
+// Enable the new certificate error pages.
+#ifdef EARLY_BETA_OR_EARLIER
 pref("browser.security.newcerterrorpage.enabled", true);
+pref("browser.security.newcerterrorpage.mitm.enabled", true);
 #else
 pref("browser.security.newcerterrorpage.enabled", false);
+pref("browser.security.newcerterrorpage.mitm.enabled", false);
 #endif
 
 pref("security.certerrors.recordEventTelemetry", true);
@@ -1021,6 +1031,12 @@ pref("security.sandbox.gpu.level", 0);
 // Note: win32k is currently _not_ disabled due to intermittent test failures,
 // where the GMP process fails very early. See bug 1449348.
 pref("security.sandbox.gmp.win32k-disable", false);
+#endif
+
+#if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
+// Start the Mac sandbox early during child process startup instead
+// of when messaged by the parent after the message loop is running.
+pref("security.sandbox.content.mac.earlyinit", true);
 #endif
 
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX) && defined(MOZ_CONTENT_SANDBOX)
@@ -1142,7 +1158,6 @@ pref("services.sync.prefs.sync.addons.ignoreUserEnabledChanges", true);
 // could weaken the pref locally, install an add-on from an untrusted
 // source, and this would propagate automatically to other,
 // uncompromised Sync-connected devices.
-pref("services.sync.prefs.sync.browser.contentblocking.enabled", true);
 pref("services.sync.prefs.sync.browser.ctrlTab.recentlyUsedOrder", true);
 pref("services.sync.prefs.sync.browser.download.useDownloadDir", true);
 pref("services.sync.prefs.sync.browser.formfill.enable", true);
@@ -1161,12 +1176,10 @@ pref("services.sync.prefs.sync.browser.startup.page", true);
 pref("services.sync.prefs.sync.browser.tabs.loadInBackground", true);
 pref("services.sync.prefs.sync.browser.tabs.warnOnClose", true);
 pref("services.sync.prefs.sync.browser.tabs.warnOnOpen", true);
-pref("services.sync.prefs.sync.browser.urlbar.autocomplete.enabled", true);
 pref("services.sync.prefs.sync.browser.urlbar.matchBuckets", true);
 pref("services.sync.prefs.sync.browser.urlbar.maxRichResults", true);
 pref("services.sync.prefs.sync.browser.urlbar.suggest.bookmark", true);
 pref("services.sync.prefs.sync.browser.urlbar.suggest.history", true);
-pref("services.sync.prefs.sync.browser.urlbar.suggest.history.onlyTyped", true);
 pref("services.sync.prefs.sync.browser.urlbar.suggest.openpage", true);
 pref("services.sync.prefs.sync.browser.urlbar.suggest.searches", true);
 pref("services.sync.prefs.sync.dom.disable_open_during_load", true);
@@ -1196,6 +1209,8 @@ pref("services.sync.prefs.sync.privacy.clearOnShutdown.offlineApps", true);
 pref("services.sync.prefs.sync.privacy.clearOnShutdown.sessions", true);
 pref("services.sync.prefs.sync.privacy.clearOnShutdown.siteSettings", true);
 pref("services.sync.prefs.sync.privacy.donottrackheader.enabled", true);
+pref("services.sync.prefs.sync.privacy.fuzzyfox.enabled", false);
+pref("services.sync.prefs.sync.privacy.fuzzyfox.clockgrainus", false);
 pref("services.sync.prefs.sync.privacy.sanitize.sanitizeOnShutdown", true);
 pref("services.sync.prefs.sync.privacy.trackingprotection.enabled", true);
 pref("services.sync.prefs.sync.privacy.trackingprotection.pbmode.enabled", true);
@@ -1259,13 +1274,8 @@ pref("browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts", 
 #endif
 
 // ASRouter provider configuration
-#if defined(NIGHTLY_BUILD)
-pref("browser.newtabpage.activity-stream.asrouter.providers.snippets", "{\"id\":\"snippets\",\"enabled\":true,\"type\":\"remote\",\"url\":\"https://snippets.cdn.mozilla.net/%STARTPAGE_VERSION%/%NAME%/%VERSION%/%APPBUILDID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/\",\"updateCycleInMs\":14400000}");
 pref("browser.newtabpage.activity-stream.asrouter.providers.cfr", "{\"id\":\"cfr\",\"enabled\":true,\"type\":\"local\",\"localProvider\":\"CFRMessageProvider\",\"frequency\":{\"custom\":[{\"period\":\"daily\",\"cap\":1}]}}");
-#else
-pref("browser.newtabpage.activity-stream.asrouter.providers.snippets", "{\"id\":\"snippets\",\"enabled\":false,\"type\":\"remote\",\"url\":\"https://snippets.cdn.mozilla.net/%STARTPAGE_VERSION%/%NAME%/%VERSION%/%APPBUILDID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/\",\"updateCycleInMs\":14400000}");
-pref("browser.newtabpage.activity-stream.asrouter.providers.cfr", "{\"id\":\"cfr\",\"enabled\":false,\"type\":\"local\",\"localProvider\":\"CFRMessageProvider\",\"frequency\":{\"custom\":[{\"period\":\"daily\",\"cap\":1}]}}");
-#endif
+pref("browser.newtabpage.activity-stream.asrouter.providers.snippets", "{\"id\":\"snippets\",\"enabled\":true,\"type\":\"remote\",\"url\":\"https://snippets.cdn.mozilla.net/%STARTPAGE_VERSION%/%NAME%/%VERSION%/%APPBUILDID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/\",\"updateCycleInMs\":14400000}");
 
 
 // Enable the DOM fullscreen API.
@@ -1281,11 +1291,6 @@ pref("toolkit.startup.max_resumed_crashes", 3);
 #if defined(XP_WIN)
 pref("toolkit.winRegisterApplicationRestart", true);
 #endif
-
-// Whether we use pdfium to view content with the pdf mime type.
-// Note: if the pref is set to false while Firefox is open, it won't
-// take effect until there are no open pdfium tabs.
-pref("pdfium.enabled", false);
 
 // Completely disable pdf.js as an option to preview pdfs within firefox.
 // Note: if this is not disabled it does not necessarily mean pdf.js is the pdf
@@ -1339,44 +1344,21 @@ pref("dom.debug.propagate_gesture_events_through_content", false);
 
 // All the Geolocation preferences are here.
 //
-
-// Geolocation preferences for the RELEASE and "later" Beta channels.
-// Some of these prefs are specified even though they are redundant; they are
-// here for clarity and end-user experiments.
-#ifndef EARLY_BETA_OR_EARLIER
 pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_API_KEY%");
-
-#ifdef XP_MACOSX
-pref("geo.provider.use_corelocation", false);
-#endif
-
-#ifdef XP_WIN
-pref("geo.provider.ms-windows-location", false);
-#endif
-
-#ifdef MOZ_WIDGET_GTK
-pref("geo.provider.use_gpsd", false);
-#endif
-
-#else
-
-// Geolocation preferences for Nightly/Aurora/Beta.
-pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
+// MLS URL:
+// pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
 
 #ifdef XP_MACOSX
 pref("geo.provider.use_corelocation", true);
 #endif
 
-// The native Windows location provider is only enabled in Nightly and likely to
-// be unstable. Set to false if things are really broken.
-#if defined(XP_WIN) && defined(NIGHTLY_BUILD)
+// Set to false if things are really broken.
+#ifdef XP_WIN
 pref("geo.provider.ms-windows-location", true);
 #endif
 
 #if defined(MOZ_WIDGET_GTK) && defined(MOZ_GPSD)
 pref("geo.provider.use_gpsd", true);
-#endif
-
 #endif
 
 // CustomizableUI debug logging.
@@ -1463,9 +1445,9 @@ pref("media.gmp-widevinecdm.enabled", true);
 // Switch block autoplay logic to v2, and enable UI.
 pref("media.autoplay.enabled.user-gestures-needed", true);
 // Allow asking for permission to autoplay to appear in UI.
-pref("media.autoplay.ask-permission", true);
+pref("media.autoplay.ask-permission", false);
 // Set Firefox to block autoplay, asking for permission by default.
-pref("media.autoplay.default", 2); // 0=Allowed, 1=Blocked, 2=Prompt
+pref("media.autoplay.default", 1); // 0=Allowed, 1=Blocked, 2=Prompt
 #else
 pref("media.autoplay.default", 0); // 0=Allowed, 1=Blocked, 2=Prompt
 pref("media.autoplay.enabled.user-gestures-needed", false);
@@ -1512,37 +1494,25 @@ pref("browser.ping-centre.production.endpoint", "https://tiles.services.mozilla.
 // Enable GMP support in the addon manager.
 pref("media.gmp-provider.enabled", true);
 
-// Enable blocking access to storage from tracking resources by default on
-// Nightly and Beta
+// Enable blocking access to storage from tracking resources only in nightly
+// and early beta. By default the value is 0: BEHAVIOR_ACCEPT
 #ifdef EARLY_BETA_OR_EARLIER
 pref("network.cookie.cookieBehavior", 4 /* BEHAVIOR_REJECT_TRACKER */);
 #endif
 
 pref("browser.contentblocking.allowlist.storage.enabled", true);
 
-#ifdef NIGHTLY_BUILD
-pref("browser.contentblocking.global-toggle.enabled", true);
-#else
-pref("browser.contentblocking.global-toggle.enabled", false);
-#endif
-
-#ifdef NIGHTLY_BUILD
-// Enable the Storage Access API in Nightly
 pref("dom.storage_access.enabled", true);
-#endif
 
-// Disable the UI for FastBlock in product.
-pref("browser.contentblocking.fastblock.ui.enabled", false);
-pref("browser.contentblocking.fastblock.control-center.ui.enabled", false);
+pref("dom.storage_access.auto_grants", true);
+pref("dom.storage_access.max_concurrent_auto_grants", 5);
 
 // Define a set of default features for the Content Blocking UI.
-pref("browser.contentblocking.trackingprotection.ui.enabled", true);
 pref("browser.contentblocking.trackingprotection.control-center.ui.enabled", true);
-pref("browser.contentblocking.rejecttrackers.ui.enabled", true);
-pref("browser.contentblocking.rejecttrackers.ui.recommended", true);
 pref("browser.contentblocking.rejecttrackers.control-center.ui.enabled", true);
-pref("browser.contentblocking.cookies-site-data.ui.reject-trackers.recommended", true);
-pref("browser.contentblocking.cookies-site-data.ui.reject-trackers.enabled", true);
+
+pref("browser.contentblocking.control-center.ui.showBlockedLabels", true);
+pref("browser.contentblocking.control-center.ui.showAllowedLabels", false);
 
 // Enable the Report Breakage UI on Nightly and Beta but not on Release yet.
 #ifdef EARLY_BETA_OR_EARLIER
@@ -1555,12 +1525,12 @@ pref("browser.contentblocking.rejecttrackers.reportBreakage.enabled", true);
 
 pref("browser.contentblocking.reportBreakage.url", "https://tracking-protection-issues.herokuapp.com/new");
 
-// Content Blocking has a separate pref for the intro count, since the former TP intro
-// was updated when we introduced content blocking and we want people to see it again.
 pref("browser.contentblocking.introCount", 0);
 
-pref("privacy.trackingprotection.introCount", 0);
-pref("privacy.trackingprotection.introURL", "https://www.mozilla.org/%LOCALE%/firefox/%VERSION%/tracking-protection/start/");
+pref("privacy.trackingprotection.introURL", "https://www.mozilla.org/%LOCALE%/firefox/%VERSION%/content-blocking/start/");
+
+// Workaround for Google Recaptcha
+pref("urlclassifier.trackingAnnotationSkipURLs", "google.com/recaptcha/,*.google.com/recaptcha/");
 
 // Always enable newtab segregation using containers
 pref("privacy.usercontext.about_newtab_segregation.enabled", true);
@@ -1709,6 +1679,8 @@ pref("extensions.formautofill.creditCards.enabled", true);
 pref("extensions.formautofill.creditCards.used", 0);
 pref("extensions.formautofill.firstTimeUse", true);
 pref("extensions.formautofill.heuristics.enabled", true);
+// Whether the user enabled the OS re-auth dialog.
+pref("extensions.formautofill.reauth.enabled", false);
 pref("extensions.formautofill.section.enabled", true);
 pref("extensions.formautofill.loglevel", "Warn");
 
@@ -1764,11 +1736,12 @@ pref("app.shield.optoutstudies.enabled", false);
 #endif
 
 // Multi-lingual preferences
-pref("intl.multilingual.enabled", false);
-// AMO only serves language packs for release and beta versions.
 #ifdef RELEASE_OR_BETA
+pref("intl.multilingual.enabled", true);
 pref("intl.multilingual.downloadEnabled", true);
 #else
+pref("intl.multilingual.enabled", false);
+// AMO only serves language packs for release and beta versions.
 pref("intl.multilingual.downloadEnabled", false);
 #endif
 
@@ -1796,3 +1769,10 @@ pref("toolkit.coverage.endpoint.base", "https://coverage.mozilla.org");
 #if defined(NIGHTLY_BUILD) && defined(MOZ_LIBPRIO)
 pref("prio.enabled", true);
 #endif
+
+// Discovery prefs
+pref("browser.discovery.enabled", true);
+pref("browser.discovery.containers.enabled", true);
+pref("browser.discovery.sites", "addons.mozilla.org");
+
+pref("browser.engagement.recent_visited_origins.expiry", 86400); // 24 * 60 * 60 (24 hours in seconds)

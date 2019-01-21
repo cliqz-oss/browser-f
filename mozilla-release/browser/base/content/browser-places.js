@@ -286,7 +286,10 @@ var StarUI = {
       return;
     this._batchBlockingDeferred = PromiseUtils.defer();
     PlacesTransactions.batch(async () => {
+      // First await for the batch to be concluded.
       await this._batchBlockingDeferred.promise;
+      // And then for any pending promises added in the meanwhile.
+      await Promise.all(gEditItemOverlay.transactionPromises);
     });
     this._batching = true;
   },
@@ -529,14 +532,7 @@ var PlacesCommandHook = {
 
   searchBookmarks() {
     focusAndSelectUrlBar();
-    for (let char of ["*", " "]) {
-      let code = char.charCodeAt(0);
-      gURLBar.inputField.dispatchEvent(new KeyboardEvent("keypress", {
-        keyCode: code,
-        charCode: code,
-        bubbles: true,
-      }));
-    }
+    gURLBar.typeRestrictToken(UrlbarTokenizer.RESTRICT.BOOKMARK);
   },
 };
 
@@ -1102,13 +1098,9 @@ var LibraryUI = {
     let animatableBox = document.getElementById("library-animatable-box");
     let navBar = document.getElementById("nav-bar");
     let libraryIcon = document.getAnonymousElementByAttribute(libraryButton, "class", "toolbarbutton-icon");
-    let dwu = window.windowUtils;
-    let iconBounds = dwu.getBoundsWithoutFlushing(libraryIcon);
-    let libraryBounds = dwu.getBoundsWithoutFlushing(libraryButton);
-    let toolboxBounds = dwu.getBoundsWithoutFlushing(gNavToolbox);
+    let iconBounds = window.windowUtils.getBoundsWithoutFlushing(libraryIcon);
+    let libraryBounds = window.windowUtils.getBoundsWithoutFlushing(libraryButton);
 
-    animatableBox.style.setProperty("--toolbox-y", toolboxBounds.y + "px");
-    animatableBox.style.setProperty("--library-button-y", libraryBounds.y + "px");
     animatableBox.style.setProperty("--library-button-height", libraryBounds.height + "px");
     animatableBox.style.setProperty("--library-icon-x", iconBounds.x + "px");
     if (navBar.hasAttribute("brighttext")) {

@@ -10,8 +10,8 @@ const {custom} = protocol;
 loader.lazyRequireGetter(this, "ThreadClient", "devtools/shared/client/thread-client");
 
 const WorkerTargetFront = protocol.FrontClassWithSpec(workerTargetSpec, {
-  initialize: function(client, form) {
-    protocol.Front.prototype.initialize.call(this, client, form);
+  initialize: function(client) {
+    protocol.Front.prototype.initialize.call(this, client);
 
     this.thread = null;
     this.traits = {};
@@ -23,6 +23,18 @@ const WorkerTargetFront = protocol.FrontClassWithSpec(workerTargetSpec, {
 
     this.destroy = this.destroy.bind(this);
     this.on("close", this.destroy);
+  },
+
+  form(json) {
+    this.actorID = json.actor;
+
+    // Save the full form for Target class usage.
+    // Do not use `form` name to avoid colliding with protocol.js's `form` method
+    this.targetForm = json;
+    this.url = json.url;
+    this.type = json.type;
+    this.scope = json.scope;
+    this.fetch = json.fetch;
   },
 
   get isClosed() {
@@ -47,12 +59,22 @@ const WorkerTargetFront = protocol.FrontClassWithSpec(workerTargetSpec, {
 
     this.url = response.url;
 
+    // Immediately call `connect` in other to fetch console and thread actors
+    // that will be later used by Target.
+    const connectResponse = await this.connect({});
+    // Set the console actor ID on the form to expose it to Target.attach's attachConsole
+    this.targetForm.consoleActor = connectResponse.consoleActor;
+    this.threadActor = connectResponse.threadActor;
+
     return response;
   }, {
     impl: "_attach",
   }),
 
   detach: custom(async function() {
+    if (this.isClosed) {
+      return {};
+    }
     let response;
     try {
       response = await this._detach();
@@ -76,23 +98,20 @@ const WorkerTargetFront = protocol.FrontClassWithSpec(workerTargetSpec, {
       const response = [{
         type: "connected",
         threadActor: this.thread._actor,
-        consoleActor: this.consoleActor,
+        consoleActor: this.targetForm.consoleActor,
       }, this.thread];
       return response;
     }
 
-    // The connect call on server doesn't attach the thread as of version 44.
-    const connectResponse = await this.connect(options);
-    await this.client.request({
-      to: connectResponse.threadActor,
+    const attachResponse = await this.client.request({
+      to: this.threadActor,
       type: "attach",
       options,
     });
-    this.thread = new ThreadClient(this, connectResponse.threadActor);
-    this.consoleActor = connectResponse.consoleActor;
+    this.thread = new ThreadClient(this, this.threadActor);
     this.client.registerClient(this.thread);
 
-    return [connectResponse, this.thread];
+    return [attachResponse, this.thread];
   },
 
 });

@@ -458,6 +458,10 @@ class TabTracker extends TabTrackerBase {
           // tab could have been created with a lazy browser but still not have
           // been assigned a SessionStore tab state with the URL and title.
           Promise.resolve().then(() => {
+            if (!event.originalTarget.parentNode) {
+              // If the tab is already be destroyed, do nothing.
+              return;
+            }
             this.emitCreated(event.originalTarget, currentTabSize);
           });
         }
@@ -480,7 +484,11 @@ class TabTracker extends TabTrackerBase {
         // Because we are delaying calling emitCreated above, we also need to
         // delay sending this event because it shouldn't fire before onCreated.
         Promise.resolve().then(() => {
-          this.emitActivated(nativeTab);
+          if (!nativeTab.parentNode) {
+            // If the tab is already be destroyed, do nothing.
+            return;
+          }
+          this.emitActivated(nativeTab, event.detail.previousTab);
         });
         break;
 
@@ -563,11 +571,14 @@ class TabTracker extends TabTrackerBase {
    *
    * @param {NativeTab} nativeTab
    *        The tab element which has been activated.
+   * @param {NativeTab} previousTab
+   *        The tab element which was previously activated.
    * @private
    */
-  emitActivated(nativeTab) {
+  emitActivated(nativeTab, previousTab = undefined) {
     this.emit("tab-activated", {
       tabId: this.getId(nativeTab),
+      previousTabId: previousTab && !previousTab.closing ? this.getId(previousTab) : undefined,
       windowId: windowTracker.getId(nativeTab.ownerGlobal)});
   }
 
@@ -767,6 +778,11 @@ class Tab extends TabBase {
 
   get isInReaderMode() {
     return this.url && this.url.startsWith(READER_MODE_PREFIX);
+  }
+
+  get successorTabId() {
+    const {successor} = this.nativeTab;
+    return successor ? tabTracker.getId(successor) : -1;
   }
 
   /**

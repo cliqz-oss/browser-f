@@ -117,6 +117,8 @@ class Output(object):
                     subtests, vals = self.parseAssortedDomOutput(test)
                 elif 'wasm-misc' in test.measurements:
                     subtests, vals = self.parseWASMMiscOutput(test)
+                elif 'wasm-godot' in test.measurements:
+                    subtests, vals = self.parseWASMGodotOutput(test)
                 suite['subtests'] = subtests
 
             else:
@@ -193,6 +195,45 @@ class Output(object):
         '''
         _subtests = {}
         data = test.measurements['wasm-misc']
+        for page_cycle in data:
+            for item in page_cycle[0]:
+                # for each pagecycle, build a list of subtests and append all related replicates
+                sub = item['name']
+                if sub not in _subtests.keys():
+                    # subtest not added yet, first pagecycle, so add new one
+                    _subtests[sub] = {'unit': test.subtest_unit,
+                                      'alertThreshold': float(test.alert_threshold),
+                                      'lowerIsBetter': test.subtest_lower_is_better,
+                                      'name': sub,
+                                      'replicates': []}
+                _subtests[sub]['replicates'].append(item['time'])
+
+        vals = []
+        subtests = []
+        names = _subtests.keys()
+        names.sort(reverse=True)
+        for name in names:
+            _subtests[name]['value'] = filter.median(_subtests[name]['replicates'])
+            subtests.append(_subtests[name])
+            vals.append([_subtests[name]['value'], name])
+
+        return subtests, vals
+
+    def parseWASMGodotOutput(self, test):
+        '''
+            {u'wasm-godot': [
+                {
+                  "name": "wasm-instantiate",
+                  "time": 349
+                },{
+                  "name": "engine-instantiate",
+                  "time": 1263
+                ...
+                }]}
+        '''
+        _subtests = {}
+        data = test.measurements['wasm-godot']
+        print (data)
         for page_cycle in data:
             for item in page_cycle[0]:
                 # for each pagecycle, build a list of subtests and append all related replicates
@@ -453,9 +494,10 @@ class Output(object):
 
         # the output that treeherder expects to find
         extra_opts = self.summarized_results['suites'][0].get('extraOptions', [])
-        if 'geckoProfile' not in extra_opts:
+        if 'gecko_profile' not in extra_opts:
             LOG.info("PERFHERDER_DATA: %s" % json.dumps(self.summarized_results))
-
+        else:
+            LOG.info("gecko profiling enabled - not posting results for perfherder")
         json.dump(self.summarized_results, open(results_path, 'w'), indent=2,
                   sort_keys=True)
 
@@ -521,6 +563,14 @@ class Output(object):
         wasm_misc_score: self reported as '__total__'
         """
         results = [i for i, j in val_list if j == '__total__']
+        return filter.mean(results)
+
+    @classmethod
+    def wasm_godot_score(cls, val_list):
+        """
+        wasm_godot_score: first-interactive mean
+        """
+        results = [i for i, j in val_list if j == 'first-interactive']
         return filter.mean(results)
 
     @classmethod
@@ -601,6 +651,8 @@ class Output(object):
             return self.assorted_dom_score(vals)
         elif testname.startswith('raptor-wasm-misc'):
             return self.wasm_misc_score(vals)
+        elif testname.startswith('raptor-wasm-godot'):
+            return self.wasm_godot_score(vals)
         elif len(vals) > 1:
             return round(filter.geometric_mean([i for i, j in vals]), 2)
         else:

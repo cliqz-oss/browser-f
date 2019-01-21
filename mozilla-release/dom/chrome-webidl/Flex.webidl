@@ -39,10 +39,17 @@ interface Flex
 };
 
 /**
- * Lines with items that have been shrunk are shrinking; with items
- * that have grown are growing, and all others are unchanged.
+ * This indicates which flex factor (flex-grow vs. flex-shrink) the
+ * flex layout algorithm uses internally when resolving flexible sizes
+ * in a given flex line, per flexbox spec section 9.7 step 1. Note that
+ * this value doesn't necessarily mean that any items on this line
+ * are *actually* growing (or shrinking).  This simply indicates what
+ * the layout algorithm "wants" to do, based on the free space -- 
+ * and items will stretch from their flex base size in the corresponding
+ * direction, if permitted by their min/max constraints and their
+ * corresponding flex factor.
  */
-enum FlexLineGrowthState { "unchanged", "shrinking", "growing" };
+enum FlexLineGrowthState { "shrinking", "growing" };
 
 [ChromeOnly]
 interface FlexLineValues
@@ -64,14 +71,24 @@ interface FlexLineValues
   sequence<FlexItemValues> getItems();
 };
 
+/**
+ * Item main sizes have either been unclamped, clamped to the minimum,
+ * or clamped to the maximum.
+ */
+enum FlexItemClampState {
+  "unclamped", "clamped_to_min", "clamped_to_max"
+};
+
 [ChromeOnly]
 interface FlexItemValues
 {
   readonly attribute Node? node;
+  readonly attribute DOMRectReadOnly frameRect;
   readonly attribute double mainBaseSize;
   readonly attribute double mainDeltaSize;
   readonly attribute double mainMinSize;
   readonly attribute double mainMaxSize;
   readonly attribute double crossMinSize;
   readonly attribute double crossMaxSize;
+  readonly attribute FlexItemClampState clampState;
 };

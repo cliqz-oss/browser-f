@@ -10,7 +10,7 @@ exclude =
     dom/canvas/test/webgl-conf/checkout/closure-library/,
     editor/libeditor/tests/browserscope/,
     intl/icu/,
-    ipc/chromium/,
+    ipc/chromium/src/third_party/,
     gfx/angle/,
     gfx/harfbuzz,
     glx/skia/,
@@ -22,3 +22,4 @@ exclude =
     testing/mochitest/pywebsocket,
     tools/lint/test/files,
     build/build-infer/build-infer.py,
+    tools/infer/test/*.configure,    tools/infer/test/*.configure,

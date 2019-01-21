@@ -4,7 +4,6 @@
 
 "use strict";
 
-/* eslint-env mozilla/browser-window */
 /* globals XULCommandEvent */
 
 // This is loaded into chrome windows with the subscript loader. Wrap in
@@ -24,11 +23,14 @@ function inheritAttribute(parent, child, attr) {
   }
 }
 
+/**
+ * Defines the search bar element.
+ */
 class MozSearchbar extends MozXULElement {
 
   static get observedAttributes() {
     let unique = new Set();
-    for (var i in inheritsMap) {
+    for (let i in inheritsMap) {
       inheritsMap[i].forEach(attr => unique.add(attr));
     }
     return Array.from(unique);
@@ -158,12 +160,12 @@ class MozSearchbar extends MozXULElement {
   }
 
   set currentEngine(val) {
-    Services.search.currentEngine = val;
+    Services.search.defaultEngine = val;
     return val;
   }
 
   get currentEngine() {
-    var currentEngine = Services.search.currentEngine;
+    let currentEngine = Services.search.defaultEngine;
     // Return a dummy engine if there is no currentEngine
     return currentEngine || { name: "", uri: null };
   }
@@ -214,11 +216,11 @@ class MozSearchbar extends MozXULElement {
   }
 
   updateDisplay() {
-    var uri = this.currentEngine.iconURI;
+    let uri = this.currentEngine.iconURI;
     this.setIcon(this, uri ? uri.spec : "");
 
-    var name = this.currentEngine.name;
-    var text = this._stringBundle.getFormattedString("searchtip", [name]);
+    let name = this.currentEngine.name;
+    let text = this._stringBundle.getFormattedString("searchtip", [name]);
     this._textbox.label = text;
     this._textbox.tooltipText = text;
   }
@@ -244,7 +246,7 @@ class MozSearchbar extends MozXULElement {
 
   selectEngine(aEvent, isNextEngine) {
     // Find the new index
-    var newIndex = this.engines.indexOf(this.currentEngine);
+    let newIndex = this.engines.indexOf(this.currentEngine);
     newIndex += isNextEngine ? 1 : -1;
 
     if (newIndex >= 0 && newIndex < this.engines.length) {
@@ -258,7 +260,7 @@ class MozSearchbar extends MozXULElement {
   }
 
   handleSearchCommand(aEvent, aEngine, aForceNewTab) {
-    var where = "current";
+    let where = "current";
     let params;
 
     // Open ctrl/cmd clicks on one-off buttons in a new background tab.
@@ -271,9 +273,9 @@ class MozSearchbar extends MozXULElement {
       if (Services.prefs.getBoolPref("browser.tabs.loadInBackground"))
         where += "-background";
     } else {
-      var newTabPref = Services.prefs.getBoolPref("browser.search.openintab");
+      let newTabPref = Services.prefs.getBoolPref("browser.search.openintab");
       if (((aEvent instanceof KeyboardEvent && aEvent.altKey) ^ newTabPref) &&
-        !isTabEmpty(gBrowser.selectedTab)) {
+        !gBrowser.selectedTab.isEmpty) {
         where = "tab";
       }
       if ((aEvent instanceof MouseEvent) &&
@@ -289,8 +291,8 @@ class MozSearchbar extends MozXULElement {
   }
 
   handleSearchCommandWhere(aEvent, aEngine, aWhere, aParams) {
-    var textBox = this._textbox;
-    var textValue = textBox.value;
+    let textBox = this._textbox;
+    let textValue = textBox.value;
 
     let selection = this.telemetrySearchDetails;
     let oneOffRecorded = false;
@@ -336,7 +338,7 @@ class MozSearchbar extends MozXULElement {
   }
 
   doSearch(aData, aWhere, aEngine, aParams, aOneOff) {
-    var textBox = this._textbox;
+    let textBox = this._textbox;
 
     // Save the current value in the form history
     if (aData && !PrivateBrowsingUtils.isWindowPrivate(window) && this.FormHistory.enabled) {
@@ -352,7 +354,7 @@ class MozSearchbar extends MozXULElement {
     }
 
     let engine = aEngine || this.currentEngine;
-    var submission = engine.getSubmission(aData, null, "searchbar");
+    let submission = engine.getSubmission(aData, null, "searchbar");
     let telemetrySearchDetails = this.telemetrySearchDetails;
     this.telemetrySearchDetails = null;
     if (telemetrySearchDetails && telemetrySearchDetails.index == -1) {
@@ -391,7 +393,7 @@ class MozSearchbar extends MozXULElement {
         this.currentEngine = target.engine;
       } else if (target.classList.contains("addengine-item")) {
         // Select the installed engine if the installation succeeds
-        var installCallback = {
+        let installCallback = {
           onSuccess: engine => this.currentEngine = engine,
         };
         Services.search.addEngine(target.getAttribute("uri"), null,

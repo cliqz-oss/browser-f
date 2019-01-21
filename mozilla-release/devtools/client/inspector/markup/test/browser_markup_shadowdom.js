@@ -53,7 +53,7 @@ const TEST_DATA = [
           inner
         class="no-slot-class"
           no-slot-text
-          inner`
+          inner`,
 
   }, {
     // Test that components without any direct children still display a shadow root node,
@@ -75,7 +75,7 @@ const TEST_DATA = [
       test-component
         #shadow-root
           slot
-            fallback-content`
+            fallback-content`,
 
   }, {
     // Test that markup view is correctly displayed for non-trivial shadow DOM nesting.
@@ -128,7 +128,7 @@ const TEST_DATA = [
         div
         third-component
           #shadow-root
-            div`
+            div`,
 
   }, {
     // Test that ::before and ::after pseudo elements are correctly displayed in host
@@ -172,7 +172,7 @@ const TEST_DATA = [
             ::after
         ::before
         class="light-dom"
-        ::after`
+        ::after`,
 
   }, {
     // Test empty web components are still displayed correctly.
@@ -192,22 +192,59 @@ const TEST_DATA = [
       </script>`,
     tree: `
       test-component
-        #shadow-root`
-  }
+        #shadow-root`,
+  }, {
+    // Test shadow hosts show their shadow root even if they contain just a short text.
+    title: "shadow host with inline-text-child",
+    url: `data:text/html;charset=utf-8,
+      <test-component>
+        <inner-component>short-text-outside</inner-component>
+      </test-component>
+
+      <script>
+        "use strict";
+
+        customElements.define("test-component", class extends HTMLElement {
+          constructor() {
+            super();
+            let shadowRoot = this.attachShadow({mode: "#MODE#"});
+            shadowRoot.innerHTML = "<div><slot></slot></div>";
+          }
+        });
+
+        customElements.define("inner-component", class extends HTMLElement {
+          constructor() {
+            super();
+            let shadowRoot = this.attachShadow({mode: "#MODE#"});
+            shadowRoot.innerHTML = "short-text-inside";
+          }
+        });
+      </script>`,
+    tree: `
+      test-component
+        #shadow-root
+          div
+            slot
+              inner-component!slotted
+        inner-component
+          #shadow-root
+            short-text-inside
+          short-text-outside`,
+  },
 ];
 
 for (const {url, tree, title} of TEST_DATA) {
   // Test each configuration in both open and closed modes
   add_task(async function() {
     info(`Testing: [${title}] in OPEN mode`);
-    await enableWebComponents();
-    const {inspector} = await openInspectorForURL(url.replace("#MODE#", "open"));
+    const {inspector, tab} = await openInspectorForURL(url.replace(/#MODE#/g, "open"));
     await assertMarkupViewAsTree(tree, "test-component", inspector);
+    await removeTab(tab);
   });
   add_task(async function() {
     info(`Testing: [${title}] in CLOSED mode`);
-    await enableWebComponents();
-    const {inspector} = await openInspectorForURL(url.replace("#MODE#", "closed"));
+    const {inspector, tab} = await openInspectorForURL(url.replace(/#MODE#/g, "closed"));
     await assertMarkupViewAsTree(tree, "test-component", inspector);
+    await removeTab(tab);
   });
 }

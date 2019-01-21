@@ -9,39 +9,34 @@
 
 #include "signaling/src/jsep/JsepCodecDescription.h"
 #include "signaling/src/common/EncodingConstraints.h"
-#include "signaling/src/common/PtrVector.h"
+
+#include <vector>
 
 namespace mozilla {
 // Represents a single encoding of a media track. When simulcast is used, there
 // may be multiple. Each encoding may have some constraints (imposed by JS), and
 // may be able to use any one of multiple codecs (JsepCodecDescription) at any
 // given time.
-class JsepTrackEncoding
-{
-public:
+class JsepTrackEncoding {
+ public:
   JsepTrackEncoding() = default;
-  JsepTrackEncoding(const JsepTrackEncoding& orig) :
-    mConstraints(orig.mConstraints),
-    mRid(orig.mRid)
-  {
-    for (const JsepCodecDescription* codec : orig.mCodecs.values) {
-      mCodecs.values.push_back(codec->Clone());
+  JsepTrackEncoding(const JsepTrackEncoding& orig)
+      : mConstraints(orig.mConstraints), mRid(orig.mRid) {
+    for (const auto& codec : orig.mCodecs) {
+      mCodecs.emplace_back(codec->Clone());
     }
   }
 
-  const std::vector<JsepCodecDescription*>& GetCodecs() const
-  {
-    return mCodecs.values;
+  const std::vector<UniquePtr<JsepCodecDescription>>& GetCodecs() const {
+    return mCodecs;
   }
 
-  void AddCodec(const JsepCodecDescription& codec)
-  {
-    mCodecs.values.push_back(codec.Clone());
+  void AddCodec(const JsepCodecDescription& codec) {
+    mCodecs.emplace_back(codec.Clone());
   }
 
-  bool HasFormat(const std::string& format) const
-  {
-    for (const JsepCodecDescription* codec : mCodecs.values) {
+  bool HasFormat(const std::string& format) const {
+    for (const auto& codec : mCodecs) {
       if (codec->mDefaultPt == format) {
         return true;
       }
@@ -52,9 +47,9 @@ public:
   EncodingConstraints mConstraints;
   std::string mRid;
 
-private:
-  PtrVector<JsepCodecDescription> mCodecs;
+ private:
+  std::vector<UniquePtr<JsepCodecDescription>> mCodecs;
 };
-}
+}  // namespace mozilla
 
-#endif // _JESPTRACKENCODING_H_
+#endif  // _JESPTRACKENCODING_H_

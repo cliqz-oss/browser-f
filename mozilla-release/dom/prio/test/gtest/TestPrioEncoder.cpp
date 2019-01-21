@@ -12,42 +12,74 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/ScriptSettings.h"
 
-TEST(PrioEncoder, BadPublicKeys)
-{
+TEST(PrioEncoder, BadPublicKeys) {
   mozilla::dom::AutoJSAPI jsAPI;
   ASSERT_TRUE(jsAPI.Init(xpc::PrivilegedJunkScope()));
   JSContext* cx = jsAPI.cx();
 
   mozilla::Preferences::SetCString("prio.publicKeyA",
-    nsCString(NS_LITERAL_CSTRING("badA")));
+                                   nsCString(NS_LITERAL_CSTRING("badA")));
   mozilla::Preferences::SetCString("prio.publicKeyB",
-    nsCString(NS_LITERAL_CSTRING("badB")));
+                                   nsCString(NS_LITERAL_CSTRING("badB")));
 
   mozilla::dom::GlobalObject global(cx, xpc::PrivilegedJunkScope());
 
   nsCString batchID = NS_LITERAL_CSTRING("abc123");
 
   mozilla::dom::PrioParams prioParams;
-  prioParams.mBrowserIsUserDefault = true;
-  prioParams.mNewTabPageEnabled = true;
-  prioParams.mPdfViewerUsed = false;
-
-  mozilla::dom::RootedDictionary<mozilla::dom::PrioEncodedData> prioEncodedData(cx);
+  mozilla::dom::RootedDictionary<mozilla::dom::PrioEncodedData> prioEncodedData(
+      cx);
   mozilla::ErrorResult rv;
 
-  mozilla::dom::PrioEncoder::Encode(global, batchID, prioParams, prioEncodedData, rv);
+  mozilla::dom::PrioEncoder::Encode(global, batchID, prioParams,
+                                    prioEncodedData, rv);
   ASSERT_TRUE(rv.Failed());
 
   // Call again to ensure that the singleton state is consistent.
-  mozilla::dom::PrioEncoder::Encode(global, batchID, prioParams, prioEncodedData, rv);
+  mozilla::dom::PrioEncoder::Encode(global, batchID, prioParams,
+                                    prioEncodedData, rv);
   ASSERT_TRUE(rv.Failed());
 
   // Reset error result so test runner does not fail.
   rv = mozilla::ErrorResult();
 }
 
-TEST(PrioEncoder, VerifyFull)
-{
+TEST(PrioEncoder, BooleanLimitExceeded) {
+  mozilla::dom::AutoJSAPI jsAPI;
+  ASSERT_TRUE(jsAPI.Init(xpc::PrivilegedJunkScope()));
+  JSContext* cx = jsAPI.cx();
+
+  mozilla::dom::GlobalObject global(cx, xpc::PrivilegedJunkScope());
+
+  nsCString batchID = NS_LITERAL_CSTRING("abc123");
+
+  mozilla::dom::PrioParams prioParams;
+  FallibleTArray<bool> sequence;
+
+  const int ndata = mozilla::dom::PrioEncoder::gNumBooleans + 1;
+  const int seed = time(nullptr);
+  srand(seed);
+
+  for (int i = 0; i < ndata; i++) {
+    // Arbitrary data)
+    *(sequence.AppendElement(mozilla::fallible)) = rand() % 2;
+  }
+
+  prioParams.mBooleans.Assign(sequence);
+
+  mozilla::dom::RootedDictionary<mozilla::dom::PrioEncodedData> prioEncodedData(
+      cx);
+  mozilla::ErrorResult rv;
+
+  mozilla::dom::PrioEncoder::Encode(global, batchID, prioParams,
+                                    prioEncodedData, rv);
+  ASSERT_TRUE(rv.Failed());
+
+  // Reset error result so test runner does not fail.
+  rv = mozilla::ErrorResult();
+}
+
+TEST(PrioEncoder, VerifyFull) {
   SECStatus prioRv = SECSuccess;
 
   PublicKey pkA = nullptr;
@@ -81,7 +113,7 @@ TEST(PrioEncoder, VerifyFull)
   snprintf((char*)batchIDStr, sizeof batchIDStr, "%d", rand());
 
   bool dataItems[ndata];
-  unsigned long output[ndata];
+  unsigned long long output[ndata];
 
   // The client's data submission is an arbitrary boolean vector.
   for (int i = 0; i < ndata; i++) {
@@ -101,17 +133,17 @@ TEST(PrioEncoder, VerifyFull)
   ASSERT_TRUE(prioRv == SECSuccess);
 
   // Export public keys to hex and print to stdout
-  unsigned char pkHexA[CURVE25519_KEY_LEN_HEX + 1];
-  unsigned char pkHexB[CURVE25519_KEY_LEN_HEX + 1];
-  prioRv = PublicKey_export_hex(pkA, pkHexA);
+  const int keyLength = CURVE25519_KEY_LEN_HEX + 1;
+  unsigned char pkHexA[keyLength];
+  unsigned char pkHexB[keyLength];
+  prioRv = PublicKey_export_hex(pkA, pkHexA, keyLength);
   ASSERT_TRUE(prioRv == SECSuccess);
 
-  prioRv = PublicKey_export_hex(pkB, pkHexB);
+  prioRv = PublicKey_export_hex(pkB, pkHexB, keyLength);
   ASSERT_TRUE(prioRv == SECSuccess);
 
   // Use the default configuration parameters.
-  cfg = PrioConfig_new(ndata, pkA, pkB, batchIDStr,
-                       strlen((char*)batchIDStr));
+  cfg = PrioConfig_new(ndata, pkA, pkB, batchIDStr, strlen((char*)batchIDStr));
   ASSERT_TRUE(cfg != nullptr);
 
   PrioPRGSeed serverSecret;
@@ -161,10 +193,10 @@ TEST(PrioEncoder, VerifyFull)
   ASSERT_TRUE(jsAPI.Init(xpc::PrivilegedJunkScope()));
   JSContext* cx = jsAPI.cx();
 
-  mozilla::Preferences::SetCString("prio.publicKeyA",
-    nsCString(reinterpret_cast<const char*>(pkHexA)));
-  mozilla::Preferences::SetCString("prio.publicKeyB",
-    nsCString(reinterpret_cast<const char*>(pkHexB)));
+  mozilla::Preferences::SetCString(
+      "prio.publicKeyA", nsCString(reinterpret_cast<const char*>(pkHexA)));
+  mozilla::Preferences::SetCString(
+      "prio.publicKeyB", nsCString(reinterpret_cast<const char*>(pkHexB)));
 
   mozilla::dom::GlobalObject global(cx, xpc::PrivilegedJunkScope());
 
@@ -172,14 +204,18 @@ TEST(PrioEncoder, VerifyFull)
   batchID = (char*)(batchIDStr);
 
   mozilla::dom::PrioParams prioParams;
-  prioParams.mBrowserIsUserDefault = dataItems[0];
-  prioParams.mNewTabPageEnabled = dataItems[1];
-  prioParams.mPdfViewerUsed = dataItems[2];
+  FallibleTArray<bool> sequence;
+  *(sequence.AppendElement(mozilla::fallible)) = dataItems[0];
+  *(sequence.AppendElement(mozilla::fallible)) = dataItems[1];
+  *(sequence.AppendElement(mozilla::fallible)) = dataItems[2];
+  prioParams.mBooleans.Assign(sequence);
 
-  mozilla::dom::RootedDictionary<mozilla::dom::PrioEncodedData> prioEncodedData(cx);
+  mozilla::dom::RootedDictionary<mozilla::dom::PrioEncodedData> prioEncodedData(
+      cx);
   mozilla::ErrorResult rv;
 
-  mozilla::dom::PrioEncoder::Encode(global, batchID, prioParams, prioEncodedData, rv);
+  mozilla::dom::PrioEncoder::Encode(global, batchID, prioParams,
+                                    prioEncodedData, rv);
   ASSERT_FALSE(rv.Failed());
 
   prioEncodedData.mA.Value().ComputeLengthAndData();

@@ -1,23 +1,24 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Servo's media-query device and expression representation.
 
 use app_units::Au;
+use crate::custom_properties::CssEnvironment;
+use crate::media_queries::media_feature::{AllowsRanges, ParsingRequirements};
+use crate::media_queries::media_feature::{Evaluator, MediaFeatureDescription};
+use crate::media_queries::media_feature_expression::RangeOrOperator;
+use crate::media_queries::MediaType;
+use crate::properties::ComputedValues;
+use crate::values::computed::font::FontSize;
+use crate::values::computed::CSSPixelLength;
+use crate::values::KeyframesName;
 use cssparser::RGBA;
 use euclid::{Size2D, TypedScale, TypedSize2D};
-use media_queries::MediaType;
-use media_queries::media_feature::{AllowsRanges, ParsingRequirements};
-use media_queries::media_feature::{MediaFeatureDescription, Evaluator};
-use media_queries::media_feature_expression::RangeOrOperator;
-use properties::ComputedValues;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
-use style_traits::{CSSPixel, DevicePixel};
 use style_traits::viewport::ViewportConstraints;
-use values::KeyframesName;
-use values::computed::CSSPixelLength;
-use values::computed::font::FontSize;
+use style_traits::{CSSPixel, DevicePixel};
 
 /// A device is a structure that represents the current media a given document
 /// is displayed in.
@@ -49,6 +50,9 @@ pub struct Device {
     /// Whether any styles computed in the document relied on the viewport size.
     #[ignore_malloc_size_of = "Pure stack type"]
     used_viewport_units: AtomicBool,
+    /// The CssEnvironment object responsible of getting CSS environment
+    /// variables.
+    environment: CssEnvironment,
 }
 
 impl Device {
@@ -66,7 +70,14 @@ impl Device {
             root_font_size: AtomicIsize::new(FontSize::medium().size().0 as isize),
             used_root_font_size: AtomicBool::new(false),
             used_viewport_units: AtomicBool::new(false),
+            environment: CssEnvironment,
         }
+    }
+
+    /// Get the relevant environment to resolve `env()` functions.
+    #[inline]
+    pub fn environment(&self) -> &CssEnvironment {
+        &self.environment
     }
 
     /// Return the default computed values for this device.

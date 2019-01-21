@@ -26,10 +26,16 @@ button {
 }
 
 .category {
-  border: 0 solid transparent;
+  align-items: center;
+  /* Override a `background-color` set on all buttons by common.inc.css */
+  background-color: transparent;
   display: flex;
   flex-direction: row;
-  align-items: center;
+}
+
+.category.selected {
+  /* Override a `color: inherit !important` forced on all buttons by common.inc.css */
+  color: var(--in-content-category-text-selected) !important;
 }
 
 .category-name {
@@ -182,25 +188,23 @@ button {
 }
 
 .warning {
-  background-image: url(chrome://devtools/skin/images/alerticon-warning.png);
-  background-size: 13px 12px;
   display: inline-block;
-  width: 13px;
+  width: 12px;
   height: 12px;
-  margin-inline-end: 10px;
-}
-
-@media (min-resolution: 1.1dppx) {
-  .warning {
-    background-image: url(chrome://devtools/skin/images/alerticon-warning@2x.png);
-  }
+  vertical-align: 0;
+  margin-inline-end: 8px;
+  background-image: url(chrome://devtools/skin/images/alert.svg);
+  background-repeat: no-repeat;
+  background-size: contain;
+  -moz-context-properties: fill;
+  fill: #d7b600;
 }
 
 .addons-install-error .warning,
 .service-worker-multi-process .warning {
   /* The warning icon can be hard to see on red / yellow backgrounds, this turns the icon
   to a black icon. */
-  filter: brightness(0%);
+  fill: #0c0c0d;
 }
 
 .addons-options {
@@ -282,14 +286,14 @@ button {
 .target-card-action-link {
   background: none;
   border: none;
-  color: #0087ff;
+  /* !important overrides the common.css button color */
+  color: var(--in-content-link-color) !important;
   font-size: 13px;
   /* Use some negative top margin to account for the padding and keep the
    * button vertically centred. */
   margin: -4px 0 0 12px;
   min-width: auto;
   padding: 4px;
-  transition: color 150ms;
 }
 
 .target-card-action-link:first-of-type {
@@ -312,13 +316,13 @@ button {
 .target-card-action-link:enabled:focus,
 .target-card-action-link:enabled:hover {
   background: none;
-  color: #0052cc;
+  color: var(--in-content-link-color-hover) !important;
   cursor: pointer;
   text-decoration: underline;
 }
 
 .target-card-action-link:enabled:hover:active {
-  color: #003399;
+  color: var(--in-content-link-color-active) !important;
   text-decoration: none;
 }
 

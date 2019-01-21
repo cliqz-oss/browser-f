@@ -44,6 +44,8 @@ const NOTIFICATIONS = [
   "update-restart",
 ];
 
+let gOriginalUpdateAutoValue = null;
+
 /**
  * Delay for a very short period. Useful for moving the code after this
  * to the back of the event loop.
@@ -73,9 +75,7 @@ function getVersionParams(aAppVersion) {
  * Clean up updates list and the updates directory.
  */
 function cleanUpUpdates() {
-  gUpdateManager.activeUpdate = null;
-  gUpdateManager.saveUpdates();
-
+  reloadUpdateManagerData(true);
   removeUpdateDirsAndFiles();
 }
 
@@ -90,6 +90,33 @@ function setUpdateTimerPrefs() {
   Services.prefs.setIntPref(PREF_APP_UPDATE_LASTUPDATETIME, now);
   Services.prefs.setIntPref(PREF_APP_UPDATE_INTERVAL, 43200);
 }
+
+/*
+ * In addition to changing the value of the Auto Update setting, this function
+ * also takes care of cleaning up after itself.
+ */
+async function setAppUpdateAutoEnabledHelper(enabled) {
+  if (gOriginalUpdateAutoValue == null) {
+    gOriginalUpdateAutoValue = await UpdateUtils.getAppUpdateAutoEnabled();
+    registerCleanupFunction(async () => {
+      await UpdateUtils.setAppUpdateAutoEnabled(gOriginalUpdateAutoValue);
+    });
+  }
+  await UpdateUtils.setAppUpdateAutoEnabled(enabled);
+}
+
+add_task(async function setDefaults() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      [PREF_APP_UPDATE_LOG, DEBUG_AUS_TEST],
+      // See bug 1505790 - uses a very large value to prevent the sync code
+      // from running since it has nothing to do with these tests.
+      ["services.sync.autoconnectDelay", 600000],
+    ]});
+  // Most tests in this directory expect auto update to be enabled. Those that
+  // don't will explicitly change this.
+  await setAppUpdateAutoEnabledHelper(true);
+});
 
 /**
  * Runs a typical update test. Will set various common prefs for using the
@@ -117,13 +144,13 @@ function runUpdateTest(updateParams, checkAttempts, steps) {
 
     gEnv.set("MOZ_TEST_SKIP_UPDATE_STAGE", "1");
     setUpdateTimerPrefs();
+    removeUpdateDirsAndFiles();
     await SpecialPowers.pushPrefEnv({
       set: [
         [PREF_APP_UPDATE_DOWNLOADPROMPTATTEMPTS, 0],
         [PREF_APP_UPDATE_DISABLEDFORTESTING, false],
         [PREF_APP_UPDATE_IDLETIME, 0],
         [PREF_APP_UPDATE_URL_MANUAL, URL_MANUAL_UPDATE],
-        [PREF_APP_UPDATE_LOG, DEBUG_AUS_TEST],
       ]});
 
     await setupTestUpdater();
@@ -171,15 +198,15 @@ function runUpdateProcessingTest(updates, steps) {
       cleanUpUpdates();
     });
 
-    setUpdateTimerPrefs();
     gEnv.set("MOZ_TEST_SKIP_UPDATE_STAGE", "1");
+    setUpdateTimerPrefs();
+    removeUpdateDirsAndFiles();
     await SpecialPowers.pushPrefEnv({
       set: [
         [PREF_APP_UPDATE_DOWNLOADPROMPTATTEMPTS, 0],
         [PREF_APP_UPDATE_DISABLEDFORTESTING, false],
         [PREF_APP_UPDATE_IDLETIME, 0],
         [PREF_APP_UPDATE_URL_MANUAL, URL_MANUAL_UPDATE],
-        [PREF_APP_UPDATE_LOG, DEBUG_AUS_TEST],
       ]});
 
     await setupTestUpdater();

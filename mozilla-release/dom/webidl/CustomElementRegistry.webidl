@@ -3,9 +3,8 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // https://html.spec.whatwg.org/#dom-window-customelements
-[Func="CustomElementRegistry::IsCustomElementEnabled"]
 interface CustomElementRegistry {
-  [CEReactions, Throws]
+  [CEReactions, Throws, UseCounter]
   void define(DOMString name, Function functionConstructor,
               optional ElementDefinitionOptions options);
   [ChromeOnly, Throws]

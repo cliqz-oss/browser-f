@@ -16,19 +16,13 @@ namespace mozilla {
 namespace a11y {
 
 /**
- * Used for XUL progressmeter element.
- */
-typedef ProgressMeterAccessible<100> XULProgressMeterAccessible;
-
-/**
  * Used for XUL button.
  *
  * @note  Don't inherit from LeafAccessible - it doesn't allow children
  *         and a button can have a dropmarker child.
  */
-class XULButtonAccessible : public AccessibleWrap
-{
-public:
+class XULButtonAccessible : public AccessibleWrap {
+ public:
   enum { eAction_Click = 0 };
   XULButtonAccessible(nsIContent* aContent, DocAccessible* aDoc);
 
@@ -52,7 +46,7 @@ public:
 
   virtual bool IsAcceptableChild(nsIContent* aEl) const override;
 
-protected:
+ protected:
   virtual ~XULButtonAccessible();
 
   // XULButtonAccessible
@@ -62,9 +56,8 @@ protected:
 /**
  * Used for XUL dropmarker element.
  */
-class XULDropmarkerAccessible : public LeafAccessible
-{
-public:
+class XULDropmarkerAccessible : public LeafAccessible {
+ public:
   enum { eAction_Click = 0 };
   XULDropmarkerAccessible(nsIContent* aContent, DocAccessible* aDoc);
 
@@ -77,23 +70,22 @@ public:
   virtual void ActionNameAt(uint8_t aIndex, nsAString& aName) override;
   virtual bool DoAction(uint8_t aIndex) const override;
 
-private:
+ private:
   bool DropmarkerOpen(bool aToggleOpen) const;
 };
 
 /**
  * Used for XUL groupbox element.
  */
-class XULGroupboxAccessible final : public AccessibleWrap
-{
-public:
+class XULGroupboxAccessible final : public AccessibleWrap {
+ public:
   XULGroupboxAccessible(nsIContent* aContent, DocAccessible* aDoc);
 
   // Accessible
   virtual mozilla::a11y::role NativeRole() const override;
   virtual Relation RelationByType(RelationType aType) const override;
 
-protected:
+ protected:
   // Accessible
   virtual ENameValueFlag NativeName(nsString& aName) const override;
 };
@@ -101,10 +93,8 @@ protected:
 /**
  * Used for XUL radio element (radio button).
  */
-class XULRadioButtonAccessible : public RadioButtonAccessible
-{
-
-public:
+class XULRadioButtonAccessible : public RadioButtonAccessible {
+ public:
   XULRadioButtonAccessible(nsIContent* aContent, DocAccessible* aDoc);
 
   // Accessible
@@ -118,9 +108,8 @@ public:
 /**
  * Used for XUL radiogroup element.
  */
-class XULRadioGroupAccessible : public XULSelectControlAccessible
-{
-public:
+class XULRadioGroupAccessible : public XULSelectControlAccessible {
+ public:
   XULRadioGroupAccessible(nsIContent* aContent, DocAccessible* aDoc);
 
   // Accessible
@@ -136,9 +125,8 @@ public:
 /**
  * Used for XUL statusbar element.
  */
-class XULStatusBarAccessible : public AccessibleWrap
-{
-public:
+class XULStatusBarAccessible : public AccessibleWrap {
+ public:
   XULStatusBarAccessible(nsIContent* aContent, DocAccessible* aDoc);
 
   // Accessible
@@ -148,9 +136,8 @@ public:
 /**
  * Used for XUL toolbarbutton element.
  */
-class XULToolbarButtonAccessible : public XULButtonAccessible
-{
-public:
+class XULToolbarButtonAccessible : public XULButtonAccessible {
+ public:
   XULToolbarButtonAccessible(nsIContent* aContent, DocAccessible* aDoc);
 
   // Accessible
@@ -159,20 +146,22 @@ public:
 
   // nsXULToolbarButtonAccessible
   static bool IsSeparator(Accessible* aAccessible);
+
+  // Widgets
+  virtual bool IsAcceptableChild(nsIContent* aEl) const override;
 };
 
 /**
  * Used for XUL toolbar element.
  */
-class XULToolbarAccessible : public AccessibleWrap
-{
-public:
+class XULToolbarAccessible : public AccessibleWrap {
+ public:
   XULToolbarAccessible(nsIContent* aContent, DocAccessible* aDoc);
 
   // Accessible
   virtual mozilla::a11y::role NativeRole() const override;
 
-protected:
+ protected:
   // Accessible
   virtual ENameValueFlag NativeName(nsString& aName) const override;
 };
@@ -180,19 +169,16 @@ protected:
 /**
  * Used for XUL toolbarseparator element.
  */
-class XULToolbarSeparatorAccessible : public LeafAccessible
-{
-public:
-  XULToolbarSeparatorAccessible(nsIContent* aContent,
-                                DocAccessible* aDoc);
+class XULToolbarSeparatorAccessible : public LeafAccessible {
+ public:
+  XULToolbarSeparatorAccessible(nsIContent* aContent, DocAccessible* aDoc);
 
   // Accessible
   virtual mozilla::a11y::role NativeRole() const override;
   virtual uint64_t NativeState() const override;
 };
 
-} // namespace a11y
-} // namespace mozilla
+}  // namespace a11y
+}  // namespace mozilla
 
 #endif
-

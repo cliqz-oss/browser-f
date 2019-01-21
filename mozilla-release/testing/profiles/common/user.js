@@ -1,9 +1,12 @@
-// Base preferences file used by both unittest and perf harnesses.
+// Common preferences file used by both unittest and perf harnesses.
 /* globals user_pref */
+user_pref("app.update.checkInstallTime", false);
 user_pref("app.update.disabledForTesting", true);
 user_pref("browser.chrome.guess_favicon", false);
 user_pref("browser.dom.window.dump.enabled", true);
-// Use an empty list of sites to avoid fetching
+user_pref("devtools.console.stdout.chrome", true);
+// Use a python-eval-able empty JSON array even though asrouter expects plain object
+user_pref("browser.newtabpage.activity-stream.asrouter.providers.snippets", "[]");
 user_pref("browser.newtabpage.activity-stream.feeds.section.topstories", false);
 user_pref("browser.newtabpage.activity-stream.feeds.snippets", false);
 user_pref("browser.newtabpage.activity-stream.tippyTop.service.endpoint", "");

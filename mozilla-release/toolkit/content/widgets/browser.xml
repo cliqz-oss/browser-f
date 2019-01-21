@@ -116,12 +116,13 @@
               referrerPolicy = Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,
               triggeringPrincipal,
               postData,
+              headers,
             } = aParams || {};
 
             this._wrapURIChangeCall(() =>
               this.webNavigation.loadURIWithOptions(
                   aURI, flags, referrerURI, referrerPolicy,
-                  postData, null, null, triggeringPrincipal));
+                  postData, headers, null, triggeringPrincipal));
           ]]>
         </body>
       </method>
@@ -460,7 +461,7 @@
           if (this.isRemoteBrowser) {
             return this._outerWindowID;
           }
-          return this.contentWindow.windowUtils.outerWindowID;
+          return this.docShell.outerWindowID;
         ]]></getter>
       </property>
 
@@ -478,6 +479,18 @@
             }
             return null;
           }
+        ]]></getter>
+      </property>
+
+      <field name="_browsingContextId">null</field>
+
+      <property name="browsingContext" readonly="true">
+        <getter><![CDATA[
+          if (!this.isRemoteBrowser) {
+            return this.docShell.browsingContext;
+          }
+
+          return ChromeUtils.getBrowsingContext(this._browsingContextId);
         ]]></getter>
       </property>
 
@@ -1250,7 +1263,6 @@
               let menulist = document.getElementById(this.getAttribute("selectmenulist"));
               menulist.menupopup.style.direction = data.direction;
               this._selectParentHelper.populate(menulist, data.options, data.selectedIndex, this._fullZoom,
-                                                data.uaBackgroundColor, data.uaColor,
                                                 data.uaSelectBackgroundColor, data.uaSelectColor,
                                                 data.selectBackgroundColor, data.selectColor, data.selectTextShadow);
               this._selectParentHelper.open(this, menulist, data.rect, data.isOpenedViaTouch);
@@ -1281,6 +1293,7 @@
           switch (aMessage.name) {
             case "Browser:Init":
               this._outerWindowID = data.outerWindowID;
+              this._browsingContextId = data.browsingContextId;
               break;
             case "DOMTitleChanged":
               this._contentTitle = data.title;
@@ -1304,7 +1317,7 @@
               let zoom = Services.prefs.getBoolPref("browser.zoom.full") ||
                          this.isSyntheticDocument ? this._fullZoom : this._textZoom;
               this._selectParentHelper.populate(menulist, data.options, data.selectedIndex,
-                                                zoom, data.uaBackgroundColor, data.uaColor,
+                                                zoom,
                                                 data.uaSelectBackgroundColor, data.uaSelectColor,
                                                 data.selectBackgroundColor, data.selectColor, data.selectTextShadow);
               this._selectParentHelper.open(this, menulist, data.rect, data.isOpenedViaTouch);
@@ -1940,6 +1953,17 @@
           }
           this.droppedLinkHandler(null, links, aTriggeringPrincipal);
           return true;
+        ]]></body>
+      </method>
+
+      <method name="getContentBlockingLog">
+        <body><![CDATA[
+          if (this.isRemoteBrowser) {
+            return this.frameLoader.tabParent.getContentBlockingLog();
+          }
+          return this.docShell ?
+                   this.docShell.getContentBlockingLog() :
+                   Promise.reject("docshell isn't available");
         ]]></body>
       </method>
     </implementation>

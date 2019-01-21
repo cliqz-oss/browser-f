@@ -338,11 +338,6 @@ var FullScreen = {
       // This is needed if they use the context menu to quit fullscreen
       this._isPopupOpen = false;
       this.cleanup();
-      // TabsInTitlebar skips appearance updates on resize events for exiting
-      // fullscreen, since that happens before we change the UI here in the
-      // "fullscreen" event. Hence we need to call it here to ensure the
-      // appearance is properly updated. See bug 1173768.
-      TabsInTitlebar.update();
     }
 
     if (enterFS && !document.fullscreenElement) {
@@ -602,7 +597,13 @@ var FullScreen = {
         // Wait for at least a frame to give it a chance to be passed down to
         // the content.
         requestAnimationFrame(() => {
-          setTimeout(() => this.hideNavToolbox(aAnimate), 0);
+          setTimeout(() => {
+            // In the meantime, it's possible that we exited fullscreen somehow,
+            // so only hide the toolbox if we're still in fullscreen mode.
+            if (window.fullScreen) {
+              this.hideNavToolbox(aAnimate);
+            }
+          }, 0);
         });
         window.removeEventListener("keypress", retryHideNavToolbox);
         window.removeEventListener("click", retryHideNavToolbox);

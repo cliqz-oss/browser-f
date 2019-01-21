@@ -7,11 +7,9 @@
 #define PlaceholderTransaction_h
 
 #include "EditAggregateTransaction.h"
-#include "mozilla/EditorUtils.h"
 #include "mozilla/Maybe.h"
 #include "nsIAbsorbingTransaction.h"
-#include "nsCOMPtr.h"
-#include "nsWeakPtr.h"
+#include "nsIWeakReferenceUtils.h"
 
 namespace mozilla {
 
@@ -24,16 +22,13 @@ class CompositionTransaction;
  * transactions it has absorbed.
  */
 
-class PlaceholderTransaction final
- : public EditAggregateTransaction
- , public nsIAbsorbingTransaction
-{
-protected:
-  PlaceholderTransaction(EditorBase& aEditorBase,
-                         nsAtom* aName,
+class PlaceholderTransaction final : public EditAggregateTransaction,
+                                     public nsIAbsorbingTransaction {
+ protected:
+  PlaceholderTransaction(EditorBase& aEditorBase, nsAtom* aName,
                          Maybe<SelectionState>&& aSelState);
 
-public:
+ public:
   /**
    * Creates a placeholder transaction.  This never returns nullptr.
    *
@@ -41,16 +36,14 @@ public:
    * @param aName           The name of creating transaction.
    * @param aSelState       The selection state of aEditorBase.
    */
-  static already_AddRefed<PlaceholderTransaction>
-  Create(EditorBase& aEditorBase,
-         nsAtom* aName,
-         Maybe<SelectionState>&& aSelState)
-  {
-    // Make sure to move aSelState into a local variable to null out the original
-    // Maybe<SelectionState> variable.
+  static already_AddRefed<PlaceholderTransaction> Create(
+      EditorBase& aEditorBase, nsAtom* aName,
+      Maybe<SelectionState>&& aSelState) {
+    // Make sure to move aSelState into a local variable to null out the
+    // original Maybe<SelectionState> variable.
     Maybe<SelectionState> selState(std::move(aSelState));
     RefPtr<PlaceholderTransaction> transaction =
-      new PlaceholderTransaction(aEditorBase, aName, std::move(selState));
+        new PlaceholderTransaction(aEditorBase, aName, std::move(selState));
     return transaction.forget();
   }
 
@@ -58,14 +51,14 @@ public:
 
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(PlaceholderTransaction,
                                            EditAggregateTransaction)
-// ------------ EditAggregateTransaction -----------------------
+  // ------------ EditAggregateTransaction -----------------------
 
   NS_DECL_EDITTRANSACTIONBASE
 
   NS_IMETHOD RedoTransaction() override;
   NS_IMETHOD Merge(nsITransaction* aTransaction, bool* aDidMerge) override;
 
-// ------------ nsIAbsorbingTransaction -----------------------
+  // ------------ nsIAbsorbingTransaction -----------------------
 
   NS_IMETHOD GetTxnName(nsAtom** aName) override;
 
@@ -75,18 +68,17 @@ public:
   NS_IMETHOD EndPlaceHolderBatch() override;
 
   NS_IMETHOD ForwardEndBatchTo(
-               nsIAbsorbingTransaction* aForwardingAddress) override;
+      nsIAbsorbingTransaction* aForwardingAddress) override;
 
   NS_IMETHOD Commit() override;
 
-  NS_IMETHOD_(PlaceholderTransaction*) AsPlaceholderTransaction() override
-  {
+  NS_IMETHOD_(PlaceholderTransaction*) AsPlaceholderTransaction() override {
     return this;
   }
 
   nsresult RememberEndingSelection();
 
-protected:
+ protected:
   virtual ~PlaceholderTransaction();
 
   // The editor for this transaction.
@@ -110,6 +102,6 @@ protected:
   bool mCommitted;
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // #ifndef PlaceholderTransaction_h
+#endif  // #ifndef PlaceholderTransaction_h

@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 <%namespace name="helpers" file="/helpers.mako.rs" />
 <% from data import Method %>
@@ -31,16 +31,15 @@ ${helpers.single_keyword(
     spec="https://drafts.csswg.org/css-scrollbars-1/#scrollbar-width"
 )}
 
-${helpers.single_keyword(
+${helpers.predefined_type(
     "-moz-user-select",
-    "auto text none all element elements toggle tri-state -moz-all -moz-text",
+    "UserSelect",
+    "computed::UserSelect::Auto",
     products="gecko",
-    alias="-webkit-user-select",
     gecko_ffi_name="mUserSelect",
-    gecko_enum_prefix="StyleUserSelect",
-    gecko_strip_moz_prefix=False,
-    aliases="-moz-none=none",
+    alias="-webkit-user-select",
     animation_value_type="discrete",
+    needs_context=False,
     spec="https://drafts.csswg.org/css-ui-4/#propdef-user-select",
 )}
 

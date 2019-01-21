@@ -13,32 +13,30 @@
 #include <gtk/gtk.h>
 
 #include "nsIRemoteService.h"
+#include "nsIWeakReference.h"
 #include "nsInterfaceHashtable.h"
 #include "nsXRemoteService.h"
 #include "mozilla/Attributes.h"
 
 class nsGTKRemoteService final : public nsIRemoteService,
-                                 public nsXRemoteService
-{
-public:
+                                 public nsXRemoteService {
+ public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIREMOTESERVICE
 
-  nsGTKRemoteService()
-    : mServerWindow(nullptr)
-    { }
+  nsGTKRemoteService() : mServerWindow(nullptr) {}
 
-  static gboolean HandlePropertyChange(GtkWidget *widget,
-                                       GdkEventProperty *event,
+  static gboolean HandlePropertyChange(GtkWidget* widget,
+                                       GdkEventProperty* event,
                                        nsIWeakReference* aThis);
-private:
-  ~nsGTKRemoteService() { }
 
-  void HandleCommandsFor(GtkWidget* aWidget,
-                         nsIWeakReference* aWindow);
+ private:
+  ~nsGTKRemoteService() {}
+
+  void HandleCommandsFor(GtkWidget* aWidget, nsIWeakReference* aWindow);
 
   nsInterfaceHashtable<nsPtrHashKey<GtkWidget>, nsIWeakReference> mWindows;
   GtkWidget* mServerWindow;
 };
 
-#endif // __nsGTKRemoteService_h__
+#endif  // __nsGTKRemoteService_h__

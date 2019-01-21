@@ -22,28 +22,14 @@ class nsPIDOMWindowInner;
 
 namespace mozilla {
 
-class AntiTrackingCommon final
-{
-public:
+class AntiTrackingCommon final {
+ public:
   // Normally we would include PContentParent.h here and use the
   // ipc::FirstPartyStorageAccessGrantedForOriginResolver type which maps to
   // the same underlying type, but that results in Windows compilation errors,
   // so we use the underlying type to avoid the #include here.
   typedef std::function<void(const bool&)>
-    FirstPartyStorageAccessGrantedForOriginResolver;
-
-  // This function should be called to determine whether we need to honour the
-  // content blocking cookie restrictions.  It takes into account whether
-  // content blocking itself is active, and also whether the UI for it is being
-  // shown to the user.  The reason we make this depend on whether the UI is being
-  // shown is to avoid confusing scenarios where the user's privacy choices will
-  // be overridden by the invisible prefs that cannot be controlled in the UI.
-  //
-  // Please note that this function doesn't perform any special checks on _what_
-  // kind of restrictions the consumer is expected to follow.  The consumer is
-  // still responsible to perform further checks to determine that.
-  static bool
-  ShouldHonorContentBlockingCookieRestrictions();
+      FirstPartyStorageAccessGrantedForOriginResolver;
 
   // This method returns true if the URI has first party storage access when
   // loaded inside the passed 3rd party context tracking resource window.
@@ -56,10 +42,9 @@ public:
   //  * nsIWebProgressListener::STATE_COOKIES_BLOCKED_TRACKER
   //  * nsIWebProgressListener::STATE_COOKIES_BLOCKED_ALL
   //  * nsIWebProgressListener::STATE_COOKIES_BLOCKED_FOREIGN
-  static bool
-  IsFirstPartyStorageAccessGrantedFor(nsPIDOMWindowInner* a3rdPartyTrackingWindow,
-                                      nsIURI* aURI,
-                                      uint32_t* aRejectedReason);
+  static bool IsFirstPartyStorageAccessGrantedFor(
+      nsPIDOMWindowInner* a3rdPartyTrackingWindow, nsIURI* aURI,
+      uint32_t* aRejectedReason);
 
   // Note: you should use IsFirstPartyStorageAccessGrantedFor() passing the
   // nsIHttpChannel! Use this method _only_ if the channel is not available.
@@ -67,28 +52,27 @@ public:
   // resource synchronously, so here we return the best guest: if we are sure
   // that the permission is granted for the origin of aURI, this method returns
   // true, otherwise false.
-  static bool
-  MaybeIsFirstPartyStorageAccessGrantedFor(nsPIDOMWindowInner* aFirstPartyWindow,
-                                           nsIURI* aURI);
+  static bool MaybeIsFirstPartyStorageAccessGrantedFor(
+      nsPIDOMWindowInner* aFirstPartyWindow, nsIURI* aURI);
 
   // It returns true if the URI has access to the first party storage.
   // aChannel can be a 3rd party channel, or not.
   // See IsFirstPartyStorageAccessGrantedFor(window) to see the possible values
   // of aRejectedReason.
-  static bool
-  IsFirstPartyStorageAccessGrantedFor(nsIHttpChannel* aChannel, nsIURI* aURI,
-                                      uint32_t* aRejectedReason);
+  static bool IsFirstPartyStorageAccessGrantedFor(nsIHttpChannel* aChannel,
+                                                  nsIURI* aURI,
+                                                  uint32_t* aRejectedReason);
 
   // This method checks if the principal has the permission to access to the
   // first party storage.
-  static bool
-  IsFirstPartyStorageAccessGrantedFor(nsIPrincipal* aPrincipal);
+  static bool IsFirstPartyStorageAccessGrantedFor(nsIPrincipal* aPrincipal);
 
-  enum StorageAccessGrantedReason
-  {
+  enum StorageAccessGrantedReason {
     eStorageAccessAPI,
-    eHeuristic,
+    eOpenerAfterUserInteraction,
+    eOpener
   };
+  enum StorageAccessPromptChoices { eAllow, eAllowAutoGrant, eAllowOnAnySite };
 
   // Grant the permission for aOrigin to have access to the first party storage.
   // This method can handle 2 different scenarios:
@@ -105,29 +89,32 @@ public:
   //   Ex: example.net import tracker.com/script.js which does opens a popup and
   //   the user interacts with it. tracker.com is allowed when loaded by
   //   example.net.
-  typedef MozPromise<bool, bool, false> StorageAccessGrantPromise;
+  typedef MozPromise<int, bool, true> StorageAccessFinalCheckPromise;
+  typedef std::function<RefPtr<StorageAccessFinalCheckPromise>()>
+      PerformFinalChecks;
+  typedef MozPromise<int, bool, true> StorageAccessGrantPromise;
   static MOZ_MUST_USE RefPtr<StorageAccessGrantPromise>
-  AddFirstPartyStorageAccessGrantedFor(nsIPrincipal* aPrincipal,
-                                       nsPIDOMWindowInner* aParentWindow,
-                                       StorageAccessGrantedReason aReason);
+  AddFirstPartyStorageAccessGrantedFor(
+      nsIPrincipal* aPrincipal, nsPIDOMWindowInner* aParentWindow,
+      StorageAccessGrantedReason aReason,
+      const PerformFinalChecks& aPerformFinalChecks = nullptr);
 
   // Returns true if the permission passed in is a storage access permission
   // for the passed in principal argument.
-  static bool
-  IsStorageAccessPermission(nsIPermission* aPermission, nsIPrincipal* aPrincipal);
+  static bool IsStorageAccessPermission(nsIPermission* aPermission,
+                                        nsIPrincipal* aPrincipal);
 
-  static void
-  StoreUserInteractionFor(nsIPrincipal* aPrincipal);
+  static void StoreUserInteractionFor(nsIPrincipal* aPrincipal);
 
-  static bool
-  HasUserInteraction(nsIPrincipal* aPrincipal);
+  static bool HasUserInteraction(nsIPrincipal* aPrincipal);
 
   // For IPC only.
-  static void
-  SaveFirstPartyStorageAccessGrantedForOriginOnParentProcess(nsIPrincipal* aPrincipal,
-                                                             const nsCString& aParentOrigin,
-                                                             const nsCString& aGrantedOrigin,
-                                                             FirstPartyStorageAccessGrantedForOriginResolver&& aResolver);
+  typedef MozPromise<nsresult, bool, true> FirstPartyStorageAccessGrantPromise;
+  static RefPtr<FirstPartyStorageAccessGrantPromise>
+  SaveFirstPartyStorageAccessGrantedForOriginOnParentProcess(
+      nsIPrincipal* aPrincipal, nsIPrincipal* aTrackingPrinciapl,
+      const nsCString& aParentOrigin, const nsCString& aGrantedOrigin,
+      int aAllowMode);
 
   enum ContentBlockingAllowListPurpose {
     eStorageChecks,
@@ -136,29 +123,36 @@ public:
   };
 
   // Check whether a top window URI is on the content blocking allow list.
-  static nsresult
-  IsOnContentBlockingAllowList(nsIURI* aTopWinURI,
-                               bool aIsPrivateBrowsing,
-                               ContentBlockingAllowListPurpose aPurpose,
-                               bool& aIsAllowListed);
+  static nsresult IsOnContentBlockingAllowList(
+      nsIURI* aTopWinURI, bool aIsPrivateBrowsing,
+      ContentBlockingAllowListPurpose aPurpose, bool& aIsAllowListed);
+
+  enum class BlockingDecision {
+    eBlock,
+    eAllow,
+  };
 
   // This method can be called on the parent process or on the content process.
   // The notification is propagated to the child channel if aChannel is a parent
   // channel proxy.
+  //
+  // aDecision can be eBlock if we have decided to block some content, or eAllow
+  // if we have decided to allow the content through.
   //
   // aRejectedReason must be one of these values:
   //  * nsIWebProgressListener::STATE_COOKIES_BLOCKED_BY_PERMISSION
   //  * nsIWebProgressListener::STATE_COOKIES_BLOCKED_TRACKER
   //  * nsIWebProgressListener::STATE_COOKIES_BLOCKED_ALL
   //  * nsIWebProgressListener::STATE_COOKIES_BLOCKED_FOREIGN
-  //  * nsIWebProgressListener::STATE_BLOCKED_SLOW_TRACKING_CONTENT
-  static void
-  NotifyRejection(nsIChannel* aChannel, uint32_t aRejectedReason);
+  static void NotifyBlockingDecision(nsIChannel* aChannel,
+                                     BlockingDecision aDecision,
+                                     uint32_t aRejectedReason);
 
-  static void
-  NotifyRejection(nsPIDOMWindowInner* aWindow, uint32_t aRejectedReason);
+  static void NotifyBlockingDecision(nsPIDOMWindowInner* aWindow,
+                                     BlockingDecision aDecision,
+                                     uint32_t aRejectedReason);
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // mozilla_antitrackingservice_h
+#endif  // mozilla_antitrackingservice_h

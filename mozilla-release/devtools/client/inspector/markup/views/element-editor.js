@@ -27,7 +27,7 @@ const COLLAPSE_DATA_URL_LENGTH = 60;
 const HTML_VOID_ELEMENTS = [
   "area", "base", "br", "col", "command", "embed",
   "hr", "img", "input", "keygen", "link", "meta", "param", "source",
-  "track", "wbr"
+  "track", "wbr",
 ];
 
 // Contains only valid computed display property types of the node to display in the
@@ -91,7 +91,7 @@ function ElementEditor(container, node) {
       trigger: "dblclick",
       stopOnReturn: true,
       done: this.onTagEdit,
-      cssProperties: this._cssProperties
+      cssProperties: this._cssProperties,
     });
   }
 
@@ -118,7 +118,7 @@ function ElementEditor(container, node) {
         undoMods.apply();
       });
     },
-    cssProperties: this._cssProperties
+    cssProperties: this._cssProperties,
   });
 
   const displayName = this.node.displayName;
@@ -287,7 +287,7 @@ ElementEditor.prototype = {
 
   _createEventBadge: function() {
     this._eventBadge = this.doc.createElement("div");
-    this._eventBadge.classList.add("markup-badge");
+    this._eventBadge.className = "inspector-badge interactive";
     this._eventBadge.dataset.event = "true";
     this._eventBadge.textContent = "event";
     this._eventBadge.title = INSPECTOR_L10N.getStr("markupView.event.tooltiptext");
@@ -319,7 +319,7 @@ ElementEditor.prototype = {
 
   _createDisplayBadge: function() {
     this._displayBadge = this.doc.createElement("div");
-    this._displayBadge.classList.add("markup-badge");
+    this._displayBadge.className = "inspector-badge";
     this._displayBadge.addEventListener("click", this.onDisplayBadgeClick);
     // Badges order is [event][display][custom], insert display badge before custom.
     this.elt.insertBefore(this._displayBadge, this._customBadge);
@@ -343,6 +343,8 @@ ElementEditor.prototype = {
     } else if (displayType === "grid" || displayType === "inline-grid") {
       this._displayBadge.classList.toggle("interactive",
         this.highlighters.canGridHighlighterToggle(this.node));
+    } else {
+      this._displayBadge.classList.remove("interactive");
     }
   },
 
@@ -361,7 +363,7 @@ ElementEditor.prototype = {
 
   _createCustomBadge: function() {
     this._customBadge = this.doc.createElement("div");
-    this._customBadge.classList.add("markup-badge");
+    this._customBadge.className = "inspector-badge interactive";
     this._customBadge.dataset.custom = "true";
     this._customBadge.textContent = "custom…";
     this._customBadge.title = INSPECTOR_L10N.getStr("markupView.custom.tooltiptext");
@@ -517,7 +519,7 @@ ElementEditor.prototype = {
           undoMods.apply();
         });
       },
-      cssProperties: this._cssProperties
+      cssProperties: this._cssProperties,
     });
 
     // Figure out where we should place the attribute.
@@ -747,7 +749,7 @@ ElementEditor.prototype = {
       this.stopTrackingFlexboxHighlighterEvents();
 
       this._displayBadge.classList.toggle("active");
-      await this.highlighters.toggleFlexboxHighlighter(this.node);
+      await this.highlighters.toggleFlexboxHighlighter(this.node, "markup");
 
       this.startTrackingFlexboxHighlighterEvents();
     }
@@ -844,7 +846,7 @@ ElementEditor.prototype = {
       clearTimeout(this.animationTimers[key]);
     }
     this.animationTimers = null;
-  }
+  },
 };
 
 module.exports = ElementEditor;

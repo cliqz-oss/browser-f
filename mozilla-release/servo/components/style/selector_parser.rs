@@ -1,41 +1,41 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! The pseudo-classes and pseudo-elements supported by the style system.
 
 #![deny(missing_docs)]
 
-use Atom;
+use crate::element_state::ElementState;
+use crate::stylesheets::{Namespaces, Origin, UrlExtraData};
+use crate::values::serialize_atom_identifier;
+use crate::Atom;
 use cssparser::{Parser as CssParser, ParserInput};
-use element_state::ElementState;
 use selectors::parser::SelectorList;
 use std::fmt::{self, Debug, Write};
 use style_traits::{CssWriter, ParseError, ToCss};
-use stylesheets::{Namespaces, Origin, UrlExtraData};
-use values::serialize_atom_identifier;
 
 /// A convenient alias for the type that represents an attribute value used for
 /// selector parser implementation.
 pub type AttrValue = <SelectorImpl as ::selectors::SelectorImpl>::AttrValue;
 
 #[cfg(feature = "servo")]
-pub use servo::selector_parser::*;
+pub use crate::servo::selector_parser::*;
 
 #[cfg(feature = "gecko")]
-pub use gecko::selector_parser::*;
+pub use crate::gecko::selector_parser::*;
 
 #[cfg(feature = "servo")]
-pub use servo::selector_parser::ServoElementSnapshot as Snapshot;
+pub use crate::servo::selector_parser::ServoElementSnapshot as Snapshot;
 
 #[cfg(feature = "gecko")]
-pub use gecko::snapshot::GeckoElementSnapshot as Snapshot;
+pub use crate::gecko::snapshot::GeckoElementSnapshot as Snapshot;
 
 #[cfg(feature = "servo")]
-pub use servo::restyle_damage::ServoRestyleDamage as RestyleDamage;
+pub use crate::servo::restyle_damage::ServoRestyleDamage as RestyleDamage;
 
 #[cfg(feature = "gecko")]
-pub use gecko::restyle_damage::GeckoRestyleDamage as RestyleDamage;
+pub use crate::gecko::restyle_damage::GeckoRestyleDamage as RestyleDamage;
 
 /// Servo's selector parser.
 #[cfg_attr(feature = "servo", derive(MallocSizeOf))]

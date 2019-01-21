@@ -27,10 +27,6 @@ XPCOMUtils.defineLazyServiceGetter(this, "styleSheetService",
 XPCOMUtils.defineLazyServiceGetter(this, "processScript",
                                    "@mozilla.org/webextensions/extension-process-script;1");
 
-const DocumentEncoder = Components.Constructor(
-  "@mozilla.org/layout/documentEncoder;1?type=text/plain",
-  "nsIDocumentEncoder", "init");
-
 const Timer = Components.Constructor("@mozilla.org/timer;1", "nsITimer", "initWithCallback");
 
 ChromeUtils.import("resource://gre/modules/ExtensionChild.jsm");
@@ -42,7 +38,6 @@ XPCOMUtils.defineLazyGlobalGetters(this, ["crypto", "TextEncoder"]);
 const {
   DefaultMap,
   DefaultWeakMap,
-  ExtensionError,
   getInnerWindowID,
   getWinUtils,
   promiseDocumentIdle,
@@ -609,9 +604,10 @@ class UserScript extends Script {
         },
       });
 
-      // Inject the custom API registered by the extension API script.
+      // Notify listeners subscribed to the userScripts.onBeforeScript API event,
+      // to allow extension API script to provide its custom APIs to the userScript.
       if (apiScript) {
-        this.injectUserScriptAPIs(userScriptSandbox, context);
+        context.userScriptsEvents.emit("on-before-script", this.scriptMetadata, userScriptSandbox);
       }
 
       for (let script of sandboxScripts) {
@@ -648,86 +644,6 @@ class UserScript extends Script {
     });
 
     return sandbox;
-  }
-
-  injectUserScriptAPIs(userScriptScope, context) {
-    const {extension, scriptMetadata} = this;
-    const {userScriptAPIs, cloneScope: apiScope} = context;
-
-    if (!userScriptAPIs) {
-      return;
-    }
-
-    let clonedMetadata;
-
-    const UserScriptError = userScriptScope.Error;
-    const UserScriptPromise = userScriptScope.Promise;
-
-    const wrappedFnMap = new WeakMap();
-
-    function safeReturnCloned(res) {
-      try {
-        return Cu.cloneInto(res, userScriptScope);
-      } catch (err) {
-        Cu.reportError(
-          `userScripts API method wrapper for ${extension.policy.debugName}: ${err}`
-        );
-        throw new UserScriptError("Unable to clone object in the userScript sandbox");
-      }
-    }
-
-    function wrapUserScriptAPIMethod(fn, fnName) {
-      return Cu.exportFunction(function(...args) {
-        let fnArgs = Cu.cloneInto([], apiScope);
-
-        try {
-          for (let arg of args) {
-            if (typeof arg === "function") {
-              if (!wrappedFnMap.has(arg)) {
-                wrappedFnMap.set(arg, Cu.exportFunction(arg, apiScope));
-              }
-              fnArgs.push(wrappedFnMap.get(arg));
-            } else {
-              fnArgs.push(Cu.cloneInto(arg, apiScope));
-            }
-          }
-        } catch (err) {
-          Cu.reportError(`Error cloning userScriptAPIMethod parameters in ${fnName}: ${err}`);
-          throw new UserScriptError("Only serializable parameters are supported");
-        }
-
-        if (clonedMetadata === undefined) {
-          clonedMetadata = Cu.cloneInto(scriptMetadata, apiScope);
-        }
-
-        const res = runSafeSyncWithoutClone(fn, fnArgs, clonedMetadata, userScriptScope);
-
-        if (res instanceof context.Promise) {
-          return UserScriptPromise.resolve().then(async () => {
-            let value;
-            try {
-              value = await res;
-            } catch (err) {
-              if (err instanceof context.Error) {
-                throw new UserScriptError(err.message);
-              } else {
-                throw safeReturnCloned(err);
-              }
-            }
-            return safeReturnCloned(value);
-          });
-        }
-
-        return safeReturnCloned(res);
-      }, userScriptScope);
-    }
-
-    for (let key of Object.keys(userScriptAPIs)) {
-      Schemas.exportLazyGetter(userScriptScope, key, () => {
-        // Wrap the custom API methods exported to the userScript sandbox.
-        return wrapUserScriptAPIMethod(userScriptAPIs[key], key);
-      });
-    }
   }
 }
 
@@ -850,13 +766,15 @@ class ContentScriptContextChild extends BaseContext {
     Schemas.exportLazyGetter(this.sandbox, "browser", () => this.chromeObj);
     Schemas.exportLazyGetter(this.sandbox, "chrome", () => this.chromeObj);
 
-    // A set of exported API methods provided by the extension to the userScripts sandboxes.
-    this.userScriptAPIs = null;
-
     // Keep track if the userScript API script has been already executed in this context
     // (e.g. because there are more then one UserScripts that match the related webpage
     // and so the UserScript apiScript has already been executed).
     this.hasUserScriptAPIs = false;
+
+    // A lazy created EventEmitter related to userScripts-specific events.
+    defineLazyGetter(this, "userScriptsEvents", () => {
+      return new ExtensionCommon.EventEmitter();
+    });
   }
 
   injectAPI() {
@@ -873,14 +791,6 @@ class ContentScriptContextChild extends BaseContext {
 
   get cloneScope() {
     return this.sandbox;
-  }
-
-  setUserScriptAPIs(extCustomAPIs) {
-    if (this.userScriptAPIs) {
-      throw new ExtensionError("userScripts APIs may only be set once");
-    }
-
-    this.userScriptAPIs = extCustomAPIs;
   }
 
   async executeAPIScript(apiScript) {
@@ -1115,7 +1025,8 @@ var ExtensionContent = {
       // and since it's hosted by emscripten, and therefore can't shrink
       // its heap after it's grown, it has a performance cost.
       // So we send plain text instead.
-      let encoder = new DocumentEncoder(doc, "text/plain", Ci.nsIDocumentEncoder.SkipInvisibleContent);
+      let encoder = Cu.createDocumentEncoder("text/plain");
+      encoder.init(doc, "text/plain", Ci.nsIDocumentEncoder.SkipInvisibleContent);
       let text = encoder.encodeToStringWithMaxLength(60 * 1024);
 
       let encoding = doc.characterSet;

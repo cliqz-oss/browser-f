@@ -59,6 +59,11 @@ const Types = exports.__TypesForTests = [
     front: "devtools/shared/fronts/canvas",
   },
   {
+    types: ["changes"],
+    spec: "devtools/shared/specs/changes",
+    front: "devtools/shared/fronts/changes",
+  },
+  {
     types: ["cssProperties"],
     spec: "devtools/shared/specs/css-properties",
     front: "devtools/shared/fronts/css-properties",
@@ -235,6 +240,11 @@ const Types = exports.__TypesForTests = [
     front: null,
   },
   {
+    types: ["addonTarget"],
+    spec: "devtools/shared/specs/targets/addon",
+    front: "devtools/shared/fronts/targets/addon",
+  },
+  {
     types: ["browsingContextTarget"],
     spec: "devtools/shared/specs/targets/browsing-context",
     front: null,
@@ -242,6 +252,11 @@ const Types = exports.__TypesForTests = [
   {
     types: ["chromeWindowTarget"],
     spec: "devtools/shared/specs/targets/chrome-window",
+    front: null,
+  },
+  {
+    types: ["contentProcessTarget"],
+    spec: "devtools/shared/specs/targets/content-process",
     front: null,
   },
   {
@@ -262,12 +277,7 @@ const Types = exports.__TypesForTests = [
   {
     types: ["workerTarget"],
     spec: "devtools/shared/specs/targets/worker",
-    front: null,
-  },
-  {
-    types: ["timeline"],
-    spec: "devtools/shared/specs/timeline",
-    front: "devtools/shared/fronts/timeline",
+    front: "devtools/shared/fronts/targets/worker",
   },
   {
     types: ["audionode", "webaudio"],

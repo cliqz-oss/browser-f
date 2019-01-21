@@ -39,13 +39,12 @@ function clickGutter(dbg, line) {
 
 add_task(async function() {
   // NOTE: the CORS call makes the test run times inconsistent
-  const dbg = await initDebugger("doc-sourcemaps.html");
+  const dbg = await initDebugger("doc-sourcemaps.html", "entry.js", "output.js", "times2.js", "opts.js");
   const {
-    selectors: { getBreakpoint, getBreakpoints },
+    selectors: { getBreakpoint, getBreakpointCount },
     getState
   } = dbg;
 
-  await waitForSources(dbg, "entry.js", "output.js", "times2.js", "opts.js");
   ok(true, "Original sources exist");
   const bundleSrc = findSource(dbg, "bundle.js");
 
@@ -57,7 +56,7 @@ add_task(async function() {
 
   await clickGutter(dbg, 13);
   await waitForDispatch(dbg, "REMOVE_BREAKPOINT");
-  is(getBreakpoints(getState()).size, 0, "No breakpoints exists");
+  is(getBreakpointCount(getState()), 0, "No breakpoints exists");
 
   const entrySrc = findSource(dbg, "entry.js");
 
@@ -71,7 +70,7 @@ add_task(async function() {
 
   // Test breaking on a breakpoint
   await addBreakpoint(dbg, "entry.js", 15);
-  is(getBreakpoints(getState()).size, 1, "One breakpoint exists");
+  is(getBreakpointCount(getState()), 1, "One breakpoint exists");
   assertBreakpointExists(dbg, entrySrc, 15);
 
   invokeInTab("keepMeAlive");

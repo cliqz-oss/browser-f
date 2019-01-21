@@ -1,15 +1,15 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Generic type for CSS properties that are composed by two dimensions.
 
+use crate::parser::ParserContext;
+use crate::values::animated::ToAnimatedValue;
 use cssparser::Parser;
 use euclid::Size2D;
-use parser::ParserContext;
 use std::fmt::{self, Write};
 use style_traits::{CssWriter, ParseError, SpecifiedValueInfo, ToCss};
-use values::animated::ToAnimatedValue;
 
 /// A generic size, for `border-*-radius` longhand properties, or
 /// `border-spacing`.

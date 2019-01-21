@@ -22,10 +22,8 @@ loader.lazyRequireGetter(this, "DebuggerSocket", "devtools/shared/security/socke
 loader.lazyRequireGetter(this, "EventEmitter", "devtools/shared/event-emitter");
 
 loader.lazyRequireGetter(this, "WebConsoleClient", "devtools/shared/webconsole/client", true);
-loader.lazyRequireGetter(this, "AddonClient", "devtools/shared/client/addon-client");
-loader.lazyRequireGetter(this, "RootClient", "devtools/shared/client/root-client");
-loader.lazyRequireGetter(this, "BrowsingContextFront", "devtools/shared/fronts/targets/browsing-context", true);
-loader.lazyRequireGetter(this, "WorkerTargetFront", "devtools/shared/fronts/targets/worker", true);
+loader.lazyRequireGetter(this, "RootFront", "devtools/shared/fronts/root", true);
+loader.lazyRequireGetter(this, "BrowsingContextTargetFront", "devtools/shared/fronts/targets/browsing-context", true);
 loader.lazyRequireGetter(this, "ThreadClient", "devtools/shared/client/thread-client");
 loader.lazyRequireGetter(this, "ObjectClient", "devtools/shared/client/object-client");
 loader.lazyRequireGetter(this, "Pool", "devtools/shared/protocol", true);
@@ -60,7 +58,7 @@ function DebuggerClient(transport) {
   // Once RootClient becomes a protocol.js actor, these actors can be attached to it
   // instead of this pool.
   // This Pool will automatically be added to this._pools via addActorPool once the first
-  // Front will be added to it (in attachTarget, attachWorker,...).
+  // Front will be added to it (in attachTarget, ...).
   // And it does not need to destroyed explicitly as all Pools are destroyed on client
   // closing.
   this._frontPool = new Pool(this);
@@ -80,7 +78,8 @@ function DebuggerClient(transport) {
    */
   this.mainRoot = null;
   this.expectReply("root", (packet) => {
-    this.mainRoot = new RootClient(this, packet);
+    this.mainRoot = new RootFront(this, packet);
+    this._frontPool.manage(this.mainRoot);
     this.emit("connected", packet.applicationType, packet.traits);
   });
 }
@@ -345,14 +344,6 @@ DebuggerClient.prototype = {
     return this.mainRoot.listTabs(options);
   },
 
-  /*
-   * This function exists only to preserve DebuggerClient's interface;
-   * new code should say 'client.mainRoot.listAddons()'.
-   */
-  listAddons: function() {
-    return this.mainRoot.listAddons();
-  },
-
   getTab: function(filter) {
     return this.mainRoot.getTab(filter);
   },
@@ -366,48 +357,19 @@ DebuggerClient.prototype = {
    *    Instantiates a new ThreadActor that can be later attached to in order to
    *    debug JS sources in the document.
    *
-   * @param string targetActor
-   *        The target actor ID for the tab to attach.
+   * @param string targetActorForm
+   *        The target actor form for the tab to attach.
    */
-  attachTarget: async function(targetActor) {
-    let front = this._frontPool.actor(targetActor);
+  attachTarget: async function(targetActorForm) {
+    const actorID = targetActorForm.actor;
+    let front = this._frontPool.actor(actorID);
     if (!front) {
-      front = new BrowsingContextFront(this, { actor: targetActor });
+      front = new BrowsingContextTargetFront(this, targetActorForm);
       this._frontPool.manage(front);
     }
 
     const response = await front.attach();
     return [response, front];
-  },
-
-  attachWorker: async function(workerTargetActor) {
-    let front = this._frontPool.actor(workerTargetActor);
-    if (!front) {
-      front = new WorkerTargetFront(this, { actor: workerTargetActor });
-      this._frontPool.manage(front);
-    }
-
-    const response = await front.attach();
-    return [response, front];
-  },
-
-  /**
-   * Attach to an addon target actor.
-   *
-   * @param string addonTargetActor
-   *        The actor ID for the addon to attach.
-   */
-  attachAddon: function(addonTargetActor) {
-    const packet = {
-      to: addonTargetActor,
-      type: "attach",
-    };
-    return this.request(packet).then(response => {
-      const addonClient = new AddonClient(this, addonTargetActor);
-      this.registerClient(addonClient);
-      this.activeAddon = addonClient;
-      return [response, addonClient];
-    });
   },
 
   /**
@@ -799,21 +761,21 @@ DebuggerClient.prototype = {
       return;
     }
 
+    // Check for "forwardingCancelled" here instead of using a front to handle it.
+    // This is necessary because we might receive this event while the client is closing,
+    // and the fronts have already been removed by that point.
+    if (this.mainRoot &&
+        packet.from == this.mainRoot.actorID &&
+        packet.type == "forwardingCancelled") {
+      this.purgeRequests(packet.prefix);
+      return;
+    }
+
     // If we have a registered Front for this actor, let it handle the packet
     // and skip all the rest of this unpleasantness.
     const front = this.getActor(packet.from);
     if (front) {
       front.onPacket(packet);
-      return;
-    }
-
-    // Check for "forwardingCancelled" here instead of using a client to handle it.
-    // This is necessary because we might receive this event while the client is closing,
-    // and the clients have already been removed by that point.
-    if (this.mainRoot &&
-        packet.from == this.mainRoot.actor &&
-        packet.type == "forwardingCancelled") {
-      this.purgeRequests(packet.prefix);
       return;
     }
 

@@ -1,5 +1,6 @@
 package org.mozilla.geckoview;
 
+import org.mozilla.gecko.annotation.WrapForJNI;
 import org.mozilla.gecko.util.ThreadUtils;
 
 import android.os.Handler;
@@ -180,6 +181,7 @@ public class GeckoResult<T> {
      * Construct an incomplete GeckoResult. Call {@link #complete(Object)} or
      * {@link #completeExceptionally(Throwable)} in order to fulfill the result.
      */
+    @WrapForJNI
     public GeckoResult() {
         if (ThreadUtils.isOnUiThread()) {
             mHandler = ThreadUtils.getUiHandler();
@@ -218,6 +220,7 @@ public class GeckoResult<T> {
      * @param <U> Type for the result.
      * @return The completed {@link GeckoResult}
      */
+    @WrapForJNI
     public static @NonNull <U> GeckoResult<U> fromValue(@Nullable final U value) {
         final GeckoResult<U> result = new GeckoResult<>();
         result.complete(value);
@@ -232,6 +235,7 @@ public class GeckoResult<T> {
      * @param <T> Type for the result if the result had been completed without exception.
      * @return The completed {@link GeckoResult}
      */
+    @WrapForJNI
     public static @NonNull <T> GeckoResult<T> fromException(@NonNull final Throwable error) {
         final GeckoResult<T> result = new GeckoResult<>();
         result.completeExceptionally(error);
@@ -501,6 +505,7 @@ public class GeckoResult<T> {
      * @param value The value used to complete the result.
      * @throws IllegalStateException If the result is already completed.
      */
+    @WrapForJNI
     public synchronized void complete(final T value) {
         if (mComplete) {
             throw new IllegalStateException("result is already complete");
@@ -520,6 +525,7 @@ public class GeckoResult<T> {
      * @param exception The {@link Throwable} used to complete the result.
      * @throws IllegalStateException If the result is already completed.
      */
+    @WrapForJNI
     public synchronized void completeExceptionally(@NonNull final Throwable exception) {
         if (mComplete) {
             throw new IllegalStateException("result is already complete");
@@ -544,7 +550,8 @@ public class GeckoResult<T> {
     public interface OnValueListener<T, U> {
         /**
          * Called when a {@link GeckoResult} is completed with a value. Will be
-         * called on the main thread.
+         * called on the same thread where the GeckoResult was created or on
+         * the {@link Handler} provided via {@link #withHandler(Handler)}.
          *
          * @param value The value of the {@link GeckoResult}
          * @return Result used to complete the next result in the chain. May be null.
@@ -560,8 +567,9 @@ public class GeckoResult<T> {
      */
     public interface OnExceptionListener<V> {
         /**
-         * Called when a {@link GeckoResult} is completed with an exception. Will be
-         * called on the main thread.
+         * Called when a {@link GeckoResult} is completed with an exception.
+         * Will be called on the same thread where the GeckoResult was created
+         * or on the {@link Handler} provided via {@link #withHandler(Handler)}.
          *
          * @param exception Exception that completed the result.
          * @return Result used to complete the next result in the chain. May be null.

@@ -4,33 +4,18 @@
 
 "use strict";
 
-async function run_test() {
-  try {
-    do_test_pending();
-    await run_test_with_server(DebuggerServer);
-    await run_test_with_server(WorkerDebuggerServer);
-  } finally {
-    do_test_finished();
-  }
-}
+Services.prefs.setBoolPref("security.allow_eval_with_system_principal", true);
+registerCleanupFunction(() => {
+  Services.prefs.clearUserPref("security.allow_eval_with_system_principal");
+});
 
-async function run_test_with_server(server) {
-  initTestDebuggerServer(server);
-  const debuggee = addTestGlobal("test-grips", server);
-  debuggee.eval(`
-    function stopMe(arg1) {
-      debugger;
-    }
-  `);
-
-  const dbgClient = new DebuggerClient(server.connectPipe());
-  await dbgClient.connect();
-  const [,, threadClient] = await attachTestTabAndResume(dbgClient, "test-grips");
+add_task(threadClientTest(async ({ threadClient, debuggee, client }) => {
+  debuggee.eval(function stopMe(arg1) {
+    debugger;
+  }.toString());
 
   await test_object_grip(debuggee, threadClient);
-
-  await dbgClient.close();
-}
+}));
 
 async function test_object_grip(debuggee, threadClient) {
   await assert_object_argument(
@@ -52,17 +37,17 @@ async function test_object_grip(debuggee, threadClient) {
       });
     `,
     async objClient => {
-      const obj1 = (await objClient.getPropertyValue("obj1")).value.return;
-      const obj2 = (await objClient.getPropertyValue("obj2")).value.return;
+      const obj1 = (await objClient.getPropertyValue("obj1", null)).value.return;
+      const obj2 = (await objClient.getPropertyValue("obj2", null)).value.return;
 
       const context = threadClient.pauseGrip(
-        (await objClient.getPropertyValue("context")).value.return,
+        (await objClient.getPropertyValue("context", null)).value.return,
       );
       const sum = threadClient.pauseGrip(
-        (await objClient.getPropertyValue("sum")).value.return,
+        (await objClient.getPropertyValue("sum", null)).value.return,
       );
       const error = threadClient.pauseGrip(
-        (await objClient.getPropertyValue("error")).value.return,
+        (await objClient.getPropertyValue("error", null)).value.return,
       );
 
       assert_response(await context.apply(obj1, [obj1]), {

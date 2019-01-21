@@ -1,12 +1,11 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /*
  * This file contains a helper macro includes all supported non-tree-structural
  * pseudo-classes.
  *
-
  * FIXME: Find a way to autogenerate this file.
  *
  * Expected usage is as follows:
@@ -38,7 +37,7 @@ macro_rules! apply_non_ts_list {
                 ("visited", Visited, visited, IN_VISITED_STATE, _),
                 ("active", Active, active, IN_ACTIVE_STATE, _),
                 ("checked", Checked, checked, IN_CHECKED_STATE, _),
-                ("defined", Defined, defined, IN_DEFINED_STATE, PSEUDO_CLASS_ENABLED_IN_UA_SHEETS_AND_CHROME),
+                ("defined", Defined, defined, IN_DEFINED_STATE, _),
                 ("disabled", Disabled, disabled, IN_DISABLED_STATE, _),
                 ("enabled", Enabled, enabled, IN_ENABLED_STATE, _),
                 ("focus", Focus, focus, IN_FOCUS_STATE, _),

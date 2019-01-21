@@ -8,9 +8,12 @@
 #define GFX_ANIMATIONINFO_H
 
 #include "nsAutoPtr.h"
+#include "nsCSSPropertyIDSet.h"
 #include "nsDisplayItemTypes.h"
+#include "mozilla/Array.h"
 
 struct RawServoAnimationValue;
+class nsIContent;
 class nsIFrame;
 
 namespace mozilla {
@@ -22,15 +25,15 @@ class Layer;
 class LayerManager;
 struct AnimData;
 
-class AnimationInfo
-{
+class AnimationInfo final {
   typedef InfallibleTArray<Animation> AnimationArray;
-public:
-  explicit AnimationInfo(LayerManager* aManager);
-  virtual ~AnimationInfo();
 
-  // Ensure that this AnimationInfo has a valid (non-zero) animations id. This value is
-  // unique across layers.
+ public:
+  AnimationInfo();
+  ~AnimationInfo();
+
+  // Ensure that this AnimationInfo has a valid (non-zero) animations id. This
+  // value is unique across layers.
   void EnsureAnimationsId();
 
   // Call AddAnimation to add a new animation to this layer from layout code.
@@ -44,19 +47,23 @@ public:
   // SetBaseTransformForNextTransaction.)
   Animation* AddAnimationForNextTransaction();
 
-  void SetAnimationGeneration(uint64_t aCount) { mAnimationGeneration = aCount; }
-  uint64_t GetAnimationGeneration() { return mAnimationGeneration; }
+  void SetAnimationGeneration(uint64_t aCount) {
+    mAnimationGeneration = Some(aCount);
+  }
+  Maybe<uint64_t> GetAnimationGeneration() const {
+    return mAnimationGeneration;
+  }
 
   // ClearAnimations clears animations on this layer.
   void ClearAnimations();
   void ClearAnimationsForNextTransaction();
-  void SetCompositorAnimations(const CompositorAnimations& aCompositorAnimations);
+  void SetCompositorAnimations(
+      const CompositorAnimations& aCompositorAnimations);
   bool StartPendingAnimations(const TimeStamp& aReadyTime);
   void TransferMutatedFlagToLayer(Layer* aLayer);
 
   uint64_t GetCompositorAnimationsId() { return mCompositorAnimationsId; }
-  RawServoAnimationValue* GetBaseAnimationStyle() const
-  {
+  RawServoAnimationValue* GetBaseAnimationStyle() const {
     return mBaseAnimationStyle;
   }
   InfallibleTArray<AnimData>& GetAnimationData() { return mAnimationData; }
@@ -66,23 +73,35 @@ public:
 
   // In case of continuation, |aFrame| must be the first or the last
   // continuation frame, otherwise this function might return Nothing().
-  static Maybe<uint64_t> GetGenerationFromFrame(nsIFrame* aFrame,
-                                                DisplayItemType aDisplayItemKey);
+  static Maybe<uint64_t> GetGenerationFromFrame(
+      nsIFrame* aFrame, DisplayItemType aDisplayItemKey);
 
-protected:
-  LayerManager* mManager;
+  using CompositorAnimatableDisplayItemTypes =
+      Array<DisplayItemType, nsCSSPropertyIDSet::CompositorAnimatableCount()>;
+  using AnimationGenerationCallback = std::function<bool(
+      const Maybe<uint64_t>& aGeneration, DisplayItemType aDisplayItemType)>;
+  // Enumerates animation generations on |aFrame| for the given display item
+  // types and calls |aCallback| with the animation generation.
+  //
+  // The enumeration stops if |aCallback| returns false.
+  static void EnumerateGenerationOnFrame(
+      const nsIFrame* aFrame, const nsIContent* aContent,
+      const CompositorAnimatableDisplayItemTypes& aDisplayItemTypes,
+      const AnimationGenerationCallback& aCallback);
+
+ protected:
   AnimationArray mAnimations;
   uint64_t mCompositorAnimationsId;
   nsAutoPtr<AnimationArray> mPendingAnimations;
   InfallibleTArray<AnimData> mAnimationData;
   // If this layer is used for OMTA, then this counter is used to ensure we
   // stay in sync with the animation manager
-  uint64_t mAnimationGeneration;
+  Maybe<uint64_t> mAnimationGeneration;
   RefPtr<RawServoAnimationValue> mBaseAnimationStyle;
   bool mMutated;
 };
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
-#endif // GFX_ANIMATIONINFO_H
+#endif  // GFX_ANIMATIONINFO_H

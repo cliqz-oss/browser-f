@@ -15,14 +15,16 @@
 
 namespace mozilla {
 
-class MOZ_RAII AutoProfilerStyleMarker
-{
-public:
-  explicit AutoProfilerStyleMarker(UniqueProfilerBacktrace aCause)
-    : mActive(profiler_is_active())
-    , mStartTime(TimeStamp::Now())
-    , mCause(std::move(aCause))
-  {
+class MOZ_RAII AutoProfilerStyleMarker {
+ public:
+  explicit AutoProfilerStyleMarker(UniqueProfilerBacktrace aCause,
+                                   const Maybe<nsID>& aDocShellId,
+                                   const Maybe<uint32_t>& aDocShellHistoryId)
+      : mActive(profiler_is_active()),
+        mStartTime(TimeStamp::Now()),
+        mCause(std::move(aCause)),
+        mDocShellId(aDocShellId),
+        mDocShellHistoryId(aDocShellHistoryId) {
     if (!mActive) {
       return;
     }
@@ -32,23 +34,26 @@ public:
     ServoTraversalStatistics::sActive = true;
   }
 
-  ~AutoProfilerStyleMarker()
-  {
+  ~AutoProfilerStyleMarker() {
     if (!mActive) {
       return;
     }
     ServoTraversalStatistics::sActive = false;
-    profiler_add_marker("Styles", MakeUnique<StyleMarkerPayload>(
-      mStartTime, TimeStamp::Now(), std::move(mCause),
-      ServoTraversalStatistics::sSingleton));
+    profiler_add_marker("Styles",
+                        MakeUnique<StyleMarkerPayload>(
+                            mStartTime, TimeStamp::Now(), std::move(mCause),
+                            ServoTraversalStatistics::sSingleton, mDocShellId,
+                            mDocShellHistoryId));
   }
 
-private:
+ private:
   bool mActive;
   TimeStamp mStartTime;
   UniqueProfilerBacktrace mCause;
+  Maybe<nsID> mDocShellId;
+  Maybe<uint32_t> mDocShellHistoryId;
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // mozilla_AutoProfilerStyleMarker_h
+#endif  // mozilla_AutoProfilerStyleMarker_h

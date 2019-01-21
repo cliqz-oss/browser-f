@@ -114,7 +114,7 @@ var PlacesDBUtils = {
         logs.push(`The ${dbName} database is sane`);
       } catch (ex) {
         PlacesDBUtils.clearPendingTasks();
-        if (ex.status == Cr.NS_ERROR_FILE_CORRUPTED) {
+        if (ex.result == Cr.NS_ERROR_FILE_CORRUPTED) {
           logs.push(`The ${dbName} database is corrupt`);
           Services.prefs.setCharPref("places.database.replaceDatabaseOnStartup", dbName);
           throw new Error(`Unable to fix corruption, ${dbName} will be replaced on next startup`);
@@ -978,9 +978,6 @@ var PlacesDBUtils = {
    *
    */
   async telemetry() {
-    // First deal with some scalars for feeds:
-    await this._telemetryForFeeds();
-
     // This will be populated with one integer property for each probe result,
     // using the histogram name as key.
     let probeValues = {};
@@ -1128,16 +1125,6 @@ var PlacesDBUtils = {
     }
   },
 
-  async _telemetryForFeeds() {
-    let db = await PlacesUtils.promiseDBConnection();
-    let livebookmarkCount = await db.execute(
-      `SELECT count(*) FROM moz_items_annos a
-                       JOIN moz_anno_attributes aa ON a.anno_attribute_id = aa.id
-                       WHERE aa.name = 'livemark/feedURI'`);
-    livebookmarkCount = livebookmarkCount[0].getResultByIndex(0);
-    Services.telemetry.scalarSet("browser.feeds.livebookmark_count", livebookmarkCount);
-  },
-
   /**
    * Runs a list of tasks, returning a Map when done.
    *
@@ -1189,7 +1176,7 @@ async function integrity(dbName) {
 
   // Create a new connection for this check, so we can operate independently
   // from a broken Places service.
-  // openConnection returns an exception with .status == Cr.NS_ERROR_FILE_CORRUPTED,
+  // openConnection returns an exception with .result == Cr.NS_ERROR_FILE_CORRUPTED,
   // we should do the same everywhere we want maintenance to try replacing the
   // database on next startup.
   let path = OS.Path.join(OS.Constants.Path.profileDir, dbName);
@@ -1203,16 +1190,14 @@ async function integrity(dbName) {
     try {
       await db.execute("REINDEX");
     } catch (ex) {
-      let error = new Error("Impossible to reindex database");
-      error.status = Cr.NS_ERROR_FILE_CORRUPTED;
-      throw error;
+      throw new Components.Exception("Impossible to reindex database",
+                                     Cr.NS_ERROR_FILE_CORRUPTED);
     }
 
     // Check again.
     if (!await check(db)) {
-      let error = new Error("The database is still corrupt");
-      error.status = Cr.NS_ERROR_FILE_CORRUPTED;
-      throw error;
+      throw new Components.Exception("The database is still corrupt",
+                                     Cr.NS_ERROR_FILE_CORRUPTED);
     }
   } finally {
     await db.close();

@@ -20,14 +20,12 @@ ChromeUtils.defineModuleGetter(this, "Extension",
                                "resource://gre/modules/Extension.jsm");
 ChromeUtils.defineModuleGetter(this, "ExtensionParent",
                                "resource://gre/modules/ExtensionParent.jsm");
-ChromeUtils.defineModuleGetter(this, "Preferences",
-                               "resource://gre/modules/Preferences.jsm");
-
-
 ChromeUtils.defineModuleGetter(this, "PluralForm",
                                "resource://gre/modules/PluralForm.jsm");
 ChromeUtils.defineModuleGetter(this, "Preferences",
                                "resource://gre/modules/Preferences.jsm");
+ChromeUtils.defineModuleGetter(this, "ClientID",
+                               "resource://gre/modules/ClientID.jsm");
 
 XPCOMUtils.defineLazyPreferenceGetter(this, "WEBEXT_PERMISSION_PROMPTS",
                                       "extensions.webextPermissionPrompts", false);
@@ -287,20 +285,6 @@ function setSearchLabel(type) {
   } else {
     searchLabel.textContent = "";
     searchLabel.hidden = true;
-  }
-}
-
-function setThemeScreenshot(addon, node) {
-  let screenshot = node.querySelector(".theme-screenshot")
-    || document.getAnonymousElementByAttribute(node, "anonid", "theme-screenshot");
-  // There's a test that doesn't have this for some reason, but it's doing weird things.
-  if (!screenshot)
-    return;
-  if (addon.type == "theme" && addon.screenshots && addon.screenshots.length > 0) {
-    screenshot.setAttribute("src", addon.screenshots[0].url);
-    screenshot.hidden = false;
-  } else {
-    screenshot.hidden = true;
   }
 }
 
@@ -1582,6 +1566,15 @@ function sortElements(aElements, aSortBy, aAscending) {
     return (UISTATE_ORDER.indexOf(a) - UISTATE_ORDER.indexOf(b));
   }
 
+  // Prioritize themes that have screenshots.
+  function hasPreview(aHasStr, bHasStr) {
+    let aHas = aHasStr == "true";
+    let bHas = bHasStr == "true";
+    if (aHas == bHas)
+      return 0;
+    return aHas ? -1 : 1;
+  }
+
   function getValue(aObj, aKey) {
     if (!aObj)
       return null;
@@ -1628,6 +1621,8 @@ function sortElements(aElements, aSortBy, aAscending) {
       aSortFuncs[i] = dateCompare;
     else if (NUMERIC_FIELDS.includes(sortBy))
       aSortFuncs[i] = numberCompare;
+    else if (sortBy == "hasPreview")
+      aSortFuncs[i] = hasPreview;
   }
 
 
@@ -1649,8 +1644,9 @@ function sortElements(aElements, aSortBy, aAscending) {
       if (aValue != bValue) {
         var result = aSortFuncs[i](aValue, bValue);
 
-        if (result != 0)
+        if (result != 0) {
           return result;
+        }
       }
     }
 
@@ -1997,11 +1993,28 @@ var gDiscoverView = {
   _loadListeners: [],
   hideHeader: true,
 
+  get clientIdDiscoveryEnabled() {
+    // These prefs match Discovery.jsm for enabling clientId cookies.
+    return Services.prefs.getBoolPref("datareporting.healthreport.uploadEnabled", false) &&
+           Services.prefs.getBoolPref("browser.discovery.enabled", false);
+  },
+
+  async getClientHeader() {
+    if (!this.clientIdDiscoveryEnabled) {
+      return undefined;
+    }
+    let clientId = await ClientID.getClientIdHash();
+
+    let stream = Cc["@mozilla.org/io/string-input-stream;1"].createInstance(Ci.nsISupportsCString);
+    stream.data = `Moz-Client-Id: ${clientId}\r\n`;
+    return stream;
+  },
+
   async initialize() {
     this.enabled = isDiscoverEnabled();
     if (!this.enabled) {
       gCategories.get("addons://discover/").hidden = true;
-      return;
+      return null;
     }
 
     this.node = document.getElementById("discover-view");
@@ -2019,7 +2032,7 @@ var gDiscoverView = {
     url = url.replace("%COMPATIBILITY_MODE%", compatMode);
     url = Services.urlFormatter.formatURL(url);
 
-    let setURL = (aURL) => {
+    let setURL = async (aURL) => {
       try {
         this.homepageURL = Services.io.newURI(aURL);
       } catch (e) {
@@ -2030,16 +2043,17 @@ var gDiscoverView = {
 
       this._browser.addProgressListener(this);
 
-      if (this.loaded)
+      if (this.loaded) {
         this._loadURL(this.homepageURL.spec, false, notifyInitialized,
-                      Services.scriptSecurityManager.getSystemPrincipal());
-      else
+                      Services.scriptSecurityManager.getSystemPrincipal(),
+                      await this.getClientHeader());
+      } else {
         notifyInitialized();
+      }
     };
 
     if (!Services.prefs.getBoolPref(PREF_GETADDONS_CACHE_ENABLED)) {
-      setURL(url);
-      return;
+      return setURL(url);
     }
 
     gPendingInitializations++;
@@ -2062,7 +2076,7 @@ var gDiscoverView = {
       };
     }
 
-    setURL(url + "#" + JSON.stringify(list));
+    return setURL(url + "#" + JSON.stringify(list));
   },
 
   destroy() {
@@ -2073,7 +2087,7 @@ var gDiscoverView = {
     }
   },
 
-  show(aParam, aRequest, aState, aIsRefresh) {
+  async show(aParam, aRequest, aState, aIsRefresh) {
     gViewController.updateCommands();
 
     // If we're being told to load a specific URL then just do that
@@ -2102,7 +2116,8 @@ var gDiscoverView = {
 
     this._loadURL(this.homepageURL.spec, aIsRefresh,
                   gViewController.notifyViewChanged.bind(gViewController),
-                  Services.scriptSecurityManager.getSystemPrincipal());
+                  Services.scriptSecurityManager.getSystemPrincipal(),
+                  await this.getClientHeader());
   },
 
   canRefresh() {
@@ -2122,7 +2137,7 @@ var gDiscoverView = {
     this.node.selectedPanel = this._error;
   },
 
-  _loadURL(aURL, aKeepHistory, aCallback, aPrincipal) {
+  _loadURL(aURL, aKeepHistory, aCallback, aPrincipal, headers) {
     if (this._browser.currentURI && this._browser.currentURI.spec == aURL) {
       if (aCallback)
         aCallback();
@@ -2139,6 +2154,7 @@ var gDiscoverView = {
     this._browser.loadURI(aURL, {
       flags,
       triggeringPrincipal: aPrincipal || Services.scriptSecurityManager.createNullPrincipal({}),
+      headers,
     });
   },
 
@@ -2180,8 +2196,7 @@ var gDiscoverView = {
     aRequest.cancel(Cr.NS_BINDING_ABORTED);
   },
 
-  onSecurityChange(aWebProgress, aRequest, aOldState, aState,
-                   aContentBlockingLogJSON) {
+  onSecurityChange(aWebProgress, aRequest, aState) {
     // Don't care about security if the page is not https
     if (!this.homepageURL.schemeIs("https"))
       return;
@@ -2439,10 +2454,15 @@ var gListView = {
 
       this.showEmptyNotice(elements.length == 0);
       if (elements.length > 0) {
-        sortElements(elements, ["uiState", "name"], true);
+        let sortBy;
+        if (aType == "theme") {
+          sortBy = ["uiState", "hasPreview", "name"];
+        } else {
+          sortBy = ["uiState", "name"];
+        }
+        sortElements(elements, sortBy, true);
         for (let element of elements) {
           this._listBox.appendChild(element);
-          setThemeScreenshot(element.mAddon, element);
         }
       }
 
@@ -2592,6 +2612,7 @@ var gDetailView = {
 
   initialize() {
     this.node = document.getElementById("detail-view");
+    this.headingImage = this.node.querySelector(".card-heading-image");
 
     this._autoUpdate = document.getElementById("detail-autoUpdate");
 
@@ -2610,7 +2631,15 @@ var gDetailView = {
 
   _updateView(aAddon, aIsRemote, aScrollToPreferences) {
     setSearchLabel(aAddon.type);
-    setThemeScreenshot(aAddon, this.node);
+
+    // Set the preview image for themes, if available.
+    this.headingImage.src = "";
+    if (aAddon.type == "theme") {
+      let previewURL = aAddon.screenshots && aAddon.screenshots[0] && aAddon.screenshots[0].url;
+      if (previewURL) {
+        this.headingImage.src = previewURL;
+      }
+    }
 
     AddonManager.addManagerListener(this);
     this.clearLoading();
@@ -3083,10 +3112,9 @@ var gDetailView = {
       let policy = ExtensionParent.WebExtensionPolicy.getByID(this._addon.id);
       browser.sameProcessAsFrameLoader = policy.extension.groupFrameLoader;
     }
-    let remote = !E10SUtils.canLoadURIInProcess(optionsURL, Services.appinfo.PROCESS_TYPE_DEFAULT);
 
     let readyPromise;
-    if (remote) {
+    if (E10SUtils.canLoadURIInRemoteType(optionsURL, E10SUtils.EXTENSION_REMOTE_TYPE)) {
       browser.setAttribute("remote", "true");
       browser.setAttribute("remoteType", E10SUtils.EXTENSION_REMOTE_TYPE);
       readyPromise = promiseEvent("XULFrameLoaderCreated", browser);

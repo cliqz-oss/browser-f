@@ -46,9 +46,27 @@ add_task(function setup() {
 
   controller = new UrlbarController({
     manager: fPM,
-    window: {},
+    browserWindow: {
+      location: {
+        href: AppConstants.BROWSER_CHROME_URL,
+      },
+    },
   });
   controller.addQueryListener(generalListener);
+});
+
+add_task(function test_constructor_throws() {
+  Assert.throws(() => new UrlbarController(),
+    /Missing options: browserWindow/,
+    "Should throw if the browserWindow was not supplied");
+  Assert.throws(() => new UrlbarController({browserWindow: {}}),
+    /browserWindow should be an actual browser window/,
+    "Should throw if the browserWindow is not a window");
+  Assert.throws(() => new UrlbarController({browserWindow: {
+    location: "about:fake",
+  }}),
+    /browserWindow should be an actual browser window/,
+    "Should throw if the browserWindow does not have the correct location");
 });
 
 add_task(function test_add_and_remove_listeners() {
@@ -183,3 +201,16 @@ add_task(function test_receiveResults() {
 
   sandbox.resetHistory();
 });
+
+add_task(function test_autocomplete_enabled() {
+  const context = createContext();
+  controller.receiveResults(context);
+
+  Assert.equal(generalListener.onQueryResults.callCount, 1,
+    "Should have called onQueryResults for the listener");
+  Assert.deepEqual(generalListener.onQueryResults.args[0], [context],
+    "Should have called onQueryResults with the context");
+
+  sandbox.resetHistory();
+});
+

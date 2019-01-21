@@ -11,27 +11,21 @@
 
 using mozilla::BasePrincipal;
 
-gfxFontSrcPrincipal::gfxFontSrcPrincipal(nsIPrincipal* aPrincipal)
-{
+gfxFontSrcPrincipal::gfxFontSrcPrincipal(nsIPrincipal* aPrincipal) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aPrincipal);
 
   mPrincipal = aPrincipal;
 
-  uint32_t hash = 0;
-  mPrincipal->GetHashValue(&hash);
-  mHash = hash;
+  mHash = mPrincipal->GetHashValue();
 }
 
-gfxFontSrcPrincipal::~gfxFontSrcPrincipal()
-{
+gfxFontSrcPrincipal::~gfxFontSrcPrincipal() {
   NS_ReleaseOnMainThreadSystemGroup("gfxFontSrcPrincipal::mPrincipal",
                                     mPrincipal.forget());
 }
 
-bool
-gfxFontSrcPrincipal::Equals(gfxFontSrcPrincipal* aOther)
-{
-  return BasePrincipal::Cast(mPrincipal)->
-           FastEquals(BasePrincipal::Cast(aOther->mPrincipal));
+bool gfxFontSrcPrincipal::Equals(gfxFontSrcPrincipal* aOther) {
+  return BasePrincipal::Cast(mPrincipal)
+      ->FastEquals(BasePrincipal::Cast(aOther->mPrincipal));
 }

@@ -44,6 +44,8 @@
 //!   `<Box<_> as MallocSizeOf>::size_of(field, ops)`.
 
 extern crate app_units;
+#[cfg(feature = "servo")]
+extern crate crossbeam_channel;
 extern crate cssparser;
 extern crate euclid;
 extern crate hashglobe;
@@ -61,8 +63,6 @@ extern crate serde;
 #[cfg(feature = "servo")]
 extern crate serde_bytes;
 extern crate servo_arc;
-#[cfg(feature = "servo")]
-extern crate servo_channel;
 extern crate smallbitvec;
 extern crate smallvec;
 #[cfg(feature = "servo")]
@@ -82,8 +82,8 @@ extern crate xml5ever;
 use serde_bytes::ByteBuf;
 use std::hash::{BuildHasher, Hash};
 use std::mem::size_of;
-use std::ops::{Deref, DerefMut};
 use std::ops::Range;
+use std::ops::{Deref, DerefMut};
 use std::os::raw::c_void;
 use void::Void;
 
@@ -557,6 +557,36 @@ where
     }
 }
 
+impl<K, V> MallocShallowSizeOf for std::collections::BTreeMap<K, V>
+where
+    K: Eq + Hash,
+{
+    fn shallow_size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        if ops.has_malloc_enclosing_size_of() {
+            self.values()
+                .next()
+                .map_or(0, |v| unsafe { ops.malloc_enclosing_size_of(v) })
+        } else {
+            self.len() * (size_of::<V>() + size_of::<K>() + size_of::<usize>())
+        }
+    }
+}
+
+impl<K, V> MallocSizeOf for std::collections::BTreeMap<K, V>
+where
+    K: Eq + Hash + MallocSizeOf,
+    V: MallocSizeOf,
+{
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        let mut n = self.shallow_size_of(ops);
+        for (k, v) in self.iter() {
+            n += k.size_of(ops);
+            n += v.size_of(ops);
+        }
+        n
+    }
+}
+
 impl<K, V, S> MallocShallowSizeOf for hashglobe::hash_map::HashMap<K, V, S>
 where
     K: Eq + Hash,
@@ -978,48 +1008,6 @@ impl MallocSizeOf for xml5ever::QualName {
 }
 
 #[cfg(feature = "servo")]
-impl MallocSizeOf for hyper::header::Headers {
-    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
-        self.iter().fold(0, |acc, x| {
-            let name = x.name();
-            let raw = self.get_raw(name);
-            acc + raw.size_of(ops)
-        })
-    }
-}
-
-#[cfg(feature = "servo")]
-impl MallocSizeOf for hyper::header::ContentType {
-    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
-        self.0.size_of(ops)
-    }
-}
-
-#[cfg(feature = "servo")]
-impl MallocSizeOf for hyper::mime::Mime {
-    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
-        self.0.size_of(ops) + self.1.size_of(ops) + self.2.size_of(ops)
-    }
-}
-
-#[cfg(feature = "servo")]
-impl MallocSizeOf for hyper::mime::Attr {
-    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
-        match *self {
-            hyper::mime::Attr::Ext(ref s) => s.size_of(ops),
-            _ => 0,
-        }
-    }
-}
-
-#[cfg(feature = "servo")]
-impl MallocSizeOf for hyper::mime::Value {
-    fn size_of(&self, _ops: &mut MallocSizeOfOps) -> usize {
-        self.len() // Length of string value in bytes (not the char length of a string)!
-    }
-}
-
-#[cfg(feature = "servo")]
 malloc_size_of_is_0!(time::Duration);
 #[cfg(feature = "servo")]
 malloc_size_of_is_0!(time::Tm);
@@ -1039,19 +1027,16 @@ where
 // Placeholder for unique case where internals of Sender cannot be measured.
 // malloc size of is 0 macro complains about type supplied!
 #[cfg(feature = "servo")]
-impl<T> MallocSizeOf for servo_channel::Sender<T> {
+impl<T> MallocSizeOf for crossbeam_channel::Sender<T> {
     fn size_of(&self, _ops: &mut MallocSizeOfOps) -> usize {
         0
     }
 }
 
 #[cfg(feature = "servo")]
-impl MallocSizeOf for hyper::status::StatusCode {
-    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
-        match *self {
-            hyper::status::StatusCode::Unregistered(u) => u.size_of(ops),
-            _ => 0,
-        }
+impl MallocSizeOf for hyper::StatusCode {
+    fn size_of(&self, _ops: &mut MallocSizeOfOps) -> usize {
+        0
     }
 }
 

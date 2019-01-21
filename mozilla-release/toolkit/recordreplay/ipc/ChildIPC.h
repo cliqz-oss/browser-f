@@ -11,8 +11,6 @@
 #include "mozilla/gfx/2D.h"
 #include "Units.h"
 
-namespace IPC { class Message; }
-
 namespace mozilla {
 
 class VsyncObserver;
@@ -54,14 +52,11 @@ void NotifyPaintStart();
 void NotifyPaintComplete();
 
 // Get a draw target which the compositor thread can paint to.
-already_AddRefed<gfx::DrawTarget> DrawTargetForRemoteDrawing(LayoutDeviceIntSize aSize);
+already_AddRefed<gfx::DrawTarget> DrawTargetForRemoteDrawing(
+    LayoutDeviceIntSize aSize);
 
-// Called to ignore IPDL messages sent after diverging from the recording,
-// except for those needed for compositing.
-bool SuppressMessageAfterDiverge(IPC::Message* aMsg);
+}  // namespace child
+}  // namespace recordreplay
+}  // namespace mozilla
 
-} // namespace child
-} // namespace recordreplay
-} // namespace mozilla
-
-#endif // mozilla_recordreplay_ChildIPC_h
+#endif  // mozilla_recordreplay_ChildIPC_h

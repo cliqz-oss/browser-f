@@ -23,12 +23,9 @@ namespace mozilla {
 using namespace dom;
 
 // Test for distance between caret and text that will be deleted
-nsresult
-TextEditRules::CheckBidiLevelForDeletion(
-                 const EditorRawDOMPoint& aSelectionPoint,
-                 nsIEditor::EDirection aAction,
-                 bool* aCancel)
-{
+nsresult TextEditRules::CheckBidiLevelForDeletion(
+    const EditorRawDOMPoint& aSelectionPoint, nsIEditor::EDirection aAction,
+    bool* aCancel) {
   MOZ_ASSERT(IsEditorDataAvailable());
 
   if (NS_WARN_IF(!aCancel)) {
@@ -50,14 +47,14 @@ TextEditRules::CheckBidiLevelForDeletion(
     return NS_ERROR_FAILURE;
   }
 
-  RefPtr<nsFrameSelection> frameSelection = SelectionRef().GetFrameSelection();
+  RefPtr<nsFrameSelection> frameSelection =
+      SelectionRefPtr()->GetFrameSelection();
   if (NS_WARN_IF(!frameSelection)) {
     return NS_ERROR_FAILURE;
   }
 
-  nsPrevNextBidiLevels levels = frameSelection->
-    GetPrevNextBidiLevels(aSelectionPoint.GetContainerAsContent(),
-                          aSelectionPoint.Offset(), true);
+  nsPrevNextBidiLevels levels = frameSelection->GetPrevNextBidiLevels(
+      aSelectionPoint.GetContainerAsContent(), aSelectionPoint.Offset(), true);
 
   nsBidiLevel levelBefore = levels.mLevelBefore;
   nsBidiLevel levelAfter = levels.mLevelAfter;
@@ -66,11 +63,12 @@ TextEditRules::CheckBidiLevelForDeletion(
 
   nsBidiLevel levelOfDeletion;
   levelOfDeletion =
-    (nsIEditor::eNext==aAction || nsIEditor::eNextWord==aAction) ?
-    levelAfter : levelBefore;
+      (nsIEditor::eNext == aAction || nsIEditor::eNextWord == aAction)
+          ? levelAfter
+          : levelBefore;
 
   if (currentCaretLevel == levelOfDeletion) {
-    return NS_OK; // perform the deletion
+    return NS_OK;  // perform the deletion
   }
 
   if (!mDeleteBidiImmediately && levelBefore != levelAfter) {
@@ -83,9 +81,7 @@ TextEditRules::CheckBidiLevelForDeletion(
   return NS_OK;
 }
 
-void
-TextEditRules::UndefineCaretBidiLevel()
-{
+void TextEditRules::UndefineCaretBidiLevel() {
   MOZ_ASSERT(IsEditorDataAvailable());
 
   /**
@@ -96,10 +92,11 @@ TextEditRules::UndefineCaretBidiLevel()
    * So we set the caret Bidi level to UNDEFINED here, and the caret code will
    * set it correctly later
    */
-  RefPtr<nsFrameSelection> frameSelection = SelectionRef().GetFrameSelection();
+  RefPtr<nsFrameSelection> frameSelection =
+      SelectionRefPtr()->GetFrameSelection();
   if (frameSelection) {
     frameSelection->UndefineCaretBidiLevel();
   }
 }
 
-} // namespace mozilla
+}  // namespace mozilla

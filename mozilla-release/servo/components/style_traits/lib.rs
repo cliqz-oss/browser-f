@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! This module contains shared types and messages for use by devtools/script.
 //! The traits are here instead of in script so that the devtools crate can be
@@ -91,8 +91,10 @@ pub mod values;
 #[macro_use]
 pub mod viewport;
 
-pub use specified_value_info::{CssType, KeywordsCollectFn, SpecifiedValueInfo};
-pub use values::{Comma, CommaWithSpace, CssWriter, OneOrMoreSeparated, Separator, Space, ToCss};
+pub use crate::specified_value_info::{CssType, KeywordsCollectFn, SpecifiedValueInfo};
+pub use crate::values::{
+    Comma, CommaWithSpace, CssWriter, OneOrMoreSeparated, Separator, Space, ToCss,
+};
 
 /// The error type for all CSS parsing routines.
 pub type ParseError<'i> = cssparser::ParseError<'i, StyleParseErrorKind<'i>>;

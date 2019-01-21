@@ -188,10 +188,6 @@ function gotoPref(aCategory) {
   mainContent.scrollTop = 0;
 
   spotlight(subcategory);
-
-  Services.telemetry
-          .getHistogramById("FX_PREFERENCES_CATEGORY_OPENED_V2")
-          .add(telemetryBucketForCategory(friendlyName));
 }
 
 function search(aQuery, aAttribute) {
@@ -307,7 +303,7 @@ function scrollAndHighlight(subcategory) {
  */
 function getClosestDisplayedHeader(element) {
   let header = element.closest("groupbox");
-  let searchHeader = header.querySelector("caption.search-header");
+  let searchHeader = header.querySelector(".search-header");
   if (searchHeader && searchHeader.hidden &&
       header.previousSibling.classList.contains("subcategory")) {
     header = header.previousSibling;

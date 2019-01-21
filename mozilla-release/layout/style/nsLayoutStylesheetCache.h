@@ -19,49 +19,34 @@ class nsIURI;
 
 namespace mozilla {
 class CSSStyleSheet;
-} // namespace mozilla
+}  // namespace mozilla
 
 namespace mozilla {
 namespace css {
 
 // Enum defining how error should be handled.
-enum FailureAction {
-  eCrash = 0,
-  eLogToConsole
-};
+enum FailureAction { eCrash = 0, eLogToConsole };
 
-}
-}
+}  // namespace css
+}  // namespace mozilla
 
-class nsLayoutStylesheetCache final
- : public nsIObserver
- , public nsIMemoryReporter
-{
+class nsLayoutStylesheetCache final : public nsIObserver,
+                                      public nsIMemoryReporter {
   NS_DECL_ISUPPORTS
   NS_DECL_NSIOBSERVER
   NS_DECL_NSIMEMORYREPORTER
 
   static nsLayoutStylesheetCache* Singleton();
 
-  mozilla::StyleSheet* ScrollbarsSheet();
-  mozilla::StyleSheet* FormsSheet();
+#define STYLE_SHEET(identifier_, url_, lazy_) \
+  mozilla::StyleSheet* identifier_##Sheet();
+#include "mozilla/UserAgentStyleSheetList.h"
+#undef STYLE_SHEET
+
   mozilla::StyleSheet* UserContentSheet();
   mozilla::StyleSheet* UserChromeSheet();
-  mozilla::StyleSheet* UASheet();
-  mozilla::StyleSheet* HTMLSheet();
-  mozilla::StyleSheet* MinimalXULSheet();
-  mozilla::StyleSheet* XULSheet();
-  mozilla::StyleSheet* XULComponentsSheet();
-  mozilla::StyleSheet* QuirkSheet();
-  mozilla::StyleSheet* SVGSheet();
-  mozilla::StyleSheet* MathMLSheet();
-  mozilla::StyleSheet* CounterStylesSheet();
-  mozilla::StyleSheet* NoScriptSheet();
-  mozilla::StyleSheet* NoFramesSheet();
   mozilla::StyleSheet* ChromePreferenceSheet(nsPresContext* aPresContext);
   mozilla::StyleSheet* ContentPreferenceSheet(nsPresContext* aPresContext);
-  mozilla::StyleSheet* ContentEditableSheet();
-  mozilla::StyleSheet* DesignModeSheet();
 
   static void InvalidatePreferenceSheets();
 
@@ -71,18 +56,16 @@ class nsLayoutStylesheetCache final
 
   size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
 
-private:
+ private:
   nsLayoutStylesheetCache();
   ~nsLayoutStylesheetCache();
 
   void InitFromProfile();
   void InitMemoryReporter();
-  void LoadSheetURL(const char* aURL,
-                    RefPtr<mozilla::StyleSheet>* aSheet,
+  void LoadSheetURL(const char* aURL, RefPtr<mozilla::StyleSheet>* aSheet,
                     mozilla::css::SheetParsingMode aParsingMode,
                     mozilla::css::FailureAction aFailureAction);
-  void LoadSheetFile(nsIFile* aFile,
-                     RefPtr<mozilla::StyleSheet>* aSheet,
+  void LoadSheetFile(nsIFile* aFile, RefPtr<mozilla::StyleSheet>* aSheet,
                      mozilla::css::SheetParsingMode aParsingMode,
                      mozilla::css::FailureAction aFailureAction);
   void LoadSheet(nsIURI* aURI, RefPtr<mozilla::StyleSheet>* aSheet,
@@ -112,7 +95,6 @@ private:
   RefPtr<mozilla::StyleSheet> mUserChromeSheet;
   RefPtr<mozilla::StyleSheet> mUserContentSheet;
   RefPtr<mozilla::StyleSheet> mXULSheet;
-  RefPtr<mozilla::StyleSheet> mXULComponentsSheet;
 };
 
 #endif

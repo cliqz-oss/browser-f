@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Calculate [specified][specified] and [computed values][computed] from a
 //! tree of DOM nodes and a set of stylesheets.
@@ -36,6 +36,8 @@ extern crate byteorder;
 #[macro_use]
 #[no_link]
 extern crate cfg_if;
+#[cfg(feature = "servo")]
+extern crate crossbeam_channel;
 #[macro_use]
 extern crate cssparser;
 #[macro_use]
@@ -84,7 +86,6 @@ pub extern crate servo_arc;
 #[cfg(feature = "servo")]
 #[macro_use]
 extern crate servo_atoms;
-#[cfg(feature = "servo")] extern crate servo_channel;
 #[cfg(feature = "servo")]
 extern crate servo_config;
 #[cfg(feature = "servo")]
@@ -142,6 +143,7 @@ pub mod media_queries;
 pub mod parallel;
 pub mod parser;
 pub mod rule_cache;
+pub mod rule_collector;
 pub mod rule_tree;
 pub mod scoped_tls;
 pub mod selector_map;
@@ -164,24 +166,24 @@ pub mod use_counters;
 pub mod values;
 
 #[cfg(feature = "gecko")]
-pub use gecko_string_cache as string_cache;
+pub use crate::gecko_string_cache as string_cache;
 #[cfg(feature = "gecko")]
-pub use gecko_string_cache::Atom;
+pub use crate::gecko_string_cache::Atom;
 #[cfg(feature = "gecko")]
-pub use gecko_string_cache::Namespace;
+pub use crate::gecko_string_cache::Atom as Prefix;
 #[cfg(feature = "gecko")]
-pub use gecko_string_cache::Atom as Prefix;
+pub use crate::gecko_string_cache::Atom as LocalName;
 #[cfg(feature = "gecko")]
-pub use gecko_string_cache::Atom as LocalName;
+pub use crate::gecko_string_cache::Namespace;
 
-#[cfg(feature = "servo")]
-pub use servo_atoms::Atom;
-#[cfg(feature = "servo")]
-pub use html5ever::Prefix;
 #[cfg(feature = "servo")]
 pub use html5ever::LocalName;
 #[cfg(feature = "servo")]
 pub use html5ever::Namespace;
+#[cfg(feature = "servo")]
+pub use html5ever::Prefix;
+#[cfg(feature = "servo")]
+pub use servo_atoms::Atom;
 
 /// The CSS properties supported by the style system.
 /// Generated from the properties.mako.rs template by build.rs
@@ -214,17 +216,17 @@ macro_rules! reexport_computed_values {
         /// [computed]: https://drafts.csswg.org/css-cascade/#computed
         pub mod computed_values {
             $(
-                pub use properties::longhands::$name::computed_value as $name;
+                pub use crate::properties::longhands::$name::computed_value as $name;
             )+
             // Don't use a side-specific name needlessly:
-            pub use properties::longhands::border_top_style::computed_value as border_style;
+            pub use crate::properties::longhands::border_top_style::computed_value as border_style;
         }
     }
 }
 longhand_properties_idents!(reexport_computed_values);
 
 #[cfg(feature = "gecko")]
-use gecko_string_cache::WeakAtom;
+use crate::gecko_string_cache::WeakAtom;
 #[cfg(feature = "servo")]
 use servo_atoms::Atom as WeakAtom;
 

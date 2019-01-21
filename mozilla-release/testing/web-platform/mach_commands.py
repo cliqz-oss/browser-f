@@ -26,26 +26,33 @@ from mach_commands_base import WebPlatformTestsRunner, create_parser_wpt
 class WebPlatformTestsRunnerSetup(MozbuildObject):
     default_log_type = "mach"
 
-    def kwargs_common(self, kwargs):
+    def __init__(self, *args, **kwargs):
+        super(WebPlatformTestsRunnerSetup, self).__init__(*args, **kwargs)
+        self._here = os.path.join(self.topsrcdir, 'testing', 'web-platform')
+        kwargs["tests_root"] = os.path.join(self._here, "tests")
+        sys.path.insert(0, kwargs["tests_root"])
         build_path = os.path.join(self.topobjdir, 'build')
-        here = os.path.split(__file__)[0]
-        tests_src_path = os.path.join(here, "tests")
         if build_path not in sys.path:
             sys.path.append(build_path)
 
+    def kwargs_common(self, kwargs):
+        tests_src_path = os.path.join(self._here, "tests")
         if kwargs["product"] == "fennec":
-            # Note that this import may fail in non-fennec trees
-            from mozrunner.devices.android_device import verify_android_device, grant_runtime_permissions
-            verify_android_device(self, install=True, verbose=False, xre=True)
-
             # package_name may be non-fennec in the future
             package_name = kwargs["package_name"]
             if not package_name:
                 package_name = self.substs["ANDROID_PACKAGE_NAME"]
 
+            # Note that this import may fail in non-fennec trees
+            from mozrunner.devices.android_device import verify_android_device, grant_runtime_permissions
+            verify_android_device(self, install=True, verbose=False, xre=True, app=package_name)
+
             grant_runtime_permissions(self, package_name, kwargs["device_serial"])
             if kwargs["certutil_binary"] is None:
                 kwargs["certutil_binary"] = os.path.join(os.environ.get('MOZ_HOST_BIN'), "certutil")
+
+            if kwargs["install_fonts"] is None:
+                kwargs["install_fonts"] = True
 
         if kwargs["config"] is None:
             kwargs["config"] = os.path.join(self.topobjdir, '_tests', 'web-platform', 'wptrunner.local.ini')
@@ -104,19 +111,14 @@ class WebPlatformTestsRunnerSetup(MozbuildObject):
 
     def kwargs_wptrun(self, kwargs):
         from wptrunner import wptcommandline
-        here = os.path.join(self.topsrcdir, 'testing', 'web-platform')
-
-        kwargs["tests_root"] = os.path.join(here, "tests")
-
-        sys.path.insert(0, kwargs["tests_root"])
 
         if kwargs["metadata_root"] is None:
-            metadir = os.path.join(here, "products", kwargs["product"])
+            metadir = os.path.join(self._here, "products", kwargs["product"])
             if not os.path.exists(metadir):
                 os.makedirs(metadir)
             kwargs["metadata_root"] = metadir
 
-        src_manifest = os.path.join(here, "meta", "MANIFEST.json")
+        src_manifest = os.path.join(self._here, "meta", "MANIFEST.json")
         dest_manifest = os.path.join(kwargs["metadata_root"], "MANIFEST.json")
 
         if not os.path.exists(dest_manifest) and os.path.exists(src_manifest):
@@ -160,9 +162,18 @@ class WebPlatformTestsUpdater(MozbuildObject):
         import update
         return update.setup_logging(kwargs, {"mach": sys.stdout})
 
+    def update_manifest(self, logger, **kwargs):
+        import manifestupdate
+        return manifestupdate.run(logger=logger,
+                                  src_root=self.topsrcdir,
+                                  obj_root=self.topobjdir,
+                                  **kwargs)
+
     def run_update(self, logger, **kwargs):
         import update
         from update import updatecommandline
+
+        self.update_manifest(logger, **kwargs)
 
         if kwargs["config"] is None:
             kwargs["config"] = os.path.join(self.topobjdir, '_tests', 'web-platform', 'wptrunner.local.ini')

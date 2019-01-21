@@ -1,19 +1,40 @@
 import {actionCreators as ac, actionTypes as at} from "common/Actions.jsm";
 import {mountWithIntl} from "test/unit/utils";
 import React from "react";
-import {_StartupOverlay as StartupOverlay} from "content-src/components/StartupOverlay/StartupOverlay";
+import {_StartupOverlay as StartupOverlay} from "content-src/asrouter/templates/StartupOverlay/StartupOverlay";
 
 describe("<StartupOverlay>", () => {
   let wrapper;
   let dispatch;
+  let onReady;
+  let onBlock;
+  let sandbox;
   beforeEach(() => {
-    dispatch = sinon.stub();
-    wrapper = mountWithIntl(<StartupOverlay dispatch={dispatch} />);
+    sandbox = sinon.sandbox.create();
+    dispatch = sandbox.stub();
+    onReady = sandbox.stub();
+    onBlock = sandbox.stub();
+
+    wrapper = mountWithIntl(<StartupOverlay onBlock={onBlock} onReady={onReady} dispatch={dispatch} />);
+  });
+
+  afterEach(() => {
+    sandbox.restore();
   });
 
   it("should not render if state.show is false", () => {
     wrapper.setState({overlayRemoved: true});
     assert.isTrue(wrapper.isEmptyRender());
+  });
+
+  it("should call prop.onReady after mount + timeout", async () => {
+    const clock = sandbox.useFakeTimers();
+    wrapper = mountWithIntl(<StartupOverlay onBlock={onBlock} onReady={onReady} dispatch={dispatch} />);
+    wrapper.setState({overlayRemoved: false});
+
+    clock.tick(10);
+
+    assert.calledOnce(onReady);
   });
 
   it("should emit UserEvent SKIPPED_SIGNIN when you click the skip button", () => {

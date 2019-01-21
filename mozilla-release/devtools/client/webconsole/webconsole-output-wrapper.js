@@ -10,7 +10,8 @@ const ReactDOM = require("devtools/client/shared/vendor/react-dom");
 const { Provider } = require("devtools/client/shared/vendor/react-redux");
 
 const actions = require("devtools/client/webconsole/actions/index");
-const { createContextMenu, createEditContextMenu } = require("devtools/client/webconsole/utils/context-menu");
+const { createEditContextMenu } = require("devtools/client/framework/toolbox-context-menu");
+const { createContextMenu } = require("devtools/client/webconsole/utils/context-menu");
 const { configureStore } = require("devtools/client/webconsole/store");
 
 const { isPacketPrivate } = require("devtools/client/webconsole/utils/messages");
@@ -164,7 +165,7 @@ WebConsoleOutputWrapper.prototype = {
 
       serviceContainer.openEditContextMenu = (e) => {
         const { screenX, screenY } = e;
-        const menu = createEditContextMenu();
+        const menu = createEditContextMenu(window, "webconsole-menu");
         // Emit the "menu-open" event for testing.
         menu.once("open", () => this.emit("menu-open"));
         menu.popup(screenX, screenY, { doc: this.owner.chromeWindow.document });
@@ -174,7 +175,8 @@ WebConsoleOutputWrapper.prototype = {
 
       if (this.toolbox) {
         this.toolbox.threadClient.addListener("paused", this.dispatchPaused.bind(this));
-        this.toolbox.threadClient.addListener("resumed", this.dispatchResumed.bind(this));
+        this.toolbox.threadClient.addListener(
+          "progress", this.dispatchProgress.bind(this));
 
         Object.assign(serviceContainer, {
           onViewSourceInDebugger: frame => {
@@ -207,19 +209,23 @@ WebConsoleOutputWrapper.prototype = {
             });
           },
           sourceMapService: this.toolbox ? this.toolbox.sourceMapURLService : null,
-          highlightDomElement: (grip, options = {}) => {
-            return this.toolbox.highlighterUtils
-              ? this.toolbox.highlighterUtils.highlightDomValueGrip(grip, options)
-              : null;
+          highlightDomElement: async (grip, options = {}) => {
+            await this.toolbox.initInspector();
+            if (!this.toolbox.highlighter) {
+              return null;
+            }
+            const nodeFront = await this.toolbox.walker.gripToNodeFront(grip);
+            return this.toolbox.highlighter.highlight(nodeFront, options);
           },
           unHighlightDomElement: (forceHide = false) => {
-            return this.toolbox.highlighterUtils
-              ? this.toolbox.highlighterUtils.unhighlight(forceHide)
+            return this.toolbox.highlighter
+              ? this.toolbox.highlighter.unhighlight(forceHide)
               : null;
           },
           openNodeInInspector: async (grip) => {
+            await this.toolbox.initInspector();
             const onSelectInspector = this.toolbox.selectTool("inspector", "inspect_dom");
-            const onGripNodeToFront = this.toolbox.highlighterUtils.gripToNodeFront(grip);
+            const onGripNodeToFront = this.toolbox.walker.gripToNodeFront(grip);
             const [
               front,
               inspector,
@@ -233,6 +239,11 @@ WebConsoleOutputWrapper.prototype = {
           },
           jumpToExecutionPoint: executionPoint =>
             this.toolbox.threadClient.timeWarp(executionPoint),
+
+          onMessageHover: (type, messageId) => {
+            const message = getMessage(store.getState(), messageId);
+            this.hud.emit("message-hover", type, message);
+          },
         });
       }
 
@@ -364,8 +375,10 @@ WebConsoleOutputWrapper.prototype = {
     }
   },
 
-  dispatchResumed: function(_, packet) {
-    store.dispatch(actions.setPauseExecutionPoint(null));
+  dispatchProgress: function(_, packet) {
+    const {executionPoint, recording} = packet;
+    const point = recording ? null : executionPoint;
+    store.dispatch(actions.setPauseExecutionPoint(point));
   },
 
   dispatchMessageUpdate: function(message, res) {
@@ -448,6 +461,13 @@ WebConsoleOutputWrapper.prototype = {
       setTimeout(() => {
         this.throttledDispatchPromise = null;
 
+        if (!store) {
+          // The store is not initialized yet, we can call setTimeoutIfNeeded so the
+          // messages will be handled in the next timeout when the store is ready.
+          this.setTimeoutIfNeeded();
+          return;
+        }
+
         store.dispatch(actions.messagesAdd(this.queuedMessageAdds));
 
         const length = this.queuedMessageAdds.length;
@@ -491,6 +511,10 @@ WebConsoleOutputWrapper.prototype = {
   // Should be used for test purpose only.
   getStore: function() {
     return store;
+  },
+
+  subscribeToStore: function(callback) {
+    store.subscribe(() => callback(store.getState()));
   },
 
   // Called by pushing close button.

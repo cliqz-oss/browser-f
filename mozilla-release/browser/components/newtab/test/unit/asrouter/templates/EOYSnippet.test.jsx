@@ -39,7 +39,7 @@ describe("EOYSnippet", () => {
   }
 
   beforeEach(() => {
-    sandbox = sinon.sandbox.create();
+    sandbox = sinon.createSandbox();
     wrapper = mountAndCheckProps();
   });
 

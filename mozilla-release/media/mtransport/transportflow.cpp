@@ -12,6 +12,8 @@
 #include "transportflow.h"
 #include "transportlayer.h"
 
+#include "mozilla/DebugOnly.h"
+
 namespace mozilla {
 
 NS_IMPL_ISUPPORTS0(TransportFlow)
@@ -26,19 +28,20 @@ TransportFlow::~TransportFlow() {
   // destroy it simultaneously. The conversion to an nsAutoPtr
   // ensures automatic destruction of the queue at exit of
   // DestroyFinal.
-  if (target_) {
-    nsAutoPtr<std::deque<TransportLayer*>> layers_tmp(layers_.release());
-    RUN_ON_THREAD(target_,
-                  WrapRunnableNM(&TransportFlow::DestroyFinal, layers_tmp),
-                  NS_DISPATCH_NORMAL);
-  }
+  MOZ_RELEASE_ASSERT(target_);
+  nsAutoPtr<std::deque<TransportLayer*>> layers_tmp(layers_.release());
+  DebugOnly<nsresult> rv = target_->Dispatch(
+      WrapRunnableNM(&TransportFlow::DestroyFinal, layers_tmp),
+      NS_DISPATCH_NORMAL);
+  MOZ_ASSERT(NS_SUCCEEDED(rv));
 }
 
-void TransportFlow::DestroyFinal(nsAutoPtr<std::deque<TransportLayer *> > layers) {
+void TransportFlow::DestroyFinal(
+    nsAutoPtr<std::deque<TransportLayer*>> layers) {
   ClearLayers(layers.get());
 }
 
-void TransportFlow::ClearLayers(std::deque<TransportLayer *>* layers) {
+void TransportFlow::ClearLayers(std::deque<TransportLayer*>* layers) {
   while (!layers->empty()) {
     delete layers->front();
     layers->pop_front();
@@ -52,31 +55,28 @@ void TransportFlow::PushLayer(TransportLayer* layer) {
   layer->SetFlowId(id_);
 }
 
-TransportLayer *TransportFlow::GetLayer(const std::string& id) const {
+TransportLayer* TransportFlow::GetLayer(const std::string& id) const {
   CheckThread();
 
   if (layers_) {
     for (TransportLayer* layer : *layers_) {
-      if (layer->id() == id)
-        return layer;
+      if (layer->id() == id) return layer;
     }
   }
 
   return nullptr;
 }
 
-void TransportFlow::EnsureSameThread(TransportLayer *layer)  {
+void TransportFlow::EnsureSameThread(TransportLayer* layer) {
   // Enforce that if any of the layers have a thread binding,
   // they all have the same binding.
   if (target_) {
     const nsCOMPtr<nsIEventTarget>& lthread = layer->GetThread();
 
-    if (lthread && (lthread != target_))
-      MOZ_CRASH();
-  }
-  else {
+    if (lthread && (lthread != target_)) MOZ_CRASH();
+  } else {
     target_ = layer->GetThread();
   }
 }
 
-}  // close namespace
+}  // namespace mozilla

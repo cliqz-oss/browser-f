@@ -3,8 +3,6 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 <!ENTITY addons.windowTitle                   "Add-ons-Verwaltung">
 
-<!ENTITY search.placeholder2                  "Auf addons.mozilla.org suchen">
-
 <!ENTITY search.placeholder3                  "Auf addons.mozilla.org suchen">
 <!ENTITY search.buttonlabel                   "Suchen">
 <!-- LOCALIZATION NOTE (search.commandkey):
@@ -20,9 +18,6 @@
 <!ENTITY installAddonFromFile.label           "Add-on aus Datei installieren…">
 <!ENTITY installAddonFromFile.accesskey       "A">
 <!ENTITY toolsMenu.tooltip                    "Tools für alle Add-ons">
-
-<!ENTITY getThemes.description                "Wollen Sie Ihren Browser anpassen?">
-<!ENTITY getThemes.learnMore                  "Wählen Sie aus Tausenden von Themes.">
 
 
 <!ENTITY showUnsignedExtensions.button.label  "Einige Erweiterungen konnten nicht verifiziert werden.">
@@ -225,7 +220,7 @@ einige der besten und populärsten Add-ons zum Ausprobieren anbieten.">
 <!ENTITY disabledUnsigned.description.start "Die folgenden Add-ons wurden nicht für die Verwendung in &brandShortName; verifiziert. Sie können ">
 <!ENTITY disabledUnsigned.description.findAddonsLink "nach Alternativen suchen">
 <!ENTITY disabledUnsigned.description.end " oder die Entwickler bitten, sie verifizieren zu lassen.">
-<!ENTITY disabledUnsigned.learnMore "Erfahren Sie mehr über unsere Aktivitäten, um Ihre Sicherheit online zu erhalten.">
+<!ENTITY disabledUnsigned.learnMore "Erfahren Sie mehr von unseren Bestrebungen, Sie beim Surfen im Internet zu schützen.">
 <!-- LOCALIZATION NOTE (disabledUnsigned.devInfo.start, disabledUnsigned.devInfo.linkToManual, disabledUnsigned.devInfo.end):
      These entities form a sentence, with disabledUnsigned.devInfo.linkToManual
      being a link to an external site. -->

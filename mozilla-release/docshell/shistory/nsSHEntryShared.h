@@ -12,10 +12,10 @@
 #include "nsCOMPtr.h"
 #include "nsExpirationTracker.h"
 #include "nsIBFCacheEntry.h"
+#include "nsIWeakReferenceUtils.h"
 #include "nsRect.h"
 #include "nsString.h"
 #include "nsStubMutationObserver.h"
-#include "nsWeakPtr.h"
 
 #include "mozilla/Attributes.h"
 
@@ -34,11 +34,9 @@ class nsIMutableArray;
 // back/forward cache.
 //
 // nsSHEntryShared is the vehicle for this sharing.
-class nsSHEntryShared final
-  : public nsIBFCacheEntry
-  , public nsStubMutationObserver
-{
-public:
+class nsSHEntryShared final : public nsIBFCacheEntry,
+                              public nsStubMutationObserver {
+ public:
   static void EnsureHistoryTracker();
   static void Shutdown();
 
@@ -54,9 +52,9 @@ public:
   NS_DECL_NSIMUTATIONOBSERVER_CONTENTINSERTED
   NS_DECL_NSIMUTATIONOBSERVER_CONTENTREMOVED
 
-  nsExpirationState *GetExpirationState() { return &mExpirationState; }
+  nsExpirationState* GetExpirationState() { return &mExpirationState; }
 
-private:
+ private:
   ~nsSHEntryShared();
 
   friend class nsSHEntry;

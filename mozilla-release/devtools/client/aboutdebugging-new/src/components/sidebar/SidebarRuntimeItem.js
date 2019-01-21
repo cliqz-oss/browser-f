@@ -20,7 +20,6 @@ const Actions = require("../../actions/index");
 class SidebarRuntimeItem extends PureComponent {
   static get propTypes() {
     return {
-      id: PropTypes.string.isRequired,
       deviceName: PropTypes.string,
       dispatch: PropTypes.func.isRequired,
       // Provided by wrapping the component with FluentReact.withLocalization.
@@ -40,7 +39,7 @@ class SidebarRuntimeItem extends PureComponent {
       },
       dom.button(
         {
-          className: "sidebar-item__connect-button",
+          className: "default-button default-button--micro js-connect-button",
           onClick: () => {
             const { dispatch, runtimeId } = this.props;
             dispatch(Actions.connectRuntime(runtimeId));
@@ -76,10 +75,8 @@ class SidebarRuntimeItem extends PureComponent {
   render() {
     const {
       deviceName,
-      dispatch,
       getString,
       icon,
-      id,
       isConnected,
       isSelected,
       name,
@@ -93,23 +90,23 @@ class SidebarRuntimeItem extends PureComponent {
     return SidebarItem(
       {
         isSelected,
-        selectable: isConnected,
-        className: "sidebar-runtime-item",
-        onSelect: () => {
-          dispatch(Actions.selectPage(id, runtimeId));
-        },
+        to: isConnected ? `/runtime/${encodeURIComponent(runtimeId)}` : null,
       },
-      dom.img(
+      dom.div(
         {
-          className: "sidebar-runtime-item__icon " +
-            `${isConnected ? "sidebar-runtime-item__icon--connected" : "" }`,
-          src: icon,
-          alt: connectionStatus,
-          title: connectionStatus,
-        }
-      ),
-      deviceName ? this.renderNameWithDevice(name, deviceName) : this.renderName(name),
-      !isConnected ? this.renderConnectButton() : null
+          className: "sidebar-runtime-item__container",
+        },
+        dom.img(
+          {
+            className: "sidebar-runtime-item__icon ",
+            src: icon,
+            alt: connectionStatus,
+            title: connectionStatus,
+          }
+        ),
+        deviceName ? this.renderNameWithDevice(name, deviceName) : this.renderName(name),
+        !isConnected ? this.renderConnectButton() : null
+      )
     );
   }
 }

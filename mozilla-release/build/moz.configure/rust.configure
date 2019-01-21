@@ -72,7 +72,7 @@ def rust_compiler(rustc_info, cargo_info):
         You can install rust by running './mach bootstrap'
         or by directly running the installer from https://rustup.rs/
         '''))
-    rustc_min_version = Version('1.29.0')
+    rustc_min_version = Version('1.30.0')
     cargo_min_version = rustc_min_version
 
     version = rustc_info.version
@@ -272,7 +272,7 @@ rustdoc = check_prog('RUSTDOC', add_rustup_path('rustdoc'),
 # This option is separate from --enable-tests because Rust tests are particularly
 # expensive in terms of compile time (especially for code in libxul).
 option('--enable-rust-tests',
-       help='Enable building of Rust tests, and build-time execution of them')
+       help='Enable building and running of Rust tests during `make check`')
 
 
 @depends('--enable-rust-tests', rustdoc)
@@ -294,7 +294,7 @@ cbindgen = check_prog('CBINDGEN', add_rustup_path('cbindgen'), paths=toolchain_s
 @checking('cbindgen version')
 @imports(_from='textwrap', _import='dedent')
 def cbindgen_version(cbindgen):
-    cbindgen_min_version = Version('0.6.4')
+    cbindgen_min_version = Version('0.6.7')
 
     # cbindgen x.y.z
     version = Version(check_cmd_output(cbindgen, '--version').strip().split(" ")[1])
@@ -330,7 +330,8 @@ def win64_cargo_linker(target, rustc_info, compiler_info, link, lib):
     # need to configure the linker it will use for host binaries (build scripts)
     # specially because the compiler configuration we use for the build is for
     # MSVC targeting 32-bit binaries.
-    if target.kernel == 'WINNT' and target.cpu == 'x86' and \
+    if target.kernel == 'WINNT' and \
+       target.cpu in ('x86', 'aarch64') and \
        compiler_info.type in ('msvc', 'clang-cl') and \
        rustc_info.host == 'x86_64-pc-windows-msvc' and link and lib:
         return True

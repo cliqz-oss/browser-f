@@ -101,3 +101,4 @@
 <!ENTITY blockedByPolicy.title "Blockierte Seite">
 
 <!ENTITY networkProtocolError.title "Netzwerkprotokoll-Fehler">
+<!ENTITY networkProtocolError.longDesc "<p>Die angeforderte Seite kann nicht angezeigt werden, da ein Fehler bei der Verwendung des Netzwerkprotokolls erkannt wurde.</p><ul><li>Kontaktieren Sie bitte den Inhaber der Website, um ihn über dieses Problem zu informieren.</li></ul>">

@@ -1,10 +1,10 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Helper types for the `@viewport` rule.
 
-use {CSSPixel, CssWriter, ParseError, PinchZoomFactor, ToCss};
+use crate::{CSSPixel, CssWriter, ParseError, PinchZoomFactor, ToCss};
 use cssparser::Parser;
 use euclid::TypedSize2D;
 use std::fmt::{self, Write};
@@ -115,9 +115,9 @@ impl Zoom {
     ///
     /// <https://drafts.csswg.org/css-device-adapt/#descdef-viewport-zoom>
     pub fn parse<'i, 't>(input: &mut Parser<'i, 't>) -> Result<Zoom, ParseError<'i>> {
-        use ParsingMode;
+        use crate::values::specified::AllowedNumericType::NonNegative;
+        use crate::ParsingMode;
         use cssparser::Token;
-        use values::specified::AllowedNumericType::NonNegative;
 
         let location = input.current_source_location();
         match *input.next()? {

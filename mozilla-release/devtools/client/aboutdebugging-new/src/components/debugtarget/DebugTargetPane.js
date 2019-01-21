@@ -11,6 +11,7 @@ const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const DebugTargetList = createFactory(require("./DebugTargetList"));
 
 const Actions = require("../../actions/index");
+const Types = require("../../types/index");
 
 /**
  * This component provides list for debug target and name area.
@@ -24,7 +25,7 @@ class DebugTargetPane extends PureComponent {
       dispatch: PropTypes.func.isRequired,
       isCollapsed: PropTypes.bool.isRequired,
       name: PropTypes.string.isRequired,
-      targets: PropTypes.arrayOf(PropTypes.object).isRequired,
+      targets: PropTypes.arrayOf(Types.debugTarget).isRequired,
     };
   }
 
@@ -47,17 +48,22 @@ class DebugTargetPane extends PureComponent {
       {
         className: "js-debug-target-pane",
       },
-      dom.h2(
-        {},
-        dom.a(
-          {
-            className: "debug-target-pane__title js-debug-target-pane-title" +
-                       (isCollapsed ? " debug-target-pane__title--collapsed" : ""),
-            href: "#",
-            onClick: e => this.toggleCollapsibility(),
-          },
-          name,
-          isCollapsed ? dom.span({}, `(${ targets.length })`) : null,
+      dom.a(
+        {
+          className: "undecorated-link debug-target-pane__title " +
+            "js-debug-target-pane-title",
+          onClick: e => this.toggleCollapsibility(),
+        },
+        dom.h2(
+          { className: "main-subheading" },
+          dom.img(
+            {
+              className: "main-subheading__icon debug-target-pane__icon" +
+                         (isCollapsed ? " debug-target-pane__icon--collapsed" : ""),
+              src: "chrome://devtools/skin/images/aboutdebugging-collapse-icon.svg",
+            }
+          ),
+          name + (isCollapsed ? ` (${ targets.length })` : ""),
         )
       ),
       DebugTargetList({

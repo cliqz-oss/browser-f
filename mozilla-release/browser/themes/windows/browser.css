@@ -12,21 +12,19 @@
   --toolbar-non-lwt-bgcolor: -moz-dialog;
   --toolbar-non-lwt-textcolor: -moz-dialogtext;
   --toolbar-non-lwt-bgimage: linear-gradient(rgba(255,255,255,.15), rgba(255,255,255,.15));
-  --toolbar-bgcolor: var(--toolbar-non-lwt-bgcolor);
-  --toolbar-bgimage: var(--toolbar-non-lwt-bgimage);
 
   --toolbarbutton-vertical-text-padding: calc(var(--toolbarbutton-inner-padding) - 1px);
   --toolbarbutton-border-radius: 2px;
   --toolbarbutton-icon-fill-opacity: 1;
 
   --panel-separator-color: ThreeDLightShadow;
-  --arrowpanel-dimmed: hsla(0,0%,80%,.3);
-  --arrowpanel-dimmed-further: hsla(0,0%,80%,.45);
+  --arrowpanel-dimmed: hsla(0,0%,80%,.35);
+  --arrowpanel-dimmed-further: hsla(0,0%,80%,.5);
   --arrowpanel-dimmed-even-further: hsla(0,0%,80%,.8);
 
   --urlbar-separator-color: ThreeDLightShadow;
 
-  --toolbox-border-bottom-color: ThreeDShadow;
+  --chrome-content-separator-color: ThreeDShadow;
 }
 
 #navigator-toolbox {
@@ -47,7 +45,7 @@
 
     --panel-separator-color: hsla(210,4%,10%,.14);
 
-    --toolbox-border-bottom-color: #e1e1e2;
+    --chrome-content-separator-color: #e1e1e2;
   }
 
   #navigator-toolbox {
@@ -60,10 +58,7 @@
 }
 
 :root:-moz-lwtheme {
-  --toolbar-bgcolor: rgba(255,255,255,.4);
-  --toolbar-bgimage: none;
-
-  --toolbox-border-bottom-color: rgba(0,0,0,.3);
+  --chrome-content-separator-color: rgba(0,0,0,.3);
 
   --panel-separator-color: hsla(210,4%,10%,.14);
 }
@@ -84,10 +79,6 @@
   -moz-box-orient: vertical; /* for flex hack */
 }
 
-#main-menubar {
-  -moz-box-flex: 1; /* make menu items expand to fill toolbar height */
-}
-
 #main-menubar > menu {
   -moz-appearance: none;
   color: inherit;
@@ -103,28 +94,35 @@
  * illegible.
  */
 @media (-moz-windows-default-theme) {
-  @media not all and (-moz-os-version: windows-win7) {
+  @media not (-moz-os-version: windows-win7) {
     #toolbar-menubar:not(:-moz-lwtheme):-moz-window-inactive {
       color: ThreeDShadow;
     }
   }
 }
 
-/* Hides the titlebar-placeholder underneath the window caption buttons when we
-   are not autohiding the menubar. */
-#toolbar-menubar:not([autohide="true"]) + #TabsToolbar > .titlebar-placeholder[type="caption-buttons"] {
-  display: none;
+@media not (-moz-os-version: windows-win7) {
+  @media not (-moz-os-version: windows-win8) {
+    /* On Windows 10, when temporarily showing the menu bar, make it at least as
+     * tall as the tab bar such that the window controls don't appear to move up. */
+    :root[tabsintitlebar] #toolbar-menubar[autohide="true"] {
+      height: calc(var(--tab-min-height) - @navbarTabsShadowSize@);
+    }
+    :root[tabsintitlebar][sizemode="normal"] #toolbar-menubar[autohide="true"] {
+      height: calc(var(--tab-min-height) + var(--space-above-tabbar) - @navbarTabsShadowSize@);
+    }
+  }
 }
 
-:root[sizemode="normal"][chromehidden~="menubar"] #TabsToolbar,
-:root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] + #TabsToolbar {
+:root[sizemode="normal"][chromehidden~="menubar"] #TabsToolbar > .toolbar-items,
+:root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] + #TabsToolbar > .toolbar-items {
   padding-top: var(--space-above-tabbar);
 }
 
 /* Add 4px extra margin on top of the tabs toolbar on Windows 7. */
 @media (-moz-os-version: windows-win7) {
-  :root[sizemode="normal"][chromehidden~="menubar"] #TabsToolbar,
-  :root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] + #TabsToolbar {
+  :root[sizemode="normal"][chromehidden~="menubar"] #TabsToolbar > .toolbar-items,
+  :root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] + #TabsToolbar > .toolbar-items {
     padding-top: calc(var(--space-above-tabbar) + 4px);
   }
 }
@@ -138,7 +136,7 @@
   background-color: var(--toolbar-bgcolor);
   background-image: var(--toolbar-bgimage);
   background-clip: padding-box;
-  color: var(--toolbar-color, inherit);
+  color: var(--toolbar-color);
 }
 
 /*
@@ -192,23 +190,12 @@
   /* Please keep the menu text colors in this media block in sync with
    * compacttheme.css, minus the :not(:-moz-lwtheme) condition - see Bug 1165718.
    */
-  :root[tabsintitlebar]:not([inFullscreen]) .titlebar-color:not(:-moz-lwtheme) {
+  :root[tabsintitlebar]:not([inFullscreen]):not(:-moz-lwtheme) {
     color: CaptionText;
   }
 
-  :root[tabsintitlebar]:not([inFullscreen]) .titlebar-color:not(:-moz-lwtheme):-moz-window-inactive {
+  :root[tabsintitlebar]:not([inFullscreen]):not(:-moz-lwtheme):-moz-window-inactive {
     color: InactiveCaptionText;
-  }
-}
-
-@media (-moz-windows-compositor: 0) {
-  #main-window[tabsintitlebar] #titlebar:-moz-lwtheme {
-    visibility: hidden;
-  }
-
-  #main-window[tabsintitlebar] #titlebar-content:-moz-lwtheme {
-    visibility: visible;
-    -moz-window-dragging: drag;
   }
 }
 
@@ -280,7 +267,7 @@
   }
 }
 
-#TabsToolbar:not([collapsed="true"]) + #nav-bar {
+#nav-bar:not([tabs-hidden="true"]) {
   /* This is needed for some toolbar button animations. Gross :( */
   position: relative;
 }
@@ -289,7 +276,7 @@
   box-shadow: 0 -@navbarTabsShadowSize@ 0 var(--tabs-border-color);
 }
 @media (-moz-windows-compositor: 0) {
-  #TabsToolbar[collapsed="true"] + #nav-bar {
+  #nav-bar[tabs-hidden="true"] {
     box-shadow: none;
   }
 }
@@ -304,63 +291,92 @@
 
 /* ::::: titlebar ::::: */
 
-#main-window[sizemode="normal"] > #titlebar {
+#main-window[tabsintitlebar][sizemode="normal"] > #navigator-toolbox > #titlebar {
   -moz-appearance: -moz-window-titlebar;
 }
 
-#main-window[sizemode="maximized"] > #titlebar {
+#main-window[tabsintitlebar][sizemode="maximized"] > #navigator-toolbox > #titlebar {
   -moz-appearance: -moz-window-titlebar-maximized;
 }
 
+@media (-moz-windows-compositor: 0) {
+  /**
+   * Anytime we're not using the compositor on Windows, the -moz-window-titlebar
+   * and -moz-window-titlebar-maximized values for -moz-appearance override
+   * backgrounds supplied by lwthemes. We make the #titlebar itself hidden, but
+   * it's children visible in order to hide the background but keep the margin and
+   * padding that comes from those -moz-window-titlebar rules.
+   */
+  :root:not([inDOMFullscreen]) #titlebar:-moz-lwtheme {
+    visibility: hidden;
+  }
+  :root:not([inDOMFullscreen]) #toolbar-menubar:-moz-lwtheme,
+  :root:not([inDOMFullscreen]) #TabsToolbar:-moz-lwtheme {
+    visibility: visible;
+  }
+}
+
 @media (-moz-windows-classic) {
-  #main-window[tabsintitlebar][sizemode="normal"] > #navigator-toolbox > #toolbar-menubar {
+  #main-window[tabsintitlebar][sizemode="normal"] > #navigator-toolbox > #titlebar > #toolbar-menubar {
     margin-top: 4px;
   }
 }
 
-/* The button box must appear on top of the navigator-toolbox in order for
- * click and hover mouse events to work properly for the button in the restored
- * window state. Otherwise, elements in the navigator-toolbox, like the menubar,
- * can swallow those events. It will also place the buttons above the fog on
- * Windows 7 with Aero Glass.
- */
-#titlebar-buttonbox {
+.titlebar-buttonbox {
+  /* For all Windows configurations except for Windows Aero and Windows Aero Basic,
+   * the default -moz-appearance of -moz-window-button-box and
+   * -moz-window-button-box-maximized adds unwanted margins to the button box. We
+   * special case Windows Aero and Windows Aero Basic in browser-aero.css.
+   */
+  -moz-appearance: none;
+  /* The button box must appear on top of the navigator-toolbox in order for
+   * click and hover mouse events to work properly for the button in the restored
+   * window state. Otherwise, elements in the navigator-toolbox, like the menubar,
+   * can swallow those events. It will also place the buttons above the fog on
+   * Windows 7 with Aero Glass.
+   */
   z-index: 1;
 }
 
-#titlebar-buttonbox-container {
-  -moz-box-align: center;
+.titlebar-buttonbox-container {
+  -moz-box-align: stretch;
 }
 
-@media (-moz-os-version: windows-win7) {
+@media (-moz-os-version: windows-win7),
+       (-moz-os-version: windows-win8) {
   /* Preserve window control buttons position at the top of the button box. */
-  #titlebar-buttonbox-container {
+  .titlebar-buttonbox-container {
     -moz-box-align: start;
   }
 }
 
-/* titlebar command buttons */
+/* window control buttons */
 
-#titlebar-min {
+.titlebar-min {
   -moz-appearance: -moz-window-button-minimize;
 }
 
-#titlebar-max {
+.titlebar-max {
   -moz-appearance: -moz-window-button-maximize;
 }
 
-#main-window[sizemode="maximized"] #titlebar-max {
+:root[sizemode="maximized"] .titlebar-max {
   -moz-appearance: -moz-window-button-restore;
 }
 
-#titlebar-close {
+.titlebar-close {
   -moz-appearance: -moz-window-button-close;
 }
 
 @media (-moz-windows-classic: 0) {
-  #titlebar-min {
+  .titlebar-min {
     margin-inline-end: 2px;
   }
+}
+
+:root[tabletmode] .titlebar-min,
+:root[tabletmode] .titlebar-max {
+  display: none;
 }
 
 /* ::::: bookmark menus ::::: */
@@ -667,14 +683,15 @@ html|*.urlbar-input:-moz-lwtheme::placeholder,
 }
 
 .browserContainer > findbar {
-  background-color: -moz-dialog;
-  color: -moz-DialogText;
-  text-shadow: none;
+  background-color: var(--toolbar-bgcolor);
+  color: var(--toolbar-color);
 }
 
 .browserContainer > findbar:-moz-lwtheme {
-  background-color: var(--toolbar-bgcolor);
-  color: var(--toolbar-color, -moz-DialogText);
+  background-color: var(--lwt-accent-color);
+  background-image: linear-gradient(var(--toolbar-bgcolor), var(--toolbar-bgcolor));
+  border-top-color: var(--chrome-content-separator-color);
+  text-shadow: none;
 }
 
 /* Tabstrip */
@@ -957,23 +974,10 @@ notification[value="translation"] {
 
 /* End customization mode */
 
-/* Private browsing and accessibility indicators */
-
-:root[sizemode="normal"][chromehidden~="menubar"] #TabsToolbar > .private-browsing-indicator,
-:root[sizemode="normal"][chromehidden~="menubar"] #TabsToolbar > .accessibility-indicator,
-:root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] + #TabsToolbar > .private-browsing-indicator,
-:root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] + #TabsToolbar > .accessibility-indicator {
-  margin-top: calc(-1 * var(--space-above-tabbar));
-}
-
-/* Compensate for 4px extra margin on top of the tabs toolbar on Windows 7. */
-@media (-moz-os-version: windows-win7) {
-  :root[sizemode="normal"][chromehidden~="menubar"] #TabsToolbar > .private-browsing-indicator,
-  :root[sizemode="normal"][chromehidden~="menubar"] #TabsToolbar > .accessibility-indicator,
-  :root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] + #TabsToolbar > .private-browsing-indicator,
-  :root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] + #TabsToolbar > .accessibility-indicator {
-    margin-top: calc(-1 * (var(--space-above-tabbar) + 4px));
-  }
+/* Prevent window controls from overlapping the nav bar's shadow on the tab
+ * bar. */
+#TabsToolbar > .titlebar-buttonbox-container {
+  margin-bottom: @navbarTabsShadowSize@;
 }
 
 :root:not([privatebrowsingmode=temporary]) .accessibility-indicator,

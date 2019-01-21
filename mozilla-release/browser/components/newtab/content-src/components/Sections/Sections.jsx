@@ -239,8 +239,8 @@ export class Section extends React.PureComponent {
           <div className="section-empty-state">
             <div className="empty-state">
               {emptyState.icon && emptyState.icon.startsWith("moz-extension://") ?
-                <img className="empty-state-icon icon" style={{"background-image": `url('${emptyState.icon}')`}} /> :
-                <img className={`empty-state-icon icon icon-${emptyState.icon}`} />}
+                <span className="empty-state-icon icon" style={{"background-image": `url('${emptyState.icon}')`}} /> :
+                <span className={`empty-state-icon icon icon-${emptyState.icon}`} />}
               <p className="empty-state-message">
                 {getFormattedMessage(emptyState.message)}
               </p>
@@ -248,10 +248,14 @@ export class Section extends React.PureComponent {
           </div>}
         {id === "topstories" &&
           <div className="top-stories-bottom-container">
-            {shouldShowTopics && <Topics topics={this.props.topics} />}
-            {shouldShowPocketCta && <PocketLoggedInCta />}
-            {shouldShowReadMore &&
-              <MoreRecommendations read_more_endpoint={read_more_endpoint} />}
+            <div>
+              {shouldShowTopics && <Topics topics={this.props.topics} />}
+              {shouldShowPocketCta && <PocketLoggedInCta />}
+            </div>
+            <div>
+              {shouldShowReadMore &&
+                <MoreRecommendations read_more_endpoint={read_more_endpoint} />}
+            </div>
           </div>}
       </CollapsibleSection>
     </ComponentPerfTimer>);

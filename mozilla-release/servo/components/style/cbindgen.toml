@@ -1,6 +1,6 @@
 header = """/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */"""
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */"""
 autogen_warning = """/* DO NOT MODIFY THIS MANUALLY! This file was generated using cbindgen.
  * To generate this file:
  *   1. Get the latest cbindgen using `cargo install --force cbindgen`
@@ -31,6 +31,7 @@ include = ["cssparser"]
 
 [struct]
 derive_eq = true
+derive_neq = true
 
 [enum]
 derive_helper_methods = true
@@ -38,30 +39,30 @@ derive_helper_methods = true
 [export]
 prefix = "Style"
 include = [
-  "StyleAppearance",
-  "StyleComputedFontStretchRange",
-  "StyleComputedFontStyleDescriptor",
-  "StyleComputedFontWeightRange",
-  "StyleDisplay",
-  "StyleDisplayMode",
-  "StyleFillRule",
-  "StyleFontDisplay",
-  "StyleFontFaceSourceListComponent",
-  "StyleFontLanguageOverride",
-  "StylePathCommand",
-  "StyleUnicodeRange",
-
   "Appearance",
+  "BreakBetween",
+  "BreakWithin",
+  "BorderStyle",
+  "OutlineStyle",
   "ComputedFontStretchRange",
   "ComputedFontStyleDescriptor",
   "ComputedFontWeightRange",
+  "ComputedTimingFunction",
   "Display",
   "DisplayMode",
   "FillRule",
   "FontDisplay",
   "FontFaceSourceListComponent",
   "FontLanguageOverride",
+  "OverflowWrap",
+  "TimingFunction",
   "PathCommand",
   "UnicodeRange",
+  "UserSelect",
+  "Float",
+  "OverscrollBehavior",
+  "ScrollSnapType",
+  "OverflowClipBox",
+  "Resize",
 ]
 item_types = ["enums", "structs", "typedefs"]

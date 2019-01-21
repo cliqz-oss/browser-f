@@ -1,10 +1,10 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Generic types for CSS values related to length.
 
-use values::computed::ExtremumLength;
+use crate::values::computed::ExtremumLength;
 
 /// A generic value for the `width`, `height`, `min-width`, or `min-height` property.
 ///
@@ -45,7 +45,7 @@ pub enum MozLength<LengthOrPercentageOrAuto> {
     SpecifiedValueInfo,
     ToAnimatedZero,
     ToComputedValue,
-    ToCss
+    ToCss,
 )]
 pub enum MaxLength<LengthOrPercentageOrNone> {
     LengthOrPercentageOrNone(LengthOrPercentageOrNone),

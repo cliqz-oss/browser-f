@@ -39,7 +39,6 @@ typedef OfflineResourceList ApplicationCache;
   [PutForwards=href, Unforgeable, BinaryName="getLocation",
    CrossOriginReadable, CrossOriginWritable] readonly attribute Location location;
   [Throws] readonly attribute History history;
-  [Func="CustomElementRegistry::IsCustomElementEnabled"]
   readonly attribute CustomElementRegistry customElements;
   [Replaceable, Throws] readonly attribute BarProp locationbar;
   [Replaceable, Throws] readonly attribute BarProp menubar;
@@ -85,6 +84,8 @@ typedef OfflineResourceList ApplicationCache;
 
   [Throws, CrossOriginCallable, NeedsSubjectPrincipal]
   void postMessage(any message, DOMString targetOrigin, optional sequence<object> transfer = []);
+  [Throws, CrossOriginCallable, NeedsSubjectPrincipal]
+  void postMessage(any message, optional WindowPostMessageOptions options);
 
   // also has obsolete members
 };
@@ -367,6 +368,9 @@ partial interface Window {
    */
   [Constant, Throws, ChromeOnly]
   readonly attribute nsIDOMWindowUtils windowUtils;
+
+  [ChromeOnly]
+  readonly attribute boolean hasOpenerForInitialContentBrowser;
 };
 
 Window implements TouchEventHandlers;
@@ -385,7 +389,7 @@ partial interface Window {
 #ifdef HAVE_SIDEBAR
 // Mozilla extension
 partial interface Window {
-  [Replaceable, Throws, UseCounter]
+  [Replaceable, Throws, UseCounter, Pref="dom.sidebar.enabled"]
   readonly attribute (External or WindowProxy) sidebar;
 };
 #endif
@@ -558,14 +562,14 @@ partial interface Window {
    *
    * Example: ["en-US", "de", "pl", "sr-Cyrl", "zh-Hans-HK"]
    */
-  [Func="IsChromeOrXBL"]
+  [Func="IsChromeOrXBLOrUAWidget"]
   sequence<DOMString> getRegionalPrefsLocales();
 
   /**
    * Getter funcion for IntlUtils, which provides helper functions for
    * localization.
    */
-  [Throws, Func="IsChromeOrXBL"]
+  [Throws, Func="IsChromeOrXBLOrUAWidget"]
   readonly attribute IntlUtils intlUtils;
 };
 
@@ -575,4 +579,8 @@ partial interface Window {
   [SameObject, Pref="dom.visualviewport.enabled", Replaceable]
   readonly attribute VisualViewport visualViewport;
 
+};
+
+dictionary WindowPostMessageOptions : PostMessageOptions {
+  USVString targetOrigin = "/";
 };

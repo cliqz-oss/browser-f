@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/* eslint-env mozilla/browser-window */
 
 /**
  * Utility object to handle manipulations of the identity indicators in the UI
@@ -205,6 +206,31 @@ var gIdentityHandler = {
       permissionAnchors[anchor.getAttribute("data-permission-id")] = anchor;
     }
     return this._permissionAnchors = permissionAnchors;
+  },
+
+  get _insecureConnectionIconEnabled() {
+    delete this._insecureConnectionIconEnabled;
+    XPCOMUtils.defineLazyPreferenceGetter(this, "_insecureConnectionIconEnabled",
+                                          "security.insecure_connection_icon.enabled");
+    return this._insecureConnectionIconEnabled;
+  },
+  get _insecureConnectionIconPBModeEnabled() {
+    delete this._insecureConnectionIconPBModeEnabled;
+    XPCOMUtils.defineLazyPreferenceGetter(this, "_insecureConnectionIconPBModeEnabled",
+                                          "security.insecure_connection_icon.pbmode.enabled");
+    return this._insecureConnectionIconPBModeEnabled;
+  },
+  get _insecureConnectionTextEnabled() {
+    delete this._insecureConnectionTextEnabled;
+    XPCOMUtils.defineLazyPreferenceGetter(this, "_insecureConnectionTextEnabled",
+                                          "security.insecure_connection_text.enabled");
+    return this._insecureConnectionTextEnabled;
+  },
+  get _insecureConnectionTextPBModeEnabled() {
+    delete this._insecureConnectionTextPBModeEnabled;
+    XPCOMUtils.defineLazyPreferenceGetter(this, "_insecureConnectionTextPBModeEnabled",
+                                          "security.insecure_connection_text.pbmode.enabled");
+    return this._insecureConnectionTextPBModeEnabled;
   },
 
   /**
@@ -525,14 +551,14 @@ var gIdentityHandler = {
           this._identityBox.classList.add("weakCipher");
         }
       } else {
-        let warnOnInsecure = Services.prefs.getBoolPref("security.insecure_connection_icon.enabled") ||
-                             (Services.prefs.getBoolPref("security.insecure_connection_icon.pbmode.enabled") &&
+        let warnOnInsecure = this._insecureConnectionIconEnabled ||
+                             (this._insecureConnectionIconPBModeEnabled &&
                              PrivateBrowsingUtils.isWindowPrivate(window));
         let className = warnOnInsecure ? "notSecure" : "unknownIdentity";
         this._identityBox.className = className;
 
-        let warnTextOnInsecure = Services.prefs.getBoolPref("security.insecure_connection_text.enabled") ||
-                                 (Services.prefs.getBoolPref("security.insecure_connection_text.pbmode.enabled") &&
+        let warnTextOnInsecure = this._insecureConnectionTextEnabled ||
+                                 (this._insecureConnectionTextPBModeEnabled &&
                                  PrivateBrowsingUtils.isWindowPrivate(window));
         if (warnTextOnInsecure) {
           icon_label = gNavigatorBundle.getString("identity.notSecure.label");
@@ -818,15 +844,6 @@ var gIdentityHandler = {
       return;
     }
 
-    // Move focus to the next available element in the identity popup.
-    // This is required by role=alertdialog and fixes an issue where
-    // an already open panel would steal focus from the identity popup.
-    if (event.type == "keypress") {
-      let panelView = PanelView.forNode(this._identityPopupMainView);
-      this._identityPopupMainView.addEventListener("ViewShown", () => panelView.focusFirstNavigableElement(),
-        {once: true});
-    }
-
     // Make sure that the display:none style we set in xul is removed now that
     // the popup is actually needed
     this._identityPopup.hidden = false;
@@ -841,8 +858,10 @@ var gIdentityHandler = {
     this._identityBox.setAttribute("open", "true");
 
     // Now open the popup, anchored off the primary chrome element
-    PanelMultiView.openPopup(this._identityPopup, this._identityIcon,
-                             "bottomcenter topleft").catch(Cu.reportError);
+    PanelMultiView.openPopup(this._identityPopup, this._identityIcon, {
+      position: "bottomcenter topleft",
+      triggerEvent: event,
+    }).catch(Cu.reportError);
   },
 
   onPopupShown(event) {
@@ -947,7 +966,15 @@ var gIdentityHandler = {
 
     let hasBlockedPopupIndicator = false;
     for (let permission of permissions) {
+      if (permission.id == "storage-access") {
+        // Ignore storage access permissions here, they are made visible inside
+        // the Content Blocking UI.
+        continue;
+      }
       let item = this._createPermissionItem(permission);
+      if (!item) {
+        continue;
+      }
       this._permissionList.appendChild(item);
 
       if (permission.id == "popup" &&
@@ -1016,7 +1043,11 @@ var gIdentityHandler = {
     let nameLabel = document.createXULElement("label");
     nameLabel.setAttribute("flex", "1");
     nameLabel.setAttribute("class", "identity-popup-permission-label");
-    nameLabel.textContent = SitePermissions.getPermissionLabel(aPermission.id);
+    let label = SitePermissions.getPermissionLabel(aPermission.id);
+    if (label === null) {
+      return null;
+    }
+    nameLabel.textContent = label;
     let nameLabelId = "identity-popup-permission-label-" + aPermission.id;
     nameLabel.setAttribute("id", nameLabelId);
 

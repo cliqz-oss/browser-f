@@ -12,134 +12,114 @@
 
 <?xml-stylesheet href="chrome://browser/content/sanitizeDialog.css"?>
 
-<!DOCTYPE dialog [
-  <!ENTITY % preferencesDTD SYSTEM "chrome://global/locale/preferences.dtd">
-  <!ENTITY % globalKeysDTD SYSTEM "chrome://global/locale/globalKeys.dtd">
-  <!ENTITY % brandDTD SYSTEM "chrome://branding/locale/brand.dtd">
-  <!ENTITY % sanitizeDTD SYSTEM "chrome://browser/locale/sanitize.dtd">
-  %preferencesDTD;
-  %globalKeysDTD;
-  %brandDTD;
-  %sanitizeDTD;
-]>
+<!DOCTYPE dialog>
 
-<dialog id="SanitizeDialog" class="prefwindow" type="child"
+<dialog id="SanitizeDialog" type="child"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
         buttons="accept,cancel"
         persist="lastSelected screenX screenY"
         role="dialog"
-        title="&sanitizeDialog2.title;"
-        noneverythingtitle="&sanitizeDialog2.title;"
-        style="width: &sanitizeDialog2.width;;"
+        data-l10n-id="dialog-title"
+        data-l10n-attrs="style"
         onload="gSanitizePromptDialog.init();"
         ondialogaccept="return gSanitizePromptDialog.sanitize();">
 
-  <vbox id="SanitizeDialogPane" class="prefpane">
-    <stringbundle id="bundleBrowser"
-                  src="chrome://browser/locale/browser.properties"/>
+  <linkset>
+    <link rel="localization" href="browser/sanitize.ftl"/>
+  </linkset>
 
-    <script type="application/javascript"
-            src="chrome://global/content/preferencesBindings.js"/>
-    <script type="application/javascript"
-            src="chrome://browser/content/sanitizeDialog.js"/>
+  <script type="application/javascript"
+          src="chrome://global/content/preferencesBindings.js"/>
+  <script type="application/javascript"
+          src="chrome://browser/content/sanitizeDialog.js"/>
 
-    <hbox id="SanitizeDurationBox" align="center">
-      <label value="&clearTimeDuration.label;"
-             accesskey="&clearTimeDuration.accesskey;"
-             control="sanitizeDurationChoice"
-             id="sanitizeDurationLabel"/>
-      <menulist id="sanitizeDurationChoice"
-                preference="privacy.sanitize.timeSpan"
-                onselect="gSanitizePromptDialog.selectByTimespan();"
-                flex="1">
-        <menupopup id="sanitizeDurationPopup">
-          <menuitem label="&clearTimeDuration.lastHour;" value="1"/>
-          <menuitem label="&clearTimeDuration.last2Hours;" value="2"/>
-          <menuitem label="&clearTimeDuration.last4Hours;" value="3"/>
-          <menuitem label="&clearTimeDuration.today;" value="4"/>
-          <menuseparator/>
-          <menuitem label="&clearTimeDuration.everything;" value="0"/>
-        </menupopup>
-      </menulist>
-      <label id="sanitizeDurationSuffixLabel"
-             value="&clearTimeDuration.suffix;"/>
-    </hbox>
+  <hbox id="SanitizeDurationBox" align="center">
+    <label data-l10n-id="clear-time-duration-prefix"
+           control="sanitizeDurationChoice"
+           id="sanitizeDurationLabel"/>
+    <menulist id="sanitizeDurationChoice"
+              preference="privacy.sanitize.timeSpan"
+              onselect="gSanitizePromptDialog.selectByTimespan();"
+              flex="1">
+      <menupopup id="sanitizeDurationPopup">
+        <menuitem data-l10n-id="clear-time-duration-value-last-hour" value="1"/>
+        <menuitem data-l10n-id="clear-time-duration-value-last-2-hours" value="2"/>
+        <menuitem data-l10n-id="clear-time-duration-value-last-4-hours" value="3"/>
+        <menuitem data-l10n-id="clear-time-duration-value-today" value="4"/>
+        <menuseparator/>
+        <menuitem data-l10n-id="clear-time-duration-value-everything" value="0"/>
+      </menupopup>
+    </menulist>
+    <label id="sanitizeDurationSuffixLabel"
+           data-l10n-id="clear-time-duration-suffix"/>
+  </hbox>
 
-    <separator class="thin"/>
+  <separator class="thin"/>
 
-
-      <vbox id="sanitizeEverythingWarningBox">
-        <spacer flex="1"/>
-        <hbox align="center">
-          <image id="sanitizeEverythingWarningIcon"/>
-          <vbox id="sanitizeEverythingWarningDescBox" flex="1">
-            <description id="sanitizeEverythingWarning"/>
-            <description id="sanitizeEverythingUndoWarning">&sanitizeEverythingUndoWarning;</description>
-          </vbox>
-        </hbox>
-        <spacer flex="1"/>
+  <vbox id="sanitizeEverythingWarningBox">
+    <spacer flex="1"/>
+    <hbox align="center">
+      <image id="sanitizeEverythingWarningIcon"/>
+      <vbox id="sanitizeEverythingWarningDescBox" flex="1">
+        <description id="sanitizeEverythingWarning"/>
+        <description id="sanitizeEverythingUndoWarning" data-l10n-id="sanitize-everything-undo-warning"></description>
       </vbox>
-
-
-    <separator class="thin"/>
-
-    <groupbox orient="horizontal">
-      <caption><label>&historySection.label;</label></caption>
-      <grid flex="1">
-        <columns>
-          <column style="width: &sanitizePrefs2.column.width;"/>
-          <column flex="1"/>
-        </columns>
-        <rows>
-          <row>
-            <checkbox label="&itemHistoryAndDownloads.label;"
-                      accesskey="&itemHistoryAndDownloads.accesskey;"
-                      preference="privacy.cpd.history"
-                      onsyncfrompreference="return gSanitizePromptDialog.onReadGeneric();"/>
-            <checkbox label="&itemCookies.label;"
-                      accesskey="&itemCookies.accesskey;"
-                      preference="privacy.cpd.cookies"
-                      onsyncfrompreference="return gSanitizePromptDialog.onReadGeneric();"/>
-          </row>
-          <row>
-            <checkbox label="&itemActiveLogins.label;"
-                      accesskey="&itemActiveLogins.accesskey;"
-                      preference="privacy.cpd.sessions"
-                      onsyncfrompreference="return gSanitizePromptDialog.onReadGeneric();"/>
-            <checkbox label="&itemCache.label;"
-                      accesskey="&itemCache.accesskey;"
-                      preference="privacy.cpd.cache"
-                      onsyncfrompreference="return gSanitizePromptDialog.onReadGeneric();"/>
-          </row>
-          <row>
-            <checkbox label="&itemFormSearchHistory.label;"
-                      accesskey="&itemFormSearchHistory.accesskey;"
-                      preference="privacy.cpd.formdata"
-                      onsyncfrompreference="return gSanitizePromptDialog.onReadGeneric();"/>
-          </row>
-        </rows>
-      </grid>
-    </groupbox>
-    <groupbox orient="horizontal">
-      <caption><label>&dataSection.label;</label></caption>
-      <grid flex="1">
-        <columns>
-          <column style="width: &sanitizePrefs2.column.width;"/>
-          <column flex="1"/>
-        </columns>
-        <rows>
-          <row>
-            <checkbox label="&itemSitePreferences.label;"
-                      accesskey="&itemSitePreferences.accesskey;"
-                      preference="privacy.cpd.siteSettings"
-                      onsyncfrompreference="return gSanitizePromptDialog.onReadGeneric();"/>
-            <checkbox label="&itemOfflineApps.label;"
-                      accesskey="&itemOfflineApps.accesskey;"
-                      preference="privacy.cpd.offlineApps"
-                      onsyncfrompreference="return gSanitizePromptDialog.onReadGeneric();"/>
-          </row>
-        </rows>
-      </grid>
-    </groupbox>
+    </hbox>
+    <spacer flex="1"/>
   </vbox>
+
+  <separator class="thin"/>
+
+  <groupbox>
+    <label><html:h2 data-l10n-id="history-section-label"/></label>
+    <grid flex="1">
+      <columns>
+        <column data-l10n-id="sanitize-prefs-style" data-l10n-attrs="style"/>
+        <column flex="1"/>
+      </columns>
+      <rows>
+        <row>
+          <checkbox data-l10n-id="item-history-and-downloads"
+                    preference="privacy.cpd.history"
+                    onsyncfrompreference="return gSanitizePromptDialog.onReadGeneric();"/>
+          <checkbox data-l10n-id="item-cookies"
+                    preference="privacy.cpd.cookies"
+                    onsyncfrompreference="return gSanitizePromptDialog.onReadGeneric();"/>
+        </row>
+        <row>
+          <checkbox data-l10n-id="item-active-logins"
+                    preference="privacy.cpd.sessions"
+                    onsyncfrompreference="return gSanitizePromptDialog.onReadGeneric();"/>
+          <checkbox data-l10n-id="item-cache"
+                    preference="privacy.cpd.cache"
+                    onsyncfrompreference="return gSanitizePromptDialog.onReadGeneric();"/>
+        </row>
+        <row>
+          <checkbox data-l10n-id="item-form-search-history"
+                    preference="privacy.cpd.formdata"
+                    onsyncfrompreference="return gSanitizePromptDialog.onReadGeneric();"/>
+        </row>
+      </rows>
+    </grid>
+  </groupbox>
+  <groupbox>
+    <label><html:h2 data-l10n-id="data-section-label"/></label>
+    <grid flex="1">
+      <columns>
+        <column data-l10n-id="sanitize-prefs-style" data-l10n-attrs="style"/>
+        <column flex="1"/>
+      </columns>
+      <rows>
+        <row>
+          <checkbox data-l10n-id="item-site-preferences"
+                    preference="privacy.cpd.siteSettings"
+                    onsyncfrompreference="return gSanitizePromptDialog.onReadGeneric();"/>
+          <checkbox data-l10n-id="item-offline-apps"
+                    preference="privacy.cpd.offlineApps"
+                    onsyncfrompreference="return gSanitizePromptDialog.onReadGeneric();"/>
+        </row>
+      </rows>
+    </grid>
+  </groupbox>
 </dialog>

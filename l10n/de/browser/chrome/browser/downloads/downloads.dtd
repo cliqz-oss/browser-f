@@ -7,41 +7,6 @@
      -->
 <!ENTITY downloads.title                  "Downloads">
 
-<!-- LOCALIZATION NOTE (downloadDetails.width):
-     Width of details for a Downloads Panel item (which directly influences the
-     width of the Downloads Panel) expressed using a CSS unit. The longest
-     labels that should fit in the item width are usually those of in-progress
-     downloads and those of blocked downloads.
-
-     A good rule of thumb is to try to determine the longest string possible
-     that an in-progress download could display, and use that value in ch
-     units.
-
-     For example, in English, a long string would be:
-
-     59m 59s left - 1022 of 1023 KB (120.5 KB/sec)
-
-     Since Downloads Panel is redesigned to show the detail string including
-     the hovering case for an item or an action button.
-     Bug 1328519 is for discussing the detail rule of `downloadDetails.width`.
-     -->
-<!ENTITY downloadDetails.width            "57ch">
-
-<!-- LOCALIZATION NOTE (downloadsSummary.minWidth2):
-     Minimum width for the main description of the downloads summary,
-     which is displayed at the bottom of the Downloads Panel if the
-     number of downloads exceeds the limit that the panel can display.
-
-     A good rule of thumb here is to look at the otherDownloads3 string
-     in downloads.properties, and make a reasonable estimate of its
-     maximum length. For English, this seems like a reasonable limit:
-
-     999 files downloading
-
-     that's 21 characters, so we set the minimum width to 21ch.
-     -->
-<!ENTITY downloadsSummary.minWidth2       "23ch">
-
 <!-- LOCALIZATION NOTE (downloads.width):
      Width of the Downloads Panel expressed using a CSS unit. The longest labels
      that should fit are usually those of in-progress and blocked downloads.
@@ -131,7 +96,7 @@
      malware, when there is an associated explanation page on the Mozilla site.
      Note: This string doesn't exist in the UI yet.  See bug 1053890.
      -->
-<!ENTITY learnMore.label                  "Mehr erfahren">
+<!ENTITY learnMore.label                  "Weitere Informationen">
 
 <!-- LOCALIZATION NOTE (downloadsHistory.label, downloadsHistory.accesskey):
      This string is shown at the bottom of the Downloads Panel when all the

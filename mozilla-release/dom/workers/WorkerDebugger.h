@@ -7,6 +7,7 @@
 #ifndef mozilla_dom_workers_WorkerDebugger_h
 #define mozilla_dom_workers_WorkerDebugger_h
 
+#include "mozilla/PerformanceTypes.h"
 #include "mozilla/dom/DOMTypes.h"
 #include "mozilla/dom/WorkerCommon.h"
 #include "nsIWorkerDebugger.h"
@@ -16,8 +17,7 @@ namespace dom {
 
 class WorkerPrivate;
 
-class WorkerDebugger : public nsIWorkerDebugger
-{
+class WorkerDebugger : public nsIWorkerDebugger {
   class ReportDebuggerErrorRunnable;
   class PostDebuggerMessageRunnable;
 
@@ -25,46 +25,38 @@ class WorkerDebugger : public nsIWorkerDebugger
   bool mIsInitialized;
   nsTArray<nsCOMPtr<nsIWorkerDebuggerListener>> mListeners;
 
-public:
+ public:
   explicit WorkerDebugger(WorkerPrivate* aWorkerPrivate);
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSIWORKERDEBUGGER
 
-  void
-  AssertIsOnParentThread();
+  void AssertIsOnParentThread();
 
-  void
-  Close();
+  void Close();
 
-  void
-  PostMessageToDebugger(const nsAString& aMessage);
+  void PostMessageToDebugger(const nsAString& aMessage);
 
-  void
-  ReportErrorToDebugger(const nsAString& aFilename, uint32_t aLineno,
-                        const nsAString& aMessage);
+  void ReportErrorToDebugger(const nsAString& aFilename, uint32_t aLineno,
+                             const nsAString& aMessage);
 
   /*
    * Sends back a PerformanceInfo struct from the counters
    * in mWorkerPrivate. Counters are reset to zero after this call.
    */
-  PerformanceInfo
-  ReportPerformanceInfo();
+  RefPtr<PerformanceInfoPromise> ReportPerformanceInfo();
 
-private:
-  virtual
-  ~WorkerDebugger();
+ private:
+  virtual ~WorkerDebugger();
 
-  void
-  PostMessageToDebuggerOnMainThread(const nsAString& aMessage);
+  void PostMessageToDebuggerOnMainThread(const nsAString& aMessage);
 
-  void
-  ReportErrorToDebuggerOnMainThread(const nsAString& aFilename,
-                                    uint32_t aLineno,
-                                    const nsAString& aMessage);
+  void ReportErrorToDebuggerOnMainThread(const nsAString& aFilename,
+                                         uint32_t aLineno,
+                                         const nsAString& aMessage);
 };
 
-} // dom namespace
-} // mozilla namespace
+}  // namespace dom
+}  // namespace mozilla
 
-#endif // mozilla_dom_workers_WorkerDebugger_h
+#endif  // mozilla_dom_workers_WorkerDebugger_h

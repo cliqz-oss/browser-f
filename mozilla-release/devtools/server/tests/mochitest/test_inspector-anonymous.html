@@ -21,9 +21,6 @@ window.onload = function() {
     require("devtools/shared/dom-node-filter-constants");
   const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
-  SpecialPowers.pushPrefEnv({"set": [
-    ["dom.webcomponents.shadowdom.enabled", true],
-  ]});
   SimpleTest.waitForExplicitFinish();
 
   let gWalker = null;
@@ -35,10 +32,8 @@ window.onload = function() {
     const url = document.getElementById("inspectorContent").href;
     const { target, doc } = await attachURL(url);
     gInspectee = doc;
-    const inspector = target.getInspector();
-    const walker = await inspector.getWalker();
-    ok(walker, "getWalker() should return an actor.");
-    gWalker = walker;
+    const inspector = await target.getInspector();
+    gWalker = inspector.walker;
     runNextTest();
   });
 

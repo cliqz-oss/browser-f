@@ -27,7 +27,6 @@ XPIDL_SOURCES += [
 XPIDL_MODULE = 'necko_http'
 
 EXPORTS += [
-    'DocumentAnalyticsTrackerFastBlocked.h',
     'nsCORSListenerProxy.h',
     'nsHttp.h',
     'nsHttpAtomList.h',
@@ -69,6 +68,7 @@ UNIFIED_SOURCES += [
     'BackgroundChannelRegistrar.cpp',
     'CacheControlParser.cpp',
     'ConnectionDiagnostics.cpp',
+    'DelayHttpChannelQueue.cpp',
     'Http2Compression.cpp',
     'Http2Push.cpp',
     'Http2Session.cpp',
@@ -132,6 +132,7 @@ FINAL_LIBRARY = 'xul'
 
 LOCAL_INCLUDES += [
     '/dom/base',
+    '/extensions/auth',
     '/netwerk/base',
     '/netwerk/cookie',
 ]

@@ -1,16 +1,16 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Computed values for UI properties
 
-use values::{Auto, Either};
-use values::computed::Number;
-use values::computed::color::Color;
-use values::computed::url::ComputedImageUrl;
-use values::generics::ui as generics;
+use crate::values::computed::color::Color;
+use crate::values::computed::url::ComputedImageUrl;
+use crate::values::computed::Number;
+use crate::values::generics::ui as generics;
+use crate::values::{Auto, Either};
 
-pub use values::specified::ui::MozForceBrokenImageIcon;
+pub use crate::values::specified::ui::{MozForceBrokenImageIcon, UserSelect};
 
 /// auto | <color>
 pub type ColorOrAuto = Either<Color, Auto>;

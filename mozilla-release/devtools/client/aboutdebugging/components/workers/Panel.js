@@ -54,9 +54,16 @@ class WorkersPanel extends Component {
 
   componentDidMount() {
     const client = this.props.client;
-    client.addListener("workerListChanged", this.updateWorkers);
-    client.addListener("serviceWorkerRegistrationListChanged", this.updateWorkers);
-    client.addListener("processListChanged", this.updateWorkers);
+    // When calling RootFront.listAllWorkers, ContentProcessTargetActor are created
+    // for each content process, which sends `workerListChanged` events.
+    client.mainRoot.onFront("contentProcessTarget", front => {
+      front.on("workerListChanged", this.updateWorkers);
+      this.state.contentProcessFronts.push(front);
+    });
+    client.mainRoot.on("workerListChanged", this.updateWorkers);
+
+    client.mainRoot.on("serviceWorkerRegistrationListChanged", this.updateWorkers);
+    client.mainRoot.on("processListChanged", this.updateWorkers);
     client.addListener("registration-changed", this.updateWorkers);
 
     // Some notes about these observers:
@@ -80,9 +87,12 @@ class WorkersPanel extends Component {
 
   componentWillUnmount() {
     const client = this.props.client;
-    client.removeListener("processListChanged", this.updateWorkers);
-    client.removeListener("serviceWorkerRegistrationListChanged", this.updateWorkers);
-    client.removeListener("workerListChanged", this.updateWorkers);
+    client.mainRoot.off("processListChanged", this.updateWorkers);
+    client.mainRoot.off("serviceWorkerRegistrationListChanged", this.updateWorkers);
+    client.mainRoot.off("workerListChanged", this.updateWorkers);
+    for (const front of this.state.contentProcessFronts) {
+      front.off("workerListChanged", this.updateWorkers);
+    }
     client.removeListener("registration-changed", this.updateWorkers);
 
     Services.prefs.removeObserver(PROCESS_COUNT_PREF, this.updateMultiE10S);
@@ -97,6 +107,10 @@ class WorkersPanel extends Component {
         other: [],
       },
       processCount: 1,
+
+      // List of ContentProcessTargetFront registered from componentWillMount
+      // from which we listen for worker list changes
+      contentProcessFronts: [],
     };
   }
 

@@ -17,10 +17,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk3':
     DIRS += ['mozgtk']
 
 if CONFIG['MOZ_WAYLAND']:
-    if CONFIG['GLIB_LIBS']:
-        DIRS += ['wayland', 'mozwayland']
-    else:
-        error('We support Wayland on glibc systems only, see Bug 1409707 for reference.')
+    DIRS += ['wayland', 'mozwayland']
 
 EXPORTS += [
     'mozcontainer.h',
@@ -100,6 +97,7 @@ if CONFIG['MOZ_X11']:
 if CONFIG['MOZ_WAYLAND']:
     UNIFIED_SOURCES += [
         'nsClipboardWayland.cpp',
+        'nsWaylandDisplay.cpp',
         'WindowSurfaceWayland.cpp',
     ]
 
@@ -108,16 +106,11 @@ if CONFIG['ACCESSIBILITY']:
         'maiRedundantObjectFactory.c',
     ]
 
-if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk2':
-    UNIFIED_SOURCES += [
-        'gtk2drawing.c',
-    ]
-else:
-    UNIFIED_SOURCES += [
-        'gtk3drawing.cpp',
-        'nsApplicationChooser.cpp',
-        'WidgetStyleCache.cpp',
-    ]
+UNIFIED_SOURCES += [
+    'gtk3drawing.cpp',
+    'nsApplicationChooser.cpp',
+    'WidgetStyleCache.cpp',
+]
 
 include('/ipc/chromium/chromium-config.mozbuild')
 

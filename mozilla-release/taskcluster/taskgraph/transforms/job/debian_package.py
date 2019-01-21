@@ -18,7 +18,7 @@ from taskgraph.transforms.job.common import add_artifacts
 
 from taskgraph.util.hash import hash_path
 from taskgraph import GECKO
-from taskgraph.util.cached_tasks import add_optimization
+import taskgraph
 
 DSC_PACKAGE_RE = re.compile('.*(?=_)')
 SOURCE_PACKAGE_RE = re.compile('.*(?=[-_]\d)')
@@ -48,6 +48,9 @@ run_schema = Schema({
     # Command to run before dpkg-buildpackage.
     Optional('pre-build-command'): basestring,
 
+    # Architecture to build the package for.
+    Optional('arch'): basestring,
+
     # List of package tasks to get build dependencies from.
     Optional('packages'): [basestring],
 
@@ -68,11 +71,19 @@ def docker_worker_debian_package(config, job, taskdesc):
 
     name = taskdesc['label'].replace('{}-'.format(config.kind), '', 1)
 
+    docker_repo = 'debian'
+    arch = run.get('arch', 'amd64')
+    if arch != 'amd64':
+        docker_repo = '{}/{}'.format(arch, docker_repo)
+
     worker = taskdesc['worker']
     worker['artifacts'] = []
-    worker['docker-image'] = 'debian:{dist}-{date}'.format(
+    worker['docker-image'] = '{repo}:{dist}-{date}'.format(
+        repo=docker_repo,
         dist=run['dist'],
         date=run['snapshot'][:8])
+    # Retry on apt-get errors.
+    worker['retry-exit-status'] = [100]
 
     add_artifacts(config, job, taskdesc, path='/tmp/artifacts')
 
@@ -161,7 +172,7 @@ def docker_worker_debian_package(config, job, taskdesc):
         'apt-get install -yyq apt-transport-https ca-certificates && '
         'for task in $PACKAGES; do '
         '  echo "deb [trusted=yes] https://queue.taskcluster.net/v1/task'
-        '/$task/runs/0/artifacts/public/build/ debian/" '
+        '/$task/artifacts/public/build/ debian/" '
         '>> /etc/apt/sources.list; '
         'done && '
         # Install the base utilities required to build debian packages.
@@ -201,12 +212,6 @@ def docker_worker_debian_package(config, job, taskdesc):
         )
     ]
 
-    # Use the command generated above as the base for the index hash.
-    # We rely on it not varying depending on the head_repository or head_rev.
-    data = list(worker['command'])
-    if 'patch' in run:
-        data.append(hash_path(os.path.join(GECKO, 'build', 'debian-packages', run['patch'])))
-
     if run.get('packages'):
         env = worker.setdefault('env', {})
         env['PACKAGES'] = {
@@ -216,7 +221,20 @@ def docker_worker_debian_package(config, job, taskdesc):
         deps = taskdesc.setdefault('dependencies', {})
         for p in run['packages']:
             deps[p] = 'packages-{}'.format(p)
-            data.append(p)
 
-    add_optimization(config, taskdesc, cache_type='packages.v1',
-                     cache_name=name, digest_data=data)
+    # Use the command generated above as the base for the index hash.
+    # We rely on it not varying depending on the head_repository or head_rev.
+    digest_data = list(worker['command'])
+    if 'patch' in run:
+        digest_data.append(
+            hash_path(os.path.join(GECKO, 'build', 'debian-packages', run['patch'])))
+
+    if docker_repo != 'debian':
+        digest_data.append(docker_repo)
+
+    if not taskgraph.fast:
+        taskdesc['cache'] = {
+            'type': 'packages.v1',
+            'name': name,
+            'digest-data': digest_data
+        }

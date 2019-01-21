@@ -10,7 +10,6 @@
 
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/MathAlgorithms.h"
-#include "mozilla/ServoBindings.h"
 #include "mozilla/ServoStyleSet.h"
 #include "mozilla/Tuple.h"
 #include "mozilla/UniquePtr.h"
@@ -23,7 +22,7 @@
 #include "mozilla/dom/Element.h"
 #include "mozilla/FloatingPoint.h"
 #include "mozilla/Likely.h"
-#include "mozilla/ServoBindings.h" // RawServoDeclarationBlock
+#include "mozilla/ServoBindings.h"  // RawServoDeclarationBlock
 #include "mozilla/ServoCSSParser.h"
 #include "gfxMatrix.h"
 #include "gfxQuaternion.h"
@@ -39,10 +38,8 @@ using nsStyleTransformMatrix::Decompose2DMatrix;
 using nsStyleTransformMatrix::Decompose3DMatrix;
 using nsStyleTransformMatrix::ShearType;
 
-
-static already_AddRefed<nsCSSValue::Array>
-AppendFunction(nsCSSKeyword aTransformFunction)
-{
+static already_AddRefed<nsCSSValue::Array> AppendFunction(
+    nsCSSKeyword aTransformFunction) {
   uint32_t nargs;
   switch (aTransformFunction) {
     case eCSSKeyword_matrix3d:
@@ -91,13 +88,9 @@ AppendFunction(nsCSSKeyword aTransformFunction)
   return arr.forget();
 }
 
-
-
 // AnimationValue Implementation
 
-bool
-AnimationValue::operator==(const AnimationValue& aOther) const
-{
+bool AnimationValue::operator==(const AnimationValue& aOther) const {
   if (mServo && aOther.mServo) {
     return Servo_AnimationValue_DeepEqual(mServo, aOther.mServo);
   }
@@ -107,22 +100,22 @@ AnimationValue::operator==(const AnimationValue& aOther) const
   return false;
 }
 
-bool
-AnimationValue::operator!=(const AnimationValue& aOther) const
-{
+bool AnimationValue::operator!=(const AnimationValue& aOther) const {
   return !operator==(aOther);
 }
 
-float
-AnimationValue::GetOpacity() const
-{
+float AnimationValue::GetOpacity() const {
   MOZ_ASSERT(mServo);
   return Servo_AnimationValue_GetOpacity(mServo);
 }
 
-already_AddRefed<const nsCSSValueSharedList>
-AnimationValue::GetTransformList() const
-{
+nscolor AnimationValue::GetColor(nscolor aForegroundColor) const {
+  MOZ_ASSERT(mServo);
+  return Servo_AnimationValue_GetColor(mServo, aForegroundColor);
+}
+
+already_AddRefed<const nsCSSValueSharedList> AnimationValue::GetTransformList()
+    const {
   MOZ_ASSERT(mServo);
 
   RefPtr<nsCSSValueSharedList> transform;
@@ -130,27 +123,21 @@ AnimationValue::GetTransformList() const
   return transform.forget();
 }
 
-Size
-AnimationValue::GetScaleValue(const nsIFrame* aFrame) const
-{
+Size AnimationValue::GetScaleValue(const nsIFrame* aFrame) const {
   MOZ_ASSERT(mServo);
   RefPtr<nsCSSValueSharedList> list;
   Servo_AnimationValue_GetTransform(mServo, &list);
   return nsStyleTransformMatrix::GetScaleValue(list, aFrame);
 }
 
-void
-AnimationValue::SerializeSpecifiedValue(nsCSSPropertyID aProperty,
-                                        nsAString& aString) const
-{
+void AnimationValue::SerializeSpecifiedValue(nsCSSPropertyID aProperty,
+                                             nsAString& aString) const {
   MOZ_ASSERT(mServo);
   Servo_AnimationValue_Serialize(mServo, aProperty, &aString);
 }
 
-bool
-AnimationValue::IsInterpolableWith(nsCSSPropertyID aProperty,
-                                   const AnimationValue& aToValue) const
-{
+bool AnimationValue::IsInterpolableWith(nsCSSPropertyID aProperty,
+                                        const AnimationValue& aToValue) const {
   if (IsNull() || aToValue.IsNull()) {
     return false;
   }
@@ -160,11 +147,9 @@ AnimationValue::IsInterpolableWith(nsCSSPropertyID aProperty,
   return Servo_AnimationValues_IsInterpolable(mServo, aToValue.mServo);
 }
 
-double
-AnimationValue::ComputeDistance(nsCSSPropertyID aProperty,
-                                const AnimationValue& aOther,
-                                ComputedStyle* aComputedStyle) const
-{
+double AnimationValue::ComputeDistance(nsCSSPropertyID aProperty,
+                                       const AnimationValue& aOther,
+                                       ComputedStyle* aComputedStyle) const {
   if (IsNull() || aOther.IsNull()) {
     return 0.0;
   }
@@ -173,17 +158,12 @@ AnimationValue::ComputeDistance(nsCSSPropertyID aProperty,
   MOZ_ASSERT(aOther.mServo);
 
   double distance =
-    Servo_AnimationValues_ComputeDistance(mServo, aOther.mServo);
-  return distance < 0.0
-         ? 0.0
-         : distance;
+      Servo_AnimationValues_ComputeDistance(mServo, aOther.mServo);
+  return distance < 0.0 ? 0.0 : distance;
 }
 
-/* static */ AnimationValue
-AnimationValue::FromString(nsCSSPropertyID aProperty,
-                           const nsAString& aValue,
-                           Element* aElement)
-{
+/* static */ AnimationValue AnimationValue::FromString(
+    nsCSSPropertyID aProperty, const nsAString& aValue, Element* aElement) {
   MOZ_ASSERT(aElement);
 
   AnimationValue result;
@@ -201,33 +181,29 @@ AnimationValue::FromString(nsCSSPropertyID aProperty,
   // GetComputedStyle() flushes style, so we shouldn't assume that any
   // non-owning references we have are still valid.
   RefPtr<ComputedStyle> computedStyle =
-    nsComputedDOMStyle::GetComputedStyle(aElement, nullptr);
+      nsComputedDOMStyle::GetComputedStyle(aElement, nullptr);
   MOZ_ASSERT(computedStyle);
 
-  RefPtr<RawServoDeclarationBlock> declarations =
-    ServoCSSParser::ParseProperty(aProperty, aValue,
-                                  ServoCSSParser::GetParsingEnvironment(doc));
+  RefPtr<RawServoDeclarationBlock> declarations = ServoCSSParser::ParseProperty(
+      aProperty, aValue, ServoCSSParser::GetParsingEnvironment(doc));
 
   if (!declarations) {
     return result;
   }
 
-  result.mServo = shell->StyleSet()->
-    ComputeAnimationValue(aElement, declarations, computedStyle);
+  result.mServo = shell->StyleSet()->ComputeAnimationValue(
+      aElement, declarations, computedStyle);
   return result;
 }
 
-/* static */ AnimationValue
-AnimationValue::Opacity(float aOpacity)
-{
+/* static */ AnimationValue AnimationValue::Opacity(float aOpacity) {
   AnimationValue result;
   result.mServo = Servo_AnimationValue_Opacity(aOpacity).Consume();
   return result;
 }
 
-/* static */ AnimationValue
-AnimationValue::Transform(nsCSSValueSharedList& aList)
-{
+/* static */ AnimationValue AnimationValue::Transform(
+    nsCSSValueSharedList& aList) {
   AnimationValue result;
   result.mServo = Servo_AnimationValue_Transform(aList).Consume();
   return result;
@@ -235,10 +211,9 @@ AnimationValue::Transform(nsCSSValueSharedList& aList)
 
 /* static */ already_AddRefed<nsCSSValue::Array>
 AnimationValue::AppendTransformFunction(nsCSSKeyword aTransformFunction,
-                                        nsCSSValueList**& aListTail)
-{
+                                        nsCSSValueList**& aListTail) {
   RefPtr<nsCSSValue::Array> arr = AppendFunction(aTransformFunction);
-  nsCSSValueList *item = new nsCSSValueList;
+  nsCSSValueList* item = new nsCSSValueList;
   item->mValue.SetArrayValue(arr, eCSSUnit_Function);
 
   *aListTail = item;

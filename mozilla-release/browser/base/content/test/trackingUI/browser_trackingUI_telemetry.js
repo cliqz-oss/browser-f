@@ -22,7 +22,7 @@ function getShieldHistogram() {
 }
 
 function getShieldCounts() {
-  return getShieldHistogram().snapshot().counts;
+  return getShieldHistogram().snapshot().values;
 }
 
 add_task(async function setup() {
@@ -33,16 +33,11 @@ add_task(async function setup() {
   ok(!TrackingProtection.enabled, "TP is not enabled");
 
   let enabledCounts =
-    Services.telemetry.getHistogramById("TRACKING_PROTECTION_ENABLED").snapshot().counts;
+    Services.telemetry.getHistogramById("TRACKING_PROTECTION_ENABLED").snapshot().values;
   is(enabledCounts[0], 1, "TP was not enabled on start up");
 
-  let scalars = Services.telemetry.snapshotScalars(
-    Ci.nsITelemetry.DATASET_RELEASE_CHANNEL_OPTOUT, false).parent;
+  let scalars = Services.telemetry.getSnapshotForScalars("main", false).parent;
 
-  is(scalars["contentblocking.enabled"], Services.prefs.getBoolPref("browser.contentblocking.enabled"),
-    "CB enabled status was recorded at startup");
-  is(scalars["contentblocking.fastblock_enabled"], Services.prefs.getBoolPref("browser.fastblock.enabled"),
-    "FB enabled status was recorded at startup");
   is(scalars["contentblocking.exceptions"], 0, "no CB exceptions at startup");
 });
 
@@ -91,10 +86,7 @@ add_task(async function testIdentityPopupEvents() {
 
   Services.telemetry.clearEvents();
 
-  let { gIdentityHandler } = gBrowser.ownerGlobal;
-  let promisePanelOpen = BrowserTestUtils.waitForEvent(gIdentityHandler._identityPopup, "popupshown");
-  gIdentityHandler._identityBox.click();
-  await promisePanelOpen;
+  await openIdentityPopup();
 
   let events = Services.telemetry.snapshotEvents(Ci.nsITelemetry.DATASET_RELEASE_CHANNEL_OPTIN, true).parent;
   let openEvents = events.filter(
@@ -104,9 +96,7 @@ add_task(async function testIdentityPopupEvents() {
 
   await promiseTabLoadEvent(tab, TRACKING_PAGE);
 
-  promisePanelOpen = BrowserTestUtils.waitForEvent(gIdentityHandler._identityPopup, "popupshown");
-  gIdentityHandler._identityBox.click();
-  await promisePanelOpen;
+  await openIdentityPopup();
 
   events = Services.telemetry.snapshotEvents(Ci.nsITelemetry.DATASET_RELEASE_CHANNEL_OPTIN, true).parent;
   openEvents = events.filter(

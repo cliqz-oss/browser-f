@@ -5,10 +5,10 @@ add_task(async function() {
 
   await SpecialPowers.flushPrefEnv();
   await SpecialPowers.pushPrefEnv({"set": [
-    ["browser.fastblock.enabled", false],
     ["privacy.trackingprotection.enabled", false],
     ["privacy.trackingprotection.pbmode.enabled", false],
     ["privacy.trackingprotection.annotate_channels", true],
+    ["privacy.restrict3rdpartystorage.userInteractionRequiredForHosts", "tracking.example.com,tracking.example.org"],
   ]});
 
   await UrlClassifierTestUtils.addTestTrackers();
@@ -76,9 +76,8 @@ add_task(async function() {
   await SpecialPowers.pushPrefEnv({"set": [
     ["browser.contentblocking.allowlist.annotations.enabled", true],
     ["browser.contentblocking.allowlist.storage.enabled", true],
-    ["browser.contentblocking.enabled", true],
-    ["browser.contentblocking.ui.enabled", true],
     ["network.cookie.cookieBehavior", Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER],
+    ["privacy.restrict3rdpartystorage.userInteractionRequiredForHosts", "tracking.example.com,tracking.example.org"],
   ]});
 
   info("Creating a new tab");

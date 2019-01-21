@@ -1,16 +1,16 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Code for invalidations due to state or attribute changes.
 
-use {Atom, LocalName, Namespace};
-use context::QuirksMode;
-use element_state::{DocumentState, ElementState};
+use crate::context::QuirksMode;
+use crate::element_state::{DocumentState, ElementState};
+use crate::selector_map::{MaybeCaseInsensitiveHashMap, SelectorMap, SelectorMapEntry};
+use crate::selector_parser::SelectorImpl;
+use crate::{Atom, LocalName, Namespace};
 use fallible::FallibleVec;
 use hashglobe::FailedAllocationError;
-use selector_map::{MaybeCaseInsensitiveHashMap, SelectorMap, SelectorMapEntry};
-use selector_parser::SelectorImpl;
 use selectors::attr::NamespaceConstraint;
 use selectors::parser::{Combinator, Component};
 use selectors::parser::{Selector, SelectorIter, Visit};
@@ -358,7 +358,7 @@ impl<'a> SelectorVisitor for CompoundSelectorDependencyCollector<'a> {
 
     fn visit_simple_selector(&mut self, s: &Component<SelectorImpl>) -> bool {
         #[cfg(feature = "gecko")]
-        use selector_parser::NonTSPseudoClass;
+        use crate::selector_parser::NonTSPseudoClass;
 
         match *s {
             Component::ID(ref id) => {
