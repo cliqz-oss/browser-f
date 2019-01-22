@@ -6618,7 +6618,7 @@ var ToolbarContextMenu = {
 
   updateExtension(popup) {
     // CLIQZ-SPECIAL: temporary hiding options to remove/manage all extensions. This will be done only for Cliqz and myoffrz in DB-2002
-    return true;
+    return;
     let removeExtension = popup.querySelector(".customize-context-removeExtension");
     let manageExtension = popup.querySelector(".customize-context-manageExtension");
     let separator = removeExtension.nextElementSibling;
