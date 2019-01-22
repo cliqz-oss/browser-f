@@ -432,6 +432,8 @@ xmlns="http://www.w3.org/1999/xhtml"
 
     <menupopup id="toolbar-context-menu"
                onpopupshowing="onViewToolbarsPopupShowing(event, document.getElementById('viewToolbarsMenuSeparator')); ToolbarContextMenu.updateDownloadsAutoHide(this); ToolbarContextMenu.updateExtension(this)">
+      <!--
+      // CLIQZ-SPECIAL: temporary hiding options to remove/manage all extensions. This will be done only for Cliqz and myoffrz in DB-2002
       <menuitem oncommand="ToolbarContextMenu.openAboutAddonsForContextAction(this.parentElement)"
                 accesskey="&customizeMenu.manageExtension.accesskey;"
                 label="&customizeMenu.manageExtension.label;"
@@ -443,6 +445,7 @@ xmlns="http://www.w3.org/1999/xhtml"
                 contexttype="toolbaritem"
                 class="customize-context-removeExtension"/>
       <menuseparator/>
+      -->
       <menuitem oncommand="gCustomizeMode.addToPanel(document.popupNode)"
                 accesskey="&customizeMenu.pinToOverflowMenu.accesskey;"
                 label="&customizeMenu.pinToOverflowMenu.label;"
