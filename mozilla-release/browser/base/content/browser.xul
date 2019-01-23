@@ -612,19 +612,19 @@ xmlns="http://www.w3.org/1999/xhtml"
       <menuitem class="pageActionContextMenuItem builtInUnpinned"
                 label="&pageAction.addToUrlbar.label;"
                 oncommand="BrowserPageActions.togglePinningForContextAction();"/>
-      <menuitem class="pageActionContextMenuItem builtInPinned"
+      <!--<menuitem class="pageActionContextMenuItem builtInPinned"
                 label="&pageAction.removeFromUrlbar.label;"
-                oncommand="BrowserPageActions.togglePinningForContextAction();"/>
+                oncommand="BrowserPageActions.togglePinningForContextAction();"/>-->
       <menuitem class="pageActionContextMenuItem extensionUnpinned"
                 label="&pageAction.addToUrlbar.label;"
                 oncommand="BrowserPageActions.togglePinningForContextAction();"/>
-      <menuitem class="pageActionContextMenuItem extensionPinned"
+      <!--<menuitem class="pageActionContextMenuItem extensionPinned"
                 label="&pageAction.removeFromUrlbar.label;"
                 oncommand="BrowserPageActions.togglePinningForContextAction();"/>
       <menuseparator class="pageActionContextMenuItem extensionPinned extensionUnpinned"/>
       <menuitem class="pageActionContextMenuItem extensionPinned extensionUnpinned"
                 label="&pageAction.manageExtension.label;"
-                oncommand="BrowserPageActions.openAboutAddonsForContextAction();"/>
+                oncommand="BrowserPageActions.openAboutAddonsForContextAction();"/>-->
     </menupopup>
 
 #include ../../components/places/content/bookmarksHistoryTooltip.inc.xul
