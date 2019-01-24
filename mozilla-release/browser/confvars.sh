@@ -32,9 +32,6 @@ fi
 # Enable building ./signmar and running libmar signature tests
 MOZ_ENABLE_SIGNMAR=1
 
-MOZ_APP_VERSION=$FIREFOX_VERSION
-MOZ_APP_VERSION_DISPLAY=$FIREFOX_VERSION_DISPLAY
-
 if [ "${MOZ_BROWSER_XHTML}" = "1" ]; then
   BROWSER_CHROME_URL=chrome://browser/content/browser.xhtml
 else
@@ -58,8 +55,8 @@ if test "$MOZ_UPDATE_CHANNEL" = "aurora"; then
   ACCEPTED_MAR_CHANNEL_IDS=firefox-mozilla-aurora
   MAR_CHANNEL_ID=firefox-mozilla-aurora
 else
-  ACCEPTED_MAR_CHANNEL_IDS=firefox-mozilla-release
-  MAR_CHANNEL_ID=firefox-mozilla-release
+  ACCEPTED_MAR_CHANNEL_IDS=firefox-mozilla-beta,firefox-mozilla-release
+  MAR_CHANNEL_ID=firefox-mozilla-beta
 fi
 # ASan reporter builds should have different channel ids
 if [ "${MOZ_ASAN_REPORTER}" = "1" ]; then

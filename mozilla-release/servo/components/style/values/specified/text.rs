@@ -1,30 +1,31 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Specified types for text properties.
 
+use crate::parser::{Parse, ParserContext};
+use crate::properties::longhands::writing_mode::computed_value::T as SpecifiedWritingMode;
+use crate::values::computed::text::LineHeight as ComputedLineHeight;
+use crate::values::computed::text::TextEmphasisKeywordValue as ComputedTextEmphasisKeywordValue;
+use crate::values::computed::text::TextEmphasisStyle as ComputedTextEmphasisStyle;
+use crate::values::computed::text::TextOverflow as ComputedTextOverflow;
+use crate::values::computed::{Context, ToComputedValue};
+use crate::values::generics::text::InitialLetter as GenericInitialLetter;
+use crate::values::generics::text::LineHeight as GenericLineHeight;
+use crate::values::generics::text::MozTabSize as GenericMozTabSize;
+use crate::values::generics::text::Spacing;
+use crate::values::specified::length::{FontRelativeLength, Length};
+use crate::values::specified::length::{LengthOrPercentage, NoCalcLength};
+use crate::values::specified::length::{NonNegativeLength, NonNegativeLengthOrPercentage};
+use crate::values::specified::{AllowQuirks, Integer, NonNegativeNumber, Number};
 use cssparser::{Parser, Token};
-use parser::{Parse, ParserContext};
-use properties::longhands::writing_mode::computed_value::T as SpecifiedWritingMode;
 use selectors::parser::SelectorParseErrorKind;
 use std::fmt::{self, Write};
+use style_traits::values::SequenceWriter;
 use style_traits::{CssWriter, KeywordsCollectFn, ParseError};
 use style_traits::{SpecifiedValueInfo, StyleParseErrorKind, ToCss};
-use style_traits::values::SequenceWriter;
 use unicode_segmentation::UnicodeSegmentation;
-use values::computed::{Context, ToComputedValue};
-use values::computed::text::LineHeight as ComputedLineHeight;
-use values::computed::text::TextEmphasisKeywordValue as ComputedTextEmphasisKeywordValue;
-use values::computed::text::TextEmphasisStyle as ComputedTextEmphasisStyle;
-use values::computed::text::TextOverflow as ComputedTextOverflow;
-use values::generics::text::InitialLetter as GenericInitialLetter;
-use values::generics::text::LineHeight as GenericLineHeight;
-use values::generics::text::MozTabSize as GenericMozTabSize;
-use values::generics::text::Spacing;
-use values::specified::{AllowQuirks, Integer, NonNegativeNumber, Number};
-use values::specified::length::{FontRelativeLength, Length, LengthOrPercentage, NoCalcLength};
-use values::specified::length::{NonNegativeLength, NonNegativeLengthOrPercentage};
 
 /// A specified type for the `initial-letter` property.
 pub type InitialLetter = GenericInitialLetter<Number, Integer>;
@@ -107,8 +108,8 @@ impl ToComputedValue for LineHeight {
 
     #[inline]
     fn to_computed_value(&self, context: &Context) -> Self::ComputedValue {
-        use values::computed::Length as ComputedLength;
-        use values::specified::length::FontBaseSize;
+        use crate::values::computed::Length as ComputedLength;
+        use crate::values::specified::length::FontBaseSize;
         match *self {
             GenericLineHeight::Normal => GenericLineHeight::Normal,
             #[cfg(feature = "gecko")]
@@ -378,71 +379,44 @@ impl TextDecorationLine {
     }
 }
 
-macro_rules! define_text_align_keyword {
-    ($(
-        $(#[$($meta:tt)+])*
-        $name: ident => $discriminant: expr,
-    )+) => {
-        /// Specified value of text-align keyword value.
-        #[derive(Clone, Copy, Debug, Eq, Hash, MallocSizeOf, Parse, PartialEq,
-                 SpecifiedValueInfo, ToComputedValue, ToCss)]
-        #[allow(missing_docs)]
-        pub enum TextAlignKeyword {
-            $(
-                $(#[$($meta)+])*
-                $name = $discriminant,
-            )+
-        }
-
-        impl TextAlignKeyword {
-            /// Construct a TextAlignKeyword from u32.
-            pub fn from_u32(discriminant: u32) -> Option<TextAlignKeyword> {
-                match discriminant {
-                    $(
-                        $discriminant => Some(TextAlignKeyword::$name),
-                    )+
-                    _ => None
-                }
-            }
-        }
-    }
-}
-
-// FIXME(emilio): Why reinventing the world?
-#[cfg(feature = "gecko")]
-define_text_align_keyword! {
-    Start => 0,
-    End => 1,
-    Left => 2,
-    Right => 3,
-    Center => 4,
-    Justify => 5,
-    MozCenter => 6,
-    MozLeft => 7,
-    MozRight => 8,
+/// Specified value of text-align keyword value.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    FromPrimitive,
+    Hash,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+)]
+#[allow(missing_docs)]
+pub enum TextAlignKeyword {
+    Start,
+    End,
+    Left,
+    Right,
+    Center,
+    Justify,
+    #[cfg(feature = "gecko")]
+    MozCenter,
+    #[cfg(feature = "gecko")]
+    MozLeft,
+    #[cfg(feature = "gecko")]
+    MozRight,
+    #[cfg(feature = "servo")]
+    ServoCenter,
+    #[cfg(feature = "servo")]
+    ServoLeft,
+    #[cfg(feature = "servo")]
+    ServoRight,
     #[css(skip)]
-    Char => 10,
-}
-
-#[cfg(feature = "servo")]
-define_text_align_keyword! {
-    Start => 0,
-    End => 1,
-    Left => 2,
-    Right => 3,
-    Center => 4,
-    Justify => 5,
-    ServoCenter => 6,
-    ServoLeft => 7,
-    ServoRight => 8,
-}
-
-impl TextAlignKeyword {
-    /// Return the initial value of TextAlignKeyword.
-    #[inline]
-    pub fn start() -> TextAlignKeyword {
-        TextAlignKeyword::Start
-    }
+    #[cfg(feature = "gecko")]
+    Char,
 }
 
 /// Specified value of text-align property.
@@ -488,12 +462,7 @@ impl TextAlign {
     /// Convert an enumerated value coming from Gecko to a `TextAlign`.
     #[cfg(feature = "gecko")]
     pub fn from_gecko_keyword(kw: u32) -> Self {
-        use gecko_bindings::structs::NS_STYLE_TEXT_ALIGN_MATCH_PARENT;
-        if kw == NS_STYLE_TEXT_ALIGN_MATCH_PARENT {
-            TextAlign::MatchParent
-        } else {
-            TextAlign::Keyword(TextAlignKeyword::from_gecko_keyword(kw))
-        }
+        TextAlign::Keyword(TextAlignKeyword::from_gecko_keyword(kw))
     }
 }
 
@@ -513,7 +482,7 @@ impl ToComputedValue for TextAlign {
                 // but we want to set it to right -- instead set it to the default (`start`),
                 // which will do the right thing in this case (but not the general case)
                 if _context.is_root_element {
-                    return TextAlignKeyword::start();
+                    return TextAlignKeyword::Start;
                 }
                 let parent = _context
                     .builder
@@ -618,30 +587,40 @@ impl TextEmphasisShapeKeyword {
     pub fn char(&self, fill: TextEmphasisFillMode) -> &str {
         let fill = fill == TextEmphasisFillMode::Filled;
         match *self {
-            TextEmphasisShapeKeyword::Dot => if fill {
-                "\u{2022}"
-            } else {
-                "\u{25e6}"
+            TextEmphasisShapeKeyword::Dot => {
+                if fill {
+                    "\u{2022}"
+                } else {
+                    "\u{25e6}"
+                }
             },
-            TextEmphasisShapeKeyword::Circle => if fill {
-                "\u{25cf}"
-            } else {
-                "\u{25cb}"
+            TextEmphasisShapeKeyword::Circle => {
+                if fill {
+                    "\u{25cf}"
+                } else {
+                    "\u{25cb}"
+                }
             },
-            TextEmphasisShapeKeyword::DoubleCircle => if fill {
-                "\u{25c9}"
-            } else {
-                "\u{25ce}"
+            TextEmphasisShapeKeyword::DoubleCircle => {
+                if fill {
+                    "\u{25c9}"
+                } else {
+                    "\u{25ce}"
+                }
             },
-            TextEmphasisShapeKeyword::Triangle => if fill {
-                "\u{25b2}"
-            } else {
-                "\u{25b3}"
+            TextEmphasisShapeKeyword::Triangle => {
+                if fill {
+                    "\u{25b2}"
+                } else {
+                    "\u{25b3}"
+                }
             },
-            TextEmphasisShapeKeyword::Sesame => if fill {
-                "\u{fe45}"
-            } else {
-                "\u{fe46}"
+            TextEmphasisShapeKeyword::Sesame => {
+                if fill {
+                    "\u{fe45}"
+                } else {
+                    "\u{fe46}"
+                }
             },
         }
     }
@@ -654,6 +633,8 @@ impl ToComputedValue for TextEmphasisStyle {
     fn to_computed_value(&self, context: &Context) -> Self::ComputedValue {
         match *self {
             TextEmphasisStyle::Keyword(ref keyword) => {
+                // FIXME(emilio): This should set the rule_cache_conditions
+                // properly.
                 let default_shape = if context.style().get_inherited_box().clone_writing_mode() ==
                     SpecifiedWritingMode::HorizontalTb
                 {
@@ -675,6 +656,7 @@ impl ToComputedValue for TextEmphasisStyle {
             },
         }
     }
+
     #[inline]
     fn from_computed_value(computed: &Self::ComputedValue) -> Self {
         match *computed {
@@ -786,7 +768,7 @@ impl TextEmphasisPosition {
     #[cfg(feature = "gecko")]
     /// Converts an enumerated value coming from Gecko to a `TextEmphasisPosition`.
     pub fn from_gecko_keyword(kw: u32) -> Self {
-        use gecko_bindings::structs;
+        use crate::gecko_bindings::structs;
 
         let vert = if kw & structs::NS_STYLE_TEXT_EMPHASIS_POSITION_RIGHT != 0 {
             TextEmphasisVerticalWritingModeValue::Right
@@ -832,7 +814,7 @@ impl From<u8> for TextEmphasisPosition {
 #[cfg(feature = "gecko")]
 impl From<TextEmphasisPosition> for u8 {
     fn from(v: TextEmphasisPosition) -> u8 {
-        use gecko_bindings::structs;
+        use crate::gecko_bindings::structs;
 
         let mut result = match v.0 {
             TextEmphasisHorizontalWritingModeValue::Over => {
@@ -871,4 +853,25 @@ impl Parse for MozTabSize {
             context, input,
         )?))
     }
+}
+
+/// Values for the `overflow-wrap` property.
+#[repr(u8)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+)]
+#[allow(missing_docs)]
+pub enum OverflowWrap {
+    Normal,
+    BreakWord,
+    Anywhere,
 }

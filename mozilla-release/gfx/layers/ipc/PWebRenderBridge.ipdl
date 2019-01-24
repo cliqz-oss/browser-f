@@ -16,17 +16,19 @@ include protocol PTexture;
 
 using mozilla::layers::APZTestData from "mozilla/layers/APZTestData.h";
 using mozilla::layers::ScrollUpdatesMap from "FrameMetrics.h";
-using struct mozilla::layers::ScrollableLayerGuid from "FrameMetrics.h";
+using struct mozilla::layers::ScrollableLayerGuid from "mozilla/layers/ScrollableLayerGuid.h";
 using struct mozilla::layers::TextureFactoryIdentifier from "mozilla/layers/CompositorTypes.h";
 using struct mozilla::layers::TextureInfo from "mozilla/layers/CompositorTypes.h";
 using mozilla::layers::CompositableHandle from "mozilla/layers/LayersTypes.h";
 using mozilla::wr::BuiltDisplayListDescriptor from "mozilla/webrender/webrender_ffi.h";
 using mozilla::wr::IdNamespace from "mozilla/webrender/WebRenderTypes.h";
 using mozilla::wr::MaybeIdNamespace from "mozilla/webrender/WebRenderTypes.h";
+using mozilla::wr::ExternalImageKeyPair from "mozilla/webrender/WebRenderTypes.h";
 using mozilla::layers::WebRenderScrollData from "mozilla/layers/WebRenderScrollData.h";
 using mozilla::layers::FocusTarget from "mozilla/layers/FocusTarget.h";
 using mozilla::layers::LayersObserverEpoch from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::TransactionId from "mozilla/layers/LayersTypes.h";
+using mozilla::VsyncId from "mozilla/VsyncDispatcher.h";
 
 namespace mozilla {
 namespace layers {
@@ -47,10 +49,11 @@ parent:
                        LayoutSize aContentSize, ByteBuf aDL, BuiltDisplayListDescriptor aDLDesc,
                        WebRenderScrollData aScrollData,
                        OpUpdateResource[] aResourceUpdates, RefCountedShmem[] aSmallShmems, Shmem[] aLargeShmems,
-                       IdNamespace aIdNamespace, bool containsSVGGroup, TimeStamp refreshStartTime, TimeStamp txnStartTime, TimeStamp fwdTime);
+                       IdNamespace aIdNamespace, bool containsSVGGroup, VsyncId vsyncId, TimeStamp refreshStartTime, TimeStamp txnStartTime, nsCString txnURL, TimeStamp fwdTime);
   async EmptyTransaction(FocusTarget focusTarget, ScrollUpdatesMap scrollUpdates, uint32_t aPaintSequenceNumber,
                          WebRenderParentCommand[] commands, OpDestroy[] toDestroy, uint64_t fwdTransactionId, TransactionId transactionId,
-                         IdNamespace aIdNamespace, TimeStamp refreshStartTime, TimeStamp txnStartTime, TimeStamp fwdTime);
+                         OpUpdateResource[] aResourceUpdates, RefCountedShmem[] aSmallShmems, Shmem[] aLargeShmems,
+                         IdNamespace aIdNamespace, VsyncId vsyncId, TimeStamp refreshStartTime, TimeStamp txnStartTime, nsCString txnURL, TimeStamp fwdTime);
   async SetFocusTarget(FocusTarget focusTarget);
   async UpdateResources(OpUpdateResource[] aResourceUpdates, RefCountedShmem[] aSmallShmems, Shmem[] aLargeShmems);
   async ParentCommands(WebRenderParentCommand[] commands);
@@ -83,6 +86,7 @@ parent:
   sync ShutdownSync();
 child:
   async WrUpdated(IdNamespace aNewIdNamespace, TextureFactoryIdentifier textureFactoryIdentifier);
+  async WrReleasedImages(ExternalImageKeyPair[] pairs);
   async __delete__();
 };
 

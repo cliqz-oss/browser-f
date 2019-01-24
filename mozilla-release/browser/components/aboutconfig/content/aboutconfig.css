@@ -2,4 +2,66 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* aboutconfig.css */
+#search {
+  position: sticky;
+  top: 0;
+  margin: 10px;
+  box-sizing: border-box;
+  width: calc(100% - 20px);
+  min-width: 644px;
+  background-image: url("chrome://global/skin/icons/search-textbox.svg");
+  background-repeat: no-repeat;
+  background-position: 9px center;
+  background-size: 12px 12px;
+  padding-left: 30px;
+  z-index: 1;
+}
+
+#prefs {
+  background-color: var(--in-content-box-background);
+  color: var(--in-content-text-color);
+  margin: 10px;
+  min-width: 644px;
+  /* To stay consistent with about:preferences (664px - 20px margin). */
+  border: 1px solid var(--in-content-box-border-color);
+  border-radius: 2px;
+  border-spacing: 0;
+}
+
+#prefs > tr:nth-child(odd) {
+  background-color: var(--in-content-box-background-odd);
+}
+
+#prefs > tr:hover {
+  background-color: var(--in-content-item-hover);
+}
+
+#prefs > tr.has-user-value {
+  font-weight: bold;
+}
+
+#prefs > tr.locked {
+  opacity: 0.4;
+  background-image: url("chrome://browser/skin/preferences/in-content/privacy-security.svg");
+  background-repeat: no-repeat;
+  background-position: 9px center;
+  background-size: 16px 16px;
+}
+
+#prefs > tr > td {
+  padding: 4px;
+  width: 50%;
+}
+
+#prefs > tr > td.cell-name {
+  padding-inline-start: 30px;
+}
+
+.cell-value {
+  word-break: break-all;
+}
+
+td.cell-value > form > input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+}

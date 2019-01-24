@@ -34,6 +34,8 @@ EXPORTS += [
 EXPORTS.mozilla.widget += [
     'AndroidCompositorWidget.h',
     'AndroidUiThread.h',
+    'EventDispatcher.h',
+    'nsWindow.h',
 ]
 
 SOURCES += [
@@ -61,6 +63,7 @@ UNIFIED_SOURCES += [
     'nsWidgetFactory.cpp',
     'nsWindow.cpp',
     'ScreenHelperAndroid.cpp',
+    'WebExecutorSupport.cpp',
 ]
 
 include('/ipc/chromium/chromium-config.mozbuild')

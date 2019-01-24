@@ -46,8 +46,6 @@ const TEST_URL = `data:text/html;charset=utf-8,` + encodeURIComponent(`
   </script>`);
 
 add_task(async function() {
-  await enableWebComponents();
-
   const { inspector, toolbox, tab, testActor } = await openInspectorForURL(TEST_URL);
 
   info("Waiting for element picker to become active");
@@ -58,7 +56,7 @@ add_task(async function() {
   await assertMarkupView(inspector);
 
   info("Close DevTools before testing Inspect Element");
-  await gDevTools.closeToolbox(inspector.target);
+  await toolbox.destroy();
 
   info("Waiting for element picker to become active.");
   const newTestActor = await getTestActorWithoutToolbox(tab);

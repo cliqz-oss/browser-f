@@ -8,8 +8,6 @@ chrome.jar:
 
 * content/about.xhtml                  (content/about.xhtml)
 * content/about.js                     (content/about.js)
-  content/config.xhtml                 (content/config.xhtml)
-  content/config.js                    (content/config.js)
   content/content.js                   (content/content.js)
   content/aboutAddons.xhtml            (content/aboutAddons.xhtml)
   content/aboutAddons.js               (content/aboutAddons.js)
@@ -32,7 +30,6 @@ chrome.jar:
   content/EmbedRT.js                   (content/EmbedRT.js)
   content/MemoryObserver.js            (content/MemoryObserver.js)
   content/ConsoleAPI.js                (content/ConsoleAPI.js)
-  content/PluginHelper.js              (content/PluginHelper.js)
   content/PrintHelper.js               (content/PrintHelper.js)
   content/OfflineApps.js               (content/OfflineApps.js)
   content/MasterPassword.js            (content/MasterPassword.js)
@@ -49,14 +46,10 @@ chrome.jar:
   content/aboutExperiments.js          (content/aboutExperiments.js)
   content/aboutLogins.xhtml            (content/aboutLogins.xhtml)
   content/aboutLogins.js               (content/aboutLogins.js)
-#if MOZ_UPDATE_CHANNEL != release && MOZ_UPDATE_CHANNEL != esr
-  content/WebcompatReporter.js         (content/WebcompatReporter.js)
-#endif
   content/ExtensionPermissions.js      (content/ExtensionPermissions.js)
 
 % content branding %content/branding/
 
-% override chrome://global/content/config.xul chrome://browser/content/config.xhtml
 % override chrome://global/content/netError.xhtml chrome://browser/content/netError.xhtml
 % override chrome://mozapps/content/extensions/extensions.xul chrome://browser/content/aboutAddons.xhtml
 

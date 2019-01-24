@@ -10,54 +10,49 @@ const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 
 const SidebarItem = createFactory(require("./SidebarItem"));
 
-const Actions = require("../../actions/index");
-
 /**
  * This component displays a fixed item in the Sidebar component.
  */
 class SidebarFixedItem extends PureComponent {
   static get propTypes() {
     return {
-      dispatch: PropTypes.func.isRequired,
       icon: PropTypes.string.isRequired,
-      id: PropTypes.string.isRequired,
       isSelected: PropTypes.bool.isRequired,
       name: PropTypes.string.isRequired,
-      runtimeId: PropTypes.string,
+      to: PropTypes.string,
     };
   }
 
   render() {
     const {
-      dispatch,
-      id,
       icon,
       isSelected,
       name,
-      runtimeId,
+      to,
     } = this.props;
 
     return SidebarItem(
       {
         isSelected,
-        selectable: true,
-        className: "sidebar-fixed-item",
-        onSelect: () => {
-          dispatch(Actions.selectPage(id, runtimeId));
-        },
+        to,
       },
-      dom.img(
+      dom.div(
         {
-          className: "sidebar-fixed-item__icon",
-          src: icon,
-        }
-      ),
-      dom.span(
-        {
-          className: "ellipsis-text",
-          title: name,
+          className: "sidebar-fixed-item__container",
         },
-        name
+        dom.img(
+          {
+            className: "sidebar-fixed-item__icon",
+            src: icon,
+          }
+        ),
+        dom.span(
+          {
+            className: "ellipsis-text",
+            title: name,
+          },
+          name
+        )
       )
     );
   }

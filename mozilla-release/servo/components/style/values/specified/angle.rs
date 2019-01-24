@@ -1,18 +1,18 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Specified angles.
 
+use crate::parser::{Parse, ParserContext};
+use crate::values::computed::angle::Angle as ComputedAngle;
+use crate::values::computed::{Context, ToComputedValue};
+use crate::values::specified::calc::CalcNode;
+use crate::values::CSSFloat;
 use cssparser::{Parser, Token};
-use parser::{Parse, ParserContext};
 use std::f32::consts::PI;
 use std::fmt::{self, Write};
 use style_traits::{CssWriter, ParseError, SpecifiedValueInfo, ToCss};
-use values::CSSFloat;
-use values::computed::{Context, ToComputedValue};
-use values::computed::angle::Angle as ComputedAngle;
-use values::specified::calc::CalcNode;
 
 /// A specified angle dimension.
 #[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
@@ -152,11 +152,7 @@ impl Parse for Angle {
 
 impl Angle {
     /// Parse an `<angle>` value given a value and an unit.
-    pub fn parse_dimension(
-        value: CSSFloat,
-        unit: &str,
-        was_calc: bool,
-    ) -> Result<Angle, ()> {
+    pub fn parse_dimension(value: CSSFloat, unit: &str, was_calc: bool) -> Result<Angle, ()> {
         let value = match_ignore_ascii_case! { unit,
             "deg" => AngleDimension::Deg(value),
             "grad" => AngleDimension::Grad(value),
@@ -200,7 +196,8 @@ impl Angle {
                 return input.parse_nested_block(|i| CalcNode::parse_angle(context, i))
             },
             _ => Err(()),
-        }.map_err(|()| input.new_unexpected_token_error(token.clone()))
+        }
+        .map_err(|()| input.new_unexpected_token_error(token.clone()))
     }
 }
 

@@ -12,6 +12,7 @@ const FluentReact = require("devtools/client/shared/vendor/fluent-react");
 const Localized = createFactory(FluentReact.Localized);
 
 const Actions = require("../../actions/index");
+const Types = require("../../types/index");
 
 /**
  * This component provides inspect button.
@@ -20,7 +21,7 @@ class InspectAction extends PureComponent {
   static get propTypes() {
     return {
       dispatch: PropTypes.func.isRequired,
-      target: PropTypes.object.isRequired,
+      target: Types.debugTarget.isRequired,
     };
   }
 
@@ -37,7 +38,7 @@ class InspectAction extends PureComponent {
       dom.button(
         {
           onClick: e => this.inspect(),
-          className: "aboutdebugging-button",
+          className: "default-button  js-debug-target-inspect-button",
         },
         "Inspect"
       )

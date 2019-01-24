@@ -49,7 +49,7 @@ describe("SendToDeviceSnippet", () => {
   }
 
   beforeEach(() => {
-    sandbox = sinon.sandbox.create();
+    sandbox = sinon.createSandbox();
     jsonResponse = {status: "ok"};
     fetchStub = sandbox.stub(global, "fetch")
       .returns(Promise.resolve({json: () => Promise.resolve(jsonResponse)}));

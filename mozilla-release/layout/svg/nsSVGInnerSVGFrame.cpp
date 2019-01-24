@@ -7,9 +7,10 @@
 // Main header first:
 #include "nsSVGInnerSVGFrame.h"
 
-nsIFrame*
-NS_NewSVGInnerSVGFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
-{
+using namespace mozilla;
+
+nsIFrame* NS_NewSVGInnerSVGFrame(nsIPresShell* aPresShell,
+                                 ComputedStyle* aStyle) {
   return new (aPresShell) nsSVGInnerSVGFrame(aStyle);
 }
 
@@ -24,11 +25,8 @@ NS_QUERYFRAME_HEAD(nsSVGInnerSVGFrame)
 NS_QUERYFRAME_TAIL_INHERITING(nsSVGViewportFrame)
 
 #ifdef DEBUG
-void
-nsSVGInnerSVGFrame::Init(nsIContent*       aContent,
-                         nsContainerFrame* aParent,
-                         nsIFrame*         aPrevInFlow)
-{
+void nsSVGInnerSVGFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
+                              nsIFrame* aPrevInFlow) {
   NS_ASSERTION(aContent->IsSVGElement(nsGkAtoms::svg),
                "Content is not an SVG 'svg' element!");
 

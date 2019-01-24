@@ -19,6 +19,7 @@ import android.graphics.Matrix;
 import android.graphics.Rect;
 import android.os.Build;
 import android.os.Bundle;
+import android.support.annotation.UiThread;
 import android.util.Log;
 import android.util.SparseArray;
 import android.view.InputDevice;
@@ -154,7 +155,7 @@ public class SessionAccessibility {
                     }
                 return true;
             case AccessibilityNodeInfo.ACTION_CLICK:
-                mSession.getEventDispatcher().dispatch("GeckoView:AccessibilityActivate", null);
+                nativeProvider.click(virtualViewId);
                 GeckoBundle nodeInfo = nativeProvider.getNodeInfo(virtualViewId);
                 final int flags = nodeInfo != null ? nodeInfo.getInt("flags") : 0;
                 if ((flags & (FLAG_SELECTABLE | FLAG_CHECKABLE)) == 0) {
@@ -172,7 +173,7 @@ public class SessionAccessibility {
                 mSession.getEventDispatcher().dispatch("GeckoView:AccessibilityScrollBackward", null);
                 return true;
             case AccessibilityNodeInfo.ACTION_SELECT:
-                mSession.getEventDispatcher().dispatch("GeckoView:AccessibilitySelect", null);
+                nativeProvider.click(virtualViewId);
                 return true;
             case AccessibilityNodeInfo.ACTION_NEXT_HTML_ELEMENT:
             case AccessibilityNodeInfo.ACTION_PREVIOUS_HTML_ELEMENT:
@@ -371,6 +372,8 @@ public class SessionAccessibility {
 
             // SDK 18 and above
             if (Build.VERSION.SDK_INT >= 18) {
+                node.setViewIdResourceName(nodeInfo.getString("viewIdResourceName"));
+
                 if ((flags & FLAG_EDITABLE) != 0) {
                     node.addAction(AccessibilityNodeInfo.ACTION_SET_SELECTION);
                     node.addAction(AccessibilityNodeInfo.ACTION_CUT);
@@ -499,7 +502,10 @@ public class SessionAccessibility {
       *
       * @param view View instance.
       */
+    @UiThread
     public void setView(final View view) {
+        ThreadUtils.assertOnUiThread();
+
         if (mView != null) {
             mView.setAccessibilityDelegate(null);
         }
@@ -626,6 +632,8 @@ public class SessionAccessibility {
             return false;
         }
 
+        mView.requestFocus();
+
         final GeckoBundle data = new GeckoBundle(2);
         data.putDoubleArray("coordinates", new double[] {event.getRawX(), event.getRawY()});
         mSession.getEventDispatcher().dispatch("GeckoView:AccessibilityExploreByTouch", data);
@@ -739,6 +747,9 @@ public class SessionAccessibility {
 
         @WrapForJNI(dispatchTo = "gecko")
         public native void setText(int id, String text);
+
+        @WrapForJNI(dispatchTo = "gecko")
+        public native void click(int id);
 
         @WrapForJNI(calledFrom = "gecko", stubName = "SendEvent")
         private void sendEventNative(final int eventType, final int sourceId, final int className, final GeckoBundle eventData) {

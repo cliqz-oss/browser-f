@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const LOGGER_NAME = "Toolkit.Telemetry";
-const LOGGER_PREFIX = "DataNotificationInfoBar::";
 /**
  * Represents an info bar that shows a data submission notification.
  */
@@ -15,15 +13,11 @@ var gDataNotificationInfoBar = {
 
   _DATA_REPORTING_NOTIFICATION: "data-reporting",
 
-  get _notificationBox() {
-    delete this._notificationBox;
-    return this._notificationBox = document.getElementById("global-notificationbox");
-  },
-
   get _log() {
-    let Log = ChromeUtils.import("resource://gre/modules/Log.jsm", {}).Log;
+    let { Log } = ChromeUtils.import("resource://gre/modules/Log.jsm", {});
     delete this._log;
-    return this._log = Log.repository.getLoggerWithMessagePrefix(LOGGER_NAME, LOGGER_PREFIX);
+    return this._log = Log.repository.getLoggerWithMessagePrefix(
+      "Toolkit.Telemetry", "DataNotificationInfoBar::");
   },
 
   init() {
@@ -39,7 +33,7 @@ var gDataNotificationInfoBar = {
   },
 
   _getDataReportingNotification(name = this._DATA_REPORTING_NOTIFICATION) {
-    return this._notificationBox.getNotificationWithValue(name);
+    return gNotificationBox.getNotificationWithValue(name);
   },
 
   _displayDataPolicyInfoBar(request) {
@@ -68,11 +62,11 @@ var gDataNotificationInfoBar = {
     }];
 
     this._log.info("Creating data reporting policy notification.");
-    this._notificationBox.appendNotification(
+    gNotificationBox.appendNotification(
       message,
       this._DATA_REPORTING_NOTIFICATION,
       null,
-      this._notificationBox.PRIORITY_INFO_HIGH,
+      gNotificationBox.PRIORITY_INFO_HIGH,
       buttons,
       event => {
         if (event == "removed") {

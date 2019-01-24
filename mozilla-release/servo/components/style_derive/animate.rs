@@ -1,14 +1,15 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use cg;
+use crate::cg;
 use darling::util::IdentList;
-use quote::Tokens;
+use proc_macro2::TokenStream;
+use quote::TokenStreamExt;
 use syn::{DeriveInput, Path};
 use synstructure::{Structure, VariantInfo};
 
-pub fn derive(mut input: DeriveInput) -> Tokens {
+pub fn derive(mut input: DeriveInput) -> TokenStream {
     let animation_input_attrs = cg::parse_input_attrs::<AnimationInputAttrs>(&input);
     let no_bound = animation_input_attrs.no_bound.unwrap_or_default();
     let mut where_clause = input.generics.where_clause.take();
@@ -16,7 +17,7 @@ pub fn derive(mut input: DeriveInput) -> Tokens {
         if !no_bound.contains(&param.ident) {
             cg::add_predicate(
                 &mut where_clause,
-                parse_quote!(#param: ::values::animated::Animate),
+                parse_quote!(#param: crate::values::animated::Animate),
             );
         }
     }
@@ -51,13 +52,13 @@ pub fn derive(mut input: DeriveInput) -> Tokens {
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     quote! {
-        impl #impl_generics ::values::animated::Animate for #name #ty_generics #where_clause {
+        impl #impl_generics crate::values::animated::Animate for #name #ty_generics #where_clause {
             #[allow(unused_variables, unused_imports)]
             #[inline]
             fn animate(
                 &self,
                 other: &Self,
-                procedure: ::values::animated::Procedure,
+                procedure: crate::values::animated::Procedure,
             ) -> Result<Self, ()> {
                 match (self, other) {
                     #match_body
@@ -67,7 +68,7 @@ pub fn derive(mut input: DeriveInput) -> Tokens {
     }
 }
 
-fn derive_variant_arm(variant: &VariantInfo) -> Result<Tokens, ()> {
+fn derive_variant_arm(variant: &VariantInfo) -> Result<TokenStream, ()> {
     let variant_attrs = cg::parse_variant_attrs_from_ast::<AnimationVariantAttrs>(&variant.ast());
     if variant_attrs.error {
         return Err(());
@@ -84,12 +85,12 @@ fn derive_variant_arm(variant: &VariantInfo) -> Result<Tokens, ()> {
                 if #this != #other {
                     return Err(());
                 }
-                let #result = ::std::clone::Clone::clone(#this);
+                let #result = std::clone::Clone::clone(#this);
             }
         } else {
             quote! {
                 let #result =
-                    ::values::animated::Animate::animate(#this, #other, procedure)?;
+                    crate::values::animated::Animate::animate(#this, #other, procedure)?;
             }
         }
     }));

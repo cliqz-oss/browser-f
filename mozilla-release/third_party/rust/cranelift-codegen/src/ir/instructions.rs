@@ -194,7 +194,10 @@ impl InstructionData {
                 ref args,
                 ..
             } => BranchInfo::SingleDest(destination, &args.as_slice(pool)[2..]),
-            InstructionData::BranchTable { table, .. } => BranchInfo::Table(table),
+            InstructionData::BranchTable {
+                table, destination, ..
+            } => BranchInfo::Table(table, Some(destination)),
+            InstructionData::IndirectJump { table, .. } => BranchInfo::Table(table, None),
             _ => {
                 debug_assert!(!self.opcode().is_branch());
                 BranchInfo::NotABranch
@@ -213,7 +216,7 @@ impl InstructionData {
             | InstructionData::BranchInt { destination, .. }
             | InstructionData::BranchFloat { destination, .. }
             | InstructionData::BranchIcmp { destination, .. } => Some(destination),
-            InstructionData::BranchTable { .. } => None,
+            InstructionData::BranchTable { .. } | InstructionData::IndirectJump { .. } => None,
             _ => {
                 debug_assert!(!self.opcode().is_branch());
                 None
@@ -284,8 +287,8 @@ pub enum BranchInfo<'a> {
     /// This is a branch or jump to a single destination EBB, possibly taking value arguments.
     SingleDest(Ebb, &'a [Value]),
 
-    /// This is a jump table branch which can have many destination EBBs.
-    Table(JumpTable),
+    /// This is a jump table branch which can have many destination EBBs and maybe one default EBB.
+    Table(JumpTable, Option<Ebb>),
 }
 
 /// Information about call instructions.
@@ -332,8 +335,8 @@ pub struct OpcodeConstraints {
     typeset_offset: u8,
 
     /// Offset into `OPERAND_CONSTRAINT` table of the descriptors for this opcode. The first
-    /// `fixed_results()` entries describe the result constraints, then follows constraints for the
-    /// fixed `Value` input operands. (`fixed_value_arguments()` of them).
+    /// `num_fixed_results()` entries describe the result constraints, then follows constraints for the
+    /// fixed `Value` input operands. (`num_fixed_value_arguments()` of them).
     constraint_offset: u16,
 }
 
@@ -357,7 +360,7 @@ impl OpcodeConstraints {
 
     /// Get the number of *fixed* result values produced by this opcode.
     /// This does not include `variable_args` produced by calls.
-    pub fn fixed_results(self) -> usize {
+    pub fn num_fixed_results(self) -> usize {
         (self.flags & 0x7) as usize
     }
 
@@ -368,7 +371,7 @@ impl OpcodeConstraints {
     /// The number of fixed input values is usually implied by the instruction format, but
     /// instruction formats that use a `ValueList` put both fixed and variable arguments in the
     /// list. This method returns the *minimum* number of values required in the value list.
-    pub fn fixed_value_arguments(self) -> usize {
+    pub fn num_fixed_value_arguments(self) -> usize {
         ((self.flags >> 5) & 0x7) as usize
     }
 
@@ -391,7 +394,7 @@ impl OpcodeConstraints {
     /// Get the value type of result number `n`, having resolved the controlling type variable to
     /// `ctrl_type`.
     pub fn result_type(self, n: usize, ctrl_type: Type) -> Type {
-        debug_assert!(n < self.fixed_results(), "Invalid result index");
+        debug_assert!(n < self.num_fixed_results(), "Invalid result index");
         if let ResolvedConstraint::Bound(t) =
             OPERAND_CONSTRAINTS[self.constraint_offset() + n].resolve(ctrl_type)
         {
@@ -408,10 +411,10 @@ impl OpcodeConstraints {
     /// `ValueTypeSet`. This is represented with the `ArgumentConstraint::Free` variant.
     pub fn value_argument_constraint(self, n: usize, ctrl_type: Type) -> ResolvedConstraint {
         debug_assert!(
-            n < self.fixed_value_arguments(),
+            n < self.num_fixed_value_arguments(),
             "Invalid value argument index"
         );
-        let offset = self.constraint_offset() + self.fixed_results();
+        let offset = self.constraint_offset() + self.num_fixed_results();
         OPERAND_CONSTRAINTS[offset + n].resolve(ctrl_type)
     }
 
@@ -600,8 +603,8 @@ mod tests {
         let a = Opcode::Iadd.constraints();
         assert!(a.use_typevar_operand());
         assert!(!a.requires_typevar_operand());
-        assert_eq!(a.fixed_results(), 1);
-        assert_eq!(a.fixed_value_arguments(), 2);
+        assert_eq!(a.num_fixed_results(), 1);
+        assert_eq!(a.num_fixed_value_arguments(), 2);
         assert_eq!(a.result_type(0, types::I32), types::I32);
         assert_eq!(a.result_type(0, types::I8), types::I8);
         assert_eq!(
@@ -616,8 +619,8 @@ mod tests {
         let b = Opcode::Bitcast.constraints();
         assert!(!b.use_typevar_operand());
         assert!(!b.requires_typevar_operand());
-        assert_eq!(b.fixed_results(), 1);
-        assert_eq!(b.fixed_value_arguments(), 1);
+        assert_eq!(b.num_fixed_results(), 1);
+        assert_eq!(b.num_fixed_value_arguments(), 1);
         assert_eq!(b.result_type(0, types::I32), types::I32);
         assert_eq!(b.result_type(0, types::I8), types::I8);
         match b.value_argument_constraint(0, types::I32) {
@@ -626,18 +629,18 @@ mod tests {
         }
 
         let c = Opcode::Call.constraints();
-        assert_eq!(c.fixed_results(), 0);
-        assert_eq!(c.fixed_value_arguments(), 0);
+        assert_eq!(c.num_fixed_results(), 0);
+        assert_eq!(c.num_fixed_value_arguments(), 0);
 
         let i = Opcode::CallIndirect.constraints();
-        assert_eq!(i.fixed_results(), 0);
-        assert_eq!(i.fixed_value_arguments(), 1);
+        assert_eq!(i.num_fixed_results(), 0);
+        assert_eq!(i.num_fixed_value_arguments(), 1);
 
         let cmp = Opcode::Icmp.constraints();
         assert!(cmp.use_typevar_operand());
         assert!(cmp.requires_typevar_operand());
-        assert_eq!(cmp.fixed_results(), 1);
-        assert_eq!(cmp.fixed_value_arguments(), 2);
+        assert_eq!(cmp.num_fixed_results(), 1);
+        assert_eq!(cmp.num_fixed_value_arguments(), 2);
     }
 
     #[test]

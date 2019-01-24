@@ -25,80 +25,31 @@ namespace mozilla {
 using namespace dom;
 
 /******************************************************************************
- * AutoSelectionRestorer
- *****************************************************************************/
-
-AutoSelectionRestorer::AutoSelectionRestorer(
-                         Selection* aSelection,
-                         EditorBase* aEditorBase
-                         MOZ_GUARD_OBJECT_NOTIFIER_PARAM_IN_IMPL)
-  : mEditorBase(nullptr)
-{
-  MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-  if (NS_WARN_IF(!aSelection) || NS_WARN_IF(!aEditorBase)) {
-    return;
-  }
-  if (aEditorBase->ArePreservingSelection()) {
-    // We already have initialized mSavedSel, so this must be nested call.
-    return;
-  }
-  mSelection = aSelection;
-  mEditorBase = aEditorBase;
-  mEditorBase->PreserveSelectionAcrossActions(mSelection);
-}
-
-AutoSelectionRestorer::~AutoSelectionRestorer()
-{
-  NS_ASSERTION(!mSelection || mEditorBase,
-               "mEditorBase should be non-null when mSelection is");
-  // mSelection will be null if this was nested call.
-  if (mSelection && mEditorBase->ArePreservingSelection()) {
-    mEditorBase->RestorePreservedSelection(mSelection);
-  }
-}
-
-void
-AutoSelectionRestorer::Abort()
-{
-  NS_ASSERTION(!mSelection || mEditorBase,
-               "mEditorBase should be non-null when mSelection is");
-  if (mSelection) {
-    mEditorBase->StopPreservingSelection();
-  }
-}
-
-/******************************************************************************
  * some helper classes for iterating the dom tree
  *****************************************************************************/
 
-DOMIterator::DOMIterator(nsINode& aNode MOZ_GUARD_OBJECT_NOTIFIER_PARAM_IN_IMPL)
-{
+DOMIterator::DOMIterator(
+    nsINode& aNode MOZ_GUARD_OBJECT_NOTIFIER_PARAM_IN_IMPL) {
   MOZ_GUARD_OBJECT_NOTIFIER_INIT;
   mIter = NS_NewContentIterator();
   DebugOnly<nsresult> rv = mIter->Init(&aNode);
   MOZ_ASSERT(NS_SUCCEEDED(rv));
 }
 
-nsresult
-DOMIterator::Init(nsRange& aRange)
-{
+nsresult DOMIterator::Init(nsRange& aRange) {
   mIter = NS_NewContentIterator();
   return mIter->Init(&aRange);
 }
 
-DOMIterator::DOMIterator(MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM_IN_IMPL)
-{
+DOMIterator::DOMIterator(MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM_IN_IMPL) {
   MOZ_GUARD_OBJECT_NOTIFIER_INIT;
 }
 
-DOMIterator::~DOMIterator()
-{
-}
+DOMIterator::~DOMIterator() {}
 
-void
-DOMIterator::AppendList(const BoolDomIterFunctor& functor,
-                        nsTArray<OwningNonNull<nsINode>>& arrayOfNodes) const
-{
+void DOMIterator::AppendList(
+    const BoolDomIterFunctor& functor,
+    nsTArray<OwningNonNull<nsINode>>& arrayOfNodes) const {
   // Iterate through dom and build list
   for (; !mIter->IsDone(); mIter->Next()) {
     nsCOMPtr<nsINode> node = mIter->GetCurrentNode();
@@ -110,31 +61,22 @@ DOMIterator::AppendList(const BoolDomIterFunctor& functor,
 }
 
 DOMSubtreeIterator::DOMSubtreeIterator(
-                      MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM_IN_IMPL)
-  : DOMIterator(MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM_TO_PARENT)
-{
-}
+    MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM_IN_IMPL)
+    : DOMIterator(MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM_TO_PARENT) {}
 
-nsresult
-DOMSubtreeIterator::Init(nsRange& aRange)
-{
+nsresult DOMSubtreeIterator::Init(nsRange& aRange) {
   mIter = NS_NewContentSubtreeIterator();
   return mIter->Init(&aRange);
 }
 
-DOMSubtreeIterator::~DOMSubtreeIterator()
-{
-}
+DOMSubtreeIterator::~DOMSubtreeIterator() {}
 
 /******************************************************************************
  * some general purpose editor utils
  *****************************************************************************/
 
-bool
-EditorUtils::IsDescendantOf(const nsINode& aNode,
-                            const nsINode& aParent,
-                            EditorRawDOMPoint* aOutPoint /* = nullptr */)
-{
+bool EditorUtils::IsDescendantOf(const nsINode& aNode, const nsINode& aParent,
+                                 EditorRawDOMPoint* aOutPoint /* = nullptr */) {
   if (aOutPoint) {
     aOutPoint->Clear();
   }
@@ -156,11 +98,8 @@ EditorUtils::IsDescendantOf(const nsINode& aNode,
   return false;
 }
 
-bool
-EditorUtils::IsDescendantOf(const nsINode& aNode,
-                            const nsINode& aParent,
-                            EditorDOMPoint* aOutPoint)
-{
+bool EditorUtils::IsDescendantOf(const nsINode& aNode, const nsINode& aParent,
+                                 EditorDOMPoint* aOutPoint) {
   MOZ_ASSERT(aOutPoint);
   aOutPoint->Clear();
   if (&aNode == &aParent) {
@@ -178,4 +117,4 @@ EditorUtils::IsDescendantOf(const nsINode& aNode,
   return false;
 }
 
-} // namespace mozilla
+}  // namespace mozilla

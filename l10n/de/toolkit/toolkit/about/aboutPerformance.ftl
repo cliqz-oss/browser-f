@@ -10,6 +10,8 @@ column-name = Name
 column-type = Typ
 column-energy-impact = Energieverbrauch
 
+column-memory = Arbeitsspeicher
+
 ## Special values for the Name column
 ghost-windows = Kürzlich geschlossene Tabs
 # Variables:
@@ -33,6 +35,14 @@ type-other = Sonstiges
 energy-impact-high = Hoch ({ $value })
 energy-impact-medium = Mittel ({ $value })
 energy-impact-low = Niedrig ({ $value })
+
+## Values for the Memory column
+##
+## Variables:
+##   $value (Number) - How much memory is used
+size-KB = { $value } KB
+size-MB = { $value } MB
+size-GB = { $value } GB
 
 ## Tooltips for the action buttons
 close-tab =

@@ -13,12 +13,14 @@ if CONFIG['MOZ_GECKO_PROFILER']:
     EXPORTS += [
         'public/ChildProfilerController.h',
         'public/GeckoProfilerReporter.h',
+        'public/ProfileJSONWriter.h',
         'public/ProfilerChild.h',
         'public/ProfilerMarkerPayload.h',
         'public/ProfilerParent.h',
         'public/shared-libraries.h',
     ]
     UNIFIED_SOURCES += [
+        'core/PageInformation.cpp',
         'core/platform.cpp',
         'core/ProfileBuffer.cpp',
         'core/ProfileBufferEntry.cpp',
@@ -93,6 +95,8 @@ if CONFIG['MOZ_GECKO_PROFILER']:
         '/docshell/base',
         '/ipc/chromium/src',
         '/mozglue/linker',
+        '/netwerk/base',
+        '/netwerk/protocol/http',
         '/toolkit/crashreporter/google-breakpad/src',
         '/tools/profiler/core/',
         '/tools/profiler/gecko/',

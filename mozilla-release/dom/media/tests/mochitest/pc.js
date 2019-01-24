@@ -1778,31 +1778,28 @@ PeerConnectionWrapper.prototype = {
    *        The stats to check from this PeerConnectionWrapper
    */
   checkStats : function(stats, twoMachines) {
+    // Allow for clock drift observed on Windows 7. (Bug 979649)
+    const isWin7 = navigator.userAgent.includes("Windows NT 6.1");
+    const clockDriftAllowanceMs = isWin7 ? 1000 : 250;
+
     // Use spec way of enumerating stats
     var counters = {};
     for (let [key, res] of stats) {
       info("Checking stats for " + key + " : " + res);
       // validate stats
       ok(res.id == key, "Coherent stats id");
-      var nowish = Date.now();
-      var minimum = this.whenCreated;
-      if (false) { // Bug 1325430 - timestamps aren't working properly in update 49
-      // if (!twoMachines) {
-        // Bug 1225729: On android, sometimes the first RTCP of the first
-        // test run gets this value, likely because no RTP has been sent yet.
-        if (res.timestamp != 2085978496000) {
-          ok(res.timestamp >= minimum,
-             "Valid " + (res.isRemote? "rtcp" : "rtp") + " timestamp " +
-                 res.timestamp + " >= " + minimum + " (" +
-                 (res.timestamp - minimum) + " ms)");
-          ok(res.timestamp <= nowish,
-             "Valid " + (res.isRemote? "rtcp" : "rtp") + " timestamp " +
-                 res.timestamp + " <= " + nowish + " (" +
-                 (res.timestamp - nowish) + " ms)");
-        } else {
-          info("Bug 1225729: Uninitialized timestamp (" + res.timestamp +
-                "), should be >=" + minimum + " and <= " + nowish);
-        }
+      // Bug 1430255: WebRTC uses a different timebase than JS ATM
+      // so there can be differences between timestamp and Date.now().
+      const nowish = Date.now() + clockDriftAllowanceMs;
+      const minimum = this.whenCreated - clockDriftAllowanceMs;
+      const type = res.isRemote ? "rtcp" : "rtp";
+      if (!twoMachines) {
+        ok(res.timestamp >= minimum,
+           `Valid ${type} timestamp ${res.timestamp} >= ${minimum} (
+              ${res.timestamp - minimum} ms)`);
+        ok(res.timestamp <= nowish,
+           `Valid ${type} timestamp ${res.timestamp} <= ${nowish} (
+              ${res.timestamp - nowish} ms)`);
       }
       if (res.isRemote) {
         continue;
@@ -1839,17 +1836,17 @@ PeerConnectionWrapper.prototype = {
               ok(rem.packetsReceived !== undefined, "Rtcp packetsReceived");
               ok(rem.packetsLost !== undefined, "Rtcp packetsLost");
               ok(rem.bytesReceived >= rem.packetsReceived, "Rtcp bytesReceived");
-	       if (false) { // Bug 1325430 if (!this.disableRtpCountChecking) {
-	       // no guarantee which one is newer!
-	       // Note: this must change when we add a timestamp field to remote RTCP reports
-	       // and make rem.timestamp be the reception time
-		if (res.timestamp >= rem.timestamp) {
-                 ok(rem.packetsReceived <= res.packetsSent, "No more than sent packets");
-		 } else {
+              if (!this.disableRtpCountChecking) {
+                // no guarantee which one is newer!
+                // Note: this must change when we add a timestamp field to remote RTCP reports
+                // and make rem.timestamp be the reception time
+                if (res.timestamp >= rem.timestamp) {
+                  ok(rem.packetsReceived <= res.packetsSent, "No more than sent packets");
+                } else {
                   info("REVERSED timestamps: rec:" +
-		     rem.packetsReceived + " time:" + rem.timestamp + " sent:" + res.packetsSent + " time:" + res.timestamp);
-		 }
-		// Else we may have received more than outdated Rtcp packetsSent
+                    rem.packetsReceived + " time:" + rem.timestamp + " sent:" + res.packetsSent + " time:" + res.timestamp);
+                }
+                // Else we may have received more than outdated Rtcp packetsSent
                 ok(rem.bytesReceived <= res.bytesSent, "No more than sent bytes");
               }
               ok(rem.jitter !== undefined, "Rtcp jitter");
@@ -1953,15 +1950,15 @@ PeerConnectionWrapper.prototype = {
          JSON.stringify(lCand) + " remote=" + JSON.stringify(rCand));
     expectedLocalCandidateType = expectedLocalCandidateType || "host";
     var candidateType = lCand.candidateType;
-    if ((lCand.mozLocalTransport === "tcp") && (candidateType === "relayed")) {
-      candidateType = "relayed-tcp";
+    if ((lCand.relayProtocol === "tcp") && (candidateType === "relay")) {
+      candidateType = "relay-tcp";
     }
 
-    if ((expectedLocalCandidateType === "serverreflexive") &&
-        (candidateType === "peerreflexive")) {
+    if ((expectedLocalCandidateType === "srflx") &&
+        (candidateType === "prflx")) {
       // Be forgiving of prflx when expecting srflx, since that can happen due
       // to timing.
-      candidateType = "serverreflexive";
+      candidateType = "srflx";
     }
 
     is(candidateType,

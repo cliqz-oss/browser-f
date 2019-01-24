@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 <%namespace name="helpers" file="/helpers.mako.rs" />
 
@@ -8,7 +8,7 @@
     sub_properties="text-emphasis-style text-emphasis-color"
     derive_serialize="True"
     spec="https://drafts.csswg.org/css-text-decor-3/#text-emphasis-property">
-    use properties::longhands::{text_emphasis_color, text_emphasis_style};
+    use crate::properties::longhands::{text_emphasis_color, text_emphasis_style};
 
     pub fn parse_value<'i, 't>(
         context: &ParserContext,
@@ -52,7 +52,7 @@
                     products="gecko"
                     derive_serialize="True"
                     spec="https://compat.spec.whatwg.org/#the-webkit-text-stroke">
-    use properties::longhands::{_webkit_text_stroke_color, _webkit_text_stroke_width};
+    use crate::properties::longhands::{_webkit_text_stroke_color, _webkit_text_stroke_width};
 
     pub fn parse_value<'i, 't>(
         context: &ParserContext,

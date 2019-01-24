@@ -32,8 +32,9 @@ SRC_DIR=$TOOLCHAIN_DIR/src
 
 make_flags="-j$(nproc)"
 
-mingw_version=cfd85ebed773810429bf2164c3a985895b7dbfe3
+mingw_version=d66350ea60d043a8992ada752040fc4ea48537c3
 libunwind_version=1f89d78bb488bc71cfdee8281fc0834e9fbe5dce
+llvm_mingw_version=53db1c3a4c9c81972b70556a5ba5cd6ccd8e6e7d
 
 binutils_version=2.27
 binutils_ext=bz2
@@ -62,6 +63,11 @@ prepare() {
   git clone https://github.com/llvm-mirror/libunwind.git
   pushd libunwind
   git checkout $libunwind_version
+  popd
+
+  git clone https://github.com/mstorsjo/llvm-mingw.git
+  pushd llvm-mingw
+  git checkout $llvm_mingw_version
   popd
 
   wget -c --progress=dot:mega ftp://ftp.gnu.org/gnu/binutils/binutils-$binutils_version.tar.$binutils_ext
@@ -168,6 +174,12 @@ EOF
 }
 
 build_libcxx() {
+  # Below, we specify -g -gcodeview to build static libraries with debug information.
+  # Because we're not distributing these builds, this is fine. If one were to distribute
+  # the builds, perhaps one would want to make those flags conditional or investigation
+  # other options.
+  DEBUG_FLAGS="-g -gcodeview"
+
   mkdir libunwind
   pushd libunwind
   cmake \
@@ -188,7 +200,7 @@ build_libcxx() {
       -DLIBUNWIND_ENABLE_THREADS=TRUE \
       -DLIBUNWIND_ENABLE_SHARED=FALSE \
       -DLIBUNWIND_ENABLE_CROSS_UNWINDING=FALSE \
-      -DCMAKE_CXX_FLAGS="-nostdinc++ -I$SRC_DIR/libcxx/include -DPSAPI_VERSION=2" \
+      -DCMAKE_CXX_FLAGS="${DEBUG_FLAGS} -nostdinc++ -I$SRC_DIR/libcxx/include -DPSAPI_VERSION=2" \
       $SRC_DIR/libunwind
   make $make_flags
   make $make_flags install
@@ -216,7 +228,7 @@ build_libcxx() {
       -DLIBCXXABI_LIBCXX_INCLUDES=$SRC_DIR/libcxx/include \
       -DLLVM_NO_OLD_LIBSTDCXX=TRUE \
       -DCXX_SUPPORTS_CXX11=TRUE \
-      -DCMAKE_CXX_FLAGS="-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS -D_LIBCPP_HAS_THREAD_API_WIN32" \
+      -DCMAKE_CXX_FLAGS="${DEBUG_FLAGS} -D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS -D_LIBCPP_HAS_THREAD_API_WIN32" \
       $SRC_DIR/libcxxabi
   make $make_flags VERBOSE=1
   popd
@@ -249,7 +261,7 @@ build_libcxx() {
       -DLIBCXX_CXX_ABI=libcxxabi \
       -DLIBCXX_CXX_ABI_INCLUDE_PATHS=$SRC_DIR/libcxxabi/include \
       -DLIBCXX_CXX_ABI_LIBRARY_PATH=../libcxxabi/lib \
-      -DCMAKE_CXX_FLAGS="-D_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS" \
+      -DCMAKE_CXX_FLAGS="${DEBUG_FLAGS} -D_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS" \
       $SRC_DIR/libcxx
   make $make_flags VERBOSE=1
   make $make_flags install
@@ -262,8 +274,7 @@ build_libcxx() {
   popd
 }
 
-build_windres() {
-  # we build whole binutils, but use only windres in our toolchain
+build_utils() {
   mkdir binutils
   pushd binutils
   $SRC_DIR/binutils-$binutils_version/configure --prefix=$INSTALL_DIR \
@@ -272,12 +283,12 @@ build_windres() {
                                                 --target=$machine-w64-mingw32
   make $make_flags
 
-  # Manually install only nm and windres
-  cp binutils/windres $INSTALL_DIR/bin/$machine-w64-mingw32-windres
+  # Manually install only nm
   cp binutils/nm-new $INSTALL_DIR/bin/$machine-w64-mingw32-nm
 
   pushd $INSTALL_DIR/bin/
   ln -s llvm-readobj $machine-w64-mingw32-readobj
+  ./clang $SRC_DIR/llvm-mingw/wrappers/windres-wrapper.c -O2 -Wl,-s -o $machine-w64-mingw32-windres
   popd
 
   popd
@@ -302,7 +313,7 @@ install_wrappers
 build_mingw
 build_compiler_rt
 build_libcxx
-build_windres
+build_utils
 
 popd
 

@@ -4,7 +4,7 @@
 
  // This file defines these globals on the window object.
  // Define them here so that ESLint can find them:
-/* globals MozElementMixin, MozXULElement, MozBaseControl */
+/* globals MozElementMixin, MozXULElement, MozElements */
 
 "use strict";
 
@@ -33,9 +33,11 @@ window.addEventListener("DOMContentLoaded", () => {
   for (let element of gElementsPendingConnection) {
     try {
       if (element.isConnected) {
+        element.isRunningDelayedConnectedCallback = true;
         element.connectedCallback();
       }
     } catch (ex) { console.error(ex); }
+    element.isRunningDelayedConnectedCallback = false;
   }
   gElementsPendingConnection.clear();
 }, { once: true, capture: true });
@@ -43,7 +45,42 @@ window.addEventListener("DOMContentLoaded", () => {
 const gXULDOMParser = new DOMParser();
 gXULDOMParser.forceEnableXULXBL();
 
+const MozElements = {};
+
 const MozElementMixin = Base => class MozElement extends Base {
+
+  /*
+   * Implements attribute inheritance by a child element. Uses XBL @inherit
+   * syntax of |to=from|.
+   *
+   * @param {element} child
+   *        A child element that inherits an attribute.
+   * @param {string} attr
+   *        An attribute to inherit. Optionally in the form of |to=from|, where
+   *        |to| is an attribute defined on custom element, whose value will be
+   *        inherited to |from| attribute, defined a child element. Note |from| may
+   *        take a special value of "text" to propogate attribute value as
+   *        a child's text.
+   */
+  inheritAttribute(child, attr) {
+    let attrName = attr;
+    let attrNewName = attr;
+    let split = attrName.split("=");
+    if (split.length == 2) {
+      attrName = split[1];
+      attrNewName = split[0];
+    }
+
+    if (attrNewName === "text") {
+      child.textContent =
+        this.hasAttribute(attrName) ? this.getAttribute(attrName) : "";
+    } else if (this.hasAttribute(attrName)) {
+      child.setAttribute(attrNewName, this.getAttribute(attrName));
+    } else {
+      child.removeAttribute(attrNewName);
+    }
+  }
+
   /**
    * Sometimes an element may not want to run connectedCallback logic during
    * parse. This could be because we don't want to initialize the element before
@@ -218,7 +255,7 @@ function getInterfaceProxy(obj) {
   return obj._customInterfaceProxy;
 }
 
-class MozBaseControl extends MozXULElement {
+MozElements.BaseControl = class BaseControl extends MozXULElement {
   get disabled() {
     return this.getAttribute("disabled") == "true";
   }
@@ -242,14 +279,15 @@ class MozBaseControl extends MozXULElement {
       this.removeAttribute("tabindex");
     }
   }
-}
+};
 
-MozXULElement.implementCustomInterface(MozBaseControl, [Ci.nsIDOMXULControlElement]);
+MozXULElement.implementCustomInterface(MozElements.BaseControl,
+                                       [Ci.nsIDOMXULControlElement]);
 
 // Attach the base class to the window so other scripts can use it:
 window.MozElementMixin = MozElementMixin;
 window.MozXULElement = MozXULElement;
-window.MozBaseControl = MozBaseControl;
+window.MozElements = MozElements;
 
 // For now, don't load any elements in the extension dummy document.
 // We will want to load <browser> when that's migrated (bug 1441935).
@@ -257,10 +295,11 @@ const isDummyDocument = document.documentURI == "chrome://extensions/content/dum
 if (!isDummyDocument) {
   for (let script of [
     "chrome://global/content/elements/general.js",
-    "chrome://global/content/elements/progressmeter.js",
+    "chrome://global/content/elements/notificationbox.js",
     "chrome://global/content/elements/radio.js",
     "chrome://global/content/elements/textbox.js",
     "chrome://global/content/elements/tabbox.js",
+    "chrome://global/content/elements/tree.js",
   ]) {
     Services.scriptloader.loadSubScript(script, window);
   }

@@ -7,20 +7,20 @@
 const Services = require("Services");
 
 const { bindActionCreators } = require("devtools/client/shared/vendor/redux");
-const { createFactory } =
-  require("devtools/client/shared/vendor/react");
+const { createFactory } = require("devtools/client/shared/vendor/react");
 const { render, unmountComponentAtNode } =
   require("devtools/client/shared/vendor/react-dom");
 const Provider =
   createFactory(require("devtools/client/shared/vendor/react-redux").Provider);
-const { L10nRegistry, FileSource } =
-  require("resource://gre/modules/L10nRegistry.jsm");
 
 const actions = require("./src/actions/index");
 const { configureStore } = require("./src/create-store");
 const {
   setDebugTargetCollapsibilities,
 } = require("./src/modules/debug-target-collapsibilities");
+
+const { l10n } = require("./src/modules/l10n");
+
 const {
   addNetworkLocationsObserver,
   getNetworkLocations,
@@ -28,17 +28,14 @@ const {
 } = require("./src/modules/network-locations");
 const {
   addUSBRuntimesObserver,
-  disableUSBRuntimes,
-  enableUSBRuntimes,
   getUSBRuntimes,
   removeUSBRuntimesObserver,
 } = require("./src/modules/usb-runtimes");
 
 loader.lazyRequireGetter(this, "adbAddon", "devtools/shared/adb/adb-addon", true);
 
+const Router = createFactory(require("devtools/client/shared/vendor/react-router-dom").HashRouter);
 const App = createFactory(require("./src/components/App"));
-
-const { PAGES, RUNTIMES } = require("./src/constants");
 
 const AboutDebugging = {
   async init() {
@@ -55,47 +52,38 @@ const AboutDebugging = {
     this.store = configureStore();
     this.actions = bindActionCreators(actions, this.store.dispatch);
 
-    const fluentBundles = await this.createFluentBundles();
+    await l10n.init();
 
     render(
-      Provider({ store: this.store }, App({ fluentBundles })),
+      Provider(
+        {
+          store: this.store,
+        },
+        Router(
+          {},
+          App(
+            {
+              fluentBundles: l10n.getBundles(),
+            }
+          )
+        )
+      ),
       this.mount
     );
 
-    this.actions.selectPage(PAGES.THIS_FIREFOX, RUNTIMES.THIS_FIREFOX);
     this.actions.updateNetworkLocations(getNetworkLocations());
 
     addNetworkLocationsObserver(this.onNetworkLocationsUpdated);
+
+    // Listen to USB runtime updates and retrieve the initial list of runtimes.
     addUSBRuntimesObserver(this.onUSBRuntimesUpdated);
-    await enableUSBRuntimes();
+    getUSBRuntimes();
 
     adbAddon.on("update", this.onAdbAddonUpdated);
     this.onAdbAddonUpdated();
-  },
 
-  async createFluentBundles() {
-    // XXX Until the strings for the updated about:debugging stabilize, we
-    // locate them outside the regular directory for locale resources so that
-    // they don't get picked up by localization tools.
-    if (!L10nRegistry.sources.has("aboutdebugging")) {
-      const temporarySource = new FileSource(
-        "aboutdebugging",
-        ["en-US"],
-        "chrome://devtools/content/aboutdebugging-new/tmp-locale/{locale}/"
-      );
-      L10nRegistry.registerSource(temporarySource);
-    }
-
-    const locales = Services.locale.appLocalesAsBCP47;
-    const generator =
-      L10nRegistry.generateBundles(locales, ["aboutdebugging.ftl"]);
-
-    const bundles = [];
-    for await (const bundle of generator) {
-      bundles.push(bundle);
-    }
-
-    return bundles;
+    // Remove deprecated remote debugging extensions.
+    await adbAddon.uninstallUnsupportedExtensions();
   },
 
   onAdbAddonUpdated() {
@@ -113,16 +101,18 @@ const AboutDebugging = {
   async destroy() {
     const state = this.store.getState();
 
-    L10nRegistry.removeSource("aboutdebugging");
+    l10n.destroy();
 
     const currentRuntimeId = state.runtimes.selectedRuntimeId;
     if (currentRuntimeId) {
       await this.actions.unwatchRuntime(currentRuntimeId);
     }
 
+    // Remove all client listeners.
+    this.actions.removeRuntimeListeners();
+
     removeNetworkLocationsObserver(this.onNetworkLocationsUpdated);
     removeUSBRuntimesObserver(this.onUSBRuntimesUpdated);
-    disableUSBRuntimes();
     adbAddon.off("update", this.onAdbAddonUpdated);
     setDebugTargetCollapsibilities(state.ui.debugTargetCollapsibilities);
     unmountComponentAtNode(this.mount);
@@ -140,3 +130,6 @@ window.addEventListener("DOMContentLoaded", () => {
 window.addEventListener("unload", () => {
   AboutDebugging.destroy();
 }, {once: true});
+
+// Expose AboutDebugging to tests so that they can access to the store.
+window.AboutDebugging = AboutDebugging;

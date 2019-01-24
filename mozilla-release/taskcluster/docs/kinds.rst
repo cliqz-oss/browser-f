@@ -288,7 +288,7 @@ release-notify-promote
 Notify when a release has been promoted.
 
 release-notify-started
--------------------
+----------------------
 Notify when a release has been started.
 
 release-bouncer-sub
@@ -448,13 +448,28 @@ Repackage-L10n is a ```Repackage``` task split up to be suitable for use after l
 
 repackage-signing
 -----------------
-Repackage-signing take the repackaged installers (windows) and update packaging (with
-the signed internal bits) and signs them.
+Repackage-signing take the repackaged installers (windows) and signs them.
 
 repackage-signing-l10n
 ----------------------
-Repackage-signing take the repackaged installers (windows) and update packaging (with
-the signed internal bits) and signs them for localized versions.
+Repackage-signing-l10n take the repackaged installers (windows) and signs them for localized versions.
+
+mar-signing
+-----------
+Mar-signing takes the complete update MARs and signs them.
+
+mar-signing-l10n
+----------------
+Mar-signing-l10n takes the complete update MARs and signs them for localized versions.
+
+repackage-msi
+-------------
+Repackage-msi takes the signed full installer and produces an msi installer (that wraps the full installer)
+Using the ```./mach repackage``` command
+
+repackage-signing-msi
+---------------------
+Repackage-signing-msi takes the repackaged msi installers and signs them.
 
 repo-update
 -----------

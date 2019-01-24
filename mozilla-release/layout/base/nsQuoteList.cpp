@@ -14,10 +14,8 @@
 
 using namespace mozilla;
 
-bool
-nsQuoteNode::InitTextFrame(nsGenConList* aList, nsIFrame* aPseudoFrame,
-                           nsIFrame* aTextFrame)
-{
+bool nsQuoteNode::InitTextFrame(nsGenConList* aList, nsIFrame* aPseudoFrame,
+                                nsIFrame* aTextFrame) {
   nsGenConNode::InitTextFrame(aList, aPseudoFrame, aTextFrame);
 
   nsQuoteList* quoteList = static_cast<nsQuoteList*>(aList);
@@ -30,44 +28,23 @@ nsQuoteNode::InitTextFrame(nsGenConList* aList, nsIFrame* aPseudoFrame,
 
   // Don't set up text for 'no-open-quote' and 'no-close-quote'.
   if (IsRealQuote()) {
-    aTextFrame->GetContent()->AsText()->SetText(*Text(), false);
+    aTextFrame->GetContent()->AsText()->SetText(Text(), false);
   }
   return dirty;
 }
 
-const nsString*
-nsQuoteNode::Text()
-{
+nsString nsQuoteNode::Text() {
   NS_ASSERTION(mType == StyleContentType::OpenQuote ||
-               mType == StyleContentType::CloseQuote,
+                   mType == StyleContentType::CloseQuote,
                "should only be called when mText should be non-null");
-  const nsStyleQuoteValues::QuotePairArray& quotePairs =
-    mPseudoFrame->StyleList()->GetQuotePairs();
-  int32_t quotesCount = quotePairs.Length(); // 0 if 'quotes:none'
-  int32_t quoteDepth = Depth();
 
-  // Reuse the last pair when the depth is greater than the number of
-  // pairs of quotes.  (Also make 'quotes: none' and close-quote from
-  // a depth of 0 equivalent for the next test.)
-  if (quoteDepth >= quotesCount)
-    quoteDepth = quotesCount - 1;
-
-  const nsString* result;
-  if (quoteDepth == -1) {
-    // close-quote from a depth of 0 or 'quotes: none' (we want a node
-    // with the empty string so dynamic changes are easier to handle)
-    result = &EmptyString();
-  } else {
-    result = StyleContentType::OpenQuote == mType
-               ? &quotePairs[quoteDepth].first
-               : &quotePairs[quoteDepth].second;
-  }
+  nsString result;
+  Servo_Quotes_GetQuote(mPseudoFrame->StyleList()->mQuotes.get(), Depth(),
+                        mType, &result);
   return result;
 }
 
-void
-nsQuoteList::Calc(nsQuoteNode* aNode)
-{
+void nsQuoteList::Calc(nsQuoteNode* aNode) {
   if (aNode == FirstNode()) {
     aNode->mDepthBefore = 0;
   } else {
@@ -75,40 +52,36 @@ nsQuoteList::Calc(nsQuoteNode* aNode)
   }
 }
 
-void
-nsQuoteList::RecalcAll()
-{
+void nsQuoteList::RecalcAll() {
   for (nsQuoteNode* node = FirstNode(); node; node = Next(node)) {
     int32_t oldDepth = node->mDepthBefore;
     Calc(node);
 
     if (node->mDepthBefore != oldDepth && node->mText && node->IsRealQuote())
-      node->mText->SetData(*node->Text(), IgnoreErrors());
+      node->mText->SetData(node->Text(), IgnoreErrors());
   }
 }
 
 #ifdef DEBUG
-void
-nsQuoteList::PrintChain()
-{
+void nsQuoteList::PrintChain() {
   printf("Chain: \n");
   for (nsQuoteNode* node = FirstNode(); node; node = Next(node)) {
     printf("  %p %d - ", static_cast<void*>(node), node->mDepthBefore);
-    switch(node->mType) {
-        case StyleContentType::OpenQuote:
-          printf("open");
-          break;
-        case StyleContentType::NoOpenQuote:
-          printf("noOpen");
-          break;
-        case StyleContentType::CloseQuote:
-          printf("close");
-          break;
-        case StyleContentType::NoCloseQuote:
-          printf("noClose");
-          break;
-        default:
-          printf("unknown!!!");
+    switch (node->mType) {
+      case StyleContentType::OpenQuote:
+        printf("open");
+        break;
+      case StyleContentType::NoOpenQuote:
+        printf("noOpen");
+        break;
+      case StyleContentType::CloseQuote:
+        printf("close");
+        break;
+      case StyleContentType::NoCloseQuote:
+        printf("noClose");
+        break;
+      default:
+        printf("unknown!!!");
     }
     printf(" %d - %d,", node->Depth(), node->DepthAfter());
     if (node->mText) {

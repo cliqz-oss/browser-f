@@ -3,18 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 from telemetry_harness.testcase import TelemetryTestCase
-
-
-def check_is_shutdown_ping(ping):
-    """Check for a shutdown ping."""
-
-    if ping["type"] != "main":
-        return False
-
-    if ping["payload"]["info"]["reason"] != "shutdown":
-        return False
-
-    return True
+from telemetry_harness.ping_filters import MAIN_SHUTDOWN_PING
 
 
 class TestMainTabScalars(TelemetryTestCase):
@@ -37,12 +26,13 @@ class TestMainTabScalars(TelemetryTestCase):
 
             self.browser.tabbar.switch_to(tab1)
 
-        [ping] = self.wait_for_pings(self.restart_browser, check_is_shutdown_ping, 1)
+        ping = self.wait_for_ping(self.restart_browser, MAIN_SHUTDOWN_PING)
 
-        assert ping["type"] == "main"
-        assert ping["clientId"] == self.client_id
+        self.assertEqual(ping["type"], "main")
+        self.assertEqual(ping["clientId"], self.client_id)
 
         scalars = ping["payload"]["processes"]["parent"]["scalars"]
-        assert scalars["browser.engagement.max_concurrent_tab_count"] == 3
-        assert scalars["browser.engagement.tab_open_event_count"] == 2
-        assert scalars["browser.engagement.max_concurrent_window_count"] == 1
+
+        self.assertEqual(scalars["browser.engagement.max_concurrent_tab_count"], 3)
+        self.assertEqual(scalars["browser.engagement.tab_open_event_count"], 2)
+        self.assertEqual(scalars["browser.engagement.max_concurrent_window_count"], 1)

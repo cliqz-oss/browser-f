@@ -19,10 +19,6 @@
   --space-above-tabbar: 8px;
 }
 
-:root[sessionrestored]:-moz-lwtheme {
-  transition: @themeTransition@;
-}
-
 /* Increase contrast of UI links on dark themes */
 
 :root[lwt-popup-brighttext] panel .text-link {
@@ -34,7 +30,7 @@
 #navigator-toolbox::after {
   content: "";
   display: -moz-box;
-  border-bottom: 1px solid var(--toolbox-border-bottom-color);
+  border-bottom: 1px solid var(--chrome-content-separator-color);
 }
 
 :root[customizing] #navigator-toolbox::after {
@@ -178,11 +174,6 @@
 
 /* Contextual Feature Recommendation popup-notification */
 
-:root {
-  --cfr-notification-header-image: url(resource://activity-stream/data/content/assets/glyph-help-24.svg);
-  --cfr-notification-footer-star: url(resource://activity-stream/data/content/assets/glyph-star-17.svg);
-}
-
 #cfr-notification-header {
   width: 100%;
   text-align: center;
@@ -212,7 +203,7 @@
   -moz-context-properties: fill, fill-opacity;
   fill: currentColor;
   fill-opacity: 0.6;
-  list-style-image: var(--cfr-notification-header-image);
+  list-style-image: url(resource://activity-stream/data/content/assets/glyph-help-24.svg);
 }
 
 #cfr-notification-header-image:hover {
@@ -256,7 +247,7 @@
 #cfr-notification-footer-filled-stars,
 #cfr-notification-footer-empty-stars {
   -moz-context-properties: fill, fill-opacity;
-  background-image: var(--cfr-notification-footer-star);
+  background-image: url(resource://activity-stream/data/content/assets/glyph-star-17.svg);
   background-size: 17px;
   fill: currentColor;
   fill-opacity: 0.7;

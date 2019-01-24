@@ -28,6 +28,8 @@
 //
 // See the comment at the top of ServoBindingTypes.h for how to use these.
 
+// clang-format off
+// Needs to be a on single line
 GECKO_BORROWED_TYPE(mozilla::dom::Element, RawGeckoElement)
 GECKO_BORROWED_TYPE(nsIDocument, RawGeckoDocument)
 GECKO_BORROWED_TYPE(nsINode, RawGeckoNode)
@@ -37,7 +39,6 @@ GECKO_BORROWED_TYPE_MUT(mozilla::AnimationPropertySegment, RawGeckoAnimationProp
 GECKO_BORROWED_TYPE_MUT(mozilla::ComputedTiming, RawGeckoComputedTiming)
 GECKO_BORROWED_TYPE_MUT(mozilla::dom::StyleChildrenIterator, RawGeckoStyleChildrenIterator)
 GECKO_BORROWED_TYPE_MUT(mozilla::GfxMatrix4x4, RawGeckoGfxMatrix4x4)
-GECKO_BORROWED_TYPE_MUT(mozilla::ServoElementSnapshot, ServoElementSnapshot)
 GECKO_BORROWED_TYPE_MUT(mozilla::URLExtraData, RawGeckoURLExtraData)
 GECKO_BORROWED_TYPE_MUT(nsCSSPropertyIDSet, nsCSSPropertyIDSet)
 GECKO_BORROWED_TYPE_MUT(nsCSSValue, nsCSSValue)
@@ -50,3 +51,4 @@ GECKO_BORROWED_TYPE_MUT(nsTArray<nsCSSPropertyID>, RawGeckoCSSPropertyIDList)
 GECKO_BORROWED_TYPE_MUT(nsTArray<nsFontFaceRuleContainer>, RawGeckoFontFaceRuleList)
 GECKO_BORROWED_TYPE_MUT(nsTArray<RefPtr<RawServoAnimationValue>>, RawGeckoServoAnimationValueList)
 GECKO_BORROWED_TYPE_MUT(nsTimingFunction, nsTimingFunction)
+// clang-format on

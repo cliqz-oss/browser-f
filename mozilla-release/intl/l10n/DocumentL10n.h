@@ -17,19 +17,30 @@
 #include "nsIDocument.h"
 #include "nsINode.h"
 #include "mozIDOMLocalization.h"
+#include "mozilla/dom/Promise.h"
+#include "mozilla/dom/PromiseNativeHandler.h"
 
 namespace mozilla {
 namespace dom {
 
 class Element;
-class Promise;
 struct L10nKey;
 
-enum class DocumentL10nState
-{
-  Initialized = 0,
-  InitialTranslationTriggered
+class PromiseResolver final : public PromiseNativeHandler {
+ public:
+  NS_DECL_ISUPPORTS
+
+  explicit PromiseResolver(Promise* aPromise);
+  void ResolvedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue) override;
+  void RejectedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue) override;
+
+ protected:
+  virtual ~PromiseResolver();
+
+  RefPtr<Promise> mPromise;
 };
+
+enum class DocumentL10nState { Initialized = 0, InitialTranslationTriggered };
 
 /**
  * This class maintains localization status of the nsDocument.
@@ -41,19 +52,17 @@ enum class DocumentL10nState
  * instance of mozIDOMLocalization and maintaines a single promise
  * which gets resolved the first time the document gets translated.
  */
-class DocumentL10n final : public nsIDOMEventListener,
-                           public nsWrapperCache
-{
-public:
+class DocumentL10n final : public nsIDOMEventListener, public nsWrapperCache {
+ public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(DocumentL10n)
   NS_DECL_NSIDOMEVENTLISTENER
 
-public:
+ public:
   explicit DocumentL10n(nsIDocument* aDocument);
   bool Init(nsTArray<nsString>& aResourceIds);
 
-protected:
+ protected:
   virtual ~DocumentL10n();
 
   nsCOMPtr<nsIDocument> mDocument;
@@ -61,10 +70,13 @@ protected:
   DocumentL10nState mState;
   nsCOMPtr<mozIDOMLocalization> mDOMLocalization;
 
-public:
+  already_AddRefed<Promise> MaybeWrapPromise(Promise* aPromise);
+
+ public:
   nsIDocument* GetParentObject() const { return mDocument; };
 
-  virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
+  virtual JSObject* WrapObject(JSContext* aCx,
+                               JS::Handle<JSObject*> aGivenProto) override;
 
   /**
    * A method for adding resources to the localization context.
@@ -80,22 +92,32 @@ public:
    */
   uint32_t RemoveResourceIds(nsTArray<nsString>& aResourceIds);
 
-  already_AddRefed<Promise> FormatMessages(JSContext* aCx, const Sequence<L10nKey>& aKeys, ErrorResult& aRv);
-  already_AddRefed<Promise> FormatValues(JSContext* aCx, const Sequence<L10nKey>& aKeys, ErrorResult& aRv);
-  already_AddRefed<Promise> FormatValue(JSContext* aCx, const nsAString& aId, const Optional<JS::Handle<JSObject*>>& aArgs, ErrorResult& aRv);
+  already_AddRefed<Promise> FormatMessages(JSContext* aCx,
+                                           const Sequence<L10nKey>& aKeys,
+                                           ErrorResult& aRv);
+  already_AddRefed<Promise> FormatValues(JSContext* aCx,
+                                         const Sequence<L10nKey>& aKeys,
+                                         ErrorResult& aRv);
+  already_AddRefed<Promise> FormatValue(
+      JSContext* aCx, const nsAString& aId,
+      const Optional<JS::Handle<JSObject*>>& aArgs, ErrorResult& aRv);
 
-  void SetAttributes(JSContext* aCx, Element& aElement, const nsAString& aId, const Optional<JS::Handle<JSObject*>>& aArgs, ErrorResult& aRv);
-  void GetAttributes(JSContext* aCx, Element& aElement, L10nKey& aResult, ErrorResult& aRv);
+  void SetAttributes(JSContext* aCx, Element& aElement, const nsAString& aId,
+                     const Optional<JS::Handle<JSObject*>>& aArgs,
+                     ErrorResult& aRv);
+  void GetAttributes(JSContext* aCx, Element& aElement, L10nKey& aResult,
+                     ErrorResult& aRv);
 
   already_AddRefed<Promise> TranslateFragment(nsINode& aNode, ErrorResult& aRv);
-  already_AddRefed<Promise> TranslateElements(const Sequence<OwningNonNull<Element>>& aElements, ErrorResult& aRv);
+  already_AddRefed<Promise> TranslateElements(
+      const Sequence<OwningNonNull<Element>>& aElements, ErrorResult& aRv);
 
   Promise* Ready();
 
   void TriggerInitialDocumentTranslation();
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
-#endif // mozilla_dom_DocumentL10n_h
+#endif  // mozilla_dom_DocumentL10n_h

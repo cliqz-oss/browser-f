@@ -21,11 +21,11 @@ add_task(async function init() {
   // Add a test search engine that returns suggestions on a delay.
   let engine = await SearchTestUtils.promiseNewSearchEngine(
     getRootDirectory(gTestPath) + TEST_ENGINE_BASENAME);
-  let oldCurrentEngine = Services.search.currentEngine;
+  let oldCurrentEngine = Services.search.defaultEngine;
   Services.search.moveEngine(engine, 0);
-  Services.search.currentEngine = engine;
+  Services.search.defaultEngine = engine;
   registerCleanupFunction(async () => {
-    Services.search.currentEngine = oldCurrentEngine;
+    Services.search.defaultEngine = oldCurrentEngine;
     await PlacesUtils.history.clear();
     // Make sure the popup is closed for the next test.
     gURLBar.blur();
@@ -35,7 +35,7 @@ add_task(async function init() {
 
 add_task(async function mainTest() {
   // Trigger an initial search.  Restrict matches to search suggestions.
-  await promiseAutocompleteResultPopup("? test", window);
+  await promiseAutocompleteResultPopup(`${UrlbarTokenizer.RESTRICT.SEARCH} test`, window);
   await promiseSuggestionsPresent("Waiting for initial suggestions");
 
   // Now synthesize typing a character.  promiseAutocompleteResultPopup doesn't

@@ -76,13 +76,6 @@ ext.configureVariantWithGeckoBinaries = { variant ->
     }
 
     def syncAssetsFromDistDir = task("syncAssetsFromDistDirFor${variant.name.capitalize()}", type: Sync) {
-        onlyIf {
-            if (source.empty) {
-                throw new StopExecutionException("Required assets not found in ${distDir}/assets.  Have you built and packaged?")
-            }
-            return true
-        }
-
         into("${project.buildDir}/moz.build/src/${variant.name}/assets")
         from("${distDir}/assets") {
             exclude 'omni.ja'
@@ -93,7 +86,7 @@ ext.configureVariantWithGeckoBinaries = { variant ->
     // the Omnijar sources.  To do this, the Gradle build calls out to the
     // moz.build system, which can be re-entrant.  Official builds are driven by
     // the moz.build system and should never be re-entrant in this way.
-    if (!((variant.productFlavors*.name).contains('official'))) {
+    if (!mozconfig.substs.MOZILLA_OFFICIAL) {
         syncOmnijarFromDistDir.dependsOn buildOmnijars
     }
 
@@ -122,7 +115,7 @@ ext.configureLibraryVariantWithJNIWrappers = { variant, module ->
     // JNI wrappers is the moz.build system, which always builds geckoview to
     // consume from Fennec, so that dependency likely adds less to the build time.
     def jarTask = tasks["transformClassesAndResourcesWithPrepareIntermediateJarsFor${variant.name.capitalize()}"]
-    def output = jarTask.outputs.files.find({ it.absolutePath.contains('/classes.jar') })
+    def bundleJar = jarTask.outputs.files.find({ it.absolutePath.contains('/classes.jar') })
 
     def annotationProcessorsJarTask = project(':annotations').jar
 
@@ -145,10 +138,18 @@ ext.configureLibraryVariantWithJNIWrappers = { variant, module ->
     
             main = 'org.mozilla.gecko.annotationProcessors.AnnotationProcessor'
             args module
-            args output
+            args bundleJar
             
             workingDir "${topobjdir}/widget/android"
-            
+
+            inputs.file(bundleJar)
+            inputs.file(annotationProcessorsJarTask.archivePath)
+            inputs.property("module", module)
+
+            outputs.file("${topobjdir}/widget/android/GeneratedJNINatives.h")
+            outputs.file("${topobjdir}/widget/android/GeneratedJNIWrappers.cpp")
+            outputs.file("${topobjdir}/widget/android/GeneratedJNIWrappers.h")
+
             dependsOn jarTask
             dependsOn annotationProcessorsJarTask
         }
@@ -163,7 +164,7 @@ ext.configureLibraryVariantWithJNIWrappers = { variant, module ->
 
 ext.configureApplicationVariantWithJNIWrappers = { variant, module ->
     def jarTask = tasks["bundleAppClasses${variant.name.capitalize()}"]
-    def output = jarTask.outputs.files.find({ it.absolutePath.contains('/classes.jar') })
+    def bundleJar = jarTask.outputs.files.find({ it.absolutePath.contains('/classes.jar') })
 
     def annotationProcessorsJarTask = project(':annotations').jar
 
@@ -186,10 +187,18 @@ ext.configureApplicationVariantWithJNIWrappers = { variant, module ->
         
             main = 'org.mozilla.gecko.annotationProcessors.AnnotationProcessor'
             args module
-            args output
+            args bundleJar
         
             workingDir "${topobjdir}/widget/android/fennec"
-    
+
+            inputs.file(bundleJar)
+            inputs.file(annotationProcessorsJarTask.archivePath)
+            inputs.property("module", module)
+
+            outputs.file("${topobjdir}/widget/android/fennec/FennecJNINatives.h")
+            outputs.file("${topobjdir}/widget/android/fennec/FennecJNIWrappers.cpp")
+            outputs.file("${topobjdir}/widget/android/fennec/FennecJNIWrappers.h")
+
             // This forces bundling, which isn't usually part of the assemble* process.
             dependsOn jarTask
 

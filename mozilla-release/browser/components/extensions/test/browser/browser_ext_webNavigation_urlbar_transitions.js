@@ -57,15 +57,15 @@ function addSearchEngine(basename) {
 }
 
 async function prepareSearchEngine() {
-  let oldCurrentEngine = Services.search.currentEngine;
+  let oldCurrentEngine = Services.search.defaultEngine;
   let suggestionsEnabled = Services.prefs.getBoolPref(SUGGEST_URLBAR_PREF);
   Services.prefs.setBoolPref(SUGGEST_URLBAR_PREF, true);
   let engine = await addSearchEngine(TEST_ENGINE_BASENAME);
-  Services.search.currentEngine = engine;
+  Services.search.defaultEngine = engine;
 
   registerCleanupFunction(async function() {
     Services.prefs.setBoolPref(SUGGEST_URLBAR_PREF, suggestionsEnabled);
-    Services.search.currentEngine = oldCurrentEngine;
+    Services.search.defaultEngine = oldCurrentEngine;
 
     // Make sure the popup is closed for the next test.
     gURLBar.blur();
@@ -109,8 +109,9 @@ add_task(async function test_webnavigation_urlbar_typed_transitions() {
   await extension.awaitMessage("ready");
 
   gURLBar.focus();
-  gURLBar.textValue = "http://example.com/?q=typed";
-
+  const inputValue = "http://example.com/?q=typed";
+  gURLBar.inputField.value = inputValue.slice(0, -1);
+  EventUtils.sendString(inputValue.slice(-1));
   EventUtils.synthesizeKey("VK_RETURN", {altKey: true});
 
   await extension.awaitFinish("webNavigation.from_address_bar.typed");

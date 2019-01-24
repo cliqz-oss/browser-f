@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
- * vim: set ts=8 sts=4 et sw=4 tw=99:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
+ * vim: set ts=8 sts=2 et sw=2 tw=80:
  *
  * Copyright 2016 Mozilla Foundation
  *
@@ -28,63 +28,83 @@ namespace wasm {
 // A Table is an indexable array of opaque values. Tables are first-class
 // stateful objects exposed to WebAssembly. asm.js also uses Tables to represent
 // its homogeneous function-pointer tables.
+//
+// A table of AnyFunction holds FunctionTableElems, which are (instance*,index)
+// pairs, where the instance must be traced.
+//
+// A table of AnyRef holds JSObject pointers, which must be traced.
 
-class Table : public ShareableBase<Table>
-{
-    using InstanceSet = JS::WeakCache<GCHashSet<ReadBarrieredWasmInstanceObject,
-                                                MovableCellHasher<ReadBarrieredWasmInstanceObject>,
-                                                SystemAllocPolicy>>;
-    using UniqueByteArray = UniquePtr<uint8_t[], JS::FreePolicy>;
+typedef GCVector<JS::Heap<JSObject*>, 0, SystemAllocPolicy> TableAnyRefVector;
 
-    ReadBarrieredWasmTableObject maybeObject_;
-    InstanceSet                  observers_;
-    UniqueByteArray              array_;
-    const TableKind              kind_;
-    uint32_t                     length_;
-    const Maybe<uint32_t>        maximum_;
-    const bool                   external_;
+class Table : public ShareableBase<Table> {
+  using InstanceSet = JS::WeakCache<GCHashSet<
+      ReadBarrieredWasmInstanceObject,
+      MovableCellHasher<ReadBarrieredWasmInstanceObject>, SystemAllocPolicy>>;
+  using UniqueAnyFuncArray = UniquePtr<FunctionTableElem[], JS::FreePolicy>;
 
-    template <class> friend struct js::MallocProvider;
-    Table(JSContext* cx, const TableDesc& td, HandleWasmTableObject maybeObject,
-          UniqueByteArray array);
+  ReadBarrieredWasmTableObject maybeObject_;
+  InstanceSet observers_;
+  UniqueAnyFuncArray functions_;  // either functions_ has data
+  TableAnyRefVector objects_;     //   or objects_, but not both
+  const TableKind kind_;
+  uint32_t length_;
+  const Maybe<uint32_t> maximum_;
 
-    void tracePrivate(JSTracer* trc);
-    friend class js::WasmTableObject;
+  template <class>
+  friend struct js::MallocProvider;
+  Table(JSContext* cx, const TableDesc& td, HandleWasmTableObject maybeObject,
+        UniqueAnyFuncArray functions);
+  Table(JSContext* cx, const TableDesc& td, HandleWasmTableObject maybeObject,
+        TableAnyRefVector&& objects);
 
-  public:
-    static RefPtr<Table> create(JSContext* cx, const TableDesc& desc,
-                                HandleWasmTableObject maybeObject);
-    void trace(JSTracer* trc);
+  void tracePrivate(JSTracer* trc);
+  friend class js::WasmTableObject;
 
-    bool external() const { return external_; }
-    bool isTypedFunction() const { return kind_ == TableKind::TypedFunction; }
-    uint32_t length() const { return length_; }
-    Maybe<uint32_t> maximum() const { return maximum_; }
-    uint8_t* base() const { return array_.get(); }
+ public:
+  static RefPtr<Table> create(JSContext* cx, const TableDesc& desc,
+                              HandleWasmTableObject maybeObject);
+  void trace(JSTracer* trc);
 
-    // All table updates must go through set() or setNull().
+  TableKind kind() const { return kind_; }
+  bool isTypedFunction() const { return kind_ == TableKind::TypedFunction; }
+  bool isFunction() const {
+    return kind_ == TableKind::AnyFunction || kind_ == TableKind::TypedFunction;
+  }
+  uint32_t length() const { return length_; }
+  Maybe<uint32_t> maximum() const { return maximum_; }
 
-    void** internalArray() const;
-    ExternalTableElem* externalArray() const;
-    void set(uint32_t index, void* code, const Instance* instance);
-    void setNull(uint32_t index);
+  // Only for function values.  Raw pointer to the table.
+  uint8_t* functionBase() const;
 
-    // Copy entry at |srcIndex| to |dstIndex|.  Used by table.copy.
-    void copy(uint32_t dstIndex, uint32_t srcIndex);
+  // get/setAnyFunc is allowed only on table-of-anyfunc.
+  // get/setAnyRef is allowed only on table-of-anyref.
+  // setNull is allowed on either.
+  const FunctionTableElem& getAnyFunc(uint32_t index) const;
+  void setAnyFunc(uint32_t index, void* code, const Instance* instance);
 
-    uint32_t grow(uint32_t delta, JSContext* cx);
-    bool movingGrowable() const;
-    bool addMovingGrowObserver(JSContext* cx, WasmInstanceObject* instance);
+  JSObject* getAnyRef(uint32_t index) const;
+  void setAnyRef(uint32_t index, JSObject* obj);
 
-    // about:memory reporting:
+  void setNull(uint32_t index);
 
-    size_t sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const;
+  // Copy entry from |srcTable| at |srcIndex| to this table at |dstIndex|.
+  // Used by table.copy.
+  void copy(const Table& srcTable, uint32_t dstIndex, uint32_t srcIndex);
+
+  // grow() returns (uint32_t)-1 if it could not grow.
+  uint32_t grow(uint32_t delta, JSContext* cx);
+  bool movingGrowable() const;
+  bool addMovingGrowObserver(JSContext* cx, WasmInstanceObject* instance);
+
+  // about:memory reporting:
+
+  size_t sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const;
 };
 
 typedef RefPtr<Table> SharedTable;
 typedef Vector<SharedTable, 0, SystemAllocPolicy> SharedTableVector;
 
-} // namespace wasm
-} // namespace js
+}  // namespace wasm
+}  // namespace js
 
-#endif // wasm_table_h
+#endif  // wasm_table_h

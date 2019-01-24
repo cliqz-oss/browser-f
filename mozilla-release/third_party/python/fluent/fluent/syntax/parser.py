@@ -1,24 +1,24 @@
 from __future__ import unicode_literals
 import re
-from .ftlstream import FTLParserStream
 from . import ast
+from .stream import EOF, EOL, FluentParserStream
 from .errors import ParseError
 
 
 def with_span(fn):
-    def decorated(self, ps, *args):
+    def decorated(self, ps, *args, **kwargs):
         if not self.with_spans:
-            return fn(self, ps, *args)
+            return fn(self, ps, *args, **kwargs)
 
-        start = ps.get_index()
-        node = fn(self, ps, *args)
+        start = ps.index
+        node = fn(self, ps, *args, **kwargs)
 
-        # Don't re-add the span if the node already has it.  This may happen
+        # Don't re-add the span if the node already has it. This may happen
         # when one decorated function calls another decorated function.
         if node.span is not None:
             return node
 
-        end = ps.get_index()
+        end = ps.index
         node.add_span(start, end)
         return node
 
@@ -30,25 +30,23 @@ class FluentParser(object):
         self.with_spans = with_spans
 
     def parse(self, source):
-        ps = FTLParserStream(source)
-        ps.skip_blank_lines()
+        ps = FluentParserStream(source)
+        ps.skip_blank_block()
 
         entries = []
         last_comment = None
 
-        while ps.current():
+        while ps.current_char:
             entry = self.get_entry_or_junk(ps)
-            blank_lines = ps.skip_blank_lines()
+            blank_lines = ps.skip_blank_block()
 
             # Regular Comments require special logic. Comments may be attached
             # to Messages or Terms if they are followed immediately by them.
             # However they should parse as standalone when they're followed by
             # Junk. Consequently, we only attach Comments once we know that the
             # Message or the Term parsed successfully.
-            if (
-                isinstance(entry, ast.Comment)
-                and blank_lines == 0 and ps.current()
-            ):
+            if isinstance(entry, ast.Comment) and len(blank_lines) == 0 \
+                    and ps.current_char:
                 # Stash the comment and decide what to do with it
                 # in the next pass.
                 last_comment = entry
@@ -79,7 +77,7 @@ class FluentParser(object):
         res = ast.Resource(entries)
 
         if self.with_spans:
-            res.add_span(0, ps.get_index())
+            res.add_span(0, ps.index)
 
         return res
 
@@ -92,32 +90,35 @@ class FluentParser(object):
         Preceding comments are ignored unless they contain syntax errors
         themselves, in which case Junk for the invalid comment is returned.
         """
-        ps = FTLParserStream(source)
-        ps.skip_blank_lines()
+        ps = FluentParserStream(source)
+        ps.skip_blank_block()
 
-        while ps.current_is('#'):
+        while ps.current_char == '#':
             skipped = self.get_entry_or_junk(ps)
             if isinstance(skipped, ast.Junk):
                 # Don't skip Junk comments.
                 return skipped
-            ps.skip_blank_lines()
+            ps.skip_blank_block()
 
         return self.get_entry_or_junk(ps)
 
     def get_entry_or_junk(self, ps):
-        entry_start_pos = ps.get_index()
+        entry_start_pos = ps.index
 
         try:
             entry = self.get_entry(ps)
             ps.expect_line_end()
             return entry
         except ParseError as err:
-            error_index = ps.get_index()
-            ps.skip_to_next_entry_start()
-            next_entry_start = ps.get_index()
+            error_index = ps.index
+            ps.skip_to_next_entry_start(entry_start_pos)
+            next_entry_start = ps.index
+            if next_entry_start < error_index:
+                # The position of the error must be inside of the Junk's span.
+                error_index = next_entry_start
 
             # Create a Junk instance
-            slice = ps.get_slice(entry_start_pos, next_entry_start)
+            slice = ps.string[entry_start_pos:next_entry_start]
             junk = ast.Junk(slice)
             if self.with_spans:
                 junk.add_span(entry_start_pos, next_entry_start)
@@ -127,16 +128,16 @@ class FluentParser(object):
             return junk
 
     def get_entry(self, ps):
-        if ps.current_is('#'):
+        if ps.current_char == '#':
             return self.get_comment(ps)
 
-        if ps.current_is('/'):
+        if ps.current_char == '/':
             return self.get_zero_four_style_comment(ps)
 
-        if ps.current_is('['):
+        if ps.current_char == '[':
             return self.get_group_comment_from_section(ps)
 
-        if ps.current_is('-'):
+        if ps.current_char == '-':
             return self.get_term(ps)
 
         if ps.is_identifier_start():
@@ -153,13 +154,13 @@ class FluentParser(object):
         content = ''
 
         while True:
-            ch = ps.take_char(lambda x: x != '\n')
+            ch = ps.take_char(lambda x: x != EOL)
             while ch:
                 content += ch
-                ch = ps.take_char(lambda x: x != '\n')
+                ch = ps.take_char(lambda x: x != EOL)
 
-            if ps.is_peek_next_line_zero_four_style_comment():
-                content += ps.current()
+            if ps.is_next_line_zero_four_comment():
+                content += ps.current_char
                 ps.next()
                 ps.expect_char('/')
                 ps.expect_char('/')
@@ -168,8 +169,7 @@ class FluentParser(object):
                 break
 
         # Comments followed by Sections become GroupComments.
-        ps.peek()
-        if ps.current_peek_is('['):
+        if ps.peek() == '[':
             ps.skip_to_peek()
             self.get_group_comment_from_section(ps)
             return ast.GroupComment(content)
@@ -188,22 +188,23 @@ class FluentParser(object):
 
         while True:
             i = -1
-            while ps.current_is('#') and (i < (2 if level == -1 else level)):
+            while ps.current_char == '#' \
+                    and (i < (2 if level == -1 else level)):
                 ps.next()
                 i += 1
 
             if level == -1:
                 level = i
 
-            if not ps.current_is('\n'):
+            if ps.current_char != EOL:
                 ps.expect_char(' ')
-                ch = ps.take_char(lambda x: x != '\n')
+                ch = ps.take_char(lambda x: x != EOL)
                 while ch:
                     content += ch
-                    ch = ps.take_char(lambda x: x != '\n')
+                    ch = ps.take_char(lambda x: x != EOL)
 
-            if ps.is_peek_next_line_comment(level):
-                content += ps.current()
+            if ps.is_next_line_comment(level=level):
+                content += ps.current_char
                 ps.next()
             else:
                 break
@@ -217,15 +218,13 @@ class FluentParser(object):
 
     @with_span
     def get_group_comment_from_section(self, ps):
+        def until_closing_bracket_or_eol(ch):
+            return ch not in (']', EOL)
+
         ps.expect_char('[')
         ps.expect_char('[')
-
-        ps.skip_inline_ws()
-
-        self.get_variant_name(ps)
-
-        ps.skip_inline_ws()
-
+        while ps.take_char(until_closing_bracket_or_eol):
+            pass
         ps.expect_char(']')
         ps.expect_char(']')
 
@@ -236,48 +235,38 @@ class FluentParser(object):
     @with_span
     def get_message(self, ps):
         id = self.get_identifier(ps)
-
-        ps.skip_inline_ws()
-        pattern = None
+        ps.skip_blank_inline()
 
         # XXX Syntax 0.4 compat
-        if ps.current_is('='):
+        if ps.current_char == '=':
             ps.next()
-
-            if ps.is_peek_value_start():
-                ps.skip_indent()
-                pattern = self.get_pattern(ps)
-            else:
-                ps.skip_inline_ws()
-
-        if ps.is_peek_next_line_attribute_start():
-            attrs = self.get_attributes(ps)
+            value = self.maybe_get_pattern(ps)
         else:
-            attrs = None
+            value = None
 
-        if pattern is None and attrs is None:
+        attrs = self.get_attributes(ps)
+
+        if value is None and len(attrs) == 0:
             raise ParseError('E0005', id.name)
 
-        return ast.Message(id, pattern, attrs)
+        return ast.Message(id, value, attrs)
 
     @with_span
     def get_term(self, ps):
-        id = self.get_term_identifier(ps)
+        ps.expect_char('-')
+        id = self.get_identifier(ps)
 
-        ps.skip_inline_ws()
+        ps.skip_blank_inline()
         ps.expect_char('=')
 
-        if ps.is_peek_value_start():
-            ps.skip_indent()
-            value = self.get_value(ps)
-        else:
+        # Syntax 0.8 compat: VariantLists are supported but deprecated. They
+        # can only be found as values of Terms. Nested VariantLists are not
+        # allowed.
+        value = self.maybe_get_variant_list(ps) or self.maybe_get_pattern(ps)
+        if value is None:
             raise ParseError('E0006', id.name)
 
-        if ps.is_peek_next_line_attribute_start():
-            attrs = self.get_attributes(ps)
-        else:
-            attrs = None
-
+        attrs = self.get_attributes(ps)
         return ast.Term(id, value, attrs)
 
     @with_span
@@ -286,26 +275,26 @@ class FluentParser(object):
 
         key = self.get_identifier(ps)
 
-        ps.skip_inline_ws()
+        ps.skip_blank_inline()
         ps.expect_char('=')
 
-        if ps.is_peek_value_start():
-            ps.skip_indent()
-            value = self.get_pattern(ps)
-            return ast.Attribute(key, value)
+        value = self.maybe_get_pattern(ps)
+        if value is None:
+            raise ParseError('E0012')
 
-        raise ParseError('E0012')
+        return ast.Attribute(key, value)
+
 
     def get_attributes(self, ps):
         attrs = []
+        ps.peek_blank()
 
-        while True:
-            ps.expect_indent()
+        while ps.is_attribute_start():
+            ps.skip_to_peek()
             attr = self.get_attribute(ps)
             attrs.append(attr)
+            ps.peek_blank();
 
-            if not ps.is_peek_next_line_attribute_start():
-                break
         return attrs
 
     @with_span
@@ -318,79 +307,65 @@ class FluentParser(object):
 
         return ast.Identifier(name)
 
-    @with_span
-    def get_term_identifier(self, ps):
-        ps.expect_char('-')
-        id = self.get_identifier(ps)
-        return ast.Identifier('-{}'.format(id.name))
-
     def get_variant_key(self, ps):
-        ch = ps.current()
+        ch = ps.current_char
 
-        if ch is None:
+        if ch is EOF:
             raise ParseError('E0013')
 
         cc = ord(ch)
         if ((cc >= 48 and cc <= 57) or cc == 45):  # 0-9, -
             return self.get_number(ps)
 
-        return self.get_variant_name(ps)
+        return self.get_identifier(ps)
 
     @with_span
     def get_variant(self, ps, has_default):
         default_index = False
 
-        if ps.current_is('*'):
+        if ps.current_char == '*':
             if has_default:
                 raise ParseError('E0015')
             ps.next()
             default_index = True
 
         ps.expect_char('[')
+        ps.skip_blank()
 
         key = self.get_variant_key(ps)
 
+        ps.skip_blank()
         ps.expect_char(']')
 
-        if ps.is_peek_value_start():
-            ps.skip_indent()
-            value = self.get_value(ps)
-            return ast.Variant(key, value, default_index)
+        value = self.maybe_get_pattern(ps)
+        if value is None:
+            raise ParseError('E0012')
 
-        raise ParseError('E0012')
+        return ast.Variant(key, value, default_index)
+
 
     def get_variants(self, ps):
         variants = []
         has_default = False
 
-        while True:
-            ps.expect_indent()
+        ps.skip_blank()
+        while ps.is_variant_start():
             variant = self.get_variant(ps, has_default)
 
             if variant.default:
                 has_default = True
 
             variants.append(variant)
+            ps.expect_line_end()
+            ps.skip_blank()
 
-            if not ps.is_peek_next_line_variant_start():
-                break
+        if len(variants) == 0:
+            raise ParseError('E0011')
 
         if not has_default:
             raise ParseError('E0010')
 
         return variants
-
-    @with_span
-    def get_variant_name(self, ps):
-        name = ps.take_id_start()
-        while True:
-            ch = ps.take_variant_name_char()
-            if ch:
-                name += ch
-            else:
-                break
-
-        return ast.VariantName(name.rstrip(' \t\n\r'))
 
     def get_digits(self, ps):
         num = ''
@@ -409,134 +384,238 @@ class FluentParser(object):
     def get_number(self, ps):
         num = ''
 
-        if ps.current_is('-'):
+        if ps.current_char == '-':
             num += '-'
             ps.next()
 
         num += self.get_digits(ps)
 
-        if ps.current_is('.'):
+        if ps.current_char == '.':
             num += '.'
             ps.next()
             num += self.get_digits(ps)
 
         return ast.NumberLiteral(num)
 
-    @with_span
-    def get_value(self, ps):
-        if ps.current_is('{'):
-            ps.peek()
-            ps.peek_inline_ws()
-            if ps.is_peek_next_line_variant_start():
-                return self.get_variant_list(ps)
+    def maybe_get_pattern(self, ps):
+        '''Parse an inline or a block Pattern, or None
 
-        return self.get_pattern(ps)
+        maybe_get_pattern distinguishes between patterns which start on the
+        same line as the indentifier (aka inline singleline patterns and inline
+        multiline patterns), and patterns which start on a new line (aka block
+        patterns). The distinction is important for the dedentation logic: the
+        indent of the first line of a block pattern must be taken into account
+        when calculating the maximum common indent.
+        '''
+        ps.peek_blank_inline()
+        if ps.is_value_start():
+            ps.skip_to_peek()
+            return self.get_pattern(ps, is_block=False)
+
+        ps.peek_blank_block()
+        if ps.is_value_continuation():
+            ps.skip_to_peek()
+            return self.get_pattern(ps, is_block=True)
+
+        return None
+
+    def maybe_get_variant_list(self, ps):
+        '''Parse a VariantList, or None
+
+        Deprecated in Syntax 0.8. VariantLists are only allowed as values of
+        Terms. Values of Messages, Attributes and Variants must be Patterns.
+        This method is only used in get_term.
+        '''
+        ps.peek_blank()
+        if ps.current_peek == '{':
+            start = ps.peek_offset
+            ps.peek()
+            ps.peek_blank_inline()
+            if ps.current_peek == EOL:
+                ps.peek_blank()
+                if ps.is_variant_start():
+                    ps.reset_peek(start)
+                    ps.skip_to_peek()
+                    return self.get_variant_list(ps)
+
+        ps.reset_peek()
+        return None
 
     @with_span
     def get_variant_list(self, ps):
         ps.expect_char('{')
-        ps.skip_inline_ws()
         variants = self.get_variants(ps)
-        ps.expect_indent()
         ps.expect_char('}')
         return ast.VariantList(variants)
 
     @with_span
-    def get_pattern(self, ps):
+    def get_pattern(self, ps, is_block):
         elements = []
-        ps.skip_inline_ws()
+        if is_block:
+            # A block pattern is a pattern which starts on a new line. Measure
+            # the indent of this first line for the dedentation logic.
+            blank_start = ps.index
+            first_indent = ps.skip_blank_inline()
+            elements.append(self.Indent(first_indent, blank_start, ps.index))
+            common_indent_length = len(first_indent)
+        else:
+            common_indent_length = float('infinity')
 
-        while ps.current():
-            ch = ps.current()
 
-            # The end condition for get_pattern's while loop is a newline
-            # which is not followed by a valid pattern continuation.
-            if ch == '\n' and not ps.is_peek_next_line_value():
+        while ps.current_char:
+            if ps.current_char == EOL:
+                blank_start = ps.index
+                blank_lines = ps.peek_blank_block()
+                if ps.is_value_continuation():
+                    ps.skip_to_peek()
+                    indent = ps.skip_blank_inline()
+                    common_indent_length = min(common_indent_length, len(indent))
+                    elements.append(self.Indent(blank_lines + indent, blank_start, ps.index))
+                    continue
+
+                # The end condition for get_pattern's while loop is a newline
+                # which is not followed by a valid pattern continuation.
+                ps.reset_peek()
                 break
 
-            if ch == '{':
+            if ps.current_char == '}':
+                raise ParseError('E0027')
+
+            if ps.current_char == '{':
                 element = self.get_placeable(ps)
             else:
                 element = self.get_text_element(ps)
+
             elements.append(element)
 
-        # Trim trailing whitespace.
-        last_element = elements[-1]
+        dedented = self.dedent(elements, common_indent_length)
+        return ast.Pattern(dedented)
+
+    class Indent(ast.SyntaxNode):
+        def __init__(self, value, start, end):
+            super(FluentParser.Indent, self).__init__()
+            self.value = value
+            self.add_span(start, end)
+
+    def dedent(self, elements, common_indent):
+        '''Dedent a list of elements by removing the maximum common indent from
+        the beginning of text lines. The common indent is calculated in
+        get_pattern.
+        '''
+        trimmed = []
+
+        for element in elements:
+            if isinstance(element, ast.Placeable):
+                trimmed.append(element)
+                continue
+
+            if isinstance(element, self.Indent):
+                # Strip the common indent.
+                element.value = element.value[:len(element.value) - common_indent]
+                if len(element.value) == 0:
+                    continue
+
+            prev = trimmed[-1] if len(trimmed) > 0 else None
+            if isinstance(prev, ast.TextElement):
+                # Join adjacent TextElements by replacing them with their sum.
+                sum = ast.TextElement(prev.value + element.value)
+                if self.with_spans:
+                    sum.add_span(prev.span.start, element.span.end)
+                trimmed[-1] = sum
+                continue
+
+            if isinstance(element, self.Indent):
+                # If the indent hasn't been merged into a preceding
+                # TextElements, convert it into a new TextElement.
+                text_element = ast.TextElement(element.value)
+                if self.with_spans:
+                    text_element.add_span(element.span.start, element.span.end)
+                element = text_element
+
+            trimmed.append(element)
+
+        # Trim trailing whitespace from the Pattern.
+        last_element = trimmed[-1] if len(trimmed) > 0 else None
         if isinstance(last_element, ast.TextElement):
             last_element.value = last_element.value.rstrip(' \t\n\r')
+            if last_element.value == "":
+                trimmed.pop()
 
-        return ast.Pattern(elements)
+        return trimmed
 
     @with_span
     def get_text_element(self, ps):
         buf = ''
 
-        while ps.current():
-            ch = ps.current()
+        while ps.current_char:
+            ch = ps.current_char
 
-            if ch == '{':
+            if ch == '{' or ch == '}':
                 return ast.TextElement(buf)
 
-            if ch == '\n':
-                if not ps.is_peek_next_line_value():
-                    return ast.TextElement(buf)
+            if ch == EOL:
+                return ast.TextElement(buf)
 
-                ps.next()
-                ps.skip_inline_ws()
-
-                # Add the new line to the buffer
-                buf += ch
-                continue
-
-            if ch == '\\':
-                ps.next()
-                buf += self.get_escape_sequence(ps)
-            else:
-                buf += ch
-                ps.next()
+            buf += ch
+            ps.next()
 
         return ast.TextElement(buf)
 
-    def get_escape_sequence(self, ps, specials=('{', '\\')):
-        next = ps.current()
+    def get_escape_sequence(self, ps):
+        next = ps.current_char
 
-        if next in specials:
+        if next == '\\' or next == '"':
             ps.next()
-            return '\\{}'.format(next)
+            return '\\{}'.format(next), next
 
         if next == 'u':
-            sequence = ''
-            ps.next()
+            return self.get_unicode_escape_sequence(ps, next, 4)
 
-            for _ in range(4):
-                ch = ps.take_hex_digit()
-                if ch is None:
-                    raise ParseError('E0026', sequence + ps.current())
-                sequence += ch
-
-            return '\\u{}'.format(sequence)
+        if next == 'U':
+            return self.get_unicode_escape_sequence(ps, next, 6)
 
         raise ParseError('E0025', next)
+
+    def get_unicode_escape_sequence(self, ps, u, digits):
+        ps.expect_char(u)
+        sequence = ''
+        for _ in range(digits):
+            ch = ps.take_hex_digit()
+            if not ch:
+                raise ParseError('E0026', '\\{}{}{}'.format(u, sequence, ps.current_char))
+            sequence += ch
+
+        codepoint = int(sequence, 16)
+        if codepoint <= 0xD7FF or 0xE000 <= codepoint:
+            # It's a Unicode scalar value. The escape sequence is 4 or 6 digits
+            # long. Convert it to a 8-digit-long \UHHHHHHHH sequence and encode
+            # it as bytes, because in Python 3 decode is not available on str.
+            byte_sequence = "\\U{:08x}".format(codepoint).encode('utf-8')
+            unescaped = byte_sequence.decode('unicode-escape')
+        else:
+            # Escape sequences reresenting surrogate code points are
+            # well-formed but invalid in Fluent. Replace them with U+FFFD
+            # REPLACEMENT CHARACTER.
+            unescaped = '\uFFFD'
+
+        return '\\{}{}'.format(u, sequence), unescaped
 
     @with_span
     def get_placeable(self, ps):
         ps.expect_char('{')
+        ps.skip_blank()
         expression = self.get_expression(ps)
         ps.expect_char('}')
         return ast.Placeable(expression)
 
     @with_span
     def get_expression(self, ps):
-        ps.skip_inline_ws()
+        selector = self.get_inline_expression(ps)
 
-        selector = self.get_selector_expression(ps)
+        ps.skip_blank()
 
-        ps.skip_inline_ws()
-
-        if ps.current_is('-'):
-            ps.peek()
-
-            if not ps.current_peek_is('>'):
+        if ps.current_char == '-':
+            if ps.peek() != '>':
                 ps.reset_peek()
                 return selector
 
@@ -544,113 +623,133 @@ class FluentParser(object):
                 raise ParseError('E0016')
 
             if isinstance(selector, ast.AttributeExpression) \
-               and isinstance(selector.ref, ast.MessageReference):
+                   and isinstance(selector.ref, ast.MessageReference):
                 raise ParseError('E0018')
 
-            if isinstance(selector, ast.VariantExpression):
+            if isinstance(selector, ast.TermReference) \
+                    or isinstance(selector, ast.VariantExpression):
+                raise ParseError('E0017')
+
+            if isinstance(selector, ast.CallExpression) \
+                   and isinstance(selector.callee, ast.TermReference):
                 raise ParseError('E0017')
 
             ps.next()
             ps.next()
 
-            ps.skip_inline_ws()
+            ps.skip_blank_inline()
+            ps.expect_line_end()
 
             variants = self.get_variants(ps)
-
-            if len(variants) == 0:
-                raise ParseError('E0011')
-
-            # VariantLists are only allowed in other VariantLists.
-            if any(isinstance(v.value, ast.VariantList) for v in variants):
-                raise ParseError('E0023')
-
-            ps.expect_indent()
-
             return ast.SelectExpression(selector, variants)
-        elif (
-            isinstance(selector, ast.AttributeExpression)
-            and isinstance(selector.ref, ast.TermReference)
-        ):
+
+        if isinstance(selector, ast.AttributeExpression) \
+                and isinstance(selector.ref, ast.TermReference):
+            raise ParseError('E0019')
+
+        if isinstance(selector, ast.CallExpression) \
+                and isinstance(selector.callee, ast.AttributeExpression):
             raise ParseError('E0019')
 
         return selector
 
     @with_span
-    def get_selector_expression(self, ps):
-        if ps.current_is('{'):
+    def get_inline_expression(self, ps):
+        if ps.current_char == '{':
             return self.get_placeable(ps)
 
-        literal = self.get_literal(ps)
+        expr = self.get_simple_expression(ps)
 
-        if not isinstance(literal, (ast.MessageReference, ast.TermReference)):
-            return literal
+        if isinstance(expr, (ast.NumberLiteral, ast.StringLiteral,
+                ast.VariableReference)):
+            return expr
 
-        ch = ps.current()
+        if isinstance(expr, ast.MessageReference):
+            if ps.current_char == '.':
+                ps.next()
+                attr = self.get_identifier(ps)
+                return ast.AttributeExpression(expr, attr)
 
-        if (ch == '.'):
-            ps.next()
-            attr = self.get_identifier(ps)
-            return ast.AttributeExpression(literal, attr)
+            if ps.current_char == '(':
+                # It's a Function. Ensure it's all upper-case.
+                if not re.match('^[A-Z][A-Z_?-]*$', expr.id.name):
+                    raise ParseError('E0008')
+                func = ast.FunctionReference(expr.id)
+                if self.with_spans:
+                    func.add_span(expr.span.start, expr.span.end)
+                return ast.CallExpression(func, *self.get_call_arguments(ps))
 
-        if (ch == '['):
-            ps.next()
+            return expr
 
-            if isinstance(literal, ast.MessageReference):
-                raise ParseError('E0024')
+        if isinstance(expr, ast.TermReference):
+            if (ps.current_char == '['):
+                ps.next()
+                key = self.get_variant_key(ps)
+                ps.expect_char(']')
+                return ast.VariantExpression(expr, key)
 
-            key = self.get_variant_key(ps)
-            ps.expect_char(']')
-            return ast.VariantExpression(literal, key)
+            if (ps.current_char == '.'):
+                ps.next()
+                attr = self.get_identifier(ps)
+                expr = ast.AttributeExpression(expr, attr)
 
-        if (ch == '('):
-            ps.next()
+            if (ps.current_char == '('):
+                return ast.CallExpression(expr, *self.get_call_arguments(ps))
 
-            if not re.match('^[A-Z][A-Z_?-]*$', literal.id.name):
-                raise ParseError('E0008')
+            return expr
 
-            positional, named = self.get_call_args(ps)
-            ps.expect_char(')')
-
-            func = ast.Function(literal.id.name)
-            if (self.with_spans):
-                func.add_span(literal.span.start, literal.span.end)
-
-            return ast.CallExpression(func, positional, named)
-
-        return literal
+        raise ParseError('E0028')
 
     @with_span
-    def get_call_arg(self, ps):
-        exp = self.get_selector_expression(ps)
+    def get_simple_expression(self, ps):
+        if ps.is_number_start():
+            return self.get_number(ps)
+        if ps.current_char == '"':
+            return self.get_string(ps)
+        if ps.current_char == '$':
+            ps.next()
+            id = self.get_identifier(ps)
+            return ast.VariableReference(id)
+        if ps.current_char == '-':
+            ps.next()
+            id = self.get_identifier(ps)
+            return ast.TermReference(id)
+        if ps.is_identifier_start():
+            id = self.get_identifier(ps)
+            return ast.MessageReference(id)
+        raise ParseError('E0028')
 
-        ps.skip_inline_ws()
+    @with_span
+    def get_call_argument(self, ps):
+        exp = self.get_inline_expression(ps)
 
-        if not ps.current_is(':'):
+        ps.skip_blank()
+
+        if ps.current_char != ':':
             return exp
 
         if not isinstance(exp, ast.MessageReference):
             raise ParseError('E0009')
 
         ps.next()
-        ps.skip_inline_ws()
+        ps.skip_blank()
 
-        val = self.get_arg_val(ps)
+        value = self.get_literal(ps)
+        return ast.NamedArgument(exp.id, value)
 
-        return ast.NamedArgument(exp.id, val)
-
-    def get_call_args(self, ps):
+    def get_call_arguments(self, ps):
         positional = []
         named = []
         argument_names = set()
 
-        ps.skip_inline_ws()
-        ps.skip_indent()
+        ps.expect_char('(')
+        ps.skip_blank()
 
         while True:
-            if ps.current_is(')'):
+            if ps.current_char == ')':
                 break
 
-            arg = self.get_call_arg(ps)
+            arg = self.get_call_argument(ps)
             if isinstance(arg, ast.NamedArgument):
                 if arg.name.name in argument_names:
                     raise ParseError('E0022')
@@ -661,71 +760,48 @@ class FluentParser(object):
             else:
                 positional.append(arg)
 
-            ps.skip_inline_ws()
-            ps.skip_indent()
+            ps.skip_blank()
 
-            if ps.current_is(','):
+            if ps.current_char == ',':
                 ps.next()
-                ps.skip_inline_ws()
-                ps.skip_indent()
+                ps.skip_blank()
                 continue
-            else:
-                break
 
+            break
+
+        ps.expect_char(')')
         return positional, named
-
-    def get_arg_val(self, ps):
-        if ps.is_number_start():
-            return self.get_number(ps)
-        elif ps.current_is('"'):
-            return self.get_string(ps)
-        raise ParseError('E0012')
 
     @with_span
     def get_string(self, ps):
-        val = ''
+        raw = ''
+        value = ''
 
         ps.expect_char('"')
 
-        ch = ps.take_char(lambda x: x != '"' and x != '\n')
-        while ch:
+        while True:
+            ch = ps.take_char(lambda x: x != '"' and x != EOL)
+            if not ch:
+                break
             if ch == '\\':
-                val += self.get_escape_sequence(ps, ('{', '\\', '"'))
+                sequence, unescaped = self.get_escape_sequence(ps)
+                raw += sequence
+                value += unescaped
             else:
-                val += ch
-            ch = ps.take_char(lambda x: x != '"' and x != '\n')
+                raw += ch
+                value += ch
 
-        if ps.current_is('\n'):
+        if ps.current_char == EOL:
             raise ParseError('E0020')
 
-        ps.next()
+        ps.expect_char('"')
 
-        return ast.StringLiteral(val)
+        return ast.StringLiteral(raw, value)
 
     @with_span
     def get_literal(self, ps):
-        ch = ps.current()
-
-        if ch is None:
-            raise ParseError('E0014')
-
-        if ch == '$':
-            ps.next()
-            id = self.get_identifier(ps)
-            return ast.VariableReference(id)
-
-        elif ps.is_identifier_start():
-            id = self.get_identifier(ps)
-            return ast.MessageReference(id)
-
-        elif ps.is_number_start():
+        if ps.is_number_start():
             return self.get_number(ps)
-
-        elif ch == '-':
-            id = self.get_term_identifier(ps)
-            return ast.TermReference(id)
-
-        elif ch == '"':
+        if ps.current_char == '"':
             return self.get_string(ps)
-
         raise ParseError('E0014')

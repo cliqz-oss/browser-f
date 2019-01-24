@@ -249,6 +249,11 @@ function generateDocumentation() {
       column.colSpan = "2";
       schema_row.appendChild(column);
       sec_tbody.appendChild(schema_row);
+    } else if (schema.properties[policyName].items) {
+      let column = col(JSON.stringify(schema.properties[policyName], null, 1), "schema");
+      column.colSpan = "2";
+      schema_row.appendChild(column);
+      sec_tbody.appendChild(schema_row);
     } else {
       let column = col("type: " + schema.properties[policyName].type, "schema");
       column.colSpan = "2";

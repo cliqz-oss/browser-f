@@ -1,5 +1,6 @@
 /* import-globals-from ../../../../../testing/mochitest/tests/SimpleTest/SimpleTest.js */
 /* import-globals-from ../../../../../testing/mochitest/tests/SimpleTest/EventUtils.js */
+/* import-globals-from ../../../../../testing/mochitest/tests/SimpleTest/AddTask.js */
 /* import-globals-from ../../../../../toolkit/components/satchel/test/satchel_common.js */
 /* eslint-disable no-unused-vars */
 
@@ -112,7 +113,20 @@ function triggerAutofillAndCheckProfile(profile) {
     const element = document.getElementById(fieldName);
     const expectingEvent = document.activeElement == element ? "DOMAutoComplete" : "change";
     const checkFieldAutofilled = Promise.all([
-      new Promise(resolve => element.addEventListener("input", resolve, {once: true})),
+      new Promise(resolve => element.addEventListener("input", (event) => {
+        if (element.tagName == "INPUT" && element.type == "text") {
+          ok(event instanceof InputEvent,
+             `"input" event should be dispatched with InputEvent interface on ${element.tagName}`);
+        } else {
+          ok(event instanceof Event && !(event instanceof UIEvent),
+             `"input" event should be dispatched with Event interface on ${element.tagName}`);
+        }
+        is(event.cancelable, false,
+           `"input" event should be never cancelable on ${element.tagName}`);
+        is(event.bubbles, true,
+           `"input" event should always bubble on ${element.tagName}`);
+        resolve();
+      }, {once: true})),
       new Promise(resolve => element.addEventListener(expectingEvent, resolve, {once: true})),
     ]).then(() => checkFieldValue(element, value));
 
@@ -201,6 +215,15 @@ async function cleanUpStorage() {
   await cleanUpCreditCards();
 }
 
+async function canTestOSKeyStoreLogin() {
+  let {canTest} = await invokeAsyncChromeTask("FormAutofillTest:CanTestOSKeyStoreLogin", "FormAutofillTest:CanTestOSKeyStoreLoginResult");
+  return canTest;
+}
+
+async function waitForOSKeyStoreLogin(login = false) {
+  await invokeAsyncChromeTask("FormAutofillTest:OSKeyStoreLogin", "FormAutofillTest:OSKeyStoreLoggedIn", {login});
+}
+
 function patchRecordCCNumber(record) {
   const number = record["cc-number"];
   const ccNumberFmt = {
@@ -261,6 +284,12 @@ function formAutoFillCommonSetup() {
     if (gPopupShownListener) {
       gPopupShownListener({results});
     }
+  });
+
+  add_task(async function setup() {
+    formFillChromeScript.sendAsyncMessage("setup");
+    info(`expecting the storage setup`);
+    await formFillChromeScript.promiseOneMessage("setup-finished");
   });
 
   SimpleTest.registerCleanupFunction(async () => {

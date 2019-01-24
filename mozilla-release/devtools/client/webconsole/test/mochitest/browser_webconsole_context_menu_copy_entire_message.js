@@ -11,7 +11,7 @@ const {PrefObserver} = require("devtools/client/shared/prefs");
 const LOG_FORMAT_WITH_TIMESTAMP = /^[\d:.]+ .+ (\d+ )?.+:\d+$/;
 const LOG_FORMAT_WITHOUT_TIMESTAMP = /^.+ (\d+ )?.+:\d+$/;
 // RegExp that validates copied text for stacktrace lines.
-const TRACE_FORMAT = /^\t.+ .+:\d+:\d+$/;
+const TRACE_FORMAT = /^\t.+ .+:\d+$/;
 
 const PREF_MESSAGE_TIMESTAMP = "devtools.webconsole.timestampMessages";
 
@@ -57,6 +57,8 @@ add_task(async function() {
 
   info("Test copy menu item for the stack trace message");
   message = await waitFor(() => findMessage(hud, "console.trace"));
+  // Wait for the stacktrace to be rendered.
+  await waitFor(() => message.querySelector(".frames"));
   clipboardText = await copyMessageContent(hud, message);
   ok(true, "Clipboard text was found and saved");
 
@@ -108,9 +110,9 @@ add_task(async function() {
   lines = clipboardText.split("\n");
   is(lines[0], `Error: "error object"`, "Error object first line has expected text");
   ok(lines[1].startsWith(`\twrapper data:text/html`),
-    "Error stacktrace first line starts with expected value");
+    "Error stacktrace first line starts with expected value:\n" + lines[1]);
   ok(lines[2].startsWith(`\tlogStuff data:text/html`),
-    "Error stacktrace second line starts with expected value");
+    "Error stacktrace second line starts with expected value:\n" + lines[2]);
 
   observer.destroy();
   Services.prefs.clearUserPref(PREF_MESSAGE_TIMESTAMP);

@@ -7,15 +7,25 @@
 
 var EXPORTED_SYMBOLS = [
   "BrowserUsageTelemetry",
+  "URICountListener",
   "URLBAR_SELECTED_RESULT_TYPES",
   "URLBAR_SELECTED_RESULT_METHODS",
   "MINIMUM_TAB_COUNT_INTERVAL_MS",
  ];
 
-ChromeUtils.import("resource://gre/modules/Services.jsm");
+const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", null);
 
-ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
-                               "resource://gre/modules/PrivateBrowsingUtils.jsm");
+XPCOMUtils.defineLazyModuleGetters(this, {
+  PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
+  SearchTelemetry: "resource:///modules/SearchTelemetry.jsm",
+  Services: "resource://gre/modules/Services.jsm",
+  setTimeout: "resource://gre/modules/Timer.jsm",
+});
+
+// This pref is in seconds!
+XPCOMUtils.defineLazyPreferenceGetter(this,
+  "gRecentVisitedOriginsExpiry",
+  "browser.engagement.recent_visited_origins.expiry");
 
 // The upper bound for the count of the visited unique domain names.
 const MAX_UNIQUE_VISITED_DOMAINS = 100;
@@ -125,6 +135,8 @@ function shouldRecordSearchCount(tabbrowser) {
 let URICountListener = {
   // A set containing the visited domains, see bug 1271310.
   _domainSet: new Set(),
+  // A set containing the visited origins during the last 24 hours (similar to domains, but not quite the same)
+  _domain24hrSet: new Set(),
   // A map to keep track of the URIs loaded from the restored tabs.
   _restoredURIsMap: new WeakMap(),
 
@@ -142,6 +154,9 @@ let URICountListener = {
   },
 
   onLocationChange(browser, webProgress, request, uri, flags) {
+    // By default, assume we no longer need to track this tab.
+    SearchTelemetry.stopTrackingBrowser(browser);
+
     // Don't count this URI if it's an error page.
     if (flags & Ci.nsIWebProgressListener.LOCATION_CHANGE_ERROR_PAGE) {
       return;
@@ -204,9 +219,10 @@ let URICountListener = {
     if (!this.isHttpURI(uri)) {
       return;
     }
+
     if (shouldRecordSearchCount(browser.getTabBrowser()) &&
         !(flags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT)) {
-      Services.search.recordSearchURLTelemetry(uriSpec);
+      SearchTelemetry.updateTrackingStatus(browser, uriSpec);
     }
 
     if (!shouldCountURI) {
@@ -219,23 +235,30 @@ let URICountListener = {
     // Update tab count
     BrowserUsageTelemetry._recordTabCount();
 
-    // We only want to count the unique domains up to MAX_UNIQUE_VISITED_DOMAINS.
-    if (this._domainSet.size == MAX_UNIQUE_VISITED_DOMAINS) {
-      return;
-    }
-
     // Unique domains should be aggregated by (eTLD + 1): x.test.com and y.test.com
     // are counted once as test.com.
+    let baseDomain;
     try {
       // Even if only considering http(s) URIs, |getBaseDomain| could still throw
       // due to the URI containing invalid characters or the domain actually being
       // an ipv4 or ipv6 address.
-      this._domainSet.add(Services.eTLD.getBaseDomain(uri));
+      baseDomain = Services.eTLD.getBaseDomain(uri);
     } catch (e) {
       return;
     }
 
-    Services.telemetry.scalarSet(UNIQUE_DOMAINS_COUNT_SCALAR_NAME, this._domainSet.size);
+    // We only want to count the unique domains up to MAX_UNIQUE_VISITED_DOMAINS.
+    if (this._domainSet.size < MAX_UNIQUE_VISITED_DOMAINS) {
+      this._domainSet.add(baseDomain);
+      Services.telemetry.scalarSet(UNIQUE_DOMAINS_COUNT_SCALAR_NAME, this._domainSet.size);
+    }
+
+    this._domain24hrSet.add(baseDomain);
+    if (gRecentVisitedOriginsExpiry) {
+      setTimeout(() => {
+        this._domain24hrSet.delete(baseDomain);
+      }, gRecentVisitedOriginsExpiry * 1000);
+    }
   },
 
   /**
@@ -243,6 +266,21 @@ let URICountListener = {
    */
   reset() {
     this._domainSet.clear();
+  },
+
+  /**
+   * Returns the number of unique domains visited in this session during the
+   * last 24 hours.
+   */
+  get uniqueDomainsVisitedInPast24Hours() {
+    return this._domain24hrSet.size;
+  },
+
+  /**
+   * Resets the number of unique domains visited in this session.
+   */
+  resetUniqueDomainsVisitedInPast24Hours() {
+    this._domain24hrSet.clear();
   },
 
   QueryInterface: ChromeUtils.generateQI([Ci.nsIWebProgressListener,

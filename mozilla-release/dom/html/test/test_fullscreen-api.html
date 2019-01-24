@@ -48,7 +48,10 @@ var gTestWindows = [
   { test: "file_fullscreen-lenient-setters.html" },
   { test: "file_fullscreen-table.html" },
   { test: "file_fullscreen-event-order.html" },
-  { test: "file_fullscreen-featurePolicy.html", prefs: [["dom.security.featurePolicy.enabled", true]] },
+  { test: "file_fullscreen-featurePolicy.html",
+    prefs: [["dom.security.featurePolicy.enabled", true],
+            ["dom.security.featurePolicy.header.enabled", true],
+            ["dom.security.featurePolicy.webidl.enabled", true]] },
 ];
 
 var testWindow = null;
@@ -60,9 +63,15 @@ function finish() {
 
 function nextTest() {
   if (testWindow) {
+    info("Waiting for focus to return to main window");
+    window.addEventListener("focus", function() {
+      info("main window focused, starting next test");
+      SimpleTest.executeSoon(runNextTest);
+    }, {once: true});
     testWindow.close();
+  } else {
+    SimpleTest.executeSoon(runNextTest);
   }
-  SimpleTest.executeSoon(runNextTest);
 }
 
 var gHeadlessSkipList = [
@@ -130,10 +139,12 @@ function runNextTest() {
         waitForLoadAndPaint(testWindow, function() {
           SimpleTest.waitForFocus(function() {
             SimpleTest.waitForFocus(function() {
+              info("Were focused");
               // For the platforms that support reporting occlusion state (e.g. Mac),
               // we should wait until the docshell has been activated again,
               // otherwise, the fullscreen request might be denied.
               if (testWindow.document.hidden) {
+                info("Waiting for document to unhide");
                 waitForEvent(testWindow.document, "visibilitychange", (event) => {
                   return !testWindow.document.hidden;
                 }, testWindow.begin);
@@ -166,8 +177,7 @@ addLoadEvent(function() {
         ["full-screen-api.unprefix.enabled", true],
         ["full-screen-api.allow-trusted-requests-only", false],
         ["full-screen-api.transition-duration.enter", "0 0"],
-        ["full-screen-api.transition-duration.leave", "0 0"],
-        ["dom.webcomponents.shadowdom.enabled", true]
+        ["full-screen-api.transition-duration.leave", "0 0"]
       ]}, nextTest);
 });
 SimpleTest.waitForExplicitFinish();

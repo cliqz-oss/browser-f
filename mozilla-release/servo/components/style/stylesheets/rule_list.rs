@@ -1,20 +1,20 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! A list of CSS rules.
 
+use crate::shared_lock::{DeepCloneParams, DeepCloneWithLock, Locked};
+use crate::shared_lock::{SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard};
+use crate::str::CssStringWriter;
+use crate::stylesheets::loader::StylesheetLoader;
+use crate::stylesheets::rule_parser::{InsertRuleContext, State};
+use crate::stylesheets::stylesheet::StylesheetContents;
+use crate::stylesheets::{CssRule, RulesMutateError};
 #[cfg(feature = "gecko")]
 use malloc_size_of::{MallocShallowSizeOf, MallocSizeOfOps};
 use servo_arc::{Arc, RawOffsetArc};
-use shared_lock::{DeepCloneParams, DeepCloneWithLock, Locked};
-use shared_lock::{SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard};
 use std::fmt::{self, Write};
-use str::CssStringWriter;
-use stylesheets::{CssRule, RulesMutateError};
-use stylesheets::loader::StylesheetLoader;
-use stylesheets::rule_parser::{InsertRuleContext, State};
-use stylesheets::stylesheet::StylesheetContents;
 
 /// A list of CSS rules.
 #[derive(Debug)]

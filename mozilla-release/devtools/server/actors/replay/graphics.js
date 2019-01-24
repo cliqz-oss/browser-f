@@ -23,96 +23,15 @@ Cu.evalInSandbox(
   "addDebuggerToGlobal(this);",
   sandbox
 );
-const RecordReplayControl = sandbox.RecordReplayControl;
-
-// State for dragging the overlay.
-let dragx, dragy;
 
 // Windows in the middleman process are initially set up as about:blank pages.
-// This method fills them in with a canvas filling the tab, and an overlay that
-// can be displayed over that canvas.
+// This method fills them in with a canvas filling the tab.
 function setupContents(window) {
-  // The middlemanOverlay element is shown when the active child is replaying.
-  const overlay = window.middlemanOverlay = window.document.createElement("div");
-  overlay.style.position = "absolute";
-  overlay.style.border = "medium solid #000000";
-  overlay.style.backgroundColor = "#BBCCCC";
-
-  // The middlemanPosition element is contained in the overlay and shows the
-  // current position in the recording.
-  const position = window.middlemanPosition = window.document.createElement("div");
-  position.innerText = "";
-  position.style.textAlign = "center";
-  position.style.padding = "5px 5px 0px 5px";
-  overlay.appendChild(position);
-
-  // The middlemanProgressBar element is contained in the overlay and shows any
-  // progress made on the current operation.
-  const progressBar =
-    window.middlemanProgressBar = window.document.createElement("canvas");
-  progressBar.width = 100;
-  progressBar.height = 5;
-  progressBar.getContext("2d").fillStyle = "white";
-  progressBar.getContext("2d").fillRect(0, 0, 100, 5);
-  progressBar.style.padding = "5px 5px 5px 5px";
-
-  overlay.appendChild(progressBar);
-  window.document.body.prepend(overlay);
-
-  overlay.onmousedown = window.middlemanMouseDown = function(e) {
-    e.preventDefault();
-    dragx = e.clientX;
-    dragy = e.clientY;
-    window.document.onmouseup = window.middlemanMouseUp;
-    window.document.onmousemove = window.middlemanMouseMove;
-  };
-
-  window.middlemanMouseMove = function(e) {
-    // Compute the new position of the overlay per the current drag operation.
-    // Don't allow the overlay to be dragged outside the window.
-    e.preventDefault();
-    const canvas = window.middlemanCanvas;
-    let diffx = e.clientX - dragx;
-    let diffy = e.clientY - dragy;
-    const newTop = () => overlay.offsetTop + diffy;
-    if (newTop() < 0) {
-      diffy -= newTop();
-    }
-    const maxTop = canvas.height / window.devicePixelRatio;
-    if (newTop() + overlay.offsetHeight >= maxTop) {
-      diffy -= newTop() + overlay.offsetHeight - maxTop;
-    }
-    overlay.style.top = newTop() + "px";
-    const newLeft = () => overlay.offsetLeft + diffx;
-    if (newLeft() < 0) {
-      diffx -= newLeft();
-    }
-    const maxLeft = canvas.width / window.devicePixelRatio;
-    if (newLeft() + overlay.offsetWidth >= maxLeft) {
-      diffx -= newLeft() + overlay.offsetWidth - maxLeft;
-    }
-    overlay.style.left = (overlay.offsetLeft + diffx) + "px";
-    dragx += diffx;
-    dragy += diffy;
-  };
-
-  window.middlemanMouseUp = function(e) {
-    window.document.onmouseup = null;
-    window.document.onmousemove = null;
-  };
-
   // The middlemanCanvas element fills the tab's contents.
   const canvas = window.middlemanCanvas = window.document.createElement("canvas");
   canvas.style.position = "absolute";
   window.document.body.style.margin = "0px";
   window.document.body.prepend(canvas);
-}
-
-function getOverlay(window) {
-  if (!window.middlemanOverlay) {
-    setupContents(window);
-  }
-  return window.middlemanOverlay;
 }
 
 function getCanvas(window) {
@@ -152,11 +71,6 @@ function updateWindowCanvas(window, buffer, width, height, hadFailure) {
     cx.font = "48px serif";
     cx.fillText("PAINT FAILURE", 10, 50);
   }
-
-  // Make recording/replaying tabs easier to differentiate from other tabs.
-  window.document.title = "RECORD/REPLAY";
-
-  updateWindowOverlay(window);
 }
 
 // Entry point for when we have some new graphics data from the child process
@@ -173,33 +87,7 @@ function UpdateCanvas(buffer, width, height, hadFailure) {
   }
 }
 
-function updateWindowOverlay(window) {
-  const overlay = getOverlay(window);
-
-  const position = RecordReplayControl.recordingPosition();
-  if (position === undefined) {
-    overlay.style.visibility = "hidden";
-  } else {
-    overlay.style.visibility = "visible";
-    window.middlemanPosition.innerText = (Math.round(position * 10000) / 100) + "%";
-  }
-}
-
-// Entry point for when we need to update the overlay's contents or visibility.
-// eslint-disable-next-line no-unused-vars
-function UpdateOverlay() {
-  try {
-    // Paint to all windows we can find. Hopefully there is only one.
-    for (const window of Services.ww.getWindowEnumerator()) {
-      updateWindowOverlay(window);
-    }
-  } catch (e) {
-    dump("Middleman Graphics UpdateOverlay Exception: " + e + "\n");
-  }
-}
-
 // eslint-disable-next-line no-unused-vars
 var EXPORTED_SYMBOLS = [
   "UpdateCanvas",
-  "UpdateOverlay",
 ];

@@ -105,8 +105,6 @@ ChromeUtils.defineModuleGetter(this, "RuntimePermissions", "resource://gre/modul
 
 ChromeUtils.defineModuleGetter(this, "WebsiteMetadata", "resource://gre/modules/WebsiteMetadata.jsm");
 
-ChromeUtils.defineModuleGetter(this, "TelemetryStopwatch", "resource://gre/modules/TelemetryStopwatch.jsm");
-
 XPCOMUtils.defineLazyServiceGetter(this, "FontEnumerator",
   "@mozilla.org/gfx/fontenumerator;1",
   "nsIFontEnumerator");
@@ -129,10 +127,6 @@ var lazilyLoadedBrowserScripts = [
   ["RemoteDebugger", "chrome://browser/content/RemoteDebugger.js"],
   ["gViewSourceUtils", "chrome://global/content/viewSourceUtils.js"],
 ];
-if (!["release", "esr"].includes(AppConstants.MOZ_UPDATE_CHANNEL)) {
-  lazilyLoadedBrowserScripts.push(
-    ["WebcompatReporter", "chrome://browser/content/WebcompatReporter.js"]);
-}
 
 lazilyLoadedBrowserScripts.forEach(function (aScript) {
   let [name, script] = aScript;
@@ -536,10 +530,6 @@ var BrowserApp = {
       // AsyncPrefs is needed for reader mode.
       InitLater(() => AsyncPrefs.init());
 
-      if (!["release", "esr"].includes(AppConstants.MOZ_UPDATE_CHANNEL)) {
-        InitLater(() => WebcompatReporter.init());
-      }
-
       // Collect telemetry data.
       // We do this at startup because we want to move away from "gather-telemetry" (bug 1127907)
       InitLater(() => {
@@ -660,6 +650,7 @@ var BrowserApp = {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_copy_link");
 
         let url = NativeWindow.contextmenus._getLinkURL(aTarget);
+        url = NativeWindow.contextmenus._stripViewSource(url);
         NativeWindow.contextmenus._copyStringToDefaultClipboard(url);
       });
 
@@ -688,9 +679,11 @@ var BrowserApp = {
       order: NativeWindow.contextmenus.DEFAULT_HTML5_ORDER - 1, // Show above HTML5 menu items
       selector: NativeWindow.contextmenus._disableRestricted("SHARE", NativeWindow.contextmenus.linkShareableContext),
       showAsActions: function(aElement) {
+        let uri = NativeWindow.contextmenus._getLinkURL(aElement);
+        uri = NativeWindow.contextmenus._stripViewSource(uri);
         return {
           title: aElement.textContent.trim() || aElement.title.trim(),
-          uri: NativeWindow.contextmenus._getLinkURL(aElement),
+          uri,
         };
       },
       icon: "drawable://ic_menu_share",
@@ -849,7 +842,7 @@ var BrowserApp = {
     NativeWindow.contextmenus.add(stringGetter("contextmenu.viewImage"),
       NativeWindow.contextmenus.imageLocationCopyableContext,
       function(aTarget) {
-        let url = aTarget.src;
+        let url = aTarget.currentSrc || aTarget.src;
         ContentAreaUtils.urlSecurityCheck(url, aTarget.ownerDocument.nodePrincipal,
                                           Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
 
@@ -863,7 +856,8 @@ var BrowserApp = {
       function(aTarget) {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_copy_image");
 
-        let url = aTarget.src;
+        let url = aTarget.currentSrc || aTarget.src;
+        url = NativeWindow.contextmenus._stripViewSource(url);
         NativeWindow.contextmenus._copyStringToDefaultClipboard(url);
       });
 
@@ -872,7 +866,8 @@ var BrowserApp = {
       selector: NativeWindow.contextmenus._disableRestricted("SHARE", NativeWindow.contextmenus.imageShareableContext),
       order: NativeWindow.contextmenus.DEFAULT_HTML5_ORDER - 1, // Show above HTML5 menu items
       showAsActions: function(aTarget) {
-        let src = aTarget.src;
+        let src = aTarget.currentSrc || aTarget.src;
+        src = NativeWindow.contextmenus._stripViewSource(src);
         return {
           title: src,
           uri: src,
@@ -913,7 +908,7 @@ var BrowserApp = {
       function(aTarget) {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_background_image");
 
-        let src = aTarget.src;
+        let src = aTarget.currentSrc || aTarget.src;
         GlobalEventDispatcher.sendRequest({
           type: "Image:SetAs",
           url: src
@@ -3243,6 +3238,11 @@ var NativeWindow = {
     _stripScheme: function(aString) {
       let index = aString.indexOf(":");
       return aString.slice(index + 1);
+    },
+
+    _stripViewSource: function(aString) {
+      // If we're in a view source tab, remove the view-source: prefix
+      return aString.replace(/^view-source:/, "");
     }
   }
 };
@@ -3906,7 +3906,7 @@ Tab.prototype = {
       url = this.originalURI.spec;
     }
 
-    this.browser.docShell.loadURI(url, flags, null, null, null);
+    this.browser.docShell.loadURI(url, flags, null, null, null, this.browser.contentPrincipal);
   },
 
   destroy: function() {
@@ -4735,8 +4735,7 @@ Tab.prototype = {
   _state: null,
   _hostChanged: false, // onLocationChange will flip this bit
 
-  onSecurityChange: function(aWebProgress, aRequest, aOldState, aState,
-                             aContentBlockingLogJSON) {
+  onSecurityChange: function(aWebProgress, aRequest, aState) {
     // Don't need to do anything if the data we use to update the UI hasn't changed
     if (this._state == aState && !this._hostChanged)
       return;
@@ -5075,7 +5074,14 @@ var ErrorPageEventHandler = {
             // Allow users to override and continue through to the site,
             let webNav = BrowserApp.selectedBrowser.docShell.QueryInterface(Ci.nsIWebNavigation);
             let location = BrowserApp.selectedBrowser.contentWindow.location;
-            webNav.loadURI(location, Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CLASSIFIER, null, null, null);
+            let attrs = {};
+            let isPrivate = PrivateBrowsingUtils.isBrowserPrivate(BrowserApp.selectedBrowser);
+            if (isPrivate) {
+              attrs["privateBrowsingId"] = 1;
+            }
+
+            let triggeringPrincipal = nullServices.scriptSecurityManager.createNullPrincipal(attrs);
+            webNav.loadURI(location, Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CLASSIFIER, null, null, triggeringPrincipal);
 
             // ....but add a notify bar as a reminder, so that they don't lose
             // track after, e.g., tab switching.
@@ -5215,9 +5221,24 @@ var XPInstallObserver = {
             break;
           }
         }
+        this._monitorReportSiteIssueEnabledPref();
         break;
       }
     }
+  },
+
+  _monitorReportSiteIssueEnabledPref: function() {
+    const PREF = "extensions.webcompat-reporter.enabled";
+    const ID = "webcompat-reporter@mozilla.org";
+    Services.prefs.addObserver(PREF, async () => {
+      let addon = await AddonManager.getAddonByID(ID);
+      let enabled = Services.prefs.getBoolPref(PREF, false);
+      if (enabled && !addon.isActive) {
+        await addon.enable({allowSystemAddons: true});
+      } else if (!enabled && addon.isActive) {
+        await addon.disable({allowSystemAddons: true});
+      }
+    });
   },
 
   _notifyUnsignedAddonsDisabled: function() {

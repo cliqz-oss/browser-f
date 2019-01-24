@@ -9,7 +9,7 @@ const FAKE_NEWSLETTER_SNIPPET = FAKE_LOCAL_MESSAGES.find(msg => msg.id === "news
 const FAKE_FXA_SNIPPET = FAKE_LOCAL_MESSAGES.find(msg => msg.id === "fxa");
 
 FAKE_MESSAGE = Object.assign({}, FAKE_MESSAGE, {provider: "fakeprovider"});
-const FAKE_BUNDLED_MESSAGE = {bundle: [{id: "foo", template: "onboarding", content: {title: "Foo", body: "Foo123"}}], extraTemplateStrings: {}, template: "onboarding"};
+const FAKE_BUNDLED_MESSAGE = {bundle: [{id: "foo", template: "onboarding", content: {title: "Foo", primary_button: {}, body: "Foo123"}}], extraTemplateStrings: {}, template: "onboarding"};
 
 describe("ASRouterUtils", () => {
   let global;
@@ -17,7 +17,7 @@ describe("ASRouterUtils", () => {
   let fakeSendAsyncMessage;
   beforeEach(() => {
     global = new GlobalOverrider();
-    sandbox = sinon.sandbox.create();
+    sandbox = sinon.createSandbox();
     fakeSendAsyncMessage = sandbox.stub();
     global.set({RPMSendAsyncMessage: fakeSendAsyncMessage});
   });
@@ -43,7 +43,7 @@ describe("ASRouterUISurface", () => {
   let fakeDocument;
 
   beforeEach(() => {
-    sandbox = sinon.sandbox.create();
+    sandbox = sinon.createSandbox();
     fakeDocument = {
       location: {href: ""},
       _listeners: new Set(),

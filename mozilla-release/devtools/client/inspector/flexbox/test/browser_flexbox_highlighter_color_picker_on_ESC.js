@@ -3,12 +3,17 @@
 
 "use strict";
 
+const asyncStorage = require("devtools/shared/async-storage");
+
 // Test that the flexbox highlighter color change in the color picker is reverted when
 // ESCAPE is pressed.
 
-const TEST_URI = URL_ROOT + "doc_flexbox_simple.html";
+const TEST_URI = URL_ROOT + "doc_flexbox_specific_cases.html";
 
 add_task(async function() {
+  // Make sure there are no custom highlighter colors stored before starting.
+  await asyncStorage.removeItem("flexboxInspectorHostColors");
+
   await addTab(TEST_URI);
   const { inspector, flexboxInspector, layoutView } = await openLayoutView();
   const { document: doc } = flexboxInspector;
@@ -17,7 +22,7 @@ add_task(async function() {
   const spectrum = cPicker.spectrum;
 
   const onColorSwatchRendered = waitForDOM(doc,
-    "#layout-flexbox-container .layout-color-swatch");
+    ".layout-flexbox-wrapper .layout-color-swatch");
   await selectNode("#container", inspector);
   const [swatch] = await onColorSwatchRendered;
 

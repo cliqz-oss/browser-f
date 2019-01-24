@@ -7,6 +7,7 @@
        hidden="true"
        photon="true"
        role="alertdialog"
+       aria-labelledby="identity-popup-mainView-panel-header-span"
        onpopupshown="gIdentityHandler.onPopupShown(event);"
        onpopuphidden="gIdentityHandler.onPopupHidden(event);"
        orient="vertical">
@@ -58,24 +59,11 @@
             when-connection="not-secure secure secure-ev secure-cert-user-overridden extension">
         <vbox id="identity-popup-content-blocking-content" flex="1">
           <hbox align="start">
-            <label id="tracking-protection-label"
-                   class="identity-popup-headline"
-                   flex="1">&trackingProtection.title;</label>
             <label id="content-blocking-label"
                    class="identity-popup-headline"
                    flex="1">&contentBlocking.title;</label>
-            <hbox id="identity-popup-content-blocking-disabled-label">
-              <image/>
-              <label id="identity-popup-content-blocking-disabled-label-exception"
-                     value="&contentBlocking.disabled.label;"
-                     tooltiptext="&contentBlocking.exception.tooltip;"/>
-              <label id="identity-popup-content-blocking-disabled-label-global"
-                     value="&contentBlocking.disabled.label;"
-                     tooltiptext="&contentBlocking.disabled.tooltip;"/>
-            </hbox>
             <toolbarbutton id="tracking-protection-preferences-button"
                            class="identity-popup-preferences-button subviewbutton"
-                           tooltiptext="&trackingProtection.tooltip;"
                            oncommand="ContentBlocking.openPreferences('identityPopup-TP-preferencesButton'); gIdentityHandler.recordClick('cb_prefs_button');" />
           </hbox>
 
@@ -85,51 +73,37 @@
                        crop="end">&contentBlocking.notDetected;</description>
 
           <vbox id="identity-popup-content-blocking-category-list">
-            <hbox id="identity-popup-content-blocking-category-fastblock"
-                  class="identity-popup-content-blocking-category" align="center" role="group">
-              <image class="identity-popup-content-blocking-category-icon fastblock-icon"/>
-              <label flex="1" class="identity-popup-content-blocking-category-label">&contentBlocking.fastBlock.label;</label>
-              <label flex="1" class="identity-popup-content-blocking-category-state-label">&contentBlocking.fastBlock.blocking.label;</label>
-              <label flex="1" class="identity-popup-content-blocking-category-add-blocking text-link"
-                     onclick="ContentBlocking.openPreferences('identityPopup-CB-fastblock'); gIdentityHandler.recordClick('fb_add_blocking');">&contentBlocking.fastBlock.add.label;</label>
-            </hbox>
-            <hbox id="identity-popup-content-blocking-category-tracking-protection"
-                  class="identity-popup-content-blocking-category" align="center" role="group">
+            <toolbarbutton id="identity-popup-content-blocking-category-tracking-protection"
+                           onclick="ContentBlocking.showTrackersSubview()"
+                           class="identity-popup-content-blocking-category" align="center">
               <image class="identity-popup-content-blocking-category-icon tracking-protection-icon"/>
               <label flex="1" class="identity-popup-content-blocking-category-label">&contentBlocking.trackingProtection3.label;</label>
-              <label flex="1" class="identity-popup-content-blocking-category-state-label">&contentBlocking.trackingProtection.blocking.label;</label>
-              <label flex="1" class="identity-popup-content-blocking-category-add-blocking text-link"
-                     id="identity-popup-tracking-protection-add-blocking"
-                     onclick="ContentBlocking.openPreferences('identityPopup-CB-tracking-protection'); gIdentityHandler.recordClick('tp_add_blocking');">&contentBlocking.trackingProtection.add.label;</label>
-            </hbox>
-            <hbox id="identity-popup-content-blocking-category-3rdpartycookies"
-                  class="identity-popup-content-blocking-category" align="center" role="group">
+              <label flex="1" id="identity-popup-content-blocking-tracking-protection-state-label" class="identity-popup-content-blocking-category-state-label"/>
+            </toolbarbutton>
+            <toolbarbutton id="identity-popup-content-blocking-category-cookies"
+                           onclick="ContentBlocking.showCookiesSubview()"
+                           class="identity-popup-content-blocking-category" align="center">
               <image class="identity-popup-content-blocking-category-icon thirdpartycookies-icon"/>
               <label flex="1" id="identity-popup-content-blocking-category-label-default"
-                     class="identity-popup-content-blocking-category-label">&contentBlocking.3rdPartyCookies.label;</label>
-              <label flex="1" id="identity-popup-content-blocking-category-label-trackers"
-                     hidden="true" class="identity-popup-content-blocking-category-label">&contentBlocking.3rdPartyCookies.trackers.label;</label>
-              <label flex="1" class="identity-popup-content-blocking-category-state-label">&contentBlocking.3rdPartyCookies.blocking.label;</label>
-              <label flex="1" class="identity-popup-content-blocking-category-add-blocking text-link"
-                     id="identity-popup-3rdpartycookies-add-blocking"
-                     onclick="ContentBlocking.openPreferences('identityPopup-CB-3rdpartycookies'); gIdentityHandler.recordClick('cookies_add_blocking');">&contentBlocking.3rdPartyCookies.add.label;</label>
-            </hbox>
+                     class="identity-popup-content-blocking-category-label">&contentBlocking.cookies.label;</label>
+              <label flex="1" id="identity-popup-content-blocking-cookies-state-label" class="identity-popup-content-blocking-category-state-label"/>
+            </toolbarbutton>
           </vbox>
 
           <button id="tracking-action-unblock"
-                  class="tracking-protection-button"
-                  label="&trackingProtection.unblock4.label;"
-                  accesskey="&trackingProtection.unblock4.accesskey;"
+                  class="panel-button tracking-protection-button"
+                  label="&trackingProtection.unblock5.label;"
+                  accesskey="&trackingProtection.unblock5.accesskey;"
                   oncommand="ContentBlocking.disableForCurrentPage(); gIdentityHandler.recordClick('unblock');" />
           <button id="tracking-action-unblock-private"
-                  class="tracking-protection-button"
-                  label="&trackingProtection.unblockPrivate4.label;"
-                  accesskey="&trackingProtection.unblockPrivate4.accesskey;"
+                  class="panel-button tracking-protection-button"
+                  label="&trackingProtection.unblockPrivate5.label;"
+                  accesskey="&trackingProtection.unblockPrivate5.accesskey;"
                   oncommand="ContentBlocking.disableForCurrentPage(); gIdentityHandler.recordClick('unblock_private');" />
           <button id="tracking-action-block"
-                  class="tracking-protection-button"
-                  label="&trackingProtection.block5.label;"
-                  accesskey="&trackingProtection.block5.accesskey;"
+                  class="panel-button tracking-protection-button"
+                  label="&trackingProtection.block6.label;"
+                  accesskey="&trackingProtection.block6.accesskey;"
                   oncommand="ContentBlocking.enableForCurrentPage(); gIdentityHandler.recordClick('block');" />
           <label id="identity-popup-content-blocking-report-breakage"
                  onclick="ContentBlocking.showReportBreakageSubview(); gIdentityHandler.recordClick('report_breakage');"
@@ -162,7 +136,7 @@
       <!-- Clear Site Data Button -->
       <vbox hidden="true"
             id="identity-popup-clear-sitedata-footer"
-            class="identity-popup-footer">
+            class="panel-footer identity-popup-footer">
         <button id="identity-popup-clear-sitedata-button"
                 label="&identity.clearSiteData;"
                 oncommand="gIdentityHandler.clearSiteData(event); gIdentityHandler.recordClick('clear_sitedata');"/>
@@ -199,6 +173,7 @@
         <button when-connection="secure-cert-user-overridden"
                 label="&identity.removeCertException.label;"
                 accesskey="&identity.removeCertException.accesskey;"
+                class="panel-button"
                 oncommand="gIdentityHandler.removeCertException()"/>
 
         <!-- Connection is Not Secure -->
@@ -241,20 +216,56 @@
         <button when-mixedcontent="active-blocked"
                 label="&identity.disableMixedContentBlocking.label;"
                 accesskey="&identity.disableMixedContentBlocking.accesskey;"
+                class="panel-button"
                 oncommand="gIdentityHandler.disableMixedContentProtection()"/>
         <button when-mixedcontent="active-loaded"
                 label="&identity.enableMixedContentBlocking.label;"
                 accesskey="&identity.enableMixedContentBlocking.accesskey;"
+                class="panel-button"
                 oncommand="gIdentityHandler.enableMixedContentProtection()"/>
       </vbox>
 
-      <vbox id="identity-popup-more-info-footer" class="identity-popup-footer">
+      <vbox id="identity-popup-more-info-footer" class="panel-footer identity-popup-footer">
         <!-- More Security Information -->
         <button id="identity-popup-more-info"
                 label="&identity.moreInfoLinkText2;"
                 oncommand="gIdentityHandler.handleMoreInfoClick(event);"/>
       </vbox>
 
+    </panelview>
+
+    <!-- Trackers SubView -->
+    <panelview id="identity-popup-trackersView"
+               role="document"
+               title="&contentBlocking.trackersView.label;"
+               descriptionheightworkaround="true">
+        <vbox id="identity-popup-trackersView-list" class="identity-popup-content-blocking-list">
+        </vbox>
+        <hbox id="identity-popup-trackersView-strict-info">
+          <image/>
+          <label>&contentBlocking.trackersView.strictInfo.label;</label>
+        </hbox>
+        <vbox class="panel-footer identity-popup-footer">
+          <button id="identity-popup-trackersView-settings-button"
+                  label="&contentBlocking.manageSettings.label;"
+                  accesskey="&contentBlocking.manageSettings.accesskey;"
+                  oncommand="ContentBlocking.openPreferences();"/>
+        </vbox>
+    </panelview>
+
+    <!-- Cookies SubView -->
+    <panelview id="identity-popup-cookiesView"
+               role="document"
+               title="&contentBlocking.cookiesView.label;"
+               descriptionheightworkaround="true">
+        <vbox id="identity-popup-cookiesView-list" class="identity-popup-content-blocking-list">
+        </vbox>
+        <vbox class="panel-footer identity-popup-footer">
+          <button id="identity-popup-cookiesView-settings-button"
+                  label="&contentBlocking.manageSettings.label;"
+                  accesskey="&contentBlocking.manageSettings.accesskey;"
+                  oncommand="ContentBlocking.openPreferences();"/>
+        </vbox>
     </panelview>
 
     <!-- Report Breakage SubView -->
@@ -276,7 +287,8 @@
             <textbox multiline="true" id="identity-popup-breakageReportView-collection-comments"/>
           </vbox>
         </vbox>
-        <vbox id="identity-popup-breakageReportView-footer" class="identity-popup-footer">
+        <vbox id="identity-popup-breakageReportView-footer"
+              class="panel-footer identity-popup-footer">
           <button id="identity-popup-breakageReportView-cancel"
                   label="&contentBlocking.breakageReportView.cancel.label;"
                   oncommand="ContentBlocking.backToMainView();"/>

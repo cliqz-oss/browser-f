@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
- * vim: set ts=8 sts=4 et sw=4 tw=99: */
+ * vim: set ts=8 sts=2 et sw=2 tw=80: */
 
 // Copyright 2012 the V8 project authors. All rights reserved.
 // Redistribution and use in source and binary forms, with or without
@@ -85,7 +85,7 @@ struct RegExpCode
 };
 
 RegExpCode
-CompilePattern(JSContext* cx, HandleRegExpShared shared, RegExpCompileData* data,
+CompilePattern(JSContext* cx, LifoAlloc& alloc, HandleRegExpShared shared, RegExpCompileData* data,
                HandleLinearString sample,  bool is_global, bool ignore_case,
                bool is_latin1, bool match_only, bool force_bytecode, bool sticky,
                bool unicode, RegExpShared::JitCodeTables& tables);

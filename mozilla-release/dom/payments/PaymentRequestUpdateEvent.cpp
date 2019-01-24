@@ -21,10 +21,9 @@ NS_IMPL_ADDREF_INHERITED(PaymentRequestUpdateEvent, Event)
 NS_IMPL_RELEASE_INHERITED(PaymentRequestUpdateEvent, Event)
 
 already_AddRefed<PaymentRequestUpdateEvent>
-PaymentRequestUpdateEvent::Constructor(mozilla::dom::EventTarget* aOwner,
-                                       const nsAString& aType,
-                                       const PaymentRequestUpdateEventInit& aEventInitDict)
-{
+PaymentRequestUpdateEvent::Constructor(
+    mozilla::dom::EventTarget* aOwner, const nsAString& aType,
+    const PaymentRequestUpdateEventInit& aEventInitDict) {
   RefPtr<PaymentRequestUpdateEvent> e = new PaymentRequestUpdateEvent(aOwner);
   bool trusted = e->Init(aOwner);
   e->InitEvent(aType, aEventInitDict.mBubbles, aEventInitDict.mCancelable);
@@ -34,26 +33,23 @@ PaymentRequestUpdateEvent::Constructor(mozilla::dom::EventTarget* aOwner,
 }
 
 already_AddRefed<PaymentRequestUpdateEvent>
-PaymentRequestUpdateEvent::Constructor(const GlobalObject& aGlobal,
-                                       const nsAString& aType,
-                                       const PaymentRequestUpdateEventInit& aEventInitDict,
-                                       ErrorResult& aRv)
-{
-  nsCOMPtr<mozilla::dom::EventTarget> owner = do_QueryInterface(aGlobal.GetAsSupports());
+PaymentRequestUpdateEvent::Constructor(
+    const GlobalObject& aGlobal, const nsAString& aType,
+    const PaymentRequestUpdateEventInit& aEventInitDict, ErrorResult& aRv) {
+  nsCOMPtr<mozilla::dom::EventTarget> owner =
+      do_QueryInterface(aGlobal.GetAsSupports());
   return Constructor(owner, aType, aEventInitDict);
 }
 
 PaymentRequestUpdateEvent::PaymentRequestUpdateEvent(EventTarget* aOwner)
-  : Event(aOwner, nullptr, nullptr)
-  , mWaitForUpdate(false)
-  , mRequest(nullptr)
-{
+    : Event(aOwner, nullptr, nullptr),
+      mWaitForUpdate(false),
+      mRequest(nullptr) {
   MOZ_ASSERT(aOwner);
 }
 
-void
-PaymentRequestUpdateEvent::ResolvedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue)
-{
+void PaymentRequestUpdateEvent::ResolvedCallback(JSContext* aCx,
+                                                 JS::Handle<JS::Value> aValue) {
   MOZ_ASSERT(aCx);
   MOZ_ASSERT(mRequest);
 
@@ -64,44 +60,43 @@ PaymentRequestUpdateEvent::ResolvedCallback(JSContext* aCx, JS::Handle<JS::Value
   // Converting value to a PaymentDetailsUpdate dictionary
   PaymentDetailsUpdate details;
   if (!details.Init(aCx, aValue)) {
-    mRequest->AbortUpdate(NS_ERROR_TYPE_ERR, false);
+    mRequest->AbortUpdate(NS_ERROR_TYPE_ERR);
     JS_ClearPendingException(aCx);
     return;
   }
 
   // Validate and canonicalize the details
   // requestShipping must be true here. PaymentRequestUpdateEvent is only
-  // dispatched when shippingAddress/shippingOption is changed, and it also means
-  // Options.RequestShipping must be true while creating the corresponding
+  // dispatched when shippingAddress/shippingOption is changed, and it also
+  // means Options.RequestShipping must be true while creating the corresponding
   // PaymentRequest.
-  nsresult rv = mRequest->IsValidDetailsUpdate(details, true/*aRequestShipping*/);
+  nsresult rv =
+      mRequest->IsValidDetailsUpdate(details, true /*aRequestShipping*/);
   if (NS_FAILED(rv)) {
-    mRequest->AbortUpdate(rv, false);
+    mRequest->AbortUpdate(rv);
     return;
   }
 
   // Update the PaymentRequest with the new details
-  if (NS_FAILED(mRequest->UpdatePayment(aCx, details, false))) {
-    mRequest->AbortUpdate(NS_ERROR_DOM_ABORT_ERR, false);
+  if (NS_FAILED(mRequest->UpdatePayment(aCx, details))) {
+    mRequest->AbortUpdate(NS_ERROR_DOM_ABORT_ERR);
     return;
   }
   mWaitForUpdate = false;
   mRequest->SetUpdating(false);
 }
 
-void
-PaymentRequestUpdateEvent::RejectedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue)
-{
+void PaymentRequestUpdateEvent::RejectedCallback(JSContext* aCx,
+                                                 JS::Handle<JS::Value> aValue) {
   MOZ_ASSERT(mRequest);
 
-  mRequest->AbortUpdate(NS_ERROR_DOM_ABORT_ERR, false);
+  mRequest->AbortUpdate(NS_ERROR_DOM_ABORT_ERR);
   mWaitForUpdate = false;
   mRequest->SetUpdating(false);
 }
 
-void
-PaymentRequestUpdateEvent::UpdateWith(Promise& aPromise, ErrorResult& aRv)
-{
+void PaymentRequestUpdateEvent::UpdateWith(Promise& aPromise,
+                                           ErrorResult& aRv) {
   if (!IsTrusted()) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
@@ -122,9 +117,7 @@ PaymentRequestUpdateEvent::UpdateWith(Promise& aPromise, ErrorResult& aRv)
   mRequest->SetUpdating(true);
 }
 
-void
-PaymentRequestUpdateEvent::SetRequest(PaymentRequest* aRequest)
-{
+void PaymentRequestUpdateEvent::SetRequest(PaymentRequest* aRequest) {
   MOZ_ASSERT(IsTrusted());
   MOZ_ASSERT(!mRequest);
   MOZ_ASSERT(aRequest);
@@ -132,17 +125,12 @@ PaymentRequestUpdateEvent::SetRequest(PaymentRequest* aRequest)
   mRequest = aRequest;
 }
 
-PaymentRequestUpdateEvent::~PaymentRequestUpdateEvent()
-{
-}
+PaymentRequestUpdateEvent::~PaymentRequestUpdateEvent() {}
 
-JSObject*
-PaymentRequestUpdateEvent::WrapObjectInternal(JSContext* aCx,
-                                              JS::Handle<JSObject*> aGivenProto)
-{
+JSObject* PaymentRequestUpdateEvent::WrapObjectInternal(
+    JSContext* aCx, JS::Handle<JSObject*> aGivenProto) {
   return PaymentRequestUpdateEvent_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla

@@ -1,15 +1,15 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! A type to represent a namespace.
 
-use gecko_bindings::structs::nsAtom;
+use crate::gecko_bindings::structs::nsAtom;
+use crate::string_cache::{Atom, WeakAtom};
 use precomputed_hash::PrecomputedHash;
 use std::borrow::Borrow;
 use std::fmt;
 use std::ops::Deref;
-use string_cache::{Atom, WeakAtom};
 
 #[macro_export]
 macro_rules! ns {

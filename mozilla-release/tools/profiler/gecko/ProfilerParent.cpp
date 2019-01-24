@@ -19,26 +19,25 @@ namespace mozilla {
 using namespace ipc;
 
 class ProfilerParentTracker final {
-public:
+ public:
   static void StartTracking(ProfilerParent* aParent);
   static void StopTracking(ProfilerParent* aParent);
 
-  template<typename FuncType>
+  template <typename FuncType>
   static void Enumerate(FuncType aIterFunc);
 
   ProfilerParentTracker();
   ~ProfilerParentTracker();
 
-private:
+ private:
   nsTArray<ProfilerParent*> mProfilerParents;
   static UniquePtr<ProfilerParentTracker> sInstance;
 };
 
 UniquePtr<ProfilerParentTracker> ProfilerParentTracker::sInstance;
 
-/* static */ void
-ProfilerParentTracker::StartTracking(ProfilerParent* aProfilerParent)
-{
+/* static */ void ProfilerParentTracker::StartTracking(
+    ProfilerParent* aProfilerParent) {
   if (!sInstance) {
     sInstance = MakeUnique<ProfilerParentTracker>();
     ClearOnShutdown(&sInstance);
@@ -46,18 +45,14 @@ ProfilerParentTracker::StartTracking(ProfilerParent* aProfilerParent)
   sInstance->mProfilerParents.AppendElement(aProfilerParent);
 }
 
-/* static */ void
-ProfilerParentTracker::StopTracking(ProfilerParent* aParent)
-{
+/* static */ void ProfilerParentTracker::StopTracking(ProfilerParent* aParent) {
   if (sInstance) {
     sInstance->mProfilerParents.RemoveElement(aParent);
   }
 }
 
-template<typename FuncType>
-/* static */ void
-ProfilerParentTracker::Enumerate(FuncType aIterFunc)
-{
+template <typename FuncType>
+/* static */ void ProfilerParentTracker::Enumerate(FuncType aIterFunc) {
   if (sInstance) {
     for (ProfilerParent* profilerParent : sInstance->mProfilerParents) {
       if (!profilerParent->mDestroyed) {
@@ -67,13 +62,11 @@ ProfilerParentTracker::Enumerate(FuncType aIterFunc)
   }
 }
 
-ProfilerParentTracker::ProfilerParentTracker()
-{
+ProfilerParentTracker::ProfilerParentTracker() {
   MOZ_COUNT_CTOR(ProfilerParentTracker);
 }
 
-ProfilerParentTracker::~ProfilerParentTracker()
-{
+ProfilerParentTracker::~ProfilerParentTracker() {
   MOZ_COUNT_DTOR(ProfilerParentTracker);
 
   nsTArray<ProfilerParent*> parents;
@@ -89,14 +82,12 @@ ProfilerParentTracker::~ProfilerParentTracker()
   }
 }
 
-/* static */ Endpoint<PProfilerChild>
-ProfilerParent::CreateForProcess(base::ProcessId aOtherPid)
-{
+/* static */ Endpoint<PProfilerChild> ProfilerParent::CreateForProcess(
+    base::ProcessId aOtherPid) {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
   Endpoint<PProfilerParent> parent;
   Endpoint<PProfilerChild> child;
-  nsresult rv = PProfiler::CreateEndpoints(base::GetCurrentProcId(),
-                                           aOtherPid,
+  nsresult rv = PProfiler::CreateEndpoints(base::GetCurrentProcId(), aOtherPid,
                                            &parent, &child);
 
   if (NS_FAILED(rv)) {
@@ -115,17 +106,13 @@ ProfilerParent::CreateForProcess(base::ProcessId aOtherPid)
   return child;
 }
 
-ProfilerParent::ProfilerParent()
-  : mDestroyed(false)
-{
+ProfilerParent::ProfilerParent() : mDestroyed(false) {
   MOZ_COUNT_CTOR(ProfilerParent);
 
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
 }
 
-void
-ProfilerParent::Init()
-{
+void ProfilerParent::Init() {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
 
   ProfilerParentTracker::StartTracking(this);
@@ -137,15 +124,22 @@ ProfilerParent::Init()
   // child process, it's a good time to sync up the two profilers again.
 
   int entries = 0;
+  Maybe<double> duration = Nothing();
   double interval = 0;
   mozilla::Vector<const char*> filters;
   uint32_t features;
-  profiler_get_start_params(&entries, &interval, &features, &filters);
+  profiler_get_start_params(&entries, &duration, &interval, &features,
+                            &filters);
 
   if (entries != 0) {
     ProfilerInitParams ipcParams;
     ipcParams.enabled() = true;
     ipcParams.entries() = entries;
+    if (duration.isSome()) {
+      ipcParams.duration() = duration.value();
+    } else {
+      ipcParams.duration() = mozilla::null_t();
+    }
     ipcParams.interval() = interval;
     ipcParams.features() = features;
 
@@ -159,8 +153,7 @@ ProfilerParent::Init()
   }
 }
 
-ProfilerParent::~ProfilerParent()
-{
+ProfilerParent::~ProfilerParent() {
   MOZ_COUNT_DTOR(ProfilerParent);
 
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
@@ -168,8 +161,7 @@ ProfilerParent::~ProfilerParent()
 }
 
 /* static */ nsTArray<RefPtr<ProfilerParent::SingleProcessProfilePromise>>
-ProfilerParent::GatherProfiles()
-{
+ProfilerParent::GatherProfiles() {
   if (!NS_IsMainThread()) {
     return nsTArray<RefPtr<ProfilerParent::SingleProcessProfilePromise>>();
   }
@@ -181,16 +173,22 @@ ProfilerParent::GatherProfiles()
   return results;
 }
 
-/* static */ void
-ProfilerParent::ProfilerStarted(nsIProfilerStartParams* aParams)
-{
+/* static */ void ProfilerParent::ProfilerStarted(
+    nsIProfilerStartParams* aParams) {
   if (!NS_IsMainThread()) {
     return;
   }
 
   ProfilerInitParams ipcParams;
+  double duration;
   ipcParams.enabled() = true;
   aParams->GetEntries(&ipcParams.entries());
+  aParams->GetDuration(&duration);
+  if (duration > 0.0) {
+    ipcParams.duration() = duration;
+  } else {
+    ipcParams.duration() = mozilla::null_t();
+  }
   aParams->GetInterval(&ipcParams.interval());
   aParams->GetFeatures(&ipcParams.features());
   ipcParams.filters() = aParams->GetFilters();
@@ -200,9 +198,7 @@ ProfilerParent::ProfilerStarted(nsIProfilerStartParams* aParams)
   });
 }
 
-/* static */ void
-ProfilerParent::ProfilerStopped()
-{
+/* static */ void ProfilerParent::ProfilerStopped() {
   if (!NS_IsMainThread()) {
     return;
   }
@@ -212,9 +208,7 @@ ProfilerParent::ProfilerStopped()
   });
 }
 
-/* static */ void
-ProfilerParent::ProfilerPaused()
-{
+/* static */ void ProfilerParent::ProfilerPaused() {
   if (!NS_IsMainThread()) {
     return;
   }
@@ -224,9 +218,7 @@ ProfilerParent::ProfilerPaused()
   });
 }
 
-/* static */ void
-ProfilerParent::ProfilerResumed()
-{
+/* static */ void ProfilerParent::ProfilerResumed() {
   if (!NS_IsMainThread()) {
     return;
   }
@@ -236,17 +228,11 @@ ProfilerParent::ProfilerResumed()
   });
 }
 
-void
-ProfilerParent::ActorDestroy(ActorDestroyReason aActorDestroyReason)
-{
+void ProfilerParent::ActorDestroy(ActorDestroyReason aActorDestroyReason) {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
   mDestroyed = true;
 }
 
-void
-ProfilerParent::DeallocPProfilerParent()
-{
-  mSelfRef = nullptr;
-}
+void ProfilerParent::DeallocPProfilerParent() { mSelfRef = nullptr; }
 
-} // namespace mozilla
+}  // namespace mozilla

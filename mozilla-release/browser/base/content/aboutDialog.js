@@ -11,7 +11,7 @@ ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
 
-function init(aEvent) {
+async function init(aEvent) {
   if (aEvent.target != document)
     return;
 
@@ -59,6 +59,7 @@ function init(aEvent) {
 #if 0
   // Include the build ID and display warning if this is an "a#" (nightly or aurora) build
   let versionField = document.getElementById("version");
+  versionField.textContent = AppConstants.MOZ_APP_VERSION_DISPLAY;
   let version = Services.appinfo.version;
   if (/a\d+$/.test(version)) {
     let buildID = Services.appinfo.appBuildID;
@@ -70,7 +71,26 @@ function init(aEvent) {
     document.getElementById("experimental").hidden = false;
     document.getElementById("communityDesc").hidden = true;
   }
+<<<<<<< HEAD
 #endif
+||||||| merged common ancestors
+
+  // Append "(32-bit)" or "(64-bit)" build architecture to the version number:
+  let bundle = Services.strings.createBundle("chrome://browser/locale/browser.properties");
+  let archResource = Services.appinfo.is64Bit
+                     ? "aboutDialog.architecture.sixtyFourBit"
+                     : "aboutDialog.architecture.thirtyTwoBit";
+  let arch = bundle.GetStringFromName(archResource);
+  versionField.textContent += ` (${arch})`;
+=======
+
+  // Append "(32-bit)" or "(64-bit)" build architecture to the version number:
+  let archResource = Services.appinfo.is64Bit
+                     ? "aboutDialog-architecture-sixtyFourBit"
+                     : "aboutDialog-architecture-thirtyTwoBit";
+  let [arch] = await document.l10n.formatValues([{id: archResource}]);
+  versionField.textContent += ` (${arch})`;
+>>>>>>> origin/upstream-releases
 
   // Show a release notes link if we have a URL.
   let relNotesLink = document.getElementById("releasenotes");
@@ -93,7 +113,7 @@ function init(aEvent) {
         currentChannelText.hidden = true;
   }
 
-  if (AppConstants.MOZ_UPDATE_CHANNEL == "esr") {
+  if (AppConstants.MOZ_APP_VERSION_DISPLAY.endsWith("esr")) {
     document.getElementById("release").hidden = false;
   }
   if (AppConstants.platform == "macosx") {

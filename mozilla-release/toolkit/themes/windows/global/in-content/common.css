@@ -4,14 +4,6 @@
 
 %include ../../../shared/in-content/common.inc.css
 
-:root {
-  --in-content-box-background-odd: transparent;
-}
-
-xul|caption {
-  background-color: transparent;
-}
-
 xul|*.menulist-dropmarker {
   margin-top: 1px;
   margin-bottom: 1px;
@@ -40,11 +32,6 @@ html|input[type="checkbox"]:-moz-focusring + html|label:before {
   outline: 1px dotted;
 }
 
-*|button.primary:focus {
-  outline: 1px dotted;
-  outline-offset: -3px;
-}
-
 /* Use a 2px border so that selected row highlight is still visible behind
     an existing high-contrast border that uses the background color */
 @media (-moz-windows-default-theme: 0) {
@@ -56,4 +43,9 @@ html|input[type="checkbox"]:-moz-focusring + html|label:before {
 html|button {
   /* XUL button min-width */
   min-width: 6.3em;
+}
+
+xul|button > xul|*.button-box {
+  padding-right: 0;
+  padding-left: 0;
 }

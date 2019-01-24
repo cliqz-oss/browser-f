@@ -21,6 +21,8 @@ const paymentUISrv = Cc["@mozilla.org/dom/payments/payment-ui-service;1"]
 const {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm", {});
 const {formAutofillStorage} = ChromeUtils.import(
   "resource://formautofill/FormAutofillStorage.jsm", {});
+const {OSKeyStoreTestUtils} = ChromeUtils.import(
+  "resource://testing-common/OSKeyStoreTestUtils.jsm", {});
 const {PaymentTestUtils: PTU} = ChromeUtils.import(
   "resource://testing-common/PaymentTestUtils.jsm", {});
 ChromeUtils.import("resource:///modules/BrowserWindowTracker.jsm");
@@ -43,16 +45,21 @@ async function getPaymentWidget(requestId) {
     if (!dialogContainer) {
       return false;
     }
-    let browserIFrame = dialogContainer.querySelector("iframe");
-    if (!browserIFrame) {
+    let paymentFrame = dialogContainer.querySelector(".paymentDialogContainerFrame");
+    if (!paymentFrame) {
       return false;
     }
-    return browserIFrame.contentWindow;
+    return {
+      get closed() {
+        return !paymentFrame.isConnected;
+      },
+      frameElement: paymentFrame,
+    };
   }, "payment dialog should be opened");
 }
 
 async function getPaymentFrame(widget) {
-  return widget.document.getElementById("paymentRequestFrame");
+  return widget.frameElement;
 }
 
 function waitForMessageFromWidget(messageType, widget = null) {
@@ -326,6 +333,12 @@ async function spawnInDialogForMerchantTask(merchantTaskFn, dialogTaskFn, taskAr
   });
 }
 
+async function loginAndCompletePayment(frame) {
+  let osKeyStoreLoginShown = OSKeyStoreTestUtils.waitForOSKeyStoreLogin(true);
+  await spawnPaymentDialogTask(frame, PTU.DialogContentTasks.completePayment);
+  await osKeyStoreLoginShown;
+}
+
 async function setupFormAutofillStorage() {
   await formAutofillStorage.initialize();
 }
@@ -362,10 +375,12 @@ add_task(async function setup_head() {
     }
     ok(false, msg.message || msg.errorMessage);
   });
+  OSKeyStoreTestUtils.setup();
   await setupFormAutofillStorage();
-  registerCleanupFunction(function cleanup() {
+  registerCleanupFunction(async function cleanup() {
     paymentSrv.cleanup();
     cleanupFormAutofillStorage();
+    await OSKeyStoreTestUtils.cleanup();
     Services.prefs.clearUserPref(RESPONSE_TIMEOUT_PREF);
     Services.prefs.clearUserPref(SAVE_CREDITCARD_DEFAULT_PREF);
     Services.prefs.clearUserPref(SAVE_ADDRESS_DEFAULT_PREF);
@@ -386,10 +401,11 @@ async function selectPaymentDialogShippingAddressByCountry(frame, country) {
                                country);
 }
 
-async function navigateToAddAddressPage(frame, aOptions = {
-  addLinkSelector: "address-picker[selected-state-key=\"selectedShippingAddress\"] a.add-link",
-  initialPageId: "payment-summary",
-}) {
+async function navigateToAddAddressPage(frame, aOptions = {}) {
+  ok(aOptions.initialPageId, "initialPageId option supplied");
+  ok(aOptions.addressPageId, "addressPageId option supplied");
+  ok(aOptions.addLinkSelector, "addLinkSelector option supplied");
+
   await spawnPaymentDialogTask(frame, async (options) => {
     let {
       PaymentTestUtils,
@@ -399,7 +415,7 @@ async function navigateToAddAddressPage(frame, aOptions = {
     await PaymentTestUtils.DialogContentUtils.waitForState(content, (state) => {
       info("current page state: " + state.page.id + " waiting for: " + options.initialPageId);
       return state.page.id == options.initialPageId;
-    }, "Check summary page state");
+    }, "Check initial page state");
 
     // click through to add/edit address page
     info("navigateToAddAddressPage: click the link");
@@ -408,17 +424,31 @@ async function navigateToAddAddressPage(frame, aOptions = {
 
     info("navigateToAddAddressPage: wait for address page");
     await PaymentTestUtils.DialogContentUtils.waitForState(content, (state) => {
-      return state.page.id == "address-page" && !state.page.guid;
+      return state.page.id == options.addressPageId && !state.page.guid;
     }, "Check add page state");
   }, aOptions);
 }
 
-async function fillInBillingAddressForm(frame, aAddress) {
+async function navigateToAddShippingAddressPage(frame, aOptions = {}) {
+  let options = Object.assign({
+    addLinkSelector: "address-picker[selected-state-key=\"selectedShippingAddress\"] a.add-link",
+    initialPageId: "payment-summary",
+    addressPageId: "shipping-address-page",
+  }, aOptions);
+  await navigateToAddAddressPage(frame, options);
+}
+
+async function fillInBillingAddressForm(frame, aAddress, aOptions = {}) {
   // For now billing and shipping address forms have the same fields but that may
   // change so use separarate helpers.
-  return fillInShippingAddressForm(frame, aAddress, {
+  let address = Object.assign({}, aAddress);
+  // Email isn't used on address forms, only payer/contact ones.
+  delete address.email;
+  let options = Object.assign({
+    addressPageId: "billing-address-page",
     expectedSelectedStateKey: ["basic-card-page", "billingAddressGUID"],
-  });
+  }, aOptions);
+  return fillInAddressForm(frame, address, options);
 }
 
 async function fillInShippingAddressForm(frame, aAddress, aOptions) {
@@ -456,17 +486,20 @@ async function fillInPayerAddressForm(frame, aAddress) {
 async function fillInAddressForm(frame, aAddress, aOptions = {}) {
   await spawnPaymentDialogTask(frame, async (args) => {
     let {address, options = {}} = args;
+    let {requestStore} = Cu.waiveXrays(content.document.querySelector("payment-dialog"));
+    let currentState = requestStore.getState();
+    let addressForm = content.document.getElementById(currentState.page.id);
+    ok(addressForm, "found the addressForm: " + addressForm.getAttribute("id"));
 
     if (options.expectedSelectedStateKey) {
-      let store = Cu.waiveXrays(content.document.querySelector("address-form")).requestStore;
-      Assert.deepEqual(store.getState()["address-page"].selectedStateKey,
+      Assert.deepEqual(addressForm.getAttribute("selected-state-key").split("|"),
                        options.expectedSelectedStateKey,
                        "Check address page selectedStateKey");
     }
 
     if (typeof(address.country) != "undefined") {
       // Set the country first so that the appropriate fields are visible.
-      let countryField = content.document.getElementById("country");
+      let countryField = addressForm.querySelector("#country");
       ok(!countryField.disabled, "Country Field shouldn't be disabled");
       await content.fillField(countryField, address.country);
       is(countryField.value, address.country, "country value is correct after fillField");
@@ -475,7 +508,7 @@ async function fillInAddressForm(frame, aAddress, aOptions = {}) {
     // fill the form
     info("fillInAddressForm: fill the form with address: " + JSON.stringify(address));
     for (let [key, val] of Object.entries(address)) {
-      let field = content.document.getElementById(key);
+      let field = addressForm.querySelector(`#${key}`);
       if (!field) {
         ok(false, `${key} field not found`);
       }
@@ -484,7 +517,7 @@ async function fillInAddressForm(frame, aAddress, aOptions = {}) {
       is(field.value, val, `${key} value is correct after fillField`);
     }
     let persistCheckbox = Cu.waiveXrays(
-        content.document.querySelector("#address-page .persist-checkbox"));
+        addressForm.querySelector(".persist-checkbox"));
     // only touch the checked state if explicitly told to in the options
     if (options.hasOwnProperty("setPersistCheckedValue")) {
       info("fillInAddressForm: Manually setting the persist checkbox checkedness to: " +
@@ -532,26 +565,30 @@ async function verifyCardNetwork(frame, aOptions = {}) {
   }, {options: aOptions});
 }
 
-async function submitAddressForm(frame, aAddress, aOptions = {}) {
+async function submitAddressForm(frame, aAddress, aOptions = {
+  nextPageId: "payment-summary",
+}) {
   await spawnPaymentDialogTask(frame, async (args) => {
     let {options = {}} = args;
+    let nextPageId = options.nextPageId || "payment-summary";
     let {
       PaymentTestUtils,
     } = ChromeUtils.import("resource://testing-common/PaymentTestUtils.jsm", {});
 
-    let oldAddresses = await PaymentTestUtils.DialogContentUtils.getCurrentState(content);
+    let oldState = await PaymentTestUtils.DialogContentUtils.getCurrentState(content);
+    let pageId = oldState.page.id;
 
     // submit the form to return to summary page
-    content.document.querySelector("address-form button:last-of-type").click();
+    content.document.querySelector(`#${pageId} button.primary`).click();
 
     let currState = await PaymentTestUtils.DialogContentUtils.waitForState(content, (state) => {
-      return state.page.id == "payment-summary";
-    }, "submitAddressForm: Switched back to payment-summary");
+      return state.page.id == nextPageId;
+    }, `submitAddressForm: Switched back to ${nextPageId}`);
 
     let savedCount = Object.keys(currState.savedAddresses).length;
     let tempCount = Object.keys(currState.tempAddresses).length;
-    let oldSavedCount = Object.keys(oldAddresses.savedAddresses).length;
-    let oldTempCount = Object.keys(oldAddresses.tempAddresses).length;
+    let oldSavedCount = Object.keys(oldState.savedAddresses).length;
+    let oldTempCount = Object.keys(oldState.tempAddresses).length;
 
     if (options.isEditing) {
       is(tempCount, oldTempCount, "tempAddresses count didn't change");
@@ -571,9 +608,9 @@ async function manuallyAddShippingAddress(frame, aAddress, aOptions = {}) {
     expectPersist: true,
     isEditing: false,
   }, aOptions, {
-    checkboxSelector: "#address-page .persist-checkbox",
+    checkboxSelector: "#shipping-address-page .persist-checkbox",
   });
-  await navigateToAddAddressPage(frame);
+  await navigateToAddShippingAddressPage(frame);
   info("manuallyAddShippingAddress, fill in address form with options: " + JSON.stringify(options));
   await fillInShippingAddressForm(frame, aAddress, options);
   info("manuallyAddShippingAddress, verifyPersistCheckbox with options: " +
@@ -601,8 +638,8 @@ async function navigateToAddCardPage(frame, aOptions = {
 
     // wait for card page
     await PaymentTestUtils.DialogContentUtils.waitForState(content, (state) => {
-      return state.page.id == "basic-card-page" && !state["basic-card-page"].guid;
-    }, "Check add page state");
+      return state.page.id == "basic-card-page";
+    }, "Check add/edit page state");
   }, aOptions);
 }
 

@@ -258,28 +258,12 @@ def _abortIfFalse(cond, msg):
         [cond, ExprLiteral.String(msg)]))
 
 
-def _refptr(T, ptr=0, ref=0):
-    return Type('RefPtr', T=T, ptr=ptr, ref=ref)
-
-
-def _refptrGet(expr):
-    return ExprCall(ExprSelect(expr, '.', 'get'))
-
-
-def _refptrForget(expr):
-    return ExprCall(ExprSelect(expr, '.', 'forget'))
-
-
-def _refptrTake(expr):
-    return ExprCall(ExprSelect(expr, '.', 'take'))
+def _refptr(T):
+    return Type('RefPtr', T=T)
 
 
 def _uniqueptr(T):
     return Type('UniquePtr', T=T)
-
-
-def _uniqueptrGet(expr):
-    return ExprCall(ExprSelect(expr, '.', 'get'))
 
 
 def _tuple(types, const=0, ref=0):
@@ -563,6 +547,9 @@ class _ConvertToCxxType(TypeVisitor):
     def visitEndpointType(self, s):
         return Type(self.typename(s))
 
+    def visitUniquePtrType(self, s):
+        return Type(self.typename(s))
+
     def visitProtocolType(self, p): assert 0
 
     def visitMessageType(self, m): assert 0
@@ -606,9 +593,16 @@ def _cxxConstRefType(ipdltype, side):
         t = t.T
         t.ptr = 1
         return t
+    if ipdltype.isUniquePtr():
+        t.ref = 1
+        return t
     t.const = 1
     t.ref = 1
     return t
+
+
+def _cxxTypeCanMoveSend(ipdltype):
+    return ipdltype.isUniquePtr()
 
 
 def _cxxTypeNeedsMove(ipdltype):
@@ -616,7 +610,8 @@ def _cxxTypeNeedsMove(ipdltype):
                                     ipdltype.isShmem() or
                                     ipdltype.isByteBuf() or
                                     ipdltype.isEndpoint())) or
-            (ipdltype.isCxx() and ipdltype.isMoveonly()))
+            (ipdltype.isCxx() and ipdltype.isMoveonly())
+            or ipdltype.isUniquePtr())
 
 
 def _cxxTypeCanMove(ipdltype):
@@ -1409,6 +1404,8 @@ with some new IPDL/C++ nodes that are tuned for C++ codegen."""
                                        'Endpoint', ['FooSide']),
                                Typedef(Type('mozilla::ipc::TransportDescriptor'),
                                        'TransportDescriptor'),
+                               Typedef(Type('mozilla::UniquePtr'),
+                                       'UniquePtr', ['T']),
                                Typedef(Type('mozilla::ipc::ResponseRejectReason'),
                                        'ResponseRejectReason')])
         self.protocolName = None
@@ -2271,6 +2268,11 @@ before this struct.  Some types generate multiple kinds.'''
         self.visited.add(s)
         self.maybeTypedef('mozilla::ipc::FileDescriptor', 'FileDescriptor')
 
+    def visitUniquePtrType(self, s):
+        if s in self.visited:
+            return
+        self.visited.add(s)
+
     def visitVoidType(self, v): assert 0
 
     def visitMessageType(self, v): assert 0
@@ -3072,7 +3074,7 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
         if using.header is None:
             return
 
-        if using.canBeForwardDeclared():
+        if using.canBeForwardDeclared() and not using.decl.type.isUniquePtr():
             spec = using.type.spec
 
             self.usingDecls.extend([
@@ -3823,6 +3825,7 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
         isdtor = md.decl.type.isDtor()
         decltype = md.decl.type
         sendmethod = None
+        movesendmethod = None
         promisesendmethod = None
         recvlbl, recvcase = None, None
 
@@ -3851,10 +3854,10 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
             elif isdtor:
                 sendmethod = self.genBlockingDtorMethod(md)
             elif isasync:
-                sendmethod, promisesendmethod, (recvlbl, recvcase) = \
+                sendmethod, movesendmethod, promisesendmethod, (recvlbl, recvcase) = \
                     self.genAsyncSendMethod(md)
             else:
-                sendmethod = self.genBlockingSendMethod(md)
+                sendmethod, movesendmethod = self.genBlockingSendMethod(md)
 
         # XXX figure out what to do here
         if isdtor and md.decl.type.constructedType().isToplevel():
@@ -3862,6 +3865,8 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
 
         if sendmethod is not None:
             self.cls.addstmts([sendmethod, Whitespace.NL])
+        if movesendmethod is not None:
+            self.cls.addstmts([movesendmethod, Whitespace.NL])
         if promisesendmethod is not None:
             self.cls.addstmts([promisesendmethod, Whitespace.NL])
         if recvcase is not None:
@@ -3889,13 +3894,31 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
 
         msgvar, stmts = self.makeMessage(md, errfnSendCtor)
         sendok, sendstmts = self.sendAsync(md, msgvar)
+
+        warnif = StmtIf(ExprNot(sendok))
+        warnif.addifstmt(_printWarningMessage('Error sending constructor'))
+
         method.addstmts(
+            # Build our constructor message & verify it.
             stmts
             + self.genVerifyMessage(md.decl.type.verify, md.params,
                                     errfnSendCtor, ExprVar('msg__'))
+
+            # Notify the other side about the newly created actor.
+            #
+            # If the MessageChannel is closing, and we haven't been told yet,
+            # this send may fail. This error is ignored to treat it like a
+            # message being lost due to the other side shutting down before
+            # processing it.
+            #
+            # NOTE: We don't free the actor here, as our caller may be
+            # depending on it being alive after calling SendConstructor.
             + sendstmts
-            + self.failCtorIf(md, ExprNot(sendok))
-            + [StmtReturn(actor.var())])
+
+            # Warn if the message failed to send, and return our newly created
+            # actor.
+            + [warnif,
+               StmtReturn(actor.var())])
 
         lbl = CaseLabel(md.pqReplyId())
         case = StmtBlock()
@@ -4118,6 +4141,13 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
         case.addstmt(StmtReturn(_Result.Processed))
         return (lbl, case)
 
+    @staticmethod
+    def hasMoveableParams(md):
+        for param in md.decl.type.params:
+            if _cxxTypeCanMoveSend(param):
+                return True
+        return False
+
     def genAsyncSendMethod(self, md):
         method = MethodDefn(self.makeSendMethodDecl(md))
         msgvar, stmts = self.makeMessage(md, errfnSend)
@@ -4130,6 +4160,17 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
                         + sendstmts
                         + [StmtReturn(retvar)])
 
+        if self.hasMoveableParams(md):
+            movemethod = MethodDefn(self.makeSendMethodDecl(md, paramsems='move'))
+            movemethod.addstmts(stmts
+                                + [Whitespace.NL]
+                                + self.genVerifyMessage(md.decl.type.verify, md.params,
+                                                        errfnSend, ExprVar('msg__'))
+                                + sendstmts
+                                + [StmtReturn(retvar)])
+        else:
+            movemethod = None
+
         # Add the promise overload if we need one.
         if md.returns:
             promisemethod = MethodDefn(self.makeSendMethodDecl(md, promise=True))
@@ -4140,7 +4181,7 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
         else:
             (promisemethod, lbl, case) = (None, None, None)
 
-        return method, promisemethod, (lbl, case)
+        return method, movemethod, promisemethod, (lbl, case)
 
     def genBlockingSendMethod(self, md, fromActor=None):
         method = MethodDefn(self.makeSendMethodDecl(md))
@@ -4167,7 +4208,23 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
             + [Whitespace.NL,
                 StmtReturn.TRUE])
 
-        return method
+        if self.hasMoveableParams(md):
+            movemethod = MethodDefn(self.makeSendMethodDecl(md, paramsems='move'))
+            movemethod.addstmts(
+                serstmts
+                + self.genVerifyMessage(md.decl.type.verify, md.params, errfnSend,
+                                        ExprVar('msg__'))
+                + [Whitespace.NL,
+                    StmtDecl(Decl(Type('Message'), replyvar.name))]
+                + sendstmts
+                + [failif]
+                + desstmts
+                + [Whitespace.NL,
+                    StmtReturn.TRUE])
+        else:
+            movemethod = None
+
+        return method, movemethod
 
     def genCtorRecvCase(self, md):
         lbl = CaseLabel(md.pqMsgId())
@@ -4695,7 +4752,7 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
         decl.methodspec = MethodSpec.STATIC
         return decl
 
-    def makeSendMethodDecl(self, md, promise=False):
+    def makeSendMethodDecl(self, md, promise=False, paramsems='in'):
         implicit = md.decl.type.hasImplicitActorParam()
         if md.decl.type.isAsync() and md.returns:
             if promise:
@@ -4710,7 +4767,7 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
             rettype = Type.BOOL
         decl = MethodDecl(
             md.sendMethod().name,
-            params=md.makeCxxParams(paramsems='in', returnsems=returnsems,
+            params=md.makeCxxParams(paramsems, returnsems=returnsems,
                                     side=self.side, implicit=implicit),
             warn_unused=(self.side == 'parent' and returnsems != 'callback'),
             ret=rettype)

@@ -11,6 +11,7 @@ DIRS += [
 #    'webcompat',
 #    'webcompat-reporter'
 ]
+<<<<<<< HEAD
 
 ''' disabled by Cliqz
 # Only include mortar system add-ons if we locally enable it
@@ -19,3 +20,12 @@ if CONFIG['MOZ_MORTAR']:
         'mortar',
     ]
 '''
+||||||| merged common ancestors
+
+# Only include mortar system add-ons if we locally enable it
+if CONFIG['MOZ_MORTAR']:
+    DIRS += [
+        'mortar',
+    ]
+=======
+>>>>>>> origin/upstream-releases

@@ -169,8 +169,6 @@ function waitForIgnoredReports(reportIDs) {
   return Promise.all(promises);
 }
 
-let gNotificationBox;
-
 add_task(async function setup() {
   // Pending crash reports are stored in the UAppData folder,
   // which exists outside of the profile folder. In order to
@@ -181,7 +179,6 @@ add_task(async function setup() {
   await makeFakeAppDir();
   // We'll assume that the notifications will be shown in the current
   // browser window's global notification box.
-  gNotificationBox = document.getElementById("global-notificationbox");
 
   // If we happen to already be seeing the unsent crash report
   // notification, it's because the developer running this test
@@ -239,7 +236,6 @@ add_task(async function setup() {
   UnsubmittedCrashHandler.init();
 
   registerCleanupFunction(function() {
-    gNotificationBox = null;
     clearPendingCrashReports();
     env.set("MOZ_CRASHREPORTER_URL", oldServerURL);
   });
@@ -268,7 +264,6 @@ add_task(async function test_one_pending() {
   let notification =
     await UnsubmittedCrashHandler.checkForUnsubmittedCrashReports();
   Assert.ok(notification, "There should be a notification");
-
   gNotificationBox.removeNotification(notification, true);
   clearPendingCrashReports();
 });
@@ -284,9 +279,7 @@ add_task(async function test_other_ignored() {
   Assert.ok(notification, "There should be a notification");
 
   // Dismiss notification, creating the .dmp.ignore file
-  let closeButton =
-    document.getAnonymousElementByAttribute(notification, "anonid", "close-button");
-  closeButton.click();
+  notification.querySelector(".messageCloseButton").click();
   gNotificationBox.removeNotification(notification, true);
   await waitForIgnoredReports(toIgnore);
 
@@ -476,9 +469,7 @@ add_task(async function test_can_ignore() {
   Assert.ok(notification, "There should be a notification");
 
   // Dismiss the notification by clicking on the "X" button.
-  let closeButton =
-    document.getAnonymousElementByAttribute(notification, "anonid", "close-button");
-  closeButton.click();
+  notification.querySelector(".messageCloseButton").click();
   // We'll not wait for the notification to finish its transition -
   // we'll just remove it right away.
   gNotificationBox.removeNotification(notification, true);
@@ -550,9 +541,7 @@ add_task(async function test_shutdown_while_not_showing() {
   Assert.ok(notification, "There should be a notification");
 
   // Dismiss the notification by clicking on the "X" button.
-  let closeButton =
-    document.getAnonymousElementByAttribute(notification, "anonid", "close-button");
-  closeButton.click();
+  notification.querySelector(".messageCloseButton").click();
   // We'll not wait for the notification to finish its transition -
   // we'll just remove it right away.
   gNotificationBox.removeNotification(notification, true);

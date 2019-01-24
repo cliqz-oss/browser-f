@@ -14,10 +14,33 @@
 
 #import <AVFoundation/AVFoundation.h>
 
-#import "webrtc/modules/video_capture/objc/device_info_objc.h"
-#include "webrtc/modules/video_capture/video_capture_config.h"
+#import "modules/video_capture/objc/device_info_objc.h"
+#include "modules/video_capture/video_capture_config.h"
 
 @implementation DeviceInfoIosObjC
+
+- (id)init {
+  self = [super init];
+
+  if (nil != self) {
+    [self configureObservers];
+  }
+
+  return self;
+}
+
+
+- (void)dealloc {
+   NSNotificationCenter* notificationCenter = [NSNotificationCenter defaultCenter];
+   for (id observer in _observers)
+       [notificationCenter removeObserver:observer];
+}
+
+- (void)registerOwner:(DeviceInfoIos*)owner {
+  [_lock lock];
+  _owner = owner;
+  [_lock unlock];
+}
 
 + (int)captureDeviceCount {
   return [[AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo] count];
@@ -60,32 +83,52 @@
     capability.width = 352;
     capability.height = 288;
     capability.maxFPS = 30;
-    capability.expectedCaptureDelay =
-        webrtc::videocapturemodule::kDefaultCaptureDelay;
-    capability.rawType = webrtc::kVideoNV12;
-    capability.codecType = webrtc::kVideoCodecUnknown;
+    capability.videoType = webrtc::VideoType::kNV12;
     capability.interlaced = false;
   } else if ([preset isEqualToString:AVCaptureSessionPreset640x480]) {
     capability.width = 640;
     capability.height = 480;
     capability.maxFPS = 30;
-    capability.expectedCaptureDelay =
-        webrtc::videocapturemodule::kDefaultCaptureDelay;
-    capability.rawType = webrtc::kVideoNV12;
-    capability.codecType = webrtc::kVideoCodecUnknown;
+    capability.videoType = webrtc::VideoType::kNV12;
     capability.interlaced = false;
   } else if ([preset isEqualToString:AVCaptureSessionPreset1280x720]) {
     capability.width = 1280;
     capability.height = 720;
     capability.maxFPS = 30;
-    capability.expectedCaptureDelay =
-        webrtc::videocapturemodule::kDefaultCaptureDelay;
-    capability.rawType = webrtc::kVideoNV12;
-    capability.codecType = webrtc::kVideoCodecUnknown;
+    capability.videoType = webrtc::VideoType::kNV12;
     capability.interlaced = false;
   }
 
   return capability;
+}
+
+- (void)configureObservers {
+  //register device connected / disconnected event
+  _lock = [[NSLock alloc] init];
+
+  NSNotificationCenter *notificationCenter = [NSNotificationCenter defaultCenter];
+
+  id deviceWasConnectedObserver = [notificationCenter addObserverForName:AVCaptureDeviceWasConnectedNotification
+      object:nil
+      queue:[NSOperationQueue mainQueue]
+      usingBlock:^(NSNotification *note) {
+          [_lock lock];
+          if(_owner)
+              _owner->DeviceChange();
+          [_lock unlock];
+      }];
+
+  id deviceWasDisconnectedObserver = [notificationCenter addObserverForName:AVCaptureDeviceWasDisconnectedNotification
+      object:nil
+      queue:[NSOperationQueue mainQueue]
+      usingBlock:^(NSNotification *note) {
+          [_lock lock];
+          if(_owner)
+              _owner->DeviceChange();
+          [_lock unlock];
+      }];
+
+  _observers = [[NSArray alloc] initWithObjects:deviceWasConnectedObserver, deviceWasDisconnectedObserver, nil];
 }
 
 @end

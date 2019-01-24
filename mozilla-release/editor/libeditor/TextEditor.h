@@ -26,16 +26,14 @@ enum class EditSubAction : int32_t;
 namespace dom {
 class DragEvent;
 class Selection;
-} // namespace dom
+}  // namespace dom
 
 /**
  * The text editor implementation.
  * Use to edit text document represented as a DOM tree.
  */
-class TextEditor : public EditorBase
-                 , public nsIPlaintextEditor
-{
-public:
+class TextEditor : public EditorBase, public nsIPlaintextEditor {
+ public:
   /****************************************************************************
    * NOTE: DO NOT MAKE YOUR NEW METHODS PUBLIC IF they are called by other
    *       classes under libeditor except EditorEventListener and
@@ -64,7 +62,9 @@ public:
 
   // If there are some good name to create non-virtual Undo()/Redo() methods,
   // we should create them and those methods should just run them.
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   NS_IMETHOD Undo(uint32_t aCount) final;
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   NS_IMETHOD Redo(uint32_t aCount) final;
 
   NS_IMETHOD Cut() override;
@@ -75,15 +75,14 @@ public:
   NS_IMETHOD CanPaste(int32_t aSelectionType, bool* aCanPaste) override;
   NS_IMETHOD PasteTransferable(nsITransferable* aTransferable) override;
 
-  NS_IMETHOD OutputToString(const nsAString& aFormatType,
-                            uint32_t aFlags,
+  NS_IMETHOD OutputToString(const nsAString& aFormatType, uint32_t aFlags,
                             nsAString& aOutputString) override;
 
   /** Can we paste |aTransferable| or, if |aTransferable| is null, will a call
-    * to pasteTransferable later possibly succeed if given an instance of
-    * nsITransferable then? True if the doc is modifiable, and, if
-    * |aTransfeable| is non-null, we have pasteable data in |aTransfeable|.
-    */
+   * to pasteTransferable later possibly succeed if given an instance of
+   * nsITransferable then? True if the doc is modifiable, and, if
+   * |aTransfeable| is non-null, we have pasteable data in |aTransfeable|.
+   */
   virtual bool CanPasteTransferable(nsITransferable* aTransferable);
 
   // Overrides of EditorBase
@@ -97,17 +96,16 @@ public:
    * other nodes like <br>, returns false.
    */
   nsresult IsEmpty(bool* aIsEmpty) const;
-  bool IsEmpty() const
-  {
+  bool IsEmpty() const {
     bool isEmpty = false;
     nsresult rv = IsEmpty(&isEmpty);
     NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
-      "Checking whether the editor is empty failed");
+                         "Checking whether the editor is empty failed");
     return NS_SUCCEEDED(rv) && isEmpty;
   }
 
   virtual nsresult HandleKeyPressEvent(
-                     WidgetKeyboardEvent* aKeyboardEvent) override;
+      WidgetKeyboardEvent* aKeyboardEvent) override;
 
   virtual dom::EventTarget* GetDOMEventTarget() override;
 
@@ -121,8 +119,7 @@ public:
    * @param aDispatchPasteEvent true if this should dispatch ePaste event
    *                            before pasting.  Otherwise, false.
    */
-  nsresult PasteAsAction(int32_t aClipboardType,
-                         bool aDispatchPasteEvent);
+  nsresult PasteAsAction(int32_t aClipboardType, bool aDispatchPasteEvent);
 
   /**
    * InsertTextAsAction() inserts aStringToInsert at selection.
@@ -161,9 +158,9 @@ public:
                                    EStripWrappers aStripWrappers);
 
   /**
-    * The maximum number of characters allowed.
-    *   default: -1 (unlimited).
-    */
+   * The maximum number of characters allowed.
+   *   default: -1 (unlimited).
+   */
   int32_t MaxTextLength() const { return mMaxTextLength; }
   void SetMaxTextLength(int32_t aLength) { mMaxTextLength = aLength; }
 
@@ -187,10 +184,10 @@ public:
                                nsRange* aReplaceRange = nullptr);
 
   /**
-   * OnInputParagraphSeparator() is called when user tries to separate current
-   * paragraph with Enter key press or something.
+   * InsertLineBreakAsAction() is called when user inputs a line break with
+   * Enter or something.
    */
-  nsresult OnInputParagraphSeparator();
+  virtual nsresult InsertLineBreakAsAction();
 
   /**
    * OnCompositionStart() is called when editor receives eCompositionStart
@@ -205,14 +202,15 @@ public:
    * @param aCompositionChangeEvent     eCompositionChange event which should
    *                                    be handled in this editor.
    */
-  nsresult
-  OnCompositionChange(WidgetCompositionEvent& aCompositionChangeEvent);
+  MOZ_CAN_RUN_SCRIPT
+  nsresult OnCompositionChange(WidgetCompositionEvent& aCompositionChangeEvent);
 
   /**
    * OnCompositionEnd() is called when editor receives an eCompositionChange
    * event and it's followed by eCompositionEnd event and after
    * OnCompositionChange() is called.
    */
+  MOZ_CAN_RUN_SCRIPT
   void OnCompositionEnd(WidgetCompositionEvent& aCompositionEndEvent);
 
   /**
@@ -230,13 +228,16 @@ public:
    * @param aCharset                Encoding of the document.
    */
   nsresult ComputeTextValue(uint32_t aDocumentEncoderFlags,
-                            nsAString& aOutputString) const
-  {
+                            nsAString& aOutputString) const {
+    AutoEditActionDataSetter editActionData(*this, EditAction::eNotEditing);
+    if (NS_WARN_IF(!editActionData.CanHandle())) {
+      return NS_ERROR_NOT_INITIALIZED;
+    }
     return ComputeValueInternal(NS_LITERAL_STRING("text/plain"),
                                 aDocumentEncoderFlags, aOutputString);
   }
 
-protected: // May be called by friends.
+ protected:  // May be called by friends.
   /****************************************************************************
    * Some classes like TextEditRules, HTMLEditRules, WSRunObject which are
    * part of handling edit actions are allowed to call the following protected
@@ -248,9 +249,8 @@ protected: // May be called by friends.
 
   // Overrides of EditorBase
   virtual nsresult RemoveAttributeOrEquivalent(
-                     Element* aElement,
-                     nsAtom* aAttribute,
-                     bool aSuppressTransaction) override;
+      Element* aElement, nsAtom* aAttribute,
+      bool aSuppressTransaction) override;
   virtual nsresult SetAttributeOrEquivalent(Element* aElement,
                                             nsAtom* aAttribute,
                                             const nsAString& aValue,
@@ -286,9 +286,8 @@ protected: // May be called by friends.
    * @param aStripWrappers      Whether the parent blocks should be removed
    *                            when they become empty.
    */
-  virtual nsresult
-  DeleteSelectionWithTransaction(EDirection aAction,
-                                 EStripWrappers aStripWrappers);
+  virtual nsresult DeleteSelectionWithTransaction(
+      EDirection aAction, EStripWrappers aStripWrappers);
 
   /**
    * Replace existed string with aString.  Caller must guarantee that there
@@ -310,7 +309,6 @@ protected: // May be called by friends.
    * before aPointToInsert.  Then, tries to collapse selection at or after the
    * new <br> node if aSelect is not eNone.
    *
-   * @param aSelection          The selection of this editor.
    * @param aPointToInsert      The DOM point where should be <br> node inserted
    *                            before.
    * @param aSelect             If eNone, this won't change selection.
@@ -321,35 +319,38 @@ protected: // May be called by friends.
    * @return                    The new <br> node.  If failed to create new
    *                            <br> node, returns nullptr.
    */
-  template<typename PT, typename CT>
-  already_AddRefed<Element>
-  InsertBrElementWithTransaction(
-    Selection& aSelection,
-    const EditorDOMPointBase<PT, CT>& aPointToInsert,
-    EDirection aSelect = eNone);
+  template <typename PT, typename CT>
+  already_AddRefed<Element> InsertBrElementWithTransaction(
+      const EditorDOMPointBase<PT, CT>& aPointToInsert,
+      EDirection aSelect = eNone);
 
   /**
    * Extends the selection for given deletion operation
    * If done, also update aAction to what's actually left to do after the
    * extension.
    */
-  nsresult ExtendSelectionForDelete(Selection* aSelection,
-                                    nsIEditor::EDirection* aAction);
+  nsresult ExtendSelectionForDelete(nsIEditor::EDirection* aAction);
+
+  /**
+   * HideLastPasswordInput() is called by timer callback of TextEditRules.
+   * This should be called only by TextEditRules::Notify().
+   * When this is called, the TextEditRules wants to call its
+   * HideLastPasswordInput() with AutoEditActionDataSetter instance.
+   */
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY nsresult HideLastPasswordInput();
 
   static void GetDefaultEditorPrefs(int32_t& aNewLineHandling,
                                     int32_t& aCaretStyle);
 
-protected: // Called by helper classes.
-
-  virtual void
-  OnStartToHandleTopLevelEditSubAction(
-    EditSubAction aEditSubAction, nsIEditor::EDirection aDirection) override;
+ protected:  // Called by helper classes.
+  virtual void OnStartToHandleTopLevelEditSubAction(
+      EditSubAction aEditSubAction, nsIEditor::EDirection aDirection) override;
   virtual void OnEndHandlingTopLevelEditSubAction() override;
 
   void BeginEditorInit();
   nsresult EndEditorInit();
 
-protected: // Shouldn't be used by friend classes
+ protected:  // Shouldn't be used by friend classes
   virtual ~TextEditor();
 
   int32_t WrapWidth() const { return mWrapColumn; }
@@ -357,7 +358,7 @@ protected: // Shouldn't be used by friend classes
   /**
    * Make the given selection span the entire document.
    */
-  virtual nsresult SelectEntireDocument(Selection* aSelection) override;
+  virtual nsresult SelectEntireDocument() override;
 
   /**
    * OnInputText() is called when user inputs text with keyboard or something.
@@ -367,25 +368,57 @@ protected: // Shouldn't be used by friend classes
   nsresult OnInputText(const nsAString& aStringToInsert);
 
   /**
-   * InsertParagraphSeparatorAsAction() inserts a line break if it's TextEditor
-   * or inserts new paragraph if it's HTMLEditor and it's possible.
-   * Although, this method is implementation of
-   * nsIPlaintextEditor.insertLineBreak(), this treats the input is an edit
-   * action.
+   * InsertLineBreakAsSubAction() inserts a line break, i.e., \n if it's
+   * TextEditor or <br> if it's HTMLEditor.
    */
-  nsresult InsertParagraphSeparatorAsAction();
+  nsresult InsertLineBreakAsSubAction();
 
+  /**
+   * PrepareInsertContent() is a helper method of InsertTextAt(),
+   * HTMLEditor::DoInsertHTMLWithContext().  They insert content coming from
+   * clipboard or drag and drop.  Before that, they may need to remove selected
+   * contents and adjust selection.  This does them instead.
+   *
+   * @param aPointToInsert      Point to insert.  Must be set.  Callers
+   *                            shouldn't use this instance after calling this
+   *                            method because this method may cause changing
+   *                            the DOM tree and Selection.
+   * @param aDoDeleteSelection  true if selected content should be removed.
+   */
+  MOZ_CAN_RUN_SCRIPT
+  nsresult PrepareToInsertContent(const EditorDOMPoint& aPointToInsert,
+                                  bool aDoDeleteSelection);
+
+  /**
+   * InsertTextAt() inserts aStringToInsert at aPointToInsert.
+   *
+   * @param aStringToInsert     The string which you want to insert.
+   * @param aPointToInsert      The insertion point.
+   * @param aDoDeleteSelection  true if you want this to delete selected
+   *                            content.  Otherwise, false.
+   */
+  MOZ_CAN_RUN_SCRIPT
   nsresult InsertTextAt(const nsAString& aStringToInsert,
-                        nsINode* aDestinationNode,
-                        int32_t aDestOffset,
+                        const EditorDOMPoint& aPointToInsert,
                         bool aDoDeleteSelection);
 
+  /**
+   * InsertFromDataTransfer() inserts the data in aDataTransfer at aIndex.
+   * This is intended to handle "drop" event.
+   *
+   * @param aDataTransfer       Dropped data transfer.
+   * @param aIndex              Index of the data which should be inserted.
+   * @param aSourceDoc          The document which the source comes from.
+   * @param aDroppedAt          The dropped position.
+   * @param aDoDeleteSelection  true if this should delete selected content.
+   *                            false otherwise.
+   */
+  MOZ_CAN_RUN_SCRIPT
   virtual nsresult InsertFromDataTransfer(dom::DataTransfer* aDataTransfer,
                                           int32_t aIndex,
                                           nsIDocument* aSourceDoc,
-                                          nsINode* aDestinationNode,
-                                          int32_t aDestOffset,
-                                          bool aDoDeleteSelection) override;
+                                          const EditorDOMPoint& aDroppedAt,
+                                          bool aDoDeleteSelection);
 
   /**
    * InsertWithQuotationsAsSubAction() inserts aQuotedText with appending ">"
@@ -414,10 +447,9 @@ protected: // Shouldn't be used by friend classes
    * @param aDocumentEncoderFlags   Flags of nsIDocumentEncoder.
    * @param aCharset                Encoding of the document.
    */
-  already_AddRefed<nsIDocumentEncoder>
-  GetAndInitDocEncoder(const nsAString& aFormatType,
-                       uint32_t aDocumentEncoderFlags,
-                       const nsACString& aCharset) const;
+  already_AddRefed<nsIDocumentEncoder> GetAndInitDocEncoder(
+      const nsAString& aFormatType, uint32_t aDocumentEncoderFlags,
+      const nsACString& aCharset) const;
 
   /**
    * ComputeValueInternal() computes string value of this editor for given
@@ -464,14 +496,9 @@ protected: // Shouldn't be used by friend classes
   nsresult SharedOutputString(uint32_t aFlags, bool* aIsCollapsed,
                               nsAString& aResult);
 
-  enum PasswordFieldAllowed
-  {
-    ePasswordFieldAllowed,
-    ePasswordFieldNotAllowed
-  };
+  enum PasswordFieldAllowed { ePasswordFieldAllowed, ePasswordFieldNotAllowed };
   bool CanCutOrCopy(PasswordFieldAllowed aPasswordFieldAllowed);
-  bool FireClipboardEvent(EventMessage aEventMessage,
-                          int32_t aSelectionType,
+  bool FireClipboardEvent(EventMessage aEventMessage, int32_t aSelectionType,
                           bool* aActionTaken = nullptr);
 
   bool UpdateMetaCharset(nsIDocument& aDocument,
@@ -489,9 +516,9 @@ protected: // Shouldn't be used by friend classes
    */
   bool EnsureComposition(WidgetCompositionEvent& aCompositionEvent);
 
-  virtual already_AddRefed<nsIContent> GetInputEventTargetContent() override;
+  virtual already_AddRefed<Element> GetInputEventTargetElement() override;
 
-protected:
+ protected:
   mutable nsCOMPtr<nsIDocumentEncoder> mCachedDocumentEncoder;
   mutable nsString mCachedDocumentEncoderType;
   int32_t mWrapColumn;
@@ -504,18 +531,14 @@ protected:
   friend class TextEditRules;
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-mozilla::TextEditor*
-nsIEditor::AsTextEditor()
-{
+mozilla::TextEditor* nsIEditor::AsTextEditor() {
   return static_cast<mozilla::TextEditor*>(this);
 }
 
-const mozilla::TextEditor*
-nsIEditor::AsTextEditor() const
-{
+const mozilla::TextEditor* nsIEditor::AsTextEditor() const {
   return static_cast<const mozilla::TextEditor*>(this);
 }
 
-#endif // #ifndef mozilla_TextEditor_h
+#endif  // #ifndef mozilla_TextEditor_h

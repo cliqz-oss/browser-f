@@ -86,17 +86,14 @@ interface nsIFlavorDataProvider : nsISupports
     * @param  aTransferable (in parameter) the transferable we're being called for.
     * @param  aFlavor (in parameter) the flavor of data to retrieve
     * @param  aData the data. Some variant of class in nsISupportsPrimitives.idl
-    * @param  aDataLen the length of the data
     */
-  void getFlavorData(in nsITransferable aTransferable, in string aFlavor, out nsISupports aData, out unsigned long aDataLen);
+  void getFlavorData(in nsITransferable aTransferable, in string aFlavor, out nsISupports aData);
 };
 
 
 [scriptable, uuid(97e0c418-1c1e-4106-bad1-9fcb11dff2fe)]
 interface nsITransferable : nsISupports
 {
-  const long kFlavorHasDataProvider = 0;
-
   /**
    * Initializes a transferable object.  This should be called on all
    * transferable objects.  Failure to do so will result in fatal assertions in
@@ -134,7 +131,7 @@ interface nsITransferable : nsISupports
     * @param  aData the data. Some variant of class in nsISupportsPrimitives.idl
     * @param  aDataLen the length of the data
     */
-  void getTransferData ( in string aFlavor, out nsISupports aData, out unsigned long aDataLen ) ;
+  void getTransferData(in string aFlavor, out nsISupports aData);
 
   /**
     * Returns the best flavor in the transferable, given those that have
@@ -142,16 +139,8 @@ interface nsITransferable : nsISupports
     *
     * @param  aFlavor (out parameter) the flavor of data that was retrieved
     * @param  aData the data. Some variant of class in nsISupportsPrimitives.idl
-    * @param  aDataLen the length of the data
     */
-  void getAnyTransferData ( out ACString aFlavor, out nsISupports aData,
-                            out unsigned long aDataLen ) ;
-
-  /**
-    * Returns true if the data is large.
-    */
-  boolean isLargeDataSet ( ) ;
-  
+  void getAnyTransferData(out ACString aFlavor, out nsISupports aData);
 
     ///////////////////////////////
     // Setter part of interface 
@@ -173,7 +162,7 @@ interface nsITransferable : nsISupports
     *         an nsIFile, or an nsIFlavorDataProvider (see above)
     * @param  aDataLen the length of the data, or 0 if passing a nsIFlavorDataProvider
     */
-  void setTransferData ( in string aFlavor, in nsISupports aData, in unsigned long aDataLen ) ;
+  void setTransferData(in string aFlavor, in nsISupports aData);
 
   /**
     * Add the data flavor, indicating that this transferable 
@@ -198,7 +187,7 @@ interface nsITransferable : nsISupports
    * be avoided as much as possible because the value set may not reflect the status 
    * of the context in which the transferable was created.
    */
-  [noscript] attribute boolean isPrivateData;
+  [notxpcom, nostdcall] attribute boolean isPrivateData;
 
   /**
    * The principal of the source dom node this transferable was
@@ -206,7 +195,7 @@ interface nsITransferable : nsISupports
    * Note, currently only used on Windows for network principal and
    * contentPolicyType information in clipboard and drag operations.
    */
-  [noscript] attribute nsIPrincipal requestingPrincipal;
-  [noscript] attribute nsContentPolicyType contentPolicyType;
+  [notxpcom, nostdcall] attribute nsIPrincipal requestingPrincipal;
+  [notxpcom, nostdcall] attribute nsContentPolicyType contentPolicyType;
 
 };

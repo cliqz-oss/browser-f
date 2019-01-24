@@ -138,6 +138,10 @@
         this.tabbox;
       ]]></field>
 
+      <field name="_prefService" readonly="true"><![CDATA[
+        Cc["@mozilla.org/preferences-service;1"].getService(Ci.nsIPrefBranch);
+      ]]></field>
+
       <property name="selectedIndex">
         <getter>
         <![CDATA[
@@ -354,23 +358,23 @@
       </method>
     </implementation>
 
-#ifdef MOZ_WIDGET_GTK
     <handlers>
       <handler event="DOMMouseScroll">
       <![CDATA[
-        if (event.detail > 0)
-          this.advanceSelectedTab(1, false);
-        else
-          this.advanceSelectedTab(-1, false);
-
-        event.stopPropagation();
+        if (this._prefService.getBoolPref("toolkit.tabbox.switchByScrolling")) {
+          if (event.detail > 0) {
+            this.advanceSelectedTab(1, false);
+          } else {
+            this.advanceSelectedTab(-1, false);
+          }
+          event.stopPropagation();
+        }
       ]]>
       </handler>
     </handlers>
-#endif
   </binding>
 
-  <binding id="tab" display="xul:button"
+  <binding id="tab"
            extends="chrome://global/content/bindings/general.xml#basetext">
     <content>
       <xul:hbox class="tab-middle box-inherit" xbl:inherits="align,dir,pack,orient,selected,visuallyselected" flex="1">
@@ -421,19 +425,6 @@
       <field name="arrowKeysShouldWrap" readonly="true">
         /Mac/.test(navigator.platform)
       </field>
-      <property name="TelemetryStopwatch" readonly="true">
-        <getter><![CDATA[
-          let module = {};
-          ChromeUtils.import("resource://gre/modules/TelemetryStopwatch.jsm", module);
-          Object.defineProperty(this, "TelemetryStopwatch", {
-            configurable: true,
-            enumerable: true,
-            writable: true,
-            value: module.TelemetryStopwatch,
-          });
-          return module.TelemetryStopwatch;
-        ]]></getter>
-      </property>
     </implementation>
 
     <handlers>
@@ -447,7 +438,7 @@
         if (this != this.parentNode.selectedItem) { // Not selected yet
           let stopwatchid = this.parentNode.getAttribute("stopwatchid");
           if (stopwatchid) {
-            this.TelemetryStopwatch.start(stopwatchid);
+            TelemetryStopwatch.start(stopwatchid);
           }
 
           // Call this before setting the 'ignorefocus' attribute because this
@@ -469,7 +460,7 @@
           }
 
           if (stopwatchid) {
-            this.TelemetryStopwatch.finish(stopwatchid);
+            TelemetryStopwatch.finish(stopwatchid);
           }
         }
         // Otherwise this tab is already selected and we will fall

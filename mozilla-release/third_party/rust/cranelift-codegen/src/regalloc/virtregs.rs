@@ -15,7 +15,7 @@ use dbg::DisplayList;
 use dominator_tree::DominatorTreePreorder;
 use entity::EntityRef;
 use entity::{EntityList, ListPool};
-use entity::{EntityMap, Keys, PrimaryMap};
+use entity::{Keys, PrimaryMap, SecondaryMap};
 use ir::{Function, Value};
 use packed_option::PackedOption;
 use ref_slice::ref_slice;
@@ -45,10 +45,10 @@ pub struct VirtRegs {
     unused_vregs: Vec<VirtReg>,
 
     /// Each value belongs to at most one virtual register.
-    value_vregs: EntityMap<Value, PackedOption<VirtReg>>,
+    value_vregs: SecondaryMap<Value, PackedOption<VirtReg>>,
 
     /// Table used during the union-find phase while `vregs` is empty.
-    union_find: EntityMap<Value, i32>,
+    union_find: SecondaryMap<Value, i32>,
 
     /// Values that have been activated in the `union_find` table, but not yet added to any virtual
     /// registers by the `finish_union_find()` function.
@@ -62,8 +62,8 @@ impl VirtRegs {
             pool: ListPool::new(),
             vregs: PrimaryMap::new(),
             unused_vregs: Vec::new(),
-            value_vregs: EntityMap::new(),
-            union_find: EntityMap::new(),
+            value_vregs: SecondaryMap::new(),
+            union_find: SecondaryMap::new(),
             pending_values: Vec::new(),
         }
     }
@@ -280,7 +280,7 @@ impl UFEntry {
 /// 2. When done, call `finish_union_find()` to construct the virtual register sets based on the
 ///    `union()` calls.
 ///
-/// The values that were passed to `union(a, b)` mist not belong to any existing virtual registers
+/// The values that were passed to `union(a, b)` must not belong to any existing virtual registers
 /// by the time `finish_union_find()` is called.
 ///
 /// For more information on the algorithm implemented here, see Chapter 21 "Data Structures for
@@ -291,20 +291,22 @@ impl UFEntry {
 impl VirtRegs {
     /// Find the leader value and rank of the set containing `v`.
     /// Compress the path if needed.
-    fn find(&mut self, val: Value) -> (Value, u32) {
-        match UFEntry::decode(self.union_find[val]) {
-            UFEntry::Rank(rank) => (val, rank),
-            UFEntry::Link(parent) => {
-                // TODO: This recursion would be more efficient as an iteration that pushes
-                // elements onto a SmallVector.
-                let found = self.find(parent);
-                // Compress the path if needed.
-                if found.0 != parent {
-                    self.union_find[val] = UFEntry::encode_link(found.0);
+    fn find(&mut self, mut val: Value) -> (Value, u32) {
+        let mut val_stack = vec![];
+        let found = loop {
+            match UFEntry::decode(self.union_find[val]) {
+                UFEntry::Rank(rank) => break (val, rank),
+                UFEntry::Link(parent) => {
+                    val_stack.push(val);
+                    val = parent;
                 }
-                found
             }
+        };
+        // Compress the path
+        while let Some(val) = val_stack.pop() {
+            self.union_find[val] = UFEntry::encode_link(found.0);
         }
+        found
     }
 
     /// Union the two sets containing `a` and `b`.
@@ -396,7 +398,7 @@ impl VirtRegs {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
     use entity::EntityRef;
     use ir::Value;

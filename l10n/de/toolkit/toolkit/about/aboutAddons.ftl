@@ -4,6 +4,9 @@
 
 addons-window =
     .title = Add-ons-Verwaltung
+search-header =
+    .placeholder = Auf addons.mozilla.org suchen
+    .searchbuttonlabel = Suchen
 search-header-shortcut =
     .key = f
 loading-label =
@@ -21,6 +24,12 @@ list-empty-button =
 install-addon-from-file =
     .label = Add-on aus Datei installieren…
     .accesskey = A
+help-button = Hilfe für Add-ons
+preferences =
+    { PLATFORM() ->
+        [windows] { -brand-short-name } - Einstellungen
+       *[other] { -brand-short-name } - Einstellungen
+    }
 tools-menu =
     .tooltiptext = Tools für alle Add-ons
 show-unsigned-extensions-button =
@@ -119,7 +128,7 @@ addon-restart-now =
 disabled-unsigned-heading =
     .value = Einige Add-ons wurden deaktiviert
 disabled-unsigned-description = Die folgenden Add-ons wurden nicht für die Verwendung in { -brand-short-name } verifiziert. Sie können <label data-l10n-name="find-addons">nach Alternativen suchen</label> oder die Entwickler bitten, sie verifizieren zu lassen.
-disabled-unsigned-learn-more = Erfahren Sie mehr über unsere Aktivitäten, um Ihre Sicherheit online zu erhalten.
+disabled-unsigned-learn-more = Erfahren Sie mehr von unseren Bestrebungen, Sie beim Surfen im Internet zu schützen.
 disabled-unsigned-devinfo = An der Verifizierung ihrer Add-ons interessierte Entwickler können mehr dazu in unserer <label data-l10n-name="learn-more">Anleitung</label> erfahren.
 plugin-deprecation-description = Fehlt etwas? Einige Plugins werden nicht mehr von { -brand-short-name } unterstützt. <label data-l10n-name="learn-more">Weitere Informationen</label>
 legacy-warning-show-legacy = Erweiterungen des alten Add-on-Typs anzeigen

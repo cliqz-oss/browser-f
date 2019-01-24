@@ -14,8 +14,8 @@
 #include "nsContentUtils.h"
 #include "nsCheckboxRadioFrame.h"
 #include "nsGkAtoms.h"
-#include "nsContentUtils.h"
 #include "nsContentCreatorFunctions.h"
+#include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/dom/HTMLInputElement.h"
 #include "mozilla/dom/MutationEventBinding.h"
 #include "nsNodeInfoManager.h"
@@ -28,9 +28,8 @@
 using namespace mozilla;
 using namespace mozilla::dom;
 
-nsIFrame*
-NS_NewDateTimeControlFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
-{
+nsIFrame* NS_NewDateTimeControlFrame(nsIPresShell* aPresShell,
+                                     ComputedStyle* aStyle) {
   return new (aPresShell) nsDateTimeControlFrame(aStyle);
 }
 
@@ -42,122 +41,65 @@ NS_QUERYFRAME_HEAD(nsDateTimeControlFrame)
 NS_QUERYFRAME_TAIL_INHERITING(nsContainerFrame)
 
 nsDateTimeControlFrame::nsDateTimeControlFrame(ComputedStyle* aStyle)
-  : nsContainerFrame(aStyle, kClassID)
-{
-}
+    : nsContainerFrame(aStyle, kClassID) {}
 
-void
-nsDateTimeControlFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
-{
+void nsDateTimeControlFrame::DestroyFrom(nsIFrame* aDestructRoot,
+                                         PostDestroyData& aPostDestroyData) {
   aPostDestroyData.AddAnonymousContent(mInputAreaContent.forget());
   nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
-void
-nsDateTimeControlFrame::OnValueChanged()
-{
+void nsDateTimeControlFrame::OnValueChanged() {
+  if (!mInputAreaContent) {
+    return;
+  }
   nsCOMPtr<nsIDateTimeInputArea> inputAreaContent =
-    do_QueryInterface(mInputAreaContent);
+      do_QueryInterface(mInputAreaContent);
   if (inputAreaContent) {
     inputAreaContent->NotifyInputElementValueChanged();
   }
 }
 
-void
-nsDateTimeControlFrame::OnMinMaxStepAttrChanged()
-{
+void nsDateTimeControlFrame::OnMinMaxStepAttrChanged() {
+  if (!mInputAreaContent) {
+    return;
+  }
   nsCOMPtr<nsIDateTimeInputArea> inputAreaContent =
-    do_QueryInterface(mInputAreaContent);
+      do_QueryInterface(mInputAreaContent);
   if (inputAreaContent) {
     inputAreaContent->NotifyMinMaxStepAttrChanged();
   }
 }
 
-void
-nsDateTimeControlFrame::SetValueFromPicker(const DateTimeValue& aValue)
-{
-  nsCOMPtr<nsIDateTimeInputArea> inputAreaContent =
-    do_QueryInterface(mInputAreaContent);
-  if (inputAreaContent) {
-    AutoJSAPI api;
-    if (!api.Init(mContent->OwnerDoc()->GetScopeObject())) {
-      return;
-    }
-
-    JSObject* wrapper = mContent->GetWrapper();
-    if (!wrapper) {
-      return;
-    }
-
-    JSObject* scope = xpc::GetXBLScope(api.cx(), wrapper);
-    AutoJSAPI jsapi;
-    if (!scope || !jsapi.Init(scope)) {
-      return;
-    }
-
-    JS::Rooted<JS::Value> jsValue(jsapi.cx());
-    if (!ToJSValue(jsapi.cx(), aValue, &jsValue)) {
-      return;
-    }
-
-    inputAreaContent->SetValueFromPicker(jsValue);
+void nsDateTimeControlFrame::HandleFocusEvent() {
+  if (!mInputAreaContent) {
+    return;
   }
-}
-
-void
-nsDateTimeControlFrame::SetPickerState(bool aOpen)
-{
   nsCOMPtr<nsIDateTimeInputArea> inputAreaContent =
-    do_QueryInterface(mInputAreaContent);
-  if (inputAreaContent) {
-    inputAreaContent->SetPickerState(aOpen);
-  }
-}
-
-void
-nsDateTimeControlFrame::HandleFocusEvent()
-{
-  nsCOMPtr<nsIDateTimeInputArea> inputAreaContent =
-    do_QueryInterface(mInputAreaContent);
+      do_QueryInterface(mInputAreaContent);
   if (inputAreaContent) {
     inputAreaContent->FocusInnerTextBox();
   }
 }
 
-void
-nsDateTimeControlFrame::HandleBlurEvent()
-{
+void nsDateTimeControlFrame::HandleBlurEvent() {
+  if (!mInputAreaContent) {
+    return;
+  }
   nsCOMPtr<nsIDateTimeInputArea> inputAreaContent =
-    do_QueryInterface(mInputAreaContent);
+      do_QueryInterface(mInputAreaContent);
   if (inputAreaContent) {
     inputAreaContent->BlurInnerTextBox();
   }
 }
 
-bool
-nsDateTimeControlFrame::HasBadInput()
-{
-  nsCOMPtr<nsIDateTimeInputArea> inputAreaContent =
-    do_QueryInterface(mInputAreaContent);
-
-  bool result = false;
-  if (inputAreaContent) {
-    inputAreaContent->HasBadInput(&result);
-  }
-
-  return result;
-}
-
-nscoord
-nsDateTimeControlFrame::GetMinISize(gfxContext* aRenderingContext)
-{
+nscoord nsDateTimeControlFrame::GetMinISize(gfxContext* aRenderingContext) {
   nscoord result;
   DISPLAY_MIN_INLINE_SIZE(this, result);
 
   nsIFrame* kid = mFrames.FirstChild();
-  if (kid) { // display:none?
-    result = nsLayoutUtils::IntrinsicForContainer(aRenderingContext,
-                                                  kid,
+  if (kid) {  // display:none?
+    result = nsLayoutUtils::IntrinsicForContainer(aRenderingContext, kid,
                                                   nsLayoutUtils::MIN_ISIZE);
   } else {
     result = 0;
@@ -166,16 +108,13 @@ nsDateTimeControlFrame::GetMinISize(gfxContext* aRenderingContext)
   return result;
 }
 
-nscoord
-nsDateTimeControlFrame::GetPrefISize(gfxContext* aRenderingContext)
-{
+nscoord nsDateTimeControlFrame::GetPrefISize(gfxContext* aRenderingContext) {
   nscoord result;
   DISPLAY_PREF_INLINE_SIZE(this, result);
 
   nsIFrame* kid = mFrames.FirstChild();
-  if (kid) { // display:none?
-    result = nsLayoutUtils::IntrinsicForContainer(aRenderingContext,
-                                                  kid,
+  if (kid) {  // display:none?
+    result = nsLayoutUtils::IntrinsicForContainer(aRenderingContext, kid,
                                                   nsLayoutUtils::PREF_ISIZE);
   } else {
     result = 0;
@@ -184,23 +123,22 @@ nsDateTimeControlFrame::GetPrefISize(gfxContext* aRenderingContext)
   return result;
 }
 
-void
-nsDateTimeControlFrame::Reflow(nsPresContext* aPresContext,
-                               ReflowOutput& aDesiredSize,
-                               const ReflowInput& aReflowInput,
-                               nsReflowStatus& aStatus)
-{
+void nsDateTimeControlFrame::Reflow(nsPresContext* aPresContext,
+                                    ReflowOutput& aDesiredSize,
+                                    const ReflowInput& aReflowInput,
+                                    nsReflowStatus& aStatus) {
   MarkInReflow();
 
   DO_GLOBAL_REFLOW_COUNT("nsDateTimeControlFrame");
   DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
-  NS_FRAME_TRACE(NS_FRAME_TRACE_CALLS,
-                 ("enter nsDateTimeControlFrame::Reflow: availSize=%d,%d",
-                  aReflowInput.AvailableWidth(),
-                  aReflowInput.AvailableHeight()));
+  NS_FRAME_TRACE(
+      NS_FRAME_TRACE_CALLS,
+      ("enter nsDateTimeControlFrame::Reflow: availSize=%d,%d",
+       aReflowInput.AvailableWidth(), aReflowInput.AvailableHeight()));
 
-  NS_ASSERTION(mInputAreaContent, "The input area content must exist!");
+  NS_ASSERTION(mFrames.GetLength() <= 1,
+               "There should be no more than 1 frames");
 
   const WritingMode myWM = aReflowInput.GetWritingMode();
 
@@ -211,46 +149,45 @@ nsDateTimeControlFrame::Reflow(nsPresContext* aPresContext,
 
   // Figure out our border-box sizes as well (by adding borderPadding to
   // content-box sizes):
-  const nscoord borderBoxISize = contentBoxISize +
-    aReflowInput.ComputedLogicalBorderPadding().IStartEnd(myWM);
+  const nscoord borderBoxISize =
+      contentBoxISize +
+      aReflowInput.ComputedLogicalBorderPadding().IStartEnd(myWM);
 
   nscoord borderBoxBSize;
   if (contentBoxBSize != NS_INTRINSICSIZE) {
-    borderBoxBSize = contentBoxBSize +
-      aReflowInput.ComputedLogicalBorderPadding().BStartEnd(myWM);
-  } // else, we'll figure out borderBoxBSize after we resolve contentBoxBSize.
+    borderBoxBSize =
+        contentBoxBSize +
+        aReflowInput.ComputedLogicalBorderPadding().BStartEnd(myWM);
+  }  // else, we'll figure out borderBoxBSize after we resolve contentBoxBSize.
 
   nsIFrame* inputAreaFrame = mFrames.FirstChild();
-  if (!inputAreaFrame) { // display:none?
+  if (!inputAreaFrame) {  // display:none?
     if (contentBoxBSize == NS_INTRINSICSIZE) {
       contentBoxBSize = 0;
       borderBoxBSize =
-        aReflowInput.ComputedLogicalBorderPadding().BStartEnd(myWM);
+          aReflowInput.ComputedLogicalBorderPadding().BStartEnd(myWM);
     }
   } else {
-    NS_ASSERTION(inputAreaFrame->GetContent() == mInputAreaContent,
-                 "What is this child doing here?");
-
     ReflowOutput childDesiredSize(aReflowInput);
 
     WritingMode wm = inputAreaFrame->GetWritingMode();
     LogicalSize availSize = aReflowInput.ComputedSize(wm);
     availSize.BSize(wm) = NS_UNCONSTRAINEDSIZE;
 
-    ReflowInput childReflowOuput(aPresContext, aReflowInput,
-                                 inputAreaFrame, availSize);
+    ReflowInput childReflowOuput(aPresContext, aReflowInput, inputAreaFrame,
+                                 availSize);
 
     // Convert input area margin into my own writing-mode (in case it differs):
     LogicalMargin childMargin =
-      childReflowOuput.ComputedLogicalMargin().ConvertTo(myWM, wm);
+        childReflowOuput.ComputedLogicalMargin().ConvertTo(myWM, wm);
 
     // offsets of input area frame within this frame:
-    LogicalPoint
-      childOffset(myWM,
-                  aReflowInput.ComputedLogicalBorderPadding().IStart(myWM) +
-                  childMargin.IStart(myWM),
-                  aReflowInput.ComputedLogicalBorderPadding().BStart(myWM) +
-                  childMargin.BStart(myWM));
+    LogicalPoint childOffset(
+        myWM,
+        aReflowInput.ComputedLogicalBorderPadding().IStart(myWM) +
+            childMargin.IStart(myWM),
+        aReflowInput.ComputedLogicalBorderPadding().BStart(myWM) +
+            childMargin.BStart(myWM));
 
     nsReflowStatus childStatus;
     // We initially reflow the child with a dummy containerSize; positioning
@@ -264,7 +201,7 @@ nsDateTimeControlFrame::Reflow(nsPresContext* aPresContext,
                "so it should be complete");
 
     nscoord childMarginBoxBSize =
-      childDesiredSize.BSize(myWM) + childMargin.BStartEnd(myWM);
+        childDesiredSize.BSize(myWM) + childMargin.BStartEnd(myWM);
 
     if (contentBoxBSize == NS_INTRINSICSIZE) {
       // We are intrinsically sized -- we should shrinkwrap the input area's
@@ -277,12 +214,12 @@ nsDateTimeControlFrame::Reflow(nsPresContext* aPresContext,
       // adjusting for borderpadding, since ComputedMaxBSize and
       // ComputedMinBSize are content heights.
       contentBoxBSize =
-        NS_CSS_MINMAX(contentBoxBSize,
-                      aReflowInput.ComputedMinBSize(),
-                      aReflowInput.ComputedMaxBSize());
+          NS_CSS_MINMAX(contentBoxBSize, aReflowInput.ComputedMinBSize(),
+                        aReflowInput.ComputedMaxBSize());
 
-      borderBoxBSize = contentBoxBSize +
-        aReflowInput.ComputedLogicalBorderPadding().BStartEnd(myWM);
+      borderBoxBSize =
+          contentBoxBSize +
+          aReflowInput.ComputedLogicalBorderPadding().BStartEnd(myWM);
     }
 
     // Center child in block axis
@@ -290,20 +227,18 @@ nsDateTimeControlFrame::Reflow(nsPresContext* aPresContext,
     childOffset.B(myWM) += std::max(0, extraSpace / 2);
 
     // Needed in FinishReflowChild, for logical-to-physical conversion:
-    nsSize borderBoxSize = LogicalSize(myWM, borderBoxISize, borderBoxBSize).
-                           GetPhysicalSize(myWM);
+    nsSize borderBoxSize =
+        LogicalSize(myWM, borderBoxISize, borderBoxBSize).GetPhysicalSize(myWM);
 
     // Place the child
     FinishReflowChild(inputAreaFrame, aPresContext, childDesiredSize,
                       &childReflowOuput, myWM, childOffset, borderBoxSize, 0);
 
-    nsSize contentBoxSize =
-      LogicalSize(myWM, contentBoxISize, contentBoxBSize).
-        GetPhysicalSize(myWM);
+    nsSize contentBoxSize = LogicalSize(myWM, contentBoxISize, contentBoxBSize)
+                                .GetPhysicalSize(myWM);
     aDesiredSize.SetBlockStartAscent(
-      childDesiredSize.BlockStartAscent() +
-      inputAreaFrame->BStart(aReflowInput.GetWritingMode(),
-                             contentBoxSize));
+        childDesiredSize.BlockStartAscent() +
+        inputAreaFrame->BStart(aReflowInput.GetWritingMode(), contentBoxSize));
   }
 
   LogicalSize logicalDesiredSize(myWM, borderBoxISize, borderBoxBSize);
@@ -323,117 +258,119 @@ nsDateTimeControlFrame::Reflow(nsPresContext* aPresContext,
   NS_FRAME_SET_TRUNCATION(aStatus, aReflowInput, aDesiredSize);
 }
 
-nsresult
-nsDateTimeControlFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
-{
+/**
+ * nsDateTimeControlFrame should be a non-leaf frame when UA Widget is enabled,
+ * so the datetimebox container element inserted under the Shadow Root can be
+ * picked up. No frames will be generated from elements from the web content,
+ * given that they have been replaced by the Shadow Root without an <slots>
+ * element in the DOM tree.
+ *
+ * When the UA Widget is disabled, i.e. the datetimebox is bound as anonymous
+ * content with XBL, nsDateTimeControlFrame has to be a leaf so no frames from
+ * web content element will be generated.
+ */
+bool nsDateTimeControlFrame::IsLeafDynamic() const {
+  return !nsContentUtils::IsUAWidgetEnabled();
+}
+
+nsresult nsDateTimeControlFrame::CreateAnonymousContent(
+    nsTArray<ContentInfo>& aElements) {
+  if (nsContentUtils::IsUAWidgetEnabled()) {
+    return NS_OK;
+  }
+
   // Set up "datetimebox" XUL element which will be XBL-bound to the
   // actual controls.
   nsNodeInfoManager* nodeInfoManager =
-    mContent->GetComposedDoc()->NodeInfoManager();
-  RefPtr<NodeInfo> nodeInfo =
-    nodeInfoManager->GetNodeInfo(nsGkAtoms::datetimebox, nullptr,
-                                 kNameSpaceID_XUL, nsINode::ELEMENT_NODE);
+      mContent->GetComposedDoc()->NodeInfoManager();
+  RefPtr<NodeInfo> nodeInfo = nodeInfoManager->GetNodeInfo(
+      nsGkAtoms::datetimebox, nullptr, kNameSpaceID_XUL, nsINode::ELEMENT_NODE);
   NS_ENSURE_TRUE(nodeInfo, NS_ERROR_OUT_OF_MEMORY);
 
   NS_TrustedNewXULElement(getter_AddRefs(mInputAreaContent), nodeInfo.forget());
   aElements.AppendElement(mInputAreaContent);
 
-  nsCOMPtr<nsIDateTimeInputArea> inputAreaContent =
-    do_QueryInterface(mInputAreaContent);
-  if (inputAreaContent) {
-    // Propogate our tabindex.
-    nsAutoString tabIndexStr;
-    if (mContent->AsElement()->GetAttr(kNameSpaceID_None,
-                                       nsGkAtoms::tabindex,
-                                       tabIndexStr)) {
-      inputAreaContent->SetEditAttribute(NS_LITERAL_STRING("tabindex"),
-                                         tabIndexStr);
-    }
-
-    // Propagate our readonly state.
-    nsAutoString readonly;
-    if (mContent->AsElement()->GetAttr(kNameSpaceID_None,
-                                       nsGkAtoms::readonly,
-                                       readonly)) {
-      inputAreaContent->SetEditAttribute(NS_LITERAL_STRING("readonly"),
-                                         readonly);
-    }
-
-    SyncDisabledState();
-  }
-
   return NS_OK;
 }
 
-void
-nsDateTimeControlFrame::AppendAnonymousContentTo(nsTArray<nsIContent*>& aElements,
-                                                 uint32_t aFilter)
-{
+void nsDateTimeControlFrame::AppendAnonymousContentTo(
+    nsTArray<nsIContent*>& aElements, uint32_t aFilter) {
   if (mInputAreaContent) {
     aElements.AppendElement(mInputAreaContent);
   }
 }
 
-void
-nsDateTimeControlFrame::SyncDisabledState()
-{
-  NS_ASSERTION(mInputAreaContent, "The input area content must exist!");
-  nsCOMPtr<nsIDateTimeInputArea> inputAreaContent =
-    do_QueryInterface(mInputAreaContent);
-  if (!inputAreaContent) {
-    return;
-  }
-
-  EventStates eventStates = mContent->AsElement()->State();
-  if (eventStates.HasState(NS_EVENT_STATE_DISABLED)) {
-    inputAreaContent->SetEditAttribute(NS_LITERAL_STRING("disabled"),
-                                       EmptyString());
+void nsDateTimeControlFrame::SyncDisabledState() {
+  if (mInputAreaContent) {
+    nsCOMPtr<nsIDateTimeInputArea> inputAreaContent =
+        do_QueryInterface(mInputAreaContent);
+    if (!inputAreaContent) {
+      return;
+    }
+    inputAreaContent->UpdateEditAttributes();
   } else {
-    inputAreaContent->RemoveEditAttribute(NS_LITERAL_STRING("disabled"));
+    Element* dateTimeBoxElement =
+        static_cast<dom::HTMLInputElement*>(GetContent())
+            ->GetDateTimeBoxElementInUAWidget();
+    if (!dateTimeBoxElement) {
+      return;
+    }
+
+    AsyncEventDispatcher* dispatcher = new AsyncEventDispatcher(
+        dateTimeBoxElement, NS_LITERAL_STRING("MozDateTimeAttributeChanged"),
+        CanBubble::eNo, ChromeOnlyDispatch::eNo);
+    dispatcher->RunDOMEventWhenSafe();
   }
 }
 
-nsresult
-nsDateTimeControlFrame::AttributeChanged(int32_t aNameSpaceID,
-                                         nsAtom* aAttribute,
-                                         int32_t aModType)
-{
-  NS_ASSERTION(mInputAreaContent, "The input area content must exist!");
-
+nsresult nsDateTimeControlFrame::AttributeChanged(int32_t aNameSpaceID,
+                                                  nsAtom* aAttribute,
+                                                  int32_t aModType) {
   // nsGkAtoms::disabled is handled by SyncDisabledState
   if (aNameSpaceID == kNameSpaceID_None) {
-    if (aAttribute == nsGkAtoms::value ||
-        aAttribute == nsGkAtoms::readonly ||
+    if (aAttribute == nsGkAtoms::value || aAttribute == nsGkAtoms::readonly ||
         aAttribute == nsGkAtoms::tabindex) {
       MOZ_ASSERT(mContent->IsHTMLElement(nsGkAtoms::input), "bad cast");
-      auto contentAsInputElem = static_cast<dom::HTMLInputElement*>(GetContent());
+      auto contentAsInputElem =
+          static_cast<dom::HTMLInputElement*>(GetContent());
       // If script changed the <input>'s type before setting these attributes
       // then we don't need to do anything since we are going to be reframed.
       if (contentAsInputElem->ControlType() == NS_FORM_INPUT_TIME ||
           contentAsInputElem->ControlType() == NS_FORM_INPUT_DATE) {
-        nsCOMPtr<nsIDateTimeInputArea> inputAreaContent =
-          do_QueryInterface(mInputAreaContent);
-        if (aAttribute == nsGkAtoms::value) {
-          if (inputAreaContent) {
-            nsContentUtils::AddScriptRunner(NewRunnableMethod(
-              "nsIDateTimeInputArea::NotifyInputElementValueChanged",
-              inputAreaContent,
-              &nsIDateTimeInputArea::NotifyInputElementValueChanged));
-          }
-        } else {
-          if (aModType == MutationEvent_Binding::REMOVAL) {
+        if (mInputAreaContent) {
+          nsCOMPtr<nsIDateTimeInputArea> inputAreaContent =
+              do_QueryInterface(mInputAreaContent);
+          if (aAttribute == nsGkAtoms::value) {
             if (inputAreaContent) {
-              nsAtomString name(aAttribute);
-              inputAreaContent->RemoveEditAttribute(name);
+              nsContentUtils::AddScriptRunner(NewRunnableMethod(
+                  "nsIDateTimeInputArea::NotifyInputElementValueChanged",
+                  inputAreaContent,
+                  &nsIDateTimeInputArea::NotifyInputElementValueChanged));
             }
           } else {
-            MOZ_ASSERT(aModType == MutationEvent_Binding::ADDITION ||
-                       aModType == MutationEvent_Binding::MODIFICATION);
             if (inputAreaContent) {
-              nsAtomString name(aAttribute);
-              nsAutoString value;
-              contentAsInputElem->GetAttr(aNameSpaceID, aAttribute, value);
-              inputAreaContent->SetEditAttribute(name, value);
+              inputAreaContent->UpdateEditAttributes();
+            }
+          }
+        } else {
+          Element* dateTimeBoxElement =
+              static_cast<dom::HTMLInputElement*>(GetContent())
+                  ->GetDateTimeBoxElementInUAWidget();
+          if (aAttribute == nsGkAtoms::value) {
+            if (dateTimeBoxElement) {
+              AsyncEventDispatcher* dispatcher = new AsyncEventDispatcher(
+                  dateTimeBoxElement,
+                  NS_LITERAL_STRING("MozDateTimeValueChanged"), CanBubble::eNo,
+                  ChromeOnlyDispatch::eNo);
+              dispatcher->RunDOMEventWhenSafe();
+            }
+          } else {
+            if (dateTimeBoxElement) {
+              AsyncEventDispatcher* dispatcher = new AsyncEventDispatcher(
+                  dateTimeBoxElement,
+                  NS_LITERAL_STRING("MozDateTimeAttributeChanged"),
+                  CanBubble::eNo, ChromeOnlyDispatch::eNo);
+              dispatcher->RunDOMEventWhenSafe();
             }
           }
         }
@@ -441,13 +378,14 @@ nsDateTimeControlFrame::AttributeChanged(int32_t aNameSpaceID,
     }
   }
 
-  return nsContainerFrame::AttributeChanged(aNameSpaceID, aAttribute,
-                                            aModType);
+  return nsContainerFrame::AttributeChanged(aNameSpaceID, aAttribute, aModType);
 }
 
-void
-nsDateTimeControlFrame::ContentStatesChanged(EventStates aStates)
-{
+nsIContent* nsDateTimeControlFrame::GetInputAreaContent() {
+  return mInputAreaContent;
+}
+
+void nsDateTimeControlFrame::ContentStatesChanged(EventStates aStates) {
   if (aStates.HasState(NS_EVENT_STATE_DISABLED)) {
     nsContentUtils::AddScriptRunner(new SyncDisabledStateEvent(this));
   }

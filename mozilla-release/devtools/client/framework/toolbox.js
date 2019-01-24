@@ -40,8 +40,6 @@ loader.lazyRequireGetter(this, "AppConstants",
   "resource://gre/modules/AppConstants.jsm", true);
 loader.lazyRequireGetter(this, "getHighlighterUtils",
   "devtools/client/framework/toolbox-highlighter-utils", true);
-loader.lazyRequireGetter(this, "Selection",
-  "devtools/client/framework/selection", true);
 loader.lazyRequireGetter(this, "flags",
   "devtools/shared/flags");
 loader.lazyRequireGetter(this, "KeyShortcuts",
@@ -64,6 +62,8 @@ loader.lazyRequireGetter(this, "NetMonitorAPI",
   "devtools/client/netmonitor/src/api", true);
 loader.lazyRequireGetter(this, "sortPanelDefinitions",
   "devtools/client/framework/toolbox-tabs-order-manager", true);
+loader.lazyRequireGetter(this, "createEditContextMenu",
+  "devtools/client/framework/toolbox-context-menu", true);
 
 loader.lazyGetter(this, "domNodeConstants", () => {
   return require("devtools/shared/dom-node-constants");
@@ -72,6 +72,11 @@ loader.lazyGetter(this, "domNodeConstants", () => {
 loader.lazyGetter(this, "registerHarOverlay", () => {
   return require("devtools/client/netmonitor/src/har/toolbox-overlay").register;
 });
+
+loader.lazyGetter(this, "reloadAndRecordTab",
+  () => require("devtools/client/webreplay/menu.js").reloadAndRecordTab);
+loader.lazyGetter(this, "reloadAndStopRecordingTab",
+  () => require("devtools/client/webreplay/menu.js").reloadAndStopRecordingTab);
 
 /**
  * A "Toolbox" is the component that holds all the tools for one specific
@@ -129,6 +134,7 @@ function Toolbox(target, selectedTool, hostType, contentWindow, frameId,
   this.toggleNoAutohide = this.toggleNoAutohide.bind(this);
   this._updateFrames = this._updateFrames.bind(this);
   this._splitConsoleOnKeypress = this._splitConsoleOnKeypress.bind(this);
+  this.closeToolbox = this.closeToolbox.bind(this);
   this.destroy = this.destroy.bind(this);
   this.highlighterUtils = getHighlighterUtils(this);
   this._highlighterReady = this._highlighterReady.bind(this);
@@ -158,6 +164,7 @@ function Toolbox(target, selectedTool, hostType, contentWindow, frameId,
   this.toggleSplitConsole = this.toggleSplitConsole.bind(this);
   this.toggleOptions = this.toggleOptions.bind(this);
   this.togglePaintFlashing = this.togglePaintFlashing.bind(this);
+  this.toggleDragging = this.toggleDragging.bind(this);
   this.isPaintFlashing = false;
 
   this._target.on("close", this.destroy);
@@ -326,6 +333,10 @@ Toolbox.prototype = {
     return this._toolPanels.get(this.currentToolId);
   },
 
+  toggleDragging: function() {
+    this.doc.querySelector("window").classList.toggle("dragging");
+  },
+
   /**
    * Get/alter the target of a Toolbox so we're debugging something different.
    * See Target.jsm for more details.
@@ -432,7 +443,8 @@ Toolbox.prototype = {
         useOnlyShared: true,
       }).require;
 
-      if (this.win.location.href.startsWith(this._URL)) {
+      const isToolboxURL = this.win.location.href.startsWith(this._URL);
+      if (isToolboxURL) {
         // Update the URL so that onceDOMReady watch for the right url.
         this._URL = this.win.location.href;
       }
@@ -449,6 +461,15 @@ Toolbox.prototype = {
 
       // Load the toolbox-level actor fronts and utilities now
       await this._target.attach();
+
+      // Displays DebugTargetInfo which shows the basic information of debug target,
+      // if `about:devtools-toolbar` URL opens directly.
+      if (isToolboxURL) {
+        this._showDebugTargetInfo = true;
+        const deviceFront = await this.target.client.mainRoot.getFront("device");
+        // DebugTargetInfo requires the device description to be rendered.
+        this._deviceDescription = await deviceFront.getDescription();
+      }
 
       // Start tracking network activity on toolbox open for targets such as tabs.
       // (Workers and potentially others don't manage the console client in the target.)
@@ -470,10 +491,6 @@ Toolbox.prototype = {
       Services.prefs.addObserver("devtools.serviceWorkers.testing.enabled",
                                  this._applyServiceWorkersTestingSettings);
 
-      this.textBoxContextMenuPopup =
-        this.doc.getElementById("toolbox-textbox-context-popup");
-      this.textBoxContextMenuPopup.addEventListener("popupshowing",
-        this._updateTextBoxMenuItems, true);
       this.doc.addEventListener("contextmenu", (e) => {
         if (e.originalTarget.closest("input[type=text]") ||
             e.originalTarget.closest("input[type=search]") ||
@@ -679,9 +696,6 @@ Toolbox.prototype = {
    * the source map worker.
    */
   get sourceMapService() {
-    if (!Services.prefs.getBoolPref("devtools.source-map.client-service.enabled")) {
-      return null;
-    }
     return this._createSourceMapService();
   },
 
@@ -922,7 +936,7 @@ Toolbox.prototype = {
                  });
 
     // Close toolbox key-shortcut handler
-    const onClose = event => this.destroy();
+    const onClose = event => this.closeToolbox();
     this.shortcuts.on(L10N.getStr("toolbox.toggleToolboxF12.key"), onClose);
 
     // CmdOrCtrl+W is registered only when the toolbox is running in
@@ -1142,9 +1156,11 @@ Toolbox.prototype = {
       toggleOptions: this.toggleOptions,
       toggleSplitConsole: this.toggleSplitConsole,
       toggleNoAutohide: this.toggleNoAutohide,
-      closeToolbox: this.destroy,
+      closeToolbox: this.closeToolbox,
       focusButton: this._onToolbarFocus,
       toolbox: this,
+      showDebugTargetInfo: this._showDebugTargetInfo,
+      deviceDescription: this._deviceDescription,
       onTabsOrderUpdated: this._onTabsOrderUpdated,
     });
 
@@ -1444,11 +1460,15 @@ Toolbox.prototype = {
       this.frameButton.description = L10N.getStr("toolbox.frames.tooltip");
     }
 
-    // Highlight the button when a child frame is selected
+    // Highlight the button when a child frame is selected and visible.
     const selectedFrame = this.frameMap.get(this.selectedFrameId) || {};
-    this.frameButton.isChecked = selectedFrame.parentID != null;
+    const isVisible = this._commandIsVisible(this.frameButton);
 
-    this.frameButton.isVisible = this._commandIsVisible(this.frameButton);
+    this.frameButton.isVisible = isVisible;
+
+    if (isVisible) {
+      this.frameButton.isChecked = selectedFrame.parentID != null;
+    }
   },
 
   /**
@@ -1688,7 +1708,7 @@ Toolbox.prototype = {
    */
   loadTool: function(id) {
     if (id === "inspector" && !this._inspector) {
-      return this.initInspector().then(() => this.loadTool(id));
+      this.initInspector();
     }
 
     let iframe = this.doc.getElementById("toolbox-panel-iframe-" + id);
@@ -1732,7 +1752,19 @@ Toolbox.prototype = {
         vbox.visibility = "visible";
       }
 
-      const onLoad = () => {
+      const onLoad = async () => {
+        if (id === "inspector") {
+          await this._initInspector;
+
+          // Stop loading the inspector if the toolbox is already being destroyed. This
+          // can happen in unit tests where the tests are rapidly opening and closing the
+          // toolbox and we encounter the scenario where the toolbox is closing as
+          // the inspector is still loading.
+          if (this._destroyingInspector) {
+            return;
+          }
+        }
+
         // Prevent flicker while loading by waiting to make visible until now.
         iframe.style.visibility = "visible";
 
@@ -2151,7 +2183,12 @@ Toolbox.prototype = {
    * Tells the target tab to reload.
    */
   reloadTarget: function(force) {
-    this.target.activeTab.reload({ force: force });
+    if (this.target.canRewind) {
+      // Recording tabs need to be reloaded in a new content process.
+      reloadAndRecordTab();
+    } else {
+      this.target.activeTab.reload({ force: force });
+    }
   },
 
   /**
@@ -2347,7 +2384,7 @@ Toolbox.prototype = {
     // Only enable frame highlighting when the top level document is targeted
     if (this.rootFrameSelected) {
       const frameActor = await this.walker.getNodeActorFromWindowID(frameId);
-      this.highlighterUtils.highlightNodeFront(frameActor);
+      this.highlighter.highlight(frameActor);
     }
   },
 
@@ -2673,18 +2710,15 @@ Toolbox.prototype = {
         // Temporary fix for bug #1493131 - inspector has a different life cycle
         // than most other fronts because it is closely related to the toolbox.
         // TODO: replace with getFront once inspector is separated from the toolbox
-        this._inspector = this.target.getInspector();
-        const pref = "devtools.inspector.showAllAnonymousContent";
-        const showAllAnonymousContent = Services.prefs.getBoolPref(pref);
-        this._walker = await this._inspector.getWalker({ showAllAnonymousContent });
-        this._selection = new Selection(this._walker);
-        this._selection.on("new-node-front", this._onNewSelectedNodeFront);
+        // TODO: remove these bindings
+        this._inspector = await this.target.getInspector();
+        this._walker = this.inspector.walker;
+        this._highlighter = this.inspector.highlighter;
+        this._selection = this.inspector.selection;
 
         this.walker.on("highlighter-ready", this._highlighterReady);
         this.walker.on("highlighter-hide", this._highlighterHidden);
-
-        const autohide = !flags.testing;
-        this._highlighter = await this._inspector.getHighlighter(autohide);
+        this._selection.on("new-node-front", this._onNewSelectedNodeFront);
       }.bind(this))();
     }
     return this._initInspector;
@@ -2743,7 +2777,7 @@ Toolbox.prototype = {
     }
 
     this._destroyingInspector = (async function() {
-      if (!this._inspector) {
+      if (!this._inspector && !this._initInspector) {
         return;
       }
 
@@ -2751,28 +2785,9 @@ Toolbox.prototype = {
       // in the initialization process can throw errors.
       await this._initInspector;
 
-      const currentPanel = this.getCurrentPanel();
-      if (currentPanel.stopPicker) {
-        await currentPanel.stopPicker();
-      } else {
-        await this.highlighterUtils.stopPicker();
-      }
       // Temporary fix for bug #1493131 - inspector has a different life cycle
       // than most other fronts because it is closely related to the toolbox.
-      this._inspector.destroy();
-
-      if (this._highlighter) {
-        await this._highlighter.destroy();
-      }
-      if (this._selection) {
-        this._selection.off("new-node-front", this._onNewSelectedNodeFront);
-        this._selection.destroy();
-      }
-
-      if (this.walker) {
-        this.walker.off("highlighter-ready", this._highlighterReady);
-        this.walker.off("highlighter-hide", this._highlighterHidden);
-      }
+      await this._inspector.destroy();
 
       this._inspector = null;
       this._highlighter = null;
@@ -2789,6 +2804,14 @@ Toolbox.prototype = {
    */
   getNotificationBox: function() {
     return this.notificationBox;
+  },
+
+  closeToolbox: async function() {
+    const shouldStopRecording = this.target.isReplayEnabled();
+    await this.destroy();
+    if (shouldStopRecording) {
+      reloadAndStopRecordingTab();
+    }
   },
 
   /**
@@ -2843,11 +2866,6 @@ Toolbox.prototype = {
       this.webconsolePanel.removeEventListener("resize",
         this._saveSplitConsoleHeight);
       this.webconsolePanel = null;
-    }
-    if (this.textBoxContextMenuPopup) {
-      this.textBoxContextMenuPopup.removeEventListener("popupshowing",
-        this._updateTextBoxMenuItems, true);
-      this.textBoxContextMenuPopup = null;
     }
     if (this._componentMount) {
       this._componentMount.removeEventListener("keypress", this._onToolbarArrowKeypress);
@@ -3012,7 +3030,13 @@ Toolbox.prototype = {
    * @param {Number} y
    */
   openTextBoxContextMenu: function(x, y) {
-    this.textBoxContextMenuPopup.openPopupAtScreen(x, y, true);
+    const menu = createEditContextMenu(this.win, "toolbox-menu");
+
+    // Fire event for tests
+    menu.once("open", () => this.emit("menu-open"));
+    menu.once("close", () => this.emit("menu-close"));
+
+    menu.popup(x, y, { doc: this.doc });
   },
 
   /**
@@ -3035,7 +3059,7 @@ Toolbox.prototype = {
       resolvePerformance = resolve;
     });
 
-    this._performance = this.target.getFront("performance");
+    this._performance = await this.target.getFront("performance");
     await this.performance.connect();
 
     // Emit an event when connected, but don't wait on startup for this.

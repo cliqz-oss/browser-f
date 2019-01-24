@@ -9,17 +9,22 @@
 *|*:root {
   --in-content-page-color: #0c0c0d;
   --in-content-page-background: #f9f9fa;
-  --in-content-text-color: #0c0c0d;
+  --in-content-text-color: var(--grey-90);
   --in-content-selected-text: #fff;
   --in-content-box-background: #fff;
-  --in-content-box-background-odd: #f3f6fa;
-  --in-content-box-background-hover: #ebebeb;
-  --in-content-box-background-active: #dadada;
-  --in-content-box-border-color: #d7d7db;
-  --in-content-item-hover: rgba(0,149,221,0.25);
+  --in-content-box-background-odd: rgba(12, 12, 13, 0.05); /* grey 90 a05 */
+  --in-content-box-background-hover: #ededf0; /* grey 20 */
+  --in-content-box-background-active: #d7d7db; /* grey 30 */
+  --in-content-box-border-color: var(--grey-90-a30);
+  --in-content-item-hover: rgba(69, 161, 255, 0.2); /* blue 40 a20 */
   --in-content-item-selected: #0a84ff;
   --in-content-border-highlight: #0a84ff;
   --in-content-border-focus: #0a84ff;
+  --in-content-border-hover: var(--grey-90-a50);
+  --in-content-border-active: var(--blue-50);
+  --in-content-border-active-shadow: var(--blue-50-a30);
+  --in-content-border-invalid: var(--red-50);
+  --in-content-border-invalid-shadow: var(--red-50-a30);
   --in-content-border-color: #d7d7db;
   --in-content-category-outline-focus: 1px dotted #0a84ff;
   --in-content-category-text: rgba(12,12,13);
@@ -35,15 +40,23 @@
   --in-content-link-color-hover: #0060df;
   --in-content-link-color-active: #003eaa;
   --in-content-link-color-visited: #0a8dff;
-  --in-content-primary-button-background: #0a84ff;
-  --in-content-primary-button-background-hover: #0060df;
-  --in-content-primary-button-background-active: #003EAA;
+  --in-content-button-background: var(--grey-90-a10);
+  --in-content-button-background-hover: var(--grey-90-a20);
+  --in-content-button-background-active: var(--grey-90-a30);
+  --in-content-primary-button-background: var(--blue-60);
+  --in-content-primary-button-background-hover: var(--blue-70);
+  --in-content-primary-button-background-active: var(--blue-80);
   --in-content-table-background: #ebebeb;
   --in-content-table-border-dark-color: #d1d1d1;
   --in-content-table-header-background: #0a84ff;
 
+  --blue-40: #45a1ff;
+  --blue-40-a10: rgb(69, 161, 255, 0.1);
   --blue-50: #0a84ff;
   --blue-50-a30: rgba(10, 132, 255, 0.3);
+  --blue-60: #0060df;
+  --blue-70: #003eaa;
+  --blue-80: #002275;
   --grey-20: #ededf0;
   --grey-30: #d7d7db;
   --grey-60: #4a4a4f;
@@ -51,10 +64,14 @@
   --grey-90-a10: rgba(12, 12, 13, 0.1);
   --grey-90-a20: rgba(12, 12, 13, 0.2);
   --grey-90-a30: rgba(12, 12, 13, 0.3);
+  --grey-90-a50: rgba(12, 12, 13, 0.5);
+  --red-50: #ff0039;
+  --red-50-a30: rgba(255, 0, 57, 0.3);
   --yellow-50: #ffe900;
   --yellow-90: #3e2800;
 
   --shadow-10: 0 1px 4px var(--grey-90-a10);
+  --card-padding: 16px;
   --card-shadow: var(--shadow-10);
   --card-outline-color: var(--grey-30);
   --card-shadow-hover: var(--card-shadow), 0 0 0 5px var(--card-outline-color);
@@ -90,47 +107,14 @@ html|hr {
   border-color: var(--in-content-border-color);
 }
 
-xul|caption {
-  -moz-appearance: none;
-  font-size: 1.14em;
-  margin: 0;
-}
-
-html|h2,
-xul|caption xul|checkbox,
-xul|caption xul|label {
+html|h2 {
   font-weight: 600;
   line-height: 1.4em;
-}
-
-xul|caption xul|checkbox,
-xul|caption xul|label {
-  margin: 0 !important;
 }
 
 *|*.main-content {
   padding: 40px 28px;
   overflow: auto;
-}
-
-/* groupboxes */
-
-xul|groupbox {
-  -moz-appearance: none;
-  border: none;
-  margin: 0 0 32px;
-  padding: 0;
-}
-
-xul|groupbox > xul|caption {
-  padding: 4px 0;
-}
-
-xul|groupbox xul|label:not(.menu-accel):not(.menu-iconic-accel):not(.menu-text):not(.menu-iconic-text):not(.menulist-label):not(.indent):not(.learnMore):not(.tail-with-learn-more),
-xul|groupbox xul|description {
-  /* !important needed to override toolkit !important rule */
-  margin-inline-start: 0 !important;
-  margin-inline-end: 0 !important;
 }
 
 /* tabpanels and tabs */
@@ -186,11 +170,15 @@ xul|menulist,
 html|*.numberbox-input::-moz-number-spin-up,
 html|*.numberbox-input::-moz-number-spin-down {
   -moz-appearance: none;
-  min-height: 30px;
-  color: var(--in-content-text-color);
-  border: 1px solid var(--in-content-box-border-color);
+  min-height: 32px;
+  /* !important overrides button.css for disabled and default XUL buttons: */
+  color: inherit !important;
+  border: 1px solid transparent; /* needed for high-contrast mode, where it'll show up */
   border-radius: 2px;
-  background-color: var(--in-content-page-background);
+  background-color: var(--in-content-button-background);
+  font-weight: 400;
+  padding: 0 8px;
+  text-decoration: none;
   margin: 4px 8px;
   /* Ensure font-size isn't overridden by widget styling (e.g. in forms.css) */
   font-size: 1em;
@@ -201,6 +189,20 @@ html|button {
   /* use the same margin of other elements for the alignment */
   margin-left: 4px;
   margin-right: 4px;
+}
+
+*|button::-moz-focus-inner {
+  border: none;
+}
+
+*|button:-moz-focusring {
+  outline: 2px solid var(--in-content-border-active);
+  /* offset outline to align with 1px border-width set for buttons/menulists above. */
+  outline-offset: -1px;
+  /* Make outline-radius slightly bigger than the border-radius set above,
+   * to make the thicker outline corners look smooth */
+  -moz-outline-radius: 3px;
+  box-shadow: 0 0 0 4px var(--in-content-border-active-shadow);
 }
 
 html|select:not([size]):not([multiple]) {
@@ -214,7 +216,7 @@ html|select:not([size]):not([multiple]) {
   text-overflow: ellipsis;
 }
 
-html|select:not([size]):not([multiple]):dir(rtl){
+html|select:not([size]):not([multiple]):dir(rtl) {
   background-position: left 3px center;
 }
 
@@ -225,7 +227,7 @@ html|*.numberbox-input::-moz-number-spin-down:hover,
 html|input[type="color"]:hover,
 xul|button:not([disabled="true"]):hover,
 xul|menulist:not([disabled="true"]):hover {
-  background-color: var(--in-content-box-background-hover);
+  background-color: var(--in-content-button-background-hover);
 }
 
 html|button:enabled:hover:active,
@@ -235,7 +237,7 @@ html|*.numberbox-input::-moz-number-spin-down:hover:active,
 html|input[type="color"]:enabled:hover:active,
 xul|button:not([disabled="true"]):hover:active,
 xul|menulist[open="true"]:not([disabled="true"]) {
-  background-color: var(--in-content-box-background-active);
+  background-color: var(--in-content-button-background-active);
 }
 
 html|button:disabled,
@@ -244,13 +246,12 @@ html|*.numberbox-input:disabled::-moz-number-spin-box,
 html|input[type="color"]:disabled,
 xul|button[disabled="true"],
 xul|menulist[disabled="true"] {
-  opacity: 0.5;
+  opacity: 0.4;
 }
 
 *|button.primary {
   background-color: var(--in-content-primary-button-background);
-  border-color: transparent;
-  color: var(--in-content-selected-text);
+  color: var(--in-content-selected-text) !important;
 }
 
 html|button.primary:enabled:hover,
@@ -266,12 +267,6 @@ xul|button.primary:not([disabled="true"]):hover:active {
 html|input[type="color"] {
   padding: 6px;
   width: 50px;
-}
-
-xul|button > xul|*.button-box,
-xul|menulist > xul|*.menulist-label-box {
-  padding-right: 10px !important;
-  padding-left: 10px !important;
 }
 
 xul|menulist > xul|*.menulist-label-box > xul|*.menulist-icon[src] {
@@ -316,7 +311,7 @@ html|*.numberbox-input::-moz-number-spin-up {
   background-image: url("chrome://global/skin/arrow/arrow-up.gif");
 }
 
-html|*.numberbox-input::-moz-number-spin-down  {
+html|*.numberbox-input::-moz-number-spin-down {
   border-radius: 0 0 1px 1px;
   background-image: url("chrome://global/skin/arrow/arrow-dn.gif");
 }
@@ -409,14 +404,21 @@ xul|textbox {
   border-radius: 2px;
   /* !important to override disabled styling from textbox.css. We reduce the
      opacity instead of changing colors. */
-  color: var(--in-content-text-color) !important;
+  color: inherit !important;
   background-color: var(--in-content-box-background) !important;
+}
+
+/* The focus/border styles for nested textareas inside textbox[multiline] will
+ * be provided by the textbox */
+xul|textbox[multiline] html|textarea {
+  border: none !important;
+  box-shadow: none !important;
 }
 
 xul|textbox {
   min-height: 30px;
-  padding-right: 10px;
-  padding-left: 10px;
+  padding-right: 8px;
+  padding-left: 8px;
 }
 
 xul|textbox[type="number"] {
@@ -441,7 +443,15 @@ html|input[type="text"],
 html|textarea {
   font-family: inherit;
   font-size: inherit;
-  padding: 5px 10px;
+  padding: 5px 8px;
+}
+
+html|input[type="email"]:enabled:not(:focus):hover,
+html|input[type="tel"]:enabled:not(:focus):hover,
+html|input[type="text"]:enabled:not(:focus):hover,
+html|textarea:enabled:not(:focus):hover,
+xul|textbox:not([disabled="true"]):not([focused]):hover {
+  border-color: var(--in-content-border-hover);
 }
 
 html|input[type="email"]:focus,
@@ -449,7 +459,16 @@ html|input[type="tel"]:focus,
 html|input[type="text"]:focus,
 html|textarea:focus,
 xul|textbox[focused] {
-  border-color: var(--in-content-border-focus);
+  border-color: var(--in-content-border-active);
+  box-shadow: 0 0 0 1px var(--in-content-border-active),
+    0 0 0 4px var(--in-content-border-active-shadow);
+}
+
+html|input[type="email"]:-moz-ui-invalid,
+html|input[type="tel"]:-moz-ui-invalid,
+html|input[type="text"]:-moz-ui-invalid,
+html|textarea:-moz-ui-invalid {
+  border-color: var(--in-content-border-invalid);
 }
 
 /* Don't show the field error outlines and focus borders at the same time.
@@ -459,7 +478,7 @@ html|input[type="email"]:-moz-ui-invalid:focus,
 html|input[type="tel"]:-moz-ui-invalid:focus,
 html|input[type="text"]:-moz-ui-invalid:focus,
 html|textarea:-moz-ui-invalid:focus {
-  border-color: transparent;
+  box-shadow: 0 0 0 3px var(--in-content-border-invalid-shadow);
 }
 
 html|input[type="email"]:disabled,
@@ -467,7 +486,7 @@ html|input[type="tel"]:disabled,
 html|input[type="text"]:disabled,
 html|textarea:disabled,
 xul|textbox[disabled="true"] {
-  opacity: 0.5;
+  opacity: 0.4;
 }
 
 /* Links */
@@ -617,7 +636,7 @@ xul|*.radio-label-box {
 *|*#categories > *|*.category[selected],
 *|*#categories > *|*.category.selected {
   color: var(--in-content-category-text-selected);
-  background: none;
+  background-color: transparent;
 }
 
 *|*#categories > *|*.category[selected]:hover,
@@ -789,7 +808,7 @@ xul|treecolpicker {
   border-image: linear-gradient(transparent 0%, transparent 20%, #c1c1c1 20%, #c1c1c1 80%, transparent 80%, transparent 100%) 1 1;
 }
 
-xul|treecol:not([hideheader="true"]) > xul|*.treecol-sortdirection[sortDirection] {
+xul|treecol[sortDirection]:not([hideheader="true"]) > xul|*.treecol-sortdirection {
   list-style-image: url("chrome://global/skin/in-content/dropdown.svg");
   -moz-context-properties: fill;
   fill: -moz-DialogText;
@@ -797,7 +816,7 @@ xul|treecol:not([hideheader="true"]) > xul|*.treecol-sortdirection[sortDirection
   height: 18px;
 }
 
-xul|treecol:not([hideheader="true"]) > xul|*.treecol-sortdirection[sortDirection="ascending"] {
+xul|treecol[sortDirection="ascending"]:not([hideheader="true"]) > xul|*.treecol-sortdirection {
   transform: scaleY(-1);
 }
 
@@ -830,16 +849,13 @@ xul|treechildren::-moz-tree-image(selected) {
 }
 
 .message-bar-description {
-  line-height: 1.25;
-}
-
-.message-bar > description {
   margin: 0;
+  line-height: 1.25;
 }
 
 /* The message-bar-button styles have extra specificity to override
  * the defaults for buttons. */
-.message-bar > hbox > .message-bar-button {
+.message-bar-content > .message-bar-button {
   background-color: var(--grey-90-a10);
   border: none;
   border-radius: 2px;
@@ -848,11 +864,11 @@ xul|treechildren::-moz-tree-image(selected) {
   padding: 0 8px;
 }
 
-.message-bar > hbox > .message-bar-button:hover {
+.message-bar-content > .message-bar-button:hover {
   background-color: var(--grey-90-a20);
 }
 
-.message-bar > hbox > .message-bar-button:active {
+.message-bar-content > .message-bar-button:hover:active {
   background-color: var(--grey-90-a30);
 }
 
@@ -878,10 +894,13 @@ xul|treechildren::-moz-tree-image(selected) {
 
 .card {
   background: var(--in-content-box-background);
+  /* Needed for high-contrast where the border will appear. */
+  border: 1px solid transparent;
   border-radius: 4px;
   box-shadow: var(--card-shadow);
   margin: 0 0 8px;
-  padding: 16px;
+  /* Remove the border from the overall padding. */
+  padding: calc(var(--card-padding) - 1px);
   transition: box-shadow 150ms;
 }
 

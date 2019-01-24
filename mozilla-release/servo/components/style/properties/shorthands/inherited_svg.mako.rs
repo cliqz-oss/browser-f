@@ -1,19 +1,19 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 <%namespace name="helpers" file="/helpers.mako.rs" />
 
 <%helpers:shorthand name="marker" products="gecko"
     sub_properties="marker-start marker-end marker-mid"
     spec="https://www.w3.org/TR/SVG2/painting.html#MarkerShorthand">
-    use values::specified::url::UrlOrNone;
+    use crate::values::specified::url::UrlOrNone;
 
     pub fn parse_value<'i, 't>(
         context: &ParserContext,
         input: &mut Parser<'i, 't>,
     ) -> Result<Longhands, ParseError<'i>> {
-        use parser::Parse;
+        use crate::parser::Parse;
         let url = UrlOrNone::parse(context, input)?;
 
         Ok(expanded! {

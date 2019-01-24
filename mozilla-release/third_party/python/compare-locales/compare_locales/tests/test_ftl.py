@@ -24,6 +24,7 @@ class TestFluentParser(ParserTestMixin, unittest.TestCase):
         [ent2] = list(self.parser)
 
         self.assertTrue(ent1.equals(ent2))
+        self.assertTrue(ent1.localized)
 
     def test_equality_different_whitespace(self):
         source1 = b'foo = { $arg }'
@@ -81,7 +82,7 @@ h =
 
         [a] = list(self.parser)
         self.assertEqual(a.key, 'a')
-        self.assertEqual(a.val, 'A')
+        self.assertEqual(a.raw_val, 'A')
         self.assertEqual(a.all, 'a = A')
         attributes = list(a.attributes)
         self.assertEqual(len(attributes), 0)
@@ -91,7 +92,7 @@ h =
 
         [abc] = list(self.parser)
         self.assertEqual(abc.key, 'abc')
-        self.assertEqual(abc.val, 'A { $arg } B { msg } C')
+        self.assertEqual(abc.raw_val, 'A { $arg } B { msg } C')
         self.assertEqual(abc.all, 'abc = A { $arg } B { msg } C')
 
     def test_multiline_message(self):
@@ -104,7 +105,7 @@ abc =
 
         [abc] = list(self.parser)
         self.assertEqual(abc.key, 'abc')
-        self.assertEqual(abc.val, 'A\n    B\n    C')
+        self.assertEqual(abc.raw_val, '    A\n    B\n    C')
         self.assertEqual(abc.all, 'abc =\n    A\n    B\n    C')
 
     def test_message_with_attribute(self):
@@ -115,7 +116,7 @@ abc = ABC
 
         [abc] = list(self.parser)
         self.assertEqual(abc.key, 'abc')
-        self.assertEqual(abc.val, 'ABC')
+        self.assertEqual(abc.raw_val, 'ABC')
         self.assertEqual(abc.all, 'abc = ABC\n    .attr = Attr')
 
     def test_message_with_attribute_and_no_value(self):
@@ -126,13 +127,13 @@ abc
 
         [abc] = list(self.parser)
         self.assertEqual(abc.key, 'abc')
-        self.assertEqual(abc.val, None)
+        self.assertEqual(abc.raw_val, None)
         self.assertEqual(abc.all, 'abc\n    .attr = Attr')
         attributes = list(abc.attributes)
         self.assertEqual(len(attributes), 1)
         attr = attributes[0]
         self.assertEqual(attr.key, 'attr')
-        self.assertEqual(attr.val, 'Attr')
+        self.assertEqual(attr.raw_val, 'Attr')
 
     def test_non_localizable(self):
         self.parser.readContents(b'''\
@@ -163,7 +164,7 @@ baz = Baz
 
         entity = next(entities)
         self.assertTrue(isinstance(entity, parser.FluentMessage))
-        self.assertEqual(entity.val, 'Foo')
+        self.assertEqual(entity.raw_val, 'Foo')
 
         entity = next(entities)
         self.assertTrue(isinstance(entity, parser.Whitespace))
@@ -179,7 +180,7 @@ baz = Baz
 
         entity = next(entities)
         self.assertTrue(isinstance(entity, parser.FluentTerm))
-        self.assertEqual(entity.val, 'Bar')
+        self.assertEqual(entity.raw_val, 'Bar')
 
         entity = next(entities)
         self.assertTrue(isinstance(entity, parser.Whitespace))
@@ -203,7 +204,7 @@ baz = Baz
 
         entity = next(entities)
         self.assertTrue(isinstance(entity, parser.FluentMessage))
-        self.assertEqual(entity.val, 'Baz')
+        self.assertEqual(entity.raw_val, 'Baz')
         self.assertEqual(entity.entry.comment.content, 'Baz Comment')
 
         entity = next(entities)
@@ -243,7 +244,7 @@ baz = Baz
 
         entity = next(entities)
         self.assertTrue(isinstance(entity, parser.FluentEntity))
-        self.assertEqual(entity.val, 'Foo')
+        self.assertEqual(entity.raw_val, 'Foo')
 
         entity = next(entities)
         self.assertTrue(isinstance(entity, parser.Whitespace))
@@ -262,7 +263,7 @@ baz = Baz
 
         entity = next(entities)
         self.assertTrue(isinstance(entity, parser.FluentEntity))
-        self.assertEqual(entity.val, 'Bar')
+        self.assertEqual(entity.raw_val, 'Bar')
 
         entity = next(entities)
         self.assertTrue(isinstance(entity, parser.Whitespace))
@@ -286,7 +287,7 @@ baz = Baz
 
         entity = next(entities)
         self.assertTrue(isinstance(entity, parser.FluentEntity))
-        self.assertEqual(entity.val, 'Baz')
+        self.assertEqual(entity.raw_val, 'Baz')
         self.assertEqual(entity.entry.comment.content, 'Baz Comment')
 
         entity = next(entities)
@@ -312,7 +313,7 @@ baz = Baz
         # ensure that fluent comments are FluentComments and Comments
         self.assertTrue(isinstance(entity,  parser.FluentComment))
 
-        # now test the actual .val values
+        # now test the actual .val values, .raw_val is None
         self.assertTrue(isinstance(entity,   parser.Comment))
         self.assertEqual(entity.val, 'Legacy Comment')
 
@@ -340,6 +341,45 @@ baz = Baz
         entity = next(entities)
         self.assertTrue(isinstance(entity, parser.Whitespace))
         self.assertEqual(entity.all, '\n')
+
+        with self.assertRaises(StopIteration):
+            next(entities)
+
+    def test_junk(self):
+        self.parser.readUnicode('''\
+# Comment
+
+Line of junk
+
+# Comment
+msg = value
+''')
+        entities = self.parser.walk()
+
+        entity = next(entities)
+        self.assertTrue(isinstance(entity,  parser.FluentComment))
+        self.assertEqual(entity.val, 'Comment')
+
+        entity = next(entities)
+        self.assertTrue(isinstance(entity, parser.Whitespace))
+        self.assertEqual(entity.raw_val, '\n\n')
+
+        entity = next(entities)
+        self.assertTrue(isinstance(entity,  parser.Junk))
+        self.assertEqual(entity.raw_val, 'Line of junk')
+
+        entity = next(entities)
+        self.assertTrue(isinstance(entity, parser.Whitespace))
+        self.assertEqual(entity.raw_val, '\n\n')
+
+        entity = next(entities)
+        self.assertTrue(isinstance(entity, parser.FluentEntity))
+        self.assertEqual(entity.raw_val, 'value')
+        self.assertEqual(entity.entry.comment.content, 'Comment')
+
+        entity = next(entities)
+        self.assertTrue(isinstance(entity, parser.Whitespace))
+        self.assertEqual(entity.raw_val, '\n')
 
         with self.assertRaises(StopIteration):
             next(entities)

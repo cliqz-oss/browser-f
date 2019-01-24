@@ -1,29 +1,20 @@
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.asyncStore = exports.features = exports.prefs = undefined;
-
-var _devtoolsModules = require("devtools/client/debugger/new/dist/vendors").vendored["devtools-modules"];
-
-var _devtoolsEnvironment = require("devtools/client/debugger/new/dist/vendors").vendored["devtools-environment"];
-
-var _devtoolsServices = require("Services");
-
-var _devtoolsServices2 = _interopRequireDefault(_devtoolsServices);
-
-var _asyncStoreHelper = require("./asyncStoreHelper");
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-const prefsSchemaVersion = "1.0.5";
-const pref = _devtoolsServices2.default.pref;
 
-if ((0, _devtoolsEnvironment.isDevelopment)()) {
+// @flow
+
+import { PrefsHelper } from "devtools-modules";
+import { isDevelopment } from "devtools-environment";
+import Services from "devtools-services";
+import { asyncStoreHelper } from "./asyncStoreHelper";
+
+const prefsSchemaVersion = "1.0.5";
+
+const pref = Services.pref;
+
+if (isDevelopment()) {
+  pref("devtools.debugger.logging", false);
   pref("devtools.debugger.alphabetize-outline", false);
   pref("devtools.debugger.auto-pretty-print", false);
   pref("devtools.source-map.client-service.enabled", true);
@@ -35,9 +26,12 @@ if ((0, _devtoolsEnvironment.isDevelopment)()) {
   pref("devtools.debugger.component-visible", true);
   pref("devtools.debugger.workers-visible", true);
   pref("devtools.debugger.expressions-visible", true);
+  pref("devtools.debugger.xhr-breakpoints-visible", true);
   pref("devtools.debugger.breakpoints-visible", true);
   pref("devtools.debugger.start-panel-collapsed", false);
   pref("devtools.debugger.end-panel-collapsed", false);
+  pref("devtools.debugger.start-panel-size", 300);
+  pref("devtools.debugger.end-panel-size", 300);
   pref("devtools.debugger.tabs", "[]");
   pref("devtools.debugger.tabsBlackBoxed", "[]");
   pref("devtools.debugger.ui.framework-grouping-on", true);
@@ -57,8 +51,6 @@ if ((0, _devtoolsEnvironment.isDevelopment)()) {
   pref("devtools.debugger.features.root", true);
   pref("devtools.debugger.features.map-scopes", true);
   pref("devtools.debugger.features.remove-command-bar-options", true);
-  pref("devtools.debugger.features.code-coverage", false);
-  pref("devtools.debugger.features.event-listeners", false);
   pref("devtools.debugger.features.code-folding", false);
   pref("devtools.debugger.features.outline", true);
   pref("devtools.debugger.features.column-breakpoints", false);
@@ -68,9 +60,12 @@ if ((0, _devtoolsEnvironment.isDevelopment)()) {
   pref("devtools.debugger.features.autocomplete-expressions", false);
   pref("devtools.debugger.features.map-expression-bindings", true);
   pref("devtools.debugger.features.map-await-expression", true);
+  pref("devtools.debugger.features.xhr-breakpoints", true);
+  pref("devtools.debugger.features.origial-blackbox", false);
 }
 
-const prefs = exports.prefs = new _devtoolsModules.PrefsHelper("devtools", {
+export const prefs = new PrefsHelper("devtools", {
+  logging: ["Bool", "debugger.alphabetize-outline"],
   alphabetizeOutline: ["Bool", "debugger.alphabetize-outline"],
   autoPrettyPrint: ["Bool", "debugger.auto-pretty-print"],
   clientSourceMapsEnabled: ["Bool", "source-map.client-service.enabled"],
@@ -83,8 +78,11 @@ const prefs = exports.prefs = new _devtoolsModules.PrefsHelper("devtools", {
   workersVisible: ["Bool", "debugger.workers-visible"],
   breakpointsVisible: ["Bool", "debugger.breakpoints-visible"],
   expressionsVisible: ["Bool", "debugger.expressions-visible"],
+  xhrBreakpointsVisible: ["Bool", "debugger.xhr-breakpoints-visible"],
   startPanelCollapsed: ["Bool", "debugger.start-panel-collapsed"],
   endPanelCollapsed: ["Bool", "debugger.end-panel-collapsed"],
+  startPanelSize: ["Int", "debugger.start-panel-size"],
+  endPanelSize: ["Int", "debugger.end-panel-size"],
   frameworkGroupingOn: ["Bool", "debugger.ui.framework-grouping-on"],
   tabs: ["Json", "debugger.tabs", []],
   tabsBlackBoxed: ["Json", "debugger.tabsBlackBoxed", []],
@@ -98,7 +96,8 @@ const prefs = exports.prefs = new _devtoolsModules.PrefsHelper("devtools", {
   projectDirectoryRoot: ["Char", "debugger.project-directory-root", ""],
   skipPausing: ["Bool", "debugger.skip-pausing"]
 });
-const features = exports.features = new _devtoolsModules.PrefsHelper("devtools.debugger.features", {
+
+export const features = new PrefsHelper("devtools.debugger.features", {
   asyncStepping: ["Bool", "async-stepping"],
   wasm: ["Bool", "wasm"],
   shortcuts: ["Bool", "shortcuts"],
@@ -107,8 +106,6 @@ const features = exports.features = new _devtoolsModules.PrefsHelper("devtools.d
   mapScopes: ["Bool", "map-scopes"],
   removeCommandBarOptions: ["Bool", "remove-command-bar-options"],
   workers: ["Bool", "workers"],
-  codeCoverage: ["Bool", "code-coverage"],
-  eventListeners: ["Bool", "event-listeners"],
   outline: ["Bool", "outline"],
   codeFolding: ["Bool", "code-folding"],
   pausePoints: ["Bool", "pause-points"],
@@ -116,16 +113,21 @@ const features = exports.features = new _devtoolsModules.PrefsHelper("devtools.d
   autocompleteExpression: ["Bool", "autocomplete-expressions"],
   mapExpressionBindings: ["Bool", "map-expression-bindings"],
   mapAwaitExpression: ["Bool", "map-await-expression"],
-  componentPane: ["Bool", "component-pane"]
+  componentPane: ["Bool", "component-pane"],
+  xhrBreakpoints: ["Bool", "xhr-breakpoints"],
+  originalBlackbox: ["Bool", "origial-blackbox"],
 });
-const asyncStore = exports.asyncStore = (0, _asyncStoreHelper.asyncStoreHelper)("debugger", {
+
+export const asyncStore = asyncStoreHelper("debugger", {
   pendingBreakpoints: ["pending-breakpoints", {}],
-  tabs: ["tabs", []]
+  tabs: ["tabs", []],
+  xhrBreakpoints: ["xhr-breakpoints", []]
 });
 
 if (prefs.debuggerPrefsSchemaVersion !== prefsSchemaVersion) {
   // clear pending Breakpoints
   prefs.pendingBreakpoints = {};
   prefs.tabs = [];
+  prefs.xhrBreakpoints = [];
   prefs.debuggerPrefsSchemaVersion = prefsSchemaVersion;
 }

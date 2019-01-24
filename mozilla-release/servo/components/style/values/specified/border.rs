@@ -1,23 +1,65 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Specified types for CSS values related to borders.
 
+use crate::parser::{Parse, ParserContext};
+use crate::values::computed::{self, Context, ToComputedValue};
+use crate::values::generics::border::BorderCornerRadius as GenericBorderCornerRadius;
+use crate::values::generics::border::BorderImageSideWidth as GenericBorderImageSideWidth;
+use crate::values::generics::border::BorderImageSlice as GenericBorderImageSlice;
+use crate::values::generics::border::BorderRadius as GenericBorderRadius;
+use crate::values::generics::border::BorderSpacing as GenericBorderSpacing;
+use crate::values::generics::rect::Rect;
+use crate::values::generics::size::Size;
+use crate::values::specified::length::{Length, LengthOrPercentage, NonNegativeLength};
+use crate::values::specified::{AllowQuirks, Number, NumberOrPercentage};
 use cssparser::Parser;
-use parser::{Parse, ParserContext};
 use std::fmt::{self, Write};
 use style_traits::{CssWriter, ParseError, ToCss};
-use values::computed::{self, Context, ToComputedValue};
-use values::generics::border::BorderCornerRadius as GenericBorderCornerRadius;
-use values::generics::border::BorderImageSideWidth as GenericBorderImageSideWidth;
-use values::generics::border::BorderImageSlice as GenericBorderImageSlice;
-use values::generics::border::BorderRadius as GenericBorderRadius;
-use values::generics::border::BorderSpacing as GenericBorderSpacing;
-use values::generics::rect::Rect;
-use values::generics::size::Size;
-use values::specified::{AllowQuirks, Number, NumberOrPercentage};
-use values::specified::length::{Length, LengthOrPercentage, NonNegativeLength};
+
+/// A specified value for a single side of a `border-style` property.
+///
+/// The order here corresponds to the integer values from the border conflict
+/// resolution rules in CSS 2.1 § 17.6.2.1. Higher values override lower values.
+#[allow(missing_docs)]
+#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    MallocSizeOf,
+    Ord,
+    Parse,
+    PartialEq,
+    PartialOrd,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+)]
+#[repr(u8)]
+pub enum BorderStyle {
+    Hidden,
+    None,
+    Inset,
+    Groove,
+    Outset,
+    Ridge,
+    Dotted,
+    Dashed,
+    Solid,
+    Double,
+}
+
+impl BorderStyle {
+    /// Whether this border style is either none or hidden.
+    #[inline]
+    pub fn none_or_hidden(&self) -> bool {
+        matches!(*self, BorderStyle::None | BorderStyle::Hidden)
+    }
+}
 
 /// A specified value for a single side of the `border-width` property.
 #[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToCss)]
@@ -92,7 +134,8 @@ impl ToComputedValue for BorderSideWidth {
             BorderSideWidth::Medium => Length::from_px(3.).to_computed_value(context),
             BorderSideWidth::Thick => Length::from_px(5.).to_computed_value(context),
             BorderSideWidth::Length(ref length) => length.to_computed_value(context),
-        }.into()
+        }
+        .into()
     }
 
     #[inline]
@@ -182,7 +225,8 @@ impl Parse for BorderSpacing {
     ) -> Result<Self, ParseError<'i>> {
         Size::parse_with(context, input, |context, input| {
             Length::parse_non_negative_quirky(context, input, AllowQuirks::Yes).map(From::from)
-        }).map(GenericBorderSpacing)
+        })
+        .map(GenericBorderSpacing)
     }
 }
 

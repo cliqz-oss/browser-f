@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Style sheets and their CSS rules.
 
@@ -23,15 +23,15 @@ mod stylesheet;
 pub mod supports_rule;
 pub mod viewport_rule;
 
+use crate::parser::ParserContext;
+use crate::shared_lock::{DeepCloneParams, DeepCloneWithLock, Locked};
+use crate::shared_lock::{SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard};
+use crate::str::CssStringWriter;
 use cssparser::{parse_one_rule, Parser, ParserInput};
 #[cfg(feature = "gecko")]
 use malloc_size_of::{MallocSizeOfOps, MallocUnconditionalShallowSizeOf};
-use parser::ParserContext;
 use servo_arc::Arc;
-use shared_lock::{DeepCloneParams, DeepCloneWithLock, Locked};
-use shared_lock::{SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard};
 use std::fmt;
-use str::CssStringWriter;
 use style_traits::ParsingMode;
 
 pub use self::counter_style_rule::CounterStyleRule;
@@ -45,13 +45,13 @@ pub use self::media_rule::MediaRule;
 pub use self::namespace_rule::NamespaceRule;
 pub use self::origin::{Origin, OriginSet, OriginSetIterator, PerOrigin, PerOriginIter};
 pub use self::page_rule::PageRule;
-pub use self::rule_parser::{State, TopLevelRuleParser, InsertRuleContext};
 pub use self::rule_list::{CssRules, CssRulesHelpers};
+pub use self::rule_parser::{InsertRuleContext, State, TopLevelRuleParser};
 pub use self::rules_iterator::{AllRules, EffectiveRules};
 pub use self::rules_iterator::{NestedRuleIterationCondition, RulesIterator};
+pub use self::style_rule::StyleRule;
 pub use self::stylesheet::{DocumentStyleSheet, Namespaces, Stylesheet};
 pub use self::stylesheet::{StylesheetContents, StylesheetInDocument, UserAgentStylesheets};
-pub use self::style_rule::StyleRule;
 pub use self::supports_rule::SupportsRule;
 pub use self::viewport_rule::ViewportRule;
 
@@ -63,7 +63,7 @@ pub type UrlExtraData = ::servo_url::ServoUrl;
 #[cfg(feature = "gecko")]
 #[derive(Clone, PartialEq)]
 pub struct UrlExtraData(
-    pub ::gecko_bindings::sugar::refptr::RefPtr<::gecko_bindings::structs::URLExtraData>,
+    pub crate::gecko_bindings::sugar::refptr::RefPtr<crate::gecko_bindings::structs::URLExtraData>,
 );
 
 #[cfg(feature = "gecko")]
@@ -80,7 +80,7 @@ impl UrlExtraData {
     ///
     /// This method doesn't touch refcount.
     #[inline]
-    pub unsafe fn from_ptr_ref(ptr: &*mut ::gecko_bindings::structs::URLExtraData) -> &Self {
+    pub unsafe fn from_ptr_ref(ptr: &*mut crate::gecko_bindings::structs::URLExtraData) -> &Self {
         ::std::mem::transmute(ptr)
     }
 }
@@ -88,7 +88,7 @@ impl UrlExtraData {
 #[cfg(feature = "gecko")]
 impl fmt::Debug for UrlExtraData {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        use gecko_bindings::{structs, bindings};
+        use crate::gecko_bindings::{bindings, structs};
 
         struct DebugURI(*mut structs::nsIURI);
         impl fmt::Debug for DebugURI {
@@ -109,7 +109,8 @@ impl fmt::Debug for UrlExtraData {
             .field(
                 "referrer",
                 &DebugURI(self.0.mReferrer.raw::<structs::nsIURI>()),
-            ).finish()
+            )
+            .finish()
     }
 }
 

@@ -20,13 +20,13 @@ use std::fmt;
 use std::hash::{BuildHasher, Hash};
 use std::ops::{Deref, DerefMut};
 
-pub use std::collections::hash_map::{Entry, RandomState, Iter as MapIter, IterMut as MapIterMut};
-pub use std::collections::hash_set::{Iter as SetIter, IntoIter as SetIntoIter};
+pub use std::collections::hash_map::{Entry, Iter as MapIter, IterMut as MapIterMut, RandomState};
+pub use std::collections::hash_set::{IntoIter as SetIntoIter, Iter as SetIter};
 
 #[derive(Clone)]
 pub struct HashMap<K, V, S = RandomState>(StdMap<K, V, S>);
 
-use FailedAllocationError;
+use crate::FailedAllocationError;
 
 impl<K, V, S> Deref for HashMap<K, V, S> {
     type Target = StdMap<K, V, S>;

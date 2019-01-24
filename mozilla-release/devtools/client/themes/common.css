@@ -499,16 +499,6 @@ checkbox:-moz-focusring {
   background-position: calc(100% - 8px) center;
 }
 
-/* This is needed to remove the default search icon on windows. See bug 1400615. */
-.devtools-filterinput > .textbox-input-box > .textbox-search-sign {
-  display: none;
-}
-
-.devtools-searchinput > .textbox-input-box > .textbox-search-icons > .textbox-search-icon,
-.devtools-filterinput > .textbox-input-box > .textbox-search-icons > .textbox-search-icon {
-  visibility: hidden;
-}
-
 .devtools-searchinput .textbox-input::placeholder,
 .devtools-filterinput .textbox-input::placeholder {
   font-style: normal;
@@ -640,94 +630,71 @@ checkbox:-moz-focusring {
   background-position: -16px 0;
 }
 
-.theme-dark .devtools-searchinput > .textbox-input-box > .textbox-search-icons > .textbox-search-clear,
-.theme-dark .devtools-filterinput > .textbox-input-box > .textbox-search-icons > .textbox-search-clear {
-  list-style-image: url("chrome://devtools/skin/images/search-clear-dark.svg");
-  -moz-image-region: rect(0, 16px, 16px, 0);
-}
-
-.theme-light .devtools-searchinput > .textbox-input-box > .textbox-search-icons > .textbox-search-clear,
-.theme-light .devtools-filterinput > .textbox-input-box > .textbox-search-icons > .textbox-search-clear {
-  list-style-image: url("chrome://devtools/skin/images/search-clear-light.svg");
-  -moz-image-region: rect(0, 16px, 16px, 0);
-}
-
-.devtools-searchinput > .textbox-input-box > .textbox-search-icons > .textbox-search-clear,
-.devtools-filterinput > .textbox-input-box > .textbox-search-icons > .textbox-search-clear {
-  margin-bottom: 0;
-}
-
-.devtools-searchinput > .textbox-input-box > .textbox-search-icons > .textbox-search-clear:hover,
-.devtools-filterinput > .textbox-input-box > .textbox-search-icons > .textbox-search-clear:hover {
-  -moz-image-region: rect(0, 32px, 16px, 16px);
-}
-
 /* Twisty and checkbox controls */
-.theme-twisty, .theme-checkbox {
-  width: 14px;
-  height: 14px;
-  background-repeat: no-repeat;
-  background-image: url("chrome://devtools/skin/images/controls.png");
-  background-size: 56px 28px;
-}
 
 .theme-twisty {
+  width: 14px;
+  height: 14px;
   cursor: pointer;
-  background-position: 0 -14px;
+  background-image: url("chrome://devtools/skin/images/arrow.svg");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 10px;
+  -moz-context-properties: fill;
+  fill: var(--theme-twisty-fill);
+  transform: rotate(-90deg);
 }
 
-.theme-selected ~ .theme-twisty,
-.theme-dark .theme-twisty {
-  background-position: -28px -14px;
+/* Mirror the twisty for rtl direction */
+.theme-twisty:dir(rtl),
+.theme-twisty:-moz-locale-dir(rtl) {
+  transform: rotate(90deg);
+}
+
+.theme-selected ~ .theme-twisty {
+  fill: var(--theme-twisty-selected-fill);
 }
 
 .theme-twisty:-moz-focusring {
   outline-style: none;
 }
 
-.theme-twisty[open], .theme-twisty.open {
-  background-position: -14px -14px;
-}
-
-.theme-selected ~ .theme-twisty[open],
-.theme-dark .theme-twisty[open], .theme-dark .theme-twisty.open  {
-  background-position: -42px -14px;
+.theme-twisty[open],
+.theme-twisty.open {
+  transform: none;
 }
 
 .theme-twisty[invisible] {
   visibility: hidden;
 }
 
-/* Mirror the twisty for rtl direction */
-.theme-twisty:dir(rtl),
-.theme-twisty:-moz-locale-dir(rtl) {
-  transform: scaleX(-1);
-}
-
 .theme-checkbox {
   display: inline-block;
+  width: 14px;
+  height: 14px;
   border: 0;
   padding: 0;
   outline: none;
-  background-position: 0 0;
+  background-image: url("chrome://devtools/skin/images/checkbox.svg");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 14px 14px;
+  /* Using fill to paint the border, and stroke for the tick */
+  -moz-context-properties: fill, stroke;
+  fill: rgba(0,0,0,.3);
+  stroke: transparent;
 }
 
 .theme-dark .theme-checkbox {
-  background-position: -28px 0;
+  fill: rgba(255,255,255,.4);
 }
 
 .theme-checkbox[checked] {
-  background-position: -14px 0;
+  stroke: rgba(0,0,0,.6);
 }
 
 .theme-dark .theme-checkbox[checked] {
-  background-position: -42px 0;
-}
-
-@media (min-resolution: 1.1dppx) {
-  .theme-twisty, .theme-checkbox {
-    background-image: url("chrome://devtools/skin/images/controls@2x.png");
-  }
+  stroke: rgba(255,255,255,.8);
 }
 
 /* Throbbers */

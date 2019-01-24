@@ -11,11 +11,6 @@ browser.jar:
 #endif
 * skin/classic/browser/browser.css
 * skin/classic/browser/compacttheme.css
-  skin/classic/browser/panel-expander-closed.png
-  skin/classic/browser/panel-expander-closed@2x.png
-  skin/classic/browser/panel-expander-open.png
-  skin/classic/browser/panel-expander-open@2x.png
-  skin/classic/browser/panel-plus-sign.png
 * skin/classic/browser/pageInfo.css
   skin/classic/browser/privatebrowsing-eraser.svg
 * skin/classic/browser/searchbar.css
@@ -39,7 +34,6 @@ browser.jar:
   skin/classic/browser/places/toolbar.png                   (places/toolbar.png)
   skin/classic/browser/places/toolbarDropMarker.png         (places/toolbarDropMarker.png)
   skin/classic/browser/places/editBookmark.css              (places/editBookmark.css)
-  skin/classic/browser/places/livemark-item.png             (places/livemark-item.png)
   skin/classic/browser/preferences/alwaysAsk.png            (preferences/alwaysAsk.png)
   skin/classic/browser/preferences/application.png          (preferences/application.png)
   skin/classic/browser/preferences/saveFile.png             (preferences/saveFile.png)

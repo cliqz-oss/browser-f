@@ -10,15 +10,16 @@
 #include "nsISupportsImpl.h"
 #include "mozilla/layers/LayersTypes.h"
 #include "mozilla/TimeStamp.h"
+#include "mozilla/VsyncDispatcher.h"
 
 namespace mozilla {
 namespace layers {
 
 class TransactionIdAllocator {
-protected:
+ protected:
   virtual ~TransactionIdAllocator() {}
 
-public:
+ public:
   NS_INLINE_DECL_REFCOUNTING(TransactionIdAllocator)
 
   /**
@@ -80,10 +81,11 @@ public:
    * Get the start time of the current refresh tick.
    */
   virtual mozilla::TimeStamp GetTransactionStart() = 0;
+
+  virtual VsyncId GetVsyncId() = 0;
 };
 
-} // namespace layers
-} // namespace mozilla
-
+}  // namespace layers
+}  // namespace mozilla
 
 #endif /* GFX_TRANSACTION_ID_ALLOCATOR_H */

@@ -13,6 +13,7 @@
 #include "nsTArray.h"
 #include "nsIPrincipal.h"
 #include "prio.h"
+#include "mozilla/Maybe.h"
 
 class nsIMutableArray;
 
@@ -21,61 +22,58 @@ class nsIMutableArray;
 //
 // Holds a flavor (a mime type) that describes the data and the associated data.
 //
-struct DataStruct
-{
-  explicit DataStruct ( const char* aFlavor )
-    : mDataLen(0), mCacheFD(nullptr), mFlavor(aFlavor) { }
+struct DataStruct {
+  explicit DataStruct(const char* aFlavor)
+      : mCacheFD(nullptr), mFlavor(aFlavor) {}
   DataStruct(DataStruct&& aRHS);
   ~DataStruct();
-  
-  const nsCString& GetFlavor() const { return mFlavor; }
-  void SetData( nsISupports* inData, uint32_t inDataLen, bool aIsPrivateData );
-  void GetData( nsISupports** outData, uint32_t *outDataLen );
-  bool IsDataAvailable() const { return mData ? mDataLen > 0 : mCacheFD != nullptr; }
-  
-protected:
 
+  const nsCString& GetFlavor() const { return mFlavor; }
+  void SetData(nsISupports* aData, bool aIsPrivateData);
+  void GetData(nsISupports** aData);
+  bool IsDataAvailable() const { return mData || mCacheFD; }
+
+ protected:
   enum {
     // The size of data over which we write the data to disk rather than
     // keep it around in memory.
-    kLargeDatasetSize = 1000000        // 1 million bytes
+    kLargeDatasetSize = 1000000  // 1 million bytes
   };
-  
-  nsresult WriteCache(nsISupports* aData, uint32_t aDataLen );
-  nsresult ReadCache(nsISupports** aData, uint32_t* aDataLen );
-  
-  // mData + mDataLen OR mCacheFD should be used, not both.
-  nsCOMPtr<nsISupports> mData;   // OWNER - some varient of primitive wrapper
-  uint32_t mDataLen;
+
+  nsresult WriteCache(void* aData, uint32_t aDataLen);
+  nsresult ReadCache(nsISupports** aData);
+
+  // mData OR mCacheFD should be used, not both.
+  nsCOMPtr<nsISupports> mData;  // OWNER - some varient of primitive wrapper
   PRFileDesc* mCacheFD;
   const nsCString mFlavor;
 
-private:
+ private:
   DataStruct(const DataStruct&) = delete;
   DataStruct& operator=(const DataStruct&) = delete;
-
 };
 
 /**
  * XP Transferable wrapper
  */
 
-class nsTransferable : public nsITransferable
-{
-public:
-
+class nsTransferable : public nsITransferable {
+ public:
   nsTransferable();
 
-    // nsISupports
+  // nsISupports
   NS_DECL_ISUPPORTS
   NS_DECL_NSITRANSFERABLE
 
-protected:
+ protected:
   virtual ~nsTransferable();
 
-  // get flavors w/out converter
+  // Get flavors w/out converter
   void GetTransferDataFlavors(nsTArray<nsCString>& aFlavors);
- 
+
+  // Find index for data with the matching flavor in mDataArray.
+  mozilla::Maybe<size_t> FindDataFlavor(const char* aFlavor);
+
   nsTArray<DataStruct> mDataArray;
   nsCOMPtr<nsIFormatConverter> mFormatConv;
   bool mPrivateData;
@@ -84,7 +82,6 @@ protected:
 #if DEBUG
   bool mInitialized;
 #endif
-
 };
 
-#endif // nsTransferable_h__
+#endif  // nsTransferable_h__

@@ -60,8 +60,6 @@ def create_parser(mach_interface=False):
                 help="path to executable we are testing")
     add_arg('-t', '--title', default='qm-pxp01',
             help="Title of the test run")
-    add_arg('--branchName', dest="branch_name", default='',
-            help="Name of the branch we are testing on")
     add_arg('--browserWait', dest='browser_wait', default=5, type=int,
             help="Amount of time allowed for the browser to cleanly close")
     add_arg('-a', '--activeTests',
@@ -91,13 +89,19 @@ def create_parser(mach_interface=False):
             help="(Deprecated - Use --geckoProfileEntries instead.) How "
                  "many samples to take with the profiler")
     add_arg('--geckoProfile', action="store_true", dest="gecko_profile",
+            help=argparse.SUPPRESS)
+    add_arg('--geckoProfileInterval', dest='gecko_profile_interval', type=float,
+            help=argparse.SUPPRESS)
+    add_arg('--geckoProfileEntries', dest="gecko_profile_entries", type=int,
+            help=argparse.SUPPRESS)
+    add_arg('--gecko-profile', action="store_true", dest="gecko_profile",
             help="Profile the run and output the results in $MOZ_UPLOAD_DIR. "
                  "After talos is finished, perf-html.io will be launched in Firefox so you "
                  "can analyze the local profiles. To disable auto-launching of perf-html.io "
-                 "set the TALOS_DISABLE_PROFILE_LAUNCH=1 env var.")
-    add_arg('--geckoProfileInterval', dest='gecko_profile_interval', type=float,
+                 "set the DISABLE_PROFILE_LAUNCH=1 env var.")
+    add_arg('--gecko-profile-interval', dest='gecko_profile_interval', type=float,
             help="How frequently to take samples (ms)")
-    add_arg('--geckoProfileEntries', dest="gecko_profile_entries", type=int,
+    add_arg('--gecko-profile-entries', dest="gecko_profile_entries", type=int,
             help="How many samples to take with the profiler")
     add_arg('--extension', dest='extensions', action='append',
             default=['${talos}/talos-powers'],

@@ -151,7 +151,7 @@ MODERN_MERCURIAL_VERSION = LooseVersion('4.3.3')
 MODERN_PYTHON_VERSION = LooseVersion('2.7.3')
 
 # Upgrade rust older than this.
-MODERN_RUST_VERSION = LooseVersion('1.29.2')
+MODERN_RUST_VERSION = LooseVersion('1.30.1')
 
 
 class BaseBootstrapper(object):
@@ -253,6 +253,14 @@ class BaseBootstrapper(object):
             '%s does not yet implement suggest_mobile_android_artifact_mode_mozconfig()'
             % __name__)
 
+    def ensure_clang_static_analysis_package(self, checkout_root):
+        '''
+        Install the clang static analysis package
+        '''
+        raise NotImplementedError(
+            '%s does not yet implement ensure_clang_static_analysis_package()'
+            % __name__)
+
     def ensure_stylo_packages(self, state_dir, checkout_root):
         '''
         Install any necessary packages needed for Stylo development.
@@ -268,28 +276,23 @@ class BaseBootstrapper(object):
             '%s does not yet implement ensure_node_packages()'
             % __name__)
 
-    def ensure_rust_package(self, crate_name, min_version):
-        cargo = self.which('cargo')
-        if not cargo:
-            cargo_home, cargo_bin = self.cargo_home()
-            cargo = os.path.join(cargo_bin, 'cargo')
+    def install_toolchain_static_analysis(self, checkout_root):
+        mach_binary = os.path.join(checkout_root, 'mach')
+        mach_binary = os.path.abspath(mach_binary)
+        if not os.path.exists(mach_binary):
+            raise ValueError("mach not found at %s" % mach_binary)
 
-        list = subprocess.check_output([cargo, 'install', '--list'])
-        target = crate_name + ' v'
-        for line in list.splitlines():
-            if line.startswith(target):
-                version = line[len(target):-1]
-                if LooseVersion(version) >= LooseVersion(min_version):
-                    return
-                print('old version of {name} ({version}) found'.format(
-                    name=crate_name, version=version))
-                break
-        else:
-            print('{name} not found'.format(name=crate_name))
+        if not sys.executable:
+            raise ValueError("cannot determine path to Python executable")
 
-        print('installing via cargo install.'.format(
-            name=crate_name))
-        subprocess.check_call([cargo, 'install', '--force', crate_name])
+        cmd = [sys.executable, mach_binary, 'static-analysis', 'install',
+               '--force', '--minimal-install']
+
+        from subprocess import CalledProcessError
+        try:
+            subprocess.check_call(cmd)
+        except CalledProcessError as e:
+            print(e.output)
 
     def install_toolchain_artifact(self, state_dir, checkout_root, toolchain_job):
         mach_binary = os.path.join(checkout_root, 'mach')
@@ -430,6 +433,20 @@ class BaseBootstrapper(object):
             return choice
         else:
             raise Exception("Error! Reached max attempts of entering option.")
+
+    def prompt_yesno(self, prompt):
+        ''' Prompts the user with prompt and requires a yes/no answer.'''
+        valid = False
+        while not valid:
+            choice = raw_input(prompt + ' [Y/n]: ').strip().lower()[:1]
+            if choice == '':
+                choice = 'y'
+            if choice not in ('y', 'n'):
+                print('ERROR! Please enter y or n!')
+            else:
+                valid = True
+
+        return choice == 'y'
 
     def _ensure_package_manager_updated(self):
         if self.package_manager_updated:

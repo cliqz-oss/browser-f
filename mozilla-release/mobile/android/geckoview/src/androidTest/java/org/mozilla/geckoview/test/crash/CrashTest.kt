@@ -23,8 +23,8 @@ import java.io.File
 @MediumTest
 class CrashTest {
     companion object {
-        val DEFAULT_X86_EMULATOR_TIMEOUT_MILLIS = 30000L
-        val DEFAULT_X86_DEVICE_TIMEOUT_MILLIS = 30000L
+        val DEFAULT_X86_EMULATOR_TIMEOUT_MILLIS = 90000L
+        val DEFAULT_X86_DEVICE_TIMEOUT_MILLIS = 60000L
         val DEFAULT_ARM_EMULATOR_TIMEOUT_MILLIS = 180000L
         val DEFAULT_ARM_DEVICE_TIMEOUT_MILLIS = 60000L
     }
@@ -37,7 +37,7 @@ class CrashTest {
 
     fun getTimeoutMillis(): Long {
         val env = Environment()
-        if ("x86" == env.cpuArch) {
+        if (env.isX86) {
             return if (env.isEmulator)
                 CrashTest.DEFAULT_X86_EMULATOR_TIMEOUT_MILLIS
             else

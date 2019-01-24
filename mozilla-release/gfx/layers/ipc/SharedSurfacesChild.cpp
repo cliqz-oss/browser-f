@@ -8,11 +8,11 @@
 #include "SharedSurfacesParent.h"
 #include "CompositorManagerChild.h"
 #include "mozilla/gfx/gfxVars.h"
-#include "mozilla/layers/IpcResourceUpdateQueue.h"
+#include "mozilla/image/RecyclingSourceSurface.h"
 #include "mozilla/layers/SourceSurfaceSharedData.h"
 #include "mozilla/layers/WebRenderBridgeChild.h"
 #include "mozilla/layers/WebRenderLayerManager.h"
-#include "mozilla/SystemGroup.h"        // for SystemGroup
+#include "mozilla/SystemGroup.h"  // for SystemGroup
 
 namespace mozilla {
 namespace layers {
@@ -21,197 +21,155 @@ using namespace mozilla::gfx;
 
 /* static */ UserDataKey SharedSurfacesChild::sSharedKey;
 
-class SharedSurfacesChild::ImageKeyData final
-{
-public:
-  ImageKeyData(WebRenderLayerManager* aManager,
-               const wr::ImageKey& aImageKey)
-    : mManager(aManager)
-    , mImageKey(aImageKey)
-  { }
+SharedSurfacesChild::ImageKeyData::ImageKeyData(WebRenderLayerManager* aManager,
+                                                const wr::ImageKey& aImageKey)
+    : mManager(aManager), mImageKey(aImageKey) {}
 
-  ImageKeyData(ImageKeyData&& aOther)
-    : mManager(std::move(aOther.mManager))
-    , mDirtyRect(std::move(aOther.mDirtyRect))
-    , mImageKey(aOther.mImageKey)
-  { }
+SharedSurfacesChild::ImageKeyData::ImageKeyData(
+    SharedSurfacesChild::ImageKeyData&& aOther)
+    : mManager(std::move(aOther.mManager)),
+      mDirtyRect(std::move(aOther.mDirtyRect)),
+      mImageKey(aOther.mImageKey) {}
 
-  ImageKeyData& operator=(ImageKeyData&& aOther)
-  {
-    mManager = std::move(aOther.mManager);
-    mDirtyRect = std::move(aOther.mDirtyRect);
-    mImageKey = aOther.mImageKey;
-    return *this;
+SharedSurfacesChild::ImageKeyData& SharedSurfacesChild::ImageKeyData::operator=(
+    SharedSurfacesChild::ImageKeyData&& aOther) {
+  mManager = std::move(aOther.mManager);
+  mDirtyRect = std::move(aOther.mDirtyRect);
+  mImageKey = aOther.mImageKey;
+  return *this;
+}
+
+SharedSurfacesChild::ImageKeyData::~ImageKeyData() {}
+
+void SharedSurfacesChild::ImageKeyData::MergeDirtyRect(
+    const Maybe<IntRect>& aDirtyRect) {
+  if (mDirtyRect) {
+    if (aDirtyRect) {
+      mDirtyRect->UnionRect(mDirtyRect.ref(), aDirtyRect.ref());
+    }
+  } else {
+    mDirtyRect = aDirtyRect;
   }
+}
 
-  void MergeDirtyRect(const Maybe<IntRect>& aDirtyRect)
-  {
-    if (mDirtyRect) {
-      if (aDirtyRect) {
-        mDirtyRect->UnionRect(mDirtyRect.ref(), aDirtyRect.ref());
-      }
+SharedSurfacesChild::SharedUserData::~SharedUserData() {
+  if (mShared || !mKeys.IsEmpty()) {
+    if (NS_IsMainThread()) {
+      SharedSurfacesChild::Unshare(mId, mShared, mKeys);
     } else {
-      mDirtyRect = aDirtyRect;
-    }
-  }
+      class DestroyRunnable final : public Runnable {
+       public:
+        DestroyRunnable(const wr::ExternalImageId& aId, bool aReleaseId,
+                        nsTArray<ImageKeyData>&& aKeys)
+            : Runnable("SharedSurfacesChild::SharedUserData::DestroyRunnable"),
+              mId(aId),
+              mReleaseId(aReleaseId),
+              mKeys(std::move(aKeys)) {}
 
-  Maybe<IntRect> TakeDirtyRect()
-  {
-    return std::move(mDirtyRect);
-  }
-
-  ImageKeyData(const ImageKeyData&) = delete;
-  ImageKeyData& operator=(const ImageKeyData&) = delete;
-
-  RefPtr<WebRenderLayerManager> mManager;
-  Maybe<IntRect> mDirtyRect;
-  wr::ImageKey mImageKey;
-};
-
-class SharedSurfacesChild::SharedUserData final
-{
-public:
-  explicit SharedUserData(const wr::ExternalImageId& aId)
-    : mId(aId)
-    , mShared(false)
-  { }
-
-  ~SharedUserData()
-  {
-    if (mShared) {
-      mShared = false;
-      if (NS_IsMainThread()) {
-        SharedSurfacesChild::Unshare(mId, mKeys);
-      } else {
-        class DestroyRunnable final : public Runnable
-        {
-        public:
-          DestroyRunnable(const wr::ExternalImageId& aId,
-                          nsTArray<ImageKeyData>&& aKeys)
-            : Runnable("SharedSurfacesChild::SharedUserData::DestroyRunnable")
-            , mId(aId)
-            , mKeys(std::move(aKeys))
-          { }
-
-          NS_IMETHOD Run() override
-          {
-            SharedSurfacesChild::Unshare(mId, mKeys);
-            return NS_OK;
-          }
-
-        private:
-          wr::ExternalImageId mId;
-          AutoTArray<ImageKeyData, 1> mKeys;
-        };
-
-        nsCOMPtr<nsIRunnable> task = new DestroyRunnable(mId, std::move(mKeys));
-        SystemGroup::Dispatch(TaskCategory::Other, task.forget());
-      }
-    }
-  }
-
-  const wr::ExternalImageId& Id() const
-  {
-    return mId;
-  }
-
-  void SetId(const wr::ExternalImageId& aId)
-  {
-    mId = aId;
-    mKeys.Clear();
-    mShared = false;
-  }
-
-  bool IsShared() const
-  {
-    return mShared;
-  }
-
-  void MarkShared()
-  {
-    MOZ_ASSERT(!mShared);
-    mShared = true;
-  }
-
-  wr::ImageKey UpdateKey(WebRenderLayerManager* aManager,
-                         wr::IpcResourceUpdateQueue& aResources,
-                         const Maybe<IntRect>& aDirtyRect)
-  {
-    MOZ_ASSERT(aManager);
-    MOZ_ASSERT(!aManager->IsDestroyed());
-
-    // We iterate through all of the items to ensure we clean up the old
-    // WebRenderLayerManager references. Most of the time there will be few
-    // entries and this should not be particularly expensive compared to the
-    // cost of duplicating image keys. In an ideal world, we would generate a
-    // single key for the surface, and it would be usable on all of the
-    // renderer instances. For now, we must allocate a key for each WR bridge.
-    wr::ImageKey key;
-    bool found = false;
-    auto i = mKeys.Length();
-    while (i > 0) {
-      --i;
-      ImageKeyData& entry = mKeys[i];
-      if (entry.mManager->IsDestroyed()) {
-        mKeys.RemoveElementAt(i);
-      } else if (entry.mManager == aManager) {
-        WebRenderBridgeChild* wrBridge = aManager->WrBridge();
-        MOZ_ASSERT(wrBridge);
-
-        // Even if the manager is the same, its underlying WebRenderBridgeChild
-        // can change state. If our namespace differs, then our old key has
-        // already been discarded.
-        bool ownsKey = wrBridge->GetNamespace() == entry.mImageKey.mNamespace;
-        if (!ownsKey) {
-          entry.mImageKey = wrBridge->GetNextImageKey();
-          entry.TakeDirtyRect();
-          aResources.AddExternalImage(mId, entry.mImageKey);
-        } else {
-          entry.MergeDirtyRect(aDirtyRect);
-          Maybe<IntRect> dirtyRect = entry.TakeDirtyRect();
-          if (dirtyRect) {
-            aResources.UpdateExternalImage(mId, entry.mImageKey,
-                                           ViewAs<ImagePixel>(dirtyRect.ref()));
-          }
+        NS_IMETHOD Run() override {
+          SharedSurfacesChild::Unshare(mId, mReleaseId, mKeys);
+          return NS_OK;
         }
 
-        key = entry.mImageKey;
-        found = true;
+       private:
+        wr::ExternalImageId mId;
+        bool mReleaseId;
+        AutoTArray<ImageKeyData, 1> mKeys;
+      };
+
+      nsCOMPtr<nsIRunnable> task =
+          new DestroyRunnable(mId, mShared, std::move(mKeys));
+      SystemGroup::Dispatch(TaskCategory::Other, task.forget());
+    }
+  }
+}
+
+wr::ImageKey SharedSurfacesChild::SharedUserData::UpdateKey(
+    WebRenderLayerManager* aManager, wr::IpcResourceUpdateQueue& aResources,
+    const Maybe<IntRect>& aDirtyRect) {
+  MOZ_ASSERT(aManager);
+  MOZ_ASSERT(!aManager->IsDestroyed());
+
+  // We iterate through all of the items to ensure we clean up the old
+  // WebRenderLayerManager references. Most of the time there will be few
+  // entries and this should not be particularly expensive compared to the
+  // cost of duplicating image keys. In an ideal world, we would generate a
+  // single key for the surface, and it would be usable on all of the
+  // renderer instances. For now, we must allocate a key for each WR bridge.
+  wr::ImageKey key;
+  bool found = false;
+  auto i = mKeys.Length();
+  while (i > 0) {
+    --i;
+    ImageKeyData& entry = mKeys[i];
+    if (entry.mManager->IsDestroyed()) {
+      mKeys.RemoveElementAt(i);
+    } else if (entry.mManager == aManager) {
+      WebRenderBridgeChild* wrBridge = aManager->WrBridge();
+      MOZ_ASSERT(wrBridge);
+
+      // Even if the manager is the same, its underlying WebRenderBridgeChild
+      // can change state. If our namespace differs, then our old key has
+      // already been discarded.
+      bool ownsKey = wrBridge->GetNamespace() == entry.mImageKey.mNamespace;
+      if (!ownsKey) {
+        entry.mImageKey = wrBridge->GetNextImageKey();
+        entry.TakeDirtyRect();
+        aResources.AddExternalImage(mId, entry.mImageKey);
       } else {
-        // We don't have the resource update queue for this manager, so just
-        // accumulate the dirty rects until it is requested.
         entry.MergeDirtyRect(aDirtyRect);
+        Maybe<IntRect> dirtyRect = entry.TakeDirtyRect();
+        if (dirtyRect) {
+          MOZ_ASSERT(mShared);
+          aResources.UpdateExternalImage(mId, entry.mImageKey,
+                                         ViewAs<ImagePixel>(dirtyRect.ref()));
+        }
       }
-    }
 
-    if (!found) {
-      key = aManager->WrBridge()->GetNextImageKey();
-      ImageKeyData data(aManager, key);
-      mKeys.AppendElement(std::move(data));
-      aResources.AddExternalImage(mId, key);
+      key = entry.mImageKey;
+      found = true;
+    } else {
+      // We don't have the resource update queue for this manager, so just
+      // accumulate the dirty rects until it is requested.
+      entry.MergeDirtyRect(aDirtyRect);
     }
-
-    return key;
   }
 
-private:
-  AutoTArray<ImageKeyData, 1> mKeys;
-  wr::ExternalImageId mId;
-  bool mShared : 1;
-};
+  if (!found) {
+    key = aManager->WrBridge()->GetNextImageKey();
+    ImageKeyData data(aManager, key);
+    mKeys.AppendElement(std::move(data));
+    aResources.AddExternalImage(mId, key);
+  }
 
-/* static */ void
-SharedSurfacesChild::DestroySharedUserData(void* aClosure)
-{
+  return key;
+}
+
+/* static */ SourceSurfaceSharedData*
+SharedSurfacesChild::AsSourceSurfaceSharedData(SourceSurface* aSurface) {
+  MOZ_ASSERT(aSurface);
+  switch (aSurface->GetType()) {
+    case SurfaceType::DATA_SHARED:
+      return static_cast<SourceSurfaceSharedData*>(aSurface);
+    case SurfaceType::DATA_RECYCLING_SHARED: {
+      auto recycleSurface =
+          static_cast<image::RecyclingSourceSurface*>(aSurface);
+      auto childSurface = recycleSurface->GetChildSurface();
+      return static_cast<SourceSurfaceSharedData*>(childSurface);
+    }
+    default:
+      return nullptr;
+  }
+}
+
+/* static */ void SharedSurfacesChild::DestroySharedUserData(void* aClosure) {
   MOZ_ASSERT(aClosure);
   auto data = static_cast<SharedUserData*>(aClosure);
   delete data;
 }
 
-/* static */ nsresult
-SharedSurfacesChild::ShareInternal(SourceSurfaceSharedData* aSurface,
-                                   SharedUserData** aUserData)
-{
+/* static */ nsresult SharedSurfacesChild::ShareInternal(
+    SourceSurfaceSharedData* aSurface, SharedUserData** aUserData) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aSurface);
   MOZ_ASSERT(aUserData);
@@ -227,7 +185,7 @@ SharedSurfacesChild::ShareInternal(SourceSurfaceSharedData* aSurface,
   }
 
   SharedUserData* data =
-    static_cast<SharedUserData*>(aSurface->GetUserData(&sSharedKey));
+      static_cast<SharedUserData*>(aSurface->GetUserData(&sSharedKey));
   if (!data) {
     data = new SharedUserData(manager->GetNextExternalImageId());
     aSurface->AddUserData(&sSharedKey, data, DestroySharedUserData);
@@ -282,21 +240,20 @@ SharedSurfacesChild::ShareInternal(SourceSurfaceSharedData* aSurface,
   }
 
   SurfaceFormat format = aSurface->GetFormat();
-  MOZ_RELEASE_ASSERT(format == SurfaceFormat::B8G8R8X8 ||
-                     format == SurfaceFormat::B8G8R8A8, "bad format");
+  MOZ_RELEASE_ASSERT(
+      format == SurfaceFormat::B8G8R8X8 || format == SurfaceFormat::B8G8R8A8,
+      "bad format");
 
   data->MarkShared();
-  manager->SendAddSharedSurface(data->Id(),
-                                SurfaceDescriptorShared(aSurface->GetSize(),
-                                                        aSurface->Stride(),
-                                                        format, handle));
+  manager->SendAddSharedSurface(
+      data->Id(), SurfaceDescriptorShared(aSurface->GetSize(),
+                                          aSurface->Stride(), format, handle));
   *aUserData = data;
   return NS_OK;
 }
 
-/* static */ void
-SharedSurfacesChild::Share(SourceSurfaceSharedData* aSurface)
-{
+/* static */ void SharedSurfacesChild::Share(
+    SourceSurfaceSharedData* aSurface) {
   MOZ_ASSERT(aSurface);
 
   // The IPDL actor to do sharing can only be accessed on the main thread so we
@@ -304,22 +261,18 @@ SharedSurfacesChild::Share(SourceSurfaceSharedData* aSurface)
   // we end up racing because if it is already shared, this method will do
   // nothing.
   if (!NS_IsMainThread()) {
-    class ShareRunnable final : public Runnable
-    {
-    public:
+    class ShareRunnable final : public Runnable {
+     public:
       explicit ShareRunnable(SourceSurfaceSharedData* aSurface)
-        : Runnable("SharedSurfacesChild::Share")
-        , mSurface(aSurface)
-      { }
+          : Runnable("SharedSurfacesChild::Share"), mSurface(aSurface) {}
 
-      NS_IMETHOD Run() override
-      {
+      NS_IMETHOD Run() override {
         SharedUserData* unused = nullptr;
         SharedSurfacesChild::ShareInternal(mSurface, &unused);
         return NS_OK;
       }
 
-    private:
+     private:
       RefPtr<SourceSurfaceSharedData> mSurface;
     };
 
@@ -332,12 +285,9 @@ SharedSurfacesChild::Share(SourceSurfaceSharedData* aSurface)
   SharedSurfacesChild::ShareInternal(aSurface, &unused);
 }
 
-/* static */ nsresult
-SharedSurfacesChild::Share(SourceSurfaceSharedData* aSurface,
-                           WebRenderLayerManager* aManager,
-                           wr::IpcResourceUpdateQueue& aResources,
-                           wr::ImageKey& aKey)
-{
+/* static */ nsresult SharedSurfacesChild::Share(
+    SourceSurfaceSharedData* aSurface, WebRenderLayerManager* aManager,
+    wr::IpcResourceUpdateQueue& aResources, wr::ImageKey& aKey) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aSurface);
   MOZ_ASSERT(aManager);
@@ -357,12 +307,9 @@ SharedSurfacesChild::Share(SourceSurfaceSharedData* aSurface,
   return rv;
 }
 
-/* static */ nsresult
-SharedSurfacesChild::Share(ImageContainer* aContainer,
-                           WebRenderLayerManager* aManager,
-                           wr::IpcResourceUpdateQueue& aResources,
-                           wr::ImageKey& aKey)
-{
+/* static */ nsresult SharedSurfacesChild::Share(
+    ImageContainer* aContainer, WebRenderLayerManager* aManager,
+    wr::IpcResourceUpdateQueue& aResources, wr::ImageKey& aKey) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aContainer);
   MOZ_ASSERT(aManager);
@@ -371,7 +318,7 @@ SharedSurfacesChild::Share(ImageContainer* aContainer,
     return NS_ERROR_NOT_IMPLEMENTED;
   }
 
-  AutoTArray<ImageContainer::OwningImage,4> images;
+  AutoTArray<ImageContainer::OwningImage, 4> images;
   aContainer->GetCurrentImages(&images);
   if (images.IsEmpty()) {
     return NS_ERROR_NOT_AVAILABLE;
@@ -382,29 +329,32 @@ SharedSurfacesChild::Share(ImageContainer* aContainer,
     return NS_ERROR_NOT_IMPLEMENTED;
   }
 
-  if (surface->GetType() != SurfaceType::DATA_SHARED) {
+  auto sharedSurface = AsSourceSurfaceSharedData(surface);
+  if (!sharedSurface) {
     return NS_ERROR_NOT_IMPLEMENTED;
   }
 
-  auto sharedSurface = static_cast<SourceSurfaceSharedData*>(surface.get());
+  SharedSurfacesAnimation* anim = aContainer->GetSharedSurfacesAnimation();
+  if (anim) {
+    return anim->UpdateKey(surface, sharedSurface, aManager, aResources, aKey);
+  }
+
   return Share(sharedSurface, aManager, aResources, aKey);
 }
 
-/* static */ nsresult
-SharedSurfacesChild::Share(SourceSurface* aSurface,
-                           wr::ExternalImageId& aId)
-{
+/* static */ nsresult SharedSurfacesChild::Share(SourceSurface* aSurface,
+                                                 wr::ExternalImageId& aId) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aSurface);
 
-  if (aSurface->GetType() != SurfaceType::DATA_SHARED) {
+  auto sharedSurface = AsSourceSurfaceSharedData(aSurface);
+  if (!sharedSurface) {
     return NS_ERROR_NOT_IMPLEMENTED;
   }
 
   // The external image ID does not change with the invalidation counter. The
   // caller of this should be aware of the invalidations of the surface through
   // another mechanism (e.g. imgRequestProxy listener notifications).
-  auto sharedSurface = static_cast<SourceSurfaceSharedData*>(aSurface);
   SharedUserData* data = nullptr;
   nsresult rv = ShareInternal(sharedSurface, &data);
   if (NS_SUCCEEDED(rv)) {
@@ -415,22 +365,20 @@ SharedSurfacesChild::Share(SourceSurface* aSurface,
   return rv;
 }
 
-/* static */ void
-SharedSurfacesChild::Unshare(const wr::ExternalImageId& aId,
-                             nsTArray<ImageKeyData>& aKeys)
-{
+/* static */ void SharedSurfacesChild::Unshare(const wr::ExternalImageId& aId,
+                                               bool aReleaseId,
+                                               nsTArray<ImageKeyData>& aKeys) {
   MOZ_ASSERT(NS_IsMainThread());
 
   for (const auto& entry : aKeys) {
-    if (entry.mManager->IsDestroyed()) {
-      continue;
+    if (!entry.mManager->IsDestroyed()) {
+      entry.mManager->AddImageKeyForDiscard(entry.mImageKey);
     }
+  }
 
-    entry.mManager->AddImageKeyForDiscard(entry.mImageKey);
-    WebRenderBridgeChild* wrBridge = entry.mManager->WrBridge();
-    if (wrBridge) {
-      wrBridge->DeallocExternalImageId(aId);
-    }
+  if (!aReleaseId) {
+    // We don't own the external image ID itself.
+    return;
   }
 
   CompositorManagerChild* manager = CompositorManagerChild::GetInstance();
@@ -456,14 +404,13 @@ SharedSurfacesChild::Unshare(const wr::ExternalImageId& aId,
   }
 }
 
-/* static */ Maybe<wr::ExternalImageId>
-SharedSurfacesChild::GetExternalId(const SourceSurfaceSharedData* aSurface)
-{
+/* static */ Maybe<wr::ExternalImageId> SharedSurfacesChild::GetExternalId(
+    const SourceSurfaceSharedData* aSurface) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aSurface);
 
   SharedUserData* data =
-    static_cast<SharedUserData*>(aSurface->GetUserData(&sSharedKey));
+      static_cast<SharedUserData*>(aSurface->GetUserData(&sSharedKey));
   if (!data || !data->IsShared()) {
     return Nothing();
   }
@@ -471,5 +418,228 @@ SharedSurfacesChild::GetExternalId(const SourceSurfaceSharedData* aSurface)
   return Some(data->Id());
 }
 
-} // namespace layers
-} // namespace mozilla
+/* static */ nsresult SharedSurfacesChild::UpdateAnimation(
+    ImageContainer* aContainer, SourceSurface* aSurface,
+    const IntRect& aDirtyRect) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aContainer);
+  MOZ_ASSERT(!aContainer->IsAsync());
+  MOZ_ASSERT(aSurface);
+
+  // If we aren't using shared surfaces, then is nothing to do.
+  auto sharedSurface = SharedSurfacesChild::AsSourceSurfaceSharedData(aSurface);
+  if (!sharedSurface) {
+    MOZ_ASSERT(!aContainer->GetSharedSurfacesAnimation());
+    return NS_ERROR_NOT_IMPLEMENTED;
+  }
+
+  SharedSurfacesAnimation* anim = aContainer->EnsureSharedSurfacesAnimation();
+  MOZ_ASSERT(anim);
+
+  return anim->SetCurrentFrame(aSurface, sharedSurface, aDirtyRect);
+}
+
+AnimationImageKeyData::AnimationImageKeyData(WebRenderLayerManager* aManager,
+                                             const wr::ImageKey& aImageKey)
+    : SharedSurfacesChild::ImageKeyData(aManager, aImageKey),
+      mRecycling(false) {}
+
+AnimationImageKeyData::AnimationImageKeyData(AnimationImageKeyData&& aOther)
+    : SharedSurfacesChild::ImageKeyData(std::move(aOther)),
+      mPendingRelease(std::move(aOther.mPendingRelease)),
+      mRecycling(aOther.mRecycling) {}
+
+AnimationImageKeyData& AnimationImageKeyData::operator=(
+    AnimationImageKeyData&& aOther) {
+  mPendingRelease = std::move(aOther.mPendingRelease);
+  mRecycling = aOther.mRecycling;
+  SharedSurfacesChild::ImageKeyData::operator=(std::move(aOther));
+  return *this;
+}
+
+AnimationImageKeyData::~AnimationImageKeyData() = default;
+
+SharedSurfacesAnimation::~SharedSurfacesAnimation() {
+  MOZ_ASSERT(mKeys.IsEmpty());
+}
+
+void SharedSurfacesAnimation::Destroy() {
+  if (!NS_IsMainThread()) {
+    nsCOMPtr<nsIRunnable> task =
+        NewRunnableMethod("SharedSurfacesAnimation::Destroy", this,
+                          &SharedSurfacesAnimation::Destroy);
+    SystemGroup::Dispatch(TaskCategory::Other, task.forget());
+    return;
+  }
+
+  if (mKeys.IsEmpty()) {
+    return;
+  }
+
+  for (const auto& entry : mKeys) {
+    MOZ_ASSERT(!entry.mManager->IsDestroyed());
+    if (entry.mRecycling) {
+      entry.mManager->DeregisterAsyncAnimation(entry.mImageKey);
+    }
+    entry.mManager->AddImageKeyForDiscard(entry.mImageKey);
+  }
+
+  mKeys.Clear();
+}
+
+void SharedSurfacesAnimation::HoldSurfaceForRecycling(
+    AnimationImageKeyData& aEntry, SourceSurface* aParentSurface,
+    SourceSurfaceSharedData* aSurface) {
+  if (aParentSurface == static_cast<SourceSurface*>(aSurface)) {
+    return;
+  }
+
+  if (!aEntry.mRecycling) {
+    aEntry.mManager->RegisterAsyncAnimation(aEntry.mImageKey, this);
+    aEntry.mRecycling = true;
+  }
+
+  aEntry.mPendingRelease.AppendElement(aParentSurface);
+}
+
+nsresult SharedSurfacesAnimation::SetCurrentFrame(
+    SourceSurface* aParentSurface, SourceSurfaceSharedData* aSurface,
+    const gfx::IntRect& aDirtyRect) {
+  MOZ_ASSERT(aSurface);
+
+  SharedSurfacesChild::SharedUserData* data = nullptr;
+  nsresult rv = SharedSurfacesChild::ShareInternal(aSurface, &data);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  MOZ_ASSERT(data);
+  mId = data->Id();
+
+  auto i = mKeys.Length();
+  while (i > 0) {
+    --i;
+    AnimationImageKeyData& entry = mKeys[i];
+    MOZ_ASSERT(!entry.mManager->IsDestroyed());
+
+    entry.MergeDirtyRect(Some(aDirtyRect));
+    Maybe<IntRect> dirtyRect = entry.TakeDirtyRect();
+    if (dirtyRect) {
+      HoldSurfaceForRecycling(entry, aParentSurface, aSurface);
+      auto& resourceUpdates = entry.mManager->AsyncResourceUpdates();
+      resourceUpdates.UpdateExternalImage(mId, entry.mImageKey,
+                                          ViewAs<ImagePixel>(dirtyRect.ref()));
+    }
+  }
+
+  return NS_OK;
+}
+
+nsresult SharedSurfacesAnimation::UpdateKey(
+    SourceSurface* aParentSurface, SourceSurfaceSharedData* aSurface,
+    WebRenderLayerManager* aManager, wr::IpcResourceUpdateQueue& aResources,
+    wr::ImageKey& aKey) {
+  SharedSurfacesChild::SharedUserData* data = nullptr;
+  nsresult rv = SharedSurfacesChild::ShareInternal(aSurface, &data);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  MOZ_ASSERT(data);
+  if (mId.mHandle != data->Id().mHandle) {
+    mKeys.Clear();
+    mId = data->Id();
+  }
+
+  // We iterate through all of the items to ensure we clean up the old
+  // WebRenderLayerManager references. Most of the time there will be few
+  // entries and this should not be particularly expensive compared to the
+  // cost of duplicating image keys. In an ideal world, we would generate a
+  // single key for the surface, and it would be usable on all of the
+  // renderer instances. For now, we must allocate a key for each WR bridge.
+  bool found = false;
+  auto i = mKeys.Length();
+  while (i > 0) {
+    --i;
+    AnimationImageKeyData& entry = mKeys[i];
+    MOZ_ASSERT(!entry.mManager->IsDestroyed());
+    if (entry.mManager == aManager) {
+      WebRenderBridgeChild* wrBridge = aManager->WrBridge();
+      MOZ_ASSERT(wrBridge);
+
+      // Even if the manager is the same, its underlying WebRenderBridgeChild
+      // can change state. If our namespace differs, then our old key has
+      // already been discarded.
+      bool ownsKey = wrBridge->GetNamespace() == entry.mImageKey.mNamespace;
+      if (!ownsKey) {
+        entry.mImageKey = wrBridge->GetNextImageKey();
+        HoldSurfaceForRecycling(entry, aParentSurface, aSurface);
+        aResources.AddExternalImage(mId, entry.mImageKey);
+      } else {
+        MOZ_ASSERT(entry.mDirtyRect.isNothing());
+      }
+
+      aKey = entry.mImageKey;
+      found = true;
+      break;
+    }
+  }
+
+  if (!found) {
+    aKey = aManager->WrBridge()->GetNextImageKey();
+    AnimationImageKeyData data(aManager, aKey);
+    HoldSurfaceForRecycling(data, aParentSurface, aSurface);
+    mKeys.AppendElement(std::move(data));
+    aResources.AddExternalImage(mId, aKey);
+  }
+
+  return NS_OK;
+}
+
+void SharedSurfacesAnimation::ReleasePreviousFrame(
+    WebRenderLayerManager* aManager, const wr::ExternalImageId& aId) {
+  MOZ_ASSERT(aManager);
+
+  auto i = mKeys.Length();
+  while (i > 0) {
+    --i;
+    AnimationImageKeyData& entry = mKeys[i];
+    MOZ_ASSERT(!entry.mManager->IsDestroyed());
+    if (entry.mManager == aManager) {
+      size_t k;
+      for (k = 0; k < entry.mPendingRelease.Length(); ++k) {
+        auto sharedSurface = SharedSurfacesChild::AsSourceSurfaceSharedData(
+            entry.mPendingRelease[k]);
+        MOZ_ASSERT(sharedSurface);
+
+        Maybe<wr::ExternalImageId> extId =
+            SharedSurfacesChild::GetExternalId(sharedSurface);
+        if (extId && extId.ref() == aId) {
+          break;
+        }
+      }
+
+      if (k == entry.mPendingRelease.Length()) {
+        continue;
+      }
+
+      entry.mPendingRelease.RemoveElementsAt(0, k + 1);
+      break;
+    }
+  }
+}
+
+void SharedSurfacesAnimation::Invalidate(WebRenderLayerManager* aManager) {
+  auto i = mKeys.Length();
+  while (i > 0) {
+    --i;
+    AnimationImageKeyData& entry = mKeys[i];
+    if (entry.mManager == aManager) {
+      mKeys.RemoveElementAt(i);
+      break;
+    }
+  }
+}
+
+}  // namespace layers
+}  // namespace mozilla

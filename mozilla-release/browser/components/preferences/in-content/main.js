@@ -20,6 +20,10 @@ ChromeUtils.import("resource://gre/modules/Localization.jsm");
 ChromeUtils.import("resource:///modules/HomePage.jsm");
 ChromeUtils.defineModuleGetter(this, "CloudStorage",
   "resource://gre/modules/CloudStorage.jsm");
+ChromeUtils.defineModuleGetter(this, "SelectionChangedMenulist",
+                               "resource:///modules/SelectionChangedMenulist.jsm");
+ChromeUtils.defineModuleGetter(this, "UpdateUtils",
+  "resource://gre/modules/UpdateUtils.jsm");
 
 XPCOMUtils.defineLazyServiceGetters(this, {
   gHandlerService: ["@mozilla.org/uriloader/handler-service;1", "nsIHandlerService"],
@@ -44,6 +48,8 @@ const PREF_HIDE_PLUGINS_WITHOUT_EXTENSIONS =
 
 // Strings to identify ExtensionSettingsStore overrides
 const CONTAINERS_KEY = "privacy.containers";
+
+const AUTO_UPDATE_CHANGED_TOPIC = "auto-update-config-change";
 
 // The nsHandlerInfoAction enumeration values in nsIHandlerInfo identify
 // the actions the application can take with content of various types.
@@ -81,6 +87,7 @@ Preferences.addAll([
   { id: "pref.browser.homepage.disable_button.restore_default", type: "bool" },
 
   { id: "browser.privatebrowsing.autostart", type: "bool" },
+  { id: "browser.sessionstore.warnOnQuit", type: "bool" },
 
   // Downloads
   { id: "browser.download.useDownloadDir", type: "bool" },
@@ -192,7 +199,6 @@ if (AppConstants.platform === "win") {
 
 if (AppConstants.MOZ_UPDATER) {
   Preferences.addAll([
-    { id: "app.update.auto", type: "bool" },
     { id: "app.update.disable_button.showUpdateHistory", type: "bool" },
   ]);
 
@@ -535,6 +541,14 @@ var gMainPane = {
         if (AppConstants.MOZ_MAINTENANCE_SERVICE) {
           document.getElementById("useService").hidden = true;
         }
+      } else {
+        // Start with no option selected since we are still reading the value
+        document.getElementById("autoDesktop").removeAttribute("selected");
+        document.getElementById("manualDesktop").removeAttribute("selected");
+        // Start reading the correct value from the disk
+        this.updateReadPrefs();
+        setEventListener("updateRadioGroup", "command",
+                         gMainPane.updateWritePrefs);
       }
 
       if (AppConstants.MOZ_MAINTENANCE_SERVICE) {
@@ -563,6 +577,7 @@ var gMainPane = {
     // the view when they change.
     Services.prefs.addObserver(PREF_SHOW_PLUGINS_IN_LIST, this);
     Services.prefs.addObserver(PREF_HIDE_PLUGINS_WITHOUT_EXTENSIONS, this);
+    Services.obs.addObserver(this, AUTO_UPDATE_CHANGED_TOPIC);
 
     setEventListener("filter", "command", gMainPane.filter);
     setEventListener("typeColumn", "click", gMainPane.sort);
@@ -946,26 +961,71 @@ var gMainPane = {
 
   updateBrowserStartupUI() {
     const pbAutoStartPref = Preferences.get("browser.privatebrowsing.autostart");
+<<<<<<< HEAD
     const restoreCheckbox = document.getElementById("restoreSessionCheckbox");
     let checkbox = document.getElementById("restoreSessionCheckbox");
     if (pbAutoStartPref.value) {
       restoreCheckbox.setAttribute("disabled", "true");
       restoreCheckbox.checked = false;
+||||||| merged common ancestors
+    const startupPref = Preferences.get("browser.startup.page");
+
+    let newValue;
+    let checkbox = document.getElementById("browserRestoreSession");
+    if (pbAutoStartPref.value || startupPref.locked) {
+      checkbox.setAttribute("disabled", "true");
+=======
+    const startupPref = Preferences.get("browser.startup.page");
+
+    let newValue;
+    let checkbox = document.getElementById("browserRestoreSession");
+    let warnOnQuitCheckbox = document.getElementById("browserRestoreSessionQuitWarning");
+    if (pbAutoStartPref.value || startupPref.locked) {
+      checkbox.setAttribute("disabled", "true");
+      warnOnQuitCheckbox.setAttribute("disabled", "true");
+>>>>>>> origin/upstream-releases
     } else {
       checkbox.removeAttribute("disabled");
     }
+<<<<<<< HEAD
+||||||| merged common ancestors
+    newValue = pbAutoStartPref.value ? false : startupPref.value === this.STARTUP_PREF_RESTORE_SESSION;
+    if (checkbox.checked !== newValue) {
+      checkbox.checked = newValue;
+    }
+=======
+    newValue = pbAutoStartPref.value ? false : startupPref.value === this.STARTUP_PREF_RESTORE_SESSION;
+    if (checkbox.checked !== newValue) {
+      checkbox.checked = newValue;
+      let warnOnQuitPref = Preferences.get("browser.sessionstore.warnOnQuit");
+      if (newValue && !warnOnQuitPref.locked && !pbAutoStartPref.value) {
+        warnOnQuitCheckbox.removeAttribute("disabled");
+      } else {
+        warnOnQuitCheckbox.setAttribute("disabled", "true");
+      }
+    }
+>>>>>>> origin/upstream-releases
   },
 
   initBrowserLocale() {
-    gMainPane.setBrowserLocales(Services.locale.requestedLocale);
+    // Enable telemetry.
+    Services.telemetry.setEventRecordingEnabled("intl.ui.browserLanguage", true);
+
+    // This will register the "command" listener.
+    let menulist = document.getElementById("defaultBrowserLanguage");
+    new SelectionChangedMenulist(menulist, event => {
+      gMainPane.onBrowserLanguageChange(event);
+    });
+
+    gMainPane.setBrowserLocales(Services.locale.appLocaleAsBCP47);
   },
 
   /**
    * Update the available list of locales and select the locale that the user
-   * is "requesting". This could be the currently requested locale or a locale
+   * is "selecting". This could be the currently requested locale or a locale
    * that the user would like to switch to after confirmation.
    */
-  async setBrowserLocales(requesting) {
+  async setBrowserLocales(selected) {
     let available = Services.locale.availableLocales;
     let localeNames = Services.intl.getLocaleDisplayNames(undefined, available);
     let locales = available.map((code, i) => ({code, name: localeNames[i]}));
@@ -986,9 +1046,6 @@ var gMainPane = {
       menuitem.setAttribute(
         "label", await document.l10n.formatValue("browser-languages-search"));
       menuitem.setAttribute("value", "search");
-      menuitem.addEventListener("command", () => {
-        gMainPane.showBrowserLanguages({search: true});
-      });
       fragment.appendChild(menuitem);
     }
 
@@ -996,7 +1053,7 @@ var gMainPane = {
     let menupopup = menulist.querySelector("menupopup");
     menupopup.textContent = "";
     menupopup.appendChild(fragment);
-    menulist.value = requesting;
+    menulist.value = selected;
 
     document.getElementById("browserLanguagesBox").hidden = false;
   },
@@ -1004,24 +1061,56 @@ var gMainPane = {
   /* Show the confirmation message bar to allow a restart into the new locales. */
   async showConfirmLanguageChangeMessageBar(locales) {
     let messageBar = document.getElementById("confirmBrowserLanguage");
-    // Set the text in the message bar for the new locale.
+
+    // Get the bundle for the new locale.
     let newBundle = getBundleForLocales(locales);
-    let description = messageBar.querySelector(".message-bar-description");
-    description.textContent = await newBundle.formatValue(
-      "confirm-browser-language-change-description");
-    let button = messageBar.querySelector(".message-bar-button");
-    button.setAttribute(
-      "label", await newBundle.formatValue(
-        "confirm-browser-language-change-button"));
-    button.setAttribute("locales", locales.join(","));
+
+    // Find the messages and labels.
+    let messages = await Promise.all([newBundle, document.l10n].map(
+      async (bundle) => bundle.formatValue("confirm-browser-language-change-description")));
+    let buttonLabels = await Promise.all([newBundle, document.l10n].map(
+      async (bundle) => bundle.formatValue("confirm-browser-language-change-button")));
+
+    // If both the message and label are the same, just include one row.
+    if (messages[0] == messages[1] && buttonLabels[0] == buttonLabels[1]) {
+      messages.pop();
+      buttonLabels.pop();
+    }
+
+    let contentContainer = messageBar.querySelector(".message-bar-content-container");
+    contentContainer.textContent = "";
+
+    for (let i = 0; i < messages.length; i++) {
+      let messageContainer = document.createXULElement("hbox");
+      messageContainer.classList.add("message-bar-content");
+      messageContainer.setAttribute("flex", "1");
+      messageContainer.setAttribute("align", "center");
+
+      let description = document.createXULElement("description");
+      description.classList.add("message-bar-description");
+      description.setAttribute("flex", "1");
+      description.textContent = messages[i];
+      messageContainer.appendChild(description);
+
+      let button = document.createXULElement("button");
+      button.addEventListener("command", gMainPane.confirmBrowserLanguageChange);
+      button.classList.add("message-bar-button");
+      button.setAttribute("locales", locales.join(","));
+      button.setAttribute("label", buttonLabels[i]);
+      messageContainer.appendChild(button);
+
+      contentContainer.appendChild(messageContainer);
+    }
+
     messageBar.hidden = false;
-    gMainPane.requestingLocales = locales;
+    gMainPane.selectedLocales = locales;
   },
 
   hideConfirmLanguageChangeMessageBar() {
     let messageBar = document.getElementById("confirmBrowserLanguage");
     messageBar.hidden = true;
-    messageBar.querySelector(".message-bar-button").removeAttribute("locales");
+    let contentContainer = messageBar.querySelector(".message-bar-content-container");
+    contentContainer.textContent = "";
     gMainPane.requestingLocales = null;
   },
 
@@ -1033,6 +1122,9 @@ var gMainPane = {
     }
     let locales = localesString.split(",");
     Services.locale.requestedLocales = locales;
+
+    // Record the change in telemetry before we restart.
+    gMainPane.recordBrowserLanguagesTelemetry("apply");
 
     // Restart with the new locale.
     let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"].createInstance(Ci.nsISupportsPRBool);
@@ -1047,11 +1139,15 @@ var gMainPane = {
     let locale = event.target.value;
 
     if (locale == "search") {
+      gMainPane.showBrowserLanguages({search: true});
       return;
-    } else if (locale == Services.locale.requestedLocale) {
+    } else if (locale == Services.locale.appLocaleAsBCP47) {
       this.hideConfirmLanguageChangeMessageBar();
       return;
     }
+
+    // Note the change in telemetry.
+    gMainPane.recordBrowserLanguagesTelemetry("reorder");
 
     let locales = Array.from(new Set([
       locale,
@@ -1066,14 +1162,20 @@ var gMainPane = {
     const startupPref = Preferences.get("browser.startup.page");
     let newValue;
 
+    let warnOnQuitCheckbox = document.getElementById("browserRestoreSessionQuitWarning");
     if (value) {
       // We need to restore the blank homepage setting in our other pref
       if (startupPref.value === this.STARTUP_PREF_BLANK) {
         HomePage.set('about:blank');
       }
       newValue = this.STARTUP_PREF_RESTORE_SESSION;
+      let warnOnQuitPref = Preferences.get("browser.sessionstore.warnOnQuit");
+      if (!warnOnQuitPref.locked) {
+        warnOnQuitCheckbox.removeAttribute("disabled");
+      }
     } else {
       newValue = this.STARTUP_PREF_HOMEPAGE;
+      warnOnQuitCheckbox.setAttribute("disabled", "true");
     }
     startupPref.value = newValue;
   },
@@ -1186,8 +1288,17 @@ var gMainPane = {
     gSubDialog.open("chrome://browser/content/preferences/languages.xul");
   },
 
+  recordBrowserLanguagesTelemetry(method, value = null) {
+    Services.telemetry.recordEvent("intl.ui.browserLanguage", method, "main", value);
+  },
+
   showBrowserLanguages({search}) {
-    let opts = {requesting: gMainPane.requestingLocales, search};
+    // Record the telemetry event with an id to associate related actions.
+    let telemetryId = parseInt(Services.telemetry.msSinceProcessStart(), 10).toString();
+    let method = search ? "search" : "manage";
+    gMainPane.recordBrowserLanguagesTelemetry(method, telemetryId);
+
+    let opts = {selected: gMainPane.selectedLocales, search, telemetryId};
     gSubDialog.open(
       "chrome://browser/content/preferences/browserLanguages.xul",
       null, opts, this.browserLanguagesClosed);
@@ -1195,14 +1306,20 @@ var gMainPane = {
 
   /* Show or hide the confirm change message bar based on the updated ordering. */
   browserLanguagesClosed() {
-    let requesting = this.gBrowserLanguagesDialog.requestedLocales;
-    let requested = Services.locale.requestedLocales;
-    if (requesting && requesting.join(",") != requested.join(",")) {
-      gMainPane.showConfirmLanguageChangeMessageBar(requesting);
-      gMainPane.setBrowserLocales(requesting[0]);
+    let {accepted, selected} = this.gBrowserLanguagesDialog;
+    let active = Services.locale.appLocalesAsBCP47;
+
+    this.gBrowserLanguagesDialog.recordTelemetry(accepted ? "accept" : "cancel");
+
+    // Prepare for changing the locales if they are different than the current locales.
+    if (selected && selected.join(",") != active.join(",")) {
+      gMainPane.showConfirmLanguageChangeMessageBar(selected);
+      gMainPane.setBrowserLocales(selected[0]);
       return;
     }
-    gMainPane.setBrowserLocales(Services.locale.requestedLocale);
+
+    // They matched, so we can reset the UI.
+    gMainPane.setBrowserLocales(Services.locale.appLocaleAsBCP47);
     gMainPane.hideConfirmLanguageChangeMessageBar();
   },
 
@@ -1499,6 +1616,57 @@ var gMainPane = {
   },
 
   /**
+   * Selects the correct item in the update radio group
+   */
+  async updateReadPrefs() {
+    if (AppConstants.MOZ_UPDATER &&
+        (!Services.policies || Services.policies.isAllowed("appUpdate"))) {
+      let radiogroup = document.getElementById("updateRadioGroup");
+      radiogroup.disabled = true;
+      try {
+        let enabled = await UpdateUtils.getAppUpdateAutoEnabled();
+        radiogroup.value = enabled;
+        radiogroup.disabled = false;
+      } catch (error) {
+        Cu.reportError(error);
+      }
+    }
+  },
+
+  /**
+   * Writes the value of the update radio group to the disk
+   */
+  async updateWritePrefs() {
+    if (AppConstants.MOZ_UPDATER &&
+        (!Services.policies || Services.policies.isAllowed("appUpdate"))) {
+      let radiogroup = document.getElementById("updateRadioGroup");
+      let updateAutoValue = (radiogroup.value == "true");
+      radiogroup.disabled = true;
+      try {
+        await UpdateUtils.setAppUpdateAutoEnabled(updateAutoValue);
+        radiogroup.disabled = false;
+      } catch (error) {
+        Cu.reportError(error);
+        await this.updateReadPrefs();
+        await this.reportUpdatePrefWriteError(error);
+      }
+    }
+  },
+
+  async reportUpdatePrefWriteError(error) {
+    let [title, message] = await document.l10n.formatValues([
+      {id: "update-pref-write-failure-title"},
+      {id: "update-pref-write-failure-message", args: {path: error.path}},
+    ]);
+
+    // Set up the Ok Button
+    let buttonFlags = (Services.prompt.BUTTON_POS_0 *
+                       Services.prompt.BUTTON_TITLE_OK);
+    Services.prompt.confirmEx(window, title, message, buttonFlags,
+                              null, null, null, null, {});
+  },
+
+  /**
    * Displays the history of installed updates.
    */
   showUpdates() {
@@ -1511,6 +1679,8 @@ var gMainPane = {
     Services.prefs.removeObserver(PREF_HIDE_PLUGINS_WITHOUT_EXTENSIONS, this);
 
     Services.prefs.removeObserver(PREF_CONTAINERS_EXTENSION, this);
+
+    Services.obs.removeObserver(this, AUTO_UPDATE_CHANGED_TOPIC);
   },
 
 
@@ -1541,6 +1711,11 @@ var gMainPane = {
         // the view when any of them changes.
         this._rebuildView();
       }
+    } else if (aTopic == AUTO_UPDATE_CHANGED_TOPIC) {
+      if (aData != "true" && aData != "false") {
+        throw new Error("Invalid preference value for app.update.auto");
+      }
+      document.getElementById("updateRadioGroup").value = aData;
     }
   },
 
@@ -2338,9 +2513,9 @@ var gMainPane = {
     if (providerDisplayName) {
       // Show cloud storage radio button with provider name in label
       let saveToCloudRadio = document.getElementById("saveToCloud");
-      let cloudStrings = Services.strings.createBundle("resource://cloudstorage/preferences.properties");
-      saveToCloudRadio.label = cloudStrings.formatStringFromName("saveFilesToCloudStorage",
-        [providerDisplayName], 1);
+      document.l10n.setAttributes(saveToCloudRadio, "save-files-to-cloud-storage", {
+        "service-name": providerDisplayName,
+      });
       saveToCloudRadio.hidden = false;
 
       let useDownloadDirPref = Preferences.get("browser.download.useDownloadDir");
@@ -2412,7 +2587,7 @@ var gMainPane = {
     return this.chooseFolderTask().catch(Cu.reportError);
   },
   async chooseFolderTask() {
-    let title = gMainPane._prefsBundle.getString("chooseDownloadFolderTitle");
+    let [title] = await document.l10n.formatValues([{id: "choose-download-folder-title"}]);
     let folderListPref = Preferences.get("browser.download.folderList");
     let currentDirPref = await this._indexToFolder(folderListPref.value);
     let defDownloads = await this._indexToFolder(1);
@@ -2477,6 +2652,7 @@ var gMainPane = {
     }
 
     // Display a 'pretty' label or the path in the UI.
+    // note: downloadFolder.value is not read elsewhere in the code, its only purpose is to display to the user
     if (folderIndex == 2) {
       // Force the left-to-right direction when displaying a custom path.
       downloadFolder.value = currentDirPref.value ?
@@ -2484,11 +2660,11 @@ var gMainPane = {
       iconUrlSpec = fph.getURLSpecFromFile(currentDirPref.value);
     } else if (folderIndex == 1) {
       // 'Downloads'
-      downloadFolder.value = gMainPane._prefsBundle.getString("downloadsFolderName");
+      [downloadFolder.value] = await document.l10n.formatValues([{id: "downloads-folder-name"}]);
       iconUrlSpec = fph.getURLSpecFromFile(await this._indexToFolder(1));
     } else {
       // 'Desktop'
-      downloadFolder.value = gMainPane._prefsBundle.getString("desktopFolderName");
+      [downloadFolder.value] = await document.l10n.formatValues([{id: "desktop-folder-name"}]);
       iconUrlSpec = fph.getURLSpecFromFile(await this._getDownloadsFolder("Desktop"));
     }
     downloadFolder.style.backgroundImage = "url(moz-icon://" + iconUrlSpec + "?size=16)";

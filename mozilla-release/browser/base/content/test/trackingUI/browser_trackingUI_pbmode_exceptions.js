@@ -4,8 +4,6 @@
 // Test that sites added to the Tracking Protection whitelist in private
 // browsing mode don't persist once the private browsing window closes.
 
-const CB_PREF = "browser.contentblocking.enabled";
-const CB_UI_PREF = "browser.contentblocking.ui.enabled";
 const TP_PB_PREF = "privacy.trackingprotection.enabled";
 const TRACKING_PAGE = "http://tracking.example.org/browser/browser/base/content/test/trackingUI/trackingPage.html";
 var TrackingProtection = null;
@@ -14,7 +12,6 @@ var browser = null;
 
 registerCleanupFunction(function() {
   Services.prefs.clearUserPref(TP_PB_PREF);
-  Services.prefs.clearUserPref(CB_PREF);
   ContentBlocking = TrackingProtection = browser = null;
   UrlClassifierTestUtils.cleanupTestTrackers();
 });
@@ -60,14 +57,6 @@ function testTrackingPage(window) {
 
   ok(hidden("#identity-popup-content-blocking-not-detected"), "blocking not detected label is hidden");
   ok(!hidden("#identity-popup-content-blocking-detected"), "blocking detected label is visible");
-
-  if (Services.prefs.getBoolPref(CB_UI_PREF)) {
-    ok(!hidden("#identity-popup-content-blocking-category-list"), "category list is visible");
-    ok(hidden("#identity-popup-content-blocking-category-tracking-protection > .identity-popup-content-blocking-category-add-blocking"),
-      "TP category item is not showing add blocking");
-    ok(!hidden("#identity-popup-content-blocking-category-tracking-protection > .identity-popup-content-blocking-category-state-label"),
-      "TP category item is set to blocked");
-  }
 }
 
 function testTrackingPageUnblocked() {
@@ -83,18 +72,9 @@ function testTrackingPageUnblocked() {
   ok(BrowserTestUtils.is_visible(ContentBlocking.iconBox), "icon box is visible");
   ok(!hidden("#tracking-action-block"), "blockButton is visible");
   ok(hidden("#tracking-action-unblock"), "unblockButton is hidden");
-  ok(!hidden("#identity-popup-content-blocking-disabled-label"), "disabled label is visible");
 
   ok(hidden("#identity-popup-content-blocking-not-detected"), "blocking not detected label is hidden");
   ok(!hidden("#identity-popup-content-blocking-detected"), "blocking detected label is visible");
-
-  if (Services.prefs.getBoolPref(CB_UI_PREF)) {
-    ok(!hidden("#identity-popup-content-blocking-category-list"), "category list is visible");
-    ok(hidden("#identity-popup-content-blocking-category-tracking-protection > .identity-popup-content-blocking-category-add-blocking"),
-      "TP category item is not showing add blocking");
-    ok(hidden("#identity-popup-content-blocking-category-tracking-protection > .identity-popup-content-blocking-category-state-label"),
-      "TP category item is not set to blocked");
-  }
 }
 
 add_task(async function testExceptionAddition() {
@@ -110,8 +90,6 @@ add_task(async function testExceptionAddition() {
 
   Services.prefs.setBoolPref(TP_PB_PREF, true);
   ok(TrackingProtection.enabled, "TP is enabled after setting the pref");
-  Services.prefs.setBoolPref(CB_PREF, true);
-  ok(TrackingProtection.enabled, "CB is enabled after setting the pref");
 
   info("Load a test page containing tracking elements");
   await promiseTabLoadEvent(tab, TRACKING_PAGE);
@@ -147,7 +125,6 @@ add_task(async function testExceptionPersistence() {
   TrackingProtection = browser.ownerGlobal.TrackingProtection;
   ok(TrackingProtection, "TP is attached to the private window");
 
-  ok(ContentBlocking.enabled, "CB is still enabled");
   ok(TrackingProtection.enabled, "TP is still enabled");
 
   info("Load a test page containing tracking elements");

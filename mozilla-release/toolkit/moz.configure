@@ -100,7 +100,7 @@ def pulseaudio_default(target):
     return target.os not in ('WINNT', 'OSX', 'iOS', 'Android', 'OpenBSD')
 
 option('--enable-pulseaudio', env='MOZ_PULSEAUDIO', default=pulseaudio_default,
-       help='Enable PulseAudio audio backend.')
+       help='{Enable|Disable} PulseAudio audio backend.')
 
 pulseaudio = pkg_check_modules('MOZ_PULSEAUDIO', 'libpulse', when='--enable-pulseaudio')
 
@@ -154,7 +154,7 @@ option('--enable-default-toolkit', nargs=1,
        help='Select default toolkit')
 
 @depends('--enable-default-toolkit', target, '--help')
-def toolkit(value, target, _):
+def full_toolkit(value, target, _):
     # Define possible choices for each platform. The default is the first one
     # listed when there are several.
     if target.os == 'WINNT':
@@ -177,11 +177,7 @@ def toolkit(value, target, _):
 
     return platform_choices[0]
 
-@depends(toolkit)
-def wayland(toolkit):
-    return toolkit == 'cairo-gtk3-wayland'
-
-@depends(toolkit)
+@depends(full_toolkit)
 def toolkit(toolkit):
     if toolkit == 'cairo-gtk3-wayland':
         widget_toolkit = 'gtk3'
@@ -193,19 +189,17 @@ set_config('MOZ_WIDGET_TOOLKIT', toolkit)
 add_old_configure_assignment('MOZ_WIDGET_TOOLKIT', toolkit)
 
 @depends(toolkit)
-def toolkit_gtk(toolkit):
-    if toolkit == 'gtk3':
-        return '3'
-
-set_define('MOZ_WIDGET_GTK', toolkit_gtk)
-
-@depends(toolkit)
 def toolkit_define(toolkit):
-    if toolkit not in ('gtk3', 'windows'):
+    if toolkit == 'gtk3':
+        toolkit = 'gtk'
+    if toolkit != 'windows':
         return 'MOZ_WIDGET_%s' % toolkit.upper()
 
 set_define(toolkit_define, True)
 
+@depends(toolkit)
+def toolkit_gtk(toolkit):
+    return toolkit == 'gtk3'
 
 set_config('MOZ_X11', True, when=toolkit_gtk)
 set_define('MOZ_X11', True, when=toolkit_gtk)
@@ -213,8 +207,18 @@ add_old_configure_assignment('MOZ_X11', True, when=toolkit_gtk)
 
 # Wayland support
 # ==============================================================
-wayland_headers = pkg_check_modules('MOZ_WAYLAND', 'gtk+-wayland-3.0 >= 3.22',
-                                    when=wayland)
+wayland_headers = pkg_check_modules(
+    'MOZ_WAYLAND', 'gtk+-wayland-3.0 >= 3.10 xkbcommon >= 0.4.1',
+    allow_missing=depends(full_toolkit)(lambda t: t == 'cairo-gtk3'),
+    when=depends(full_toolkit)(lambda t: t in ('cairo-gtk3', 'cairo-gtk3-wayland')))
+
+
+@depends(wayland_headers, toolkit_gtk, artifact_builds)
+def wayland_headers(wayland, toolkit_gtk, artifacts):
+    if toolkit_gtk and artifacts:
+        return True
+    return wayland
+
 
 set_config('MOZ_WAYLAND', depends_if(wayland_headers)(lambda _: True))
 set_define('MOZ_WAYLAND', depends_if(wayland_headers)(lambda _: True))
@@ -235,7 +239,7 @@ def gl_provider_define(provider):
 
 set_define('MOZ_GL_PROVIDER', gl_provider_define)
 
-@depends(gl_provider, wayland, toolkit_gtk)
+@depends(gl_provider, wayland_headers, toolkit_gtk)
 def gl_default_provider(value, wayland, toolkit_gtk):
     if value:
         return value
@@ -471,7 +475,7 @@ option('--enable-eme',
        nargs='*',
        choices=('widevine',),
        default=eme_default,
-       help='Enable support for Encrypted Media Extensions')
+       help='{Enable|Disable} support for Encrypted Media Extensions')
 
 @depends('--enable-eme', target)
 def enable_eme(value, target):
@@ -716,7 +720,7 @@ add_old_configure_assignment('MOZ_WEBSPEECH', webspeech)
 # Speech API test backend
 # ==============================================================
 option('--enable-webspeechtestbackend', default=webspeech,
-       help='Enable support for HTML Speech API Test Backend')
+       help='{Enable|Disable} support for HTML Speech API Test Backend')
 
 @depends_if('--enable-webspeechtestbackend')
 def webspeech_test_backend(value):
@@ -821,12 +825,21 @@ def skia_includes(skia):
             '/gfx/skia',
             '/gfx/skia/skia/include/config',
             '/gfx/skia/skia/include/core',
+            '/gfx/skia/skia/include/docs',
             '/gfx/skia/skia/include/gpu',
             '/gfx/skia/skia/include/utils',
         ]
     return includes
 
 set_config('SKIA_INCLUDES', skia_includes)
+
+option('--with-system-webp',
+       help='Use system libwebp (located with pkgconfig)')
+
+system_webp = pkg_check_modules('MOZ_WEBP', 'libwebp >= 1.0.1 libwebpdemux >= 1.0.1',
+                                when='--with-system-webp')
+
+set_config('MOZ_SYSTEM_WEBP', depends(when=system_webp)(lambda: True))
 
 # Build Freetype in the tree
 # ==============================================================
@@ -856,12 +869,6 @@ add_old_configure_assignment('FT2_LIBS',
                              ft2_info.libs)
 add_old_configure_assignment('FT2_CFLAGS',
                              ft2_info.cflags)
-
-# Mortar
-# ==============================================================
-option('--enable-mortar', help='Enable mortar extension')
-
-set_config('MOZ_MORTAR', True, when='--enable-mortar')
 
 # Marionette remote protocol
 # ==============================================================
@@ -918,7 +925,7 @@ def geckodriver_default(enable_tests, target, cross_compile, hazard, asan):
 
 option('--enable-geckodriver', default=geckodriver_default,
        when='--enable-compile-environment',
-       help='Build geckodriver')
+       help='{Build|Do not build} geckodriver')
 
 @depends('--enable-geckodriver', when='--enable-compile-environment')
 def geckodriver(enabled):
@@ -950,7 +957,7 @@ def webrtc_default(target):
     return False
 
 option('--disable-webrtc', default=webrtc_default,
-       help='Disable support for WebRTC')
+       help='{Enable|Disable} support for WebRTC')
 
 @depends('--disable-webrtc')
 def webrtc(enabled):
@@ -991,8 +998,9 @@ def raw_media_default(target, webrtc):
     if webrtc:
         return True
 
-option('--enable-raw', help='Enable support for RAW media',
-       default=raw_media_default)
+option('--enable-raw',
+       default=raw_media_default,
+       help='{Enable|Disable} support for RAW media')
 
 set_config('MOZ_RAW', depends_if('--enable-raw')(lambda _: True))
 set_define('MOZ_RAW', depends_if('--enable-raw')(lambda _: True))
@@ -1025,7 +1033,7 @@ with only_when('--enable-compile-environment'):
 
     with only_when(has_elfhack):
         option('--disable-elf-hack', default=default_elfhack,
-               help='Disable elf hacks')
+               help='{Enable|Disable} elf hacks')
 
         set_config('USE_ELF_HACK',
                    depends_if('--enable-elf-hack')(lambda _: True))
@@ -1152,7 +1160,7 @@ def launcher_process_default(target, milestone):
     return target.os == 'WINNT' and milestone.is_nightly
 
 option('--enable-launcher-process', default=launcher_process_default,
-       help='Enable launcher process by default')
+       help='{Enable|Disable} launcher process by default')
 
 @depends('--enable-launcher-process', target)
 def launcher(value, target):
@@ -1180,8 +1188,9 @@ set_config('MOZ_LIBPRIO', libprio)
 # Maintenance service (Windows only)
 # ==============================================================
 
-option('--enable-maintenance-service', help='Enable building of maintenance service',
-       when=target_is_windows, default=target_is_windows)
+option('--enable-maintenance-service',
+       when=target_is_windows, default=target_is_windows,
+       help='{Enable|Disable} building of maintenance service')
 
 set_define('MOZ_MAINTENANCE_SERVICE',
            depends_if('--enable-maintenance-service',
@@ -1203,7 +1212,7 @@ def allow_bundled_fonts(project):
 
 option('--enable-bundled-fonts', default=bundled_fonts_default,
        when=allow_bundled_fonts,
-       help='Enable support for bundled fonts on desktop platforms')
+       help='{Enable|Disable} support for bundled fonts on desktop platforms')
 
 set_define('MOZ_BUNDLED_FONTS',
            depends_if('--enable-bundled-fonts', when=allow_bundled_fonts)(lambda _: True))
@@ -1234,8 +1243,9 @@ def reflow_perf(debug, _):
     if debug:
         return True
 
-option('--enable-reflow-perf', help='Enable reflow performance tracing',
-       default=reflow_perf)
+option('--enable-reflow-perf',
+       default=reflow_perf,
+       help='{Enable|Disable} reflow performance tracing')
 
 # The difference in conditions here comes from the initial implementation
 # in old-configure, which was unexplained there as well.

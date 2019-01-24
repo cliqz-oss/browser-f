@@ -451,7 +451,7 @@ add_task(async function testExtensionControlledDefaultSearch() {
      "#search should be in the URI for about:preferences");
 
   let controlledContent = doc.getElementById("browserDefaultSearchExtensionContent");
-  let initialEngine = Services.search.currentEngine;
+  let initialEngine = Services.search.defaultEngine;
 
   // Ensure the controlled content is hidden when not controlled.
   is(controlledContent.hidden, true, "The extension controlled row is hidden");
@@ -471,7 +471,7 @@ add_task(async function testExtensionControlledDefaultSearch() {
 
   // The default search engine has been set by the extension and the user is notified.
   let controlledLabel = controlledContent.querySelector("description");
-  let extensionEngine = Services.search.currentEngine;
+  let extensionEngine = Services.search.defaultEngine;
   ok(initialEngine != extensionEngine, "The default engine has changed.");
   Assert.deepEqual(doc.l10n.getAttributes(controlledLabel), {
     id: "extension-controlled-default-search",
@@ -485,14 +485,14 @@ add_task(async function testExtensionControlledDefaultSearch() {
   setEngine(initialEngine);
   await waitForMessageHidden(controlledContent.id);
 
-  is(initialEngine, Services.search.currentEngine,
+  is(initialEngine, Services.search.defaultEngine,
      "default search engine is set back to default");
   is(controlledContent.hidden, true, "The extension controlled row is hidden");
 
   // Setting the engine back to the extension's engine does not show the message.
   setEngine(extensionEngine);
 
-  is(extensionEngine, Services.search.currentEngine,
+  is(extensionEngine, Services.search.defaultEngine,
      "default search engine is set back to extension");
   is(controlledContent.hidden, true, "The extension controlled row is still hidden");
 
@@ -511,7 +511,7 @@ add_task(async function testExtensionControlledDefaultSearch() {
   // Verify the extension is updated and search engine didn't change.
   is(addon.version, "2.0", "The updated addon has the expected version");
   is(controlledContent.hidden, true, "The extension controlled row is hidden after update");
-  is(initialEngine, Services.search.currentEngine,
+  is(initialEngine, Services.search.defaultEngine,
      "default search engine is still the initial engine after update");
 
   await originalExtension.unload();
@@ -588,28 +588,17 @@ add_task(async function testExtensionControlledHomepageUninstalledAddon() {
 });
 
 add_task(async function testExtensionControlledTrackingProtection() {
-  const CB_UI_PREF = "browser.contentblocking.ui.enabled";
   const TP_PREF = "privacy.trackingprotection.enabled";
   const TP_DEFAULT = false;
   const EXTENSION_ID = "@set_tp";
-  const CONTROLLED_LABEL_ID = {
-    old: "trackingProtectionExtensionContentLabel",
-    new: "contentBlockingTrackingProtectionExtensionContentLabel",
-  };
-  const CONTROLLED_BUTTON_ID = {
-    old: "trackingProtectionExtensionContentButton",
-    new: "contentBlockingDisableTrackingProtectionExtension",
-  };
-  const DISABLE_BUTTON_ID = {
-    old: "disableTrackingProtectionExtension",
-    new: "contentBlockingDisableTrackingProtectionExtension",
-  };
+  const CONTROLLED_LABEL_ID = "contentBlockingTrackingProtectionExtensionContentLabel";
+  const CONTROLLED_BUTTON_ID = "contentBlockingDisableTrackingProtectionExtension";
+  const DISABLE_BUTTON_ID = "contentBlockingDisableTrackingProtectionExtension";
 
   let tpEnabledPref = () => Services.prefs.getBoolPref(TP_PREF);
-  let cbUIEnabledPref = () => Services.prefs.getBoolPref(CB_UI_PREF);
 
   await SpecialPowers.pushPrefEnv(
-    {"set": [[TP_PREF, TP_DEFAULT], [CB_UI_PREF, true]]});
+    {"set": [[TP_PREF, TP_DEFAULT]]});
 
   function background() {
     browser.privacy.websites.trackingProtectionMode.set({value: "always"});
@@ -618,39 +607,29 @@ add_task(async function testExtensionControlledTrackingProtection() {
   function verifyState(isControlled) {
     is(tpEnabledPref(), isControlled, "TP pref is set to the expected value.");
 
-    let controlledLabel = doc.getElementById(CONTROLLED_LABEL_ID[uiType]);
-    let controlledButton = doc.getElementById(CONTROLLED_BUTTON_ID[uiType]);
+    let controlledLabel = doc.getElementById(CONTROLLED_LABEL_ID);
+    let controlledButton = doc.getElementById(CONTROLLED_BUTTON_ID);
 
     is(controlledLabel.hidden, !isControlled, "The extension controlled row's visibility is as expected.");
     is(controlledButton.hidden, !isControlled, "The disable extension button's visibility is as expected.");
     if (isControlled) {
       let controlledDesc = controlledLabel.querySelector("description");
       Assert.deepEqual(doc.l10n.getAttributes(controlledDesc), {
-        id: cbUIEnabledPref() ? "extension-controlled-websites-content-blocking-all-trackers" :
-                                "extension-controlled-websites-tracking-protection-mode",
+        id: "extension-controlled-websites-content-blocking-all-trackers",
         args: {
           name: "set_tp",
         },
       }, "The user is notified that an extension is controlling TP.");
     }
 
-    if (uiType === "old") {
-      for (let element of doc.querySelectorAll("#trackingProtectionRadioGroup > radio")) {
-        is(element.disabled, isControlled, "TP controls are enabled.");
-      }
-      is(doc.querySelector("#trackingProtectionDesc > label").disabled,
-         isControlled,
-         "TP control label is enabled.");
-    } else {
-      is(doc.getElementById("trackingProtectionMenu").disabled,
-         isControlled,
-         "TP control is enabled.");
-    }
+    is(doc.getElementById("trackingProtectionMenu").disabled,
+       isControlled,
+       "TP control is enabled.");
   }
 
   async function disableViaClick() {
-    let labelId = CONTROLLED_LABEL_ID[uiType];
-    let disableId = DISABLE_BUTTON_ID[uiType];
+    let labelId = CONTROLLED_LABEL_ID;
+    let disableId = DISABLE_BUTTON_ID;
     let controlledLabel = doc.getElementById(labelId);
 
     let enableMessageShown = waitForEnableMessage(labelId);
@@ -670,12 +649,10 @@ add_task(async function testExtensionControlledTrackingProtection() {
   }
 
   async function reEnableExtension(addon) {
-    let controlledMessageShown = waitForMessageShown(CONTROLLED_LABEL_ID[uiType]);
+    let controlledMessageShown = waitForMessageShown(CONTROLLED_LABEL_ID);
     await addon.enable();
     await controlledMessageShown;
   }
-
-  let uiType = "new";
 
   await openPreferencesViaOpenPreferencesAPI("panePrivacy", {leaveOpen: true});
   let doc = gBrowser.contentDocument;
@@ -696,31 +673,10 @@ add_task(async function testExtensionControlledTrackingProtection() {
     background,
   });
 
-  let messageShown = waitForMessageShown(CONTROLLED_LABEL_ID[uiType]);
+  let messageShown = waitForMessageShown(CONTROLLED_LABEL_ID);
   await extension.startup();
   await messageShown;
   let addon = await AddonManager.getAddonByID(EXTENSION_ID);
-
-  verifyState(true);
-
-  await disableViaClick();
-
-  verifyState(false);
-
-  // Switch to the "old" Tracking Protection UI.
-  uiType = "old";
-  Services.prefs.setBoolPref(CB_UI_PREF, false);
-
-  let browserLoaded = BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser, false, "about:preferences#privacy");
-  gBrowser.selectedBrowser.reload();
-  await browserLoaded;
-  is(gBrowser.currentURI.spec, "about:preferences#privacy",
-   "#privacy should be in the URI for about:preferences");
-  doc = gBrowser.contentDocument;
-
-  verifyState(false);
-
-  await reEnableExtension(addon);
 
   verifyState(true);
 
@@ -794,12 +750,14 @@ add_task(async function testExtensionControlledProxyConfig() {
         let manualControlContainer = controlGroup.querySelector("grid");
         return {
           manualControls: [
-            ...manualControlContainer.querySelectorAll("label"),
-            ...manualControlContainer.querySelectorAll("textbox"),
+            ...manualControlContainer.querySelectorAll("label:not([control=networkProxyNone])"),
+            ...manualControlContainer.querySelectorAll("textbox:not(#networkProxyNone)"),
             ...manualControlContainer.querySelectorAll("checkbox"),
             ...doc.querySelectorAll("#networkProxySOCKSVersion > radio")],
           pacControls: [doc.getElementById("networkProxyAutoconfigURL")],
           otherControls: [
+            manualControlContainer.querySelector("label[control=networkProxyNone]"),
+            doc.getElementById("networkProxyNone"),
             ...controlGroup.querySelectorAll(":scope > radio"),
             ...doc.querySelectorAll("#ConnectionsDialogPane > checkbox")],
         };
@@ -808,14 +766,14 @@ add_task(async function testExtensionControlledProxyConfig() {
       let controls = getProxyControls();
       for (let element of controls.manualControls) {
         let disabled = isControlled || proxyType !== proxySvc.PROXYCONFIG_MANUAL;
-        is(element.disabled, disabled, `Proxy controls are ${controlState}.`);
+        is(element.disabled, disabled, `Manual proxy controls should be ${controlState} - control: ${element.outerHTML}.`);
       }
       for (let element of controls.pacControls) {
         let disabled = isControlled || proxyType !== proxySvc.PROXYCONFIG_PAC;
-        is(element.disabled, disabled, `Proxy controls are ${controlState}.`);
+        is(element.disabled, disabled, `PAC proxy controls should be ${controlState} - control: ${element.outerHTML}.`);
       }
       for (let element of controls.otherControls) {
-        is(element.disabled, isControlled, `Proxy controls are ${controlState}.`);
+        is(element.disabled, isControlled, `Other proxy controls should be ${controlState} - control: ${element.outerHTML}.`);
       }
     } else {
       let elem = doc.getElementById(CONNECTION_SETTINGS_DESC_ID);

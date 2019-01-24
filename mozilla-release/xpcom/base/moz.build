@@ -67,6 +67,7 @@ EXPORTS += [
     'nsDebugImpl.h',
     'nsDumpUtils.h',
     'nsError.h',
+    'nsErrorService.h',
     'nsGZFileWriter.h',
     'nsIClassInfoImpl.h',
     'nsID.h',
@@ -79,6 +80,7 @@ EXPORTS += [
     'nsISupportsImpl.h',
     'nsISupportsUtils.h',
     'nsIWeakReferenceUtils.h',
+    'nsMaybeWeakPtr.h',
     'nsMemory.h',
     'nsObjCExceptions.h',
     'nsQueryObject.h',
@@ -86,7 +88,6 @@ EXPORTS += [
     'nsTraceRefcnt.h',
     'nsTWeakRef.h',
     'nsVersionComparator.h',
-    'nsWeakPtr.h',
     'nsWeakReference.h',
 ]
 

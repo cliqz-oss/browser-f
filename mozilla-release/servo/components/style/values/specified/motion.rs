@@ -1,13 +1,13 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Specified types for CSS values that are related to motion path.
 
+use crate::parser::{Parse, ParserContext};
+use crate::values::specified::SVGPathData;
 use cssparser::Parser;
-use parser::{Parse, ParserContext};
 use style_traits::{ParseError, StyleParseErrorKind};
-use values::specified::SVGPathData;
 
 /// The offset-path value.
 ///

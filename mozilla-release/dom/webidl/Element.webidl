@@ -235,21 +235,21 @@ dictionary ShadowRootInit {
 // https://dom.spec.whatwg.org/#element
 partial interface Element {
   // Shadow DOM v1
-  [Throws, Func="nsDocument::IsShadowDOMEnabled"]
+  [Throws, UseCounter]
   ShadowRoot attachShadow(ShadowRootInit shadowRootInitDict);
-  [BinaryName="shadowRootByMode", Func="nsDocument::IsShadowDOMEnabled"]
+  [BinaryName="shadowRootByMode"]
   readonly attribute ShadowRoot? shadowRoot;
 
-  [Func="nsDocument::IsShadowDOMEnabledAndCallerIsChromeOrAddon", BinaryName="shadowRoot"]
+  [Func="nsDocument::IsCallerChromeOrAddon", BinaryName="shadowRoot"]
   readonly attribute ShadowRoot? openOrClosedShadowRoot;
 
-  [BinaryName="assignedSlotByMode", Func="nsDocument::IsShadowDOMEnabled"]
+  [BinaryName="assignedSlotByMode"]
   readonly attribute HTMLSlotElement? assignedSlot;
 
-  [ChromeOnly, BinaryName="assignedSlot", Func="nsDocument::IsShadowDOMEnabled"]
+  [ChromeOnly, BinaryName="assignedSlot"]
   readonly attribute HTMLSlotElement? openOrClosedAssignedSlot;
 
-  [CEReactions, Unscopable, SetterThrows, Func="nsDocument::IsShadowDOMEnabled"]
+  [CEReactions, Unscopable, SetterThrows]
            attribute DOMString slot;
 };
 
@@ -263,7 +263,7 @@ Element implements GeometryUtils;
 partial interface Element {
   [Throws, Func="nsDocument::IsUnprefixedFullscreenEnabled", NeedsCallerType]
   Promise<void> requestFullscreen();
-  [Throws, BinaryName="requestFullscreen", NeedsCallerType]
+  [Throws, BinaryName="requestFullscreen", NeedsCallerType, Deprecated="MozRequestFullScreenDeprecatedPrefix"]
   Promise<void> mozRequestFullScreen();
 
   // Events handlers

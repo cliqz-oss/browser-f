@@ -165,6 +165,12 @@ RootActor.prototype = {
     // Whether or not the webextension addon actor have to be connected
     // to retrieve the extension child process target actors.
     webExtensionAddonConnect: true,
+    // Version of perf actor. Fx65+
+    // Version 1 - Firefox 65: Introduces a duration-based buffer. With that change
+    // Services.profiler.StartProfiler method accepts an additional parameter called
+    // `window-length`. This is an optional parameter but it will throw an error if the
+    // profiled Firefox doesn't accept it.
+    perfActorVersion: 1,
   },
 
   /**
@@ -271,7 +277,7 @@ RootActor.prototype = {
    * would trigger any lazy tabs to be loaded, greatly increasing resource usage.  Avoid
    * this method whenever possible.
    */
-  onListTabs: async function(request) {
+  onListTabs: async function(options) {
     const tabList = this._parameters.tabList;
     if (!tabList) {
       return { from: this.actorID, error: "noTabs",
@@ -290,7 +296,6 @@ RootActor.prototype = {
     const targetActorList = [];
     let selected;
 
-    const options = request.options || {};
     const targetActors = await tabList.getList(options);
     for (const targetActor of targetActors) {
       if (targetActor.exited) {

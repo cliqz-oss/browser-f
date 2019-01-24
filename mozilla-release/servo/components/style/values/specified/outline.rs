@@ -1,14 +1,14 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Specified values for outline properties
 
+use crate::parser::{Parse, ParserContext};
+use crate::values::specified::BorderStyle;
 use cssparser::Parser;
-use parser::{Parse, ParserContext};
 use selectors::parser::SelectorParseErrorKind;
 use style_traits::ParseError;
-use values::specified::BorderStyle;
 
 #[derive(
     Clone,
@@ -23,19 +23,20 @@ use values::specified::BorderStyle;
     ToComputedValue,
     ToCss,
 )]
+#[repr(C, u8)]
 /// <https://drafts.csswg.org/css-ui/#propdef-outline-style>
 pub enum OutlineStyle {
     /// auto
     Auto,
     /// <border-style>
-    Other(BorderStyle),
+    BorderStyle(BorderStyle),
 }
 
 impl OutlineStyle {
     #[inline]
     /// Get default value as None
     pub fn none() -> OutlineStyle {
-        OutlineStyle::Other(BorderStyle::None)
+        OutlineStyle::BorderStyle(BorderStyle::None)
     }
 
     #[inline]
@@ -43,7 +44,7 @@ impl OutlineStyle {
     pub fn none_or_hidden(&self) -> bool {
         match *self {
             OutlineStyle::Auto => false,
-            OutlineStyle::Other(ref border_style) => border_style.none_or_hidden(),
+            OutlineStyle::BorderStyle(ref style) => style.none_or_hidden(),
         }
     }
 }
@@ -59,7 +60,7 @@ impl Parse for OutlineStyle {
                     .new_custom_error(SelectorParseErrorKind::UnexpectedIdent("hidden".into())));
             }
 
-            return Ok(OutlineStyle::Other(border_style));
+            return Ok(OutlineStyle::BorderStyle(border_style));
         }
 
         input.expect_ident_matching("auto")?;

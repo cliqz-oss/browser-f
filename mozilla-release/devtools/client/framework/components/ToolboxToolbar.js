@@ -8,6 +8,8 @@ const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const {div, button} = dom;
 
+const DebugTargetInfo =
+  createFactory(require("devtools/client/framework/components/DebugTargetInfo"));
 const MenuButton = createFactory(require("devtools/client/shared/components/menu/MenuButton"));
 const ToolboxTabs = createFactory(require("devtools/client/framework/components/ToolboxTabs"));
 
@@ -19,6 +21,9 @@ loader.lazyGetter(this, "MenuItem", function() {
 });
 loader.lazyGetter(this, "MenuList", function() {
   return createFactory(require("devtools/client/shared/components/menu/MenuList"));
+});
+loader.lazyGetter(this, "WebReplayPlayer", function() {
+  return createFactory(require("devtools/client/webreplay/components/WebReplayPlayer"));
 });
 
 loader.lazyRequireGetter(this, "getUnicodeUrl", "devtools/client/shared/unicode-url", true);
@@ -81,7 +86,7 @@ class ToolboxToolbar extends Component {
       // it to render nicely.
       canRender: PropTypes.bool,
       // Localization interface.
-      L10N: PropTypes.object,
+      L10N: PropTypes.object.isRequired,
       // The devtools toolbox
       toolbox: PropTypes.object,
       // Call back function to detect tabs order updated.
@@ -91,6 +96,10 @@ class ToolboxToolbar extends Component {
       // Because in the component we cannot compare the visibility since the
       // button definition instance in toolboxButtons will be unchanged.
       visibleToolboxButtonCount: PropTypes.number,
+      // Flag whether need to show DebugTargetInfo.
+      showDebugTargetInfo: PropTypes.bool,
+      // Device description for DebugTargetInfo component.
+      deviceDescription: PropTypes.object,
     };
   }
 
@@ -248,7 +257,10 @@ class ToolboxToolbar extends Component {
         className: `devtools-button command-button ${isChecked ? "checked" : ""}`,
         ref: "frameMenuButton",
         title: description,
-        onCloseButton: toolbox.highlighterUtils.unhighlight,
+        onCloseButton: async () => {
+          await toolbox.initInspector();
+          toolbox.highlighter.unhighlight();
+        },
       },
       this.createFrameList
     );
@@ -393,9 +405,7 @@ class ToolboxToolbar extends Component {
         onFocus: () => focusButton(closeButtonId),
         className: "devtools-button",
         title: L10N.getStr("toolbox.closebutton.tooltip"),
-        onClick: () => {
-          closeToolbox();
-        },
+        onClick: () => closeToolbox(),
         tabIndex: focusedButton === "toolbox-close" ? "0" : "-1",
       })
       : null;
@@ -411,6 +421,7 @@ class ToolboxToolbar extends Component {
    * render functions for how each of the sections is rendered.
    */
   render() {
+    const {deviceDescription, L10N, showDebugTargetInfo, toolbox} = this.props;
     const classnames = ["devtools-tabbar"];
     const startButtons = this.renderToolboxButtonsStart();
     const endButtons = this.renderToolboxButtonsEnd();
@@ -422,7 +433,7 @@ class ToolboxToolbar extends Component {
       classnames.push("devtools-tabbar-has-end");
     }
 
-    return this.props.canRender
+    const toolbar = this.props.canRender
       ? (
         div(
           {
@@ -435,6 +446,22 @@ class ToolboxToolbar extends Component {
         )
       )
       : div({ className: classnames.join(" ") });
+
+    const debugTargetInfo =
+      showDebugTargetInfo ? DebugTargetInfo({ deviceDescription, L10N, toolbox }) : null;
+
+    if (toolbox.target.canRewind) {
+      return div(
+        {},
+        WebReplayPlayer({
+          toolbox: toolbox,
+        }),
+        debugTargetInfo,
+        toolbar,
+      );
+    }
+
+    return div({}, debugTargetInfo, toolbar);
   }
 }
 

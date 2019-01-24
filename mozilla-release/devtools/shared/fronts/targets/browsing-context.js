@@ -9,7 +9,8 @@ const {custom} = protocol;
 
 loader.lazyRequireGetter(this, "ThreadClient", "devtools/shared/client/thread-client");
 
-const BrowsingContextFront = protocol.FrontClassWithSpec(browsingContextTargetSpec, {
+const BrowsingContextTargetFront =
+protocol.FrontClassWithSpec(browsingContextTargetSpec, {
   initialize: function(client, form) {
     protocol.Front.prototype.initialize.call(this, client, form);
 
@@ -23,6 +24,10 @@ const BrowsingContextFront = protocol.FrontClassWithSpec(browsingContextTargetSp
 
     // TODO: remove once ThreadClient becomes a front
     this.client = client;
+
+    // Save the full form for Target class usage
+    // Do not use `form` name to avoid colliding with protocol.js's `form` method
+    this.targetForm = form;
   },
 
   /**
@@ -96,10 +101,6 @@ const BrowsingContextFront = protocol.FrontClassWithSpec(browsingContextTargetSp
   }, {
     impl: "_detach",
   }),
-
-  attachWorker: function(workerTargetActor) {
-    return this.client.attachWorker(workerTargetActor);
-  },
 });
 
-exports.BrowsingContextFront = BrowsingContextFront;
+exports.BrowsingContextTargetFront = BrowsingContextTargetFront;

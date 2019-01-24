@@ -1,17 +1,17 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! A media query list:
 //!
 //! https://drafts.csswg.org/mediaqueries/#typedef-media-query-list
 
-use context::QuirksMode;
+use super::{Device, MediaQuery, Qualifier};
+use crate::context::QuirksMode;
+use crate::error_reporting::ContextualParseError;
+use crate::parser::ParserContext;
 use cssparser::{Delimiter, Parser};
 use cssparser::{ParserInput, Token};
-use error_reporting::ContextualParseError;
-use parser::ParserContext;
-use super::{Device, MediaQuery, Qualifier};
 
 /// A type that encapsulates a media query list.
 #[css(comma, derive_debug)]

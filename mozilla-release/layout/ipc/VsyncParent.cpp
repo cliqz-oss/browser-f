@@ -20,48 +20,40 @@ using namespace ipc;
 
 namespace layout {
 
-/*static*/ already_AddRefed<VsyncParent>
-VsyncParent::Create()
-{
+/*static*/ already_AddRefed<VsyncParent> VsyncParent::Create() {
   AssertIsOnBackgroundThread();
-  RefPtr<gfx::VsyncSource> vsyncSource = gfxPlatform::GetPlatform()->GetHardwareVsync();
+  RefPtr<gfx::VsyncSource> vsyncSource =
+      gfxPlatform::GetPlatform()->GetHardwareVsync();
   RefPtr<VsyncParent> vsyncParent = new VsyncParent();
   vsyncParent->mVsyncDispatcher = vsyncSource->GetRefreshTimerVsyncDispatcher();
   return vsyncParent.forget();
 }
 
 VsyncParent::VsyncParent()
-  : mObservingVsync(false)
-  , mDestroyed(false)
-  , mBackgroundThread(NS_GetCurrentThread())
-{
+    : mObservingVsync(false),
+      mDestroyed(false),
+      mBackgroundThread(NS_GetCurrentThread()) {
   MOZ_ASSERT(mBackgroundThread);
   AssertIsOnBackgroundThread();
 }
 
-VsyncParent::~VsyncParent()
-{
+VsyncParent::~VsyncParent() {
   // Since we use NS_INLINE_DECL_THREADSAFE_REFCOUNTING, we can't make sure
   // VsyncParent is always released on the background thread.
 }
 
-bool
-VsyncParent::NotifyVsync(TimeStamp aTimeStamp)
-{
+bool VsyncParent::NotifyVsync(const VsyncEvent& aVsync) {
   // Called on hardware vsync thread. We should post to current ipc thread.
   MOZ_ASSERT(!IsOnBackgroundThread());
-  nsCOMPtr<nsIRunnable> vsyncEvent =
-    NewRunnableMethod<TimeStamp>("layout::VsyncParent::DispatchVsyncEvent",
-                                 this,
-                                 &VsyncParent::DispatchVsyncEvent,
-                                 aTimeStamp);
-  MOZ_ALWAYS_SUCCEEDS(mBackgroundThread->Dispatch(vsyncEvent, NS_DISPATCH_NORMAL));
+  nsCOMPtr<nsIRunnable> vsyncEvent = NewRunnableMethod<VsyncEvent>(
+      "layout::VsyncParent::DispatchVsyncEvent", this,
+      &VsyncParent::DispatchVsyncEvent, aVsync);
+  MOZ_ALWAYS_SUCCEEDS(
+      mBackgroundThread->Dispatch(vsyncEvent, NS_DISPATCH_NORMAL));
   return true;
 }
 
-void
-VsyncParent::DispatchVsyncEvent(TimeStamp aTimeStamp)
-{
+void VsyncParent::DispatchVsyncEvent(const VsyncEvent& aVsync) {
   AssertIsOnBackgroundThread();
 
   // If we call NotifyVsync() when we handle ActorDestroy() message, we might
@@ -70,22 +62,21 @@ VsyncParent::DispatchVsyncEvent(TimeStamp aTimeStamp)
   // NotifyVsync(). We use mObservingVsync and mDestroyed flags to skip this
   // notification.
   if (mObservingVsync && !mDestroyed) {
-    Unused << SendNotify(aTimeStamp);
+    Unused << SendNotify(aVsync);
   }
 }
 
-mozilla::ipc::IPCResult
-VsyncParent::RecvRequestVsyncRate()
-{
+mozilla::ipc::IPCResult VsyncParent::RecvRequestVsyncRate() {
   AssertIsOnBackgroundThread();
-  TimeDuration vsyncRate = gfxPlatform::GetPlatform()->GetHardwareVsync()->GetGlobalDisplay().GetVsyncRate();
+  TimeDuration vsyncRate = gfxPlatform::GetPlatform()
+                               ->GetHardwareVsync()
+                               ->GetGlobalDisplay()
+                               .GetVsyncRate();
   Unused << SendVsyncRate(vsyncRate.ToMilliseconds());
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult
-VsyncParent::RecvObserve()
-{
+mozilla::ipc::IPCResult VsyncParent::RecvObserve() {
   AssertIsOnBackgroundThread();
   if (!mObservingVsync) {
     mVsyncDispatcher->AddChildRefreshTimer(this);
@@ -95,9 +86,7 @@ VsyncParent::RecvObserve()
   return IPC_FAIL_NO_REASON(this);
 }
 
-mozilla::ipc::IPCResult
-VsyncParent::RecvUnobserve()
-{
+mozilla::ipc::IPCResult VsyncParent::RecvUnobserve() {
   AssertIsOnBackgroundThread();
   if (mObservingVsync) {
     mVsyncDispatcher->RemoveChildRefreshTimer(this);
@@ -107,9 +96,7 @@ VsyncParent::RecvUnobserve()
   return IPC_FAIL_NO_REASON(this);
 }
 
-void
-VsyncParent::ActorDestroy(ActorDestroyReason aReason)
-{
+void VsyncParent::ActorDestroy(ActorDestroyReason aReason) {
   MOZ_ASSERT(!mDestroyed);
   AssertIsOnBackgroundThread();
   if (mObservingVsync) {
@@ -119,5 +106,5 @@ VsyncParent::ActorDestroy(ActorDestroyReason aReason)
   mDestroyed = true;
 }
 
-} // namespace layout
-} // namespace mozilla
+}  // namespace layout
+}  // namespace mozilla

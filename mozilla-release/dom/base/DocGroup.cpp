@@ -7,6 +7,7 @@
 #include "mozilla/dom/DocGroup.h"
 #include "mozilla/dom/DOMTypes.h"
 #include "mozilla/dom/TabGroup.h"
+#include "mozilla/PerformanceUtils.h"
 #include "mozilla/StaticPrefs.h"
 #include "mozilla/Telemetry.h"
 #include "nsIDocShell.h"
@@ -14,17 +15,16 @@
 #if defined(XP_WIN)
 #include <processthreadsapi.h>  // for GetCurrentProcessId()
 #else
-#include <unistd.h> // for getpid()
-#endif // defined(XP_WIN)
+#include <unistd.h>  // for getpid()
+#endif               // defined(XP_WIN)
 
 namespace mozilla {
 namespace dom {
 
 AutoTArray<RefPtr<DocGroup>, 2>* DocGroup::sPendingDocGroups = nullptr;
 
-/* static */ nsresult
-DocGroup::GetKey(nsIPrincipal* aPrincipal, nsACString& aKey)
-{
+/* static */ nsresult DocGroup::GetKey(nsIPrincipal* aPrincipal,
+                                       nsACString& aKey) {
   // Use GetBaseDomain() to handle things like file URIs, IP address URIs,
   // etc. correctly.
   nsresult rv = aPrincipal->GetBaseDomain(aKey);
@@ -40,37 +40,34 @@ DocGroup::GetKey(nsIPrincipal* aPrincipal, nsACString& aKey)
   return rv;
 }
 
-void
-DocGroup::RemoveDocument(nsIDocument* aDocument)
-{
+void DocGroup::RemoveDocument(nsIDocument* aDocument) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mDocuments.Contains(aDocument));
   mDocuments.RemoveElement(aDocument);
 }
 
 DocGroup::DocGroup(TabGroup* aTabGroup, const nsACString& aKey)
-  : mKey(aKey), mTabGroup(aTabGroup)
-{
-  // This method does not add itself to mTabGroup->mDocGroups as the caller does it for us.
+    : mKey(aKey), mTabGroup(aTabGroup) {
+  // This method does not add itself to mTabGroup->mDocGroups as the caller does
+  // it for us.
   if (mozilla::StaticPrefs::dom_performance_enable_scheduler_timing()) {
-    mPerformanceCounter = new mozilla::PerformanceCounter(NS_LITERAL_CSTRING("DocGroup:") + aKey);
+    mPerformanceCounter =
+        new mozilla::PerformanceCounter(NS_LITERAL_CSTRING("DocGroup:") + aKey);
   }
 }
 
-DocGroup::~DocGroup()
-{
+DocGroup::~DocGroup() {
   MOZ_ASSERT(mDocuments.IsEmpty());
   if (!NS_IsMainThread()) {
     nsIEventTarget* target = EventTargetFor(TaskCategory::Other);
-    NS_ProxyRelease("DocGroup::mReactionsStack", target, mReactionsStack.forget());
+    NS_ProxyRelease("DocGroup::mReactionsStack", target,
+                    mReactionsStack.forget());
   }
 
   mTabGroup->mDocGroups.RemoveEntry(mKey);
 }
 
-PerformanceInfo
-DocGroup::ReportPerformanceInfo()
-{
+RefPtr<PerformanceInfoPromise> DocGroup::ReportPerformanceInfo() {
   AssertIsOnMainThread();
   MOZ_ASSERT(mPerformanceCounter);
 #if defined(XP_WIN)
@@ -83,6 +80,8 @@ DocGroup::ReportPerformanceInfo()
   uint64_t duration = 0;
   bool isTopLevel = false;
   nsCString host;
+  nsCOMPtr<nsPIDOMWindowOuter> top;
+  RefPtr<AbstractThread> mainThread;
 
   // iterating on documents until we find the top window
   for (const auto& document : *this) {
@@ -106,12 +105,13 @@ DocGroup::ReportPerformanceInfo()
     if (!outer) {
       continue;
     }
-    nsCOMPtr<nsPIDOMWindowOuter> top = outer->GetTop();
+    top = outer->GetTop();
     if (!top) {
       continue;
     }
     windowID = top->WindowID();
     isTopLevel = outer->IsTopLevelWindow();
+    mainThread = AbstractMainThreadFor(TaskCategory::Performance);
     break;
   }
 
@@ -130,42 +130,55 @@ DocGroup::ReportPerformanceInfo()
     }
   }
 
-  return PerformanceInfo(host, pid, windowID, duration, mPerformanceCounter->GetID(),
-                         false, isTopLevel, items);
+  if (!isTopLevel) {
+    return PerformanceInfoPromise::CreateAndResolve(
+        PerformanceInfo(host, pid, windowID, duration,
+                        mPerformanceCounter->GetID(), false, isTopLevel,
+                        PerformanceMemoryInfo(),  // Empty memory info
+                        items),
+        __func__);
+  }
+
+  MOZ_ASSERT(mainThread);
+  RefPtr<DocGroup> self = this;
+
+  return CollectMemoryInfo(top, mainThread)
+      ->Then(mainThread, __func__,
+             [self, host, pid, windowID, duration, isTopLevel,
+              items](const PerformanceMemoryInfo& aMemoryInfo) {
+               PerformanceInfo info =
+                   PerformanceInfo(host, pid, windowID, duration,
+                                   self->mPerformanceCounter->GetID(), false,
+                                   isTopLevel, aMemoryInfo, items);
+
+               return PerformanceInfoPromise::CreateAndResolve(std::move(info),
+                                                               __func__);
+             },
+             [self](const nsresult rv) {
+               return PerformanceInfoPromise::CreateAndReject(rv, __func__);
+             });
 }
 
-nsresult
-DocGroup::Dispatch(TaskCategory aCategory,
-                   already_AddRefed<nsIRunnable>&& aRunnable)
-{
+nsresult DocGroup::Dispatch(TaskCategory aCategory,
+                            already_AddRefed<nsIRunnable>&& aRunnable) {
   if (mPerformanceCounter) {
     mPerformanceCounter->IncrementDispatchCounter(DispatchCategory(aCategory));
   }
   return mTabGroup->DispatchWithDocGroup(aCategory, std::move(aRunnable), this);
 }
 
-nsISerialEventTarget*
-DocGroup::EventTargetFor(TaskCategory aCategory) const
-{
+nsISerialEventTarget* DocGroup::EventTargetFor(TaskCategory aCategory) const {
   return mTabGroup->EventTargetFor(aCategory);
 }
 
-AbstractThread*
-DocGroup::AbstractMainThreadFor(TaskCategory aCategory)
-{
+AbstractThread* DocGroup::AbstractMainThreadFor(TaskCategory aCategory) {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
   return mTabGroup->AbstractMainThreadFor(aCategory);
 }
 
-bool*
-DocGroup::GetValidAccessPtr()
-{
-  return mTabGroup->GetValidAccessPtr();
-}
+bool* DocGroup::GetValidAccessPtr() { return mTabGroup->GetValidAccessPtr(); }
 
-void
-DocGroup::SignalSlotChange(HTMLSlotElement& aSlot)
-{
+void DocGroup::SignalSlotChange(HTMLSlotElement& aSlot) {
   MOZ_ASSERT(!mSignalSlotList.Contains(&aSlot));
   mSignalSlotList.AppendElement(&aSlot);
 
@@ -178,9 +191,7 @@ DocGroup::SignalSlotChange(HTMLSlotElement& aSlot)
   sPendingDocGroups->AppendElement(this);
 }
 
-void
-DocGroup::MoveSignalSlotListTo(nsTArray<RefPtr<HTMLSlotElement>>& aDest)
-{
+void DocGroup::MoveSignalSlotListTo(nsTArray<RefPtr<HTMLSlotElement>>& aDest) {
   aDest.SetCapacity(aDest.Length() + mSignalSlotList.Length());
   for (RefPtr<HTMLSlotElement>& slot : mSignalSlotList) {
     slot->RemovedFromSignalSlotList();
@@ -189,9 +200,7 @@ DocGroup::MoveSignalSlotListTo(nsTArray<RefPtr<HTMLSlotElement>>& aDest)
   mSignalSlotList.Clear();
 }
 
-bool
-DocGroup::IsActive() const
-{
+bool DocGroup::IsActive() const {
   for (nsIDocument* doc : mDocuments) {
     if (doc->IsCurrentActiveDocument()) {
       return true;
@@ -201,5 +210,5 @@ DocGroup::IsActive() const
   return false;
 }
 
-}
-}
+}  // namespace dom
+}  // namespace mozilla

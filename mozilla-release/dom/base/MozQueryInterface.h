@@ -27,26 +27,26 @@
 namespace mozilla {
 namespace dom {
 
-class MozQueryInterface final : public NonRefcountedDOMObject
-{
-public:
+class MozQueryInterface final : public NonRefcountedDOMObject {
+ public:
   explicit MozQueryInterface(nsTArray<nsIID>&& aInterfaces)
-    : mInterfaces(std::move(aInterfaces))
-  {}
+      : mInterfaces(std::move(aInterfaces)) {}
 
   bool QueriesTo(const nsIID& aIID) const;
 
-  void LegacyCall(JSContext* cx, JS::Handle<JS::Value> thisv, nsIJSID* aIID, JS::MutableHandle<JS::Value> aResult, ErrorResult& aRv) const;
+  void LegacyCall(JSContext* cx, JS::Handle<JS::Value> thisv, nsIJSID* aIID,
+                  JS::MutableHandle<JS::Value> aResult, ErrorResult& aRv) const;
 
   nsISupports* GetParentObject() const { return nullptr; }
 
-  bool WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto, JS::MutableHandle<JSObject*> aReflector);
+  bool WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto,
+                  JS::MutableHandle<JSObject*> aReflector);
 
-private:
+ private:
   nsTArray<nsIID> mInterfaces;
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
-#endif // mozilla_dom_MozQueryInterface
+#endif  // mozilla_dom_MozQueryInterface

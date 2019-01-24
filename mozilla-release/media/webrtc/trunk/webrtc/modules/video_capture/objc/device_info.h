@@ -8,13 +8,15 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#ifndef WEBRTC_MODULES_VIDEO_CAPTURE_OBJC_DEVICE_INFO_H_
-#define WEBRTC_MODULES_VIDEO_CAPTURE_OBJC_DEVICE_INFO_H_
+#ifndef MODULES_VIDEO_CAPTURE_OBJC_DEVICE_INFO_H_
+#define MODULES_VIDEO_CAPTURE_OBJC_DEVICE_INFO_H_
 
-#include "webrtc/modules/video_capture/device_info_impl.h"
+#include "modules/video_capture/device_info_impl.h"
 
 #include <map>
 #include <string>
+
+@class DeviceInfoIosObjC;
 
 namespace webrtc {
 namespace videocapturemodule {
@@ -54,9 +56,10 @@ class DeviceInfoIos : public DeviceInfoImpl {
 
  private:
   std::map<std::string, VideoCaptureCapabilities> _capabilitiesMap;
+  DeviceInfoIosObjC* _captureInfo;
 };
 
 }  // namespace videocapturemodule
 }  // namespace webrtc
 
-#endif  // WEBRTC_MODULES_VIDEO_CAPTURE_OBJC_DEVICE_INFO_H_
+#endif  // MODULES_VIDEO_CAPTURE_OBJC_DEVICE_INFO_H_

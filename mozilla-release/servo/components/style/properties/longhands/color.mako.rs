@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 <%namespace name="helpers" file="/helpers.mako.rs" />
 
@@ -63,11 +63,11 @@ pub mod system_colors {
                           IMESelectedConvertedTextBackground IMESelectedConvertedTextForeground
                           IMESelectedConvertedTextUnderline SpellCheckerUnderline""".split()
     %>
-    use gecko_bindings::bindings::Gecko_GetLookAndFeelSystemColor;
-    use gecko_bindings::structs::root::mozilla::LookAndFeel_ColorID;
+    use crate::gecko_bindings::bindings::Gecko_GetLookAndFeelSystemColor;
+    use crate::gecko_bindings::structs::root::mozilla::LookAndFeel_ColorID;
     use std::fmt::{self, Write};
     use style_traits::{CssWriter, ToCss};
-    use values::computed::{Context, ToComputedValue};
+    use crate::values::computed::{Context, ToComputedValue};
 
     pub type SystemColor = LookAndFeel_ColorID;
 

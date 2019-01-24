@@ -25,6 +25,8 @@
 <!ENTITY aboutTelemetry.telemetryClientDoc "Die <a>Dokumentation des Telemetrie-Clients von Firefox</a> enthält Definitionen von Konzepten, API-Dokumentationen und Erläuterungen zu den Daten.">
 <!ENTITY aboutTelemetry.telemetryDashboard "Die <a>Telemetrie-Übersicht</a> ermöglicht die Visualisierung der Daten, welche Mozilla mittels der Telemetrie empfängt.">
 
+<!ENTITY aboutTelemetry.telemetryProbeDictionary "Das <a>Messgrößen-Wörterbuch</a> bietet Beschreibungen und Details zu den von Telemetrie gesammelten Daten.">
+
 <!ENTITY aboutTelemetry.showInFirefoxJsonViewer "In JSON-Ansicht öffnen">
 
 <!ENTITY aboutTelemetry.homeSection "Einführung">

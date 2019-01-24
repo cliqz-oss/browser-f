@@ -11,6 +11,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   FileSource: "resource://gre/modules/L10nRegistry.jsm",
   GeckoViewTelemetryController: "resource://gre/modules/GeckoViewTelemetryController.jsm",
   L10nRegistry: "resource://gre/modules/L10nRegistry.jsm",
+  Preferences: "resource://gre/modules/Preferences.jsm",
   Services: "resource://gre/modules/Services.jsm",
 });
 
@@ -77,7 +78,7 @@ GeckoViewStartup.prototype = {
           this.setResourceSubstitutions();
 
           Services.mm.loadFrameScript(
-              "chrome://geckoview/content/GeckoViewPromptContent.js", true);
+              "chrome://geckoview/content/GeckoViewPromptChild.js", true);
 
           GeckoViewUtils.addLazyGetter(this, "ContentCrashHandler", {
             module: "resource://gre/modules/ContentCrashHandler.jsm",
@@ -125,11 +126,38 @@ GeckoViewStartup.prototype = {
         L10nRegistry.registerSource(greSource);
 
         // Listen for global EventDispatcher messages
-        EventDispatcher.instance.registerListener(
-          (aEvent, aData, aCallback) => Services.locale.requestedLocales = [aData.languageTag],
-          "GeckoView:SetLocale");
+        EventDispatcher.instance.registerListener(this,
+          ["GeckoView:ResetUserPrefs",
+           "GeckoView:SetDefaultPrefs",
+           "GeckoView:SetLocale"]);
         break;
       }
+    }
+  },
+
+  onEvent(aEvent, aData, aCallback) {
+    debug `onEvent ${aEvent}`;
+
+    switch (aEvent) {
+      case "GeckoView:ResetUserPrefs": {
+        const prefs = new Preferences();
+        prefs.reset(aData.names);
+        break;
+      }
+      case "GeckoView:SetDefaultPrefs": {
+        const prefs = new Preferences({ defaultBranch: true });
+        for (const name of Object.keys(aData)) {
+          try {
+            prefs.set(name, aData[name]);
+          } catch (e) {
+            warn `Failed to set preference ${name}: ${e}`;
+          }
+        }
+        break;
+      }
+      case "GeckoView:SetLocale":
+        Services.locale.requestedLocales = aData.requestedLocales;
+        break;
     }
   },
 };

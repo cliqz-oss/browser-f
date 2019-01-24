@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Flags that control the traversal process.
 //!
@@ -40,7 +40,7 @@ bitflags! {
 #[cfg(feature = "gecko")]
 #[inline]
 pub fn assert_traversal_flags_match() {
-    use gecko_bindings::structs;
+    use crate::gecko_bindings::structs;
 
     macro_rules! check_traversal_flags {
         ( $( $a:ident => $b:path ),*, ) => {

@@ -3,7 +3,6 @@ toolkit.jar:
 *  content/global/license.html
    content/global/minimal-xul.css
 *  content/global/xul.css
-   content/global/components.css
    content/global/autocomplete.css
    content/global/aboutAbout.js
    content/global/aboutAbout.xhtml
@@ -75,7 +74,6 @@ toolkit.jar:
    content/global/bindings/datetimebox.css     (widgets/datetimebox.css)
 *  content/global/bindings/dialog.xml          (widgets/dialog.xml)
    content/global/bindings/general.xml         (widgets/general.xml)
-   content/global/bindings/groupbox.xml        (widgets/groupbox.xml)
    content/global/bindings/menu.xml            (widgets/menu.xml)
    content/global/bindings/menulist.xml        (widgets/menulist.xml)
    content/global/bindings/notification.xml    (widgets/notification.xml)
@@ -85,7 +83,7 @@ toolkit.jar:
    content/global/bindings/richlistbox.xml     (widgets/richlistbox.xml)
    content/global/bindings/scrollbox.xml       (widgets/scrollbox.xml)
    content/global/bindings/spinner.js          (widgets/spinner.js)
-*  content/global/bindings/tabbox.xml          (widgets/tabbox.xml)
+   content/global/bindings/tabbox.xml          (widgets/tabbox.xml)
    content/global/bindings/text.xml            (widgets/text.xml)
 *  content/global/bindings/textbox.xml         (widgets/textbox.xml)
    content/global/bindings/timekeeper.js       (widgets/timekeeper.js)
@@ -95,15 +93,20 @@ toolkit.jar:
    content/global/bindings/tree.xml            (widgets/tree.xml)
    content/global/bindings/videocontrols.xml   (widgets/videocontrols.xml)
 *  content/global/bindings/wizard.xml          (widgets/wizard.xml)
+   content/global/elements/datetimebox.js      (widgets/datetimebox.js)
    content/global/elements/findbar.js          (widgets/findbar.js)
    content/global/elements/editor.js          (widgets/editor.js)
    content/global/elements/general.js          (widgets/general.js)
-   content/global/elements/progressmeter.js    (widgets/progressmeter.js)
+   content/global/elements/notificationbox.js  (widgets/notificationbox.js)
+   content/global/elements/pluginProblem.js    (widgets/pluginProblem.js)
    content/global/elements/radio.js            (widgets/radio.js)
+   content/global/elements/marquee.css         (widgets/marquee.css)
+   content/global/elements/marquee.js          (widgets/marquee.js)
    content/global/elements/stringbundle.js     (widgets/stringbundle.js)
    content/global/elements/tabbox.js           (widgets/tabbox.js)
    content/global/elements/textbox.js          (widgets/textbox.js)
    content/global/elements/videocontrols.js    (widgets/videocontrols.js)
+   content/global/elements/tree.js             (widgets/tree.js)
 #ifdef XP_MACOSX
    content/global/macWindowMenu.js
 #endif

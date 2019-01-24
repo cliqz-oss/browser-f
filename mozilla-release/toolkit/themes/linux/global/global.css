@@ -12,6 +12,8 @@
 
 @namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
 
+%include ../../shared/global.inc.css
+
 /* ::::: XBL bindings ::::: */
 
 menulist > menupopup {
@@ -19,7 +21,7 @@ menulist > menupopup {
 }
 
 @media (-moz-menubar-drag) {
-  toolbar[type="menubar"]:not([autohide="true"]) {
+  toolbar[type="menubar"] {
     -moz-binding: url("chrome://global/content/bindings/toolbar.xml#toolbar-drag");
   }
 }
@@ -257,7 +259,7 @@ label[disabled="true"] {
   outline: 1px dotted;
 }
 
-notification > button {
+notification > hbox > button {
   margin-top: 0;
   margin-bottom: 0;
 }
@@ -288,6 +290,3 @@ popupnotificationcontent {
   background-image: url("chrome://global/skin/icons/autoscroll-horizontal.svg");
 }
 
-/* :::::: Close button icons ::::: */
-
-%include ../../shared/close-icon.inc.css

@@ -250,8 +250,10 @@ button.warning {
 }
 
 #header-utils-btn {
+  -moz-appearance: none;
+  border: 1px solid var(--in-content-box-border-color);
+  border-radius: 2px;
   line-height: 20px;
-  border-color: var(--in-content-box-border-color);
   background-color: var(--in-content-page-background);
   padding-right: 10px;
   padding-left: 10px;
@@ -260,28 +262,17 @@ button.warning {
   margin-inline-end: 0;
 }
 
-#header-utils-btn:not([disabled="true"]):active:hover,
+#header-utils-btn:hover {
+  background-color: var(--in-content-box-background-hover);
+  cursor: pointer;
+}
+
+#header-utils-btn:active:hover,
 #header-utils-btn[open="true"] {
   background-color: var(--in-content-box-background-active);
 }
 
-.header-button {
-  -moz-appearance: none;
-  border: 1px solid;
-  border-radius: 2px;
-}
-
-.header-button[disabled="true"] > .toolbarbutton-icon {
-  opacity: 0.4;
-}
-
-.header-button:not([disabled="true"]):hover,
-#header-utils-btn:not([disabled="true"]):hover {
-  background-color: #ebebeb;
-  cursor: pointer;
-}
-
-.header-button > .toolbarbutton-text {
+#header-utils-btn > .toolbarbutton-text {
   display: none;
 }
 
@@ -371,7 +362,7 @@ button.warning {
 }
 
 .addon-view[type="plugin"] .icon {
-  list-style-image: url("chrome://mozapps/skin/plugins/pluginGeneric.svg");
+  list-style-image: url("chrome://global/skin/plugins/pluginGeneric.svg");
 }
 
 .addon-view[type="dictionary"] .icon {
@@ -694,8 +685,18 @@ button.warning {
   margin: 8px 4px;
   max-width: 664px;
   /* The .addon-control element on the end has 4px of margin, remove it
-   * from the padding to stay balanced. */
-  padding-inline-end: 12px;
+   * from the padding to stay balanced (also the 1px border for high-contrast). */
+  padding-inline-end: calc(var(--card-padding) - 5px);
+}
+
+.list:focus > .addon[selected] {
+  /* Needed for high-contrast where the border will appear. */
+  border: 2px solid transparent;
+  /* Remove the border from the overall padding. */
+  padding: calc(var(--card-padding) - 2px);
+  /* The .addon-control element on the end has 4px of margin, remove it
+   * from the padding to stay balanced (also the 2px border). */
+  padding-inline-end: calc(var(--card-padding) - 6px);
 }
 
 .addon-detail.card:hover {
@@ -739,23 +740,13 @@ button.warning {
 }
 
 #detail-contrib-btn {
-  color: var(--in-content-selected-text);
-  text-shadow: none;
-  border: 1px solid transparent;
-  list-style-image: url("chrome://mozapps/skin/extensions/heart.png");
-  background-color: var(--in-content-primary-button-background);
+  -moz-context-properties: fill;
+  fill: currentColor;
+  list-style-image: url("chrome://global/skin/icons/heart.svg");
 }
 
 #detail-contrib-btn .button-icon {
   margin-inline-end: 5px;
-}
-
-#detail-contrib-btn:not(:active):hover {
-  background-color: var(--in-content-primary-button-background-hover);
-}
-
-#detail-contrib-btn:active:hover {
-  background-color: var(--in-content-primary-button-background-active);
 }
 
 #detail-grid {
@@ -852,6 +843,7 @@ button.warning {
 }
 
 .download-progress .progress {
+  -moz-box-flex: 1;
   -moz-appearance: none;
   background-color: transparent;
   padding: 0;
@@ -980,23 +972,6 @@ button.button-link:not([disabled="true"]):active:hover {
   background-color: transparent;
   color: #0A84FF;
   text-decoration: none;
-}
-
-.addon-control.replacement {
-  background-color: var(--in-content-primary-button-background);
-  border-color: var(--in-content-primary-button-background);
-  color: var(--in-content-selected-text);
-}
-
-.addon-control.replacement:active,
-.addon-control.replacement:hover {
-  background-color: var(--in-content-primary-button-background-hover);
-  border-color: var(--in-content-primary-button-background-hover);
-}
-
-.addon-control.replacement:active:hover {
-  background-color: var(--in-content-primary-button-background-active);
-  border-color: var(--in-content-primary-button-background-active);
 }
 
 /*** telemetry experiments ***/

@@ -1,4 +1,4 @@
-/* -*- Mode: ObjC; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+/* -*- Mode: ObjC; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
  * ***** BEGIN LICENSE BLOCK *****
  * Version: BSD
  *
@@ -1128,7 +1128,7 @@ gfxMacPlatformFontList::AddFamily(const nsACString& aFamilyName,
     table.Put(key, familyEntry);
 
     // check the bad underline blacklist
-    if (mBadUnderlineFamilyNames.Contains(key)) {
+    if (mBadUnderlineFamilyNames.ContainsSorted(key)) {
         familyEntry->SetBadUnderlineFamily();
     }
 }

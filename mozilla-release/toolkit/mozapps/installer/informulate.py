@@ -41,6 +41,104 @@ def main():
         json.dump(all_key_value_pairs, f, indent=2, sort_keys=True)
         f.write('\n')
 
+<<<<<<< HEAD
+||||||| merged common ancestors
+    with open(args.buildhub_json, 'wb') as f:
+        if args.installer and os.path.exists(args.installer):
+            package = args.installer
+        else:
+            package = args.package
+        build_time = datetime.datetime.strptime(build_id, '%Y%m%d%H%M%S')
+        st = os.stat(package)
+        mtime = datetime.datetime.fromtimestamp(st.st_mtime)
+        s = buildconfig.substs
+        record = {
+            'build': {
+                'id': build_id,
+                'date': build_time.isoformat() + 'Z',
+                'as': s['AS'],
+                'cc': s['CC'],
+                'cxx': s['CXX'],
+                'host': s['host_alias'],
+                'target': s['target_alias'],
+            },
+            'source': {
+                'product': s['MOZ_APP_NAME'],
+                'repository': s['MOZ_SOURCE_REPO'],
+                'tree': os.environ['MH_BRANCH'],
+                'revision': s['MOZ_SOURCE_CHANGESET'],
+            },
+            'target': {
+                'platform': args.pkg_platform,
+                'os': mozinfo.info['os'],
+                # This would be easier if the locale was specified at configure time.
+                'locale': os.environ.get('AB_CD', 'en-US'),
+                'version': s['MOZ_APP_VERSION'],
+                'channel': s['MOZ_UPDATE_CHANNEL'],
+            },
+            'download': {
+                # The release pipeline will update these keys.
+                'url': os.path.basename(package),
+                'mimetype': 'application/octet-stream',
+                'date': mtime.isoformat() + 'Z',
+                'size': st.st_size,
+            }
+        }
+        json.dump(record, f, indent=2, sort_keys=True)
+        f.write('\n')
+
+    with open(args.output_txt, 'wb') as f:
+        f.write('buildID={}\n'.format(build_id))
+
+=======
+    with open(args.buildhub_json, 'wb') as f:
+        if args.installer and os.path.exists(args.installer):
+            package = args.installer
+        else:
+            package = args.package
+        build_time = datetime.datetime.strptime(build_id, '%Y%m%d%H%M%S')
+        st = os.stat(package)
+        mtime = datetime.datetime.fromtimestamp(st.st_mtime)
+        s = buildconfig.substs
+        record = {
+            'build': {
+                'id': build_id,
+                'date': build_time.isoformat() + 'Z',
+                'as': s['AS'],
+                'cc': s['CC'],
+                'cxx': s['CXX'],
+                'host': s['host_alias'],
+                'target': s['target_alias'],
+            },
+            'source': {
+                'product': s['MOZ_APP_NAME'],
+                'repository': s['MOZ_SOURCE_REPO'],
+                'tree': os.environ['MH_BRANCH'],
+                'revision': s['MOZ_SOURCE_CHANGESET'],
+            },
+            'target': {
+                'platform': args.pkg_platform,
+                'os': mozinfo.info['os'],
+                # This would be easier if the locale was specified at configure time.
+                'locale': os.environ.get('AB_CD', 'en-US'),
+                'version': s['MOZ_APP_VERSION_DISPLAY'] or s['MOZ_APP_VERSION'],
+                'channel': s['MOZ_UPDATE_CHANNEL'],
+            },
+            'download': {
+                # The release pipeline will update these keys.
+                'url': os.path.basename(package),
+                'mimetype': 'application/octet-stream',
+                'date': mtime.isoformat() + 'Z',
+                'size': st.st_size,
+            }
+        }
+        json.dump(record, f, indent=2, sort_keys=True)
+        f.write('\n')
+
+    with open(args.output_txt, 'wb') as f:
+        f.write('buildID={}\n'.format(build_id))
+
+>>>>>>> origin/upstream-releases
 
 if __name__=="__main__":
     main()

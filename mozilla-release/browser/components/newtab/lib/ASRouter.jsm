@@ -26,6 +26,7 @@ ChromeUtils.defineModuleGetter(this, "QueryCache",
   "resource://activity-stream/lib/ASRouterTargeting.jsm");
 ChromeUtils.defineModuleGetter(this, "ASRouterTriggerListeners",
   "resource://activity-stream/lib/ASRouterTriggerListeners.jsm");
+ChromeUtils.import("resource:///modules/AttributionCode.jsm");
 
 const INCOMING_MESSAGE_NAME = "ASRouter:child-to-parent";
 const OUTGOING_MESSAGE_NAME = "ASRouter:parent-to-child";
@@ -42,6 +43,8 @@ const MAX_MESSAGE_LIFETIME_CAP = 100;
 
 const LOCAL_MESSAGE_PROVIDERS = {OnboardingMessageProvider, CFRMessageProvider, SnippetsTestMessageProvider};
 const STARTPAGE_VERSION = "6";
+
+const ADDONS_API_URL = "https://services.addons.mozilla.org/api/v3/addons/addon";
 
 const MessageLoaderUtils = {
   STARTPAGE_VERSION,
@@ -203,6 +206,10 @@ const MessageLoaderUtils = {
     if (!messages) {
       messages = [];
       Cu.reportError(new Error(`Tried to load messages for ${provider.id} but the result was not an Array.`));
+    }
+    // Filter out messages we temporarily want to exclude
+    if (provider.exclude && provider.exclude.length) {
+      messages = messages.filter(message => !provider.exclude.includes(message.id));
     }
     const lastUpdated = Date.now();
     return {
@@ -495,13 +502,31 @@ class _ASRouter {
     }
   }
 
-  _updateAdminState(target) {
+  /**
+   * Used by ASRouter Admin returns all ASRouterTargeting.Environment
+   * and ASRouter._getMessagesContext parameters and values
+   */
+  async getTargetingParameters(environment, localContext) {
+    const targetingParameters = {};
+    for (const param of Object.keys(environment)) {
+      targetingParameters[param] = await environment[param];
+    }
+    for (const param of Object.keys(localContext)) {
+      targetingParameters[param] = await localContext[param];
+    }
+
+    return targetingParameters;
+  }
+
+  async _updateAdminState(target) {
     const channel = target || this.messageChannel;
     channel.sendAsyncMessage(OUTGOING_MESSAGE_NAME, {
       type: "ADMIN_SET_STATE",
       data: {
         ...this.state,
         providerPrefs: ASRouterPreferences.providers,
+        userPrefs: ASRouterPreferences.getAllUserPreferences(),
+        targetingParameters: await this.getTargetingParameters(ASRouterTargeting.Environment, this._getMessagesContext()),
       },
     });
   }
@@ -535,6 +560,18 @@ class _ASRouter {
      // Find a message that matches the targeting context as well as the trigger context (if one is provided)
      // If no trigger is provided, we should find a message WITHOUT a trigger property defined.
     return ASRouterTargeting.findMatchingMessage({messages, trigger, context, onError: this._handleTargetingError});
+  }
+
+  async evaluateExpression(target, {expression, context}) {
+    const channel = target || this.messageChannel;
+    let evaluationStatus;
+    try {
+      evaluationStatus = {result: await ASRouterTargeting.isMatch(expression, context), success: true};
+    } catch (e) {
+      evaluationStatus = {result: e.message, success: false};
+    }
+
+    channel.sendAsyncMessage(OUTGOING_MESSAGE_NAME, {type: "ADMIN_SET_STATE", data: {...this.state, evaluationStatus}});
   }
 
   _orderBundle(bundle) {
@@ -766,6 +803,25 @@ class _ASRouter {
     return impressions;
   }
 
+  async _fetchAddonInfo() {
+    let data = {};
+    const {content} = await AttributionCode.getAttrDataAsync();
+    if (!content) {
+      return data;
+    }
+    try {
+      const response = await fetch(`${ADDONS_API_URL}/${content}`);
+      if (response.status !== 204 && response.ok) {
+        const json = await response.json();
+        data.url = json.current_version.files[0].url;
+        data.iconURL = json.icon_url;
+      }
+    } catch (e) {
+      Cu.reportError("Failed to get the latest add-on version for Return to AMO");
+    }
+    return data;
+  }
+
   async sendNextMessage(target, trigger) {
     const msgs = this._getUnblockedMessages();
     let message = null;
@@ -775,6 +831,19 @@ class _ASRouter {
       [message] = previewMsgs;
     } else {
       message = await this._findMessage(msgs, trigger);
+    }
+
+    // We need some addon info if we are showing return to amo overlay, so fetch
+    // that, and update the message accordingly
+    if (message && message.template === "return_to_amo_overlay") {
+      const {url, iconURL} = await this._fetchAddonInfo();
+
+      // If we failed to get this info, we do not want to show this message
+      if (!url || !iconURL) {
+        return;
+      }
+      message.content.addon_icon = iconURL;
+      message.content.primary_button.action.data.url = url;
     }
 
     if (previewMsgs.length) {
@@ -891,6 +960,34 @@ class _ASRouter {
     }
   }
 
+  /**
+   * forceAttribution - this function should only be called from within about:newtab#asrouter.
+   * It forces the browser attribution to be set to something specified in asrouter admin
+   * tools, and reloads the providers in order to get messages that are dependant on this
+   * attribution data (see Return to AMO flow in bug 1475354 for example). Note - only works with OSX
+   * @param {data} Object an object containing the attribtion data that came from asrouter admin page
+   */
+  async forceAttribution(data) {
+    // Extract the parameters from data that will make up the referrer url
+    const {source, campaign, content} = data;
+    let appPath = Services.dirsvc.get("GreD", Ci.nsIFile).parent.parent.path;
+    let attributionSvc = Cc["@mozilla.org/mac-attribution;1"]
+                            .getService(Ci.nsIMacAttributionService);
+
+    let referrer = `https://www.mozilla.org/anything/?utm_campaign=${campaign}&utm_source=${source}&utm_content=${encodeURIComponent(content)}`;
+
+    // This sets the Attribution to be the referrer
+    attributionSvc.setReferrerUrl(appPath, referrer, true);
+    let env = Cc["@mozilla.org/process/environment;1"].getService(Ci.nsIEnvironment);
+    env.set("XPCSHELL_TEST_PROFILE_DIR", "testing");
+
+    // Clear and refresh Attribution, and then fetch the messages again to update
+    AttributionCode._clearCache();
+    AttributionCode.getAttrDataAsync();
+    this._updateMessageProviders();
+    await this.loadMessagesFromAllProviders();
+  }
+
   async handleUserAction({data: action, target}) {
     switch (action.type) {
       case ra.OPEN_PRIVATE_BROWSER_WINDOW:
@@ -898,7 +995,7 @@ class _ASRouter {
         target.browser.ownerGlobal.OpenBrowserWindow({private: true});
         break;
       case ra.OPEN_URL:
-        target.browser.ownerGlobal.openLinkIn(action.data.args, "tabshifted", {
+        target.browser.ownerGlobal.openLinkIn(action.data.args, action.data.where || "current", {
           private: false,
           triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}),
         });
@@ -918,7 +1015,7 @@ class _ASRouter {
       case ra.SHOW_FIREFOX_ACCOUNTS:
         const url = await FxAccounts.config.promiseSignUpURI("snippets");
         // We want to replace the current tab.
-        target.browser.ownerGlobal.openLinkIn(url, "tabshifted", {
+        target.browser.ownerGlobal.openLinkIn(url, "current", {
           private: false,
           triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}),
         });
@@ -964,6 +1061,9 @@ class _ASRouter {
         await this.blockProviderById(action.data.id);
         this.messageChannel.sendAsyncMessage(OUTGOING_MESSAGE_NAME, {type: "CLEAR_PROVIDER", data: {id: action.data.id}});
         break;
+      case "DISMISS_BUNDLE":
+        this.messageChannel.sendAsyncMessage(OUTGOING_MESSAGE_NAME, {type: "CLEAR_BUNDLE"});
+        break;
       case "BLOCK_BUNDLE":
         await this.blockMessageById(action.data.bundle.map(b => b.id));
         this.messageChannel.sendAsyncMessage(OUTGOING_MESSAGE_NAME, {type: "CLEAR_BUNDLE"});
@@ -1004,7 +1104,7 @@ class _ASRouter {
           this._addPreviewEndpoint(action.data.endpoint.url, target.portID);
           await this.loadMessagesFromAllProviders();
         } else {
-          this._updateAdminState(target);
+          await this._updateAdminState(target);
         }
         break;
       case "IMPRESSION":
@@ -1027,6 +1127,14 @@ class _ASRouter {
       case "RESET_PROVIDER_PREF":
         ASRouterPreferences.resetProviderPref();
         break;
+      case "SET_PROVIDER_USER_PREF":
+        ASRouterPreferences.setUserPreference(action.data.id, action.data.value);
+        break;
+      case "EVALUATE_JEXL_EXPRESSION":
+        this.evaluateExpression(target, action.data);
+        break;
+      case "FORCE_ATTRIBUTION":
+        this.forceAttribution(action.data);
     }
   }
 }

@@ -11,14 +11,15 @@ const gAppRep = Cc["@mozilla.org/reputationservice/application-reputation-servic
                   getService(Ci.nsIApplicationReputationService);
 var gHttpServ = null;
 var gTables = {};
-
-var ALLOW_LIST = 0;
-var BLOCK_LIST = 1;
-var NO_LIST = 2;
+var gExpectedRemote = false;
+var gExpectedRemoteRequestBody = "";
 
 var whitelistedURI = createURI("http://foo:bar@whitelisted.com/index.htm#junk");
 var exampleURI = createURI("http://user:password@example.com/i.html?foo=bar");
+var exampleReferrerURI = createURI("http://user:password@example.referrer.com/i.html?foo=bar");
+var exampleRedirectURI = createURI("http://user:password@example.redirect.com/i.html?foo=bar");
 var blocklistedURI = createURI("http://baz:qux@blocklisted.com?xyzzy");
+
 var binaryFile = "binaryFile.exe";
 var nonBinaryFile = "nonBinaryFile.txt";
 
@@ -88,7 +89,13 @@ add_task(async function test_setup() {
   gHttpServ = new HttpServer();
   gHttpServ.registerDirectory("/", do_get_cwd());
   gHttpServ.registerPathHandler("/download", function(request, response) {
-    do_throw("This test should never make a remote lookup");
+    if (gExpectedRemote) {
+      let body = NetUtil.readInputStreamToString(request.bodyInputStream,
+                                                 request.bodyInputStream.available());
+      Assert.equal(gExpectedRemoteRequestBody, body);
+    } else {
+      do_throw("This test should never make a remote lookup");
+    }
   });
   gHttpServ.start(4444);
 
@@ -101,51 +108,24 @@ add_task(async function test_setup() {
   });
 });
 
-function check_telemetry(aShouldBlockCount,
-                         aListCounts) {
-  let local = Services.telemetry
-                      .getHistogramById("APPLICATION_REPUTATION_LOCAL")
-                      .snapshot();
-  Assert.equal(local.counts[ALLOW_LIST], aListCounts[ALLOW_LIST],
-               "Allow list counts don't match");
-  Assert.equal(local.counts[BLOCK_LIST], aListCounts[BLOCK_LIST],
-               "Block list counts don't match");
-  Assert.equal(local.counts[NO_LIST], aListCounts[NO_LIST],
-               "No list counts don't match");
-
-  let shouldBlock = Services.telemetry
-                            .getHistogramById("APPLICATION_REPUTATION_SHOULD_BLOCK")
-                            .snapshot();
-  // SHOULD_BLOCK = true
-  Assert.equal(shouldBlock.counts[1], aShouldBlockCount);
-}
-
-function get_telemetry_counts() {
-  let local = Services.telemetry
-                      .getHistogramById("APPLICATION_REPUTATION_LOCAL")
-                      .snapshot();
-  let shouldBlock = Services.telemetry
-                            .getHistogramById("APPLICATION_REPUTATION_SHOULD_BLOCK")
-                            .snapshot();
-  return { shouldBlock: shouldBlock.counts[1],
-           listCounts: local.counts };
-}
-
 add_test(function test_nullSourceURI() {
-  let counts = get_telemetry_counts();
+  let expected = get_telemetry_snapshot();
+  add_telemetry_count(expected.reason, InternalError, 1);
+
   gAppRep.queryReputation({
     // No source URI
     fileSize: 12,
   }, function onComplete(aShouldBlock, aStatus) {
     Assert.equal(Cr.NS_ERROR_UNEXPECTED, aStatus);
     Assert.ok(!aShouldBlock);
-    check_telemetry(counts.shouldBlock, counts.listCounts);
+    check_telemetry(expected);
     run_next_test();
   });
 });
 
 add_test(function test_nullCallback() {
-  let counts = get_telemetry_counts();
+  let expected = get_telemetry_snapshot();
+
   try {
     gAppRep.queryReputation({
       sourceURI: createURI("http://example.com"),
@@ -156,7 +136,7 @@ add_test(function test_nullCallback() {
     if (ex.result != Cr.NS_ERROR_INVALID_POINTER)
       throw ex;
     // We don't even increment the count here, because there's no callback.
-    check_telemetry(counts.shouldBlock, counts.listCounts);
+    check_telemetry(expected);
     run_next_test();
   }
 });
@@ -215,16 +195,17 @@ add_test(function test_local_list() {
 add_test(function test_unlisted() {
   Services.prefs.setCharPref(appRepURLPref,
                              "http://localhost:4444/download");
-  let counts = get_telemetry_counts();
-  let listCounts = counts.listCounts;
-  listCounts[NO_LIST]++;
+  let expected = get_telemetry_snapshot();
+  add_telemetry_count(expected.local, NO_LIST, 1);
+  add_telemetry_count(expected.reason, NonBinaryFile, 1);
+
   gAppRep.queryReputation({
     sourceURI: exampleURI,
     fileSize: 12,
   }, function onComplete(aShouldBlock, aStatus) {
     Assert.equal(Cr.NS_OK, aStatus);
     Assert.ok(!aShouldBlock);
-    check_telemetry(counts.shouldBlock, listCounts);
+    check_telemetry(expected);
     run_next_test();
   });
 });
@@ -232,8 +213,9 @@ add_test(function test_unlisted() {
 add_test(function test_non_uri() {
   Services.prefs.setCharPref(appRepURLPref,
                              "http://localhost:4444/download");
-  let counts = get_telemetry_counts();
-  let listCounts = counts.listCounts;
+  let expected = get_telemetry_snapshot();
+  add_telemetry_count(expected.reason, NonBinaryFile, 1);
+
   // No listcount is incremented, since the sourceURI is not an nsIURL
   let source = NetUtil.newURI("data:application/octet-stream,ABC");
   Assert.equal(false, source instanceof Ci.nsIURL);
@@ -243,7 +225,7 @@ add_test(function test_non_uri() {
   }, function onComplete(aShouldBlock, aStatus) {
     Assert.equal(Cr.NS_OK, aStatus);
     Assert.ok(!aShouldBlock);
-    check_telemetry(counts.shouldBlock, listCounts);
+    check_telemetry(expected);
     run_next_test();
   });
 });
@@ -251,16 +233,19 @@ add_test(function test_non_uri() {
 add_test(function test_local_blacklist() {
   Services.prefs.setCharPref(appRepURLPref,
                              "http://localhost:4444/download");
-  let counts = get_telemetry_counts();
-  let listCounts = counts.listCounts;
-  listCounts[BLOCK_LIST]++;
+  let expected = get_telemetry_snapshot();
+  expected.shouldBlock++;
+  add_telemetry_count(expected.local, BLOCK_LIST, 1);
+  add_telemetry_count(expected.reason, LocalBlocklist, 1);
+
   gAppRep.queryReputation({
     sourceURI: blocklistedURI,
     fileSize: 12,
   }, function onComplete(aShouldBlock, aStatus) {
     Assert.equal(Cr.NS_OK, aStatus);
     Assert.ok(aShouldBlock);
-    check_telemetry(counts.shouldBlock + 1, listCounts);
+    check_telemetry(expected);
+
     run_next_test();
   });
 });
@@ -268,10 +253,12 @@ add_test(function test_local_blacklist() {
 add_test(function test_referer_blacklist() {
   Services.prefs.setCharPref(appRepURLPref,
                              "http://localhost:4444/download");
-  let counts = get_telemetry_counts();
-  let listCounts = counts.listCounts;
-  listCounts[BLOCK_LIST]++;
-  listCounts[NO_LIST]++;
+  let expected = get_telemetry_snapshot();
+  expected.shouldBlock++;
+  add_telemetry_count(expected.local, BLOCK_LIST, 1);
+  add_telemetry_count(expected.local, NO_LIST, 1);
+  add_telemetry_count(expected.reason, LocalBlocklist, 1);
+
   gAppRep.queryReputation({
     sourceURI: exampleURI,
     referrerURI: blocklistedURI,
@@ -279,7 +266,8 @@ add_test(function test_referer_blacklist() {
   }, function onComplete(aShouldBlock, aStatus) {
     Assert.equal(Cr.NS_OK, aStatus);
     Assert.ok(aShouldBlock);
-    check_telemetry(counts.shouldBlock + 1, listCounts);
+    check_telemetry(expected);
+
     run_next_test();
   });
 });
@@ -287,10 +275,12 @@ add_test(function test_referer_blacklist() {
 add_test(function test_blocklist_trumps_allowlist() {
   Services.prefs.setCharPref(appRepURLPref,
                              "http://localhost:4444/download");
-  let counts = get_telemetry_counts();
-  let listCounts = counts.listCounts;
-  listCounts[BLOCK_LIST]++;
-  listCounts[ALLOW_LIST]++;
+  let expected = get_telemetry_snapshot();
+  expected.shouldBlock++;
+  add_telemetry_count(expected.local, BLOCK_LIST, 1);
+  add_telemetry_count(expected.local, ALLOW_LIST, 1);
+  add_telemetry_count(expected.reason, LocalBlocklist, 1);
+
   gAppRep.queryReputation({
     sourceURI: whitelistedURI,
     referrerURI: blocklistedURI,
@@ -299,7 +289,8 @@ add_test(function test_blocklist_trumps_allowlist() {
   }, function onComplete(aShouldBlock, aStatus) {
     Assert.equal(Cr.NS_OK, aStatus);
     Assert.ok(aShouldBlock);
-    check_telemetry(counts.shouldBlock + 1, listCounts);
+    check_telemetry(expected);
+
     run_next_test();
   });
 });
@@ -307,11 +298,12 @@ add_test(function test_blocklist_trumps_allowlist() {
 add_test(function test_redirect_on_blocklist() {
   Services.prefs.setCharPref(appRepURLPref,
                              "http://localhost:4444/download");
-  let counts = get_telemetry_counts();
-  let listCounts = counts.listCounts;
-  listCounts[BLOCK_LIST]++;
-  listCounts[ALLOW_LIST]++;
-  listCounts[NO_LIST]++;
+  let expected = get_telemetry_snapshot();
+  expected.shouldBlock++;
+  add_telemetry_count(expected.local, BLOCK_LIST, 1);
+  add_telemetry_count(expected.local, ALLOW_LIST, 1);
+  add_telemetry_count(expected.local, NO_LIST, 1);
+  add_telemetry_count(expected.reason, LocalBlocklist, 1);
   let secman = Services.scriptSecurityManager;
   let badRedirects = Cc["@mozilla.org/array;1"]
                        .createInstance(Ci.nsIMutableArray);
@@ -345,7 +337,7 @@ add_test(function test_redirect_on_blocklist() {
   }, function onComplete(aShouldBlock, aStatus) {
     Assert.equal(Cr.NS_OK, aStatus);
     Assert.ok(aShouldBlock);
-    check_telemetry(counts.shouldBlock + 1, listCounts);
+    check_telemetry(expected);
     run_next_test();
   });
 });
@@ -353,9 +345,9 @@ add_test(function test_redirect_on_blocklist() {
 add_test(function test_whitelisted_source() {
   Services.prefs.setCharPref(appRepURLPref,
                              "http://localhost:4444/download");
-  let counts = get_telemetry_counts();
-  let listCounts = counts.listCounts;
-  listCounts[ALLOW_LIST]++;
+  let expected = get_telemetry_snapshot();
+  add_telemetry_count(expected.local, ALLOW_LIST, 1);
+  add_telemetry_count(expected.reason, LocalWhitelist, 1);
   gAppRep.queryReputation({
     sourceURI: whitelistedURI,
     suggestedFileName: binaryFile,
@@ -363,7 +355,7 @@ add_test(function test_whitelisted_source() {
   }, function onComplete(aShouldBlock, aStatus) {
     Assert.equal(Cr.NS_OK, aStatus);
     Assert.ok(!aShouldBlock);
-    check_telemetry(counts.shouldBlock, listCounts);
+    check_telemetry(expected);
     run_next_test();
   });
 });
@@ -371,9 +363,9 @@ add_test(function test_whitelisted_source() {
 add_test(function test_whitelisted_non_binary_source() {
   Services.prefs.setCharPref(appRepURLPref,
                              "http://localhost:4444/download");
-  let counts = get_telemetry_counts();
-  let listCounts = counts.listCounts;
-  listCounts[NO_LIST]++;
+  let expected = get_telemetry_snapshot();
+  add_telemetry_count(expected.local, NO_LIST, 1);
+  add_telemetry_count(expected.reason, NonBinaryFile, 1);
   gAppRep.queryReputation({
     sourceURI: whitelistedURI,
     suggestedFileName: nonBinaryFile,
@@ -381,7 +373,7 @@ add_test(function test_whitelisted_non_binary_source() {
   }, function onComplete(aShouldBlock, aStatus) {
     Assert.equal(Cr.NS_OK, aStatus);
     Assert.ok(!aShouldBlock);
-    check_telemetry(counts.shouldBlock, listCounts);
+    check_telemetry(expected);
     run_next_test();
   });
 });
@@ -389,9 +381,9 @@ add_test(function test_whitelisted_non_binary_source() {
 add_test(function test_whitelisted_referrer() {
   Services.prefs.setCharPref(appRepURLPref,
                              "http://localhost:4444/download");
-  let counts = get_telemetry_counts();
-  let listCounts = counts.listCounts;
-  listCounts[NO_LIST] += 2;
+  let expected = get_telemetry_snapshot();
+  add_telemetry_count(expected.local, NO_LIST, 2);
+  add_telemetry_count(expected.reason, NonBinaryFile, 1);
   gAppRep.queryReputation({
     sourceURI: exampleURI,
     referrerURI: whitelistedURI,
@@ -399,7 +391,7 @@ add_test(function test_whitelisted_referrer() {
   }, function onComplete(aShouldBlock, aStatus) {
     Assert.equal(Cr.NS_OK, aStatus);
     Assert.ok(!aShouldBlock);
-    check_telemetry(counts.shouldBlock, listCounts);
+    check_telemetry(expected);
     run_next_test();
   });
 });
@@ -407,9 +399,9 @@ add_test(function test_whitelisted_referrer() {
 add_test(function test_whitelisted_redirect() {
   Services.prefs.setCharPref(appRepURLPref,
                              "http://localhost:4444/download");
-  let counts = get_telemetry_counts();
-  let listCounts = counts.listCounts;
-  listCounts[NO_LIST] += 3;
+  let expected = get_telemetry_snapshot();
+  add_telemetry_count(expected.local, NO_LIST, 3);
+  add_telemetry_count(expected.reason, NonBinaryFile, 1);
   let secman = Services.scriptSecurityManager;
   let okayRedirects = Cc["@mozilla.org/array;1"]
                        .createInstance(Ci.nsIMutableArray);
@@ -435,7 +427,50 @@ add_test(function test_whitelisted_redirect() {
   }, function onComplete(aShouldBlock, aStatus) {
     Assert.equal(Cr.NS_OK, aStatus);
     Assert.ok(!aShouldBlock);
-    check_telemetry(counts.shouldBlock, listCounts);
+    check_telemetry(expected);
+    run_next_test();
+  });
+});
+
+add_test(function test_remote_lookup_protocolbuf() {
+  // This long hard-coded string is the contents of the request generated by
+  // the Application Reputation component, converted to the binary protobuf format.
+  // If this test is changed, or we add anything to the remote lookup requests
+  // in ApplicationReputation.cpp, then we'll need to update this hard-coded string.
+  gExpectedRemote = true;
+  gExpectedRemoteRequestBody = "\x0A\x19\x68\x74\x74\x70\x3A\x2F\x2F\x65\x78\x61\x6D\x70\x6C\x65\x2E\x63\x6F\x6D\x2F\x69\x2E\x68\x74\x6D\x6C\x12\x22\x0A\x20\x61\x62\x63\x00\x64\x65\x64\x65\x64\x65\x64\x65\x64\x65\x64\x65\x64\x65\x64\x65\x64\x65\x64\x65\x64\x65\x64\x65\x64\x65\x64\x65\x18\x0C\x22\x41\x0A\x19\x68\x74\x74\x70\x3A\x2F\x2F\x65\x78\x61\x6D\x70\x6C\x65\x2E\x63\x6F\x6D\x2F\x69\x2E\x68\x74\x6D\x6C\x10\x00\x22\x22\x68\x74\x74\x70\x3A\x2F\x2F\x65\x78\x61\x6D\x70\x6C\x65\x2E\x72\x65\x66\x65\x72\x72\x65\x72\x2E\x63\x6F\x6D\x2F\x69\x2E\x68\x74\x6D\x6C\x22\x26\x0A\x22\x68\x74\x74\x70\x3A\x2F\x2F\x65\x78\x61\x6D\x70\x6C\x65\x2E\x72\x65\x64\x69\x72\x65\x63\x74\x2E\x63\x6F\x6D\x2F\x69\x2E\x68\x74\x6D\x6C\x10\x01\x30\x01\x4A\x0E\x62\x69\x6E\x61\x72\x79\x46\x69\x6C\x65\x2E\x65\x78\x65\x50\x00\x5A\x05\x65\x6E\x2D\x55\x53";
+  Services.prefs.setCharPref(appRepURLPref,
+                             "http://localhost:4444/download");
+  let secman = Services.scriptSecurityManager;
+  let expected = get_telemetry_snapshot();
+  add_telemetry_count(expected.local, NO_LIST, 3);
+  add_telemetry_count(expected.reason, VerdictSafe, 1);
+
+  // Redirects
+  let redirects = Cc["@mozilla.org/array;1"]
+                     .createInstance(Ci.nsIMutableArray);
+  let redirect1 = {
+    QueryInterface: ChromeUtils.generateQI([Ci.nsIRedirectHistoryEntry]),
+    principal: secman.createCodebasePrincipal(exampleRedirectURI, {}),
+  };
+  redirects.appendElement(redirect1);
+
+  // Insert null(\x00) in the middle of the hash to test we won't truncate it.
+  let sha256Hash = "abc\x00" + "de".repeat(14);
+
+  gAppRep.queryReputation({
+    sourceURI: exampleURI,
+    referrerURI: exampleReferrerURI,
+    suggestedFileName: binaryFile,
+    sha256Hash,
+    redirects,
+    fileSize: 12,
+  }, function onComplete(aShouldBlock, aStatus) {
+    Assert.equal(Cr.NS_OK, aStatus);
+    Assert.ok(!aShouldBlock);
+    check_telemetry(expected);
+
+    gExpectedRemote = false;
     run_next_test();
   });
 });

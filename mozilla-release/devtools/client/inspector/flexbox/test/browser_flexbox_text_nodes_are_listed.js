@@ -15,11 +15,11 @@ add_task(async function() {
 
   // Select the flex container in the inspector.
   const onItemsListRendered = waitForDOM(doc,
-    "#layout-flexbox-container .flex-item-list");
+    ".layout-flexbox-wrapper .flex-item-list");
   await selectNode(".container", inspector);
   const [flexItemList] = await onItemsListRendered;
 
-  const items = [...flexItemList.querySelectorAll("li")];
+  const items = [...flexItemList.querySelectorAll("button .objectBox")];
   is(items.length, 3, "There are 3 items displayed in the list");
 
   is(items[0].textContent, "#text", "The first item is a text node");

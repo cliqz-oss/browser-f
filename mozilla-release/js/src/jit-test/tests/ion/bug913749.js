@@ -14,7 +14,7 @@ y = undefined;
 // variations on the theme.
 var variations = [
     `y is undefined`,
-    `can't access property "length" of undefined` ,
+    `can't access property "length" of undefined`,
     `undefined has no properties`,
 ];
 

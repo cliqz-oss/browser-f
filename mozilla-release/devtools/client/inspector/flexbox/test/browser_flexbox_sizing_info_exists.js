@@ -6,7 +6,7 @@
 
 // Test that the flex item sizing information exists when a flex item is selected.
 
-const TEST_URI = URL_ROOT + "doc_flexbox_simple.html";
+const TEST_URI = URL_ROOT + "doc_flexbox_specific_cases.html";
 
 add_task(async function() {
   await addTab(TEST_URI);
@@ -25,8 +25,9 @@ add_task(async function() {
   info("Check that the base, flexibility and final sizes are displayed");
   const allSections = [...flexSizingContainer.querySelectorAll(".section .name")];
   const allSectionTitles = allSections.map(el => el.textContent);
-  const expectedTitles = ["Base Size", "Flexibility", "Final Size"];
 
-  ok(expectedTitles.every(title => allSectionTitles.includes(title)),
-     "The 3 main sizing sections where found");
+  ["Base Size", "Flexibility", "Final Size"].forEach((expectedTitle, i) => {
+    ok(allSectionTitles[i].includes(expectedTitle),
+       `Sizing section #${i + 1} (${expectedTitle}) was found`);
+  });
 });

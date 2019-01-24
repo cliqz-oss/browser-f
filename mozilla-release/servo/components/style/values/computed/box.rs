@@ -1,19 +1,21 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Computed types for box properties.
 
-use values::computed::{Context, Number, ToComputedValue};
-use values::computed::length::{LengthOrPercentage, NonNegativeLength};
-use values::generics::box_::AnimationIterationCount as GenericAnimationIterationCount;
-use values::generics::box_::Perspective as GenericPerspective;
-use values::generics::box_::VerticalAlign as GenericVerticalAlign;
-use values::specified::box_ as specified;
+use crate::values::computed::length::{LengthOrPercentage, NonNegativeLength};
+use crate::values::computed::{Context, Number, ToComputedValue};
+use crate::values::generics::box_::AnimationIterationCount as GenericAnimationIterationCount;
+use crate::values::generics::box_::Perspective as GenericPerspective;
+use crate::values::generics::box_::VerticalAlign as GenericVerticalAlign;
+use crate::values::specified::box_ as specified;
 
-pub use values::specified::box_::{AnimationName, Appearance, Contain, Display, OverflowClipBox};
-pub use values::specified::box_::{Clear as SpecifiedClear, Float as SpecifiedFloat};
-pub use values::specified::box_::{OverscrollBehavior, ScrollSnapType, TouchAction, TransitionProperty, WillChange};
+pub use crate::values::specified::box_::{AnimationName, Appearance, BreakBetween, BreakWithin};
+pub use crate::values::specified::box_::{Clear as SpecifiedClear, Float as SpecifiedFloat};
+pub use crate::values::specified::box_::{Contain, Display, OverflowClipBox};
+pub use crate::values::specified::box_::{OverscrollBehavior, ScrollSnapType};
+pub use crate::values::specified::box_::{TouchAction, TransitionProperty, WillChange};
 
 /// A computed value for the `vertical-align` property.
 pub type VerticalAlign = GenericVerticalAlign<LengthOrPercentage>;
@@ -37,6 +39,7 @@ pub type Perspective = GenericPerspective<NonNegativeLength>;
 #[derive(
     Clone, Copy, Debug, Eq, Hash, MallocSizeOf, Parse, PartialEq, SpecifiedValueInfo, ToCss,
 )]
+#[repr(u8)]
 /// A computed value for the `float` property.
 pub enum Float {
     Left,
@@ -155,6 +158,7 @@ impl ToComputedValue for SpecifiedClear {
 #[allow(missing_docs)]
 #[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
 #[derive(Clone, Copy, Debug, Eq, Hash, MallocSizeOf, Parse, PartialEq, ToCss)]
+#[repr(u8)]
 pub enum Resize {
     None,
     Both,

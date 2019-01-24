@@ -7,13 +7,11 @@ add_task(async function() {
   await SpecialPowers.pushPrefEnv({"set": [
     ["browser.contentblocking.allowlist.annotations.enabled", true],
     ["browser.contentblocking.allowlist.storage.enabled", true],
-    ["browser.contentblocking.enabled", true],
-    ["browser.contentblocking.ui.enabled", true],
-    ["browser.fastblock.enabled", false],
     ["network.cookie.cookieBehavior", Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER],
     ["privacy.trackingprotection.enabled", false],
     ["privacy.trackingprotection.pbmode.enabled", false],
     ["privacy.trackingprotection.annotate_channels", true],
+    ["privacy.restrict3rdpartystorage.userInteractionRequiredForHosts", "tracking.example.com,tracking.example.org"],
   ]});
 
   await UrlClassifierTestUtils.addTestTrackers();
@@ -157,6 +155,44 @@ add_task(async function() {
     .then(text => {
       is(text, 1, "One cookie received received for scripts.");
     });
+
+  let expectTrackerBlocked = (item, blocked) => {
+    is(item[0], Ci.nsIWebProgressListener.STATE_COOKIES_BLOCKED_TRACKER,
+       "Correct blocking type reported");
+    is(item[1], blocked,
+       "Correct blocking status reported");
+    ok(item[2] >= 1,
+       "Correct repeat count reported");
+  };
+
+  let expectTrackerFound = item => {
+    is(item[0], Ci.nsIWebProgressListener.STATE_LOADED_TRACKING_CONTENT,
+       "Correct blocking type reported");
+    is(item[1], true,
+       "Correct blocking status reported");
+    ok(item[2] >= 1,
+       "Correct repeat count reported");
+  };
+
+  let expectCookiesLoaded = item => {
+    is(item[0], Ci.nsIWebProgressListener.STATE_COOKIES_LOADED,
+       "Correct blocking type reported");
+    is(item[1], true,
+       "Correct blocking status reported");
+    ok(item[2] >= 1,
+       "Correct repeat count reported");
+  };
+
+  let log = JSON.parse(await browser.getContentBlockingLog());
+  for (let trackerOrigin in log) {
+    is(trackerOrigin + "/", TEST_3RD_PARTY_DOMAIN, "Correct tracker origin must be reported");
+    let originLog = log[trackerOrigin];
+    is(originLog.length, 4, "We should have 4 entries in the compressed log");
+    expectTrackerFound(originLog[0]);
+    expectCookiesLoaded(originLog[1]);
+    expectTrackerBlocked(originLog[2], true);
+    expectTrackerBlocked(originLog[3], false);
+  }
 
   info("Removing the tab");
   BrowserTestUtils.removeTab(tab);

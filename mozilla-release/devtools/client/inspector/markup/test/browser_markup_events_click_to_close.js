@@ -27,10 +27,12 @@ add_task(async function() {
   await inspector.markup.expandAll();
 
   const container1 = await getContainerForSelector("#d1", inspector);
-  const evHolder1 = container1.elt.querySelector(".markup-badge[data-event]");
+  const evHolder1 = container1.elt.querySelector(
+    ".inspector-badge.interactive[data-event]");
 
   const container2 = await getContainerForSelector("#d2", inspector);
-  const evHolder2 = container2.elt.querySelector(".markup-badge[data-event]");
+  const evHolder2 = container2.elt.querySelector(
+    ".inspector-badge.interactive[data-event]");
 
   const tooltip = inspector.markup.eventDetailsTooltip;
 
@@ -67,7 +69,7 @@ add_task(async function() {
   await onShown;
 
   info("Click on the computed view tab");
-  const onHighlighterHidden = toolbox.once("node-unhighlight");
+  const onHighlighterHidden = toolbox.highlighter.once("node-unhighlight");
   const onTabComputedViewSelected = inspector.sidebar.once("computedview-selected");
   const computedViewTab = inspector.panelDoc.querySelector("#computedview-tab");
   EventUtils.synthesizeMouseAtCenter(computedViewTab, {},

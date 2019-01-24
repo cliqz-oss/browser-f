@@ -4,9 +4,10 @@
 
 "use strict";
 
-const { PureComponent } = require("devtools/client/shared/vendor/react");
+const { createFactory, PureComponent } = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
+const Link = createFactory(require("devtools/client/shared/vendor/react-router-dom").Link);
 
 /**
  * This component is used as a wrapper by items in the sidebar.
@@ -14,20 +15,31 @@ const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 class SidebarItem extends PureComponent {
   static get propTypes() {
     return {
-      children: PropTypes.arrayOf(PropTypes.element).isRequired,
+      children: PropTypes.node.isRequired,
       className: PropTypes.string,
       isSelected: PropTypes.bool.isRequired,
-      selectable: PropTypes.bool.isRequired,
-      onSelect: PropTypes.func.isRequired,
+      to: PropTypes.string,
     };
   }
 
-  onItemClick() {
-    this.props.onSelect();
+  renderContent() {
+    const { children, to } = this.props;
+
+    if (to) {
+      return Link(
+        {
+          className: "sidebar-item__link js-sidebar-link",
+          to,
+        },
+        children
+      );
+    }
+
+    return children;
   }
 
   render() {
-    const {children, className, isSelected, selectable } = this.props;
+    const {className, isSelected, to } = this.props;
 
     return dom.li(
       {
@@ -37,10 +49,9 @@ class SidebarItem extends PureComponent {
                       " sidebar-item--selected js-sidebar-item-selected" :
                       ""
                    ) +
-                   (selectable ? " sidebar-item--selectable" : ""),
-        onClick: selectable ? () => this.onItemClick() : null,
+                   (to ? " sidebar-item--selectable" : ""),
       },
-      children
+      this.renderContent()
     );
   }
 }

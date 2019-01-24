@@ -100,18 +100,24 @@ class AddonsPanel extends Component {
   }
 
   updateAddonsList() {
+<<<<<<< HEAD
     // CLIQZ: filter and hide all system addon
    const AddonsDetails = new Set();
    const filteredExtensions = [];
     this.props.client.listAddons()
       .then(({addons}) => {
+||||||| merged common ancestors
+    this.props.client.listAddons()
+      .then(({addons}) => {
+=======
+    this.props.client.mainRoot.listAddons()
+      .then(addons => {
+>>>>>>> origin/upstream-releases
         const extensions = addons.filter(addon => addon.debuggable).map(addon => {
           AddonsDetails.add(AddonManager.getAddonByID(addon.id))
           return {
-            addonTargetActor: addon.actor,
+            addonTargetFront: addon,
             addonID: addon.id,
-            // Forward the whole addon actor form for potential remote debugging.
-            form: addon,
             icon: addon.iconURL || ExtensionIcon,
             isSystem: addon.isSystem,
             manifestURL: addon.manifestURL,
@@ -122,6 +128,7 @@ class AddonsPanel extends Component {
           };
         });
 
+<<<<<<< HEAD
         Promise.all(AddonsDetails).then( data => {
           if (Services.prefs.getPrefType("extensions.cliqz.listed")
             && Services.prefs.getBoolPref("extensions.cliqz.listed")) {
@@ -134,6 +141,14 @@ class AddonsPanel extends Component {
             this.setState({ extensions: filteredExtensions });
           }
         });
+||||||| merged common ancestors
+        this.setState({ extensions });
+=======
+        this.setState({ extensions });
+
+        const { AboutDebugging } = window;
+        AboutDebugging.emit("addons-updated");
+>>>>>>> origin/upstream-releases
       }, error => {
         throw new Error("Client error while listing addons: " + error);
       });

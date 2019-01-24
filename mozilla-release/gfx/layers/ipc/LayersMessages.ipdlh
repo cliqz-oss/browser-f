@@ -7,7 +7,6 @@
 
 include LayersSurfaces;
 include protocol PCompositorBridge;
-include protocol PRenderFrame;
 include protocol PTexture;
 
 include "gfxipc/ShadowLayerUtils.h";
@@ -20,6 +19,7 @@ using struct mozilla::gfx::Color from "mozilla/gfx/2D.h";
 using struct mozilla::gfx::Point3D from "mozilla/gfx/Point.h";
 using mozilla::gfx::IntPoint from "mozilla/gfx/Point.h";
 using class mozilla::gfx::Matrix4x4 from "mozilla/gfx/Matrix.h";
+using nscolor from "nsColor.h";
 using nscoord from "nsCoord.h";
 using struct nsRect from "nsRect.h";
 using struct nsPoint from "nsPoint.h";
@@ -43,9 +43,8 @@ using mozilla::layers::EventRegionsOverride from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::DiagnosticTypes from "mozilla/layers/CompositorTypes.h";
 using mozilla::layers::FocusTarget from "mozilla/layers/FocusTarget.h";
 using struct mozilla::layers::ScrollMetadata from "FrameMetrics.h";
-using mozilla::layers::FrameMetrics::ViewID from "FrameMetrics.h";
+using mozilla::layers::ScrollableLayerGuid::ViewID from "mozilla/layers/ScrollableLayerGuid.h";
 using mozilla::layers::LayersBackend from "mozilla/layers/LayersTypes.h";
-using mozilla::layers::MaybeLayerClip from "FrameMetrics.h";
 using mozilla::layers::LayerHandle from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::CompositableHandle from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::SimpleLayerAttributes from "mozilla/layers/LayerAttributes.h";
@@ -53,6 +52,7 @@ using mozilla::CrossProcessSemaphoreHandle from "mozilla/ipc/CrossProcessSemapho
 using struct mozilla::void_t from "ipc/IPCMessageUtils.h";
 using mozilla::layers::LayersId from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::TransactionId from "mozilla/layers/LayersTypes.h";
+using mozilla::VsyncId from "mozilla/VsyncDispatcher.h";
 
 namespace mozilla {
 namespace layers {
@@ -96,19 +96,13 @@ struct CubicBezierFunction {
 
 struct StepFunction {
   int steps;
-  // 1 = nsTimingFunction::StepStart, 2 = nsTimingFunction::StepEnd
-  int type;
-};
-
-struct FramesFunction {
-  int frames;
+  uint8_t type; // Converted from StyleStepPosition.
 };
 
 union TimingFunction {
   null_t;
   CubicBezierFunction;
   StepFunction;
-  FramesFunction;
 };
 
 // Send the angle with units rather than sending all angles in radians
@@ -168,6 +162,7 @@ union MaybeTimeDuration {
 union Animatable {
   null_t;
   float;
+  nscolor;
   TransformFunction[];
 };
 
@@ -560,8 +555,10 @@ struct TransactionInfo
   bool scheduleComposite;
   uint32_t paintSequenceNumber;
   bool isRepeatTransaction;
+  VsyncId vsyncId;
   TimeStamp refreshStart;
   TimeStamp transactionStart;
+  nsCString url;
   TimeStamp fwdTime;
 };
 
@@ -572,6 +569,7 @@ union MaybeTransform {
 
 union OMTAValue {
   null_t;
+  nscolor;
   float;
   Matrix4x4;
 };

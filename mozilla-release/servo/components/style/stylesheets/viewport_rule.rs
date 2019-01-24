@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! The [`@viewport`][at] at-rule and [`meta`][meta] element.
 //!
@@ -8,29 +8,29 @@
 //! [meta]: https://drafts.csswg.org/css-device-adapt/#viewport-meta
 
 use app_units::Au;
-use context::QuirksMode;
-use cssparser::{parse_important, AtRuleParser, DeclarationListParser, DeclarationParser, Parser};
+use crate::context::QuirksMode;
+use crate::error_reporting::ContextualParseError;
+use crate::font_metrics::get_metrics_provider_for_product;
+use crate::media_queries::Device;
+use crate::parser::ParserContext;
+use crate::properties::StyleBuilder;
+use crate::rule_cache::RuleCacheConditions;
+use crate::shared_lock::{SharedRwLockReadGuard, StylesheetGuards, ToCssWithGuard};
+use crate::str::CssStringWriter;
+use crate::stylesheets::{Origin, StylesheetInDocument};
+use crate::values::computed::{Context, ToComputedValue};
+use crate::values::specified::{LengthOrPercentageOrAuto, NoCalcLength, ViewportPercentageLength};
 use cssparser::CowRcStr;
-use error_reporting::ContextualParseError;
+use cssparser::{parse_important, AtRuleParser, DeclarationListParser, DeclarationParser, Parser};
 use euclid::TypedSize2D;
-use font_metrics::get_metrics_provider_for_product;
-use media_queries::Device;
-use parser::ParserContext;
-use properties::StyleBuilder;
-use rule_cache::RuleCacheConditions;
 use selectors::parser::SelectorParseErrorKind;
-use shared_lock::{SharedRwLockReadGuard, StylesheetGuards, ToCssWithGuard};
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fmt::{self, Write};
 use std::iter::Enumerate;
 use std::str::Chars;
-use str::CssStringWriter;
-use style_traits::{CssWriter, ParseError, PinchZoomFactor, StyleParseErrorKind, ToCss};
 use style_traits::viewport::{Orientation, UserZoom, ViewportConstraints, Zoom};
-use stylesheets::{Origin, StylesheetInDocument};
-use values::computed::{Context, ToComputedValue};
-use values::specified::{LengthOrPercentageOrAuto, NoCalcLength, ViewportPercentageLength};
+use style_traits::{CssWriter, ParseError, PinchZoomFactor, StyleParseErrorKind, ToCss};
 
 /// Whether parsing and processing of `@viewport` rules is enabled.
 #[cfg(feature = "servo")]

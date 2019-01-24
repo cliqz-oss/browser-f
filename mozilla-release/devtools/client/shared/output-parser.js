@@ -38,7 +38,6 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
 
 const FLEXBOX_HIGHLIGHTER_ENABLED_PREF = "devtools.inspector.flexboxHighlighter.enabled";
 const CSS_SHAPES_ENABLED_PREF = "devtools.inspector.shapesHighlighter.enabled";
-const CSS_SHAPE_OUTSIDE_ENABLED_PREF = "layout.css.shape-outside.enabled";
 
 /**
  * This module is used to process text for output by developer tools. This means
@@ -98,9 +97,7 @@ OutputParser.prototype = {
     options.expectCubicBezier = this.supportsType(name, CSS_TYPES.TIMING_FUNCTION);
     options.expectDisplay = name === "display";
     options.expectFilter = name === "filter";
-    options.expectShape = name === "clip-path" ||
-                          (name === "shape-outside"
-                           && Services.prefs.getBoolPref(CSS_SHAPE_OUTSIDE_ENABLED_PREF));
+    options.expectShape = name === "clip-path" || name === "shape-outside";
     options.expectFont = name === "font-family";
     options.supportsColor = this.supportsType(name, CSS_TYPES.COLOR) ||
                             this.supportsType(name, CSS_TYPES.GRADIENT);
@@ -1229,10 +1226,15 @@ OutputParser.prototype = {
         container.appendChild(swatch);
       }
 
-      if (options.defaultColorType) {
-        color = colorObj.toString();
-        container.dataset.color = color;
+      if (!options.defaultColorType) {
+        // If we're not being asked to convert the color to the default color type
+        // specified by the user, then force the CssColor instance to be set to the type
+        // of the current color.
+        // Not having a type means that the default color type will be automatically used.
+        colorObj.colorUnit = colorUtils.classifyColor(color);
       }
+      color = colorObj.toString();
+      container.dataset.color = color;
 
       const value = this._createNode("span", {
         class: options.colorClass,

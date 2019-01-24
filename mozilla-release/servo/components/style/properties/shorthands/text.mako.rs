@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 <%namespace name="helpers" file="/helpers.mako.rs" />
 
@@ -11,10 +11,10 @@
                     spec="https://drafts.csswg.org/css-text-decor/#propdef-text-decoration">
 
     % if product == "gecko":
-        use values::specified;
-        use properties::longhands::{text_decoration_line, text_decoration_style, text_decoration_color};
+        use crate::values::specified;
+        use crate::properties::longhands::{text_decoration_line, text_decoration_style, text_decoration_color};
     % else:
-        use properties::longhands::text_decoration_line;
+        use crate::properties::longhands::text_decoration_line;
     % endif
 
     pub fn parse_value<'i, 't>(

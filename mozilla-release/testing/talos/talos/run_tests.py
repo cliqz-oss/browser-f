@@ -244,12 +244,8 @@ def run_tests(config, browser_config):
 
         # install the generated CA certificate into Firefox
         # mitmproxy cert setup needs path to mozharness install; mozharness has set this
-        # value in the SCRIPTSPATH env var for us in mozharness/mozilla/testing/talos.py
-        scripts_path = os.environ.get('SCRIPTSPATH')
-        LOG.info('scripts_path: %s' % str(scripts_path))
         mitmproxy.install_mitmproxy_cert(mitmproxy_proc,
-                                         browser_config['browser_path'],
-                                         str(scripts_path))
+                                         browser_config['browser_path'])
 
     testname = None
 
@@ -339,8 +335,8 @@ def run_tests(config, browser_config):
     # when running talos locally with gecko profiling on, use the view-gecko-profile
     # tool to automatically load the latest gecko profile in perf-html.io
     if config['gecko_profile'] and browser_config['develop']:
-        if os.environ.get('TALOS_DISABLE_PROFILE_LAUNCH', '0') == '1':
-            LOG.info("Not launching perf-html.io because TALOS_DISABLE_PROFILE_LAUNCH=1")
+        if os.environ.get('DISABLE_PROFILE_LAUNCH', '0') == '1':
+            LOG.info("Not launching perf-html.io because DISABLE_PROFILE_LAUNCH=1")
         else:
             view_gecko_profile(config['browser_path'])
 

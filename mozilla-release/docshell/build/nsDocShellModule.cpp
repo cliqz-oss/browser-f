@@ -42,9 +42,7 @@ using mozilla::dom::ContentHandlerService;
 static bool gInitialized = false;
 
 // The one time initialization for this module
-static nsresult
-Initialize()
-{
+static nsresult Initialize() {
   MOZ_ASSERT(!gInitialized, "docshell module already initialized");
   if (gInitialized) {
     return NS_OK;
@@ -58,16 +56,12 @@ Initialize()
   return NS_OK;
 }
 
-static void
-Shutdown()
-{
+static void Shutdown() {
   nsSHistory::Shutdown();
   nsSHEntryShared::Shutdown();
   gInitialized = false;
 }
 
-// docshell
-NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsDocShell, Init)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsDefaultURIFixup)
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsWebNavigationInfo, Init)
 
@@ -77,8 +71,8 @@ NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsDocLoader, Init)
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsOSHelperAppService, Init)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsExternalProtocolHandler)
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsPrefetchService, Init)
-NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(nsOfflineCacheUpdateService,
-                                         nsOfflineCacheUpdateService::GetInstance)
+NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(
+    nsOfflineCacheUpdateService, nsOfflineCacheUpdateService::GetInstance)
 NS_GENERIC_FACTORY_CONSTRUCTOR(PlatformLocalHandlerApp_t)
 #ifdef MOZ_ENABLE_DBUS
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsDBusHandlerApp)
@@ -94,7 +88,6 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsOSPermissionRequest)
 // session history
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsSHEntry)
 
-NS_DEFINE_NAMED_CID(NS_DOCSHELL_CID);
 NS_DEFINE_NAMED_CID(NS_DEFAULTURIFIXUP_CID);
 NS_DEFINE_NAMED_CID(NS_WEBNAVIGATION_INFO_CID);
 NS_DEFINE_NAMED_CID(NS_ABOUT_REDIRECTOR_MODULE_CID);
@@ -116,8 +109,7 @@ NS_DEFINE_NAMED_CID(NS_SHENTRY_CID);
 NS_DEFINE_NAMED_CID(NS_CONTENTHANDLERSERVICE_CID);
 
 const mozilla::Module::CIDEntry kDocShellCIDs[] = {
-  // clang-format off
-  { &kNS_DOCSHELL_CID, false, nullptr, nsDocShellConstructor },
+    // clang-format off
   { &kNS_DEFAULTURIFIXUP_CID, false, nullptr, nsDefaultURIFixupConstructor },
   { &kNS_WEBNAVIGATION_INFO_CID, false, nullptr, nsWebNavigationInfoConstructor },
   { &kNS_ABOUT_REDIRECTOR_MODULE_CID, false, nullptr, nsAboutRedirector::Create },
@@ -139,12 +131,11 @@ const mozilla::Module::CIDEntry kDocShellCIDs[] = {
 #endif
   { &kNS_SHENTRY_CID, false, nullptr, nsSHEntryConstructor },
   { nullptr }
-  // clang-format on
+    // clang-format on
 };
 
 const mozilla::Module::ContractIDEntry kDocShellContracts[] = {
-  // clang-format off
-  { "@mozilla.org/docshell;1", &kNS_DOCSHELL_CID },
+    // clang-format off
   { NS_URIFIXUP_CONTRACTID, &kNS_DEFAULTURIFIXUP_CID },
   { NS_WEBNAVIGATION_INFO_CONTRACTID, &kNS_WEBNAVIGATION_INFO_CID },
   { NS_ABOUT_MODULE_CONTRACTID_PREFIX "about", &kNS_ABOUT_REDIRECTOR_MODULE_CID },
@@ -195,17 +186,15 @@ const mozilla::Module::ContractIDEntry kDocShellContracts[] = {
   { NS_SHENTRY_CONTRACTID, &kNS_SHENTRY_CID },
   { NS_OSPERMISSIONREQUEST_CONTRACTID, &kNS_OSPERMISSIONREQUEST_CID, mozilla::Module::MAIN_PROCESS_ONLY },
   { nullptr }
-  // clang-format on
+    // clang-format on
 };
 
-static const mozilla::Module kDocShellModule = {
-  mozilla::Module::kVersion,
-  kDocShellCIDs,
-  kDocShellContracts,
-  nullptr,
-  nullptr,
-  Initialize,
-  Shutdown
-};
+static const mozilla::Module kDocShellModule = {mozilla::Module::kVersion,
+                                                kDocShellCIDs,
+                                                kDocShellContracts,
+                                                nullptr,
+                                                nullptr,
+                                                Initialize,
+                                                Shutdown};
 
 NSMODULE_DEFN(docshell_provider) = &kDocShellModule;

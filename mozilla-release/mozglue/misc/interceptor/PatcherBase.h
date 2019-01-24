@@ -13,25 +13,35 @@ namespace mozilla {
 namespace interceptor {
 
 template <typename VMPolicy>
-class WindowsDllPatcherBase
-{
-protected:
+class WindowsDllPatcherBase {
+ protected:
   typedef typename VMPolicy::MMPolicyT MMPolicyT;
 
   template <typename... Args>
   explicit WindowsDllPatcherBase(Args... aArgs)
-    : mVMPolicy(std::forward<Args>(aArgs)...)
-  {
-  }
+      : mVMPolicy(std::forward<Args>(aArgs)...) {}
 
-  ReadOnlyTargetFunction<MMPolicyT>
-  ResolveRedirectedAddress(FARPROC aOriginalFunction)
-  {
+  ReadOnlyTargetFunction<MMPolicyT> ResolveRedirectedAddress(
+      FARPROC aOriginalFunction) {
     ReadOnlyTargetFunction<MMPolicyT> origFn(mVMPolicy, aOriginalFunction);
     // If function entry is jmp rel8 stub to the internal implementation, we
     // resolve redirected address from the jump target.
     if (origFn[0] == 0xeb) {
       int8_t offset = (int8_t)(origFn[1]);
+      uintptr_t abstarget = origFn.GetAddress() + 2 + offset;
+
+#if defined(_M_X64)
+      // We redirect to the target of a short jump backwards if the target
+      // is another jump (only 32-bit displacement is currently supported).
+      // This case is used by GetFileAttributesW in Win7.
+      if ((offset < 0) && (origFn.IsValidAtOffset(2 + offset))) {
+        ReadOnlyTargetFunction<MMPolicyT> redirectFn(mVMPolicy, abstarget);
+        if ((redirectFn[0] == 0xff) && (redirectFn[1] == 0x25)) {
+          return redirectFn;
+        }
+      }
+#endif
+
       if (offset <= 0) {
         // Bail out for negative offset: probably already patched by some
         // third-party code.
@@ -45,7 +55,6 @@ protected:
         }
       }
 
-      uintptr_t abstarget = (origFn + 2 + offset).GetAddress();
       return EnsureTargetIsAccessible(std::move(origFn), abstarget);
     }
 
@@ -74,11 +83,9 @@ protected:
     return std::move(origFn);
   }
 
-private:
-  ReadOnlyTargetFunction<MMPolicyT>
-  EnsureTargetIsAccessible(ReadOnlyTargetFunction<MMPolicyT> aOrigFn,
-                           uintptr_t aRedirAddress)
-  {
+ private:
+  ReadOnlyTargetFunction<MMPolicyT> EnsureTargetIsAccessible(
+      ReadOnlyTargetFunction<MMPolicyT> aOrigFn, uintptr_t aRedirAddress) {
     if (!mVMPolicy.IsPageAccessible(reinterpret_cast<void*>(aRedirAddress))) {
       return std::move(aOrigFn);
     }
@@ -86,11 +93,11 @@ private:
     return ReadOnlyTargetFunction<MMPolicyT>(mVMPolicy, aRedirAddress);
   }
 
-protected:
-  VMPolicy  mVMPolicy;
+ protected:
+  VMPolicy mVMPolicy;
 };
 
-} // namespace interceptor
-} // namespace mozilla
+}  // namespace interceptor
+}  // namespace mozilla
 
-#endif // mozilla_interceptor_PatcherBase_h
+#endif  // mozilla_interceptor_PatcherBase_h

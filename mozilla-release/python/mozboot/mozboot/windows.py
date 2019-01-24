@@ -30,6 +30,7 @@ class WindowsBootstrapper(BaseBootstrapper):
     ]
 
     BROWSER_PACKAGES = [
+        'mingw-w64-x86_64-nasm',
         'mingw-w64-x86_64-yasm',
         'mingw-w64-i686-nsis'
     ]
@@ -70,6 +71,9 @@ class WindowsBootstrapper(BaseBootstrapper):
 
     def install_mobile_android_artifact_mode_packages(self):
         raise NotImplementedError('We do not support building Android on Windows. Sorry!')
+
+    def ensure_clang_static_analysis_package(self, checkout_root):
+        self.install_toolchain_static_analysis(checkout_root)
 
     def ensure_stylo_packages(self, state_dir, checkout_root):
         from mozboot import stylo

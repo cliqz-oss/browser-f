@@ -47,9 +47,10 @@ namespace recordreplay {
 //    state, under Thread::Wait, when requested by the main thread calling
 //    WaitForIdleThreads. For most recorded threads this happens when the
 //    thread attempts to take a recorded lock and blocks in Lock::Wait.
-//    The only exception is for JS helper threads, which never take recorded
-//    locks. For these threads, NotifyUnrecordedWait and
-//    MaybeWaitForCheckpointSave must be used to enter this state.
+//    For other threads (any thread which has diverged from the recording,
+//    or JS helper threads even when no recording divergence has occurred),
+//    NotifyUnrecordedWait and MaybeWaitForCheckpointSave are used to enter
+//    this state when the thread performs a blocking operation.
 //
 // 4. Once all recorded threads are idle, the main thread is able to record
 //    memory snapshots and thread stacks for later rewinding. Additional
@@ -67,18 +68,18 @@ static const size_t MaxRecordedThreadId = 70;
 // that they can participate in e.g. Wait/Notify calls.
 static const size_t MaxNumNonRecordedThreads = 12;
 
-static const size_t MaxThreadId = MaxRecordedThreadId + MaxNumNonRecordedThreads;
+static const size_t MaxThreadId =
+    MaxRecordedThreadId + MaxNumNonRecordedThreads;
 
 typedef pthread_t NativeThreadId;
 
 // Information about the execution state of a thread.
-class Thread
-{
-public:
+class Thread {
+ public:
   // Signature for the start function of a thread.
   typedef void (*Callback)(void*);
 
-private:
+ private:
   // Monitor used to protect various thread information (see Thread.h) and to
   // wait on or signal progress for a thread.
   static Monitor* gMonitor;
@@ -100,7 +101,8 @@ private:
 
   // Whether this thread should diverge from the recording at the next
   // opportunity. This can be set from any thread.
-  Atomic<bool, SequentiallyConsistent, Behavior::DontPreserve> mShouldDivergeFromRecording;
+  Atomic<bool, SequentiallyConsistent, Behavior::DontPreserve>
+      mShouldDivergeFromRecording;
 
   // Start routine and argument which the thread is currently executing. This
   // is cleared after the routine finishes and another start routine may be
@@ -127,6 +129,9 @@ private:
   // File descriptor to notify to wake the thread up, fixed at creation.
   FileHandle mNotifyfd;
 
+  // Whether the thread should attempt to idle.
+  Atomic<bool, SequentiallyConsistent, Behavior::DontPreserve> mShouldIdle;
+
   // Whether the thread is waiting on idlefd.
   Atomic<bool, SequentiallyConsistent, Behavior::DontPreserve> mIdle;
 
@@ -134,13 +139,15 @@ private:
   // and whether the callback has been invoked yet while the main thread is
   // waiting for threads to become idle. Protected by the thread monitor.
   std::function<void()> mUnrecordedWaitCallback;
-  bool mUnrecordedWaitOnlyWhenDiverged;
   bool mUnrecordedWaitNotified;
 
-public:
-///////////////////////////////////////////////////////////////////////////////
-// Public Routines
-///////////////////////////////////////////////////////////////////////////////
+  // Identifier of any atomic which this thread currently holds.
+  Maybe<size_t> mAtomicLockId;
+
+ public:
+  ///////////////////////////////////////////////////////////////////////////////
+  // Public Routines
+  ///////////////////////////////////////////////////////////////////////////////
 
   // Accessors for some members that never change.
   size_t Id() { return mId; }
@@ -151,38 +158,30 @@ public:
 
   inline bool IsMainThread() const { return mId == MainThreadId; }
   inline bool IsRecordedThread() const { return mId <= MaxRecordedThreadId; }
-  inline bool IsNonMainRecordedThread() const { return IsRecordedThread() && !IsMainThread(); }
+  inline bool IsNonMainRecordedThread() const {
+    return IsRecordedThread() && !IsMainThread();
+  }
 
   // Access the flag for whether this thread is passing events through.
   void SetPassThrough(bool aPassThrough) {
     MOZ_RELEASE_ASSERT(mPassThroughEvents == !aPassThrough);
     mPassThroughEvents = aPassThrough;
   }
-  bool PassThroughEvents() const {
-    return mPassThroughEvents;
-  }
+  bool PassThroughEvents() const { return mPassThroughEvents; }
 
   // Access the counter for whether events are disallowed in this thread.
-  void BeginDisallowEvents() {
-    mDisallowEvents++;
-  }
+  void BeginDisallowEvents() { mDisallowEvents++; }
   void EndDisallowEvents() {
     MOZ_RELEASE_ASSERT(mDisallowEvents);
     mDisallowEvents--;
   }
-  bool AreEventsDisallowed() const {
-    return mDisallowEvents != 0;
-  }
+  bool AreEventsDisallowed() const { return mDisallowEvents != 0; }
 
   // Access the flag for whether this thread's execution has diverged from the
   // recording. Once set, this is only unset by rewinding to a point where the
   // flag is clear.
-  void DivergeFromRecording() {
-    mDivergedFromRecording = true;
-  }
-  bool HasDivergedFromRecording() const {
-    return mDivergedFromRecording;
-  }
+  void DivergeFromRecording() { mDivergedFromRecording = true; }
+  bool HasDivergedFromRecording() const { return mDivergedFromRecording; }
 
   // Mark this thread as needing to diverge from the recording soon, and wake
   // it up in case it can make progress now. The mShouldDivergeFromRecording
@@ -193,10 +192,6 @@ public:
     mShouldDivergeFromRecording = true;
     Notify(mId);
   }
-  bool WillDivergeFromRecordingSoon() {
-    MOZ_RELEASE_ASSERT(CurrentIsMainThread());
-    return mShouldDivergeFromRecording;
-  }
   bool MaybeDivergeFromRecording() {
     if (mShouldDivergeFromRecording) {
       mDivergedFromRecording = true;
@@ -206,7 +201,8 @@ public:
 
   // Return whether this thread may read or write to its recorded event stream.
   bool CanAccessRecording() const {
-    return !PassThroughEvents() && !AreEventsDisallowed() && !HasDivergedFromRecording();
+    return !PassThroughEvents() && !AreEventsDisallowed() &&
+           !HasDivergedFromRecording();
   }
 
   // The actual start routine at the root of all recorded threads, and of all
@@ -246,14 +242,18 @@ public:
   // Start an existing thread, for use when the process has called a thread
   // creation system API when events were not passed through. The return value
   // is the native ID of the result.
-  static NativeThreadId StartThread(Callback aStart, void* aArgument, bool aNeedsJoin);
+  static NativeThreadId StartThread(Callback aStart, void* aArgument,
+                                    bool aNeedsJoin);
 
   // Wait until this thread finishes executing its start routine.
   void Join();
 
-///////////////////////////////////////////////////////////////////////////////
-// Thread Coordination
-///////////////////////////////////////////////////////////////////////////////
+  // Give access to the atomic lock which the thread owns.
+  Maybe<size_t>& AtomicLockId() { return mAtomicLockId; }
+
+  ///////////////////////////////////////////////////////////////////////////////
+  // Thread Coordination
+  ///////////////////////////////////////////////////////////////////////////////
 
   // Basic API for threads to coordinate activity with each other, for use
   // during replay. Each Notify() on a thread ID will cause that thread to
@@ -277,10 +277,23 @@ public:
   // Wait indefinitely, without allowing this thread to be rewound.
   static void WaitForeverNoIdle();
 
-  // See RecordReplay.h.
-  void NotifyUnrecordedWait(const std::function<void()>& aCallback,
-                            bool aOnlyWhenDiverged);
-  static void MaybeWaitForCheckpointSave();
+  // API for handling unrecorded waits in replaying threads.
+  //
+  // The callback passed to NotifyUnrecordedWait will be invoked at most once
+  // by the main thread whenever the main thread is waiting for other threads to
+  // become idle, and at most once after the call to NotifyUnrecordedWait if the
+  // main thread is already waiting for other threads to become idle.
+  //
+  // The callback should poke the thread so that it is no longer blocked on the
+  // resource. The thread must call MaybeWaitForCheckpointSave before blocking
+  // again.
+  //
+  // MaybeWaitForCheckpointSave takes a callback to release any resources
+  // before the thread begins idling. The return value is whether this callback
+  // was invoked.
+  void NotifyUnrecordedWait(const std::function<void()>& aNotifyCallback);
+  bool MaybeWaitForCheckpointSave(
+      const std::function<void()>& aReleaseCallback);
 
   // Wait for all other threads to enter the idle state necessary for saving
   // or restoring a checkpoint. This may only be called on the main thread.
@@ -289,27 +302,31 @@ public:
   // After WaitForIdleThreads(), the main thread will call this to allow
   // other threads to resume execution.
   static void ResumeIdleThreads();
+
+  // Allow a single thread to resume execution.
+  static void ResumeSingleIdleThread(size_t aId);
+
+  // Return whether this thread will remain in the idle state entered after
+  // WaitForIdleThreads.
+  bool ShouldIdle() { return mShouldIdle; }
 };
 
 // This uses a stack pointer instead of TLS to make sure events are passed
 // through, for avoiding thorny reentrance issues.
-class AutoEnsurePassThroughThreadEventsUseStackPointer
-{
+class AutoEnsurePassThroughThreadEventsUseStackPointer {
   Thread* mThread;
   bool mPassedThrough;
 
-public:
+ public:
   AutoEnsurePassThroughThreadEventsUseStackPointer()
-    : mThread(Thread::GetByStackPointer(this))
-    , mPassedThrough(!mThread || mThread->PassThroughEvents())
-  {
+      : mThread(Thread::GetByStackPointer(this)),
+        mPassedThrough(!mThread || mThread->PassThroughEvents()) {
     if (!mPassedThrough) {
       mThread->SetPassThrough(true);
     }
   }
 
-  ~AutoEnsurePassThroughThreadEventsUseStackPointer()
-  {
+  ~AutoEnsurePassThroughThreadEventsUseStackPointer() {
     if (!mPassedThrough) {
       mThread->SetPassThrough(false);
     }
@@ -329,14 +346,11 @@ public:
 // - When replaying, this is a point where the thread can begin diverging from
 //   the recording. Checks for divergence should occur after the constructor
 //   finishes.
-class MOZ_RAII RecordingEventSection
-{
+class MOZ_RAII RecordingEventSection {
   Thread* mThread;
 
-public:
-  explicit RecordingEventSection(Thread* aThread)
-    : mThread(aThread)
-  {
+ public:
+  explicit RecordingEventSection(Thread* aThread) : mThread(aThread) {
     if (!aThread || !aThread->CanAccessRecording()) {
       return;
     }
@@ -345,7 +359,8 @@ public:
       aThread->Events().mFile->mStreamLock.ReadLock();
       aThread->Events().mInRecordingEventSection = true;
     } else {
-      while (!aThread->MaybeDivergeFromRecording() && aThread->Events().AtEnd()) {
+      while (!aThread->MaybeDivergeFromRecording() &&
+             aThread->Events().AtEnd()) {
         HitEndOfRecording();
       }
     }
@@ -362,7 +377,8 @@ public:
   }
 
   bool CanAccessEvents() {
-    if (!mThread || mThread->PassThroughEvents() || mThread->HasDivergedFromRecording()) {
+    if (!mThread || mThread->PassThroughEvents() ||
+        mThread->HasDivergedFromRecording()) {
       return false;
     }
     MOZ_RELEASE_ASSERT(mThread->CanAccessRecording());
@@ -370,7 +386,7 @@ public:
   }
 };
 
-} // namespace recordreplay
-} // namespace mozilla
+}  // namespace recordreplay
+}  // namespace mozilla
 
-#endif // mozilla_recordreplay_Thread_h
+#endif  // mozilla_recordreplay_Thread_h

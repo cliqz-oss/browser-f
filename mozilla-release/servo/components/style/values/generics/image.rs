@@ -1,17 +1,17 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Generic types for the handling of [images].
 //!
 //! [images]: https://drafts.csswg.org/css-images/#image-values
 
-use Atom;
-use custom_properties;
+use crate::custom_properties;
+use crate::values::serialize_atom_identifier;
+use crate::Atom;
 use servo_arc::Arc;
 use std::fmt::{self, Write};
 use style_traits::{CssWriter, ToCss};
-use values::serialize_atom_identifier;
 
 /// An [image].
 ///

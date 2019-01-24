@@ -214,7 +214,7 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
           toolbox.hostType == Toolbox.HostType.WINDOW) {
         toolbox.raise();
       } else {
-        gDevTools.closeToolbox(target);
+        toolbox.destroy();
       }
       gDevTools.emit("select-tool-command", toolId);
     } else {
@@ -318,10 +318,10 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
     const client = new DebuggerClient(transport);
 
     await client.connect();
-    const response = await client.mainRoot.getProcess(processId);
+    const front = await client.mainRoot.getProcess(processId);
     const options = {
-      form: response.form,
-      client: client,
+      activeTab: front,
+      client,
       chrome: true,
     };
     const target = await TargetFactory.forRemoteTab(options);
@@ -358,6 +358,10 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
           .then(target => {
             // Display a new toolbox in a new window
             return gDevTools.showToolbox(target, null, Toolbox.HostType.WINDOW);
+          })
+          .catch(e => {
+            console.error("Exception while opening the browser content toolbox:",
+              e);
           });
     }
 
@@ -370,14 +374,14 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
    * Open a window-hosted toolbox to debug the worker associated to the provided
    * worker actor.
    *
-   * @param  {DebuggerClient} client
-   * @param  {Object} workerTargetActor
-   *         worker actor form to debug
+   * @param  {WorkerTargetFront} workerTargetFront
+   *         worker actor front to debug
+   * @param  {String} toolId (optional)
+   *        The id of the default tool to show
    */
-  async openWorkerToolbox(client, workerTargetActor) {
-    const [, workerTargetFront] = await client.attachWorker(workerTargetActor);
+  async openWorkerToolbox(workerTargetFront, toolId) {
     const workerTarget = TargetFactory.forWorker(workerTargetFront);
-    const toolbox = await gDevTools.showToolbox(workerTarget, null, Toolbox.HostType.WINDOW);
+    const toolbox = await gDevTools.showToolbox(workerTarget, toolId, Toolbox.HostType.WINDOW);
     toolbox.once("destroy", () => workerTargetFront.detach());
   },
 

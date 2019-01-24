@@ -32,7 +32,6 @@ use nodrop::NoDrop;
 #[cfg(feature = "servo")]
 use serde::{Deserialize, Serialize};
 use stable_deref_trait::{CloneStableDeref, StableDeref};
-use std::{isize, usize};
 use std::borrow;
 use std::cmp::Ordering;
 use std::convert::From;
@@ -48,6 +47,7 @@ use std::ptr;
 use std::slice;
 use std::sync::atomic;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
+use std::{isize, usize};
 
 // Private macro to get the offset of a struct field in bytes from the address of the struct.
 macro_rules! offset_of {
@@ -1060,7 +1060,7 @@ unsafe impl<A: Sync + Send, B: Send + Sync> Sync for ArcUnion<A, B> {}
 
 impl<A: PartialEq, B: PartialEq> PartialEq for ArcUnion<A, B> {
     fn eq(&self, other: &Self) -> bool {
-        use ArcUnionBorrow::*;
+        use crate::ArcUnionBorrow::*;
         match (self.borrow(), other.borrow()) {
             (First(x), First(y)) => x == y,
             (Second(x), Second(y)) => x == y,
@@ -1170,11 +1170,11 @@ impl<A: fmt::Debug, B: fmt::Debug> fmt::Debug for ArcUnion<A, B> {
 
 #[cfg(test)]
 mod tests {
+    use super::{Arc, HeaderWithLength, ThinArc};
     use std::clone::Clone;
     use std::ops::Drop;
     use std::sync::atomic;
     use std::sync::atomic::Ordering::{Acquire, SeqCst};
-    use super::{Arc, HeaderWithLength, ThinArc};
 
     #[derive(PartialEq)]
     struct Canary(*mut atomic::AtomicUsize);

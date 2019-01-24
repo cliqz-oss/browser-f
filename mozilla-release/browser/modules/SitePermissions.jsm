@@ -64,6 +64,7 @@ const TemporaryPermissions = {
       entry[prePath] = {};
     }
     entry[prePath][id] = {timeStamp: Date.now(), state};
+    this.notifyWhenTemporaryPermissionChanged(browser, id, prePath, state);
   },
 
   // Removes a permission with the specified id for the specified browser.
@@ -75,6 +76,7 @@ const TemporaryPermissions = {
     let prePath = browser.currentURI.prePath;
     if (entry && entry[prePath]) {
       delete entry[prePath][id];
+      this.notifyWhenTemporaryPermissionChanged(browser, id, prePath, SitePermissions.UNKNOWN);
     }
   },
 
@@ -112,11 +114,29 @@ const TemporaryPermissions = {
     return permissions;
   },
 
+  // Gets all permissions ID for the specified browser, this method will return
+  // all permissions ID stored in browser without checking current URI.
+  getAllPermissionIds(browser) {
+    let permissions = new Set();
+    let entry = this._stateByBrowser.get(browser);
+    for (let prePath in entry) {
+      for (let id in entry[prePath]) {
+        permissions.add(id);
+      }
+    }
+    return permissions;
+  },
+
   // Clears all permissions for the specified browser.
   // Unlike other methods, this does NOT clear only for
   // the currentURI but the whole browser state.
   clear(browser) {
+    let permissions = this.getAllPermissionIds(browser);
     this._stateByBrowser.delete(browser);
+    for (let permission of permissions) {
+      this.notifyWhenTemporaryPermissionChanged(browser, permission, null,
+                                                SitePermissions.UNKNOWN);
+    }
   },
 
   // Copies the temporary permission state of one browser
@@ -126,6 +146,20 @@ const TemporaryPermissions = {
     if (entry) {
       this._stateByBrowser.set(newBrowser, entry);
     }
+  },
+
+  // If permission has property 'notifyWhenTemporaryPermissionChanged', then
+  // notify browser when the temporary permission changed.
+  notifyWhenTemporaryPermissionChanged(browser, id, prePath, state) {
+    if (!(id in gPermissionObject) ||
+        !gPermissionObject[id].notifyWhenTemporaryPermissionChanged) {
+      return;
+    }
+    browser.messageManager
+           .sendAsyncMessage("TemporaryPermissionChanged",
+                             { permission: id,
+                               prePath,
+                               state });
   },
 };
 
@@ -321,7 +355,7 @@ var SitePermissions = {
    *             (e.g. SitePermissions.ALLOW)
    *           - scope: a constant representing how long the permission will
    *             be kept.
-   *           - label: the localized label
+   *           - label: the localized label, or null if none is available.
    */
   getAllPermissionDetailsForBrowser(browser) {
     return this.getAllForBrowser(browser).map(({id, scope, state}) =>
@@ -619,9 +653,18 @@ var SitePermissions = {
    * @param {string} permissionID
    *        The permission to get the label for.
    *
-   * @return {String} the localized label.
+   * @return {String} the localized label or null if none is available.
    */
   getPermissionLabel(permissionID) {
+    if (!(permissionID in gPermissionObject)) {
+      // Permission can't be found.
+      return null;
+    }
+    if ("labelID" in gPermissionObject[permissionID] &&
+        gPermissionObject[permissionID].labelID === null) {
+      // Permission doesn't support having a label.
+      return null;
+    }
     let labelID = gPermissionObject[permissionID].labelID || permissionID;
     return gStringBundle.GetStringFromName("permission." + labelID + ".label");
   },
@@ -722,6 +765,7 @@ var gPermissionObject = {
     exactHostMatch: true,
     showGloballyBlocked: true,
     permitTemporaryAllow: true,
+    notifyWhenTemporaryPermissionChanged: true,
     getDefault() {
       let state = Services.prefs.getIntPref("media.autoplay.default",
                                             Ci.nsIAutoplay.PROMPT);
@@ -816,6 +860,13 @@ var gPermissionObject = {
 
   "midi-sysex": {
     exactHostMatch: true,
+  },
+
+  "storage-access": {
+    labelID: null,
+    getDefault() {
+      return SitePermissions.UNKNOWN;
+    },
   },
 };
 

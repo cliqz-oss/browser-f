@@ -7,6 +7,7 @@
 #include "mozilla/dom/BlobImpl.h"
 #include "mozilla/dom/BlobURLProtocolHandler.h"
 #include "mozilla/dom/HTMLMediaElement.h"
+#include "mozilla/InputStreamLengthHelper.h"
 #include "nsDebug.h"
 #include "nsError.h"
 #include "nsICloneableInputStream.h"
@@ -18,11 +19,9 @@
 
 namespace mozilla {
 
-already_AddRefed<BaseMediaResource>
-BaseMediaResource::Create(MediaResourceCallback* aCallback,
-                          nsIChannel* aChannel,
-                          bool aIsPrivateBrowsing)
-{
+already_AddRefed<BaseMediaResource> BaseMediaResource::Create(
+    MediaResourceCallback* aCallback, nsIChannel* aChannel,
+    bool aIsPrivateBrowsing) {
   NS_ASSERTION(NS_IsMainThread(),
                "MediaResource::Open called on non-main thread");
 
@@ -36,7 +35,7 @@ BaseMediaResource::Create(MediaResourceCallback* aCallback,
   nsAutoCString contentTypeString;
   aChannel->GetContentType(contentTypeString);
   Maybe<MediaContainerType> containerType =
-    MakeMediaContainerType(contentTypeString);
+      MakeMediaContainerType(contentTypeString);
   if (!containerType) {
     return nullptr;
   }
@@ -45,9 +44,11 @@ BaseMediaResource::Create(MediaResourceCallback* aCallback,
   nsCOMPtr<nsIFileChannel> fc = do_QueryInterface(aChannel);
   if (fc) {
     RefPtr<BaseMediaResource> resource =
-      new FileMediaResource(aCallback, aChannel, uri);
+        new FileMediaResource(aCallback, aChannel, uri);
     return resource.forget();
   }
+
+  int64_t streamLength = -1;
 
   RefPtr<mozilla::dom::BlobImpl> blobImpl;
   if (dom::IsBlobURI(uri) &&
@@ -61,42 +62,44 @@ BaseMediaResource::Create(MediaResourceCallback* aCallback,
       return nullptr;
     }
 
-    // It's better to read the size from the blob instead of using ::Available,
-    // because, if the stream implements nsIAsyncInputStream interface,
-    // ::Available will not return the size of the stream, but what can be
-    // currently read.
+    // If this stream knows its own size synchronously, we can still use
+    // FileMediaResource. If the size is known, it means that the reading
+    // doesn't require any async operation.  This is required because
+    // FileMediaResource doesn't work with nsIAsyncInputStreams.
+    int64_t length;
+    if (InputStreamLengthHelper::GetSyncLength(stream, &length) &&
+        length >= 0) {
+      RefPtr<BaseMediaResource> resource =
+          new FileMediaResource(aCallback, aChannel, uri, length);
+      return resource.forget();
+    }
+
+    // Also if the stream doesn't know its own size synchronously, we can still
+    // read the length from the blob.
     uint64_t size = blobImpl->GetSize(rv);
     if (NS_WARN_IF(rv.Failed())) {
       return nullptr;
     }
 
-    // If the URL is a blob URL, with a seekable inputStream, we can still use
-    // a FileMediaResource.
-    nsCOMPtr<nsISeekableStream> seekableStream = do_QueryInterface(stream);
-    if (seekableStream) {
-      RefPtr<BaseMediaResource> resource =
-        new FileMediaResource(aCallback, aChannel, uri, size);
-      return resource.forget();
-    }
-
     // Maybe this blob URL can be cloned with a range.
     nsCOMPtr<nsICloneableInputStreamWithRange> cloneableWithRange =
-      do_QueryInterface(stream);
+        do_QueryInterface(stream);
     if (cloneableWithRange) {
       RefPtr<BaseMediaResource> resource = new CloneableWithRangeMediaResource(
-        aCallback, aChannel, uri, stream, size);
+          aCallback, aChannel, uri, stream, size);
       return resource.forget();
     }
+
+    // We know the size of the stream for blobURLs, let's use it.
+    streamLength = size;
   }
 
-  RefPtr<BaseMediaResource> resource =
-    new ChannelMediaResource(aCallback, aChannel, uri, aIsPrivateBrowsing);
+  RefPtr<BaseMediaResource> resource = new ChannelMediaResource(
+      aCallback, aChannel, uri, streamLength, aIsPrivateBrowsing);
   return resource.forget();
 }
 
-void
-BaseMediaResource::SetLoadInBackground(bool aLoadInBackground)
-{
+void BaseMediaResource::SetLoadInBackground(bool aLoadInBackground) {
   if (aLoadInBackground == mLoadInBackground) {
     return;
   }
@@ -132,9 +135,7 @@ BaseMediaResource::SetLoadInBackground(bool aLoadInBackground)
   }
 }
 
-void
-BaseMediaResource::ModifyLoadFlags(nsLoadFlags aFlags)
-{
+void BaseMediaResource::ModifyLoadFlags(nsLoadFlags aFlags) {
   nsCOMPtr<nsILoadGroup> loadGroup;
   nsresult rv = mChannel->GetLoadGroup(getter_AddRefs(loadGroup));
   MOZ_ASSERT(NS_SUCCEEDED(rv), "GetLoadGroup() failed!");
@@ -159,4 +160,4 @@ BaseMediaResource::ModifyLoadFlags(nsLoadFlags aFlags)
   }
 }
 
-} // namespace mozilla
+}  // namespace mozilla

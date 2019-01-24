@@ -3,10 +3,6 @@ job-defaults:
         by-test-platform:
             android-em-7.0-x86/opt: geckoview-androidTest.apk
             default: null
-    tier:
-        by-test-platform:
-            android-em-7.0-x86/opt: 3
-            default: default
     serviceworker-e10s:
         by-test-platform:
             linux64/debug: both
@@ -19,9 +15,6 @@ job-defaults:
                 default: desktop_unittest.py
         config:
             by-test-platform:
-                android-em-4.2-x86/opt:
-                    - android/android_common.py
-                    - android/androidx86.py
                 android-em-7.0-x86/opt:
                     - android/android_common.py
                     - android/androidx86_7_0.py
@@ -44,14 +37,8 @@ mochitest:
     suite: mochitest/plain-chunked
     treeherder-symbol: M()
     loopback-video: true
-    run-on-projects:
-        by-test-platform:
-            windows10-64-qr/debug: []  # bug 1424755
-            default: built-projects
-    tier:
-        by-test-platform:
-            windows10-64-qr/debug: 3  # this should be disabled but might run via try syntax anyway, so explicitly downgrade to tier-3
-            default: default
+    run-on-projects: built-projects
+    tier: default
     instance-size:
         by-test-platform:
             android-em.*: xlarge
@@ -207,10 +194,6 @@ mochitest-clipboard:
         by-test-platform:
             linux32/debug: both
             default: true
-    run-on-projects:
-        by-test-platform:
-            android-em-7.0-x86/opt: ['mozilla-central']
-            default: built-projects
     mozharness:
         mochitest-flavor: plain
         extra-options:
@@ -233,6 +216,7 @@ mochitest-devtools-chrome:
             default: 5400
     chunks:
         by-test-platform:
+            linux64/debug: 12
             linux64-ccov/debug: 12
             windows10-64-ccov/debug: 10
             macosx64-ccov/debug: 15
@@ -251,10 +235,7 @@ mochitest-gpu:
     description: "Mochitest GPU run"
     suite: mochitest/gpu
     treeherder-symbol: M(gpu)
-    run-on-projects:
-        by-test-platform:
-            android-em-7.0-x86/opt: ['mozilla-central']
-            default: built-projects
+    run-on-projects: built-projects
     loopback-video: true
     instance-size:
         by-test-platform:
@@ -310,7 +291,7 @@ mochitest-media:
                 default: true
     tier:
         by-test-platform:
-            android-hw.*: 3
+            android-hw.*: 2
             default: default
 
 mochitest-plain-headless:
@@ -354,10 +335,7 @@ mochitest-webgl1-core:
     description: "Mochitest webgl1-core run"
     suite: mochitest/mochitest-webgl1-core
     treeherder-symbol: M(gl1c)
-    run-on-projects:
-        by-test-platform:
-            windows10-64-ccov/.*: []  # Do not run on Windows ccov, see bug 1419475.
-            default: built-projects
+    run-on-projects: built-projects
     virtualization: virtual-with-gpu
     e10s:
         by-test-platform:
@@ -378,10 +356,7 @@ mochitest-webgl1-ext:
     description: "Mochitest webgl1-ext run"
     suite: mochitest/mochitest-webgl1-ext
     treeherder-symbol: M(gl1e)
-    run-on-projects:
-        by-test-platform:
-            windows10-64-ccov/.*: []  # Do not run on Windows ccov, see bug 1419475.
-            default: built-projects
+    run-on-projects: built-projects
     virtualization: virtual-with-gpu
     e10s:
         by-test-platform:
@@ -401,10 +376,7 @@ mochitest-webgl2-core:
     description: "Mochitest webgl2-core run"
     suite: mochitest/mochitest-webgl2-core
     treeherder-symbol: M(gl2c)
-    run-on-projects:
-        by-test-platform:
-            windows10-64-ccov/.*: []  # Do not run on Windows ccov, see bug 1419475.
-            default: built-projects
+    run-on-projects: built-projects
     virtualization: virtual-with-gpu
     e10s:
         by-test-platform:
@@ -424,10 +396,7 @@ mochitest-webgl2-ext:
     description: "Mochitest webgl2-ext run"
     suite: mochitest/mochitest-webgl2-ext
     treeherder-symbol: M(gl2e)
-    run-on-projects:
-        by-test-platform:
-            windows10-64-ccov/.*: []  # Do not run on Windows ccov, see bug 1419475.
-            default: built-projects
+    run-on-projects: built-projects
     virtualization: virtual-with-gpu
     chunks: 4
     e10s:
@@ -449,10 +418,7 @@ mochitest-webgl2-deqp:
     description: "Mochitest webgl2-deqp run"
     suite: mochitest/mochitest-webgl2-deqp
     treeherder-symbol: M(gl2d)
-    run-on-projects:
-        by-test-platform:
-            windows10-64-ccov/.*: []  # Do not run on Windows ccov, see bug 1419475.
-            default: []  # Don't run this for now.
+    run-on-projects: []  # Don't run this for now.
     virtualization: virtual-with-gpu
     chunks: 4
     e10s:

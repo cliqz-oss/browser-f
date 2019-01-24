@@ -12,13 +12,16 @@ Services.scriptloader.loadSubScript(
 
 var { DebuggerServer } = require("devtools/server/main");
 var { DebuggerClient } = require("devtools/shared/client/debugger-client");
-
 var { Toolbox } = require("devtools/client/framework/toolbox");
 
 const FRAME_SCRIPT_URL = getRootDirectory(gTestPath) + "code_frame-script.js";
 
 var nextId = 0;
 
+/**
+ * Returns a thenable promise
+ * @return {Promise}
+ */
 function getDeferredPromise() {
   // Override promise with deprecated-sync-thenables
   const promise = require("devtools/shared/deprecated-sync-thenables");
@@ -68,6 +71,24 @@ function postMessageToWorkerInTab(tab, url, message) {
   return jsonrpc(tab, "postMessageToWorker", [url, message]);
 }
 
+function generateMouseClickInTab(tab, path) {
+  info("Generating mouse click in tab.");
+
+  return jsonrpc(tab, "generateMouseClick", [path]);
+}
+
+function evalInTab(tab, string) {
+  info("Evalling string in tab.");
+
+  return jsonrpc(tab, "_eval", [string]);
+}
+
+function callInTab(tab, name) {
+  info("Calling function with name '" + name + "' in tab.");
+
+  return jsonrpc(tab, "call", [name, Array.prototype.slice.call(arguments, 2)]);
+}
+
 function connect(client) {
   info("Connecting client.");
   return client.connect();
@@ -95,7 +116,7 @@ function findTab(tabs, url) {
 
 function attachTarget(client, tab) {
   info("Attaching to tab with url '" + tab.url + "'.");
-  return client.attachTarget(tab.actor);
+  return client.attachTarget(tab);
 }
 
 function listWorkers(targetFront) {
@@ -113,9 +134,9 @@ function findWorker(workers, url) {
   return null;
 }
 
-function attachWorker(targetFront, worker) {
-  info("Attaching to worker with url '" + worker.url + "'.");
-  return targetFront.attachWorker(worker.actor);
+function waitForWorkerListChanged(targetFront) {
+  info("Waiting for worker list to change.");
+  return targetFront.once("workerListChanged");
 }
 
 function attachThread(workerTargetFront, options) {
@@ -151,21 +172,16 @@ function getSplitConsole(toolbox, win) {
 }
 
 async function initWorkerDebugger(TAB_URL, WORKER_URL) {
-  DebuggerServer.init();
-  DebuggerServer.registerAllActors();
-
-  const client = new DebuggerClient(DebuggerServer.connectPipe());
-  await connect(client);
-
   const tab = await addTab(TAB_URL);
-  const { tabs } = await listTabs(client);
-  const [, targetFront] = await attachTarget(client, findTab(tabs, TAB_URL));
+  const target = await TargetFactory.forTab(tab);
+  await target.attach();
+  const { client } = target;
+  const targetFront = target.activeTab;
 
   await createWorkerInTab(tab, WORKER_URL);
 
   const { workers } = await listWorkers(targetFront);
-  const [, workerTargetFront] = await attachWorker(targetFront,
-                                             findWorker(workers, WORKER_URL));
+  const workerTargetFront = findWorker(workers, WORKER_URL);
 
   const toolbox = await gDevTools.showToolbox(TargetFactory.forWorker(workerTargetFront),
                                             "jsdebugger",
@@ -221,3 +237,24 @@ this.removeTab = function removeTab(tab, win) {
   targetBrowser.removeTab(tab);
   return deferred.promise;
 };
+
+async function attachThreadActorForTab(tab) {
+  const target = await TargetFactory.forTab(tab);
+  await target.attach();
+  const targetFront = target.activeTab;
+  const [, threadClient] = await targetFront.attachThread();
+  await threadClient.resume();
+  return { client: target.client, threadClient };
+}
+
+function pushPrefs(...aPrefs) {
+  const deferred = getDeferredPromise().defer();
+  SpecialPowers.pushPrefEnv({"set": aPrefs}, deferred.resolve);
+  return deferred.promise;
+}
+
+function popPrefs() {
+  const deferred = getDeferredPromise().defer();
+  SpecialPowers.popPrefEnv(deferred.resolve);
+  return deferred.promise;
+}

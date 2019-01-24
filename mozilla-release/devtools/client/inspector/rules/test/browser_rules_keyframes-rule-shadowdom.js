@@ -27,8 +27,6 @@ const TEST_URI = `data:text/html;charset=utf-8,
   </script>`;
 
 add_task(async function() {
-  await enableWebComponents();
-
   await addTab(TEST_URI);
 
   const {inspector, view} = await openRuleView();
@@ -70,7 +68,7 @@ async function getKeyframeRules(selector, inspector, view) {
 
   const rules = {
     elementRules: elementStyle.rules.filter(rule => !rule.keyframes),
-    keyframeRules: elementStyle.rules.filter(rule => rule.keyframes)
+    keyframeRules: elementStyle.rules.filter(rule => rule.keyframes),
   };
 
   return rules;

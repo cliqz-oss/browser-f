@@ -3,7 +3,6 @@
 "use strict";
 
 const ADDON_ID = "test-devtools@mozilla.org";
-const ADDON_NAME = "test-devtools";
 
 const PACKAGED_ADDON_ID = "bug1273184@tests";
 const PACKAGED_ADDON_NAME = "bug 1273184";
@@ -60,13 +59,16 @@ class TempWebExt {
   }
 }
 
+// Remove in Bug 1497264
+/*
 add_task(async function reloadButtonReloadsAddon() {
+  const ADDON_NAME = "test-devtools";
   const { tab, document, window } = await openAboutDebugging("addons");
   const { AboutDebugging } = window;
   await waitForInitialAddonList(document);
   await installAddon({
     document,
-    path: "addons/unpacked/install.rdf",
+    path: "addons/unpacked/manifest.json",
     name: ADDON_NAME,
   });
 
@@ -74,26 +76,25 @@ add_task(async function reloadButtonReloadsAddon() {
   is(reloadButton.title, "", "Reload button should not have a tooltip");
   const onInstalled = promiseAddonEvent("onInstalled");
 
-  const onBootstrapInstallCalled = new Promise(done => {
-    Services.obs.addObserver(function listener() {
-      Services.obs.removeObserver(listener, ADDON_NAME);
-      info("Add-on was re-installed: " + ADDON_NAME);
-      done();
-    }, ADDON_NAME);
-  });
-
   const reloaded = once(AboutDebugging, "addon-reload");
+
+  // The list is updated twice:
+  // - AddonManager's onInstalled event
+  // - WebExtension's Management's startup event
+  const onListUpdated = waitForNEvents(AboutDebugging, "addons-updated", 2);
+
   reloadButton.click();
   await reloaded;
+  await onListUpdated;
 
   const [reloadedAddon] = await onInstalled;
   is(reloadedAddon.name, ADDON_NAME,
      "Add-on was reloaded: " + reloadedAddon.name);
 
-  await onBootstrapInstallCalled;
-  await tearDownAddon(reloadedAddon);
+  await tearDownAddon(AboutDebugging, reloadedAddon);
   await closeAboutDebugging(tab);
 });
+*/
 
 add_task(async function reloadButtonRefreshesMetadata() {
   const { tab, document, window } = await openAboutDebugging("addons");
@@ -114,8 +115,13 @@ add_task(async function reloadButtonRefreshesMetadata() {
   const tempExt = new TempWebExt(ADDON_ID);
   tempExt.writeManifest(manifestBase);
 
+  // List updated twice:
+  // - AddonManager's onInstalled event
+  // - WebExtension's Management's startup event.
+  let onListUpdated = waitForNEvents(AboutDebugging, "addons-updated", 2);
   const onInstalled = promiseAddonEvent("onInstalled");
   await AddonManager.installTemporaryAddon(tempExt.sourceDir);
+  await onListUpdated;
 
   info("Wait until addon onInstalled event is received");
   await onInstalled;
@@ -126,12 +132,17 @@ add_task(async function reloadButtonRefreshesMetadata() {
   const newName = "Temporary web extension (updated)";
   tempExt.writeManifest(Object.assign({}, manifestBase, {name: newName}));
 
+  // List updated twice:
+  // - AddonManager's onInstalled event
+  // - WebExtension's Management's startup event.
+  onListUpdated = waitForNEvents(AboutDebugging, "addons-updated", 2);
   // Wait for the add-on list to be updated with the reloaded name.
   const onReInstall = promiseAddonEvent("onInstalled");
   const reloadButton = getReloadButton(document, manifestBase.name);
   const reloaded = once(AboutDebugging, "addon-reload");
   reloadButton.click();
   await reloaded;
+  await onListUpdated;
 
   info("Wait until addon onInstalled event is received again");
   const [reloadedAddon] = await onReInstall;
@@ -139,15 +150,22 @@ add_task(async function reloadButtonRefreshesMetadata() {
   info("Wait until addon name is updated in about:debugging#addons");
   await waitUntilAddonContainer(newName, document);
 
-  await tearDownAddon(reloadedAddon);
+  await tearDownAddon(AboutDebugging, reloadedAddon);
   tempExt.remove();
   await closeAboutDebugging(tab);
 });
 
 add_task(async function onlyTempInstalledAddonsCanBeReloaded() {
-  const { tab, document } = await openAboutDebugging("addons");
+  const { tab, document, window } = await openAboutDebugging("addons");
+  const { AboutDebugging } = window;
   await waitForInitialAddonList(document);
+
+  // List updated twice:
+  // - AddonManager's onInstalled event
+  // - WebExtension's Management's startup event.
+  const onListUpdated = waitForNEvents(AboutDebugging, "addons-updated", 2);
   await installAddonWithManager(getSupportsFile("addons/bug1273184.xpi").file);
+  await onListUpdated;
 
   info("Wait until addon appears in about:debugging#addons");
   await waitUntilAddonContainer(PACKAGED_ADDON_NAME, document);
@@ -159,6 +177,6 @@ add_task(async function onlyTempInstalledAddonsCanBeReloaded() {
   const reloadButton = getReloadButton(document, addon.name);
   ok(!reloadButton, "There should not be a reload button");
 
-  await tearDownAddon(addon);
+  await tearDownAddon(AboutDebugging, addon);
   await closeAboutDebugging(tab);
 });

@@ -32,7 +32,6 @@ include protocol PPrinting;
 include protocol PChildToParentStream;
 include protocol PParentToChildStream;
 include protocol POfflineCacheUpdate;
-include protocol PRenderFrame;
 include protocol PSpeechSynthesis;
 include protocol PTestShell;
 include protocol PJavaScript;
@@ -44,6 +43,7 @@ include protocol PURLClassifier;
 include protocol PURLClassifierLocal;
 include protocol PVRManager;
 include protocol PVideoDecoderManager;
+include protocol PRemoteDecoderManager;
 include protocol PProfiler;
 include protocol PScriptCache;
 include DOMTypes;
@@ -194,10 +194,10 @@ union FileDescOrError {
 struct DomainPolicyClone
 {
     bool        active;
-    URIParams[] blacklist;
-    URIParams[] whitelist;
-    URIParams[] superBlacklist;
-    URIParams[] superWhitelist;
+    URIParams[] blocklist;
+    URIParams[] allowlist;
+    URIParams[] superBlocklist;
+    URIParams[] superAllowlist;
 };
 
 struct AndroidSystemInfo
@@ -764,6 +764,10 @@ parent:
     sync ConnectPluginBridge(uint32_t aPluginId)
         returns (nsresult rv, Endpoint<PPluginModuleParent> aEndpoint);
 
+    // See Bug 1518344 - Investigate using async for PContent::LaunchRDDProcess
+    sync LaunchRDDProcess()
+        returns (nsresult rv, Endpoint<PRemoteDecoderManagerChild> aEndpoint);
+
     async PJavaScript();
 
     async PRemoteSpellcheckEngine();
@@ -809,7 +813,6 @@ parent:
     // Services remoting
 
     async StartVisitedQuery(URIParams uri);
-    async VisitURI(URIParams uri, OptionalURIParams referrer, uint32_t flags);
     async SetURITitle(URIParams uri, nsString title);
 
     async LoadURIExternal(URIParams uri, PBrowser windowContext);
@@ -912,11 +915,6 @@ parent:
     sync NotifyKeywordSearchLoading(nsString providerName, nsString keyword);
 
     async CopyFavicon(URIParams oldURI, URIParams newURI, Principal aLoadingPrincipal, bool isPrivate);
-
-    // Tell the compositor to allocate a layer tree id for nested remote mozbrowsers.
-    sync AllocateLayerTreeId(ContentParentId cpId, TabId tabId)
-        returns (LayersId id);
-    async DeallocateLayerTreeId(ContentParentId cpId, LayersId id);
 
     /**
      * Notifies the parent about a recording device is starting or shutdown.
@@ -1034,6 +1032,8 @@ parent:
      *   The array of permissions to request.
      * @param aPrincipal
      *   The principal of the request.
+     * @param aTopLevelPrincipal
+     *   The principal of the top level page the request comes from.
      * @param tabId
      *   To identify which tab issues this request.
      *
@@ -1042,7 +1042,8 @@ parent:
      *       provided.
      */
     async PContentPermissionRequest(PermissionRequest[] aRequests, Principal aPrincipal,
-                                    bool aIsHandlingUserInput, TabId tabId);
+                                    Principal aTopLevelPrincipal, bool aIsHandlingUserInput,
+                                    TabId tabId);
 
     async ShutdownProfile(nsCString aProfile);
 
@@ -1054,7 +1055,6 @@ parent:
 
     async CreateWindow(nullable PBrowser aThisTab,
                        PBrowser aNewTab,
-                       PRenderFrame aRenderFrame,
                        uint32_t aChromeFlags,
                        bool aCalledFromJS,
                        bool aPositionSpecified,
@@ -1159,8 +1159,10 @@ parent:
      * granted to have access to aGrantedOrigin when loaded by aParentPrincipal.
      */
     async FirstPartyStorageAccessGrantedForOrigin(Principal aParentPrincipal,
+                                                  Principal aTrackingPrincipal,
                                                   nsCString aTrackingOrigin,
-                                                  nsCString aGrantedOrigin)
+                                                  nsCString aGrantedOrigin,
+                                                  int aAllowMode)
           returns (bool unused);
 
     async StoreUserInteractionAsPermission(Principal aPrincipal);
@@ -1176,6 +1178,7 @@ parent:
      * nsDocShell.
      */
     async AttachBrowsingContext(BrowsingContextId aParentContextId,
+                                BrowsingContextId aOpenerId,
                                 BrowsingContextId aContextId,
                                 nsString aName);
 
@@ -1194,6 +1197,14 @@ parent:
      */
     async DetachBrowsingContext(BrowsingContextId aContextId,
                                 bool aMoveToBFCache);
+
+    /**
+     * Set the opener of browsing context with id 'aContextId' to the
+     * browsing context with id 'aOpenerId'.
+     */
+    async SetOpenerBrowsingContext(BrowsingContextId aContextId,
+                                   BrowsingContextId aOpenerContextId);
+
 both:
      async AsyncMessage(nsString aMessage, CpowEntry[] aCpows,
                         Principal aPrincipal, ClonedMessageData aData);

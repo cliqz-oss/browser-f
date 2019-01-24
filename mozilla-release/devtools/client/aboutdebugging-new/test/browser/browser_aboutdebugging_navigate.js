@@ -15,21 +15,18 @@ add_task(async function() {
   info("Force all debug target panes to be expanded");
   prepareCollapsibilitiesTest();
 
-  const { document, tab } = await openAboutDebugging();
+  const { document, tab, window } = await openAboutDebugging();
+  const AboutDebugging = window.AboutDebugging;
 
   const connectSidebarItem = findSidebarItemByText("Connect", document);
+  const connectLink = connectSidebarItem.querySelector(".js-sidebar-link");
   ok(connectSidebarItem, "Found the Connect sidebar item");
 
   const thisFirefoxSidebarItem = findSidebarItemByText("This Firefox", document);
+  const thisFirefoxLink = thisFirefoxSidebarItem.querySelector(".js-sidebar-link");
   ok(thisFirefoxSidebarItem, "Found the ThisFirefox sidebar item");
   ok(isSidebarItemSelected(thisFirefoxSidebarItem),
     "ThisFirefox sidebar item is selected by default");
-
-  // Wait until the about:debugging target is visible in the tab list
-  // Otherwise, we might have a race condition where TAB1 is discovered by the initial
-  // listTabs from the watchRuntime action, instead of being discovered after the
-  // TAB_UPDATED event. See analysis in Bug 1493968.
-  await waitUntil(() => findDebugTargetByText("about:debugging", document));
 
   info("Open a new background tab TAB1");
   const backgroundTab1 = await addTab(TAB_URL_1, { background: true });
@@ -37,19 +34,26 @@ add_task(async function() {
   info("Wait for the tab to appear in the debug targets with the correct name");
   await waitUntil(() => findDebugTargetByText("TAB1", document));
 
+  await waitForRequestsToSettle(AboutDebugging.store);
   info("Click on the Connect item in the sidebar");
-  connectSidebarItem.click();
+  connectLink.click();
 
   info("Wait until Connect page is displayed");
   await waitUntil(() => document.querySelector(".js-connect-page"));
-  ok(isSidebarItemSelected(connectSidebarItem), "Connect sidebar item is selected");
+  // we need to wait here because the sidebar isn't updated after mounting the page
+  info("Wait until Connect sidebar item is selected");
+  await waitUntil(() => isSidebarItemSelected(connectSidebarItem));
   ok(!document.querySelector(".js-runtime-page"), "Runtime page no longer rendered");
 
   info("Open a new tab which should be listed when we go back to This Firefox");
   const backgroundTab2 = await addTab(TAB_URL_2, { background: true });
 
   info("Click on the ThisFirefox item in the sidebar");
-  thisFirefoxSidebarItem.click();
+  const requestsSuccess = waitForRequestsSuccess(window);
+  thisFirefoxLink.click();
+
+  info("Wait for all target requests to complete");
+  await requestsSuccess;
 
   info("Wait until ThisFirefox page is displayed");
   await waitUntil(() => document.querySelector(".js-runtime-page"));
@@ -72,14 +76,11 @@ add_task(async function() {
   info("Check TAB2 disappears, meaning ThisFirefox client is correctly connected");
   await waitUntil(() => !findDebugTargetByText("TAB2", document));
 
+  await waitForRequestsToSettle(AboutDebugging.store);
+
   await removeTab(tab);
 });
 
 function isSidebarItemSelected(item) {
   return item.classList.contains("js-sidebar-item-selected");
-}
-
-function findDebugTargetByText(text, document) {
-  const targets = [...document.querySelectorAll(".js-debug-target-item")];
-  return targets.find(target => target.textContent.includes(text));
 }

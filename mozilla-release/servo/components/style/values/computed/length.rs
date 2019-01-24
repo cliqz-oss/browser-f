@@ -1,27 +1,29 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! `<length>` computed values, and related ones.
 
+use super::{Context, Number, Percentage, ToComputedValue};
 use app_units::Au;
+use crate::values::animated::{Animate, Procedure, ToAnimatedValue, ToAnimatedZero};
+use crate::values::distance::{ComputeSquaredDistance, SquaredDistance};
+use crate::values::generics::length::MaxLength as GenericMaxLength;
+use crate::values::generics::length::MozLength as GenericMozLength;
+use crate::values::generics::transform::IsZeroLength;
+use crate::values::generics::NonNegative;
+use crate::values::specified::length::ViewportPercentageLength;
+use crate::values::specified::length::{AbsoluteLength, FontBaseSize, FontRelativeLength};
+use crate::values::{specified, Auto, CSSFloat, Either, IsAuto, Normal};
 use ordered_float::NotNan;
 use std::fmt::{self, Write};
 use std::ops::{Add, Neg};
-use style_traits::{CssWriter, ToCss};
 use style_traits::values::specified::AllowedNumericType;
-use super::{Context, Number, Percentage, ToComputedValue};
-use values::{specified, Auto, CSSFloat, Either, Normal};
-use values::animated::{Animate, Procedure, ToAnimatedValue, ToAnimatedZero};
-use values::distance::{ComputeSquaredDistance, SquaredDistance};
-use values::generics::NonNegative;
-use values::generics::length::{MaxLength as GenericMaxLength, MozLength as GenericMozLength};
-use values::specified::length::{AbsoluteLength, FontBaseSize, FontRelativeLength};
-use values::specified::length::ViewportPercentageLength;
+use style_traits::{CssWriter, ToCss};
 
 pub use super::image::Image;
-pub use values::specified::url::UrlOrNone;
-pub use values::specified::{Angle, BorderStyle, Time};
+pub use crate::values::specified::url::UrlOrNone;
+pub use crate::values::specified::{Angle, BorderStyle, Time};
 
 impl ToComputedValue for specified::NoCalcLength {
     type ComputedValue = CSSPixelLength;
@@ -207,12 +209,12 @@ impl ToCss for CalcLengthOrPercentage {
                 if length.px() == 0. && self.clamping_mode.clamp(p.0) == p.0 {
                     return p.to_css(dest);
                 }
-            }
+            },
             None => {
                 if self.clamping_mode.clamp(length.px()) == length.px() {
                     return length.to_css(dest);
                 }
-            }
+            },
         }
 
         dest.write_str("calc(")?;
@@ -494,6 +496,17 @@ impl ToComputedValue for specified::LengthOrPercentage {
     }
 }
 
+impl IsZeroLength for LengthOrPercentage {
+    #[inline]
+    fn is_zero_length(&self) -> bool {
+        match *self {
+            LengthOrPercentage::Length(l) => l.0 == 0.0,
+            LengthOrPercentage::Percentage(p) => p.0 == 0.0,
+            LengthOrPercentage::Calc(c) => c.unclamped_length().0 == 0.0 && c.percentage() == 0.0,
+        }
+    }
+}
+
 #[allow(missing_docs)]
 #[animate(fallback = "Self::animate_fallback")]
 #[css(derive_debug)]
@@ -527,6 +540,13 @@ impl LengthOrPercentageOrAuto {
 
 /// A wrapper of LengthOrPercentageOrAuto, whose value must be >= 0.
 pub type NonNegativeLengthOrPercentageOrAuto = NonNegative<LengthOrPercentageOrAuto>;
+
+impl IsAuto for NonNegativeLengthOrPercentageOrAuto {
+    #[inline]
+    fn is_auto(&self) -> bool {
+        *self == Self::auto()
+    }
+}
 
 impl NonNegativeLengthOrPercentageOrAuto {
     /// `auto`
@@ -950,8 +970,18 @@ pub type NonNegativeLengthOrPercentageOrNormal = Either<NonNegativeLengthOrPerce
 /// block-size, and inline-size.
 #[allow(missing_docs)]
 #[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
-#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, Parse, PartialEq, SpecifiedValueInfo,
-         ToComputedValue, ToCss)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+)]
 pub enum ExtremumLength {
     MozMaxContent,
     MozMinContent,

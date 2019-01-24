@@ -9,6 +9,7 @@
 #include "mozilla/Base64.h"
 #include "mozilla/dom/Promise.h"
 #include "nsIRandomGenerator.h"
+#include "nsXPCOM.h"
 #include "pk11pub.h"
 
 #ifdef MOZ_LIB_SECRET
@@ -21,7 +22,7 @@
 #include "NSSKeyStore.h"
 #endif
 
-NS_IMPL_ISUPPORTS(OSKeyStore, nsIOSKeyStore)
+NS_IMPL_ISUPPORTS(OSKeyStore, nsIOSKeyStore, nsIObserver)
 
 using namespace mozilla;
 using dom::Promise;
@@ -29,8 +30,12 @@ using dom::Promise;
 mozilla::LazyLogModule gOSKeyStoreLog("oskeystore");
 
 OSKeyStore::OSKeyStore()
-  : mMutex("OSKeyStore-mutex")
-{
+    : mKs(nullptr), mKsThread(nullptr), mKsIsNSSKeyStore(false) {
+  MOZ_ASSERT(NS_IsMainThread());
+  if (NS_WARN_IF(!NS_IsMainThread())) {
+    return;
+  }
+
 #ifdef MOZ_LIB_SECRET
   mKs.reset(new LibSecret());
 #elif defined(XP_MACOSX)
@@ -39,13 +44,48 @@ OSKeyStore::OSKeyStore()
   mKs.reset(new CredentialManagerSecret());
 #else
   mKs.reset(new NSSKeyStore());
+  mKsIsNSSKeyStore = true;
 #endif
-}
-OSKeyStore::~OSKeyStore() {}
 
-static nsresult
-GenerateRandom(std::vector<uint8_t>& r)
-{
+  nsCOMPtr<nsIThread> thread;
+  nsresult rv = NS_NewNamedThread("OSKeyStore", getter_AddRefs(thread));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    mKs = nullptr;
+    return;
+  }
+  mKsThread = thread;
+
+  nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
+  if (NS_WARN_IF(!obs)) {
+    mKsThread = nullptr;
+    mKs = nullptr;
+    return;
+  }
+  rv = obs->AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, false);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    mKsThread = nullptr;
+    mKs = nullptr;
+  }
+}
+
+NS_IMETHODIMP
+OSKeyStore::Observe(nsISupports*, const char* aTopic, const char16_t*) {
+  MOZ_ASSERT(!strcmp(aTopic, NS_XPCOM_SHUTDOWN_OBSERVER_ID));
+  MOZ_ASSERT(NS_IsMainThread());
+  if (!NS_IsMainThread()) {
+    return NS_ERROR_NOT_SAME_THREAD;
+  }
+
+  if (mKsThread) {
+    mKsThread->Shutdown();
+    mKsThread = nullptr;
+    mKs = nullptr;
+  }
+
+  return NS_OK;
+}
+
+static nsresult GenerateRandom(std::vector<uint8_t>& r) {
   if (r.size() < 1) {
     return NS_ERROR_INVALID_ARG;
   }
@@ -63,22 +103,16 @@ GenerateRandom(std::vector<uint8_t>& r)
   return NS_OK;
 }
 
-nsresult
-OSKeyStore::SecretAvailable(const nsACString& aLabel,
-                            /* out */ bool* aAvailable)
-{
-  MutexAutoLock lock(mMutex);
+nsresult OSKeyStore::SecretAvailable(const nsACString& aLabel,
+                                     /* out */ bool* aAvailable) {
   NS_ENSURE_STATE(mKs);
   nsAutoCString label = mLabelPrefix + aLabel;
   *aAvailable = mKs->SecretAvailable(label);
   return NS_OK;
 }
 
-nsresult
-OSKeyStore::GenerateSecret(const nsACString& aLabel,
-                           /* out */ nsACString& aRecoveryPhrase)
-{
-  MutexAutoLock lock(mMutex);
+nsresult OSKeyStore::GenerateSecret(const nsACString& aLabel,
+                                    /* out */ nsACString& aRecoveryPhrase) {
   NS_ENSURE_STATE(mKs);
   size_t keyByteLength = mKs->GetKeyByteLength();
   std::vector<uint8_t> secret(keyByteLength);
@@ -106,11 +140,8 @@ OSKeyStore::GenerateSecret(const nsACString& aLabel,
   return NS_OK;
 }
 
-nsresult
-OSKeyStore::RecoverSecret(const nsACString& aLabel,
-                          const nsACString& aRecoveryPhrase)
-{
-  MutexAutoLock lock(mMutex);
+nsresult OSKeyStore::RecoverSecret(const nsACString& aLabel,
+                                   const nsACString& aRecoveryPhrase) {
   NS_ENSURE_STATE(mKs);
   nsAutoCString secret;
   nsresult rv = Base64Decode(aRecoveryPhrase, secret);
@@ -126,28 +157,17 @@ OSKeyStore::RecoverSecret(const nsACString& aLabel,
   return NS_OK;
 }
 
-nsresult
-OSKeyStore::DeleteSecret(const nsACString& aLabel)
-{
-  MutexAutoLock lock(mMutex);
+nsresult OSKeyStore::DeleteSecret(const nsACString& aLabel) {
   NS_ENSURE_STATE(mKs);
   nsAutoCString label = mLabelPrefix + aLabel;
   return mKs->DeleteSecret(label);
 }
 
-enum Cipher
-{
-  Encrypt = true,
-  Decrypt = false
-};
+enum Cipher { Encrypt = true, Decrypt = false };
 
-nsresult
-OSKeyStore::EncryptBytes(const nsACString& aLabel,
-                         uint32_t inLen,
-                         uint8_t* inBytes,
-                         /*out*/ nsACString& aEncryptedBase64Text)
-{
-  MutexAutoLock lock(mMutex);
+nsresult OSKeyStore::EncryptBytes(const nsACString& aLabel, uint32_t inLen,
+                                  uint8_t* inBytes,
+                                  /*out*/ nsACString& aEncryptedBase64Text) {
   NS_ENSURE_STATE(mKs);
   NS_ENSURE_ARG_POINTER(inBytes);
 
@@ -172,13 +192,10 @@ OSKeyStore::EncryptBytes(const nsACString& aLabel,
   return NS_OK;
 }
 
-nsresult
-OSKeyStore::DecryptBytes(const nsACString& aLabel,
-                         const nsACString& aEncryptedBase64Text,
-                         /*out*/ uint32_t* outLen,
-                         /*out*/ uint8_t** outBytes)
-{
-  MutexAutoLock lock(mMutex);
+nsresult OSKeyStore::DecryptBytes(const nsACString& aLabel,
+                                  const nsACString& aEncryptedBase64Text,
+                                  /*out*/ uint32_t* outLen,
+                                  /*out*/ uint8_t** outBytes) {
   NS_ENSURE_STATE(mKs);
   NS_ENSURE_ARG_POINTER(outLen);
   NS_ENSURE_ARG_POINTER(outBytes);
@@ -194,8 +211,8 @@ OSKeyStore::DecryptBytes(const nsACString& aLabel,
   uint8_t* tmp = BitwiseCast<uint8_t*, const char*>(ciphertext.BeginReading());
   const std::vector<uint8_t> ciphertextBytes(tmp, tmp + ciphertext.Length());
   std::vector<uint8_t> plaintextBytes;
-  rv = mKs->EncryptDecrypt(
-    label, ciphertextBytes, plaintextBytes, Cipher::Decrypt);
+  rv = mKs->EncryptDecrypt(label, ciphertextBytes, plaintextBytes,
+                           Cipher::Decrypt);
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -206,38 +223,27 @@ OSKeyStore::DecryptBytes(const nsACString& aLabel,
   return NS_OK;
 }
 
-nsresult
-OSKeyStore::Lock()
-{
-  MutexAutoLock lock(mMutex);
+nsresult OSKeyStore::Lock() {
   NS_ENSURE_STATE(mKs);
   return mKs->Lock();
 }
 
-nsresult
-OSKeyStore::Unlock()
-{
-  MutexAutoLock lock(mMutex);
+nsresult OSKeyStore::Unlock() {
   NS_ENSURE_STATE(mKs);
   return mKs->Unlock();
 }
 
 NS_IMETHODIMP
-OSKeyStore::GetIsNSSKeyStore(bool* aNSSKeyStore)
-{
-  MutexAutoLock lock(mMutex);
+OSKeyStore::GetIsNSSKeyStore(bool* aNSSKeyStore) {
   NS_ENSURE_ARG_POINTER(aNSSKeyStore);
-  NS_ENSURE_STATE(mKs);
-  *aNSSKeyStore = mKs->IsNSSKeyStore();
+  *aNSSKeyStore = mKsIsNSSKeyStore;
   return NS_OK;
 }
 
 // Async interfaces that return promises because the key store implementation
 // might block, e.g. asking for a password.
 
-nsresult
-GetPromise(JSContext* aCx, /* out */ RefPtr<Promise>& aPromise)
-{
+nsresult GetPromise(JSContext* aCx, /* out */ RefPtr<Promise>& aPromise) {
   nsIGlobalObject* globalObject = xpc::CurrentNativeGlobal(aCx);
   if (NS_WARN_IF(!globalObject)) {
     return NS_ERROR_UNEXPECTED;
@@ -250,44 +256,29 @@ GetPromise(JSContext* aCx, /* out */ RefPtr<Promise>& aPromise)
   return NS_OK;
 }
 
-nsresult
-OSKeyStore::FinishAsync(RefPtr<Promise>& aPromiseHandle,
-                        /* out*/ Promise** promiseOut,
-                        const nsACString& aName,
-                        nsCOMPtr<nsIRunnable> aRunnable)
-{
-  // Note that if the NSS PK11 token is handling the key store, locking and
-  // unlocking functions will be pushed to the main thread again.
-  nsCOMPtr<nsIThread> thread;
-  nsresult rv = NS_NewNamedThread(aName, getter_AddRefs(thread), aRunnable);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  aPromiseHandle.forget(promiseOut);
-  return NS_OK;
-}
-
-void
-BackgroundUnlock(RefPtr<Promise>& aPromise, RefPtr<OSKeyStore> self)
-{
+void BackgroundUnlock(RefPtr<Promise>& aPromise, RefPtr<OSKeyStore> self) {
   nsAutoCString recovery;
   nsresult rv = self->Unlock();
   nsCOMPtr<nsIRunnable> runnable(NS_NewRunnableFunction(
-    "BackgroundUnlockOSKSResolve", [rv, aPromise = std::move(aPromise)]() {
-      if (NS_FAILED(rv)) {
-        aPromise->MaybeReject(rv);
-      } else {
-        aPromise->MaybeResolveWithUndefined();
-      }
-    }));
+      "BackgroundUnlockOSKSResolve", [rv, aPromise = std::move(aPromise)]() {
+        if (NS_FAILED(rv)) {
+          aPromise->MaybeReject(rv);
+        } else {
+          aPromise->MaybeResolveWithUndefined();
+        }
+      }));
   NS_DispatchToMainThread(runnable.forget());
 }
 
 NS_IMETHODIMP
-OSKeyStore::AsyncUnlock(JSContext* aCx, Promise** promiseOut)
-{
+OSKeyStore::AsyncUnlock(JSContext* aCx, Promise** promiseOut) {
+  MOZ_ASSERT(NS_IsMainThread());
+  if (!NS_IsMainThread()) {
+    return NS_ERROR_NOT_SAME_THREAD;
+  }
+
   NS_ENSURE_ARG_POINTER(aCx);
+  NS_ENSURE_STATE(mKsThread);
 
   RefPtr<Promise> promiseHandle;
   nsresult rv = GetPromise(aCx, promiseHandle);
@@ -296,34 +287,37 @@ OSKeyStore::AsyncUnlock(JSContext* aCx, Promise** promiseOut)
   }
 
   RefPtr<OSKeyStore> self = this;
-  nsCOMPtr<nsIRunnable> runnable(
-    NS_NewRunnableFunction("BackgroundUnlock", [self, promiseHandle]() mutable {
-      BackgroundUnlock(promiseHandle, self);
-    }));
+  nsCOMPtr<nsIRunnable> runnable(NS_NewRunnableFunction(
+      "BackgroundUnlock", [self, promiseHandle]() mutable {
+        BackgroundUnlock(promiseHandle, self);
+      }));
 
-  return FinishAsync(
-    promiseHandle, promiseOut, NS_LITERAL_CSTRING("UnlockKSThread"), runnable);
+  promiseHandle.forget(promiseOut);
+  return mKsThread->Dispatch(runnable.forget());
 }
 
-void
-BackgroundLock(RefPtr<Promise>& aPromise, RefPtr<OSKeyStore> self)
-{
+void BackgroundLock(RefPtr<Promise>& aPromise, RefPtr<OSKeyStore> self) {
   nsresult rv = self->Lock();
   nsCOMPtr<nsIRunnable> runnable(NS_NewRunnableFunction(
-    "BackgroundLockOSKSResolve", [rv, aPromise = std::move(aPromise)]() {
-      if (NS_FAILED(rv)) {
-        aPromise->MaybeReject(rv);
-      } else {
-        aPromise->MaybeResolveWithUndefined();
-      }
-    }));
+      "BackgroundLockOSKSResolve", [rv, aPromise = std::move(aPromise)]() {
+        if (NS_FAILED(rv)) {
+          aPromise->MaybeReject(rv);
+        } else {
+          aPromise->MaybeResolveWithUndefined();
+        }
+      }));
   NS_DispatchToMainThread(runnable.forget());
 }
 
 NS_IMETHODIMP
-OSKeyStore::AsyncLock(JSContext* aCx, Promise** promiseOut)
-{
+OSKeyStore::AsyncLock(JSContext* aCx, Promise** promiseOut) {
+  MOZ_ASSERT(NS_IsMainThread());
+  if (!NS_IsMainThread()) {
+    return NS_ERROR_NOT_SAME_THREAD;
+  }
+
   NS_ENSURE_ARG_POINTER(aCx);
+  NS_ENSURE_STATE(mKsThread);
 
   RefPtr<Promise> promiseHandle;
   nsresult rv = GetPromise(aCx, promiseHandle);
@@ -333,43 +327,45 @@ OSKeyStore::AsyncLock(JSContext* aCx, Promise** promiseOut)
 
   RefPtr<OSKeyStore> self = this;
   nsCOMPtr<nsIRunnable> runnable(
-    NS_NewRunnableFunction("BackgroundLock", [self, promiseHandle]() mutable {
-      BackgroundLock(promiseHandle, self);
-    }));
+      NS_NewRunnableFunction("BackgroundLock", [self, promiseHandle]() mutable {
+        BackgroundLock(promiseHandle, self);
+      }));
 
-  return FinishAsync(
-    promiseHandle, promiseOut, NS_LITERAL_CSTRING("LockKSThread"), runnable);
+  promiseHandle.forget(promiseOut);
+  return mKsThread->Dispatch(runnable.forget());
 }
 
-void
-BackgroundGenerateSecret(const nsACString& aLabel,
-                         RefPtr<Promise>& aPromise,
-                         RefPtr<OSKeyStore> self)
-{
+void BackgroundGenerateSecret(const nsACString& aLabel,
+                              RefPtr<Promise>& aPromise,
+                              RefPtr<OSKeyStore> self) {
   nsAutoCString recovery;
   nsresult rv = self->GenerateSecret(aLabel, recovery);
   nsAutoString recoveryString;
-  if (NS_SUCCEEDED(rv)){
+  if (NS_SUCCEEDED(rv)) {
     CopyUTF8toUTF16(recovery, recoveryString);
   }
   nsCOMPtr<nsIRunnable> runnable(NS_NewRunnableFunction(
-    "BackgroundGenerateSecreteOSKSResolve",
-    [rv, aPromise = std::move(aPromise), recoveryString]() {
-      if (NS_FAILED(rv)) {
-        aPromise->MaybeReject(rv);
-      } else {
-        aPromise->MaybeResolve(recoveryString);
-      }
-    }));
+      "BackgroundGenerateSecreteOSKSResolve",
+      [rv, aPromise = std::move(aPromise), recoveryString]() {
+        if (NS_FAILED(rv)) {
+          aPromise->MaybeReject(rv);
+        } else {
+          aPromise->MaybeResolve(recoveryString);
+        }
+      }));
   NS_DispatchToMainThread(runnable.forget());
 }
 
 NS_IMETHODIMP
-OSKeyStore::AsyncGenerateSecret(const nsACString& aLabel,
-                                JSContext* aCx,
-                                Promise** promiseOut)
-{
+OSKeyStore::AsyncGenerateSecret(const nsACString& aLabel, JSContext* aCx,
+                                Promise** promiseOut) {
+  MOZ_ASSERT(NS_IsMainThread());
+  if (!NS_IsMainThread()) {
+    return NS_ERROR_NOT_SAME_THREAD;
+  }
+
   NS_ENSURE_ARG_POINTER(aCx);
+  NS_ENSURE_STATE(mKsThread);
 
   RefPtr<Promise> promiseHandle;
   nsresult rv = GetPromise(aCx, promiseHandle);
@@ -379,42 +375,42 @@ OSKeyStore::AsyncGenerateSecret(const nsACString& aLabel,
 
   RefPtr<OSKeyStore> self = this;
   nsCOMPtr<nsIRunnable> runnable(NS_NewRunnableFunction(
-    "BackgroundGenerateSecret",
-    [self, promiseHandle, aLabel = nsAutoCString(aLabel)]() mutable {
-      BackgroundGenerateSecret(aLabel, promiseHandle, self);
-    }));
+      "BackgroundGenerateSecret",
+      [self, promiseHandle, aLabel = nsAutoCString(aLabel)]() mutable {
+        BackgroundGenerateSecret(aLabel, promiseHandle, self);
+      }));
 
-  return FinishAsync(promiseHandle,
-                     promiseOut,
-                     NS_LITERAL_CSTRING("GenerateKSThread"),
-                     runnable);
+  promiseHandle.forget(promiseOut);
+  return mKsThread->Dispatch(runnable.forget());
 }
 
-void
-BackgroundSecretAvailable(const nsACString& aLabel,
-                          RefPtr<Promise>& aPromise,
-                          RefPtr<OSKeyStore> self)
-{
+void BackgroundSecretAvailable(const nsACString& aLabel,
+                               RefPtr<Promise>& aPromise,
+                               RefPtr<OSKeyStore> self) {
   bool available = false;
   nsresult rv = self->SecretAvailable(aLabel, &available);
   nsCOMPtr<nsIRunnable> runnable(NS_NewRunnableFunction(
-    "BackgroundSecreteAvailableOSKSResolve",
-    [rv, aPromise = std::move(aPromise), available = available]() {
-      if (NS_FAILED(rv)) {
-        aPromise->MaybeReject(rv);
-      } else {
-        aPromise->MaybeResolve(available);
-      }
-    }));
+      "BackgroundSecreteAvailableOSKSResolve",
+      [rv, aPromise = std::move(aPromise), available = available]() {
+        if (NS_FAILED(rv)) {
+          aPromise->MaybeReject(rv);
+        } else {
+          aPromise->MaybeResolve(available);
+        }
+      }));
   NS_DispatchToMainThread(runnable.forget());
 }
 
 NS_IMETHODIMP
-OSKeyStore::AsyncSecretAvailable(const nsACString& aLabel,
-                                 JSContext* aCx,
-                                 Promise** promiseOut)
-{
+OSKeyStore::AsyncSecretAvailable(const nsACString& aLabel, JSContext* aCx,
+                                 Promise** promiseOut) {
+  MOZ_ASSERT(NS_IsMainThread());
+  if (!NS_IsMainThread()) {
+    return NS_ERROR_NOT_SAME_THREAD;
+  }
+
   NS_ENSURE_ARG_POINTER(aCx);
+  NS_ENSURE_STATE(mKsThread);
 
   RefPtr<Promise> promiseHandle;
   nsresult rv = GetPromise(aCx, promiseHandle);
@@ -424,43 +420,43 @@ OSKeyStore::AsyncSecretAvailable(const nsACString& aLabel,
 
   RefPtr<OSKeyStore> self = this;
   nsCOMPtr<nsIRunnable> runnable(NS_NewRunnableFunction(
-    "BackgroundSecretAvailable",
-    [self, promiseHandle, aLabel = nsAutoCString(aLabel)]() mutable {
-      BackgroundSecretAvailable(aLabel, promiseHandle, self);
-    }));
+      "BackgroundSecretAvailable",
+      [self, promiseHandle, aLabel = nsAutoCString(aLabel)]() mutable {
+        BackgroundSecretAvailable(aLabel, promiseHandle, self);
+      }));
 
-  return FinishAsync(promiseHandle,
-                     promiseOut,
-                     NS_LITERAL_CSTRING("AvaiableKSThread"),
-                     runnable);
+  promiseHandle.forget(promiseOut);
+  return mKsThread->Dispatch(runnable.forget());
 }
 
-void
-BackgroundRecoverSecret(const nsACString& aLabel,
-                        const nsACString& aRecoveryPhrase,
-                        RefPtr<Promise>& aPromise,
-                        RefPtr<OSKeyStore> self)
-{
+void BackgroundRecoverSecret(const nsACString& aLabel,
+                             const nsACString& aRecoveryPhrase,
+                             RefPtr<Promise>& aPromise,
+                             RefPtr<OSKeyStore> self) {
   nsresult rv = self->RecoverSecret(aLabel, aRecoveryPhrase);
   nsCOMPtr<nsIRunnable> runnable(
-    NS_NewRunnableFunction("BackgroundRecoverSecreteOSKSResolve",
-                           [rv, aPromise = std::move(aPromise)]() {
-                             if (NS_FAILED(rv)) {
-                               aPromise->MaybeReject(rv);
-                             } else {
-                               aPromise->MaybeResolveWithUndefined();
-                             }
-                           }));
+      NS_NewRunnableFunction("BackgroundRecoverSecreteOSKSResolve",
+                             [rv, aPromise = std::move(aPromise)]() {
+                               if (NS_FAILED(rv)) {
+                                 aPromise->MaybeReject(rv);
+                               } else {
+                                 aPromise->MaybeResolveWithUndefined();
+                               }
+                             }));
   NS_DispatchToMainThread(runnable.forget());
 }
 
 NS_IMETHODIMP
 OSKeyStore::AsyncRecoverSecret(const nsACString& aLabel,
                                const nsACString& aRecoveryPhrase,
-                               JSContext* aCx,
-                               Promise** promiseOut)
-{
+                               JSContext* aCx, Promise** promiseOut) {
+  MOZ_ASSERT(NS_IsMainThread());
+  if (!NS_IsMainThread()) {
+    return NS_ERROR_NOT_SAME_THREAD;
+  }
+
   NS_ENSURE_ARG_POINTER(aCx);
+  NS_ENSURE_STATE(mKsThread);
 
   RefPtr<Promise> promiseHandle;
   nsresult rv = GetPromise(aCx, promiseHandle);
@@ -470,42 +466,41 @@ OSKeyStore::AsyncRecoverSecret(const nsACString& aLabel,
 
   RefPtr<OSKeyStore> self = this;
   nsCOMPtr<nsIRunnable> runnable(NS_NewRunnableFunction(
-    "BackgroundRecoverSecret",
-    [self,
-     promiseHandle,
-     aLabel = nsAutoCString(aLabel),
-     aRecoveryPhrase = nsAutoCString(aRecoveryPhrase)]() mutable {
-      BackgroundRecoverSecret(aLabel, aRecoveryPhrase, promiseHandle, self);
-    }));
+      "BackgroundRecoverSecret",
+      [self, promiseHandle, aLabel = nsAutoCString(aLabel),
+       aRecoveryPhrase = nsAutoCString(aRecoveryPhrase)]() mutable {
+        BackgroundRecoverSecret(aLabel, aRecoveryPhrase, promiseHandle, self);
+      }));
 
-  return FinishAsync(
-    promiseHandle, promiseOut, NS_LITERAL_CSTRING("RecoverKSThread"), runnable);
+  promiseHandle.forget(promiseOut);
+  return mKsThread->Dispatch(runnable.forget());
 }
 
-void
-BackgroundDeleteSecret(const nsACString& aLabel,
-                       RefPtr<Promise>& aPromise,
-                       RefPtr<OSKeyStore> self)
-{
+void BackgroundDeleteSecret(const nsACString& aLabel, RefPtr<Promise>& aPromise,
+                            RefPtr<OSKeyStore> self) {
   nsresult rv = self->DeleteSecret(aLabel);
   nsCOMPtr<nsIRunnable> runnable(
-    NS_NewRunnableFunction("BackgroundDeleteSecreteOSKSResolve",
-                           [rv, aPromise = std::move(aPromise)]() {
-                             if (NS_FAILED(rv)) {
-                               aPromise->MaybeReject(rv);
-                             } else {
-                               aPromise->MaybeResolveWithUndefined();
-                             }
-                           }));
+      NS_NewRunnableFunction("BackgroundDeleteSecreteOSKSResolve",
+                             [rv, aPromise = std::move(aPromise)]() {
+                               if (NS_FAILED(rv)) {
+                                 aPromise->MaybeReject(rv);
+                               } else {
+                                 aPromise->MaybeResolveWithUndefined();
+                               }
+                             }));
   NS_DispatchToMainThread(runnable.forget());
 }
 
 NS_IMETHODIMP
-OSKeyStore::AsyncDeleteSecret(const nsACString& aLabel,
-                              JSContext* aCx,
-                              Promise** promiseOut)
-{
+OSKeyStore::AsyncDeleteSecret(const nsACString& aLabel, JSContext* aCx,
+                              Promise** promiseOut) {
+  MOZ_ASSERT(NS_IsMainThread());
+  if (!NS_IsMainThread()) {
+    return NS_ERROR_NOT_SAME_THREAD;
+  }
+
   NS_ENSURE_ARG_POINTER(aCx);
+  NS_ENSURE_STATE(mKsThread);
 
   RefPtr<Promise> promiseHandle;
   nsresult rv = GetPromise(aCx, promiseHandle);
@@ -515,48 +510,49 @@ OSKeyStore::AsyncDeleteSecret(const nsACString& aLabel,
 
   RefPtr<OSKeyStore> self = this;
   nsCOMPtr<nsIRunnable> runnable(NS_NewRunnableFunction(
-    "BackgroundDeleteSecret",
-    [self, promiseHandle, aLabel = nsAutoCString(aLabel)]() mutable {
-      BackgroundDeleteSecret(aLabel, promiseHandle, self);
-    }));
+      "BackgroundDeleteSecret",
+      [self, promiseHandle, aLabel = nsAutoCString(aLabel)]() mutable {
+        BackgroundDeleteSecret(aLabel, promiseHandle, self);
+      }));
 
-  return FinishAsync(
-    promiseHandle, promiseOut, NS_LITERAL_CSTRING("DeleteKSThread"), runnable);
+  promiseHandle.forget(promiseOut);
+  return mKsThread->Dispatch(runnable.forget());
 }
 
-void
-BackgroundEncryptBytes(const nsACString& aLabel,
-                       std::vector<uint8_t> inBytes,
-                       RefPtr<Promise>& aPromise,
-                       RefPtr<OSKeyStore> self)
-{
+void BackgroundEncryptBytes(const nsACString& aLabel,
+                            std::vector<uint8_t> inBytes,
+                            RefPtr<Promise>& aPromise,
+                            RefPtr<OSKeyStore> self) {
   nsAutoCString ciphertext;
   nsresult rv =
-    self->EncryptBytes(aLabel, inBytes.size(), inBytes.data(), ciphertext);
+      self->EncryptBytes(aLabel, inBytes.size(), inBytes.data(), ciphertext);
   nsAutoString ctext;
   CopyUTF8toUTF16(ciphertext, ctext);
 
   nsCOMPtr<nsIRunnable> runnable(
-    NS_NewRunnableFunction("BackgroundEncryptOSKSResolve",
-                           [rv, aPromise = std::move(aPromise), ctext]() {
-                             if (NS_FAILED(rv)) {
-                               aPromise->MaybeReject(rv);
-                             } else {
-                               aPromise->MaybeResolve(ctext);
-                             }
-                           }));
+      NS_NewRunnableFunction("BackgroundEncryptOSKSResolve",
+                             [rv, aPromise = std::move(aPromise), ctext]() {
+                               if (NS_FAILED(rv)) {
+                                 aPromise->MaybeReject(rv);
+                               } else {
+                                 aPromise->MaybeResolve(ctext);
+                               }
+                             }));
   NS_DispatchToMainThread(runnable.forget());
 }
 
 NS_IMETHODIMP
-OSKeyStore::AsyncEncryptBytes(const nsACString& aLabel,
-                              uint32_t inLen,
-                              uint8_t* inBytes,
-                              JSContext* aCx,
-                              Promise** promiseOut)
-{
+OSKeyStore::AsyncEncryptBytes(const nsACString& aLabel, uint32_t inLen,
+                              uint8_t* inBytes, JSContext* aCx,
+                              Promise** promiseOut) {
+  MOZ_ASSERT(NS_IsMainThread());
+  if (!NS_IsMainThread()) {
+    return NS_ERROR_NOT_SAME_THREAD;
+  }
+
   NS_ENSURE_ARG_POINTER(aCx);
   NS_ENSURE_ARG_POINTER(inBytes);
+  NS_ENSURE_STATE(mKsThread);
 
   RefPtr<Promise> promiseHandle;
   nsresult rv = GetPromise(aCx, promiseHandle);
@@ -566,28 +562,24 @@ OSKeyStore::AsyncEncryptBytes(const nsACString& aLabel,
 
   RefPtr<OSKeyStore> self = this;
   nsCOMPtr<nsIRunnable> runnable(NS_NewRunnableFunction(
-    "BackgroundEncryptBytes",
-    [promiseHandle,
-     inBytes = std::vector<uint8_t>(inBytes, inBytes + inLen),
-     aLabel = nsAutoCString(aLabel),
-     self]() mutable {
-      BackgroundEncryptBytes(aLabel, inBytes, promiseHandle, self);
-    }));
+      "BackgroundEncryptBytes",
+      [promiseHandle, inBytes = std::vector<uint8_t>(inBytes, inBytes + inLen),
+       aLabel = nsAutoCString(aLabel), self]() mutable {
+        BackgroundEncryptBytes(aLabel, inBytes, promiseHandle, self);
+      }));
 
-  return FinishAsync(
-    promiseHandle, promiseOut, NS_LITERAL_CSTRING("EncryptKSThread"), runnable);
+  promiseHandle.forget(promiseOut);
+  return mKsThread->Dispatch(runnable.forget());
 }
 
-void
-BackgroundDecryptBytes(const nsACString& aLabel,
-                       const nsACString& aEncryptedBase64Text,
-                       RefPtr<Promise>& aPromise,
-                       RefPtr<OSKeyStore> self)
-{
+void BackgroundDecryptBytes(const nsACString& aLabel,
+                            const nsACString& aEncryptedBase64Text,
+                            RefPtr<Promise>& aPromise,
+                            RefPtr<OSKeyStore> self) {
   uint8_t* plaintext = nullptr;
   uint32_t plaintextLen = 0;
-  nsresult rv =
-    self->DecryptBytes(aLabel, aEncryptedBase64Text, &plaintextLen, &plaintext);
+  nsresult rv = self->DecryptBytes(aLabel, aEncryptedBase64Text, &plaintextLen,
+                                   &plaintext);
   nsTArray<uint8_t> plain;
   if (plaintext) {
     MOZ_ASSERT(plaintextLen > 0);
@@ -596,24 +588,28 @@ BackgroundDecryptBytes(const nsACString& aLabel,
   }
 
   nsCOMPtr<nsIRunnable> runnable(NS_NewRunnableFunction(
-    "BackgroundDecryptOSKSResolve",
-    [rv, aPromise = std::move(aPromise), plain = std::move(plain)]() {
-      if (NS_FAILED(rv)) {
-        aPromise->MaybeReject(rv);
-      } else {
-        aPromise->MaybeResolve(plain);
-      }
-    }));
+      "BackgroundDecryptOSKSResolve",
+      [rv, aPromise = std::move(aPromise), plain = std::move(plain)]() {
+        if (NS_FAILED(rv)) {
+          aPromise->MaybeReject(rv);
+        } else {
+          aPromise->MaybeResolve(plain);
+        }
+      }));
   NS_DispatchToMainThread(runnable.forget());
 }
 
 NS_IMETHODIMP
 OSKeyStore::AsyncDecryptBytes(const nsACString& aLabel,
                               const nsACString& aEncryptedBase64Text,
-                              JSContext* aCx,
-                              Promise** promiseOut)
-{
+                              JSContext* aCx, Promise** promiseOut) {
+  MOZ_ASSERT(NS_IsMainThread());
+  if (!NS_IsMainThread()) {
+    return NS_ERROR_NOT_SAME_THREAD;
+  }
+
   NS_ENSURE_ARG_POINTER(aCx);
+  NS_ENSURE_STATE(mKsThread);
 
   RefPtr<Promise> promiseHandle;
   nsresult rv = GetPromise(aCx, promiseHandle);
@@ -623,24 +619,22 @@ OSKeyStore::AsyncDecryptBytes(const nsACString& aLabel,
 
   RefPtr<OSKeyStore> self = this;
   nsCOMPtr<nsIRunnable> runnable(NS_NewRunnableFunction(
-    "BackgroundDecryptBytes",
-    [promiseHandle,
-     self,
-     aEncryptedBase64Text = nsAutoCString(aEncryptedBase64Text),
-     aLabel = nsAutoCString(aLabel)]() mutable {
-      BackgroundDecryptBytes(aLabel, aEncryptedBase64Text, promiseHandle, self);
-    }));
+      "BackgroundDecryptBytes",
+      [promiseHandle, self,
+       aEncryptedBase64Text = nsAutoCString(aEncryptedBase64Text),
+       aLabel = nsAutoCString(aLabel)]() mutable {
+        BackgroundDecryptBytes(aLabel, aEncryptedBase64Text, promiseHandle,
+                               self);
+      }));
 
-  return FinishAsync(
-    promiseHandle, promiseOut, NS_LITERAL_CSTRING("DecryptKSThread"), runnable);
+  promiseHandle.forget(promiseOut);
+  return mKsThread->Dispatch(runnable.forget());
 }
 
 // Generic AES-GCM cipher wrapper for NSS functions.
 
-nsresult
-AbstractOSKeyStore::BuildAesGcmKey(std::vector<uint8_t> aKeyBytes,
-                                   /* out */ UniquePK11SymKey& aKey)
-{
+nsresult AbstractOSKeyStore::BuildAesGcmKey(std::vector<uint8_t> aKeyBytes,
+                                            /* out */ UniquePK11SymKey& aKey) {
   if (aKeyBytes.size() != mKeyByteLength) {
     return NS_ERROR_INVALID_ARG;
   }
@@ -651,7 +645,7 @@ AbstractOSKeyStore::BuildAesGcmKey(std::vector<uint8_t> aKeyBytes,
   }
 
   UniqueSECItem key =
-    UniqueSECItem(SECITEM_AllocItem(nullptr, nullptr, mKeyByteLength));
+      UniqueSECItem(SECITEM_AllocItem(nullptr, nullptr, mKeyByteLength));
   if (!key) {
     return NS_ERROR_FAILURE;
   }
@@ -659,12 +653,9 @@ AbstractOSKeyStore::BuildAesGcmKey(std::vector<uint8_t> aKeyBytes,
   memcpy(key->data, aKeyBytes.data(), mKeyByteLength);
   key->len = mKeyByteLength;
 
-  UniquePK11SymKey symKey(PK11_ImportSymKey(slot.get(),
-                                            CKM_AES_GCM,
-                                            PK11_OriginUnwrap,
-                                            CKA_DECRYPT | CKA_ENCRYPT,
-                                            key.get(),
-                                            nullptr));
+  UniquePK11SymKey symKey(
+      PK11_ImportSymKey(slot.get(), CKM_AES_GCM, PK11_OriginUnwrap,
+                        CKA_DECRYPT | CKA_ENCRYPT, key.get(), nullptr));
 
   if (!symKey) {
     return NS_ERROR_FAILURE;
@@ -674,12 +665,10 @@ AbstractOSKeyStore::BuildAesGcmKey(std::vector<uint8_t> aKeyBytes,
   return NS_OK;
 }
 
-nsresult
-AbstractOSKeyStore::DoCipher(const UniquePK11SymKey& aSymKey,
-                             const std::vector<uint8_t>& inBytes,
-                             std::vector<uint8_t>& outBytes,
-                             bool encrypt)
-{
+nsresult AbstractOSKeyStore::DoCipher(const UniquePK11SymKey& aSymKey,
+                                      const std::vector<uint8_t>& inBytes,
+                                      std::vector<uint8_t>& outBytes,
+                                      bool encrypt) {
   NS_ENSURE_ARG_POINTER(aSymKey);
   outBytes.clear();
 
@@ -711,22 +700,16 @@ AbstractOSKeyStore::DoCipher(const UniquePK11SymKey& aSymKey,
   gcm_params.pAAD = nullptr;
   gcm_params.ulAADLen = 0;
 
-  SECItem paramsItem = { siBuffer,
-                         reinterpret_cast<unsigned char*>(&gcm_params),
-                         sizeof(CK_GCM_PARAMS) };
+  SECItem paramsItem = {siBuffer, reinterpret_cast<unsigned char*>(&gcm_params),
+                        sizeof(CK_GCM_PARAMS)};
 
   size_t blockLength = 16;
   outBytes.resize(inBytes.size() + blockLength);
   unsigned int outLen = 0;
   SECStatus srv = SECFailure;
   if (encrypt) {
-    srv = PK11_Encrypt(aSymKey.get(),
-                       CKM_AES_GCM,
-                       &paramsItem,
-                       outBytes.data(),
-                       &outLen,
-                       inBytes.size() + blockLength,
-                       inBytes.data(),
+    srv = PK11_Encrypt(aSymKey.get(), CKM_AES_GCM, &paramsItem, outBytes.data(),
+                       &outLen, inBytes.size() + blockLength, inBytes.data(),
                        inBytes.size());
     // Prepend the used IV to the ciphertext.
     Unused << outBytes.insert(outBytes.begin(), ivp, ivp + mIVLength);
@@ -735,13 +718,8 @@ AbstractOSKeyStore::DoCipher(const UniquePK11SymKey& aSymKey,
     // Remove the IV from the input.
     std::vector<uint8_t> input(inBytes);
     input.erase(input.begin(), input.begin() + mIVLength);
-    srv = PK11_Decrypt(aSymKey.get(),
-                       CKM_AES_GCM,
-                       &paramsItem,
-                       outBytes.data(),
-                       &outLen,
-                       input.size() + blockLength,
-                       input.data(),
+    srv = PK11_Decrypt(aSymKey.get(), CKM_AES_GCM, &paramsItem, outBytes.data(),
+                       &outLen, input.size() + blockLength, input.data(),
                        input.size());
   }
   if (srv != SECSuccess || outLen > outBytes.size()) {
@@ -755,15 +733,7 @@ AbstractOSKeyStore::DoCipher(const UniquePK11SymKey& aSymKey,
   return NS_OK;
 }
 
-bool
-AbstractOSKeyStore::IsNSSKeyStore()
-{
-  return false;
-}
-
-bool
-AbstractOSKeyStore::SecretAvailable(const nsACString& aLabel)
-{
+bool AbstractOSKeyStore::SecretAvailable(const nsACString& aLabel) {
   nsAutoCString secret;
   nsresult rv = RetrieveSecret(aLabel, secret);
   if (NS_FAILED(rv) || secret.Length() == 0) {
@@ -772,12 +742,10 @@ AbstractOSKeyStore::SecretAvailable(const nsACString& aLabel)
   return true;
 }
 
-nsresult
-AbstractOSKeyStore::EncryptDecrypt(const nsACString& aLabel,
-                                   const std::vector<uint8_t>& inBytes,
-                                   std::vector<uint8_t>& outBytes,
-                                   bool encrypt)
-{
+nsresult AbstractOSKeyStore::EncryptDecrypt(const nsACString& aLabel,
+                                            const std::vector<uint8_t>& inBytes,
+                                            std::vector<uint8_t>& outBytes,
+                                            bool encrypt) {
   nsAutoCString secret;
   nsresult rv = RetrieveSecret(aLabel, secret);
   if (NS_FAILED(rv) || secret.Length() == 0) {

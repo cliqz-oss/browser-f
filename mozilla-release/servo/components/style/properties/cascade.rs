@@ -1,30 +1,30 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! The main cascading algorithm of the style system.
 
-use context::QuirksMode;
-use custom_properties::CustomPropertiesBuilder;
-use dom::TElement;
-use font_metrics::FontMetricsProvider;
-use logical_geometry::WritingMode;
-use media_queries::Device;
-use properties::{ComputedValues, StyleBuilder};
-use properties::{LonghandId, LonghandIdSet};
-use properties::{PropertyDeclaration, PropertyDeclarationId, DeclarationImportanceIterator};
-use properties::CASCADE_PROPERTY;
-use rule_cache::{RuleCache, RuleCacheConditions};
-use rule_tree::{CascadeLevel, StrongRuleNode};
-use selector_parser::PseudoElement;
+use crate::context::QuirksMode;
+use crate::custom_properties::CustomPropertiesBuilder;
+use crate::dom::TElement;
+use crate::font_metrics::FontMetricsProvider;
+use crate::logical_geometry::WritingMode;
+use crate::media_queries::Device;
+use crate::properties::{ComputedValues, StyleBuilder};
+use crate::properties::{LonghandId, LonghandIdSet};
+use crate::properties::{PropertyDeclaration, PropertyDeclarationId, DeclarationImportanceIterator};
+use crate::properties::CASCADE_PROPERTY;
+use crate::rule_cache::{RuleCache, RuleCacheConditions};
+use crate::rule_tree::{CascadeLevel, StrongRuleNode};
+use crate::selector_parser::PseudoElement;
 use servo_arc::Arc;
-use shared_lock::StylesheetGuards;
+use crate::shared_lock::StylesheetGuards;
 use smallbitvec::SmallBitVec;
 use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use style_adjuster::StyleAdjuster;
-use values::computed;
+use crate::style_adjuster::StyleAdjuster;
+use crate::values::computed;
 
 /// We split the cascade in two phases: 'early' properties, and 'late'
 /// properties.
@@ -243,7 +243,10 @@ where
 
     let mut declarations = SmallVec::<[(&_, CascadeLevel); 32]>::new();
     let custom_properties = {
-        let mut builder = CustomPropertiesBuilder::new(inherited_style.custom_properties());
+        let mut builder = CustomPropertiesBuilder::new(
+            inherited_style.custom_properties(),
+            device.environment(),
+        );
 
         for (declaration, cascade_level) in iter_declarations() {
             declarations.push((declaration, cascade_level));
@@ -420,6 +423,7 @@ impl<'a, 'b: 'a> Cascade<'a, 'b> {
             declaration.id,
             self.context.builder.custom_properties.as_ref(),
             self.context.quirks_mode,
+            self.context.device().environment(),
         ))
     }
 
@@ -741,7 +745,7 @@ impl<'a, 'b: 'a> Cascade<'a, 'b> {
                 let gecko_font = self.context.builder.mutate_font().gecko_mut();
                 gecko_font.mGenericID = generic;
                 unsafe {
-                    ::gecko_bindings::bindings::Gecko_nsStyleFont_PrefillDefaultForGeneric(
+                    crate::gecko_bindings::bindings::Gecko_nsStyleFont_PrefillDefaultForGeneric(
                         gecko_font,
                         pres_context,
                         generic,
@@ -792,7 +796,7 @@ impl<'a, 'b: 'a> Cascade<'a, 'b> {
                     self.seen.contains(LonghandId::MozMinFontSizeRatio) ||
                     self.seen.contains(LonghandId::FontFamily)
                 {
-                    use properties::{CSSWideKeyword, WideKeywordDeclaration};
+                    use crate::properties::{CSSWideKeyword, WideKeywordDeclaration};
 
                     // font-size must be explicitly inherited to handle lang
                     // changes and scriptlevel changes.

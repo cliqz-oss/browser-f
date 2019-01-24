@@ -17,7 +17,7 @@ async function onModifyRequest() {
       let httpChannel = subject.QueryInterface(Ci.nsIHttpChannel);
       let spec = httpChannel.URI.spec;
       info("Observed channel for " + spec);
-      if (httpChannel.URI.prePath != TEST_3RD_PARTY_DOMAIN_TP) {
+      if (httpChannel.URI.prePath + "/" != TEST_3RD_PARTY_DOMAIN_TP) {
         return;
       }
       if (spec.endsWith("empty.js")) {
@@ -49,9 +49,6 @@ add_task(async function() {
   await SpecialPowers.pushPrefEnv({"set": [
     ["browser.contentblocking.allowlist.annotations.enabled", true],
     ["browser.contentblocking.allowlist.storage.enabled", true],
-    ["browser.contentblocking.enabled", true],
-    ["browser.contentblocking.ui.enabled", true],
-    ["browser.fastblock.enabled", false],
     ["privacy.trackingprotection.enabled", true],
     // the test doesn't open a private window, so we don't care about this pref's value
     ["privacy.trackingprotection.pbmode.enabled", false],
@@ -59,6 +56,7 @@ add_task(async function() {
     ["privacy.trackingprotection.annotate_channels", false],
     // prevent the content blocking on-boarding UI to start mid-way through the test!
     [ContentBlocking.prefIntroCount, ContentBlocking.MAX_INTROS],
+    ["privacy.restrict3rdpartystorage.userInteractionRequiredForHosts", "tracking.example.com,tracking.example.org"],
   ]});
 
   await UrlClassifierTestUtils.addTestTrackers();

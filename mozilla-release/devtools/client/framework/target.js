@@ -5,6 +5,7 @@
 "use strict";
 
 const EventEmitter = require("devtools/shared/event-emitter");
+const Services = require("Services");
 
 loader.lazyRequireGetter(this, "DebuggerServer", "devtools/server/main", true);
 loader.lazyRequireGetter(this, "DebuggerClient",
@@ -51,7 +52,7 @@ const TargetFactory = exports.TargetFactory = {
    * - spawn a DebuggerServer in the parent process,
    * - create a DebuggerClient and connect it to this local DebuggerServer,
    * - call RootActor's `getTab` request to retrieve the FrameTargetActor's form,
-   * - instantiate a TabTarget instance.
+   * - instantiate a Target instance.
    *
    * @param {XULTab} tab
    *        The tab to use in creating a new target.
@@ -88,10 +89,10 @@ const TargetFactory = exports.TargetFactory = {
     // Fetch the FrameTargetActor form
     const response = await client.getTab({ tab });
 
-    return new TabTarget({
+    return new Target({
       client,
       form: response.tab,
-      // A local TabTarget will never perform chrome debugging.
+      // A local Target will never perform chrome debugging.
       chrome: false,
       tab,
     });
@@ -113,8 +114,11 @@ const TargetFactory = exports.TargetFactory = {
   forRemoteTab: function(options) {
     let targetPromise = promiseTargets.get(options);
     if (targetPromise == null) {
-      const target = new TabTarget(options);
+      const target = new Target(options);
       targetPromise = target.attach().then(() => target);
+      targetPromise.catch(e => {
+        console.error("Exception while attaching target", e);
+      });
       promiseTargets.set(options, targetPromise);
     }
     return targetPromise;
@@ -123,7 +127,11 @@ const TargetFactory = exports.TargetFactory = {
   forWorker: function(workerTargetFront) {
     let target = targets.get(workerTargetFront);
     if (target == null) {
-      target = new WorkerTarget(workerTargetFront);
+      target = new Target({
+        client: workerTargetFront.client,
+        activeTab: workerTargetFront,
+        chrome: false,
+      });
       targets.set(workerTargetFront, target);
     }
     return target;
@@ -153,7 +161,7 @@ const TargetFactory = exports.TargetFactory = {
  * abstract some common events and read-only properties common to many Tools.
  *
  * Supported read-only properties:
- * - name, isRemote, url
+ * - name, url
  *
  * Target extends EventEmitter and provides support for the following events:
  * - close: The target window has been closed. All tools attached to this
@@ -172,18 +180,21 @@ const TargetFactory = exports.TargetFactory = {
  */
 
 /**
- * A TabTarget represents a debuggable context. It can be a browser tab, a tab on
+ * A Target represents a debuggable context. It can be a browser tab, a tab on
  * a remote device, like a tab on Firefox for Android. But it can also be an add-on,
  * as well as firefox parent process, or just one of its content process.
- * A TabTarget is related to a given TargetActor, for which we pass the form as
+ * A Target is related to a given TargetActor, for which we pass the form as
  * argument.
  *
  * For now, only workers are having a distinct Target class called WorkerTarget.
  *
  * @param {Object} form
- *                 The TargetActor's form to be connected to.
+ *                  The TargetActor's form to be connected to. Null if front is passed.
+ * @param {Front} activeTab
+ *                  If we already have a front for this target, pass it here. Null if
+ *                  form is passed.
  * @param {DebuggerClient} client
- *                 The DebuggerClient instance to be used to debug this target.
+ *                  The DebuggerClient instance to be used to debug this target.
  * @param {Boolean} chrome
  *                  True, if we allow to see privileged resources like JSM, xpcom,
  *                  frame scripts...
@@ -191,15 +202,16 @@ const TargetFactory = exports.TargetFactory = {
  *                  If the target is a local Firefox tab, a reference to the firefox
  *                  frontend tab object.
  */
-function TabTarget({ form, client, chrome, tab = null }) {
+function Target({ form, client, chrome, activeTab = null, tab = null }) {
   EventEmitter.decorate(this);
   this.destroy = this.destroy.bind(this);
   this._onTabNavigated = this._onTabNavigated.bind(this);
-  this.activeTab = this.activeConsole = null;
+  this.activeConsole = null;
+  this.activeTab = activeTab;
 
   this._form = form;
-  this._url = form.url;
-  this._title = form.title;
+  this._url = this.form.url;
+  this._title = this.form.title;
 
   this._client = client;
   this._chrome = chrome;
@@ -225,16 +237,10 @@ function TabTarget({ form, client, chrome, tab = null }) {
   // target actor that doesn't have any valid browsing context.
   // (Once FF63 is no longer supported, we can remove the `else` branch and only look
   // for the traits)
-  if (this._form.traits && ("isBrowsingContext" in this._form.traits)) {
-    this._isBrowsingContext = this._form.traits.isBrowsingContext;
+  if (this.form.traits && ("isBrowsingContext" in this.form.traits)) {
+    this._isBrowsingContext = this.form.traits.isBrowsingContext;
   } else {
-    // browser content toolbox's form will be of the form:
-    //   server0.conn0.content-process0/contentProcessTarget7
-    // while xpcshell debugging will be:
-    //   server1.conn0.contentProcessTarget7
-    const isContentProcessTarget =
-      this._form.actor.match(/conn\d+\.(content-process\d+\/)?contentProcessTarget\d+/);
-    this._isBrowsingContext = !this.isLegacyAddon && !isContentProcessTarget;
+    this._isBrowsingContext = !this.isLegacyAddon && !this.isContentProcess && !this.isWorkerTarget;
   }
 
   // Cache of already created targed-scoped fronts
@@ -246,9 +252,9 @@ function TabTarget({ form, client, chrome, tab = null }) {
   this._inspector = null;
 }
 
-exports.TabTarget = TabTarget;
+exports.Target = Target;
 
-TabTarget.prototype = {
+Target.prototype = {
   /**
    * Returns a promise for the protocol description from the root actor. Used
    * internally with `target.actorHasMethod`. Takes advantage of caching if
@@ -258,8 +264,6 @@ TabTarget.prototype = {
    * performance reasons, added in bug 988237), so to use these actor detection
    * methods, one must already be communicating with a specific actor of that
    * type.
-   *
-   * Must be a remote target.
    *
    * @return {Promise}
    * {
@@ -288,11 +292,6 @@ TabTarget.prototype = {
    * }
    */
   getActorDescription: async function(actorName) {
-    if (!this.client) {
-      throw new Error("TabTarget#getActorDescription() can only be called on " +
-                      "remote tabs.");
-    }
-
     if (this._protocolDescription &&
         this._protocolDescription.types[actorName]) {
       return this._protocolDescription.types[actorName];
@@ -304,16 +303,12 @@ TabTarget.prototype = {
 
   /**
    * Returns a boolean indicating whether or not the specific actor
-   * type exists. Must be a remote target.
+   * type exists.
    *
    * @param {String} actorName
    * @return {Boolean}
    */
   hasActor: function(actorName) {
-    if (!this.client) {
-      throw new Error("TabTarget#hasActor() can only be called on remote " +
-                      "tabs.");
-    }
     if (this.form) {
       return !!this.form[actorName + "Actor"];
     }
@@ -325,17 +320,13 @@ TabTarget.prototype = {
    * an available method. The actor must already be lazily-loaded (read
    * the restrictions in the `getActorDescription` comments),
    * so this is for use inside of tool. Returns a promise that
-   * resolves to a boolean. Must be a remote target.
+   * resolves to a boolean.
    *
    * @param {String} actorName
    * @param {String} methodName
    * @return {Promise}
    */
   actorHasMethod: function(actorName, methodName) {
-    if (!this.client) {
-      throw new Error("TabTarget#actorHasMethod() can only be called on " +
-                      "remote tabs.");
-    }
     return this.getActorDescription(actorName).then(desc => {
       if (desc && desc.methods) {
         return !!desc.methods.find(method => method.name === methodName);
@@ -351,11 +342,6 @@ TabTarget.prototype = {
    * @return {Mixed}
    */
   getTrait: function(traitName) {
-    if (!this.client) {
-      throw new Error("TabTarget#getTrait() can only be called on remote " +
-                      "tabs.");
-    }
-
     // If the targeted actor exposes traits and has a defined value for this
     // traits, override the root actor traits
     if (this.form.traits && traitName in this.form.traits) {
@@ -370,7 +356,9 @@ TabTarget.prototype = {
   },
 
   get form() {
-    return this._form;
+    // Target constructor either receive a form or a Front.
+    // If a front is passed, fetch the form from it.
+    return this._form || this.activeTab.targetForm;
   },
 
   // Get a promise of the RootActor's form
@@ -381,13 +369,24 @@ TabTarget.prototype = {
   // Temporary fix for bug #1493131 - inspector has a different life cycle
   // than most other fronts because it is closely related to the toolbox.
   // TODO: remove once inspector is separated from the toolbox
-  getInspector(typeName) {
+  async getInspector(typeName) {
     // the front might have been destroyed and no longer have an actor ID
     if (this._inspector && this._inspector.actorID) {
       return this._inspector;
     }
-    this._inspector = getFront(this.client, "inspector", this.form);
+    this._inspector = await getFront(this.client, "inspector", this.form);
+    this.emit("inspector", this._inspector);
     return this._inspector;
+  },
+
+  // Run callback on every front of this type that currently exists, and on every
+  // instantiation of front type in the future.
+  onFront(typeName, callback) {
+    const front = this.fronts.get(typeName);
+    if (front) {
+      return callback(front);
+    }
+    return this.on(typeName, callback);
   },
 
   // Get a Front for a target-scoped actor.
@@ -399,6 +398,7 @@ TabTarget.prototype = {
       return front;
     }
     front = getFront(this.client, typeName, this.form);
+    this.emit(typeName, front);
     this.fronts.set(typeName, front);
     return front;
   },
@@ -424,7 +424,7 @@ TabTarget.prototype = {
 
   get name() {
     if (this.isAddon) {
-      return this._form.name;
+      return this.form.name;
     }
     return this._title;
   },
@@ -433,24 +433,33 @@ TabTarget.prototype = {
     return this._url;
   },
 
-  get isRemote() {
-    return !this.isLocalTab;
-  },
-
   get isAddon() {
     return this.isLegacyAddon || this.isWebExtension;
   },
 
+  get isWorkerTarget() {
+    return this.activeTab && this.activeTab.typeName === "workerTarget";
+  },
+
   get isLegacyAddon() {
-    return !!(this._form && this._form.actor &&
-      this._form.actor.match(/conn\d+\.addon(Target)?\d+/));
+    return !!(this.form && this.form.actor &&
+      this.form.actor.match(/conn\d+\.addon(Target)?\d+/));
   },
 
   get isWebExtension() {
-    return !!(this._form && this._form.actor && (
-      this._form.actor.match(/conn\d+\.webExtension(Target)?\d+/) ||
-      this._form.actor.match(/child\d+\/webExtension(Target)?\d+/)
+    return !!(this.form && this.form.actor && (
+      this.form.actor.match(/conn\d+\.webExtension(Target)?\d+/) ||
+      this.form.actor.match(/child\d+\/webExtension(Target)?\d+/)
     ));
+  },
+
+  get isContentProcess() {
+    // browser content toolbox's form will be of the form:
+    //   server0.conn0.content-process0/contentProcessTarget7
+    // while xpcshell debugging will be:
+    //   server1.conn0.contentProcessTarget7
+    return !!(this.form && this.form.actor &&
+      this.form.actor.match(/conn\d+\.(content-process\d+\/)?contentProcessTarget\d+/));
   },
 
   get isLocalTab() {
@@ -462,7 +471,13 @@ TabTarget.prototype = {
   },
 
   get canRewind() {
-    return this.activeTab.traits.canRewind;
+    return this.activeTab && this.activeTab.traits.canRewind;
+  },
+
+  isReplayEnabled() {
+    return Services.prefs.getBoolPref("devtools.recordreplay.mvp.enabled")
+      && this.canRewind
+      && this.isLocalTab;
   },
 
   getExtensionPathName(url) {
@@ -515,10 +530,18 @@ TabTarget.prototype = {
     }
 
     // Attach the target actor
-    const attachTarget = async () => {
-      const [response, targetFront] = await this._client.attachTarget(this._form.actor);
-      this.activeTab = targetFront;
-      this.threadActor = response.threadActor;
+    const attachBrowsingContextTarget = async () => {
+      // Some BrowsingContextTargetFront are already instantiated and passed as
+      // contructor's argument, like for ParentProcessTargetActor.
+      // For them, we only need to attach them.
+      // The call to attachTarget is to be removed once all Target are having a front
+      // passed as contructor's argument.
+      if (!this.activeTab) {
+        const [, targetFront] = await this._client.attachTarget(this.form);
+        this.activeTab = targetFront;
+      } else {
+        await this.activeTab.attach();
+      }
 
       this.activeTab.on("tabNavigated", this._onTabNavigated);
       this._onFrameUpdate = packet => {
@@ -530,7 +553,7 @@ TabTarget.prototype = {
     // Attach the console actor
     const attachConsole = async () => {
       const [, consoleClient] = await this._client.attachConsole(
-        this._form.consoleActor, []);
+        this.form.consoleActor, []);
       this.activeConsole = consoleClient;
 
       this._onInspectObject = packet => this.emit("inspect-object", packet);
@@ -538,7 +561,7 @@ TabTarget.prototype = {
     };
 
     this._attach = (async () => {
-      if (this._form.isWebExtension &&
+      if (this.form.isWebExtension &&
           this.client.mainRoot.traits.webExtensionAddonConnect) {
         // The addonTargetActor form is related to a WebExtensionActor instance,
         // which isn't a target actor on its own, it is an actor living in the parent
@@ -547,20 +570,28 @@ TabTarget.prototype = {
         // the addon (e.g. when the addon is disabled or uninstalled).
         // To retrieve the target actor instance, we call its "connect" method, (which
         // fetches the target actor form from a WebExtensionTargetActor instance).
-        const {form} = await this._client.request({
-          to: this._form.actor, type: "connect",
-        });
-
-        this._form = form;
-        this._url = form.url;
-        this._title = form.title;
+        this.activeTab = await this.activeTab.connect();
       }
 
-      // AddonActor and chrome debugging on RootActor don't inherit from
+      // AddonTargetActor and ContentProcessTargetActor don't inherit from
       // BrowsingContextTargetActor (i.e. this.isBrowsingContext=false) and don't need
-      // to be attached.
+      // to be attached via DebuggerClient.attachTarget.
       if (this.isBrowsingContext) {
-        await attachTarget();
+        await attachBrowsingContextTarget();
+
+      // Addon Worker and Content process targets are the first targets to have their
+      // front already instantiated. The plan is to have all targets to have their front
+      // passed as constructor argument.
+      } else if (this.isWorkerTarget || this.isLegacyAddon) {
+        // Worker is the first front to be completely migrated to have only its attach
+        // method being called from Target.attach. Other fronts should be refactored.
+        await this.activeTab.attach();
+      } else if (this.isContentProcess) {
+        // ContentProcessTarget is the only one target without any attach request.
+      } else {
+        throw new Error(`Unsupported type of target. Expected target of one of the` +
+          ` following types: BrowsingContext, ContentProcess, Worker or ` +
+          `Addon (legacy).`);
       }
 
       // _setupRemoteListeners has to be called after the potential call to `attachTarget`
@@ -648,7 +679,7 @@ TabTarget.prototype = {
     } else {
       this._onTabDetached = (type, packet) => {
         // We have to filter message to ensure that this detach is for this tab
-        if (packet.from == this._form.actor) {
+        if (packet.from == this.form.actor) {
           this.destroy();
         }
       };
@@ -741,11 +772,12 @@ TabTarget.prototype = {
       return this._destroyer;
     }
 
-    this._destroyer = new Promise(async (resolve) => {
+    this._destroyer = (async () => {
       // Before taking any action, notify listeners that destruction is imminent.
       this.emit("close");
 
-      for (const [, front] of this.fronts) {
+      for (let [, front] of this.fronts) {
+        front = await front;
         await front.destroy();
       }
 
@@ -753,39 +785,26 @@ TabTarget.prototype = {
         this._teardownListeners();
       }
 
-      const cleanupAndResolve = () => {
-        this._cleanup();
-        resolve(null);
-      };
-      // If this target was not remoted, the promise will be resolved before the
-      // function returns.
-      if (this._tab && !this._client) {
-        cleanupAndResolve();
-      } else if (this._client) {
-        // If, on the other hand, this target was remoted, the promise will be
-        // resolved after the remote connection is closed.
-        this._teardownRemoteListeners();
+      this._teardownRemoteListeners();
 
-        if (this.isLocalTab) {
-          // We started with a local tab and created the client ourselves, so we
-          // should close it.
-          this._client.close().then(cleanupAndResolve);
-        } else if (this.activeTab) {
-          // The client was handed to us, so we are not responsible for closing
-          // it. We just need to detach from the tab, if already attached.
-          // |detach| may fail if the connection is already dead, so proceed with
-          // cleanup directly after this.
-          try {
-            await this.activeTab.detach();
-          } catch (e) {
-            console.warn(`Error while detaching target: ${e.message}`);
-          }
-          cleanupAndResolve();
-        } else {
-          cleanupAndResolve();
+      if (this.isLocalTab) {
+        // We started with a local tab and created the client ourselves, so we
+        // should close it.
+        await this._client.close();
+      } else if (this.activeTab) {
+        // The client was handed to us, so we are not responsible for closing
+        // it. We just need to detach from the tab, if already attached.
+        // |detach| may fail if the connection is already dead, so proceed with
+        // cleanup directly after this.
+        try {
+          await this.activeTab.detach();
+        } catch (e) {
+          console.warn(`Error while detaching target: ${e.message}`);
         }
       }
-    });
+
+      this._cleanup();
+    })();
 
     return this._destroyer;
   },
@@ -797,7 +816,7 @@ TabTarget.prototype = {
     if (this._tab) {
       targets.delete(this._tab);
     } else {
-      promiseTargets.delete(this._form);
+      promiseTargets.delete(this.form);
     }
 
     this.activeTab = null;
@@ -806,15 +825,13 @@ TabTarget.prototype = {
     this._tab = null;
     this._form = null;
     this._attach = null;
-    this._root = null;
     this._title = null;
     this._url = null;
-    this.threadActor = null;
   },
 
   toString: function() {
-    const id = this._tab ? this._tab : (this._form && this._form.actor);
-    return `TabTarget:${id}`;
+    const id = this._tab ? this._tab : (this.form && this.form.actor);
+    return `Target:${id}`;
   },
 
   /**
@@ -845,93 +862,5 @@ TabTarget.prototype = {
       const warningFlag = 1;
       this.activeTab.logInPage({ text, category, flags: warningFlag });
     }
-  },
-};
-
-function WorkerTarget(workerTargetFront) {
-  EventEmitter.decorate(this);
-  this._workerTargetFront = workerTargetFront;
-}
-
-/**
- * A WorkerTarget represents a worker. Unlike TabTarget, which can represent
- * either a local or remote tab, WorkerTarget always represents a remote worker.
- * Moreover, unlike TabTarget, which is constructed with a placeholder object
- * for remote tabs (from which a TargetFront can then be lazily obtained),
- * WorkerTarget is constructed with a WorkerTargetFront directly.
- *
- * WorkerTargetFront is designed to mimic the interface of TargetFront as closely as
- * possible. This allows us to debug workers as if they were ordinary tabs,
- * requiring only minimal changes to the rest of the frontend.
- */
-WorkerTarget.prototype = {
-  get isRemote() {
-    return true;
-  },
-
-  get isBrowsingContext() {
-    return true;
-  },
-
-  get name() {
-    return "Worker";
-  },
-
-  get url() {
-    return this._workerTargetFront.url;
-  },
-
-  get isWorkerTarget() {
-    return true;
-  },
-
-  get form() {
-    return {
-      consoleActor: this._workerTargetFront.consoleActor,
-    };
-  },
-
-  get activeTab() {
-    return this._workerTargetFront;
-  },
-
-  get activeConsole() {
-    return this.client._clients.get(this.form.consoleActor);
-  },
-
-  get client() {
-    return this._workerTargetFront.client;
-  },
-
-  get canRewind() {
-    return false;
-  },
-
-  destroy: function() {
-    this._workerTargetFront.detach();
-  },
-
-  hasActor: function(name) {
-    // console is the only one actor implemented by WorkerTargetActor
-    if (name == "console") {
-      return true;
-    }
-    return false;
-  },
-
-  getTrait: function() {
-    return undefined;
-  },
-
-  attach: function() {
-    return Promise.resolve();
-  },
-
-  logErrorInPage: function() {
-    // No-op.  See bug 1368680.
-  },
-
-  logWarningInPage: function() {
-    // No-op.  See bug 1368680.
   },
 };

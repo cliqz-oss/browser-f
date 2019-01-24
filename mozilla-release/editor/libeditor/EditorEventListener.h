@@ -36,26 +36,25 @@ class EditorBase;
 namespace dom {
 class DragEvent;
 class MouseEvent;
-} // namespace dom
+}  // namespace dom
 
-class EditorEventListener : public nsIDOMEventListener
-{
-public:
+class EditorEventListener : public nsIDOMEventListener {
+ public:
   EditorEventListener();
 
   virtual nsresult Connect(EditorBase* aEditorBase);
 
-  void Disconnect();
+  virtual void Disconnect();
 
   NS_DECL_ISUPPORTS
 
   // nsIDOMEventListener
   MOZ_CAN_RUN_SCRIPT_BOUNDARY
-  NS_IMETHOD HandleEvent(dom::Event *aEvent) override;
+  NS_IMETHOD HandleEvent(dom::Event* aEvent) override;
 
   void SpellCheckIfNeeded();
 
-protected:
+ protected:
   virtual ~EditorEventListener();
 
   nsresult InstallToEditor();
@@ -63,11 +62,14 @@ protected:
 
 #ifdef HANDLE_NATIVE_TEXT_DIRECTION_SWITCH
   nsresult KeyDown(const WidgetKeyboardEvent* aKeyboardEvent);
+  MOZ_CAN_RUN_SCRIPT
   nsresult KeyUp(const WidgetKeyboardEvent* aKeyboardEvent);
 #endif
   nsresult KeyPress(WidgetKeyboardEvent* aKeyboardEvent);
+  MOZ_CAN_RUN_SCRIPT
   nsresult HandleChangeComposition(WidgetCompositionEvent* aCompositionEvent);
   nsresult HandleStartComposition(WidgetCompositionEvent* aCompositionEvent);
+  MOZ_CAN_RUN_SCRIPT
   void HandleEndComposition(WidgetCompositionEvent* aCompositionEvent);
   MOZ_CAN_RUN_SCRIPT
   virtual nsresult MouseDown(dom::MouseEvent* aMouseEvent);
@@ -112,7 +114,7 @@ protected:
    */
   MOZ_MUST_USE bool EnsureCommitComposition();
 
-  EditorBase* mEditorBase; // weak
+  EditorBase* mEditorBase;  // weak
   RefPtr<nsCaret> mCaret;
   bool mCommitText;
   bool mInTransaction;
@@ -124,6 +126,6 @@ protected:
 #endif
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // #ifndef EditorEventListener_h
+#endif  // #ifndef EditorEventListener_h

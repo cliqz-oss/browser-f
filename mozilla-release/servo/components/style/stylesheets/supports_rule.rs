@@ -1,27 +1,27 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! [@supports rules](https://drafts.csswg.org/css-conditional-3/#at-supports)
 
+use crate::parser::ParserContext;
+use crate::properties::{PropertyDeclaration, PropertyId, SourcePropertyDeclaration};
+use crate::selector_parser::{SelectorImpl, SelectorParser};
+use crate::shared_lock::{DeepCloneParams, DeepCloneWithLock, Locked};
+use crate::shared_lock::{SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard};
+use crate::str::CssStringWriter;
+use crate::stylesheets::{CssRuleType, CssRules, Namespaces};
+use cssparser::parse_important;
 use cssparser::{Delimiter, Parser, SourceLocation, Token};
 use cssparser::{ParseError as CssParseError, ParserInput};
-use cssparser::parse_important;
 #[cfg(feature = "gecko")]
 use malloc_size_of::{MallocSizeOfOps, MallocUnconditionalShallowSizeOf};
-use parser::ParserContext;
-use properties::{PropertyDeclaration, PropertyId, SourcePropertyDeclaration};
-use selector_parser::{SelectorImpl, SelectorParser};
 use selectors::parser::{Selector, SelectorParseErrorKind};
 use servo_arc::Arc;
-use shared_lock::{DeepCloneParams, DeepCloneWithLock, Locked};
-use shared_lock::{SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard};
 use std::ffi::{CStr, CString};
 use std::fmt::{self, Write};
 use std::str;
-use str::CssStringWriter;
 use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
-use stylesheets::{CssRuleType, CssRules, Namespaces};
 
 /// An [`@supports`][supports] rule.
 ///
@@ -172,9 +172,7 @@ impl SupportsCondition {
     }
 
     /// <https://drafts.csswg.org/css-conditional-3/#supports_condition_in_parens>
-    fn parse_in_parens<'i, 't>(
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self, ParseError<'i>> {
+    fn parse_in_parens<'i, 't>(input: &mut Parser<'i, 't>) -> Result<Self, ParseError<'i>> {
         // Whitespace is normally taken care of in `Parser::next`,
         // but we want to not include it in `pos` for the SupportsCondition::FutureSyntax cases.
         while input.try(Parser::expect_whitespace).is_ok() {}
@@ -183,9 +181,8 @@ impl SupportsCondition {
         // FIXME: remove clone() when lifetimes are non-lexical
         match input.next()?.clone() {
             Token::ParenthesisBlock => {
-                let nested = input.try(|input| {
-                    input.parse_nested_block(parse_condition_or_declaration)
-                });
+                let nested =
+                    input.try(|input| input.parse_nested_block(parse_condition_or_declaration));
                 if nested.is_ok() {
                     return nested;
                 }
@@ -209,11 +206,7 @@ impl SupportsCondition {
     }
 
     /// Evaluate a supports condition
-    pub fn eval(
-        &self,
-        cx: &ParserContext,
-        namespaces: &Namespaces,
-    ) -> bool {
+    pub fn eval(&self, cx: &ParserContext, namespaces: &Namespaces) -> bool {
         match *self {
             SupportsCondition::Not(ref cond) => !cond.eval(cx, namespaces),
             SupportsCondition::Parenthesized(ref cond) => cond.eval(cx, namespaces),
@@ -229,8 +222,8 @@ impl SupportsCondition {
 
 #[cfg(feature = "gecko")]
 fn eval_moz_bool_pref(name: &CStr, cx: &ParserContext) -> bool {
-    use gecko_bindings::bindings;
-    use stylesheets::Origin;
+    use crate::gecko_bindings::bindings;
+    use crate::stylesheets::Origin;
     if cx.stylesheet_origin != Origin::UserAgent && !cx.chrome_rules_enabled() {
         return false;
     }
@@ -300,7 +293,7 @@ impl ToCss for SupportsCondition {
                 dest.write_str("selector(")?;
                 selector.to_css(dest)?;
                 dest.write_str(")")
-            }
+            },
             SupportsCondition::MozBoolPref(ref name) => {
                 dest.write_str("-moz-bool-pref(")?;
                 let name =
@@ -328,51 +321,51 @@ impl ToCss for RawSelector {
 
 impl RawSelector {
     /// Tries to evaluate a `selector()` function.
-    pub fn eval(
-        &self,
-        context: &ParserContext,
-        namespaces: &Namespaces,
-    ) -> bool {
+    pub fn eval(&self, context: &ParserContext, namespaces: &Namespaces) -> bool {
         #[cfg(feature = "gecko")]
         {
-            if unsafe { !::gecko_bindings::structs::StaticPrefs_sVarCache_layout_css_supports_selector_enabled } {
+            if unsafe {
+                !crate::gecko_bindings::structs::StaticPrefs_sVarCache_layout_css_supports_selector_enabled
+            } {
                 return false;
             }
         }
 
         let mut input = ParserInput::new(&self.0);
         let mut input = Parser::new(&mut input);
-        input.parse_entirely(|input| -> Result<(), CssParseError<()>> {
-            let parser = SelectorParser {
-                namespaces,
-                stylesheet_origin: context.stylesheet_origin,
-                url_data: Some(context.url_data),
-            };
+        input
+            .parse_entirely(|input| -> Result<(), CssParseError<()>> {
+                let parser = SelectorParser {
+                    namespaces,
+                    stylesheet_origin: context.stylesheet_origin,
+                    url_data: Some(context.url_data),
+                };
 
-            #[allow(unused_variables)]
-            let selector = Selector::<SelectorImpl>::parse(&parser, input)
-                .map_err(|_| input.new_custom_error(()))?;
+                #[allow(unused_variables)]
+                let selector = Selector::<SelectorImpl>::parse(&parser, input)
+                    .map_err(|_| input.new_custom_error(()))?;
 
-            #[cfg(feature = "gecko")]
-            {
-                use selector_parser::PseudoElement;
-                use selectors::parser::Component;
+                #[cfg(feature = "gecko")]
+                {
+                    use crate::selector_parser::PseudoElement;
+                    use selectors::parser::Component;
 
-                let has_any_unknown_webkit_pseudo =
-                    selector.has_pseudo_element() &&
-                    selector.iter_raw_match_order().any(|component| {
-                        matches!(
-                            *component,
-                            Component::PseudoElement(PseudoElement::UnknownWebkit(..))
-                        )
-                    });
-                if has_any_unknown_webkit_pseudo {
-                    return Err(input.new_custom_error(()));
+                    let has_any_unknown_webkit_pseudo = selector.has_pseudo_element() && selector
+                        .iter_raw_match_order()
+                        .any(|component| {
+                            matches!(
+                                *component,
+                                Component::PseudoElement(PseudoElement::UnknownWebkit(..))
+                            )
+                        });
+                    if has_any_unknown_webkit_pseudo {
+                        return Err(input.new_custom_error(()));
+                    }
                 }
-            }
 
-            Ok(())
-        }).is_ok()
+                Ok(())
+            })
+            .is_ok()
     }
 }
 
@@ -412,20 +405,22 @@ impl Declaration {
 
         let mut input = ParserInput::new(&self.0);
         let mut input = Parser::new(&mut input);
-        input.parse_entirely(|input| -> Result<(), CssParseError<()>> {
-            let prop = input.expect_ident_cloned().unwrap();
-            input.expect_colon().unwrap();
+        input
+            .parse_entirely(|input| -> Result<(), CssParseError<()>> {
+                let prop = input.expect_ident_cloned().unwrap();
+                input.expect_colon().unwrap();
 
-            let id =
-                PropertyId::parse(&prop, context).map_err(|_| input.new_custom_error(()))?;
+                let id =
+                    PropertyId::parse(&prop, context).map_err(|_| input.new_custom_error(()))?;
 
-            let mut declarations = SourcePropertyDeclaration::new();
-            input.parse_until_before(Delimiter::Bang, |input| {
-                PropertyDeclaration::parse_into(&mut declarations, id, &context, input)
-                    .map_err(|_| input.new_custom_error(()))
-            })?;
-            let _ = input.try(parse_important);
-            Ok(())
-        }).is_ok()
+                let mut declarations = SourcePropertyDeclaration::new();
+                input.parse_until_before(Delimiter::Bang, |input| {
+                    PropertyDeclaration::parse_into(&mut declarations, id, &context, input)
+                        .map_err(|_| input.new_custom_error(()))
+                })?;
+                let _ = input.try(parse_important);
+                Ok(())
+            })
+            .is_ok()
     }
 }

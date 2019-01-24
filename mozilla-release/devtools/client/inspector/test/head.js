@@ -203,7 +203,7 @@ var clickOnInspectMenuItem = async function(testActor, selector) {
   await testActor.synthesizeMouse({
     selector: selector,
     center: true,
-    options: {type: "contextmenu", button: 2}
+    options: {type: "contextmenu", button: 2},
   });
 
   await contextOpened;
@@ -234,6 +234,31 @@ var getNodeFrontInFrame = async function(selector, frameSelector,
   const iframe = await getNodeFront(frameSelector, inspector);
   const {nodes} = await inspector.walker.children(iframe);
   return inspector.walker.querySelector(nodes[0], selector);
+};
+
+/**
+ * Get the NodeFront for a node that matches a given css selector inside a shadow root.
+ *
+ * @param {String} selector
+ *        CSS selector of the node inside the shadow root.
+ * @param {String|NodeFront} hostSelector
+ *        Selector or front of the element to which the shadow root is attached.
+ * @param {InspectorPanel} inspector
+ *        The instance of InspectorPanel currently loaded in the toolbox
+ * @return {Promise} Resolves the node front when the inspector is updated with the new
+ *         node.
+ */
+var getNodeFrontInShadowDom = async function(selector, hostSelector, inspector) {
+  const hostFront = await getNodeFront(hostSelector, inspector);
+  const {nodes} = await inspector.walker.children(hostFront);
+
+  // Find the shadow root in the children of the host element.
+  const shadowRoot = nodes.filter(node => node.isShadowRoot)[0];
+  if (!shadowRoot) {
+    throw new Error("Could not find a shadow root under selector: " + hostSelector);
+  }
+
+  return inspector.walker.querySelector(shadowRoot, selector);
 };
 
 var focusSearchBoxUsingShortcut = async function(panelWin, callback) {
@@ -303,7 +328,7 @@ var hoverContainer = async function(selector, inspector) {
   const nodeFront = await getNodeFront(selector, inspector);
   const container = getContainerForNodeFront(nodeFront, inspector);
 
-  const highlit = inspector.toolbox.once("node-highlight");
+  const highlit = inspector.highlighter.once("node-highlight");
   EventUtils.synthesizeMouseAtCenter(container.tagLine, {type: "mousemove"},
     inspector.markup.doc.defaultView);
   return highlit;
@@ -474,7 +499,7 @@ const getHighlighterHelperFor = (type) => async function({inspector, testActor})
         getComputedStyle: async function(options = {}) {
           return inspector.pageStyle.getComputed(
             highlightedNode, options);
-        }
+        },
       };
     },
 
@@ -551,7 +576,7 @@ const getHighlighterHelperFor = (type) => async function({inspector, testActor})
           prevY = y;
           await testActor.synthesizeMouse({
             selector, x, y, options: {type: "mouse" + name}});
-        }
+        },
     }),
 
     reflow: async function() {
@@ -561,7 +586,7 @@ const getHighlighterHelperFor = (type) => async function({inspector, testActor})
     finalize: async function() {
       highlightedNode = null;
       await highlighter.finalize();
-    }
+    },
   };
 };
 
@@ -777,7 +802,7 @@ async function assertTooltipHiddenOnMouseOut(tooltip, target) {
   // The tooltip actually relies on mousemove events to check if it sould be hidden.
   const mouseEvent = new target.ownerDocument.defaultView.MouseEvent("mousemove", {
     bubbles: true,
-    relatedTarget: target
+    relatedTarget: target,
   });
   target.parentNode.dispatchEvent(mouseEvent);
 

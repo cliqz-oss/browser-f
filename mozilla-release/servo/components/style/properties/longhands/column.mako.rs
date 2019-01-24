@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 <%namespace name="helpers" file="/helpers.mako.rs" />
 
@@ -43,9 +43,9 @@ ${helpers.single_keyword(
 ${helpers.predefined_type(
     "column-rule-width",
     "BorderSideWidth",
-    "::values::computed::NonNegativeLength::new(3.)",
+    "crate::values::computed::NonNegativeLength::new(3.)",
     initial_specified_value="specified::BorderSideWidth::Medium",
-    computed_type="::values::computed::NonNegativeLength",
+    computed_type="crate::values::computed::NonNegativeLength",
     products="gecko",
     spec="https://drafts.csswg.org/css-multicol/#propdef-column-rule-width",
     animation_value_type="NonNegativeLength",
@@ -65,6 +65,7 @@ ${helpers.predefined_type(
     spec="https://drafts.csswg.org/css-multicol/#propdef-column-rule-color",
 )}
 
+// FIXME: Remove enabled_in="ua" once column-span is enabled on nightly (bug 1423383).
 ${helpers.single_keyword(
     "column-span",
     "none all",
@@ -72,16 +73,19 @@ ${helpers.single_keyword(
     animation_value_type="discrete",
     gecko_enum_prefix="StyleColumnSpan",
     gecko_pref="layout.css.column-span.enabled",
+    enabled_in="ua",
     spec="https://drafts.csswg.org/css-multicol/#propdef-column-span",
     extra_prefixes="moz:layout.css.column-span.enabled",
 )}
 
-${helpers.single_keyword(
+${helpers.predefined_type(
     "column-rule-style",
-    "none hidden dotted dashed solid double groove ridge inset outset",
+    "BorderStyle",
+    "computed::BorderStyle::None",
+    needs_context=False,
+    initial_specified_value="specified::BorderStyle::None",
     products="gecko",
     extra_prefixes="moz",
-    gecko_constant_prefix="NS_STYLE_BORDER_STYLE",
     animation_value_type="discrete",
     spec="https://drafts.csswg.org/css-multicol/#propdef-column-rule-style",
 )}

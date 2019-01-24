@@ -1,16 +1,16 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Bindings for CSS Rule objects
 
-use counter_style::{self, CounterBound};
-use gecko_bindings::structs::{self, nsCSSValue};
-use gecko_bindings::sugar::ns_css_value::ToNsCssValue;
+use crate::counter_style::{self, CounterBound};
+use crate::gecko_bindings::structs::{self, nsCSSValue};
+use crate::gecko_bindings::sugar::ns_css_value::ToNsCssValue;
 
 impl<'a> ToNsCssValue for &'a counter_style::System {
     fn convert(self, nscssvalue: &mut nsCSSValue) {
-        use counter_style::System::*;
+        use crate::counter_style::System::*;
         match *self {
             Cyclic => nscssvalue.set_enum(structs::NS_STYLE_COUNTER_SYSTEM_CYCLIC as i32),
             Numeric => nscssvalue.set_enum(structs::NS_STYLE_COUNTER_SYSTEM_NUMERIC as i32),
@@ -123,7 +123,7 @@ impl<'a> ToNsCssValue for &'a counter_style::AdditiveSymbols {
 
 impl<'a> ToNsCssValue for &'a counter_style::SpeakAs {
     fn convert(self, nscssvalue: &mut nsCSSValue) {
-        use counter_style::SpeakAs::*;
+        use crate::counter_style::SpeakAs::*;
         match *self {
             Auto => nscssvalue.set_auto(),
             Bullets => nscssvalue.set_enum(structs::NS_STYLE_COUNTER_SPEAKAS_BULLETS as i32),

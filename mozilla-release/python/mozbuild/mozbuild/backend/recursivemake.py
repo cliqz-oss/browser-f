@@ -402,6 +402,7 @@ class RecursiveMakeBackend(CommonBackend):
 
         self._traversal = RecursiveMakeTraversal()
         self._compile_graph = OrderedDefaultDict(set)
+        self._rust_dirs = set()
 
         self._no_skip = {
             'export': set(),
@@ -628,12 +629,14 @@ class RecursiveMakeBackend(CommonBackend):
 
         elif isinstance(obj, RustProgram):
             self._process_rust_program(obj, backend_file)
+            self._rust_dirs.add(obj.relobjdir)
             # Hook the program into the compile graph.
             build_target = self._build_target_for_obj(obj)
             self._compile_graph[build_target]
 
         elif isinstance(obj, HostRustProgram):
             self._process_host_rust_program(obj, backend_file)
+            self._rust_dirs.add(obj.relobjdir)
             # Hook the program into the compile graph.
             build_target = self._build_target_for_obj(obj)
             self._compile_graph[build_target]
@@ -674,6 +677,7 @@ class RecursiveMakeBackend(CommonBackend):
         elif isinstance(obj, RustLibrary):
             self.backend_input_files.add(obj.cargo_file)
             self._process_rust_library(obj, backend_file)
+            self._rust_dirs.add(obj.relobjdir)
             # No need to call _process_linked_libraries, because Rust
             # libraries are self-contained objects at this point.
 
@@ -811,7 +815,11 @@ class RecursiveMakeBackend(CommonBackend):
 
         def add_category_rules(category, roots, graph):
             rule = root_deps_mk.create_rule(['recurse_%s' % category])
-            rule.add_dependencies(roots)
+            # Directories containing rust compilations don't generally depend
+            # on other directories in the tree, so putting them first here will
+            # start them earlier in the build.
+            rule.add_dependencies(chain((r for r in roots if mozpath.dirname(r) in self._rust_dirs),
+                                        (r for r in roots if mozpath.dirname(r) not in self._rust_dirs)))
             for target, deps in sorted(graph.items()):
                 if deps:
                     rule = root_deps_mk.create_rule([target])
@@ -1182,7 +1190,15 @@ class RecursiveMakeBackend(CommonBackend):
                                         'HOST_RUST_CARGO_PROGRAMS')
 
     def _process_rust_tests(self, obj, backend_file):
-        self._no_skip['check'].add(backend_file.relobjdir)
+        if obj.config.substs.get('MOZ_RUST_TESTS'):
+            # If --enable-rust-tests has been set, run these as a part of
+            # make check.
+            self._no_skip['check'].add(backend_file.relobjdir)
+            backend_file.write('check:: force-cargo-test-run\n')
+        build_target = self._build_target_for_obj(obj)
+        self._compile_graph[build_target]
+        self._process_non_default_target(obj, 'force-cargo-test-run',
+                                         backend_file)
         backend_file.write_once('CARGO_FILE := $(srcdir)/Cargo.toml\n')
         backend_file.write_once('RUST_TESTS := %s\n' % ' '.join(obj.names))
         backend_file.write_once('RUST_TEST_FEATURES := %s\n' % ' '.join(obj.features))
@@ -1340,9 +1356,10 @@ class RecursiveMakeBackend(CommonBackend):
         backend_file.write('HOST_SHARED_LIBRARY = %s\n' % libdef.lib_name)
 
     def _build_target_for_obj(self, obj):
-        target_name = obj.KIND
         if hasattr(obj, 'output_category') and obj.output_category:
             target_name = obj.output_category
+        else:
+            target_name = obj.KIND
         return '%s/%s' % (mozpath.relpath(obj.objdir,
             self.environment.topobjdir), target_name)
 

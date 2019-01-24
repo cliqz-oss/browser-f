@@ -1,12 +1,12 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Various stuff for CSS property use counters.
 
 #[cfg(feature = "gecko")]
-use gecko_bindings::sugar::ownership::{HasBoxFFI, HasFFI, HasSimpleFFI};
-use properties::{NonCustomPropertyId, NON_CUSTOM_PROPERTY_ID_COUNT};
+use crate::gecko_bindings::sugar::ownership::{HasBoxFFI, HasFFI, HasSimpleFFI};
+use crate::properties::{NonCustomPropertyId, NON_CUSTOM_PROPERTY_ID_COUNT};
 use std::cell::Cell;
 
 #[cfg(target_pointer_width = "64")]
@@ -78,7 +78,7 @@ impl UseCounters {
 
 #[cfg(feature = "gecko")]
 unsafe impl HasFFI for UseCounters {
-    type FFIType = ::gecko_bindings::structs::StyleUseCounters;
+    type FFIType = crate::gecko_bindings::structs::StyleUseCounters;
 }
 
 #[cfg(feature = "gecko")]

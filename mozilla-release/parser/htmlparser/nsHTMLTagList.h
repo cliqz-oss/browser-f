@@ -121,7 +121,7 @@ HTML_TAG(listing, Pre, Pre)
 HTML_HTMLELEMENT_TAG(main)
 HTML_TAG(map, Map, Map)
 HTML_HTMLELEMENT_TAG(mark)
-HTML_TAG(marquee, Div, Div)
+HTML_TAG(marquee, Marquee, Marquee)
 HTML_TAG(menu, Menu, Menu)
 HTML_TAG(menuitem, MenuItem, MenuItem)
 HTML_TAG(meta, Meta, Meta)
@@ -183,7 +183,6 @@ HTML_HTMLELEMENT_TAG(var)
 HTML_TAG(video, Video, Video)
 HTML_HTMLELEMENT_TAG(wbr)
 HTML_TAG(xmp, Pre, Pre)
-
 
 /* These are not for tags. But they will be included in the nsHTMLTag
    enum anyway */

@@ -7,13 +7,13 @@
 #ifndef mozilla_layers_HitTestingTreeNode_h
 #define mozilla_layers_HitTestingTreeNode_h
 
-#include "FrameMetrics.h"                   // for ScrollableLayerGuid
 #include "Layers.h"
 #include "mozilla/gfx/CompositorHitTestInfo.h"
-#include "mozilla/gfx/Matrix.h"             // for Matrix4x4
-#include "mozilla/layers/LayersTypes.h"     // for EventRegions
-#include "mozilla/Maybe.h"                  // for Maybe
-#include "mozilla/RefPtr.h"               // for nsRefPtr
+#include "mozilla/gfx/Matrix.h"                  // for Matrix4x4
+#include "mozilla/layers/LayersTypes.h"          // for EventRegions
+#include "mozilla/layers/ScrollableLayerGuid.h"  // for ScrollableLayerGuid
+#include "mozilla/Maybe.h"                       // for Maybe
+#include "mozilla/RefPtr.h"                      // for nsRefPtr
 
 namespace mozilla {
 namespace layers {
@@ -59,14 +59,14 @@ class AsyncPanZoomController;
 class HitTestingTreeNode {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(HitTestingTreeNode);
 
-private:
+ private:
   ~HitTestingTreeNode();
-public:
+
+ public:
   HitTestingTreeNode(AsyncPanZoomController* aApzc, bool aIsPrimaryHolder,
                      LayersId aLayersId);
   void RecycleWith(const RecursiveMutexAutoLock& aProofOfTreeLock,
-                   AsyncPanZoomController* aApzc,
-                   LayersId aLayersId);
+                   AsyncPanZoomController* aApzc, LayersId aLayersId);
   // Clears the tree pointers on the node, thereby breaking RefPtr cycles. This
   // can trigger free'ing of this and other HitTestingTreeNode instances.
   void Destroy();
@@ -118,20 +118,21 @@ public:
   // This can only be called if IsScrollbarNode() is true
   ScrollDirection GetScrollbarDirection() const;
   bool IsScrollThumbNode() const;  // Scroll thumb container layer.
-  FrameMetrics::ViewID GetScrollTargetId() const;
+  ScrollableLayerGuid::ViewID GetScrollTargetId() const;
   const ScrollbarData& GetScrollbarData() const;
   const uint64_t& GetScrollbarAnimationId() const;
 
   /* Fixed pos info */
 
-  void SetFixedPosData(FrameMetrics::ViewID aFixedPosTarget);
-  FrameMetrics::ViewID GetFixedPosTarget() const;
+  void SetFixedPosData(ScrollableLayerGuid::ViewID aFixedPosTarget);
+  ScrollableLayerGuid::ViewID GetFixedPosTarget() const;
 
   /* Convert |aPoint| into the LayerPixel space for the layer corresponding to
    * this node. |aTransform| is the complete (content + async) transform for
    * this node. */
-  Maybe<LayerPoint> Untransform(const ParentLayerPoint& aPoint,
-                                const LayerToParentLayerMatrix4x4& aTransform) const;
+  Maybe<LayerPoint> Untransform(
+      const ParentLayerPoint& aPoint,
+      const LayerToParentLayerMatrix4x4& aTransform) const;
   /* Assuming aPoint is inside the clip region for this node, check which of the
    * event region spaces it falls inside. */
   gfx::CompositorHitTestInfo HitTest(const LayerPoint& aPoint) const;
@@ -143,12 +144,11 @@ public:
   /* Debug helpers */
   void Dump(const char* aPrefix = "") const;
 
-private:
+ private:
   friend class HitTestingTreeNodeAutoLock;
   // Functions that are private but called from HitTestingTreeNodeAutoLock
   void Lock(const RecursiveMutexAutoLock& aProofOfTreeLock);
   void Unlock(const RecursiveMutexAutoLock& aProofOfTreeLock);
-
 
   void SetApzcParent(AsyncPanZoomController* aApzc);
 
@@ -170,7 +170,7 @@ private:
   // This is set for scrollbar Container and Thumb layers.
   ScrollbarData mScrollbarData;
 
-  FrameMetrics::ViewID mFixedPosTarget;
+  ScrollableLayerGuid::ViewID mFixedPosTarget;
 
   /* Let {L,M} be the {layer, scrollable metrics} pair that this node
    * corresponds to in the layer tree. mEventRegions contains the event regions
@@ -215,12 +215,12 @@ private:
  * Clear() being called, it unlocks the underlying node at which point it can
  * be recycled or freed.
  */
-class MOZ_RAII HitTestingTreeNodeAutoLock
-{
-public:
+class MOZ_RAII HitTestingTreeNodeAutoLock {
+ public:
   HitTestingTreeNodeAutoLock();
   HitTestingTreeNodeAutoLock(const HitTestingTreeNodeAutoLock&) = delete;
-  HitTestingTreeNodeAutoLock& operator=(const HitTestingTreeNodeAutoLock&) = delete;
+  HitTestingTreeNodeAutoLock& operator=(const HitTestingTreeNodeAutoLock&) =
+      delete;
   HitTestingTreeNodeAutoLock(HitTestingTreeNodeAutoLock&&) = delete;
   ~HitTestingTreeNodeAutoLock();
 
@@ -237,14 +237,17 @@ public:
   // Allow getting back a raw pointer to the node, but only inside the scope
   // of the tree lock. The caller is responsible for ensuring that they do not
   // use the raw pointer outside that scope.
-  HitTestingTreeNode* Get(mozilla::RecursiveMutexAutoLock& aProofOfTreeLock) const { return mNode.get(); }
+  HitTestingTreeNode* Get(
+      mozilla::RecursiveMutexAutoLock& aProofOfTreeLock) const {
+    return mNode.get();
+  }
 
-private:
+ private:
   RefPtr<HitTestingTreeNode> mNode;
   RecursiveMutex* mTreeMutex;
 };
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
-#endif // mozilla_layers_HitTestingTreeNode_h
+#endif  // mozilla_layers_HitTestingTreeNode_h

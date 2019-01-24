@@ -1,18 +1,18 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Specified percentages.
 
+use crate::parser::{Parse, ParserContext};
+use crate::values::computed::percentage::Percentage as ComputedPercentage;
+use crate::values::computed::{Context, ToComputedValue};
+use crate::values::specified::calc::CalcNode;
+use crate::values::{serialize_percentage, CSSFloat};
 use cssparser::{Parser, Token};
-use parser::{Parse, ParserContext};
 use std::fmt::{self, Write};
-use style_traits::{CssWriter, ParseError, SpecifiedValueInfo, ToCss};
 use style_traits::values::specified::AllowedNumericType;
-use values::{serialize_percentage, CSSFloat};
-use values::computed::{Context, ToComputedValue};
-use values::computed::percentage::Percentage as ComputedPercentage;
-use values::specified::calc::CalcNode;
+use style_traits::{CssWriter, ParseError, SpecifiedValueInfo, ToCss};
 
 /// A percentage value.
 #[derive(Clone, Copy, Debug, Default, MallocSizeOf, PartialEq)]

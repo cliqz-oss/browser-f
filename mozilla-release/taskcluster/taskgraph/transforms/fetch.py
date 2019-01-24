@@ -10,7 +10,6 @@ from __future__ import absolute_import, unicode_literals
 import os
 
 from voluptuous import (
-    Any,
     Optional,
     Required,
 )
@@ -25,7 +24,6 @@ from ..util.cached_tasks import (
 )
 from ..util.schema import (
     Schema,
-    validate_schema,
 )
 from ..util.treeherder import (
     join_symbol,
@@ -33,8 +31,6 @@ from ..util.treeherder import (
 
 
 CACHE_TYPE = 'content.v1'
-
-transforms = TransformSequence()
 
 FETCH_SCHEMA = Schema({
     # Name of the task.
@@ -47,7 +43,7 @@ FETCH_SCHEMA = Schema({
     # Description of the task.
     Required('description'): basestring,
 
-    Required('fetch'): Any({
+    Required('fetch'): {
         'type': 'static-url',
 
         # The URL to download.
@@ -75,18 +71,11 @@ FETCH_SCHEMA = Schema({
 
         # IMPORTANT: when adding anything that changes the behavior of the task,
         # it is important to update the digest data used to compute cache hits.
-    }),
+    },
 })
 
-
-@transforms.add
-def validate(config, jobs):
-    for job in jobs:
-        validate_schema(
-            FETCH_SCHEMA, job,
-            'In fetch task {!r}:'.format(job.get('name', 'unknown')))
-
-        yield job
+transforms = TransformSequence()
+transforms.add_validate(FETCH_SCHEMA)
 
 
 @transforms.add
