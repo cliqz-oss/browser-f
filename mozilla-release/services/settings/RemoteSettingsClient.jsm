@@ -216,31 +216,35 @@ class RemoteSettingsClient extends EventEmitter {
    * @return {Promise}
    */
   async get(options = {}) {
-    const { filters = {}, order = "" } = options; // not sorted by default.
+    try {
+      const { filters = {}, order = "" } = options; // not sorted by default.
 
-    if (!(await Utils.hasLocalData(this))) {
-      try {
-        // .get() was called before we had the chance to synchronize the local database.
-        // We'll try to avoid returning an empty list.
-        if (await Utils.hasLocalDump(this.bucketName, this.collectionName)) {
-          // Since there is a JSON dump, load it as default data.
-          await RemoteSettingsWorker.importJSONDump(this.bucketName, this.collectionName);
-        } else {
-          // There is no JSON dump, force a synchronization from the server.
-          await this.sync({ loadDump: false });
+      if (!(await Utils.hasLocalData(this))) {
+        try {
+          // .get() was called before we had the chance to synchronize the local database.
+          // We'll try to avoid returning an empty list.
+          if (await Utils.hasLocalDump(this.bucketName, this.collectionName)) {
+            // Since there is a JSON dump, load it as default data.
+            await RemoteSettingsWorker.importJSONDump(this.bucketName, this.collectionName);
+          } else {
+            // There is no JSON dump, force a synchronization from the server.
+            await this.sync({ loadDump: false });
+          }
+        } catch (e) {
+          // Report but return an empty list since there will be no data anyway.
+          Cu.reportError(e);
+          return [];
         }
-      } catch (e) {
-        // Report but return an empty list since there will be no data anyway.
-        Cu.reportError(e);
-        return [];
       }
-    }
 
-    // Read from the local DB.
-    const kintoCol = await this.openCollection();
-    const { data } = await kintoCol.list({ filters, order });
-    // Filter the records based on `this.filterFunc` results.
-    return this._filterEntries(data);
+      // Read from the local DB.
+      const kintoCol = await this.openCollection();
+      const { data } = await kintoCol.list({ filters, order });
+      // Filter the records based on `this.filterFunc` results.
+      return this._filterEntries(data);
+    } catch(e) {
+      return [];
+    }
   }
 
   /**

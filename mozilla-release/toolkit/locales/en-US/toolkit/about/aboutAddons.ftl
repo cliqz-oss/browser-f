@@ -34,6 +34,15 @@ install-addon-from-file =
     .label = Install Add-on From File…
     .accesskey = I
 
+recommended-addon =
+    .value = Recommended Extensions
+
+install-addon-disclaimer =
+    .value = Proceed with caution when installing add-ons.
+
+install-addon-disclaimer-learn-more =
+    .value = Learn more about the risks
+
 help-button = Add-ons Support
 
 preferences =

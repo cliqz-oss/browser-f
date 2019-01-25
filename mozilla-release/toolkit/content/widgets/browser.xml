@@ -116,25 +116,15 @@
               referrerPolicy = Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,
               triggeringPrincipal,
               postData,
-<<<<<<< HEAD
-              ensurePrivate,
-||||||| merged common ancestors
-=======
               headers,
->>>>>>> origin/upstream-releases
+              ensurePrivate,
             } = aParams || {};
 
             this._wrapURIChangeCall(() =>
               this.webNavigation.loadURIWithOptions(
                   aURI, flags, referrerURI, referrerPolicy,
-<<<<<<< HEAD
-                  postData, null, null, triggeringPrincipal,
+                  postData, headers, null, triggeringPrincipal,
                   !!ensurePrivate));
-||||||| merged common ancestors
-                  postData, null, null, triggeringPrincipal));
-=======
-                  postData, headers, null, triggeringPrincipal));
->>>>>>> origin/upstream-releases
           ]]>
         </body>
       </method>
@@ -1979,7 +1969,6 @@
           return true;
         ]]></body>
       </method>
-<<<<<<< HEAD
 
       <field name="_pbObserver">null</field>
       <method name="_resetPrivateBrowsingObserver">
@@ -2028,8 +2017,6 @@
         ]]>
         </body>
       </method>
-||||||| merged common ancestors
-=======
 
       <method name="getContentBlockingLog">
         <body><![CDATA[
@@ -2041,7 +2028,6 @@
                    Promise.reject("docshell isn't available");
         ]]></body>
       </method>
->>>>>>> origin/upstream-releases
     </implementation>
 
     <handlers>

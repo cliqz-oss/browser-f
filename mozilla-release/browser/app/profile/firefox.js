@@ -1356,81 +1356,17 @@ pref("dom.debug.propagate_gesture_events_through_content", false);
 
 // All the Geolocation preferences are here.
 //
-<<<<<<< HEAD
-// Geolocation preferences for the RELEASE and "later" Beta channels.
-// Some of these prefs are specified even though they are redundant; they are
-// here for clarity and end-user experiments.
-#ifndef EARLY_BETA_OR_EARLIER
-// Cliqz. Always use Mozilla's geolocation API.
-// Also we don't want to use nightly configs, as it was before
 // pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_API_KEY%");
-pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
-
-#ifdef XP_MACOSX
-pref("geo.provider.use_corelocation", false);
-#endif
-
-#ifdef XP_WIN
-pref("geo.provider.ms-windows-location", false);
-#endif
-
-#ifdef MOZ_WIDGET_GTK
-pref("geo.provider.use_gpsd", false);
-#endif
-
-#else
-// Cliqz. We must use mostly same settings in our Beta also
-// Geolocation preferences for Nightly/Aurora/Beta.
-pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
-||||||| merged common ancestors
-
-// Geolocation preferences for the RELEASE and "later" Beta channels.
-// Some of these prefs are specified even though they are redundant; they are
-// here for clarity and end-user experiments.
-#ifndef EARLY_BETA_OR_EARLIER
-pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_API_KEY%");
-
-#ifdef XP_MACOSX
-pref("geo.provider.use_corelocation", false);
-#endif
-
-#ifdef XP_WIN
-pref("geo.provider.ms-windows-location", false);
-#endif
-
-#ifdef MOZ_WIDGET_GTK
-pref("geo.provider.use_gpsd", false);
-#endif
-
-#else
-
-// Geolocation preferences for Nightly/Aurora/Beta.
-pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
-=======
-pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_API_KEY%");
 // MLS URL:
-// pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
->>>>>>> origin/upstream-releases
+pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
 
 #ifdef XP_MACOSX
 pref("geo.provider.use_corelocation", false);
 #endif
 
-<<<<<<< HEAD
-// The native Windows location provider is only enabled in Nightly and likely to
-// be unstable. Set to false if things are really broken.
-#if defined(XP_WIN) && defined(NIGHTLY_BUILD)
-pref("geo.provider.ms-windows-location", false);
-||||||| merged common ancestors
-// The native Windows location provider is only enabled in Nightly and likely to
-// be unstable. Set to false if things are really broken.
-#if defined(XP_WIN) && defined(NIGHTLY_BUILD)
-pref("geo.provider.ms-windows-location", true);
-=======
 // Set to false if things are really broken.
 #ifdef XP_WIN
-pref("geo.provider.ms-windows-location", true);
->>>>>>> origin/upstream-releases
+pref("geo.provider.ms-windows-location", false);
 #endif
 
 #if defined(MOZ_WIDGET_GTK) && defined(MOZ_GPSD)
@@ -1571,89 +1507,24 @@ pref("browser.ping-centre.production.endpoint", "");
 // Enable GMP support in the addon manager.
 pref("media.gmp-provider.enabled", true);
 
-<<<<<<< HEAD
-pref("browser.contentblocking.allowlist.storage.enabled", false);
-
-// Enable blocking access to storage from tracking resources by default on
-// Nightly and Beta
-||||||| merged common ancestors
-// Enable blocking access to storage from tracking resources by default on
-// Nightly and Beta
-=======
 // Enable blocking access to storage from tracking resources only in nightly
 // and early beta. By default the value is 0: BEHAVIOR_ACCEPT
->>>>>>> origin/upstream-releases
 #ifdef EARLY_BETA_OR_EARLIER
 pref("network.cookie.cookieBehavior", 4 /* BEHAVIOR_REJECT_TRACKER */);
 #endif
 
-<<<<<<< HEAD
-#ifdef NIGHTLY_BUILD
-pref("browser.contentblocking.global-toggle.enabled", false);
-#else
-pref("browser.contentblocking.global-toggle.enabled", false);
-#endif
+pref("browser.contentblocking.allowlist.storage.enabled", false);
 
-// Define a set of default features for the Content Blocking UI
-#ifdef EARLY_BETA_OR_EARLIER
-pref("browser.contentblocking.fastblock.ui.enabled", false);
-pref("browser.contentblocking.fastblock.control-center.ui.enabled", false);
-#else
-pref("browser.contentblocking.fastblock.ui.enabled", false);
-pref("browser.contentblocking.fastblock.control-center.ui.enabled", false);
-#endif
-
-#ifdef NIGHTLY_BUILD
-// Enable the Storage Access API in Nightly
-||||||| merged common ancestors
-pref("browser.contentblocking.allowlist.storage.enabled", true);
-
-#ifdef NIGHTLY_BUILD
-pref("browser.contentblocking.global-toggle.enabled", true);
-#else
-pref("browser.contentblocking.global-toggle.enabled", false);
-#endif
-
-#ifdef NIGHTLY_BUILD
-// Enable the Storage Access API in Nightly
-=======
-pref("browser.contentblocking.allowlist.storage.enabled", true);
-
->>>>>>> origin/upstream-releases
 pref("dom.storage_access.enabled", true);
-
-<<<<<<< HEAD
-pref("browser.contentblocking.trackingprotection.ui.enabled", false);
-pref("browser.contentblocking.trackingprotection.control-center.ui.enabled", false);
-pref("browser.contentblocking.rejecttrackers.ui.enabled", false);
-pref("browser.contentblocking.rejecttrackers.ui.recommended", false);
-pref("browser.contentblocking.rejecttrackers.control-center.ui.enabled", false);
-pref("browser.contentblocking.cookies-site-data.ui.reject-trackers.recommended", false);
-pref("browser.contentblocking.cookies-site-data.ui.reject-trackers.enabled", false);
-||||||| merged common ancestors
-// Disable the UI for FastBlock in product.
-pref("browser.contentblocking.fastblock.ui.enabled", false);
-pref("browser.contentblocking.fastblock.control-center.ui.enabled", false);
-
-// Define a set of default features for the Content Blocking UI.
-pref("browser.contentblocking.trackingprotection.ui.enabled", true);
-pref("browser.contentblocking.trackingprotection.control-center.ui.enabled", true);
-pref("browser.contentblocking.rejecttrackers.ui.enabled", true);
-pref("browser.contentblocking.rejecttrackers.ui.recommended", true);
-pref("browser.contentblocking.rejecttrackers.control-center.ui.enabled", true);
-pref("browser.contentblocking.cookies-site-data.ui.reject-trackers.recommended", true);
-pref("browser.contentblocking.cookies-site-data.ui.reject-trackers.enabled", true);
-=======
 pref("dom.storage_access.auto_grants", true);
 pref("dom.storage_access.max_concurrent_auto_grants", 5);
 
 // Define a set of default features for the Content Blocking UI.
-pref("browser.contentblocking.trackingprotection.control-center.ui.enabled", true);
-pref("browser.contentblocking.rejecttrackers.control-center.ui.enabled", true);
+pref("browser.contentblocking.trackingprotection.control-center.ui.enabled", false);
+pref("browser.contentblocking.rejecttrackers.control-center.ui.enabled", false);
 
-pref("browser.contentblocking.control-center.ui.showBlockedLabels", true);
+pref("browser.contentblocking.control-center.ui.showBlockedLabels", false);
 pref("browser.contentblocking.control-center.ui.showAllowedLabels", false);
->>>>>>> origin/upstream-releases
 
 // Enable the Report Breakage UI on Nightly and Beta but not on Release yet.
 #ifdef EARLY_BETA_OR_EARLIER
@@ -1911,10 +1782,6 @@ pref("toolkit.coverage.endpoint.base", "https://coverage.mozilla.org");
 #if defined(NIGHTLY_BUILD) && defined(MOZ_LIBPRIO)
 pref("prio.enabled", true);
 #endif
-<<<<<<< HEAD
-
-||||||| merged common ancestors
-=======
 
 // Discovery prefs
 pref("browser.discovery.enabled", true);
@@ -1922,4 +1789,3 @@ pref("browser.discovery.containers.enabled", true);
 pref("browser.discovery.sites", "addons.mozilla.org");
 
 pref("browser.engagement.recent_visited_origins.expiry", 86400); // 24 * 60 * 60 (24 hours in seconds)
->>>>>>> origin/upstream-releases

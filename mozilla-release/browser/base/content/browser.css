@@ -1257,7 +1257,6 @@ toolbarpaletteitem[dragover] {
   display: -moz-box;
 }
 
-<<<<<<< HEAD
 /* Hidden in Cliqz */
 
 #customization-lwtheme-menu-recommended, #customization-lwtheme-menu-footer {
@@ -1280,17 +1279,6 @@ toolbarpaletteitem[dragover] {
   display: initial !important;
 }
 
-toolbarpaletteitem {
-  -moz-binding: url("chrome://browser/content/customizableui/toolbar.xml#toolbarpaletteitem");
-}
-
-||||||| merged common ancestors
-toolbarpaletteitem {
-  -moz-binding: url("chrome://browser/content/customizableui/toolbar.xml#toolbarpaletteitem");
-}
-
-=======
->>>>>>> origin/upstream-releases
 toolbarpaletteitem[place="palette"] {
   -moz-box-orient: vertical;
   width: 7em;

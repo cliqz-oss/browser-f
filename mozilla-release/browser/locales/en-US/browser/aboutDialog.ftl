@@ -44,8 +44,19 @@ community-2 = { -brand-short-name } is designed by <label data-l10n-name="commun
 helpus = Want to help? <label data-l10n-name="helpus-donateLink">Make a donation</label> or <label data-l10n-name="helpus-getInvolvedLink">get involved!</label>
 
 bottomLinks-license = Licensing Information
-bottomLinks-rights = End-User Rights
+bottomLinks-rights = Terms of use
 bottomLinks-privacy = Privacy Policy
 
 aboutDialog-architecture-sixtyFourBit = 64-bit
 aboutDialog-architecture-thirtyTwoBit = 32-bit
+
+version-based-on = based on Firefox
+cliqz-headline = We Redesign the Internet
+cliqz-desc1-privacy = privacy standards
+cliqz-desc1-policy = privacy policy
+cliqz-desc1-contact = get in contact
+cliqz-description-1 = The protection of your data has priority for us. As a company based in Germany we are bound by strict data security regulations and also by our own high standards and policies. Our primary principle: Cliqz does not store any data on our servers that could be used to identify you or your equipment. Want to know all the details? Read about our <label href="https://cliqz.com/privacy" data-l10n-name="cliqz-desc1-privacy"/>, check our <label href="https://cliqz.com/privacy-browser" data-l10n-name="cliqz-desc1-policy"/> or <label href="https://cliqz.com/support" data-l10n-name="cliqz-desc1-contact"/>.
+
+cliqz-desc2-mozilla = Mozilla open source project
+cliqz-desc2-here = here
+cliqz-description-2 = Parts of the Cliqz Browser are building upon the <label href="http://mozilla.org" data-l10n-name="cliqz-desc2-mozilla"/>. Information about the Mozilla Public License 2.0 and other open source and free software can be found <label href="about:license" data-l10n-name="cliqz-desc2-here"/>.

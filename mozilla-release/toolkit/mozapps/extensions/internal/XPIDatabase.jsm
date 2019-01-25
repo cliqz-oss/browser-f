@@ -121,22 +121,13 @@ const LEGACY_TYPES = new Set([
 
 const SIGNED_TYPES = new Set([
   "extension",
-<<<<<<< HEAD
   "experiment",
-  "theme",
-  "locale",
   "multipackage",
   "webextension",
   "webextension-langpack",
   "webextension-theme",
-||||||| merged common ancestors
-  "webextension",
-  "webextension-langpack",
-  "webextension-theme",
-=======
   "locale",
   "theme",
->>>>>>> origin/upstream-releases
 ]);
 
 // Time to wait before async save of XPI JSON database, in milliseconds

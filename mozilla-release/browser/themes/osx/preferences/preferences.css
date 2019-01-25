@@ -70,27 +70,7 @@ tabpanels {
   margin-inline-start: 10px;
 }
 
-<<<<<<< HEAD
-/**
- * Clear Private Data
- */
-#SanitizeDialogPane > groupbox {
-  margin-top: 0;
-}
-
-
 %ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-/**
- * Clear Private Data
- */
-#SanitizeDialogPane > groupbox {
-  margin-top: 0;
-}
-
-
-=======
->>>>>>> origin/upstream-releases
 /* ----- SYNC PANE ----- */
 
 #noFxaAccount {

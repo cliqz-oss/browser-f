@@ -24,15 +24,9 @@
 #pragma comment(lib, "version.lib")
 
 // This uninstall key is defined originally in maintenanceservice_installer.nsi
-<<<<<<< HEAD
-#define MAINT_UNINSTALL_KEY L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CLIQZMaintenanceService"
-||||||| merged common ancestors
-#define MAINT_UNINSTALL_KEY L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\MozillaMaintenanceService"
-=======
 #define MAINT_UNINSTALL_KEY                                                    \
-  L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\MozillaMaintenan" \
-  L"ceService"
->>>>>>> origin/upstream-releases
+  L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CLIQZMaintenance" \
+  L"Service"
 
 static BOOL UpdateUninstallerVersionString(LPWSTR versionString) {
   HKEY uninstallKey;
@@ -191,28 +185,10 @@ BOOL UpdateServiceDescription(SC_HANDLE serviceHandle) {
  * @param currentServicePath  The current (possibly wrong) path that is used.
  * @param servicePathWasWrong Out parameter set to TRUE if a fix was needed.
  * @return TRUE if the service path is now correct.
-<<<<<<< HEAD
-*/
-BOOL
-FixServicePath(SC_HANDLE service,
-               LPCWSTR currentServicePath,
-               BOOL &servicePathWasWrong)
-{
-  // When we originally upgraded the CliqzMaintenance service we
-||||||| merged common ancestors
-*/
-BOOL
-FixServicePath(SC_HANDLE service,
-               LPCWSTR currentServicePath,
-               BOOL &servicePathWasWrong)
-{
-  // When we originally upgraded the MozillaMaintenance service we
-=======
  */
 BOOL FixServicePath(SC_HANDLE service, LPCWSTR currentServicePath,
                     BOOL &servicePathWasWrong) {
-  // When we originally upgraded the MozillaMaintenance service we
->>>>>>> origin/upstream-releases
+  // When we originally upgraded the CliqzMaintenance service we
   // would uninstall the service on each upgrade.  This had an
   // intermittent error which could cause the service to use the file
   // maintenanceservice_tmp.exe as the install path.  Only a small number

@@ -276,18 +276,11 @@ class TabParent final : public PBrowserParent,
 
   virtual mozilla::ipc::IPCResult RecvDispatchFocusToTopLevelWindow() override;
 
-<<<<<<< HEAD
-  virtual mozilla::ipc::IPCResult RecvLoadContextPrivatenessChanged(const bool& isPrivate) override;
+  virtual mozilla::ipc::IPCResult RecvLoadContextPrivatenessChanged(
+      const bool& isPrivate) override;
 
-  virtual mozilla::ipc::IPCResult RecvRespondStartSwipeEvent(const uint64_t& aInputBlockId,
-                                                             const bool& aStartSwipe) override;
-||||||| merged common ancestors
-  virtual mozilla::ipc::IPCResult RecvRespondStartSwipeEvent(const uint64_t& aInputBlockId,
-                                                             const bool& aStartSwipe) override;
-=======
   virtual mozilla::ipc::IPCResult RecvRespondStartSwipeEvent(
       const uint64_t& aInputBlockId, const bool& aStartSwipe) override;
->>>>>>> origin/upstream-releases
 
   virtual mozilla::ipc::IPCResult RecvDispatchWheelEvent(
       const mozilla::WidgetWheelEvent& aEvent) override;
@@ -626,17 +619,11 @@ class TabParent final : public PBrowserParent,
   LayoutDeviceIntPoint mClientOffset;
   LayoutDeviceIntPoint mChromeOffset;
 
-<<<<<<< HEAD
-private:
+ private:
   void CreateLoadContext();
 
-||||||| merged common ancestors
-private:
-=======
- private:
   void SuppressDisplayport(bool aEnabled);
 
->>>>>>> origin/upstream-releases
   void DestroyInternal();
 
   void SetRenderLayersInternal(bool aEnabled, bool aForceRepaint);
@@ -680,21 +667,7 @@ private:
   LayoutDeviceIntRect mDragRect;
   nsCString mDragPrincipalURISpec;
 
-<<<<<<< HEAD
-  // When true, the TabParent is initialized without child side's request.
-  // When false, the TabParent is initialized by window.open() from child side.
-  bool mInitedByParent;
-
   RefPtr<LoadContext> mLoadContext;
-||||||| merged common ancestors
-  // When true, the TabParent is initialized without child side's request.
-  // When false, the TabParent is initialized by window.open() from child side.
-  bool mInitedByParent;
-
-  nsCOMPtr<nsILoadContext> mLoadContext;
-=======
-  nsCOMPtr<nsILoadContext> mLoadContext;
->>>>>>> origin/upstream-releases
 
   // We keep a strong reference to the frameloader after we've sent the
   // Destroy message and before we've received __delete__. This allows us to

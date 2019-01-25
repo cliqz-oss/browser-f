@@ -362,13 +362,7 @@ nsresult nsWindowsShellService::InvokeHTTPOpenAsVerb() {
 
   nsString urlStr;
   nsresult rv = formatter->FormatURLPref(
-<<<<<<< HEAD
-    NS_LITERAL_STRING("app.support.default_in_win10.URL"), urlStr);
-||||||| merged common ancestors
-    NS_LITERAL_STRING("app.support.baseURL"), urlStr);
-=======
-      NS_LITERAL_STRING("app.support.baseURL"), urlStr);
->>>>>>> origin/upstream-releases
+      NS_LITERAL_STRING("app.support.default_in_win10.URL"), urlStr);
   if (NS_FAILED(rv)) {
     return rv;
   }

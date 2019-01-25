@@ -442,21 +442,9 @@ nsXREDirProvider::GetFile(const char* aProperty, bool* aPersistent,
   else if (!strcmp(aProperty, XRE_SYS_SHARE_EXTENSION_PARENT_DIR)) {
 #ifdef ENABLE_SYSTEM_EXTENSION_DIRS
 #if defined(__OpenBSD__) || defined(__FreeBSD__)
-<<<<<<< HEAD
-    static const char *const sysLExtDir = "/usr/local/share/cliqz/extensions";
-||||||| merged common ancestors
-    static const char *const sysLExtDir = "/usr/local/share/mozilla/extensions";
-=======
-    static const char* const sysLExtDir = "/usr/local/share/mozilla/extensions";
->>>>>>> origin/upstream-releases
+    static const char* const sysLExtDir = "/usr/local/share/cliqz/extensions";
 #else
-<<<<<<< HEAD
-    static const char *const sysLExtDir = "/usr/share/cliqz/extensions";
-||||||| merged common ancestors
-    static const char *const sysLExtDir = "/usr/share/mozilla/extensions";
-=======
-    static const char* const sysLExtDir = "/usr/share/mozilla/extensions";
->>>>>>> origin/upstream-releases
+    static const char* const sysLExtDir = "/usr/share/cliqz/extensions";
 #endif
     return NS_NewNativeLocalFile(nsDependentCString(sysLExtDir), false, aFile);
 #else
@@ -1191,43 +1179,9 @@ nsresult nsXREDirProvider::GetInstallHash(nsAString& aPathHash) {
   rv = installDir->GetPath(installPath);
   NS_ENSURE_SUCCESS(rv, rv);
 
-<<<<<<< HEAD
-  aPathHash.Truncate();
-
-#ifdef XP_WIN
-  // Figure out where we should check for a cached hash value. If the
-  // application doesn't have the nsXREAppData vendor value defined check
-  // under SOFTWARE\Mozilla.
-  bool hasVendor = GetAppVendor() && strlen(GetAppVendor()) != 0;
-  wchar_t regPath[1024] = { L'\0' };
-  swprintf_s(regPath, mozilla::ArrayLength(regPath), L"SOFTWARE\\%S\\%S\\TaskBarIDs",
-              (hasVendor ? GetAppVendor() : "Cliqz"), MOZ_APP_BASENAME);
-
-  // If we pre-computed the hash, grab it from the registry.
-  if (GetCachedHash(HKEY_LOCAL_MACHINE, nsDependentString(regPath), appDirPath,
-                    aPathHash)) {
-    return NS_OK;
-||||||| merged common ancestors
-  aPathHash.Truncate();
-
-#ifdef XP_WIN
-  // Figure out where we should check for a cached hash value. If the
-  // application doesn't have the nsXREAppData vendor value defined check
-  // under SOFTWARE\Mozilla.
-  bool hasVendor = GetAppVendor() && strlen(GetAppVendor()) != 0;
-  wchar_t regPath[1024] = { L'\0' };
-  swprintf_s(regPath, mozilla::ArrayLength(regPath), L"SOFTWARE\\%S\\%S\\TaskBarIDs",
-              (hasVendor ? GetAppVendor() : "Mozilla"), MOZ_APP_BASENAME);
-
-  // If we pre-computed the hash, grab it from the registry.
-  if (GetCachedHash(HKEY_LOCAL_MACHINE, nsDependentString(regPath), appDirPath,
-                    aPathHash)) {
-    return NS_OK;
-=======
   const char* vendor = GetAppVendor();
   if (vendor && vendor[0] == '\0') {
     vendor = nullptr;
->>>>>>> origin/upstream-releases
   }
 
   mozilla::UniquePtr<NS_tchar[]> hash;

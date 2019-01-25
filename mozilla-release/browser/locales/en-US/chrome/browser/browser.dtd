@@ -996,42 +996,16 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 
 <!-- LOCALIZATION NOTE (trackingProtection.unblock5.label, trackingProtection.unblock5.accesskey):
      The associated button with this label and accesskey is only shown when opening the control
-<<<<<<< HEAD
      center while looking at a site with trackers in NON-forget mode. -->
-<!ENTITY trackingProtection.unblock4.label "Disable Blocking For This Site">
-<!ENTITY trackingProtection.unblock4.accesskey "D">
-<!-- LOCALIZATION NOTE (trackingProtection.unblockPrivate3.label, trackingProtection.unblockPrivate3.accesskey):
-||||||| merged common ancestors
-     center while looking at a site with trackers in NON-private browsing mode. -->
-<!ENTITY trackingProtection.unblock4.label "Disable Blocking For This Site">
-<!ENTITY trackingProtection.unblock4.accesskey "D">
-<!-- LOCALIZATION NOTE (trackingProtection.unblockPrivate3.label, trackingProtection.unblockPrivate3.accesskey):
-=======
-     center while looking at a site with trackers in NON-private browsing mode. -->
 <!ENTITY trackingProtection.unblock5.label "Turn off Blocking for This Site">
 <!ENTITY trackingProtection.unblock5.accesskey "T">
 <!-- LOCALIZATION NOTE (trackingProtection.unblockPrivate6.label, trackingProtection.unblockPrivate6.accesskey):
->>>>>>> origin/upstream-releases
      The associated button with this label and accesskey is only shown when opening the control
-<<<<<<< HEAD
      center while looking at a site with trackers in forget mode. -->
-<!ENTITY trackingProtection.unblockPrivate4.label "Disable Blocking Temporarily">
-<!ENTITY trackingProtection.unblockPrivate4.accesskey "D">
-<!ENTITY trackingProtection.block5.label "Enable Blocking For This Site">
-<!ENTITY trackingProtection.block5.accesskey "E">
-||||||| merged common ancestors
-     center while looking at a site with trackers in PRIVATE browsing mode. -->
-<!ENTITY trackingProtection.unblockPrivate4.label "Disable Blocking Temporarily">
-<!ENTITY trackingProtection.unblockPrivate4.accesskey "D">
-<!ENTITY trackingProtection.block5.label "Enable Blocking For This Site">
-<!ENTITY trackingProtection.block5.accesskey "E">
-=======
-     center while looking at a site with trackers in PRIVATE browsing mode. -->
 <!ENTITY trackingProtection.unblockPrivate5.label "Turn off Blocking Temporarily">
 <!ENTITY trackingProtection.unblockPrivate5.accesskey "T">
 <!ENTITY trackingProtection.block6.label "Turn on Blocking for This Site">
 <!ENTITY trackingProtection.block6.accesskey "T">
->>>>>>> origin/upstream-releases
 <!ENTITY trackingProtection.reload2.label "Reload Page">
 <!ENTITY trackingProtection.reload2.accesskey "R">
 

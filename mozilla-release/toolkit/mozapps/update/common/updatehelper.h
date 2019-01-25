@@ -19,14 +19,7 @@ BOOL IsUnpromptedElevation(BOOL &isUnpromptedElevation);
 
 #define SVC_NAME L"CliqzMaintenance"
 
-<<<<<<< HEAD
-#define BASE_SERVICE_REG_KEY \
-  L"SOFTWARE\\CLIQZ\\MaintenanceService"
-||||||| merged common ancestors
-#define BASE_SERVICE_REG_KEY \
-  L"SOFTWARE\\Mozilla\\MaintenanceService"
-=======
-#define BASE_SERVICE_REG_KEY L"SOFTWARE\\Mozilla\\MaintenanceService"
+#define BASE_SERVICE_REG_KEY L"SOFTWARE\\CLIQZ\\MaintenanceService"
 
 // Disable impersonation on release (Bug 1514898)
 #ifndef EARLY_BETA_OR_EARLIER
@@ -35,7 +28,6 @@ BOOL IsUnpromptedElevation(BOOL &isUnpromptedElevation);
 
 // Environment variable used to pass impersonation token to child
 #define USER_TOKEN_VAR_NAME "MOZ_USER_TOKEN"
->>>>>>> origin/upstream-releases
 
 // The test only fallback key, as its name implies, is only present on machines
 // that will use automated tests.  Since automated tests always run from a

@@ -1747,38 +1747,6 @@ PREF("preferences.allow.omt-write", bool, true)
 // Privacy prefs
 //---------------------------------------------------------------------------
 
-<<<<<<< HEAD
-// Whether Content Blocking has been enabled.
-VARCACHE_PREF(
-  "browser.contentblocking.enabled",
-   browser_contentblocking_enabled,
-  bool, false
-)
-
-// Whether Content Blocking UI has been enabled.
-VARCACHE_PREF(
-  "browser.contentblocking.ui.enabled",
-   browser_contentblocking_ui_enabled,
-  bool, false
-)
-
-||||||| merged common ancestors
-// Whether Content Blocking has been enabled.
-VARCACHE_PREF(
-  "browser.contentblocking.enabled",
-   browser_contentblocking_enabled,
-  bool, true
-)
-
-// Whether Content Blocking UI has been enabled.
-VARCACHE_PREF(
-  "browser.contentblocking.ui.enabled",
-   browser_contentblocking_ui_enabled,
-  bool, true
-)
-
-=======
->>>>>>> origin/upstream-releases
 // Whether Content Blocking Third-Party Cookies UI has been enabled.
 VARCACHE_PREF(
   "browser.contentblocking.allowlist.storage.enabled",

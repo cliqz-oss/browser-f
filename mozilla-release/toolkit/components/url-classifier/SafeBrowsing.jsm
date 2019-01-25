@@ -76,15 +76,7 @@ var SafeBrowsing = {
       return;
     }
 
-<<<<<<< HEAD
 #if 0
-    Services.prefs.addObserver("browser.contentblocking.enabled", this);
-||||||| merged common ancestors
-    Services.prefs.addObserver("browser.contentblocking.enabled", this);
-    Services.prefs.addObserver("browser.safebrowsing", this);
-=======
-    Services.prefs.addObserver("browser.safebrowsing", this);
->>>>>>> origin/upstream-releases
     Services.prefs.addObserver("privacy.trackingprotection", this);
 #endif
     Services.prefs.addObserver("browser.safebrowsing", this);
@@ -273,22 +265,10 @@ var SafeBrowsing = {
     this.malwareEnabled = Services.prefs.getBoolPref("browser.safebrowsing.malware.enabled");
     this.downloadsEnabled = Services.prefs.getBoolPref("browser.safebrowsing.downloads.enabled");
     this.passwordsEnabled = Services.prefs.getBoolPref("browser.safebrowsing.passwords.enabled");
-<<<<<<< HEAD
 #if 0
-    this.trackingEnabled = contentBlockingEnabled &&
-                           (Services.prefs.getBoolPref("toolkit.telemetry.isGeckoViewMode", false) ||
-                            Services.prefs.getBoolPref("privacy.trackingprotection.enabled") ||
-                            Services.prefs.getBoolPref("privacy.trackingprotection.pbmode.enabled"));
-||||||| merged common ancestors
-    this.trackingEnabled = contentBlockingEnabled &&
-                           (Services.prefs.getBoolPref("toolkit.telemetry.isGeckoViewMode", false) ||
-                            Services.prefs.getBoolPref("privacy.trackingprotection.enabled") ||
-                            Services.prefs.getBoolPref("privacy.trackingprotection.pbmode.enabled"));
-=======
     this.trackingEnabled = Services.prefs.getBoolPref("toolkit.telemetry.isGeckoViewMode", false) ||
                            Services.prefs.getBoolPref("privacy.trackingprotection.enabled") ||
                            Services.prefs.getBoolPref("privacy.trackingprotection.pbmode.enabled");
->>>>>>> origin/upstream-releases
     this.blockedEnabled = Services.prefs.getBoolPref("browser.safebrowsing.blockedURIs.enabled");
     this.trackingAnnotations = Services.prefs.getBoolPref("privacy.trackingprotection.annotate_channels");
 #endif

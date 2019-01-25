@@ -18,74 +18,12 @@ xmlns="http://www.w3.org/1999/xhtml"
 >
 Components.utils.import("resource://gre/modules/Services.jsm");
 
-<<<<<<< HEAD
-for (let script of [
-  "chrome://browser/content/browser.js",
-  "chrome://browser/content/search/searchbar.js",
-
-  "chrome://browser/content/browser-captivePortal.js",
-  "chrome://browser/content/browser-compacttheme.js",
-#if 0
-  "chrome://browser/content/browser-contentblocking.js",
-#endif
-  "chrome://browser/content/browser-media.js",
-  "chrome://browser/content/browser-pageActions.js",
-  "chrome://browser/content/browser-places.js",
-  "chrome://browser/content/browser-plugins.js",
-  "chrome://browser/content/browser-sidebar.js",
-  "chrome://browser/content/browser-siteIdentity.js",
-  "chrome://browser/content/browser-tabsintitlebar.js",
-
-  "chrome://global/content/globalOverlay.js",
-  "chrome://browser/content/utilityOverlay.js",
-||||||| merged common ancestors
-for (let script of [
-  "chrome://browser/content/browser.js",
-  "chrome://browser/content/search/searchbar.js",
-
-  "chrome://browser/content/browser-captivePortal.js",
-  "chrome://browser/content/browser-compacttheme.js",
-  "chrome://browser/content/browser-contentblocking.js",
-  "chrome://browser/content/browser-media.js",
-  "chrome://browser/content/browser-pageActions.js",
-  "chrome://browser/content/browser-places.js",
-  "chrome://browser/content/browser-plugins.js",
-  "chrome://browser/content/browser-sidebar.js",
-  "chrome://browser/content/browser-siteIdentity.js",
-  "chrome://browser/content/browser-tabsintitlebar.js",
-
-  "chrome://global/content/globalOverlay.js",
-  "chrome://browser/content/utilityOverlay.js",
-=======
 Services.scriptloader.loadSubScript("chrome://browser/content/browser.js", this);
 Services.scriptloader.loadSubScript("chrome://browser/content/browser-places.js", this);
 Services.scriptloader.loadSubScript("chrome://global/content/globalOverlay.js", this);
 Services.scriptloader.loadSubScript("chrome://browser/content/utilityOverlay.js", this);
->>>>>>> origin/upstream-releases
 #ifdef XP_MACOSX
 Services.scriptloader.loadSubScript("chrome://global/content/macWindowMenu.js", this);
 #endif
-<<<<<<< HEAD
-#ifdef MOZ_DATA_REPORTING
-  "chrome://browser/content/browser-data-submission-info-bar.js",
-#endif
-#ifdef 0
-  "chrome://browser/content/browser-development-helpers.js",
-#endif
-]) {
-  Services.scriptloader.loadSubScript(script, this);
-}
-||||||| merged common ancestors
-#ifdef MOZ_DATA_REPORTING
-  "chrome://browser/content/browser-data-submission-info-bar.js",
-#endif
-#ifndef MOZILLA_OFFICIAL
-  "chrome://browser/content/browser-development-helpers.js",
-#endif
-]) {
-  Services.scriptloader.loadSubScript(script, this);
-}
-=======
 
->>>>>>> origin/upstream-releases
 </script>

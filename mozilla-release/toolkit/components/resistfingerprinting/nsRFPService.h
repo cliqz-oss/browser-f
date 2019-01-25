@@ -49,7 +49,6 @@
 #define LEGACY_BUILD_ID "20181001000000"
 #define LEGACY_UA_GECKO_TRAIL "20100101"
 
-<<<<<<< HEAD
 // For the HTTP User-Agent header, we use a simpler set of spoofed values
 // that do not reveal the specific desktop platform.
 #if defined(MOZ_WIDGET_ANDROID)
@@ -58,11 +57,8 @@
 #define SPOOFED_HTTP_UA_OS      "Windows NT 6.1"
 #endif
 
-||||||| merged common ancestors
-=======
 #define SPOOFED_POINTER_INTERFACE MouseEvent_Binding::MOZ_SOURCE_MOUSE
 
->>>>>>> origin/upstream-releases
 // Forward declare LRUCache, defined in nsRFPService.cpp
 class LRUCache;
 
@@ -189,13 +185,7 @@ class nsRFPService final : public nsIObserver {
                                             uint32_t aHeight);
 
   // This method generates the spoofed value of User Agent.
-<<<<<<< HEAD
-  static nsresult GetSpoofedUserAgent(nsACString &userAgent, bool isForHTTPHeader);
-||||||| merged common ancestors
-  static nsresult GetSpoofedUserAgent(nsACString &userAgent);
-=======
-  static nsresult GetSpoofedUserAgent(nsACString& userAgent);
->>>>>>> origin/upstream-releases
+  static nsresult GetSpoofedUserAgent(nsACString& userAgent, bool isForHTTPHeader);
 
   /**
    * This method for getting spoofed modifier states for the given keyboard

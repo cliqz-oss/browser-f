@@ -554,34 +554,18 @@ nsWebBrowser::LoadURIWithOptions(const nsAString& aURI, uint32_t aLoadFlags,
                                  nsIInputStream* aPostDataStream,
                                  nsIInputStream* aExtraHeaderStream,
                                  nsIURI* aBaseURI,
-<<<<<<< HEAD
                                  nsIPrincipal* aTriggeringPrincipal,
-                                 bool aEnsurePrivate)
-{
-||||||| merged common ancestors
-                                 nsIPrincipal* aTriggeringPrincipal)
-{
-=======
-                                 nsIPrincipal* aTriggeringPrincipal) {
+                                 bool aEnsurePrivate) {
 #ifndef ANDROID
   MOZ_ASSERT(
       aTriggeringPrincipal,
       "nsWebBrowser::LoadURIWithOptions - Need a valid triggeringPrincipal");
 #endif
->>>>>>> origin/upstream-releases
   NS_ENSURE_STATE(mDocShell);
 
   return mDocShellAsNav->LoadURIWithOptions(
-<<<<<<< HEAD
-    aURI, aLoadFlags, aReferringURI, aReferrerPolicy, aPostDataStream,
-    aExtraHeaderStream, aBaseURI, aTriggeringPrincipal, aEnsurePrivate);
-||||||| merged common ancestors
-    aURI, aLoadFlags, aReferringURI, aReferrerPolicy, aPostDataStream,
-    aExtraHeaderStream, aBaseURI, aTriggeringPrincipal);
-=======
       aURI, aLoadFlags, aReferringURI, aReferrerPolicy, aPostDataStream,
-      aExtraHeaderStream, aBaseURI, aTriggeringPrincipal);
->>>>>>> origin/upstream-releases
+      aExtraHeaderStream, aBaseURI, aTriggeringPrincipal, aEnsurePrivate);
 }
 
 NS_IMETHODIMP
