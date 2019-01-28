@@ -961,39 +961,17 @@ var gMainPane = {
 
   updateBrowserStartupUI() {
     const pbAutoStartPref = Preferences.get("browser.privatebrowsing.autostart");
-<<<<<<< HEAD
     const restoreCheckbox = document.getElementById("restoreSessionCheckbox");
     let checkbox = document.getElementById("restoreSessionCheckbox");
+    let warnOnQuitCheckbox = document.getElementById("browserRestoreSessionQuitWarning");
     if (pbAutoStartPref.value) {
       restoreCheckbox.setAttribute("disabled", "true");
       restoreCheckbox.checked = false;
-||||||| merged common ancestors
-    const startupPref = Preferences.get("browser.startup.page");
-
-    let newValue;
-    let checkbox = document.getElementById("browserRestoreSession");
-    if (pbAutoStartPref.value || startupPref.locked) {
-      checkbox.setAttribute("disabled", "true");
-=======
-    const startupPref = Preferences.get("browser.startup.page");
-
-    let newValue;
-    let checkbox = document.getElementById("browserRestoreSession");
-    let warnOnQuitCheckbox = document.getElementById("browserRestoreSessionQuitWarning");
-    if (pbAutoStartPref.value || startupPref.locked) {
-      checkbox.setAttribute("disabled", "true");
       warnOnQuitCheckbox.setAttribute("disabled", "true");
->>>>>>> origin/upstream-releases
     } else {
       checkbox.removeAttribute("disabled");
     }
-<<<<<<< HEAD
-||||||| merged common ancestors
-    newValue = pbAutoStartPref.value ? false : startupPref.value === this.STARTUP_PREF_RESTORE_SESSION;
-    if (checkbox.checked !== newValue) {
-      checkbox.checked = newValue;
-    }
-=======
+/*
     newValue = pbAutoStartPref.value ? false : startupPref.value === this.STARTUP_PREF_RESTORE_SESSION;
     if (checkbox.checked !== newValue) {
       checkbox.checked = newValue;
@@ -1004,7 +982,7 @@ var gMainPane = {
         warnOnQuitCheckbox.setAttribute("disabled", "true");
       }
     }
->>>>>>> origin/upstream-releases
+*/
   },
 
   initBrowserLocale() {

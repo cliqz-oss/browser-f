@@ -128,7 +128,6 @@ VIAddVersionKey "ProductVersion"  "${AppVersion}"
 
 # Control positions in Dialog Units so they are placed correctly with
 # non-default DPI settings
-<<<<<<< HEAD
 !define PROFILE_CLEANUP_LABEL_TOP_DU 64u
 !define NOW_INSTALLING_TOP_DU 221u
 !define INSTALL_BLURB1_TOP_DU 60u
@@ -137,28 +136,9 @@ VIAddVersionKey "ProductVersion"  "${AppVersion}"
 !define INSTALL_FOOTER_TOP_DU 19u
 !define INSTALL_FOOTER_WIDTH_DU 400u
 !define PROGRESS_BAR_TOP_DU 210u
-||||||| merged common ancestors
-!define PROFILE_CLEANUP_LABEL_TOP_DU 39u
-!define NOW_INSTALLING_TOP_DU 70u
-!define INSTALL_BLURB_TOP_DU 137u
-!define INSTALL_FOOTER_TOP_DU -48u
-!define INSTALL_FOOTER_WIDTH_DU 250u
-!define PROGRESS_BAR_TOP_DU 112u
-!define APPNAME_BMP_EDGE_DU 19u
-!define APPNAME_BMP_TOP_DU 12u
-=======
-!define PROFILE_CLEANUP_LABEL_TOP_DU 39u
-!define NOW_INSTALLING_TOP_DU 70u
-!define INSTALL_BLURB_TOP_DU 137u
-!define INSTALL_FOOTER_TOP_DU -48u
-!define INSTALL_FOOTER_WIDTH_DU 250u
-!define PROGRESS_BAR_TOP_DU 112u
-!define APPNAME_BMP_EDGE_DU 19u
-!define APPNAME_BMP_TOP_DU 12u
 
 # Constants for parts of the telemetry submission URL
 !define TELEMETRY_BASE_URL https://incoming.telemetry.mozilla.org/submit
 !define TELEMETRY_NAMESPACE firefox-installer
 !define TELEMETRY_INSTALL_PING_VERSION 1
 !define TELEMETRY_INSTALL_PING_DOCTYPE install
->>>>>>> origin/upstream-releases

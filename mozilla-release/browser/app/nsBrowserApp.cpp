@@ -117,18 +117,8 @@ static MOZ_FORMAT_PRINTF(1, 2) void Output(const char* fmt, ...) {
     decltype(MessageBoxW)* messageBoxW =
         (decltype(MessageBoxW)*)GetProcAddress(user32, "MessageBoxW");
     if (messageBoxW) {
-<<<<<<< HEAD
-      // TODO: Use `sAppData->name`
       messageBoxW(nullptr, wide_msg, L"Cliqz",
                   MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
-||||||| merged common ancestors
-      messageBoxW(nullptr, wide_msg, L"Firefox", MB_OK
-                                               | MB_ICONERROR
-                                               | MB_SETFOREGROUND);
-=======
-      messageBoxW(nullptr, wide_msg, L"Firefox",
-                  MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
->>>>>>> origin/upstream-releases
     }
     FreeLibrary(user32);
   }

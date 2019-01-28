@@ -254,17 +254,11 @@ static uint32_t gNumberOfPrivateDocShells = 0;
 // the pref on the creation of the first docshell.
 static uint32_t gValidateOrigin = 0xffffffff;
 
+#ifdef DEBUG
 static mozilla::LazyLogModule gDocShellLog("nsDocShell");
-<<<<<<< HEAD
-static mozilla::LazyLogModule gDocShellLeakLog("nsDocShellLeak");;
-||||||| merged common ancestors
-#endif
-static mozilla::LazyLogModule gDocShellLeakLog("nsDocShellLeak");;
-=======
 #endif
 static mozilla::LazyLogModule gDocShellLeakLog("nsDocShellLeak");
 ;
->>>>>>> origin/upstream-releases
 
 const char kBrandBundleURL[] = "chrome://branding/locale/brand.properties";
 const char kAppstringsBundleURL[] =
@@ -421,9 +415,9 @@ nsDocShell::nsDocShell(BrowsingContext* aBrowsingContext)
 
 nsDocShell::~nsDocShell() {
   MOZ_ASSERT(!mObserved);
-
+#ifdef DEBUG
   MOZ_LOG(gDocShellLog, LogLevel::Debug, ("nsDocShell[%p]::DTOR!!!\n", this));
-
+#endif
   // Avoid notifying observers while we're in the dtor.
   mIsBeingDestroyed = true;
 
@@ -454,23 +448,9 @@ nsDocShell::~nsDocShell() {
 #endif
 }
 
-<<<<<<< HEAD
-nsresult
-nsDocShell::Init()
-{
-  MOZ_LOG(gDocShellLog, LogLevel::Debug, ("nsDocShell[%p]::Init", this));
-
-  MOZ_ASSERT(!mIsBeingDestroyed);
-||||||| merged common ancestors
-nsresult
-nsDocShell::Init()
-{
-  MOZ_ASSERT(!mIsBeingDestroyed);
-=======
 /* static */ already_AddRefed<nsDocShell> nsDocShell::Create(
     BrowsingContext* aBrowsingContext) {
   MOZ_ASSERT(aBrowsingContext, "DocShell without a BrowsingContext!");
->>>>>>> origin/upstream-releases
 
   nsresult rv;
   RefPtr<nsDocShell> ds = new nsDocShell(aBrowsingContext);
@@ -1530,11 +1510,11 @@ nsDocShell::SetPrivateBrowsing(bool aUsePrivateBrowsing) {
   MOZ_ASSERT(!mIsBeingDestroyed);
 
   bool changed = aUsePrivateBrowsing != (mPrivateBrowsingId > 0);
-
+#ifdef DEBUG
   MOZ_LOG(gDocShellLog, LogLevel::Debug,
           ("nsDocShell[%p]::SetPrivateBrowsing(%d), changed = %d\n",
            this, aUsePrivateBrowsing, changed));
-
+#endif
   if (changed) {
     mPrivateBrowsingId = aUsePrivateBrowsing ? 1 : 0;
 
@@ -3902,19 +3882,6 @@ NS_IMETHODIMP
 nsDocShell::LoadURI(const nsAString& aURI, uint32_t aLoadFlags,
                     nsIURI* aReferringURI, nsIInputStream* aPostStream,
                     nsIInputStream* aHeaderStream,
-<<<<<<< HEAD
-                    nsIPrincipal* aTriggeringPrincipal)
-{
-  return LoadURIWithOptions(aURI, aLoadFlags, aReferringURI,
-                            RP_Unset, aPostStream,
-                            aHeaderStream, nullptr, aTriggeringPrincipal, false);
-||||||| merged common ancestors
-                    nsIPrincipal* aTriggeringPrincipal)
-{
-  return LoadURIWithOptions(aURI, aLoadFlags, aReferringURI,
-                            RP_Unset, aPostStream,
-                            aHeaderStream, nullptr, aTriggeringPrincipal);
-=======
                     nsIPrincipal* aTriggeringPrincipal) {
 #ifndef ANDROID
   MOZ_ASSERT(aTriggeringPrincipal, "LoadURI: Need a valid triggeringPrincipal");
@@ -3924,33 +3891,18 @@ nsDocShell::LoadURI(const nsAString& aURI, uint32_t aLoadFlags,
   }
   return LoadURIWithOptions(aURI, aLoadFlags, aReferringURI, RP_Unset,
                             aPostStream, aHeaderStream, nullptr,
-                            aTriggeringPrincipal);
->>>>>>> origin/upstream-releases
+                            aTriggeringPrincipal, false);
 }
 
 NS_IMETHODIMP
 nsDocShell::LoadURIWithOptions(const nsAString& aURI, uint32_t aLoadFlags,
                                nsIURI* aReferringURI, uint32_t aReferrerPolicy,
                                nsIInputStream* aPostStream,
-<<<<<<< HEAD
-                               nsIInputStream* aHeaderStream,
-                               nsIURI* aBaseURI,
-                               nsIPrincipal* aTriggeringPrincipal,
-                               bool aEnsurePrivate)
-{
-  NS_ASSERTION((aLoadFlags & 0xf) == 0, "Unexpected flags");
-||||||| merged common ancestors
-                               nsIInputStream* aHeaderStream,
-                               nsIURI* aBaseURI,
-                               nsIPrincipal* aTriggeringPrincipal)
-{
-  NS_ASSERTION((aLoadFlags & 0xf) == 0, "Unexpected flags");
-=======
                                nsIInputStream* aHeaderStream, nsIURI* aBaseURI,
-                               nsIPrincipal* aTriggeringPrincipal) {
+                               nsIPrincipal* aTriggeringPrincipal,
+                               bool aEnsurePrivate) {
   NS_ASSERTION((aLoadFlags & INTERNAL_LOAD_FLAGS_LOADURI_SETUP_FLAGS) == 0,
                "Unexpected flags");
->>>>>>> origin/upstream-releases
 
   if (!IsNavigationAllowed()) {
     return NS_OK;  // JS may not handle returning of an error code
@@ -4084,20 +4036,13 @@ nsDocShell::LoadURIWithOptions(const nsAString& aURI, uint32_t aLoadFlags,
     MaybeNotifyKeywordSearchLoading(searchProvider, keyword);
   }
 
-<<<<<<< HEAD
   if (aEnsurePrivate) {
     rv = SetPrivateBrowsing(true);
     if (NS_FAILED(rv)) {
       return rv;
     }
   }
-
-  rv = LoadURI(uri, loadInfo, extraFlags, true);
-||||||| merged common ancestors
-  rv = LoadURI(uri, loadInfo, extraFlags, true);
-=======
   rv = LoadURI(loadState);
->>>>>>> origin/upstream-releases
 
   // Save URI string in case it's needed later when
   // sending to search engine service in EndPageLoad()
@@ -4992,9 +4937,9 @@ nsDocShell::Create() {
     // We've already been created
     return NS_OK;
   }
-
+#ifdef DEBUG
   MOZ_LOG(gDocShellLog, LogLevel::Debug, ("nsDocShell[%p]::Create", this));
-
+#endif
   NS_ASSERTION(mItemType == typeContent || mItemType == typeChrome,
                "Unexpected item type in docshell");
 
@@ -13166,20 +13111,10 @@ nsDocShell::GetOriginAttributes(JSContext* aCx,
   return NS_OK;
 }
 
-<<<<<<< HEAD
-bool
-nsDocShell::CanSetOriginAttributes()
-{
+bool nsDocShell::CanSetOriginAttributes() {
   // TODO: Cliqz, find a better way to switch tab's privateness. See DB-1260.
   return true;
 
-||||||| merged common ancestors
-bool
-nsDocShell::CanSetOriginAttributes()
-{
-=======
-bool nsDocShell::CanSetOriginAttributes() {
->>>>>>> origin/upstream-releases
   MOZ_ASSERT(mChildList.IsEmpty());
   if (!mChildList.IsEmpty()) {
     return false;
@@ -13232,11 +13167,11 @@ nsresult nsDocShell::SetOriginAttributes(const OriginAttributes& aAttrs) {
   if (!CanSetOriginAttributes()) {
     return NS_ERROR_FAILURE;
   }
-
+#ifdef DEBUG
   MOZ_LOG(gDocShellLog, LogLevel::Debug,
           ("nsDocShell[%p]::SetOriginAttributes(%d)\n",
            this, aAttrs.mPrivateBrowsingId));
-
+#endif
   AssertOriginAttributesMatchPrivateBrowsing();
   mOriginAttributes = aAttrs;
 

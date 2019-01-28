@@ -8,18 +8,11 @@ ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 ChromeUtils.import("resource://gre/modules/NotificationDB.jsm");
 
-<<<<<<< HEAD
 ChromeUtils.import("resource:///modules/CliqzResources.jsm");
 #ifdef CQZ_TOR_MODE
 ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 #endif
-const {WebExtensionPolicy} = Cu.getGlobalForObject(Services);
 
-||||||| merged common ancestors
-const {WebExtensionPolicy} = Cu.getGlobalForObject(Services);
-
-=======
->>>>>>> origin/upstream-releases
 // lazy module getters
 
 XPCOMUtils.defineLazyModuleGetters(this, {
@@ -404,41 +397,9 @@ async function gLazyFindCommand(cmd, ...args) {
   }
 }
 
-<<<<<<< HEAD
-Object.defineProperty(this, "AddonManager", {
-  configurable: true,
-  enumerable: true,
-  get() {
-    let tmp = {};
-    ChromeUtils.import("resource://gre/modules/AddonManager.jsm", tmp);
-    return this.AddonManager = tmp.AddonManager;
-  },
-  set(val) {
-    delete this.AddonManager;
-    return this.AddonManager = val;
-  },
-});
-
 #if CQZ_AUTO_PRIVATE_TAB
 let autoForgetTabs= Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
     getService(Ci.nsISupports).wrappedJSObject;
-||||||| merged common ancestors
-Object.defineProperty(this, "AddonManager", {
-  configurable: true,
-  enumerable: true,
-  get() {
-    let tmp = {};
-    ChromeUtils.import("resource://gre/modules/AddonManager.jsm", tmp);
-    return this.AddonManager = tmp.AddonManager;
-  },
-  set(val) {
-    delete this.AddonManager;
-    return this.AddonManager = val;
-  },
-});
-
-=======
->>>>>>> origin/upstream-releases
 
 XPCOMUtils.defineLazyModuleGetter(this, "PrivateTabUI",
   "chrome://browser/content/PrivateTabUI.jsm");
@@ -5168,17 +5129,9 @@ var XULBrowserWindow = {
       uri = Services.uriFixup.createExposableURI(uri);
     } catch (e) {}
     gIdentityHandler.updateIdentity(this._state, uri);
-<<<<<<< HEAD
 #if 0
-    ContentBlocking.onSecurityChange(aOldState, this._state, aWebProgress, aIsSimulated,
-                                     aContentBlockingLogJSON);
-#endif
-||||||| merged common ancestors
-    ContentBlocking.onSecurityChange(aOldState, this._state, aWebProgress, aIsSimulated,
-                                     aContentBlockingLogJSON);
-=======
     ContentBlocking.onSecurityChange(this._state, aWebProgress, aIsSimulated);
->>>>>>> origin/upstream-releases
+#endif
   },
 
   // simulate all change notifications after switching tabs

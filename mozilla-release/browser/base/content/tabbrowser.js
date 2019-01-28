@@ -5449,22 +5449,11 @@ var TabContextMenu = {
     let isFirstTab = tabsToMove[0] == visibleTabs[0] ||
                      tabsToMove[0] == visibleTabs[gBrowser._numPinnedTabs];
     contextMoveTabToStart.disabled = isFirstTab && allSelectedTabsAdjacent;
-<<<<<<< HEAD
 #endif
-    // Hide the "Duplicate Tab" if there is a selection present
-    let contextDuplicateTab = document.getElementById("context_duplicateTab");
-    contextDuplicateTab.hidden = multiselectionContext;
-||||||| merged common ancestors
-
-    // Hide the "Duplicate Tab" if there is a selection present
-    let contextDuplicateTab = document.getElementById("context_duplicateTab");
-    contextDuplicateTab.hidden = multiselectionContext;
-=======
 
     // Only one of "Duplicate Tab"/"Duplicate Tabs" should be visible.
     document.getElementById("context_duplicateTab").hidden = multiselectionContext;
     document.getElementById("context_duplicateTabs").hidden = !multiselectionContext;
->>>>>>> origin/upstream-releases
 
     // Disable "Close Tabs to the Right" if there are no tabs
     // following it.

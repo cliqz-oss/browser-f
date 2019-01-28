@@ -54,14 +54,8 @@
     "en-US": {
       "default": {
         "visibleDefaultEngines": [
-<<<<<<< HEAD
           "google", "amazondotcom", "bing", "cliqz", "ddg", "ebay", "twitter", "wikipedia", "leo_ende_de", "qwant", "yahoo",
           "ecosia", "gimages", "gmaps", "startpage", "youtube"
-||||||| merged common ancestors
-          "google", "amazondotcom", "bing", "ddg", "ebay", "twitter", "wikipedia"
-=======
-          "google-b-d", "amazondotcom", "bing", "ddg", "ebay", "twitter", "wikipedia"
->>>>>>> origin/upstream-releases
         ]
       },
       "experimental-hidden": {
@@ -219,14 +213,8 @@
     "de": {
       "default": {
         "visibleDefaultEngines": [
-<<<<<<< HEAD
           "google", "amazondotcom-de", "bing", "cliqz", "ddg", "ebay-de", "twitter", "wikipedia-de", "leo_ende_de", "qwant-de", "yahoo-de",
           "ecosia", "gimages-de", "gmaps-de", "startpage-de", "youtube-de"
-||||||| merged common ancestors
-          "google", "amazondotcom-de", "bing", "ddg", "ebay-de", "ecosia", "leo_ende_de", "wikipedia-de"
-=======
-          "google-b-d", "amazondotcom-de", "bing", "ddg", "ebay-de", "ecosia", "leo_ende_de", "wikipedia-de"
->>>>>>> origin/upstream-releases
         ]
       }
     },

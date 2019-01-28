@@ -47,7 +47,6 @@
 #if 0
     <checkbox id="browserRestoreSession"
               data-l10n-id="startup-restore-previous-session"/>
-<<<<<<< HEAD
 #endif
     <label accesskey="&startupPage2.accesskey;"
            control="browserStartupPage">&startupPage2.label;</label>
@@ -59,15 +58,6 @@
         id="addCliqzFrashTabCheckbox"
         preference="browser.startup.addFreshTab"
         label="&startupUserHomePage.label;"/>
-||||||| merged common ancestors
-=======
-    <hbox class="indent">
-      <checkbox id="browserRestoreSessionQuitWarning"
-                preference="browser.sessionstore.warnOnQuit"
-                disabled="true"
-                data-l10n-id="startup-restore-warn-on-quit"/>
-    </hbox>
->>>>>>> origin/upstream-releases
   </vbox>
 
 #ifdef HAVE_SHELL_SERVICE
@@ -588,14 +578,8 @@
       <hbox id="noUpdatesFound" align="start">
 #if 0
         <image class="face-smile"/>
-<<<<<<< HEAD
 #endif
-        <label>&update.noUpdatesFound;</label>
-||||||| merged common ancestors
-        <label>&update.noUpdatesFound;</label>
-=======
         <label data-l10n-id="update-noUpdatesFound"></label>
->>>>>>> origin/upstream-releases
         <spacer flex="1"/>
         <button data-l10n-id="update-checkForUpdatesButton"
                 oncommand="gAppUpdater.checkForUpdates();"/>
@@ -609,17 +593,9 @@
       <hbox id="manualUpdate" align="start">
 #if 0
         <image class="face-sad"/>
-<<<<<<< HEAD
 #endif
-        <description flex="1">
-          <label>&update.manual.start;</label><label id="manualLink" class="text-link"/><label>&update.manual.end;</label>
-||||||| merged common ancestors
-        <description flex="1">
-          <label>&update.manual.start;</label><label id="manualLink" class="text-link"/><label>&update.manual.end;</label>
-=======
         <description flex="1" data-l10n-id="update-manual">
           <label id="manualLink" class="text-link" data-l10n-name="manual-link"/>
->>>>>>> origin/upstream-releases
         </description>
         <spacer flex="1"/>
         <button data-l10n-id="update-checkForUpdatesButton"

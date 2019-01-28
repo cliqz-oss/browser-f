@@ -10,7 +10,7 @@ config-window =
 # This text should be attention grabbing and playful
 config-about-warning-title =
     .value = Hier endet möglicherweise die Gewährleistung!
-config-about-warning-text = Änderungen der Standardwerte dieser erweiterten Einstellungen können gefährlich für Stabilität, Sicherheit und Geschwindigkeit dieser Anwendung sein. Sie sollten nur fortfahren, wenn Sie genau wissen, was Sie tun.
+config-about-warning-text = Änderungen der Standardwerte dieser erweiterten Einstellungen können gefährlich für Stabilität, Sicherheit und Geschwindigkeit dieser Anwendung sein. Du solltest nur fortfahren, wenn du genau weisst, was du tust.
 config-about-warning-button =
     .label = Ich bin mir der Gefahren bewusst!
 config-about-warning-checkbox =
@@ -39,7 +39,7 @@ config-value-column =
 config-pref-column-header =
     .tooltip = Klicken zum Sortieren
 config-column-chooser =
-    .tooltip = Klicken Sie, um die anzuzeigenden Spalten auszuwählen
+    .tooltip = Klicke, um die anzuzeigenden Spalten auszuwählen
 
 ## These strings are used for the context menu
 

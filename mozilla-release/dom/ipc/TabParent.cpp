@@ -2332,7 +2332,6 @@ mozilla::ipc::IPCResult TabParent::RecvDispatchFocusToTopLevelWindow() {
   return IPC_OK();
 }
 
-<<<<<<< HEAD
 mozilla::ipc::IPCResult
 TabParent::RecvLoadContextPrivatenessChanged(const bool& isPrivate) {
   SetPrivateBrowsingAttributes(isPrivate);
@@ -2341,29 +2340,10 @@ TabParent::RecvLoadContextPrivatenessChanged(const bool& isPrivate) {
   return IPC_OK();
 }
 
-bool
-TabParent::ReceiveMessage(const nsString& aMessage,
-                          bool aSync,
-                          StructuredCloneData* aData,
-                          CpowHolder* aCpows,
-                          nsIPrincipal* aPrincipal,
-                          nsTArray<StructuredCloneData>* aRetVal)
-{
-||||||| merged common ancestors
-bool
-TabParent::ReceiveMessage(const nsString& aMessage,
-                          bool aSync,
-                          StructuredCloneData* aData,
-                          CpowHolder* aCpows,
-                          nsIPrincipal* aPrincipal,
-                          nsTArray<StructuredCloneData>* aRetVal)
-{
-=======
 bool TabParent::ReceiveMessage(const nsString& aMessage, bool aSync,
                                StructuredCloneData* aData, CpowHolder* aCpows,
                                nsIPrincipal* aPrincipal,
                                nsTArray<StructuredCloneData>* aRetVal) {
->>>>>>> origin/upstream-releases
   RefPtr<nsFrameLoader> frameLoader = GetFrameLoader(true);
   if (frameLoader && frameLoader->GetFrameMessageManager()) {
     RefPtr<nsFrameMessageManager> manager =
@@ -2540,10 +2520,7 @@ mozilla::ipc::IPCResult TabParent::RecvRespondStartSwipeEvent(
   return IPC_OK();
 }
 
-<<<<<<< HEAD
-already_AddRefed<nsILoadContext>
-TabParent::GetLoadContext()
-{
+already_AddRefed<nsILoadContext> TabParent::GetLoadContext() {
   CreateLoadContext();
   RefPtr<LoadContext> loadContext;
   loadContext = mLoadContext;
@@ -2551,15 +2528,6 @@ TabParent::GetLoadContext()
 }
 
 void TabParent::CreateLoadContext() {
-||||||| merged common ancestors
-already_AddRefed<nsILoadContext>
-TabParent::GetLoadContext()
-{
-  nsCOMPtr<nsILoadContext> loadContext;
-=======
-already_AddRefed<nsILoadContext> TabParent::GetLoadContext() {
-  nsCOMPtr<nsILoadContext> loadContext;
->>>>>>> origin/upstream-releases
   if (mLoadContext) {
     return;
   } else {
@@ -2572,28 +2540,11 @@ already_AddRefed<nsILoadContext> TabParent::GetLoadContext() {
     if (docShell) {
       docShell->GetUseTrackingProtection(&useTrackingProtection);
     }
-<<<<<<< HEAD
-    mLoadContext = new LoadContext(GetOwnerElement(),
-                                  true /* aIsContent */,
-                                  OriginAttributesRef().mPrivateBrowsingId != 0,
-                                  mChromeFlags & nsIWebBrowserChrome::CHROME_REMOTE_WINDOW,
-                                  useTrackingProtection,
-                                  OriginAttributesRef());
-||||||| merged common ancestors
-    loadContext = new LoadContext(GetOwnerElement(),
-                                  true /* aIsContent */,
-                                  isPrivate,
-                                  mChromeFlags & nsIWebBrowserChrome::CHROME_REMOTE_WINDOW,
-                                  useTrackingProtection,
-                                  OriginAttributesRef());
-    mLoadContext = loadContext;
-=======
-    loadContext = new LoadContext(
-        GetOwnerElement(), true /* aIsContent */, isPrivate,
+    mLoadContext = new LoadContext(
+        GetOwnerElement(), true /* aIsContent */,
+        OriginAttributesRef().mPrivateBrowsingId != 0,
         mChromeFlags & nsIWebBrowserChrome::CHROME_REMOTE_WINDOW,
         useTrackingProtection, OriginAttributesRef());
-    mLoadContext = loadContext;
->>>>>>> origin/upstream-releases
   }
 }
 
@@ -3070,35 +3021,6 @@ class FakeChannel final : public nsIChannel,
     elem.forget(aElement);
     return NS_OK;
   }
-<<<<<<< HEAD
-  NS_IMETHOD GetNestedFrameId(uint64_t*) NO_IMPL
-  NS_IMETHOD GetIsContent(bool*) NO_IMPL
-  NS_IMETHOD GetUsePrivateBrowsing(bool*) NO_IMPL
-  NS_IMETHOD SetUsePrivateBrowsing(bool) NO_IMPL
-  NS_IMETHOD SetPrivateBrowsing(bool) NO_IMPL
-  NS_IMETHOD GetIsInIsolatedMozBrowserElement(bool*) NO_IMPL
-  NS_IMETHOD GetScriptableOriginAttributes(JSContext*, JS::MutableHandleValue) NO_IMPL
-  NS_IMETHOD AddWeakPrivacyTransitionObserver(
-      nsIPrivacyTransitionObserver *obs) NO_IMPL
-  NS_IMETHOD_(void) GetOriginAttributes(mozilla::OriginAttributes& aAttrs) override {}
-  NS_IMETHOD GetUseRemoteTabs(bool*) NO_IMPL
-  NS_IMETHOD SetRemoteTabs(bool) NO_IMPL
-  NS_IMETHOD GetUseTrackingProtection(bool*) NO_IMPL
-  NS_IMETHOD SetUseTrackingProtection(bool) NO_IMPL
-||||||| merged common ancestors
-  NS_IMETHOD GetNestedFrameId(uint64_t*) NO_IMPL
-  NS_IMETHOD GetIsContent(bool*) NO_IMPL
-  NS_IMETHOD GetUsePrivateBrowsing(bool*) NO_IMPL
-  NS_IMETHOD SetUsePrivateBrowsing(bool) NO_IMPL
-  NS_IMETHOD SetPrivateBrowsing(bool) NO_IMPL
-  NS_IMETHOD GetIsInIsolatedMozBrowserElement(bool*) NO_IMPL
-  NS_IMETHOD GetScriptableOriginAttributes(JSContext*, JS::MutableHandleValue) NO_IMPL
-  NS_IMETHOD_(void) GetOriginAttributes(mozilla::OriginAttributes& aAttrs) override {}
-  NS_IMETHOD GetUseRemoteTabs(bool*) NO_IMPL
-  NS_IMETHOD SetRemoteTabs(bool) NO_IMPL
-  NS_IMETHOD GetUseTrackingProtection(bool*) NO_IMPL
-  NS_IMETHOD SetUseTrackingProtection(bool) NO_IMPL
-=======
   NS_IMETHOD GetNestedFrameId(uint64_t*) NO_IMPL NS_IMETHOD
       GetIsContent(bool*) NO_IMPL NS_IMETHOD
       GetUsePrivateBrowsing(bool*) NO_IMPL NS_IMETHOD
@@ -3106,13 +3028,14 @@ class FakeChannel final : public nsIChannel,
       SetPrivateBrowsing(bool) NO_IMPL NS_IMETHOD
       GetIsInIsolatedMozBrowserElement(bool*) NO_IMPL NS_IMETHOD
       GetScriptableOriginAttributes(JSContext*, JS::MutableHandleValue) NO_IMPL
-      NS_IMETHOD_(void)
-          GetOriginAttributes(mozilla::OriginAttributes& aAttrs) override {}
+  NS_IMETHOD
+      AddWeakPrivacyTransitionObserver(nsIPrivacyTransitionObserver *obs) NO_IMPL
+  NS_IMETHOD_(void)
+      GetOriginAttributes(mozilla::OriginAttributes& aAttrs) override {}
   NS_IMETHOD GetUseRemoteTabs(bool*) NO_IMPL NS_IMETHOD
       SetRemoteTabs(bool) NO_IMPL NS_IMETHOD
       GetUseTrackingProtection(bool*) NO_IMPL NS_IMETHOD
       SetUseTrackingProtection(bool) NO_IMPL
->>>>>>> origin/upstream-releases
 #undef NO_IMPL
 
       protected : ~FakeChannel() {

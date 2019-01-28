@@ -1234,21 +1234,13 @@ nsresult nsFrameLoader::SwapWithOtherLoader(nsFrameLoader* aOther,
     return NS_ERROR_DOM_SECURITY_ERR;
   }
 
-<<<<<<< HEAD
-  RefPtr<nsDocShell> ourDocshell = static_cast<nsDocShell*>(GetExistingDocShell());
-  RefPtr<nsDocShell> otherDocshell = static_cast<nsDocShell*>(aOther->GetExistingDocShell());
-  MOZ_LOG(gFrameLoaderLog, LogLevel::Info,
-      ("Swapping DocShells %p and %p \n",
-       ourDocshell.get(), otherDocshell.get()));
-||||||| merged common ancestors
-  RefPtr<nsDocShell> ourDocshell = static_cast<nsDocShell*>(GetExistingDocShell());
-  RefPtr<nsDocShell> otherDocshell = static_cast<nsDocShell*>(aOther->GetExistingDocShell());
-=======
   RefPtr<nsDocShell> ourDocshell =
       static_cast<nsDocShell*>(GetExistingDocShell());
   RefPtr<nsDocShell> otherDocshell =
       static_cast<nsDocShell*>(aOther->GetExistingDocShell());
->>>>>>> origin/upstream-releases
+  MOZ_LOG(gFrameLoaderLog, LogLevel::Info,
+      ("Swapping DocShells %p and %p \n",
+       ourDocshell.get(), otherDocshell.get()));
   if (!ourDocshell || !otherDocshell) {
     // How odd
     return NS_ERROR_NOT_IMPLEMENTED;

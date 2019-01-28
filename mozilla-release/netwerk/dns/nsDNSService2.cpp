@@ -58,14 +58,8 @@ static const char kPrefDnsLocalDomains[] = "network.dns.localDomains";
 static const char kPrefDnsForceResolve[] = "network.dns.forceResolve";
 static const char kPrefDnsOfflineLocalhost[] = "network.dns.offline-localhost";
 static const char kPrefDnsNotifyResolution[] = "network.dns.notifyResolution";
-<<<<<<< HEAD
-static const char kPrefNetworkProxyType[]    = "network.proxy.type";
-static const char kPrefSocksRemoteDns[]      = "network.proxy.socks_remote_dns";
-||||||| merged common ancestors
-static const char kPrefNetworkProxyType[]    = "network.proxy.type";
-=======
 static const char kPrefNetworkProxyType[] = "network.proxy.type";
->>>>>>> origin/upstream-releases
+static const char kPrefSocksRemoteDns[] = "network.proxy.socks_remote_dns";
 
 //-----------------------------------------------------------------------------
 
@@ -554,29 +548,6 @@ already_AddRefed<nsDNSService> nsDNSService::GetSingleton() {
   return do_AddRef(gDNSService);
 }
 
-<<<<<<< HEAD
-    if (mProxyType == nsIProtocolProxyService::PROXYCONFIG_MANUAL) {
-        // Disable prefetching either by explicit preference or if a
-        // manual proxy is configured
-        mDisablePrefetch = true;
-
-        // Disable DNS service if manual proxy is configured and SOCKS
-        // remote DNS preference is set.
-        if (NS_SUCCEEDED(Preferences::GetBool(kPrefSocksRemoteDns, &tmpbool))) {
-            mDisableDNS = tmpbool;
-        }
-    } else {
-        mDisableDNS = false;
-    }
-    return NS_OK;
-||||||| merged common ancestors
-    if (mProxyType == nsIProtocolProxyService::PROXYCONFIG_MANUAL) {
-        // Disable prefetching either by explicit preference or if a
-        // manual proxy is configured
-        mDisablePrefetch = true;
-    }
-    return NS_OK;
-=======
 nsresult nsDNSService::ReadPrefs(const char *name) {
   bool tmpbool;
   uint32_t tmpint;
@@ -666,130 +637,19 @@ nsresult nsDNSService::ReadPrefs(const char *name) {
     // Disable prefetching either by explicit preference or if a
     // manual proxy is configured
     mDisablePrefetch = true;
+
+    // Disable DNS service if manual proxy is configured and SOCKS
+    // remote DNS preference is set.
+    if (NS_SUCCEEDED(Preferences::GetBool(kPrefSocksRemoteDns, &tmpbool))) {
+      mDisableDNS = tmpbool;
+    }
+  } else {
+    mDisableDNS = false;
   }
   return NS_OK;
->>>>>>> origin/upstream-releases
 }
 
 NS_IMETHODIMP
-<<<<<<< HEAD
-nsDNSService::Init()
-{
-    MOZ_ASSERT(!mResolver);
-    MOZ_ASSERT(NS_IsMainThread());
-
-    ReadPrefs(nullptr);
-
-    nsCOMPtr<nsIObserverService> observerService =
-        mozilla::services::GetObserverService();
-    if (observerService) {
-        observerService->AddObserver(this, "last-pb-context-exited", false);
-        observerService->AddObserver(this, NS_NETWORK_LINK_TOPIC, false);
-        observerService->AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, false);
-    }
-
-    RefPtr<nsHostResolver> res;
-    nsresult rv = nsHostResolver::Create(mResCacheEntries,
-                                         mResCacheExpiration,
-                                         mResCacheGrace,
-                                         getter_AddRefs(res));
-    if (NS_SUCCEEDED(rv)) {
-        // now, set all of our member variables while holding the lock
-        MutexAutoLock lock(mLock);
-        mResolver = res;
-    }
-
-    nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
-    if (prefs) {
-        // register as prefs observer
-        prefs->AddObserver(kPrefDnsCacheEntries, this, false);
-        prefs->AddObserver(kPrefDnsCacheExpiration, this, false);
-        prefs->AddObserver(kPrefDnsCacheGrace, this, false);
-        prefs->AddObserver(kPrefIPv4OnlyDomains, this, false);
-        prefs->AddObserver(kPrefDnsLocalDomains, this, false);
-        prefs->AddObserver(kPrefDnsForceResolve, this, false);
-        prefs->AddObserver(kPrefDisableIPv6, this, false);
-        prefs->AddObserver(kPrefDnsOfflineLocalhost, this, false);
-        prefs->AddObserver(kPrefDisablePrefetch, this, false);
-        prefs->AddObserver(kPrefBlockDotOnion, this, false);
-        prefs->AddObserver(kPrefDnsNotifyResolution, this, false);
-
-        // Monitor these to see if there is a change in proxy configuration
-        // If a manual proxy is in use, disable prefetch implicitly
-        prefs->AddObserver("network.proxy.type", this, false);
-        prefs->AddObserver(kPrefSocksRemoteDns, this, false);
-    }
-
-    nsDNSPrefetch::Initialize(this);
-
-    RegisterWeakMemoryReporter(this);
-
-    mTrrService = new TRRService();
-    if (NS_FAILED(mTrrService->Init())) {
-        mTrrService = nullptr;
-    }
-
-    nsCOMPtr<nsIIDNService> idn = do_GetService(NS_IDNSERVICE_CONTRACTID);
-    mIDN = idn;
-||||||| merged common ancestors
-nsDNSService::Init()
-{
-    MOZ_ASSERT(!mResolver);
-    MOZ_ASSERT(NS_IsMainThread());
-
-    ReadPrefs(nullptr);
-
-    nsCOMPtr<nsIObserverService> observerService =
-        mozilla::services::GetObserverService();
-    if (observerService) {
-        observerService->AddObserver(this, "last-pb-context-exited", false);
-        observerService->AddObserver(this, NS_NETWORK_LINK_TOPIC, false);
-        observerService->AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, false);
-    }
-
-    RefPtr<nsHostResolver> res;
-    nsresult rv = nsHostResolver::Create(mResCacheEntries,
-                                         mResCacheExpiration,
-                                         mResCacheGrace,
-                                         getter_AddRefs(res));
-    if (NS_SUCCEEDED(rv)) {
-        // now, set all of our member variables while holding the lock
-        MutexAutoLock lock(mLock);
-        mResolver = res;
-    }
-
-    nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
-    if (prefs) {
-        // register as prefs observer
-        prefs->AddObserver(kPrefDnsCacheEntries, this, false);
-        prefs->AddObserver(kPrefDnsCacheExpiration, this, false);
-        prefs->AddObserver(kPrefDnsCacheGrace, this, false);
-        prefs->AddObserver(kPrefIPv4OnlyDomains, this, false);
-        prefs->AddObserver(kPrefDnsLocalDomains, this, false);
-        prefs->AddObserver(kPrefDnsForceResolve, this, false);
-        prefs->AddObserver(kPrefDisableIPv6, this, false);
-        prefs->AddObserver(kPrefDnsOfflineLocalhost, this, false);
-        prefs->AddObserver(kPrefDisablePrefetch, this, false);
-        prefs->AddObserver(kPrefBlockDotOnion, this, false);
-        prefs->AddObserver(kPrefDnsNotifyResolution, this, false);
-
-        // Monitor these to see if there is a change in proxy configuration
-        // If a manual proxy is in use, disable prefetch implicitly
-        prefs->AddObserver("network.proxy.type", this, false);
-    }
-
-    nsDNSPrefetch::Initialize(this);
-
-    RegisterWeakMemoryReporter(this);
-
-    mTrrService = new TRRService();
-    if (NS_FAILED(mTrrService->Init())) {
-        mTrrService = nullptr;
-    }
-
-    nsCOMPtr<nsIIDNService> idn = do_GetService(NS_IDNSERVICE_CONTRACTID);
-    mIDN = idn;
-=======
 nsDNSService::Init() {
   MOZ_ASSERT(!mResolver);
   MOZ_ASSERT(NS_IsMainThread());
@@ -831,6 +691,7 @@ nsDNSService::Init() {
     // Monitor these to see if there is a change in proxy configuration
     // If a manual proxy is in use, disable prefetch implicitly
     prefs->AddObserver("network.proxy.type", this, false);
+    prefs->AddObserver(kPrefSocksRemoteDns, this, false);
   }
 
   nsDNSPrefetch::Initialize(this);
@@ -844,7 +705,6 @@ nsDNSService::Init() {
 
   nsCOMPtr<nsIIDNService> idn = do_GetService(NS_IDNSERVICE_CONTRACTID);
   mIDN = idn;
->>>>>>> origin/upstream-releases
 
   return NS_OK;
 }
@@ -952,7 +812,6 @@ nsresult nsDNSService::AsyncResolveInternal(
     if (mDisablePrefetch && (flags & RESOLVE_SPECULATE))
       return NS_ERROR_DNS_LOOKUP_QUEUE_FULL;
 
-<<<<<<< HEAD
     PRNetAddr tempAddr;
     if (mDisableDNS) {
         // Allow IP lookups through, but nothing else.
@@ -961,17 +820,10 @@ nsresult nsDNSService::AsyncResolveInternal(
         }
     }
 
-    if (!res)
-        return NS_ERROR_OFFLINE;
-||||||| merged common ancestors
-    if (!res)
-        return NS_ERROR_OFFLINE;
-=======
     res = mResolver;
     idn = mIDN;
     localDomain = mLocalDomains.GetEntry(aHostname);
   }
->>>>>>> origin/upstream-releases
 
   if (mNotifyResolution) {
     NS_DispatchToMainThread(new NotifyDNSResolution(aHostname));
@@ -1226,31 +1078,14 @@ nsresult nsDNSService::ResolveInternal(
     flags |= RESOLVE_OFFLINE;
   }
 
-<<<<<<< HEAD
-    PRNetAddr tempAddr;
-    if (mDisableDNS) {
-        // Allow IP lookups through, but nothing else.
-        if (PR_StringToNetAddr(aHostname.BeginReading(), &tempAddr) != PR_SUCCESS) {
-            return NS_ERROR_UNKNOWN_PROXY_HOST; // XXX: NS_ERROR_NOT_IMPLEMENTED?
-        }
+  PRNetAddr tempAddr;
+  if (mDisableDNS) {
+    // Allow IP lookups through, but nothing else.
+    if (PR_StringToNetAddr(aHostname.BeginReading(), &tempAddr) != PR_SUCCESS) {
+      return NS_ERROR_UNKNOWN_PROXY_HOST; // XXX: NS_ERROR_NOT_IMPLEMENTED?
     }
+  }
 
-    //
-    // sync resolve: since the host resolver only works asynchronously, we need
-    // to use a mutex and a condvar to wait for the result.  however, since the
-    // result may be in the resolvers cache, we might get called back recursively
-    // on the same thread.  so, our mutex needs to be re-entrant.  in other words,
-    // we need to use a monitor! ;-)
-    //
-||||||| merged common ancestors
-    //
-    // sync resolve: since the host resolver only works asynchronously, we need
-    // to use a mutex and a condvar to wait for the result.  however, since the
-    // result may be in the resolvers cache, we might get called back recursively
-    // on the same thread.  so, our mutex needs to be re-entrant.  in other words,
-    // we need to use a monitor! ;-)
-    //
-=======
   //
   // sync resolve: since the host resolver only works asynchronously, we need
   // to use a mutex and a condvar to wait for the result.  however, since the
@@ -1258,7 +1093,6 @@ nsresult nsDNSService::ResolveInternal(
   // on the same thread.  so, our mutex needs to be re-entrant.  in other words,
   // we need to use a monitor! ;-)
   //
->>>>>>> origin/upstream-releases
 
   PRMonitor *mon = PR_NewMonitor();
   if (!mon) return NS_ERROR_OUT_OF_MEMORY;

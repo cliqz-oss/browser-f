@@ -14,14 +14,8 @@
 % locale browser @AB_CD@ %locale/browser/
 # bookmarks.html is produced by LOCALIZED_GENERATED_FILES.
     locale/browser/bookmarks.html                  (bookmarks.html)
-<<<<<<< HEAD
-    locale/browser/aboutDialog.dtd                 (%chrome/browser/aboutDialog.dtd)
 # Disabled in favor of Cliqz own design
 #if 0
-||||||| merged common ancestors
-    locale/browser/aboutDialog.dtd                 (%chrome/browser/aboutDialog.dtd)
-=======
->>>>>>> origin/upstream-releases
     locale/browser/aboutPrivateBrowsing.dtd        (%chrome/browser/aboutPrivateBrowsing.dtd)
 #endif
     locale/browser/cliqzPrivateBrowsing.dtd        (%chrome/browser/cliqzPrivateBrowsing.dtd)

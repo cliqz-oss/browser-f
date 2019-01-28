@@ -45,130 +45,6 @@ struct RedirEntry {
   URI_SAFE_FOR_UNTRUSTED_CONTENT.
 */
 static const RedirEntry kRedirMap[] = {
-<<<<<<< HEAD
-  { "blocked", "chrome://browser/content/blockedSite.xhtml",
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::URI_CAN_LOAD_IN_CHILD |
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
-  { "certerror", "chrome://browser/content/aboutNetError.xhtml",
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::URI_CAN_LOAD_IN_CHILD |
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
-  { "tabcrashed", "chrome://browser/content/aboutTabCrashed.xhtml",
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
-  { "policies", "chrome://browser/content/policies/aboutPolicies.xhtml",
-    nsIAboutModule::ALLOW_SCRIPT },
-  { "privatebrowsing", "chrome://browser/content/aboutPrivateBrowsing.xhtml",
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
-    nsIAboutModule::ALLOW_SCRIPT },
-  { "rights",
-    "chrome://global/content/aboutRights.xhtml",
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::MAKE_LINKABLE |
-    nsIAboutModule::ALLOW_SCRIPT },
-  { "robots", "chrome://browser/content/aboutRobots.xhtml",
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::ALLOW_SCRIPT },
-  { "searchreset", "chrome://browser/content/search/searchReset.xhtml",
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
-  { "sessionrestore", "chrome://browser/content/aboutSessionRestore.xhtml",
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
-  { "welcomeback", "chrome://browser/content/aboutWelcomeBack.xhtml",
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
-  { "importedtabs", "chrome://browser/content/aboutImportedTabs.xhtml",
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
-  // Actual activity stream URL for home and newtab are set in channel creation
-  { "home", "about:blank", ACTIVITY_STREAM_FLAGS },
-  { "newtab", "about:blank", ACTIVITY_STREAM_FLAGS },
-  { "welcome", "about:blank",
-    nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
-    nsIAboutModule::URI_CAN_LOAD_IN_PRIVILEGED_CHILD |
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::ALLOW_SCRIPT },
-  { "library", "chrome://browser/content/aboutLibrary.xhtml",
-    nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT },
-  { "preferences", "chrome://browser/content/preferences/in-content/preferences.xul",
-    nsIAboutModule::ALLOW_SCRIPT },
-  { "downloads", "chrome://browser/content/downloads/contentAreaDownloadsView.xul",
-    nsIAboutModule::ALLOW_SCRIPT },
-  { "reader", "chrome://global/content/reader/aboutReader.html",
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
-    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
-  { "restartrequired", "chrome://browser/content/aboutRestartRequired.xhtml",
-    nsIAboutModule::ALLOW_SCRIPT },
-||||||| merged common ancestors
-  { "blocked", "chrome://browser/content/blockedSite.xhtml",
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::URI_CAN_LOAD_IN_CHILD |
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
-  { "certerror", "chrome://browser/content/aboutNetError.xhtml",
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::URI_CAN_LOAD_IN_CHILD |
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
-  { "tabcrashed", "chrome://browser/content/aboutTabCrashed.xhtml",
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
-  { "policies", "chrome://browser/content/policies/aboutPolicies.xhtml",
-    nsIAboutModule::ALLOW_SCRIPT },
-  { "privatebrowsing", "chrome://browser/content/aboutPrivateBrowsing.xhtml",
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
-    nsIAboutModule::ALLOW_SCRIPT },
-  { "rights",
-    "chrome://global/content/aboutRights.xhtml",
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::MAKE_LINKABLE |
-    nsIAboutModule::ALLOW_SCRIPT },
-  { "robots", "chrome://browser/content/aboutRobots.xhtml",
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::ALLOW_SCRIPT },
-  { "searchreset", "chrome://browser/content/search/searchReset.xhtml",
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
-  { "sessionrestore", "chrome://browser/content/aboutSessionRestore.xhtml",
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
-  { "welcomeback", "chrome://browser/content/aboutWelcomeBack.xhtml",
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
-  // Actual activity stream URL for home and newtab are set in channel creation
-  { "home", "about:blank", ACTIVITY_STREAM_FLAGS },
-  { "newtab", "about:blank", ACTIVITY_STREAM_FLAGS },
-  { "welcome", "about:blank",
-    nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
-    nsIAboutModule::URI_CAN_LOAD_IN_PRIVILEGED_CHILD |
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::ALLOW_SCRIPT },
-  { "library", "chrome://browser/content/aboutLibrary.xhtml",
-    nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT },
-  { "preferences", "chrome://browser/content/preferences/in-content/preferences.xul",
-    nsIAboutModule::ALLOW_SCRIPT },
-  { "downloads", "chrome://browser/content/downloads/contentAreaDownloadsView.xul",
-    nsIAboutModule::ALLOW_SCRIPT },
-  { "reader", "chrome://global/content/reader/aboutReader.html",
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
-    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
-  { "restartrequired", "chrome://browser/content/aboutRestartRequired.xhtml",
-    nsIAboutModule::ALLOW_SCRIPT },
-=======
     {"blocked", "chrome://browser/content/blockedSite.xhtml",
      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
          nsIAboutModule::URI_CAN_LOAD_IN_CHILD | nsIAboutModule::ALLOW_SCRIPT |
@@ -197,6 +73,8 @@ static const RedirEntry kRedirMap[] = {
      nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::HIDE_FROM_ABOUTABOUT},
     {"welcomeback", "chrome://browser/content/aboutWelcomeBack.xhtml",
      nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::HIDE_FROM_ABOUTABOUT},
+    {"importedtabs", "chrome://browser/content/aboutImportedTabs.xhtml",
+     nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::HIDE_FROM_ABOUTABOUT},
     // Actual activity stream URL for home and newtab are set in channel
     // creation
     {"home", "about:blank", ACTIVITY_STREAM_FLAGS},
@@ -221,7 +99,6 @@ static const RedirEntry kRedirMap[] = {
          nsIAboutModule::HIDE_FROM_ABOUTABOUT},
     {"restartrequired", "chrome://browser/content/aboutRestartRequired.xhtml",
      nsIAboutModule::ALLOW_SCRIPT},
->>>>>>> origin/upstream-releases
 };
 
 static nsAutoCString GetAboutModuleName(nsIURI* aURI) {

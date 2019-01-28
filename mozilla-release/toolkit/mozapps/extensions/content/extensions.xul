@@ -354,18 +354,15 @@
               <vbox id="installAddonDisclaimer" class="list-view-notice" align="start">
                 <hbox class="message-bar">
                   <image class="message-bar-icon"/>
-                  <description class="message-bar-description">
-                    &installAddonDisclaimer.label;
-                    <label class="text-link plain" id="installAddonDisclaimer-learnmore-link">&installAddonDisclaimer.learnMore;</label>
+                  <description class="message-bar-description" data-l10n-id="install-addon-disclaimer">
+                    <label class="text-link plain" id="installAddonDisclaimer-learnmore-link" data-l10n-id="install-addon-disclaimer-learn-more"/>
                   </description>
                 </hbox>
               </vbox>
               <richlistbox id="addon-list" class="list" flex="1"/>
               <vbox id="recommendedBlock" hidden="true">
                 <hbox class="heading-inner">
-                  <label class="header-name" flex="1">
-                    &recommendedAddon.label;
-                  </label>
+                  <label class="header-name" flex="1" data-l10n-id="recommended-addon"/>
                 </hbox>
                 <richlistbox id="recommended-addon-list" class="list" flex="1"/>
               </vbox>

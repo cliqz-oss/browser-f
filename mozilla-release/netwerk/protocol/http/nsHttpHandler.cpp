@@ -489,31 +489,13 @@ nsresult nsHttpHandler::Init() {
     mAppVersion.AssignLiteral(MOZ_APP_UA_VERSION);
   }
 
-<<<<<<< HEAD
-    // Generating the spoofed User Agent for fingerprinting resistance.
-    rv = nsRFPService::GetSpoofedUserAgent(mSpoofedUserAgent, true);
-    if (NS_FAILED(rv)) {
-      // Empty mSpoofedUserAgent to make sure the unsuccessful spoofed UA string
-      // will not be used anywhere.
-      mSpoofedUserAgent.Truncate();
-    }
-||||||| merged common ancestors
-    // Generating the spoofed User Agent for fingerprinting resistance.
-    rv = nsRFPService::GetSpoofedUserAgent(mSpoofedUserAgent);
-    if (NS_FAILED(rv)) {
-      // Empty mSpoofedUserAgent to make sure the unsuccessful spoofed UA string
-      // will not be used anywhere.
-      mSpoofedUserAgent.Truncate();
-    }
-=======
   // Generating the spoofed User Agent for fingerprinting resistance.
-  rv = nsRFPService::GetSpoofedUserAgent(mSpoofedUserAgent);
+  rv = nsRFPService::GetSpoofedUserAgent(mSpoofedUserAgent, true);
   if (NS_FAILED(rv)) {
     // Empty mSpoofedUserAgent to make sure the unsuccessful spoofed UA string
     // will not be used anywhere.
     mSpoofedUserAgent.Truncate();
   }
->>>>>>> origin/upstream-releases
 
   mSessionStartTime = NowInSeconds();
   mHandlerActive = true;

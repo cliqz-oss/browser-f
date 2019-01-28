@@ -69,14 +69,8 @@ RemoteWebNavigation.prototype = {
           aTriggeringPrincipal) {
     this.loadURIWithOptions(aURI, aLoadFlags, aReferrer,
                             Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,
-<<<<<<< HEAD
-                            aPostData, aHeaders, null, null, false);
-||||||| merged common ancestors
-                            aPostData, aHeaders, null);
-=======
                             aPostData, aHeaders, null,
-                            aTriggeringPrincipal);
->>>>>>> origin/upstream-releases
+                            aTriggeringPrincipal, false);
   },
   loadURIWithOptions(aURI, aLoadFlags, aReferrer, aReferrerPolicy,
                      aPostData, aHeaders, aBaseURI, aTriggeringPrincipal,

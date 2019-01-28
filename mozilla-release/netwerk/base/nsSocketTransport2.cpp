@@ -1259,40 +1259,6 @@ nsresult nsSocketTransport::InitiateSocket() {
     }
 #endif
 
-<<<<<<< HEAD
-        if (NS_SUCCEEDED(mCondition) &&
-            xpc::AreNonLocalConnectionsDisabled() &&
-            !(IsIPAddrAny(&mNetAddr) || IsIPAddrLocal(&mNetAddr))) {
-            nsAutoCString ipaddr;
-            RefPtr<nsNetAddr> netaddr = new nsNetAddr(&mNetAddr);
-            netaddr->GetAddress(ipaddr);
-            fprintf_stderr(stderr,
-                           "FATAL ERROR: Non-local network connections are disabled and a connection "
-                           "attempt to %s (%s) was made.\nYou should only access hostnames "
-                           "available via the test networking proxy (if running mochitests) "
-                           "or from a test-specific httpd.js server (if running xpcshell tests). "
-                           "Browser services should be disabled or redirected to a local server.\n",
-                           mHost.get(), ipaddr.get());
-            return NS_ERROR_FAILURE;  // We don't really want to crash.
-            MOZ_CRASH("Attempting to connect to non-local address!");
-        }
-||||||| merged common ancestors
-        if (NS_SUCCEEDED(mCondition) &&
-            xpc::AreNonLocalConnectionsDisabled() &&
-            !(IsIPAddrAny(&mNetAddr) || IsIPAddrLocal(&mNetAddr))) {
-            nsAutoCString ipaddr;
-            RefPtr<nsNetAddr> netaddr = new nsNetAddr(&mNetAddr);
-            netaddr->GetAddress(ipaddr);
-            fprintf_stderr(stderr,
-                           "FATAL ERROR: Non-local network connections are disabled and a connection "
-                           "attempt to %s (%s) was made.\nYou should only access hostnames "
-                           "available via the test networking proxy (if running mochitests) "
-                           "or from a test-specific httpd.js server (if running xpcshell tests). "
-                           "Browser services should be disabled or redirected to a local server.\n",
-                           mHost.get(), ipaddr.get());
-            MOZ_CRASH("Attempting to connect to non-local address!");
-        }
-=======
     if (NS_SUCCEEDED(mCondition) && xpc::AreNonLocalConnectionsDisabled() &&
         !(IsIPAddrAny(&mNetAddr) || IsIPAddrLocal(&mNetAddr))) {
       nsAutoCString ipaddr;
@@ -1309,8 +1275,8 @@ nsresult nsSocketTransport::InitiateSocket() {
           "Browser services should be disabled or redirected to a local "
           "server.\n",
           mHost.get(), ipaddr.get());
+//    return NS_ERROR_FAILURE;  // We don't really want to crash.
       MOZ_CRASH("Attempting to connect to non-local address!");
->>>>>>> origin/upstream-releases
     }
   }
 

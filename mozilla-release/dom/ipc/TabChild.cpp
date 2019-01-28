@@ -535,24 +535,16 @@ nsresult TabChild::Init(mozIDOMWindowProxy* aParent) {
   nsCOMPtr<nsILoadContext> loadContext = do_GetInterface(WebNavigation());
   MOZ_ASSERT(loadContext);
   loadContext->SetPrivateBrowsing(OriginAttributesRef().mPrivateBrowsingId > 0);
-<<<<<<< HEAD
-  loadContext->SetRemoteTabs(
-      mChromeFlags & nsIWebBrowserChrome::CHROME_REMOTE_WINDOW);
+  loadContext->SetRemoteTabs(mChromeFlags &
+                             nsIWebBrowserChrome::CHROME_REMOTE_WINDOW);
   NS_ENSURE_SUCCESS(
       loadContext->AddWeakPrivacyTransitionObserver(this),
       NS_ERROR_FAILURE);
-||||||| merged common ancestors
-  loadContext->SetRemoteTabs(
-      mChromeFlags & nsIWebBrowserChrome::CHROME_REMOTE_WINDOW);
-=======
-  loadContext->SetRemoteTabs(mChromeFlags &
-                             nsIWebBrowserChrome::CHROME_REMOTE_WINDOW);
 
   // Send our browsing context to the parent process.
   RefPtr<BrowsingContext> browsingContext =
       nsDocShell::Cast(docShell)->GetBrowsingContext();
   SendRootBrowsingContext(BrowsingContextId(browsingContext->Id()));
->>>>>>> origin/upstream-releases
 
   // Few lines before, baseWindow->Create() will end up creating a new
   // window root in nsGlobalWindow::SetDocShell.
@@ -2991,7 +2983,6 @@ TabChild::OnHideTooltip() {
   return NS_OK;
 }
 
-<<<<<<< HEAD
 NS_IMETHODIMP
 TabChild::PrivateModeChanged(bool enabled) {
   SetPrivateBrowsingAttributes(enabled);
@@ -2999,16 +2990,7 @@ TabChild::PrivateModeChanged(bool enabled) {
   return NS_OK;
 }
 
-mozilla::ipc::IPCResult
-TabChild::RecvRequestNotifyAfterRemotePaint()
-{
-||||||| merged common ancestors
-mozilla::ipc::IPCResult
-TabChild::RecvRequestNotifyAfterRemotePaint()
-{
-=======
 mozilla::ipc::IPCResult TabChild::RecvRequestNotifyAfterRemotePaint() {
->>>>>>> origin/upstream-releases
   // Get the CompositorBridgeChild instance for this content thread.
   CompositorBridgeChild* compositor = CompositorBridgeChild::Get();
 

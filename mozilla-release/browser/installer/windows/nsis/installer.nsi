@@ -784,7 +784,6 @@ Section "-InstallEndCleanup"
       ${EndUnless}
     ${EndIf}
   ${EndIf}
-<<<<<<< HEAD
 
   ; Cliqz: autolaunch in silent mode if /run switch exist
   ${If} ${Silent}
@@ -794,8 +793,6 @@ Section "-InstallEndCleanup"
       Call LaunchApp
     ${EndUnless}
   ${EndIf}
-||||||| merged common ancestors
-=======
 
   StrCpy $InstallResult "success"
 
@@ -804,7 +801,6 @@ Section "-InstallEndCleanup"
   ${If} ${Silent}
     Call SendPing
   ${EndIf}
->>>>>>> origin/upstream-releases
 SectionEnd
 
 ################################################################################

@@ -347,7 +347,6 @@ var gPrivacyPane = {
     this.initAutoStartPrivateBrowsingReverter();
     this._initAutocomplete();
 
-<<<<<<< HEAD
     this._initHttpsEverywhere();
     this._initConsentric();
 #if CQZ_AUTO_PRIVATE_TAB
@@ -356,25 +355,9 @@ var gPrivacyPane = {
     document.getElementById("forgetMode").hidden = !autoForgetTabs.hasDatabase;
 #endif
 
-    /* Initialize Content Blocking / Tracking Protection */
-#if 0
-    if (contentBlockingUiEnabled) {
-      this.initContentBlocking();
-    } else {
-      this._initTrackingProtection();
-    }
-||||||| merged common ancestors
-    /* Initialize Content Blocking / Tracking Protection */
-
-    if (contentBlockingUiEnabled) {
-      this.initContentBlocking();
-    } else {
-      this._initTrackingProtection();
-    }
-=======
     /* Initialize Content Blocking */
+#if 0
     this.initContentBlocking();
->>>>>>> origin/upstream-releases
 
     this.trackingProtectionReadPrefs();
     this.networkCookieBehaviorReadPrefs();
@@ -384,13 +367,13 @@ var gPrivacyPane = {
       gPrivacyPane.trackingProtectionReadPrefs.bind(gPrivacyPane));
     Preferences.get("privacy.trackingprotection.pbmode.enabled").on("change",
       gPrivacyPane.trackingProtectionReadPrefs.bind(gPrivacyPane));
-#endif
 
     // Watch all of the prefs that the new Cookies & Site Data UI depends on
     Preferences.get("network.cookie.cookieBehavior").on("change",
       gPrivacyPane.networkCookieBehaviorReadPrefs.bind(gPrivacyPane));
     Preferences.get("network.cookie.lifetimePolicy").on("change",
       gPrivacyPane.networkCookieBehaviorReadPrefs.bind(gPrivacyPane));
+#endif
     Preferences.get("browser.privatebrowsing.autostart").on("change",
       gPrivacyPane.networkCookieBehaviorReadPrefs.bind(gPrivacyPane));
 #if 0
@@ -527,12 +510,8 @@ var gPrivacyPane = {
         gPrivacyPane.updateSubmitHealthReport);
 #if 0
       this.initOptOutStudyCheckbox();
-<<<<<<< HEAD
-#endif
-||||||| merged common ancestors
-=======
       this.initAddonRecommendationsCheckbox();
->>>>>>> origin/upstream-releases
+#endif
     }
     this._initA11yState();
     let signonBundle = document.getElementById("signonBundle");

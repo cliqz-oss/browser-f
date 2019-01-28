@@ -867,51 +867,10 @@ content-blocking-cookies-label =
   .accesskey = C
 
 ## Privacy Section - Tracking
-<<<<<<< HEAD
 tracking-header-donottrack = Do Not Track
-tracking-header = Tracking Protection
-
-tracking-desc = Tracking Protection blocks online trackers that collect your browsing data across multiple websites. <a data-l10n-name="learn-more">Learn more about Tracking Protection and your privacy</a>
-
-tracking-mode-label = Use Tracking Protection to block known trackers
-
-tracking-mode-always =
-    .label = Always
-    .accesskey = y
-tracking-mode-private =
-    .label = Only in private windows
-    .accesskey = l
-tracking-mode-never =
-    .label = Never
-    .accesskey = N
-
-tracking-exceptions =
-    .label = Exceptions…
-||||||| merged common ancestors
-
-tracking-header = Tracking Protection
-
-tracking-desc = Tracking Protection blocks online trackers that collect your browsing data across multiple websites. <a data-l10n-name="learn-more">Learn more about Tracking Protection and your privacy</a>
-
-tracking-mode-label = Use Tracking Protection to block known trackers
-
-tracking-mode-always =
-    .label = Always
-    .accesskey = y
-tracking-mode-private =
-    .label = Only in private windows
-    .accesskey = l
-tracking-mode-never =
-    .label = Never
-    .accesskey = N
-
-tracking-exceptions =
-    .label = Exceptions…
-=======
 
 tracking-manage-exceptions =
     .label = Manage Exceptions…
->>>>>>> origin/upstream-releases
     .accesskey = x
 
 ## Privacy Section - Permissions

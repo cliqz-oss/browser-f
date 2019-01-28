@@ -652,17 +652,8 @@ uint32_t nsRFPService::GetSpoofedPresentedFrames(double aTime, uint32_t aWidth,
 }
 
 /* static */
-<<<<<<< HEAD
-nsresult
-nsRFPService::GetSpoofedUserAgent(nsACString &userAgent, bool isForHTTPHeader)
-{
-||||||| merged common ancestors
-nsresult
-nsRFPService::GetSpoofedUserAgent(nsACString &userAgent)
-{
-=======
-nsresult nsRFPService::GetSpoofedUserAgent(nsACString& userAgent) {
->>>>>>> origin/upstream-releases
+nsresult nsRFPService::GetSpoofedUserAgent(nsACString& userAgent,
+    bool isForHTTPHeader) {
   // This function generates the spoofed value of User Agent.
   // We spoof the values of the platform and Firefox version, which could be
   // used as fingerprinting sources to identify individuals.
@@ -700,16 +691,8 @@ nsresult nsRFPService::GetSpoofedUserAgent(nsACString& userAgent) {
   uint32_t spoofedVersion = firefoxVersion - ((firefoxVersion - 4) % 7);
   const char *spoofedOS = isForHTTPHeader ? SPOOFED_HTTP_UA_OS : SPOOFED_UA_OS;
   userAgent.Assign(nsPrintfCString(
-<<<<<<< HEAD
-    "Mozilla/5.0 (%s; rv:%d.0) Gecko/%s Firefox/%d.0",
-    spoofedOS, spoofedVersion, LEGACY_UA_GECKO_TRAIL, spoofedVersion));
-||||||| merged common ancestors
-    "Mozilla/5.0 (%s; rv:%d.0) Gecko/%s Firefox/%d.0",
-    SPOOFED_UA_OS, spoofedVersion, LEGACY_UA_GECKO_TRAIL, spoofedVersion));
-=======
-      "Mozilla/5.0 (%s; rv:%d.0) Gecko/%s Firefox/%d.0", SPOOFED_UA_OS,
+      "Mozilla/5.0 (%s; rv:%d.0) Gecko/%s Firefox/%d.0", spoofedOS,
       spoofedVersion, LEGACY_UA_GECKO_TRAIL, spoofedVersion));
->>>>>>> origin/upstream-releases
 
   return rv;
 }

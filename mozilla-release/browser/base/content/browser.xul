@@ -90,11 +90,13 @@ xmlns="http://www.w3.org/1999/xhtml"
   Services.scriptloader.loadSubScript("chrome://global/content/contentAreaUtils.js", this);
   Services.scriptloader.loadSubScript("chrome://browser/content/browser-captivePortal.js", this);
   Services.scriptloader.loadSubScript("chrome://browser/content/browser-compacttheme.js", this);
+#ifdef 0
   Services.scriptloader.loadSubScript("chrome://browser/content/browser-contentblocking.js", this);
+#endif
 #ifdef MOZ_DATA_REPORTING
   Services.scriptloader.loadSubScript("chrome://browser/content/browser-data-submission-info-bar.js", this);
 #endif
-#ifndef MOZILLA_OFFICIAL
+#ifdef 0
   Services.scriptloader.loadSubScript("chrome://browser/content/browser-development-helpers.js", this);
 #endif
   Services.scriptloader.loadSubScript("chrome://browser/content/browser-media.js", this);
@@ -197,7 +199,7 @@ xmlns="http://www.w3.org/1999/xhtml"
                 accesskey="&moveToNewWindow.accesskey;"
                 tbattr="tabbrowser-multiple"
                 oncommand="gBrowser.replaceTabsWithWindow(TabContextMenu.contextTab);"/>
-#if 0
+#ifdef 0
       <menuseparator id="context_sendTabToDevice_separator" class="sync-ui-item"/>
       <menu id="context_moveTabOptions"
             multiselectcontextlabel="&moveSelectedTabOptions.label;"

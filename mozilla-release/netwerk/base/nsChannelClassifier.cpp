@@ -448,19 +448,10 @@ nsresult nsChannelClassifier::ShouldEnableTrackingProtectionInternal(
   // Should only be called in the parent process.
   MOZ_ASSERT(XRE_IsParentProcess());
 
-<<<<<<< HEAD
-    NS_ENSURE_ARG(result);
-    *result = false;
-    return NS_OK;
-#if 0
-||||||| merged common ancestors
-    NS_ENSURE_ARG(result);
-    *result = false;
-=======
   NS_ENSURE_ARG(result);
   *result = false;
->>>>>>> origin/upstream-releases
-
+  return NS_OK;
+#if 0
   nsresult rv;
   nsCOMPtr<nsIHttpChannelInternal> chan = do_QueryInterface(aChannel, &rv);
   if (NS_FAILED(rv) || !chan) {
@@ -548,26 +539,12 @@ nsresult nsChannelClassifier::ShouldEnableTrackingProtectionInternal(
     return NS_OK;
   }
 
-<<<<<<< HEAD
-    // Tracking protection will be disabled so update the security state
-    // of the document and fire a secure change event. If we can't get the
-    // window for the channel, then the shield won't show up so we can't send
-    // an event to the securityUI anyway.
-    return NotifyTrackingProtectionDisabled(aChannel);
-#endif
-||||||| merged common ancestors
-    // Tracking protection will be disabled so update the security state
-    // of the document and fire a secure change event. If we can't get the
-    // window for the channel, then the shield won't show up so we can't send
-    // an event to the securityUI anyway.
-    return NotifyTrackingProtectionDisabled(aChannel);
-=======
   // Tracking protection will be disabled so update the security state
   // of the document and fire a secure change event. If we can't get the
   // window for the channel, then the shield won't show up so we can't send
   // an event to the securityUI anyway.
   return NotifyTrackingProtectionDisabled(aChannel);
->>>>>>> origin/upstream-releases
+#endif
 }
 
 bool nsChannelClassifier::AddonMayLoad(nsIChannel* aChannel, nsIURI* aUri) {

@@ -76,36 +76,16 @@ typedef struct {
   // instance, so I've omitted the rest.
 } DLGTEMPLATEEX;
 
-<<<<<<< HEAD
-static HANDLE               gThreadHandle;
-static SendThreadData       gSendData = { 0, };
-static vector<string>       gRestartArgs;
-static map<wstring,wstring> gQueryParameters;
-static wstring              gCrashReporterKey(L"Software\\Cliqz\\Crash Reporter");
-static wstring              gURLParameter;
-static int                  gCheckboxPadding = 6;
-static bool                 gRTLlayout = false;
-||||||| merged common ancestors
-static HANDLE               gThreadHandle;
-static SendThreadData       gSendData = { 0, };
-static vector<string>       gRestartArgs;
-static map<wstring,wstring> gQueryParameters;
-static wstring              gCrashReporterKey(L"Software\\Mozilla\\Crash Reporter");
-static wstring              gURLParameter;
-static int                  gCheckboxPadding = 6;
-static bool                 gRTLlayout = false;
-=======
 static HANDLE gThreadHandle;
 static SendThreadData gSendData = {
     0,
 };
 static vector<string> gRestartArgs;
 static map<wstring, wstring> gQueryParameters;
-static wstring gCrashReporterKey(L"Software\\Mozilla\\Crash Reporter");
+static wstring gCrashReporterKey(L"Software\\Cliqz\\Crash Reporter");
 static wstring gURLParameter;
 static int gCheckboxPadding = 6;
 static bool gRTLlayout = false;
->>>>>>> origin/upstream-releases
 
 // When vertically resizing the dialog, these items should move down
 static set<UINT> gAttachedBottom;
