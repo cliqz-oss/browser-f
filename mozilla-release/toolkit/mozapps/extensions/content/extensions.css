@@ -242,7 +242,7 @@ richlistitem:not([selected]) * {
 .cliqz-recommended-addons button {
   background: #0078CA;
   border: 0;
-  color: #fff;
+  color: #fff !important;
   cursor: pointer;
 }
 

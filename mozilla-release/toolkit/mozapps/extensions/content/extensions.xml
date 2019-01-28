@@ -939,7 +939,7 @@
             this.mAddon.screenshots[0] &&
             this.mAddon.screenshots[0].url;
           this.setAttribute("previewURL", previewURL ? previewURL : "");
-          this.setAttribute("hasPreview", previewURL ? "true" : "fase");
+          this.setAttribute("hasPreview", previewURL ? "true" : "false");
 
           let legacyWarning = legacyExtensionsEnabled && !this.mAddon.install &&
             isLegacyExtension(this.mAddon);
@@ -1564,7 +1564,7 @@
           <xul:hbox anonid="control-container" class="control-container">
 
             <xul:button anonid="installBtn" class="addon-control install no-auto-hide"
-                        label="&cmd.installAddon.label;"
+                        label="&addon.install.label;"
                         oncommand="document.getBindingParent(this).installClicked();"/>
           </xul:hbox>
         </xul:vbox>
