@@ -54,26 +54,13 @@ category-privacy =
 pane-sync-title = Firefox-Konto
 category-sync =
     .tooltiptext = { pane-sync-title }
-<<<<<<< HEAD
 
 pane-connect-title = Connect
 category-connect =
     .tooltiptext = { pane-connect-title }
 
-help-button-label = Mozilla Support
-
+help-button-label = Hilfe für { -brand-short-name }
 addons-button-label = Erweiterungen
-
-||||||| merged common ancestors
-
-help-button-label = Hilfe für { -brand-short-name }
-
-addons-button-label = Erweiterungen & Themes
-
-=======
-help-button-label = Hilfe für { -brand-short-name }
-addons-button-label = Erweiterungen & Themes
->>>>>>> origin/upstream-releases
 focus-search =
     .key = f
 close-button =
@@ -138,15 +125,7 @@ search-results-empty-message =
         [windows] Keine Treffer in den Einstellungen für "<span data-l10n-name="query"></span>".
        *[other] Keine Treffer in den Einstellungen für "<span data-l10n-name="query"></span>".
     }
-<<<<<<< HEAD
-
-search-results-help-link = Benötigst du Hilfe? Dann besuche die <a data-l10n-name="url">Mozilla Support</a>.
-||||||| merged common ancestors
-
-search-results-help-link = Benötigen Sie Hilfe? Dann besuchen Sie die <a data-l10n-name="url">Hilfeseite für { -brand-short-name }</a>.
-=======
-search-results-help-link = Benötigen Sie Hilfe? Dann besuchen Sie die <a data-l10n-name="url">Hilfeseite für { -brand-short-name }</a>.
->>>>>>> origin/upstream-releases
+search-results-help-link = Benötigst du Hilfe? Dann besuche die <a data-l10n-name="url">Hilfeseite für { -brand-short-name }</a>.
 
 ## General Section
 
@@ -162,15 +141,7 @@ always-check-default =
     .label = Immer überprüfen, ob { -brand-short-name } der Standardbrowser ist
     .accesskey = p
 is-default = { -brand-short-name } ist derzeit der Standardbrowser
-<<<<<<< HEAD
 is-not-default = { -brand-short-name } ist nicht dein Standardbrowser
-
-||||||| merged common ancestors
-is-not-default = { -brand-short-name } ist nicht Ihr Standardbrowser
-
-=======
-is-not-default = { -brand-short-name } ist nicht Ihr Standardbrowser
->>>>>>> origin/upstream-releases
 set-as-my-default-browser =
     .label = Als Standard festlegen…
     .accesskey = g
@@ -290,17 +261,7 @@ download-always-ask-where =
     .label = Jedes Mal nachfragen, wo eine Datei gespeichert werden soll
     .accesskey = n
 applications-header = Anwendungen
-<<<<<<< HEAD
-
 applications-description = Lege fest, wie { -brand-short-name } mit Dateien verfährt, die du aus dem Web oder aus Anwendungen, die du beim Surfen verwendest, herunterlädst.
-
-||||||| merged common ancestors
-
-applications-description = Legen Sie fest, wie { -brand-short-name } mit Dateien verfährt, die Sie aus dem Web oder aus Anwendungen, die Sie beim Surfen verwenden, herunterladen.
-
-=======
-applications-description = Legen Sie fest, wie { -brand-short-name } mit Dateien verfährt, die Sie aus dem Web oder aus Anwendungen, die Sie beim Surfen verwenden, herunterladen.
->>>>>>> origin/upstream-releases
 applications-filter =
     .placeholder = Dateitypen oder Anwendungen suchen
 applications-type-column =
@@ -355,14 +316,7 @@ performance-allow-hw-accel =
 performance-limit-content-process-option = Maximale Anzahl an Inhaltsprozessen
     .accesskey = M
 performance-limit-content-process-enabled-desc = Mehr Inhaltsprozesse verbessern die Leistung bei Verwendung mehrerer Tabs, aber nutzen auch mehr Arbeitsspeicher.
-<<<<<<< HEAD
 performance-limit-content-process-blocked-desc = Das Ändern der Anzahl der Inhaltsprozesse ist nur in { -brand-short-name } mit mehreren Prozessen möglich. <a data-l10n-name="learn-more">Wie du herausfindest, ob Cliqz mit mehreren Prozessen ausgeführt wird</a>
-||||||| merged common ancestors
-performance-limit-content-process-blocked-desc = Das Ändern der Anzahl der Inhaltsprozesse ist nur in { -brand-short-name } mit mehreren Prozessen möglich. <a data-l10n-name="learn-more">Wie Sie herausfinden, ob Firefox mit mehreren Prozessen ausgeführt wird</a>
-
-=======
-performance-limit-content-process-blocked-desc = Das Ändern der Anzahl der Inhaltsprozesse ist nur in { -brand-short-name } mit mehreren Prozessen möglich. <a data-l10n-name="learn-more">Wie Sie herausfinden, ob Firefox mit mehreren Prozessen ausgeführt wird</a>
->>>>>>> origin/upstream-releases
 # Variables:
 #   $num - default value of the `dom.ipc.processCount` pref.
 performance-default-content-process-count =
@@ -403,15 +357,7 @@ network-proxy-connection-settings =
 ## Home Section
 
 home-new-windows-tabs-header = Neue Fenster und Tabs
-<<<<<<< HEAD
-
 home-new-windows-tabs-description2 = Lege fest, was als Startseite sowie in neuen Fenstern und Tabs geöffnet wird.
-||||||| merged common ancestors
-
-home-new-windows-tabs-description2 = Legen Sie fest, was als Startseite sowie in neuen Fenstern und Tabs geöffnet wird.
-=======
-home-new-windows-tabs-description2 = Legen Sie fest, was als Startseite sowie in neuen Fenstern und Tabs geöffnet wird.
->>>>>>> origin/upstream-releases
 
 ## Home Section - Home Page Customization
 
@@ -452,20 +398,8 @@ search-bar-hidden =
     .label = Adressleiste für Suche und Seitenaufrufe verwenden
 search-bar-shown =
     .label = Suchleiste zur Symbolleiste hinzufügen
-<<<<<<< HEAD
-
 search-engine-default-header = Ergänzende Suchmaschine
 search-engine-default-desc = Wähle deine alternative Suchmaschine. Wenn du mit { -brand-short-name }’ Vorschlägen nicht zufrieden bist, siehst du deren Ergebnisse wenn du „Enter“ drückst.
-
-||||||| merged common ancestors
-
-search-engine-default-header = Standardsuchmaschine
-search-engine-default-desc = Wählen Sie Ihre Standardsuchmaschine für die Adress- und Suchleiste.
-
-=======
-search-engine-default-header = Standardsuchmaschine
-search-engine-default-desc = Wählen Sie Ihre Standardsuchmaschine für die Adress- und Suchleiste.
->>>>>>> origin/upstream-releases
 search-suggestions-option =
     .label = Suchvorschläge anzeigen
     .accesskey = S
@@ -480,22 +414,8 @@ search-show-suggestions-url-bar-option =
 search-show-suggestions-above-history-option =
     .label = In Adressleiste Suchvorschläge vor Einträgen aus der Browser-Chronik anzeigen
 search-suggestions-cant-show = Suchvorschläge werden nicht in der Adressleiste angezeigt, weil { -brand-short-name } angewiesen wurde, keine Chronik zu speichern.
-<<<<<<< HEAD
-
 search-one-click-header = Direkt suchen
-
 search-one-click-desc = Wähle eine andere Suchmaschine von den unterhalb der Adress- bzw. Suchleiste angezeigten Suchmaschinen, nachdem du den Suchbegriff eingegeben hast.
-
-||||||| merged common ancestors
-
-search-one-click-header = Ein-Klick-Suchmaschinen
-
-search-one-click-desc = Wählen Sie eine andere Suchmaschine von den unterhalb der Adress- bzw. Suchleiste angezeigten Suchmaschinen, nachdem Sie den Suchbegriff eingegeben haben.
-
-=======
-search-one-click-header = Ein-Klick-Suchmaschinen
-search-one-click-desc = Wählen Sie die Suchmaschinen, welche unterhalb der Adress- bzw. Suchleiste angezeigt werden, nachdem Sie den Suchbegriff eingegeben haben.
->>>>>>> origin/upstream-releases
 search-choose-engine-column =
     .label = Suchmaschine
 search-choose-keyword-column =
@@ -507,13 +427,8 @@ search-remove-engine =
     .label = Entfernen
     .accesskey = E
 search-find-more-link = Weitere Suchmaschinen hinzufügen
-<<<<<<< HEAD
 search-find-more-desc = Cliqz unterstützt viele Suchmaschinen aus dem offiziellen Mozilla Firefox Verzeichnis.
 
-||||||| merged common ancestors
-
-=======
->>>>>>> origin/upstream-releases
 # This warning is displayed when the chosen keyword is already in use
 # ('Duplicate' is an adjective)
 search-keyword-warning-title = Schlüsselwort duplizieren
@@ -661,48 +576,18 @@ history-header = Chronik
 #     This will result in "Firefox" + "Will remember history", etc.
 #   - As a stand-alone message, for example "Firefox history settings:".
 history-remember-label = { -brand-short-name } wird eine Chronik
-<<<<<<< HEAD
     .accesskey = C
-
-||||||| merged common ancestors
-    .accesskey = F
-
-=======
-    .accesskey = F
->>>>>>> origin/upstream-releases
 history-remember-option-all =
     .label = anlegen
 history-remember-option-never =
     .label = niemals anlegen
 history-remember-option-custom =
     .label = nach benutzerdefinierten Einstellungen anlegen
-<<<<<<< HEAD
-
 history-remember-description = { -brand-short-name } wird die Adressen der besuchten Webseits, Downloads sowie eingebene Formular- und Suchdaten speichern.
-history-dontremember-description = { -brand-short-name } wird dieselben Einstellungen wie im Vergessen Modus verwenden und keinerlei Chronik anlegen, während du &brandShortName; benutzen.
-
-||||||| merged common ancestors
-
-history-remember-description = { -brand-short-name } wird die Adressen der besuchten Webseiten, Downloads sowie eingebene Formular- und Suchdaten speichern.
-history-dontremember-description = { -brand-short-name } wird dieselben Einstellungen wie im Privaten Modus verwenden und keinerlei Chronik anlegen, während Sie &brandShortName; benutzen.
-
-=======
-history-remember-description = { -brand-short-name } wird die Adressen der besuchten Webseiten, Downloads sowie eingebene Formular- und Suchdaten speichern.
-history-dontremember-description = { -brand-short-name } wird dieselben Einstellungen wie im Privaten Modus verwenden und keinerlei Chronik anlegen, während Sie { -brand-short-name } benutzen.
->>>>>>> origin/upstream-releases
+history-dontremember-description = { -brand-short-name } wird dieselben Einstellungen wie im Vergessen Modus verwenden und keinerlei Chronik anlegen, während du { -brand-short-name } benutzen.
 history-private-browsing-permanent =
-<<<<<<< HEAD
     .label = Immer den Vergessen Modus verwenden
     .accesskey = V
-
-||||||| merged common ancestors
-    .label = Immer den Privaten Modus verwenden
-    .accesskey = M
-
-=======
-    .label = Immer den Privaten Modus verwenden
-    .accesskey = M
->>>>>>> origin/upstream-releases
 history-remember-browser-option =
     .label = Besuchte Seiten und Download-Chronik speichern
     .accesskey = w
@@ -973,15 +858,7 @@ permissions-a11y-privacy-link = Weitere Informationen
 ## Privacy Section - Data Collection
 
 collection-header = Datenerhebung durch { -brand-short-name } und deren Verwendung
-<<<<<<< HEAD
-
 collection-description = Wir lassen dir die Wahl, ob du uns Daten sendest, und sammeln nur die Daten, welche erforderlich sind, um { -brand-short-name } für jeden anbieten und verbessern zu können. Wir fragen immer um deine Erlaubnis, bevor wir persönliche Daten senden.
-||||||| merged common ancestors
-
-collection-description = Wir lassen Ihnen die Wahl, ob Sie uns Daten senden, und sammeln nur die Daten, welche erforderlich sind, um { -brand-short-name } für jeden anbieten und verbessern zu können. Wir fragen immer um Ihre Erlaubnis, bevor wir persönliche Daten senden.
-=======
-collection-description = Wir lassen Ihnen die Wahl, ob Sie uns Daten senden, und sammeln nur die Daten, welche erforderlich sind, um { -brand-short-name } für jeden anbieten und verbessern zu können. Wir fragen immer um Ihre Erlaubnis, bevor wir persönliche Daten senden.
->>>>>>> origin/upstream-releases
 collection-privacy-notice = Datenschutzhinweis
 collection-health-report =
     .label = { -brand-short-name } erlauben, Daten zu technischen Details und Interaktionen an { -vendor-short-name } zu senden

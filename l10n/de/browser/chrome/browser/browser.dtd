@@ -309,21 +309,11 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.remoteControlNotificationAnchor.tooltip   "Browser wird ferngesteuert">
 <!ENTITY urlbar.webAuthnAnchor.tooltip                    "Ansicht für Web-Authentifizierung öffnen">
 
-<<<<<<< HEAD
+<!ENTITY urlbar.storageAccessAnchor.tooltip               "Ansicht für während des Surfens berechtigte Aktivitäten öffnen">
+
 <!ENTITY urlbar.webRTCShareDevicesNotificationAnchor.tooltip      "Verwalten des Zugriffs auf deine Kamera und/oder dein Mikrofon durch diese Website">
 <!ENTITY urlbar.webRTCShareMicrophoneNotificationAnchor.tooltip   "Verwalten des Zugriffs auf dein Mikrofon durch diese Website">
 <!ENTITY urlbar.webRTCShareScreenNotificationAnchor.tooltip       "Verwalten des Zugriffs auf deine Fenster oder Bildschirme durch diese Website">
-||||||| merged common ancestors
-<!ENTITY urlbar.webRTCShareDevicesNotificationAnchor.tooltip      "Verwalten des Zugriffs auf Ihre Kamera und/oder Ihr Mikrofon durch diese Website">
-<!ENTITY urlbar.webRTCShareMicrophoneNotificationAnchor.tooltip   "Verwalten des Zugriffs auf Ihr Mikrofon durch diese Website">
-<!ENTITY urlbar.webRTCShareScreenNotificationAnchor.tooltip       "Verwalten des Zugriffs auf Ihre Fenster oder Bildschirme durch diese Website">
-=======
-<!ENTITY urlbar.storageAccessAnchor.tooltip               "Ansicht für während des Surfens berechtigte Aktivitäten öffnen">
-
-<!ENTITY urlbar.webRTCShareDevicesNotificationAnchor.tooltip      "Verwalten des Zugriffs auf Ihre Kamera und/oder Ihr Mikrofon durch diese Website">
-<!ENTITY urlbar.webRTCShareMicrophoneNotificationAnchor.tooltip   "Verwalten des Zugriffs auf Ihr Mikrofon durch diese Website">
-<!ENTITY urlbar.webRTCShareScreenNotificationAnchor.tooltip       "Verwalten des Zugriffs auf Ihre Fenster oder Bildschirme durch diese Website">
->>>>>>> origin/upstream-releases
 
 <!ENTITY urlbar.servicesNotificationAnchor.tooltip        "Ansicht über eine Installation öffnen">
 <!ENTITY urlbar.translateNotificationAnchor.tooltip       "Diese Seite übersetzen">

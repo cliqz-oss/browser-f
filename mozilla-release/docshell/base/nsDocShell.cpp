@@ -415,9 +415,9 @@ nsDocShell::nsDocShell(BrowsingContext* aBrowsingContext)
 
 nsDocShell::~nsDocShell() {
   MOZ_ASSERT(!mObserved);
-
+#ifdef DEBUG
   MOZ_LOG(gDocShellLog, LogLevel::Debug, ("nsDocShell[%p]::DTOR!!!\n", this));
-
+#endif
   // Avoid notifying observers while we're in the dtor.
   mIsBeingDestroyed = true;
 
@@ -1510,11 +1510,11 @@ nsDocShell::SetPrivateBrowsing(bool aUsePrivateBrowsing) {
   MOZ_ASSERT(!mIsBeingDestroyed);
 
   bool changed = aUsePrivateBrowsing != (mPrivateBrowsingId > 0);
-
+#ifdef DEBUG
   MOZ_LOG(gDocShellLog, LogLevel::Debug,
           ("nsDocShell[%p]::SetPrivateBrowsing(%d), changed = %d\n",
            this, aUsePrivateBrowsing, changed));
-
+#endif
   if (changed) {
     mPrivateBrowsingId = aUsePrivateBrowsing ? 1 : 0;
 
@@ -3898,7 +3898,6 @@ NS_IMETHODIMP
 nsDocShell::LoadURIWithOptions(const nsAString& aURI, uint32_t aLoadFlags,
                                nsIURI* aReferringURI, uint32_t aReferrerPolicy,
                                nsIInputStream* aPostStream,
-                               bool aEnsurePrivate)
                                nsIInputStream* aHeaderStream, nsIURI* aBaseURI,
                                nsIPrincipal* aTriggeringPrincipal,
                                bool aEnsurePrivate) {
@@ -4938,9 +4937,9 @@ nsDocShell::Create() {
     // We've already been created
     return NS_OK;
   }
-
+#ifdef DEBUG
   MOZ_LOG(gDocShellLog, LogLevel::Debug, ("nsDocShell[%p]::Create", this));
-
+#endif
   NS_ASSERTION(mItemType == typeContent || mItemType == typeChrome,
                "Unexpected item type in docshell");
 
@@ -13168,11 +13167,11 @@ nsresult nsDocShell::SetOriginAttributes(const OriginAttributes& aAttrs) {
   if (!CanSetOriginAttributes()) {
     return NS_ERROR_FAILURE;
   }
-
+#ifdef DEBUG
   MOZ_LOG(gDocShellLog, LogLevel::Debug,
           ("nsDocShell[%p]::SetOriginAttributes(%d)\n",
            this, aAttrs.mPrivateBrowsingId));
-
+#endif
   AssertOriginAttributesMatchPrivateBrowsing();
   mOriginAttributes = aAttrs;
 
