@@ -107,7 +107,6 @@ UNIFIED_SOURCES += [
     'AutoSQLiteLifetime.cpp',
     'Bootstrap.cpp',
     'CreateAppData.cpp',
-    'MigratePwdFirefox.cpp',
     'nsAppStartupNotifier.cpp',
     'nsConsoleWriter.cpp',
     'nsEmbeddingModule.cpp',
@@ -124,6 +123,10 @@ SOURCES += [
     'nsAppRunner.cpp',
     'nsEmbedFunctions.cpp',
     'ProfileReset.cpp',
+]
+
+SOURCES += [
+    'MigratePwdFirefox.cpp',
 ]
 
 if CONFIG['MOZ_X11']:

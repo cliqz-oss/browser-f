@@ -94,8 +94,7 @@ void OverrideDefaultLocaleIfNeeded();
  * Using separate cliqz process with migratepwdff switch to initialize NSS
  * library with FF profile.
  */
-void
-ServiceMigratePasswordsFromFF(int gArgc, char **gArgv);
+void ServiceMigratePasswordsFromFF(int gArgc, char **gArgv);
 
 /**
  * Allow exit() calls to complete. This should be done from a proper Gecko

@@ -22,6 +22,8 @@
 #include "ssl.h" // For SSL_ClearSessionCache
 #include "nss.h"
 
+using namespace mozilla;
+
 SECStatus InitializeNSS(const char* dir) {
   uint32_t flags = NSS_INIT_NOROOTINIT | NSS_INIT_OPTIMIZESPACE;
   nsAutoCString dbTypeAndDirectory("sql:");
