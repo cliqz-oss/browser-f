@@ -50,7 +50,7 @@
                  type="autocomplete"
                  autocompletesearch="unifiedcomplete"
                  onsyncfrompreference="return gHomePane.syncFromHomePref();"
-                 placeholder="&abouthome.pageTitle;"
+                 data-l10n-id="about-home-page-title"
                  preference="browser.startup.homepage"/>
         <hbox class="homepage-buttons">
           <button id="useCurrent"
@@ -65,7 +65,10 @@
                   class="homepage-button"
                   data-l10n-id="choose-bookmark"
                   preference="pref.browser.homepage.disable_button.bookmark_page"
-                  searchkeywords="&selectBookmark.title; &selectBookmark.label;"/>
+                  search-l10n-ids="
+                    select-bookmark.title,
+                    select-bookmark.label
+                  "/>
         </hbox>
       </vbox>
     </vbox>

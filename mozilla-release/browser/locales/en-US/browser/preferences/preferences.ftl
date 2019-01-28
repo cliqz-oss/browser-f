@@ -1062,3 +1062,20 @@ choose-download-folder-title = Choose Download Folder:
 #   $service-name (String) - Name of a cloud storage provider like Dropbox, Google Drive, etc...
 save-files-to-cloud-storage =
     .label = Save files to { $service-name }
+
+startup-page-2 =
+    .label = When { -brand-short-name } starts
+    .accesskey = s
+
+startup-prev-session =
+    .label = Show your windows and tabs from last time
+
+startup-user-home-page =
+    .label = Show home page
+
+about-home-page-title =
+    .label = { -brand-short-name } Start Page
+    .placeholder = { -brand-short-name } Start Page
+select-bookmark =
+    .title = Set Home Page
+    .label = Choose a Bookmark to be your Home Page. If you choose a folder, the Bookmarks in that folder will be opened in Tabs.

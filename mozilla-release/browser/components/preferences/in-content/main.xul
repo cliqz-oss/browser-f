@@ -48,16 +48,15 @@
     <checkbox id="browserRestoreSession"
               data-l10n-id="startup-restore-previous-session"/>
 #endif
-    <label accesskey="&startupPage2.accesskey;"
-           control="browserStartupPage">&startupPage2.label;</label>
+    <label data-l10n-id="startup-page-2" control="browserStartupPage"/>
     <checkbox
         id="restoreSessionCheckbox"
         preference="browser.startup.restoreTabs"
-        label="&startupPrevSession.label;"/>
+        data-l10n-id="startup-prev-session"/>
     <checkbox
         id="addCliqzFrashTabCheckbox"
         preference="browser.startup.addFreshTab"
-        label="&startupUserHomePage.label;"/>
+        data-l10n-id="startup-user-home-page"/>
   </vbox>
 
 #ifdef HAVE_SHELL_SERVICE
@@ -87,16 +86,15 @@
 
 #if 0
   <vbox id="startupPageBox">
-    <label accesskey="&startupPage2.accesskey;"
-           control="browserStartupPage">&startupPage2.label;</label>
+    <label data-l10n-id="startup-page-2" control="browserStartupPage"/>
     <checkbox
         id="restoreSessionCheckbox"
         preference="browser.startup.restoreTabs"
-        label="&startupPrevSession.label;"/>
+        data-l10n-id="startup-prev-session"/>
     <checkbox
         id="addCliqzFrashTabCheckbox"
         preference="browser.startup.addFreshTab"
-        label="&startupUserHomePage.label;"/>
+        data-l10n-id="startup-user-home-page"/>
   </vbox>
 
   <vbox>
@@ -106,7 +104,7 @@
              autocompletesearch="unifiedcomplete"
              onsyncfrompreference="return gMainPane.syncFromHomePref();"
              onsynctopreference="return gMainPane.syncToHomePref(this.value);"
-             placeholder="&abouthome.pageTitle;"
+             data-l10n-id="about-home-page-title"
              preference="browser.startup.homepage"/>
   </vbox>
 
@@ -123,7 +121,11 @@
             class="homepage-button"
             data-l10n-id="choose-bookmark"
             preference="pref.browser.homepage.disable_button.bookmark_page"
-            searchkeywords="&selectBookmark.title; &selectBookmark.label;"/>
+            search-l10n-ids="
+              select-bookmark.title,
+              select-bookmark.label
+            "
+
     <button id="restoreDefaultHomePage"
             flex="1"
             class="homepage-button"
