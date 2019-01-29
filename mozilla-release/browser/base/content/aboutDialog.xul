@@ -141,9 +141,16 @@
             <label class="text-link" href="https://donate.mozilla.org/?utm_source=firefox&#38;utm_medium=referral&#38;utm_campaign=firefox_about&#38;utm_content=firefox_about" data-l10n-name="helpus-donateLink"></label>
             <label class="text-link" href="http://www.mozilla.org/contribute/" data-l10n-name="helpus-getInvolvedLink"></label>
           </description>
-          <description class="text-blurb" id="contributeDesc" data-l10n-id="cliqz-headline"/>
-          <description class="text-blurb" id="contributeDesc" data-l10n-id="cliqz-description-1"/>
-          <description class="text-blurb" id="contributeDesc" data-l10n-id="cliqz-description-2"/>
+          <description class="text-blurb" data-l10n-id="cliqz-headline"/>
+          <description class="text-blurb" data-l10n-id="cliqz-description-1">
+            <label class="text-link" href="https://cliqz.com/privacy" data-l10n-name="cliqz-desc1-privacy"></label>
+            <label class="text-link" href="https://cliqz.com/privacy-browser" data-l10n-name="cliqz-desc1-policy"></label>
+            <label class="text-link" href="https://cliqz.com/support" data-l10n-name="cliqz-desc1-contact"></label>
+          </description>
+          <description class="text-blurb" data-l10n-id="cliqz-description-2">
+            <label class="text-link" href="https://mozilla.org" data-l10n-name="cliqz-desc2-mozilla"></label>
+            <label class="text-link" href="about:license" data-l10n-name="cliqz-desc2-here"></label>
+          </description>
         </vbox>
       </vbox>
     </hbox>

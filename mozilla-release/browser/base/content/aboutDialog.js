@@ -29,20 +29,19 @@ async function init(aEvent) {
     distroIdField.style.display = "block";
 
     // DB-1148: Add platform and extension version to About dialog.
-    let cliqzAddon = AddonManager.getAddonByID("cliqz@cliqz.com").then(cliqzAddon => {
-      let componentsVersion = Services.appinfo.platformVersion;
-      if (cliqzAddon) {
-        componentsVersion += `+${cliqzAddon.version}`;
-      }
-      distroIdField.value += ` (${componentsVersion})`;
+    const cliqzAddon = await AddonManager.getAddonByID("cliqz@cliqz.com");
+    let componentsVersion = Services.appinfo.platformVersion;
+    if (cliqzAddon) {
+      componentsVersion += `+${cliqzAddon.version}`;
+    }
+    distroIdField.value += ` (${componentsVersion})`;
 
-      // Append "(32-bit)" or "(64-bit)" build architecture to the version number:
-      let archResource = Services.appinfo.is64Bit
-                         ? "aboutDialog-architecture-sixtyFourBit"
-                         : "aboutDialog-architecture-thirtyTwoBit";
-      let [arch] = await document.l10n.formatValues([{id: archResource}]);
-      distroIdField.value += ` (${arch})`;
-    });
+    // Append "(32-bit)" or "(64-bit)" build architecture to the version number:
+    let archResource = Services.appinfo.is64Bit
+                        ? "aboutDialog-architecture-sixtyFourBit"
+                        : "aboutDialog-architecture-thirtyTwoBit";
+    let [arch] = await document.l10n.formatValues([{id: archResource}]);
+    distroIdField.value += ` (${arch})`;
 
 #if 0
     var distroAbout = Services.prefs.getStringPref("distribution.about", "");
