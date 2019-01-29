@@ -7,6 +7,7 @@ export CQZ_VERSION=$(cat ./mozilla-release/browser/config/version_display.txt)
 export WAIT=2
 export RETRIES=3
 export ARTIFACT_PATH="/c/build"
+export ARTIFACT_VERSION=$(cat $ARTIFACT_PATH/version.txt)
 
 retry() {
     cmd="$1"
@@ -32,6 +33,9 @@ download() {
 }
 
 main() {
+    if [ "$CQZ_VERSION" != "$ARTIFACT_VERSION" ]; then
+        rm -rf $ARTIFACT_PATH
+    fi
     mkdir -p $ARTIFACT_PATH
 
     packages=("rustc.tar.bz2" "clang.tar.bz2" "redist.tar.bz2" "cbindgen.tar.bz2" "node.tar.bz2")
@@ -40,6 +44,8 @@ main() {
             retry "download $package"
         fi
     done
+
+    echo $CQZ_VERSION > $ARTIFACT_PATH/version.txt
 }
 
 main "$@"

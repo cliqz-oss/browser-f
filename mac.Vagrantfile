@@ -18,7 +18,7 @@ Vagrant.configure("2") do |config|
   end
 
   config.vm.provision "shell", privileged: true, run: "always", inline: <<-SHELL
-    npm install -g appdmg
+    bash -l -c "npm install -g appdmg"
     /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -clientopts -setvnclegacy -vnclegacy yes -clientopts -restart -agent -privs -all
   SHELL
 
