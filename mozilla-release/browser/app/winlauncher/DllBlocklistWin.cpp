@@ -10,19 +10,19 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/Types.h"
 #include "mozilla/WindowsDllBlocklist.h"
+#include "mozilla/WinHeaderOnlyUtils.h"
 
-#define MOZ_LITERAL_UNICODE_STRING(s) \
-  { \
-    /* Length of the string in bytes, less the null terminator */ \
-    sizeof(s) - sizeof(wchar_t), \
-    /* Length of the string in bytes, including the null terminator */ \
-    sizeof(s), \
-    /* Pointer to the buffer */ \
-    const_cast<wchar_t*>(s) \
+#define MOZ_LITERAL_UNICODE_STRING(s)                                        \
+  {                                                                          \
+    /* Length of the string in bytes, less the null terminator */            \
+    sizeof(s) - sizeof(wchar_t), /* Length of the string in bytes, including \
+                                    the null terminator */                   \
+        sizeof(s),               /* Pointer to the buffer */                 \
+        const_cast<wchar_t*>(s)                                              \
   }
 
 #define DLL_BLOCKLIST_ENTRY(name, ...) \
-  { MOZ_LITERAL_UNICODE_STRING(L##name), __VA_ARGS__ },
+  {MOZ_LITERAL_UNICODE_STRING(L##name), __VA_ARGS__},
 #define DLL_BLOCKLIST_STRING_TYPE UNICODE_STRING
 
 #if defined(MOZ_LAUNCHER_PROCESS) || defined(NIGHTLY_BUILD)
@@ -37,24 +37,19 @@ extern uint32_t gBlocklistInitFlags;
 
 static const HANDLE kCurrentProcess = reinterpret_cast<HANDLE>(-1);
 
-class MOZ_STATIC_CLASS MOZ_TRIVIAL_CTOR_DTOR NativeNtBlockSet final
-{
-  struct NativeNtBlockSetEntry
-  {
+class MOZ_STATIC_CLASS MOZ_TRIVIAL_CTOR_DTOR NativeNtBlockSet final {
+  struct NativeNtBlockSetEntry {
     NativeNtBlockSetEntry() = default;
     ~NativeNtBlockSetEntry() = default;
     NativeNtBlockSetEntry(const UNICODE_STRING& aName, uint64_t aVersion,
                           NativeNtBlockSetEntry* aNext)
-      : mName(aName)
-      , mVersion(aVersion)
-      , mNext(aNext)
-    {}
-    UNICODE_STRING          mName;
-    uint64_t                mVersion;
-    NativeNtBlockSetEntry*  mNext;
+        : mName(aName), mVersion(aVersion), mNext(aNext) {}
+    UNICODE_STRING mName;
+    uint64_t mVersion;
+    NativeNtBlockSetEntry* mNext;
   };
 
-public:
+ public:
   // Constructor and destructor MUST be trivial
   NativeNtBlockSet() = default;
   ~NativeNtBlockSet() = default;
@@ -62,28 +57,28 @@ public:
   void Add(const UNICODE_STRING& aName, uint64_t aVersion);
   void Write(HANDLE aFile);
 
-private:
+ private:
   static NativeNtBlockSetEntry* NewEntry(const UNICODE_STRING& aName,
                                          uint64_t aVersion,
                                          NativeNtBlockSetEntry* aNextEntry);
 
-private:
+ private:
   NativeNtBlockSetEntry* mFirstEntry;
   // SRWLOCK_INIT == 0, so this is okay to use without any additional work as
   // long as NativeNtBlockSet is instantiated statically
-  SRWLOCK                mLock;
+  SRWLOCK mLock;
 };
 
-NativeNtBlockSet::NativeNtBlockSetEntry*
-NativeNtBlockSet::NewEntry(const UNICODE_STRING& aName, uint64_t aVersion,
-                           NativeNtBlockSet::NativeNtBlockSetEntry* aNextEntry)
-{
+NativeNtBlockSet::NativeNtBlockSetEntry* NativeNtBlockSet::NewEntry(
+    const UNICODE_STRING& aName, uint64_t aVersion,
+    NativeNtBlockSet::NativeNtBlockSetEntry* aNextEntry) {
   HANDLE processHeap = mozilla::nt::RtlGetProcessHeap();
   if (!processHeap) {
     return nullptr;
   }
 
-  PVOID memory = ::RtlAllocateHeap(processHeap, 0, sizeof(NativeNtBlockSetEntry));
+  PVOID memory =
+      ::RtlAllocateHeap(processHeap, 0, sizeof(NativeNtBlockSetEntry));
   if (!memory) {
     return nullptr;
   }
@@ -91,12 +86,11 @@ NativeNtBlockSet::NewEntry(const UNICODE_STRING& aName, uint64_t aVersion,
   return new (memory) NativeNtBlockSetEntry(aName, aVersion, aNextEntry);
 }
 
-void
-NativeNtBlockSet::Add(const UNICODE_STRING& aName, uint64_t aVersion)
-{
+void NativeNtBlockSet::Add(const UNICODE_STRING& aName, uint64_t aVersion) {
   ::RtlAcquireSRWLockExclusive(&mLock);
 
-  for (NativeNtBlockSetEntry* entry = mFirstEntry; entry; entry = entry->mNext) {
+  for (NativeNtBlockSetEntry* entry = mFirstEntry; entry;
+       entry = entry->mNext) {
     if (::RtlEqualUnicodeString(&entry->mName, &aName, TRUE) &&
         aVersion == entry->mVersion) {
       ::RtlReleaseSRWLockExclusive(&mLock);
@@ -111,9 +105,7 @@ NativeNtBlockSet::Add(const UNICODE_STRING& aName, uint64_t aVersion)
   ::RtlReleaseSRWLockExclusive(&mLock);
 }
 
-void
-NativeNtBlockSet::Write(HANDLE aFile)
-{
+void NativeNtBlockSet::Write(HANDLE aFile) {
   // NB: If this function is called, it is long after kernel32 is initialized,
   // so it is safe to use Win32 calls here.
   DWORD nBytes;
@@ -157,26 +149,23 @@ NativeNtBlockSet::Write(HANDLE aFile)
       WriteFile(aFile, ";", 1, &nBytes, nullptr);
     }
   }
-  MOZ_SEH_EXCEPT (EXCEPTION_EXECUTE_HANDLER) {
-  }
+  MOZ_SEH_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {}
 
   ::ReleaseSRWLockExclusive(&mLock);
 }
 
 static NativeNtBlockSet gBlockSet;
 
-extern "C" void MOZ_EXPORT
-NativeNtBlockSet_Write(HANDLE aHandle)
-{
+extern "C" void MOZ_EXPORT NativeNtBlockSet_Write(HANDLE aHandle) {
   gBlockSet.Write(aHandle);
 }
 
-static bool
-CheckBlockInfo(const DllBlockInfo* aInfo, void* aBaseAddress, uint64_t& aVersion)
-{
+static bool CheckBlockInfo(const DllBlockInfo* aInfo, void* aBaseAddress,
+                           uint64_t& aVersion) {
   aVersion = ALL_VERSIONS;
 
-  if (aInfo->flags & (DllBlockInfo::BLOCK_WIN8PLUS_ONLY | DllBlockInfo::BLOCK_WIN8_ONLY)) {
+  if (aInfo->flags &
+      (DllBlockInfo::BLOCK_WIN8PLUS_ONLY | DllBlockInfo::BLOCK_WIN8_ONLY)) {
     RTL_OSVERSIONINFOW osv;
     NTSTATUS ntStatus = ::RtlGetVersion(&osv);
     if (!NT_SUCCESS(ntStatus)) {
@@ -188,8 +177,9 @@ CheckBlockInfo(const DllBlockInfo* aInfo, void* aBaseAddress, uint64_t& aVersion
       return true;
     }
 
-    if ((aInfo->flags & DllBlockInfo::BLOCK_WIN8_ONLY) && (osv.dwMajorVersion > 8 ||
-          (osv.dwMajorVersion == 8 && osv.dwMinorVersion > 0))) {
+    if ((aInfo->flags & DllBlockInfo::BLOCK_WIN8_ONLY) &&
+        (osv.dwMajorVersion > 8 ||
+         (osv.dwMajorVersion == 8 && osv.dwMinorVersion > 0))) {
       return true;
     }
   }
@@ -227,9 +217,7 @@ CheckBlockInfo(const DllBlockInfo* aInfo, void* aBaseAddress, uint64_t& aVersion
   return aVersion > aInfo->maxVersion;
 }
 
-static bool
-IsDllAllowed(const UNICODE_STRING& aLeafName, void* aBaseAddress)
-{
+static bool IsDllAllowed(const UNICODE_STRING& aLeafName, void* aBaseAddress) {
   if (mozilla::nt::Contains12DigitHexString(aLeafName) ||
       mozilla::nt::IsFileNameAtLeast16HexDigits(aLeafName)) {
     return false;
@@ -256,22 +244,19 @@ IsDllAllowed(const UNICODE_STRING& aLeafName, void* aBaseAddress)
 }
 
 typedef decltype(&NtMapViewOfSection) NtMapViewOfSection_func;
-static mozilla::CrossProcessDllInterceptor::FuncHookType<NtMapViewOfSection_func>
-  stub_NtMapViewOfSection;
+static mozilla::CrossProcessDllInterceptor::FuncHookType<
+    NtMapViewOfSection_func>
+    stub_NtMapViewOfSection;
 
-static NTSTATUS NTAPI
-patched_NtMapViewOfSection(HANDLE aSection, HANDLE aProcess, PVOID* aBaseAddress,
-                           ULONG_PTR aZeroBits, SIZE_T aCommitSize,
-                           PLARGE_INTEGER aSectionOffset, PSIZE_T aViewSize,
-                           SECTION_INHERIT aInheritDisposition,
-                           ULONG aAllocationType, ULONG aProtectionFlags)
-{
+static NTSTATUS NTAPI patched_NtMapViewOfSection(
+    HANDLE aSection, HANDLE aProcess, PVOID* aBaseAddress, ULONG_PTR aZeroBits,
+    SIZE_T aCommitSize, PLARGE_INTEGER aSectionOffset, PSIZE_T aViewSize,
+    SECTION_INHERIT aInheritDisposition, ULONG aAllocationType,
+    ULONG aProtectionFlags) {
   // We always map first, then we check for additional info after.
-  NTSTATUS stubStatus = stub_NtMapViewOfSection(aSection, aProcess, aBaseAddress,
-                                                aZeroBits, aCommitSize,
-                                                aSectionOffset, aViewSize,
-                                                aInheritDisposition,
-                                                aAllocationType, aProtectionFlags);
+  NTSTATUS stubStatus = stub_NtMapViewOfSection(
+      aSection, aProcess, aBaseAddress, aZeroBits, aCommitSize, aSectionOffset,
+      aViewSize, aInheritDisposition, aAllocationType, aProtectionFlags);
   if (!NT_SUCCESS(stubStatus)) {
     return stubStatus;
   }
@@ -283,9 +268,9 @@ patched_NtMapViewOfSection(HANDLE aSection, HANDLE aProcess, PVOID* aBaseAddress
 
   // Do a query to see if the memory is MEM_IMAGE. If not, continue
   MEMORY_BASIC_INFORMATION mbi;
-  NTSTATUS ntStatus = ::NtQueryVirtualMemory(aProcess, *aBaseAddress,
-                                             MemoryBasicInformation, &mbi,
-                                             sizeof(mbi), nullptr);
+  NTSTATUS ntStatus =
+      ::NtQueryVirtualMemory(aProcess, *aBaseAddress, MemoryBasicInformation,
+                             &mbi, sizeof(mbi), nullptr);
   if (!NT_SUCCESS(ntStatus)) {
     ::NtUnmapViewOfSection(aProcess, *aBaseAddress);
     return STATUS_ACCESS_DENIED;
@@ -321,23 +306,23 @@ patched_NtMapViewOfSection(HANDLE aSection, HANDLE aProcess, PVOID* aBaseAddress
 
 namespace mozilla {
 
-class MOZ_RAII AutoVirtualProtect final
-{
-public:
+class MOZ_RAII AutoVirtualProtect final {
+ public:
   AutoVirtualProtect(void* aAddress, size_t aLength, DWORD aProtFlags,
                      HANDLE aTargetProcess = nullptr)
-    : mAddress(aAddress)
-    , mLength(aLength)
-    , mTargetProcess(aTargetProcess)
-    , mPrevProt(0)
-  {
-    ::VirtualProtectEx(aTargetProcess, aAddress, aLength, aProtFlags,
-                       &mPrevProt);
+      : mAddress(aAddress),
+        mLength(aLength),
+        mTargetProcess(aTargetProcess),
+        mPrevProt(0),
+        mError(WindowsError::CreateSuccess()) {
+    if (!::VirtualProtectEx(aTargetProcess, aAddress, aLength, aProtFlags,
+                            &mPrevProt)) {
+      mError = WindowsError::FromLastError();
+    }
   }
 
-  ~AutoVirtualProtect()
-  {
-    if (!mPrevProt) {
+  ~AutoVirtualProtect() {
+    if (mError.IsFailure()) {
       return;
     }
 
@@ -345,33 +330,30 @@ public:
                        &mPrevProt);
   }
 
-  explicit operator bool() const
-  {
-    return !!mPrevProt;
-  }
+  explicit operator bool() const { return mError.IsSuccess(); }
+
+  WindowsError GetError() const { return mError; }
 
   AutoVirtualProtect(const AutoVirtualProtect&) = delete;
   AutoVirtualProtect(AutoVirtualProtect&&) = delete;
   AutoVirtualProtect& operator=(const AutoVirtualProtect&) = delete;
   AutoVirtualProtect& operator=(AutoVirtualProtect&&) = delete;
 
-private:
-  void*   mAddress;
-  size_t  mLength;
-  HANDLE  mTargetProcess;
-  DWORD   mPrevProt;
+ private:
+  void* mAddress;
+  size_t mLength;
+  HANDLE mTargetProcess;
+  DWORD mPrevProt;
+  WindowsError mError;
 };
 
-bool
-InitializeDllBlocklistOOP(HANDLE aChildProcess)
-{
+LauncherVoidResult InitializeDllBlocklistOOP(HANDLE aChildProcess) {
   mozilla::CrossProcessDllInterceptor intcpt(aChildProcess);
   intcpt.Init(L"ntdll.dll");
-  bool ok = stub_NtMapViewOfSection.SetDetour(aChildProcess, intcpt,
-                                              "NtMapViewOfSection",
-                                              &patched_NtMapViewOfSection);
+  bool ok = stub_NtMapViewOfSection.SetDetour(
+      aChildProcess, intcpt, "NtMapViewOfSection", &patched_NtMapViewOfSection);
   if (!ok) {
-    return false;
+    return LAUNCHER_ERROR_GENERIC();
   }
 
   // Because aChildProcess has just been created in a suspended state, its
@@ -386,19 +368,19 @@ InitializeDllBlocklistOOP(HANDLE aChildProcess)
   // safely make its ntdll calls.
   mozilla::nt::PEHeaders ourExeImage(::GetModuleHandleW(nullptr));
   if (!ourExeImage) {
-    return false;
+    return LAUNCHER_ERROR_FROM_WIN32(ERROR_BAD_EXE_FORMAT);
   }
 
   PIMAGE_IMPORT_DESCRIPTOR impDesc = ourExeImage.GetIATForModule("ntdll.dll");
   if (!impDesc) {
-    return false;
+    return LAUNCHER_ERROR_FROM_WIN32(ERROR_INVALID_DATA);
   }
 
   // This is the pointer we need to write
-  auto firstIatThunk = ourExeImage.template
-    RVAToPtr<PIMAGE_THUNK_DATA>(impDesc->FirstThunk);
+  auto firstIatThunk =
+      ourExeImage.template RVAToPtr<PIMAGE_THUNK_DATA>(impDesc->FirstThunk);
   if (!firstIatThunk) {
-    return false;
+    return LAUNCHER_ERROR_FROM_WIN32(ERROR_INVALID_DATA);
   }
 
   // Find the length by iterating through the table until we find a null entry
@@ -407,21 +389,22 @@ InitializeDllBlocklistOOP(HANDLE aChildProcess)
     ++curIatThunk;
   }
 
-  ptrdiff_t iatLength = (curIatThunk - firstIatThunk) * sizeof(IMAGE_THUNK_DATA);
+  ptrdiff_t iatLength =
+      (curIatThunk - firstIatThunk) * sizeof(IMAGE_THUNK_DATA);
 
   SIZE_T bytesWritten;
 
-  { // Scope for prot
+  {  // Scope for prot
     AutoVirtualProtect prot(firstIatThunk, iatLength, PAGE_READWRITE,
                             aChildProcess);
     if (!prot) {
-      return false;
+      return LAUNCHER_ERROR_FROM_MOZ_WINDOWS_ERROR(prot.GetError());
     }
 
     ok = !!::WriteProcessMemory(aChildProcess, firstIatThunk, firstIatThunk,
                                 iatLength, &bytesWritten);
     if (!ok) {
-      return false;
+      return LAUNCHER_ERROR_FROM_LAST();
     }
   }
 
@@ -429,7 +412,11 @@ InitializeDllBlocklistOOP(HANDLE aChildProcess)
   uint32_t newFlags = eDllBlocklistInitFlagWasBootstrapped;
   ok = !!::WriteProcessMemory(aChildProcess, &gBlocklistInitFlags, &newFlags,
                               sizeof(newFlags), &bytesWritten);
-  return ok;
+  if (!ok) {
+    return LAUNCHER_ERROR_FROM_LAST();
+  }
+
+  return Ok();
 }
 
-} // namespace mozilla
+}  // namespace mozilla

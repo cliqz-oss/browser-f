@@ -222,6 +222,9 @@ def filter_args(command, argv, paths):
     '''
     Given the full list of command-line arguments, remove anything up to and including `command`,
     and attempt to filter absolute pathnames out of any arguments after that.
+
+    `paths` is a dict whose keys are pathnames and values are sigils that should be used to
+    replace those pathnames.
     '''
     args = list(argv)
     while args:
@@ -231,32 +234,35 @@ def filter_args(command, argv, paths):
 
     def filter_path(p):
         p = mozpath.abspath(p)
-        base = mozpath.basedir(p, paths)
+        base = mozpath.basedir(p, paths.keys())
         if base:
-            return mozpath.relpath(p, base)
+            return paths[base] + mozpath.relpath(p, base)
         # Best-effort.
         return '<path omitted>'
     return [filter_path(arg) for arg in args]
 
 
-def gather_telemetry(command='', success=False, monitor=None, mach_context=None, substs={},
-                     paths=[]):
+def gather_telemetry(command='', success=False, start_time=None, end_time=None,
+                     mach_context=None, substs={}, paths={}):
     '''
     Gather telemetry about the build and the user's system and pass it to the telemetry
     handler to be stored for later submission.
+
+    `paths` is a dict whose keys are pathnames and values are sigils that should be used to
+    replace those pathnames.
 
     Any absolute paths on the command line will be made relative to `paths` or replaced
     with a placeholder to avoid including paths from developer's machines.
     '''
     data = {
         'client_id': get_client_id(mach_context.state_dir),
-        # Simplest way to get an rfc3339 datetime string, AFAICT.
-        'time': datetime.utcfromtimestamp(monitor.start_time).isoformat(b'T') + 'Z',
+        # Get an rfc3339 datetime string.
+        'time': datetime.utcfromtimestamp(start_time).strftime('%Y-%m-%dT%H:%M:%S.%fZ'),
         'command': command,
         'argv': filter_args(command, sys.argv, paths),
         'success': success,
         # TODO: use a monotonic clock: https://bugzilla.mozilla.org/show_bug.cgi?id=1481624
-        'duration_ms': int(monitor.elapsed * 1000),
+        'duration_ms': int((end_time - start_time) * 1000),
         'build_opts': get_build_opts(substs),
         'system': get_system_info(),
         # TODO: exception: https://bugzilla.mozilla.org/show_bug.cgi?id=1481617
@@ -265,13 +271,40 @@ def gather_telemetry(command='', success=False, monitor=None, mach_context=None,
     try:
         # Validate against the schema.
         schema(data)
+        return data
     except MultipleInvalid as exc:
         msg = ['Build telemetry is invalid:']
         for error in exc.errors:
             msg.append(str(error))
         print('\n'.join(msg) + '\n' + pprint.pformat(data))
+    return None
 
-    telemetry_handler = getattr(mach_context,
-                                'telemetry_handler', None)
-    if telemetry_handler:
-        telemetry_handler(mach_context, data)
+
+def verify_statedir(statedir):
+    '''
+    Verifies the statedir is structured correctly. Returns the outgoing,
+    submitted and log paths.
+
+    Requires presence of the following directories; will raise if absent:
+    - statedir/telemetry
+    - statedir/telemetry/outgoing
+
+    Creates the following directories and files if absent (first submission):
+    - statedir/telemetry/submitted
+    '''
+
+    telemetry_dir = os.path.join(statedir, 'telemetry')
+    outgoing = os.path.join(telemetry_dir, 'outgoing')
+    submitted = os.path.join(telemetry_dir, 'submitted')
+    telemetry_log = os.path.join(telemetry_dir, 'telemetry.log')
+
+    if not os.path.isdir(telemetry_dir):
+        raise Exception('{} does not exist'.format(telemetry_dir))
+
+    if not os.path.isdir(outgoing):
+        raise Exception('{} does not exist'.format(outgoing))
+
+    if not os.path.isdir(submitted):
+        os.mkdir(submitted)
+
+    return outgoing, submitted, telemetry_log

@@ -8,72 +8,100 @@
    --diff-add-text-color: #54983f;
    --diff-remove-background-color: #fbf2f5;
    --diff-remove-text-color: #bf7173;
+   --diff-source-background: var(--theme-toolbar-background);
+   --diff-level: 0;
+   --diff-level-offset: 10px;
+   /*
+    Minimum padding so content on the first level (zero) isn't touching the edge. Added
+    and removed lines will re-declare this to add extra padding to clear the +/- icons.
+   */
+   --diff-level-min-offset: 5px;
  }
+
+:root.theme-dark {
+  --diff-add-background-color: rgba(18, 188, 0, 0.15);
+  --diff-add-text-color: #12BC00;
+  --diff-remove-background-color: rgba(255, 0, 57, 0.15);
+  --diff-remove-text-color: #FF0039;
+  --diff-source-background: #222225;
+}
+
+:root[dir="rtl"] {
+  /* Increase minimum offset on right-to-left layout to clear the floating scrollbar. */
+  --diff-level-min-offset: 15px;
+}
+
+:root[dir="rtl"] #sidebar-panel-changes .source {
+  /* Enforce left-to-right code rendering on right-to-left layout. */
+  direction: ltr;
+}
 
 #sidebar-panel-changes {
   margin: 0;
+  padding: 0;
   width: 100%;
   height: 100%;
   overflow: auto;
+  background: var(--theme-sidebar-background);
 }
 
-details {
-  font-family: var(--monospace-font-family);
+#sidebar-panel-changes .href {
+  display: flex;
+  align-items: center;
+  color: var(--theme-toolbar-color);
+  background: var(--diff-source-background);
+  border-top: 1px solid var(--theme-splitter-color);
+  border-bottom: 1px solid var(--theme-splitter-color);
+  padding: 4px;
+  padding-inline-start: var(--diff-level-min-offset);
   font-size: 12px;
 }
 
-summary {
-  outline: none;
-  padding: 5px 0;
-  -moz-user-select: none;
-  cursor: pointer;
+#sidebar-panel-changes .source:first-child .href {
+  border-top: unset;
 }
 
-details.source[open] {
-  padding-bottom: 10px;
-}
-
-details.source > summary {
-  background: var(--theme-sidebar-background);
-  border-top: 1px solid var(--theme-splitter-color);
-  border-bottom: 1px solid var(--theme-splitter-color);
-  padding-left: 5px;
+#sidebar-panel-changes .href span {
+  /* Allows trimming of flex item with overflow ellipsis within the flex container */
+  min-width: 0;
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
 }
 
-details.selector > summary {
-  padding-left: 10px;
-}
-
-details.selector summary::after{
-  content: "{…}";
-  display: inline-block;
-  padding-left: 5px;
-}
-
-details.selector[open]{
-  margin-bottom: 5px;
-}
-
-details.selector[open] summary::after{
-  content: "{";
-}
-
-details.selector[open]::after{
-  content: "}";
-  display: block;
-  padding-left: 10px;
-}
-
-.line {
-  padding: 3px 5px 3px 15px;
+#sidebar-panel-changes .level {
+  padding-top: 3px;
+  padding-right: 5px;
+  padding-bottom: 3px;
+  padding-left: calc(var(--diff-level-min-offset) +
+                     var(--diff-level-offset) * var(--diff-level));
   position: relative;
 }
 
+#sidebar-panel-changes .selector {
+  word-wrap: break-word;
+}
+
+#sidebar-panel-changes .rule .bracket-open {
+  display: inline-block;
+  margin-left: 5px;
+}
+
+#sidebar-panel-changes .declaration-name {
+  margin-left: 10px;
+}
+
+#sidebar-panel-changes .declaration-value {
+  margin-left: 5px;
+}
+
+.diff-add,
+.diff-remove {
+  --diff-level-min-offset: 15px;
+}
+
 .diff-add::before,
-.diff-remove::before{
+.diff-remove::before {
   position: absolute;
   left: 5px;
 }
@@ -94,4 +122,8 @@ details.selector[open]::after{
 .diff-remove::before{
   content: "-";
   color: var(--diff-remove-text-color);
+}
+
+#sidebar-panel-changes .devtools-sidepanel-no-result :not(:first-child) {
+  font-style: normal;
 }

@@ -1,22 +1,23 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 #![deny(missing_docs)]
 
 //! Servo's selector parser.
 
-use {Atom, CaseSensitivityExt, LocalName, Namespace, Prefix};
-use attr::{AttrIdentifier, AttrValue};
+use crate::attr::{AttrIdentifier, AttrValue};
+use crate::dom::{OpaqueNode, TElement, TNode};
+use crate::element_state::{DocumentState, ElementState};
+use crate::invalidation::element::document_state::InvalidationMatchingData;
+use crate::invalidation::element::element_wrapper::ElementSnapshot;
+use crate::properties::longhands::display::computed_value::T as Display;
+use crate::properties::{ComputedValues, PropertyFlags};
+use crate::selector_parser::AttrValue as SelectorAttrValue;
+use crate::selector_parser::{PseudoElementCascadeType, SelectorParser};
+use crate::{Atom, CaseSensitivityExt, LocalName, Namespace, Prefix};
 use cssparser::{serialize_identifier, CowRcStr, Parser as CssParser, SourceLocation, ToCss};
-use dom::{OpaqueNode, TElement, TNode};
-use element_state::{DocumentState, ElementState};
 use fxhash::FxHashMap;
-use invalidation::element::document_state::InvalidationMatchingData;
-use invalidation::element::element_wrapper::ElementSnapshot;
-use properties::{ComputedValues, PropertyFlags};
-use properties::longhands::display::computed_value::T as Display;
-use selector_parser::{AttrValue as SelectorAttrValue, PseudoElementCascadeType, SelectorParser};
 use selectors::attr::{AttrSelectorOperation, CaseSensitivity, NamespaceConstraint};
 use selectors::parser::{SelectorParseErrorKind, Visit};
 use selectors::visitor::SelectorVisitor;
@@ -348,8 +349,8 @@ impl NonTSPseudoClass {
     /// Gets a given state flag for this pseudo-class. This is used to do
     /// selector matching, and it's set from the DOM.
     pub fn state_flag(&self) -> ElementState {
-        use element_state::ElementState;
         use self::NonTSPseudoClass::*;
+        use crate::element_state::ElementState;
         match *self {
             Active => ElementState::IN_ACTIVE_STATE,
             Focus => ElementState::IN_FOCUS_STATE,

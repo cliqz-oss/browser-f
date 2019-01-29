@@ -93,27 +93,10 @@ android {
         }
     }
 
-    // The "audience" flavour dimension distinguishes between _local_ builds (intended for
-    // development) and _official_ builds (intended for testing in automation and to ship in one of
-    // the Fennec distribution channels).
-    //
-    // The "skin" flavor dimension distinguishes between different user interfaces.  We sometimes
-    // want to develop significant new user interface pieces in-tree that don't ship (even in the
-    // Nightly channel) while under development.  A new "skin" flavour allows us to develop such
-    // pieces in Gradle without changing the mainline configuration.
-
     project.configureProductFlavors.delegate = it
     project.configureProductFlavors()
 
-    flavorDimensions "audience", "geckoBinaries", "minApi", "skin"
-
-    productFlavors {
-        // Since Firefox 57, the mobile user interface has followed the Photon design.
-        // Before Firefox 57, the user interface followed the Australis design.
-        photon {
-            dimension "skin"
-        }
-    }
+    flavorDimensions "geckoBinaries"
 
     sourceSets {
         main {
@@ -255,11 +238,12 @@ dependencies {
         implementation "com.google.android.gms:play-services-gcm:$google_play_services_version"
     }
 
-    // Include LeakCanary in local builds, but not in official builds.  Mach
-    // builds target the official audience, so LeakCanary will not be included
-    // in any Mach build.
-    localImplementation 'com.squareup.leakcanary:leakcanary-android:1.4-beta1'
-    officialImplementation 'com.squareup.leakcanary:leakcanary-android-no-op:1.4-beta1'
+    // Include LeakCanary in local builds, but not in official builds.
+    if (mozconfig.substs.MOZILLA_OFFICIAL) {
+        implementation 'com.squareup.leakcanary:leakcanary-android-no-op:1.4-beta1'
+    } else {
+        implementation 'com.squareup.leakcanary:leakcanary-android:1.4-beta1'
+    }
     testImplementation 'com.squareup.leakcanary:leakcanary-android-no-op:1.4-beta1'
 
     implementation project(path: ':geckoview')
@@ -374,7 +358,7 @@ android.applicationVariants.all { variant ->
     // this, the Gradle build calls out to the moz.build system, which can be
     // re-entrant.  Official builds are driven by the moz.build system and
     // should never be re-entrant in this way.
-    if (!((variant.productFlavors*.name).contains('official'))) {
+    if (!mozconfig.substs.MOZILLA_OFFICIAL) {
         syncPreprocessedJava.dependsOn rootProject.generateCodeAndResources
         syncPreprocessedRes.dependsOn rootProject.generateCodeAndResources
         rewriteManifestPackage.dependsOn rootProject.generateCodeAndResources
@@ -427,7 +411,7 @@ android.applicationVariants.all { variant ->
         classpath = variant.javaCompile.classpath
 
         excludeFilter = file("findbugs-exclude.xml")
-        dependsOn "assemble${variant.name.capitalize()}"
+        dependsOn "bundleAppClasses${variant.name.capitalize()}"
 
         reports {
             html.enabled = true // HTML reports for humans.
@@ -451,7 +435,7 @@ android.applicationVariants.all { variant ->
         classpath = variant.javaCompile.classpath
 
         excludeFilter = file("findbugs-exclude.xml")
-        dependsOn "assemble${variant.name.capitalize()}"
+        dependsOn "bundleAppClasses${variant.name.capitalize()}"
 
         reports {
             xml.enabled = true // XML reports for machines.
@@ -487,9 +471,7 @@ configurations.all {
 }
 
 android.applicationVariants.all { variant ->
-    // Like 'local', 'localOld', or 'official'.
-    def audienceDimension = variant.productFlavors[0].name
-    if (!audienceDimension.equals('official')) {
+    if (!mozconfig.substs.MOZILLA_OFFICIAL) {
         return
     }
 
@@ -513,30 +495,6 @@ android.applicationVariants.all { variant ->
             })
         }
     }
-}
-
-android.applicationVariants.all { variant ->
-    def processResourcesTask = tasks["process${variant.name.capitalize()}Resources"]
-    def assembleTask = tasks["assemble${variant.name.capitalize()}"]
-
-    def dumpTask = task("dump${variant.name.capitalize()}RTxt", type: Copy) {
-        from "${project.buildDir}/intermediates/symbols"
-        into "${project.buildDir}/R/symbols-${System.env.AB_CD}"
-        include "**/R.txt"
-
-        includeEmptyDirs = false
-
-        // Force task to run.
-        outputs.upToDateWhen { false }
-
-        rename { filename ->
-            filename.replace 'R.txt', "R-${new Date().format('yyyyMMddHHmmssSSS')}.txt"
-        }
-
-        dependsOn processResourcesTask
-    }
-
-    assembleTask.dependsOn dumpTask
 }
 
 // Bug 1415298: make Robolectric find assets.  Fix adapted from

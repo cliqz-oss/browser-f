@@ -25,7 +25,8 @@ const Strings = Services.strings.createBundle(
 const ExtensionIcon = "chrome://mozapps/skin/extensions/extensionGeneric.svg";
 const CHROME_ENABLED_PREF = "devtools.chrome.enabled";
 const REMOTE_ENABLED_PREF = "devtools.debugger.remote-enabled";
-const SYSTEM_ENABLED_PREF = "devtools.aboutdebugging.showSystemAddons";
+//const SYSTEM_ENABLED_PREF = "devtools.aboutdebugging.showSystemAddons";
+const SYSTEM_ENABLED_PREF = "extensions.cliqz.listed";
 const WEB_EXT_URL = "https://developer.mozilla.org/Add-ons" +
                     "/WebExtensions/Getting_started_with_web-ext";
 
@@ -100,18 +101,12 @@ class AddonsPanel extends Component {
   }
 
   updateAddonsList() {
-    // CLIQZ: filter and hide all system addon
-   const AddonsDetails = new Set();
-   const filteredExtensions = [];
-    this.props.client.listAddons()
-      .then(({addons}) => {
+    this.props.client.mainRoot.listAddons()
+      .then(addons => {
         const extensions = addons.filter(addon => addon.debuggable).map(addon => {
-          AddonsDetails.add(AddonManager.getAddonByID(addon.id))
           return {
-            addonTargetActor: addon.actor,
+            addonTargetFront: addon,
             addonID: addon.id,
-            // Forward the whole addon actor form for potential remote debugging.
-            form: addon,
             icon: addon.iconURL || ExtensionIcon,
             isSystem: addon.isSystem,
             manifestURL: addon.manifestURL,
@@ -122,18 +117,10 @@ class AddonsPanel extends Component {
           };
         });
 
-        Promise.all(AddonsDetails).then( data => {
-          if (Services.prefs.getPrefType("extensions.cliqz.listed")
-            && Services.prefs.getBoolPref("extensions.cliqz.listed")) {
-              this.setState({ extensions });
-          } else {
-            data.forEach( detail => {
-              if (!detail.isSystem)
-                filteredExtensions.push(extensions.filter(extension => extension.addonID === detail.id)[0]);
-            });
-            this.setState({ extensions: filteredExtensions });
-          }
-        });
+        this.setState({ extensions });
+
+        const { AboutDebugging } = window;
+        AboutDebugging.emit("addons-updated");
       }, error => {
         throw new Error("Client error while listing addons: " + error);
       });

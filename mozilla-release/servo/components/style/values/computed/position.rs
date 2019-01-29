@@ -1,18 +1,18 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! CSS handling for the computed value of
 //! [`position`][position] values.
 //!
 //! [position]: https://drafts.csswg.org/css-backgrounds-3/#position
 
+use crate::values::computed::{Integer, LengthOrPercentage, Percentage};
+use crate::values::generics::position::Position as GenericPosition;
+use crate::values::generics::position::ZIndex as GenericZIndex;
+pub use crate::values::specified::position::{GridAutoFlow, GridTemplateAreas};
 use std::fmt::{self, Write};
 use style_traits::{CssWriter, ToCss};
-use values::computed::{Integer, LengthOrPercentage, Percentage};
-use values::generics::position::Position as GenericPosition;
-use values::generics::position::ZIndex as GenericZIndex;
-pub use values::specified::position::{GridAutoFlow, GridTemplateAreas};
 
 /// The computed value of a CSS `<position>`
 pub type Position = GenericPosition<HorizontalPosition, VerticalPosition>;

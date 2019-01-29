@@ -1,17 +1,17 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! A media query condition:
 //!
 //! https://drafts.csswg.org/mediaqueries-4/#typedef-media-condition
 
-use context::QuirksMode;
+use super::{Device, MediaFeatureExpression};
+use crate::context::QuirksMode;
+use crate::parser::ParserContext;
 use cssparser::{Parser, Token};
-use parser::ParserContext;
 use std::fmt::{self, Write};
 use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
-use super::{Device, MediaFeatureExpression};
 
 /// A binary `and` or `or` operator.
 #[derive(Clone, Copy, Debug, Eq, MallocSizeOf, Parse, PartialEq, ToCss)]

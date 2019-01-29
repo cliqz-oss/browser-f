@@ -1,19 +1,19 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Generic types for the handling of
 //! [grids](https://drafts.csswg.org/css-grid/).
 
+use crate::parser::{Parse, ParserContext};
+use crate::values::computed::{Context, ToComputedValue};
+use crate::values::specified;
+use crate::values::specified::grid::parse_line_names;
+use crate::values::{CSSFloat, CustomIdent};
 use cssparser::Parser;
-use parser::{Parse, ParserContext};
-use std::{mem, usize};
 use std::fmt::{self, Write};
+use std::{mem, usize};
 use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
-use values::{CSSFloat, CustomIdent};
-use values::computed::{Context, ToComputedValue};
-use values::specified;
-use values::specified::grid::parse_line_names;
 
 /// A `<grid-line>` type.
 ///
@@ -120,7 +120,9 @@ impl Parse for GridLine<specified::Integer> {
                 if val_before_span || grid_line.ident.is_some() {
                     return Err(location.new_custom_error(StyleParseErrorKind::UnspecifiedError));
                 }
-                grid_line.ident = Some(CustomIdent::from_ident(location, &name, &[])?);
+                // NOTE(emilio): `span` is consumed above, so we only need to
+                // reject `auto`.
+                grid_line.ident = Some(CustomIdent::from_ident(location, &name, &["auto"])?);
             } else {
                 break;
             }

@@ -6,7 +6,7 @@
 
 // Test that the flex item outline exists when a flex item is selected.
 
-const TEST_URI = URL_ROOT + "doc_flexbox_simple.html";
+const TEST_URI = URL_ROOT + "doc_flexbox_specific_cases.html";
 
 add_task(async function() {
   await addTab(TEST_URI);
@@ -25,10 +25,4 @@ add_task(async function() {
 
   ok(basis, "The basis outline exists");
   ok(final, "The final outline exists");
-
-  const [basisPoint, finalPoint] = [...flexOutlineContainer.querySelectorAll(
-    ".flex-outline-point.basis, .flex-outline-point.final")];
-
-  ok(basisPoint, "The basis point exists");
-  ok(finalPoint, "The final point exists");
 });

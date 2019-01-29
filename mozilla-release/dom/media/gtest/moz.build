@@ -9,7 +9,8 @@ include('/media/webrtc/webrtc.mozbuild')
 
 LOCAL_INCLUDES += [
     '/media/webrtc/signaling/src/common',
-    '/media/webrtc/trunk'
+    '/media/webrtc/trunk',
+    '/media/webrtc/trunk/webrtc'
 ]
 
 UNIFIED_SOURCES += [
@@ -29,6 +30,7 @@ UNIFIED_SOURCES += [
     'TestGMPUtils.cpp',
     'TestIntervalSet.cpp',
     'TestMediaDataDecoder.cpp',
+    'TestMediaDataEncoder.cpp',
     'TestMediaEventSource.cpp',
     'TestMediaMIMETypes.cpp',
     'TestMP3Demuxer.cpp',

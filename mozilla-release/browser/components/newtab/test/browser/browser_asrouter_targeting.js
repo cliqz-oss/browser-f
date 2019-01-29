@@ -198,10 +198,10 @@ add_task(async function checksearchEngines() {
     "searchEngines.installed should be an array of visible search engines");
   ok(result.current && typeof result.current === "string",
     "searchEngines.current should be a truthy string");
-  is(result.current, Services.search.currentEngine.identifier,
+  is(result.current, Services.search.defaultEngine.identifier,
     "searchEngines.current should be the current engine name");
 
-  const message = {id: "foo", targeting: `searchEngines[.current == ${Services.search.currentEngine.identifier}]`};
+  const message = {id: "foo", targeting: `searchEngines[.current == ${Services.search.defaultEngine.identifier}]`};
   is(await ASRouterTargeting.findMatchingMessage({messages: [message]}), message,
     "should select correct item by searchEngines.current");
 
@@ -344,9 +344,15 @@ add_task(async function check_pinned_sites() {
   const originalPin = JSON.stringify(NewTabUtils.pinnedLinks.links);
   const sitesToPin = [
     {url: "https://foo.com"},
+    {url: "https://bloo.com"},
     {url: "https://floogle.com", searchTopSite: true},
   ];
   sitesToPin.forEach((site => NewTabUtils.pinnedLinks.pin(site, NewTabUtils.pinnedLinks.links.length)));
+
+  // Unpinning adds null to the list of pinned sites, which we should test that we handle gracefully for our targeting
+  NewTabUtils.pinnedLinks.unpin(sitesToPin[1]);
+  ok(NewTabUtils.pinnedLinks.links.includes(null),
+    "should have set an item in pinned links to null via unpinning for testing");
 
   let message;
 
@@ -385,9 +391,6 @@ add_task(async function check_region() {
 });
 
 add_task(async function check_browserSettings() {
-  is(await ASRouterTargeting.Environment.browserSettings.attribution, TelemetryEnvironment.currentEnvironment.settings.attribution,
-    "should return correct attribution info");
-
   is(await JSON.stringify(ASRouterTargeting.Environment.browserSettings.update), JSON.stringify(TelemetryEnvironment.currentEnvironment.settings.update),
       "should return correct update info");
 });

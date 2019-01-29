@@ -66,7 +66,7 @@ W32API_VERSION=3.14
 GCONF_VERSION=1.2.1
 STARTUP_NOTIFICATION_VERSION=0.8
 DBUS_VERSION=0.60
-SQLITE_VERSION=3.25.1
+SQLITE_VERSION=3.25.3
 
 dnl Set various checks
 dnl ========================================================
@@ -518,6 +518,13 @@ if test "$GNU_CC"; then
                   AC_MSG_RESULT([no])
                   LDFLAGS=$_SAVE_LDFLAGS)
 
+    AC_MSG_CHECKING([for -Bsymbolic-functions option to ld])
+    _SAVE_LDFLAGS=$LDFLAGS
+    LDFLAGS="$LDFLAGS -Wl,-Bsymbolic-functions"
+    AC_TRY_LINK(,,AC_MSG_RESULT([yes]),
+                  AC_MSG_RESULT([no])
+                  LDFLAGS=$_SAVE_LDFLAGS)
+
     AC_MSG_CHECKING([for --build-id=sha1 option to ld])
     _SAVE_LDFLAGS=$LDFLAGS
     LDFLAGS="$LDFLAGS -Wl,--build-id=sha1"
@@ -682,18 +689,6 @@ case "$host" in
     ;;
 esac
 
-dnl Get version of various core apps from the version files.
-FIREFOX_VERSION=`cat $_topsrcdir/browser/config/version.txt`
-FIREFOX_VERSION_DISPLAY=`cat $_topsrcdir/browser/config/version_display.txt`
-
-if test -z "$FIREFOX_VERSION"; then
-    AC_MSG_ERROR([FIREFOX_VERSION is unexpectedly blank.])
-fi
-
-if test -z "$FIREFOX_VERSION_DISPLAY"; then
-    AC_MSG_ERROR([FIREFOX_VERSION_DISPLAY is unexpectedly blank.])
-fi
-
 MOZ_DOING_LTO(lto_is_enabled)
 
 dnl ========================================================
@@ -767,6 +762,13 @@ case "$target" in
         # From https://github.com/android-ndk/ndk/issues/133#issuecomment-308549264
         # -Oz is smaller than -Os on clang.
         MOZ_OPTIMIZE_FLAGS="-Oz"
+        # Disable the outliner, which causes performance regressions, and is
+        # enabled on some platforms at -Oz.
+        DISABLE_OUTLINER="-mno-outline"
+        _SAVE_CFLAGS=$CFLAGS
+        CFLAGS="$CFLAGS $DISABLE_OUTLINER"
+        AC_TRY_COMPILE(,,[MOZ_OPTIMIZE_FLAGS="$MOZ_OPTIMIZE_FLAGS $DISABLE_OUTLINER"])
+        CFLAGS="$_SAVE_CFLAGS"
     fi
     ;;
 
@@ -1738,7 +1740,7 @@ MOZ_ARG_WITH_BOOL(system-nss,
     _USE_SYSTEM_NSS=1 )
 
 if test -n "$_USE_SYSTEM_NSS"; then
-    AM_PATH_NSS(3.40.1, [MOZ_SYSTEM_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
+    AM_PATH_NSS(3.41, [MOZ_SYSTEM_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
 fi
 
 NSS_CFLAGS="$NSS_CFLAGS -I${DIST}/include/nss"
@@ -2078,9 +2080,6 @@ if test "$COMPILE_ENVIRONMENT"; then
     AC_DEFINE_UNQUOTED(GDK_VERSION_MAX_ALLOWED,$GDK_VERSION_MAX_ALLOWED)
     GLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_32
   fi
-  if test "$MOZ_WIDGET_TOOLKIT" = gtk2; then
-    GLIB_VERSION_MAX_ALLOWED=$GLIB_VERSION_MIN_REQUIRED
-  fi
   if test "$MOZ_ENABLE_GTK"; then
     if test "$MOZ_X11"; then
       GDK_PACKAGES=gdk-x11-2.0
@@ -2090,10 +2089,6 @@ if test "$COMPILE_ENVIRONMENT"; then
 
     PKG_CHECK_MODULES(MOZ_GTK2, gtk+-2.0 >= $GTK2_VERSION gtk+-unix-print-2.0 glib-2.0 >= $GLIB_VERSION gobject-2.0 gio-unix-2.0 $GDK_PACKAGES)
     MOZ_GTK2_CFLAGS="-I${_topsrcdir}/widget/gtk/compat $MOZ_GTK2_CFLAGS"
-  fi
-  if test "$MOZ_WIDGET_TOOLKIT" = gtk2; then
-    TK_CFLAGS=$MOZ_GTK2_CFLAGS
-    TK_LIBS=$MOZ_GTK2_LIBS
   fi
 fi # COMPILE_ENVIRONMENT
 
@@ -2303,7 +2298,7 @@ if test -n "$MOZ_APPLEMEDIA"; then
   # We load VideoToolbox and CoreMedia dynamically, so they don't appear here.
   LDFLAGS="$LDFLAGS -framework AudioToolbox"
   dnl Verify CoreMedia is available.
-  AC_CHECK_HEADER([CoreMedia/CoreMedia.h], [],
+  AC_CHECK_HEADERS([CoreMedia/CoreMedia.h VideoToolbox/VideoToolbox.h], [],
     [AC_MSG_ERROR([MacOS X 10.9 SDK or later is required])])
 fi
 fi # COMPILE_ENVIRONMENT
@@ -3994,9 +3989,6 @@ AC_SUBST(MOZ_CHILD_PROCESS_BUNDLENAME)
 # - MOZ_APP_DISPLAYNAME: Used in user-visible fields (DLL properties,
 # Mac Bundle name, Updater, Installer), it is typically used for nightly
 # builds (e.g. Aurora for Firefox).
-# - MOZ_APP_VERSION: Defines the application version number.
-# - MOZ_APP_VERSION_DISPLAY: Defines the application version number. Used
-# in the "About" window. If not set, defaults to MOZ_APP_VERSION.
 # - MOZ_APP_NAME: Used for e.g. the binary program file name. If not set,
 # defaults to a lowercase form of MOZ_APP_BASENAME.
 # - MOZ_APP_REMOTINGNAME: Used for the internal program name, which affects
@@ -4016,16 +4008,21 @@ AC_SUBST(MOZ_CHILD_PROCESS_BUNDLENAME)
 # - MOZ_MMA_GCM_SENDERID: This GCM Sender ID is used for MMA integration.
 # - MOZ_PROFILE_MIGRATOR: When set, enables profile migrator.
 
+# The following environment variables used to have an effect, but don't anymore:
+# - MOZ_APP_VERSION: Defines the application version number. This was replaced with
+# the contents from the version.txt file in the application directory, or
+# browser/config/version.txt if there isn't one.
+# - MOZ_APP_VERSION_DISPLAY: Defines the application version number. Used
+# in the "About" window. This was replaced with the contents from the
+# version_display.txt or version.txt in the application directory, or
+# browser/config/version_display.txt.
+
 if test -z "$MOZ_APP_NAME"; then
    MOZ_APP_NAME=`echo $MOZ_APP_BASENAME | tr A-Z a-z`
 fi
 
 if test -z "$MOZ_APP_REMOTINGNAME"; then
    MOZ_APP_REMOTINGNAME=$MOZ_APP_NAME
-fi
-
-if test -z "$MOZ_APP_VERSION_DISPLAY"; then
-   MOZ_APP_VERSION_DISPLAY=$MOZ_APP_VERSION
 fi
 
 if test -z "$ANDROID_PACKAGE_NAME" ; then
@@ -4088,14 +4085,10 @@ AC_SUBST(MOZ_PROFILE_MIGRATOR)
 AC_DEFINE_UNQUOTED(MOZ_APP_UA_NAME, "$MOZ_APP_UA_NAME")
 AC_SUBST(MOZ_APP_UA_NAME)
 AC_DEFINE_UNQUOTED(MOZ_APP_UA_VERSION, "$MOZ_APP_VERSION")
-AC_SUBST(MOZ_APP_VERSION)
-AC_SUBST(MOZ_APP_VERSION_DISPLAY)
 AC_DEFINE_UNQUOTED(BROWSER_CHROME_URL, $BROWSER_CHROME_URL)
 AC_DEFINE_UNQUOTED(BROWSER_CHROME_URL_QUOTED, "$BROWSER_CHROME_URL")
 
 AC_SUBST(MOZ_APP_MAXVERSION)
-AC_DEFINE_UNQUOTED(FIREFOX_VERSION,$FIREFOX_VERSION)
-AC_SUBST(FIREFOX_VERSION)
 AC_SUBST(MOZ_UA_OS_AGNOSTIC)
 if test -n "$MOZ_UA_OS_AGNOSTIC"; then
   AC_DEFINE(MOZ_UA_OS_AGNOSTIC)

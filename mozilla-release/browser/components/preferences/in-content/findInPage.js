@@ -310,7 +310,7 @@ var gSearchResultsPane = {
       gotoPref("paneGeneral");
 
       // Hide some special second level headers in normal view
-      for (let element of document.querySelectorAll("caption.search-header")) {
+      for (let element of document.querySelectorAll(".search-header")) {
         element.hidden = true;
       }
     }
@@ -547,7 +547,9 @@ var gSearchResultsPane = {
   removeAllSearchTooltips() {
     for (let anchorNode of this.listSearchTooltips) {
       anchorNode.parentElement.classList.remove("search-tooltip-parent");
-      anchorNode.tooltipNode.remove();
+      if (anchorNode.tooltipNode) {
+        anchorNode.tooltipNode.remove();
+      }
       anchorNode.tooltipNode = null;
     }
     this.listSearchTooltips.clear();

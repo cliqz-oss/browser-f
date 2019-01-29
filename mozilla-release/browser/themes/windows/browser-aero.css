@@ -6,10 +6,34 @@
 %define glassActiveBorderColor rgb(37, 44, 51)
 %define glassInactiveBorderColor rgb(102, 102, 102)
 
-@media (-moz-os-version: windows-win7) {
+@media (-moz-os-version: windows-win7),
+       (-moz-os-version: windows-win8) {
   @media (-moz-windows-classic: 0) {
-    #main-window[sizemode="normal"] > #navigator-toolbox > #toolbar-menubar {
+    #main-window[sizemode="normal"] > #navigator-toolbox > #titlebar > #toolbar-menubar:not([autohide="true"]) > #menubar-items,
+    #main-window[sizemode="normal"] > #navigator-toolbox > #titlebar > #toolbar-menubar[autohide="true"][inactive] + #TabsToolbar > .toolbar-items {
       margin-top: 1px;
+    }
+    /**
+     * Except for Windows 8, Windows 7 Aero and Windows 7 Aero Basic, the
+     * -moz-window-button-box appearance on the .titlebar-buttonbox adds an
+     * unwanted margin at the top of the button box.
+     *
+     * For Windows 8 and Windows Aero (which both use the compositor):
+     *   We want the -moz-window-button-box applied in the restored case,
+     *   and -moz-window-button-box-maximized in the maximized case.
+     *
+     * For Windows Aero Basic:
+     *   The margin is also unwanted in the maximized case, but we want
+     *   it in the restored window case.
+     */
+    #main-window[sizemode="normal"] .titlebar-buttonbox {
+      -moz-appearance: -moz-window-button-box;
+    }
+
+    @media (-moz-windows-compositor) {
+      #main-window[sizemode="maximized"] .titlebar-buttonbox {
+        -moz-appearance: -moz-window-button-box-maximized;
+      }
     }
   }
 }
@@ -22,8 +46,8 @@
 }
 
 @media (-moz-windows-compositor) {
-  @media not all and (-moz-os-version: windows-win7) {
-    @media not all and (-moz-os-version: windows-win8) {
+  @media not (-moz-os-version: windows-win7) {
+    @media not (-moz-os-version: windows-win8) {
       @media (-moz-windows-default-theme) {
         :root:not(:-moz-lwtheme) {
           background-color: hsl(0, 0%, 78%);
@@ -38,8 +62,6 @@
           }
           :root[tabsintitlebar]:not(:-moz-lwtheme) {
             background-color: hsl(235,33%,19%);
-          }
-          :root[tabsintitlebar] .titlebar-color:not(:-moz-lwtheme) {
             color: hsl(240,9%,98%);
           }
         }
@@ -50,8 +72,6 @@
           }
           :root[tabsintitlebar]:not(:-moz-window-inactive):not(:-moz-lwtheme) {
             background-color: -moz-win-accentcolor;
-          }
-          :root[tabsintitlebar] .titlebar-color:not(:-moz-window-inactive):not(:-moz-lwtheme) {
             color: -moz-win-accentcolortext;
           }
         }
@@ -81,7 +101,7 @@
         }
       }
 
-      #titlebar-buttonbox,
+      .titlebar-buttonbox,
       .titlebar-button {
         -moz-appearance: none !important;
       }
@@ -99,35 +119,35 @@
         height: 12px;
       }
 
-      #titlebar-min {
+      .titlebar-min {
         list-style-image: url(chrome://browser/skin/window-controls/minimize.svg);
       }
 
-      #titlebar-max {
+      .titlebar-max {
         list-style-image: url(chrome://browser/skin/window-controls/maximize.svg);
       }
 
-      :root[sizemode="maximized"] #titlebar-max {
+      :root[sizemode="maximized"] .titlebar-max {
         list-style-image: url(chrome://browser/skin/window-controls/restore.svg);
       }
 
-      #titlebar-close {
+      .titlebar-close {
         list-style-image: url(chrome://browser/skin/window-controls/close.svg);
       }
 
       :root[lwtheme-image] .titlebar-button {
         -moz-context-properties: unset;
       }
-      :root[lwtheme-image] #titlebar-min {
+      :root[lwtheme-image] .titlebar-min {
         list-style-image: url(chrome://browser/skin/window-controls/minimize-themes.svg);
       }
-      :root[lwtheme-image] #titlebar-max {
+      :root[lwtheme-image] .titlebar-max {
         list-style-image: url(chrome://browser/skin/window-controls/maximize-themes.svg);
       }
-      :root[lwtheme-image][sizemode="maximized"] #titlebar-max {
+      :root[lwtheme-image][sizemode="maximized"] .titlebar-max {
         list-style-image: url(chrome://browser/skin/window-controls/restore-themes.svg);
       }
-      :root[lwtheme-image] #titlebar-close {
+      :root[lwtheme-image] .titlebar-close {
         list-style-image: url(chrome://browser/skin/window-controls/close-themes.svg);
       }
 
@@ -184,30 +204,30 @@
 
         #main-menubar > menu[_moz-menuactive="true"],
         .titlebar-button:hover {
-          background-color: hsla(0,0%,100%,.22);
-        }
-        .titlebar-button:hover:active {
-          background-color: hsla(0,0%,100%,.32);
-        }
-        #main-menubar > menu[_moz-menuactive="true"]:-moz-lwtheme-darktext,
-        .titlebar-button:-moz-lwtheme-darktext:hover {
           background-color: hsla(0,0%,0%,.12);
         }
-        .titlebar-button:-moz-lwtheme-darktext:hover:active {
+        .titlebar-button:hover:active {
           background-color: hsla(0,0%,0%,.22);
+        }
+
+        #toolbar-menubar[brighttext] > #menubar-items > #main-menubar > menu[_moz-menuactive="true"],
+        toolbar[brighttext] .titlebar-button:not(.titlebar-close):hover {
+          background-color: hsla(0,0%,100%,.22);
+        }
+        toolbar[brighttext] .titlebar-button:not(.titlebar-close):hover:active {
+          background-color: hsla(0,0%,100%,.32);
+        }
+
+        .titlebar-close:hover {
+          stroke: white;
+          background-color: hsl(355,86%,49%);
+        }
+        .titlebar-close:hover:active {
+          background-color: hsl(355,82%,69%);
         }
 
         .titlebar-button:not(:hover) > .toolbarbutton-icon:-moz-window-inactive {
           opacity: 0.5;
-        }
-
-        #titlebar-close:hover {
-          stroke: white;
-          background-color: hsl(355,86%,49%);
-        }
-
-        #titlebar-close:hover:active {
-          background-color: hsl(355,82%,69%);
         }
       }
 
@@ -221,19 +241,19 @@
           stroke: HighlightText;
         }
 
-        #titlebar-min {
+        .titlebar-min {
           list-style-image: url(chrome://browser/skin/window-controls/minimize-highcontrast.svg);
         }
 
-        #titlebar-max {
+        .titlebar-max {
           list-style-image: url(chrome://browser/skin/window-controls/maximize-highcontrast.svg);
         }
 
-        :root[sizemode="maximized"] #titlebar-max {
+        :root[sizemode="maximized"] .titlebar-max {
           list-style-image: url(chrome://browser/skin/window-controls/restore-highcontrast.svg);
         }
 
-        #titlebar-close {
+        .titlebar-close {
           list-style-image: url(chrome://browser/skin/window-controls/close-highcontrast.svg);
         }
       }
@@ -247,7 +267,7 @@
       -moz-appearance: -moz-win-borderless-glass;
     }
 
-    :root[sizemode="maximized"] #titlebar-buttonbox {
+    :root[sizemode="maximized"] .titlebar-buttonbox {
       margin-inline-end: 3px;
     }
 
@@ -272,7 +292,7 @@
     }
   }
 
-  :root[darkwindowframe="true"] .titlebar-color:not(:-moz-window-inactive):not(:-moz-lwtheme) {
+  :root[darkwindowframe="true"]:not(:-moz-window-inactive):not(:-moz-lwtheme) {
     color: white;
   }
 
@@ -344,10 +364,10 @@
 /* Aero Basic */
 @media (-moz-windows-compositor: 0) {
   @media (-moz-windows-default-theme) {
-    #main-window {
+    :root {
       background-color: rgb(185,209,234);
     }
-    #main-window:-moz-window-inactive {
+    :root:-moz-window-inactive {
       background-color: rgb(215,228,242);
     }
 

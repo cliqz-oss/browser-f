@@ -8,14 +8,16 @@ import re
 
 from fluent.syntax import FluentParser as FTLParser
 from fluent.syntax import ast as ftl
+from fluent.syntax.serializer import serialize_comment
 from .base import (
     CAN_SKIP,
-    EntityBase, Entity, Comment, Junk, Whitespace,
+    Entry, Entity, Comment, Junk, Whitespace,
+    LiteralEntity,
     Parser
 )
 
 
-class FluentAttribute(EntityBase):
+class FluentAttribute(Entry):
     ignored_fields = ['span']
 
     def __init__(self, entity, attr_node):
@@ -42,7 +44,13 @@ class FluentEntity(Entity):
         self.ctx = ctx
         self.span = (start, end)
 
-        self.key_span = (entry.id.span.start, entry.id.span.end)
+        if isinstance(entry, ftl.Term):
+            # Terms don't have their '-' as part of the id, use the prior
+            # character
+            self.key_span = (entry.id.span.start - 1, entry.id.span.end)
+        else:
+            # Message
+            self.key_span = (entry.id.span.start, entry.id.span.end)
 
         if entry.value is not None:
             self.val_span = (entry.value.span.start, entry.value.span.end)
@@ -51,7 +59,7 @@ class FluentEntity(Entity):
 
         self.entry = entry
 
-        # EntityBase instances are expected to have pre_comment. It's used by
+        # Entry instances are expected to have pre_comment. It's used by
         # other formats to associate a Comment with an Entity. FluentEntities
         # don't need it because message comments are part of the entry AST and
         # are not separate Comment instances.
@@ -93,6 +101,21 @@ class FluentEntity(Entity):
     def attributes(self):
         for attr_node in self.entry.attributes:
             yield FluentAttribute(self, attr_node)
+
+    def unwrap(self):
+        return self.all
+
+    def wrap(self, raw_val):
+        """Create literal entity the given raw value.
+
+        For Fluent, we're exposing the message source to tools like
+        Pontoon.
+        We also recreate the comment from this entity to the created entity.
+        """
+        all = raw_val
+        if self.entry.comment is not None:
+            all = serialize_comment(self.entry.comment) + all
+        return LiteralEntity(self.key, raw_val, all)
 
 
 class FluentMessage(FluentEntity):
@@ -150,10 +173,18 @@ class FluentParser(Parser):
                 end = entry.span.end
                 # strip leading whitespace
                 start += re.match('[ \t\r\n]*', entry.content).end()
+                if not only_localizable and entry.span.start < start:
+                    yield Whitespace(
+                        self.ctx, (entry.span.start, start)
+                    )
                 # strip trailing whitespace
                 ws, we = re.search('[ \t\r\n]*$', entry.content).span()
                 end -= we - ws
                 yield Junk(self.ctx, (start, end))
+                if not only_localizable and end < entry.span.end:
+                    yield Whitespace(
+                        self.ctx, (end, entry.span.end)
+                    )
             elif isinstance(entry, ftl.BaseComment) and not only_localizable:
                 span = (entry.span.start, entry.span.end)
                 yield FluentComment(self.ctx, span, entry)

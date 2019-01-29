@@ -8,6 +8,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   PlacesTestUtils: "resource://testing-common/PlacesTestUtils.jsm",
   Preferences: "resource://gre/modules/Preferences.jsm",
   SearchTestUtils: "resource://testing-common/SearchTestUtils.jsm",
+  UrlbarTokenizer: "resource:///modules/UrlbarTokenizer.jsm",
 });
 
 SearchTestUtils.init(Assert, registerCleanupFunction);

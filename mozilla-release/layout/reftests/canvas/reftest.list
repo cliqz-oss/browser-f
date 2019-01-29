@@ -4,6 +4,9 @@ fuzzy-if(Android,0-8,0-1000) == size-1.html size-1-ref.html
 == empty-transaction-1.html empty-transaction-1-ref.html
 
 == image-rendering-test.html image-rendering-ref.html
+== image-rendering-script.html image-rendering-ref.html
+!= image-rendering-auto.html image-rendering-script.html
+
 == image-shadow.html image-shadow-ref.html
 
 asserts-if(cocoaWidget,0-2) == size-change-1.html size-change-1-ref.html
@@ -74,10 +77,10 @@ fuzzy-if(/^Windows\x20NT\x2010\.0/.test(http.oscpu)||azureSkia||skiaContent,0-9,
 
 == ctm-sanity.html data:text/html,<body>Pass
 == ctm-singular-sanity.html data:text/html,<body>Pass
-== ctm-1.html ctm-1-ref.html
+fuzzy-if(/^Windows\x20NT\x2010\.0/.test(http.oscpu),0-1,0-45) == ctm-1.html ctm-1-ref.html
 
 == 672646-alpha-radial-gradient.html 672646-alpha-radial-gradient-ref.html
-skip-if(verify&&/^Windows\x20NT\x2010\.0/.test(http.oscpu)) == 674003-alpha-radial-gradient-superlum.html 674003-alpha-radial-gradient-superlum-ref.html
+skip-if(verify&&/^Windows\x20NT\x2010\.0/.test(http.oscpu)) fuzzy-if(/^Windows\x20NT\x2010\.0/.test(http.oscpu),0-1,0-45) == 674003-alpha-radial-gradient-superlum.html 674003-alpha-radial-gradient-superlum-ref.html
 
 != 693610-1.html 693610-1-notref.html # bug 693610: multiple glyph runs should not be overprinted
 

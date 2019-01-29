@@ -1,19 +1,19 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! https://html.spec.whatwg.org/multipage/#source-size-list
 
 use app_units::Au;
-use cssparser::{Delimiter, Parser, Token};
 #[cfg(feature = "gecko")]
-use gecko_bindings::sugar::ownership::{HasBoxFFI, HasFFI, HasSimpleFFI};
-use media_queries::{Device, MediaCondition};
-use parser::{Parse, ParserContext};
+use crate::gecko_bindings::sugar::ownership::{HasBoxFFI, HasFFI, HasSimpleFFI};
+use crate::media_queries::{Device, MediaCondition};
+use crate::parser::{Parse, ParserContext};
+use crate::values::computed::{self, ToComputedValue};
+use crate::values::specified::{Length, NoCalcLength, ViewportPercentageLength};
+use cssparser::{Delimiter, Parser, Token};
 use selectors::context::QuirksMode;
 use style_traits::ParseError;
-use values::computed::{self, ToComputedValue};
-use values::specified::{Length, NoCalcLength, ViewportPercentageLength};
 
 /// A value for a `<source-size>`:
 ///
@@ -73,10 +73,12 @@ impl SourceSizeList {
                     Some(ref v) => v.to_computed_value(context),
                     None => Length::NoCalc(NoCalcLength::ViewportPercentage(
                         ViewportPercentageLength::Vw(100.),
-                    )).to_computed_value(context),
+                    ))
+                    .to_computed_value(context),
                 },
             }
-        }).into()
+        })
+        .into()
     }
 }
 
@@ -140,7 +142,7 @@ impl SourceSizeList {
 
 #[cfg(feature = "gecko")]
 unsafe impl HasFFI for SourceSizeList {
-    type FFIType = ::gecko_bindings::structs::RawServoSourceSizeList;
+    type FFIType = crate::gecko_bindings::structs::RawServoSourceSizeList;
 }
 #[cfg(feature = "gecko")]
 unsafe impl HasSimpleFFI for SourceSizeList {}

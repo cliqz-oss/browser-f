@@ -25,7 +25,7 @@ const MessageIcon =
 const MessageRepeat =
   require("devtools/client/webconsole/components/MessageRepeat");
 const FrameView = createFactory(require("devtools/client/shared/components/Frame"));
-const StackTrace = createFactory(require("devtools/client/shared/components/StackTrace"));
+const SmartTrace = createFactory(require("devtools/client/shared/components/SmartTrace"));
 
 class Message extends Component {
   static get propTypes() {
@@ -44,7 +44,12 @@ class Message extends Component {
       attachment: PropTypes.any,
       stacktrace: PropTypes.any,
       messageId: PropTypes.string,
-      executionPoint: PropTypes.string,
+      executionPoint: PropTypes.shape({
+        progress: PropTypes.number,
+      }),
+      pausedExecutionPoint: PropTypes.shape({
+        progress: PropTypes.number,
+      }),
       scrollToMessage: PropTypes.bool,
       exceptionDocURL: PropTypes.string,
       request: PropTypes.object,
@@ -65,6 +70,7 @@ class Message extends Component {
         frame: PropTypes.any,
       })),
       isPaused: PropTypes.bool,
+      maybeScrollToBottom: PropTypes.func,
     };
   }
 
@@ -79,6 +85,7 @@ class Message extends Component {
     this.onLearnMoreClick = this.onLearnMoreClick.bind(this);
     this.toggleMessage = this.toggleMessage.bind(this);
     this.onContextMenu = this.onContextMenu.bind(this);
+    this.onMouseEvent = this.onMouseEvent.bind(this);
     this.renderIcon = this.renderIcon.bind(this);
   }
 
@@ -122,12 +129,19 @@ class Message extends Component {
     e.preventDefault();
   }
 
+  onMouseEvent(ev) {
+    const {messageId, serviceContainer, executionPoint} = this.props;
+    if (serviceContainer.canRewind() && executionPoint) {
+      serviceContainer.onMessageHover(ev.type, messageId);
+    }
+  }
+
   renderIcon() {
     const { level, messageId, executionPoint, serviceContainer } = this.props;
 
     return MessageIcon({
       level,
-      onRewindClick: serviceContainer.canRewind()
+      onRewindClick: (serviceContainer.canRewind() && executionPoint)
         ? () => serviceContainer.jumpToExecutionPoint(executionPoint, messageId)
         : null,
     });
@@ -151,12 +165,25 @@ class Message extends Component {
       exceptionDocURL,
       timeStamp = Date.now(),
       timestampsVisible,
+      executionPoint,
+      pausedExecutionPoint,
+      messageId,
       notes,
     } = this.props;
 
-    topLevelClasses.push("message", source, type, level, isPaused ? "paused" : "");
+    topLevelClasses.push("message", source, type, level);
     if (open) {
       topLevelClasses.push("open");
+    }
+
+    if (isPaused) {
+      topLevelClasses.push("paused");
+
+      if (pausedExecutionPoint
+        && executionPoint
+        && pausedExecutionPoint.progress < executionPoint.progress) {
+        topLevelClasses.push("paused-before");
+      }
     }
 
     let timestampEl;
@@ -177,14 +204,16 @@ class Message extends Component {
         {
           className: "stacktrace devtools-monospace",
         },
-        StackTrace({
-          stacktrace: stacktrace,
+        SmartTrace({
+          stacktrace,
           onViewSourceInDebugger: serviceContainer.onViewSourceInDebugger
             || serviceContainer.onViewSource,
           onViewSourceInScratchpad: serviceContainer.onViewSourceInScratchpad
             || serviceContainer.onViewSource,
+          onViewSource: serviceContainer.onViewSource,
+          onReady: this.props.maybeScrollToBottom,
           sourceMapService: serviceContainer.sourceMapService,
-        })
+        }),
       );
     }
 
@@ -262,12 +291,18 @@ class Message extends Component {
 
     const bodyElements = Array.isArray(messageBody) ? messageBody : [messageBody];
 
+    const mouseEvents = serviceContainer.canRewind() && executionPoint
+      ? { onMouseEnter: this.onMouseEvent, onMouseLeave: this.onMouseEvent }
+      : {};
+
     return dom.div({
       className: topLevelClasses.join(" "),
       onContextMenu: this.onContextMenu,
+      ...mouseEvents,
       ref: node => {
         this.messageNode = node;
       },
+      "data-message-id": messageId,
       "aria-live": type === MESSAGE_TYPE.COMMAND ? "off" : "polite",
     },
       timestampEl,

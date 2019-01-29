@@ -4,7 +4,7 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/.
  *
  * The origin of this IDL file is
- * http://www.w3.org/TR/hr-time/
+ * https://w3c.github.io/navigation-timing/#the-performancetiming-interface
  *
  * Copyright © 2012 W3C® (MIT, ERCIM, Keio), All Rights Reserved. W3C
  * liability, trademark and document use rules apply.
@@ -38,6 +38,10 @@ interface PerformanceTiming {
   // Returns 0 if a non-blank paint has not happened.
   [Pref="dom.performance.time_to_non_blank_paint.enabled"]
   readonly attribute unsigned long long timeToNonBlankPaint;
+
+  // Returns 0 if a contentful paint has not happened.
+  [Pref="dom.performance.time_to_contentful_paint.enabled"]
+  readonly attribute unsigned long long timeToContentfulPaint;
 
   // This is a Mozilla proprietary extension and not part of the
   // performance/navigation timing specification. It marks the

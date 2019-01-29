@@ -1,17 +1,17 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Generic types for counters-related CSS values.
 
 #[cfg(feature = "servo")]
-use computed_values::list_style_type::T as ListStyleType;
+use crate::computed_values::list_style_type::T as ListStyleType;
+#[cfg(feature = "gecko")]
+use crate::values::generics::CounterStyleOrNone;
+#[cfg(feature = "gecko")]
+use crate::values::specified::Attr;
+use crate::values::CustomIdent;
 use std::ops::Deref;
-use values::CustomIdent;
-#[cfg(feature = "gecko")]
-use values::generics::CounterStyleOrNone;
-#[cfg(feature = "gecko")]
-use values::specified::Attr;
 
 /// A name / value pair for counters.
 #[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToComputedValue, ToCss)]

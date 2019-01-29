@@ -56,9 +56,6 @@ from ..compilation.warnings import (
 from ..shellutil import (
     quote as shell_quote,
 )
-from ..telemetry import (
-    gather_telemetry,
-)
 from ..util import (
     FileAvoidWrite,
     mkdir,
@@ -770,7 +767,8 @@ class CCacheStats(object):
     STATS_KEYS = [
         # (key, description)
         # Refer to stats.c in ccache project for all the descriptions.
-        ('stats_zero_time', 'stats zero time'),
+        ('stats_zeroed', 'stats zero time'), # Old name prior to ccache 3.4
+        ('stats_zeroed', 'stats zeroed'),
         ('stats_updated', 'stats updated'),
         ('cache_hit_direct', 'cache hit (direct)'),
         ('cache_hit_preprocessed', 'cache hit (preprocessed)'),
@@ -994,8 +992,10 @@ class BuildDriver(MozbuildObject):
 
             def build_out_of_date(output, dep_file):
                 if not os.path.isfile(output):
+                    print(" Output reference file not found: %s" % output)
                     return True
                 if not os.path.isfile(dep_file):
+                    print(" Configure dependency file not found: %s" % dep_file)
                     return True
 
                 deps = []
@@ -1008,9 +1008,11 @@ class BuildDriver(MozbuildObject):
                         dep_mtime = os.path.getmtime(f)
                     except OSError as e:
                         if e.errno == errno.ENOENT:
+                            print(" Configure input not found: %s" % f)
                             return True
                         raise
                     if dep_mtime > mtime:
+                        print(" %s is out of date with respect to %s" % (output, f))
                         return True
                 return False
 
@@ -1060,6 +1062,9 @@ class BuildDriver(MozbuildObject):
                                                                 'config_status_deps.in')):
                 if previous_backend and 'Make' not in previous_backend:
                     clobber_requested = self._clobber_configure()
+
+                if config is None:
+                    print(" Config object not found by mach.")
 
                 config_rc = self.configure(buildstatus_messages=True,
                                            line_handler=output.on_line)
@@ -1284,10 +1289,6 @@ class BuildDriver(MozbuildObject):
             # Display a notification when the build completes.
             self.notify('Build complete' if not status else 'Build failed')
 
-        gather_telemetry(command='build', success=(status == 0), monitor=monitor,
-                         mach_context=mach_context, substs=self.substs,
-                         paths=[self.topsrcdir, self.topobjdir])
-
         if status:
             return status
 
@@ -1330,6 +1331,7 @@ class BuildDriver(MozbuildObject):
         # Disable indexing in objdir because it is not necessary and can slow
         # down builds.
         mkdir(self.topobjdir, not_indexed=True)
+        self._write_mozconfig_json()
 
         def on_line(line):
             self.log(logging.INFO, 'build_output', {'line': line}, '{line}')

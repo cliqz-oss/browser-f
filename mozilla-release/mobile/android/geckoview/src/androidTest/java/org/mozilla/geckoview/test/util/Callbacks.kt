@@ -9,7 +9,10 @@ import org.mozilla.geckoview.AllowOrDeny
 import org.mozilla.geckoview.GeckoResponse
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.GeckoSession.ContentDelegate.ContextElement
 import org.mozilla.geckoview.GeckoSession.NavigationDelegate.LoadRequest
+import org.mozilla.geckoview.MediaElement
+import org.mozilla.geckoview.WebRequestError
 
 import android.view.inputmethod.CursorAnchorInfo
 import android.view.inputmethod.ExtractedText
@@ -18,9 +21,10 @@ import android.view.inputmethod.ExtractedTextRequest
 class Callbacks private constructor() {
     object Default : All
 
-    interface All : ContentDelegate, NavigationDelegate, PermissionDelegate, ProgressDelegate,
-                    PromptDelegate, ScrollDelegate, SelectionActionDelegate, TextInputDelegate,
-                    TrackingProtectionDelegate
+    interface All : ContentDelegate, HistoryDelegate, MediaDelegate,
+                    NavigationDelegate, PermissionDelegate, ProgressDelegate,
+                    PromptDelegate, ScrollDelegate, SelectionActionDelegate,
+                    TextInputDelegate, TrackingProtectionDelegate
 
     interface ContentDelegate : GeckoSession.ContentDelegate {
         override fun onTitleChange(session: GeckoSession, title: String) {
@@ -35,13 +39,18 @@ class Callbacks private constructor() {
         override fun onFullScreen(session: GeckoSession, fullScreen: Boolean) {
         }
 
-        override fun onContextMenu(session: GeckoSession, screenX: Int, screenY: Int, uri: String, elementType: Int, elementSrc: String) {
+        override fun onContextMenu(session: GeckoSession,
+                                   screenX: Int, screenY: Int,
+                                   element: ContextElement) {
         }
 
         override fun onExternalResponse(session: GeckoSession, response: GeckoSession.WebResponseInfo) {
         }
 
         override fun onCrash(session: GeckoSession) {
+        }
+
+        override fun onFirstComposite(session: GeckoSession) {
         }
     }
 
@@ -65,7 +74,7 @@ class Callbacks private constructor() {
         }
 
         override fun onLoadError(session: GeckoSession, uri: String?,
-                                 category: Int, error: Int): GeckoResult<String>? {
+                                 error: WebRequestError): GeckoResult<String>? {
             return null
         }
     }
@@ -75,7 +84,7 @@ class Callbacks private constructor() {
             callback.reject()
         }
 
-        override fun onContentPermissionRequest(session: GeckoSession, uri: String, type: Int, access: String?, callback: GeckoSession.PermissionDelegate.Callback) {
+        override fun onContentPermissionRequest(session: GeckoSession, uri: String, type: Int, callback: GeckoSession.PermissionDelegate.Callback) {
             callback.reject()
         }
 
@@ -174,6 +183,26 @@ class Callbacks private constructor() {
         }
 
         override fun notifyAutoFill(session: GeckoSession, notification: Int, virtualId: Int) {
+        }
+    }
+
+    interface MediaDelegate: GeckoSession.MediaDelegate {
+        override fun onMediaAdd(session: GeckoSession, element: MediaElement) {
+        }
+
+        override fun onMediaRemove(session: GeckoSession, element: MediaElement) {
+        }
+    }
+
+    interface HistoryDelegate : GeckoSession.HistoryDelegate {
+        override fun onVisited(session: GeckoSession, url: String, lastVisitedURL: String?,
+                               flags: Int): GeckoResult<Boolean>? {
+            return null
+        }
+
+        override fun getVisited(session: GeckoSession,
+                                urls: Array<out String>): GeckoResult<BooleanArray>? {
+            return null
         }
     }
 }

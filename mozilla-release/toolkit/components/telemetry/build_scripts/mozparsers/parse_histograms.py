@@ -36,6 +36,7 @@ ALWAYS_ALLOWED_KEYS = [
     'bug_numbers',
     'keys',
     'record_in_processes',
+    'record_into_store',
     'products',
 ]
 
@@ -132,6 +133,7 @@ definition is a dict-like object that must contain at least the keys:
         self._is_use_counter = name.startswith("USE_COUNTER2_")
         if self._is_use_counter:
             definition.setdefault('record_in_processes', ['main', 'content'])
+            definition.setdefault('releaseChannelCollection', 'opt-out')
         self.verify_attributes(name, definition)
         self._name = name
         self._description = definition['description']
@@ -141,6 +143,7 @@ definition is a dict-like object that must contain at least the keys:
         self._expiration = definition.get('expires_in_version')
         self._labels = definition.get('labels', [])
         self._record_in_processes = definition.get('record_in_processes')
+        self._record_into_store = definition.get('record_into_store', ['main'])
         self._products = definition.get('products', ["all"])
         self._operating_systems = definition.get('operating_systems', ["all"])
 
@@ -232,6 +235,10 @@ the histogram."""
 
         return canonical_os in os
 
+    def record_into_store(self):
+        """Get the non-empty list of stores to record into"""
+        return self._record_into_store
+
     def ranges(self):
         """Return an array of lower bounds for each bucket in the histogram."""
         bucket_fns = {
@@ -303,6 +310,7 @@ the histogram."""
         self.check_record_in_processes(name, definition)
         self.check_products(name, definition)
         self.check_operating_systems(name, definition)
+        self.check_record_into_store(name, definition)
 
     def check_name(self, name):
         if '#' in name:
@@ -415,7 +423,7 @@ the histogram."""
         field = 'operating_systems'
         operating_systems = definition.get(field)
 
-        DOC_URL = HISTOGRAMS_DOC_URL + "#operating_systems"
+        DOC_URL = HISTOGRAMS_DOC_URL + "#operating-systems"
 
         if not operating_systems:
             # operating_systems is optional
@@ -425,6 +433,23 @@ the histogram."""
             if not utils.is_valid_os(operating_system):
                 ParserError('Histogram "%s" has unknown operating system "%s" in %s.\n%s' %
                             (name, operating_system, field, DOC_URL)).handle_later()
+
+    def check_record_into_store(self, name, definition):
+        if not self._strict_type_checks:
+            return
+
+        field = 'record_into_store'
+        DOC_URL = HISTOGRAMS_DOC_URL + "#record-into-store"
+
+        if field not in definition:
+            # record_into_store is optional
+            return
+
+        record_into_store = definition.get(field)
+        # record_into_store should not be empty
+        if not record_into_store:
+            ParserError('Histogram "%s" has empty list of stores, which is not allowed.\n%s' %
+                        (name, DOC_URL)).handle_later()
 
     def check_keys_field(self, name, definition):
         keys = definition.get('keys')
@@ -512,6 +537,7 @@ the histogram."""
             "keys": basestring,
             "products": basestring,
             "operating_systems": basestring,
+            "record_into_store": basestring,
         }
 
         # For the server-side, where _strict_type_checks==False, we want to

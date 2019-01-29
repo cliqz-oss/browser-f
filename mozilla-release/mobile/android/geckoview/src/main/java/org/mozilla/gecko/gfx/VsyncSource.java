@@ -7,9 +7,8 @@ package org.mozilla.gecko.gfx;
 
 import android.content.Context;
 import android.hardware.display.DisplayManager;
-import android.os.HandlerThread;
-import android.os.Process;
-import android.util.Log;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Choreographer;
 import android.view.Display;
 import org.mozilla.gecko.annotation.WrapForJNI;
@@ -28,25 +27,16 @@ import org.mozilla.gecko.GeckoAppShell;
     private volatile boolean mObservingVsync;
 
     private VsyncSource() {
-        final Thread thread = new HandlerThread(LOGTAG, Process.THREAD_PRIORITY_DISPLAY) {
+        Handler mainHandler = new Handler(Looper.getMainLooper());
+        mainHandler.post(new Runnable() {
             @Override
-            protected synchronized void onLooperPrepared() {
+            public void run() {
                 mChoreographer = Choreographer.getInstance();
-                notifyAll();
-            }
-        };
-
-        synchronized (thread) {
-            thread.start();
-
-            while (mChoreographer == null) {
-                try {
-                    thread.wait();
-                } catch (final InterruptedException e) {
-                    // Ignore
+                if (mObservingVsync) {
+                    mChoreographer.postFrameCallback(VsyncSource.this);
                 }
             }
-        }
+        });
     }
 
     @WrapForJNI(stubName = "NotifyVsync")
@@ -69,10 +59,13 @@ import org.mozilla.gecko.GeckoAppShell;
     public synchronized boolean observeVsync(boolean enable) {
         if (mObservingVsync != enable) {
             mObservingVsync = enable;
-            if (enable) {
-                mChoreographer.postFrameCallback(this);
-            } else {
-                mChoreographer.removeFrameCallback(this);
+
+            if (mChoreographer != null) {
+                if (enable) {
+                    mChoreographer.postFrameCallback(this);
+                } else {
+                    mChoreographer.removeFrameCallback(this);
+                }
             }
         }
         return mObservingVsync;

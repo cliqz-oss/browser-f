@@ -11,7 +11,6 @@ import os
 import posixpath
 import sys
 import traceback
-import subprocess
 from collections import namedtuple
 from datetime import datetime
 
@@ -21,7 +20,7 @@ else:
     from tasks_win import run_all_tests
 
 from progressbar import ProgressBar, NullProgressBar
-from results import TestOutput
+from results import TestOutput, escape_cmdline
 from structuredlog import TestLogger
 
 TESTS_LIB_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -372,8 +371,8 @@ class JitTest:
             cmd += ['-f', libdir + inc]
         if self.skip_if_cond:
             cmd += ['-e', "if ({}) quit({})".format(self.skip_if_cond, self.SKIPPED_EXIT_STATUS)]
+        cmd += ['--module-load-path', moduledir]
         if self.is_module:
-            cmd += ['--module-load-path', moduledir]
             cmd += ['--module', path]
         elif self.is_binast:
             # In builds with BinAST, this will run the test file. In builds without,
@@ -429,7 +428,7 @@ def run_test_remote(test, device, prefix, options):
                        posixpath.join(options.remote_test_root, 'modules/'),
                        posixpath.join(options.remote_test_root, 'tests'))
     if options.show_cmd:
-        print(subprocess.list2cmdline(cmd))
+        print(escape_cmdline(cmd))
 
     env = {}
     if test.tz_pacific:
@@ -511,6 +510,11 @@ def check_output(out, err, rc, timed_out, test, options):
         # value to 1. As a work-around we look for the error output which
         # includes the crash reason.
         if rc == 1 and ("Hit MOZ_CRASH" in err or "Assertion failure:" in err):
+            return True
+
+        # When running jittests on Android, SEGV results in a return code
+        # of 128+11=139.
+        if rc == 139:
             return True
 
     if rc != test.expect_status:
@@ -615,7 +619,7 @@ def print_test_summary(num_tests, failures, complete, doing, options):
 
         def show_test(res):
             if options.show_failed:
-                print('    ' + subprocess.list2cmdline(res.cmd))
+                print('    ' + escape_cmdline(res.cmd))
             else:
                 print('    ' + ' '.join(res.test.jitflags + [res.test.relpath_tests]))
 

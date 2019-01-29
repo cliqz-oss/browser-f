@@ -139,6 +139,7 @@ ARCHIVE_FILES = {
             'base': '',
             'manifests': [
                 'testing/marionette/harness/marionette_harness/tests/unit-tests.ini',
+                'gfx/tests/marionette/manifest.ini',
             ],
             # We also need the manifests and harness_unit tests
             'pattern': 'testing/marionette/harness/marionette_harness/tests/**',
@@ -162,6 +163,12 @@ ARCHIVE_FILES = {
             'base': '',
             'pattern': 'testing/firefox-ui/tests',
             'dest': 'firefox-ui/tests',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'toolkit/components/telemetry/tests/marionette',
+            'pattern': '/**',
+            'dest': 'telemetry/marionette',
         },
         {
             'source': buildconfig.topsrcdir,
@@ -538,6 +545,12 @@ ARCHIVE_FILES = {
             'base': 'build',
             'pattern': 'automation.py',
             'dest': 'xpcshell',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'testing/profiles',
+            'pattern': '**',
+            'dest': 'xpcshell/profile_data',
         },
     ],
     'updater-dep': [

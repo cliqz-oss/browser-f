@@ -35,8 +35,6 @@ loader.lazyRequireGetter(this, "ExtensionSidebar", "devtools/client/inspector/ex
 loader.lazyRequireGetter(this, "clipboardHelper", "devtools/shared/platform/clipboard");
 loader.lazyRequireGetter(this, "openContentLink", "devtools/client/shared/link", true);
 loader.lazyRequireGetter(this, "saveScreenshot", "devtools/shared/screenshot/save");
-loader.lazyRequireGetter(this, "ChangesManager",
-"devtools/client/inspector/changes/ChangesManager");
 
 loader.lazyImporter(this, "DeferredTask", "resource://gre/modules/DeferredTask.jsm");
 
@@ -65,7 +63,7 @@ const THREE_PANE_ENABLED_PREF = "devtools.inspector.three-pane-enabled";
 const THREE_PANE_ENABLED_SCALAR = "devtools.inspector.three_pane_enabled";
 const THREE_PANE_CHROME_ENABLED_PREF = "devtools.inspector.chrome.three-pane-enabled";
 const TELEMETRY_EYEDROPPER_OPENED = "devtools.toolbar.eyedropper.opened";
-const TRACK_CHANGES_ENABLED = "devtools.inspector.changes.enabled";
+const TRACK_CHANGES_PREF = "devtools.inspector.changes.enabled";
 
 /**
  * Represents an open instance of the Inspector for a tab.
@@ -122,9 +120,6 @@ function Inspector(toolbox) {
 
   this.reflowTracker = new ReflowTracker(this._target);
   this.styleChangeTracker = new InspectorStyleChangeTracker(this);
-  if (Services.prefs.getBoolPref(TRACK_CHANGES_ENABLED)) {
-    this.changesManager = new ChangesManager(this);
-  }
 
   // Store the URL of the target page prior to navigation in order to ensure
   // telemetry counts in the Grid Inspector are not double counted on reload.
@@ -168,7 +163,8 @@ Inspector.prototype = {
     await Promise.all([
       this._getCssProperties(),
       this._getPageStyle(),
-      this._getDefaultSelection()
+      this._getDefaultSelection(),
+      this._getAccessibilityFront(),
     ]);
 
     return this._deferredOpen();
@@ -200,6 +196,10 @@ Inspector.prototype = {
     }
 
     return this._highlighters;
+  },
+
+  get isHighlighterReady() {
+    return !!this._highlighters;
   },
 
   get is3PaneModeEnabled() {
@@ -251,6 +251,17 @@ Inspector.prototype = {
   },
 
   /**
+   * Check if the changes panel is enabled and supported by the server.
+   */
+  _supportsChangesPanel() {
+    // The changes actor was introduced in Fx65, we are checking this for backward
+    // compatibility when connecting to an older server. Can be removed once Fx65 hit the
+    // release channel.
+    return this._target.hasActor("changes") &&
+      Services.prefs.getBoolPref(TRACK_CHANGES_PREF);
+  },
+
+  /**
    * Handle promise rejections for various asynchronous actions, and only log errors if
    * the inspector panel still exists.
    * This is useful to silence useless errors that happen when the inspector is closed
@@ -270,6 +281,14 @@ Inspector.prototype = {
     // nodeFront ready when they're initialized.
     if (this._defaultNode) {
       this.selection.setNodeFront(this._defaultNode, { reason: "inspector-open" });
+    }
+
+    if (this._supportsChangesPanel()) {
+      // Get the Changes front, then call a method on it, which will instantiate
+      // the ChangesActor. We want the ChangesActor to be guaranteed available before
+      // the user makes any changes.
+      this.changesFront = await this.toolbox.target.getFront("changes");
+      this.changesFront.start();
     }
 
     // Setup the splitter before the sidebar is displayed so, we don't miss any events.
@@ -327,6 +346,11 @@ Inspector.prototype = {
     return initCssProperties(this.toolbox).then(cssProperties => {
       this._cssProperties = cssProperties;
     }, this._handleRejectionIfNotDestroyed);
+  },
+
+  _getAccessibilityFront: async function() {
+    this.accessibilityFront = await this.target.getFront("accessibility");
+    return this.accessibilityFront;
   },
 
   _getDefaultSelection: function() {
@@ -563,7 +587,7 @@ Inspector.prototype = {
       splitterSize: 1,
       endPanelControl: true,
       startPanel: this.InspectorTabPanel({
-        id: "inspector-main-content"
+        id: "inspector-main-content",
       }),
       endPanel: this.InspectorSplitBox({
         initialWidth: splitSidebarWidth,
@@ -572,10 +596,10 @@ Inspector.prototype = {
         splitterSize: this.is3PaneModeEnabled ? 1 : 0,
         endPanelControl: this.is3PaneModeEnabled,
         startPanel: this.InspectorTabPanel({
-          id: "inspector-rules-container"
+          id: "inspector-rules-container",
         }),
         endPanel: this.InspectorTabPanel({
-          id: "inspector-sidebar-container"
+          id: "inspector-sidebar-container",
         }),
         ref: splitbox => {
           this.sidebarSplitBox = splitbox;
@@ -823,16 +847,13 @@ Inspector.prototype = {
     if (this._panels.has(id)) {
       return this._panels.get(id);
     }
+
     let panel;
     switch (id) {
-      case "computedview":
-        const {ComputedViewTool} =
-          this.browserRequire("devtools/client/inspector/computed/computed");
-        panel = new ComputedViewTool(this, this.panelWin);
-        break;
-      case "ruleview":
-        const {RuleViewTool} = require("devtools/client/inspector/rules/rules");
-        panel = new RuleViewTool(this, this.panelWin);
+      case "animationinspector":
+        const AnimationInspector =
+          this.browserRequire("devtools/client/inspector/animation/animation");
+        panel = new AnimationInspector(this, this.panelWin);
         break;
       case "boxmodel":
         // box-model isn't a panel on its own, it used to, now it is being used by
@@ -840,11 +861,39 @@ Inspector.prototype = {
         const BoxModel = require("devtools/client/inspector/boxmodel/box-model");
         panel = new BoxModel(this, this.panelWin);
         break;
+      case "changesview":
+        const ChangesView =
+          this.browserRequire("devtools/client/inspector/changes/ChangesView");
+        panel = new ChangesView(this, this.panelWin);
+        break;
+      case "computedview":
+        const {ComputedViewTool} =
+          this.browserRequire("devtools/client/inspector/computed/computed");
+        panel = new ComputedViewTool(this, this.panelWin);
+        break;
+      case "fontinspector":
+        const FontInspector =
+          this.browserRequire("devtools/client/inspector/fonts/fonts");
+        panel = new FontInspector(this, this.panelWin);
+        break;
+      case "layoutview":
+        const LayoutView =
+          this.browserRequire("devtools/client/inspector/layout/layout");
+        panel = new LayoutView(this, this.panelWin);
+        break;
+      case "ruleview":
+        const {RuleViewTool} = require("devtools/client/inspector/rules/rules");
+        panel = new RuleViewTool(this, this.panelWin);
+        break;
       default:
         // This is a custom panel or a non lazy-loaded one.
         return null;
     }
-    this._panels.set(id, panel);
+
+    if (panel) {
+      this._panels.set(id, panel);
+    }
+
     return panel;
   },
 
@@ -860,7 +909,7 @@ Inspector.prototype = {
         collapsePaneTitle: INSPECTOR_L10N.getStr("inspector.hideThreePaneMode"),
         expandPaneTitle: INSPECTOR_L10N.getStr("inspector.showThreePaneMode"),
         onClick: this.onSidebarToggle,
-      }
+      },
     };
 
     this.sidebar = new ToolSidebar(sidebar, this, "inspector", options);
@@ -868,7 +917,7 @@ Inspector.prototype = {
 
     const ruleSideBar = this.panelDoc.getElementById("inspector-rules-sidebar");
     this.ruleViewSideBar = new ToolSidebar(ruleSideBar, this, "inspector", {
-      hideTabstripe: true
+      hideTabstripe: true,
     });
 
     // defaultTab may also be an empty string or a tab id that doesn't exist anymore
@@ -883,103 +932,55 @@ Inspector.prototype = {
 
     await this.addRuleView({ defaultTab });
 
-    // Inject a lazy loaded react tab by exposing a fake React object
-    // with a lazy defined Tab thanks to `panel` being a function
-    const layoutId = "layoutview";
-    const layoutTitle = INSPECTOR_L10N.getStr("inspector.sidebar.layoutViewTitle2");
-    this.sidebar.queueTab(
-      layoutId,
-      layoutTitle,
+    // Inspector sidebar panels in order of appearance.
+    const sidebarPanels = [
       {
-        props: {
-          id: layoutId,
-          title: layoutTitle
-        },
-        panel: () => {
-          if (!this.layoutview) {
-            const LayoutView =
-              this.browserRequire("devtools/client/inspector/layout/layout");
-            this.layoutview = new LayoutView(this, this.panelWin);
-          }
-
-          return this.layoutview.provider;
-        }
+        id: "layoutview",
+        title: INSPECTOR_L10N.getStr("inspector.sidebar.layoutViewTitle2"),
       },
-      defaultTab == layoutId);
-
-    this.sidebar.queueExistingTab(
-      "computedview",
-      INSPECTOR_L10N.getStr("inspector.sidebar.computedViewTitle"),
-      defaultTab == "computedview");
-
-    const animationId = "animationinspector";
-    const animationTitle =
-      INSPECTOR_L10N.getStr("inspector.sidebar.animationInspectorTitle");
-    this.sidebar.queueTab(
-      animationId,
-      animationTitle,
       {
-        props: {
-          id: animationId,
-          title: animationTitle
-        },
-        panel: () => {
-          const AnimationInspector =
-            this.browserRequire("devtools/client/inspector/animation/animation");
-          this.animationinspector = new AnimationInspector(this, this.panelWin);
-          return this.animationinspector.provider;
-        }
+        id: "computedview",
+        title: INSPECTOR_L10N.getStr("inspector.sidebar.computedViewTitle"),
       },
-      defaultTab == animationId);
-
-    // Inject a lazy loaded react tab by exposing a fake React object
-    // with a lazy defined Tab thanks to `panel` being a function
-    const fontId = "fontinspector";
-    const fontTitle = INSPECTOR_L10N.getStr("inspector.sidebar.fontInspectorTitle");
-    this.sidebar.queueTab(
-      fontId,
-      fontTitle,
       {
-        props: {
-          id: fontId,
-          title: fontTitle
-        },
-        panel: () => {
-          if (!this.fontinspector) {
-            const FontInspector =
-              this.browserRequire("devtools/client/inspector/fonts/fonts");
-            this.fontinspector = new FontInspector(this, this.panelWin);
-          }
-
-          return this.fontinspector.provider;
-        }
+        id: "animationinspector",
+        title: INSPECTOR_L10N.getStr("inspector.sidebar.animationInspectorTitle"),
       },
-      defaultTab == fontId);
+      {
+        id: "fontinspector",
+        title: INSPECTOR_L10N.getStr("inspector.sidebar.fontInspectorTitle"),
+      },
+    ];
 
-    if (Services.prefs.getBoolPref(TRACK_CHANGES_ENABLED)) {
-      // Inject a lazy loaded react tab by exposing a fake React object
-      // with a lazy defined Tab thanks to `panel` being a function
-      const changesId = "changesview";
-      const changesTitle = INSPECTOR_L10N.getStr("inspector.sidebar.changesViewTitle");
-      this.sidebar.queueTab(
-        changesId,
-        changesTitle,
-        {
+    if (this._supportsChangesPanel()) {
+      // Insert Changes as third tab, right after Computed.
+      // TODO: move this inline to `sidebarPanels` above when addressing Bug 1491887.
+      sidebarPanels.splice(2, 0, {
+        id: "changesview",
+        title: INSPECTOR_L10N.getStr("inspector.sidebar.changesViewTitle"),
+      });
+    }
+
+    for (const { id, title } of sidebarPanels) {
+      // The Computed panel is not a React-based panel. We pick its element container from
+      // the DOM and wrap it in a React component (InspectorTabPanel) so it behaves like
+      // other panels when using the Inspector's tool sidebar.
+      if (id === "computedview") {
+        this.sidebar.queueExistingTab(id, title, defaultTab === id);
+      } else {
+        // When `panel` is a function, it is called when the tab should render. It is
+        // expected to return a React component to populate the tab's content area.
+        // Calling this method on-demand allows us to lazy-load the requested panel.
+        this.sidebar.queueTab(id, title, {
           props: {
-            id: changesId,
-            title: changesTitle
+            id,
+            title,
           },
           panel: () => {
-            if (!this.changesView) {
-              const ChangesView =
-                this.browserRequire("devtools/client/inspector/changes/ChangesView");
-              this.changesView = new ChangesView(this, this.panelWin);
-            }
-
-            return this.changesView.provider;
-          }
-        },
-        defaultTab == changesId);
+            return this.getPanel(id).provider;
+          },
+        }, defaultTab === id);
+      }
     }
 
     this.sidebar.addAllQueuedTabs();
@@ -1192,7 +1193,7 @@ Inspector.prototype = {
     if (this._highlighters) {
       await Promise.all([
         this.highlighters.restoreFlexboxState(),
-        this.highlighters.restoreGridState()
+        this.highlighters.restoreGridState(),
       ]);
     }
 
@@ -1233,7 +1234,7 @@ Inspector.prototype = {
 
     this._selectionCssSelector = {
       selector: cssSelector,
-      url: this._target.url
+      url: this._target.url,
     };
   },
 
@@ -1430,22 +1431,6 @@ Inspector.prototype = {
     }
     this._panels.clear();
 
-    if (this.layoutview) {
-      this.layoutview.destroy();
-    }
-
-    if (this.changesView) {
-      this.changesView.destroy();
-    }
-
-    if (this.fontinspector) {
-      this.fontinspector.destroy();
-    }
-
-    if (this.animationinspector) {
-      this.animationinspector.destroy();
-    }
-
     if (this._highlighters) {
       this._highlighters.destroy();
       this._highlighters = null;
@@ -1472,10 +1457,6 @@ Inspector.prototype = {
     this.reflowTracker.destroy();
     this.styleChangeTracker.destroy();
 
-    if (this.changesManager) {
-      this.changesManager.destroy();
-    }
-
     this._is3PaneModeChromeEnabled = null;
     this._is3PaneModeEnabled = null;
     this._markupBox = null;
@@ -1497,7 +1478,7 @@ Inspector.prototype = {
     this._panelDestroyer = promise.all([
       markupDestroyer,
       sidebarDestroyer,
-      ruleViewSideBarDestroyer
+      ruleViewSideBarDestroyer,
     ]);
 
     return this._panelDestroyer;
@@ -1716,12 +1697,11 @@ Inspector.prototype = {
       id: "node-menu-showaccessibilityproperties",
       label: INSPECTOR_L10N.getStr("inspectorShowAccessibilityProperties.label"),
       click: () => this.showAccessibilityProperties(),
-      disabled: true
+      disabled: true,
     });
-    // Only attempt to determine if a11y props menu item needs to be enabled iff
+    // Only attempt to determine if a11y props menu item needs to be enabled if
     // AccessibilityFront is enabled.
-    const accessibilityFront = this.target.getFront("accessibility");
-    if (accessibilityFront.enabled) {
+    if (this.accessibilityFront.enabled) {
       this._updateA11YMenuItem(showA11YPropsItem);
     }
 
@@ -2332,10 +2312,10 @@ Inspector.prototype = {
       .getBoolPref("devtools.screenshot.clipboard.enabled");
     const args = {
       file: true,
-      selector: this.selectionCssSelector,
-      clipboard: clipboardEnabled
+      nodeActorID: this.selection.nodeFront.actorID,
+      clipboard: clipboardEnabled,
     };
-    const screenshotFront = this.target.getFront("screenshot");
+    const screenshotFront = await this.target.getFront("screenshot");
     const screenshot = await screenshotFront.capture(args);
     await saveScreenshot(this.panelWin, args, screenshot);
   },
@@ -2516,7 +2496,7 @@ Inspector.prototype = {
    */
   onShowBoxModelHighlighterForNode(nodeFront, options) {
     const toolbox = this.toolbox;
-    toolbox.highlighterUtils.highlightNodeFront(nodeFront, options);
+    toolbox.highlighter.highlight(nodeFront, options);
   },
 
   /**
@@ -2532,7 +2512,7 @@ Inspector.prototype = {
   },
 
   async inspectNodeActor(nodeActor, inspectFromAnnotation) {
-    const nodeFront = await this.walker.getNodeActorFromObjectActor(nodeActor);
+    const nodeFront = await this.walker.gripToNodeFront({ actor: nodeActor });
     if (!nodeFront) {
       console.error("The object cannot be linked to the inspector, the " +
                     "corresponding nodeFront could not be found.");

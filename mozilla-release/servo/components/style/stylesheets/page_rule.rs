@@ -1,20 +1,20 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! A [`@page`][page] rule.
 //!
 //! [page]: https://drafts.csswg.org/css2/page.html#page-box
 
+use crate::properties::PropertyDeclarationBlock;
+use crate::shared_lock::{DeepCloneParams, DeepCloneWithLock, Locked};
+use crate::shared_lock::{SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard};
+use crate::str::CssStringWriter;
 use cssparser::SourceLocation;
 #[cfg(feature = "gecko")]
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps, MallocUnconditionalShallowSizeOf};
-use properties::PropertyDeclarationBlock;
 use servo_arc::Arc;
-use shared_lock::{DeepCloneParams, DeepCloneWithLock, Locked};
-use shared_lock::{SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard};
 use std::fmt::{self, Write};
-use str::CssStringWriter;
 
 /// A [`@page`][page] rule.
 ///

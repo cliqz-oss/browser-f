@@ -14,3 +14,6 @@
 
 -brand-short-name = Cliqz
 -vendor-short-name = Cliqz GmbH
+-brand-full-name = Cliqz
+-brand-shorter-name = Cliqz
+trademarkInfo = Cliqz and the Cliqz logos are trademarks of the Cliqz GmbH.

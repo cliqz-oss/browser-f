@@ -32,7 +32,7 @@ const TESTS = [ {
 function runTest() {
   debugDump("entering");
 
-  Services.prefs.setBoolPref(PREF_APP_UPDATE_AUTO, false);
+  setAppUpdateAutoSync(false);
   let url = URL_HTTP_UPDATE_XML + "?showDetails=1" + getVersionParams();
   setUpdateURL(url);
 

@@ -4,6 +4,12 @@
 
 package org.mozilla.gecko.util;
 
+import android.content.ContentResolver;
+import android.content.Context;
+import android.database.Cursor;
+import android.net.Uri;
+import android.provider.MediaStore;
+import android.text.TextUtils;
 import android.util.Log;
 
 import java.io.File;
@@ -27,8 +33,15 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.mozilla.gecko.annotation.RobocopTarget;
 
+import static org.mozilla.gecko.util.ContentUriUtils.getOriginalFilePathFromUri;
+import static org.mozilla.gecko.util.ContentUriUtils.getTempFilePathFromContentUri;
+
 public class FileUtils {
     private static final String LOGTAG = "GeckoFileUtils";
+    private static final String FILE_SCHEME = "file";
+    private static final String CONTENT_SCHEME = "content";
+    private static final String FILE_ABSOLUTE_URI = FILE_SCHEME + "://%s";
+    public static final String CONTENT_TEMP_DIRECTORY = "contentUri";
 
     /*
     * A basic Filter for checking a filename and age.
@@ -278,5 +291,52 @@ public class FileUtils {
             result = new File(directory, prefix + random.nextInt());
         } while (!result.mkdirs());
         return result;
+    }
+
+    public static String resolveContentUri(final Context context, final Uri uri) {
+        String path;
+        try {
+            path = getOriginalFilePathFromUri(context, uri);
+        } catch (IllegalArgumentException ex) {
+            // We cannot always successfully guess the original path of the file behind the
+            // content:// URI, so we need a fallback. This will break local subresources and
+            // relative links, but unfortunately there's nothing else we can do
+            // (see https://issuetracker.google.com/issues/77406791).
+            path = getTempFilePathFromContentUri(context, uri);
+        }
+        return !TextUtils.isEmpty(path) ? String.format(FILE_ABSOLUTE_URI, path) : path;
+    }
+
+    public static String getFileNameFromContentUri(Context context, Uri uri) {
+        final ContentResolver cr = context.getContentResolver();
+        final String[] projection = {MediaStore.MediaColumns.DISPLAY_NAME};
+        String fileName = null;
+
+        try (Cursor metaCursor = cr.query(uri, projection, null, null, null);) {
+            if (metaCursor.moveToFirst()) {
+                fileName = metaCursor.getString(0);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return fileName;
+    }
+
+    public static void copy(Context context, Uri srcUri, File dstFile) {
+        try (InputStream inputStream = context.getContentResolver().openInputStream(srcUri);
+             OutputStream outputStream = new FileOutputStream(dstFile)) {
+            IOUtils.copy(inputStream, outputStream);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static boolean isContentUri(Uri uri) {
+        return uri != null && uri.getScheme() != null && CONTENT_SCHEME.equals(uri.getScheme());
+    }
+
+    public static boolean isContentUri(String sUri) {
+        return sUri != null && sUri.startsWith(CONTENT_SCHEME);
     }
 }

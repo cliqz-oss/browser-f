@@ -1,19 +1,19 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! A media query:
 //!
 //! https://drafts.csswg.org/mediaqueries/#typedef-media-query
 
-use Atom;
-use cssparser::Parser;
-use parser::ParserContext;
-use std::fmt::{self, Write};
-use str::string_as_ascii_lowercase;
-use style_traits::{CssWriter, ParseError, ToCss};
 use super::media_condition::MediaCondition;
-use values::CustomIdent;
+use crate::parser::ParserContext;
+use crate::str::string_as_ascii_lowercase;
+use crate::values::CustomIdent;
+use crate::Atom;
+use cssparser::Parser;
+use std::fmt::{self, Write};
+use style_traits::{CssWriter, ParseError, ToCss};
 
 /// <https://drafts.csswg.org/mediaqueries/#mq-prefix>
 #[derive(Clone, Copy, Debug, Eq, MallocSizeOf, Parse, PartialEq, ToCss)]
@@ -130,7 +130,8 @@ impl MediaQuery {
                 let ident = input.expect_ident().map_err(|_| ())?;
                 let media_type = MediaQueryType::parse(&ident)?;
                 Ok((qualifier, Some(media_type)))
-            }).unwrap_or_default();
+            })
+            .unwrap_or_default();
 
         let condition = if explicit_media_type.is_none() {
             Some(MediaCondition::parse(context, input)?)

@@ -42,13 +42,13 @@ class TabsPanel extends Component {
 
   componentDidMount() {
     const { client } = this.props;
-    client.addListener("tabListChanged", this.update);
+    client.mainRoot.on("tabListChanged", this.update);
     this.update();
   }
 
   componentWillUnmount() {
     const { client } = this.props;
-    client.removeListener("tabListChanged", this.update);
+    client.mainRoot.off("tabListChanged", this.update);
   }
 
   async update() {
@@ -62,7 +62,7 @@ class TabsPanel extends Component {
         const base64Favicon = btoa(String.fromCharCode.apply(String, tab.favicon));
         tab.icon = "data:image/png;base64," + base64Favicon;
       } else {
-        tab.icon = "chrome://devtools/skin/images/globe.svg";
+        tab.icon = "chrome://devtools/skin/images/aboutdebugging-globe-icon.svg";
       }
     }
 

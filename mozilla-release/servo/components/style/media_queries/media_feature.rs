@@ -1,17 +1,17 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Media features.
 
-use Atom;
+use super::media_feature_expression::{AspectRatio, RangeOrOperator};
+use super::Device;
+use crate::parser::ParserContext;
+use crate::values::computed::{CSSPixelLength, Resolution};
+use crate::Atom;
 use cssparser::Parser;
-use parser::ParserContext;
 use std::fmt;
 use style_traits::ParseError;
-use super::Device;
-use super::media_feature_expression::{AspectRatio, RangeOrOperator};
-use values::computed::{CSSPixelLength, Resolution};
 
 /// A generic discriminant for an enum value.
 pub type KeywordDiscriminant = u8;

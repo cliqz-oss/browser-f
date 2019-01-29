@@ -418,6 +418,11 @@
 
     <handlers>
       <handler event="wheel"><![CDATA[
+        // Don't consume the event if we can't scroll.
+        if (this.hasAttribute("notoverflowing")) {
+          return;
+        }
+
         let doScroll = false;
         let instant;
         let scrollAmount = 0;
@@ -604,7 +609,7 @@
                          onmouseover="_continueScroll(1);"
                          onmouseout="_pauseScroll();"/>
     </content>
-    <implementation implements="nsITimerCallback">
+    <implementation>
       <constructor><![CDATA[
         this._scrollDelay =
           this._prefBranch.getIntPref("toolkit.scrollbox.clickToScroll.scrollDelay",
@@ -621,18 +626,6 @@
 
       <field name="_scrollIndex">0</field>
       <field name="_scrollDelay">150</field>
-
-      <method name="notify">
-        <parameter name="aTimer"/>
-        <body>
-        <![CDATA[
-          if (!document)
-            aTimer.cancel();
-
-          this.scrollByIndex(this._scrollIndex);
-        ]]>
-        </body>
-      </method>
 
       <field name="_arrowScrollAnim"><![CDATA[({
         scrollbox: this,
@@ -677,9 +670,16 @@
           else
             this._scrollTimer.cancel();
 
-          this._scrollTimer.initWithCallback(this, this._scrollDelay,
+          let callback = () => {
+            if (!document && this._scrollTimer) {
+              this._scrollTimer.cancel();
+            }
+            this.scrollByIndex(this._scrollIndex);
+          };
+
+          this._scrollTimer.initWithCallback(callback, this._scrollDelay,
                                              this._scrollTimer.TYPE_REPEATING_SLACK);
-          this.notify(this._scrollTimer);
+          callback();
         ]]>
         </body>
       </method>

@@ -1,18 +1,18 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! A wrapper over an element and a snapshot, that allows us to selector-match
 //! against a past state of the element.
 
-use {Atom, CaseSensitivityExt, LocalName, Namespace, WeakAtom};
-use dom::TElement;
-use element_state::ElementState;
-use selector_parser::{AttrValue, NonTSPseudoClass, PseudoElement, SelectorImpl};
-use selector_parser::{Snapshot, SnapshotMap};
-use selectors::{Element, OpaqueElement};
+use crate::dom::TElement;
+use crate::element_state::ElementState;
+use crate::selector_parser::{AttrValue, NonTSPseudoClass, PseudoElement, SelectorImpl};
+use crate::selector_parser::{Snapshot, SnapshotMap};
+use crate::{Atom, CaseSensitivityExt, LocalName, Namespace, WeakAtom};
 use selectors::attr::{AttrSelectorOperation, CaseSensitivity, NamespaceConstraint};
 use selectors::matching::{ElementSelectorFlags, MatchingContext};
+use selectors::{Element, OpaqueElement};
 use std::cell::Cell;
 use std::fmt;
 
@@ -60,7 +60,7 @@ pub trait ElementSnapshot: Sized {
 
     /// A callback that should be called for each class of the snapshot. Should
     /// only be called if `has_attrs()` returns true.
-    fn each_class<F>(&self, F)
+    fn each_class<F>(&self, _: F)
     where
         F: FnMut(&Atom);
 

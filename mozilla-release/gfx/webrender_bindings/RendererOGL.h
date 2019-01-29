@@ -26,7 +26,7 @@ class GLContext;
 namespace layers {
 class CompositorBridgeParent;
 class SyncObjectHost;
-}
+}  // namespace layers
 
 namespace widget {
 class CompositorWidget;
@@ -42,25 +42,27 @@ class RenderTextureHost;
 /// There is one renderer per window, all owned by the render thread.
 /// This class is a similar abstraction to CompositorOGL except that it is used
 /// on the render thread instead of the compositor thread.
-class RendererOGL
-{
+class RendererOGL {
   friend wr::WrExternalImage LockExternalImage(void* aObj,
                                                wr::WrExternalImageId aId,
                                                uint8_t aChannelIndex,
                                                wr::ImageRendering);
-  friend void UnlockExternalImage(void* aObj, wr::WrExternalImageId aId, uint8_t aChannelIndex);
+  friend void UnlockExternalImage(void* aObj, wr::WrExternalImageId aId,
+                                  uint8_t aChannelIndex);
 
-public:
+ public:
   wr::WrExternalImageHandler GetExternalImageHandler();
 
   /// This can be called on the render thread only.
   void Update();
 
   /// This can be called on the render thread only.
-  bool UpdateAndRender(const Maybe<gfx::IntSize>& aReadbackSize, const Maybe<Range<uint8_t>>& aReadbackBuffer);
+  bool UpdateAndRender(const Maybe<gfx::IntSize>& aReadbackSize,
+                       const Maybe<Range<uint8_t>>& aReadbackBuffer,
+                       bool aHadSlowFrame, RendererStats* aOutStats);
 
   /// This can be called on the render thread only.
-  bool RenderToTarget(gfx::DrawTarget& aTarget);
+  void WaitForGPU();
 
   /// This can be called on the render thread only.
   void SetProfilerEnabled(bool aEnabled);
@@ -73,10 +75,8 @@ public:
 
   /// This can be called on the render thread only.
   RendererOGL(RefPtr<RenderThread>&& aThread,
-              UniquePtr<RenderCompositor> aCompositor,
-              wr::WindowId aWindowId,
-              wr::Renderer* aRenderer,
-              layers::CompositorBridgeParent* aBridge);
+              UniquePtr<RenderCompositor> aCompositor, wr::WindowId aWindowId,
+              wr::Renderer* aRenderer, layers::CompositorBridgeParent* aBridge);
 
   /// This can be called on the render thread only.
   void Pause();
@@ -84,19 +84,24 @@ public:
   /// This can be called on the render thread only.
   bool Resume();
 
+  /// This can be called on the render thread only.
+  void CheckGraphicsResetStatus();
+
   layers::SyncObjectHost* GetSyncObject() const;
 
   layers::CompositorBridgeParent* GetCompositorBridge() { return mBridge; }
 
-  wr::WrPipelineInfo FlushPipelineInfo();
+  RefPtr<WebRenderPipelineInfo> FlushPipelineInfo();
 
   RenderTextureHost* GetRenderTexture(wr::WrExternalImageId aExternalImageId);
+
+  void AccumulateMemoryReport(MemoryReport* aReport);
 
   wr::Renderer* GetRenderer() { return mRenderer; }
 
   gl::GLContext* gl() const;
 
-protected:
+ protected:
   void NotifyWebRenderError(WebRenderError aError);
 
   RefPtr<RenderThread> mThread;
@@ -105,10 +110,9 @@ protected:
   layers::CompositorBridgeParent* mBridge;
   wr::WindowId mWindowId;
   TimeStamp mFrameStartTime;
-  wr::DebugFlags mDebugFlags;
 };
 
-} // namespace wr
-} // namespace mozilla
+}  // namespace wr
+}  // namespace mozilla
 
 #endif

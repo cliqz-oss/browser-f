@@ -22,6 +22,7 @@ flake8:
         - python/mozboot
         - python/mozbuild/mozpack/path.py
         - python/mozlint
+        - python/mozrelease
         - python/mozterm
         - python/mozversioncontrol
         - python/safety
@@ -41,6 +42,7 @@ flake8:
         - testing/mozharness/mozharness/mozilla/tooltool.py
         - testing/mozharness/mozinfo
         - testing/mozharness/scripts
+        - testing/mozharness/test
         - testing/raptor
         - testing/remotecppunittests.py
         - testing/runcppunittests.py

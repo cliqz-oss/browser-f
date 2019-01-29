@@ -1,13 +1,13 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Applicable declarations management.
 
-use properties::PropertyDeclarationBlock;
-use rule_tree::{CascadeLevel, ShadowCascadeOrder, StyleSource};
+use crate::properties::PropertyDeclarationBlock;
+use crate::rule_tree::{CascadeLevel, ShadowCascadeOrder, StyleSource};
+use crate::shared_lock::Locked;
 use servo_arc::Arc;
-use shared_lock::Locked;
 use smallvec::SmallVec;
 use std::fmt::{self, Debug};
 

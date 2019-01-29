@@ -1,12 +1,12 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use cg;
-use quote::Tokens;
+use crate::cg;
+use crate::to_css::CssVariantAttrs;
+use proc_macro2::TokenStream;
 use syn::{DeriveInput, Path};
 use synstructure;
-use to_css::CssVariantAttrs;
 
 #[darling(attributes(parse), default)]
 #[derive(Default, FromVariant)]
@@ -15,7 +15,7 @@ pub struct ParseVariantAttrs {
     pub condition: Option<Path>,
 }
 
-pub fn derive(input: DeriveInput) -> Tokens {
+pub fn derive(input: DeriveInput) -> TokenStream {
     let name = &input.ident;
     let s = synstructure::Structure::new(&input);
 
@@ -36,7 +36,7 @@ pub fn derive(input: DeriveInput) -> Tokens {
         let identifier = cg::to_css_identifier(
             &css_variant_attrs
                 .keyword
-                .unwrap_or(variant.ast().ident.as_ref().into()),
+                .unwrap_or(variant.ast().ident.to_string()),
         );
         let ident = &variant.ast().ident;
 
@@ -79,7 +79,7 @@ pub fn derive(input: DeriveInput) -> Tokens {
             match_ignore_ascii_case! { &ident,
                 #match_body
                 _ => Err(location.new_unexpected_token_error(
-                    ::cssparser::Token::Ident(ident.clone())
+                    cssparser::Token::Ident(ident.clone())
                 ))
             }
         }
@@ -88,12 +88,12 @@ pub fn derive(input: DeriveInput) -> Tokens {
     };
 
     let parse_trait_impl = quote! {
-        impl ::parser::Parse for #name {
+        impl crate::parser::Parse for #name {
             #[inline]
             fn parse<'i, 't>(
-                #context_ident: &::parser::ParserContext,
-                input: &mut ::cssparser::Parser<'i, 't>,
-            ) -> Result<Self, ::style_traits::ParseError<'i>> {
+                #context_ident: &crate::parser::ParserContext,
+                input: &mut cssparser::Parser<'i, 't>,
+            ) -> Result<Self, style_traits::ParseError<'i>> {
                 #parse_body
             }
         }
@@ -110,13 +110,13 @@ pub fn derive(input: DeriveInput) -> Tokens {
             /// Parse this keyword.
             #[inline]
             pub fn parse<'i, 't>(
-                input: &mut ::cssparser::Parser<'i, 't>,
-            ) -> Result<Self, ::style_traits::ParseError<'i>> {
+                input: &mut cssparser::Parser<'i, 't>,
+            ) -> Result<Self, style_traits::ParseError<'i>> {
                 let location = input.current_source_location();
                 let ident = input.expect_ident()?;
                 Self::from_ident(ident.as_ref()).map_err(|()| {
                     location.new_unexpected_token_error(
-                        ::cssparser::Token::Ident(ident.clone())
+                        cssparser::Token::Ident(ident.clone())
                     )
                 })
             }

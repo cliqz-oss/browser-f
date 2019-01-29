@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
- * vim: set ts=8 sts=4 et sw=4 tw=99:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
+ * vim: set ts=8 sts=2 et sw=2 tw=80:
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -36,17 +36,19 @@ namespace mozilla {}
 /* The private JS engine namespace. */
 namespace js {}
 
-#define JS_STATIC_ASSERT(cond)           static_assert(cond, "JS_STATIC_ASSERT")
-#define JS_STATIC_ASSERT_IF(cond, expr)  MOZ_STATIC_ASSERT_IF(cond, expr, "JS_STATIC_ASSERT_IF")
+#define JS_STATIC_ASSERT(cond) static_assert(cond, "JS_STATIC_ASSERT")
+#define JS_STATIC_ASSERT_IF(cond, expr) \
+  MOZ_STATIC_ASSERT_IF(cond, expr, "JS_STATIC_ASSERT_IF")
 
-extern MOZ_NORETURN MOZ_COLD JS_PUBLIC_API(void)
-JS_Assert(const char* s, const char* file, int ln);
+extern MOZ_NORETURN MOZ_COLD JS_PUBLIC_API void JS_Assert(const char* s,
+                                                          const char* file,
+                                                          int ln);
 
 /*
  * Custom allocator support for SpiderMonkey
  */
 #if defined JS_USE_CUSTOM_ALLOCATOR
-# include "jscustomallocator.h"
+#include "jscustomallocator.h"
 #else
 
 namespace js {
@@ -60,20 +62,19 @@ namespace js {
  * adding new thread types.
  */
 enum ThreadType {
-    THREAD_TYPE_NONE = 0,       // 0
-    THREAD_TYPE_MAIN,           // 1
-    THREAD_TYPE_WASM,           // 2
-    THREAD_TYPE_ION,            // 3
-    THREAD_TYPE_PARSE,          // 4
-    THREAD_TYPE_COMPRESS,       // 5
-    THREAD_TYPE_GCHELPER,       // 6
-    THREAD_TYPE_GCPARALLEL,     // 7
-    THREAD_TYPE_PROMISE_TASK,   // 8
-    THREAD_TYPE_ION_FREE,       // 9
-    THREAD_TYPE_WASM_TIER2,     // 10
-    THREAD_TYPE_WORKER,         // 11
-    THREAD_TYPE_CURRENT,        // 12 -- Special code to only track the current thread.
-    THREAD_TYPE_MAX             // Used to check shell function arguments
+  THREAD_TYPE_NONE = 0,      // 0
+  THREAD_TYPE_MAIN,          // 1
+  THREAD_TYPE_WASM,          // 2
+  THREAD_TYPE_ION,           // 3
+  THREAD_TYPE_PARSE,         // 4
+  THREAD_TYPE_COMPRESS,      // 5
+  THREAD_TYPE_GCHELPER,      // 6
+  THREAD_TYPE_GCPARALLEL,    // 7
+  THREAD_TYPE_PROMISE_TASK,  // 8
+  THREAD_TYPE_ION_FREE,      // 9
+  THREAD_TYPE_WASM_TIER2,    // 10
+  THREAD_TYPE_WORKER,        // 11
+  THREAD_TYPE_MAX            // Used to check shell function arguments
 };
 
 namespace oom {
@@ -87,47 +88,47 @@ namespace oom {
  * Getter/Setter functions to encapsulate mozilla::ThreadLocal, implementation
  * is in jsutil.cpp.
  */
-# if defined(DEBUG) || defined(JS_OOM_BREAKPOINT)
+#if defined(DEBUG) || defined(JS_OOM_BREAKPOINT)
 
 // Define the range of threads tested by simulated OOM testing and the
 // like. Testing worker threads is not supported.
 const ThreadType FirstThreadTypeToTest = THREAD_TYPE_MAIN;
 const ThreadType LastThreadTypeToTest = THREAD_TYPE_WASM_TIER2;
-const ThreadType WorkerFirstThreadTypeToTest = THREAD_TYPE_CURRENT;
-const ThreadType WorkerLastThreadTypeToTest = THREAD_TYPE_CURRENT;
 
 extern bool InitThreadType(void);
 extern void SetThreadType(ThreadType);
-extern JS_FRIEND_API(uint32_t) GetThreadType(void);
-extern JS_FRIEND_API(uint32_t) GetAllocationThreadType(void);
-extern JS_FRIEND_API(uint32_t) GetStackCheckThreadType(void);
-extern JS_FRIEND_API(uint32_t) GetInterruptCheckThreadType(void);
+extern JS_FRIEND_API uint32_t GetThreadType(void);
 
-# else
+#else
 
 inline bool InitThreadType(void) { return true; }
-inline void SetThreadType(ThreadType t) {};
+inline void SetThreadType(ThreadType t){};
 inline uint32_t GetThreadType(void) { return 0; }
 inline uint32_t GetAllocationThreadType(void) { return 0; }
 inline uint32_t GetStackCheckThreadType(void) { return 0; }
 inline uint32_t GetInterruptCheckThreadType(void) { return 0; }
 
-# endif
+#endif
 
 } /* namespace oom */
 } /* namespace js */
 
-# if defined(DEBUG) || defined(JS_OOM_BREAKPOINT)
+#if defined(DEBUG) || defined(JS_OOM_BREAKPOINT)
 
 #ifdef JS_OOM_BREAKPOINT
-#  if defined(_MSC_VER)
-static MOZ_NEVER_INLINE void js_failedAllocBreakpoint() { __asm { }; }
-#  else
+#if defined(_MSC_VER)
+static MOZ_NEVER_INLINE void js_failedAllocBreakpoint() {
+  __asm {}
+  ;
+}
+#else
 static MOZ_NEVER_INLINE void js_failedAllocBreakpoint() { asm(""); }
-#  endif
+#endif
 #define JS_OOM_CALL_BP_FUNC() js_failedAllocBreakpoint()
 #else
-#define JS_OOM_CALL_BP_FUNC() do {} while(0)
+#define JS_OOM_CALL_BP_FUNC() \
+  do {                        \
+  } while (0)
 #endif
 
 namespace js {
@@ -137,196 +138,155 @@ namespace oom {
  * Out of memory testing support.  We provide various testing functions to
  * simulate OOM conditions and so we can test that they are handled correctly.
  */
+class FailureSimulator {
+ public:
+  enum class Kind : uint8_t { Nothing, OOM, StackOOM, Interrupt };
 
-extern JS_PUBLIC_DATA(uint32_t) targetThread;
-extern JS_PUBLIC_DATA(uint64_t) maxAllocations;
-extern JS_PUBLIC_DATA(uint64_t) counter;
-extern JS_PUBLIC_DATA(bool) failAlways;
+ private:
+  Kind kind_ = Kind::Nothing;
+  uint32_t targetThread_ = 0;
+  uint64_t maxChecks_ = UINT64_MAX;
+  uint64_t counter_ = 0;
+  bool failAlways_ = true;
+  bool inUnsafeRegion_ = false;
 
-extern void
-SimulateOOMAfter(uint64_t allocations, uint32_t thread, bool always);
-
-extern void
-ResetSimulatedOOM();
-
-inline bool
-IsThreadSimulatingOOM()
-{
-    return js::oom::targetThread &&
-        js::oom::targetThread == js::oom::GetAllocationThreadType();
-}
-
-inline bool
-IsSimulatedOOMAllocation()
-{
-    return IsThreadSimulatingOOM() &&
-           (counter == maxAllocations || (counter > maxAllocations && failAlways));
-}
-
-inline bool
-ShouldFailWithOOM()
-{
-    if (!IsThreadSimulatingOOM()) {
-        return false;
+ public:
+  uint64_t maxChecks() const { return maxChecks_; }
+  uint64_t counter() const { return counter_; }
+  void setInUnsafeRegion(bool b) {
+    MOZ_ASSERT(inUnsafeRegion_ != b);
+    inUnsafeRegion_ = b;
+  }
+  uint32_t targetThread() const { return targetThread_; }
+  bool isThreadSimulatingAny() const {
+    return targetThread_ && targetThread_ == js::oom::GetThreadType() &&
+           !inUnsafeRegion_;
+  }
+  bool isThreadSimulating(Kind kind) const {
+    return kind_ == kind && isThreadSimulatingAny();
+  }
+  bool isSimulatedFailure(Kind kind) const {
+    if (!isThreadSimulating(kind)) {
+      return false;
     }
-
-    counter++;
-    if (IsSimulatedOOMAllocation()) {
-        JS_OOM_CALL_BP_FUNC();
-        return true;
+    return counter_ == maxChecks_ || (counter_ > maxChecks_ && failAlways_);
+  }
+  bool hadFailure(Kind kind) const {
+    return kind_ == kind && counter_ >= maxChecks_;
+  }
+  bool shouldFail(Kind kind) {
+    if (!isThreadSimulating(kind)) {
+      return false;
+    }
+    counter_++;
+    if (isSimulatedFailure(kind)) {
+      JS_OOM_CALL_BP_FUNC();
+      return true;
     }
     return false;
+  }
+
+  void simulateFailureAfter(Kind kind, uint64_t checks, uint32_t thread,
+                            bool always);
+  void reset();
+};
+extern JS_PUBLIC_DATA FailureSimulator simulator;
+
+inline bool IsSimulatedOOMAllocation() {
+  return simulator.isSimulatedFailure(FailureSimulator::Kind::OOM);
 }
 
-inline bool
-HadSimulatedOOM() {
-    return counter >= maxAllocations;
+inline bool ShouldFailWithOOM() {
+  return simulator.shouldFail(FailureSimulator::Kind::OOM);
+}
+
+inline bool HadSimulatedOOM() {
+  return simulator.hadFailure(FailureSimulator::Kind::OOM);
 }
 
 /*
  * Out of stack space testing support, similar to OOM testing functions.
  */
 
-extern JS_PUBLIC_DATA(uint32_t) stackTargetThread;
-extern JS_PUBLIC_DATA(uint64_t) maxStackChecks;
-extern JS_PUBLIC_DATA(uint64_t) stackCheckCounter;
-extern JS_PUBLIC_DATA(bool) stackCheckFailAlways;
-
-extern void
-SimulateStackOOMAfter(uint64_t checks, uint32_t thread, bool always);
-
-extern void
-ResetSimulatedStackOOM();
-
-inline bool
-IsThreadSimulatingStackOOM()
-{
-    return js::oom::stackTargetThread &&
-        js::oom::stackTargetThread == js::oom::GetStackCheckThreadType();
+inline bool IsSimulatedStackOOMCheck() {
+  return simulator.isSimulatedFailure(FailureSimulator::Kind::StackOOM);
 }
 
-inline bool
-IsSimulatedStackOOMCheck()
-{
-    return IsThreadSimulatingStackOOM() &&
-           (stackCheckCounter == maxStackChecks || (stackCheckCounter > maxStackChecks && stackCheckFailAlways));
+inline bool ShouldFailWithStackOOM() {
+  return simulator.shouldFail(FailureSimulator::Kind::StackOOM);
 }
 
-inline bool
-ShouldFailWithStackOOM()
-{
-    if (!IsThreadSimulatingStackOOM()) {
-        return false;
-    }
-
-    stackCheckCounter++;
-    if (IsSimulatedStackOOMCheck()) {
-        JS_OOM_CALL_BP_FUNC();
-        return true;
-    }
-    return false;
-}
-
-inline bool
-HadSimulatedStackOOM()
-{
-    return stackCheckCounter >= maxStackChecks;
+inline bool HadSimulatedStackOOM() {
+  return simulator.hadFailure(FailureSimulator::Kind::StackOOM);
 }
 
 /*
  * Interrupt testing support, similar to OOM testing functions.
  */
 
-extern JS_PUBLIC_DATA(uint32_t) interruptTargetThread;
-extern JS_PUBLIC_DATA(uint64_t) maxInterruptChecks;
-extern JS_PUBLIC_DATA(uint64_t) interruptCheckCounter;
-extern JS_PUBLIC_DATA(bool) interruptCheckFailAlways;
-
-extern void
-SimulateInterruptAfter(uint64_t checks, uint32_t thread, bool always);
-
-extern void
-ResetSimulatedInterrupt();
-
-inline bool
-IsThreadSimulatingInterrupt()
-{
-    return js::oom::interruptTargetThread &&
-        js::oom::interruptTargetThread == js::oom::GetInterruptCheckThreadType();
+inline bool IsSimulatedInterruptCheck() {
+  return simulator.isSimulatedFailure(FailureSimulator::Kind::Interrupt);
 }
 
-inline bool
-IsSimulatedInterruptCheck()
-{
-    return IsThreadSimulatingInterrupt() &&
-           (interruptCheckCounter == maxInterruptChecks || (interruptCheckCounter > maxInterruptChecks && interruptCheckFailAlways));
+inline bool ShouldFailWithInterrupt() {
+  return simulator.shouldFail(FailureSimulator::Kind::Interrupt);
 }
 
-inline bool
-ShouldFailWithInterrupt()
-{
-    if (!IsThreadSimulatingInterrupt()) {
-        return false;
-    }
-
-    interruptCheckCounter++;
-    if (IsSimulatedInterruptCheck()) {
-        JS_OOM_CALL_BP_FUNC();
-        return true;
-    }
-    return false;
-}
-
-inline bool
-HadSimulatedInterrupt()
-{
-    return interruptCheckCounter >= maxInterruptChecks;
+inline bool HadSimulatedInterrupt() {
+  return simulator.hadFailure(FailureSimulator::Kind::Interrupt);
 }
 
 } /* namespace oom */
 } /* namespace js */
 
-#  define JS_OOM_POSSIBLY_FAIL()                                              \
-    do {                                                                      \
-        if (js::oom::ShouldFailWithOOM())                                     \
-            return nullptr;                                                   \
-    } while (0)
+#define JS_OOM_POSSIBLY_FAIL()                        \
+  do {                                                \
+    if (js::oom::ShouldFailWithOOM()) return nullptr; \
+  } while (0)
 
-#  define JS_OOM_POSSIBLY_FAIL_BOOL()                                         \
-    do {                                                                      \
-        if (js::oom::ShouldFailWithOOM())                                     \
-            return false;                                                     \
-    } while (0)
+#define JS_OOM_POSSIBLY_FAIL_BOOL()                 \
+  do {                                              \
+    if (js::oom::ShouldFailWithOOM()) return false; \
+  } while (0)
 
-#  define JS_STACK_OOM_POSSIBLY_FAIL()                                        \
-    do {                                                                      \
-        if (js::oom::ShouldFailWithStackOOM())                                \
-            return false;                                                     \
-    } while (0)
+#define JS_STACK_OOM_POSSIBLY_FAIL()                     \
+  do {                                                   \
+    if (js::oom::ShouldFailWithStackOOM()) return false; \
+  } while (0)
 
-#  define JS_STACK_OOM_POSSIBLY_FAIL_REPORT()                                 \
-    do {                                                                      \
-        if (js::oom::ShouldFailWithStackOOM()) {                              \
-            ReportOverRecursed(cx);                                           \
-            return false;                                                     \
-        }                                                                     \
-    } while (0)
+#define JS_STACK_OOM_POSSIBLY_FAIL_REPORT()  \
+  do {                                       \
+    if (js::oom::ShouldFailWithStackOOM()) { \
+      ReportOverRecursed(cx);                \
+      return false;                          \
+    }                                        \
+  } while (0)
 
-#  define JS_INTERRUPT_POSSIBLY_FAIL()                                        \
-    do {                                                                      \
-        if (MOZ_UNLIKELY(js::oom::ShouldFailWithInterrupt())) {               \
-            cx->requestInterrupt(js::InterruptReason::CallbackUrgent);        \
-            return cx->handleInterrupt();                                     \
-        }                                                                     \
-    } while (0)
+#define JS_INTERRUPT_POSSIBLY_FAIL()                             \
+  do {                                                           \
+    if (MOZ_UNLIKELY(js::oom::ShouldFailWithInterrupt())) {      \
+      cx->requestInterrupt(js::InterruptReason::CallbackUrgent); \
+      return cx->handleInterrupt();                              \
+    }                                                            \
+  } while (0)
 
-# else
+#else
 
-#  define JS_OOM_POSSIBLY_FAIL() do {} while(0)
-#  define JS_OOM_POSSIBLY_FAIL_BOOL() do {} while(0)
-#  define JS_STACK_OOM_POSSIBLY_FAIL() do {} while(0)
-#  define JS_STACK_OOM_POSSIBLY_FAIL_REPORT() do {} while(0)
-#  define JS_INTERRUPT_POSSIBLY_FAIL() do {} while(0)
+#define JS_OOM_POSSIBLY_FAIL() \
+  do {                         \
+  } while (0)
+#define JS_OOM_POSSIBLY_FAIL_BOOL() \
+  do {                              \
+  } while (0)
+#define JS_STACK_OOM_POSSIBLY_FAIL() \
+  do {                               \
+  } while (0)
+#define JS_STACK_OOM_POSSIBLY_FAIL_REPORT() \
+  do {                                      \
+  } while (0)
+#define JS_INTERRUPT_POSSIBLY_FAIL() \
+  do {                               \
+  } while (0)
 namespace js {
 namespace oom {
 static inline bool IsSimulatedOOMAllocation() { return false; }
@@ -334,51 +294,43 @@ static inline bool ShouldFailWithOOM() { return false; }
 } /* namespace oom */
 } /* namespace js */
 
-# endif /* DEBUG || JS_OOM_BREAKPOINT */
+#endif /* DEBUG || JS_OOM_BREAKPOINT */
 
 namespace js {
 
 /* Disable OOM testing in sections which are not OOM safe. */
-struct MOZ_RAII JS_PUBLIC_DATA(AutoEnterOOMUnsafeRegion)
-{
-    MOZ_NORETURN MOZ_COLD void crash(const char* reason);
-    MOZ_NORETURN MOZ_COLD void crash(size_t size, const char* reason);
+struct MOZ_RAII JS_PUBLIC_DATA AutoEnterOOMUnsafeRegion {
+  MOZ_NORETURN MOZ_COLD void crash(const char* reason);
+  MOZ_NORETURN MOZ_COLD void crash(size_t size, const char* reason);
 
-    using AnnotateOOMAllocationSizeCallback = void(*)(size_t);
-    static AnnotateOOMAllocationSizeCallback annotateOOMSizeCallback;
-    static void setAnnotateOOMAllocationSizeCallback(AnnotateOOMAllocationSizeCallback callback) {
-        annotateOOMSizeCallback = callback;
-    }
+  using AnnotateOOMAllocationSizeCallback = void (*)(size_t);
+  static AnnotateOOMAllocationSizeCallback annotateOOMSizeCallback;
+  static void setAnnotateOOMAllocationSizeCallback(
+      AnnotateOOMAllocationSizeCallback callback) {
+    annotateOOMSizeCallback = callback;
+  }
 
 #if defined(DEBUG) || defined(JS_OOM_BREAKPOINT)
-    AutoEnterOOMUnsafeRegion()
-      : oomEnabled_(oom::IsThreadSimulatingOOM() && oom::maxAllocations != UINT64_MAX),
-        oomAfter_(0)
-    {
-        if (oomEnabled_) {
-            MOZ_ALWAYS_TRUE(owner_.compareExchange(nullptr, this));
-            oomAfter_ = int64_t(oom::maxAllocations) - int64_t(oom::counter);
-            oom::maxAllocations = UINT64_MAX;
-        }
+  AutoEnterOOMUnsafeRegion()
+      : oomEnabled_(oom::simulator.isThreadSimulatingAny()) {
+    if (oomEnabled_) {
+      MOZ_ALWAYS_TRUE(owner_.compareExchange(nullptr, this));
+      oom::simulator.setInUnsafeRegion(true);
     }
+  }
 
-    ~AutoEnterOOMUnsafeRegion() {
-        if (oomEnabled_) {
-            MOZ_ASSERT(oom::maxAllocations == UINT64_MAX);
-            int64_t maxAllocations = int64_t(oom::counter) + oomAfter_;
-            MOZ_ASSERT(maxAllocations >= 0,
-                       "alloc count + oom limit exceeds range, your oom limit is probably too large");
-            oom::maxAllocations = uint64_t(maxAllocations);
-            MOZ_ALWAYS_TRUE(owner_.compareExchange(this, nullptr));
-        }
+  ~AutoEnterOOMUnsafeRegion() {
+    if (oomEnabled_) {
+      oom::simulator.setInUnsafeRegion(false);
+      MOZ_ALWAYS_TRUE(owner_.compareExchange(this, nullptr));
     }
+  }
 
-  private:
-    // Used to catch concurrent use from other threads.
-    static mozilla::Atomic<AutoEnterOOMUnsafeRegion*> owner_;
+ private:
+  // Used to catch concurrent use from other threads.
+  static mozilla::Atomic<AutoEnterOOMUnsafeRegion*> owner_;
 
-    bool oomEnabled_;
-    int64_t oomAfter_;
+  bool oomEnabled_;
 #endif
 };
 
@@ -388,70 +340,63 @@ struct MOZ_RAII JS_PUBLIC_DATA(AutoEnterOOMUnsafeRegion)
 
 namespace js {
 
-extern JS_PUBLIC_DATA(arena_id_t) MallocArena;
-extern JS_PUBLIC_DATA(arena_id_t) ArrayBufferContentsArena;
+extern JS_PUBLIC_DATA arena_id_t MallocArena;
+extern JS_PUBLIC_DATA arena_id_t ArrayBufferContentsArena;
 
 extern void InitMallocAllocator();
 extern void ShutDownMallocAllocator();
 
 } /* namespace js */
 
-static inline void* js_arena_malloc(arena_id_t arena, size_t bytes)
-{
-    JS_OOM_POSSIBLY_FAIL();
-    return moz_arena_malloc(arena, bytes);
+static inline void* js_arena_malloc(arena_id_t arena, size_t bytes) {
+  JS_OOM_POSSIBLY_FAIL();
+  return moz_arena_malloc(arena, bytes);
 }
 
-static inline void* js_malloc(size_t bytes)
-{
-    return js_arena_malloc(js::MallocArena, bytes);
+static inline void* js_malloc(size_t bytes) {
+  return js_arena_malloc(js::MallocArena, bytes);
 }
 
-static inline void* js_arena_calloc(arena_id_t arena, size_t nmemb, size_t size)
-{
-    JS_OOM_POSSIBLY_FAIL();
-    return moz_arena_calloc(arena, nmemb, size);
+static inline void* js_arena_calloc(arena_id_t arena, size_t nmemb,
+                                    size_t size) {
+  JS_OOM_POSSIBLY_FAIL();
+  return moz_arena_calloc(arena, nmemb, size);
 }
 
-static inline void* js_calloc(size_t bytes)
-{
-    return js_arena_calloc(js::MallocArena, bytes, 1);
+static inline void* js_calloc(size_t bytes) {
+  return js_arena_calloc(js::MallocArena, bytes, 1);
 }
 
-static inline void* js_calloc(size_t nmemb, size_t size)
-{
-    return js_arena_calloc(js::MallocArena, nmemb, size);
+static inline void* js_calloc(size_t nmemb, size_t size) {
+  return js_arena_calloc(js::MallocArena, nmemb, size);
 }
 
-static inline void* js_arena_realloc(arena_id_t arena, void* p, size_t bytes)
-{
-    // realloc() with zero size is not portable, as some implementations may
-    // return nullptr on success and free |p| for this.  We assume nullptr
-    // indicates failure and that |p| is still valid.
-    MOZ_ASSERT(bytes != 0);
+static inline void* js_arena_realloc(arena_id_t arena, void* p, size_t bytes) {
+  // realloc() with zero size is not portable, as some implementations may
+  // return nullptr on success and free |p| for this.  We assume nullptr
+  // indicates failure and that |p| is still valid.
+  MOZ_ASSERT(bytes != 0);
 
-    JS_OOM_POSSIBLY_FAIL();
-    return moz_arena_realloc(arena, p, bytes);
+  JS_OOM_POSSIBLY_FAIL();
+  return moz_arena_realloc(arena, p, bytes);
 }
 
-static inline void* js_realloc(void* p, size_t bytes)
-{
-    return js_arena_realloc(js::MallocArena, p, bytes);
+static inline void* js_realloc(void* p, size_t bytes) {
+  return js_arena_realloc(js::MallocArena, p, bytes);
 }
 
-static inline void js_free(void* p)
-{
-    // TODO: This should call |moz_arena_free(js::MallocArena, p)| but we
-    // currently can't enforce that all memory freed here was allocated by
-    // js_malloc().
-    free(p);
+static inline void js_free(void* p) {
+  // TODO: This should call |moz_arena_free(js::MallocArena, p)| but we
+  // currently can't enforce that all memory freed here was allocated by
+  // js_malloc().
+  free(p);
 }
-#endif/* JS_USE_CUSTOM_ALLOCATOR */
+#endif /* JS_USE_CUSTOM_ALLOCATOR */
 
 #include <new>
 
 /*
- * Low-level memory management in SpiderMonkey:
+ * [SMDOC] Low-level memory management in SpiderMonkey
  *
  *  ** Do not use the standard malloc/free/realloc: SpiderMonkey allows these
  *     to be redefined (via JS_USE_CUSTOM_ALLOCATOR) and Gecko even #define's
@@ -508,15 +453,13 @@ static inline void js_free(void* p)
  * Note: Do not add a ; at the end of a use of JS_DECLARE_NEW_METHODS,
  * or the build will break.
  */
-#define JS_DECLARE_NEW_METHODS(NEWNAME, ALLOCATOR, QUALIFIERS) \
-    template <class T, typename... Args> \
-    QUALIFIERS T * \
-    NEWNAME(Args&&... args) MOZ_HEAP_ALLOCATOR { \
-        void* memory = ALLOCATOR(sizeof(T)); \
-        return MOZ_LIKELY(memory) \
-            ? new(memory) T(std::forward<Args>(args)...) \
-            : nullptr; \
-    }
+#define JS_DECLARE_NEW_METHODS(NEWNAME, ALLOCATOR, QUALIFIERS)              \
+  template <class T, typename... Args>                                      \
+  QUALIFIERS T* MOZ_HEAP_ALLOCATOR NEWNAME(Args&&... args) {                \
+    void* memory = ALLOCATOR(sizeof(T));                                    \
+    return MOZ_LIKELY(memory) ? new (memory) T(std::forward<Args>(args)...) \
+                              : nullptr;                                    \
+  }
 
 /*
  * Given a class which should provide 'make' methods, add
@@ -528,13 +471,13 @@ static inline void js_free(void* p)
  * Note: Do not add a ; at the end of a use of JS_DECLARE_MAKE_METHODS,
  * or the build will break.
  */
-#define JS_DECLARE_MAKE_METHODS(MAKENAME, NEWNAME, QUALIFIERS)\
-    template <class T, typename... Args> \
-    QUALIFIERS mozilla::UniquePtr<T, JS::DeletePolicy<T>> \
-    MAKENAME(Args&&... args) MOZ_HEAP_ALLOCATOR { \
-        T* ptr = NEWNAME<T>(std::forward<Args>(args)...); \
-        return mozilla::UniquePtr<T, JS::DeletePolicy<T>>(ptr); \
-    }
+#define JS_DECLARE_MAKE_METHODS(MAKENAME, NEWNAME, QUALIFIERS)             \
+  template <class T, typename... Args>                                     \
+  QUALIFIERS mozilla::UniquePtr<T, JS::DeletePolicy<T>> MOZ_HEAP_ALLOCATOR \
+  MAKENAME(Args&&... args) {                                               \
+    T* ptr = NEWNAME<T>(std::forward<Args>(args)...);                      \
+    return mozilla::UniquePtr<T, JS::DeletePolicy<T>>(ptr);                \
+  }
 
 JS_DECLARE_NEW_METHODS(js_new, js_malloc, static MOZ_ALWAYS_INLINE)
 
@@ -545,11 +488,9 @@ namespace js {
  * instances of type |T|.  Return false if the calculation overflowed.
  */
 template <typename T>
-MOZ_MUST_USE inline bool
-CalculateAllocSize(size_t numElems, size_t* bytesOut)
-{
-    *bytesOut = numElems * sizeof(T);
-    return (numElems & mozilla::tl::MulOverflowMask<sizeof(T)>::value) == 0;
+MOZ_MUST_USE inline bool CalculateAllocSize(size_t numElems, size_t* bytesOut) {
+  *bytesOut = numElems * sizeof(T);
+  return (numElems & mozilla::tl::MulOverflowMask<sizeof(T)>::value) == 0;
 }
 
 /*
@@ -558,41 +499,35 @@ CalculateAllocSize(size_t numElems, size_t* bytesOut)
  * false if the calculation overflowed.
  */
 template <typename T, typename Extra>
-MOZ_MUST_USE inline bool
-CalculateAllocSizeWithExtra(size_t numExtra, size_t* bytesOut)
-{
-    *bytesOut = sizeof(T) + numExtra * sizeof(Extra);
-    return (numExtra & mozilla::tl::MulOverflowMask<sizeof(Extra)>::value) == 0 &&
-           *bytesOut >= sizeof(T);
+MOZ_MUST_USE inline bool CalculateAllocSizeWithExtra(size_t numExtra,
+                                                     size_t* bytesOut) {
+  *bytesOut = sizeof(T) + numExtra * sizeof(Extra);
+  return (numExtra & mozilla::tl::MulOverflowMask<sizeof(Extra)>::value) == 0 &&
+         *bytesOut >= sizeof(T);
 }
 
 } /* namespace js */
 
 template <class T>
-static MOZ_ALWAYS_INLINE void
-js_delete(const T* p)
-{
-    if (p) {
-        p->~T();
-        js_free(const_cast<T*>(p));
-    }
-}
-
-template<class T>
-static MOZ_ALWAYS_INLINE void
-js_delete_poison(const T* p)
-{
-    if (p) {
-        p->~T();
-        memset(static_cast<void*>(const_cast<T*>(p)), 0x3B, sizeof(T));
-        js_free(const_cast<T*>(p));
-    }
+static MOZ_ALWAYS_INLINE void js_delete(const T* p) {
+  if (p) {
+    p->~T();
+    js_free(const_cast<T*>(p));
+  }
 }
 
 template <class T>
-static MOZ_ALWAYS_INLINE T*
-js_pod_arena_malloc(arena_id_t arena, size_t numElems)
-{
+static MOZ_ALWAYS_INLINE void js_delete_poison(const T* p) {
+  if (p) {
+    p->~T();
+    memset(static_cast<void*>(const_cast<T*>(p)), 0x3B, sizeof(T));
+    js_free(const_cast<T*>(p));
+  }
+}
+
+template <class T>
+static MOZ_ALWAYS_INLINE T* js_pod_arena_malloc(arena_id_t arena,
+                                                size_t numElems) {
   size_t bytes;
   if (MOZ_UNLIKELY(!js::CalculateAllocSize<T>(numElems, &bytes))) {
     return nullptr;
@@ -601,97 +536,89 @@ js_pod_arena_malloc(arena_id_t arena, size_t numElems)
 }
 
 template <class T>
-static MOZ_ALWAYS_INLINE T*
-js_pod_malloc(size_t numElems)
-{
-    return js_pod_arena_malloc<T>(js::MallocArena, numElems);
+static MOZ_ALWAYS_INLINE T* js_pod_malloc(size_t numElems) {
+  return js_pod_arena_malloc<T>(js::MallocArena, numElems);
 }
 
 template <class T>
-static MOZ_ALWAYS_INLINE T*
-js_pod_arena_calloc(arena_id_t arena, size_t numElems)
-{
-    size_t bytes;
-    if (MOZ_UNLIKELY(!js::CalculateAllocSize<T>(numElems, &bytes))) {
-        return nullptr;
-    }
-    return static_cast<T*>(js_arena_calloc(arena, bytes, 1));
+static MOZ_ALWAYS_INLINE T* js_pod_arena_calloc(arena_id_t arena,
+                                                size_t numElems) {
+  size_t bytes;
+  if (MOZ_UNLIKELY(!js::CalculateAllocSize<T>(numElems, &bytes))) {
+    return nullptr;
+  }
+  return static_cast<T*>(js_arena_calloc(arena, bytes, 1));
 }
 
 template <class T>
-static MOZ_ALWAYS_INLINE T*
-js_pod_calloc(size_t numElems)
-{
-    return js_pod_arena_calloc<T>(js::MallocArena, numElems);
+static MOZ_ALWAYS_INLINE T* js_pod_calloc(size_t numElems) {
+  return js_pod_arena_calloc<T>(js::MallocArena, numElems);
 }
 
 template <class T>
-static MOZ_ALWAYS_INLINE T*
-js_pod_realloc(T* prior, size_t oldSize, size_t newSize)
-{
-    MOZ_ASSERT(!(oldSize & mozilla::tl::MulOverflowMask<sizeof(T)>::value));
-    size_t bytes;
-    if (MOZ_UNLIKELY(!js::CalculateAllocSize<T>(newSize, &bytes))) {
-        return nullptr;
-    }
-    return static_cast<T*>(js_realloc(prior, bytes));
+static MOZ_ALWAYS_INLINE T* js_pod_realloc(T* prior, size_t oldSize,
+                                           size_t newSize) {
+  MOZ_ASSERT(!(oldSize & mozilla::tl::MulOverflowMask<sizeof(T)>::value));
+  size_t bytes;
+  if (MOZ_UNLIKELY(!js::CalculateAllocSize<T>(newSize, &bytes))) {
+    return nullptr;
+  }
+  return static_cast<T*>(js_realloc(prior, bytes));
 }
 
 namespace JS {
 
-template<typename T>
-struct DeletePolicy
-{
-    constexpr DeletePolicy() {}
+template <typename T>
+struct DeletePolicy {
+  constexpr DeletePolicy() {}
 
-    template<typename U>
-    MOZ_IMPLICIT DeletePolicy(DeletePolicy<U> other,
-                              typename mozilla::EnableIf<mozilla::IsConvertible<U*, T*>::value,
-                                                         int>::Type dummy = 0)
-    {}
+  template <typename U>
+  MOZ_IMPLICIT DeletePolicy(
+      DeletePolicy<U> other,
+      typename mozilla::EnableIf<mozilla::IsConvertible<U*, T*>::value,
+                                 int>::Type dummy = 0) {}
 
-    void operator()(const T* ptr) {
-        js_delete(const_cast<T*>(ptr));
-    }
+  void operator()(const T* ptr) { js_delete(const_cast<T*>(ptr)); }
 };
 
-struct FreePolicy
-{
-    void operator()(const void* ptr) {
-        js_free(const_cast<void*>(ptr));
-    }
+struct FreePolicy {
+  void operator()(const void* ptr) { js_free(const_cast<void*>(ptr)); }
 };
 
 typedef mozilla::UniquePtr<char[], JS::FreePolicy> UniqueChars;
 typedef mozilla::UniquePtr<char16_t[], JS::FreePolicy> UniqueTwoByteChars;
 
-} // namespace JS
+}  // namespace JS
 
 /* sixgill annotation defines */
 #ifndef HAVE_STATIC_ANNOTATIONS
-# define HAVE_STATIC_ANNOTATIONS
-# ifdef XGILL_PLUGIN
-#  define STATIC_PRECONDITION(COND)         __attribute__((precondition(#COND)))
-#  define STATIC_PRECONDITION_ASSUME(COND)  __attribute__((precondition_assume(#COND)))
-#  define STATIC_POSTCONDITION(COND)        __attribute__((postcondition(#COND)))
-#  define STATIC_POSTCONDITION_ASSUME(COND) __attribute__((postcondition_assume(#COND)))
-#  define STATIC_INVARIANT(COND)            __attribute__((invariant(#COND)))
-#  define STATIC_INVARIANT_ASSUME(COND)     __attribute__((invariant_assume(#COND)))
-#  define STATIC_ASSUME(COND)                        \
-  JS_BEGIN_MACRO                                     \
-    __attribute__((assume_static(#COND), unused))    \
-    int STATIC_PASTE1(assume_static_, __COUNTER__);  \
+#define HAVE_STATIC_ANNOTATIONS
+#ifdef XGILL_PLUGIN
+#define STATIC_PRECONDITION(COND) __attribute__((precondition(#COND)))
+#define STATIC_PRECONDITION_ASSUME(COND) \
+  __attribute__((precondition_assume(#COND)))
+#define STATIC_POSTCONDITION(COND) __attribute__((postcondition(#COND)))
+#define STATIC_POSTCONDITION_ASSUME(COND) \
+  __attribute__((postcondition_assume(#COND)))
+#define STATIC_INVARIANT(COND) __attribute__((invariant(#COND)))
+#define STATIC_INVARIANT_ASSUME(COND) __attribute__((invariant_assume(#COND)))
+#define STATIC_ASSUME(COND)                                          \
+  JS_BEGIN_MACRO                                                     \
+    __attribute__((assume_static(#COND), unused)) int STATIC_PASTE1( \
+        assume_static_, __COUNTER__);                                \
   JS_END_MACRO
-# else /* XGILL_PLUGIN */
-#  define STATIC_PRECONDITION(COND)          /* nothing */
-#  define STATIC_PRECONDITION_ASSUME(COND)   /* nothing */
-#  define STATIC_POSTCONDITION(COND)         /* nothing */
-#  define STATIC_POSTCONDITION_ASSUME(COND)  /* nothing */
-#  define STATIC_INVARIANT(COND)             /* nothing */
-#  define STATIC_INVARIANT_ASSUME(COND)      /* nothing */
-#  define STATIC_ASSUME(COND)          JS_BEGIN_MACRO /* nothing */ JS_END_MACRO
-# endif /* XGILL_PLUGIN */
-# define STATIC_SKIP_INFERENCE STATIC_INVARIANT(skip_inference())
+#else                                     /* XGILL_PLUGIN */
+#define STATIC_PRECONDITION(COND)         /* nothing */
+#define STATIC_PRECONDITION_ASSUME(COND)  /* nothing */
+#define STATIC_POSTCONDITION(COND)        /* nothing */
+#define STATIC_POSTCONDITION_ASSUME(COND) /* nothing */
+#define STATIC_INVARIANT(COND)            /* nothing */
+#define STATIC_INVARIANT_ASSUME(COND)     /* nothing */
+#define STATIC_ASSUME(COND)    \
+  JS_BEGIN_MACRO /* nothing */ \
+  JS_END_MACRO
+#endif /* XGILL_PLUGIN */
+#define STATIC_SKIP_INFERENCE STATIC_INVARIANT(skip_inference())
 #endif /* HAVE_STATIC_ANNOTATIONS */
 
 #endif /* js_Utility_h */

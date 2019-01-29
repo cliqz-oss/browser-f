@@ -527,12 +527,32 @@ public class Tokenizer implements Locator {
     public Tokenizer(TokenHandler tokenHandler, boolean newAttributesEachTime) {
         this.tokenHandler = tokenHandler;
         this.encodingDeclarationHandler = null;
+        this.lastCR = false;
+        this.stateSave = 0;
+        this.returnStateSave = 0;
+        this.index = 0;
+        this.forceQuirks = false;
+        this.additional = '\u0000';
+        this.entCol = 0;
+        this.firstCharKey = 0;
+        this.lo = 0;
+        this.hi = 0;
+        this.candidate = 0;
+        this.charRefBufMark = 0;
+        this.value = 0;
+        this.seenDigits = false;
+        this.cstart = 0;
+        this.strBufLen = 0;
         this.newAttributesEachTime = newAttributesEachTime;
         // &CounterClockwiseContourIntegral; is the longest valid char ref and
         // the semicolon never gets appended to the buffer.
         this.charRefBuf = new char[32];
+        this.charRefBufLen = 0;
         this.bmpChar = new char[1];
         this.astralChar = new char[2];
+        this.endTagExpectation = null;
+        this.endTagExpectationAsArray = null;
+        this.endTag = false;
         this.containsHyphen = false;
         this.tagName = null;
         this.nonInternedTagName = new ElementName();
@@ -542,6 +562,11 @@ public class Tokenizer implements Locator {
         this.publicIdentifier = null;
         this.systemIdentifier = null;
         this.attributes = null;
+        this.shouldSuspend = false;
+        this.confident = false;
+        this.line = 0;
+        // CPPONLY: this.attributeLine = 0;
+        this.interner = null;
     }
 
     // ]NOCPP]
@@ -560,11 +585,31 @@ public class Tokenizer implements Locator {
         // [NOCPP[
         this.newAttributesEachTime = false;
         // ]NOCPP]
+        this.lastCR = false;
+        this.stateSave = 0;
+        this.returnStateSave = 0;
+        this.index = 0;
+        this.forceQuirks = false;
+        this.additional = '\u0000';
+        this.entCol = 0;
+        this.firstCharKey = 0;
+        this.lo = 0;
+        this.hi = 0;
+        this.candidate = 0;
+        this.charRefBufMark = 0;
+        this.value = 0;
+        this.seenDigits = false;
+        this.cstart = 0;
+        this.strBufLen = 0;
         // &CounterClockwiseContourIntegral; is the longest valid char ref and
         // the semicolon never gets appended to the buffer.
         this.charRefBuf = new char[32];
+        this.charRefBufLen = 0;
         this.bmpChar = new char[1];
         this.astralChar = new char[2];
+        this.endTagExpectation = null;
+        this.endTagExpectationAsArray = null;
+        this.endTag = false;
         this.containsHyphen = false;
         this.tagName = null;
         this.nonInternedTagName = new ElementName();
@@ -578,6 +623,11 @@ public class Tokenizer implements Locator {
         // ]NOCPP]
         // CPPONLY: this.attributes = tokenHandler.HasBuilder() ? new HtmlAttributes(mappingLangToXmlLang) : null;
         // CPPONLY: this.newAttributesEachTime = !tokenHandler.HasBuilder();
+        this.shouldSuspend = false;
+        this.confident = false;
+        this.line = 0;
+        // CPPONLY: this.attributeLine = 0;
+        this.interner = null;
         // CPPONLY: this.viewingXmlSource = viewingXmlSource;
     }
 
@@ -6809,13 +6859,7 @@ public class Tokenizer implements Locator {
         seenDigits = other.seenDigits;
         endTag = other.endTag;
         shouldSuspend = false;
-
-        if (other.doctypeName == null) {
-            doctypeName = null;
-        } else {
-            doctypeName = Portability.newLocalFromLocal(other.doctypeName,
-                    interner);
-        }
+        doctypeName = other.doctypeName;
 
         Portability.releaseString(systemIdentifier);
         if (other.systemIdentifier == null) {
@@ -6840,7 +6884,7 @@ public class Tokenizer implements Locator {
             // In the C++ case, the atoms in the other tokenizer are from a
             // different tokenizer-scoped atom table. Therefore, we have to
             // obtain the correspoding atom from our own atom table.
-            nonInternedTagName.setNameForNonInterned(Portability.newLocalFromLocal(other.tagName.getName(), interner)
+            nonInternedTagName.setNameForNonInterned(other.tagName.getName()
                     // CPPONLY: , other.tagName.isCustom()
                     );
             tagName = nonInternedTagName;
@@ -6857,7 +6901,7 @@ public class Tokenizer implements Locator {
         // CPPONLY:     // In the C++ case, the atoms in the other tokenizer are from a
         // CPPONLY:     // different tokenizer-scoped atom table. Therefore, we have to
         // CPPONLY:     // obtain the correspoding atom from our own atom table.
-        // CPPONLY:     nonInternedAttributeName.setNameForNonInterned(Portability.newLocalFromLocal(other.attributeName.getLocal(AttributeName.HTML), interner));
+        // CPPONLY:     nonInternedAttributeName.setNameForNonInterned(other.attributeName.getLocal(AttributeName.HTML));
         // CPPONLY:     attributeName = nonInternedAttributeName;
         // CPPONLY: }
 
@@ -6865,7 +6909,7 @@ public class Tokenizer implements Locator {
         if (other.attributes == null) {
             attributes = null;
         } else {
-            attributes = other.attributes.cloneAttributes(interner);
+            attributes = other.attributes.cloneAttributes();
         }
     }
 
@@ -7101,8 +7145,9 @@ public class Tokenizer implements Locator {
 
     void destructor() {
         Portability.delete(nonInternedTagName);
-        // CPPONLY: Portability.delete(nonInternedAttributeName);
         nonInternedTagName = null;
+        // CPPONLY: Portability.delete(nonInternedAttributeName);
+        // CPPONLY: nonInternedAttributeName = null;
         // The translator will write refcount tracing stuff here
         Portability.delete(attributes);
         attributes = null;

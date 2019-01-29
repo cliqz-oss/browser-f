@@ -14,14 +14,16 @@
 namespace mozilla {
 namespace a11y {
 
-class AccessibleWrap : public Accessible
-{
-public:
+class AccessibleWrap : public Accessible {
+ public:
   AccessibleWrap(nsIContent* aContent, DocAccessible* aDoc);
   virtual ~AccessibleWrap();
 
   virtual nsresult HandleAccEvent(AccEvent* aEvent) override;
+
   virtual void Shutdown() override;
+
+  virtual bool DoAction(uint8_t aIndex) const override;
 
   int32_t VirtualViewID() const { return mID; }
 
@@ -33,36 +35,32 @@ public:
 
   mozilla::java::GeckoBundle::LocalRef ToBundle();
 
-  mozilla::java::GeckoBundle::LocalRef ToBundle(const uint64_t aState,
-                                                const nsIntRect& aBounds,
-                                                const nsString& aName,
-                                                const nsString& aTextValue,
-                                                const nsString& aDOMNodeID,
-                                                const double& aCurVal,
-                                                const double& aMinVal,
-                                                const double& aMaxVal,
-                                                const double& aStep,
-                                                nsIPersistentProperties* aAttributes);
+  mozilla::java::GeckoBundle::LocalRef ToBundle(
+      const uint64_t aState, const nsIntRect& aBounds,
+      const uint8_t aActionCount, const nsString& aName,
+      const nsString& aTextValue, const nsString& aDOMNodeID,
+      const double& aCurVal, const double& aMinVal, const double& aMaxVal,
+      const double& aStep, nsIPersistentProperties* aAttributes);
 
-  mozilla::java::GeckoBundle::LocalRef ToSmallBundle(const uint64_t aState, const nsIntRect& aBounds);
+  mozilla::java::GeckoBundle::LocalRef ToSmallBundle(
+      const uint64_t aState, const nsIntRect& aBounds,
+      const uint8_t aActionCount);
 
   mozilla::java::GeckoBundle::LocalRef ToSmallBundle();
 
   virtual void WrapperDOMNodeID(nsString& aDOMNodeID);
 
-  int32_t AndroidClass()
-  {
+  int32_t AndroidClass() {
     return mID == kNoID ? java::SessionAccessibility::CLASSNAME_WEBVIEW
                         : GetAndroidClass(WrapperRole());
   }
 
   static already_AddRefed<nsIPersistentProperties> AttributeArrayToProperties(
-    const nsTArray<Attribute>& aAttributes);
+      const nsTArray<Attribute>& aAttributes);
 
   static const int32_t kNoID = -1;
 
-protected:
-
+ protected:
   // IDs should be a positive 32bit integer.
   static int32_t AcquireID();
   static void ReleaseID(int32_t aID);
@@ -73,26 +71,29 @@ protected:
 
   int32_t mID;
 
-private:
-  virtual AccessibleWrap* WrapperParent() { return static_cast<AccessibleWrap*>(Parent()); }
+ private:
+  virtual AccessibleWrap* WrapperParent() {
+    return static_cast<AccessibleWrap*>(Parent());
+  }
 
-  virtual bool WrapperRangeInfo(double* aCurVal, double* aMinVal, double* aMaxVal, double* aStep);
+  virtual bool WrapperRangeInfo(double* aCurVal, double* aMinVal,
+                                double* aMaxVal, double* aStep);
 
   virtual role WrapperRole() { return Role(); }
 
   static void GetRoleDescription(role aRole,
+                                 nsIPersistentProperties* aAttributes,
                                  nsAString& aGeckoRole,
                                  nsAString& aRoleDescription);
-  static uint32_t GetFlags(role aRole, uint64_t aState);
+
+  static uint32_t GetFlags(role aRole, uint64_t aState, uint8_t aActionCount);
 };
 
-static inline AccessibleWrap*
-WrapperFor(const ProxyAccessible* aProxy)
-{
+static inline AccessibleWrap* WrapperFor(const ProxyAccessible* aProxy) {
   return reinterpret_cast<AccessibleWrap*>(aProxy->GetWrapper());
 }
 
-} // namespace a11y
-} // namespace mozilla
+}  // namespace a11y
+}  // namespace mozilla
 
 #endif

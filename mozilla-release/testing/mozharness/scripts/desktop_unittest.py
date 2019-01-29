@@ -10,6 +10,7 @@
 author: Jordan Lund
 """
 
+import json
 import os
 import re
 import sys
@@ -358,6 +359,21 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
         self.symbols_url = symbols_url
         return self.symbols_url
 
+    def _get_mozharness_test_paths(self, suite_category, suite):
+        test_paths = json.loads(os.environ.get('MOZHARNESS_TEST_PATHS', '""'))
+
+        if not test_paths or suite not in test_paths:
+            return None
+
+        suite_test_paths = test_paths[suite]
+
+        if suite_category == 'reftest':
+            dirs = self.query_abs_dirs()
+            suite_test_paths = [os.path.join(dirs['abs_reftest_dir'], 'tests', p)
+                                for p in suite_test_paths]
+
+        return suite_test_paths
+
     def _query_abs_base_cmd(self, suite_category, suite):
         if self.binary_path:
             c = self.config
@@ -398,8 +414,9 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
 
             # Ignore chunking if we have user specified test paths
             if not (self.verify_enabled or self.per_test_coverage):
-                if os.environ.get('MOZHARNESS_TEST_PATHS'):
-                    base_cmd.extend(os.environ['MOZHARNESS_TEST_PATHS'].split(':'))
+                test_paths = self._get_mozharness_test_paths(suite_category, suite)
+                if test_paths:
+                    base_cmd.extend(test_paths)
                 elif c.get('total_chunks') and c.get('this_chunk'):
                     base_cmd.extend(['--total-chunks', c['total_chunks'],
                                      '--this-chunk', c['this_chunk']])
@@ -795,7 +812,9 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
                 }
                 if isinstance(suites[suite], dict):
                     options_list = suites[suite].get('options', [])
-                    if self.verify_enabled or self.per_test_coverage:
+                    if (self.verify_enabled or self.per_test_coverage or
+                        self._get_mozharness_test_paths(suite_category, suite)):
+                        # Ignore tests list in modes where we are running specific tests.
                         tests_list = []
                     else:
                         tests_list = suites[suite].get('tests', [])

@@ -1,21 +1,21 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! [Calc expressions][calc].
 //!
 //! [calc]: https://drafts.csswg.org/css-values/#calc-notation
 
+use crate::parser::ParserContext;
+use crate::values::computed;
+use crate::values::specified::length::ViewportPercentageLength;
+use crate::values::specified::length::{AbsoluteLength, FontRelativeLength, NoCalcLength};
+use crate::values::specified::{Angle, Time};
+use crate::values::{CSSFloat, CSSInteger};
 use cssparser::{AngleOrNumber, NumberOrPercentage, Parser, Token};
-use parser::ParserContext;
 use std::fmt::{self, Write};
-use style_traits::{CssWriter, ParseError, SpecifiedValueInfo, StyleParseErrorKind, ToCss};
 use style_traits::values::specified::AllowedNumericType;
-use values::{CSSFloat, CSSInteger};
-use values::computed;
-use values::specified::{Angle, Time};
-use values::specified::length::{AbsoluteLength, FontRelativeLength, NoCalcLength};
-use values::specified::length::ViewportPercentageLength;
+use style_traits::{CssWriter, ParseError, SpecifiedValueInfo, StyleParseErrorKind, ToCss};
 
 /// A node inside a `Calc` expression's AST.
 #[derive(Clone, Debug)]
@@ -529,8 +529,7 @@ impl CalcNode {
         context: &ParserContext,
         input: &mut Parser<'i, 't>,
     ) -> Result<CSSInteger, ParseError<'i>> {
-        Self::parse_number(context, input)
-            .map(|n| n.round() as CSSInteger)
+        Self::parse_number(context, input).map(|n| n.round() as CSSInteger)
     }
 
     /// Convenience parsing function for `<length> | <percentage>`.

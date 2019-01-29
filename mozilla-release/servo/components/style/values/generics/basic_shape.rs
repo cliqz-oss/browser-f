@@ -1,18 +1,18 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! CSS handling for the [`basic-shape`](https://drafts.csswg.org/css-shapes/#typedef-basic-shape)
 //! types that are generic over their `ToCss` implementations.
 
+use crate::values::animated::{Animate, Procedure, ToAnimatedZero};
+use crate::values::distance::{ComputeSquaredDistance, SquaredDistance};
+use crate::values::generics::border::BorderRadius;
+use crate::values::generics::position::Position;
+use crate::values::generics::rect::Rect;
+use crate::values::specified::SVGPathData;
 use std::fmt::{self, Write};
 use style_traits::{CssWriter, ToCss};
-use values::animated::{Animate, Procedure, ToAnimatedZero};
-use values::distance::{ComputeSquaredDistance, SquaredDistance};
-use values::generics::border::BorderRadius;
-use values::generics::position::Position;
-use values::generics::rect::Rect;
-use values::specified::SVGPathData;
 
 /// A clipping shape, for `clip-path`.
 pub type ClippingShape<BasicShape, Url> = ShapeSource<BasicShape, GeometryBox, Url>;
@@ -307,7 +307,8 @@ where
                     this.0.animate(&other.0, procedure)?,
                     this.1.animate(&other.1, procedure)?,
                 ))
-            }).collect::<Result<Vec<_>, _>>()?;
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Polygon {
             fill: self.fill,
             coordinates,
@@ -333,7 +334,8 @@ where
                 let d1 = this.0.compute_squared_distance(&other.0)?;
                 let d2 = this.1.compute_squared_distance(&other.1)?;
                 Ok(d1 + d2)
-            }).sum()
+            })
+            .sum()
     }
 }
 

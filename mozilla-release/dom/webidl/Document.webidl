@@ -527,13 +527,6 @@ partial interface Document {
   readonly attribute FlashClassification documentFlashClassification;
 };
 
-// Extension to obtain the number of trackers are detected and blocked in the
-// Document (and it's corresponding docshell sub-tree)
-partial interface Document {
-  [ChromeOnly] readonly attribute unsigned long numTrackersFound;
-  [ChromeOnly] readonly attribute unsigned long numTrackersBlocked;
-};
-
 partial interface Document {
   [Func="nsDocument::DocumentSupportsL10n"] readonly attribute DocumentL10n? l10n;
 };
@@ -550,6 +543,6 @@ Document implements DocumentOrShadowRoot;
 
 // https://wicg.github.io/feature-policy/#policy
 partial interface Document {
-    [SameObject, Pref="dom.security.featurePolicy.enabled"]
+    [SameObject, Pref="dom.security.featurePolicy.webidl.enabled"]
     readonly attribute Policy policy;
 };

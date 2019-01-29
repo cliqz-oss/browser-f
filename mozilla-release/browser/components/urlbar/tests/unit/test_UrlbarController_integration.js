@@ -10,7 +10,9 @@
 ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
 
 const TEST_URL = "http://example.com";
-const match = new UrlbarMatch(UrlbarUtils.MATCH_TYPE.TAB_SWITCH, { url: TEST_URL });
+const match = new UrlbarMatch(UrlbarUtils.MATCH_TYPE.TAB_SWITCH,
+                              UrlbarUtils.MATCH_SOURCE.TABS,
+                              { url: TEST_URL });
 let controller;
 
 /**
@@ -31,7 +33,11 @@ function assertContextMatches(context, expectedValues) {
 
 add_task(async function setup() {
   controller = new UrlbarController({
-    window: {},
+    browserWindow: {
+      location: {
+        href: AppConstants.BROWSER_CHROME_URL,
+      },
+    },
   });
 });
 

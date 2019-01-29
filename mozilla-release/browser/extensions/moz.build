@@ -11,11 +11,3 @@ DIRS += [
 #    'webcompat',
 #    'webcompat-reporter'
 ]
-
-''' disabled by Cliqz
-# Only include mortar system add-ons if we locally enable it
-if CONFIG['MOZ_MORTAR']:
-    DIRS += [
-        'mortar',
-    ]
-'''

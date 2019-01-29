@@ -12,7 +12,7 @@ with Files('devtools/**'):
     BUG_COMPONENT = ('DevTools', 'General')
 
 with Files('mach/**'):
-    BUG_COMPONENT = ('Core', 'mach')
+    BUG_COMPONENT = ('Firefox Build System', 'Mach Core')
 
 with Files('mozboot/**'):
     BUG_COMPONENT = ('Firefox Build System', 'Bootstrap Configuration')
@@ -55,6 +55,7 @@ with Files('mach/docs/**'):
 
 PYTHON_UNITTEST_MANIFESTS += [
     'mach/mach/test/python.ini',
+    'mozboot/mozboot/test/python.ini',
     'mozbuild/dumbmake/test/python.ini',
     'mozlint/test/python.ini',
     'mozrelease/test/python.ini',

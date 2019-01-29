@@ -33,6 +33,11 @@ const actionTypes = {
   UNWATCH_RUNTIME_FAILURE: "UNWATCH_RUNTIME_FAILURE",
   UNWATCH_RUNTIME_START: "UNWATCH_RUNTIME_START",
   UNWATCH_RUNTIME_SUCCESS: "UNWATCH_RUNTIME_SUCCESS",
+  UPDATE_CONNECTION_PROMPT_SETTING_FAILURE: "UPDATE_CONNECTION_PROMPT_SETTING_FAILURE",
+  UPDATE_CONNECTION_PROMPT_SETTING_START: "UPDATE_CONNECTION_PROMPT_SETTING_START",
+  UPDATE_CONNECTION_PROMPT_SETTING_SUCCESS: "UPDATE_CONNECTION_PROMPT_SETTING_SUCCESS",
+  USB_RUNTIMES_SCAN_START: "USB_RUNTIMES_SCAN_START",
+  USB_RUNTIMES_SCAN_SUCCESS: "USB_RUNTIMES_SCAN_SUCCESS",
   USB_RUNTIMES_UPDATED: "USB_RUNTIMES_UPDATED",
   WATCH_RUNTIME_FAILURE: "WATCH_RUNTIME_FAILURE",
   WATCH_RUNTIME_START: "WATCH_RUNTIME_START",
@@ -54,9 +59,22 @@ const DEBUG_TARGET_PANE = {
   TEMPORARY_EXTENSION: "temporaryExtension",
 };
 
-const PAGES = {
-  THIS_FIREFOX: "this-firefox",
+const PAGE_TYPES = {
+  RUNTIME: "runtime",
   CONNECT: "connect",
+};
+
+const PREFERENCES = {
+  // Temporary preference without any default value until network locations are enabled.
+  NETWORK_ENABLED: "devtools.aboutdebugging.network",
+  // Preference that drives the display of system addons in about:debugging.
+  SHOW_SYSTEM_ADDONS: "devtools.aboutdebugging.showSystemAddons",
+  // Temporary preference without any default value until wifi is enabled.
+  WIFI_ENABLED: "devtools.aboutdebugging.wifi",
+};
+
+const RUNTIME_PREFERENCE = {
+  CONNECTION_PROMPT: "devtools.debugger.prompt-connection",
 };
 
 const RUNTIMES = {
@@ -86,7 +104,9 @@ const USB_STATES = {
 module.exports = Object.assign({}, {
   DEBUG_TARGETS,
   DEBUG_TARGET_PANE,
-  PAGES,
+  PAGE_TYPES,
+  PREFERENCES,
+  RUNTIME_PREFERENCE,
   RUNTIMES,
   SERVICE_WORKER_FETCH_STATES,
   SERVICE_WORKER_STATUSES,

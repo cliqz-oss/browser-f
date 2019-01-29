@@ -15,34 +15,30 @@
 
 #ifdef MOZ_AV1
 #include "AOMDecoder.h"
+#include "DAV1DDecoder.h"
 #endif
 
 namespace mozilla {
 
-bool
-AgnosticDecoderModule::SupportsMimeType(
-  const nsACString& aMimeType,
-  DecoderDoctorDiagnostics* aDiagnostics) const
-{
+bool AgnosticDecoderModule::SupportsMimeType(
+    const nsACString& aMimeType, DecoderDoctorDiagnostics* aDiagnostics) const {
   bool supports =
-    VPXDecoder::IsVPX(aMimeType) ||
-    OpusDataDecoder::IsOpus(aMimeType) ||
-    VorbisDataDecoder::IsVorbis(aMimeType) ||
-    WaveDataDecoder::IsWave(aMimeType) ||
-    TheoraDecoder::IsTheora(aMimeType);
+      VPXDecoder::IsVPX(aMimeType) || OpusDataDecoder::IsOpus(aMimeType) ||
+      VorbisDataDecoder::IsVorbis(aMimeType) ||
+      WaveDataDecoder::IsWave(aMimeType) || TheoraDecoder::IsTheora(aMimeType);
 #ifdef MOZ_AV1
   if (StaticPrefs::MediaAv1Enabled()) {
     supports |= AOMDecoder::IsAV1(aMimeType);
   }
 #endif
-  MOZ_LOG(sPDMLog, LogLevel::Debug, ("Agnostic decoder %s requested type",
-        supports ? "supports" : "rejects"));
+  MOZ_LOG(sPDMLog, LogLevel::Debug,
+          ("Agnostic decoder %s requested type",
+           supports ? "supports" : "rejects"));
   return supports;
 }
 
-already_AddRefed<MediaDataDecoder>
-AgnosticDecoderModule::CreateVideoDecoder(const CreateDecoderParams& aParams)
-{
+already_AddRefed<MediaDataDecoder> AgnosticDecoderModule::CreateVideoDecoder(
+    const CreateDecoderParams& aParams) {
   RefPtr<MediaDataDecoder> m;
 
   if (VPXDecoder::IsVPX(aParams.mConfig.mMimeType)) {
@@ -51,7 +47,11 @@ AgnosticDecoderModule::CreateVideoDecoder(const CreateDecoderParams& aParams)
 #ifdef MOZ_AV1
   else if (AOMDecoder::IsAV1(aParams.mConfig.mMimeType) &&
            StaticPrefs::MediaAv1Enabled()) {
-    m = new AOMDecoder(aParams);
+    if (StaticPrefs::MediaAv1UseDav1d()) {
+      m = new DAV1DDecoder(aParams);
+    } else {
+      m = new AOMDecoder(aParams);
+    }
   }
 #endif
   else if (TheoraDecoder::IsTheora(aParams.mConfig.mMimeType)) {
@@ -61,9 +61,8 @@ AgnosticDecoderModule::CreateVideoDecoder(const CreateDecoderParams& aParams)
   return m.forget();
 }
 
-already_AddRefed<MediaDataDecoder>
-AgnosticDecoderModule::CreateAudioDecoder(const CreateDecoderParams& aParams)
-{
+already_AddRefed<MediaDataDecoder> AgnosticDecoderModule::CreateAudioDecoder(
+    const CreateDecoderParams& aParams) {
   RefPtr<MediaDataDecoder> m;
 
   const TrackInfo& config = aParams.mConfig;
@@ -78,4 +77,4 @@ AgnosticDecoderModule::CreateAudioDecoder(const CreateDecoderParams& aParams)
   return m.forget();
 }
 
-} // namespace mozilla
+}  // namespace mozilla

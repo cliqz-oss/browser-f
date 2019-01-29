@@ -21,12 +21,6 @@ Preferences.addAll([
 
 var gSanitizePromptDialog = {
 
-  get bundleBrowser() {
-    if (!this._bundleBrowser)
-      this._bundleBrowser = document.getElementById("bundleBrowser");
-    return this._bundleBrowser;
-  },
-
   get selectedTimespan() {
     var durList = document.getElementById("sanitizeDurationChoice");
     return parseInt(durList.value);
@@ -40,16 +34,24 @@ var gSanitizePromptDialog = {
     // This is used by selectByTimespan() to determine if the window has loaded.
     this._inited = true;
 
-    document.documentElement.getButton("accept").label =
-      this.bundleBrowser.getString("sanitizeButtonOK");
+    let OKButton = document.documentElement.getButton("accept");
+    document.l10n.setAttributes(OKButton, "sanitize-button-ok");
 
     if (this.selectedTimespan === Sanitizer.TIMESPAN_EVERYTHING) {
       this.prepareWarning();
       this.warningBox.hidden = false;
-      document.title =
-        this.bundleBrowser.getString("sanitizeDialog2.everything.title");
-    } else
+      document.l10n.setAttributes(document.documentElement, "dialog-title-everything");
+      let warningDesc = document.getElementById("sanitizeEverythingWarning");
+      // Ensure we've translated and sized the warning.
+      document.mozSubdialogReady =
+        document.l10n.translateFragment(warningDesc).then(() => {
+          // And then ensure we've run layout.
+          let rootWin = window.docShell.rootTreeItem.QueryInterface(Ci.nsIDocShell).domWindow;
+          return rootWin.promiseDocumentFlushed(() => {});
+        });
+    } else {
       this.warningBox.hidden = true;
+    }
   },
 
   selectByTimespan() {
@@ -67,8 +69,7 @@ var gSanitizePromptDialog = {
         warningBox.hidden = false;
         window.resizeBy(0, warningBox.boxObject.height);
       }
-      window.document.title =
-        this.bundleBrowser.getString("sanitizeDialog2.everything.title");
+      document.l10n.setAttributes(document.documentElement, "dialog-title-everything");
       return;
     }
 
@@ -77,8 +78,7 @@ var gSanitizePromptDialog = {
       window.resizeBy(0, -warningBox.boxObject.height);
       warningBox.hidden = true;
     }
-    window.document.title =
-      window.document.documentElement.getAttribute("noneverythingtitle");
+    document.l10n.setAttributes(document.documentElement, "dialog-title");
   },
 
   sanitize() {
@@ -92,8 +92,7 @@ var gSanitizePromptDialog = {
     let docElt = document.documentElement;
     let acceptButton = docElt.getButton("accept");
     acceptButton.disabled = true;
-    acceptButton.setAttribute("label",
-                              this.bundleBrowser.getString("sanitizeButtonClearing"));
+    document.l10n.setAttributes(acceptButton, "sanitize-button-clearing");
     docElt.getButton("cancel").disabled = true;
 
     try {
@@ -122,16 +121,12 @@ var gSanitizePromptDialog = {
     // initialize it here.  Currently we use the no-visits warning string,
     // which does not include date and time.  See bug 480169 comment 48.
 
-    var warningStringID;
-    if (this.hasNonSelectedItems()) {
-      warningStringID = "sanitizeSelectedWarning";
-    } else {
-      warningStringID = "sanitizeEverythingWarning2";
-    }
-
     var warningDesc = document.getElementById("sanitizeEverythingWarning");
-    warningDesc.textContent =
-      this.bundleBrowser.getString(warningStringID);
+    if (this.hasNonSelectedItems()) {
+      document.l10n.setAttributes(warningDesc, "sanitize-selected-warning");
+    } else {
+      document.l10n.setAttributes(warningDesc, "sanitize-everything-warning");
+    }
   },
 
   /**

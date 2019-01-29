@@ -28,13 +28,8 @@ selectNode = async function(node, inspector, reason) {
   const onEditorUpdated = inspector.once("fonteditor-updated");
   await _selectNode(node, inspector, reason);
 
-  if (Services.prefs.getBoolPref("devtools.inspector.fonteditor.enabled")) {
-    // Wait for both the font inspetor and font editor before proceeding.
-    await Promise.all([onInspectorUpdated, onEditorUpdated]);
-  } else {
-    // Wait just for the font inspector.
-    await onInspectorUpdated;
-  }
+  // Wait for both the font inspector and font editor before proceeding.
+  await Promise.all([onInspectorUpdated, onEditorUpdated]);
 };
 
 /**
@@ -56,7 +51,7 @@ var openFontInspectorForURL = async function(url) {
     testActor,
     toolbox,
     inspector,
-    view: inspector.fontinspector
+    view: inspector.getPanel("fontinspector"),
   };
 };
 
@@ -233,7 +228,7 @@ function getPropertyValue(viewDoc, name) {
            parseFloat(viewDoc.querySelector(selector).value),
     // Ensure unit dropdown exists before querying its value
     unit: viewDoc.querySelector(selector + ` ~ .font-value-select`) &&
-          viewDoc.querySelector(selector + ` ~ .font-value-select`).value
+          viewDoc.querySelector(selector + ` ~ .font-value-select`).value,
   };
 }
 

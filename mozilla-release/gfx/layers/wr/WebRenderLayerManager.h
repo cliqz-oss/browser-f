@@ -8,13 +8,17 @@
 #define GFX_WEBRENDERLAYERMANAGER_H
 
 #include <unordered_set>
+#include <unordered_map>
 #include <vector>
 
 #include "gfxPrefs.h"
 #include "Layers.h"
+#include "mozilla/Maybe.h"
 #include "mozilla/MozPromise.h"
 #include "mozilla/layers/APZTestData.h"
 #include "mozilla/layers/FocusTarget.h"
+#include "mozilla/layers/IpcResourceUpdateQueue.h"
+#include "mozilla/layers/SharedSurfacesChild.h"
 #include "mozilla/layers/StackingContextHelper.h"
 #include "mozilla/layers/TransactionIdAllocator.h"
 #include "mozilla/layers/WebRenderCommandBuilder.h"
@@ -42,23 +46,24 @@ class PCompositorBridgeChild;
 class WebRenderBridgeChild;
 class WebRenderParentCommand;
 
-class WebRenderLayerManager final : public LayerManager
-{
-  typedef nsTArray<RefPtr<Layer> > LayerRefArray;
-  typedef nsTHashtable<nsRefPtrHashKey<WebRenderUserData>> WebRenderUserDataRefTable;
+class WebRenderLayerManager final : public LayerManager {
+  typedef nsTArray<RefPtr<Layer>> LayerRefArray;
+  typedef nsTHashtable<nsRefPtrHashKey<WebRenderUserData>>
+      WebRenderUserDataRefTable;
 
-public:
+ public:
   explicit WebRenderLayerManager(nsIWidget* aWidget);
-  bool Initialize(PCompositorBridgeChild* aCBChild, wr::PipelineId aLayersId, TextureFactoryIdentifier* aTextureFactoryIdentifier);
+  bool Initialize(PCompositorBridgeChild* aCBChild, wr::PipelineId aLayersId,
+                  TextureFactoryIdentifier* aTextureFactoryIdentifier);
 
   virtual void Destroy() override;
 
   void DoDestroy(bool aIsSync);
 
-protected:
+ protected:
   virtual ~WebRenderLayerManager();
 
-public:
+ public:
   virtual KnowsCompositor* AsKnowsCompositor() override;
   WebRenderLayerManager* AsWebRenderLayerManager() override { return this; }
   virtual CompositorBridgeChild* GetCompositorBridgeChild() override;
@@ -66,25 +71,35 @@ public:
   // WebRender can handle images larger than the max texture size via tiling.
   virtual int32_t GetMaxTextureSize() const override { return INT32_MAX; }
 
-  virtual bool BeginTransactionWithTarget(gfxContext* aTarget) override;
-  virtual bool BeginTransaction() override;
-  virtual bool EndEmptyTransaction(EndTransactionFlags aFlags = END_DEFAULT) override;
-  void EndTransactionWithoutLayer(nsDisplayList* aDisplayList,
-                                  nsDisplayListBuilder* aDisplayListBuilder,
-                                  const nsTArray<wr::WrFilterOp>& aFilters = nsTArray<wr::WrFilterOp>(),
-                                  WebRenderBackgroundData* aBackground = nullptr);
-  virtual void EndTransaction(DrawPaintedLayerCallback aCallback,
-                              void* aCallbackData,
-                              EndTransactionFlags aFlags = END_DEFAULT) override;
+  virtual bool BeginTransactionWithTarget(gfxContext* aTarget,
+                                          const nsCString& aURL) override;
+  virtual bool BeginTransaction(const nsCString& aURL) override;
+  virtual bool EndEmptyTransaction(
+      EndTransactionFlags aFlags = END_DEFAULT) override;
+  void EndTransactionWithoutLayer(
+      nsDisplayList* aDisplayList, nsDisplayListBuilder* aDisplayListBuilder,
+      const nsTArray<wr::WrFilterOp>& aFilters = nsTArray<wr::WrFilterOp>(),
+      WebRenderBackgroundData* aBackground = nullptr);
+  virtual void EndTransaction(
+      DrawPaintedLayerCallback aCallback, void* aCallbackData,
+      EndTransactionFlags aFlags = END_DEFAULT) override;
 
-  virtual LayersBackend GetBackendType() override { return LayersBackend::LAYERS_WR; }
-  virtual void GetBackendName(nsAString& name) override { name.AssignLiteral("WebRender"); }
+  virtual LayersBackend GetBackendType() override {
+    return LayersBackend::LAYERS_WR;
+  }
+  virtual void GetBackendName(nsAString& name) override {
+    name.AssignLiteral("WebRender");
+  }
   virtual const char* Name() const override { return "WebRender"; }
 
   virtual void SetRoot(Layer* aLayer) override;
 
-  already_AddRefed<PaintedLayer> CreatePaintedLayer() override { return nullptr; }
-  already_AddRefed<ContainerLayer> CreateContainerLayer() override { return nullptr; }
+  already_AddRefed<PaintedLayer> CreatePaintedLayer() override {
+    return nullptr;
+  }
+  already_AddRefed<ContainerLayer> CreateContainerLayer() override {
+    return nullptr;
+  }
   already_AddRefed<ImageLayer> CreateImageLayer() override { return nullptr; }
   already_AddRefed<ColorLayer> CreateColorLayer() override { return nullptr; }
   already_AddRefed<CanvasLayer> CreateCanvasLayer() override { return nullptr; }
@@ -98,14 +113,18 @@ public:
                             const mozilla::TimeStamp& aCompositeEnd) override;
 
   virtual void ClearCachedResources(Layer* aSubtree = nullptr) override;
-  virtual void UpdateTextureFactoryIdentifier(const TextureFactoryIdentifier& aNewIdentifier) override;
+  virtual void UpdateTextureFactoryIdentifier(
+      const TextureFactoryIdentifier& aNewIdentifier) override;
   virtual TextureFactoryIdentifier GetTextureFactoryIdentifier() override;
 
-  virtual void SetTransactionIdAllocator(TransactionIdAllocator* aAllocator) override;
+  virtual void SetTransactionIdAllocator(
+      TransactionIdAllocator* aAllocator) override;
   virtual TransactionId GetLastTransactionId() override;
 
-  virtual void AddDidCompositeObserver(DidCompositeObserver* aObserver) override;
-  virtual void RemoveDidCompositeObserver(DidCompositeObserver* aObserver) override;
+  virtual void AddDidCompositeObserver(
+      DidCompositeObserver* aObserver) override;
+  virtual void RemoveDidCompositeObserver(
+      DidCompositeObserver* aObserver) override;
 
   virtual void FlushRendering() override;
   virtual void WaitOnTransactionProcessed() override;
@@ -114,8 +133,7 @@ public:
 
   virtual void ScheduleComposite() override;
 
-  virtual void SetNeedsComposite(bool aNeedsComposite) override
-  {
+  virtual void SetNeedsComposite(bool aNeedsComposite) override {
     mNeedsComposite = aNeedsComposite;
   }
   virtual bool NeedsComposite() const override { return mNeedsComposite; }
@@ -123,15 +141,27 @@ public:
   virtual void SetFocusTarget(const FocusTarget& aFocusTarget) override;
 
   virtual already_AddRefed<PersistentBufferProvider>
-  CreatePersistentBufferProvider(const gfx::IntSize& aSize, gfx::SurfaceFormat aFormat) override;
+  CreatePersistentBufferProvider(const gfx::IntSize& aSize,
+                                 gfx::SurfaceFormat aFormat) override;
 
   bool AsyncPanZoomEnabled() const override;
 
   // adds an imagekey to a list of keys that will be discarded on the next
   // transaction or destruction
   void AddImageKeyForDiscard(wr::ImageKey);
+  void AddBlobImageKeyForDiscard(wr::BlobImageKey);
   void DiscardImages();
+  void DiscardImagesInTransaction(wr::IpcResourceUpdateQueue& aResourceUpdates);
   void DiscardLocalImages();
+
+  wr::IpcResourceUpdateQueue& AsyncResourceUpdates();
+  void FlushAsyncResourceUpdates();
+
+  void RegisterAsyncAnimation(const wr::ImageKey& aKey,
+                              SharedSurfacesAnimation* aAnimation);
+  void DeregisterAsyncAnimation(const wr::ImageKey& aKey);
+  void ClearAsyncAnimations();
+  void WrReleasedImages(const nsTArray<wr::ExternalImageKeyPair>& aPairs);
 
   // Methods to manage the compositor animation ids. Active animations are still
   // going, and when they end we discard them and remove them from the active
@@ -143,18 +173,20 @@ public:
   WebRenderBridgeChild* WrBridge() const { return mWrChild; }
 
   // See equivalent function in ClientLayerManager
-  void LogTestDataForCurrentPaint(FrameMetrics::ViewID aScrollId,
+  void LogTestDataForCurrentPaint(ScrollableLayerGuid::ViewID aScrollId,
                                   const std::string& aKey,
                                   const std::string& aValue) {
     MOZ_ASSERT(gfxPrefs::APZTestLoggingEnabled(), "don't call me");
-    mApzTestData.LogTestDataForPaint(mPaintSequenceNumber, aScrollId, aKey, aValue);
+    mApzTestData.LogTestDataForPaint(mPaintSequenceNumber, aScrollId, aKey,
+                                     aValue);
   }
   // See equivalent function in ClientLayerManager
-  const APZTestData& GetAPZTestData() const
-  { return mApzTestData; }
+  const APZTestData& GetAPZTestData() const { return mApzTestData; }
 
   WebRenderCommandBuilder& CommandBuilder() { return mWebRenderCommandBuilder; }
-  WebRenderUserDataRefTable* GetWebRenderUserDataTable() { return mWebRenderCommandBuilder.GetWebRenderUserDataTable(); }
+  WebRenderUserDataRefTable* GetWebRenderUserDataTable() {
+    return mWebRenderCommandBuilder.GetWebRenderUserDataTable();
+  }
   WebRenderScrollData& GetScrollData() { return mScrollData; }
 
   void WrUpdated();
@@ -164,19 +196,20 @@ public:
   dom::TabGroup* GetTabGroup();
 
   uint32_t StartFrameTimeRecording(int32_t aBufferSize) override;
-  void StopFrameTimeRecording(uint32_t         aStartIndex,
+  void StopFrameTimeRecording(uint32_t aStartIndex,
                               nsTArray<float>& aFrameIntervals) override;
 
-private:
+ private:
   /**
    * Take a snapshot of the parent context, and copy
    * it into mTarget.
    */
   void MakeSnapshotIfRequired(LayoutDeviceIntSize aSize);
 
-private:
+ private:
   nsIWidget* MOZ_NON_OWNING_REF mWidget;
   nsTArray<wr::ImageKey> mImageKeysToDelete;
+  nsTArray<wr::BlobImageKey> mBlobImageKeysToDelete;
 
   // Set of compositor animation ids for which there are active animations (as
   // of the last transaction) on the compositor side.
@@ -216,12 +249,17 @@ private:
   APZTestData mApzTestData;
 
   TimeStamp mTransactionStart;
+  nsCString mURL;
   WebRenderCommandBuilder mWebRenderCommandBuilder;
 
   size_t mLastDisplayListSize;
+
+  Maybe<wr::IpcResourceUpdateQueue> mAsyncResourceUpdates;
+  std::unordered_map<uint64_t, RefPtr<SharedSurfacesAnimation>>
+      mAsyncAnimations;
 };
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
 #endif /* GFX_WEBRENDERLAYERMANAGER_H */

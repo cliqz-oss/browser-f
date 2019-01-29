@@ -1,16 +1,16 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Different checks done during the style sharing process in order to determine
 //! quickly whether it's worth to share style, and whether two different
 //! elements can indeed share the same style.
 
-use bloom::StyleBloom;
-use context::{SelectorFlagsMap, SharedStyleContext};
-use dom::TElement;
+use crate::bloom::StyleBloom;
+use crate::context::{SelectorFlagsMap, SharedStyleContext};
+use crate::dom::TElement;
+use crate::sharing::{StyleSharingCandidate, StyleSharingTarget};
 use selectors::NthIndexCache;
-use sharing::{StyleSharingCandidate, StyleSharingTarget};
 
 /// Determines whether a target and a candidate have compatible parents for
 /// sharing.

@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 <%namespace name="helpers" file="/helpers.mako.rs" />
 
@@ -9,7 +9,7 @@
                     servo_pref="layout.columns.enabled",
                     derive_serialize="True"
                     extra_prefixes="moz" spec="https://drafts.csswg.org/css-multicol/#propdef-columns">
-    use properties::longhands::{column_count, column_width};
+    use crate::properties::longhands::{column_count, column_width};
 
     pub fn parse_value<'i, 't>(
         context: &ParserContext,
@@ -59,8 +59,8 @@
     sub_properties="column-rule-width column-rule-style column-rule-color"
     derive_serialize="True"
     spec="https://drafts.csswg.org/css-multicol/#propdef-column-rule">
-    use properties::longhands::{column_rule_width, column_rule_style};
-    use properties::longhands::column_rule_color;
+    use crate::properties::longhands::{column_rule_width, column_rule_style};
+    use crate::properties::longhands::column_rule_color;
 
     pub fn parse_value<'i, 't>(
         context: &ParserContext,

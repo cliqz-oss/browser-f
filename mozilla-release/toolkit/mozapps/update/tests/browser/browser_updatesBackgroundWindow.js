@@ -1,8 +1,8 @@
 add_task(async function testUpdatesBackgroundWindow() {
   SpecialPowers.pushPrefEnv({set: [
     [PREF_APP_UPDATE_STAGING_ENABLED, false],
-    [PREF_APP_UPDATE_AUTO, false],
   ]});
+  await UpdateUtils.setAppUpdateAutoEnabled(false);
 
   let updateParams = "promptWaitTime=0";
   let extraWindow = await BrowserTestUtils.openNewBrowserWindow();

@@ -26,7 +26,7 @@ button {
 }
 
 .button-text {
-  margin: 0 !important;
+  margin: 0;
   text-align: center;
 }
 
@@ -53,17 +53,6 @@ button:-moz-focusring {
   }
 }
 
-/* .......... active/open/checked state .......... */
-
-@media (-moz-windows-classic) {
-  button:-moz-any(:hover:active,[open="true"],[checked="true"]):not([disabled="true"]) > .button-box {
-    padding-top: 3px;
-    padding-bottom: 2px;
-    padding-inline-start: 5px;
-    padding-inline-end: 4px;
-  }
-}
-
 /* .......... disabled state .......... */
 
 button[disabled="true"] {
@@ -80,7 +69,7 @@ button[disabled="true"] {
 /* ::::: menu buttons ::::: */
 
 .button-menu-dropmarker {
-  -moz-appearance: none !important;
+  -moz-appearance: none;
   list-style-image: url("chrome://global/skin/icons/arrow-dropdown-12.svg");
   -moz-context-properties: fill;
   fill: currentColor;

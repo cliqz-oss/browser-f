@@ -19,8 +19,10 @@ class FlexItem extends PureComponent {
   static get propTypes() {
     return {
       flexItem: PropTypes.shape(Types.flexItem).isRequired,
+      index: PropTypes.number.isRequired,
       onHideBoxModelHighlighter: PropTypes.func.isRequired,
       onShowBoxModelHighlighterForNode: PropTypes.func.isRequired,
+      scrollToTop: PropTypes.func.isRequired,
       setSelectedNode: PropTypes.func.isRequired,
     };
   }
@@ -28,30 +30,33 @@ class FlexItem extends PureComponent {
   render() {
     const {
       flexItem,
+      index,
       onHideBoxModelHighlighter,
       onShowBoxModelHighlighterForNode,
+      scrollToTop,
       setSelectedNode,
     } = this.props;
     const { nodeFront } = flexItem;
 
     return (
-      dom.li({},
-        dom.button(
-          {
-            className: "devtools-button devtools-monospace",
-            onClick: () => {
-              setSelectedNode(nodeFront);
-              onHideBoxModelHighlighter();
-            },
-            onMouseOut: () => onHideBoxModelHighlighter(),
-            onMouseOver: () => onShowBoxModelHighlighterForNode(nodeFront),
+      dom.button(
+        {
+          className: "devtools-button devtools-monospace",
+          onClick: e => {
+            e.stopPropagation();
+            scrollToTop();
+            setSelectedNode(nodeFront);
+            onHideBoxModelHighlighter();
           },
-          Rep({
-            defaultRep: ElementNode,
-            mode: MODE.TINY,
-            object: translateNodeFrontToGrip(nodeFront),
-          })
-        )
+          onMouseOut: () => onHideBoxModelHighlighter(),
+          onMouseOver: () => onShowBoxModelHighlighterForNode(nodeFront),
+        },
+        dom.span({ className: "flex-item-index" }, index),
+        Rep({
+          defaultRep: ElementNode,
+          mode: MODE.TINY,
+          object: translateNodeFrontToGrip(nodeFront),
+        })
       )
     );
   }

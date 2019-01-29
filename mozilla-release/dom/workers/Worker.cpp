@@ -13,25 +13,27 @@
 #include "nsContentUtils.h"
 #include "WorkerPrivate.h"
 
+#ifdef XP_WIN
+#undef PostMessage
+#endif
+
 namespace mozilla {
 namespace dom {
 
-/* static */ already_AddRefed<Worker>
-Worker::Constructor(const GlobalObject& aGlobal, const nsAString& aScriptURL,
-                    const WorkerOptions& aOptions, ErrorResult& aRv)
-{
+/* static */ already_AddRefed<Worker> Worker::Constructor(
+    const GlobalObject& aGlobal, const nsAString& aScriptURL,
+    const WorkerOptions& aOptions, ErrorResult& aRv) {
   JSContext* cx = aGlobal.Context();
 
-  RefPtr<WorkerPrivate> workerPrivate =
-    WorkerPrivate::Constructor(cx, aScriptURL, false /* aIsChromeWorker */,
-                               WorkerTypeDedicated, aOptions.mName,
-                               VoidCString(), nullptr /*aLoadInfo */, aRv);
+  RefPtr<WorkerPrivate> workerPrivate = WorkerPrivate::Constructor(
+      cx, aScriptURL, false /* aIsChromeWorker */, WorkerTypeDedicated,
+      aOptions.mName, VoidCString(), nullptr /*aLoadInfo */, aRv);
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
   }
 
   nsCOMPtr<nsIGlobalObject> globalObject =
-    do_QueryInterface(aGlobal.GetAsSupports());
+      do_QueryInterface(aGlobal.GetAsSupports());
 
   RefPtr<Worker> worker = new Worker(globalObject, workerPrivate.forget());
   return worker.forget();
@@ -39,23 +41,18 @@ Worker::Constructor(const GlobalObject& aGlobal, const nsAString& aScriptURL,
 
 Worker::Worker(nsIGlobalObject* aGlobalObject,
                already_AddRefed<WorkerPrivate> aWorkerPrivate)
-  : DOMEventTargetHelper(aGlobalObject)
-  , mWorkerPrivate(std::move(aWorkerPrivate))
-{
+    : DOMEventTargetHelper(aGlobalObject),
+      mWorkerPrivate(std::move(aWorkerPrivate)) {
   MOZ_ASSERT(mWorkerPrivate);
   mWorkerPrivate->SetParentEventTargetRef(this);
 }
 
-Worker::~Worker()
-{
-  Terminate();
-}
+Worker::~Worker() { Terminate(); }
 
-JSObject*
-Worker::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
-{
+JSObject* Worker::WrapObject(JSContext* aCx,
+                             JS::Handle<JSObject*> aGivenProto) {
   JS::Rooted<JSObject*> wrapper(aCx,
-    Worker_Binding::Wrap(aCx, this, aGivenProto));
+                                Worker_Binding::Wrap(aCx, this, aGivenProto));
   if (wrapper) {
     // Most DOM objects don't assume they have a reflector. If they don't have
     // one and need one, they create it. But in workers code, we assume that the
@@ -68,15 +65,12 @@ Worker::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
   return wrapper;
 }
 
-void
-Worker::PostMessage(JSContext* aCx, JS::Handle<JS::Value> aMessage,
-                    const Sequence<JSObject*>& aTransferable,
-                    ErrorResult& aRv)
-{
+void Worker::PostMessage(JSContext* aCx, JS::Handle<JS::Value> aMessage,
+                         const Sequence<JSObject*>& aTransferable,
+                         ErrorResult& aRv) {
   NS_ASSERT_OWNINGTHREAD(Worker);
 
-  if (!mWorkerPrivate ||
-      mWorkerPrivate->ParentStatusProtected() > Running) {
+  if (!mWorkerPrivate || mWorkerPrivate->ParentStatusProtected() > Running) {
     return;
   }
 
@@ -88,9 +82,8 @@ Worker::PostMessage(JSContext* aCx, JS::Handle<JS::Value> aMessage,
     return;
   }
 
-  RefPtr<MessageEventRunnable> runnable =
-    new MessageEventRunnable(mWorkerPrivate,
-                             WorkerRunnable::WorkerThreadModifyBusyCount);
+  RefPtr<MessageEventRunnable> runnable = new MessageEventRunnable(
+      mWorkerPrivate, WorkerRunnable::WorkerThreadModifyBusyCount);
 
   UniquePtr<AbstractTimelineMarker> start;
   UniquePtr<AbstractTimelineMarker> end;
@@ -98,19 +91,21 @@ Worker::PostMessage(JSContext* aCx, JS::Handle<JS::Value> aMessage,
   bool isTimelineRecording = timelines && !timelines->IsEmpty();
 
   if (isTimelineRecording) {
-    start = MakeUnique<WorkerTimelineMarker>(NS_IsMainThread()
-      ? ProfileTimelineWorkerOperationType::SerializeDataOnMainThread
-      : ProfileTimelineWorkerOperationType::SerializeDataOffMainThread,
-      MarkerTracingType::START);
+    start = MakeUnique<WorkerTimelineMarker>(
+        NS_IsMainThread()
+            ? ProfileTimelineWorkerOperationType::SerializeDataOnMainThread
+            : ProfileTimelineWorkerOperationType::SerializeDataOffMainThread,
+        MarkerTracingType::START);
   }
 
   runnable->Write(aCx, aMessage, transferable, JS::CloneDataPolicy(), aRv);
 
   if (isTimelineRecording) {
-    end = MakeUnique<WorkerTimelineMarker>(NS_IsMainThread()
-      ? ProfileTimelineWorkerOperationType::SerializeDataOnMainThread
-      : ProfileTimelineWorkerOperationType::SerializeDataOffMainThread,
-      MarkerTracingType::END);
+    end = MakeUnique<WorkerTimelineMarker>(
+        NS_IsMainThread()
+            ? ProfileTimelineWorkerOperationType::SerializeDataOnMainThread
+            : ProfileTimelineWorkerOperationType::SerializeDataOffMainThread,
+        MarkerTracingType::END);
     timelines->AddMarkerForAllObservedDocShells(start);
     timelines->AddMarkerForAllObservedDocShells(end);
   }
@@ -124,9 +119,12 @@ Worker::PostMessage(JSContext* aCx, JS::Handle<JS::Value> aMessage,
   }
 }
 
-void
-Worker::Terminate()
-{
+void Worker::PostMessage(JSContext* aCx, JS::Handle<JS::Value> aMessage,
+                         const PostMessageOptions& aOptions, ErrorResult& aRv) {
+  PostMessage(aCx, aMessage, aOptions.mTransfer, aRv);
+}
+
+void Worker::Terminate() {
   NS_ASSERT_OWNINGTHREAD(Worker);
 
   if (mWorkerPrivate) {
@@ -156,5 +154,5 @@ NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 NS_IMPL_ADDREF_INHERITED(Worker, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(Worker, DOMEventTargetHelper)
 
-} // dom namespace
-} // mozilla namespace
+}  // namespace dom
+}  // namespace mozilla

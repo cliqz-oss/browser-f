@@ -1,8 +1,8 @@
 #!/bin/bash
 set -ex
 
-SCRIPT_DIR=$(dirname $(readlink -f "$0"))
-WPT_ROOT=$(readlink -f $SCRIPT_DIR/../..)
+SCRIPT_DIR=$(cd $(dirname "$0") && pwd -P)
+WPT_ROOT=$SCRIPT_DIR/../..
 cd $WPT_ROOT
 
 source tools/ci/lib.sh
@@ -19,6 +19,7 @@ test_infrastructure() {
 
 main() {
     PRODUCTS=( "firefox" "chrome" )
+    ./wpt manifest --rebuild -p ~/meta/MANIFEST.json
     for PRODUCT in "${PRODUCTS[@]}"; do
         if [ "$PRODUCT" != "firefox" ]; then
             # Firefox is expected to work using pref settings for DNS

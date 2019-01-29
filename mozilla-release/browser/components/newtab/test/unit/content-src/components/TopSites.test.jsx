@@ -33,7 +33,7 @@ describe("<TopSites>", () => {
   let sandbox;
 
   beforeEach(() => {
-    sandbox = sinon.sandbox.create();
+    sandbox = sinon.createSandbox();
   });
 
   afterEach(() => {
@@ -358,7 +358,7 @@ describe("<TopSiteLink>", () => {
   it("should not add the url to the href if it a search shortcut", () => {
     link.searchTopSite = true;
     const wrapper = shallow(<TopSiteLink link={link} />);
-    assert.isFalse(wrapper.find("a").props().href);
+    assert.isUndefined(wrapper.find("a").props().href);
   });
   it("should have rtl direction automatically set for text", () => {
     const wrapper = shallow(<TopSiteLink link={link} />);
@@ -666,7 +666,7 @@ describe("<TopSiteForm>", () => {
   let sandbox;
 
   function setup(props = {}) {
-    sandbox = sinon.sandbox.create();
+    sandbox = sinon.createSandbox();
     const customProps = Object.assign({}, {onClose: sandbox.spy(), dispatch: sandbox.spy()}, props);
     wrapper = mountWithIntl(<TopSiteForm {...customProps} />);
   }
@@ -1098,7 +1098,7 @@ describe("<TopSiteList>", () => {
     const link = {url: "https://foo.com", customScreenshotURL: "foo"};
     const title = "foo";
     instance.onDragEvent({type: "dragstart"}, index, link, title);
-    dispatch.reset();
+    dispatch.resetHistory();
     instance.onDragEvent({type: "drop"}, 3);
     assert.calledTwice(dispatch);
     assert.calledWith(dispatch, {

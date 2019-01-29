@@ -70,9 +70,14 @@ add_task(async function test1b() {
   await promiseShown;
   is(gPrivateWindow.PopupNotifications.panel.firstElementChild.checkbox.hidden, true, "'Remember' checkbox should be hidden in private windows");
 
+  let promises = [
+    BrowserTestUtils.browserLoaded(gTestBrowser, false, gHttpTestRoot + "plugin_test.html"),
+    BrowserTestUtils.waitForEvent(window, "activate"),
+  ];
   gPrivateWindow.close();
   BrowserTestUtils.loadURI(gTestBrowser, gHttpTestRoot + "plugin_test.html");
-  await BrowserTestUtils.browserLoaded(gTestBrowser);
+  await Promise.all(promises);
+  await SimpleTest.promiseFocus(window);
 });
 
 add_task(async function test2a() {
@@ -127,10 +132,15 @@ add_task(async function test2c() {
      "Test 2c, Activated plugin in a private window should not have visible 'Remember' checkbox.");
 
   clearAllPluginPermissions();
-  gPrivateWindow.close();
 
+  let promises = [
+    BrowserTestUtils.browserLoaded(gTestBrowser, false, gHttpTestRoot + "plugin_test.html"),
+    BrowserTestUtils.waitForEvent(window, "activate"),
+  ];
+  gPrivateWindow.close();
   BrowserTestUtils.loadURI(gTestBrowser, gHttpTestRoot + "plugin_test.html");
-  await BrowserTestUtils.browserLoaded(gTestBrowser);
+  await Promise.all(promises);
+  await SimpleTest.promiseFocus(window);
 });
 
 add_task(async function test3a() {
@@ -190,13 +200,12 @@ add_task(async function test3d() {
                                                    "Shown");
   popupNotification.reshow();
   await promiseShown;
-  let doc = gPrivateWindow.document;
   for (let item of gPrivateWindow.PopupNotifications.panel.firstElementChild.children) {
-    let allowalways = doc.getAnonymousElementByAttribute(item, "anonid", "allowalways");
+    let allowalways = item.openOrClosedShadowRoot.getElementById("allowalways");
     ok(allowalways, "Test 3d, should have list item for allow always");
-    let allownow = doc.getAnonymousElementByAttribute(item, "anonid", "allownow");
+    let allownow = item.openOrClosedShadowRoot.getElementById("allownow");
     ok(allownow, "Test 3d, should have list item for allow now");
-    let block = doc.getAnonymousElementByAttribute(item, "anonid", "block");
+    let block = item.openOrClosedShadowRoot.getElementById("block");
     ok(block, "Test 3d, should have list item for block");
 
     if (item.action.pluginName === "Test") {

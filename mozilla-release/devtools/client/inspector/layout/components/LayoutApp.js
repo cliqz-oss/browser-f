@@ -5,7 +5,7 @@
 "use strict";
 
 const Services = require("Services");
-const { createFactory, PureComponent } = require("devtools/client/shared/vendor/react");
+const { createFactory, createRef, PureComponent } = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const { connect } = require("devtools/client/shared/vendor/react-redux");
@@ -61,6 +61,13 @@ class LayoutApp extends PureComponent {
     };
   }
 
+  constructor(props) {
+    super(props);
+    this.containerRef = createRef();
+
+    this.scrollToTop = this.scrollToTop.bind(this);
+  }
+
   getFlexboxHeader(flexContainer) {
     if (!flexContainer.actorID) {
       // No flex container or flex item selected.
@@ -74,6 +81,13 @@ class LayoutApp extends PureComponent {
     return LAYOUT_L10N.getFormatStr("flexbox.flexItemOf", getSelectorFromGrip(grip));
   }
 
+  /**
+   * Scrolls to top of the layout container.
+   */
+  scrollToTop() {
+    this.containerRef.current.scrollTop = 0;
+  }
+
   render() {
     const items = [
       {
@@ -84,7 +98,7 @@ class LayoutApp extends PureComponent {
         onToggled: () => {
           const opened = Services.prefs.getBoolPref(GRID_OPENED_PREF);
           Services.prefs.setBoolPref(GRID_OPENED_PREF, !opened);
-        }
+        },
       },
       {
         component: BoxModel,
@@ -94,52 +108,61 @@ class LayoutApp extends PureComponent {
         onToggled: () => {
           const opened = Services.prefs.getBoolPref(BOXMODEL_OPENED_PREF);
           Services.prefs.setBoolPref(BOXMODEL_OPENED_PREF, !opened);
-        }
+        },
       },
     ];
 
     if (Services.prefs.getBoolPref(FLEXBOX_ENABLED_PREF)) {
+      const { flexContainer, flexItemContainer } = this.props.flexbox;
+      const opened = Services.prefs.getBoolPref(FLEXBOX_OPENED_PREF);
+
       // Since the flexbox panel is hidden behind a pref. We insert the flexbox container
       // to the first index of the accordion item list.
       items.splice(0, 0, {
+        className: `flex-accordion ${flexContainer.flexItemShown ? "item" : "container"}`,
         component: Flexbox,
         componentProps: {
           ...this.props,
-          flexContainer: this.props.flexbox.flexContainer,
+          flexContainer,
+          scrollToTop: this.scrollToTop,
         },
-        header: this.getFlexboxHeader(this.props.flexbox.flexContainer),
-        opened: Services.prefs.getBoolPref(FLEXBOX_OPENED_PREF),
+        header: this.getFlexboxHeader(flexContainer),
+        opened,
         onToggled: () => {
-          const opened =  Services.prefs.getBoolPref(FLEXBOX_OPENED_PREF);
-          Services.prefs.setBoolPref(FLEXBOX_OPENED_PREF, !opened);
-        }
+          Services.prefs.setBoolPref(FLEXBOX_OPENED_PREF,
+            !Services.prefs.getBoolPref(FLEXBOX_OPENED_PREF));
+        },
       });
 
       // If the current selected node is both a flex container and flex item. Render
-      // an accordion with another Flexbox component where the flexbox to show is the
-      // parent flex container of the current selected node.
-      if (this.props.flexbox.flexItemContainer &&
-          this.props.flexbox.flexItemContainer.actorID) {
-        // Insert the parent flex container to the first index of the accordion item
-        // list.
-        items.splice(0, 0, {
+      // an extra accordion with another Flexbox component where the node is shown as an
+      // item of its parent flex container.
+      // If the node was selected from the markup-view, then show this accordion after the
+      // container accordion. Otherwise show it first.
+      // The reason is that if the user selects an item-container in the markup view, it
+      // is assumed that they want to primarily see that element as a container, so the
+      // container info should be at the top.
+      if (flexItemContainer && flexItemContainer.actorID) {
+        items.splice(this.props.flexbox.initiatedByMarkupViewSelection ? 1 : 0, 0, {
+          className: "flex-accordion item",
           component: Flexbox,
           componentProps: {
             ...this.props,
-            flexContainer: this.props.flexbox.flexItemContainer,
+            flexContainer: flexItemContainer,
+            scrollToTop: this.scrollToTop,
           },
-          header: this.getFlexboxHeader(this.props.flexbox.flexItemContainer),
-          opened: Services.prefs.getBoolPref(FLEXBOX_OPENED_PREF),
+          header: this.getFlexboxHeader(flexItemContainer),
+          opened,
           onToggled: () => {
-            const opened =  Services.prefs.getBoolPref(FLEXBOX_OPENED_PREF);
-            Services.prefs.setBoolPref(FLEXBOX_OPENED_PREF, !opened);
-          }
+            Services.prefs.setBoolPref(FLEXBOX_OPENED_PREF,
+              !Services.prefs.getBoolPref(FLEXBOX_OPENED_PREF));
+          },
         });
       }
     }
 
     return (
-      dom.div({ className: "layout-container" },
+      dom.div({ className: "layout-container", ref: this.containerRef },
         Accordion({ items })
       )
     );

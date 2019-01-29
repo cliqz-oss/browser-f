@@ -68,6 +68,8 @@ EXPORTS += [
     'nsRandomGenerator.h',
     'nsSecurityHeaderParser.h',
     'NSSErrorsService.h',
+    'nsSSLSocketProvider.h',
+    'nsTLSSocketProvider.h',
     'RootCertificateTelemetryUtils.h',
     'ScopedNSSTypes.h',
     'SharedCertVerifier.h',
@@ -149,12 +151,17 @@ if CONFIG['MOZ_LIB_SECRET']:
 if CONFIG['OS_ARCH'] == 'Darwin':
     UNIFIED_SOURCES += [
         'KeychainSecret.cpp',
+        'OSReauthenticatorDarwin.mm',
     ]
     OS_LIBS += [
-        '-framework Security'
+        '-framework LocalAuthentication',
+        '-framework Security',
     ]
 
 if CONFIG['OS_ARCH'] == 'WINNT':
+    OS_LIBS += [
+        'credui'
+    ]
     UNIFIED_SOURCES += [
         'CredentialManagerSecret.cpp',
     ]

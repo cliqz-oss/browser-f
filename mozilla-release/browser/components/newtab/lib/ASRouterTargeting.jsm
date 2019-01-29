@@ -15,8 +15,8 @@ ChromeUtils.defineModuleGetter(this, "TelemetryEnvironment",
   "resource://gre/modules/TelemetryEnvironment.jsm");
 ChromeUtils.defineModuleGetter(this, "AppConstants",
   "resource://gre/modules/AppConstants.jsm");
-ChromeUtils.defineModuleGetter(this, "NewTabUtils",
-  "resource://gre/modules/NewTabUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "AttributionCode",
+  "resource:///modules/AttributionCode.jsm");
 
 const FXA_USERNAME_PREF = "services.sync.username";
 const SEARCH_REGION_PREF = "browser.search.region";
@@ -63,7 +63,7 @@ function CachedTargetingGetter(property, options = null, updateInterval = FRECEN
 }
 
 function CheckBrowserNeedsUpdate(updateInterval = FRECENT_SITES_UPDATE_INTERVAL) {
-  const UpdateChecker = Cc["@mozilla.org/updates/update-checker;1"].createInstance(Ci.nsIUpdateChecker);
+  const UpdateChecker = Cc["@mozilla.org/updates/update-checker;1"];
   const checker = {
     _lastUpdated: 0,
     _value: null,
@@ -91,8 +91,9 @@ function CheckBrowserNeedsUpdate(updateInterval = FRECENT_SITES_UPDATE_INTERVAL)
           QueryInterface: ChromeUtils.generateQI(["nsIUpdateCheckListener"]),
         };
 
-        if (now - this._lastUpdated >= updateInterval) {
-          UpdateChecker.checkForUpdates(updateServiceListener, true);
+        if (UpdateChecker && (now - this._lastUpdated >= updateInterval)) {
+          const checkerInstance = UpdateChecker.createInstance(Ci.nsIUpdateChecker);
+          checkerInstance.checkForUpdates(updateServiceListener, true);
           this._lastUpdated = now;
         } else {
           resolve(this._value);
@@ -152,6 +153,24 @@ function sortMessagesByWeightedRank(messages) {
     .map(({message}) => message);
 }
 
+/**
+ * Messages with targeting should get evaluated first, this way we can have
+ * fallback messages (no targeting at all) that will show up if nothing else
+ * matched
+ */
+function sortMessagesByTargeting(messages) {
+  return messages.sort((a, b) => {
+    if (a.targeting && !b.targeting) {
+      return -1;
+    }
+    if (!a.targeting && b.targeting) {
+      return 1;
+    }
+
+    return 0;
+  });
+}
+
 const TargetingGetters = {
   get locale() {
     return Services.locale.appLocaleAsLangTag;
@@ -162,9 +181,14 @@ const TargetingGetters = {
   get browserSettings() {
     const {settings} = TelemetryEnvironment.currentEnvironment;
     return {
+      // This way of getting attribution is deprecated - use atttributionData instead
       attribution: settings.attribution,
       update: settings.update,
     };
+  },
+  get attributionData() {
+    // Attribution is determined at startup - so we can use the cached attribution at this point
+    return AttributionCode.getCachedAttributionData();
   },
   get currentDate() {
     return new Date();
@@ -249,11 +273,11 @@ const TargetingGetters = {
     )));
   },
   get pinnedSites() {
-    return NewTabUtils.pinnedLinks.links.map(site => ({
+    return NewTabUtils.pinnedLinks.links.map(site => (site ? {
       url: site.url,
       host: (new URL(site.url)).hostname,
       searchTopSite: site.searchTopSite,
-    }));
+    } : {}));
   },
   get providerCohorts() {
     return ASRouterPreferences.providers.reduce((prev, current) => {
@@ -341,7 +365,8 @@ this.ASRouterTargeting = {
    * @returns {obj} an AS router message
    */
   async findMatchingMessage({messages, trigger, context, onError}) {
-    const sortedMessages = sortMessagesByWeightedRank([...messages]);
+    const weightSortedMessages = sortMessagesByWeightedRank([...messages]);
+    const sortedMessages = sortMessagesByTargeting(weightSortedMessages);
 
     for (const candidate of sortedMessages) {
       if (

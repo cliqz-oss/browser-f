@@ -115,6 +115,7 @@ let ACTORS = {
       module: "resource://gre/actors/AudioPlaybackChild.jsm",
       messages: [
         "AudioPlayback",
+        "TemporaryPermissionChanged",
       ],
       observers: [
         "audio-playback",
@@ -266,9 +267,8 @@ let ACTORS = {
     child: {
       module: "resource://gre/actors/UAWidgetsChild.jsm",
       events: {
-        "UAWidgetBindToTree": {},
-        "UAWidgetAttributeChanged": {},
-        "UAWidgetUnbindFromTree": {},
+        "UAWidgetSetupOrChange": {},
+        "UAWidgetTeardown": {},
       },
     },
   },

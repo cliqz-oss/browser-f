@@ -16,6 +16,7 @@ import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Parcelable;
 import android.os.Process;
 import android.os.SystemClock;
 import android.provider.MediaStore;
@@ -26,6 +27,7 @@ import android.support.multidex.MultiDex;
 import android.text.TextUtils;
 import android.util.Base64;
 import android.util.Log;
+import android.util.SparseArray;
 
 import com.squareup.leakcanary.LeakCanary;
 import com.squareup.leakcanary.RefWatcher;
@@ -80,6 +82,10 @@ public class GeckoApplication extends Application
     private boolean mIsInitialResume;
 
     private LightweightTheme mLightweightTheme;
+
+    // GeckoApp *must* keep its GeckoView state around for as long as our app process (and
+    // therefore Gecko) keeps running, even if Android clears the normal savedInstanceState.
+    private SparseArray<Parcelable> mSavedState;
 
     private RefWatcher mRefWatcher;
 
@@ -390,13 +396,10 @@ public class GeckoApplication extends Application
     protected void attachBaseContext(Context base) {
         super.attachBaseContext(base);
 
-        // API >= 21 natively supports loading multiple DEX files from APK files.
-        // Needs just 'multiDexEnabled true' inside the gradle build configuration.
-        final boolean isMultidexLibNeeded = BuildConfig.FLAVOR_minApi.equals("noMinApi");
-
-        if (isMultidexLibNeeded) {
-            MultiDex.install(this);
-        }
+        // API >= 21 natively supports loading multiple DEX files from APK
+        // files, so this is a no-op -- we just need 'multiDexEnabled true' in
+        // the Gradle configuration.
+        MultiDex.install(this);
     }
 
     /**
@@ -448,7 +451,7 @@ public class GeckoApplication extends Application
             });
         }
 
-        AudioFocusAgent.getInstance().attachToContext(this);
+        ThreadUtils.postToUiThread(() -> AudioFocusAgent.getInstance().attachToContext(this));
     }
 
     private class EventListener implements BundleEventListener
@@ -642,6 +645,14 @@ public class GeckoApplication extends Application
 
     public void prepareLightweightTheme() {
         mLightweightTheme = new LightweightTheme(this);
+    }
+
+    /* package */ void setSavedState(SparseArray<Parcelable> savedState) {
+        mSavedState = savedState;
+    }
+
+    /* package */ SparseArray<Parcelable> getSavedState() {
+        return mSavedState;
     }
 
     public static void createShortcut() {

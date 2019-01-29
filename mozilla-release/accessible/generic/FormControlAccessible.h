@@ -12,52 +12,14 @@ namespace mozilla {
 namespace a11y {
 
 /**
-  * Generic class used for progress meters.
-  */
-template<int Max>
-class ProgressMeterAccessible : public LeafAccessible
-{
-public:
-  ProgressMeterAccessible(nsIContent* aContent, DocAccessible* aDoc) :
-    LeafAccessible(aContent, aDoc)
-  {
-    // Ignore 'ValueChange' DOM event in lieu of @value attribute change
-    // notifications.
-    mStateFlags |= eHasNumericValue | eIgnoreDOMUIEvent;
-    mType = eProgressType;
-  }
-
-  // Accessible
-  virtual void Value(nsString& aValue) const override;
-  virtual mozilla::a11y::role NativeRole() const override;
-  virtual uint64_t NativeState() const override;
-
-  // Value
-  virtual double MaxValue() const override;
-  virtual double MinValue() const override;
-  virtual double CurValue() const override;
-  virtual double Step() const override;
-  virtual bool SetCurValue(double aValue) override;
-
-  // Widgets
-  virtual bool IsWidget() const override;
-
-protected:
-  virtual ~ProgressMeterAccessible() {}
-};
-
-/**
  * Checkbox accessible.
  */
-class CheckboxAccessible : public LeafAccessible
-{
-
-public:
+class CheckboxAccessible : public LeafAccessible {
+ public:
   enum { eAction_Click = 0 };
 
-  CheckboxAccessible(nsIContent* aContent, DocAccessible* aDoc) :
-    LeafAccessible(aContent, aDoc)
-  {
+  CheckboxAccessible(nsIContent* aContent, DocAccessible* aDoc)
+      : LeafAccessible(aContent, aDoc) {
     // Ignore "CheckboxStateChange" DOM event in lieu of document observer
     // state change notification.
     if (aContent->IsHTMLElement()) {
@@ -79,12 +41,10 @@ public:
 };
 
 /**
-  * Generic class used for radio buttons.
-  */
-class RadioButtonAccessible : public LeafAccessible
-{
-
-public:
+ * Generic class used for radio buttons.
+ */
+class RadioButtonAccessible : public LeafAccessible {
+ public:
   RadioButtonAccessible(nsIContent* aContent, DocAccessible* aDoc);
 
   // Accessible
@@ -101,8 +61,7 @@ public:
   virtual bool IsWidget() const override;
 };
 
-} // namespace a11y
-} // namespace mozilla
+}  // namespace a11y
+}  // namespace mozilla
 
 #endif
-

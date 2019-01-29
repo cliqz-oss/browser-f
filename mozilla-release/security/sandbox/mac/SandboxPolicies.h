@@ -6,6 +6,8 @@
 #ifndef mozilla_SandboxPolicies_h
 #define mozilla_SandboxPolicies_h
 
+#define MAX_TESTING_READ_PATHS 4
+
 namespace mozilla {
 
 static const char pluginSandboxRules[] = R"SANDBOX_LITERAL(
@@ -20,6 +22,29 @@ static const char pluginSandboxRules[] = R"SANDBOX_LITERAL(
       (deny default)
       (deny default (with no-log)))
 
+  ; These are not included in (deny default)
+  (deny process-info*)
+  ; This isn't available in some older macOS releases.
+  (if (defined? 'nvram*)
+    (deny nvram*))
+  ; This property require macOS 10.10+
+  (if (defined? 'file-map-executable)
+    (deny file-map-executable))
+
+  (if (defined? 'file-map-executable)
+    (allow file-map-executable file-read*
+      (subpath "/System/Library/PrivateFrameworks")
+      (regex #"^/usr/lib/libstdc\+\+\.[^/]*dylib$")
+      (literal plugin-binary-path)
+      (literal app-binary-path)
+      (subpath app-path))
+    (allow file-read*
+      (subpath "/System/Library/PrivateFrameworks")
+      (regex #"^/usr/lib/libstdc\+\+\.[^/]*dylib$")
+      (literal plugin-binary-path)
+      (literal app-binary-path)
+      (subpath app-path)))
+
   (allow signal (target self))
   (allow sysctl-read)
   (allow iokit-open (iokit-user-client-class "IOHIDParamUserClient"))
@@ -29,12 +54,7 @@ static const char pluginSandboxRules[] = R"SANDBOX_LITERAL(
       (literal "/dev/urandom")
       (literal "/usr/share/icu/icudt51l.dat")
       (subpath "/System/Library/Displays/Overrides")
-      (subpath "/System/Library/CoreServices/CoreTypes.bundle")
-      (subpath "/System/Library/PrivateFrameworks")
-      (regex #"^/usr/lib/libstdc\+\+\.[^/]*dylib$")
-      (literal plugin-binary-path)
-      (literal app-path)
-      (literal app-binary-path))
+      (subpath "/System/Library/CoreServices/CoreTypes.bundle"))
 )SANDBOX_LITERAL";
 
 static const char widevinePluginSandboxRulesAddend[] = R"SANDBOX_LITERAL(
@@ -50,16 +70,16 @@ static const char contentSandboxRules[] = R"SANDBOX_LITERAL(
   (define sandbox-level-3 (param "SANDBOX_LEVEL_3"))
   (define macosMinorVersion (string->number (param "MAC_OS_MINOR")))
   (define appPath (param "APP_PATH"))
-  (define appBinaryPath (param "APP_BINARY_PATH"))
-  (define appdir-path (param "APP_DIR"))
   (define hasProfileDir (param "HAS_SANDBOXED_PROFILE"))
   (define profileDir (param "PROFILE_DIR"))
+  (define hasWindowServer (param "HAS_WINDOW_SERVER"))
   (define home-path (param "HOME_PATH"))
   (define debugWriteDir (param "DEBUG_WRITE_DIR"))
   (define testingReadPath1 (param "TESTING_READ_PATH1"))
   (define testingReadPath2 (param "TESTING_READ_PATH2"))
   (define testingReadPath3 (param "TESTING_READ_PATH3"))
   (define testingReadPath4 (param "TESTING_READ_PATH4"))
+  (define crashPort (param "CRASH_PORT"))
 
   (if (string=? should-log "TRUE")
     (deny default)
@@ -81,12 +101,12 @@ static const char contentSandboxRules[] = R"SANDBOX_LITERAL(
       (subpath "/System")
       (subpath "/usr/lib")
       (subpath "/Library/GPUBundles")
-      (subpath appdir-path))
+      (subpath appPath))
     (allow file-read*
         (subpath "/System")
         (subpath "/usr/lib")
         (subpath "/Library/GPUBundles")
-        (subpath appdir-path)))
+        (subpath appPath)))
 
   ; Allow read access to standard system paths.
   (allow file-read*
@@ -185,6 +205,14 @@ static const char contentSandboxRules[] = R"SANDBOX_LITERAL(
     (ipc-posix-name-regex #"^CFPBS:"))
 
   (allow signal (target self))
+  (if (string? crashPort)
+    (allow mach-lookup (global-name crashPort)))
+  (if (string=? hasWindowServer "TRUE")
+    (allow mach-lookup (global-name "com.apple.windowserver.active")))
+  (allow mach-lookup
+    (global-name "com.apple.CoreServices.coreservicesd")
+    (global-name "com.apple.coreservices.launchservicesd")
+    (global-name "com.apple.lsd.mapdb"))
 
   (if (>= macosMinorVersion 13)
     (allow mach-lookup
@@ -203,6 +231,8 @@ static const char contentSandboxRules[] = R"SANDBOX_LITERAL(
   (if (defined? 'iokit-get-properties)
     (allow iokit-get-properties
       (iokit-property "board-id")
+      (iokit-property "vendor-id")
+      (iokit-property "device-id")
       (iokit-property "IODVDBundleName")
       (iokit-property "IOGLBundleName")
       (iokit-property "IOGVACodec")
@@ -230,9 +260,7 @@ static const char contentSandboxRules[] = R"SANDBOX_LITERAL(
       (home-subpath "/Library/Colors")
       (home-subpath "/Library/Keyboard Layouts")
       (home-subpath "/Library/Input Methods")
-      (home-subpath "/Library/Spelling")
-      (literal appPath)
-      (literal appBinaryPath))
+      (home-subpath "/Library/Spelling"))
 
   (if (defined? 'file-map-executable)
     (begin
@@ -256,9 +284,7 @@ static const char contentSandboxRules[] = R"SANDBOX_LITERAL(
 
   (allow file-read-metadata (home-subpath "/Library"))
 
-  (allow file-read-metadata
-    (literal "/private/var")
-    (subpath "/private/var/folders"))
+  (allow file-read-metadata (subpath "/private/var"))
 
   ; bug 1303987
   (if (string? debugWriteDir)
@@ -815,6 +841,6 @@ static const char flashPluginSandboxRules[] = R"SANDBOX_LITERAL(
   (deny file-write-create (vnode-type SYMLINK))
 )SANDBOX_LITERAL";
 
-}
+}  // namespace mozilla
 
-#endif // mozilla_SandboxPolicies_h
+#endif  // mozilla_SandboxPolicies_h

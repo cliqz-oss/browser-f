@@ -26,13 +26,12 @@
 // operation when accessing entries in that storage buffer. "Evicting" an entry
 // really just means that an existing entry in the storage buffer gets
 // overwritten and that mRangeStart gets incremented.
-class ProfileBuffer final
-{
-public:
+class ProfileBuffer final {
+ public:
   // ProfileBuffer constructor
-  // @param aEntrySize The minimum capacity of the buffer. The actual buffer
+  // @param aCapacity The minimum capacity of the buffer. The actual buffer
   //                   capacity will be rounded up to the next power of two.
-  explicit ProfileBuffer(uint32_t aEntrySize);
+  explicit ProfileBuffer(uint32_t aCapacity);
 
   ~ProfileBuffer();
 
@@ -44,10 +43,10 @@ public:
   uint64_t AddThreadIdEntry(int aThreadId);
 
   void CollectCodeLocation(
-    const char* aLabel, const char* aStr,
-    const mozilla::Maybe<uint32_t>& aLineNumber,
-    const mozilla::Maybe<uint32_t>& aColumnNumber,
-    const mozilla::Maybe<js::ProfilingStackFrame::Category>& aCategory);
+      const char* aLabel, const char* aStr, uint32_t aFrameFlags,
+      const mozilla::Maybe<uint32_t>& aLineNumber,
+      const mozilla::Maybe<uint32_t>& aColumnNumber,
+      const mozilla::Maybe<js::ProfilingStackFrame::Category>& aCategory);
 
   // Maximum size of a frameKey string that we'll handle.
   static const size_t kMaxFrameKeyLength = 512;
@@ -55,8 +54,8 @@ public:
   // Add JIT frame information to aJITFrameInfo for any JitReturnAddr entries
   // that are currently in the buffer at or after aRangeStart, in samples
   // for the given thread.
-  void AddJITInfoForRange(uint64_t aRangeStart,
-                          int aThreadId, JSContext* aContext,
+  void AddJITInfoForRange(uint64_t aRangeStart, int aThreadId,
+                          JSContext* aContext,
                           JITFrameInfo& aJITFrameInfo) const;
 
   // Stream JSON for samples in the buffer to aWriter, using the supplied
@@ -92,39 +91,40 @@ public:
                            const mozilla::TimeStamp& aProcessStartTime,
                            mozilla::Maybe<uint64_t>& aLastSample);
 
+  void DiscardSamplesBeforeTime(double aTime);
+
   void AddStoredMarker(ProfilerMarker* aStoredMarker);
 
   // The following method is not signal safe!
   void DeleteExpiredStoredMarkers();
 
   // Access an entry in the buffer.
-  ProfileBufferEntry& GetEntry(uint64_t aPosition) const
-  {
+  ProfileBufferEntry& GetEntry(uint64_t aPosition) const {
     return mEntries[aPosition & mEntryIndexMask];
   }
 
   size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
 
-private:
-  // The storage that backs our buffer. Holds mEntrySize entries.
+ private:
+  // The storage that backs our buffer. Holds mCapacity entries.
   // All accesses to entries in mEntries need to go through GetEntry(), which
   // translates the given buffer position from the near-infinite uint64_t space
   // into the entry storage space.
   mozilla::UniquePtr<ProfileBufferEntry[]> mEntries;
 
-  // A mask such that pos & mEntryIndexMask == pos % mEntrySize.
+  // A mask such that pos & mEntryIndexMask == pos % mCapacity.
   uint32_t mEntryIndexMask;
 
-public:
+ public:
   // mRangeStart and mRangeEnd are uint64_t values that strictly advance and
   // never wrap around. mRangeEnd is always greater than or equal to
-  // mRangeStart, but never gets more than mEntrySize steps ahead of
+  // mRangeStart, but never gets more than mCapacity steps ahead of
   // mRangeStart, because we can only store a fixed number of entries in the
   // buffer. Once the entire buffer is in use, adding a new entry will evict an
   // entry from the front of the buffer (and increase mRangeStart).
   // In other words, the following conditions hold true at all times:
   //  (1) mRangeStart <= mRangeEnd
-  //  (2) mRangeEnd - mRangeStart <= mEntrySize
+  //  (2) mRangeEnd - mRangeStart <= mCapacity
   //
   // If there are no live entries, then mRangeStart == mRangeEnd.
   // Otherwise, mRangeStart is the first live entry and mRangeEnd is one past
@@ -135,7 +135,7 @@ public:
   uint64_t mRangeEnd;
 
   // The number of entries in our buffer. Always a power of two.
-  uint32_t mEntrySize;
+  uint32_t mCapacity;
 
   // Markers that marker entries in the buffer might refer to.
   ProfilerMarkerLinkedList mStoredMarkers;
@@ -147,32 +147,27 @@ public:
  * buffer, as well as additional feature flags which are needed to control the
  * data collection strategy
  */
-class ProfileBufferCollector final : public ProfilerStackCollector
-{
-public:
+class ProfileBufferCollector final : public ProfilerStackCollector {
+ public:
   ProfileBufferCollector(ProfileBuffer& aBuf, uint32_t aFeatures,
                          uint64_t aSamplePos)
-    : mBuf(aBuf)
-    , mSamplePositionInBuffer(aSamplePos)
-    , mFeatures(aFeatures)
-  {}
+      : mBuf(aBuf), mSamplePositionInBuffer(aSamplePos), mFeatures(aFeatures) {}
 
-  mozilla::Maybe<uint64_t> SamplePositionInBuffer() override
-  {
+  mozilla::Maybe<uint64_t> SamplePositionInBuffer() override {
     return mozilla::Some(mSamplePositionInBuffer);
   }
 
-  mozilla::Maybe<uint64_t> BufferRangeStart() override
-  {
+  mozilla::Maybe<uint64_t> BufferRangeStart() override {
     return mozilla::Some(mBuf.mRangeStart);
   }
 
   virtual void CollectNativeLeafAddr(void* aAddr) override;
   virtual void CollectJitReturnAddr(void* aAddr) override;
   virtual void CollectWasmFrame(const char* aLabel) override;
-  virtual void CollectProfilingStackFrame(const js::ProfilingStackFrame& aFrame) override;
+  virtual void CollectProfilingStackFrame(
+      const js::ProfilingStackFrame& aFrame) override;
 
-private:
+ private:
   ProfileBuffer& mBuf;
   uint64_t mSamplePositionInBuffer;
   uint32_t mFeatures;

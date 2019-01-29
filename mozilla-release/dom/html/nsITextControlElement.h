@@ -22,21 +22,23 @@ class TextEditor;
 
 namespace dom {
 class Element;
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
 // IID for the nsITextControl interface
-#define NS_ITEXTCONTROLELEMENT_IID    \
-{ 0x3df7db6d, 0xa548, 0x4e20, \
- { 0x97, 0xfd, 0x75, 0xa3, 0x31, 0xa2, 0xf3, 0xd4 } }
+#define NS_ITEXTCONTROLELEMENT_IID                   \
+  {                                                  \
+    0x3df7db6d, 0xa548, 0x4e20, {                    \
+      0x97, 0xfd, 0x75, 0xa3, 0x31, 0xa2, 0xf3, 0xd4 \
+    }                                                \
+  }
 
 /**
  * This interface is used for the text control frame to get the editor and
  * selection controller objects, and some helper properties.
  */
 class nsITextControlElement : public nsISupports {
-public:
-
+ public:
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_ITEXTCONTROLELEMENT_IID)
 
   /**
@@ -96,14 +98,19 @@ public:
    * @param aIgnoreWrap whether to ignore the text wrapping behavior specified
    * for the element.
    */
-  NS_IMETHOD_(void) GetTextEditorValue(nsAString& aValue, bool aIgnoreWrap) const = 0;
+  NS_IMETHOD_(void)
+  GetTextEditorValue(nsAString& aValue, bool aIgnoreWrap) const = 0;
 
   /**
    * Get the editor object associated with the text editor.
    * The return value is null if the control does not support an editor
    * (for example, if it is a checkbox.)
+   * Note that GetTextEditor() creates editor if it hasn't been created yet.
+   * If you need editor only when the editor is there, you should use
+   * GetTextEditorWithoutCreation().
    */
   NS_IMETHOD_(mozilla::TextEditor*) GetTextEditor() = 0;
+  NS_IMETHOD_(mozilla::TextEditor*) GetTextEditorWithoutCreation() = 0;
 
   /**
    * Get the selection controller object associated with the text editor.
@@ -159,7 +166,8 @@ public:
   NS_IMETHOD_(void) InitializeKeyboardEventListeners() = 0;
 
   /**
-   * Update the visibility of both the placholder and preview text based on the element's state.
+   * Update the visibility of both the placholder and preview text based on the
+   * element's state.
    */
   NS_IMETHOD_(void) UpdateOverlayTextVisibility(bool aNotify) = 0;
 
@@ -176,7 +184,8 @@ public:
   /**
    * Callback called whenever the value is changed.
    */
-  NS_IMETHOD_(void) OnValueChanged(bool aNotify, bool aWasInteractiveUserChange) = 0;
+  NS_IMETHOD_(void)
+  OnValueChanged(bool aNotify, bool aWasInteractiveUserChange) = 0;
 
   /**
    * Helpers for value manipulation from SetRangeText.
@@ -191,13 +200,13 @@ public:
 
   // wrap can be one of these three values.
   typedef enum {
-    eHTMLTextWrap_Off     = 1,    // "off"
-    eHTMLTextWrap_Hard    = 2,    // "hard"
-    eHTMLTextWrap_Soft    = 3     // the default
+    eHTMLTextWrap_Off = 1,   // "off"
+    eHTMLTextWrap_Hard = 2,  // "hard"
+    eHTMLTextWrap_Soft = 3   // the default
   } nsHTMLTextWrap;
 
-  static bool
-  GetWrapPropertyEnum(nsIContent* aContent, nsHTMLTextWrap& aWrapProp);
+  static bool GetWrapPropertyEnum(nsIContent* aContent,
+                                  nsHTMLTextWrap& aWrapProp);
 
   /**
    * Does the editor have a selection cache?
@@ -211,8 +220,6 @@ public:
   GetTextControlElementFromEditingHost(nsIContent* aHost);
 };
 
-NS_DEFINE_STATIC_IID_ACCESSOR(nsITextControlElement,
-                              NS_ITEXTCONTROLELEMENT_IID)
+NS_DEFINE_STATIC_IID_ACCESSOR(nsITextControlElement, NS_ITEXTCONTROLELEMENT_IID)
 
-#endif // nsITextControlElement_h___
-
+#endif  // nsITextControlElement_h___

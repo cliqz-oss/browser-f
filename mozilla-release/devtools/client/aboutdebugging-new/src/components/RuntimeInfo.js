@@ -29,11 +29,11 @@ class RuntimeInfo extends PureComponent {
 
     return dom.h1(
       {
-        className: "runtime-info",
+        className: "main-heading",
       },
       dom.img(
         {
-          className: "runtime-info__icon",
+          className: "main-heading__icon",
           src: icon,
         }
       ),
@@ -45,7 +45,12 @@ class RuntimeInfo extends PureComponent {
           $deviceName: deviceName,
           $version: version,
         },
-        dom.label({}, `${ name } on ${ deviceName } (${ version })`)
+        dom.label(
+          {
+            className: "js-runtime-info",
+          },
+          `${ name } on ${ deviceName } (${ version })`
+        )
       )
     );
   }

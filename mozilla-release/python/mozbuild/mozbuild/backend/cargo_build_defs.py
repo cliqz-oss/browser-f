@@ -112,6 +112,10 @@ cargo_extra_outputs = {
         'bzip2-1.0.6/randtable.o',
         'libbz2.a',
     ],
+    'clang-sys': [
+        'common.rs',
+        'dynamic.rs',
+    ],
     'cranelift-codegen': [
         'binemit-arm32.rs',
         'binemit-arm64.rs',
@@ -127,7 +131,6 @@ cargo_extra_outputs = {
         'legalize-riscv.rs',
         'legalize-x86.rs',
         'legalizer.rs',
-        'new_types.rs',
         'opcodes.rs',
         'registers-arm32.rs',
         'registers-arm64.rs',
@@ -145,5 +148,9 @@ cargo_extra_outputs = {
     ],
     'baldrdash': [
         'bindings.rs',
+    ],
+    'typenum': [
+        'op.rs',
+        'consts.rs',
     ],
 }

@@ -45,6 +45,24 @@ function run_test() {
     }
   })();`;
 
+  const testGetters = `
+    var testGetters = {
+      get x() {
+        return Object.create(null, Object.getOwnPropertyDescriptors({
+          hello: "",
+          world: "",
+        }));
+      },
+      get y() {
+        return Object.create(null, Object.getOwnPropertyDescriptors({
+          get y() {
+            return "plop";
+          },
+        }));
+      }
+    };
+  `;
+
   const sandbox = Cu.Sandbox("http://example.com");
   const dbg = new Debugger();
   const dbgObject = dbg.addDebuggee(sandbox);
@@ -54,6 +72,7 @@ function run_test() {
   Cu.evalInSandbox(testHyphenated, sandbox);
   Cu.evalInSandbox(testLet, sandbox);
   Cu.evalInSandbox(testGenerators, sandbox);
+  Cu.evalInSandbox(testGetters, sandbox);
 
   info("Running tests with dbgObject");
   runChecks(dbgObject, null, sandbox);
@@ -62,125 +81,161 @@ function run_test() {
   runChecks(null, dbgEnv, sandbox);
 }
 
-function runChecks(dbgObject, dbgEnv, sandbox) {
+function runChecks(dbgObject, environment, sandbox) {
+  const propertyProvider = (inputValue, options) => JSPropertyProvider({
+    dbgObject,
+    environment,
+    inputValue,
+    ...options,
+  });
+
   info("Test that suggestions are given for 'this'");
-  let results = JSPropertyProvider(dbgObject, dbgEnv, "t");
+  let results = propertyProvider("t");
   test_has_result(results, "this");
 
   if (dbgObject != null) {
     info("Test that suggestions are given for 'this.'");
-    results = JSPropertyProvider(dbgObject, dbgEnv, "this.");
+    results = propertyProvider("this.");
     test_has_result(results, "testObject");
 
+    info("Test that suggestions are given for '(this).'");
+    results = propertyProvider("(this).");
+    test_has_result(results, "testObject");
+
+    info("Test that suggestions are given for deep 'this' properties access");
+    results = propertyProvider("(this).testObject.propA.");
+    test_has_result(results, "shift");
+
+    results = propertyProvider("(this).testObject.propA[");
+    test_has_result(results, `"shift"`);
+
+    results = propertyProvider("(this)['testObject']['propA'][");
+    test_has_result(results, `"shift"`);
+
+    results = propertyProvider("(this).testObject['propA'].");
+    test_has_result(results, "shift");
+
     info("Test that no suggestions are given for 'this.this'");
-    results = JSPropertyProvider(dbgObject, dbgEnv, "this.this");
+    results = propertyProvider("this.this");
     test_has_no_results(results);
   }
 
   info("Testing lexical scope issues (Bug 1207868)");
-  results = JSPropertyProvider(dbgObject, dbgEnv, "foobar");
+  results = propertyProvider("foobar");
   test_has_result(results, "foobar");
 
-  results = JSPropertyProvider(dbgObject, dbgEnv, "foobar.");
+  results = propertyProvider("foobar.");
   test_has_result(results, "a");
 
-  results = JSPropertyProvider(dbgObject, dbgEnv, "blargh");
+  results = propertyProvider("blargh");
   test_has_result(results, "blargh");
 
-  results = JSPropertyProvider(dbgObject, dbgEnv, "blargh.");
+  results = propertyProvider("blargh.");
   test_has_result(results, "a");
 
   info("Test that suggestions are given for 'foo[n]' where n is an integer.");
-  results = JSPropertyProvider(dbgObject, dbgEnv, "testArray[0].");
+  results = propertyProvider("testArray[0].");
   test_has_result(results, "propA");
 
   info("Test that suggestions are given for multidimensional arrays.");
-  results = JSPropertyProvider(dbgObject, dbgEnv, "testArray[2][0].");
+  results = propertyProvider("testArray[2][0].");
   test_has_result(results, "propE");
 
   info("Test that suggestions are given for nested arrays.");
-  results = JSPropertyProvider(dbgObject, dbgEnv, "testArray[1].propC[0].");
+  results = propertyProvider("testArray[1].propC[0].");
   test_has_result(results, "indexOf");
 
   info("Test that suggestions are given for literal arrays.");
-  results = JSPropertyProvider(dbgObject, dbgEnv, "[1,2,3].");
+  results = propertyProvider("[1,2,3].");
   test_has_result(results, "indexOf");
 
   info("Test that suggestions are given for literal arrays with newlines.");
-  results = JSPropertyProvider(dbgObject, dbgEnv, "[1,2,3,\n4\n].");
+  results = propertyProvider("[1,2,3,\n4\n].");
   test_has_result(results, "indexOf");
 
   info("Test that suggestions are given for literal strings.");
-  results = JSPropertyProvider(dbgObject, dbgEnv, "'foo'.");
+  results = propertyProvider("'foo'.");
   test_has_result(results, "charAt");
-  results = JSPropertyProvider(dbgObject, dbgEnv, '"foo".');
+  results = propertyProvider('"foo".');
   test_has_result(results, "charAt");
-  results = JSPropertyProvider(dbgObject, dbgEnv, "`foo`.");
+  results = propertyProvider("`foo`.");
   test_has_result(results, "charAt");
-  results = JSPropertyProvider(dbgObject, dbgEnv, "`foo doc`.");
+  results = propertyProvider("`foo doc`.");
   test_has_result(results, "charAt");
-  results = JSPropertyProvider(dbgObject, dbgEnv, "`foo \" doc`.");
+  results = propertyProvider("`foo \" doc`.");
   test_has_result(results, "charAt");
-  results = JSPropertyProvider(dbgObject, dbgEnv, "`foo \' doc`.");
+  results = propertyProvider("`foo \' doc`.");
   test_has_result(results, "charAt");
-  results = JSPropertyProvider(dbgObject, dbgEnv, "'[1,2,3]'.");
+  results = propertyProvider("'[1,2,3]'.");
   test_has_result(results, "charAt");
 
   info("Test that suggestions are not given for syntax errors.");
-  results = JSPropertyProvider(dbgObject, dbgEnv, "'foo\"");
+  results = propertyProvider("'foo\"");
   Assert.equal(null, results);
-  results = JSPropertyProvider(dbgObject, dbgEnv, "'foo d");
+  results = propertyProvider("'foo d");
   Assert.equal(null, results);
-  results = JSPropertyProvider(dbgObject, dbgEnv, `"foo d`);
+  results = propertyProvider(`"foo d`);
   Assert.equal(null, results);
-  results = JSPropertyProvider(dbgObject, dbgEnv, "`foo d");
+  results = propertyProvider("`foo d");
   Assert.equal(null, results);
-  results = JSPropertyProvider(dbgObject, dbgEnv, "[1,',2]");
+  results = propertyProvider("[1,',2]");
   Assert.equal(null, results);
-  results = JSPropertyProvider(dbgObject, dbgEnv, "'[1,2].");
+  results = propertyProvider("'[1,2].");
   Assert.equal(null, results);
-  results = JSPropertyProvider(dbgObject, dbgEnv, "'foo'..");
+  results = propertyProvider("'foo'..");
   Assert.equal(null, results);
 
   info("Test that suggestions are not given without a dot.");
-  results = JSPropertyProvider(dbgObject, dbgEnv, "'foo'");
+  results = propertyProvider("'foo'");
   test_has_no_results(results);
-  results = JSPropertyProvider(dbgObject, dbgEnv, "`foo`");
+  results = propertyProvider("`foo`");
   test_has_no_results(results);
-  results = JSPropertyProvider(dbgObject, dbgEnv, "[1,2,3]");
+  results = propertyProvider("[1,2,3]");
   test_has_no_results(results);
-  results = JSPropertyProvider(dbgObject, dbgEnv, "[1,2,3].\n'foo'");
+  results = propertyProvider("[1,2,3].\n'foo'");
   test_has_no_results(results);
-
-  info("Test that suggestions are not given for numeric literals.");
-  results = JSPropertyProvider(dbgObject, dbgEnv, "1.");
-  Assert.equal(null, results);
 
   info("Test that suggestions are not given for index that's out of bounds.");
-  results = JSPropertyProvider(dbgObject, dbgEnv, "testArray[10].");
+  results = propertyProvider("testArray[10].");
   Assert.equal(null, results);
 
-  info("Test that no suggestions are given if an index is not numerical "
-       + "somewhere in the chain.");
-  results = JSPropertyProvider(dbgObject, dbgEnv, "testArray[0]['propC'][0].");
+  info("Test that invalid element access syntax does not return anything");
+  results = propertyProvider("testArray[][1].");
   Assert.equal(null, results);
 
-  results = JSPropertyProvider(dbgObject, dbgEnv, "testObject['propA'][0].");
-  Assert.equal(null, results);
+  info("Test that deep element access works.");
+  results = propertyProvider("testObject['propA'][0].");
+  test_has_result(results, "propB");
 
-  results = JSPropertyProvider(dbgObject, dbgEnv, "testArray[0]['propC'].");
-  Assert.equal(null, results);
+  results = propertyProvider("testArray[1]['propC'].");
+  test_has_result(results, "shift");
 
-  results = JSPropertyProvider(dbgObject, dbgEnv, "testArray[][1].");
-  Assert.equal(null, results);
+  results = propertyProvider("testArray[1].propC[0][");
+  test_has_result(results, `"trim"`);
 
-  info("Test that suggestions are not given if there is an hyphen in the chain.");
-  results = JSPropertyProvider(dbgObject, dbgEnv, "testHyphenated['prop-A'].");
-  Assert.equal(null, results);
+  results = propertyProvider("testArray[1].propC[0].");
+  test_has_result(results, "trim");
+
+  info("Test that suggestions are displayed when variable is wrapped in parens");
+  results = propertyProvider("(testObject)['propA'][0].");
+  test_has_result(results, "propB");
+
+  results = propertyProvider("(testArray)[1]['propC'].");
+  test_has_result(results, "shift");
+
+  results = propertyProvider("(testArray)[1].propC[0][");
+  test_has_result(results, `"trim"`);
+
+  results = propertyProvider("(testArray)[1].propC[0].");
+  test_has_result(results, "trim");
+
+  info("Test that suggestions are given if there is an hyphen in the chain.");
+  results = propertyProvider("testHyphenated['prop-A'].");
+  test_has_result(results, "trim");
 
   info("Test that we have suggestions for generators.");
   const gen1Result = Cu.evalInSandbox("gen1.next().value", sandbox);
-  results = JSPropertyProvider(dbgObject, dbgEnv, "gen1.");
+  results = propertyProvider("gen1.");
   test_has_result(results, "next");
   info("Test that the generator next() was not executed");
   const gen1NextResult = Cu.evalInSandbox("gen1.next().value", sandbox);
@@ -188,10 +243,119 @@ function runChecks(dbgObject, dbgEnv, sandbox) {
 
   info("Test with an anonymous generator.");
   const gen2Result = Cu.evalInSandbox("gen2.next().value", sandbox);
-  results = JSPropertyProvider(dbgObject, dbgEnv, "gen2.");
+  results = propertyProvider("gen2.");
   test_has_result(results, "next");
   const gen2NextResult = Cu.evalInSandbox("gen2.next().value", sandbox);
   Assert.equal(gen2Result + 1, gen2NextResult);
+
+  info("Test that getters are not executed if invokeUnsafeGetter is undefined");
+  results = propertyProvider("testGetters.x.");
+  Assert.deepEqual(results, {isUnsafeGetter: true, getterName: "x"});
+
+  results = propertyProvider("testGetters.x[");
+  Assert.deepEqual(results, {isUnsafeGetter: true, getterName: "x"});
+
+  results = propertyProvider("testGetters.x.hell");
+  Assert.deepEqual(results, {isUnsafeGetter: true, getterName: "x"});
+
+  results = propertyProvider("testGetters.x['hell");
+  Assert.deepEqual(results, {isUnsafeGetter: true, getterName: "x"});
+
+  info("Test that deep getter property access does not return intermediate getters");
+  results = propertyProvider("testGetters.y.y.");
+  Assert.ok(results === null);
+
+  results = propertyProvider("testGetters['y'].y.");
+  Assert.ok(results === null);
+
+  results = propertyProvider("testGetters['y']['y'].");
+  Assert.ok(results === null);
+
+  results = propertyProvider("testGetters.y['y'].");
+  Assert.ok(results === null);
+
+  info("Test that getters are executed if invokeUnsafeGetter is true");
+  results = propertyProvider("testGetters.x.", {invokeUnsafeGetter: true});
+  test_has_exact_results(results, ["hello", "world"]);
+  Assert.ok(Object.keys(results).includes("isUnsafeGetter") === false);
+  Assert.ok(Object.keys(results).includes("getterName") === false);
+
+  info("Test that executing getters filters with provided string");
+  results = propertyProvider("testGetters.x.hell", {invokeUnsafeGetter: true});
+  test_has_exact_results(results, ["hello"]);
+
+  results = propertyProvider("testGetters.x['hell", {invokeUnsafeGetter: true});
+  test_has_exact_results(results, ["'hello'"]);
+
+  info("Test that children getters are executed if invokeUnsafeGetter is true");
+  results = propertyProvider("testGetters.y.y.", {invokeUnsafeGetter: true});
+  test_has_result(results, "trim");
+
+  info("Test with number literals");
+  results = propertyProvider("1.");
+  Assert.ok(results === null, "Does not complete on possible floating number");
+
+  results = propertyProvider("(1)..");
+  Assert.ok(results === null, "Does not complete on invalid syntax");
+
+  results = propertyProvider("(1.1.).");
+  Assert.ok(results === null, "Does not complete on invalid syntax");
+
+  results = propertyProvider("1..");
+  test_has_result(results, "toFixed");
+
+  results = propertyProvider("1 .");
+  test_has_result(results, "toFixed");
+
+  results = propertyProvider("1\n.");
+  test_has_result(results, "toFixed");
+
+  results = propertyProvider(".1.");
+  test_has_result(results, "toFixed");
+
+  results = propertyProvider("1[");
+  test_has_result(results, `"toFixed"`);
+
+  results = propertyProvider("1[toFixed");
+  test_has_exact_results(results, [`"toFixed"`]);
+
+  results = propertyProvider("1['toFixed");
+  test_has_exact_results(results, ["'toFixed'"]);
+
+  results = propertyProvider("1.1[");
+  test_has_result(results, `"toFixed"`);
+
+  results = propertyProvider("(1).");
+  test_has_result(results, "toFixed");
+
+  results = propertyProvider("(.1).");
+  test_has_result(results, "toFixed");
+
+  results = propertyProvider("(1.1).");
+  test_has_result(results, "toFixed");
+
+  results = propertyProvider("(1).toFixed");
+  test_has_exact_results(results, ["toFixed"]);
+
+  results = propertyProvider("(1)[");
+  test_has_result(results, `"toFixed"`);
+
+  results = propertyProvider("(1.1)[");
+  test_has_result(results, `"toFixed"`);
+
+  results = propertyProvider("(1)[toFixed");
+  test_has_exact_results(results, [`"toFixed"`]);
+
+  results = propertyProvider("(1)['toFixed");
+  test_has_exact_results(results, ["'toFixed'"]);
+
+  info("Test access on dot-notation invalid property name");
+  results = propertyProvider("testHyphenated.prop");
+  Assert.ok(!results.matches.has("prop-A"),
+    "Does not return invalid property name on dot access");
+
+  results = propertyProvider("testHyphenated['prop");
+  test_has_result(results, `'prop-A'`);
 }
 
 /**
@@ -214,4 +378,15 @@ function test_has_result(results, requiredSuggestion) {
   Assert.notEqual(results, null);
   Assert.ok(results.matches.size > 0);
   Assert.ok(results.matches.has(requiredSuggestion));
+}
+
+/**
+ * A helper that ensures results are the expected ones.
+ * @param Object results
+ *        The results returned by JSPropertyProvider.
+ * @param Array expectedMatches
+ *        An array of the properties that should be returned by JsPropertyProvider.
+ */
+function test_has_exact_results(results, expectedMatches) {
+  Assert.deepEqual([...results.matches], expectedMatches);
 }

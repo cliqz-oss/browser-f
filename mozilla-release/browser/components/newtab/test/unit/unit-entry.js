@@ -152,6 +152,9 @@ const TEST_GLOBAL = {
     File: function() {}, // NB: This is a function/constructor
   },
   Services: {
+    dirsvc: {
+      get: () => ({parent: {parent: {path: "appPath"}}}),
+    },
     locale: {
       get appLocaleAsLangTag() { return "en-US"; },
       negotiateLanguages() {},
@@ -222,7 +225,7 @@ const TEST_GLOBAL = {
     search: {
       init(cb) { cb(); },
       getVisibleEngines: () => [{identifier: "google"}, {identifier: "bing"}],
-      defaultEngine: {identifier: "google"},
+      defaultEngine: {identifier: "google", searchForm: "https://www.google.com/search?q=&ie=utf-8&oe=utf-8&client=firefox-b"},
       currentEngine: {identifier: "google", searchForm: "https://www.google.com/search?q=&ie=utf-8&oe=utf-8&client=firefox-b"},
     },
     scriptSecurityManager: {
@@ -262,7 +265,16 @@ const TEST_GLOBAL = {
       on() {},
     };
   },
-  Localization: class {},
+  Localization: class {
+    async formatMessages(stringsIds) {
+      return Promise.resolve(stringsIds.map(({id, args}) => ({value: {string_id: id, args}})));
+    }
+  },
+  FxAccountsConfig: {
+    promiseEmailFirstURI(id) {
+      return Promise.resolve(id);
+    },
+  },
 };
 overrider.set(TEST_GLOBAL);
 

@@ -14,3 +14,12 @@
   outline: 1px -moz-dialogtext dotted;
   outline-offset: -1px;
 }
+
+.tracking-protection-button > .button-box > .button-icon {
+  margin-inline-end: 5px;
+}
+
+/* This overrides color: -moz-buttonhovertext from toolbarbutton.css */
+.identity-popup-content-blocking-category:hover {
+  color: inherit;
+}

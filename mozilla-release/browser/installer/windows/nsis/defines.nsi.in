@@ -136,3 +136,9 @@ VIAddVersionKey "ProductVersion"  "${AppVersion}"
 !define INSTALL_FOOTER_TOP_DU 19u
 !define INSTALL_FOOTER_WIDTH_DU 400u
 !define PROGRESS_BAR_TOP_DU 210u
+
+# Constants for parts of the telemetry submission URL
+!define TELEMETRY_BASE_URL https://incoming.telemetry.mozilla.org/submit
+!define TELEMETRY_NAMESPACE firefox-installer
+!define TELEMETRY_INSTALL_PING_VERSION 1
+!define TELEMETRY_INSTALL_PING_DOCTYPE install

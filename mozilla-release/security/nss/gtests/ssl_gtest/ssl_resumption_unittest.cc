@@ -653,7 +653,7 @@ TEST_P(TlsConnectStream, TestResumptionOverrideCipher) {
 
   if (version_ >= SSL_LIBRARY_VERSION_TLS_1_3) {
     client_->ExpectSendAlert(kTlsAlertIllegalParameter);
-    server_->ExpectSendAlert(kTlsAlertBadRecordMac);
+    server_->ExpectSendAlert(kTlsAlertUnexpectedMessage);
   } else {
     ExpectAlert(client_, kTlsAlertHandshakeFailure);
   }
@@ -662,7 +662,7 @@ TEST_P(TlsConnectStream, TestResumptionOverrideCipher) {
   if (version_ >= SSL_LIBRARY_VERSION_TLS_1_3) {
     // The reason this test is stream only: the server is unable to decrypt
     // the alert that the client sends, see bug 1304603.
-    server_->CheckErrorCode(SSL_ERROR_BAD_MAC_READ);
+    server_->CheckErrorCode(SSL_ERROR_RX_UNEXPECTED_RECORD_TYPE);
   } else {
     server_->CheckErrorCode(SSL_ERROR_HANDSHAKE_FAILURE_ALERT);
   }
@@ -1046,10 +1046,10 @@ TEST_F(TlsConnectTest, TestTls13ResumptionForcedDowngrade) {
   // client expects to receive an unencrypted TLS 1.2 Certificate message.
   // The server can't decrypt the alert.
   client_->ExpectSendAlert(kTlsAlertUnexpectedMessage);
-  server_->ExpectSendAlert(kTlsAlertBadRecordMac);  // Server can't read
+  server_->ExpectSendAlert(kTlsAlertUnexpectedMessage);  // Server can't read
   ConnectExpectFail();
   client_->CheckErrorCode(SSL_ERROR_RX_UNEXPECTED_APPLICATION_DATA);
-  server_->CheckErrorCode(SSL_ERROR_BAD_MAC_READ);
+  server_->CheckErrorCode(SSL_ERROR_RX_UNEXPECTED_RECORD_TYPE);
 }
 
 TEST_P(TlsConnectGenericResumption, ReConnectTicket) {
@@ -1124,6 +1124,36 @@ void CheckGetInfoResult(uint32_t alpnSize, uint32_t earlyDataSize,
   EXPECT_EQ(0, memcmp("a", token->alpnSelection, token->alpnSelectionLen));
 
   ASSERT_EQ(earlyDataSize, token->maxEarlyDataSize);
+
+  ASSERT_LT(ssl_TimeUsec(), token->expirationTime);
+}
+
+// The client should generate a new, randomized session_id
+// when resuming using an external token.
+TEST_P(TlsConnectGenericResumptionToken, CheckSessionId) {
+  ConfigureSessionCache(RESUME_BOTH, RESUME_BOTH);
+  auto original_sid = MakeTlsFilter<CaptureSessionId>(client_);
+  Connect();
+  SendReceive();
+
+  Reset();
+  ConfigureSessionCache(RESUME_BOTH, RESUME_BOTH);
+  ExpectResumption(RESUME_TICKET);
+
+  StartConnect();
+  ASSERT_TRUE(client_->MaybeSetResumptionToken());
+  auto resumed_sid = MakeTlsFilter<CaptureSessionId>(client_);
+
+  Handshake();
+  CheckConnected();
+  SendReceive();
+
+  if (version_ < SSL_LIBRARY_VERSION_TLS_1_3) {
+    EXPECT_NE(resumed_sid->sid(), original_sid->sid());
+    EXPECT_EQ(32U, resumed_sid->sid().len());
+  } else {
+    EXPECT_EQ(0U, resumed_sid->sid().len());
+  }
 }
 
 TEST_P(TlsConnectGenericResumptionToken, ConnectResumeGetInfo) {
@@ -1239,6 +1269,36 @@ TEST_P(TlsConnectGenericResumption, ConnectResumeClientAuth) {
     ExpectResumption(RESUME_TICKET);
   }
   Connect();
+  SendReceive();
+}
+
+TEST_F(TlsConnectStreamTls13, ExternalTokenAfterHrr) {
+  ConfigureSessionCache(RESUME_BOTH, RESUME_BOTH);
+  Connect();
+  SendReceive();
+
+  Reset();
+  ConfigureSessionCache(RESUME_BOTH, RESUME_BOTH);
+  ExpectResumption(RESUME_TICKET);
+
+  static const std::vector<SSLNamedGroup> groups = {ssl_grp_ec_secp384r1,
+                                                    ssl_grp_ec_secp521r1};
+  server_->ConfigNamedGroups(groups);
+
+  StartConnect();
+  ASSERT_TRUE(client_->MaybeSetResumptionToken());
+
+  client_->Handshake();  // Send ClientHello.
+  server_->Handshake();  // Process ClientHello, send HelloRetryRequest.
+
+  auto& token = client_->GetResumptionToken();
+  SECStatus rv =
+      SSL_SetResumptionToken(client_->ssl_fd(), token.data(), token.size());
+  ASSERT_EQ(SECFailure, rv);
+  ASSERT_EQ(SEC_ERROR_INVALID_ARGS, PORT_GetError());
+
+  Handshake();
+  CheckConnected();
   SendReceive();
 }
 

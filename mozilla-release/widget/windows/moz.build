@@ -27,12 +27,6 @@ EXPORTS.mozilla.widget += [
     'CompositorWidgetChild.h',
     'CompositorWidgetParent.h',
     'InProcessWinCompositorWidget.h',
-    'PDFiumChild.h',
-    'PDFiumEngineShim.h',
-    'PDFiumParent.h',
-    'PDFiumProcessChild.h',
-    'PDFiumProcessParent.h',
-    'PDFViaEMFPrintHelper.h',
     'WinCompositorWidget.h',
     'WinCompositorWindowThread.h',
     'WindowsEMF.h',
@@ -60,7 +54,6 @@ UNIFIED_SOURCES += [
     'nsDataObjCollection.cpp',
     'nsDragService.cpp',
     'nsIdleServiceWin.cpp',
-    'nsImageClipboard.cpp',
     'nsLookAndFeel.cpp',
     'nsNativeDragSource.cpp',
     'nsNativeDragTarget.cpp',
@@ -114,17 +107,7 @@ if CONFIG['NS_PRINTING']:
     ]
 
 if CONFIG['MOZ_ENABLE_SKIA_PDF']:
-    DIRS += ['/modules/pdfium']
-    IPDL_SOURCES += [
-        'PPDFium.ipdl',
-    ]
     UNIFIED_SOURCES += [
-        'PDFiumChild.cpp',
-        'PDFiumEngineShim.cpp',
-        'PDFiumParent.cpp',
-        'PDFiumProcessChild.cpp',
-        'PDFiumProcessParent.cpp',
-        'PDFViaEMFPrintHelper.cpp',
         'WindowsEMF.cpp',
     ]
 
@@ -138,12 +121,11 @@ include('/ipc/chromium/chromium-config.mozbuild')
 FINAL_LIBRARY = 'xul'
 
 if CONFIG['MOZ_ENABLE_SKIA_PDF']:
+  LOCAL_INCLUDES += CONFIG['SKIA_INCLUDES']
   LOCAL_INCLUDES += [
     '/gfx/skia/skia/include/config',
     '/gfx/skia/skia/include/core',
-    '/modules/pdfium/pdfium/public',
   ]
-  TEST_DIRS += ['gtest']
 
 LOCAL_INCLUDES += [
     '/layout/forms',

@@ -63,6 +63,20 @@ add_task({
         "record_on_release": false,
         "keyed": false,
       },
+      "builtin_dynamic_multi": {
+        "kind": "nsITelemetry::SCALAR_TYPE_COUNT",
+        "expired": false,
+        "record_on_release": false,
+        "keyed": false,
+        "stores": ["main", "sync"],
+      },
+      "builtin_dynamic_sync_only": {
+        "kind": "nsITelemetry::SCALAR_TYPE_COUNT",
+        "expired": false,
+        "record_on_release": false,
+        "keyed": false,
+        "stores": ["sync"],
+      },
     },
   };
 
@@ -80,12 +94,16 @@ add_task({
   // Store to that scalar.
   const TEST_SCALAR1 = "telemetry.test.builtin_dynamic";
   const TEST_SCALAR2 = "telemetry.test.builtin_dynamic_other";
+  const TEST_SCALAR3 = "telemetry.test.builtin_dynamic_multi";
+  const TEST_SCALAR4 = "telemetry.test.builtin_dynamic_sync_only";
   Telemetry.scalarSet(TEST_SCALAR1, 3785);
   Telemetry.scalarSet(TEST_SCALAR2, true);
+  Telemetry.scalarSet(TEST_SCALAR3, 1337);
+  Telemetry.scalarSet(TEST_SCALAR4, 31337);
 
   // Check the values we tried to store.
-  const scalars =
-    Telemetry.snapshotScalars(Ci.nsITelemetry.DATASET_RELEASE_CHANNEL_OPTIN, false).parent;
+  const scalars = Telemetry.getSnapshotForScalars("main", false).parent;
+  const syncScalars = Telemetry.getSnapshotForScalars("sync", false).parent;
 
   // Check that they are serialized to the correct format.
   Assert.equal(typeof(scalars[TEST_SCALAR1]), "number",
@@ -98,6 +116,22 @@ add_task({
                TEST_SCALAR2 + " must be serialized to the correct format.");
   Assert.equal(scalars[TEST_SCALAR2], true,
                TEST_SCALAR2 + " must have the correct value.");
+
+  Assert.equal(typeof(scalars[TEST_SCALAR3]), "number",
+               `${TEST_SCALAR3} must be serialized to the correct format.`);
+  Assert.equal(scalars[TEST_SCALAR3], 1337,
+               `${TEST_SCALAR3} must have the correct value.`);
+  Assert.equal(typeof(syncScalars[TEST_SCALAR3]), "number",
+               `${TEST_SCALAR3} must be serialized in the sync store to the correct format.`);
+  Assert.equal(syncScalars[TEST_SCALAR3], 1337,
+               `${TEST_SCALAR3} must have the correct value in the sync snapshot.`);
+
+  Assert.ok(!(TEST_SCALAR4 in scalars),
+            `${TEST_SCALAR4} must not be in the main store.`);
+  Assert.equal(typeof(syncScalars[TEST_SCALAR4]), "number",
+               `${TEST_SCALAR4} must be in the sync snapshot.`);
+  Assert.equal(syncScalars[TEST_SCALAR4], 31337,
+               `${TEST_SCALAR4} must have the correct value.`);
 
   // Clean up.
   await TelemetryController.testShutdown();
@@ -122,8 +156,7 @@ add_task(async function test_keyedDynamicBuiltin() {
   Telemetry.keyedScalarSet(TEST_SCALAR1, "test-key", 3785);
 
   // Check the values we tried to store.
-  const scalars =
-    Telemetry.snapshotKeyedScalars(Ci.nsITelemetry.DATASET_RELEASE_CHANNEL_OPTIN, false).parent;
+  const scalars = Telemetry.getSnapshotForKeyedScalars("main", false).parent;
 
   // Check that they are serialized to the correct format.
   Assert.equal(typeof(scalars[TEST_SCALAR1]), "object",

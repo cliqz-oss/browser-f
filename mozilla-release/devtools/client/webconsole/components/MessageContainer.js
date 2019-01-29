@@ -24,13 +24,6 @@ const componentMap = new Map([
   ["PageError", require("./message-types/PageError")],
 ]);
 
-function isPaused({ getMessage, pausedExecutionPoint }) {
-  const message = getMessage();
-  return pausedExecutionPoint
-  && message.executionPoint
-    && pausedExecutionPoint.progress === message.executionPoint.progress;
-}
-
 class MessageContainer extends Component {
   static get propTypes() {
     return {
@@ -42,6 +35,8 @@ class MessageContainer extends Component {
       repeat: PropTypes.number,
       networkMessageUpdate: PropTypes.object,
       getMessage: PropTypes.func.isRequired,
+      isPaused: PropTypes.bool.isRequired,
+      pausedExecutionPoint: PropTypes.any,
     };
   }
 
@@ -59,23 +54,24 @@ class MessageContainer extends Component {
       this.props.timestampsVisible !== nextProps.timestampsVisible;
     const networkMessageUpdateChanged =
       this.props.networkMessageUpdate !== nextProps.networkMessageUpdate;
-    const pausedChanged = isPaused(this.props) !== isPaused(nextProps);
+    const pausedChanged = this.props.isPaused !== nextProps.isPaused;
+    const executionPointChanged =
+      this.props.pausedExecutionPoint !== nextProps.pausedExecutionPoint;
 
     return repeatChanged
       || openChanged
       || tableDataChanged
       || timestampVisibleChanged
       || networkMessageUpdateChanged
-      || pausedChanged;
+      || pausedChanged
+      || executionPointChanged;
   }
 
   render() {
     const message = this.props.getMessage();
 
     const MessageComponent = getMessageComponent(message);
-    return MessageComponent(Object.assign({message}, this.props, {
-      isPaused: isPaused(this.props),
-    }));
+    return MessageComponent(Object.assign({message}, this.props));
   }
 }
 

@@ -11,7 +11,6 @@ include protocol PContentBridge;
 include protocol PDocAccessible;
 include protocol PFilePicker;
 include protocol PIndexedDBPermissionRequest;
-include protocol PRenderFrame;
 include protocol PPluginWidget;
 include protocol PRemotePrintJob;
 include protocol PChildToParentStream;
@@ -19,6 +18,7 @@ include protocol PParentToChildStream;
 include protocol PFileDescriptorSet;
 include protocol PIPCBlobInputStream;
 include protocol PPaymentRequest;
+include protocol PWindowGlobal;
 
 include DOMTypes;
 include IPCBlob;
@@ -39,14 +39,13 @@ using mozilla::LayoutDeviceIntPoint from "Units.h";
 using mozilla::LayoutDevicePoint from "Units.h";
 using mozilla::ScreenIntPoint from "Units.h";
 using ScreenIntSize from "Units.h";
-using struct mozilla::layers::FrameMetrics from "FrameMetrics.h";
-using struct mozilla::layers::ScrollableLayerGuid from "FrameMetrics.h";
-using struct mozilla::layers::ZoomConstraints from "FrameMetrics.h";
+using struct mozilla::layers::ScrollableLayerGuid from "mozilla/layers/ScrollableLayerGuid.h";
+using struct mozilla::layers::ZoomConstraints from "mozilla/layers/ZoomConstraints.h";
 using mozilla::layers::LayersId from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::LayersObserverEpoch from "mozilla/layers/LayersTypes.h";
-using mozilla::layers::MaybeZoomConstraints from "FrameMetrics.h";
+using mozilla::layers::MaybeZoomConstraints from "mozilla/layers/ZoomConstraints.h";
 using mozilla::layers::GeckoContentController::TapType from "mozilla/layers/GeckoContentController.h";
-using FrameMetrics::ViewID from "FrameMetrics.h";
+using ScrollableLayerGuid::ViewID from "mozilla/layers/ScrollableLayerGuid.h";
 using struct mozilla::void_t from "ipc/IPCMessageUtils.h";
 using mozilla::WindowsHandle from "ipc/IPCMessageUtils.h";
 using nscolor from "nsColor.h";
@@ -88,6 +87,7 @@ using class mozilla::NativeEventData from "ipc/nsGUIEventIPC.h";
 using mozilla::FontRange from "ipc/nsGUIEventIPC.h";
 using mozilla::a11y::IAccessibleHolder from "mozilla/a11y/IPCTypes.h";
 using mozilla::OriginAttributes from "mozilla/ipc/BackgroundUtils.h";
+using mozilla::dom::BrowsingContextId from "mozilla/dom/ipc/IdType.h";
 
 namespace mozilla {
 namespace dom {
@@ -118,19 +118,13 @@ nested(upto inside_cpow) sync protocol PBrowser
     manages PDocAccessible;
     manages PFilePicker;
     manages PIndexedDBPermissionRequest;
-    manages PRenderFrame;
     manages PPluginWidget;
     manages PPaymentRequest;
+    manages PWindowGlobal;
 
 both:
     async AsyncMessage(nsString aMessage, CpowEntry[] aCpows,
                        Principal aPrincipal, ClonedMessageData aData);
-
-    /**
-     * Create a layout frame (encapsulating a remote layer tree) for
-     * the page that is currently loaded in the <browser>.
-     */
-    async PRenderFrame();
 
 parent:
     /**
@@ -152,6 +146,12 @@ parent:
     sync PPluginWidget();
 
     async PPaymentRequest();
+
+    /**
+     * Construct a new WindowGlobal actor for a window global in the given
+     * BrowsingContext and with the given principal.
+     */
+    async PWindowGlobal(WindowGlobalInit init);
 
     /**
      * Sends an NS_NATIVE_CHILD_OF_SHAREABLE_WINDOW to be adopted by the
@@ -442,7 +442,7 @@ parent:
      *
      * @param opener the PBrowser whose content called window.open.
      */
-    async BrowserFrameOpenWindow(PBrowser opener, PRenderFrame renderFrame,
+    async BrowserFrameOpenWindow(PBrowser opener,
                                  nsString aURL, nsString aName, nsString aFeatures)
         returns (CreatedWindowInfo window);
 
@@ -538,6 +538,11 @@ parent:
     async RemotePaintIsReady();
 
     /**
+     * Child informs the parent that a compositor transaction has ocurred.
+     */
+    async NotifyCompositorTransaction();
+
+    /**
      * Child informs the parent that the content is ready to handle input
      * events. This is sent when the TabChild is created.
      */
@@ -585,6 +590,8 @@ parent:
     sync SetPrefersReducedMotionOverrideForTest(bool aValue);
     sync ResetPrefersReducedMotionOverrideForTest();
 
+    async RootBrowsingContext(BrowsingContextId aId);
+
 child:
     /**
      * Notify the remote browser that it has been Show()n on this
@@ -603,8 +610,7 @@ child:
     async InitRendering(TextureFactoryIdentifier textureFactoryIdentifier,
                         LayersId layersId,
                         CompositorOptions compositorOptions,
-                        bool layersConnected,
-                        nullable PRenderFrame renderFrame);
+                        bool layersConnected);
 
     async LoadURL(nsCString uri, ShowInfo info);
 
@@ -891,6 +897,19 @@ child:
      * process, so it can be used by PuppetWidget.
      */
     async SetWidgetNativeData(WindowsHandle aHandle);
+
+    /**
+     * Requests the content blocking log, which is sent back in response.
+     */
+    async GetContentBlockingLog() returns(nsString log, bool success);
+
+parent:
+    /** Records a history visit. */
+    async VisitURI(URIParams aURI, OptionalURIParams aLastVisitedURI,
+                   uint32_t aFlags);
+
+    /** Fetches the visited status for an array of URIs (Android-only). */
+    async QueryVisitedState(URIParams[] aURIs);
 
 /*
  * FIXME: write protocol!

@@ -17,9 +17,7 @@
 namespace mozilla {
 namespace dom {
 
-static DocumentOrShadowRoot*
-DocOrShadowFromContent(nsIContent& aContent)
-{
+static DocumentOrShadowRoot* DocOrShadowFromContent(nsIContent& aContent) {
   ShadowRoot* shadow = aContent.GetContainingShadow();
 
   // We never look in <svg:use> shadow trees, for backwards compat.
@@ -34,17 +32,16 @@ DocOrShadowFromContent(nsIContent& aContent)
   return aContent.OwnerDoc();
 }
 
-void
-IDTracker::Reset(nsIContent* aFromContent, nsIURI* aURI,nsIURI* aReferrer,
-                 uint32_t aReferrerPolicy,
-                 bool aWatch, bool aReferenceImage)
-{
-  MOZ_ASSERT(aFromContent, "Reset() expects non-null content pointer");
+void IDTracker::ResetToURIFragmentID(nsIContent* aFromContent, nsIURI* aURI,
+                                     nsIURI* aReferrer,
+                                     uint32_t aReferrerPolicy, bool aWatch,
+                                     bool aReferenceImage) {
+  MOZ_ASSERT(aFromContent,
+             "ResetToURIFragmentID() expects non-null content pointer");
 
   Unlink();
 
-  if (!aURI)
-    return;
+  if (!aURI) return;
 
   nsAutoCString refPart;
   aURI->GetRef(refPart);
@@ -73,10 +70,11 @@ IDTracker::Reset(nsIContent* aFromContent, nsIURI* aURI,nsIURI* aReferrer,
       // also want to handle.  (It also happens for <use>'s anonymous
       // content etc.)
       Element* anonRoot =
-        doc->GetAnonRootIfInAnonymousContentContainer(aFromContent);
+          doc->GetAnonRootIfInAnonymousContentContainer(aFromContent);
       if (anonRoot) {
         mElement = nsContentUtils::MatchElementId(anonRoot, ref);
-        // We don't have watching working yet for anonymous content, so bail out here.
+        // We don't have watching working yet for anonymous content, so bail out
+        // here.
         return;
       }
     } else {
@@ -94,13 +92,13 @@ IDTracker::Reset(nsIContent* aFromContent, nsIURI* aURI,nsIURI* aReferrer,
         // If the URI points to a different document we don't need this
         // restriction.
         nsINodeList* anonymousChildren =
-          doc->BindingManager()->GetAnonymousNodesFor(bindingParent);
+            doc->BindingManager()->GetAnonymousNodesFor(bindingParent);
 
         if (anonymousChildren) {
           uint32_t length = anonymousChildren->Length();
           for (uint32_t i = 0; i < length && !mElement; ++i) {
             mElement =
-              nsContentUtils::MatchElementId(anonymousChildren->Item(i), ref);
+                nsContentUtils::MatchElementId(anonymousChildren->Item(i), ref);
           }
         }
 
@@ -124,7 +122,7 @@ IDTracker::Reset(nsIContent* aFromContent, nsIURI* aURI,nsIURI* aReferrer,
       }
 
       DocumentLoadNotification* observer =
-        new DocumentLoadNotification(this, ref);
+          new DocumentLoadNotification(this, ref);
       mPendingNotification = observer;
       load->AddObserver(observer);
       // Keep going so we set up our watching stuff a bit
@@ -139,9 +137,7 @@ IDTracker::Reset(nsIContent* aFromContent, nsIURI* aURI,nsIURI* aReferrer,
   HaveNewDocumentOrShadowRoot(docOrShadow, aWatch, ref);
 }
 
-void
-IDTracker::ResetWithID(Element& aFrom, nsAtom* aID, bool aWatch)
-{
+void IDTracker::ResetWithID(Element& aFrom, nsAtom* aID, bool aWatch) {
   MOZ_ASSERT(aID);
 
   if (aWatch) {
@@ -154,17 +150,14 @@ IDTracker::ResetWithID(Element& aFrom, nsAtom* aID, bool aWatch)
   HaveNewDocumentOrShadowRoot(docOrShadow, aWatch, nsDependentAtomString(aID));
 }
 
-void
-IDTracker::HaveNewDocumentOrShadowRoot(
-  DocumentOrShadowRoot* aDocOrShadow,
-  bool aWatch,
-  const nsString& aRef)
-{
+void IDTracker::HaveNewDocumentOrShadowRoot(DocumentOrShadowRoot* aDocOrShadow,
+                                            bool aWatch, const nsString& aRef) {
   if (aWatch) {
     mWatchDocumentOrShadowRoot = nullptr;
     if (aDocOrShadow) {
       mWatchDocumentOrShadowRoot = &aDocOrShadow->AsNode();
-      mElement = aDocOrShadow->AddIDTargetObserver(mWatchID, Observe, this, mReferencingImage);
+      mElement = aDocOrShadow->AddIDTargetObserver(mWatchID, Observe, this,
+                                                   mReferencingImage);
     }
     return;
   }
@@ -180,22 +173,18 @@ IDTracker::HaveNewDocumentOrShadowRoot(
   }
 }
 
-void
-IDTracker::Traverse(nsCycleCollectionTraversalCallback* aCB)
-{
+void IDTracker::Traverse(nsCycleCollectionTraversalCallback* aCB) {
   NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(*aCB, "mWatchDocumentOrShadowRoot");
   aCB->NoteXPCOMChild(mWatchDocumentOrShadowRoot);
   NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(*aCB, "mElement");
   aCB->NoteXPCOMChild(mElement);
 }
 
-void
-IDTracker::Unlink()
-{
+void IDTracker::Unlink() {
   if (mWatchID) {
     if (DocumentOrShadowRoot* docOrShadow = GetWatchDocOrShadowRoot()) {
-      docOrShadow->RemoveIDTargetObserver(
-        mWatchID, Observe, this, mReferencingImage);
+      docOrShadow->RemoveIDTargetObserver(mWatchID, Observe, this,
+                                          mReferencingImage);
     }
   }
   if (mPendingNotification) {
@@ -208,16 +197,15 @@ IDTracker::Unlink()
   mReferencingImage = false;
 }
 
-bool
-IDTracker::Observe(Element* aOldElement, Element* aNewElement, void* aData)
-{
+bool IDTracker::Observe(Element* aOldElement, Element* aNewElement,
+                        void* aData) {
   IDTracker* p = static_cast<IDTracker*>(aData);
   if (p->mPendingNotification) {
     p->mPendingNotification->SetTo(aNewElement);
   } else {
     NS_ASSERTION(aOldElement == p->mElement, "Failed to track content!");
     ChangeNotification* watcher =
-      new ChangeNotification(p, aOldElement, aNewElement);
+        new ChangeNotification(p, aOldElement, aNewElement);
     p->mPendingNotification = watcher;
     nsContentUtils::AddScriptRunner(watcher);
   }
@@ -235,21 +223,20 @@ NS_IMPL_ISUPPORTS(IDTracker::DocumentLoadNotification, nsIObserver)
 NS_IMETHODIMP
 IDTracker::DocumentLoadNotification::Observe(nsISupports* aSubject,
                                              const char* aTopic,
-                                             const char16_t* aData)
-{
+                                             const char16_t* aData) {
   NS_ASSERTION(PL_strcmp(aTopic, "external-resource-document-created") == 0,
                "Unexpected topic");
   if (mTarget) {
     nsCOMPtr<nsIDocument> doc = do_QueryInterface(aSubject);
     mTarget->mPendingNotification = nullptr;
     NS_ASSERTION(!mTarget->mElement, "Why do we have content here?");
-    // If we got here, that means we had Reset() called with aWatch ==
-    // true.  So keep watching if IsPersistent().
+    // If we got here, that means we had Reset*() called with
+    // aWatch == true.  So keep watching if IsPersistent().
     mTarget->HaveNewDocumentOrShadowRoot(doc, mTarget->IsPersistent(), mRef);
     mTarget->ElementChanged(nullptr, mTarget->mElement);
   }
   return NS_OK;
 }
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla

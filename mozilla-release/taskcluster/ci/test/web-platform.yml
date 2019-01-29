@@ -14,6 +14,7 @@ job-defaults:
                 macosx.*:
                     - web_platform_tests/prod_config.py
                 android-em.*:
+                    - android/androidx86_7_0.py
                     - web_platform_tests/prod_config_android.py
                 default:
                     - web_platform_tests/prod_config.py
@@ -29,13 +30,13 @@ web-platform-tests:
             linux.*/debug: 18
             macosx64.*/opt: 8
             macosx64/debug: 16
-            windows10-64-ccov/debug: 15
+            windows10.*/debug: 18
             macosx64-ccov/debug: 24
             default: 12
     max-run-time:
         by-test-platform:
+            linux64-ccov/debug: 10800
             windows10-64-ccov/debug: 10800
-            macosx64-ccov/debug: 7200
             default: 7200
     e10s:
         by-test-platform:
@@ -43,12 +44,12 @@ web-platform-tests:
             default: true
     run-on-projects:
         by-test-platform:
-            android-em-7.0-x86/opt: ['mozilla-central']
+            android.*: ['mozilla-central', 'try']
             linux64-qr/.*: ['release', 'try']  # skip on integration branches due to high load
             default: built-projects
     tier:
         by-test-platform:
-            android.*: 3
+            android.*: 2
             linux64-asan/opt: 2
             linux64-qr/.*: 2  # can't be tier-1 if it's not running on integration branches
             default: default
@@ -90,21 +91,20 @@ web-platform-tests-reftests:
     treeherder-symbol: W(Wr)
     chunks:
         by-test-platform:
-            macosx.*: 1
+            android.*: 12
             default: 6
-
     e10s:
         by-test-platform:
             linux32/debug: both
             default: true
     run-on-projects:
         by-test-platform:
-            android-em-7.0-x86/opt: ['mozilla-central']
+            android.*: ['mozilla-central', 'try']
             linux64-qr/.*: ['release', 'try']  # skip on integration branches due to high load
             default: built-projects
     tier:
         by-test-platform:
-            android.*: 3
+            android.*: 2
             linux64-asan/opt: 2
             linux64-qr/.*: 2  # can't be tier-1 if it's not running on integration branches
             default: default
@@ -116,10 +116,7 @@ web-platform-tests-reftests-headless:
     description: "Web platform reftest headless run"
     suite: web-platform-tests-reftests
     treeherder-symbol: W(WrH)
-    chunks:
-        by-test-platform:
-            macosx.*: 1
-            default: 6
+    chunks: 6
     e10s:
         by-test-platform:
             linux32/debug: both
@@ -140,13 +137,17 @@ web-platform-tests-wdspec:
     description: "Web platform webdriver-spec run"
     suite: web-platform-tests-wdspec
     treeherder-symbol: W(Wd)
-    chunks: 2
+    chunks:
+        by-test-platform:
+            linux64-ccov/debug: 4
+            windows10-64-ccov/debug: 4
+            default: 2
     mozharness:
         extra-options:
             - --test-type=wdspec
     run-on-projects:
         by-test-platform:
-            android-em-7.0-x86/opt: ['mozilla-central']
+            android.*: ['mozilla-central', 'try']
             linux64-qr/.*: ['release', 'try']  # skip on integration branches due to high load
             default: built-projects
     tier:

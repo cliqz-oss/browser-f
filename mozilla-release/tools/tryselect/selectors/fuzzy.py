@@ -13,17 +13,23 @@ from distutils.spawn import find_executable
 
 from mozboot.util import get_state_dir
 from mozterm import Terminal
-from moztest.resolve import TestResolver, get_suite_definition
 from six import string_types
 
 from .. import preset as pset
 from ..cli import BaseTryParser
-from ..tasks import generate_tasks
+from ..tasks import generate_tasks, filter_tasks_by_paths
 from ..push import check_working_directory, push_to_try, vcs
 
 terminal = Terminal()
 
 here = os.path.abspath(os.path.dirname(__file__))
+
+# Some tasks show up in the target task set, but are either special cases
+# or uncommon enough that they should only be selectable with --full.
+TARGET_TASK_FILTERS = (
+    '.*-ccov\/.*',
+)
+
 
 FZF_NOT_FOUND = """
 Could not find the `fzf` binary.
@@ -94,7 +100,7 @@ class FuzzyParser(BaseTryParser):
           }],
     ]
     common_groups = ['push', 'task', 'preset']
-    templates = ['artifact', 'path', 'env', 'rebuild', 'chemspill-prio', 'talos-profile']
+    templates = ['artifact', 'path', 'env', 'rebuild', 'chemspill-prio', 'gecko-profile']
 
 
 def run(cmd, cwd=None):
@@ -176,27 +182,6 @@ def format_header():
     return FZF_HEADER.format(shortcuts=', '.join(shortcuts), t=terminal)
 
 
-def filter_by_paths(tasks, paths):
-    resolver = TestResolver.from_environment(cwd=here)
-    run_suites, run_tests = resolver.resolve_metadata(paths)
-    flavors = set([(t['flavor'], t.get('subsuite')) for t in run_tests])
-
-    task_regexes = set()
-    for flavor, subsuite in flavors:
-        suite = get_suite_definition(flavor, subsuite, strict=True)
-        if 'task_regex' not in suite:
-            print("warning: no tasks could be resolved from flavor '{}'{}".format(
-                    flavor, " and subsuite '{}'".format(subsuite) if subsuite else ""))
-            continue
-
-        task_regexes.update(suite['task_regex'])
-
-    def match_task(task):
-        return any(re.search(pattern, task) for pattern in task_regexes)
-
-    return filter(match_task, tasks)
-
-
 def run_fzf(cmd, tasks):
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE)
     out = proc.communicate('\n'.join(tasks))[0].splitlines()
@@ -207,6 +192,10 @@ def run_fzf(cmd, tasks):
         query = out[0]
         selected = out[1:]
     return query, selected
+
+
+def filter_target_task(task):
+    return not any(re.search(pattern, task) for pattern in TARGET_TASK_FILTERS)
 
 
 def run_fuzzy_try(update=False, query=None, templates=None, full=False, parameters=None,
@@ -222,10 +211,14 @@ def run_fuzzy_try(update=False, query=None, templates=None, full=False, paramete
         return 1
 
     check_working_directory(push)
-    all_tasks = generate_tasks(parameters, full, root=vcs.path)
+    tg = generate_tasks(parameters, full, root=vcs.path)
+    all_tasks = sorted(tg.tasks.keys())
+
+    if not full:
+        all_tasks = filter(filter_target_task, all_tasks)
 
     if paths:
-        all_tasks = filter_by_paths(all_tasks, paths)
+        all_tasks = filter_tasks_by_paths(all_tasks, paths)
         if not all_tasks:
             return 1
 

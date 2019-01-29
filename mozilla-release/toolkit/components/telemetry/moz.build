@@ -61,9 +61,14 @@ EXPORTS.mozilla += [
     'other/ProcessedStack.h',
 ]
 
+EXPORTS.mozilla.telemetry += [
+    'core/Stopwatch.h',
+]
+
 SOURCES += [
     'core/ipc/TelemetryIPC.cpp',
     'core/ipc/TelemetryIPCAccumulator.cpp',
+    'core/Stopwatch.cpp',
     'core/Telemetry.cpp',
     'core/TelemetryCommon.cpp',
     'core/TelemetryEvent.cpp',
@@ -75,6 +80,11 @@ SOURCES += [
     'other/TelemetryIOInterposeObserver.cpp',
     'other/WebrtcTelemetry.cpp',
 ]
+
+if CONFIG['OS_ARCH'] == 'WINNT':
+    SOURCES += [
+        'other/UntrustedModules.cpp',
+    ]
 
 # KeyedStackCapturer entirely relies on profiler to be enabled.
 if CONFIG['MOZ_GECKO_PROFILER']:
@@ -93,7 +103,6 @@ EXTRA_JS_MODULES += [
     'app/TelemetryEnvironment.jsm',
     'app/TelemetryReportingPolicy.jsm',
     'app/TelemetrySend.jsm',
-    'app/TelemetryStopwatch.jsm',
     'app/TelemetryStorage.jsm',
     'app/TelemetryTimestamps.jsm',
     'app/TelemetryUtils.jsm',
@@ -105,6 +114,7 @@ EXTRA_JS_MODULES += [
     'pings/HealthPing.jsm',
     'pings/ModulesPing.jsm',
     'pings/TelemetrySession.jsm',
+    'pings/UntrustedModulesPing.jsm',
     'pings/UpdatePing.jsm',
 ]
 

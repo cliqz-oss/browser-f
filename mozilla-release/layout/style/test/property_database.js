@@ -36,6 +36,11 @@ const CSS_TYPE_TRUE_SHORTHAND = 1;
 // the current spec or earlier versions of the spec.
 const CSS_TYPE_SHORTHAND_AND_LONGHAND = 2;
 
+// Legacy shorthand properties, that behave mostly like an alias
+// (CSS_TYPE_SHORTHAND_AND_LONGHAND) but not quite because their syntax may not
+// match, plus they shouldn't serialize in cssText.
+const CSS_TYPE_LEGACY_SHORTHAND = 3;
+
 // Each property has the following fields:
 //   domProp: The name of the relevant member of nsIDOM[NS]CSS2Properties
 //   inherited: Whether the property is inherited by default (stated as
@@ -238,12 +243,6 @@ var validGradientAndElementValues = [
   "radial-gradient(at left calc(100px + -25%), red, blue)",
   "radial-gradient(at calc(100px + -25px) top, red, blue)",
   "radial-gradient(at left calc(100px + -25px), red, blue)",
-
-  "-webkit-linear-gradient(top, red, blue)",
-  "-moz-linear-gradient(top, red, blue)",
-  "-moz-linear-gradient(center 0%, red, blue)",
-  "-moz-linear-gradient(50% top, red, blue)",
-  "-moz-linear-gradient(50% 0%, red, blue)",
 ];
 var invalidGradientAndElementValues = [
   "-moz-element(#a:1)",
@@ -647,6 +646,7 @@ if (IsCSSPropertyPrefEnabled("layout.css.prefixes.webkit")) {
     "-webkit-radial-gradient(contain ellipse, red, blue)",
 
     // Initial side/corner/point (valid only for -moz/-webkit prefixed):
+    "-webkit-linear-gradient(top, red, blue)",
     "-webkit-linear-gradient(left, red, blue)",
     "-webkit-linear-gradient(bottom, red, blue)",
     "-webkit-linear-gradient(right top, red, blue)",
@@ -849,6 +849,11 @@ if (IsCSSPropertyPrefEnabled("layout.css.prefixes.gradients")) {
     "-moz-linear-gradient(red -99px, yellow, green, blue 120%)",
     "-moz-linear-gradient(#ffff00, #ef3, rgba(10, 20, 30, 0.4))",
     "-moz-linear-gradient(rgba(10, 20, 30, 0.4), #ffff00, #ef3)",
+
+    "-moz-linear-gradient(top, red, blue)",
+    "-moz-linear-gradient(center 0%, red, blue)",
+    "-moz-linear-gradient(50% top, red, blue)",
+    "-moz-linear-gradient(50% 0%, red, blue)",
 
     "-moz-linear-gradient(to top, red, blue)",
     "-moz-linear-gradient(to bottom, red, blue)",
@@ -2625,7 +2630,7 @@ var gCSSProperties = {
     inherited: false,
     type: CSS_TYPE_LONGHAND,
     initial_values: [ "auto" ],
-    other_values: [ "none", "text", "element", "elements", "all", "toggle", "tri-state", "-moz-all", "-moz-none" ],
+    other_values: [ "none", "text", "all", "-moz-none" ],
     invalid_values: []
   },
   "background": {
@@ -4299,26 +4304,59 @@ var gCSSProperties = {
   "page-break-after": {
     domProp: "pageBreakAfter",
     inherited: false,
-    type: CSS_TYPE_LONGHAND,
+    type: CSS_TYPE_LEGACY_SHORTHAND,
+    alias_for: "break-after",
+    subproperties: [ "break-after" ],
     initial_values: [ "auto" ],
     other_values: [ "always", "avoid", "left", "right" ],
-    invalid_values: []
+    legacy_mapping: {
+      always: "page",
+    },
+    invalid_values: [ "page", "column" ]
   },
   "page-break-before": {
     domProp: "pageBreakBefore",
     inherited: false,
-    type: CSS_TYPE_LONGHAND,
+    type: CSS_TYPE_LEGACY_SHORTHAND,
+    alias_for: "break-before",
+    subproperties: [ "break-before" ],
     initial_values: [ "auto" ],
     other_values: [ "always", "avoid", "left", "right" ],
-    invalid_values: []
+    legacy_mapping: {
+      always: "page",
+    },
+    invalid_values: [ "page", "column" ]
   },
-  "page-break-inside": {
-    domProp: "pageBreakInside",
+  "break-after": {
+    domProp: "breakAfter",
+    inherited: false,
+    type: CSS_TYPE_LONGHAND,
+    initial_values: [ "auto" ],
+    other_values: [ "always", "page", "avoid", "left", "right" ],
+    invalid_values: [ ]
+  },
+  "break-before": {
+    domProp: "breakBefore",
+    inherited: false,
+    type: CSS_TYPE_LONGHAND,
+    initial_values: [ "auto" ],
+    other_values: [ "always", "page", "avoid", "left", "right" ],
+    invalid_values: [ ]
+  },
+  "break-inside": {
+    domProp: "breakInside",
     inherited: false,
     type: CSS_TYPE_LONGHAND,
     initial_values: [ "auto" ],
     other_values: [ "avoid" ],
-    invalid_values: [ "left", "right" ]
+    invalid_values: [ "left", "right", "always" ]
+  },
+  "page-break-inside": {
+    domProp: "pageBreakInside",
+    inherited: false,
+    type: CSS_TYPE_SHORTHAND_AND_LONGHAND,
+    alias_for: "break-inside",
+    subproperties: [ "break-inside" ],
   },
   "paint-order": {
     domProp: "paintOrder",
@@ -4411,7 +4449,7 @@ var gCSSProperties = {
     // don't know whether left and right are same as start
     initial_values: [ "start" ],
     other_values: [ "center", "justify", "end", "match-parent" ],
-    invalid_values: [ "true", "true true", "char", "-moz-center-or-inherit" ]
+    invalid_values: [ "true", "true true", "char", "-moz-center-or-inherit", "true left", "unsafe left" ]
   },
   "text-align-last": {
     domProp: "textAlignLast",
@@ -5197,6 +5235,46 @@ var gCSSProperties = {
     initial_values: [ "none" ],
     other_values: [ "url(#mysym)" ],
     invalid_values: []
+  },
+  "shape-image-threshold": {
+    domProp: "shapeImageThreshold",
+    inherited: false,
+    type: CSS_TYPE_LONGHAND,
+    applies_to_first_letter: true,
+    initial_values: [ "0", "0.0000", "-3", ],
+    other_values: [ "0.4", "1", "17", "397.376", "3e1", "3e+1", "3e-1", "3e0", "3e+0", "3e-0" ],
+    invalid_values: [ "0px", "1px", "20%", "default", "auto" ]
+  },
+  "shape-margin": {
+    domProp: "shapeMargin",
+    inherited: false,
+    type: CSS_TYPE_LONGHAND,
+    applies_to_first_letter: true,
+    initial_values: [ "0", ],
+    other_values: [ "2px", "2%", "1em", "calc(1px + 1em)", "calc(1%)" ],
+    invalid_values: [ "-1px", "auto", "none", "1px 1px", "-1%" ],
+  },
+  "shape-outside": {
+    domProp: "shapeOutside",
+    inherited: false,
+    type: CSS_TYPE_LONGHAND,
+    applies_to_first_letter: true,
+    initial_values: [ "none" ],
+    other_values: [
+      "url(#my-shape-outside)",
+    ].concat(
+      basicShapeOtherValues,
+      validGradientAndElementValues
+    ),
+    invalid_values: [].concat(
+      basicShapeSVGBoxValues,
+      basicShapeInvalidValues,
+      invalidGradientAndElementValues
+    ),
+    unbalanced_values: [].concat(
+      basicShapeUnbalancedValues,
+      unbalancedGradientAndElementValues
+    )
   },
   "shape-rendering": {
     domProp: "shapeRendering",
@@ -6320,12 +6398,16 @@ if (IsCSSPropertyPrefEnabled("layout.css.individual-transform.enabled")) {
     initial_values: [ "none" ],
     other_values: [ "45deg", "45grad", "72rad", "0.25turn", ".57rad",
                     "0 0 0 0rad", "0 0 1 45deg", "0 0 1 0rad",
+                    "0rad 0 0 1", "10rad 10 20 30",
+                    "x 10rad", "y 10rad", "z 10rad",
+                    "10rad x", "10rad y", "10rad z",
                     /* valid calc() values */
                     "calc(1) 0 0 calc(45deg + 5rad)",
                     "0 1 0 calc(400grad + 1rad)",
                     "calc(0.5turn + 10deg)"],
     invalid_values: [ "0", "7", "0, 0, 1, 45deg", "0 0 45deg", "0 0 20rad",
-                      "0 0 0 0",
+                      "0 0 0 0", "x x 10rad", "x y 10rad", "0 0 1 10rad z",
+                      "0 0 1 z 10rad", "z 0 0 1 10rad", "0 0 z 1 10rad",
                       /* invalid calc() values */
                       "0.5 1 0 calc(45deg + 10)", "calc(0.5turn + 10%)"],
   };
@@ -6439,14 +6521,6 @@ if (IsCSSPropertyPrefEnabled("layout.css.font-variations.enabled")) {
     .push("'vert' calc(2.5)");
 }
 
-if (IsCSSPropertyPrefEnabled("layout.css.frames-timing.enabled")) {
-  gCSSProperties["animation-timing-function"].other_values.push(
-    "frames(2)", "frames(1000)", "frames( 2 )");
-  gCSSProperties["animation-timing-function"].invalid_values.push(
-    "frames(1)", "frames(-2)", "frames", "frames()", "frames(,)",
-    "frames(a)", "frames(2.0)", "frames(2.5)", "frames(2 3)");
-}
-
 if (IsCSSPropertyPrefEnabled("svg.transform-box.enabled")) {
   gCSSProperties["transform-box"] = {
     domProp: "transformBox",
@@ -6455,51 +6529,6 @@ if (IsCSSPropertyPrefEnabled("svg.transform-box.enabled")) {
     initial_values: [ "border-box" ],
     other_values: [ "fill-box", "view-box" ],
     invalid_values: ["content-box", "padding-box", "stroke-box", "margin-box"]
-  };
-}
-
-if (IsCSSPropertyPrefEnabled("layout.css.shape-outside.enabled")) {
-  gCSSProperties["shape-image-threshold"] = {
-    domProp: "shapeImageThreshold",
-    inherited: false,
-    type: CSS_TYPE_LONGHAND,
-    applies_to_first_letter: true,
-    initial_values: [ "0", "0.0000", "-3", ],
-    other_values: [ "0.4", "1", "17", "397.376", "3e1", "3e+1", "3e-1", "3e0", "3e+0", "3e-0" ],
-    invalid_values: [ "0px", "1px", "20%", "default", "auto" ]
-  };
-
-  gCSSProperties["shape-margin"] = {
-    domProp: "shapeMargin",
-    inherited: false,
-    type: CSS_TYPE_LONGHAND,
-    applies_to_first_letter: true,
-    initial_values: [ "0", ],
-    other_values: [ "2px", "2%", "1em", "calc(1px + 1em)", "calc(1%)" ],
-    invalid_values: [ "-1px", "auto", "none", "1px 1px", "-1%" ],
-  };
-
-  gCSSProperties["shape-outside"] = {
-    domProp: "shapeOutside",
-    inherited: false,
-    type: CSS_TYPE_LONGHAND,
-    applies_to_first_letter: true,
-    initial_values: [ "none" ],
-    other_values: [
-      "url(#my-shape-outside)",
-    ].concat(
-      basicShapeOtherValues,
-      validGradientAndElementValues
-    ),
-    invalid_values: [].concat(
-      basicShapeSVGBoxValues,
-      basicShapeInvalidValues,
-      invalidGradientAndElementValues
-    ),
-    unbalanced_values: [].concat(
-      basicShapeUnbalancedValues,
-      unbalancedGradientAndElementValues
-    )
   };
 }
 
@@ -6695,7 +6724,7 @@ gCSSProperties["grid-template-columns"] = {
 if (isGridTemplateSubgridValueEnabled) {
   gCSSProperties["grid-template-columns"].other_values.push(
     // See https://bugzilla.mozilla.org/show_bug.cgi?id=981300
-    "[none auto subgrid min-content max-content foo] 40px",
+    "[none subgrid min-content max-content foo] 40px",
 
     "subgrid",
     "subgrid [] [foo bar]",
@@ -7944,12 +7973,6 @@ if (IsCSSPropertyPrefEnabled("layout.css.prefixes.gradients")) {
   );
 }
 
-if (IsCSSPropertyPrefEnabled("layout.css.text-align-unsafe-value.enabled")) {
-  gCSSProperties["text-align"].other_values.push("true left");
-} else {
-  gCSSProperties["text-align"].invalid_values.push("true left");
-}
-
 gCSSProperties["display"].other_values.push("flow-root");
 
 if (IsCSSPropertyPrefEnabled("layout.css.column-span.enabled")) {
@@ -8169,6 +8192,34 @@ if (IsCSSPropertyPrefEnabled("layout.css.clip-path-path.enabled")) {
     "path(nonzero)",
     "path(evenodd, '')",
     "path(abs, 'M 10 10 L 10 10 z')",
+  );
+}
+
+if (IsCSSPropertyPrefEnabled("layout.css.step-position-jump.enabled")) {
+  gCSSProperties["animation-timing-function"].other_values.push(
+    "steps(1, jump-start)",
+    "steps(1, jump-end)",
+    "steps(2, jump-none)",
+    "steps(1, jump-both)",
+  );
+  gCSSProperties["animation-timing-function"].invalid_values.push(
+    "steps(0, jump-start)",
+    "steps(0, jump-end)",
+    "steps(1, jump-none)",
+    "steps(0, jump-both)",
+  );
+
+  gCSSProperties["transition-timing-function"].other_values.push(
+    "steps(1, jump-start)",
+    "steps(1, jump-end)",
+    "steps(2, jump-none)",
+    "steps(1, jump-both)",
+  );
+  gCSSProperties["transition-timing-function"].invalid_values.push(
+    "steps(0, jump-start)",
+    "steps(0, jump-end)",
+    "steps(1, jump-none)",
+    "steps(0, jump-both)",
   );
 }
 

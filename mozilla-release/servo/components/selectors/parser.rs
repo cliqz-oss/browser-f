@@ -1,27 +1,27 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use attr::{AttrSelectorOperator, AttrSelectorWithOptionalNamespace};
-use attr::{NamespaceConstraint, ParsedAttrSelectorOperation};
-use attr::{ParsedCaseSensitivity, SELECTOR_WHITESPACE};
-use bloom::BLOOM_HASH_MASK;
-use builder::{SelectorBuilder, SpecificityAndFlags};
-use context::QuirksMode;
+use crate::attr::{AttrSelectorOperator, AttrSelectorWithOptionalNamespace};
+use crate::attr::{NamespaceConstraint, ParsedAttrSelectorOperation};
+use crate::attr::{ParsedCaseSensitivity, SELECTOR_WHITESPACE};
+use crate::bloom::BLOOM_HASH_MASK;
+use crate::builder::{SelectorBuilder, SpecificityAndFlags};
+use crate::context::QuirksMode;
+use crate::sink::Push;
+pub use crate::visitor::{SelectorVisitor, Visit};
+use cssparser::{parse_nth, serialize_identifier};
 use cssparser::{BasicParseError, BasicParseErrorKind, ParseError, ParseErrorKind};
 use cssparser::{CowRcStr, Delimiter, SourceLocation};
 use cssparser::{CssStringWriter, Parser as CssParser, ToCss, Token};
-use cssparser::{parse_nth, serialize_identifier};
 use precomputed_hash::PrecomputedHash;
 use servo_arc::ThinArc;
-use sink::Push;
 use smallvec::SmallVec;
 use std::borrow::{Borrow, Cow};
 use std::fmt::{self, Debug, Display, Write};
 use std::iter::Rev;
 use std::slice;
 use thin_slice::ThinBoxedSlice;
-pub use visitor::{SelectorVisitor, Visit};
 
 /// A trait that represents a pseudo-element.
 pub trait PseudoElement: Sized + ToCss {
@@ -34,6 +34,11 @@ pub trait PseudoElement: Sized + ToCss {
         &self,
         _pseudo_class: &<Self::Impl as SelectorImpl>::NonTSPseudoClass,
     ) -> bool {
+        false
+    }
+
+    /// Whether this pseudo-element is valid after a ::slotted(..) pseudo.
+    fn valid_after_slotted(&self) -> bool {
         false
     }
 }
@@ -69,6 +74,8 @@ pub enum SelectorParseErrorKind<'i> {
     DanglingCombinator,
     NonSimpleSelectorInNegation,
     NonCompoundSelector,
+    NonPseudoElementAfterSlotted,
+    InvalidPseudoElementAfterSlotted,
     UnexpectedTokenInAttributeSelector(Token<'i>),
     PseudoElementExpectedColon(Token<'i>),
     PseudoElementExpectedIdent(Token<'i>),
@@ -263,7 +270,9 @@ where
 
     // Ensure they're actually all compound selectors without pseudo-elements.
     if selector.has_pseudo_element() {
-        return Err(location.new_custom_error(SelectorParseErrorKind::PseudoElementInComplexSelector));
+        return Err(
+            location.new_custom_error(SelectorParseErrorKind::PseudoElementInComplexSelector)
+        );
     }
 
     if selector.iter_raw_match_order().any(|s| s.is_combinator()) {
@@ -450,13 +459,13 @@ where
                 ) {
                     return false;
                 }
-            },
+            }
             AttributeOther(ref attr_selector) if !attr_selector.never_matches => {
                 let empty_string;
                 let namespace = match attr_selector.namespace() {
                     Some(ns) => ns,
                     None => {
-                        empty_string = ::parser::namespace_empty_string::<Impl>();
+                        empty_string = crate::parser::namespace_empty_string::<Impl>();
                         NamespaceConstraint::Specific(&empty_string)
                     },
                 };
@@ -1713,7 +1722,8 @@ where
             if namespace.is_none() && include!(concat!(
                 env!("OUT_DIR"),
                 "/ascii_case_insensitive_html_attributes.rs"
-            )).contains(&*local_name_lower_cow)
+            ))
+            .contains(&*local_name_lower_cow)
             {
                 case_sensitivity =
                     ParsedCaseSensitivity::AsciiCaseInsensitiveIfInHtmlElementInHtmlDocument
@@ -1832,7 +1842,6 @@ where
     input.skip_whitespace();
 
     let mut empty = true;
-    let mut slot = false;
     if !parse_type_selector(parser, input, builder)? {
         if let Some(url) = parser.default_namespace() {
             // If there was no explicit type selector, but there is a
@@ -1845,6 +1854,7 @@ where
     }
 
     let mut pseudo = false;
+    let mut slot = false;
     loop {
         let parse_result =
             match parse_one_simple_selector(parser, input, /* inside_negation = */ false)? {
@@ -1852,75 +1862,106 @@ where
                 Some(result) => result,
             };
 
+        empty = false;
+
+        let slotted_selector;
+        let pseudo_element;
+
         match parse_result {
             SimpleSelectorParseResult::SimpleSelector(s) => {
                 builder.push_simple_selector(s);
-                empty = false
+                continue;
             },
             SimpleSelectorParseResult::PseudoElement(p) => {
-                // Try to parse state to its right. There are only 3 allowable
-                // state selectors that can go on pseudo-elements.
-                let mut state_selectors = SmallVec::<[Component<Impl>; 3]>::new();
-
-                loop {
-                    let location = input.current_source_location();
-                    match input.next_including_whitespace() {
-                        Ok(&Token::Colon) => {},
-                        Ok(&Token::WhiteSpace(_)) | Err(_) => break,
-                        Ok(t) => {
-                            let e = SelectorParseErrorKind::PseudoElementExpectedColon(t.clone());
-                            return Err(location.new_custom_error(e));
-                        },
-                    }
-
-                    let location = input.current_source_location();
-                    // TODO(emilio): Functional pseudo-classes too?
-                    // We don't need it for now.
-                    let name = match input.next_including_whitespace()? {
-                        &Token::Ident(ref name) => name.clone(),
-                        t => {
-                            return Err(location.new_custom_error(
-                                SelectorParseErrorKind::NoIdentForPseudo(t.clone()),
-                            ))
-                        },
-                    };
-
-                    let pseudo_class =
-                        P::parse_non_ts_pseudo_class(parser, location, name.clone())?;
-                    if !p.supports_pseudo_class(&pseudo_class) {
-                        return Err(input.new_custom_error(
-                            SelectorParseErrorKind::UnsupportedPseudoClassOrElement(name),
-                        ));
-                    }
-                    state_selectors.push(Component::NonTSPseudoClass(pseudo_class));
-                }
-
-                if !builder.is_empty() {
-                    builder.push_combinator(Combinator::PseudoElement);
-                }
-
-                builder.push_simple_selector(Component::PseudoElement(p));
-                for state_selector in state_selectors.drain() {
-                    builder.push_simple_selector(state_selector);
-                }
-
-                pseudo = true;
-                empty = false;
-                break;
+                slotted_selector = None;
+                pseudo_element = Some(p);
             },
             SimpleSelectorParseResult::SlottedPseudo(selector) => {
-                empty = false;
-                slot = true;
-                if !builder.is_empty() {
-                    builder.push_combinator(Combinator::SlotAssignment);
-                }
-                builder.push_simple_selector(Component::Slotted(selector));
-                // FIXME(emilio): ::slotted() should support ::before and
-                // ::after after it, so we shouldn't break, but we shouldn't
-                // push more type selectors either.
-                break;
+                slotted_selector = Some(selector);
+                let maybe_pseudo =
+                    parse_one_simple_selector(parser, input, /* inside_negation = */ false)?;
+
+                pseudo_element = match maybe_pseudo {
+                    None => None,
+                    Some(SimpleSelectorParseResult::PseudoElement(pseudo)) => {
+                        if !pseudo.valid_after_slotted() {
+                            return Err(input.new_custom_error(
+                                SelectorParseErrorKind::InvalidPseudoElementAfterSlotted,
+                            ));
+                        }
+                        Some(pseudo)
+                    },
+                    Some(SimpleSelectorParseResult::SimpleSelector(..)) |
+                    Some(SimpleSelectorParseResult::SlottedPseudo(..)) => {
+                        return Err(input.new_custom_error(
+                            SelectorParseErrorKind::NonPseudoElementAfterSlotted,
+                        ));
+                    },
+                };
             },
         }
+
+        debug_assert!(slotted_selector.is_some() || pseudo_element.is_some());
+        // Try to parse state to the right of the pseudo-element.
+        //
+        // There are only 3 allowable state selectors that can go on
+        // pseudo-elements as of right now.
+        let mut state_selectors = SmallVec::<[Component<Impl>; 3]>::new();
+        if let Some(ref p) = pseudo_element {
+            loop {
+                let location = input.current_source_location();
+                match input.next_including_whitespace() {
+                    Ok(&Token::Colon) => {},
+                    Ok(&Token::WhiteSpace(_)) | Err(_) => break,
+                    Ok(t) => {
+                        let e = SelectorParseErrorKind::PseudoElementExpectedColon(t.clone());
+                        return Err(location.new_custom_error(e));
+                    },
+                }
+
+                let location = input.current_source_location();
+                // TODO(emilio): Functional pseudo-classes too?
+                // We don't need it for now.
+                let name = match input.next_including_whitespace()? {
+                    &Token::Ident(ref name) => name.clone(),
+                    t => {
+                        return Err(location
+                            .new_custom_error(SelectorParseErrorKind::NoIdentForPseudo(t.clone())))
+                    },
+                };
+
+                let pseudo_class = P::parse_non_ts_pseudo_class(parser, location, name.clone())?;
+                if !p.supports_pseudo_class(&pseudo_class) {
+                    return Err(input.new_custom_error(
+                        SelectorParseErrorKind::UnsupportedPseudoClassOrElement(name),
+                    ));
+                }
+                state_selectors.push(Component::NonTSPseudoClass(pseudo_class));
+            }
+        }
+
+        if let Some(slotted) = slotted_selector {
+            slot = true;
+            if !builder.is_empty() {
+                builder.push_combinator(Combinator::SlotAssignment);
+            }
+            builder.push_simple_selector(Component::Slotted(slotted));
+        }
+
+        if let Some(p) = pseudo_element {
+            pseudo = true;
+            if !builder.is_empty() {
+                builder.push_combinator(Combinator::PseudoElement);
+            }
+
+            builder.push_simple_selector(Component::PseudoElement(p));
+
+            for state_selector in state_selectors.drain() {
+                builder.push_simple_selector(state_selector);
+            }
+        }
+
+        break;
     }
     if empty {
         // An empty selector is invalid.
@@ -2096,7 +2137,8 @@ where
         "last-of-type" => Ok(Component::LastOfType),
         "only-of-type" => Ok(Component::OnlyOfType),
         _ => Err(())
-    }).or_else(|()| {
+    })
+    .or_else(|()| {
         P::parse_non_ts_pseudo_class(parser, location, name).map(Component::NonTSPseudoClass)
     })
 }
@@ -2104,12 +2146,12 @@ where
 // NB: pub module in order to access the DummyParser
 #[cfg(test)]
 pub mod tests {
-    use builder::HAS_PSEUDO_BIT;
+    use super::*;
+    use crate::builder::HAS_PSEUDO_BIT;
+    use crate::parser;
     use cssparser::{serialize_identifier, Parser as CssParser, ParserInput, ToCss};
-    use parser;
     use std::collections::HashMap;
     use std::fmt;
-    use super::*;
 
     #[derive(Clone, Debug, Eq, PartialEq)]
     pub enum PseudoClass {
@@ -2132,6 +2174,10 @@ pub mod tests {
                 PseudoClass::Hover => true,
                 PseudoClass::Active | PseudoClass::Lang(..) => false,
             }
+        }
+
+        fn valid_after_slotted(&self) -> bool {
+            true
         }
     }
 
@@ -2375,9 +2421,9 @@ pub mod tests {
                 vec![Component::LocalName(LocalName {
                     name: DummyAtom::from("EeÉ"),
                     lower_name: DummyAtom::from("eeÉ"),
-                }), ],
+                })],
                 specificity(0, 0, 1),
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse("|e"),
@@ -2390,7 +2436,7 @@ pub mod tests {
                     }),
                 ],
                 specificity(0, 0, 1),
-            ), ]))
+            )]))
         );
         // When the default namespace is not set, *| should be elided.
         // https://github.com/servo/servo/pull/17537
@@ -2400,9 +2446,9 @@ pub mod tests {
                 vec![Component::LocalName(LocalName {
                     name: DummyAtom::from("e"),
                     lower_name: DummyAtom::from("e"),
-                }), ],
+                })],
                 specificity(0, 0, 1),
-            ), ]))
+            )]))
         );
         // When the default namespace is set, *| should _not_ be elided (as foo
         // is no longer equivalent to *|foo--the former is only for foo in the
@@ -2422,14 +2468,14 @@ pub mod tests {
                     }),
                 ],
                 specificity(0, 0, 1),
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse("*"),
             Ok(SelectorList::from_vec(vec![Selector::from_vec(
                 vec![Component::ExplicitUniversalType],
                 specificity(0, 0, 0)
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse("|*"),
@@ -2439,14 +2485,14 @@ pub mod tests {
                     Component::ExplicitUniversalType,
                 ],
                 specificity(0, 0, 0),
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse_expected("*|*", Some("*")),
             Ok(SelectorList::from_vec(vec![Selector::from_vec(
                 vec![Component::ExplicitUniversalType],
                 specificity(0, 0, 0)
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse_ns(
@@ -2459,7 +2505,7 @@ pub mod tests {
                     Component::ExplicitUniversalType,
                 ],
                 specificity(0, 0, 0),
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse(".foo:lang(en-US)"),
@@ -2469,14 +2515,14 @@ pub mod tests {
                     Component::NonTSPseudoClass(PseudoClass::Lang("en-US".to_owned())),
                 ],
                 specificity(0, 2, 0),
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse("#bar"),
             Ok(SelectorList::from_vec(vec![Selector::from_vec(
                 vec![Component::ID(DummyAtom::from("bar"))],
                 specificity(1, 0, 0),
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse("e.foo#bar"),
@@ -2490,7 +2536,7 @@ pub mod tests {
                     Component::ID(DummyAtom::from("bar")),
                 ],
                 specificity(1, 1, 1),
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse("e.foo #bar"),
@@ -2505,7 +2551,7 @@ pub mod tests {
                     Component::ID(DummyAtom::from("bar")),
                 ],
                 specificity(1, 1, 1),
-            ), ]))
+            )]))
         );
         // Default namespace does not apply to attribute selectors
         // https://github.com/mozilla/servo/pull/1652
@@ -2516,9 +2562,9 @@ pub mod tests {
                 vec![Component::AttributeInNoNamespaceExists {
                     local_name: DummyAtom::from("Foo"),
                     local_name_lower: DummyAtom::from("foo"),
-                }, ],
+                }],
                 specificity(0, 1, 0),
-            ), ]))
+            )]))
         );
         assert!(parse_ns("svg|circle", &parser).is_err());
         parser
@@ -2535,7 +2581,7 @@ pub mod tests {
                     }),
                 ],
                 specificity(0, 0, 1),
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse_ns("svg|*", &parser),
@@ -2545,7 +2591,7 @@ pub mod tests {
                     Component::ExplicitUniversalType,
                 ],
                 specificity(0, 0, 0),
-            ), ]))
+            )]))
         );
         // Default namespace does not apply to attribute selectors
         // https://github.com/mozilla/servo/pull/1652
@@ -2563,7 +2609,7 @@ pub mod tests {
                     },
                 ],
                 specificity(0, 1, 0),
-            ), ]))
+            )]))
         );
         // Default namespace does apply to type selectors
         assert_eq!(
@@ -2577,7 +2623,7 @@ pub mod tests {
                     }),
                 ],
                 specificity(0, 0, 1),
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse_ns("*", &parser),
@@ -2587,7 +2633,7 @@ pub mod tests {
                     Component::ExplicitUniversalType,
                 ],
                 specificity(0, 0, 0),
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse_ns("*|*", &parser),
@@ -2597,7 +2643,7 @@ pub mod tests {
                     Component::ExplicitUniversalType,
                 ],
                 specificity(0, 0, 0),
-            ), ]))
+            )]))
         );
         // Default namespace applies to universal and type selectors inside :not and :matches,
         // but not otherwise.
@@ -2613,7 +2659,7 @@ pub mod tests {
                     ),
                 ],
                 specificity(0, 1, 0),
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse_ns(":not(*)", &parser),
@@ -2624,12 +2670,13 @@ pub mod tests {
                         vec![
                             Component::DefaultNamespace(MATHML.into()),
                             Component::ExplicitUniversalType,
-                        ].into_boxed_slice()
+                        ]
+                        .into_boxed_slice()
                         .into(),
                     ),
                 ],
                 specificity(0, 0, 0),
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse_ns(":not(e)", &parser),
@@ -2643,12 +2690,13 @@ pub mod tests {
                                 name: DummyAtom::from("e"),
                                 lower_name: DummyAtom::from("e"),
                             }),
-                        ].into_boxed_slice()
+                        ]
+                        .into_boxed_slice()
                         .into(),
                     ),
                 ],
                 specificity(0, 0, 1),
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse("[attr|=\"foo\"]"),
@@ -2659,9 +2707,9 @@ pub mod tests {
                     value: DummyAtom::from("foo"),
                     never_matches: false,
                     case_sensitivity: ParsedCaseSensitivity::CaseSensitive,
-                }, ],
+                }],
                 specificity(0, 1, 0),
-            ), ]))
+            )]))
         );
         // https://github.com/mozilla/servo/issues/1723
         assert_eq!(
@@ -2669,7 +2717,7 @@ pub mod tests {
             Ok(SelectorList::from_vec(vec![Selector::from_vec(
                 vec![Component::PseudoElement(PseudoElement::Before)],
                 specificity(0, 0, 1) | HAS_PSEUDO_BIT,
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse("::before:hover"),
@@ -2679,7 +2727,7 @@ pub mod tests {
                     Component::NonTSPseudoClass(PseudoClass::Hover),
                 ],
                 specificity(0, 1, 1) | HAS_PSEUDO_BIT,
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse("::before:hover:hover"),
@@ -2690,7 +2738,7 @@ pub mod tests {
                     Component::NonTSPseudoClass(PseudoClass::Hover),
                 ],
                 specificity(0, 2, 1) | HAS_PSEUDO_BIT,
-            ), ]))
+            )]))
         );
         assert!(parse("::before:hover:active").is_err());
         assert!(parse("::before:hover .foo").is_err());
@@ -2713,7 +2761,7 @@ pub mod tests {
                     Component::PseudoElement(PseudoElement::After),
                 ],
                 specificity(0, 0, 2) | HAS_PSEUDO_BIT,
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse("#d1 > .ok"),
@@ -2724,7 +2772,7 @@ pub mod tests {
                     Component::Class(DummyAtom::from("ok")),
                 ],
                 (1 << 20) + (1 << 10) + (0 << 0),
-            ), ]))
+            )]))
         );
         parser.default_ns = None;
         assert!(parse(":not(#provel.old)").is_err());
@@ -2737,9 +2785,9 @@ pub mod tests {
                     vec![Component::ID(DummyAtom::from("provel"))]
                         .into_boxed_slice()
                         .into(),
-                ), ],
+                )],
                 specificity(1, 0, 0),
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse_ns(":not(svg|circle)", &parser),
@@ -2751,11 +2799,12 @@ pub mod tests {
                             name: DummyAtom::from("circle"),
                             lower_name: DummyAtom::from("circle"),
                         }),
-                    ].into_boxed_slice()
+                    ]
+                    .into_boxed_slice()
                     .into(),
-                ), ],
+                )],
                 specificity(0, 0, 1),
-            ), ]))
+            )]))
         );
         // https://github.com/servo/servo/issues/16017
         assert_eq!(
@@ -2765,9 +2814,9 @@ pub mod tests {
                     vec![Component::ExplicitUniversalType]
                         .into_boxed_slice()
                         .into(),
-                ), ],
+                )],
                 specificity(0, 0, 0),
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse_ns(":not(|*)", &parser),
@@ -2776,11 +2825,12 @@ pub mod tests {
                     vec![
                         Component::ExplicitNoNamespace,
                         Component::ExplicitUniversalType,
-                    ].into_boxed_slice()
+                    ]
+                    .into_boxed_slice()
                     .into(),
-                ), ],
+                )],
                 specificity(0, 0, 0),
-            ), ]))
+            )]))
         );
         // *| should be elided if there is no default namespace.
         // https://github.com/servo/servo/pull/17537
@@ -2791,9 +2841,9 @@ pub mod tests {
                     vec![Component::ExplicitUniversalType]
                         .into_boxed_slice()
                         .into(),
-                ), ],
+                )],
                 specificity(0, 0, 0),
-            ), ]))
+            )]))
         );
         assert_eq!(
             parse_ns(":not(svg|*)", &parser),
@@ -2802,11 +2852,12 @@ pub mod tests {
                     vec![
                         Component::Namespace(DummyAtom("svg".into()), SVG.into()),
                         Component::ExplicitUniversalType,
-                    ].into_boxed_slice()
+                    ]
+                    .into_boxed_slice()
                     .into(),
-                ), ],
+                )],
                 specificity(0, 0, 0),
-            ), ]))
+            )]))
         );
 
         assert!(parse("::slotted()").is_err());
@@ -2818,8 +2869,7 @@ pub mod tests {
         assert!(parse("div + slot::slotted(div)").is_ok());
         assert!(parse("div + slot::slotted(div.foo)").is_ok());
         assert!(parse("slot::slotted(div,foo)::first-line").is_err());
-        // TODO
-        assert!(parse("::slotted(div)::before").is_err());
+        assert!(parse("::slotted(div)::before").is_ok());
         assert!(parse("slot::slotted(div,foo)").is_err());
     }
 
@@ -2845,7 +2895,8 @@ pub mod tests {
         let selector = &parse_ns(
             "*|*::before",
             &DummyParser::default_with_namespace(DummyAtom::from("https://mozilla.org")),
-        ).unwrap()
+        )
+        .unwrap()
         .0[0];
         assert!(selector.is_universal());
     }

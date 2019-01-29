@@ -1,20 +1,20 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! CSS handling for the computed value of
 //! [grids](https://drafts.csswg.org/css-grid/)
 
+use crate::parser::{Parse, ParserContext};
+use crate::values::computed::{self, Context, ToComputedValue};
+use crate::values::generics::grid::{GridTemplateComponent, RepeatCount, TrackBreadth};
+use crate::values::generics::grid::{LineNameList, TrackKeyword, TrackRepeat, TrackSize};
+use crate::values::generics::grid::{TrackList, TrackListType, TrackListValue};
+use crate::values::specified::{Integer, LengthOrPercentage};
+use crate::values::{CSSFloat, CustomIdent};
 use cssparser::{ParseError as CssParseError, Parser, Token};
-use parser::{Parse, ParserContext};
 use std::mem;
 use style_traits::{ParseError, StyleParseErrorKind};
-use values::{CSSFloat, CustomIdent};
-use values::computed::{self, Context, ToComputedValue};
-use values::generics::grid::{GridTemplateComponent, RepeatCount, TrackBreadth};
-use values::generics::grid::{LineNameList, TrackKeyword, TrackRepeat, TrackSize};
-use values::generics::grid::{TrackList, TrackListType, TrackListValue};
-use values::specified::{Integer, LengthOrPercentage};
 
 /// Parse a single flexible length.
 pub fn parse_flex<'i, 't>(input: &mut Parser<'i, 't>) -> Result<CSSFloat, ParseError<'i>> {
@@ -95,7 +95,7 @@ pub fn parse_line_names<'i, 't>(
         while let Ok((loc, ident)) = input.try(|i| -> Result<_, CssParseError<()>> {
             Ok((i.current_source_location(), i.expect_ident_cloned()?))
         }) {
-            let ident = CustomIdent::from_ident(loc, &ident, &["span"])?;
+            let ident = CustomIdent::from_ident(loc, &ident, &["span", "auto"])?;
             values.push(ident);
         }
 
@@ -385,7 +385,7 @@ impl ToComputedValue for TrackList<LengthOrPercentage, Integer> {
 #[cfg(feature = "gecko")]
 #[inline]
 fn allow_grid_template_subgrids() -> bool {
-    use gecko_bindings::structs::mozilla;
+    use crate::gecko_bindings::structs::mozilla;
     unsafe { mozilla::StaticPrefs_sVarCache_layout_css_grid_template_subgrid_value_enabled }
 }
 

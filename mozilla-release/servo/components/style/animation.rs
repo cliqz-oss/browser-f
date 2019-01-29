@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! CSS transitions and animations.
 
@@ -8,30 +8,29 @@
 // compile it out so that people remember it exists, thus the cfg'd Sender
 // import.
 
-use Atom;
-use bezier::Bezier;
-use context::SharedStyleContext;
-use dom::{OpaqueNode, TElement};
-use font_metrics::FontMetricsProvider;
-use properties::{self, CascadeMode, ComputedValues, LonghandId};
-use properties::animated_properties::AnimatedProperty;
-use properties::longhands::animation_direction::computed_value::single_value::T as AnimationDirection;
-use properties::longhands::animation_play_state::computed_value::single_value::T as AnimationPlayState;
-use rule_tree::CascadeLevel;
-use servo_arc::Arc;
+use crate::bezier::Bezier;
+use crate::context::SharedStyleContext;
+use crate::dom::{OpaqueNode, TElement};
+use crate::font_metrics::FontMetricsProvider;
+use crate::properties::animated_properties::AnimatedProperty;
+use crate::properties::longhands::animation_direction::computed_value::single_value::T as AnimationDirection;
+use crate::properties::longhands::animation_play_state::computed_value::single_value::T as AnimationPlayState;
+use crate::properties::{self, CascadeMode, ComputedValues, LonghandId};
+use crate::rule_tree::CascadeLevel;
+use crate::stylesheets::keyframes_rule::{KeyframesAnimation, KeyframesStep, KeyframesStepValue};
+use crate::timer::Timer;
+use crate::values::computed::box_::TransitionProperty;
+use crate::values::computed::Time;
+use crate::values::computed::TimingFunction;
+use crate::values::generics::box_::AnimationIterationCount;
+use crate::values::generics::easing::{StepPosition, TimingFunction as GenericTimingFunction};
+use crate::Atom;
 #[cfg(feature = "servo")]
-use servo_channel::Sender;
+use crossbeam_channel::Sender;
+use servo_arc::Arc;
 use std::fmt;
 #[cfg(feature = "gecko")]
 use std::sync::mpsc::Sender;
-use stylesheets::keyframes_rule::{KeyframesAnimation, KeyframesStep, KeyframesStepValue};
-use timer::Timer;
-use values::computed::Time;
-use values::computed::box_::TransitionProperty;
-use values::computed::transform::TimingFunction;
-use values::generics::box_::AnimationIterationCount;
-use values::generics::transform::{StepPosition, TimingFunction as GenericTimingFunction};
-
 
 /// This structure represents a keyframes animation current iteration state.
 ///
@@ -316,7 +315,8 @@ impl PropertyAnimation {
                         old_style,
                         new_style,
                     )
-                }).collect(),
+                })
+                .collect(),
             TransitionProperty::Longhand(longhand_id) => {
                 let animation = PropertyAnimation::from_longhand(
                     longhand_id,
@@ -363,27 +363,40 @@ impl PropertyAnimation {
             GenericTimingFunction::CubicBezier { x1, y1, x2, y2 } => {
                 Bezier::new(x1, y1, x2, y2).solve(time, epsilon)
             },
-            GenericTimingFunction::Steps(steps, StepPosition::Start) => {
-                (time * (steps as f64)).ceil() / (steps as f64)
-            },
-            GenericTimingFunction::Steps(steps, StepPosition::End) => {
-                (time * (steps as f64)).floor() / (steps as f64)
-            },
-            GenericTimingFunction::Frames(frames) => {
-                // https://drafts.csswg.org/css-timing/#frames-timing-functions
-                let mut out = (time * (frames as f64)).floor() / ((frames - 1) as f64);
-                if out > 1.0 {
-                    // FIXME: Basically, during the animation sampling process, the input progress
-                    // should be in the range of [0, 1]. However, |time| is not accurate enough
-                    // here, which means |time| could be larger than 1.0 in the last animation
-                    // frame. (It should be equal to 1.0 exactly.) This makes the output of frames
-                    // timing function jumps to the next frame/level.
-                    // However, this solution is still not correct because |time| is possible
-                    // outside the range of [0, 1] after introducing Web Animations. We should fix
-                    // this problem when implementing web animations.
-                    out = 1.0;
+            GenericTimingFunction::Steps(steps, pos) => {
+                let mut current_step = (time * (steps as f64)).floor() as i32;
+
+                if pos == StepPosition::Start ||
+                    pos == StepPosition::JumpStart ||
+                    pos == StepPosition::JumpBoth
+                {
+                    current_step = current_step + 1;
                 }
-                out
+
+                // FIXME: We should update current_step according to the "before flag".
+                // In order to get the before flag, we have to know the current animation phase
+                // and whether the iteration is reversed. For now, we skip this calculation.
+                // (i.e. Treat before_flag is unset,)
+                // https://drafts.csswg.org/css-easing/#step-timing-function-algo
+
+                if time >= 0.0 && current_step < 0 {
+                    current_step = 0;
+                }
+
+                let jumps = match pos {
+                    StepPosition::JumpBoth => steps + 1,
+                    StepPosition::JumpNone => steps - 1,
+                    StepPosition::JumpStart |
+                    StepPosition::JumpEnd |
+                    StepPosition::Start |
+                    StepPosition::End => steps,
+                };
+
+                if time <= 1.0 && current_step > jumps {
+                    current_step = jumps;
+                }
+
+                (current_step as f64) / (jumps as f64)
             },
             GenericTimingFunction::Keyword(keyword) => {
                 let (x1, x2, y1, y2) = keyword.to_bezier();
@@ -460,7 +473,8 @@ pub fn start_transitions_if_applicable(
                         duration: box_style.transition_duration_mod(i).seconds() as f64,
                         property_animation,
                     },
-                )).unwrap();
+                ))
+                .unwrap();
 
             had_animations = true;
         }
@@ -747,7 +761,8 @@ where
                             } else {
                                 None
                             }
-                        }).unwrap_or(animation.steps.len() - 1);
+                        })
+                        .unwrap_or(animation.steps.len() - 1);
                 },
                 _ => unreachable!(),
             }

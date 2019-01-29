@@ -33,7 +33,7 @@ const TEST_DATA = [
     selector: "#grid",
     before: {
       textContent: "grid",
-      visible: true
+      visible: true,
     },
     changeStyle: async function(testActor) {
       await testActor.eval(`
@@ -42,14 +42,14 @@ const TEST_DATA = [
       `);
     },
     after: {
-      visible: false
-    }
+      visible: false,
+    },
   },
   {
     desc: "Reusing the 'grid' node, updating the display to 'grid again",
     selector: "#grid",
     before: {
-      visible: false
+      visible: false,
     },
     changeStyle: async function(testActor) {
       await testActor.eval(`
@@ -59,14 +59,14 @@ const TEST_DATA = [
     },
     after: {
       textContent: "grid",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     desc: "Showing a 'grid' node by changing its style property",
     selector: "#block",
     before: {
-      visible: false
+      visible: false,
     },
     changeStyle: async function(testActor) {
       await testActor.eval(`
@@ -76,14 +76,14 @@ const TEST_DATA = [
     },
     after: {
       textContent: "grid",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     desc: "Showing a 'flex' node by removing its hidden attribute",
     selector: "#flex",
     before: {
-      visible: false
+      visible: false,
     },
     changeStyle: async function(testActor) {
       await testActor.eval(`
@@ -92,12 +92,15 @@ const TEST_DATA = [
     },
     after: {
       textContent: "flex",
-      visible: true
-    }
-  }
+      visible: true,
+    },
+  },
 ];
 
 add_task(async function() {
+  info("Enable the flexbox highlighter to get the interactive flex display badge.");
+  await pushPref("devtools.inspector.flexboxHighlighter.enabled", true);
+
   const {inspector, testActor} = await openInspectorForURL(
     "data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
 
@@ -112,7 +115,8 @@ async function runTestData(inspector, testActor,
   await selectNode(selector, inspector);
   const container = await getContainerForSelector(selector, inspector);
 
-  const beforeBadge = container.elt.querySelector(".markup-badge[data-display]");
+  const beforeBadge = container.elt.querySelector(
+    ".inspector-badge.interactive[data-display]");
   is(!!beforeBadge, before.visible,
     `Display badge is visible as expected for ${selector}: ${before.visible}`);
   if (before.visible) {
@@ -137,7 +141,8 @@ async function runTestData(inspector, testActor,
   }
   ok(foundContainer, "Container is part of the list of changed nodes");
 
-  const afterBadge = container.elt.querySelector(".markup-badge[data-display]");
+  const afterBadge = container.elt.querySelector(
+    ".inspector-badge.interactive[data-display]");
   is(!!afterBadge, after.visible,
     `Display badge is visible as expected for ${selector}: ${after.visible}`);
   if (after.visible) {

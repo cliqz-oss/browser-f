@@ -65,10 +65,12 @@ RemoteWebNavigation.prototype = {
   gotoIndex(aIndex) {
     this._sendMessage("WebNavigation:GotoIndex", {index: aIndex});
   },
-  loadURI(aURI, aLoadFlags, aReferrer, aPostData, aHeaders) {
+  loadURI(aURI, aLoadFlags, aReferrer, aPostData, aHeaders,
+          aTriggeringPrincipal) {
     this.loadURIWithOptions(aURI, aLoadFlags, aReferrer,
                             Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,
-                            aPostData, aHeaders, null, null, false);
+                            aPostData, aHeaders, null,
+                            aTriggeringPrincipal, false);
   },
   loadURIWithOptions(aURI, aLoadFlags, aReferrer, aReferrerPolicy,
                      aPostData, aHeaders, aBaseURI, aTriggeringPrincipal,
@@ -106,9 +108,8 @@ RemoteWebNavigation.prototype = {
       postData: aPostData ? Utils.serializeInputStream(aPostData) : null,
       headers: aHeaders ? Utils.serializeInputStream(aHeaders) : null,
       baseURI: aBaseURI ? aBaseURI.spec : null,
-      triggeringPrincipal: aTriggeringPrincipal
-                           ? Utils.serializePrincipal(aTriggeringPrincipal)
-                           : Services.scriptSecurityManager.createNullPrincipal({}),
+      triggeringPrincipal: Utils.serializePrincipal(
+          aTriggeringPrincipal || Services.scriptSecurityManager.createNullPrincipal({})),
       requestTime: Services.telemetry.msSystemNow(),
       ensurePrivate: !!aEnsurePrivate
     });
@@ -138,7 +139,9 @@ RemoteWebNavigation.prototype = {
     return this._currentURI;
   },
   set currentURI(aURI) {
-    this.loadURI(aURI.spec, null, null, null);
+    // Bug 1498600 verify usages of systemPrincipal here
+    let systemPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
+    this.loadURI(aURI.spec, null, null, null, systemPrincipal);
   },
 
   referringURI: null,

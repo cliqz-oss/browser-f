@@ -8,6 +8,7 @@ const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const { connect } = require("devtools/client/shared/redux/visibility-handler-connect");
 const {initialize} = require("devtools/client/webconsole/actions/ui");
+const {sortBy} = require("devtools/client/shared/vendor/lodash");
 
 const {
   getAllMessagesById,
@@ -25,6 +26,20 @@ const {
 const {
   getInitialMessageCountForViewport,
 } = require("devtools/client/webconsole/utils/messages.js");
+
+function getClosestMessage(visibleMessages, messages, executionPoint) {
+  if (!executionPoint || !visibleMessages) {
+    return null;
+  }
+
+  const { progress } = executionPoint;
+  const getProgress = m => m && m.executionPoint && m.executionPoint.progress;
+
+  return sortBy(
+    visibleMessages.map(id => messages.get(id)),
+    m => Math.abs(progress - getProgress(m))
+  )[0];
+}
 
 class ConsoleOutput extends Component {
   static get propTypes() {
@@ -52,6 +67,7 @@ class ConsoleOutput extends Component {
   constructor(props) {
     super(props);
     this.onContextMenu = this.onContextMenu.bind(this);
+    this.maybeScrollToBottom = this.maybeScrollToBottom.bind(this);
   }
 
   componentDidMount() {
@@ -110,7 +126,11 @@ class ConsoleOutput extends Component {
   }
 
   componentDidUpdate() {
-    if (this.shouldScrollBottom) {
+    this.maybeScrollToBottom();
+  }
+
+  maybeScrollToBottom() {
+    if (this.outputNode && this.shouldScrollBottom) {
       scrollToBottom(this.outputNode);
     }
   }
@@ -145,6 +165,9 @@ class ConsoleOutput extends Component {
       }
     }
 
+    const pausedMessage = getClosestMessage(
+      visibleMessages, messages, pausedExecutionPoint);
+
     const messageNodes = visibleMessages.map((messageId) => MessageContainer({
       dispatch,
       key: messageId,
@@ -158,6 +181,8 @@ class ConsoleOutput extends Component {
       networkMessageActiveTabId,
       pausedExecutionPoint,
       getMessage: () => messages.get(messageId),
+      isPaused: pausedMessage && pausedMessage.id == messageId,
+      maybeScrollToBottom: this.maybeScrollToBottom,
     }));
 
     return (

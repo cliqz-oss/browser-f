@@ -21,9 +21,8 @@ namespace a11y {
  * to distinguish between a local or remote accessibles.
  * NOTE: This shouldn't be regarded as a full Accessible implementation.
  */
-class ProxyAccessibleWrap : public AccessibleWrap
-{
-public:
+class ProxyAccessibleWrap : public AccessibleWrap {
+ public:
   explicit ProxyAccessibleWrap(ProxyAccessible* aProxy);
 
   virtual void Shutdown() override;
@@ -46,30 +45,34 @@ public:
 
   virtual void ScrollTo(uint32_t aHow) const override;
 
+  virtual uint8_t ActionCount() const override;
+
+  virtual bool DoAction(uint8_t aIndex) const override;
+
   // AccessibleWrap
 
   virtual void SetTextContents(const nsAString& aText) override;
 
   virtual void GetTextContents(nsAString& aText) override;
 
-  virtual bool GetSelectionBounds(int32_t* aStartOffset, int32_t* aEndOffset) override;
+  virtual bool GetSelectionBounds(int32_t* aStartOffset,
+                                  int32_t* aEndOffset) override;
 
   virtual void WrapperDOMNodeID(nsString& aDOMNodeID) override;
 
-private:
+ private:
   virtual role WrapperRole() override;
 
   virtual AccessibleWrap* WrapperParent() override;
 
-  virtual bool WrapperRangeInfo(double* aCurVal, double* aMinVal, double* aMaxVal, double* aStep) override;
+  virtual bool WrapperRangeInfo(double* aCurVal, double* aMinVal,
+                                double* aMaxVal, double* aStep) override;
 };
 
-class DocProxyAccessibleWrap : public ProxyAccessibleWrap
-{
-public:
+class DocProxyAccessibleWrap : public ProxyAccessibleWrap {
+ public:
   explicit DocProxyAccessibleWrap(DocAccessibleParent* aProxy)
-    : ProxyAccessibleWrap(aProxy)
-  {
+      : ProxyAccessibleWrap(aProxy) {
     mGenericTypes |= eDocument;
 
     if (auto parent = ParentDocument()) {
@@ -81,8 +84,7 @@ public:
     }
   }
 
-  virtual void Shutdown() override
-  {
+  virtual void Shutdown() override {
     if (mID) {
       auto parent = ParentDocument();
       if (parent) {
@@ -96,8 +98,7 @@ public:
     mStateFlags |= eIsDefunct;
   }
 
-  DocProxyAccessibleWrap* ParentDocument()
-  {
+  DocProxyAccessibleWrap* ParentDocument() {
     DocAccessibleParent* proxy = static_cast<DocAccessibleParent*>(Proxy());
     MOZ_ASSERT(proxy);
     if (DocAccessibleParent* parent = proxy->ParentDoc()) {
@@ -107,34 +108,31 @@ public:
     return nullptr;
   }
 
-  DocProxyAccessibleWrap* GetChildDocumentAt(uint32_t aIndex)
-  {
+  DocProxyAccessibleWrap* GetChildDocumentAt(uint32_t aIndex) {
     auto doc = Proxy()->AsDoc();
     if (doc && doc->ChildDocCount() > aIndex) {
       return reinterpret_cast<DocProxyAccessibleWrap*>(
-        doc->ChildDocAt(aIndex)->GetWrapper());
+          doc->ChildDocAt(aIndex)->GetWrapper());
     }
 
     return nullptr;
   }
 
-  void AddID(uint32_t aID, AccessibleWrap* aAcc)
-  {
+  void AddID(uint32_t aID, AccessibleWrap* aAcc) {
     mIDToAccessibleMap.Put(aID, aAcc);
   }
   void RemoveID(uint32_t aID) { mIDToAccessibleMap.Remove(aID); }
-  AccessibleWrap* GetAccessibleByID(uint32_t aID) const
-  {
+  AccessibleWrap* GetAccessibleByID(uint32_t aID) const {
     return mIDToAccessibleMap.Get(aID);
   }
 
-private:
+ private:
   /*
    * This provides a mapping from 32 bit id to accessible objects.
    */
   nsDataHashtable<nsUint32HashKey, AccessibleWrap*> mIDToAccessibleMap;
 };
-}
-}
+}  // namespace a11y
+}  // namespace mozilla
 
 #endif

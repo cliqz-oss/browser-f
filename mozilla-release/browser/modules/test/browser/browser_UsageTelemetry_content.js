@@ -16,8 +16,8 @@ add_task(async function setup() {
 
   // Make the first engine the default search engine.
   let engineDefault = Services.search.getEngineByName("MozSearch");
-  let originalEngine = Services.search.currentEngine;
-  Services.search.currentEngine = engineDefault;
+  let originalEngine = Services.search.defaultEngine;
+  Services.search.defaultEngine = engineDefault;
 
   // Move the second engine at the beginning of the one-off list.
   let engineOneOff = Services.search.getEngineByName("MozSearch2");
@@ -27,16 +27,21 @@ add_task(async function setup() {
     ["dom.select_events.enabled", true], // We want select events to be fired.
   ]});
 
+  // Enable local telemetry recording for the duration of the tests.
+  let oldCanRecord = Services.telemetry.canRecordExtended;
+  Services.telemetry.canRecordExtended = true;
+
   // Enable event recording for the events tested here.
   Services.telemetry.setEventRecordingEnabled("navigation", true);
 
   // Make sure to restore the engine once we're done.
   registerCleanupFunction(async function() {
-    Services.search.currentEngine = originalEngine;
+    Services.search.defaultEngine = originalEngine;
     Services.search.removeEngine(engineDefault);
     Services.search.removeEngine(engineOneOff);
     await PlacesUtils.history.clear();
     Services.telemetry.setEventRecordingEnabled("navigation", false);
+    Services.telemetry.canRecordExtended = oldCanRecord;
   });
 });
 

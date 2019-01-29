@@ -523,9 +523,9 @@ class ADBHost(ADBCommand):
 
 class ADBDevice(ADBCommand):
     """ADBDevice is an abstract base class which provides methods which
-    can be used to interact with the associated Android or B2G based
-    device. It must be used via one of the concrete implementations in
-    :class:`ADBAndroid` or :class:`ADBB2G`.
+    can be used to interact with the associated Android-based
+    device. It must be used via the concrete implementation in
+    :class:`ADBAndroid`.
     """
     __metaclass__ = ABCMeta
 
@@ -645,19 +645,35 @@ class ADBDevice(ADBCommand):
         # there is /sbin/ls which embeds ansi escape codes to colorize
         # the output.  Detect if we are using busybox ls. We want each
         # entry on a single line and we don't want . or ..
-        system_dir = "/system"
+        ls_dir = "/sdcard"
 
-        if self.shell_bool("/system/bin/ls {}".format(system_dir), timeout=timeout):
+        if self.is_file("/system/bin/ls", timeout=timeout):
             self._ls = "/system/bin/ls"
-        elif self.shell_bool("/system/xbin/ls {}".format(system_dir), timeout=timeout):
+        elif self.is_file("/system/xbin/ls", timeout=timeout):
             self._ls = "/system/xbin/ls"
         else:
             raise ADBError("ADBDevice.__init__: ls could not be found")
-        try:
-            self.shell_output("%s -1A {}".format(system_dir) % self._ls, timeout=timeout)
-            self._ls += " -1A"
-        except ADBError:
-            self._ls += " -a"
+
+        # A race condition can occur especially with emulators where
+        # the device appears to be available but it has not completed
+        # mounting the sdcard. We can work around this by checking if
+        # the sdcard is missing when we attempt to ls it and retrying
+        # if it is not yet available.
+        start_time = time.time()
+        boot_completed = False
+        while not boot_completed and (time.time() - start_time) <= float(timeout):
+            try:
+                self.shell_output("%s -1A {}".format(ls_dir) % self._ls, timeout=timeout)
+                boot_completed = True
+                self._ls += " -1A"
+            except ADBError as e:
+                if 'No such file or directory' not in e.message:
+                    boot_completed = True
+                    self._ls += " -a"
+            if not boot_completed:
+                time.sleep(2)
+        if not boot_completed:
+            raise ADBTimeoutError("ADBDevice: /sdcard not found.")
 
         self._logger.info("%s supported" % self._ls)
 
@@ -1422,7 +1438,15 @@ class ADBDevice(ADBCommand):
                        "WifiMonitor:S",
                        "WifiStateTracker:S",
                        "wpa_supplicant:S",
-                       "NetworkStateTracker:S"],
+                       "NetworkStateTracker:S",
+                       "EmulatedCamera_Camera:S",
+                       "EmulatedCamera_Device:S",
+                       "EmulatedCamera_FakeCamera:S",
+                       "EmulatedCamera_FakeDevice:S",
+                       "EmulatedCamera_CallbackNotifier:S",
+                       "GnssLocationProvider:S",
+                       "Hyphenator:S",
+                       "BatteryStats:S"],
                    format="time",
                    filter_out_regexps=[],
                    timeout=None,
@@ -2248,8 +2272,10 @@ class ADBDevice(ADBCommand):
                         pid_i = i
                 if user_i != -1 and pid_i != -1:
                     break
-                self._logger.error('get_process_list: %s' % header)
-                if attempt >= max_attempts:
+                # if this isn't the final attempt, don't print this as an error
+                if attempt < max_attempts:
+                    self._logger.info('get_process_list: attempt: %d %s' % (attempt, header))
+                else:
                     raise ADBError('get_process_list: Unknown format: %s: %s' % (
                         header, adb_process))
             ret = []

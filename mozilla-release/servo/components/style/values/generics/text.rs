@@ -1,15 +1,15 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Generic types for text properties.
 
 use app_units::Au;
+use crate::parser::ParserContext;
+use crate::values::animated::{Animate, Procedure, ToAnimatedZero};
+use crate::values::distance::{ComputeSquaredDistance, SquaredDistance};
 use cssparser::Parser;
-use parser::ParserContext;
 use style_traits::ParseError;
-use values::animated::{Animate, Procedure, ToAnimatedZero};
-use values::distance::{ComputeSquaredDistance, SquaredDistance};
 
 /// A generic value for the `initial-letter` property.
 #[derive(

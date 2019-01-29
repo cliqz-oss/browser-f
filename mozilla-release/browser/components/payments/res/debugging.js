@@ -53,8 +53,8 @@ let REQUEST_1 = {
         },
       },
     ],
-    payer: {},
-    paymentMethod: {},
+    payerErrors: {},
+    paymentMethodErrors: {},
     shippingAddressErrors: {},
     shippingOptions: [
       {
@@ -135,8 +135,8 @@ let REQUEST_2 = {
         },
       },
     ],
-    payer: {},
-    paymentMethod: {},
+    payerErrors: {},
+    paymentMethoErrors: {},
     shippingAddressErrors: {},
     shippingOptions: [
       {
@@ -178,9 +178,7 @@ let REQUEST_2 = {
             },
           },
         ],
-        data: {
-          supportedTypes: "credit",
-        },
+        data: {},
       },
     ],
     error: "",
@@ -261,6 +259,21 @@ let ADDRESSES_1 = {
     "tel": "+1 416 555-5555",
     timeLastUsed: 90000,
   },
+  TimBR: {
+    "given-name": "Timothy",
+    "additional-name": "João",
+    "family-name": "Berners-Lee",
+    organization: "World Wide Web Consortium",
+    "street-address": "Rua Adalberto Pajuaba, 404",
+    "address-level3": "Campos Elísios",
+    "address-level2": "Ribeirão Preto",
+    "address-level1": "SP",
+    "postal-code": "14055-220",
+    country: "BR",
+    tel: "+0318522222222",
+    email: "timbr@example.org",
+    timeLastUsed: 110000,
+  },
 };
 
 let DUPED_ADDRESSES = {
@@ -327,7 +340,7 @@ let BASIC_CARDS_1 = {
     methodName: "basic-card",
     "cc-number": "************5461",
     "guid": "53f9d009aed2",
-    "version": 1,
+    "version": 2,
     "timeCreated": 1505240896213,
     "timeLastModified": 1515609524588,
     "timeLastUsed": 10000,
@@ -345,7 +358,7 @@ let BASIC_CARDS_1 = {
     methodName: "basic-card",
     "cc-number": "************0954",
     "guid": "9h5d4h6f4d1s",
-    "version": 1,
+    "version": 2,
     "timeCreated": 1517890536491,
     "timeLastModified": 1517890564518,
     "timeLastUsed": 50000,
@@ -363,7 +376,7 @@ let BASIC_CARDS_1 = {
     methodName: "basic-card",
     "cc-number": "************1234",
     "guid": "123456789abc",
-    "version": 1,
+    "version": 2,
     "timeCreated": 1517890536491,
     "timeLastModified": 1517890564518,
     "timeLastUsed": 90000,
@@ -397,7 +410,7 @@ let BASIC_CARDS_1 = {
     methodName: "basic-card",
     "cc-number": "************8563",
     "guid": "missing-cc-name",
-    "version": 1,
+    "version": 2,
     "timeCreated": 1517890536491,
     "timeLastModified": 1517890564518,
     "timeLastUsed": 30000,
@@ -474,7 +487,7 @@ let buttonActions = {
   setBasicCardErrors() {
     let request = Object.assign({}, requestStore.getState().request);
     request.paymentDetails = Object.assign({}, requestStore.getState().request.paymentDetails);
-    request.paymentDetails.paymentMethod = {
+    request.paymentDetails.paymentMethodErrors = {
       cardNumber: "",
       cardholderName: "",
       cardSecurityCode: "",
@@ -484,11 +497,13 @@ let buttonActions = {
         addressLine: "Can only buy from ROADS, not DRIVES, BOULEVARDS, or STREETS",
         city: "Can only buy from CITIES, not TOWNSHIPS or VILLAGES",
         country: "Can only buy from US, not CA",
+        dependentLocality: "Can only be SUBURBS, not NEIGHBORHOODS",
         organization: "Can only buy from CORPORATIONS, not CONSORTIUMS",
         phone: "Only allowed to buy from area codes that start with 9",
         postalCode: "Only allowed to buy from postalCodes that start with 0",
         recipient: "Can only buy from names that start with J",
         region: "Can only buy from regions that start with M",
+        regionCode: "Regions must be 1 to 3 characters in length",
       },
     };
     requestStore.setState({
@@ -515,7 +530,7 @@ let buttonActions = {
   setPayerErrors() {
     let request = Object.assign({}, requestStore.getState().request);
     request.paymentDetails = Object.assign({}, requestStore.getState().request.paymentDetails);
-    request.paymentDetails.payer = {
+    request.paymentDetails.payerErrors = {
       email: "Only @mozilla.com emails are supported",
       name: "Payer name must start with M",
       phone: "Payer area codes must start with 1",
@@ -575,11 +590,13 @@ let buttonActions = {
       addressLine: "Can only ship to ROADS, not DRIVES, BOULEVARDS, or STREETS",
       city: "Can only ship to CITIES, not TOWNSHIPS or VILLAGES",
       country: "Can only ship to USA, not CA",
+      dependentLocality: "Can only be SUBURBS, not NEIGHBORHOODS",
       organization: "Can only ship to CORPORATIONS, not CONSORTIUMS",
       phone: "Only allowed to ship to area codes that start with 9",
       postalCode: "Only allowed to ship to postalCodes that start with 0",
       recipient: "Can only ship to names that start with J",
       region: "Can only ship to regions that start with M",
+      regionCode: "Regions must be 1 to 3 characters in length",
     };
     requestStore.setState({
       request,

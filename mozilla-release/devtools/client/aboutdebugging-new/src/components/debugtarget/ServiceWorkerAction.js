@@ -13,6 +13,7 @@ const FluentReact = require("devtools/client/shared/vendor/fluent-react");
 const InspectAction = createFactory(require("./InspectAction"));
 
 const Actions = require("../../actions/index");
+const Types = require("../../types/index");
 
 /**
  * This component displays buttons for service worker.
@@ -23,7 +24,7 @@ class ServiceWorkerAction extends PureComponent {
       dispatch: PropTypes.func.isRequired,
       // Provided by wrapping the component with FluentReact.withLocalization.
       getString: PropTypes.func.isRequired,
-      target: PropTypes.object.isRequired,
+      target: Types.debugTarget.isRequired,
     };
   }
 
@@ -61,7 +62,7 @@ class ServiceWorkerAction extends PureComponent {
   _renderButton(label, onClick) {
     return dom.button(
       {
-        className: "aboutdebugging-button",
+        className: "default-button",
         onClick: e => onClick(),
       },
       label,
@@ -69,7 +70,12 @@ class ServiceWorkerAction extends PureComponent {
   }
 
   render() {
-    return dom.div({}, this._renderAction());
+    return dom.div(
+      {
+        className: "toolbar",
+      },
+      this._renderAction()
+    );
   }
 }
 

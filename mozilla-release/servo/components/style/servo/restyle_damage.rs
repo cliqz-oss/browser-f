@@ -1,13 +1,13 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! The restyle damage is a hint that tells layout which kind of operations may
 //! be needed in presence of incremental style changes.
 
-use computed_values::display::T as Display;
-use matching::{StyleChange, StyleDifference};
-use properties::ComputedValues;
+use crate::computed_values::display::T as Display;
+use crate::matching::{StyleChange, StyleDifference};
+use crate::properties::ComputedValues;
 use std::fmt;
 
 bitflags! {
@@ -195,7 +195,7 @@ fn compute_damage(old: &ComputedValues, new: &ComputedValues) -> ServoRestyleDam
     let mut damage = ServoRestyleDamage::empty();
 
     // This should check every CSS property, as enumerated in the fields of
-    // http://doc.servo.org/style/properties/struct.ComputedValues.html
+    // https://doc.servo.org/style/properties/struct.ComputedValues.html
 
     // This uses short-circuiting boolean OR for its side effects and ignores the result.
     let _ = restyle_damage_rebuild_and_reflow!(

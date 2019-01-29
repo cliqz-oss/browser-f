@@ -12,18 +12,6 @@
 
 #define RECENTLY_USED_PARSER_ATOMS_SIZE 31
 
-class nsHtml5AtomEntry : public nsStringHashKey
-{
-public:
-  explicit nsHtml5AtomEntry(KeyTypePointer aStr);
-  nsHtml5AtomEntry(nsHtml5AtomEntry&& aOther);
-  ~nsHtml5AtomEntry();
-  inline nsAtom* GetAtom() { return mAtom; }
-
-private:
-  nsDynamicAtom* mAtom;
-};
-
 /**
  * nsHtml5AtomTable provides non-locking lookup and creation of atoms for
  * nsHtml5Parser or nsHtml5StreamParser.
@@ -68,41 +56,36 @@ private:
  * nsHtml5AtomTable itself is destructed, which happens when the owner
  * nsHtml5Parser or nsHtml5StreamParser is destructed.
  */
-class nsHtml5AtomTable
-{
-public:
+class nsHtml5AtomTable {
+ public:
   nsHtml5AtomTable();
   ~nsHtml5AtomTable();
 
-  /**
-   * Obtains the atom for the given string in the scope of this atom table.
-   */
+  // NOTE: We rely on mRecentlyUsedParserAtoms keeping alive the returned atom,
+  // but the caller is responsible to take a reference before calling GetAtom
+  // again.
   nsAtom* GetAtom(const nsAString& aKey);
 
   /**
    * Empties the table.
    */
-  void Clear()
-  {
+  void Clear() {
     for (uint32_t i = 0; i < RECENTLY_USED_PARSER_ATOMS_SIZE; ++i) {
       mRecentlyUsedParserAtoms[i] = nullptr;
     }
-    mTable.Clear();
   }
 
 #ifdef DEBUG
-  void SetPermittedLookupEventTarget(nsISerialEventTarget* aEventTarget)
-  {
+  void SetPermittedLookupEventTarget(nsISerialEventTarget* aEventTarget) {
     mPermittedLookupEventTarget = aEventTarget;
   }
 #endif
 
-private:
-  nsTHashtable<nsHtml5AtomEntry> mTable;
-  nsAtom* mRecentlyUsedParserAtoms[RECENTLY_USED_PARSER_ATOMS_SIZE];
+ private:
+  RefPtr<nsAtom> mRecentlyUsedParserAtoms[RECENTLY_USED_PARSER_ATOMS_SIZE];
 #ifdef DEBUG
   nsCOMPtr<nsISerialEventTarget> mPermittedLookupEventTarget;
 #endif
 };
 
-#endif // nsHtml5AtomTable_h
+#endif  // nsHtml5AtomTable_h

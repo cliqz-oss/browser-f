@@ -9,13 +9,12 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 import copy
 
+from taskgraph.loader.single_dep import schema
 from taskgraph.transforms.base import TransformSequence
 from taskgraph.util.attributes import copy_attributes_from_dependent_job
 from taskgraph.util.schema import (
-    validate_schema,
     optionally_keyed_by,
     resolve_keyed_by,
-    Schema,
 )
 from taskgraph.util.taskcluster import get_artifact_prefix
 from taskgraph.util.partners import check_if_partners_enabled
@@ -24,8 +23,6 @@ from taskgraph.util.workertypes import worker_type_implementation
 from taskgraph.transforms.task import task_description_schema
 from taskgraph.transforms.repackage import PACKAGE_FORMATS
 from voluptuous import Any, Required, Optional
-
-transforms = TransformSequence()
 
 # Voluptuous uses marker objects as dictionary *keys*, but they are not
 # comparable, so we cast all of the keys back to regular strings
@@ -41,10 +38,7 @@ taskref_or_string = Any(
     basestring,
     {Required('task-reference'): basestring})
 
-packaging_description_schema = Schema({
-    # the dependant task (object) for this  job, used to inform repackaging.
-    Required('dependent-task'): object,
-
+packaging_description_schema = schema.extend({
     # depname is used in taskref's to identify the taskID of the signed things
     Required('depname', default='build'): basestring,
 
@@ -78,24 +72,16 @@ packaging_description_schema = Schema({
     }
 })
 
+transforms = TransformSequence()
 transforms.add(check_if_partners_enabled)
-
-
-@transforms.add
-def validate(config, jobs):
-    for job in jobs:
-        label = job.get('dependent-task', object).__dict__.get('label', '?no-label?')
-        validate_schema(
-            packaging_description_schema, job,
-            "In packaging ({!r} kind) task for {!r}:".format(config.kind, label))
-        yield job
+transforms.add_validate(packaging_description_schema)
 
 
 @transforms.add
 def copy_in_useful_magic(config, jobs):
     """Copy attributes from upstream task to be used for keyed configuration."""
     for job in jobs:
-        dep = job['dependent-task']
+        dep = job['primary-dependency']
         job['build-platform'] = dep.attributes.get("build_platform")
         yield job
 
@@ -117,7 +103,7 @@ def handle_keyed_by(config, jobs):
 @transforms.add
 def make_repackage_description(config, jobs):
     for job in jobs:
-        dep_job = job['dependent-task']
+        dep_job = job['primary-dependency']
 
         label = job.get('label',
                         dep_job.label.replace("signing-", "repackage-"))
@@ -129,7 +115,7 @@ def make_repackage_description(config, jobs):
 @transforms.add
 def make_job_description(config, jobs):
     for job in jobs:
-        dep_job = job['dependent-task']
+        dep_job = job['primary-dependency']
         attributes = copy_attributes_from_dependent_job(dep_job)
         build_platform = attributes['build_platform']
 

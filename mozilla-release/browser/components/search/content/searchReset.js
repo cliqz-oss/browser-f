@@ -15,9 +15,11 @@ const TELEMETRY_RESULT_ENUM = {
 };
 
 window.onload = function() {
-  let defaultEngine = document.getElementById("defaultEngine");
+  let defaultEngineParagraph = document.getElementById("defaultEngineParagraph");
   let originalDefault = Services.search.originalDefaultEngine;
-  defaultEngine.textContent = originalDefault.name;
+  document.l10n.setAttributes(defaultEngineParagraph, "page-info-new-search-engine",
+                              { searchEngine: originalDefault.name });
+  let defaultEngine = document.getElementById("defaultEngine");
   defaultEngine.style.backgroundImage =
     'url("' + originalDefault.iconURI.spec + '")';
 
@@ -41,7 +43,7 @@ function doSearch() {
     }
   }
 
-  let engine = Services.search.currentEngine;
+  let engine = Services.search.defaultEngine;
   let submission = engine.getSubmission(queryString, null, purpose);
 
   window.removeEventListener("unload", recordPageClosed);
@@ -70,10 +72,10 @@ function record(result) {
 }
 
 function keepCurrentEngine() {
-  // Calling the currentEngine setter will force a correct loadPathHash to be
+  // Calling the defaultEngine setter will force a correct loadPathHash to be
   // written for this engine, so that we don't prompt the user again.
   // eslint-disable-next-line no-self-assign
-  Services.search.currentEngine = Services.search.currentEngine;
+  Services.search.defaultEngine = Services.search.defaultEngine;
   record(TELEMETRY_RESULT_ENUM.KEPT_CURRENT);
   savePref("declined");
   doSearch();
@@ -83,7 +85,7 @@ function changeSearchEngine() {
   let engine = Services.search.originalDefaultEngine;
   if (engine.hidden)
     engine.hidden = false;
-  Services.search.currentEngine = engine;
+  Services.search.defaultEngine = engine;
 
   record(TELEMETRY_RESULT_ENUM.RESTORED_DEFAULT);
   savePref("accepted");

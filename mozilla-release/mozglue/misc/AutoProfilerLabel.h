@@ -29,8 +29,7 @@ class ProfilingStack;
 
 namespace mozilla {
 
-typedef ProfilingStack* (*ProfilerLabelEnter)(const char*, const char*, void*,
-                                           uint32_t);
+typedef ProfilingStack* (*ProfilerLabelEnter)(const char*, const char*, void*);
 typedef void (*ProfilerLabelExit)(ProfilingStack*);
 
 // Register callbacks that do the entry/exit work involving sProfilingStack.
@@ -41,21 +40,19 @@ MFBT_API void RegisterProfilerLabelEnterExit(ProfilerLabelEnter aEnter,
 // which would conflict with the one in the profiler.
 #ifdef IMPL_MFBT
 
-class MOZ_RAII AutoProfilerLabel
-{
-public:
-  AutoProfilerLabel(const char* aLabel, const char* aDynamicString,
-                    uint32_t aLine
-                    MOZ_GUARD_OBJECT_NOTIFIER_PARAM);
+class MOZ_RAII AutoProfilerLabel {
+ public:
+  AutoProfilerLabel(const char* aLabel,
+                    const char* aDynamicString MOZ_GUARD_OBJECT_NOTIFIER_PARAM);
   ~AutoProfilerLabel();
 
-private:
+ private:
   MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
   ProfilingStack* mProfilingStack;
 };
 
 #endif
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // mozilla_AutoProfilerLabel_h
+#endif  // mozilla_AutoProfilerLabel_h

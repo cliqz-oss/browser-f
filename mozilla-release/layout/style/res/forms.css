@@ -102,7 +102,6 @@ input {
   word-spacing: normal;
   letter-spacing: normal;
   cursor: text;
-  -moz-binding: url("chrome://global/content/platformHTMLBindings.xml#inputFields");
   text-indent: 0;
   -moz-user-select: text;
   text-shadow: none;
@@ -117,6 +116,7 @@ input::placeholder {
 }
 
 textarea {
+  -moz-appearance: textarea;
   margin-block-start: 1px;
   margin-block-end: 1px;
   border: 2px inset ThreeDLightShadow;
@@ -127,21 +127,20 @@ textarea {
   color: -moz-FieldText;
   font: medium -moz-fixed;
   text-rendering: optimizeLegibility;
-  text-align: start;
-  text-transform: none;
-  word-spacing: normal;
-  letter-spacing: normal;
   vertical-align: text-bottom;
   cursor: text;
   resize: both;
-  -moz-binding: url("chrome://global/content/platformHTMLBindings.xml#textAreas");
-  -moz-appearance: textfield-multiline;
-  text-indent: 0;
   -moz-user-select: text;
-  text-shadow: none;
   white-space: pre-wrap;
   word-wrap: break-word;
   overflow-clip-box: content-box;
+  /* A few properties that we don't want to inherit by default: */
+  text-align: initial;
+  text-indent: initial;
+  text-shadow: initial;
+  text-transform: initial;
+  word-spacing: initial;
+  letter-spacing: initial;
 }
 
 textarea > scrollbar {
@@ -319,7 +318,7 @@ select > button[orientation="right"]:active {
   padding-block-start: 1px;
   padding-block-end: 1px;
   padding-inline-start: 4px;
-  padding-inline-end: 0;
+  padding-inline-end: 4px;
   color: unset;
   white-space: nowrap;
   text-align: unset;
@@ -448,7 +447,6 @@ input[type="hidden"] {
   border: 0;
   cursor: auto;
   -moz-user-focus: ignore;
-  -moz-binding: none;
 }
 
 /* image buttons */
@@ -460,7 +458,6 @@ input[type="image"] {
   font-family: sans-serif;
   font-size: small;
   cursor: pointer;
-  -moz-binding: none;
 }
 
 input[type="image"]:disabled {
@@ -482,7 +479,6 @@ input[type="file"] {
 
   /* Revert rules which apply on all inputs. */
   -moz-appearance: none;
-  -moz-binding: none;
   cursor: default;
 
   border: none;
@@ -553,7 +549,6 @@ input[type="checkbox"] {
   cursor: default;
   /* unset some values from the general 'input' rule above: */
   padding: unset;
-  -moz-binding: unset;
   border: unset;
   background-color: unset;
   color: unset;
@@ -609,7 +604,6 @@ input[type="submit"] {
   cursor: default;
   box-sizing: border-box;
   -moz-user-select: none;
-  -moz-binding: none;
 }
 
 /* Text-related properties for buttons: these ones are not shared with
@@ -820,7 +814,7 @@ output:-moz-ui-invalid {
 }
 
 progress {
-  -moz-appearance: progressbar;
+  -moz-appearance: progress-bar;
   display: inline-block;
   vertical-align: -0.2em;
 
@@ -849,7 +843,7 @@ progress {
 }
 
 meter {
-  -moz-appearance: meterbar;
+  -moz-appearance: meter;
   display: inline-block;
   vertical-align: -0.2em;
 
@@ -884,40 +878,13 @@ meter {
 input[type=range] {
   -moz-appearance: range;
   display: inline-block;
-  inline-size: 12em;
-  block-size: 1.3em;
-  margin-inline-start: 0.7em;
-  margin-inline-end: 0.7em;
-  margin-block-start: 0;
-  margin-block-end: 0;
+  margin: 2px;
   /* Override some rules that apply on all input types: */
   cursor: default;
-  background: none;
-  border: none;
-  -moz-binding: none; /* we don't want any of platformHTMLBindings.xml#inputFields */
+  padding: unset;
+  border: unset;
   /* Prevent nsFrame::HandlePress setting mouse capture to this element. */
   -moz-user-select: none ! important;
-}
-
-input[type=range][orient=block] {
-  inline-size: 1.3em;
-  block-size: 12em;
-  margin-inline-start: 0;
-  margin-inline-end: 0;
-  margin-block-start: 0.7em;
-  margin-block-end: 0.7em;
-}
-
-input[type=range][orient=horizontal] {
-  width: 12em;
-  height: 1.3em;
-  margin: 0 0.7em;
-}
-
-input[type=range][orient=vertical] {
-  width: 1.3em;
-  height: 12em;
-  margin: 0.7em 0;
 }
 
 /**
@@ -941,30 +908,14 @@ input[type=range]::-moz-focus-outer {
  */
 input[type=range]::-moz-range-track {
   /* Prevent styling that would change the type of frame we construct. */
-  display: inline-block !important;
+  display: block !important;
   float: none !important;
   position: static !important;
-  border: none;
-  background-color: #999;
-  inline-size: 100%;
+  writing-mode: unset !important;
+  direction: unset !important;
   block-size: 0.2em;
   /* Prevent nsFrame::HandlePress setting mouse capture to this element. */
   -moz-user-select: none ! important;
-}
-
-input[type=range][orient=block]::-moz-range-track {
-  inline-size: 0.2em;
-  block-size: 100%;
-}
-
-input[type=range][orient=horizontal]::-moz-range-track {
-  width: 100%;
-  height: 0.2em;
-}
-
-input[type=range][orient=vertical]::-moz-range-track {
-  width: 0.2em;
-  height: 100%;
 }
 
 /**
@@ -977,9 +928,11 @@ input[type=range][orient=vertical]::-moz-range-track {
  */
 input[type=range]::-moz-range-progress {
   /* Prevent styling that would change the type of frame we construct. */
-  display: inline-block !important;
+  display: block !important;
   float: none !important;
   position: static !important;
+  writing-mode: unset !important;
+  direction: unset !important;
   /* Since one of width/height will be ignored, this just sets the "other"
      dimension.
    */
@@ -1001,9 +954,11 @@ input[type=range]::-moz-range-thumb {
    */
   -moz-appearance: range-thumb !important;
   /* Prevent styling that would change the type of frame we construct. */
-  display: inline-block !important;
+  display: block !important;
   float: none !important;
   position: static !important;
+  writing-mode: unset !important;
+  direction: unset !important;
   width: 1em;
   height: 1em;
   border: 0.1em solid #999;
@@ -1016,7 +971,6 @@ input[type=range]::-moz-range-thumb {
 input[type="number"] {
   -moz-appearance: number-input;
   /* Has to revert some properties applied by the generic input rule. */
-  -moz-binding: none;
   inline-size: 20ch; /* It'd be nice if this matched the default inline-size
                         of <input type=text>, but that's not easy to achieve
                         due to platform differences. */
@@ -1120,6 +1074,13 @@ input[type="time"] {
   overflow: hidden !important;
   font-family: -moz-fixed;
   cursor: default;
+}
+
+input[type="date"]:disabled,
+input[type="time"]:disabled,
+input[type="date"]:-moz-read-only,
+input[type="time"]:-moz-read-only {
+  color: GrayText;
 }
 
 :-moz-autofill, :-moz-autofill-preview {

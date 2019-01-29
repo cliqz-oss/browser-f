@@ -7,9 +7,9 @@ Transform the signing task into an actual task description.
 
 from __future__ import absolute_import, print_function, unicode_literals
 
+from taskgraph.loader.single_dep import schema
 from taskgraph.transforms.base import TransformSequence
 from taskgraph.util.attributes import copy_attributes_from_dependent_job
-from taskgraph.util.schema import validate_schema, Schema
 from taskgraph.util.scriptworker import (
     add_scope_prefix,
     get_signing_cert_scope_per_platform,
@@ -30,10 +30,7 @@ taskref_or_string = Any(
     basestring,
     {Required('task-reference'): basestring})
 
-signing_description_schema = Schema({
-    # the dependant task (object) for this signing job, used to inform signing.
-    Required('dependent-task'): object,
-
+signing_description_schema = schema.extend({
     # Artifacts from dep task to sign - Sync with taskgraph/transforms/task.py
     # because this is passed directly into the signingscript worker
     Required('upstream-artifacts'): [{
@@ -80,20 +77,13 @@ def set_defaults(config, jobs):
         yield job
 
 
-@transforms.add
-def validate(config, jobs):
-    for job in jobs:
-        label = job.get('dependent-task', object).__dict__.get('label', '?no-label?')
-        validate_schema(
-            signing_description_schema, job,
-            "In signing ({!r} kind) task for {!r}:".format(config.kind, label))
-        yield job
+transforms.add_validate(signing_description_schema)
 
 
 @transforms.add
 def make_task_description(config, jobs):
     for job in jobs:
-        dep_job = job['dependent-task']
+        dep_job = job['primary-dependency']
         attributes = dep_job.attributes
 
         signing_format_scopes = []

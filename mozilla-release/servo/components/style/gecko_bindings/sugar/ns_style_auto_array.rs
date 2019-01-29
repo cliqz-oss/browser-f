@@ -1,13 +1,13 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Rust helpers for Gecko's `nsStyleAutoArray`.
 
-use gecko_bindings::bindings::Gecko_EnsureStyleAnimationArrayLength;
-use gecko_bindings::bindings::Gecko_EnsureStyleTransitionArrayLength;
-use gecko_bindings::structs::{StyleAnimation, StyleTransition};
-use gecko_bindings::structs::nsStyleAutoArray;
+use crate::gecko_bindings::bindings::Gecko_EnsureStyleAnimationArrayLength;
+use crate::gecko_bindings::bindings::Gecko_EnsureStyleTransitionArrayLength;
+use crate::gecko_bindings::structs::nsStyleAutoArray;
+use crate::gecko_bindings::structs::{StyleAnimation, StyleTransition};
 use std::iter::{once, Chain, IntoIterator, Once};
 use std::ops::{Index, IndexMut};
 use std::slice::{Iter, IterMut};

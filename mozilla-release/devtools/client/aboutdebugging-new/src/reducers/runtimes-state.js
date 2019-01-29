@@ -10,6 +10,7 @@ const {
   NETWORK_LOCATIONS_UPDATED,
   RUNTIMES,
   UNWATCH_RUNTIME_SUCCESS,
+  UPDATE_CONNECTION_PROMPT_SETTING_SUCCESS,
   USB_RUNTIMES_UPDATED,
   WATCH_RUNTIME_SUCCESS,
 } = require("../constants");
@@ -17,6 +18,9 @@ const {
 const {
   findRuntimeById,
 } = require("../modules/runtimes-state-helper");
+
+const { remoteClientManager } =
+  require("devtools/client/shared/remote-debugging/remote-client-manager");
 
 // Map between known runtime types and nodes in the runtimes state.
 const TYPE_TO_RUNTIMES_KEY = {
@@ -69,13 +73,15 @@ function _updateRuntimeById(runtimeId, updatedRuntime, state) {
 function runtimesReducer(state = RuntimesState(), action) {
   switch (action.type) {
     case CONNECT_RUNTIME_SUCCESS: {
-      const { id, connection } = action.runtime;
-      return _updateRuntimeById(id, { connection }, state);
+      const { id, runtimeDetails, type } = action.runtime;
+      remoteClientManager.setClient(id, type, runtimeDetails.clientWrapper.client);
+      return _updateRuntimeById(id, { runtimeDetails }, state);
     }
 
     case DISCONNECT_RUNTIME_SUCCESS: {
-      const { id } = action.runtime;
-      return _updateRuntimeById(id, { connection: null }, state);
+      const { id, type } = action.runtime;
+      remoteClientManager.removeClient(id, type);
+      return _updateRuntimeById(id, { runtimeDetails: null }, state);
     }
 
     case NETWORK_LOCATIONS_UPDATED: {
@@ -98,9 +104,22 @@ function runtimesReducer(state = RuntimesState(), action) {
       return Object.assign({}, state, { selectedRuntimeId: null });
     }
 
+    case UPDATE_CONNECTION_PROMPT_SETTING_SUCCESS: {
+      const { connectionPromptEnabled } = action;
+      const { id: runtimeId } = action.runtime;
+      const runtime = findRuntimeById(runtimeId, state);
+      const runtimeDetails =
+        Object.assign({}, runtime.runtimeDetails, { connectionPromptEnabled });
+      return _updateRuntimeById(runtimeId, { runtimeDetails }, state);
+    }
+
     case USB_RUNTIMES_UPDATED: {
       const { runtimes } = action;
       const usbRuntimes = runtimes.map(runtime => {
+        const existingRuntime = findRuntimeById(runtime.id, state);
+        const existingRuntimeDetails = existingRuntime ?
+          existingRuntime.runtimeDetails : null;
+
         return {
           id: runtime.id,
           extra: {
@@ -108,6 +127,7 @@ function runtimesReducer(state = RuntimesState(), action) {
             deviceName: runtime.deviceName,
           },
           name: runtime.shortName,
+          runtimeDetails: existingRuntimeDetails,
           type: RUNTIMES.USB,
         };
       });

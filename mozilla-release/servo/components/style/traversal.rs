@@ -1,21 +1,21 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Traversing the DOM tree; the bloom filter.
 
-use context::{ElementCascadeInputs, SharedStyleContext, StyleContext};
-use data::{ElementData, ElementStyles};
-use dom::{NodeInfo, OpaqueNode, TElement, TNode};
-use invalidation::element::restyle_hints::RestyleHint;
-use matching::{ChildCascadeRequirement, MatchMethods};
-use selector_parser::PseudoElement;
+use crate::context::{ElementCascadeInputs, SharedStyleContext, StyleContext};
+use crate::data::{ElementData, ElementStyles};
+use crate::dom::{NodeInfo, OpaqueNode, TElement, TNode};
+use crate::invalidation::element::restyle_hints::RestyleHint;
+use crate::matching::{ChildCascadeRequirement, MatchMethods};
+use crate::selector_parser::PseudoElement;
+use crate::sharing::StyleSharingTarget;
+use crate::style_resolver::{PseudoElementResolution, StyleResolverForElement};
+use crate::stylist::RuleInclusion;
+use crate::traversal_flags::TraversalFlags;
 use selectors::NthIndexCache;
-use sharing::StyleSharingTarget;
 use smallvec::SmallVec;
-use style_resolver::{PseudoElementResolution, StyleResolverForElement};
-use stylist::RuleInclusion;
-use traversal_flags::TraversalFlags;
 
 /// A per-traversal-level chunk of data. This is sent down by the traversal, and
 /// currently only holds the dom depth for the bloom filter.
@@ -307,7 +307,7 @@ pub fn resolve_style<E>(
 where
     E: TElement,
 {
-    use style_resolver::StyleResolverForElement;
+    use crate::style_resolver::StyleResolverForElement;
 
     debug_assert!(
         rule_inclusion == RuleInclusion::DefaultOnly ||
@@ -361,7 +361,8 @@ where
             context,
             rule_inclusion,
             PseudoElementResolution::IfApplicable,
-        ).resolve_primary_style(
+        )
+        .resolve_primary_style(
             style.as_ref().map(|s| &**s),
             layout_parent_style.as_ref().map(|s| &**s),
         );
@@ -382,10 +383,12 @@ where
         context,
         rule_inclusion,
         PseudoElementResolution::Force,
-    ).resolve_style(
+    )
+    .resolve_style(
         style.as_ref().map(|s| &**s),
         layout_parent_style.as_ref().map(|s| &**s),
-    ).into()
+    )
+    .into()
 }
 
 /// Calculates the style for a single node.
@@ -403,8 +406,8 @@ pub fn recalc_style_at<E, D, F>(
     D: DomTraversal<E>,
     F: FnMut(E::ConcreteNode),
 {
+    use crate::traversal_flags::TraversalFlags;
     use std::cmp;
-    use traversal_flags::TraversalFlags;
 
     let flags = context.shared.traversal_flags;
     let is_initial_style = !data.has_styles();
@@ -583,7 +586,7 @@ fn compute_style<E>(
 where
     E: TElement,
 {
-    use data::RestyleKind::*;
+    use crate::data::RestyleKind::*;
 
     context.thread_local.statistics.elements_styled += 1;
     let kind = data.restyle_kind(context.shared);
@@ -716,9 +719,9 @@ fn notify_paint_worklet<E>(context: &StyleContext<E>, data: &ElementData)
 where
     E: TElement,
 {
+    use crate::values::generics::image::Image;
+    use crate::values::Either;
     use style_traits::ToCss;
-    use values::Either;
-    use values::generics::image::Image;
 
     // We speculatively evaluate any paint worklets during styling.
     // This allows us to run paint worklets in parallel with style and layout.
@@ -808,7 +811,7 @@ fn note_children<E, D, F>(
                     child_hint |= RestyleHint::RECASCADE_SELF | RestyleHint::RECASCADE_DESCENDANTS;
                 },
                 ChildCascadeRequirement::MustCascadeChildrenIfInheritResetStyle => {
-                    use properties::computed_value_flags::ComputedValueFlags;
+                    use crate::properties::computed_value_flags::ComputedValueFlags;
                     if child_data
                         .styles
                         .primary()

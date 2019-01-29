@@ -1331,7 +1331,7 @@ Function LaunchFullInstaller
   System::Call "kernel32::GetTickCount()l .s"
   Pop $EndPreInstallPhaseTickCount
 
-  Exec "$\"$PLUGINSDIR\download.exe$\" /INI=$PLUGINSDIR\${CONFIG_INI}"
+  Exec "$\"$PLUGINSDIR\download.exe$\" /LaunchedFromStub /INI=$PLUGINSDIR\${CONFIG_INI}"
   ${NSD_CreateTimer} CheckInstall ${InstallIntervalMS}
 FunctionEnd
 

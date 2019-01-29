@@ -1,17 +1,17 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! The stylesheet loader is the abstraction used to trigger network requests
 //! for `@import` rules.
 
+use crate::media_queries::MediaList;
+use crate::parser::ParserContext;
+use crate::shared_lock::{Locked, SharedRwLock};
+use crate::stylesheets::import_rule::ImportRule;
+use crate::values::CssUrl;
 use cssparser::SourceLocation;
-use media_queries::MediaList;
-use parser::ParserContext;
 use servo_arc::Arc;
-use shared_lock::{Locked, SharedRwLock};
-use stylesheets::import_rule::ImportRule;
-use values::CssUrl;
 
 /// The stylesheet loader is the abstraction used to trigger network requests
 /// for `@import` rules.

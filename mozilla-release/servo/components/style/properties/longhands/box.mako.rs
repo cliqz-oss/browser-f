@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 <%namespace name="helpers" file="/helpers.mako.rs" />
 <% from data import Keyword, Method, to_rust_ident, to_camel_case%>
@@ -247,6 +247,7 @@ ${helpers.single_keyword(
     gecko_enum_prefix="PlaybackDirection",
     custom_consts=animation_direction_custom_consts,
     extra_prefixes=animation_extra_prefixes,
+    gecko_inexhaustive=True,
     spec="https://drafts.csswg.org/css-animations/#propdef-animation-direction",
     allowed_in_keyframe_block=False,
 )}
@@ -258,6 +259,7 @@ ${helpers.single_keyword(
     animation_value_type="none",
     vector=True,
     extra_prefixes=animation_extra_prefixes,
+    gecko_enum_prefix="StyleAnimationPlayState",
     spec="https://drafts.csswg.org/css-animations/#propdef-animation-play-state",
     allowed_in_keyframe_block=False,
 )}
@@ -270,6 +272,7 @@ ${helpers.single_keyword(
     vector=True,
     gecko_enum_prefix="FillMode",
     extra_prefixes=animation_extra_prefixes,
+    gecko_inexhaustive=True,
     spec="https://drafts.csswg.org/css-animations/#propdef-animation-fill-mode",
     allowed_in_keyframe_block=False,
 )}
@@ -367,7 +370,7 @@ ${helpers.predefined_type(
     "generics::transform::Translate::None",
     animation_value_type="ComputedValue",
     boxed=True,
-    flags="CREATES_STACKING_CONTEXT FIXPOS_CB GETCS_NEEDS_LAYOUT_FLUSH",
+    flags="CREATES_STACKING_CONTEXT FIXPOS_CB",
     gecko_pref="layout.css.individual-transform.enabled",
     spec="https://drafts.csswg.org/css-transforms-2/#individual-transforms",
     servo_restyle_damage="reflow_out_of_flow",
@@ -434,30 +437,34 @@ ${helpers.single_keyword(
     animation_value_type="discrete",
 )}
 
-// TODO add support for logical values recto and verso
-${helpers.single_keyword(
-    "page-break-after",
-    "auto always avoid left right",
+${helpers.predefined_type(
+    "break-after",
+    "BreakBetween",
+    "computed::BreakBetween::Auto",
+    needs_context=False,
     products="gecko",
-    spec="https://drafts.csswg.org/css2/page.html#propdef-page-break-after",
+    spec="https://drafts.csswg.org/css-break/#propdef-break-after",
     animation_value_type="discrete",
 )}
 
-${helpers.single_keyword(
-    "page-break-before",
-    "auto always avoid left right",
+${helpers.predefined_type(
+    "break-before",
+    "BreakBetween",
+    "computed::BreakBetween::Auto",
+    needs_context=False,
     products="gecko",
-    spec="https://drafts.csswg.org/css2/page.html#propdef-page-break-before",
+    spec="https://drafts.csswg.org/css-break/#propdef-break-before",
     animation_value_type="discrete",
 )}
 
-${helpers.single_keyword(
-    "page-break-inside",
-    "auto avoid",
+${helpers.predefined_type(
+    "break-inside",
+    "BreakWithin",
+    "computed::BreakWithin::Auto",
+    needs_context=False,
     products="gecko",
-    gecko_ffi_name="mBreakInside",
-    gecko_constant_prefix="NS_STYLE_PAGE_BREAK",
-    spec="https://drafts.csswg.org/css2/page.html#propdef-page-break-inside",
+    alias="page-break-inside",
+    spec="https://drafts.csswg.org/css-break/#propdef-break-inside",
     animation_value_type="discrete",
 )}
 
@@ -567,6 +574,7 @@ ${helpers.predefined_type(
     alias="-webkit-appearance:layout.css.webkit-appearance.enabled",
     spec="Nonstandard (https://developer.mozilla.org/en-US/docs/Web/CSS/-moz-appearance)",
     animation_value_type="discrete",
+    gecko_ffi_name="mAppearance",
 )}
 
 ${helpers.predefined_type(
@@ -601,7 +609,6 @@ ${helpers.predefined_type(
 ${helpers.predefined_type(
     "shape-image-threshold", "Opacity", "0.0",
     products="gecko",
-    gecko_pref="layout.css.shape-outside.enabled",
     animation_value_type="ComputedValue",
     flags="APPLIES_TO_FIRST_LETTER",
     spec="https://drafts.csswg.org/css-shapes/#shape-image-threshold-property",
@@ -612,7 +619,6 @@ ${helpers.predefined_type(
     "NonNegativeLengthOrPercentage",
     "computed::NonNegativeLengthOrPercentage::zero()",
     products="gecko",
-    gecko_pref="layout.css.shape-outside.enabled",
     animation_value_type="NonNegativeLengthOrPercentage",
     flags="APPLIES_TO_FIRST_LETTER",
     spec="https://drafts.csswg.org/css-shapes/#shape-margin-property",
@@ -624,7 +630,6 @@ ${helpers.predefined_type(
     "generics::basic_shape::ShapeSource::None",
     products="gecko",
     boxed=True,
-    gecko_pref="layout.css.shape-outside.enabled",
     animation_value_type="ComputedValue",
     flags="APPLIES_TO_FIRST_LETTER",
     spec="https://drafts.csswg.org/css-shapes/#shape-outside-property",

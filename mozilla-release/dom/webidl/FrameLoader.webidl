@@ -34,6 +34,12 @@ interface FrameLoader {
   readonly attribute LoadContext loadContext;
 
   /**
+   * Get the root BrowsingContext within the frame.
+   * This may be null immediately after creating a remote frame.
+   */
+  readonly attribute BrowsingContext? browsingContext;
+
+  /**
    * Get the ParentSHistory for the nsFrameLoader. May return null if this
    * frameloader is not for a toplevel frame.
    */
@@ -131,13 +137,6 @@ interface FrameLoader {
                                     double h,
                                     double scale,
                                     DOMString backgroundColor);
-
-  /**
-   * If false, then the subdocument is not clipped to its CSS viewport, and the
-   * subdocument's viewport scrollbar(s) are not rendered.
-   * Defaults to true.
-   */
-  attribute boolean clipSubdocument;
 
   /**
    * The element which owns this frame loader.

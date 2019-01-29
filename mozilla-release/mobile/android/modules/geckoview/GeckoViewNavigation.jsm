@@ -10,6 +10,7 @@ ChromeUtils.import("resource://gre/modules/GeckoViewModule.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
+  Utils: "resource://gre/modules/sessionstore/Utils.jsm",
   LoadURIDelegate: "resource://gre/modules/LoadURIDelegate.jsm",
   Services: "resource://gre/modules/Services.jsm",
 });
@@ -38,6 +39,8 @@ class GeckoViewNavigation extends GeckoViewModule {
       "GeckoView:Reload",
       "GeckoView:Stop",
     ]);
+
+    this.messageManager.addMessageListener("Browser:LoadURI", this);
   }
 
   // Bundle event handler.
@@ -56,7 +59,7 @@ class GeckoViewNavigation extends GeckoViewModule {
 
         let navFlags = 0;
 
-        // These need to match the values in GeckoSession.LOAD_TYPE_*
+        // These need to match the values in GeckoSession.LOAD_FLAGS_*
         if (flags & (1 << 0)) {
           navFlags |= Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CACHE;
         }
@@ -73,9 +76,33 @@ class GeckoViewNavigation extends GeckoViewModule {
           navFlags |= Ci.nsIWebNavigation.LOAD_FLAGS_ALLOW_POPUPS;
         }
 
-        this.browser.loadURI(uri, {
+        if (flags & (1 << 4)) {
+          navFlags |= Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CLASSIFIER;
+        }
+
+        if (this.settings.useMultiprocess) {
+          this.moduleManager.updateRemoteTypeForURI(uri);
+        }
+
+        let parsedUri;
+        let triggeringPrincipal;
+        try {
+            parsedUri = Services.io.newURI(uri);
+            if (parsedUri.schemeIs("about") || parsedUri.schemeIs("data") ||
+                parsedUri.schemeIs("file") || parsedUri.schemeIs("resource")) {
+              // Only allow privileged loading for certain URIs.
+              triggeringPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
+            }
+        } catch (ignored) {
+        }
+        if (!triggeringPrincipal) {
+          triggeringPrincipal = Services.scriptSecurityManager.createNullPrincipal({});
+        }
+
+        this.browser.loadURI(parsedUri ? parsedUri.spec : uri, {
           flags: navFlags,
           referrerURI: referrer,
+          triggeringPrincipal,
         });
         break;
       case "GeckoView:Reload":
@@ -90,6 +117,23 @@ class GeckoViewNavigation extends GeckoViewModule {
   // Message manager event handler.
   receiveMessage(aMsg) {
     debug `receiveMessage: ${aMsg.name}`;
+
+    switch (aMsg.name) {
+      case "Browser:LoadURI":
+        // This is triggered by E10SUtils.redirectLoad(), and means
+        // we may need to change the remoteness of our browser and
+        // load the URI.
+        const { uri, flags, referrer, triggeringPrincipal } = aMsg.data.loadOptions;
+
+        this.moduleManager.updateRemoteTypeForURI(uri);
+
+        this.browser.loadURI(uri, {
+          flags,
+          referrerURI: referrer,
+          triggeringPrincipal: Utils.deserializePrincipal(triggeringPrincipal),
+        });
+        break;
+    }
   }
 
   waitAndSetupWindow(aSessionId, { opener, nextTabParentId }) {
@@ -106,6 +150,11 @@ class GeckoViewNavigation extends GeckoViewModule {
             }
 
             if (opener) {
+              if (aSubject.browser.hasAttribute("remote")) {
+                // We cannot start in remote mode when we have an opener.
+                aSubject.browser.setAttribute("remote", "false");
+                aSubject.browser.removeAttribute("remoteType");
+              }
               aSubject.browser.presetOpenerWindow(opener);
             }
             Services.obs.removeObserver(handler, "geckoview-window-created");

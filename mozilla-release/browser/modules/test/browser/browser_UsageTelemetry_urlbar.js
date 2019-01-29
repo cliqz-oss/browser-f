@@ -14,13 +14,16 @@ ChromeUtils.defineModuleGetter(this, "URLBAR_SELECTED_RESULT_TYPES",
 ChromeUtils.defineModuleGetter(this, "URLBAR_SELECTED_RESULT_METHODS",
                                "resource:///modules/BrowserUsageTelemetry.jsm");
 
+ChromeUtils.defineModuleGetter(this, "SearchTelemetry",
+                              "resource:///modules/SearchTelemetry.jsm");
+
 function checkHistogramResults(resultIndexes, expected, histogram) {
-  for (let i = 0; i < resultIndexes.counts.length; i++) {
+  for (let [i, val] of Object.entries(resultIndexes.values)) {
     if (i == expected) {
-      Assert.equal(resultIndexes.counts[i], 1,
+      Assert.equal(val, 1,
         `expected counts should match for ${histogram} index ${i}`);
     } else {
-      Assert.equal(resultIndexes.counts[i], 0,
+      Assert.equal(!!val, false,
         `unexpected counts should be zero for ${histogram} index ${i}`);
     }
   }
@@ -88,13 +91,13 @@ async function withNewSearchEngine(taskFn) {
     });
   });
 
-  let previousEngine = Services.search.currentEngine;
-  Services.search.currentEngine = suggestionEngine;
+  let previousEngine = Services.search.defaultEngine;
+  Services.search.defaultEngine = suggestionEngine;
 
   try {
     await taskFn(suggestionEngine);
   } finally {
-    Services.search.currentEngine = previousEngine;
+    Services.search.defaultEngine = previousEngine;
     Services.search.removeEngine(suggestionEngine);
   }
 }
@@ -106,8 +109,8 @@ add_task(async function setup() {
 
   // Make it the default search engine.
   let engine = Services.search.getEngineByName("MozSearch");
-  let originalEngine = Services.search.currentEngine;
-  Services.search.currentEngine = engine;
+  let originalEngine = Services.search.defaultEngine;
+  Services.search.defaultEngine = engine;
 
   // Give it some mock internal aliases.
   engine.wrappedJSObject.__internalAliases = ["@mozaliasfoo", "@mozaliasbar"];
@@ -143,7 +146,7 @@ add_task(async function setup() {
   // Make sure to restore the engine once we're done.
   registerCleanupFunction(async function() {
     Services.telemetry.canRecordExtended = oldCanRecord;
-    Services.search.currentEngine = originalEngine;
+    Services.search.defaultEngine = originalEngine;
     Services.search.removeEngine(engine);
     Services.prefs.setBoolPref(SUGGEST_URLBAR_PREF, suggestionsEnabled);
     Services.prefs.clearUserPref(ONEOFF_URLBAR_PREF);
@@ -194,7 +197,7 @@ add_task(async function test_simpleQuery() {
     URLBAR_SELECTED_RESULT_TYPES.searchengine,
     "FX_URLBAR_SELECTED_RESULT_TYPE");
 
-  let resultIndexByType = resultIndexByTypeHist.snapshot("searchengine");
+  let resultIndexByType = resultIndexByTypeHist.snapshot().searchengine;
   checkHistogramResults(resultIndexByType,
     0,
     "FX_URLBAR_SELECTED_RESULT_INDEX_BY_TYPE");
@@ -249,7 +252,7 @@ add_task(async function test_searchAlias() {
     URLBAR_SELECTED_RESULT_TYPES.searchengine,
     "FX_URLBAR_SELECTED_RESULT_TYPE");
 
-  let resultIndexByType = resultIndexByTypeHist.snapshot("searchengine");
+  let resultIndexByType = resultIndexByTypeHist.snapshot().searchengine;
   checkHistogramResults(resultIndexByType,
     0,
     "FX_URLBAR_SELECTED_RESULT_INDEX_BY_TYPE");
@@ -335,7 +338,7 @@ add_task(async function test_oneOff_enter() {
     URLBAR_SELECTED_RESULT_TYPES.searchengine,
     "FX_URLBAR_SELECTED_RESULT_TYPE");
 
-  let resultIndexByType = resultIndexByTypeHist.snapshot("searchengine");
+  let resultIndexByType = resultIndexByTypeHist.snapshot().searchengine;
   checkHistogramResults(resultIndexByType,
     0,
     "FX_URLBAR_SELECTED_RESULT_INDEX_BY_TYPE");
@@ -447,7 +450,7 @@ add_task(async function test_suggestion_click() {
       URLBAR_SELECTED_RESULT_TYPES.searchsuggestion,
       "FX_URLBAR_SELECTED_RESULT_TYPE");
 
-    let resultIndexByType = resultIndexByTypeHist.snapshot("searchsuggestion");
+    let resultIndexByType = resultIndexByTypeHist.snapshot().searchsuggestion;
     checkHistogramResults(resultIndexByType,
       3,
       "FX_URLBAR_SELECTED_RESULT_INDEX_BY_TYPE");
@@ -566,31 +569,23 @@ add_task(async function test_suggestion_rightclick() {
 });
 
 add_task(async function test_privateWindow() {
-  // Mock the search service's search provider info so that its
+  // Mock the search telemetry search provider info so that its
   // recordSearchURLTelemetry() function adds the in-content SEARCH_COUNTS
   // telemetry for our test engine.
-  Services.search.QueryInterface(Ci.nsIObserver).observe(
-    null,
-    "test:setSearchProviderInfo",
-    JSON.stringify({
-      "example": {
-        "regexp": "^http://example\\.com/",
-        "queryParam": "q",
-      },
-    })
-  );
+  SearchTelemetry.overrideSearchTelemetryForTests({
+    "example": {
+      "regexp": "^http://example\\.com/",
+      "queryParam": "q",
+    },
+  });
 
   let search_hist = getAndClearKeyedHistogram("SEARCH_COUNTS");
-
-  let engine = Services.search.getEngineByName("MozSearch");
-  let expectedURL = engine.getSubmission("query").uri.spec;
 
   // First, do a bunch of searches in a private window.
   let win = await BrowserTestUtils.openNewBrowserWindow({ private: true });
 
   info("Search in a private window and the pref does not exist");
-  let p = BrowserTestUtils.browserLoaded(win.gBrowser.selectedBrowser, false,
-                                         expectedURL);
+  let p = BrowserTestUtils.browserLoaded(win.gBrowser.selectedBrowser);
   await searchInAwesomebar("query", win);
   EventUtils.synthesizeKey("KEY_Enter", undefined, win);
   await p;
@@ -639,8 +634,7 @@ add_task(async function test_privateWindow() {
   win = await BrowserTestUtils.openNewBrowserWindow();
 
   info("Search in a non-private window and the pref does not exist");
-  p = BrowserTestUtils.browserLoaded(win.gBrowser.selectedBrowser, false,
-                                     expectedURL);
+  p = BrowserTestUtils.browserLoaded(win.gBrowser.selectedBrowser);
   await searchInAwesomebar("query", win);
   EventUtils.synthesizeKey("KEY_Enter", undefined, win);
   await p;
@@ -685,6 +679,5 @@ add_task(async function test_privateWindow() {
   await BrowserTestUtils.closeWindow(win);
 
   // Reset the search provider info.
-  Services.search.QueryInterface(Ci.nsIObserver)
-    .observe(null, "test:setSearchProviderInfo", "");
+  SearchTelemetry.overrideSearchTelemetryForTests();
 });

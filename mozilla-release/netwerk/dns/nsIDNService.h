@@ -13,6 +13,7 @@
 #include "nsWeakReference.h"
 
 #include "unicode/uidna.h"
+#include "mozilla/net/IDNBlocklistUtils.h"
 
 #include "nsString.h"
 
@@ -23,9 +24,8 @@ class nsIPrefBranch;
 //-----------------------------------------------------------------------------
 
 class nsIDNService final : public nsIIDNService,
-                           public nsSupportsWeakReference
-{
-public:
+                           public nsSupportsWeakReference {
+ public:
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIIDNSERVICE
 
@@ -33,10 +33,10 @@ public:
 
   nsresult Init();
 
-protected:
+ protected:
   virtual ~nsIDNService();
 
-private:
+ private:
   enum stringPrepFlag {
     eStringPrepForDNS,
     eStringPrepForUI,
@@ -95,11 +95,10 @@ private:
   nsresult ACEtoUTF8(const nsACString& input, nsACString& _retval,
                      stringPrepFlag flag);
 
-  bool isInWhitelist(const nsACString &host);
-  void prefsChanged(const char *pref);
+  bool isInWhitelist(const nsACString& host);
+  void prefsChanged(const char* pref);
 
-  static void PrefChanged(const char* aPref, nsIDNService* aSelf)
-  {
+  static void PrefChanged(const char* aPref, nsIDNService* aSelf) {
     mozilla::MutexAutoLock lock(aSelf->mLock);
     aSelf->prefsChanged(aPref);
   }
@@ -131,7 +130,7 @@ private:
    *  Both simplified-only and traditional-only Chinese characters
    *   XXX this test was disabled by bug 857481
    */
-  bool isLabelSafe(const nsAString &label);
+  bool isLabelSafe(const nsAString& label);
 
   /**
    * Determine whether a combination of scripts in a single label is
@@ -164,7 +163,7 @@ private:
   UIDNA* mIDNA;
 
   // We use this mutex to guard access to:
-  // |mIDNBlacklist|, |mShowPunycode|, |mRestrictionProfile|,
+  // |mIDNBlocklist|, |mShowPunycode|, |mRestrictionProfile|,
   // |mIDNUseWhitelist|.
   //
   // These members can only be updated on the main thread and
@@ -173,7 +172,7 @@ private:
   mozilla::Mutex mLock;
 
   // guarded by mLock
-  nsString mIDNBlacklist;
+  nsTArray<mozilla::net::BlocklistRange> mIDNBlocklist;
 
   /**
    * Flag set by the pref network.IDN_show_punycode. When it is true,
@@ -189,7 +188,7 @@ private:
    * http://www.unicode.org/reports/tr39/#Restriction_Level_Detection,
    * and selected by the pref network.IDN.restriction_profile
    */
-   enum restrictionProfile {
+  enum restrictionProfile {
     eASCIIOnlyProfile,
     eHighlyRestrictiveProfile,
     eModeratelyRestrictiveProfile

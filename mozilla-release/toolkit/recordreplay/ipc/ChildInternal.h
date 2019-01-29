@@ -44,7 +44,8 @@ void AlwaysSaveTemporaryCheckpoints();
 
 // Process incoming requests from the middleman.
 void DebuggerRequest(js::CharBuffer* aBuffer);
-void SetBreakpoint(size_t aId, const js::BreakpointPosition& aPosition);
+void AddBreakpoint(const js::BreakpointPosition& aPosition);
+void ClearBreakpoints();
 void Resume(bool aForward);
 void RestoreCheckpoint(size_t aId);
 void RunToPoint(const js::ExecutionPoint& aPoint);
@@ -58,7 +59,8 @@ bool MaybeDivergeFromRecording();
 void PositionHit(const js::BreakpointPosition& aPosition);
 
 // Get an execution point for hitting the specified position right now.
-js::ExecutionPoint CurrentExecutionPoint(const js::BreakpointPosition& aPosition);
+js::ExecutionPoint CurrentExecutionPoint(
+    const Maybe<js::BreakpointPosition>& aPosition);
 
 // Convert an identifier from NewTimeWarpTarget() which we have seen while
 // executing into an ExecutionPoint.
@@ -79,27 +81,28 @@ void AfterCheckpoint(const CheckpointId& aCheckpoint);
 // Get the ID of the last normal checkpoint.
 size_t LastNormalCheckpoint();
 
-} // namespace navigation
+}  // namespace navigation
 
 namespace child {
 
 // IPC activity that can be triggered by navigation.
 void RespondToRequest(const js::CharBuffer& aBuffer);
 void HitCheckpoint(size_t aId, bool aRecordingEndpoint);
-void HitBreakpoint(bool aRecordingEndpoint, const uint32_t* aBreakpoints, size_t aNumBreakpoints);
+void HitBreakpoint(bool aRecordingEndpoint);
 
 // Optional information about a crash that occurred. If not provided to
 // ReportFatalError, the current thread will be treated as crashed.
-struct MinidumpInfo
-{
+struct MinidumpInfo {
   int mExceptionType;
   int mCode;
   int mSubcode;
   mach_port_t mThread;
 
   MinidumpInfo(int aExceptionType, int aCode, int aSubcode, mach_port_t aThread)
-    : mExceptionType(aExceptionType), mCode(aCode), mSubcode(aSubcode), mThread(aThread)
-  {}
+      : mExceptionType(aExceptionType),
+        mCode(aCode),
+        mSubcode(aSubcode),
+        mThread(aThread) {}
 };
 
 // Generate a minidump and report a fatal error to the middleman process.
@@ -115,9 +118,6 @@ void NotifyFlushedRecording();
 // Notify the middleman about an AlwaysMarkMajorCheckpoints directive.
 void NotifyAlwaysMarkMajorCheckpoints();
 
-// Report a fatal error to the middleman process.
-void ReportFatalError(const char* aFormat, ...);
-
 // Mark a time span when the main thread is idle.
 void BeginIdleTime();
 void EndIdleTime();
@@ -126,13 +126,17 @@ void EndIdleTime();
 bool DebuggerRunsInMiddleman();
 
 // Send messages operating on middleman calls.
-bool SendMiddlemanCallRequest(const char* aInputData, size_t aInputSize,
+void SendMiddlemanCallRequest(const char* aInputData, size_t aInputSize,
                               InfallibleVector<char>* aOutputData);
 void SendResetMiddlemanCalls();
 
-} // namespace child
+// Return whether a repaint is in progress and is not allowed to trigger an
+// unhandled recording divergence per preferences.
+bool CurrentRepaintCannotFail();
 
-} // namespace recordreplay
-} // namespace mozilla
+}  // namespace child
 
-#endif // mozilla_recordreplay_ChildInternal_h
+}  // namespace recordreplay
+}  // namespace mozilla
+
+#endif  // mozilla_recordreplay_ChildInternal_h

@@ -27,9 +27,9 @@ function test_cross_global(miHelper) {
   miHelper.addGetCalendarInfo(x);
   var waivedX = Cu.waiveXrays(x);
   equal(waivedX.getCalendarInfo instanceof Function, false);
-  equal(waivedX.getCalendarInfo instanceof global.Function, true);
+  equal(waivedX.getCalendarInfo instanceof Cu.waiveXrays(global.Function), true);
   equal(waivedX.getCalendarInfo() instanceof Object, false);
-  equal(waivedX.getCalendarInfo() instanceof global.Object, true);
+  equal(waivedX.getCalendarInfo() instanceof Cu.waiveXrays(global.Object), true);
 }
 
 function test_methods_presence(miHelper) {
@@ -37,7 +37,6 @@ function test_methods_presence(miHelper) {
   equal(miHelper.addGetDisplayNames instanceof Function, true);
   equal(miHelper.addGetLocaleInfo instanceof Function, true);
   equal(miHelper.addDateTimeFormatConstructor instanceof Function, true);
-  equal(miHelper.addRelativeTimeFormatConstructor instanceof Function, true);
 
   let x = {};
 
@@ -52,7 +51,4 @@ function test_methods_presence(miHelper) {
 
   miHelper.addDateTimeFormatConstructor(x);
   equal(x.DateTimeFormat instanceof Function, true);
-
-  miHelper.addRelativeTimeFormatConstructor(x);
-  equal(x.RelativeTimeFormat instanceof Function, true);
 }

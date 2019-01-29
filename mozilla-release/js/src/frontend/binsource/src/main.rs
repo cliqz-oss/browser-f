@@ -139,9 +139,21 @@ struct GlobalRules {
     /// Header to add at the end of the .cpp file.
     cpp_footer: Option<String>,
 
-    /// Header to add at the start of the .hpp file
-    /// defining the class data/methods.
+    /// Header to add at the start of the .hpp file.
+    /// defining the class.
     hpp_class_header: Option<String>,
+
+    /// Footer to add at the end of the .hpp file
+    /// defining the class.
+    hpp_class_footer: Option<String>,
+
+    /// Header to add at the start of the .hpp file.
+    /// defining the enums.
+    hpp_enums_header: Option<String>,
+
+    /// Footer to add at the end of the .hpp file
+    /// defining the enums.
+    hpp_enums_footer: Option<String>,
 
     /// Header to add at the start of the .hpp file.
     /// defining the tokens.
@@ -176,6 +188,9 @@ impl GlobalRules {
         let mut cpp_header = None;
         let mut cpp_footer = None;
         let mut hpp_class_header = None;
+        let mut hpp_class_footer = None;
+        let mut hpp_enums_header = None;
+        let mut hpp_enums_footer = None;
         let mut hpp_tokens_header = None;
         let mut hpp_tokens_footer = None;
         let mut hpp_tokens_kind_doc = None;
@@ -211,6 +226,12 @@ impl GlobalRules {
                 "hpp" => {
                     update_rule(&mut hpp_class_header, &node_entries["class"]["header"])
                         .unwrap_or_else(|_| panic!("Rule hpp.class.header must be a string"));
+                    update_rule(&mut hpp_class_footer, &node_entries["class"]["footer"])
+                        .unwrap_or_else(|_| panic!("Rule hpp.class.footer must be a string"));
+                    update_rule(&mut hpp_enums_header, &node_entries["enums"]["header"])
+                        .unwrap_or_else(|_| panic!("Rule hpp.enum.header must be a string"));
+                    update_rule(&mut hpp_enums_footer, &node_entries["enums"]["footer"])
+                        .unwrap_or_else(|_| panic!("Rule hpp.enum.footer must be a string"));
                     update_rule(&mut hpp_tokens_header, &node_entries["tokens"]["header"])
                         .unwrap_or_else(|_| panic!("Rule hpp.tokens.header must be a string"));
                     update_rule(&mut hpp_tokens_footer, &node_entries["tokens"]["footer"])
@@ -398,6 +419,9 @@ impl GlobalRules {
             cpp_header,
             cpp_footer,
             hpp_class_header,
+            hpp_class_footer,
+            hpp_enums_header,
+            hpp_enums_footer,
             hpp_tokens_header,
             hpp_tokens_footer,
             hpp_tokens_kind_doc,
@@ -519,14 +543,6 @@ const INTERFACE_ARGS: &str =
 const TOPLEVEL_INTERFACE: &str =
     "Program";
 
-/// Get Rc<String> from NodeName.
-///
-/// FIXME: Do not clone the String itself, but just clone the Rc<String> inside
-///        NodeName (Bug NNNNNN).
-fn string_from_nodename(name: &NodeName) -> Rc<String> {
-    Rc::new(name.to_string().clone())
-}
-
 /// The actual exporter.
 struct CPPExporter {
     /// The syntax to export.
@@ -638,17 +654,29 @@ impl CPPExporter {
         let mut refgraph = ReferenceGraph::new();
 
         // FIXME: Reflect `replace` rule in yaml file for each interface to
-        //        the reference (bug NNNNNN).
+        //        the reference (bug 1504595).
 
         // 1. Typesums
         let sums_of_interfaces = self.syntax.resolved_sums_of_interfaces_by_name();
         for (name, nodes) in sums_of_interfaces {
+            let rules_for_this_sum = self.rules.get(name);
+
             let mut edges: HashSet<Rc<String>> = HashSet::new();
             edges.insert(Rc::new(format!("Sum{}", name)));
-            refgraph.insert(string_from_nodename(name), edges);
+            refgraph.insert(name.to_rc_string().clone(), edges);
 
             let mut sum_edges: HashSet<Rc<String>> = HashSet::new();
             for node in nodes {
+                let rule_for_this_arm = rules_for_this_sum.by_sum.get(&node)
+                    .cloned()
+                    .unwrap_or_default();
+
+                // If this arm is disabled, we emit raiseError instead of
+                // call to parseInterface*.  Do not add edge in that case.
+                if rule_for_this_arm.disabled {
+                    continue;
+                }
+
                 sum_edges.insert(Rc::new(format!("Interface{}", node.to_string())));
             }
             refgraph.insert(Rc::new(format!("Sum{}", name.to_string())), sum_edges);
@@ -657,22 +685,35 @@ impl CPPExporter {
         // 2. Single interfaces
         let interfaces_by_name = self.syntax.interfaces_by_name();
         for (name, interface) in interfaces_by_name {
-            let mut edges: HashSet<Rc<String>> = HashSet::new();
-            edges.insert(Rc::new(format!("Interface{}", name)));
-            refgraph.insert(string_from_nodename(name), edges);
+            let rules_for_this_interface = self.rules.get(name);
+            let is_implemented = rules_for_this_interface.build_result.is_some();
+            // If this interafce is not implemented, parse* method should
+            // not be called nor referenced in the graph.
+            if is_implemented {
+                let mut edges: HashSet<Rc<String>> = HashSet::new();
+                edges.insert(Rc::new(format!("Interface{}", name)));
+                refgraph.insert(name.to_rc_string().clone(), edges);
+            }
 
             let mut interface_edges: HashSet<Rc<String>> = HashSet::new();
-            for field in interface.contents().fields() {
-                match field.type_().get_primitive(&self.syntax) {
-                    Some(IsNullable { is_nullable: _, content: Primitive::Interface(_) })
-                    | None => {
-                        let typename = TypeName::type_(field.type_());
-                        interface_edges.insert(Rc::new(typename.to_string()));
-                    },
+            // If this interface is not implemented, we emit raiseError in
+            // parseInterface* method, instead of parse* for each fields.
+            // There can be reference to parseInterface* of this interface
+            // from sum interface, and this node needs to be represented in
+            // the reference graph.
+            if is_implemented {
+                for field in interface.contents().fields() {
+                    match field.type_().get_primitive(&self.syntax) {
+                        Some(IsNullable { is_nullable: _, content: Primitive::Interface(_) })
+                            | None => {
+                                let typename = TypeName::type_(field.type_());
+                                interface_edges.insert(Rc::new(typename.to_string()));
+                            },
 
-                    // Don't have to handle other type of fields (string,
-                    // number, bool, etc).
-                    _ => {}
+                        // Don't have to handle other type of fields (string,
+                        // number, bool, etc).
+                        _ => {}
+                    }
                 }
             }
             refgraph.insert(Rc::new(format!("Interface{}", name)), interface_edges);
@@ -680,14 +721,23 @@ impl CPPExporter {
 
         // 3. String Enums
         for (kind, _) in self.syntax.string_enums_by_name() {
-            refgraph.insert(string_from_nodename(kind), HashSet::new());
+            refgraph.insert(kind.to_rc_string().clone(), HashSet::new());
         }
 
         // 4. Lists
         for parser in &self.list_parsers_to_generate {
+            let name = &parser.name;
+            let rules_for_this_list = self.rules.get(name);
+            let is_implemented = rules_for_this_list.init.is_some();
+            // If this list is not implemented, this method should not be
+            // called nor referenced in the graph.
+            if !is_implemented {
+                continue;
+            }
+
             let mut edges: HashSet<Rc<String>> = HashSet::new();
-            edges.insert(string_from_nodename(&parser.elements));
-            refgraph.insert(string_from_nodename(&parser.name), edges);
+            edges.insert(parser.elements.to_rc_string().clone());
+            refgraph.insert(name.to_rc_string().clone(), edges);
         }
 
         // 5. Optional values
@@ -722,7 +772,7 @@ impl CPPExporter {
                 },
                 _ => {}
             }
-            refgraph.insert(string_from_nodename(&parser.name), edges);
+            refgraph.insert(parser.name.to_rc_string().clone(), edges);
         }
 
         // 6. Primitive values.
@@ -956,19 +1006,26 @@ enum class BinVariant {
     }
 
     /// Declare string enums
-    fn export_declare_string_enums_classes(&self, buffer: &mut String) {
-        buffer.push_str("\n\n// ----- Declaring string enums (by lexicographical order)\n");
+    fn export_declare_string_enums(&self, buffer: &mut String) {
+        buffer.push_str("
+// ----- Declaring string enums (by lexicographical order)
+");
         let string_enums_by_name = self.syntax.string_enums_by_name()
             .iter()
             .sorted_by(|a, b| str::cmp(a.0.to_str(), b.0.to_str()));
         for (name, enum_) in string_enums_by_name {
             let rendered_cases = enum_.strings()
                 .iter()
-                .map(|str| format!("{case:<20}      /* \"{original}\" */",
+                .map(|str| format!("    // \"{original}\"
+    {case},",
                     case = str.to_cpp_enum_case(),
                     original = str))
-                .format(",\n    ");
-            let rendered = format!("enum class {name} {{\n    {cases}\n}};\n\n",
+                .format("\n");
+            let rendered = format!("
+enum class {name} {{
+{cases}
+}};
+",
                 cases = rendered_cases,
                 name = name.to_class_cases());
             buffer.push_str(&rendered);
@@ -979,11 +1036,12 @@ enum class BinVariant {
         let sums_of_interfaces = self.syntax.resolved_sums_of_interfaces_by_name()
             .iter()
             .sorted_by(|a, b| a.0.cmp(&b.0));
-        buffer.push_str("\n\n// ----- Sums of interfaces (by lexicographical order)\n");
-        buffer.push_str("// Implementations are autogenerated\n");
-        buffer.push_str("// `ParseNode*` may never be nullptr\n");
+        buffer.push_str("
+    // ----- Sums of interfaces (by lexicographical order)
+    // `ParseNode*` may never be nullptr
+");
         for &(ref name, _) in &sums_of_interfaces {
-            if !self.refgraph.is_used(string_from_nodename(&name)) {
+            if !self.refgraph.is_used(name.to_rc_string().clone()) {
                 continue;
             }
 
@@ -991,7 +1049,7 @@ enum class BinVariant {
             let extra_params = rules_for_this_sum.extra_params;
             let rendered = self.get_method_signature(name, "", "",
                                                      &extra_params);
-            buffer.push_str(&rendered.reindent("")
+            buffer.push_str(&rendered.reindent("    ")
                             .newline_if_not_empty());
         }
         for (name, _) in sums_of_interfaces {
@@ -1005,15 +1063,16 @@ enum class BinVariant {
             let rendered = self.get_method_signature(name, prefix,
                                                      INTERFACE_PARAMS,
                                                      &extra_params);
-            buffer.push_str(&rendered.reindent("")
+            buffer.push_str(&rendered.reindent("    ")
                             .newline_if_not_empty());
         }
     }
 
     fn export_declare_single_interface_methods(&self, buffer: &mut String) {
-        buffer.push_str("\n\n// ----- Interfaces (by lexicographical order)\n");
-        buffer.push_str("// Implementations are autogenerated\n");
-        buffer.push_str("// `ParseNode*` may never be nullptr\n");
+        buffer.push_str("
+    // ----- Interfaces (by lexicographical order)
+    // `ParseNode*` may never be nullptr
+");
         let interfaces_by_name = self.syntax.interfaces_by_name()
             .iter()
             .sorted_by(|a, b| str::cmp(a.0.to_str(), b.0.to_str()));
@@ -1025,9 +1084,9 @@ enum class BinVariant {
             let rules_for_this_interface = self.rules.get(name);
             let extra_params = rules_for_this_interface.extra_params;
 
-            if self.refgraph.is_used(string_from_nodename(name)) {
+            if self.refgraph.is_used(name.to_rc_string().clone()) {
                 let outer = self.get_method_signature(name, "", "", &extra_params);
-                outer_parsers.push(outer.reindent(""));
+                outer_parsers.push(outer.reindent("    "));
             }
 
             let inner_prefix = "Interface";
@@ -1037,7 +1096,7 @@ enum class BinVariant {
             let inner = self.get_method_signature(name, inner_prefix,
                                                   INTERFACE_PARAMS,
                                                   &extra_params);
-            inner_parsers.push(inner.reindent(""));
+            inner_parsers.push(inner.reindent("    "));
         }
 
         for parser in outer_parsers.drain(..) {
@@ -1052,27 +1111,29 @@ enum class BinVariant {
     }
 
     fn export_declare_string_enums_methods(&self, buffer: &mut String) {
-        buffer.push_str("\n\n// ----- String enums (by lexicographical order)\n");
-        buffer.push_str("// Implementations are autogenerated\n");
+        buffer.push_str("
+    // ----- String enums (by lexicographical order)
+");
         let string_enums_by_name = self.syntax.string_enums_by_name()
             .iter()
             .sorted_by(|a, b| str::cmp(a.0.to_str(), b.0.to_str()));
         for (kind, _) in string_enums_by_name {
-            if !self.refgraph.is_used(string_from_nodename(kind)) {
+            if !self.refgraph.is_used(kind.to_rc_string().clone()) {
                 continue;
             }
 
             let rendered = self.get_method_signature(kind, "", "", &None);
-            buffer.push_str(&rendered.reindent(""));
+            buffer.push_str(&rendered.reindent("    "));
             buffer.push_str("\n");
         }
     }
 
     fn export_declare_list_methods(&self, buffer: &mut String) {
-        buffer.push_str("\n\n// ----- Lists (by lexicographical order)\n");
-        buffer.push_str("// Implementations are autogenerated\n");
+        buffer.push_str("
+    // ----- Lists (by lexicographical order)
+");
         for parser in &self.list_parsers_to_generate {
-            if !self.refgraph.is_used(string_from_nodename(&parser.name)) {
+            if !self.refgraph.is_used(parser.name.to_rc_string().clone()) {
                 continue;
             }
 
@@ -1080,16 +1141,17 @@ enum class BinVariant {
             let extra_params = rules_for_this_node.extra_params;
             let rendered = self.get_method_signature(&parser.name, "", "",
                                                      &extra_params);
-            buffer.push_str(&rendered.reindent(""));
+            buffer.push_str(&rendered.reindent("    "));
             buffer.push_str("\n");
         }
     }
 
     fn export_declare_option_methods(&self, buffer: &mut String) {
-        buffer.push_str("\n\n// ----- Default values (by lexicographical order)\n");
-        buffer.push_str("// Implementations are autogenerated\n");
+        buffer.push_str("
+    // ----- Default values (by lexicographical order)
+");
         for parser in &self.option_parsers_to_generate {
-            if !self.refgraph.is_used(string_from_nodename(&parser.name)) {
+            if !self.refgraph.is_used(parser.name.to_rc_string().clone()) {
                 continue;
             }
 
@@ -1097,7 +1159,7 @@ enum class BinVariant {
             let extra_params = rules_for_this_node.extra_params;
             let rendered = self.get_method_signature(&parser.name, "", "",
                                                      &extra_params);
-            buffer.push_str(&rendered.reindent(""));
+            buffer.push_str(&rendered.reindent("    "));
             buffer.push_str("\n");
         }
     }
@@ -1128,13 +1190,30 @@ enum class BinVariant {
         buffer.push_str(&self.rules.hpp_class_header.reindent(""));
         buffer.push_str("\n");
 
-        self.export_declare_string_enums_classes(&mut buffer);
         self.export_declare_sums_of_interface_methods(&mut buffer);
         self.export_declare_single_interface_methods(&mut buffer);
         self.export_declare_string_enums_methods(&mut buffer);
         self.export_declare_list_methods(&mut buffer);
         self.export_declare_option_methods(&mut buffer);
 
+        buffer.push_str("\n");
+        buffer.push_str(&self.rules.hpp_class_footer.reindent(""));
+        buffer.push_str("\n");
+        buffer
+    }
+
+    fn to_spidermonkey_enum_hpp(&self) -> String {
+        let mut buffer = String::new();
+
+        buffer.push_str(&self.generate_autogenerated_warning());
+
+        buffer.push_str(&self.rules.hpp_enums_header.reindent(""));
+        buffer.push_str("\n");
+
+        self.export_declare_string_enums(&mut buffer);
+
+        buffer.push_str("\n");
+        buffer.push_str(&self.rules.hpp_enums_footer.reindent(""));
         buffer.push_str("\n");
         buffer
     }
@@ -1151,7 +1230,7 @@ impl CPPExporter {
             .sorted();
         let kind = name.to_class_cases();
 
-        if self.refgraph.is_used(string_from_nodename(name)) {
+        if self.refgraph.is_used(name.to_rc_string().clone()) {
             let rendered_bnf = format!("/*\n{name} ::= {nodes}\n*/",
                 nodes = nodes.iter()
                     .format("\n    "),
@@ -1239,7 +1318,7 @@ impl CPPExporter {
 
     /// Generate the implementation of a single list parser
     fn generate_implement_list(&self, buffer: &mut String, parser: &ListParserData) {
-        if !self.refgraph.is_used(string_from_nodename(&parser.name)) {
+        if !self.refgraph.is_used(parser.name.to_rc_string().clone()) {
             return;
         }
 
@@ -1332,7 +1411,7 @@ impl CPPExporter {
         debug!(target: "generate_spidermonkey", "Implementing optional value {} backed by {}",
             parser.name.to_str(), parser.elements.to_str());
 
-        if !self.refgraph.is_used(string_from_nodename(&parser.name)) {
+        if !self.refgraph.is_used(parser.name.to_rc_string().clone()) {
             return;
         }
 
@@ -1583,7 +1662,7 @@ impl CPPExporter {
             }
         }
 
-        if self.refgraph.is_used(string_from_nodename(name)) {
+        if self.refgraph.is_used(name.to_rc_string().clone()) {
             // Generate comments
             let comment = format!("\n/*\n{}*/\n", ToWebidl::interface(interface, "", "    "));
             buffer.push_str(&comment);
@@ -1865,7 +1944,7 @@ impl CPPExporter {
                 .iter()
                 .sorted_by(|a, b| str::cmp(a.0.to_str(), b.0.to_str()));
             for (kind, enum_) in string_enums_by_name {
-                if !self.refgraph.is_used(string_from_nodename(kind)) {
+                if !self.refgraph.is_used(kind.to_rc_string().clone()) {
                     continue;
                 }
 
@@ -1968,7 +2047,12 @@ fn main() {
                 .long("out-class")
                 .required(true)
                 .takes_value(true)
-                .help("Output header file (.h, designed to be included from within the class file)"),
+                .help("Output header file for class (.h)"),
+            Arg::with_name("OUT_HEADER_ENUM_FILE")
+                .long("out-enum")
+                .required(true)
+                .takes_value(true)
+                .help("Output header file for enum (.h)"),
             Arg::with_name("OUT_TOKEN_FILE")
                 .long("out-token")
                 .required(true)
@@ -2075,6 +2159,8 @@ fn main() {
 
     write_to("C++ class header code", "OUT_HEADER_CLASS_FILE",
         &exporter.to_spidermonkey_class_hpp());
+    write_to("C++ enum header code", "OUT_HEADER_ENUM_FILE",
+        &exporter.to_spidermonkey_enum_hpp());
     write_to("C++ token header code", "OUT_TOKEN_FILE",
         &exporter.to_spidermonkey_token_hpp());
     write_to("C++ token implementation code", "OUT_IMPL_FILE",

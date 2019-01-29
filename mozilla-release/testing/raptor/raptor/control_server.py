@@ -19,13 +19,14 @@ LOG = get_proxy_logger(component='raptor-control-server')
 here = os.path.abspath(os.path.dirname(__file__))
 
 
-def MakeCustomHandlerClass(results_handler, shutdown_browser):
+def MakeCustomHandlerClass(results_handler, shutdown_browser, write_raw_gecko_profile):
 
     class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
 
         def __init__(self, *args, **kwargs):
             self.results_handler = results_handler
             self.shutdown_browser = shutdown_browser
+            self.write_raw_gecko_profile = write_raw_gecko_profile
             super(MyHandler, self).__init__(*args, **kwargs)
 
         def do_GET(self):
@@ -59,16 +60,25 @@ def MakeCustomHandlerClass(results_handler, shutdown_browser):
             post_body = self.rfile.read(content_len)
             # could have received a status update or test results
             data = json.loads(post_body)
-            LOG.info("received " + data['type'] + ": " + str(data['data']))
-            if data['type'] == 'webext_results':
-                self.results_handler.add(data['data'])
-            elif data['type'] == "webext_raptor-page-timeout":
-                # pageload test has timed out; record it as a failure
-                self.results_handler.add_page_timeout(str(data['data'][0]),
-                                                      str(data['data'][1]))
-            elif data['data'] == "__raptor_shutdownBrowser":
-                # webext is telling us it's done, and time to shutdown the browser
-                self.shutdown_browser()
+
+            if data['type'] == "webext_gecko_profile":
+                # received gecko profiling results
+                _test = str(data['data'][0])
+                _pagecycle = str(data['data'][1])
+                _raw_profile = data['data'][2]
+                LOG.info("received gecko profile for test %s pagecycle %s" % (_test, _pagecycle))
+                self.write_raw_gecko_profile(_test, _pagecycle, _raw_profile)
+            else:
+                LOG.info("received " + data['type'] + ": " + str(data['data']))
+                if data['type'] == 'webext_results':
+                    self.results_handler.add(data['data'])
+                elif data['type'] == "webext_raptor-page-timeout":
+                    # pageload test has timed out; record it as a failure
+                    self.results_handler.add_page_timeout(str(data['data'][0]),
+                                                          str(data['data'][1]))
+                elif data['data'] == "__raptor_shutdownBrowser":
+                    # webext is telling us it's done, and time to shutdown the browser
+                    self.shutdown_browser()
 
         def do_OPTIONS(self):
             self.send_response(200, "ok")
@@ -84,7 +94,7 @@ def MakeCustomHandlerClass(results_handler, shutdown_browser):
 class RaptorControlServer():
     """Container class for Raptor Control Server"""
 
-    def __init__(self, results_handler):
+    def __init__(self, results_handler, debug_mode=False):
         self.raptor_venv = os.path.join(os.getcwd(), 'raptor-venv')
         self.server = None
         self._server_thread = None
@@ -94,6 +104,8 @@ class RaptorControlServer():
         self._finished = False
         self.device = None
         self.app_name = None
+        self.gecko_profile_dir = None
+        self.debug_mode = debug_mode
 
     def start(self):
         config_dir = os.path.join(here, 'tests')
@@ -107,7 +119,9 @@ class RaptorControlServer():
         server_address = ('', self.port)
 
         server_class = BaseHTTPServer.HTTPServer
-        handler_class = MakeCustomHandlerClass(self.results_handler, self.shutdown_browser)
+        handler_class = MakeCustomHandlerClass(self.results_handler,
+                                               self.shutdown_browser,
+                                               self.write_raw_gecko_profile)
 
         httpd = server_class(server_address, handler_class)
 
@@ -118,6 +132,13 @@ class RaptorControlServer():
         self.server = httpd
 
     def shutdown_browser(self):
+        # if debug-mode enabled, leave the browser running - require manual shutdown
+        # this way the browser console remains open, so we can review the logs etc.
+        if self.debug_mode:
+            LOG.info("debug-mode enabled, so NOT shutting down the browser")
+            self._finished = True
+            return
+
         if self.device is not None:
             LOG.info("shutting down android app %s" % self.app_name)
         else:
@@ -125,6 +146,18 @@ class RaptorControlServer():
         self.kill_thread = threading.Thread(target=self.wait_for_quit)
         self.kill_thread.daemon = True
         self.kill_thread.start()
+
+    def write_raw_gecko_profile(self, test, pagecycle, profile):
+        profile_file = '%s_pagecycle_%s.profile' % (test, pagecycle)
+        profile_path = os.path.join(self.gecko_profile_dir, profile_file)
+        LOG.info("writing raw gecko profile to disk: %s" % str(profile_path))
+
+        try:
+            with open(profile_path, 'w') as profile_file:
+                json.dump(profile, profile_file)
+                profile_file.close()
+        except Exception:
+            LOG.critical("Encountered an exception whie writing raw gecko profile to disk")
 
     def wait_for_quit(self, timeout=15):
         """Wait timeout seconds for the process to exit. If it hasn't

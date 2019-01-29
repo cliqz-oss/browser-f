@@ -11,7 +11,7 @@ ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
 
-function init(aEvent) {
+async function init(aEvent) {
   if (aEvent.target != document)
     return;
 
@@ -29,21 +29,19 @@ function init(aEvent) {
     distroIdField.style.display = "block";
 
     // DB-1148: Add platform and extension version to About dialog.
-    let cliqzAddon = AddonManager.getAddonByID("cliqz@cliqz.com").then(cliqzAddon => {
-      let componentsVersion = Services.appinfo.platformVersion;
-      if (cliqzAddon) {
-        componentsVersion += `+${cliqzAddon.version}`;
-      }
-      distroIdField.value += ` (${componentsVersion})`;
+    const cliqzAddon = await AddonManager.getAddonByID("cliqz@cliqz.com");
+    let componentsVersion = Services.appinfo.platformVersion;
+    if (cliqzAddon) {
+      componentsVersion += `+${cliqzAddon.version}`;
+    }
+    distroIdField.value += ` (${componentsVersion})`;
 
-      // Append "(32-bit)" or "(64-bit)" build architecture to the version number:
-      let bundle = Services.strings.createBundle("chrome://browser/locale/browser.properties");
-      let archResource = Services.appinfo.is64Bit
-                         ? "aboutDialog.architecture.sixtyFourBit"
-                         : "aboutDialog.architecture.thirtyTwoBit";
-      let arch = bundle.GetStringFromName(archResource);
-      distroIdField.value += ` (${arch})`;
-    });
+    // Append "(32-bit)" or "(64-bit)" build architecture to the version number:
+    let archResource = Services.appinfo.is64Bit
+                        ? "aboutDialog-architecture-sixtyFourBit"
+                        : "aboutDialog-architecture-thirtyTwoBit";
+    let [arch] = await document.l10n.formatValues([{id: archResource}]);
+    distroIdField.value += ` (${arch})`;
 
 #if 0
     var distroAbout = Services.prefs.getStringPref("distribution.about", "");
@@ -59,6 +57,7 @@ function init(aEvent) {
 #if 0
   // Include the build ID and display warning if this is an "a#" (nightly or aurora) build
   let versionField = document.getElementById("version");
+  versionField.textContent = AppConstants.MOZ_APP_VERSION_DISPLAY;
   let version = Services.appinfo.version;
   if (/a\d+$/.test(version)) {
     let buildID = Services.appinfo.appBuildID;
@@ -93,7 +92,7 @@ function init(aEvent) {
         currentChannelText.hidden = true;
   }
 
-  if (AppConstants.MOZ_UPDATE_CHANNEL == "esr") {
+  if (AppConstants.MOZ_APP_VERSION_DISPLAY.endsWith("esr")) {
     document.getElementById("release").hidden = false;
   }
   if (AppConstants.platform == "macosx") {

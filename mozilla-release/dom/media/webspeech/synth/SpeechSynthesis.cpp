@@ -8,7 +8,6 @@
 #include "nsSpeechTask.h"
 #include "mozilla/Logging.h"
 
-#include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/Element.h"
 
 #include "mozilla/dom/SpeechSynthesisBinding.h"
@@ -19,9 +18,7 @@
 #include "nsIDocShell.h"
 
 #undef LOG
-mozilla::LogModule*
-GetSpeechSynthLog()
-{
+mozilla::LogModule* GetSpeechSynthLog() {
   static mozilla::LazyLogModule sLog("SpeechSynthesis");
 
   return sLog;
@@ -33,13 +30,15 @@ namespace dom {
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(SpeechSynthesis)
 
-NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(SpeechSynthesis, DOMEventTargetHelper)
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(SpeechSynthesis,
+                                                DOMEventTargetHelper)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mCurrentTask)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mSpeechQueue)
   tmp->mVoiceCache.Clear();
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
-NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(SpeechSynthesis, DOMEventTargetHelper)
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(SpeechSynthesis,
+                                                  DOMEventTargetHelper)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mCurrentTask)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mSpeechQueue)
   for (auto iter = tmp->mVoiceCache.Iter(); !iter.Done(); iter.Next()) {
@@ -57,10 +56,9 @@ NS_IMPL_ADDREF_INHERITED(SpeechSynthesis, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(SpeechSynthesis, DOMEventTargetHelper)
 
 SpeechSynthesis::SpeechSynthesis(nsPIDOMWindowInner* aParent)
-  : DOMEventTargetHelper(aParent)
-  , mHoldQueue(false)
-  , mInnerID(aParent->WindowID())
-{
+    : DOMEventTargetHelper(aParent),
+      mHoldQueue(false),
+      mInnerID(aParent->WindowID()) {
   MOZ_ASSERT(NS_IsMainThread());
 
   nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
@@ -68,39 +66,32 @@ SpeechSynthesis::SpeechSynthesis(nsPIDOMWindowInner* aParent)
     obs->AddObserver(this, "inner-window-destroyed", true);
     obs->AddObserver(this, "synth-voices-changed", true);
   }
-
 }
 
-SpeechSynthesis::~SpeechSynthesis()
-{
-}
+SpeechSynthesis::~SpeechSynthesis() {}
 
-JSObject*
-SpeechSynthesis::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
-{
+JSObject* SpeechSynthesis::WrapObject(JSContext* aCx,
+                                      JS::Handle<JSObject*> aGivenProto) {
   return SpeechSynthesis_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-bool
-SpeechSynthesis::Pending() const
-{
+bool SpeechSynthesis::Pending() const {
   switch (mSpeechQueue.Length()) {
-  case 0:
-    return false;
+    case 0:
+      return false;
 
-  case 1:
-    return mSpeechQueue.ElementAt(0)->GetState() == SpeechSynthesisUtterance::STATE_PENDING;
+    case 1:
+      return mSpeechQueue.ElementAt(0)->GetState() ==
+             SpeechSynthesisUtterance::STATE_PENDING;
 
-  default:
-    return true;
+    default:
+      return true;
   }
 }
 
-bool
-SpeechSynthesis::Speaking() const
-{
-  if (!mSpeechQueue.IsEmpty() &&
-      mSpeechQueue.ElementAt(0)->GetState() == SpeechSynthesisUtterance::STATE_SPEAKING) {
+bool SpeechSynthesis::Speaking() const {
+  if (!mSpeechQueue.IsEmpty() && mSpeechQueue.ElementAt(0)->GetState() ==
+                                     SpeechSynthesisUtterance::STATE_SPEAKING) {
     return true;
   }
 
@@ -108,25 +99,21 @@ SpeechSynthesis::Speaking() const
   return nsSynthVoiceRegistry::GetInstance()->IsSpeaking();
 }
 
-bool
-SpeechSynthesis::Paused() const
-{
+bool SpeechSynthesis::Paused() const {
   return mHoldQueue || (mCurrentTask && mCurrentTask->IsPrePaused()) ||
          (!mSpeechQueue.IsEmpty() && mSpeechQueue.ElementAt(0)->IsPaused());
 }
 
-bool
-SpeechSynthesis::HasEmptyQueue() const
-{
+bool SpeechSynthesis::HasEmptyQueue() const {
   return mSpeechQueue.Length() == 0;
 }
 
-bool SpeechSynthesis::HasVoices() const
-{
+bool SpeechSynthesis::HasVoices() const {
   uint32_t voiceCount = mVoiceCache.Count();
   if (voiceCount == 0) {
-    nsresult rv = nsSynthVoiceRegistry::GetInstance()->GetVoiceCount(&voiceCount);
-    if(NS_WARN_IF(NS_FAILED(rv))) {
+    nsresult rv =
+        nsSynthVoiceRegistry::GetInstance()->GetVoiceCount(&voiceCount);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
       return false;
     }
   }
@@ -134,9 +121,7 @@ bool SpeechSynthesis::HasVoices() const
   return voiceCount != 0;
 }
 
-void
-SpeechSynthesis::Speak(SpeechSynthesisUtterance& aUtterance)
-{
+void SpeechSynthesis::Speak(SpeechSynthesisUtterance& aUtterance) {
   if (!mInnerID) {
     return;
   }
@@ -151,14 +136,13 @@ SpeechSynthesis::Speak(SpeechSynthesisUtterance& aUtterance)
 
   // If we only have one item in the queue, we aren't pre-paused, and
   // we have voices available, speak it.
-  if (mSpeechQueue.Length() == 1 && !mCurrentTask && !mHoldQueue && HasVoices()) {
+  if (mSpeechQueue.Length() == 1 && !mCurrentTask && !mHoldQueue &&
+      HasVoices()) {
     AdvanceQueue();
   }
 }
 
-void
-SpeechSynthesis::AdvanceQueue()
-{
+void SpeechSynthesis::AdvanceQueue() {
   LOG(LogLevel::Debug,
       ("SpeechSynthesis::AdvanceQueue length=%zu", mSpeechQueue.Length()));
 
@@ -181,18 +165,16 @@ SpeechSynthesis::AdvanceQueue()
   }
 
   mCurrentTask =
-    nsSynthVoiceRegistry::GetInstance()->SpeakUtterance(*utterance, docLang);
+      nsSynthVoiceRegistry::GetInstance()->SpeakUtterance(*utterance, docLang);
 
   if (mCurrentTask) {
     mCurrentTask->SetSpeechSynthesis(this);
   }
 }
 
-void
-SpeechSynthesis::Cancel()
-{
-  if (!mSpeechQueue.IsEmpty() &&
-      mSpeechQueue.ElementAt(0)->GetState() == SpeechSynthesisUtterance::STATE_SPEAKING) {
+void SpeechSynthesis::Cancel() {
+  if (!mSpeechQueue.IsEmpty() && mSpeechQueue.ElementAt(0)->GetState() ==
+                                     SpeechSynthesisUtterance::STATE_SPEAKING) {
     // Remove all queued utterances except for current one, we will remove it
     // in OnEnd
     mSpeechQueue.RemoveElementsAt(1, mSpeechQueue.Length() - 1);
@@ -205,24 +187,21 @@ SpeechSynthesis::Cancel()
   }
 }
 
-void
-SpeechSynthesis::Pause()
-{
+void SpeechSynthesis::Pause() {
   if (Paused()) {
     return;
   }
 
   if (mCurrentTask && !mSpeechQueue.IsEmpty() &&
-      mSpeechQueue.ElementAt(0)->GetState() == SpeechSynthesisUtterance::STATE_SPEAKING) {
+      mSpeechQueue.ElementAt(0)->GetState() ==
+          SpeechSynthesisUtterance::STATE_SPEAKING) {
     mCurrentTask->Pause();
   } else {
     mHoldQueue = true;
   }
 }
 
-void
-SpeechSynthesis::Resume()
-{
+void SpeechSynthesis::Resume() {
   if (!Paused()) {
     return;
   }
@@ -236,9 +215,7 @@ SpeechSynthesis::Resume()
   }
 }
 
-void
-SpeechSynthesis::OnEnd(const nsSpeechTask* aTask)
-{
+void SpeechSynthesis::OnEnd(const nsSpeechTask* aTask) {
   MOZ_ASSERT(mCurrentTask == aTask);
 
   if (!mSpeechQueue.IsEmpty()) {
@@ -249,21 +226,19 @@ SpeechSynthesis::OnEnd(const nsSpeechTask* aTask)
   AdvanceQueue();
 }
 
-void
-SpeechSynthesis::GetVoices(nsTArray< RefPtr<SpeechSynthesisVoice> >& aResult)
-{
+void SpeechSynthesis::GetVoices(
+    nsTArray<RefPtr<SpeechSynthesisVoice> >& aResult) {
   aResult.Clear();
   uint32_t voiceCount = 0;
   nsCOMPtr<nsPIDOMWindowInner> window = GetOwner();
   nsCOMPtr<nsIDocShell> docShell = window ? window->GetDocShell() : nullptr;
-
 
   if (nsContentUtils::ShouldResistFingerprinting(docShell)) {
     return;
   }
 
   nsresult rv = nsSynthVoiceRegistry::GetInstance()->GetVoiceCount(&voiceCount);
-  if(NS_WARN_IF(NS_FAILED(rv))) {
+  if (NS_WARN_IF(NS_FAILED(rv))) {
     return;
   }
 
@@ -297,9 +272,7 @@ SpeechSynthesis::GetVoices(nsTArray< RefPtr<SpeechSynthesisVoice> >& aResult)
 
 // For testing purposes, allows us to cancel the current task that is
 // misbehaving, and flush the queue.
-void
-SpeechSynthesis::ForceEnd()
-{
+void SpeechSynthesis::ForceEnd() {
   if (mCurrentTask) {
     mCurrentTask->ForceEnd();
   }
@@ -307,10 +280,8 @@ SpeechSynthesis::ForceEnd()
 
 NS_IMETHODIMP
 SpeechSynthesis::Observe(nsISupports* aSubject, const char* aTopic,
-                         const char16_t* aData)
-{
+                         const char16_t* aData) {
   MOZ_ASSERT(NS_IsMainThread());
-
 
   if (strcmp(aTopic, "inner-window-destroyed") == 0) {
     nsCOMPtr<nsISupportsPRUint64> wrapper = do_QueryInterface(aSubject);
@@ -324,7 +295,8 @@ SpeechSynthesis::Observe(nsISupports* aSubject, const char* aTopic,
       mInnerID = 0;
       Cancel();
 
-      nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
+      nsCOMPtr<nsIObserverService> obs =
+          mozilla::services::GetObserverService();
       if (obs) {
         obs->RemoveObserver(this, "inner-window-destroyed");
       }
@@ -346,5 +318,5 @@ SpeechSynthesis::Observe(nsISupports* aSubject, const char* aTopic,
   return NS_OK;
 }
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla

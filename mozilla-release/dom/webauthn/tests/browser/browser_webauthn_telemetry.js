@@ -7,15 +7,15 @@
 const TEST_URL = "https://example.com/";
 
 // Return the scalars from the parent-process.
-function getParentProcessScalars(aChannel, aKeyed = false, aClear = false) {
+function getParentProcessScalars(aKeyed = false, aClear = false) {
   const scalars = aKeyed ?
-    Services.telemetry.snapshotKeyedScalars(aChannel, aClear)["parent"] :
-    Services.telemetry.snapshotScalars(aChannel, aClear)["parent"];
+    Services.telemetry.getSnapshotForKeyedScalars("main", aClear)["parent"] :
+    Services.telemetry.getSnapshotForScalars("main", aClear)["parent"];
   return scalars || {};
 }
 
 function getTelemetryForScalar(aName) {
-  let scalars = getParentProcessScalars(Ci.nsITelemetry.DATASET_RELEASE_CHANNEL_OPTOUT, true);
+  let scalars = getParentProcessScalars(true);
   return scalars[aName] || 0;
 }
 
@@ -30,10 +30,7 @@ function validateHistogramEntryCount(aHistogramName, aExpectedCount) {
   let hist = Services.telemetry.getHistogramById(aHistogramName);
   let resultIndexes = hist.snapshot();
 
-  let entriesSeen = 0;
-  for (let i = 0; i < resultIndexes.counts.length; i++) {
-    entriesSeen += resultIndexes.counts[i];
-  }
+  let entriesSeen = Object.values(resultIndexes.values).reduce((a,b) => a + b, 0);
 
   is(entriesSeen, aExpectedCount, "Expecting " + aExpectedCount + " histogram entries in " +
      aHistogramName);

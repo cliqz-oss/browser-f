@@ -8,8 +8,8 @@ import re
 
 from .base import (
     CAN_NONE, CAN_COPY, CAN_SKIP, CAN_MERGE,
-    EntityBase, Entity, Comment, OffsetComment, Junk, Whitespace,
-    Parser
+    Entry, Entity, Comment, OffsetComment, Junk, Whitespace,
+    BadEntity, Parser,
 )
 from .android import (
     AndroidParser
@@ -26,20 +26,24 @@ from .fluent import (
 from .ini import (
     IniParser, IniSection,
 )
+from .po import (
+    PoParser
+)
 from .properties import (
     PropertiesParser, PropertiesEntity
 )
 
 __all__ = [
     "CAN_NONE", "CAN_COPY", "CAN_SKIP", "CAN_MERGE",
-    "Junk", "EntityBase", "Entity", "Whitespace", "Comment", "OffsetComment",
-    "Parser",
+    "Junk", "Entry", "Entity", "Whitespace", "Comment", "OffsetComment",
+    "BadEntity", "Parser",
     "AndroidParser",
     "DefinesParser", "DefinesInstruction",
     "DTDParser", "DTDEntity",
     "FluentParser", "FluentComment", "FluentEntity",
     "FluentMessage", "FluentTerm",
     "IniParser", "IniSection",
+    "PoParser",
     "PropertiesParser", "PropertiesEntity",
 ]
 
@@ -60,4 +64,5 @@ __constructors = [
     ('\\.ini$', IniParser()),
     ('\\.inc$', DefinesParser()),
     ('\\.ftl$', FluentParser()),
+    ('\\.pot?$', PoParser()),
 ]

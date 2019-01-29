@@ -85,6 +85,14 @@ def filter_release_tasks(task, parameters):
     return True
 
 
+def filter_out_missing_signoffs(task, parameters):
+    for signoff in parameters['required_signoffs']:
+        if signoff not in parameters['signoff_urls'] and \
+           signoff in task.attributes.get('required_signoffs', []):
+            return False
+    return True
+
+
 def standard_filter(task, parameters):
     return all(
         filter_func(task, parameters) for filter_func in
@@ -320,6 +328,9 @@ def target_tasks_promote_desktop(full_task_graph, parameters, graph_config):
             if 'secondary' in task.kind:
                 return False
 
+        if not filter_out_missing_signoffs(task, parameters):
+            return False
+
         if task.attributes.get('shipping_phase') == 'promote':
             return True
 
@@ -335,6 +346,8 @@ def target_tasks_push_desktop(full_task_graph, parameters, graph_config):
     )
 
     def filter(task):
+        if not filter_out_missing_signoffs(task, parameters):
+            return False
         # Include promotion tasks; these will be optimized out
         if task.label in filtered_for_candidates:
             return True
@@ -363,6 +376,8 @@ def target_tasks_ship_desktop(full_task_graph, parameters, graph_config):
         )
 
     def filter(task):
+        if not filter_out_missing_signoffs(task, parameters):
+            return False
         # Include promotion tasks; these will be optimized out
         if task.label in filtered_for_candidates:
             return True
@@ -540,10 +555,9 @@ def target_tasks_nightly_desktop(full_task_graph, parameters, graph_config):
 @_target_task('searchfox_index')
 def target_tasks_searchfox(full_task_graph, parameters, graph_config):
     """Select tasks required for indexing Firefox for Searchfox web site each day"""
-    # For now we only do Linux and Mac debug builds. Windows builds
-    # are currently broken (bug 1418415).
     return ['searchfox-linux64-searchfox/debug',
-            'searchfox-macosx64-searchfox/debug']
+            'searchfox-macosx64-searchfox/debug',
+            'searchfox-win64-searchfox/debug']
 
 
 @_target_task('pipfile_update')
@@ -587,6 +601,12 @@ def target_tasks_staging_release(full_task_graph, parameters, graph_config):
     def filter(task):
         if not task.attributes.get('shipping_product'):
             return False
+        if (parameters['release_type'].startswith('esr')
+                and 'android' in task.attributes.get('build_platform', '')):
+            return False
+        if (parameters['release_type'] != 'beta'
+                and 'devedition' in task.attributes.get('build_platform', '')):
+            return False
         if task.attributes.get('shipping_phase') == 'build':
             return True
         return False
@@ -594,18 +614,34 @@ def target_tasks_staging_release(full_task_graph, parameters, graph_config):
     return [l for l, t in full_task_graph.tasks.iteritems() if filter(t)]
 
 
-@_target_task('beta_simulation')
-def target_tasks_beta_simulation(full_task_graph, parameters, graph_config):
+@_target_task('release_simulation')
+def target_tasks_release_simulation(full_task_graph, parameters, graph_config):
     """
-    Select builds that would run on mozilla-beta.
+    Select builds that would run on push on a release branch.
     """
+    project_by_release = {
+        'nightly': 'mozilla-central',
+        'beta': 'mozilla-beta',
+        'release': 'mozilla-release',
+        'esr60': 'mozilla-esr60',
+    }
+    target_project = project_by_release.get(parameters['release_type'])
+    if target_project is None:
+        raise Exception('Unknown or unspecified release type in simulation run.')
 
-    def filter_for_beta(task):
+    def filter_for_target_project(task):
         """Filter tasks by project.  Optionally enable nightlies."""
         run_on_projects = set(task.attributes.get('run_on_projects', []))
-        return match_run_on_projects('mozilla-beta', run_on_projects)
+        return match_run_on_projects(target_project, run_on_projects)
+
+    def filter_out_android_on_esr(task):
+        if (parameters['release_type'].startswith('esr')
+                and 'android' in task.attributes.get('build_platform', '')):
+            return False
+        return True
 
     return [l for l, t in full_task_graph.tasks.iteritems()
             if filter_release_tasks(t, parameters)
             and filter_out_cron(t, parameters)
-            and filter_for_beta(t)]
+            and filter_for_target_project(t)
+            and filter_out_android_on_esr(t)]

@@ -31,7 +31,7 @@ registerCleanupFunction(() => {
 const openAnimationInspector = async function() {
   const { inspector, toolbox } = await openInspectorSidebarTab(TAB_NAME);
   await inspector.once("inspector-updated");
-  const { animationinspector: animationInspector } = inspector;
+  const animationInspector = inspector.getPanel("animationinspector");
   await waitForRendering(animationInspector);
   const panel = inspector.panelWin.document.getElementById("animation-container");
   return { animationInspector, toolbox, inspector, panel };
@@ -49,9 +49,7 @@ const closeAnimationInspector = async function() {
 
 /**
  * Some animation features are not enabled by default in release/beta channels
- * yet including:
- *   * parts of the Web Animations API (Bug 1264101), and
- *   * the frames() timing function (Bug 1379582).
+ * yet including parts of the Web Animations API.
  */
 const enableAnimationFeatures = function() {
   return new Promise(resolve => {
@@ -60,7 +58,7 @@ const enableAnimationFeatures = function() {
       ["dom.animations-api.getAnimations.enabled", true],
       ["dom.animations-api.implicit-keyframes.enabled", true],
       ["dom.animations-api.timelines.enabled", true],
-      ["layout.css.frames-timing.enabled", true],
+      ["layout.css.step-position-jump.enabled", true],
     ]}, resolve);
   });
 };
@@ -274,7 +272,7 @@ const clickOnTargetNode = async function(animationInspector, panel, index) {
   info(`Click on a target node in animation target component[${ index }]`);
   const targetEl = panel.querySelectorAll(".animation-target .objectBox")[index];
   targetEl.scrollIntoView(false);
-  const onHighlight = animationInspector.inspector.toolbox.once("node-highlight");
+  const onHighlight = animationInspector.inspector.highlighter.once("node-highlight");
   const onAnimationTargetUpdated = animationInspector.once("animation-target-rendered");
   EventUtils.synthesizeMouseAtCenter(targetEl, {}, targetEl.ownerGlobal);
   await onAnimationTargetUpdated;
@@ -407,7 +405,7 @@ const selectAnimationInspector = async function(inspector) {
   const onUpdated = inspector.once("inspector-updated");
   inspector.sidebar.select("animationinspector");
   await onUpdated;
-  await waitForRendering(inspector.animationinspector);
+  await waitForRendering(inspector.getPanel("animationinspector"));
 };
 
 /**
@@ -430,7 +428,7 @@ const selectNodeAndWaitForAnimations = async function(data, inspector, reason = 
   const onUpdated = inspector.once("inspector-updated");
   await selectNode(data, inspector, reason);
   await onUpdated;
-  await waitForRendering(inspector.animationinspector);
+  await waitForRendering(inspector.getPanel("animationinspector"));
 };
 
 /**
@@ -571,7 +569,7 @@ function _afterDispatchDone(store, type) {
       },
       run: (dispatch, getState, action) => {
         resolve(action);
-      }
+      },
     });
   });
 }

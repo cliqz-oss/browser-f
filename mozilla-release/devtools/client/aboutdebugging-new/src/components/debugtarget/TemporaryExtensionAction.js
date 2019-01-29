@@ -14,6 +14,7 @@ const Localized = createFactory(FluentReact.Localized);
 const InspectAction = createFactory(require("./InspectAction"));
 
 const Actions = require("../../actions/index");
+const Types = require("../../types/index");
 
 /**
  * This component provides components that inspect/reload/remove temporary extension.
@@ -22,13 +23,13 @@ class TemporaryExtensionAction extends PureComponent {
   static get propTypes() {
     return {
       dispatch: PropTypes.func.isRequired,
-      target: PropTypes.object.isRequired,
+      target: Types.debugTarget.isRequired,
     };
   }
 
   reload() {
     const { dispatch, target } = this.props;
-    dispatch(Actions.reloadTemporaryExtension(target.details.actor));
+    dispatch(Actions.reloadTemporaryExtension(target.id));
   }
 
   remove() {
@@ -40,7 +41,9 @@ class TemporaryExtensionAction extends PureComponent {
     const { dispatch, target } = this.props;
 
     return dom.div(
-      {},
+      {
+        className: "toolbar",
+      },
       InspectAction({ dispatch, target }),
       Localized(
         {
@@ -48,7 +51,7 @@ class TemporaryExtensionAction extends PureComponent {
         },
         dom.button(
           {
-            className: "aboutdebugging-button",
+            className: "default-button",
             onClick: e => this.reload(),
           },
           "Reload",
@@ -60,7 +63,7 @@ class TemporaryExtensionAction extends PureComponent {
         },
         dom.button(
           {
-            className: "aboutdebugging-button js-temporary-extension-remove-button",
+            className: "default-button js-temporary-extension-remove-button",
             onClick: e => this.remove(),
           },
           "Remove",

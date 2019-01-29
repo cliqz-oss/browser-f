@@ -126,6 +126,7 @@ var gCloseWindowTimeoutCounter = 0;
 
 // The following vars are for restoring previous preference values (if present)
 // when the test finishes.
+var gAppUpdateAuto;
 var gAppUpdateDisabled; // app.update.disabledForTesting
 var gAppUpdateServiceEnabled; // app.update.service.enabled
 var gAppUpdateStagingEnabled; // app.update.staging.enabled
@@ -286,7 +287,7 @@ function finishTestDefault() {
   gEnv.set("MOZ_TEST_SKIP_UPDATE_STAGE", "");
   resetFiles();
   removeUpdateDirsAndFiles();
-  reloadUpdateManagerData();
+  reloadUpdateManagerData(true);
 
   Services.ww.unregisterNotification(gWindowObserver);
   if (gDocElem) {
@@ -788,8 +789,17 @@ function setupPrefs() {
   }
   Services.prefs.setBoolPref(PREF_APP_UPDATE_DISABLEDFORTESTING, false);
 
-  if (!Services.prefs.getBoolPref(PREF_APP_UPDATE_AUTO, false)) {
-    Services.prefs.setBoolPref(PREF_APP_UPDATE_AUTO, true);
+  if (IS_WIN) {
+    let configFile = getUpdateConfigFile();
+    if (configFile.exists()) {
+      let configData = JSON.parse(readFileBytes(configFile));
+      gAppUpdateAuto = !!configData[CONFIG_APP_UPDATE_AUTO];
+    }
+  } else if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_AUTO)) {
+    gAppUpdateAuto = Services.prefs.getBoolPref(PREF_APP_UPDATE_AUTO);
+  }
+  if (gAppUpdateAuto !== true) {
+    setAppUpdateAutoSync(true);
   }
 
   if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_SERVICE_ENABLED)) {
@@ -856,9 +866,7 @@ function resetPrefs() {
     Services.prefs.clearUserPref(PREF_APP_UPDATE_DISABLEDFORTESTING);
   }
 
-  if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_AUTO)) {
-    Services.prefs.clearUserPref(PREF_APP_UPDATE_AUTO);
-  }
+  setAppUpdateAutoSync(gAppUpdateAuto);
 
   if (gAppUpdateServiceEnabled !== undefined) {
     Services.prefs.setBoolPref(PREF_APP_UPDATE_SERVICE_ENABLED, gAppUpdateServiceEnabled);

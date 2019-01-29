@@ -146,7 +146,7 @@ class Test(object):
         return metadata
 
     @classmethod
-    def from_manifest(cls, manifest_item, inherit_metadata, test_metadata):
+    def from_manifest(cls, manifest_file, manifest_item, inherit_metadata, test_metadata):
         timeout = cls.long_timeout if manifest_item.timeout == "long" else cls.default_timeout
         protocol = "https" if hasattr(manifest_item, "https") and manifest_item.https else "http"
         return cls(manifest_item.source_file.tests_root,
@@ -243,6 +243,26 @@ class Test(object):
         return None
 
     @property
+    def mozleak_allowed(self):
+        mozleak_allowed = set()
+        for meta in self.itermeta():
+            mozleak_allowed |= meta.leak_allowed
+            if atom_reset in mozleak_allowed:
+                mozleak_allowed.remove(atom_reset)
+                break
+        return mozleak_allowed
+
+    @property
+    def mozleak_threshold(self):
+        rv = {}
+        for meta in self.itermeta(None):
+            threshold = meta.leak_threshold
+            for key, value in threshold.iteritems():
+                if key not in rv:
+                    rv[key] = value
+        return rv
+
+    @property
     def tags(self):
         tags = set()
         for meta in self.itermeta():
@@ -302,7 +322,7 @@ class TestharnessTest(Test):
         self.scripts = scripts or []
 
     @classmethod
-    def from_manifest(cls, manifest_item, inherit_metadata, test_metadata):
+    def from_manifest(cls, manifest_file, manifest_item, inherit_metadata, test_metadata):
         timeout = cls.long_timeout if manifest_item.timeout == "long" else cls.default_timeout
         protocol = "https" if hasattr(manifest_item, "https") and manifest_item.https else "http"
         testdriver = manifest_item.testdriver if hasattr(manifest_item, "testdriver") else False
@@ -352,6 +372,7 @@ class ReftestTest(Test):
 
     @classmethod
     def from_manifest(cls,
+                      manifest_file,
                       manifest_test,
                       inherit_metadata,
                       test_metadata,
@@ -394,9 +415,10 @@ class ReftestTest(Test):
 
             references_seen.add(comparison_key)
 
-            manifest_node = manifest_test.manifest.get_reference(ref_url)
+            manifest_node = manifest_file.get_reference(ref_url)
             if manifest_node:
-                reference = ReftestTest.from_manifest(manifest_node,
+                reference = ReftestTest.from_manifest(manifest_file,
+                                                      manifest_node,
                                                       [],
                                                       None,
                                                       nodes,
@@ -448,6 +470,6 @@ manifest_test_cls = {"reftest": ReftestTest,
                      "wdspec": WdspecTest}
 
 
-def from_manifest(manifest_test, inherit_metadata, test_metadata):
+def from_manifest(manifest_file, manifest_test, inherit_metadata, test_metadata):
     test_cls = manifest_test_cls[manifest_test.item_type]
-    return test_cls.from_manifest(manifest_test, inherit_metadata, test_metadata)
+    return test_cls.from_manifest(manifest_file, manifest_test, inherit_metadata, test_metadata)

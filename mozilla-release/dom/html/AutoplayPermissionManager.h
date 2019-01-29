@@ -12,7 +12,6 @@
 #include "nsIContentPermissionPrompt.h"
 #include "nsISupports.h"
 #include "nsIWeakReferenceUtils.h"
-#include "nsWeakReference.h"
 
 class nsGlobalWindowInner;
 class nsIEventTarget;
@@ -26,9 +25,8 @@ namespace mozilla {
 // multiple requests are merged into one, in order to avoid showing multiple
 // doorhangers on one tab at once.
 class AutoplayPermissionManager final
-  : public SupportsWeakPtr<AutoplayPermissionManager>
-{
-public:
+    : public SupportsWeakPtr<AutoplayPermissionManager> {
+ public:
   MOZ_DECLARE_WEAKREFERENCE_TYPENAME(AutoplayPermissionManager)
   NS_INLINE_DECL_REFCOUNTING(AutoplayPermissionManager)
 
@@ -54,7 +52,7 @@ public:
   // returned by RequestWithPrompt().
   void DenyPlayRequestIfExists();
 
-private:
+ private:
   ~AutoplayPermissionManager();
 
   nsWeakPtr mWindow;
@@ -65,6 +63,6 @@ private:
   bool mRequestDispatched = false;
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // __AutoplayPermissionRequestManager_h__
+#endif  // __AutoplayPermissionRequestManager_h__

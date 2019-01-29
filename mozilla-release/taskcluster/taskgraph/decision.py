@@ -19,9 +19,11 @@ from .generator import TaskGraphGenerator
 from .parameters import Parameters, get_version, get_app_version
 from .taskgraph import TaskGraph
 from .try_option_syntax import parse_message
+from .util.schema import validate_schema, Schema
 from taskgraph.util.hg import get_hg_revision_branch
 from taskgraph.util.partials import populate_release_history
 from taskgraph.util.yaml import load_yaml
+from voluptuous import Required, Optional
 
 
 logger = logging.getLogger(__name__)
@@ -78,6 +80,12 @@ PER_PROJECT_PARAMETERS = {
         'release_type': 'esr60',
     },
 
+    'comm-central': {
+        'target_tasks_method': 'default',
+        'optimize_target_tasks': True,
+        'release_type': 'nightly',
+    },
+
     'comm-beta': {
         'target_tasks_method': 'mozilla_beta_tasks',
         'optimize_target_tasks': True,
@@ -101,6 +109,16 @@ PER_PROJECT_PARAMETERS = {
         'optimize_target_tasks': True,
     }
 }
+
+try_task_config_schema = Schema({
+    Required('tasks'): [basestring],
+    Optional('templates'): {basestring: object},
+})
+
+
+try_task_config_schema_v2 = Schema({
+    Optional('parameters'): {basestring: object},
+})
 
 
 def full_task_graph_to_runnable_jobs(full_task_json):
@@ -204,7 +222,6 @@ def get_decision_parameters(config, options):
     # Define default filter list, as most configurations shouldn't need
     # custom filters.
     parameters['filters'] = [
-        'check_servo',
         'target_tasks_method',
     ]
     parameters['existing_tasks'] = {}
@@ -222,6 +239,8 @@ def get_decision_parameters(config, options):
     parameters['release_partner_build_number'] = 1
     parameters['release_enable_emefree'] = False
     parameters['release_product'] = None
+    parameters['required_signoffs'] = []
+    parameters['signoff_urls'] = {}
     parameters['try_mode'] = None
     parameters['try_task_config'] = None
     parameters['try_options'] = None
@@ -277,11 +296,19 @@ def set_try_config(parameters, task_config_file):
         logger.info("using try tasks from {}".format(task_config_file))
         with open(task_config_file, 'r') as fh:
             task_config = json.load(fh)
-        task_config_version = task_config.get('version', 1)
+        task_config_version = task_config.pop('version', 1)
         if task_config_version == 1:
+            validate_schema(
+                try_task_config_schema, task_config,
+                "Invalid v1 `try_task_config.json`.",
+            )
             parameters['try_mode'] = 'try_task_config'
             parameters['try_task_config'] = task_config
         elif task_config_version == 2:
+            validate_schema(
+                try_task_config_schema_v2, task_config,
+                "Invalid v1 `try_task_config.json`.",
+            )
             parameters.update(task_config['parameters'])
             return
         else:

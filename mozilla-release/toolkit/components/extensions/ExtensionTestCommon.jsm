@@ -60,10 +60,9 @@ XPCOMUtils.defineLazyGetter(this, "console", () => ExtensionCommon.getConsole())
  * @param {nsIFile} file
  * @param {nsIURI} rootURI
  * @param {string} installType
- * @param {boolean} [embedded = false]
  */
 class MockExtension {
-  constructor(file, rootURI, installType, embedded) {
+  constructor(file, rootURI, installType) {
     this.id = null;
     this.file = file;
     this.rootURI = rootURI;
@@ -89,9 +88,7 @@ class MockExtension {
     this._extension = null;
     this._extensionPromise = promiseEvent("startup");
     this._readyPromise = promiseEvent("ready");
-    if (!embedded) {
-      this._uninstallPromise = promiseEvent("uninstall-complete");
-    }
+    this._uninstallPromise = promiseEvent("uninstall-complete");
   }
 
   maybeSetID(uri, id) {
@@ -175,17 +172,10 @@ function provide(obj, keys, value, override = false) {
 }
 
 var ExtensionTestCommon = class ExtensionTestCommon {
-  static generateManifest(manifest) {
-    provide(manifest, ["name"], "Generated extension");
-    provide(manifest, ["manifest_version"], 2);
-    provide(manifest, ["version"], "1.0");
-    return manifest;
-  }
-
   /**
    * This code is designed to make it easy to test a WebExtension
    * without creating a bunch of files. Everything is contained in a
-   * single JSON blob.
+   * single JS object.
    *
    * Properties:
    *   "background": "<JS code>"
@@ -204,19 +194,18 @@ var ExtensionTestCommon = class ExtensionTestCommon {
    * To make things easier, the value of "background" and "files"[] can
    * be a function, which is converted to source that is run.
    *
-   * The generated extension is stored in the system temporary directory,
-   * and an nsIFile object pointing to it is returned.
-   *
    * @param {object} data
-   * @returns {nsIFile}
+   * @returns {object}
    */
-  static generateXPI(data) {
+  static generateFiles(data) {
+    let files = {};
+
+    Object.assign(files, data.files);
+
     let manifest = data.manifest;
     if (!manifest) {
       manifest = {};
     }
-
-    let files = Object.assign({}, data.files);
 
     provide(manifest, ["name"], "Generated extension");
     provide(manifest, ["manifest_version"], 2);
@@ -229,62 +218,30 @@ var ExtensionTestCommon = class ExtensionTestCommon {
       files[bgScript] = data.background;
     }
 
-    provide(files, ["manifest.json"], manifest);
+    provide(files, ["manifest.json"], JSON.stringify(manifest));
 
-    if (data.embedded) {
-      // Package this as a webextension embedded inside a legacy
-      // extension.
-
-      let xpiFiles = {
-        "install.rdf": `<?xml version="1.0" encoding="UTF-8"?>
-          <RDF xmlns="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-               xmlns:em="http://www.mozilla.org/2004/em-rdf#">
-              <Description about="urn:mozilla:install-manifest"
-                  em:id="${manifest.applications.gecko.id}"
-                  em:name="${manifest.name}"
-                  em:type="2"
-                  em:version="${manifest.version}"
-                  em:description=""
-                  em:multiprocessCompatible="true"
-                  em:hasEmbeddedWebExtension="true"
-                  em:bootstrap="true">
-
-                  <!-- Firefox -->
-                  <em:targetApplication>
-                      <Description
-                          em:id="{ec8030f7-c20a-464f-9b0e-13a3a9e97384}"
-                          em:minVersion="51.0a1"
-                          em:maxVersion="*"/>
-                  </em:targetApplication>
-                  <em:targetApplication>
-                    <Description>
-                      <em:id>toolkit@mozilla.org</em:id>
-                      <em:minVersion>0</em:minVersion>
-                      <em:maxVersion>*</em:maxVersion>
-                    </Description>
-                  </em:targetApplication>
-              </Description>
-          </RDF>
-        `,
-
-        "bootstrap.js": `
-          function install() {}
-          function uninstall() {}
-          function shutdown() {}
-
-          function startup(data) {
-            data.webExtension.startup();
-          }
-        `,
-      };
-
-      for (let [path, data] of Object.entries(files)) {
-        xpiFiles[`webextension/${path}`] = data;
+    for (let filename in files) {
+      let contents = files[filename];
+      if (typeof contents == "function") {
+        files[filename] = this.serializeScript(contents);
+      } else if (typeof contents != "string" && !instanceOf(contents, "ArrayBuffer")) {
+        files[filename] = JSON.stringify(contents);
       }
-
-      files = xpiFiles;
     }
 
+    return files;
+  }
+
+  /**
+   * Write an xpi file to disk for a webextension.
+   * The generated extension is stored in the system temporary directory,
+   * and an nsIFile object pointing to it is returned.
+   *
+   * @param {object} data In the format handled by generateFiles.
+   * @returns {nsIFile}
+   */
+  static generateXPI(data) {
+    let files = this.generateFiles(data);
     return this.generateZipFile(files);
   }
 
@@ -315,12 +272,6 @@ var ExtensionTestCommon = class ExtensionTestCommon {
 
     for (let filename in files) {
       let script = files[filename];
-      if (typeof(script) == "function") {
-        script = this.serializeScript(script);
-      } else if (instanceOf(script, "Object") || instanceOf(script, "Array")) {
-        script = JSON.stringify(script);
-      }
-
       if (!instanceOf(script, "ArrayBuffer")) {
         script = new TextEncoder("utf-8").encode(script).buffer;
       }
@@ -389,7 +340,7 @@ var ExtensionTestCommon = class ExtensionTestCommon {
 
     // This may be "temporary" or "permanent".
     if (data.useAddonManager) {
-      return new MockExtension(file, jarURI, data.useAddonManager, data.embedded);
+      return new MockExtension(file, jarURI, data.useAddonManager);
     }
 
     let id;

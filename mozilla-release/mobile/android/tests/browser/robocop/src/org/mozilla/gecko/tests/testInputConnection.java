@@ -372,6 +372,17 @@ public class testInputConnection extends JavascriptBridgeTest {
             ic.deleteSurroundingText(1, 0);
             assertTextAndSelectionAt("Can clear text", ic, "", 0);
 
+            // Bug 1490391 - Committing then setting composition can result in duplicates.
+            ic.commitText("far", 1);
+            ic.setComposingText("bar", 1);
+            assertTextAndSelectionAt("Can commit then set composition", ic, "farbar", 6);
+            ic.setComposingText("baz", 1);
+            assertTextAndSelectionAt("Composition still exists after setting", ic, "farbaz", 6);
+
+            ic.finishComposingText();
+            ic.deleteSurroundingText(6, 0);
+            assertTextAndSelectionAt("Can clear text", ic, "", 0);
+
             // Make sure we don't leave behind stale events for the following test.
             processGeckoEvents();
             processInputConnectionEvents();
@@ -454,7 +465,6 @@ public class testInputConnection extends JavascriptBridgeTest {
 
             ic.commitText("!", 1);
             // The '!' key causes the input to hide in robocop_input.html,
-            // and there won't be a text/selection update as a result.
             assertTextAndSelectionAt("Can handle hiding input", ic, "foo", 3);
 
             // Bug 1401737, Editable does not behave correctly after disconnecting from Gecko.

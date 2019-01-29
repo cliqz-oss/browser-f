@@ -17,19 +17,7 @@
 <?xml-stylesheet href="chrome://browser/skin/preferences/in-content/privacy.css"?>
 
 <!DOCTYPE page [
-<!ENTITY % brandDTD SYSTEM "chrome://branding/locale/brand.dtd">
-<!ENTITY % historyDTD SYSTEM "chrome://mozapps/locale/update/history.dtd">
-<!ENTITY % certManagerDTD SYSTEM "chrome://pippki/locale/certManager.dtd">
-<!ENTITY % deviceManangerDTD SYSTEM "chrome://pippki/locale/deviceManager.dtd">
-<!ENTITY % sanitizeDTD SYSTEM "chrome://browser/locale/sanitize.dtd">
-<!ENTITY % aboutDialogDTD SYSTEM "chrome://browser/locale/aboutDialog.dtd" >
 <!ENTITY % cliqzprefDTD SYSTEM "chrome://browser/locale/preferences/cliqzpref.dtd" >
-%aboutDialogDTD;
-%brandDTD;
-%historyDTD;
-%certManagerDTD;
-%deviceManangerDTD;
-%sanitizeDTD;
 %cliqzprefDTD;
 ]>
 
@@ -55,6 +43,11 @@
     <link rel="localization" href="browser/preferences/selectBookmark.ftl"/>
     <link rel="localization" href="browser/preferences/siteDataSettings.ftl"/>
     <link rel="localization" href="browser/preferences/cliqz.home.ftl"/>
+    <link rel="localization" href="browser/aboutDialog.ftl"/>
+    <link rel="localization" href="browser/sanitize.ftl"/>
+    <link rel="localization" href="toolkit/updates/history.ftl"/>
+    <link rel="localization" href="security/certificates/deviceManager.ftl"/>
+    <link rel="localization" href="security/certificates/certManager.ftl"/>
   </linkset>
 
   <script type="text/javascript" src="chrome://global/content/l10n.js"></script>
@@ -207,7 +200,7 @@
             data-l10n-attrs="style"
             hidden="true" clickSelectsAll="true"/>
         </hbox>
-        <vbox id="mainPrefPane" class="prefpane prefwindow">
+        <vbox id="mainPrefPane">
 #include searchResults.xul
 #include main.xul
 #if 0

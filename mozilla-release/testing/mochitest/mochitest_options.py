@@ -842,6 +842,7 @@ class MochitestArguments(ArgumentContainer):
             "tab": options.defaultLeakThreshold,
             # GMP rarely gets a log, but when it does, it leaks a little.
             "geckomediaplugin": 20000,
+            "rdd": 400,
         }
 
         # See the dependencies of bug 1401764.
@@ -996,11 +997,6 @@ class AndroidArguments(ArgumentContainer):
                 parser.error(
                     "The directory for the coverage output does not exist: %s" %
                     parent_dir)
-
-        # Disable e10s by default on Android because we don't run Android
-        # e10s jobs anywhere yet.
-        options.e10s = False
-        mozinfo.update({'e10s': options.e10s})
 
         # allow us to keep original application around for cleanup while
         # running robocop via 'am'

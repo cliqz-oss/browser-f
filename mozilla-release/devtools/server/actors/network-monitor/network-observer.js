@@ -495,6 +495,8 @@ NetworkObserver.prototype = {
     event.fromCache = fromCache;
     event.fromServiceWorker = fromServiceWorker;
     event.isThirdPartyTrackingResource = channel.isThirdPartyTrackingResource;
+    event.referrerPolicy =
+      Services.netUtils.getReferrerPolicyString(channel.referrerPolicy);
     httpActivity.fromServiceWorker = fromServiceWorker;
 
     if (extraStringData) {
@@ -1131,3 +1133,9 @@ const LOAD_CAUSE_STRINGS = {
 function causeTypeToString(causeType) {
   return LOAD_CAUSE_STRINGS[causeType] || "unknown";
 }
+
+function stringToCauseType(value) {
+  return Object.keys(LOAD_CAUSE_STRINGS)
+  .find(key => LOAD_CAUSE_STRINGS[key] === value);
+}
+exports.stringToCauseType = stringToCauseType;

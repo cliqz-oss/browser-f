@@ -1,14 +1,14 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Element an snapshot common logic.
 
-use CaseSensitivityExt;
-use gecko_bindings::bindings;
-use gecko_bindings::structs::{self, nsAtom};
+use crate::gecko_bindings::bindings;
+use crate::gecko_bindings::structs::{self, nsAtom};
+use crate::string_cache::{Atom, WeakAtom};
+use crate::CaseSensitivityExt;
 use selectors::attr::CaseSensitivity;
-use string_cache::{Atom, WeakAtom};
 
 /// A function that, given an element of type `T`, allows you to get a single
 /// class or a class list.

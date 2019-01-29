@@ -67,6 +67,10 @@
   --theme-highlight-pink: #b82ee5;
   --theme-highlight-gray: #dde1e4;
 
+  /* Twisty (expand) icon colors */
+  --theme-twisty-fill: hsla(0,0%,50%,.70);
+  --theme-twisty-selected-fill: white;
+
   /* For accessibility purposes we want to enhance the focus styling. This
    * should improve keyboard navigation usability. */
   --theme-focus-outline-color: #000000;
@@ -158,6 +162,10 @@
   --theme-highlight-pink: #df80ff;
   --theme-highlight-gray: #e9f4fe;
 
+  /* Twisty (expand) icon colors */
+  --theme-twisty-fill: var(--grey-45);
+  --theme-twisty-selected-fill: white;
+
   /* For accessibility purposes we want to enhance the focus styling. This
    * should improve keyboard navigation usability. */
   --theme-focus-outline-color: #ced3d9;
@@ -217,12 +225,6 @@
   --select-arrow-image: url(chrome://devtools/skin/images/select-arrow.svg);
   --theme-pane-collapse-image: url(chrome://devtools/skin/images/pane-collapse.svg);
   --theme-pane-expand-image: url(chrome://devtools/skin/images/pane-expand.svg);
-  --theme-console-alert-image: url(chrome://devtools/skin/images/webconsole/alert.svg);
-  --theme-console-navigation-image: url(chrome://devtools/skin/images/webconsole/globe.svg);
-  --theme-console-info-image: url(chrome://devtools/skin/images/webconsole/info.svg);
-  --theme-console-input-image: url(chrome://devtools/skin/images/webconsole/input.svg);
-  --theme-console-return-image: url(chrome://devtools/skin/images/webconsole/return.svg);
-  --theme-console-jump-image: url(chrome://devtools/skin/images/webconsole/jump.svg);
 
   /* Firefox Colors CSS Variables v1.0.3
    * Colors are taken from: https://github.com/FirefoxUX/design-tokens
@@ -235,6 +237,7 @@
   --purple-50: #9400ff;
   --purple-60: #8000d7;
 
+  --blue-30: #75baff;
   --blue-40: #45a1ff;
   --blue-50: #0a84ff;
   --blue-55: #0074e8;
@@ -244,6 +247,10 @@
   --teal-60: #00c8d7;
   --teal-70: #008ea4;
 
+  --red-20: #ffb3d2;
+  --red-40: #ff3b6b;
+  --red-50: #ff0039;
+  --red-60: #d70022;
   --red-70: #a4000f;
 
   --green-50: #30e60b;
@@ -252,6 +259,7 @@
 
   --yellow-50: #ffe900;
   --yellow-60: #d7b600;
+  --yellow-65: #be9b00;
   --yellow-80: #715100;
 
   --grey-10: #f9f9fa;
@@ -270,6 +278,5 @@
   --grey-80: #2a2a2e;
   --grey-85: #1b1b1d;
   --grey-90: #0c0c0d;
-  --grey-90-a10: rgba(12, 12, 13, 0.1);
   --grey-90-a80: rgba(12, 12, 13, 0.8);
 }

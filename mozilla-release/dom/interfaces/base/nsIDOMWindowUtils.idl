@@ -1357,11 +1357,6 @@ interface nsIDOMWindowUtils : nsISupports {
    */
   readonly attribute Element containerElement;
 
-  [noscript] void RenderDocument(in nsConstRect aRect,
-                                 in uint32_t aFlags,
-                                 in nscolor aBackgroundColor,
-                                 in gfxContext aThebesContext);
-
   /**
    * advanceTimeAndRefresh allows the caller to take over the refresh
    * driver timing for a window.  A call to advanceTimeAndRefresh does
@@ -1954,6 +1949,23 @@ interface nsIDOMWindowUtils : nsISupports {
    */
   void resetPrefersReducedMotionOverrideForTest();
 
+  /**
+   * Used to notify temporary autoplay permission change and cache it on the dom
+   * window. These states are equal to nsIPermissionManager's action states.
+   */
+  const long PERMISSION_UNKNOWN = 0;
+  const long PERMISSION_ALLOW = 1;
+  const long PERMISSION_DENY = 2;
+
+  void notifyTemporaryAutoplayPermissionChanged(in long aState,
+                                                in AString aPrePath);
+
+  /**
+   * Used to check whether the window temporarily allows autoplay for current
+   * domain.
+   */
+  bool isAutoplayTemporarilyAllowed();
+
   // These consts are only for testing purposes.
   const long DEFAULT_MOUSE_POINTER_ID = 0;
   const long DEFAULT_PEN_POINTER_ID   = 1;
@@ -1982,6 +1994,8 @@ interface nsIDOMWindowUtils : nsISupports {
   const long DIRECTION_LTR = 0;
   const long DIRECTION_RTL = 1;
   const long DIRECTION_NOT_SET = 2;
+
+  void syncFlushCompositor();
 };
 
 [scriptable, uuid(c694e359-7227-4392-a138-33c0cc1f15a6)]

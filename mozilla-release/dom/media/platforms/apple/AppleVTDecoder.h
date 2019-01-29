@@ -7,30 +7,29 @@
 #ifndef mozilla_AppleVTDecoder_h
 #define mozilla_AppleVTDecoder_h
 
+#include <CoreFoundation/CFDictionary.h>  // For CFDictionaryRef
+#include <CoreMedia/CoreMedia.h>          // For CMVideoFormatDescriptionRef
+#include <VideoToolbox/VideoToolbox.h>    // For VTDecompressionSessionRef
+
 #include "PlatformDecoderModule.h"
 #include "mozilla/Atomics.h"
 #include "nsIThread.h"
 #include "ReorderQueue.h"
 #include "TimeUnits.h"
 
-#include "VideoToolbox/VideoToolbox.h"
-
 namespace mozilla {
 
 DDLoggedTypeDeclNameAndBase(AppleVTDecoder, MediaDataDecoder);
 
-class AppleVTDecoder
-  : public MediaDataDecoder
-  , public DecoderDoctorLifeLogger<AppleVTDecoder>
-{
-public:
-  AppleVTDecoder(const VideoInfo& aConfig,
-                 TaskQueue* aTaskQueue,
+class AppleVTDecoder : public MediaDataDecoder,
+                       public DecoderDoctorLifeLogger<AppleVTDecoder> {
+ public:
+  AppleVTDecoder(const VideoInfo& aConfig, TaskQueue* aTaskQueue,
                  layers::ImageContainer* aImageContainer,
                  CreateDecoderParams::OptionSet aOptions);
 
   class AppleFrameRef {
-  public:
+   public:
     media::TimeUnit decode_timestamp;
     media::TimeUnit composition_timestamp;
     media::TimeUnit duration;
@@ -38,13 +37,11 @@ public:
     bool is_sync_point;
 
     explicit AppleFrameRef(const MediaRawData& aSample)
-      : decode_timestamp(aSample.mTimecode)
-      , composition_timestamp(aSample.mTime)
-      , duration(aSample.mDuration)
-      , byte_offset(aSample.mOffset)
-      , is_sync_point(aSample.mKeyframe)
-    {
-    }
+        : decode_timestamp(aSample.mTimecode),
+          composition_timestamp(aSample.mTime),
+          duration(aSample.mDuration),
+          byte_offset(aSample.mOffset),
+          is_sync_point(aSample.mKeyframe) {}
   };
 
   RefPtr<InitPromise> Init() override;
@@ -54,20 +51,17 @@ public:
   RefPtr<ShutdownPromise> Shutdown() override;
   void SetSeekThreshold(const media::TimeUnit& aTime) override;
 
-  bool IsHardwareAccelerated(nsACString& aFailureReason) const override
-  {
+  bool IsHardwareAccelerated(nsACString& aFailureReason) const override {
     return mIsHardwareAccelerated;
   }
 
-  nsCString GetDescriptionName() const override
-  {
+  nsCString GetDescriptionName() const override {
     return mIsHardwareAccelerated
-           ? NS_LITERAL_CSTRING("apple hardware VT decoder")
-           : NS_LITERAL_CSTRING("apple software VT decoder");
+               ? NS_LITERAL_CSTRING("apple hardware VT decoder")
+               : NS_LITERAL_CSTRING("apple software VT decoder");
   }
 
-  ConversionRequired NeedsConversion() const override
-  {
+  ConversionRequired NeedsConversion() const override {
     return ConversionRequired::kNeedAVCC;
   }
 
@@ -75,15 +69,14 @@ public:
   // OutputFrame is thread-safe.
   void OutputFrame(CVPixelBufferRef aImage, AppleFrameRef aFrameRef);
 
-private:
+ private:
   virtual ~AppleVTDecoder();
   RefPtr<FlushPromise> ProcessFlush();
   RefPtr<DecodePromise> ProcessDrain();
   void ProcessShutdown();
   void ProcessDecode(MediaRawData* aSample);
 
-  void AssertOnTaskQueueThread()
-  {
+  void AssertOnTaskQueueThread() {
     MOZ_ASSERT(mTaskQueue->IsCurrentThreadIn());
   }
 
@@ -126,6 +119,6 @@ private:
   Atomic<bool> mIsHardwareAccelerated;
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // mozilla_AppleVTDecoder_h
+#endif  // mozilla_AppleVTDecoder_h

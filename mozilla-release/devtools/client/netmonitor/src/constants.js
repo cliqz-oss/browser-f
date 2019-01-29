@@ -147,6 +147,7 @@ const UPDATE_PROPS = [
   "formDataSections",
   "stacktrace",
   "isThirdPartyTrackingResource",
+  "referrerPolicy",
 ];
 
 const PANELS = {
@@ -184,6 +185,10 @@ const HEADERS = [
     canFilter: true,
   },
   {
+      name: "domain",
+      canFilter: true,
+  },
+  {
     name: "file",
     canFilter: false,
   },
@@ -193,10 +198,6 @@ const HEADERS = [
   },
   {
     name: "scheme",
-    canFilter: true,
-  },
-  {
-    name: "domain",
     canFilter: true,
   },
   {

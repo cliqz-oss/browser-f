@@ -92,13 +92,6 @@ const MATCH_ANYWHERE_UNMODIFIED = Ci.mozIPlacesAutoComplete.MATCH_ANYWHERE_UNMOD
 const BEHAVIOR_BOOKMARK = Ci.mozIPlacesAutoComplete.BEHAVIOR_BOOKMARK;
 const SQLITE_MAX_VARIABLE_NUMBER = 999;
 
-// Annotations which insertTree currently accepts. These should be going away
-// soon, see bug 1460577.
-const ACCEPTED_ANNOTATIONS = [
-  PlacesUtils.LMANNO_FEEDURI,
-  PlacesUtils.LMANNO_SITEURI,
-];
-
 var Bookmarks = Object.freeze({
   /**
    * Item's type constants.
@@ -443,8 +436,6 @@ var Bookmarks = Object.freeze({
                                         (b.dateAdded && b.lastModified >= b.dateAdded) },
           index: { replaceWith: indexToUse++ },
           source: { replaceWith: source },
-          annos: { validIf: b => false,
-                   fixup: b => b.annos = b.annos.filter(anno => ACCEPTED_ANNOTATIONS.includes(anno.name))},
           keyword: { validIf: b => b.type == TYPE_BOOKMARK },
           charset: { validIf: b => b.type == TYPE_BOOKMARK },
           postData: { validIf: b => b.type == TYPE_BOOKMARK },
@@ -568,9 +559,6 @@ var Bookmarks = Object.freeze({
           isTagging: false,
         }));
 
-        // Note, annotations for livemark data are deleted from insertInfo
-        // within appendInsertionInfoForInfoArray, so we won't be duplicating
-        // the insertions here.
         try {
           await handleBookmarkItemSpecialData(itemId, item);
         } catch (ex) {
@@ -1412,6 +1400,8 @@ var Bookmarks = Object.freeze({
    *        eachother.
    * @param {Object} [options={}]
    *        Additional options. Currently supports the following properties:
+   *         - lastModified: The last modified time to use for the folder and
+               reordered children. Defaults to the current time.
    *         - source: The change source, forwarded to all bookmark observers.
    *           Defaults to nsINavBookmarksService::SOURCE_DEFAULT.
    *
@@ -1432,9 +1422,12 @@ var Bookmarks = Object.freeze({
       throw new Error("Invalid GUID found in the sorted children array.");
     }
 
-    if (!("source" in options)) {
-      options.source = Bookmarks.SOURCES.DEFAULT;
-    }
+    options.source = "source" in options ?
+      PlacesUtils.BOOKMARK_VALIDATORS.source(options.source) :
+      Bookmarks.SOURCES.DEFAULT;
+    options.lastModified = "lastModified" in options ?
+      PlacesUtils.BOOKMARK_VALIDATORS.lastModified(options.lastModified) :
+      new Date();
 
     return (async () => {
       let parent = await fetchBookmark(info);
@@ -1444,7 +1437,6 @@ var Bookmarks = Object.freeze({
       let sortedChildren = await reorderChildren(parent, orderedChildrenGuids,
                                                  options);
 
-      let { source = Bookmarks.SOURCES.DEFAULT } = options;
       let observers = PlacesUtils.bookmarks.getObservers();
       // Note that child.index is the old index.
       for (let i = 0; i < sortedChildren.length; ++i) {
@@ -1454,7 +1446,8 @@ var Bookmarks = Object.freeze({
                                            i, child.type,
                                            child.guid, child.parentGuid,
                                            child.parentGuid,
-                                           source, child.url && child.url.href ]);
+                                           options.source,
+                                           child.url && child.url.href ]);
       }
     })();
   },
@@ -2298,27 +2291,24 @@ function reorderChildren(parent, orderedChildrenGuids, options) {
           `WITH sorting(g, p) AS (
              VALUES ${valuesTable}
            )
-           UPDATE moz_bookmarks SET position = (
-             SELECT CASE count(*) WHEN 0 THEN -position
-                                         ELSE count(*) - 1
-                    END
-             FROM sorting a
-             JOIN sorting b ON b.p <= a.p
-             WHERE a.g = guid
-           )
+           UPDATE moz_bookmarks SET
+             position = (
+               SELECT CASE count(*) WHEN 0 THEN -position
+                                           ELSE count(*) - 1
+                      END
+               FROM sorting a
+               JOIN sorting b ON b.p <= a.p
+               WHERE a.g = guid
+             ),
+             lastModified = :lastModified
            WHERE parent = :parentId
-          `, { parentId: parent._id});
+          `, { parentId: parent._id,
+               lastModified: PlacesUtils.toPRTime(options.lastModified) });
 
         let syncChangeDelta =
           PlacesSyncUtils.bookmarks.determineSyncChangeDelta(options.source);
-        if (syncChangeDelta) {
-          // Flag the parent as having a change.
-          await db.executeCached(`
-            UPDATE moz_bookmarks SET
-              syncChangeCounter = syncChangeCounter + :syncChangeDelta
-            WHERE id = :parentId`,
-            { parentId: parent._id, syncChangeDelta });
-        }
+        await setAncestorsLastModified(db, parent.guid, options.lastModified,
+                                       syncChangeDelta);
 
         // Update position of items that could have been inserted in the meanwhile.
         // Since this can happen rarely and it's only done for schema coherence

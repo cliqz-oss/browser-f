@@ -44,7 +44,7 @@ const CSSUsageFront = protocol.FrontClassWithSpec(cssUsageSpec, {
     ev.target = target;
 
     if (isRunning) {
-      const gnb = chromeWindow.document.getElementById("global-notificationbox");
+      const gnb = chromeWindow.gNotificationBox;
       notification = gnb.getNotificationWithValue("csscoverage-running");
 
       if (notification == null) {
@@ -63,7 +63,7 @@ const CSSUsageFront = protocol.FrontClassWithSpec(cssUsageSpec, {
       }
     } else {
       if (notification) {
-        notification.remove();
+        notification.close();
         notification = undefined;
       }
 

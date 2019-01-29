@@ -21,6 +21,7 @@ new DetectUserSessionStart(store).sendEventOrAddListener();
 if (!global.gActivityStreamPrerenderedState) {
   store.dispatch(ac.AlsoToMain({type: at.NEW_TAB_STATE_REQUEST}));
 }
+enableASRouterContent(store, asrouterContent);
 
 ReactDOM.hydrate(<Provider store={store}>
   <Base
@@ -30,5 +31,4 @@ ReactDOM.hydrate(<Provider store={store}>
     strings={global.gActivityStreamStrings} />
 </Provider>, document.getElementById("root"));
 
-enableASRouterContent(store, asrouterContent);
 addSnippetsSubscriber(store);

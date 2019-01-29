@@ -13,6 +13,7 @@ import org.mozilla.geckoview.GeckoSessionSettings;
 import org.mozilla.geckoview.GeckoView;
 import org.mozilla.geckoview.GeckoRuntime;
 import org.mozilla.geckoview.GeckoRuntimeSettings;
+import org.mozilla.geckoview.WebRequestError;
 
 import android.app.Activity;
 import android.content.Intent;
@@ -25,6 +26,8 @@ import java.util.HashMap;
 
 public class TestRunnerActivity extends Activity {
     private static final String LOGTAG = "TestRunnerActivity";
+    private static final String ERROR_PAGE =
+            "<!DOCTYPE html><head><title>Error</title></head><body>Error!</body></html>";
 
     static GeckoRuntime sRuntime;
 
@@ -63,8 +66,9 @@ public class TestRunnerActivity extends Activity {
         }
 
         @Override
-        public GeckoResult<String> onLoadError(GeckoSession session, String uri, int category, int error) {
-            return null;
+        public GeckoResult<String> onLoadError(GeckoSession session, String uri, WebRequestError error) {
+
+            return GeckoResult.fromValue("data:text/html," + ERROR_PAGE);
         }
     };
 
@@ -90,7 +94,8 @@ public class TestRunnerActivity extends Activity {
         }
 
         @Override
-        public void onContextMenu(GeckoSession session, int screenX, int screenY, String uri, int elementType, String elementSrc) {
+        public void onContextMenu(GeckoSession session, int screenX, int screenY,
+                                  ContextElement element) {
 
         }
 
@@ -103,6 +108,10 @@ public class TestRunnerActivity extends Activity {
             if (System.getenv("MOZ_CRASHREPORTER_SHUTDOWN") != null) {
                 sRuntime.shutdown();
             }
+        }
+
+        @Override
+        public void onFirstComposite(final GeckoSession session) {
         }
     };
 
@@ -164,12 +173,9 @@ public class TestRunnerActivity extends Activity {
                     .crashHandler(TestCrashHandler.class);
 
             sRuntime = GeckoRuntime.create(this, runtimeSettingsBuilder.build());
-            sRuntime.setDelegate(new GeckoRuntime.Delegate() {
-                @Override
-                public void onShutdown() {
-                    mKillProcessOnDestroy = true;
-                    finish();
-                }
+            sRuntime.setDelegate(() -> {
+                mKillProcessOnDestroy = true;
+                finish();
             });
         }
 

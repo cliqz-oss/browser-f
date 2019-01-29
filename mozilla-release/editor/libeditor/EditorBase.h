@@ -6,35 +6,36 @@
 #ifndef mozilla_EditorBase_h
 #define mozilla_EditorBase_h
 
-#include "mozilla/Assertions.h"         // for MOZ_ASSERT, etc.
-#include "mozilla/EditorDOMPoint.h"     // for EditorDOMPoint
-#include "mozilla/Maybe.h"              // for Maybe
-#include "mozilla/OwningNonNull.h"      // for OwningNonNull
-#include "mozilla/PresShell.h"          // for PresShell
-#include "mozilla/RangeBoundary.h"      // for RawRangeBoundary, RangeBoundary
-#include "mozilla/SelectionState.h"     // for RangeUpdater, etc.
-#include "mozilla/StyleSheet.h"         // for StyleSheet
-#include "mozilla/TransactionManager.h" // for TransactionManager
-#include "mozilla/WeakPtr.h"            // for WeakPtr
+#include "mozilla/Assertions.h"          // for MOZ_ASSERT, etc.
+#include "mozilla/EditAction.h"          // for EditAction and EditSubAction
+#include "mozilla/EditorDOMPoint.h"      // for EditorDOMPoint
+#include "mozilla/Maybe.h"               // for Maybe
+#include "mozilla/OwningNonNull.h"       // for OwningNonNull
+#include "mozilla/PresShell.h"           // for PresShell
+#include "mozilla/RangeBoundary.h"       // for RawRangeBoundary, RangeBoundary
+#include "mozilla/SelectionState.h"      // for RangeUpdater, etc.
+#include "mozilla/StyleSheet.h"          // for StyleSheet
+#include "mozilla/TransactionManager.h"  // for TransactionManager
+#include "mozilla/WeakPtr.h"             // for WeakPtr
 #include "mozilla/dom/Selection.h"
 #include "mozilla/dom/Text.h"
-#include "nsCOMPtr.h"                   // for already_AddRefed, nsCOMPtr
+#include "nsCOMPtr.h"  // for already_AddRefed, nsCOMPtr
 #include "nsCycleCollectionParticipant.h"
 #include "nsGkAtoms.h"
-#include "nsIDocument.h"                // for nsIDocument
-#include "nsIContentInlines.h"          // for nsINode::IsEditable()
-#include "nsIEditor.h"                  // for nsIEditor, etc.
-#include "nsIObserver.h"                // for NS_DECL_NSIOBSERVER, etc.
-#include "nsIPlaintextEditor.h"         // for nsIPlaintextEditor, etc.
-#include "nsISelectionController.h"     // for nsISelectionController constants
-#include "nsISelectionListener.h"       // for nsISelectionListener
-#include "nsISupportsImpl.h"            // for EditorBase::Release, etc.
-#include "nsIWeakReferenceUtils.h"      // for nsWeakPtr
-#include "nsLiteralString.h"            // for NS_LITERAL_STRING
-#include "nsString.h"                   // for nsCString
-#include "nsTArray.h"                   // for nsTArray and nsAutoTArray
-#include "nsWeakReference.h"            // for nsSupportsWeakReference
-#include "nscore.h"                     // for nsresult, nsAString, etc.
+#include "nsIDocument.h"             // for nsIDocument
+#include "nsIContentInlines.h"       // for nsINode::IsEditable()
+#include "nsIEditor.h"               // for nsIEditor, etc.
+#include "nsIObserver.h"             // for NS_DECL_NSIOBSERVER, etc.
+#include "nsIPlaintextEditor.h"      // for nsIPlaintextEditor, etc.
+#include "nsISelectionController.h"  // for nsISelectionController constants
+#include "nsISelectionListener.h"    // for nsISelectionListener
+#include "nsISupportsImpl.h"         // for EditorBase::Release, etc.
+#include "nsIWeakReferenceUtils.h"   // for nsWeakPtr
+#include "nsLiteralString.h"         // for NS_LITERAL_STRING
+#include "nsString.h"                // for nsCString
+#include "nsTArray.h"                // for nsTArray and nsAutoTArray
+#include "nsWeakReference.h"         // for nsSupportsWeakReference
+#include "nscore.h"                  // for nsresult, nsAString, etc.
 
 class mozInlineSpellChecker;
 class nsAtom;
@@ -83,7 +84,6 @@ class TextInputListener;
 class TextServicesDocument;
 class TypeInState;
 class WSRunObject;
-enum class EditSubAction : int32_t;
 
 namespace dom {
 class DataTransfer;
@@ -91,11 +91,11 @@ class DragEvent;
 class Element;
 class EventTarget;
 class Text;
-} // namespace dom
+}  // namespace dom
 
 namespace widget {
 struct IMEState;
-} // namespace widget
+}  // namespace widget
 
 /**
  * CachedWeakPtr stores a pointer to a class which inherits nsIWeakReference.
@@ -104,45 +104,35 @@ struct IMEState;
  * If class T inherits nsISupports a lot, specify Base explicitly for avoiding
  * ambiguous conversion to nsISupports.
  */
-template<class T, class Base = nsISupports>
-class CachedWeakPtr final
-{
-public:
-  CachedWeakPtr<T, Base>()
-    : mCache(nullptr)
-  {
-  }
-  explicit CachedWeakPtr<T, Base>(T* aObject)
-  {
+template <class T, class Base = nsISupports>
+class CachedWeakPtr final {
+ public:
+  CachedWeakPtr<T, Base>() : mCache(nullptr) {}
+  explicit CachedWeakPtr<T, Base>(T* aObject) {
     mWeakPtr = do_GetWeakReference(static_cast<Base*>(aObject));
     mCache = aObject;
   }
-  explicit CachedWeakPtr<T, Base>(const nsCOMPtr<T>& aOther)
-  {
+  explicit CachedWeakPtr<T, Base>(const nsCOMPtr<T>& aOther) {
     mWeakPtr = do_GetWeakReference(static_cast<Base*>(aOther.get()));
     mCache = aOther;
   }
-  explicit CachedWeakPtr<T, Base>(already_AddRefed<T>& aOther)
-  {
+  explicit CachedWeakPtr<T, Base>(already_AddRefed<T>& aOther) {
     RefPtr<T> other = aOther;
     mWeakPtr = do_GetWeakReference(static_cast<Base*>(other.get()));
     mCache = other;
   }
 
-  CachedWeakPtr<T, Base>& operator=(T* aObject)
-  {
+  CachedWeakPtr<T, Base>& operator=(T* aObject) {
     mWeakPtr = do_GetWeakReference(static_cast<Base*>(aObject));
     mCache = aObject;
     return *this;
   }
-  CachedWeakPtr<T, Base>& operator=(const nsCOMPtr<T>& aOther)
-  {
+  CachedWeakPtr<T, Base>& operator=(const nsCOMPtr<T>& aOther) {
     mWeakPtr = do_GetWeakReference(static_cast<Base*>(aOther.get()));
     mCache = aOther;
     return *this;
   }
-  CachedWeakPtr<T, Base>& operator=(already_AddRefed<T>& aOther)
-  {
+  CachedWeakPtr<T, Base>& operator=(already_AddRefed<T>& aOther) {
     RefPtr<T> other = aOther;
     mWeakPtr = do_GetWeakReference(static_cast<Base*>(other.get()));
     mCache = other;
@@ -153,15 +143,14 @@ public:
 
   explicit operator bool() const { return mWeakPtr; }
   operator T*() const { return get(); }
-  T* get() const
-  {
+  T* get() const {
     if (mCache && !mWeakPtr->IsAlive()) {
       const_cast<CachedWeakPtr<T, Base>*>(this)->mCache = nullptr;
     }
     return mCache;
   }
 
-private:
+ private:
   nsWeakPtr mWeakPtr;
   T* MOZ_NON_OWNING_REF mCache;
 };
@@ -173,8 +162,7 @@ private:
  * SplitAtEdges is for EditorBase::SplitNodeDeepWithTransaction(),
  * HTMLEditor::InsertNodeAtPoint()
  */
-enum class SplitAtEdges
-{
+enum class SplitAtEdges {
   // EditorBase::SplitNodeDeepWithTransaction() won't split container element
   // nodes at their edges.  I.e., when split point is start or end of
   // container, it won't be split.
@@ -193,11 +181,10 @@ enum class SplitAtEdges
  * delegate the actual commands to the editor independent of the XPFE
  * implementation.
  */
-class EditorBase : public nsIEditor
-                 , public nsISelectionListener
-                 , public nsSupportsWeakReference
-{
-public:
+class EditorBase : public nsIEditor,
+                   public nsISelectionListener,
+                   public nsSupportsWeakReference {
+ public:
   /****************************************************************************
    * NOTE: DO NOT MAKE YOUR NEW METHODS PUBLIC IF they are called by other
    *       classes under libeditor except EditorEventListener and
@@ -238,10 +225,8 @@ public:
    * @param aFlags        A bitmask of flags for specifying the behavior
    *                      of the editor.
    */
-  virtual nsresult Init(nsIDocument& doc,
-                        Element* aRoot,
-                        nsISelectionController* aSelCon,
-                        uint32_t aFlags,
+  virtual nsresult Init(nsIDocument& doc, Element* aRoot,
+                        nsISelectionController* aSelCon, uint32_t aFlags,
                         const nsAString& aInitialValue);
 
   /**
@@ -264,20 +249,17 @@ public:
 
   nsIDocument* GetDocument() const { return mDocument; }
 
-  nsIPresShell* GetPresShell() const
-  {
+  nsIPresShell* GetPresShell() const {
     return mDocument ? mDocument->GetShell() : nullptr;
   }
-  nsPresContext* GetPresContext() const
-  {
+  nsPresContext* GetPresContext() const {
     nsIPresShell* presShell = GetPresShell();
     return presShell ? presShell->GetPresContext() : nullptr;
   }
 
   already_AddRefed<nsIWidget> GetWidget();
 
-  nsISelectionController* GetSelectionController() const
-  {
+  nsISelectionController* GetSelectionController() const {
     if (mSelectionController) {
       return mSelectionController;
     }
@@ -295,9 +277,12 @@ public:
   nsresult GetSelection(SelectionType aSelectionType,
                         Selection** aSelection) const;
 
-  Selection* GetSelection(SelectionType aSelectionType =
-                                          SelectionType::eNormal) const
-  {
+  Selection* GetSelection(
+      SelectionType aSelectionType = SelectionType::eNormal) const {
+    if (aSelectionType == SelectionType::eNormal &&
+        IsEditActionDataAvailable()) {
+      return SelectionRefPtr().get();
+    }
     nsISelectionController* sc = GetSelectionController();
     if (!sc) {
       return nullptr;
@@ -310,8 +295,6 @@ public:
    * Fast non-refcounting editor root element accessor
    */
   Element* GetRoot() const { return mRootElement; }
-
-  RangeUpdater& RangeUpdaterRef() { return mRangeUpdater; }
 
   /**
    * Set or unset TextInputListener.  If setting non-nullptr when the editor
@@ -352,17 +335,18 @@ public:
   /**
    * ToggleTextDirection() toggles text-direction of the root element.
    */
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   nsresult ToggleTextDirection();
 
   /**
    * SwitchTextDirectionTo() sets the text-direction of the root element to
    * LTR or RTL.
    */
-  enum class TextDirection
-  {
+  enum class TextDirection {
     eLTR,
     eRTL,
   };
+  MOZ_CAN_RUN_SCRIPT
   void SwitchTextDirectionTo(TextDirection aTextDirection);
 
   /**
@@ -381,29 +365,26 @@ public:
   /**
    * Returns number of undo or redo items.
    */
-  size_t NumberOfUndoItems() const
-  {
+  size_t NumberOfUndoItems() const {
     return mTransactionManager ? mTransactionManager->NumberOfUndoItems() : 0;
   }
-  size_t NumberOfRedoItems() const
-  {
+  size_t NumberOfRedoItems() const {
     return mTransactionManager ? mTransactionManager->NumberOfRedoItems() : 0;
   }
 
   /**
    * Returns number of maximum undo/redo transactions.
    */
-  int32_t NumberOfMaximumTransactions() const
-  {
-    return mTransactionManager ?
-             mTransactionManager->NumberOfMaximumTransactions() : 0;
+  int32_t NumberOfMaximumTransactions() const {
+    return mTransactionManager
+               ? mTransactionManager->NumberOfMaximumTransactions()
+               : 0;
   }
 
   /**
    * Returns true if this editor can store transactions for undo/redo.
    */
-  bool IsUndoRedoEnabled() const
-  {
+  bool IsUndoRedoEnabled() const {
     return mTransactionManager &&
            mTransactionManager->NumberOfMaximumTransactions();
   }
@@ -411,12 +392,10 @@ public:
   /**
    * Return true if it's possible to undo/redo right now.
    */
-  bool CanUndo() const
-  {
+  bool CanUndo() const {
     return IsUndoRedoEnabled() && NumberOfUndoItems() > 0;
   }
-  bool CanRedo() const
-  {
+  bool CanRedo() const {
     return IsUndoRedoEnabled() && NumberOfRedoItems() > 0;
   }
 
@@ -424,22 +403,19 @@ public:
    * Enables or disables undo/redo feature.  Returns true if it succeeded,
    * otherwise, e.g., we're undoing or redoing, returns false.
    */
-  bool EnableUndoRedo(int32_t aMaxTransactionCount = -1)
-  {
+  bool EnableUndoRedo(int32_t aMaxTransactionCount = -1) {
     if (!mTransactionManager) {
       mTransactionManager = new TransactionManager();
     }
     return mTransactionManager->EnableUndoRedo(aMaxTransactionCount);
   }
-  bool DisableUndoRedo()
-  {
+  bool DisableUndoRedo() {
     if (!mTransactionManager) {
       return true;
     }
     return mTransactionManager->DisableUndoRedo();
   }
-  bool ClearUndoRedo()
-  {
+  bool ClearUndoRedo() {
     if (!mTransactionManager) {
       return true;
     }
@@ -452,15 +428,13 @@ public:
    * array.  So, caller of AddTransactionListener() needs to manage if it's
    * already been registered to the transaction manager.
    */
-  bool AddTransactionListener(nsITransactionListener& aListener)
-  {
+  bool AddTransactionListener(nsITransactionListener& aListener) {
     if (!mTransactionManager) {
       return false;
     }
     return mTransactionManager->AddTransactionListener(aListener);
   }
-  bool RemoveTransactionListener(nsITransactionListener& aListener)
-  {
+  bool RemoveTransactionListener(nsITransactionListener& aListener) {
     if (!mTransactionManager) {
       return false;
     }
@@ -476,26 +450,23 @@ public:
    */
   uint32_t Flags() const { return mFlags; }
 
-  nsresult AddFlags(uint32_t aFlags)
-  {
+  nsresult AddFlags(uint32_t aFlags) {
     const uint32_t kOldFlags = Flags();
     const uint32_t kNewFlags = (kOldFlags | aFlags);
     if (kNewFlags == kOldFlags) {
       return NS_OK;
     }
-    return SetFlags(kNewFlags); // virtual call and may be expensive.
+    return SetFlags(kNewFlags);  // virtual call and may be expensive.
   }
-  nsresult RemoveFlags(uint32_t aFlags)
-  {
+  nsresult RemoveFlags(uint32_t aFlags) {
     const uint32_t kOldFlags = Flags();
     const uint32_t kNewFlags = (kOldFlags & ~aFlags);
     if (kNewFlags == kOldFlags) {
       return NS_OK;
     }
-    return SetFlags(kNewFlags); // virtual call and may be expensive.
+    return SetFlags(kNewFlags);  // virtual call and may be expensive.
   }
-  nsresult AddAndRemoveFlags(uint32_t aAddingFlags, uint32_t aRemovingFlags)
-  {
+  nsresult AddAndRemoveFlags(uint32_t aAddingFlags, uint32_t aRemovingFlags) {
     MOZ_ASSERT(!(aAddingFlags & aRemovingFlags),
                "Same flags are specified both adding and removing");
     const uint32_t kOldFlags = Flags();
@@ -503,100 +474,78 @@ public:
     if (kNewFlags == kOldFlags) {
       return NS_OK;
     }
-    return SetFlags(kNewFlags); // virtual call and may be expensive.
+    return SetFlags(kNewFlags);  // virtual call and may be expensive.
   }
 
-  bool IsPlaintextEditor() const
-  {
+  bool IsPlaintextEditor() const {
     return (mFlags & nsIPlaintextEditor::eEditorPlaintextMask) != 0;
   }
 
-  bool IsSingleLineEditor() const
-  {
+  bool IsSingleLineEditor() const {
     return (mFlags & nsIPlaintextEditor::eEditorSingleLineMask) != 0;
   }
 
-  bool IsPasswordEditor() const
-  {
+  bool IsPasswordEditor() const {
     return (mFlags & nsIPlaintextEditor::eEditorPasswordMask) != 0;
   }
 
   // FYI: Both IsRightToLeft() and IsLeftToRight() may return false if
   //      the editor inherits the content node's direction.
-  bool IsRightToLeft() const
-  {
+  bool IsRightToLeft() const {
     return (mFlags & nsIPlaintextEditor::eEditorRightToLeft) != 0;
   }
-  bool IsLeftToRight() const
-  {
+  bool IsLeftToRight() const {
     return (mFlags & nsIPlaintextEditor::eEditorLeftToRight) != 0;
   }
 
-  bool IsReadonly() const
-  {
+  bool IsReadonly() const {
     return (mFlags & nsIPlaintextEditor::eEditorReadonlyMask) != 0;
   }
 
-  bool IsDisabled() const
-  {
+  bool IsDisabled() const {
     return (mFlags & nsIPlaintextEditor::eEditorDisabledMask) != 0;
   }
 
-  bool IsInputFiltered() const
-  {
+  bool IsInputFiltered() const {
     return (mFlags & nsIPlaintextEditor::eEditorFilterInputMask) != 0;
   }
 
-  bool IsMailEditor() const
-  {
+  bool IsMailEditor() const {
     return (mFlags & nsIPlaintextEditor::eEditorMailMask) != 0;
   }
 
-  bool IsWrapHackEnabled() const
-  {
+  bool IsWrapHackEnabled() const {
     return (mFlags & nsIPlaintextEditor::eEditorEnableWrapHackMask) != 0;
   }
 
-  bool IsFormWidget() const
-  {
+  bool IsFormWidget() const {
     return (mFlags & nsIPlaintextEditor::eEditorWidgetMask) != 0;
   }
 
-  bool NoCSS() const
-  {
+  bool NoCSS() const {
     return (mFlags & nsIPlaintextEditor::eEditorNoCSSMask) != 0;
   }
 
-  bool IsInteractionAllowed() const
-  {
+  bool IsInteractionAllowed() const {
     return (mFlags & nsIPlaintextEditor::eEditorAllowInteraction) != 0;
   }
 
-  bool DontEchoPassword() const
-  {
+  bool DontEchoPassword() const {
     return (mFlags & nsIPlaintextEditor::eEditorDontEchoPassword) != 0;
   }
 
-  bool ShouldSkipSpellCheck() const
-  {
+  bool ShouldSkipSpellCheck() const {
     return (mFlags & nsIPlaintextEditor::eEditorSkipSpellCheck) != 0;
   }
 
-  bool IsTabbable() const
-  {
+  bool IsTabbable() const {
     return IsSingleLineEditor() || IsPasswordEditor() || IsFormWidget() ||
            IsInteractionAllowed();
   }
 
-  bool HasIndependentSelection() const
-  {
-    return !!mSelectionController;
-  }
+  bool HasIndependentSelection() const { return !!mSelectionController; }
 
-  bool IsModifiable() const
-  {
-    return !IsReadonly();
-  }
+  bool IsModifiable() const { return !IsReadonly(); }
 
   /**
    * IsInEditSubAction() return true while the instance is handling an edit
@@ -608,8 +557,7 @@ public:
    * SuppressDispatchingInputEvent() suppresses or unsuppresses dispatching
    * "input" event.
    */
-  void SuppressDispatchingInputEvent(bool aSuppress)
-  {
+  void SuppressDispatchingInputEvent(bool aSuppress) {
     mDispatchInputEvent = !aSuppress;
   }
 
@@ -617,8 +565,7 @@ public:
    * IsSuppressingDispatchingInputEvent() returns true if the editor stops
    * dispatching input event.  Otherwise, false.
    */
-  bool IsSuppressingDispatchingInputEvent() const
-  {
+  bool IsSuppressingDispatchingInputEvent() const {
     return !mDispatchInputEvent;
   }
 
@@ -626,8 +573,7 @@ public:
    * Returns true if markNodeDirty() has any effect.  Returns false if
    * markNodeDirty() is a no-op.
    */
-  bool OutputsMozDirty() const
-  {
+  bool OutputsMozDirty() const {
     // Return true for Composer (!IsInteractionAllowed()) or mail
     // (IsMailEditor()), but false for webpages.
     return !IsInteractionAllowed() || IsMailEditor();
@@ -669,20 +615,155 @@ public:
   void OnFocus(dom::EventTarget* aFocusEventTarget);
 
   /** Resyncs spellchecking state (enabled/disabled).  This should be called
-    * when anything that affects spellchecking state changes, such as the
-    * spellcheck attribute value.
-    */
+   * when anything that affects spellchecking state changes, such as the
+   * spellcheck attribute value.
+   */
   void SyncRealTimeSpell();
 
- /**
+  /**
    * This method re-initializes the selection and caret state that are for
    * current editor state. When editor session is destroyed, it always reset
    * selection state even if this has no focus.  So if destroying editor,
    * we have to call this method for focused editor to set selection state.
    */
- void ReinitializeSelection(Element& aElement);
+  void ReinitializeSelection(Element& aElement);
 
-protected: // May be called by friends.
+ protected:  // AutoEditActionDataSetter, this shouldn't be accessed by friends.
+  /**
+   * AutoEditActionDataSetter grabs some necessary objects for handling any
+   * edit actions and store the edit action what we're handling.  When this is
+   * created, its pointer is set to the mEditActionData, and this guarantees
+   * the lifetime of grabbing objects until it's destroyed.
+   */
+  class MOZ_STACK_CLASS AutoEditActionDataSetter final {
+   public:
+    AutoEditActionDataSetter(const EditorBase& aEditorBase,
+                             EditAction aEditAction);
+    ~AutoEditActionDataSetter();
+
+    void UpdateEditAction(EditAction aEditAction) { mEditAction = aEditAction; }
+
+    bool CanHandle() const { return mSelection && mEditorBase.IsInitialized(); }
+
+    const RefPtr<Selection>& SelectionRefPtr() const { return mSelection; }
+    EditAction GetEditAction() const { return mEditAction; }
+
+    void SetTopLevelEditSubAction(EditSubAction aEditSubAction,
+                                  EDirection aDirection = eNone) {
+      mTopLevelEditSubAction = aEditSubAction;
+      switch (mTopLevelEditSubAction) {
+        case EditSubAction::eInsertNode:
+        case EditSubAction::eCreateNode:
+        case EditSubAction::eSplitNode:
+        case EditSubAction::eInsertText:
+        case EditSubAction::eInsertTextComingFromIME:
+        case EditSubAction::eSetTextProperty:
+        case EditSubAction::eRemoveTextProperty:
+        case EditSubAction::eRemoveAllTextProperties:
+        case EditSubAction::eSetText:
+        case EditSubAction::eInsertLineBreak:
+        case EditSubAction::eInsertParagraphSeparator:
+        case EditSubAction::eCreateOrChangeList:
+        case EditSubAction::eIndent:
+        case EditSubAction::eOutdent:
+        case EditSubAction::eSetOrClearAlignment:
+        case EditSubAction::eCreateOrRemoveBlock:
+        case EditSubAction::eRemoveList:
+        case EditSubAction::eCreateOrChangeDefinitionList:
+        case EditSubAction::eInsertElement:
+        case EditSubAction::eInsertQuotation:
+        case EditSubAction::ePasteHTMLContent:
+        case EditSubAction::eInsertHTMLSource:
+        case EditSubAction::eSetPositionToAbsolute:
+        case EditSubAction::eSetPositionToStatic:
+        case EditSubAction::eDecreaseZIndex:
+        case EditSubAction::eIncreaseZIndex:
+          MOZ_ASSERT(aDirection == eNext);
+          mDirectionOfTopLevelEditSubAction = eNext;
+          break;
+        case EditSubAction::eJoinNodes:
+        case EditSubAction::eDeleteText:
+          MOZ_ASSERT(aDirection == ePrevious);
+          mDirectionOfTopLevelEditSubAction = ePrevious;
+          break;
+        case EditSubAction::eUndo:
+        case EditSubAction::eRedo:
+        case EditSubAction::eComputeTextToOutput:
+        case EditSubAction::eCreateBogusNode:
+        case EditSubAction::eNone:
+          MOZ_ASSERT(aDirection == eNone);
+          mDirectionOfTopLevelEditSubAction = eNone;
+          break;
+        case EditSubAction::eReplaceHeadWithHTMLSource:
+          // NOTE: Not used with AutoTopLevelEditSubActionNotifier.
+          mDirectionOfTopLevelEditSubAction = eNone;
+          break;
+        case EditSubAction::eDeleteNode:
+        case EditSubAction::eDeleteSelectedContent:
+          // Unfortunately, eDeleteNode and eDeleteSelectedContent is used with
+          // any direction.  We might have specific sub-action for each
+          // direction, but there are some points referencing
+          // eDeleteSelectedContent so that we should keep storing direction
+          // as-is for now.
+          mDirectionOfTopLevelEditSubAction = aDirection;
+          break;
+      }
+    }
+    EditSubAction GetTopLevelEditSubAction() const {
+      MOZ_ASSERT(CanHandle());
+      return mTopLevelEditSubAction;
+    }
+    EDirection GetDirectionOfTopLevelEditSubAction() const {
+      return mDirectionOfTopLevelEditSubAction;
+    }
+
+    SelectionState& SavedSelectionRef() {
+      return mParentData ? mParentData->SavedSelectionRef() : mSavedSelection;
+    }
+    const SelectionState& SavedSelectionRef() const {
+      return mParentData ? mParentData->SavedSelectionRef() : mSavedSelection;
+    }
+
+    RangeUpdater& RangeUpdaterRef() {
+      return mParentData ? mParentData->RangeUpdaterRef() : mRangeUpdater;
+    }
+    const RangeUpdater& RangeUpdaterRef() const {
+      return mParentData ? mParentData->RangeUpdaterRef() : mRangeUpdater;
+    }
+
+    void UpdateSelectionCache(Selection& aSelection) {
+      AutoEditActionDataSetter* actionData = this;
+      while (actionData) {
+        if (actionData->mSelection) {
+          actionData->mSelection = &aSelection;
+        }
+        actionData = actionData->mParentData;
+      }
+    }
+
+   private:
+    EditorBase& mEditorBase;
+    RefPtr<Selection> mSelection;
+    // EditAction may be nested, for example, a command may be executed
+    // from mutation event listener which is run while editor changes
+    // the DOM tree.  In such case, we need to handle edit action separately.
+    AutoEditActionDataSetter* mParentData;
+
+    // Cached selection for AutoSelectionRestorer.
+    SelectionState mSavedSelection;
+
+    // Utility class object for maintaining preserved ranges.
+    RangeUpdater mRangeUpdater;
+
+    EditAction mEditAction;
+    EditSubAction mTopLevelEditSubAction;
+    EDirection mDirectionOfTopLevelEditSubAction;
+
+    AutoEditActionDataSetter() = delete;
+    AutoEditActionDataSetter(const AutoEditActionDataSetter& aOther) = delete;
+  };
+
+ protected:  // May be called by friends.
   /****************************************************************************
    * Some classes like TextEditRules, HTMLEditRules, WSRunObject which are
    * part of handling edit actions are allowed to call the following protected
@@ -691,6 +772,80 @@ protected: // May be called by friends.
    * to do that for you, you need to create a wrapper method in public scope
    * and call it.
    ****************************************************************************/
+
+  bool IsEditActionDataAvailable() const {
+    return mEditActionData && mEditActionData->CanHandle();
+  }
+
+  /**
+   * SelectionRefPtr() returns cached Selection.  This is pretty faster than
+   * EditorBase::GetSelection() if available.
+   * Note that this never returns nullptr unless public methods ignore
+   * result of AutoEditActionDataSetter::CanHandle() and keep handling edit
+   * action but any methods should stop handling edit action if it returns
+   * false.
+   */
+  const RefPtr<Selection>& SelectionRefPtr() const {
+    MOZ_ASSERT(mEditActionData);
+    return mEditActionData->SelectionRefPtr();
+  }
+
+  /**
+   * GetEditAction() returns EditAction which is being handled.  If some
+   * edit actions are nested, this returns the innermost edit action.
+   */
+  EditAction GetEditAction() const {
+    return mEditActionData ? mEditActionData->GetEditAction()
+                           : EditAction::eNone;
+  }
+
+  /**
+   * GetTopLevelEditSubAction() returns the top level edit sub-action.
+   * For example, if selected content is being replaced with inserted text,
+   * while removing selected content, the top level edit sub-action may be
+   * EditSubAction::eDeleteSelectedContent.  However, while inserting new
+   * text, the top level edit sub-action may be EditSubAction::eInsertText.
+   * So, this result means what we are doing right now unless you're looking
+   * for a case which the method is called via mutation event listener or
+   * selectionchange event listener which are fired while handling the edit
+   * sub-action.
+   */
+  EditSubAction GetTopLevelEditSubAction() const {
+    return mEditActionData ? mEditActionData->GetTopLevelEditSubAction()
+                           : EditSubAction::eNone;
+  }
+
+  /**
+   * GetDirectionOfTopLevelEditSubAction() returns direction which user
+   * intended for doing the edit sub-action.
+   */
+  EDirection GetDirectionOfTopLevelEditSubAction() const {
+    return mEditActionData
+               ? mEditActionData->GetDirectionOfTopLevelEditSubAction()
+               : eNone;
+  }
+
+  /**
+   * SavedSelection() returns reference to saved selection which are
+   * stored by AutoSelectionRestorer.
+   */
+  SelectionState& SavedSelectionRef() {
+    MOZ_ASSERT(IsEditActionDataAvailable());
+    return mEditActionData->SavedSelectionRef();
+  }
+  const SelectionState& SavedSelectionRef() const {
+    MOZ_ASSERT(IsEditActionDataAvailable());
+    return mEditActionData->SavedSelectionRef();
+  }
+
+  RangeUpdater& RangeUpdaterRef() {
+    MOZ_ASSERT(IsEditActionDataAvailable());
+    return mEditActionData->RangeUpdaterRef();
+  }
+  const RangeUpdater& RangeUpdaterRef() const {
+    MOZ_ASSERT(IsEditActionDataAvailable());
+    return mEditActionData->RangeUpdaterRef();
+  }
 
   /**
    * InsertTextWithTransaction() inserts aStringToInsert to aPointToInsert or
@@ -712,12 +867,10 @@ protected: // May be called by friends.
    *                        does nothing during composition, returns NS_OK.
    *                        Otherwise, an error code.
    */
-  virtual nsresult
-  InsertTextWithTransaction(nsIDocument& aDocument,
-                            const nsAString& aStringToInsert,
-                            const EditorRawDOMPoint& aPointToInsert,
-                            EditorRawDOMPoint* aPointAfterInsertedString =
-                              nullptr);
+  virtual nsresult InsertTextWithTransaction(
+      nsIDocument& aDocument, const nsAString& aStringToInsert,
+      const EditorRawDOMPoint& aPointToInsert,
+      EditorRawDOMPoint* aPointAfterInsertedString = nullptr);
 
   /**
    * InsertTextIntoTextNodeWithTransaction() inserts aStringToInsert into
@@ -730,14 +883,11 @@ protected: // May be called by friends.
    *                            E.g., adjusting whitespaces during composition.
    *                            false, otherwise.
    */
-  nsresult
-  InsertTextIntoTextNodeWithTransaction(const nsAString& aStringToInsert,
-                                        Text& aTextNode, int32_t aOffset,
-                                        bool aSuppressIME = false);
+  nsresult InsertTextIntoTextNodeWithTransaction(
+      const nsAString& aStringToInsert, Text& aTextNode, int32_t aOffset,
+      bool aSuppressIME = false);
 
-  nsresult SetTextImpl(Selection& aSelection,
-                       const nsAString& aString,
-                       Text& aTextNode);
+  nsresult SetTextImpl(const nsAString& aString, Text& aTextNode);
 
   /**
    * DeleteNodeWithTransaction() removes aNode from the DOM tree.
@@ -757,10 +907,10 @@ protected: // May be called by friends.
    *                            container.  Otherwise, will insert the node
    *                            before child node referred by this.
    */
-  template<typename PT, typename CT>
-  nsresult
-  InsertNodeWithTransaction(nsIContent& aContentToInsert,
-                            const EditorDOMPointBase<PT, CT>& aPointToInsert);
+  template <typename PT, typename CT>
+  nsresult InsertNodeWithTransaction(
+      nsIContent& aContentToInsert,
+      const EditorDOMPointBase<PT, CT>& aPointToInsert);
 
   /**
    * ReplaceContainerWithTransaction() creates new element whose name is
@@ -771,13 +921,10 @@ protected: // May be called by friends.
    *                            with new element.
    * @param aTagName            The name of new element node.
    */
-  already_AddRefed<Element>
-  ReplaceContainerWithTransaction(Element& aOldContainer,
-                                  nsAtom& aTagName)
-  {
-    return ReplaceContainerWithTransactionInternal(aOldContainer, aTagName,
-                                                   *nsGkAtoms::_empty,
-                                                   EmptyString(), false);
+  already_AddRefed<Element> ReplaceContainerWithTransaction(
+      Element& aOldContainer, nsAtom& aTagName) {
+    return ReplaceContainerWithTransactionInternal(
+        aOldContainer, aTagName, *nsGkAtoms::_empty, EmptyString(), false);
   }
 
   /**
@@ -790,13 +937,10 @@ protected: // May be called by friends.
    *                            with new element.
    * @param aTagName            The name of new element node.
    */
-  already_AddRefed<Element>
-  ReplaceContainerAndCloneAttributesWithTransaction(Element& aOldContainer,
-                                                    nsAtom& aTagName)
-  {
-    return ReplaceContainerWithTransactionInternal(aOldContainer, aTagName,
-                                                   *nsGkAtoms::_empty,
-                                                   EmptyString(), true);
+  already_AddRefed<Element> ReplaceContainerAndCloneAttributesWithTransaction(
+      Element& aOldContainer, nsAtom& aTagName) {
+    return ReplaceContainerWithTransactionInternal(
+        aOldContainer, aTagName, *nsGkAtoms::_empty, EmptyString(), true);
   }
 
   /**
@@ -811,15 +955,11 @@ protected: // May be called by friends.
    * @param aAttribute          Attribute name to be set to the new element.
    * @param aAttributeValue     Attribute value to be set to aAttribute.
    */
-  already_AddRefed<Element>
-  ReplaceContainerWithTransaction(Element& aOldContainer,
-                                  nsAtom& aTagName,
-                                  nsAtom& aAttribute,
-                                  const nsAString& aAttributeValue)
-  {
-    return ReplaceContainerWithTransactionInternal(aOldContainer, aTagName,
-                                                   aAttribute,
-                                                   aAttributeValue, false);
+  already_AddRefed<Element> ReplaceContainerWithTransaction(
+      Element& aOldContainer, nsAtom& aTagName, nsAtom& aAttribute,
+      const nsAString& aAttributeValue) {
+    return ReplaceContainerWithTransactionInternal(
+        aOldContainer, aTagName, aAttribute, aAttributeValue, false);
   }
 
   /**
@@ -852,12 +992,10 @@ protected: // May be called by friends.
    *                            was.
    * @return                    The new element.
    */
-  already_AddRefed<Element>
-  InsertContainerWithTransaction(nsIContent& aContent, nsAtom& aTagName)
-  {
-    return InsertContainerWithTransactionInternal(aContent, aTagName,
-                                                  *nsGkAtoms::_empty,
-                                                  EmptyString());
+  already_AddRefed<Element> InsertContainerWithTransaction(nsIContent& aContent,
+                                                           nsAtom& aTagName) {
+    return InsertContainerWithTransactionInternal(
+        aContent, aTagName, *nsGkAtoms::_empty, EmptyString());
   }
 
   /**
@@ -877,11 +1015,9 @@ protected: // May be called by friends.
    * @param aAttributeValue     Value to be set to aAttribute.
    * @return                    The new element.
    */
-  already_AddRefed<Element>
-  InsertContainerWithTransaction(nsIContent& aContent, nsAtom& aTagName,
-                                 nsAtom& aAttribute,
-                                 const nsAString& aAttributeValue)
-  {
+  already_AddRefed<Element> InsertContainerWithTransaction(
+      nsIContent& aContent, nsAtom& aTagName, nsAtom& aAttribute,
+      const nsAString& aAttributeValue) {
     return InsertContainerWithTransactionInternal(aContent, aTagName,
                                                   aAttribute, aAttributeValue);
   }
@@ -899,10 +1035,10 @@ protected: // May be called by friends.
    * @param aError              If succeed, returns no error.  Otherwise, an
    *                            error.
    */
-  template<typename PT, typename CT>
-  already_AddRefed<nsIContent>
-  SplitNodeWithTransaction(const EditorDOMPointBase<PT, CT>& aStartOfRightNode,
-                           ErrorResult& aResult);
+  template <typename PT, typename CT>
+  already_AddRefed<nsIContent> SplitNodeWithTransaction(
+      const EditorDOMPointBase<PT, CT>& aStartOfRightNode,
+      ErrorResult& aResult);
 
   /**
    * JoinNodesWithTransaction() joins aLeftNode and aRightNode.  Content of
@@ -920,10 +1056,9 @@ protected: // May be called by friends.
    *
    * @param aContent        The node to be moved.
    */
-  template<typename PT, typename CT>
-  nsresult
-  MoveNodeWithTransaction(nsIContent& aContent,
-                          const EditorDOMPointBase<PT, CT>& aPointToInsert);
+  template <typename PT, typename CT>
+  nsresult MoveNodeWithTransaction(
+      nsIContent& aContent, const EditorDOMPointBase<PT, CT>& aPointToInsert);
 
   /**
    * MoveNodeToEndWithTransaction() moves aContent to end of aNewContainer.
@@ -932,10 +1067,8 @@ protected: // May be called by friends.
    * @param aNewContainer   The new container which will contain aContent as
    *                        its last child.
    */
-  nsresult
-  MoveNodeToEndWithTransaction(nsIContent& aContent,
-                               nsINode& aNewContainer)
-  {
+  nsresult MoveNodeToEndWithTransaction(nsIContent& aContent,
+                                        nsINode& aNewContainer) {
     EditorRawDOMPoint pointToInsert;
     pointToInsert.SetToEndOf(&aNewContainer);
     return MoveNodeWithTransaction(aContent, pointToInsert);
@@ -992,8 +1125,7 @@ protected: // May be called by friends.
    * @param aError              The result.  If this succeeds to move children,
    *                            returns NS_OK.  Otherwise, an error.
    */
-  void MoveChildren(nsIContent& aFirstChild,
-                    nsIContent& aLastChild,
+  void MoveChildren(nsIContent& aFirstChild, nsIContent& aLastChild,
                     const EditorRawDOMPoint& aPointToInsert,
                     ErrorResult& aError);
 
@@ -1032,8 +1164,7 @@ protected: // May be called by friends.
    * @param aAttribute      Attribute name to be set.
    * @param aValue          Attribute value be set to aAttribute.
    */
-  nsresult SetAttributeWithTransaction(Element& aElement,
-                                       nsAtom& aAttribute,
+  nsresult SetAttributeWithTransaction(Element& aElement, nsAtom& aAttribute,
                                        const nsAString& aValue);
 
   virtual nsresult SetAttributeOrEquivalent(Element* aElement,
@@ -1069,10 +1200,9 @@ protected: // May be called by friends.
    *                        child node referred by this.
    * @return                The created new element node.
    */
-  template<typename PT, typename CT>
-  already_AddRefed<Element>
-  CreateNodeWithTransaction(nsAtom& aTag,
-                            const EditorDOMPointBase<PT, CT>& aPointToInsert);
+  template <typename PT, typename CT>
+  already_AddRefed<Element> CreateNodeWithTransaction(
+      nsAtom& aTag, const EditorDOMPointBase<PT, CT>& aPointToInsert);
 
   /**
    * Create an aggregate transaction for delete selection.  The result may
@@ -1088,11 +1218,8 @@ protected: // May be called by friends.
    *                            DeleteNodeTransactions and/or
    *                            DeleteTextTransactions as its children.
    */
-  already_AddRefed<EditAggregateTransaction>
-    CreateTxnForDeleteSelection(EDirection aAction,
-                                nsINode** aNode,
-                                int32_t* aOffset,
-                                int32_t* aLength);
+  already_AddRefed<EditAggregateTransaction> CreateTxnForDeleteSelection(
+      EDirection aAction, nsINode** aNode, int32_t* aOffset, int32_t* aLength);
 
   /**
    * Create a transaction for removing the nodes and/or text in aRange.
@@ -1106,12 +1233,9 @@ protected: // May be called by friends.
    *                            is DeleteNodeTransaction or
    *                            DeleteTextTransaction.
    */
-  already_AddRefed<EditTransactionBase>
-    CreateTxnForDeleteRange(nsRange* aRangeToDelete,
-                            EDirection aAction,
-                            nsINode** aRemovingNode,
-                            int32_t* aOffset,
-                            int32_t* aLength);
+  already_AddRefed<EditTransactionBase> CreateTxnForDeleteRange(
+      nsRange* aRangeToDelete, EDirection aAction, nsINode** aRemovingNode,
+      int32_t* aOffset, int32_t* aLength);
 
   /**
    * DeleteTextWithTransaction() removes text in the range from aCharData.
@@ -1139,12 +1263,9 @@ protected: // May be called by friends.
    * @param aCloneAllAttributes If true, all attributes of aOldContainer will
    *                            be copied to the new element.
    */
-  already_AddRefed<Element>
-  ReplaceContainerWithTransactionInternal(Element& aElement,
-                                          nsAtom& aTagName,
-                                          nsAtom& aAttribute,
-                                          const nsAString& aAttributeValue,
-                                          bool aCloneAllAttributes);
+  already_AddRefed<Element> ReplaceContainerWithTransactionInternal(
+      Element& aElement, nsAtom& aTagName, nsAtom& aAttribute,
+      const nsAString& aAttributeValue, bool aCloneAllAttributes);
 
   /**
    * InsertContainerWithTransactionInternal() creates new element whose name is
@@ -1164,11 +1285,9 @@ protected: // May be called by friends.
    * @param aAttributeValue     Value to be set to aAttribute.
    * @return                    The new element.
    */
-  already_AddRefed<Element>
-  InsertContainerWithTransactionInternal(nsIContent& aContent,
-                                         nsAtom& aTagName,
-                                         nsAtom& aAttribute,
-                                         const nsAString& aAttributeValue);
+  already_AddRefed<Element> InsertContainerWithTransactionInternal(
+      nsIContent& aContent, nsAtom& aTagName, nsAtom& aAttribute,
+      const nsAString& aAttributeValue);
 
   /**
    * DoSplitNode() creates a new node (left node) identical to an existing
@@ -1190,8 +1309,7 @@ protected: // May be called by friends.
    *                            Otherwise, an error.
    */
   void DoSplitNode(const EditorDOMPoint& aStartOfRightNode,
-                   nsIContent& aNewLeftNode,
-                   ErrorResult& aError);
+                   nsIContent& aNewLeftNode, ErrorResult& aError);
 
   /**
    * DoJoinNodes() merges contents in aNodeToJoin to aNodeToKeep and remove
@@ -1205,8 +1323,7 @@ protected: // May be called by friends.
    *                      same type.
    * @param aParent       The parent of aNodeToKeep
    */
-  nsresult DoJoinNodes(nsINode* aNodeToKeep,
-                       nsINode* aNodeToJoin,
+  nsresult DoJoinNodes(nsINode* aNodeToKeep, nsINode* aNodeToJoin,
                        nsINode* aParent);
 
   /**
@@ -1226,12 +1343,11 @@ protected: // May be called by friends.
    *                                    be good to insert something if the
    *                                    caller want to do it.
    */
-  template<typename PT, typename CT>
-  SplitNodeResult
-  SplitNodeDeepWithTransaction(
-    nsIContent& aMostAncestorToSplit,
-    const EditorDOMPointBase<PT, CT>& aDeepestStartOfRightNode,
-    SplitAtEdges aSplitAtEdges);
+  template <typename PT, typename CT>
+  SplitNodeResult SplitNodeDeepWithTransaction(
+      nsIContent& aMostAncestorToSplit,
+      const EditorDOMPointBase<PT, CT>& aDeepestStartOfRightNode,
+      SplitAtEdges aSplitAtEdges);
 
   /**
    * JoinNodesDeepWithTransaction() joins aLeftNode and aRightNode "deeply".
@@ -1248,11 +1364,7 @@ protected: // May be called by friends.
   EditorDOMPoint JoinNodesDeepWithTransaction(nsIContent& aLeftNode,
                                               nsIContent& aRightNode);
 
-  /**
-   * Note that aSelection is optional and can be nullptr.
-   */
-  nsresult DoTransaction(Selection* aSelection,
-                         nsITransaction* aTxn);
+  nsresult DoTransactionInternal(nsITransaction* aTxn);
 
   virtual bool IsBlockNode(nsINode* aNode);
 
@@ -1265,53 +1377,40 @@ protected: // May be called by friends.
   /**
    * Get the previous node.
    */
-  nsIContent* GetPreviousNode(const EditorRawDOMPoint& aPoint)
-  {
+  nsIContent* GetPreviousNode(const EditorRawDOMPoint& aPoint) {
     return GetPreviousNodeInternal(aPoint, false, true, false);
   }
-  nsIContent* GetPreviousElementOrText(const EditorRawDOMPoint& aPoint)
-  {
+  nsIContent* GetPreviousElementOrText(const EditorRawDOMPoint& aPoint) {
     return GetPreviousNodeInternal(aPoint, false, false, false);
   }
-  nsIContent* GetPreviousEditableNode(const EditorRawDOMPoint& aPoint)
-  {
+  nsIContent* GetPreviousEditableNode(const EditorRawDOMPoint& aPoint) {
     return GetPreviousNodeInternal(aPoint, true, true, false);
   }
-  nsIContent* GetPreviousNodeInBlock(const EditorRawDOMPoint& aPoint)
-  {
+  nsIContent* GetPreviousNodeInBlock(const EditorRawDOMPoint& aPoint) {
     return GetPreviousNodeInternal(aPoint, false, true, true);
   }
-  nsIContent* GetPreviousElementOrTextInBlock(const EditorRawDOMPoint& aPoint)
-  {
+  nsIContent* GetPreviousElementOrTextInBlock(const EditorRawDOMPoint& aPoint) {
     return GetPreviousNodeInternal(aPoint, false, false, true);
   }
-  nsIContent* GetPreviousEditableNodeInBlock(
-                const EditorRawDOMPoint& aPoint)
-  {
+  nsIContent* GetPreviousEditableNodeInBlock(const EditorRawDOMPoint& aPoint) {
     return GetPreviousNodeInternal(aPoint, true, true, true);
   }
-  nsIContent* GetPreviousNode(nsINode& aNode)
-  {
+  nsIContent* GetPreviousNode(nsINode& aNode) {
     return GetPreviousNodeInternal(aNode, false, true, false);
   }
-  nsIContent* GetPreviousElementOrText(nsINode& aNode)
-  {
+  nsIContent* GetPreviousElementOrText(nsINode& aNode) {
     return GetPreviousNodeInternal(aNode, false, false, false);
   }
-  nsIContent* GetPreviousEditableNode(nsINode& aNode)
-  {
+  nsIContent* GetPreviousEditableNode(nsINode& aNode) {
     return GetPreviousNodeInternal(aNode, true, true, false);
   }
-  nsIContent* GetPreviousNodeInBlock(nsINode& aNode)
-  {
+  nsIContent* GetPreviousNodeInBlock(nsINode& aNode) {
     return GetPreviousNodeInternal(aNode, false, true, true);
   }
-  nsIContent* GetPreviousElementOrTextInBlock(nsINode& aNode)
-  {
+  nsIContent* GetPreviousElementOrTextInBlock(nsINode& aNode) {
     return GetPreviousNodeInternal(aNode, false, false, true);
   }
-  nsIContent* GetPreviousEditableNodeInBlock(nsINode& aNode)
-  {
+  nsIContent* GetPreviousEditableNodeInBlock(nsINode& aNode) {
     return GetPreviousNodeInternal(aNode, true, true, true);
   }
 
@@ -1341,60 +1440,48 @@ protected: // May be called by friends.
    * you want.  They start to search the result from next node of the given
    * node.
    */
-  template<typename PT, typename CT>
-  nsIContent* GetNextNode(const EditorDOMPointBase<PT, CT>& aPoint)
-  {
+  template <typename PT, typename CT>
+  nsIContent* GetNextNode(const EditorDOMPointBase<PT, CT>& aPoint) {
     return GetNextNodeInternal(aPoint, false, true, false);
   }
-  template<typename PT, typename CT>
-  nsIContent* GetNextElementOrText(const EditorDOMPointBase<PT, CT>& aPoint)
-  {
+  template <typename PT, typename CT>
+  nsIContent* GetNextElementOrText(const EditorDOMPointBase<PT, CT>& aPoint) {
     return GetNextNodeInternal(aPoint, false, false, false);
   }
-  template<typename PT, typename CT>
-  nsIContent* GetNextEditableNode(const EditorDOMPointBase<PT, CT>& aPoint)
-  {
+  template <typename PT, typename CT>
+  nsIContent* GetNextEditableNode(const EditorDOMPointBase<PT, CT>& aPoint) {
     return GetNextNodeInternal(aPoint, true, true, false);
   }
-  template<typename PT, typename CT>
-  nsIContent* GetNextNodeInBlock(const EditorDOMPointBase<PT, CT>& aPoint)
-  {
+  template <typename PT, typename CT>
+  nsIContent* GetNextNodeInBlock(const EditorDOMPointBase<PT, CT>& aPoint) {
     return GetNextNodeInternal(aPoint, false, true, true);
   }
-  template<typename PT, typename CT>
+  template <typename PT, typename CT>
   nsIContent* GetNextElementOrTextInBlock(
-                const EditorDOMPointBase<PT, CT>& aPoint)
-  {
+      const EditorDOMPointBase<PT, CT>& aPoint) {
     return GetNextNodeInternal(aPoint, false, false, true);
   }
-  template<typename PT, typename CT>
+  template <typename PT, typename CT>
   nsIContent* GetNextEditableNodeInBlock(
-                const EditorDOMPointBase<PT, CT>& aPoint)
-  {
+      const EditorDOMPointBase<PT, CT>& aPoint) {
     return GetNextNodeInternal(aPoint, true, true, true);
   }
-  nsIContent* GetNextNode(nsINode& aNode)
-  {
+  nsIContent* GetNextNode(nsINode& aNode) {
     return GetNextNodeInternal(aNode, false, true, false);
   }
-  nsIContent* GetNextElementOrText(nsINode& aNode)
-  {
+  nsIContent* GetNextElementOrText(nsINode& aNode) {
     return GetNextNodeInternal(aNode, false, false, false);
   }
-  nsIContent* GetNextEditableNode(nsINode& aNode)
-  {
+  nsIContent* GetNextEditableNode(nsINode& aNode) {
     return GetNextNodeInternal(aNode, true, true, false);
   }
-  nsIContent* GetNextNodeInBlock(nsINode& aNode)
-  {
+  nsIContent* GetNextNodeInBlock(nsINode& aNode) {
     return GetNextNodeInternal(aNode, false, true, true);
   }
-  nsIContent* GetNextElementOrTextInBlock(nsINode& aNode)
-  {
+  nsIContent* GetNextElementOrTextInBlock(nsINode& aNode) {
     return GetNextNodeInternal(aNode, false, false, true);
   }
-  nsIContent* GetNextEditableNodeInBlock(nsINode& aNode)
-  {
+  nsIContent* GetNextEditableNodeInBlock(nsINode& aNode) {
     return GetNextNodeInternal(aNode, true, true, true);
   }
 
@@ -1409,7 +1496,7 @@ protected: // May be called by friends.
    * Get the leftmost child of aCurrentNode;
    * return nullptr if aCurrentNode has no children.
    */
-  nsIContent* GetLeftmostChild(nsINode *aCurrentNode,
+  nsIContent* GetLeftmostChild(nsINode* aCurrentNode,
                                bool bNoBlockCrossing = false);
 
   /**
@@ -1440,8 +1527,7 @@ protected: // May be called by friends.
   /**
    * returns true if aNode is an editable node.
    */
-  bool IsEditable(nsINode* aNode)
-  {
+  bool IsEditable(nsINode* aNode) {
     if (NS_WARN_IF(!aNode)) {
       return false;
     }
@@ -1469,8 +1555,7 @@ protected: // May be called by friends.
    * a text node.  In other words, returns true if aNode is a usual element
    * node or visible data node.
    */
-  bool IsElementOrText(const nsINode& aNode) const
-  {
+  bool IsElementOrText(const nsINode& aNode) const {
     if (!aNode.IsContent() || IsMozEditorBogusNode(&aNode)) {
       return false;
     }
@@ -1481,12 +1566,11 @@ protected: // May be called by friends.
   /**
    * Returns true if aNode is a MozEditorBogus node.
    */
-  bool IsMozEditorBogusNode(const nsINode* aNode) const
-  {
+  bool IsMozEditorBogusNode(const nsINode* aNode) const {
     return aNode && aNode->IsElement() &&
-           aNode->AsElement()->AttrValueIs(kNameSpaceID_None,
-               kMOZEditorBogusNodeAttrAtom, kMOZEditorBogusNodeValue,
-               eCaseMatters);
+           aNode->AsElement()->AttrValueIs(
+               kNameSpaceID_None, kMOZEditorBogusNodeAttrAtom,
+               kMOZEditorBogusNodeValue, eCaseMatters);
   }
 
   /**
@@ -1512,8 +1596,7 @@ protected: // May be called by friends.
    */
   bool AreNodesSameType(nsIContent& aNode1, nsIContent& aNode2) const;
 
-  static bool IsTextNode(nsINode* aNode)
-  {
+  static bool IsTextNode(nsINode* aNode) {
     return aNode->NodeType() == nsINode::TEXT_NODE;
   }
 
@@ -1528,22 +1611,21 @@ protected: // May be called by friends.
    * the node's parent otherwise.
    */
   static nsIContent* GetNodeAtRangeOffsetPoint(nsINode* aContainer,
-                                               int32_t aOffset)
-  {
+                                               int32_t aOffset) {
     return GetNodeAtRangeOffsetPoint(RawRangeBoundary(aContainer, aOffset));
   }
   static nsIContent* GetNodeAtRangeOffsetPoint(const RawRangeBoundary& aPoint);
 
-  static EditorRawDOMPoint GetStartPoint(Selection* aSelection);
-  static EditorRawDOMPoint GetEndPoint(Selection* aSelection);
+  static EditorRawDOMPoint GetStartPoint(const Selection& aSelection);
+  static EditorRawDOMPoint GetEndPoint(const Selection& aSelection);
 
-  static nsresult GetEndChildNode(Selection* aSelection,
+  static nsresult GetEndChildNode(const Selection& aSelection,
                                   nsIContent** aEndNode);
 
   /**
    * CollapseSelectionToEnd() collapses the selection to the end of the editor.
    */
-  nsresult CollapseSelectionToEnd(Selection* aSelection);
+  nsresult CollapseSelectionToEnd();
 
   /**
    * Helpers to add a node to the selection.
@@ -1560,8 +1642,7 @@ protected: // May be called by friends.
    * transactions to change Selection.  Otherwise, transactions shouldn't
    * change Selection.
    */
-  inline bool AllowsTransactionsToChangeSelection() const
-  {
+  inline bool AllowsTransactionsToChangeSelection() const {
     return mAllowsTransactionsToChangeSelection;
   }
 
@@ -1570,18 +1651,15 @@ protected: // May be called by friends.
    * allow transactions to change Selection.  Otherwise, i.e., with false,
    * makes this editor not allow transactions to change Selection.
    */
-  inline void MakeThisAllowTransactionsToChangeSelection(bool aAllow)
-  {
+  inline void MakeThisAllowTransactionsToChangeSelection(bool aAllow) {
     mAllowsTransactionsToChangeSelection = aAllow;
   }
 
   nsresult HandleInlineSpellCheck(EditSubAction aEditSubAction,
-                                  Selection& aSelection,
                                   nsINode* previousSelectedNode,
                                   uint32_t previousSelectedOffset,
                                   nsINode* aStartContainer,
-                                  uint32_t aStartOffset,
-                                  nsINode* aEndContainer,
+                                  uint32_t aStartOffset, nsINode* aEndContainer,
                                   uint32_t aEndOffset);
 
   /**
@@ -1598,8 +1676,8 @@ protected: // May be called by friends.
 
   /**
    * Whether the editor is active on the DOM window.  Note that when this
-   * returns true but GetFocusedContent() returns null, it means that this editor was
-   * focused when the DOM window was active.
+   * returns true but GetFocusedContent() returns null, it means that this
+   * editor was focused when the DOM window was active.
    */
   virtual bool IsActiveInDOMWindow();
 
@@ -1626,24 +1704,22 @@ protected: // May be called by friends.
    */
   void HideCaret(bool aHide);
 
-protected: // Called by helper classes.
-
+ protected:  // Called by helper classes.
   /**
    * OnStartToHandleTopLevelEditSubAction() is called when
-   * mTopLevelEditSubAction is EditSubAction::eNone and somebody starts to
+   * GetTopLevelEditSubAction() is EditSubAction::eNone and somebody starts to
    * handle aEditSubAction.
    *
    * @param aEditSubAction      Top level edit sub action which will be
    *                            handled soon.
    * @param aDirection          Direction of aEditSubAction.
    */
-  virtual void
-  OnStartToHandleTopLevelEditSubAction(EditSubAction aEditSubAction,
-                                       nsIEditor::EDirection aDirection);
+  virtual void OnStartToHandleTopLevelEditSubAction(
+      EditSubAction aEditSubAction, nsIEditor::EDirection aDirection);
 
   /**
    * OnEndHandlingTopLevelEditSubAction() is called after
-   * mTopLevelEditSubAction is handled.
+   * SetTopLevelEditSubAction() is handled.
    */
   virtual void OnEndHandlingTopLevelEditSubAction();
 
@@ -1652,8 +1728,8 @@ protected: // Called by helper classes.
    * various editor actions.
    */
   bool ArePreservingSelection();
-  void PreserveSelectionAcrossActions(Selection* aSel);
-  nsresult RestorePreservedSelection(Selection* aSel);
+  void PreserveSelectionAcrossActions();
+  nsresult RestorePreservedSelection();
   void StopPreservingSelection();
 
   /**
@@ -1665,7 +1741,9 @@ protected: // Called by helper classes.
    * can later merge, if needed.  Merging is unavailable between transaction
    * manager batches.
    */
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   void BeginPlaceholderTransaction(nsAtom* aTransactionName);
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   void EndPlaceholderTransaction();
 
   void BeginUpdateViewBatch();
@@ -1681,7 +1759,7 @@ protected: // Called by helper classes.
   void BeginTransactionInternal();
   void EndTransactionInternal();
 
-protected: // Shouldn't be used by friend classes
+ protected:  // Shouldn't be used by friend classes
   /**
    * The default destructor. This should suffice. Should this be pure virtual
    * for someone to derive from the EditorBase later? I don't believe so.
@@ -1701,12 +1779,14 @@ protected: // Shouldn't be used by friend classes
   virtual nsresult SelectAllInternal();
 
   nsresult DetermineCurrentDirection();
+
+  MOZ_CAN_RUN_SCRIPT
   void FireInputEvent();
 
   /**
    * Called after a transaction is done successfully.
    */
-  void DoAfterDoTransaction(nsITransaction *aTxn);
+  void DoAfterDoTransaction(nsITransaction* aTxn);
 
   /**
    * Called after a transaction is undone successfully.
@@ -1722,19 +1802,18 @@ protected: // Shouldn't be used by friend classes
   /**
    * Tell the doc state listeners that the doc state has changed.
    */
-  enum TDocumentListenerNotification
-  {
+  enum TDocumentListenerNotification {
     eDocumentCreated,
     eDocumentToBeDestroyed,
     eDocumentStateChanged
   };
   nsresult NotifyDocumentListeners(
-             TDocumentListenerNotification aNotificationType);
+      TDocumentListenerNotification aNotificationType);
 
   /**
    * Make the given selection span the entire document.
    */
-  virtual nsresult SelectEntireDocument(Selection* aSelection);
+  virtual nsresult SelectEntireDocument();
 
   /**
    * Helper method for scrolling the selection into view after
@@ -1752,13 +1831,10 @@ protected: // Shouldn't be used by friend classes
   /**
    * Helper for GetPreviousNodeInternal() and GetNextNodeInternal().
    */
-  nsIContent* FindNextLeafNode(nsINode* aCurrentNode,
-                               bool aGoForward,
+  nsIContent* FindNextLeafNode(nsINode* aCurrentNode, bool aGoForward,
                                bool bNoBlockCrossing);
-  nsIContent* FindNode(nsINode* aCurrentNode,
-                       bool aGoForward,
-                       bool aEditableNode,
-                       bool aFindAnyDataNode,
+  nsIContent* FindNode(nsINode* aCurrentNode, bool aGoForward,
+                       bool aEditableNode, bool aFindAnyDataNode,
                        bool bNoBlockCrossing);
 
   /**
@@ -1774,8 +1850,7 @@ protected: // Shouldn't be used by friend classes
    *                             aFindEditableNode is true.  If there is no
    *                             previous node, returns nullptr.
    */
-  nsIContent* GetPreviousNodeInternal(nsINode& aNode,
-                                      bool aFindEditableNode,
+  nsIContent* GetPreviousNodeInternal(nsINode& aNode, bool aFindEditableNode,
                                       bool aFindAnyDataNode,
                                       bool aNoBlockCrossing);
 
@@ -1800,19 +1875,15 @@ protected: // Shouldn't be used by friend classes
    *                             aFindEditableNode is true.  If there is no
    *                             next node, returns nullptr.
    */
-  nsIContent* GetNextNodeInternal(nsINode& aNode,
-                                  bool aFindEditableNode,
-                                  bool aFindAnyDataNode,
-                                  bool bNoBlockCrossing);
+  nsIContent* GetNextNodeInternal(nsINode& aNode, bool aFindEditableNode,
+                                  bool aFindAnyDataNode, bool bNoBlockCrossing);
 
   /**
    * And another version that takes a point in DOM tree rather than a node.
    */
   nsIContent* GetNextNodeInternal(const EditorRawDOMPoint& aPoint,
-                                  bool aFindEditableNode,
-                                  bool aFindAnyDataNode,
+                                  bool aFindEditableNode, bool aFindAnyDataNode,
                                   bool aNoBlockCrossing);
-
 
   virtual nsresult InstallEventListeners();
   virtual void CreateEventListeners();
@@ -1821,15 +1892,14 @@ protected: // Shouldn't be used by friend classes
   /**
    * Get the input event target. This might return null.
    */
-  virtual already_AddRefed<nsIContent> GetInputEventTargetContent() = 0;
+  virtual already_AddRefed<Element> GetInputEventTargetElement() = 0;
 
   /**
    * Return true if spellchecking should be enabled for this editor.
    */
   bool GetDesiredSpellCheckState();
 
-  bool CanEnableSpellCheck()
-  {
+  bool CanEnableSpellCheck() {
     // Check for password/readonly/disabled, which are not spellchecked
     // regardless of DOM. Also, check to see if spell check should be skipped
     // or not.
@@ -1840,15 +1910,13 @@ protected: // Shouldn't be used by friend classes
   /**
    * InitializeSelectionAncestorLimit() is called by InitializeSelection().
    * When this is called, each implementation has to call
-   * aSelection.SetAncestorLimiter() with aAnotherLimit.
+   * Selection::SetAncestorLimiter() with aAnotherLimit.
    *
-   * @param aSelection          The selection.
-   * @param aAncestorLimit      New ancestor limit of aSelection.  This always
+   * @param aAncestorLimit      New ancestor limit of Selection.  This always
    *                            has parent node.  So, it's always safe to
    *                            call SetAncestorLimit() with this node.
    */
-  virtual void InitializeSelectionAncestorLimit(Selection& aSelection,
-                                                nsIContent& aAncestorLimit);
+  virtual void InitializeSelectionAncestorLimit(nsIContent& aAncestorLimit);
 
   /**
    * Return the offset of aChild in aParent.  Asserts fatally if parent or
@@ -1857,8 +1925,7 @@ protected: // Shouldn't be used by friend classes
    *      methods may return wrong index if aChild doesn't have previous
    *      sibling or next sibling.
    */
-  static int32_t GetChildOffset(nsINode* aChild,
-                                nsINode* aParent);
+  static int32_t GetChildOffset(nsINode* aChild, nsINode* aParent);
 
   /**
    * Creates a range with just the supplied node and appends that to the
@@ -1879,30 +1946,19 @@ protected: // Shouldn't be used by friend classes
    */
   nsresult InitializeSelection(dom::EventTarget* aFocusEventTarget);
 
-  /**
-   * Used to insert content from a data transfer into the editable area.
-   * This is called for each item in the data transfer, with the index of
-   * each item passed as aIndex.
-   */
-  virtual nsresult InsertFromDataTransfer(dom::DataTransfer* aDataTransfer,
-                                          int32_t aIndex,
-                                          nsIDocument* aSourceDoc,
-                                          nsINode* aDestinationNode,
-                                          int32_t aDestOffset,
-                                          bool aDoDeleteSelection) = 0;
-
-  enum NotificationForEditorObservers
-  {
+  enum NotificationForEditorObservers {
     eNotifyEditorObserversOfEnd,
     eNotifyEditorObserversOfBefore,
     eNotifyEditorObserversOfCancel
   };
+  MOZ_CAN_RUN_SCRIPT
   void NotifyEditorObservers(NotificationForEditorObservers aNotification);
 
-private:
+ private:
   nsCOMPtr<nsISelectionController> mSelectionController;
   nsCOMPtr<nsIDocument> mDocument;
 
+  AutoEditActionDataSetter* mEditActionData;
 
   /**
    * SetTextDirectionTo() sets text-direction of the root element.
@@ -1910,13 +1966,165 @@ private:
    * This is a helper class of them.
    */
   nsresult SetTextDirectionTo(TextDirection aTextDirection);
-protected:
-  enum Tristate
-  {
-    eTriUnset,
-    eTriFalse,
-    eTriTrue
+
+ protected:  // helper classes which may be used by friends
+  /**
+   * Stack based helper class for calling EditorBase::EndTransactionInternal().
+   */
+  class MOZ_RAII AutoTransactionBatch final {
+   public:
+    explicit AutoTransactionBatch(
+        EditorBase& aEditorBase MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
+        : mEditorBase(aEditorBase) {
+      MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+      mEditorBase->BeginTransactionInternal();
+    }
+
+    ~AutoTransactionBatch() { mEditorBase->EndTransactionInternal(); }
+
+   protected:
+    OwningNonNull<EditorBase> mEditorBase;
+    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
   };
+
+  /**
+   * Stack based helper class for batching a collection of transactions inside
+   * a placeholder transaction.
+   */
+  class MOZ_RAII AutoPlaceholderBatch final {
+   public:
+    explicit AutoPlaceholderBatch(
+        EditorBase& aEditorBase MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
+        : mEditorBase(aEditorBase) {
+      MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+      mEditorBase->BeginPlaceholderTransaction(nullptr);
+    }
+
+    AutoPlaceholderBatch(EditorBase& aEditorBase,
+                         nsAtom& aTransactionName
+                             MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
+        : mEditorBase(aEditorBase) {
+      MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+      mEditorBase->BeginPlaceholderTransaction(&aTransactionName);
+    }
+
+    ~AutoPlaceholderBatch() { mEditorBase->EndPlaceholderTransaction(); }
+
+   protected:
+    OwningNonNull<EditorBase> mEditorBase;
+    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
+  };
+
+  /**
+   * Stack based helper class for saving/restoring selection.  Note that this
+   * assumes that the nodes involved are still around afterwords!
+   */
+  class MOZ_RAII AutoSelectionRestorer final {
+   public:
+    /**
+     * Constructor responsible for remembering all state needed to restore
+     * aSelection.
+     */
+    explicit AutoSelectionRestorer(
+        EditorBase& aEditorBase MOZ_GUARD_OBJECT_NOTIFIER_PARAM);
+
+    /**
+     * Destructor restores mSelection to its former state
+     */
+    ~AutoSelectionRestorer();
+
+    /**
+     * Abort() cancels to restore the selection.
+     */
+    void Abort();
+
+   protected:
+    EditorBase* mEditorBase;
+    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
+  };
+
+  /**
+   * AutoTopLevelEditSubActionNotifier notifies editor of start to handle
+   * top level edit sub-action and end handling top level edit sub-action.
+   */
+  class MOZ_RAII AutoTopLevelEditSubActionNotifier final {
+   public:
+    AutoTopLevelEditSubActionNotifier(
+        EditorBase& aEditorBase, EditSubAction aEditSubAction,
+        nsIEditor::EDirection aDirection MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
+        : mEditorBase(aEditorBase), mDoNothing(false) {
+      MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+      // The top level edit sub action has already be set if this is nested call
+      // XXX Looks like that this is not aware of unexpected nested edit action
+      //     handling via selectionchange event listener or mutation event
+      //     listener.
+      if (!mEditorBase.GetTopLevelEditSubAction()) {
+        mEditorBase.OnStartToHandleTopLevelEditSubAction(aEditSubAction,
+                                                         aDirection);
+      } else {
+        mDoNothing = true;  // nested calls will end up here
+      }
+    }
+
+    ~AutoTopLevelEditSubActionNotifier() {
+      if (!mDoNothing) {
+        mEditorBase.OnEndHandlingTopLevelEditSubAction();
+      }
+    }
+
+   protected:
+    EditorBase& mEditorBase;
+    bool mDoNothing;
+    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
+  };
+
+  /**
+   * Stack based helper class for turning off active selection adjustment
+   * by low level transactions
+   */
+  class MOZ_RAII AutoTransactionsConserveSelection final {
+   public:
+    explicit AutoTransactionsConserveSelection(
+        EditorBase& aEditorBase MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
+        : mEditorBase(aEditorBase),
+          mAllowedTransactionsToChangeSelection(
+              aEditorBase.AllowsTransactionsToChangeSelection()) {
+      MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+      mEditorBase.MakeThisAllowTransactionsToChangeSelection(false);
+    }
+
+    ~AutoTransactionsConserveSelection() {
+      mEditorBase.MakeThisAllowTransactionsToChangeSelection(
+          mAllowedTransactionsToChangeSelection);
+    }
+
+   protected:
+    EditorBase& mEditorBase;
+    bool mAllowedTransactionsToChangeSelection;
+    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
+  };
+
+  /***************************************************************************
+   * stack based helper class for batching reflow and paint requests.
+   */
+  class MOZ_RAII AutoUpdateViewBatch final {
+   public:
+    explicit AutoUpdateViewBatch(
+        EditorBase& aEditorBase MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
+        : mEditorBase(aEditorBase) {
+      MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+      mEditorBase.BeginUpdateViewBatch();
+    }
+
+    ~AutoUpdateViewBatch() { mEditorBase.EndUpdateViewBatch(); }
+
+   protected:
+    EditorBase& mEditorBase;
+    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
+  };
+
+ protected:
+  enum Tristate { eTriUnset, eTriFalse, eTriTrue };
 
   // MIME type of the doc we are editing.
   nsCString mContentMIMEType;
@@ -1948,22 +2156,24 @@ protected:
   RefPtr<IMEContentObserver> mIMEContentObserver;
 
   // Listens to all low level actions on the doc.
-  typedef AutoTArray<OwningNonNull<nsIEditActionListener>, 5>
-            AutoActionListenerArray;
+  // Edit action listener is currently used by highlighter of the findbar and
+  // the spellchecker.  So, we should reserve only 2 items.
+  typedef AutoTArray<OwningNonNull<nsIEditActionListener>, 2>
+      AutoActionListenerArray;
   AutoActionListenerArray mActionListeners;
   // Just notify once per high level change.
-  typedef AutoTArray<OwningNonNull<nsIEditorObserver>, 3>
-            AutoEditorObserverArray;
+  // Editor observer is used only by legacy addons for Thunderbird and
+  // BlueGriffon.  So, we don't need to reserve the space for them.
+  typedef AutoTArray<OwningNonNull<nsIEditorObserver>, 0>
+      AutoEditorObserverArray;
   AutoEditorObserverArray mEditorObservers;
   // Listen to overall doc state (dirty or not, just created, etc.).
+  // Document state listener is currently used by EditingSession and
+  // BlueGriffon so that reserving only one is enough (although, this is not
+  // necessary for TextEditor).
   typedef AutoTArray<OwningNonNull<nsIDocumentStateListener>, 1>
-            AutoDocumentStateListenerArray;
+      AutoDocumentStateListenerArray;
   AutoDocumentStateListenerArray mDocStateListeners;
-
-  // Cached selection for AutoSelectionRestorer.
-  SelectionState mSavedSel;
-  // Utility class object for maintaining preserved ranges.
-  RangeUpdater mRangeUpdater;
 
   // Number of modifications (for undo/redo stack).
   uint32_t mModCount;
@@ -1974,11 +2184,7 @@ protected:
 
   // Nesting count for batching.
   int32_t mPlaceholderBatch;
-  // The top level edit sub-action.
-  EditSubAction mTopLevelEditSubAction;
 
-  // The top level edit sub-action's direction.
-  EDirection mDirection;
   // -1 = not initialized
   int8_t mDocDirtyState;
   // A Tristate value.
@@ -2001,12 +2207,6 @@ protected:
   // Whether we are an HTML editor class.
   bool mIsHTMLEditorClass;
 
-  friend class AutoPlaceholderBatch;
-  friend class AutoSelectionRestorer;
-  friend class AutoTopLevelEditSubActionNotifier;
-  friend class AutoTransactionBatch;
-  friend class AutoTransactionsConserveSelection;
-  friend class AutoUpdateViewBatch;
   friend class CompositionTransaction;
   friend class CreateElementTransaction;
   friend class CSSEditUtils;
@@ -2025,18 +2225,14 @@ protected:
   friend class nsIEditor;
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-mozilla::EditorBase*
-nsIEditor::AsEditorBase()
-{
+mozilla::EditorBase* nsIEditor::AsEditorBase() {
   return static_cast<mozilla::EditorBase*>(this);
 }
 
-const mozilla::EditorBase*
-nsIEditor::AsEditorBase() const
-{
+const mozilla::EditorBase* nsIEditor::AsEditorBase() const {
   return static_cast<const mozilla::EditorBase*>(this);
 }
 
-#endif // #ifndef mozilla_EditorBase_h
+#endif  // #ifndef mozilla_EditorBase_h

@@ -20,25 +20,20 @@ class nsNodeInfoManager;
 /**
  * Class used to implement DOM text nodes
  */
-class nsTextNode : public mozilla::dom::Text
-{
-private:
-  void Init()
-  {
-    MOZ_ASSERT(mNodeInfo->NodeType() == TEXT_NODE,
-               "Bad NodeType in aNodeInfo");
+class nsTextNode : public mozilla::dom::Text {
+ private:
+  void Init() {
+    MOZ_ASSERT(mNodeInfo->NodeType() == TEXT_NODE, "Bad NodeType in aNodeInfo");
   }
 
-public:
+ public:
   explicit nsTextNode(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
-    : mozilla::dom::Text(std::move(aNodeInfo))
-  {
+      : mozilla::dom::Text(std::move(aNodeInfo)) {
     Init();
   }
 
   explicit nsTextNode(nsNodeInfoManager* aNodeInfoManager)
-    : mozilla::dom::Text(aNodeInfoManager->GetTextNodeInfo())
-  {
+      : mozilla::dom::Text(aNodeInfoManager->GetTextNodeInfo()) {
     Init();
   }
 
@@ -48,9 +43,8 @@ public:
   // nsINode
   virtual bool IsNodeOfType(uint32_t aFlags) const override;
 
-  virtual already_AddRefed<CharacterData>
-    CloneDataNode(mozilla::dom::NodeInfo *aNodeInfo,
-                  bool aCloneText) const override;
+  virtual already_AddRefed<CharacterData> CloneDataNode(
+      mozilla::dom::NodeInfo* aNodeInfo, bool aCloneText) const override;
 
   virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent) override;
@@ -60,19 +54,17 @@ public:
   nsresult AppendTextForNormalize(const char16_t* aBuffer, uint32_t aLength,
                                   bool aNotify, nsIContent* aNextSibling);
 
-  // Need to have a copy here because including nsDocument.h in this file will
-  // fail to build on Windows.
-  static bool IsShadowDOMEnabled(JSContext* aCx, JSObject* aObject);
-
 #ifdef DEBUG
   virtual void List(FILE* out, int32_t aIndent) const override;
-  virtual void DumpContent(FILE* out, int32_t aIndent, bool aDumpAll) const override;
+  virtual void DumpContent(FILE* out, int32_t aIndent,
+                           bool aDumpAll) const override;
 #endif
 
-protected:
+ protected:
   virtual ~nsTextNode();
 
-  virtual JSObject* WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto) override;
+  virtual JSObject* WrapNode(JSContext* aCx,
+                             JS::Handle<JSObject*> aGivenProto) override;
 };
 
-#endif // nsTextNode_h
+#endif  // nsTextNode_h

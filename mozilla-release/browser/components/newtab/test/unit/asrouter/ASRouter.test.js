@@ -1,4 +1,5 @@
 import {_ASRouter, MessageLoaderUtils} from "lib/ASRouter.jsm";
+import {ASRouterTargeting, QueryCache} from "lib/ASRouterTargeting.jsm";
 import {
   CHILD_TO_PARENT_MESSAGE_NAME,
   FAKE_LOCAL_MESSAGES,
@@ -16,7 +17,6 @@ import {ASRouterTriggerListeners} from "lib/ASRouterTriggerListeners.jsm";
 import {CFRPageActions} from "lib/CFRPageActions.jsm";
 import {GlobalOverrider} from "test/unit/utils";
 import ProviderResponseSchema from "content-src/asrouter/schemas/provider-response.schema.json";
-import {QueryCache} from "lib/ASRouterTargeting.jsm";
 
 const MESSAGE_PROVIDER_PREF_NAME = "browser.newtabpage.activity-stream.asrouter.providers.snippets";
 const FAKE_PROVIDERS = [FAKE_LOCAL_PROVIDER, FAKE_REMOTE_PROVIDER, FAKE_REMOTE_SETTINGS_PROVIDER];
@@ -36,6 +36,7 @@ function fakeExecuteUserAction(action) {
 
 describe("ASRouter", () => {
   let Router;
+  let globals;
   let channel;
   let sandbox;
   let messageBlockList;
@@ -47,6 +48,7 @@ describe("ASRouter", () => {
   let clock;
   let getStringPrefStub;
   let dispatchStub;
+  let fakeAttributionCode;
 
   function createFakeStorage() {
     const getStub = sandbox.stub();
@@ -75,12 +77,13 @@ describe("ASRouter", () => {
   }
 
   beforeEach(async () => {
+    globals = new GlobalOverrider();
     messageBlockList = [];
     providerBlockList = [];
     messageImpressions = {};
     providerImpressions = {};
     previousSessionEnd = 100;
-    sandbox = sinon.sandbox.create();
+    sandbox = sinon.createSandbox();
 
     sandbox.spy(ASRouterPreferences, "init");
     sandbox.spy(ASRouterPreferences, "uninit");
@@ -92,11 +95,18 @@ describe("ASRouter", () => {
       .withArgs("http://fake.com/endpoint")
       .resolves({ok: true, status: 200, json: () => Promise.resolve({messages: FAKE_REMOTE_MESSAGES})});
     getStringPrefStub = sandbox.stub(global.Services.prefs, "getStringPref");
+
+    fakeAttributionCode = {
+      _clearCache: () => sinon.stub(),
+      getAttrDataAsync: () => (Promise.resolve({content: "addonID"})),
+    };
+    globals.set("AttributionCode", fakeAttributionCode);
     await createRouterAndInit();
   });
   afterEach(() => {
     ASRouterPreferences.uninit();
     sandbox.restore();
+    globals.restore();
   });
 
   describe(".state", () => {
@@ -206,12 +216,13 @@ describe("ASRouter", () => {
   describe("setState", () => {
     it("should broadcast a message to update the admin tool on a state change if the asrouter.devtoolsEnabled pref is", async () => {
       sandbox.stub(ASRouterPreferences, "devtoolsEnabled").get(() => true);
+      sandbox.stub(Router, "getTargetingParameters").resolves({});
       await Router.setState({foo: 123});
 
       assert.calledOnce(channel.sendAsyncMessage);
       assert.deepEqual(channel.sendAsyncMessage.firstCall.args[1], {
         type: "ADMIN_SET_STATE",
-        data: Object.assign({}, Router.state, {providerPrefs: ASRouterPreferences.providers}),
+        data: Object.assign({}, Router.state, {providerPrefs: ASRouterPreferences.providers, userPrefs: ASRouterPreferences.getAllUserPreferences(), targetingParameters: {}}),
       });
     });
     it("should not send a message on a state change asrouter.devtoolsEnabled pref is on", async () => {
@@ -219,6 +230,47 @@ describe("ASRouter", () => {
       await Router.setState({foo: 123});
 
       assert.notCalled(channel.sendAsyncMessage);
+    });
+  });
+
+  describe("getTargetingParameters", () => {
+    it("should return the targeting parameters", async () => {
+      const stub = sandbox.stub().resolves("foo");
+      const obj = {foo: 1};
+      sandbox.stub(obj, "foo").get(stub);
+      const result = await Router.getTargetingParameters(obj, obj);
+
+      assert.calledTwice(stub);
+      assert.propertyVal(result, "foo", "foo");
+    });
+  });
+
+  describe("evaluateExpression", () => {
+    let stub;
+    beforeEach(async () => {
+      stub = sandbox.stub();
+      stub.resolves("foo");
+      sandbox.stub(ASRouterTargeting, "isMatch").callsFake(stub);
+    });
+    afterEach(() => {
+      sandbox.restore();
+    });
+    it("should call ASRouterTargeting to evaluate", async () => {
+      const targetStub = {sendAsyncMessage: sandbox.stub()};
+
+      await Router.evaluateExpression(targetStub, {});
+
+      assert.calledOnce(targetStub.sendAsyncMessage);
+      assert.equal(targetStub.sendAsyncMessage.firstCall.args[1].data.evaluationStatus.result, "foo");
+      assert.isTrue(targetStub.sendAsyncMessage.firstCall.args[1].data.evaluationStatus.success);
+    });
+    it("should catch evaluation errors", async () => {
+      stub.returns(Promise.reject(new Error("fake error")));
+      const targetStub = {sendAsyncMessage: sandbox.stub()};
+
+      await Router.evaluateExpression(targetStub, {});
+
+      assert.isFalse(targetStub.sendAsyncMessage.firstCall.args[1].data.evaluationStatus.success);
     });
   });
 
@@ -564,17 +616,13 @@ describe("ASRouter", () => {
       });
     });
 
-    describe("#onMessage: BLOCK_BUNDLE", () => {
+    describe("#onMessage: DISMISS_BUNDLE", () => {
       it("should add all the ids in the bundle to the messageBlockList and send a CLEAR_BUNDLE message", async () => {
-        const bundleIds = [FAKE_BUNDLE[0].id, FAKE_BUNDLE[1].id];
         await Router.setState({lastMessageId: "foo"});
-        const msg = fakeAsyncMessage({type: "BLOCK_BUNDLE", data: {bundle: FAKE_BUNDLE}});
+        const msg = fakeAsyncMessage({type: "DISMISS_BUNDLE", data: {bundle: FAKE_BUNDLE}});
         await Router.onMessage(msg);
 
-        assert.isTrue(Router.state.messageBlockList.includes(FAKE_BUNDLE[0].id));
-        assert.isTrue(Router.state.messageBlockList.includes(FAKE_BUNDLE[1].id));
         assert.calledWith(channel.sendAsyncMessage, PARENT_TO_CHILD_MESSAGE_NAME, {type: "CLEAR_BUNDLE"});
-        assert.calledWithExactly(Router._storage.set, "messageBlockList", bundleIds);
       });
     });
 
@@ -635,12 +683,14 @@ describe("ASRouter", () => {
 
     describe("#onMessage: ADMIN_CONNECT_STATE", () => {
       it("should send a message containing the whole state", async () => {
+        sandbox.stub(Router, "getTargetingParameters").resolves({});
         const msg = fakeAsyncMessage({type: "ADMIN_CONNECT_STATE"});
+
         await Router.onMessage(msg);
         assert.calledOnce(msg.target.sendAsyncMessage);
         assert.deepEqual(msg.target.sendAsyncMessage.firstCall.args[1], {
           type: "ADMIN_SET_STATE",
-          data: Object.assign({}, Router.state, {providerPrefs: ASRouterPreferences.providers}),
+          data: Object.assign({}, Router.state, {providerPrefs: ASRouterPreferences.providers, userPrefs: ASRouterPreferences.getAllUserPreferences(), targetingParameters: {}}),
         });
       });
     });
@@ -747,6 +797,58 @@ describe("ASRouter", () => {
       it("should have previousSessionEnd in the message context", () => {
         assert.propertyVal(Router._getMessagesContext(), "previousSessionEnd", 100);
       });
+      it("should update parameters of the message if the template is return to amo", async () => {
+        let message = [
+          {id: "foo1", template: "return_to_amo_overlay", trigger: {id: "foo"}, content: {addon_icon: null, primary_button: {action: {data: {url: null}}}, title: "Foo1", body: "Foo123-1"}},
+        ];
+        await Router.setState({messages: message});
+        sandbox.stub(Router, "_fetchAddonInfo").returns({url: "foo.com", iconURL: "url/foo.ico"});
+        await Router.sendNextMessage({sendAsyncMessage: sandbox.stub()}, {id: "foo"});
+        const msg = await Router._findMessage(message, {id: "foo"});
+        assert.calledOnce(Router._fetchAddonInfo);
+        assert.equal(msg.content.addon_icon, message[0].content.addon_icon);
+        assert.equal(msg.content.primary_button.action.data.url, message[0].content.primary_button.action.data.url);
+      });
+      it("should return early and not send a message if we failed to get addon info for return to amo template", async () => {
+        let message = [
+          {id: "foo1", template: "return_to_amo_overlay", trigger: {id: "foo"}, content: {addon_icon: null, primary_button: {action: {data: {url: null}}}, title: "Foo1", body: "Foo123-1"}},
+        ];
+        await Router.setState({messages: message});
+        sandbox.stub(Router, "_fetchAddonInfo").returns({});
+        sandbox.spy(Router, "_sendMessageToTarget");
+        await Router.sendNextMessage({sendAsyncMessage: sandbox.stub()}, {id: "foo"});
+        assert.calledOnce(Router._fetchAddonInfo);
+        assert.notCalled(Router._sendMessageToTarget);
+      });
+    });
+
+    describe("#_fetchAddonInfo", () => {
+      it("should fetch the addon url and the icon for the addon", async () => {
+        fetchStub
+          .withArgs("https://services.addons.mozilla.org/api/v3/addons/addon/addonID")
+          .resolves({ok: true, status: 200, json: () => Promise.resolve({icon_url: "url/foo.ico", current_version: {files: [{url: "foo.com"}]}})});
+        const {url, iconURL} = await Router._fetchAddonInfo();
+        assert.equal(url, "foo.com");
+        assert.equal(iconURL, "url/foo.ico");
+      });
+      it("should return empty object if AttributionCode doesn't return anything", async () => {
+        fakeAttributionCode.getAttrDataAsync = () => (Promise.resolve({content: null}));
+        fetchStub
+          .withArgs("https://services.addons.mozilla.org/api/v3/addons/addon/addonID")
+          .resolves({ok: true, status: 200, json: () => Promise.resolve({icon_url: "url/foo.ico", current_version: {files: [{url: "foo.com"}]}})});
+        const data = await Router._fetchAddonInfo();
+        assert.deepEqual(data, {});
+      });
+      it("should throw if we failed to get the addon version", async () => {
+        fetchStub
+          .withArgs("https://services.addons.mozilla.org/api/v3/addons/addon/addonID")
+          .rejects();
+        sandbox.stub(Cu, "reportError");
+        const data = await Router._fetchAddonInfo();
+
+        assert.calledOnce(Cu.reportError);
+        assert.deepEqual(data, {});
+      });
     });
 
     describe("#onMessage: OVERRIDE_MESSAGE", () => {
@@ -796,7 +898,7 @@ describe("ASRouter", () => {
       });
       it("should call openLinkIn with the correct params on OPEN_URL", async () => {
         let [testMessage] = Router.state.messages;
-        testMessage.button_action = {type: "OPEN_URL", data: {args: "some/url.com"}};
+        testMessage.button_action = {type: "OPEN_URL", data: {args: "some/url.com", where: "tabshifted"}};
         const msg = fakeExecuteUserAction(testMessage.button_action);
         await Router.onMessage(msg);
 
@@ -816,9 +918,7 @@ describe("ASRouter", () => {
     });
 
     describe("#onMessage: SHOW_FIREFOX_ACCOUNTS", () => {
-      let globals;
       beforeEach(() => {
-        globals = new GlobalOverrider();
         globals.set("FxAccounts", {config: {promiseSignUpURI: sandbox.stub().resolves("some/url")}});
       });
       it("should call openLinkIn with the correct params on OPEN_URL", async () => {
@@ -829,7 +929,7 @@ describe("ASRouter", () => {
 
         assert.calledOnce(msg.target.browser.ownerGlobal.openLinkIn);
         assert.calledWith(msg.target.browser.ownerGlobal.openLinkIn,
-          "some/url", "tabshifted", {"private": false, "triggeringPrincipal": undefined});
+          "some/url", "current", {"private": false, "triggeringPrincipal": undefined});
       });
     });
 
@@ -929,6 +1029,62 @@ describe("ASRouter", () => {
         assert.calledOnce(ASRouterPreferences.resetProviderPref);
       });
     });
+    describe("#onMessage: SET_PROVIDER_USER_PREF", () => {
+      it("should set provider user pref via ASRouterPreferences", async () => {
+        const msg = fakeAsyncMessage({type: "SET_PROVIDER_USER_PREF", data: {id: "foo", value: true}});
+        sandbox.stub(ASRouterPreferences, "setUserPreference");
+
+        await Router.onMessage(msg);
+
+        assert.calledWith(ASRouterPreferences.setUserPreference, "foo", true);
+      });
+    });
+    describe("#onMessage: EVALUATE_JEXL_EXPRESSION", () => {
+      it("should call evaluateExpression", async () => {
+        const msg = fakeAsyncMessage({type: "EVALUATE_JEXL_EXPRESSION", data: {foo: true}});
+        sandbox.stub(Router, "evaluateExpression");
+
+        await Router.onMessage(msg);
+
+        assert.calledOnce(Router.evaluateExpression);
+        assert.calledWithExactly(Router.evaluateExpression, msg.target, msg.data.data);
+      });
+    });
+    describe("#onMessage: FORCE_ATTRIBUTION", () => {
+      beforeEach(() => {
+        global.Cc["@mozilla.org/mac-attribution;1"] = {
+          getService: () => ({setReferrerUrl: sinon.spy()}),
+        };
+        global.Cc["@mozilla.org/process/environment;1"] = {
+          getService: () => ({set: sandbox.stub()}),
+        };
+      });
+      afterEach(() => {
+        globals.restore();
+      });
+      it("should call forceAttribution", async () => {
+        const msg = fakeAsyncMessage({type: "FORCE_ATTRIBUTION", data: {foo: true}});
+        sandbox.stub(Router, "forceAttribution");
+
+        await Router.onMessage(msg);
+
+        assert.calledOnce(Router.forceAttribution);
+        assert.calledWithExactly(Router.forceAttribution, msg.data.data);
+      });
+      it("should force attribution and update providers", async () => {
+        sandbox.stub(Router, "_updateMessageProviders");
+        sandbox.stub(Router, "loadMessagesFromAllProviders");
+        sandbox.stub(fakeAttributionCode, "_clearCache");
+        sandbox.stub(fakeAttributionCode, "getAttrDataAsync");
+        const msg = fakeAsyncMessage({type: "FORCE_ATTRIBUTION", data: {foo: true}});
+        await Router.onMessage(msg);
+
+        assert.calledOnce(fakeAttributionCode._clearCache);
+        assert.calledOnce(fakeAttributionCode.getAttrDataAsync);
+        assert.calledOnce(Router._updateMessageProviders);
+        assert.calledOnce(Router.loadMessagesFromAllProviders);
+      });
+    });
   });
 
   describe("_triggerHandler", () => {
@@ -943,10 +1099,8 @@ describe("ASRouter", () => {
   });
 
   describe("#UITour", () => {
-    let globals;
     let showMenuStub;
     beforeEach(() => {
-      globals = new GlobalOverrider();
       showMenuStub = sandbox.stub();
       globals.set("UITour", {showMenu: showMenuStub});
     });

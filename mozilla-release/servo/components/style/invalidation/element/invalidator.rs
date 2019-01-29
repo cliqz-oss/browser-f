@@ -1,15 +1,15 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! The struct that takes care of encapsulating all the logic on where and how
 //! element styles need to be invalidated.
 
-use context::StackLimitChecker;
-use dom::{TElement, TNode, TShadowRoot};
-use selector_parser::SelectorImpl;
-use selectors::matching::{CompoundSelectorMatchingResult, MatchingContext};
+use crate::context::StackLimitChecker;
+use crate::dom::{TElement, TNode, TShadowRoot};
+use crate::selector_parser::SelectorImpl;
 use selectors::matching::matches_compound_selector_from;
+use selectors::matching::{CompoundSelectorMatchingResult, MatchingContext};
 use selectors::parser::{Combinator, Component, Selector};
 use smallvec::SmallVec;
 use std::fmt;
@@ -471,25 +471,34 @@ where
             return false;
         }
 
+        let slot = self.element;
+        self.invalidate_slotted_elements_in_slot(slot, invalidations)
+    }
+
+    fn invalidate_slotted_elements_in_slot(
+        &mut self,
+        slot: E,
+        invalidations: &[Invalidation<'b>],
+    ) -> bool {
         let mut any = false;
 
         let mut sibling_invalidations = InvalidationVector::new();
-        let element = self.element;
-        for node in element.slotted_nodes() {
+        for node in slot.slotted_nodes() {
             let element = match node.as_element() {
                 Some(e) => e,
                 None => continue,
             };
 
-            any |= self.invalidate_child(
-                element,
-                invalidations,
-                &mut sibling_invalidations,
-                DescendantInvalidationKind::Slotted,
-            );
-
-            // FIXME(emilio): Need to handle nested slotted nodes if `element`
-            // is itself a <slot>.
+            if element.is_html_slot_element() {
+                any |= self.invalidate_slotted_elements_in_slot(element, invalidations);
+            } else {
+                any |= self.invalidate_child(
+                    element,
+                    invalidations,
+                    &mut sibling_invalidations,
+                    DescendantInvalidationKind::Slotted,
+                );
+            }
 
             debug_assert!(
                 sibling_invalidations.is_empty(),

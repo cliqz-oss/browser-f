@@ -155,11 +155,11 @@ navigation:
       This is recorded on each search navigation.
       The value field records the action used to trigger the search:
         "enter", "oneoff", "suggestion", "alias", null (for contextmenu and webextension)
-    bug_numbers: [1316281]
+    bug_numbers: [1316281, 1496764]
     notification_emails:
-      - "past@mozilla.com"
-      - "dzeber@mozilla.com"
-    expiry_version: "65"
+      - "mdeboer@mozilla.com"
+      - "rharter@mozilla.com"
+    expiry_version: never
     extra_keys:
       engine: The id of the search engine used.
 
@@ -540,7 +540,7 @@ devtools.main:
     extra_keys:
       session_id: The start time of the session in milliseconds since epoch (Unix Timestamp) e.g. 1396381378123.
   tool_timer:
-    objects: ["animationinspector", "computedview", "fontinspector", "layoutview", "ruleview"]
+    objects: ["animationinspector", "computedview", "changesview", "fontinspector", "layoutview", "ruleview"]
     bug_numbers: [1483817]
     notification_emails: ["dev-developer-tools@lists.mozilla.org", "hkirschner@mozilla.com"]
     record_in_processes: ["main"]
@@ -622,16 +622,12 @@ security.ui.identitypopup:
     record_in_processes:
       - main
     extra_keys:
-      fb: Whether FastBlock was active while the user opened the popup
       tp: Whether Tracking Protection was active while the user opened the popup
       cr: Whether Cookie Restrictions was active while the user opened the popup
     products:
       - firefox
   click:
     objects: [
-      "fb_add_blocking",
-      "tp_add_blocking",
-      "cookies_add_blocking",
       "cb_prefs_button",
       "clear_sitedata",
       "unblock",
@@ -652,8 +648,38 @@ security.ui.identitypopup:
     record_in_processes:
       - main
     extra_keys:
-      fb: Whether FastBlock was active while the user interacted with the UI
       tp: Whether Tracking Protection was active while the user interacted with the UI
       cr: Whether Cookie Restrictions was active while the user interacted with the UI
     products:
       - firefox
+
+intl.ui.browserLanguage:
+  action:
+    description: >
+      User interactions for the browser language within about-preferences in the main pane and in
+      the browser language dialog. Each dialog event (on the dialog object, and the manage and
+      search methods of the main object) has a value which is a monotonically increasing number
+      that links it with other events related to the same dialog instance.
+    objects:
+      - dialog
+      - main
+    methods:
+      - manage
+      - search
+      - add
+      - remove
+      - reorder
+      - apply
+      - accept
+      - cancel
+    extra_keys:
+      installId: The id for an install.
+    products:
+      - firefox
+    expiry_version: "70"
+    notification_emails:
+      - flod@mozilla.com
+      - mstriemer@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes: ["main"]
+    bug_numbers: [1486507]

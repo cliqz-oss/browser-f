@@ -1,16 +1,16 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! A centralized set of stylesheets for a document.
 
-use dom::TElement;
-use invalidation::stylesheets::StylesheetInvalidationSet;
-use media_queries::Device;
-use selector_parser::SnapshotMap;
-use shared_lock::SharedRwLockReadGuard;
+use crate::dom::TElement;
+use crate::invalidation::stylesheets::StylesheetInvalidationSet;
+use crate::media_queries::Device;
+use crate::selector_parser::SnapshotMap;
+use crate::shared_lock::SharedRwLockReadGuard;
+use crate::stylesheets::{Origin, OriginSet, OriginSetIterator, PerOrigin, StylesheetInDocument};
 use std::{mem, slice};
-use stylesheets::{Origin, OriginSet, OriginSetIterator, PerOrigin, StylesheetInDocument};
 
 /// Entry for a StylesheetSet.
 #[derive(MallocSizeOf)]

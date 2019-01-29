@@ -29,18 +29,17 @@ ChromeUtils.import("resource://testing-common/httpd.js");
 XPCOMUtils.defineLazyModuleGetters(this, {
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.jsm",
   UrlbarProviderOpenTabs: "resource:///modules/UrlbarProviderOpenTabs.jsm",
+  UrlbarTokenizer: "resource:///modules/UrlbarTokenizer.jsm",
 });
 
 const TITLE_SEARCH_ENGINE_SEPARATOR = " \u00B7\u2013\u00B7 ";
 
 async function cleanup() {
-  Services.prefs.clearUserPref("browser.urlbar.autocomplete.enabled");
   Services.prefs.clearUserPref("browser.urlbar.autoFill");
   Services.prefs.clearUserPref("browser.urlbar.autoFill.searchEngines");
   let suggestPrefs = [
     "history",
     "bookmark",
-    "history.onlyTyped",
     "openpage",
     "searches",
   ];
@@ -319,13 +318,15 @@ var addBookmark = async function(aBookmarkObj) {
 
   if (aBookmarkObj.keyword) {
     await PlacesUtils.keywords.insert({ keyword: aBookmarkObj.keyword,
-                                        url: aBookmarkObj.uri.spec ? aBookmarkObj.uri.spec : aBookmarkObj.uri,
+                                        url: aBookmarkObj.uri instanceof Ci.nsIURI ? aBookmarkObj.uri.spec : aBookmarkObj.uri,
                                         postData: aBookmarkObj.postData,
                                       });
   }
 
   if (aBookmarkObj.tags) {
-    PlacesUtils.tagging.tagURI(aBookmarkObj.uri, aBookmarkObj.tags);
+    let uri = aBookmarkObj.uri instanceof Ci.nsIURI ?
+      aBookmarkObj.uri : Services.io.newURI(aBookmarkObj.uri);
+    PlacesUtils.tagging.tagURI(uri, aBookmarkObj.tags);
   }
 };
 
@@ -530,7 +531,7 @@ add_task(async function ensure_search_engine() {
   Services.search.addEngineWithDetails("MozSearch", "", "", "", "GET",
                                        "http://s.example.com/search");
   let engine = Services.search.getEngineByName("MozSearch");
-  Services.search.currentEngine = engine;
+  Services.search.defaultEngine = engine;
 });
 
 /**
