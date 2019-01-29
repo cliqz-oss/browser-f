@@ -5200,7 +5200,7 @@ class TabProgressListener {
       }
     }
 
-    if (!this.mBlank) {
+    if (!this.mBlank || this.mBrowser.hasContentOpener) {
       this._callProgressListeners("onLocationChange",
                                   [aWebProgress, aRequest, aLocation, aFlags]);
     }
