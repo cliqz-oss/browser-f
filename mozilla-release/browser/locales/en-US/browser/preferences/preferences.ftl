@@ -3,6 +3,9 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 do-not-track-description = Send websites a “Do Not Track” signal that you don’t want to be tracked
+# CLIQZ-SPECIAL: we use it as checbox not label
+do-not-track-checkbox-description =
+    .label = Send websites a “Do Not Track” signal that you don’t want to be tracked
 do-not-track-learn-more = Learn more
 do-not-track-option-default-content-blocking-known =
     .label = Only when { -brand-short-name } is set to block known trackers
@@ -1076,6 +1079,32 @@ startup-user-home-page =
 about-home-page-title =
     .label = { -brand-short-name } Start Page
     .placeholder = { -brand-short-name } Start Page
+
 select-bookmark =
     .title = Set Home Page
     .label = Choose a Bookmark to be your Home Page. If you choose a folder, the Bookmarks in that folder will be opened in Tabs.
+
+forget-mode-header = Automatic Forget Mode
+forget-mode-enable-checkbox =
+    .label = Enable automatic forget mode
+forget-mode-explanation1 = Automatically opens websites with adult content inside a forget tab, so that these websites will not be saved in your history.
+forget-mode-explanation2 = Behavior can be changed for each website via the tab context menu (right-click on respective tab in tab bar)
+forget-mode-explanation3 = May not work in combination with 'Containers' add-on."
+forget-mode-note = Note: for improved privacy, it is recommended to always open websites with sensitive content in <b>Forget Windows</b> which allow for more reliable removal of temporary files.
+forget-mode-learn-more = Learn more
+
+cliqz-firefox-privacy = Parts of the Cliqz Browser are building upon the <label data-l10n-name="cliqz-firefox-privacy-mozilla">Mozilla open source project</label>. The <label data-l10n-name="cliqz-firefox-privacy-mozilla-privacy">Firefox Privacy Notice</label> applies, unless otherwise stated in the Cliqz <label data-l10n-name="cliqz-firefox-privacy-privacy-browser">Privacy Statement</label>.
+
+remember-logins-2-hint = To enable this feature please make sure Cliqz will remember your <label data-l10n-name="remember-logins-2-jump">History</label>.
+
+https-everywhere-header = HTTPS everywhere
+https-everywhere-checkbox =
+    .label = Enable HTTPS Everywhere
+    .accesskey = H
+https-everywhere-desc = HTTPS Everywhere is a third-party service provided by that automatically enables HTTPS encryption wherever possible. <label data-l10n-name="https-everywhere-learn-more">Learn more</label>
+
+consentric-header = re:consent
+consentric-enable =
+    .label = Enable re:consent
+    .accesskey = C
+consentric-desc = re:consent displays the types of personal data that are collected by websites.<br/>It offers an easy way to give or withdraw consent to this data collection. <label data-l10n-name="consentric-learn-more">Learn more</label>
