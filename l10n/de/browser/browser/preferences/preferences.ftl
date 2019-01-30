@@ -3,6 +3,9 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 do-not-track-description = Websites eine "Do Not Track"-Information senden, dass die eigenen Aktivitäten nicht verfolgt werden sollen
+# CLIQZ-SPECIAL: we use it as checbox not label
+do-not-track-checkbox-description =
+    .label = Websites eine "Do Not Track"-Information senden, dass die eigenen Aktivitäten nicht verfolgt werden sollen
 do-not-track-learn-more = Weitere Informationen
 do-not-track-option-default =
     .label = Nur wenn der Schutz vor Aktivitätenverfolgung aktiv ist
@@ -952,3 +955,46 @@ choose-download-folder-title = Download-Ordner wählen:
 #   $service-name (String) - Name of a cloud storage provider like Dropbox, Google Drive, etc...
 save-files-to-cloud-storage =
     .label = Speichert Dateien in { $service-name }
+
+startup-page-2 =
+    .label = Wenn { -brand-short-name } gestartet wird
+    .accesskey = W
+
+startup-prev-session =
+    .label = Fenster und Tabs der letzten Sitzung anzeigen
+
+startup-user-home-page =
+    .label = Startseite anzeigen
+
+about-home-page-title =
+    .label = { -brand-short-name }-Startseite
+    .placeholder = { -brand-short-name }-Startseite
+
+select-bookmark =
+    .title = Startseite festlegen
+    .label = Bitte wähle ein Lesezeichen als deine Startseite aus. Wenn du einen Ordner wählst, werden die Lesezeichen in diesem Ordner als Tabs geöffnet.
+
+forget-mode-caption = Automatischer Vergessen Modus
+forget-mode-enable-checkbox =
+    .label = Automatischen Vergessen Modus aktivieren
+forget-mode-explanation1 = Öffnet Websites mit expliziten Inhalten automatisch im Vergessen Modus, so dass sie nicht in der Chronik gespeichert werden.
+forget-mode-explanation2 = Kann im Tab-Kontextmenü (rechter Mausklick auf Tab in Tableiste) für jede Website eingestellt werden.
+forget-mode-explanation3 = Funktioniert nicht in Verbindung mit 'Containers' Add-on.
+forget-mode-note = Hinweis: Für umfassendere Privatsphäre bitte Websites in einem <b>Vergessen Fenster</b> öffnen, weil dort u.a. temporäre Dateien zuverlässiger entfernt werden können.
+forget-mode-learnMore = Mehr erfahren
+
+cliqz-firefox-privacy = Der Cliqz Browser baut auf dem <label data-l10n-name="cliqz-firefox-privacy-mozilla">Mozilla Open Source Projekt</label> auf. Es gilt die <label data-l10n-name="cliqz-firefox-privacy-mozilla-privacy">Firefox Datenschutzhinweis</label>, wenn nicht anders in der Cliqz <label data-l10n-name="cliqz-firefox-privacy-privacy-browser">Datenschutzerklärung</label> festgestellt.
+
+remember-logins-2-hint = Diese Funktion kann nur genutzt werden, wenn Cliqz eine <label data-l10n-name="remember-logins-2-jump">Chronik</label> anlegen kann.
+
+https-everywhere-header = HTTPS everywhere
+https-everywhere-checkbox =
+    .label = HTTPS Everywhere aktivieren
+    .accesskey = H
+https-everywhere-desc = HTTPS Everywhere ist ein Dritt-Anbieter-Service, der verschlüsselte Website-Verbindungen anfordert. <label data-l10n-name="https-everywhere-learn-more">Learn more</label>
+
+consentric-header = re:consent
+consentric-enable =
+    .label = re:consent aktivieren
+    .accesskey = C
+consentric-desc = re:consent zeigt auf übersichtliche Weise welche personenbezogenen Daten von Websites<br/>verarbeitet werden und macht es dem Nutzer leicht zuzustimmen oder abzulehnen. <label data-l10n-name="consentric-learn-more">Erfahre mehr</label>

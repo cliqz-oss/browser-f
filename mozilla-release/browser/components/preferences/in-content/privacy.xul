@@ -296,7 +296,9 @@
     <hbox id="showPasswordBox" pack="end">
       <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
       <hbox flex="1">
-        <description id="passwordsBoxHint" hidden="true">&rememberLogins2.hint;</description>
+        <description id="passwordsBoxHint" hidden="true" data-l10n-id="remember-logins-2-hint">
+          <label data-l10n-name="remember-logins-2-jump" class='text-link' id='jumpToHistory'/>
+        </description>
       </hbox>
       <hbox>
         <button id="showPasswords"
@@ -322,18 +324,16 @@
 
 <!-- Consentric -->
 <groupbox id="consentricGroup" data-category="panePrivacy" hidden="true">
-  <caption><label>&consentric.label;</label></caption>
+  <label><html:h2 data-l10n-id="consentric-header"/></label>
   <checkbox id="consentricEnable"
-            label="&consentric.enable;"
-            accesskey="&consentric.accesskey;"
+            data-l10n-id="consentric-enable"
             oncommand="gPrivacyPane.toggleConsentric();"/>
   <vbox>
-    <label>&consentric.desc1;</label>
-    <hbox>
-      <label class="tail-with-learn-more">&consentric.desc2;</label>
+    <description class="tail-with-learn-more" data-l10n-id="consentric-desc">
       <label class="learnMore text-link"
-             href="http://cliqz.com/magazine/re-consent">&consentric.more;</label>
-    </hbox>
+            href="http://cliqz.com/magazine/re-consent"
+            data-l10n-name="consentric-learn-more"/>
+    </description>
   </vbox>
 </groupbox>
 
@@ -440,24 +440,20 @@
 <!-- Forget mode tabs -->
 <vbox data-category="panePrivacy" hidden="true">
   <groupbox id="forgetMode" hidden="true">
-    <caption data-subcategory="afm">
-      <label>&forgetMode.caption;</label>
-    </caption>
+    <label><html:h2 data-l10n-id="forget-mode-header"/></label>
     <checkbox
         id="forgetModeEnable"
-        label="&forgetMode.enableCheckboxLabel;"
+        data-l10n-id="forget-mode-enable-checkbox"
         preference="browser.privatebrowsing.apt"/>
     <html:ul>
-      <html:li><description>&forgetMode.explanation1;</description></html:li>
-      <html:li><description>&forgetMode.explanation2;</description></html:li>
-      <html:li><description>&forgetMode.explanation3;</description></html:li>
+      <html:li><description data-l10n-id="forget-mode-explanation1"/></html:li>
+      <html:li><description data-l10n-id="forget-mode-explanation2"/></html:li>
+      <html:li><description data-l10n-id="forget-mode-explanation3"/></html:li>
     </html:ul>
     <separator class="thin"/>
-    <description>&forgetMode.note;</description>
+    <description data-l10n-id="forget-mode-note"/>
     <separator class="thin"/>
-    <html:a href="https://cliqz.com/support/automatic-forget-mode">
-      &forgetMode.learnMore;
-    </html:a>
+    <label href="https://cliqz.com/support/automatic-forget-mode" data-l10n-id="forget-mode-learn-more"/>
   </groupbox>
 </vbox>
 #endif
@@ -480,14 +476,15 @@
 
 <!-- Tracking -->
 <groupbox id="trackingGroup" data-category="panePrivacy" hidden="true">
-  <caption><label data-l10n-id="tracking-header-donottrack"/></caption>
+  <label><html:h2 data-l10n-id="tracking-header-donottrack"/></label>
     <hbox align="center">
       <checkbox id="trackingProtectionPBM"
                 preference="privacy.donottrackheader.enabled"
-                label="&doNotTrack.description;"
+                data-l10n-id="do-not-track-checkbox-description"
                 class="tail-with-learn-more"/>
       <label class="learnMore text-link"
-             href="https://www.mozilla.org/dnt">&doNotTrack.learnMore.label;</label>
+             data-l10n-id="do-not-track-learn-more"
+             href="https://www.mozilla.org/dnt"/>
     </hbox>
 </groupbox>
 
@@ -807,7 +804,11 @@
 #endif
     </hbox>
 #endif
-  <description>&cliqzFirefoxPrivacy.label;</description>
+  <description data-l10n-id="cliqz-firefox-privacy">
+    <label data-l10n-name="cliqz-firefox-privacy-mozilla" class='text-link' href='https://www.mozilla.org'/>
+    <label data-l10n-name="cliqz-firefox-privacy-mozilla-privacy" class='text-link' href='https://www.mozilla.org/en-US/privacy/firefox'/>
+    <label data-l10n-name="cliqz-firefox-privacy-privacy-browser" class='text-link' href='https://cliqz.com/en/privacy-browser'/>
+  </description>
   </vbox>
 </groupbox>
 #endif
@@ -839,15 +840,16 @@
 
 <!-- HTTPS Everywhere -->
 <groupbox id="httpsEverywhereGroup" data-category="panePrivacy" hidden="true">
-  <caption><label>&httpsEverywhere.label;</label></caption>
+  <label><html:h2 data-l10n-id="https-everywhere-header"/></label>
   <checkbox id="httpsEverywhereEnable"
-            label="&httpsEverywhereEnable.label;"
-            accesskey="&httpsEverywhere.accesskey;"
+            data-l10n-id="https-everywhere-checkbox"
             oncommand="gPrivacyPane.toggleHttpsEverywhere();"/>
   <hbox>
-    <label class="tail-with-learn-more">&httpsEverywhereDesc.label;</label>
-    <label class="learnMore text-link"
-           href="https://www.eff.org/https-everywhere">&httpsEverywhereMore.label;</label>
+    <description class="tail-with-learn-more" data-l10n-id="https-everywhere-desc">
+      <label class="learnMore text-link"
+            href="https://www.eff.org/https-everywhere"
+            data-l10n-name="https-everywhere-learn-more"/>
+    </description>
   </hbox>
 </groupbox>
 
