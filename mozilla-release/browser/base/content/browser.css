@@ -1452,4 +1452,8 @@ toolbarpaletteitem > toolbaritem {
   padding: 0px !important;
 }
 
+#wrapper-https-everywhere_cliqz_com-browser-action {
+  display: none;
+}
+
 %include theme-vars.inc.css
