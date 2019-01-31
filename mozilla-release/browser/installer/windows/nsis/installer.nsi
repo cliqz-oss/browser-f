@@ -379,7 +379,7 @@ Section "-Application" APP_IDX
     StrCpy $AddDesktopSC "1"
   ${EndIf}
 
-  ${CreateUpdateDir} "Mozilla"
+  ${CreateUpdateDir} "CLIQZ"
   ${If} ${Errors}
     Pop $0
     ${LogMsg} "** ERROR Failed to create update directory: $0"
@@ -798,9 +798,10 @@ Section "-InstallEndCleanup"
 
   ; When we're using the GUI, .onGUIEnd sends the ping, but of course that isn't
   ; invoked when we're running silently.
-  ${If} ${Silent}
-    Call SendPing
-  ${EndIf}
+  ; DB-2019. Not used for now
+  ;${If} ${Silent}
+  ;  Call SendPing
+  ;${EndIf}
 SectionEnd
 
 ################################################################################
@@ -1025,12 +1026,12 @@ Function SendPing
   ${EndIf}
 
   ClearErrors
-  WriteRegStr HKLM "Software\Mozilla" "${BrandShortName}InstallerTest" \
+  WriteRegStr HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest" \
                    "Write Test"
   ${If} ${Errors}
     nsJSON::Set /tree ping "Data" "admin_user" /value false
   ${Else}
-    DeleteRegValue HKLM "Software\Mozilla" "${BrandShortName}InstallerTest"
+    DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest"
     nsJSON::Set /tree ping "Data" "admin_user" /value true
   ${EndIf}
 
@@ -1577,19 +1578,20 @@ Function .onInit
   SetRegView 64
 !endif
 
-  SetShellVarContext all
-  ${GetFirstInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $0
-  ${If} "$0" == "false"
-    SetShellVarContext current
-    ${GetFirstInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $0
-    ${If} "$0" == "false"
-      StrCpy $HadOldInstall false
-    ${Else}
-      StrCpy $HadOldInstall true
-    ${EndIf}
-  ${Else}
-    StrCpy $HadOldInstall true
-  ${EndIf}
+  ; DB-2019. Not used for now
+  ;SetShellVarContext all
+  ;${GetFirstInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $0
+  ;${If} "$0" == "false"
+  ;  SetShellVarContext current
+  ;  ${GetFirstInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $0
+  ;  ${If} "$0" == "false"
+  ;    StrCpy $HadOldInstall false
+  ;  ${Else}
+  ;    StrCpy $HadOldInstall true
+  ;  ${EndIf}
+  ;${Else}
+  ;  StrCpy $HadOldInstall true
+  ;${EndIf}
 
   ${InstallOnInitCommon} "$(WARN_MIN_SUPPORTED_OSVER_CPU_MSG)"
 
@@ -1780,5 +1782,6 @@ FunctionEnd
 
 Function .onGUIEnd
   ${OnEndCommon}
-  Call SendPing
+  ; DB-2019. Don't use for now
+  ;Call SendPing
 FunctionEnd
