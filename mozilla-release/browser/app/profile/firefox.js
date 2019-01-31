@@ -1377,7 +1377,8 @@ pref("geo.provider.use_gpsd", false);
 pref("browser.uiCustomization.debug", false);
 
 // CustomizableUI state of the browser's user interface
-pref("browser.uiCustomization.state", "");
+// pref("browser.uiCustomization.state", "");
+pref("browser.uiCustomization.state", "{\"placements\":{\"widget-overflow-fixed-list\":[],\"PersonalToolbar\":[\"personal-bookmarks\"],\"nav-bar\":[\"back-button\",\"forward-button\",\"stop-reload-button\",\"urlbar-container\",\"cliqz_cliqz_com-browser-action2\",\"cliqz_cliqz_com-browser-action\",\"bookmarks-menu-button\",\"home-button\",\"downloads-button\"],\"toolbar-menubar\":[\"menubar-items\"],\"TabsToolbar\":[\"tabbrowser-tabs\",\"new-tab-button\",\"alltabs-button\"]},\"seen\":[\"cliqz_cliqz_com-browser-action2\",\"cliqz_cliqz_com-browser-action\",\"webide-button\",\"developer-button\"],\"dirtyAreaCache\":[\"PersonalToolbar\",\"nav-bar\",\"toolbar-menubar\",\"TabsToolbar\"],\"currentVersion\":14,\"newElementCount\":0}");
 
 // If set to false, FxAccounts and Sync will be unavailable.
 // A restart is mandatory after flipping that preference.
