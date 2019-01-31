@@ -350,6 +350,7 @@ var CustomizableUIInternal = {
         "find-button",
         "preferences-button",
         "add-ons-button",
+        "https-everywhere_cliqz_com-browser-action",
 #if 0
         "sync-button",
 #endif
@@ -2245,6 +2246,13 @@ var CustomizableUIInternal = {
   },
 
   createWidget(aProperties) {
+    /**
+     * CLIQZ-SPECIAL: pushing https-everywhere always to customize pane
+     */
+    if (aProperties.id === 'https-everywhere_cliqz_com-browser-action') {
+      aProperties.defaultArea = null;
+    }
+
     let widget = this.normalizeWidget(aProperties, CustomizableUI.SOURCE_EXTERNAL);
     // XXXunf This should probably throw.
     if (!widget) {
