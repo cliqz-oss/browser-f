@@ -490,7 +490,7 @@ var gIdentityHandler = {
 
     // CLIQZ: use brand name and logo if its system addon
     try {
-      isSystemAddon = (this._pageExtensionPolicy.extension.addonData.signedState  == 3 || this._pageExtensionPolicy.extension.addonData.builtIn)
+      isSystemAddon = this._pageExtensionPolicy.extension.addonData.signedState  == 3
     } catch(e) {
       isSystemAddon = false;
     }
