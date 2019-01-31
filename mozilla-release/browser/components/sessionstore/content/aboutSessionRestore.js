@@ -191,6 +191,10 @@ function startNewSession() {
   let addNTP = HomePage.canBeDisplayed();
   if (addNTP)
     getBrowserWindow().BrowserHome();
+  else
+    getBrowserWindow().gBrowser.loadURI("about:blank", {
+      triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}),
+    });
 }
 
 function onListClick(aEvent) {
