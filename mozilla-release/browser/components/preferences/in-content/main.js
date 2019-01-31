@@ -1033,7 +1033,8 @@ var gMainPane = {
     menupopup.appendChild(fragment);
     menulist.value = selected;
 
-    document.getElementById("browserLanguagesBox").hidden = false;
+    // CLIQZ-SPECIAL: Do not allow to change app language from preferences.
+    // document.getElementById("browserLanguagesBox").hidden = false;
   },
 
   /* Show the confirmation message bar to allow a restart into the new locales. */
