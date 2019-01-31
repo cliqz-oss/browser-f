@@ -3032,9 +3032,8 @@ var CustomizableUI = {
    * List of Cliqz widget ids.
    */
   CLIQZ_WIDGET_IDS: [
-    "control-center-browser-action", // Cliqz control center
-    "cliqz-cc-btn", // Cliqz control center old
-    "offers-cc-browser-action", // Cliqz offers hub
+    "cliqz_cliqz_com-browser-action", // Myoffrz button
+    "cliqz_cliqz_com-browser-action2", // Cliqz control center
   ],
 
   /**
