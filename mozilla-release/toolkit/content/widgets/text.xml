@@ -27,7 +27,7 @@
             var control = this.labeledControlElement;
             if (!control) {
               var bindingParent = document.getBindingParent(this);
-              if ("accessKey" in bindingParent) {
+              if (bindingParent != null && "accessKey" in bindingParent) {
                 control = bindingParent; // For controls that make the <label> an anon child
               }
             }
