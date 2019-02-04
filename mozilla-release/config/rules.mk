@@ -1349,7 +1349,8 @@ $(CLIQZ_ONIONMODE_XPI_PATH): $(EXTENSIONS_PATH)
 ifeq ($(CQZ_TOR_MODE),1)
 	echo CLIQZ_ONIONMODE_XPI_PATH in `pwd`
 	wget --output-document $(CLIQZ_ONIONMODE_XPI_PATH) $(CLIQZ_ONIONMODE_EXT_URL)
-	echo "$(CLIQZ_ONIONMODE_XPI_HASH) $(CLIQZ_ONIONMODE_XPI_PATH)" | sha256sum -c -;
+	# Only available in Linux, commenting it out for now.
+	#echo "$(CLIQZ_ONIONMODE_XPI_HASH) $(CLIQZ_ONIONMODE_XPI_PATH)" | sha256sum -c -;
 endif
 
 CLIQZ_CFG = $(DIST_RESPATH)/cliqz.cfg
@@ -1362,21 +1363,21 @@ tor:
 ifeq ($(CQZ_TOR_MODE),1)
 ifeq ($(OS_TARGET),WINNT)
 	wget --output-document $(DIST_RESPATH)/tor.tar.xz $(TOR_WIN_URL)
-	echo "$(TOR_WIN_HASH) $(DIST_RESPATH)/tor.tar.xz" | sha256sum -c -;
+	#echo "$(TOR_WIN_HASH) $(DIST_RESPATH)/tor.tar.xz" | sha256sum -c -;
 else
 ifeq ($(OS_TARGET),Linux)
 ifdef _AMD64_
 	wget --output-document $(DIST_RESPATH)/tor.tar.xz $(TOR_LINUX64_URL)
-	echo "$(TOR_LINUX64_HASH) $(DIST_RESPATH)/tor.tar.xz" | sha256sum -c -;
+	#echo "$(TOR_LINUX64_HASH) $(DIST_RESPATH)/tor.tar.xz" | sha256sum -c -;
 endif
 ifndef _AMD64_
 	wget --output-document $(DIST_RESPATH)/tor.tar.xz $(TOR_LINUX32_URL)
-	echo "$(TOR_LINUX32_HASH) $(DIST_RESPATH)/tor.tar.xz" | sha256sum -c -;
+	#echo "$(TOR_LINUX32_HASH) $(DIST_RESPATH)/tor.tar.xz" | sha256sum -c -;
 endif
 else
 ifeq ($(OS_TARGET),Darwin)
 	wget --output-document $(DIST_RESPATH)/tor.tar.xz $(TOR_MAC_URL)
-	echo "$(TOR_MAC_HASH) $(DIST_RESPATH)/tor.tar.xz" | sha256sum -c -;
+	#echo "$(TOR_MAC_HASH) $(DIST_RESPATH)/tor.tar.xz" | sha256sum -c -;
 endif
 endif
 endif
