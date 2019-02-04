@@ -1309,16 +1309,11 @@ endif
 CLIQZ_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/cliqz@cliqz.com.xpi"
 HTTPSE_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/https-everywhere@cliqz.com.xpi"
 CONSENTRICK_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/gdprtool@cliqz.com.xpi"
-TOR_WIN_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_windows32_8.0.5.tar.xz"
-TOR_WIN_HASH = "1cc5386b22c75f046c9278435eb00741bf86c327e8c675b0fa0ac7c60a22eda1"
-TOR_LINUX64_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_linux64_8.0.5.tar.xz"
-TOR_LINUX64_HASH = "324ce43eb6aaeb0ffc118ef138ba17afbf09c2e6ff3a22dc42aa0d49d25dea9a"
-TOR_LINUX32_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_linux32_8.0.5.tar.xz"
-TOR_LINUX32_HASH = "98347079fe0bbba8f9764d727f8b574cfe33fb4e29b9085b8ff476e596b38673"
-TOR_MAC_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_mac64_8.0.5.tar.xz"
-TOR_MAC_HASH = "ed10c4e00b7280491c093bc256b5648ab723ac471eac4d06c785390d917ec684"
-CLIQZ_ONIONMODE_EXT_URL = "https://s3.amazonaws.com/cdncliqz/update/browser/onionmode%40cliqz.com/onionmode%40cliqz.com-0.0.6-browser-signed.xpi"
-CLIQZ_ONIONMODE_XPI_HASH = "6564180db639d97ca108cb1ad142e774b1972c02261d7b69fc230f892c1ba7a9"
+TOR_WIN_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_windows32_8.0.2.tar.xz"
+TOR_LINUX64_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_linux64_8.0.2.tar.xz"
+TOR_LINUX32_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_linux32_8.0.2.tar.xz"
+TOR_MAC_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_mac64_8.0.2.tar.xz"
+CLIQZ_ONIONMODE_EXT_URL = "https://s3.amazonaws.com/cdncliqz/update/browser_pre/onionmode%40cliqz.com/onionmode%40cliqz.com-0.0.4-browser-signed.xpi"
 
 DIST_RESPATH = $(DIST)/bin
 EXTENSIONS_PATH = $(DIST_RESPATH)/browser/features
@@ -1349,8 +1344,6 @@ $(CLIQZ_ONIONMODE_XPI_PATH): $(EXTENSIONS_PATH)
 ifeq ($(CQZ_TOR_MODE),1)
 	echo CLIQZ_ONIONMODE_XPI_PATH in `pwd`
 	wget --output-document $(CLIQZ_ONIONMODE_XPI_PATH) $(CLIQZ_ONIONMODE_EXT_URL)
-	# Only available in Linux, commenting it out for now.
-	#echo "$(CLIQZ_ONIONMODE_XPI_HASH) $(CLIQZ_ONIONMODE_XPI_PATH)" | sha256sum -c -;
 endif
 
 CLIQZ_CFG = $(DIST_RESPATH)/cliqz.cfg
@@ -1363,21 +1356,17 @@ tor:
 ifeq ($(CQZ_TOR_MODE),1)
 ifeq ($(OS_TARGET),WINNT)
 	wget --output-document $(DIST_RESPATH)/tor.tar.xz $(TOR_WIN_URL)
-	#echo "$(TOR_WIN_HASH) $(DIST_RESPATH)/tor.tar.xz" | sha256sum -c -;
 else
 ifeq ($(OS_TARGET),Linux)
 ifdef _AMD64_
 	wget --output-document $(DIST_RESPATH)/tor.tar.xz $(TOR_LINUX64_URL)
-	#echo "$(TOR_LINUX64_HASH) $(DIST_RESPATH)/tor.tar.xz" | sha256sum -c -;
 endif
 ifndef _AMD64_
 	wget --output-document $(DIST_RESPATH)/tor.tar.xz $(TOR_LINUX32_URL)
-	#echo "$(TOR_LINUX32_HASH) $(DIST_RESPATH)/tor.tar.xz" | sha256sum -c -;
 endif
 else
 ifeq ($(OS_TARGET),Darwin)
 	wget --output-document $(DIST_RESPATH)/tor.tar.xz $(TOR_MAC_URL)
-	#echo "$(TOR_MAC_HASH) $(DIST_RESPATH)/tor.tar.xz" | sha256sum -c -;
 endif
 endif
 endif
