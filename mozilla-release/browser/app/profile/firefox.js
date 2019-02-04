@@ -1510,9 +1510,8 @@ pref("media.gmp-provider.enabled", true);
 
 // Enable blocking access to storage from tracking resources only in nightly
 // and early beta. By default the value is 0: BEHAVIOR_ACCEPT
-#ifdef EARLY_BETA_OR_EARLIER
+// Use tracker storage blocking by default. See: https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Privacy/Storage_access_policy
 pref("network.cookie.cookieBehavior", 4 /* BEHAVIOR_REJECT_TRACKER */);
-#endif
 
 pref("browser.contentblocking.allowlist.storage.enabled", false);
 
