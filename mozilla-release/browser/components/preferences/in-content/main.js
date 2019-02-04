@@ -369,10 +369,8 @@ var gMainPane = {
       document.getElementById("warnOpenMany").hidden = true;
 
     // Startup pref
-#if 0
-    setEventListener("browserRestoreSession", "command",
+    setEventListener("restoreSessionCheckbox", "command",
       gMainPane.onBrowserRestoreSessionChange);
-#endif
     gMainPane.updateBrowserStartupUI = gMainPane.updateBrowserStartupUI.bind(gMainPane);
     Preferences.get("browser.privatebrowsing.autostart").on("change",
       gMainPane.updateBrowserStartupUI);
@@ -958,31 +956,25 @@ var gMainPane = {
    * Hide/show the "Show my windows and tabs from last time" option based
    * on the value of the browser.privatebrowsing.autostart pref.
    */
-
   updateBrowserStartupUI() {
     const pbAutoStartPref = Preferences.get("browser.privatebrowsing.autostart");
     const restoreCheckbox = document.getElementById("restoreSessionCheckbox");
-    let checkbox = document.getElementById("restoreSessionCheckbox");
     let warnOnQuitCheckbox = document.getElementById("browserRestoreSessionQuitWarning");
     if (pbAutoStartPref.value) {
       restoreCheckbox.setAttribute("disabled", "true");
       restoreCheckbox.checked = false;
       warnOnQuitCheckbox.setAttribute("disabled", "true");
     } else {
-      checkbox.removeAttribute("disabled");
+      restoreCheckbox.removeAttribute("disabled");
     }
-/*
-    newValue = pbAutoStartPref.value ? false : startupPref.value === this.STARTUP_PREF_RESTORE_SESSION;
-    if (checkbox.checked !== newValue) {
-      checkbox.checked = newValue;
-      let warnOnQuitPref = Preferences.get("browser.sessionstore.warnOnQuit");
-      if (newValue && !warnOnQuitPref.locked && !pbAutoStartPref.value) {
-        warnOnQuitCheckbox.removeAttribute("disabled");
-      } else {
-        warnOnQuitCheckbox.setAttribute("disabled", "true");
-      }
+
+    const restoreSessionPref = Preferences.get("browser.startup.restoreTabs");
+    const newValue = pbAutoStartPref.value ? false : restoreSessionPref.value;
+    if (newValue) {
+      warnOnQuitCheckbox.removeAttribute("disabled");
+    } else {
+      warnOnQuitCheckbox.setAttribute("disabled", "true");
     }
-*/
   },
 
   initBrowserLocale() {
@@ -1135,30 +1127,18 @@ var gMainPane = {
     this.showConfirmLanguageChangeMessageBar(locales);
   },
 
-#if 0
   onBrowserRestoreSessionChange(event) {
     const value = event.target.checked;
-    const startupPref = Preferences.get("browser.startup.page");
-    let newValue;
-
     let warnOnQuitCheckbox = document.getElementById("browserRestoreSessionQuitWarning");
     if (value) {
-      // We need to restore the blank homepage setting in our other pref
-      if (startupPref.value === this.STARTUP_PREF_BLANK) {
-        HomePage.set('about:blank');
-      }
-      newValue = this.STARTUP_PREF_RESTORE_SESSION;
       let warnOnQuitPref = Preferences.get("browser.sessionstore.warnOnQuit");
       if (!warnOnQuitPref.locked) {
         warnOnQuitCheckbox.removeAttribute("disabled");
       }
     } else {
-      newValue = this.STARTUP_PREF_HOMEPAGE;
       warnOnQuitCheckbox.setAttribute("disabled", "true");
     }
-    startupPref.value = newValue;
   },
-#endif
 
   // TABS
 

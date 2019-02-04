@@ -49,14 +49,18 @@
               data-l10n-id="startup-restore-previous-session"/>
 #endif
     <label data-l10n-id="startup-page-2" control="browserStartupPage"/>
-    <checkbox
-        id="restoreSessionCheckbox"
-        preference="browser.startup.restoreTabs"
-        data-l10n-id="startup-prev-session"/>
-    <checkbox
-        id="addCliqzFrashTabCheckbox"
-        preference="browser.startup.addFreshTab"
-        data-l10n-id="startup-user-home-page"/>
+    <checkbox id="restoreSessionCheckbox"
+              preference="browser.startup.restoreTabs"
+              data-l10n-id="startup-prev-session"/>
+    <hbox class="indent">
+      <checkbox id="browserRestoreSessionQuitWarning"
+                preference="browser.sessionstore.warnOnQuit"
+                disabled="true"
+                data-l10n-id="startup-restore-warn-on-quit"/>
+    </hbox>
+    <checkbox id="addCliqzFrashTabCheckbox"
+              preference="browser.startup.addFreshTab"
+              data-l10n-id="startup-user-home-page"/>
   </vbox>
 
 #ifdef HAVE_SHELL_SERVICE
