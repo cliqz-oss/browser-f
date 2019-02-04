@@ -217,15 +217,58 @@
         <label id="siteDataLearnMoreLink"
           class="learnMore text-link" data-l10n-id="sitedata-learn-more"/>
       </description>
-      <hbox id="keepRow"
-            align="center">
-        <checkbox id="deleteOnClose"
-                  data-l10n-id="sitedata-delete-on-close"
-                  preference="network.cookie.lifetimePolicy"
-                  onsyncfrompreference="return gPrivacyPane.readDeleteOnClose();"
-                  onsynctopreference="return gPrivacyPane.writeDeleteOnClose();"
-                  flex="1" />
-      </hbox>
+      <description class="description-with-side-element warning-description"
+                   flex="1" hidden="true" id="blockCookiesWarning"
+                   data-l10n-id="sitedata-warning-your-settings-prevent-changes"/>
+      <radiogroup id="blockCookies"
+                  preference="network.cookie.cookieBehavior"
+                  onsyncfrompreference="return gPrivacyPane.readBlockCookies();"
+                  onsynctopreference="return gPrivacyPane.writeBlockCookies(this.value);">
+        <radio value="allow"
+               data-l10n-id="sitedata-allow-cookies-option"
+               flex="1" />
+        <radio value="disallow"
+               data-l10n-id="sitedata-disallow-cookies-option"
+               flex="1" />
+        <hbox id="blockThirdPartyRow"
+              class="indent"
+              align="center">
+          <label id="blockCookiesLabel"
+              control="blockCookiesMenu"
+              data-l10n-id="sitedata-block-desc"/>
+          <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
+          <hbox>
+            <menulist id="blockCookiesMenu" preference="network.cookie.cookieBehavior"
+                      onsyncfrompreference="return gPrivacyPane.readBlockCookiesMenu();"
+                      onsynctopreference="return gPrivacyPane.writeBlockCookiesMenu(this.selectedItem.value);">
+              <menupopup>
+                <menuitem id="blockCookiesFromTrackers" data-l10n-id="sitedata-option-block-trackers" value="trackers"/>
+                <menuitem data-l10n-id="sitedata-option-block-unvisited" value="unvisited"/>
+                <menuitem data-l10n-id="sitedata-option-block-all-third-party" value="all-third-parties"/>
+                <menuitem data-l10n-id="sitedata-option-block-all" value="always"/>
+              </menupopup>
+            </menulist>
+          </hbox>
+        </hbox>
+        <hbox id="keepRow"
+              class="indent"
+              align="center">
+          <label id="keepUntil"
+                 control="keepCookiesUntil"
+                 data-l10n-id="sitedata-keep-until"/>
+          <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
+          <hbox>
+            <menulist id="keepCookiesUntil"
+                      onsyncfrompreference="return gPrivacyPane.readKeepCookiesUntil();"
+                      preference="network.cookie.lifetimePolicy">
+              <menupopup>
+                <menuitem data-l10n-id="sitedata-keep-until-expire" value="0"/>
+                <menuitem data-l10n-id="sitedata-keep-until-closed" value="2"/>
+              </menupopup>
+            </menulist>
+          </hbox>
+        </hbox>
+      </radiogroup>
     </vbox>
     <vbox align="end">
       <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->

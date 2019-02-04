@@ -764,9 +764,17 @@ sitedata-total-size = Your stored cookies, site data and cache are currently usi
 
 sitedata-learn-more = Learn more
 
+sitedata-keep-until = Keep until
+    .accesskey = u
+
 sitedata-delete-on-close =
     .label = Delete cookies and site data when { -brand-short-name } is closed
     .accesskey = c
+
+sitedata-keep-until-expire =
+    .label = They expire
+sitedata-keep-until-closed =
+    .label = { -brand-short-name } is closed
 
 sitedata-allow-cookies-option =
     .label = Accept cookies and site data
