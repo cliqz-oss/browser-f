@@ -14,7 +14,7 @@
 <groupbox id="homepageGroup"
           data-category="paneGeneral"
           hidden="true">
-  <caption><label data-l10n-id="home-page-header"/></caption>
+  <label><html:h2 data-l10n-id="home-page-header"/></label>
 
   <hbox align="center">
     <label flex="2"
