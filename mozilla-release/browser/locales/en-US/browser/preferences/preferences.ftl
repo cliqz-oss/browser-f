@@ -949,7 +949,7 @@ permissions-addon-exceptions =
     .accesskey = E
 
 permissions-a11y-privacy-checkbox =
-    .label = Prevent accessibility services from accessing your browser
+    .label = Prevent accessibility services from accessing { -brand-short-name } browser
     .accesskey = a
 
 permissions-a11y-privacy-link = Learn more
