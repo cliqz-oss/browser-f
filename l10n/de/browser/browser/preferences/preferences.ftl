@@ -974,14 +974,14 @@ select-bookmark =
     .title = Startseite festlegen
     .label = Bitte wähle ein Lesezeichen als deine Startseite aus. Wenn du einen Ordner wählst, werden die Lesezeichen in diesem Ordner als Tabs geöffnet.
 
-forget-mode-caption = Automatischer Vergessen Modus
+forget-mode-header = Automatischer Vergessen Modus
 forget-mode-enable-checkbox =
     .label = Automatischen Vergessen Modus aktivieren
 forget-mode-explanation1 = Öffnet Websites mit expliziten Inhalten automatisch im Vergessen Modus, so dass sie nicht in der Chronik gespeichert werden.
 forget-mode-explanation2 = Kann im Tab-Kontextmenü (rechter Mausklick auf Tab in Tableiste) für jede Website eingestellt werden.
 forget-mode-explanation3 = Funktioniert nicht in Verbindung mit 'Containers' Add-on.
 forget-mode-note = Hinweis: Für umfassendere Privatsphäre bitte Websites in einem <b>Vergessen Fenster</b> öffnen, weil dort u.a. temporäre Dateien zuverlässiger entfernt werden können.
-forget-mode-learnMore = Mehr erfahren
+forget-mode-learn-more = Mehr erfahren
 
 cliqz-firefox-privacy = Der Cliqz Browser baut auf dem <label data-l10n-name="cliqz-firefox-privacy-mozilla">Mozilla Open Source Projekt</label> auf. Es gilt die <label data-l10n-name="cliqz-firefox-privacy-mozilla-privacy">Firefox Datenschutzhinweis</label>, wenn nicht anders in der Cliqz <label data-l10n-name="cliqz-firefox-privacy-privacy-browser">Datenschutzerklärung</label> festgestellt.
 
