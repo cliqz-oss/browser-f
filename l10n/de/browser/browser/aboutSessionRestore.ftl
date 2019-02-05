@@ -38,3 +38,5 @@ welcome-back-restore-button =
 welcome-back-restore-all-label = Alle Fenster und Tabs wiederherstellen
 welcome-back-restore-some-label = Wiederherzustellende Fenster und Tabs auswählen
 welcome-back-page-info-link = Ihre Add-ons und Anpassungen wurden entfernt und Ihre Browser-Einstellungen auf die Standardvorgaben zurückgesetzt. Falls das Problem dadurch nicht behoben wurde, <a data-l10n-name="link-more">so gibt es weitere Möglichkeiten, was Sie tun können</a>.
+
+welcome-back-page-info-2 = Deine Anpassungen wurden entfernt und deine Browser-Einstellungen wurden auf den Standard zurückgesetzt. Falls das dein Problem nicht behoben hat, kontaktiere bitte <a data-l10n-name="welcome-back-cliqz-contact">unser Support Team</a>.
