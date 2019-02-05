@@ -78,6 +78,9 @@
   /* Line on the bottom of the nav-bar/toolbar */
   /* Forget mode urlbar */
 }
+#navigator-toolbox #toolbar-menubar:-moz-lwtheme {
+  background-color: #000;
+}
 #navigator-toolbox #TabsToolbar {
   /* Customize tabs toolbar background color for light theme */
   /* Remove the right border of the placehodler and replace by the first tab border(below) */
@@ -288,14 +291,18 @@
       max-height: 30px;
     }
     :root:not([uidensity=touch]) #TabsToolbar {
+%if 0
       margin-top: -1px;
+%endif
     }
     :root:not([uidensity=touch]) #tabbrowser-tabs .tabbrowser-arrowscrollbox {
       max-height: 30px;
     }
     :root:not([uidensity=touch]) #tabbrowser-tabs .arrowscrollbox-scrollbox {
       max-height: 30px;
+%if 0
       margin-top: 3px;
+%endif
     }
   }
 }
