@@ -617,7 +617,9 @@
 /* Tab separators */
 
 .titlebar-spacer[type="pre-tabs"] {
+%if 0
   border-inline-end: 1px solid var(--lwt-background-tab-separator-color, currentColor);
+%endif
   opacity: 0.2;
 }
 
