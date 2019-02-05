@@ -496,7 +496,7 @@
     <separator class="thin"/>
     <description data-l10n-id="forget-mode-note"/>
     <separator class="thin"/>
-    <label href="https://cliqz.com/support/automatic-forget-mode" data-l10n-id="forget-mode-learn-more"/>
+    <label href="https://cliqz.com/support/automatic-forget-mode" class="text-link" data-l10n-id="forget-mode-learn-more"/>
   </groupbox>
 </vbox>
 #endif
