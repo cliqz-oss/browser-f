@@ -234,9 +234,11 @@
 }
 
 /* Add 2 more px padding on top of PersonalToolbar */
+%if 0
 #navigator-toolbox > toolbar:not(#toolbar-menubar):not(#TabsToolbar):not(#nav-bar) {
   padding-top: 2px;
 }
+%endif
 
 /* Move caption buttons more to the right and top
    NOTE: Keep this code here
@@ -247,7 +249,7 @@
 }
 
 #titlebar, #tabbrowser-tabs {
-  --tab-min-height: 30.5px;
+  --tab-min-height: 30px;
   /* Make title bar shorter than 33 px */
 }
 
@@ -255,6 +257,7 @@
   --tabs-border-color: rgba(0, 0, 0, 0.08);
   /* TABS TOOLBAR */
 }
+%if 0
 #navigator-toolbox #TabsToolbar {
   /* Add 2 more pxs to the top in order to compensate 2 pxs lost from 'margin' (1) */
   padding-top: 2px;
@@ -262,6 +265,7 @@
   /* Move the new tab button a bit to the left to be aligned with the last toolbar button */
   /* Reverse the extra space on top (1) */
 }
+%endif
 #navigator-toolbox #TabsToolbar .titlebar-placeholder[type=pre-tabs] {
   width: 47px;
 }
