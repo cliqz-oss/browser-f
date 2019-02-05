@@ -62,7 +62,7 @@ pane-connect-title = Connect
 category-connect =
     .tooltiptext = { pane-connect-title }
 
-help-button-label = Hilfe für { -brand-short-name }
+help-button-label = Mozilla Support
 addons-button-label = Erweiterungen
 focus-search =
     .key = f
@@ -128,7 +128,7 @@ search-results-empty-message =
         [windows] Keine Treffer in den Einstellungen für "<span data-l10n-name="query"></span>".
        *[other] Keine Treffer in den Einstellungen für "<span data-l10n-name="query"></span>".
     }
-search-results-help-link = Benötigst du Hilfe? Dann besuche die <a data-l10n-name="url">Hilfeseite für { -brand-short-name }</a>.
+search-results-help-link = Benötigst du Hilfe? Dann besuche die <a data-l10n-name="url">Mozilla Support</a>.
 
 ## General Section
 

@@ -68,10 +68,12 @@
 % locale pdf.js @AB_CD@ %locale/pdfviewer/
     locale/pdfviewer/viewer.properties             (%pdfviewer/viewer.properties)
     locale/pdfviewer/chrome.properties             (%pdfviewer/chrome.properties)
-
+#if 0
+# Cliqz. System Addons processing differently
 #ifdef XPI_NAME
 # Bug 1240628, restructure how l10n repacks work with feature addons
 # This is hacky, but ensures the chrome.manifest chain is complete
 [.] chrome.jar:
 % manifest features/chrome.manifest
+#endif
 #endif
