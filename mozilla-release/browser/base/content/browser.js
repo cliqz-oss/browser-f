@@ -478,7 +478,9 @@ var gInitialPages = [
 ];
 
 function isInitialPage(url) {
-  return gInitialPages.includes(url) || url == BROWSER_NEW_TAB_URL;
+  // CLIQZ-SPECIAL: we do not need BROWSER_NEW_TAB_URL check as we never change it
+  // return gInitialPages.includes(url) || url == BROWSER_NEW_TAB_URL;
+  return gInitialPages.includes(url);
 }
 
 var gCliqzPages = [
