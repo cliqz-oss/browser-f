@@ -75,6 +75,10 @@ function isTreeViewVisible() {
 }
 
 async function initTreeView() {
+  // CLIQZ-SPECIAL: We dont have this is aboutImportedtab, so just return.
+  if (!gStateObject) {
+    return;
+  }
   // If we aren't visible we initialize as we are made visible (and it's OK
   // to initialize multiple times)
   if (!isTreeViewVisible()) {

@@ -8,91 +8,80 @@
   <!ENTITY % htmlDTD PUBLIC
       "-//W3C//DTD XHTML 1.0 Strict//EN" "DTD/xhtml1-strict.dtd">
   %htmlDTD;
-  <!ENTITY % netErrorDTD SYSTEM "chrome://global/locale/netError.dtd">
-  %netErrorDTD;
-  <!ENTITY % globalDTD SYSTEM "chrome://global/locale/global.dtd">
-  %globalDTD;
-  <!ENTITY % restorepageDTD SYSTEM
-      "chrome://browser/locale/aboutSessionRestore.dtd">
-  %restorepageDTD;
 ]>
 
 <html
     xmlns="http://www.w3.org/1999/xhtml"
     xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
   <head>
-    <title>&importedtabs.tabTitle;</title>
-    <link rel="stylesheet" type="text/css" media="all"
-        href="chrome://global/skin/in-content/info-pages.css" />
-    <link rel="stylesheet" type="text/css" media="all"
-        href="chrome://browser/skin/aboutWelcomeBack.css" />
-    <link rel="icon" type="image/png"
-        href="chrome://global/skin/icons/information-16.png"/>
+    <title data-l10n-id="imported-tab-title"></title>
+    <link rel="stylesheet" href="chrome://global/skin/in-content/info-pages.css" type="text/css" media="all"/>
+    <link rel="stylesheet" href="chrome://browser/skin/aboutWelcomeBack.css" type="text/css" media="all"/>
+    <link rel="icon" type="image/png" href="chrome://browser/skin/info.svg"/>
+    <link rel="localization" href="browser/aboutSessionRestore.ftl"/>
+    <link rel="localization" href="branding/brand.ftl"/>
 
-    <script type="application/javascript;version=1.8"
-        src="chrome://browser/content/aboutSessionRestore.js"/>
+    <link rel="stylesheet" type="text/css" media="all" href="chrome://global/skin/in-content/info-pages.css" />
+    <link rel="stylesheet" type="text/css" media="all" href="chrome://browser/skin/aboutWelcomeBack.css" />
+    <link rel="icon" type="image/png" href="chrome://global/skin/icons/information-16.png"/>
+    <script type="application/javascript" src="chrome://browser/content/aboutSessionRestore.js"/>
   </head>
 
-  <body dir="&locale.dir;">
-
+  <body>
     <div class="container">
-
       <div class="title">
-        <h1 class="title-text">&importedtabs.pageTitle;</h1>
+        <h1 class="title-text" data-l10n-id="imported-tab-title"></h1>
       </div>
-
       <div class="description">
-
-        <p>&importedtabs.pageInfo1;</p>
-        <!-- Note a href in the anchor below is added by JS -->
-        <p>
-          &importedtabs.beforelink.pageInfo2;
-          <a href="https://cliqz.com/support" target="_blank">
-            &importedtabs.link.pageInfo2;
-          </a>
-          &importedtabs.afterlink.pageInfo2;
+        <p data-l10n-id="imported-tab-page-info"></p>
+        <p data-l10n-id="imported-tab-page-info-2">
+          <a class="text-link" target="_blank" href="https://cliqz.com/support" data-l10n-name="imported-tab-cliqz-contact"></a>
         </p>
-
         <div>
           <div class="radioRestoreContainer">
             <input class="radioRestoreButton" id="radioRestoreAll" type="radio"
                    name="restore" checked="checked"/>
-            <label class="radioRestoreLabel" for="radioRestoreAll">
-              &importedtabs.label.openAll;
-            </label>
+            <label class="radioRestoreLabel" for="radioRestoreAll" data-l10n-id="imported-tab-label-open-all"/>
           </div>
 
           <div class="radioRestoreContainer">
             <input class="radioRestoreButton" id="radioRestoreChoose"
                 type="radio" name="restore"/>
-            <label class="radioRestoreLabel" for="radioRestoreChoose">
-              &importedtabs.label.openSome;
-            </label>
+            <label class="radioRestoreLabel" for="radioRestoreChoose" data-l10n-id="imported-tab-label-open-some"/>
           </div>
         </div>
       </div>
 
-      <div class="tree-container">
-        <xul:tree id="tabList" flex="1" seltype="single" hidecolumnpicker="true"
-            onclick="onListClick(event);" onkeydown="onListKeyDown(event);"
-            _window_label="&restorepage.windowLabel;">
+      <div class="tree-container" available="true">
+        <xul:tree id="tabList" seltype="single" hidecolumnpicker="true"
+              onclick="onListClick(event);" onkeydown="onListKeyDown(event);">
           <xul:treecols>
-            <xul:treecol cycler="true" id="restore" type="checkbox"
-                label="&restorepage.restoreHeader;"/>
+            <xul:treecol cycler="true" id="restore" type="checkbox" data-l10n-id="restore-page-restore-header"/>
             <xul:splitter class="tree-splitter"/>
-            <xul:treecol primary="true" id="title" flex="1"
-                label="&restorepage.listHeader;"/>
+            <xul:treecol primary="true" id="title" data-l10n-id="restore-page-list-header" flex="1"/>
           </xul:treecols>
           <xul:treechildren flex="1"/>
         </xul:tree>
       </div>
 
       <div class="button-container">
+#ifdef XP_UNIX
+        <xul:button id="errorCancel"
+                data-l10n-id="restore-page-close-button"
+                oncommand="startNewSession();"/>
         <xul:button class="primary"
-                    id="errorTryAgain"
-                    label="&welcomeback2.restoreButton;"
-                    accesskey="&welcomeback2.restoreButton.access;"
-                    oncommand="restoreSession();"/>
+                id="errorTryAgain"
+                data-l10n-id="restore-page-try-again-button"
+                oncommand="restoreSession();"/>
+#else
+        <xul:button class="primary"
+                id="errorTryAgain"
+                data-l10n-id="restore-page-try-again-button"
+                oncommand="restoreSession();"/>
+        <xul:button id="errorCancel"
+                data-l10n-id="restore-page-close-button"
+                oncommand="startNewSession();"/>
+#endif
       </div>
 
       <input type="text" id="sessionData" style="display: none;"/>
