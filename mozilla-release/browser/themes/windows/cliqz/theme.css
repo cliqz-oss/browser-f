@@ -291,18 +291,12 @@
       max-height: 30px;
     }
     :root:not([uidensity=touch]) #TabsToolbar {
-%if 0
-      margin-top: -1px;
-%endif
     }
     :root:not([uidensity=touch]) #tabbrowser-tabs .tabbrowser-arrowscrollbox {
       max-height: 30px;
     }
     :root:not([uidensity=touch]) #tabbrowser-tabs .arrowscrollbox-scrollbox {
       max-height: 30px;
-%if 0
-      margin-top: 3px;
-%endif
     }
   }
 }
@@ -322,17 +316,6 @@
   #main-window #navigator-toolbox {
     /* Remove space on tob of tabs toolbar (1) */
   }
-%if 0
-  #main-window #navigator-toolbox #TabsToolbar {
-    margin-top: -3px;
-  }
-  #main-window[sizemode=maximized] #navigator-toolbox {
-    /* Remove space on tob of tabs toolbar +1 more for maximized mode (1) */
-  }
-  #main-window[sizemode=maximized] #navigator-toolbox #TabsToolbar {
-    margin-top: -4px;
-  }
-%endif
   #main-window[sizemode=normal] {
     /* Make the line on top of the window transparent */
     border-top-color: transparent;
