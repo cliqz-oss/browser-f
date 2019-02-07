@@ -310,12 +310,15 @@ pref("browser.urlbar.maxHistoricalSearchSuggestions", 0);
 pref("browser.urlbar.suggest.history",              true);
 pref("browser.urlbar.suggest.bookmark",             true);
 pref("browser.urlbar.suggest.openpage",             true);
+#if 0
 pref("browser.urlbar.suggest.searches",             true);
+#endif
+pref("browser.urlbar.suggest.searches",             false);
 
 // Whether the user made a choice in the old search suggestions opt-in bar.
-pref("browser.urlbar.userMadeSearchSuggestionsChoice", false);
-// The suggestion opt-out hint will be hidden after being shown 4 times.
-pref("browser.urlbar.timesBeforeHidingSuggestionsHint", 4);
+pref("browser.urlbar.userMadeSearchSuggestionsChoice", true);
+// The suggestion opt-out hint will be hidden right away.
+pref("browser.urlbar.timesBeforeHidingSuggestionsHint", 0);
 
 // Limit the number of characters sent to the current search engine to fetch
 // suggestions.
@@ -1191,7 +1194,10 @@ pref("services.sync.prefs.sync.browser.urlbar.maxRichResults", true);
 pref("services.sync.prefs.sync.browser.urlbar.suggest.bookmark", true);
 pref("services.sync.prefs.sync.browser.urlbar.suggest.history", true);
 pref("services.sync.prefs.sync.browser.urlbar.suggest.openpage", true);
+#if 0
 pref("services.sync.prefs.sync.browser.urlbar.suggest.searches", true);
+#endif
+pref("services.sync.prefs.sync.browser.urlbar.suggest.searches", false);
 pref("services.sync.prefs.sync.dom.disable_open_during_load", true);
 pref("services.sync.prefs.sync.dom.disable_window_flip", true);
 pref("services.sync.prefs.sync.dom.disable_window_move_resize", true);
