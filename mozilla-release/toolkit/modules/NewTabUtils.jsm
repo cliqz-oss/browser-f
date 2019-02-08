@@ -11,9 +11,10 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.importGlobalProperties(["btoa", "URL"]);
 
 // Android tests don't import these properly, so guard against that
+let didSuccessfulImport = false;
+#if 0
 let shortURL = {};
 let searchShortcuts = {};
-let didSuccessfulImport = false;
 try {
   ChromeUtils.import("resource://activity-stream/lib/ShortURL.jsm", shortURL);
   ChromeUtils.import("resource://activity-stream/lib/SearchShortcuts.jsm", searchShortcuts);
@@ -21,6 +22,7 @@ try {
 } catch (e) {
   // The test failed to import these files
 }
+#endif
 
 ChromeUtils.defineModuleGetter(this, "PlacesUtils",
   "resource://gre/modules/PlacesUtils.jsm");

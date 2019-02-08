@@ -10,7 +10,9 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
+#if 0
   ActivityStream: "resource://activity-stream/lib/ActivityStream.jsm",
+#endif
   RemotePages: "resource://gre/modules/remotepagemanager/RemotePageManagerParent.jsm",
 });
 
@@ -55,6 +57,7 @@ var AboutNewTab = {
    * onBrowserReady - Continues the initialization of Activity Stream after browser is ready.
    */
   onBrowserReady() {
+    return;
     if (this.activityStream && this.activityStream.initialized) {
        return;
     }
