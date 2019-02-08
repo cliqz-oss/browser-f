@@ -9,6 +9,7 @@ var EXPORTED_SYMBOLS = ["WebNavigationChild"];
 ChromeUtils.import("resource://gre/modules/ActorChild.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
 
 ChromeUtils.defineModuleGetter(this, "AppConstants",
                                "resource://gre/modules/AppConstants.jsm");
@@ -112,9 +113,18 @@ class WebNavigationChild extends ActorChild {
       triggeringPrincipal = Services.scriptSecurityManager.getSystemPrincipal({});
     }
     this._wrapURIChangeCall(() => {
-      return this.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
-                                                   postData, headers, baseURI,
-                                                   triggeringPrincipal, ensurePrivate);
+      try {
+        return this.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
+          postData, headers, baseURI,
+          triggeringPrincipal, ensurePrivate);
+      } catch(e) {
+        if(!uri.startsWith('moz-extension')) return;
+        setTimeout(()=> {
+          return this.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
+            postData, headers, baseURI,
+            triggeringPrincipal, ensurePrivate);
+        }, 300);
+      }
     });
   }
 
