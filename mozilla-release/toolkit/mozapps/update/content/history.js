@@ -35,7 +35,7 @@ var gUpdateHistory = {
         element.className = "update";
         this._view.appendChild(element);
         element.setAttribute("data-l10n-attrs", "name");
-        document.l10n.setAttributes(element, "update-full-name", { name: update.name, name: update.displayVersion, buildID: update.buildID});
+        document.l10n.setAttributes(element, "update-full-name", { name: update.name, displayVersion: update.displayVersion, buildID: update.buildID});
         element.installDate = this._formatDate(update.installDate);
         if (update.detailsURL)
           element.detailsURL = update.detailsURL;
