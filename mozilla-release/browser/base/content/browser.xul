@@ -457,8 +457,6 @@ xmlns="http://www.w3.org/1999/xhtml"
 
     <menupopup id="toolbar-context-menu"
                onpopupshowing="onViewToolbarsPopupShowing(event, document.getElementById('viewToolbarsMenuSeparator')); ToolbarContextMenu.updateDownloadsAutoHide(this); ToolbarContextMenu.updateExtension(this)">
-      <!--
-      // CLIQZ-SPECIAL: temporary hiding options to remove/manage all extensions. This will be done only for Cliqz and myoffrz in DB-2002
       <menuitem oncommand="ToolbarContextMenu.openAboutAddonsForContextAction(this.parentElement)"
                 accesskey="&customizeMenu.manageExtension.accesskey;"
                 label="&customizeMenu.manageExtension.label;"
@@ -470,7 +468,6 @@ xmlns="http://www.w3.org/1999/xhtml"
                 contexttype="toolbaritem"
                 class="customize-context-removeExtension"/>
       <menuseparator/>
-      -->
       <menuitem oncommand="gCustomizeMode.addToPanel(document.popupNode)"
                 accesskey="&customizeMenu.pinToOverflowMenu.accesskey;"
                 label="&customizeMenu.pinToOverflowMenu.label;"
@@ -631,19 +628,19 @@ xmlns="http://www.w3.org/1999/xhtml"
       <menuitem class="pageActionContextMenuItem builtInUnpinned"
                 label="&pageAction.addToUrlbar.label;"
                 oncommand="BrowserPageActions.togglePinningForContextAction();"/>
-      <!--<menuitem class="pageActionContextMenuItem builtInPinned"
+      <menuitem class="pageActionContextMenuItem builtInPinned"
                 label="&pageAction.removeFromUrlbar.label;"
-                oncommand="BrowserPageActions.togglePinningForContextAction();"/>-->
+                oncommand="BrowserPageActions.togglePinningForContextAction();"/>
       <menuitem class="pageActionContextMenuItem extensionUnpinned"
                 label="&pageAction.addToUrlbar.label;"
                 oncommand="BrowserPageActions.togglePinningForContextAction();"/>
-      <!--<menuitem class="pageActionContextMenuItem extensionPinned"
+      <menuitem class="pageActionContextMenuItem extensionPinned"
                 label="&pageAction.removeFromUrlbar.label;"
                 oncommand="BrowserPageActions.togglePinningForContextAction();"/>
       <menuseparator class="pageActionContextMenuItem extensionPinned extensionUnpinned"/>
       <menuitem class="pageActionContextMenuItem extensionPinned extensionUnpinned"
                 label="&pageAction.manageExtension.label;"
-                oncommand="BrowserPageActions.openAboutAddonsForContextAction();"/>-->
+                oncommand="BrowserPageActions.openAboutAddonsForContextAction();"/>
     </menupopup>
 
 #include ../../components/places/content/bookmarksHistoryTooltip.inc.xul
