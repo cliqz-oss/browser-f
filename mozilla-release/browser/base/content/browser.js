@@ -6499,14 +6499,14 @@ var ToolbarContextMenu = {
   },
 
   updateExtension(popup) {
-    // CLIQZ-SPECIAL: temporary hiding options to remove/manage all extensions. This will be done only for Cliqz and myoffrz in DB-2002
-    return;
     let removeExtension = popup.querySelector(".customize-context-removeExtension");
     let manageExtension = popup.querySelector(".customize-context-manageExtension");
     let separator = removeExtension.nextElementSibling;
     let node = this._getUnwrappedTriggerNode(popup);
     let isWebExt = node && node.hasAttribute("data-extensionid");
-    removeExtension.hidden = manageExtension.hidden = separator.hidden = !isWebExt;
+    // CLIQZ-SPECIAL: hide manage and remove extensions for cliqz toolbar icons
+    let isCliqzButton = node && node.hasAttribute("data-extensionid") && (node.getAttribute("data-extensionid") == "cliqz@cliqz.com");
+    removeExtension.hidden = manageExtension.hidden = separator.hidden = !isWebExt || isCliqzButton;
   },
 
   async removeExtensionForContextAction(popup) {

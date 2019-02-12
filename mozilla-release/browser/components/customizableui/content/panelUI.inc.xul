@@ -30,8 +30,6 @@
        -->
   <menupopup id="customizationPanelItemContextMenu"
              onpopupshowing="gCustomizeMode.onPanelContextMenuShowing(event); ToolbarContextMenu.updateExtension(this)">
-    <!--
-    // CLIQZ-SPECIAL: temporary hiding options to remove/manage all extensions. This will be done only for Cliqz and myoffrz in DB-2002
     <menuitem oncommand="ToolbarContextMenu.openAboutAddonsForContextAction(this.parentElement)"
               accesskey="&customizeMenu.manageExtension.accesskey;"
               label="&customizeMenu.manageExtension.label;"
@@ -43,7 +41,6 @@
               contexttype="toolbaritem"
               class="customize-context-removeExtension"/>
     <menuseparator/>
-    -->
     <menuitem oncommand="gCustomizeMode.addToPanel(document.popupNode)"
               id="customizationPanelItemContextMenuPin"
               accesskey="&customizeMenu.pinToOverflowMenu.accesskey;"
