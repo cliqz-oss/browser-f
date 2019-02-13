@@ -28,23 +28,13 @@
   background-color: var(--toolbarbutton-hover-background) !important;
   box-shadow: unset;
 }
-:root:not([uidensity=touch]) .tabs-newtab-button .toolbarbutton-icon,
-:root:not([uidensity=touch]) .tabs-newtab-button:hover .toolbarbutton-icon, :root:not([uidensity=touch]) .tabs-newtab-button[open=true] .toolbarbutton-icon, :root:not([uidensity=touch]) #new-tab-button:hover .toolbarbutton-icon, :root:not([uidensity=touch]) #new-tab-button[open=true] .toolbarbutton-icon {
-  margin-left: 3px;
-  margin-right: 3px;
-  padding: 3px;
-  width: 22px;
-  height: 22px;
-}
 :root:not([uidensity=touch]) #alltabs-button .toolbarbutton-badge-stack {
   padding: 0;
 }
 :root:not([uidensity=touch]) #alltabs-button .toolbarbutton-icon {
-  margin-left: 3px;
-  margin-right: 3px;
-  padding: 3px 0;
-  width: 22px;
-  height: 22px;
+  width: calc(2 * var(--toolbarbutton-inner-padding) + 14px);
+  height: calc(2 * var(--toolbarbutton-inner-padding) + 14px);
+  padding: 4px;
 }
 :root[uidensity=touch] #navigator-toolbox {
   /* TABS TOOLBAR */
@@ -100,6 +90,11 @@
 }
 #navigator-toolbox #TabsToolbar .toolbarbutton-1 {
   margin-bottom: 0;
+}
+toolbar .toolbarbutton-1 > .toolbarbutton-icon {
+  width: calc(2 * var(--toolbarbutton-inner-padding) + 14px);
+  height: calc(2 * var(--toolbarbutton-inner-padding) + 14px);
+  padding: 4px;
 }
 #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab {
   /* Remove the tab-line effect on top when hovering a tab */
