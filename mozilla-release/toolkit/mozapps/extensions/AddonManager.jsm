@@ -3901,7 +3901,6 @@ var AMTelemetry = {
 };
 
 this.AddonManager.init();
-this.AddonManager.isReadyAsync();
 
 // Setup the AMTelemetry once the AddonManager has been started.
 this.AddonManager.addManagerListener(AMTelemetry);
