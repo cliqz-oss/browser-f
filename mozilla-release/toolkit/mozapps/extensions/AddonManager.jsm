@@ -3233,6 +3233,33 @@ var AddonManager = {
     return gStartupComplete && !gShutdownInProgress;
   },
 
+  isReadyAsync() {
+    const context = this;
+
+    // Addons may still be being loaded, so wait for them to be fully set up.
+    const p = new Promise((resolve, reject) => {
+      if (context.isReady) {
+        resolve();
+        return;
+      }
+
+      let listener = {
+        onStartup() {
+          context.removeManagerListener(listener);
+          resolve();
+        },
+        onShutdown() {
+          context.removeManagerListener(listener);
+          reject();
+        }
+      };
+
+      context.addManagerListener(listener);
+    });
+
+    context.isReadyAsync = () => p;
+  },
+
   /** @constructor */
   init() {
     this._stateToString = new Map();
