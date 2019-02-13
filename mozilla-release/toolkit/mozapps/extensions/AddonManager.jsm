@@ -3901,6 +3901,10 @@ var AMTelemetry = {
 };
 
 this.AddonManager.init();
+// CLIQZ-SPECIAL: we need to call this method here because isReadyAsync is reassigned a new value
+// once beed called.
+// But later on AddonManager becomes frozen which makes it impossible to reassign isReadyAsync.
+this.AddonManager.isReadyAsync();
 
 // Setup the AMTelemetry once the AddonManager has been started.
 this.AddonManager.addManagerListener(AMTelemetry);
