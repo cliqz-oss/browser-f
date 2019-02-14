@@ -322,14 +322,6 @@ toolbar .toolbarbutton-1 > .toolbarbutton-icon {
     box-shadow: rgba(0, 0, 0, 0.19) 0 -2px 1px 3px;
   }
 }
-@media (-moz-os-version: windows-win7) {
-  #main-window[sizemode=maximized] #navigator-toolbox {
-    /* Remove space on tob of tabs toolbar */
-  }
-  #main-window[sizemode=maximized] #navigator-toolbox #TabsToolbar {
-    margin-top: -3px;
-  }
-}
 @media (-moz-os-version: windows-win7) and (-moz-windows-default-theme) {
   :root:-moz-lwtheme-darktext {
     --chrome-background-color: rgba(204, 204, 204, 0.4);
