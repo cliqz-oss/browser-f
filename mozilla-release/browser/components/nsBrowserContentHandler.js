@@ -595,7 +595,7 @@ nsBrowserContentHandler.prototype = {
     // Otherwise a blank page should be displayed.
     var startPage = "";
     try {
-      startPage = HomePage.get().replace("about:home", "resource://cliqz/freshtab/home.html");
+      startPage = HomePage.get();
     } catch (e) {
       Cu.reportError(e);
     }

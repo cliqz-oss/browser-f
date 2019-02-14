@@ -11,12 +11,14 @@ ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 ChromeUtils.import("resource://gre/modules/E10SUtils.jsm");
 
+ChromeUtils.defineModuleGetter(this, "CliqzResources",
+                               "resource:///modules/CliqzResources.jsm");
 #ifdef MOZ_ACTIVITY_STREAM
 ChromeUtils.defineModuleGetter(this, "AboutNewTab",
                                "resource:///modules/AboutNewTab.jsm");
 #endif
 
-const LOCAL_NEWTAB_URL = "resource://cliqz/freshtab/home.html";
+const LOCAL_NEWTAB_URL = CliqzResources.freshTab;
 const TOPIC_APP_QUIT = "quit-application-granted";
 const TOPIC_LOCALES_CHANGE = "intl:app-locales-changed";
 const TOPIC_CONTENT_DOCUMENT_INTERACTIVE = "content-document-interactive";
