@@ -77,6 +77,8 @@ const RECOMMENDED_ADDONS = {
   }
 };
 
+const HTML_NS = "http://www.w3.org/1999/xhtml";
+
 var gViewDefault = "addons://list/extension";
 
 XPCOMUtils.defineLazyGetter(this, "extensionStylesheets", () => {
@@ -94,6 +96,9 @@ XPCOMUtils.defineLazyGetter(gStrings, "brand", function() {
 });
 XPCOMUtils.defineLazyGetter(gStrings, "ext", function() {
   return this.bundleSvc.createBundle("chrome://mozapps/locale/extensions/extensions.properties");
+});
+XPCOMUtils.defineLazyGetter(gStrings, "browser", function() {
+  return this.bundleSvc.createBundle("chrome://browser/locale/browser.properties");
 });
 XPCOMUtils.defineLazyGetter(gStrings, "dl", function() {
   return this.bundleSvc.createBundle("chrome://mozapps/locale/downloads/downloads.properties");
@@ -2764,6 +2769,25 @@ var gDetailView = {
     var icon = AddonManager.getPreferredIconURL(aAddon, 32, window);
     document.getElementById("detail-icon").src = icon ? icon : "";
     document.getElementById("detail-creator").setCreator(aAddon.creator, aAddon.homepageURL);
+
+    //CLIQZ-SPECIAL: This adds permission area to addon-details
+    const permList = document.getElementById("detail-permissions");
+    if (permList.childElementCount > 0) {
+      permList.textContent = "";
+    }
+
+    if(aAddon.userPermissions) {
+      const {permissions = [], origins =[]} = aAddon.userPermissions;
+      if (permissions.length) {
+        const ul = document.createElementNS(HTML_NS, "ul");
+        permissions.forEach(p => {
+          const li = document.createElementNS(HTML_NS, "li");
+          li.textContent = gStrings.browser.GetStringFromName(`webextPerms.description.${p}`);
+          ul.appendChild(li)
+        })
+        permList.appendChild(ul);
+      }
+    }
 
     var version = document.getElementById("detail-version");
     if (shouldShowVersionNumber(aAddon)) {

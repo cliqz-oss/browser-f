@@ -518,6 +518,7 @@
                           <label id="detail-creator" class="creator"/>
                         </vbox>
                       </hbox>
+                      <hbox id="detail-permissions"/>
                       <vbox id="detail-desc-container" align="start" flex="1">
                         <description id="detail-desc"/>
                         <description id="detail-fulldesc"/>
