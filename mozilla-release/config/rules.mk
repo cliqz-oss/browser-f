@@ -1319,6 +1319,7 @@ TOR_MAC_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_mac64_8.0.5.tar.xz"
 TOR_MAC_HASH = "ed10c4e00b7280491c093bc256b5648ab723ac471eac4d06c785390d917ec684"
 CLIQZ_ONIONMODE_EXT_URL = "https://s3.amazonaws.com/cdncliqz/update/browser/onionmode%40cliqz.com/onionmode%40cliqz.com-0.0.6-browser-signed.xpi"
 CLIQZ_ONIONMODE_XPI_HASH = "6564180db639d97ca108cb1ad142e774b1972c02261d7b69fc230f892c1ba7a9"
+DAT_EXT_URL = "https://s3.amazonaws.com/cdncliqz/update/browser_pre/dat@cliqz.com/dat@cliqz.com-0.0.1-browser-signed.xpi"
 
 DIST_RESPATH = $(DIST)/bin
 EXTENSIONS_PATH = $(DIST_RESPATH)/browser/features
@@ -1353,6 +1354,13 @@ ifeq ($(CQZ_TOR_MODE),1)
 	#echo "$(CLIQZ_ONIONMODE_XPI_HASH) $(CLIQZ_ONIONMODE_XPI_PATH)" | sha256sum -c -;
 endif
 
+DAT_XPI_PATH = $(EXTENSIONS_PATH)/dat@cliqz.com.xpi
+$(DAT_XPI_PATH): $(EXTENSIONS_PATH)
+ifdef DAT_EXT_URL
+	echo DAT_XPI_PATH in `pwd`
+	wget --output-document $(DAT_XPI_PATH) $(DAT_EXT_URL)
+endif
+
 CLIQZ_CFG = $(DIST_RESPATH)/cliqz.cfg
 $(CLIQZ_CFG):
 	echo CLIQZ_CFG in `pwd`
@@ -1385,7 +1393,7 @@ endif
 endif
 
 # Package Cliqz stuff
-cliqz_distr: $(CLIQZ_XPI_PATH) $(HTTPSE_XPI_PATH) $(CONSENTRICK_XPI_PATH) $(CLIQZ_ONIONMODE_XPI_PATH) tor $(CLIQZ_CFG)
+cliqz_distr: $(CLIQZ_XPI_PATH) $(HTTPSE_XPI_PATH) $(CONSENTRICK_XPI_PATH) $(CLIQZ_ONIONMODE_XPI_PATH) tor $(DAT_XPI_PATH) $(CLIQZ_CFG)
 	echo cliqz_distr in `pwd`
 
 chrome::
