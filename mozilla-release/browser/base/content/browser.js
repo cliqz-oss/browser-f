@@ -1131,10 +1131,24 @@ function _createNullPrincipalFromTabUserContextId(tab = gBrowser.selectedTab) {
   });
 }
 
+function _delayURILoadingInitially(/* browser is expected to be the 1st argument */) {
+  let browser = arguments[0]; // browser;
+  let args = Array.prototype.slice.call(arguments, 1);
+
+  setTimeout(function() {
+    browser.webNavigation.loadURIWithOptions.apply(browser.webNavigation, args);
+  }, 250);
+
+  _delayURILoadingInitially = function(/* browser is expected to be the 1st argument */) {
+    let browser = arguments[0]; // browser;
+    let args = Array.prototype.slice.call(arguments, 1);
+    browser.webNavigation.loadURIWithOptions.apply(browser.webNavigation, args);
+  };
+}
+
 // A shared function used by both remote and non-remote browser XBL bindings to
 // load a URI or redirect it to the correct process.
 function _loadURI(browser, uri, params = {}) {
-  let isCliqzResourcesURI = false;
   let tab = gBrowser.getTabForBrowser(browser);
   // Preloaded browsers don't have tabs, so we ignore those.
   if (tab) {
@@ -1168,7 +1182,6 @@ function _loadURI(browser, uri, params = {}) {
 
   if ((isCliqzPage(uri) || isInitialPage(uri)) && CliqzResources.isWebExtensionAPI()) {
     uri = CliqzResources.matchUrlByString(uri);
-    isCliqzResourcesURI = true;
   }
 
   if (uriObject && handleUriInChrome(browser, uriObject)) {
@@ -1190,31 +1203,14 @@ function _loadURI(browser, uri, params = {}) {
       if (userContextId) {
         browser.webNavigation.setOriginAttributesBeforeLoading({ userContextId });
       }
-      // CLIQZ-SPECIAL: Since new WebExtension API is asynchronous
-      // 1) We need to make sure that AddonManager has been initialised.
-      // 2) We need to make sure that Cliqz extension is available for now.
-      // Please keep in mind that if you want to load any URI regarding to
-      // extension itself then before doing that you need to make sure those
-      // former 2 steps have been succeeded.
-      if (isCliqzResourcesURI) {
-        AddonManager.isReadyAsync().then(() => {
-          AddonManager.getAddonByID('cliqz@cliqz.com').then((addon) => {
-            browser.webNavigation.loadURIWithOptions(uri, flags,
-              referrerURI, referrerPolicy, postData, null, null,
-              triggeringPrincipal, !!params.ensurePrivate);
-          });
-        }, () => {
-          // If AddonManager get shut down by any reasons
-          // we can show a blank page instead;
-          browser.webNavigation.loadURIWithOptions('about:blank', flags,
-            referrerURI, referrerPolicy, postData, null, null,
-            triggeringPrincipal, !!params.ensurePrivate);
-        });
-      } else {
-        browser.webNavigation.loadURIWithOptions(uri, flags,
-          referrerURI, referrerPolicy, postData, null, null,
-          triggeringPrincipal, !!params.ensurePrivate);
-      }
+      // CLIQZ-TODO: remove this timer after it is clear why home page loads with it
+      // initially correctly.
+      // This function loads a uri asynchronously only once.
+      // Any subsequential call results in regular execution without Timeout.
+      _delayURILoadingInitially(browser, uri, flags,
+                                referrerURI, referrerPolicy,
+                                postData, null, null,
+                                triggeringPrincipal, !!params.ensurePrivate);
     } else {
       // Check if the current browser is allowed to unload.
       let {permitUnload, timedOut} = browser.permitUnload();
