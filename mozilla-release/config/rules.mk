@@ -1356,7 +1356,7 @@ endif
 
 DAT_XPI_PATH = $(EXTENSIONS_PATH)/dat@cliqz.com.xpi
 $(DAT_XPI_PATH): $(EXTENSIONS_PATH)
-ifdef DAT_EXT_URL
+ifeq ($(CQZ_RELEASE_CHANNEL),"beta")
 	echo DAT_XPI_PATH in `pwd`
 	wget --output-document $(DAT_XPI_PATH) $(DAT_EXT_URL)
 endif
