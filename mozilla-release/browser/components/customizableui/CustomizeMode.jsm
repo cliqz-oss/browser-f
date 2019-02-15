@@ -69,7 +69,7 @@ function closeGlobalTab() {
   win.gBrowser.removeTab(gTab);
   gTab = null;
 }
-
+#if 0
 var gTabsProgressListener = {
   onLocationChange(aBrowser, aWebProgress, aRequest, aLocation, aFlags) {
     if (!gTab || gTab.linkedBrowser != aBrowser) {
@@ -79,12 +79,14 @@ var gTabsProgressListener = {
     unregisterGlobalTab();
   },
 };
-
+#endif
 function unregisterGlobalTab() {
   gTab.removeEventListener("TabClose", unregisterGlobalTab);
   let win = gTab.ownerGlobal;
   win.removeEventListener("unload", unregisterGlobalTab);
+#if 0
   win.gBrowser.removeTabsProgressListener(gTabsProgressListener);
+#endif
 
   gTab.removeAttribute("customizemode");
 
@@ -198,7 +200,9 @@ CustomizeMode.prototype = {
 
     gTab.addEventListener("TabClose", unregisterGlobalTab);
 
+#if 0
     win.gBrowser.addTabsProgressListener(gTabsProgressListener);
+#endif
 
     win.addEventListener("unload", unregisterGlobalTab);
 
@@ -2338,7 +2342,11 @@ CustomizeMode.prototype = {
   },
 
   _checkForDownloadsClick(event) {
-    if (event.target.closest("#wrapper-downloads-button") && event.button == 0) {
+    if (event.target &&
+        typeof event.target.closest == "function" &&
+        event.target.closest("#wrapper-downloads-button") &&
+        event.button == 0) {
+
       event.view.gCustomizeMode._showDownloadsAutoHidePanel();
     }
   },

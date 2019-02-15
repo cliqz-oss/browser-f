@@ -16,7 +16,6 @@ TESTING_JS_MODULES += [
 
 EXTRA_JS_MODULES += [
     'CustomizableWidgets.jsm',
-    'CustomizeMode.jsm',
     'DragPositionManager.jsm',
     'PanelMultiView.jsm',
     'ScrollbarSampler.jsm',
@@ -25,6 +24,7 @@ EXTRA_JS_MODULES += [
 
 EXTRA_PP_JS_MODULES += [
     'CustomizableUI.jsm',
+    'CustomizeMode.jsm',
 ]
 
 with Files('**'):
