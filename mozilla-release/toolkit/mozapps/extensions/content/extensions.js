@@ -2790,7 +2790,13 @@ var gDetailView = {
         const ul = document.createElementNS(HTML_NS, "ul");
         permissions.forEach(p => {
           const li = document.createElementNS(HTML_NS, "li");
-          li.textContent = gStrings.browser.GetStringFromName(`webextPerms.description.${p}`);
+          try {
+            // Just to make sure this doesnt break page if any new permission is detected which doesn't has description
+            li.textContent = gStrings.browser.GetStringFromName(`webextPerms.description.${p}`);
+          } catch(e) {
+            console.log(`Unknow permission: ${p}`);
+            li.textContent = p;
+          }
           ul.appendChild(li)
         })
         origins.forEach(o => {
