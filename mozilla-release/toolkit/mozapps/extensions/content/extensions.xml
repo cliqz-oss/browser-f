@@ -923,9 +923,10 @@
 
           if(this.mAddon.userPermissions) {
             const {permissions = [], origins =[]} = this.mAddon.userPermissions;
-            if (permissions.length) {
+            if (permissions.length || origins.length) {
+              const totalPerms = origins.length ? permissions.length + 1 : permissions.length;
               this._userPermissions.hidden = false;
-              this._userPermissions.value = `${permissions.length} permissions granted`;
+              this._userPermissions.value = `${totalPerms} permissions granted`;
             }
           }
           if (this.mAddon.name)

@@ -2776,13 +2776,26 @@ var gDetailView = {
       permList.textContent = "";
     }
 
+    const gethostPerms = perm => {
+      if (perm.includes('all_urls')) {
+        return 'all domains';
+      }
+      const match = /^[a-z*]+:\/\/([^/]+)\//.exec(perm);
+      return match && match[1] || perm;
+    }
+
     if(aAddon.userPermissions) {
       const {permissions = [], origins =[]} = aAddon.userPermissions;
-      if (permissions.length) {
+      if (permissions.length || origins.length) {
         const ul = document.createElementNS(HTML_NS, "ul");
         permissions.forEach(p => {
           const li = document.createElementNS(HTML_NS, "li");
           li.textContent = gStrings.browser.GetStringFromName(`webextPerms.description.${p}`);
+          ul.appendChild(li)
+        })
+        origins.forEach(o => {
+          const li = document.createElementNS(HTML_NS, "li");
+          li.textContent = `Can access data from ${gethostPerms(o)}`;
           ul.appendChild(li)
         })
         permList.appendChild(ul);
