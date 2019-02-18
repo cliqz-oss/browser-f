@@ -2102,7 +2102,9 @@
         <getter>
         <![CDATA[
           // docShell is null for foreign tabs.
-          return this._linkedBrowser.loadContext.usePrivateBrowsing;
+          if (this._linkedBrowser.loadContext != null)
+            return this._linkedBrowser.loadContext.usePrivateBrowsing;
+          return null;
         ]]>
         </getter>
         <setter>
