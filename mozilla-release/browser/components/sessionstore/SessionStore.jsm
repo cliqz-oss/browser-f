@@ -50,15 +50,6 @@ const OBSERVING = [
   "idle-daily", "clear-origin-attributes-data",
 ];
 
-// A mapping of known internal URLs.
-// Needed to detect homepages already present in the stored session with their
-// final URLs after redirections.
-// See DB-1219.
-const redirectedURLs = {
-  "about:home": "resource://cliqz/freshtab/home.html",
-  "about:cliqz": "resource://cliqz/freshtab/home.html",
-};
-
 // XUL Window properties to (re)store
 // Restored in restoreDimensions()
 const WINDOW_ATTRIBUTES = ["width", "height", "screenX", "screenY", "sizemode"];
@@ -169,6 +160,7 @@ ChromeUtils.import("resource://gre/modules/TelemetryTimestamps.jsm", this);
 ChromeUtils.import("resource://gre/modules/Timer.jsm", this);
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
+ChromeUtils.import("resource:///modules/CliqzResources.jsm", this);
 
 XPCOMUtils.defineLazyServiceGetters(this, {
   gScreenManager: ["@mozilla.org/gfx/screenmanager;1", "nsIScreenManager"],
@@ -3465,7 +3457,7 @@ var SessionStoreInternal = {
       let homePages = HomePage.get().split("|")
         // Use final URLs that get into session after redirection (see DB-1219).
         .map(url => {
-          return redirectedURLs[url] || url;
+          return CliqzResources.matchUrlByString(url);
         });
       winData.tabs = winData.tabs.filter(function (tabData) {
         if (!tabData.entries || !tabData.entries.length) {
@@ -4130,7 +4122,7 @@ var SessionStoreInternal = {
        requestTime: Services.telemetry.msSystemNow()});
 
     // Focus the tab's content area.
-    if (aTab.selected && !window.isBlankPageURL(uri)) {
+    if (aTab.selected && !window.isBlankPageURL(uri) && !uri.startsWith("moz-extension")) {
       browser.focus();
     }
   },

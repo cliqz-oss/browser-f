@@ -486,16 +486,8 @@ var gIdentityHandler = {
     let tooltip = "";
     let icon_country_label = "";
     let icon_labels_dir = "ltr";
-    let isSystemAddon;
 
-    // CLIQZ: use brand name and logo if its system addon
-    try {
-      isSystemAddon = (this._pageExtensionPolicy.extension.addonData.signedState  == 3 || this._pageExtensionPolicy.extension.addonData.builtIn)
-    } catch(e) {
-      isSystemAddon = false;
-    }
-
-    if (this._isSecureInternalUI || isSystemAddon) {
+    if (this._isSecureInternalUI) {
       this._identityBox.className = "chromeUI";
       let brandBundle = document.getElementById("bundle_brand");
       icon_label = brandBundle.getString("brandShorterName");
@@ -690,17 +682,6 @@ var gIdentityHandler = {
       connection = "secure";
     }
 
-    let isSystemAddon;
-
-    // CLIQZ: treat system addon page as secure internal page
-    try {
-      if (this._pageExtensionPolicy && this._pageExtensionPolicy.extension.addonData.signedState  == 3) {
-        connection = "chrome";
-      }
-    } catch(e) {
-      // if there is no signed state
-    }
-
     // Determine if there are insecure login forms.
     let loginforms = "secure";
     if (this._hasInsecureLoginForms) {
@@ -838,6 +819,15 @@ var gIdentityHandler = {
     } catch (ex) {
       // NetUtil's methods will throw for malformed URIs and the like
     }
+    // CLIQZ-SPECIAL: this is done to make sure we do not show any identity signs on the utl bar just Search Icon
+    try {
+      const isSystemAddon = (this._pageExtensionPolicy.extension.addonData.signedState  == 3 || this._pageExtensionPolicy.extension.addonData.builtIn)
+      if (isSystemAddon) {
+        gURLBar.setAttribute("pageproxystate", "invalid");
+        // as a fallback if FF changees this design rule, atleast the internal pages will be shown as secure pages.
+        this._isSecureInternalUI = true;
+      }
+    } catch(e){}
   },
 
   /**

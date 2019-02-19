@@ -470,11 +470,10 @@ var gInitialPages = [
   "about:privatebrowsing",
   "about:welcomeback",
   "about:sessionrestore",
-  "resource://cliqz/freshtab/home.html",
   "about:cliqz",
   "about:welcome",
-  CliqzResources.matchUrlByString('about:welcome'),
-  CliqzResources.matchUrlByString('about:home'),
+  CliqzResources.freshTab,
+  CliqzResources.onboarding,
 ];
 
 function isInitialPage(url) {
@@ -484,8 +483,8 @@ function isInitialPage(url) {
 }
 
 var gCliqzPages = [
-  "resource://cliqz/freshtab/home.html",
-  "chrome://cliqz/content/onboarding-v3/index.html"
+  CliqzResources.freshTab,
+  CliqzResources.onboarding,
 ];
 
 function isCliqzPage(url) {
@@ -1166,7 +1165,7 @@ function _loadURI(browser, uri, params = {}) {
   } = E10SUtils.shouldLoadURIInBrowser(browser, uri, gMultiProcessBrowser,
                                        flags);
 
-  if ((isCliqzPage(uri) || isInitialPage(uri)) && CliqzResources.isWebExtensionAPI()) {
+  if (isCliqzPage(uri) || isInitialPage(uri)) {
     uri = CliqzResources.matchUrlByString(uri);
     isCliqzResourcesURI = true;
   }

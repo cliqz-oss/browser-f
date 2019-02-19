@@ -5519,18 +5519,23 @@ var TabContextMenu = {
     const windowIsPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
     const tabIsPrivate = this.contextTab.private;
     const togglePrivateItem = document.getElementById("context_togglePrivate");
-    togglePrivateItem.hidden = windowIsPrivate;
-    togglePrivateItem.label =
-        gNavigatorBundle.getString(
-            tabIsPrivate ? "apt.tabContext.reloadInNormalMode"
-                         : "apt.tabContext.reloadInForgetMode");
     const addExceptionItem =
         document.getElementById("context_togglePrivateAndRememberDomain");
-    addExceptionItem.hidden = windowIsPrivate || !autoForgetTabs.isActive();
-    addExceptionItem.label =
-        gNavigatorBundle.getString(
-            tabIsPrivate ? "apt.tabContext.alwaysInNormalMode"
-                         : "apt.tabContext.alwaysInForgetMode");
+    if (tabIsPrivate === null) {
+      togglePrivateItem.hidden = true;
+      addExceptionItem.hidden = true;
+    } else {
+      togglePrivateItem.hidden = windowIsPrivate;
+      togglePrivateItem.label =
+          gNavigatorBundle.getString(
+              tabIsPrivate ? "apt.tabContext.reloadInNormalMode"
+                           : "apt.tabContext.reloadInForgetMode");
+      addExceptionItem.hidden = windowIsPrivate || !autoForgetTabs.isActive();
+      addExceptionItem.label =
+          gNavigatorBundle.getString(
+              tabIsPrivate ? "apt.tabContext.alwaysInNormalMode"
+                           : "apt.tabContext.alwaysInForgetMode");
+    }
 #endif
 
     let selectAllTabs = document.getElementById("context_selectAllTabs");

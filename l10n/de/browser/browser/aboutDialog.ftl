@@ -35,11 +35,6 @@ aboutDialog-architecture-thirtyTwoBit = 32-Bit
 
 version-based-on = nutzt Firefox
 cliqz-headline = We Redesign the Internet
-cliqz-desc1-privacy = Datenschutz und Privatsphäre
-cliqz-desc1-policy = Datenschutzerklärung
-cliqz-desc1-contact = sprich direkt mit uns
-cliqz-description-1 = Cliqz respektiert deine Privatsphäre. Der Schutz deiner Daten ist uns wichtig. Als Unternehmen mit Sitz in Deutschland sind wir den besonders strengen deutschen Datenschutzgesetzen und unseren eigenen hohen Ansprüchen verpflichtet. Unser oberstes Prinzip: Cliqz speichert keinerlei Daten auf unseren Servern, anhand derer du oder dein Gerät oder dein Verhalten im Web identifizierbar wären. Erfahre mehr über <label href="https://cliqz.com/privacy" data-l10n-name="cliqz-desc1-privacy"/>, überprüfe unsere <label href="https://cliqz.com/privacy-browser" data-l10n-name="cliqz-desc1-policy"/> oder <label href="https://cliqz.com/support" data-l10n-name="cliqz-desc1-contact"/>.
+cliqz-description-1 = Cliqz respektiert deine Privatsphäre. Der Schutz deiner Daten ist uns wichtig. Als Unternehmen mit Sitz in Deutschland sind wir den besonders strengen deutschen Datenschutzgesetzen und unseren eigenen hohen Ansprüchen verpflichtet. Unser oberstes Prinzip: Cliqz speichert keinerlei Daten auf unseren Servern, anhand derer du oder dein Gerät oder dein Verhalten im Web identifizierbar wären. Erfahre mehr über <label data-l10n-name="cliqz-desc1-privacy">Datenschutz und Privatsphäre</label>, überprüfe unsere <label data-l10n-name="cliqz-desc1-policy">Datenschutzerklärung</label> oder <label data-l10n-name="cliqz-desc1-contact">sprich direkt mit uns</label>.
 
-cliqz-desc2-mozilla = Mozilla open source project
-cliqz-desc2-here = hier
-cliqz-description-2 = Der Cliqz Browser baut auf dem <label href="http://mozilla.org" data-l10n-name="cliqz-desc2-mozilla"/> auf. Informationen zur „Mozilla Public License 2.0“ und anderen quelloffenen und kostenlosen Bestandteilen findest du <label href="about:license" data-l10n-name="cliqz-desc2-here"/>.
+cliqz-description-2 = Der Cliqz Browser baut auf dem <label data-l10n-name="cliqz-desc2-mozilla"/>Mozilla open source project</label> auf. Informationen zur „Mozilla Public License 2.0“ und anderen quelloffenen und kostenlosen Bestandteilen findest du <label data-l10n-name="cliqz-desc2-here">hier</label>.
