@@ -613,8 +613,8 @@
             <xul:label anonid="date-updated" class="date-updated"
                        unknown="&addon.unknownDate;"/>
           </xul:hbox>
-          <xul:hbox class="advancedinfo-container">
-            <xul:description anonid="userPermissions" class="name" crop="end" flex="1"/>
+          <xul:hbox class="description-container">
+            <xul:label anonid="userPermissions" class="description user-permissions" crop="end" flex="1"/>
           </xul:hbox>
           <xul:hbox class="advancedinfo-container" flex="1">
             <xul:vbox class="description-outer-container" flex="1">
@@ -926,7 +926,7 @@
             if (permissions.length || origins.length) {
               const totalPerms = origins.length ? permissions.length + 1 : permissions.length;
               this._userPermissions.hidden = false;
-              this._userPermissions.value = `${totalPerms} permissions granted`;
+              this._userPermissions.value = gStrings.browser.formatStringFromName("webextPerms.heading", [totalPerms], 1);
             }
           }
           if (this.mAddon.name)

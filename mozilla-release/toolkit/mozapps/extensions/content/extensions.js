@@ -2771,22 +2771,29 @@ var gDetailView = {
     document.getElementById("detail-creator").setCreator(aAddon.creator, aAddon.homepageURL);
 
     //CLIQZ-SPECIAL: This adds permission area to addon-details
-    const permList = document.getElementById("detail-permissions");
+    const permList = document.getElementById("detail-permissions-list");
+    const heading = document.getElementById('detail-permissions-heading');
     if (permList.childElementCount > 0) {
       permList.textContent = "";
     }
 
     const gethostPerms = perm => {
       if (perm.includes('all_urls')) {
-        return 'all domains';
+        return 'all';
       }
       const match = /^[a-z*]+:\/\/([^/]+)\//.exec(perm);
+      if (match[1] === '*') {
+        return 'all';
+      }
       return match && match[1] || perm;
     }
 
     if(aAddon.userPermissions) {
       const {permissions = [], origins =[]} = aAddon.userPermissions;
       if (permissions.length || origins.length) {
+        const totalPerms = origins.length ? permissions.length + 1 : permissions.length;
+        heading.textContent = gStrings.browser.formatStringFromName('webextPerms.heading', [totalPerms], 1);
+        heading.hidden = false;
         const ul = document.createElementNS(HTML_NS, "ul");
         permissions.forEach(p => {
           const li = document.createElementNS(HTML_NS, "li");
@@ -2799,11 +2806,25 @@ var gDetailView = {
           }
           ul.appendChild(li)
         })
-        origins.forEach(o => {
+
+        const hostPermissions = Array.from(origins.reduce((acc, o) => acc.add(gethostPerms(o)), new Set()));
+
+        for (let i = 0; i < hostPermissions.length; i++) {
           const li = document.createElementNS(HTML_NS, "li");
-          li.textContent = `Can access data from ${gethostPerms(o)}`;
-          ul.appendChild(li)
-        })
+          // show max of 3 domain permissions, post that just number of domains
+          if (i == 3) {
+            li.textContent = gStrings.browser.formatStringFromName('webextPerms.host.in', [hostPermissions.length - 3], 1);
+            ul.appendChild(li);
+            break;
+          }
+
+          if (hostPermissions[i] == 'all') {
+            li.textContent = gStrings.browser.GetStringFromName('webextPerms.hostDescription.allUrls');
+          } else {
+            li.textContent = gStrings.browser.formatStringFromName('webextPerms.hostDescription.oneSite', [hostPermissions[i]], 1);
+          }
+          ul.appendChild(li);
+        }
         permList.appendChild(ul);
       }
     }
