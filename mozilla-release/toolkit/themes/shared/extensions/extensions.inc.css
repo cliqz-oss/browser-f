@@ -566,6 +566,7 @@ button.warning {
 
 #addon-list .user-permissions {
   color: #A5645F;
+  font-weight: 500;
   margin-block-end: 2px;
 }
 
