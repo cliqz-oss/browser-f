@@ -613,7 +613,9 @@
             <xul:label anonid="date-updated" class="date-updated"
                        unknown="&addon.unknownDate;"/>
           </xul:hbox>
-
+          <xul:hbox class="description-container">
+            <xul:label anonid="userPermissions" class="description user-permissions" crop="end" flex="1"/>
+          </xul:hbox>
           <xul:hbox class="advancedinfo-container" flex="1">
             <xul:vbox class="description-outer-container" flex="1">
               <xul:hbox class="description-container">
@@ -790,6 +792,10 @@
         document.getAnonymousElementByAttribute(this, "anonid",
                                                 "nameTrim");
       </field>
+      <field name="_userPermissions">
+        document.getAnonymousElementByAttribute(this, "anonid",
+                                                "userPermissions");
+      </field>
       <field name="_name">
         document.getAnonymousElementByAttribute(this, "anonid",
                                                 "name");
@@ -915,6 +921,14 @@
           else
             this._icon.src = "";
 
+          if(this.mAddon.userPermissions) {
+            const {permissions = [], origins =[]} = this.mAddon.userPermissions;
+            if (permissions.length || origins.length) {
+              const totalPerms = origins.length ? permissions.length + 1 : permissions.length;
+              this._userPermissions.hidden = false;
+              this._userPermissions.value = gStrings.browser.formatStringFromName("webextPerms.heading", [totalPerms], 1);
+            }
+          }
           if (this.mAddon.name)
             this._nameTrim.value = this.mAddon.name;
 

@@ -518,6 +518,10 @@
                           <label id="detail-creator" class="creator"/>
                         </vbox>
                       </hbox>
+                      <vbox id="detail-permissions-box" class="creator"> <!-- class to inherit stying of creator block -->
+                        <hbox id="detail-permissions-heading" hidden="true"/>
+                        <hbox id="detail-permissions-list"/>
+                      </vbox>
                       <vbox id="detail-desc-container" align="start" flex="1">
                         <description id="detail-desc"/>
                         <description id="detail-fulldesc"/>
