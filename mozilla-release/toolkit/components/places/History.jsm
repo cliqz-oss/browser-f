@@ -1191,6 +1191,23 @@ var removeVisitsByFilter = async function(db, filter, onResult = null) {
      }
   );
 
+  // CLIQZ-SPECIAL:
+  // 1.5 Also remove visits to cliqz-search related to the visits we are going to delete
+  await db.executeCached(
+    `SELECT fv.id, fv.place_id
+      FROM moz_historyvisits v
+      JOIN moz_historyvisits fv ON fv.id = v.from_visit
+      JOIN moz_places h ON h.id = fv.place_id
+      WHERE v.id IN (${ sqlList(visitsToRemove) }) AND h.url LIKE "https://cliqz.com/search?q=%"`,
+    {},
+    row => {
+      let id = row.getResultByName("id");
+      let place_id = row.getResultByName("place_id");
+      visitsToRemove.push(id);
+      pagesToInspect.add(place_id);
+    }
+  )
+
   try {
     if (visitsToRemove.length == 0) {
       // Nothing to do
@@ -1295,37 +1312,54 @@ var removeByFilter = async function(db, filter, onResult = null) {
   await db.executeCached(
     query,
     params,
-    row => {
-      let hasForeign = row.getResultByName("foreign_count") != 0;
-      if (!hasForeign) {
-        hasPagesToRemove = true;
-      }
-      let id = row.getResultByName("id");
-      let guid = row.getResultByName("guid");
-      let url = row.getResultByName("url");
-      let page = {
-        id,
+    onTableRow
+  );
+
+  function onTableRow(row) {
+    let hasForeign = row.getResultByName("foreign_count") != 0;
+    if (!hasForeign) {
+      hasPagesToRemove = true;
+    }
+    let id = row.getResultByName("id");
+    let guid = row.getResultByName("guid");
+    let url = row.getResultByName("url");
+    let page = {
+      id,
+      guid,
+      hasForeign,
+      hasVisits: false,
+      url: new URL(url),
+      hash: row.getResultByName("url_hash"),
+    };
+    pages.push(page);
+    if (onResult) {
+      onResultData.push({
         guid,
-        hasForeign,
-        hasVisits: false,
+        title: row.getResultByName("title"),
+        frecency: row.getResultByName("frecency"),
         url: new URL(url),
-        hash: row.getResultByName("url_hash"),
-      };
-      pages.push(page);
-      if (onResult) {
-        onResultData.push({
-          guid,
-          title: row.getResultByName("title"),
-          frecency: row.getResultByName("frecency"),
-          url: new URL(url),
-        });
-      }
-    });
+      });
+    }
+  }
 
   if (pages.length === 0) {
     // Nothing to do
     return false;
   }
+
+  // CLIQZ-SPECIAL
+  // 3.5 Also remove cliqz-search pages related to the pages we are going to delete
+  await db.executeCached(
+    `SELECT h.id, h.url, h.url_hash, h.rev_host, h.guid, h.title, h.frecency, h.foreign_count
+      FROM moz_places p
+      JOIN moz_historyvisits v ON v.place_id = p.id
+      JOIN moz_historyvisits fv ON v.from_visit = fv.id
+      JOIN moz_places h ON fv.place_id = h.id
+        WHERE p.id IN (${ sqlList(pages.map(p => p.id)) })
+        AND h.url LIKE "https://cliqz.com/search?q=%"`,
+    {},
+    onTableRow
+  );
 
   try {
     await db.executeTransaction(async function() {
