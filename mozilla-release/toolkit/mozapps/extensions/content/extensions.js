@@ -2771,6 +2771,7 @@ var gDetailView = {
     document.getElementById("detail-creator").setCreator(aAddon.creator, aAddon.homepageURL);
 
     //CLIQZ-SPECIAL: This adds permission area to addon-details
+    const permListBox = document.getElementById("detail-permissions-box");
     const permList = document.getElementById("detail-permissions-list");
     const heading = document.getElementById('detail-permissions-heading');
     if (permList.childElementCount > 0) {
@@ -2789,6 +2790,7 @@ var gDetailView = {
     }
 
     if(aAddon.userPermissions) {
+      permListBox.hidden = false;
       const {permissions = [], origins =[]} = aAddon.userPermissions;
       if (permissions.length || origins.length) {
         const totalPerms = origins.length ? permissions.length + 1 : permissions.length;
@@ -2827,6 +2829,8 @@ var gDetailView = {
         }
         permList.appendChild(ul);
       }
+    } else {
+      permListBox.hidden = true;
     }
 
     var version = document.getElementById("detail-version");
