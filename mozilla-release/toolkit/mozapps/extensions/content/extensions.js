@@ -2783,6 +2783,7 @@ var gDetailView = {
         return 'all';
       }
       const match = /^[a-z*]+:\/\/([^/]+)\//.exec(perm);
+      if (!match) return perm;
       if (match[1] === '*') {
         return 'all';
       }
@@ -2792,12 +2793,14 @@ var gDetailView = {
     if(aAddon.userPermissions) {
       permListBox.hidden = false;
       const {permissions = [], origins =[]} = aAddon.userPermissions;
-      if (permissions.length || origins.length) {
-        const totalPerms = origins.length ? permissions.length + 1 : permissions.length;
+      // exception for native messaging
+      const filteredPermissions = permissions.filter(p => p != "nativeMessaging");
+      if (filteredPermissions.length || origins.length) {
+        const totalPerms = origins.length ? filteredPermissions.length + 1 : filteredPermissions.length;
         heading.textContent = gStrings.browser.formatStringFromName('webextPerms.heading', [totalPerms], 1);
         heading.hidden = false;
         const ul = document.createElementNS(HTML_NS, "ul");
-        permissions.forEach(p => {
+        filteredPermissions.forEach(p => {
           const li = document.createElementNS(HTML_NS, "li");
           try {
             // Just to make sure this doesnt break page if any new permission is detected which doesn't has description
@@ -2811,21 +2814,23 @@ var gDetailView = {
 
         const hostPermissions = Array.from(origins.reduce((acc, o) => acc.add(gethostPerms(o)), new Set()));
 
-        for (let i = 0; i < hostPermissions.length; i++) {
+        if (hostPermissions.includes('all')) {
           const li = document.createElementNS(HTML_NS, "li");
-          // show max of 3 domain permissions, post that just number of domains
-          if (i == 3) {
-            li.textContent = gStrings.browser.formatStringFromName('webextPerms.host.in', [hostPermissions.length - 3], 1);
-            ul.appendChild(li);
-            break;
-          }
-
-          if (hostPermissions[i] == 'all') {
-            li.textContent = gStrings.browser.GetStringFromName('webextPerms.hostDescription.allUrls');
-          } else {
-            li.textContent = gStrings.browser.formatStringFromName('webextPerms.hostDescription.oneSite', [hostPermissions[i]], 1);
-          }
+          li.textContent = gStrings.browser.GetStringFromName('webextPerms.hostDescription.allUrls');
           ul.appendChild(li);
+        } else {
+          for (let i = 0; i < hostPermissions.length; i++) {
+            const li = document.createElementNS(HTML_NS, "li");
+            // show max of 3 domain permissions, post that just number of domains
+            if (i == 3) {
+              li.textContent = gStrings.browser.formatStringFromName('webextPerms.host.in', [hostPermissions.length - 3], 1);
+              ul.appendChild(li);
+              break;
+            }
+
+            li.textContent = gStrings.browser.formatStringFromName('webextPerms.hostDescription.oneSite', [hostPermissions[i]], 1);
+            ul.appendChild(li);
+          }
         }
         permList.appendChild(ul);
       }

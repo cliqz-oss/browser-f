@@ -923,8 +923,10 @@
 
           if(this.mAddon.userPermissions) {
             const {permissions = [], origins =[]} = this.mAddon.userPermissions;
-            if (permissions.length || origins.length) {
-              const totalPerms = origins.length ? permissions.length + 1 : permissions.length;
+            // exception for native messaging
+            const filteredPermissions = permissions.filter(p => p != "nativeMessaging");
+            const totalPerms = origins.length ? filteredPermissions.length + 1 : filteredPermissions.length;
+            if (totalPerms > 0) {
               this._userPermissions.hidden = false;
               this._userPermissions.value = gStrings.browser.formatStringFromName("webextPerms.heading", [totalPerms], 1);
             }
