@@ -12,4 +12,9 @@ var gConnectPane = {
 
     document.getElementById('connectBox').parentNode.style.minWidth = '600px';
   },
+  loadFrame: function() {
+    const theUrl = CliqzResources.whatIstheURL('pairing/index.html');
+    const iframeEl = document.getElementById('theConnectFrame');
+    if (iframeEl && !iframeEl.getAttribute('src')) iframeEl.setAttribute('src', theUrl);
+  }
 };
