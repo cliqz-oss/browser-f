@@ -113,18 +113,9 @@ class WebNavigationChild extends ActorChild {
       triggeringPrincipal = Services.scriptSecurityManager.getSystemPrincipal({});
     }
     this._wrapURIChangeCall(() => {
-      try {
-        return this.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
-          postData, headers, baseURI,
-          triggeringPrincipal, ensurePrivate);
-      } catch(e) {
-        if(!uri.startsWith('moz-extension')) return;
-        setTimeout(()=> {
-          return this.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
-            postData, headers, baseURI,
-            triggeringPrincipal, ensurePrivate);
-        }, 300);
-      }
+      return this.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
+        postData, headers, baseURI,
+        triggeringPrincipal, ensurePrivate);
     });
   }
 
