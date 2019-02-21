@@ -1198,8 +1198,10 @@ var removeVisitsByFilter = async function(db, filter, onResult = null) {
       FROM moz_historyvisits v
       JOIN moz_historyvisits fv ON fv.id = v.from_visit
       JOIN moz_places h ON h.id = fv.place_id
-      WHERE v.id IN (${ sqlList(visitsToRemove) }) AND h.url LIKE "https://cliqz.com/search?q=%"`,
-    {},
+      WHERE v.id IN (${ sqlList(visitsToRemove) }) AND h.url LIKE :cliqzSearch`,
+    {
+      cliqzSearch: "https://cliqz.com/search?q=%"
+    },
     row => {
       let id = row.getResultByName("id");
       let place_id = row.getResultByName("place_id");
@@ -1350,14 +1352,16 @@ var removeByFilter = async function(db, filter, onResult = null) {
   // CLIQZ-SPECIAL
   // 3.5 Also remove cliqz-search pages related to the pages we are going to delete
   await db.executeCached(
-    `SELECT h.id, h.url, h.url_hash, h.rev_host, h.guid, h.title, h.frecency, h.foreign_count
+    `SELECT DISTINCT(h.id), h.url, h.url_hash, h.rev_host, h.guid, h.title, h.frecency, h.foreign_count
       FROM moz_places p
       JOIN moz_historyvisits v ON v.place_id = p.id
       JOIN moz_historyvisits fv ON v.from_visit = fv.id
       JOIN moz_places h ON fv.place_id = h.id
         WHERE p.id IN (${ sqlList(pages.map(p => p.id)) })
-        AND h.url LIKE "https://cliqz.com/search?q=%"`,
-    {},
+        AND h.url LIKE :cliqzSearch`,
+    {
+      cliqzSearch: "https://cliqz.com/search?q=%"
+    },
     onTableRow
   );
 
@@ -1393,7 +1397,9 @@ var remove = async function(db, {guids, urls}, onResult = null) {
   let onResultData = onResult ? [] : null;
   let pages = [];
   let hasPagesToRemove = false;
-  await db.execute(query, null, function(row) {
+  await db.execute(query, null, onTableRow);
+
+  function onTableRow(row) {
     let hasForeign = row.getResultByName("foreign_count") != 0;
     if (!hasForeign) {
       hasPagesToRemove = true;
@@ -1418,7 +1424,23 @@ var remove = async function(db, {guids, urls}, onResult = null) {
         url: new URL(url),
       });
     }
-  });
+  }
+
+  // CLIQZ-SPECIAL:
+  // Also remove cliqz-search pages related to the pages we are going to delete
+  await db.execute(
+    `SELECT DISTINCT(h.id), h.url, h.url_hash, h.rev_host, h.guid, h.title, h.frecency, h.foreign_count
+      FROM moz_places p
+      JOIN moz_historyvisits v ON v.place_id = p.id
+      JOIN moz_historyvisits fv ON v.from_visit = fv.id
+      JOIN moz_places h ON fv.place_id = h.id
+        WHERE p.id IN (${ sqlList(pages.map(p => p.id)) })
+        AND h.url LIKE :cliqzSearch`,
+    {
+      cliqzSearch: "https://cliqz.com/search?q=%"
+    },
+    onTableRow
+  );
 
   try {
     if (pages.length == 0) {
