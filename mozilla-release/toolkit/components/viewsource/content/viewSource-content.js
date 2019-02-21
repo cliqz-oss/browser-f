@@ -252,6 +252,9 @@ var ViewSourceContent = {
       pageLoader.loadPage(pageDescriptor,
                           Ci.nsIWebPageDescriptor.DISPLAY_AS_SOURCE);
     } catch (e) {
+      // CLIQZ-SPECIAL:
+      // in case of trying to load source code of addons' moz-extension:// scheme we fall down here.
+
       // We were not able to load the source from the network cache.
       this.loadSourceFromURL(viewSrcURL);
       return;
@@ -281,6 +284,9 @@ var ViewSourceContent = {
   loadSourceFromURL(URL) {
     let loadFlags = Ci.nsIWebNavigation.LOAD_FLAGS_NONE;
     let webNav = docShell.QueryInterface(Ci.nsIWebNavigation);
+
+    // CLIQZ-SPECIAL: trying to load view-source of moz-extension here results in getting error
+    // NS_ERROR_DOM_BAD_URI "Component returned failure code: 0x805303f4 [nsIWebNavigation.loadURI]"
     webNav.loadURI(URL, loadFlags, null, null, null, Services.scriptSecurityManager.getSystemPrincipal());
   },
 

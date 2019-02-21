@@ -464,6 +464,7 @@ try {
 // Other words if a user goes to about:newtab and that page exists and is loaded then
 // literally the url will not be visible in a URL bar itself (it will not contain anything).
 var gInitialPages = [
+#if 0
   "about:blank",
   "about:newtab",
   "about:home",
@@ -472,8 +473,10 @@ var gInitialPages = [
   "about:sessionrestore",
   "about:cliqz",
   "about:welcome",
+#endif
   CliqzResources.freshTab,
   CliqzResources.onboarding,
+#if 0
 ];
 
 function isInitialPage(url) {
@@ -481,15 +484,8 @@ function isInitialPage(url) {
   // return gInitialPages.includes(url) || url == BROWSER_NEW_TAB_URL;
   return gInitialPages.includes(url);
 }
-
-var gCliqzPages = [
-  CliqzResources.freshTab,
-  CliqzResources.onboarding,
-];
-
-function isCliqzPage(url) {
-  return gCliqzPages.includes(url);
-}
+#endif
+].concat(CliqzResources.INITIAL_PAGES);
 
 function browserWindows() {
   return Services.wm.getEnumerator("navigator:browser");
@@ -1133,7 +1129,6 @@ function _createNullPrincipalFromTabUserContextId(tab = gBrowser.selectedTab) {
 // A shared function used by both remote and non-remote browser XBL bindings to
 // load a URI or redirect it to the correct process.
 function _loadURI(browser, uri, params = {}) {
-  let isCliqzResourcesURI = false;
   let tab = gBrowser.getTabForBrowser(browser);
   // Preloaded browsers don't have tabs, so we ignore those.
   if (tab) {
@@ -1165,10 +1160,7 @@ function _loadURI(browser, uri, params = {}) {
   } = E10SUtils.shouldLoadURIInBrowser(browser, uri, gMultiProcessBrowser,
                                        flags);
 
-  if (isCliqzPage(uri) || isInitialPage(uri)) {
-    uri = CliqzResources.matchUrlByString(uri);
-    isCliqzResourcesURI = true;
-  }
+  uri = CliqzResources.matchUrlByString(uri);
 
   if (uriObject && handleUriInChrome(browser, uriObject)) {
     // If we've handled the URI in Chrome then just return here.
@@ -1189,23 +1181,9 @@ function _loadURI(browser, uri, params = {}) {
       if (userContextId) {
         browser.webNavigation.setOriginAttributesBeforeLoading({ userContextId });
       }
-      // CLIQZ-SPECIAL: Since new WebExtension API is asynchronous
-      // 1) We need to make sure that AddonManager has been initialised.
-      // 2) We need to make sure that Cliqz extension is available for now.
-      // Please keep in mind that if you want to load any URI regarding to
-      // extension itself then before doing that you need to make sure those
-      // former 2 steps have been succeeded.
-      if (isCliqzResourcesURI) {
-        AddonManager.isReadyAsync().then(() => {
-          AddonManager.getAddonByID('cliqz@cliqz.com').then((addon) => {
-            browser.webNavigation.loadURIWithOptions(uri, flags,
-              referrerURI, referrerPolicy, postData, null, null,
-              triggeringPrincipal, !!params.ensurePrivate);
-          });
-        }, () => {
-          // If AddonManager get shut down by any reasons
-          // we can show a blank page instead;
-          browser.webNavigation.loadURIWithOptions('about:blank', flags,
+      if (CliqzResources.isCliqzPage(uri)) {
+        CliqzResources.addonIsReadyAsync().then(() => {
+          browser.webNavigation.loadURIWithOptions(uri, flags,
             referrerURI, referrerPolicy, postData, null, null,
             triggeringPrincipal, !!params.ensurePrivate);
         });
@@ -2823,7 +2801,7 @@ function URLBarSetURI(aURI, updatePopupNotifications) {
 
     // Replace initial page URIs with an empty string
     // only if there's no opener (bug 370555).
-    if (isInitialPage(uri.spec) &&
+    if (CliqzResources.isInitialPage(uri.spec) &&
         checkEmptyPageOrigin(gBrowser.selectedBrowser, uri)) {
       value = "";
     } else {
@@ -2839,11 +2817,11 @@ function URLBarSetURI(aURI, updatePopupNotifications) {
 
     // Cliqz. Invalidate page proxy state for inital pages opened in private tabs
     // and Cliqz pages.
-    if (PrivateBrowsingUtils.isBrowserPrivate(gBrowser.selectedBrowser) && isInitialPage(uri.spec) ||
-        isCliqzPage(uri.spec)) {
+    if (PrivateBrowsingUtils.isBrowserPrivate(gBrowser.selectedBrowser) &&
+        CliqzResources.isInitialPage(uri.spec)) {
       valid = false;
     }
-  } else if (isInitialPage(value) &&
+  } else if (CliqzResources.isInitialPage(value) &&
              checkEmptyPageOrigin(gBrowser.selectedBrowser)) {
     value = "";
     valid = true;
