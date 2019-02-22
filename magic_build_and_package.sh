@@ -33,6 +33,9 @@ fi
 echo '***** Building *****'
 ./mach build
 
+echo '***** Building tests *****'
+./mach build package-tests
+
 echo '***** Packaging *****'
 ./mach package
 
