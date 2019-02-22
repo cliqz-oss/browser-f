@@ -40,10 +40,10 @@ try {
   def cacheParams = LIN_REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
 
   // Avoiding docker context
-  sh 'rm -rf docker && mkdir docker && cp Dockerfile docker/'
+  sh 'rm -rf docker_lin && mkdir docker_lin && cp docker/Dockerfile docker_lin/'
 
   // Build image with a specific user
-  sh "cd docker && docker build -t ${imageName} ${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` ."
+  sh "cd docker_lin && docker build -t ${imageName} ${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` ."
 }
 
 docker.image(imageName).inside() {
