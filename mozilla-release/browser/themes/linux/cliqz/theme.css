@@ -34,7 +34,7 @@
 :root:not([uidensity=touch]) #alltabs-button .toolbarbutton-icon {
   width: calc(2 * var(--toolbarbutton-inner-padding) + 14px);
   height: calc(2 * var(--toolbarbutton-inner-padding) + 14px);
-  padding: 4px;
+  padding: 5px;
 }
 :root[uidensity=touch] #navigator-toolbox {
   /* TABS TOOLBAR */
@@ -91,7 +91,7 @@
 toolbar .toolbarbutton-1 > .toolbarbutton-icon {
   width: calc(2 * var(--toolbarbutton-inner-padding) + 14px);
   height: calc(2 * var(--toolbarbutton-inner-padding) + 14px);
-  padding: 4px;
+  padding: 5px;
 }
 #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab {
   /* Remove the tab-line effect on top when hovering a tab */

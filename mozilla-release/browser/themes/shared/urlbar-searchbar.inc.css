@@ -237,6 +237,10 @@
   color: inherit;
 }
 
+.urlbar-icon[tooltiptext="re:consent"] {
+  padding: 5px;
+}
+
 .urlbar-page-action[disabled] {
   fill-opacity: 0.3;
 }
