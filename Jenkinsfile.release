@@ -11,8 +11,8 @@ CQZ_VERSION = ""
 BUILD_STATUS_FAILED = 'Failed'
 BUILD_STATUS_SUCCESSFUL = 'Successful'
 
-EMAIL_LIST = 'alexander@cliqz.com,joseph@cliqz.com,lucian@cliqz.com'
-EMAIL_LIST_SUCCESSFUL = 'kateryna@cliqz.com,prashant@cliqz.com,tamara@cliqz.com,marta@cliqz.com,oleksandra@cliqz.com'
+EMAIL_LIST_ERROR = 'desktopbrowserbuilderrors@cliqz.com'
+EMAIL_LIST_SUCCESSFUL = 'desktopbrowserbuild@cliqz.com'
 
 // Die early for missing build params
 CQZ_RELEASE_CHANNEL
@@ -180,13 +180,14 @@ def prepareBuildConfig() {
           string(name: 'MAC_CERT_NAME', value: MAC_CERT_NAME),
         ]
         job = build buildParams
-        if (buildParams.parameters.contains(string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'))) {
-          submitResultList.add([buildParams.job, job.id, 'obj/en_build_properties.json'])
-          submitResultList.add([buildParams.job, job.id, 'obj/de_build_properties.json'])
-        } else {
-          submitResultList.add([buildParams.job, job.id, 'obj/build_properties.json'])
-        }
-    } 
+        // Uncomment back after remove native MacOS build
+        //if (buildParams.parameters.contains(string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'))) {
+        //  submitResultList.add([buildParams.job, job.id, 'obj/en_build_properties.json'])
+        //  submitResultList.add([buildParams.job, job.id, 'obj/de_build_properties.json'])
+        //} else {
+        //  submitResultList.add([buildParams.job, job.id, 'obj/build_properties.json'])
+        //}
+    }
   ]
 }
 
@@ -220,18 +221,18 @@ stage('Build') {
 }
 
 def uploadBeta(build_id, cqz_version) {
-  def locales = ["en-US", "de"]
-  def installers_suffixes = ["win32.installer.exe", "win64.installer.exe", "mac.dmg"]
+  def installers_suffixes = [
+      "en-US.win32.installer.exe", "en-US.win64.installer.exe", "en-US.mac.dmg", "en-US.linux-x86_64.tar.bz2",
+      "de.win32.installer.exe", "de.win64.installer.exe", "de.mac.dmg"
+  ]
 
-  for (locale in locales) {
-      for (inst_suff in installers_suffixes) {
-          full_installer_path = "cliqz-${cqz_version}.${locale}.${inst_suff}"
-          installer_path = "cliqz.${locale}.${inst_suff}"
-          beta_path = "repository.cliqz.com/dist/beta/${cqz_version}/${build_id}/${full_installer_path}"
-          latest_beta_path = "repository.cliqz.com/dist/beta/latest/${installer_path}"
+  for (inst_suff in installers_suffixes) {
+    full_installer_path = "cliqz-${cqz_version}.${inst_suff}"
+    installer_path = "cliqz.${inst_suff}"
+    beta_path = "repository.cliqz.com/dist/beta/${cqz_version}/${build_id}/${full_installer_path}"
+    latest_beta_path = "repository.cliqz.com/dist/beta/latest/${installer_path}"
 
-          sh "aws s3 cp s3://${beta_path} s3://${latest_beta_path}"
-      }
+    sh "aws s3 cp s3://${beta_path} s3://${latest_beta_path}"
   }
 }
 
@@ -262,10 +263,9 @@ def submitBalrog(jobName, id, propsPath) {
 }
 
 def sendEmail(String buildStatus) {
-  def recepient_list = EMAIL_LIST
+  def recepient_list = EMAIL_LIST_ERROR
   if (buildStatus == BUILD_STATUS_SUCCESSFUL) {
-    recepient_list += ','
-    recepient_list += EMAIL_LIST_SUCCESSFUL
+    recepient_list = EMAIL_LIST_SUCCESSFUL
   }
 
   def bodytxt = '$PROJECT_NAME - Build # $BUILD_NUMBER - ' + buildStatus + ':'
