@@ -90,8 +90,10 @@ if (AppConstants.MOZ_CRASHREPORTER) {
 
 XPCOMUtils.defineLazyScriptGetter(this, ["isBlankPageURL"],
                                   "chrome://browser/content/utilityOverlay.js");
+#if 0
 XPCOMUtils.defineLazyScriptGetter(this, "gDataNotificationInfoBar",
                                   "chrome://browser/content/browser-data-submission-info-bar.js");
+#endif
 XPCOMUtils.defineLazyScriptGetter(this, "BookmarkingUI",
                                   "chrome://browser/content/browser-places.js");
 XPCOMUtils.defineLazyScriptGetter(this, "gIdentityHandler",
@@ -1640,9 +1642,10 @@ var gBrowserInit = {
       MenuTouchModeObserver.init();
     }
 
+#if 0
+    // Cliqz. DB-2056. The part of cliqz extension now.
     if (AppConstants.MOZ_DATA_REPORTING)
       gDataNotificationInfoBar.init();
-#if 0
     if (!AppConstants.MOZILLA_RELEASE)
       DevelopmentHelpers.init();
 #endif
