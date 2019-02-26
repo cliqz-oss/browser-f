@@ -477,7 +477,7 @@ async function loadManifestFromWebManifest(aUri, aPackage) {
 
   // CLIQZ: Do not install addons which have omnibox or themes or is language pack
   if (manifest.permissions && manifest.permissions.includes('theme') ||
-    ['webextension-langpack', 'webextension-theme'].includes(addon.type)) {
+    ['locale', 'theme'].includes(addon.type)) {
     addon.doNotInstall = true;
   }
 
