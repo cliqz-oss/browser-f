@@ -747,9 +747,9 @@ function shouldVerifySignedState(aAddon) {
   if (aAddon.location.name == KEY_APP_SYSTEM_ADDONS)
     return true;
 
-  // We don't care about signatures for default system add-ons
+  // Cliqz cares about signatures for default system add-ons
   if (aAddon.location.name == KEY_APP_SYSTEM_DEFAULTS)
-    return false;
+    return true;
 
   if (aAddon.location.scope & AppConstants.MOZ_UNSIGNED_SCOPES)
     return false;
