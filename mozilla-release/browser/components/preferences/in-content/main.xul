@@ -358,10 +358,12 @@
       <menulist id="defaultBrowserLanguage">
         <menupopup/>
       </menulist>
+      <!-- CLIQZ-SPECIAL: Remove option to download language packs from AMO
       <button id="manageBrowserLanguagesButton"
               class="accessory-button"
               data-l10n-id="manage-browser-languages-button"
               oncommand="gMainPane.showBrowserLanguages({search: false})"/>
+      -->
     </hbox>
   </vbox>
   <hbox id="confirmBrowserLanguage" class="message-bar" align="center" hidden="true">
