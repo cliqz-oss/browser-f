@@ -50,6 +50,7 @@ var SessionMigrationInternal = {
         tab.entries = oldTab.entries.map(function(entry) {
           return { url: entry.url,
                    triggeringPrincipal_base64: entry.triggeringPrincipal_base64,
+                   isCliqzPage: entry.isCliqzPage,
                    title: entry.title };
         });
         tab.index = oldTab.index;

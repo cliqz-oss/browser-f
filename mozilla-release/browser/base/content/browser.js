@@ -476,8 +476,8 @@ var gInitialPages = [
   "about:cliqz",
   "about:welcome",
 #endif
-  CliqzResources.freshTab,
-  CliqzResources.onboarding,
+  CliqzResources.getFreshTabUrl(),
+  CliqzResources.getWelcomeUrl(),
 #if 0
 ];
 

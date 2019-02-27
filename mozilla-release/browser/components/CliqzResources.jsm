@@ -2,13 +2,8 @@
 
 var EXPORTED_SYMBOLS = ["CliqzResources"];
 
-const {UUIDMap} = ChromeUtils.import("resource://gre/modules/Extension.jsm", {});
-const {AddonManager} = ChromeUtils.import("resource://gre/modules/AddonManager.jsm", {});
-
-const EXTENSION_ID = UUIDMap.get('cliqz@cliqz.com');
-const webextPrefix = `moz-extension://${EXTENSION_ID}/modules/`;
-const FRESHTAB_URL = `${webextPrefix}freshtab/home.html`;
-const WELCOME_URL = `${webextPrefix}onboarding-v3/index.html`;
+const DependencyManager = ChromeUtils.import(
+  "resource://gre/modules/DependencyManager.jsm", {}).DependencyManager;
 
 // CLIQZ-SPECIAL:
 // This variable is a pretty magical thing.
@@ -28,6 +23,15 @@ const INITIAL_PAGES = [
   "about:welcome",
 ];
 
+const getWebExtId = function() {
+  const UUIDMap = DependencyManager.get("UUIDMap", "resource://gre/modules/Extension.jsm");
+  return UUIDMap.get("cliqz@cliqz.com");
+};
+
+const getWebExtPrefix = function() {
+  return `moz-extension://${getWebExtId()}/modules/`;
+};
+
 const CliqzResources = {
   matchUrlByString: function(key) {
     switch (key) {
@@ -35,17 +39,20 @@ const CliqzResources = {
       case 'about:home':
       case 'about:newtab':
       case 'resource://cliqz/freshtab/home.html':
-        return FRESHTAB_URL;
+        return this.getFreshTabUrl();
 
       case 'about:welcome':
       case 'chrome://cliqz/content/onboarding-v3/index.html':
-        return WELCOME_URL;
+        return this.getWelcomeUrl();
 
       default:
         return key;
     }
   },
   addonIsReadyAsync: function(addonId = 'cliqz@cliqz.com') {
+    const AddonManager = DependencyManager.get("AddonManager",
+      "resource://gre/modules/AddonManager.jsm");
+
     return new Promise((resolve, reject) => {
       AddonManager.isReadyAsync().then(() => {
         AddonManager.getAddonByID(addonId).then(resolve, reject);
@@ -58,9 +65,25 @@ const CliqzResources = {
     return this.isCliqzPage(uri) || INITIAL_PAGES.includes(uri);
   },
   isCliqzPage: function(uri) {
-    return uri === this.freshTab || uri === this.onboarding;
+    return typeof uri == 'string' && uri.indexOf(getWebExtPrefix()) === 0;
   },
-  whatIstheURL: u => `${webextPrefix}${u}`,
-  freshTab: FRESHTAB_URL,
-  onboarding: WELCOME_URL
+  whatIstheURL: u => `${getWebExtPrefix()}${u}`,
+  getFreshTabUrl: () => `${getWebExtPrefix()}freshtab/home.html`,
+  getWelcomeUrl: () => `${getWebExtPrefix()}onboarding-v3/index.html`,
+  getUrlWithProperExtentionId: function(url = '') {
+    if (!url || typeof url != 'string') {
+      return url;
+    }
+
+    if (url.indexOf('moz-extension://') !== 0) {
+      return url;
+    }
+
+    let outerParts = url.split('moz-extension://');
+    let innerParts = outerParts[1].split('/');
+    innerParts[0] = getWebExtId();
+
+    outerParts[1] = innerParts.join('/');
+    return outerParts.join('moz-extension://');
+  },
 };
