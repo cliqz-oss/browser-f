@@ -229,16 +229,12 @@
 
 .urlbar-icon {
   width: 28px;
-  height: 28px;
+  height: 30px;
   padding: var(--urlbar-icon-padding);
   -moz-context-properties: fill, fill-opacity;
   fill: currentColor;
   fill-opacity: 0.6;
   color: inherit;
-}
-
-.urlbar-icon[tooltiptext="re:consent"] {
-  padding: 5px;
 }
 
 .urlbar-page-action[disabled] {
