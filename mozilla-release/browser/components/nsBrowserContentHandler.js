@@ -498,7 +498,40 @@ nsBrowserContentHandler.prototype = {
   },
 
   getDefaultArgs: function bch_getDefaultArgs(initialLaunch) {
-    var prefb = Services.prefs;
+    // CLIQZ-SPECIAL:
+    // DB-2064:
+    // overridePage will be used in case of a user has restarted the browser after update.
+    // A function needHomepageOverride determines whether our homepage has to be replaced.
+    // In this case it means that we might need to display What's New page for a user.
+    // There are 2 different prefs (taken into account in needHomepageOverride);
+    // browser.startup.homepage_override.mstone - it stores last saved platform version.
+    // That value could be an actual version like 65.0.x or empty string (new profile start).
+    // Also there is Services.appinfo.platformVersion which is 'live' meaning that whenever new
+    // update gets unstalled the property will be affected.
+    // If last stored platformVersion exists (not equal empty string) and does not equal
+    // Services.appinfo.platformVersion then the latest one is saved under
+    // browser.startup.homepage_override.mstone and taken into account further.
+    // Also OVERRIDE_NEW_MSTONE will be returned from needHomepageOverride;
+    var overridePage = "";
+#if 0
+    try {
+      // Read the old value of homepage_override.mstone before
+      // needHomepageOverride updates it, so that we can later add it to the
+      // URL if we do end up showing an overridePage. This makes it possible
+      // to have the overridePage's content vary depending on the version we're
+      // upgrading from.
+      let old_mstone = Services.prefs.getCharPref("browser.startup.homepage_override.mstone", "unknown");
+      let override = needHomepageOverride(Services.prefs);
+
+      if (override === OVERRIDE_NEW_MSTONE) {
+        overridePage = Services.urlFormatter.formatURLPref("startup.homepage_override_url");
+        overridePage = overridePage.replace("%OLD_VERSION%", old_mstone);
+      }
+    } catch (ex) {}
+#endif
+    if (overridePage !== '') {
+      return overridePage;
+    }
 
     if (!gFirstWindow) {
       gFirstWindow = true;
