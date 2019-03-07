@@ -401,8 +401,11 @@ var gMainPane = {
 #endif
     setEventListener("disableContainersExtension", "command",
                      makeDisableControllingExtension(PREF_SETTING_TYPE, CONTAINERS_KEY));
+    // CLIQZ-SPECIAL: DB-2015, Remove option to choose language packs from AMO
+#if 0
     setEventListener("chooseLanguage", "command",
       gMainPane.showLanguages);
+#endif
     setEventListener("translationAttributionImage", "click",
       gMainPane.openTranslationProviderAttribution);
     setEventListener("translateButton", "command",
@@ -1009,6 +1012,7 @@ var gMainPane = {
       fragment.appendChild(menuitem);
     }
 
+#if 0
     // Add an option to search for more languages if downloading is supported.
     if (Services.prefs.getBoolPref("intl.multilingual.downloadEnabled")) {
       let menuitem = document.createXULElement("menuitem");
@@ -1018,6 +1022,7 @@ var gMainPane = {
       menuitem.setAttribute("value", "search");
       fragment.appendChild(menuitem);
     }
+#endif
 
     let menulist = document.getElementById("defaultBrowserLanguage");
     let menupopup = menulist.querySelector("menupopup");
@@ -1025,8 +1030,7 @@ var gMainPane = {
     menupopup.appendChild(fragment);
     menulist.value = selected;
 
-    // CLIQZ-SPECIAL: Do not allow to change app language from preferences.
-    // document.getElementById("browserLanguagesBox").hidden = false;
+    document.getElementById("browserLanguagesBox").hidden = false;
   },
 
   /* Show the confirmation message bar to allow a restart into the new locales. */
