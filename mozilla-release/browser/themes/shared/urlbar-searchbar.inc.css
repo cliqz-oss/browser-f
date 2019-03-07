@@ -118,6 +118,10 @@
   height: 16px;
 }
 
+.pageAction-panel-button[actionid="cliqz_cliqz_com"] {
+  list-style-image: url("chrome://browser/skin/video-downloader.svg");
+}
+
 #pageAction-panel-bookmark,
 #star-button {
   list-style-image: url("chrome://browser/skin/bookmark-hollow.svg");
@@ -239,6 +243,10 @@
 
 .urlbar-page-action[disabled] {
   fill-opacity: 0.3;
+}
+
+.urlbar-page-action[actionid="cliqz_cliqz_com"] {
+  list-style-image: url("chrome://browser/skin/video-downloader.svg");
 }
 
 :root[uidensity=compact] .urlbar-icon {
