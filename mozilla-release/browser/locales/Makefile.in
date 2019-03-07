@@ -72,7 +72,7 @@ chrome-%: IS_LANGUAGE_REPACK=1
 chrome-%:
 	$(if $(filter en-US,$(AB_CD)),, @$(MAKE) merge-$*)
 	@$(MAKE) -C ../../toolkit/locales chrome-$*
-	@$(MAKE) -C ../../services/sync/locales chrome AB_CD=$*
+#	@$(MAKE) -C ../../services/sync/locales chrome AB_CD=$*
 	@$(MAKE) -C ../../extensions/spellcheck/locales chrome AB_CD=$*
 ifneq (,$(wildcard ../extensions/formautofill/locales))
 	@$(MAKE) -C ../extensions/formautofill/locales chrome AB_CD=$*

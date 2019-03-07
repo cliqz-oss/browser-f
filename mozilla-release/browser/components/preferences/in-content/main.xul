@@ -358,10 +358,12 @@
       <menulist id="defaultBrowserLanguage">
         <menupopup/>
       </menulist>
+      <!-- CLIQZ-SPECIAL, DB-2015: Remove option to download language packs from AMO
       <button id="manageBrowserLanguagesButton"
               class="accessory-button"
               data-l10n-id="manage-browser-languages-button"
               oncommand="gMainPane.showBrowserLanguages({search: false})"/>
+      -->
     </hbox>
   </vbox>
   <hbox id="confirmBrowserLanguage" class="message-bar" align="center" hidden="true">
@@ -369,9 +371,12 @@
     <vbox class="message-bar-content-container" align="stretch" flex="1"/>
   </hbox>
 
+  <!-- CLIQZ-SPECIAL, DB-2015: Remove option to choose language packs from AMO
   <hbox id="languagesBox" align="center">
     <description flex="1" control="chooseLanguage" data-l10n-id="choose-language-description"/>
+  -->
     <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
+    <!--
     <hbox>
       <button id="chooseLanguage"
               class="accessory-button"
@@ -387,6 +392,7 @@
               " />
     </hbox>
   </hbox>
+  -->
 
   <hbox id="translationBox" hidden="true">
     <hbox align="center" flex="1">
