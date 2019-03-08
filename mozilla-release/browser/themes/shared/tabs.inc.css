@@ -604,7 +604,7 @@
 /* Drag space */
 
 .titlebar-spacer[type="pre-tabs"] {
-  width: 44px;
+  width: 48px;
 }
 %if 0
 .titlebar-spacer[type="pre-tabs"],
