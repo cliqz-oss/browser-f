@@ -4,10 +4,6 @@
 
 do-not-track-description = Websites eine "Do Not Track"-Information senden, dass die eigenen Aktivitäten nicht verfolgt werden sollen
 do-not-track-learn-more = Weitere Informationen
-do-not-track-option-default =
-    .label = Nur wenn der Schutz vor Aktivitätenverfolgung aktiv ist
-do-not-track-option-default-content-blocking =
-    .label = Nur wenn { -brand-short-name } Elemente zur Aktivitätenverfolgung blockieren soll
 do-not-track-option-default-content-blocking-known =
     .label = Nur wenn { -brand-short-name } bekannte Elemente zur Aktivitätenverfolgung blockieren soll
 do-not-track-option-always =
@@ -95,9 +91,6 @@ extension-controlled-default-search = Die Erweiterung "<img data-l10n-name="icon
 # This string is shown to notify the user that Container Tabs
 # are being enabled by an extension.
 extension-controlled-privacy-containers = Die Erweiterung <img data-l10n-name="icon"/> { $name } verwaltet die Tab-Umgebungen.
-# This string is shown to notify the user that their tracking protection preferences
-# are being controlled by an extension.
-extension-controlled-websites-tracking-protection-mode = Die Erweiterung <img data-l10n-name="icon"/> { $name } steuert den Schutz vor Aktivitätenverfolgung.
 # This string is shown to notify the user that their content blocking "All Detected Trackers"
 # preferences are being controlled by an extension.
 extension-controlled-websites-content-blocking-all-trackers = Die Erweiterung <img data-l10n-name="icon"/> { $name } kontrolliert diese Einstellung.
@@ -286,6 +279,9 @@ update-application-check-choose =
 update-application-manual =
     .label = Nicht nach Updates suchen (nicht empfohlen)
     .accesskey = d
+
+update-application-warning-cross-user-setting = Diese Einstellung betrifft alle Windows-Konten und { -brand-short-name }-Profile, welche diese Installation von { -brand-short-name } verwenden.
+
 update-application-use-service =
     .label = Einen Hintergrunddienst verwenden, um Updates zu installieren
     .accesskey = g
@@ -342,7 +338,7 @@ browsing-cfr-recommendations-learn-more = Weitere Informationen
 
 ## General Section - Proxy
 
-network-settings-title = Netzwerkeinstellungen
+network-settings-title = Verbindungs-Einstellungen
 network-proxy-connection-description = Jetzt festlegen, wie sich { -brand-short-name } mit dem Internet verbindet.
 network-proxy-connection-learn-more = Weitere Informationen
 network-proxy-connection-settings =
@@ -606,15 +602,10 @@ sitedata-total-size-calculating = Größe von Website-Daten und Cache wird berec
 #   $unit (String) - Name of the unit (for example: "bytes", "KB")
 sitedata-total-size = Die gespeicherten Cookies, Website-Daten und der Cache belegen derzeit { $value } { $unit } Speicherplatz.
 sitedata-learn-more = Weitere Informationen
-sitedata-keep-until = Behalten, bis
-    .accesskey = B
-sitedata-keep-until-expire =
-    .label = sie nicht mehr gültig sind
-sitedata-keep-until-closed =
-    .label = { -brand-short-name } geschlossen wird
 sitedata-delete-on-close =
     .label = Cookies und Website-Daten beim Beenden von { -brand-short-name } löschen
     .accesskey = B
+sitedata-delete-on-close-private-browsing = Wenn der Private Modus immer verwendet wird, löscht { -brand-short-name } Cookies und Website-Daten beim Beenden.
 sitedata-allow-cookies-option =
     .label = Annehmen von Cookies und Website-Daten
     .accesskey = A
@@ -625,16 +616,6 @@ sitedata-disallow-cookies-option =
 # The list items are the strings named sitedata-block-*-option*.
 sitedata-block-desc = Zu blockieren:
     .accesskey = Z
-sitedata-block-trackers-option-recommended =
-    .label = Nutzer verfolgende Elemente von Drittanbietern [empfohlen]
-sitedata-block-trackers-option =
-    .label = Nutzer verfolgende Elemente von Drittanbietern
-sitedata-block-unvisited-option =
-    .label = Cookies von nicht besuchten Websites
-sitedata-block-all-third-party-option =
-    .label = Alle Cookies von Drittanbietern (einige Websites funktionieren dann eventuell nicht mehr)
-sitedata-block-all-option =
-    .label = Alle Cookies (einige Websites funktionieren dann nicht mehr)
 sitedata-option-block-trackers =
     .label = Nutzer verfolgende Elemente von Drittanbietern
 sitedata-option-block-unvisited =
@@ -649,13 +630,6 @@ sitedata-clear =
 sitedata-settings =
     .label = Daten verwalten…
     .accesskey = v
-sitedata-cookies-exceptions =
-    .label = Ausnahmen…
-    .accesskey = A
-# This is a warning message shown next to a yellow warning icon when the Cookies and Site Data subsection
-# in Preferences has been disabled due to Content Blocking being disabled. It is displayed next to the
-# Cookies and Site Data section.
-sitedata-warning-your-settings-prevent-changes = Ihre Einstellungen für das Blockieren von Seitenelementen verhindern Änderungen an den Einstellungen für Cookies und Website-Daten.
 sitedata-cookies-permissions =
     .label = Berechtigungen verwalten…
     .accesskey = B
@@ -678,41 +652,8 @@ addressbar-suggestions-settings = Einstellungen für Suchvorschläge ändern
 ## Privacy Section - Content Blocking
 
 content-blocking-header = Seitenelemente blockieren
-content-blocking-desc = Blockiert eingebettete Inhalte anderer Websites wie Werbung oder Quellcode, welche das Surfen verlangsamen und Sie im Internet Website-übergreifend verfolgen können. Wählen Sie ein ausgewogenes Verhältnis von Schutz und Leistung.
 content-blocking-description = Blockiert eingebettete Inhalte anderer Websites, welche Ihre Aktivitäten im Internet verfolgen. Kontrollieren Sie den Umfang Ihrer Online-Aktivitäten, welche von Websites gespeichert und mit anderen Websites ausgetauscht werden.
 content-blocking-learn-more = Weitere Informationen
-content-blocking-restore-defaults =
-    .label = Standard wiederherstellen
-    .accesskey = w
-content-blocking-toggle-on =
-    .tooltiptext = Seitenelemente nicht mehr blockieren
-content-blocking-toggle-off =
-    .tooltiptext = Seitenelemente blockieren
-content-blocking-toggle-label-on = EIN
-    .accesskey = E
-content-blocking-toggle-label-off = AUS
-    .accesskey = A
-content-blocking-category-label = Was blockiert werden soll
-# "Slow" in this instance means "slow to load on the network".
-# FastBlock is a feature that blocks requests to tracking sites if they
-# have not finished loading after a certain threshold of seconds.
-content-blocking-fastblock-slow-loading-trackers-label =
-    .label = Langsam ladende Elemente zur Aktivitätenverfolgung
-    .accesskey = L
-content-blocking-fastblock-new-description = Nur die Elemente zur Aktivitätenverfolgung blockieren, welche das Laden von Seiten verlangsamen.
-content-blocking-tracking-protection-trackers-label =
-    .label = Elemente zur Aktivitätenverfolgung
-    .accesskey = E
-content-blocking-tracking-protection-all-detected-trackers-label =
-    .label = Alle erkannten Elemente zur Aktivitätenverfolgung
-    .accesskey = A
-content-blocking-tracking-protection-new-description = Alle bekannten Elemente zur Aktivitätenverfolgung blockieren (einige Websites laden dann eventuell nicht).
-content-blocking-tracking-protection-option-always =
-    .label = Immer
-    .accesskey = m
-content-blocking-tracking-protection-option-private =
-    .label = Nur in privaten Fenstern
-    .accesskey = p
 # The terminology used to refer to categories of Content Blocking is also used in chrome/browser/browser.properties and should be translated consistently.
 # "Standard" in this case is an adjective, meaning "default" or "normal".
 content-blocking-setting-standard =
@@ -733,7 +674,7 @@ content-blocking-third-party-cookies = Cookies zur Aktivitätenverfolgung von Dr
 content-blocking-all-windows-trackers = Erkannte Elemente zur Aktivitätenverfolgung in allen Fenstern
 content-blocking-all-third-party-cookies = Alle Cookies von Drittanbietern
 content-blocking-warning-title = Achtung!
-content-blocking-warning-desc = Das Blockieren von Cookies und Elementen zur Aktivitätenverfolgung kann zu Problemen mit einigen Websites führen. Das Blockieren von Websites, denen Sie vertrauen, ist einfach.
+content-blocking-warning-desc = Das Blockieren von Cookies und Elementen zur Aktivitätenverfolgung kann zu Problemen mit einigen Websites führen. Deshalb können Sie die Funktion für Websites, denen Sie vertrauen, leicht deaktivieren.
 content-blocking-learn-how = Erfahren Sie mehr
 content-blocking-trackers-label =
     .label = Elemente zur Aktivitätenverfolgung
@@ -745,51 +686,12 @@ content-blocking-option-private =
     .label = Nur in privaten Fenstern
     .accesskey = p
 content-blocking-tracking-protection-change-block-list = Blockierliste ändern
-content-blocking-third-party-cookies-label =
-    .label = Cookies von eingebundenen externen Inhalten ("Drittanbieter")
-    .accesskey = C
-content-blocking-reject-trackers-description = Alle Cookies von Drittanbietern oder nur jene von Elementen zur Aktivitätenverfolgung blockieren
-# This is a warning message shown next to a yellow warning icon when the Third-Party Cookies subsection
-# of the Content Blocking UI in Preferences has been disabled due to the either the "All cookies" option
-# or the "Cookies from unvisited websites" option being selected in the Cookies and Site Data section of
-# the UI.
-content-blocking-reject-trackers-warning-your-settings-prevent-changes = Die Einstellungen in "Cookies und Website-Daten" verhindern Änderungen an den Einstellungen für Cookies von Drittanbietern.
-content-blocking-change-cookie-settings =
-    .label = Cookie-Einstellungen ändern
-    .accesskey = C
-content-blocking-reject-trackers-block-trackers-option-recommended =
-    .label = Elemente zur Aktivitätenverfolgung (empfohlen)
-    .accesskey = A
-content-blocking-reject-trackers-block-trackers-option =
-    .label = Elemente zur Aktivitätenverfolgung
-    .accesskey = A
-content-blocking-reject-trackers-all-third-parties-option =
-    .label = Alle Cookies von eingebetteten externen Elementen ("Drittanbieter") - einige Websites funktionieren dann eventuell nicht mehr
-    .accesskey = e
 content-blocking-cookies-label =
     .label = Cookies
     .accesskey = C
 
 ## Privacy Section - Tracking
 
-tracking-header = Schutz vor Aktivitätenverfolgung
-tracking-desc = Der Schutz vor Aktivitätenverfolgung blockiert nur Systeme, welche Ihr Surfverhalten über mehrere Websites verteilt aufzeichnen. <a data-l10n-name="learn-more">Weitere Informationen zum Schutz Ihrer Privatsphäre und vor Aktivitätenverfolgung</a>
-tracking-mode-label = Schutz vor Aktivitätenverfolgung verwenden, um bekannte Aktivitäten verfolgende Systeme zu blockieren
-tracking-mode-always =
-    .label = Immer
-    .accesskey = m
-tracking-mode-private =
-    .label = Nur in privaten Fenstern
-    .accesskey = P
-tracking-mode-never =
-    .label = Nie
-    .accesskey = N
-tracking-exceptions =
-    .label = Ausnahmen…
-    .accesskey = u
-tracking-change-block-list =
-    .label = Blockierliste ändern…
-    .accesskey = B
 tracking-manage-exceptions =
     .label = Ausnahmen verwalten…
     .accesskey = v
@@ -821,6 +723,11 @@ permissions-block-autoplay-media =
     .label = Automatische Wiedergabe von Medien mit Ton durch Websites verhindern
     .accesskey = W
 permissions-block-autoplay-media-menu = Bei automatischer Wiedergabe von Ton durch Websites
+
+permissions-block-autoplay-media2 =
+    .label = Automatische Wiedergabe von Audio-Inhalten verhindern
+    .accesskey = u
+
 permissions-block-autoplay-media-exceptions =
     .label = Ausnahmen…
     .accesskey = A

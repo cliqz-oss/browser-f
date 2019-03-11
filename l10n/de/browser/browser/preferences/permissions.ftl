@@ -115,7 +115,7 @@ permissions-exceptions-addons-desc = Sie können festlegen, welchen Websites Sie
 permissions-exceptions-autoplay-media-window2 =
     .title = Ausnahmen - Automatische Wiedergabe
     .style = { permissions-window.style }
-permissions-exceptions-autoplay-media-desc2 = Hier können die Websites festgelegt werden, welche immer oder nie automatisch Medien mit Ton wiedergeben dürfen. Geben Sie die Adresse der Website ein und klicken Sie dann auf &quot;Blockieren&quot; oder &quot;Erlauben&quot;.
+permissions-exceptions-autoplay-media-desc2 = Hier können die Websites festgelegt werden, welche immer oder nie automatisch Medien mit Ton wiedergeben dürfen. Geben Sie die Adresse der Website ein und klicken Sie dann auf "Blockieren" oder "Erlauben".
 
 ## Site Permissions - Notifications
 

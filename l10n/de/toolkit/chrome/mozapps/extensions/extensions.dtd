@@ -220,7 +220,7 @@ einige der besten und populärsten Add-ons zum Ausprobieren anbieten.">
 <!ENTITY disabledUnsigned.description.start "Die folgenden Add-ons wurden nicht für die Verwendung in &brandShortName; verifiziert. Sie können ">
 <!ENTITY disabledUnsigned.description.findAddonsLink "nach Alternativen suchen">
 <!ENTITY disabledUnsigned.description.end " oder die Entwickler bitten, sie verifizieren zu lassen.">
-<!ENTITY disabledUnsigned.learnMore "Erfahren Sie mehr von unseren Bestrebungen, Sie beim Surfen im Internet zu schützen.">
+<!ENTITY disabledUnsigned.learnMore "Erfahren Sie mehr über unsere Bestrebungen, Sie beim Surfen im Internet zu schützen.">
 <!-- LOCALIZATION NOTE (disabledUnsigned.devInfo.start, disabledUnsigned.devInfo.linkToManual, disabledUnsigned.devInfo.end):
      These entities form a sentence, with disabledUnsigned.devInfo.linkToManual
      being a link to an external site. -->
