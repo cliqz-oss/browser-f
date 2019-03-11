@@ -35,10 +35,10 @@ fi
 # generating multilocale.txt file (./toolkit/mozapps/installer/packager.mk);
 # Then ./intl/locale/LocaleService.cpp service takes advantage of that (reads multilocale.txt)
 # to define languages put into Services.locale.packagedLocales.
-export MOZ_CHROME_MULTILOCALE=`ls -1 ../l10n/ | tr "\n" " " | sed 's/ $//g'`
-for AB_CD in $MOZ_CHROME_MULTILOCALE; do
-  ./mach build chrome-$AB_CD
-done
+#export MOZ_CHROME_MULTILOCALE=`ls -1 ../l10n/ | tr "\n" " " | sed 's/ $//g'`
+#for AB_CD in $MOZ_CHROME_MULTILOCALE; do
+#  ./mach build chrome-$AB_CD
+#done
 
 echo '***** Building *****'
 ./mach build
