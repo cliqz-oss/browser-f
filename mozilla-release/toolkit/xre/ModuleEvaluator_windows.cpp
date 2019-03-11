@@ -10,6 +10,7 @@
 #include <algorithm>  // For std::find()
 
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/CmdLineAndEnvUtils.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Unused.h"
 #include "nsCOMPtr.h"
@@ -37,7 +38,7 @@ static bool GetDirectoryName(const nsCOMPtr<nsIFile> aFile,
 
 ModuleLoadEvent::ModuleInfo::ModuleInfo(
     const glue::ModuleLoadEvent::ModuleInfo& aOther)
-    : mBase(aOther.mBase) {
+    : mBase(aOther.mBase), mLoadDurationMS(Some(aOther.mLoadDurationMS)) {
   if (aOther.mLdrName) {
     mLdrName.Assign(aOther.mLdrName.get());
   }
@@ -122,6 +123,34 @@ ModuleEvaluator::ModuleEvaluator() {
     sysDir->GetPath(mSysDirectory);
   }
 
+  nsCOMPtr<nsIFile> winSxSDir;
+  if (NS_SUCCEEDED(NS_GetSpecialDirectory(NS_WIN_WINDOWS_DIR,
+                                          getter_AddRefs(winSxSDir)))) {
+    if (NS_SUCCEEDED(winSxSDir->Append(NS_LITERAL_STRING("WinSxS")))) {
+      winSxSDir->GetPath(mWinSxSDirectory);
+    }
+  }
+
+#ifdef _M_IX86
+  mSysWOW64Directory.SetLength(MAX_PATH);
+  UINT sysWOWlen =
+      ::GetSystemWow64DirectoryW((char16ptr_t)mSysWOW64Directory.BeginWriting(),
+                                 mSysWOW64Directory.Length());
+  if (!sysWOWlen || (sysWOWlen > mSysWOW64Directory.Length())) {
+    // This could be the following cases:
+    // - Genuine error
+    // - GetLastError == ERROR_CALL_NOT_IMPLEMENTED (32-bit Windows)
+    // - Buffer too small. The buffer being MAX_PATH, this should be so rare we
+    //   don't bother with this case.
+    // In all these cases, consider this directory unavailable.
+    mSysWOW64Directory.Truncate();
+  } else {
+    // In this case, GetSystemWow64DirectoryW returns the length of the string,
+    // not including the null-terminator.
+    mSysWOW64Directory.SetLength(sysWOWlen);
+  }
+#endif  // _M_IX86
+
   nsCOMPtr<nsIFile> exeDir;
   if (NS_SUCCEEDED(
           NS_GetSpecialDirectory(NS_GRE_DIR, getter_AddRefs(exeDir)))) {
@@ -192,16 +221,22 @@ Maybe<bool> ModuleEvaluator::IsModuleTrusted(
   }
   ToLowerCase(dllLeafLower);  // To facilitate case-insensitive searching
 
-#if ENABLE_TESTS
+  // Accumulate a trustworthiness score as the module passes through several
+  // checks. If the score ever reaches above the threshold, it's considered
+  // trusted.
   int scoreThreshold = 100;
-  // For testing, these DLLs are hardcoded to pass through all criteria checks
-  // and still result in "untrusted" status.
-  if (dllLeafLower.EqualsLiteral("mozglue.dll") ||
-      dllLeafLower.EqualsLiteral("modules-test.dll")) {
-    scoreThreshold = 99999;
+#ifdef ENABLE_TESTS
+  // Check whether we are running as an xpcshell test.
+  if (mozilla::EnvHasValue("XPCSHELL_TEST_PROFILE_DIR")) {
+    // During xpcshell tests, these DLLs are hard-coded to pass through all
+    // criteria checks and still result in "untrusted" status, so they show up
+    // in the untrusted modules ping for the test to examine.
+    // Setting the threshold very high ensures the test will cover all criteria.
+    if (dllLeafLower.EqualsLiteral("untrusted-startup-test-dll.dll") ||
+        dllLeafLower.EqualsLiteral("modules-test.dll")) {
+      scoreThreshold = 99999;
+    }
   }
-#else
-  static const int scoreThreshold = 100;
 #endif
 
   int score = 0;
@@ -211,6 +246,27 @@ Maybe<bool> ModuleEvaluator::IsModuleTrusted(
       StringBeginsWith(dllFullPath, mSysDirectory,
                        nsCaseInsensitiveStringComparator())) {
     aDllInfo.mTrustFlags |= ModuleTrustFlags::SystemDirectory;
+    score += 50;
+  }
+
+#ifdef _M_IX86
+  // Under WOW64, SysWOW64 is the effective system directory. Give SysWOW64 the
+  // same trustworthiness as ModuleTrustFlags::SystemDirectory.
+  if (!mSysWOW64Directory.IsEmpty() &&
+      StringBeginsWith(dllFullPath, mSysWOW64Directory,
+                       nsCaseInsensitiveStringComparator())) {
+    aDllInfo.mTrustFlags |= ModuleTrustFlags::SysWOW64Directory;
+    score += 50;
+  }
+#endif  // _M_IX86
+
+  // Is the DLL in the WinSxS directory? Some Microsoft DLLs (e.g. comctl32) are
+  // loaded from here and don't have digital signatures. So while this is not a
+  // guarantee of trustworthiness, but is at least as valid as system32.
+  if (!mWinSxSDirectory.IsEmpty() &&
+      StringBeginsWith(dllFullPath, mWinSxSDirectory,
+                       nsCaseInsensitiveStringComparator())) {
+    aDllInfo.mTrustFlags |= ModuleTrustFlags::WinSxSDirectory;
     score += 50;
   }
 
@@ -238,6 +294,13 @@ Maybe<bool> ModuleEvaluator::IsModuleTrusted(
                            nsCaseInsensitiveStringComparator())) {
         score += 50;
         aDllInfo.mTrustFlags |= ModuleTrustFlags::FirefoxDirectory;
+
+        if (dllLeafLower.EqualsLiteral("xul.dll")) {
+          // The caller wants to know if this DLL is xul.dll, but this flag
+          // doesn't need to affect trust score. Xul will be considered trusted
+          // by other measures.
+          aDllInfo.mTrustFlags |= ModuleTrustFlags::Xul;
+        }
 
         // If it's in the Firefox directory, does it also share the Firefox
         // version info? We only care about this inside the app directory.

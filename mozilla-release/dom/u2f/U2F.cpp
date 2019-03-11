@@ -15,6 +15,10 @@
 #include "nsNetUtil.h"
 #include "nsURLParsers.h"
 
+#ifdef OS_WIN
+#include "WinWebAuthnManager.h"
+#endif
+
 using namespace mozilla::ipc;
 
 // Forward decl because of nsHTMLDocument.h's complex dependency on
@@ -42,14 +46,13 @@ NS_NAMED_LITERAL_STRING(
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(U2F)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
-  NS_INTERFACE_MAP_ENTRY(nsISupports)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMEventListener)
-NS_INTERFACE_MAP_END
+NS_INTERFACE_MAP_END_INHERITING(WebAuthnManagerBase)
 
-NS_IMPL_CYCLE_COLLECTING_ADDREF(U2F)
-NS_IMPL_CYCLE_COLLECTING_RELEASE(U2F)
+NS_IMPL_ADDREF_INHERITED(U2F, WebAuthnManagerBase)
+NS_IMPL_RELEASE_INHERITED(U2F, WebAuthnManagerBase)
 
-NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(U2F, mParent)
+NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE_INHERITED(U2F, WebAuthnManagerBase,
+                                                mTransaction)
 
 /***********************************************************************
  * Utility Functions
@@ -142,7 +145,7 @@ U2F::~U2F() {
 void U2F::Init(ErrorResult& aRv) {
   MOZ_ASSERT(mParent);
 
-  nsCOMPtr<nsIDocument> doc = mParent->GetDoc();
+  nsCOMPtr<Document> doc = mParent->GetDoc();
   MOZ_ASSERT(doc);
   if (!doc) {
     aRv.Throw(NS_ERROR_FAILURE);
@@ -254,7 +257,13 @@ void U2F::Register(const nsAString& aAppId,
     return;
   }
 
+#ifdef OS_WIN
+  if (!WinWebAuthnManager::AreWebAuthNApisAvailable()) {
+    ListenForVisibilityEvents();
+  }
+#else
   ListenForVisibilityEvents();
+#endif
 
   NS_ConvertUTF16toUTF8 clientData(clientDataJSON);
   uint32_t adjustedTimeoutMillis = AdjustedTimeoutMillis(opt_aTimeoutSeconds);
@@ -392,7 +401,13 @@ void U2F::Sign(const nsAString& aAppId, const nsAString& aChallenge,
     return;
   }
 
+#ifdef OS_WIN
+  if (!WinWebAuthnManager::AreWebAuthNApisAvailable()) {
+    ListenForVisibilityEvents();
+  }
+#else
   ListenForVisibilityEvents();
+#endif
 
   // Always blank for U2F
   nsTArray<WebAuthnExtension> extensions;

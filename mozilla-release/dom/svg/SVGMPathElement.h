@@ -8,18 +8,18 @@
 #define mozilla_dom_SVGMPathElement_h
 
 #include "mozilla/dom/IDTracker.h"
-#include "nsSVGElement.h"
+#include "SVGElement.h"
 #include "nsStubMutationObserver.h"
-#include "nsSVGString.h"
+#include "SVGString.h"
 
 nsresult NS_NewSVGMPathElement(
     nsIContent** aResult, already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
 
-typedef nsSVGElement SVGMPathElementBase;
-
 namespace mozilla {
 namespace dom {
 class SVGPathElement;
+
+typedef SVGElement SVGMPathElementBase;
 
 class SVGMPathElement final : public SVGMPathElementBase,
                               public nsStubMutationObserver {
@@ -44,7 +44,7 @@ class SVGMPathElement final : public SVGMPathElementBase,
 
   // nsIContent interface
   virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
-  virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
+  virtual nsresult BindToTree(Document* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent) override;
   virtual void UnbindFromTree(bool aDeep, bool aNullParent) override;
 
@@ -110,7 +110,7 @@ class SVGMPathElement final : public SVGMPathElementBase,
   void NotifyParentOfMpathChange(nsIContent* aParent);
 
   enum { HREF, XLINK_HREF };
-  nsSVGString mStringAttributes[2];
+  SVGString mStringAttributes[2];
   static StringInfo sStringInfo[2];
   PathElementTracker mPathTracker;
 };

@@ -5,21 +5,22 @@
 // @flow
 
 import React, { PureComponent } from "react";
-import { connect } from "react-redux";
+import { connect } from "../../../utils/connect";
 import { createSelector } from "reselect";
 import classnames from "classnames";
-
 import actions from "../../../actions";
+import { memoize } from "lodash";
 
 import showContextMenu from "./BreakpointsContextMenu";
 import { CloseButton } from "../../shared/Button";
 
-import { getLocationWithoutColumn } from "../../../utils/breakpoint";
+import {
+  getLocationWithoutColumn,
+  getSelectedText
+} from "../../../utils/breakpoint";
 import { getSelectedLocation } from "../../../utils/source-maps";
 import { features } from "../../../utils/prefs";
 import { getEditor } from "../../../utils/editor";
-
-import type { FormattedBreakpoint } from "../../../selectors/breakpointSources";
 
 import type {
   Breakpoint as BreakpointType,
@@ -28,8 +29,7 @@ import type {
   SourceLocation
 } from "../../../types";
 
-type FormattedFrame = {
-  ...Frame,
+type FormattedFrame = Frame & {
   selectedLocation: SourceLocation
 };
 
@@ -40,10 +40,11 @@ import {
 } from "../../../selectors";
 
 type Props = {
-  breakpoint: FormattedBreakpoint,
+  breakpoint: BreakpointType,
   breakpoints: BreakpointType[],
+  selectedSource: Source,
   source: Source,
-  frame: ?FormattedFrame,
+  frame: FormattedFrame,
   enableBreakpoint: typeof actions.enableBreakpoint,
   removeBreakpoint: typeof actions.removeBreakpoint,
   removeBreakpoints: typeof actions.removeBreakpoints,
@@ -62,49 +63,53 @@ class Breakpoint extends PureComponent<Props> {
     showContextMenu({ ...this.props, contextMenuEvent: e });
   };
 
+  get selectedLocation() {
+    const { breakpoint, selectedSource } = this.props;
+    return getSelectedLocation(breakpoint, selectedSource);
+  }
+
   onDoubleClick = () => {
     const { breakpoint, openConditionalPanel } = this.props;
     if (breakpoint.condition) {
-      openConditionalPanel(breakpoint.selectedLocation.line);
+      openConditionalPanel(this.selectedLocation);
     }
   };
 
-  selectBreakpoint = () => {
-    const { breakpoint, selectSpecificLocation } = this.props;
-    selectSpecificLocation(breakpoint.selectedLocation);
+  selectBreakpoint = event => {
+    event.preventDefault();
+    const { selectSpecificLocation } = this.props;
+    selectSpecificLocation(this.selectedLocation);
   };
 
   removeBreakpoint = event => {
-    const { breakpoint, removeBreakpoint } = this.props;
-
+    const { removeBreakpoint } = this.props;
     event.stopPropagation();
-    removeBreakpoint(breakpoint.selectedLocation);
+    removeBreakpoint(this.selectedLocation);
   };
 
   handleBreakpointCheckbox = () => {
     const { breakpoint, enableBreakpoint, disableBreakpoint } = this.props;
     if (breakpoint.disabled) {
-      enableBreakpoint(breakpoint.selectedLocation);
+      enableBreakpoint(this.selectedLocation);
     } else {
-      disableBreakpoint(breakpoint.selectedLocation);
+      disableBreakpoint(this.selectedLocation);
     }
   };
 
   isCurrentlyPausedAtBreakpoint() {
-    const { frame, breakpoint } = this.props;
+    const { frame } = this.props;
     if (!frame) {
       return false;
     }
 
-    const bpId = getLocationWithoutColumn(breakpoint.selectedLocation);
+    const bpId = getLocationWithoutColumn(this.selectedLocation);
     const frameId = getLocationWithoutColumn(frame.selectedLocation);
-
     return bpId == frameId;
   }
 
   getBreakpointLocation() {
-    const { breakpoint, source } = this.props;
-    const { column, line } = breakpoint.selectedLocation;
+    const { source } = this.props;
+    const { column, line } = this.selectedLocation;
 
     const isWasm = source && source.isWasm;
     const columnVal = features.columnBreakpoints && column ? `:${column}` : "";
@@ -116,26 +121,28 @@ class Breakpoint extends PureComponent<Props> {
   }
 
   getBreakpointText() {
-    const { breakpoint } = this.props;
-    return breakpoint.condition || breakpoint.text;
+    const { breakpoint, selectedSource } = this.props;
+    return breakpoint.condition || getSelectedText(breakpoint, selectedSource);
   }
 
-  highlightText() {
-    const text = this.getBreakpointText() || "";
-    const editor = getEditor();
+  highlightText = memoize(
+    (text = "", editor) => {
+      if (!editor.CodeMirror) {
+        return { __html: text };
+      }
 
-    if (!editor.CodeMirror) {
-      return { __html: text };
-    }
-
-    const node = document.createElement("div");
-    editor.CodeMirror.runMode(text, "application/javascript", node);
-    return { __html: node.innerHTML };
-  }
+      const node = document.createElement("div");
+      editor.CodeMirror.runMode(text, "application/javascript", node);
+      return { __html: node.innerHTML };
+    },
+    (text, editor) => `${text} - ${editor.CodeMirror ? "editor" : ""}`
+  );
 
   /* eslint-disable react/no-danger */
   render() {
     const { breakpoint } = this.props;
+    const text = this.getBreakpointText();
+    const editor = getEditor();
 
     return (
       <div
@@ -143,13 +150,15 @@ class Breakpoint extends PureComponent<Props> {
           breakpoint,
           paused: this.isCurrentlyPausedAtBreakpoint(),
           disabled: breakpoint.disabled,
-          "is-conditional": !!breakpoint.condition
+          "is-conditional": !!breakpoint.condition,
+          log: breakpoint.log
         })}
         onClick={this.selectBreakpoint}
         onDoubleClick={this.onDoubleClick}
         onContextMenu={this.onContextMenu}
       >
         <input
+          id={breakpoint.id}
           type="checkbox"
           className="breakpoint-checkbox"
           checked={!breakpoint.disabled}
@@ -157,10 +166,13 @@ class Breakpoint extends PureComponent<Props> {
           onClick={ev => ev.stopPropagation()}
         />
         <label
+          htmlFor={breakpoint.id}
           className="breakpoint-label cm-s-mozilla"
-          title={this.getBreakpointText()}
-          dangerouslySetInnerHTML={this.highlightText()}
-        />
+          onClick={this.selectBreakpoint}
+          title={text}
+        >
+          <span dangerouslySetInnerHTML={this.highlightText(text, editor)} />
+        </label>
         <div className="breakpoint-line-close">
           <div className="breakpoint-line">{this.getBreakpointLocation()}</div>
           <CloseButton
@@ -176,7 +188,7 @@ class Breakpoint extends PureComponent<Props> {
 const getFormattedFrame = createSelector(
   getSelectedSource,
   getSelectedFrame,
-  (selectedSource: Source, frame: Frame) => {
+  (selectedSource: ?Source, frame: ?Frame): ?FormattedFrame => {
     if (!frame) {
       return null;
     }
@@ -202,7 +214,6 @@ export default connect(
     removeAllBreakpoints: actions.removeAllBreakpoints,
     disableBreakpoint: actions.disableBreakpoint,
     selectSpecificLocation: actions.selectSpecificLocation,
-    selectLocation: actions.selectLocation,
     setBreakpointCondition: actions.setBreakpointCondition,
     toggleAllBreakpoints: actions.toggleAllBreakpoints,
     toggleBreakpoints: actions.toggleBreakpoints,

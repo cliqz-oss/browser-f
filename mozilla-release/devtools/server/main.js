@@ -63,6 +63,13 @@ var DebuggerServer = {
   allowChromeProcess: false,
 
   /**
+   * Flag used to check if the server can be destroyed when all connections have been
+   * removed. Firefox on Android runs a single shared DebuggerServer, and should not be
+   * closed even if no client is connected.
+   */
+  keepAlive: false,
+
+  /**
    * We run a special server in child process whose main actor is an instance
    * of FrameTargetActor, but that isn't a root actor. Instead there is no root
    * actor registered on DebuggerServer.
@@ -93,6 +100,10 @@ var DebuggerServer = {
 
   get initialized() {
     return this._initialized;
+  },
+
+  hasConnection() {
+    return Object.keys(this._connections).length > 0;
   },
 
   /**
@@ -167,30 +178,6 @@ var DebuggerServer = {
    */
   registerAllActors() {
     this.registerActors({ root: true, browser: true, target: true });
-  },
-
-  /**
-   * Passes a set of options to the AddonTargetActors for the given ID.
-   *
-   * @param id string
-   *        The ID of the add-on to pass the options to
-   * @param options object
-   *        The options.
-   * @return a promise that will be resolved when complete.
-   */
-  setAddonOptions(id, options) {
-    if (!this._initialized) {
-      return Promise.resolve();
-    }
-
-    const promises = [];
-
-    // Pass to all connections
-    for (const connID of Object.getOwnPropertyNames(this._connections)) {
-      promises.push(this._connections[connID].setAddonOptions(id, options));
-    }
-
-    return Promise.all(promises);
   },
 
   get listeningSockets() {
@@ -1198,31 +1185,6 @@ DebuggerServerConnection.prototype = {
     });
 
     this._actorResponses.set(from, responsePromise);
-  },
-
-  /**
-   * Passes a set of options to the AddonTargetActors for the given ID.
-   *
-   * @param id string
-   *        The ID of the add-on to pass the options to
-   * @param options object
-   *        The options.
-   * @return a promise that will be resolved when complete.
-   */
-  setAddonOptions(id, options) {
-    const addonList = this.rootActor._parameters.addonList;
-    if (!addonList) {
-      return Promise.resolve();
-    }
-    return addonList.getList().then((addonTargetActors) => {
-      for (const actor of addonTargetActors) {
-        if (actor.addonId != id) {
-          continue;
-        }
-        actor.setOptions(options);
-        return;
-      }
-    });
   },
 
   /**

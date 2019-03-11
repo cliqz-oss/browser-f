@@ -14,7 +14,7 @@
 #include <stdint.h>
 
 #ifdef ENABLE_BIGINT
-#include "builtin/BigInt.h"
+#  include "builtin/BigInt.h"
 #endif
 #include "builtin/Promise.h"
 #include "builtin/TestingFunctions.h"
@@ -119,7 +119,7 @@ JS_FRIEND_API bool JS_SplicePrototype(JSContext* cx, HandleObject obj,
   }
 
   Rooted<TaggedProto> tagged(cx, TaggedProto(proto));
-  return JSObject::splicePrototype(cx, obj, obj->getClass(), tagged);
+  return JSObject::splicePrototype(cx, obj, tagged);
 }
 
 JS_FRIEND_API JSObject* JS_NewObjectWithUniqueType(JSContext* cx,
@@ -153,11 +153,15 @@ JS_FRIEND_API bool JS::GetIsSecureContext(JS::Realm* realm) {
   return realm->creationOptions().secureContext();
 }
 
-JS_FRIEND_API JSPrincipals* JS_GetCompartmentPrincipals(
+JS_FRIEND_API void js::AssertCompartmentHasSingleRealm(JS::Compartment* comp) {
+  MOZ_RELEASE_ASSERT(comp->realms().length() == 1);
+}
+
+JS_FRIEND_API JSPrincipals* JS_DeprecatedGetCompartmentPrincipals(
     JS::Compartment* compartment) {
   // Note: for now we assume a single realm per compartment. This API will go
   // away after we remove the remaining callers. See bug 1465700.
-  MOZ_RELEASE_ASSERT(compartment->realms().length() == 1);
+  js::AssertCompartmentHasSingleRealm(compartment);
 
   return compartment->realms()[0]->principals();
 }
@@ -525,10 +529,6 @@ JS_FRIEND_API JSObject* JS_NewDeadWrapper(JSContext* cx, JSObject* origObj) {
   return NewDeadProxyObject(cx, origObj);
 }
 
-JS_FRIEND_API bool JS_IsScriptSourceObject(JSObject* obj) {
-  return obj->is<ScriptSourceObject>();
-}
-
 void js::TraceWeakMaps(WeakMapTracer* trc) {
   WeakMapBase::traceAllMappings(trc);
 }
@@ -547,9 +547,10 @@ JS_FRIEND_API bool js::ZoneGlobalsAreAllGray(JS::Zone* zone) {
   return true;
 }
 
-JS_FRIEND_API bool js::IsObjectZoneSweepingOrCompacting(JSObject* obj) {
-  MOZ_ASSERT(obj);
-  return MaybeForwarded(obj)->zone()->isGCSweepingOrCompacting();
+JS_FRIEND_API bool js::IsCompartmentZoneSweepingOrCompacting(
+    JS::Compartment* comp) {
+  MOZ_ASSERT(comp);
+  return comp->zone()->isGCSweepingOrCompacting();
 }
 
 namespace {
@@ -577,13 +578,6 @@ JS_FRIEND_API void js::VisitGrayWrapperTargets(Zone* zone,
           VisitGrayCallbackFunctor(callback, closure));
     }
   }
-}
-
-JS_FRIEND_API JSObject* js::GetWeakmapKeyDelegate(JSObject* key) {
-  if (JSWeakmapKeyDelegateOp op = key->getClass()->extWeakmapKeyDelegateOp()) {
-    return op(key);
-  }
-  return nullptr;
 }
 
 JS_FRIEND_API JSLinearString* js::StringToLinearStringSlow(JSContext* cx,
@@ -1050,7 +1044,7 @@ struct DumpHeapTracer : public JS::CallbackTracer, public WeakMapTracer {
   void trace(JSObject* map, JS::GCCellPtr key, JS::GCCellPtr value) override {
     JSObject* kdelegate = nullptr;
     if (key.is<JSObject>()) {
-      kdelegate = js::GetWeakmapKeyDelegate(&key.as<JSObject>());
+      kdelegate = UncheckedUnwrapWithoutExpose(&key.as<JSObject>());
     }
 
     fprintf(output, "WeakMapEntry map=%p key=%p keyDelegate=%p value=%p\n", map,
@@ -1124,7 +1118,7 @@ void DumpHeapTracer::onChild(const JS::GCCellPtr& thing) {
 void js::DumpHeap(JSContext* cx, FILE* fp,
                   js::DumpHeapNurseryBehaviour nurseryBehaviour) {
   if (nurseryBehaviour == js::CollectNurseryBeforeDump) {
-    cx->runtime()->gc.evictNursery(JS::gcreason::API);
+    cx->runtime()->gc.evictNursery(JS::GCReason::API);
   }
 
   DumpHeapTracer dtrc(fp, cx);
@@ -1334,9 +1328,11 @@ JS_FRIEND_API void js::SetWindowProxy(JSContext* cx, HandleObject global,
   CHECK_THREAD(cx);
 
   cx->check(global, windowProxy);
-
   MOZ_ASSERT(IsWindowProxy(windowProxy));
-  global->as<GlobalObject>().setWindowProxy(windowProxy);
+
+  GlobalObject& globalObj = global->as<GlobalObject>();
+  globalObj.setWindowProxy(windowProxy);
+  globalObj.lexicalEnvironment().setWindowProxyThisValue(windowProxy);
 }
 
 JS_FRIEND_API JSObject* js::ToWindowIfWindowProxy(JSObject* obj) {
@@ -1410,6 +1406,14 @@ JS_FRIEND_API void js::LogDtor(void* self, const char* type, uint32_t sz) {
   }
 }
 
+JS_FRIEND_API JS::Value js::MaybeGetScriptPrivate(JSObject* object) {
+  if (!object->is<ScriptSourceObject>()) {
+    return UndefinedValue();
+  }
+
+  return object->as<ScriptSourceObject>().canonicalPrivate();
+}
+
 JS_FRIEND_API uint64_t js::GetGCHeapUsageForObjectZone(JSObject* obj) {
-  return obj->zone()->usage.gcBytes();
+  return obj->zone()->zoneSize.gcBytes();
 }

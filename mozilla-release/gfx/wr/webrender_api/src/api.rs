@@ -147,7 +147,6 @@ impl Transaction {
     ///
     /// Arguments:
     ///
-    /// * `document_id`: Target Document ID.
     /// * `epoch`: The unique Frame ID, monotonically increasing.
     /// * `background`: The background color of this pipeline.
     /// * `viewport_size`: The size of the viewport for this frame.
@@ -561,7 +560,7 @@ pub struct HitTestResult {
 }
 
 bitflags! {
-    #[derive(Deserialize, Serialize)]
+    #[derive(Deserialize, MallocSizeOf, Serialize)]
     pub struct HitTestFlags: u8 {
         const FIND_ALL = 0b00000001;
         const POINT_RELATIVE_TO_PIPELINE_VIEWPORT = 0b00000010;
@@ -680,26 +679,10 @@ pub struct CapturedDocument {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub enum DebugCommand {
-    /// Display the frame profiler on screen.
-    EnableProfiler(bool),
-    /// Display all texture cache pages on screen.
-    EnableTextureCacheDebug(bool),
-    /// Display intermediate render targets on screen.
-    EnableRenderTargetDebug(bool),
-    /// Display the contents of GPU cache.
-    EnableGpuCacheDebug(bool),
-    /// Display GPU timing results.
-    EnableGpuTimeQueries(bool),
-    /// Display GPU overdraw results
-    EnableGpuSampleQueries(bool),
+    /// Sets the provided debug flags.
+    SetFlags(DebugFlags),
     /// Configure if dual-source blending is used, if available.
     EnableDualSourceBlending(bool),
-    /// Show an indicator that moves every time a frame is rendered.
-    EnableNewFrameIndicator(bool),
-    /// Show an indicator that moves every time a scene is built.
-    EnableNewSceneIndicator(bool),
-    /// Show an overlay displaying overdraw amount.
-    EnableShowOverdraw(bool),
     /// Fetch current documents and display lists.
     FetchDocuments,
     /// Fetch current passes and batches.
@@ -724,9 +707,6 @@ pub enum DebugCommand {
     /// Causes the low priority scene builder to pause for a given amount of miliseconds
     /// each time it processes a transaction.
     SimulateLongLowPrioritySceneBuild(u32),
-    /// Sets the provided debug flags. This may overlap with some of the functionality
-    /// above.
-    SetFlags(DebugFlags),
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -806,12 +786,16 @@ impl Epoch {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Ord, PartialOrd, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, PartialEq, Hash, Ord, PartialOrd, Deserialize, Serialize)]
 pub struct IdNamespace(pub u32);
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, MallocSizeOf, PartialEq, Serialize)]
 pub struct DocumentId(pub IdNamespace, pub u32);
+
+impl DocumentId {
+    pub const INVALID: DocumentId = DocumentId(IdNamespace(0), 0);
+}
 
 /// This type carries no valuable semantics for WR. However, it reflects the fact that
 /// clients (Servo) may generate pipelines by different semi-independent sources.
@@ -822,7 +806,7 @@ pub type PipelineSourceId = u32;
 /// From the point of view of WR, `PipelineId` is completely opaque and generic as long as
 /// it's clonable, serializable, comparable, and hashable.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, MallocSizeOf, PartialEq, Serialize)]
 pub struct PipelineId(pub PipelineSourceId, pub u32);
 
 impl PipelineId {
@@ -831,14 +815,69 @@ impl PipelineId {
     }
 }
 
-/// Collection of heap sizes, in bytes.
+/// Meta-macro to enumerate the various interner identifiers and types.
+///
+/// IMPORTANT: Keep this synchronized with the list in mozilla-central located at
+/// gfx/webrender_bindings/webrender_ffi.h
+///
+/// Note that this could be a lot less verbose if concat_idents! were stable. :-(
+#[macro_export]
+macro_rules! enumerate_interners {
+    ($macro_name: ident) => {
+        $macro_name! {
+            clip,
+            prim,
+            normal_border,
+            image_border,
+            image,
+            yuv_image,
+            line_decoration,
+            linear_grad,
+            radial_grad,
+            picture,
+            text_run,
+        }
+    }
+}
+
+macro_rules! declare_interning_memory_report {
+    ( $( $name: ident, )+ ) => {
+        #[repr(C)]
+        #[derive(AddAssign, Clone, Debug, Default, Deserialize, Serialize)]
+        pub struct InternerSubReport {
+            $(
+                pub $name: usize,
+            )+
+        }
+    }
+}
+
+enumerate_interners!(declare_interning_memory_report);
+
+/// Memory report for interning-related data structures.
+/// cbindgen:derive-eq=false
 #[repr(C)]
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct InterningMemoryReport {
+    pub interners: InternerSubReport,
+    pub data_stores: InternerSubReport,
+}
+
+impl ::std::ops::AddAssign for InterningMemoryReport {
+    fn add_assign(&mut self, other: InterningMemoryReport) {
+        self.interners += other.interners;
+        self.data_stores += other.data_stores;
+    }
+}
+
+/// Collection of heap sizes, in bytes.
+/// cbindgen:derive-eq=false
+#[repr(C)]
+#[derive(AddAssign, Clone, Debug, Default, Deserialize, Serialize)]
 pub struct MemoryReport {
     //
     // CPU Memory.
     //
-    pub primitive_stores: usize,
     pub clip_stores: usize,
     pub gpu_cache_metadata: usize,
     pub gpu_cache_cpu_mirror: usize,
@@ -848,6 +887,8 @@ pub struct MemoryReport {
     pub images: usize,
     pub rasterized_blobs: usize,
     pub shader_cache: usize,
+    pub interning: InterningMemoryReport,
+
     //
     // GPU memory.
     //
@@ -857,27 +898,6 @@ pub struct MemoryReport {
     pub texture_cache_textures: usize,
     pub depth_target_textures: usize,
     pub swap_chain: usize,
-}
-
-impl ::std::ops::AddAssign for MemoryReport {
-    fn add_assign(&mut self, other: MemoryReport) {
-        self.primitive_stores += other.primitive_stores;
-        self.clip_stores += other.clip_stores;
-        self.gpu_cache_metadata += other.gpu_cache_metadata;
-        self.gpu_cache_cpu_mirror += other.gpu_cache_cpu_mirror;
-        self.render_tasks += other.render_tasks;
-        self.hit_testers += other.hit_testers;
-        self.fonts += other.fonts;
-        self.images += other.images;
-        self.rasterized_blobs += other.rasterized_blobs;
-        self.shader_cache += other.shader_cache;
-        self.gpu_cache_textures += other.gpu_cache_textures;
-        self.vertex_data_textures += other.vertex_data_textures;
-        self.render_target_textures += other.render_target_textures;
-        self.texture_cache_textures += other.texture_cache_textures;
-        self.depth_target_textures += other.depth_target_textures;
-        self.swap_chain += other.swap_chain;
-    }
 }
 
 /// A C function that takes a pointer to a heap allocation and returns its size.
@@ -973,23 +993,36 @@ impl RenderApiSender {
 }
 
 bitflags! {
-    #[derive(Default, Deserialize, Serialize)]
+    #[derive(Default, Deserialize, MallocSizeOf, Serialize)]
     pub struct DebugFlags: u32 {
+        /// Display the frame profiler on screen.
         const PROFILER_DBG          = 1 << 0;
+        /// Display intermediate render targets on screen.
         const RENDER_TARGET_DBG     = 1 << 1;
+        /// Display all texture cache pages on screen.
         const TEXTURE_CACHE_DBG     = 1 << 2;
+        /// Display GPU timing results.
         const GPU_TIME_QUERIES      = 1 << 3;
         const GPU_SAMPLE_QUERIES    = 1 << 4;
         const DISABLE_BATCHING      = 1 << 5;
         const EPOCHS                = 1 << 6;
         const COMPACT_PROFILER      = 1 << 7;
         const ECHO_DRIVER_MESSAGES  = 1 << 8;
+        /// Show an indicator that moves every time a frame is rendered.
         const NEW_FRAME_INDICATOR   = 1 << 9;
+        /// Show an indicator that moves every time a scene is built.
         const NEW_SCENE_INDICATOR   = 1 << 10;
+        /// Show an overlay displaying overdraw amount.
         const SHOW_OVERDRAW         = 1 << 11;
+        /// Display the contents of GPU cache.
         const GPU_CACHE_DBG         = 1 << 12;
         const SLOW_FRAME_INDICATOR  = 1 << 13;
         const TEXTURE_CACHE_DBG_CLEAR_EVICTED = 1 << 14;
+        /// Show picture caching debug overlay
+        const PICTURE_CACHING_DBG   = 1 << 15;
+        const TEXTURE_CACHE_DBG_DISABLE_SHRINK = 1 << 16;
+        /// Highlight all primitives with colors based on kind.
+        const PRIMITIVE_DBG = 1 << 17;
     }
 }
 
@@ -1287,7 +1320,8 @@ impl ZoomFactor {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize, Eq, Hash)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Deserialize, MallocSizeOf, PartialEq, Serialize, Eq, Hash)]
 pub struct PropertyBindingId {
     namespace: IdNamespace,
     uid: u32,
@@ -1304,6 +1338,7 @@ impl PropertyBindingId {
 
 /// A unique key that is used for connecting animated property
 /// values to bindings in the display list.
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct PropertyBindingKey<T> {
     pub id: PropertyBindingId,
@@ -1332,6 +1367,7 @@ impl<T> PropertyBindingKey<T> {
 /// Note that Binding has also a non-animated value, the value is
 /// used for the case where the animation is still in-delay phase
 /// (i.e. the animation doesn't produce any animation values).
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub enum PropertyBinding<T> {
     Value(T),

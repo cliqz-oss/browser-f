@@ -31,6 +31,7 @@
 #include "nsReadableUtils.h"
 #include "nsString.h"
 #include "prcmon.h"
+#include "nsThreadManager.h"
 #include "nsThreadUtils.h"
 #include "prthread.h"
 #include "private/pprthred.h"
@@ -60,7 +61,7 @@
 #include "LogModulePrefWatcher.h"
 
 #ifdef MOZ_MEMORY
-#include "mozmemory.h"
+#  include "mozmemory.h"
 #endif
 
 using namespace mozilla;
@@ -68,8 +69,8 @@ using namespace mozilla;
 static LazyLogModule nsComponentManagerLog("nsComponentManager");
 
 #if 0
-#define SHOW_DENIED_ON_SHUTDOWN
-#define SHOW_CI_ON_EXISTING_SERVICE
+#  define SHOW_DENIED_ON_SHUTDOWN
+#  define SHOW_CI_ON_EXISTING_SERVICE
 #endif
 
 NS_DEFINE_CID(kCategoryManagerCID, NS_CATEGORYMANAGER_CID);
@@ -249,7 +250,7 @@ class AllStaticModules {};
 
 #if defined(_MSC_VER) || (defined(__clang__) && defined(__MINGW32__))
 
-#pragma section(".kPStaticModules$A", read)
+#  pragma section(".kPStaticModules$A", read)
 NSMODULE_ASAN_BLACKLIST __declspec(allocate(".kPStaticModules$A"),
                                    dllexport) extern mozilla::Module
     const* const __start_kPStaticModules = nullptr;
@@ -258,28 +259,28 @@ mozilla::Module const* const* begin(AllStaticModules& _) {
   return &__start_kPStaticModules + 1;
 }
 
-#pragma section(".kPStaticModules$Z", read)
+#  pragma section(".kPStaticModules$Z", read)
 NSMODULE_ASAN_BLACKLIST __declspec(allocate(".kPStaticModules$Z"),
                                    dllexport) extern mozilla::Module
     const* const __stop_kPStaticModules = nullptr;
 
 #else
 
-#if defined(__ELF__) || (defined(_WIN32) && defined(__GNUC__))
+#  if defined(__ELF__) || (defined(_WIN32) && defined(__GNUC__))
 
 extern "C" mozilla::Module const* const __start_kPStaticModules;
 extern "C" mozilla::Module const* const __stop_kPStaticModules;
 
-#elif defined(__MACH__)
+#  elif defined(__MACH__)
 
 extern mozilla::Module const* const __start_kPStaticModules __asm(
     "section$start$__DATA$.kPStaticModules");
 extern mozilla::Module const* const __stop_kPStaticModules __asm(
     "section$end$__DATA$.kPStaticModules");
 
-#else
-#error Do not know how to find NSModules.
-#endif
+#  else
+#    error Do not know how to find NSModules.
+#  endif
 
 mozilla::Module const* const* begin(AllStaticModules& _) {
   return &__start_kPStaticModules;
@@ -334,14 +335,32 @@ nsresult nsComponentManagerImpl::Init() {
     RegisterModule((*sExtraStaticModules)[i]);
   }
 
-  // This needs to be called very early, before anything in nsLayoutModule is
-  // used, and before any calls are made into the JS engine.
-  nsLayoutModuleInitialize();
+  bool loadChromeManifests;
+  switch (XRE_GetProcessType()) {
+    // We are going to assume that only a select few (see below) process types
+    // want to load chrome manifests, and that any new process types will not
+    // want to load them, because they're not going to be executing JS.
+    default:
+      loadChromeManifests = false;
+      break;
 
-  bool loadChromeManifests = (XRE_GetProcessType() != GeckoProcessType_GPU &&
-                              XRE_GetProcessType() != GeckoProcessType_VR &&
-                              XRE_GetProcessType() != GeckoProcessType_RDD);
+    // XXX The check this code replaced implicitly let through all of these
+    // process types, but presumably only the default (parent) and content
+    // processes really need chrome manifests...?
+    case GeckoProcessType_Default:
+    case GeckoProcessType_Plugin:
+    case GeckoProcessType_Content:
+    case GeckoProcessType_IPDLUnitTest:
+    case GeckoProcessType_GMPlugin:
+      loadChromeManifests = true;
+      break;
+  }
+
   if (loadChromeManifests) {
+    // This needs to be called very early, before anything in nsLayoutModule is
+    // used, and before any calls are made into the JS engine.
+    nsLayoutModuleInitialize();
+
     // The overall order in which chrome.manifests are expected to be treated
     // is the following:
     // - greDir
@@ -420,6 +439,10 @@ static bool ProcessSelectorMatches(Module::ProcessSelector aSelector) {
   GeckoProcessType type = XRE_GetProcessType();
   if (type == GeckoProcessType_GPU || type == GeckoProcessType_RDD) {
     return !!(aSelector & Module::ALLOW_IN_GPU_PROCESS);
+  }
+
+  if (type == GeckoProcessType_Socket) {
+    return !!(aSelector & (Module::ALLOW_IN_SOCKET_PROCESS));
   }
 
   if (type == GeckoProcessType_VR) {
@@ -1381,6 +1404,14 @@ nsComponentManagerImpl::GetServiceByContractID(const char* aContractID,
     }
 
     SafeMutexAutoUnlock unlockPending(mLock);
+
+    // If the current thread doesn't have an associated nsThread, then it's a
+    // thread that doesn't have an event loop to process, so we'll just try
+    // to yield to another thread in an attempt to make progress.
+    if (!nsThreadManager::get().IsNSThread()) {
+      PR_Sleep(PR_INTERVAL_NO_WAIT);
+      continue;
+    }
 
     if (!currentThread) {
       currentThread = NS_GetCurrentThread();

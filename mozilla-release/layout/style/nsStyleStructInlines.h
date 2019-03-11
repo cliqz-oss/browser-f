@@ -169,7 +169,12 @@ bool nsStyleDisplay::IsFixedPosContainingBlock(
        !aContextFrame->IsFrameOfType(nsIFrame::eSupportsCSSTransforms))) {
     return false;
   }
-  return !nsSVGUtils::IsInSVGTextSubtree(aContextFrame);
+  if (nsSVGUtils::IsInSVGTextSubtree(aContextFrame)) {
+    return false;
+  }
+  MOZ_ASSERT(IsAbsPosContainingBlock(aContextFrame),
+             "Any fixed-pos CB should also be an abs-pos CB");
+  return true;
 }
 
 bool nsStyleDisplay::IsAbsPosContainingBlockForNonSVGTextFrames() const {
@@ -203,6 +208,13 @@ bool nsStyleDisplay::IsRelativelyPositioned(
   NS_ASSERTION(aContextFrame->StyleDisplay() == this,
                "unexpected aContextFrame");
   return IsRelativelyPositionedStyle() &&
+         !nsSVGUtils::IsInSVGTextSubtree(aContextFrame);
+}
+
+bool nsStyleDisplay::IsStickyPositioned(const nsIFrame* aContextFrame) const {
+  NS_ASSERTION(aContextFrame->StyleDisplay() == this,
+               "unexpected aContextFrame");
+  return IsStickyPositionedStyle() &&
          !nsSVGUtils::IsInSVGTextSubtree(aContextFrame);
 }
 

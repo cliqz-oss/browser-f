@@ -210,28 +210,6 @@ interface nsIWebProgressListener : nsISupports
   const unsigned long STATE_BLOCKED_MIXED_DISPLAY_CONTENT = 0x00000100;
   const unsigned long STATE_LOADED_MIXED_DISPLAY_CONTENT  = 0x00000200;
 
-   /**
-   *  Safe Browsing blocking content flags
-   *
-   * NOTE: IF YOU ARE ADDING MORE OF THESE FLAGS, MAKE SURE TO EDIT
-   * nsSecureBrowserUIImpl::CheckForBlockedContent().
-   *
-   * May be set in addition to the State security Flags, to indicate that
-   * tracking or unsafe content has been encountered.
-   *
-   * STATE_BLOCKED_TRACKING_CONTENT
-   *   Tracking content has been blocked from loading.
-   *
-   * STATE_LOADED_TRACKING_CONTENT
-   *   Tracking content has been loaded.
-   *
-   * STATE_BLOCKED_UNSAFE_CONTENT
-   *   Content which againts SafeBrowsing list has been blocked from loading.
-   */
-  const unsigned long STATE_BLOCKED_TRACKING_CONTENT         = 0x00001000;
-  const unsigned long STATE_LOADED_TRACKING_CONTENT          = 0x00002000;
-  const unsigned long STATE_BLOCKED_UNSAFE_CONTENT           = 0x00004000;
-
   /**
    * Diagnostic flags
    *
@@ -246,31 +224,6 @@ interface nsIWebProgressListener : nsISupports
    *   The certificate in use will be distrusted in the near future.
    */
   const unsigned long STATE_CERT_DISTRUST_IMMINENT    = 0x00010000;
-
-  /**
-   * Security Strength Flags
-   *
-   * These flags describe the security strength and accompany STATE_IS_SECURE
-   * in a call to the onSecurityChange method.  These flags are mutually
-   * exclusive.
-   *
-   * These flags are not meant to provide a precise description of data
-   * transfer security.  These are instead intended as a rough indicator that
-   * may be used to, for example, color code a security indicator or otherwise
-   * provide basic data transfer security feedback to the user.
-   *
-   * STATE_SECURE_HIGH
-   *   This flag indicates a high degree of security.
-   *
-   * STATE_SECURE_MED
-   *   This flag indicates a medium degree of security.
-   *
-   * STATE_SECURE_LOW
-   *   This flag indicates a low degree of security.
-   */
-  const unsigned long STATE_SECURE_HIGH     = 0x00080000;
-  const unsigned long STATE_SECURE_MED      = 0x00020000;
-  const unsigned long STATE_SECURE_LOW      = 0x00040000;
 
   /**
     * State bits for EV == Extended Validation == High Assurance
@@ -304,12 +257,21 @@ interface nsIWebProgressListener : nsISupports
   const unsigned long STATE_CERT_USER_OVERRIDDEN      = 0x04000000;
 
   /**
-   * Cookie Jar blocking
+   * Content Blocking Event flags
    *
    * NOTE: IF YOU ARE ADDING MORE OF THESE FLAGS, MAKE SURE TO EDIT
    * nsSecureBrowserUIImpl::CheckForBlockedContent().
    *
    * These flags describe the reason of cookie jar rejection.
+   *
+   * STATE_BLOCKED_TRACKING_CONTENT
+   *   Tracking content has been blocked from loading.
+   *
+   * STATE_LOADED_TRACKING_CONTENT
+   *   Tracking content has been loaded.
+   *
+   * STATE_BLOCKED_UNSAFE_CONTENT
+   *   Content which againts SafeBrowsing list has been blocked from loading.
    *
    * STATE_COOKIES_BLOCKED_BY_PERMISSION
    *   Rejected for custom site permission.
@@ -324,6 +286,9 @@ interface nsIWebProgressListener : nsISupports
    * STATE_COOKIES_BLOCKED_FOREIGN
    *   Rejected because cookie policy blocks 3rd party cookies.
    */
+  const unsigned long STATE_BLOCKED_TRACKING_CONTENT      = 0x00001000;
+  const unsigned long STATE_LOADED_TRACKING_CONTENT       = 0x00002000;
+  const unsigned long STATE_BLOCKED_UNSAFE_CONTENT        = 0x00004000;
   const unsigned long STATE_COOKIES_LOADED                = 0x00008000;
   const unsigned long STATE_COOKIES_BLOCKED_BY_PERMISSION = 0x10000000;
   const unsigned long STATE_COOKIES_BLOCKED_TRACKER       = 0x20000000;
@@ -412,9 +377,14 @@ interface nsIWebProgressListener : nsISupports
    *
    *   |aWebProgress| does NOT set this flag when it did not try to load a new
    *   document. In this case, it should set LOCATION_CHANGE_SAME_DOCUMENT.
+   *
+   * LOCATION_CHANGE_RELOAD
+   *   This flag is on when reloading the current page, either from
+   *   location.reload() or the browser UI.
    */
   const unsigned long LOCATION_CHANGE_SAME_DOCUMENT   = 0x00000001;
   const unsigned long LOCATION_CHANGE_ERROR_PAGE      = 0x00000002;
+  const unsigned long LOCATION_CHANGE_RELOAD          = 0x00000004;
 
   /**
    * Called when the location of the window being watched changes.  This is not
@@ -482,4 +452,21 @@ interface nsIWebProgressListener : nsISupports
   void onSecurityChange(in nsIWebProgress aWebProgress,
                         in nsIRequest aRequest,
                         in unsigned long aState);
+
+  /**
+   * Notification called for content blocking events.  This method will be
+   * called when content gets allowed/blocked for various reasons per the
+   * Content Blocking rules.
+   *
+   * @param aWebProgress
+   *        The nsIWebProgress instance that fired the notification.
+   * @param aRequest
+   *        The nsIRequest that has new security state.
+   * @param aEvent
+   *        A value composed of the Content Blocking Event Flags listed above.
+   *        Any undefined bits are reserved for future use.
+   */
+  void onContentBlockingEvent(in nsIWebProgress aWebProgress,
+                              in nsIRequest aRequest,
+                              in unsigned long aEvent);
 };

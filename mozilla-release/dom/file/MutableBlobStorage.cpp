@@ -507,17 +507,23 @@ bool MutableBlobStorage::MaybeCreateTemporaryFile(
   if (!NS_IsMainThread()) {
     RefPtr<MutableBlobStorage> self = this;
     nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
-        "MutableBlobStorage::MaybeCreateTemporaryFile",
-        [self]() { self->MaybeCreateTemporaryFileOnMainThread(); });
-    EventTarget()->Dispatch(r.forget(), NS_DISPATCH_SYNC);
-    return !!mActor;
+        "MutableBlobStorage::MaybeCreateTemporaryFile", [self]() {
+          MutexAutoLock lock(self->mMutex);
+          self->MaybeCreateTemporaryFileOnMainThread(lock);
+          if (!self->mActor) {
+            self->ErrorPropagated(NS_ERROR_FAILURE);
+          }
+        });
+    EventTarget()->Dispatch(r.forget(), NS_DISPATCH_NORMAL);
+    return true;
   }
 
-  MaybeCreateTemporaryFileOnMainThread();
+  MaybeCreateTemporaryFileOnMainThread(aProofOfLock);
   return !!mActor;
 }
 
-void MutableBlobStorage::MaybeCreateTemporaryFileOnMainThread() {
+void MutableBlobStorage::MaybeCreateTemporaryFileOnMainThread(
+    const MutexAutoLock& aProofOfLock) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(!mActor);
 

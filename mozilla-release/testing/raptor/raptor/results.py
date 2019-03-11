@@ -19,6 +19,8 @@ class RaptorResultsHandler():
     def __init__(self):
         self.results = []
         self.page_timeout_list = []
+        self.images = []
+        self.supporting_data = None
 
     def add(self, new_result_json):
         # add to results
@@ -26,14 +28,54 @@ class RaptorResultsHandler():
         new_result = RaptorTestResult(new_result_json)
         self.results.append(new_result)
 
+    def add_image(self, screenshot, test_name, page_cycle):
+        # add to results
+        LOG.info("received screenshot")
+        self.images.append({'screenshot': screenshot,
+                            'test_name': test_name,
+                            'page_cycle': page_cycle})
+
     def add_page_timeout(self, test_name, page_url):
         self.page_timeout_list.append({'test_name': test_name, 'url': page_url})
+
+    def add_supporting_data(self, supporting_data):
+        ''' Supporting data is additional data gathered outside of the regular
+        Raptor test run (i.e. power data). Will arrive in a dict in the format of:
+
+        supporting_data = {'type': 'data-type',
+                           'test': 'raptor-test-ran-when-data-was-gathered',
+                           'unit': 'unit that the values are in',
+                           'values': {
+                               'name': value,
+                               'nameN': valueN}}
+
+        More specifically, power data will look like this:
+
+        supporting_data = {'type': 'power',
+                           'test': 'raptor-speedometer-geckoview',
+                           'unit': 'mAh',
+                           'values': {
+                               'cpu': cpu,
+                               'wifi': wifi,
+                               'screen': screen,
+                               'proportional': proportional}}
+        '''
+        LOG.info("RaptorResultsHandler.add_supporting_data received %s data"
+                 % supporting_data['type'])
+        if self.supporting_data is None:
+            self.supporting_data = []
+        self.supporting_data.append(supporting_data)
 
     def summarize_and_output(self, test_config):
         # summarize the result data, write to file and output PERFHERDER_DATA
         LOG.info("summarizing raptor test results")
-        output = Output(self.results)
+        output = Output(self.results, self.supporting_data, test_config['subtest_alert_on'])
         output.summarize()
+        output.summarize_screenshots(self.images)
+        # only dump out supporting data (i.e. power) if actual Raptor test completed
+        if self.supporting_data is not None and len(self.results) != 0:
+            output.summarize_supporting_data()
+            output.output_supporting_data()
         return output.output()
 
 

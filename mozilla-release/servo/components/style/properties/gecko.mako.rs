@@ -39,7 +39,6 @@ use crate::gecko_bindings::bindings::RawGeckoPresContextBorrowed;
 use crate::gecko_bindings::structs;
 use crate::gecko_bindings::structs::nsCSSPropertyID;
 use crate::gecko_bindings::structs::mozilla::CSSPseudoElementType;
-use crate::gecko_bindings::structs::mozilla::CSSPseudoElementType_InheritingAnonBox;
 use crate::gecko_bindings::sugar::ns_style_coord::{CoordDataValue, CoordData, CoordDataMut};
 use crate::gecko_bindings::sugar::refptr::RefPtr;
 use crate::gecko::values::convert_nscolor_to_rgba;
@@ -138,7 +137,7 @@ impl ComputedValues {
     #[inline]
     pub fn is_anon_box(&self) -> bool {
         let our_type = self.get_pseudo_type();
-        return our_type == CSSPseudoElementType_InheritingAnonBox ||
+        return our_type == CSSPseudoElementType::InheritingAnonBox ||
                our_type == CSSPseudoElementType::NonInheritingAnonBox;
     }
 
@@ -511,7 +510,7 @@ def set_gecko_property(ffi_name, expr):
     // set on mContextFlags, and the length field is set to the initial value.
 
     pub fn set_${ident}(&mut self, v: longhands::${ident}::computed_value::T) {
-        use crate::values::generics::svg::{SVGLength, SvgLengthOrPercentageOrNumber};
+        use crate::values::generics::svg::{SVGLength, SvgLengthPercentageOrNumber};
         use crate::gecko_bindings::structs::nsStyleSVG_${ident.upper()}_CONTEXT as CONTEXT_VALUE;
         let length = match v {
             SVGLength::Length(length) => {
@@ -527,9 +526,9 @@ def set_gecko_property(ffi_name, expr):
             }
         };
         match length {
-            SvgLengthOrPercentageOrNumber::LengthOrPercentage(lop) =>
-                self.gecko.${gecko_ffi_name}.set(lop),
-            SvgLengthOrPercentageOrNumber::Number(num) =>
+            SvgLengthPercentageOrNumber::LengthPercentage(lp) =>
+                self.gecko.${gecko_ffi_name}.set(lp),
+            SvgLengthPercentageOrNumber::Number(num) =>
                 self.gecko.${gecko_ffi_name}.set_value(CoordDataValue::Factor(num.into())),
         }
     }
@@ -547,30 +546,28 @@ def set_gecko_property(ffi_name, expr):
     }
 
     pub fn clone_${ident}(&self) -> longhands::${ident}::computed_value::T {
-        use crate::values::generics::svg::{SVGLength, SvgLengthOrPercentageOrNumber};
-        use crate::values::computed::LengthOrPercentage;
+        use crate::values::generics::svg::{SVGLength, SvgLengthPercentageOrNumber};
+        use crate::values::computed::LengthPercentage;
         use crate::gecko_bindings::structs::nsStyleSVG_${ident.upper()}_CONTEXT as CONTEXT_VALUE;
         if (self.gecko.mContextFlags & CONTEXT_VALUE) != 0 {
             return SVGLength::ContextValue;
         }
         let length = match self.gecko.${gecko_ffi_name}.as_value() {
             CoordDataValue::Factor(number) => {
-                SvgLengthOrPercentageOrNumber::Number(number)
+                SvgLengthPercentageOrNumber::Number(number)
             },
             CoordDataValue::Coord(coord) => {
-                SvgLengthOrPercentageOrNumber::LengthOrPercentage(
-                    LengthOrPercentage::Length(Au(coord).into())
+                SvgLengthPercentageOrNumber::LengthPercentage(
+                    LengthPercentage::new(Au(coord).into(), None)
                 )
             },
             CoordDataValue::Percent(p) => {
-                SvgLengthOrPercentageOrNumber::LengthOrPercentage(
-                    LengthOrPercentage::Percentage(Percentage(p))
+                SvgLengthPercentageOrNumber::LengthPercentage(
+                    LengthPercentage::new(Au(0).into(), Some(Percentage(p)))
                 )
             },
             CoordDataValue::Calc(calc) => {
-                SvgLengthOrPercentageOrNumber::LengthOrPercentage(
-                    LengthOrPercentage::Calc(calc.into())
-                )
+                SvgLengthPercentageOrNumber::LengthPercentage(calc.into())
             },
             _ => unreachable!("Unexpected coordinate in ${ident}"),
         };
@@ -942,10 +939,10 @@ def set_gecko_property(ffi_name, expr):
 transform_functions = [
     ("Matrix3D", "matrix3d", ["number"] * 16),
     ("Matrix", "matrix", ["number"] * 6),
-    ("Translate", "translate", ["lop", "optional_lop"]),
-    ("Translate3D", "translate3d", ["lop", "lop", "length"]),
-    ("TranslateX", "translatex", ["lop"]),
-    ("TranslateY", "translatey", ["lop"]),
+    ("Translate", "translate", ["lp", "optional_lp"]),
+    ("Translate3D", "translate3d", ["lp", "lp", "length"]),
+    ("TranslateX", "translatex", ["lp"]),
+    ("TranslateY", "translatey", ["lp"]),
     ("TranslateZ", "translatez", ["length"]),
     ("Scale3D", "scale3d", ["number"] * 3),
     ("Scale", "scale", ["number", "optional_number"]),
@@ -996,7 +993,7 @@ transform_functions = [
             # Note: This is an integer type, but we use it as a percentage value in Gecko, so
             #       need to cast it to f32.
             "integer_to_percentage" : "bindings::Gecko_CSSValue_SetPercentage(%s, %s as f32)",
-            "lop" : "%s.set_lop(%s)",
+            "lp" : "%s.set_length_percentage(%s)",
             "angle" : "%s.set_angle(%s)",
             "number" : "bindings::Gecko_CSSValue_SetNumber(%s, %s)",
             # Note: We use nsCSSValueSharedList here, instead of nsCSSValueList_heap
@@ -1045,8 +1042,8 @@ transform_functions = [
         # %s is substituted with the call to GetArrayItem.
         css_value_getters = {
             "length" : "Length::new(bindings::Gecko_CSSValue_GetNumber(%s))",
-            "lop" : "%s.get_lop()",
-            "lopon" : "Either::Second(%s.get_lop())",
+            "lp" : "%s.get_length_percentage()",
+            "lpon" : "Either::Second(%s.get_length_percentage())",
             "lon" : "Either::First(%s.get_length())",
             "angle" : "%s.get_angle()",
             "number" : "bindings::Gecko_CSSValue_GetNumber(%s)",
@@ -1272,12 +1269,12 @@ pub fn clone_transform_from_list(
 
     #[allow(non_snake_case)]
     pub fn clone_${ident}(&self) -> values::computed::TransformOrigin {
-        use crate::values::computed::{Length, LengthOrPercentage, TransformOrigin};
+        use crate::values::computed::{Length, LengthPercentage, TransformOrigin};
         TransformOrigin {
-            horizontal: LengthOrPercentage::from_gecko_style_coord(&self.gecko.${gecko_ffi_name}[0])
-                .expect("clone for LengthOrPercentage failed"),
-            vertical: LengthOrPercentage::from_gecko_style_coord(&self.gecko.${gecko_ffi_name}[1])
-                .expect("clone for LengthOrPercentage failed"),
+            horizontal: LengthPercentage::from_gecko_style_coord(&self.gecko.${gecko_ffi_name}[0])
+                .expect("clone for LengthPercentage failed"),
+            vertical: LengthPercentage::from_gecko_style_coord(&self.gecko.${gecko_ffi_name}[1])
+                .expect("clone for LengthPercentage failed"),
             depth: if let Some(third) = self.gecko.${gecko_ffi_name}.get(2) {
                 Length::from_gecko_style_coord(third)
                     .expect("clone for Length failed")
@@ -1394,6 +1391,7 @@ impl Clone for ${style_struct.gecko_struct_name} {
         "OverflowClipBox": impl_simple,
         "ScrollSnapType": impl_simple,
         "Float": impl_simple,
+        "Overflow": impl_simple,
         "BreakBetween": impl_simple,
         "BreakWithin": impl_simple,
         "Resize": impl_simple,
@@ -1404,23 +1402,24 @@ impl Clone for ${style_struct.gecko_struct_name} {
         "length::LengthOrAuto": impl_style_coord,
         "length::LengthOrNormal": impl_style_coord,
         "length::NonNegativeLengthOrAuto": impl_style_coord,
-        "length::NonNegativeLengthOrPercentageOrNormal": impl_style_coord,
+        "length::NonNegativeLengthPercentageOrNormal": impl_style_coord,
         "FillRule": impl_simple,
         "FlexBasis": impl_style_coord,
         "Length": impl_absolute_length,
         "LengthOrNormal": impl_style_coord,
-        "LengthOrPercentage": impl_style_coord,
-        "LengthOrPercentageOrAuto": impl_style_coord,
-        "LengthOrPercentageOrNone": impl_style_coord,
+        "LengthPercentage": impl_style_coord,
+        "LengthPercentageOrAuto": impl_style_coord,
+        "LengthPercentageOrNone": impl_style_coord,
         "MaxLength": impl_style_coord,
         "MozLength": impl_style_coord,
         "MozScriptMinSize": impl_absolute_length,
         "MozScriptSizeMultiplier": impl_simple,
-        "NonNegativeLengthOrPercentage": impl_style_coord,
+        "NonNegativeLengthPercentage": impl_style_coord,
         "NonNegativeNumber": impl_simple,
         "Number": impl_simple,
         "Opacity": impl_simple,
         "OverflowWrap": impl_simple,
+        "OverflowAnchor": impl_simple,
         "Perspective": impl_style_coord,
         "Position": impl_position,
         "RGBAColor": impl_rgba_color,
@@ -1686,8 +1685,8 @@ fn static_assert() {
 
     pub fn clone_border_image_slice(&self) -> longhands::border_image_slice::computed_value::T {
         use crate::gecko_bindings::structs::NS_STYLE_BORDER_IMAGE_SLICE_FILL;
-        use crate::values::computed::{BorderImageSlice, NumberOrPercentage};
-        type NumberOrPercentageRect = crate::values::generics::rect::Rect<NumberOrPercentage>;
+        use crate::values::computed::{BorderImageSlice, NonNegativeNumberOrPercentage};
+        type NumberOrPercentageRect = crate::values::generics::rect::Rect<NonNegativeNumberOrPercentage>;
 
         BorderImageSlice {
             offsets:
@@ -3011,7 +3010,7 @@ fn static_assert() {
     }
 </%def>
 
-<% skip_box_longhands= """display overflow-y vertical-align
+<% skip_box_longhands= """display vertical-align
                           animation-name animation-delay animation-duration
                           animation-direction animation-fill-mode animation-play-state
                           animation-iteration-count animation-timing-function
@@ -3063,28 +3062,6 @@ fn static_assert() {
     ) %>
     ${impl_keyword('clear', 'mBreakType', clear_keyword)}
 
-    <% overflow_x = data.longhands_by_name["overflow-x"] %>
-    pub fn set_overflow_y(&mut self, v: longhands::overflow_y::computed_value::T) {
-        use crate::properties::longhands::overflow_x::computed_value::T as BaseType;
-        // FIXME(bholley): Align binary representations and ditch |match| for cast + static_asserts
-        self.gecko.mOverflowY = match v {
-            % for value in overflow_x.keyword.values_for('gecko'):
-                BaseType::${to_camel_case(value)} => structs::${overflow_x.keyword.gecko_constant(value)} as u8,
-            % endfor
-        };
-    }
-    ${impl_simple_copy('overflow_y', 'mOverflowY')}
-    pub fn clone_overflow_y(&self) -> longhands::overflow_y::computed_value::T {
-        use crate::properties::longhands::overflow_x::computed_value::T as BaseType;
-        // FIXME(bholley): Align binary representations and ditch |match| for cast + static_asserts
-        match self.gecko.mOverflowY as u32 {
-            % for value in overflow_x.keyword.values_for('gecko'):
-            structs::${overflow_x.keyword.gecko_constant(value)} => BaseType::${to_camel_case(value)},
-            % endfor
-            x => panic!("Found unexpected value in style struct for overflow_y property: {}", x),
-        }
-    }
-
     pub fn set_vertical_align(&mut self, v: longhands::vertical_align::computed_value::T) {
         use crate::values::generics::box_::VerticalAlign;
         let value = match v {
@@ -3108,7 +3085,7 @@ fn static_assert() {
     }
 
     pub fn clone_vertical_align(&self) -> longhands::vertical_align::computed_value::T {
-        use crate::values::computed::LengthOrPercentage;
+        use crate::values::computed::LengthPercentage;
         use crate::values::generics::box_::VerticalAlign;
 
         let gecko = &self.gecko.mVerticalAlign;
@@ -3116,7 +3093,7 @@ fn static_assert() {
             CoordDataValue::Enumerated(value) => VerticalAlign::from_gecko_keyword(value),
             _ => {
                 VerticalAlign::Length(
-                    LengthOrPercentage::from_gecko_style_coord(gecko).expect(
+                    LengthPercentage::from_gecko_style_coord(gecko).expect(
                         "expected <length-percentage> for vertical-align",
                     ),
                 )
@@ -3410,11 +3387,11 @@ fn static_assert() {
 
     pub fn clone_perspective_origin(&self) -> longhands::perspective_origin::computed_value::T {
         use crate::properties::longhands::perspective_origin::computed_value::T;
-        use crate::values::computed::LengthOrPercentage;
+        use crate::values::computed::LengthPercentage;
         T {
-            horizontal: LengthOrPercentage::from_gecko_style_coord(&self.gecko.mPerspectiveOrigin[0])
+            horizontal: LengthPercentage::from_gecko_style_coord(&self.gecko.mPerspectiveOrigin[0])
                 .expect("Expected length or percentage for horizontal value of perspective-origin"),
-            vertical: LengthOrPercentage::from_gecko_style_coord(&self.gecko.mPerspectiveOrigin[1])
+            vertical: LengthPercentage::from_gecko_style_coord(&self.gecko.mPerspectiveOrigin[1])
                 .expect("Expected length or percentage for vertical value of perspective-origin"),
         }
     }
@@ -3903,12 +3880,12 @@ fn static_assert() {
     pub fn clone_${shorthand}_size(&self) -> longhands::${shorthand}_size::computed_value::T {
         use crate::gecko_bindings::structs::nsStyleCoord_CalcValue as CalcValue;
         use crate::gecko_bindings::structs::nsStyleImageLayers_Size_DimensionType as DimensionType;
-        use crate::values::computed::NonNegativeLengthOrPercentageOrAuto;
+        use crate::values::computed::NonNegativeLengthPercentageOrAuto;
         use crate::values::generics::background::BackgroundSize;
 
-        fn to_servo(value: CalcValue, ty: u8) -> NonNegativeLengthOrPercentageOrAuto {
+        fn to_servo(value: CalcValue, ty: u8) -> NonNegativeLengthPercentageOrAuto {
             if ty == DimensionType::eAuto as u8 {
-                NonNegativeLengthOrPercentageOrAuto::auto()
+                NonNegativeLengthPercentageOrAuto::auto()
             } else {
                 debug_assert_eq!(ty, DimensionType::eLengthPercentage as u8);
                 value.into()
@@ -4592,14 +4569,14 @@ fn static_assert() {
     pub fn set_word_spacing(&mut self, v: longhands::word_spacing::computed_value::T) {
         use crate::values::generics::text::Spacing;
         match v {
-            Spacing::Value(lop) => self.gecko.mWordSpacing.set(lop),
+            Spacing::Value(lp) => self.gecko.mWordSpacing.set(lp),
             // https://drafts.csswg.org/css-text-3/#valdef-word-spacing-normal
             Spacing::Normal => self.gecko.mWordSpacing.set_value(CoordDataValue::Coord(0)),
         }
     }
 
     pub fn clone_word_spacing(&self) -> longhands::word_spacing::computed_value::T {
-        use crate::values::computed::LengthOrPercentage;
+        use crate::values::computed::LengthPercentage;
         use crate::values::generics::text::Spacing;
         debug_assert!(
             matches!(self.gecko.mWordSpacing.as_value(),
@@ -4608,7 +4585,7 @@ fn static_assert() {
                      CoordDataValue::Percent(_) |
                      CoordDataValue::Calc(_)),
             "Unexpected computed value for word-spacing");
-        LengthOrPercentage::from_gecko_style_coord(&self.gecko.mWordSpacing).map_or(Spacing::Normal, Spacing::Value)
+        LengthPercentage::from_gecko_style_coord(&self.gecko.mWordSpacing).map_or(Spacing::Normal, Spacing::Value)
     }
 
     <%call expr="impl_coord_copy('word_spacing', 'mWordSpacing')"></%call>
@@ -5040,7 +5017,7 @@ clip-path
 
     pub fn set_stroke_dasharray(&mut self, v: longhands::stroke_dasharray::computed_value::T) {
         use crate::gecko_bindings::structs::nsStyleSVG_STROKE_DASHARRAY_CONTEXT as CONTEXT_VALUE;
-        use crate::values::generics::svg::{SVGStrokeDashArray, SvgLengthOrPercentageOrNumber};
+        use crate::values::generics::svg::{SVGStrokeDashArray, SvgLengthPercentageOrNumber};
 
         match v {
             SVGStrokeDashArray::Values(v) => {
@@ -5051,9 +5028,9 @@ clip-path
                 }
                 for (gecko, servo) in self.gecko.mStrokeDasharray.iter_mut().zip(v) {
                     match servo {
-                        SvgLengthOrPercentageOrNumber::LengthOrPercentage(lop) =>
-                            gecko.set(lop),
-                        SvgLengthOrPercentageOrNumber::Number(num) =>
+                        SvgLengthPercentageOrNumber::LengthPercentage(lp) =>
+                            gecko.set(lp),
+                        SvgLengthPercentageOrNumber::Number(num) =>
                             gecko.set_value(CoordDataValue::Factor(num.into())),
                     }
                 }
@@ -5083,8 +5060,9 @@ clip-path
 
     pub fn clone_stroke_dasharray(&self) -> longhands::stroke_dasharray::computed_value::T {
         use crate::gecko_bindings::structs::nsStyleSVG_STROKE_DASHARRAY_CONTEXT as CONTEXT_VALUE;
-        use crate::values::computed::LengthOrPercentage;
-        use crate::values::generics::svg::{SVGStrokeDashArray, SvgLengthOrPercentageOrNumber};
+        use crate::values::computed::LengthPercentage;
+        use crate::values::generics::NonNegative;
+        use crate::values::generics::svg::{SVGStrokeDashArray, SvgLengthPercentageOrNumber};
 
         if self.gecko.mContextFlags & CONTEXT_VALUE != 0 {
             debug_assert_eq!(self.gecko.mStrokeDasharray.len(), 0);
@@ -5094,16 +5072,16 @@ clip-path
         for gecko in self.gecko.mStrokeDasharray.iter() {
             match gecko.as_value() {
                 CoordDataValue::Factor(number) =>
-                    vec.push(SvgLengthOrPercentageOrNumber::Number(number.into())),
+                    vec.push(SvgLengthPercentageOrNumber::Number(number.into())),
                 CoordDataValue::Coord(coord) =>
-                    vec.push(SvgLengthOrPercentageOrNumber::LengthOrPercentage(
-                        LengthOrPercentage::Length(Au(coord).into()).into())),
+                    vec.push(SvgLengthPercentageOrNumber::LengthPercentage(
+                        NonNegative(LengthPercentage::new(Au(coord).into(), None).into()))),
                 CoordDataValue::Percent(p) =>
-                    vec.push(SvgLengthOrPercentageOrNumber::LengthOrPercentage(
-                        LengthOrPercentage::Percentage(Percentage(p)).into())),
+                    vec.push(SvgLengthPercentageOrNumber::LengthPercentage(
+                        NonNegative(LengthPercentage::new_percent(Percentage(p)).into()))),
                 CoordDataValue::Calc(calc) =>
-                    vec.push(SvgLengthOrPercentageOrNumber::LengthOrPercentage(
-                        LengthOrPercentage::Calc(calc.into()).into())),
+                    vec.push(SvgLengthPercentageOrNumber::LengthPercentage(
+                        NonNegative(LengthPercentage::from(calc).clamp_to_non_negative()))),
                 _ => unreachable!(),
             }
         }
@@ -5184,52 +5162,7 @@ clip-path
 <%self:impl_trait style_struct_name="InheritedUI"
                   skip_longhands="cursor scrollbar-color">
     pub fn set_cursor(&mut self, v: longhands::cursor::computed_value::T) {
-        use style_traits::cursor::CursorKind;
-
-        self.gecko.mCursor = match v.keyword {
-            CursorKind::Auto => structs::NS_STYLE_CURSOR_AUTO,
-            CursorKind::None => structs::NS_STYLE_CURSOR_NONE,
-            CursorKind::Default => structs::NS_STYLE_CURSOR_DEFAULT,
-            CursorKind::Pointer => structs::NS_STYLE_CURSOR_POINTER,
-            CursorKind::ContextMenu => structs::NS_STYLE_CURSOR_CONTEXT_MENU,
-            CursorKind::Help => structs::NS_STYLE_CURSOR_HELP,
-            CursorKind::Progress => structs::NS_STYLE_CURSOR_SPINNING,
-            CursorKind::Wait => structs::NS_STYLE_CURSOR_WAIT,
-            CursorKind::Cell => structs::NS_STYLE_CURSOR_CELL,
-            CursorKind::Crosshair => structs::NS_STYLE_CURSOR_CROSSHAIR,
-            CursorKind::Text => structs::NS_STYLE_CURSOR_TEXT,
-            CursorKind::VerticalText => structs::NS_STYLE_CURSOR_VERTICAL_TEXT,
-            CursorKind::Alias => structs::NS_STYLE_CURSOR_ALIAS,
-            CursorKind::Copy => structs::NS_STYLE_CURSOR_COPY,
-            CursorKind::Move => structs::NS_STYLE_CURSOR_MOVE,
-            CursorKind::NoDrop => structs::NS_STYLE_CURSOR_NO_DROP,
-            CursorKind::NotAllowed => structs::NS_STYLE_CURSOR_NOT_ALLOWED,
-            CursorKind::Grab => structs::NS_STYLE_CURSOR_GRAB,
-            CursorKind::Grabbing => structs::NS_STYLE_CURSOR_GRABBING,
-            CursorKind::EResize => structs::NS_STYLE_CURSOR_E_RESIZE,
-            CursorKind::NResize => structs::NS_STYLE_CURSOR_N_RESIZE,
-            CursorKind::NeResize => structs::NS_STYLE_CURSOR_NE_RESIZE,
-            CursorKind::NwResize => structs::NS_STYLE_CURSOR_NW_RESIZE,
-            CursorKind::SResize => structs::NS_STYLE_CURSOR_S_RESIZE,
-            CursorKind::SeResize => structs::NS_STYLE_CURSOR_SE_RESIZE,
-            CursorKind::SwResize => structs::NS_STYLE_CURSOR_SW_RESIZE,
-            CursorKind::WResize => structs::NS_STYLE_CURSOR_W_RESIZE,
-            CursorKind::EwResize => structs::NS_STYLE_CURSOR_EW_RESIZE,
-            CursorKind::NsResize => structs::NS_STYLE_CURSOR_NS_RESIZE,
-            CursorKind::NeswResize => structs::NS_STYLE_CURSOR_NESW_RESIZE,
-            CursorKind::NwseResize => structs::NS_STYLE_CURSOR_NWSE_RESIZE,
-            CursorKind::ColResize => structs::NS_STYLE_CURSOR_COL_RESIZE,
-            CursorKind::RowResize => structs::NS_STYLE_CURSOR_ROW_RESIZE,
-            CursorKind::AllScroll => structs::NS_STYLE_CURSOR_ALL_SCROLL,
-            CursorKind::ZoomIn => structs::NS_STYLE_CURSOR_ZOOM_IN,
-            CursorKind::ZoomOut => structs::NS_STYLE_CURSOR_ZOOM_OUT,
-            // note: the following properties are gecko-only.
-            CursorKind::MozGrab => structs::NS_STYLE_CURSOR_GRAB,
-            CursorKind::MozGrabbing => structs::NS_STYLE_CURSOR_GRABBING,
-            CursorKind::MozZoomIn => structs::NS_STYLE_CURSOR_ZOOM_IN,
-            CursorKind::MozZoomOut => structs::NS_STYLE_CURSOR_ZOOM_OUT,
-        } as u8;
-
+        self.gecko.mCursor = v.keyword;
         unsafe {
             Gecko_SetCursorArrayLength(&mut self.gecko, v.images.len());
         }
@@ -5268,47 +5201,8 @@ clip-path
     pub fn clone_cursor(&self) -> longhands::cursor::computed_value::T {
         use crate::values::computed::ui::CursorImage;
         use crate::values::computed::url::ComputedImageUrl;
-        use style_traits::cursor::CursorKind;
 
-        let keyword = match self.gecko.mCursor as u32 {
-            structs::NS_STYLE_CURSOR_AUTO => CursorKind::Auto,
-            structs::NS_STYLE_CURSOR_NONE => CursorKind::None,
-            structs::NS_STYLE_CURSOR_DEFAULT => CursorKind::Default,
-            structs::NS_STYLE_CURSOR_POINTER => CursorKind::Pointer,
-            structs::NS_STYLE_CURSOR_CONTEXT_MENU => CursorKind::ContextMenu,
-            structs::NS_STYLE_CURSOR_HELP => CursorKind::Help,
-            structs::NS_STYLE_CURSOR_SPINNING => CursorKind::Progress,
-            structs::NS_STYLE_CURSOR_WAIT => CursorKind::Wait,
-            structs::NS_STYLE_CURSOR_CELL => CursorKind::Cell,
-            structs::NS_STYLE_CURSOR_CROSSHAIR => CursorKind::Crosshair,
-            structs::NS_STYLE_CURSOR_TEXT => CursorKind::Text,
-            structs::NS_STYLE_CURSOR_VERTICAL_TEXT => CursorKind::VerticalText,
-            structs::NS_STYLE_CURSOR_ALIAS => CursorKind::Alias,
-            structs::NS_STYLE_CURSOR_COPY => CursorKind::Copy,
-            structs::NS_STYLE_CURSOR_MOVE => CursorKind::Move,
-            structs::NS_STYLE_CURSOR_NO_DROP => CursorKind::NoDrop,
-            structs::NS_STYLE_CURSOR_NOT_ALLOWED => CursorKind::NotAllowed,
-            structs::NS_STYLE_CURSOR_GRAB => CursorKind::Grab,
-            structs::NS_STYLE_CURSOR_GRABBING => CursorKind::Grabbing,
-            structs::NS_STYLE_CURSOR_E_RESIZE => CursorKind::EResize,
-            structs::NS_STYLE_CURSOR_N_RESIZE => CursorKind::NResize,
-            structs::NS_STYLE_CURSOR_NE_RESIZE => CursorKind::NeResize,
-            structs::NS_STYLE_CURSOR_NW_RESIZE => CursorKind::NwResize,
-            structs::NS_STYLE_CURSOR_S_RESIZE => CursorKind::SResize,
-            structs::NS_STYLE_CURSOR_SE_RESIZE => CursorKind::SeResize,
-            structs::NS_STYLE_CURSOR_SW_RESIZE => CursorKind::SwResize,
-            structs::NS_STYLE_CURSOR_W_RESIZE => CursorKind::WResize,
-            structs::NS_STYLE_CURSOR_EW_RESIZE => CursorKind::EwResize,
-            structs::NS_STYLE_CURSOR_NS_RESIZE => CursorKind::NsResize,
-            structs::NS_STYLE_CURSOR_NESW_RESIZE => CursorKind::NeswResize,
-            structs::NS_STYLE_CURSOR_NWSE_RESIZE => CursorKind::NwseResize,
-            structs::NS_STYLE_CURSOR_COL_RESIZE => CursorKind::ColResize,
-            structs::NS_STYLE_CURSOR_ROW_RESIZE => CursorKind::RowResize,
-            structs::NS_STYLE_CURSOR_ALL_SCROLL => CursorKind::AllScroll,
-            structs::NS_STYLE_CURSOR_ZOOM_IN => CursorKind::ZoomIn,
-            structs::NS_STYLE_CURSOR_ZOOM_OUT => CursorKind::ZoomOut,
-            _ => panic!("Found unexpected value in style struct for cursor property"),
-        };
+        let keyword = self.gecko.mCursor;
 
         let images = self.gecko.mCursorImages.iter().map(|gecko_cursor_image| {
             let url = unsafe {

@@ -77,8 +77,11 @@ class WebPlatformTestsRunnerSetup(MozbuildObject):
             if kwargs["host_cert_path"] is None:
                 kwargs["host_cert_path"] = os.path.join(cert_root, "web-platform.test.pem")
 
-        if kwargs["log_mach_screenshot"] is None:
-            kwargs["log_mach_screenshot"] = True
+        if kwargs["lsan_dir"] is None:
+            kwargs["lsan_dir"] = os.path.join(self.topsrcdir, "build", "sanitizers")
+
+        if kwargs["reftest_screenshot"] is None:
+            kwargs["reftest_screenshot"] = "fail"
 
         kwargs["capture_stdio"] = True
 
@@ -350,6 +353,7 @@ class MachCommands(MachCommandBase):
     @Command("web-platform-tests",
              category="testing",
              conditions=[conditions.is_firefox_or_android],
+             description="Run web-platform-tests.",
              parser=create_parser_wpt)
     def run_web_platform_tests(self, **params):
         self.setup()
@@ -366,6 +370,9 @@ class MachCommands(MachCommandBase):
         wpt_setup = self._spawn(WebPlatformTestsRunnerSetup)
         wpt_runner = WebPlatformTestsRunner(wpt_setup)
 
+        if params["log_mach_screenshot"] is None:
+            params["log_mach_screenshot"] = True
+
         logger = wpt_runner.setup_logging(**params)
 
         return wpt_runner.run(logger, **params)
@@ -373,12 +380,14 @@ class MachCommands(MachCommandBase):
     @Command("wpt",
              category="testing",
              conditions=[conditions.is_firefox_or_android],
+             description="Run web-platform-tests.",
              parser=create_parser_wpt)
     def run_wpt(self, **params):
         return self.run_web_platform_tests(**params)
 
     @Command("web-platform-tests-update",
              category="testing",
+             description="Update web-platform-test metadata.",
              parser=create_parser_update)
     def update_web_platform_tests(self, **params):
         self.setup()
@@ -392,12 +401,14 @@ class MachCommands(MachCommandBase):
 
     @Command("wpt-update",
              category="testing",
+             description="Update web-platform-test metadata.",
              parser=create_parser_update)
     def update_wpt(self, **params):
         return self.update_web_platform_tests(**params)
 
     @Command("web-platform-tests-create",
              category="testing",
+             description="Create a new web-platform test.",
              parser=create_parser_create)
     def create_web_platform_test(self, **params):
         self.setup()
@@ -406,12 +417,14 @@ class MachCommands(MachCommandBase):
 
     @Command("wpt-create",
              category="testing",
+             description="Create a new web-platform test.",
              parser=create_parser_create)
     def create_wpt(self, **params):
         return self.create_web_platform_test(**params)
 
     @Command("wpt-manifest-update",
              category="testing",
+             description="Update web-platform-test manifests.",
              parser=create_parser_manifest_update)
     def wpt_manifest_update(self, **params):
         self.setup()

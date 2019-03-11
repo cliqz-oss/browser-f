@@ -12,10 +12,15 @@
 #include "nsIContent.h"
 #include "nsINode.h"
 #include "nsIWeakReferenceUtils.h"
-#include "nsSVGElement.h"
+#include "SVGElement.h"
 #include "nsTArray.h"
 
 namespace mozilla {
+
+namespace dom {
+class DOMSVGNumber;
+class DOMSVGNumberList;
+}  // namespace dom
 
 /**
  * ATTENTION! WARNING! WATCH OUT!!
@@ -27,9 +32,9 @@ namespace mozilla {
  * The DOM wrapper class for this class is DOMSVGNumberList.
  */
 class SVGNumberList {
+  friend class dom::DOMSVGNumber;
+  friend class dom::DOMSVGNumberList;
   friend class SVGAnimatedNumberList;
-  friend class DOMSVGNumberList;
-  friend class DOMSVGNumber;
 
  public:
   SVGNumberList() {}
@@ -122,7 +127,7 @@ class SVGNumberList {
 
 /**
  * This SVGNumberList subclass is used by the SMIL code when a number list
- * is to be stored in an nsISMILValue instance. Since nsISMILValue objects may
+ * is to be stored in a SMILValue instance. Since SMILValue objects may
  * be cached, it is necessary for us to hold a strong reference to our element
  * so that it doesn't disappear out from under us if, say, the element is
  * removed from the DOM tree.
@@ -131,16 +136,16 @@ class SVGNumberListAndInfo : public SVGNumberList {
  public:
   SVGNumberListAndInfo() : mElement(nullptr) {}
 
-  explicit SVGNumberListAndInfo(nsSVGElement* aElement)
+  explicit SVGNumberListAndInfo(dom::SVGElement* aElement)
       : mElement(do_GetWeakReference(static_cast<nsINode*>(aElement))) {}
 
-  void SetInfo(nsSVGElement* aElement) {
+  void SetInfo(dom::SVGElement* aElement) {
     mElement = do_GetWeakReference(static_cast<nsINode*>(aElement));
   }
 
-  nsSVGElement* Element() const {
+  dom::SVGElement* Element() const {
     nsCOMPtr<nsIContent> e = do_QueryReferent(mElement);
-    return static_cast<nsSVGElement*>(e.get());
+    return static_cast<dom::SVGElement*>(e.get());
   }
 
   nsresult CopyFrom(const SVGNumberListAndInfo& rhs) {
@@ -172,7 +177,7 @@ class SVGNumberListAndInfo : public SVGNumberList {
 
  private:
   // We must keep a weak reference to our element because we may belong to a
-  // cached baseVal nsSMILValue. See the comments starting at:
+  // cached baseVal SMILValue. See the comments starting at:
   // https://bugzilla.mozilla.org/show_bug.cgi?id=515116#c15
   // See also https://bugzilla.mozilla.org/show_bug.cgi?id=653497
   nsWeakPtr mElement;

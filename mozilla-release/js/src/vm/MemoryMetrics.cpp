@@ -14,7 +14,7 @@
 #include "jit/Ion.h"
 #include "vm/ArrayObject.h"
 #ifdef ENABLE_BIGINT
-#include "vm/BigIntType.h"
+#  include "vm/BigIntType.h"
 #endif
 #include "vm/HelperThreads.h"
 #include "vm/JSObject.h"
@@ -819,6 +819,26 @@ JS_PUBLIC_API bool JS::CollectRuntimeStats(JSContext* cx, RuntimeStats* rtStats,
                                    StatsCellCallback<FineGrained>);
 }
 
+JS_PUBLIC_API size_t JS::SystemCompartmentCount(JSContext* cx) {
+  size_t n = 0;
+  for (CompartmentsIter comp(cx->runtime()); !comp.done(); comp.next()) {
+    if (IsSystemCompartment(comp)) {
+      ++n;
+    }
+  }
+  return n;
+}
+
+JS_PUBLIC_API size_t JS::UserCompartmentCount(JSContext* cx) {
+  size_t n = 0;
+  for (CompartmentsIter comp(cx->runtime()); !comp.done(); comp.next()) {
+    if (!IsSystemCompartment(comp)) {
+      ++n;
+    }
+  }
+  return n;
+}
+
 JS_PUBLIC_API size_t JS::SystemRealmCount(JSContext* cx) {
   size_t n = 0;
   for (RealmsIter realm(cx->runtime()); !realm.done(); realm.next()) {
@@ -864,7 +884,12 @@ JS_PUBLIC_API bool AddSizeOfTab(JSContext* cx, HandleObject obj,
 
   JS::Zone* zone = GetObjectZone(obj);
 
-  if (!rtStats.realmStatsVector.reserve(zone->compartments().length())) {
+  size_t numRealms = 0;
+  for (CompartmentsInZoneIter comp(zone); !comp.done(); comp.next()) {
+    numRealms += comp->realms().length();
+  }
+
+  if (!rtStats.realmStatsVector.reserve(numRealms)) {
     return false;
   }
 

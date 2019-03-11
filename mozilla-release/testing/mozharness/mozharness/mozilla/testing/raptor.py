@@ -57,7 +57,7 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
           }],
         [["--app"],
          {"default": "firefox",
-          "choices": ["firefox", "chrome", "geckoview"],
+          "choices": ["firefox", "chrome", "geckoview", "fennec"],
           "dest": "app",
           "help": "name of the application we are testing (default: firefox)"
           }],
@@ -125,7 +125,15 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
         }],
         [["--host"], {
             "dest": "host",
-            "help": "Hostname from which to serve urls (default: 127.0.0.1).",
+            "help": "Hostname from which to serve urls (default: 127.0.0.1). "
+                    "The value HOST_IP will cause the value of host to be "
+                    "to be loaded from the environment variable HOST_IP.",
+        }],
+        [["--power-test"], {
+            "dest": "power_test",
+            "help": "Use Raptor to measure power usage. Currently only supported for Geckoview. "
+                    "The host ip address must be specified either via the --host command line "
+                    "argument.",
         }],
         [["--debug-mode"], {
             "dest": "debug_mode",
@@ -172,7 +180,7 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
             # check each cmd line arg individually
             self.app = "firefox"
             if 'raptor_cmd_line_args' in self.config:
-                for app in ['chrome', 'geckoview']:
+                for app in ['chrome', 'geckoview', 'fennec']:
                     for next_arg in self.config['raptor_cmd_line_args']:
                         if app in next_arg:
                             self.app = app
@@ -196,6 +204,9 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
         self.gecko_profile_entries = self.config.get('gecko_profile_entries')
         self.test_packages_url = self.config.get('test_packages_url')
         self.host = self.config.get('host')
+        if self.host == 'HOST_IP':
+            self.host = os.environ['HOST_IP']
+        self.power_test = self.config.get('power_test')
         self.is_release_build = self.config.get('is_release_build')
         self.debug_mode = self.config.get('debug_mode', False)
 
@@ -252,6 +263,10 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
         if 'mac' in self.platform_name():
             # for now hardcoding a revision; but change this to update to newer version; from:
             # http://commondatastorage.googleapis.com/chromium-browser-snapshots/Mac/LAST_CHANGE
+
+            # Note: Using an older version of Chromium on OSX b/c of an issue with a pop-up
+            # dialog appearing with newer Chromium on OSX; please see:
+            # Bug 1520523 - Update Chromium version running with Raptor in production
             chromium_rev = "575625"
             chrome_archive_file = "chrome-mac.zip"
             chrome_url = "%s/Mac/%s/%s" % (base_url, chromium_rev, chrome_archive_file)
@@ -261,7 +276,7 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
         elif 'linux' in self.platform_name():
             # for now hardcoding a revision; but change this to update to newer version; from:
             # http://commondatastorage.googleapis.com/chromium-browser-snapshots/Linux_x64/LAST_CHANGE
-            chromium_rev = "575640"
+            chromium_rev = "624137"
             chrome_archive_file = "chrome-linux.zip"
             chrome_url = "%s/Linux_x64/%s/%s" % (base_url, chromium_rev, chrome_archive_file)
             self.chrome_path = os.path.join(self.chrome_dest, 'chrome-linux', 'chrome')
@@ -270,16 +285,13 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
             # windows 7/10
             # for now hardcoding a revision; but change this to update to newer version; from:
             # http://commondatastorage.googleapis.com/chromium-browser-snapshots/Win_x64/LAST_CHANGE
-            chromium_rev = "575637"
-            chrome_archive_file = "chrome-win32.zip"  # same zip name for win32/64
+            chromium_rev = "624131"
+            chrome_archive_file = "chrome-win.zip"  # same zip name for win32/64
 
-            # url is different for win32/64
-            if '64' in self.platform_name():
-                chrome_url = "%s/Win_x64/%s/%s" % (base_url, chromium_rev, chrome_archive_file)
-            else:
-                chrome_url = "%s/Win_x32/%s/%s" % (base_url, chromium_rev, chrome_archive_file)
+            # one url for Win x64/32
+            chrome_url = "%s/Win_x64/%s/%s" % (base_url, chromium_rev, chrome_archive_file)
 
-            self.chrome_path = os.path.join(self.chrome_dest, 'chrome-win32', 'Chrome.exe')
+            self.chrome_path = os.path.join(self.chrome_dest, 'chrome-win', 'Chrome.exe')
 
         chrome_archive = os.path.join(self.chrome_dest, chrome_archive_file)
 
@@ -320,11 +332,16 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
         # binary path; if testing on firefox the binary path already came from mozharness/pro;
         # otherwise the binary path is forwarded from cmd line arg (raptor_cmd_line_args)
         kw_options['app'] = self.app
-        if self.app == "firefox" or (self.app == "geckoview" and not self.run_local):
+        if self.app == "firefox" or (self.app in["geckoview", "fennec"] and not self.run_local):
             binary_path = self.binary_path or self.config.get('binary_path')
             if not binary_path:
                 self.fatal("Raptor requires a path to the binary.")
             kw_options['binary'] = binary_path
+            if self.app in["geckoview", "fennec"]:
+                # in production ensure we have correct app name,
+                # i.e. fennec_aurora or fennec_release etc.
+                kw_options['binary'] = self.query_package_name()
+                self.info("set binary to %s instead of %s" % (kw_options['binary'], binary_path))
         else:  # running on google chrome
             if not self.run_local:
                 # when running locally we already set the chrome binary above in init; here
@@ -339,6 +356,8 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
         if self.config.get('obj_path', None) is not None:
             kw_options['obj-path'] = self.config['obj_path']
         kw_options.update(kw)
+        if self.host:
+            kw_options['host'] = self.host
         # configure profiling options
         options.extend(self.query_gecko_profile_options())
         # extra arguments
@@ -352,6 +371,8 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
             options.extend(['--code-coverage'])
         if self.config.get('is_release_build', False):
             options.extend(['--is-release-build'])
+        if self.config.get('power_test', False):
+            options.extend(['--power-test'])
         for key, value in kw_options.items():
             options.extend(['--%s' % key, value])
 
@@ -440,7 +461,7 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
             self._install_view_gecko_profile_req()
 
     def install(self):
-        if self.app == "geckoview":
+        if self.app in ["geckoview", "fennec"]:
             self.install_apk(self.installer_path)
         else:
             super(Raptor, self).install()
@@ -460,9 +481,12 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
         # late import is required, because install is done in create_virtualenv
         import jsonschema
 
-        if len(parser.found_perf_data) != 1:
-            self.critical("PERFHERDER_DATA was seen %d times, expected 1."
-                          % len(parser.found_perf_data))
+        expected_perfherder = 1
+        if self.config.get('power_test', None):
+            expected_perfherder += 1
+        if len(parser.found_perf_data) != expected_perfherder:
+            self.critical("PERFHERDER_DATA was seen %d times, expected %d."
+                          % (len(parser.found_perf_data), expected_perfherder))
             return
 
         schema_path = os.path.join(external_tools_path,
@@ -477,8 +501,7 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
             self.exception("Error while validating PERFHERDER_DATA")
             self.info(str(e))
 
-    def _artifact_perf_data(self, dest):
-        src = os.path.join(self.query_abs_dirs()['abs_work_dir'], 'raptor.json')
+    def _artifact_perf_data(self, src, dest):
         if not os.path.isdir(os.path.dirname(dest)):
             # create upload dir if it doesn't already exist
             self.info("creating dir: %s" % os.path.dirname(dest))
@@ -559,7 +582,7 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
 
             return bool(debug_opts.intersection(cmdline))
 
-        if self.app == "geckoview":
+        if self.app in ["geckoview", "fennec"]:
             self.logcat_start()
 
         command = [python, run_tests] + options + mozlog_opts
@@ -572,7 +595,7 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
                                                 output_parser=parser,
                                                 env=env)
 
-        if self.app == "geckoview":
+        if self.app in ["geckoview", "fennec"]:
             self.logcat_stop()
 
         if parser.minidump_output:
@@ -586,9 +609,21 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
             if not self.run_local:
                 # copy results to upload dir so they are included as an artifact
                 self.info("copying raptor results to upload dir:")
+
+                src = os.path.join(self.query_abs_dirs()['abs_work_dir'], 'raptor.json')
                 dest = os.path.join(env['MOZ_UPLOAD_DIR'], 'perfherder-data.json')
                 self.info(str(dest))
-                self._artifact_perf_data(dest)
+                self._artifact_perf_data(src, dest)
+
+                if self.power_test:
+                    src = os.path.join(self.query_abs_dirs()['abs_work_dir'], 'raptor-power.json')
+                    self._artifact_perf_data(src, dest)
+
+                src = os.path.join(self.query_abs_dirs()['abs_work_dir'], 'screenshots.html')
+                if os.path.exists(src):
+                    dest = os.path.join(env['MOZ_UPLOAD_DIR'], 'screenshots.html')
+                    self.info(str(dest))
+                    self._artifact_perf_data(src, dest)
 
 
 class RaptorOutputParser(OutputParser):

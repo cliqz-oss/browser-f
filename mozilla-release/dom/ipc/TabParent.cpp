@@ -9,8 +9,8 @@
 #include "TabParent.h"
 
 #ifdef ACCESSIBILITY
-#include "mozilla/a11y/DocAccessibleParent.h"
-#include "nsAccessibilityService.h"
+#  include "mozilla/a11y/DocAccessibleParent.h"
+#  include "nsAccessibilityService.h"
 #endif
 #include "mozilla/BrowserElementParent.h"
 #include "mozilla/dom/ChromeMessageSender.h"
@@ -63,6 +63,7 @@
 #include "nsIURI.h"
 #include "nsIWindowWatcher.h"
 #include "nsIWebBrowserChrome.h"
+#include "nsIWebProtocolHandlerRegistrar.h"
 #include "nsIXULBrowserWindow.h"
 #include "nsIXULWindow.h"
 #include "nsViewManager.h"
@@ -70,7 +71,7 @@
 #include "nsIWidget.h"
 #include "nsNetUtil.h"
 #ifndef XP_WIN
-#include "nsJARProtocolHandler.h"
+#  include "nsJARProtocolHandler.h"
 #endif
 #include "nsPIDOMWindow.h"
 #include "nsPrintfCString.h"
@@ -104,17 +105,17 @@
 #include "mozilla/dom/ChromeBrowsingContext.h"
 
 #ifdef XP_WIN
-#include "mozilla/plugins/PluginWidgetParent.h"
+#  include "mozilla/plugins/PluginWidgetParent.h"
 #endif
 
 #if defined(XP_WIN) && defined(ACCESSIBILITY)
-#include "mozilla/a11y/AccessibleWrap.h"
-#include "mozilla/a11y/Compatibility.h"
-#include "mozilla/a11y/nsWinUtils.h"
+#  include "mozilla/a11y/AccessibleWrap.h"
+#  include "mozilla/a11y/Compatibility.h"
+#  include "mozilla/a11y/nsWinUtils.h"
 #endif
 
 #ifdef MOZ_ANDROID_HISTORY
-#include "GeckoViewHistory.h"
+#  include "GeckoViewHistory.h"
 #endif
 
 using namespace mozilla::dom;
@@ -302,6 +303,11 @@ void TabParent::SetOwnerElement(Element* aElement) {
       Unused << SendSetWidgetNativeData(widgetNativeData);
     }
   }
+}
+
+NS_IMETHODIMP TabParent::GetOwnerElement(Element** aElement) {
+  *aElement = do_AddRef(GetOwnerElement()).take();
+  return NS_OK;
 }
 
 void TabParent::AddWindowListeners() {
@@ -531,7 +537,8 @@ mozilla::ipc::IPCResult TabParent::RecvSizeShellTo(
 }
 
 mozilla::ipc::IPCResult TabParent::RecvDropLinks(nsTArray<nsString>&& aLinks) {
-  nsCOMPtr<nsIBrowser> browser = do_QueryInterface(mFrameElement);
+  nsCOMPtr<nsIBrowser> browser =
+      mFrameElement ? mFrameElement->AsBrowser() : nullptr;
   if (browser) {
     // Verify that links have not been modified by the child. If links have
     // not been modified then it's safe to load those links using the
@@ -876,20 +883,20 @@ mozilla::ipc::IPCResult TabParent::RecvPDocAccessibleConstructor(
     auto parentDoc = static_cast<a11y::DocAccessibleParent*>(aParentDoc);
     mozilla::ipc::IPCResult added = parentDoc->AddChildDoc(doc, aParentID);
     if (!added) {
-#ifdef DEBUG
+#  ifdef DEBUG
       return added;
-#else
+#  else
       return IPC_OK();
-#endif
+#  endif
     }
 
-#ifdef XP_WIN
+#  ifdef XP_WIN
     MOZ_ASSERT(aDocCOMProxy.IsNull());
     a11y::WrapperFor(doc)->SetID(aMsaaID);
     if (a11y::nsWinUtils::IsWindowEmulationStarted()) {
       doc->SetEmulatedWindowHandle(parentDoc->GetEmulatedWindowHandle());
     }
-#endif
+#  endif
 
     return IPC_OK();
   } else {
@@ -903,7 +910,7 @@ mozilla::ipc::IPCResult TabParent::RecvPDocAccessibleConstructor(
 
     doc->SetTopLevel();
     a11y::DocManager::RemoteDocAdded(doc);
-#ifdef XP_WIN
+#  ifdef XP_WIN
     a11y::WrapperFor(doc)->SetID(aMsaaID);
     MOZ_ASSERT(!aDocCOMProxy.IsNull());
 
@@ -911,7 +918,7 @@ mozilla::ipc::IPCResult TabParent::RecvPDocAccessibleConstructor(
     doc->SetCOMInterface(proxy);
     doc->MaybeInitWindowEmulation();
     doc->SendParentCOMProxy();
-#endif
+#  endif
   }
 #endif
   return IPC_OK();
@@ -1031,11 +1038,9 @@ void TabParent::SendRealMouseEvent(WidgetMouseEvent& aEvent) {
     // become the current cursor.  When we mouseexit, we stop.
     if (eMouseEnterIntoWidget == aEvent.mMessage) {
       mTabSetsCursor = true;
-      if (mCustomCursor) {
-        widget->SetCursor(mCustomCursor, mCustomCursorHotspotX,
+      if (mCursor != eCursorInvalid) {
+        widget->SetCursor(mCursor, mCustomCursor, mCustomCursorHotspotX,
                           mCustomCursorHotspotY);
-      } else if (mCursor != eCursorInvalid) {
-        widget->SetCursor(mCursor);
       }
     } else if (eMouseExitFromWidget == aEvent.mMessage) {
       mTabSetsCursor = false;
@@ -1101,7 +1106,7 @@ void TabParent::SendRealMouseEvent(WidgetMouseEvent& aEvent) {
 }
 
 LayoutDeviceToCSSScale TabParent::GetLayoutDeviceToCSSScale() {
-  nsIDocument* doc = (mFrameElement ? mFrameElement->OwnerDoc() : nullptr);
+  Document* doc = (mFrameElement ? mFrameElement->OwnerDoc() : nullptr);
   nsPresContext* ctx = (doc ? doc->GetPresContext() : nullptr);
   return LayoutDeviceToCSSScale(
       ctx ? (float)ctx->AppUnitsPerDevPixel() / AppUnitsPerCSSPixel() : 0.0f);
@@ -1178,7 +1183,7 @@ bool TabParent::QueryDropLinksForVerification() {
 
 void TabParent::SendRealDragEvent(WidgetDragEvent& aEvent, uint32_t aDragAction,
                                   uint32_t aDropEffect,
-                                  const nsCString& aPrincipalURISpec) {
+                                  const IPC::Principal& aPrincipal) {
   if (mIsDestroyed || !mIsReadyToHandleInputEvents) {
     return;
   }
@@ -1190,7 +1195,7 @@ void TabParent::SendRealDragEvent(WidgetDragEvent& aEvent, uint32_t aDragAction,
     }
   }
   DebugOnly<bool> ret = PBrowserParent::SendRealDragEvent(
-      aEvent, aDragAction, aDropEffect, aPrincipalURISpec);
+      aEvent, aDragAction, aDropEffect, aPrincipal);
   NS_WARNING_ASSERTION(ret, "PBrowserParent::SendRealDragEvent() failed");
   MOZ_ASSERT(!ret || aEvent.HasBeenPostedToRemoteProcess());
 }
@@ -1578,6 +1583,7 @@ mozilla::ipc::IPCResult TabParent::RecvSyncMessage(
     nsTArray<StructuredCloneData>* aRetVal) {
   AUTO_PROFILER_LABEL_DYNAMIC_LOSSY_NSSTRING("TabParent::RecvSyncMessage",
                                              OTHER, aMessage);
+  MMPrinter::Print("TabParent::RecvSyncMessage", aMessage, aData);
 
   StructuredCloneData data;
   ipc::UnpackClonedMessageDataForParent(aData, data);
@@ -1595,6 +1601,7 @@ mozilla::ipc::IPCResult TabParent::RecvRpcMessage(
     nsTArray<StructuredCloneData>* aRetVal) {
   AUTO_PROFILER_LABEL_DYNAMIC_LOSSY_NSSTRING("TabParent::RecvRpcMessage", OTHER,
                                              aMessage);
+  MMPrinter::Print("TabParent::RecvRpcMessage", aMessage, aData);
 
   StructuredCloneData data;
   ipc::UnpackClonedMessageDataForParent(aData, data);
@@ -1611,6 +1618,7 @@ mozilla::ipc::IPCResult TabParent::RecvAsyncMessage(
     const IPC::Principal& aPrincipal, const ClonedMessageData& aData) {
   AUTO_PROFILER_LABEL_DYNAMIC_LOSSY_NSSTRING("TabParent::RecvAsyncMessage",
                                              OTHER, aMessage);
+  MMPrinter::Print("TabParent::RecvAsyncMessage", aMessage, aData);
 
   StructuredCloneData data;
   ipc::UnpackClonedMessageDataForParent(aData, data);
@@ -1622,54 +1630,48 @@ mozilla::ipc::IPCResult TabParent::RecvAsyncMessage(
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult TabParent::RecvSetCursor(const nsCursor& aCursor,
-                                                 const bool& aForce) {
-  mCursor = aCursor;
-  mCustomCursor = nullptr;
-
-  nsCOMPtr<nsIWidget> widget = GetWidget();
-  if (widget) {
-    if (aForce) {
-      widget->ClearCachedCursor();
-    }
-    if (mTabSetsCursor) {
-      widget->SetCursor(mCursor);
-    }
-  }
-  return IPC_OK();
-}
-
-mozilla::ipc::IPCResult TabParent::RecvSetCustomCursor(
+mozilla::ipc::IPCResult TabParent::RecvSetCursor(
+    const nsCursor& aCursor,
+    const bool& aHasCustomCursor,
     const nsCString& aCursorData, const uint32_t& aWidth,
     const uint32_t& aHeight, const uint32_t& aStride,
     const gfx::SurfaceFormat& aFormat, const uint32_t& aHotspotX,
     const uint32_t& aHotspotY, const bool& aForce) {
-  mCursor = eCursorInvalid;
-
   nsCOMPtr<nsIWidget> widget = GetWidget();
-  if (widget) {
-    if (aForce) {
-      widget->ClearCachedCursor();
-    }
-
-    if (mTabSetsCursor) {
-      const gfx::IntSize size(aWidth, aHeight);
-
-      RefPtr<gfx::DataSourceSurface> customCursor =
-          gfx::CreateDataSourceSurfaceFromData(
-              size, aFormat,
-              reinterpret_cast<const uint8_t*>(aCursorData.BeginReading()),
-              aStride);
-
-      RefPtr<gfxDrawable> drawable = new gfxSurfaceDrawable(customCursor, size);
-      nsCOMPtr<imgIContainer> cursorImage(
-          image::ImageOps::CreateFromDrawable(drawable));
-      widget->SetCursor(cursorImage, aHotspotX, aHotspotY);
-      mCustomCursor = cursorImage;
-      mCustomCursorHotspotX = aHotspotX;
-      mCustomCursorHotspotY = aHotspotY;
-    }
+  if (!widget) {
+    return IPC_OK();
   }
+
+  if (aForce) {
+    widget->ClearCachedCursor();
+  }
+
+  if (!mTabSetsCursor) {
+    return IPC_OK();
+  }
+
+  nsCOMPtr<imgIContainer> cursorImage;
+  if (aHasCustomCursor) {
+    if (aHeight * aStride != aCursorData.Length() ||
+        aStride < aWidth * gfx::BytesPerPixel(aFormat)) {
+      return IPC_FAIL(this, "Invalid custom cursor data");
+    }
+    const gfx::IntSize size(aWidth, aHeight);
+    RefPtr<gfx::DataSourceSurface> customCursor =
+        gfx::CreateDataSourceSurfaceFromData(
+            size, aFormat,
+            reinterpret_cast<const uint8_t*>(aCursorData.BeginReading()),
+            aStride);
+
+    RefPtr<gfxDrawable> drawable = new gfxSurfaceDrawable(customCursor, size);
+    cursorImage = image::ImageOps::CreateFromDrawable(drawable);
+  }
+
+  widget->SetCursor(aCursor, cursorImage, aHotspotX, aHotspotY);
+  mCursor = aCursor;
+  mCustomCursor = cursorImage;
+  mCustomCursorHotspotX = aHotspotX;
+  mCustomCursorHotspotY = aHotspotY;
 
   return IPC_OK();
 }
@@ -1909,7 +1911,8 @@ mozilla::ipc::IPCResult TabParent::RecvRequestFocus(const bool& aCanRaise) {
 mozilla::ipc::IPCResult TabParent::RecvEnableDisableCommands(
     const nsString& aAction, nsTArray<nsCString>&& aEnabledCommands,
     nsTArray<nsCString>&& aDisabledCommands) {
-  nsCOMPtr<nsIBrowser> browser = do_QueryInterface(mFrameElement);
+  nsCOMPtr<nsIBrowser> browser =
+      mFrameElement ? mFrameElement->AsBrowser() : nullptr;
   bool isRemoteBrowser = false;
   if (browser) {
     browser->GetIsRemoteBrowser(&isRemoteBrowser);
@@ -2019,7 +2022,7 @@ mozilla::ipc::IPCResult TabParent::RecvReplyKeyEvent(
 
   // Here we convert the WidgetEvent that we received to an Event
   // to be able to dispatch it to the <browser> element as the target element.
-  nsIDocument* doc = mFrameElement->OwnerDoc();
+  Document* doc = mFrameElement->OwnerDoc();
   nsPresContext* presContext = doc->GetPresContext();
   NS_ENSURE_TRUE(presContext, IPC_OK());
 
@@ -2074,7 +2077,7 @@ mozilla::ipc::IPCResult TabParent::RecvAccessKeyNotHandled(
 
   // Here we convert the WidgetEvent that we received to an Event
   // to be able to dispatch it to the <browser> element as the target element.
-  nsIDocument* doc = mFrameElement->OwnerDoc();
+  Document* doc = mFrameElement->OwnerDoc();
   nsIPresShell* presShell = doc->GetShell();
   NS_ENSURE_TRUE(presShell, IPC_OK());
 
@@ -2091,6 +2094,46 @@ mozilla::ipc::IPCResult TabParent::RecvAccessKeyNotHandled(
 mozilla::ipc::IPCResult TabParent::RecvSetHasBeforeUnload(
     const bool& aHasBeforeUnload) {
   mHasBeforeUnload = aHasBeforeUnload;
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult TabParent::RecvRegisterProtocolHandler(
+    const nsString& aScheme, nsIURI* aHandlerURI, const nsString& aTitle,
+    nsIURI* aDocURI) {
+  nsCOMPtr<nsIWebProtocolHandlerRegistrar> registrar =
+      do_GetService(NS_WEBPROTOCOLHANDLERREGISTRAR_CONTRACTID);
+  if (registrar) {
+    registrar->RegisterProtocolHandler(aScheme, aHandlerURI, aTitle, aDocURI,
+                                       mFrameElement);
+  }
+
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult TabParent::RecvOnContentBlockingEvent(
+    const OptionalWebProgressData& aWebProgressData,
+    const RequestData& aRequestData, const uint32_t& aEvent) {
+  nsCOMPtr<nsIBrowser> browser =
+      mFrameElement ? mFrameElement->AsBrowser() : nullptr;
+  if (browser) {
+    MOZ_ASSERT(aWebProgressData.type() != OptionalWebProgressData::T__None);
+
+    if (aWebProgressData.type() == OptionalWebProgressData::Tvoid_t) {
+      Unused << browser->CallWebProgressContentBlockingEventListeners(
+          false, false, false, 0, 0, aRequestData.requestURI(),
+          aRequestData.originalRequestURI(), aRequestData.matchedList(),
+          aEvent);
+    } else {
+      Unused << browser->CallWebProgressContentBlockingEventListeners(
+          true, aWebProgressData.get_WebProgressData().isTopLevel(),
+          aWebProgressData.get_WebProgressData().isLoadingDocument(),
+          aWebProgressData.get_WebProgressData().loadType(),
+          aWebProgressData.get_WebProgressData().DOMWindowID(),
+          aRequestData.requestURI(), aRequestData.originalRequestURI(),
+          aRequestData.matchedList(), aEvent);
+    }
+  }
+
   return IPC_OK();
 }
 
@@ -2697,14 +2740,15 @@ TabParent::GetContentBlockingLog(Promise** aPromise) {
 
   auto cblPromise = SendGetContentBlockingLog();
   cblPromise->Then(GetMainThreadSerialEventTarget(), __func__,
-                   [jsPromise](Tuple<nsString, bool> aResult) {
+                   [jsPromise](Tuple<nsCString, bool>&& aResult) {
                      if (Get<1>(aResult)) {
-                       jsPromise->MaybeResolve(Get<0>(aResult));
+                       NS_ConvertUTF8toUTF16 utf16(Get<0>(aResult));
+                       jsPromise->MaybeResolve(std::move(utf16));
                      } else {
                        jsPromise->MaybeRejectWithUndefined();
                      }
                    },
-                   [jsPromise](ResponseRejectReason aReason) {
+                   [jsPromise](ResponseRejectReason&& aReason) {
                      jsPromise->MaybeRejectWithUndefined();
                    });
 
@@ -2816,7 +2860,7 @@ void TabParent::RequestRootPaint(gfx::CrossProcessPaint* aPaint, IntRect aRect,
                 [paint, tabId](PaintFragment&& aFragment) {
                   paint->ReceiveFragment(tabId, std::move(aFragment));
                 },
-                [paint, tabId](ResponseRejectReason aReason) {
+                [paint, tabId](ResponseRejectReason&& aReason) {
                   paint->LostFragment(tabId);
                 });
 }
@@ -2831,7 +2875,7 @@ void TabParent::RequestSubPaint(gfx::CrossProcessPaint* aPaint, float aScale,
                 [paint, tabId](PaintFragment&& aFragment) {
                   paint->ReceiveFragment(tabId, std::move(aFragment));
                 },
-                [paint, tabId](ResponseRejectReason aReason) {
+                [paint, tabId](ResponseRejectReason&& aReason) {
                   paint->LostFragment(tabId);
                 });
 }
@@ -3061,7 +3105,7 @@ mozilla::ipc::IPCResult TabParent::RecvInvokeDragSession(
     nsTArray<IPCDataTransfer>&& aTransfers, const uint32_t& aAction,
     const OptionalShmem& aVisualDnDData, const uint32_t& aStride,
     const gfx::SurfaceFormat& aFormat, const LayoutDeviceIntRect& aDragRect,
-    const nsCString& aPrincipalURISpec) {
+    const IPC::Principal& aPrincipal) {
   mInitialDataTransferItems.Clear();
   nsIPresShell* shell = mFrameElement->OwnerDoc()->GetShell();
   if (!shell) {
@@ -3099,7 +3143,7 @@ mozilla::ipc::IPCResult TabParent::RecvInvokeDragSession(
 
   mDragValid = true;
   mDragRect = aDragRect;
-  mDragPrincipalURISpec = aPrincipalURISpec;
+  mDragPrincipal = aPrincipal;
 
   esm->BeginTrackingRemoteDragGesture(mFrameElement);
 
@@ -3111,19 +3155,8 @@ mozilla::ipc::IPCResult TabParent::RecvInvokeDragSession(
 }
 
 void TabParent::AddInitialDnDDataTo(DataTransfer* aDataTransfer,
-                                    nsACString& aPrincipalURISpec) {
-  aPrincipalURISpec.Assign(mDragPrincipalURISpec);
-
-  nsCOMPtr<nsIPrincipal> principal;
-  if (!mDragPrincipalURISpec.IsEmpty()) {
-    // If principal is given, try using it first.
-    principal = BasePrincipal::CreateCodebasePrincipal(mDragPrincipalURISpec);
-  }
-  if (!principal) {
-    // Fallback to system principal, to handle like the data is from browser
-    // chrome or OS.
-    principal = nsContentUtils::GetSystemPrincipal();
-  }
+                                    nsIPrincipal** aPrincipal) {
+  NS_IF_ADDREF(*aPrincipal = mDragPrincipal);
 
   for (uint32_t i = 0; i < mInitialDataTransferItems.Length(); ++i) {
     nsTArray<IPCDataTransferItem>& itemArray = mInitialDataTransferItems[i];
@@ -3164,12 +3197,12 @@ void TabParent::AddInitialDnDDataTo(DataTransfer* aDataTransfer,
       // from content in the parent process where there is no content.
       // XXX: Nested Content Processes may change this
       aDataTransfer->SetDataWithPrincipalFromOtherProcess(
-          NS_ConvertUTF8toUTF16(item.flavor()), variant, i, principal,
+          NS_ConvertUTF8toUTF16(item.flavor()), variant, i, mDragPrincipal,
           /* aHidden = */ false);
     }
   }
   mInitialDataTransferItems.Clear();
-  mDragPrincipalURISpec.Truncate(0);
+  mDragPrincipal = nullptr;
 }
 
 bool TabParent::TakeDragVisualization(
@@ -3292,8 +3325,9 @@ mozilla::ipc::IPCResult TabParent::RecvLookUpDictionary(
 }
 
 mozilla::ipc::IPCResult TabParent::RecvShowCanvasPermissionPrompt(
-    const nsCString& aFirstPartyURI) {
-  nsCOMPtr<nsIBrowser> browser = do_QueryInterface(mFrameElement);
+    const nsCString& aFirstPartyURI, const bool& aHideDoorHanger) {
+  nsCOMPtr<nsIBrowser> browser =
+      mFrameElement ? mFrameElement->AsBrowser() : nullptr;
   if (!browser) {
     // If the tab is being closed, the browser may not be available.
     // In this case we can ignore the request.
@@ -3303,9 +3337,11 @@ mozilla::ipc::IPCResult TabParent::RecvShowCanvasPermissionPrompt(
   if (!os) {
     return IPC_FAIL_NO_REASON(this);
   }
-  nsresult rv =
-      os->NotifyObservers(browser, "canvas-permissions-prompt",
-                          NS_ConvertUTF8toUTF16(aFirstPartyURI).get());
+  nsresult rv = os->NotifyObservers(
+      browser,
+      aHideDoorHanger ? "canvas-permissions-prompt-hide-doorhanger"
+                      : "canvas-permissions-prompt",
+      NS_ConvertUTF8toUTF16(aFirstPartyURI).get());
   if (NS_FAILED(rv)) {
     return IPC_FAIL_NO_REASON(this);
   }

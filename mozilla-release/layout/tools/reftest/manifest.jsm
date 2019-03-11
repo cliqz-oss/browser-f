@@ -292,11 +292,12 @@ function ReadManifest(aURL, aFilter)
                 ReadManifest(incURI, aFilter);
             }
         } else if (items[0] == TYPE_LOAD || items[0] == TYPE_SCRIPT) {
+            var type = items[0];
             if (items.length != 2)
-                throw "Error in manifest file " + aURL.spec + " line " + lineNo + ": incorrect number of arguments to " + items[0];
-            if (items[0] == TYPE_LOAD && expected_status != EXPECTED_PASS && expected_status != EXPECTED_DEATH)
+                throw "Error in manifest file " + aURL.spec + " line " + lineNo + ": incorrect number of arguments to " + type;
+            if (type == TYPE_LOAD && expected_status != EXPECTED_PASS && expected_status != EXPECTED_DEATH)
                 throw "Error in manifest file " + aURL.spec + " line " + lineNo + ": incorrect known failure type for load test";
-            AddTestItem({ type: TYPE_LOAD,
+            AddTestItem({ type: type,
                           expected: expected_status,
                           manifest: aURL.spec,
                           allowSilentFail: allow_silent_fail,
@@ -461,6 +462,8 @@ function BuildConditionSandbox(aURL) {
     sandbox.gtkWidget = xr.widgetToolkit == "gtk3";
     sandbox.qtWidget = xr.widgetToolkit == "qt";
     sandbox.winWidget = xr.widgetToolkit == "windows";
+
+    sandbox.is64Bit = xr.is64Bit;
 
     // Scrollbars that are semi-transparent. See bug 1169666.
     sandbox.transparentScrollbars = xr.widgetToolkit == "gtk3";

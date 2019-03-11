@@ -7,6 +7,7 @@
 #include "builtin/ModuleObject.h"
 
 #include "mozilla/EnumSet.h"
+#include "mozilla/ScopeExit.h"
 
 #include "builtin/Promise.h"
 #include "builtin/SelfHostingDefines.h"
@@ -15,8 +16,10 @@
 #include "gc/FreeOp.h"
 #include "gc/Policy.h"
 #include "gc/Tracer.h"
+#include "js/PropertySpec.h"
 #include "vm/AsyncFunction.h"
 #include "vm/AsyncIteration.h"
+#include "vm/EqualityOperations.h"  // js::SameValue
 #include "vm/SelfHosting.h"
 
 #include "vm/JSObject-inl.h"
@@ -371,6 +374,7 @@ bool IndirectBindingMap::lookup(jsid name, ModuleEnvironmentObject** envOut,
   ProxyOptions options;
   options.setLazyProto(true);
   options.setSingleton(true);
+  Rooted<UniquePtr<IndirectBindingMap>> rootedBindings(cx, std::move(bindings));
   RootedObject object(
       cx, NewProxyObject(cx, &proxyHandler, priv, nullptr, options));
   if (!object) {
@@ -378,7 +382,8 @@ bool IndirectBindingMap::lookup(jsid name, ModuleEnvironmentObject** envOut,
   }
 
   SetProxyReservedSlot(object, ExportsSlot, ObjectValue(*exports));
-  SetProxyReservedSlot(object, BindingsSlot, PrivateValue(bindings.release()));
+  SetProxyReservedSlot(object, BindingsSlot,
+                       PrivateValue(rootedBindings.release()));
 
   return &object->as<ModuleNamespaceObject>();
 }
@@ -806,7 +811,7 @@ void ModuleObject::init(HandleScript script) {
   initReservedSlot(ScriptSlot, PrivateGCThingValue(script));
   initReservedSlot(StatusSlot, Int32Value(MODULE_STATUS_UNINSTANTIATED));
   initReservedSlot(ScriptSourceObjectSlot,
-                   ObjectValue(script->scriptSourceUnwrap()));
+                   ObjectValue(*script->sourceObject()));
 }
 
 void ModuleObject::setInitialEnvironment(
@@ -1249,13 +1254,13 @@ bool ModuleBuilder::initModule() {
 bool ModuleBuilder::processImport(frontend::BinaryNode* importNode) {
   using namespace js::frontend;
 
-  MOZ_ASSERT(importNode->isKind(ParseNodeKind::Import));
+  MOZ_ASSERT(importNode->isKind(ParseNodeKind::ImportDecl));
 
   ListNode* specList = &importNode->left()->as<ListNode>();
   MOZ_ASSERT(specList->isKind(ParseNodeKind::ImportSpecList));
 
   NameNode* moduleSpec = &importNode->right()->as<NameNode>();
-  MOZ_ASSERT(moduleSpec->isKind(ParseNodeKind::String));
+  MOZ_ASSERT(moduleSpec->isKind(ParseNodeKind::StringExpr));
 
   RootedAtom module(cx_, moduleSpec->atom());
   if (!maybeAppendRequestedModule(module, moduleSpec)) {
@@ -1300,10 +1305,10 @@ bool ModuleBuilder::appendImportEntryObject(
 bool ModuleBuilder::processExport(frontend::ParseNode* exportNode) {
   using namespace js::frontend;
 
-  MOZ_ASSERT(exportNode->isKind(ParseNodeKind::Export) ||
-             exportNode->isKind(ParseNodeKind::ExportDefault));
+  MOZ_ASSERT(exportNode->isKind(ParseNodeKind::ExportStmt) ||
+             exportNode->isKind(ParseNodeKind::ExportDefaultStmt));
 
-  bool isDefault = exportNode->isKind(ParseNodeKind::ExportDefault);
+  bool isDefault = exportNode->isKind(ParseNodeKind::ExportDefaultStmt);
   ParseNode* kid = isDefault ? exportNode->as<BinaryNode>().left()
                              : exportNode->as<UnaryNode>().kid();
 
@@ -1334,7 +1339,7 @@ bool ModuleBuilder::processExport(frontend::ParseNode* exportNode) {
       break;
     }
 
-    case ParseNodeKind::Class: {
+    case ParseNodeKind::ClassDecl: {
       const ClassNode& cls = kid->as<ClassNode>();
       MOZ_ASSERT(cls.names());
       RootedAtom localName(cx_, cls.names()->innerBinding()->atom());
@@ -1346,13 +1351,13 @@ bool ModuleBuilder::processExport(frontend::ParseNode* exportNode) {
       break;
     }
 
-    case ParseNodeKind::Var:
-    case ParseNodeKind::Const:
-    case ParseNodeKind::Let: {
+    case ParseNodeKind::VarStmt:
+    case ParseNodeKind::ConstDecl:
+    case ParseNodeKind::LetDecl: {
       RootedAtom localName(cx_);
       RootedAtom exportName(cx_);
       for (ParseNode* binding : kid->as<ListNode>().contents()) {
-        if (binding->isKind(ParseNodeKind::Assign)) {
+        if (binding->isKind(ParseNodeKind::AssignExpr)) {
           binding = binding->as<AssignmentNode>().left();
         } else {
           MOZ_ASSERT(binding->isKind(ParseNodeKind::Name));
@@ -1364,12 +1369,12 @@ bool ModuleBuilder::processExport(frontend::ParseNode* exportNode) {
           if (!appendExportEntry(exportName, localName)) {
             return false;
           }
-        } else if (binding->isKind(ParseNodeKind::Array)) {
+        } else if (binding->isKind(ParseNodeKind::ArrayExpr)) {
           if (!processExportArrayBinding(&binding->as<ListNode>())) {
             return false;
           }
         } else {
-          MOZ_ASSERT(binding->isKind(ParseNodeKind::Object));
+          MOZ_ASSERT(binding->isKind(ParseNodeKind::ObjectExpr));
           if (!processExportObjectBinding(&binding->as<ListNode>())) {
             return false;
           }
@@ -1406,18 +1411,18 @@ bool ModuleBuilder::processExportBinding(frontend::ParseNode* binding) {
     return appendExportEntry(name, name);
   }
 
-  if (binding->isKind(ParseNodeKind::Array)) {
+  if (binding->isKind(ParseNodeKind::ArrayExpr)) {
     return processExportArrayBinding(&binding->as<ListNode>());
   }
 
-  MOZ_ASSERT(binding->isKind(ParseNodeKind::Object));
+  MOZ_ASSERT(binding->isKind(ParseNodeKind::ObjectExpr));
   return processExportObjectBinding(&binding->as<ListNode>());
 }
 
 bool ModuleBuilder::processExportArrayBinding(frontend::ListNode* array) {
   using namespace js::frontend;
 
-  MOZ_ASSERT(array->isKind(ParseNodeKind::Array));
+  MOZ_ASSERT(array->isKind(ParseNodeKind::ArrayExpr));
 
   for (ParseNode* node : array->contents()) {
     if (node->isKind(ParseNodeKind::Elision)) {
@@ -1426,7 +1431,7 @@ bool ModuleBuilder::processExportArrayBinding(frontend::ListNode* array) {
 
     if (node->isKind(ParseNodeKind::Spread)) {
       node = node->as<UnaryNode>().kid();
-    } else if (node->isKind(ParseNodeKind::Assign)) {
+    } else if (node->isKind(ParseNodeKind::AssignExpr)) {
       node = node->as<AssignmentNode>().left();
     }
 
@@ -1441,7 +1446,7 @@ bool ModuleBuilder::processExportArrayBinding(frontend::ListNode* array) {
 bool ModuleBuilder::processExportObjectBinding(frontend::ListNode* obj) {
   using namespace js::frontend;
 
-  MOZ_ASSERT(obj->isKind(ParseNodeKind::Object));
+  MOZ_ASSERT(obj->isKind(ParseNodeKind::ObjectExpr));
 
   for (ParseNode* node : obj->contents()) {
     MOZ_ASSERT(node->isKind(ParseNodeKind::MutateProto) ||
@@ -1459,7 +1464,7 @@ bool ModuleBuilder::processExportObjectBinding(frontend::ListNode* obj) {
         target = node->as<BinaryNode>().right();
       }
 
-      if (target->isKind(ParseNodeKind::Assign)) {
+      if (target->isKind(ParseNodeKind::AssignExpr)) {
         target = target->as<AssignmentNode>().left();
       }
     }
@@ -1475,13 +1480,13 @@ bool ModuleBuilder::processExportObjectBinding(frontend::ListNode* obj) {
 bool ModuleBuilder::processExportFrom(frontend::BinaryNode* exportNode) {
   using namespace js::frontend;
 
-  MOZ_ASSERT(exportNode->isKind(ParseNodeKind::ExportFrom));
+  MOZ_ASSERT(exportNode->isKind(ParseNodeKind::ExportFromStmt));
 
   ListNode* specList = &exportNode->left()->as<ListNode>();
   MOZ_ASSERT(specList->isKind(ParseNodeKind::ExportSpecList));
 
   NameNode* moduleSpec = &exportNode->right()->as<NameNode>();
-  MOZ_ASSERT(moduleSpec->isKind(ParseNodeKind::String));
+  MOZ_ASSERT(moduleSpec->isKind(ParseNodeKind::StringExpr));
 
   RootedAtom module(cx_, moduleSpec->atom());
   if (!maybeAppendRequestedModule(module, moduleSpec)) {
@@ -1502,7 +1507,7 @@ bool ModuleBuilder::processExportFrom(frontend::BinaryNode* exportNode) {
         return false;
       }
     } else {
-      MOZ_ASSERT(spec->isKind(ParseNodeKind::ExportBatchSpec));
+      MOZ_ASSERT(spec->isKind(ParseNodeKind::ExportBatchSpecStmt));
       exportName = cx_->names().star;
       if (!appendExportFromEntry(nullptr, module, exportName, spec)) {
         return false;
@@ -1674,8 +1679,7 @@ JSObject* js::CallModuleResolveHook(JSContext* cx,
   return result;
 }
 
-JSObject* js::StartDynamicModuleImport(JSContext* cx,
-                                       HandleValue referencingPrivate,
+JSObject* js::StartDynamicModuleImport(JSContext* cx, HandleScript script,
                                        HandleValue specifierArg) {
   RootedObject promiseConstructor(cx, JS::GetPromiseConstructor(cx));
   if (!promiseConstructor) {
@@ -1707,7 +1711,13 @@ JSObject* js::StartDynamicModuleImport(JSContext* cx,
     return promise;
   }
 
+  RootedValue referencingPrivate(cx,
+                                 script->sourceObject()->canonicalPrivate());
+  cx->runtime()->addRefScriptPrivate(referencingPrivate);
+
   if (!importHook(cx, referencingPrivate, specifier, promise)) {
+    cx->runtime()->releaseScriptPrivate(referencingPrivate);
+
     // If there's no exception pending then the script is terminating
     // anyway, so just return nullptr.
     if (!cx->isExceptionPending() ||
@@ -1725,6 +1735,10 @@ bool js::FinishDynamicModuleImport(JSContext* cx,
                                    HandleString specifier,
                                    HandleObject promiseArg) {
   Handle<PromiseObject*> promise = promiseArg.as<PromiseObject>();
+
+  auto releasePrivate = mozilla::MakeScopeExit([&] {
+    cx->runtime()->releaseScriptPrivate(referencingPrivate);
+  });
 
   if (cx->isExceptionPending()) {
     return RejectPromiseWithPendingError(cx, promise);

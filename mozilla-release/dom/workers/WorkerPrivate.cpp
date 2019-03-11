@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "js/CompilationAndEvaluation.h"
+#include "js/ContextOptions.h"
 #include "js/LocaleSensitive.h"
 #include "js/MemoryMetrics.h"
 #include "js/SourceText.h"
@@ -72,7 +73,7 @@
 #include "nsThreadManager.h"
 
 #ifdef XP_WIN
-#undef PostMessage
+#  undef PostMessage
 #endif
 
 // JS_MaybeGC will run once every second during normal execution.
@@ -89,7 +90,7 @@ mozilla::LogModule* WorkerLog() { return sWorkerPrivateLog; }
 mozilla::LogModule* TimeoutsLog() { return sWorkerTimeoutsLog; }
 
 #ifdef LOG
-#undef LOG
+#  undef LOG
 #endif
 #define LOG(log, _args) MOZ_LOG(log, LogLevel::Debug, _args);
 
@@ -1225,7 +1226,7 @@ WorkerPrivate::SyncLoopInfo::SyncLoopInfo(EventTarget* aEventTarget)
 {
 }
 
-nsIDocument* WorkerPrivate::GetDocument() const {
+Document* WorkerPrivate::GetDocument() const {
   AssertIsOnMainThread();
   if (mLoadInfo.mWindow) {
     return mLoadInfo.mWindow->GetExtantDoc();
@@ -2339,7 +2340,7 @@ nsresult WorkerPrivate::GetLoadInfo(JSContext* aCx, nsPIDOMWindowInner* aWindow,
       globalWindow = xpc::CurrentWindowOrNull(aCx);
     }
 
-    nsCOMPtr<nsIDocument> document;
+    nsCOMPtr<Document> document;
     Maybe<ClientInfo> clientInfo;
 
     if (globalWindow) {
@@ -2388,7 +2389,7 @@ nsresult WorkerPrivate::GetLoadInfo(JSContext* aCx, nsPIDOMWindowInner* aWindow,
         // one. If we can't find one, we fall back to using the GUID of the
         // null principal as the base domain.
         if (document->GetSandboxFlags() & SANDBOXED_ORIGIN) {
-          nsCOMPtr<nsIDocument> tmpDoc = document;
+          nsCOMPtr<Document> tmpDoc = document;
           do {
             tmpDoc = tmpDoc->GetParentDocument();
           } while (tmpDoc && tmpDoc->GetSandboxFlags() & SANDBOXED_ORIGIN);
@@ -2991,6 +2992,13 @@ void WorkerPrivate::ShutdownGCTimers() {
 bool WorkerPrivate::InterruptCallback(JSContext* aCx) {
   MOZ_ACCESS_THREAD_BOUND(mWorkerThreadAccessible, data);
 
+  // If we are here it's because a WorkerControlRunnable has been dispatched.
+  // The runnable could be processed here or it could have already been
+  // processed by a sync event loop.
+  // The most important thing this method must do, is to decide if the JS
+  // execution should continue or not. If the runnable returns an error or if
+  // the worker status is >= Canceling, we should stop the JS execution.
+
   MOZ_ASSERT(!JS_IsExceptionPending(aCx));
 
   bool mayContinue = true;
@@ -3004,9 +3012,17 @@ bool WorkerPrivate::InterruptCallback(JSContext* aCx) {
     }
 
     bool mayFreeze = data->mFrozen;
-    if (mayFreeze) {
+
+    {
       MutexAutoLock lock(mMutex);
-      mayFreeze = mStatus <= Running;
+
+      if (mayFreeze) {
+        mayFreeze = mStatus <= Running;
+      }
+
+      if (mStatus >= Canceling) {
+        mayContinue = false;
+      }
     }
 
     if (!mayContinue || !mayFreeze) {
@@ -3510,10 +3526,11 @@ bool WorkerPrivate::RunCurrentSyncLoop() {
 
         auto result = ProcessAllControlRunnablesLocked();
         if (result != ProcessAllControlRunnablesResult::Nothing) {
-          // XXXkhuey how should we handle Abort here? See Bug 1003730.
-
-          // The state of the world may have changed. Recheck it.
-          normalRunnablesPending = NS_HasPendingEvents(mThread);
+          // The state of the world may have changed. Recheck it if we need to
+          // continue.
+          normalRunnablesPending =
+              result == ProcessAllControlRunnablesResult::MayContinue &&
+              NS_HasPendingEvents(mThread);
 
           // NB: If we processed a NotifyRunnable, we might have run
           // non-control runnables, one of which may have shut down the
@@ -4374,13 +4391,13 @@ void WorkerPrivate::GarbageCollectInternal(JSContext* aCx, bool aShrinking,
     JS::PrepareForFullGC(aCx);
 
     if (aShrinking) {
-      JS::NonIncrementalGC(aCx, GC_SHRINK, JS::gcreason::DOM_WORKER);
+      JS::NonIncrementalGC(aCx, GC_SHRINK, JS::GCReason::DOM_WORKER);
 
       if (!aCollectChildren) {
         LOG(WorkerLog(), ("Worker %p collected idle garbage\n", this));
       }
     } else {
-      JS::NonIncrementalGC(aCx, GC_NORMAL, JS::gcreason::DOM_WORKER);
+      JS::NonIncrementalGC(aCx, GC_NORMAL, JS::GCReason::DOM_WORKER);
       LOG(WorkerLog(), ("Worker %p collected garbage\n", this));
     }
   } else {

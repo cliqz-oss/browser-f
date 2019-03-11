@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/dom/PaymentRequestUpdateEvent.h"
+#include "mozilla/dom/RootedDictionary.h"
 
 namespace mozilla {
 namespace dom {
@@ -52,13 +53,16 @@ void PaymentRequestUpdateEvent::ResolvedCallback(JSContext* aCx,
                                                  JS::Handle<JS::Value> aValue) {
   MOZ_ASSERT(aCx);
   MOZ_ASSERT(mRequest);
+  if (!mRequest->InFullyActiveDocument()) {
+    return;
+  }
 
   if (NS_WARN_IF(!aValue.isObject()) || !mWaitForUpdate) {
     return;
   }
 
   // Converting value to a PaymentDetailsUpdate dictionary
-  PaymentDetailsUpdate details;
+  RootedDictionary<PaymentDetailsUpdate> details(aCx);
   if (!details.Init(aCx, aValue)) {
     mRequest->AbortUpdate(NS_ERROR_TYPE_ERR);
     JS_ClearPendingException(aCx);
@@ -89,6 +93,9 @@ void PaymentRequestUpdateEvent::ResolvedCallback(JSContext* aCx,
 void PaymentRequestUpdateEvent::RejectedCallback(JSContext* aCx,
                                                  JS::Handle<JS::Value> aValue) {
   MOZ_ASSERT(mRequest);
+  if (!mRequest->InFullyActiveDocument()) {
+    return;
+  }
 
   mRequest->AbortUpdate(NS_ERROR_DOM_ABORT_ERR);
   mWaitForUpdate = false;
@@ -103,6 +110,9 @@ void PaymentRequestUpdateEvent::UpdateWith(Promise& aPromise,
   }
 
   MOZ_ASSERT(mRequest);
+  if (!mRequest->InFullyActiveDocument()) {
+    return;
+  }
 
   if (mWaitForUpdate || !mRequest->ReadyForUpdate()) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);

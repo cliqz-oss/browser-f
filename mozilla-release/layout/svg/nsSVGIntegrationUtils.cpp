@@ -18,7 +18,7 @@
 #include "gfxContext.h"
 #include "nsSVGClipPathFrame.h"
 #include "SVGObserverUtils.h"
-#include "nsSVGElement.h"
+#include "SVGElement.h"
 #include "nsSVGFilterPaintCallback.h"
 #include "nsSVGMaskFrame.h"
 #include "nsSVGPaintServerFrame.h"
@@ -608,7 +608,7 @@ static bool ValidateSVGFrame(nsIFrame* aFrame) {
 #endif
 
     const nsIContent* content = aFrame->GetContent();
-    if (!static_cast<const nsSVGElement*>(content)->HasValidDimensions()) {
+    if (!static_cast<const SVGElement*>(content)->HasValidDimensions()) {
       // The SVG spec says not to draw _anything_
       return false;
     }
@@ -1086,12 +1086,10 @@ void nsSVGIntegrationUtils::PaintFilter(const PaintFramesParams& aParams) {
 }
 
 bool nsSVGIntegrationUtils::BuildWebRenderFilters(
-    nsIFrame* aFilteredFrame,
-    const mozilla::LayoutDeviceIntRect& aPreFilterBounds,
-    nsTArray<mozilla::wr::WrFilterOp>& aWrFilters,
-    mozilla::LayoutDeviceIntRect& aPostFilterBounds) {
-  return nsFilterInstance::BuildWebRenderFilters(
-      aFilteredFrame, aPreFilterBounds, aWrFilters, aPostFilterBounds);
+    nsIFrame* aFilteredFrame, nsTArray<mozilla::wr::FilterOp>& aWrFilters,
+    Maybe<nsRect>& aPostFilterClip) {
+  return nsFilterInstance::BuildWebRenderFilters(aFilteredFrame, aWrFilters,
+                                                 aPostFilterClip);
 }
 
 class PaintFrameCallback : public gfxDrawingCallback {
@@ -1117,7 +1115,9 @@ bool PaintFrameCallback::operator()(gfxContext* aContext,
                                     const gfxRect& aFillRect,
                                     const SamplingFilter aSamplingFilter,
                                     const gfxMatrix& aTransform) {
-  if (mFrame->GetStateBits() & NS_FRAME_DRAWING_AS_PAINTSERVER) return false;
+  if (mFrame->GetStateBits() & NS_FRAME_DRAWING_AS_PAINTSERVER) {
+    return false;
+  }
 
   AutoSetRestorePaintServerState paintServer(mFrame);
 
@@ -1211,7 +1211,9 @@ nsSVGIntegrationUtils::DrawableFromPaintServer(
         aTarget, aDrawTarget, aContextMatrix, &nsStyleSVG::mFill, 1.0,
         imgParams, &overrideBounds);
 
-    if (!pattern) return nullptr;
+    if (!pattern) {
+      return nullptr;
+    }
 
     // pattern is now set up to fill aPaintServerSize. But we want it to
     // fill aRenderSize, so we need to add a scaling transform.

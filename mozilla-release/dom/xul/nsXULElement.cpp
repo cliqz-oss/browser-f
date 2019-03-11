@@ -12,7 +12,7 @@
 #include "nsIDOMEventListener.h"
 #include "nsIDOMXULCommandDispatcher.h"
 #include "nsIDOMXULSelectCntrlItemEl.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/EventListenerManager.h"
 #include "mozilla/EventStateManager.h"
@@ -77,7 +77,7 @@
 #include "XULFrameElement.h"
 #include "XULMenuElement.h"
 #include "XULPopupElement.h"
-#include "XULScrollElement.h"
+#include "XULTreeElement.h"
 
 #include "mozilla/dom/XULElementBinding.h"
 #include "mozilla/dom/BoxObject.h"
@@ -166,8 +166,8 @@ nsXULElement* nsXULElement::Construct(
     return new XULMenuElement(nodeInfo.forget());
   }
 
-  if (nodeInfo->Equals(nsGkAtoms::scrollbox)) {
-    return new XULScrollElement(nodeInfo.forget());
+  if (nodeInfo->Equals(nsGkAtoms::tree)) {
+    return new XULTreeElement(nodeInfo.forget());
   }
 
   return NS_NewBasicXULElement(nodeInfo.forget());
@@ -220,7 +220,7 @@ already_AddRefed<nsXULElement> nsXULElement::CreateFromPrototype(
 }
 
 nsresult nsXULElement::CreateFromPrototype(nsXULPrototypeElement* aPrototype,
-                                           nsIDocument* aDocument,
+                                           Document* aDocument,
                                            bool aIsScriptable, bool aIsRoot,
                                            Element** aResult) {
   // Create an nsXULElement from a prototype
@@ -258,7 +258,7 @@ nsresult NS_NewXULElement(Element** aResult,
       nodeInfo->NamespaceEquals(kNameSpaceID_XUL),
       "Trying to create XUL elements that don't have the XUL namespace");
 
-  nsIDocument* doc = nodeInfo->GetDocument();
+  Document* doc = nodeInfo->GetDocument();
   if (doc && !doc->AllowXULXBL()) {
     return NS_ERROR_NOT_AVAILABLE;
   }
@@ -296,16 +296,6 @@ NS_IMPL_RELEASE_INHERITED(nsXULElement, nsStyledElement)
 
 NS_INTERFACE_TABLE_HEAD_CYCLE_COLLECTION_INHERITED(nsXULElement)
   NS_ELEMENT_INTERFACE_TABLE_TO_MAP_SEGUE
-
-  nsCOMPtr<nsISupports> iface =
-      CustomElementRegistry::CallGetCustomInterface(this, aIID);
-  if (iface) {
-    iface->QueryInterface(aIID, aInstancePtr);
-    if (*aInstancePtr) {
-      return NS_OK;
-    }
-  }
-
 NS_INTERFACE_MAP_END_INHERITING(nsStyledElement)
 
 //----------------------------------------------------------------------
@@ -376,7 +366,7 @@ EventListenerManager* nsXULElement::GetEventListenerManagerForAttr(
   // XXXbz sXBL/XBL2 issue: should we instead use GetComposedDoc()
   // here, override BindToTree for those classes and munge event
   // listeners there?
-  nsIDocument* doc = OwnerDoc();
+  Document* doc = OwnerDoc();
 
   nsPIDOMWindowInner* window;
   Element* root = doc->GetRootElement();
@@ -437,7 +427,7 @@ bool nsXULElement::IsFocusableInternal(int32_t* aTabIndex, bool aWithMouse) {
   }
 #endif
 
-  nsCOMPtr<nsIDOMXULControlElement> xulControl = do_QueryObject(this);
+  nsCOMPtr<nsIDOMXULControlElement> xulControl = AsXULControl();
   if (xulControl) {
     // a disabled element cannot be focused and is not part of the tab order
     bool disabled;
@@ -517,7 +507,7 @@ bool nsXULElement::PerformAccesskey(bool aKeyCausesActivation,
 
     // XXXsmaug Should we use ShadowRoot::GetElementById in case
     //         content is in Shadow DOM?
-    nsCOMPtr<nsIDocument> document = content->GetUncomposedDoc();
+    nsCOMPtr<Document> document = content->GetUncomposedDoc();
     if (!document) {
       return false;
     }
@@ -543,15 +533,13 @@ bool nsXULElement::PerformAccesskey(bool aKeyCausesActivation,
         nsCOMPtr<Element> elementToFocus;
         // for radio buttons, focus the radiogroup instead
         if (content->IsXULElement(nsGkAtoms::radio)) {
-          nsCOMPtr<nsIDOMXULSelectControlItemElement> controlItem(
-              do_QueryInterface(content));
+          nsCOMPtr<nsIDOMXULSelectControlItemElement> controlItem =
+              content->AsXULSelectControlItem();
           if (controlItem) {
             bool disabled;
             controlItem->GetDisabled(&disabled);
             if (!disabled) {
-              nsCOMPtr<nsIDOMXULSelectControlElement> selectControl;
-              controlItem->GetControl(getter_AddRefs(selectControl));
-              elementToFocus = do_QueryInterface(selectControl);
+              controlItem->GetControl(getter_AddRefs(elementToFocus));
             }
           }
         } else {
@@ -622,16 +610,16 @@ void nsXULElement::UpdateEditableState(bool aNotify) {
 
 class XULInContentErrorReporter : public Runnable {
  public:
-  explicit XULInContentErrorReporter(nsIDocument* aDocument)
+  explicit XULInContentErrorReporter(Document* aDocument)
       : mozilla::Runnable("XULInContentErrorReporter"), mDocument(aDocument) {}
 
   NS_IMETHOD Run() override {
-    mDocument->WarnOnceAbout(nsIDocument::eImportXULIntoContent, false);
+    mDocument->WarnOnceAbout(Document::eImportXULIntoContent, false);
     return NS_OK;
   }
 
  private:
-  nsCOMPtr<nsIDocument> mDocument;
+  nsCOMPtr<Document> mDocument;
 };
 
 static bool NeedTooltipSupport(const nsXULElement& aXULElement) {
@@ -645,18 +633,18 @@ static bool NeedTooltipSupport(const nsXULElement& aXULElement) {
          aXULElement.GetBoolAttr(nsGkAtoms::tooltiptext);
 }
 
-nsresult nsXULElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
+nsresult nsXULElement::BindToTree(Document* aDocument, nsIContent* aParent,
                                   nsIContent* aBindingParent) {
   if (!aBindingParent && aDocument && !aDocument->IsLoadedAsInteractiveData() &&
       !aDocument->AllowXULXBL() &&
-      !aDocument->HasWarnedAbout(nsIDocument::eImportXULIntoContent)) {
+      !aDocument->HasWarnedAbout(Document::eImportXULIntoContent)) {
     nsContentUtils::AddScriptRunner(new XULInContentErrorReporter(aDocument));
   }
 
   nsresult rv = nsStyledElement::BindToTree(aDocument, aParent, aBindingParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsIDocument* doc = GetComposedDoc();
+  Document* doc = GetComposedDoc();
 #ifdef DEBUG
   if (doc && !doc->AllowXULXBL() && !doc->IsUnstyledDocument()) {
     // To save CPU cycles and memory, non-XUL documents only load the user
@@ -708,7 +696,7 @@ void nsXULElement::UnbindFromTree(bool aDeep, bool aNullParent) {
     RemoveTooltipSupport();
   }
 
-  nsIDocument* doc = GetComposedDoc();
+  Document* doc = GetComposedDoc();
   if (doc && doc->HasXULBroadcastManager() &&
       XULBroadcastManager::MayNeedListener(*this)) {
     RefPtr<XULBroadcastManager> broadcastManager =
@@ -738,7 +726,7 @@ void nsXULElement::UnbindFromTree(bool aDeep, bool aNullParent) {
 void nsXULElement::UnregisterAccessKey(const nsAString& aOldValue) {
   // If someone changes the accesskey, unregister the old one
   //
-  nsIDocument* doc = GetComposedDoc();
+  Document* doc = GetComposedDoc();
   if (doc && !aOldValue.IsEmpty()) {
     nsIPresShell* shell = doc->GetShell();
 
@@ -783,7 +771,7 @@ nsresult nsXULElement::BeforeSetAttr(int32_t aNamespaceID, nsAtom* aName,
       GetAttr(kNameSpaceID_None, nsGkAtoms::command, oldValue);
     }
 
-    nsIDocument* doc = GetUncomposedDoc();
+    Document* doc = GetUncomposedDoc();
     if (!oldValue.IsEmpty() && doc->HasXULBroadcastManager()) {
       RefPtr<XULBroadcastManager> broadcastManager =
           doc->GetXULBroadcastManager();
@@ -831,7 +819,7 @@ nsresult nsXULElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
         }
       }
 
-      nsIDocument* document = GetUncomposedDoc();
+      Document* document = GetUncomposedDoc();
 
       // Hide chrome if needed
       if (mNodeInfo->Equals(nsGkAtoms::window)) {
@@ -881,7 +869,7 @@ nsresult nsXULElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
         }
       }
 
-      nsIDocument* doc = GetUncomposedDoc();
+      Document* doc = GetUncomposedDoc();
       if (doc && doc->GetRootElement() == this) {
         if (aName == nsGkAtoms::localedir) {
           // if the localedir changed on the root element, reset the document
@@ -914,7 +902,7 @@ nsresult nsXULElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
         }
       }
     }
-    nsIDocument* doc = GetComposedDoc();
+    Document* doc = GetComposedDoc();
     if (doc && doc->HasXULBroadcastManager()) {
       RefPtr<XULBroadcastManager> broadcastManager =
           doc->GetXULBroadcastManager();
@@ -1004,7 +992,7 @@ bool nsXULElement::IsEventStoppedFromAnonymousScrollbar(EventMessage aMessage) {
 nsresult nsXULElement::DispatchXULCommand(const EventChainVisitor& aVisitor,
                                           nsAutoString& aCommand) {
   // XXX sXBL/XBL2 issue! Owner or current document?
-  nsCOMPtr<nsIDocument> doc = GetUncomposedDoc();
+  nsCOMPtr<Document> doc = GetUncomposedDoc();
   NS_ENSURE_STATE(doc);
   RefPtr<Element> commandElt = doc->GetElementById(aCommand);
   if (commandElt) {
@@ -1138,7 +1126,7 @@ void nsXULElement::ClickWithInputSource(uint16_t aInputSource,
                                         bool aIsTrustedEvent) {
   if (BoolAttrIsTrue(nsGkAtoms::disabled)) return;
 
-  nsCOMPtr<nsIDocument> doc = GetComposedDoc();  // Strong just in case
+  nsCOMPtr<Document> doc = GetComposedDoc();  // Strong just in case
   if (doc) {
     RefPtr<nsPresContext> context = doc->GetPresContext();
     if (context) {
@@ -1181,7 +1169,7 @@ void nsXULElement::ClickWithInputSource(uint16_t aInputSource,
 }
 
 void nsXULElement::DoCommand() {
-  nsCOMPtr<nsIDocument> doc = GetComposedDoc();  // strong just in case
+  nsCOMPtr<Document> doc = GetComposedDoc();  // strong just in case
   if (doc) {
     nsContentUtils::DispatchXULCommand(this, true);
   }
@@ -1269,7 +1257,7 @@ nsresult nsXULElement::MakeHeavyweight(nsXULPrototypeElement* aPrototype) {
 }
 
 nsresult nsXULElement::HideWindowChrome(bool aShouldHide) {
-  nsIDocument* doc = GetUncomposedDoc();
+  Document* doc = GetUncomposedDoc();
   if (!doc || doc->GetRootElement() != this) return NS_ERROR_UNEXPECTED;
 
   // only top level chrome documents can hide the window chrome
@@ -1295,7 +1283,7 @@ nsresult nsXULElement::HideWindowChrome(bool aShouldHide) {
 }
 
 nsIWidget* nsXULElement::GetWindowWidget() {
-  nsIDocument* doc = GetComposedDoc();
+  Document* doc = GetComposedDoc();
 
   // only top level chrome documents can set the titlebar color
   if (doc && doc->IsRootDisplayDocument()) {
@@ -1347,13 +1335,13 @@ void nsXULElement::SetDrawsTitle(bool aState) {
   }
 }
 
-void nsXULElement::UpdateBrightTitlebarForeground(nsIDocument* aDoc) {
+void nsXULElement::UpdateBrightTitlebarForeground(Document* aDoc) {
   nsIWidget* mainWidget = GetWindowWidget();
   if (mainWidget) {
     // We can do this synchronously because SetBrightTitlebarForeground doesn't
     // have any synchronous effects apart from a harmless invalidation.
     mainWidget->SetUseBrightTitlebarForeground(
-        aDoc->GetDocumentLWTheme() == nsIDocument::Doc_Theme_Bright ||
+        aDoc->GetDocumentLWTheme() == Document::Doc_Theme_Bright ||
         aDoc->GetRootElement()->AttrValueIs(
             kNameSpaceID_None, nsGkAtoms::brighttitlebarforeground,
             NS_LITERAL_STRING("true"), eCaseMatters));
@@ -1446,6 +1434,11 @@ bool nsXULElement::IsEventAttributeNameInternal(nsAtom* aName) {
 JSObject* nsXULElement::WrapNode(JSContext* aCx,
                                  JS::Handle<JSObject*> aGivenProto) {
   return dom::XULElement_Binding::Wrap(aCx, this, aGivenProto);
+}
+
+bool nsXULElement::IsInteractiveHTMLContent(bool aIgnoreTabindex) const {
+  return IsXULElement(nsGkAtoms::menupopup) ||
+         Element::IsInteractiveHTMLContent(aIgnoreTabindex);
 }
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(nsXULPrototypeNode)
@@ -1741,6 +1734,15 @@ nsresult nsXULPrototypeElement::SetAttrAt(uint32_t aPos,
   // Any changes should be made to both functions.
 
   if (!mNodeInfo->NamespaceEquals(kNameSpaceID_XUL)) {
+    if (mNodeInfo->NamespaceEquals(kNameSpaceID_XHTML) &&
+        mAttributes[aPos].mName.Equals(nsGkAtoms::is)) {
+      // We still care about the is attribute set on HTML elements.
+      mAttributes[aPos].mValue.ParseAtom(aValue);
+      mIsAtom = mAttributes[aPos].mValue.GetAtomValue();
+
+      return NS_OK;
+    }
+
     mAttributes[aPos].mValue.ParseStringOrAtom(aValue);
 
     return NS_OK;
@@ -2079,7 +2081,7 @@ static void OffThreadScriptReceiverCallback(JS::OffThreadToken* aToken,
 
 nsresult nsXULPrototypeScript::Compile(
     const char16_t* aText, size_t aTextLength, JS::SourceOwnership aOwnership,
-    nsIURI* aURI, uint32_t aLineNo, nsIDocument* aDocument,
+    nsIURI* aURI, uint32_t aLineNo, Document* aDocument,
     nsIOffThreadScriptReceiver* aOffThreadReceiver /* = nullptr */) {
   // We'll compile the script in the compilation scope.
   AutoJSAPI jsapi;

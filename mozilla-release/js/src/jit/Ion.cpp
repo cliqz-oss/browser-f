@@ -36,7 +36,6 @@
 #include "jit/LICM.h"
 #include "jit/Linker.h"
 #include "jit/LIR.h"
-#include "jit/LoopUnroller.h"
 #include "jit/Lowering.h"
 #include "jit/PerfSpewer.h"
 #include "jit/RangeAnalysis.h"
@@ -67,7 +66,7 @@
 #include "vm/Stack-inl.h"
 
 #if defined(ANDROID)
-#include <sys/system_properties.h>
+#  include <sys/system_properties.h>
 #endif
 
 using namespace js;
@@ -99,9 +98,11 @@ JitContext::JitContext(CompileRuntime* rt, CompileRealm* realm,
     : cx(nullptr),
       temp(temp),
       runtime(rt),
-      realm(realm),
-      zone(realm ? realm->zone() : nullptr),
       prev_(CurrentJitContext()),
+      realm_(realm),
+#ifdef DEBUG
+      isCompilingWasm_(!realm),
+#endif
       assemblerCount_(0) {
   SetJitContext(this);
 }
@@ -110,9 +111,11 @@ JitContext::JitContext(JSContext* cx, TempAllocator* temp)
     : cx(cx),
       temp(temp),
       runtime(CompileRuntime::get(cx->runtime())),
-      realm(CompileRealm::get(cx->realm())),
-      zone(CompileZone::get(cx->zone())),
       prev_(CurrentJitContext()),
+      realm_(CompileRealm::get(cx->realm())),
+#ifdef DEBUG
+      isCompilingWasm_(false),
+#endif
       assemblerCount_(0) {
   SetJitContext(this);
 }
@@ -1471,17 +1474,6 @@ bool OptimizeMIR(MIRGenerator* mir) {
         return false;
       }
     }
-
-    if (mir->optimizationInfo().loopUnrollingEnabled()) {
-      AutoTraceLog log(logger, TraceLogger_LoopUnrolling);
-
-      if (!UnrollLoops(graph, r.loopIterationBounds)) {
-        return false;
-      }
-
-      gs.spewPass("Unroll Loops");
-      AssertExtendedGraphCoherency(graph);
-    }
   }
 
   if (!JitOptions.disableRecoverIns) {
@@ -2169,7 +2161,7 @@ static bool CanIonCompileOrInlineScript(JSScript* script, const char** reason) {
     return false;
   }
 
-  if (script->nTypeSets() >= UINT16_MAX) {
+  if (script->numBytecodeTypeSets() >= JSScript::MaxBytecodeTypeSets) {
     // In this case multiple bytecode ops can share a single observed
     // TypeSet (see bug 1303710).
     *reason = "too many typesets";
@@ -2669,7 +2661,7 @@ static void InvalidateActivation(FreeOp* fop,
                 frame.script()->maybeForwardedFilename(),
                 frame.script()->lineno(), frame.script()->column(),
                 frame.maybeCallee(), (JSScript*)frame.script(),
-                frame.returnAddressToFp());
+                frame.resumePCinCurrentFrame());
         break;
       }
       case FrameType::BaselineStub:
@@ -2768,10 +2760,10 @@ static void InvalidateActivation(FreeOp* fop,
     // construction.
     AutoWritableJitCode awjc(ionCode);
     const SafepointIndex* si =
-        ionScript->getSafepointIndex(frame.returnAddressToFp());
-    CodeLocationLabel dataLabelToMunge(frame.returnAddressToFp());
+        ionScript->getSafepointIndex(frame.resumePCinCurrentFrame());
+    CodeLocationLabel dataLabelToMunge(frame.resumePCinCurrentFrame());
     ptrdiff_t delta = ionScript->invalidateEpilogueDataOffset() -
-                      (frame.returnAddressToFp() - ionCode->raw());
+                      (frame.resumePCinCurrentFrame() - ionCode->raw());
     Assembler::PatchWrite_Imm32(dataLabelToMunge, Imm32(delta));
 
     CodeLocationLabel osiPatchPoint =
@@ -3094,9 +3086,9 @@ AutoFlushICache::AutoFlushICache(const char* nonce, bool inhibit)
     defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
     : start_(0),
       stop_(0),
-#ifdef JS_JITSPEW
+#  ifdef JS_JITSPEW
       name_(nonce),
-#endif
+#  endif
       inhibit_(inhibit)
 #endif
 {

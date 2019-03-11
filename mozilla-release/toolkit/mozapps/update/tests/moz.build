@@ -62,13 +62,12 @@ if CONFIG['OS_ARCH'] == 'WINNT':
         WIN32_EXE_LDFLAGS += ['-municode']
 
 TEST_HARNESS_FILES.testing.mochitest.browser.toolkit.mozapps.update.tests.browser += [
-    'chrome/update.sjs',
     'data/shared.js',
     'data/sharedUpdateXML.js',
     'data/simple.mar',
 ]
 
-TEST_HARNESS_FILES.testing.mochitest.chrome.toolkit.mozapps.update.tests.data += [
+TEST_HARNESS_FILES.testing.mochitest.chrome.toolkit.mozapps.update.tests.chrome += [
     'data/shared.js',
     'data/sharedUpdateXML.js',
     'data/simple.mar',

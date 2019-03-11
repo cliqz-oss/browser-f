@@ -137,6 +137,37 @@ void DeviceManagerDx::ReleaseD3D11() {
   sD3D11CreateDeviceFn = nullptr;
 }
 
+nsTArray<DXGI_OUTPUT_DESC1> DeviceManagerDx::EnumerateOutputs() {
+  RefPtr<IDXGIAdapter> adapter = GetDXGIAdapter();
+
+  if (!adapter) {
+    NS_WARNING("Failed to acquire a DXGI adapter for enumerating outputs.");
+    return nsTArray<DXGI_OUTPUT_DESC1>();
+  }
+
+  nsTArray<DXGI_OUTPUT_DESC1> outputs;
+  for (UINT i = 0;; ++i) {
+    RefPtr<IDXGIOutput> output = nullptr;
+    if (FAILED(adapter->EnumOutputs(i, getter_AddRefs(output)))) {
+      break;
+    }
+
+    RefPtr<IDXGIOutput6> output6 = nullptr;
+    if (FAILED(output->QueryInterface(__uuidof(IDXGIOutput6),
+                                      getter_AddRefs(output6)))) {
+      break;
+    }
+
+    DXGI_OUTPUT_DESC1 desc;
+    if (FAILED(output6->GetDesc1(&desc))) {
+      break;
+    }
+
+    outputs.AppendElement(desc);
+  }
+  return outputs;
+}
+
 static inline bool ProcessOwnsCompositor() {
   return XRE_GetProcessType() == GeckoProcessType_GPU ||
          XRE_GetProcessType() == GeckoProcessType_VR ||
@@ -991,6 +1022,9 @@ RefPtr<ID3D11Device> DeviceManagerDx::GetCompositorDevice() {
 }
 
 RefPtr<ID3D11Device> DeviceManagerDx::GetContentDevice() {
+  MOZ_ASSERT(XRE_IsGPUProcess() ||
+             gfxPlatform::GetPlatform()->DevicesInitialized());
+
   MutexAutoLock lock(mDeviceLock);
   return mContentDevice;
 }

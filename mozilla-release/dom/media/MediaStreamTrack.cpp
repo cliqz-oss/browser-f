@@ -9,6 +9,7 @@
 #include "MediaStreamError.h"
 #include "MediaStreamGraph.h"
 #include "MediaStreamListener.h"
+#include "mozilla/BasePrincipal.h"
 #include "mozilla/dom/Promise.h"
 #include "nsContentUtils.h"
 #include "nsIUUIDGenerator.h"
@@ -16,7 +17,7 @@
 #include "systemservices/MediaUtils.h"
 
 #ifdef LOG
-#undef LOG
+#  undef LOG
 #endif
 
 static mozilla::LazyLogModule gMediaStreamTrackLog("MediaStreamTrack");
@@ -96,7 +97,7 @@ class MediaStreamTrack::MSGListener : public MediaStreamTrackListener {
   void NotifyPrincipalHandleChanged(
       MediaStreamGraph* aGraph,
       const PrincipalHandle& aNewPrincipalHandle) override {
-    mGraph->DispatchToMainThreadAfterStreamStateUpdate(
+    mGraph->DispatchToMainThreadStableState(
         NewRunnableMethod<StoreCopyPassByConstLRef<PrincipalHandle>>(
             "dom::MediaStreamTrack::MSGListener::"
             "DoNotifyPrincipalHandleChanged",
@@ -108,7 +109,7 @@ class MediaStreamTrack::MSGListener : public MediaStreamTrackListener {
     // `mTrack` is a WeakPtr and must be destroyed on main thread.
     // We dispatch ourselves to main thread here in case the MediaStreamGraph
     // is holding the last reference to us.
-    mGraph->DispatchToMainThreadAfterStreamStateUpdate(
+    mGraph->DispatchToMainThreadStableState(
         NS_NewRunnableFunction("MediaStreamTrack::MSGListener::mTrackReleaser",
                                [self = RefPtr<MSGListener>(this)]() {}));
   }
@@ -126,7 +127,7 @@ class MediaStreamTrack::MSGListener : public MediaStreamTrackListener {
   }
 
   void NotifyEnded() override {
-    mGraph->DispatchToMainThreadAfterStreamStateUpdate(
+    mGraph->DispatchToMainThreadStableState(
         NewRunnableMethod("MediaStreamTrack::MSGListener::DoNotifyEnded", this,
                           &MSGListener::DoNotifyEnded));
   }
@@ -397,12 +398,12 @@ void MediaStreamTrack::SetPrincipal(nsIPrincipal* aPrincipal) {
   }
   mPrincipal = aPrincipal;
 
-  LOG(LogLevel::Info, ("MediaStreamTrack %p principal changed to %p. Now: "
-                       "null=%d, codebase=%d, expanded=%d, system=%d",
-                       this, mPrincipal.get(), mPrincipal->GetIsNullPrincipal(),
-                       mPrincipal->GetIsCodebasePrincipal(),
-                       mPrincipal->GetIsExpandedPrincipal(),
-                       mPrincipal->GetIsSystemPrincipal()));
+  LOG(LogLevel::Info,
+      ("MediaStreamTrack %p principal changed to %p. Now: "
+       "null=%d, codebase=%d, expanded=%d, system=%d",
+       this, mPrincipal.get(), mPrincipal->GetIsNullPrincipal(),
+       mPrincipal->GetIsCodebasePrincipal(),
+       mPrincipal->GetIsExpandedPrincipal(), mPrincipal->IsSystemPrincipal()));
   for (PrincipalChangeObserver<MediaStreamTrack>* observer :
        mPrincipalChangeObservers) {
     observer->PrincipalChanged(this);

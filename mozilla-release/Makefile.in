@@ -187,7 +187,7 @@ profiledbuild::
 	rm -f jarlog/en-US.log
 	$(call BUILDSTATUS,TIER_FINISH pgo_package)
 	$(call BUILDSTATUS,TIER_START pgo_profile)
-	JARLOG_FILE=jarlog/en-US.log $(PYTHON) $(topsrcdir)/build/pgo/profileserver.py 10
+	JARLOG_FILE=jarlog/en-US.log $(PYTHON) $(topsrcdir)/build/pgo/profileserver.py
 	$(call BUILDSTATUS,TIER_FINISH pgo_profile)
 	$(call BUILDSTATUS,TIER_START pgo_clobber)
 	$(MAKE) maybe_clobber_profiledbuild
@@ -198,7 +198,13 @@ profiledbuild::
 
 # Change default target to PGO build if PGO is enabled.
 ifdef MOZ_PGO
+ifdef COMPILE_ENVIRONMENT
+# If one of these is already set in addition to PGO we are doing a single phase
+# of PGO in isolation, so don't override the default target.
+ifeq (,$(MOZ_PROFILE_GENERATE)$(MOZ_PROFILE_USE))
 OVERRIDE_DEFAULT_GOAL := profiledbuild
+endif
+endif
 endif
 
 include $(topsrcdir)/config/rules.mk
@@ -285,13 +291,6 @@ endif # msvc
 endif # NO_PROFILE_GUIDED_OPTIMIZE
 
 .PHONY: maybe_clobber_profiledbuild
-
-# Look for R_386_PC32 relocations in shared libs, these
-# break x86_64 builds and SELinux users.
-ifeq ($(OS_TARGET)_$(TARGET_XPCOM_ABI),Linux_x86-gcc3)
-check::
-	@relcount=`find $(DIST)/bin -name '*.so' | xargs objdump -R | grep R_386_PC32 | wc -l` && if test $$relcount -gt 0; then echo 'FAILED: R_386_PC32 relocations detected in a shared library.  Did you use a system header without adding it to config/system-headers?'; exit 1; else echo 'PASSED'; fi
-endif
 
 ifdef JS_STANDALONE
 # Delegate js-specific rules to js

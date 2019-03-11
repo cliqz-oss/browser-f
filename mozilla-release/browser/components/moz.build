@@ -38,7 +38,6 @@ DIRS += [
     'downloads',
     'enterprisepolicies',
     'extensions',
-    'feeds',
     'library',
     'migration',
     'newtab',
@@ -47,6 +46,7 @@ DIRS += [
     'pocket',
     'preferences',
     'privatebrowsing',
+    'protocolhandler',
     'resistfingerprinting',
     'search',
     'sessionstore',
@@ -64,6 +64,9 @@ if CONFIG['NIGHTLY_BUILD']:
         'aboutconfig',
         'payments',
     ]
+
+if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
+    DIRS += ['touchbar']
 
 XPIDL_SOURCES += [
     'nsIBrowserHandler.idl',

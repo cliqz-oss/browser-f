@@ -18,7 +18,7 @@
 #include "WebMDemuxer.h"
 
 #ifdef MOZ_FMP4
-#include "MP4Demuxer.h"
+#  include "MP4Demuxer.h"
 #endif
 
 #include <limits>
@@ -447,6 +447,7 @@ void TrackBuffersManager::CompleteResetParserState() {
   }
 
   // 7. Remove all bytes from the input buffer.
+  mPendingInputBuffer = nullptr;
   mInputBuffer = nullptr;
   if (mCurrentInputBuffer) {
     mCurrentInputBuffer->EvictAll();

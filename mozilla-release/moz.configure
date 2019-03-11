@@ -119,13 +119,18 @@ def debug_rust():
 set_config('MOZ_DEBUG_RUST', debug_rust)
 set_define('MOZ_DEBUG_RUST', debug_rust)
 
+js_option(env='MOZ_PGO', help='Build with profile guided optimizations')
+
+set_config('MOZ_PGO', depends('MOZ_PGO')(lambda x: bool(x)))
+
+include('build/moz.configure/toolchain.configure',
+        when='--enable-compile-environment')
+
 include('build/moz.configure/pkg.configure')
 # Make this assignment here rather than in pkg.configure to avoid
 # requiring this file in unit tests.
 add_old_configure_assignment('PKG_CONFIG', pkg_config)
 
-include('build/moz.configure/toolchain.configure',
-        when='--enable-compile-environment')
 include('build/moz.configure/memory.configure',
         when='--enable-compile-environment')
 include('build/moz.configure/headers.configure',
@@ -233,9 +238,6 @@ set_config('IMPORT_LIB_SUFFIX', library_name_info.import_lib.suffix)
 set_define('MOZ_DLL_PREFIX', depends(library_name_info.dll.prefix)(lambda s: '"%s"' % s))
 set_define('MOZ_DLL_SUFFIX', depends(library_name_info.dll.suffix)(lambda s: '"%s"' % s))
 
-# Depends on host_library_name_info, so needs to go here.
-include('build/moz.configure/bindgen.configure',
-        when='--enable-compile-environment')
 include(include_project_configure)
 
 @depends('--help')
@@ -581,8 +583,14 @@ set_config('MAKENSISU_FLAGS', nsis_flags)
 
 check_prog('7Z', ('7z', '7za'), allow_missing=True, when=target_is_windows)
 
+# Please do not add configure checks from here on.
+
 # Fallthrough to autoconf-based configure
 include('build/moz.configure/old.configure')
+
+# JS Subconfigure.
+include('js/sub.configure', when=compile_environment & toolkit)
+
 
 @depends(check_build_environment, build_project)
 @imports('__sandbox__')

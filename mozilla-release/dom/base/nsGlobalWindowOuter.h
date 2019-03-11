@@ -38,6 +38,7 @@
 #include "prclist.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/ChromeMessageBroadcaster.h"
+#include "mozilla/dom/PopupBlocker.h"
 #include "mozilla/dom/StorageEvent.h"
 #include "mozilla/dom/StorageEventBinding.h"
 #include "mozilla/dom/UnionTypes.h"
@@ -46,7 +47,7 @@
 #include "mozilla/GuardObjects.h"
 #include "mozilla/LinkedList.h"
 #include "nsWrapperCacheInlines.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "mozilla/dom/EventTarget.h"
 #include "mozilla/dom/WindowBinding.h"
 #include "Units.h"
@@ -56,6 +57,7 @@
 #include "mozilla/dom/ImageBitmapSource.h"
 #include "mozilla/UniquePtr.h"
 
+class nsDocShell;
 class nsIArray;
 class nsIBaseWindow;
 class nsIContent;
@@ -64,7 +66,6 @@ class nsIDocShellTreeOwner;
 class nsIDOMWindowUtils;
 class nsIScrollableFrame;
 class nsIControllers;
-class nsIJSID;
 class nsIScriptContext;
 class nsIScriptTimeoutHandler;
 class nsITabChild;
@@ -93,6 +94,7 @@ class AbstractThread;
 class DOMEventTargetHelper;
 namespace dom {
 class BarProp;
+class BrowsingContext;
 struct ChannelPixelLayout;
 class Console;
 class Crypto;
@@ -111,6 +113,7 @@ class MediaQueryList;
 class Navigator;
 class OwningExternalOrWindowProxy;
 class Promise;
+class PostMessageData;
 class PostMessageEvent;
 struct RequestInit;
 class RequestOrUSVString;
@@ -216,7 +219,7 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
     return (nsGlobalWindowOuter*)(mozilla::dom::EventTarget*)supports;
   }
 
-  static already_AddRefed<nsGlobalWindowOuter> Create(nsIDocShell* aDocShell,
+  static already_AddRefed<nsGlobalWindowOuter> Create(nsDocShell* aDocShell,
                                                       bool aIsChrome);
 
   // public methods
@@ -271,7 +274,7 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
 
   bool ComputeDefaultWantsUntrusted(mozilla::ErrorResult& aRv) final;
 
-  virtual nsPIDOMWindowOuter* GetOwnerGlobalForBindings() override;
+  virtual nsPIDOMWindowOuter* GetOwnerGlobalForBindingsInternal() override;
 
   virtual nsIGlobalObject* GetOwnerGlobal() const override;
 
@@ -300,11 +303,6 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   // Outer windows only.
   virtual void SetInitialPrincipalToSubject() override;
 
-  virtual PopupControlState PushPopupControlState(PopupControlState state,
-                                                  bool aForce) const override;
-  virtual void PopPopupControlState(PopupControlState state) const override;
-  virtual PopupControlState GetPopupControlState() const override;
-
   virtual already_AddRefed<nsISupports> SaveWindowState() override;
   virtual nsresult RestoreWindowState(nsISupports* aState) override;
 
@@ -314,11 +312,11 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   virtual nsresult FireDelayedDOMEvents() override;
 
   // Outer windows only.
-  bool WouldReuseInnerWindow(nsIDocument* aNewDocument);
+  bool WouldReuseInnerWindow(Document* aNewDocument);
 
   void DetachFromDocShell();
 
-  virtual nsresult SetNewDocument(nsIDocument* aDocument, nsISupports* aState,
+  virtual nsresult SetNewDocument(Document* aDocument, nsISupports* aState,
                                   bool aForceReuseInnerWindow) override;
 
   // Outer windows only.
@@ -362,12 +360,19 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   already_AddRefed<nsPIDOMWindowOuter> IndexedGetterOuter(uint32_t aIndex);
 
   already_AddRefed<nsPIDOMWindowOuter> GetTop() override;
+  // Similar to GetTop() except that it stops at content frames that an
+  // extension has permission to access.  This is used by the third-party util
+  // service in order to determine the top window for a channel which is used
+  // in third-partiness checks.
+  already_AddRefed<nsPIDOMWindowOuter>
+  GetTopExcludingExtensionAccessibleContentFrames(nsIURI* aURIBeingLoaded);
   nsPIDOMWindowOuter* GetScriptableTop() override;
   inline nsGlobalWindowOuter* GetTopInternal();
 
   inline nsGlobalWindowOuter* GetScriptableTopInternal();
 
-  nsPIDOMWindowOuter* GetChildWindow(const nsAString& aName);
+  already_AddRefed<mozilla::dom::BrowsingContext> GetChildWindow(
+      const nsAString& aName);
 
   // These return true if we've reached the state in this top level window
   // where we ask the user if further dialogs should be blocked.
@@ -456,10 +461,10 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   bool IsTopLevelWindow();
 
   virtual void FirePopupBlockedEvent(
-      nsIDocument* aDoc, nsIURI* aPopupURI, const nsAString& aPopupWindowName,
+      Document* aDoc, nsIURI* aPopupURI, const nsAString& aPopupWindowName,
       const nsAString& aPopupWindowFeatures) override;
 
-  virtual void NotifyContentBlockingState(unsigned aState, nsIChannel* aChannel,
+  virtual void NotifyContentBlockingEvent(unsigned aEvent, nsIChannel* aChannel,
                                           bool aBlocked,
                                           nsIURI* aURIHint) override;
 
@@ -517,7 +522,7 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
 
   nsISupports* GetParentObject() { return nullptr; }
 
-  nsIDocument* GetDocument() { return GetDoc(); }
+  Document* GetDocument() { return GetDoc(); }
   void GetNameOuter(nsAString& aName);
   void SetNameOuter(const nsAString& aName, mozilla::ErrorResult& aError);
   mozilla::dom::Location* GetLocation() override;
@@ -528,13 +533,13 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   bool GetClosedOuter();
   bool Closed() override;
   void StopOuter(mozilla::ErrorResult& aError);
-  void FocusOuter(mozilla::ErrorResult& aError);
+  void FocusOuter();
   nsresult Focus() override;
   void BlurOuter();
-  already_AddRefed<nsPIDOMWindowOuter> GetFramesOuter();
+  mozilla::dom::BrowsingContext* GetFramesOuter();
   nsDOMWindowList* GetFrames() final;
   uint32_t Length();
-  already_AddRefed<nsPIDOMWindowOuter> GetTopOuter();
+  mozilla::dom::Nullable<mozilla::dom::WindowProxyHolder> GetTopOuter();
 
   nsresult GetPrompter(nsIPrompt** aPrompt) override;
 
@@ -547,16 +552,15 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   nsPIDOMWindowOuter* GetSanitizedOpener(nsPIDOMWindowOuter* aOpener);
 
   already_AddRefed<nsPIDOMWindowOuter> GetOpener() override;
-  already_AddRefed<nsPIDOMWindowOuter> GetParentOuter();
+  mozilla::dom::Nullable<mozilla::dom::WindowProxyHolder> GetParentOuter();
   already_AddRefed<nsPIDOMWindowOuter> GetParent() override;
   nsPIDOMWindowOuter* GetScriptableParent() override;
   nsPIDOMWindowOuter* GetScriptableParentOrNull() override;
   mozilla::dom::Element* GetFrameElementOuter(nsIPrincipal& aSubjectPrincipal);
   mozilla::dom::Element* GetFrameElement() override;
-  already_AddRefed<nsPIDOMWindowOuter> OpenOuter(const nsAString& aUrl,
-                                                 const nsAString& aName,
-                                                 const nsAString& aOptions,
-                                                 mozilla::ErrorResult& aError);
+  mozilla::dom::Nullable<mozilla::dom::WindowProxyHolder> OpenOuter(
+      const nsAString& aUrl, const nsAString& aName, const nsAString& aOptions,
+      mozilla::ErrorResult& aError);
   nsresult Open(const nsAString& aUrl, const nsAString& aName,
                 const nsAString& aOptions, nsDocShellLoadState* aLoadState,
                 bool aForceNoOpener, nsPIDOMWindowOuter** _retval) override;
@@ -620,7 +624,7 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
 
   bool ShouldResistFingerprinting();
 
-  already_AddRefed<nsPIDOMWindowOuter> OpenDialogOuter(
+  mozilla::dom::Nullable<mozilla::dom::WindowProxyHolder> OpenDialogOuter(
       JSContext* aCx, const nsAString& aUrl, const nsAString& aName,
       const nsAString& aOptions,
       const mozilla::dom::Sequence<JS::Value>& aExtraArgument,
@@ -760,7 +764,7 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   inline void MaybeClearInnerWindow(nsGlobalWindowInner* aExpectedInner);
 
   // We need a JSContext to get prototypes inside CallerInnerWindow.
-  nsGlobalWindowInner* CallerInnerWindow(JSContext* aCx);
+  static nsGlobalWindowInner* CallerInnerWindow(JSContext* aCx);
 
   // Get the parent, returns null if this is a toplevel window
   nsPIDOMWindowOuter* GetParentInternal();
@@ -841,7 +845,7 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
                         nsPIDOMWindowOuter** aReturn);
 
   // Checks that the channel was loaded by the URI currently loaded in aDoc
-  static bool SameLoadingURI(nsIDocument* aDoc, nsIChannel* aChannel);
+  static bool SameLoadingURI(Document* aDoc, nsIChannel* aChannel);
 
  public:
   // Helper Functions
@@ -851,7 +855,8 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   nsresult SecurityCheckURL(const char* aURL, nsIURI** aURI);
 
   bool PopupWhitelisted();
-  PopupControlState RevisePopupAbuseLevel(PopupControlState);
+  mozilla::dom::PopupBlocker::PopupControlState RevisePopupAbuseLevel(
+      mozilla::dom::PopupBlocker::PopupControlState aState);
   void FireAbuseEvents(const nsAString& aPopupURL,
                        const nsAString& aPopupWindowName,
                        const nsAString& aPopupWindowFeatures);
@@ -969,6 +974,70 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
                            nsIPrincipal& aSubjectPrincipal,
                            mozilla::ErrorResult& aError);
 
+ public:
+  /**
+   * Compute the principal to use for checking against the target principal in a
+   * postMessage call.
+   *
+   * @param aTargetOrigin The value passed as the targetOrigin argument to the
+   * postMessage call.
+   *
+   * @param aTargetOriginURI The origin of the URI contained in aTargetOrigin
+   * (see GatherPostMessageData).
+   *
+   * @param aCallerPrincipal The principal of the incumbent global of the
+   * postMessage call (see GatherPostMessageData).
+   *
+   * @param aSubjectPrincipal The subject principal for the postMessage call.
+   *
+   * @param aProvidedPrincipal [out] The principal to use for checking against
+   * the target's principal.
+   *
+   * @return Whether the postMessage call should continue or return now.
+   */
+  bool GetPrincipalForPostMessage(const nsAString& aTargetOrigin,
+                                  nsIURI* aTargetOriginURI,
+                                  nsIPrincipal* aCallerPrincipal,
+                                  nsIPrincipal& aSubjectPrincipal,
+                                  nsIPrincipal** aProvidedPrincipal);
+
+ private:
+  /**
+   * Gather the necessary data from the caller for a postMessage call.
+   *
+   * @param aCx The JSContext.
+   *
+   * @param aTargetOrigin The value passed as the targetOrigin argument to the
+   * postMessage call.
+   *
+   * @param aSource [out] The browsing context for the incumbent global.
+   *
+   * @param aOrigin [out] The value to use for the origin property of the
+   * MessageEvent object.
+   *
+   * @param aTargetOriginURI [out] The origin of the URI contained in
+   * aTargetOrigin, null if aTargetOrigin is "/" or "*".
+   *
+   * @param aCallerPrincipal [out] The principal of the incumbent global of the
+   *                               postMessage call.
+   *
+   * @param aCallerInnerWindow [out] Inner window of the caller of
+   * postMessage, or null if the incumbent global is not a Window.
+   *
+   * @param aCallerDocumentURI [out] The URI of the document of the incumbent
+   * global if it's a Window, null otherwise.
+   *
+   * @param aError [out] The error, if any.
+   *
+   * @return Whether the postMessage call should continue or return now.
+   */
+  static bool GatherPostMessageData(
+      JSContext* aCx, const nsAString& aTargetOrigin,
+      mozilla::dom::BrowsingContext** aSource, nsAString& aOrigin,
+      nsIURI** aTargetOriginURI, nsIPrincipal** aCallerPrincipal,
+      nsGlobalWindowInner** aCallerInnerWindow, nsIURI** aCallerDocumentURI,
+      mozilla::ErrorResult& aError);
+
   // Ask the user if further dialogs should be blocked, if dialogs are currently
   // being abused. This is used in the cases where we have no modifiable UI to
   // show, in that case we show a separate dialog to ask this question.
@@ -983,10 +1052,10 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   // Called only on outer windows to compute the value that will be returned by
   // IsSecureContext() for the inner window that corresponds to aDocument.
   bool ComputeIsSecureContext(
-      nsIDocument* aDocument,
+      Document* aDocument,
       SecureContextFlags aFlags = SecureContextFlags::eDefault);
 
-  void SetDocShell(nsIDocShell* aDocShell);
+  void SetDocShell(nsDocShell* aDocShell);
 
   // nsPIDOMWindow{Inner,Outer} should be able to see these helper methods.
   friend class nsPIDOMWindowInner;
@@ -1074,7 +1143,7 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   // document. If we don't (for example, if the outer window is closed before
   // the LeaveModalState call), then the inner window whose mDoc is our
   // mSuspendedDoc is responsible for unsuspending it.
-  nsCOMPtr<nsIDocument> mSuspendedDoc;
+  RefPtr<Document> mSuspendedDoc;
 
 #ifdef DEBUG
   // This member is used in the debug only assertions in TabGroup()
@@ -1104,6 +1173,7 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
 
   friend class nsDOMScriptableHelper;
   friend class nsDOMWindowUtils;
+  friend class mozilla::dom::BrowsingContext;
   friend class mozilla::dom::PostMessageEvent;
   friend class DesktopNotification;
   friend class mozilla::dom::TimeoutManager;

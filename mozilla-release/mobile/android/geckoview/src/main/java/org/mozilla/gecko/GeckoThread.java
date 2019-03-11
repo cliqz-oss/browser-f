@@ -5,16 +5,13 @@
 
 package org.mozilla.gecko;
 
-import org.mozilla.gecko.TelemetryUtils;
 import org.mozilla.gecko.annotation.RobocopTarget;
 import org.mozilla.gecko.annotation.WrapForJNI;
 import org.mozilla.gecko.mozglue.GeckoLoader;
 import org.mozilla.gecko.process.GeckoProcessManager;
 import org.mozilla.gecko.util.GeckoBundle;
-import org.mozilla.gecko.util.FileUtils;
 import org.mozilla.gecko.util.ThreadUtils;
 import org.mozilla.geckoview.BuildConfig;
-import org.mozilla.geckoview.GeckoRuntimeSettings;
 
 import android.content.Context;
 import android.content.res.Configuration;
@@ -134,6 +131,8 @@ public class GeckoThread extends Thread {
     public static final int FLAG_PRELOAD_CHILD = 1 << 1; // Preload child during main thread start.
     public static final int FLAG_ENABLE_NATIVE_CRASHREPORTER = 1 << 2; // Enable native crash reporting
 
+    public static final long DEFAULT_TIMEOUT = 5000;
+
     /* package */ static final String EXTRA_ARGS = "args";
     private static final String EXTRA_PREFS_FD = "prefsFd";
     private static final String EXTRA_PREF_MAP_FD = "prefMapFd";
@@ -159,7 +158,9 @@ public class GeckoThread extends Thread {
     }
 
     GeckoThread() {
-        setName("Gecko");
+        // Request more (virtual) stack space to avoid overflows in the CSS frame
+        // constructor. 8 MB matches desktop.
+        super(null, null, "Gecko", 8 * 1024 * 1024);
     }
 
     @WrapForJNI
@@ -330,11 +331,11 @@ public class GeckoThread extends Thread {
     }
 
     @RobocopTarget
-    public static GeckoProfile getActiveProfile() {
+    public static @Nullable GeckoProfile getActiveProfile() {
         return INSTANCE.getProfile();
     }
 
-    public synchronized GeckoProfile getProfile() {
+    public synchronized @Nullable GeckoProfile getProfile() {
         if (!mInitialized) {
             return null;
         }
@@ -576,8 +577,21 @@ public class GeckoThread extends Thread {
                              "speculativeConnectNative", uri);
     }
 
-    @WrapForJNI @RobocopTarget
-    public static native void waitOnGecko();
+    @WrapForJNI(stubName = "WaitOnGecko")
+    @RobocopTarget
+    private static native boolean nativeWaitOnGecko(long timeoutMillis);
+
+    public static void waitOnGeckoForever() {
+        nativeWaitOnGecko(0);
+    }
+
+    public static boolean waitOnGecko() {
+        return waitOnGecko(DEFAULT_TIMEOUT);
+    }
+
+    public static boolean waitOnGecko(long timeoutMillis) {
+        return nativeWaitOnGecko(timeoutMillis);
+    }
 
     @WrapForJNI(stubName = "OnPause", dispatchTo = "gecko")
     private static native void nativeOnPause();

@@ -68,8 +68,7 @@ class PageAction {
     // Wait for layout to flush to avoid a synchronous reflow then calculate the
     // label width. We can safely get the width even though the recommendation is
     // collapsed; the label itself remains full width (with its overflow hidden)
-    await this.window.promiseDocumentFlushed;
-    const [{width}] = this.label.getClientRects();
+    let [{width}] = await this.window.promiseDocumentFlushed(() => this.label.getClientRects());
     this.urlbar.style.setProperty("--cfr-label-width", `${width}px`);
 
     this.container.addEventListener("click", this._handleClick);
@@ -244,7 +243,6 @@ class PageAction {
     // See https://searchfox.org/mozilla-central/rev/847b64cc28b74b44c379f9bff4f415b97da1c6d7/toolkit/modules/PopupNotifications.jsm#42
     browser.cfrpopupnotificationanchor = this.container;
 
-    const notification = this.window.document.getElementById("contextual-feature-recommendation-notification");
     const headerLabel = this.window.document.getElementById("cfr-notification-header-label");
     const headerLink = this.window.document.getElementById("cfr-notification-header-link");
     const headerImage = this.window.document.getElementById("cfr-notification-header-image");
@@ -258,9 +256,7 @@ class PageAction {
 
     headerLabel.value = await this.getStrings(content.heading_text);
     headerLink.setAttribute("href", SUMO_BASE_URL + content.info_icon.sumo_path);
-    const isRTL = this.window.getComputedStyle(notification).direction === "rtl";
-    const attribute = isRTL ? "left" : "right";
-    headerLink.setAttribute(attribute, 0);
+    headerLink.setAttribute(this.window.RTL_UI ? "left" : "right", 0);
     headerImage.setAttribute("tooltiptext", await this.getStrings(content.info_icon.label, "tooltiptext"));
     headerLink.onclick = () => this._sendTelemetry({message_id: id, bucket_id: content.bucket_id, event: "RATIONALE"});
 

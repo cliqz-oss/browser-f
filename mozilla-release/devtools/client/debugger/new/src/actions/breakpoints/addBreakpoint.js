@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
+// @flow
+
 import { isOriginalId } from "devtools-source-map";
 import {
   locationMoved,
@@ -17,9 +19,17 @@ import { getGeneratedLocation } from "../../utils/source-maps";
 import { getTextAtPosition } from "../../utils/source";
 import { recordEvent } from "../../utils/telemetry";
 
+import type { SourceLocation } from "../../types";
+import type { ThunkArgs } from "../types";
+import type { addBreakpointOptions } from "./";
+
 async function addBreakpointPromise(getState, client, sourceMaps, breakpoint) {
   const state = getState();
   const source = getSource(state, breakpoint.location.sourceId);
+
+  if (!source) {
+    throw new Error(`Unable to find source: ${breakpoint.location.sourceId}`);
+  }
 
   const location = {
     ...breakpoint.location,
@@ -68,6 +78,7 @@ async function addBreakpointPromise(getState, client, sourceMaps, breakpoint) {
     hidden: breakpoint.hidden,
     loading: false,
     condition: breakpoint.condition,
+    log: breakpoint.log,
     location: newLocation,
     astLocation,
     generatedLocation: newGeneratedLocation,
@@ -140,11 +151,12 @@ export function enableBreakpoint(location: SourceLocation) {
 
 export function addBreakpoint(
   location: SourceLocation,
-  { condition, hidden }: addBreakpointOptions = {}
+  { condition, hidden, log = false }: addBreakpointOptions = {}
 ) {
-  const breakpoint = createBreakpoint(location, { condition, hidden });
   return ({ dispatch, getState, sourceMaps, client }: ThunkArgs) => {
     recordEvent("add_breakpoint");
+
+    const breakpoint = createBreakpoint(location, { condition, hidden, log });
 
     return dispatch({
       type: "ADD_BREAKPOINT",

@@ -39,6 +39,9 @@ struct ScrollMetadata;
 class Layer;
 class LayerManager;
 }  // namespace layers
+namespace layout {
+class ScrollAnchorContainer;
+}  // namespace layout
 }  // namespace mozilla
 
 /**
@@ -51,6 +54,7 @@ class nsIScrollableFrame : public nsIScrollbarMediator {
   typedef mozilla::CSSIntPoint CSSIntPoint;
   typedef mozilla::ContainerLayerParameters ContainerLayerParameters;
   typedef mozilla::layers::ScrollSnapInfo ScrollSnapInfo;
+  typedef mozilla::layout::ScrollAnchorContainer ScrollAnchorContainer;
 
   NS_DECL_QUERYFRAME_TARGET(nsIScrollableFrame)
 
@@ -61,8 +65,8 @@ class nsIScrollableFrame : public nsIScrollbarMediator {
   virtual nsIFrame* GetScrolledFrame() const = 0;
 
   /**
-   * Get the styles (NS_STYLE_OVERFLOW_SCROLL, NS_STYLE_OVERFLOW_HIDDEN,
-   * or NS_STYLE_OVERFLOW_AUTO) governing the horizontal and vertical
+   * Get the styles (StyleOverflow::Scroll, StyleOverflow::Hidden,
+   * or StyleOverflow::Auto) governing the horizontal and vertical
    * scrollbars for this frame.
    */
   virtual mozilla::ScrollStyles GetScrollStyles() const = 0;
@@ -106,6 +110,15 @@ class nsIScrollableFrame : public nsIScrollbarMediator {
   virtual nscoord GetNondisappearingScrollbarWidth(
       nsPresContext* aPresContext, gfxContext* aRC,
       mozilla::WritingMode aWM) = 0;
+  /**
+   * Get the layout size of this frame.
+   * Note that this is a value which is not expanded by the minimum scale size.
+   * For scroll frames other than the root content document's scroll frame, this
+   * value will be the same as GetScrollPortRect().Size().
+   *
+   * This value is used for Element.clientWidth and clientHeight.
+   */
+  virtual nsSize GetLayoutSize() const = 0;
   /**
    * GetScrolledRect is designed to encapsulate deciding which
    * directions of overflow should be reachable by scrolling and which
@@ -372,6 +385,11 @@ class nsIScrollableFrame : public nsIScrollbarMediator {
    */
   virtual void ClearDidHistoryRestore() = 0;
   /**
+   * Mark the frame as having been scrolled at least once, so that it remains
+   * active and we can also start storing its scroll position when saving state.
+   */
+  virtual void MarkEverScrolled() = 0;
+  /**
    * Determine if the passed in rect is nearly visible according to the frame
    * visibility heuristics for how close it is to the visible scrollport.
    */
@@ -548,6 +566,12 @@ class nsIScrollableFrame : public nsIScrollbarMediator {
    * all (ie XUL documents) even though they may contain other scroll frames.
    */
   virtual bool IsRootScrollFrameOfDocument() const = 0;
+
+  /**
+   * Returns the scroll anchor associated with this scrollable frame.
+   */
+  virtual const ScrollAnchorContainer* GetAnchor() const = 0;
+  virtual ScrollAnchorContainer* GetAnchor() = 0;
 };
 
 #endif

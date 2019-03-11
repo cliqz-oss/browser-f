@@ -35,6 +35,49 @@ div.section {
   color: -moz-FieldText;
 }
 
+div.outputContainer {
+  display: flex;
+}
+
+div.sections {
+  flex: 1;
+  min-width: 0;
+}
+
+div.sidebar {
+  flex: 0 0 max-content;
+  margin-left: 1em;
+}
+
+div.sidebarContents {
+  position: sticky;
+  top: 0.5em;
+}
+
+div.sidebarItem {
+  padding: 0.5em;
+  margin: 1em 0em;
+  border: 1px solid ThreeDShadow;
+  border-radius: 10px;
+  background: -moz-Field;
+  color: -moz-FieldText;
+  -moz-user-select: none;  /* no need to include this when cutting+pasting */
+}
+
+input.filterInput {
+  width: calc(100% - 1em);
+}
+
+ul.index {
+  list-style-position: inside;
+  margin: 0;
+  padding: 0;
+}
+
+ul.index > li {
+  padding-left: 0.5em;
+}
+
 div.opsRow {
   padding: 0.5em;
   margin-right: 0.5em;
@@ -46,7 +89,7 @@ div.opsRow {
   display: inline-block;
 }
 
-div.opsRowLabel {
+div.opsRowLabel, div.sidebarLabel {
   display: block;
   margin-bottom: 0.2em;
   font-weight: bold;

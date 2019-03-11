@@ -81,6 +81,10 @@ const void* CompileRuntime::addressOfInterruptBits() {
   return runtime()->mainContextFromAnyThread()->addressOfInterruptBits();
 }
 
+const void* CompileRuntime::addressOfZone() {
+  return runtime()->mainContextFromAnyThread()->addressOfZone();
+}
+
 #ifdef DEBUG
 bool CompileRuntime::isInsideNursery(gc::Cell* cell) {
   return UninlinedIsInsideNursery(cell);
@@ -211,7 +215,7 @@ JitCompileOptions::JitCompileOptions()
     : cloneSingletons_(false),
       profilerSlowAssertionsEnabled_(false),
       offThreadCompilationAvailable_(false)
-#ifdef ENABLE_WASM_GC
+#ifdef ENABLE_WASM_REFTYPES
       ,
       wasmGcEnabled_(false)
 #endif
@@ -224,7 +228,7 @@ JitCompileOptions::JitCompileOptions(JSContext* cx) {
       cx->runtime()->geckoProfiler().enabled() &&
       cx->runtime()->geckoProfiler().slowAssertionsEnabled();
   offThreadCompilationAvailable_ = OffThreadCompilationAvailable(cx);
-#ifdef ENABLE_WASM_GC
-  wasmGcEnabled_ = cx->options().wasmGc();
+#ifdef ENABLE_WASM_REFTYPES
+  wasmGcEnabled_ = wasm::HasReftypesSupport(cx);
 #endif
 }

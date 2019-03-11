@@ -11,14 +11,9 @@
 @import url("chrome://global/content/widgets.css");
 
 @namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
+@namespace html url("http://www.w3.org/1999/xhtml");
 
 %include ../../shared/global.inc.css
-
-/* ::::: XBL bindings ::::: */
-
-menulist > menupopup {
-  -moz-binding: url("chrome://global/content/bindings/popup.xml#popup-scrollbars");
-}
 
 /* ::::: Variables ::::: */
 :root {
@@ -47,14 +42,6 @@ wizard {
   background-color: -moz-Dialog;
   color: -moz-DialogText;
   font: message-box;
-}
-
-/* deprecated */
-window.dialog {
-  padding-top: 8px;
-  padding-bottom: 10px;
-  padding-inline-start: 8px;
-  padding-inline-end: 10px;
 }
 
 /* ::::: alert icons :::::*/
@@ -140,8 +127,10 @@ toolbar[mode="text"] .toolbarbutton-text {
   -moz-image-region: rect(0px 32px 16px 16px);
 }
 
-#print-preview-pageNumber {
-  width: 3ch;
+html|*#print-preview-pageNumber {
+  /* 3 chars + (3px border + 1px padding) on both sides */
+  width: calc(8px + 3ch);
+  margin: 0 4px;
 }
 
 /* ::::: miscellaneous formatting ::::: */
@@ -152,19 +141,6 @@ toolbar[mode="text"] .toolbarbutton-text {
 
 :root[lwtheme-image]:-moz-lwtheme-brighttext {
   text-shadow: 1px 1px 1.5px black;
-}
-
-.inset {
-  border: 1px solid ThreeDShadow;
-  border-right-color: ThreeDHighlight;
-  border-bottom-color: ThreeDHighlight;
-  margin: 0 5px 5px;
-}
-
-.outset {
-  border: 1px solid ThreeDShadow;
-  border-left-color: ThreeDHighlight;
-  border-top-color: ThreeDHighlight;
 }
 
 /* separators */
@@ -274,24 +250,3 @@ popupnotificationcontent {
 }
 
 %include ../../shared/notification-popup.inc.css
-
-/* :::::: autoscroll popup ::::: */
-
-.autoscroller {
-  border: none;
-  padding: 0;
-  background-image: url("chrome://global/skin/icons/autoscroll.svg");
-  background-size: contain;
-  background-color: transparent;
-  background-repeat: no-repeat;
-  -moz-appearance: none;
-}
-
-.autoscroller[scrolldir="NS"] {
-  background-image: url("chrome://global/skin/icons/autoscroll-vertical.svg");
-}
-
-.autoscroller[scrolldir="EW"] {
-  background-image: url("chrome://global/skin/icons/autoscroll-horizontal.svg");
-}
-

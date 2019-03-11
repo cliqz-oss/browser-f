@@ -424,7 +424,6 @@ void gfxWindowsPlatform::InitAcceleration() {
   DeviceManagerDx::Init();
 
   InitializeConfig();
-  InitializeDevices();
   UpdateANGLEConfig();
   UpdateRenderMode();
 
@@ -440,6 +439,8 @@ void gfxWindowsPlatform::InitAcceleration() {
   // CanUseHardwareVideoDecoding depends on DeviceManagerDx state,
   // so update the cached value now.
   UpdateCanUseHardwareVideoDecoding();
+
+  RecordStartupTelemetry();
 }
 
 void gfxWindowsPlatform::InitWebRenderConfig() {
@@ -498,7 +499,9 @@ bool gfxWindowsPlatform::HandleDeviceReset() {
   gfxConfig::Reset(Feature::DIRECT2D);
 
   InitializeConfig();
-  InitializeDevices();
+  if (mInitializedDevices) {
+    InitializeDevices();
+  }
   UpdateANGLEConfig();
   return true;
 }
@@ -1016,12 +1019,12 @@ void gfxWindowsPlatform::GetPlatformCMSOutputProfile(void*& mem,
 #ifdef _WIN32
   qcms_data_from_unicode_path(str, &mem, &mem_size);
 
-#ifdef DEBUG_tor
+#  ifdef DEBUG_tor
   if (mem_size > 0)
     fprintf(stderr, "ICM profile read from %s successfully\n",
             NS_ConvertUTF16toUTF8(str).get());
-#endif  // DEBUG_tor
-#endif  // _WIN32
+#  endif  // DEBUG_tor
+#endif    // _WIN32
 }
 
 void gfxWindowsPlatform::GetDLLVersion(char16ptr_t aDLLPath,
@@ -1471,7 +1474,36 @@ void gfxWindowsPlatform::InitializeD3D11Config() {
                         uint32_t(aDevice));
 }
 
+void gfxWindowsPlatform::RecordStartupTelemetry() {
+  DeviceManagerDx* dx = DeviceManagerDx::Get();
+  nsTArray<DXGI_OUTPUT_DESC1> outputs = dx->EnumerateOutputs();
+
+  uint32_t allSupportedColorSpaces = 0;
+  for (auto& output : outputs) {
+    uint32_t colorSpace = 1 << output.ColorSpace;
+    allSupportedColorSpaces |= colorSpace;
+  }
+
+  Telemetry::ScalarSet(
+      Telemetry::ScalarID::GFX_HDR_WINDOWS_DISPLAY_COLORSPACE_BITFIELD,
+      allSupportedColorSpaces);
+}
+
+// Supports lazy device initialization on Windows, so that WebRender can avoid
+// initializing GPU state and allocating swap chains for most non-GPU processes.
+void gfxWindowsPlatform::EnsureDevicesInitialized() {
+  if (!mInitializedDevices) {
+    mInitializedDevices = true;
+    InitializeDevices();
+    UpdateBackendPrefs();
+  }
+}
+
+bool gfxWindowsPlatform::DevicesInitialized() { return mInitializedDevices; }
+
 void gfxWindowsPlatform::InitializeDevices() {
+  MOZ_ASSERT(NS_IsMainThread());
+
   if (XRE_IsParentProcess()) {
     // If we're the UI process, and the GPU process is enabled, then we don't
     // initialize any DirectX devices. We do leave them enabled in gfxConfig
@@ -2033,6 +2065,10 @@ void gfxWindowsPlatform::BuildContentDeviceData(ContentDeviceData* aOut) {
 }
 
 bool gfxWindowsPlatform::SupportsPluginDirectDXGIDrawing() {
+  // Ensure devices initialization for plugin's DXGISurface. The devices are
+  // lazily initialized with WebRender to reduce memory usage.
+  EnsureDevicesInitialized();
+
   DeviceManagerDx* dm = DeviceManagerDx::Get();
   if (!dm->GetContentDevice() || !dm->TextureSharingWorks()) {
     return false;

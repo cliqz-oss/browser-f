@@ -18,7 +18,7 @@
 #include "nsIURL.h"
 #include "nsIFrame.h"
 #include "nsIFormControlFrame.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "mozilla/ContentEvents.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/EventStateManager.h"
@@ -169,13 +169,16 @@ void HTMLButtonElement::GetEventTargetParent(EventChainPreVisitor& aVisitor) {
   // DOMActivate that was dispatched directly, this will be set, but if we're
   // a DOMActivate dispatched from click handling, it will not be set.
   WidgetMouseEvent* mouseEvent = aVisitor.mEvent->AsMouseEvent();
-  bool outerActivateEvent = ((mouseEvent && mouseEvent->IsLeftClickEvent()) ||
-                             (aVisitor.mEvent->mMessage == eLegacyDOMActivate &&
-                              !mInInternalActivate));
+  bool outerActivateEvent =
+      ((mouseEvent && mouseEvent->IsLeftClickEvent()) ||
+       (aVisitor.mEvent->mMessage == eLegacyDOMActivate &&
+        !mInInternalActivate && aVisitor.mEvent->mOriginalTarget == this));
 
   if (outerActivateEvent) {
     aVisitor.mItemFlags |= NS_OUTER_ACTIVATE_EVENT;
-    if (mType == NS_FORM_BUTTON_SUBMIT && mForm) {
+    if (mType == NS_FORM_BUTTON_SUBMIT && mForm &&
+        !aVisitor.mEvent->mFlags.mMultiplePreActionsPrevented) {
+      aVisitor.mEvent->mFlags.mMultiplePreActionsPrevented = true;
       aVisitor.mItemFlags |= NS_IN_SUBMIT_CLICK;
       // tell the form that we are about to enter a click handler.
       // that means that if there are scripted submissions, the
@@ -286,8 +289,7 @@ nsresult HTMLButtonElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
   return rv;
 }
 
-nsresult HTMLButtonElement::BindToTree(nsIDocument* aDocument,
-                                       nsIContent* aParent,
+nsresult HTMLButtonElement::BindToTree(Document* aDocument, nsIContent* aParent,
                                        nsIContent* aBindingParent) {
   nsresult rv = nsGenericHTMLFormElementWithState::BindToTree(
       aDocument, aParent, aBindingParent);

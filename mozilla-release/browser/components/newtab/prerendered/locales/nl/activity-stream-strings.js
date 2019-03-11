@@ -40,6 +40,9 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Oké, begrepen",
   "prefs_home_header": "Inhoud van Firefox-startpagina",
   "prefs_home_description": "Kies welke inhoud u op uw Firefox-startscherm wilt laten weergeven.",
+  "prefs_content_discovery_header": "Firefox-startpagina",
+  "prefs_content_discovery_description": "Via Content Discovery op de Firefox-startpagina kunt u relevante artikelen op het hele web met hoge kwaliteit vinden.",
+  "prefs_content_discovery_button": "Content Discovery uitschakelen",
   "prefs_section_rows_option": "{num} rij;{num} rijen",
   "prefs_search_header": "Zoeken op het web",
   "prefs_topsites_description": "De websites die u het vaakst bezoekt",
@@ -107,6 +110,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Privacyverklaring",
   "firstrun_continue_to_login": "Doorgaan",
   "firstrun_skip_login": "Deze stap overslaan",
-  "context_menu_title": "Menu openen",
-  "pocket_learn_more": "Meer info"
+  "context_menu_title": "Menu openen"
 };

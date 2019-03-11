@@ -124,7 +124,7 @@ add_task(async function testSidebarSetObjectValueGrip() {
 
   const evalResult = await inspectedWindowFront.eval(fakeExtCallerInfo, expression, {
     evalResultAsGrip: true,
-    toolboxConsoleActorID: toolbox.target.form.consoleActor,
+    toolboxConsoleActorID: toolbox.target.activeConsole.actor,
   });
 
   sidebar.setObjectValueGrip(evalResult.valueGrip, "Expected Root Title");
@@ -260,8 +260,6 @@ add_task(async function teardownExtensionSidebar() {
 
   Assert.deepEqual(inspectorStoreState.extensionsSidebar, {},
                    "The extensions sidebar Redux store data has been cleared");
-
-  await toolbox.destroy();
 
   await extension.unload();
 

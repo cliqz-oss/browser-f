@@ -4,10 +4,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "nsError.h"
-#include "MediaDecoderStateMachine.h"
 #include "OggDemuxer.h"
+#include "MediaDataDemuxer.h"
 #include "OggCodecState.h"
+#include "XiphExtradata.h"
 #include "mozilla/AbstractThread.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/PodOperations.h"
@@ -15,9 +15,8 @@
 #include "mozilla/StaticPrefs.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/TimeStamp.h"
-#include "MediaDataDemuxer.h"
 #include "nsAutoRef.h"
-#include "XiphExtradata.h"
+#include "nsError.h"
 
 #include <algorithm>
 
@@ -29,9 +28,9 @@ extern mozilla::LazyLogModule gMediaDemuxerLog;
 // Un-comment to enable logging of seek bisections.
 //#define SEEK_LOGGING
 #ifdef SEEK_LOGGING
-#define SEEK_LOG(type, msg) MOZ_LOG(gMediaDemuxerLog, type, msg)
+#  define SEEK_LOG(type, msg) MOZ_LOG(gMediaDemuxerLog, type, msg)
 #else
-#define SEEK_LOG(type, msg)
+#  define SEEK_LOG(type, msg)
 #endif
 
 namespace mozilla {

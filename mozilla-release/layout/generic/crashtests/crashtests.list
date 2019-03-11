@@ -25,7 +25,7 @@ load 321224.xul
 load 322780-1.xul
 load 323381-1.html
 load 323381-2.html
-asserts-if(gtkWidget,1) asserts-if(Android&&asyncPan,1) load 323386-1.html # Bug 718883
+asserts-if(Android&&asyncPan,1) load 323386-1.html # Bug 718883
 load 323389-1.html
 load 323389-2.html
 load 323493-1.html
@@ -660,10 +660,10 @@ load 1275059.html
 load 1278007.html
 load 1278080.html
 load 1279814.html
-skip-if(webrender&&gtkWidget) load large-border-radius-dashed.html   # bug 1510076
-skip-if(webrender&&gtkWidget) load large-border-radius-dashed2.html  # bug 1510076
-skip-if(webrender&&gtkWidget) load large-border-radius-dotted.html   # bug 1510076
-skip-if(webrender&&gtkWidget) load large-border-radius-dotted2.html  # bug 1510076
+load large-border-radius-dashed.html
+load large-border-radius-dashed2.html
+load large-border-radius-dotted.html
+load large-border-radius-dotted2.html
 load 1278461-1.html
 load 1278461-2.html
 load 1281102.html
@@ -719,3 +719,9 @@ load 1493741.html
 load 1494380.html
 load 1505817.html
 pref(layout.css.column-span.enabled,true) load 1506216.html
+pref(layout.css.column-span.enabled,true) load 1506306.html
+pref(layout.css.column-span.enabled,true) load 1507196.html
+pref(layout.css.column-span.enabled,true) load 1517033.html
+pref(layout.css.column-span.enabled,true) load 1517297.html
+load 1520798-1.xul
+load 1520798-2.html

@@ -18,6 +18,7 @@
 #include "gc/Nursery.h"
 #include "js/AllocPolicy.h"
 #include "js/MemoryMetrics.h"
+#include "js/UniquePtr.h"
 
 namespace js {
 namespace gc {
@@ -77,10 +78,14 @@ class StoreBuffer {
      */
     T last_;
 
+    StoreBuffer* owner_;
+
     /* Maximum number of entries before we request a minor GC. */
     const static size_t MaxEntries = 48 * 1024 / sizeof(T);
 
-    explicit MonoTypeBuffer() : last_(T()) {}
+    explicit MonoTypeBuffer(StoreBuffer* owner)
+     : last_(T()), owner_(owner)
+    {}
 
     void clear() {
       last_ = T();
@@ -88,13 +93,13 @@ class StoreBuffer {
     }
 
     /* Add one item to the buffer. */
-    void put(StoreBuffer* owner, const T& t) {
-      sinkStore(owner);
+    void put(const T& t) {
+      sinkStore();
       last_ = t;
     }
 
     /* Remove an item from the store buffer. */
-    void unput(StoreBuffer* owner, const T& v) {
+    void unput(const T& v) {
       // Fast, hashless remove of last put.
       if (last_ == v) {
         last_ = T();
@@ -104,7 +109,7 @@ class StoreBuffer {
     }
 
     /* Move any buffered stores to the canonical store set. */
-    void sinkStore(StoreBuffer* owner) {
+    void sinkStore() {
       if (last_) {
         AutoEnterOOMUnsafeRegion oomUnsafe;
         if (!stores_.put(last_)) {
@@ -114,17 +119,12 @@ class StoreBuffer {
       last_ = T();
 
       if (MOZ_UNLIKELY(stores_.count() > MaxEntries)) {
-        owner->setAboutToOverflow(T::FullBufferReason);
+        owner_->setAboutToOverflow(T::FullBufferReason);
       }
     }
 
-    bool has(StoreBuffer* owner, const T& v) {
-      sinkStore(owner);
-      return stores_.has(v);
-    }
-
     /* Trace the source of all edges in the store buffer. */
-    void trace(StoreBuffer* owner, TenuringTracer& mover);
+    void trace(TenuringTracer& mover);
 
     size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) {
       return stores_.shallowSizeOfExcludingThis(mallocSizeOf);
@@ -138,20 +138,15 @@ class StoreBuffer {
   };
 
   struct WholeCellBuffer {
-    LifoAlloc* storage_;
+    UniquePtr<LifoAlloc> storage_;
     ArenaCellSet* head_;
+    StoreBuffer* owner_;
 
-    WholeCellBuffer() : storage_(nullptr), head_(nullptr) {}
-    ~WholeCellBuffer() { js_delete(storage_); }
+    explicit WholeCellBuffer(StoreBuffer* owner)
+     : storage_(nullptr), head_(nullptr), owner_(owner)
+    {}
 
-    MOZ_MUST_USE bool init() {
-      MOZ_ASSERT(!head_);
-      if (!storage_) {
-        storage_ = js_new<LifoAlloc>(LifoAllocBlockSize);
-      }
-      clear();
-      return bool(storage_);
-    }
+    MOZ_MUST_USE bool init();
 
     void clear();
 
@@ -160,7 +155,7 @@ class StoreBuffer {
              storage_->used() > WholeCellBufferOverflowThresholdBytes;
     }
 
-    void trace(StoreBuffer* owner, TenuringTracer& mover);
+    void trace(TenuringTracer& mover);
 
     inline void put(const Cell* cell);
 
@@ -181,25 +176,17 @@ class StoreBuffer {
   };
 
   struct GenericBuffer {
-    LifoAlloc* storage_;
+    UniquePtr<LifoAlloc> storage_;
+    StoreBuffer* owner_;
 
-    explicit GenericBuffer() : storage_(nullptr) {}
-    ~GenericBuffer() { js_delete(storage_); }
+    explicit GenericBuffer(StoreBuffer* owner) : storage_(nullptr), owner_(owner) {}
 
-    MOZ_MUST_USE bool init() {
-      if (!storage_) {
-        storage_ = js_new<LifoAlloc>(LifoAllocBlockSize);
-      }
-      clear();
-      return bool(storage_);
-    }
+    MOZ_MUST_USE bool init();
 
     void clear() {
-      if (!storage_) {
-        return;
+      if (storage_) {
+        storage_->used() ? storage_->releaseAll() : storage_->freeAll();
       }
-
-      storage_->used() ? storage_->releaseAll() : storage_->freeAll();
     }
 
     bool isAboutToOverflow() const {
@@ -208,10 +195,10 @@ class StoreBuffer {
     }
 
     /* Trace all generic edges. */
-    void trace(StoreBuffer* owner, JSTracer* trc);
+    void trace(JSTracer* trc);
 
     template <typename T>
-    void put(StoreBuffer* owner, const T& t) {
+    void put(const T& t) {
       MOZ_ASSERT(storage_);
 
       /* Ensure T is derived from BufferableRef. */
@@ -231,7 +218,7 @@ class StoreBuffer {
       }
 
       if (isAboutToOverflow()) {
-        owner->setAboutToOverflow(JS::gcreason::FULL_GENERIC_BUFFER);
+        owner_->setAboutToOverflow(JS::GCReason::FULL_GENERIC_BUFFER);
       }
     }
 
@@ -286,7 +273,7 @@ class StoreBuffer {
 
     typedef PointerEdgeHasher<CellPtrEdge> Hasher;
 
-    static const auto FullBufferReason = JS::gcreason::FULL_CELL_PTR_BUFFER;
+    static const auto FullBufferReason = JS::GCReason::FULL_CELL_PTR_BUFFER;
   };
 
   struct ValueEdge {
@@ -321,7 +308,7 @@ class StoreBuffer {
 
     typedef PointerEdgeHasher<ValueEdge> Hasher;
 
-    static const auto FullBufferReason = JS::gcreason::FULL_VALUE_BUFFER;
+    static const auto FullBufferReason = JS::GCReason::FULL_VALUE_BUFFER;
   };
 
   struct SlotsEdge {
@@ -404,7 +391,7 @@ class StoreBuffer {
       static bool match(const SlotsEdge& k, const Lookup& l) { return k == l; }
     } Hasher;
 
-    static const auto FullBufferReason = JS::gcreason::FULL_SLOT_BUFFER;
+    static const auto FullBufferReason = JS::GCReason::FULL_SLOT_BUFFER;
   };
 
   template <typename Buffer, typename Edge>
@@ -415,7 +402,7 @@ class StoreBuffer {
       return;
     }
     mozilla::ReentrancyGuard g(*this);
-    buffer.unput(this, edge);
+    buffer.unput(edge);
   }
 
   template <typename Buffer, typename Edge>
@@ -427,7 +414,7 @@ class StoreBuffer {
     }
     mozilla::ReentrancyGuard g(*this);
     if (edge.maybeInRememberedSet(nursery_)) {
-      buffer.put(this, edge);
+      buffer.put(edge);
     }
   }
 
@@ -448,24 +435,7 @@ class StoreBuffer {
 #endif
 
  public:
-  explicit StoreBuffer(JSRuntime* rt, const Nursery& nursery)
-      : bufferVal(),
-        bufferCell(),
-        bufferSlot(),
-        bufferWholeCell(),
-        bufferGeneric(),
-        cancelIonCompilations_(false),
-        runtime_(rt),
-        nursery_(nursery),
-        aboutToOverflow_(false),
-        enabled_(false)
-#ifdef DEBUG
-        ,
-        mEntered(false)
-#endif
-  {
-  }
-
+  explicit StoreBuffer(JSRuntime* rt, const Nursery& nursery);
   MOZ_MUST_USE bool enable();
 
   void disable();
@@ -505,16 +475,14 @@ class StoreBuffer {
   void setShouldCancelIonCompilations() { cancelIonCompilations_ = true; }
 
   /* Methods to trace the source of all edges in the store buffer. */
-  void traceValues(TenuringTracer& mover) { bufferVal.trace(this, mover); }
-  void traceCells(TenuringTracer& mover) { bufferCell.trace(this, mover); }
-  void traceSlots(TenuringTracer& mover) { bufferSlot.trace(this, mover); }
-  void traceWholeCells(TenuringTracer& mover) {
-    bufferWholeCell.trace(this, mover);
-  }
-  void traceGenericEntries(JSTracer* trc) { bufferGeneric.trace(this, trc); }
+  void traceValues(TenuringTracer& mover) { bufferVal.trace(mover); }
+  void traceCells(TenuringTracer& mover) { bufferCell.trace(mover); }
+  void traceSlots(TenuringTracer& mover) { bufferSlot.trace(mover); }
+  void traceWholeCells(TenuringTracer& mover) { bufferWholeCell.trace(mover); }
+  void traceGenericEntries(JSTracer* trc) { bufferGeneric.trace(trc); }
 
   /* For use by our owned buffers and for testing. */
-  void setAboutToOverflow(JS::gcreason::Reason);
+  void setAboutToOverflow(JS::GCReason);
 
   void addSizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf,
                               JS::GCSizes* sizes);

@@ -129,7 +129,6 @@
       <li><a href="about:license#hunspell-lt">Lithuanian Spellchecking Dictionary License</a></li>
       <li><a href="about:license#lodash">lodash License</a></li>
       <li><a href="about:license#matches">matches License</a></li>
-      <li><a href="about:license#microformatsshiv">MIT license — microformat-shiv</a></li>
       <li><a href="about:license#myspell">MySpell License</a></li>
       <li><a href="about:license#naturalSort">naturalSort License</a></li>
       <li><a href="about:license#nicer">nICEr License</a></li>
@@ -158,6 +157,7 @@
       <li><a href="about:license#react-mit">React MIT License</a></li>
       <li><a href="about:license#react-intl">React Intl License</a></li>
       <li><a href="about:license#react-redux">React-Redux License</a></li>
+      <li><a href="about:license#react-router">React Router License</a></li>
       <li><a href="about:license#xdg">Red Hat xdg_user_dir_lookup License</a></li>
       <li><a href="about:license#redox_syscall">redox_syscall License</a></li>
       <li><a href="about:license#redux">Redux License</a></li>
@@ -2897,8 +2897,8 @@ SOFTWARE.
     <h1><a id="bspatch"></a>bspatch License</h1>
 
     <p>This license applies to the files
-    <code>toolkit/mozapps/update/updater/bspatch.cpp</code> and
-    <code>toolkit/mozapps/update/updater/bspatch.h</code>.
+    <code>toolkit/mozapps/update/updater/bspatch/bspatch.cpp</code> and
+    <code>toolkit/mozapps/update/updater/bspatch/bspatch.h</code>.
     </p>
 
 <pre>
@@ -3018,12 +3018,9 @@ WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
     <p>This license applies to parts of the code in:</p>
     <ul>
-#ifndef RELEASE_OR_BETA
         <li><code>browser/extensions/formautofill/content/heuristicsRegexp.js</code></li>
-        <li><code>browser/extensions/formautofill/content/nameReferences.js</code></li>
         <li><code>browser/extensions/formautofill/FormAutofillHeuristics.jsm</code></li>
         <li><code>browser/extensions/formautofill/FormAutofillNameUtils.jsm</code></li>
-#endif
         <li><code>editor/libeditor/EditorEventListener.cpp</code></li>
         <li><code>mobile/android/geckoview/src/main/java/org/mozilla/gecko/util/StrictModeContext.java</code></li>
         <li><code>security/sandbox/</code></li>
@@ -4679,37 +4676,6 @@ DEALINGS IN THE SOFTWARE.
 
     <hr>
 
-    <h1><a id="microformatsshiv"></a>MIT license — microformat-shiv</h1>
-
-    <p>This license applies to some files in the directory
-    <code>toolkit/components/microformats</code>.</p>
-
-<pre>
-MIT license — microformat-shiv
-
-Copyright (c) 2012-2013 Glenn Jones
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the "Software"), to deal in
-the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software is furnished to do so,
-subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-</pre>
-
-
-    <hr>
-
     <h1><a id="myspell"></a>MySpell License</h1>
 
     <p>This license applies to some files in the directory
@@ -5718,6 +5684,36 @@ SOFTWARE.
 
     <hr>
 
+    <h1><a id="react-router"></a>React Router License</h1>
+
+    <p>This license applies to the file
+    <code>devtools/client/shared/vendor/react-router-dom.js</code>.</p>
+<pre>
+MIT License
+
+Copyright (c) React Training 2016-2018
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</pre>
+
+    <hr>
+
     <h1><a id="xdg"></a>Red Hat xdg_user_dir_lookup License</h1>
 
     <p>This license applies to the
@@ -5848,12 +5844,14 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 <h1><a id="reselect"></a>Reselect License</h1>
 
-<p>This license applies to the file
-<code>devtools/client/shared/vendor/reselect.js</code>.</p>
+<p>This license applies to the files
+    <code>devtools/client/shared/vendor/reselect.js</code> and
+    <code>browser/components/newtab/data/content/activity-stream.bundle.js</code>.
+</p>
 <pre>
 The MIT License (MIT)
 
-Copyright (c) 2015-2016 Reselect Contributors
+Copyright (c) 2015-2018 Reselect Contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -7149,8 +7147,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     <ul>
       <li>The <a href="https://www.zlib.net/">zlib</a> compression library
           (Jean-loup Gailly, Mark Adler and team)</li>
-      <li>The <a href="http://www.bzip.org/">bzip2</a> compression library
-          (Julian Seward)</li>
       <li>The <a href="http://www.libpng.org/pub/png/">libpng</a> graphics library
           (Glenn Randers-Pehrson and team)</li>
       <li>The <a href="https://www.sqlite.org/">sqlite</a> database engine

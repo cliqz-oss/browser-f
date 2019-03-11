@@ -57,7 +57,6 @@ LayerTransactionParent::LayerTransactionParent(
       mChildEpoch{0},
       mParentEpoch{0},
       mVsyncRate(aVsyncRate),
-      mPendingTransaction{0},
       mDestroyed(false),
       mIPCOpen(false),
       mUpdateHitTestingTree(false) {
@@ -152,7 +151,7 @@ mozilla::ipc::IPCResult LayerTransactionParent::RecvUpdate(
     }
   });
 
-  AUTO_PROFILER_TRACING("Paint", "LayerTransaction");
+  AUTO_PROFILER_TRACING("Paint", "LayerTransaction", GRAPHICS);
   AUTO_PROFILER_LABEL("LayerTransactionParent::RecvUpdate", GRAPHICS);
 
   TimeStamp updateStart = TimeStamp::Now();
@@ -592,8 +591,7 @@ bool LayerTransactionParent::SetLayerAttributes(
       containerLayer->SetPreScale(attrs.preXScale(), attrs.preYScale());
       containerLayer->SetInheritedScale(attrs.inheritedXScale(),
                                         attrs.inheritedYScale());
-      containerLayer->SetScaleToResolution(attrs.scaleToResolution(),
-                                           attrs.presShellResolution());
+      containerLayer->SetScaleToResolution(attrs.presShellResolution());
       break;
     }
     case Specific::TColorLayerAttributes: {
@@ -802,6 +800,15 @@ mozilla::ipc::IPCResult LayerTransactionParent::RecvRequestProperty(
 
 mozilla::ipc::IPCResult LayerTransactionParent::RecvSetConfirmedTargetAPZC(
     const uint64_t& aBlockId, nsTArray<ScrollableLayerGuid>&& aTargets) {
+  for (size_t i = 0; i < aTargets.Length(); i++) {
+    if (aTargets[i].mLayersId != GetId()) {
+      // Guard against bad data from hijacked child processes
+      NS_ERROR(
+          "Unexpected layers id in RecvSetConfirmedTargetAPZC; dropping "
+          "message...");
+      return IPC_FAIL(this, "Bad layers id");
+    }
+  }
   mCompositorBridge->SetConfirmedTargetAPZC(GetId(), aBlockId, aTargets);
   return IPC_OK();
 }
@@ -885,77 +892,52 @@ bool LayerTransactionParent::IsSameProcess() const {
   return OtherPid() == base::GetCurrentProcId();
 }
 
-TransactionId LayerTransactionParent::FlushTransactionId(
-    const VsyncId& aId, TimeStamp& aCompositeEnd) {
-  if (mId.IsValid() && mPendingTransaction.IsValid() && !mVsyncRate.IsZero()) {
-    double latencyMs = (aCompositeEnd - mTxnStartTime).ToMilliseconds();
-    double latencyNorm = latencyMs / mVsyncRate.ToMilliseconds();
-    int32_t fracLatencyNorm = lround(latencyNorm * 100.0);
-    Telemetry::Accumulate(Telemetry::CONTENT_FRAME_TIME, fracLatencyNorm);
+void LayerTransactionParent::SetPendingTransactionId(
+    TransactionId aId, const VsyncId& aVsyncId,
+    const TimeStamp& aVsyncStartTime, const TimeStamp& aRefreshStartTime,
+    const TimeStamp& aTxnStartTime, const TimeStamp& aTxnEndTime,
+    bool aContainsSVG, const nsCString& aURL, const TimeStamp& aFwdTime) {
+  mPendingTransactions.AppendElement(PendingTransaction{
+      aId, aVsyncId, aVsyncStartTime, aRefreshStartTime, aTxnStartTime,
+      aTxnEndTime, aFwdTime, aURL, aContainsSVG});
+}
 
-    // Record CONTENT_FRAME_TIME_REASON. See
-    // WebRenderBridgeParent::FlushTransactionIdsForEpoch for more details.
-    //
-    // Note that deseralizing a layers update (RecvUpdate) can delay the receipt
-    // of the composite vsync message
-    // (CompositorBridgeParent::CompositeToTarget), since they're using the same
-    // thread. This can mean that compositing might start significantly late,
-    // but this code will still detect it as having successfully started on the
-    // right vsync (which is somewhat correct). We'd now have reduced time left
-    // in the vsync interval to finish compositing, so the chances of a missed
-    // frame increases. This is effectively including the RecvUpdate work as
-    // part of the 'compositing' phase for this metric, but it isn't included in
-    // COMPOSITE_TIME, and *is* included in CONTENT_FULL_PAINT_TIME.
-    latencyMs = (aCompositeEnd - mRefreshStartTime).ToMilliseconds();
-    latencyNorm = latencyMs / mVsyncRate.ToMilliseconds();
-    fracLatencyNorm = lround(latencyNorm * 100.0);
-    if (fracLatencyNorm < 200) {
-      // Success
-      Telemetry::AccumulateCategorical(
-          LABELS_CONTENT_FRAME_TIME_REASON::OnTime);
-    } else {
-      if (mTxnVsyncId == VsyncId() || aId == VsyncId() || mTxnVsyncId >= aId) {
-        // Vsync ids are nonsensical, possibly something got trigged from
-        // outside vsync?
-        Telemetry::AccumulateCategorical(
-            LABELS_CONTENT_FRAME_TIME_REASON::NoVsync);
-      } else if (aId - mTxnVsyncId > 1) {
-        // Composite started late (and maybe took too long as well)
-        Telemetry::AccumulateCategorical(
-            LABELS_CONTENT_FRAME_TIME_REASON::MissedComposite);
-      } else {
-        // Composite start on time, but must have taken too long.
-        Telemetry::AccumulateCategorical(
-            LABELS_CONTENT_FRAME_TIME_REASON::SlowComposite);
-      }
+TransactionId LayerTransactionParent::FlushTransactionId(
+    const VsyncId& aCompositeId, TimeStamp& aCompositeEnd) {
+  TransactionId id;
+  for (auto& transaction : mPendingTransactions) {
+    id = transaction.mId;
+    if (mId.IsValid() && transaction.mId.IsValid() && !mVsyncRate.IsZero()) {
+      RecordContentFrameTime(
+          transaction.mTxnVsyncId, transaction.mVsyncStartTime,
+          transaction.mTxnStartTime, aCompositeId, aCompositeEnd,
+          transaction.mTxnEndTime - transaction.mTxnStartTime, mVsyncRate,
+          transaction.mContainsSVG, false);
     }
-  }
 
 #if defined(ENABLE_FRAME_LATENCY_LOG)
-  if (mPendingTransaction.IsValid()) {
-    if (mRefreshStartTime) {
-      int32_t latencyMs =
-          lround((aCompositeEnd - mRefreshStartTime).ToMilliseconds());
-      printf_stderr(
-          "From transaction start to end of generate frame latencyMs %d this "
-          "%p\n",
-          latencyMs, this);
+    if (transaction.mId.IsValid()) {
+      if (transaction.mRefreshStartTime) {
+        int32_t latencyMs = lround(
+            (aCompositeEnd - transaction.mRefreshStartTime).ToMilliseconds());
+        printf_stderr(
+            "From transaction start to end of generate frame latencyMs %d this "
+            "%p\n",
+            latencyMs, this);
+      }
+      if (transaction.mFwdTime) {
+        int32_t latencyMs =
+            lround((aCompositeEnd - transaction.mFwdTime).ToMilliseconds());
+        printf_stderr(
+            "From forwarding transaction to end of generate frame latencyMs %d "
+            "this %p\n",
+            latencyMs, this);
+      }
     }
-    if (mFwdTime) {
-      int32_t latencyMs = lround((aCompositeEnd - mFwdTime).ToMilliseconds());
-      printf_stderr(
-          "From forwarding transaction to end of generate frame latencyMs %d "
-          "this %p\n",
-          latencyMs, this);
-    }
-  }
 #endif
+  }
 
-  mRefreshStartTime = TimeStamp();
-  mTxnStartTime = TimeStamp();
-  mFwdTime = TimeStamp();
-  TransactionId id = mPendingTransaction;
-  mPendingTransaction = TransactionId{0};
+  mPendingTransactions.Clear();
   return id;
 }
 

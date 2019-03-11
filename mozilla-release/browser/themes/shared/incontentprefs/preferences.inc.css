@@ -150,11 +150,8 @@ button > hbox > label {
 
 /* Category List */
 
-#categories > scrollbox {
+#categories {
   overflow: visible !important; /* Cancel scrollbar and do not clip overflow content when window size goes very small */
-}
-
-#categories > scrollbox > box {
   padding: 1px; /* Adding padding around richlistitem in order to make entire keyboard focusing outline visible */
 }
 
@@ -195,21 +192,28 @@ button > hbox > label {
   font-weight: 600;
 }
 
+.info-panel,
 .extension-controlled {
   margin-top: 18px !important;
   margin-bottom: 18px !important;
   background: var(--grey-20);
   border-radius: 5px;
-  -moz-padding-end: 10px;
+  padding-inline-end: 10px;
 }
 
+.info-panel > description,
 .extension-controlled > description {
   line-height: 16px;
   background: url(chrome://browser/skin/identity-icon.svg) 10px 14px no-repeat;
   padding: 10px;
-  -moz-padding-start: 30px;
+  padding-inline-start: 32px;
 }
 
+.info-panel > description {
+  line-height: unset;
+}
+
+.info-panel > description:-moz-locale-dir(rtl),
 .extension-controlled > description:-moz-locale-dir(rtl) {
   background-position-x: right 10px;
 }
@@ -385,10 +389,6 @@ button > hbox > label {
 }
 
 /* Privacy Pane */
-
-#formAutofillGroup {
-  margin-top: 28px;
-}
 
 .doNotTrackLearnMore {
   margin-inline-start: calc(1em + 30px);
@@ -852,7 +852,8 @@ menulist[indicator=true] > menupopup menuitem[indicator=true]:not([image]) > .me
 /* Proxy port input */
 
 .proxy-port-input {
-  width: calc(5ch + 22px); /* 5 chars + 11px padding on both sides */
+  width: calc(5ch + 18px); /* 5 chars + (8px padding + 1px border) on both sides */
+  margin-inline-start: 4px;
 }
 
 #defaultBrowserLanguage {
@@ -895,4 +896,28 @@ menulist[indicator=true] > menupopup menuitem[indicator=true]:not([image]) > .me
 /* Menulist styles */
 .label-item {
   font-size: 0.8em;
+}
+
+.updateSettingCrossUserWarningContainer {
+  background: var(--grey-20);
+  border-radius: 5px;
+  padding-inline: 8px;
+  padding-block-start: 2px;
+  padding-block-end: 8px;
+  margin-block-end: 17px;
+}
+
+#updateSettingCrossUserWarning {
+  padding-inline-start: 30px;
+  margin-block-start: 20px;
+  line-height: 20px;
+  background-image: url("chrome://global/skin/icons/info.svg");
+  background-position-x: left 2px;
+  background-position-y: top 2px;
+  background-size: 16px 16px;
+  background-repeat: no-repeat;
+}
+
+#updateSettingCrossUserWarning:-moz-locale-dir(rtl) {
+  background-position-x: right 2px;
 }

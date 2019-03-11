@@ -29,6 +29,7 @@
 #include <string.h>
 
 #include "jsapi.h"
+#include "jsfriendapi.h"
 #include "jsnum.h"
 #include "jstypes.h"
 #include "jsutil.h"
@@ -37,6 +38,7 @@
 #include "js/Conversions.h"
 #include "js/Date.h"
 #include "js/LocaleSensitive.h"
+#include "js/PropertySpec.h"
 #include "js/Wrapper.h"
 #include "util/StringBuffer.h"
 #include "util/Text.h"
@@ -2921,11 +2923,11 @@ MOZ_ALWAYS_INLINE bool date_toLocaleString_impl(JSContext* cx,
    * with msvc; '%#c' requests that a full year be used in the result string.
    */
   static const char format[] =
-#if defined(_WIN32) && !defined(__MWERKS__)
+#  if defined(_WIN32) && !defined(__MWERKS__)
       "%#c"
-#else
+#  else
       "%c"
-#endif
+#  endif
       ;
 
   Rooted<DateObject*> dateObj(cx, &args.thisv().toObject().as<DateObject>());
@@ -2945,11 +2947,11 @@ MOZ_ALWAYS_INLINE bool date_toLocaleDateString_impl(JSContext* cx,
    * with msvc; '%#x' requests that a full year be used in the result string.
    */
   static const char format[] =
-#if defined(_WIN32) && !defined(__MWERKS__)
+#  if defined(_WIN32) && !defined(__MWERKS__)
       "%#x"
-#else
+#  else
       "%x"
-#endif
+#  endif
       ;
 
   Rooted<DateObject*> dateObj(cx, &args.thisv().toObject().as<DateObject>());
@@ -3134,7 +3136,7 @@ static bool NewDateObject(JSContext* cx, const CallArgs& args, ClippedTime t) {
   MOZ_ASSERT(args.isConstructing());
 
   RootedObject proto(cx);
-  if (!GetPrototypeFromBuiltinConstructor(cx, args, &proto)) {
+  if (!GetPrototypeFromBuiltinConstructor(cx, args, JSProto_Date, &proto)) {
     return false;
   }
 
@@ -3356,6 +3358,12 @@ JSObject* js::NewDateObjectMsec(JSContext* cx, ClippedTime t,
   return obj;
 }
 
+JS_PUBLIC_API JSObject* JS::NewDateObject(JSContext* cx, ClippedTime time) {
+  AssertHeapIsIdle();
+  CHECK_THREAD(cx);
+  return NewDateObjectMsec(cx, time);
+}
+
 JS_FRIEND_API JSObject* js::NewDateObject(JSContext* cx, int year, int mon,
                                           int mday, int hour, int min,
                                           int sec) {
@@ -3383,6 +3391,27 @@ JS_FRIEND_API bool js::DateIsValid(JSContext* cx, HandleObject obj,
   }
 
   *isValid = !IsNaN(unboxed.toNumber());
+  return true;
+}
+
+JS_PUBLIC_API JSObject* JS::NewDateObject(JSContext* cx, int year, int mon,
+                                          int mday, int hour, int min,
+                                          int sec) {
+  AssertHeapIsIdle();
+  CHECK_THREAD(cx);
+  return js::NewDateObject(cx, year, mon, mday, hour, min, sec);
+}
+
+JS_PUBLIC_API bool JS::ObjectIsDate(JSContext* cx, Handle<JSObject*> obj,
+                                    bool* isDate) {
+  cx->check(obj);
+
+  ESClass cls;
+  if (!GetBuiltinClass(cx, obj, &cls)) {
+    return false;
+  }
+
+  *isDate = cls == ESClass::Date;
   return true;
 }
 

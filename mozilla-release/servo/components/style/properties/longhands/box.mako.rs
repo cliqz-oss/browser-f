@@ -100,34 +100,42 @@ ${helpers.single_keyword("-servo-overflow-clip-box", "padding-box content-box",
     )}
 % endfor
 
-<%
-    overflow_custom_consts = { "-moz-hidden-unscrollable": "CLIP" }
-%>
-
 // FIXME(pcwalton, #2742): Implement scrolling for `scroll` and `auto`.
 //
 // We allow it to apply to placeholders for UA sheets, which set it !important.
-${helpers.single_keyword(
+${helpers.predefined_type(
     "overflow-x",
-    "visible hidden scroll auto",
+    "Overflow",
+    "computed::Overflow::Visible",
     animation_value_type="discrete",
-    extra_gecko_values="-moz-hidden-unscrollable",
-    custom_consts=overflow_custom_consts,
-    gecko_constant_prefix="NS_STYLE_OVERFLOW",
     flags="APPLIES_TO_PLACEHOLDER",
     spec="https://drafts.csswg.org/css-overflow/#propdef-overflow-x",
+    needs_context=False,
     servo_restyle_damage = "reflow",
 )}
 
-// FIXME(pcwalton, #2742): Implement scrolling for `scroll` and `auto`.
-//
-// We allow it to apply to placeholders for UA sheets, which set it !important.
-<%helpers:longhand name="overflow-y" animation_value_type="discrete"
-                   flags="APPLIES_TO_PLACEHOLDER",
-                   spec="https://drafts.csswg.org/css-overflow/#propdef-overflow-y"
-                   servo_restyle_damage = "reflow">
-    pub use super::overflow_x::{SpecifiedValue, parse, get_initial_value, computed_value};
-</%helpers:longhand>
+${helpers.predefined_type(
+    "overflow-y",
+    "Overflow",
+    "computed::Overflow::Visible",
+    animation_value_type="discrete",
+    flags="APPLIES_TO_PLACEHOLDER",
+    spec="https://drafts.csswg.org/css-overflow/#propdef-overflow-y",
+    needs_context=False,
+    servo_restyle_damage = "reflow",
+)}
+
+${helpers.predefined_type(
+    "overflow-anchor",
+    "OverflowAnchor",
+    "computed::OverflowAnchor::Auto",
+    initial_specified_value="specified::OverflowAnchor::Auto",
+    products="gecko",
+    needs_context=False,
+    gecko_pref="layout.css.scroll-anchoring.enabled",
+    spec="https://drafts.csswg.org/css-scroll-anchoring/#exclusion-api",
+    animation_value_type="discrete",
+)}
 
 <% transition_extra_prefixes = "moz:layout.css.prefixes.transitions webkit" %>
 
@@ -393,7 +401,6 @@ ${helpers.predefined_type(
 ${helpers.single_keyword(
     "scroll-behavior",
     "auto smooth",
-    gecko_pref="layout.css.scroll-behavior.property-enabled",
     products="gecko",
     spec="https://drafts.csswg.org/cssom-view/#propdef-scroll-behavior",
     animation_value_type="discrete",
@@ -431,7 +438,6 @@ ${helpers.single_keyword(
     "isolation",
     "auto isolate",
     products="gecko",
-    gecko_pref="layout.css.isolation.enabled",
     spec="https://drafts.fxtf.org/compositing/#isolation",
     flags="CREATES_STACKING_CONTEXT",
     animation_value_type="discrete",
@@ -563,6 +569,7 @@ ${helpers.predefined_type(
     flags="CREATES_STACKING_CONTEXT FIXPOS_CB",
     gecko_pref="layout.css.contain.enabled",
     spec="https://drafts.csswg.org/css-contain/#contain-property",
+    enabled_in="chrome",
 )}
 
 // Non-standard
@@ -616,10 +623,10 @@ ${helpers.predefined_type(
 
 ${helpers.predefined_type(
     "shape-margin",
-    "NonNegativeLengthOrPercentage",
-    "computed::NonNegativeLengthOrPercentage::zero()",
+    "NonNegativeLengthPercentage",
+    "computed::NonNegativeLengthPercentage::zero()",
     products="gecko",
-    animation_value_type="NonNegativeLengthOrPercentage",
+    animation_value_type="NonNegativeLengthPercentage",
     flags="APPLIES_TO_FIRST_LETTER",
     spec="https://drafts.csswg.org/css-shapes/#shape-margin-property",
 )}
@@ -630,7 +637,7 @@ ${helpers.predefined_type(
     "generics::basic_shape::ShapeSource::None",
     products="gecko",
     boxed=True,
-    animation_value_type="ComputedValue",
+    animation_value_type="basic_shape::FloatAreaShape",
     flags="APPLIES_TO_FIRST_LETTER",
     spec="https://drafts.csswg.org/css-shapes/#shape-outside-property",
 )}

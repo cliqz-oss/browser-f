@@ -17,6 +17,7 @@
 #include "nsIURI.h"
 #include "nsXBLSerialize.h"
 #include "nsXBLPrototypeBinding.h"
+#include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/ElementBinding.h"
 #include "mozilla/dom/ScriptSettings.h"
@@ -414,9 +415,8 @@ nsresult nsXBLProtoImplField::InstallField(
   {
     nsJSUtils::ExecutionContext exec(cx, scopeObject);
     exec.SetScopeChain(scopeChain);
-    exec.CompileAndExec(options,
-                        nsDependentString(mFieldText, mFieldTextLength));
-    rv = exec.ExtractReturnValue(&result);
+    exec.Compile(options, nsDependentString(mFieldText, mFieldTextLength));
+    rv = exec.ExecScript(&result);
   }
 
   if (NS_FAILED(rv)) {

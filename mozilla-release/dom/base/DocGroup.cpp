@@ -13,10 +13,10 @@
 #include "nsIDocShell.h"
 #include "nsDOMMutationObserver.h"
 #if defined(XP_WIN)
-#include <processthreadsapi.h>  // for GetCurrentProcessId()
+#  include <processthreadsapi.h>  // for GetCurrentProcessId()
 #else
-#include <unistd.h>  // for getpid()
-#endif               // defined(XP_WIN)
+#  include <unistd.h>  // for getpid()
+#endif                 // defined(XP_WIN)
 
 namespace mozilla {
 namespace dom {
@@ -40,7 +40,7 @@ AutoTArray<RefPtr<DocGroup>, 2>* DocGroup::sPendingDocGroups = nullptr;
   return rv;
 }
 
-void DocGroup::RemoveDocument(nsIDocument* aDocument) {
+void DocGroup::RemoveDocument(Document* aDocument) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mDocuments.Contains(aDocument));
   mDocuments.RemoveElement(aDocument);
@@ -85,7 +85,7 @@ RefPtr<PerformanceInfoPromise> DocGroup::ReportPerformanceInfo() {
 
   // iterating on documents until we find the top window
   for (const auto& document : *this) {
-    nsCOMPtr<nsIDocument> doc = document;
+    nsCOMPtr<Document> doc = document;
     MOZ_ASSERT(doc);
     nsCOMPtr<nsIURI> docURI = doc->GetDocumentURI();
     if (!docURI) {
@@ -201,7 +201,7 @@ void DocGroup::MoveSignalSlotListTo(nsTArray<RefPtr<HTMLSlotElement>>& aDest) {
 }
 
 bool DocGroup::IsActive() const {
-  for (nsIDocument* doc : mDocuments) {
+  for (Document* doc : mDocuments) {
     if (doc->IsCurrentActiveDocument()) {
       return true;
     }

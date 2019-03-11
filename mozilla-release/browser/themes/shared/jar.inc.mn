@@ -55,7 +55,6 @@
   skin/classic/browser/identity-icon.svg                       (../shared/identity-block/identity-icon.svg)
   skin/classic/browser/identity-icon-notice.svg                (../shared/identity-block/identity-icon-notice.svg)
   skin/classic/browser/info.svg                                (../shared/info.svg)
-  skin/classic/browser/searchReset.css                         (../shared/searchReset.css)
 
   skin/classic/browser/illustrations/error-session-restore.svg (../shared/illustrations/error-session-restore.svg)
 
@@ -86,6 +85,8 @@
   skin/classic/browser/notification-icons/update.svg                        (../shared/notification-icons/update.svg)
   skin/classic/browser/notification-icons/midi.svg                          (../shared/notification-icons/midi.svg)
   skin/classic/browser/notification-icons/webauthn.svg                      (../shared/notification-icons/webauthn.svg)
+  skin/classic/browser/notification-icons/images.svg                        (../shared/notification-icons/images.svg)
+  skin/classic/browser/notification-icons/images-blocked.svg                (../shared/notification-icons/images-blocked.svg)
 
   skin/classic/browser/tracking-protection.svg                 (../shared/identity-block/tracking-protection.svg)
   skin/classic/browser/tracking-protection-disabled.svg        (../shared/identity-block/tracking-protection-disabled.svg)
@@ -157,6 +158,7 @@
   skin/classic/browser/home.svg                       (../shared/icons/home.svg)
   skin/classic/browser/library.svg                    (../shared/icons/library.svg)
   skin/classic/browser/library-bookmark-animation.svg (../shared/icons/library-bookmark-animation.svg)
+  skin/classic/browser/library-pocket-animation.svg   (../shared/icons/library-pocket-animation.svg)
   skin/classic/browser/link.svg                       (../shared/icons/link.svg)
   skin/classic/browser/mail.svg                       (../shared/icons/mail.svg)
   skin/classic/browser/menu.svg                       (../shared/icons/menu.svg)
@@ -165,6 +167,9 @@
   skin/classic/browser/new-window.svg                 (../shared/icons/new-window.svg)
   skin/classic/browser/open.svg                       (../shared/icons/open.svg)
   skin/classic/browser/page-action.svg                (../shared/icons/page-action.svg)
+  skin/classic/browser/pocket.svg                     (../shared/icons/pocket.svg)
+  skin/classic/browser/pocket-animation.svg           (../shared/icons/pocket-animation.svg)
+  skin/classic/browser/pocket-outline.svg             (../shared/icons/pocket-outline.svg)
   skin/classic/browser/print.svg                      (../shared/icons/print.svg)
   skin/classic/browser/private-browsing.svg           (../shared/icons/private-browsing.svg)
   skin/classic/browser/privateBrowsing.svg            (../shared/icons/privateBrowsing.svg)
@@ -224,8 +229,6 @@
   skin/classic/browser/cert-error-new.svg                      (../shared/incontent-icons/cert-error-new.svg)
   skin/classic/browser/wifi.svg                                (../shared/incontent-icons/wifi.svg)
   skin/classic/browser/tab-crashed.svg                         (../shared/incontent-icons/tab-crashed.svg)
-  skin/classic/browser/favicon-search-16.svg                   (../shared/favicon-search-16.svg)
-  skin/classic/browser/icon-search-64.svg                      (../shared/incontent-icons/icon-search-64.svg)
   skin/classic/browser/welcome-back.svg                        (../shared/incontent-icons/welcome-back.svg)
   skin/classic/browser/readerMode.svg                          (../shared/reader/readerMode.svg)
   skin/classic/browser/panic-panel/header.png                  (../shared/panic-panel/header.png)

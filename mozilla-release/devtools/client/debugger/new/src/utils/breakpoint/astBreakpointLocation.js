@@ -7,17 +7,16 @@
 import { getSymbols } from "../../workers/parser";
 import { findClosestFunction } from "../ast";
 
-import type { SymbolDeclarations } from "../../workers/parser";
-
 import type { SourceLocation, Source, ASTLocation } from "../../types";
+import type { Symbols } from "../../reducers/ast";
 
 export function getASTLocation(
   source: Source,
-  symbols: SymbolDeclarations,
+  symbols: ?Symbols,
   location: SourceLocation
 ): ASTLocation {
   if (source.isWasm || !symbols || symbols.loading) {
-    return { name: undefined, offset: location };
+    return { name: undefined, offset: location, index: 0 };
   }
 
   const scope = findClosestFunction(symbols, location);
@@ -27,15 +26,20 @@ export function getASTLocation(
     const line = location.line - scope.location.start.line;
     return {
       name: scope.name,
-      offset: { line, column: undefined }
+      offset: { line, column: undefined },
+      index: scope.index
     };
   }
-  return { name: undefined, offset: location };
+  return { name: undefined, offset: location, index: 0 };
 }
 
-export async function findScopeByName(source: Source, name: ?string) {
+export async function findScopeByName(
+  source: Source,
+  name: ?string,
+  index: number
+) {
   const symbols = await getSymbols(source.id);
   const functions = symbols.functions;
 
-  return functions.find(node => node.name === name);
+  return functions.find(node => node.name === name && node.index === index);
 }

@@ -497,6 +497,15 @@ var gMainPane = {
                          gMainPane.updateWritePrefs);
       }
 
+      if (AppConstants.platform == "win") {
+        // On Windows, the Application Update setting is an installation-
+        // specific preference, not a profile-specific one. Show a warning to
+        // inform users of this.
+        let updateContainer = document.getElementById("updateSettingsContainer");
+        updateContainer.classList.add("updateSettingCrossUserWarningContainer");
+        document.getElementById("updateSettingCrossUserWarning").hidden = false;
+      }
+
       if (AppConstants.MOZ_MAINTENANCE_SERVICE) {
         // Check to see if the maintenance service is installed.
         // If it isn't installed, don't show the preference at all.
@@ -774,7 +783,7 @@ var gMainPane = {
    * that the user would like to switch to after confirmation.
    */
   async setBrowserLocales(selected) {
-    let available = Services.locale.availableLocales;
+    let available = await getAvailableLocales();
     let localeNames = Services.intl.getLocaleDisplayNames(undefined, available);
     let locales = available.map((code, i) => ({code, name: localeNames[i]}));
     locales.sort((a, b) => a.name > b.name);
@@ -1644,8 +1653,7 @@ var gMainPane = {
     this.selectedHandlerListItem = null;
 
     // Clear the list of entries.
-    while (this._list.childNodes.length > 1)
-      this._list.removeChild(this._list.lastChild);
+    this._list.textContent = "";
 
     var visibleTypes = this._visibleTypes;
 

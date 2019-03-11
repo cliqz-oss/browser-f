@@ -33,7 +33,7 @@
 #include "mozilla/dom/DOMStringList.h"
 #include "mozilla/dom/DataTransfer.h"
 #include "mozilla/dom/DragEvent.h"
-#include "nsIDocument.h"             // for nsIDocument
+#include "mozilla/dom/Document.h"    // for Document
 #include "nsIFocusManager.h"         // for nsIFocusManager
 #include "nsIFormControl.h"          // for nsIFormControl, etc.
 #include "nsINode.h"                 // for nsINode, ::NODE_IS_EDITABLE, etc.
@@ -50,8 +50,8 @@
 #include "nsString.h"               // for nsAutoString
 #include "nsQueryObject.h"          // for do_QueryObject
 #ifdef HANDLE_NATIVE_TEXT_DIRECTION_SWITCH
-#include "nsContentUtils.h"   // for nsContentUtils, etc.
-#include "nsIBidiKeyboard.h"  // for nsIBidiKeyboard
+#  include "nsContentUtils.h"   // for nsContentUtils, etc.
+#  include "nsIBidiKeyboard.h"  // for nsIBidiKeyboard
 #endif
 
 #include "mozilla/dom/TabParent.h"
@@ -63,7 +63,7 @@ namespace mozilla {
 using namespace dom;
 
 static void DoCommandCallback(Command aCommand, void* aData) {
-  nsIDocument* doc = static_cast<nsIDocument*>(aData);
+  Document* doc = static_cast<Document*>(aData);
   nsPIDOMWindowOuter* win = doc->GetWindow();
   if (!win) {
     return;
@@ -169,15 +169,12 @@ nsresult EditorEventListener::InstallToEditor() {
                                TrustedEventsAtCapture());
   elmP->AddEventListenerByType(this, NS_LITERAL_STRING("click"),
                                TrustedEventsAtCapture());
-  // Focus event doesn't bubble so adding the listener to capturing phase.
-  // XXX Should we listen focus/blur events of system group too? Or should
-  //     editor notified focus/blur of the element from nsFocusManager
-  //     directly?  Because if the event propagation is stopped by JS,
-  //     editor cannot initialize selection as expected.
+  // Focus event doesn't bubble so adding the listener to capturing phase as
+  // system event group.
   elmP->AddEventListenerByType(this, NS_LITERAL_STRING("blur"),
-                               TrustedEventsAtCapture());
+                               TrustedEventsAtSystemGroupCapture());
   elmP->AddEventListenerByType(this, NS_LITERAL_STRING("focus"),
-                               TrustedEventsAtCapture());
+                               TrustedEventsAtSystemGroupCapture());
   elmP->AddEventListenerByType(this, NS_LITERAL_STRING("text"),
                                TrustedEventsAtSystemGroupBubble());
   elmP->AddEventListenerByType(this, NS_LITERAL_STRING("compositionstart"),
@@ -243,9 +240,9 @@ void EditorEventListener::UninstallFromEditor() {
   elmP->RemoveEventListenerByType(this, NS_LITERAL_STRING("click"),
                                   TrustedEventsAtCapture());
   elmP->RemoveEventListenerByType(this, NS_LITERAL_STRING("blur"),
-                                  TrustedEventsAtCapture());
+                                  TrustedEventsAtSystemGroupCapture());
   elmP->RemoveEventListenerByType(this, NS_LITERAL_STRING("focus"),
-                                  TrustedEventsAtCapture());
+                                  TrustedEventsAtSystemGroupCapture());
   elmP->RemoveEventListenerByType(this, NS_LITERAL_STRING("text"),
                                   TrustedEventsAtSystemGroupBubble());
   elmP->RemoveEventListenerByType(this, NS_LITERAL_STRING("compositionstart"),
@@ -271,7 +268,7 @@ nsIContent* EditorEventListener::GetFocusedRootContent() {
     return nullptr;
   }
 
-  nsIDocument* composedDoc = focusedContent->GetComposedDoc();
+  Document* composedDoc = focusedContent->GetComposedDoc();
   NS_ENSURE_TRUE(composedDoc, nullptr);
 
   if (composedDoc->HasFlag(NODE_IS_EDITABLE)) {
@@ -287,7 +284,7 @@ bool EditorEventListener::EditorHasFocus() {
   if (!focusedContent) {
     return false;
   }
-  nsIDocument* composedDoc = focusedContent->GetComposedDoc();
+  Document* composedDoc = focusedContent->GetComposedDoc();
   return !!composedDoc;
 }
 
@@ -564,7 +561,7 @@ nsresult EditorEventListener::KeyPress(WidgetKeyboardEvent* aKeyboardEvent) {
     NS_ENSURE_TRUE(widget, NS_OK);
   }
 
-  nsCOMPtr<nsIDocument> doc = editorBase->GetDocument();
+  RefPtr<Document> doc = editorBase->GetDocument();
 
   // WidgetKeyboardEvent::ExecuteEditCommands() requires non-nullptr mWidget.
   // If the event is created by chrome script, it is nullptr but we need to
@@ -853,10 +850,10 @@ bool EditorEventListener::CanDrop(DragEvent* aEvent) {
   // There is a source node, so compare the source documents and this document.
   // Disallow drops on the same document.
 
-  nsCOMPtr<nsIDocument> domdoc = editorBase->GetDocument();
+  RefPtr<Document> domdoc = editorBase->GetDocument();
   NS_ENSURE_TRUE(domdoc, false);
 
-  nsCOMPtr<nsIDocument> sourceDoc = sourceNode->OwnerDoc();
+  RefPtr<Document> sourceDoc = sourceNode->OwnerDoc();
 
   // If the source and the dest are not same document, allow to drop it always.
   if (domdoc != sourceDoc) {
@@ -1108,7 +1105,7 @@ bool EditorEventListener::ShouldHandleNativeKeyBindings(
     return false;
   }
 
-  nsCOMPtr<nsIDocument> doc = editorBase->GetDocument();
+  RefPtr<Document> doc = editorBase->GetDocument();
   if (doc->HasFlag(NODE_IS_EDITABLE)) {
     // Don't need to perform any checks in designMode documents.
     return true;

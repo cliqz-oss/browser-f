@@ -27,10 +27,10 @@
 // GUID_PROP_INPUTSCOPE is declared in inputscope.h using INIT_GUID.
 // With initguid.h, we get its instance instead of extern declaration.
 #ifdef INPUTSCOPE_INIT_GUID
-#include <initguid.h>
+#  include <initguid.h>
 #endif
 #ifdef TEXTATTRS_INIT_GUID
-#include <tsattrs.h>
+#  include <tsattrs.h>
 #endif
 #include <inputscope.h>
 
@@ -1036,8 +1036,6 @@ class TSFTextStore final : public ITextStoreACP,
   // If this is false, MaybeFlushPendingNotifications() will clear the
   // mContentForTSF.
   bool mDeferClearingContentForTSF;
-  // While there is native caret, this is true.  Otherwise, false.
-  bool mNativeCaretIsCreated;
   // While the instance is dispatching events, the event may not be handled
   // synchronously in e10s mode.  So, in such case, in strictly speaking,
   // we shouldn't query layout information.  However, TS_E_NOLAYOUT bugs of

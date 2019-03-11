@@ -19,6 +19,7 @@
 #include "nsGlobalWindow.h"
 #include "WorkerScope.h"
 #include "jsapi.h"
+#include "js/ContextOptions.h"
 #include "nsJSPrincipals.h"
 
 namespace mozilla {
@@ -58,8 +59,8 @@ NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_BEGIN(CallbackObject)
   if (MOZ_UNLIKELY(!callback)) {
     return true;
   }
-  auto pvt = xpc::CompartmentPrivate::Get(callback);
-  if (MOZ_LIKELY(tmp->mIncumbentGlobal && pvt) && MOZ_UNLIKELY(pvt->wasNuked)) {
+  if (MOZ_LIKELY(tmp->mIncumbentGlobal) &&
+      MOZ_UNLIKELY(js::NukedObjectRealm(tmp->CallbackGlobalPreserveColor()))) {
     // It's not safe to release our global reference or drop our JS objects at
     // this point, so defer their finalization until CC is finished.
     AddForDeferredFinalization(new JSObjectsDropper(tmp));

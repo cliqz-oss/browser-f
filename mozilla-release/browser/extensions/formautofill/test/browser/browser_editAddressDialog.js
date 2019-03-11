@@ -1,5 +1,7 @@
 "use strict";
 
+const {FormAutofillUtils} = ChromeUtils.import("resource://formautofill/FormAutofillUtils.jsm", {});
+
 requestLongerTimeout(6);
 
 add_task(async function setup_supportedCountries() {
@@ -56,7 +58,7 @@ add_task(async function test_saveAddress() {
     is(doc.querySelector("#postal-code-container > .label-text").textContent, "ZIP Code",
                          "US postal-code label should be 'ZIP Code'");
     // Input address info and verify move through form with tab keys
-    const keyInputs = [
+    const keypresses = [
       "VK_TAB",
       TEST_ADDRESS_1["given-name"],
       "VK_TAB",
@@ -83,7 +85,16 @@ add_task(async function test_saveAddress() {
       "VK_TAB",
       "VK_RETURN",
     ];
-    keyInputs.forEach(input => EventUtils.synthesizeKey(input, {}, win));
+    keypresses.forEach(keypress => {
+      if (doc.activeElement.localName == "select" && !keypress.startsWith("VK_")) {
+        let field = doc.activeElement;
+        while (field.value != keypress) {
+          EventUtils.synthesizeKey(keypress[0], {}, win);
+        }
+      } else {
+        EventUtils.synthesizeKey(keypress, {}, win);
+      }
+    });
   });
   let addresses = await getAddresses();
 
@@ -100,6 +111,11 @@ add_task(async function test_editAddress() {
     EventUtils.synthesizeKey("VK_TAB", {}, win);
     EventUtils.synthesizeKey("VK_RIGHT", {}, win);
     EventUtils.synthesizeKey("test", {}, win);
+
+    let stateSelect = win.document.querySelector("#address-level1");
+    is(stateSelect.selectedOptions[0].value, TEST_ADDRESS_1["address-level1"],
+       "address-level1 should be selected in the dropdown");
+
     win.document.querySelector("#save").click();
   }, {
     record: addresses[0],
@@ -108,6 +124,31 @@ add_task(async function test_editAddress() {
 
   is(addresses.length, 1, "only one address is in storage");
   is(addresses[0]["given-name"], TEST_ADDRESS_1["given-name"] + "test", "given-name changed");
+  await removeAddresses([addresses[0].guid]);
+
+  addresses = await getAddresses();
+  is(addresses.length, 0, "Address storage is empty");
+});
+
+add_task(async function test_editAddressFrenchCanadianChangedToEnglishRepresentation() {
+  let addressClone = Object.assign({}, TEST_ADDRESS_CA_1);
+  addressClone["address-level1"] = "Colombie-Britannique";
+  await saveAddress(addressClone);
+
+  let addresses = await getAddresses();
+  await testDialog(EDIT_ADDRESS_DIALOG_URL, win => {
+    let stateSelect = win.document.querySelector("#address-level1");
+    is(stateSelect.selectedOptions[0].value, "BC",
+       "address-level1 should have 'BC' selected in the dropdown");
+
+    win.document.querySelector("#save").click();
+  }, {
+    record: addresses[0],
+  });
+  addresses = await getAddresses();
+
+  is(addresses.length, 1, "only one address is in storage");
+  is(addresses[0]["address-level1"], "BC", "address-level1 changed");
   await removeAddresses([addresses[0].guid]);
 
   addresses = await getAddresses();
@@ -238,6 +279,74 @@ add_task(async function test_saveAddressDE() {
   await removeAllRecords();
 });
 
+/**
+ * Test saving an address for a region from regionNames.properties but not in
+ * addressReferences.js (libaddressinput).
+ */
+add_task(async function test_saveAddress_nolibaddressinput() {
+  const TEST_ADDRESS = {
+    ...TEST_ADDRESS_IE_1,
+    ...{
+      "address-level3": undefined,
+      country: "XG",
+    },
+  };
+
+  isnot(FormAutofillUtils.getCountryAddressData("XG").key, "XG",
+        "Check that the region we're testing with isn't in libaddressinput");
+
+  await testDialog(EDIT_ADDRESS_DIALOG_URL, async win => {
+    let doc = win.document;
+
+    // Change country to verify labels
+    doc.querySelector("#country").focus();
+    EventUtils.synthesizeKey("Gaza Strip", {}, win);
+    await TestUtils.waitForCondition(() => {
+      return doc.querySelector("#postal-code-container > .label-text").textContent == "Postal Code";
+    }, "Wait for the mutation observer to change the labels");
+    is(doc.querySelector("#postal-code-container > .label-text").textContent, "Postal Code",
+                         "XG postal-code label should be 'Postal Code'");
+    isnot(doc.querySelector("#address-level1-container").style.display, "none",
+          "XG address-level1 should be hidden");
+    is(doc.querySelector("#address-level2").localName, "input",
+       "XG address-level2 should be an <input>");
+    // Input address info and verify move through form with tab keys
+    doc.querySelector("#given-name").focus();
+    const keyInputs = [
+      TEST_ADDRESS["given-name"],
+      "VK_TAB",
+      TEST_ADDRESS["additional-name"],
+      "VK_TAB",
+      TEST_ADDRESS["family-name"],
+      "VK_TAB",
+      TEST_ADDRESS.organization,
+      "VK_TAB",
+      TEST_ADDRESS["street-address"],
+      "VK_TAB",
+      TEST_ADDRESS["address-level2"],
+      "VK_TAB",
+      TEST_ADDRESS["address-level1"],
+      "VK_TAB",
+      TEST_ADDRESS["postal-code"],
+      "VK_TAB",
+      // TEST_ADDRESS_1.country, // Country is already selected above
+      "VK_TAB",
+      TEST_ADDRESS.tel,
+      "VK_TAB",
+      TEST_ADDRESS.email,
+      "VK_TAB",
+      "VK_TAB",
+      "VK_RETURN",
+    ];
+    keyInputs.forEach(input => EventUtils.synthesizeKey(input, {}, win));
+  });
+  let addresses = await getAddresses();
+  for (let [fieldName, fieldValue] of Object.entries(TEST_ADDRESS)) {
+    is(addresses[0][fieldName], fieldValue, "check " + fieldName);
+  }
+  await removeAllRecords();
+});
+
 add_task(async function test_saveAddressIE() {
   await testDialog(EDIT_ADDRESS_DIALOG_URL, async win => {
     let doc = win.document;
@@ -294,7 +403,7 @@ add_task(async function test_saveAddressIE() {
   await removeAllRecords();
 });
 
-add_task(async function test_countryFieldLabels() {
+add_task(async function test_countryAndStateFieldLabels() {
   await testDialog(EDIT_ADDRESS_DIALOG_URL, async win => {
     let doc = win.document;
     // Change country to verify labels
@@ -309,7 +418,7 @@ add_task(async function test_countryFieldLabels() {
 
     for (let countryOption of doc.querySelector("#country").options) {
       if (countryOption.value == "") {
-        info("Skipping the empty option");
+        info("Skipping the empty country option");
         continue;
       }
 
@@ -333,6 +442,31 @@ add_task(async function test_countryFieldLabels() {
               "Ensure textContent is non-empty for: " + countryOption.value);
         is(labelEl.dataset.localization, undefined,
            "Ensure data-localization was removed: " + countryOption.value);
+      }
+
+      let stateOptions = doc.querySelector("#address-level1").options;
+      /* eslint-disable max-len */
+      let expectedStateOptions = {
+        "BS": {
+          // The Bahamas is an interesting testcase because they have some keys that are full names, and others are replaced with ISO IDs.
+          "keys": "Abaco~AK~Andros~BY~BI~CI~Crooked Island~Eleuthera~EX~Grand Bahama~HI~IN~LI~MG~N.P.~RI~RC~SS~SW".split("~"),
+          "names": "Abaco Islands~Acklins~Andros Island~Berry Islands~Bimini~Cat Island~Crooked Island~Eleuthera~Exuma and Cays~Grand Bahama~Harbour Island~Inagua~Long Island~Mayaguana~New Providence~Ragged Island~Rum Cay~San Salvador~Spanish Wells".split("~"),
+        },
+        "US": {
+          "keys": "AL~AK~AS~AZ~AR~AA~AE~AP~CA~CO~CT~DE~DC~FL~GA~GU~HI~ID~IL~IN~IA~KS~KY~LA~ME~MH~MD~MA~MI~FM~MN~MS~MO~MT~NE~NV~NH~NJ~NM~NY~NC~ND~MP~OH~OK~OR~PW~PA~PR~RI~SC~SD~TN~TX~UT~VT~VI~VA~WA~WV~WI~WY".split("~"),
+          "names": "Alabama~Alaska~American Samoa~Arizona~Arkansas~Armed Forces (AA)~Armed Forces (AE)~Armed Forces (AP)~California~Colorado~Connecticut~Delaware~District of Columbia~Florida~Georgia~Guam~Hawaii~Idaho~Illinois~Indiana~Iowa~Kansas~Kentucky~Louisiana~Maine~Marshall Islands~Maryland~Massachusetts~Michigan~Micronesia~Minnesota~Mississippi~Missouri~Montana~Nebraska~Nevada~New Hampshire~New Jersey~New Mexico~New York~North Carolina~North Dakota~Northern Mariana Islands~Ohio~Oklahoma~Oregon~Palau~Pennsylvania~Puerto Rico~Rhode Island~South Carolina~South Dakota~Tennessee~Texas~Utah~Vermont~Virgin Islands~Virginia~Washington~West Virginia~Wisconsin~Wyoming".split("~"),
+        },
+      };
+      /* eslint-enable max-len */
+
+      if (expectedStateOptions[countryOption.value]) {
+        let {keys, names} = expectedStateOptions[countryOption.value];
+        is(stateOptions.length, keys.length + 1, "stateOptions should list all options plus a blank entry");
+        is(stateOptions[0].value, "", "First State option should be blank");
+        for (let i = 1; i < stateOptions.length; i++) {
+          is(stateOptions[i].value, keys[i - 1], "Each State should be listed in alphabetical name order (key)");
+          is(stateOptions[i].text, names[i - 1], "Each State should be listed in alphabetical name order (name)");
+        }
       }
     }
 
@@ -454,7 +588,9 @@ add_task(async function test_hiddenFieldRemovedWhenCountryChanged() {
     doc.querySelector("#address-level2").focus();
     EventUtils.synthesizeKey(TEST_ADDRESS_1["address-level2"], {}, win);
     doc.querySelector("#address-level1").focus();
-    EventUtils.synthesizeKey(TEST_ADDRESS_1["address-level1"], {}, win);
+    while (doc.querySelector("#address-level1").value != TEST_ADDRESS_1["address-level1"]) {
+      EventUtils.synthesizeKey(TEST_ADDRESS_1["address-level1"][0], {}, win);
+    }
     doc.querySelector("#save").focus();
     EventUtils.synthesizeKey("VK_RETURN", {}, win);
   });
@@ -496,6 +632,7 @@ add_task(async function test_countrySpecificFieldsGetRequiredness() {
     EventUtils.synthesizeKey("United States", {}, win);
 
     await TestUtils.waitForCondition(() => {
+      provinceField = doc.getElementById("address-level1");
       return provinceField.parentNode.style.display != "none";
     }, "Wait for address-level1 to become visible", 10);
 
@@ -506,6 +643,7 @@ add_task(async function test_countrySpecificFieldsGetRequiredness() {
     EventUtils.synthesizeKey("Romania", {}, win);
 
     await TestUtils.waitForCondition(() => {
+      provinceField = doc.getElementById("address-level1");
       return provinceField.parentNode.style.display == "none";
     }, "Wait for address-level1 to become hidden", 10);
 

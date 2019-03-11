@@ -182,6 +182,9 @@ bool js::DumpRealmPCCounts(JSContext* cx) {
   for (auto iter = cx->zone()->cellIter<JSScript>(); !iter.done();
        iter.next()) {
     JSScript* script = iter;
+    if (gc::IsAboutToBeFinalizedUnbarriered(&script)) {
+      continue;
+    }
     if (script->realm() != cx->realm()) {
       continue;
     }
@@ -1442,8 +1445,7 @@ static unsigned Disassemble1(JSContext* cx, HandleScript script, jsbytecode* pc,
     }
 
     case JOF_ENVCOORD: {
-      RootedValue v(cx, StringValue(EnvironmentCoordinateName(
-                            cx->caches().envCoordinateNameCache, script, pc)));
+      RootedValue v(cx, StringValue(EnvironmentCoordinateNameSlow(script, pc)));
       UniqueChars bytes = ToDisassemblySource(cx, v);
       if (!bytes) {
         return 0;
@@ -1468,10 +1470,10 @@ static unsigned Disassemble1(JSContext* cx, HandleScript script, jsbytecode* pc,
       break;
     }
 
-#ifdef ENABLE_BIGINT
+#  ifdef ENABLE_BIGINT
     case JOF_BIGINT:
       // Fallthrough.
-#endif
+#  endif
     case JOF_DOUBLE: {
       RootedValue v(cx, script->getConst(GET_UINT32_INDEX(pc)));
       UniqueChars bytes = ToDisassemblySource(cx, v);
@@ -1770,8 +1772,7 @@ bool ExpressionDecompiler::decompilePC(jsbytecode* pc, uint8_t defIndex) {
       return write(atom);
     }
     case JSOP_GETALIASEDVAR: {
-      JSAtom* atom = EnvironmentCoordinateName(
-          cx->caches().envCoordinateNameCache, script, pc);
+      JSAtom* atom = EnvironmentCoordinateNameSlow(script, pc);
       MOZ_ASSERT(atom);
       return write(atom);
     }
@@ -2182,6 +2183,9 @@ UniqueChars ExpressionDecompiler::getOutput() {
 static bool DecompileAtPCForStackDump(
     JSContext* cx, HandleScript script,
     const OffsetAndDefIndex& offsetAndDefIndex, Sprinter* sp) {
+  // The expression decompiler asserts the script is in the current realm.
+  AutoRealm ar(cx, script);
+
   LifoAllocScope allocScope(&cx->tempLifoAlloc());
   BytecodeParser parser(cx, allocScope.alloc(), script);
   parser.setStackDump();
@@ -2528,8 +2532,11 @@ JS_FRIEND_API void js::StopPCCountProfiling(JSContext* cx) {
   }
 
   for (ZonesIter zone(rt, SkipAtoms); !zone.done(); zone.next()) {
-    for (auto script = zone->cellIter<JSScript>(); !script.done();
-         script.next()) {
+    for (auto iter = zone->cellIter<JSScript>(); !iter.done(); iter.next()) {
+      JSScript* script = iter;
+      if (gc::IsAboutToBeFinalizedUnbarriered(&script)) {
+        continue;
+      }
       AutoSweepTypeScript sweep(script);
       if (script->hasScriptCounts() && script->types(sweep)) {
         if (!vec->append(script)) {
@@ -2829,8 +2836,11 @@ static bool GenerateLcovInfo(JSContext* cx, JS::Realm* realm,
 
   Rooted<ScriptVector> queue(cx, ScriptVector(cx));
   for (ZonesIter zone(rt, SkipAtoms); !zone.done(); zone.next()) {
-    for (auto script = zone->cellIter<JSScript>(); !script.done();
-         script.next()) {
+    for (auto iter = zone->cellIter<JSScript>(); !iter.done(); iter.next()) {
+      JSScript* script = iter;
+      if (gc::IsAboutToBeFinalizedUnbarriered(&script)) {
+        continue;
+      }
       if (script->realm() != realm || !script->filename()) {
         continue;
       }

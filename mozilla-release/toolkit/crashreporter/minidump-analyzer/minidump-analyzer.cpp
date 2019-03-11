@@ -26,21 +26,21 @@
 
 #if defined(XP_WIN32)
 
-#include <windows.h>
-#include "mozilla/glue/WindowsDllServices.h"
+#  include <windows.h>
+#  include "mozilla/glue/WindowsDllServices.h"
 
 #elif defined(XP_UNIX) || defined(XP_MACOSX)
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
+#  include <sys/types.h>
+#  include <sys/stat.h>
+#  include <unistd.h>
 
 #endif
 
 #include "MinidumpAnalyzerUtils.h"
 
-#if XP_WIN && HAVE_64BIT_BUILD
-#include "MozStackFrameSymbolizer.h"
+#if XP_WIN && HAVE_64BIT_BUILD && defined(_M_X64)
+#  include "MozStackFrameSymbolizer.h"
 #endif
 
 namespace CrashReporter {
@@ -329,7 +329,7 @@ static void ConvertProcessStateToJSON(const ProcessState& aProcessState,
 static bool ProcessMinidump(Json::Value& aStackTraces,
                             Json::Value& aCertSubjects, const string& aDumpFile,
                             const bool aFullStacks) {
-#if XP_WIN && HAVE_64BIT_BUILD
+#if XP_WIN && HAVE_64BIT_BUILD && defined(_M_X64)
   MozStackFrameSymbolizer symbolizer;
   MinidumpProcessor minidumpProcessor(&symbolizer, false);
 #else
@@ -418,9 +418,9 @@ bool GenerateStacks(const string& aDumpPath, const bool aFullStacks) {
 using namespace CrashReporter;
 
 #if defined(XP_WIN)
-#define XP_LITERAL(s) L##s
+#  define XP_LITERAL(s) L##s
 #else
-#define XP_LITERAL(s) s
+#  define XP_LITERAL(s) s
 #endif
 
 template <typename CharT>

@@ -16,7 +16,6 @@
 #include "nsIHttpChannel.h"
 
 class nsIContent;
-class nsIDocument;
 
 namespace mozilla {
 namespace dom {
@@ -84,7 +83,7 @@ class HTMLTrackElement final : public nsGenericHTMLElement {
 
   // Override BindToTree() so that we can trigger a load when we become
   // the child of a media element.
-  virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
+  virtual nsresult BindToTree(Document* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent) override;
   virtual void UnbindFromTree(bool aDeep, bool aNullParent) override;
 
@@ -102,9 +101,6 @@ class HTMLTrackElement final : public nsGenericHTMLElement {
                              JS::Handle<JSObject*> aGivenProto) override;
   void OnChannelRedirect(nsIChannel* aChannel, nsIChannel* aNewChannel,
                          uint32_t aFlags);
-  // Open a new channel to the HTMLTrackElement's src attribute and call
-  // mListener's LoadResource().
-  void LoadResource();
 
   friend class TextTrackCue;
   friend class WebVTTListener;
@@ -118,6 +114,9 @@ class HTMLTrackElement final : public nsGenericHTMLElement {
 
  private:
   void DispatchLoadResource();
+  // Open a new channel to the HTMLTrackElement's src attribute and call
+  // mListener's LoadResource().
+  void LoadResource(RefPtr<WebVTTListener>&& aWebVTTListener);
   bool mLoadResourceDispatched;
 
   RefPtr<WindowDestroyObserver> mWindowDestroyObserver;

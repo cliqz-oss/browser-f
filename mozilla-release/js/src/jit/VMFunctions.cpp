@@ -17,6 +17,7 @@
 #include "jit/mips64/Simulator-mips64.h"
 #include "vm/ArrayObject.h"
 #include "vm/Debugger.h"
+#include "vm/EqualityOperations.h"  // js::StrictlyEqual
 #include "vm/Interpreter.h"
 #include "vm/SelfHosting.h"
 #include "vm/TraceLogging.h"
@@ -186,39 +187,6 @@ bool CheckOverRecursedBaseline(JSContext* cx, BaselineFrame* frame) {
   }
 
   return CheckOverRecursed(cx);
-}
-
-JSObject* BindVar(JSContext* cx, HandleObject envChain) {
-  JSObject* obj = envChain;
-  while (!obj->isQualifiedVarObj()) {
-    obj = obj->enclosingEnvironment();
-  }
-  MOZ_ASSERT(obj);
-  return obj;
-}
-
-bool DefVar(JSContext* cx, HandlePropertyName dn, unsigned attrs,
-            HandleObject envChain) {
-  // Given the ScopeChain, extract the VarObj.
-  RootedObject obj(cx, BindVar(cx, envChain));
-  return DefVarOperation(cx, obj, dn, attrs);
-}
-
-bool DefLexical(JSContext* cx, HandlePropertyName dn, unsigned attrs,
-                HandleObject envChain) {
-  // Find the extensible lexical scope.
-  Rooted<LexicalEnvironmentObject*> lexicalEnv(
-      cx, &NearestEnclosingExtensibleLexicalEnvironment(envChain));
-
-  // Find the variables object.
-  RootedObject varObj(cx, BindVar(cx, envChain));
-  return DefLexicalOperation(cx, lexicalEnv, varObj, dn, attrs);
-}
-
-bool DefGlobalLexical(JSContext* cx, HandlePropertyName dn, unsigned attrs) {
-  Rooted<LexicalEnvironmentObject*> globalLexical(
-      cx, &cx->global()->lexicalEnvironment());
-  return DefLexicalOperation(cx, globalLexical, cx->global(), dn, attrs);
 }
 
 bool MutatePrototype(JSContext* cx, HandlePlainObject obj, HandleValue value) {
@@ -548,22 +516,6 @@ JSObject* NewCallObject(JSContext* cx, HandleShape shape,
   return obj;
 }
 
-JSObject* NewSingletonCallObject(JSContext* cx, HandleShape shape) {
-  JSObject* obj = CallObject::createSingleton(cx, shape);
-  if (!obj) {
-    return nullptr;
-  }
-
-  // The JIT creates call objects in the nursery, so elides barriers for
-  // the initializing writes. The interpreter, however, may have allocated
-  // the call object tenured, so barrier as needed before re-entering.
-  MOZ_ASSERT(!IsInsideNursery(obj),
-             "singletons are created in the tenured heap");
-  cx->runtime()->gc.storeBuffer().putWholeCell(obj);
-
-  return obj;
-}
-
 JSObject* NewStringObject(JSContext* cx, HandleString str) {
   return StringObject::create(cx, str);
 }
@@ -843,8 +795,11 @@ JSObject* CreateGenerator(JSContext* cx, BaselineFrame* frame) {
 }
 
 bool NormalSuspend(JSContext* cx, HandleObject obj, BaselineFrame* frame,
-                   jsbytecode* pc, uint32_t stackDepth) {
+                   jsbytecode* pc) {
   MOZ_ASSERT(*pc == JSOP_YIELD || *pc == JSOP_AWAIT);
+
+  MOZ_ASSERT(frame->numValueSlots() > frame->script()->nfixed());
+  uint32_t stackDepth = frame->numValueSlots() - frame->script()->nfixed();
 
   // Return value is still on the stack.
   MOZ_ASSERT(stackDepth >= 1);
@@ -931,38 +886,6 @@ bool GeneratorThrowOrReturn(JSContext* cx, BaselineFrame* frame,
   MOZ_ALWAYS_FALSE(
       js::GeneratorThrowOrReturn(cx, frame, genObj, arg, resumeKind));
   return false;
-}
-
-bool CheckGlobalOrEvalDeclarationConflicts(JSContext* cx,
-                                           BaselineFrame* frame) {
-  RootedScript script(cx, frame->script());
-  RootedObject envChain(cx, frame->environmentChain());
-  RootedObject varObj(cx, BindVar(cx, envChain));
-
-  if (script->isForEval()) {
-    // Strict eval and eval in parameter default expressions have their
-    // own call objects.
-    //
-    // Non-strict eval may introduce 'var' bindings that conflict with
-    // lexical bindings in an enclosing lexical scope.
-    if (!script->bodyScope()->hasEnvironment()) {
-      MOZ_ASSERT(
-          !script->strict() &&
-          (!script->enclosingScope()->is<FunctionScope>() ||
-           !script->enclosingScope()->as<FunctionScope>().hasParameterExprs()));
-      if (!CheckEvalDeclarationConflicts(cx, script, envChain, varObj)) {
-        return false;
-      }
-    }
-  } else {
-    Rooted<LexicalEnvironmentObject*> lexicalEnv(
-        cx, &NearestEnclosingExtensibleLexicalEnvironment(envChain));
-    if (!CheckGlobalDeclarationConflicts(cx, script, lexicalEnv, varObj)) {
-      return false;
-    }
-  }
-
-  return true;
 }
 
 bool GlobalNameConflictsCheckFromIon(JSContext* cx, HandleScript script) {

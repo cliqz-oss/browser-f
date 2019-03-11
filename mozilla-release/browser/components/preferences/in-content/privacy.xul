@@ -149,7 +149,7 @@
                 <label id="changeBlockListLink"
                        data-l10n-id="content-blocking-tracking-protection-change-block-list"
                        class="text-link"
-                       search-l10n-ids="blocklist-window.title, blocklist-desc, blocklist-button-cancel.label, blocklist-button-ok.label"/>
+                       search-l10n-ids="blocklist-window.title, blocklist-description, blocklist-button-cancel.label, blocklist-button-ok.label"/>
                 <hbox class="reject-trackers-ui custom-option">
                   <checkbox id="contentBlockingBlockCookiesCheckbox"
                             class="content-blocking-checkbox" flex="1"
@@ -215,6 +215,9 @@
         <label id="siteDataLearnMoreLink"
           class="learnMore text-link" data-l10n-id="sitedata-learn-more"/>
       </description>
+      <hbox flex="1" id="deleteOnCloseNote" class="info-panel">
+        <description flex="1" data-l10n-id="sitedata-delete-on-close-private-browsing" />
+      </hbox>
       <hbox id="keepRow"
             align="center">
         <checkbox id="deleteOnClose"
@@ -378,14 +381,17 @@
           <vbox class="indent">
             <checkbox id="rememberHistory"
                       data-l10n-id="history-remember-browser-option"
+                      onsyncfrompreference="return gPrivacyPane.ensurePrivacyMicroControlUncheckedWhenDisabled(this)"
                       preference="places.history.enabled"/>
             <checkbox id="rememberForms"
                       data-l10n-id="history-remember-search-option"
+                      onsyncfrompreference="return gPrivacyPane.ensurePrivacyMicroControlUncheckedWhenDisabled(this)"
                       preference="browser.formfill.enable"/>
             <hbox id="clearDataBox"
                   align="center">
               <checkbox id="alwaysClear"
                         preference="privacy.sanitize.sanitizeOnShutdown"
+                        onsyncfrompreference="return gPrivacyPane.ensurePrivacyMicroControlUncheckedWhenDisabled(this)"
                         data-l10n-id="history-clear-on-close-option"
                         flex="1" />
             </hbox>
@@ -447,110 +453,105 @@
 <groupbox id="permissionsGroup" data-category="panePrivacy" hidden="true" data-subcategory="permissions">
   <label class="search-header" hidden="true"><html:h2 data-l10n-id="permissions-header"/></label>
 
-  <grid>
-    <columns>
-      <column flex="1"/>
-      <column/>
-    </columns>
-    <rows>
-      <row id="locationSettingsRow" align="center" role="group" aria-labelledby="locationPermissionsLabel">
-        <description flex="1">
-          <image class="geo-icon permission-icon" />
-          <separator orient="vertical" class="thin"/>
-          <label id="locationPermissionsLabel" data-l10n-id="permissions-location"/>
-        </description>
-        <hbox pack="end">
-          <button id="locationSettingsButton"
-                  class="accessory-button"
-                  data-l10n-id="permissions-location-settings"
-                  search-l10n-ids="
-                    permissions-remove.label,
-                    permissions-remove-all.label,
-                    permissions-button-cancel.label,
-                    permissions-button-ok.label,
-                    permissions-site-location-window.title,
-                    permissions-site-location-desc,
-                    permissions-site-location-disable-label,
-                    permissions-site-location-disable-desc,
-                  " />
-        </hbox>
-      </row>
+  <!-- The hbox around the buttons is to compute the search tooltip position properly -->
+  <vbox>
+    <hbox id="locationSettingsRow" align="center" role="group" aria-labelledby="locationPermissionsLabel">
+      <description flex="1">
+        <image class="geo-icon permission-icon" />
+        <separator orient="vertical" class="thin"/>
+        <label id="locationPermissionsLabel" data-l10n-id="permissions-location"/>
+      </description>
+      <hbox pack="end">
+        <button id="locationSettingsButton"
+                class="accessory-button"
+                data-l10n-id="permissions-location-settings"
+                search-l10n-ids="
+                  permissions-remove.label,
+                  permissions-remove-all.label,
+                  permissions-button-cancel.label,
+                  permissions-button-ok.label,
+                  permissions-site-location-window.title,
+                  permissions-site-location-desc,
+                  permissions-site-location-disable-label,
+                  permissions-site-location-disable-desc,
+                " />
+      </hbox>
+    </hbox>
 
-      <row id="cameraSettingsRow" align="center" role="group" aria-labelledby="cameraPermissionsLabel">
-        <description flex="1">
-          <image class="camera-icon permission-icon" />
-          <separator orient="vertical" class="thin"/>
-          <label id="cameraPermissionsLabel" data-l10n-id="permissions-camera"/>
-        </description>
-        <hbox pack="end">
-          <button id="cameraSettingsButton"
-                  class="accessory-button"
-                  data-l10n-id="permissions-camera-settings"
-                  search-l10n-ids="
-                    permissions-remove.label,
-                    permissions-remove-all.label,
-                    permissions-button-cancel.label,
-                    permissions-button-ok.label,
-                    permissions-site-camera-window.title,
-                    permissions-site-camera-desc,
-                    permissions-site-camera-disable-label,
-                    permissions-site-camera-disable-desc,
-                  " />
-        </hbox>
-      </row>
+    <hbox id="cameraSettingsRow" align="center" role="group" aria-labelledby="cameraPermissionsLabel">
+      <description flex="1">
+        <image class="camera-icon permission-icon" />
+        <separator orient="vertical" class="thin"/>
+        <label id="cameraPermissionsLabel" data-l10n-id="permissions-camera"/>
+      </description>
+      <hbox pack="end">
+        <button id="cameraSettingsButton"
+                class="accessory-button"
+                data-l10n-id="permissions-camera-settings"
+                search-l10n-ids="
+                  permissions-remove.label,
+                  permissions-remove-all.label,
+                  permissions-button-cancel.label,
+                  permissions-button-ok.label,
+                  permissions-site-camera-window.title,
+                  permissions-site-camera-desc,
+                  permissions-site-camera-disable-label,
+                  permissions-site-camera-disable-desc,
+                " />
+      </hbox>
+    </hbox>
 
-      <row id="microphoneSettingsRow" align="center" role="group" aria-labelledby="microphonePermissionsLabel">
-        <description flex="1">
-          <image class="microphone-icon permission-icon" />
-          <separator orient="vertical" class="thin"/>
-          <label id="microphonePermissionsLabel" data-l10n-id="permissions-microphone"/>
-        </description>
-        <hbox pack="end">
-          <button id="microphoneSettingsButton"
-                  class="accessory-button"
-                  data-l10n-id="permissions-microphone-settings"
-                  search-l10n-ids="
-                    permissions-remove.label,
-                    permissions-remove-all.label,
-                    permissions-button-cancel.label,
-                    permissions-button-ok.label,
-                    permissions-site-microphone-window.title,
-                    permissions-site-microphone-desc,
-                    permissions-site-microphone-disable-label,
-                    permissions-site-microphone-disable-desc,
-                  " />
-        </hbox>
-      </row>
+    <hbox id="microphoneSettingsRow" align="center" role="group" aria-labelledby="microphonePermissionsLabel">
+      <description flex="1">
+        <image class="microphone-icon permission-icon" />
+        <separator orient="vertical" class="thin"/>
+        <label id="microphonePermissionsLabel" data-l10n-id="permissions-microphone"/>
+      </description>
+      <hbox pack="end">
+        <button id="microphoneSettingsButton"
+                class="accessory-button"
+                data-l10n-id="permissions-microphone-settings"
+                search-l10n-ids="
+                  permissions-remove.label,
+                  permissions-remove-all.label,
+                  permissions-button-cancel.label,
+                  permissions-button-ok.label,
+                  permissions-site-microphone-window.title,
+                  permissions-site-microphone-desc,
+                  permissions-site-microphone-disable-label,
+                  permissions-site-microphone-disable-desc,
+                " />
+      </hbox>
+    </hbox>
 
-      <row id="notificationSettingsRow" align="center" role="group" aria-labelledby="notificationPermissionsLabel">
-        <description flex="1">
-          <image class="desktop-notification-icon permission-icon" />
-          <separator orient="vertical" class="thin"/>
-          <label id="notificationPermissionsLabel"
-                 class="tail-with-learn-more"
-                 data-l10n-id="permissions-notification"/>
-          <label id="notificationPermissionsLearnMore"
-                 class="learnMore text-link"
-                 data-l10n-id="permissions-notification-link"/>
-        </description>
-        <hbox pack="end">
-          <button id="notificationSettingsButton"
-                  class="accessory-button"
-                  data-l10n-id="permissions-notification-settings"
-                  search-l10n-ids="
-                    permissions-remove.label,
-                    permissions-remove-all.label,
-                    permissions-button-cancel.label,
-                    permissions-button-ok.label,
-                    permissions-site-notification-window.title,
-                    permissions-site-notification-desc,
-                    permissions-site-notification-disable-label,
-                    permissions-site-notification-disable-desc,
-                  " />
-        </hbox>
-      </row>
-    </rows>
-  </grid>
+    <hbox id="notificationSettingsRow" align="center" role="group" aria-labelledby="notificationPermissionsLabel">
+      <description flex="1">
+        <image class="desktop-notification-icon permission-icon" />
+        <separator orient="vertical" class="thin"/>
+        <label id="notificationPermissionsLabel"
+               class="tail-with-learn-more"
+               data-l10n-id="permissions-notification"/>
+        <label id="notificationPermissionsLearnMore"
+               class="learnMore text-link"
+               data-l10n-id="permissions-notification-link"/>
+      </description>
+      <hbox pack="end">
+        <button id="notificationSettingsButton"
+                class="accessory-button"
+                data-l10n-id="permissions-notification-settings"
+                search-l10n-ids="
+                  permissions-remove.label,
+                  permissions-remove-all.label,
+                  permissions-button-cancel.label,
+                  permissions-button-ok.label,
+                  permissions-site-notification-window.title,
+                  permissions-site-notification-desc,
+                  permissions-site-notification-disable-label,
+                  permissions-site-notification-disable-desc,
+                " />
+      </hbox>
+    </hbox>
+  </vbox>
 
   <vbox id="notificationsDoNotDisturbBox" hidden="true">
     <checkbox id="notificationsDoNotDisturb" class="indent"/>
@@ -558,9 +559,9 @@
 
   <separator flex="1"/>
 
-  <hbox align="start" id="autoplayMediaCheckboxWrapper" hidden="true">
+  <hbox align="start" id="autoplayMediaCheckboxWrapper">
     <checkbox id="autoplayMediaCheckbox"
-              data-l10n-id="permissions-block-autoplay-media"
+              data-l10n-id="permissions-block-autoplay-media2"
               flex="1" />
     <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
     <hbox>
@@ -631,38 +632,6 @@
     </hbox>
   </vbox>
 
-  <hbox align="center" id="autoplayMediaComboboxWrapper" hidden="true">
-    <hbox align="center" flex="1">
-      <label id="autoplayMediaPolicy"
-             control="autoplayMediaPolicyMenu"
-             data-l10n-id="permissions-block-autoplay-media-menu"/>
-      <menulist id="autoplayMediaPolicyMenu"
-                sizetopopup="always"
-                preference="media.autoplay.default">
-        <menupopup>
-          <!-- Defined in dom/media/nsIAutoplay.idl -->
-          <menuitem data-l10n-id="autoplay-option-allow" value="0"/>
-          <menuitem data-l10n-id="autoplay-option-ask" value="2"/>
-          <menuitem data-l10n-id="autoplay-option-dont" value="1"/>
-        </menupopup>
-      </menulist>
-      <label id="autoplayLearnMoreLink" class="learnMore text-link"
-             data-l10n-id="permissions-autoplay-link"/>
-    </hbox>
-
-    <hbox pack="end">
-      <button id="autoplayMediaPolicyComboboxButton"
-              class="accessory-button"
-              data-l10n-id="permissions-block-autoplay-media-exceptions"
-              search-l10n-ids="permissions-address,
-                               permissions-button-cancel.label,
-                               permissions-button-ok.label,
-                               permissions-exceptions-autoplay-media-window2.title,
-                               permissions-exceptions-autoplay-media-desc2
-                               " />
-    </hbox>
-  </hbox>
-
 </groupbox>
 
 <!-- Firefox Data Collection and Use -->
@@ -717,18 +686,6 @@
   <description id="TelemetryDisabledDesc"
     class="indent tip-caption" control="telemetryGroup"
     data-l10n-id="collection-health-report-disabled"/>
-#endif
-
-#ifdef NIGHTLY_BUILD
-    <hbox align="center">
-      <checkbox id="collectBrowserErrorsBox"
-                class="tail-with-learn-more"
-                preference="browser.chrome.errorReporter.enabled"
-                data-l10n-id="collection-browser-errors"
-                flex="1"/>
-      <label id="collectBrowserErrorsLearnMore"
-             class="learnMore text-link" data-l10n-id="collection-browser-errors-link"/>
-    </hbox>
 #endif
 
 #ifdef MOZ_CRASHREPORTER

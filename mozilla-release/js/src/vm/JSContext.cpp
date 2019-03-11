@@ -20,12 +20,12 @@
 #include <stdarg.h>
 #include <string.h>
 #ifdef ANDROID
-#include <android/log.h>
-#include <fstream>
-#include <string>
+#  include <android/log.h>
+#  include <fstream>
+#  include <string>
 #endif  // ANDROID
 #ifdef XP_WIN
-#include <processthreadsapi.h>
+#  include <processthreadsapi.h>
 #endif  // XP_WIN
 
 #include "jsexn.h"
@@ -38,12 +38,13 @@
 #include "jit/Ion.h"
 #include "jit/PcScriptCache.h"
 #include "js/CharacterEncoding.h"
+#include "js/ContextOptions.h"  // JS::ContextOptions
 #include "js/Printf.h"
 #ifdef JS_SIMULATOR_ARM64
-#include "jit/arm64/vixl/Simulator-vixl.h"
+#  include "jit/arm64/vixl/Simulator-vixl.h"
 #endif
 #ifdef JS_SIMULATOR_ARM
-#include "jit/arm/Simulator-arm.h"
+#  include "jit/arm/Simulator-arm.h"
 #endif
 #include "util/DoubleToString.h"
 #include "util/NativeStack.h"
@@ -177,7 +178,6 @@ static void FreeJobQueueHandling(JSContext* cx) {
     return;
   }
 
-  cx->jobQueue->reset();
   FreeOp* fop = cx->defaultFreeOp();
   fop->delete_(cx->jobQueue.ref());
   cx->getIncumbentGlobalCallback = nullptr;

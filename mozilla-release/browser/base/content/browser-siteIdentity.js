@@ -50,7 +50,7 @@ var gIdentityHandler = {
    * RegExp used to decide if an about url should be shown as being part of
    * the browser UI.
    */
-  _secureInternalUIWhitelist: /^(?:accounts|addons|cache|config|crashes|customizing|downloads|healthreport|license|permissions|preferences|rights|searchreset|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
+  _secureInternalUIWhitelist: /^(?:accounts|addons|cache|config|crashes|customizing|downloads|healthreport|license|permissions|preferences|rights|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
 
   get _isBroken() {
     return this._state & Ci.nsIWebProgressListener.STATE_IS_BROKEN;
@@ -900,7 +900,11 @@ var gIdentityHandler = {
   },
 
   observe(subject, topic, data) {
-    if (topic == "perm-changed") {
+    // Exclude permissions which do not appear in the UI in order to avoid
+    // doing extra work here.
+    if (topic == "perm-changed" && subject &&
+        SitePermissions.listPermissions().includes(
+          subject.QueryInterface(Ci.nsIPermission).type)) {
       this.refreshIdentityBlock();
     }
   },
@@ -1055,7 +1059,8 @@ var gIdentityHandler = {
       SitePermissions.SCOPE_POLICY, SitePermissions.SCOPE_GLOBAL,
     ].includes(aPermission.scope);
 
-    if (aPermission.id == "popup" && !isPolicyPermission) {
+    if ((aPermission.id == "popup" && !isPolicyPermission) ||
+        aPermission.id == "autoplay-media") {
       let menulist = document.createXULElement("menulist");
       let menupopup = document.createXULElement("menupopup");
       let block = document.createXULElement("vbox");

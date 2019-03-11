@@ -19,7 +19,6 @@ a11y:
       - 'main'
     release_channel_collection: opt-out
     keyed: false
-    cpp_guard: 'ACCESSIBILITY'
 
   indicator_acted_on:
     bug_numbers:
@@ -472,7 +471,8 @@ sandbox:
     release_channel_collection: opt-out
     record_in_processes:
       - main
-    cpp_guard: 'XP_WIN'
+    operating_systems:
+      - "windows"
 
 preferences:
   created_new_user_prefs_file:
@@ -942,6 +942,22 @@ media:
       The number of HTMLMediaElements which were blocked because they hadn't loaded metadata yet, but ended up having no audio track.
     expires: "68"
     kind: uint
+    notification_emails:
+      - cpearce@mozilla.com
+      - alwu@mozilla.com
+      - nohlmeier@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - main
+      - content
+
+  autoplay_default_blocked:
+    bug_numbers:
+      - 1521947
+    description: >
+      Whether the user blocked autoplay by default. Recorded when the preference is toggled.
+    expires: "72"
+    kind: boolean
     notification_emails:
       - cpearce@mozilla.com
       - alwu@mozilla.com
@@ -1833,17 +1849,36 @@ gfx.omtp:
   paint_wait_ratio:
     bug_numbers:
       - 1386968
+      - 1518669
     description: >
       Ratio (in units of 1/100th of a percent) of how many times OMTP waited
       for a paint for more than 200us, versus the total number of paints.
     keyed: false
     kind: uint
-    expires: "66"
+    expires: "never"
     notification_emails:
       - gfx-telemetry-alerts@mozilla.com
       - rhunt@mozilla.com
     record_in_processes:
       - 'content'
+
+gfx.hdr:
+  windows_display_colorspace_bitfield:
+    bug_numbers:
+      - 1514840
+    description: >
+      A bitfield representation of the available DXGI color spaces of the connected displays on Windows.
+      See (https://docs.microsoft.com/en-us/windows/desktop/api/dxgicommon/ne-dxgicommon-dxgi_color_space_type)
+      for definitions of color spaces. Each N'th bit of this scalar indicates whether the DXGI color space with
+      index 'N' is available on at least one connected monitor.
+    keyed: false
+    kind: uint
+    expires: "70"
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - rhunt@mozilla.com
+    record_in_processes:
+      - 'main'
 
 # The following section contains the form autofill related scalars.
 formautofill:
@@ -2125,94 +2160,6 @@ sw:
       - 'main'
       - 'content'
 
-# The following section contains the BrowserErrorReporter scalars.
-browser.errors:
-  collected_count:
-    bug_numbers:
-      - 1444554
-    description: >
-      The count of all browser chrome JS errors that were collected locally.
-    expires: "67"
-    kind: uint
-    notification_emails:
-      - nightly-js-errors@mozilla.com
-      - mkelly@mozilla.com
-    record_in_processes:
-      - 'main'
-
-  collected_with_stack_count:
-    bug_numbers:
-      - 1444554
-    description: >
-      The count of browser chrome JS errors that were collected locally and had
-      a usable stack trace.
-    expires: "67"
-    kind: uint
-    notification_emails:
-      - nightly-js-errors@mozilla.com
-      - mkelly@mozilla.com
-    record_in_processes:
-      - 'main'
-
-  reported_success_count:
-    bug_numbers:
-      - 1444554
-    description: >
-      The count of all browser chrome JS errors that were reported to the
-      remote collection service.
-    expires: "67"
-    kind: uint
-    notification_emails:
-      - nightly-js-errors@mozilla.com
-      - mkelly@mozilla.com
-    record_in_processes:
-      - 'main'
-
-  reported_failure_count:
-    bug_numbers:
-      - 1444554
-    description: >
-      The count of all browser chrome JS errors that we attempted to report to
-      the remote collection service, but failed to.
-    expires: "67"
-    kind: uint
-    notification_emails:
-      - nightly-js-errors@mozilla.com
-      - mkelly@mozilla.com
-    record_in_processes:
-      - 'main'
-
-  sample_rate:
-    bug_numbers:
-      - 1444554
-    description: >
-      The sample rate at which collected errors were reported.
-    expires: "67"
-    kind: string
-    notification_emails:
-      - nightly-js-errors@mozilla.com
-      - mkelly@mozilla.com
-    record_in_processes:
-      - 'main'
-
-  collected_count_by_filename:
-    bug_numbers:
-      - 1444554
-    description: >
-      The count of all browser chrome JS errors that were collected locally,
-      keyed by the filename of the file in which the error occurred. Collected
-      filenames are limited to specific paths under the resource:// and
-      chrome:// protocols; non-matching filenames are reported as "FILTERED".
-      Long filenames are truncated to the first 70 characters.
-    keyed: true
-    expires: "67"
-    kind: uint
-    notification_emails:
-      - nightly-js-errors@mozilla.com
-      - mkelly@mozilla.com
-    record_in_processes:
-      - 'main'
-
 widget:
   ime_name_on_windows:
     bug_numbers:
@@ -2305,7 +2252,7 @@ update:
     description: >
       If the binary transparency information for an update does not verify
       successfully, this probe will contain an error code from
-      toolkit/mozapps/update/common/errors.h indicating why.
+      toolkit/mozapps/update/common/updatererrors.h indicating why.
     expires: "73"
     kind: uint
     keyed: true
@@ -2536,6 +2483,17 @@ telemetry.test:
       - telemetry-client-dev@mozilla.com
     record_in_processes:
       - 'content'
+
+  socket_only_uint:
+    bug_numbers:
+      - 1486033
+    description: A testing uint scalar; not meant to be touched.
+    expires: never
+    kind: uint
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    record_in_processes:
+      - 'socket'
 
   all_processes_uint:
     bug_numbers:

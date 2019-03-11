@@ -7,7 +7,7 @@
 #define __LookAndFeel
 
 #ifndef MOZILLA_INTERNAL_API
-#error "This header is only usable from within libxul (MOZILLA_INTERNAL_API)."
+#  error "This header is only usable from within libxul (MOZILLA_INTERNAL_API)."
 #endif
 
 #include "nsDebug.h"
@@ -419,6 +419,12 @@ class LookAndFeel {
     eIntID_GTKCSDAvailable,
 
     /*
+     * A boolean value indicating whether GTK+ system titlebar should be
+     * disabled by default.
+     */
+    eIntID_GTKCSDHideTitlebarByDefault,
+
+    /*
      * A boolean value indicating whether client-side decorations should
      * have transparent background.
      */
@@ -441,6 +447,12 @@ class LookAndFeel {
      * contain a close button.
      */
     eIntID_GTKCSDCloseButton,
+
+    /*
+     * A boolean value indicating whether titlebar buttons are located
+     * in left titlebar corner.
+     */
+    eIntID_GTKCSDReversedPlacement,
 
     /*
      * A boolean value indicating whether or not the OS is using a dark theme,

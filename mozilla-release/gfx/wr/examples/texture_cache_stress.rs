@@ -91,18 +91,16 @@ impl Example for App {
         builder: &mut DisplayListBuilder,
         txn: &mut Transaction,
         _framebuffer_size: DeviceIntSize,
-        _pipeline_id: PipelineId,
+        pipeline_id: PipelineId,
         _document_id: DocumentId,
     ) {
         let bounds = (0, 0).to(512, 512);
         let info = LayoutPrimitiveInfo::new(bounds);
-        builder.push_stacking_context(
+        let space_and_clip = SpaceAndClipInfo::root_scroll(pipeline_id);
+
+        builder.push_simple_stacking_context(
             &info,
-            None,
-            TransformStyle::Flat,
-            MixBlendMode::Normal,
-            &[],
-            RasterSpace::Screen,
+            space_and_clip.spatial_id,
         );
 
         let x0 = 50.0;
@@ -146,6 +144,7 @@ impl Example for App {
 
             builder.push_image(
                 &info,
+                &space_and_clip,
                 image_size,
                 LayoutSize::zero(),
                 ImageRendering::Auto,
@@ -163,6 +162,7 @@ impl Example for App {
             );
             builder.push_image(
                 &info,
+                &space_and_clip,
                 image_size,
                 LayoutSize::zero(),
                 ImageRendering::Auto,
@@ -180,6 +180,7 @@ impl Example for App {
         );
         builder.push_image(
             &info,
+            &space_and_clip,
             image_size,
             LayoutSize::zero(),
             ImageRendering::Auto,

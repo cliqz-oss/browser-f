@@ -15,6 +15,7 @@ const FilterBar = createFactory(require("devtools/client/webconsole/components/F
 const SideBar = createFactory(require("devtools/client/webconsole/components/SideBar"));
 const ReverseSearchInput = createFactory(require("devtools/client/webconsole/components/ReverseSearchInput"));
 const JSTerm = createFactory(require("devtools/client/webconsole/components/JSTerm"));
+const ConfirmDialog = createFactory(require("devtools/client/webconsole/components/ConfirmDialog"));
 const NotificationBox = createFactory(require("devtools/client/shared/components/NotificationBox").NotificationBox);
 
 const l10n = require("devtools/client/webconsole/webconsole-l10n");
@@ -46,9 +47,9 @@ class App extends Component {
       serviceContainer: PropTypes.object.isRequired,
       closeSplitConsole: PropTypes.func.isRequired,
       jstermCodeMirror: PropTypes.bool,
-      jstermReverseSearch: PropTypes.bool,
       currentReverseSearchEntry: PropTypes.string,
       reverseSearchInputVisible: PropTypes.bool,
+      reverseSearchInitialValue: PropTypes.string,
     };
   }
 
@@ -63,16 +64,15 @@ class App extends Component {
   onKeyDown(event) {
     const {
       dispatch,
-      jstermReverseSearch,
+      hud,
     } = this.props;
 
     if (
-      jstermReverseSearch && (
-        (!isMacOS && event.key === "F9") ||
-        (isMacOS && event.key === "r" && event.ctrlKey === true)
-      )
+      (!isMacOS && event.key === "F9") ||
+      (isMacOS && event.key === "r" && event.ctrlKey === true)
     ) {
-      dispatch(actions.reverseSearchInputToggle());
+      const initialValue = hud.jsterm && hud.jsterm.getSelectedText();
+      dispatch(actions.reverseSearchInputToggle({initialValue}));
       event.stopPropagation();
     }
   }
@@ -199,7 +199,7 @@ class App extends Component {
       serviceContainer,
       closeSplitConsole,
       jstermCodeMirror,
-      jstermReverseSearch,
+      reverseSearchInitialValue,
     } = this.props;
 
     const classNames = ["webconsole-output-wrapper"];
@@ -245,14 +245,18 @@ class App extends Component {
             onPaste: this.onPaste,
             codeMirrorEnabled: jstermCodeMirror,
           }),
-          jstermReverseSearch
-            ? ReverseSearchInput({
-              hud,
-            })
-            : null
+          ReverseSearchInput({
+            hud,
+            initialValue: reverseSearchInitialValue,
+          })
         ),
         SideBar({
           serviceContainer,
+        }),
+        ConfirmDialog({
+          hud,
+          serviceContainer,
+          codeMirrorEnabled: jstermCodeMirror,
         }),
       )
     );
@@ -262,6 +266,7 @@ class App extends Component {
 const mapStateToProps = state => ({
   notifications: getAllNotifications(state),
   reverseSearchInputVisible: state.ui.reverseSearchInputVisible,
+  reverseSearchInitialValue: state.ui.reverseSearchInitialValue,
 });
 
 const mapDispatchToProps = dispatch => ({

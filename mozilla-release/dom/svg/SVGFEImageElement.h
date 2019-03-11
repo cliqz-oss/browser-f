@@ -7,7 +7,7 @@
 #ifndef mozilla_dom_SVGFEImageElement_h
 #define mozilla_dom_SVGFEImageElement_h
 
-#include "nsSVGFilters.h"
+#include "SVGFilters.h"
 #include "SVGAnimatedPreserveAspectRatio.h"
 
 class SVGFEImageFrame;
@@ -18,7 +18,7 @@ nsresult NS_NewSVGFEImageElement(
 namespace mozilla {
 namespace dom {
 
-typedef nsSVGFE SVGFEImageElementBase;
+typedef SVGFE SVGFEImageElementBase;
 
 class SVGFEImageElement final : public SVGFEImageElementBase,
                                 public nsImageLoadingContent {
@@ -49,7 +49,7 @@ class SVGFEImageElement final : public SVGFEImageElementBase,
       nsTArray<RefPtr<SourceSurface>>& aInputImages) override;
   virtual bool AttributeAffectsRendering(int32_t aNameSpaceID,
                                          nsAtom* aAttribute) const override;
-  virtual nsSVGString& GetResultImageName() override {
+  virtual SVGString& GetResultImageName() override {
     return mStringAttributes[RESULT];
   }
   virtual bool OutputIsTainted(const nsTArray<bool>& aInputsAreTainted,
@@ -65,7 +65,7 @@ class SVGFEImageElement final : public SVGFEImageElementBase,
                                 const nsAttrValue* aOldValue,
                                 nsIPrincipal* aSubjectPrincipal,
                                 bool aNotify) override;
-  virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
+  virtual nsresult BindToTree(Document* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent) override;
   virtual void UnbindFromTree(bool aDeep, bool aNullParent) override;
   virtual EventStates IntrinsicState() const override;
@@ -95,7 +95,7 @@ class SVGFEImageElement final : public SVGFEImageElementBase,
   nsIContent* AsContent() override { return this; }
 
   enum { RESULT, HREF, XLINK_HREF };
-  nsSVGString mStringAttributes[3];
+  SVGString mStringAttributes[3];
   static StringInfo sStringInfo[3];
 
   SVGAnimatedPreserveAspectRatio mPreserveAspectRatio;

@@ -7,7 +7,7 @@
 import PropTypes from "prop-types";
 import React, { PureComponent } from "react";
 import ReactDOM from "react-dom";
-import { connect } from "react-redux";
+import { connect } from "../../utils/connect";
 import classnames from "classnames";
 import { debounce } from "lodash";
 
@@ -20,7 +20,7 @@ import {
   getActiveSearch,
   getSelectedLocation,
   getSelectedSource,
-  getConditionalPanelLine,
+  getConditionalPanelLocation,
   getSymbols
 } from "../../selectors";
 
@@ -81,20 +81,21 @@ export type Props = {
   horizontal: boolean,
   startPanelSize: number,
   endPanelSize: number,
-  conditionalPanelLine: number,
+  conditionalPanelLocation: SourceLocation,
   symbols: SymbolDeclarations,
 
   // Actions
-  openConditionalPanel: (?number) => void,
-  closeConditionalPanel: void => void,
-  setContextMenu: (string, any) => void,
-  continueToHere: (?number) => void,
-  toggleBreakpoint: (?number) => void,
-  toggleBreakpointsAtLine: (?number) => void,
-  addOrToggleDisabledBreakpoint: (?number) => void,
-  jumpToMappedLocation: any => void,
-  traverseResults: (boolean, Object) => void,
-  updateViewport: void => void
+  openConditionalPanel: typeof actions.openConditionalPanel,
+  closeConditionalPanel: typeof actions.closeConditionalPanel,
+  setContextMenu: typeof actions.setContextMenu,
+  continueToHere: typeof actions.continueToHere,
+  toggleBreakpoint: typeof actions.toggleBreakpoint,
+  toggleBreakpointsAtLine: typeof actions.toggleBreakpointsAtLine,
+  addOrToggleDisabledBreakpoint: typeof actions.addOrToggleDisabledBreakpoint,
+  jumpToMappedLocation: typeof actions.jumpToMappedLocation,
+  traverseResults: typeof actions.traverseResults,
+  updateViewport: typeof actions.updateViewport,
+  closeTab: typeof actions.closeTab
 };
 
 type State = {
@@ -160,7 +161,6 @@ class Editor extends PureComponent<Props, State> {
     codeMirrorWrapper.addEventListener("keydown", e => this.onKeyDown(e));
     codeMirrorWrapper.addEventListener("click", e => this.onClick(e));
     codeMirrorWrapper.addEventListener("mouseover", onMouseOver(codeMirror));
-    codeMirror.on("scroll", this.onEditorScroll);
 
     const toggleFoldMarkerVisibility = e => {
       if (node instanceof HTMLElement) {
@@ -187,6 +187,9 @@ class Editor extends PureComponent<Props, State> {
       );
     }
 
+    codeMirror.on("scroll", this.onEditorScroll);
+    this.onEditorScroll();
+
     this.setState({ editor });
     return editor;
   }
@@ -204,14 +207,25 @@ class Editor extends PureComponent<Props, State> {
       L10N.getStr("toggleCondPanel.key"),
       this.onToggleConditionalPanel
     );
+    shortcuts.on(L10N.getStr("sourceTabs.closeTab.key"), this.onClosePress);
     shortcuts.on("Esc", this.onEscape);
     shortcuts.on(searchAgainPrevKey, this.onSearchAgain);
     shortcuts.on(searchAgainKey, this.onSearchAgain);
   }
 
+  onClosePress = (key, e: KeyboardEvent) => {
+    const { selectedSource } = this.props;
+    if (selectedSource) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.props.closeTab(selectedSource);
+    }
+  };
+
   componentWillUnmount() {
     if (this.state.editor) {
       this.state.editor.destroy();
+      this.state.editor.codeMirror.off("scroll", this.onEditorScroll);
       this.setState({ editor: null });
     }
 
@@ -220,6 +234,7 @@ class Editor extends PureComponent<Props, State> {
       "sourceSearch.search.againPrev.key2"
     );
     const shortcuts = this.context.shortcuts;
+    shortcuts.off(L10N.getStr("sourceTabs.closeTab.key"));
     shortcuts.off(L10N.getStr("toggleBreakpoint.key"));
     shortcuts.off(L10N.getStr("toggleCondPanel.key"));
     shortcuts.off(searchAgainPrevKey);
@@ -256,17 +271,20 @@ class Editor extends PureComponent<Props, State> {
   onToggleBreakpoint = (key, e: KeyboardEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const { selectedSource, conditionalPanelLine } = this.props;
+    const { selectedSource, conditionalPanelLocation } = this.props;
 
     if (!selectedSource) {
       return;
     }
 
     const line = this.getCurrentLine();
+    if (typeof line !== "number") {
+      return;
+    }
 
     if (e.shiftKey) {
       this.toggleConditionalPanel(line);
-    } else if (!conditionalPanelLine) {
+    } else if (!conditionalPanelLocation) {
       this.props.toggleBreakpoint(line);
     } else {
       this.toggleConditionalPanel(line);
@@ -278,6 +296,10 @@ class Editor extends PureComponent<Props, State> {
     e.stopPropagation();
     e.preventDefault();
     const line = this.getCurrentLine();
+    if (typeof line !== "number") {
+      return;
+    }
+
     this.toggleConditionalPanel(line);
   };
 
@@ -328,7 +350,11 @@ class Editor extends PureComponent<Props, State> {
 
     const { setContextMenu } = this.props;
     const target: Element = (event.target: any);
-    if (target.classList.contains("CodeMirror-linenumber")) {
+
+    if (
+      target.classList.contains("CodeMirror-linenumber") ||
+      target.getAttribute("id") === "columnmarker"
+    ) {
       return setContextMenu("Gutter", event);
     }
 
@@ -343,7 +369,7 @@ class Editor extends PureComponent<Props, State> {
   ) => {
     const {
       selectedSource,
-      conditionalPanelLine,
+      conditionalPanelLocation,
       closeConditionalPanel,
       addOrToggleDisabledBreakpoint,
       toggleBreakpointsAtLine,
@@ -360,7 +386,7 @@ class Editor extends PureComponent<Props, State> {
       return;
     }
 
-    if (conditionalPanelLine) {
+    if (conditionalPanelLocation) {
       return closeConditionalPanel();
     }
 
@@ -369,6 +395,9 @@ class Editor extends PureComponent<Props, State> {
     }
 
     const sourceLine = toSourceLine(selectedSource.id, line);
+    if (typeof sourceLine !== "number") {
+      return;
+    }
 
     if (ev.metaKey) {
       return continueToHere(sourceLine);
@@ -402,16 +431,25 @@ class Editor extends PureComponent<Props, State> {
 
   toggleConditionalPanel = line => {
     const {
-      conditionalPanelLine,
+      conditionalPanelLocation,
       closeConditionalPanel,
-      openConditionalPanel
+      openConditionalPanel,
+      selectedSource
     } = this.props;
 
-    if (conditionalPanelLine) {
+    if (conditionalPanelLocation) {
       return closeConditionalPanel();
     }
 
-    return openConditionalPanel(line);
+    if (!selectedSource) {
+      return;
+    }
+
+    return openConditionalPanel({
+      line: line,
+      sourceId: selectedSource.id,
+      sourceUrl: selectedSource.url
+    });
   };
 
   closeConditionalPanel = () => {
@@ -535,10 +573,10 @@ class Editor extends PureComponent<Props, State> {
   }
 
   renderItems() {
-    const { horizontal, selectedSource } = this.props;
+    const { horizontal, selectedSource, conditionalPanelLocation } = this.props;
     const { editor } = this.state;
 
-    if (!editor || !selectedSource) {
+    if (!selectedSource || !editor || !getDocument(selectedSource.id)) {
       return null;
     }
 
@@ -553,7 +591,7 @@ class Editor extends PureComponent<Props, State> {
         <HighlightLines editor={editor} />
         <EditorMenu editor={editor} />
         <GutterMenu editor={editor} />
-        <ConditionalPanel editor={editor} />
+        {conditionalPanelLocation ? <ConditionalPanel editor={editor} /> : null}
         {features.columnBreakpoints ? (
           <ColumnBreakpoints editor={editor} />
         ) : null}
@@ -599,7 +637,7 @@ const mapStateToProps = state => {
     selectedLocation: getSelectedLocation(state),
     selectedSource,
     searchOn: getActiveSearch(state) === "file",
-    conditionalPanelLine: getConditionalPanelLine(state),
+    conditionalPanelLocation: getConditionalPanelLocation(state),
     symbols: getSymbols(state, selectedSource)
   };
 };
@@ -616,6 +654,7 @@ export default connect(
     addOrToggleDisabledBreakpoint: actions.addOrToggleDisabledBreakpoint,
     jumpToMappedLocation: actions.jumpToMappedLocation,
     traverseResults: actions.traverseResults,
-    updateViewport: actions.updateViewport
+    updateViewport: actions.updateViewport,
+    closeTab: actions.closeTab
   }
 )(Editor);

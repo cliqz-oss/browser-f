@@ -14,9 +14,10 @@
 #include "jstypes.h"
 
 #include "jit/InlinableNatives.h"
+#include "js/PropertySpec.h"
 #include "util/StringBuffer.h"
 #ifdef ENABLE_BIGINT
-#include "vm/BigIntType.h"
+#  include "vm/BigIntType.h"
 #endif
 #include "vm/GlobalObject.h"
 #include "vm/JSAtom.h"
@@ -104,7 +105,8 @@ static bool Boolean(JSContext* cx, unsigned argc, Value* vp) {
 
   if (args.isConstructing()) {
     RootedObject proto(cx);
-    if (!GetPrototypeFromBuiltinConstructor(cx, args, &proto)) {
+    if (!GetPrototypeFromBuiltinConstructor(cx, args, JSProto_Boolean,
+                                            &proto)) {
       return false;
     }
 
@@ -162,7 +164,7 @@ JS_PUBLIC_API bool js::ToBooleanSlow(HandleValue v) {
   }
 #ifdef ENABLE_BIGINT
   if (v.isBigInt()) {
-    return v.toBigInt()->toBoolean();
+    return !v.toBigInt()->isZero();
   }
 #endif
 

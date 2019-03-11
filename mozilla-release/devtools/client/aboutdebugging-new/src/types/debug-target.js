@@ -15,6 +15,8 @@ const extensionTargetDetails = {
   manifestURL: PropTypes.string,
   // unique extension id.
   uuid: PropTypes.string.isRequired,
+  // warning messages forwarded from the addon manager.
+  warnings: PropTypes.arrayOf(PropTypes.string).isRequired,
 };
 
 const tabTargetDetails = {
@@ -29,8 +31,8 @@ const workerTargetDetails = {
   isActive: PropTypes.bool,
   // (service worker specific) true if they are currently running.
   isRunning: PropTypes.bool,
-  // actor id for the ServiceWorkerRegistration related to this service worker.
-  registrationActor: PropTypes.string,
+  // front for the ServiceWorkerRegistration related to this service worker.
+  registrationFront: PropTypes.object,
   // (service worker specific) scope of the service worker registration.
   scope: PropTypes.string,
   // (service worker specific) one of "RUNNING", "REGISTERING", "STOPPED".

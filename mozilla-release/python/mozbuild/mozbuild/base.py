@@ -32,7 +32,10 @@ from .mozconfig import (
     MozconfigLoader,
 )
 from .pythonutil import find_python3_executable
-from .util import memoized_property
+from .util import (
+    memoize,
+    memoized_property,
+)
 from .virtualenv import VirtualenvManager
 
 
@@ -211,6 +214,16 @@ class MozbuildObject(ProcessExecutionMixin):
 
         return self._virtualenv_manager
 
+    @staticmethod
+    @memoize
+    def get_mozconfig(topsrcdir, path, env_mozconfig):
+        # env_mozconfig is only useful for unittests, which change the value of
+        # the environment variable, which has an impact on autodetection (when
+        # path is MozconfigLoader.AUTODETECT), and memoization wouldn't account
+        # for it without the explicit (unused) argument.
+        loader = MozconfigLoader(topsrcdir)
+        return loader.read_mozconfig(path=path)
+
     @property
     def mozconfig(self):
         """Returns information about the current mozconfig file.
@@ -218,8 +231,8 @@ class MozbuildObject(ProcessExecutionMixin):
         This a dict as returned by MozconfigLoader.read_mozconfig()
         """
         if not isinstance(self._mozconfig, dict):
-            loader = MozconfigLoader(self.topsrcdir)
-            self._mozconfig = loader.read_mozconfig(path=self._mozconfig)
+            self._mozconfig = self.get_mozconfig(
+                self.topsrcdir, self._mozconfig, os.environ.get('MOZCONFIG'))
 
         return self._mozconfig
 
@@ -636,6 +649,8 @@ class MozbuildObject(ProcessExecutionMixin):
 
         if silent:
             args.append('-s')
+        else:
+            args.append('BUILD_VERBOSE_LOG=1')
 
         # Print entering/leaving directory messages. Some consumers look at
         # these to measure progress.
@@ -883,6 +898,13 @@ class MachCommandConditions(object):
         """Must have a Firefox build."""
         if hasattr(cls, 'substs'):
             return cls.substs.get('MOZ_BUILD_APP') == 'browser'
+        return False
+
+    @staticmethod
+    def is_thunderbird(cls):
+        """Must have a Thunderbird build."""
+        if hasattr(cls, 'substs'):
+            return cls.substs.get('MOZ_BUILD_APP') == 'comm/mail'
         return False
 
     @staticmethod

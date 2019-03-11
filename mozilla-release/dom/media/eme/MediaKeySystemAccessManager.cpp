@@ -12,10 +12,10 @@
 #include "mozilla/StaticPrefs.h"
 #include "mozilla/DetailedPromise.h"
 #ifdef XP_WIN
-#include "mozilla/WindowsVersion.h"
+#  include "mozilla/WindowsVersion.h"
 #endif
 #ifdef XP_MACOSX
-#include "nsCocoaFeatures.h"
+#  include "nsCocoaFeatures.h"
 #endif
 #include "nsPrintfCString.h"
 #include "nsContentUtils.h"
@@ -162,7 +162,7 @@ void MediaKeySystemAccessManager::Request(
     return;
   }
 
-  nsCOMPtr<nsIDocument> doc = mWindow->GetExtantDoc();
+  nsCOMPtr<Document> doc = mWindow->GetExtantDoc();
   nsDataHashtable<nsCharPtrHashKey, bool> warnings;
   std::function<void(const char*)> deprecationWarningLogFn =
       [&](const char* aMsgName) {

@@ -124,7 +124,7 @@ static bool BlockHasAnyFloats(nsIFrame* aFrame) {
 }
 
 #ifdef DEBUG
-#include "nsBlockDebugFlags.h"
+#  include "nsBlockDebugFlags.h"
 
 bool nsBlockFrame::gLamePaintMetrics;
 bool nsBlockFrame::gLameReflowMetrics;
@@ -155,7 +155,7 @@ static const BlockDebugFlags gFlags[] = {
     {"lame-reflow-metrics", &nsBlockFrame::gLameReflowMetrics},
     {"disable-resize-opt", &nsBlockFrame::gDisableResizeOpt},
 };
-#define NUM_DEBUG_FLAGS (sizeof(gFlags) / sizeof(gFlags[0]))
+#  define NUM_DEBUG_FLAGS (sizeof(gFlags) / sizeof(gFlags[0]))
 
 static void ShowDebugFlags() {
   printf("Here are the available GECKO_BLOCK_DEBUG_FLAGS:\n");
@@ -415,9 +415,9 @@ void nsBlockFrame::List(FILE* out, const char* aPrefix, uint32_t aFlags) const {
   // skip the principal list - we printed the lines above
   // skip the overflow list - we printed the overflow lines above
   ChildListIterator lists(this);
-  ChildListIDs skip(kPrincipalList | kOverflowList);
+  ChildListIDs skip = {kPrincipalList, kOverflowList};
   for (; !lists.IsDone(); lists.Next()) {
-    if (skip.Contains(lists.CurrentID())) {
+    if (skip.contains(lists.CurrentID())) {
       continue;
     }
     fprintf_stderr(out, "%s%s %p <\n", pfx.get(),
@@ -1381,6 +1381,20 @@ void nsBlockFrame::Reflow(nsPresContext* aPresContext, ReflowOutput& aMetrics,
       } else {
         absoluteContainer->MarkSizeDependentFramesDirty();
       }
+      if (haveInterrupt) {
+        // We're not going to reflow absolute frames; make sure to account for
+        // their existing overflow areas, which is usually a side effect of this
+        // reflow.
+        //
+        // TODO(emilio): nsAbsoluteContainingBlock::Reflow already checks for
+        // interrupt, can we just rely on it and unconditionally take the else
+        // branch below? That's a bit more subtle / risky, since I don't see
+        // what would reflow them in that case if they depended on our size.
+        for (nsIFrame* kid = absoluteContainer->GetChildList().FirstChild(); kid;
+             kid = kid->GetNextSibling()) {
+          ConsiderChildOverflow(aMetrics.mOverflowAreas, kid);
+        }
+      }
     } else {
       LogicalSize containingBlockSize =
           CalculateContainingBlockSizeForAbsolutes(parentWM, *reflowInput,
@@ -1820,7 +1834,7 @@ void nsBlockFrame::UnionChildOverflow(nsOverflowAreas& aOverflowAreas) {
   // Union with child frames, skipping the principal and float lists
   // since we already handled those using the line boxes.
   nsLayoutUtils::UnionChildOverflow(this, aOverflowAreas,
-                                    kPrincipalList | kFloatList);
+                                    {kPrincipalList, kFloatList});
 }
 
 bool nsBlockFrame::ComputeCustomOverflow(nsOverflowAreas& aOverflowAreas) {
@@ -6515,14 +6529,14 @@ void nsBlockFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
     }
   }
 
-  // Pick up the resulting text-overflow markers.  We append them to
-  // PositionedDescendants just before we append the lines' display items,
-  // so that our text-overflow markers will appear on top of this block's
-  // normal content but below any of its its' positioned children.
-  if (textOverflow.isSome()) {
-    aLists.PositionedDescendants()->AppendToTop(&textOverflow->GetMarkers());
-  }
   linesDisplayListCollection.MoveTo(aLists);
+
+  if (textOverflow.isSome()) {
+    // Put any text-overflow:ellipsis markers on top of the non-positioned
+    // content of the block's lines. (If we ever start sorting the Content()
+    // list this will end up in the wrong place.)
+    aLists.Content()->AppendToTop(&textOverflow->GetMarkers());
+  }
 
   if (HasOutsideBullet()) {
     // Display outside bullets manually
@@ -6717,12 +6731,16 @@ void nsBlockFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
   //   If the box is a block container, then it establishes a new block
   //   formatting context.
   // (http://dev.w3.org/csswg/css-writing-modes/#block-flow)
+  //
   // If the box has contain: paint or contain:layout (or contain:strict),
   // then it should also establish a formatting context.
+  //
+  // Per spec, a column-span always establishes a new block formatting context.
   if (StyleDisplay()->mDisplay == mozilla::StyleDisplay::FlowRoot ||
       (GetParent() && StyleVisibility()->mWritingMode !=
                           GetParent()->StyleVisibility()->mWritingMode) ||
-      StyleDisplay()->IsContainPaint() || StyleDisplay()->IsContainLayout()) {
+      StyleDisplay()->IsContainPaint() || StyleDisplay()->IsContainLayout() ||
+      (StaticPrefs::layout_css_column_span_enabled() && IsColumnSpan())) {
     AddStateBits(NS_BLOCK_FORMATTING_CONTEXT_STATE_BITS);
   }
 
@@ -7004,7 +7022,7 @@ void nsBlockFrame::CheckFloats(BlockReflowInput& aState) {
     NS_WARNING(
         "nsBlockFrame::CheckFloats: Explicit float list is out of sync with "
         "float cache");
-#if defined(DEBUG_roc)
+#  if defined(DEBUG_roc)
     nsFrame::RootFrameList(PresContext(), stdout, 0);
     for (i = 0; i < lineFloats.Length(); ++i) {
       printf("Line float: %p\n", lineFloats.ElementAt(i));
@@ -7012,7 +7030,7 @@ void nsBlockFrame::CheckFloats(BlockReflowInput& aState) {
     for (i = 0; i < storedFloats.Length(); ++i) {
       printf("Stored float: %p\n", storedFloats.ElementAt(i));
     }
-#endif
+#  endif
   }
 #endif
 

@@ -7,13 +7,11 @@
 #ifndef mozilla_dom_SVGViewElement_h
 #define mozilla_dom_SVGViewElement_h
 
-#include "nsSVGElement.h"
-#include "nsSVGEnum.h"
-#include "nsSVGViewBox.h"
 #include "SVGAnimatedPreserveAspectRatio.h"
+#include "SVGEnum.h"
 #include "SVGStringList.h"
-
-typedef nsSVGElement SVGViewElementBase;
+#include "SVGViewBox.h"
+#include "mozilla/dom/SVGElement.h"
 
 class nsSVGOuterSVGFrame;
 
@@ -25,6 +23,8 @@ class SVGFragmentIdentifier;
 
 namespace dom {
 class SVGViewportElement;
+
+typedef SVGElement SVGViewElementBase;
 
 class SVGViewElement : public SVGViewElementBase {
  protected:
@@ -49,19 +49,19 @@ class SVGViewElement : public SVGViewElementBase {
   already_AddRefed<DOMSVGAnimatedPreserveAspectRatio> PreserveAspectRatio();
 
  private:
-  // nsSVGElement overrides
+  // SVGElement overrides
 
   virtual EnumAttributesInfo GetEnumInfo() override;
 
   enum { ZOOMANDPAN };
-  nsSVGEnum mEnumAttributes[1];
-  static nsSVGEnumMapping sZoomAndPanMap[];
+  SVGEnum mEnumAttributes[1];
+  static SVGEnumMapping sZoomAndPanMap[];
   static EnumInfo sEnumInfo[1];
 
-  virtual nsSVGViewBox* GetViewBox() override;
+  virtual SVGViewBox* GetViewBox() override;
   virtual SVGAnimatedPreserveAspectRatio* GetPreserveAspectRatio() override;
 
-  nsSVGViewBox mViewBox;
+  SVGViewBox mViewBox;
   SVGAnimatedPreserveAspectRatio mPreserveAspectRatio;
 };
 

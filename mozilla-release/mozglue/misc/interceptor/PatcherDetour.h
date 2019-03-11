@@ -12,6 +12,7 @@
 
 #include "mozilla/ScopeExit.h"
 #include "mozilla/TypedEnumBits.h"
+#include "mozilla/Unused.h"
 
 #define COPY_CODES(NBYTES)                          \
   do {                                              \
@@ -61,7 +62,7 @@ class WindowsDllDetourPatcher final : public WindowsDllPatcherBase<VMPolicy> {
 #elif defined(_M_ARM64)
     size_t nBytes = 4;
 #else
-#error "Unknown processor type"
+#  error "Unknown processor type"
 #endif
 
     const auto& tramps = this->mVMPolicy.Items();
@@ -137,9 +138,10 @@ class WindowsDllDetourPatcher final : public WindowsDllPatcherBase<VMPolicy> {
         continue;
       }
 #elif defined(_M_ARM64)
+      Unused << opcode1;
       MOZ_RELEASE_ASSERT(false, "Shouldn't get here");
 #else
-#error "Unknown processor type"
+#  error "Unknown processor type"
 #endif
     }
 
@@ -577,9 +579,9 @@ class WindowsDllDetourPatcher final : public WindowsDllPatcherBase<VMPolicy> {
       } else if (*origBytes == 0xc2) {
         // ret imm16.  We can't handle this but it happens.  We don't ASSERT but
         // we do fail to hook.
-#if defined(MOZILLA_INTERNAL_API)
+#  if defined(MOZILLA_INTERNAL_API)
         NS_WARNING("Cannot hook method -- RET opcode found");
-#endif
+#  endif
         return;
       } else {
         // printf ("Unknown x86 instruction byte 0x%02x, aborting trampoline\n",
@@ -1042,7 +1044,7 @@ class WindowsDllDetourPatcher final : public WindowsDllPatcherBase<VMPolicy> {
 #elif defined(_M_ARM64)
     MOZ_RELEASE_ASSERT(false, "Shouldn't get here");
 #else
-#error "Unknown processor type"
+#  error "Unknown processor type"
 #endif
 
     if (origBytes.GetOffset() > 100) {

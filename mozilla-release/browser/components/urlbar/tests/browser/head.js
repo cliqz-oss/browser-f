@@ -11,12 +11,18 @@ let sandbox;
 
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 XPCOMUtils.defineLazyModuleGetters(this, {
+  PromiseUtils: "resource://gre/modules/PromiseUtils.jsm",
   Services: "resource://gre/modules/Services.jsm",
-  QueryContext: "resource:///modules/UrlbarController.jsm",
   UrlbarController: "resource:///modules/UrlbarController.jsm",
-  UrlbarMatch: "resource:///modules/UrlbarMatch.jsm",
+  UrlbarResult: "resource:///modules/UrlbarResult.jsm",
+  UrlbarQueryContext: "resource:///modules/UrlbarUtils.jsm",
   UrlbarUtils: "resource:///modules/UrlbarUtils.jsm",
 });
+
+/* import-globals-from head-common.js */
+Services.scriptloader.loadSubScript(
+  "chrome://mochitests/content/browser/browser/components/urlbar/tests/browser/head-common.js",
+  this);
 
 /* global sinon */
 Services.scriptloader.loadSubScript("resource://testing-common/sinon-2.3.2.js");

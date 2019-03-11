@@ -19,7 +19,7 @@
 #include "nsIDocShell.h"
 #include "nsIPresShell.h"
 #include "nsPresContext.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsISelectionController.h"
 #include "nsIFrame.h"
 #include "nsITextControlFrame.h"
@@ -41,10 +41,11 @@
 #include "nsGenericHTMLElement.h"
 
 #if DEBUG
-#include "nsIWebNavigation.h"
-#include "nsString.h"
+#  include "nsIWebNavigation.h"
+#  include "nsString.h"
 #endif
 
+using mozilla::dom::Document;
 using mozilla::dom::Element;
 using mozilla::dom::Selection;
 
@@ -316,22 +317,9 @@ nsWebBrowserFind::SetMatchCase(bool aMatchCase) {
   return NS_OK;
 }
 
-static bool IsInNativeAnonymousSubtree(nsIContent* aContent) {
-  while (aContent) {
-    nsIContent* bindingParent = aContent->GetBindingParent();
-    if (bindingParent == aContent) {
-      return true;
-    }
-
-    aContent = bindingParent;
-  }
-
-  return false;
-}
-
 void nsWebBrowserFind::SetSelectionAndScroll(nsPIDOMWindowOuter* aWindow,
                                              nsRange* aRange) {
-  nsCOMPtr<nsIDocument> doc = aWindow->GetDoc();
+  RefPtr<Document> doc = aWindow->GetDoc();
   if (!doc) {
     return;
   }
@@ -355,7 +343,7 @@ void nsWebBrowserFind::SetSelectionAndScroll(nsPIDOMWindowOuter* aWindow,
   // <textarea> or text <input>, we need to get the outer frame
   nsITextControlFrame* tcFrame = nullptr;
   for (; content; content = content->GetParent()) {
-    if (!IsInNativeAnonymousSubtree(content)) {
+    if (!content->IsInNativeAnonymousSubtree()) {
       nsIFrame* f = content->GetPrimaryFrame();
       if (!f) {
         return;
@@ -398,7 +386,7 @@ void nsWebBrowserFind::SetSelectionAndScroll(nsPIDOMWindowOuter* aWindow,
 }
 
 // Adapted from TextServicesDocument::GetDocumentContentRootNode
-nsresult nsWebBrowserFind::GetRootNode(nsIDocument* aDoc, Element** aNode) {
+nsresult nsWebBrowserFind::GetRootNode(Document* aDoc, Element** aNode) {
   NS_ENSURE_ARG_POINTER(aDoc);
   NS_ENSURE_ARG_POINTER(aNode);
   *aNode = 0;
@@ -420,7 +408,7 @@ nsresult nsWebBrowserFind::GetRootNode(nsIDocument* aDoc, Element** aNode) {
 nsresult nsWebBrowserFind::SetRangeAroundDocument(nsRange* aSearchRange,
                                                   nsRange* aStartPt,
                                                   nsRange* aEndPt,
-                                                  nsIDocument* aDoc) {
+                                                  Document* aDoc) {
   RefPtr<Element> bodyContent;
   nsresult rv = GetRootNode(aDoc, getter_AddRefs(bodyContent));
   NS_ENSURE_SUCCESS(rv, rv);
@@ -451,7 +439,7 @@ nsresult nsWebBrowserFind::SetRangeAroundDocument(nsRange* aSearchRange,
 // document if there's no selection.
 nsresult nsWebBrowserFind::GetSearchLimits(nsRange* aSearchRange,
                                            nsRange* aStartPt, nsRange* aEndPt,
-                                           nsIDocument* aDoc, Selection* aSel,
+                                           Document* aDoc, Selection* aSel,
                                            bool aWrap) {
   NS_ENSURE_ARG_POINTER(aSel);
 
@@ -650,7 +638,7 @@ nsresult nsWebBrowserFind::SearchInFrame(nsPIDOMWindowOuter* aWindow,
   // accessible from the frame where the Find is being run.
 
   // get a uri for the window
-  nsCOMPtr<nsIDocument> theDoc = aWindow->GetDoc();
+  RefPtr<Document> theDoc = aWindow->GetDoc();
   if (!theDoc) {
     return NS_ERROR_FAILURE;
   }
@@ -714,7 +702,7 @@ nsresult nsWebBrowserFind::OnEndSearchFrame(nsPIDOMWindowOuter* aWindow) {
 
 already_AddRefed<Selection> nsWebBrowserFind::GetFrameSelection(
     nsPIDOMWindowOuter* aWindow) {
-  nsCOMPtr<nsIDocument> doc = aWindow->GetDoc();
+  RefPtr<Document> doc = aWindow->GetDoc();
   if (!doc) {
     return nullptr;
   }

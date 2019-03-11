@@ -14,7 +14,7 @@
 
 #include "mozilla/dom/Element.h"
 #include "nsIContent.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsElementTable.h"
 #include "nsNameSpaceManager.h"
 #include "nsString.h"
@@ -33,6 +33,7 @@
 #include "nsComputedDOMStyle.h"
 
 using namespace mozilla;
+using namespace mozilla::dom;
 
 static const int32_t kLongLineLen = 128;
 
@@ -385,7 +386,7 @@ void nsXHTMLContentSerializer::AfterElementEnd(nsIContent* aContent,
 }
 
 NS_IMETHODIMP
-nsXHTMLContentSerializer::AppendDocumentStart(nsIDocument* aDocument,
+nsXHTMLContentSerializer::AppendDocumentStart(Document* aDocument,
                                               nsAString& aStr) {
   if (!mBodyOnly)
     return nsXMLContentSerializer::AppendDocumentStart(aDocument, aStr);
@@ -419,7 +420,7 @@ bool nsXHTMLContentSerializer::CheckElementStart(Element* aElement,
   return true;
 }
 
-bool nsXHTMLContentSerializer::CheckElementEnd(dom::Element* aElement,
+bool nsXHTMLContentSerializer::CheckElementEnd(Element* aElement,
                                                bool& aForceFormat,
                                                nsAString& aStr) {
   NS_ASSERTION(!mIsHTMLSerializer,

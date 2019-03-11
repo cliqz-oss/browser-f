@@ -311,36 +311,13 @@ LocalStorageManager::CloneStorage(Storage* aStorage) {
 NS_IMETHODIMP
 LocalStorageManager::CheckStorage(nsIPrincipal* aPrincipal, Storage* aStorage,
                                   bool* aRetval) {
-  if (!aStorage || aStorage->Type() != Storage::eLocalStorage) {
-    return NS_ERROR_UNEXPECTED;
-  }
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aPrincipal);
+  MOZ_ASSERT(aStorage);
+  MOZ_ASSERT(aRetval);
 
-  RefPtr<LocalStorage> storage = static_cast<LocalStorage*>(aStorage);
-
-  *aRetval = false;
-
-  if (!aPrincipal) {
-    return NS_ERROR_NOT_AVAILABLE;
-  }
-
-  nsAutoCString suffix;
-  nsAutoCString origin;
-  nsresult rv = GenerateOriginKey(aPrincipal, suffix, origin);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  LocalStorageCache* cache = GetCache(suffix, origin);
-  if (cache != storage->GetCache()) {
-    return NS_OK;
-  }
-
-  if (!storage->PrincipalEquals(aPrincipal)) {
-    return NS_OK;
-  }
-
-  *aRetval = true;
-  return NS_OK;
+  // Only used by sessionStorage.
+  return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 NS_IMETHODIMP
@@ -418,17 +395,15 @@ nsresult LocalStorageManager::Observe(const char* aTopic,
     return NS_OK;
   }
 
+  if (!strcmp(aTopic, "browser:purge-sessionStorage")) {
+    // This is only meant for SessionStorageManager.
+    return NS_OK;
+  }
+
   // Clear from caches everything that has been stored
   // while in session-only mode
   if (!strcmp(aTopic, "session-only-cleared")) {
     ClearCaches(LocalStorageCache::kUnloadSession, pattern, aOriginScope);
-    return NS_OK;
-  }
-
-  // Clear everything (including so and pb data) from caches and database
-  // for the gived domain and subdomains.
-  if (!strcmp(aTopic, "domain-data-cleared")) {
-    ClearCaches(LocalStorageCache::kUnloadComplete, pattern, aOriginScope);
     return NS_OK;
   }
 

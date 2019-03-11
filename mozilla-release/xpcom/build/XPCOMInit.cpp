@@ -10,11 +10,12 @@
 #include "mozilla/Poison.h"
 #include "mozilla/RemoteDecoderManagerChild.h"
 #include "mozilla/SharedThreadPool.h"
+#include "mozilla/VideoDecoderManagerChild.h"
 #include "mozilla/XPCOM.h"
 #include "nsXULAppAPI.h"
 
 #ifndef ANDROID
-#include "nsTerminator.h"
+#  include "nsTerminator.h"
 #endif
 
 #include "nsXPCOMPrivate.h"
@@ -22,7 +23,6 @@
 
 #include "mozilla/layers/ImageBridgeChild.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
-#include "mozilla/dom/VideoDecoderManagerChild.h"
 
 #include "prlink.h"
 
@@ -62,7 +62,7 @@
 #include "nsIFile.h"
 #include "nsLocalFile.h"
 #if defined(XP_UNIX)
-#include "nsNativeCharsetUtils.h"
+#  include "nsNativeCharsetUtils.h"
 #endif
 #include "nsDirectoryService.h"
 #include "nsDirectoryServiceDefs.h"
@@ -88,12 +88,12 @@ extern nsresult nsStringInputStreamConstructor(nsISupports*, REFNSIID, void**);
 #include "SpecialSystemDirectory.h"
 
 #if defined(XP_WIN)
-#include "nsWindowsRegKey.h"
+#  include "nsWindowsRegKey.h"
 #endif
 
 #ifdef MOZ_WIDGET_COCOA
-#include "nsMacUtilsImpl.h"
-#include "nsMacPreferencesReader.h"
+#  include "nsMacUtilsImpl.h"
+#  include "nsMacPreferencesReader.h"
 #endif
 
 #include "nsSystemInfo.h"
@@ -132,15 +132,6 @@ extern nsresult nsStringInputStreamConstructor(nsISupports*, REFNSIID, void**);
 #include "mozilla/ipc/GeckoChildProcessHost.h"
 
 #include "ogg/ogg.h"
-#if defined(MOZ_VPX) && !defined(MOZ_VPX_NO_MEM_REPORTING)
-#if defined(HAVE_STDINT_H)
-// mozilla-config.h defines HAVE_STDINT_H, and then it's defined *again* in
-// vpx_config.h (which we include via vpx_mem.h, below). This redefinition
-// triggers a build warning on MSVC, so we have to #undef it first.
-#undef HAVE_STDINT_H
-#endif
-#include "vpx_mem/vpx_mem.h"
-#endif
 
 #include "GeckoProfiler.h"
 
@@ -277,7 +268,7 @@ static already_AddRefed<nsIFactory> CreateINIParserFactory(
   {&kNS_##NAME##_CID, false, nullptr, Ctor, Selector},
 const mozilla::Module::CIDEntry kXPCOMCIDEntries[] = {
     {&kComponentManagerCID, true, nullptr, nsComponentManagerImpl::Create,
-     Module::ALLOW_IN_GPU_AND_VR_PROCESS},
+     Module::ALLOW_IN_GPU_VR_AND_SOCKET_PROCESS},
     {&kINIParserFactoryCID, false, CreateINIParserFactory},
 #include "XPCOMModule.inc"
     {&kNS_CHROMEREGISTRY_CID, false, nullptr, nsChromeRegistryConstructor},
@@ -310,14 +301,15 @@ const mozilla::Module::ContractIDEntry kXPCOMContracts[] = {
 #undef COMPONENT
 #undef COMPONENT_M
 
-const mozilla::Module kXPCOMModule = {mozilla::Module::kVersion,
-                                      kXPCOMCIDEntries,
-                                      kXPCOMContracts,
-                                      nullptr,
-                                      nullptr,
-                                      nullptr,
-                                      nullptr,
-                                      Module::ALLOW_IN_GPU_AND_VR_PROCESS};
+const mozilla::Module kXPCOMModule = {
+    mozilla::Module::kVersion,
+    kXPCOMCIDEntries,
+    kXPCOMContracts,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
+    Module::ALLOW_IN_GPU_VR_AND_SOCKET_PROCESS};
 
 // gDebug will be freed during shutdown.
 static nsIDebug2* gDebug = nullptr;
@@ -392,66 +384,6 @@ NS_IMPL_ISUPPORTS(OggReporter, nsIMemoryReporter)
 /* static */ template <>
 CountingAllocatorBase<OggReporter>::AmountType
     CountingAllocatorBase<OggReporter>::sAmount(0);
-
-#ifdef MOZ_VPX
-class VPXReporter final : public nsIMemoryReporter,
-                          public CountingAllocatorBase<VPXReporter> {
- public:
-  NS_DECL_ISUPPORTS
-
- private:
-  NS_IMETHOD
-  CollectReports(nsIHandleReportCallback* aHandleReport, nsISupports* aData,
-                 bool aAnonymize) override {
-    MOZ_COLLECT_REPORT("explicit/media/libvpx", KIND_HEAP, UNITS_BYTES,
-                       MemoryAllocated(),
-                       "Memory allocated through libvpx for WebM media files.");
-
-    return NS_OK;
-  }
-
-  ~VPXReporter() {}
-};
-
-NS_IMPL_ISUPPORTS(VPXReporter, nsIMemoryReporter)
-
-/* static */ template <>
-Atomic<size_t> CountingAllocatorBase<VPXReporter>::sAmount(0);
-#endif /* MOZ_VPX */
-
-#ifdef ENABLE_BIGINT
-class GMPReporter final : public nsIMemoryReporter,
-                          public CountingAllocatorBase<GMPReporter> {
- public:
-  NS_DECL_ISUPPORTS
-
-  static void* Alloc(size_t size) { return CountingMalloc(size); }
-
-  static void* Realloc(void* ptr, size_t oldSize, size_t newSize) {
-    return CountingRealloc(ptr, newSize);
-  }
-
-  static void Free(void* ptr, size_t size) { return CountingFree(ptr); }
-
- private:
-  NS_IMETHOD
-  CollectReports(nsIHandleReportCallback* aHandleReport, nsISupports* aData,
-                 bool aAnonymize) override {
-    MOZ_COLLECT_REPORT(
-        "explicit/gmp", KIND_HEAP, UNITS_BYTES, MemoryAllocated(),
-        "Memory allocated through libgmp for BigInt arithmetic.");
-
-    return NS_OK;
-  }
-
-  ~GMPReporter() {}
-};
-
-NS_IMPL_ISUPPORTS(GMPReporter, nsIMemoryReporter)
-
-/* static */ template <>
-Atomic<size_t> CountingAllocatorBase<GMPReporter>::sAmount(0);
-#endif  // ENABLE_BIGINT
 
 static bool sInitializedJS = false;
 
@@ -645,19 +577,6 @@ NS_InitXPCOM2(nsIServiceManager** aResult, nsIFile* aBinDirectory,
       OggReporter::CountingMalloc, OggReporter::CountingCalloc,
       OggReporter::CountingRealloc, OggReporter::CountingFree);
 
-#if defined(MOZ_VPX) && !defined(MOZ_VPX_NO_MEM_REPORTING)
-  // And for VPX.
-  vpx_mem_set_functions(VPXReporter::CountingMalloc,
-                        VPXReporter::CountingCalloc,
-                        VPXReporter::CountingRealloc, VPXReporter::CountingFree,
-                        memcpy, memset, memmove);
-#endif
-
-#ifdef ENABLE_BIGINT
-  // And for libgmp.
-  mozilla::SetGMPMemoryFunctions();
-#endif
-
   // Initialize the JS engine.
   const char* jsInitFailureReason = JS_InitWithFailureDiagnostic();
   if (jsInitFailureReason) {
@@ -697,9 +616,6 @@ NS_InitXPCOM2(nsIServiceManager** aResult, nsIFile* aBinDirectory,
   // The memory reporter manager is up and running -- register our reporters.
   RegisterStrongMemoryReporter(new ICUReporter());
   RegisterStrongMemoryReporter(new OggReporter());
-#ifdef MOZ_VPX
-  RegisterStrongMemoryReporter(new VPXReporter());
-#endif
 
   mozilla::Telemetry::Init();
 
@@ -803,17 +719,6 @@ void SetICUMemoryFunctions() {
   }
 }
 
-#ifdef ENABLE_BIGINT
-void SetGMPMemoryFunctions() {
-  static bool sGMPReporterInitialized = false;
-  if (!sGMPReporterInitialized) {
-    JS::SetGMPMemoryFunctions(GMPReporter::Alloc, GMPReporter::Realloc,
-                              GMPReporter::Free);
-    sGMPReporterInitialized = true;
-  }
-}
-#endif
-
 nsresult ShutdownXPCOM(nsIServiceManager* aServMgr) {
   // Make sure the hang monitor is enabled for shutdown.
   BackgroundHangMonitor().NotifyActivity();
@@ -861,7 +766,7 @@ nsresult ShutdownXPCOM(nsIServiceManager* aServMgr) {
     // are triggered by the NS_XPCOM_SHUTDOWN_OBSERVER_ID notification.
     NS_ProcessPendingEvents(thread);
     gfxPlatform::ShutdownLayersIPC();
-    mozilla::dom::VideoDecoderManagerChild::Shutdown();
+    mozilla::VideoDecoderManagerChild::Shutdown();
     mozilla::RemoteDecoderManagerChild::Shutdown();
 
     mozilla::scache::StartupCache::DeleteSingleton();
@@ -966,7 +871,7 @@ nsresult ShutdownXPCOM(nsIServiceManager* aServMgr) {
 #endif
   nsCycleCollector_shutdown(shutdownCollect);
 
-  PROFILER_ADD_MARKER("Shutdown xpcom");
+  PROFILER_ADD_MARKER("Shutdown xpcom", OTHER);
   // If we are doing any shutdown checks, poison writes.
   if (gShutdownChecks != SCM_NOTHING) {
 #ifdef XP_MACOSX

@@ -410,6 +410,7 @@ class WrapperMap {
 class JS::Compartment {
   JS::Zone* zone_;
   JSRuntime* runtime_;
+  bool invisibleToDebugger_;
 
   js::WrapperMap crossCompartmentWrappers;
 
@@ -446,6 +447,12 @@ class JS::Compartment {
     bool hasEnteredRealm = false;
   } gcState;
 
+  // True if all outgoing wrappers have been nuked. This happens when all realms
+  // have been nuked and NukeCrossCompartmentWrappers is called with the
+  // NukeAllReferences option. This prevents us from creating new wrappers for
+  // the compartment.
+  bool nukedOutgoingWrappers = false;
+
   JS::Zone* zone() { return zone_; }
   const JS::Zone* zone() const { return zone_; }
 
@@ -458,9 +465,21 @@ class JS::Compartment {
   // thread can easily lead to races. Use this method very carefully.
   JSRuntime* runtimeFromAnyThread() const { return runtime_; }
 
+  // Certain compartments are implementation details of the embedding, and
+  // references to them should never leak out to script. For realms belonging to
+  // this compartment, onNewGlobalObject does not fire, and addDebuggee is a
+  // no-op.
+  bool invisibleToDebugger() const { return invisibleToDebugger_; }
+
   RealmVector& realms() { return realms_; }
 
+  // Cross-compartment wrappers are shared by all realms in the compartment, but
+  // they still have a per-realm ObjectGroup etc. To prevent us from having
+  // multiple realms, each with some cross-compartment wrappers potentially
+  // keeping the realm alive longer than necessary, we always allocate CCWs in
+  // the first realm.
   Realm* firstRealm() const { return realms_[0]; }
+  Realm* realmForNewCCW() const { return firstRealm(); }
 
   void assertNoCrossCompartmentWrappers() {
     MOZ_ASSERT(crossCompartmentWrappers.empty());
@@ -482,7 +501,7 @@ class JS::Compartment {
                           js::MutableHandleObject obj);
 
  public:
-  explicit Compartment(JS::Zone* zone);
+  explicit Compartment(JS::Zone* zone, bool invisibleToDebugger);
 
   void destroy(js::FreeOp* fop);
 

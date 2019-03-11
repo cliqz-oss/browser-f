@@ -19,6 +19,11 @@
   }
 }
 
+.force-light-theme {
+  --newtab-background-color: #{$grey-10} !important; // sass-lint:disable-line no-important
+  --newtab-text-primary-color: #{$grey-90} !important; // sass-lint:disable-line no-important
+}
+
 main {
   margin: auto;
   // Offset the snippets container so things at the bottom of the page are still
@@ -47,6 +52,29 @@ main {
     visibility: hidden;
   }
 
+}
+
+.ds-outer-wrapper-search-alignment {
+  main {
+    // This override is to ensure while Discovery Stream loads,
+    // the search bar does not jump around. (it sticks to the top)
+    margin: 0 auto;
+  }
+}
+
+.ds-outer-wrapper-breakpoint-override {
+  main {
+    // Override Activity Stream breakpoints for Discovery Stream.
+    // Right now Discovery Stream doesn't have any breakpoints,
+    // and Activity Stream breakpoints do some wonky things.
+    width: 1042px;
+  }
+
+  &:not(.fixed-search) {
+    .search-wrapper .search-inner-wrapper {
+      width: $searchbar-width-large;
+    }
+  }
 }
 
 .base-content-fallback {

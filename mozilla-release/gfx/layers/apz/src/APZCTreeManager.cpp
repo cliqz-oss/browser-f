@@ -23,7 +23,7 @@
 #include "mozilla/gfx/Logging.h"            // for gfx::TreeLog
 #include "mozilla/gfx/Point.h"              // for Point
 #ifdef MOZ_WIDGET_ANDROID
-#include "mozilla/jni/Utils.h"  // for jni::IsFennec
+#  include "mozilla/jni/Utils.h"  // for jni::IsFennec
 #endif
 #include "mozilla/layers/APZSampler.h"      // for APZSampler
 #include "mozilla/layers/APZThreadUtils.h"  // for AssertOnControllerThread, etc
@@ -53,9 +53,9 @@
 // #define ENABLE_APZCTM_LOGGING 1
 
 #if ENABLE_APZCTM_LOGGING
-#define APZCTM_LOG(...) printf_stderr("APZCTM: " __VA_ARGS__)
+#  define APZCTM_LOG(...) printf_stderr("APZCTM: " __VA_ARGS__)
 #else
-#define APZCTM_LOG(...)
+#  define APZCTM_LOG(...)
 #endif
 
 // #define APZ_KEY_LOG(...) printf_stderr("APZKEY: " __VA_ARGS__)
@@ -808,16 +808,16 @@ void APZCTreeManager::NotifyScrollbarDragInitiated(
     ScrollDirection aDirection) const {
   RefPtr<GeckoContentController> controller =
       GetContentController(aGuid.mLayersId);
-  MOZ_ASSERT(controller);
-  controller->NotifyAsyncScrollbarDragInitiated(aDragBlockId, aGuid.mScrollId,
-                                                aDirection);
+  if (controller) {
+    controller->NotifyAsyncScrollbarDragInitiated(aDragBlockId, aGuid.mScrollId,
+                                                  aDirection);
+  }
 }
 
 void APZCTreeManager::NotifyScrollbarDragRejected(
     const ScrollableLayerGuid& aGuid) const {
   RefPtr<GeckoContentController> controller =
       GetContentController(aGuid.mLayersId);
-  MOZ_ASSERT(controller); // If you hit this crash and have STR, please file a bug!
   if (controller) {
     controller->NotifyAsyncScrollbarDragRejected(aGuid.mScrollId);
   }
@@ -1122,7 +1122,7 @@ static bool WillHandleInput(const PanGestureOrScrollWheelInput& aPanInput) {
   return APZInputBridge::ActionForWheelEvent(&wheelEvent).isSome();
 }
 
-void APZCTreeManager::FlushApzRepaints(LayersId aLayersId) {
+/*static*/ void APZCTreeManager::FlushApzRepaints(LayersId aLayersId) {
   // Previously, paints were throttled and therefore this method was used to
   // ensure any pending paints were flushed. Now, paints are flushed
   // immediately, so it is safe to simply send a notification now.
@@ -3081,8 +3081,8 @@ already_AddRefed<wr::WebRenderAPI> APZCTreeManager::GetWebRenderAPI() const {
   return api.forget();
 }
 
-already_AddRefed<GeckoContentController> APZCTreeManager::GetContentController(
-    LayersId aLayersId) const {
+/*static*/ already_AddRefed<GeckoContentController>
+APZCTreeManager::GetContentController(LayersId aLayersId) {
   RefPtr<GeckoContentController> controller;
   CompositorBridgeParent::CallWithIndirectShadowTree(
       aLayersId,

@@ -14,10 +14,10 @@ using namespace mozilla;
 using dom::Promise;
 
 #if defined(XP_WIN)
-#include <combaseapi.h>
-#include <ntsecapi.h>
-#include <wincred.h>
-#include <windows.h>
+#  include <combaseapi.h>
+#  include <ntsecapi.h>
+#  include <wincred.h>
+#  include <windows.h>
 struct HandleCloser {
   typedef HANDLE pointer;
   void operator()(HANDLE h) {
@@ -84,7 +84,8 @@ static nsresult ReauthenticateUserWindows(const nsACString& aPrompt,
   credui.cbSize = sizeof(credui);
   // TODO: maybe set parent (Firefox) here.
   credui.hwndParent = nullptr;
-  const nsString& prompt = PromiseFlatString(NS_ConvertUTF8toUTF16(aPrompt));
+  const nsString& tmpPrompt = NS_ConvertUTF8toUTF16(aPrompt);
+  const nsString& prompt = PromiseFlatString(tmpPrompt);
   credui.pszMessageText = prompt.get();
   credui.pszCaptionText = nullptr;
   credui.hbmBanner = nullptr;  // ignored

@@ -26,7 +26,7 @@
 
 #include "mozilla/dom/SpeechRecognitionEvent.h"
 #include "nsContentUtils.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIObserverService.h"
 #include "nsIPermissionManager.h"
 #include "nsIPrincipal.h"
@@ -39,7 +39,7 @@
 
 // Undo the windows.h damage
 #if defined(XP_WIN) && defined(GetMessage)
-#undef GetMessage
+#  undef GetMessage
 #endif
 
 namespace mozilla {
@@ -727,7 +727,7 @@ bool SpeechRecognition::SetRecognitionService(ErrorResult& aRv) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return false;
   }
-  nsCOMPtr<nsIDocument> document = window->GetExtantDoc();
+  nsCOMPtr<Document> document = window->GetExtantDoc();
   if (!document) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return false;

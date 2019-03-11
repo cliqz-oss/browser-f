@@ -18,7 +18,7 @@
 #include FT_MULTIPLE_MASTERS_H
 
 #ifndef FT_FACE_FLAG_COLOR
-#define FT_FACE_FLAG_COLOR (1L << 14)
+#  define FT_FACE_FLAG_COLOR (1L << 14)
 #endif
 
 using namespace mozilla::gfx;
@@ -544,7 +544,7 @@ bool gfxFT2FontBase::GetFTGlyphAdvance(uint16_t aGID, int32_t* aAdvance) {
   return true;
 }
 
-int32_t gfxFT2FontBase::GetGlyphWidth(DrawTarget& aDrawTarget, uint16_t aGID) {
+int32_t gfxFT2FontBase::GetGlyphWidth(uint16_t aGID) {
   if (!mGlyphWidths) {
     mGlyphWidths =
         mozilla::MakeUnique<nsDataHashtable<nsUint32HashKey, int32_t>>(128);

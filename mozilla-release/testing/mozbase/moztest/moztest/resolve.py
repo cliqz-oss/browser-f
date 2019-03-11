@@ -331,6 +331,10 @@ class TestMetadata(object):
 
                     ancestor_manifest = metadata.get('ancestor-manifest')
                     if ancestor_manifest:
+                        # The (ancestor manifest, included manifest) tuple
+                        # contains the defaults of the included manifest, so
+                        # use it instead of [metadata['manifest']].
+                        defaults_manifests[0] = (ancestor_manifest, metadata['manifest'])
                         defaults_manifests.append(ancestor_manifest)
 
                     for manifest in defaults_manifests:
@@ -409,7 +413,7 @@ class TestMetadata(object):
 
         candidate_paths = set()
 
-        if any(self.is_wpt_path(path) for path in paths):
+        if flavor in (None, 'web-platform-tests') and any(self.is_wpt_path(p) for p in paths):
             self.add_wpt_manifest_data()
 
         for path in sorted(paths):

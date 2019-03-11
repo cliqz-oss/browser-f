@@ -13,6 +13,8 @@
 #include "mozilla/Sprintf.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/StaticPrefs.h"
+#include "mozilla/VideoDecoderManagerChild.h"
+#include "mozilla/VideoDecoderManagerParent.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/layers/APZCTreeManagerChild.h"
@@ -28,7 +30,7 @@
 #include "mozilla/widget/PlatformWidgetTypes.h"
 #include "nsAppRunner.h"
 #ifdef MOZ_WIDGET_SUPPORTS_OOP_COMPOSITING
-#include "mozilla/widget/CompositorWidgetChild.h"
+#  include "mozilla/widget/CompositorWidgetChild.h"
 #endif
 #include "nsBaseWidget.h"
 #include "nsContentUtils.h"
@@ -37,14 +39,12 @@
 #include "VsyncBridgeChild.h"
 #include "VsyncIOThreadHolder.h"
 #include "VsyncSource.h"
-#include "mozilla/dom/VideoDecoderManagerChild.h"
-#include "mozilla/dom/VideoDecoderManagerParent.h"
 #include "nsExceptionHandler.h"
 #include "nsPrintfCString.h"
 
 #if defined(MOZ_WIDGET_ANDROID)
-#include "mozilla/widget/AndroidUiThread.h"
-#include "mozilla/layers/UiCompositorControllerChild.h"
+#  include "mozilla/widget/AndroidUiThread.h"
+#  include "mozilla/layers/UiCompositorControllerChild.h"
 #endif  // defined(MOZ_WIDGET_ANDROID)
 
 namespace mozilla {
@@ -767,7 +767,7 @@ bool GPUProcessManager::CreateContentBridges(
     ipc::Endpoint<PCompositorManagerChild>* aOutCompositor,
     ipc::Endpoint<PImageBridgeChild>* aOutImageBridge,
     ipc::Endpoint<PVRManagerChild>* aOutVRBridge,
-    ipc::Endpoint<dom::PVideoDecoderManagerChild>* aOutVideoManager,
+    ipc::Endpoint<PVideoDecoderManagerChild>* aOutVideoManager,
     nsTArray<uint32_t>* aNamespaces) {
   if (!CreateContentCompositorManager(aOtherProcess, aOutCompositor) ||
       !CreateContentImageBridge(aOtherProcess, aOutImageBridge) ||
@@ -879,16 +879,16 @@ bool GPUProcessManager::CreateContentVRManager(
 
 void GPUProcessManager::CreateContentVideoDecoderManager(
     base::ProcessId aOtherProcess,
-    ipc::Endpoint<dom::PVideoDecoderManagerChild>* aOutEndpoint) {
+    ipc::Endpoint<PVideoDecoderManagerChild>* aOutEndpoint) {
   if (!EnsureGPUReady() || !StaticPrefs::MediaGpuProcessDecoder() ||
       !mDecodeVideoOnGpuProcess) {
     return;
   }
 
-  ipc::Endpoint<dom::PVideoDecoderManagerParent> parentPipe;
-  ipc::Endpoint<dom::PVideoDecoderManagerChild> childPipe;
+  ipc::Endpoint<PVideoDecoderManagerParent> parentPipe;
+  ipc::Endpoint<PVideoDecoderManagerChild> childPipe;
 
-  nsresult rv = dom::PVideoDecoderManager::CreateEndpoints(
+  nsresult rv = PVideoDecoderManager::CreateEndpoints(
       mGPUChild->OtherPid(), aOtherProcess, &parentPipe, &childPipe);
   if (NS_FAILED(rv)) {
     gfxCriticalNote << "Could not create content video decoder: "

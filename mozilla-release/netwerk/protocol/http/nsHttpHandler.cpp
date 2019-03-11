@@ -73,21 +73,21 @@
 #include "nsNSSComponent.h"
 
 #if defined(XP_UNIX)
-#include <sys/utsname.h>
+#  include <sys/utsname.h>
 #endif
 
 #if defined(XP_WIN)
-#include <windows.h>
-#include "mozilla/WindowsVersion.h"
+#  include <windows.h>
+#  include "mozilla/WindowsVersion.h"
 #endif
 
 #if defined(XP_MACOSX)
-#include <CoreServices/CoreServices.h>
-#include "nsCocoaFeatures.h"
+#  include <CoreServices/CoreServices.h>
+#  include "nsCocoaFeatures.h"
 #endif
 
 #ifdef MOZ_TASK_TRACER
-#include "GeckoTaskTracer.h"
+#  include "GeckoTaskTracer.h"
 #endif
 
 //-----------------------------------------------------------------------------
@@ -95,7 +95,7 @@
 
 #define UA_PREF_PREFIX "general.useragent."
 #ifdef XP_WIN
-#define UA_SPARE_PLATFORM
+#  define UA_SPARE_PLATFORM
 #endif
 
 #define HTTP_PREF_PREFIX "network.http."
@@ -103,8 +103,6 @@
 #define BROWSER_PREF_PREFIX "browser.cache."
 #define DONOTTRACK_HEADER_ENABLED "privacy.donottrackheader.enabled"
 #define H2MANDATORY_SUITE "security.ssl3.ecdhe_rsa_aes_128_gcm_sha256"
-#define TELEMETRY_ENABLED "toolkit.telemetry.enabled"
-#define ALLOW_EXPERIMENTS "network.allow-experiments"
 #define SAFE_HINT_HEADER_VALUE "safeHint.enabled"
 #define SECURITY_PREFIX "security."
 
@@ -116,6 +114,12 @@
   "network.tcp.tcp_fastopen_http_check_for_stalls_only_if_idle_for"
 #define TCP_FAST_OPEN_STALLS_TIMEOUT \
   "network.tcp.tcp_fastopen_http_stalls_timeout"
+
+#define ACCEPT_HEADER_NAVIGATION \
+  "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+#define ACCEPT_HEADER_IMAGE "image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5"
+#define ACCEPT_HEADER_STYLE "text/css,*/*;q=0.1"
+#define ACCEPT_HEADER_ALL "*/*"
 
 #define UA_PREF(_pref) UA_PREF_PREFIX _pref
 #define HTTP_PREF(_pref) HTTP_PREF_PREFIX _pref
@@ -245,8 +249,6 @@ nsHttpHandler::nsHttpHandler()
       mSafeHintEnabled(false),
       mParentalControlEnabled(false),
       mHandlerActive(false),
-      mTelemetryEnabled(false),
-      mAllowExperiments(true),
       mDebugObservations(false),
       mEnableSpdy(false),
       mHttp2Enabled(true),
@@ -329,13 +331,13 @@ void nsHttpHandler::SetFastOpenOSSupport() {
 
   nsAutoCString version;
   nsresult rv;
-#ifdef ANDROID
+#  ifdef ANDROID
   nsCOMPtr<nsIPropertyBag2> infoService =
       do_GetService("@mozilla.org/system-info;1");
   MOZ_ASSERT(infoService, "Could not find a system info service");
   rv = infoService->GetPropertyAsACString(NS_LITERAL_STRING("sdk_version"),
                                           version);
-#else
+#  else
   char buf[SYS_INFO_BUFFER_LENGTH];
   if (PR_GetSystemInfo(PR_SI_RELEASE, buf, sizeof(buf)) == PR_SUCCESS) {
     version = buf;
@@ -343,19 +345,19 @@ void nsHttpHandler::SetFastOpenOSSupport() {
   } else {
     rv = NS_ERROR_FAILURE;
   }
-#endif
+#  endif
 
   LOG(("nsHttpHandler::SetFastOpenOSSupport version %s", version.get()));
 
   if (NS_SUCCEEDED(rv)) {
     // set min version minus 1.
-#if XP_MACOSX
+#  if XP_MACOSX
     int min_version[] = {17, 5};  // High Sierra 10.13.4
-#elif ANDROID
+#  elif ANDROID
     int min_version[] = {4, 4};
-#elif XP_LINUX
+#  elif XP_LINUX
     int min_version[] = {3, 6};
-#endif
+#  endif
     int inx = 0;
     nsCCharSeparatedTokenizer tokenizer(version, '.');
     while ((inx < 2) && tokenizer.hasMoreTokens()) {
@@ -389,11 +391,18 @@ void nsHttpHandler::EnsureUAOverridesInit() {
   MOZ_ASSERT(XRE_IsParentProcess());
   MOZ_ASSERT(NS_IsMainThread());
 
+  static bool initDone = false;
+
+  if (initDone) {
+    return;
+  }
+
   nsresult rv;
   nsCOMPtr<nsISupports> bootstrapper =
       do_GetService("@mozilla.org/network/ua-overrides-bootstrapper;1", &rv);
   MOZ_ASSERT(bootstrapper);
   MOZ_ASSERT(NS_SUCCEEDED(rv));
+  initDone = true;
 }
 
 nsHttpHandler::~nsHttpHandler() {
@@ -423,7 +432,6 @@ static const char *gCallbackPrefs[] = {
     INTL_ACCEPT_LANGUAGES,
     BROWSER_PREF("disk_cache_ssl"),
     DONOTTRACK_HEADER_ENABLED,
-    TELEMETRY_ENABLED,
     H2MANDATORY_SUITE,
     HTTP_PREF("tcp_keepalive.short_lived_connections"),
     HTTP_PREF("tcp_keepalive.long_lived_connections"),
@@ -490,7 +498,7 @@ nsresult nsHttpHandler::Init() {
   }
 
   // Generating the spoofed User Agent for fingerprinting resistance.
-  rv = nsRFPService::GetSpoofedUserAgent(mSpoofedUserAgent);
+  rv = nsRFPService::GetSpoofedUserAgent(mSpoofedUserAgent, true);
   if (NS_FAILED(rv)) {
     // Empty mSpoofedUserAgent to make sure the unsuccessful spoofed UA string
     // will not be used anywhere.
@@ -615,8 +623,9 @@ nsresult nsHttpHandler::InitConnectionMgr() {
   return rv;
 }
 
-nsresult nsHttpHandler::AddStandardRequestHeaders(nsHttpRequestHead *request,
-                                                  bool isSecure) {
+nsresult nsHttpHandler::AddStandardRequestHeaders(
+    nsHttpRequestHead *request, bool isSecure,
+    nsContentPolicyType aContentPolicyType) {
   nsresult rv;
 
   // Add the "User-Agent" header
@@ -628,7 +637,20 @@ nsresult nsHttpHandler::AddStandardRequestHeaders(nsHttpRequestHead *request,
   // Add the "Accept" header.  Note, this is set as an override because the
   // service worker expects to see it.  The other "default" headers are
   // hidden from service worker interception.
-  rv = request->SetHeader(nsHttp::Accept, mAccept, false,
+  nsAutoCString accept;
+  if (aContentPolicyType == nsIContentPolicy::TYPE_DOCUMENT ||
+      aContentPolicyType == nsIContentPolicy::TYPE_SUBDOCUMENT) {
+    accept.Assign(ACCEPT_HEADER_NAVIGATION);
+  } else if (aContentPolicyType == nsIContentPolicy::TYPE_IMAGE ||
+             aContentPolicyType == nsIContentPolicy::TYPE_IMAGESET) {
+    accept.Assign(ACCEPT_HEADER_IMAGE);
+  } else if (aContentPolicyType == nsIContentPolicy::TYPE_STYLESHEET) {
+    accept.Assign(ACCEPT_HEADER_STYLE);
+  } else {
+    accept.Assign(ACCEPT_HEADER_ALL);
+  }
+
+  rv = request->SetHeader(nsHttp::Accept, accept, false,
                           nsHttpHeaderArray::eVarietyRequestOverride);
   if (NS_FAILED(rv)) return rv;
 
@@ -929,27 +951,27 @@ void nsHttpHandler::BuildUserAgent() {
 }
 
 #ifdef XP_WIN
-#define WNT_BASE "Windows NT %ld.%ld"
-#define W64_PREFIX "; Win64"
+#  define WNT_BASE "Windows NT %ld.%ld"
+#  define W64_PREFIX "; Win64"
 #endif
 
 void nsHttpHandler::InitUserAgentComponents() {
 #ifndef MOZ_UA_OS_AGNOSTIC
   // Gather platform.
   mPlatform.AssignLiteral(
-#if defined(ANDROID)
+#  if defined(ANDROID)
       "Android"
-#elif defined(XP_WIN)
+#  elif defined(XP_WIN)
       "Windows"
-#elif defined(XP_MACOSX)
+#  elif defined(XP_MACOSX)
       "Macintosh"
-#elif defined(XP_UNIX)
+#  elif defined(XP_UNIX)
       // We historically have always had X11 here,
       // and there seems little a webpage can sensibly do
       // based on it being something else, so use X11 for
       // backwards compatibility in all cases.
       "X11"
-#endif
+#  endif
   );
 #endif
 
@@ -959,8 +981,9 @@ void nsHttpHandler::InitUserAgentComponents() {
   MOZ_ASSERT(infoService, "Could not find a system info service");
   nsresult rv;
   // Add the Android version number to the Fennec platform identifier.
-#if defined MOZ_WIDGET_ANDROID
-#ifndef MOZ_UA_OS_AGNOSTIC  // Don't add anything to mPlatform since it's empty.
+#  if defined MOZ_WIDGET_ANDROID
+#    ifndef MOZ_UA_OS_AGNOSTIC  // Don't add anything to mPlatform since it's
+                                // empty.
   nsAutoString androidVersion;
   rv = infoService->GetPropertyAsAString(NS_LITERAL_STRING("release_version"),
                                          androidVersion);
@@ -975,8 +998,8 @@ void nsHttpHandler::InitUserAgentComponents() {
       mPlatform += NS_LossyConvertUTF16toASCII(androidVersion);
     }
   }
-#endif
-#endif
+#    endif
+#  endif
   // Add the `Mobile` or `Tablet` or `TV` token when running on device.
   bool isTablet;
   rv = infoService->GetPropertyAsBool(NS_LITERAL_STRING("tablet"), &isTablet);
@@ -999,41 +1022,41 @@ void nsHttpHandler::InitUserAgentComponents() {
 
 #ifndef MOZ_UA_OS_AGNOSTIC
   // Gather OS/CPU.
-#if defined(XP_WIN)
+#  if defined(XP_WIN)
   OSVERSIONINFO info = {sizeof(OSVERSIONINFO)};
-#pragma warning(push)
-#pragma warning(disable : 4996)
+#    pragma warning(push)
+#    pragma warning(disable : 4996)
   if (GetVersionEx(&info)) {
-#pragma warning(pop)
+#    pragma warning(pop)
     const char *format;
-#if defined _M_IA64
+#    if defined _M_IA64
     format = WNT_BASE W64_PREFIX "; IA64";
-#elif defined _M_X64 || defined _M_AMD64
+#    elif defined _M_X64 || defined _M_AMD64
     format = WNT_BASE W64_PREFIX "; x64";
-#else
+#    else
     BOOL isWow64 = FALSE;
     if (!IsWow64Process(GetCurrentProcess(), &isWow64)) {
       isWow64 = FALSE;
     }
     format = isWow64 ? WNT_BASE "; WOW64" : WNT_BASE;
-#endif
+#    endif
     SmprintfPointer buf =
         mozilla::Smprintf(format, info.dwMajorVersion, info.dwMinorVersion);
     if (buf) {
       mOscpu = buf.get();
     }
   }
-#elif defined(XP_MACOSX)
-#if defined(__ppc__)
+#  elif defined(XP_MACOSX)
+#    if defined(__ppc__)
   mOscpu.AssignLiteral("PPC Mac OS X");
-#elif defined(__i386__) || defined(__x86_64__)
+#    elif defined(__i386__) || defined(__x86_64__)
   mOscpu.AssignLiteral("Intel Mac OS X");
-#endif
+#    endif
   SInt32 majorVersion = nsCocoaFeatures::OSXVersionMajor();
   SInt32 minorVersion = nsCocoaFeatures::OSXVersionMinor();
   mOscpu += nsPrintfCString(" %d.%d", static_cast<int>(majorVersion),
                             static_cast<int>(minorVersion));
-#elif defined(XP_UNIX)
+#  elif defined(XP_UNIX)
   struct utsname name;
 
   int ret = uname(&name);
@@ -1053,21 +1076,21 @@ void nsHttpHandler::InitUserAgentComponents() {
     } else {
       buf += ' ';
 
-#ifdef AIX
+#    ifdef AIX
       // AIX uname returns machine specific info in the uname.machine
       // field and does not return the cpu type like other platforms.
       // We use the AIX version and release numbers instead.
       buf += (char *)name.version;
       buf += '.';
       buf += (char *)name.release;
-#else
+#    else
       buf += (char *)name.machine;
-#endif
+#    endif
     }
 
     mOscpu.Assign(buf);
   }
-#endif
+#  endif
 #endif
 
   mUserAgentIsDirty = true;
@@ -1094,6 +1117,10 @@ void nsHttpHandler::PrefsChanged(const char *pref) {
   int32_t val;
 
   LOG(("nsHttpHandler::PrefsChanged [pref=%s]\n", pref));
+
+  if (pref) {
+    gIOService->NotifySocketProcessPrefsChanged(pref);
+  }
 
 #define PREF_CHANGED(p) ((pref == nullptr) || !PL_strcmp(pref, p))
 #define MULTI_PREF_CHANGED(p) \
@@ -1354,15 +1381,6 @@ void nsHttpHandler::PrefsChanged(const char *pref) {
   if (PREF_CHANGED(HTTP_PREF("qos"))) {
     rv = Preferences::GetInt(HTTP_PREF("qos"), &val);
     if (NS_SUCCEEDED(rv)) mQoSBits = (uint8_t)clamped(val, 0, 0xff);
-  }
-
-  if (PREF_CHANGED(HTTP_PREF("accept.default"))) {
-    nsAutoCString accept;
-    rv = Preferences::GetCString(HTTP_PREF("accept.default"), accept);
-    if (NS_SUCCEEDED(rv)) {
-      rv = SetAccept(accept.get());
-      MOZ_ASSERT(NS_SUCCEEDED(rv));
-    }
   }
 
   if (PREF_CHANGED(HTTP_PREF("accept-encoding"))) {
@@ -1755,19 +1773,6 @@ void nsHttpHandler::PrefsChanged(const char *pref) {
   // includes telemetry and allow-experiments because of the abtest profile
   bool requestTokenBucketUpdated = false;
 
-  //
-  // Telemetry
-  //
-
-  if (PREF_CHANGED(TELEMETRY_ENABLED)) {
-    cVar = false;
-    requestTokenBucketUpdated = true;
-    rv = Preferences::GetBool(TELEMETRY_ENABLED, &cVar);
-    if (NS_SUCCEEDED(rv)) {
-      mTelemetryEnabled = cVar;
-    }
-  }
-
   // "security.ssl3.ecdhe_rsa_aes_128_gcm_sha256" is the required h2 interop
   // suite.
 
@@ -1776,18 +1781,6 @@ void nsHttpHandler::PrefsChanged(const char *pref) {
     rv = Preferences::GetBool(H2MANDATORY_SUITE, &cVar);
     if (NS_SUCCEEDED(rv)) {
       mH2MandatorySuiteEnabled = cVar;
-    }
-  }
-
-  //
-  // network.allow-experiments
-  //
-  if (PREF_CHANGED(ALLOW_EXPERIMENTS)) {
-    cVar = true;
-    requestTokenBucketUpdated = true;
-    rv = Preferences::GetBool(ALLOW_EXPERIMENTS, &cVar);
-    if (NS_SUCCEEDED(rv)) {
-      mAllowExperiments = cVar;
     }
   }
 
@@ -1985,11 +1978,6 @@ nsresult nsHttpHandler::SetAcceptLanguages() {
   return rv;
 }
 
-nsresult nsHttpHandler::SetAccept(const char *aAccept) {
-  mAccept = aAccept;
-  return NS_OK;
-}
-
 nsresult nsHttpHandler::SetAcceptEncodings(const char *aAcceptEncodings,
                                            bool isSecure) {
   if (isSecure) {
@@ -2131,8 +2119,12 @@ nsHttpHandler::NewProxiedChannel2(nsIURI *uri, nsIProxyInfo *givenProxyInfo,
   rv = NewChannelId(channelId);
   NS_ENSURE_SUCCESS(rv, rv);
 
+  nsContentPolicyType contentPolicyType =
+      aLoadInfo ? aLoadInfo->GetExternalContentPolicyType()
+                : nsIContentPolicy::TYPE_OTHER;
+
   rv = httpChannel->Init(uri, caps, proxyInfo, proxyResolveFlags, proxyURI,
-                         channelId);
+                         channelId, contentPolicyType);
   if (NS_FAILED(rv)) return rv;
 
   // set the loadInfo on the new channel

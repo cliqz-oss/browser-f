@@ -33,6 +33,7 @@ DIRS += [
     'downloads',
     'enterprisepolicies',
     'extensions',
+    'featuregates',
     'filewatcher',
     'finalizationwitness',
     'find',
@@ -40,7 +41,6 @@ DIRS += [
     'jsoncpp/src/lib_json',
     'lz4',
     'mediasniffer',
-    'microformats',
     'mozintl',
     'mozprotocol',
     'osfile',
@@ -61,6 +61,7 @@ DIRS += [
     'resistfingerprinting',
     'securityreporter',
     'sessionstore',
+    'shell',
     'startup',
     'statusfilter',
     'telemetry',
@@ -87,9 +88,6 @@ if CONFIG['MOZ_BUILD_APP'] != 'mobile/android':
 
 if CONFIG['BUILD_CTYPES']:
     DIRS += ['ctypes']
-
-if CONFIG['MOZ_FEEDS']:
-    DIRS += ['feeds']
 
 if CONFIG['MOZ_XUL']:
     DIRS += ['autocomplete', 'printingui', 'satchel']

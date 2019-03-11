@@ -766,6 +766,13 @@ nsViewSourceChannel::GetIsTrackingResource(bool *aIsTrackingResource) {
 }
 
 NS_IMETHODIMP
+nsViewSourceChannel::GetFlashPluginState(
+    nsIHttpChannel::FlashPluginState *aResult) {
+  return !mHttpChannel ? NS_ERROR_NULL_POINTER
+                       : mHttpChannel->GetFlashPluginState(aResult);
+}
+
+NS_IMETHODIMP
 nsViewSourceChannel::GetIsThirdPartyTrackingResource(
     bool *aIsTrackingResource) {
   return !mHttpChannel ? NS_ERROR_NULL_POINTER
@@ -995,6 +1002,13 @@ nsViewSourceChannel::RedirectTo(nsIURI *uri) {
 }
 
 NS_IMETHODIMP
+nsViewSourceChannel::SwitchProcessTo(mozilla::dom::Promise *aTabParent,
+                                     uint64_t aIdentifier) {
+  return !mHttpChannel ? NS_ERROR_NULL_POINTER
+                       : mHttpChannel->SwitchProcessTo(aTabParent, aIdentifier);
+}
+
+NS_IMETHODIMP
 nsViewSourceChannel::UpgradeToSecure() {
   return !mHttpChannel ? NS_ERROR_NULL_POINTER
                        : mHttpChannel->UpgradeToSecure();
@@ -1043,6 +1057,18 @@ nsViewSourceChannel::LogBlockedCORSRequest(const nsAString &aMessage,
     return NS_ERROR_UNEXPECTED;
   }
   return mHttpChannel->LogBlockedCORSRequest(aMessage, aCategory);
+}
+
+NS_IMETHODIMP
+nsViewSourceChannel::LogMimeTypeMismatch(const nsACString &aMessageName,
+                                         bool aWarning, const nsAString &aURL,
+                                         const nsAString &aContentType) {
+  if (!mHttpChannel) {
+    NS_WARNING("nsViewSourceChannel::LogMimeTypeMismatch mHttpChannel is null");
+    return NS_ERROR_UNEXPECTED;
+  }
+  return mHttpChannel->LogMimeTypeMismatch(aMessageName, aWarning, aURL,
+                                           aContentType);
 }
 
 const nsTArray<mozilla::Tuple<nsCString, nsCString>>

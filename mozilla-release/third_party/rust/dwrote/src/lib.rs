@@ -4,15 +4,17 @@
 
 #![allow(non_upper_case_globals)]
 
-#[macro_use]
+#[cfg_attr(feature = "serde_serialization", macro_use)]
+#[cfg(feature = "serde_serialization")]
 extern crate serde_derive;
+#[cfg(feature = "serde_serialization")]
+extern crate serde;
 
 #[macro_use]
 extern crate lazy_static;
 #[macro_use(DEFINE_GUID)]
 extern crate winapi;
 extern crate libc;
-extern crate serde;
 
 include!("types.rs");
 
@@ -20,7 +22,8 @@ use winapi::Interface;
 use winapi::um::dwrite::DWRITE_FACTORY_TYPE_SHARED;
 use winapi::um::dwrite::IDWriteFactory;
 use winapi::um::dwrite::IDWriteRenderingParams;
-use winapi::um::winnt::{HRESULT, LPCSTR};
+pub use winapi::um::winnt::HRESULT;
+use winapi::um::winnt::LPCSTR;
 use winapi::shared::guiddef::REFIID;
 use winapi::um::unknwnbase::IUnknown;
 use winapi::um::dwrite::DWRITE_FACTORY_TYPE;
@@ -65,6 +68,7 @@ pub use winapi::um::dwrite::{DWRITE_RENDERING_MODE};
 pub use winapi::um::dwrite::{DWRITE_TEXTURE_TYPE};
 pub use winapi::um::dwrite_3::{DWRITE_FONT_AXIS_VALUE};
 pub use winapi::um::dcommon::{DWRITE_MEASURING_MODE};
+pub use winapi::shared::windef::RECT;
 use winapi::um::libloaderapi::{GetProcAddress, LoadLibraryW};
 
 #[macro_use] mod com_helpers;

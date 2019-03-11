@@ -271,6 +271,11 @@ release-snap-push
 -----------------
 Pushes Snap repackage on Snap store.
 
+release-secondary-snap-push
+---------------------------
+Performs the same function as `release-snap-push`, except for the beta channel as part of RC
+Releases.
+
 release-notify-push
 -------------------
 Notify when a release has been pushed to CDNs.
@@ -526,3 +531,20 @@ taskcluster/ci/diffoscope/kind.yml for your needs.
 addon
 -----
 Tasks used to build/package add-ons.
+
+webrender
+---------
+Tasks used to do testing of WebRender standalone (without gecko). The
+WebRender code lives in gfx/wr and has its own testing infrastructure.
+
+instrumented-build
+------------------
+Tasks that generate builds with PGO instrumentation enabled. This is an
+intermediate build that can be used to generate profiling information for a
+final PGO build. This is the 1st stage of the full 3-step PGO process.
+
+generate-profile
+----------------
+Tasks that take a build configured for PGO and run the binary against a sample
+set to generate profile data. This is the 2nd stage of the full 3-step PGO
+process.

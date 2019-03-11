@@ -17,17 +17,14 @@ static StaticAutoPtr<WGCByIdMap> gWindowGlobalChildById;
 
 WindowGlobalChild::WindowGlobalChild(nsGlobalWindowInner* aWindow,
                                      dom::BrowsingContext* aBrowsingContext)
-  : mWindowGlobal(aWindow)
-  , mBrowsingContext(aBrowsingContext)
-  , mInnerWindowId(aWindow->WindowID())
-  , mOuterWindowId(aWindow->GetOuterWindow()->WindowID())
-  , mIPCClosed(true)
-{
-}
+    : mWindowGlobal(aWindow),
+      mBrowsingContext(aBrowsingContext),
+      mInnerWindowId(aWindow->WindowID()),
+      mOuterWindowId(aWindow->GetOuterWindow()->WindowID()),
+      mIPCClosed(true) {}
 
-already_AddRefed<WindowGlobalChild>
-WindowGlobalChild::Create(nsGlobalWindowInner* aWindow)
-{
+already_AddRefed<WindowGlobalChild> WindowGlobalChild::Create(
+    nsGlobalWindowInner* aWindow) {
   nsCOMPtr<nsIPrincipal> principal = aWindow->GetPrincipal();
   MOZ_ASSERT(principal);
 
@@ -40,8 +37,7 @@ WindowGlobalChild::Create(nsGlobalWindowInner* aWindow)
 
   WindowGlobalInit init(principal,
                         BrowsingContextId(wgc->BrowsingContext()->Id()),
-                        wgc->mInnerWindowId,
-                        wgc->mOuterWindowId);
+                        wgc->mInnerWindowId, wgc->mOuterWindowId);
 
   // Send the link constructor over PInProcessChild or PBrowser.
   if (XRE_IsParentProcess()) {
@@ -50,10 +46,15 @@ WindowGlobalChild::Create(nsGlobalWindowInner* aWindow)
       return nullptr;
     }
 
+    // Note: Take a ref to our BrowsingContext to prevent it being freed until
+    // after the message has been recieved on the other side.
+    Unused << do_AddRef(bc);
+
     // Note: ref is released in DeallocPWindowGlobalChild
     ipc->SendPWindowGlobalConstructor(do_AddRef(wgc).take(), init);
   } else {
-    RefPtr<TabChild> tabChild = TabChild::GetFrom(static_cast<mozIDOMWindow*>(aWindow));
+    RefPtr<TabChild> tabChild =
+        TabChild::GetFrom(static_cast<mozIDOMWindow*>(aWindow));
     MOZ_ASSERT(tabChild);
 
     // Note: ref is released in DeallocPWindowGlobalChild
@@ -74,23 +75,18 @@ WindowGlobalChild::Create(nsGlobalWindowInner* aWindow)
 }
 
 /* static */ already_AddRefed<WindowGlobalChild>
-WindowGlobalChild::GetByInnerWindowId(uint64_t aInnerWindowId)
-{
+WindowGlobalChild::GetByInnerWindowId(uint64_t aInnerWindowId) {
   if (!gWindowGlobalChildById) {
     return nullptr;
   }
   return gWindowGlobalChildById->Get(aInnerWindowId);
 }
 
-bool
-WindowGlobalChild::IsCurrentGlobal()
-{
+bool WindowGlobalChild::IsCurrentGlobal() {
   return !mIPCClosed && mWindowGlobal->IsCurrentInnerWindow();
 }
 
-already_AddRefed<WindowGlobalParent>
-WindowGlobalChild::GetParentActor()
-{
+already_AddRefed<WindowGlobalParent> WindowGlobalChild::GetParentActor() {
   if (mIPCClosed) {
     return nullptr;
   }
@@ -98,38 +94,30 @@ WindowGlobalChild::GetParentActor()
   return do_AddRef(static_cast<WindowGlobalParent*>(otherSide));
 }
 
-void
-WindowGlobalChild::ActorDestroy(ActorDestroyReason aWhy)
-{
+void WindowGlobalChild::ActorDestroy(ActorDestroyReason aWhy) {
   mIPCClosed = true;
   gWindowGlobalChildById->Remove(mInnerWindowId);
 }
 
-WindowGlobalChild::~WindowGlobalChild()
-{
+WindowGlobalChild::~WindowGlobalChild() {
   MOZ_ASSERT(!gWindowGlobalChildById ||
              !gWindowGlobalChildById->Contains(mInnerWindowId));
 }
 
-JSObject*
-WindowGlobalChild::WrapObject(JSContext* aCx,
-                               JS::Handle<JSObject*> aGivenProto)
-{
+JSObject* WindowGlobalChild::WrapObject(JSContext* aCx,
+                                        JS::Handle<JSObject*> aGivenProto) {
   return WindowGlobalChild_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-nsISupports*
-WindowGlobalChild::GetParentObject()
-{
+nsISupports* WindowGlobalChild::GetParentObject() {
   return xpc::NativeGlobal(xpc::PrivilegedJunkScope());
 }
 
-NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(WindowGlobalChild,
-                                      mWindowGlobal,
+NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(WindowGlobalChild, mWindowGlobal,
                                       mBrowsingContext)
 
 NS_IMPL_CYCLE_COLLECTION_ROOT_NATIVE(WindowGlobalChild, AddRef)
 NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(WindowGlobalChild, Release)
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla

@@ -29,7 +29,10 @@ flake8:
         - security/
         - security/manager
         - taskcluster
+        - testing/awsy
         - testing/firefox-ui
+        - testing/geckodriver
+        - testing/gtest
         - testing/mach_commands.py
         - testing/marionette/client
         - testing/marionette/harness
@@ -47,6 +50,7 @@ flake8:
         - testing/remotecppunittests.py
         - testing/runcppunittests.py
         - testing/talos/
+        - testing/tps/
         - testing/xpcshell
         - toolkit/components/telemetry
         - toolkit/crashreporter/tools/upload_symbols.py

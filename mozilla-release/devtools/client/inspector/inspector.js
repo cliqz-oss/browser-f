@@ -133,7 +133,6 @@ function Inspector(toolbox) {
   this._onContextMenu = this._onContextMenu.bind(this);
   this._onMarkupFrameLoad = this._onMarkupFrameLoad.bind(this);
   this._updateSearchResultsLabel = this._updateSearchResultsLabel.bind(this);
-  this._updateDebuggerPausedWarning = this._updateDebuggerPausedWarning.bind(this);
 
   this.onDetached = this.onDetached.bind(this);
   this.onHostChanged = this.onHostChanged.bind(this);
@@ -319,13 +318,6 @@ Inspector.prototype = {
     this.selection.on("new-node-front", this.onNewSelection);
     this.selection.on("detached-front", this.onDetached);
 
-    if (this.target.isLocalTab) {
-      this.target.on("thread-paused", this._updateDebuggerPausedWarning);
-      this.target.on("thread-resumed", this._updateDebuggerPausedWarning);
-      this.toolbox.on("select", this._updateDebuggerPausedWarning);
-      this._updateDebuggerPausedWarning();
-    }
-
     // Log the 3 pane inspector setting on inspector open. The question we want to answer
     // is:
     // "What proportion of users use the 3 pane vs 2 pane inspector on inspector open?"
@@ -483,35 +475,6 @@ Inspector.prototype = {
     this.searchResultsLabel.textContent = str;
   },
 
-  /**
-   * Show a warning notification box when the debugger is paused. We show the warning only
-   * when the inspector is selected.
-   */
-  _updateDebuggerPausedWarning: function() {
-    if (!this.toolbox.threadClient.paused && !this._notificationBox) {
-      return;
-    }
-
-    const notificationBox = this.notificationBox;
-    const notification = this.notificationBox.getNotificationWithValue(
-      "inspector-script-paused");
-
-    if (!notification && this.toolbox.currentToolId == "inspector" &&
-        this.toolbox.threadClient.paused) {
-      const message = INSPECTOR_L10N.getStr("debuggerPausedWarning.message");
-      notificationBox.appendNotification(message,
-        "inspector-script-paused", "", notificationBox.PRIORITY_WARNING_HIGH);
-    }
-
-    if (notification && this.toolbox.currentToolId != "inspector") {
-      notificationBox.removeNotification(notification);
-    }
-
-    if (notification && !this.toolbox.threadClient.paused) {
-      notificationBox.removeNotification(notification);
-    }
-  },
-
   get React() {
     return this._toolbox.React;
   },
@@ -563,12 +526,14 @@ Inspector.prototype = {
       return true;
     }
 
-    const { clientWidth } = this.panelDoc.getElementById("inspector-splitter-box");
+    const splitterBox = this.panelDoc.getElementById("inspector-splitter-box");
+    const { width } = window.windowUtils.getBoundsWithoutFlushing(splitterBox);
+
     return this.is3PaneModeEnabled &&
            (this.toolbox.hostType == Toolbox.HostType.LEFT ||
             this.toolbox.hostType == Toolbox.HostType.RIGHT) ?
-      clientWidth > SIDE_PORTAIT_MODE_WIDTH_THRESHOLD :
-      clientWidth > PORTRAIT_MODE_WIDTH_THRESHOLD;
+      width > SIDE_PORTAIT_MODE_WIDTH_THRESHOLD :
+      width > PORTRAIT_MODE_WIDTH_THRESHOLD;
   },
 
   /**
@@ -621,17 +586,7 @@ Inspector.prototype = {
       return;
     }
 
-    // Use window.top because promiseDocumentFlushed() in a subframe doesn't
-    // work, see https://bugzilla.mozilla.org/show_bug.cgi?id=1441173
-    const useLandscapeMode = await window.top.promiseDocumentFlushed(() => {
-      return this.useLandscapeMode();
-    });
-
-    if (window.closed) {
-      return;
-    }
-
-    this.splitBox.setState({ vert: useLandscapeMode });
+    this.splitBox.setState({ vert: this.useLandscapeMode() });
     this.emit("inspector-resize");
   },
 
@@ -881,6 +836,11 @@ Inspector.prototype = {
           this.browserRequire("devtools/client/inspector/layout/layout");
         panel = new LayoutView(this, this.panelWin);
         break;
+      case "newruleview":
+        const RulesView =
+          this.browserRequire("devtools/client/inspector/rules/new-rules");
+        panel = new RulesView(this, this.panelWin);
+        break;
       case "ruleview":
         const {RuleViewTool} = require("devtools/client/inspector/rules/rules");
         panel = new RuleViewTool(this, this.panelWin);
@@ -943,21 +903,28 @@ Inspector.prototype = {
         title: INSPECTOR_L10N.getStr("inspector.sidebar.computedViewTitle"),
       },
       {
-        id: "animationinspector",
-        title: INSPECTOR_L10N.getStr("inspector.sidebar.animationInspectorTitle"),
-      },
-      {
         id: "fontinspector",
         title: INSPECTOR_L10N.getStr("inspector.sidebar.fontInspectorTitle"),
+      },
+      {
+        id: "animationinspector",
+        title: INSPECTOR_L10N.getStr("inspector.sidebar.animationInspectorTitle"),
       },
     ];
 
     if (this._supportsChangesPanel()) {
       // Insert Changes as third tab, right after Computed.
-      // TODO: move this inline to `sidebarPanels` above when addressing Bug 1491887.
+      // TODO: move this inline to `sidebarPanels` above when addressing Bug 1511877.
       sidebarPanels.splice(2, 0, {
         id: "changesview",
         title: INSPECTOR_L10N.getStr("inspector.sidebar.changesViewTitle"),
+      });
+    }
+
+    if (Services.prefs.getBoolPref("devtools.inspector.new-rulesview.enabled")) {
+      sidebarPanels.push({
+        id: "newruleview",
+        title: INSPECTOR_L10N.getStr("inspector.sidebar.ruleViewTitle"),
       });
     }
 
@@ -1422,9 +1389,6 @@ Inspector.prototype = {
     this.sidebar.off("hide", this.onSidebarHidden);
     this.sidebar.off("destroy", this.onSidebarHidden);
     this.target.off("will-navigate", this._onBeforeNavigate);
-    this.target.off("thread-paused", this._updateDebuggerPausedWarning);
-    this.target.off("thread-resumed", this._updateDebuggerPausedWarning);
-    this._toolbox.off("select", this._updateDebuggerPausedWarning);
 
     for (const [, panel] of this._panels) {
       panel.destroy();
@@ -1438,7 +1402,8 @@ Inspector.prototype = {
 
     if (this._markupFrame) {
       this._markupFrame.removeEventListener("load", this._onMarkupFrameLoad, true);
-      this._markupFrame.removeEventListener("contextmenu", this._onContextMenu);
+      this._markupFrame.contentWindow.removeEventListener("contextmenu",
+                                                          this._onContextMenu);
     }
 
     if (this._search) {
@@ -1935,7 +1900,6 @@ Inspector.prototype = {
       this._markupFrame.setAttribute("flex", "1");
       // This is needed to enable tooltips inside the iframe document.
       this._markupFrame.setAttribute("tooltip", "aHTMLTooltip");
-      this._markupFrame.addEventListener("contextmenu", this._onContextMenu);
 
       this._markupBox.style.visibility = "hidden";
       this._markupBox.appendChild(this._markupFrame);
@@ -1949,6 +1913,7 @@ Inspector.prototype = {
 
   _onMarkupFrameLoad: function() {
     this._markupFrame.removeEventListener("load", this._onMarkupFrameLoad, true);
+    this._markupFrame.contentWindow.addEventListener("contextmenu", this._onContextMenu);
     this._markupFrame.contentWindow.focus();
     this._markupBox.style.visibility = "visible";
     this.markup = new MarkupView(this, this._markupFrame, this._toolbox.win);

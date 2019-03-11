@@ -46,7 +46,7 @@ class nsWindowRoot;
 // numerous or performance-critical as DOM nodes.
 #ifdef HAVE_64BIT_BUILD
 static_assert(sizeof(void*) == 8, "These architectures should be 64-bit");
-#define BOOL_FLAGS_ON_WRAPPER_CACHE
+#  define BOOL_FLAGS_ON_WRAPPER_CACHE
 #else
 static_assert(sizeof(void*) == 4, "Only support 32-bit and 64-bit");
 #endif
@@ -439,6 +439,19 @@ NS_DEFINE_STATIC_IID_ACCESSOR(nsWrapperCache, NS_WRAPPERCACHE_IID)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(_class)          \
     NS_IMPL_CYCLE_COLLECTION_TRAVERSE(__VA_ARGS__)         \
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END                    \
+  NS_IMPL_CYCLE_COLLECTION_TRACE_WRAPPERCACHE(_class)
+
+// This is used for wrapper cached classes that inherit from cycle
+// collected non-wrapper cached classes.
+#define NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE_INHERITED(_class, _base, ...) \
+  NS_IMPL_CYCLE_COLLECTION_CLASS(_class)                                    \
+  NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(_class, _base)            \
+    NS_IMPL_CYCLE_COLLECTION_UNLINK(__VA_ARGS__)                            \
+    NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER                       \
+  NS_IMPL_CYCLE_COLLECTION_UNLINK_END                                       \
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(_class, _base)          \
+    NS_IMPL_CYCLE_COLLECTION_TRAVERSE(__VA_ARGS__)                          \
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END                                     \
   NS_IMPL_CYCLE_COLLECTION_TRACE_WRAPPERCACHE(_class)
 
 #endif /* nsWrapperCache_h___ */

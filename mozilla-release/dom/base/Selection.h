@@ -27,8 +27,6 @@
 
 struct CachedOffsetForFrame;
 class nsAutoScrollTimer;
-class nsIContentIterator;
-class nsIDocument;
 class nsIFrame;
 class nsFrameSelection;
 class nsPIDOMWindowOuter;
@@ -40,6 +38,7 @@ class nsHTMLCopyEncoder;
 namespace mozilla {
 class ErrorResult;
 class HTMLEditor;
+class PostContentIterator;
 enum class TableSelection : uint32_t;
 struct AutoPrepareFocusRange;
 namespace dom {
@@ -118,7 +117,7 @@ class Selection final : public nsSupportsWeakReference,
     }
   }
 
-  nsIDocument* GetParentObject() const;
+  Document* GetParentObject() const;
   DocGroup* GetDocGroup() const;
 
   // utility methods for scrolling the selection into view
@@ -304,7 +303,12 @@ class Selection final : public nsSupportsWeakReference,
    */
   nsresult RemoveAllRangesTemporarily();
 
-  void Stringify(nsAString& aResult);
+  /**
+   * Whether Stringify should flush layout or not.
+   */
+  enum class FlushFrames { No, Yes };
+  MOZ_CAN_RUN_SCRIPT
+  void Stringify(nsAString& aResult, FlushFrames = FlushFrames::Yes);
 
   /**
    * Indicates whether the node is part of the selection. If partlyContained
@@ -517,7 +521,7 @@ class Selection final : public nsSupportsWeakReference,
   friend class ::nsCopySupport;
   friend class ::nsHTMLCopyEncoder;
   MOZ_CAN_RUN_SCRIPT
-  void AddRangeInternal(nsRange& aRange, nsIDocument* aDocument, ErrorResult&);
+  void AddRangeInternal(nsRange& aRange, Document* aDocument, ErrorResult&);
 
   // This is helper method for GetPrimaryFrameForFocusNode.
   // If aVisual is true, this returns caret frame.
@@ -593,7 +597,7 @@ class Selection final : public nsSupportsWeakReference,
    */
   void SetAnchorFocusRange(int32_t aIndex);
   void SelectFramesForContent(nsIContent* aContent, bool aSelected);
-  nsresult SelectAllFramesForContent(nsIContentIterator* aInnerIter,
+  nsresult SelectAllFramesForContent(PostContentIterator& aPostOrderIter,
                                      nsIContent* aContent, bool aSelected);
   nsresult SelectFrames(nsPresContext* aPresContext, nsRange* aRange,
                         bool aSelect);
@@ -633,7 +637,7 @@ class Selection final : public nsSupportsWeakReference,
    */
   nsresult AddItemInternal(nsRange* aRange, int32_t* aOutIndex);
 
-  nsIDocument* GetDocument() const;
+  Document* GetDocument() const;
   nsPIDOMWindowOuter* GetWindow() const;
   HTMLEditor* GetHTMLEditor() const;
 
@@ -669,6 +673,8 @@ class Selection final : public nsSupportsWeakReference,
    *  non-editable area.
    */
   Element* GetCommonEditingHostForAllRanges();
+
+  void Disconnect();
 
   // These are the ranges inside this selection. They are kept sorted in order
   // of DOM start position.

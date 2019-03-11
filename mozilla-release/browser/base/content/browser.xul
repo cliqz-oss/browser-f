@@ -268,6 +268,8 @@ xmlns="http://www.w3.org/1999/xhtml"
            noautofocus="true"
            hidden="true"
            flip="none"
+           consumeoutsideclicks="never"
+           norolluponanchor="true"
            level="parent">
       <html:div class="urlbarView-body-outer">
         <html:div class="urlbarView-body-inner">
@@ -571,6 +573,7 @@ xmlns="http://www.w3.org/1999/xhtml"
            position="bottomcenter topright"
            tabspecific="true"
            noautofocus="true"
+           pocket-title="&saveToPocketCmd.label;"
            copyURL-title="&pageAction.copyLink.label;"
            emailLink-title="&emailPageCmd.label;"
            sendToDevice-notReadyTitle="&sendToDevice.syncNotReady.label;"
@@ -763,13 +766,11 @@ xmlns="http://www.w3.org/1999/xhtml"
                aria-label="&tabsToolbar.label;"
                context="toolbar-context-menu"
                flex="1">
-        <vbox flex="1" class="toolbar-items">
-          <spacer flex="1000"/>
 
+        <hbox class="titlebar-spacer" type="pre-tabs"/>
+
+        <hbox flex="1" align="end" class="toolbar-items">
           <hbox id="TabsToolbar-customization-target" flex="1">
-            <hbox class="titlebar-spacer" type="pre-tabs"
-                  skipintoolbarset="true"/>
-
             <tabs id="tabbrowser-tabs"
                   flex="1"
                   setfocus="false"
@@ -797,19 +798,15 @@ xmlns="http://www.w3.org/1999/xhtml"
                            label="&listAllTabs.label;"
                            tooltiptext="&listAllTabs.label;"
                            removable="false"/>
-
-            <hbox class="titlebar-spacer" type="post-tabs"
-                  ordinal="1000"
-                  skipintoolbarset="true"/>
           </hbox>
-        </vbox>
+        </hbox>
+
+        <hbox class="titlebar-spacer" type="post-tabs"/>
 
 #ifndef XP_MACOSX
         <button class="accessibility-indicator" tooltiptext="&accessibilityIndicator.tooltip;"
-                ordinal="1000"
-                aria-live="polite" skipintoolbarset="true"/>
-        <hbox class="private-browsing-indicator" skipintoolbarset="true"
-              ordinal="1000"/>
+                aria-live="polite"/>
+        <hbox class="private-browsing-indicator"/>
 #endif
 
 #include titlebar-items.inc.xul
@@ -1037,7 +1034,22 @@ xmlns="http://www.w3.org/1999/xhtml"
                        class="urlbar-icon urlbar-page-action"
                        role="button"
                        tooltiptext="&pageActionButton.tooltip;"
-                       onmousedown="BrowserPageActions.mainButtonClicked(event);"/>
+                       onmousedown="BrowserPageActions.mainButtonClicked(event);"
+                       onkeypress="BrowserPageActions.mainButtonClicked(event);"/>
+                <hbox id="pocket-button-box"
+                      hidden="true"
+                      class="urlbar-icon-wrapper urlbar-page-action"
+                      onclick="BrowserPageActions.doCommandForAction(PageActions.actionForID('pocket'), event, this);">
+                  <image id="pocket-button"
+                         class="urlbar-icon"
+                         tooltiptext="&pocketButton.tooltiptext;"
+                         role="button"/>
+                  <hbox id="pocket-button-animatable-box">
+                    <image id="pocket-button-animatable-image"
+                           tooltiptext="&pocketButton.tooltiptext;"
+                           role="presentation"/>
+                  </hbox>
+                </hbox>
                 <hbox id="star-button-box"
                       hidden="true"
                       class="urlbar-icon-wrapper urlbar-page-action"
@@ -1089,6 +1101,7 @@ xmlns="http://www.w3.org/1999/xhtml"
         <toolbarbutton id="library-button" class="toolbarbutton-1 chromeclass-toolbar-additional subviewbutton-nav"
                        removable="true"
                        onmousedown="PanelUI.showSubView('appMenu-libraryView', this, event);"
+                       onkeypress="PanelUI.showSubView('appMenu-libraryView', this, event);"
                        closemenu="none"
                        cui-areatype="toolbar"
                        tooltiptext="&libraryButton.tooltip;"

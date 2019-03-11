@@ -38,14 +38,15 @@
 
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/BrowsingContext.h"
+#include "mozilla/dom/LoadURIOptionsBinding.h"
 
 // for painting the background window
 #include "mozilla/LookAndFeel.h"
 
 // Printing Includes
 #ifdef NS_PRINTING
-#include "nsIWebBrowserPrint.h"
-#include "nsIContentViewer.h"
+#  include "nsIWebBrowserPrint.h"
+#  include "nsIContentViewer.h"
 #endif
 
 // PSM2 includes
@@ -443,7 +444,7 @@ nsWebBrowser::FindItemWithName(const nsAString& aName,
                                      aSkipTabGroup, aResult);
 }
 
-nsIDocument* nsWebBrowser::GetDocument() {
+dom::Document* nsWebBrowser::GetDocument() {
   return mDocShell ? mDocShell->GetDocument() : nullptr;
 }
 
@@ -547,24 +548,27 @@ nsWebBrowser::GoForward() {
   return mDocShellAsNav->GoForward();
 }
 
-NS_IMETHODIMP
-nsWebBrowser::LoadURIWithOptions(const nsAString& aURI, uint32_t aLoadFlags,
-                                 nsIURI* aReferringURI,
-                                 uint32_t aReferrerPolicy,
-                                 nsIInputStream* aPostDataStream,
-                                 nsIInputStream* aExtraHeaderStream,
-                                 nsIURI* aBaseURI,
-                                 nsIPrincipal* aTriggeringPrincipal) {
+nsresult nsWebBrowser::LoadURI(const nsAString& aURI,
+                               const dom::LoadURIOptions& aLoadURIOptions) {
 #ifndef ANDROID
-  MOZ_ASSERT(
-      aTriggeringPrincipal,
-      "nsWebBrowser::LoadURIWithOptions - Need a valid triggeringPrincipal");
+  MOZ_ASSERT(aLoadURIOptions.mTriggeringPrincipal,
+             "nsWebBrowser::LoadURI - Need a valid triggeringPrincipal");
 #endif
   NS_ENSURE_STATE(mDocShell);
 
-  return mDocShellAsNav->LoadURIWithOptions(
-      aURI, aLoadFlags, aReferringURI, aReferrerPolicy, aPostDataStream,
-      aExtraHeaderStream, aBaseURI, aTriggeringPrincipal);
+  return mDocShellAsNav->LoadURI(aURI, aLoadURIOptions);
+}
+
+NS_IMETHODIMP
+nsWebBrowser::LoadURIFromScript(const nsAString& aURI,
+                                JS::Handle<JS::Value> aLoadURIOptions,
+                                JSContext* aCx) {
+  // generate dictionary for loadURIOptions and forward call
+  dom::LoadURIOptions loadURIOptions;
+  if (!loadURIOptions.Init(aCx, aLoadURIOptions)) {
+    return NS_ERROR_INVALID_ARG;
+  }
+  return LoadURI(aURI, loadURIOptions);
 }
 
 NS_IMETHODIMP
@@ -575,19 +579,8 @@ nsWebBrowser::SetOriginAttributesBeforeLoading(
 }
 
 NS_IMETHODIMP
-nsWebBrowser::LoadURI(const nsAString& aURI, uint32_t aLoadFlags,
-                      nsIURI* aReferringURI, nsIInputStream* aPostDataStream,
-                      nsIInputStream* aExtraHeaderStream,
-                      nsIPrincipal* aTriggeringPrincipal) {
-#ifndef ANDROID
-  MOZ_ASSERT(aTriggeringPrincipal,
-             "nsWebBrowser::LoadURI - Need a valid triggeringPrincipal");
-#endif
-  NS_ENSURE_STATE(mDocShell);
-
-  return mDocShellAsNav->LoadURI(aURI, aLoadFlags, aReferringURI,
-                                 aPostDataStream, aExtraHeaderStream,
-                                 aTriggeringPrincipal);
+nsWebBrowser::ResumeRedirectedLoad(uint64_t aIdentifier) {
+  return mDocShellAsNav->ResumeRedirectedLoad(aIdentifier);
 }
 
 NS_IMETHODIMP
@@ -640,7 +633,7 @@ nsWebBrowser::GetSessionHistoryXPCOM(nsISupports** aSessionHistory) {
 }
 
 NS_IMETHODIMP
-nsWebBrowser::GetDocument(nsIDocument** aDocument) {
+nsWebBrowser::GetDocument(dom::Document** aDocument) {
   NS_ENSURE_STATE(mDocShell);
 
   return mDocShellAsNav->GetDocument(aDocument);
@@ -714,6 +707,16 @@ nsWebBrowser::OnSecurityChange(nsIWebProgress* aWebProgress,
                                nsIRequest* aRequest, uint32_t aState) {
   if (mProgressListener) {
     return mProgressListener->OnSecurityChange(aWebProgress, aRequest, aState);
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsWebBrowser::OnContentBlockingEvent(nsIWebProgress* aWebProgress,
+                                     nsIRequest* aRequest, uint32_t aEvent) {
+  if (mProgressListener) {
+    return mProgressListener->OnContentBlockingEvent(aWebProgress, aRequest,
+                                                     aEvent);
   }
   return NS_OK;
 }
@@ -885,9 +888,9 @@ nsWebBrowser::SaveDocument(nsISupports* aDocumentish, nsISupports* aFile,
   if (aDocumentish) {
     doc = aDocumentish;
   } else {
-    nsCOMPtr<nsIDocument> domDoc;
+    RefPtr<dom::Document> domDoc;
     GetDocument(getter_AddRefs(domDoc));
-    doc = domDoc.forget();
+    doc = already_AddRefed<nsISupports>(ToSupports(domDoc.forget().take()));
   }
   if (!doc) {
     return NS_ERROR_FAILURE;
@@ -1320,7 +1323,7 @@ static void DrawPaintedLayer(PaintedLayer* aLayer, gfxContext* aContext,
 
 void nsWebBrowser::WindowActivated() {
 #if defined(DEBUG_smaug)
-  nsCOMPtr<nsIDocument> document = mDocShell->GetDocument();
+  RefPtr<dom::Document> document = mDocShell->GetDocument();
   nsAutoString documentURI;
   document->GetDocumentURI(documentURI);
   printf("nsWebBrowser::NS_ACTIVATE %p %s\n", (void*)this,
@@ -1331,7 +1334,7 @@ void nsWebBrowser::WindowActivated() {
 
 void nsWebBrowser::WindowDeactivated() {
 #if defined(DEBUG_smaug)
-  nsCOMPtr<nsIDocument> document = mDocShell->GetDocument();
+  RefPtr<dom::Document> document = mDocShell->GetDocument();
   nsAutoString documentURI;
   document->GetDocumentURI(documentURI);
   printf("nsWebBrowser::NS_DEACTIVATE %p %s\n", (void*)this,

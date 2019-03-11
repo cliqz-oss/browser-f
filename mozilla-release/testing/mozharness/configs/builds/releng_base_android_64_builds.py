@@ -11,10 +11,15 @@ config = {
     ],
     'app_ini_path': '%(obj_dir)s/dist/bin/application.ini',
     'max_build_output_timeout': 0,
-    # decides whether we want to use moz_sign_cmd in env
     'secret_files': [
         {'filename': '/builds/gapi.data',
          'secret_name': 'project/releng/gecko/build/level-%(scm-level)s/gapi.data',
+         'min_scm_level': 1},
+        {'filename': '/builds/gls-gapi.data',
+         'secret_name': 'project/releng/gecko/build/level-%(scm-level)s/gls-gapi.data',
+         'min_scm_level': 1},
+        {'filename': '/builds/sb-gapi.data',
+         'secret_name': 'project/releng/gecko/build/level-%(scm-level)s/sb-gapi.data',
          'min_scm_level': 1},
         {'filename': '/builds/mozilla-fennec-geoloc-api.key',
          'secret_name': 'project/releng/gecko/build/level-%(scm-level)s/mozilla-fennec-geoloc-api.key',

@@ -19,6 +19,7 @@
 #include "mozilla/TimeStamp.h"
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/IdleDeadline.h"
+#include "mozilla/dom/JSWindowActorService.h"
 #include "mozilla/dom/ReportingHeader.h"
 #include "mozilla/dom/UnionTypes.h"
 #include "mozilla/dom/WindowBinding.h"  // For IdleRequestCallback/Options
@@ -26,6 +27,7 @@
 #include "nsThreadUtils.h"
 #include "mozJSComponentLoader.h"
 #include "GeckoProfiler.h"
+#include "nsIException.h"
 
 namespace mozilla {
 namespace dom {
@@ -132,6 +134,34 @@ namespace dom {
   aRetval.set(buffer);
 }
 
+/* static */ void ChromeUtils::ReleaseAssert(GlobalObject& aGlobal,
+                                             bool aCondition,
+                                             const nsAString& aMessage) {
+  // If the condition didn't fail, which is the likely case, immediately return.
+  if (MOZ_LIKELY(aCondition)) {
+    return;
+  }
+
+  // Extract the current stack from the JS runtime to embed in the crash reason.
+  nsAutoString filename;
+  uint32_t lineNo = 0;
+
+  if (nsCOMPtr<nsIStackFrame> location = GetCurrentJSStack(1)) {
+    location->GetFilename(aGlobal.Context(), filename);
+    lineNo = location->GetLineNumber(aGlobal.Context());
+  } else {
+    filename.Assign(NS_LITERAL_STRING("<unknown>"));
+  }
+
+  // Convert to utf-8 for adding as the MozCrashReason.
+  NS_ConvertUTF16toUTF8 filenameUtf8(filename);
+  NS_ConvertUTF16toUTF8 messageUtf8(aMessage);
+
+  // Actually crash.
+  MOZ_CRASH_UNSAFE_PRINTF("Failed ChromeUtils.releaseAssert(\"%s\") @ %s:%u",
+                          messageUtf8.get(), filenameUtf8.get(), lineNo);
+}
+
 /* static */ void ChromeUtils::WaiveXrays(GlobalObject& aGlobal,
                                           JS::HandleValue aVal,
                                           JS::MutableHandleValue aRetval,
@@ -185,6 +215,7 @@ namespace dom {
 
   JS::Rooted<JS::IdVector> ids(cx, JS::IdVector(cx));
   JS::AutoValueVector values(cx);
+  JS::AutoIdVector valuesIds(cx);
 
   {
     JS::RootedObject obj(cx, js::CheckedUnwrap(aObj));
@@ -200,7 +231,8 @@ namespace dom {
 
     JSAutoRealm ar(cx, obj);
 
-    if (!JS_Enumerate(cx, obj, &ids) || !values.reserve(ids.length())) {
+    if (!JS_Enumerate(cx, obj, &ids) || !values.reserve(ids.length()) ||
+        !valuesIds.reserve(ids.length())) {
       return;
     }
 
@@ -214,6 +246,7 @@ namespace dom {
       if (desc.setter() || desc.getter()) {
         continue;
       }
+      valuesIds.infallibleAppend(id);
       values.infallibleAppend(desc.value());
     }
   }
@@ -237,8 +270,8 @@ namespace dom {
 
     JS::RootedValue value(cx);
     JS::RootedId id(cx);
-    for (uint32_t i = 0; i < ids.length(); i++) {
-      id = ids[i];
+    for (uint32_t i = 0; i < valuesIds.length(); i++) {
+      id = valuesIds[i];
       value = values[i];
 
       JS_MarkCrossZoneId(cx, id);
@@ -337,10 +370,11 @@ NS_IMPL_ISUPPORTS_INHERITED(IdleDispatchRunnable, IdleRunnable,
   auto runnable = MakeRefPtr<IdleDispatchRunnable>(global, aCallback);
 
   if (aOptions.mTimeout.WasPassed()) {
-    aRv = NS_IdleDispatchToCurrentThread(runnable.forget(),
-                                         aOptions.mTimeout.Value());
+    aRv = NS_DispatchToCurrentThreadQueue(
+        runnable.forget(), aOptions.mTimeout.Value(), EventQueuePriority::Idle);
   } else {
-    aRv = NS_IdleDispatchToCurrentThread(runnable.forget());
+    aRv = NS_DispatchToCurrentThreadQueue(runnable.forget(),
+                                          EventQueuePriority::Idle);
   }
 }
 
@@ -736,6 +770,55 @@ constexpr auto kSkipSelfHosted = JS::SavedFrameSelfHosted::Exclude;
 
   return ReportingHeader::HasReportingHeaderForOrigin(
       NS_ConvertUTF16toUTF8(aOrigin));
+}
+
+/* static */ PopupBlockerState ChromeUtils::GetPopupControlState(
+    GlobalObject& aGlobal) {
+  switch (PopupBlocker::GetPopupControlState()) {
+    case PopupBlocker::PopupControlState::openAllowed:
+      return PopupBlockerState::OpenAllowed;
+
+    case PopupBlocker::PopupControlState::openControlled:
+      return PopupBlockerState::OpenControlled;
+
+    case PopupBlocker::PopupControlState::openBlocked:
+      return PopupBlockerState::OpenBlocked;
+
+    case PopupBlocker::PopupControlState::openAbused:
+      return PopupBlockerState::OpenAbused;
+
+    case PopupBlocker::PopupControlState::openOverridden:
+      return PopupBlockerState::OpenOverridden;
+
+    default:
+      MOZ_CRASH(
+          "PopupBlocker::PopupControlState and PopupBlockerState are out of "
+          "sync");
+  }
+}
+
+/* static */ bool ChromeUtils::IsPopupTokenUnused(GlobalObject& aGlobal) {
+  return PopupBlocker::IsPopupOpeningTokenUnused();
+}
+
+/* static */ double ChromeUtils::LastExternalProtocolIframeAllowed(
+    GlobalObject& aGlobal) {
+  TimeStamp when = PopupBlocker::WhenLastExternalProtocolIframeAllowed();
+  if (when.IsNull()) {
+    return 0;
+  }
+
+  TimeDuration duration = TimeStamp::Now() - when;
+  return duration.ToMilliseconds();
+}
+
+/* static */ void ChromeUtils::RegisterWindowActor(
+    const GlobalObject& aGlobal, const nsAString& aName,
+    const WindowActorOptions& aOptions, ErrorResult& aRv) {
+  MOZ_ASSERT(XRE_IsParentProcess());
+
+  RefPtr<JSWindowActorService> service = JSWindowActorService::GetSingleton();
+  service->RegisterWindowActor(aName, aOptions, aRv);
 }
 
 }  // namespace dom

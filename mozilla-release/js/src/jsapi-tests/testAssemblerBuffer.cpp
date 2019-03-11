@@ -518,7 +518,7 @@ END_TEST(testAssemblerBuffer_AssemblerBufferWithConstantPools_ShortBranch)
 // Test that everything is put together correctly in the ARM64 assembler.
 #if defined(JS_CODEGEN_ARM64)
 
-#include "jit/MacroAssembler-inl.h"
+#  include "jit/MacroAssembler-inl.h"
 
 BEGIN_TEST(testAssemblerBuffer_ARM64) {
   using namespace js::jit;
@@ -526,7 +526,6 @@ BEGIN_TEST(testAssemblerBuffer_ARM64) {
   js::LifoAlloc lifo(4096);
   TempAllocator alloc(&lifo);
   JitContext jc(cx, &alloc);
-  cx->runtime()->getJitRuntime(cx);
   StackMacroAssembler masm;
 
   // Branches to an unbound label.

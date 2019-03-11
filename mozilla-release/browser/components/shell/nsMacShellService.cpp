@@ -5,7 +5,7 @@
 
 #include "nsDirectoryServiceDefs.h"
 #include "nsIImageLoadingContent.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIContent.h"
 #include "nsILocalFileMac.h"
 #include "nsIObserverService.h"
@@ -37,10 +37,10 @@ using mozilla::dom::Element;
 #define SAFARI_BUNDLE_IDENTIFIER "com.apple.Safari"
 
 NS_IMPL_ISUPPORTS(nsMacShellService, nsIMacShellService, nsIShellService,
-                  nsIWebProgressListener)
+                  nsIToolkitShellService, nsIWebProgressListener)
 
 NS_IMETHODIMP
-nsMacShellService::IsDefaultBrowser(bool aStartupCheck, bool aForAllTypes,
+nsMacShellService::IsDefaultBrowser(bool aForAllTypes,
                                     bool* aIsDefaultBrowser) {
   *aIsDefaultBrowser = false;
 
@@ -185,6 +185,13 @@ nsMacShellService::OnStatusChange(nsIWebProgress* aWebProgress,
 NS_IMETHODIMP
 nsMacShellService::OnSecurityChange(nsIWebProgress* aWebProgress,
                                     nsIRequest* aRequest, uint32_t aState) {
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsMacShellService::OnContentBlockingEvent(nsIWebProgress* aWebProgress,
+                                          nsIRequest* aRequest,
+                                          uint32_t aEvent) {
   return NS_OK;
 }
 

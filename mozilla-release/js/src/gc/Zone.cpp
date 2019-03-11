@@ -52,7 +52,7 @@ JS::Zone::Zone(JSRuntime* rt)
       functionToStringCache_(this),
       keepAtomsCount(this, 0),
       purgeAtomsDeferred(this, 0),
-      usage(&rt->gc.usage),
+      zoneSize(&rt->gc.heapSize),
       threshold(),
       gcDelayBytes(0),
       tenuredStrings(this, 0),
@@ -195,8 +195,9 @@ void Zone::sweepWeakMaps() {
   WeakMapBase::sweepZone(this);
 }
 
-void Zone::discardJitCode(FreeOp* fop, bool discardBaselineCode,
-                          bool releaseTypes) {
+void Zone::discardJitCode(FreeOp* fop,
+                          ShouldDiscardBaselineCode discardBaselineCode,
+                          ShouldReleaseTypes releaseTypes) {
   if (!jitZone()) {
     return;
   }
@@ -300,10 +301,7 @@ uint64_t Zone::gcNumber() {
 
 js::jit::JitZone* Zone::createJitZone(JSContext* cx) {
   MOZ_ASSERT(!jitZone_);
-
-  if (!cx->runtime()->getJitRuntime(cx)) {
-    return nullptr;
-  }
+  MOZ_ASSERT(cx->runtime()->hasJitRuntime());
 
   UniquePtr<jit::JitZone> jitZone(cx->new_<js::jit::JitZone>());
   if (!jitZone) {
@@ -336,6 +334,9 @@ bool Zone::canCollect() {
 }
 
 void Zone::notifyObservingDebuggers() {
+  MOZ_ASSERT(JS::RuntimeHeapIsCollecting(),
+             "This method should be called during GC.");
+
   JSRuntime* rt = runtimeFromMainThread();
   JSContext* cx = rt->mainContextFromOwnThread();
 
@@ -352,7 +353,8 @@ void Zone::notifyObservingDebuggers() {
 
     for (GlobalObject::DebuggerVector::Range r = dbgs->all(); !r.empty();
          r.popFront()) {
-      if (!r.front()->debuggeeIsBeingCollected(rt->gc.majorGCCount())) {
+      if (!r.front().unbarrieredGet()->debuggeeIsBeingCollected(
+              rt->gc.majorGCCount())) {
 #ifdef DEBUG
         fprintf(stderr,
                 "OOM while notifying observing Debuggers of a GC: The "
@@ -463,12 +465,13 @@ void Zone::traceAtomCache(JSTracer* trc) {
   }
 }
 
-void* Zone::onOutOfMemory(js::AllocFunction allocFunc, size_t nbytes,
-                          void* reallocPtr) {
+void* Zone::onOutOfMemory(js::AllocFunction allocFunc, arena_id_t arena,
+                          size_t nbytes, void* reallocPtr) {
   if (!js::CurrentThreadCanAccessRuntime(runtime_)) {
     return nullptr;
   }
-  return runtimeFromMainThread()->onOutOfMemory(allocFunc, nbytes, reallocPtr);
+  return runtimeFromMainThread()->onOutOfMemory(allocFunc, arena, nbytes,
+                                                reallocPtr);
 }
 
 void Zone::reportAllocationOverflow() { js::ReportAllocationOverflow(nullptr); }
@@ -486,7 +489,7 @@ void JS::Zone::maybeTriggerGCForTooMuchMalloc(js::gc::MemoryCounter& counter,
     return;
   }
 
-  if (!rt->gc.triggerZoneGC(this, JS::gcreason::TOO_MUCH_MALLOC,
+  if (!rt->gc.triggerZoneGC(this, JS::GCReason::TOO_MUCH_MALLOC,
                             counter.bytes(), counter.maxBytes())) {
     return;
   }
@@ -536,6 +539,10 @@ void ZoneList::append(Zone* zone) {
 void ZoneList::transferFrom(ZoneList& other) {
   check();
   other.check();
+  if (!other.head) {
+    return;
+  }
+
   MOZ_ASSERT(tail != other.tail);
 
   if (tail) {

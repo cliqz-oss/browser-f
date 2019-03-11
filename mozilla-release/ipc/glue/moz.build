@@ -7,7 +7,6 @@ include('/media/webrtc/webrtc.mozbuild')
 
 EXPORTS += [
     'nsIIPCSerializableInputStream.h',
-    'nsIIPCSerializableURI.h',
 ]
 
 EXPORTS.mozilla.ipc += [
@@ -163,6 +162,7 @@ UNIFIED_SOURCES += [
     'MessageLink.cpp',
     'MessagePump.cpp',
     'ProcessChild.cpp',
+    'ProcessUtils_common.cpp',
     'ProtocolUtils.cpp',
     'ScopedXREEmbed.cpp',
     'SharedMemory.cpp',

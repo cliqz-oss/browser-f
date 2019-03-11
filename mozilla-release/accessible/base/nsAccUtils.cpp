@@ -92,11 +92,14 @@ int32_t nsAccUtils::GetARIAOrDefaultLevel(const Accessible* aAccessible) {
 }
 
 int32_t nsAccUtils::GetLevelForXULContainerItem(nsIContent* aContent) {
-  nsCOMPtr<nsIDOMXULContainerItemElement> item(do_QueryInterface(aContent));
+  nsCOMPtr<nsIDOMXULContainerItemElement> item =
+      aContent->AsElement()->AsXULContainerItem();
   if (!item) return 0;
 
-  nsCOMPtr<nsIDOMXULContainerElement> container;
-  item->GetParentContainer(getter_AddRefs(container));
+  nsCOMPtr<Element> containerElement;
+  item->GetParentContainer(getter_AddRefs(containerElement));
+  nsCOMPtr<nsIDOMXULContainerElement> container =
+      containerElement ? containerElement->AsXULContainer() : nullptr;
   if (!container) return 0;
 
   // Get level of the item.
@@ -104,9 +107,8 @@ int32_t nsAccUtils::GetLevelForXULContainerItem(nsIContent* aContent) {
   while (container) {
     level++;
 
-    nsCOMPtr<nsIDOMXULContainerElement> parentContainer;
-    container->GetParentContainer(getter_AddRefs(parentContainer));
-    parentContainer.swap(container);
+    container->GetParentContainer(getter_AddRefs(containerElement));
+    container = containerElement ? containerElement->AsXULContainer() : nullptr;
   }
 
   return level;
@@ -387,23 +389,44 @@ uint32_t nsAccUtils::TextLength(Accessible* aAccessible) {
   return text.Length();
 }
 
-bool nsAccUtils::MustPrune(Accessible* aAccessible) {
-  roles::Role role = aAccessible->Role();
+bool nsAccUtils::MustPrune(AccessibleOrProxy aAccessible) {
+  MOZ_ASSERT(!aAccessible.IsNull());
+  roles::Role role = aAccessible.Role();
 
-  return
-      // Always prune the tree for sliders, as it doesn't make sense for a
-      // slider to have descendants and this confuses NVDA.
-      role == roles::SLIDER ||
-      // Don't prune the tree for certain roles if the tree is more complex than
-      // a single text leaf.
-      ((role == roles::MENUITEM || role == roles::COMBOBOX_OPTION ||
-        role == roles::OPTION || role == roles::ENTRY ||
-        role == roles::FLAT_EQUATION || role == roles::PASSWORD_TEXT ||
-        role == roles::PUSHBUTTON || role == roles::TOGGLE_BUTTON ||
-        role == roles::GRAPHIC || role == roles::PROGRESSBAR ||
-        role == roles::SEPARATOR) &&
-       aAccessible->ContentChildCount() == 1 &&
-       aAccessible->ContentChildAt(0)->IsTextLeaf());
+  if (role == roles::SLIDER) {
+    // Always prune the tree for sliders, as it doesn't make sense for a
+    // slider to have descendants and this confuses NVDA.
+    return true;
+  }
+
+#if defined(ANDROID)
+  if (role == roles::LINK) {
+    // Always prune links in Android
+    return true;
+  }
+#endif
+
+  if (role != roles::MENUITEM && role != roles::COMBOBOX_OPTION &&
+      role != roles::OPTION && role != roles::ENTRY &&
+      role != roles::FLAT_EQUATION && role != roles::PASSWORD_TEXT &&
+      role != roles::PUSHBUTTON && role != roles::TOGGLE_BUTTON &&
+      role != roles::GRAPHIC && role != roles::PROGRESSBAR &&
+#if defined(ANDROID)
+      role != roles::HEADING &&
+#endif
+      role != roles::SEPARATOR) {
+    // If it doesn't match any of these roles, don't prune its children.
+    return false;
+  }
+
+  if (aAccessible.ChildCount() != 1) {
+    // If the accessible has more than one child, don't prune it.
+    return false;
+  }
+
+  roles::Role childRole = aAccessible.FirstChild().Role();
+  // If the accessible's child is a text leaf, prune the accessible.
+  return childRole == roles::TEXT_LEAF || childRole == roles::STATICTEXT;
 }
 
 bool nsAccUtils::PersistentPropertiesToArray(nsIPersistentProperties* aProps,
@@ -436,4 +459,70 @@ bool nsAccUtils::PersistentPropertiesToArray(nsIPersistentProperties* aProps,
   }
 
   return true;
+}
+
+bool nsAccUtils::IsARIALive(const Accessible* aAccessible) {
+  // Get computed aria-live property based on the closest container with the
+  // attribute. Inner nodes override outer nodes within the same
+  // document, but nodes in outer documents override nodes in inner documents.
+  // This should be the same as the container-live attribute, but we don't need
+  // the other container-* attributes, so we can't use the same function.
+  nsAutoString live;
+  nsIContent* startContent = aAccessible->GetContent();
+  while (startContent) {
+    dom::Document* doc = startContent->GetComposedDoc();
+    if (!doc) {
+      break;
+    }
+
+    dom::Element* aTopEl = doc->GetRootElement();
+    nsIContent* ancestor = startContent;
+    while (ancestor) {
+      nsAutoString docLive;
+      const nsRoleMapEntry* role = nullptr;
+      if (ancestor->IsElement()) {
+        role = aria::GetRoleMap(ancestor->AsElement());
+      }
+      if (HasDefinedARIAToken(ancestor, nsGkAtoms::aria_live)) {
+        ancestor->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::aria_live,
+                                       docLive);
+      } else if (role) {
+        GetLiveAttrValue(role->liveAttRule, docLive);
+      }
+      if (!docLive.IsEmpty()) {
+        live = docLive;
+        break;
+      }
+
+      if (ancestor == aTopEl) {
+        break;
+      }
+
+      ancestor = ancestor->GetParent();
+      if (!ancestor) {
+        ancestor = aTopEl;  // Use <body>/<frameset>
+      }
+    }
+
+    // Allow ARIA live region markup from outer documents to override.
+    nsCOMPtr<nsIDocShellTreeItem> docShellTreeItem = doc->GetDocShell();
+    if (!docShellTreeItem) {
+      break;
+    }
+
+    nsCOMPtr<nsIDocShellTreeItem> sameTypeParent;
+    docShellTreeItem->GetSameTypeParent(getter_AddRefs(sameTypeParent));
+    if (!sameTypeParent || sameTypeParent == docShellTreeItem) {
+      break;
+    }
+
+    dom::Document* parentDoc = doc->GetParentDocument();
+    if (!parentDoc) {
+      break;
+    }
+
+    startContent = parentDoc->FindContentForSubDocument(doc);
+  }
+
+  return !live.IsEmpty() && !live.EqualsLiteral("off");
 }

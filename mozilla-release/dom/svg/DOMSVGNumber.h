@@ -8,17 +8,21 @@
 #define MOZILLA_DOMSVGNUMBER_H__
 
 #include "DOMSVGNumberList.h"
+#include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsTArray.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/ErrorResult.h"
+#include "mozilla/RefPtr.h"
 #include "nsWrapperCache.h"
-
-class nsSVGElement;
 
 #define MOZ_SVG_LIST_INDEX_BIT_COUNT 27  // supports > 134 million list items
 
 namespace mozilla {
+
+namespace dom {
+class SVGElement;
+class SVGSVGElement;
 
 /**
  * Class DOMSVGNumber
@@ -59,8 +63,12 @@ class DOMSVGNumber final : public nsISupports, public nsWrapperCache {
    * Ctor for creating the objects returned by SVGSVGElement.createSVGNumber(),
    * which do not initially belong to an attribute.
    */
+  explicit DOMSVGNumber(SVGSVGElement* aParent);
+
+ private:
   explicit DOMSVGNumber(nsISupports* aParent);
 
+ public:
   /**
    * Create an unowned copy. The caller is responsible for the first AddRef().
    */
@@ -117,7 +125,7 @@ class DOMSVGNumber final : public nsISupports, public nsWrapperCache {
   void SetValue(float aValue, ErrorResult& aRv);
 
  private:
-  nsSVGElement* Element() { return mList->Element(); }
+  dom::SVGElement* Element() { return mList->Element(); }
 
   uint8_t AttrEnum() const { return mAttrEnum; }
 
@@ -150,6 +158,7 @@ class DOMSVGNumber final : public nsISupports, public nsWrapperCache {
   float mValue;
 };
 
+}  // namespace dom
 }  // namespace mozilla
 
 #undef MOZ_SVG_LIST_INDEX_BIT_COUNT

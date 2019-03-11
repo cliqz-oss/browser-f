@@ -265,6 +265,7 @@ const contentTypeModeMap = {
   "text/jsx": { name: "jsx" },
   "text/x-elm": { name: "elm" },
   "text/x-clojure": { name: "clojure" },
+  "text/x-clojurescript": { name: "clojure" },
   "text/wasm": { name: "text" },
   "text/html": { name: "htmlmixed" }
 };
@@ -436,16 +437,16 @@ export function getSourceClassnames(
     return defaultClassName;
   }
 
-  if (sourceMetaData && sourceMetaData.framework) {
-    return sourceMetaData.framework.toLowerCase();
-  }
-
   if (isPretty(source)) {
     return "prettyPrint";
   }
 
   if (source.isBlackBoxed) {
     return "blackBox";
+  }
+
+  if (sourceMetaData && sourceMetaData.framework) {
+    return sourceMetaData.framework.toLowerCase();
   }
 
   return sourceTypes[getFileExtension(source)] || defaultClassName;
@@ -477,5 +478,9 @@ export function isGenerated(source: Source) {
 }
 
 export function getSourceQueryString(source: ?Source) {
-  return source ? parseURL(source.url).search : "";
+  if (!source) {
+    return;
+  }
+
+  return parseURL(getRawSourceURL(source.url)).search;
 }

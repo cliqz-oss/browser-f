@@ -32,13 +32,14 @@
 #include "jit/InlinableNatives.h"
 #include "js/Conversions.h"
 #if !EXPOSE_INTL_API
-#include "js/LocaleSensitive.h"
+#  include "js/LocaleSensitive.h"
 #endif
+#include "js/PropertySpec.h"
 #include "js/StableStringChars.h"
 #include "js/UniquePtr.h"
 #if ENABLE_INTL_API
-#include "unicode/uchar.h"
-#include "unicode/unorm2.h"
+#  include "unicode/uchar.h"
+#  include "unicode/unorm2.h"
 #endif
 #include "util/StringBuffer.h"
 #include "util/Unicode.h"
@@ -3376,6 +3377,9 @@ static const JSFunctionSpec string_methods[] = {
 
     /* Perl-ish methods (search is actually Python-esque). */
     JS_SELF_HOSTED_FN("match", "String_match", 1, 0),
+#ifdef NIGHTLY_BUILD
+    JS_SELF_HOSTED_FN("matchAll", "String_matchAll", 1, 0),
+#endif
     JS_SELF_HOSTED_FN("search", "String_search", 1, 0),
     JS_SELF_HOSTED_FN("replace", "String_replace", 2, 0),
     JS_SELF_HOSTED_FN("split", "String_split", 2, 0),
@@ -3422,7 +3426,7 @@ bool js::StringConstructor(JSContext* cx, unsigned argc, Value* vp) {
 
   if (args.isConstructing()) {
     RootedObject proto(cx);
-    if (!GetPrototypeFromBuiltinConstructor(cx, args, &proto)) {
+    if (!GetPrototypeFromBuiltinConstructor(cx, args, JSProto_String, &proto)) {
       return false;
     }
 

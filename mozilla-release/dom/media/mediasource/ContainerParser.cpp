@@ -17,11 +17,11 @@
 #include "MediaData.h"
 #include "nsMimeTypes.h"
 #ifdef MOZ_FMP4
-#include "AtomType.h"
-#include "BufferReader.h"
-#include "Index.h"
-#include "MP4Interval.h"
-#include "ByteStream.h"
+#  include "AtomType.h"
+#  include "BufferReader.h"
+#  include "Index.h"
+#  include "MP4Interval.h"
+#  include "ByteStream.h"
 #endif
 #include "nsAutoPtr.h"
 #include "SourceBufferResource.h"
@@ -526,7 +526,8 @@ class MP4ContainerParser : public ContainerParser,
       // consumers of ParseStartAndEndTimestamps to add their timestamp offset
       // manually. This allows the ContainerParser to be shared across different
       // timestampOffsets.
-      mParser = new MoofParser(mStream, 0, /* aIsAudio = */ false);
+      mParser = new MoofParser(mStream, 0, /* aIsAudio = */ false,
+                               /* aIsMultitrackParser */ true);
       DDLINKCHILD("parser", mParser.get());
       mInitData = new MediaByteBuffer();
       mCompleteInitSegmentRange = MediaByteRange();

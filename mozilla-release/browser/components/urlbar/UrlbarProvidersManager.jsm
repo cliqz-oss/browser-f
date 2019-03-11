@@ -15,7 +15,9 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 XPCOMUtils.defineLazyModuleGetters(this, {
   Log: "resource://gre/modules/Log.jsm",
   PlacesUtils: "resource://modules/PlacesUtils.jsm",
+  UrlbarMuxer: "resource:///modules/UrlbarUtils.jsm",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.jsm",
+  UrlbarProvider: "resource:///modules/UrlbarUtils.jsm",
   UrlbarTokenizer: "resource:///modules/UrlbarTokenizer.jsm",
   UrlbarUtils: "resource:///modules/UrlbarUtils.jsm",
 });
@@ -38,6 +40,9 @@ var localMuxerModules = {
 // non-immediate provider, we notify it to the controller after a delay, so
 // that we can chunk matches coming in that timeframe into a single call.
 const CHUNK_MATCHES_DELAY_MS = 16;
+
+const DEFAULT_PROVIDERS = ["UnifiedComplete"];
+const DEFAULT_MUXER = "UnifiedComplete";
 
 /**
  * Class used to create a manager.
@@ -78,9 +83,7 @@ class ProvidersManager {
    * @param {object} provider
    */
   registerProvider(provider) {
-    if (!provider || !provider.name ||
-        (typeof provider.startQuery != "function") ||
-        (typeof provider.cancelQuery != "function")) {
+    if (!provider || !(provider instanceof UrlbarProvider)) {
       throw new Error(`Trying to register an invalid provider`);
     }
     if (!Object.values(UrlbarUtils.PROVIDER_TYPE).includes(provider.type)) {
@@ -104,7 +107,7 @@ class ProvidersManager {
    * @param {object} muxer a UrlbarMuxer object
    */
   registerMuxer(muxer) {
-    if (!muxer || !muxer.name || (typeof muxer.sort != "function")) {
+    if (!muxer || !(muxer instanceof UrlbarMuxer)) {
       throw new Error(`Trying to register an invalid muxer`);
     }
     logger.info(`Registering muxer ${muxer.name}`);
@@ -128,13 +131,19 @@ class ProvidersManager {
    */
   async startQuery(queryContext, controller) {
     logger.info(`Query start ${queryContext.searchString}`);
-    let muxerName = queryContext.muxer || "MuxerUnifiedComplete";
+
+    // Define the muxer to use.
+    let muxerName = queryContext.muxer || DEFAULT_MUXER;
     logger.info(`Using muxer ${muxerName}`);
     let muxer = this.muxers.get(muxerName);
     if (!muxer) {
       throw new Error(`Muxer with name ${muxerName} not found`);
     }
-    let query = new Query(queryContext, controller, muxer, this.providers);
+    // Define the list of providers to use.
+    let providers = queryContext.providers || DEFAULT_PROVIDERS;
+    providers = filterProviders(this.providers, providers);
+
+    let query = new Query(queryContext, controller, muxer, providers);
     this.queries.set(queryContext, query);
     await query.start();
   }
@@ -295,6 +304,9 @@ class Query {
    * @param {object} match
    */
   add(provider, match) {
+    if (!(provider instanceof UrlbarProvider)) {
+      throw new Error("Invalid provider passed to the add callback");
+    }
     // Stop returning results as soon as we've been canceled.
     if (this.canceled || !this.acceptableSources.includes(match.source)) {
       return;
@@ -316,6 +328,10 @@ class Query {
         delete this._chunkTimer;
       }
       this.muxer.sort(this.context);
+
+      // Crop results to the requested number.
+      logger.debug(`Cropping ${this.context.results.length} matches to ${this.context.maxResults}`);
+      this.context.results = this.context.results.slice(0, this.context.maxResults);
       this.controller.receiveResults(this.context);
     };
 
@@ -397,8 +413,8 @@ class SkippableTimer {
 }
 
 /**
- * Gets an array of the provider sources accepted for a given QueryContext.
- * @param {object} context The QueryContext to examine
+ * Gets an array of the provider sources accepted for a given UrlbarQueryContext.
+ * @param {UrlbarQueryContext} context The query context to examine
  * @returns {array} Array of accepted sources
  */
 function getAcceptableMatchSources(context) {
@@ -412,6 +428,11 @@ function getAcceptableMatchSources(context) {
                                                ].includes(t.type));
   let restrictTokenType = restrictToken ? restrictToken.type : undefined;
   for (let source of Object.values(UrlbarUtils.MATCH_SOURCE)) {
+    // Skip sources that the context doesn't care about.
+    if (context.sources && !context.sources.includes(source)) {
+      continue;
+    }
+    // Check prefs and restriction tokens.
     switch (source) {
       case UrlbarUtils.MATCH_SOURCE.BOOKMARKS:
         if (UrlbarPrefs.get("suggest.bookmark") &&
@@ -443,15 +464,34 @@ function getAcceptableMatchSources(context) {
         }
         break;
       case UrlbarUtils.MATCH_SOURCE.OTHER_NETWORK:
-        if (!context.isPrivate) {
+        if (!context.isPrivate && !restrictTokenType) {
           acceptedSources.push(source);
         }
         break;
       case UrlbarUtils.MATCH_SOURCE.OTHER_LOCAL:
       default:
-        acceptedSources.push(source);
+        if (!restrictTokenType) {
+          acceptedSources.push(source);
+        }
         break;
     }
   }
   return acceptedSources;
+}
+
+/* Given a providers Map and a list of provider names, produces a filtered
+ * Map containing only the provided names.
+ * @param providersMap {Map} providers mapped by type and name
+ * @param names {array} list of provider names to retain
+ * @returns {Map} a new filtered providers Map
+ */
+function filterProviders(providersMap, names) {
+  let providers = new Map();
+  for (let [type, providersByName] of providersMap) {
+    providers.set(type, new Map());
+    for (let name of Array.from(providersByName.keys()).filter(n => names.includes(n))) {
+      providers.get(type).set(name, providersByName.get(name));
+    }
+  }
+  return providers;
 }

@@ -8,6 +8,7 @@
 #define xpcpublic_h
 
 #include "jsapi.h"
+#include "js/BuildId.h"  // JS::BuildIdCharVector
 #include "js/HeapAPI.h"
 #include "js/GCAPI.h"
 #include "js/Proxy.h"
@@ -32,6 +33,7 @@
 class nsGlobalWindowInner;
 class nsIPrincipal;
 class nsIHandleReportCallback;
+struct nsXPTInterfaceInfo;
 
 namespace mozilla {
 namespace dom {
@@ -89,8 +91,6 @@ bool IsInContentXBLScope(JSObject* obj);
 bool IsUAWidgetCompartment(JS::Compartment* compartment);
 bool IsUAWidgetScope(JS::Realm* realm);
 bool IsInUAWidgetScope(JSObject* obj);
-
-bool IsInSandboxCompartment(JSObject* obj);
 
 bool MightBeWebContentCompartment(JS::Compartment* compartment);
 
@@ -408,10 +408,9 @@ bool StringToJsval(JSContext* cx, mozilla::dom::DOMString& str,
 nsIPrincipal* GetCompartmentPrincipal(JS::Compartment* compartment);
 nsIPrincipal* GetRealmPrincipal(JS::Realm* realm);
 
-void NukeAllWrappersForCompartment(
-    JSContext* cx, JS::Compartment* compartment,
-    js::NukeReferencesToWindow nukeReferencesToWindow =
-        js::NukeWindowReferences);
+void NukeAllWrappersForRealm(JSContext* cx, JS::Realm* realm,
+                             js::NukeReferencesToWindow nukeReferencesToWindow =
+                                 js::NukeWindowReferences);
 
 void SetLocationForGlobal(JSObject* global, const nsACString& location);
 void SetLocationForGlobal(JSObject* global, nsIURI* locationURI);
@@ -681,6 +680,59 @@ void YieldCooperativeContext();
 // Please see JS_ResumeCooperativeContext in jsapi.h.
 void ResumeCooperativeContext();
 
+/**
+ * Extract the native nsID object from a JS ID, IfaceID, ClassID, or ContractID
+ * value.
+ *
+ * Returns 'Nothing()' if 'aVal' does is not one of the supported ID types.
+ */
+mozilla::Maybe<nsID> JSValue2ID(JSContext* aCx, JS::HandleValue aVal);
+
+/**
+ * Reflect an ID into JS
+ */
+bool ID2JSValue(JSContext* aCx, const nsID& aId, JS::MutableHandleValue aVal);
+
+/**
+ * Reflect an IfaceID into JS
+ *
+ * This object will expose constants from the selected interface, and support
+ * 'instanceof', in addition to the other methods available on JS ID objects.
+ *
+ * Use 'xpc::JSValue2ID' to unwrap JS::Values created with this function.
+ */
+bool IfaceID2JSValue(JSContext* aCx, const nsXPTInterfaceInfo& aInfo,
+                     JS::MutableHandleValue aVal);
+
+/**
+ * Reflect a ContractID into JS
+ *
+ * This object will expose 'getService' and 'createInstance' methods in addition
+ * to the other methods available on nsID objects.
+ *
+ * Use 'xpc::JSValue2ID' to unwrap JS::Values created with this function.
+ */
+bool ContractID2JSValue(JSContext* aCx, JSString* aContract,
+                        JS::MutableHandleValue aVal);
+
+class JSStackFrameBase {
+ public:
+  virtual void Clear() = 0;
+};
+
+void RegisterJSStackFrame(JS::Realm* aRealm, JSStackFrameBase* aStackFrame);
+void UnregisterJSStackFrame(JS::Realm* aRealm, JSStackFrameBase* aStackFrame);
+void NukeJSStackFrames(JS::Realm* aRealm);
+
+// Check whether the given jsid is a property name (string or symbol) whose
+// value can be gotten cross-origin.  Cross-origin gets always return undefined
+// as the value, unless the Xray actually provides a different value.
+bool IsCrossOriginWhitelistedProp(JSContext* cx, JS::HandleId id);
+
+// Appends to props the jsids for property names (strings or symbols) whose
+// value can be gotten cross-origin.
+bool AppendCrossOriginWhitelistedPropNames(JSContext* cx,
+                                           JS::AutoIdVector& props);
 }  // namespace xpc
 
 namespace mozilla {

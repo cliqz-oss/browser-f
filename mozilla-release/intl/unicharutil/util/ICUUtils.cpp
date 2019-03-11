@@ -4,14 +4,14 @@
 
 #ifdef MOZILLA_INTERNAL_API
 
-#include "ICUUtils.h"
-#include "mozilla/Preferences.h"
-#include "mozilla/intl/LocaleService.h"
-#include "nsIContent.h"
-#include "nsIDocument.h"
-#include "nsString.h"
-#include "unicode/uloc.h"
-#include "unicode/unum.h"
+#  include "ICUUtils.h"
+#  include "mozilla/Preferences.h"
+#  include "mozilla/intl/LocaleService.h"
+#  include "nsIContent.h"
+#  include "mozilla/dom/Document.h"
+#  include "nsString.h"
+#  include "unicode/uloc.h"
+#  include "unicode/unum.h"
 
 using namespace mozilla;
 using mozilla::intl::LocaleService;
@@ -55,9 +55,8 @@ void ICUUtils::LanguageTagIterForContent::GetNext(nsACString& aBCP47LangTag) {
     mCurrentFallbackIndex = 1;
     // Else try the language specified by any Content-Language HTTP header or
     // pragma directive:
-    nsIDocument* doc = mContent->OwnerDoc();
     nsAutoString lang;
-    doc->GetContentLanguage(lang);
+    mContent->OwnerDoc()->GetContentLanguage(lang);
     if (!lang.IsEmpty()) {
       aBCP47LangTag = NS_ConvertUTF16toUTF8(lang);
       return;
@@ -184,7 +183,7 @@ void ICUUtils::LanguageTagIterForContent::GetNext(nsACString& aBCP47LangTag) {
   }
 }
 
-#if 0
+#  if 0
 /* static */ Locale
 ICUUtils::BCP47CodeToLocale(const nsAString& aBCP47Code)
 {
@@ -267,6 +266,6 @@ ICUUtils::ToICUString(nsAString& aMozString, UnicodeString& aICUString)
   NS_ASSERTION(aMozString.Length() == (uint32_t)aICUString.length(),
                "Conversion failed");
 }
-#endif
+#  endif
 
 #endif /* MOZILLA_INTERNAL_API */

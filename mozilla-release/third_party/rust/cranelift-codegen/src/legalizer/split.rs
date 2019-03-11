@@ -64,10 +64,10 @@
 //! It is possible to have circular dependencies of EBB arguments that are never used by any real
 //! instructions. These loops will remain in the program.
 
-use cursor::{Cursor, CursorPosition, FuncCursor};
-use flowgraph::{BasicBlock, ControlFlowGraph};
-use ir::{self, Ebb, Inst, InstBuilder, InstructionData, Opcode, Type, Value, ValueDef};
-use std::iter;
+use crate::cursor::{Cursor, CursorPosition, FuncCursor};
+use crate::flowgraph::{BasicBlock, ControlFlowGraph};
+use crate::ir::{self, Ebb, Inst, InstBuilder, InstructionData, Opcode, Type, Value, ValueDef};
+use core::iter;
 use std::vec::Vec;
 
 /// Split `value` into two values using the `isplit` semantics. Do this by reusing existing values
@@ -165,7 +165,8 @@ fn split_any(
                     .get_mut(
                         num_fixed_args + repair.hi_num,
                         &mut pos.func.dfg.value_lists,
-                    ).unwrap() = hi;
+                    )
+                    .unwrap() = hi;
             } else {
                 // We need to append one or more arguments. If we're adding more than one argument,
                 // there must be pending repairs on the stack that will fill in the correct values

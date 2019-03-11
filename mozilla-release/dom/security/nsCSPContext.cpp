@@ -18,7 +18,7 @@
 #include "nsIClassInfoImpl.h"
 #include "nsIDocShell.h"
 #include "nsIDocShellTreeItem.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIHttpChannel.h"
 #include "nsIInterfaceRequestor.h"
 #include "nsIInterfaceRequestorUtils.h"
@@ -44,6 +44,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/CSPReportBinding.h"
 #include "mozilla/dom/CSPDictionariesBinding.h"
+#include "mozilla/ipc/PBackgroundSharedTypes.h"
 #include "mozilla/net/ReferrerPolicy.h"
 #include "nsINetworkInterceptController.h"
 #include "nsSandboxFlags.h"
@@ -261,9 +262,44 @@ nsCSPContext::~nsCSPContext() {
   }
 }
 
+nsresult nsCSPContext::InitFromOther(nsCSPContext* aOtherContext,
+                                     Document* aDoc, nsIPrincipal* aPrincipal) {
+  NS_ENSURE_ARG(aOtherContext);
+
+  nsresult rv = SetRequestContext(aDoc, aPrincipal);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  for (auto policy : aOtherContext->mPolicies) {
+    nsAutoString policyStr;
+    policy->toString(policyStr);
+    AppendPolicy(policyStr, policy->getReportOnlyFlag(),
+                 policy->getDeliveredViaMetaTagFlag());
+  }
+  mIPCPolicies = aOtherContext->mIPCPolicies;
+  return NS_OK;
+}
+
+void nsCSPContext::SetIPCPolicies(
+    const nsTArray<mozilla::ipc::ContentSecurityPolicy>& aPolicies) {
+  mIPCPolicies = aPolicies;
+}
+
+void nsCSPContext::EnsureIPCPoliciesRead() {
+  if (mIPCPolicies.Length() > 0) {
+    nsresult rv;
+    for (auto& policy : mIPCPolicies) {
+      rv = AppendPolicy(policy.policy(), policy.reportOnlyFlag(),
+                        policy.deliveredViaMetaTagFlag());
+      Unused << NS_WARN_IF(NS_FAILED(rv));
+    }
+    mIPCPolicies.Clear();
+  }
+}
+
 NS_IMETHODIMP
 nsCSPContext::GetPolicyString(uint32_t aIndex, nsAString& outStr) {
   outStr.Truncate();
+  EnsureIPCPoliciesRead();
   if (aIndex >= mPolicies.Length()) {
     return NS_ERROR_ILLEGAL_VALUE;
   }
@@ -272,6 +308,7 @@ nsCSPContext::GetPolicyString(uint32_t aIndex, nsAString& outStr) {
 }
 
 const nsCSPPolicy* nsCSPContext::GetPolicy(uint32_t aIndex) {
+  EnsureIPCPoliciesRead();
   if (aIndex >= mPolicies.Length()) {
     return nullptr;
   }
@@ -280,12 +317,14 @@ const nsCSPPolicy* nsCSPContext::GetPolicy(uint32_t aIndex) {
 
 NS_IMETHODIMP
 nsCSPContext::GetPolicyCount(uint32_t* outPolicyCount) {
+  EnsureIPCPoliciesRead();
   *outPolicyCount = mPolicies.Length();
   return NS_OK;
 }
 
 NS_IMETHODIMP
 nsCSPContext::GetUpgradeInsecureRequests(bool* outUpgradeRequest) {
+  EnsureIPCPoliciesRead();
   *outUpgradeRequest = false;
   for (uint32_t i = 0; i < mPolicies.Length(); i++) {
     if (mPolicies[i]->hasDirective(
@@ -299,6 +338,7 @@ nsCSPContext::GetUpgradeInsecureRequests(bool* outUpgradeRequest) {
 
 NS_IMETHODIMP
 nsCSPContext::GetBlockAllMixedContent(bool* outBlockAllMixedContent) {
+  EnsureIPCPoliciesRead();
   *outBlockAllMixedContent = false;
   for (uint32_t i = 0; i < mPolicies.Length(); i++) {
     if (!mPolicies[i]->getReportOnlyFlag() &&
@@ -313,6 +353,7 @@ nsCSPContext::GetBlockAllMixedContent(bool* outBlockAllMixedContent) {
 
 NS_IMETHODIMP
 nsCSPContext::GetEnforcesFrameAncestors(bool* outEnforcesFrameAncestors) {
+  EnsureIPCPoliciesRead();
   *outEnforcesFrameAncestors = false;
   for (uint32_t i = 0; i < mPolicies.Length(); i++) {
     if (!mPolicies[i]->getReportOnlyFlag() &&
@@ -357,6 +398,7 @@ nsCSPContext::AppendPolicy(const nsAString& aPolicyString, bool aReportOnly,
 NS_IMETHODIMP
 nsCSPContext::GetAllowsEval(bool* outShouldReportViolation,
                             bool* outAllowsEval) {
+  EnsureIPCPoliciesRead();
   *outShouldReportViolation = false;
   *outAllowsEval = true;
 
@@ -437,6 +479,7 @@ nsCSPContext::GetAllowsInline(nsContentPolicyType aContentType,
     return NS_OK;
   }
 
+  EnsureIPCPoliciesRead();
   nsAutoString content(EmptyString());
 
   // always iterate all policies, otherwise we might not send out all reports
@@ -569,6 +612,7 @@ nsCSPContext::LogViolationDetails(
     nsICSPEventListener* aCSPEventListener, const nsAString& aSourceFile,
     const nsAString& aScriptSample, int32_t aLineNum, int32_t aColumnNum,
     const nsAString& aNonce, const nsAString& aContent) {
+  EnsureIPCPoliciesRead();
   for (uint32_t p = 0; p < mPolicies.Length(); p++) {
     NS_ASSERTION(mPolicies[p], "null pointer in nsTArray<nsCSPPolicy>");
 
@@ -621,8 +665,7 @@ nsCSPContext::LogViolationDetails(
 #undef CASE_CHECK_AND_REPORT
 
 NS_IMETHODIMP
-nsCSPContext::SetRequestContext(nsIDocument* aDocument,
-                                nsIPrincipal* aPrincipal) {
+nsCSPContext::SetRequestContext(Document* aDocument, nsIPrincipal* aPrincipal) {
   MOZ_ASSERT(aDocument || aPrincipal,
              "Can't set context without doc or principal");
   NS_ENSURE_ARG(aDocument || aPrincipal);
@@ -687,7 +730,7 @@ void nsCSPContext::flushConsoleMessages() {
   bool privateWindow = false;
 
   // should flush messages even if doc is not available
-  nsCOMPtr<nsIDocument> doc = do_QueryReferent(mLoadingContext);
+  nsCOMPtr<Document> doc = do_QueryReferent(mLoadingContext);
   if (doc) {
     mInnerWindowID = doc->InnerWindowID();
     privateWindow =
@@ -731,7 +774,7 @@ void nsCSPContext::logToConsole(const char* aName, const char16_t** aParams,
   }
 
   bool privateWindow = false;
-  nsCOMPtr<nsIDocument> doc = do_QueryReferent(mLoadingContext);
+  nsCOMPtr<Document> doc = do_QueryReferent(mLoadingContext);
   if (doc) {
     privateWindow =
         !!doc->NodePrincipal()->OriginAttributesRef().mPrivateBrowsingId;
@@ -784,6 +827,7 @@ nsresult nsCSPContext::GatherSecurityPolicyViolationEventData(
     nsAString& aSourceFile, nsAString& aScriptSample, uint32_t aLineNum,
     uint32_t aColumnNum,
     mozilla::dom::SecurityPolicyViolationEventInit& aViolationEventInit) {
+  EnsureIPCPoliciesRead();
   NS_ENSURE_ARG_MAX(aViolatedPolicyIndex, mPolicies.Length() - 1);
 
   MOZ_ASSERT(ValidateDirectiveName(aViolatedDirective),
@@ -860,7 +904,7 @@ nsresult nsCSPContext::GatherSecurityPolicyViolationEventData(
   // status-code
   uint16_t statusCode = 0;
   {
-    nsCOMPtr<nsIDocument> doc = do_QueryReferent(mLoadingContext);
+    nsCOMPtr<Document> doc = do_QueryReferent(mLoadingContext);
     if (doc) {
       nsCOMPtr<nsIHttpChannel> channel = do_QueryInterface(doc->GetChannel());
       if (channel) {
@@ -889,6 +933,7 @@ nsresult nsCSPContext::GatherSecurityPolicyViolationEventData(
 nsresult nsCSPContext::SendReports(
     const mozilla::dom::SecurityPolicyViolationEventInit& aViolationEventInit,
     uint32_t aViolatedPolicyIndex) {
+  EnsureIPCPoliciesRead();
   NS_ENSURE_ARG_MAX(aViolatedPolicyIndex, mPolicies.Length() - 1);
 
   dom::CSPReport report;
@@ -943,7 +988,7 @@ nsresult nsCSPContext::SendReports(
   nsTArray<nsString> reportURIs;
   mPolicies[aViolatedPolicyIndex]->getReportURIs(reportURIs);
 
-  nsCOMPtr<nsIDocument> doc = do_QueryReferent(mLoadingContext);
+  nsCOMPtr<Document> doc = do_QueryReferent(mLoadingContext);
   nsCOMPtr<nsIURI> reportURI;
   nsCOMPtr<nsIChannel> reportChannel;
 
@@ -1104,7 +1149,7 @@ nsresult nsCSPContext::FireViolationEvent(
   // null.
   RefPtr<EventTarget> eventTarget = aTriggeringElement;
 
-  nsCOMPtr<nsIDocument> doc = do_QueryReferent(mLoadingContext);
+  nsCOMPtr<Document> doc = do_QueryReferent(mLoadingContext);
   if (doc && aTriggeringElement &&
       aTriggeringElement->GetComposedDoc() != doc) {
     eventTarget = nullptr;
@@ -1302,6 +1347,7 @@ nsresult nsCSPContext::AsyncReportViolation(
     uint32_t aViolatedPolicyIndex, const nsAString& aObserverSubject,
     const nsAString& aSourceFile, const nsAString& aScriptSample,
     uint32_t aLineNum, uint32_t aColumnNum) {
+  EnsureIPCPoliciesRead();
   NS_ENSURE_ARG_MAX(aViolatedPolicyIndex, mPolicies.Length() - 1);
 
   nsCOMPtr<nsIRunnable> task = new CSPReportSenderRunnable(
@@ -1324,6 +1370,7 @@ nsresult nsCSPContext::AsyncReportViolation(
 NS_IMETHODIMP
 nsCSPContext::RequireSRIForType(nsContentPolicyType aContentType,
                                 bool* outRequiresSRIForType) {
+  EnsureIPCPoliciesRead();
   *outRequiresSRIForType = false;
   for (uint32_t i = 0; i < mPolicies.Length(); i++) {
     if (mPolicies[i]->hasDirective(REQUIRE_SRI_FOR)) {
@@ -1378,9 +1425,9 @@ nsCSPContext::PermitsAncestry(nsIDocShell* aDocShell,
       break;
     }
 
-    nsIDocument* doc = parentTreeItem->GetDocument();
+    Document* doc = parentTreeItem->GetDocument();
     NS_ASSERTION(doc,
-                 "Could not get nsIDocument from nsIDocShellTreeItem in "
+                 "Could not get Document from nsIDocShellTreeItem in "
                  "nsCSPContext::PermitsAncestry");
     NS_ENSURE_TRUE(doc, NS_ERROR_FAILURE);
 
@@ -1480,6 +1527,7 @@ nsCSPContext::ToJSON(nsAString& outCSPinJSON) {
   outCSPinJSON.Truncate();
   dom::CSPPolicies jsonPolicies;
   jsonPolicies.mCsp_policies.Construct();
+  EnsureIPCPoliciesRead();
 
   for (uint32_t p = 0; p < mPolicies.Length(); p++) {
     dom::CSP jsonCSP;
@@ -1501,6 +1549,7 @@ nsCSPContext::GetCSPSandboxFlags(uint32_t* aOutSandboxFlags) {
   }
   *aOutSandboxFlags = SANDBOXED_NONE;
 
+  EnsureIPCPoliciesRead();
   for (uint32_t i = 0; i < mPolicies.Length(); i++) {
     uint32_t flags = mPolicies[i]->getSandboxFlags();
 
@@ -1667,16 +1716,8 @@ nsCSPContext::Read(nsIObjectInputStream* aStream) {
     bool deliveredViaMetaTag = false;
     rv = aStream->ReadBoolean(&deliveredViaMetaTag);
     NS_ENSURE_SUCCESS(rv, rv);
-
-    // @param deliveredViaMetaTag:
-    // when parsing the CSP policy string initially we already remove directives
-    // that should not be processed when delivered via the meta tag. Such
-    // directives will not be present at this point anymore.
-    nsCSPPolicy* policy = nsCSPParser::parseContentSecurityPolicy(
-        policyString, mSelfURI, reportOnly, this, deliveredViaMetaTag);
-    if (policy) {
-      mPolicies.AppendElement(policy);
-    }
+    mIPCPolicies.AppendElement(mozilla::ipc::ContentSecurityPolicy(
+        policyString, reportOnly, deliveredViaMetaTag));
   }
 
   return NS_OK;
@@ -1689,7 +1730,7 @@ nsCSPContext::Write(nsIObjectOutputStream* aStream) {
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Serialize all the policies.
-  aStream->Write32(mPolicies.Length());
+  aStream->Write32(mPolicies.Length() + mIPCPolicies.Length());
 
   nsAutoString polStr;
   for (uint32_t p = 0; p < mPolicies.Length(); p++) {
@@ -1698,6 +1739,11 @@ nsCSPContext::Write(nsIObjectOutputStream* aStream) {
     aStream->WriteWStringZ(polStr.get());
     aStream->WriteBoolean(mPolicies[p]->getReportOnlyFlag());
     aStream->WriteBoolean(mPolicies[p]->getDeliveredViaMetaTagFlag());
+  }
+  for (auto& policy : mIPCPolicies) {
+    aStream->WriteWStringZ(policy.policy().get());
+    aStream->WriteBoolean(policy.reportOnlyFlag());
+    aStream->WriteBoolean(policy.deliveredViaMetaTagFlag());
   }
   return NS_OK;
 }

@@ -26,16 +26,12 @@ XPCOMUtils.defineLazyServiceGetter(this, "finalizationService",
 XPCOMUtils.defineLazyModuleGetters(this, {
   ExtensionContent: "resource://gre/modules/ExtensionContent.jsm",
   ExtensionPageChild: "resource://gre/modules/ExtensionPageChild.jsm",
+  ExtensionProcessScript: "resource://gre/modules/ExtensionProcessScript.jsm",
   MessageChannel: "resource://gre/modules/MessageChannel.jsm",
   NativeApp: "resource://gre/modules/NativeMessaging.jsm",
   PerformanceCounters: "resource://gre/modules/PerformanceCounters.jsm",
   PromiseUtils: "resource://gre/modules/PromiseUtils.jsm",
 });
-
-XPCOMUtils.defineLazyGetter(
-  this, "processScript",
-  () => Cc["@mozilla.org/webextensions/extension-process-script;1"]
-          .getService().wrappedJSObject);
 
 // We're using the pref to avoid loading PerformanceCounters.jsm for nothing.
 XPCOMUtils.defineLazyPreferenceGetter(this, "gTimingEnabled",
@@ -200,8 +196,8 @@ class Port {
         context: this.context,
         name: "Port.onMessage",
         register: fire => {
-          return this.registerOnMessage(holder => {
-            let msg = holder.deserialize(this.context.cloneScope);
+          return this.registerOnMessage((holder, isLastHandler) => {
+            let msg = holder.deserialize(this.context.cloneScope, !isLastHandler);
             fire.asyncWithoutClone(msg, portObj);
           });
         },
@@ -259,9 +255,9 @@ class Port {
    */
   registerOnMessage(callback) {
     let handler = Object.assign({
-      receiveMessage: ({data}) => {
+      receiveMessage: ({data}, isLastHandler) => {
         if (this.context.active && !this.disconnected) {
-          callback(data);
+          callback(data, isLastHandler);
         }
       },
     }, this.handlerBase);
@@ -438,7 +434,7 @@ class Messenger {
                     filter(sender, recipient));
           },
 
-          receiveMessage: ({target, data: holder, sender, recipient, channelId}) => {
+          receiveMessage: ({target, data: holder, sender, recipient, channelId}, isLastHandler) => {
             if (!this.context.active) {
               return;
             }
@@ -452,7 +448,7 @@ class Messenger {
               };
             });
 
-            let message = holder.deserialize(this.context.cloneScope);
+            let message = holder.deserialize(this.context.cloneScope, !isLastHandler);
             holder = null;
 
             sender = Cu.cloneInto(sender, this.context.cloneScope);
@@ -712,12 +708,20 @@ class BrowserExtensionContent extends EventEmitter {
     return this._manifest;
   }
 
+  get privateBrowsingAllowed() {
+    return this.policy.privateBrowsingAllowed;
+  }
+
+  canAccessWindow(window) {
+    return this.policy.canAccessWindow(window);
+  }
+
   getAPIManager() {
     let apiManagers = [ExtensionPageChild.apiManager];
 
     if (this.dependencies) {
       for (let id of this.dependencies) {
-        let extension = processScript.getExtensionChild(id);
+        let extension = ExtensionProcessScript.getExtensionChild(id);
         if (extension) {
           apiManagers.push(extension.experimentAPIManager);
         }

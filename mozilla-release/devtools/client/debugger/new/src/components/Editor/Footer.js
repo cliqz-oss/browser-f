@@ -4,9 +4,8 @@
 
 // @flow
 import React, { PureComponent } from "react";
-import { connect } from "react-redux";
+import { connect } from "../../utils/connect";
 import classnames from "classnames";
-import Svg from "../shared/Svg";
 import actions from "../../actions";
 import {
   getSelectedSource,
@@ -26,6 +25,7 @@ import { getGeneratedSource } from "../../reducers/sources";
 import { shouldShowFooter, shouldShowPrettyPrint } from "../../utils/editor";
 
 import { PaneToggleButton } from "../shared/Button";
+import AccessibleImage from "../shared/AccessibleImage";
 
 import type { Source } from "../../types";
 
@@ -42,10 +42,10 @@ type Props = {
   endPanelCollapsed: boolean,
   editor: Object,
   horizontal: boolean,
-  togglePrettyPrint: string => void,
-  toggleBlackBox: Object => void,
-  jumpToMappedLocation: (Source: any) => void,
-  togglePaneCollapse: () => void
+  togglePrettyPrint: typeof actions.togglePrettyPrint,
+  toggleBlackBox: typeof actions.toggleBlackBox,
+  jumpToMappedLocation: typeof actions.jumpToMappedLocation,
+  togglePaneCollapse: typeof actions.togglePaneCollapse
 };
 
 type State = {
@@ -74,8 +74,8 @@ class SourceFooter extends PureComponent<Props, State> {
 
     if (isLoading(selectedSource) && selectedSource.isPrettyPrinted) {
       return (
-        <div className="loader">
-          <Svg name="loader" />
+        <div className="loader" key="pretty-loader">
+          <AccessibleImage className="loader" />
         </div>
       );
     }
@@ -99,7 +99,7 @@ class SourceFooter extends PureComponent<Props, State> {
         title={tooltip}
         aria-label={tooltip}
       >
-        <img className={type} />
+        <AccessibleImage className={type} />
       </button>
     );
   }
@@ -128,7 +128,7 @@ class SourceFooter extends PureComponent<Props, State> {
         title={tooltip}
         aria-label={tooltip}
       >
-        <img className="blackBox" />
+        <AccessibleImage className="blackBox" />
       </button>
     );
   }
@@ -141,7 +141,7 @@ class SourceFooter extends PureComponent<Props, State> {
     }
 
     return (
-      <span className="blackbox-summary">
+      <span className="blackbox-summary" key="blackbox-summary">
         {L10N.getStr("sourceFooter.blackboxed")}
       </span>
     );
@@ -155,6 +155,7 @@ class SourceFooter extends PureComponent<Props, State> {
     return (
       <PaneToggleButton
         position="end"
+        key="toggle"
         collapsed={!this.props.endPanelCollapsed}
         horizontal={this.props.horizontal}
         handleClick={this.props.togglePaneCollapse}
@@ -163,13 +164,13 @@ class SourceFooter extends PureComponent<Props, State> {
   }
 
   renderCommands() {
-    return (
-      <div className="commands">
-        {this.prettyPrintButton()}
-        {this.blackBoxButton()}
-        {this.blackBoxSummary()}
-      </div>
-    );
+    const commands = [
+      this.prettyPrintButton(),
+      this.blackBoxButton(),
+      this.blackBoxSummary()
+    ].filter(Boolean);
+
+    return commands.length ? <div className="commands">{commands}</div> : null;
   }
 
   renderSourceSummary() {
@@ -214,7 +215,16 @@ class SourceFooter extends PureComponent<Props, State> {
       cursorPosition.line + 1,
       cursorPosition.column + 1
     );
-    return <span className="cursor-position">{text}</span>;
+    const title = L10N.getFormatStr(
+      "sourceFooter.currentCursorPosition.tooltip",
+      cursorPosition.line + 1,
+      cursorPosition.column + 1
+    );
+    return (
+      <span className="cursor-position" title={title}>
+        {text}
+      </span>
+    );
   }
 
   render() {
@@ -227,8 +237,8 @@ class SourceFooter extends PureComponent<Props, State> {
     return (
       <div className="source-footer">
         {this.renderCommands()}
-        {this.renderCursorPosition()}
         {this.renderSourceSummary()}
+        {this.renderCursorPosition()}
         {this.renderToggleButton()}
       </div>
     );
@@ -237,12 +247,14 @@ class SourceFooter extends PureComponent<Props, State> {
 
 const mapStateToProps = state => {
   const selectedSource = getSelectedSource(state);
-  const selectedId = selectedSource.id;
 
   return {
     selectedSource,
     mappedSource: getGeneratedSource(state, selectedSource),
-    prettySource: getPrettySource(state, selectedId),
+    prettySource: getPrettySource(
+      state,
+      selectedSource ? selectedSource.id : null
+    ),
     endPanelCollapsed: getPaneCollapse(state, "end")
   };
 };

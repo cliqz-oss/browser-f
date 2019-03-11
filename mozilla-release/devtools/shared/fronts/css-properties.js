@@ -9,7 +9,7 @@ loader.lazyRequireGetter(this, "CSS_PROPERTIES_DB",
 loader.lazyRequireGetter(this, "cssColors",
   "devtools/shared/css/color-db", true);
 
-const { FrontClassWithSpec, Front } = require("devtools/shared/protocol");
+const { FrontClassWithSpec, registerFront } = require("devtools/shared/protocol");
 const { cssPropertiesSpec } = require("devtools/shared/specs/css-properties");
 
 /**
@@ -42,12 +42,12 @@ var cachedCssProperties = new WeakMap();
  * interface that provides synchronous methods for finding out what CSS
  * properties the current server supports.
  */
-const CssPropertiesFront = FrontClassWithSpec(cssPropertiesSpec, {
-  initialize: function(client, { cssPropertiesActor }) {
-    Front.prototype.initialize.call(this, client, {actor: cssPropertiesActor});
+class CssPropertiesFront extends FrontClassWithSpec(cssPropertiesSpec) {
+  constructor(client, { cssPropertiesActor }) {
+    super(client, {actor: cssPropertiesActor});
     this.manage(this);
-  },
-});
+  }
+}
 
 /**
  * Query the feature supporting status in the featureSet.
@@ -103,6 +103,7 @@ CssProperties.prototype = {
    * @return {Boolean}
    */
   isKnown(property) {
+    property = property.toLowerCase();
     return !!this.properties[property] || isCssVariable(property);
   },
 
@@ -197,6 +198,7 @@ CssProperties.prototype = {
    * @return {Array} An array of subproperty names.
    */
   getSubproperties(name) {
+    name = name.toLowerCase();
     if (this.isKnown(name)) {
       if (this.properties[name] && this.properties[name].subproperties) {
         return this.properties[name].subproperties;
@@ -359,3 +361,4 @@ module.exports = {
   initCssProperties,
   isCssVariable,
 };
+registerFront(CssPropertiesFront);

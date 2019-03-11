@@ -16,7 +16,7 @@
 
 #include "frontend/BinASTParser.h"
 #include "frontend/BinSource-macros.h"
-#include "frontend/BinTokenReaderTester.h"
+#include "frontend/BinTokenReaderMultipart.h"
 #include "frontend/FullParseHandler.h"
 #include "frontend/ParseNode.h"
 #include "frontend/Parser.h"
@@ -512,7 +512,7 @@ JS::Result<Ok> BinASTParserPerTokenizer<Tok>::checkPositionalParameterIndices(
   uint32_t i = 0;
   const bool hasRest = parseContext_->functionBox()->hasRest();
   for (ParseNode* param : params->contents()) {
-    if (param->isKind(ParseNodeKind::Assign)) {
+    if (param->isKind(ParseNodeKind::AssignExpr)) {
       param = param->as<AssignmentNode>().left();
     }
 
@@ -562,8 +562,8 @@ JS::Result<Ok> BinASTParserPerTokenizer<Tok>::checkPositionalParameterIndices(
     } else {
       // Destructuring parameter.
 
-      MOZ_ASSERT(param->isKind(ParseNodeKind::Object) ||
-                 param->isKind(ParseNodeKind::Array));
+      MOZ_ASSERT(param->isKind(ParseNodeKind::ObjectExpr) ||
+                 param->isKind(ParseNodeKind::ArrayExpr));
 
       // Step 3.
       if (i >= positionalParams.get().length()) {
@@ -761,53 +761,21 @@ void BinASTParserPerTokenizer<Tok>::poison() {
 }
 
 template <typename Tok>
-void BinASTParserPerTokenizer<Tok>::reportErrorNoOffsetVA(unsigned errorNumber,
-                                                          va_list args) {
-  ErrorMetadata metadata;
-  metadata.filename = getFilename();
-  metadata.lineNumber = 0;
-  metadata.columnNumber = offset();
-  metadata.isMuted = options().mutedErrors();
-  ReportCompileError(cx_, std::move(metadata), nullptr, JSREPORT_ERROR,
-                     errorNumber, args);
-}
-
-template <typename Tok>
-void BinASTParserPerTokenizer<Tok>::errorAtVA(uint32_t offset,
-                                              unsigned errorNumber,
-                                              va_list* args) {
-  ErrorMetadata metadata;
-  metadata.filename = getFilename();
-  metadata.lineNumber = 0;
-  metadata.columnNumber = offset;
-  metadata.isMuted = options().mutedErrors();
-  ReportCompileError(cx_, std::move(metadata), nullptr, JSREPORT_ERROR,
-                     errorNumber, *args);
-}
-
-template <typename Tok>
-bool BinASTParserPerTokenizer<Tok>::reportExtraWarningErrorNumberVA(
-    UniquePtr<JSErrorNotes> notes, uint32_t offset, unsigned errorNumber,
-    va_list* args) {
-  if (!options().extraWarningsOption) {
-    return true;
+bool BinASTParserPerTokenizer<Tok>::computeErrorMetadata(
+    ErrorMetadata* err, const ErrorOffset& errorOffset) {
+  err->filename = getFilename();
+  err->lineNumber = 0;
+  if (errorOffset.is<uint32_t>()) {
+    err->columnNumber = errorOffset.as<uint32_t>();
+  } else if (errorOffset.is<Current>()) {
+    err->columnNumber = offset();
+  } else {
+    errorOffset.is<NoOffset>();
+    err->columnNumber = 0;
   }
 
-  ErrorMetadata metadata;
-  metadata.filename = getFilename();
-  metadata.lineNumber = 0;
-  metadata.columnNumber = offset;
-  metadata.isMuted = options().mutedErrors();
-
-  if (options().werrorOption) {
-    ReportCompileError(cx_, std::move(metadata), std::move(notes),
-                       JSREPORT_STRICT, errorNumber, *args);
-    return false;
-  }
-
-  return ReportCompileWarning(cx_, std::move(metadata), std::move(notes),
-                              JSREPORT_STRICT | JSREPORT_WARNING, errorNumber,
-                              *args);
+  err->isMuted = options().mutedErrors();
+  return true;
 }
 
 void TraceBinParser(JSTracer* trc, JS::AutoGCRooter* parser) {
@@ -847,7 +815,6 @@ BinASTParserPerTokenizer<Tok>::asFinalParser() const {
 // This ensures that the symbols are built, without having to export all our
 // code (and its baggage of #include and macros) in the header.
 template class BinASTParserPerTokenizer<BinTokenReaderMultipart>;
-template class BinASTParserPerTokenizer<BinTokenReaderTester>;
 
 }  // namespace frontend
 }  // namespace js

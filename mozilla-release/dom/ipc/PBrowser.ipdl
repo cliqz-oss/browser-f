@@ -104,6 +104,27 @@ struct ShowInfo
   double defaultScale;
 };
 
+struct WebProgressData
+{
+  bool isTopLevel;
+  bool isLoadingDocument;
+  uint32_t loadType;
+  uint64_t DOMWindowID;
+};
+
+union OptionalWebProgressData
+{
+  void_t;
+  WebProgressData;
+};
+
+struct RequestData
+{
+  nsIURI requestURI;
+  nsIURI originalRequestURI;
+  nsCString matchedList;
+};
+
 union OptionalShmem
 {
   void_t;
@@ -365,15 +386,10 @@ parent:
      * Set the native cursor.
      * @param value
      *   The widget cursor to set.
-     * @param force
-     *   Invalidate any locally cached cursor settings and force an
-     *   update.
-     */
-    async SetCursor(nsCursor value, bool force);
-
-    /**
-     * Set the native cursor using a custom image.
-     * @param cursorData
+     * @param hasCustomCursor
+     *   Whether there's any custom cursor represented by cursorData and
+     *   company.
+     * @param customCursorData
      *   Serialized image data.
      * @param width
      *   Width of the image.
@@ -391,9 +407,12 @@ parent:
      *   Invalidate any locally cached cursor settings and force an
      *   update.
      */
-    async SetCustomCursor(nsCString cursorData, uint32_t width, uint32_t height,
-                          uint32_t stride, SurfaceFormat format,
-                          uint32_t hotspotX, uint32_t hotspotY, bool force);
+    async SetCursor(nsCursor value,
+                    bool hasCustomCursor,
+                    nsCString customCursorData,
+                    uint32_t width, uint32_t height,
+                    uint32_t stride, SurfaceFormat format,
+                    uint32_t hotspotX, uint32_t hotspotY, bool force);
 
     /**
      * Used to set the current text of the status tooltip.
@@ -521,6 +540,12 @@ parent:
 
     async SetHasBeforeUnload(bool aHasBeforeUnload);
 
+    async RegisterProtocolHandler(nsString scheme, nsIURI handlerURI, nsString title,
+                                  nsIURI documentURI);
+
+    async OnContentBlockingEvent(OptionalWebProgressData aWebProgressData,
+                                 RequestData aRequestData, uint32_t aEvent);
+
 child:
     async NativeSynthesisResponse(uint64_t aObserverId, nsCString aResponse);
 
@@ -565,7 +590,7 @@ parent:
                             OptionalShmem visualData,
                             uint32_t stride, SurfaceFormat format,
                             LayoutDeviceIntRect dragRect,
-                            nsCString principalURISpec);
+                            Principal principal);
 
     // After a compositor reset, it is necessary to reconnect each layers ID to
     // the compositor of the widget that will render those layers. Note that
@@ -580,7 +605,8 @@ parent:
      *
      * @param aFirstPartyURI first party of the tab that is requesting access.
      */
-    async ShowCanvasPermissionPrompt(nsCString aFirstPartyURI);
+    async ShowCanvasPermissionPrompt(nsCString aFirstPartyURI,
+                                     bool aHideDoorHanger);
 
     sync SetSystemFont(nsCString aFontName);
     sync GetSystemFont() returns (nsCString retval);
@@ -711,7 +737,7 @@ child:
      * don't need support RealDragEvent with input priority.
      */
     async RealDragEvent(WidgetDragEvent aEvent, uint32_t aDragAction,
-                        uint32_t aDropEffect, nsCString aPrincipalURISpec);
+                        uint32_t aDropEffect, Principal aPrincipal);
 
     async PluginEvent(WidgetPluginEvent aEvent);
 
@@ -899,7 +925,7 @@ child:
     /**
      * Requests the content blocking log, which is sent back in response.
      */
-    async GetContentBlockingLog() returns(nsString log, bool success);
+    async GetContentBlockingLog() returns(nsCString log, bool success);
 
 parent:
     /** Records a history visit. */

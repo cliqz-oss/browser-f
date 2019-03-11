@@ -748,6 +748,10 @@ static PlainObject* MakeReplacementTemplateObject(JSContext* cx,
   const UnboxedLayout& layout = obj->as<UnboxedPlainObject>().layout();
   UnboxedExpandoObject* expando = obj->as<UnboxedPlainObject>().maybeExpando();
 
+  // Ensure we're working in the object's realm, so we don't have to worry about
+  // creating groups or templates in the wrong realm.
+  AutoRealm ar(cx, obj);
+
   if (!layout.nativeGroup()) {
     if (!UnboxedLayout::makeNativeGroup(cx, obj->group())) {
       return nullptr;
@@ -1458,9 +1462,7 @@ bool js::TryConvertToUnboxedLayout(JSContext* cx, AutoEnterAnalysis& enter,
   size_t layoutSize = 0;
   if (objectCount <= 1) {
     // If only one of the objects has been created, it is more likely
-    // to have new properties added later. This heuristic is not used
-    // for array objects, where we might want an unboxed representation
-    // even if there is only one large array.
+    // to have new properties added later.
     return true;
   }
 

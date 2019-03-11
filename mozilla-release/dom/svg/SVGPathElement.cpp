@@ -12,18 +12,17 @@
 #include "DOMSVGPathSegList.h"
 #include "gfx2DGlue.h"
 #include "gfxPlatform.h"
-#include "mozilla/dom/SVGPathElementBinding.h"
-#include "mozilla/gfx/2D.h"
-#include "mozilla/RefPtr.h"
-#include "nsCOMPtr.h"
 #include "nsComputedDOMStyle.h"
 #include "nsGkAtoms.h"
 #include "nsStyleConsts.h"
 #include "nsStyleStruct.h"
 #include "nsWindowSizes.h"
-#include "SVGContentUtils.h"
+#include "mozilla/dom/SVGPathElementBinding.h"
+#include "mozilla/gfx/2D.h"
+#include "mozilla/RefPtr.h"
+#include "mozilla/SVGContentUtils.h"
 
-NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(Path)
+NS_IMPL_NS_NEW_SVG_ELEMENT(Path)
 
 using namespace mozilla::gfx;
 
@@ -215,7 +214,7 @@ already_AddRefed<DOMSVGPathSegList> SVGPathElement::AnimatedPathSegList() {
 }
 
 //----------------------------------------------------------------------
-// nsSVGElement methods
+// SVGElement methods
 
 /* virtual */ bool SVGPathElement::HasValidDimensions() const {
   return !mD.GetAnimValue().IsEmpty();
@@ -245,7 +244,7 @@ bool SVGPathElement::AttributeDefinesGeometry(const nsAtom* aName) {
 
 bool SVGPathElement::IsMarkable() { return true; }
 
-void SVGPathElement::GetMarkPoints(nsTArray<nsSVGMark>* aMarks) {
+void SVGPathElement::GetMarkPoints(nsTArray<SVGMark>* aMarks) {
   mD.GetAnimValue().GetMarkerPositioningData(aMarks);
 }
 

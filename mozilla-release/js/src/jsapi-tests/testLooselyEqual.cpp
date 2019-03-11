@@ -5,6 +5,7 @@
 #include <limits>
 #include <math.h>
 
+#include "js/Equality.h"  // JS::LooselyEqual
 #include "jsapi-tests/tests.h"
 
 using namespace std;
@@ -14,15 +15,15 @@ struct LooseEqualityFixture : public JSAPITest {
 
   bool leq(JS::HandleValue x, JS::HandleValue y) {
     bool equal;
-    CHECK(JS_LooselyEqual(cx, x, y, &equal) && equal);
-    CHECK(JS_LooselyEqual(cx, y, x, &equal) && equal);
+    CHECK(JS::LooselyEqual(cx, x, y, &equal) && equal);
+    CHECK(JS::LooselyEqual(cx, y, x, &equal) && equal);
     return true;
   }
 
   bool nleq(JS::HandleValue x, JS::HandleValue y) {
     bool equal;
-    CHECK(JS_LooselyEqual(cx, x, y, &equal) && !equal);
-    CHECK(JS_LooselyEqual(cx, y, x, &equal) && !equal);
+    CHECK(JS::LooselyEqual(cx, x, y, &equal) && !equal);
+    CHECK(JS::LooselyEqual(cx, y, x, &equal) && !equal);
     return true;
   }
 };
@@ -59,12 +60,12 @@ struct LooseEqualityData {
     poszero = JS::DoubleValue(0.0);
     negzero = JS::DoubleValue(-0.0);
 #ifdef XP_WIN
-#define copysign _copysign
+#  define copysign _copysign
 #endif
     MOZ_RELEASE_ASSERT(copysign(1.0, poszero.toDouble()) == 1.0);
     MOZ_RELEASE_ASSERT(copysign(1.0, negzero.toDouble()) == -1.0);
 #ifdef XP_WIN
-#undef copysign
+#  undef copysign
 #endif
   }
 };

@@ -9,7 +9,8 @@
 
 #include "mozilla/dom/SVGIRect.h"
 #include "mozilla/gfx/Rect.h"
-#include "nsSVGElement.h"
+#include "nsCOMPtr.h"
+#include "SVGElement.h"
 
 ////////////////////////////////////////////////////////////////////////
 // SVGRect class

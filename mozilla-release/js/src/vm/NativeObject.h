@@ -665,12 +665,6 @@ class NativeObject : public ShapedObject {
    */
   void initSlotRange(uint32_t start, const Value* vector, uint32_t length);
 
-  /*
-   * Copy a flat array of slots to this object at a start slot. Caller must
-   * ensure there are enough slots in this object.
-   */
-  void copySlotRange(uint32_t start, const Value* vector, uint32_t length);
-
 #ifdef DEBUG
   enum SentinelAllowed{SENTINEL_NOT_ALLOWED, SENTINEL_ALLOWED};
 
@@ -1465,7 +1459,11 @@ class NativeObject : public ShapedObject {
   }
 
   void setPrivateGCThing(gc::Cell* cell) {
-    MOZ_ASSERT_IF(IsMarkedBlack(this), !cell->isMarkedGray());
+#ifdef DEBUG
+    if (IsMarkedBlack(this)) {
+      JS::AssertCellIsNotGray(cell);
+    }
+#endif
     void** pprivate = &privateRef(numFixedSlots());
     privateWriteBarrierPre(pprivate);
     *pprivate = reinterpret_cast<void*>(cell);
@@ -1485,10 +1483,6 @@ class NativeObject : public ShapedObject {
     *pprivate = data;
   }
 
-  static inline NativeObject* copy(JSContext* cx, gc::AllocKind kind,
-                                   gc::InitialHeap heap,
-                                   HandleNativeObject templateObject);
-
   /* Return the allocKind we would use if we were to tenure this object. */
   inline js::gc::AllocKind allocKindForTenure() const;
 
@@ -1507,10 +1501,10 @@ class NativeObject : public ShapedObject {
     return sizeof(NativeObject) + sizeof(ObjectElements);
   }
 
-  static size_t getFixedSlotOffset(size_t slot) {
+  static constexpr size_t getFixedSlotOffset(size_t slot) {
     return sizeof(NativeObject) + slot * sizeof(Value);
   }
-  static size_t getPrivateDataOffset(size_t nfixed) {
+  static constexpr size_t getPrivateDataOffset(size_t nfixed) {
     return getFixedSlotOffset(nfixed);
   }
   static size_t offsetOfSlots() { return offsetof(NativeObject, slots_); }

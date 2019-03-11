@@ -115,7 +115,7 @@ interface nsIDOMWindowUtils : nsISupports {
 
   /**
    * Information retrieved from the <meta name="viewport"> tag.
-   * See nsIDocument::GetViewportInfo for more information.
+   * See Document::GetViewportInfo for more information.
    */
   void getViewportInfo(in uint32_t aDisplayWidth, in uint32_t aDisplayHeight,
                        out double aDefaultZoom, out boolean aAllowZoom,
@@ -207,20 +207,11 @@ interface nsIDOMWindowUtils : nsISupports {
    *
    * The effect of this API is for gfx code to allocate more or fewer
    * pixels for rescalable content by a factor of |resolution| in
-   * both dimensions.  The scale at which the content is displayed does
-   * not change; if that is desired, use setResolutionAndScaleTo() instead.
-   *
-   * The caller of this method must have chrome privileges.
-   */
-  void setResolution(in float aResolution);
-
-  void getResolution(out float aResolution);
-
-  /**
-   * Similar to setResolution(), but also scales the content by the
-   * amount of the resolution, so that it is displayed at a
-   * correspondingly larger or smaller size, without the need for
-   * the caller to set an additional transform.
+   * both dimensions.
+   * 
+   * In addition, the content is scaled by the amount of the resolution,
+   * so that it is displayed at a correspondingly larger or smaller size, 
+   * without the need for the caller to set an additional transform.
    *
    * This can be used to implement a non-reflowing scale-zoom, e.g.
    * for pinch-zoom on mobile platforms.
@@ -228,6 +219,8 @@ interface nsIDOMWindowUtils : nsISupports {
    * The caller of this method must have chrome privileges.
    */
   void setResolutionAndScaleTo(in float aResolution);
+
+  float getResolution();
 
   /**
    * Set a resolution on the presShell which is the "restored" from history.
@@ -240,15 +233,6 @@ interface nsIDOMWindowUtils : nsISupports {
   void setRestoreResolution(in float aResolution,
                             in uint32_t aDisplayWidth,
                             in uint32_t aDisplayHeight);
-
-  /**
-   * Whether the resolution has been set by the user.
-   * This gives a way to check whether the provided resolution is the default
-   * value or restored from a previous session.
-   *
-   * Can only be accessed with chrome privileges.
-   */
-  readonly attribute boolean isResolutionSet;
 
   /**
    * Whether the next paint should be flagged as the first paint for a document.
@@ -845,11 +829,29 @@ interface nsIDOMWindowUtils : nsISupports {
   DOMRect getBoundsWithoutFlushing(in Element aElement);
 
   /**
-   * Returns the offset of the window's visual viewport relative to the
-   * layout viewport. 
+   * Scroll the visual viewport to the given coordinates, relative to the
+   * document origin.
+   * Only applicable to the window associated with the root content document.
+   * Note: this does not take effect right away. Rather, the visual scroll
+   *       request is sent to APZ with the next transaction, and will be
+   *       reflected in the main thread with the subsequent APZ repaint request.
+   * Please see the caveats mentioned at nsIPresShell::
+   * SetPendingVisualViewportOffset(), and request APZ review if adding a new
+   * call to this.
    */
-  void getVisualViewportOffsetRelativeToLayoutViewport(out float aOffsetX, 
+  void scrollToVisual(in float aOffsetX, in float aOffsetY);
+ 
+  /**
+   * Returns the offset of the window's visual viewport relative to the
+   * layout viewport.
+   */
+  void getVisualViewportOffsetRelativeToLayoutViewport(out float aOffsetX,
                                                        out float aOffsetY);
+
+  /**
+   * Returns the scroll position of the window's visual viewport.
+   */
+  void getVisualViewportOffset(out long aOffsetX, out long aOffsetY);
 
   const long FLUSH_NONE = -1;
   const long FLUSH_STYLE = 0;
@@ -1948,23 +1950,6 @@ interface nsIDOMWindowUtils : nsISupports {
    * Reset the internal state to be used for above setPrefersReducedMotion.
    */
   void resetPrefersReducedMotionOverrideForTest();
-
-  /**
-   * Used to notify temporary autoplay permission change and cache it on the dom
-   * window. These states are equal to nsIPermissionManager's action states.
-   */
-  const long PERMISSION_UNKNOWN = 0;
-  const long PERMISSION_ALLOW = 1;
-  const long PERMISSION_DENY = 2;
-
-  void notifyTemporaryAutoplayPermissionChanged(in long aState,
-                                                in AString aPrePath);
-
-  /**
-   * Used to check whether the window temporarily allows autoplay for current
-   * domain.
-   */
-  bool isAutoplayTemporarilyAllowed();
 
   // These consts are only for testing purposes.
   const long DEFAULT_MOUSE_POINTER_ID = 0;

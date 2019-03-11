@@ -4,14 +4,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "mozilla/dom/SVGScriptElement.h"
+
 #include "nsGkAtoms.h"
 #include "nsNetUtil.h"
 #include "nsContentUtils.h"
-#include "mozilla/dom/SVGScriptElement.h"
 #include "mozilla/dom/SVGScriptElementBinding.h"
 #include "nsIScriptError.h"
 
-NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT_CHECK_PARSER(Script)
+NS_IMPL_NS_NEW_SVG_ELEMENT_CHECK_PARSER(Script)
 
 namespace mozilla {
 namespace dom {
@@ -21,7 +22,7 @@ JSObject* SVGScriptElement::WrapNode(JSContext* aCx,
   return SVGScriptElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-nsSVGElement::StringInfo SVGScriptElement::sStringInfo[2] = {
+SVGElement::StringInfo SVGScriptElement::sStringInfo[2] = {
     {nsGkAtoms::href, kNameSpaceID_None, false},
     {nsGkAtoms::href, kNameSpaceID_XLink, false}};
 
@@ -110,7 +111,7 @@ void SVGScriptElement::GetScriptCharset(nsAString& charset) {
   charset.Truncate();
 }
 
-void SVGScriptElement::FreezeExecutionAttrs(nsIDocument* aOwnerDoc) {
+void SVGScriptElement::FreezeExecutionAttrs(Document* aOwnerDoc) {
   if (mFrozen) {
     return;
   }
@@ -171,9 +172,9 @@ bool SVGScriptElement::HasScriptContent() {
 }
 
 //----------------------------------------------------------------------
-// nsSVGElement methods
+// SVGElement methods
 
-nsSVGElement::StringAttributesInfo SVGScriptElement::GetStringInfo() {
+SVGElement::StringAttributesInfo SVGScriptElement::GetStringInfo() {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
                               ArrayLength(sStringInfo));
 }
@@ -181,8 +182,7 @@ nsSVGElement::StringAttributesInfo SVGScriptElement::GetStringInfo() {
 //----------------------------------------------------------------------
 // nsIContent methods
 
-nsresult SVGScriptElement::BindToTree(nsIDocument* aDocument,
-                                      nsIContent* aParent,
+nsresult SVGScriptElement::BindToTree(Document* aDocument, nsIContent* aParent,
                                       nsIContent* aBindingParent) {
   nsresult rv =
       SVGScriptElementBase::BindToTree(aDocument, aParent, aBindingParent);

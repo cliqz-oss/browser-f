@@ -34,7 +34,7 @@
 #include "nsImageToPixbuf.h"
 #include "nsPresContext.h"
 #include "nsIContent.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsViewManager.h"
 #include "nsIFrame.h"
 #include "nsGtkUtils.h"
@@ -44,7 +44,7 @@
 #include "ScreenHelperGTK.h"
 #include "nsArrayUtils.h"
 #ifdef MOZ_WAYLAND
-#include "nsClipboardWayland.h"
+#  include "nsClipboardWayland.h"
 #endif
 
 using namespace mozilla;
@@ -257,7 +257,7 @@ static void OnSourceGrabEventAfter(GtkWidget *widget, GdkEvent *event,
       G_PRIORITY_DEFAULT_IDLE, 350, DispatchMotionEventCopy, nullptr, nullptr);
 }
 
-static GtkWindow *GetGtkWindow(nsIDocument *aDocument) {
+static GtkWindow *GetGtkWindow(dom::Document *aDocument) {
   if (!aDocument) return nullptr;
 
   nsCOMPtr<nsIPresShell> presShell = aDocument->GetShell();
@@ -285,8 +285,8 @@ static GtkWindow *GetGtkWindow(nsIDocument *aDocument) {
 
 NS_IMETHODIMP
 nsDragService::InvokeDragSession(
-    nsINode *aDOMNode, const nsACString &aPrincipalURISpec,
-    nsIArray *aArrayTransferables, uint32_t aActionType,
+    nsINode *aDOMNode, nsIPrincipal *aPrincipal, nsIArray *aArrayTransferables,
+    uint32_t aActionType,
     nsContentPolicyType aContentPolicyType = nsIContentPolicy::TYPE_OTHER) {
   MOZ_LOG(sDragLm, LogLevel::Debug, ("nsDragService::InvokeDragSession"));
 
@@ -296,7 +296,7 @@ nsDragService::InvokeDragSession(
   // know whether or not the drag succeeded.
   if (mSourceNode) return NS_ERROR_NOT_AVAILABLE;
 
-  return nsBaseDragService::InvokeDragSession(aDOMNode, aPrincipalURISpec,
+  return nsBaseDragService::InvokeDragSession(aDOMNode, aPrincipal,
                                               aArrayTransferables, aActionType,
                                               aContentPolicyType);
 }
@@ -390,7 +390,7 @@ bool nsDragService::SetAlphaPixmap(SourceSurface *aSurface,
   if (!gdk_screen_is_composited(screen)) return false;
 
 #ifdef cairo_image_surface_create
-#error "Looks like we're including Mozilla's cairo instead of system cairo"
+#  error "Looks like we're including Mozilla's cairo instead of system cairo"
 #endif
   // Prior to GTK 3.9.12, cairo surfaces passed into gtk_drag_set_icon_surface
   // had their shape information derived from the alpha channel and used with
@@ -1563,10 +1563,16 @@ void nsDragService::SourceBeginDrag(GdkDragContext *aContext) {
   for (uint32_t i = 0; i < flavors.Length(); ++i) {
     if (flavors[i].EqualsLiteral(kFilePromiseDestFilename)) {
       nsCOMPtr<nsISupports> data;
-      transferable->GetTransferData(kFilePromiseDestFilename,
-                                    getter_AddRefs(data));
+      rv = transferable->GetTransferData(kFilePromiseDestFilename,
+                                         getter_AddRefs(data));
+      if (NS_FAILED(rv)) {
+        return;
+      }
+
       nsCOMPtr<nsISupportsString> fileName = do_QueryInterface(data);
-      if (!fileName) return;
+      if (!fileName) {
+        return;
+      }
 
       nsAutoString fileNameStr;
       fileName->GetData(fileNameStr);

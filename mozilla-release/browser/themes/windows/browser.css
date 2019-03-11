@@ -554,13 +554,14 @@ menuitem.bookmark-item {
 
 @media (-moz-windows-default-theme: 0) {
   #urlbar:not(:-moz-lwtheme):not([focused="true"]),
+  #urlbar:not(:-moz-lwtheme).hidden-focus,
   .searchbar-textbox:not(:-moz-lwtheme):not([focused="true"]) {
     border-color: ThreeDShadow;
   }
 }
 
 html|*.urlbar-input:-moz-lwtheme::placeholder,
-.searchbar-textbox:-moz-lwtheme > .urlbar-textbox-container > moz-input-box > html|*.textbox-input::placeholder {
+.searchbar-textbox:-moz-lwtheme > moz-input-box > html|*.textbox-input::placeholder {
   opacity: 1.0;
   color: #777;
 }

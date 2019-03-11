@@ -16,7 +16,7 @@
 #include "mozilla/MouseEvents.h"
 #ifdef XP_WIN
 // This is needed for DoublePassRenderingEvent.
-#include "mozilla/plugins/PluginMessageUtils.h"
+#  include "mozilla/plugins/PluginMessageUtils.h"
 #endif
 
 #include "nscore.h"
@@ -49,41 +49,41 @@
 #include "nsPluginInstanceOwner.h"
 
 #ifdef XP_WIN
-#include "gfxWindowsNativeDrawing.h"
-#include "gfxWindowsSurface.h"
+#  include "gfxWindowsNativeDrawing.h"
+#  include "gfxWindowsSurface.h"
 #endif
 
 #include "Layers.h"
 #include "ReadbackLayer.h"
 #include "ImageContainer.h"
-#include "mozilla/layers/WebRenderLayerManager.h"
+#include "mozilla/layers/RenderRootStateManager.h"
 
 // accessibility support
 #ifdef ACCESSIBILITY
-#include "nsAccessibilityService.h"
+#  include "nsAccessibilityService.h"
 #endif
 
 #include "mozilla/Logging.h"
 
 #ifdef XP_MACOSX
-#include "gfxQuartzNativeDrawing.h"
-#include "mozilla/gfx/QuartzSupport.h"
+#  include "gfxQuartzNativeDrawing.h"
+#  include "mozilla/gfx/QuartzSupport.h"
 #endif
 
 #ifdef MOZ_X11
-#include "mozilla/X11Util.h"
+#  include "mozilla/X11Util.h"
 using mozilla::DefaultXDisplay;
 #endif
 
 #ifdef XP_WIN
-#include <wtypes.h>
-#include <winuser.h>
+#  include <wtypes.h>
+#  include <winuser.h>
 #endif
 
 #include "mozilla/dom/TabChild.h"
 
 #ifdef CreateEvent  // Thank you MS.
-#undef CreateEvent
+#  undef CreateEvent
 #endif
 
 static mozilla::LazyLogModule sPluginFrameLog("nsPluginFrame");
@@ -157,12 +157,12 @@ NS_QUERYFRAME_TAIL_INHERITING(nsFrame)
 #ifdef ACCESSIBILITY
 a11y::AccType nsPluginFrame::AccessibleType() { return a11y::ePluginType; }
 
-#ifdef XP_WIN
+#  ifdef XP_WIN
 NS_IMETHODIMP nsPluginFrame::GetPluginPort(HWND* aPort) {
   *aPort = (HWND)mInstanceOwner->GetPluginPort();
   return NS_OK;
 }
-#endif
+#  endif
 #endif
 
 void nsPluginFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
@@ -980,7 +980,7 @@ bool nsDisplayPlugin::CreateWebRenderCommands(
     mozilla::wr::DisplayListBuilder& aBuilder,
     mozilla::wr::IpcResourceUpdateQueue& aResources,
     const StackingContextHelper& aSc,
-    mozilla::layers::WebRenderLayerManager* aManager,
+    mozilla::layers::RenderRootStateManager* aManager,
     nsDisplayListBuilder* aDisplayListBuilder) {
   return static_cast<nsPluginFrame*>(mFrame)->CreateWebRenderCommands(
       this, aBuilder, aResources, aSc, aManager, aDisplayListBuilder);
@@ -1304,7 +1304,7 @@ bool nsPluginFrame::CreateWebRenderCommands(
     nsDisplayItem* aItem, mozilla::wr::DisplayListBuilder& aBuilder,
     mozilla::wr::IpcResourceUpdateQueue& aResources,
     const StackingContextHelper& aSc,
-    mozilla::layers::WebRenderLayerManager* aManager,
+    mozilla::layers::RenderRootStateManager* aManager,
     nsDisplayListBuilder* aDisplayListBuilder) {
   IntSize size;
   gfxRect r;
@@ -1340,7 +1340,7 @@ bool nsPluginFrame::CreateWebRenderCommands(
   // help us. Hence we can ignore the return value from PushImage.
   LayoutDeviceRect dest(r.x, r.y, size.width, size.height);
   aManager->CommandBuilder().PushImage(aItem, container, aBuilder, aResources,
-                                       aSc, dest);
+                                       aSc, dest, dest);
   return true;
 }
 

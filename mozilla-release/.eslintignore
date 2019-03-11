@@ -20,10 +20,6 @@ docshell/test/mochitest/**
 extensions/cookie/**
 extensions/spellcheck/**
 extensions/universalchardet/**
-gfx/layers/**
-gfx/tests/browser/**
-gfx/tests/chrome/**
-gfx/tests/mochitest/**
 image/**
 layout/**
 modules/**
@@ -36,6 +32,7 @@ uriloader/exthandler/**
 uriloader/exthandler/tests/mochitest/**
 widget/headless/tests/**
 widget/tests/**
+xpfe/**
 
 # We currently have no js files in these directories, so we ignore them by
 # default to aid ESLint's performance.
@@ -50,7 +47,6 @@ mozglue/**
 nsprpub/**
 other-licenses/**
 startupcache/**
-xpfe/**
 
 # These directories only contain crashtests, but we still skip the whole
 # directory to aid performance.
@@ -110,6 +106,7 @@ devtools/client/shared/webpack/shims/test/test_clipboard.html
 devtools/shared/qrcode/tests/mochitest/test_decode.html
 devtools/shared/tests/mochitest/*.html
 devtools/shared/webconsole/test/test_*.html
+devtools/client/webreplay/mochitest/examples/*.html
 
 # Soon to be removed, the new/ directory is explicitly excluded below due to
 # also being an imported repository.
@@ -166,19 +163,17 @@ devtools/server/tests/unit/sourcemapped.js
 devtools/server/tests/unit/xpcshell_debugging_script.js
 
 # dom/ exclusions
-dom/abort/**
 dom/animation/**
-dom/asmjscache/**
-dom/base/**
-dom/battery/**
+dom/base/*.*
+dom/base/test/*.*
+dom/base/test/unit/test_serializers_entities*.js
+dom/base/test/unit_ipc/**
+dom/base/test/jsmodules/**
 dom/bindings/**
-dom/broadcastchannel/**
 dom/browser-element/**
 dom/cache/test/mochitest/**
 dom/cache/test/xpcshell/**
 dom/canvas/**
-dom/console/**
-dom/crypto/**
 dom/encoding/**
 dom/events/**
 dom/fetch/**
@@ -186,10 +181,7 @@ dom/file/**
 dom/flex/**
 dom/grid/**
 dom/html/**
-dom/ipc/**
 dom/jsurl/**
-dom/localstorage/**
-dom/manifest/**
 dom/media/test/**
 dom/media/tests/**
 dom/media/webaudio/**
@@ -213,15 +205,12 @@ dom/security/test/csp/**
 dom/security/test/general/**
 dom/security/test/mixedcontentblocker/**
 dom/security/test/sri/**
-dom/security/test/unit/**
 dom/serviceworkers/**
 dom/smil/**
 dom/svg/**
-dom/system/**
-dom/tests/browser/**
+
 dom/tests/html/**
 dom/tests/mochitest/**
-dom/tests/unit/**
 dom/u2f/**
 dom/url/**
 dom/vr/**
@@ -239,6 +228,7 @@ dom/xul/**
 # Third-party
 dom/canvas/test/webgl-conf/**
 dom/imptests/**
+dom/media/webaudio/test/blink/**
 dom/media/webvtt/**
 
 # Third-party
@@ -254,6 +244,9 @@ intl/icu/**
 intl/locale/**
 intl/strres/**
 intl/uconv/**
+
+# Third-party
+layout/mathml/imptests/**
 
 # Exclude everything but self-hosted JS
 js/ductwork/**
@@ -356,8 +349,6 @@ toolkit/modules/tests/xpcshell/test_task.js
 
 # External code:
 browser/components/payments/res/vendor/*
-toolkit/components/microformats/test/**
-toolkit/components/microformats/microformat-shiv.js
 toolkit/components/reader/Readability.js
 toolkit/components/reader/JSDOMParser.js
 
@@ -366,6 +357,7 @@ toolkit/components/reader/Readerable.jsm
 toolkit/content/widgets/wizard.xml
 toolkit/modules/AppConstants.jsm
 toolkit/mozapps/update/tests/data/xpcshellConstantsPP.js
+tools/tryselect/selectors/chooser/templates/chooser.html
 
 # Third party
 toolkit/modules/third_party/**

@@ -12,12 +12,14 @@
 
 #include "jsapi.h"
 
+#include "js/PropertySpec.h"
 #include "js/StableStringChars.h"
 #include "js/Wrapper.h"
 #include "proxy/DeadObjectProxy.h"
 #include "proxy/ScriptedProxyHandler.h"
 #include "vm/JSContext.h"
 #include "vm/JSFunction.h"
+#include "vm/JSObject.h"
 #include "vm/WrapperObject.h"
 
 #include "gc/Marking-inl.h"
@@ -36,14 +38,7 @@ void js::AutoEnterPolicy::reportErrorIfExceptionIsNotPending(JSContext* cx,
   if (JSID_IS_VOID(id)) {
     ReportAccessDenied(cx);
   } else {
-    UniqueChars prop =
-        IdToPrintableUTF8(cx, id, IdToPrintableBehavior::IdIsPropertyKey);
-    if (!prop) {
-      return;
-    }
-
-    JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr,
-                             JSMSG_PROPERTY_ACCESS_DENIED, prop.get());
+    Throw(cx, id, JSMSG_PROPERTY_ACCESS_DENIED);
   }
 }
 
@@ -745,11 +740,6 @@ static bool proxy_DeleteProperty(JSContext* cx, HandleObject obj, HandleId id,
   Proxy::trace(trc, obj);
 }
 
-static JSObject* proxy_WeakmapKeyDelegate(JSObject* obj) {
-  MOZ_ASSERT(obj->is<ProxyObject>());
-  return obj->as<ProxyObject>().handler()->weakmapKeyDelegate(obj);
-}
-
 static void proxy_Finalize(FreeOp* fop, JSObject* obj) {
   // Suppress a bogus warning about finalize().
   JS::AutoSuppressGCAnalysis nogc;
@@ -789,8 +779,7 @@ const ClassOps js::ProxyClassOps = {
     ProxyObject::trace, /* trace       */
 };
 
-const ClassExtension js::ProxyClassExtension = {proxy_WeakmapKeyDelegate,
-                                                proxy_ObjectMoved};
+const ClassExtension js::ProxyClassExtension = {proxy_ObjectMoved};
 
 const ObjectOps js::ProxyObjectOps = {
     proxy_LookupProperty, Proxy::defineProperty,

@@ -7,7 +7,7 @@
 #define GFX_WINDOWS_PLATFORM_H
 
 /**
- * XXX to get CAIRO_HAS_D2D_SURFACE, CAIRO_HAS_DWRITE_FONT
+ * XXX to get CAIRO_HAS_DWRITE_FONT
  * and cairo_win32_scaled_font_select_font
  */
 #include "cairo-win32.h"
@@ -37,9 +37,9 @@
 #include <d3dcommon.h>
 // Win 8.0 SDK types we'll need when building using older sdks.
 #if !defined(D3D_FEATURE_LEVEL_11_1)  // defined in the 8.0 SDK only
-#define D3D_FEATURE_LEVEL_11_1 static_cast<D3D_FEATURE_LEVEL>(0xb100)
-#define D3D_FL9_1_REQ_TEXTURE2D_U_OR_V_DIMENSION 2048
-#define D3D_FL9_3_REQ_TEXTURE2D_U_OR_V_DIMENSION 4096
+#  define D3D_FEATURE_LEVEL_11_1 static_cast<D3D_FEATURE_LEVEL>(0xb100)
+#  define D3D_FL9_1_REQ_TEXTURE2D_U_OR_V_DIMENSION 2048
+#  define D3D_FL9_3_REQ_TEXTURE2D_U_OR_V_DIMENSION 4096
 #endif
 
 namespace mozilla {
@@ -104,6 +104,9 @@ class gfxWindowsPlatform : public gfxPlatform {
   static gfxWindowsPlatform* GetPlatform() {
     return (gfxWindowsPlatform*)gfxPlatform::GetPlatform();
   }
+
+  virtual void EnsureDevicesInitialized() override;
+  virtual bool DevicesInitialized() override;
 
   virtual gfxPlatformFontList* CreatePlatformFontList() override;
 
@@ -255,10 +258,13 @@ class gfxWindowsPlatform : public gfxPlatform {
   void InitializeDirectDrawConfig();
   void InitializeAdvancedLayersConfig();
 
+  void RecordStartupTelemetry();
+
   RefPtr<IDWriteRenderingParams> mRenderingParams[TEXT_RENDERING_COUNT];
   DWRITE_MEASURING_MODE mMeasuringMode;
 
   RefPtr<mozilla::layers::ReadbackManagerD3D11> mD3D11ReadbackManager;
+  bool mInitializedDevices = false;
 };
 
 #endif /* GFX_WINDOWS_PLATFORM_H */

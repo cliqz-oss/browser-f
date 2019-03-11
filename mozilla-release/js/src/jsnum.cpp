@@ -18,7 +18,7 @@
 #include "mozilla/Utf8.h"
 
 #ifdef HAVE_LOCALECONV
-#include <locale.h>
+#  include <locale.h>
 #endif
 #include <math.h>
 #include <string.h>
@@ -30,12 +30,13 @@
 #include "js/CharacterEncoding.h"
 #include "js/Conversions.h"
 #if !EXPOSE_INTL_API
-#include "js/LocaleSensitive.h"
+#  include "js/LocaleSensitive.h"
 #endif
+#include "js/PropertySpec.h"
 #include "util/DoubleToString.h"
 #include "util/StringBuffer.h"
 #ifdef ENABLE_BIGINT
-#include "vm/BigIntType.h"
+#  include "vm/BigIntType.h"
 #endif
 #include "vm/GlobalObject.h"
 #include "vm/JSAtom.h"
@@ -329,9 +330,24 @@ static bool num_parseFloat(JSContext* cx, unsigned argc, Value* vp) {
     return true;
   }
 
+  if (args[0].isNumber()) {
+    // ToString(-0) is "0", handle it accordingly.
+    if (args[0].isDouble() && args[0].toDouble() == 0.0) {
+      args.rval().setInt32(0);
+    } else {
+      args.rval().set(args[0]);
+    }
+    return true;
+  }
+
   JSString* str = ToString<CanGC>(cx, args[0]);
   if (!str) {
     return false;
+  }
+
+  if (str->hasIndexValue()) {
+    args.rval().setNumber(str->getIndexValue());
+    return true;
   }
 
   JSLinearString* linear = str->ensureLinear(cx);
@@ -547,7 +563,7 @@ static bool Number(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   RootedObject proto(cx);
-  if (!GetPrototypeFromBuiltinConstructor(cx, args, &proto)) {
+  if (!GetPrototypeFromBuiltinConstructor(cx, args, JSProto_Number, &proto)) {
     return false;
   }
 
@@ -1168,16 +1184,16 @@ bool js::InitRuntimeNumberState(JSRuntime* rt) {
   const char* thousandsSeparator;
   const char* decimalPoint;
   const char* grouping;
-#ifdef HAVE_LOCALECONV
+#  ifdef HAVE_LOCALECONV
   struct lconv* locale = localeconv();
   thousandsSeparator = locale->thousands_sep;
   decimalPoint = locale->decimal_point;
   grouping = locale->grouping;
-#else
+#  else
   thousandsSeparator = getenv("LOCALE_THOUSANDS_SEP");
   decimalPoint = getenv("LOCALE_DECIMAL_POINT");
   grouping = getenv("LOCALE_GROUPING");
-#endif
+#  endif
   if (!thousandsSeparator) {
     thousandsSeparator = "'";
   }

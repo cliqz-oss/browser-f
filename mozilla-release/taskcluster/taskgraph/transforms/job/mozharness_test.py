@@ -51,7 +51,14 @@ mozharness_test_run_schema = Schema({
 
 def test_packages_url(taskdesc):
     """Account for different platforms that name their test packages differently"""
-    return get_artifact_url('<build>', get_artifact_path(taskdesc, 'target.test_packages.json'))
+    artifact_url = get_artifact_url('<build>', get_artifact_path(taskdesc,
+                                    'target.test_packages.json'))
+    # for android nightly we need to add 'en-US' to the artifact url
+    test = taskdesc['run']['test']
+    if get_variant(test['test-platform']) == "nightly" and 'android' in test['test-platform']:
+        head, tail = os.path.split(artifact_url)
+        artifact_url = os.path.join(head, 'en-US', tail)
+    return artifact_url
 
 
 @run_job_using('docker-engine', 'mozharness-test', schema=mozharness_test_run_schema)
@@ -140,7 +147,7 @@ def mozharness_test_on_docker(config, job, taskdesc):
     # If we have a source checkout, run mozharness from it instead of
     # downloading a zip file with the same content.
     if test['checkout']:
-        command.extend(['--vcs-checkout', '{workdir}/checkouts/gecko'.format(**run)])
+        command.extend(['--gecko-checkout', '{workdir}/checkouts/gecko'.format(**run)])
         env['MOZHARNESS_PATH'] = '{workdir}/checkouts/gecko/testing/mozharness'.format(**run)
     else:
         env['MOZHARNESS_URL'] = {'task-reference': mozharness_url}

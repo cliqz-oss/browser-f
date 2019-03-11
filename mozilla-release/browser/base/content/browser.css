@@ -233,19 +233,13 @@ panelview[mainview] > .panel-header {
   z-index: 2;
 }
 
-/* The next 3 rules allow dragging tabs slightly outside of the tabstrip
- * to make it easier to drag tabs. */
-#navigator-toolbox[movingtab] > #titlebar > #TabsToolbar {
-  padding-bottom: 15px;
-}
-
-#navigator-toolbox[movingtab] #tabbrowser-tabs {
+/* Make it easier to drag tabs by expanding the drag area downwards. */
+#tabbrowser-tabs[movingtab] {
   padding-bottom: 15px;
   margin-bottom: -15px;
 }
 
 #navigator-toolbox[movingtab] > #nav-bar {
-  margin-top: -15px;
   pointer-events: none;
 }
 
@@ -285,7 +279,9 @@ window:not([chromehidden~="toolbar"]) #nav-bar[nonemptyoverflow] > .overflow-but
 #toolbar-menubar:not([autohide=true]) + #TabsToolbar .titlebar-spacer,
 %endif
 %ifndef MOZ_WIDGET_COCOA
+%ifndef MOZ_WIDGET_GTK
 :root:not([sizemode=normal]) .titlebar-spacer[type="pre-tabs"],
+%endif
 %endif
 :root:not([chromemargin]) .titlebar-buttonbox-container,
 :root[inFullscreen] .titlebar-buttonbox-container,
@@ -293,6 +289,18 @@ window:not([chromehidden~="toolbar"]) #nav-bar[nonemptyoverflow] > .overflow-but
 :root:not([tabsintitlebar]) .titlebar-spacer {
   display: none;
 }
+%ifdef MOZ_WIDGET_GTK
+@media (-moz-gtk-csd-reversed-placement: 0) {
+  :root:not([sizemode=normal]) .titlebar-spacer[type="pre-tabs"] {
+    display: none;
+  }
+}
+@media (-moz-gtk-csd-reversed-placement) {
+  :root:not([sizemode=normal]) .titlebar-spacer[type="post-tabs"] {
+    display: none;
+  }
+}
+%endif
 
 %ifdef MENUBAR_CAN_AUTOHIDE
 #toolbar-menubar[autohide=true]:not([inactive]) + #TabsToolbar > .titlebar-buttonbox-container {
@@ -361,7 +369,7 @@ toolbarpaletteitem {
 }
 
 #navigator-toolbox[fullscreenShouldAnimate] {
-  transition: 1.5s margin-top ease-out;
+  transition: 0.8s margin-top ease-out;
 }
 
 /* Rules to help integrate WebExtension buttons */
@@ -537,8 +545,10 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
   -moz-binding: url(chrome://browser/content/urlbarBindings.xml#legacy-urlbar);
 }
 
-#urlbar[quantumbar] {
-  -moz-binding: url(chrome://browser/content/urlbarBindings.xml#urlbar);
+@supports -moz-bool-pref("browser.urlbar.quantumbar") {
+  #urlbar {
+    -moz-binding: url(chrome://browser/content/urlbarBindings.xml#urlbar);
+  }
 }
 
 /* Display URLs left-to-right but right aligned in RTL mode. */
@@ -624,7 +634,7 @@ html|input.urlbar-input {
 
 /* Never show a scrollbar for the Location Bar popup.  This overrides the
    richlistbox inline overflow: auto style.*/
-#PopupAutoCompleteRichResult > richlistbox > scrollbox {
+#PopupAutoCompleteRichResult > richlistbox {
   overflow: hidden !important;
 }
 
@@ -737,10 +747,6 @@ html|input.urlbar-input {
 
 #PopupAutoCompleteRichResult.showSearchSuggestionsNotification > richlistbox {
   transition: none;
-}
-
-#DateTimePickerPanel[active="true"] {
-  -moz-binding: url("chrome://global/content/bindings/datetimepopup.xml#datetime-popup");
 }
 
 #urlbar[pageproxystate=invalid] > #page-action-buttons > .urlbar-page-action,
@@ -928,7 +934,7 @@ html|*.pointerlockfswarning {
   top: 0; left: 50%;
   transform: translate(-50%, -100%);
   box-sizing: border-box;
-  width: -moz-max-content;
+  width: max-content;
   max-width: 95%;
   pointer-events: none;
 }
@@ -1269,6 +1275,7 @@ toolbarpaletteitem > toolbarbutton,
 toolbarpaletteitem > toolbaritem {
   /* Prevent children from getting events */
   pointer-events: none;
+  -moz-box-pack: center;
 }
 
 :root[customizing=true] .addon-banner-item,

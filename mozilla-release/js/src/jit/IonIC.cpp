@@ -253,6 +253,7 @@ void IonIC::trace(JSTracer* trc) {
 
   bool attached = false;
   bool isTemporarilyUnoptimizable = false;
+  bool canAddSlot = false;
 
   if (ic->state().maybeTransition()) {
     ic->discardStubs(cx->zone());
@@ -276,8 +277,9 @@ void IonIC::trace(JSTracer* trc) {
     RootedScript script(cx, ic->script());
     jsbytecode* pc = ic->pc();
     SetPropIRGenerator gen(cx, script, pc, ic->kind(), ic->state().mode(),
-                           &isTemporarilyUnoptimizable, objv, idVal, rhs,
-                           ic->needsTypeBarrier(), ic->guardHoles());
+                           &isTemporarilyUnoptimizable, &canAddSlot, objv,
+                           idVal, rhs, ic->needsTypeBarrier(),
+                           ic->guardHoles());
     if (gen.tryAttachStub()) {
       ic->attachCacheIRStub(cx, gen.writerRef(), gen.cacheKind(), ionScript,
                             &attached, gen.typeCheckInfo());
@@ -340,9 +342,10 @@ void IonIC::trace(JSTracer* trc) {
     RootedScript script(cx, ic->script());
     jsbytecode* pc = ic->pc();
     SetPropIRGenerator gen(cx, script, pc, ic->kind(), ic->state().mode(),
-                           &isTemporarilyUnoptimizable, objv, idVal, rhs,
-                           ic->needsTypeBarrier(), ic->guardHoles());
-    if (gen.tryAttachAddSlotStub(oldGroup, oldShape)) {
+                           &isTemporarilyUnoptimizable, &canAddSlot, objv,
+                           idVal, rhs, ic->needsTypeBarrier(),
+                           ic->guardHoles());
+    if (canAddSlot && gen.tryAttachAddSlotStub(oldGroup, oldShape)) {
       ic->attachCacheIRStub(cx, gen.writerRef(), gen.cacheKind(), ionScript,
                             &attached, gen.typeCheckInfo());
     } else {
@@ -494,18 +497,30 @@ static void TryAttachIonStub(JSContext* cx, IC* ic, IonScript* ionScript,
   jsbytecode* pc = ic->pc();
   JSOp op = JSOp(*pc);
 
+  // The unary operations take a copied val because the original value is needed
+  // below.
+  RootedValue valCopy(cx, val);
   switch (op) {
     case JSOP_BITNOT: {
-      RootedValue valCopy(cx, val);
       if (!BitNot(cx, &valCopy, res)) {
         return false;
       }
       break;
     }
     case JSOP_NEG: {
-      // We copy val here because the original value is needed below.
-      RootedValue valCopy(cx, val);
       if (!NegOperation(cx, &valCopy, res)) {
+        return false;
+      }
+      break;
+    }
+    case JSOP_INC: {
+      if (!IncOperation(cx, &valCopy, res)) {
+        return false;
+      }
+      break;
+    }
+    case JSOP_DEC: {
+      if (!DecOperation(cx, &valCopy, res)) {
         return false;
       }
       break;

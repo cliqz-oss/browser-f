@@ -16,16 +16,16 @@ let inputOptions;
 /**
  * Asserts that the query context has the expected values.
  *
- * @param {QueryContext} context
- * @param {object} expectedValues The expected values for the QueryContext.
+ * @param {UrlbarQueryContext} context
+ * @param {object} expectedValues The expected values for the UrlbarQueryContext.
  */
 function assertContextMatches(context, expectedValues) {
-  Assert.ok(context instanceof QueryContext,
-    "Should be a QueryContext");
+  Assert.ok(context instanceof UrlbarQueryContext,
+    "Should be a UrlbarQueryContext");
 
   for (let [key, value] of Object.entries(expectedValues)) {
     Assert.equal(context[key], value,
-      `Should have the expected value for ${key} in the QueryContext`);
+      `Should have the expected value for ${key} in the UrlbarQueryContext`);
   }
 }
 
@@ -33,10 +33,10 @@ function assertContextMatches(context, expectedValues) {
  * Checks the result of a startQuery call on the controller.
  *
  * @param {object} stub The sinon stub that should have been called with the
- *                      QueryContext.
+ *                      UrlbarQueryContext.
  * @param {object} expectedQueryContextProps
  *                   An object consisting of name/value pairs to check against the
- *                   QueryContext properties.
+ *                   UrlbarQueryContext properties.
  */
 function checkStartQueryCall(stub, expectedQueryContextProps) {
   Assert.equal(stub.callCount, 1,
@@ -47,8 +47,8 @@ function checkStartQueryCall(stub, expectedQueryContextProps) {
     "Should have called startQuery with one argument");
 
   let queryContext = args[0];
-  Assert.ok(queryContext instanceof QueryContext,
-    "Should have been passed a QueryContext");
+  Assert.ok(queryContext instanceof UrlbarQueryContext,
+    "Should have been passed a UrlbarQueryContext");
 
   for (let [name, value] of Object.entries(expectedQueryContextProps)) {
     Assert.deepEqual(queryContext[name],
@@ -99,10 +99,9 @@ add_task(async function setup() {
 });
 
 add_task(function test_input_starts_query() {
+  input.inputField.value = "search";
   input.handleEvent({
-    target: {
-      value: "search",
-    },
+    target: input.inputField,
     type: "input",
   });
 
@@ -122,10 +121,9 @@ add_task(function test_input_with_private_browsing() {
   // will use the updated return value of the private browsing stub.
   let privateInput = new UrlbarInput(inputOptions);
 
+  privateInput.inputField.value = "search";
   privateInput.handleEvent({
-    target: {
-      value: "search",
-    },
+    target: privateInput.inputField,
     type: "input",
   });
 

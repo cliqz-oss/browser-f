@@ -15,6 +15,7 @@ const clipboardHelper = require("devtools/shared/platform/clipboard");
 const { l10n } = require("devtools/client/webconsole/utils/messages");
 
 loader.lazyRequireGetter(this, "openContentLink", "devtools/client/shared/link", true);
+loader.lazyRequireGetter(this, "getElementText", "devtools/client/webconsole/utils/clipboard", true);
 
 /**
  * Create a Menu instance for the webconsole.
@@ -167,6 +168,17 @@ function createContextMenu(hud, parentNode, {
     click: () => {
       const webconsoleOutput = parentNode.querySelector(".webconsole-output");
       selection.selectAllChildren(webconsoleOutput);
+    },
+  }));
+
+  // Export to clipboard
+  menu.append(new MenuItem({
+    id: "console-menu-export-clipboard",
+    label: l10n.getStr("webconsole.menu.exportClipboard.label"),
+    disabled: false,
+    click: () => {
+      const webconsoleOutput = parentNode.querySelector(".webconsole-output");
+      clipboardHelper.copyString(getElementText(webconsoleOutput));
     },
   }));
 

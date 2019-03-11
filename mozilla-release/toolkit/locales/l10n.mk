@@ -78,7 +78,6 @@ STAGEDIST = $(ABS_DIST)/l10n-stage/$(MOZ_PKG_DIR)
 endif
 UNPACKED_INSTALLER = $(ABS_DIST)/unpacked-installer
 
-include $(MOZILLA_DIR)/toolkit/mozapps/installer/signing.mk
 include $(MOZILLA_DIR)/toolkit/mozapps/installer/packager.mk
 
 PACKAGE_BASE_DIR = $(ABS_DIST)/l10n-stage
@@ -183,14 +182,22 @@ L10N_CO = $(error You need to use either hg or git)
 endif
 endif
 
-
 merge-%: IS_LANGUAGE_REPACK=1
 merge-%: AB_CD=$*
 merge-%:
 # For nightly builds, we automatically check out missing localizations
-# from l10n-central.
+# from l10n-central.  We never automatically check out in automation:
+# automation builds check out revisions that have been signed-off by
+# l10n drivers prior to use.
+ifdef MOZ_AUTOMATION
+	if  ! test -d $(L10NBASEDIR)/$(AB_CD) ; then \
+		echo 'Error: Automation requires l10n repositories to be checked out: $(L10NBASEDIR)/$(AB_CD)' ; \
+		exit 1 ; \
+	fi
+endif
 ifdef NIGHTLY_BUILD
-	@if  ! test -d $(L10NBASEDIR)/$(AB_CD) ; then \
+	if  ! test -d $(L10NBASEDIR)/$(AB_CD) ; then \
+		echo 'Checking out $(L10NBASEDIR)/$(AB_CD)' ; \
 		$(NSINSTALL) -D $(L10NBASEDIR) ; \
 		$(L10N_CO) ; \
 	fi

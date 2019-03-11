@@ -16,12 +16,12 @@
 #include "mozilla/Services.h"
 
 #ifdef DEBUG
-#define ASSERT_OWNING_THREAD()                           \
-  do {                                                   \
-    MOZ_ASSERT(mOwningEventTarget->IsOnCurrentThread()); \
-  } while (0)
+#  define ASSERT_OWNING_THREAD()                           \
+    do {                                                   \
+      MOZ_ASSERT(mOwningEventTarget->IsOnCurrentThread()); \
+    } while (0)
 #else
-#define ASSERT_OWNING_THREAD() /* nothing */
+#  define ASSERT_OWNING_THREAD() /* nothing */
 #endif
 
 namespace mozilla {
@@ -478,7 +478,16 @@ LazyIdleThread::HasPendingEvents(bool* aHasPendingEvents) {
 }
 
 NS_IMETHODIMP
-LazyIdleThread::IdleDispatch(already_AddRefed<nsIRunnable> aEvent) {
+LazyIdleThread::HasPendingHighPriorityEvents(bool* aHasPendingEvents) {
+  // This is only supposed to be called from the thread itself so it's not
+  // implemented here.
+  MOZ_ASSERT_UNREACHABLE("Shouldn't ever call this!");
+  return NS_ERROR_UNEXPECTED;
+}
+
+NS_IMETHODIMP
+LazyIdleThread::DispatchToQueue(already_AddRefed<nsIRunnable> aEvent,
+                                EventQueuePriority aQueue) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 

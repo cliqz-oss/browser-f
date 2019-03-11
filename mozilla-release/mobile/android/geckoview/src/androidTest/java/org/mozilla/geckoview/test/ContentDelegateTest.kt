@@ -46,7 +46,7 @@ class ContentDelegateTest : BaseSessionTest() {
 
         sessionRule.waitUntilCalled(object : Callbacks.ContentDelegate {
             @AssertCalled(count = 2)
-            override fun onTitleChange(session: GeckoSession, title: String) {
+            override fun onTitleChange(session: GeckoSession, title: String?) {
                 assertThat("Title should match", title,
                            equalTo(forEachCall("Title1", "Title2")))
             }
@@ -174,7 +174,8 @@ class ContentDelegateTest : BaseSessionTest() {
         mainSession.loadUri(startUri)
         sessionRule.waitForPageStop()
 
-        mainSession.evaluateJS("$('#name').value = 'the name'; window.scrollBy(0, 100);")
+        mainSession.evaluateJS("$('#name').value = 'the name'; window.setTimeout(() => window.scrollBy(0, 100),0);")
+        sessionRule.waitUntilCalled(Callbacks.ScrollDelegate::class, "onScrollChanged")
 
         val state = sessionRule.waitForResult(mainSession.saveState())
         assertThat("State should not be null", state, notNullValue())
@@ -187,7 +188,7 @@ class ContentDelegateTest : BaseSessionTest() {
 
         sessionRule.forCallbacksDuringWait(object : Callbacks.NavigationDelegate {
             @AssertCalled
-            override fun onLocationChange(session: GeckoSession, url: String) {
+            override fun onLocationChange(session: GeckoSession, url: String?) {
                 assertThat("URI should match", url, equalTo(startUri))
             }
         })
@@ -197,7 +198,7 @@ class ContentDelegateTest : BaseSessionTest() {
                 equalTo("the name"))
 
         assertThat("Scroll position should match",
-                mainSession.evaluateJS("window.scrollY") as Double,
+                mainSession.evaluateJS("window.visualViewport.pageTop") as Double,
                 closeTo(100.0, .5))
     }
 

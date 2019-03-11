@@ -19,7 +19,7 @@
 #include "nsIPresShell.h"
 #include "nsIContentInlines.h"
 #include "nsIContentViewer.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsPIDOMWindow.h"
 #include "nsIWebNavigation.h"
 #include "nsIWebProgress.h"
@@ -107,17 +107,17 @@
 #include "mozilla/ContentPrincipal.h"
 
 #ifdef XP_WIN
-#include "mozilla/plugins/PPluginWidgetParent.h"
-#include "../plugins/ipc/PluginWidgetParent.h"
+#  include "mozilla/plugins/PPluginWidgetParent.h"
+#  include "../plugins/ipc/PluginWidgetParent.h"
 #endif
 
 #ifdef MOZ_XUL
-#include "nsXULPopupManager.h"
+#  include "nsXULPopupManager.h"
 #endif
 
 #ifdef NS_PRINTING
-#include "mozilla/embedding/printingui/PrintingParent.h"
-#include "nsIWebBrowserPrint.h"
+#  include "mozilla/embedding/printingui/PrintingParent.h"
+#  include "nsIWebBrowserPrint.h"
 #endif
 
 using namespace mozilla;
@@ -196,7 +196,7 @@ nsFrameLoader* nsFrameLoader::Create(Element* aOwner,
                                      bool aNetworkCreated,
                                      int32_t aJSPluginId) {
   NS_ENSURE_TRUE(aOwner, nullptr);
-  nsIDocument* doc = aOwner->OwnerDoc();
+  Document* doc = aOwner->OwnerDoc();
 
   // We never create nsFrameLoaders for elements in resource documents.
   //
@@ -258,7 +258,7 @@ void nsFrameLoader::LoadFrame(bool aOriginalSrc) {
     }
   }
 
-  nsIDocument* doc = mOwnerContent->OwnerDoc();
+  Document* doc = mOwnerContent->OwnerDoc();
   if (doc->IsStaticDocument()) {
     return;
   }
@@ -311,7 +311,7 @@ nsresult nsFrameLoader::LoadURI(nsIURI* aURI,
 
   mLoadingOriginalSrc = aOriginalSrc;
 
-  nsCOMPtr<nsIDocument> doc = mOwnerContent->OwnerDoc();
+  nsCOMPtr<Document> doc = mOwnerContent->OwnerDoc();
 
   nsresult rv;
   // If IsForJSPlugin() returns true then we want to allow the load. We're just
@@ -376,7 +376,7 @@ nsresult nsFrameLoader::ReallyStartLoadingInternal() {
   rv = CheckURILoad(mURIToLoad, mTriggeringPrincipal);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  RefPtr<nsDocShellLoadState> loadState = new nsDocShellLoadState();
+  RefPtr<nsDocShellLoadState> loadState = new nsDocShellLoadState(mURIToLoad);
 
   loadState->SetOriginalFrameSrc(mLoadingOriginalSrc);
   mLoadingOriginalSrc = false;
@@ -456,7 +456,6 @@ nsresult nsFrameLoader::ReallyStartLoadingInternal() {
   // Kick off the load...
   bool tmpState = mNeedsAsyncDestroy;
   mNeedsAsyncDestroy = true;
-  loadState->SetURI(mURIToLoad);
   loadState->SetLoadFlags(flags);
   loadState->SetFirstParty(false);
   rv = mDocShell->LoadURI(loadState);
@@ -504,7 +503,7 @@ nsresult nsFrameLoader::CheckURILoad(nsIURI* aURI,
   return CheckForRecursiveLoad(aURI);
 }
 
-nsIDocShell* nsFrameLoader::GetDocShell(ErrorResult& aRv) {
+nsDocShell* nsFrameLoader::GetDocShell(ErrorResult& aRv) {
   if (IsRemoteFrame()) {
     return nullptr;
   }
@@ -630,7 +629,7 @@ class MOZ_RAII AutoResetInShow {
   ~AutoResetInShow() { mFrameLoader->mInShow = false; }
 };
 
-static bool ParentWindowIsActive(nsIDocument* aDoc) {
+static bool ParentWindowIsActive(Document* aDoc) {
   nsCOMPtr<nsPIWindowRoot> root = nsContentUtils::GetWindowRoot(aDoc);
   if (root) {
     nsPIDOMWindowOuter* rootWin = root->GetWindow();
@@ -676,13 +675,10 @@ bool nsFrameLoader::Show(int32_t marginWidth, int32_t marginHeight,
   mDocShell->SetMarginWidth(marginWidth);
   mDocShell->SetMarginHeight(marginHeight);
 
-  nsCOMPtr<nsIScrollable> sc = do_QueryInterface(mDocShell);
-  if (sc) {
-    sc->SetDefaultScrollbarPreferences(nsIScrollable::ScrollOrientation_X,
-                                       scrollbarPrefX);
-    sc->SetDefaultScrollbarPreferences(nsIScrollable::ScrollOrientation_Y,
-                                       scrollbarPrefY);
-  }
+  mDocShell->SetDefaultScrollbarPreferences(nsIScrollable::ScrollOrientation_X,
+                                            scrollbarPrefX);
+  mDocShell->SetDefaultScrollbarPreferences(nsIScrollable::ScrollOrientation_Y,
+                                            scrollbarPrefY);
 
   nsCOMPtr<nsIPresShell> presShell = mDocShell->GetPresShell();
   if (presShell) {
@@ -699,8 +695,7 @@ bool nsFrameLoader::Show(int32_t marginWidth, int32_t marginHeight,
   nsView* view = frame->EnsureInnerView();
   if (!view) return false;
 
-  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mDocShell);
-  NS_ASSERTION(baseWindow, "Found a nsIDocShell that isn't a nsIBaseWindow.");
+  RefPtr<nsDocShell> baseWindow = mDocShell;
   baseWindow->InitWindow(nullptr, view->GetWidget(), 0, 0, size.width,
                          size.height);
   // This is kinda whacky, this "Create()" call doesn't really
@@ -716,7 +711,7 @@ bool nsFrameLoader::Show(int32_t marginWidth, int32_t marginHeight,
   // https://bugzilla.mozilla.org/show_bug.cgi?id=284245
   presShell = mDocShell->GetPresShell();
   if (presShell) {
-    nsIDocument* doc = presShell->GetDocument();
+    Document* doc = presShell->GetDocument();
     nsHTMLDocument* htmlDoc =
         doc && doc->IsHTMLOrXHTML() ? doc->AsHTMLDocument() : nullptr;
 
@@ -772,7 +767,7 @@ void nsFrameLoader::MarginsChanged(uint32_t aMarginWidth,
 
   // There's a cached property declaration block
   // that needs to be updated
-  if (nsIDocument* doc = mDocShell->GetDocument()) {
+  if (Document* doc = mDocShell->GetDocument()) {
     for (nsINode* cur = doc; cur; cur = cur->GetNextNode()) {
       if (cur->IsHTMLElement(nsGkAtoms::body)) {
         static_cast<HTMLBodyElement*>(cur)->ClearMappedServoStyle();
@@ -859,9 +854,7 @@ void nsFrameLoader::Hide() {
   mDocShell->GetContentViewer(getter_AddRefs(contentViewer));
   if (contentViewer) contentViewer->SetSticky(false);
 
-  nsCOMPtr<nsIBaseWindow> baseWin = do_QueryInterface(mDocShell);
-  NS_ASSERTION(baseWin,
-               "Found an nsIDocShell which doesn't implement nsIBaseWindow.");
+  RefPtr<nsDocShell> baseWin = mDocShell;
   baseWin->SetVisibility(false);
   baseWin->SetParentWidget(nullptr);
 }
@@ -915,8 +908,8 @@ nsresult nsFrameLoader::SwapWithOtherRemoteLoader(
     return NS_ERROR_DOM_SECURITY_ERR;
   }
 
-  nsIDocument* ourDoc = ourContent->GetComposedDoc();
-  nsIDocument* otherDoc = otherContent->GetComposedDoc();
+  Document* ourDoc = ourContent->GetComposedDoc();
+  Document* otherDoc = otherContent->GetComposedDoc();
   if (!ourDoc || !otherDoc) {
     // Again, how odd, given that we had docshells
     return NS_ERROR_NOT_IMPLEMENTED;
@@ -1323,21 +1316,20 @@ nsresult nsFrameLoader::SwapWithOtherLoader(nsFrameLoader* aOther,
                    SameCOMIdentity(otherChromeEventHandler, otherContent),
                "How did that happen, exactly?");
 
-  nsCOMPtr<nsIDocument> ourChildDocument = ourWindow->GetExtantDoc();
-  nsCOMPtr<nsIDocument> otherChildDocument = otherWindow->GetExtantDoc();
+  nsCOMPtr<Document> ourChildDocument = ourWindow->GetExtantDoc();
+  nsCOMPtr<Document> otherChildDocument = otherWindow->GetExtantDoc();
   if (!ourChildDocument || !otherChildDocument) {
     // This shouldn't be happening
     return NS_ERROR_NOT_IMPLEMENTED;
   }
 
-  nsCOMPtr<nsIDocument> ourParentDocument =
-      ourChildDocument->GetParentDocument();
-  nsCOMPtr<nsIDocument> otherParentDocument =
+  nsCOMPtr<Document> ourParentDocument = ourChildDocument->GetParentDocument();
+  nsCOMPtr<Document> otherParentDocument =
       otherChildDocument->GetParentDocument();
 
   // Make sure to swap docshells between the two frames.
-  nsIDocument* ourDoc = ourContent->GetComposedDoc();
-  nsIDocument* otherDoc = otherContent->GetComposedDoc();
+  Document* ourDoc = ourContent->GetComposedDoc();
+  Document* otherDoc = otherContent->GetComposedDoc();
   if (!ourDoc || !otherDoc) {
     // Again, how odd, given that we had docshells
     return NS_ERROR_NOT_IMPLEMENTED;
@@ -1572,7 +1564,7 @@ void nsFrameLoader::StartDestroy() {
     mRemoteBrowser->RemoveWindowListeners();
   }
 
-  nsCOMPtr<nsIDocument> doc;
+  nsCOMPtr<Document> doc;
   bool dynamicSubframeRemoval = false;
   if (mOwnerContent) {
     doc = mOwnerContent->OwnerDoc();
@@ -1678,9 +1670,8 @@ void nsFrameLoader::DestroyDocShell() {
   }
 
   // Destroy the docshell.
-  nsCOMPtr<nsIBaseWindow> base_win(do_QueryInterface(mDocShell));
-  if (base_win) {
-    base_win->Destroy();
+  if (mDocShell) {
+    mDocShell->Destroy();
   }
   mDocShell = nullptr;
 
@@ -1740,12 +1731,19 @@ void nsFrameLoader::SetOwnerContent(Element* aContent) {
   if (wrapper) {
     JSAutoRealm ar(jsapi.cx(), wrapper);
     IgnoredErrorResult rv;
-    ReparentWrapper(jsapi.cx(), wrapper, rv);
+    UpdateReflectorGlobal(jsapi.cx(), wrapper, rv);
     Unused << NS_WARN_IF(rv.Failed());
   }
 
-  if (RenderFrame* rfp = GetCurrentRenderFrame()) {
-    rfp->OwnerContentChanged(aContent);
+  // If we have reached here from StartDestroy, then there's no need to update
+  // the layers attached by the render frame, as it will be going away soon
+  if (mDestroyCalled) {
+    MOZ_ASSERT(!aContent);
+    return;
+  }
+
+  if (RenderFrame* rf = GetCurrentRenderFrame()) {
+    rf->OwnerContentChanged(aContent);
   }
 }
 
@@ -1845,7 +1843,7 @@ nsresult nsFrameLoader::MaybeCreateDocShell() {
   // Get our parent docshell off the document of mOwnerContent
   // XXXbz this is such a total hack.... We really need to have a
   // better setup for doing this.
-  nsIDocument* doc = mOwnerContent->OwnerDoc();
+  Document* doc = mOwnerContent->OwnerDoc();
 
   MOZ_RELEASE_ASSERT(!doc->IsResourceDoc(), "We shouldn't even exist");
 
@@ -1978,8 +1976,8 @@ nsresult nsFrameLoader::MaybeCreateDocShell() {
   // This is kinda whacky, this call doesn't really create anything,
   // but it must be called to make sure things are properly
   // initialized.
-  nsCOMPtr<nsIBaseWindow> baseWin = do_QueryInterface(mDocShell);
-  if (NS_FAILED(baseWin->Create())) {
+  RefPtr<nsDocShell> docShell = mDocShell;
+  if (NS_FAILED(docShell->Create())) {
     // Do not call Destroy() here. See bug 472312.
     NS_WARNING("Something wrong when creating the docshell for a frameloader!");
     return NS_ERROR_FAILURE;
@@ -2037,6 +2035,12 @@ nsresult nsFrameLoader::MaybeCreateDocShell() {
     attrs.mAppId = nsIScriptSecurityManager::NO_APP_ID;
     attrs.mInIsolatedMozBrowser = OwnerIsIsolatedMozBrowserFrame();
     mDocShell->SetFrameType(nsIDocShell::FRAME_TYPE_BROWSER);
+  } else {
+    nsCOMPtr<nsIDocShellTreeItem> parentCheck;
+    mDocShell->GetSameTypeParent(getter_AddRefs(parentCheck));
+    if (!!parentCheck) {
+      mDocShell->SetIsFrame();
+    }
   }
 
   // Apply sandbox flags even if our owner is not an iframe, as this copies
@@ -2247,7 +2251,7 @@ nsresult nsFrameLoader::CheckForRecursiveLoad(nsIURI* aURI) {
 
 nsresult nsFrameLoader::GetWindowDimensions(nsIntRect& aRect) {
   // Need to get outer window position here
-  nsIDocument* doc = mOwnerContent->GetComposedDoc();
+  Document* doc = mOwnerContent->GetComposedDoc();
   if (!doc) {
     return NS_ERROR_FAILURE;
   }
@@ -2298,8 +2302,7 @@ nsresult nsFrameLoader::UpdatePositionAndSize(nsSubDocumentFrame* aIFrame) {
 
 void nsFrameLoader::UpdateBaseWindowPositionAndSize(
     nsSubDocumentFrame* aIFrame) {
-  nsCOMPtr<nsIBaseWindow> baseWindow =
-      do_QueryInterface(GetDocShell(IgnoreErrors()));
+  nsCOMPtr<nsIBaseWindow> baseWindow = GetDocShell(IgnoreErrors());
 
   // resize the sub document
   if (baseWindow) {
@@ -2370,7 +2373,7 @@ void nsFrameLoader::SetClampScrollPosition(bool aClamp) {
 static Tuple<ContentParent*, TabParent*> GetContentParent(Element* aBrowser) {
   using ReturnTuple = Tuple<ContentParent*, TabParent*>;
 
-  nsCOMPtr<nsIBrowser> browser = do_QueryInterface(aBrowser);
+  nsCOMPtr<nsIBrowser> browser = aBrowser ? aBrowser->AsBrowser() : nullptr;
   if (!browser) {
     return ReturnTuple(nullptr, nullptr);
   }
@@ -2401,7 +2404,7 @@ bool nsFrameLoader::TryRemoteBrowser() {
   // XXXsmaug Per spec (2014/08/21) frameloader should not work in case the
   //         element isn't in document, only in shadow dom, but that will change
   //         https://www.w3.org/Bugs/Public/show_bug.cgi?id=26365#c0
-  nsIDocument* doc = mOwnerContent->GetComposedDoc();
+  Document* doc = mOwnerContent->GetComposedDoc();
   if (!doc) {
     return false;
   }
@@ -2622,7 +2625,7 @@ nsresult nsFrameLoader::CreateStaticClone(nsFrameLoader* aDest) {
   aDest->MaybeCreateDocShell();
   NS_ENSURE_STATE(aDest->mDocShell);
 
-  nsCOMPtr<nsIDocument> kungFuDeathGrip = aDest->mDocShell->GetDocument();
+  nsCOMPtr<Document> kungFuDeathGrip = aDest->mDocShell->GetDocument();
   Unused << kungFuDeathGrip;
 
   nsCOMPtr<nsIContentViewer> viewer;
@@ -2632,10 +2635,10 @@ nsresult nsFrameLoader::CreateStaticClone(nsFrameLoader* aDest) {
   nsIDocShell* origDocShell = GetDocShell(IgnoreErrors());
   NS_ENSURE_STATE(origDocShell);
 
-  nsCOMPtr<nsIDocument> doc = origDocShell->GetDocument();
+  nsCOMPtr<Document> doc = origDocShell->GetDocument();
   NS_ENSURE_STATE(doc);
 
-  nsCOMPtr<nsIDocument> clonedDoc = doc->CreateStaticClone(aDest->mDocShell);
+  nsCOMPtr<Document> clonedDoc = doc->CreateStaticClone(aDest->mDocShell);
 
   viewer->SetDocument(clonedDoc);
   return NS_OK;
@@ -2813,13 +2816,13 @@ void nsFrameLoader::SetRemoteBrowser(nsITabParent* aTabParent) {
 }
 
 void nsFrameLoader::SetDetachedSubdocFrame(nsIFrame* aDetachedFrame,
-                                           nsIDocument* aContainerDoc) {
+                                           Document* aContainerDoc) {
   mDetachedSubdocFrame = aDetachedFrame;
   mContainerDocWhileDetached = aContainerDoc;
 }
 
 nsIFrame* nsFrameLoader::GetDetachedSubdocFrame(
-    nsIDocument** aContainerDoc) const {
+    Document** aContainerDoc) const {
   NS_IF_ADDREF(*aContainerDoc = mContainerDocWhileDetached);
   return mDetachedSubdocFrame.GetFrame();
 }
@@ -2977,7 +2980,7 @@ already_AddRefed<mozilla::dom::Promise> nsFrameLoader::DrawSnapshot(
     return nullptr;
   }
 
-  RefPtr<nsIDocument> document = GetOwnerContent()->GetOwnerDocument();
+  RefPtr<Document> document = GetOwnerContent()->GetOwnerDocument();
   if (NS_WARN_IF(!document)) {
     aRv = NS_ERROR_FAILURE;
     return nullptr;
@@ -3018,7 +3021,7 @@ already_AddRefed<nsILoadContext> nsFrameLoader::LoadContext() {
   if (IsRemoteFrame() && (mRemoteBrowser || TryRemoteBrowser())) {
     loadContext = mRemoteBrowser->GetLoadContext();
   } else {
-    loadContext = do_GetInterface(GetDocShell(IgnoreErrors()));
+    loadContext = do_GetInterface(ToSupports(GetDocShell(IgnoreErrors())));
   }
   return loadContext.forget();
 }
@@ -3075,9 +3078,8 @@ void nsFrameLoader::StartPersistence(
     return;
   }
 
-  nsCOMPtr<nsIDocument> rootDoc =
-      mDocShell ? mDocShell->GetDocument() : nullptr;
-  nsCOMPtr<nsIDocument> foundDoc;
+  nsCOMPtr<Document> rootDoc = mDocShell ? mDocShell->GetDocument() : nullptr;
+  nsCOMPtr<Document> foundDoc;
   if (aOuterWindowID) {
     foundDoc = nsContentUtils::GetSubdocumentWithOuterWindowId(rootDoc,
                                                                aOuterWindowID);
@@ -3160,7 +3162,7 @@ nsresult nsFrameLoader::GetNewTabContext(MutableTabContext* aTabContext,
   UIStateChangeType showFocusRings = UIStateChangeType_NoChange;
   uint64_t chromeOuterWindowID = 0;
 
-  nsIDocument* doc = mOwnerContent->OwnerDoc();
+  Document* doc = mOwnerContent->OwnerDoc();
   if (doc) {
     nsCOMPtr<nsPIWindowRoot> root = nsContentUtils::GetWindowRoot(doc);
     if (root) {

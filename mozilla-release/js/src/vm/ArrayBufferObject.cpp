@@ -16,10 +16,10 @@
 
 #include <string.h>
 #ifndef XP_WIN
-#include <sys/mman.h>
+#  include <sys/mman.h>
 #endif
 #ifdef MOZ_VALGRIND
-#include <valgrind/memcheck.h>
+#  include <valgrind/memcheck.h>
 #endif
 
 #include "jsapi.h"
@@ -35,6 +35,7 @@
 #include "gc/Memory.h"
 #include "js/Conversions.h"
 #include "js/MemoryMetrics.h"
+#include "js/PropertySpec.h"
 #include "js/Wrapper.h"
 #include "util/Windows.h"
 #include "vm/GlobalObject.h"
@@ -86,32 +87,57 @@ bool js::ToClampedIndex(JSContext* cx, HandleValue v, uint32_t length,
   return true;
 }
 
-// If there are too many 4GB buffers live we run up against system resource
-// exhaustion (address space or number of memory map descriptors), see
-// bug 1068684, bug 1073934 for details.  The limiting case seems to be
-// Windows Vista Home 64-bit, where the per-process address space is limited
-// to 8TB.  Thus we track the number of live objects, and set a limit of
-// 1000 live objects per process and we throw an OOM error if the per-process
-// limit is exceeded.
+// If there are too many wasm memory buffers (typically 6GB each) live we run up
+// against system resource exhaustion (address space or number of memory map
+// descriptors), see bug 1068684, bug 1073934, bug 1517412, bug 1502733 for
+// details.  The limiting case seems to be Android on ARM64, where the
+// per-process address space is limited to 4TB (39 bits) by the organization of
+// the page tables.  An earlier problem was Windows Vista Home 64-bit, where the
+// per-process address space is limited to 8TB (40 bits).
+//
+// Thus we track the number of live objects, and set a limit of the number of
+// live buffer objects per process.  We trigger GC work when we approach the
+// limit and we throw an OOM error if the per-process limit is exceeded.  The
+// limit (MaximumLiveMappedBuffers) is specific to architecture, OS, and OS
+// configuration.
 //
 // Since the MaximumLiveMappedBuffers limit is not generally accounted for by
 // any existing GC-trigger heuristics, we need an extra heuristic for triggering
 // GCs when the caller is allocating memories rapidly without other garbage.
-// Thus, once the live buffer count crosses a certain threshold, we start
-// triggering GCs every N allocations. As we get close to the limit, perform
-// expensive non-incremental full GCs as a last-ditch effort to avoid
-// unnecessary failure. The *Sans use a ton of vmem for bookkeeping leaving a
-// lot less for the program so use a lower limit.
+// Thus, once the live buffer count crosses the threshold
+// StartTriggeringAtLiveBufferCount, we start triggering GCs every
+// AllocatedBuffersPerTrigger allocations.  Once we reach
+// StartSyncFullGCAtLiveBufferCount live buffers, we perform expensive
+// non-incremental full GCs as a last-ditch effort to avoid unnecessary failure.
+// Once we reach MaximumLiveMappedBuffers, we perform further full GCs before
+// giving up.
 
-#if defined(MOZ_TSAN) || defined(MOZ_ASAN)
+#if defined(JS_CODEGEN_ARM64) && defined(ANDROID)
+// With 6GB mappings, the hard limit is 84 buffers.  75 cuts it close.
+static const int32_t MaximumLiveMappedBuffers = 75;
+#elif defined(MOZ_TSAN) || defined(MOZ_ASAN)
+// ASAN and TSAN use a ton of vmem for bookkeeping leaving a lot less for the
+// program so use a lower limit.
 static const int32_t MaximumLiveMappedBuffers = 500;
 #else
 static const int32_t MaximumLiveMappedBuffers = 1000;
 #endif
+
+// StartTriggeringAtLiveBufferCount + AllocatedBuffersPerTrigger must be well
+// below StartSyncFullGCAtLiveBufferCount in order to provide enough time for
+// incremental GC to do its job.
+
+#if defined(JS_CODEGEN_ARM64) && defined(ANDROID)
+static const int32_t StartTriggeringAtLiveBufferCount = 15;
+static const int32_t StartSyncFullGCAtLiveBufferCount =
+    MaximumLiveMappedBuffers - 15;
+static const int32_t AllocatedBuffersPerTrigger = 15;
+#else
 static const int32_t StartTriggeringAtLiveBufferCount = 100;
 static const int32_t StartSyncFullGCAtLiveBufferCount =
     MaximumLiveMappedBuffers - 100;
 static const int32_t AllocatedBuffersPerTrigger = 100;
+#endif
 
 static Atomic<int32_t, mozilla::ReleaseAcquire> liveBufferCount(0);
 static Atomic<int32_t, mozilla::ReleaseAcquire> allocatedSinceLastTrigger(0);
@@ -203,24 +229,24 @@ bool js::ExtendBufferMapping(void* dataPointer, size_t mappedSize,
   MOZ_ASSERT(newMappedSize % gc::SystemPageSize() == 0);
   MOZ_ASSERT(newMappedSize >= mappedSize);
 
-#ifdef XP_WIN
+#  ifdef XP_WIN
   void* mappedEnd = (char*)dataPointer + mappedSize;
   uint32_t delta = newMappedSize - mappedSize;
   if (!VirtualAlloc(mappedEnd, delta, MEM_RESERVE, PAGE_NOACCESS)) {
     return false;
   }
   return true;
-#elif defined(XP_LINUX)
+#  elif defined(XP_LINUX)
   // Note this will not move memory (no MREMAP_MAYMOVE specified)
   if (MAP_FAILED == mremap(dataPointer, mappedSize, newMappedSize, 0)) {
     return false;
   }
   return true;
-#else
+#  else
   // No mechanism for remapping on MacOS and other Unices. Luckily
   // shouldn't need it here as most of these are 64-bit.
   return false;
-#endif
+#  endif
 }
 #endif
 
@@ -293,7 +319,6 @@ static const ClassSpec ArrayBufferObjectClassSpec = {
     arraybuffer_proto_properties};
 
 static const ClassExtension ArrayBufferObjectClassExtension = {
-    nullptr, /* weakmapKeyDelegateOp */
     ArrayBufferObject::objectMoved};
 
 const Class ArrayBufferObject::class_ = {
@@ -394,7 +419,8 @@ bool ArrayBufferObject::class_constructor(JSContext* cx, unsigned argc,
   // Step 3 (Inlined 24.1.1.1 AllocateArrayBuffer).
   // 24.1.1.1, step 1 (Inlined 9.1.14 OrdinaryCreateFromConstructor).
   RootedObject proto(cx);
-  if (!GetPrototypeFromBuiltinConstructor(cx, args, &proto)) {
+  if (!GetPrototypeFromBuiltinConstructor(cx, args, JSProto_ArrayBuffer,
+                                          &proto)) {
     return false;
   }
 
@@ -425,7 +451,9 @@ static ArrayBufferObject::BufferContents AllocateArrayBufferContents(
 static void NoteViewBufferWasDetached(
     ArrayBufferViewObject* view, ArrayBufferObject::BufferContents newContents,
     JSContext* cx) {
-  view->notifyBufferDetached(cx, newContents.data());
+  MOZ_ASSERT(!view->isSharedMemory());
+
+  view->notifyBufferDetached(newContents.data());
 
   // Notify compiled jit code that the base pointer has moved.
   MarkObjectStateChange(cx, view);
@@ -769,12 +797,14 @@ static bool CreateBuffer(
   RawbufT* buffer = RawbufT::Allocate(initialSize, maxSize);
   if (!buffer) {
 #ifdef WASM_HUGE_MEMORY
+    wasm::Log(cx, "huge Memory allocation failed");
     ReportOutOfMemory(cx);
     return false;
 #else
     // If we fail, and have a maxSize, try to reserve the biggest chunk in
     // the range [initialSize, maxSize) using log backoff.
     if (!maxSize) {
+      wasm::Log(cx, "new Memory({initial=%u bytes}) failed", initialSize);
       ReportOutOfMemory(cx);
       return false;
     }
@@ -790,6 +820,7 @@ static bool CreateBuffer(
     }
 
     if (!buffer) {
+      wasm::Log(cx, "new Memory({initial=%u bytes}) failed", initialSize);
       ReportOutOfMemory(cx);
       return false;
     }
@@ -815,16 +846,32 @@ static bool CreateBuffer(
   // See MaximumLiveMappedBuffers comment above.
   if (liveBufferCount > StartSyncFullGCAtLiveBufferCount) {
     JS::PrepareForFullGC(cx);
-    JS::NonIncrementalGC(cx, GC_NORMAL, JS::gcreason::TOO_MUCH_WASM_MEMORY);
+    JS::NonIncrementalGC(cx, GC_NORMAL, JS::GCReason::TOO_MUCH_WASM_MEMORY);
     allocatedSinceLastTrigger = 0;
   } else if (liveBufferCount > StartTriggeringAtLiveBufferCount) {
     allocatedSinceLastTrigger++;
     if (allocatedSinceLastTrigger > AllocatedBuffersPerTrigger) {
-      Unused << cx->runtime()->gc.triggerGC(JS::gcreason::TOO_MUCH_WASM_MEMORY);
+      Unused << cx->runtime()->gc.triggerGC(JS::GCReason::TOO_MUCH_WASM_MEMORY);
       allocatedSinceLastTrigger = 0;
     }
   } else {
     allocatedSinceLastTrigger = 0;
+  }
+
+  if (maxSize) {
+#ifdef WASM_HUGE_MEMORY
+    wasm::Log(cx, "new Memory({initial:%u bytes, maximum:%u bytes}) succeeded",
+              unsigned(initialSize), unsigned(*maxSize));
+#else
+    wasm::Log(cx,
+              "new Memory({initial:%u bytes, maximum:%u bytes}) succeeded "
+              "with internal maximum of %u",
+              unsigned(initialSize), unsigned(*maxSize),
+              unsigned(object->wasmMaxSize().value()));
+#endif
+  } else {
+    wasm::Log(cx, "new Memory({initial:%u bytes}) succeeded",
+              unsigned(initialSize));
   }
 
   return true;

@@ -42,17 +42,17 @@
 #include "xpcpublic.h"
 
 #if defined(XP_WIN)
-#include "ShutdownLayer.h"
+#  include "ShutdownLayer.h"
 #endif
 
 /* Following inclusions required for keepalive config not supported by NSPR. */
 #include "private/pprio.h"
 #if defined(XP_WIN)
-#include <winsock2.h>
-#include <mstcpip.h>
+#  include <winsock2.h>
+#  include <mstcpip.h>
 #elif defined(XP_UNIX)
-#include <errno.h>
-#include <netinet/tcp.h>
+#  include <errno.h>
+#  include <netinet/tcp.h>
 #endif
 /* End keepalive config inclusions. */
 
@@ -97,7 +97,7 @@ class nsSocketEvent : public Runnable {
 
 //#define TEST_CONNECT_ERRORS
 #ifdef TEST_CONNECT_ERRORS
-#include <stdlib.h>
+#  include <stdlib.h>
 static PRErrorCode RandomizeConnectError(PRErrorCode code) {
   //
   // To test out these errors, load http://www.yahoo.com/.  It should load
@@ -717,6 +717,8 @@ nsSocketTransport::nsSocketTransport()
       mSocketTransportService(gSocketTransportService),
       mInput(this),
       mOutput(this),
+      mLingerPolarity(false),
+      mLingerTimeout(0),
       mQoSBits(0x00),
       mKeepaliveEnabled(false),
       mKeepaliveIdleTimeS(-1),
@@ -862,11 +864,11 @@ nsresult nsSocketTransport::InitWithName(const char *name, size_t length) {
 
   if (!name[0] && length > 1) {
     // name is abstract address name that is supported on Linux only
-#if defined(XP_LINUX)
+#  if defined(XP_LINUX)
     mHost.Assign(name + 1, length - 1);
-#else
+#  else
     return NS_ERROR_SOCKET_ADDRESS_NOT_SUPPORTED;
-#endif
+#  endif
   } else {
     // The name isn't abstract socket address.  So this is Unix domain
     // socket that has file path.
@@ -1978,7 +1980,8 @@ class ThunkPRClose : public Runnable {
   PRFileDesc *mFD;
 };
 
-void STS_PRCloseOnSocketTransport(PRFileDesc *fd) {
+void STS_PRCloseOnSocketTransport(PRFileDesc *fd, bool lingerPolarity,
+                                  int16_t lingerTimeout) {
   if (gSocketTransportService) {
     // Can't PR_Close() a socket off STS thread. Thunk it to STS to die
     gSocketTransportService->Dispatch(new ThunkPRClose(fd), NS_DISPATCH_NORMAL);
@@ -1999,13 +2002,22 @@ void nsSocketTransport::ReleaseFD_Locked(PRFileDesc *fd) {
          gSocketTransportService->MaxTimeForPrClosePref())) {
       // If shutdown last to long, let the socket leak and do not close it.
       SOCKET_LOG(("Intentional leak"));
-    } else if (OnSocketThread()) {
-      SOCKET_LOG(("nsSocketTransport: calling PR_Close [this=%p]\n", this));
-      CloseSocket(
-          mFD, mSocketTransportService->IsTelemetryEnabledAndNotSleepPhase());
     } else {
-      // Can't PR_Close() a socket off STS thread. Thunk it to STS to die
-      STS_PRCloseOnSocketTransport(mFD);
+      if (mLingerPolarity || mLingerTimeout) {
+        PRSocketOptionData socket_linger;
+        socket_linger.option = PR_SockOpt_Linger;
+        socket_linger.value.linger.polarity = mLingerPolarity;
+        socket_linger.value.linger.linger = mLingerTimeout;
+        PR_SetSocketOption(mFD, &socket_linger);
+      }
+      if (OnSocketThread()) {
+        SOCKET_LOG(("nsSocketTransport: calling PR_Close [this=%p]\n", this));
+        CloseSocket(
+            mFD, mSocketTransportService->IsTelemetryEnabledAndNotSleepPhase());
+      } else {
+        // Can't PR_Close() a socket off STS thread. Thunk it to STS to die
+        STS_PRCloseOnSocketTransport(mFD, mLingerPolarity, mLingerTimeout);
+      }
     }
     mFD = nullptr;
   }
@@ -2189,9 +2201,9 @@ void nsSocketTransport::OnSocketReady(PRFileDesc *fd, int16_t outFlags) {
     PRStatus status = PR_ConnectContinue(fd, outFlags);
 
 #if defined(_WIN64) && defined(WIN95)
-#ifndef TCP_FASTOPEN
-#define TCP_FASTOPEN 15
-#endif
+#  ifndef TCP_FASTOPEN
+#    define TCP_FASTOPEN 15
+#  endif
 
     if (mFDFastOpenInProgress && mFastOpenCallback &&
         (mFastOpenStatus == TFO_DATA_SENT)) {
@@ -2757,6 +2769,16 @@ nsSocketTransport::SetReuseAddrPort(bool reuseAddrPort) {
 }
 
 NS_IMETHODIMP
+nsSocketTransport::SetLinger(bool aPolarity, int16_t aTimeout) {
+  MutexAutoLock lock(mLock);
+
+  mLingerPolarity = aPolarity;
+  mLingerTimeout = aTimeout;
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsSocketTransport::SetQoSBits(uint8_t aQoSBits) {
   // Don't do any checking here of bits.  Why?  Because as of RFC-4594
   // several different Class Selector and Assured Forwarding values
@@ -3179,9 +3201,9 @@ nsSocketTransport::SetKeepaliveVals(int32_t aIdleTime, int32_t aRetryInterval) {
 
 #ifdef ENABLE_SOCKET_TRACING
 
-#include <stdio.h>
-#include <ctype.h>
-#include "prenv.h"
+#  include <stdio.h>
+#  include <ctype.h>
+#  include "prenv.h"
 
 static void DumpBytesToFile(const char *path, const char *header,
                             const char *buf, int32_t n) {
@@ -3286,25 +3308,25 @@ static void LogOSError(const char *aPrefix, const void *aObjPtr) {
 #if defined(DEBUG)
   MOZ_ASSERT(OnSocketThread(), "not on socket thread");
 
-#ifdef XP_WIN
+#  ifdef XP_WIN
   DWORD errCode = WSAGetLastError();
   LPVOID errMessage;
   FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
                     FORMAT_MESSAGE_IGNORE_INSERTS,
                 NULL, errCode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
                 (LPTSTR)&errMessage, 0, NULL);
-#else
+#  else
   int errCode = errno;
   char *errMessage = strerror(errno);
-#endif
+#  endif
   NS_WARNING(nsPrintfCString("%s [%p] OS error[0x%x] %s",
                              aPrefix ? aPrefix : "nsSocketTransport", aObjPtr,
                              errCode,
                              errMessage ? errMessage : "<no error text>")
                  .get());
-#ifdef XP_WIN
+#  ifdef XP_WIN
   LocalFree(errMessage);
-#endif
+#  endif
 #endif
 }
 
@@ -3366,7 +3388,7 @@ nsresult nsSocketTransport::PRFileDescAutoLock::SetKeepaliveVals(
   // Not all *nix OSes support the following setsockopt() options
   // ... but we assume they are supported in the Android kernel;
   // build errors will tell us if they are not.
-#if defined(ANDROID) || defined(TCP_KEEPIDLE)
+#  if defined(ANDROID) || defined(TCP_KEEPIDLE)
   // Idle time until first keepalive probe; interval between ack'd probes;
   // seconds.
   int err = setsockopt(sock, IPPROTO_TCP, TCP_KEEPIDLE, &aIdleTime,
@@ -3377,8 +3399,8 @@ nsresult nsSocketTransport::PRFileDescAutoLock::SetKeepaliveVals(
     return NS_ERROR_UNEXPECTED;
   }
 
-#endif
-#if defined(ANDROID) || defined(TCP_KEEPINTVL)
+#  endif
+#  if defined(ANDROID) || defined(TCP_KEEPINTVL)
   // Interval between unack'd keepalive probes; seconds.
   err = setsockopt(sock, IPPROTO_TCP, TCP_KEEPINTVL, &aRetryInterval,
                    sizeof(aRetryInterval));
@@ -3388,8 +3410,8 @@ nsresult nsSocketTransport::PRFileDescAutoLock::SetKeepaliveVals(
     return NS_ERROR_UNEXPECTED;
   }
 
-#endif
-#if defined(ANDROID) || defined(TCP_KEEPCNT)
+#  endif
+#  if defined(ANDROID) || defined(TCP_KEEPCNT)
   // Number of unack'd keepalive probes before connection times out.
   err = setsockopt(sock, IPPROTO_TCP, TCP_KEEPCNT, &aProbeCount,
                    sizeof(aProbeCount));
@@ -3399,7 +3421,7 @@ nsresult nsSocketTransport::PRFileDescAutoLock::SetKeepaliveVals(
     return NS_ERROR_UNEXPECTED;
   }
 
-#endif
+#  endif
   return NS_OK;
 #else
   MOZ_ASSERT(false,

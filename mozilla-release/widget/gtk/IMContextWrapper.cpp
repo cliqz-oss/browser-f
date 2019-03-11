@@ -271,10 +271,14 @@ class SelectionStyleProvider final {
                                   &selectionForegroundColor))) {
       double alpha =
           static_cast<double>(NS_GET_A(selectionForegroundColor)) / 0xFF;
-      style.AppendPrintf("color:rgba(%u,%u,%u,%f);",
+      style.AppendPrintf("color:rgba(%u,%u,%u,",
                          NS_GET_R(selectionForegroundColor),
                          NS_GET_G(selectionForegroundColor),
-                         NS_GET_B(selectionForegroundColor), alpha);
+                         NS_GET_B(selectionForegroundColor));
+      // We can't use AppendPrintf here, because it does locale-specific
+      // formatting of floating-point values.
+      style.AppendFloat(alpha);
+      style.AppendPrintf(");");
     }
     nscolor selectionBackgroundColor;
     if (NS_SUCCEEDED(
@@ -282,10 +286,12 @@ class SelectionStyleProvider final {
                                   &selectionBackgroundColor))) {
       double alpha =
           static_cast<double>(NS_GET_A(selectionBackgroundColor)) / 0xFF;
-      style.AppendPrintf("background-color:rgba(%u,%u,%u,%f);",
+      style.AppendPrintf("background-color:rgba(%u,%u,%u,",
                          NS_GET_R(selectionBackgroundColor),
                          NS_GET_G(selectionBackgroundColor),
-                         NS_GET_B(selectionBackgroundColor), alpha);
+                         NS_GET_B(selectionBackgroundColor));
+      style.AppendFloat(alpha);
+      style.AppendPrintf(");");
     }
     style.AppendLiteral("}");
     gtk_css_provider_load_from_data(mProvider, style.get(), -1, nullptr);
@@ -1961,8 +1967,9 @@ bool IMContextWrapper::MaybeDispatchKeyEventAsProcessedByIME(
     //      event is prevented since even on the other browsers, web
     //      applications cannot cancel the following composition event.
     //      Spec bug: https://github.com/w3c/uievents/issues/180
-    lastFocusedWindow->DispatchKeyDownOrKeyUpEvent(
-        sourceEvent, !mMaybeInDeadKeySequence, &mKeyboardEventWasConsumed);
+    KeymapWrapper::DispatchKeyDownOrKeyUpEvent(lastFocusedWindow, sourceEvent,
+                                               !mMaybeInDeadKeySequence,
+                                               &mKeyboardEventWasConsumed);
     MOZ_LOG(gGtkIMLog, LogLevel::Info,
             ("0x%p   MaybeDispatchKeyEventAsProcessedByIME(), keydown or keyup "
              "event is dispatched",
@@ -2027,8 +2034,8 @@ bool IMContextWrapper::MaybeDispatchKeyEventAsProcessedByIME(
                "aFollowingEvent=%s), dispatch fake eKeyDown event",
                this, ToChar(aFollowingEvent)));
 
-      lastFocusedWindow->DispatchKeyDownOrKeyUpEvent(
-          fakeKeyDownEvent, &mKeyboardEventWasConsumed);
+      KeymapWrapper::DispatchKeyDownOrKeyUpEvent(
+          lastFocusedWindow, fakeKeyDownEvent, &mKeyboardEventWasConsumed);
       MOZ_LOG(gGtkIMLog, LogLevel::Info,
               ("0x%p   MaybeDispatchKeyEventAsProcessedByIME(), "
                "fake keydown event is dispatched",

@@ -179,14 +179,7 @@ VARCACHE_PREF(
 )
 #undef PREF_VALUE
 
-// If this is true, event.returnValue is available.
-VARCACHE_PREF(
-  "dom.event.returnValue.enabled",
-   dom_event_returnValue_enabled,
-  RelaxedAtomicBool, false
-)
-
-// Whehter Mozilla specific "text" event should be dispatched only in the
+// Whether Mozilla specific "text" event should be dispatched only in the
 // system group or not in content.
 VARCACHE_PREF(
   "dom.compositionevent.text.dispatch_only_system_group_in_content",
@@ -215,7 +208,16 @@ VARCACHE_PREF(
 VARCACHE_PREF(
   "dom.keyboardevent.keypress.set_keycode_and_charcode_to_same_value",
    dom_keyboardevent_keypress_set_keycode_and_charcode_to_same_value,
-  bool, false
+  bool, true
+)
+
+// Whether we conform to Input Events Level 1 or Input Events Level 2.
+// true:  conforming to Level 1
+// false: conforming to Level 2
+VARCACHE_PREF(
+  "dom.input_events.conform_to_level_1",
+   dom_input_events_conform_to_level_1,
+  bool, true
 )
 
 // NOTE: This preference is used in unit tests. If it is removed or its default
@@ -242,6 +244,21 @@ VARCACHE_PREF(
   RelaxedAtomicBool, true
 )
 
+// Should we defer timeouts and intervals while loading a page.  Released
+// on Idle or when the page is loaded.
+VARCACHE_PREF(
+  "dom.timeout.defer_during_load",
+  dom_timeout_defer_during_load,
+  bool, true
+)
+
+// Maximum deferral time for setTimeout/Interval in milliseconds
+VARCACHE_PREF(
+  "dom.timeout.max_idle_defer_ms",
+  dom_timeout_max_idle_defer_ms,
+  uint32_t, 10*1000
+)
+
 VARCACHE_PREF(
   "dom.performance.children_results_ipc_timeout",
   dom_performance_children_results_ipc_timeout,
@@ -253,18 +270,12 @@ VARCACHE_PREF(
 // Note, this is not currently safe to use for normal browsing yet.
 PREF("dom.serviceWorkers.parent_intercept", bool, false)
 
-// Enable PaymentRequest API
-#if defined(NIGHTLY_BUILD) && (defined(XP_WIN) || defined(XP_MACOSX))
-# define PREF_VALUE  true
-#else
-# define PREF_VALUE  false
-#endif
+// Enable/disable the PaymentRequest API
 VARCACHE_PREF(
   "dom.payments.request.enabled",
    dom_payments_request_enabled,
-  bool, PREF_VALUE
+  bool, false
 )
-#undef PREF_VALUE
 
 // Whether a user gesture is required to call PaymentRequest.prototype.show().
 VARCACHE_PREF(
@@ -423,6 +434,12 @@ VARCACHE_PREF(
    dom_script_loader_binast_encoding_enabled,
   RelaxedAtomicBool, false
 )
+
+VARCACHE_PREF(
+  "dom.script_loader.binast_encoding.domain.restrict",
+   dom_script_loader_binast_encoding_domain_restrict,
+  bool, true
+)
 #endif
 
 // IMPORTANT: Keep this in condition in sync with all.js. The value
@@ -454,6 +471,27 @@ VARCACHE_PREF(
   RelaxedAtomicBool, false
 )
 
+// Block multiple external protocol URLs in iframes per single event.
+#ifdef NIGHTLY_BUILD
+#define PREF_VALUE true
+#else
+#define PREF_VALUE false
+#endif
+VARCACHE_PREF(
+  "dom.block_external_protocol_in_iframes",
+   dom_block_external_protocol_in_iframes,
+  bool, PREF_VALUE
+)
+#undef PREF_VALUE
+
+// Any how many seconds we allow external protocol URLs in iframe when not in
+// single events
+VARCACHE_PREF(
+  "dom.delay.block_external_protocol_in_iframes",
+   dom_delay_block_external_protocol_in_iframes,
+  uint32_t, 10 // in seconds
+)
+
 // Block multiple window.open() per single event.
 VARCACHE_PREF(
   "dom.block_multiple_popups",
@@ -474,6 +512,12 @@ VARCACHE_PREF(
   bool, PREF_VALUE
 )
 #undef PREF_VALUE
+
+VARCACHE_PREF(
+  "dom.disable_open_during_load",
+   dom_disable_open_during_load,
+  bool, false
+)
 
 // Storage-access API.
 VARCACHE_PREF(
@@ -553,7 +597,7 @@ VARCACHE_PREF(
 VARCACHE_PREF(
   "html5.flushtimer.initialdelay",
    html5_flushtimer_initialdelay,
-  RelaxedAtomicInt32, 120
+  RelaxedAtomicInt32, 16
 )
 
 // Time in milliseconds between the time a network buffer is seen and the timer
@@ -561,7 +605,7 @@ VARCACHE_PREF(
 VARCACHE_PREF(
   "html5.flushtimer.subsequentdelay",
    html5_flushtimer_subsequentdelay,
-  RelaxedAtomicInt32, 120
+  RelaxedAtomicInt32, 16
 )
 
 //---------------------------------------------------------------------------
@@ -839,13 +883,6 @@ VARCACHE_PREF(
   bool, false
 )
 
-// Is overflow: -moz-scrollbars-* value enabled?
-VARCACHE_PREF(
-  "layout.css.overflow.moz-scrollbars.enabled",
-   layout_css_overflow_moz_scrollbars_enabled,
-  bool, false
-)
-
 // Does arbitrary ::-webkit-* pseudo-element parsed?
 VARCACHE_PREF(
   "layout.css.unknown-webkit-pseudo-element",
@@ -872,6 +909,26 @@ VARCACHE_PREF(
   "layout.css.step-position-jump.enabled",
    layout_css_step_position_jump_enabled,
   bool, true
+)
+
+// Are dynamic reflow roots enabled?
+VARCACHE_PREF(
+   "layout.dynamic-reflow-roots.enabled",
+   layout_dynamic_reflow_roots_enabled,
+  bool, false
+)
+
+// Pref to control enabling scroll anchoring.
+VARCACHE_PREF(
+  "layout.css.scroll-anchoring.enabled",
+   layout_css_scroll_anchoring_enabled,
+  bool, true
+)
+
+VARCACHE_PREF(
+  "layout.css.scroll-anchoring.highlight",
+   layout_css_scroll_anchoring_highlight,
+  bool, false
 )
 
 //---------------------------------------------------------------------------
@@ -1111,7 +1168,9 @@ VARCACHE_PREF(
 )
 #undef PREF_VALUE
 
-#if defined(XP_WIN)
+#if defined(XP_WIN) && !defined(_ARM64_)
+# define PREF_VALUE true
+#elif defined(XP_MACOSX)
 # define PREF_VALUE true
 #else
 # define PREF_VALUE false
@@ -1432,7 +1491,9 @@ VARCACHE_PREF(
 )
 
 // AV1
-#if defined(XP_WIN)
+#if defined(XP_WIN) && !defined(_ARM64_)
+# define PREF_VALUE true
+#elif defined(XP_MACOSX)
 # define PREF_VALUE true
 #else
 # define PREF_VALUE false
@@ -1568,6 +1629,18 @@ VARCACHE_PREF(
   "media.test.video-suspend",
    MediaTestVideoSuspend,
   RelaxedAtomicBool, false
+)
+
+VARCACHE_PREF(
+  "media.autoplay.allow-muted",
+   MediaAutoplayAllowMuted,
+  RelaxedAtomicBool, true
+)
+
+VARCACHE_PREF(
+  "media.autoplay.blackList-override-default",
+   MediaAutoplayBlackListOverrideDefault,
+  RelaxedAtomicBool, true
 )
 
 //---------------------------------------------------------------------------
@@ -1768,6 +1841,55 @@ VARCACHE_PREF(
   uint32_t, 32
 )
 
+// Annotate channels based on the tracking protection list in all modes
+VARCACHE_PREF(
+  "privacy.trackingprotection.annotate_channels",
+   privacy_trackingprotection_annotate_channels,
+  bool, true
+)
+
+// Block 3rd party fingerprinting resources.
+#ifdef NIGHTLY_BUILD
+# define PREF_VALUE true
+#else
+# define PREF_VALUE false
+#endif
+VARCACHE_PREF(
+  "privacy.trackingprotection.fingerprinting.enabled",
+   privacy_trackingprotection_fingerprinting_enabled,
+  bool, PREF_VALUE
+)
+#undef PREF_VALUE
+
+// Block 3rd party cryptomining resources.
+#ifdef NIGHTLY_BUILD
+# define PREF_VALUE true
+#else
+# define PREF_VALUE false
+#endif
+VARCACHE_PREF(
+  "privacy.trackingprotection.cryptomining.enabled",
+   privacy_trackingprotection_cryptomining_enabled,
+  bool, PREF_VALUE
+)
+#undef PREF_VALUE
+
+// Lower the priority of network loads for resources on the tracking protection
+// list.  Note that this requires the
+// privacy.trackingprotection.annotate_channels pref to be on in order to have
+// any effect.
+#ifdef NIGHTLY_BUILD
+# define PREF_VALUE true
+#else
+# define PREF_VALUE false
+#endif
+VARCACHE_PREF(
+  "privacy.trackingprotection.lower_network_priority",
+   privacy_trackingprotection_lower_network_priority,
+  bool, PREF_VALUE
+)
+#undef PREF_VALUE
+
 // Anti-tracking permission expiration
 VARCACHE_PREF(
   "privacy.restrict3rdpartystorage.expiration",
@@ -1800,6 +1922,23 @@ VARCACHE_PREF(
   "privacy.resistFingerprinting.autoDeclineNoUserInputCanvasPrompts",
    privacy_resistFingerprinting_autoDeclineNoUserInputCanvasPrompts,
   RelaxedAtomicBool, false
+)
+
+// Password protection
+VARCACHE_PREF(
+  "browser.safebrowsing.passwords.enabled",
+   browser_safebrowsing_passwords_enabled,
+  bool, false
+)
+
+//---------------------------------------------------------------------------
+// ChannelClassifier prefs
+//---------------------------------------------------------------------------
+
+VARCACHE_PREF(
+  "channelclassifier.allowlist_example",
+   channelclassifier_allowlist_example,
+  bool, false
 )
 
 //---------------------------------------------------------------------------
@@ -1899,6 +2038,22 @@ VARCACHE_PREF(
   bool, PREF_VALUE
 )
 #undef PREF_VALUE
+
+//---------------------------------------------------------------------------
+// Plugins prefs
+//---------------------------------------------------------------------------
+
+VARCACHE_PREF(
+  "plugins.flashBlock.enabled",
+   plugins_flashBlock_enabled,
+  bool, false
+)
+
+VARCACHE_PREF(
+  "plugins.http_https_only",
+   plugins_http_https_only,
+  bool, true
+)
 
 //---------------------------------------------------------------------------
 // Reporting API

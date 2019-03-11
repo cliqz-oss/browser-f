@@ -2,32 +2,46 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import { groupBy, hasIn, sortedUniqBy } from "lodash";
+// @flow
+
+import { groupBy, sortedUniqBy } from "lodash";
 import { createSelector } from "reselect";
 
 import { getViewport } from "../selectors";
 import { getVisibleBreakpoints } from "./visibleBreakpoints";
 import { getVisiblePausePoints } from "./visiblePausePoints";
 import { makeLocationId } from "../utils/breakpoint";
+import type { Selector, PausePoint } from "../reducers/types";
 
-import type { SourceLocation } from "../types";
+import type {
+  SourceLocation,
+  PartialPosition,
+  Breakpoint,
+  Range
+} from "../types";
 
 export type ColumnBreakpoint = {|
   +location: SourceLocation,
-  +enabled: boolean
+  +breakpoint: ?Breakpoint
 |};
 
-function contains(location, range) {
+export type ColumnBreakpoints = Array<ColumnBreakpoint>;
+
+function contains(location: PartialPosition, range: Range) {
   return (
     location.line >= range.start.line &&
     location.line <= range.end.line &&
-    location.column >= range.start.column &&
-    location.column <= range.end.column
+    (!location.column ||
+      (location.column >= range.start.column &&
+        location.column <= range.end.column))
   );
 }
 
 function groupBreakpoints(breakpoints) {
-  const map = groupBy(breakpoints, ({ location }) => location.line);
+  if (!breakpoints) {
+    return {};
+  }
+  const map: any = groupBy(breakpoints, ({ location }) => location.line);
   for (const line in map) {
     map[line] = groupBy(map[line], ({ location }) => location.column);
   }
@@ -35,9 +49,13 @@ function groupBreakpoints(breakpoints) {
   return map;
 }
 
-function isEnabled(location, breakpointMap) {
+function findBreakpoint(location, breakpointMap) {
   const { line, column } = location;
-  return hasIn(breakpointMap, [line, column]);
+  const breakpoints = breakpointMap[line] && breakpointMap[line][column];
+
+  if (breakpoints) {
+    return breakpoints[0];
+  }
 }
 
 function getLineCount(columnBreakpoints) {
@@ -53,19 +71,25 @@ function getLineCount(columnBreakpoints) {
   return lineCount;
 }
 
-export function formatColumnBreakpoints(columnBreakpoints) {
+export function formatColumnBreakpoints(columnBreakpoints: ColumnBreakpoints) {
   console.log(
     "Column Breakpoints\n\n",
     columnBreakpoints
       .map(
-        ({ location, enabled }) =>
-          `(${location.line}, ${location.column}) ${enabled}`
+        ({ location, breakpoint }) =>
+          `(${location.line}, ${location.column || ""}) ${
+            breakpoint && breakpoint.disabled ? "disabled" : ""
+          }`
       )
       .join("\n")
   );
 }
 
-export function getColumnBreakpoints(pausePoints, breakpoints, viewport) {
+export function getColumnBreakpoints(
+  pausePoints: ?(PausePoint[]),
+  breakpoints: ?(Breakpoint[]),
+  viewport: Range
+) {
   if (!pausePoints) {
     return [];
   }
@@ -101,13 +125,15 @@ export function getColumnBreakpoints(pausePoints, breakpoints, viewport) {
     ({ location: { line } }) => lineCount[line] > 1
   );
 
-  return columnBreakpoints.map(({ location }) => ({
+  return (columnBreakpoints: any).map(({ location }) => ({
     location,
-    enabled: isEnabled(location, breakpointMap)
+    breakpoint: findBreakpoint(location, breakpointMap)
   }));
 }
 
-export const visibleColumnBreakpoints = createSelector(
+export const visibleColumnBreakpoints: Selector<
+  ColumnBreakpoints
+> = createSelector(
   getVisiblePausePoints,
   getVisibleBreakpoints,
   getViewport,

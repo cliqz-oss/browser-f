@@ -36,6 +36,7 @@ const isWindows = /Windows/.test(navigator.oscpu);
 const isAndroid = navigator.userAgent.includes("Android");
 const isLinux = /Linux/.test(navigator.oscpu) && !isAndroid;
 const isInsecureContext = !window.isSecureContext;
+const isFennec = isAndroid && SpecialPowers.Cc["@mozilla.org/android/bridge;1"].getService(SpecialPowers.Ci.nsIAndroidBridge).isFennec;
 
 // IMPORTANT: Do not change this list without review from
 //            a JavaScript Engine peer!
@@ -665,7 +666,7 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "MediaStreamTrack", insecureContext: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "MerchantValidationEvent", insecureContext: false, desktop: true, nightly: true, linux: false},
+    {name: "MerchantValidationEvent", insecureContext: false, desktop: true, nightly: true, linux: false, disabled: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "MessageChannel", insecureContext: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -747,15 +748,15 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "Path2D", insecureContext: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "PaymentAddress", insecureContext: false, desktop: true, nightly: true, linux: false},
+    {name: "PaymentAddress", insecureContext: false, desktop: true, nightly: true, linux: false, disabled: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "PaymentMethodChangeEvent", insecureContext: false, desktop: true, nightly: true, linux: false},
+    {name: "PaymentMethodChangeEvent", insecureContext: false, desktop: true, nightly: true, linux: false, disabled: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "PaymentRequest", insecureContext: false, desktop: true, nightly: true, linux: false},
+    {name: "PaymentRequest", insecureContext: false, desktop: true, nightly: true, linux: false, disabled: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "PaymentRequestUpdateEvent", insecureContext: false, desktop: true, nightly: true, linux: false},
+    {name: "PaymentRequestUpdateEvent", insecureContext: false, desktop: true, nightly: true, linux: false, disabled: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "PaymentResponse", insecureContext: false, desktop: true, nightly: true, linux: false},
+    {name: "PaymentResponse", insecureContext: false, desktop: true, nightly: true, linux: false, disabled: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "Performance", insecureContext: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -817,11 +818,11 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "PublicKeyCredential"},
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "PushManager", insecureContext: true},
+    {name: "PushManager", insecureContext: true, fennecOrDesktop: true },
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "PushSubscription", insecureContext: true},
+    {name: "PushSubscription", insecureContext: true, fennecOrDesktop: true },
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "PushSubscriptionOptions", insecureContext: true},
+    {name: "PushSubscriptionOptions", insecureContext: true, fennecOrDesktop: true },
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "RadioNodeList", insecureContext: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -1279,9 +1280,9 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "XULPopupElement", insecureContext: true, xbl: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "XULScrollElement", insecureContext: true, xbl: true},
-// IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "XULTextElement", insecureContext: true, xbl: true},
+// IMPORTANT: Do not change this list without review from a DOM peer!
+    {name: "XULTreeElement", insecureContext: true, xbl: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
   ];
 // IMPORTANT: Do not change the list above without review from a DOM peer!
@@ -1304,6 +1305,7 @@ function createInterfaceMap(isXBLScope) {
             (entry.mac === !isMac) ||
             (entry.linux === !isLinux) ||
             (entry.android === !isAndroid && !entry.nightlyAndroid) ||
+            (entry.fennecOrDesktop === (isAndroid && !isFennec)) ||
             (entry.release === !isRelease) ||
             (entry.releaseNonWindowsAndMac === !(isRelease && !isWindows && !isMac)) ||
             (entry.releaseNonWindows === !(isRelease && !isWindows)) ||

@@ -20,7 +20,7 @@
 #include "nsPIDOMWindow.h"
 #include "nsIPresShell.h"
 #include "nsFrameManager.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsRect.h"
 #include "nsIComponentManager.h"
 #include "nsBoxLayoutState.h"
@@ -408,14 +408,26 @@ bool nsMenuPopupFrame::IsLeafDynamic() const {
   }
 
   // menu popups generate their child frames lazily only when opened, so
-  // behave like a leaf frame. However, generate child frames normally if
-  // the parent menu has a sizetopopup attribute. In this case the size of
-  // the parent menu is dependent on the size of the popup, so the frames
-  // need to exist in order to calculate this size.
+  // behave like a leaf frame. However, generate child frames normally if the
+  // following is true:
+  //
+  // - If the parent menu is a <menulist>
+  // - For other elements, if the parent menu has a sizetopopup attribute.
+  //
+  // In these cases the size of the parent menu is dependent on the size of
+  // the popup, so the frames need to exist in order to calculate this size.
   nsIContent* parentContent = mContent->GetParent();
-  return parentContent && (!parentContent->IsElement() ||
-                           !parentContent->AsElement()->HasAttr(
-                               kNameSpaceID_None, nsGkAtoms::sizetopopup));
+  if (!parentContent) {
+    return false;
+  }
+
+  if (parentContent->IsXULElement(nsGkAtoms::menulist)) {
+    return false;
+  }
+
+  return (!parentContent->IsElement() ||
+          !parentContent->AsElement()->HasAttr(kNameSpaceID_None,
+                                               nsGkAtoms::sizetopopup));
 }
 
 void nsMenuPopupFrame::UpdateWidgetProperties() {
@@ -866,7 +878,7 @@ void nsMenuPopupFrame::HidePopup(bool aDeselectMenu, nsPopupState aNewState) {
     // if the popup had a trigger node set, clear the global window popup node
     // as well
     if (mTriggerContent) {
-      nsIDocument* doc = mContent->GetUncomposedDoc();
+      Document* doc = mContent->GetUncomposedDoc();
       if (doc) {
         if (nsPIDOMWindowOuter* win = doc->GetWindow()) {
           nsCOMPtr<nsPIWindowRoot> root = win->GetTopWindowRoot();
@@ -1048,8 +1060,7 @@ nsPoint nsMenuPopupFrame::AdjustPositionForAnchorAlign(nsRect& anchorRect,
       nsIFrame* selectedItemFrame = GetSelectedItemForAlignment();
       if (selectedItemFrame) {
         int32_t scrolly = 0;
-        nsIScrollableFrame* scrollframe =
-            do_QueryFrame(nsBox::GetChildXULBox(this));
+        nsIScrollableFrame* scrollframe = GetScrollFrame(this);
         if (scrollframe) {
           scrolly = scrollframe->GetScrollPosition().y;
         }
@@ -1107,20 +1118,21 @@ nsPoint nsMenuPopupFrame::AdjustPositionForAnchorAlign(nsRect& anchorRect,
 nsIFrame* nsMenuPopupFrame::GetSelectedItemForAlignment() {
   // This method adjusts a menulist's popup such that the selected item is under
   // the cursor, aligned with the menulist label.
-  nsCOMPtr<nsIDOMXULSelectControlElement> select =
-      do_QueryInterface(mAnchorContent);
+  nsCOMPtr<nsIDOMXULSelectControlElement> select;
+  if (mAnchorContent) {
+    select = mAnchorContent->AsElement()->AsXULSelectControl();
+  }
+
   if (!select) {
     // If there isn't an anchor, then try just getting the parent of the popup.
-    select = do_QueryInterface(mContent->GetParent());
+    select = mContent->GetParent()->AsElement()->AsXULSelectControl();
     if (!select) {
       return nullptr;
     }
   }
 
-  nsCOMPtr<nsIDOMXULSelectControlItemElement> item;
-  select->GetSelectedItem(getter_AddRefs(item));
-
-  nsCOMPtr<nsIContent> selectedElement = do_QueryInterface(item);
+  nsCOMPtr<Element> selectedElement;
+  select->GetSelectedItem(getter_AddRefs(selectedElement));
   return selectedElement ? selectedElement->GetPrimaryFrame() : nullptr;
 }
 

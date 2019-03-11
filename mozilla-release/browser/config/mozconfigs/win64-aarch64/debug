@@ -2,8 +2,6 @@
 MOZ_AUTOMATION_L10N_CHECK=0
 . "$topsrcdir/browser/config/mozconfigs/common"
 
-ac_add_options --disable-crashreporter
-
 . "$topsrcdir/browser/config/mozconfigs/win64-aarch64/common-win64"
 
 . "$topsrcdir/build/mozconfig.stylo"
@@ -25,5 +23,7 @@ export MOZ_PACKAGE_JSSHELL=1
 ac_add_options --with-branding=browser/branding/nightly
 
 . $topsrcdir/build/win64-aarch64/mozconfig.vs-latest
+
+unset ENABLE_CLANG_PLUGIN
 
 . "$topsrcdir/build/mozconfig.common.override"

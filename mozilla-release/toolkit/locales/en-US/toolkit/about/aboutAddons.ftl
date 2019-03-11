@@ -275,3 +275,26 @@ extensions-updates-manual-updates-found =
 extensions-updates-update-selected =
     .label = Install Updates
     .tooltiptext = Install available updates in this list
+
+## Extension shortcut management
+
+manage-extensions-shortcuts =
+    .label = Manage Extension Shortcuts
+    .accesskey = S
+shortcuts-empty-message = There are no shortcuts for this extension.
+shortcuts-no-addons = You don’t have any extensions enabled.
+shortcuts-input =
+  .placeholder = Type a shortcut
+
+shortcuts-browserAction = Activate extension
+shortcuts-pageAction = Activate page action
+shortcuts-sidebarAction = Toggle the sidebar
+
+shortcuts-modifier-mac = Include Ctrl, Alt, or ⌘
+shortcuts-modifier-other = Include Ctrl or Alt
+shortcuts-invalid = Invalid combination
+shortcuts-letter = Type a letter
+shortcuts-system = Can’t override a { -brand-short-name } shortcut
+
+go-back-button =
+    .tooltiptext = Go back

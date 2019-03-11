@@ -4,18 +4,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "mozilla/dom/HTMLTrackElement.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/HTMLMediaElement.h"
-#include "mozilla/dom/HTMLTrackElement.h"
 #ifdef XP_WIN
 // HTMLTrackElement.webidl defines ERROR, but so does windows.h:
-#undef ERROR
+#  undef ERROR
 #endif
+#include "WebVTTListener.h"
+#include "mozilla/LoadInfo.h"
 #include "mozilla/dom/HTMLTrackElementBinding.h"
 #include "mozilla/dom/HTMLUnknownElement.h"
-#include "nsIContentPolicy.h"
-#include "mozilla/LoadInfo.h"
-#include "WebVTTListener.h"
 #include "nsAttrValueInlines.h"
 #include "nsCOMPtr.h"
 #include "nsContentPolicyUtils.h"
@@ -28,7 +27,7 @@
 #include "nsIChannelEventSink.h"
 #include "nsIContentPolicy.h"
 #include "nsIContentSecurityPolicy.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIHttpChannel.h"
 #include "nsIInterfaceRequestor.h"
 #include "nsILoadGroup.h"
@@ -238,15 +237,16 @@ void HTMLTrackElement::SetSrc(const nsAString& aSrc, ErrorResult& aError) {
 
 void HTMLTrackElement::DispatchLoadResource() {
   if (!mLoadResourceDispatched) {
-    RefPtr<Runnable> r =
-        NewRunnableMethod("dom::HTMLTrackElement::LoadResource", this,
-                          &HTMLTrackElement::LoadResource);
+    RefPtr<WebVTTListener> listener = new WebVTTListener(this);
+    RefPtr<Runnable> r = NewRunnableMethod<RefPtr<WebVTTListener>>(
+        "dom::HTMLTrackElement::LoadResource", this,
+        &HTMLTrackElement::LoadResource, std::move(listener));
     nsContentUtils::RunInStableState(r.forget());
     mLoadResourceDispatched = true;
   }
 }
 
-void HTMLTrackElement::LoadResource() {
+void HTMLTrackElement::LoadResource(RefPtr<WebVTTListener>&& aWebVTTListener) {
   mLoadResourceDispatched = false;
 
   // Find our 'src' url
@@ -292,35 +292,52 @@ void HTMLTrackElement::LoadResource() {
     }
   }
 
-  nsCOMPtr<nsIChannel> channel;
-  nsCOMPtr<nsILoadGroup> loadGroup = OwnerDoc()->GetDocumentLoadGroup();
-  rv = NS_NewChannel(getter_AddRefs(channel), uri, static_cast<Element*>(this),
-                     secFlags, nsIContentPolicy::TYPE_INTERNAL_TRACK,
-                     nullptr,  // PerformanceStorage
-                     loadGroup,
-                     nullptr,  // aCallbacks
-                     nsIRequest::LOAD_NORMAL | nsIChannel::LOAD_CLASSIFY_URI);
-
-  NS_ENSURE_TRUE_VOID(NS_SUCCEEDED(rv));
-
-  mListener = new WebVTTListener(this);
+  mListener = std::move(aWebVTTListener);
+  // This will do 6. Set the text track readiness state to loading.
   rv = mListener->LoadResource();
   NS_ENSURE_TRUE_VOID(NS_SUCCEEDED(rv));
-  channel->SetNotificationCallbacks(mListener);
 
-  LOG(LogLevel::Debug, ("opening webvtt channel"));
-  rv = channel->AsyncOpen2(mListener);
-
-  if (NS_FAILED(rv)) {
-    SetReadyState(TextTrackReadyState::FailedToLoad);
+  Document* doc = OwnerDoc();
+  if (!doc) {
     return;
   }
 
-  mChannel = channel;
+  // 9. End the synchronous section, continuing the remaining steps in parallel.
+  nsCOMPtr<nsIRunnable> runnable = NS_NewRunnableFunction(
+      "dom::HTMLTrackElement::LoadResource",
+      [self = RefPtr<HTMLTrackElement>(this), uri, secFlags]() {
+        if (!self->mListener) {
+          // Shutdown got called, abort.
+          return;
+        }
+        nsCOMPtr<nsIChannel> channel;
+        nsCOMPtr<nsILoadGroup> loadGroup =
+            self->OwnerDoc()->GetDocumentLoadGroup();
+        nsresult rv = NS_NewChannel(
+            getter_AddRefs(channel), uri, static_cast<Element*>(self), secFlags,
+            nsIContentPolicy::TYPE_INTERNAL_TRACK,
+            nullptr,  // PerformanceStorage
+            loadGroup,
+            nullptr,  // aCallbacks
+            nsIRequest::LOAD_NORMAL | nsIChannel::LOAD_CLASSIFY_URI);
+
+        NS_ENSURE_TRUE_VOID(NS_SUCCEEDED(rv));
+
+        channel->SetNotificationCallbacks(self->mListener);
+
+        LOG(LogLevel::Debug, ("opening webvtt channel"));
+        rv = channel->AsyncOpen2(self->mListener);
+
+        if (NS_FAILED(rv)) {
+          self->SetReadyState(TextTrackReadyState::FailedToLoad);
+          return;
+        }
+        self->mChannel = channel;
+      });
+  doc->Dispatch(TaskCategory::Other, runnable.forget());
 }
 
-nsresult HTMLTrackElement::BindToTree(nsIDocument* aDocument,
-                                      nsIContent* aParent,
+nsresult HTMLTrackElement::BindToTree(Document* aDocument, nsIContent* aParent,
                                       nsIContent* aBindingParent) {
   nsresult rv =
       nsGenericHTMLElement::BindToTree(aDocument, aParent, aBindingParent);
@@ -393,7 +410,7 @@ void HTMLTrackElement::SetReadyState(uint16_t aReadyState) {
 }
 
 void HTMLTrackElement::DispatchTrackRunnable(const nsString& aEventName) {
-  nsIDocument* doc = OwnerDoc();
+  Document* doc = OwnerDoc();
   if (!doc) {
     return;
   }
@@ -404,7 +421,7 @@ void HTMLTrackElement::DispatchTrackRunnable(const nsString& aEventName) {
 }
 
 void HTMLTrackElement::DispatchTrustedEvent(const nsAString& aName) {
-  nsIDocument* doc = OwnerDoc();
+  Document* doc = OwnerDoc();
   if (!doc) {
     return;
   }

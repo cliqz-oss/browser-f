@@ -19,6 +19,7 @@
 #include "gc/GC.h"
 #include "js/AllocPolicy.h"
 #include "js/CharacterEncoding.h"
+#include "js/Equality.h"  // JS::SameValue
 #include "js/Vector.h"
 #include "vm/JSContext.h"
 
@@ -208,12 +209,12 @@ class JSAPITest {
                  const char* filename, int lineno) {
     bool same;
     JS::RootedValue actual(cx, actualArg), expected(cx, expectedArg);
-    return (JS_SameValue(cx, actual, expected, &same) && same) ||
+    return (JS::SameValue(cx, actual, expected, &same) && same) ||
            fail(JSAPITestString(
-                    "CHECK_SAME failed: expected JS_SameValue(cx, ") +
+                    "CHECK_SAME failed: expected JS::SameValue(cx, ") +
                     actualExpr + ", " + expectedExpr +
-                    "), got !JS_SameValue(cx, " + jsvalToSource(actual) + ", " +
-                    jsvalToSource(expected) + ")",
+                    "), got !JS::SameValue(cx, " + jsvalToSource(actual) +
+                    ", " + jsvalToSource(expected) + ")",
                 filename, lineno);
   }
 
@@ -497,7 +498,7 @@ class AutoLeaveZeal {
     JS_GetGCZealBits(cx_, &zealBits_, &frequency_, &dummy);
     JS_SetGCZeal(cx_, 0, 0);
     JS::PrepareForFullGC(cx_);
-    JS::NonIncrementalGC(cx_, GC_SHRINK, JS::gcreason::DEBUG_GC);
+    JS::NonIncrementalGC(cx_, GC_SHRINK, JS::GCReason::DEBUG_GC);
   }
   ~AutoLeaveZeal() {
     JS_SetGCZeal(cx_, 0, 0);
@@ -507,12 +508,12 @@ class AutoLeaveZeal {
       }
     }
 
-#ifdef DEBUG
+#  ifdef DEBUG
     uint32_t zealBitsAfter, frequencyAfter, dummy;
     JS_GetGCZealBits(cx_, &zealBitsAfter, &frequencyAfter, &dummy);
     MOZ_ASSERT(zealBitsAfter == zealBits_);
     MOZ_ASSERT(frequencyAfter == frequency_);
-#endif
+#  endif
   }
 };
 #endif /* JS_GC_ZEAL */

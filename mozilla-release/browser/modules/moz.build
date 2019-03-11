@@ -65,7 +65,7 @@ with Files("LaterRun.jsm"):
     BUG_COMPONENT = ("Firefox", "Tours")
 
 with Files("LiveBookmarkMigrator.jsm"):
-    BUG_COMPONENT = ("Firefox", "RSS Discovery and Preview")
+    BUG_COMPONENT = ("Firefox", "General")
 
 with Files("OpenInTabsUtils.jsm"):
     BUG_COMPONENT = ("Firefox", "Tabbed Browser")
@@ -125,7 +125,6 @@ XPCSHELL_TESTS_MANIFESTS += ['test/unit/xpcshell.ini']
 EXTRA_JS_MODULES += [
     'AboutNewTab.jsm',
     'AsyncTabSwitcher.jsm',
-    'BrowserErrorReporter.jsm',
     'BrowserUsageTelemetry.jsm',
     'BrowserWindowTracker.jsm',
     'ContentClick.jsm',
@@ -136,7 +135,6 @@ EXTRA_JS_MODULES += [
     'Discovery.jsm',
     'ExtensionsUI.jsm',
     'FaviconLoader.jsm',
-    'Feeds.jsm',
     'FormValidationHandler.jsm',
     'HomePage.jsm',
     'LaterRun.jsm',

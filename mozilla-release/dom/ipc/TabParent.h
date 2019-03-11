@@ -156,6 +156,14 @@ class TabParent final : public PBrowserParent,
   virtual mozilla::ipc::IPCResult RecvSetHasBeforeUnload(
       const bool& aHasBeforeUnload) override;
 
+  virtual mozilla::ipc::IPCResult RecvRegisterProtocolHandler(
+      const nsString& aScheme, nsIURI* aHandlerURI, const nsString& aTitle,
+      nsIURI* aDocURI) override;
+
+  virtual mozilla::ipc::IPCResult RecvOnContentBlockingEvent(
+      const OptionalWebProgressData& aWebProgressData,
+      const RequestData& aRequestData, const uint32_t& aEvent) override;
+
   virtual mozilla::ipc::IPCResult RecvBrowserFrameOpenWindow(
       PBrowserParent* aOpener, const nsString& aURL, const nsString& aName,
       const nsString& aFeatures,
@@ -252,13 +260,14 @@ class TabParent final : public PBrowserParent,
       nsTArray<nsCString>&& aDisabledCommands) override;
 
   virtual mozilla::ipc::IPCResult RecvSetCursor(const nsCursor& aValue,
+                                                const bool& aHasCustomCursor,
+                                                const nsCString& aUri,
+                                                const uint32_t& aWidth, const uint32_t& aHeight,
+                                                const uint32_t& aStride,
+                                                const gfx::SurfaceFormat& aFormat,
+                                                const uint32_t& aHotspotX,
+                                                const uint32_t& aHotspotY,
                                                 const bool& aForce) override;
-
-  virtual mozilla::ipc::IPCResult RecvSetCustomCursor(
-      const nsCString& aUri, const uint32_t& aWidth, const uint32_t& aHeight,
-      const uint32_t& aStride, const gfx::SurfaceFormat& aFormat,
-      const uint32_t& aHotspotX, const uint32_t& aHotspotY,
-      const bool& aForce) override;
 
   virtual mozilla::ipc::IPCResult RecvSetStatus(
       const uint32_t& aType, const nsString& aStatus) override;
@@ -406,7 +415,7 @@ class TabParent final : public PBrowserParent,
 
   void SendRealDragEvent(WidgetDragEvent& aEvent, uint32_t aDragAction,
                          uint32_t aDropEffect,
-                         const nsCString& aPrincipalURISpec);
+                         const IPC::Principal& aPrincipal);
 
   void SendMouseWheelEvent(WidgetWheelEvent& aEvent);
 
@@ -527,10 +536,10 @@ class TabParent final : public PBrowserParent,
       nsTArray<IPCDataTransfer>&& aTransfers, const uint32_t& aAction,
       const OptionalShmem& aVisualDnDData, const uint32_t& aStride,
       const gfx::SurfaceFormat& aFormat, const LayoutDeviceIntRect& aDragRect,
-      const nsCString& aPrincipalURISpec) override;
+      const IPC::Principal& aPrincipal) override;
 
   void AddInitialDnDDataTo(DataTransfer* aDataTransfer,
-                           nsACString& aPrincipalURISpec);
+                           nsIPrincipal** aPrincipal);
 
   bool TakeDragVisualization(RefPtr<mozilla::gfx::SourceSurface>& aSurface,
                              LayoutDeviceIntRect* aDragRect);
@@ -585,7 +594,7 @@ class TabParent final : public PBrowserParent,
       const int32_t& aCx, const int32_t& aCy) override;
 
   virtual mozilla::ipc::IPCResult RecvShowCanvasPermissionPrompt(
-      const nsCString& aFirstPartyURI) override;
+      const nsCString& aFirstPartyURI, const bool& aHideDoorHanger) override;
 
   virtual mozilla::ipc::IPCResult RecvRootBrowsingContext(
       const BrowsingContextId& aId) override;
@@ -658,7 +667,7 @@ class TabParent final : public PBrowserParent,
   RefPtr<gfx::DataSourceSurface> mDnDVisualization;
   bool mDragValid;
   LayoutDeviceIntRect mDragRect;
-  nsCString mDragPrincipalURISpec;
+  nsCOMPtr<nsIPrincipal> mDragPrincipal;
 
   nsCOMPtr<nsILoadContext> mLoadContext;
 

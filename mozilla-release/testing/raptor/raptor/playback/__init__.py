@@ -1,16 +1,17 @@
 from __future__ import absolute_import
 
 from mozlog import get_proxy_logger
-from .mitmproxy import Mitmproxy
+from .mitmproxy import MitmproxyDesktop, MitmproxyAndroid
 
 LOG = get_proxy_logger(component='mitmproxy')
 
 playback_cls = {
-    'mitmproxy': Mitmproxy,
+    'mitmproxy': MitmproxyDesktop,
+    'mitmproxy-android': MitmproxyAndroid,
 }
 
 
-def get_playback(config):
+def get_playback(config, android_device=None):
     tool_name = config.get('playback_tool', None)
     if tool_name is None:
         LOG.critical("playback_tool name not found in config")
@@ -20,4 +21,7 @@ def get_playback(config):
         return None
 
     cls = playback_cls.get(tool_name)
-    return cls(config)
+    if android_device is None:
+        return cls(config)
+    else:
+        return cls(config, android_device)

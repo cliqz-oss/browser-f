@@ -5,21 +5,23 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "DOMSVGAnimatedLengthList.h"
+
 #include "DOMSVGLengthList.h"
 #include "SVGAnimatedLengthList.h"
-#include "nsSVGElement.h"
-#include "nsCOMPtr.h"
-#include "nsSVGAttrTearoffTable.h"
+#include "SVGAttrTearoffTable.h"
 #include "mozilla/dom/SVGAnimatedLengthListBinding.h"
+#include "mozilla/dom/SVGElement.h"
+#include "mozilla/RefPtr.h"
 
 // See the architecture comment in this file's header.
 
 namespace mozilla {
+namespace dom {
 
-static inline nsSVGAttrTearoffTable<SVGAnimatedLengthList,
-                                    DOMSVGAnimatedLengthList>&
+static inline SVGAttrTearoffTable<SVGAnimatedLengthList,
+                                  DOMSVGAnimatedLengthList>&
 SVGAnimatedLengthListTearoffTable() {
-  static nsSVGAttrTearoffTable<SVGAnimatedLengthList, DOMSVGAnimatedLengthList>
+  static SVGAttrTearoffTable<SVGAnimatedLengthList, DOMSVGAnimatedLengthList>
       sSVGAnimatedLengthListTearoffTable;
   return sSVGAnimatedLengthListTearoffTable;
 }
@@ -53,7 +55,7 @@ already_AddRefed<DOMSVGLengthList> DOMSVGAnimatedLengthList::AnimVal() {
 
 /* static */ already_AddRefed<DOMSVGAnimatedLengthList>
 DOMSVGAnimatedLengthList::GetDOMWrapper(SVGAnimatedLengthList* aList,
-                                        nsSVGElement* aElement,
+                                        dom::SVGElement* aElement,
                                         uint8_t aAttrEnum, uint8_t aAxis) {
   RefPtr<DOMSVGAnimatedLengthList> wrapper =
       SVGAnimatedLengthListTearoffTable().GetTearoff(aList);
@@ -123,4 +125,5 @@ const SVGAnimatedLengthList& DOMSVGAnimatedLengthList::InternalAList() const {
   return *mElement->GetAnimatedLengthList(mAttrEnum);
 }
 
+}  // namespace dom
 }  // namespace mozilla

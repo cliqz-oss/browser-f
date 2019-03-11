@@ -5,7 +5,7 @@
 // @flow
 import { Component } from "react";
 import { range, isEmpty } from "lodash";
-import { connect } from "react-redux";
+import { connect } from "../../utils/connect";
 import { getHighlightedLineRange } from "../../selectors";
 
 type Props = {
@@ -15,10 +15,6 @@ type Props = {
 
 class HighlightLines extends Component<Props> {
   highlightLineRange: Function;
-
-  constructor() {
-    super();
-  }
 
   componentDidMount() {
     this.highlightLineRange();

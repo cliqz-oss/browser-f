@@ -19,10 +19,10 @@ add_task(async function test_openTabs() {
   let callback = function(provider, match) {
     matchCount++;
     Assert.equal(provider, UrlbarProviderOpenTabs, "Got the expected provider");
-    Assert.equal(match.type, UrlbarUtils.MATCH_TYPE.TAB_SWITCH,
-                 "Got the expected match type");
+    Assert.equal(match.type, UrlbarUtils.RESULT_TYPE.TAB_SWITCH,
+                 "Got the expected result type");
     Assert.equal(match.payload.url, url, "Got the expected url");
-    Assert.equal(match.title, "", "Got the expected title");
+    Assert.equal(match.payload.title, undefined, "Got the expected title");
   };
 
   await UrlbarProviderOpenTabs.startQuery(context, callback);

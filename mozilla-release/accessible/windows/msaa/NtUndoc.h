@@ -14,15 +14,15 @@ extern "C" {
 #endif
 
 #ifndef STATUS_INFO_LENGTH_MISMATCH
-#define STATUS_INFO_LENGTH_MISMATCH ((NTSTATUS)0xC0000004L)
+#  define STATUS_INFO_LENGTH_MISMATCH ((NTSTATUS)0xC0000004L)
 #endif
 
 #ifndef STATUS_BUFFER_TOO_SMALL
-#define STATUS_BUFFER_TOO_SMALL ((NTSTATUS)0xC0000023L)
+#  define STATUS_BUFFER_TOO_SMALL ((NTSTATUS)0xC0000023L)
 #endif
 
 #ifndef STATUS_MORE_ENTRIES
-#define STATUS_MORE_ENTRIES ((NTSTATUS)0x00000105L)
+#  define STATUS_MORE_ENTRIES ((NTSTATUS)0x00000105L)
 #endif
 
 enum UndocSystemInformationClass { SystemExtendedHandleInformation = 64 };
@@ -44,11 +44,13 @@ struct SYSTEM_HANDLE_INFORMATION_EX {
   SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX mHandles[1];
 };
 
+#ifndef __MINGW32__
 enum UndocObjectInformationClass { ObjectNameInformation = 1 };
 
 struct OBJECT_NAME_INFORMATION {
   UNICODE_STRING mName;
 };
+#endif
 
 // The following declarations are documented on MSDN but are not included in
 // public user-mode headers.

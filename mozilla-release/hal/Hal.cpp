@@ -11,7 +11,7 @@
 #include "HalSandbox.h"
 #include "HalWakeLockInternal.h"
 #include "nsIDOMWindow.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIDocShell.h"
 #include "nsITabChild.h"
 #include "nsIWebNavigation.h"
@@ -25,8 +25,8 @@
 #include "WindowIdentifier.h"
 
 #ifdef XP_WIN
-#include <process.h>
-#define getpid _getpid
+#  include <process.h>
+#  define getpid _getpid
 #endif
 
 using namespace mozilla::services;
@@ -72,9 +72,8 @@ void AssertMainThread() { MOZ_ASSERT(NS_IsMainThread()); }
 bool InSandbox() { return GeckoProcessType_Content == XRE_GetProcessType(); }
 
 bool WindowIsActive(nsPIDOMWindowInner* aWindow) {
-  nsIDocument* document = aWindow->GetDoc();
+  dom::Document* document = aWindow->GetDoc();
   NS_ENSURE_TRUE(document, false);
-
   return !document->Hidden();
 }
 

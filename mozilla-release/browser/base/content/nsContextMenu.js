@@ -106,9 +106,12 @@ nsContextMenu.prototype = {
         this.hasPageMenu = PageMenuParent.buildAndAddToPopup(this.target, aXulMenu);
       }
 
+      let tab = gBrowser && gBrowser.getTabForBrowser ?
+        gBrowser.getTabForBrowser(this.browser) : undefined;
+
       let subject = {
         menu: aXulMenu,
-        tab: gBrowser ? gBrowser.getTabForBrowser(this.browser) : undefined,
+        tab,
         timeStamp: this.timeStamp,
         isContentSelected: this.isContentSelected,
         inFrame: this.inFrame,
@@ -240,12 +243,14 @@ nsContextMenu.prototype = {
       this.selectionInfo = BrowserUtils.getSelectionDetails(window);
     }
 
+    const {gBrowser} = this.browser.ownerGlobal;
+
     this.textSelected      = this.selectionInfo.text;
     this.isTextSelected    = this.textSelected.length != 0;
     this.webExtBrowserType = this.browser.getAttribute("webextension-view-type");
     this.inWebExtBrowser   = !!this.webExtBrowserType;
-    this.inTabBrowser      = this.browser.ownerGlobal.gBrowser ?
-      !!this.browser.ownerGlobal.gBrowser.getTabForBrowser(this.browser) : false;
+    this.inTabBrowser      = gBrowser && gBrowser.getTabForBrowser ?
+      !!gBrowser.getTabForBrowser(this.browser) : false;
 
     if (context.shouldInitInlineSpellCheckerUINoChildren) {
       if (this.isRemote) {
@@ -276,7 +281,7 @@ nsContextMenu.prototype = {
   },  // setContext
 
   hiding: function CM_hiding() {
-    if (this.browser) {
+    if (this.browser && this.browser.messageManager) {
       this.browser.messageManager.sendAsyncMessage("ContextMenu:Hiding");
     }
 
@@ -420,12 +425,21 @@ nsContextMenu.prototype = {
     this.showItem("context-viewpartialsource-selection",
                   this.isContentSelected);
 
+    const {gBrowser} = this.browser.ownerGlobal;
+    // Hide menu that opens devtools when the window is showing `about:devtools-toolbox`.
+    // This is to avoid displaying multiple devtools at the same time. See bug 1495944.
+    const isAboutDevtoolsToolbox = gBrowser &&
+                                   gBrowser.currentURI &&
+                                   gBrowser.currentURI.scheme === "about" &&
+                                   gBrowser.currentURI.filePath === "devtools-toolbox";
+
     var shouldShow = !(this.isContentSelected ||
                        this.onImage || this.onCanvas ||
                        this.onVideo || this.onAudio ||
                        this.onLink || this.onTextInput);
 
     var showInspect = this.inTabBrowser &&
+                      !isAboutDevtoolsToolbox &&
                       Services.prefs.getBoolPref("devtools.inspector.enabled", true) &&
                       !Services.prefs.getBoolPref("devtools.policy.disabled", false);
 

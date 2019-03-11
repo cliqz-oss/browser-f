@@ -3,13 +3,6 @@
 
 "use strict";
 
-/* import-globals-from mocks/head-client-wrapper-mock.js */
-Services.scriptloader.loadSubScript(
-  CHROME_URL_ROOT + "mocks/head-client-wrapper-mock.js", this);
-/* import-globals-from mocks/head-runtime-client-factory-mock.js */
-Services.scriptloader.loadSubScript(
-  CHROME_URL_ROOT + "mocks/head-runtime-client-factory-mock.js", this);
-
 // Test that system addons are only displayed when the showSystemAddons preference is
 // true.
 

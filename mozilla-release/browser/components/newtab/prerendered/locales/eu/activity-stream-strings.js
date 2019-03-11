@@ -40,6 +40,9 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Ulertuta",
   "prefs_home_header": "Firefoxen hasiera-orriko edukia",
   "prefs_home_description": "Aukeratu zein eduki nahi duzun Firefoxen hasiera-orriko pantailan.",
+  "prefs_content_discovery_header": "Firefoxen hasiera",
+  "prefs_content_discovery_description": "Firefoxen hasierako edukien aurkikuntzaren bidez kalitate altuko artikulu esanguratsuak aurki ditzakezu webean.",
+  "prefs_content_discovery_button": "Desgaitu edukien aurkikuntza",
   "prefs_section_rows_option": "Errenkada bat;{num} errenkada",
   "prefs_search_header": "Web bilaketa",
   "prefs_topsites_description": "Gehien bisitatzen dituzun guneak",
@@ -107,6 +110,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Pribatutasun-oharra",
   "firstrun_continue_to_login": "Jarraitu",
   "firstrun_skip_login": "Saltatu urrats hau",
-  "context_menu_title": "Open menu",
-  "pocket_learn_more": "Argibide gehiago"
+  "context_menu_title": "Ireki menua"
 };

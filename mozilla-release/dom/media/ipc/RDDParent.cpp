@@ -6,8 +6,8 @@
 #include "RDDParent.h"
 
 #if defined(XP_WIN)
-#include <process.h>
-#include <dwrite.h>
+#  include <process.h>
+#  include <dwrite.h>
 #endif
 
 #include "mozilla/Assertions.h"
@@ -20,13 +20,13 @@
 #include "mozilla/ipc/ProcessChild.h"
 
 #ifdef MOZ_GECKO_PROFILER
-#include "ChildProfilerController.h"
+#  include "ChildProfilerController.h"
 #endif
 
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
-#include "mozilla/Sandbox.h"
-#include "nsMacUtilsImpl.h"
-#include <Carbon/Carbon.h>  // for CGSSetDenyWindowServerConnections
+#  include "mozilla/Sandbox.h"
+#  include "nsMacUtilsImpl.h"
+#  include <Carbon/Carbon.h>  // for CGSSetDenyWindowServerConnections
 #endif
 
 #include "nsDebugImpl.h"
@@ -97,9 +97,9 @@ static void StartRDDMacSandbox() {
   // future connections.
   CGError result = CGSSetDenyWindowServerConnections(true);
   MOZ_DIAGNOSTIC_ASSERT(result == kCGErrorSuccess);
-#if !MOZ_DIAGNOSTIC_ASSERT_ENABLED
+#  if !MOZ_DIAGNOSTIC_ASSERT_ENABLED
   Unused << result;
-#endif
+#  endif
 
   nsAutoCString appPath;
   nsMacUtilsImpl::GetAppPath(appPath);
@@ -155,7 +155,13 @@ mozilla::ipc::IPCResult RDDParent::RecvRequestMemoryReport(
   nsPrintfCString processName("RDD (pid %u)", (unsigned)getpid());
 
   mozilla::dom::MemoryReportRequestClient::Start(
-      aGeneration, aAnonymize, aMinimizeMemoryUsage, aDMDFile, processName);
+      aGeneration, aAnonymize, aMinimizeMemoryUsage, aDMDFile, processName,
+      [&](const MemoryReport& aReport) {
+        Unused << GetSingleton()->SendAddMemoryReport(aReport);
+      },
+      [&](const uint32_t& aGeneration) {
+        return GetSingleton()->SendFinishMemoryReport(aGeneration);
+      });
   return IPC_OK();
 }
 

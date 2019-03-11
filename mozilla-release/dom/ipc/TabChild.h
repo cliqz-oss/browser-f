@@ -26,6 +26,7 @@
 #include "nsWeakReference.h"
 #include "nsITabChild.h"
 #include "nsITooltipListener.h"
+#include "nsIWebProgressListener.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/TabContext.h"
 #include "mozilla/dom/CoalescedMouseData.h"
@@ -46,7 +47,9 @@
 
 class nsIDOMWindowUtils;
 class nsIHttpChannel;
+class nsIRequest;
 class nsISerialEventTarget;
+class nsIWebProgress;
 class nsWebBrowser;
 
 template <typename T>
@@ -77,6 +80,8 @@ class TabGroup;
 class ClonedMessageData;
 class CoalescedMouseData;
 class CoalescedWheelData;
+class RequestData;
+class WebProgressData;
 
 class TabChildMessageManager : public ContentFrameMessageManager,
                                public nsIMessageSender,
@@ -94,8 +99,7 @@ class TabChildMessageManager : public ContentFrameMessageManager,
   JSObject* WrapObject(JSContext* aCx,
                        JS::Handle<JSObject*> aGivenProto) override;
 
-  virtual already_AddRefed<nsPIDOMWindowOuter> GetContent(
-      ErrorResult& aError) override;
+  virtual Nullable<WindowProxyHolder> GetContent(ErrorResult& aError) override;
   virtual already_AddRefed<nsIDocShell> GetDocShell(
       ErrorResult& aError) override;
   virtual already_AddRefed<nsIEventTarget> GetTabEventTarget() override;
@@ -164,7 +168,7 @@ class TabChildBase : public nsISupports,
   virtual ScreenIntSize GetInnerSize() = 0;
 
   // Get the Document for the top-level window in this tab.
-  already_AddRefed<nsIDocument> GetDocument() const;
+  already_AddRefed<Document> GetDocument() const;
 
   // Get the pres-shell of the document for the top-level window in this tab.
   already_AddRefed<nsIPresShell> GetPresShell() const;
@@ -199,6 +203,7 @@ class TabChild final : public TabChildBase,
                        public nsSupportsWeakReference,
                        public nsITabChild,
                        public nsIObserver,
+                       public nsIWebProgressListener,
                        public TabContext,
                        public nsITooltipListener,
                        public mozilla::ipc::IShmemAllocator {
@@ -253,6 +258,7 @@ class TabChild final : public TabChildBase,
   NS_DECL_NSIWINDOWPROVIDER
   NS_DECL_NSITABCHILD
   NS_DECL_NSIOBSERVER
+  NS_DECL_NSIWEBPROGRESSLISTENER
   NS_DECL_NSITOOLTIPLISTENER
 
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(TabChild, TabChildBase)
@@ -333,7 +339,7 @@ class TabChild final : public TabChildBase,
 
   virtual mozilla::ipc::IPCResult RecvRealDragEvent(
       const WidgetDragEvent& aEvent, const uint32_t& aDragAction,
-      const uint32_t& aDropEffect, const nsCString& aPrincipalURISpec) override;
+      const uint32_t& aDropEffect, const IPC::Principal& aPrincipal) override;
 
   virtual mozilla::ipc::IPCResult RecvRealKeyEvent(
       const mozilla::WidgetKeyboardEvent& aEvent) override;
@@ -777,6 +783,11 @@ class TabChild final : public TabChildBase,
   bool CreateRemoteLayerManager(
       mozilla::layers::PCompositorBridgeChild* aCompositorChild);
 
+  nsresult PrepareProgressListenerData(nsIWebProgress* aWebProgress,
+                                       nsIRequest* aRequest,
+                                       WebProgressData& aWebProgressData,
+                                       RequestData& aRequestData);
+
   class DelayedDeleteRunnable;
 
   TextureFactoryIdentifier mTextureFactoryIdentifier;
@@ -802,6 +813,7 @@ class TabChild final : public TabChildBase,
   SetAllowedTouchBehaviorCallback mSetAllowedTouchBehaviorCallback;
   bool mHasValidInnerSize;
   bool mDestroyed;
+  bool mProgressListenerRegistered;
   // Position of client area relative to the outer window
   LayoutDeviceIntPoint mClientOffset;
   // Position of tab, relative to parent widget (typically the window)

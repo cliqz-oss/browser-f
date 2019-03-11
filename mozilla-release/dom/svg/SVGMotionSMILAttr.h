@@ -10,36 +10,37 @@
 #define MOZILLA_SVGMOTIONSMILATTR_H_
 
 #include "mozilla/Attributes.h"
-#include "nsISMILAttr.h"
+#include "mozilla/SMILAttr.h"
 
 class nsIContent;
-class nsSMILValue;
-class nsSVGElement;
 
 namespace mozilla {
 
+class SMILValue;
+
 namespace dom {
 class SVGAnimationElement;
+class SVGElement;
 }  // namespace dom
 
 /**
- * SVGMotionSMILAttr: Implements the nsISMILAttr interface for SMIL animations
+ * SVGMotionSMILAttr: Implements the SMILAttr interface for SMIL animations
  * from <animateMotion>.
  *
  * NOTE: Even though there's technically no "motion" attribute, we behave in
  * many ways as if there were, for simplicity.
  */
-class SVGMotionSMILAttr : public nsISMILAttr {
+class SVGMotionSMILAttr : public SMILAttr {
  public:
-  explicit SVGMotionSMILAttr(nsSVGElement* aSVGElement)
+  explicit SVGMotionSMILAttr(dom::SVGElement* aSVGElement)
       : mSVGElement(aSVGElement) {}
 
-  // nsISMILAttr methods
+  // SMILAttr methods
   virtual nsresult ValueFromString(
       const nsAString& aStr, const dom::SVGAnimationElement* aSrcElement,
-      nsSMILValue& aValue, bool& aPreventCachingOfSandwich) const override;
-  virtual nsSMILValue GetBaseValue() const override;
-  virtual nsresult SetAnimValue(const nsSMILValue& aValue) override;
+      SMILValue& aValue, bool& aPreventCachingOfSandwich) const override;
+  virtual SMILValue GetBaseValue() const override;
+  virtual nsresult SetAnimValue(const SMILValue& aValue) override;
   virtual void ClearAnimValue() override;
   virtual const nsIContent* GetTargetNode() const override;
 
@@ -47,7 +48,7 @@ class SVGMotionSMILAttr : public nsISMILAttr {
   // Raw pointers are OK here because this SVGMotionSMILAttr is both
   // created & destroyed during a SMIL sample-step, during which time the DOM
   // isn't modified.
-  nsSVGElement* mSVGElement;
+  dom::SVGElement* mSVGElement;
 };
 
 }  // namespace mozilla

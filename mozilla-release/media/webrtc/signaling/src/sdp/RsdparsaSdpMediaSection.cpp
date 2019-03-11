@@ -14,7 +14,7 @@
 #include "signaling/src/sdp/SdpErrorHolder.h"
 
 #ifdef CRLF
-#undef CRLF
+#  undef CRLF
 #endif
 #define CRLF "\r\n"
 
@@ -65,6 +65,8 @@ SdpMediaSection::Protocol RsdparsaSdpMediaSection::GetProtocol() const {
       return kUdpTlsRtpSavpf;
     case RustSdpProtocolValue::kRustTcpTlsRtpSavpf:
       return kTcpTlsRtpSavpf;
+    case RustSdpProtocolValue::kRustTcpDtlsRtpSavpf:
+      return kTcpDtlsRtpSavpf;
     case RustSdpProtocolValue::kRustDtlsSctp:
       return kDtlsSctp;
     case RustSdpProtocolValue::kRustUdpDtlsSctp:

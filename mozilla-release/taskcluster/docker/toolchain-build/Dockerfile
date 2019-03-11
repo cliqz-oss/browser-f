@@ -9,11 +9,13 @@ VOLUME /builds/worker/tooltool-cache
 ENV XZ_OPT=-T0
 
 # %ARG DOCKER_IMAGE_PACKAGES
-RUN /usr/local/sbin/setup_packages.sh $DOCKER_IMAGE_PACKAGES
+# %ARG TASKCLUSTER_ROOT_URL
+RUN /usr/local/sbin/setup_packages.sh $TASKCLUSTER_ROOT_URL $DOCKER_IMAGE_PACKAGES
 
 RUN apt-get update && \
     apt-get install \
       autoconf \
+      autoconf2.13 \
       automake \
       bison \
       build-essential \
@@ -24,6 +26,7 @@ RUN apt-get update && \
       gcc-multilib \
       gnupg \
       libbz2-dev \
+      libcurl4-openssl-dev \
       libssl-dev \
       libtool \
       ninja-build \

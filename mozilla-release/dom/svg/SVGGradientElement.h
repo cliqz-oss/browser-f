@@ -8,11 +8,11 @@
 #define __NS_SVGGRADIENTELEMENT_H__
 
 #include "nsAutoPtr.h"
-#include "nsSVGAnimatedTransformList.h"
-#include "nsSVGElement.h"
+#include "SVGEnum.h"
 #include "nsSVGLength2.h"
-#include "nsSVGEnum.h"
-#include "nsSVGString.h"
+#include "SVGString.h"
+#include "SVGAnimatedTransformList.h"
+#include "mozilla/dom/SVGElement.h"
 
 class nsSVGGradientFrame;
 class nsSVGLinearGradientFrame;
@@ -26,11 +26,11 @@ nsresult NS_NewSVGRadialGradientElement(
 namespace mozilla {
 namespace dom {
 
-class SVGAnimatedTransformList;
+class DOMSVGAnimatedTransformList;
 
 //--------------------- Gradients------------------------
 
-typedef nsSVGElement SVGGradientElementBase;
+typedef SVGElement SVGGradientElementBase;
 
 class SVGGradientElement : public SVGGradientElementBase {
   friend class ::nsSVGGradientFrame;
@@ -47,7 +47,7 @@ class SVGGradientElement : public SVGGradientElementBase {
   // nsIContent
   NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
 
-  virtual nsSVGAnimatedTransformList* GetAnimatedTransformList(
+  virtual SVGAnimatedTransformList* GetAnimatedTransformList(
       uint32_t aFlags = 0) override;
   virtual nsStaticAtom* GetTransformListAttrName() const override {
     return nsGkAtoms::gradientTransform;
@@ -55,7 +55,7 @@ class SVGGradientElement : public SVGGradientElementBase {
 
   // WebIDL
   already_AddRefed<SVGAnimatedEnumeration> GradientUnits();
-  already_AddRefed<SVGAnimatedTransformList> GradientTransform();
+  already_AddRefed<DOMSVGAnimatedTransformList> GradientTransform();
   already_AddRefed<SVGAnimatedEnumeration> SpreadMethod();
   already_AddRefed<SVGAnimatedString> Href();
 
@@ -64,16 +64,16 @@ class SVGGradientElement : public SVGGradientElementBase {
   virtual StringAttributesInfo GetStringInfo() override;
 
   enum { GRADIENTUNITS, SPREADMETHOD };
-  nsSVGEnum mEnumAttributes[2];
-  static nsSVGEnumMapping sSpreadMethodMap[];
+  SVGEnum mEnumAttributes[2];
+  static SVGEnumMapping sSpreadMethodMap[];
   static EnumInfo sEnumInfo[2];
 
   enum { HREF, XLINK_HREF };
-  nsSVGString mStringAttributes[2];
+  SVGString mStringAttributes[2];
   static StringInfo sStringInfo[2];
 
   // SVGGradientElement values
-  nsAutoPtr<nsSVGAnimatedTransformList> mGradientTransform;
+  nsAutoPtr<SVGAnimatedTransformList> mGradientTransform;
 };
 
 //---------------------Linear Gradients------------------------

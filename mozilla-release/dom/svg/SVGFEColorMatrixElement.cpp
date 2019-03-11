@@ -4,14 +4,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "DOMSVGAnimatedNumberList.h"
 #include "mozilla/dom/SVGFEColorMatrixElement.h"
+
+#include "DOMSVGAnimatedNumberList.h"
 #include "mozilla/dom/SVGFEColorMatrixElementBinding.h"
 #include "nsSVGUtils.h"
 
 #define NUM_ENTRIES_IN_4x5_MATRIX 20
 
-NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(FEColorMatrix)
+NS_IMPL_NS_NEW_SVG_ELEMENT(FEColorMatrix)
 
 using namespace mozilla::gfx;
 
@@ -23,21 +24,21 @@ JSObject* SVGFEColorMatrixElement::WrapNode(JSContext* aCx,
   return SVGFEColorMatrixElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-nsSVGEnumMapping SVGFEColorMatrixElement::sTypeMap[] = {
+SVGEnumMapping SVGFEColorMatrixElement::sTypeMap[] = {
     {nsGkAtoms::matrix, SVG_FECOLORMATRIX_TYPE_MATRIX},
     {nsGkAtoms::saturate, SVG_FECOLORMATRIX_TYPE_SATURATE},
     {nsGkAtoms::hueRotate, SVG_FECOLORMATRIX_TYPE_HUE_ROTATE},
     {nsGkAtoms::luminanceToAlpha, SVG_FECOLORMATRIX_TYPE_LUMINANCE_TO_ALPHA},
     {nullptr, 0}};
 
-nsSVGElement::EnumInfo SVGFEColorMatrixElement::sEnumInfo[1] = {
+SVGElement::EnumInfo SVGFEColorMatrixElement::sEnumInfo[1] = {
     {nsGkAtoms::type, sTypeMap, SVG_FECOLORMATRIX_TYPE_MATRIX}};
 
-nsSVGElement::StringInfo SVGFEColorMatrixElement::sStringInfo[2] = {
+SVGElement::StringInfo SVGFEColorMatrixElement::sStringInfo[2] = {
     {nsGkAtoms::result, kNameSpaceID_None, true},
     {nsGkAtoms::in, kNameSpaceID_None, true}};
 
-nsSVGElement::NumberListInfo SVGFEColorMatrixElement::sNumberListInfo[1] = {
+SVGElement::NumberListInfo SVGFEColorMatrixElement::sNumberListInfo[1] = {
     {nsGkAtoms::values}};
 
 //----------------------------------------------------------------------
@@ -61,8 +62,8 @@ already_AddRefed<DOMSVGAnimatedNumberList> SVGFEColorMatrixElement::Values() {
 }
 
 void SVGFEColorMatrixElement::GetSourceImageNames(
-    nsTArray<nsSVGStringInfo>& aSources) {
-  aSources.AppendElement(nsSVGStringInfo(&mStringAttributes[IN1], this));
+    nsTArray<SVGStringInfo>& aSources) {
+  aSources.AppendElement(SVGStringInfo(&mStringAttributes[IN1], this));
 }
 
 FilterPrimitiveDescription SVGFEColorMatrixElement::GetPrimitiveDescription(
@@ -107,18 +108,18 @@ bool SVGFEColorMatrixElement::AttributeAffectsRendering(
 }
 
 //----------------------------------------------------------------------
-// nsSVGElement methods
+// SVGElement methods
 
-nsSVGElement::EnumAttributesInfo SVGFEColorMatrixElement::GetEnumInfo() {
+SVGElement::EnumAttributesInfo SVGFEColorMatrixElement::GetEnumInfo() {
   return EnumAttributesInfo(mEnumAttributes, sEnumInfo, ArrayLength(sEnumInfo));
 }
 
-nsSVGElement::StringAttributesInfo SVGFEColorMatrixElement::GetStringInfo() {
+SVGElement::StringAttributesInfo SVGFEColorMatrixElement::GetStringInfo() {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
                               ArrayLength(sStringInfo));
 }
 
-nsSVGElement::NumberListAttributesInfo
+SVGElement::NumberListAttributesInfo
 SVGFEColorMatrixElement::GetNumberListInfo() {
   return NumberListAttributesInfo(mNumberListAttributes, sNumberListInfo,
                                   ArrayLength(sNumberListInfo));

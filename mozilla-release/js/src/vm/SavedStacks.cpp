@@ -25,6 +25,7 @@
 #include "gc/Policy.h"
 #include "gc/Rooting.h"
 #include "js/CharacterEncoding.h"
+#include "js/PropertySpec.h"
 #include "js/SavedFrameAPI.h"
 #include "js/Vector.h"
 #include "util/StringBuffer.h"
@@ -1324,9 +1325,10 @@ bool SavedStacks::insertFrames(JSContext* cx, MutableHandleSavedFrame frame,
 
       // This frame doesn't have a cache entry, despite its hasCachedSavedFrame
       // flag being set. If this was due to a pc mismatch, we can clear the flag
-      // here and set things right. If the cache was emptied due to a realm mismatch,
-      // we should clear all the frames' flags as we walk to the bottom of the stack,
-      // so that they are all clear before we start pushing any new entries.
+      // here and set things right. If the cache was emptied due to a realm
+      // mismatch, we should clear all the frames' flags as we walk to the
+      // bottom of the stack, so that they are all clear before we start pushing
+      // any new entries.
       framePtr->clearHasCachedSavedFrame();
     }
 
@@ -1672,7 +1674,9 @@ bool SavedStacks::getLocation(JSContext* cx, const FrameIter& iter,
 }
 
 void SavedStacks::chooseSamplingProbability(Realm* realm) {
-  GlobalObject* global = realm->maybeGlobal();
+  // Use unbarriered version to prevent triggering read barrier while
+  // collecting, this is safe as long as global does not escape.
+  GlobalObject* global = realm->unsafeUnbarrieredMaybeGlobal();
   if (!global) {
     return;
   }
@@ -1686,15 +1690,17 @@ void SavedStacks::chooseSamplingProbability(Realm* realm) {
   mozilla::DebugOnly<bool> foundAnyDebuggers = false;
 
   double probability = 0;
-  for (auto dbgp = dbgs->begin(); dbgp < dbgs->end(); dbgp++) {
+  for (auto p = dbgs->begin(); p < dbgs->end(); p++) {
     // The set of debuggers had better not change while we're iterating,
     // such that the vector gets reallocated.
     MOZ_ASSERT(dbgs->begin() == begin);
+    // Use unbarrieredGet() to prevent triggering read barrier while collecting,
+    // this is safe as long as dbgp does not escape.
+    Debugger* dbgp = p->unbarrieredGet();
 
-    if ((*dbgp)->trackingAllocationSites && (*dbgp)->enabled) {
+    if (dbgp->trackingAllocationSites && dbgp->enabled) {
       foundAnyDebuggers = true;
-      probability =
-          std::max((*dbgp)->allocationSamplingProbability, probability);
+      probability = std::max(dbgp->allocationSamplingProbability, probability);
     }
   }
   MOZ_ASSERT(foundAnyDebuggers);

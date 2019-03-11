@@ -4,14 +4,16 @@
 
 use api::{BorderRadius, BorderSide, BorderStyle, ColorF, ColorU, DeviceRect, DeviceSize};
 use api::{LayoutSideOffsets, LayoutSizeAu, LayoutPrimitiveInfo, LayoutToDeviceScale};
-use api::{DeviceVector2D, DevicePoint, LayoutRect, LayoutSize, NormalBorder, DeviceIntSize};
-use api::{AuHelpers, LayoutPoint, RepeatMode, TexelRect};
+use api::{DeviceVector2D, DevicePoint, LayoutRect, LayoutSize, DeviceIntSize};
+use api::{AuHelpers, LayoutPoint, RepeatMode, TexelRect, LayoutVector2D};
+use api::NormalBorder as ApiNormalBorder;
 use ellipse::Ellipse;
 use euclid::vec2;
 use display_list_flattener::DisplayListFlattener;
 use gpu_types::{BorderInstance, BorderSegment, BrushFlags};
 use prim_store::{BorderSegmentInfo, BrushSegment, NinePatchDescriptor};
-use prim_store::{EdgeAaSegmentMask, ScrollNodeAndClipChain, PrimitiveKeyKind};
+use prim_store::{EdgeAaSegmentMask, ScrollNodeAndClipChain};
+use prim_store::borders::NormalBorderPrim;
 use util::{lerp, RectHelpers};
 
 // Using 2048 as the maximum radius in device space before which we
@@ -32,7 +34,7 @@ pub const MAX_DASH_COUNT: u32 = 2048;
 //           all the border structs with hashable
 //           variants...
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, MallocSizeOf, PartialEq, Eq)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct BorderRadiusAu {
@@ -40,17 +42,6 @@ pub struct BorderRadiusAu {
     pub top_right: LayoutSizeAu,
     pub bottom_left: LayoutSizeAu,
     pub bottom_right: LayoutSizeAu,
-}
-
-impl BorderRadiusAu {
-    pub fn zero() -> Self {
-        BorderRadiusAu {
-            top_left: LayoutSizeAu::zero(),
-            top_right: LayoutSizeAu::zero(),
-            bottom_left: LayoutSizeAu::zero(),
-            bottom_right: LayoutSizeAu::zero(),
-        }
-    }
 }
 
 impl From<BorderRadius> for BorderRadiusAu {
@@ -75,7 +66,7 @@ impl From<BorderRadiusAu> for BorderRadius {
     }
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, MallocSizeOf, PartialEq, Eq)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct BorderSideAu {
@@ -103,7 +94,7 @@ impl From<BorderSideAu> for BorderSide {
 
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq, MallocSizeOf, PartialEq)]
 pub struct NormalBorderAu {
     pub left: BorderSideAu,
     pub right: BorderSideAu,
@@ -129,8 +120,8 @@ impl NormalBorderAu {
     }
 }
 
-impl From<NormalBorder> for NormalBorderAu {
-    fn from(border: NormalBorder) -> Self {
+impl From<ApiNormalBorder> for NormalBorderAu {
+    fn from(border: ApiNormalBorder) -> Self {
         NormalBorderAu {
             left: border.left.into(),
             right: border.right.into(),
@@ -142,9 +133,9 @@ impl From<NormalBorder> for NormalBorderAu {
     }
 }
 
-impl From<NormalBorderAu> for NormalBorder {
+impl From<NormalBorderAu> for ApiNormalBorder {
     fn from(border: NormalBorderAu) -> Self {
-        NormalBorder {
+        ApiNormalBorder {
             left: border.left.into(),
             right: border.right.into(),
             top: border.top.into(),
@@ -157,7 +148,7 @@ impl From<NormalBorderAu> for NormalBorder {
 
 /// Cache key that uniquely identifies a border
 /// segment in the render task cache.
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, MallocSizeOf, PartialEq, Eq)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct BorderSegmentCacheKey {
@@ -218,9 +209,10 @@ impl<'a> DisplayListFlattener<'a> {
     pub fn add_normal_border(
         &mut self,
         info: &LayoutPrimitiveInfo,
-        border: &NormalBorder,
+        border: &ApiNormalBorder,
         widths: LayoutSideOffsets,
         clip_and_scroll: ScrollNodeAndClipChain,
+        reference_frame_relative_offset: LayoutVector2D,
     ) {
         let mut border = *border;
         ensure_no_corner_overlap(&mut border.radius, info.rect.size);
@@ -229,10 +221,11 @@ impl<'a> DisplayListFlattener<'a> {
             clip_and_scroll,
             info,
             Vec::new(),
-            PrimitiveKeyKind::NormalBorder {
+            NormalBorderPrim {
                 border: border.into(),
                 widths: widths.to_au(),
             },
+            reference_frame_relative_offset,
         );
     }
 }
@@ -650,7 +643,7 @@ fn get_edge_info(
 /// cache keys for a given CSS border.
 pub fn create_border_segments(
     size: LayoutSize,
-    border: &NormalBorder,
+    border: &ApiNormalBorder,
     widths: &LayoutSideOffsets,
     border_segments: &mut Vec<BorderSegmentInfo>,
     brush_segments: &mut Vec<BrushSegment>,
@@ -1096,7 +1089,7 @@ fn add_edge_segment(
 pub fn build_border_instances(
     cache_key: &BorderSegmentCacheKey,
     cache_size: DeviceIntSize,
-    border: &NormalBorder,
+    border: &ApiNormalBorder,
     scale: LayoutToDeviceScale,
 ) -> Vec<BorderInstance> {
     let mut instances = Vec::new();

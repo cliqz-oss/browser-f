@@ -201,6 +201,10 @@ function testEscapeStringPosix() {
     "$'It\\'s unusual to put crickets in your coffee.'",
     "Single quotes should be escaped.");
 
+  const escapeChar = "\'!ls:q:gs|ls|;ping 8.8.8.8;|";
+  is(CurlUtils.escapeStringPosix(escapeChar), "$'\\'\\041ls:q:gs|ls|;ping 8.8.8.8;|'",
+    "'!' should be escaped.");
+
   const newLines = "Line 1\r\nLine 2\u000d\u000ALine3";
   is(CurlUtils.escapeStringPosix(newLines), "$'Line 1\\r\\nLine 2\\r\\nLine3'",
     "Newlines should be escaped.");
@@ -209,7 +213,8 @@ function testEscapeStringPosix() {
   is(CurlUtils.escapeStringPosix(controlChars), "$'\\x07 \\x09 \\x0c \\x1b'",
     "Control characters should be escaped.");
 
-  const extendedAsciiChars = "æ ø ü ß ö é";
+  // æ ø ü ß ö é
+  const extendedAsciiChars = "\xc3\xa6 \xc3\xb8 \xc3\xbc \xc3\x9f \xc3\xb6 \xc3\xa9";
   is(CurlUtils.escapeStringPosix(extendedAsciiChars),
     "$'\\xc3\\xa6 \\xc3\\xb8 \\xc3\\xbc \\xc3\\x9f \\xc3\\xb6 \\xc3\\xa9'",
     "Character codes outside of the decimal range 32 - 126 should be escaped.");

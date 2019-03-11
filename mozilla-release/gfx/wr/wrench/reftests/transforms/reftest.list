@@ -17,6 +17,8 @@ platform(linux,mac) color_targets(2) alpha_targets(0) fuzzy(1,180) == screen-spa
 platform(linux,mac) fuzzy(1,331) color_targets(1) alpha_targets(0) == screen-space-blit-trivial.yaml screen-space-blit-trivial.png
 platform(linux) fuzzy(11,4592) == screen-space-blur.yaml screen-space-blur.png
 platform(linux,mac) == nested-rotate-x.yaml nested-rotate-x.png
+platform(linux,mac) != nested-rotate-x.yaml nested-rotate-x-flat.yaml
+platform(linux,mac) == nested-rotate-x-flat.yaml nested-rotate-x-flat.png
 platform(linux,mac) == nested-preserve-3d.yaml nested-preserve-3d.png
 platform(linux,mac) fuzzy(1,283) == near-plane-clip.yaml near-plane-clip.png
 platform(linux,mac) == perspective-mask.yaml perspective-mask.png
@@ -27,3 +29,8 @@ platform(linux,mac) == perspective-clip-1.yaml perspective-clip-1.png
 platform(linux,mac) fuzzy(1,2) == perspective-shadow.yaml perspective-shadow.png
 == complex-preserve-3d.yaml blank.yaml
 platform(linux,mac) fuzzy(9,348) == perspective-border-radius.yaml perspective-border-radius.png
+== snapped-preserve-3d.yaml snapped-preserve-3d-ref.yaml
+platform(linux,mac) fuzzy(1,122) == border-scale.yaml border-scale.png
+platform(linux,mac) fuzzy(1,16) == border-scale-2.yaml border-scale-2.png
+platform(linux,mac) fuzzy(1,69) == border-scale-3.yaml border-scale-3.png
+platform(linux,mac) fuzzy(1,74) == border-scale-4.yaml border-scale-4.png

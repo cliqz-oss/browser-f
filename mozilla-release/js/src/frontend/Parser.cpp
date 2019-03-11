@@ -26,6 +26,7 @@
 #include "mozilla/TypeTraits.h"
 #include "mozilla/Unused.h"
 #include "mozilla/Utf8.h"
+#include "mozilla/Variant.h"
 
 #include <memory>
 #include <new>
@@ -57,6 +58,7 @@
 using namespace js;
 
 using mozilla::AssertedCast;
+using mozilla::AsVariant;
 using mozilla::Maybe;
 using mozilla::Nothing;
 using mozilla::PodCopy;
@@ -131,177 +133,6 @@ bool GeneralParser<ParseHandler, Unit>::mustMatchTokenInternal(
     return false;
   }
   return true;
-}
-
-template <class ParseHandler, typename Unit>
-void GeneralParser<ParseHandler, Unit>::error(unsigned errorNumber, ...) {
-  va_list args;
-  va_start(args, errorNumber);
-
-  ErrorMetadata metadata;
-  if (tokenStream.computeErrorMetadata(&metadata, pos().begin)) {
-    ReportCompileError(context, std::move(metadata), nullptr, JSREPORT_ERROR,
-                       errorNumber, args);
-  }
-
-  va_end(args);
-}
-
-template <class ParseHandler, typename Unit>
-void GeneralParser<ParseHandler, Unit>::errorWithNotes(
-    UniquePtr<JSErrorNotes> notes, unsigned errorNumber, ...) {
-  va_list args;
-  va_start(args, errorNumber);
-
-  ErrorMetadata metadata;
-  if (tokenStream.computeErrorMetadata(&metadata, pos().begin)) {
-    ReportCompileError(context, std::move(metadata), std::move(notes),
-                       JSREPORT_ERROR, errorNumber, args);
-  }
-
-  va_end(args);
-}
-
-template <class ParseHandler, typename Unit>
-void GeneralParser<ParseHandler, Unit>::errorAt(uint32_t offset,
-                                                unsigned errorNumber, ...) {
-  va_list args;
-  va_start(args, errorNumber);
-
-  ErrorMetadata metadata;
-  if (tokenStream.computeErrorMetadata(&metadata, offset)) {
-    ReportCompileError(context, std::move(metadata), nullptr, JSREPORT_ERROR,
-                       errorNumber, args);
-  }
-
-  va_end(args);
-}
-
-template <class ParseHandler, typename Unit>
-void GeneralParser<ParseHandler, Unit>::errorWithNotesAt(
-    UniquePtr<JSErrorNotes> notes, uint32_t offset, unsigned errorNumber, ...) {
-  va_list args;
-  va_start(args, errorNumber);
-
-  ErrorMetadata metadata;
-  if (tokenStream.computeErrorMetadata(&metadata, offset)) {
-    ReportCompileError(context, std::move(metadata), std::move(notes),
-                       JSREPORT_ERROR, errorNumber, args);
-  }
-
-  va_end(args);
-}
-
-template <class ParseHandler, typename Unit>
-bool GeneralParser<ParseHandler, Unit>::warning(unsigned errorNumber, ...) {
-  va_list args;
-  va_start(args, errorNumber);
-
-  ErrorMetadata metadata;
-  bool result = tokenStream.computeErrorMetadata(&metadata, pos().begin) &&
-                anyChars.compileWarning(std::move(metadata), nullptr,
-                                        JSREPORT_WARNING, errorNumber, args);
-
-  va_end(args);
-  return result;
-}
-
-template <class ParseHandler, typename Unit>
-bool GeneralParser<ParseHandler, Unit>::warningAt(uint32_t offset,
-                                                  unsigned errorNumber, ...) {
-  va_list args;
-  va_start(args, errorNumber);
-
-  ErrorMetadata metadata;
-  bool result = tokenStream.computeErrorMetadata(&metadata, offset);
-  if (result) {
-    result = anyChars.compileWarning(std::move(metadata), nullptr,
-                                     JSREPORT_WARNING, errorNumber, args);
-  }
-
-  va_end(args);
-  return result;
-}
-
-template <class ParseHandler, typename Unit>
-bool GeneralParser<ParseHandler, Unit>::extraWarning(unsigned errorNumber,
-                                                     ...) {
-  va_list args;
-  va_start(args, errorNumber);
-
-  bool result = tokenStream.reportExtraWarningErrorNumberVA(
-      nullptr, pos().begin, errorNumber, &args);
-
-  va_end(args);
-  return result;
-}
-
-template <class ParseHandler, typename Unit>
-bool GeneralParser<ParseHandler, Unit>::extraWarningAt(uint32_t offset,
-                                                       unsigned errorNumber,
-                                                       ...) {
-  va_list args;
-  va_start(args, errorNumber);
-
-  bool result = tokenStream.reportExtraWarningErrorNumberVA(nullptr, offset,
-                                                            errorNumber, &args);
-
-  va_end(args);
-  return result;
-}
-
-template <class ParseHandler, typename Unit>
-bool GeneralParser<ParseHandler, Unit>::strictModeError(unsigned errorNumber,
-                                                        ...) {
-  va_list args;
-  va_start(args, errorNumber);
-
-  bool res = tokenStream.reportStrictModeErrorNumberVA(
-      nullptr, pos().begin, pc->sc()->strict(), errorNumber, &args);
-
-  va_end(args);
-  return res;
-}
-
-template <class ParseHandler, typename Unit>
-bool GeneralParser<ParseHandler, Unit>::strictModeErrorAt(uint32_t offset,
-                                                          unsigned errorNumber,
-                                                          ...) {
-  va_list args;
-  va_start(args, errorNumber);
-
-  bool res = tokenStream.reportStrictModeErrorNumberVA(
-      nullptr, offset, pc->sc()->strict(), errorNumber, &args);
-
-  va_end(args);
-  return res;
-}
-
-bool ParserBase::warningNoOffset(unsigned errorNumber, ...) {
-  va_list args;
-  va_start(args, errorNumber);
-
-  ErrorMetadata metadata;
-  anyChars.computeErrorMetadataNoOffset(&metadata);
-
-  bool result = anyChars.compileWarning(std::move(metadata), nullptr,
-                                        JSREPORT_WARNING, errorNumber, args);
-
-  va_end(args);
-  return result;
-}
-
-void ParserBase::errorNoOffset(unsigned errorNumber, ...) {
-  va_list args;
-  va_start(args, errorNumber);
-
-  ErrorMetadata metadata;
-  anyChars.computeErrorMetadataNoOffset(&metadata);
-
-  ReportCompileError(context, std::move(metadata), nullptr, JSREPORT_ERROR,
-                     errorNumber, args);
-
-  va_end(args);
 }
 
 ParserBase::ParserBase(JSContext* cx, LifoAlloc& alloc,
@@ -617,7 +448,7 @@ void GeneralParser<ParseHandler, Unit>::reportMissingClosing(
   }
 
   uint32_t line, column;
-  anyChars.srcCoords.lineNumAndColumnIndex(openedPos, &line, &column);
+  tokenStream.computeLineAndColumn(openedPos, &line, &column);
 
   const size_t MaxWidth = sizeof("4294967295");
   char columnNumber[MaxWidth];
@@ -656,7 +487,7 @@ void GeneralParser<ParseHandler, Unit>::reportRedeclaration(
   }
 
   uint32_t line, column;
-  anyChars.srcCoords.lineNumAndColumnIndex(prevPos, &line, &column);
+  tokenStream.computeLineAndColumn(prevPos, &line, &column);
 
   const size_t MaxWidth = sizeof("4294967295");
   char columnNumber[MaxWidth];
@@ -1043,7 +874,7 @@ typename Scope::Data* NewEmptyBindingData(JSContext* cx, LifoAlloc& alloc,
                                           uint32_t numBindings) {
   using Data = typename Scope::Data;
   size_t allocSize = SizeOfData<typename Scope::Data>(numBindings);
-  auto* bindings = alloc.allocInSize<Data>(allocSize, numBindings);
+  auto* bindings = alloc.newWithSize<Data>(allocSize, numBindings);
   if (!bindings) {
     ReportOutOfMemory(cx);
   }
@@ -1670,7 +1501,7 @@ CodeNode* Parser<FullParseHandler, Unit>::moduleBody(
         return null();
       }
 
-      errorAt(TokenStream::NoOffset, JSMSG_MISSING_EXPORT, str.get());
+      errorNoOffset(JSMSG_MISSING_EXPORT, str.get());
       return null();
     }
 
@@ -2437,7 +2268,7 @@ bool GeneralParser<ParseHandler, Unit>::functionArguments(
 
     // Record the start of function source (for FunctionToString). If we
     // are parenFreeArrow, we will set this below, after consuming the NAME.
-    funbox->setStart(anyChars);
+    tokenStream.setFunctionStart(funbox);
   } else {
     // When delazifying, we may not have a current token and pos() is
     // garbage. In that case, substitute the first token's position.
@@ -2552,7 +2383,7 @@ bool GeneralParser<ParseHandler, Unit>::functionArguments(
           }
 
           if (parenFreeArrow) {
-            funbox->setStart(anyChars);
+            tokenStream.setFunctionStart(funbox);
           }
 
           RootedPropertyName name(context, bindingIdentifier(yieldHandling));
@@ -2792,7 +2623,7 @@ GeneralParser<ParseHandler, Unit>::templateLiteral(
   }
 
   ListNodeType nodeList =
-      handler.newList(ParseNodeKind::TemplateStringList, literal);
+      handler.newList(ParseNodeKind::TemplateStringListExpr, literal);
   if (!nodeList) {
     return null();
   }
@@ -3302,6 +3133,7 @@ bool GeneralParser<ParseHandler, Unit>::functionFormalParametersAndBody(
                            openedPos);
       return false;
     }
+
     funbox->setEnd(anyChars);
   } else {
     MOZ_ASSERT(kind == FunctionSyntaxKind::Arrow);
@@ -3309,9 +3141,13 @@ bool GeneralParser<ParseHandler, Unit>::functionFormalParametersAndBody(
     if (anyChars.hadError()) {
       return false;
     }
+
     funbox->setEnd(anyChars);
-    if (kind == FunctionSyntaxKind::Statement && !matchOrInsertSemicolon()) {
-      return false;
+
+    if (kind == FunctionSyntaxKind::Statement) {
+      if (!matchOrInsertSemicolon()) {
+        return false;
+      }
     }
   }
 
@@ -3509,8 +3345,8 @@ bool Parser<SyntaxParseHandler, Unit>::asmJS(ListNodeType list) {
   return false;
 }
 
-template <>
-bool Parser<FullParseHandler, char16_t>::asmJS(ListNodeType list) {
+template <typename Unit>
+bool Parser<FullParseHandler, Unit>::asmJS(ListNodeType list) {
   // Disable syntax parsing in anything nested inside the asm.js module.
   disableSyntaxParser();
 
@@ -3545,14 +3381,6 @@ bool Parser<FullParseHandler, char16_t>::asmJS(ListNodeType list) {
     return false;
   }
 
-  return true;
-}
-
-template <>
-bool Parser<FullParseHandler, Utf8Unit>::asmJS(ListNodeType list) {
-  // Just succeed without setting the asm.js directive flag.  Given Web
-  // Assembly's rapid advance, it's probably not worth the trouble to really
-  // support UTF-8 asm.js.
   return true;
 }
 
@@ -3924,17 +3752,9 @@ GeneralParser<ParseHandler, Unit>::bindingInitializer(
   }
 
   BinaryNodeType assign =
-      handler.newAssignment(ParseNodeKind::Assign, lhs, rhs);
+      handler.newAssignment(ParseNodeKind::AssignExpr, lhs, rhs);
   if (!assign) {
     return null();
-  }
-
-  if (foldConstants) {
-    Node node = assign;
-    if (!FoldConstants(context, &node, this)) {
-      return null();
-    }
-    assign = handler.asBinary(node);
   }
 
   return assign;
@@ -4365,7 +4185,7 @@ GeneralParser<ParseHandler, Unit>::declarationPattern(
     return null();
   }
 
-  return handler.newAssignment(ParseNodeKind::Assign, pattern, init);
+  return handler.newAssignment(ParseNodeKind::AssignExpr, pattern, init);
 }
 
 template <class ParseHandler, typename Unit>
@@ -4527,18 +4347,18 @@ GeneralParser<ParseHandler, Unit>::declarationList(
     YieldHandling yieldHandling, ParseNodeKind kind,
     ParseNodeKind* forHeadKind /* = nullptr */,
     Node* forInOrOfExpression /* = nullptr */) {
-  MOZ_ASSERT(kind == ParseNodeKind::Var || kind == ParseNodeKind::Let ||
-             kind == ParseNodeKind::Const);
+  MOZ_ASSERT(kind == ParseNodeKind::VarStmt || kind == ParseNodeKind::LetDecl ||
+             kind == ParseNodeKind::ConstDecl);
 
   DeclarationKind declKind;
   switch (kind) {
-    case ParseNodeKind::Var:
+    case ParseNodeKind::VarStmt:
       declKind = DeclarationKind::Var;
       break;
-    case ParseNodeKind::Const:
+    case ParseNodeKind::ConstDecl:
       declKind = DeclarationKind::Const;
       break;
-    case ParseNodeKind::Let:
+    case ParseNodeKind::LetDecl:
       declKind = DeclarationKind::Let;
       break;
     default:
@@ -4609,8 +4429,8 @@ GeneralParser<ParseHandler, Unit>::lexicalDeclaration(
    * See 8.1.1.1.6 and the note in 13.2.1.
    */
   ListNodeType decl = declarationList(
-      yieldHandling, kind == DeclarationKind::Const ? ParseNodeKind::Const
-                                                    : ParseNodeKind::Let);
+      yieldHandling, kind == DeclarationKind::Const ? ParseNodeKind::ConstDecl
+                                                    : ParseNodeKind::LetDecl);
   if (!decl || !matchOrInsertSemicolon()) {
     return null();
   }
@@ -4932,7 +4752,7 @@ inline bool GeneralParser<ParseHandler, Unit>::checkExportedName(
 template <typename Unit>
 bool Parser<FullParseHandler, Unit>::checkExportedNamesForArrayBinding(
     ListNode* array) {
-  MOZ_ASSERT(array->isKind(ParseNodeKind::Array));
+  MOZ_ASSERT(array->isKind(ParseNodeKind::ArrayExpr));
 
   for (ParseNode* node : array->contents()) {
     if (node->isKind(ParseNodeKind::Elision)) {
@@ -4942,7 +4762,7 @@ bool Parser<FullParseHandler, Unit>::checkExportedNamesForArrayBinding(
     ParseNode* binding;
     if (node->isKind(ParseNodeKind::Spread)) {
       binding = node->as<UnaryNode>().kid();
-    } else if (node->isKind(ParseNodeKind::Assign)) {
+    } else if (node->isKind(ParseNodeKind::AssignExpr)) {
       binding = node->as<AssignmentNode>().left();
     } else {
       binding = node;
@@ -4973,7 +4793,7 @@ GeneralParser<ParseHandler, Unit>::checkExportedNamesForArrayBinding(
 template <typename Unit>
 bool Parser<FullParseHandler, Unit>::checkExportedNamesForObjectBinding(
     ListNode* obj) {
-  MOZ_ASSERT(obj->isKind(ParseNodeKind::Object));
+  MOZ_ASSERT(obj->isKind(ParseNodeKind::ObjectExpr));
 
   for (ParseNode* node : obj->contents()) {
     MOZ_ASSERT(node->isKind(ParseNodeKind::MutateProto) ||
@@ -4991,7 +4811,7 @@ bool Parser<FullParseHandler, Unit>::checkExportedNamesForObjectBinding(
         target = node->as<BinaryNode>().right();
       }
 
-      if (target->isKind(ParseNodeKind::Assign)) {
+      if (target->isKind(ParseNodeKind::AssignExpr)) {
         target = target->as<AssignmentNode>().left();
       }
     }
@@ -5025,12 +4845,12 @@ bool Parser<FullParseHandler, Unit>::checkExportedNamesForDeclaration(
     if (!checkExportedName(node->as<NameNode>().atom())) {
       return false;
     }
-  } else if (node->isKind(ParseNodeKind::Array)) {
+  } else if (node->isKind(ParseNodeKind::ArrayExpr)) {
     if (!checkExportedNamesForArrayBinding(&node->as<ListNode>())) {
       return false;
     }
   } else {
-    MOZ_ASSERT(node->isKind(ParseNodeKind::Object));
+    MOZ_ASSERT(node->isKind(ParseNodeKind::ObjectExpr));
     if (!checkExportedNamesForObjectBinding(&node->as<ListNode>())) {
       return false;
     }
@@ -5056,7 +4876,7 @@ template <typename Unit>
 bool Parser<FullParseHandler, Unit>::checkExportedNamesForDeclarationList(
     ListNode* node) {
   for (ParseNode* binding : node->contents()) {
-    if (binding->isKind(ParseNodeKind::Assign)) {
+    if (binding->isKind(ParseNodeKind::AssignExpr)) {
       binding = binding->as<AssignmentNode>().left();
     } else {
       MOZ_ASSERT(binding->isKind(ParseNodeKind::Name));
@@ -5397,7 +5217,7 @@ GeneralParser<ParseHandler, Unit>::exportVariableStatement(uint32_t begin) {
 
   MOZ_ASSERT(anyChars.isCurrentTokenType(TokenKind::Var));
 
-  ListNodeType kid = declarationList(YieldIsName, ParseNodeKind::Var);
+  ListNodeType kid = declarationList(YieldIsName, ParseNodeKind::VarStmt);
   if (!kid) {
     return null();
   }
@@ -5977,7 +5797,7 @@ bool GeneralParser<ParseHandler, Unit>::forHeadStart(
     tokenStream.consumeKnownToken(tt, TokenStream::Operand);
 
     // Pass null for block object because |var| declarations don't use one.
-    *forInitialPart = declarationList(yieldHandling, ParseNodeKind::Var,
+    *forInitialPart = declarationList(yieldHandling, ParseNodeKind::VarStmt,
                                       forHeadKind, forInOrOfExpression);
     return *forInitialPart != null();
   }
@@ -6022,10 +5842,11 @@ bool GeneralParser<ParseHandler, Unit>::forHeadStart(
     // statements.
     ParseContext::Statement forHeadStmt(pc, StatementKind::ForLoopLexicalHead);
 
-    *forInitialPart = declarationList(
-        yieldHandling,
-        tt == TokenKind::Const ? ParseNodeKind::Const : ParseNodeKind::Let,
-        forHeadKind, forInOrOfExpression);
+    *forInitialPart =
+        declarationList(yieldHandling,
+                        tt == TokenKind::Const ? ParseNodeKind::ConstDecl
+                                               : ParseNodeKind::LetDecl,
+                        forHeadKind, forInOrOfExpression);
     return *forInitialPart != null();
   }
 
@@ -6560,7 +6381,7 @@ GeneralParser<ParseHandler, Unit>::yieldExpression(InHandling inHandling) {
   pc->lastYieldOffset = begin;
 
   Node exprNode;
-  ParseNodeKind kind = ParseNodeKind::Yield;
+  ParseNodeKind kind = ParseNodeKind::YieldExpr;
   TokenKind tt = TokenKind::Eof;
   if (!tokenStream.peekTokenSameLine(&tt, TokenStream::Operand)) {
     return null();
@@ -6586,7 +6407,7 @@ GeneralParser<ParseHandler, Unit>::yieldExpression(InHandling inHandling) {
       anyChars.addModifierException(TokenStream::NoneIsOperand);
       break;
     case TokenKind::Mul:
-      kind = ParseNodeKind::YieldStar;
+      kind = ParseNodeKind::YieldStarExpr;
       tokenStream.consumeKnownToken(TokenKind::Mul, TokenStream::Operand);
       MOZ_FALLTHROUGH;
     default:
@@ -6595,7 +6416,7 @@ GeneralParser<ParseHandler, Unit>::yieldExpression(InHandling inHandling) {
         return null();
       }
   }
-  if (kind == ParseNodeKind::YieldStar) {
+  if (kind == ParseNodeKind::YieldStarExpr) {
     return handler.newYieldStarExpression(begin, exprNode);
   }
   return handler.newYieldExpression(begin, exprNode);
@@ -7339,7 +7160,7 @@ template <class ParseHandler, typename Unit>
 typename ParseHandler::Node
 GeneralParser<ParseHandler, Unit>::variableStatement(
     YieldHandling yieldHandling) {
-  ListNodeType vars = declarationList(yieldHandling, ParseNodeKind::Var);
+  ListNodeType vars = declarationList(yieldHandling, ParseNodeKind::VarStmt);
   if (!vars) {
     return null();
   }
@@ -8229,43 +8050,43 @@ typename ParseHandler::Node GeneralParser<ParseHandler, Unit>::assignExpr(
   ParseNodeKind kind;
   switch (tokenAfterLHS) {
     case TokenKind::Assign:
-      kind = ParseNodeKind::Assign;
+      kind = ParseNodeKind::AssignExpr;
       break;
     case TokenKind::AddAssign:
-      kind = ParseNodeKind::AddAssign;
+      kind = ParseNodeKind::AddAssignExpr;
       break;
     case TokenKind::SubAssign:
-      kind = ParseNodeKind::SubAssign;
+      kind = ParseNodeKind::SubAssignExpr;
       break;
     case TokenKind::BitOrAssign:
-      kind = ParseNodeKind::BitOrAssign;
+      kind = ParseNodeKind::BitOrAssignExpr;
       break;
     case TokenKind::BitXorAssign:
-      kind = ParseNodeKind::BitXorAssign;
+      kind = ParseNodeKind::BitXorAssignExpr;
       break;
     case TokenKind::BitAndAssign:
-      kind = ParseNodeKind::BitAndAssign;
+      kind = ParseNodeKind::BitAndAssignExpr;
       break;
     case TokenKind::LshAssign:
-      kind = ParseNodeKind::LshAssign;
+      kind = ParseNodeKind::LshAssignExpr;
       break;
     case TokenKind::RshAssign:
-      kind = ParseNodeKind::RshAssign;
+      kind = ParseNodeKind::RshAssignExpr;
       break;
     case TokenKind::UrshAssign:
-      kind = ParseNodeKind::UrshAssign;
+      kind = ParseNodeKind::UrshAssignExpr;
       break;
     case TokenKind::MulAssign:
-      kind = ParseNodeKind::MulAssign;
+      kind = ParseNodeKind::MulAssignExpr;
       break;
     case TokenKind::DivAssign:
-      kind = ParseNodeKind::DivAssign;
+      kind = ParseNodeKind::DivAssignExpr;
       break;
     case TokenKind::ModAssign:
-      kind = ParseNodeKind::ModAssign;
+      kind = ParseNodeKind::ModAssignExpr;
       break;
     case TokenKind::PowAssign:
-      kind = ParseNodeKind::PowAssign;
+      kind = ParseNodeKind::PowAssignExpr;
       break;
 
     default:
@@ -8284,7 +8105,7 @@ typename ParseHandler::Node GeneralParser<ParseHandler, Unit>::assignExpr(
 
   // Verify the left-hand side expression doesn't have a forbidden form.
   if (handler.isUnparenthesizedDestructuringPattern(lhs)) {
-    if (kind != ParseNodeKind::Assign) {
+    if (kind != ParseNodeKind::AssignExpr) {
       error(JSMSG_BAD_DESTRUCT_ASS);
       return null();
     }
@@ -8430,15 +8251,15 @@ typename ParseHandler::Node GeneralParser<ParseHandler, Unit>::unaryExpr(
   uint32_t begin = pos().begin;
   switch (tt) {
     case TokenKind::Void:
-      return unaryOpExpr(yieldHandling, ParseNodeKind::Void, begin);
+      return unaryOpExpr(yieldHandling, ParseNodeKind::VoidExpr, begin);
     case TokenKind::Not:
-      return unaryOpExpr(yieldHandling, ParseNodeKind::Not, begin);
+      return unaryOpExpr(yieldHandling, ParseNodeKind::NotExpr, begin);
     case TokenKind::BitNot:
-      return unaryOpExpr(yieldHandling, ParseNodeKind::BitNot, begin);
+      return unaryOpExpr(yieldHandling, ParseNodeKind::BitNotExpr, begin);
     case TokenKind::Add:
-      return unaryOpExpr(yieldHandling, ParseNodeKind::Pos, begin);
+      return unaryOpExpr(yieldHandling, ParseNodeKind::PosExpr, begin);
     case TokenKind::Sub:
-      return unaryOpExpr(yieldHandling, ParseNodeKind::Neg, begin);
+      return unaryOpExpr(yieldHandling, ParseNodeKind::NegExpr, begin);
 
     case TokenKind::TypeOf: {
       // The |typeof| operator is specially parsed to distinguish its
@@ -8472,8 +8293,9 @@ typename ParseHandler::Node GeneralParser<ParseHandler, Unit>::unaryExpr(
       if (!operand || !checkIncDecOperand(operand, operandOffset)) {
         return null();
       }
-      ParseNodeKind pnk = (tt == TokenKind::Inc) ? ParseNodeKind::PreIncrement
-                                                 : ParseNodeKind::PreDecrement;
+      ParseNodeKind pnk = (tt == TokenKind::Inc)
+                              ? ParseNodeKind::PreIncrementExpr
+                              : ParseNodeKind::PreDecrementExpr;
       return handler.newUpdate(pnk, begin, operand);
     }
 
@@ -8541,8 +8363,9 @@ typename ParseHandler::Node GeneralParser<ParseHandler, Unit>::unaryExpr(
         return null();
       }
 
-      ParseNodeKind pnk = (tt == TokenKind::Inc) ? ParseNodeKind::PostIncrement
-                                                 : ParseNodeKind::PostDecrement;
+      ParseNodeKind pnk = (tt == TokenKind::Inc)
+                              ? ParseNodeKind::PostIncrementExpr
+                              : ParseNodeKind::PostDecrementExpr;
       return handler.newUpdate(pnk, begin, expr);
     }
   }
@@ -8649,6 +8472,15 @@ bool ParserBase::checkAndMarkSuperScope() {
 
   pc->setSuperScopeNeedsHomeObject();
   return true;
+}
+
+template <class ParseHandler, typename Unit>
+bool GeneralParser<ParseHandler, Unit>::computeErrorMetadata(
+    ErrorMetadata* err, const ErrorReportMixin::ErrorOffset& offset) {
+  if (offset.is<ErrorReportMixin::Current>()) {
+    return tokenStream.computeErrorMetadata(err, AsVariant(pos().begin));
+  }
+  return tokenStream.computeErrorMetadata(err, offset);
 }
 
 template <class ParseHandler, typename Unit>
@@ -9182,7 +9014,7 @@ BigIntLiteral* Parser<FullParseHandler, Unit>::newBigInt() {
   const auto& chars = tokenStream.getCharBuffer();
   mozilla::Range<const char16_t> source(chars.begin(), chars.length());
 
-  BigInt* b = js::StringToBigInt(context, source);
+  BigInt* b = js::ParseBigIntLiteral(context, source);
   if (!b) {
     return null();
   }
@@ -9419,9 +9251,6 @@ GeneralParser<ParseHandler, Unit>::arrayInitializer(
                 element, elementPos, &possibleErrorInner, possibleError)) {
           return null();
         }
-        if (foldConstants && !FoldConstants(context, &element, this)) {
-          return null();
-        }
         handler.addArrayElement(literal, element);
       }
 
@@ -9540,7 +9369,8 @@ typename ParseHandler::Node GeneralParser<ParseHandler, Unit>::propertyName(
     }
 
     case TokenKind::LeftBracket:
-      propName = computedPropertyName(yieldHandling, maybeDecl, propList);
+      propName = computedPropertyName(yieldHandling, maybeDecl,
+                                      propertyNameContext, propList);
       if (!propName) {
         return null();
       }
@@ -9605,7 +9435,8 @@ typename ParseHandler::Node GeneralParser<ParseHandler, Unit>::propertyName(
       if (tt == TokenKind::LeftBracket) {
         tokenStream.consumeKnownToken(TokenKind::LeftBracket);
 
-        return computedPropertyName(yieldHandling, maybeDecl, propList);
+        return computedPropertyName(yieldHandling, maybeDecl,
+                                    propertyNameContext, propList);
       }
 
       // Not an accessor property after all.
@@ -9680,7 +9511,7 @@ template <class ParseHandler, typename Unit>
 typename ParseHandler::UnaryNodeType
 GeneralParser<ParseHandler, Unit>::computedPropertyName(
     YieldHandling yieldHandling, const Maybe<DeclarationKind>& maybeDecl,
-    ListNodeType literal) {
+    PropertyNameContext propertyNameContext, ListNodeType literal) {
   MOZ_ASSERT(anyChars.isCurrentTokenType(TokenKind::LeftBracket));
 
   uint32_t begin = pos().begin;
@@ -9689,7 +9520,8 @@ GeneralParser<ParseHandler, Unit>::computedPropertyName(
     if (*maybeDecl == DeclarationKind::FormalParameter) {
       pc->functionBox()->hasParameterExprs = true;
     }
-  } else {
+  } else if (propertyNameContext ==
+             PropertyNameContext::PropertyNameInLiteral) {
     handler.setListHasNonConstInitializer(literal);
   }
 
@@ -9799,10 +9631,6 @@ GeneralParser<ParseHandler, Unit>::objectLiteral(YieldHandling yieldHandling,
           }
           seenPrototypeMutation = true;
 
-          if (foldConstants && !FoldConstants(context, &propExpr, this)) {
-            return null();
-          }
-
           // This occurs *only* if we observe PropertyType::Normal!
           // Only |__proto__: v| mutates [[Prototype]]. Getters,
           // setters, method/generator definitions, computed
@@ -9812,18 +9640,13 @@ GeneralParser<ParseHandler, Unit>::objectLiteral(YieldHandling yieldHandling,
             return null();
           }
         } else {
-          // Use Node instead of BinaryNodeType to pass it to
-          // FoldConstants.
-          Node propDef = handler.newPropertyDefinition(propName, propExpr);
+          BinaryNodeType propDef =
+              handler.newPropertyDefinition(propName, propExpr);
           if (!propDef) {
             return null();
           }
 
-          if (foldConstants && !FoldConstants(context, &propDef, this)) {
-            return null();
-          }
-
-          handler.addPropertyDefinition(literal, handler.asBinary(propDef));
+          handler.addPropertyDefinition(literal, propDef);
         }
       } else if (propType == PropertyType::Shorthand) {
         /*
@@ -9903,7 +9726,7 @@ GeneralParser<ParseHandler, Unit>::objectLiteral(YieldHandling yieldHandling,
         }
 
         BinaryNodeType propExpr =
-            handler.newAssignment(ParseNodeKind::Assign, lhs, rhs);
+            handler.newAssignment(ParseNodeKind::AssignExpr, lhs, rhs);
         if (!propExpr) {
           return null();
         }

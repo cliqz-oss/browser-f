@@ -19,11 +19,11 @@ static StaticAutoPtr<WGPByIdMap> gWindowGlobalParentsById;
 
 WindowGlobalParent::WindowGlobalParent(const WindowGlobalInit& aInit,
                                        bool aInProcess)
-  : mDocumentPrincipal(aInit.principal())
-  , mInnerWindowId(aInit.innerWindowId())
-  , mOuterWindowId(aInit.outerWindowId())
-  , mInProcess(aInProcess)
-  , mIPCClosed(true)  // Closed until WGP::Init
+    : mDocumentPrincipal(aInit.principal()),
+      mInnerWindowId(aInit.innerWindowId()),
+      mOuterWindowId(aInit.outerWindowId()),
+      mInProcess(aInProcess),
+      mIPCClosed(true)  // Closed until WGP::Init
 {
   MOZ_DIAGNOSTIC_ASSERT(XRE_IsParentProcess(), "Parent process only");
   MOZ_RELEASE_ASSERT(mDocumentPrincipal, "Must have a valid principal");
@@ -33,9 +33,7 @@ WindowGlobalParent::WindowGlobalParent(const WindowGlobalInit& aInit,
                      "Must be made in BrowsingContext");
 }
 
-void
-WindowGlobalParent::Init(const WindowGlobalInit& aInit)
-{
+void WindowGlobalParent::Init(const WindowGlobalInit& aInit) {
   MOZ_ASSERT(Manager(), "Should have a manager!");
   MOZ_ASSERT(!mFrameLoader, "Cannot Init() a WindowGlobalParent twice!");
 
@@ -77,11 +75,15 @@ WindowGlobalParent::Init(const WindowGlobalInit& aInit)
     RefPtr<WindowGlobalChild> otherSide = GetChildActor();
     if (otherSide && otherSide->WindowGlobal()) {
       // Get the toplevel window from the other side.
-      RefPtr<nsDocShell> docShell = nsDocShell::Cast(otherSide->WindowGlobal()->GetDocShell());
+      RefPtr<nsDocShell> docShell =
+          nsDocShell::Cast(otherSide->WindowGlobal()->GetDocShell());
       if (docShell) {
         docShell->GetTopFrameElement(getter_AddRefs(frameElement));
       }
     }
+
+    // We took a reference to our BrowsingContext in WindowGlobalChild::Create.
+    RefPtr<ChromeBrowsingContext> dummy = dont_AddRef(mBrowsingContext.get());
   } else {
     // In the cross-process case, we can get the frame element from our manager.
     MOZ_ASSERT(Manager()->GetProtocolTypeId() == PBrowserMsgStart);
@@ -94,20 +96,22 @@ WindowGlobalParent::Init(const WindowGlobalInit& aInit)
   if (flOwner) {
     mFrameLoader = flOwner->GetFrameLoader();
   }
+
+  nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
+  if (obs) {
+    obs->NotifyObservers(this, "window-global-created", nullptr);
+  }
 }
 
 /* static */ already_AddRefed<WindowGlobalParent>
-WindowGlobalParent::GetByInnerWindowId(uint64_t aInnerWindowId)
-{
+WindowGlobalParent::GetByInnerWindowId(uint64_t aInnerWindowId) {
   if (!gWindowGlobalParentsById) {
     return nullptr;
   }
   return gWindowGlobalParentsById->Get(aInnerWindowId);
 }
 
-already_AddRefed<WindowGlobalChild>
-WindowGlobalParent::GetChildActor()
-{
+already_AddRefed<WindowGlobalChild> WindowGlobalParent::GetChildActor() {
   if (mIPCClosed) {
     return nullptr;
   }
@@ -115,61 +119,57 @@ WindowGlobalParent::GetChildActor()
   return do_AddRef(static_cast<WindowGlobalChild*>(otherSide));
 }
 
-IPCResult
-WindowGlobalParent::RecvUpdateDocumentURI(nsIURI* aURI)
-{
+IPCResult WindowGlobalParent::RecvUpdateDocumentURI(nsIURI* aURI) {
   // XXX(nika): Assert that the URI change was one which makes sense (either
   // about:blank -> a real URI, or a legal push/popstate URI change?)
   mDocumentURI = aURI;
   return IPC_OK();
 }
 
-IPCResult
-WindowGlobalParent::RecvBecomeCurrentWindowGlobal()
-{
+IPCResult WindowGlobalParent::RecvBecomeCurrentWindowGlobal() {
   mBrowsingContext->SetCurrentWindowGlobal(this);
   return IPC_OK();
 }
 
-bool
-WindowGlobalParent::IsCurrentGlobal()
-{
+bool WindowGlobalParent::IsCurrentGlobal() {
   return !mIPCClosed && mBrowsingContext->GetCurrentWindowGlobal() == this;
 }
 
-void
-WindowGlobalParent::ActorDestroy(ActorDestroyReason aWhy)
-{
+void WindowGlobalParent::ActorDestroy(ActorDestroyReason aWhy) {
   mIPCClosed = true;
   gWindowGlobalParentsById->Remove(mInnerWindowId);
   mBrowsingContext->UnregisterWindowGlobal(this);
+
+  nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
+  if (obs) {
+    obs->NotifyObservers(this, "window-global-destroyed", nullptr);
+  }
 }
 
-WindowGlobalParent::~WindowGlobalParent()
-{
+WindowGlobalParent::~WindowGlobalParent() {
   MOZ_ASSERT(!gWindowGlobalParentsById ||
              !gWindowGlobalParentsById->Contains(mInnerWindowId));
 }
 
-JSObject*
-WindowGlobalParent::WrapObject(JSContext* aCx,
-                               JS::Handle<JSObject*> aGivenProto)
-{
+JSObject* WindowGlobalParent::WrapObject(JSContext* aCx,
+                                         JS::Handle<JSObject*> aGivenProto) {
   return WindowGlobalParent_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-nsISupports*
-WindowGlobalParent::GetParentObject()
-{
+nsISupports* WindowGlobalParent::GetParentObject() {
   return xpc::NativeGlobal(xpc::PrivilegedJunkScope());
 }
 
-NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(WindowGlobalParent,
-                                      mFrameLoader,
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(WindowGlobalParent)
+  NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
+  NS_INTERFACE_MAP_ENTRY(nsISupports)
+NS_INTERFACE_MAP_END
+
+NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(WindowGlobalParent, mFrameLoader,
                                       mBrowsingContext)
 
-NS_IMPL_CYCLE_COLLECTION_ROOT_NATIVE(WindowGlobalParent, AddRef)
-NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(WindowGlobalParent, Release)
+NS_IMPL_CYCLE_COLLECTING_ADDREF(WindowGlobalParent)
+NS_IMPL_CYCLE_COLLECTING_RELEASE(WindowGlobalParent)
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla

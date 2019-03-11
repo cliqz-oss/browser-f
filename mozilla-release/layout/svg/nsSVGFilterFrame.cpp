@@ -12,7 +12,7 @@
 #include "gfxUtils.h"
 #include "nsGkAtoms.h"
 #include "SVGObserverUtils.h"
-#include "nsSVGElement.h"
+#include "SVGElement.h"
 #include "mozilla/dom/SVGFilterElement.h"
 #include "nsSVGFilterInstance.h"
 #include "nsSVGIntegrationUtils.h"
@@ -30,10 +30,12 @@ nsIFrame* NS_NewSVGFilterFrame(nsIPresShell* aPresShell,
 NS_IMPL_FRAMEARENA_HELPERS(nsSVGFilterFrame)
 
 uint16_t nsSVGFilterFrame::GetEnumValue(uint32_t aIndex, nsIContent* aDefault) {
-  nsSVGEnum& thisEnum =
+  SVGEnum& thisEnum =
       static_cast<SVGFilterElement*>(GetContent())->mEnumAttributes[aIndex];
 
-  if (thisEnum.IsExplicitlySet()) return thisEnum.GetAnimValue();
+  if (thisEnum.IsExplicitlySet()) {
+    return thisEnum.GetAnimValue();
+  }
 
   // Before we recurse, make sure we'll break reference loops and over long
   // reference chains:
@@ -60,7 +62,9 @@ const nsSVGLength2* nsSVGFilterFrame::GetLengthValue(uint32_t aIndex,
   const nsSVGLength2* thisLength =
       &static_cast<SVGFilterElement*>(GetContent())->mLengthAttributes[aIndex];
 
-  if (thisLength->IsExplicitlySet()) return thisLength;
+  if (thisLength->IsExplicitlySet()) {
+    return thisLength;
+  }
 
   // Before we recurse, make sure we'll break reference loops and over long
   // reference chains:
@@ -83,8 +87,8 @@ const SVGFilterElement* nsSVGFilterFrame::GetFilterContent(
     nsIContent* aDefault) {
   for (nsIContent* child = mContent->GetFirstChild(); child;
        child = child->GetNextSibling()) {
-    RefPtr<nsSVGFE> primitive;
-    CallQueryInterface(child, (nsSVGFE**)getter_AddRefs(primitive));
+    RefPtr<SVGFE> primitive;
+    CallQueryInterface(child, (SVGFE**)getter_AddRefs(primitive));
     if (primitive) {
       return static_cast<SVGFilterElement*>(GetContent());
     }

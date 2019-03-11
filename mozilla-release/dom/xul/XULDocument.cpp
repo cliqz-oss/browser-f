@@ -78,6 +78,7 @@
 #include "nsCCUncollectableMarker.h"
 #include "nsURILoader.h"
 #include "mozilla/BasicEvents.h"
+#include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/dom/DocumentL10n.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/NodeInfoInlines.h"
@@ -139,7 +140,7 @@ XULDocument::XULDocument(void)
       mOffThreadCompileStringBuf(nullptr),
       mOffThreadCompileStringLength(0),
       mInitialLayoutComplete(false) {
-  // Override the default in nsDocument
+  // Override the default in Document
   mCharacterSet = UTF_8_ENCODING;
 
   mDefaultElementType = kNameSpaceID_XUL;
@@ -166,7 +167,7 @@ XULDocument::~XULDocument() {
 }  // namespace dom
 }  // namespace mozilla
 
-nsresult NS_NewXULDocument(nsIDocument** result) {
+nsresult NS_NewXULDocument(Document** result) {
   MOZ_ASSERT(result != nullptr, "null ptr");
   if (!result) return NS_ERROR_NULL_POINTER;
 
@@ -213,7 +214,7 @@ NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(XULDocument, XMLDocument,
 
 //----------------------------------------------------------------------
 //
-// nsIDocument interface
+// Document interface
 //
 
 void XULDocument::Reset(nsIChannel* aChannel, nsILoadGroup* aLoadGroup) {
@@ -253,7 +254,7 @@ nsresult XULDocument::StartDocumentLoad(const char* aCommand,
       }
     }
   }
-  // NOTE: If this ever starts calling nsDocument::StartDocumentLoad
+  // NOTE: If this ever starts calling Document::StartDocumentLoad
   // we'll possibly need to reset our content type afterwards.
   mStillWalking = true;
   mMayStartLayout = false;
@@ -433,7 +434,7 @@ void XULDocument::ContentRemoved(nsIContent* aChild,
 
 //----------------------------------------------------------------------
 //
-// nsIDocument interface
+// Document interface
 //
 
 void XULDocument::AddElementToDocumentPost(Element* aElement) {
@@ -446,6 +447,11 @@ void XULDocument::AddElementToDocumentPost(Element* aElement) {
   } else if (aElement->IsXULElement(nsGkAtoms::linkset)) {
     OnL10nResourceContainerParsed();
   }
+}
+
+void XULDocument::InitialDocumentTranslationCompleted() {
+  mPendingInitialTranslation = false;
+  MaybeDoneWalking();
 }
 
 void XULDocument::AddSubtreeToDocument(nsIContent* aContent) {
@@ -957,15 +963,26 @@ nsresult XULDocument::ResumeWalk() {
   mXULPersist->Init();
 
   mStillWalking = false;
-  if (mPendingSheets == 0) {
-    rv = DoneWalking();
+  return MaybeDoneWalking();
+}
+
+nsresult XULDocument::MaybeDoneWalking() {
+  if (mPendingSheets > 0 || mStillWalking) {
+    return NS_OK;
   }
-  return rv;
+
+  if (mPendingInitialTranslation) {
+    TriggerInitialDocumentTranslation();
+    return NS_OK;
+  }
+
+  return DoneWalking();
 }
 
 nsresult XULDocument::DoneWalking() {
   MOZ_ASSERT(mPendingSheets == 0, "there are sheets to be loaded");
   MOZ_ASSERT(!mStillWalking, "walk not done");
+  MOZ_ASSERT(!mPendingInitialTranslation, "translation pending");
 
   // XXXldb This is where we should really be setting the chromehidden
   // attribute.
@@ -982,19 +999,9 @@ nsresult XULDocument::DoneWalking() {
 
     NotifyPossibleTitleChange(false);
 
-    // For performance reasons, we want to trigger the DocumentL10n's
-    // `TriggerInitialDocumentTranslation` within the same microtask that will
-    // be created for a `MozBeforeInitialXULLayout` event listener.
-    AddEventListener(NS_LITERAL_STRING("MozBeforeInitialXULLayout"),
-                     mDocumentL10n, true, false);
-
     nsContentUtils::DispatchTrustedEvent(
-        this, static_cast<nsIDocument*>(this),
-        NS_LITERAL_STRING("MozBeforeInitialXULLayout"), CanBubble::eYes,
-        Cancelable::eNo);
-
-    RemoveEventListener(NS_LITERAL_STRING("MozBeforeInitialXULLayout"),
-                        mDocumentL10n, true);
+        this, ToSupports(this), NS_LITERAL_STRING("MozBeforeInitialXULLayout"),
+        CanBubble::eYes, Cancelable::eNo);
 
     // Before starting layout, check whether we're a toplevel chrome
     // window.  If we are, setup some state so that we don't have to restyle
@@ -1039,9 +1046,7 @@ XULDocument::StyleSheetLoaded(StyleSheet* aSheet, bool aWasDeferred,
 
     --mPendingSheets;
 
-    if (!mStillWalking && mPendingSheets == 0) {
-      return DoneWalking();
-    }
+    return MaybeDoneWalking();
   }
 
   return NS_OK;
@@ -1380,8 +1385,14 @@ nsresult XULDocument::CreateElementFromPrototype(
         aPrototype->mNodeInfo->NamespaceID(), ELEMENT_NODE);
     if (!newNodeInfo) return NS_ERROR_OUT_OF_MEMORY;
     RefPtr<mozilla::dom::NodeInfo> xtfNi = newNodeInfo;
-    rv = NS_NewElement(getter_AddRefs(result), newNodeInfo.forget(),
-                       NOT_FROM_PARSER);
+    if (aPrototype->mIsAtom &&
+        newNodeInfo->NamespaceID() == kNameSpaceID_XHTML) {
+      rv = NS_NewHTMLElement(getter_AddRefs(result), newNodeInfo.forget(),
+                             NOT_FROM_PARSER, aPrototype->mIsAtom);
+    } else {
+      rv = NS_NewElement(getter_AddRefs(result), newNodeInfo.forget(),
+                         NOT_FROM_PARSER);
+    }
     if (NS_FAILED(rv)) return rv;
 
     rv = AddAttributes(aPrototype, result);

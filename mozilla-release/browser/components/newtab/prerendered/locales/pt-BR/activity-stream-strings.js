@@ -34,12 +34,15 @@ window.gActivityStreamStrings = {
   "menu_action_remove_download": "Remover do histórico",
   "search_button": "Pesquisar",
   "search_header": "Pesquisa {search_engine_name}",
-  "search_web_placeholder": "Pesquisar na Web",
+  "search_web_placeholder": "Pesquisar na web",
   "section_disclaimer_topstories": "As histórias mais interessantes na web, selecionadas baseadas no que você lê. Do Pocket, agora parte da Mozilla.",
   "section_disclaimer_topstories_linktext": "Saiba como funciona.",
   "section_disclaimer_topstories_buttontext": "Ok, entendi",
   "prefs_home_header": "Conteúdo inicial do Firefox",
   "prefs_home_description": "Escolha que conteúdo você quer na sua tela inicial do Firefox.",
+  "prefs_content_discovery_header": "Página inicial do Firefox",
+  "prefs_content_discovery_description": "A descoberta de conteúdo na página inicial do Firefox permite descobrir artigos relevantes, de alta qualidade, pela web afora.",
+  "prefs_content_discovery_button": "Desativar descoberta de conteúdo",
   "prefs_section_rows_option": "{num} linha;{num} linhas",
   "prefs_search_header": "Pesquisa na web",
   "prefs_topsites_description": "Os sites que você mais visita",
@@ -78,7 +81,7 @@ window.gActivityStreamStrings = {
   "pocket_how_it_works": "Como funciona",
   "pocket_cta_button": "Adicionar o Pocket",
   "pocket_cta_text": "Salve as histórias que você gosta no Pocket e abasteça sua mente com leituras fascinantes.",
-  "highlights_empty_state": "Comece a navegar e nós mostraremos aqui alguns ótimos artigos, vídeos e outras páginas que você favoritou ou visitou recentemente.",
+  "highlights_empty_state": "Comece a navegar e mostraremos aqui alguns ótimos artigos, vídeos e outras páginas que você favoritou ou visitou recentemente.",
   "topstories_empty_state": "Você já viu tudo. Volte mais tarde para mais histórias do {provider}. Não consegue esperar? Escolha um assunto popular para encontrar mais grandes histórias através da web.",
   "manual_migration_explanation2": "Experimente o Firefox com os favoritos, histórico e senhas salvas em outro navegador.",
   "manual_migration_cancel_button": "Não, obrigado",
@@ -107,6 +110,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Política de privacidade",
   "firstrun_continue_to_login": "Continuar",
   "firstrun_skip_login": "Pular essa etapa",
-  "context_menu_title": "Abrir menu",
-  "pocket_learn_more": "Saiba mais"
+  "context_menu_title": "Abrir menu"
 };

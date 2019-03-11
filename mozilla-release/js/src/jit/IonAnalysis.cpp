@@ -1286,7 +1286,8 @@ bool jit::EliminateDeadResumePointOperands(MIRGenerator* mir, MIRGraph& graph) {
 bool js::jit::DeadIfUnused(const MDefinition* def) {
   return !def->isEffectful() &&
          (!def->isGuard() ||
-          def->block() == def->block()->graph().osrBlock()) &&
+          (def->block() == def->block()->graph().osrBlock() &&
+           !def->isImplicitlyUsed())) &&
          !def->isGuardRangeBailouts() && !def->isControlInstruction() &&
          (!def->isInstruction() || !def->toInstruction()->resumePoint());
 }
@@ -2891,14 +2892,14 @@ static void CheckOperand(const MNode* consumer, const MUse* use,
   MOZ_ASSERT(!producer->isDiscarded());
   MOZ_ASSERT(producer->block() != nullptr);
   MOZ_ASSERT(use->consumer() == consumer);
-#ifdef _DEBUG_CHECK_OPERANDS_USES_BALANCE
+#  ifdef _DEBUG_CHECK_OPERANDS_USES_BALANCE
   Fprinter print(stderr);
   print.printf("==Check Operand\n");
   use->producer()->dump(print);
   print.printf("  index: %zu\n", use->consumer()->indexOf(use));
   use->consumer()->dump(print);
   print.printf("==End\n");
-#endif
+#  endif
   --*usesBalance;
 }
 
@@ -2909,14 +2910,14 @@ static void CheckUse(const MDefinition* producer, const MUse* use,
                 !use->consumer()->toDefinition()->isDiscarded());
   MOZ_ASSERT(use->consumer()->block() != nullptr);
   MOZ_ASSERT(use->consumer()->getOperand(use->index()) == producer);
-#ifdef _DEBUG_CHECK_OPERANDS_USES_BALANCE
+#  ifdef _DEBUG_CHECK_OPERANDS_USES_BALANCE
   Fprinter print(stderr);
   print.printf("==Check Use\n");
   use->producer()->dump(print);
   print.printf("  index: %zu\n", use->consumer()->indexOf(use));
   use->consumer()->dump(print);
   print.printf("==End\n");
-#endif
+#  endif
   ++*usesBalance;
 }
 
@@ -3419,6 +3420,14 @@ static MathSpace ExtractMathSpace(MDefinition* ins) {
   MOZ_MAKE_COMPILER_ASSUME_IS_UNREACHABLE("Unknown TruncateKind");
 }
 
+static bool MonotoneAdd(int32_t lhs, int32_t rhs) {
+  return (lhs >= 0 && rhs >= 0) || (lhs <= 0 && rhs <= 0);
+}
+
+static bool MonotoneSub(int32_t lhs, int32_t rhs) {
+  return (lhs >= 0 && rhs <= 0) || (lhs <= 0 && rhs >= 0);
+}
+
 // Extract a linear sum from ins, if possible (otherwise giving the
 // sum 'ins + 0').
 SimpleLinearSum jit::ExtractLinearSum(MDefinition* ins, MathSpace space) {
@@ -3468,7 +3477,8 @@ SimpleLinearSum jit::ExtractLinearSum(MDefinition* ins, MathSpace space) {
     int32_t constant;
     if (space == MathSpace::Modulo) {
       constant = uint32_t(lsum.constant) + uint32_t(rsum.constant);
-    } else if (!SafeAdd(lsum.constant, rsum.constant, &constant)) {
+    } else if (!SafeAdd(lsum.constant, rsum.constant, &constant) ||
+               !MonotoneAdd(lsum.constant, rsum.constant)) {
       return SimpleLinearSum(ins, 0);
     }
     return SimpleLinearSum(lsum.term ? lsum.term : rsum.term, constant);
@@ -3480,7 +3490,8 @@ SimpleLinearSum jit::ExtractLinearSum(MDefinition* ins, MathSpace space) {
     int32_t constant;
     if (space == MathSpace::Modulo) {
       constant = uint32_t(lsum.constant) - uint32_t(rsum.constant);
-    } else if (!SafeSub(lsum.constant, rsum.constant, &constant)) {
+    } else if (!SafeSub(lsum.constant, rsum.constant, &constant) ||
+               !MonotoneSub(lsum.constant, rsum.constant)) {
       return SimpleLinearSum(ins, 0);
     }
     return SimpleLinearSum(lsum.term, constant);

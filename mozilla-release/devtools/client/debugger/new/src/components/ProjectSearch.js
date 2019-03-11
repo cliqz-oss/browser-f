@@ -6,7 +6,7 @@
 
 import PropTypes from "prop-types";
 import React, { Component } from "react";
-import { connect } from "react-redux";
+import { connect } from "../utils/connect";
 import classnames from "classnames";
 import actions from "../actions";
 
@@ -23,15 +23,13 @@ import {
   getTextSearchQuery
 } from "../selectors";
 
-import Svg from "./shared/Svg";
 import ManagedTree from "./shared/ManagedTree";
 import SearchInput from "./shared/SearchInput";
+import AccessibleImage from "./shared/AccessibleImage";
 
 import type { List } from "immutable";
-import type { SourceLocation } from "../types";
 import type { ActiveSearchType } from "../reducers/types";
 import type { StatusType } from "../reducers/project-text-search";
-type Editor = ?Object;
 
 import "./ProjectSearch.css";
 
@@ -40,6 +38,7 @@ export type Match = {
   sourceId: string,
   line: number,
   column: number,
+  matchIndex: number,
   match: string,
   value: string,
   text: string
@@ -65,17 +64,12 @@ type Props = {
   results: List<Result>,
   status: StatusType,
   activeSearch: ActiveSearchType,
-  closeProjectSearch: () => void,
-  searchSources: (query: string) => void,
-  clearSearch: () => void,
-  selectSpecificLocation: (location: SourceLocation, tabIndex?: string) => void,
-  setActiveSearch: (activeSearch?: ActiveSearchType) => void,
-  doSearchForHighlight: (
-    query: string,
-    editor: Editor,
-    line: number,
-    column: number
-  ) => void
+  closeProjectSearch: typeof actions.closeProjectSearch,
+  searchSources: typeof actions.searchSources,
+  clearSearch: typeof actions.clearSearch,
+  selectSpecificLocation: typeof actions.selectSpecificLocation,
+  setActiveSearch: typeof actions.setActiveSearch,
+  doSearchForHighlight: typeof actions.doSearchForHighlight
 };
 
 function getFilePath(item: Item, index?: number) {
@@ -163,20 +157,8 @@ export class ProjectSearch extends Component<Props, State> {
     );
   };
 
-  getResults = (): Result[] => {
-    const { results } = this.props;
-    return results
-      .toJS()
-      .map(result => ({
-        type: "RESULT",
-        ...result,
-        matches: result.matches.map(m => ({ type: "MATCH", ...m }))
-      }))
-      .filter(result => result.filepath && result.matches.length > 0);
-  };
-
   getResultCount = () =>
-    this.getResults().reduce((count, file) => count + file.matches.length, 0);
+    this.props.results.reduce((count, file) => count + file.matches.length, 0);
 
   onKeyDown = (e: SyntheticKeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Escape") {
@@ -237,8 +219,8 @@ export class ProjectSearch extends Component<Props, State> {
         className={classnames("file-result", { focused })}
         key={file.sourceId}
       >
-        <Svg name="arrow" className={classnames({ expanded })} />
-        <img className="file" />
+        <AccessibleImage className={classnames("arrow", { expanded })} />
+        <AccessibleImage className="file" />
         <span className="file-path">{getRelativePath(file.filepath)}</span>
         <span className="matches-summary">{matches}</span>
       </div>
@@ -277,12 +259,11 @@ export class ProjectSearch extends Component<Props, State> {
   };
 
   renderResults = () => {
-    const results = this.getResults();
-    const { status } = this.props;
+    const { status, results } = this.props;
     if (!this.props.query) {
       return;
     }
-    if (results.length && status === statusType.done) {
+    if (results.length) {
       return (
         <ManagedTree
           getRoots={() => results}
@@ -290,6 +271,7 @@ export class ProjectSearch extends Component<Props, State> {
           itemHeight={24}
           autoExpandAll={true}
           autoExpandDepth={1}
+          autoExpandNodeChildrenLimit={100}
           getParent={item => null}
           getPath={getFilePath}
           renderItem={this.renderItem}
@@ -314,6 +296,7 @@ export class ProjectSearch extends Component<Props, State> {
   }
 
   renderInput() {
+    const { status } = this.props;
     return (
       <SearchInput
         query={this.state.inputValue}
@@ -322,12 +305,16 @@ export class ProjectSearch extends Component<Props, State> {
         size="big"
         showErrorEmoji={this.shouldShowErrorEmoji()}
         summaryMsg={this.renderSummary()}
+        isLoading={status === statusType.fetching}
         onChange={this.inputOnChange}
         onFocus={() => this.setState({ inputFocused: true })}
         onBlur={() => this.setState({ inputFocused: false })}
         onKeyDown={this.onKeyDown}
         onHistoryScroll={this.onHistoryScroll}
-        handleClose={this.props.closeProjectSearch}
+        handleClose={
+          // TODO - This function doesn't quite match the signature.
+          (this.props.closeProjectSearch: any)
+        }
         ref="searchInput"
       />
     );

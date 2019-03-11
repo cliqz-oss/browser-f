@@ -5,25 +5,26 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "DOMSVGLength.h"
+
 #include "DOMSVGLengthList.h"
 #include "DOMSVGAnimatedLengthList.h"
-#include "SVGLength.h"
-#include "SVGAnimatedLengthList.h"
-#include "nsSVGElement.h"
-#include "nsSVGLength2.h"
 #include "nsError.h"
 #include "nsMathUtils.h"
+#include "SVGAnimatedLengthList.h"
+#include "SVGAttrTearoffTable.h"
+#include "SVGLength.h"
+#include "nsSVGLength2.h"
+#include "mozilla/dom/SVGElement.h"
 #include "mozilla/dom/SVGLengthBinding.h"
 #include "mozilla/FloatingPoint.h"
-#include "nsSVGAttrTearoffTable.h"
 
 // See the architecture comment in DOMSVGAnimatedLengthList.h.
 
 namespace mozilla {
 
-using namespace dom;
+namespace dom {
 
-static nsSVGAttrTearoffTable<nsSVGLength2, DOMSVGLength>
+static SVGAttrTearoffTable<nsSVGLength2, DOMSVGLength>
     sBaseSVGLengthTearOffTable, sAnimSVGLengthTearOffTable;
 
 // We could use NS_IMPL_CYCLE_COLLECTION(, except that in Unlink() we need to
@@ -54,7 +55,7 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(DOMSVGLength)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(DOMSVGLength)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
-  NS_INTERFACE_MAP_ENTRY(mozilla::DOMSVGLength)  // pseudo-interface
+  NS_INTERFACE_MAP_ENTRY(DOMSVGLength)  // pseudo-interface
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
@@ -116,7 +117,7 @@ DOMSVGLength::DOMSVGLength()
       mValue(0.0f),
       mVal(nullptr) {}
 
-DOMSVGLength::DOMSVGLength(nsSVGLength2* aVal, nsSVGElement* aSVGElement,
+DOMSVGLength::DOMSVGLength(nsSVGLength2* aVal, SVGElement* aSVGElement,
                            bool aAnimVal)
     : mList(nullptr),
       mListIndex(0),
@@ -148,8 +149,9 @@ void DOMSVGLength::CleanupWeakRefs() {
 
 DOMSVGLength::~DOMSVGLength() { CleanupWeakRefs(); }
 
-already_AddRefed<DOMSVGLength> DOMSVGLength::GetTearOff(
-    nsSVGLength2* aVal, nsSVGElement* aSVGElement, bool aAnimVal) {
+already_AddRefed<DOMSVGLength> DOMSVGLength::GetTearOff(nsSVGLength2* aVal,
+                                                        SVGElement* aSVGElement,
+                                                        bool aAnimVal) {
   auto& table =
       aAnimVal ? sAnimSVGLengthTearOffTable : sBaseSVGLengthTearOffTable;
   RefPtr<DOMSVGLength> domLength = table.GetTearoff(aVal);
@@ -461,4 +463,5 @@ bool DOMSVGLength::IndexIsValid() {
 }
 #endif
 
+}  // namespace dom
 }  // namespace mozilla

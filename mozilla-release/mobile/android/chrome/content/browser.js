@@ -39,7 +39,6 @@ ChromeUtils.defineModuleGetter(this, "Downloads",
 ChromeUtils.defineModuleGetter(this, "UserAgentOverrides",
                                "resource://gre/modules/UserAgentOverrides.jsm");
 
-ChromeUtils.defineModuleGetter(this, "Task", "resource://gre/modules/Task.jsm");
 ChromeUtils.defineModuleGetter(this, "OS", "resource://gre/modules/osfile.jsm");
 
 ChromeUtils.defineModuleGetter(this, "SafeBrowsing",
@@ -489,11 +488,11 @@ var BrowserApp = {
     }
 
     InitLater(() => {
-      Task.spawn(function* () {
-        let downloadsDir = yield Downloads.getPreferredDownloadsDirectory();
+      (async () => {
+        let downloadsDir = await Downloads.getPreferredDownloadsDirectory();
         let logsDir = OS.Path.join(downloadsDir, "memory-reports");
-        yield OS.File.removeDir(logsDir);
-      });
+        await OS.File.removeDir(logsDir);
+      })();
     });
 
     // Don't delay loading content.js because when we restore reader mode tabs,
@@ -1506,29 +1505,29 @@ var BrowserApp = {
         return;
       }
 
-      Task.spawn(function* () {
+      (async () => {
         let fileName = ContentAreaUtils.getDefaultFileName(aBrowser.contentTitle, aBrowser.currentURI, null, null);
         fileName = fileName.trim() + ".pdf";
 
-        let downloadsDir = yield Downloads.getPreferredDownloadsDirectory();
+        let downloadsDir = await Downloads.getPreferredDownloadsDirectory();
         let file = OS.Path.join(downloadsDir, fileName);
 
         // Force this to have a unique name.
-        let openedFile = yield OS.File.openUnique(file, { humanReadable: true });
+        let openedFile = await OS.File.openUnique(file, { humanReadable: true });
         file = openedFile.path;
-        yield openedFile.file.close();
+        await openedFile.file.close();
 
-        let download = yield Downloads.createDownload({
+        let download = await Downloads.createDownload({
           source: aBrowser.contentWindow,
           target: file,
           saver: "pdf",
           startTime: Date.now(),
         });
 
-        let list = yield Downloads.getList(download.source.isPrivate ? Downloads.PRIVATE : Downloads.PUBLIC)
-        yield list.add(download);
-        yield download.start();
-      });
+        let list = await Downloads.getList(download.source.isPrivate ? Downloads.PRIVATE : Downloads.PUBLIC);
+        await list.add(download);
+        await download.start();
+      })();
     });
   },
 
@@ -3676,6 +3675,27 @@ function truncate(text, max) {
   return text.slice(0, max) + "…";
 }
 
+/**
+ * We want to extract base domains only from URIs using one of the following
+ * schemes.
+ */
+const PERMITTED_BASE_DOMAIN_SCHEMES = new Set(["http", "https", "ftp"]);
+
+function getBaseDomain(aURI) {
+  let baseDomain = "";
+  if (aURI && PERMITTED_BASE_DOMAIN_SCHEMES.has(aURI.scheme)) {
+    try {
+      baseDomain = Services.eTLD.getBaseDomainFromHost(aURI.displayHost);
+      if (!aURI.displayHost.endsWith(baseDomain)) {
+        // getBaseDomainFromHost converts its resultant to ACE.
+        let IDNService = Cc["@mozilla.org/network/idn-service;1"].getService(Ci.nsIIDNService);
+        baseDomain = IDNService.convertACEtoUTF8(baseDomain);
+      }
+    } catch (e) {}
+  }
+  return baseDomain;
+}
+
 Tab.prototype = {
   create: function(aURL, aParams) {
     if (this.browser)
@@ -3773,7 +3793,8 @@ Tab.prototype = {
 
     let flags = Ci.nsIWebProgress.NOTIFY_STATE_ALL |
                 Ci.nsIWebProgress.NOTIFY_LOCATION |
-                Ci.nsIWebProgress.NOTIFY_SECURITY;
+                Ci.nsIWebProgress.NOTIFY_SECURITY |
+                Ci.nsIWebProgress.NOTIFY_CONTENT_BLOCKING;
     this.filter = Cc["@mozilla.org/appshell/component/browser-status-filter;1"].createInstance(Ci.nsIWebProgress);
     this.filter.addProgressListener(this, flags)
     this.browser.addProgressListener(this.filter, flags);
@@ -3905,8 +3926,11 @@ Tab.prototype = {
       // We were redirected; reload the original URL
       url = this.originalURI.spec;
     }
-
-    this.browser.docShell.loadURI(url, flags, null, null, null, this.browser.contentPrincipal);
+    let loadURIOptions = {
+      triggeringPrincipal: this.browser.contentPrincipal,
+      loadFlags: flags,
+    };
+    this.browser.docShell.loadURI(url, loadURIOptions);
   },
 
   destroy: function() {
@@ -4645,19 +4669,8 @@ Tab.prototype = {
       this.browser.messageManager.sendAsyncMessage("Reader:PushState", {isArticle: this.browser.isArticle});
     }
 
-    let baseDomain = "";
-    // For recognized scheme, get base domain from host.
-    let principalURI = contentWin.document.nodePrincipal.URI;
-    if (principalURI && ["http", "https", "ftp"].includes(principalURI.scheme) && principalURI.displayHost) {
-      try {
-        baseDomain = Services.eTLD.getBaseDomainFromHost(principalURI.displayHost);
-        if (!principalURI.displayHost.endsWith(baseDomain)) {
-          // getBaseDomainFromHost converts its resultant to ACE.
-          let IDNService = Cc["@mozilla.org/network/idn-service;1"].getService(Ci.nsIIDNService);
-          baseDomain = IDNService.convertACEtoUTF8(baseDomain);
-        }
-      } catch (e) {}
-    }
+    let baseDomain = getBaseDomain(contentWin.document.nodePrincipal.URI);
+    let highlightDomain = getBaseDomain(fixedURI);
 
     // If we are navigating to a new location with a different host,
     // clear any URL origin that might have been pinned to this tab.
@@ -4707,9 +4720,10 @@ Tab.prototype = {
       tabID: this.id,
       uri: truncate(fixedURI.displaySpec, MAX_URI_LENGTH),
       userRequested: this.userRequested || "",
-      baseDomain: baseDomain,
+      baseDomain,
+      highlightDomain,
       contentType: (contentType ? contentType : ""),
-      sameDocument: sameDocument,
+      sameDocument,
 
       canGoBack: webNav.canGoBack,
       canGoForward: webNav.canGoForward,
@@ -4749,6 +4763,26 @@ Tab.prototype = {
       type: "Content:SecurityChange",
       tabID: this.id,
       identity: identity
+    };
+
+    GlobalEventDispatcher.sendRequest(message);
+  },
+
+  // Cache last tracking event to limit firings and only propagate changes
+  _tracking: null,
+
+  onContentBlockingEvent: function(aWebProgress, aRequest, aState) {
+    let trackingMode = IdentityHandler.getTrackingMode(aState, this.browser);
+    if (this._tracking == trackingMode) {
+        return;
+    } else {
+        this._tracking = trackingMode;
+    }
+
+    let message = {
+      type: "Content:ContentBlockingEvent",
+      tabID: this.id,
+      tracking: trackingMode
     };
 
     GlobalEventDispatcher.sendRequest(message);
@@ -5080,8 +5114,11 @@ var ErrorPageEventHandler = {
               attrs["privateBrowsingId"] = 1;
             }
 
-            let triggeringPrincipal = nullServices.scriptSecurityManager.createNullPrincipal(attrs);
-            webNav.loadURI(location, Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CLASSIFIER, null, null, triggeringPrincipal);
+            let loadURIOptions = {
+              triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal(attrs),
+              loadFlags: Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CLASSIFIER,
+            };
+            webNav.loadURI(location, loadURIOptions);
 
             // ....but add a notify bar as a reminder, so that they don't lose
             // track after, e.g., tab switching.
@@ -5379,7 +5416,7 @@ var XPInstallObserver = {
 };
 
 /**
- * Handler for blocked popups, triggered by DOMUpdateBlockedPopups events in browser.xml
+ * Handler for blocked popups, triggered by DOMUpdateBlockedPopups events in browser.js
  */
 var PopupBlockerObserver = {
   onUpdateBlockedPopups: function onUpdateBlockedPopups(aEvent) {
@@ -5810,14 +5847,12 @@ var IdentityHandler = {
     let identityMode = this.getIdentityMode(aState, this._uri);
     let mixedDisplay = this.getMixedDisplayMode(aState);
     let mixedActive = this.getMixedActiveMode(aState);
-    let trackingMode = this.getTrackingMode(aState, aBrowser);
     let result = {
       origin: locationObj.origin,
       mode: {
         identity: identityMode,
         mixed_display: mixedDisplay,
         mixed_active: mixedActive,
-        tracking: trackingMode
       }
     };
 
@@ -6637,26 +6672,29 @@ var Distribution = {
   // aFile is an nsIFile
   // aCallback takes the parsed JSON object as a parameter
   readJSON: function dc_readJSON(aFile, aCallback) {
-    Task.spawn(function*() {
-      let bytes = yield OS.File.read(aFile.path);
-      let raw = new TextDecoder().decode(bytes) || "";
+    (async () => {
+      try {
+        let bytes = await OS.File.read(aFile.path);
+        let raw = new TextDecoder().decode(bytes) || "";
+      } catch (e) {
+        if (!(e instanceof OS.File.Error && reason.becauseNoSuchFile)) {
+          Cu.reportError("Distribution: Could not read from " + aFile.leafName + " file");
+        }
+        return;
+      }
 
       try {
         aCallback(JSON.parse(raw));
       } catch (e) {
         Cu.reportError("Distribution: Could not parse JSON: " + e);
       }
-    }).catch(function onError(reason) {
-      if (!(reason instanceof OS.File.Error && reason.becauseNoSuchFile)) {
-        Cu.reportError("Distribution: Could not read from " + aFile.leafName + " file");
-      }
-    });
+    })();
   },
 
   // Track pending installs so we can avoid showing notifications for them.
   pendingAddonInstalls: new Set(),
 
-  installDistroAddons: Task.async(function* () {
+  async installDistroAddons() {
     const PREF_ADDONS_INSTALLED = "distribution.addonsInstalled";
     try {
       let installed = Services.prefs.getBoolPref(PREF_ADDONS_INSTALLED);
@@ -6671,7 +6709,7 @@ var Distribution = {
     try {
       distroPath = FileUtils.getDir("XREAppDist", ["extensions"]).path;
 
-      let info = yield OS.File.stat(distroPath);
+      let info = await OS.File.stat(distroPath);
       if (!info.isDir) {
         return;
       }
@@ -6681,7 +6719,7 @@ var Distribution = {
 
     let it = new OS.File.DirectoryIterator(distroPath);
     try {
-      yield it.forEach(entry => {
+      await it.forEach(entry => {
         // Only support extensions that are zipped in .xpi files.
         if (entry.isDir || !entry.name.endsWith(".xpi")) {
           dump("Ignoring distribution add-on that isn't an XPI: " + entry.path);
@@ -6704,7 +6742,7 @@ var Distribution = {
     } finally {
       it.close();
     }
-  })
+  },
 };
 
 var Tabs = {

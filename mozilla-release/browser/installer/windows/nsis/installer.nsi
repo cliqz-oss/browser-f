@@ -489,6 +489,12 @@ Section "-Application" APP_IDX
     ${SetAppLSPCategories} ${LSP_CATEGORIES}
   ${EndIf}
 
+!ifdef MOZ_LAUNCHER_PROCESS
+!ifdef RELEASE_OR_BETA
+  ${DisableLauncherProcessByDefault}
+!endif
+!endif
+
   ; Create shortcuts
   ${LogHeader} "Adding Shortcuts"
 
@@ -1551,11 +1557,18 @@ Function .onInit
   ${EndIf}
 
 !ifdef HAVE_64BIT_BUILD
-  ${Unless} ${RunningX64}
+  ${If} "${ARCH}" == "AArch64"
+    ${IfNot} ${IsNativeARM64}
+    ${OrIfNot} ${AtLeastWin10}
+      MessageBox MB_OKCANCEL|MB_ICONSTOP "$(WARN_MIN_SUPPORTED_OSVER_MSG)" IDCANCEL +2
+      ExecShell "open" "${URLSystemRequirements}"
+      Quit
+    ${EndIf}
+  ${ElseIfNot} ${RunningX64}
     MessageBox MB_OKCANCEL|MB_ICONSTOP "$(WARN_MIN_SUPPORTED_OSVER_MSG)" IDCANCEL +2
     ExecShell "open" "${URLSystemRequirements}"
     Quit
-  ${EndUnless}
+  ${EndIf}
   SetRegView 64
 !endif
 

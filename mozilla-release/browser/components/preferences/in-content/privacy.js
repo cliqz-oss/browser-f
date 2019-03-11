@@ -77,8 +77,6 @@ Preferences.addAll([
 
   // Media
   { id: "media.autoplay.default", type: "int" },
-  { id: "media.autoplay.enabled.ask-permission", type: "bool" },
-  { id: "media.autoplay.enabled.user-gestures-needed", type: "bool" },
 
   // Popups
   { id: "dom.disable_open_during_load", type: "bool" },
@@ -132,9 +130,6 @@ if (AppConstants.MOZ_DATA_REPORTING) {
 }
 
 // Data Choices tab
-if (AppConstants.NIGHTLY_BUILD) {
-  Preferences.add({ id: "browser.chrome.errorReporter.enabled", type: "bool" });
-}
 if (AppConstants.MOZ_CRASHREPORTER) {
   Preferences.add({ id: "browser.crashReports.unsubmittedCheck.autoSubmit2", type: "bool" });
 }
@@ -271,8 +266,6 @@ var gPrivacyPane = {
   init() {
     this._updateSanitizeSettingsButton();
     this.initializeHistoryMode();
-    this.initAutoplay();
-    this.updateAutoplayMediaControlsVisibility();
     this.updateHistoryModePane();
     this.updatePrivacyMicroControls();
     this.initAutoStartPrivateBrowsingReverter();
@@ -281,9 +274,13 @@ var gPrivacyPane = {
     /* Initialize Content Blocking */
     this.initContentBlocking();
 
+    this.blockAutoplayReadPrefs();
     this.trackingProtectionReadPrefs();
     this.networkCookieBehaviorReadPrefs();
     this._initTrackingProtectionExtensionControl();
+
+    Preferences.get("media.autoplay.default").on("change",
+      gPrivacyPane.blockAutoplayReadPrefs.bind(gPrivacyPane));
 
     Preferences.get("privacy.trackingprotection.enabled").on("change",
       gPrivacyPane.trackingProtectionReadPrefs.bind(gPrivacyPane));
@@ -305,10 +302,6 @@ var gPrivacyPane = {
       gPrivacyPane._updateSanitizeSettingsButton.bind(gPrivacyPane));
     Preferences.get("browser.privatebrowsing.autostart").on("change",
       gPrivacyPane.updatePrivacyMicroControls.bind(gPrivacyPane));
-    Preferences.get("media.autoplay.enabled.ask-permission").on("change",
-     gPrivacyPane.updateAutoplayMediaControlsVisibility.bind(gPrivacyPane));
-    Preferences.get("media.autoplay.enabled.user-gestures-needed").on("change",
-     gPrivacyPane.updateAutoplayMediaControlsVisibility.bind(gPrivacyPane));
     setEventListener("historyMode", "command", function() {
       gPrivacyPane.updateHistoryModePane();
       gPrivacyPane.updateHistoryModePrefs();
@@ -366,8 +359,6 @@ var gPrivacyPane = {
       gPrivacyPane.toggleAutoplayMedia);
     setEventListener("autoplayMediaPolicyButton", "command",
       gPrivacyPane.showAutoplayMediaExceptions);
-    setEventListener("autoplayMediaPolicyComboboxButton", "command",
-      gPrivacyPane.showAutoplayMediaExceptions);
     setEventListener("notificationsDoNotDisturb", "command",
       gPrivacyPane.toggleDoNotDisturbNotifications);
 
@@ -412,9 +403,6 @@ var gPrivacyPane = {
 
     if (AppConstants.MOZ_DATA_REPORTING) {
       this.initDataCollection();
-      if (AppConstants.NIGHTLY_BUILD) {
-        this.initCollectBrowserErrors();
-      }
       if (AppConstants.MOZ_CRASHREPORTER) {
         this.initSubmitCrashes();
       }
@@ -481,18 +469,19 @@ var gPrivacyPane = {
     this.readBlockCookies();
 
     let link = document.getElementById("contentBlockingLearnMore");
-    let url = Services.urlFormatter.formatURLPref("app.support.baseURL") + "tracking-protection";
-    link.setAttribute("href", url);
+    let contentBlockingUrl = Services.urlFormatter.formatURLPref("app.support.baseURL") + "content-blocking";
+    link.setAttribute("href", contentBlockingUrl);
 
+    let contentBlockingTour = Services.urlFormatter.formatURLPref("privacy.trackingprotection.introURL")
+      + `?step=3&newtab=true`;
     let warningLinks = document.getElementsByClassName("content-blocking-warning-learn-how");
     for (let warningLink of warningLinks) {
-      let warningUrl = Services.urlFormatter.formatURLPref("app.support.baseURL") + "content-blocking";
-      warningLink.setAttribute("href", warningUrl);
+      warningLink.setAttribute("href", contentBlockingTour);
     }
   },
 
   highlightCBCategory() {
-    let value = document.getElementById("contentBlockingCategoryRadio").value;
+    let value = Preferences.get("browser.contentblocking.category").value;
     let standardEl = document.getElementById("contentBlockingOptionStandard");
     let strictEl = document.getElementById("contentBlockingOptionStrict");
     let customEl = document.getElementById("contentBlockingOptionCustom");
@@ -501,14 +490,16 @@ var gPrivacyPane = {
     customEl.classList.remove("selected");
 
     switch (value) {
-      case "standard":
-        standardEl.classList.add("selected");
-        break;
       case "strict":
         strictEl.classList.add("selected");
         break;
       case "custom":
         customEl.classList.add("selected");
+        break;
+      case "standard":
+        /* fall through */
+      default:
+        standardEl.classList.add("selected");
         break;
     }
   },
@@ -546,6 +537,7 @@ var gPrivacyPane = {
     let behavior = Preferences.get("network.cookie.cookieBehavior").value;
     let blockCookiesMenu = document.getElementById("blockCookiesMenu");
     let deleteOnCloseCheckbox = document.getElementById("deleteOnClose");
+    let deleteOnCloseNote = document.getElementById("deleteOnCloseNote");
 
     let blockCookies = (behavior != Ci.nsICookieService.BEHAVIOR_ACCEPT);
     let cookieBehaviorLocked = Services.prefs.prefIsLocked("network.cookie.cookieBehavior");
@@ -557,6 +549,7 @@ var gPrivacyPane = {
     let cookieExpirationLocked = Services.prefs.prefIsLocked("network.cookie.lifetimePolicy");
     deleteOnCloseCheckbox.disabled = privateBrowsing || completelyBlockCookies ||
                                      cookieExpirationLocked;
+    deleteOnCloseNote.hidden = !privateBrowsing;
 
     switch (behavior) {
       case Ci.nsICookieService.BEHAVIOR_ACCEPT:
@@ -747,7 +740,7 @@ var gPrivacyPane = {
 
     if (document.getElementById("historyMode").value == "custom") {
       let disabled = Preferences.get("browser.privatebrowsing.autostart").value;
-      this.dependentControls.forEach(function(aElement) {
+      this.dependentControls.forEach(aElement => {
         let control = document.getElementById(aElement);
         let preferenceId = control.getAttribute("preference");
         if (!preferenceId) {
@@ -760,19 +753,12 @@ var gPrivacyPane = {
 
         let preference = preferenceId ? Preferences.get(preferenceId) : {};
         control.disabled = disabled || preference.locked;
+        if (control != clearDataSettings) {
+          this.ensurePrivacyMicroControlUncheckedWhenDisabled(control);
+        }
       });
 
       clearDataSettings.removeAttribute("hidden");
-
-      // adjust the checked state of the sanitizeOnShutdown checkbox
-      document.getElementById("alwaysClear").checked = disabled ? false :
-        Preferences.get("privacy.sanitize.sanitizeOnShutdown").value;
-
-      // adjust the checked state of the remember history checkboxes
-      document.getElementById("rememberHistory").checked = disabled ? false :
-        Preferences.get("places.history.enabled").value;
-      document.getElementById("rememberForms").checked = disabled ? false :
-        Preferences.get("browser.formfill.enable").value;
 
       if (!disabled) {
         // adjust the Settings button for sanitizeOnShutdown
@@ -781,6 +767,16 @@ var gPrivacyPane = {
     } else {
       clearDataSettings.setAttribute("hidden", "true");
     }
+  },
+
+  ensurePrivacyMicroControlUncheckedWhenDisabled(el) {
+    if (Preferences.get("browser.privatebrowsing.autostart").value) {
+      // Set checked to false when called from updatePrivacyMicroControls
+      el.checked = false;
+      // return false for the onsyncfrompreference case:
+      return false;
+    }
+    return undefined; // tell preferencesBindings to assign the 'right' value.
   },
 
   // CLEAR PRIVATE DATA
@@ -844,10 +840,14 @@ var gPrivacyPane = {
    * Initialize the starting state for the auto-start private browsing mode pref reverter.
    */
   initAutoStartPrivateBrowsingReverter() {
+    // We determine the mode in initializeHistoryMode, which is guaranteed to have been
+    // called before now, so this is up-to-date.
     let mode = document.getElementById("historyMode");
-    let autoStart = document.getElementById("privateBrowsingAutoStart");
     this._lastMode = mode.selectedIndex;
-    this._lastCheckState = autoStart.hasAttribute("checked");
+    // The value of the autostart pref, on the other hand, is gotten from Preferences,
+    // which updates the DOM asynchronously, so we can't rely on the DOM. Get it directly
+    // from the prefs.
+    this._lastCheckState = Preferences.get("browser.privatebrowsing.autostart").value;
   },
 
   _lastMode: null,
@@ -1110,10 +1110,10 @@ var gPrivacyPane = {
 
   // MEDIA
 
-  initAutoplay() {
-    let url = Services.urlFormatter.formatURLPref("app.support.baseURL") +
-      "block-autoplay";
-    document.getElementById("autoplayLearnMoreLink").setAttribute("href", url);
+  blockAutoplayReadPrefs() {
+    let blocked =
+      Preferences.get("media.autoplay.default").value == Ci.nsIAutoplay.BLOCKED;
+    document.getElementById("autoplayMediaCheckbox").checked = blocked;
   },
 
   /**
@@ -1122,29 +1122,6 @@ var gPrivacyPane = {
   toggleAutoplayMedia(event) {
     let blocked = event.target.checked ? Ci.nsIAutoplay.BLOCKED : Ci.nsIAutoplay.ALLOWED;
     Services.prefs.setIntPref("media.autoplay.default", blocked);
-  },
-
-  /**
-   * If user-gestures-needed is false we do not show any UI for configuring autoplay,
-   * if user-gestures-needed is false and ask-permission is false we show a checkbox
-   * which only allows the user to block autoplay
-   * if user-gestures-needed and ask-permission are true we show a combobox that
-   * allows the user to block / allow or prompt for autoplay
-   * We will be performing a shield study to determine the behaviour to be
-   * shipped, at which point we can remove these pref switches.
-   * https://bugzilla.mozilla.org/show_bug.cgi?id=1475099
-   */
-  updateAutoplayMediaControlsVisibility() {
-    let askPermission =
-      Services.prefs.getBoolPref("media.autoplay.ask-permission", false);
-    let userGestures =
-        Services.prefs.getBoolPref("media.autoplay.enabled.user-gestures-needed", false);
-    // Hide the combobox if we don't let the user ask for permission.
-    document.getElementById("autoplayMediaComboboxWrapper").hidden =
-      !userGestures || !askPermission;
-    // If the user may ask for permission, hide the checkbox instead.
-    document.getElementById("autoplayMediaCheckboxWrapper").hidden =
-      !userGestures || askPermission;
   },
 
   /**
@@ -1513,11 +1490,6 @@ var gPrivacyPane = {
   initDataCollection() {
     this._setupLearnMoreLink("toolkit.datacollection.infoURL",
       "dataCollectionPrivacyNotice");
-  },
-
-  initCollectBrowserErrors() {
-    this._setupLearnMoreLink("browser.chrome.errorReporter.infoURL",
-      "collectBrowserErrorsLearnMore");
   },
 
   initSubmitCrashes() {

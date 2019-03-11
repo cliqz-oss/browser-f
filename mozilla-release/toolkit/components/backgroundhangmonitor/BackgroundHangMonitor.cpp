@@ -29,7 +29,7 @@
 #include "HangDetails.h"
 
 #ifdef MOZ_GECKO_PROFILER
-#include "ProfilerMarkerPayload.h"
+#  include "ProfilerMarkerPayload.h"
 #endif
 
 #include <algorithm>
@@ -498,8 +498,8 @@ void BackgroundHangThread::ReportHang(TimeDuration aHangTime) {
     TimeStamp endTime = TimeStamp::Now();
     TimeStamp startTime = endTime - aHangTime;
     profiler_add_marker_for_thread(
-        mStackHelper.GetThreadId(), "BHR-detected hang",
-        MakeUnique<HangMarkerPayload>(startTime, endTime));
+        mStackHelper.GetThreadId(), js::ProfilingStackFrame::Category::OTHER,
+        "BHR-detected hang", MakeUnique<HangMarkerPayload>(startTime, endTime));
   }
 #endif
 }
@@ -654,7 +654,7 @@ BackgroundHangMonitor::BackgroundHangMonitor(const char* aName,
     : mThread(aThreadType == THREAD_SHARED ? BackgroundHangThread::FindThread()
                                            : nullptr) {
 #ifdef MOZ_ENABLE_BACKGROUND_HANG_MONITOR
-#ifdef MOZ_VALGRIND
+#  ifdef MOZ_VALGRIND
   // If we're running on Valgrind, we'll be making forward progress at a
   // rate of somewhere between 1/25th and 1/50th of normal.  This causes the
   // BHR to capture a lot of stacks, which slows us down even more.  As an
@@ -675,7 +675,7 @@ BackgroundHangMonitor::BackgroundHangMonitor(const char* aName,
       aMaxTimeoutMs += extraMs;
     }
   }
-#endif
+#  endif
 
   if (!BackgroundHangManager::sDisabled && !mThread &&
       !recordreplay::IsMiddleman()) {

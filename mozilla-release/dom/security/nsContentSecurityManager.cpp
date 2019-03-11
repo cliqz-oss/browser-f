@@ -21,6 +21,7 @@
 #include "nsIImageLoadingContent.h"
 #include "nsIRedirectHistoryEntry.h"
 
+#include "mozilla/BasePrincipal.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/nsMixedContentBlocker.h"
 #include "mozilla/dom/TabChild.h"
@@ -99,7 +100,7 @@ static mozilla::LazyLogModule sCSMLog("CSMLog");
   }
   nsCOMPtr<nsISupports> context = loadInfo->ContextForTopLevelLoad();
   nsCOMPtr<nsITabChild> tabChild = do_QueryInterface(context);
-  nsCOMPtr<nsIDocument> doc;
+  nsCOMPtr<Document> doc;
   if (tabChild) {
     doc = static_cast<mozilla::dom::TabChild*>(tabChild.get())->GetDocument();
   }
@@ -146,7 +147,7 @@ static mozilla::LazyLogModule sCSMLog("CSMLog");
     dataSpec.Truncate(50);
     dataSpec.AppendLiteral("...");
   }
-  nsCOMPtr<nsIDocument> doc;
+  nsCOMPtr<Document> doc;
   nsINode* node = loadInfo->LoadingNode();
   if (node) {
     doc = node->OwnerDoc();
@@ -209,7 +210,7 @@ static mozilla::LazyLogModule sCSMLog("CSMLog");
     return NS_OK;
   }
 
-  nsCOMPtr<nsIDocument> doc;
+  nsCOMPtr<Document> doc;
   if (nsINode* node = loadInfo->LoadingNode()) {
     doc = node->OwnerDoc();
   }
@@ -266,7 +267,7 @@ static bool IsImageLoadInEditorAppType(nsILoadInfo* aLoadInfo) {
   if (!node) {
     return false;
   }
-  nsIDocument* doc = node->OwnerDoc();
+  Document* doc = node->OwnerDoc();
   if (!doc) {
     return false;
   }
@@ -617,8 +618,22 @@ static void LogPrincipal(nsIPrincipal* aPrincipal,
       return;
     }
     if (aPrincipal->GetIsExpandedPrincipal()) {
+      nsCOMPtr<nsIExpandedPrincipal> expanded(do_QueryInterface(aPrincipal));
+      const nsTArray<nsCOMPtr<nsIPrincipal>>& allowList = expanded->AllowList();
       nsAutoCString origin;
-      aPrincipal->GetOrigin(origin);
+      origin.AssignLiteral("[Expanded Principal [");
+      for (size_t i = 0; i < allowList.Length(); ++i) {
+        if (i != 0) {
+          origin.AppendLiteral(", ");
+        }
+
+        nsAutoCString subOrigin;
+        DebugOnly<nsresult> rv = allowList.ElementAt(i)->GetOrigin(subOrigin);
+        MOZ_ASSERT(NS_SUCCEEDED(rv));
+        origin.Append(subOrigin);
+      }
+      origin.AppendLiteral("]]");
+
       MOZ_LOG(sCSMLog, LogLevel::Debug,
               ("  %s: %s\n", NS_ConvertUTF16toUTF8(aPrincipalName).get(),
                origin.get()));
@@ -1003,7 +1018,7 @@ nsContentSecurityManager::IsOriginPotentiallyTrustworthy(
   NS_ENSURE_ARG_POINTER(aPrincipal);
   NS_ENSURE_ARG_POINTER(aIsTrustWorthy);
 
-  if (aPrincipal->GetIsSystemPrincipal()) {
+  if (aPrincipal->IsSystemPrincipal()) {
     *aIsTrustWorthy = true;
     return NS_OK;
   }

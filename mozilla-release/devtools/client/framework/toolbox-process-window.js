@@ -89,7 +89,8 @@ var connect = async function() {
 
   appendStatusMessage("Get root form for toolbox");
   if (addonID) {
-    const addonTargetFront = await gClient.mainRoot.getAddon({ id: addonID });
+    const addonFront = await gClient.mainRoot.getAddon({ id: addonID });
+    const addonTargetFront = await addonFront.connect();
     await openToolbox({activeTab: addonTargetFront, chrome: true});
   } else {
     const front = await gClient.mainRoot.getMainProcess();
@@ -140,15 +141,16 @@ function onCloseCommand(event) {
   window.close();
 }
 
-async function openToolbox({ form, activeTab, chrome }) {
-  let options = {
-    form,
+async function openToolbox({ activeTab, chrome }) {
+  const targetOptions = {
     activeTab,
     client: gClient,
     chrome,
   };
+
+  const form = activeTab.targetForm;
   appendStatusMessage(`Create toolbox target: ${JSON.stringify({form, chrome}, null, 2)}`);
-  const target = await TargetFactory.forRemoteTab(options);
+  const target = await TargetFactory.forRemoteTab(targetOptions);
   const frame = document.getElementById("toolbox-iframe");
 
   // Remember the last panel that was used inside of this profile.
@@ -158,13 +160,13 @@ async function openToolbox({ form, activeTab, chrome }) {
       Services.prefs.getCharPref("devtools.toolbox.selectedTool",
                                   "jsdebugger"));
 
-  options = { customIframe: frame };
+  const toolboxOptions = { customIframe: frame };
   appendStatusMessage(`Show toolbox with ${selectedTool} selected`);
   const toolbox = await gDevTools.showToolbox(
     target,
     selectedTool,
     Toolbox.HostType.CUSTOM,
-    options
+    toolboxOptions
   );
   onNewToolbox(toolbox);
 }

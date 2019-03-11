@@ -24,7 +24,6 @@
 
 class nsFrameLoader;
 class nsIContent;
-class nsIDocument;
 class nsIDocShell;
 class nsIDocShellTreeItem;
 class imgIContainer;
@@ -43,6 +42,7 @@ class WheelTransaction;
 
 namespace dom {
 class DataTransfer;
+class Document;
 class Element;
 class Selection;
 class TabParent;
@@ -144,7 +144,7 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   bool SetContentState(nsIContent* aContent, EventStates aState);
 
   void NativeAnonymousContentRemoved(nsIContent* aAnonContent);
-  void ContentRemoved(nsIDocument* aDocument, nsIContent* aContent);
+  void ContentRemoved(dom::Document* aDocument, nsIContent* aContent);
 
   bool EventStatusOK(WidgetGUIEvent* aEvent);
 
@@ -231,7 +231,7 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   bool CheckIfEventMatchesAccessKey(WidgetKeyboardEvent* aEvent,
                                     nsPresContext* aPresContext);
 
-  nsresult SetCursor(int32_t aCursor, imgIContainer* aContainer,
+  nsresult SetCursor(StyleCursorKind aCursor, imgIContainer* aContainer,
                      bool aHaveHotspot, float aHotspotX, float aHotspotY,
                      nsIWidget* aWidget, bool aLockCursor);
 
@@ -279,7 +279,7 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
 
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(EventStateManager, nsIObserver)
 
-  static nsIDocument* sMouseOverDocument;
+  static dom::Document* sMouseOverDocument;
 
   static EventStateManager* GetActiveEventStateManager() { return sActiveESM; }
 
@@ -377,8 +377,6 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
     static bool ClickHoldContextMenu() { return sClickHoldContextMenu; }
 
     static void Init();
-    static void OnChange(const char* aPrefName, void*);
-    static void Shutdown();
 
    private:
     static bool sKeyCausesActivation;
@@ -1063,16 +1061,15 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
    * aDataTransfer - data transfer object that will contain the data to drag
    * aSelection - [out] set to the selection to be dragged
    * aTargetNode - [out] the draggable node, or null if there isn't one
-   * aPrincipalURISpec - [out] set to the URI of the triggering principal of
-   *                           the drag, or an empty string if it's from
-   *                           browser chrome or OS
+   * aPrincipal - [out] set to the triggering principal of the drag, or null
+   *                    if it's from browser chrome or OS
    */
   void DetermineDragTargetAndDefaultData(nsPIDOMWindowOuter* aWindow,
                                          nsIContent* aSelectionTarget,
                                          dom::DataTransfer* aDataTransfer,
                                          dom::Selection** aSelection,
                                          nsIContent** aTargetNode,
-                                         nsACString& aPrincipalURISpec);
+                                         nsIPrincipal** aPrincipal);
 
   /*
    * Perform the default handling for the dragstart event and set up a
@@ -1083,14 +1080,14 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
    * aDataTransfer - the data transfer that holds the data to be dragged
    * aDragTarget - the target of the drag
    * aSelection - the selection to be dragged
-   * aPrincipalURISpec - the URI of the triggering principal of the drag,
-   *                     or an empty string if it's from browser chrome or OS
+   * aPrincipal - the triggering principal of the drag, or null if it's from
+   *              browser chrome or OS
    */
   bool DoDefaultDragStart(nsPresContext* aPresContext,
                           WidgetDragEvent* aDragEvent,
                           dom::DataTransfer* aDataTransfer,
                           nsIContent* aDragTarget, dom::Selection* aSelection,
-                          const nsACString& aPrincipalURISpec);
+                          nsIPrincipal* aPrincipal);
 
   bool IsTrackingDragGesture() const { return mGestureDownContent != nullptr; }
   /**
@@ -1174,7 +1171,7 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   already_AddRefed<EventStateManager> ESMFromContentOrThis(
       nsIContent* aContent);
 
-  int32_t mLockCursor;
+  StyleCursorKind mLockCursor;
   bool mLastFrameConsumedSetCursor;
 
   // Last mouse event mRefPoint (the offset from the widget's origin in
@@ -1210,11 +1207,8 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   uint16_t mGestureDownButtons;
 
   nsCOMPtr<nsIContent> mLastLeftMouseDownContent;
-  nsCOMPtr<nsIContent> mLastLeftMouseDownContentParent;
   nsCOMPtr<nsIContent> mLastMiddleMouseDownContent;
-  nsCOMPtr<nsIContent> mLastMiddleMouseDownContentParent;
   nsCOMPtr<nsIContent> mLastRightMouseDownContent;
-  nsCOMPtr<nsIContent> mLastRightMouseDownContentParent;
 
   nsCOMPtr<nsIContent> mActiveContent;
   nsCOMPtr<nsIContent> mHoverContent;
@@ -1222,7 +1216,7 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   nsCOMPtr<nsIContent> mURLTargetContent;
 
   nsPresContext* mPresContext;      // Not refcnted
-  nsCOMPtr<nsIDocument> mDocument;  // Doesn't necessarily need to be owner
+  RefPtr<dom::Document> mDocument;  // Doesn't necessarily need to be owner
 
   RefPtr<IMEContentObserver> mIMEContentObserver;
 
@@ -1289,11 +1283,12 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
 class AutoHandlingUserInputStatePusher {
  public:
   AutoHandlingUserInputStatePusher(bool aIsHandlingUserInput,
-                                   WidgetEvent* aEvent, nsIDocument* aDocument);
+                                   WidgetEvent* aEvent,
+                                   dom::Document* aDocument);
   ~AutoHandlingUserInputStatePusher();
 
  protected:
-  nsCOMPtr<nsIDocument> mMouseButtonEventHandlingDocument;
+  RefPtr<dom::Document> mMouseButtonEventHandlingDocument;
   EventMessage mMessage;
   bool mIsHandlingUserInput;
 

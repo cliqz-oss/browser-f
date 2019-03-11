@@ -261,24 +261,24 @@ partial interface Document {
 partial interface Document {
   // Note: Per spec the 'S' in these two is lowercase, but the "Moz"
   // versions have it uppercase.
-  [LenientSetter, Unscopable, Func="nsDocument::IsUnprefixedFullscreenEnabled"]
+  [LenientSetter, Unscopable, Func="Document::IsUnprefixedFullscreenEnabled"]
   readonly attribute boolean fullscreen;
   [BinaryName="fullscreen"]
   readonly attribute boolean mozFullScreen;
-  [LenientSetter, Func="nsDocument::IsUnprefixedFullscreenEnabled", NeedsCallerType]
+  [LenientSetter, Func="Document::IsUnprefixedFullscreenEnabled", NeedsCallerType]
   readonly attribute boolean fullscreenEnabled;
   [BinaryName="fullscreenEnabled", NeedsCallerType]
   readonly attribute boolean mozFullScreenEnabled;
 
-  [Throws, Func="nsDocument::IsUnprefixedFullscreenEnabled"]
+  [Throws, Func="Document::IsUnprefixedFullscreenEnabled"]
   Promise<void> exitFullscreen();
   [Throws, BinaryName="exitFullscreen"]
   Promise<void> mozCancelFullScreen();
 
   // Events handlers
-  [Func="nsDocument::IsUnprefixedFullscreenEnabled"]
+  [Func="Document::IsUnprefixedFullscreenEnabled"]
   attribute EventHandler onfullscreenchange;
-  [Func="nsDocument::IsUnprefixedFullscreenEnabled"]
+  [Func="Document::IsUnprefixedFullscreenEnabled"]
   attribute EventHandler onfullscreenerror;
 };
 
@@ -329,9 +329,9 @@ partial interface Document {
 
 // https://drafts.csswg.org/web-animations/#extensions-to-the-document-interface
 partial interface Document {
-  [Func="nsDocument::AreWebAnimationsTimelinesEnabled"]
+  [Func="Document::AreWebAnimationsTimelinesEnabled"]
   readonly attribute DocumentTimeline timeline;
-  [Func="nsDocument::IsWebAnimationsGetAnimationsEnabled"]
+  [Func="Document::IsWebAnimationsGetAnimationsEnabled"]
   sequence<Animation> getAnimations();
 };
 
@@ -377,7 +377,7 @@ partial interface Document {
                     optional float force = 0);
   // XXXbz a hack to get around the fact that we don't support variadics as
   // distinguishing arguments yet.  Once this hack is removed. we can also
-  // remove the corresponding overload on nsIDocument, since Touch... and
+  // remove the corresponding overload on Document, since Touch... and
   // sequence<Touch> look the same in the C++.
   [NewObject, Func="nsGenericHTMLElement::TouchEventsEnabled"]
   TouchList createTouchList(Touch touch, Touch... touches);
@@ -492,6 +492,18 @@ partial interface Document {
   Promise<void> requestStorageAccess();
 };
 
+enum DocumentAutoplayPolicy {
+  "allowed",       // autoplay is currently allowed
+  "allowed-muted", // muted video autoplay is currently allowed
+  "disallowed"     // autoplay is not current allowed
+};
+
+// https://github.com/WICG/autoplay/issues/1
+partial interface Document {
+  [Pref="dom.media.autoplay.autoplay-policy-api"]
+  readonly attribute DocumentAutoplayPolicy autoplayPolicy;
+};
+
 // Extension to give chrome JS the ability to determine whether
 // the user has interacted with the document or not.
 partial interface Document {
@@ -503,6 +515,17 @@ partial interface Document {
 partial interface Document {
   [ChromeOnly]
   void notifyUserGestureActivation();
+  // For testing only.
+  [ChromeOnly]
+  void clearUserGestureActivation();
+};
+
+// Extension to give chrome JS the ability to set an event handler which is
+// called with certain events that happened while events were suppressed in the
+// document or one of its subdocuments.
+partial interface Document {
+  [ChromeOnly]
+  void setSuppressedEventListener(EventListener? aListener);
 };
 
 // Extension to give chrome and XBL JS the ability to determine whether
@@ -516,8 +539,6 @@ partial interface Document {
 // For more information on Flash classification, see
 // toolkit/components/url-classifier/flash-block-lists.rst
 enum FlashClassification {
-  "unclassified",   // Denotes a classification that has not yet been computed.
-                    // Allows for lazy classification.
   "unknown",        // Site is not on the whitelist or blacklist
   "allowed",        // Site is on the Flash whitelist
   "denied"          // Site is on the Flash blacklist
@@ -528,7 +549,7 @@ partial interface Document {
 };
 
 partial interface Document {
-  [Func="nsDocument::DocumentSupportsL10n"] readonly attribute DocumentL10n? l10n;
+  [Func="Document::DocumentSupportsL10n"] readonly attribute DocumentL10n? l10n;
 };
 
 Document implements XPathEvaluator;

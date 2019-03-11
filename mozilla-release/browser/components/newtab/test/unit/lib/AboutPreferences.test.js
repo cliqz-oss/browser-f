@@ -7,14 +7,16 @@ describe("AboutPreferences Feed", () => {
   let globals;
   let sandbox;
   let Sections;
+  let DiscoveryStream;
   let instance;
 
   beforeEach(() => {
     globals = new GlobalOverrider();
     sandbox = globals.sandbox;
     Sections = [];
+    DiscoveryStream = {config: {enabled: false}};
     instance = new AboutPreferences();
-    instance.store = {getState: () => ({Sections})};
+    instance.store = {getState: () => ({Sections, DiscoveryStream})};
   });
   afterEach(() => {
     globals.restore();
@@ -134,20 +136,24 @@ describe("AboutPreferences Feed", () => {
       document: {
         createXULElement: sandbox.stub().returns(node),
         createProcessingInstruction: sandbox.stub(),
-        createElementNS: sandbox.stub().callsFake((NS, el) => document.createElement(el)),
+        createElementNS: sandbox.stub().callsFake((NS, el) => node),
         getElementById: sandbox.stub().returns(node),
         insertBefore: sandbox.stub().returnsArg(0),
+        querySelector: sandbox.stub().returns({appendChild: sandbox.stub()}),
       },
       Preferences,
       gHomePane,
-    }, strings, prefStructure);
+    }, strings, prefStructure, DiscoveryStream.config);
     beforeEach(() => {
       node = {
         appendChild: sandbox.stub().returnsArg(0),
-        classList: {add: sandbox.stub()},
+        addEventListener: sandbox.stub(),
+        classList: {add: sandbox.stub(), remove: sandbox.stub()},
         cloneNode: sandbox.stub().returnsThis(),
         insertAdjacentElement: sandbox.stub().returnsArg(1),
         setAttribute: sandbox.stub(),
+        remove: sandbox.stub(),
+        style: {},
       };
       strings = {};
       prefStructure = [];
@@ -286,6 +292,97 @@ describe("AboutPreferences Feed", () => {
         testRender();
 
         assert.calledOnce(gHomePane.toggleRestoreDefaultsBtn);
+      });
+    });
+    describe("#DiscoveryStream", () => {
+      let PreferenceExperimentsStub;
+      beforeEach(() => {
+        PreferenceExperimentsStub = {
+          getAllActive: sandbox.stub().resolves([{name: "discoverystream", preferenceName: "browser.newtabpage.activity-stream.discoverystream.config"}]),
+          stop: sandbox.stub().resolves(),
+        };
+        globals.set("PreferenceExperiments", PreferenceExperimentsStub);
+      });
+      it("should not render the Discovery Stream section", () => {
+        testRender();
+
+        assert.isFalse(node.textContent.includes("prefs_content_discovery"));
+      });
+      it("should render the Discovery Stream section", () => {
+        DiscoveryStream = {config: {enabled: true, show_spocs: false}};
+        const spy = sandbox.spy(instance, "renderPreferences");
+
+        testRender();
+
+        const documentStub = spy.firstCall.args[0].document;
+
+        assert.equal(node.textContent, "prefs_content_discovery_button");
+        assert.calledWith(documentStub.createElementNS, "http://www.w3.org/1999/xhtml", "button");
+        // node points to contentsGroup, style is set to collapse if Discovery
+        // Stream is enabled
+        assert.propertyVal(node.style, "visibility", "collapse");
+      });
+      it("should toggle the Discovery Stream pref on button click", async () => {
+        DiscoveryStream = {config: {enabled: true}};
+        PreferenceExperimentsStub = {
+          getAllActive: sandbox.stub().resolves([{name: "discoverystream", preferenceName: "browser.newtabpage.activity-stream.discoverystream.config"}]),
+          stop: sandbox.stub().resolves(),
+        };
+        globals.set("PreferenceExperiments", PreferenceExperimentsStub);
+
+        testRender();
+
+        assert.calledOnce(node.addEventListener);
+
+        // Trigger the button click listener
+        await node.addEventListener.firstCall.args[1]();
+
+        assert.calledOnce(PreferenceExperimentsStub.getAllActive);
+        assert.calledOnce(PreferenceExperimentsStub.stop);
+        assert.calledWithExactly(PreferenceExperimentsStub.stop, "discoverystream", {resetValue: true, reason: "individual-opt-out"});
+      });
+      it("should render the spocs opt out checkbox if show_spocs is true", () => {
+        const spy = sandbox.spy(instance, "renderPreferences");
+        DiscoveryStream = {config: {enabled: true, show_spocs: true}};
+        testRender();
+
+        const {createXULElement} = spy.firstCall.args[0].document;
+        assert.calledWith(createXULElement, "checkbox");
+        assert.calledWith(Preferences.add, {id: "browser.newtabpage.activity-stream.showSponsored", type: "bool"});
+      });
+      it("should not render the spocs opt out checkbox if show_spocs is false", () => {
+        const spy = sandbox.spy(instance, "renderPreferences");
+        DiscoveryStream = {config: {enabled: true, show_spocs: false}};
+        testRender();
+
+        const {createXULElement} = spy.firstCall.args[0].document;
+        assert.neverCalledWith(createXULElement, "checkbox");
+        assert.neverCalledWith(Preferences.add, {id: "browser.newtabpage.activity-stream.showSponsored", type: "bool"});
+      });
+      describe("spocs pref checkbox", () => {
+        beforeEach(() => {
+          DiscoveryStream = {config: {enabled: true, show_spocs: true}};
+          prefStructure = [{pref: {nestedPrefs: [{titleString: "spocs", name: "showSponsored"}]}}];
+        });
+        it("should remove the topstories spocs checkbox", () => {
+          testRender();
+
+          assert.calledOnce(node.remove);
+          assert.calledOnce(node.classList.remove);
+          assert.calledWith(node.classList.remove, "indent");
+        });
+        it("should restore the checkbox when leaving the experiment", async () => {
+          const spy = sandbox.spy(instance, "renderPreferences");
+
+          testRender();
+
+          const [{document}] = spy.firstCall.args;
+
+          // Trigger the button click listener
+          await node.addEventListener.firstCall.args[1]();
+          assert.calledOnce(document.querySelector);
+          assert.calledWith(document.querySelector, "[data-subcategory='topstories'] .indent");
+        });
       });
     });
   });

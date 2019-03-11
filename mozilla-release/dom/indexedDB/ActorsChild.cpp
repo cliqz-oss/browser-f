@@ -40,7 +40,7 @@
 #include "nsContentUtils.h"
 #include "nsIAsyncInputStream.h"
 #include "nsIBFCacheEntry.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIEventTarget.h"
 #include "nsIFileStreams.h"
 #include "nsNetCID.h"
@@ -52,17 +52,17 @@
 #include "ReportInternalError.h"
 
 #ifdef DEBUG
-#include "IndexedDatabaseManager.h"
+#  include "IndexedDatabaseManager.h"
 #endif
 
 #define GC_ON_IPC_MESSAGES 0
 
 #if defined(DEBUG) || GC_ON_IPC_MESSAGES
 
-#include "js/GCAPI.h"
-#include "nsJSEnvironment.h"
+#  include "js/GCAPI.h"
+#  include "nsJSEnvironment.h"
 
-#define BUILD_GC_ON_IPC_MESSAGES
+#  define BUILD_GC_ON_IPC_MESSAGES
 
 #endif  // DEBUG || GC_ON_IPC_MESSAGES
 
@@ -103,11 +103,11 @@ namespace {
 void MaybeCollectGarbageOnIPCMessage() {
 #ifdef BUILD_GC_ON_IPC_MESSAGES
   static const bool kCollectGarbageOnIPCMessages =
-#if GC_ON_IPC_MESSAGES
+#  if GC_ON_IPC_MESSAGES
       true;
-#else
+#  else
       false;
-#endif  // GC_ON_IPC_MESSAGES
+#  endif  // GC_ON_IPC_MESSAGES
 
   if (!kCollectGarbageOnIPCMessages) {
     return;
@@ -129,7 +129,7 @@ void MaybeCollectGarbageOnIPCMessage() {
     return;
   }
 
-  nsJSContext::GarbageCollectNow(JS::gcreason::DOM_IPC);
+  nsJSContext::GarbageCollectNow(JS::GCReason::DOM_IPC);
   nsJSContext::CycleCollectNow();
 #endif  // BUILD_GC_ON_IPC_MESSAGES
 }
@@ -2076,7 +2076,7 @@ mozilla::ipc::IPCResult BackgroundDatabaseChild::RecvVersionChange(
 
     // Anything in the bfcache has to be evicted and then we have to close the
     // database also.
-    if (nsCOMPtr<nsIDocument> doc = owner->GetExtantDoc()) {
+    if (nsCOMPtr<Document> doc = owner->GetExtantDoc()) {
       if (nsCOMPtr<nsIBFCacheEntry> bfCacheEntry = doc->GetBFCacheEntry()) {
         bfCacheEntry->RemoveFromBFCacheSync();
         shouldAbortAndClose = true;

@@ -30,7 +30,7 @@
 #include "OuterDocAccessible.h"
 #include "Role.h"
 #ifdef MOZ_ACCESSIBILITY_ATK
-#include "RootAccessibleWrap.h"
+#  include "RootAccessibleWrap.h"
 #endif
 #include "States.h"
 #include "Statistics.h"
@@ -40,18 +40,18 @@
 #include "xpcAccessibleDocument.h"
 
 #ifdef MOZ_ACCESSIBILITY_ATK
-#include "AtkSocketAccessible.h"
+#  include "AtkSocketAccessible.h"
 #endif
 
 #ifdef XP_WIN
-#include "mozilla/a11y/Compatibility.h"
-#include "mozilla/dom/ContentChild.h"
-#include "HTMLWin32ObjectAccessible.h"
-#include "mozilla/StaticPtr.h"
+#  include "mozilla/a11y/Compatibility.h"
+#  include "mozilla/dom/ContentChild.h"
+#  include "HTMLWin32ObjectAccessible.h"
+#  include "mozilla/StaticPtr.h"
 #endif
 
 #ifdef A11Y_LOG
-#include "Logging.h"
+#  include "Logging.h"
 #endif
 
 #include "nsExceptionHandler.h"
@@ -75,18 +75,18 @@
 #include "nsDeckFrame.h"
 
 #ifdef MOZ_XUL
-#include "XULAlertAccessible.h"
-#include "XULComboboxAccessible.h"
-#include "XULElementAccessibles.h"
-#include "XULFormControlAccessible.h"
-#include "XULListboxAccessibleWrap.h"
-#include "XULMenuAccessibleWrap.h"
-#include "XULTabAccessible.h"
-#include "XULTreeGridAccessibleWrap.h"
+#  include "XULAlertAccessible.h"
+#  include "XULComboboxAccessible.h"
+#  include "XULElementAccessibles.h"
+#  include "XULFormControlAccessible.h"
+#  include "XULListboxAccessibleWrap.h"
+#  include "XULMenuAccessibleWrap.h"
+#  include "XULTabAccessible.h"
+#  include "XULTreeGridAccessibleWrap.h"
 #endif
 
 #if defined(XP_WIN) || defined(MOZ_ACCESSIBILITY_ATK)
-#include "nsNPAPIPluginInstance.h"
+#  include "nsNPAPIPluginInstance.h"
 #endif
 
 using namespace mozilla;
@@ -118,6 +118,12 @@ static bool MustBeAccessible(nsIContent* aContent, DocAccessible* aDocument) {
       const nsAttrName* attr = aContent->AsElement()->GetAttrNameAt(attrIdx);
       if (attr->NamespaceEquals(kNameSpaceID_None)) {
         nsAtom* attrAtom = attr->Atom();
+        if (attrAtom == nsGkAtoms::title && aContent->IsHTMLElement()) {
+          // If the author provided a title on an element that would not
+          // be accessible normally, assume an intent and make it accessible.
+          return true;
+        }
+
         nsDependentAtomString attrStr(attrAtom);
         if (!StringBeginsWith(attrStr, NS_LITERAL_STRING("aria-")))
           continue;  // not ARIA
@@ -148,7 +154,7 @@ static bool MustBeAccessible(nsIContent* aContent, DocAccessible* aDocument) {
  */
 #ifdef MOZ_XUL
 Accessible* CreateMenupopupAccessible(Element* aElement, Accessible* aContext) {
-#ifdef MOZ_ACCESSIBILITY_ATK
+#  ifdef MOZ_ACCESSIBILITY_ATK
   // ATK considers this node to be redundant when within menubars, and it makes
   // menu navigation with assistive technologies more difficult
   // XXX In the future we will should this for consistency across the
@@ -157,7 +163,7 @@ Accessible* CreateMenupopupAccessible(Element* aElement, Accessible* aContext) {
   // class for each platform.
   nsIContent* parent = aElement->GetParent();
   if (parent && parent->IsXULElement(nsGkAtoms::menu)) return nullptr;
-#endif
+#  endif
 
   return new XULMenupopupAccessible(aElement, aContext->Document());
 }
@@ -212,19 +218,19 @@ static const HTMLMarkupMapInfo sHTMLMarkupMapList[] = {
 #undef MARKUPMAP
 
 #ifdef MOZ_XUL
-#define XULMAP(atom, ...) {nsGkAtoms::atom, __VA_ARGS__},
+#  define XULMAP(atom, ...) {nsGkAtoms::atom, __VA_ARGS__},
 
-#define XULMAP_TYPE(atom, new_type)                                         \
-  XULMAP(atom, [](Element* aElement, Accessible* aContext) -> Accessible* { \
-    return new new_type(aElement, aContext->Document());                    \
-  })
+#  define XULMAP_TYPE(atom, new_type)                                         \
+    XULMAP(atom, [](Element* aElement, Accessible* aContext) -> Accessible* { \
+      return new new_type(aElement, aContext->Document());                    \
+    })
 
 static const XULMarkupMapInfo sXULMarkupMapList[] = {
-#include "XULMap.h"
+#  include "XULMap.h"
 };
 
-#undef XULMAP_TYPE
-#undef XULMAP
+#  undef XULMAP_TYPE
+#  undef XULMAP
 #endif
 
 #undef Attr
@@ -282,7 +288,7 @@ nsAccessibilityService::ListenersChanged(nsIArray* aEventChanges) {
     NS_ENSURE_SUCCESS(rv, rv);
 
     for (uint32_t i = 0; i < changeCount; i++) {
-      nsIDocument* ownerDoc = node->OwnerDoc();
+      Document* ownerDoc = node->OwnerDoc();
       DocAccessible* document = GetExistingDocAccessible(ownerDoc);
 
       // Create an accessible for a inaccessible element having click event
@@ -318,7 +324,7 @@ nsAccessibilityService::Observe(nsISupports* aSubject, const char* aTopic,
 }
 
 void nsAccessibilityService::NotifyOfAnchorJumpTo(nsIContent* aTargetNode) {
-  nsIDocument* documentNode = aTargetNode->GetUncomposedDoc();
+  Document* documentNode = aTargetNode->GetUncomposedDoc();
   if (documentNode) {
     DocAccessible* document = GetDocAccessible(documentNode);
     if (document) document->SetAnchorJump(aTargetNode);
@@ -333,7 +339,7 @@ void nsAccessibilityService::FireAccessibleEvent(uint32_t aEvent,
 Accessible* nsAccessibilityService::GetRootDocumentAccessible(
     nsIPresShell* aPresShell, bool aCanCreate) {
   nsIPresShell* ps = aPresShell;
-  nsIDocument* documentNode = aPresShell->GetDocument();
+  Document* documentNode = aPresShell->GetDocument();
   if (documentNode) {
     nsCOMPtr<nsIDocShellTreeItem> treeItem(documentNode->GetDocShell());
     if (treeItem) {
@@ -406,7 +412,7 @@ already_AddRefed<Accessible> nsAccessibilityService::CreatePluginAccessible(
 #if defined(XP_WIN) || defined(MOZ_ACCESSIBILITY_ATK)
   RefPtr<nsNPAPIPluginInstance> pluginInstance = aFrame->GetPluginInstance();
   if (pluginInstance) {
-#ifdef XP_WIN
+#  ifdef XP_WIN
     if (!sPendingPlugins->Contains(aContent) &&
         (Preferences::GetBool("accessibility.delay_plugins") ||
          Compatibility::IsJAWS() || Compatibility::IsWE())) {
@@ -434,7 +440,7 @@ already_AddRefed<Accessible> nsAccessibilityService::CreatePluginAccessible(
         aContent, aContext->Document(), pluginPort);
     return accessible.forget();
 
-#elif MOZ_ACCESSIBILITY_ATK
+#  elif MOZ_ACCESSIBILITY_ATK
     if (!AtkSocketAccessible::gCanEmbed) return nullptr;
 
     // Note this calls into the plugin, so crazy things may happen and aFrame
@@ -448,7 +454,7 @@ already_AddRefed<Accessible> nsAccessibilityService::CreatePluginAccessible(
 
       return socketAccessible.forget();
     }
-#endif
+#  endif
   }
 #endif
 
@@ -1035,8 +1041,10 @@ Accessible* nsAccessibilityService::CreateAccessible(nsINode* aNode,
           newAcc = new ARIAGridCellAccessibleWrap(content, document);
 
       } else if (roleMapEntry->IsOfType(eTableRow)) {
-        if (aContext->IsTable())
+        if (aContext->IsTable() ||
+            (aContext->Parent() && aContext->Parent()->IsTable())) {
           newAcc = new ARIARowAccessible(content, document);
+        }
 
       } else if (roleMapEntry->IsOfType(eTable)) {
         newAcc = new ARIAGridAccessibleWrap(content, document);

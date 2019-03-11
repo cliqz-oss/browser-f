@@ -15,6 +15,7 @@
 #include "nsIEventTarget.h"
 #include "nsTObserverArray.h"
 
+#include "js/ContextOptions.h"
 #include "mozilla/dom/Worker.h"
 #include "mozilla/dom/WorkerHolder.h"
 #include "mozilla/dom/WorkerLoadInfo.h"
@@ -786,7 +787,7 @@ class WorkerPrivate : public RelativeTimeline {
 
   void WorkerScriptLoaded();
 
-  nsIDocument* GetDocument() const;
+  Document* GetDocument() const;
 
   void MemoryPressure(bool aDummy);
 

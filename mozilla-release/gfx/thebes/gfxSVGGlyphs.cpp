@@ -7,7 +7,7 @@
 #include "mozilla/SVGContextPaint.h"
 #include "nsError.h"
 #include "nsString.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsICategoryManager.h"
 #include "nsIDocumentLoaderFactory.h"
 #include "nsIContentViewer.h"
@@ -25,10 +25,10 @@
 #include "mozilla/dom/SVGDocument.h"
 #include "mozilla/LoadInfo.h"
 #include "mozilla/NullPrincipal.h"
+#include "mozilla/SMILAnimationController.h"
 #include "nsSVGUtils.h"
 #include "nsContentUtils.h"
 #include "gfxFont.h"
-#include "nsSMILAnimationController.h"
 #include "gfxContext.h"
 #include "harfbuzz/hb.h"
 #include "mozilla/dom/ImageTracker.h"
@@ -37,8 +37,8 @@
 #define UTF8_CHARSET NS_LITERAL_CSTRING("utf-8")
 
 using namespace mozilla;
-
-typedef mozilla::dom::Element Element;
+using mozilla::dom::Document;
+using mozilla::dom::Element;
 
 /* static */ const mozilla::gfx::Color SimpleTextContextPaint::sZero;
 
@@ -156,8 +156,7 @@ nsresult gfxSVGGlyphsDocument::SetupPresentation() {
   mDocument->FlushPendingNotifications(FlushType::Layout);
 
   if (mDocument->HasAnimationController()) {
-    mDocument->GetAnimationController()->Resume(
-        nsSMILTimeContainer::PAUSE_IMAGE);
+    mDocument->GetAnimationController()->Resume(SMILTimeContainer::PAUSE_IMAGE);
   }
   mDocument->ImageTracker()->SetAnimatingState(true);
 
@@ -294,9 +293,10 @@ gfxSVGGlyphsDocument::~gfxSVGGlyphsDocument() {
 static nsresult CreateBufferedStream(const uint8_t *aBuffer, uint32_t aBufLen,
                                      nsCOMPtr<nsIInputStream> &aResult) {
   nsCOMPtr<nsIInputStream> stream;
-  nsresult rv = NS_NewByteInputStream(getter_AddRefs(stream),
-                                      reinterpret_cast<const char *>(aBuffer),
-                                      aBufLen, NS_ASSIGNMENT_DEPEND);
+  nsresult rv = NS_NewByteInputStream(
+      getter_AddRefs(stream),
+      MakeSpan(reinterpret_cast<const char *>(aBuffer), aBufLen),
+      NS_ASSIGNMENT_DEPEND);
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsCOMPtr<nsIInputStream> aBufferedStream;
@@ -330,7 +330,7 @@ nsresult gfxSVGGlyphsDocument::ParseDocument(const uint8_t *aBuffer,
   nsCOMPtr<nsIPrincipal> principal =
       NullPrincipal::CreateWithoutOriginAttributes();
 
-  nsCOMPtr<nsIDocument> document;
+  RefPtr<Document> document;
   rv = NS_NewDOMDocument(getter_AddRefs(document),
                          EmptyString(),  // aNamespaceURI
                          EmptyString(),  // aQualifiedName
@@ -352,7 +352,7 @@ nsresult gfxSVGGlyphsDocument::ParseDocument(const uint8_t *aBuffer,
   // Set this early because various decisions during page-load depend on it.
   document->SetIsBeingUsedAsImage();
   document->SetIsSVGGlyphsDocument();
-  document->SetReadyStateInternal(nsIDocument::READYSTATE_UNINITIALIZED);
+  document->SetReadyStateInternal(Document::READYSTATE_UNINITIALIZED);
 
   nsCOMPtr<nsIStreamListener> listener;
   rv = document->StartDocumentLoad("external-resource", channel,

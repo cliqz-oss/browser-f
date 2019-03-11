@@ -8,12 +8,16 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 import logging
 import re
+import taskcluster_urls
 
 from .util import (
     create_tasks,
     fetch_graph_and_labels
 )
-from taskgraph.util.taskcluster import send_email
+from taskgraph.util.taskcluster import (
+    send_email,
+    get_root_url,
+)
 from .registry import register_callback_action
 
 logger = logging.getLogger(__name__)
@@ -54,6 +58,8 @@ SCOPE_WHITELIST = [
     re.compile(r'^secrets:get:project/releng/gecko/build/level-[0-9]/\*'),
     # ptracing is generally useful for interactive tasks, too!
     re.compile(r'^docker-worker:feature:allowPtrace$'),
+    # docker-worker capabilities include loopback devices
+    re.compile(r'^docker-worker:capability:device:.*$'),
 ]
 
 
@@ -63,7 +69,7 @@ def context(params):
     if int(params['level']) < 3:
         return [{'worker-implementation': 'docker-worker'}]
     else:
-        return [{'worker-implementation': 'docker-worker', 'kind': 'test'}],
+        return [{'worker-implementation': 'docker-worker', 'kind': 'test'}]
 
 
 @register_callback_action(
@@ -153,7 +159,7 @@ def create_interactive_action(parameters, graph_config, input, task_group_id, ta
             return
 
         info = {
-            'url': 'https://tools.taskcluster.net/tasks/{}/connect'.format(taskId),
+            'url': taskcluster_urls.ui(get_root_url(), 'tasks/{}/connect'.format(taskId)),
             'label': label,
             'revision': parameters['head_rev'],
             'repo': parameters['head_repository'],

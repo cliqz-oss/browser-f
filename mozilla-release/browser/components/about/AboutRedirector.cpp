@@ -63,12 +63,10 @@ static const RedirEntry kRedirMap[] = {
          nsIAboutModule::URI_MUST_LOAD_IN_CHILD | nsIAboutModule::ALLOW_SCRIPT},
     {"rights", "chrome://global/content/aboutRights.xhtml",
      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-         nsIAboutModule::MAKE_LINKABLE | nsIAboutModule::ALLOW_SCRIPT},
+         nsIAboutModule::ALLOW_SCRIPT},
     {"robots", "chrome://browser/content/aboutRobots.xhtml",
      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
          nsIAboutModule::ALLOW_SCRIPT},
-    {"searchreset", "chrome://browser/content/search/searchReset.xhtml",
-     nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::HIDE_FROM_ABOUTABOUT},
     {"sessionrestore", "chrome://browser/content/aboutSessionRestore.xhtml",
      nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::HIDE_FROM_ABOUTABOUT},
     {"welcomeback", "chrome://browser/content/aboutWelcomeBack.xhtml",
@@ -85,6 +83,14 @@ static const RedirEntry kRedirMap[] = {
     {"library", "chrome://browser/content/aboutLibrary.xhtml",
      nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
          nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT},
+    {"pocket-saved", "chrome://pocket/content/panels/saved.html",
+     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
+         nsIAboutModule::URI_CAN_LOAD_IN_CHILD | nsIAboutModule::ALLOW_SCRIPT |
+         nsIAboutModule::HIDE_FROM_ABOUTABOUT},
+    {"pocket-signup", "chrome://pocket/content/panels/signup.html",
+     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
+         nsIAboutModule::URI_CAN_LOAD_IN_CHILD | nsIAboutModule::ALLOW_SCRIPT |
+         nsIAboutModule::HIDE_FROM_ABOUTABOUT},
     {"preferences",
      "chrome://browser/content/preferences/in-content/preferences.xul",
      nsIAboutModule::ALLOW_SCRIPT},
@@ -96,7 +102,7 @@ static const RedirEntry kRedirMap[] = {
          nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
          nsIAboutModule::HIDE_FROM_ABOUTABOUT},
     {"restartrequired", "chrome://browser/content/aboutRestartRequired.xhtml",
-     nsIAboutModule::ALLOW_SCRIPT},
+     nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::HIDE_FROM_ABOUTABOUT},
 };
 
 static nsAutoCString GetAboutModuleName(nsIURI* aURI) {

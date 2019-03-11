@@ -8,7 +8,7 @@
 
 #include "nsAttrValue.h"
 #include "nsAttrValueInlines.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsPresContext.h"
 
 namespace mozilla {
@@ -23,9 +23,7 @@ void MappedDeclarations::SetIdentAtomValue(nsCSSPropertyID aId,
     // FIXME(emilio): Can we move mapped attribute declarations across
     // documents? Isn't this wrong in that case? This is pretty out of place
     // anyway.
-    if (nsPresContext* pc = mDocument->GetPresContext()) {
-      pc->ForceCacheLang(aValue);
-    }
+    mDocument->ForceCacheLang(aValue);
   }
 }
 

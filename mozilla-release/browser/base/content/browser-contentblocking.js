@@ -154,9 +154,16 @@ var TrackingProtection = {
     if (this.trackingTable == this.trackingAnnotationTable) {
       return true;
     }
+
+    let feature = classifierService.getFeatureByName("tracking-protection");
+    if (!feature) {
+      return false;
+    }
+
     return new Promise(resolve => {
-      classifierService.asyncClassifyLocalWithTables(uri, this.trackingTable, [], [],
-        (code, list) => resolve(!!list));
+      classifierService.asyncClassifyLocalWithFeatures(uri, [feature],
+        Ci.nsIUrlClassifierFeature.blacklist,
+        list => resolve(!!list.length));
     });
   },
 
@@ -524,13 +531,55 @@ var ContentBlocking = {
   PREF_CB_CATEGORY: "browser.contentblocking.category",
   PREF_SHOW_ALLOWED_LABELS: "browser.contentblocking.control-center.ui.showAllowedLabels",
   PREF_SHOW_BLOCKED_LABELS: "browser.contentblocking.control-center.ui.showBlockedLabels",
-  content: null,
-  icon: null,
-  activeTooltipText: null,
-  disabledTooltipText: null,
 
   get prefIntroCount() {
     return this.PREF_INTRO_COUNT_CB;
+  },
+
+  get content() {
+    delete this.content;
+    return this.content =
+      document.getElementById("identity-popup-content-blocking-content");
+  },
+
+  get icon() {
+    delete this.icon;
+    return this.icon = document.getElementById("tracking-protection-icon");
+  },
+
+  get iconBox() {
+    delete this.iconBox;
+    return this.iconBox = document.getElementById("tracking-protection-icon-box");
+  },
+
+  get animatedIcon() {
+    delete this.animatedIcon;
+    return this.animatedIcon =
+      document.getElementById("tracking-protection-icon-animatable-image");
+  },
+
+  get identityPopupMultiView() {
+    delete this.identityPopupMultiView;
+    return this.identityPopupMultiView =
+      document.getElementById("identity-popup-multiView");
+  },
+
+  get reportBreakageButton() {
+    delete this.reportBreakageButton;
+    return this.reportBreakageButton =
+      document.getElementById("identity-popup-content-blocking-report-breakage");
+  },
+
+  get reportBreakageURL() {
+    delete this.reportBreakageURL;
+    return this.reportBreakageURL =
+      document.getElementById("identity-popup-breakageReportView-collection-url");
+  },
+
+  get reportBreakageLearnMore() {
+    delete this.reportBreakageLearnMore;
+    return this.reportBreakageLearnMore =
+      document.getElementById("identity-popup-breakageReportView-learn-more");
   },
 
   get appMenuLabel() {
@@ -554,6 +603,18 @@ var ContentBlocking = {
       delete this.appMenuTooltip;
       return this.appMenuTooltip =
         gNavigatorBundle.getString("contentBlocking.tooltip");
+    },
+
+    get activeTooltipText() {
+      delete this.activeTooltipText;
+      return this.activeTooltipText =
+        gNavigatorBundle.getString("trackingProtection.icon.activeTooltip");
+    },
+
+    get disabledTooltipText() {
+      delete this.disabledTooltipText;
+      return this.disabledTooltipText =
+        gNavigatorBundle.getString("trackingProtection.icon.disabledTooltip");
     },
   },
 
@@ -581,17 +642,7 @@ var ContentBlocking = {
   },
 
   init() {
-    let $ = id => document.getElementById(id);
-    this.content = $("identity-popup-content-blocking-content");
-    this.icon = $("tracking-protection-icon");
-    this.iconBox = $("tracking-protection-icon-box");
-    this.animatedIcon = $("tracking-protection-icon-animatable-image");
     this.animatedIcon.addEventListener("animationend", () => this.iconBox.removeAttribute("animate"));
-
-    this.identityPopupMultiView = $("identity-popup-multiView");
-    this.reportBreakageButton = $("identity-popup-content-blocking-report-breakage");
-    this.reportBreakageURL = $("identity-popup-breakageReportView-collection-url");
-    this.reportBreakageLearnMore = $("identity-popup-breakageReportView-learn-more");
 
     let baseURL = Services.urlFormatter.formatURLPref("app.support.baseURL");
     this.reportBreakageLearnMore.href = baseURL + "blocking-breakage";
@@ -629,10 +680,6 @@ var ContentBlocking = {
     this.appMenuLabel.setAttribute("value", this.strings.appMenuTitle);
     this.appMenuLabel.setAttribute("tooltiptext", this.strings.appMenuTooltip);
 
-    this.activeTooltipText =
-      gNavigatorBundle.getString("trackingProtection.icon.activeTooltip");
-    this.disabledTooltipText =
-      gNavigatorBundle.getString("trackingProtection.icon.disabledTooltip");
     this.updateCBCategoryLabel = this.updateCBCategoryLabel.bind(this);
     this.updateCBCategoryLabel();
     Services.prefs.addObserver(this.PREF_CB_CATEGORY, this.updateCBCategoryLabel);
@@ -765,7 +812,7 @@ var ContentBlocking = {
     Services.telemetry.getHistogramById("TRACKING_PROTECTION_SHIELD").add(value);
   },
 
-  onSecurityChange(state, webProgress, isSimulated) {
+  onContentBlockingEvent(event, webProgress, isSimulated) {
     let baseURI = this._baseURIForChannelClassifier;
 
     // Don't deal with about:, file: etc.
@@ -784,9 +831,9 @@ var ContentBlocking = {
       // reporting it using the "report breakage" dialog. Under normal circumstances this
       // dialog should only be able to open in the currently selected tab and onSecurityChange
       // runs on tab switch, so we can avoid associating the data with the document directly.
-      blocker.activated = blocker.isBlocking(state);
+      blocker.activated = blocker.isBlocking(event);
       blocker.categoryItem.classList.toggle("blocked", blocker.enabled);
-      let detected = blocker.isDetected(state);
+      let detected = blocker.isDetected(event);
       blocker.categoryItem.hidden = !detected;
       anyDetected = anyDetected || detected;
       anyBlocking = anyBlocking || blocker.activated;
@@ -842,10 +889,10 @@ var ContentBlocking = {
     }
 
     if (hasException) {
-      this.iconBox.setAttribute("tooltiptext", this.disabledTooltipText);
+      this.iconBox.setAttribute("tooltiptext", this.strings.disabledTooltipText);
       this.shieldHistogramAdd(1);
     } else if (anyBlocking) {
-      this.iconBox.setAttribute("tooltiptext", this.activeTooltipText);
+      this.iconBox.setAttribute("tooltiptext", this.strings.activeTooltipText);
       this.shieldHistogramAdd(2);
     } else {
       this.iconBox.removeAttribute("tooltiptext");

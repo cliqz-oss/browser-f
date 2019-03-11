@@ -141,6 +141,8 @@ Form History test: form field autocomplete
 <script class="testbody" type="text/javascript">
 /** Test for Form History autocomplete **/
 
+SpecialPowers.pushPrefEnv({"set": [["security.allow_eval_with_system_principal", true]]});
+
 var input = $_(1, "field1");
 
 function setupFormHistory(aCallback) {
@@ -997,6 +999,8 @@ function runTest() { // eslint-disable-line complexity
            testNum + " input event should be dispatched with InputEvent interface");
         ok(event.bubbles, testNum + " input event should bubble");
         ok(!event.cancelable, testNum + " input event shouldn't be cancelable");
+        is(event.inputType, "insertReplacementText",
+           testNum + ' inputType should be "insertReplacementText"');
       }, {once: true});
 
       synthesizeKey("KEY_ArrowDown");

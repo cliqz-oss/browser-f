@@ -306,6 +306,118 @@ describe("PlacesFeed", () => {
       await feed.saveToPocket(action.data.site, action._target.browser);
       assert.notCalled(feed.store.dispatch);
     });
+    it("should call handoffSearchToAwesomebar on HANDOFF_SEARCH_TO_AWESOMEBAR", () => {
+      const action = {
+        type: at.HANDOFF_SEARCH_TO_AWESOMEBAR,
+        data: {text: "f"},
+        meta: {fromTarget: {}},
+        _target: {browser: {ownerGlobal: {gURLBar: {focus: () => {}}}}},
+      };
+      sinon.stub(feed, "handoffSearchToAwesomebar");
+      feed.onAction(action);
+      assert.calledWith(feed.handoffSearchToAwesomebar, action);
+    });
+  });
+
+  describe("handoffSearchToAwesomebar", () => {
+    let fakeUrlBar;
+    let listeners;
+
+    beforeEach(() => {
+      fakeUrlBar = {
+        focus: sinon.spy(),
+        search: sinon.spy(),
+        setHiddenFocus: sinon.spy(),
+        removeHiddenFocus: sinon.spy(),
+        addEventListener: (ev, cb) => {
+          listeners[ev] = cb;
+        },
+        removeEventListener: sinon.spy(),
+      };
+      listeners = {};
+    });
+    it("should properly handle handoff with no text passed in", () => {
+      feed.handoffSearchToAwesomebar({
+        _target: {browser: {ownerGlobal: {gURLBar: fakeUrlBar}}},
+        data: {},
+        meta: {fromTarget: {}},
+      });
+      assert.calledOnce(fakeUrlBar.setHiddenFocus);
+      assert.notCalled(fakeUrlBar.search);
+      assert.notCalled(feed.store.dispatch);
+
+      // Now type a character.
+      listeners.keydown({key: "f"});
+      assert.calledOnce(fakeUrlBar.search);
+      assert.calledOnce(fakeUrlBar.removeHiddenFocus);
+      assert.calledOnce(feed.store.dispatch);
+      assert.calledWith(feed.store.dispatch, {
+        meta: {
+          from: "ActivityStream:Main",
+          skipMain: true,
+          to: "ActivityStream:Content",
+          toTarget: {},
+        },
+        type: "HIDE_SEARCH",
+      });
+    });
+    it("should properly handle handoff with text data passed in", () => {
+      feed.handoffSearchToAwesomebar({
+        _target: {browser: {ownerGlobal: {gURLBar: fakeUrlBar}}},
+        data: {text: "foo"},
+        meta: {fromTarget: {}},
+      });
+      assert.calledOnce(fakeUrlBar.search);
+      assert.calledWith(fakeUrlBar.search, "@google foo");
+      assert.notCalled(fakeUrlBar.focus);
+      assert.notCalled(fakeUrlBar.setHiddenFocus);
+
+      // Now call blur listener.
+      listeners.blur();
+      assert.calledOnce(feed.store.dispatch);
+      assert.calledWith(feed.store.dispatch, {
+        meta: {
+          from: "ActivityStream:Main",
+          skipMain: true,
+          to: "ActivityStream:Content",
+          toTarget: {},
+        },
+        type: "SHOW_SEARCH",
+      });
+    });
+    it("should SHOW_SEARCH on ESC keydown", () => {
+      feed.handoffSearchToAwesomebar({
+        _target: {browser: {ownerGlobal: {gURLBar: fakeUrlBar}}},
+        data: {text: "foo"},
+        meta: {fromTarget: {}},
+      });
+      assert.calledOnce(fakeUrlBar.search);
+      assert.calledWith(fakeUrlBar.search, "@google foo");
+      assert.notCalled(fakeUrlBar.focus);
+
+      // Now call ESC keydown.
+      listeners.keydown({key: "Escape"});
+      assert.calledOnce(feed.store.dispatch);
+      assert.calledWith(feed.store.dispatch, {
+        meta: {
+          from: "ActivityStream:Main",
+          skipMain: true,
+          to: "ActivityStream:Content",
+          toTarget: {},
+        },
+        type: "SHOW_SEARCH",
+      });
+    });
+    it("should properly handle no defined search alias", () => {
+      global.Services.search.defaultEngine.wrappedJSObject.__internalAliases = [];
+      feed.handoffSearchToAwesomebar({
+        _target: {browser: {ownerGlobal: {gURLBar: fakeUrlBar}}},
+        data: {text: "foo"},
+        meta: {fromTarget: {}},
+      });
+      assert.calledOnce(fakeUrlBar.search);
+      assert.calledWith(fakeUrlBar.search, "foo");
+    });
   });
 
   describe("#observe", () => {

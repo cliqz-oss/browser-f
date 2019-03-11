@@ -9,9 +9,9 @@
 #if (__GNUC__ && __linux__ && __PPC64__ && _LITTLE_ENDIAN)
 // Stack protection generates incorrect code currently with gcc on ppc64le
 // (bug 1512162).
-#define MOZ_GCC_STACK_PROTECTOR_DISABLED 1  // removed at end of file
-#pragma GCC push_options
-#pragma GCC optimize("no-stack-protector")
+#  define MOZ_GCC_STACK_PROTECTOR_DISABLED 1  // removed at end of file
+#  pragma GCC push_options
+#  pragma GCC optimize("no-stack-protector")
 #endif
 
 #include "xpcprivate.h"
@@ -135,7 +135,7 @@ void XPCWrappedNative::NoteTearoffs(nsCycleCollectionTraversalCallback& cb) {
 #ifdef XPC_CHECK_CLASSINFO_CLAIMS
 static void DEBUG_CheckClassInfoClaims(XPCWrappedNative* wrapper);
 #else
-#define DEBUG_CheckClassInfoClaims(wrapper) ((void)0)
+#  define DEBUG_CheckClassInfoClaims(wrapper) ((void)0)
 #endif
 
 /***************************************************************************/
@@ -191,7 +191,7 @@ nsresult XPCWrappedNative::WrapNewGlobal(xpcObjectHelper& nativeHelper,
   if (!global) {
     return NS_ERROR_FAILURE;
   }
-  XPCWrappedNativeScope* scope = RealmPrivate::Get(global)->scope;
+  XPCWrappedNativeScope* scope = CompartmentPrivate::Get(global)->scope;
 
   // Immediately enter the global's realm, so that everything else we
   // create ends up there.
@@ -350,7 +350,7 @@ nsresult XPCWrappedNative::GetNewOrUsed(xpcObjectHelper& helper,
                      getter_AddRefs(scrWrapper));
   }
 
-  RootedObject parent(cx, Scope->GetGlobalJSObject());
+  RootedObject parent(cx, Scope->GetGlobalForWrappedNatives());
 
   mozilla::Maybe<JSAutoRealm> ar;
 
@@ -987,9 +987,6 @@ nsresult XPCWrappedNative::InitTearOff(XPCWrappedNativeTearOff* aTearOff,
   // into an infinite loop.
   // see: http://bugzilla.mozilla.org/show_bug.cgi?id=96725
 
-  // The code in this block also does a check for the double wrapped
-  // nsIPropertyBag case.
-
   nsCOMPtr<nsIXPConnectWrappedJS> wrappedJS(do_QueryInterface(qiResult));
   if (wrappedJS) {
     RootedObject jso(cx, wrappedJS->GetJSObject());
@@ -1008,32 +1005,6 @@ nsresult XPCWrappedNative::InitTearOff(XPCWrappedNativeTearOff* aTearOff,
 
       aTearOff->SetInterface(nullptr);
       return NS_OK;
-    }
-
-    // Decide whether or not to expose nsIPropertyBag to calling
-    // JS code in the double wrapped case.
-    //
-    // Our rule here is that when JSObjects are double wrapped and
-    // exposed to other JSObjects then the nsIPropertyBag interface
-    // is only exposed on an 'opt-in' basis; i.e. if the underlying
-    // JSObject wants other JSObjects to be able to see this interface
-    // then it must implement QueryInterface and not throw an exception
-    // when asked for nsIPropertyBag. It need not actually *implement*
-    // nsIPropertyBag - xpconnect will do that work.
-
-    if (iid->Equals(NS_GET_IID(nsIPropertyBag)) && jso) {
-      RootedObject jsoGlobal(cx, wrappedJS->GetJSObjectGlobal());
-      RefPtr<nsXPCWrappedJSClass> clasp =
-          nsXPCWrappedJSClass::GetNewOrUsed(cx, *iid);
-      if (clasp) {
-        RootedObject answer(
-            cx, clasp->CallQueryInterfaceOnJSObject(cx, jso, jsoGlobal, *iid));
-
-        if (!answer) {
-          aTearOff->SetInterface(nullptr);
-          return NS_ERROR_NO_INTERFACE;
-        }
-      }
     }
   }
 
@@ -1388,14 +1359,15 @@ bool CallMethodHelper::QueryInterfaceFastPath() {
     return false;
   }
 
-  const nsID* iid = xpc_JSObjectToID(mCallContext, &mArgv[0].toObject());
+  JS::RootedValue iidarg(mCallContext, mArgv[0]);
+  Maybe<nsID> iid = xpc::JSValue2ID(mCallContext, iidarg);
   if (!iid) {
     ThrowBadParam(NS_ERROR_XPC_BAD_CONVERT_JS, 0, mCallContext);
     return false;
   }
 
   nsISupports* qiresult = nullptr;
-  mInvokeResult = mCallee->QueryInterface(*iid, (void**)&qiresult);
+  mInvokeResult = mCallee->QueryInterface(iid.ref(), (void**)&qiresult);
 
   if (NS_FAILED(mInvokeResult)) {
     ThrowBadResult(mInvokeResult, mCallContext);
@@ -1405,7 +1377,7 @@ bool CallMethodHelper::QueryInterfaceFastPath() {
   RootedValue v(mCallContext, NullValue());
   nsresult err;
   bool success = XPCConvert::NativeData2JS(
-      &v, &qiresult, {nsXPTType::T_INTERFACE_IS}, iid, 0, &err);
+      &v, &qiresult, {nsXPTType::T_INTERFACE_IS}, iid.ptr(), 0, &err);
   NS_IF_RELEASE(qiresult);
 
   if (!success) {
@@ -1521,6 +1493,17 @@ bool CallMethodHelper::ConvertIndependentParam(uint8_t i) {
   // to do that.
   if (!paramInfo.IsIn()) {
     return true;
+  }
+
+  // Some types usually don't support default values, but we want to handle
+  // the default value if IsOptional is true.
+  if (i >= mArgc) {
+    MOZ_ASSERT(paramInfo.IsOptional(), "missing non-optional argument!");
+    if (type.Tag() == nsXPTType::T_IID) {
+      // NOTE: 'const nsIID&' is supported, so it must be allocated.
+      dp->val.p = new nsIID();
+      return true;
+    }
   }
 
   // We're definitely some variety of 'in' now, so there's something to
@@ -1731,13 +1714,13 @@ NS_IMETHODIMP XPCWrappedNative::DebugDump(int16_t depth) {
 char* XPCWrappedNative::ToString(
     XPCWrappedNativeTearOff* to /* = nullptr */) const {
 #ifdef DEBUG
-#define FMT_ADDR " @ 0x%p"
-#define FMT_STR(str) str
-#define PARAM_ADDR(w) , w
+#  define FMT_ADDR " @ 0x%p"
+#  define FMT_STR(str) str
+#  define PARAM_ADDR(w) , w
 #else
-#define FMT_ADDR ""
-#define FMT_STR(str)
-#define PARAM_ADDR(w)
+#  define FMT_ADDR ""
+#  define FMT_STR(str)
+#  define PARAM_ADDR(w)
 #endif
 
   UniqueChars sz;
@@ -1848,6 +1831,6 @@ static void DEBUG_CheckClassInfoClaims(XPCWrappedNative* wrapper) {
 #if (MOZ_GCC_STACK_PROTECTOR_DISABLED)
 // Reenable stack protection in following modules, if we disabled it
 // (bug 1512162).
-#pragma GCC pop_options
-#undef MOZ_GCC_STACK_PROTECTOR_DISABLED
+#  pragma GCC pop_options
+#  undef MOZ_GCC_STACK_PROTECTOR_DISABLED
 #endif

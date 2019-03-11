@@ -35,9 +35,6 @@ using namespace mozilla::dom;
 // Yikes!  Casting a char to unichar can fill with ones!
 #define CHAR_TO_UNICHAR(c) ((char16_t)(unsigned char)c)
 
-static NS_DEFINE_CID(kCContentIteratorCID, NS_CONTENTITERATOR_CID);
-static NS_DEFINE_CID(kCPreContentIteratorCID, NS_PRECONTENTITERATOR_CID);
-
 #define CH_QUOTE ((char16_t)0x22)
 #define CH_APOSTROPHE ((char16_t)0x27)
 #define CH_LEFT_SINGLE_QUOTE ((char16_t)0x2018)
@@ -67,9 +64,9 @@ nsFind::nsFind()
 nsFind::~nsFind() = default;
 
 #ifdef DEBUG_FIND
-#define DEBUG_FIND_PRINTF(...) printf(__VA_ARGS__)
+#  define DEBUG_FIND_PRINTF(...) printf(__VA_ARGS__)
 #else
-#define DEBUG_FIND_PRINTF(...) /* nothing */
+#  define DEBUG_FIND_PRINTF(...) /* nothing */
 #endif
 
 static nsIContent& AnonymousSubtreeRootParent(const nsINode& aNode) {
@@ -446,7 +443,7 @@ nsFind::Find(const char16_t* aPatText, nsRange* aSearchRange,
   NS_ENSURE_ARG(aEndPoint);
   NS_ENSURE_ARG_POINTER(aRangeRet);
 
-  nsIDocument* document =
+  Document* document =
       aStartPoint->GetRoot() ? aStartPoint->GetRoot()->OwnerDoc() : nullptr;
   NS_ENSURE_ARG(document);
 

@@ -93,19 +93,38 @@ bool CopyScript(JSContext* cx, HandleScript src, HandleScript dst,
 }  // namespace js
 
 /*
- * Type of try note associated with each catch or finally block, and also with
- * for-in and other kinds of loops. Non-for-in loops do not need these notes
- * for exception unwinding, but storing their boundaries here is helpful for
- * heuristics that need to know whether a given op is inside a loop.
+ * [SMDOC] Try Notes
+ *
+ * Trynotes are attached to regions that are involved with
+ * exception unwinding. They can be broken up into four categories:
+ *
+ * 1. CATCH and FINALLY: Basic exception handling. A CATCH trynote
+ *    covers the range of the associated try. A FINALLY trynote covers
+ *    the try and the catch.
+
+ * 2. FOR_IN and DESTRUCTURING: These operations create an iterator
+ *    which must be cleaned up (by calling IteratorClose) during
+ *    exception unwinding.
+ *
+ * 3. FOR_OF and FOR_OF_ITERCLOSE: For-of loops handle unwinding using
+ *    catch blocks. These trynotes are used for for-of breaks/returns,
+ *    which create regions that are lexically within a for-of block,
+ *    but logically outside of it. See TryNoteIter::settle for more
+ *    details.
+ *
+ * 4. LOOP: This represents normal for/while/do-while loops. It is
+ *    unnecessary for exception unwinding, but storing the boundaries
+ *    of loops here is helpful for heuristics that need to know
+ *    whether a given op is inside a loop.
  */
 enum JSTryNoteKind {
   JSTRY_CATCH,
   JSTRY_FINALLY,
   JSTRY_FOR_IN,
+  JSTRY_DESTRUCTURING,
   JSTRY_FOR_OF,
-  JSTRY_LOOP,
   JSTRY_FOR_OF_ITERCLOSE,
-  JSTRY_DESTRUCTURING_ITERCLOSE
+  JSTRY_LOOP
 };
 
 /*
@@ -1103,15 +1122,44 @@ class ScriptSourceHolder {
   ScriptSource* get() const { return ss; }
 };
 
+// [SMDOC] ScriptSourceObject
+//
+// ScriptSourceObject stores the ScriptSource and GC pointers related to it.
+//
+// ScriptSourceObjects can be cloned when we clone the JSScript (in order to
+// execute the script in a different compartment). In this case we create a new
+// SSO that stores (a wrapper for) the original SSO in its "canonical slot".
+// The canonical SSO is always used for the private, introductionScript,
+// element, elementAttributeName slots. This means their accessors may return an
+// object in a different compartment, hence the "unwrapped" prefix.
+//
+// Note that we don't clone the SSO when cloning the script for a different
+// realm in the same compartment, so sso->realm() does not necessarily match the
+// script's realm.
+//
+// We need ScriptSourceObject (instead of storing these GC pointers in the
+// ScriptSource itself) to properly account for cross-zone pointers: the
+// canonical SSO will be stored in the wrapper map if necessary so GC will do
+// the right thing.
 class ScriptSourceObject : public NativeObject {
   static const ClassOps classOps_;
+
+  static ScriptSourceObject* createInternal(JSContext* cx, ScriptSource* source,
+                                            HandleObject canonical);
+
+  bool isCanonical() const {
+    return &getReservedSlot(CANONICAL_SLOT).toObject() == this;
+  }
+  ScriptSourceObject* unwrappedCanonical() const;
 
  public:
   static const Class class_;
 
   static void trace(JSTracer* trc, JSObject* obj);
   static void finalize(FreeOp* fop, JSObject* obj);
+
   static ScriptSourceObject* create(JSContext* cx, ScriptSource* source);
+  static ScriptSourceObject* clone(JSContext* cx, HandleScriptSourceObject sso);
 
   // Initialize those properties of this ScriptSourceObject whose values
   // are provided by |options|, re-wrapping as necessary.
@@ -1127,27 +1175,37 @@ class ScriptSourceObject : public NativeObject {
   ScriptSource* source() const {
     return static_cast<ScriptSource*>(getReservedSlot(SOURCE_SLOT).toPrivate());
   }
-  JSObject* element() const {
-    return getReservedSlot(ELEMENT_SLOT).toObjectOrNull();
+
+  JSObject* unwrappedElement() const {
+    return unwrappedCanonical()->getReservedSlot(ELEMENT_SLOT).toObjectOrNull();
   }
-  const Value& elementAttributeName() const {
-    MOZ_ASSERT(!getReservedSlot(ELEMENT_PROPERTY_SLOT).isMagic());
-    return getReservedSlot(ELEMENT_PROPERTY_SLOT);
+  const Value& unwrappedElementAttributeName() const {
+    const Value& v =
+        unwrappedCanonical()->getReservedSlot(ELEMENT_PROPERTY_SLOT);
+    MOZ_ASSERT(!v.isMagic());
+    return v;
   }
-  JSScript* introductionScript() const {
-    Value value = getReservedSlot(INTRODUCTION_SCRIPT_SLOT);
+  JSScript* unwrappedIntroductionScript() const {
+    Value value =
+        unwrappedCanonical()->getReservedSlot(INTRODUCTION_SCRIPT_SLOT);
     if (value.isUndefined()) {
       return nullptr;
     }
     return value.toGCThing()->as<JSScript>();
   }
 
-  void setPrivate(const Value& value) { setReservedSlot(PRIVATE_SLOT, value); }
-  Value getPrivate() const { return getReservedSlot(PRIVATE_SLOT); }
+  void setPrivate(JSRuntime* rt, const Value& value);
+
+  Value canonicalPrivate() const {
+    Value value = getReservedSlot(PRIVATE_SLOT);
+    MOZ_ASSERT_IF(!isCanonical(), value.isUndefined());
+    return value;
+  }
 
  private:
   enum {
     SOURCE_SLOT = 0,
+    CANONICAL_SLOT,
     ELEMENT_SLOT,
     ELEMENT_PROPERTY_SLOT,
     INTRODUCTION_SCRIPT_SLOT,
@@ -1480,11 +1538,8 @@ class JSScript : public js::gc::TenuredCell {
   /* Persistent type information retained across GCs. */
   js::TypeScript* types_ = nullptr;
 
-  // This script's ScriptSourceObject, or a CCW thereof.
-  //
-  // (When we clone a JSScript into a new compartment, we don't clone its
-  // source object. Instead, the clone refers to a wrapper.)
-  js::GCPtrObject sourceObject_ = {};
+  // This script's ScriptSourceObject.
+  js::GCPtr<js::ScriptSourceObject*> sourceObject_ = {};
 
   /*
    * Information attached by Ion. Nexto a valid IonScript this could be
@@ -1563,7 +1618,9 @@ class JSScript : public js::gc::TenuredCell {
 
   // Immutable flags should not be modified after this script has been
   // initialized. These flags should likely be preserved when serializing
-  // (XDR) or copying (CopyScript) this script.
+  // (XDR) or copying (CopyScript) this script. This is only public for the
+  // JITs.
+ public:
   enum class ImmutableFlags : uint32_t {
     // No need for result value of last expression statement.
     NoScriptRval = 1 << 0,
@@ -1628,7 +1685,16 @@ class JSScript : public js::gc::TenuredCell {
 
     // See comments below.
     ArgsHasVarBinding = 1 << 21,
+
+    // Script came from eval().
+    IsForEval = 1 << 22,
+
+    // Whether the record/replay execution progress counter (see RecordReplay.h)
+    // should be updated as this script runs.
+    TrackRecordReplayProgress = 1 << 23,
   };
+
+ private:
   // Note: don't make this a bitfield! It makes it hard to read these flags
   // from JIT code.
   uint32_t immutableFlags_ = 0;
@@ -1646,11 +1712,7 @@ class JSScript : public js::gc::TenuredCell {
     // Script has been reused for a clone.
     HasBeenCloned = 1 << 2,
 
-    // Script came from eval(), and is still active.
-    IsActiveEval = 1 << 3,
-
-    // Script came from eval(), and is in eval cache.
-    IsCachedEval = 1 << 4,
+    // (1 << 3) and (1 << 4) are unused.
 
     // Script has an entry in Realm::scriptCountsMap.
     HasScriptCounts = 1 << 5,
@@ -1721,7 +1783,7 @@ class JSScript : public js::gc::TenuredCell {
   uint16_t funLength_ = 0;
 
   /* Number of type sets used in this script for dynamic type monitoring. */
-  uint16_t nTypeSets_ = 0;
+  uint16_t numBytecodeTypeSets_ = 0;
 
   //
   // End of fields.  Start methods.
@@ -1740,20 +1802,20 @@ class JSScript : public js::gc::TenuredCell {
       js::MutableHandle<JS::GCVector<js::Scope*>> scopes);
 
  private:
-  JSScript(JS::Realm* realm, uint8_t* stubEntry, js::HandleObject sourceObject,
-           uint32_t sourceStart, uint32_t sourceEnd, uint32_t toStringStart,
-           uint32_t toStringend);
+  JSScript(JS::Realm* realm, uint8_t* stubEntry,
+           js::HandleScriptSourceObject sourceObject, uint32_t sourceStart,
+           uint32_t sourceEnd, uint32_t toStringStart, uint32_t toStringend);
 
-  static JSScript* New(JSContext* cx, js::HandleObject sourceObject,
+  static JSScript* New(JSContext* cx, js::HandleScriptSourceObject sourceObject,
                        uint32_t sourceStart, uint32_t sourceEnd,
                        uint32_t toStringStart, uint32_t toStringEnd);
 
  public:
   static JSScript* Create(JSContext* cx,
                           const JS::ReadOnlyCompileOptions& options,
-                          js::HandleObject sourceObject, uint32_t sourceStart,
-                          uint32_t sourceEnd, uint32_t toStringStart,
-                          uint32_t toStringEnd);
+                          js::HandleScriptSourceObject sourceObject,
+                          uint32_t sourceStart, uint32_t sourceEnd,
+                          uint32_t toStringStart, uint32_t toStringEnd);
 
   // NOTE: If you use createPrivateScriptData directly instead of via
   // fullyInitFromEmitter, you are responsible for notifying the debugger
@@ -1801,9 +1863,12 @@ class JSScript : public js::gc::TenuredCell {
 
   // ImmutableFlags accessors.
 
+ public:
   MOZ_MUST_USE bool hasFlag(ImmutableFlags flag) const {
     return immutableFlags_ & uint32_t(flag);
   }
+
+ private:
   void setFlag(ImmutableFlags flag) { immutableFlags_ |= uint32_t(flag); }
   void setFlag(ImmutableFlags flag, bool b) {
     if (b) {
@@ -1925,7 +1990,14 @@ class JSScript : public js::gc::TenuredCell {
     return scope->as<js::FunctionScope>().hasParameterExprs();
   }
 
-  size_t nTypeSets() const { return nTypeSets_; }
+  // If there are more than MaxBytecodeTypeSets JOF_TYPESET ops in the script,
+  // the first MaxBytecodeTypeSets - 1 JOF_TYPESET ops have their own TypeSet
+  // and all other JOF_TYPESET ops share the last TypeSet.
+  static constexpr size_t MaxBytecodeTypeSets = UINT16_MAX;
+  static_assert(sizeof(numBytecodeTypeSets_) == 2,
+                "MaxBytecodeTypeSets must match sizeof(numBytecodeTypeSets_)");
+
+  size_t numBytecodeTypeSets() const { return numBytecodeTypeSets_; }
 
   size_t funLength() const { return funLength_; }
 
@@ -1975,28 +2047,13 @@ class JSScript : public js::gc::TenuredCell {
   void setHasRunOnce() { setFlag(MutableFlags::HasRunOnce); }
   void setHasBeenCloned() { setFlag(MutableFlags::HasBeenCloned); }
 
-  bool isActiveEval() const { return hasFlag(MutableFlags::IsActiveEval); }
-  bool isCachedEval() const { return hasFlag(MutableFlags::IsCachedEval); }
-
   void cacheForEval() {
-    MOZ_ASSERT(isActiveEval());
-    MOZ_ASSERT(!isCachedEval());
-    clearFlag(MutableFlags::IsActiveEval);
-    setFlag(MutableFlags::IsCachedEval);
+    MOZ_ASSERT(isForEval());
     // IsEvalCacheCandidate will make sure that there's nothing in this
     // script that would prevent reexecution even if isRunOnce is
     // true.  So just pretend like we never ran this script.
     clearFlag(MutableFlags::HasRunOnce);
   }
-
-  void uncacheForEval() {
-    MOZ_ASSERT(isCachedEval());
-    MOZ_ASSERT(!isActiveEval());
-    clearFlag(MutableFlags::IsCachedEval);
-    setFlag(MutableFlags::IsActiveEval);
-  }
-
-  void setActiveEval() { setFlag(MutableFlags::IsActiveEval); }
 
   bool isLikelyConstructorWrapper() const {
     return hasFlag(ImmutableFlags::IsLikelyConstructorWrapper);
@@ -2163,6 +2220,9 @@ class JSScript : public js::gc::TenuredCell {
   static constexpr size_t offsetOfMutableFlags() {
     return offsetof(JSScript, mutableFlags_);
   }
+  static size_t offsetOfImmutableFlags() {
+    return offsetof(JSScript, immutableFlags_);
+  }
 
   bool hasAnyIonScript() const { return hasIonScript(); }
 
@@ -2281,15 +2341,14 @@ class JSScript : public js::gc::TenuredCell {
 
   static bool loadSource(JSContext* cx, js::ScriptSource* ss, bool* worked);
 
-  void setSourceObject(JSObject* object);
-  JSObject* sourceObject() const { return sourceObject_; }
-  js::ScriptSourceObject& scriptSourceUnwrap() const;
+  void setSourceObject(js::ScriptSourceObject* object);
+  js::ScriptSourceObject* sourceObject() const { return sourceObject_; }
   js::ScriptSource* scriptSource() const;
   js::ScriptSource* maybeForwardedScriptSource() const;
 
-  void setDefaultClassConstructorSpan(JSObject* sourceObject, uint32_t start,
-                                      uint32_t end, unsigned line,
-                                      unsigned column);
+  void setDefaultClassConstructorSpan(js::ScriptSourceObject* sourceObject,
+                                      uint32_t start, uint32_t end,
+                                      unsigned line, unsigned column);
 
   bool mutedErrors() const { return scriptSource()->mutedErrors(); }
   const char* filename() const { return scriptSource()->filename(); }
@@ -2306,9 +2365,9 @@ class JSScript : public js::gc::TenuredCell {
  public:
   /* Return whether this script was compiled for 'eval' */
   bool isForEval() const {
-    MOZ_ASSERT_IF(isCachedEval() || isActiveEval(),
-                  bodyScope()->is<js::EvalScope>());
-    return isCachedEval() || isActiveEval();
+    bool forEval = hasFlag(ImmutableFlags::IsForEval);
+    MOZ_ASSERT_IF(forEval, bodyScope()->is<js::EvalScope>());
+    return forEval;
   }
 
   /* Return whether this is a 'direct eval' script in a function scope. */
@@ -2341,6 +2400,7 @@ class JSScript : public js::gc::TenuredCell {
   void sweepTypes(const js::AutoSweepTypeScript& sweep);
 
   inline js::GlobalObject& global() const;
+  inline bool hasGlobal(const js::GlobalObject* global) const;
   js::GlobalObject& uninlinedGlobal() const;
 
   uint32_t bodyScopeIndex() const { return bodyScopeIndex_; }
@@ -2558,6 +2618,8 @@ class JSScript : public js::gc::TenuredCell {
   }
 
   inline JSFunction* getFunction(size_t index);
+  inline JSFunction* getFunction(jsbytecode* pc);
+
   JSFunction* function() const {
     if (functionNonDelazifying()) {
       return functionNonDelazifying();
@@ -2685,9 +2747,9 @@ class JSScript : public js::gc::TenuredCell {
     void dropScript();
   };
 
-  // Return whether the record/replay execution progress counter
-  // (see RecordReplay.h) should be updated as this script runs.
-  inline bool trackRecordReplayProgress() const;
+  bool trackRecordReplayProgress() const {
+    return hasFlag(ImmutableFlags::TrackRecordReplayProgress);
+  }
 };
 
 /* If this fails, add/remove padding within JSScript. */
@@ -2787,9 +2849,8 @@ class LazyScript : public gc::TenuredCell {
   GCPtr<TenuredCell*> enclosingLazyScriptOrScope_;
 
   // ScriptSourceObject. We leave this set to nullptr until we generate
-  // bytecode for our immediate parent. This is never a CCW; we don't clone
-  // LazyScripts into other compartments.
-  GCPtrObject sourceObject_;
+  // bytecode for our immediate parent.
+  GCPtr<ScriptSourceObject*> sourceObject_;
 
   // Heap allocated table with any free variables or inner functions.
   void* table_;
@@ -3129,7 +3190,8 @@ extern void DescribeScriptedCallerForDirectEval(
     unsigned* linenop, uint32_t* pcOffset, bool* mutedErrors);
 
 JSScript* CloneScriptIntoFunction(JSContext* cx, HandleScope enclosingScope,
-                                  HandleFunction fun, HandleScript src);
+                                  HandleFunction fun, HandleScript src,
+                                  Handle<ScriptSourceObject*> sourceObject);
 
 JSScript* CloneGlobalScript(JSContext* cx, ScopeKind scopeKind,
                             HandleScript src);

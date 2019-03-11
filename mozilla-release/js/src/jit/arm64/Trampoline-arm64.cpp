@@ -9,7 +9,7 @@
 #include "jit/JitRealm.h"
 #include "jit/Linker.h"
 #ifdef JS_ION_PERF
-#include "jit/PerfSpewer.h"
+#  include "jit/PerfSpewer.h"
 #endif
 #include "jit/arm64/SharedICHelpers-arm64.h"
 #include "jit/VMFunctions.h"
@@ -99,6 +99,21 @@ void JitRuntime::generateEnterJIT(JSContext* cx, MacroAssembler& masm) {
   //  8    - calleeToken (16-byte aligned)
   //  8    - frameDescriptor
   //  8    - returnAddress (16-byte aligned, pushed by callee)
+
+  // Touch frame incrementally (a requirement for Windows).
+  //
+  // Use already saved callee-save registers r20 and r21 as temps.
+  //
+  // This has to be done outside the ScratchRegisterScope, as the temps are
+  // under demand inside the touchFrameValues call.
+
+  // Give sp 16-byte alignment and sync stack pointers.
+  masm.andToStackPtr(Imm32(~0xff));
+  // We needn't worry about the Gecko Profiler mark because touchFrameValues
+  // touches in large increments.
+  masm.touchFrameValues(reg_argc, r20, r21);
+  // Restore stack pointer, preserved above.
+  masm.moveToStackPtr(r19);
 
   // Push the argument vector onto the stack.
   // WARNING: destructively modifies reg_argv

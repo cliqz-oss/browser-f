@@ -20,10 +20,18 @@
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Telemetry.h"
 #ifdef MOZ_GECKO_PROFILER
-#include "ProfilerMarkerPayload.h"
+#  include "ProfilerMarkerPayload.h"
 #endif
 
 using namespace mozilla;
+
+namespace mozilla {
+
+LazyLogModule gPageLoadLog("PageLoad");
+#define PAGELOAD_LOG(args) MOZ_LOG(gPageLoadLog, LogLevel::Debug, args)
+#define PAGELOAD_LOG_ENABLED() MOZ_LOG_TEST(gPageLoadLog, LogLevel::Error)
+
+}  // namespace mozilla
 
 nsDOMNavigationTiming::nsDOMNavigationTiming(nsDocShell* aDocShell) {
   Clear();
@@ -68,7 +76,7 @@ void nsDOMNavigationTiming::NotifyNavigationStart(
   mNavigationStart = TimeStamp::Now();
   mDocShellHasBeenActiveSinceNavigationStart =
       (aDocShellState == DocShellState::eActive);
-  PROFILER_ADD_MARKER("Navigation::Start");
+  PROFILER_ADD_MARKER("Navigation::Start", DOM);
 }
 
 void nsDOMNavigationTiming::NotifyFetchStart(nsIURI* aURI,
@@ -90,14 +98,14 @@ void nsDOMNavigationTiming::NotifyUnloadAccepted(nsIURI* aOldURI) {
 
 void nsDOMNavigationTiming::NotifyUnloadEventStart() {
   mUnloadStart = TimeStamp::Now();
-  PROFILER_TRACING_DOCSHELL("Navigation", "Unload", TRACING_INTERVAL_START,
-                            mDocShell);
+  PROFILER_TRACING_DOCSHELL("Navigation", "Unload", NETWORK,
+                            TRACING_INTERVAL_START, mDocShell);
 }
 
 void nsDOMNavigationTiming::NotifyUnloadEventEnd() {
   mUnloadEnd = TimeStamp::Now();
-  PROFILER_TRACING_DOCSHELL("Navigation", "Unload", TRACING_INTERVAL_END,
-                            mDocShell);
+  PROFILER_TRACING_DOCSHELL("Navigation", "Unload", NETWORK,
+                            TRACING_INTERVAL_END, mDocShell);
 }
 
 void nsDOMNavigationTiming::NotifyLoadEventStart() {
@@ -106,8 +114,8 @@ void nsDOMNavigationTiming::NotifyLoadEventStart() {
   }
   mLoadEventStart = TimeStamp::Now();
 
-  PROFILER_TRACING_DOCSHELL("Navigation", "Load", TRACING_INTERVAL_START,
-                            mDocShell);
+  PROFILER_TRACING_DOCSHELL("Navigation", "Load", NETWORK,
+                            TRACING_INTERVAL_START, mDocShell);
 
   if (IsTopLevelContentDocumentInContentProcess()) {
     TimeStamp now = TimeStamp::Now();
@@ -136,10 +144,29 @@ void nsDOMNavigationTiming::NotifyLoadEventEnd() {
   }
   mLoadEventEnd = TimeStamp::Now();
 
-  PROFILER_TRACING_DOCSHELL("Navigation", "Load", TRACING_INTERVAL_END,
+  PROFILER_TRACING_DOCSHELL("Navigation", "Load", NETWORK, TRACING_INTERVAL_END,
                             mDocShell);
 
   if (IsTopLevelContentDocumentInContentProcess()) {
+#ifdef MOZ_GECKO_PROFILER
+    if (profiler_is_active() || PAGELOAD_LOG_ENABLED()) {
+      TimeDuration elapsed = mLoadEventEnd - mNavigationStart;
+      TimeDuration duration = mLoadEventEnd - mLoadEventStart;
+      nsAutoCString spec;
+      if (mLoadedURI) {
+        mLoadedURI->GetSpec(spec);
+      }
+      nsPrintfCString marker(
+          "Document %s loaded after %dms, load event duration %dms", spec.get(),
+          int(elapsed.ToMilliseconds()), int(duration.ToMilliseconds()));
+      DECLARE_DOCSHELL_AND_HISTORY_ID(mDocShell);
+      PAGELOAD_LOG(("%s", marker.get()));
+      profiler_add_marker(
+          "DocumentLoad", js::ProfilingStackFrame::Category::DOM,
+          MakeUnique<TextMarkerPayload>(marker, mNavigationStart, mLoadEventEnd,
+                                        docShellId, docShellHistoryId));
+    }
+#endif
     Telemetry::AccumulateTimeDelta(Telemetry::TIME_TO_LOAD_EVENT_END_MS,
                                    mNavigationStart);
   }
@@ -161,7 +188,7 @@ void nsDOMNavigationTiming::NotifyDOMLoading(nsIURI* aURI) {
   mLoadedURI = aURI;
   mDOMLoading = TimeStamp::Now();
 
-  PROFILER_ADD_MARKER("Navigation::DOMLoading");
+  PROFILER_ADD_MARKER("Navigation::DOMLoading", DOM);
 }
 
 void nsDOMNavigationTiming::NotifyDOMInteractive(nsIURI* aURI) {
@@ -171,7 +198,7 @@ void nsDOMNavigationTiming::NotifyDOMInteractive(nsIURI* aURI) {
   mLoadedURI = aURI;
   mDOMInteractive = TimeStamp::Now();
 
-  PROFILER_ADD_MARKER("Navigation::DOMInteractive");
+  PROFILER_ADD_MARKER("Navigation::DOMInteractive", DOM);
 }
 
 void nsDOMNavigationTiming::NotifyDOMComplete(nsIURI* aURI) {
@@ -181,7 +208,7 @@ void nsDOMNavigationTiming::NotifyDOMComplete(nsIURI* aURI) {
   mLoadedURI = aURI;
   mDOMComplete = TimeStamp::Now();
 
-  PROFILER_ADD_MARKER("Navigation::DOMComplete");
+  PROFILER_ADD_MARKER("Navigation::DOMComplete", DOM);
 }
 
 void nsDOMNavigationTiming::NotifyDOMContentLoadedStart(nsIURI* aURI) {
@@ -192,7 +219,7 @@ void nsDOMNavigationTiming::NotifyDOMContentLoadedStart(nsIURI* aURI) {
   mLoadedURI = aURI;
   mDOMContentLoadedEventStart = TimeStamp::Now();
 
-  PROFILER_TRACING_DOCSHELL("Navigation", "DOMContentLoaded",
+  PROFILER_TRACING_DOCSHELL("Navigation", "DOMContentLoaded", NETWORK,
                             TRACING_INTERVAL_START, mDocShell);
 
   if (IsTopLevelContentDocumentInContentProcess()) {
@@ -224,7 +251,7 @@ void nsDOMNavigationTiming::NotifyDOMContentLoadedEnd(nsIURI* aURI) {
   mLoadedURI = aURI;
   mDOMContentLoadedEventEnd = TimeStamp::Now();
 
-  PROFILER_TRACING_DOCSHELL("Navigation", "DOMContentLoaded",
+  PROFILER_TRACING_DOCSHELL("Navigation", "DOMContentLoaded", NETWORK,
                             TRACING_INTERVAL_END, mDocShell);
 
   if (IsTopLevelContentDocumentInContentProcess()) {
@@ -240,36 +267,6 @@ void nsDOMNavigationTiming::TTITimeoutCallback(nsITimer* aTimer,
   self->TTITimeout(aTimer);
 }
 
-// Return the max of aT1 and aT2, or the lower of the two if there's more
-// than Nms (the window size) between them.  In other words, the window
-// starts at the lower of aT1 and aT2, and we only want to respect
-// timestamps within the window (and pick the max of those).
-//
-// This approach handles the edge case of a late wakeup: where there was
-// more than Nms after one (of aT1 or aT2) without the other, but the other
-// happened after Nms and before we woke up.  For example, if aT1 was 10
-// seconds after aT2, but we woke up late (after aT1) we don't want to
-// return aT1 if the window is 5 seconds.
-static const TimeStamp& MaxWithinWindowBeginningAtMin(
-    const TimeStamp& aT1, const TimeStamp& aT2,
-    const TimeDuration& aWindowSize) {
-  if (aT2.IsNull()) {
-    return aT1;
-  } else if (aT1.IsNull()) {
-    return aT2;
-  }
-  if (aT1 > aT2) {
-    if ((aT1 - aT2) > aWindowSize) {
-      return aT2;
-    }
-    return aT1;
-  }
-  if ((aT2 - aT1) > aWindowSize) {
-    return aT1;
-  }
-  return aT2;
-}
-
 #define TTI_WINDOW_SIZE_MS (5 * 1000)
 
 void nsDOMNavigationTiming::TTITimeout(nsITimer* aTimer) {
@@ -281,21 +278,36 @@ void nsDOMNavigationTiming::TTITimeout(nsITimer* aTimer) {
   nsCOMPtr<nsIThread> mainThread = do_GetMainThread();
   TimeStamp lastLongTaskEnded;
   mainThread->GetLastLongNonIdleTaskEnd(&lastLongTaskEnded);
-  if (!lastLongTaskEnded.IsNull()) {
-    TimeDuration delta = now - lastLongTaskEnded;
-    if (delta.ToMilliseconds() < TTI_WINDOW_SIZE_MS) {
-      // Less than 5 seconds since the last long task.  Schedule another check
-      aTimer->InitWithNamedFuncCallback(TTITimeoutCallback, this,
-                                        TTI_WINDOW_SIZE_MS,
-                                        nsITimer::TYPE_ONE_SHOT_LOW_PRIORITY,
-                                        "nsDOMNavigationTiming::TTITimeout");
-      return;
-    }
+  // Window starts at mContentfulPaint; any long task before that is ignored
+  if (lastLongTaskEnded.IsNull() || lastLongTaskEnded < mContentfulPaint) {
+    PAGELOAD_LOG(
+        ("no longtask (last was %g ms before ContentfulPaint)",
+         lastLongTaskEnded.IsNull()
+             ? 0
+             : (mContentfulPaint - lastLongTaskEnded).ToMilliseconds()));
+    lastLongTaskEnded = mContentfulPaint;
   }
+  TimeDuration delta = now - lastLongTaskEnded;
+  PAGELOAD_LOG(("TTI delta: %g ms", delta.ToMilliseconds()));
+  if (delta.ToMilliseconds() < TTI_WINDOW_SIZE_MS) {
+    // Less than 5 seconds since the last long task or start of the window.
+    // Schedule another check.
+    PAGELOAD_LOG(("TTI: waiting additional %g ms",
+                  (TTI_WINDOW_SIZE_MS + 100) - delta.ToMilliseconds()));
+    aTimer->InitWithNamedFuncCallback(
+        TTITimeoutCallback, this,
+        (TTI_WINDOW_SIZE_MS + 100) -
+            delta.ToMilliseconds(),  // slightly after the window ends
+        nsITimer::TYPE_ONE_SHOT_LOW_PRIORITY,
+        "nsDOMNavigationTiming::TTITimeout");
+    return;
+  }
+
   // To correctly implement TTI/TTFI as proposed, we'd need to not
   // fire it until there are no more than 2 network loads.  By the
   // proposed definition, without that we're closer to
-  // TimeToFirstInteractive.
+  // TimeToFirstInteractive.  There are also arguments about what sort
+  // of loads should qualify.
 
   // XXX check number of network loads, and if > 2 mark to check if loads
   // decreases to 2 (or record that point and let the normal timer here
@@ -303,15 +315,25 @@ void nsDOMNavigationTiming::TTITimeout(nsITimer* aTimer) {
 
   // TTI has occurred!  TTI is either FCP (if there are no longtasks and no
   // DCLEnd in the window that starts at FCP), or at the end of the last
-  // Long Task or DOMContentLoadedEnd (whichever is later).
+  // Long Task or DOMContentLoadedEnd (whichever is later). lastLongTaskEnded
+  // is >= FCP here.
 
   if (mTTFI.IsNull()) {
-    mTTFI = MaxWithinWindowBeginningAtMin(
-        lastLongTaskEnded, mDOMContentLoadedEventEnd,
-        TimeDuration::FromMilliseconds(TTI_WINDOW_SIZE_MS));
-    if (mTTFI.IsNull()) {
-      mTTFI = mContentfulPaint;
-    }
+    // lastLongTaskEnded is >= mContentfulPaint
+    mTTFI = (mDOMContentLoadedEventEnd.IsNull() ||
+             lastLongTaskEnded > mDOMContentLoadedEventEnd)
+                ? lastLongTaskEnded
+                : mDOMContentLoadedEventEnd;
+    PAGELOAD_LOG(
+        ("TTFI after %dms (LongTask was at %dms, DCL was %dms)",
+         int((mTTFI - mNavigationStart).ToMilliseconds()),
+         lastLongTaskEnded.IsNull()
+             ? 0
+             : int((lastLongTaskEnded - mNavigationStart).ToMilliseconds()),
+         mDOMContentLoadedEventEnd.IsNull()
+             ? 0
+             : int((mDOMContentLoadedEventEnd - mNavigationStart)
+                       .ToMilliseconds())));
   }
   // XXX Implement TTI via check number of network loads, and if > 2 mark
   // to check if loads decreases to 2 (or record that point and let the
@@ -320,22 +342,24 @@ void nsDOMNavigationTiming::TTITimeout(nsITimer* aTimer) {
   mTTITimer = nullptr;
 
 #ifdef MOZ_GECKO_PROFILER
-  if (profiler_is_active()) {
+  if (profiler_is_active() || PAGELOAD_LOG_ENABLED()) {
     TimeDuration elapsed = mTTFI - mNavigationStart;
+    MOZ_ASSERT(elapsed.ToMilliseconds() > 0);
     TimeDuration elapsedLongTask =
         lastLongTaskEnded.IsNull() ? 0 : lastLongTaskEnded - mNavigationStart;
     nsAutoCString spec;
     if (mLoadedURI) {
       mLoadedURI->GetSpec(spec);
     }
-    nsPrintfCString marker("TTFI after %dms (LongTask after %dms) for URL %s",
+    nsPrintfCString marker("TTFI after %dms (LongTask was at %dms) for URL %s",
                            int(elapsed.ToMilliseconds()),
                            int(elapsedLongTask.ToMilliseconds()), spec.get());
 
     DECLARE_DOCSHELL_AND_HISTORY_ID(mDocShell);
-    profiler_add_marker("TTI", MakeUnique<UserTimingMarkerPayload>(
-                                   NS_ConvertASCIItoUTF16(marker), mTTFI,
-                                   docShellId, docShellHistoryId));
+    profiler_add_marker(
+        "TTFI", js::ProfilingStackFrame::Category::DOM,
+        MakeUnique<TextMarkerPayload>(marker, mNavigationStart, mTTFI,
+                                      docShellId, docShellHistoryId));
   }
 #endif
   return;
@@ -352,7 +376,7 @@ void nsDOMNavigationTiming::NotifyNonBlankPaintForRootContentDocument() {
   mNonBlankPaint = TimeStamp::Now();
 
 #ifdef MOZ_GECKO_PROFILER
-  if (profiler_thread_is_being_profiled()) {
+  if (profiler_thread_is_being_profiled() || PAGELOAD_LOG_ENABLED()) {
     TimeDuration elapsed = mNonBlankPaint - mNavigationStart;
     nsAutoCString spec;
     if (mLoadedURI) {
@@ -365,7 +389,12 @@ void nsDOMNavigationTiming::NotifyNonBlankPaintForRootContentDocument() {
             ? "foreground tab"
             : "this tab was inactive some of the time between navigation start "
               "and first non-blank paint");
-    profiler_add_marker(marker.get());
+    PAGELOAD_LOG(("%s", marker.get()));
+    DECLARE_DOCSHELL_AND_HISTORY_ID(mDocShell);
+    profiler_add_marker(
+        "FirstNonBlankPaint", js::ProfilingStackFrame::Category::DOM,
+        MakeUnique<TextMarkerPayload>(marker, mNavigationStart, mNonBlankPaint,
+                                      docShellId, docShellHistoryId));
   }
 #endif
 
@@ -385,7 +414,8 @@ void nsDOMNavigationTiming::NotifyNonBlankPaintForRootContentDocument() {
   }
 }
 
-void nsDOMNavigationTiming::NotifyContentfulPaintForRootContentDocument() {
+void nsDOMNavigationTiming::NotifyContentfulPaintForRootContentDocument(
+    const mozilla::TimeStamp& aCompositeEndTime) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(!mNavigationStart.IsNull());
 
@@ -393,10 +423,10 @@ void nsDOMNavigationTiming::NotifyContentfulPaintForRootContentDocument() {
     return;
   }
 
-  mContentfulPaint = TimeStamp::Now();
+  mContentfulPaint = aCompositeEndTime;
 
 #ifdef MOZ_GECKO_PROFILER
-  if (profiler_is_active()) {
+  if (profiler_is_active() || PAGELOAD_LOG_ENABLED()) {
     TimeDuration elapsed = mContentfulPaint - mNavigationStart;
     nsAutoCString spec;
     if (mLoadedURI) {
@@ -409,7 +439,13 @@ void nsDOMNavigationTiming::NotifyContentfulPaintForRootContentDocument() {
             ? "foreground tab"
             : "this tab was inactive some of the time between navigation start "
               "and first non-blank paint");
-    profiler_add_marker(marker.get());
+    DECLARE_DOCSHELL_AND_HISTORY_ID(mDocShell);
+    PAGELOAD_LOG(("%s", marker.get()));
+    profiler_add_marker(
+        "FirstContentfulPaint", js::ProfilingStackFrame::Category::DOM,
+        MakeUnique<TextMarkerPayload>(marker, mNavigationStart,
+                                      mContentfulPaint, docShellId,
+                                      docShellHistoryId));
   }
 #endif
 
@@ -423,6 +459,11 @@ void nsDOMNavigationTiming::NotifyContentfulPaintForRootContentDocument() {
                                        TTI_WINDOW_SIZE_MS,
                                        nsITimer::TYPE_ONE_SHOT_LOW_PRIORITY,
                                        "nsDOMNavigationTiming::TTITimeout");
+
+  if (mDocShellHasBeenActiveSinceNavigationStart) {
+    Telemetry::AccumulateTimeDelta(Telemetry::TIME_TO_FIRST_CONTENTFUL_PAINT_MS,
+                                   mNavigationStart, mContentfulPaint);
+  }
 }
 
 void nsDOMNavigationTiming::NotifyDOMContentFlushedForRootContentDocument() {
@@ -436,7 +477,7 @@ void nsDOMNavigationTiming::NotifyDOMContentFlushedForRootContentDocument() {
   mDOMContentFlushed = TimeStamp::Now();
 
 #ifdef MOZ_GECKO_PROFILER
-  if (profiler_thread_is_being_profiled()) {
+  if (profiler_thread_is_being_profiled() || PAGELOAD_LOG_ENABLED()) {
     TimeDuration elapsed = mDOMContentFlushed - mNavigationStart;
     nsAutoCString spec;
     if (mLoadedURI) {
@@ -449,7 +490,13 @@ void nsDOMNavigationTiming::NotifyDOMContentFlushedForRootContentDocument() {
             ? "foreground tab"
             : "this tab was inactive some of the time between navigation start "
               "and DOMContentFlushed");
-    profiler_add_marker(marker.get());
+    DECLARE_DOCSHELL_AND_HISTORY_ID(mDocShell);
+    PAGELOAD_LOG(("%s", marker.get()));
+    profiler_add_marker(
+        "DOMContentFlushed", js::ProfilingStackFrame::Category::DOM,
+        MakeUnique<TextMarkerPayload>(marker, mNavigationStart,
+                                      mDOMContentFlushed, docShellId,
+                                      docShellHistoryId));
   }
 #endif
 }

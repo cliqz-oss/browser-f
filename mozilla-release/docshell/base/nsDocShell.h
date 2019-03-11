@@ -77,7 +77,6 @@ class nsICommandManager;
 class nsIContentViewer;
 class nsIController;
 class nsIDocShellTreeOwner;
-class nsIDocument;
 class nsIHttpChannel;
 class nsIMutableArray;
 class nsIPrompt;
@@ -285,6 +284,8 @@ class nsDocShell final : public nsDocLoader,
   void SetInFrameSwap(bool aInSwap) { mInFrameSwap = aInSwap; }
   bool InFrameSwap();
 
+  void SetIsFrame() { mIsFrame = true; };
+
   const mozilla::Encoding* GetForcedCharset() { return mForcedCharset; }
 
   mozilla::HTMLEditor* GetHTMLEditorInternal();
@@ -383,10 +384,21 @@ class nsDocShell final : public nsDocLoader,
   // shift while triggering reload)
   bool IsForceReloading();
 
+  mozilla::dom::BrowsingContext* GetBrowsingContext() const {
+    return mBrowsingContext;
+  }
+  mozilla::dom::BrowsingContext* GetWindowProxy() {
+    EnsureScriptEnvironment();
+    return mBrowsingContext;
+  }
+
   /**
-   * Native getter for a DocShell's BrowsingContext.
+   * Loads the given URI. See comments on nsDocShellLoadState members for more
+   * information on information used. aDocShell and aRequest come from
+   * onLinkClickSync, which is triggered during form submission.
    */
-  mozilla::dom::BrowsingContext* GetBrowsingContext() const;
+  nsresult InternalLoad(nsDocShellLoadState* aLoadState,
+                        nsIDocShell** aDocShell, nsIRequest** aRequest);
 
  private:  // member functions
   friend class nsDSURIContentListener;
@@ -526,25 +538,20 @@ class nsDocShell final : public nsDocLoader,
   // aOriginalURI will be set as the originalURI on the channel that does the
   // load. If aOriginalURI is null, aURI will be set as the originalURI.
   // If aLoadReplace is true, LOAD_REPLACE flag will be set to the nsIChannel.
-  nsresult DoURILoad(
-      nsIURI* aURI, nsIURI* aOriginalURI,
-      mozilla::Maybe<nsCOMPtr<nsIURI>> const& aResultPrincipalURI,
-      bool aKeepResultPrincipalURIIfSet, bool aLoadReplace,
-      bool aIsFromProcessingFrameAttributes, bool aLoadFromExternal,
-      bool aForceAllowDataURI, bool aOriginalFrameSrc, nsIURI* aReferrer,
-      bool aSendReferrer, uint32_t aReferrerPolicy,
-      nsIPrincipal* aTriggeringPrincipal, nsIPrincipal* aPrincipalToInherit,
-      const nsACString& aTypeHint, const nsAString& aFileName,
-      nsIInputStream* aPostData, nsIInputStream* aHeadersData, bool aFirstParty,
-      nsIDocShell** aDocShell, nsIRequest** aRequest, bool aIsNewWindowTarget,
-      bool aBypassClassifier, bool aForceAllowCookies, const nsAString& aSrcdoc,
-      nsIURI* aBaseURI, nsContentPolicyType aContentPolicyType);
+  nsresult DoURILoad(nsDocShellLoadState* aLoadState, bool aLoadFromExternal,
+                     nsIDocShell** aDocShell, nsIRequest** aRequest,
+                     const nsAString& aSrcdoc,
+                     nsContentPolicyType aContentPolicyType);
 
   nsresult AddHeadersToChannel(nsIInputStream* aHeadersData,
                                nsIChannel* aChannel);
 
   nsresult DoChannelLoad(nsIChannel* aChannel, nsIURILoader* aURILoader,
                          bool aBypassClassifier);
+
+  nsresult OpenInitializedChannel(nsIChannel* aChannel,
+                                  nsIURILoader* aURILoader,
+                                  uint32_t aOpenFlags);
 
   nsresult ScrollToAnchor(bool aCurHasRef, bool aNewHasRef,
                           nsACString& aNewHash, uint32_t aLoadType);
@@ -727,7 +734,7 @@ class nsDocShell final : public nsDocLoader,
   // has not been created yet. |aNewDocument| should be the document that will
   // replace the current document.
   bool CanSavePresentation(uint32_t aLoadType, nsIRequest* aNewRequest,
-                           nsIDocument* aNewDocument);
+                           mozilla::dom::Document* aNewDocument);
 
   // Captures the state of the supporting elements of the presentation
   // (the "window" object, docshell tree, meta-refresh loads, and security
@@ -863,9 +870,9 @@ class nsDocShell final : public nsDocLoader,
   nsresult ConfirmRepost(bool* aRepost);
   nsresult GetPromptAndStringBundle(nsIPrompt** aPrompt,
                                     nsIStringBundle** aStringBundle);
-  nsresult GetCurScrollPos(int32_t aScrollOrientation, int32_t* aCurPos);
   nsresult SetCurScrollPosEx(int32_t aCurHorizontalPos,
                              int32_t aCurVerticalPos);
+  nsPoint GetCurScrollPos();
 
   already_AddRefed<mozilla::dom::ChildSHistory> GetRootSessionHistory();
 
@@ -1153,6 +1160,8 @@ class nsDocShell final : public nsDocLoader,
 
   // This flag indicates when the title is valid for the current URI.
   bool mTitleValidForCurrentURI : 1;
+
+  bool mIsFrame : 1;
 };
 
 #endif /* nsDocShell_h__ */

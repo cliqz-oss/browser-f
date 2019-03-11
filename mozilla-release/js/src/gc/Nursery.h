@@ -59,6 +59,7 @@ namespace gc {
 class AutoMaybeStartBackgroundAllocation;
 class AutoTraceSession;
 struct Cell;
+class GCSchedulingTunables;
 class MinorCollectionTracer;
 class RelocationOverlay;
 struct TenureCountCache;
@@ -148,6 +149,8 @@ class Nursery {
     JS::Zone* zone;
     CellAlignedByte cell;
   };
+
+  using BufferSet = HashSet<void*, PointerHasher<void*>, SystemAllocPolicy>;
 
   explicit Nursery(JSRuntime* rt);
   ~Nursery();
@@ -242,6 +245,21 @@ class Nursery {
    */
   void* allocateBufferSameLocation(JSObject* obj, size_t nbytes);
 
+  /* Allocate a zero-initialized buffer for a given zone, using the nursery if
+   * possible. If the buffer isn't allocated in the nursery, the given arena is
+   * used.
+   */
+  void* allocateZeroedBuffer(JS::Zone* zone, size_t nbytes,
+                             arena_id_t arena = js::MallocArena);
+
+  /*
+   * Allocate a zero-initialized buffer for a given object, using the nursery if
+   * possible and obj is in the nursery. If the buffer isn't allocated in the
+   * nursery, the given arena is used.
+   */
+  void* allocateZeroedBuffer(JSObject* obj, size_t nbytes,
+                             arena_id_t arena = js::MallocArena);
+
   /* Resize an existing object buffer. */
   void* reallocateBuffer(JSObject* obj, void* oldBuffer, size_t oldBytes,
                          size_t newBytes);
@@ -253,7 +271,7 @@ class Nursery {
   static const size_t MaxNurseryBufferSize = 1024;
 
   /* Do a minor collection. */
-  void collect(JS::gcreason::Reason reason);
+  void collect(JS::GCReason reason);
 
   /*
    * If the thing at |*ref| in the Nursery has been forwarded, set |*ref| to
@@ -281,8 +299,6 @@ class Nursery {
   /* Mark a malloced buffer as no longer needing to be freed. */
   void removeMallocedBuffer(void* buffer) { mallocedBuffers.remove(buffer); }
 
-  void waitBackgroundFreeEnd();
-
   MOZ_MUST_USE bool addedUniqueIdToCell(gc::Cell* cell) {
     MOZ_ASSERT(IsInsideNursery(cell));
     MOZ_ASSERT(isEnabled());
@@ -296,8 +312,7 @@ class Nursery {
   }
   size_t sizeOfMallocedBuffers(mozilla::MallocSizeOf mallocSizeOf) const {
     size_t total = 0;
-    for (MallocedBuffersSet::Range r = mallocedBuffers.all(); !r.empty();
-         r.popFront()) {
+    for (BufferSet::Range r = mallocedBuffers.all(); !r.empty(); r.popFront()) {
       total += mallocSizeOf(r.front());
     }
     total += mallocedBuffers.shallowSizeOfExcludingThis(mallocSizeOf);
@@ -312,6 +327,7 @@ class Nursery {
 
   // Free space remaining, not counting chunk trailers.
   MOZ_ALWAYS_INLINE size_t freeSpace() const {
+    MOZ_ASSERT(isEnabled());
     MOZ_ASSERT(currentEnd_ - position_ <= NurseryChunkUsableSize);
     return (currentEnd_ - position_) +
            (maxChunkCount() - currentChunk_ - 1) * NurseryChunkUsableSize;
@@ -337,16 +353,14 @@ class Nursery {
     return (void*)&currentStringEnd_;
   }
 
-  void requestMinorGC(JS::gcreason::Reason reason) const;
+  void requestMinorGC(JS::GCReason reason) const;
 
   bool minorGCRequested() const {
-    return minorGCTriggerReason_ != JS::gcreason::NO_REASON;
+    return minorGCTriggerReason_ != JS::GCReason::NO_REASON;
   }
-  JS::gcreason::Reason minorGCTriggerReason() const {
-    return minorGCTriggerReason_;
-  }
+  JS::GCReason minorGCTriggerReason() const { return minorGCTriggerReason_; }
   void clearMinorGCRequest() {
-    minorGCTriggerReason_ = JS::gcreason::NO_REASON;
+    minorGCTriggerReason_ = JS::GCReason::NO_REASON;
   }
 
   bool needIdleTimeCollection() const;
@@ -427,7 +441,7 @@ class Nursery {
    * mutable as it is set by the store buffer, which otherwise cannot modify
    * anything in the nursery.
    */
-  mutable JS::gcreason::Reason minorGCTriggerReason_;
+  mutable JS::GCReason minorGCTriggerReason_;
 
   /* Profiling data. */
 
@@ -450,7 +464,7 @@ class Nursery {
   ProfileDurations totalDurations_;
 
   struct {
-    JS::gcreason::Reason reason = JS::gcreason::NO_REASON;
+    JS::GCReason reason = JS::GCReason::NO_REASON;
     size_t nurseryCapacity = 0;
     size_t nurseryLazyCapacity = 0;
     size_t nurseryUsedBytes = 0;
@@ -473,13 +487,7 @@ class Nursery {
    * stored in the nursery. Any external buffers that do not belong to a
    * tenured thing at the end of a minor GC must be freed.
    */
-  typedef HashSet<void*, PointerHasher<void*>, SystemAllocPolicy>
-      MallocedBuffersSet;
-  MallocedBuffersSet mallocedBuffers;
-
-  // A task structure used to free the malloced bufers on a background thread.
-  struct FreeMallocedBuffersTask;
-  FreeMallocedBuffersTask* freeMallocedBuffersTask;
+  BufferSet mallocedBuffers;
 
   /*
    * During a collection most hoisted slot and element buffers indicate their
@@ -548,11 +556,12 @@ class Nursery {
   JSRuntime* runtime() const { return runtime_; }
   gcstats::Statistics& stats() const;
 
+  const js::gc::GCSchedulingTunables& tunables() const;
+
   /* Common internal allocator function. */
   void* allocate(size_t size);
 
-  void doCollection(JS::gcreason::Reason reason,
-                    gc::TenureCountCache& tenureCounts);
+  void doCollection(JS::GCReason reason, gc::TenureCountCache& tenureCounts);
 
   /*
    * Move the object at |src| in the Nursery to an already-allocated cell
@@ -573,9 +582,6 @@ class Nursery {
                                            ObjectElements* newHeader,
                                            uint32_t capacity);
 
-  /* Free malloced pointers owned by freed things in the nursery. */
-  void freeMallocedBuffers();
-
   /*
    * Updates pointers to nursery objects that have been tenured and discards
    * pointers to objects that have been freed.
@@ -592,7 +598,7 @@ class Nursery {
   void sweepMapAndSetObjects();
 
   /* Change the allocable space provided by the nursery. */
-  void maybeResizeNursery(JS::gcreason::Reason reason);
+  void maybeResizeNursery(JS::GCReason reason);
   void growAllocableSpace();
   void shrinkAllocableSpace(unsigned newCount);
   void minimizeAllocableSpace();

@@ -366,6 +366,7 @@ function checkPayload(payload, reason, successfulPings) {
   // Telemetry doesn't touch a memory reporter with these units that's
   // available on all platforms.
 
+  Assert.ok("MEMORY_TOTAL" in payload.histograms); // UNITS_BYTES
   Assert.ok("MEMORY_JS_GC_HEAP" in payload.histograms); // UNITS_BYTES
   Assert.ok("MEMORY_JS_COMPARTMENTS_SYSTEM" in payload.histograms); // UNITS_COUNT
 
@@ -441,6 +442,7 @@ add_task(async function test_setup() {
   do_get_profile();
   loadAddonManager(APP_ID, APP_NAME, APP_VERSION, PLATFORM_VERSION);
   finishAddonManagerStartup();
+  fakeIntlReady();
   // Make sure we don't generate unexpected pings due to pref changes.
   await setEmptyPrefWatchlist();
 

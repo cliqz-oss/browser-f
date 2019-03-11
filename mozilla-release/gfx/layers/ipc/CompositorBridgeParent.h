@@ -37,6 +37,7 @@
 #include "mozilla/layers/PCompositorBridgeParent.h"
 #include "mozilla/layers/APZTestData.h"
 #include "mozilla/webrender/WebRenderTypes.h"
+#include "mozilla/webrender/RenderThread.h"
 #include "mozilla/widget/CompositorWidget.h"
 #include "nsISupportsImpl.h"
 #include "ThreadSafeRefcountingWithMainThreadDestruction.h"
@@ -58,6 +59,9 @@ class GPUParent;
 
 namespace ipc {
 class Shmem;
+#ifdef FUZZING
+class ProtocolFuzzerHelper;
+#endif
 }  // namespace ipc
 
 namespace layers {
@@ -132,6 +136,9 @@ class CompositorBridgeParentBase : public PCompositorBridgeParent,
       const nsTArray<ScrollableLayerGuid>& aTargets) = 0;
   virtual void UpdatePaintTime(LayerTransactionParent* aLayerTree,
                                const TimeDuration& aPaintTime) {}
+  virtual void RegisterPayload(
+      LayerTransactionParent* aLayerTree,
+      const InfallibleTArray<CompositionPayload>& aPayload) {}
 
   ShmemAllocator* AsShmemAllocator() override { return this; }
 
@@ -206,6 +213,9 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
   friend class InProcessCompositorSession;
   friend class gfx::GPUProcessManager;
   friend class gfx::GPUParent;
+#ifdef FUZZING
+  friend class mozilla::ipc::ProtocolFuzzerHelper;
+#endif
 
  public:
   NS_IMETHOD_(MozExternalRefCountType) AddRef() override {
@@ -315,6 +325,7 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
                               TimeStamp& aCompositeStart,
                               TimeStamp& aRenderStart, TimeStamp& aCompositeEnd,
                               wr::RendererStats* aStats = nullptr);
+  void NotifyDidSceneBuild(RefPtr<wr::WebRenderPipelineInfo> aInfo);
   RefPtr<AsyncImagePipelineManager> GetAsyncImagePipelineManager() const;
 
   PCompositorWidgetParent* AllocPCompositorWidgetParent(
@@ -360,6 +371,9 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
 
   void UpdatePaintTime(LayerTransactionParent* aLayerTree,
                        const TimeDuration& aPaintTime) override;
+  void RegisterPayload(
+      LayerTransactionParent* aLayerTree,
+      const InfallibleTArray<CompositionPayload>& aPayload) override;
 
   /**
    * Check rotation info and schedule a rendering task if needed.
@@ -701,6 +715,13 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
 
   DISALLOW_EVIL_CONSTRUCTORS(CompositorBridgeParent);
 };
+
+int32_t RecordContentFrameTime(
+    const VsyncId& aTxnId, const TimeStamp& aVsyncStart,
+    const TimeStamp& aTxnStart, const VsyncId& aCompositeId,
+    const TimeStamp& aCompositeEnd, const TimeDuration& aFullPaintTime,
+    const TimeDuration& aVsyncRate, bool aContainsSVGGroup,
+    bool aRecordUploadStats, wr::RendererStats* aStats = nullptr);
 
 }  // namespace layers
 }  // namespace mozilla

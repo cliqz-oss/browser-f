@@ -22,6 +22,7 @@
 #include "nsCOMPtr.h"
 #include "nsAutoPtr.h"
 #include "xpcpublic.h"
+#include "mozilla/AbstractEventQueue.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Likely.h"
 #include "mozilla/Maybe.h"
@@ -113,34 +114,35 @@ extern nsresult NS_DelayedDispatchToCurrentThread(
     already_AddRefed<nsIRunnable>&& aEvent, uint32_t aDelayMs);
 
 /**
- * Dispatch the given event to the idle queue of the current thread.
- *
- * @param aEvent
- *   The event to dispatch.
- *
- * @returns NS_ERROR_INVALID_ARG
- *   If event is null.
- * @returns NS_ERROR_UNEXPECTED
- *   If the thread is shutting down.
- */
-extern nsresult NS_IdleDispatchToCurrentThread(
-    already_AddRefed<nsIRunnable>&& aEvent);
-
-/**
- * Dispatch the given event to the idle queue of the main thread.
+ * Dispatch the given event to the specified queue of the current thread.
  *
  * @param aEvent The event to dispatch.
+ * @param aQueue The event queue for the thread to use
  *
  * @returns NS_ERROR_INVALID_ARG
  *   If event is null.
  * @returns NS_ERROR_UNEXPECTED
  *   If the thread is shutting down.
  */
-extern nsresult NS_IdleDispatchToMainThread(
-    already_AddRefed<nsIRunnable>&& aEvent);
+extern nsresult NS_DispatchToCurrentThreadQueue(
+    already_AddRefed<nsIRunnable>&& aEvent, mozilla::EventQueuePriority aQueue);
 
 /**
- * Dispatch the given event to the idle queue of the current thread.
+ * Dispatch the given event to the specified queue of the main thread.
+ *
+ * @param aEvent The event to dispatch.
+ * @param aQueue The event queue for the thread to use
+ *
+ * @returns NS_ERROR_INVALID_ARG
+ *   If event is null.
+ * @returns NS_ERROR_UNEXPECTED
+ *   If the thread is shutting down.
+ */
+extern nsresult NS_DispatchToMainThreadQueue(
+    already_AddRefed<nsIRunnable>&& aEvent, mozilla::EventQueuePriority aQueue);
+
+/**
+ * Dispatch the given event to an idle queue of the current thread.
  *
  * @param aEvent The event to dispatch. If the event implements
  *   nsIIdleRunnable, it will receive a call on
@@ -148,36 +150,42 @@ extern nsresult NS_IdleDispatchToMainThread(
  *   aTimeout.
  *
  * @param aTimeout The time in milliseconds until the event should be
- *   moved from the idle queue to the regular queue, if it hasn't been
+ *   moved from an idle queue to the regular queue, if it hasn't been
  *   executed. If aEvent is also an nsIIdleRunnable, it is expected
  *   that it should handle the timeout itself, after a call to
  *   nsIIdleRunnable::SetTimer.
  *
+ * @param aQueue
+ *   The event queue for the thread to use.  Must be an idle queue
+ *   (Idle or DeferredTimers)
+ *
  * @returns NS_ERROR_INVALID_ARG
  *   If event is null.
  * @returns NS_ERROR_UNEXPECTED
  *   If the thread is shutting down.
  */
-extern nsresult NS_IdleDispatchToCurrentThread(
-    already_AddRefed<nsIRunnable>&& aEvent, uint32_t aTimeout);
+extern nsresult NS_DispatchToCurrentThreadQueue(
+    already_AddRefed<nsIRunnable>&& aEvent, uint32_t aTimeout,
+    mozilla::EventQueuePriority aQueue);
 
 /**
- * Dispatch the given event to the idle queue of a thread.
+ * Dispatch the given event to a queue of a thread.
  *
  * @param aEvent The event to dispatch.
- *
  * @param aThread The target thread for the dispatch.
+ * @param aQueue The event queue for the thread to use.
  *
  * @returns NS_ERROR_INVALID_ARG
  *   If event is null.
  * @returns NS_ERROR_UNEXPECTED
  *   If the thread is shutting down.
  */
-extern nsresult NS_IdleDispatchToThread(already_AddRefed<nsIRunnable>&& aEvent,
-                                        nsIThread* aThread);
+extern nsresult NS_DispatchToThreadQueue(already_AddRefed<nsIRunnable>&& aEvent,
+                                         nsIThread* aThread,
+                                         mozilla::EventQueuePriority aQueue);
 
 /**
- * Dispatch the given event to the idle queue of a thread.
+ * Dispatch the given event to an idle queue of a thread.
  *
  * @param aEvent The event to dispatch. If the event implements
  *   nsIIdleRunnable, it will receive a call on
@@ -185,20 +193,25 @@ extern nsresult NS_IdleDispatchToThread(already_AddRefed<nsIRunnable>&& aEvent,
  *   aTimeout.
  *
  * @param aTimeout The time in milliseconds until the event should be
- *   moved from the idle queue to the regular queue, if it hasn't been
+ *   moved from an idle queue to the regular queue, if it hasn't been
  *   executed. If aEvent is also an nsIIdleRunnable, it is expected
  *   that it should handle the timeout itself, after a call to
  *   nsIIdleRunnable::SetTimer.
  *
  * @param aThread The target thread for the dispatch.
  *
+ * @param aQueue
+ *   The event queue for the thread to use.  Must be an idle queue
+ *   (Idle or DeferredTimers)
+ *
  * @returns NS_ERROR_INVALID_ARG
  *   If event is null.
  * @returns NS_ERROR_UNEXPECTED
  *   If the thread is shutting down.
  */
-extern nsresult NS_IdleDispatchToThread(already_AddRefed<nsIRunnable>&& aEvent,
-                                        uint32_t aTimeout, nsIThread* aThread);
+extern nsresult NS_DispatchToThreadQueue(already_AddRefed<nsIRunnable>&& aEvent,
+                                         uint32_t aTimeout, nsIThread* aThread,
+                                         mozilla::EventQueuePriority aQueue);
 
 #ifndef XPCOM_GLUE_AVOID_NSPR
 /**
@@ -430,40 +443,40 @@ enum class RunnableKind { Standard, Cancelable, Idle, IdleWithTimer };
 // Implementing nsINamed on Runnable bloats vtables for the hundreds of
 // Runnable subclasses that we have, so we want to avoid that overhead
 // when we're not using nsINamed for anything.
-#ifndef RELEASE_OR_BETA
-#define MOZ_COLLECTING_RUNNABLE_TELEMETRY
-#endif
+#  ifndef RELEASE_OR_BETA
+#    define MOZ_COLLECTING_RUNNABLE_TELEMETRY
+#  endif
 
 // This class is designed to be subclassed.
 class Runnable : public nsIRunnable
-#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
+#  ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
     ,
                  public nsINamed
-#endif
+#  endif
 {
  public:
   // Runnable refcount changes are preserved when recording/replaying to ensure
   // that they are destroyed at consistent points.
   NS_DECL_THREADSAFE_ISUPPORTS_WITH_RECORDING(recordreplay::Behavior::Preserve)
   NS_DECL_NSIRUNNABLE
-#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
+#  ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
   NS_DECL_NSINAMED
-#endif
+#  endif
 
   Runnable() = delete;
 
-#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
+#  ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
   explicit Runnable(const char* aName) : mName(aName) {}
-#else
+#  else
   explicit Runnable(const char* aName) {}
-#endif
+#  endif
 
  protected:
   virtual ~Runnable() {}
 
-#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
+#  ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
   const char* mName = nullptr;
-#endif
+#  endif
 
  private:
   Runnable(const Runnable&) = delete;
@@ -514,9 +527,9 @@ class PrioritizableRunnable : public Runnable, public nsIRunnablePriority {
   PrioritizableRunnable(already_AddRefed<nsIRunnable>&& aRunnable,
                         uint32_t aPriority);
 
-#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
+#  ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
   NS_IMETHOD GetName(nsACString& aName) override;
-#endif
+#  endif
 
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIRUNNABLE
@@ -771,7 +784,7 @@ struct nsRunnableMethodTraits<PtrType, R (C::*)(As...) const, Owning, Kind> {
   static const bool can_cancel = Kind == mozilla::RunnableKind::Cancelable;
 };
 
-#ifdef NS_HAVE_STDCALL
+#  ifdef NS_HAVE_STDCALL
 template <typename PtrType, class C, typename R, bool Owning,
           mozilla::RunnableKind Kind, typename... As>
 struct nsRunnableMethodTraits<PtrType, R (__stdcall C::*)(As...), Owning,
@@ -820,7 +833,7 @@ struct nsRunnableMethodTraits<PtrType, R (NS_STDCALL C::*)() const, Owning,
   typedef nsRunnableMethod<C, R, Owning, Kind> base_type;
   static const bool can_cancel = Kind == mozilla::RunnableKind::Cancelable;
 };
-#endif
+#  endif
 
 // IsParameterStorageClass<T>::value is true if T is a parameter-storage class
 // that will be recognized by NS_New[NonOwning]RunnableMethodWithArg[s] to

@@ -76,6 +76,7 @@ class GlobalObject : public NativeObject {
     ITERATOR_PROTO,
     ARRAY_ITERATOR_PROTO,
     STRING_ITERATOR_PROTO,
+    REGEXP_STRING_ITERATOR_PROTO,
     GENERATOR_OBJECT_PROTO,
     GENERATOR_FUNCTION_PROTO,
     GENERATOR_FUNCTION,
@@ -120,12 +121,12 @@ class GlobalObject : public NativeObject {
                 "global object slot counts are inconsistent");
 
   static unsigned constructorSlot(JSProtoKey key) {
-    MOZ_ASSERT(key <= JSProto_LIMIT);
+    MOZ_ASSERT(key < JSProto_LIMIT);
     return APPLICATION_SLOTS + key;
   }
 
   static unsigned prototypeSlot(JSProtoKey key) {
-    MOZ_ASSERT(key <= JSProto_LIMIT);
+    MOZ_ASSERT(key < JSProto_LIMIT);
     return APPLICATION_SLOTS + JSProto_LIMIT + key;
   }
 
@@ -234,35 +235,6 @@ class GlobalObject : public NativeObject {
     return inited;
   }
 
-  bool arrayClassInitialized() const {
-    return classIsInitialized(JSProto_Array);
-  }
-
-  bool booleanClassInitialized() const {
-    return classIsInitialized(JSProto_Boolean);
-  }
-  bool numberClassInitialized() const {
-    return classIsInitialized(JSProto_Number);
-  }
-  bool stringClassInitialized() const {
-    return classIsInitialized(JSProto_String);
-  }
-  bool regexpClassInitialized() const {
-    return classIsInitialized(JSProto_RegExp);
-  }
-  bool arrayBufferClassInitialized() const {
-    return classIsInitialized(JSProto_ArrayBuffer);
-  }
-  bool sharedArrayBufferClassInitialized() const {
-    return classIsInitialized(JSProto_SharedArrayBuffer);
-  }
-  bool errorClassesInitialized() const {
-    return classIsInitialized(JSProto_Error);
-  }
-  bool dataViewClassInitialized() const {
-    return classIsInitialized(JSProto_DataView);
-  }
-
   // Disallow use of unqualified JSObject::create in GlobalObject.
   static GlobalObject* create(...) = delete;
 
@@ -274,6 +246,11 @@ class GlobalObject : public NativeObject {
                             JSPrincipals* principals,
                             JS::OnNewGlobalHookOption hookOption,
                             const JS::RealmOptions& options);
+
+  /*
+   * For bootstrapping, whether to splice a prototype for the global object.
+   */
+  bool shouldSplicePrototype();
 
   /*
    * Create a constructor function with the specified name and length using
@@ -347,7 +324,7 @@ class GlobalObject : public NativeObject {
   }
 
   NativeObject* maybeGetArrayPrototype() {
-    if (arrayClassInitialized()) {
+    if (classIsInitialized(JSProto_Array)) {
       return &getPrototype(JSProto_Array).toObject().as<NativeObject>();
     }
     return nullptr;
@@ -402,7 +379,7 @@ class GlobalObject : public NativeObject {
   }
 
   JSObject* maybeGetRegExpPrototype() {
-    if (regexpClassInitialized()) {
+    if (classIsInitialized(JSProto_RegExp)) {
       return &getPrototype(JSProto_RegExp).toObject();
     }
     return nullptr;
@@ -627,6 +604,13 @@ class GlobalObject : public NativeObject {
         cx, global, STRING_ITERATOR_PROTO, initStringIteratorProto));
   }
 
+  static NativeObject* getOrCreateRegExpStringIteratorPrototype(
+      JSContext* cx, Handle<GlobalObject*> global) {
+    return MaybeNativeObject(getOrCreateObject(cx, global,
+                                               REGEXP_STRING_ITERATOR_PROTO,
+                                               initRegExpStringIteratorProto));
+  }
+
   static NativeObject* getOrCreateGeneratorObjectPrototype(
       JSContext* cx, Handle<GlobalObject*> global) {
     return MaybeNativeObject(
@@ -817,6 +801,8 @@ class GlobalObject : public NativeObject {
                                      Handle<GlobalObject*> global);
   static bool initStringIteratorProto(JSContext* cx,
                                       Handle<GlobalObject*> global);
+  static bool initRegExpStringIteratorProto(JSContext* cx,
+                                            Handle<GlobalObject*> global);
 
   // Implemented in vm/GeneratorObject.cpp.
   static bool initGenerators(JSContext* cx, Handle<GlobalObject*> global);

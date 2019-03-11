@@ -202,6 +202,30 @@ const POLICIES_TESTS = [
     },
   },
 
+  // POLICY: SSLVersionMin/SSLVersionMax (1)
+  {
+    policies: {
+      "SSLVersionMin": "tls1",
+      "SSLVersionMax": "tls1.1",
+    },
+    lockedPrefs: {
+      "security.tls.version.min": 1,
+      "security.tls.version.max": 2,
+    },
+  },
+
+  // POLICY: SSLVersionMin/SSLVersionMax (2)
+  {
+    policies: {
+      "SSLVersionMin": "tls1.2",
+      "SSLVersionMax": "tls1.3",
+    },
+    lockedPrefs: {
+      "security.tls.version.min": 3,
+      "security.tls.version.max": 4,
+    },
+  },
+
   // POLICY: DisableShield
   {
     policies: {
@@ -211,7 +235,6 @@ const POLICIES_TESTS = [
       "browser.newtabpage.activity-stream.asrouter.userprefs.cfr": false,
     },
   },
-
 ];
 
 add_task(async function test_policy_remember_passwords() {

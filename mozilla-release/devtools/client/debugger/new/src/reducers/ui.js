@@ -12,7 +12,7 @@
 import makeRecord from "../utils/makeRecord";
 import { prefs } from "../utils/prefs";
 
-import type { Source, PartialRange } from "../types";
+import type { Source, PartialRange, SourceLocation } from "../types";
 
 import type { Action, panelPositionType } from "../actions/types";
 import type { Record } from "../utils/makeRecord";
@@ -40,24 +40,24 @@ export type UIState = {
     end?: number,
     sourceId?: number
   },
-  conditionalPanelLine: null | number
+  conditionalPanelLocation: null | SourceLocation,
+  isLogPoint: boolean
 };
 
-export const createUIState = makeRecord(
-  ({
-    selectedPrimaryPaneTab: "sources",
-    activeSearch: null,
-    contextMenu: {},
-    shownSource: null,
-    startPanelCollapsed: prefs.startPanelCollapsed,
-    endPanelCollapsed: prefs.endPanelCollapsed,
-    frameworkGroupingOn: prefs.frameworkGroupingOn,
-    highlightedLineRange: undefined,
-    conditionalPanelLine: null,
-    orientation: "horizontal",
-    viewport: null
-  }: UIState)
-);
+export const createUIState: () => Record<UIState> = makeRecord({
+  selectedPrimaryPaneTab: "sources",
+  activeSearch: null,
+  contextMenu: {},
+  shownSource: null,
+  startPanelCollapsed: prefs.startPanelCollapsed,
+  endPanelCollapsed: prefs.endPanelCollapsed,
+  frameworkGroupingOn: prefs.frameworkGroupingOn,
+  highlightedLineRange: undefined,
+  conditionalPanelLocation: null,
+  isLogPoint: false,
+  orientation: "horizontal",
+  viewport: null
+});
 
 function update(
   state: Record<UIState> = createUIState(),
@@ -110,10 +110,12 @@ function update(
       return state.set("highlightedLineRange", {});
 
     case "OPEN_CONDITIONAL_PANEL":
-      return state.set("conditionalPanelLine", action.line);
+      return state
+        .set("conditionalPanelLocation", action.location)
+        .set("isLogPoint", action.log);
 
     case "CLOSE_CONDITIONAL_PANEL":
-      return state.set("conditionalPanelLine", null);
+      return state.set("conditionalPanelLocation", null);
 
     case "SET_PRIMARY_PANE_TAB":
       return state.set("selectedPrimaryPaneTab", action.tabName);
@@ -180,11 +182,17 @@ export function getHighlightedLineRange(state: OuterState) {
   return state.ui.get("highlightedLineRange");
 }
 
-export function getConditionalPanelLine(state: OuterState): null | number {
-  return state.ui.get("conditionalPanelLine");
+export function getConditionalPanelLocation(
+  state: OuterState
+): null | SourceLocation {
+  return state.ui.get("conditionalPanelLocation");
 }
 
-export function getOrientation(state: OuterState): boolean {
+export function getLogPointStatus(state: OuterState): boolean {
+  return state.ui.get("isLogPoint");
+}
+
+export function getOrientation(state: OuterState): OrientationType {
   return state.ui.get("orientation");
 }
 

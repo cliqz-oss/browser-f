@@ -28,6 +28,7 @@ class WptreportHandler(object):
         """
         self.formatter.suite_start({
             "time": time(),
+            "run_info": {},
         })
 
     def suite_end(self):
@@ -65,8 +66,8 @@ class WptreportHandler(object):
             "time": start_time,
         })
 
-        for result in result["subtests"]:
-            self.formatter.test_status(result)
+        for subtest in result["subtests"]:
+            self.formatter.test_status(subtest)
 
         self.formatter.test_end({
             "test": testname,

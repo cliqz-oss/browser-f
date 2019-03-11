@@ -4,24 +4,25 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/ArrayUtils.h"
+#include "mozilla/dom/SVGMarkerElement.h"
 
 #include "nsGkAtoms.h"
-#include "nsCOMPtr.h"
 #include "SVGAnimatedPreserveAspectRatio.h"
 #include "nsError.h"
-#include "mozilla/dom/SVGAngle.h"
+#include "mozilla/ArrayUtils.h"
+#include "mozilla/dom/DOMSVGAngle.h"
+#include "mozilla/dom/SVGGeometryElement.h"
 #include "mozilla/dom/SVGLengthBinding.h"
-#include "mozilla/dom/SVGMarkerElement.h"
 #include "mozilla/dom/SVGMarkerElementBinding.h"
 #include "mozilla/gfx/Matrix.h"
 #include "mozilla/FloatingPoint.h"
+#include "mozilla/RefPtr.h"
 #include "SVGContentUtils.h"
 
 using namespace mozilla::gfx;
 using namespace mozilla::dom::SVGMarkerElement_Binding;
 
-NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(Marker)
+NS_IMPL_NS_NEW_SVG_ELEMENT(Marker)
 
 namespace mozilla {
 namespace dom {
@@ -33,7 +34,7 @@ JSObject* SVGMarkerElement::WrapNode(JSContext* aCx,
   return SVGMarkerElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-nsSVGElement::LengthInfo SVGMarkerElement::sLengthInfo[4] = {
+SVGElement::LengthInfo SVGMarkerElement::sLengthInfo[4] = {
     {nsGkAtoms::refX, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER,
      SVGContentUtils::X},
     {nsGkAtoms::refY, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER,
@@ -44,22 +45,22 @@ nsSVGElement::LengthInfo SVGMarkerElement::sLengthInfo[4] = {
      SVGContentUtils::Y},
 };
 
-nsSVGEnumMapping SVGMarkerElement::sUnitsMap[] = {
+SVGEnumMapping SVGMarkerElement::sUnitsMap[] = {
     {nsGkAtoms::strokeWidth, SVG_MARKERUNITS_STROKEWIDTH},
     {nsGkAtoms::userSpaceOnUse, SVG_MARKERUNITS_USERSPACEONUSE},
     {nullptr, 0}};
 
-nsSVGElement::EnumInfo SVGMarkerElement::sEnumInfo[1] = {
+SVGElement::EnumInfo SVGMarkerElement::sEnumInfo[1] = {
     {nsGkAtoms::markerUnits, sUnitsMap, SVG_MARKERUNITS_STROKEWIDTH}};
 
-nsSVGElement::AngleInfo SVGMarkerElement::sAngleInfo[1] = {
+SVGElement::AngleInfo SVGMarkerElement::sAngleInfo[1] = {
     {nsGkAtoms::orient, 0, SVG_ANGLETYPE_UNSPECIFIED}};
 
 //----------------------------------------------------------------------
 // Implementation
 
 nsresult nsSVGOrientType::SetBaseValue(uint16_t aValue,
-                                       nsSVGElement* aSVGElement) {
+                                       SVGElement* aSVGElement) {
   if (aValue == SVG_MARKER_ORIENT_AUTO || aValue == SVG_MARKER_ORIENT_ANGLE ||
       aValue == SVG_MARKER_ORIENT_AUTO_START_REVERSE) {
     SetBaseValue(aValue);
@@ -76,7 +77,7 @@ nsresult nsSVGOrientType::SetBaseValue(uint16_t aValue,
 }
 
 already_AddRefed<SVGAnimatedEnumeration> nsSVGOrientType::ToDOMAnimatedEnum(
-    nsSVGElement* aSVGElement) {
+    SVGElement* aSVGElement) {
   RefPtr<SVGAnimatedEnumeration> toReturn =
       new DOMAnimatedEnum(this, aSVGElement);
   return toReturn.forget();
@@ -137,7 +138,7 @@ void SVGMarkerElement::SetOrientToAuto() {
           NS_LITERAL_STRING("auto"), true);
 }
 
-void SVGMarkerElement::SetOrientToAngle(SVGAngle& angle, ErrorResult& rv) {
+void SVGMarkerElement::SetOrientToAngle(DOMSVGAngle& angle, ErrorResult& rv) {
   float f = angle.Value();
   if (!IsFinite(f)) {
     rv.Throw(NS_ERROR_DOM_SVG_WRONG_TYPE_ERR);
@@ -169,7 +170,7 @@ SVGMarkerElement::IsAttributeMapped(const nsAtom* name) const {
 }
 
 //----------------------------------------------------------------------
-// nsSVGElement methods
+// SVGElement methods
 
 bool SVGMarkerElement::ParseAttribute(int32_t aNameSpaceID, nsAtom* aName,
                                       const nsAString& aValue,
@@ -211,7 +212,7 @@ nsresult SVGMarkerElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
 }
 
 //----------------------------------------------------------------------
-// nsSVGElement methods
+// SVGElement methods
 
 void SVGMarkerElement::SetParentCoordCtxProvider(SVGViewportElement* aContext) {
   mCoordCtx = aContext;
@@ -225,21 +226,21 @@ void SVGMarkerElement::SetParentCoordCtxProvider(SVGViewportElement* aContext) {
           mLengthAttributes[MARKERHEIGHT].GetAnimValInSpecifiedUnits() > 0);
 }
 
-nsSVGElement::LengthAttributesInfo SVGMarkerElement::GetLengthInfo() {
+SVGElement::LengthAttributesInfo SVGMarkerElement::GetLengthInfo() {
   return LengthAttributesInfo(mLengthAttributes, sLengthInfo,
                               ArrayLength(sLengthInfo));
 }
 
-nsSVGElement::AngleAttributesInfo SVGMarkerElement::GetAngleInfo() {
+SVGElement::AngleAttributesInfo SVGMarkerElement::GetAngleInfo() {
   return AngleAttributesInfo(mAngleAttributes, sAngleInfo,
                              ArrayLength(sAngleInfo));
 }
 
-nsSVGElement::EnumAttributesInfo SVGMarkerElement::GetEnumInfo() {
+SVGElement::EnumAttributesInfo SVGMarkerElement::GetEnumInfo() {
   return EnumAttributesInfo(mEnumAttributes, sEnumInfo, ArrayLength(sEnumInfo));
 }
 
-nsSVGViewBox* SVGMarkerElement::GetViewBox() { return &mViewBox; }
+SVGViewBox* SVGMarkerElement::GetViewBox() { return &mViewBox; }
 
 SVGAnimatedPreserveAspectRatio* SVGMarkerElement::GetPreserveAspectRatio() {
   return &mPreserveAspectRatio;
@@ -249,7 +250,7 @@ SVGAnimatedPreserveAspectRatio* SVGMarkerElement::GetPreserveAspectRatio() {
 // public helpers
 
 gfx::Matrix SVGMarkerElement::GetMarkerTransform(float aStrokeWidth,
-                                                 const nsSVGMark& aMark) {
+                                                 const SVGMark& aMark) {
   float scale =
       mEnumAttributes[MARKERUNITS].GetAnimValue() == SVG_MARKERUNITS_STROKEWIDTH
           ? aStrokeWidth
@@ -261,7 +262,7 @@ gfx::Matrix SVGMarkerElement::GetMarkerTransform(float aStrokeWidth,
       angle = aMark.angle;
       break;
     case SVG_MARKER_ORIENT_AUTO_START_REVERSE:
-      angle = aMark.angle + (aMark.type == nsSVGMark::eStart ? M_PI : 0.0f);
+      angle = aMark.angle + (aMark.type == SVGMark::eStart ? M_PI : 0.0f);
       break;
     default:  // SVG_MARKER_ORIENT_ANGLE
       angle = mAngleAttributes[ORIENT].GetAnimValue() * M_PI / 180.0f;
@@ -272,11 +273,11 @@ gfx::Matrix SVGMarkerElement::GetMarkerTransform(float aStrokeWidth,
                      -sin(angle) * scale, cos(angle) * scale, aMark.x, aMark.y);
 }
 
-nsSVGViewBoxRect SVGMarkerElement::GetViewBoxRect() {
+SVGViewBoxRect SVGMarkerElement::GetViewBoxRect() {
   if (mViewBox.HasRect()) {
     return mViewBox.GetAnimValue();
   }
-  return nsSVGViewBoxRect(
+  return SVGViewBoxRect(
       0, 0, mLengthAttributes[MARKERWIDTH].GetAnimValue(mCoordCtx),
       mLengthAttributes[MARKERHEIGHT].GetAnimValue(mCoordCtx));
 }
@@ -288,7 +289,7 @@ gfx::Matrix SVGMarkerElement::GetViewBoxTransform() {
     float viewportHeight =
         mLengthAttributes[MARKERHEIGHT].GetAnimValue(mCoordCtx);
 
-    nsSVGViewBoxRect viewbox = GetViewBoxRect();
+    SVGViewBoxRect viewbox = GetViewBoxRect();
 
     MOZ_ASSERT(viewbox.width > 0.0f && viewbox.height > 0.0f,
                "Rendering should be disabled");

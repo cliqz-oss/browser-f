@@ -20,12 +20,12 @@
 #include "HeadlessClipboard.h"
 #include "IMContextWrapper.h"
 #ifdef MOZ_X11
-#include "nsClipboardHelper.h"
-#include "nsClipboard.h"
-#include "nsDragService.h"
+#  include "nsClipboardHelper.h"
+#  include "nsClipboard.h"
+#  include "nsDragService.h"
 #endif
 #ifdef MOZ_WIDGET_GTK
-#include "nsApplicationChooser.h"
+#  include "nsApplicationChooser.h"
 #endif
 #include "TaskbarProgress.h"
 #include "nsColorPicker.h"
@@ -35,17 +35,17 @@
 #include "WakeLockListener.h"
 
 #ifdef NS_PRINTING
-#include "nsPrintSettingsServiceGTK.h"
-#include "nsPrintSession.h"
-#include "nsDeviceContextSpecG.h"
+#  include "nsPrintSettingsServiceGTK.h"
+#  include "nsPrintSession.h"
+#  include "nsDeviceContextSpecG.h"
 #endif
 
 #include "nsImageToPixbuf.h"
 #include "nsPrintDialogGTK.h"
 
 #if defined(MOZ_X11)
-#include "nsIdleServiceGTK.h"
-#include "GfxInfoX11.h"
+#  include "nsIdleServiceGTK.h"
+#  include "GfxInfoX11.h"
 #endif
 
 #include "nsIComponentRegistrar.h"
@@ -185,7 +185,7 @@ NS_DEFINE_NAMED_CID(NS_GFXINFO_CID);
 
 static const mozilla::Module::CIDEntry kWidgetCIDs[] = {
     {&kNS_APPSHELL_CID, false, nullptr, nsAppShellConstructor,
-     Module::ALLOW_IN_GPU_AND_VR_PROCESS},
+     Module::ALLOW_IN_GPU_VR_AND_SOCKET_PROCESS},
     {&kNS_COLORPICKER_CID, false, nullptr, nsColorPickerConstructor,
      Module::MAIN_PROCESS_ONLY},
     {&kNS_FILEPICKER_CID, false, nullptr, nsFilePickerConstructor,
@@ -229,7 +229,7 @@ static const mozilla::Module::CIDEntry kWidgetCIDs[] = {
 
 static const mozilla::Module::ContractIDEntry kWidgetContracts[] = {
     {"@mozilla.org/widget/appshell/gtk;1", &kNS_APPSHELL_CID,
-     Module::ALLOW_IN_GPU_AND_VR_PROCESS},
+     Module::ALLOW_IN_GPU_VR_AND_SOCKET_PROCESS},
     {"@mozilla.org/colorpicker;1", &kNS_COLORPICKER_CID,
      Module::MAIN_PROCESS_ONLY},
     {"@mozilla.org/filepicker;1", &kNS_FILEPICKER_CID,
@@ -291,6 +291,6 @@ static const mozilla::Module kWidgetModule = {
     nullptr,
     nsAppShellInit,
     nsWidgetGtk2ModuleDtor,
-    Module::ALLOW_IN_GPU_AND_VR_PROCESS};
+    Module::ALLOW_IN_GPU_VR_AND_SOCKET_PROCESS};
 
 NSMODULE_DEFN(nsWidgetGtk2Module) = &kWidgetModule;

@@ -28,6 +28,27 @@
   height: 20px;
 }
 
+/* Autoscroll popup */
+
+.autoscroller {
+  border: none;
+  padding: 0;
+  background-image: url("chrome://global/skin/icons/autoscroll.svg");
+  background-size: contain;
+  background-color: transparent;
+  background-repeat: no-repeat;
+  -moz-appearance: none;
+  -moz-window-shadow: none;
+}
+
+.autoscroller[scrolldir="NS"] {
+  background-image: url("chrome://global/skin/icons/autoscroll-vertical.svg");
+}
+
+.autoscroller[scrolldir="EW"] {
+  background-image: url("chrome://global/skin/icons/autoscroll-horizontal.svg");
+}
+
 /* Panel footers */
 
 .panel-footer {
@@ -36,32 +57,46 @@
 
 .panel-footer > button {
   -moz-appearance: none;
+  border-top: 1px solid var(--panel-separator-color);
   /* !important overrides :hover and :active colors from button.css: */
   color: inherit !important;
+  min-width: 0;
+  margin: 0;
+  padding: .9em 2px;
 }
 
 .panel-footer > button[disabled] {
   color: var(--panel-disabled-color) !important;
 }
 
+.panel-footer > button:-moz-focusring {
+  outline: 1px dotted;
+  outline-offset: -3px;
+}
+
 .panel-footer > button:not([disabled]):hover {
   background-color: var(--arrowpanel-dimmed);
 }
 
-.panel-footer > button:not([disabled]):hover:active {
+.panel-footer > button:not([disabled]):hover:active,
+.panel-footer > button:not([disabled])[open] {
   background-color: var(--arrowpanel-dimmed-further);
+  box-shadow: 0 1px 0 hsla(210,4%,10%,.05) inset;
 }
 
 .panel-footer > button:not([disabled])[default] {
   color: white !important;
-  background-color: #0996f8;
+  background-color: #0060df;
 }
 
 .panel-footer > button:not([disabled])[default]:hover {
-  background-color: #0675d3;
+  background-color: #003eaa;
 }
 
 .panel-footer > button:not([disabled])[default]:hover:active {
-  background-color: #0568ba;
+  background-color: #002275;
 }
 
+.panel-footer > button > .button-box {
+  padding: 0;
+}

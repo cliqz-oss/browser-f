@@ -14,13 +14,11 @@
 
 #if defined(_MSC_VER)
 
-#include "gtest/BlackBox.h"
+#  include "gtest/BlackBox.h"
 
 namespace mozilla {
 
-char volatile* UseCharPointer(char volatile* aPtr) {
-  return aPtr;
-}
+char volatile* UseCharPointer(char volatile* aPtr) { return aPtr; }
 
 }  // namespace mozilla
 

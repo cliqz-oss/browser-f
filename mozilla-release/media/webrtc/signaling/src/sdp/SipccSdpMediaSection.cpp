@@ -10,7 +10,7 @@
 #include "signaling/src/sdp/SdpErrorHolder.h"
 
 #ifdef CRLF
-#undef CRLF
+#  undef CRLF
 #endif
 #define CRLF "\r\n"
 
@@ -140,6 +140,9 @@ bool SipccSdpMediaSection::LoadProtocol(sdp_t* sdp, uint16_t level,
       break;
     case SDP_TRANSPORT_TCPTLSRTPSAVPF:
       mProtocol = kTcpTlsRtpSavpf;
+      break;
+    case SDP_TRANSPORT_TCPDTLSRTPSAVPF:
+      mProtocol = kTcpDtlsRtpSavpf;
       break;
     case SDP_TRANSPORT_DTLSSCTP:
       mProtocol = kDtlsSctp;

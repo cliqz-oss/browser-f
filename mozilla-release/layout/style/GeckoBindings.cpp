@@ -23,7 +23,7 @@
 #include "nsDeviceContext.h"
 #include "nsIContentInlines.h"
 #include "nsICrashReporter.h"
-#include "nsIDocumentInlines.h"
+#include "mozilla/dom/DocumentInlines.h"
 #include "nsILoadContext.h"
 #include "nsIFrame.h"
 #include "nsIMemoryReporter.h"
@@ -43,7 +43,6 @@
 #include "nsString.h"
 #include "nsStyleStruct.h"
 #include "nsStyleUtil.h"
-#include "nsSVGElement.h"
 #include "nsTArray.h"
 #include "nsTransitionManager.h"
 #include "nsWindowSizes.h"
@@ -73,12 +72,13 @@
 #include "mozilla/dom/HTMLBodyElement.h"
 #include "mozilla/dom/HTMLSlotElement.h"
 #include "mozilla/dom/MediaList.h"
+#include "mozilla/dom/SVGElement.h"
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/URLExtraData.h"
 #include "mozilla/dom/CSSMozDocumentRule.h"
 
 #if defined(MOZ_MEMORY)
-#include "mozmemory.h"
+#  include "mozmemory.h"
 #endif
 
 using namespace mozilla;
@@ -106,16 +106,22 @@ static const nsFont* ThreadSafeGetDefaultFontHelper(
   bool needsCache = false;
   const nsFont* retval;
 
+  auto GetDefaultFont = [&](bool* aNeedsToCache) {
+    auto* prefs =
+        aPresContext->Document()->GetFontPrefsForLang(aLanguage, aNeedsToCache);
+    return prefs ? prefs->GetDefaultFont(aGenericId) : nullptr;
+  };
+
   {
     AutoReadLock guard(*sServoFFILock);
-    retval = aPresContext->GetDefaultFont(aGenericId, aLanguage, &needsCache);
+    retval = GetDefaultFont(&needsCache);
   }
   if (!needsCache) {
     return retval;
   }
   {
     AutoWriteLock guard(*sServoFFILock);
-    retval = aPresContext->GetDefaultFont(aGenericId, aLanguage, nullptr);
+    retval = GetDefaultFont(nullptr);
   }
   return retval;
 }
@@ -249,7 +255,7 @@ RawGeckoNodeBorrowed Gecko_GetNextStyleChild(
   return aIterator->GetNextChild();
 }
 
-bool Gecko_VisitedStylesEnabled(const nsIDocument* aDoc) {
+bool Gecko_VisitedStylesEnabled(const Document* aDoc) {
   MOZ_ASSERT(aDoc);
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -383,7 +389,7 @@ Gecko_GetHTMLPresentationAttrDeclarationBlock(
     RawGeckoElementBorrowed aElement) {
   const nsMappedAttributes* attrs = aElement->GetMappedAttributes();
   if (!attrs) {
-    auto* svg = nsSVGElement::FromNodeOrNull(aElement);
+    auto* svg = SVGElement::FromNodeOrNull(aElement);
     if (svg) {
       if (auto decl = svg->GetContentDeclarationBlock()) {
         return decl->RefRawStrong();
@@ -488,7 +494,7 @@ bool Gecko_GetAnimationRule(
     RawServoAnimationValueMapBorrowedMut aAnimationValues) {
   MOZ_ASSERT(aElement);
 
-  nsIDocument* doc = aElement->GetComposedDoc();
+  Document* doc = aElement->GetComposedDoc();
   if (!doc) {
     return false;
   }
@@ -704,7 +710,7 @@ void Gecko_FillAllImageLayers(nsStyleImageLayers* aLayers, uint32_t aMaxLen) {
 }
 
 bool Gecko_IsDocumentBody(RawGeckoElementBorrowed aElement) {
-  nsIDocument* doc = aElement->GetUncomposedDoc();
+  Document* doc = aElement->GetUncomposedDoc();
   return doc && doc->GetBodyElement() == aElement;
 }
 
@@ -769,8 +775,7 @@ nsAtom* Gecko_GetXMLLangValue(RawGeckoElementBorrowed aElement) {
   return atom.forget().take();
 }
 
-nsIDocument::DocumentTheme Gecko_GetDocumentLWTheme(
-    const nsIDocument* aDocument) {
+Document::DocumentTheme Gecko_GetDocumentLWTheme(const Document* aDocument) {
   return aDocument->ThreadSafeGetDocumentLWTheme();
 }
 
@@ -1943,14 +1948,20 @@ void Gecko_nsStyleFont_FixupMinFontSize(
   nscoord minFontSize;
   bool needsCache = false;
 
+  auto MinFontSize = [&](bool* aNeedsToCache) {
+    auto* prefs = aPresContext->Document()->GetFontPrefsForLang(
+        aFont->mLanguage, aNeedsToCache);
+    return prefs ? prefs->mMinimumFontSize : 0;
+  };
+
   {
     AutoReadLock guard(*sServoFFILock);
-    minFontSize = aPresContext->MinFontSize(aFont->mLanguage, &needsCache);
+    minFontSize = MinFontSize(&needsCache);
   }
 
   if (needsCache) {
     AutoWriteLock guard(*sServoFFILock);
-    minFontSize = aPresContext->MinFontSize(aFont->mLanguage, nullptr);
+    minFontSize = MinFontSize(nullptr);
   }
 
   nsLayoutUtils::ApplyMinFontSize(aFont, aPresContext, minFontSize);
@@ -2078,7 +2089,7 @@ void Gecko_StyleSheet_FinishAsyncParse(
                  counters = std::move(useCounters)]() mutable {
         MOZ_ASSERT(NS_IsMainThread());
         SheetLoadData* data = d->get();
-        if (nsIDocument* doc = data->mLoader->GetDocument()) {
+        if (Document* doc = data->mLoader->GetDocument()) {
           if (const StyleUseCounters* docCounters =
                   doc->GetStyleUseCounters()) {
             Servo_UseCounters_Merge(docCounters, counters.get());
@@ -2195,7 +2206,7 @@ NS_IMPL_THREADSAFE_FFI_REFCOUNTING(nsCSSValueSharedList, CSSValueSharedList);
                                                                        \
   void Gecko_Construct_Default_nsStyle##name(                          \
       nsStyle##name* ptr, const nsPresContext* pres_context) {         \
-    new (ptr) nsStyle##name(pres_context);                             \
+    new (ptr) nsStyle##name(*pres_context->Document());                \
   }                                                                    \
                                                                        \
   void Gecko_CopyConstruct_nsStyle##name(nsStyle##name* ptr,           \
@@ -2218,7 +2229,7 @@ bool Gecko_DocumentRule_UseForPresentation(
     css::DocumentMatchingFunction aMatchingFunction) {
   MOZ_ASSERT(NS_IsMainThread());
 
-  nsIDocument* doc = aPresContext->Document();
+  Document* doc = aPresContext->Document();
   nsIURI* docURI = doc->GetDocumentURI();
   nsAutoCString docURISpec;
   if (docURI) {
@@ -2315,8 +2326,8 @@ void Gecko_ContentList_AppendAll(nsSimpleContentList* aList,
   }
 }
 
-const nsTArray<Element*>* Gecko_Document_GetElementsWithId(
-    const nsIDocument* aDoc, nsAtom* aId) {
+const nsTArray<Element*>* Gecko_Document_GetElementsWithId(const Document* aDoc,
+                                                           nsAtom* aId) {
   MOZ_ASSERT(aDoc);
   MOZ_ASSERT(aId);
 
@@ -2342,7 +2353,7 @@ bool Gecko_IsMainThread() { return NS_IsMainThread(); }
 
 const nsAttrValue* Gecko_GetSVGAnimatedClass(RawGeckoElementBorrowed aElement) {
   MOZ_ASSERT(aElement->IsSVGElement());
-  return static_cast<const nsSVGElement*>(aElement)->GetAnimatedClassName();
+  return static_cast<const SVGElement*>(aElement)->GetAnimatedClassName();
 }
 
 bool Gecko_AssertClassAttrValueIsSane(const nsAttrValue* aValue) {

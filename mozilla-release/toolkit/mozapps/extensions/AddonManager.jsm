@@ -79,7 +79,7 @@ XPCOMUtils.defineLazyPreferenceGetter(this, "WEBEXT_PERMISSION_PROMPTS",
 // since it needs to be able to track things like new frameLoader globals that
 // are created before other framework code has been initialized.
 Services.ppmm.loadProcessScript(
-  "data:,Components.classes['@mozilla.org/webextensions/extension-process-script;1'].getService()",
+  "data:,ChromeUtils.import('resource://gre/modules/ExtensionProcessScript.jsm')",
   true);
 
 const INTEGER = /^[1-9]\d*$/;
@@ -841,7 +841,7 @@ var AddonManagerInternal = {
       LightweightThemeManager.addBuiltInTheme({
         id: DEFAULT_THEME_ID,
         name: extensionsBundle.GetStringFromName("defaultTheme.name"),
-        description: extensionsBundle.GetStringFromName("defaultTheme.description"),
+        description: extensionsBundle.GetStringFromName("defaultTheme.description2"),
         iconURL: "chrome://mozapps/content/extensions/default-theme-icon.svg",
         author,
       });

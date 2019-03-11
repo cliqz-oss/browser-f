@@ -167,7 +167,7 @@ void WyciwygChannelChild::OnStartRequest(const nsresult& statusCode,
                                          const nsCString& charset,
                                          const nsCString& securityInfo) {
   LOG(("WyciwygChannelChild::RecvOnStartRequest [this=%p]\n", this));
-
+  nsresult rv;
   mState = WCC_ONSTART;
 
   if (!mCanceled && NS_SUCCEEDED(mStatus)) {
@@ -178,12 +178,14 @@ void WyciwygChannelChild::OnStartRequest(const nsresult& statusCode,
   mCharset = charset;
 
   if (!securityInfo.IsEmpty()) {
-    NS_DeserializeObject(securityInfo, getter_AddRefs(mSecurityInfo));
+    rv = NS_DeserializeObject(securityInfo, getter_AddRefs(mSecurityInfo));
+    MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv),
+                          "Deserializing security info should not fail");
   }
 
   AutoEventEnqueuer ensureSerialDispatch(mEventQ);
 
-  nsresult rv = mListener->OnStartRequest(this, mListenerContext);
+  rv = mListener->OnStartRequest(this, mListenerContext);
   if (NS_FAILED(rv)) Cancel(rv);
 }
 
@@ -223,8 +225,8 @@ void WyciwygChannelChild::OnDataAvailable(const nsCString& data,
   // support only reading part of the data, allowing later calls to read the
   // rest.
   nsCOMPtr<nsIInputStream> stringStream;
-  nsresult rv = NS_NewByteInputStream(getter_AddRefs(stringStream), data.get(),
-                                      data.Length(), NS_ASSIGNMENT_DEPEND);
+  nsresult rv = NS_NewByteInputStream(getter_AddRefs(stringStream), data,
+                                      NS_ASSIGNMENT_DEPEND);
   if (NS_FAILED(rv)) {
     Cancel(rv);
     return;

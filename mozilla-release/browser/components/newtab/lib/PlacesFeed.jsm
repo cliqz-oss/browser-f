@@ -283,6 +283,71 @@ class PlacesFeed {
     _target.browser.ownerGlobal.gURLBar.search(`${data.label} `);
   }
 
+  _getSearchPrefix() {
+    const searchAliases = Services.search.defaultEngine.wrappedJSObject.__internalAliases;
+    if (searchAliases && searchAliases.length > 0) {
+      return `${searchAliases[0]} `;
+    }
+    return "";
+  }
+
+  handoffSearchToAwesomebar({_target, data, meta}) {
+    const searchAlias = this._getSearchPrefix();
+    const urlBar = _target.browser.ownerGlobal.gURLBar;
+    let isFirstChange = true;
+
+    if (!data || !data.text) {
+      urlBar.setHiddenFocus();
+    } else {
+      // Pass the provided text to the awesomebar. Prepend the @engine shortcut.
+      urlBar.search(`${searchAlias}${data.text}`);
+      isFirstChange = false;
+    }
+
+    const checkFirstChange = () => {
+      // Check if this is the first change since we hidden focused. If it is,
+      // remove hidden focus styles, prepend the search alias and hide the
+      // in-content search.
+      if (isFirstChange) {
+        isFirstChange = false;
+        urlBar.removeHiddenFocus();
+        urlBar.search(searchAlias);
+        this.store.dispatch(ac.OnlyToOneContent({type: at.HIDE_SEARCH}, meta.fromTarget));
+        urlBar.removeEventListener("compositionstart", checkFirstChange);
+        urlBar.removeEventListener("paste", checkFirstChange);
+      }
+    };
+
+    const onKeydown = ev => {
+      // Check if the keydown will cause a value change.
+      if (ev.key.length === 1 && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
+        checkFirstChange();
+      }
+      // If the Esc button is pressed, we are done. Show in-content search and cleanup.
+      if (ev.key === "Escape") {
+        onDone(); // eslint-disable-line no-use-before-define
+      }
+    };
+
+    const onDone = () => {
+      // We are done. Show in-content search again and cleanup.
+      this.store.dispatch(ac.OnlyToOneContent({type: at.SHOW_SEARCH}, meta.fromTarget));
+      urlBar.removeHiddenFocus();
+
+      urlBar.removeEventListener("keydown", onKeydown);
+      urlBar.removeEventListener("mousedown", onDone);
+      urlBar.removeEventListener("blur", onDone);
+      urlBar.removeEventListener("compositionstart", checkFirstChange);
+      urlBar.removeEventListener("paste", checkFirstChange);
+    };
+
+    urlBar.addEventListener("keydown", onKeydown);
+    urlBar.addEventListener("mousedown", onDone);
+    urlBar.addEventListener("blur", onDone);
+    urlBar.addEventListener("compositionstart", checkFirstChange);
+    urlBar.addEventListener("paste", checkFirstChange);
+  }
+
   onAction(action) {
     switch (action.type) {
       case at.INIT:
@@ -322,6 +387,9 @@ class PlacesFeed {
         break;
       case at.FILL_SEARCH_TERM:
         this.fillSearchTopSiteTerm(action);
+        break;
+      case at.HANDOFF_SEARCH_TO_AWESOMEBAR:
+        this.handoffSearchToAwesomebar(action);
         break;
       case at.OPEN_LINK: {
         this.openLink(action);

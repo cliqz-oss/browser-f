@@ -10,9 +10,9 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/dom/Element.h"
 #if defined(MOZ_PLACES)
-#include "mozilla/places/History.h"
+#  include "mozilla/places/History.h"
 #else
-#include "mozilla/IHistory.h"
+#  include "mozilla/IHistory.h"
 #endif
 #include "nsIURL.h"
 #include "nsIURIMutator.h"
@@ -734,7 +734,7 @@ void Link::ResetLinkState(bool aNotify, bool aHasHref) {
   // currently registered; in either case, we should remove ourself
   // from the doc and the history.
   if (!mNeedsRegistration && mLinkState != eLinkState_NotLink) {
-    nsIDocument *doc = mElement->GetComposedDoc();
+    Document *doc = mElement->GetComposedDoc();
     if (doc && (mRegistered || mLinkState == eLinkState_Visited)) {
       // Tell the document to forget about this link if we've registered
       // with it before.

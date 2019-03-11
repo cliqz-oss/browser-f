@@ -251,6 +251,7 @@ class EMEDecryptor : public MediaDataDecoder,
     return InvokeAsync(mTaskQueue, __func__, [self, this]() {
       MOZ_ASSERT(!mIsShutdown);
       mIsShutdown = true;
+      mSamplesWaitingForKey->BreakCycles();
       mSamplesWaitingForKey = nullptr;
       RefPtr<MediaDataDecoder> decoder = mDecoder.forget();
       mProxy = nullptr;
@@ -347,6 +348,7 @@ RefPtr<MediaDataDecoder::FlushPromise> EMEMediaDataDecoderProxy::Flush() {
 RefPtr<ShutdownPromise> EMEMediaDataDecoderProxy::Shutdown() {
   RefPtr<EMEMediaDataDecoderProxy> self = this;
   return InvokeAsync(mThread, __func__, [self, this]() {
+    mSamplesWaitingForKey->BreakCycles();
     mSamplesWaitingForKey = nullptr;
     mProxy = nullptr;
     return MediaDataDecoderProxy::Shutdown();
@@ -376,7 +378,7 @@ static already_AddRefed<MediaDataDecoderProxy> CreateDecoderWrapper(
 
 already_AddRefed<MediaDataDecoder> EMEDecoderModule::CreateVideoDecoder(
     const CreateDecoderParams& aParams) {
-  MOZ_ASSERT(aParams.mConfig.mCrypto.mValid);
+  MOZ_ASSERT(aParams.mConfig.mCrypto.IsEncrypted());
 
   if (StaticPrefs::MediaEmeVideoBlank()) {
     EME_LOG("EMEDecoderModule::CreateVideoDecoder() creating a blank decoder.");
@@ -407,7 +409,7 @@ already_AddRefed<MediaDataDecoder> EMEDecoderModule::CreateVideoDecoder(
 
 already_AddRefed<MediaDataDecoder> EMEDecoderModule::CreateAudioDecoder(
     const CreateDecoderParams& aParams) {
-  MOZ_ASSERT(aParams.mConfig.mCrypto.mValid);
+  MOZ_ASSERT(aParams.mConfig.mCrypto.IsEncrypted());
 
   // We don't support using the GMP to decode audio.
   MOZ_ASSERT(!SupportsMimeType(aParams.mConfig.mMimeType, nullptr));

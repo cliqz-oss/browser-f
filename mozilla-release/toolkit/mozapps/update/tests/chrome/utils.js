@@ -143,7 +143,7 @@ var gUseTestUpdater = false;
 // onload function.
 var DEBUG_AUS_TEST = true;
 
-const DATA_URI_SPEC = "chrome://mochitests/content/chrome/toolkit/mozapps/update/tests/data/";
+const DATA_URI_SPEC = "chrome://mochitests/content/chrome/toolkit/mozapps/update/tests/chrome/";
 /* import-globals-from ../data/shared.js */
 Services.scriptloader.loadSubScript(DATA_URI_SPEC + "shared.js", this);
 
@@ -816,7 +816,6 @@ function setupPrefs() {
   Services.prefs.setIntPref(PREF_APP_UPDATE_PROMPTWAITTIME, 0);
   Services.prefs.setBoolPref(PREF_APP_UPDATE_SILENT, false);
   Services.prefs.setBoolPref(PREF_APP_UPDATE_DOORHANGER, false);
-  Services.prefs.setIntPref(PREF_APP_UPDATE_DOWNLOADBACKGROUNDINTERVAL, 0);
 }
 
 /**
@@ -914,10 +913,6 @@ function resetPrefs() {
 
   if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_DOORHANGER)) {
     Services.prefs.clearUserPref(PREF_APP_UPDATE_DOORHANGER);
-  }
-
-  if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_DOWNLOADBACKGROUNDINTERVAL)) {
-    Services.prefs.clearUserPref(PREF_APP_UPDATE_DOWNLOADBACKGROUNDINTERVAL);
   }
 }
 

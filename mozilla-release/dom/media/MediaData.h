@@ -4,22 +4,22 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 #if !defined(MediaData_h)
-#define MediaData_h
+#  define MediaData_h
 
-#include "AudioConfig.h"
-#include "AudioSampleFormat.h"
-#include "ImageTypes.h"
-#include "SharedBuffer.h"
-#include "TimeUnits.h"
-#include "mozilla/CheckedInt.h"
-#include "mozilla/PodOperations.h"
-#include "mozilla/RefPtr.h"
-#include "mozilla/Span.h"
-#include "mozilla/UniquePtr.h"
-#include "mozilla/UniquePtrExtensions.h"
-#include "mozilla/gfx/Rect.h"
-#include "nsString.h"
-#include "nsTArray.h"
+#  include "AudioConfig.h"
+#  include "AudioSampleFormat.h"
+#  include "ImageTypes.h"
+#  include "SharedBuffer.h"
+#  include "TimeUnits.h"
+#  include "mozilla/CheckedInt.h"
+#  include "mozilla/PodOperations.h"
+#  include "mozilla/RefPtr.h"
+#  include "mozilla/Span.h"
+#  include "mozilla/UniquePtr.h"
+#  include "mozilla/UniquePtrExtensions.h"
+#  include "mozilla/gfx/Rect.h"
+#  include "nsString.h"
+#  include "nsTArray.h"
 
 namespace mozilla {
 
@@ -490,13 +490,27 @@ class VideoData : public MediaData {
   media::TimeUnit mNextKeyFrameTime;
 };
 
+enum class CryptoScheme : uint8_t {
+  None,
+  Cenc,
+  Cbcs,
+};
+
 class CryptoTrack {
  public:
-  CryptoTrack() : mValid(false), mMode(0), mIVSize(0) {}
-  bool mValid;
-  int32_t mMode;
+  CryptoTrack()
+      : mCryptoScheme(CryptoScheme::None),
+        mIVSize(0),
+        mCryptByteBlock(0),
+        mSkipByteBlock(0) {}
+  CryptoScheme mCryptoScheme;
   int32_t mIVSize;
   nsTArray<uint8_t> mKeyId;
+  uint8_t mCryptByteBlock;
+  uint8_t mSkipByteBlock;
+  nsTArray<uint8_t> mConstantIV;
+
+  bool IsEncrypted() const { return mCryptoScheme != CryptoScheme::None; }
 };
 
 class CryptoSample : public CryptoTrack {

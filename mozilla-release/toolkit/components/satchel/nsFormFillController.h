@@ -24,7 +24,7 @@
 
 // X.h defines KeyPress
 #ifdef KeyPress
-#undef KeyPress
+#  undef KeyPress
 #endif
 
 class nsFormHistory;
@@ -93,7 +93,7 @@ class nsFormFillController final : public nsIFormFillController,
 
   void MaybeRemoveMutationObserver(nsINode* aNode);
 
-  void RemoveForDocument(nsIDocument* aDoc);
+  void RemoveForDocument(mozilla::dom::Document* aDoc);
 
   bool IsTextControl(nsINode* aNode);
 

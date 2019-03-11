@@ -327,13 +327,10 @@ PropertyName* TokenStreamAnyChars::reservedWordToPropertyName(
   return nullptr;
 }
 
-TokenStreamAnyChars::SourceCoords::SourceCoords(JSContext* cx, uint32_t ln,
-                                                uint32_t col,
-                                                uint32_t initialLineOffset)
-    : lineStartOffsets_(cx),
-      initialLineNum_(ln),
-      initialColumn_(col),
-      lastLineIndex_(0) {
+TokenStreamAnyChars::SourceCoords::SourceCoords(JSContext* cx,
+                                                uint32_t initialLineNumber,
+                                                uint32_t initialOffset)
+    : lineStartOffsets_(cx), initialLineNum_(initialLineNumber), lastIndex_(0) {
   // This is actually necessary!  Removing it causes compile errors on
   // GCC and clang.  You could try declaring this:
   //
@@ -343,24 +340,24 @@ TokenStreamAnyChars::SourceCoords::SourceCoords(JSContext* cx, uint32_t ln,
   //
   uint32_t maxPtr = MAX_PTR;
 
-  // The first line begins at buffer offset |initialLineOffset|.  MAX_PTR is
-  // the sentinel.  The appends cannot fail because |lineStartOffsets_| has
+  // The first line begins at buffer offset |initialOffset|.  MAX_PTR is the
+  // sentinel.  The appends cannot fail because |lineStartOffsets_| has
   // statically-allocated elements.
   MOZ_ASSERT(lineStartOffsets_.capacity() >= 2);
   MOZ_ALWAYS_TRUE(lineStartOffsets_.reserve(2));
-  lineStartOffsets_.infallibleAppend(initialLineOffset);
+  lineStartOffsets_.infallibleAppend(initialOffset);
   lineStartOffsets_.infallibleAppend(maxPtr);
 }
 
 MOZ_ALWAYS_INLINE bool TokenStreamAnyChars::SourceCoords::add(
     uint32_t lineNum, uint32_t lineStartOffset) {
-  uint32_t lineIndex = lineNumToIndex(lineNum);
+  uint32_t index = indexFromLineNumber(lineNum);
   uint32_t sentinelIndex = lineStartOffsets_.length() - 1;
 
-  MOZ_ASSERT(lineStartOffsets_[0] <= lineStartOffset &&
-             lineStartOffsets_[sentinelIndex] == MAX_PTR);
+  MOZ_ASSERT(lineStartOffsets_[0] <= lineStartOffset);
+  MOZ_ASSERT(lineStartOffsets_[sentinelIndex] == MAX_PTR);
 
-  if (lineIndex == sentinelIndex) {
+  if (index == sentinelIndex) {
     // We haven't seen this newline before.  Update lineStartOffsets_
     // only if lineStartOffsets_.append succeeds, to keep sentinel.
     // Otherwise return false to tell TokenStream about OOM.
@@ -373,13 +370,13 @@ MOZ_ALWAYS_INLINE bool TokenStreamAnyChars::SourceCoords::add(
       return false;
     }
 
-    lineStartOffsets_[lineIndex] = lineStartOffset;
+    lineStartOffsets_[index] = lineStartOffset;
   } else {
     // We have seen this newline before (and ungot it).  Do nothing (other
     // than checking it hasn't mysteriously changed).
-    // This path can be executed after hitting OOM, so check lineIndex.
-    MOZ_ASSERT_IF(lineIndex < sentinelIndex,
-                  lineStartOffsets_[lineIndex] == lineStartOffset);
+    // This path can be executed after hitting OOM, so check index.
+    MOZ_ASSERT_IF(index < sentinelIndex,
+                  lineStartOffsets_[index] == lineStartOffset);
   }
   return true;
 }
@@ -407,33 +404,33 @@ MOZ_ALWAYS_INLINE bool TokenStreamAnyChars::SourceCoords::fill(
 }
 
 MOZ_ALWAYS_INLINE uint32_t
-TokenStreamAnyChars::SourceCoords::lineIndexOf(uint32_t offset) const {
+TokenStreamAnyChars::SourceCoords::indexFromOffset(uint32_t offset) const {
   uint32_t iMin, iMax, iMid;
 
-  if (lineStartOffsets_[lastLineIndex_] <= offset) {
+  if (lineStartOffsets_[lastIndex_] <= offset) {
     // If we reach here, offset is on a line the same as or higher than
     // last time.  Check first for the +0, +1, +2 cases, because they
     // typically cover 85--98% of cases.
-    if (offset < lineStartOffsets_[lastLineIndex_ + 1]) {
-      return lastLineIndex_;  // lineIndex is same as last time
+    if (offset < lineStartOffsets_[lastIndex_ + 1]) {
+      return lastIndex_;  // index is same as last time
     }
 
     // If we reach here, there must be at least one more entry (plus the
     // sentinel).  Try it.
-    lastLineIndex_++;
-    if (offset < lineStartOffsets_[lastLineIndex_ + 1]) {
-      return lastLineIndex_;  // lineIndex is one higher than last time
+    lastIndex_++;
+    if (offset < lineStartOffsets_[lastIndex_ + 1]) {
+      return lastIndex_;  // index is one higher than last time
     }
 
     // The same logic applies here.
-    lastLineIndex_++;
-    if (offset < lineStartOffsets_[lastLineIndex_ + 1]) {
-      return lastLineIndex_;  // lineIndex is two higher than last time
+    lastIndex_++;
+    if (offset < lineStartOffsets_[lastIndex_ + 1]) {
+      return lastIndex_;  // index is two higher than last time
     }
 
     // No luck.  Oh well, we have a better-than-default starting point for
     // the binary search.
-    iMin = lastLineIndex_ + 1;
+    iMin = lastIndex_ + 1;
     MOZ_ASSERT(iMin <
                lineStartOffsets_.length() - 1);  // -1 due to the sentinel
 
@@ -454,33 +451,24 @@ TokenStreamAnyChars::SourceCoords::lineIndexOf(uint32_t offset) const {
       iMax = iMid;  // offset is below or within lineStartOffsets_[iMid]
     }
   }
+
   MOZ_ASSERT(iMax == iMin);
-  MOZ_ASSERT(lineStartOffsets_[iMin] <= offset &&
-             offset < lineStartOffsets_[iMin + 1]);
-  lastLineIndex_ = iMin;
+  MOZ_ASSERT(lineStartOffsets_[iMin] <= offset);
+  MOZ_ASSERT(offset < lineStartOffsets_[iMin + 1]);
+
+  lastIndex_ = iMin;
   return iMin;
 }
 
-uint32_t TokenStreamAnyChars::SourceCoords::lineNum(uint32_t offset) const {
-  uint32_t lineIndex = lineIndexOf(offset);
-  return lineIndexToNum(lineIndex);
-}
-
-uint32_t TokenStreamAnyChars::SourceCoords::columnIndex(uint32_t offset) const {
-  return lineIndexAndOffsetToColumn(lineIndexOf(offset), offset);
-}
-
-void TokenStreamAnyChars::SourceCoords::lineNumAndColumnIndex(
-    uint32_t offset, uint32_t* lineNum, uint32_t* column) const {
-  uint32_t lineIndex = lineIndexOf(offset);
-  *lineNum = lineIndexToNum(lineIndex);
-  *column = lineIndexAndOffsetToColumn(lineIndex, offset);
+TokenStreamAnyChars::SourceCoords::LineToken
+TokenStreamAnyChars::SourceCoords::lineToken(uint32_t offset) const {
+  return LineToken(indexFromOffset(offset), offset);
 }
 
 TokenStreamAnyChars::TokenStreamAnyChars(JSContext* cx,
                                          const ReadOnlyCompileOptions& options,
                                          StrictModeGetter* smg)
-    : srcCoords(cx, options.lineno, options.column, options.scriptSourceOffset),
+    : srcCoords(cx, options.lineno, options.scriptSourceOffset),
       options_(options),
       tokens(),
       cursor_(0),
@@ -590,13 +578,31 @@ bool TokenStreamAnyChars::checkOptions() {
   return true;
 }
 
+void TokenStreamAnyChars::reportErrorNoOffset(unsigned errorNumber, ...) {
+  va_list args;
+  va_start(args, errorNumber);
+
+  reportErrorNoOffsetVA(errorNumber, &args);
+
+  va_end(args);
+}
+
+void TokenStreamAnyChars::reportErrorNoOffsetVA(unsigned errorNumber,
+                                                va_list* args) {
+  ErrorMetadata metadata;
+  computeErrorMetadataNoOffset(&metadata);
+
+  ReportCompileError(cx, std::move(metadata), nullptr, JSREPORT_ERROR,
+                     errorNumber, args);
+}
+
 // Use the fastest available getc.
 #if defined(HAVE_GETC_UNLOCKED)
-#define fast_getc getc_unlocked
+#  define fast_getc getc_unlocked
 #elif defined(HAVE__GETC_NOLOCK)
-#define fast_getc _getc_nolock
+#  define fast_getc _getc_nolock
 #else
-#define fast_getc getc
+#  define fast_getc getc
 #endif
 
 MOZ_MUST_USE MOZ_ALWAYS_INLINE bool
@@ -665,6 +671,40 @@ inline void SourceUnits<Utf8Unit>::assertNextCodePoint(
 
 #endif  // DEBUG
 
+template <typename Unit>
+static size_t ComputeColumn(const Unit* begin, const Unit* end) {
+#if JS_COLUMN_DIMENSION_IS_CODE_POINTS
+  return unicode::CountCodePoints(begin, end);
+#else
+  return PointerRangeSize(begin, end);
+#endif
+}
+
+template <typename Unit, class AnyCharsAccess>
+uint32_t GeneralTokenStreamChars<Unit, AnyCharsAccess>::computeColumn(
+    LineToken lineToken, uint32_t offset) const {
+  lineToken.assertConsistentOffset(offset);
+
+  const TokenStreamAnyChars& anyChars = anyCharsAccess();
+
+  const Unit* begin =
+      this->sourceUnits.codeUnitPtrAt(anyChars.lineStart(lineToken));
+  const Unit* end = this->sourceUnits.codeUnitPtrAt(offset);
+
+  auto partialCols = AssertedCast<uint32_t>(ComputeColumn(begin, end));
+  return (lineToken.isFirstLine() ? anyChars.options_.column : 0) + partialCols;
+}
+
+template <typename Unit, class AnyCharsAccess>
+void GeneralTokenStreamChars<Unit, AnyCharsAccess>::computeLineAndColumn(
+    uint32_t offset, uint32_t* line, uint32_t* column) const {
+  const TokenStreamAnyChars& anyChars = anyCharsAccess();
+
+  auto lineToken = anyChars.lineToken(offset);
+  *line = anyChars.lineNumber(lineToken);
+  *column = computeColumn(lineToken, offset);
+}
+
 template <class AnyCharsAccess>
 MOZ_COLD void TokenStreamChars<Utf8Unit, AnyCharsAccess>::internalEncodingError(
     uint8_t relevantUnits, unsigned errorNumber, ...) {
@@ -678,8 +718,8 @@ MOZ_COLD void TokenStreamChars<Utf8Unit, AnyCharsAccess>::internalEncodingError(
 
     TokenStreamAnyChars& anyChars = anyCharsAccess();
 
-    bool hasLineOfContext = anyChars.fillExcludingContext(&err, offset);
-    if (hasLineOfContext) {
+    bool canAddLineOfContext = fillExceptingContext(&err, offset);
+    if (canAddLineOfContext) {
       if (!internalComputeLineOfContext(&err, offset)) {
         break;
       }
@@ -717,7 +757,7 @@ MOZ_COLD void TokenStreamChars<Utf8Unit, AnyCharsAccess>::internalEncodingError(
     ptr[-1] = '\0';
 
     uint32_t line, column;
-    anyChars.srcCoords.lineNumAndColumnIndex(offset, &line, &column);
+    computeLineAndColumn(offset, &line, &column);
 
     if (!notes->addNoteASCII(anyChars.cx, anyChars.getFilename(), line, column,
                              GetErrorMessage, nullptr, JSMSG_BAD_CODE_UNITS,
@@ -726,7 +766,7 @@ MOZ_COLD void TokenStreamChars<Utf8Unit, AnyCharsAccess>::internalEncodingError(
     }
 
     ReportCompileError(anyChars.cx, std::move(err), std::move(notes),
-                       JSREPORT_ERROR, errorNumber, args);
+                       JSREPORT_ERROR, errorNumber, &args);
   } while (false);
 
   va_end(args);
@@ -1269,46 +1309,6 @@ bool TokenStreamSpecific<Unit, AnyCharsAccess>::seek(
   return true;
 }
 
-template <typename Unit, class AnyCharsAccess>
-bool TokenStreamSpecific<Unit, AnyCharsAccess>::reportStrictModeErrorNumberVA(
-    UniquePtr<JSErrorNotes> notes, uint32_t offset, bool strictMode,
-    unsigned errorNumber, va_list* args) {
-  TokenStreamAnyChars& anyChars = anyCharsAccess();
-  if (!strictMode && !anyChars.options().extraWarningsOption) {
-    return true;
-  }
-
-  ErrorMetadata metadata;
-  if (!computeErrorMetadata(&metadata, offset)) {
-    return false;
-  }
-
-  if (strictMode) {
-    ReportCompileError(anyChars.cx, std::move(metadata), std::move(notes),
-                       JSREPORT_ERROR, errorNumber, *args);
-    return false;
-  }
-
-  return anyChars.compileWarning(std::move(metadata), std::move(notes),
-                                 JSREPORT_WARNING | JSREPORT_STRICT,
-                                 errorNumber, *args);
-}
-
-bool TokenStreamAnyChars::compileWarning(ErrorMetadata&& metadata,
-                                         UniquePtr<JSErrorNotes> notes,
-                                         unsigned flags, unsigned errorNumber,
-                                         va_list args) {
-  if (options().werrorOption) {
-    flags &= ~JSREPORT_WARNING;
-    ReportCompileError(cx, std::move(metadata), std::move(notes), flags,
-                       errorNumber, args);
-    return false;
-  }
-
-  return ReportCompileWarning(cx, std::move(metadata), std::move(notes), flags,
-                              errorNumber, args);
-}
-
 void TokenStreamAnyChars::computeErrorMetadataNoOffset(ErrorMetadata* err) {
   err->isMuted = mutedErrors;
   err->filename = filename_;
@@ -1318,7 +1318,7 @@ void TokenStreamAnyChars::computeErrorMetadataNoOffset(ErrorMetadata* err) {
   MOZ_ASSERT(err->lineOfContext == nullptr);
 }
 
-bool TokenStreamAnyChars::fillExcludingContext(ErrorMetadata* err,
+bool TokenStreamAnyChars::fillExceptingContext(ErrorMetadata* err,
                                                uint32_t offset) {
   err->isMuted = mutedErrors;
 
@@ -1336,7 +1336,6 @@ bool TokenStreamAnyChars::fillExcludingContext(ErrorMetadata* err,
 
   // Otherwise use this TokenStreamAnyChars's location information.
   err->filename = filename_;
-  srcCoords.lineNumAndColumnIndex(offset, &err->lineNumber, &err->columnNumber);
   return true;
 }
 
@@ -1344,19 +1343,6 @@ template <typename Unit, class AnyCharsAccess>
 bool TokenStreamSpecific<Unit, AnyCharsAccess>::hasTokenizationStarted() const {
   const TokenStreamAnyChars& anyChars = anyCharsAccess();
   return anyChars.isCurrentTokenType(TokenKind::Eof) && !anyChars.isEOF();
-}
-
-void TokenStreamAnyChars::lineAndColumnAt(size_t offset, uint32_t* line,
-                                          uint32_t* column) const {
-  srcCoords.lineNumAndColumnIndex(offset, line, column);
-}
-
-template <typename Unit, class AnyCharsAccess>
-void TokenStreamSpecific<Unit, AnyCharsAccess>::currentLineAndColumn(
-    uint32_t* line, uint32_t* column) const {
-  const TokenStreamAnyChars& anyChars = anyCharsAccess();
-  uint32_t offset = anyChars.currentToken().pos.begin;
-  anyChars.srcCoords.lineNumAndColumnIndex(offset, line, column);
 }
 
 template <>
@@ -1500,147 +1486,29 @@ bool TokenStreamCharsBase<Unit>::addLineOfContext(ErrorMetadata* err,
 
 template <typename Unit, class AnyCharsAccess>
 bool TokenStreamSpecific<Unit, AnyCharsAccess>::computeErrorMetadata(
-    ErrorMetadata* err, uint32_t offset) {
-  if (offset == NoOffset) {
+    ErrorMetadata* err, const ErrorOffset& errorOffset) {
+  if (errorOffset.is<NoOffset>()) {
     anyCharsAccess().computeErrorMetadataNoOffset(err);
     return true;
   }
 
+  uint32_t offset;
+  if (errorOffset.is<uint32_t>()) {
+    offset = errorOffset.as<uint32_t>();
+  } else {
+    offset = this->sourceUnits.offset();
+  }
+
   // This function's return value isn't a success/failure indication: it
-  // returns true if this TokenStream's location information could be used,
-  // and it returns false when that information can't be used (and so we
-  // can't provide a line of context).
-  if (!anyCharsAccess().fillExcludingContext(err, offset)) {
-    return true;
+  // returns true if this TokenStream can be used to provide a line of
+  // context.
+  if (fillExceptingContext(err, offset)) {
+    // Add a line of context from this TokenStream to help with debugging.
+    return internalComputeLineOfContext(err, offset);
   }
 
-  // Add a line of context from this TokenStream to help with debugging.
-  return internalComputeLineOfContext(err, offset);
-}
-
-template <typename Unit, class AnyCharsAccess>
-bool TokenStreamSpecific<Unit, AnyCharsAccess>::reportStrictModeError(
-    unsigned errorNumber, ...) {
-  va_list args;
-  va_start(args, errorNumber);
-
-  TokenStreamAnyChars& anyChars = anyCharsAccess();
-  bool result =
-      reportStrictModeErrorNumberVA(nullptr, anyChars.currentToken().pos.begin,
-                                    anyChars.strictMode(), errorNumber, &args);
-
-  va_end(args);
-  return result;
-}
-
-template <typename Unit, class AnyCharsAccess>
-void TokenStreamSpecific<Unit, AnyCharsAccess>::reportError(
-    unsigned errorNumber, ...) {
-  va_list args;
-  va_start(args, errorNumber);
-
-  TokenStreamAnyChars& anyChars = anyCharsAccess();
-  ErrorMetadata metadata;
-  if (computeErrorMetadata(&metadata, anyChars.currentToken().pos.begin)) {
-    ReportCompileError(anyChars.cx, std::move(metadata), nullptr,
-                       JSREPORT_ERROR, errorNumber, args);
-  }
-
-  va_end(args);
-}
-
-void TokenStreamAnyChars::reportErrorNoOffset(unsigned errorNumber, ...) {
-  va_list args;
-  va_start(args, errorNumber);
-
-  reportErrorNoOffsetVA(errorNumber, args);
-
-  va_end(args);
-}
-
-void TokenStreamAnyChars::reportErrorNoOffsetVA(unsigned errorNumber,
-                                                va_list args) {
-  ErrorMetadata metadata;
-  computeErrorMetadataNoOffset(&metadata);
-
-  ReportCompileError(cx, std::move(metadata), nullptr, JSREPORT_ERROR,
-                     errorNumber, args);
-}
-
-template <typename Unit, class AnyCharsAccess>
-bool TokenStreamSpecific<Unit, AnyCharsAccess>::warning(unsigned errorNumber,
-                                                        ...) {
-  va_list args;
-  va_start(args, errorNumber);
-
-  ErrorMetadata metadata;
-  bool result =
-      computeErrorMetadata(&metadata,
-                           anyCharsAccess().currentToken().pos.begin) &&
-      anyCharsAccess().compileWarning(std::move(metadata), nullptr,
-                                      JSREPORT_WARNING, errorNumber, args);
-
-  va_end(args);
-  return result;
-}
-
-template <typename Unit, class AnyCharsAccess>
-bool TokenStreamSpecific<Unit, AnyCharsAccess>::reportExtraWarningErrorNumberVA(
-    UniquePtr<JSErrorNotes> notes, uint32_t offset, unsigned errorNumber,
-    va_list* args) {
-  TokenStreamAnyChars& anyChars = anyCharsAccess();
-  if (!anyChars.options().extraWarningsOption) {
-    return true;
-  }
-
-  ErrorMetadata metadata;
-  if (!computeErrorMetadata(&metadata, offset)) {
-    return false;
-  }
-
-  return anyChars.compileWarning(std::move(metadata), std::move(notes),
-                                 JSREPORT_STRICT | JSREPORT_WARNING,
-                                 errorNumber, *args);
-}
-
-template <typename Unit, class AnyCharsAccess>
-void TokenStreamSpecific<Unit, AnyCharsAccess>::error(unsigned errorNumber,
-                                                      ...) {
-  va_list args;
-  va_start(args, errorNumber);
-
-  ErrorMetadata metadata;
-  if (computeErrorMetadata(&metadata, this->sourceUnits.offset())) {
-    TokenStreamAnyChars& anyChars = anyCharsAccess();
-    ReportCompileError(anyChars.cx, std::move(metadata), nullptr,
-                       JSREPORT_ERROR, errorNumber, args);
-  }
-
-  va_end(args);
-}
-
-template <typename Unit, class AnyCharsAccess>
-void TokenStreamSpecific<Unit, AnyCharsAccess>::errorAtVA(uint32_t offset,
-                                                          unsigned errorNumber,
-                                                          va_list* args) {
-  ErrorMetadata metadata;
-  if (computeErrorMetadata(&metadata, offset)) {
-    TokenStreamAnyChars& anyChars = anyCharsAccess();
-    ReportCompileError(anyChars.cx, std::move(metadata), nullptr,
-                       JSREPORT_ERROR, errorNumber, *args);
-  }
-}
-
-template <typename Unit, class AnyCharsAccess>
-void TokenStreamSpecific<Unit, AnyCharsAccess>::errorAt(uint32_t offset,
-                                                        unsigned errorNumber,
-                                                        ...) {
-  va_list args;
-  va_start(args, errorNumber);
-
-  errorAtVA(offset, errorNumber, &args);
-
-  va_end(args);
+  // We can't fill in any more here.
+  return true;
 }
 
 // We have encountered a '\': check for a Unicode escape sequence after it.
@@ -2291,7 +2159,7 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::decimalNumber(
     }
   }
 #ifdef ENABLE_BIGINT
-  else if (unit == 'n') {
+  else if (unit == 'n' && anyCharsAccess().options().bigIntEnabledOption) {
     isBigInt = true;
     unit = peekCodeUnit();
   }
@@ -2387,7 +2255,7 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::regexpLiteral(
     if (MOZ_UNLIKELY(codePoint == unicode::LINE_SEPARATOR ||
                      codePoint == unicode::PARA_SEPARATOR)) {
       this->sourceUnits.ungetLineOrParagraphSeparator();
-      this->reportError(JSMSG_UNTERMINATED_REGEXP);
+      this->error(JSMSG_UNTERMINATED_REGEXP);
       return false;
     }
 
@@ -2497,6 +2365,7 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::regexpLiteral(
 template <typename Unit, class AnyCharsAccess>
 MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::bigIntLiteral(
     TokenStart start, Modifier modifier, TokenKind* out) {
+  MOZ_ASSERT(anyCharsAccess().options().bigIntEnabledOption);
   MOZ_ASSERT(this->sourceUnits.previousCodeUnit() == toUnit('n'));
   MOZ_ASSERT(this->sourceUnits.offset() > start.offset());
   uint32_t length = this->sourceUnits.offset() - start.offset();
@@ -2748,7 +2617,7 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::getTokenInternal(
         do {
           // Octal integer literals are not permitted in strict mode
           // code.
-          if (!reportStrictModeError(JSMSG_DEPRECATED_OCTAL)) {
+          if (!strictModeError(JSMSG_DEPRECATED_OCTAL)) {
             return badToken();
           }
 
@@ -2777,7 +2646,7 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::getTokenInternal(
       }
 
 #ifdef ENABLE_BIGINT
-      if (unit == 'n') {
+      if (unit == 'n' && anyCharsAccess().options().bigIntEnabledOption) {
         if (isLegacyOctalOrNoctal) {
           error(JSMSG_BIGINT_INVALID_SYNTAX);
           return badToken();
@@ -3020,7 +2889,7 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::getTokenInternal(
           do {
             int32_t unit = getCodeUnit();
             if (unit == EOF) {
-              reportError(JSMSG_UNTERMINATED_COMMENT);
+              error(JSMSG_UNTERMINATED_COMMENT);
               return badToken();
             }
 
@@ -3392,7 +3261,7 @@ bool TokenStreamSpecific<Unit, AnyCharsAccess>::getStringOrTemplateToken(
                                                 InvalidEscapeType::Octal);
               continue;
             }
-            if (!reportStrictModeError(JSMSG_DEPRECATED_OCTAL)) {
+            if (!strictModeError(JSMSG_DEPRECATED_OCTAL)) {
               return false;
             }
             anyChars.flags.sawOctalEscape = true;
@@ -3493,11 +3362,11 @@ const char* TokenKindToDesc(TokenKind tt) {
 #ifdef DEBUG
 const char* TokenKindToString(TokenKind tt) {
   switch (tt) {
-#define EMIT_CASE(name, desc) \
-  case TokenKind::name:       \
-    return "TokenKind::" #name;
+#  define EMIT_CASE(name, desc) \
+    case TokenKind::name:       \
+      return "TokenKind::" #name;
     FOR_EACH_TOKEN_KIND(EMIT_CASE)
-#undef EMIT_CASE
+#  undef EMIT_CASE
     case TokenKind::Limit:
       break;
   }
@@ -3509,8 +3378,20 @@ const char* TokenKindToString(TokenKind tt) {
 template class TokenStreamCharsBase<Utf8Unit>;
 template class TokenStreamCharsBase<char16_t>;
 
+template class GeneralTokenStreamChars<char16_t, TokenStreamAnyCharsAccess>;
 template class TokenStreamChars<char16_t, TokenStreamAnyCharsAccess>;
 template class TokenStreamSpecific<char16_t, TokenStreamAnyCharsAccess>;
+
+template class GeneralTokenStreamChars<
+    Utf8Unit, ParserAnyCharsAccess<GeneralParser<FullParseHandler, Utf8Unit>>>;
+template class GeneralTokenStreamChars<
+    Utf8Unit,
+    ParserAnyCharsAccess<GeneralParser<SyntaxParseHandler, Utf8Unit>>>;
+template class GeneralTokenStreamChars<
+    char16_t, ParserAnyCharsAccess<GeneralParser<FullParseHandler, char16_t>>>;
+template class GeneralTokenStreamChars<
+    char16_t,
+    ParserAnyCharsAccess<GeneralParser<SyntaxParseHandler, char16_t>>>;
 
 template class TokenStreamChars<
     Utf8Unit, ParserAnyCharsAccess<GeneralParser<FullParseHandler, Utf8Unit>>>;

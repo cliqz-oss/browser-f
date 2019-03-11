@@ -15,6 +15,7 @@
 
 #include "gc/Heap.h"
 #include "js/Debug.h"
+#include "js/PropertySpec.h"
 #include "vm/AsyncFunction.h"
 #include "vm/AsyncIteration.h"
 #include "vm/Debugger.h"
@@ -959,6 +960,13 @@ MOZ_MUST_USE static bool EnqueuePromiseReactionJob(
   if (!IsProxy(reactionObj)) {
     MOZ_RELEASE_ASSERT(reactionObj->is<PromiseReactionRecord>());
     reaction = &reactionObj->as<PromiseReactionRecord>();
+    if (cx->realm() != reaction->realm()) {
+      // If the compartment has multiple realms, create the job in the
+      // reaction's realm. This is consistent with the code in the else-branch
+      // and avoids problems with running jobs against a dying global (Gecko
+      // drops such jobs).
+      ar.emplace(cx, reaction);
+    }
   } else {
     JSObject* unwrappedReactionObj = UncheckedUnwrap(reactionObj);
     if (JS_IsDeadWrapper(unwrappedReactionObj)) {
@@ -1228,7 +1236,8 @@ static MOZ_MUST_USE bool NewPromiseCapability(
   // For Promise.all and Promise.race we can only optimize away the creation
   // of the GetCapabilitiesExecutor function, and directly allocate the
   // result promise instead of invoking the Promise constructor.
-  if (IsNativeFunction(cVal, PromiseConstructor)) {
+  if (IsNativeFunction(cVal, PromiseConstructor) &&
+      cVal.toObject().nonCCWRealm() == cx->realm()) {
     PromiseObject* promise;
     if (canOmitResolutionFunctions) {
       promise = CreatePromiseObjectWithoutResolutionFunctions(cx);
@@ -2092,7 +2101,8 @@ static bool PromiseConstructor(JSContext* cx, unsigned argc, Value* vp) {
       return false;
     }
   } else {
-    if (!GetPrototypeFromBuiltinConstructor(cx, args, &proto)) {
+    if (!GetPrototypeFromBuiltinConstructor(cx, args, JSProto_Promise,
+                                            &proto)) {
       return false;
     }
   }
@@ -2444,6 +2454,24 @@ static MOZ_MUST_USE bool RunResolutionFunction(JSContext* cx,
   }
 
   if (!promiseObj) {
+    if (mode == RejectMode) {
+      // The rejection will never be handled, given the returned promise
+      // is known to be unused, and already optimized away.
+      //
+      // Create temporary Promise object and reject it, in order to
+      // report the unhandled rejection.
+      //
+      // Allocation time points wrong time, but won't matter much.
+      Rooted<PromiseObject*> temporaryPromise(cx);
+      temporaryPromise = CreatePromiseObjectWithoutResolutionFunctions(cx);
+      if (!temporaryPromise) {
+        cx->clearPendingException();
+        return true;
+      }
+
+      return RejectPromiseInternal(cx, temporaryPromise, result);
+    }
+
     return true;
   }
 
@@ -4038,7 +4066,8 @@ static bool Promise_catch_impl(JSContext* cx, unsigned argc, Value* vp,
     return false;
   }
 
-  if (IsNativeFunction(thenVal, &Promise_then)) {
+  if (IsNativeFunction(thenVal, &Promise_then) &&
+      thenVal.toObject().nonCCWRealm() == cx->realm()) {
     return Promise_then_impl(cx, thisVal, onFulfilled, onRejected, args.rval(),
                              rvalUsed);
   }
@@ -4669,7 +4698,7 @@ void js::PromiseLookup::initialize(JSContext* cx) {
 }
 
 void js::PromiseLookup::reset() {
-  JS_POISON(this, 0xBB, sizeof(*this), MemCheckKind::MakeUndefined);
+  AlwaysPoison(this, 0xBB, sizeof(*this), MemCheckKind::MakeUndefined);
   state_ = State::Uninitialized;
 }
 
@@ -4951,12 +4980,11 @@ void OffThreadPromiseTask::dispatchResolveAndDestroy() {
     return;
   }
 
-  // We assume, by interface contract, that if the dispatch fails, it's
-  // because the embedding is in the process of shutting down the JSRuntime.
-  // Since JSRuntime destruction calls shutdown(), we can rely on shutdown()
-  // to delete the task on its active JSContext thread. shutdown() waits for
-  // numCanceled_ == live_.length, so we notify when this condition is
-  // reached.
+  // The DispatchToEventLoopCallback has rejected this task, indicating that
+  // shutdown has begun. Count the number of rejected tasks that have called
+  // dispatchResolveAndDestroy, and when they account for the entire contents of
+  // live_, notify OffThreadPromiseRuntimeState::shutdown that it is safe to
+  // destruct them.
   LockGuard<Mutex> lock(state.mutex_);
   state.numCanceled_++;
   if (state.numCanceled_ == state.live_.count()) {
@@ -5087,8 +5115,22 @@ void OffThreadPromiseRuntimeState::shutdown(JSContext* cx) {
   }
 
   {
-    // Wait until all live OffThreadPromiseRuntimeState have been confirmed
-    // canceled by OffThreadPromiseTask::dispatchResolve().
+    // An OffThreadPromiseTask may only be safely deleted on its JSContext's
+    // thread (since it contains a PersistentRooted holding its promise), and
+    // only after it has called dispatchResolveAndDestroy (since that is our
+    // only indication that its owner is done writing into it).
+    //
+    // OffThreadPromiseTasks accepted by the DispatchToEventLoopCallback are
+    // deleted by their 'run' methods. Only dispatchResolveAndDestroy invokes
+    // the callback, and the point of the callback is to call 'run' on the
+    // JSContext's thread, so the conditions above are met.
+    //
+    // But although the embedding's DispatchToEventLoopCallback promises to run
+    // every task it accepts before shutdown, when shutdown does begin it starts
+    // rejecting tasks; we cannot count on 'run' to clean those up for us.
+    // Instead, dispatchResolveAndDestroy keeps a count of rejected ('canceled')
+    // tasks; once that count covers everything in live_, this function itself
+    // runs only on the JSContext's thread, so we can delete them all here.
     LockGuard<Mutex> lock(mutex_);
     while (live_.count() != numCanceled_) {
       MOZ_ASSERT(numCanceled_ < live_.count());
@@ -5096,13 +5138,14 @@ void OffThreadPromiseRuntimeState::shutdown(JSContext* cx) {
     }
   }
 
-  // Now that all the tasks have stopped concurrent execution, we can just
-  // delete everything. We don't want each OffThreadPromiseTask to unregister
-  // itself (which would mutate live_ while we are iterating over it) so reset
-  // the tasks' internal registered_ flag.
+  // Now that live_ contains only cancelled tasks, we can just delete
+  // everything.
   for (OffThreadPromiseTaskSet::Range r = live_.all(); !r.empty();
        r.popFront()) {
     OffThreadPromiseTask* task = r.front();
+
+    // We don't want 'task' to unregister itself (which would mutate live_ while
+    // we are iterating over it) so reset its internal registered_ flag.
     MOZ_ASSERT(task->registered_);
     task->registered_ = false;
     js_delete(task);

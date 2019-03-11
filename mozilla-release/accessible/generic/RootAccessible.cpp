@@ -19,7 +19,7 @@
 #include "Role.h"
 #include "States.h"
 #ifdef MOZ_XUL
-#include "XULTreeAccessible.h"
+#  include "XULTreeAccessible.h"
 #endif
 
 #include "mozilla/dom/BindingUtils.h"
@@ -32,7 +32,7 @@
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/EventTarget.h"
 #include "nsIDOMXULMultSelectCntrlEl.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsIPropertyBag2.h"
 #include "nsIServiceManager.h"
@@ -43,7 +43,7 @@
 #include "nsGlobalWindow.h"
 
 #ifdef MOZ_XUL
-#include "nsIXULWindow.h"
+#  include "nsIXULWindow.h"
 #endif
 
 using namespace mozilla;
@@ -58,7 +58,7 @@ NS_IMPL_ISUPPORTS_INHERITED(RootAccessible, DocAccessible, nsIDOMEventListener)
 ////////////////////////////////////////////////////////////////////////////////
 // Constructor/destructor
 
-RootAccessible::RootAccessible(nsIDocument* aDocument, nsIPresShell* aPresShell)
+RootAccessible::RootAccessible(Document* aDocument, nsIPresShell* aPresShell)
     : DocAccessibleWrap(aDocument, aPresShell) {
   mType = eRootType;
 }
@@ -337,7 +337,7 @@ void RootAccessible::ProcessDOMEvent(Event* aDOMEvent) {
     // If multiselect tree, we should fire selectionadd or selection removed
     if (FocusMgr()->HasDOMFocus(targetNode)) {
       nsCOMPtr<nsIDOMXULMultiSelectControlElement> multiSel =
-          do_QueryInterface(targetNode);
+          targetNode->AsElement()->AsXULMultiSelectControl();
       nsAutoString selType;
       multiSel->GetSelType(selType);
       if (selType.IsEmpty() || !selType.EqualsLiteral("single")) {
@@ -448,7 +448,7 @@ Relation RootAccessible::RelationByType(RelationType aType) const {
     nsCOMPtr<nsPIDOMWindowOuter> contentWindow =
         nsGlobalWindowOuter::Cast(rootWindow)->GetContent();
     if (contentWindow) {
-      nsCOMPtr<nsIDocument> contentDocumentNode = contentWindow->GetDoc();
+      RefPtr<Document> contentDocumentNode = contentWindow->GetDoc();
       if (contentDocumentNode) {
         DocAccessible* contentDocument =
             GetAccService()->GetDocAccessible(contentDocumentNode);

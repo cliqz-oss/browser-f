@@ -9,6 +9,7 @@
 #include "jsapi.h"
 
 #include "builtin/MapObject.h"
+#include "js/PropertySpec.h"
 #include "vm/GlobalObject.h"
 #include "vm/Iteration.h"
 #include "vm/JSContext.h"
@@ -171,7 +172,7 @@ bool WeakSetObject::construct(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   RootedObject proto(cx);
-  if (!GetPrototypeFromBuiltinConstructor(cx, args, &proto)) {
+  if (!GetPrototypeFromBuiltinConstructor(cx, args, JSProto_WeakSet, &proto)) {
     return false;
   }
 

@@ -21,6 +21,15 @@ static StaticRefPtr<VRGPUChild> sVRGPUChildSingleton;
     return false;
   }
   sVRGPUChildSingleton = child;
+
+  RefPtr<Runnable> task =
+      NS_NewRunnableFunction("VRGPUChild::SendStartVRService", []() -> void {
+        VRGPUChild* vrGPUChild = VRGPUChild::Get();
+        vrGPUChild->SendStartVRService();
+      });
+
+  NS_DispatchToMainThread(task.forget());
+
   return true;
 }
 
@@ -31,10 +40,17 @@ static StaticRefPtr<VRGPUChild> sVRGPUChildSingleton;
   return sVRGPUChildSingleton;
 }
 
-/*static*/ void VRGPUChild::ShutDown() {
+/*static*/ void VRGPUChild::Shutdown() {
   MOZ_ASSERT(NS_IsMainThread());
+  if (sVRGPUChildSingleton && !sVRGPUChildSingleton->IsClosed()) {
+    sVRGPUChildSingleton->Close();
+  }
   sVRGPUChildSingleton = nullptr;
 }
+
+void VRGPUChild::ActorDestroy(ActorDestroyReason aWhy) { mClosed = true; }
+
+bool VRGPUChild::IsClosed() { return mClosed; }
 
 }  // namespace gfx
 }  // namespace mozilla

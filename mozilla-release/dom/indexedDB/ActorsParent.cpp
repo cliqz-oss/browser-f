@@ -58,6 +58,7 @@
 #include "mozilla/dom/quota/Client.h"
 #include "mozilla/dom/quota/FileStreams.h"
 #include "mozilla/dom/quota/OriginScope.h"
+#include "mozilla/dom/quota/QuotaCommon.h"
 #include "mozilla/dom/quota/QuotaManager.h"
 #include "mozilla/dom/quota/UsageInfo.h"
 #include "mozilla/ipc/BackgroundParent.h"
@@ -116,18 +117,18 @@
 #define DISABLE_ASSERTS_FOR_FUZZING 0
 
 #if DISABLE_ASSERTS_FOR_FUZZING
-#define ASSERT_UNLESS_FUZZING(...) \
-  do {                             \
-  } while (0)
+#  define ASSERT_UNLESS_FUZZING(...) \
+    do {                             \
+    } while (0)
 #else
-#define ASSERT_UNLESS_FUZZING(...) MOZ_ASSERT(false, __VA_ARGS__)
+#  define ASSERT_UNLESS_FUZZING(...) MOZ_ASSERT(false, __VA_ARGS__)
 #endif
 
 #define IDB_DEBUG_LOG(_args) \
   MOZ_LOG(IndexedDatabaseManager::GetLoggingModule(), LogLevel::Debug, _args)
 
 #if defined(MOZ_WIDGET_ANDROID)
-#define IDB_MOBILE
+#  define IDB_MOBILE
 #endif
 
 namespace mozilla {
@@ -6424,12 +6425,12 @@ class MutableFile : public BackgroundMutableFileParentBase {
   ~MutableFile() override;
 
   PBackgroundFileHandleParent* AllocPBackgroundFileHandleParent(
-      const FileMode& aMode) override;
+      const FileMode& aMode) final;
 
   mozilla::ipc::IPCResult RecvPBackgroundFileHandleConstructor(
-      PBackgroundFileHandleParent* aActor, const FileMode& aMode) override;
+      PBackgroundFileHandleParent* aActor, const FileMode& aMode) final;
 
-  mozilla::ipc::IPCResult RecvGetFileId(int64_t* aFileId) override;
+  mozilla::ipc::IPCResult RecvGetFileId(int64_t* aFileId) final;
 };
 
 class FactoryOp : public DatabaseOperationBase,
@@ -6618,7 +6619,7 @@ class FactoryOp : public DatabaseOperationBase,
   // IPDL methods.
   void ActorDestroy(ActorDestroyReason aWhy) override;
 
-  mozilla::ipc::IPCResult RecvPermissionRetry() override;
+  mozilla::ipc::IPCResult RecvPermissionRetry() final;
 
   virtual void SendBlockedNotification() = 0;
 
@@ -7116,7 +7117,7 @@ class NormalTransactionOp : public TransactionDatabaseOperationBase,
   void ActorDestroy(ActorDestroyReason aWhy) override;
 
   mozilla::ipc::IPCResult RecvContinue(
-      const PreprocessResponse& aResponse) override;
+      const PreprocessResponse& aResponse) final;
 };
 
 class ObjectStoreAddOrPutRequestOp final : public NormalTransactionOp {
@@ -15518,6 +15519,7 @@ nsresult QuotaClient::InitOrigin(PersistenceType aPersistenceType,
   nsresult rv =
       GetDirectory(aPersistenceType, aOrigin, getter_AddRefs(directory));
   if (NS_WARN_IF(NS_FAILED(rv))) {
+    REPORT_TELEMETRY_INIT_ERR(kExternalError, IDB_GetDirectory);
     return rv;
   }
 
@@ -15531,6 +15533,7 @@ nsresult QuotaClient::InitOrigin(PersistenceType aPersistenceType,
                             /* aForUpgrade */ false, subdirsToProcess,
                             databaseFilenames);
   if (NS_WARN_IF(NS_FAILED(rv))) {
+    REPORT_TELEMETRY_INIT_ERR(kExternalError, IDB_GetDBFilenames);
     return rv;
   }
 
@@ -15544,11 +15547,13 @@ nsresult QuotaClient::InitOrigin(PersistenceType aPersistenceType,
     // The directory must have the correct suffix.
     nsDependentSubstring subdirNameBase;
     if (NS_WARN_IF(!GetBaseFilename(subdirName, filesSuffix, subdirNameBase))) {
+      REPORT_TELEMETRY_INIT_ERR(kInternalError, IDB_GetBaseFilename);
       return NS_ERROR_UNEXPECTED;
     }
 
     // The directory base must exist in databaseFilenames.
     if (NS_WARN_IF(!databaseFilenames.GetEntry(subdirNameBase))) {
+      REPORT_TELEMETRY_INIT_ERR(kInternalError, IDB_GetEntry);
       return NS_ERROR_UNEXPECTED;
     }
   }
@@ -15565,22 +15570,26 @@ nsresult QuotaClient::InitOrigin(PersistenceType aPersistenceType,
     nsCOMPtr<nsIFile> fmDirectory;
     rv = directory->Clone(getter_AddRefs(fmDirectory));
     if (NS_WARN_IF(NS_FAILED(rv))) {
+      REPORT_TELEMETRY_INIT_ERR(kExternalError, IDB_Clone);
       return rv;
     }
 
     rv = fmDirectory->Append(databaseFilename + filesSuffix);
     if (NS_WARN_IF(NS_FAILED(rv))) {
+      REPORT_TELEMETRY_INIT_ERR(kExternalError, IDB_Append);
       return rv;
     }
 
     nsCOMPtr<nsIFile> databaseFile;
     rv = directory->Clone(getter_AddRefs(databaseFile));
     if (NS_WARN_IF(NS_FAILED(rv))) {
+      REPORT_TELEMETRY_INIT_ERR(kExternalError, IDB_Clone2);
       return rv;
     }
 
     rv = databaseFile->Append(databaseFilename + sqliteSuffix);
     if (NS_WARN_IF(NS_FAILED(rv))) {
+      REPORT_TELEMETRY_INIT_ERR(kExternalError, IDB_Append2);
       return rv;
     }
 
@@ -15588,11 +15597,13 @@ nsresult QuotaClient::InitOrigin(PersistenceType aPersistenceType,
     if (aUsageInfo) {
       rv = directory->Clone(getter_AddRefs(walFile));
       if (NS_WARN_IF(NS_FAILED(rv))) {
+        REPORT_TELEMETRY_INIT_ERR(kExternalError, IDB_Clone3);
         return rv;
       }
 
       rv = walFile->Append(databaseFilename + walSuffix);
       if (NS_WARN_IF(NS_FAILED(rv))) {
+        REPORT_TELEMETRY_INIT_ERR(kExternalError, IDB_Append3);
         return rv;
       }
     }
@@ -15601,6 +15612,7 @@ nsresult QuotaClient::InitOrigin(PersistenceType aPersistenceType,
                                     aGroup, aOrigin,
                                     TelemetryIdForFile(databaseFile));
     if (NS_WARN_IF(NS_FAILED(rv))) {
+      REPORT_TELEMETRY_INIT_ERR(kInternalError, IDB_InitDirectory);
       return rv;
     }
 
@@ -15608,6 +15620,7 @@ nsresult QuotaClient::InitOrigin(PersistenceType aPersistenceType,
       int64_t fileSize;
       rv = databaseFile->GetFileSize(&fileSize);
       if (NS_WARN_IF(NS_FAILED(rv))) {
+        REPORT_TELEMETRY_INIT_ERR(kExternalError, IDB_GetFileSize);
         return rv;
       }
 
@@ -15621,12 +15634,14 @@ nsresult QuotaClient::InitOrigin(PersistenceType aPersistenceType,
         aUsageInfo->AppendToDatabaseUsage(uint64_t(fileSize));
       } else if (NS_WARN_IF(rv != NS_ERROR_FILE_NOT_FOUND &&
                             rv != NS_ERROR_FILE_TARGET_DOES_NOT_EXIST)) {
+        REPORT_TELEMETRY_INIT_ERR(kExternalError, IDB_GetWalFileSize);
         return rv;
       }
 
       uint64_t usage;
       rv = FileManager::GetUsage(fmDirectory, &usage);
       if (NS_WARN_IF(NS_FAILED(rv))) {
+        REPORT_TELEMETRY_INIT_ERR(kExternalError, IDB_GetUsage);
         return rv;
       }
 
@@ -15871,10 +15886,15 @@ nsresult QuotaClient::GetDatabaseFilenames(
       continue;
     }
 
-    // Skip Desktop Service Store (.DS_Store) files. These files are only used
-    // on Mac OS X, but the profile can be shared across different operating
-    // systems, so we check it on all platforms.
-    if (leafName.EqualsLiteral(DSSTORE_FILE_NAME)) {
+    // Skip OS metadata files. These files are only used in different platforms,
+    // but the profile can be shared across different operating systems, so we
+    // check it on all platforms.
+    if (QuotaManager::IsOSMetadata(leafName)) {
+      continue;
+    }
+
+    // Skip files starting with ".".
+    if (QuotaManager::IsDotFile(leafName)) {
       continue;
     }
 
@@ -15948,6 +15968,11 @@ nsresult QuotaClient::GetUsageForDirectoryInternal(nsIFile* aDirectory,
     rv = file->GetLeafName(leafName);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
+    }
+
+    if (QuotaManager::IsOSMetadata(leafName) ||
+        QuotaManager::IsDotFile(leafName)) {
+      continue;
     }
 
     // Journal files and sqlite-shm files don't count towards usage.

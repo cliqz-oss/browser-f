@@ -513,7 +513,7 @@ policies and contribution forms [3].
             return new DedicatedWorkerTestEnvironment();
         }
 
-        if (!('self' in global_scope)) {
+        if (!('location' in global_scope)) {
             return new ShellTestEnvironment();
         }
 
@@ -1486,11 +1486,9 @@ policies and contribution forms [3].
         this.index = null;
 
         this.properties = properties;
-        var timeout = properties.timeout ? properties.timeout : settings.test_timeout;
-        if (timeout !== null) {
-            this.timeout_length = timeout * tests.timeout_multiplier;
-        } else {
-            this.timeout_length = null;
+        this.timeout_length = settings.test_timeout;
+        if (this.timeout_length !== null) {
+            this.timeout_length *= tests.timeout_multiplier;
         }
 
         this.message = null;
@@ -2137,6 +2135,9 @@ policies and contribution forms [3].
                     }
                 } else if (p == "timeout_multiplier") {
                     this.timeout_multiplier = value;
+                    if (this.timeout_length) {
+                         this.timeout_length *= this.timeout_multiplier;
+                    }
                 }
             }
         }

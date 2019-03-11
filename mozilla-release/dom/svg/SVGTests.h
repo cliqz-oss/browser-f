@@ -8,13 +8,12 @@
 #define mozilla_dom_SVGTests_h
 
 #include "nsStringFwd.h"
-#include "SVGStringList.h"
-#include "nsCOMPtr.h"
+#include "mozilla/AlreadyAddRefed.h"
+#include "mozilla/SVGStringList.h"
 
 class nsAttrValue;
 class nsAtom;
 class nsStaticAtom;
-class nsSVGElement;
 
 namespace mozilla {
 class DOMSVGStringList;
@@ -27,6 +26,8 @@ class DOMSVGStringList;
   }
 
 namespace dom {
+
+class SVGElement;
 
 class SVGTests : public nsISupports {
  public:
@@ -95,11 +96,11 @@ class SVGTests : public nsISupports {
   already_AddRefed<DOMSVGStringList> RequiredFeatures();
   already_AddRefed<DOMSVGStringList> RequiredExtensions();
   already_AddRefed<DOMSVGStringList> SystemLanguage();
-  bool HasExtension(const nsAString& aExtension);
+  bool HasExtension(const nsAString& aExtension) const;
 
-  virtual nsSVGElement* AsSVGElement() = 0;
+  virtual SVGElement* AsSVGElement() = 0;
 
-  const nsSVGElement* AsSVGElement() const {
+  const SVGElement* AsSVGElement() const {
     return const_cast<SVGTests*>(this)->AsSVGElement();
   }
 

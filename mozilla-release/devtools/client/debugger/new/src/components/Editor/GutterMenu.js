@@ -4,8 +4,9 @@
 
 import { Component } from "react";
 import { showMenu } from "devtools-contextmenu";
-import { connect } from "react-redux";
+import { connect } from "../../utils/connect";
 import { lineAtHeight } from "../../utils/editor";
+import { features } from "../../utils/prefs";
 import {
   getContextMenu,
   getEmptyLines,
@@ -25,6 +26,7 @@ type Props = {
 export function gutterMenu({
   breakpoint,
   line,
+  column,
   event,
   isPaused,
   toggleBreakpoint,
@@ -32,7 +34,8 @@ export function gutterMenu({
   toggleDisabledBreakpoint,
   isCbPanelOpen,
   closeConditionalPanel,
-  continueToHere
+  continueToHere,
+  sourceId
 }) {
   event.stopPropagation();
   event.preventDefault();
@@ -42,17 +45,25 @@ export function gutterMenu({
       id: "node-menu-add-breakpoint",
       label: L10N.getStr("editor.addBreakpoint")
     },
+    addLogPoint: {
+      id: "node-menu-add-log-point",
+      label: L10N.getStr("editor.addLogPoint")
+    },
     addConditional: {
       id: "node-menu-add-conditional-breakpoint",
-      label: L10N.getStr("editor.addConditionalBreakpoint")
+      label: L10N.getStr("editor.addConditionBreakpoint")
     },
     removeBreakpoint: {
       id: "node-menu-remove-breakpoint",
       label: L10N.getStr("editor.removeBreakpoint")
     },
+    editLogPoint: {
+      id: "node-menu-edit-log-point",
+      label: L10N.getStr("editor.editLogPoint")
+    },
     editConditional: {
       id: "node-menu-edit-conditional-breakpoint",
-      label: L10N.getStr("editor.editBreakpoint")
+      label: L10N.getStr("editor.editConditionBreakpoint")
     },
     enableBreakpoint: {
       id: "node-menu-enable-breakpoint",
@@ -72,7 +83,7 @@ export function gutterMenu({
     accesskey: L10N.getStr("shortcuts.toggleBreakpoint.accesskey"),
     disabled: false,
     click: () => {
-      toggleBreakpoint(line);
+      toggleBreakpoint(line, column);
       if (isCbPanelOpen) {
         closeConditionalPanel();
       }
@@ -81,23 +92,50 @@ export function gutterMenu({
     ...(breakpoint ? gutterItems.removeBreakpoint : gutterItems.addBreakpoint)
   };
 
-  const conditionalBreakpoint = {
-    accesskey: L10N.getStr("editor.addConditionalBreakpoint.accesskey"),
+  const logPoint = {
+    accesskey: L10N.getStr("editor.addLogPoint.accesskey"),
     disabled: false,
-    click: () => openConditionalPanel(line),
+    click: () =>
+      openConditionalPanel(
+        breakpoint ? breakpoint.location : { line, column, sourceId },
+        true
+      ),
+    accelerator: L10N.getStr("toggleCondPanel.key"),
+    ...(breakpoint && breakpoint.condition
+      ? gutterItems.editLogPoint
+      : gutterItems.addLogPoint)
+  };
+
+  const conditionalBreakpoint = {
+    accesskey: L10N.getStr("editor.addConditionBreakpoint.accesskey"),
+    disabled: false,
+    // Leaving column undefined so pause points can be detected
+    click: () =>
+      openConditionalPanel(
+        breakpoint ? breakpoint.location : { line, column, sourceId }
+      ),
     accelerator: L10N.getStr("toggleCondPanel.key"),
     ...(breakpoint && breakpoint.condition
       ? gutterItems.editConditional
       : gutterItems.addConditional)
   };
 
-  const items = [toggleBreakpointItem, conditionalBreakpoint];
+  let items = [toggleBreakpointItem, conditionalBreakpoint];
+  
+  if (features.logPoints) {
+    items.push(logPoint)
+  }
+
+  if (breakpoint && breakpoint.condition) {
+    const remove = breakpoint.log ? conditionalBreakpoint : logPoint;
+    items = items.filter(item => item !== remove);
+  }
 
   if (isPaused) {
     const continueToHereItem = {
       accesskey: L10N.getStr("editor.continueToHere.accesskey"),
       disabled: false,
-      click: () => continueToHere(line),
+      click: () => continueToHere(line, column),
       ...gutterItems.continueToHere
     };
     items.push(continueToHereItem);
@@ -107,7 +145,7 @@ export function gutterMenu({
     const disableBreakpoint = {
       accesskey: L10N.getStr("editor.disableBreakpoint.accesskey"),
       disabled: false,
-      click: () => toggleDisabledBreakpoint(line),
+      click: () => toggleDisabledBreakpoint(line, column),
       ...(breakpoint.disabled
         ? gutterItems.enableBreakpoint
         : gutterItems.disableBreakpoint)
@@ -120,10 +158,6 @@ export function gutterMenu({
 
 class GutterContextMenuComponent extends Component {
   props: Props;
-
-  constructor() {
-    super();
-  }
 
   shouldComponentUpdate(nextProps) {
     return nextProps.contextMenu.type === "Gutter";
@@ -138,17 +172,24 @@ class GutterContextMenuComponent extends Component {
   showMenu(nextProps) {
     const { contextMenu, ...props } = nextProps;
     const { event } = contextMenu;
+
     const sourceId = props.selectedSource ? props.selectedSource.id : "";
     const line = lineAtHeight(props.editor, sourceId, event);
+    const column = props.editor.codeMirror.coordsChar({
+      left: event.x,
+      top: event.y
+    }).ch;
     const breakpoint = nextProps.breakpoints.find(
-      bp => bp.location.line === line
+      bp => bp.location.line === line && bp.location.column === column
     );
 
-    if (props.emptyLines && props.emptyLines.includes(line)) {
-      return;
+    // Allow getFirstVisiblePausePoint to find the best first breakpoint
+    // position by not providing an explicit column number
+    if (features.columnBreakpoints && !breakpoint && column === 0) {
+      column = undefined;
     }
 
-    gutterMenu({ event, sourceId, line, breakpoint, ...props });
+    gutterMenu({ event, sourceId, line, column, breakpoint, ...props });
   }
 
   render() {

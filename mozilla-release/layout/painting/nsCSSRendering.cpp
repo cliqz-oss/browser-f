@@ -31,7 +31,7 @@
 #include "nsGkAtoms.h"
 #include "nsCSSAnonBoxes.h"
 #include "nsIContent.h"
-#include "nsIDocumentInlines.h"
+#include "mozilla/dom/DocumentInlines.h"
 #include "nsIScrollableFrame.h"
 #include "imgIRequest.h"
 #include "imgIContainer.h"
@@ -66,6 +66,7 @@ using namespace mozilla::css;
 using namespace mozilla::gfx;
 using namespace mozilla::image;
 using mozilla::CSSSizeOrRatio;
+using mozilla::dom::Document;
 
 static int gFrameTreeLockCount = 0;
 
@@ -668,14 +669,30 @@ ImgDrawResult nsCSSRendering::CreateWebRenderCommandsForBorder(
     mozilla::wr::DisplayListBuilder& aBuilder,
     mozilla::wr::IpcResourceUpdateQueue& aResources,
     const mozilla::layers::StackingContextHelper& aSc,
-    mozilla::layers::WebRenderLayerManager* aManager,
+    mozilla::layers::RenderRootStateManager* aManager,
     nsDisplayListBuilder* aDisplayListBuilder) {
+  const nsStyleBorder* styleBorder = aForFrame->Style()->StyleBorder();
+  return nsCSSRendering::CreateWebRenderCommandsForBorderWithStyleBorder(
+      aItem, aForFrame, aBorderArea, aBuilder, aResources, aSc, aManager,
+      aDisplayListBuilder, *styleBorder);
+}
+
+ImgDrawResult nsCSSRendering::CreateWebRenderCommandsForBorderWithStyleBorder(
+    nsDisplayItem* aItem, nsIFrame* aForFrame, const nsRect& aBorderArea,
+    mozilla::wr::DisplayListBuilder& aBuilder,
+    mozilla::wr::IpcResourceUpdateQueue& aResources,
+    const mozilla::layers::StackingContextHelper& aSc,
+    mozilla::layers::RenderRootStateManager* aManager,
+    nsDisplayListBuilder* aDisplayListBuilder,
+    const nsStyleBorder& aStyleBorder) {
   // First try to draw a normal border
   {
     bool borderIsEmpty = false;
-    Maybe<nsCSSBorderRenderer> br = nsCSSRendering::CreateBorderRenderer(
-        aForFrame->PresContext(), nullptr, aForFrame, nsRect(), aBorderArea,
-        aForFrame->Style(), &borderIsEmpty, aForFrame->GetSkipSides());
+    Maybe<nsCSSBorderRenderer> br =
+        nsCSSRendering::CreateBorderRendererWithStyleBorder(
+            aForFrame->PresContext(), nullptr, aForFrame, nsRect(), aBorderArea,
+            aStyleBorder, aForFrame->Style(), &borderIsEmpty,
+            aForFrame->GetSkipSides());
     if (borderIsEmpty) {
       return ImgDrawResult::SUCCESS;
     }
@@ -687,8 +704,7 @@ ImgDrawResult nsCSSRendering::CreateWebRenderCommandsForBorder(
   }
 
   // Next try to draw an image border
-  const nsStyleBorder* styleBorder = aForFrame->Style()->StyleBorder();
-  const nsStyleImage* image = &styleBorder->mBorderImageSource;
+  const nsStyleImage* image = &aStyleBorder.mBorderImageSource;
 
   // Filter out unsupported image/border types
   if (!image) {
@@ -704,10 +720,10 @@ ImgDrawResult nsCSSRendering::CreateWebRenderCommandsForBorder(
     return ImgDrawResult::NOT_SUPPORTED;
   }
 
-  if (styleBorder->mBorderImageRepeatH == StyleBorderImageRepeat::Round ||
-      styleBorder->mBorderImageRepeatH == StyleBorderImageRepeat::Space ||
-      styleBorder->mBorderImageRepeatV == StyleBorderImageRepeat::Round ||
-      styleBorder->mBorderImageRepeatV == StyleBorderImageRepeat::Space) {
+  if (aStyleBorder.mBorderImageRepeatH == StyleBorderImageRepeat::Round ||
+      aStyleBorder.mBorderImageRepeatH == StyleBorderImageRepeat::Space ||
+      aStyleBorder.mBorderImageRepeatV == StyleBorderImageRepeat::Round ||
+      aStyleBorder.mBorderImageRepeatV == StyleBorderImageRepeat::Space) {
     return ImgDrawResult::NOT_SUPPORTED;
   }
 
@@ -719,7 +735,7 @@ ImgDrawResult nsCSSRendering::CreateWebRenderCommandsForBorder(
   image::ImgDrawResult result;
   Maybe<nsCSSBorderImageRenderer> bir =
       nsCSSBorderImageRenderer::CreateBorderImageRenderer(
-          aForFrame->PresContext(), aForFrame, aBorderArea, *styleBorder,
+          aForFrame->PresContext(), aForFrame, aBorderArea, aStyleBorder,
           aItem->GetPaintRect(), aForFrame->GetSkipSides(), flags, &result);
 
   if (!bir) {
@@ -795,7 +811,7 @@ static nsCSSBorderRenderer ConstructBorderRenderer(
       static_cast<int>(borderStyles[1]), static_cast<int>(borderStyles[2]),
       static_cast<int>(borderStyles[3]));
 
-  nsIDocument* document = nullptr;
+  Document* document = nullptr;
   nsIContent* content = aForFrame->GetContent();
   if (content) {
     document = content->OwnerDoc();
@@ -927,7 +943,9 @@ Maybe<nsCSSBorderRenderer> nsCSSRendering::CreateBorderRendererWithStyleBorder(
 static nsRect GetOutlineInnerRect(nsIFrame* aFrame) {
   nsRect* savedOutlineInnerRect =
       aFrame->GetProperty(nsIFrame::OutlineInnerRectProperty());
-  if (savedOutlineInnerRect) return *savedOutlineInnerRect;
+  if (savedOutlineInnerRect) {
+    return *savedOutlineInnerRect;
+  }
 
   // FIXME bug 1221888
   NS_ERROR("we should have saved a frame property");
@@ -1028,7 +1046,7 @@ Maybe<nsCSSBorderRenderer> nsCSSRendering::CreateBorderRendererForOutline(
       Float(width) / oneDevPixel, Float(width) / oneDevPixel};
   Rect dirtyRect = NSRectToRect(aDirtyRect, oneDevPixel);
 
-  nsIDocument* document = nullptr;
+  Document* document = nullptr;
   nsIContent* content = aForFrame->GetContent();
   if (content) {
     document = content->OwnerDoc();
@@ -1200,7 +1218,7 @@ nsIFrame* nsCSSRendering::FindBackgroundStyleFrame(nsIFrame* aForFrame) {
     return aForFrame;
   }
 
-  nsIDocument* document = content->OwnerDoc();
+  Document* document = content->OwnerDoc();
 
   dom::Element* bodyContent = document->GetBodyElement();
   // We need to null check the body node (bug 118829) since
@@ -1274,7 +1292,7 @@ inline bool FindElementBackground(nsIFrame* aForFrame,
   if (aForFrame->Style()->GetPseudo()) return true;  // A pseudo-element frame.
 
   // We should only look at the <html> background if we're in an HTML document
-  nsIDocument* document = content->OwnerDoc();
+  Document* document = content->OwnerDoc();
 
   dom::Element* bodyContent = document->GetBodyElement();
   if (bodyContent != content)
@@ -1423,8 +1441,8 @@ void nsCSSRendering::PaintBoxShadowOuter(nsPresContext* aPresContext,
     // by optimizing box-shadow drawing more for the cases where we don't have a
     // skip-rect.
     useSkipGfxRect = !aForFrame->IsLeaf();
-    nsRect paddingRect = aForFrame->GetPaddingRect() -
-                         aForFrame->GetPosition() + aFrameArea.TopLeft();
+    nsRect paddingRect =
+        aForFrame->GetPaddingRectRelativeToSelf() + aFrameArea.TopLeft();
     skipGfxRect = nsLayoutUtils::RectToGfxRect(paddingRect, oneDevPixel);
   } else if (hasBorderRadius) {
     skipGfxRect.Deflate(gfxMargin(
@@ -1880,7 +1898,7 @@ ImgDrawResult nsCSSRendering::BuildWebRenderDisplayItemsForStyleImageLayer(
     const PaintBGParams& aParams, mozilla::wr::DisplayListBuilder& aBuilder,
     mozilla::wr::IpcResourceUpdateQueue& aResources,
     const mozilla::layers::StackingContextHelper& aSc,
-    mozilla::layers::WebRenderLayerManager* aManager, nsDisplayItem* aItem) {
+    mozilla::layers::RenderRootStateManager* aManager, nsDisplayItem* aItem) {
   MOZ_ASSERT(aParams.frame,
              "Frame is expected to be provided to "
              "BuildWebRenderDisplayItemsForStyleImageLayer");
@@ -2317,7 +2335,7 @@ nscolor nsCSSRendering::DetermineBackgroundColor(nsPresContext* aPresContext,
 
   const nsStyleVisibility* visibility = aComputedStyle->StyleVisibility();
 
-  if (visibility->mColorAdjust != NS_STYLE_COLOR_ADJUST_EXACT &&
+  if (visibility->mColorAdjust != StyleColorAdjust::Exact &&
       aFrame->HonorPrintBackgroundSettings()) {
     aDrawBackgroundImage = aPresContext->GetBackgroundImageDraw();
     aDrawBackgroundColor = aPresContext->GetBackgroundColorDraw();
@@ -2605,7 +2623,7 @@ nsCSSRendering::BuildWebRenderDisplayItemsForStyleImageLayerWithSC(
     const PaintBGParams& aParams, mozilla::wr::DisplayListBuilder& aBuilder,
     mozilla::wr::IpcResourceUpdateQueue& aResources,
     const mozilla::layers::StackingContextHelper& aSc,
-    mozilla::layers::WebRenderLayerManager* aManager, nsDisplayItem* aItem,
+    mozilla::layers::RenderRootStateManager* aManager, nsDisplayItem* aItem,
     ComputedStyle* aBackgroundSC, const nsStyleBorder& aBorder) {
   MOZ_ASSERT(!(aParams.paintFlags & PAINTBG_MASK_IMAGE));
 

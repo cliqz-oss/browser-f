@@ -9,17 +9,18 @@
 
 #include "nsCycleCollectionParticipant.h"
 #include "nsError.h"
-#include "nsISMILAttr.h"
 #include "nsMathUtils.h"
-#include "nsSVGElement.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/FloatingPoint.h"
-#include "mozilla/dom/SVGAnimatedNumber.h"
+#include "mozilla/SMILAttr.h"
 #include "mozilla/UniquePtr.h"
-
-class nsSMILValue;
+#include "mozilla/dom/SVGAnimatedNumber.h"
+#include "mozilla/dom/SVGElement.h"
 
 namespace mozilla {
+
+class SMILValue;
+
 namespace dom {
 class SVGAnimationElement;
 }  // namespace dom
@@ -27,6 +28,10 @@ class SVGAnimationElement;
 
 class nsSVGNumber2 {
  public:
+  typedef mozilla::SMILAttr SMILAttr;
+  typedef mozilla::SMILValue SMILValue;
+  typedef mozilla::dom::SVGElement SVGElement;
+
   void Init(uint8_t aAttrEnum = 0xff, float aValue = 0) {
     mAnimVal = mBaseVal = aValue;
     mAttrEnum = aAttrEnum;
@@ -34,13 +39,12 @@ class nsSVGNumber2 {
     mIsBaseSet = false;
   }
 
-  nsresult SetBaseValueString(const nsAString& aValue,
-                              nsSVGElement* aSVGElement);
+  nsresult SetBaseValueString(const nsAString& aValue, SVGElement* aSVGElement);
   void GetBaseValueString(nsAString& aValue);
 
-  void SetBaseValue(float aValue, nsSVGElement* aSVGElement);
+  void SetBaseValue(float aValue, SVGElement* aSVGElement);
   float GetBaseValue() const { return mBaseVal; }
-  void SetAnimValue(float aValue, nsSVGElement* aSVGElement);
+  void SetAnimValue(float aValue, SVGElement* aSVGElement);
   float GetAnimValue() const { return mAnimVal; }
 
   // Returns true if the animated value of this number has been explicitly
@@ -51,8 +55,8 @@ class nsSVGNumber2 {
   bool IsExplicitlySet() const { return mIsAnimated || mIsBaseSet; }
 
   already_AddRefed<mozilla::dom::SVGAnimatedNumber> ToDOMAnimatedNumber(
-      nsSVGElement* aSVGElement);
-  mozilla::UniquePtr<nsISMILAttr> ToSMILAttr(nsSVGElement* aSVGElement);
+      SVGElement* aSVGElement);
+  mozilla::UniquePtr<SMILAttr> ToSMILAttr(SVGElement* aSVGElement);
 
  private:
   float mAnimVal;
@@ -63,7 +67,7 @@ class nsSVGNumber2 {
 
  public:
   struct DOMAnimatedNumber final : public mozilla::dom::SVGAnimatedNumber {
-    DOMAnimatedNumber(nsSVGNumber2* aVal, nsSVGElement* aSVGElement)
+    DOMAnimatedNumber(nsSVGNumber2* aVal, SVGElement* aSVGElement)
         : mozilla::dom::SVGAnimatedNumber(aSVGElement), mVal(aVal) {}
     virtual ~DOMAnimatedNumber();
 
@@ -83,25 +87,25 @@ class nsSVGNumber2 {
     }
   };
 
-  struct SMILNumber : public nsISMILAttr {
+  struct SMILNumber : public SMILAttr {
    public:
-    SMILNumber(nsSVGNumber2* aVal, nsSVGElement* aSVGElement)
+    SMILNumber(nsSVGNumber2* aVal, SVGElement* aSVGElement)
         : mVal(aVal), mSVGElement(aSVGElement) {}
 
-    // These will stay alive because a nsISMILAttr only lives as long
+    // These will stay alive because a SMILAttr only lives as long
     // as the Compositing step, and DOM elements don't get a chance to
     // die during that.
     nsSVGNumber2* mVal;
-    nsSVGElement* mSVGElement;
+    SVGElement* mSVGElement;
 
-    // nsISMILAttr methods
+    // SMILAttr methods
     virtual nsresult ValueFromString(
         const nsAString& aStr,
-        const mozilla::dom::SVGAnimationElement* aSrcElement,
-        nsSMILValue& aValue, bool& aPreventCachingOfSandwich) const override;
-    virtual nsSMILValue GetBaseValue() const override;
+        const mozilla::dom::SVGAnimationElement* aSrcElement, SMILValue& aValue,
+        bool& aPreventCachingOfSandwich) const override;
+    virtual SMILValue GetBaseValue() const override;
     virtual void ClearAnimValue() override;
-    virtual nsresult SetAnimValue(const nsSMILValue& aValue) override;
+    virtual nsresult SetAnimValue(const SMILValue& aValue) override;
   };
 };
 

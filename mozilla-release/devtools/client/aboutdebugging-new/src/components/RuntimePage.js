@@ -20,6 +20,7 @@ const RuntimeInfo = createFactory(require("./RuntimeInfo"));
 const ServiceWorkerAction = createFactory(require("./debugtarget/ServiceWorkerAction"));
 const TabDetail = createFactory(require("./debugtarget/TabDetail"));
 const TemporaryExtensionAction = createFactory(require("./debugtarget/TemporaryExtensionAction"));
+const TemporaryExtensionDetail = createFactory(require("./debugtarget/TemporaryExtensionDetail"));
 const TemporaryExtensionInstaller =
   createFactory(require("./debugtarget/TemporaryExtensionInstaller"));
 const WorkerDetail = createFactory(require("./debugtarget/WorkerDetail"));
@@ -47,6 +48,7 @@ class RuntimePage extends PureComponent {
       sharedWorkers: PropTypes.arrayOf(PropTypes.object).isRequired,
       tabs: PropTypes.arrayOf(PropTypes.object).isRequired,
       temporaryExtensions: PropTypes.arrayOf(PropTypes.object).isRequired,
+      temporaryInstallError: PropTypes.string,
     };
   }
 
@@ -104,6 +106,7 @@ class RuntimePage extends PureComponent {
       sharedWorkers,
       tabs,
       temporaryExtensions,
+      temporaryInstallError,
     } = this.props;
 
     if (!runtimeInfo) {
@@ -124,12 +127,14 @@ class RuntimePage extends PureComponent {
         ? this.renderConnectionPromptSetting()
         : null,
       isSupportedDebugTargetPane(runtimeInfo.type, DEBUG_TARGET_PANE.TEMPORARY_EXTENSION)
-        ? TemporaryExtensionInstaller({ dispatch })
-        : null,
+        ? TemporaryExtensionInstaller({
+            dispatch,
+            temporaryInstallError,
+        }) : null,
       this.renderDebugTargetPane("Temporary Extensions",
                                  temporaryExtensions,
                                  TemporaryExtensionAction,
-                                 ExtensionDetail,
+                                 TemporaryExtensionDetail,
                                  DEBUG_TARGET_PANE.TEMPORARY_EXTENSION,
                                  "about-debugging-runtime-temporary-extensions"),
       this.renderDebugTargetPane("Extensions",
@@ -177,6 +182,7 @@ const mapStateToProps = state => {
     sharedWorkers: state.debugTargets.sharedWorkers,
     tabs: state.debugTargets.tabs,
     temporaryExtensions: state.debugTargets.temporaryExtensions,
+    temporaryInstallError: state.ui.temporaryInstallError,
   };
 };
 

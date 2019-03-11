@@ -168,9 +168,8 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
 
   virtual bool IsFullyOccluded() const override { return mIsFullyOccluded; }
 
-  virtual void SetCursor(nsCursor aCursor) override;
-  virtual nsresult SetCursor(imgIContainer* aCursor, uint32_t aHotspotX,
-                             uint32_t aHotspotY) override;
+  virtual void SetCursor(nsCursor aDefaultCursor, imgIContainer* aCursor,
+                         uint32_t aHotspotX, uint32_t aHotspotY) override;
   virtual void ClearCachedCursor() override { mUpdateCursor = true; }
   virtual void SetTransparencyMode(nsTransparencyMode aMode) override;
   virtual nsTransparencyMode GetTransparencyMode() override;
@@ -270,10 +269,6 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   virtual MOZ_MUST_USE nsresult BeginResizeDrag(mozilla::WidgetGUIEvent* aEvent,
                                                 int32_t aHorizontal,
                                                 int32_t aVertical) override {
-    return NS_ERROR_NOT_IMPLEMENTED;
-  }
-  virtual MOZ_MUST_USE nsresult
-  BeginMoveDrag(mozilla::WidgetMouseEvent* aEvent) override {
     return NS_ERROR_NOT_IMPLEMENTED;
   }
   virtual nsresult ActivateNativeMenuItemAt(
@@ -593,7 +588,7 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   virtual void WindowUsesOMTC() {}
   virtual void RegisterTouchWindow() {}
 
-  nsIDocument* GetDocument() const;
+  mozilla::dom::Document* GetDocument() const;
 
   void EnsureTextEventDispatcher();
 

@@ -153,7 +153,7 @@ this.DateTimeInputBaseImplWidget = class {
           </span>
 
           <button class="datetime-reset-button" id="reset-button" tabindex="-1" aria-label="&datetime.reset.label;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12">
+            <svg xmlns="http://www.w3.org/2000/svg" class="datetime-reset-button-svg" width="12" height="12">
               <path d="M 3.9,3 3,3.9 5.1,6 3,8.1 3.9,9 6,6.9 8.1,9 9,8.1 6.9,6 9,3.9 8.1,3 6,5.1 Z M 12,6 A 6,6 0 0 1 6,12 6,6 0 0 1 0,6 6,6 0 0 1 6,0 6,6 0 0 1 12,6 Z"/>
             </svg>
           </button>
@@ -308,7 +308,7 @@ this.DateTimeInputBaseImplWidget = class {
 
   updateResetButtonVisibility() {
     if (this.isAnyFieldAvailable(false)) {
-      this.mResetButton.style.visibility = "visible";
+      this.mResetButton.style.visibility = "";
     } else {
       this.mResetButton.style.visibility = "hidden";
     }
@@ -1504,7 +1504,7 @@ this.TimeInputImplWidget = class extends DateTimeInputBaseImplWidget {
 
       let n = Number(buffer);
       let max = targetField.getAttribute("max");
-      let maxLength = targetField.getAttribute("maxLength");
+      let maxLength = targetField.getAttribute("maxlength");
       if (buffer.length >= maxLength || n * 10 > max) {
         buffer = "";
         this.advanceToNextField();

@@ -12,7 +12,7 @@
 #include "mozilla/dom/Element.h"
 #include "nsCOMPtr.h"
 #include "nsIContent.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIDOMWindow.h"
 #include "nsIFrame.h"
 #include "nsIFrameInlines.h"
@@ -23,34 +23,44 @@
 namespace mozilla {
 namespace layers {
 
+namespace {
+
+using FrameForPointOption = nsLayoutUtils::FrameForPointOption;
+
 // Returns the DOM element found at |aPoint|, interpreted as being relative to
 // the root frame of |aShell|. If the point is inside a subdocument, returns
 // an element inside the subdocument, rather than the subdocument element
 // (and does so recursively).
-// The implementation was adapted from nsDocument::ElementFromPoint(), with
-// the notable exception that we don't pass nsLayoutUtils::IGNORE_CROSS_DOC
+// The implementation was adapted from DocumentOrShadowRoot::ElementFromPoint(),
+// with the notable exception that we don't pass nsLayoutUtils::IGNORE_CROSS_DOC
 // to GetFrameForPoint(), so as to get the behaviour described above in the
 // presence of subdocuments.
 static already_AddRefed<dom::Element> ElementFromPoint(
     const nsCOMPtr<nsIPresShell>& aShell, const CSSPoint& aPoint) {
-  if (nsIFrame* rootFrame = aShell->GetRootFrame()) {
-    if (nsIFrame* frame = nsLayoutUtils::GetFrameForPoint(
-            rootFrame, CSSPoint::ToAppUnits(aPoint),
-            nsLayoutUtils::IGNORE_PAINT_SUPPRESSION |
-                nsLayoutUtils::IGNORE_ROOT_SCROLL_FRAME)) {
-      while (frame && (!frame->GetContent() ||
-                       frame->GetContent()->IsInAnonymousSubtree())) {
-        frame = nsLayoutUtils::GetParentOrPlaceholderFor(frame);
-      }
-      nsIContent* content = frame->GetContent();
-      if (content && !content->IsElement()) {
-        content = content->GetParent();
-      }
-      if (content) {
-        nsCOMPtr<dom::Element> result = content->AsElement();
-        return result.forget();
-      }
-    }
+  nsIFrame* rootFrame = aShell->GetRootFrame();
+  if (!rootFrame) {
+    return nullptr;
+  }
+  nsIFrame* frame = nsLayoutUtils::GetFrameForPoint(
+      rootFrame, CSSPoint::ToAppUnits(aPoint),
+      {FrameForPointOption::IgnorePaintSuppression,
+       FrameForPointOption::IgnoreRootScrollFrame});
+  while (frame && (!frame->GetContent() ||
+                   frame->GetContent()->IsInAnonymousSubtree())) {
+    frame = nsLayoutUtils::GetParentOrPlaceholderFor(frame);
+  }
+  if (!frame) {
+    return nullptr;
+  }
+  // FIXME(emilio): This should probably use the flattened tree, GetParent() is
+  // not guaranteed to be an element in presence of shadow DOM.
+  nsIContent* content = frame->GetContent();
+  if (content && !content->IsElement()) {
+    content = content->GetParent();
+  }
+  if (content && content->IsElement()) {
+    nsCOMPtr<dom::Element> result = content->AsElement();
+    return result.forget();
   }
   return nullptr;
 }
@@ -84,7 +94,9 @@ static bool IsRectZoomedIn(const CSSRect& aRect,
   return showing > 0.9 && (ratioW > 0.9 || ratioH > 0.9);
 }
 
-CSSRect CalculateRectToZoomTo(const nsCOMPtr<nsIDocument>& aRootContentDocument,
+}  // namespace
+
+CSSRect CalculateRectToZoomTo(const RefPtr<dom::Document>& aRootContentDocument,
                               const CSSPoint& aPoint) {
   // Ensure the layout information we get is up-to-date.
   aRootContentDocument->FlushPendingNotifications(FlushType::Layout);

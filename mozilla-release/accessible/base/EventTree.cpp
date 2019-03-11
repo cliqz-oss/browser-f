@@ -11,7 +11,7 @@
 #include "nsEventShell.h"
 #include "DocAccessible.h"
 #ifdef A11Y_LOG
-#include "Logging.h"
+#  include "Logging.h"
 #endif
 
 #include "mozilla/UniquePtr.h"
@@ -103,6 +103,9 @@ void TreeMutation::Done() {
 
   for (uint32_t idx = mStartIdx; idx < length; idx++) {
     mParent->mChildren[idx]->mInt.mIndexOfEmbeddedChild = -1;
+  }
+
+  for (uint32_t idx = 0; idx < length; idx++) {
     mParent->mChildren[idx]->mStateFlags |= Accessible::eGroupInfoDirty;
   }
 

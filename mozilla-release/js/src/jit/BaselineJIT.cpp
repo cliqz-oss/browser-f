@@ -38,25 +38,12 @@ using mozilla::DebugOnly;
 using namespace js;
 using namespace js::jit;
 
-/* static */ PCMappingSlotInfo::SlotLocation PCMappingSlotInfo::ToSlotLocation(
-    const StackValue* stackVal) {
-  if (stackVal->kind() == StackValue::Register) {
-    if (stackVal->reg() == R0) {
-      return SlotInR0;
-    }
-    MOZ_ASSERT(stackVal->reg() == R1);
-    return SlotInR1;
-  }
-  MOZ_ASSERT(stackVal->kind() != StackValue::Stack);
-  return SlotIgnore;
-}
-
 void ICStubSpace::freeAllAfterMinorGC(Zone* zone) {
   if (zone->isAtomsZone()) {
     MOZ_ASSERT(allocator_.isEmpty());
   } else {
-    zone->runtimeFromMainThread()->gc.freeAllLifoBlocksAfterMinorGC(
-        &allocator_);
+    JSRuntime* rt = zone->runtimeFromMainThread();
+    rt->gc.queueAllLifoBlocksForFreeAfterMinorGC(&allocator_);
   }
 }
 
@@ -344,14 +331,12 @@ BaselineScript* BaselineScript::New(
     uint32_t debugOsrPrologueOffset, uint32_t debugOsrEpilogueOffset,
     uint32_t profilerEnterToggleOffset, uint32_t profilerExitToggleOffset,
     size_t retAddrEntries, size_t pcMappingIndexEntries, size_t pcMappingSize,
-    size_t bytecodeTypeMapEntries, size_t resumeEntries,
-    size_t traceLoggerToggleOffsetEntries) {
+    size_t resumeEntries, size_t traceLoggerToggleOffsetEntries) {
   static const unsigned DataAlignment = sizeof(uintptr_t);
 
   size_t retAddrEntriesSize = retAddrEntries * sizeof(RetAddrEntry);
   size_t pcMappingIndexEntriesSize =
       pcMappingIndexEntries * sizeof(PCMappingIndexEntry);
-  size_t bytecodeTypeMapSize = bytecodeTypeMapEntries * sizeof(uint32_t);
   size_t resumeEntriesSize = resumeEntries * sizeof(uintptr_t);
   size_t tlEntriesSize = traceLoggerToggleOffsetEntries * sizeof(uint32_t);
 
@@ -360,15 +345,12 @@ BaselineScript* BaselineScript::New(
   size_t paddedPCMappingIndexEntriesSize =
       AlignBytes(pcMappingIndexEntriesSize, DataAlignment);
   size_t paddedPCMappingSize = AlignBytes(pcMappingSize, DataAlignment);
-  size_t paddedBytecodeTypesMapSize =
-      AlignBytes(bytecodeTypeMapSize, DataAlignment);
   size_t paddedResumeEntriesSize = AlignBytes(resumeEntriesSize, DataAlignment);
   size_t paddedTLEntriesSize = AlignBytes(tlEntriesSize, DataAlignment);
 
   size_t allocBytes = paddedRetAddrEntriesSize +
                       paddedPCMappingIndexEntriesSize + paddedPCMappingSize +
-                      paddedBytecodeTypesMapSize + paddedResumeEntriesSize +
-                      paddedTLEntriesSize;
+                      paddedResumeEntriesSize + paddedTLEntriesSize;
 
   BaselineScript* script =
       jsscript->zone()->pod_malloc_with_extra<BaselineScript, uint8_t>(
@@ -394,9 +376,6 @@ BaselineScript* BaselineScript::New(
   script->pcMappingOffset_ = offsetCursor;
   script->pcMappingSize_ = pcMappingSize;
   offsetCursor += paddedPCMappingSize;
-
-  script->bytecodeTypeMapOffset_ = bytecodeTypeMapEntries ? offsetCursor : 0;
-  offsetCursor += paddedBytecodeTypesMapSize;
 
   script->resumeEntriesOffset_ = resumeEntries ? offsetCursor : 0;
   offsetCursor += paddedResumeEntriesSize;
@@ -918,10 +897,10 @@ void BaselineScript::toggleDebugTraps(JSScript* script, jsbytecode* pc) {
 #ifdef JS_TRACE_LOGGING
 void BaselineScript::initTraceLogger(JSScript* script,
                                      const Vector<CodeOffset>& offsets) {
-#ifdef DEBUG
+#  ifdef DEBUG
   traceLoggerScriptsEnabled_ = TraceLogTextIdEnabled(TraceLogger_Scripts);
   traceLoggerEngineEnabled_ = TraceLogTextIdEnabled(TraceLogger_Engine);
-#endif
+#  endif
 
   MOZ_ASSERT(offsets.length() == numTraceLoggerToggleOffsets_);
   for (size_t i = 0; i < offsets.length(); i++) {
@@ -962,9 +941,9 @@ void BaselineScript::toggleTraceLoggerScripts(JSScript* script, bool enable) {
     }
   }
 
-#if DEBUG
+#  if DEBUG
   traceLoggerScriptsEnabled_ = enable;
-#endif
+#  endif
 }
 
 void BaselineScript::toggleTraceLoggerEngine(bool enable) {
@@ -984,9 +963,9 @@ void BaselineScript::toggleTraceLoggerEngine(bool enable) {
     }
   }
 
-#if DEBUG
+#  if DEBUG
   traceLoggerEngineEnabled_ = enable;
-#endif
+#  endif
 }
 #endif
 
@@ -1200,8 +1179,11 @@ void jit::ToggleBaselineProfiling(JSRuntime* runtime, bool enable) {
   }
 
   for (ZonesIter zone(runtime, SkipAtoms); !zone.done(); zone.next()) {
-    for (auto script = zone->cellIter<JSScript>(); !script.done();
-         script.next()) {
+    for (auto iter = zone->cellIter<JSScript>(); !iter.done(); iter.next()) {
+      JSScript* script = iter;
+      if (gc::IsAboutToBeFinalizedUnbarriered(&script)) {
+        continue;
+      }
       if (!script->hasBaselineScript()) {
         continue;
       }
@@ -1214,8 +1196,11 @@ void jit::ToggleBaselineProfiling(JSRuntime* runtime, bool enable) {
 #ifdef JS_TRACE_LOGGING
 void jit::ToggleBaselineTraceLoggerScripts(JSRuntime* runtime, bool enable) {
   for (ZonesIter zone(runtime, SkipAtoms); !zone.done(); zone.next()) {
-    for (auto script = zone->cellIter<JSScript>(); !script.done();
-         script.next()) {
+    for (auto iter = zone->cellIter<JSScript>(); !iter.done(); iter.next()) {
+      JSScript* script = iter;
+      if (gc::IsAboutToBeFinalizedUnbarriered(&script)) {
+        continue;
+      }
       if (!script->hasBaselineScript()) {
         continue;
       }
@@ -1226,8 +1211,11 @@ void jit::ToggleBaselineTraceLoggerScripts(JSRuntime* runtime, bool enable) {
 
 void jit::ToggleBaselineTraceLoggerEngine(JSRuntime* runtime, bool enable) {
   for (ZonesIter zone(runtime, SkipAtoms); !zone.done(); zone.next()) {
-    for (auto script = zone->cellIter<JSScript>(); !script.done();
-         script.next()) {
+    for (auto iter = zone->cellIter<JSScript>(); !iter.done(); iter.next()) {
+      JSScript* script = iter;
+      if (gc::IsAboutToBeFinalizedUnbarriered(&script)) {
+        continue;
+      }
       if (!script->hasBaselineScript()) {
         continue;
       }

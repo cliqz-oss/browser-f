@@ -17,12 +17,17 @@ def create_parser(mach_interface=False):
             help="name of raptor test to run")
     add_arg('--app', default='firefox', dest='app',
             help="name of the application we are testing (default: firefox)",
-            choices=['firefox', 'chrome', 'geckoview'])
+            choices=['firefox', 'chrome', 'geckoview', 'fennec'])
     add_arg('-b', '--binary', dest='binary',
             help="path to the browser executable that we are testing")
     add_arg('--host', dest='host',
-            help="Hostname from which to serve urls, defaults to 127.0.0.1.",
+            help="Hostname from which to serve urls, defaults to 127.0.0.1. "
+            "The value HOST_IP will cause the value of host to be "
+            "loaded from the environment variable HOST_IP.",
             default='127.0.0.1')
+    add_arg('--power-test', dest="power_test", action="store_true",
+            help="Use Raptor to measure power usage. Currently supported for Geckoview. "
+            "The host ip address must be specified via the --host command line argument.")
     add_arg('--is-release-build', dest="is_release_build", default=False,
             action='store_true',
             help="Whether the build is a release build which requires work arounds "
@@ -70,7 +75,7 @@ def verify_options(parser, args):
         parser.error("--binary is required!")
 
     # if running on a desktop browser make sure the binary exists
-    if args.app != "geckoview":
+    if args.app not in ["geckoview", "fennec"]:
         if not os.path.isfile(args.binary):
             parser.error("{binary} does not exist!".format(**ctx))
 
@@ -78,10 +83,18 @@ def verify_options(parser, args):
     if args.gecko_profile is True and args.app != "firefox":
         parser.error("Gecko profiling is only supported when running raptor on Firefox!")
 
+    # if --power-test specified, must be on geckview with --host specified.
+    if args.power_test:
+        if args.app != "geckoview" or args.host in ('localhost', '127.0.0.1'):
+            parser.error("Power test is only supported when running raptor on Geckoview "
+                         "when host is specified!")
+
 
 def parse_args(argv=None):
     parser = create_parser()
     args = parser.parse_args(argv)
+    if args.host == 'HOST_IP':
+        args.host = os.environ['HOST_IP']
     verify_options(parser, args)
     return args
 
@@ -104,7 +117,7 @@ class _PrintTests(_StopAction):
         here = os.path.abspath(os.path.dirname(__file__))
         raptor_ini = os.path.join(here, 'raptor.ini')
 
-        for _app in ["firefox", "chrome", "geckoview", "chrome-android"]:
+        for _app in ["firefox", "chrome", "geckoview", "chrome-android", "fennec"]:
             test_manifest = TestManifest([raptor_ini], strict=False)
             info = {"app": _app}
             available_tests = test_manifest.active_tests(exists=False,
@@ -142,7 +155,11 @@ class _PrintTests(_StopAction):
                 if next_test.get("type", None) is not None:
                     test_list[suite]['type'] = next_test['type']
                     if next_test['type'] == "pageload":
-                        test_list[suite]['subtests'].append(next_test['name'])
+                        subtest = next_test['name']
+                        measure = next_test.get("measure")
+                        if measure is not None:
+                            subtest = "{0} ({1})".format(subtest, measure)
+                        test_list[suite]['subtests'].append(subtest)
 
             # print the list in a nice readable format
             for key in sorted(test_list.iterkeys()):
@@ -166,6 +183,8 @@ class _PrintTests(_StopAction):
             return "Firefox Geckoview on Android"
         elif app == "chrome-android":
             return "Google Chrome on Android"
+        elif app == "fennec":
+            return "Firefox Fennec on Android"
 
     def filter_app(self, tests, values):
         for test in tests:

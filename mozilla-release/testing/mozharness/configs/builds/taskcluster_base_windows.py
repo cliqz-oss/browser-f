@@ -7,7 +7,6 @@ config = {
         'check-test',
     ],
     'app_ini_path': '%(obj_dir)s/dist/bin/application.ini',
-    # decides whether we want to use moz_sign_cmd in env
     'vcs_share_base': os.path.join('y:', os.sep, 'hg-shared'),
     'max_build_output_timeout': 60 * 80,
 
@@ -31,6 +30,12 @@ config = {
     'secret_files': [
         {'filename': 'gapi.data',
          'secret_name': 'project/releng/gecko/build/level-%(scm-level)s/gapi.data',
+         'min_scm_level': 1},
+        {'filename': 'gls-gapi.data',
+         'secret_name': 'project/releng/gecko/build/level-%(scm-level)s/gls-gapi.data',
+         'min_scm_level': 1},
+        {'filename': 'sb-gapi.data',
+         'secret_name': 'project/releng/gecko/build/level-%(scm-level)s/sb-gapi.data',
          'min_scm_level': 1},
         {'filename': 'mozilla-desktop-geoloc-api.key',
          'secret_name': 'project/releng/gecko/build/level-%(scm-level)s/mozilla-desktop-geoloc-api.key',

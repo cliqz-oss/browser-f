@@ -76,6 +76,13 @@
            nomaxresults="true" />
 
     <tooltip id="addonitem-tooltip"/>
+
+    <menupopup id="contentAreaContextMenu"
+               onpopupshowing="Cu.reportError('This dummy menupopup is not supposed to be shown');
+                               return false">
+      <!-- a dummy element used to forward the context menu related to the extension's
+           options page XUL browsers to the context menu defined in the parent chrome window -->
+    </menupopup>
   </popupset>
 
   <!-- global commands - these act on all addons, or affect the addons manager
@@ -98,6 +105,7 @@
     <command id="cmd_resetAddonAutoUpdate"/>
     <command id="cmd_showUnsignedExtensions"/>
     <command id="cmd_showAllExtensions"/>
+    <command id="cmd_showShortcuts"/>
   </commandset>
 
   <!-- view commands - these act on the selected addon -->
@@ -172,7 +180,7 @@
       <!-- view port -->
       <deck id="view-port" flex="1" selectedIndex="0">
         <!-- discover view -->
-        <deck id="discover-view" flex="1" class="view-pane" selectedIndex="0" tabindex="0">
+        <deck id="discover-view" flex="1" class="view-pane" selectedIndex="0">
           <vbox id="discover-loading" align="center" pack="stretch" flex="1" class="alert-container">
             <spacer class="alert-spacer-before"/>
             <hbox class="alert loading" align="center">
@@ -222,7 +230,11 @@
           </hbox>
 
           <hbox id="heading">
-            <hbox class="heading-inner" align="start">
+            <hbox class="heading-inner" align="stretch">
+              <hbox id="go-back-wrapper">
+                <button id="go-back" command="cmd_back" data-l10n-id="go-back-button" hidden="true"/>
+              </hbox>
+
               <label id="heading-name" class="header-name" flex="1"/>
 
               <hbox id="updates-container" align="center">
@@ -244,8 +256,7 @@
                         command="cmd_restartApp"/>
               </hbox>
 
-              <toolbarbutton id="header-utils-btn" type="menu"
-                        data-l10n-id="tools-menu">
+              <button id="header-utils-btn" type="menu" data-l10n-id="tools-menu">
                 <menupopup id="utils-menu">
                   <menuitem id="utils-updateNow"
                             data-l10n-id="extensions-updates-check-for-updates"
@@ -271,14 +282,18 @@
                   <menuitem id="utils-resetAddonUpdatesToManual"
                             data-l10n-id="extensions-updates-reset-updates-to-manual"
                             command="cmd_resetAddonAutoUpdate"/>
+                  <menuseparator/>
+                  <menuitem id="manage-shortcuts"
+                            data-l10n-id="manage-extensions-shortcuts"
+                            command="cmd_showShortcuts"/>
                 </menupopup>
-              </toolbarbutton>
+              </button>
             </hbox>
           </hbox>
 
           <deck id="headered-views-content" flex="1" selectedIndex="0">
             <!-- list view -->
-            <vbox id="list-view" flex="1" class="view-pane" align="stretch" tabindex="0">
+            <vbox id="list-view" flex="1" class="view-pane" align="stretch">
               <!-- info UI for add-ons that have been disabled for being unsigned -->
               <vbox id="disabled-unsigned-addons-info" hidden="true">
                 <label id="disabled-unsigned-addons-heading" data-l10n-id="disabled-unsigned-heading"/>
@@ -350,8 +365,11 @@
               <richlistbox id="addon-list" class="list" flex="1"/>
             </vbox>
 
+            <!-- extension shortcuts view -->
+            <browser id="shortcuts-view" type="content" flex="1" disablehistory="true"/>
+
             <!-- legacy extensions view -->
-            <vbox id="legacy-view" flex="1" class="view-pane" align="stretch" tabindex="0">
+            <vbox id="legacy-view" flex="1" class="view-pane" align="stretch">
               <vbox id="legacy-extensions-info">
                 <label id="legacy-extensions-heading" data-l10n-id="legacy-extensions"/>
                 <description data-l10n-id="legacy-extensions-description">
@@ -362,7 +380,7 @@
             </vbox>
 
             <!-- updates view -->
-            <vbox id="updates-view" flex="1" class="view-pane" tabindex="0">
+            <vbox id="updates-view" flex="1" class="view-pane">
               <hbox class="view-header global-warning-container" align="center">
                 <!-- global warnings -->
                 <hbox class="global-warning" flex="1">

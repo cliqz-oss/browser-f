@@ -17,16 +17,17 @@
 #include "builtin/AtomicsObject.h"
 #include "ds/MemoryProtectionExceptionHandler.h"
 #include "gc/Statistics.h"
+#include "jit/AtomicOperations.h"
 #include "jit/ExecutableAllocator.h"
 #include "jit/Ion.h"
 #include "jit/JitCommon.h"
 #include "js/Utility.h"
 #if ENABLE_INTL_API
-#include "unicode/uclean.h"
-#include "unicode/utypes.h"
+#  include "unicode/uclean.h"
+#  include "unicode/utypes.h"
 #endif  // ENABLE_INTL_API
 #ifdef ENABLE_BIGINT
-#include "vm/BigIntType.h"
+#  include "vm/BigIntType.h"
 #endif
 #include "vm/DateTime.h"
 #include "vm/HelperThreads.h"
@@ -56,10 +57,10 @@ static unsigned MessageParameterCount(const char* format) {
 static void CheckMessageParameterCounts() {
   // Assert that each message format has the correct number of braced
   // parameters.
-#define MSG_DEF(name, count, exception, format) \
-  MOZ_ASSERT(MessageParameterCount(format) == count);
-#include "js.msg"
-#undef MSG_DEF
+#  define MSG_DEF(name, count, exception, format) \
+    MOZ_ASSERT(MessageParameterCount(format) == count);
+#  include "js.msg"
+#  undef MSG_DEF
 }
 #endif /* DEBUG */
 
@@ -79,7 +80,7 @@ JS_PUBLIC_API const char* JS::detail::InitWithFailureDiagnostic(
 
   MOZ_ASSERT(libraryInitState == InitState::Uninitialized,
              "must call JS_Init once before any JSAPI operation except "
-             "JS_SetICUMemoryFunctions or JS::SetGMPMemoryFunctions");
+             "JS_SetICUMemoryFunctions");
   MOZ_ASSERT(!JSRuntime::hasLiveRuntimes(),
              "how do we have live runtimes before JS_Init?");
 
@@ -127,6 +128,8 @@ JS_PUBLIC_API const char* JS::detail::InitWithFailureDiagnostic(
   RETURN_IF_FAIL(js::vtune::Initialize());
 #endif
 
+  RETURN_IF_FAIL(js::jit::AtomicOperations::Initialize());
+
 #if EXPOSE_INTL_API
   UErrorCode err = U_ZERO_ERROR;
   u_init(&err);
@@ -141,10 +144,6 @@ JS_PUBLIC_API const char* JS::detail::InitWithFailureDiagnostic(
 
 #ifdef JS_SIMULATOR
   RETURN_IF_FAIL(js::jit::SimulatorProcess::initialize());
-#endif
-
-#ifdef ENABLE_BIGINT
-  JS::BigInt::init();
 #endif
 
   libraryInitState = InitState::Running;
@@ -174,6 +173,8 @@ JS_PUBLIC_API void JS_ShutDown(void) {
 #ifdef JS_SIMULATOR
   js::jit::SimulatorProcess::destroy();
 #endif
+
+  js::jit::AtomicOperations::ShutDown();
 
 #ifdef JS_TRACE_LOGGING
   js::DestroyTraceLoggerThreadState();

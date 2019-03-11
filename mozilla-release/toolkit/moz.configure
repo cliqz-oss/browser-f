@@ -4,6 +4,41 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+# Set the MOZ_CONFIGURE_OPTIONS variable with all the options that
+# were passed somehow (environment, command line, mozconfig)
+@dependable
+@imports(_from='mozbuild.shellutil', _import='quote')
+@imports('__sandbox__')
+def all_configure_options():
+    result = []
+    previous = None
+    for option in __sandbox__._options.itervalues():
+        # __sandbox__._options contains items for both option.name and
+        # option.env. But it's also an OrderedDict, meaning both are
+        # consecutive.
+        # Also ignore OLD_CONFIGURE and MOZCONFIG because they're not
+        # interesting.
+        if option == previous or option.env in ('OLD_CONFIGURE', 'MOZCONFIG'):
+            continue
+        previous = option
+        value = __sandbox__._value_for(option)
+        # We only want options that were explicitly given on the command
+        # line, the environment, or mozconfig, and that differ from the
+        # defaults.
+        if (value is not None and value.origin not in ('default', 'implied') and
+                value != option.default):
+            result.append(__sandbox__._raw_options[option])
+        # We however always include options that are sent to old configure
+        # because we don't know their actual defaults. (Keep the conditions
+        # separate for ease of understanding and ease of removal)
+        elif (option.help == 'Help missing for old configure options' and
+                option in __sandbox__._raw_options):
+            result.append(__sandbox__._raw_options[option])
+
+    return quote(*result)
+
+
+set_config('MOZ_CONFIGURE_OPTIONS', all_configure_options)
 
 # Profiling
 # ==============================================================
@@ -25,9 +60,9 @@ imply_option('--enable-profiling', jprof)
 @depends(target)
 def gecko_profiler(target):
     if target.os == 'Android':
-        return target.cpu in ('aarch64', 'arm', 'x86')
+        return target.cpu in ('aarch64', 'arm', 'x86', 'x86_64')
     elif target.kernel == 'Linux':
-        return target.cpu in ('x86', 'x86_64', 'mips64', 'arm')
+        return target.cpu in ('aarch64', 'arm', 'x86', 'x86_64', 'mips64')
     return target.os in ('OSX', 'WINNT')
 
 @depends(gecko_profiler)
@@ -121,15 +156,20 @@ include('../build/moz.configure/node.configure')
 option('--with-l10n-base', nargs=1, env='L10NBASEDIR',
        help='Path to l10n repositories')
 
-@depends('--with-l10n-base')
+@depends('--with-l10n-base', 'MOZ_AUTOMATION', target, check_build_environment)
 @imports(_from='os.path', _import='isdir')
 @imports(_from='os.path', _import='expanduser')
 @imports(_from='os', _import='environ')
-def l10n_base(value):
+def l10n_base(value, automation, target, build_env):
     if value:
         path = value[0]
         if not isdir(path):
             die("Invalid value --with-l10n-base, %s doesn't exist", path)
+    elif automation:
+        if target.os == 'Android':
+            path = os.path.join(build_env.topobjdir, '..', '..', 'l10n-central')
+        else:
+            path = os.path.join(build_env.topobjdir, '..', '..', 'l10n')
     else:
         path = os.path.join(
             environ.get(
@@ -143,39 +183,30 @@ set_config('L10NBASEDIR', l10n_base)
 
 # Default toolkit
 # ==============================================================
-# Normally, we'd want to use the `default` field on the option, but that
-# requires --target to be resolved at --help time, which requires to run
-# config.guess, which we want to avoid. Even better, we could actually set
-# `choices` depending on the target, but that doesn't pan out for the same
-# reason.
+@depends(target)
+def toolkit_choices(target):
+    if target.os == 'WINNT':
+        return ('cairo-windows',)
+    elif target.os == 'OSX':
+        return ('cairo-cocoa',)
+    elif target.os == 'iOS':
+        return ('cairo-uikit',)
+    elif target.os == 'Android':
+        return ('cairo-android',)
+    else:
+        return ('cairo-gtk3', 'cairo-gtk3-wayland')
+
+@depends(toolkit_choices)
+def toolkit_default(choices):
+    return choices[0]
+
 option('--enable-default-toolkit', nargs=1,
-       choices=('cairo-windows', 'cairo-gtk3', 'cairo-gtk3-wayland',
-                'cairo-cocoa', 'cairo-uikit', 'cairo-android'),
+       choices=toolkit_choices, default=toolkit_default,
        help='Select default toolkit')
 
-@depends('--enable-default-toolkit', target, '--help')
-def full_toolkit(value, target, _):
-    # Define possible choices for each platform. The default is the first one
-    # listed when there are several.
-    if target.os == 'WINNT':
-        platform_choices = ('cairo-windows',)
-    elif target.os == 'OSX':
-        platform_choices = ('cairo-cocoa',)
-    elif target.os == 'iOS':
-        platform_choices = ('cairo-uikit',)
-    elif target.os == 'Android':
-        platform_choices = ('cairo-android',)
-    else:
-        platform_choices = ('cairo-gtk3', 'cairo-gtk3-wayland')
-
-    if value:
-        if value[0] not in platform_choices:
-            die('`%s` is not a valid value for --enable-default-toolkit on %s\n'
-                'Valid values: %s', value[0], target.os,
-                ', '.join(platform_choices))
-        return value[0]
-
-    return platform_choices[0]
+@depends_if('--enable-default-toolkit')
+def full_toolkit(value):
+    return value[0]
 
 @depends(full_toolkit)
 def toolkit(toolkit):
@@ -394,11 +425,12 @@ imply_option('--enable-fmp4', ffmpeg, '--enable-ffmpeg')
 option('--enable-av1',
         help='Enable libaom for av1 video support')
 
-@depends('--enable-av1', target)
-def av1(value, target):
+@depends('--enable-av1', target, c_compiler)
+def av1(value, target, c_compiler):
     enabled = bool(value)
     if value.origin == 'default':
-        if target.os == 'WINNT' and target.cpu == 'x86':
+        if target.os == 'WINNT' and target.cpu == 'x86' and \
+                c_compiler and c_compiler.type == 'msvc':
             enabled = False
         else:
             enabled = True
@@ -466,8 +498,8 @@ set_define('MOZ_OMX', openmax)
 # EME Support
 # ==============================================================
 # Widevine is enabled by default in desktop browser builds.
-@depends(build_project, '--help')
-def eme_default(build_project, help):
+@depends(build_project)
+def eme_default(build_project):
     if build_project == 'browser':
         return 'widevine'
 
@@ -625,6 +657,8 @@ simple_keyfile('Pocket API')
 
 
 # WebRender integration
+# ==============================================================
+
 option('--enable-webrender', nargs='?', choices=('build',),
        help='Include WebRender in the build and/or enable it at runtime')
 
@@ -655,15 +689,19 @@ set_define('MOZ_BUILD_WEBRENDER', webrender.build)
 set_config('MOZ_ENABLE_WEBRENDER', webrender.enable)
 
 # SIMD acceleration for Rust code (currently just encoding_rs)
+# ==============================================================
 
 option('--enable-rust-simd', env='MOZ_RUST_SIMD',
        help='Enable explicit SIMD in Rust code.')
 
-@depends('--enable-rust-simd', target)
-def rust_simd(value, target):
+@depends('--enable-rust-simd', target, rustc_info)
+def rust_simd(value, target, rustc_info):
     # As of 2018-06-05, the simd crate only works on aarch64,
     # armv7, x86 and x86_64.
     if target.cpu in ('aarch64', 'arm', 'x86', 'x86_64') and value:
+        if rustc_info and rustc_info.version >= Version('1.33.0'):
+            die('--enable-rust-simd does not work with Rust 1.33 or later. '
+                'See https://bugzilla.mozilla.org/show_bug.cgi?id=1521249 .')
         return True
 
 set_config('MOZ_RUST_SIMD', rust_simd)
@@ -708,8 +746,8 @@ set_config('MOZ_SYNTH_SPEECHD',
 # ==============================================================
 option('--disable-webspeech', help='Disable support for HTML Speech API')
 
-@depends('--disable-webspeech', '--help')
-def webspeech(value, _):
+@depends('--disable-webspeech')
+def webspeech(value):
     if value:
         return True
 
@@ -836,7 +874,7 @@ set_config('SKIA_INCLUDES', skia_includes)
 option('--with-system-webp',
        help='Use system libwebp (located with pkgconfig)')
 
-system_webp = pkg_check_modules('MOZ_WEBP', 'libwebp >= 1.0.1 libwebpdemux >= 1.0.1',
+system_webp = pkg_check_modules('MOZ_WEBP', 'libwebp >= 1.0.2 libwebpdemux >= 1.0.2',
                                 when='--with-system-webp')
 
 set_config('MOZ_SYSTEM_WEBP', depends(when=system_webp)(lambda: True))
@@ -1085,18 +1123,31 @@ def check_for_midl(target, compile_environment):
         return True
 
 
-midl = check_prog('MIDL', midl_names, when=check_for_midl, allow_missing=True)
+midl = check_prog('MIDL', midl_names, when=check_for_midl, allow_missing=True,
+                  paths=sdk_bin_path)
 
 
-@depends(c_compiler, target, when=depends(midl, target)(lambda m, t: m and t.kernel == 'WINNT'))
-def midl_flags(c_compiler, target):
+@depends(c_compiler, target, vc_compiler_path,
+         when=depends(midl, target)(lambda m, t: m and t.kernel == 'WINNT'))
+@imports(_from='mozbuild.shellutil', _import='quote')
+def midl_flags(c_compiler, target, vc_compiler_path):
     if c_compiler and c_compiler.type in ('msvc', 'clang-cl'):
         env = {
             'x86': 'win32',
             'x86_64': 'x64',
             'aarch64': 'arm64',
         }[target.cpu]
-        return ['-env', env]
+        flags = ['-env', env]
+        if c_compiler.type == 'msvc':
+            flags += ['-cpp_cmd', c_compiler.compiler]
+            if c_compiler.flags:
+                flags += ['-cpp_opt', quote(' '.join(list(c_compiler.flags) + ['-E']))]
+        else:
+            # Ideally, we'd use the same flags setup as for msvc, but clang-cl
+            # currently doesn't work as a preprocessor for midl, so we need to
+            # find cl. https://bugs.llvm.org/show_bug.cgi?id=40140
+            flags += ['-cpp_cmd', find_program('cl', paths=vc_compiler_path)]
+        return flags
 
     # mingw
     return {
@@ -1110,9 +1161,17 @@ set_config('MIDL_FLAGS', midl_flags)
 # Accessibility
 # ==============================================================
 
-option('--disable-accessibility', help='Disable accessibility support')
+@depends(target)
+def a11y_default(target):
+    # Accessibility doesn't work on aarch64-windows yet.
+    if target.kernel == 'WINNT' and target.cpu == 'aarch64':
+        return False
+    return True
 
-@depends('--disable-accessibility', check_for_midl, midl, c_compiler)
+option('--enable-accessibility',
+       default=a11y_default, help='{Enable|Disable} accessibility support')
+
+@depends('--enable-accessibility', check_for_midl, midl, c_compiler)
 def accessibility(value, check_for_midl, midl, c_compiler):
     enabled = bool(value)
 
@@ -1238,8 +1297,8 @@ set_config('MOZ_TASK_TRACER', depends_if('--enable-tasktracer')(lambda _: True))
 # Reflow counting
 # ==============================================================
 
-@depends(moz_debug, '--help')
-def reflow_perf(debug, _):
+@depends(moz_debug)
+def reflow_perf(debug):
     if debug:
         return True
 
@@ -1251,3 +1310,371 @@ option('--enable-reflow-perf',
 # in old-configure, which was unexplained there as well.
 set_define('MOZ_REFLOW_PERF', depends_if('--enable-reflow-perf')(lambda _: True))
 set_define('MOZ_REFLOW_PERF_DSP', reflow_perf)
+
+# Layout debugger
+# ==============================================================
+
+@depends(moz_debug)
+def layout_debugger(debug):
+    if debug:
+        return True
+
+option('--enable-layout-debugger',
+       default=layout_debugger,
+       help='{Enable|Disable} layout debugger')
+
+set_config('MOZ_LAYOUT_DEBUGGER', depends_if('--enable-layout-debugger')(lambda _: True))
+
+
+# Shader Compiler for Windows (and MinGW Cross Compile)
+# ==============================================================
+
+with only_when(compile_environment):
+    fxc = check_prog('FXC', ('fxc.exe', 'fxc2.exe'), when=depends(target)
+                     (lambda t: t.kernel == 'WINNT'),
+                     paths=sdk_bin_path)
+    wine = check_prog('WINE', ['wine'], when=depends(target, host)
+                      (lambda t, h: t.kernel == 'WINNT' and h.kernel == 'Linux'))
+
+
+# VPX
+# ===
+
+with only_when(compile_environment):
+    option('--with-system-libvpx',
+           help='Use system libvpx (located with pkgconfig)')
+
+    with only_when('--with-system-libvpx'):
+        vpx = pkg_check_modules('MOZ_LIBVPX', 'vpx >= 1.7.0')
+
+        check_header('vpx/vpx_decoder.h', flags=vpx.cflags, onerror=lambda: die(
+            "Couldn't find vpx/vpx_decoder.h, which is required to build "
+            "with system libvpx. Use --without-system-libvpx to build "
+            "with in-tree libvpx."))
+
+        check_symbol('vpx_codec_dec_init_ver', flags=vpx.libs, onerror=lambda: die(
+            "--with-system-libvpx requested but symbol vpx_codec_dec_init_ver "
+            "not found"
+        ))
+
+        set_config('MOZ_SYSTEM_LIBVPX', True)
+
+
+    @depends('--with-system-libvpx', target, gnu_as)
+    def in_tree_vpx(system_libvpx, target, gnu_as):
+        if system_libvpx:
+            return
+
+        use_yasm = (target.cpu in ('x86', 'x86_64')) or None
+        need_yasm = False
+        arm_asm = (target.cpu == 'arm' and gnu_as) or None
+
+        if use_yasm:
+            need_yasm = True
+            if target.kernel == 'WINNT':
+                need_yasm = Version('1.1')
+
+        return namespace(arm_asm=arm_asm, use_yasm=use_yasm, need_yasm=need_yasm)
+
+
+    # Building with -mfpu=neon requires either the "softfp" or the
+    # "hardfp" ABI. Depending on the compiler's default target, and the
+    # CFLAGS, the default ABI might be neither, in which case it is the
+    # "softfloat" ABI.
+    # The "softfloat" ABI is binary-compatible with the "softfp" ABI, so
+    # we can safely mix code built with both ABIs. So, if we detect
+    # that compiling uses the "softfloat" ABI, force the use of the
+    # "softfp" ABI instead.
+    # Confusingly, the __SOFTFP__ preprocessor variable indicates the
+    # "softfloat" ABI, not the "softfp" ABI.
+    # Note: VPX_ASFLAGS is also used in CFLAGS.
+    softfp = cxx_compiler.try_compile(body='''
+        #ifndef __SOFTFP__
+        #error "compiler target supports -mfpu=neon, so we don't have to add extra flags"
+        #endif''', when=in_tree_vpx.arm_asm)
+
+
+    @depends(in_tree_vpx, softfp, target)
+    def vpx_as_flags(vpx, softfp, target):
+        flags = []
+        if vpx and vpx.arm_asm:
+            # These flags are a lie; they're just used to enable the requisite
+            # opcodes; actual arch detection is done at runtime.
+            flags = ['-march=armv7-a', '-mfpu=neon']
+            if softfp:
+                flags.append('-mfloat-abi=softfp')
+        elif vpx and vpx.use_yasm and target.os != 'WINNT' and target.cpu != 'x86_64':
+            flags = ['-DPIC']
+        return flags
+
+
+    set_config('VPX_USE_YASM', in_tree_vpx.use_yasm)
+    set_config('VPX_ASFLAGS', vpx_as_flags)
+
+
+# JPEG
+# ====
+
+with only_when(compile_environment):
+    option('--with-system-jpeg', nargs='?',
+           help='Use system libjpeg (installed at given prefix)')
+
+    @depends_if('--with-system-jpeg')
+    def jpeg_flags(value):
+        if len(value):
+            return namespace(
+                cflags=('-I%s/include' % value[0],),
+                ldflags=('-L%s/lib' % value[0], '-ljpeg'),
+            )
+        return namespace(
+            ldflags=('-ljpeg',),
+        )
+
+    with only_when('--with-system-jpeg'):
+        check_symbol('jpeg_destroy_compress', flags=jpeg_flags.ldflags,
+                     onerror=lambda: die('--with-system-jpeg requested but symbol '
+                                         'jpeg_destroy_compress not found.'))
+
+        c_compiler.try_compile(
+            includes=[
+                'stdio.h',
+                'sys/types.h',
+                'jpeglib.h',
+            ],
+            body='''
+                #if JPEG_LIB_VERSION < 62
+                #error Insufficient JPEG library version
+                #endif
+            ''',
+            flags=jpeg_flags.cflags,
+            check_msg='for sufficient jpeg library version',
+            onerror=lambda: die('Insufficient JPEG library version for '
+                                '--with-system-jpeg (62 required)'),
+        )
+
+        c_compiler.try_compile(
+            includes=[
+                'stdio.h',
+                'sys/types.h',
+                'jpeglib.h',
+            ],
+            body='''
+                #ifndef JCS_EXTENSIONS
+                #error libjpeg-turbo JCS_EXTENSIONS required
+                #endif
+            ''',
+            flags=jpeg_flags.cflags,
+            check_msg='for sufficient libjpeg-turbo JCS_EXTENSIONS',
+            onerror=lambda: die('libjpeg-turbo JCS_EXTENSIONS required for '
+                                 '--with-system-jpeg'),
+        )
+
+        set_config('MOZ_JPEG_CFLAGS', jpeg_flags.cflags)
+        set_config('MOZ_JPEG_LIBS', jpeg_flags.ldflags)
+
+    @depends('--with-system-jpeg', target)
+    def in_tree_jpeg(system_jpeg, target):
+        if system_jpeg:
+            return
+
+        flags = ()
+        use_yasm = None
+        need_yasm = False
+        if target.kernel == 'Darwin':
+            if target.cpu == 'x86':
+                flags = ('-DPIC', '-DMACHO')
+            elif target.cpu == 'x86_64':
+                flags = ('-D__x86_64__', '-DPIC', '-DMACHO')
+        elif target.kernel == 'WINNT':
+            if target.cpu == 'x86':
+                flags = ('-DPIC', '-DWIN32')
+            elif target.cpu == 'x86_64':
+                flags = ('-D__x86_64__', '-DPIC', '-DWIN64', '-DMSVC')
+        elif target.cpu == 'arm':
+            flags = ('-march=armv7-a', '-mfpu=neon')
+        elif target.cpu == 'aarch64':
+            flags = ('-march=armv8-a',)
+        elif target.cpu == 'mips32':
+            flags = ('-mdspr2',)
+        elif target.cpu == 'x86':
+            flags = ('-DPIC', '-DELF')
+        elif target.cpu == 'x86_64':
+            flags = ('-D__x86_64__', '-DPIC', '-DELF')
+
+        if target.cpu in ('x86', 'x86_64'):
+            use_yasm = True
+            if target.kernel == 'Linux' and target.os == 'GNU':
+                need_yasm = Version('1.0.1')
+            else:
+                need_yasm = Version('1.1')
+
+        return namespace(flags=flags, use_yasm=use_yasm, need_yasm=need_yasm)
+
+    set_config('LIBJPEG_TURBO_USE_YASM', in_tree_jpeg.use_yasm)
+    set_config('LIBJPEG_TURBO_ASFLAGS', in_tree_jpeg.flags)
+
+
+# Libav-fft Support
+# ==============================================================
+with only_when(compile_environment):
+    @depends(target)
+    def libav_fft(target):
+        flags = None
+        if target.kernel == 'WINNT' and target.cpu == 'x86':
+            flags = ['-DPIC', '-DWIN32']
+        elif target.cpu == 'x86_64':
+            if target.kernel == 'Darwin':
+                flags = ['-D__x86_64__', '-DPIC', '-DMACHO']
+            elif target.kernel == 'WINNT':
+                flags = ['-D__x86_64__', '-DPIC', '-DWIN64', '-DMSVC']
+            else:
+                flags = ['-D__x86_64__', '-DPIC', '-DELF']
+        if flags:
+            if target.kernel == 'Linux' and target.os == 'GNU':
+                need_yasm = Version('1.0.1')
+            else:
+                need_yasm = Version('1.1')
+            return namespace(flags=flags, need_yasm=need_yasm)
+
+
+    set_config('MOZ_LIBAV_FFT', depends(when=libav_fft)(lambda: True))
+    set_define('MOZ_LIBAV_FFT', depends(when=libav_fft)(lambda: True))
+    set_config('LIBAV_FFT_ASFLAGS', libav_fft.flags)
+
+
+# FFmpeg's ffvpx configuration
+# ==============================================================
+with only_when(compile_environment):
+    @depends_if(yasm_version)
+    def yasm_has_avx2(yasm_version):
+        return yasm_version >= '1.2'
+
+
+    set_config('YASM_HAS_AVX2', yasm_has_avx2)
+
+
+    @depends(yasm_has_avx2, libav_fft, vpx_as_flags, target)
+    def ffvpx(yasm_has_avx2, libav_fft, vpx_as_flags, target):
+        enable = flac_only = use_yasm = False
+        flags = []
+        if target.cpu in ('x86', 'x86_64'):
+            enable = True
+            if libav_fft and libav_fft.flags:
+                use_yasm = True
+                flags.extend(libav_fft.flags)
+                if target.kernel == 'WINNT':
+                    if target.cpu == 'x86':
+                        # 32-bit windows need to prefix symbols with an underscore.
+                        flags.extend(('-DPREFIX', '-Pconfig_win32.asm'))
+                    else:
+                        flags.append('-Pconfig_win64.asm')
+                elif target.kernel == 'Darwin':
+                    # 32/64-bit macosx assemblers need to prefix symbols with an
+                    # underscore.
+                    flags.extend(('-DPREFIX', '-Pconfig_darwin64.asm'))
+                else:
+                    # Default to unix.
+                    flags.append('-Pconfig_unix64.asm')
+            else:
+                flac_only = True
+        elif target.cpu in ('arm', 'aarch64') and \
+                target.kernel not in ('WINNT', 'Darwin'):
+            enable = flac_only = True
+            flags.extend(vpx_as_flags)
+
+        if use_yasm:
+            # default disabled components
+            flags.append('-Pdefaults_disabled.asm')
+            if not yasm_has_avx2:
+                flags.extend((
+                    '-DHAVE_AVX2=0',
+                    '-DHAVE_AVX2_INTERNAL=0',
+                    '-DHAVE_AVX2_EXTERNAL=0',
+                ))
+
+        return namespace(
+            enable=enable,
+            use_yasm=use_yasm,
+            flac_only=flac_only,
+            flags=flags,
+        )
+
+
+    set_config('MOZ_FFVPX', True, when=ffvpx.enable)
+    set_define('MOZ_FFVPX', True, when=ffvpx.enable)
+    set_config('MOZ_FFVPX_FLACONLY', True, when=ffvpx.flac_only)
+    set_define('MOZ_FFVPX_FLACONLY', True, when=ffvpx.flac_only)
+    set_config('FFVPX_ASFLAGS', ffvpx.flags)
+    set_config('FFVPX_USE_YASM', True, when=ffvpx.use_yasm)
+
+
+@depends(yasm_version, in_tree_vpx.need_yasm, in_tree_jpeg.use_yasm,
+         libav_fft.need_yasm, ffvpx.use_yasm)
+@imports(_from='__builtin__', _import='sorted')
+def valid_yasm_version(yasm_version, for_vpx, for_jpeg, for_libav,
+                       for_ffvpx=False):
+    # Note: the default for for_ffvpx above only matters for unit tests.
+    requires = {
+        'vpx': for_vpx,
+        'jpeg': for_jpeg,
+        'libav': for_libav,
+        'ffvpx': for_ffvpx,
+    }
+    requires = {k: v for (k, v) in requires.items() if v}
+    if requires and not yasm_version:
+        items = sorted(requires.keys())
+        if len(items) > 1:
+            what = ' and '.join((', '.join(items[:-1]), items[-1]))
+        else:
+            what = items[0]
+        die('Yasm is required to build with %s, but you do not appear to have '
+            'Yasm installed.' % what)
+
+    versioned = {k: v for (k, v) in requires.items() if v is not True}
+    by_version = sorted(versioned.items(), key=lambda x: x[1])
+    if by_version:
+        what, version = by_version[-1]
+        if yasm_version < version:
+            die('Yasm version %s or greater is required to build with %s.'
+                % (version, what))
+
+
+# ANGLE OpenGL->D3D translator for WebGL
+# ==============================================================
+
+with only_when(compile_environment & target_is_windows):
+    def d3d_compiler_dll_result(value):
+        if not value.path:
+            return 'provided by the OS'
+        return value.path
+
+    @depends(target, valid_windows_sdk_dir, fxc)
+    @checking('for D3D compiler DLL', d3d_compiler_dll_result)
+    @imports('os.path')
+    def d3d_compiler_dll(target, windows_sdk_dir, fxc):
+        suffix = {
+            'x86_64': 'x64',
+        }.get(target.cpu, target.cpu)
+
+        name = 'd3dcompiler_47.dll'
+
+        if target.cpu == 'aarch64':
+            # AArch64 Windows comes with d3dcompiler_47.dll installed
+            return namespace(name=name, path=None)
+
+        if windows_sdk_dir:
+            path = os.path.join(windows_sdk_dir.path, 'Redist', 'D3D', suffix, name)
+            error_extra = 'in Windows SDK at {}'.format(windows_sdk_dir.path)
+        else:
+            path = os.path.join(os.path.dirname(fxc), name)
+            error_extra = 'alongside FXC at {}'.format(fxc)
+
+        if os.path.exists(path):
+            return namespace(name=name, path=path)
+        die('Could not find {} {}'.format(name, error_extra))
+
+
+    set_config('MOZ_ANGLE_RENDERER', True)
+    set_config('MOZ_D3DCOMPILER_VISTA_DLL', d3d_compiler_dll.name,
+               when=d3d_compiler_dll.path)
+    set_config('MOZ_D3DCOMPILER_VISTA_DLL_PATH', d3d_compiler_dll.path)

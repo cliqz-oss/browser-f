@@ -3,13 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const { FrontClassWithSpec, Front } = require("devtools/shared/protocol");
+const { FrontClassWithSpec, registerFront } = require("devtools/shared/protocol");
 const { perfSpec } = require("devtools/shared/specs/perf");
 
-exports.PerfFront = FrontClassWithSpec(perfSpec, {
-  initialize: function(client, form) {
-    Front.prototype.initialize.call(this, client, form);
-    this.actorID = form.perfActor;
+class PerfFront extends FrontClassWithSpec(perfSpec) {
+  constructor(client, form) {
+    super(client, { actor: form.perfActor });
     this.manage(this);
-  },
-});
+  }
+}
+
+registerFront(PerfFront);

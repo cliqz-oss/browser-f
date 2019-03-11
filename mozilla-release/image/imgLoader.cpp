@@ -97,7 +97,7 @@ class imgMemoryReporter final : public nsIMemoryReporter {
         [=](layers::SharedSurfacesMemoryReport aReport) {
           self->FinishCollectReports(handleReport, data, aAnonymize, aReport);
         },
-        [=](mozilla::ipc::ResponseRejectReason aReason) {
+        [=](mozilla::ipc::ResponseRejectReason&& aReason) {
           layers::SharedSurfacesMemoryReport sharedSurfaces;
           self->FinishCollectReports(handleReport, data, aAnonymize,
                                      sharedSurfaces);
@@ -675,7 +675,7 @@ static bool ShouldLoadCachedImage(imgRequest* aImgRequest,
     nsCOMPtr<nsIDocShell> docShell =
         NS_CP_GetDocShellFromContext(aLoadingContext);
     if (docShell) {
-      nsIDocument* document = docShell->GetDocument();
+      Document* document = docShell->GetDocument();
       if (document && document->GetUpgradeInsecureRequests(false)) {
         return false;
       }
@@ -1078,9 +1078,9 @@ imgCacheQueue::const_iterator imgCacheQueue::end() const {
 }
 
 nsresult imgLoader::CreateNewProxyForRequest(
-    imgRequest* aRequest, nsILoadGroup* aLoadGroup,
-    nsIDocument* aLoadingDocument, imgINotificationObserver* aObserver,
-    nsLoadFlags aLoadFlags, imgRequestProxy** _retval) {
+    imgRequest* aRequest, nsILoadGroup* aLoadGroup, Document* aLoadingDocument,
+    imgINotificationObserver* aObserver, nsLoadFlags aLoadFlags,
+    imgRequestProxy** _retval) {
   LOG_SCOPE_WITH_PARAM(gImgLog, "imgLoader::CreateNewProxyForRequest",
                        "imgRequest", aRequest);
 
@@ -1401,7 +1401,7 @@ imgLoader::RemoveEntriesFromPrincipal(nsIPrincipal* aPrincipal) {
 }
 
 NS_IMETHODIMP
-imgLoader::RemoveEntry(nsIURI* aURI, nsIDocument* aDoc) {
+imgLoader::RemoveEntry(nsIURI* aURI, Document* aDoc) {
   if (aURI) {
     OriginAttributes attrs;
     if (aDoc) {
@@ -1421,7 +1421,7 @@ imgLoader::RemoveEntry(nsIURI* aURI, nsIDocument* aDoc) {
 }
 
 NS_IMETHODIMP
-imgLoader::FindEntryProperties(nsIURI* uri, nsIDocument* aDoc,
+imgLoader::FindEntryProperties(nsIURI* uri, Document* aDoc,
                                nsIProperties** _retval) {
   *_retval = nullptr;
 
@@ -1455,7 +1455,7 @@ imgLoader::FindEntryProperties(nsIURI* uri, nsIDocument* aDoc,
 }
 
 NS_IMETHODIMP_(void)
-imgLoader::ClearCacheForControlledDocument(nsIDocument* aDoc) {
+imgLoader::ClearCacheForControlledDocument(Document* aDoc) {
   MOZ_ASSERT(aDoc);
   AutoTArray<RefPtr<imgCacheEntry>, 128> entriesToBeRemoved;
   imgCacheTable& cache = GetCache(false);
@@ -1654,7 +1654,7 @@ bool imgLoader::ValidateRequestWithNewChannel(
     imgRequest* request, nsIURI* aURI, nsIURI* aInitialDocumentURI,
     nsIURI* aReferrerURI, ReferrerPolicy aReferrerPolicy,
     nsILoadGroup* aLoadGroup, imgINotificationObserver* aObserver,
-    nsISupports* aCX, nsIDocument* aLoadingDocument, nsLoadFlags aLoadFlags,
+    nsISupports* aCX, Document* aLoadingDocument, nsLoadFlags aLoadFlags,
     nsContentPolicyType aLoadPolicyType, imgRequestProxy** aProxyRequest,
     nsIPrincipal* aTriggeringPrincipal, int32_t aCORSMode,
     bool* aNewChannelCreated) {
@@ -1761,7 +1761,7 @@ bool imgLoader::ValidateEntry(
     imgCacheEntry* aEntry, nsIURI* aURI, nsIURI* aInitialDocumentURI,
     nsIURI* aReferrerURI, ReferrerPolicy aReferrerPolicy,
     nsILoadGroup* aLoadGroup, imgINotificationObserver* aObserver,
-    nsISupports* aCX, nsIDocument* aLoadingDocument, nsLoadFlags aLoadFlags,
+    nsISupports* aCX, Document* aLoadingDocument, nsLoadFlags aLoadFlags,
     nsContentPolicyType aLoadPolicyType, bool aCanMakeNewChannel,
     bool* aNewChannelCreated, imgRequestProxy** aProxyRequest,
     nsIPrincipal* aTriggeringPrincipal, int32_t aCORSMode) {
@@ -1827,7 +1827,7 @@ bool imgLoader::ValidateEntry(
   //      pointer of a document. This can still happen for non-document image
   //      cache entries.
   void* key = (void*)aCX;
-  nsCOMPtr<nsIDocument> doc = do_QueryInterface(aCX);
+  nsCOMPtr<Document> doc = do_QueryInterface(aCX);
   uint64_t innerWindowID = doc ? doc->InnerWindowID() : 0;
   if (request->LoadId() != key || request->InnerWindowID() != innerWindowID) {
     // If we would need to revalidate this entry, but we're being told to
@@ -2035,7 +2035,7 @@ imgLoader::LoadImageXPCOM(
   imgRequestProxy* proxy;
   ReferrerPolicy refpol = ReferrerPolicyFromString(aReferrerPolicy);
   nsCOMPtr<nsINode> node = do_QueryInterface(aCX);
-  nsCOMPtr<nsIDocument> doc = do_QueryInterface(aCX);
+  nsCOMPtr<Document> doc = do_QueryInterface(aCX);
   nsresult rv =
       LoadImage(aURI, aInitialDocumentURI, aReferrerURI, refpol,
                 aTriggeringPrincipal, 0, aLoadGroup, aObserver, node, doc,
@@ -2050,10 +2050,9 @@ nsresult imgLoader::LoadImage(
     ReferrerPolicy aReferrerPolicy, nsIPrincipal* aTriggeringPrincipal,
     uint64_t aRequestContextID, nsILoadGroup* aLoadGroup,
     imgINotificationObserver* aObserver, nsINode* aContext,
-    nsIDocument* aLoadingDocument, nsLoadFlags aLoadFlags,
-    nsISupports* aCacheKey, nsContentPolicyType aContentPolicyType,
-    const nsAString& initiatorType, bool aUseUrgentStartForChannel,
-    imgRequestProxy** _retval) {
+    Document* aLoadingDocument, nsLoadFlags aLoadFlags, nsISupports* aCacheKey,
+    nsContentPolicyType aContentPolicyType, const nsAString& initiatorType,
+    bool aUseUrgentStartForChannel, imgRequestProxy** _retval) {
   VerifyCacheSizes();
 
   NS_ASSERTION(aURI, "imgLoader::LoadImage -- NULL URI pointer");
@@ -2155,11 +2154,11 @@ nsresult imgLoader::LoadImage(
 
   if (cache.Get(key, getter_AddRefs(entry)) && entry) {
     bool newChannelCreated = false;
-    if (ValidateEntry(entry, aURI, aInitialDocumentURI, aReferrerURI,
-                      aReferrerPolicy, aLoadGroup, aObserver, aLoadingDocument,
-                      aLoadingDocument, requestFlags, aContentPolicyType, true,
-                      &newChannelCreated, _retval, aTriggeringPrincipal,
-                      corsmode)) {
+    if (ValidateEntry(
+            entry, aURI, aInitialDocumentURI, aReferrerURI, aReferrerPolicy,
+            aLoadGroup, aObserver, ToSupports(aLoadingDocument),
+            aLoadingDocument, requestFlags, aContentPolicyType, true,
+            &newChannelCreated, _retval, aTriggeringPrincipal, corsmode)) {
       request = entry->GetRequest();
 
       // If this entry has no proxies, its request has no reference to the
@@ -2185,9 +2184,10 @@ nsresult imgLoader::LoadImage(
         // - we don't have cache. We are not in this if() stmt. A new channel is
         //   created and that triggers the CSP checks.
         // - We have a cache entry and this is blocked by CSP directives.
-        DebugOnly<bool> shouldLoad = ShouldLoadCachedImage(
-            request, aLoadingDocument, aTriggeringPrincipal, aContentPolicyType,
-            /* aSendCSPViolationReports */ true);
+        DebugOnly<bool> shouldLoad =
+            ShouldLoadCachedImage(request, ToSupports(aLoadingDocument),
+                                  aTriggeringPrincipal, aContentPolicyType,
+                                  /* aSendCSPViolationReports */ true);
         MOZ_ASSERT(shouldLoad);
       }
     } else {
@@ -2244,8 +2244,9 @@ nsresult imgLoader::LoadImage(
     nsCOMPtr<nsILoadGroup> channelLoadGroup;
     newChannel->GetLoadGroup(getter_AddRefs(channelLoadGroup));
     rv = request->Init(aURI, aURI, /* aHadInsecureRedirect = */ false,
-                       channelLoadGroup, newChannel, entry, aLoadingDocument,
-                       aTriggeringPrincipal, corsmode, aReferrerPolicy);
+                       channelLoadGroup, newChannel, entry,
+                       ToSupports(aLoadingDocument), aTriggeringPrincipal,
+                       corsmode, aReferrerPolicy);
     if (NS_FAILED(rv)) {
       return NS_ERROR_FAILURE;
     }
@@ -2371,7 +2372,7 @@ nsresult imgLoader::LoadImageWithChannel(nsIChannel* channel,
 
   nsCOMPtr<nsIURI> uri;
   channel->GetURI(getter_AddRefs(uri));
-  nsCOMPtr<nsIDocument> doc = do_QueryInterface(aCX);
+  nsCOMPtr<Document> doc = do_QueryInterface(aCX);
 
   NS_ENSURE_TRUE(channel, NS_ERROR_FAILURE);
   nsCOMPtr<nsILoadInfo> loadInfo = channel->GetLoadInfo();

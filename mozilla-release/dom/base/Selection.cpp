@@ -14,6 +14,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/AutoCopyListener.h"
 #include "mozilla/AutoRestore.h"
+#include "mozilla/ContentIterator.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/SelectionBinding.h"
 #include "mozilla/dom/ShadowRoot.h"
@@ -37,7 +38,6 @@
 #include "nsTableCellFrame.h"
 #include "nsIScrollableFrame.h"
 #include "nsCCUncollectableMarker.h"
-#include "nsIContentIterator.h"
 #include "nsIDocumentEncoder.h"
 #include "nsTextFragment.h"
 #include <algorithm>
@@ -56,7 +56,7 @@
 #include "nsCaret.h"
 
 #include "nsITimer.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsINamed.h"
 
 #include "nsISelectionController.h"  //for the enums
@@ -81,9 +81,9 @@ static bool IsValidSelectionPoint(nsFrameSelection* aFrameSel, nsINode* aNode);
 
 #ifdef PRINT_RANGE
 static void printRange(nsRange* aDomRange);
-#define DEBUG_OUT_RANGE(x) printRange(x)
+#  define DEBUG_OUT_RANGE(x) printRange(x)
 #else
-#define DEBUG_OUT_RANGE(x)
+#  define DEBUG_OUT_RANGE(x)
 #endif  // PRINT_RANGE
 
 /******************************************************************************
@@ -383,17 +383,19 @@ void printRange(nsRange* aDomRange) {
 }
 #endif /* PRINT_RANGE */
 
-void Selection::Stringify(nsAString& aResult) {
-  // We need FlushType::Frames here to make sure frames have been created for
-  // the selected content.  Use mFrameSelection->GetShell() which returns
-  // null if the Selection has been disconnected (the shell is Destroyed).
-  nsCOMPtr<nsIPresShell> shell =
-      mFrameSelection ? mFrameSelection->GetShell() : nullptr;
-  if (!shell) {
-    aResult.Truncate();
-    return;
+void Selection::Stringify(nsAString& aResult, FlushFrames aFlushFrames) {
+  if (aFlushFrames == FlushFrames::Yes) {
+    // We need FlushType::Frames here to make sure frames have been created for
+    // the selected content.  Use mFrameSelection->GetShell() which returns
+    // null if the Selection has been disconnected (the shell is Destroyed).
+    nsCOMPtr<nsIPresShell> shell =
+        mFrameSelection ? mFrameSelection->GetShell() : nullptr;
+    if (!shell) {
+      aResult.Truncate();
+      return;
+    }
+    shell->FlushPendingNotifications(FlushType::Frames);
   }
-  shell->FlushPendingNotifications(FlushType::Frames);
 
   IgnoredErrorResult rv;
   ToStringWithFormat(NS_LITERAL_STRING("text/plain"),
@@ -419,7 +421,7 @@ void Selection::ToStringWithFormat(const nsAString& aFormatType,
     return;
   }
 
-  nsIDocument* doc = shell->GetDocument();
+  Document* doc = shell->GetDocument();
 
   // Flags should always include OutputSelectionOnly if we're coming from here:
   aFlags |= nsIDocumentEncoder::OutputSelectionOnly;
@@ -648,7 +650,9 @@ Selection::Selection(nsFrameSelection* aList)
       mCalledByJS(false),
       mNotifyAutoCopy(false) {}
 
-Selection::~Selection() {
+Selection::~Selection() { Disconnect(); }
+
+void Selection::Disconnect() {
   SetAnchorFocusRange(-1);
 
   uint32_t count = mRanges.Length();
@@ -669,7 +673,7 @@ Selection::~Selection() {
   }
 }
 
-nsIDocument* Selection::GetParentObject() const {
+Document* Selection::GetParentObject() const {
   nsIPresShell* shell = GetPresShell();
   if (shell) {
     return shell->GetDocument();
@@ -683,7 +687,7 @@ DocGroup* Selection::GetDocGroup() const {
     return nullptr;
   }
 
-  nsIDocument* doc = shell->GetDocument();
+  Document* doc = shell->GetDocument();
   return doc ? doc->GetDocGroup() : nullptr;
 }
 
@@ -725,7 +729,8 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(Selection)
 NS_INTERFACE_MAP_END
 
 NS_IMPL_MAIN_THREAD_ONLY_CYCLE_COLLECTING_ADDREF(Selection)
-NS_IMPL_MAIN_THREAD_ONLY_CYCLE_COLLECTING_RELEASE(Selection)
+NS_IMPL_MAIN_THREAD_ONLY_CYCLE_COLLECTING_RELEASE_WITH_LAST_RELEASE(
+    Selection, Disconnect())
 
 const RangeBoundary& Selection::AnchorRef() const {
   if (!mAnchorFocusRange) {
@@ -932,7 +937,7 @@ nsresult Selection::AddItem(nsRange* aItem, int32_t* aOutIndex,
     AutoTArray<RefPtr<nsRange>, 4> rangesToAdd;
     *aOutIndex = int32_t(mRanges.Length()) - 1;
 
-    nsIDocument* doc = GetParentObject();
+    Document* doc = GetParentObject();
     bool selectEventsEnabled =
         nsFrameSelection::sSelectionEventsEnabled ||
         (doc && nsContentUtils::IsSystemPrincipal(doc->NodePrincipal()));
@@ -1478,9 +1483,8 @@ void Selection::SelectFramesForContent(nsIContent* aContent, bool aSelected) {
 }
 
 // select all content children of aContent
-nsresult Selection::SelectAllFramesForContent(nsIContentIterator* aInnerIter,
-                                              nsIContent* aContent,
-                                              bool aSelected) {
+nsresult Selection::SelectAllFramesForContent(
+    PostContentIterator& aPostOrderIter, nsIContent* aContent, bool aSelected) {
   // If aContent doesn't have children, we should avoid to use the content
   // iterator for performance reason.
   if (!aContent->HasChildren()) {
@@ -1488,12 +1492,12 @@ nsresult Selection::SelectAllFramesForContent(nsIContentIterator* aInnerIter,
     return NS_OK;
   }
 
-  if (NS_WARN_IF(NS_FAILED(aInnerIter->Init(aContent)))) {
+  if (NS_WARN_IF(NS_FAILED(aPostOrderIter.Init(aContent)))) {
     return NS_ERROR_FAILURE;
   }
 
-  for (; !aInnerIter->IsDone(); aInnerIter->Next()) {
-    nsINode* node = aInnerIter->GetCurrentNode();
+  for (; !aPostOrderIter.IsDone(); aPostOrderIter.Next()) {
+    nsINode* node = aPostOrderIter.GetCurrentNode();
     MOZ_ASSERT(node);
     nsIContent* innercontent = node->IsContent() ? node->AsContent() : nullptr;
     SelectFramesForContent(innercontent, aSelected);
@@ -1573,18 +1577,18 @@ nsresult Selection::SelectFrames(nsPresContext* aPresContext, nsRange* aRange,
     return NS_OK;
   }
 
-  nsCOMPtr<nsIContentIterator> iter = NS_NewContentSubtreeIterator();
-  iter->Init(aRange);
-  if (isFirstContentTextNode && !iter->IsDone() &&
-      iter->GetCurrentNode() == startNode) {
-    iter->Next();  // first content has already been handled.
+  ContentSubtreeIterator subtreeIter;
+  subtreeIter.Init(aRange);
+  if (isFirstContentTextNode && !subtreeIter.IsDone() &&
+      subtreeIter.GetCurrentNode() == startNode) {
+    subtreeIter.Next();  // first content has already been handled.
   }
-  nsCOMPtr<nsIContentIterator> inneriter = NS_NewContentIterator();
-  for (; !iter->IsDone(); iter->Next()) {
-    nsINode* node = iter->GetCurrentNode();
+  PostContentIterator postOrderIter;
+  for (; !subtreeIter.IsDone(); subtreeIter.Next()) {
+    nsINode* node = subtreeIter.GetCurrentNode();
     MOZ_ASSERT(node);
     nsIContent* content = node->IsContent() ? node->AsContent() : nullptr;
-    SelectAllFramesForContent(inneriter, content, aSelect);
+    SelectAllFramesForContent(postOrderIter, content, aSelect);
   }
 
   // We must now do the last one if it is not the same as the first
@@ -1967,11 +1971,11 @@ void Selection::AddRangeJS(nsRange& aRange, ErrorResult& aRv) {
 }
 
 void Selection::AddRange(nsRange& aRange, ErrorResult& aRv) {
-  RefPtr<nsIDocument> document(GetParentObject());
+  RefPtr<Document> document(GetParentObject());
   return AddRangeInternal(aRange, document, aRv);
 }
 
-void Selection::AddRangeInternal(nsRange& aRange, nsIDocument* aDocument,
+void Selection::AddRangeInternal(nsRange& aRange, Document* aDocument,
                                  ErrorResult& aRv) {
   // If the given range is part of another Selection, we need to clone the
   // range first.
@@ -2241,7 +2245,7 @@ void Selection::Collapse(const RawRangeBoundary& aPoint, ErrorResult& aRv) {
 
 #ifdef DEBUG_SELECTION
   nsCOMPtr<nsIContent> content = do_QueryInterface(aPoint.Container());
-  nsCOMPtr<nsIDocument> doc = do_QueryInterface(aPoint.Container());
+  nsCOMPtr<Document> doc = do_QueryInterface(aPoint.Container());
   printf("Sel. Collapse to %p %s %d\n", container.get(),
          content ? nsAtomCString(content->NodeInfo()->NameAtom()).get()
                  : (doc ? "DOCUMENT" : "???"),
@@ -2865,13 +2869,13 @@ nsIPresShell* Selection::GetPresShell() const {
   return mFrameSelection->GetShell();
 }
 
-nsIDocument* Selection::GetDocument() const {
+Document* Selection::GetDocument() const {
   nsIPresShell* presShell = GetPresShell();
   return presShell ? presShell->GetDocument() : nullptr;
 }
 
 nsPIDOMWindowOuter* Selection::GetWindow() const {
-  nsIDocument* document = GetDocument();
+  Document* document = GetDocument();
   return document ? document->GetWindow() : nullptr;
 }
 
@@ -3037,10 +3041,14 @@ nsresult Selection::ScrollIntoView(SelectionRegion aRegion,
                                    nsIPresShell::ScrollAxis aVertical,
                                    nsIPresShell::ScrollAxis aHorizontal,
                                    int32_t aFlags) {
-  if (!mFrameSelection) return NS_OK;  // nothing to do
+  if (!mFrameSelection) {
+    return NS_OK;
+  }
 
   nsIPresShell* presShell = mFrameSelection->GetShell();
-  if (!presShell) return NS_OK;
+  if (!presShell || !presShell->GetDocument()) {
+    return NS_OK;
+  }
 
   if (mFrameSelection->GetBatching()) return NS_OK;
 
@@ -3059,7 +3067,7 @@ nsresult Selection::ScrollIntoView(SelectionRegion aRegion,
   // either manually flush if they're in a safe position for it or use the
   // async version of this method.
   if (aFlags & Selection::SCROLL_DO_FLUSH) {
-    presShell->FlushPendingNotifications(FlushType::Layout);
+    presShell->GetDocument()->FlushPendingNotifications(FlushType::Layout);
 
     // Reget the presshell, since it might have been Destroy'ed.
     presShell = mFrameSelection ? mFrameSelection->GetShell() : nullptr;
@@ -3161,7 +3169,7 @@ nsresult Selection::NotifySelectionListeners() {
   if (mSelectionType == SelectionType::eNormal &&
       calledByJSRestorer.SavedValue()) {
     nsPIDOMWindowOuter* window = GetWindow();
-    nsIDocument* document = GetDocument();
+    Document* document = GetDocument();
     // If the document is in design mode or doesn't have contenteditable
     // element, we don't need to move focus.
     if (window && document && !document->HasFlag(NODE_IS_EDITABLE) &&
@@ -3200,7 +3208,7 @@ nsresult Selection::NotifySelectionListeners() {
     return NS_OK;
   }
 
-  nsCOMPtr<nsIDocument> doc;
+  nsCOMPtr<Document> doc;
   nsIPresShell* ps = GetPresShell();
   if (ps) {
     doc = ps->GetDocument();
@@ -3607,6 +3615,6 @@ AutoHideSelectionChanges::AutoHideSelectionChanges(
 
 bool Selection::HasSameRoot(nsINode& aNode) {
   nsINode* root = aNode.SubtreeRoot();
-  nsIDocument* doc = GetParentObject();
+  Document* doc = GetParentObject();
   return doc == root || (root && doc == root->GetComposedDoc());
 }

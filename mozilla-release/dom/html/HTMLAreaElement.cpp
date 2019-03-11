@@ -66,15 +66,14 @@ nsDOMTokenList* HTMLAreaElement::RelList() {
   return mRelList;
 }
 
-nsresult HTMLAreaElement::BindToTree(nsIDocument* aDocument,
-                                     nsIContent* aParent,
+nsresult HTMLAreaElement::BindToTree(Document* aDocument, nsIContent* aParent,
                                      nsIContent* aBindingParent) {
   Link::ResetLinkState(false, Link::ElementHasHref());
   nsresult rv =
       nsGenericHTMLElement::BindToTree(aDocument, aParent, aBindingParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsIDocument* doc = GetComposedDoc();
+  Document* doc = GetComposedDoc();
   if (doc) {
     doc->RegisterPendingLinkUpdate(this);
   }
@@ -82,8 +81,8 @@ nsresult HTMLAreaElement::BindToTree(nsIDocument* aDocument,
 }
 
 void HTMLAreaElement::UnbindFromTree(bool aDeep, bool aNullParent) {
-  // If this link is ever reinserted into a document, it might
-  // be under a different xml:base, so forget the cached state now.
+  // Without removing the link state we risk a dangling pointer
+  // in the mStyledLinks hashtable
   Link::ResetLinkState(false, Link::ElementHasHref());
 
   nsGenericHTMLElement::UnbindFromTree(aDeep, aNullParent);

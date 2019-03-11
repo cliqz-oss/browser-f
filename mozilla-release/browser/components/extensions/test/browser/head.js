@@ -6,8 +6,10 @@
  *          getBrowserActionWidget
  *          clickBrowserAction clickPageAction
  *          getBrowserActionPopup getPageActionPopup getPageActionButton
+ *          openBrowserActionPanel
  *          closeBrowserAction closePageAction
  *          promisePopupShown promisePopupHidden
+ *          toggleBookmarksToolbar
  *          openContextMenu closeContextMenu
  *          openContextMenuInSidebar openContextMenuInPopup
  *          openExtensionContextMenu closeExtensionContextMenu
@@ -22,6 +24,7 @@
  *          promiseAnimationFrame getCustomizableUIPanelID
  *          awaitEvent BrowserWindowIterator
  *          navigateTab historyPushState promiseWindowRestored
+ *          getIncognitoWindow startIncognitoMonitorExtension
  */
 
 // There are shutdown issues for which multiple rejections are left uncaught.
@@ -286,9 +289,29 @@ function closeBrowserAction(extension, win = window) {
   return Promise.resolve();
 }
 
+function openBrowserActionPanel(extension, win = window, awaitLoad = false) {
+  clickBrowserAction(extension, win);
+
+  return awaitExtensionPanel(extension, win, awaitLoad);
+}
+
+async function toggleBookmarksToolbar(visible = true) {
+  let bookmarksToolbar = document.getElementById("PersonalToolbar");
+  let transitionPromise =
+    BrowserTestUtils.waitForEvent(bookmarksToolbar, "transitionend",
+                                  e => e.propertyName == "max-height");
+
+  setToolbarVisibility(bookmarksToolbar, visible);
+  await transitionPromise;
+}
+
 async function openContextMenuInPopup(extension, selector = "body") {
   let contentAreaContextMenu = document.getElementById("contentAreaContextMenu");
   let browser = await awaitExtensionPanel(extension);
+
+  // Ensure that the document layout has been flushed before triggering the mouse event
+  // (See Bug 1519808 for a rationale).
+  await browser.ownerGlobal.promiseDocumentFlushed(() => {});
   let popupShownPromise = BrowserTestUtils.waitForEvent(contentAreaContextMenu, "popupshown");
   await BrowserTestUtils.synthesizeMouseAtCenter(selector, {type: "mousedown", button: 2}, browser);
   await BrowserTestUtils.synthesizeMouseAtCenter(selector, {type: "contextmenu"}, browser);
@@ -535,4 +558,139 @@ function navigateTab(tab, url) {
 
 function historyPushState(tab, url) {
   return locationChange(tab, url, (url) => { content.history.pushState(null, null, url); });
+}
+
+// A monitoring extension that fails if it receives data it should not.
+async function startIncognitoMonitorExtension(failOnIncognitoEvent = true) {
+  function background(expectIncognito) {
+    // Bug 1513220 - We're unable to get the tab during onRemoved, so we track
+    // valid tabs in "seen" so we can at least validate tabs that we have "seen"
+    // during onRemoved.  This means that the monitor extension must be started
+    // prior to creating any tabs that will be removed.
+
+    // Map<tabId -> tab>
+    let seenTabs = new Map();
+    function getTabById(tabId) {
+      return seenTabs.has(tabId) ? seenTabs.get(tabId) : browser.tabs.get(tabId);
+    }
+
+    async function testTab(tabOrId, eventName) {
+      let tab = tabOrId;
+      if (typeof tabOrId == "number") {
+        let tabId = tabOrId;
+        try {
+          tab = await getTabById(tabId);
+        } catch (e) {
+          browser.test.fail(`tabs.${eventName} for id ${tabOrId} unexpected failure ${e}\n`);
+          return;
+        }
+      }
+      browser.test.assertEq(tab.incognito, expectIncognito, `tabs.${eventName} ${tab.id}: monitor extension got expected incognito value`);
+      seenTabs.set(tab.id, tab);
+    }
+    async function testTabInfo(tabInfo, eventName) {
+      if (typeof tabInfo == "number") {
+        await testTab(tabInfo, eventName);
+      } else if (typeof tabInfo == "object") {
+        if (tabInfo.id !== undefined) {
+          await testTab(tabInfo, eventName);
+        } else if (tabInfo.tab !== undefined) {
+          await testTab(tabInfo.tab, eventName);
+        } else if (tabInfo.tabIds !== undefined) {
+          await Promise.all(tabInfo.tabIds.map(tabId => testTab(tabId, eventName)));
+        } else if (tabInfo.tabId !== undefined) {
+          await testTab(tabInfo.tabId, eventName);
+        }
+      }
+    }
+    let tabEvents = ["onUpdated", "onCreated", "onAttached", "onDetached",
+                     "onRemoved", "onMoved", "onZoomChange",
+                     "onHighlighted"];
+    for (let eventName of tabEvents) {
+      browser.tabs[eventName].addListener(async details => { await testTabInfo(details, eventName); });
+    }
+    browser.tabs.onReplaced.addListener(async (addedTabId, removedTabId) => {
+      await testTabInfo(addedTabId, "onReplaced (addedTabId)");
+      await testTabInfo(removedTabId, "onReplaced (removedTabId)");
+    });
+
+    // Map<windowId -> window>
+    let seenWindows = new Map();
+    function getWindowById(windowId) {
+      return seenWindows.has(windowId) ? seenWindows.get(windowId) : browser.windows.get(windowId);
+    }
+
+    browser.windows.onCreated.addListener(window => {
+      browser.test.assertEq(window.incognito, expectIncognito, `windows.onCreated monitor extension got expected incognito value`);
+      seenWindows.set(window.id, window);
+    });
+    browser.windows.onRemoved.addListener(async (windowId) => {
+      let window;
+      try {
+        window = await getWindowById(windowId);
+      } catch (e) {
+        browser.test.fail(`windows.onCreated for id ${windowId} unexpected failure ${e}\n`);
+        return;
+      }
+      browser.test.assertEq(window.incognito, expectIncognito, `windows.onRemoved ${window.id}: monitor extension got expected incognito value`);
+    });
+    browser.windows.onFocusChanged.addListener(async (windowId) => {
+      if (windowId == browser.windows.WINDOW_ID_NONE) {
+        return;
+      }
+      // onFocusChanged will also fire for blur so check actual window.incognito value.
+      let window;
+      try {
+        window = await getWindowById(windowId);
+      } catch (e) {
+        browser.test.fail(`windows.onFocusChanged for id ${windowId} unexpected failure ${e}\n`);
+        return;
+      }
+      browser.test.assertEq(window.incognito, expectIncognito, `windows.onFocusChanged ${window.id}: monitor extesion got expected incognito value`);
+      seenWindows.set(window.id, window);
+    });
+  }
+
+  let extension = ExtensionTestUtils.loadExtension({
+    manifest: {
+      "permissions": ["tabs"],
+    },
+    incognitoOverride: failOnIncognitoEvent ? "not_allowed" : undefined,
+    background: `(${background})(${!failOnIncognitoEvent})`,
+  });
+  await extension.startup();
+  return extension;
+}
+
+async function getIncognitoWindow(url) {
+  // Since events will be limited based on incognito, we need a
+  // spanning extension to get the tab id so we can test access failure.
+
+  // avoid linting issue with background
+  /* eslint-disable no-use-before-define */
+  function background(expectUrl) {
+    browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+      if (changeInfo.status === "complete" && tab.url === expectUrl) {
+        browser.test.sendMessage("data", {tabId, windowId: tab.windowId});
+      }
+    });
+  }
+
+  let windowWatcher = ExtensionTestUtils.loadExtension({
+    manifest: {
+      "permissions": ["tabs"],
+    },
+    background: `(${background})("${url}")`,
+  });
+
+  await windowWatcher.startup();
+  let data = windowWatcher.awaitMessage("data");
+
+  let win = await BrowserTestUtils.openNewBrowserWindow({private: true, url});
+  let browser = win.getBrowser().selectedBrowser;
+  BrowserTestUtils.loadURI(browser, url);
+
+  let details = await data;
+  await windowWatcher.unload();
+  return {win, details};
 }

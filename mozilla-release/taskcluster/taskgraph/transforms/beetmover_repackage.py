@@ -18,8 +18,9 @@ from taskgraph.util.scriptworker import (get_beetmover_bucket_scope,
                                          get_beetmover_action_scope,
                                          get_worker_type_for_scope)
 from taskgraph.util.taskcluster import get_artifact_prefix
+from taskgraph.util.treeherder import replace_group
 from taskgraph.transforms.task import task_description_schema
-from voluptuous import Any, Required, Optional
+from voluptuous import Required, Optional
 
 import logging
 import re
@@ -30,13 +31,6 @@ logger = logging.getLogger(__name__)
 def _compile_regex_mapping(mapping):
     return {re.compile(regex): value for regex, value in mapping.iteritems()}
 
-
-_WINDOWS_BUILD_PLATFORMS = [
-    'win64-nightly',
-    'win32-nightly',
-    'win64-devedition-nightly',
-    'win32-devedition-nightly',
-]
 
 # Until bug 1331141 is fixed, if you are adding any new artifacts here that
 # need to be transfered to S3, please be aware you also need to follow-up
@@ -98,7 +92,7 @@ UPSTREAM_ARTIFACT_UNSIGNED_PATHS = _compile_regex_mapping({
                     "host/bin/mar.exe",
                     "host/bin/mbsdiff.exe",
                 ]),
-    r'^win(32|64)(|-devedition)-nightly$':
+    r'^win(32|64(|-aarch64))(|-devedition)-nightly$':
         _DESKTOP_UPSTREAM_ARTIFACTS_UNSIGNED_EN_US + [
             'host/bin/mar.exe',
             'host/bin/mbsdiff.exe',
@@ -114,7 +108,7 @@ UPSTREAM_ARTIFACT_UNSIGNED_PATHS = _compile_regex_mapping({
 UPSTREAM_ARTIFACT_SIGNED_PATHS = _compile_regex_mapping({
     r'^linux(|64)(|-devedition|-asan-reporter)-nightly(|-l10n)$':
         ['target.tar.bz2', 'target.tar.bz2.asc'],
-    r'^win(32|64)(|-devedition|-asan-reporter)-nightly(|-l10n)$': ['target.zip'],
+    r'^win(32|64)(|-aarch64)(|-devedition|-asan-reporter)-nightly(|-l10n)$': ['target.zip'],
 })
 
 # Until bug 1331141 is fixed, if you are adding any new artifacts here that
@@ -145,11 +139,6 @@ UPSTREAM_ARTIFACT_SIGNED_MAR_PATHS = [
 # Voluptuous uses marker objects as dictionary *keys*, but they are not
 # comparable, so we cast all of the keys back to regular strings
 task_description_schema = {str(k): v for k, v in task_description_schema.schema.iteritems()}
-
-# shortcut for a string where task references are allowed
-taskref_or_string = Any(
-    basestring,
-    {Required('task-reference'): basestring})
 
 beetmover_description_schema = schema.extend({
     # depname is used in taskref's to identify the taskID of the unsigned things
@@ -183,7 +172,13 @@ def make_task_description(config, jobs):
         attributes = dep_job.attributes
 
         treeherder = job.get('treeherder', {})
-        treeherder.setdefault('symbol', 'BM-R')
+        upstream_symbol = dep_job.task['extra']['treeherder']['symbol']
+        if 'build' in job['dependent-tasks']:
+            upstream_symbol = job['dependent-tasks']['build'].task['extra']['treeherder']['symbol']
+        treeherder.setdefault(
+            'symbol',
+            replace_group(upstream_symbol, 'BMR')
+        )
         dep_th_platform = dep_job.task.get('extra', {}).get(
             'treeherder', {}).get('machine', {}).get('platform', '')
         treeherder.setdefault('platform',
@@ -251,7 +246,9 @@ def make_task_description(config, jobs):
         yield task
 
 
-def generate_upstream_artifacts(job, dependencies, platform, locale=None, project=None):
+def generate_upstream_artifacts(
+    config, job, dependencies, platform, locale=None, project=None
+):
 
     build_mapping = UPSTREAM_ARTIFACT_UNSIGNED_PATHS
     build_signing_mapping = UPSTREAM_ARTIFACT_SIGNED_PATHS
@@ -271,6 +268,12 @@ def generate_upstream_artifacts(job, dependencies, platform, locale=None, projec
         ("build", build_mapping),
         ("signing", build_signing_mapping),
     ]:
+        # Bug 1522380: We want to build but not publish win64-aarch64 builds on release branches
+        if (
+            platform.startswith("win64-aarch64-nightly")
+            and config.params["release_type"] != "nightly"
+        ):
+            continue
         platform_was_previously_matched_by_regex = None
         for platform_regex, paths in mapping.iteritems():
             if platform_regex.match(platform) is not None:
@@ -305,6 +308,14 @@ def generate_upstream_artifacts(job, dependencies, platform, locale=None, projec
         ('mar-signing', 'signing', mar_signing_mapping),
     ]:
         if task_type not in dependencies:
+            continue
+
+        # Bug 1522380: We want to build but not publish win64-aarch64 builds on release branches
+        if (
+            platform.startswith("win64-aarch64-nightly")
+            and config.params["release_type"] != "nightly"
+            and task_type != "mar-signing"
+        ):
             continue
 
         paths = ["{}/{}".format(artifact_prefix, path) for path in paths]
@@ -361,7 +372,7 @@ def make_task_worker(config, jobs):
         platform = job["attributes"]["build_platform"]
 
         upstream_artifacts = generate_upstream_artifacts(
-            job, job['dependencies'], platform, locale,
+            config, job, job['dependencies'], platform, locale,
             project=config.params['project']
         )
 

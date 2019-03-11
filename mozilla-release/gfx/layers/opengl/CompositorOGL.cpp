@@ -33,7 +33,7 @@
 #include "mozilla/layers/TextureHostOGL.h"  // for TextureSourceOGL, etc
 #include "mozilla/layers/PTextureParent.h"  // for OtherPid() on PTextureParent
 #ifdef XP_DARWIN
-#include "mozilla/layers/TextureSync.h"  // for TextureSync::etc.
+#  include "mozilla/layers/TextureSync.h"  // for TextureSync::etc.
 #endif
 #include "mozilla/mozalloc.h"  // for operator delete, etc
 #include "nsAppRunner.h"
@@ -53,7 +53,7 @@
 #include "mozilla/gfx/Swizzle.h"
 
 #if MOZ_WIDGET_ANDROID
-#include "GeneratedJNIWrappers.h"
+#  include "GeneratedJNIWrappers.h"
 #endif
 
 #include "GeckoProfiler.h"
@@ -290,6 +290,16 @@ void CompositorOGL::CleanupResources() {
     delete iter->second;
   }
   mPrograms.clear();
+
+#ifdef MOZ_WIDGET_GTK
+  // TextureSources might hold RefPtr<gl::GLContext>.
+  // All of them needs to be released to destroy GLContext.
+  // GLContextGLX has to be destroyed before related gtk window is destroyed.
+  for (auto textureSource : mRegisteredTextureSources) {
+    textureSource->DeallocateDeviceData();
+  }
+  mRegisteredTextureSources.clear();
+#endif
 
   ctx->fBindFramebuffer(LOCAL_GL_FRAMEBUFFER, 0);
 
@@ -2005,6 +2015,24 @@ void PerUnitTexturePoolOGL::DestroyTextures() {
 
 bool CompositorOGL::SupportsLayerGeometry() const {
   return gfxPrefs::OGLLayerGeometry();
+}
+
+void CompositorOGL::RegisterTextureSource(TextureSource* aTextureSource) {
+#ifdef MOZ_WIDGET_GTK
+  if (mDestroyed) {
+    return;
+  }
+  mRegisteredTextureSources.insert(aTextureSource);
+#endif
+}
+
+void CompositorOGL::UnregisterTextureSource(TextureSource* aTextureSource) {
+#ifdef MOZ_WIDGET_GTK
+  if (mDestroyed) {
+    return;
+  }
+  mRegisteredTextureSources.erase(aTextureSource);
+#endif
 }
 
 }  // namespace layers

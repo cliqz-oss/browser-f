@@ -73,7 +73,7 @@ fieldset {
   padding-inline-start: 0.75em;
   padding-inline-end: 0.75em;
   border: 2px groove ThreeDLightShadow;
-  min-inline-size: -moz-min-content;
+  min-inline-size: min-content;
 }
 
 label {
@@ -172,12 +172,13 @@ input > .preview-div {
   white-space: pre;
 }
 
-textarea > .anonymous-div.inherit-overflow {
-  overflow: inherit;
-}
-textarea > .anonymous-div.inherit-scroll-behavior {
+textarea > .anonymous-div {
   scroll-behavior: inherit;
   overscroll-behavior: inherit;
+}
+
+textarea > .anonymous-div.inherit-overflow {
+  overflow: inherit;
 }
 
 input::placeholder,

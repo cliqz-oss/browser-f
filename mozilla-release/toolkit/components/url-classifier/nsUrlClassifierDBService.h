@@ -29,9 +29,9 @@
 
 // GCC < 6.1 workaround, see bug 1329593
 #if defined(XP_WIN) && defined(__MINGW32__)
-#define GCC_MANGLING_WORKAROUND __stdcall
+#  define GCC_MANGLING_WORKAROUND __stdcall
 #else
-#define GCC_MANGLING_WORKAROUND
+#  define GCC_MANGLING_WORKAROUND
 #endif
 
 // The hash length for a domain key.
@@ -57,11 +57,7 @@
 #define MALWARE_TABLE_PREF "urlclassifier.malwareTable"
 #define PHISH_TABLE_PREF "urlclassifier.phishTable"
 #define TRACKING_TABLE_PREF "urlclassifier.trackingTable"
-#define TRACKING_TABLE_TEST_ENTRIES_PREF \
-  "urlclassifier.trackingTable.testEntries"
 #define TRACKING_WHITELIST_TABLE_PREF "urlclassifier.trackingWhitelistTable"
-#define TRACKING_WHITELIST_TABLE_TEST_ENTRIES_PREF \
-  "urlclassifier.trackingWhitelistTable.testEntries"
 #define BLOCKED_TABLE_PREF "urlclassifier.blockedTable"
 #define DOWNLOAD_BLOCK_TABLE_PREF "urlclassifier.downloadBlockTable"
 #define DOWNLOAD_ALLOW_TABLE_PREF "urlclassifier.downloadAllowTable"
@@ -74,7 +70,9 @@ class nsUrlClassifierDBServiceWorker;
 class nsIThread;
 class nsIURI;
 class UrlClassifierDBServiceWorkerProxy;
+
 namespace mozilla {
+
 namespace safebrowsing {
 class Classifier;
 class ProtocolParser;
@@ -82,6 +80,11 @@ class ProtocolParser;
 nsresult TablesToResponse(const nsACString& tables);
 
 }  // namespace safebrowsing
+
+namespace net {
+class AsyncUrlChannelClassifier;
+}
+
 }  // namespace mozilla
 
 // This is a proxy class that just creates a background thread and delegates
@@ -90,6 +93,8 @@ class nsUrlClassifierDBService final : public nsIUrlClassifierDBService,
                                        public nsIURIClassifier,
                                        public nsIUrlClassifierInfo,
                                        public nsIObserver {
+  friend class mozilla::net::AsyncUrlChannelClassifier;
+
  public:
   // This is thread safe. It throws an exception if the thread is busy.
   nsUrlClassifierDBService();
@@ -117,6 +122,10 @@ class nsUrlClassifierDBService final : public nsIUrlClassifierDBService,
   static bool ShutdownHasStarted();
 
  private:
+  // This method is used only by AsyncUrlChannelClassifier. If you want to use
+  // it, please contact a safebrowsing/URL-Classifier peer.
+  static nsUrlClassifierDBServiceWorker* GetWorker();
+
   const nsTArray<nsCString> kObservedPrefs = {
       NS_LITERAL_CSTRING(CHECK_MALWARE_PREF),
       NS_LITERAL_CSTRING(CHECK_PHISHING_PREF),
@@ -124,9 +133,7 @@ class nsUrlClassifierDBService final : public nsIUrlClassifierDBService,
       NS_LITERAL_CSTRING(MALWARE_TABLE_PREF),
       NS_LITERAL_CSTRING(PHISH_TABLE_PREF),
       NS_LITERAL_CSTRING(TRACKING_TABLE_PREF),
-      NS_LITERAL_CSTRING(TRACKING_TABLE_TEST_ENTRIES_PREF),
       NS_LITERAL_CSTRING(TRACKING_WHITELIST_TABLE_PREF),
-      NS_LITERAL_CSTRING(TRACKING_WHITELIST_TABLE_TEST_ENTRIES_PREF),
       NS_LITERAL_CSTRING(BLOCKED_TABLE_PREF),
       NS_LITERAL_CSTRING(DOWNLOAD_BLOCK_TABLE_PREF),
       NS_LITERAL_CSTRING(DOWNLOAD_ALLOW_TABLE_PREF),
@@ -139,8 +146,6 @@ class nsUrlClassifierDBService final : public nsIUrlClassifierDBService,
   nsUrlClassifierDBService(nsUrlClassifierDBService&);
 
   nsresult LookupURI(nsIPrincipal* aPrincipal, const nsACString& tables,
-                     const nsTArray<nsCString>& extraTablesByPrefs,
-                     const nsTArray<nsCString>& extraEntriesByPrefs,
                      nsIUrlClassifierCallback* c, bool forceCheck,
                      bool* didCheck);
 
@@ -152,6 +157,13 @@ class nsUrlClassifierDBService final : public nsIUrlClassifierDBService,
   nsresult Shutdown();
 
   nsresult ReadTablesFromPrefs();
+
+  // This method checks if the classification can be done just using
+  // preferences. It returns true if the operation has been completed.
+  bool AsyncClassifyLocalWithFeaturesUsingPreferences(
+      nsIURI* aURI, const nsTArray<RefPtr<nsIUrlClassifierFeature>>& aFeatures,
+      nsIUrlClassifierFeature::listType aListType,
+      nsIUrlClassifierFeatureCallback* aCallback);
 
   RefPtr<nsUrlClassifierDBServiceWorker> mWorker;
   RefPtr<UrlClassifierDBServiceWorkerProxy> mWorkerProxy;
@@ -184,12 +196,7 @@ class nsUrlClassifierDBService final : public nsIUrlClassifierDBService,
   nsTArray<nsCString> mDisallowCompletionsTables;
 
   // Comma-separated list of tables to use in lookups.
-  nsCString mTrackingProtectionTables;
   nsCString mBaseTables;
-
-  // Comma-separated hosts set by prefs to use in lookups.
-  nsCString mTrackingProtectionWhitelistExtraEntriesByPrefs;
-  nsCString mTrackingProtectionBlacklistExtraEntriesByPrefs;
 
   // Thread that we do the updates on.
   static nsIThread* gDbBackgroundThread;
@@ -214,10 +221,14 @@ class nsUrlClassifierDBServiceWorker final : public nsIUrlClassifierDBService {
   // update operations to prevent lookups from blocking for too long.
   nsresult HandlePendingLookups();
 
-  // Perform a blocking classifier lookup for a given url. Can be called on
-  // either the main thread or the worker thread.
-  nsresult DoLocalLookup(const nsACString& spec, const nsACString& tables,
-                         LookupResultArray& results);
+  // Perform a blocking classifier lookup for a given url fragments set.
+  // Can be called on either the main thread or the worker thread.
+  nsresult DoSingleLocalLookupWithURIFragments(
+      const nsTArray<nsCString>& aSpecFragments, const nsACString& aTable,
+      LookupResultArray& aResults);
+  nsresult DoLocalLookupWithURI(const nsACString& aSpec,
+                                const nsTArray<nsCString>& aTables,
+                                LookupResultArray& aResults);
 
   // Open the DB connection
   nsresult GCC_MANGLING_WORKAROUND OpenDb();

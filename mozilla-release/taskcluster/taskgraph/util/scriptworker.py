@@ -48,6 +48,7 @@ SIGNING_SCOPE_ALIAS_TO_PROJECT = [[
     'all-nightly-branches', set([
         'mozilla-central',
         'comm-central',
+        'oak',
     ])
 ], [
     'all-release-branches', set([
@@ -84,6 +85,7 @@ BEETMOVER_SCOPE_ALIAS_TO_PROJECT = [[
     'all-nightly-branches', set([
         'mozilla-central',
         'comm-central',
+        'oak',
     ])
 ], [
     'all-release-branches', set([
@@ -121,7 +123,8 @@ This is a list of list-pairs, for ordering.
 BALROG_SCOPE_ALIAS_TO_PROJECT = [[
     'nightly', set([
         'mozilla-central',
-        'comm-central'
+        'comm-central',
+        'oak',
     ])
 ], [
     'beta', set([
@@ -369,10 +372,6 @@ def get_signing_cert_scope_per_platform(build_platform, is_nightly, config):
         return get_signing_cert_scope(config)
     else:
         return add_scope_prefix(config, 'signing:cert:dep-signing')
-
-
-def get_autograph_format_scope(config):
-    return add_scope_prefix(config, 'signing:format:autograph_hash_only_mar384')
 
 
 def get_worker_type_for_scope(config, scope):

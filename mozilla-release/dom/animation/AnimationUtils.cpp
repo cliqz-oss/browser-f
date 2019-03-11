@@ -6,16 +6,18 @@
 
 #include "AnimationUtils.h"
 
+#include "mozilla/dom/Document.h"
+#include "mozilla/dom/KeyframeEffect.h"
+#include "mozilla/EffectSet.h"
+#include "mozilla/Preferences.h"
 #include "nsDebug.h"
 #include "nsAtom.h"
 #include "nsIContent.h"
-#include "nsIDocument.h"
 #include "nsGlobalWindow.h"
 #include "nsString.h"
 #include "xpcpublic.h"  // For xpc::NativeGlobal
-#include "mozilla/EffectSet.h"
-#include "mozilla/dom/KeyframeEffect.h"
-#include "mozilla/Preferences.h"
+
+using namespace mozilla::dom;
 
 namespace mozilla {
 
@@ -37,8 +39,7 @@ namespace mozilla {
   printf_stderr("%s", aMessage.get());
 }
 
-/* static */ nsIDocument* AnimationUtils::GetCurrentRealmDocument(
-    JSContext* aCx) {
+/* static */ Document* AnimationUtils::GetCurrentRealmDocument(JSContext* aCx) {
   nsGlobalWindowInner* win = xpc::CurrentWindowOrNull(aCx);
   if (!win) {
     return nullptr;
@@ -46,7 +47,7 @@ namespace mozilla {
   return win->GetDoc();
 }
 
-/* static */ nsIDocument* AnimationUtils::GetDocumentFromGlobal(
+/* static */ Document* AnimationUtils::GetDocumentFromGlobal(
     JSObject* aGlobalObject) {
   nsGlobalWindowInner* win = xpc::WindowOrNull(aGlobalObject);
   if (!win) {

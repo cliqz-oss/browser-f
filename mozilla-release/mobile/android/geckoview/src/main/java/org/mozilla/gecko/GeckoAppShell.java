@@ -1108,6 +1108,7 @@ public class GeckoAppShell
         }
     }
 
+    @SuppressLint("MissingPermission")
     @WrapForJNI(calledFrom = "gecko")
     private static void vibrate(long milliseconds) {
         sVibrationEndTime = System.nanoTime() + milliseconds * 1000000;
@@ -1119,6 +1120,7 @@ public class GeckoAppShell
         }
     }
 
+    @SuppressLint("MissingPermission")
     @WrapForJNI(calledFrom = "gecko")
     private static void vibrate(long[] pattern, int repeat) {
         // If pattern.length is odd, the last element in the pattern is a
@@ -1138,6 +1140,7 @@ public class GeckoAppShell
         }
     }
 
+    @SuppressLint("MissingPermission")
     @WrapForJNI(calledFrom = "gecko")
     private static void cancelVibrate() {
         sVibrationMaybePlaying = false;
@@ -1960,7 +1963,7 @@ public class GeckoAppShell
     public static int getAudioOutputFramesPerBuffer() {
         final int DEFAULT = 512;
 
-        if (SysInfo.getVersion() < 17) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1) {
             return DEFAULT;
         }
         final AudioManager am = (AudioManager)getApplicationContext()
@@ -1979,7 +1982,7 @@ public class GeckoAppShell
     public static int getAudioOutputSampleRate() {
         final int DEFAULT = 44100;
 
-        if (SysInfo.getVersion() < 17) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1) {
             return DEFAULT;
         }
         final AudioManager am = (AudioManager)getApplicationContext()

@@ -8,7 +8,7 @@
 #include "mozilla/dom/SVGFETileElementBinding.h"
 #include "nsSVGFilterInstance.h"
 
-NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(FETile)
+NS_IMPL_NS_NEW_SVG_ELEMENT(FETile)
 
 using namespace mozilla::gfx;
 
@@ -20,7 +20,7 @@ JSObject* SVGFETileElement::WrapNode(JSContext* aCx,
   return SVGFETileElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-nsSVGElement::StringInfo SVGFETileElement::sStringInfo[2] = {
+SVGElement::StringInfo SVGFETileElement::sStringInfo[2] = {
     {nsGkAtoms::result, kNameSpaceID_None, true},
     {nsGkAtoms::in, kNameSpaceID_None, true}};
 
@@ -33,13 +33,12 @@ already_AddRefed<SVGAnimatedString> SVGFETileElement::In1() {
   return mStringAttributes[IN1].ToDOMAnimatedString(this);
 }
 
-void SVGFETileElement::GetSourceImageNames(
-    nsTArray<nsSVGStringInfo>& aSources) {
-  aSources.AppendElement(nsSVGStringInfo(&mStringAttributes[IN1], this));
+void SVGFETileElement::GetSourceImageNames(nsTArray<SVGStringInfo>& aSources) {
+  aSources.AppendElement(SVGStringInfo(&mStringAttributes[IN1], this));
 }
 
 //----------------------------------------------------------------------
-// nsSVGElement methods
+// SVGElement methods
 
 FilterPrimitiveDescription SVGFETileElement::GetPrimitiveDescription(
     nsSVGFilterInstance* aInstance, const IntRect& aFilterSubregion,
@@ -56,9 +55,9 @@ bool SVGFETileElement::AttributeAffectsRendering(int32_t aNameSpaceID,
 }
 
 //----------------------------------------------------------------------
-// nsSVGElement methods
+// SVGElement methods
 
-nsSVGElement::StringAttributesInfo SVGFETileElement::GetStringInfo() {
+SVGElement::StringAttributesInfo SVGFETileElement::GetStringInfo() {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
                               ArrayLength(sStringInfo));
 }

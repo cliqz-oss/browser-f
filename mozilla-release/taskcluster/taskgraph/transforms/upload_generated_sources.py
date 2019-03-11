@@ -32,11 +32,14 @@ def add_task_info(config, jobs):
         plat = '{}/{}'.format(dep_th['machine']['platform'], dep_task.attributes.get('build_type'))
         job['treeherder']['platform'] = plat
         job['treeherder']['tier'] = dep_th['tier']
+        if dep_th['symbol'] != "N":
+            job['treeherder']['symbol'] = "Ugs{}".format(dep_th['symbol'])
         # Add an environment variable pointing at the artifact from the build.
         artifact_url = get_artifact_url('<build>',
                                         'public/build/target.generated-files.tar.gz')
         job['worker'].setdefault('env', {})['ARTIFACT_URL'] = {
             'task-reference': artifact_url
         }
+        job['run-on-projects'] = dep_task.attributes.get('run_on_projects')
 
         yield job
