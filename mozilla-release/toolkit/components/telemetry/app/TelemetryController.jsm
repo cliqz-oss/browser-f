@@ -453,7 +453,7 @@ var Impl = {
    * @returns {Promise} Test-only - a promise that is resolved with the ping id once the ping is stored or sent.
    */
   submitExternalPing: function send(aType, aPayload, aOptions) {
-    this._log.trace("submitExternalPing - type: " + aType + ", aOptions: " + JSON.stringify(aOptions));
+    this._log.trace("submitExternalPing", [aType, aOptions]);
 
     // Reject pings sent after shutdown.
     if (this._shutDown) {
