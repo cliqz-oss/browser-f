@@ -123,7 +123,11 @@ class HttpChannelParent final : public nsIInterfaceRequestor,
 
   base::ProcessId OtherPid() const override;
 
-  void SetCrossProcessRedirect() { mDoingCrossProcessRedirect = true; }
+  // Calling this method will cancel the HttpChannelChild because the consumer
+  // needs to be relocated to another process.
+  // Any OnStart/Stop/DataAvailable calls that follow will not be sent to the
+  // child channel.
+  void CancelChildCrossProcessRedirect();
 
  protected:
   // used to connect redirected-to channel in parent with just created
@@ -216,6 +220,9 @@ class HttpChannelParent final : public nsIInterfaceRequestor,
       const nsAString& aMessageTag, const nsAString& aMessageCategory) override;
   nsresult LogBlockedCORSRequest(const nsAString& aMessage,
                                  const nsACString& aCategory) override;
+  nsresult LogMimeTypeMismatch(const nsACString& aMessageName, bool aWarning,
+                               const nsAString& aURL,
+                               const nsAString& aContentType) override;
 
   // Calls SendDeleteSelf and sets mIPCClosed to true because we should not
   // send any more messages after that. Bug 1274886
@@ -246,7 +253,7 @@ class HttpChannelParent final : public nsIInterfaceRequestor,
   // id, a promise will be returned so the caller can append callbacks on it.
   // If called multiple times before mBgParent is available, the same promise
   // will be returned and the callbacks will be invoked in order.
-  already_AddRefed<GenericPromise> WaitForBgParent();
+  MOZ_MUST_USE RefPtr<GenericNonExclusivePromise> WaitForBgParent();
 
   // Remove the association with background channel after main-thread IPC
   // is about to be destroyed or no further event is going to be sent, i.e.,
@@ -284,8 +291,8 @@ class HttpChannelParent final : public nsIInterfaceRequestor,
 
   RefPtr<HttpBackgroundChannelParent> mBgParent;
 
-  MozPromiseHolder<GenericPromise> mPromise;
-  MozPromiseRequestHolder<GenericPromise> mRequest;
+  MozPromiseHolder<GenericNonExclusivePromise> mPromise;
+  MozPromiseRequestHolder<GenericNonExclusivePromise> mRequest;
 
   dom::TabId mNestedFrameId;
 
@@ -334,6 +341,9 @@ class HttpChannelParent final : public nsIInterfaceRequestor,
   uint8_t mCacheNeedFlowControlInitialized : 1;
   uint8_t mNeedFlowControl : 1;
   uint8_t mSuspendedForFlowControl : 1;
+
+  // The child channel was cancelled, as the consumer was relocated to another
+  // process.
   uint8_t mDoingCrossProcessRedirect : 1;
 
   // Number of events to wait before actually invoking AsyncOpen on the main

@@ -2,10 +2,35 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
+// @flow
+
 import { buildMenu, showMenu } from "devtools-contextmenu";
 
-export default function showContextMenu(props) {
+import { getSelectedLocation } from "../../../utils/source-maps";
+import actions from "../../../actions";
+import type { Breakpoint, Source } from "../../../types";
+
+type Props = {
+  breakpoint: Breakpoint,
+  breakpoints: Breakpoint[],
+  selectedSource: Source,
+  removeBreakpoint: typeof actions.removeBreakpoint,
+  removeBreakpoints: typeof actions.removeBreakpoints,
+  removeAllBreakpoints: typeof actions.removeAllBreakpoints,
+  toggleBreakpoints: typeof actions.toggleBreakpoints,
+  toggleAllBreakpoints: typeof actions.toggleAllBreakpoints,
+  toggleDisabledBreakpoint: typeof actions.toggleDisabledBreakpoint,
+  selectSpecificLocation: typeof actions.selectSpecificLocation,
+  setBreakpointCondition: typeof actions.setBreakpointCondition,
+  openConditionalPanel: typeof actions.openConditionalPanel,
+  contextMenuEvent: SyntheticEvent<HTMLElement>
+};
+
+export default function showContextMenu(props: Props) {
   const {
+    breakpoint,
+    breakpoints,
+    selectedSource,
     removeBreakpoint,
     removeBreakpoints,
     removeAllBreakpoints,
@@ -15,8 +40,6 @@ export default function showContextMenu(props) {
     selectSpecificLocation,
     setBreakpointCondition,
     openConditionalPanel,
-    breakpoints,
-    breakpoint,
     contextMenuEvent
   } = props;
 
@@ -74,6 +97,7 @@ export default function showContextMenu(props) {
     "breakpointMenuItem.addCondition2.accesskey"
   );
 
+  const selectedLocation = getSelectedLocation(breakpoint, selectedSource);
   const otherBreakpoints = breakpoints.filter(b => b.id !== breakpoint.id);
   const enabledBreakpoints = breakpoints.filter(b => !b.disabled);
   const disabledBreakpoints = breakpoints.filter(b => b.disabled);
@@ -89,7 +113,7 @@ export default function showContextMenu(props) {
     label: deleteSelfLabel,
     accesskey: deleteSelfKey,
     disabled: false,
-    click: () => removeBreakpoint(breakpoint.selectedLocation)
+    click: () => removeBreakpoint(selectedLocation)
   };
 
   const deleteAllItem = {
@@ -113,7 +137,7 @@ export default function showContextMenu(props) {
     label: enableSelfLabel,
     accesskey: enableSelfKey,
     disabled: false,
-    click: () => toggleDisabledBreakpoint(breakpoint.selectedLocation.line)
+    click: () => toggleDisabledBreakpoint(selectedLocation.line)
   };
 
   const enableAllItem = {
@@ -137,7 +161,7 @@ export default function showContextMenu(props) {
     label: disableSelfLabel,
     accesskey: disableSelfKey,
     disabled: false,
-    click: () => toggleDisabledBreakpoint(breakpoint.selectedLocation.line)
+    click: () => toggleDisabledBreakpoint(selectedLocation.line)
   };
 
   const disableAllItem = {
@@ -160,7 +184,7 @@ export default function showContextMenu(props) {
     label: removeConditionLabel,
     accesskey: removeConditionKey,
     disabled: false,
-    click: () => setBreakpointCondition(breakpoint.selectedLocation)
+    click: () => setBreakpointCondition(selectedLocation)
   };
 
   const addConditionItem = {
@@ -168,8 +192,8 @@ export default function showContextMenu(props) {
     label: addConditionLabel,
     accesskey: addConditionKey,
     click: () => {
-      selectSpecificLocation(breakpoint.selectedLocation);
-      openConditionalPanel(breakpoint.selectedLocation.line);
+      selectSpecificLocation(selectedLocation);
+      openConditionalPanel(selectedLocation);
     }
   };
 
@@ -178,8 +202,8 @@ export default function showContextMenu(props) {
     label: editConditionLabel,
     accesskey: editConditionKey,
     click: () => {
-      selectSpecificLocation(breakpoint.selectedLocation);
-      openConditionalPanel(breakpoint.selectedLocation.line);
+      selectSpecificLocation(selectedLocation);
+      openConditionalPanel(selectedLocation);
     }
   };
 

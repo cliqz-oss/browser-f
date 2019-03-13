@@ -1,20 +1,20 @@
 //! Data flow graph tracking Instructions, Values, and EBBs.
 
-use entity::{self, PrimaryMap, SecondaryMap};
-use ir;
-use ir::builder::ReplaceBuilder;
-use ir::extfunc::ExtFuncData;
-use ir::instructions::{BranchInfo, CallInfo, InstructionData};
-use ir::types;
-use ir::{Ebb, FuncRef, Inst, SigRef, Signature, Type, Value, ValueList, ValueListPool};
-use isa::TargetIsa;
-use packed_option::ReservedValue;
-use std::fmt;
-use std::iter;
-use std::mem;
-use std::ops::{Index, IndexMut};
-use std::u16;
-use write::write_operands;
+use crate::entity::{self, PrimaryMap, SecondaryMap};
+use crate::ir;
+use crate::ir::builder::ReplaceBuilder;
+use crate::ir::extfunc::ExtFuncData;
+use crate::ir::instructions::{BranchInfo, CallInfo, InstructionData};
+use crate::ir::types;
+use crate::ir::{Ebb, FuncRef, Inst, SigRef, Signature, Type, Value, ValueList, ValueListPool};
+use crate::isa::TargetIsa;
+use crate::packed_option::ReservedValue;
+use crate::write::write_operands;
+use core::fmt;
+use core::iter;
+use core::mem;
+use core::ops::{Index, IndexMut};
+use core::u16;
 
 /// A data flow graph defines all instructions and extended basic blocks in a function as well as
 /// the data flow dependencies between them. The DFG also tracks values which can be either
@@ -802,9 +802,9 @@ impl DataFlowGraph {
             .remove(num as usize, &mut self.value_lists);
         for index in num..(self.num_ebb_params(ebb) as u16) {
             match self.values[self.ebbs[ebb]
-                                  .params
-                                  .get(index as usize, &self.value_lists)
-                                  .unwrap()]
+                .params
+                .get(index as usize, &self.value_lists)
+                .unwrap()]
             {
                 ValueData::Param { ref mut num, .. } => {
                     *num -= 1;
@@ -1063,9 +1063,9 @@ impl DataFlowGraph {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cursor::{Cursor, FuncCursor};
-    use ir::types;
-    use ir::{Function, InstructionData, Opcode, TrapCode};
+    use crate::cursor::{Cursor, FuncCursor};
+    use crate::ir::types;
+    use crate::ir::{Function, InstructionData, Opcode, TrapCode};
     use std::string::ToString;
 
     #[test]
@@ -1218,8 +1218,8 @@ mod tests {
 
     #[test]
     fn aliases() {
-        use ir::condcodes::IntCC;
-        use ir::InstBuilder;
+        use crate::ir::condcodes::IntCC;
+        use crate::ir::InstBuilder;
 
         let mut func = Function::new();
         let ebb0 = func.dfg.make_ebb();

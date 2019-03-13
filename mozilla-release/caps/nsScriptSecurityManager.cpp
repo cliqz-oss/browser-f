@@ -390,7 +390,7 @@ nsScriptSecurityManager::GetChannelURIPrincipal(nsIChannel* aChannel,
   MOZ_ASSERT(aChannel, "Must have channel!");
 
   // Get the principal from the URI.  Make sure this does the same thing
-  // as nsDocument::Reset and XULDocument::StartDocumentLoad.
+  // as Document::Reset and XULDocument::StartDocumentLoad.
   nsCOMPtr<nsIURI> uri;
   nsresult rv = NS_GetFinalChannelURI(aChannel, getter_AddRefs(uri));
   NS_ENSURE_SUCCESS(rv, rv);
@@ -438,16 +438,59 @@ NS_IMPL_ISUPPORTS(nsScriptSecurityManager, nsIScriptSecurityManager)
 
 ///////////////// Security Checks /////////////////
 
+#if defined(DEBUG) && !defined(ANDROID)
+static void AssertEvalNotUsingSystemPrincipal(nsIPrincipal* subjectPrincipal,
+                                              JSContext* cx) {
+  if (!nsContentUtils::IsSystemPrincipal(subjectPrincipal)) {
+    return;
+  }
+
+  if (Preferences::GetBool("security.allow_eval_with_system_principal")) {
+    return;
+  }
+
+  static StaticAutoPtr<nsTArray<nsCString>> sUrisAllowEval;
+  JS::AutoFilename scriptFilename;
+  if (JS::DescribeScriptedCaller(cx, &scriptFilename)) {
+    if (!sUrisAllowEval) {
+      sUrisAllowEval = new nsTArray<nsCString>();
+      nsAutoCString urisAllowEval;
+      Preferences::GetCString("security.uris_using_eval_with_system_principal",
+                              urisAllowEval);
+      for (const nsACString& filenameString : urisAllowEval.Split(',')) {
+        sUrisAllowEval->AppendElement(filenameString);
+      }
+      ClearOnShutdown(&sUrisAllowEval);
+    }
+
+    nsAutoCString fileName;
+    fileName = nsAutoCString(scriptFilename.get());
+    // Extract file name alone if scriptFilename contains line number
+    // separated by multiple space delimiters in few cases.
+    int32_t fileNameIndex = fileName.FindChar(' ');
+    if (fileNameIndex != -1) {
+      fileName = Substring(fileName, 0, fileNameIndex);
+    }
+    ToLowerCase(fileName);
+
+    for (auto& uriEntry : *sUrisAllowEval) {
+      if (StringEndsWith(fileName, uriEntry)) {
+        return;
+      }
+    }
+  }
+
+  MOZ_ASSERT(false, "do not use eval with system privileges");
+}
+#endif
+
 bool nsScriptSecurityManager::ContentSecurityPolicyPermitsJSAction(
     JSContext* cx, JS::HandleValue aValue) {
   MOZ_ASSERT(cx == nsContentUtils::GetCurrentJSContext());
   nsCOMPtr<nsIPrincipal> subjectPrincipal = nsContentUtils::SubjectPrincipal();
 
 #if defined(DEBUG) && !defined(ANDROID)
-  if (!(Preferences::GetBool("security.allow_eval_with_system_principal"))) {
-    MOZ_ASSERT(!nsContentUtils::IsSystemPrincipal(subjectPrincipal),
-               "do not use eval with system privileges");
-  }
+  AssertEvalNotUsingSystemPrincipal(subjectPrincipal, cx);
 #endif
 
   nsCOMPtr<nsIContentSecurityPolicy> csp;
@@ -1212,6 +1255,35 @@ nsScriptSecurityManager::GetDocShellCodebasePrincipal(
       aURI, nsDocShell::Cast(aDocShell)->GetOriginAttributes());
   prin.forget(aPrincipal);
   return *aPrincipal ? NS_OK : NS_ERROR_FAILURE;
+}
+
+NS_IMETHODIMP
+nsScriptSecurityManager::PrincipalWithOA(
+    nsIPrincipal* aPrincipal, JS::Handle<JS::Value> aOriginAttributes,
+    JSContext* aCx, nsIPrincipal** aReturnPrincipal) {
+  if (!aPrincipal) {
+    return NS_OK;
+  }
+  if (aPrincipal->GetIsCodebasePrincipal()) {
+    OriginAttributes attrs;
+    if (!aOriginAttributes.isObject() || !attrs.Init(aCx, aOriginAttributes)) {
+      return NS_ERROR_INVALID_ARG;
+    }
+    RefPtr<ContentPrincipal> copy = new ContentPrincipal();
+    ContentPrincipal* contentPrincipal =
+        static_cast<ContentPrincipal*>(aPrincipal);
+    nsresult rv = copy->Init(contentPrincipal, attrs);
+    NS_ENSURE_SUCCESS(rv, rv);
+    copy.forget(aReturnPrincipal);
+  } else {
+    // We do this for null principals, system principals (both fine)
+    // ... and expanded principals, where we should probably do something
+    // cleverer, but I also don't think we care too much.
+    nsCOMPtr<nsIPrincipal> prin = aPrincipal;
+    prin.forget(aReturnPrincipal);
+  }
+
+  return *aReturnPrincipal ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP

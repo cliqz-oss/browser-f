@@ -34,13 +34,13 @@
 #include "mozilla/Unused.h"
 
 #if defined(MOZ_WIDGET_ANDROID)
-#include "VideoEngine.h"
+#  include "VideoEngine.h"
 #endif
 
 #include "GmpVideoCodec.h"
 
 #ifdef MOZ_WEBRTC_MEDIACODEC
-#include "MediaCodecVideoCodec.h"
+#  include "MediaCodecVideoCodec.h"
 #endif
 #include "WebrtcGmpVideoCodec.h"
 
@@ -48,9 +48,9 @@
 
 // for ntohs
 #ifdef _MSC_VER
-#include "Winsock2.h"
+#  include "Winsock2.h"
 #else
-#include <netinet/in.h>
+#  include <netinet/in.h>
 #endif
 
 #include <algorithm>
@@ -64,7 +64,7 @@ namespace mozilla {
 
 static const char* vcLogTag = "WebrtcVideoSessionConduit";
 #ifdef LOGTAG
-#undef LOGTAG
+#  undef LOGTAG
 #endif
 #define LOGTAG vcLogTag
 
@@ -299,6 +299,11 @@ uint32_t WebrtcVideoConduit::SendStreamStatistics::PacketsReceived() const {
   return mPacketsReceived;
 }
 
+Maybe<uint64_t> WebrtcVideoConduit::SendStreamStatistics::QpSum() const {
+  ASSERT_ON_THREAD(mStatsThread);
+  return mQpSum;
+}
+
 void WebrtcVideoConduit::SendStreamStatistics::Update(
     const webrtc::VideoSendStream::Stats& aStats, uint32_t aConfiguredSsrc) {
   ASSERT_ON_THREAD(mStatsThread);
@@ -322,6 +327,11 @@ void WebrtcVideoConduit::SendStreamStatistics::Update(
 
   StreamStatistics::Update(aStats.encode_frame_rate, aStats.media_bitrate_bps,
                            ind->second.rtcp_packet_type_counts);
+  if (aStats.qp_sum) {
+    mQpSum = Some(aStats.qp_sum.value());
+  } else {
+    mQpSum = Nothing();
+  }
 
   const webrtc::FrameCounts& fc = ind->second.frame_counts;
   mFramesEncoded = fc.key_frames + fc.delta_frames;
@@ -1126,7 +1136,8 @@ void WebrtcVideoConduit::UpdateVideoStatsTimer() {
 
 bool WebrtcVideoConduit::GetVideoEncoderStats(
     double* framerateMean, double* framerateStdDev, double* bitrateMean,
-    double* bitrateStdDev, uint32_t* droppedFrames, uint32_t* framesEncoded) {
+    double* bitrateStdDev, uint32_t* droppedFrames, uint32_t* framesEncoded,
+    Maybe<uint64_t>* qpSum) {
   ASSERT_ON_THREAD(mStsThread);
 
   MutexAutoLock lock(mMutex);
@@ -1137,6 +1148,7 @@ bool WebrtcVideoConduit::GetVideoEncoderStats(
                                        *bitrateMean, *bitrateStdDev);
   *droppedFrames = mSendStreamStats.DroppedFrames();
   *framesEncoded = mSendStreamStats.FramesEncoded();
+  *qpSum = mSendStreamStats.QpSum();
   return true;
 }
 
@@ -1157,14 +1169,6 @@ bool WebrtcVideoConduit::GetVideoDecoderStats(double* framerateMean,
   *discardedPackets = mRecvStreamStats.DiscardedPackets();
   *framesDecoded = mRecvStreamStats.FramesDecoded();
   return true;
-}
-
-bool WebrtcVideoConduit::GetAVStats(int32_t* jitterBufferDelayMs,
-                                    int32_t* playoutBufferDelayMs,
-                                    int32_t* avSyncOffsetMs) {
-  ASSERT_ON_THREAD(mStsThread);
-
-  return false;
 }
 
 bool WebrtcVideoConduit::GetRTPStats(uint32_t* jitterMs,

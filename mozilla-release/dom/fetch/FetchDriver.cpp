@@ -8,7 +8,7 @@
 #include "mozilla/dom/FetchDriver.h"
 
 #include "nsIAsyncVerifyRedirectCallback.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIInputStream.h"
 #include "nsIOutputStream.h"
 #include "nsIFileChannel.h"
@@ -684,7 +684,8 @@ nsresult FetchDriver::HttpFetch(
                        nsIClassOfService::Tail);
   }
 
-  if (mIsTrackingFetch && nsContentUtils::IsLowerNetworkPriority()) {
+  if (mIsTrackingFetch &&
+      StaticPrefs::privacy_trackingprotection_lower_network_priority()) {
     nsCOMPtr<nsISupportsPriority> p = do_QueryInterface(chan);
     if (p) {
       p->SetPriority(nsISupportsPriority::PRIORITY_LOWEST);
@@ -836,6 +837,15 @@ FetchDriver::OnStartRequest(nsIRequest* aRequest, nsISupports* aContext) {
     MOZ_ASSERT(NS_SUCCEEDED(rv));
 
     response = new InternalResponse(responseStatus, statusText);
+
+    UniquePtr<mozilla::ipc::PrincipalInfo> principalInfo(
+        new mozilla::ipc::PrincipalInfo());
+    nsresult rv = PrincipalToPrincipalInfo(mPrincipal, principalInfo.get());
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+
+    response->SetPrincipalInfo(std::move(principalInfo));
 
     response->Headers()->FillResponseHeaders(httpChannel);
 
@@ -1348,7 +1358,7 @@ FetchDriver::GetInterface(const nsIID& aIID, void** aResult) {
   return QueryInterface(aIID, aResult);
 }
 
-void FetchDriver::SetDocument(nsIDocument* aDocument) {
+void FetchDriver::SetDocument(Document* aDocument) {
   // Cannot set document after Fetch() has been called.
   MOZ_ASSERT(!mFetchCalled);
   mDocument = aDocument;
@@ -1373,29 +1383,30 @@ void FetchDriver::SetController(
 void FetchDriver::SetRequestHeaders(nsIHttpChannel* aChannel) const {
   MOZ_ASSERT(aChannel);
 
+  // nsIHttpChannel has a set of pre-configured headers (Accept,
+  // Accept-Languages, ...) and we don't want to merge the Request's headers
+  // with them. This array is used to know if the current header has been aleady
+  // set, if yes, we ask necko to merge it with the previous one, otherwise, we
+  // don't want the merge.
+  nsTArray<nsCString> headersSet;
+
   AutoTArray<InternalHeaders::Entry, 5> headers;
   mRequest->Headers()->GetEntries(headers);
-  bool hasAccept = false;
   for (uint32_t i = 0; i < headers.Length(); ++i) {
-    if (!hasAccept && headers[i].mName.EqualsLiteral("accept")) {
-      hasAccept = true;
+    bool alreadySet = headersSet.Contains(headers[i].mName);
+    if (!alreadySet) {
+      headersSet.AppendElement(headers[i].mName);
     }
+
     if (headers[i].mValue.IsEmpty()) {
       DebugOnly<nsresult> rv =
           aChannel->SetEmptyRequestHeader(headers[i].mName);
       MOZ_ASSERT(NS_SUCCEEDED(rv));
     } else {
       DebugOnly<nsresult> rv = aChannel->SetRequestHeader(
-          headers[i].mName, headers[i].mValue, false /* merge */);
+          headers[i].mName, headers[i].mValue, alreadySet /* merge */);
       MOZ_ASSERT(NS_SUCCEEDED(rv));
     }
-  }
-
-  if (!hasAccept) {
-    DebugOnly<nsresult> rv = aChannel->SetRequestHeader(
-        NS_LITERAL_CSTRING("accept"), NS_LITERAL_CSTRING("*/*"),
-        false /* merge */);
-    MOZ_ASSERT(NS_SUCCEEDED(rv));
   }
 
   nsAutoCString method;

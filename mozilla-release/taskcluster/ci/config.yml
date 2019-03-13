@@ -10,6 +10,7 @@ treeherder:
         'py2': 'Python 2 unit tests'
         'py3': 'Python 3 unit tests'
         'A': 'Android Gradle tests'
+        'Bpgo': 'Profile-guided optimization builds'
         'Fetch-URL': 'Fetch and store content'
         'Fxfn-l': 'Firefox functional tests (local)'
         'Fxfn-l-e10s': 'Firefox functional tests (local) with e10s'
@@ -28,8 +29,12 @@ treeherder:
         'R-sw-e10s': 'Reftests with serviceworker redesign and e10s'
         'Rap': 'Raptor performance tests on Firefox'
         'Rap-e10s': 'Raptor performance tests on Firefox with e10s'
+        'Rap-Prof': 'Raptor performance tests on Firefox with Gecko Profiling'
+        'Rap-Prof-e10s': 'Raptor performance tests on Firefox with Gecko Profiling'
         'Rap-C': 'Raptor performance tests on Google Chrome'
         'Rap-C-e10s': 'Raptor performance tests on Google Chrome with e10s'
+        'Rap-P': 'Raptor power tests on Firefox'
+        'Rap-P-e10s': 'Raptor power tests on Firefox with e10s'
         'T': 'Talos performance tests'
         'Tsd': 'Talos performance tests with Stylo disabled'
         'Tss': 'Talos performance tests with Stylo sequential'
@@ -50,8 +55,8 @@ treeherder:
         'X-sw': 'Xpcshell tests with serviceworker redesign'
         'L10n': 'Localised Repacks'
         'L10n-Rpk': 'Localized Repackaged Repacks'
-        'BM-L10n': 'Beetmover for locales'
-        'BMR-L10n': 'Beetmover repackages for locales'
+        'BM': 'Beetmover'
+        'BMR': 'Beetmover repackages'
         'c-Up': 'Balrog submission of complete updates'
         'cs': 'Checksum signing'
         'css': 'Checksum signing for source'
@@ -84,6 +89,7 @@ treeherder:
         'TPS': 'Sync tests'
         'UV': 'Update verify'
         'pipfu': 'pipfile update'
+        'WR': 'WebRender standalone'
 
 index:
     products:
@@ -212,11 +218,28 @@ scriptworker:
         'scriptworker-prov-v1/balrog-dev':
             - 'project:releng:balrog:server:dep'
 
-
-partner:
-    release:
-        release-partner-repack: git@github.com:mozilla-partners/repack-manifests.git
-        release-eme-free-repack: git@github.com:mozilla-partners/mozilla-EME-free-manifest
-    staging:
-        release-partner-repack: git@github.com:mozilla-releng/staging-repack-manifests.git
-        release-eme-free-repack: git@github.com:mozilla-releng/staging-repack-manifests.git
+partner-urls:
+    release-partner-repack:
+        by-release-product:
+            default: null
+            firefox:
+                by-release-type:
+                    default: null
+                    beta|release.*:
+                        by-release-level:
+                            production: 'git@github.com:mozilla-partners/repack-manifests.git'
+                            staging: 'git@github.com:moz-releng-automation-stage/repack-manifests.git'
+                    esr60:
+                        by-release-level:
+                            production: 'git@github.com:mozilla-partners/esr-repack-manifests.git'
+                            staging: 'git@github.com:moz-releng-automation-stage/esr-repack-manifests.git'
+    release-eme-free-repack:
+        by-release-product:
+            default: null
+            firefox:
+                by-release-type:
+                    default: null
+                    beta|release.*:
+                        by-release-level:
+                            production: 'git@github.com:mozilla-partners/mozilla-EME-free-manifest.git'
+                            staging: 'git@github.com:moz-releng-automation-stage/mozilla-EME-free-manifest.git'

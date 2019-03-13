@@ -8,6 +8,7 @@
 
 #include "mozilla/dom/HTMLIFrameElement.h"
 #include "mozilla/dom/XULFrameElement.h"
+#include "mozilla/dom/WindowProxyHolder.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/ErrorResult.h"
 #include "GeckoProfiler.h"
@@ -69,14 +70,22 @@ nsGenericHTMLFrameElement::~nsGenericHTMLFrameElement() {
   }
 }
 
-nsIDocument* nsGenericHTMLFrameElement::GetContentDocument(
+Document* nsGenericHTMLFrameElement::GetContentDocument(
     nsIPrincipal& aSubjectPrincipal) {
-  nsCOMPtr<nsPIDOMWindowOuter> win = GetContentWindow();
-  if (!win) {
+  RefPtr<BrowsingContext> bc = GetContentWindowInternal();
+  if (!bc) {
     return nullptr;
   }
 
-  nsIDocument* doc = win->GetDoc();
+  nsPIDOMWindowOuter* window = bc->GetDOMWindow();
+  if (!window) {
+    // Either our browsing context contents are out-of-process (in which case
+    // clearly this is a cross-origin call and we should return null), or our
+    // browsing context is torn-down enough to no longer have a window or a
+    // document, and we should still return null.
+    return nullptr;
+  }
+  Document* doc = window->GetDoc();
   if (!doc) {
     return nullptr;
   }
@@ -88,8 +97,7 @@ nsIDocument* nsGenericHTMLFrameElement::GetContentDocument(
   return doc;
 }
 
-already_AddRefed<nsPIDOMWindowOuter>
-nsGenericHTMLFrameElement::GetContentWindow() {
+BrowsingContext* nsGenericHTMLFrameElement::GetContentWindowInternal() {
   EnsureFrameLoader();
 
   if (!mFrameLoader) {
@@ -101,18 +109,20 @@ nsGenericHTMLFrameElement::GetContentWindow() {
     return nullptr;
   }
 
-  nsCOMPtr<nsIDocShell> doc_shell = mFrameLoader->GetDocShell(IgnoreErrors());
+  RefPtr<nsDocShell> doc_shell = mFrameLoader->GetDocShell(IgnoreErrors());
   if (!doc_shell) {
     return nullptr;
   }
 
-  nsCOMPtr<nsPIDOMWindowOuter> win = doc_shell->GetWindow();
+  return doc_shell->GetBrowsingContext();
+}
 
-  if (!win) {
+Nullable<WindowProxyHolder> nsGenericHTMLFrameElement::GetContentWindow() {
+  RefPtr<BrowsingContext> bc = GetContentWindowInternal();
+  if (!bc) {
     return nullptr;
   }
-
-  return win.forget();
+  return WindowProxyHolder(bc);
 }
 
 void nsGenericHTMLFrameElement::EnsureFrameLoader() {
@@ -124,7 +134,8 @@ void nsGenericHTMLFrameElement::EnsureFrameLoader() {
   // Strangely enough, this method doesn't actually ensure that the
   // frameloader exists.  It's more of a best-effort kind of thing.
   mFrameLoader = nsFrameLoader::Create(
-      this, nsPIDOMWindowOuter::From(mOpenerWindow), mNetworkCreated);
+      this, mOpenerWindow ? mOpenerWindow->GetDOMWindow() : nullptr,
+      mNetworkCreated);
 }
 
 nsresult nsGenericHTMLFrameElement::CreateRemoteFrameLoader(
@@ -150,10 +161,11 @@ nsGenericHTMLFrameElement::GetFrameLoader() {
   return loader.forget();
 }
 
-void nsGenericHTMLFrameElement::PresetOpenerWindow(mozIDOMWindowProxy* aWindow,
-                                                   ErrorResult& aRv) {
+void nsGenericHTMLFrameElement::PresetOpenerWindow(
+    const Nullable<WindowProxyHolder>& aOpenerWindow, ErrorResult& aRv) {
   MOZ_ASSERT(!mFrameLoader);
-  mOpenerWindow = nsPIDOMWindowOuter::From(aWindow);
+  mOpenerWindow =
+      aOpenerWindow.IsNull() ? nullptr : aOpenerWindow.Value().get();
 }
 
 void nsGenericHTMLFrameElement::InternalSetFrameLoader(
@@ -200,7 +212,7 @@ void nsGenericHTMLFrameElement::LoadSrc() {
   mFrameLoader->LoadFrame(origSrc);
 }
 
-nsresult nsGenericHTMLFrameElement::BindToTree(nsIDocument* aDocument,
+nsresult nsGenericHTMLFrameElement::BindToTree(Document* aDocument,
                                                nsIContent* aParent,
                                                nsIContent* aBindingParent) {
   nsresult rv =
@@ -366,7 +378,7 @@ nsresult nsGenericHTMLFrameElement::CopyInnerTo(Element* aDest) {
   nsresult rv = nsGenericHTMLElement::CopyInnerTo(aDest);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsIDocument* doc = aDest->OwnerDoc();
+  Document* doc = aDest->OwnerDoc();
   if (doc->IsStaticDocument() && mFrameLoader) {
     nsGenericHTMLFrameElement* dest =
         static_cast<nsGenericHTMLFrameElement*>(aDest);

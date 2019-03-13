@@ -32,9 +32,9 @@ class nsXULPrototypeElement;
 class nsIObjectInputStream;
 class nsIObjectOutputStream;
 #else
-#include "nsIObjectInputStream.h"
-#include "nsIObjectOutputStream.h"
-#include "nsXULElement.h"
+#  include "nsIObjectInputStream.h"
+#  include "nsIObjectOutputStream.h"
+#  include "nsXULElement.h"
 #endif
 #include "nsURIHashKey.h"
 #include "nsInterfaceHashtable.h"
@@ -44,7 +44,7 @@ class nsIObjectOutputStream;
  */
 
 // Factory function.
-nsresult NS_NewXULDocument(nsIDocument** result);
+nsresult NS_NewXULDocument(mozilla::dom::Document** result);
 
 namespace mozilla {
 namespace dom {
@@ -60,7 +60,7 @@ class XULDocument final : public XMLDocument,
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSISTREAMLOADEROBSERVER
 
-  // nsIDocument interface
+  // Document interface
   virtual void Reset(nsIChannel* aChannel, nsILoadGroup* aLoadGroup) override;
   virtual void ResetToURI(nsIURI* aURI, nsILoadGroup* aLoadGroup,
                           nsIPrincipal* aPrincipal) override;
@@ -75,6 +75,8 @@ class XULDocument final : public XMLDocument,
   virtual void SetContentType(const nsAString& aContentType) override;
 
   virtual void EndLoad() override;
+
+  virtual void InitialDocumentTranslationCompleted() override;
 
   // nsIMutationObserver interface
   NS_DECL_NSIMUTATIONOBSERVER_CONTENTAPPENDED
@@ -124,7 +126,7 @@ class XULDocument final : public XMLDocument,
   virtual ~XULDocument();
 
   // Implementation methods
-  friend nsresult(::NS_NewXULDocument(nsIDocument** aResult));
+  friend nsresult(::NS_NewXULDocument(Document** aResult));
 
   nsresult Init(void) override;
   nsresult StartLayout(void);
@@ -296,7 +298,15 @@ class XULDocument final : public XMLDocument,
   nsresult ResumeWalk();
 
   /**
-   * Called at the end of ResumeWalk() and from StyleSheetLoaded().
+   * Called at the end of ResumeWalk(), from StyleSheetLoaded(),
+   * and from DocumentL10n.
+   * If walking, stylesheets and l10n are not blocking, it
+   * will trigger `DoneWalking()`.
+   */
+  nsresult MaybeDoneWalking();
+
+  /**
+   * Called from `MaybeDoneWalking()`.
    * Expects that both the prototype document walk is complete and
    * all referenced stylesheets finished loading.
    */
@@ -325,12 +335,12 @@ class XULDocument final : public XMLDocument,
   // helpers
 };
 
-}  // namespace dom
-}  // namespace mozilla
-
-inline mozilla::dom::XULDocument* nsIDocument::AsXULDocument() {
+inline XULDocument* Document::AsXULDocument() {
   MOZ_ASSERT(IsXULDocument());
   return static_cast<mozilla::dom::XULDocument*>(this);
 }
+
+}  // namespace dom
+}  // namespace mozilla
 
 #endif  // mozilla_dom_XULDocument_h

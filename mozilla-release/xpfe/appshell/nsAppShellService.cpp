@@ -48,7 +48,7 @@
 #include "nsWebBrowser.h"
 
 #ifdef MOZ_INSTRUMENT_EVENT_LOOP
-#include "EventTracer.h"
+#  include "EventTracer.h"
 #endif
 
 using namespace mozilla;
@@ -589,6 +589,9 @@ nsresult nsAppShellService::JustCreateTopWindow(
 
   if (aChromeMask & nsIWebBrowserChrome::CHROME_SUPPRESS_ANIMATION)
     widgetInitData.mIsAnimationSuppressed = true;
+
+  if (aChromeMask & nsIWebBrowserChrome::CHROME_ALWAYS_ON_TOP)
+    widgetInitData.mAlwaysOnTop = true;
 
 #ifdef XP_MACOSX
   // Mac OS X sheet support

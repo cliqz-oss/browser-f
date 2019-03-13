@@ -480,7 +480,7 @@ var {
                  .getService(Ci.mozIJSSubScriptLoader);
 
     const loadSubScript = function(url, sandbox) {
-      subScriptLoader.loadSubScript(url, sandbox, "UTF-8");
+      subScriptLoader.loadSubScript(url, sandbox);
     };
 
     const reportError = Cu.reportError;
@@ -578,8 +578,6 @@ this.worker = new WorkerDebuggerLoader({
     "devtools": "resource://devtools",
     // ⚠ DISCUSSION ON DEV-DEVELOPER-TOOLS REQUIRED BEFORE MODIFYING ⚠
     "promise": "resource://gre/modules/Promise-backend.js",
-    // ⚠ DISCUSSION ON DEV-DEVELOPER-TOOLS REQUIRED BEFORE MODIFYING ⚠
-    "source-map": "resource://devtools/shared/sourcemap/source-map.js",
     // ⚠ DISCUSSION ON DEV-DEVELOPER-TOOLS REQUIRED BEFORE MODIFYING ⚠
     "xpcshell-test": "resource://test",
     // ⚠ DISCUSSION ON DEV-DEVELOPER-TOOLS REQUIRED BEFORE MODIFYING ⚠

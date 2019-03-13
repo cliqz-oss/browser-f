@@ -7,7 +7,13 @@
 #ifndef mozilla_dom_SVGElementFactory_h
 #define mozilla_dom_SVGElementFactory_h
 
+#include "nsError.h"
+#include "mozilla/AlreadyAddRefed.h"
+#include "mozilla/dom/FromParser.h"
+#include "mozilla/dom/NodeInfo.h"
+
 class nsAtom;
+class nsIContent;
 
 namespace mozilla {
 namespace dom {
@@ -36,7 +42,7 @@ typedef nsresult (*SVGContentCreatorFunction)(
       nsIContent** aResult,                                 \
       already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo, \
       mozilla::dom::FromParser aFromParser);
-#include "SVGTagList.h"
+#include "mozilla/SVGTagList.h"
 #undef SVG_TAG
 #undef SVG_FROM_PARSER_TAG
 

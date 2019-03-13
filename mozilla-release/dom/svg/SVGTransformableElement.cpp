@@ -4,30 +4,31 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "SVGTransformableElement.h"
+
+#include "DOMSVGAnimatedTransformList.h"
 #include "gfx2DGlue.h"
 #include "mozilla/dom/MutationEventBinding.h"
-#include "mozilla/dom/SVGAnimatedTransformList.h"
 #include "mozilla/dom/SVGGraphicsElementBinding.h"
-#include "mozilla/dom/SVGTransformableElement.h"
 #include "mozilla/dom/SVGMatrix.h"
+#include "mozilla/dom/SVGRect.h"
 #include "mozilla/dom/SVGSVGElement.h"
 #include "nsContentUtils.h"
 #include "nsIFrame.h"
-#include "nsSVGDisplayableFrame.h"
-#include "mozilla/dom/SVGRect.h"
-#include "nsSVGUtils.h"
 #include "SVGContentUtils.h"
+#include "nsSVGDisplayableFrame.h"
+#include "nsSVGUtils.h"
 
 using namespace mozilla::gfx;
 
 namespace mozilla {
 namespace dom {
 
-already_AddRefed<SVGAnimatedTransformList>
+already_AddRefed<DOMSVGAnimatedTransformList>
 SVGTransformableElement::Transform() {
   // We're creating a DOM wrapper, so we must tell GetAnimatedTransformList
-  // to allocate the SVGAnimatedTransformList if it hasn't already done so:
-  return SVGAnimatedTransformList::GetDOMWrapper(
+  // to allocate the DOMSVGAnimatedTransformList if it hasn't already done so:
+  return DOMSVGAnimatedTransformList::GetDOMWrapper(
       GetAnimatedTransformList(DO_ALLOCATE), this);
 }
 
@@ -40,13 +41,13 @@ SVGTransformableElement::IsAttributeMapped(const nsAtom* name) const {
                                                     sGraphicsMap};
 
   return FindAttributeDependence(name, map) ||
-         nsSVGElement::IsAttributeMapped(name);
+         SVGElement::IsAttributeMapped(name);
 }
 
 nsChangeHint SVGTransformableElement::GetAttributeChangeHint(
     const nsAtom* aAttribute, int32_t aModType) const {
   nsChangeHint retval =
-      nsSVGElement::GetAttributeChangeHint(aAttribute, aModType);
+      SVGElement::GetAttributeChangeHint(aAttribute, aModType);
   if (aAttribute == nsGkAtoms::transform ||
       aAttribute == nsGkAtoms::mozAnimateMotionDummyAttr) {
     nsIFrame* frame =
@@ -89,7 +90,7 @@ bool SVGTransformableElement::IsEventAttributeNameInternal(nsAtom* aName) {
 }
 
 //----------------------------------------------------------------------
-// nsSVGElement overrides
+// SVGElement overrides
 
 gfxMatrix SVGTransformableElement::PrependLocalTransformsTo(
     const gfxMatrix& aMatrix, SVGTransformTypes aWhich) const {
@@ -138,19 +139,19 @@ void SVGTransformableElement::SetAnimateMotionTransform(
   }
 }
 
-nsSVGAnimatedTransformList* SVGTransformableElement::GetAnimatedTransformList(
+SVGAnimatedTransformList* SVGTransformableElement::GetAnimatedTransformList(
     uint32_t aFlags) {
   if (!mTransforms && (aFlags & DO_ALLOCATE)) {
-    mTransforms = new nsSVGAnimatedTransformList();
+    mTransforms = new SVGAnimatedTransformList();
   }
   return mTransforms;
 }
 
-nsSVGElement* SVGTransformableElement::GetNearestViewportElement() {
+SVGElement* SVGTransformableElement::GetNearestViewportElement() {
   return SVGContentUtils::GetNearestViewportElement(this);
 }
 
-nsSVGElement* SVGTransformableElement::GetFarthestViewportElement() {
+SVGElement* SVGTransformableElement::GetFarthestViewportElement() {
   return SVGContentUtils::GetOuterSVGElement(this);
 }
 
@@ -200,7 +201,7 @@ already_AddRefed<SVGIRect> SVGTransformableElement::GetBBox(
 }
 
 already_AddRefed<SVGMatrix> SVGTransformableElement::GetCTM() {
-  nsIDocument* currentDoc = GetComposedDoc();
+  Document* currentDoc = GetComposedDoc();
   if (currentDoc) {
     // Flush all pending notifications so that our frames are up to date
     currentDoc->FlushPendingNotifications(FlushType::Layout);
@@ -212,7 +213,7 @@ already_AddRefed<SVGMatrix> SVGTransformableElement::GetCTM() {
 }
 
 already_AddRefed<SVGMatrix> SVGTransformableElement::GetScreenCTM() {
-  nsIDocument* currentDoc = GetComposedDoc();
+  Document* currentDoc = GetComposedDoc();
   if (currentDoc) {
     // Flush all pending notifications so that our frames are up to date
     currentDoc->FlushPendingNotifications(FlushType::Layout);
@@ -241,7 +242,7 @@ already_AddRefed<SVGMatrix> SVGTransformableElement::GetTransformToElement(
 
 /* static */ gfxMatrix SVGTransformableElement::GetUserToParentTransform(
     const gfx::Matrix* aAnimateMotionTransform,
-    const nsSVGAnimatedTransformList* aTransforms) {
+    const SVGAnimatedTransformList* aTransforms) {
   gfxMatrix result;
 
   if (aAnimateMotionTransform) {

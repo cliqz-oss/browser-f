@@ -215,14 +215,47 @@ void LIRGeneratorARM64::lowerDivI(MDiv* div) {
 
 void LIRGeneratorARM64::lowerMulI(MMul* mul, MDefinition* lhs,
                                   MDefinition* rhs) {
-  LMulI* lir = new(alloc()) LMulI;
+  LMulI* lir = new (alloc()) LMulI;
   if (mul->fallible()) {
-      assignSnapshot(lir, Bailout_DoubleOutput);
+    assignSnapshot(lir, Bailout_DoubleOutput);
   }
   lowerForALU(lir, mul, lhs, rhs);
 }
 
-void LIRGeneratorARM64::lowerModI(MMod* mod) { MOZ_CRASH("lowerModI"); }
+void LIRGeneratorARM64::lowerModI(MMod* mod) {
+  if (mod->isUnsigned()) {
+    lowerUMod(mod);
+    return;
+  }
+
+  if (mod->rhs()->isConstant()) {
+    int32_t rhs = mod->rhs()->toConstant()->toInt32();
+    int32_t shift = FloorLog2(rhs);
+    if (rhs > 0 && 1 << shift == rhs) {
+      LModPowTwoI* lir =
+          new (alloc()) LModPowTwoI(useRegister(mod->lhs()), shift);
+      if (mod->fallible()) {
+        assignSnapshot(lir, Bailout_DoubleOutput);
+      }
+      define(lir, mod);
+      return;
+    } else if (shift < 31 && (1 << (shift + 1)) - 1 == rhs) {
+      LModMaskI* lir = new (alloc())
+          LModMaskI(useRegister(mod->lhs()), temp(), temp(), shift + 1);
+      if (mod->fallible()) {
+        assignSnapshot(lir, Bailout_DoubleOutput);
+      }
+      define(lir, mod);
+    }
+  }
+
+  LModI* lir = new (alloc())
+      LModI(useRegister(mod->lhs()), useRegister(mod->rhs()), temp());
+  if (mod->fallible()) {
+    assignSnapshot(lir, Bailout_DoubleOutput);
+  }
+  define(lir, mod);
+}
 
 void LIRGeneratorARM64::lowerDivI64(MDiv* div) { MOZ_CRASH("NYI"); }
 
@@ -238,11 +271,12 @@ void LIRGenerator::visitPowHalf(MPowHalf* ins) {
 LTableSwitch* LIRGeneratorARM64::newLTableSwitch(const LAllocation& in,
                                                  const LDefinition& inputCopy,
                                                  MTableSwitch* tableswitch) {
-  return new (alloc()) LTableSwitch(in, inputCopy, tableswitch);
+  return new (alloc()) LTableSwitch(in, inputCopy, temp(), tableswitch);
 }
 
 LTableSwitchV* LIRGeneratorARM64::newLTableSwitchV(MTableSwitch* tableswitch) {
-  MOZ_CRASH("NYI");
+  return new (alloc()) LTableSwitchV(useBox(tableswitch->getOperand(0)), temp(),
+                                     tempDouble(), temp(), tableswitch);
 }
 
 void LIRGeneratorARM64::lowerUrshD(MUrsh* mir) {
@@ -279,7 +313,14 @@ void LIRGenerator::visitWasmSelect(MWasmSelect* ins) {
 
 void LIRGeneratorARM64::lowerUDiv(MDiv* div) { MOZ_CRASH("lowerUDiv"); }
 
-void LIRGeneratorARM64::lowerUMod(MMod* mod) { MOZ_CRASH("lowerUMod"); }
+void LIRGeneratorARM64::lowerUMod(MMod* mod) {
+  LUMod* lir = new (alloc())
+      LUMod(useRegister(mod->getOperand(0)), useRegister(mod->getOperand(1)));
+  if (mod->fallible()) {
+    assignSnapshot(lir, Bailout_DoubleOutput);
+  }
+  define(lir, mod);
+}
 
 void LIRGenerator::visitWasmUnsignedToDouble(MWasmUnsignedToDouble* ins) {
   MOZ_CRASH("visitWasmUnsignedToDouble");
@@ -310,11 +351,19 @@ void LIRGenerator::visitWasmAtomicBinopHeap(MWasmAtomicBinopHeap* ins) {
 }
 
 void LIRGeneratorARM64::lowerTruncateDToInt32(MTruncateToInt32* ins) {
-  MOZ_CRASH("lowerTruncateDToInt32");
+  MDefinition* opd = ins->input();
+  MOZ_ASSERT(opd->type() == MIRType::Double);
+  define(new (alloc())
+             LTruncateDToInt32(useRegister(opd), LDefinition::BogusTemp()),
+         ins);
 }
 
 void LIRGeneratorARM64::lowerTruncateFToInt32(MTruncateToInt32* ins) {
-  MOZ_CRASH("lowerTruncateFToInt32");
+  MDefinition* opd = ins->input();
+  MOZ_ASSERT(opd->type() == MIRType::Float32);
+  define(new (alloc())
+             LTruncateFToInt32(useRegister(opd), LDefinition::BogusTemp()),
+         ins);
 }
 
 void LIRGenerator::visitAtomicTypedArrayElementBinop(

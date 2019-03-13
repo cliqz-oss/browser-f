@@ -128,7 +128,7 @@ addon-restart-now =
 disabled-unsigned-heading =
     .value = Einige Add-ons wurden deaktiviert
 disabled-unsigned-description = Die folgenden Add-ons wurden nicht für die Verwendung in { -brand-short-name } verifiziert. Sie können <label data-l10n-name="find-addons">nach Alternativen suchen</label> oder die Entwickler bitten, sie verifizieren zu lassen.
-disabled-unsigned-learn-more = Erfahren Sie mehr von unseren Bestrebungen, Sie beim Surfen im Internet zu schützen.
+disabled-unsigned-learn-more = Erfahren Sie mehr über unsere Bestrebungen, Sie beim Surfen im Internet zu schützen.
 disabled-unsigned-devinfo = An der Verifizierung ihrer Add-ons interessierte Entwickler können mehr dazu in unserer <label data-l10n-name="learn-more">Anleitung</label> erfahren.
 plugin-deprecation-description = Fehlt etwas? Einige Plugins werden nicht mehr von { -brand-short-name } unterstützt. <label data-l10n-name="learn-more">Weitere Informationen</label>
 legacy-warning-show-legacy = Erweiterungen des alten Add-on-Typs anzeigen
@@ -212,3 +212,26 @@ extensions-updates-manual-updates-found =
 extensions-updates-update-selected =
     .label = Updates installieren
     .tooltiptext = In dieser Liste verfügbare Updates installieren
+
+## Extension shortcut management
+
+manage-extensions-shortcuts =
+    .label = Tastenkombination für Erweiterungen verwalten
+    .accesskey = T
+shortcuts-empty-message = Diese Erweiterung verfügt über keine Tastenkombinationen.
+shortcuts-no-addons = Es sind keine Erweiterungen installiert.
+shortcuts-input =
+  .placeholder = Tastenkombination drücken
+
+shortcuts-browserAction = Aktion für Erweiterung aktivieren
+shortcuts-pageAction = Aktion für Seite aktivieren
+shortcuts-sidebarAction = Sidebar umschalten
+
+shortcuts-modifier-mac = Mit Strg-, Alt- oder ⌘-Taste kombinieren
+shortcuts-modifier-other = Mit Strg- oder Alt-Taste kombinieren
+shortcuts-invalid = Ungültige Kombination
+shortcuts-letter = Zeichen eingeben
+shortcuts-system = { -brand-short-name }-Tastenkombinationen können nicht überschrieben werden.
+
+go-back-button =
+    .tooltiptext = Zurück

@@ -19,8 +19,11 @@
 
 namespace mozilla {
 namespace dom {
+template <typename>
+struct Nullable;
+class WindowProxyHolder;
 class XULFrameElement;
-}
+}  // namespace dom
 }  // namespace mozilla
 
 #define NS_GENERICHTMLFRAMEELEMENT_IID               \
@@ -60,7 +63,7 @@ class nsGenericHTMLFrameElement : public nsGenericHTMLElement,
   // nsIContent
   virtual bool IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
                                int32_t* aTabIndex) override;
-  virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
+  virtual nsresult BindToTree(Document* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent) override;
   virtual void UnbindFromTree(bool aDeep = true,
                               bool aNullParent = true) override;
@@ -84,7 +87,8 @@ class nsGenericHTMLFrameElement : public nsGenericHTMLElement,
   void SwapFrameLoaders(nsIFrameLoaderOwner* aOtherLoaderOwner,
                         mozilla::ErrorResult& rv);
 
-  void PresetOpenerWindow(mozIDOMWindowProxy* aOpenerWindow,
+  void PresetOpenerWindow(const mozilla::dom::Nullable<
+                              mozilla::dom::WindowProxyHolder>& aOpenerWindow,
                           mozilla::ErrorResult& aRv);
 
   static void InitStatics();
@@ -111,8 +115,8 @@ class nsGenericHTMLFrameElement : public nsGenericHTMLElement,
   // it makes sense.
   void EnsureFrameLoader();
   void LoadSrc();
-  nsIDocument* GetContentDocument(nsIPrincipal& aSubjectPrincipal);
-  already_AddRefed<nsPIDOMWindowOuter> GetContentWindow();
+  Document* GetContentDocument(nsIPrincipal& aSubjectPrincipal);
+  mozilla::dom::Nullable<mozilla::dom::WindowProxyHolder> GetContentWindow();
 
   virtual nsresult AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                 const nsAttrValue* aValue,
@@ -124,7 +128,7 @@ class nsGenericHTMLFrameElement : public nsGenericHTMLElement,
                                           bool aNotify) override;
 
   RefPtr<nsFrameLoader> mFrameLoader;
-  nsCOMPtr<nsPIDOMWindowOuter> mOpenerWindow;
+  RefPtr<mozilla::dom::BrowsingContext> mOpenerWindow;
 
   nsCOMPtr<nsIPrincipal> mSrcTriggeringPrincipal;
 
@@ -165,6 +169,8 @@ class nsGenericHTMLFrameElement : public nsGenericHTMLElement,
                             const nsAttrValueOrString* aValue,
                             nsIPrincipal* aMaybeScriptedPrincipal,
                             bool aNotify);
+
+  mozilla::dom::BrowsingContext* GetContentWindowInternal();
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsGenericHTMLFrameElement,

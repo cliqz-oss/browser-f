@@ -44,7 +44,7 @@ using mozilla::LookAndFeel;
                     (int)((c).blue * 255), (int)((c).alpha * 255)))
 
 #if !GTK_CHECK_VERSION(3, 12, 0)
-#define GTK_STATE_FLAG_LINK (static_cast<GtkStateFlags>(1 << 9))
+#  define GTK_STATE_FLAG_LINK (static_cast<GtkStateFlags>(1 << 9))
 #endif
 
 nsLookAndFeel::nsLookAndFeel()
@@ -673,6 +673,10 @@ nsresult nsLookAndFeel::GetIntImpl(IntID aID, int32_t& aResult) {
       EnsureInit();
       aResult = mCSDAvailable;
       break;
+    case eIntID_GTKCSDHideTitlebarByDefault:
+      EnsureInit();
+      aResult = mCSDHideTitlebarByDefault;
+      break;
     case eIntID_GTKCSDMaximizeButton:
       EnsureInit();
       aResult = mCSDMaximizeButton;
@@ -685,8 +689,18 @@ nsresult nsLookAndFeel::GetIntImpl(IntID aID, int32_t& aResult) {
       EnsureInit();
       aResult = mCSDCloseButton;
       break;
-    case eIntID_GTKCSDTransparentBackground:
-      aResult = nsWindow::TopLevelWindowUseARGBVisual();
+    case eIntID_GTKCSDTransparentBackground: {
+      // Enable transparent titlebar corners for titlebar mode.
+      GdkScreen* screen = gdk_screen_get_default();
+      aResult = gdk_screen_is_composited(screen)
+                    ? (nsWindow::GetSystemCSDSupportLevel() !=
+                       nsWindow::CSD_SUPPORT_NONE)
+                    : false;
+      break;
+    }
+    case eIntID_GTKCSDReversedPlacement:
+      EnsureInit();
+      aResult = mCSDReversedPlacement;
       break;
     case eIntID_PrefersReducedMotion: {
       GtkSettings* settings;
@@ -1107,6 +1121,7 @@ void nsLookAndFeel::EnsureInit() {
 
   mCSDAvailable =
       nsWindow::GetSystemCSDSupportLevel() != nsWindow::CSD_SUPPORT_NONE;
+  mCSDHideTitlebarByDefault = nsWindow::HideTitlebarByDefault();
 
   mCSDCloseButton = false;
   mCSDMinimizeButton = false;
@@ -1116,8 +1131,8 @@ void nsLookAndFeel::EnsureInit() {
   // as -moz-gtk* media features.
   WidgetNodeType buttonLayout[TOOLBAR_BUTTONS];
 
-  int activeButtons =
-      GetGtkHeaderBarButtonLayout(buttonLayout, TOOLBAR_BUTTONS);
+  int activeButtons = GetGtkHeaderBarButtonLayout(buttonLayout, TOOLBAR_BUTTONS,
+                                                  &mCSDReversedPlacement);
   for (int i = 0; i < activeButtons; i++) {
     switch (buttonLayout[i]) {
       case MOZ_GTK_HEADER_BAR_BUTTON_MINIMIZE:

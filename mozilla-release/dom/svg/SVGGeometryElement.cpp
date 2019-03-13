@@ -8,19 +8,21 @@
 
 #include "DOMSVGPoint.h"
 #include "gfxPlatform.h"
-#include "mozilla/gfx/2D.h"
-#include "mozilla/dom/SVGLengthBinding.h"
+#include "nsCOMPtr.h"
 #include "nsComputedDOMStyle.h"
-#include "nsSVGUtils.h"
 #include "nsSVGLength2.h"
-#include "SVGContentUtils.h"
+#include "nsSVGUtils.h"
+#include "mozilla/dom/SVGLengthBinding.h"
+#include "mozilla/gfx/2D.h"
+#include "mozilla/RefPtr.h"
+#include "mozilla/SVGContentUtils.h"
 
 using namespace mozilla;
 using namespace mozilla::gfx;
 using namespace mozilla::dom;
 
-nsSVGElement::NumberInfo SVGGeometryElement::sNumberInfo = {
-    nsGkAtoms::pathLength, 0, false};
+SVGElement::NumberInfo SVGGeometryElement::sNumberInfo = {nsGkAtoms::pathLength,
+                                                          0, false};
 
 //----------------------------------------------------------------------
 // Implementation
@@ -29,7 +31,7 @@ SVGGeometryElement::SVGGeometryElement(
     already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
     : SVGGeometryElementBase(std::move(aNodeInfo)) {}
 
-nsSVGElement::NumberAttributesInfo SVGGeometryElement::GetNumberInfo() {
+SVGElement::NumberAttributesInfo SVGGeometryElement::GetNumberInfo() {
   return NumberAttributesInfo(&mPathLength, &sNumberInfo, 1);
 }
 
@@ -81,7 +83,7 @@ bool SVGGeometryElement::GeometryDependsOnCoordCtx() {
 
 bool SVGGeometryElement::IsMarkable() { return false; }
 
-void SVGGeometryElement::GetMarkPoints(nsTArray<nsSVGMark>* aMarks) {}
+void SVGGeometryElement::GetMarkPoints(nsTArray<SVGMark>* aMarks) {}
 
 already_AddRefed<Path> SVGGeometryElement::GetOrBuildPath(
     const DrawTarget* aDrawTarget, FillRule aFillRule) {

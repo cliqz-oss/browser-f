@@ -211,8 +211,8 @@ void FallbackICSpew(JSContext* cx, ICFallbackStub* stub, const char* fmt, ...)
 void TypeFallbackICSpew(JSContext* cx, ICTypeMonitor_Fallback* stub,
                         const char* fmt, ...) MOZ_FORMAT_PRINTF(3, 4);
 #else
-#define FallbackICSpew(...)
-#define TypeFallbackICSpew(...)
+#  define FallbackICSpew(...)
+#  define TypeFallbackICSpew(...)
 #endif
 
 // An entry in the BaselineScript IC descriptor table. There's one ICEntry per
@@ -2607,6 +2607,8 @@ class ICRest_Fallback : public ICFallbackStub {
 // UnaryArith
 //     JSOP_BITNOT
 //     JSOP_NEG
+//     JSOP_INC
+//     JSOP_DEC
 
 class ICUnaryArith_Fallback : public ICFallbackStub {
   friend class ICStubSpace;
@@ -2784,7 +2786,13 @@ inline bool IsCacheableDOMProxy(JSObject* obj) {
   }
 
   const BaseProxyHandler* handler = obj->as<ProxyObject>().handler();
-  return handler->family() == GetDOMProxyHandlerFamily();
+  if (handler->family() != GetDOMProxyHandlerFamily()) {
+    return false;
+  }
+
+  // Some DOM proxies have dynamic prototypes.  We can't really cache those very
+  // well.
+  return obj->hasStaticPrototype();
 }
 
 struct IonOsrTempData;

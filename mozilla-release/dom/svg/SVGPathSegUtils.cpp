@@ -4,15 +4,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/ArrayUtils.h"  // MOZ_ARRAY_LENGTH
-
 #include "SVGPathSegUtils.h"
 
+#include "mozilla/ArrayUtils.h"  // MOZ_ARRAY_LENGTH
 #include "gfx2DGlue.h"
-#include "nsSVGPathDataParser.h"
+#include "SVGPathDataParser.h"
 #include "nsTextFormatter.h"
 
 using namespace mozilla;
+using namespace mozilla::dom::SVGPathSeg_Binding;
 using namespace mozilla::gfx;
 
 static const float PATH_SEG_LENGTH_TOLERANCE = 0.0000001f;
@@ -338,8 +338,8 @@ static void TraverseArcAbs(const float* aArgs, SVGPathTraversalState& aState) {
       dist = CalcDistanceBetweenPoints(aState.pos, to);
     } else {
       Point bez[4] = {aState.pos, Point(0, 0), Point(0, 0), Point(0, 0)};
-      nsSVGArcConverter converter(aState.pos, to, radii, aArgs[2],
-                                  aArgs[3] != 0, aArgs[4] != 0);
+      SVGArcConverter converter(aState.pos, to, radii, aArgs[2], aArgs[3] != 0,
+                                aArgs[4] != 0);
       while (converter.GetNextSegment(&bez[1], &bez[2], &bez[3])) {
         dist += CalcBezLengthHelper(bez, 4, 0, SplitCubicBezier);
         bez[0] = bez[3];
@@ -360,8 +360,8 @@ static void TraverseArcRel(const float* aArgs, SVGPathTraversalState& aState) {
       dist = CalcDistanceBetweenPoints(aState.pos, to);
     } else {
       Point bez[4] = {aState.pos, Point(0, 0), Point(0, 0), Point(0, 0)};
-      nsSVGArcConverter converter(aState.pos, to, radii, aArgs[2],
-                                  aArgs[3] != 0, aArgs[4] != 0);
+      SVGArcConverter converter(aState.pos, to, radii, aArgs[2], aArgs[3] != 0,
+                                aArgs[4] != 0);
       while (converter.GetNextSegment(&bez[1], &bez[2], &bez[3])) {
         dist += CalcBezLengthHelper(bez, 4, 0, SplitCubicBezier);
         bez[0] = bez[3];

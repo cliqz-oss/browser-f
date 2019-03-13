@@ -5,7 +5,7 @@
 // @flow
 
 import React, { PureComponent } from "react";
-import { connect } from "react-redux";
+import { connect } from "../../../utils/connect";
 
 import Popup from "./Popup";
 
@@ -22,11 +22,11 @@ type Props = {
   editorRef: ?HTMLDivElement,
   selectedSource: Source,
   preview: PreviewType,
-  isPaused: Boolean,
-  clearPreview: () => void,
-  setPopupObjectProperties: Object => void,
-  addExpression: (string, ?Object) => void,
-  updatePreview: (any, any, any) => void
+  isPaused: boolean,
+  clearPreview: typeof actions.clearPreview,
+  setPopupObjectProperties: typeof actions.setPopupObjectProperties,
+  addExpression: typeof actions.addExpression,
+  updatePreview: typeof actions.updatePreview
 };
 
 type State = {
@@ -67,33 +67,29 @@ class Preview extends PureComponent<Props, State> {
     this.updateListeners();
   }
 
+  componentWillUnmount() {
+    const { codeMirror } = this.props.editor;
+    const codeMirrorWrapper = codeMirror.getWrapperElement();
+
+    codeMirror.off("scroll", this.onScroll);
+    codeMirror.off("tokenenter", this.onTokenEnter);
+    codeMirror.off("tokenleave", this.onTokenLeave);
+    codeMirrorWrapper.removeEventListener("mouseup", this.onMouseUp);
+    codeMirrorWrapper.removeEventListener("mousedown", this.onMouseDown);
+  }
+
   componentDidUpdate(prevProps) {
-    this.updateListeners(prevProps);
     this.updateHighlight(prevProps);
   }
 
   updateListeners(prevProps: ?Props) {
-    const { isPaused } = this.props;
-
     const { codeMirror } = this.props.editor;
     const codeMirrorWrapper = codeMirror.getWrapperElement();
-    const wasNotPaused = !prevProps || !prevProps.isPaused;
-    const wasPaused = prevProps && prevProps.isPaused;
-
-    if (isPaused && wasNotPaused) {
-      codeMirror.on("scroll", this.onScroll);
-      codeMirror.on("tokenenter", this.onTokenEnter);
-      codeMirror.on("tokenleave", this.onTokenLeave);
-      codeMirrorWrapper.addEventListener("mouseup", this.onMouseUp);
-      codeMirrorWrapper.addEventListener("mousedown", this.onMouseDown);
-    }
-
-    if (!isPaused && wasPaused) {
-      codeMirror.off("tokenenter", this.onTokenEnter);
-      codeMirror.off("tokenleave", this.onTokenLeave);
-      codeMirrorWrapper.removeEventListener("mouseup", this.onMouseUp);
-      codeMirrorWrapper.removeEventListener("mousedown", this.onMouseDown);
-    }
+    codeMirror.on("scroll", this.onScroll);
+    codeMirror.on("tokenenter", this.onTokenEnter);
+    codeMirror.on("tokenleave", this.onTokenLeave);
+    codeMirrorWrapper.addEventListener("mouseup", this.onMouseUp);
+    codeMirrorWrapper.addEventListener("mousedown", this.onMouseDown);
   }
 
   updateHighlight(prevProps) {
@@ -111,31 +107,41 @@ class Preview extends PureComponent<Props, State> {
   }
 
   onTokenEnter = ({ target, tokenPos }) => {
-    this.props.updatePreview(target, tokenPos, this.props.editor.codeMirror);
+    if (this.props.isPaused) {
+      this.props.updatePreview(target, tokenPos, this.props.editor.codeMirror);
+    }
   };
 
   onTokenLeave = e => {
-    if (!inPopup(e)) {
+    if (this.props.isPaused && !inPopup(e)) {
       this.props.clearPreview();
     }
   };
 
   onMouseUp = () => {
-    this.setState({ selecting: false });
-    return true;
+    if (this.props.isPaused) {
+      this.setState({ selecting: false });
+      return true;
+    }
   };
 
   onMouseDown = () => {
-    this.setState({ selecting: true });
-    return true;
+    if (this.props.isPaused) {
+      this.setState({ selecting: true });
+      return true;
+    }
   };
 
   onScroll = () => {
-    this.props.clearPreview();
+    if (this.props.isPaused) {
+      this.props.clearPreview();
+    }
   };
 
   onClose = e => {
-    this.props.clearPreview();
+    if (this.props.isPaused) {
+      this.props.clearPreview();
+    }
   };
 
   render() {
@@ -148,7 +154,7 @@ class Preview extends PureComponent<Props, State> {
       return null;
     }
 
-    const { result, expression, location, cursorPos, extra } = preview;
+    const { result, expression, location, cursorPos } = preview;
     const value = result;
     if (typeof value == "undefined" || value.optimizedOut) {
       return null;
@@ -164,7 +170,6 @@ class Preview extends PureComponent<Props, State> {
         range={editorRange}
         expression={expression}
         popoverPos={cursorPos}
-        extra={extra}
         onClose={this.onClose}
       />
     );

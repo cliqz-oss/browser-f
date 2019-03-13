@@ -286,10 +286,9 @@ function init() {
 
   // Event delegation on #categories element
   let menu = document.getElementById("categories");
-  menu.addEventListener("click", function click(e) {
-    if (e.target && e.target.parentNode == menu)
-      show(e.target);
-  });
+  for (let category of menu.children) {
+    category.addEventListener("click", () => show(category));
+  }
 
   if (location.hash) {
     let sectionButton = document.getElementById("category-" + location.hash.substring(1));
@@ -297,6 +296,13 @@ function init() {
       sectionButton.click();
     }
   }
+
+  window.addEventListener("hashchange", function() {
+   if (location.hash) {
+      let sectionButton = document.getElementById("category-" + location.hash.substring(1));
+      sectionButton.click();
+    }
+  });
 }
 
 function show(button) {
@@ -305,6 +311,7 @@ function show(button) {
   let content = document.getElementById(category);
   if (current_tab == content)
     return;
+  saveScrollPosition(current_tab.id);
   current_tab.classList.remove("active");
   current_tab.hidden = true;
   content.classList.add("active");
@@ -315,6 +322,20 @@ function show(button) {
   button.setAttribute("selected", "true");
 
   let title = document.getElementById("sectionTitle");
-  title.textContent = button.children[0].textContent;
+  title.textContent = button.children[1].textContent;
   location.hash = category;
+  restoreScrollPosition(category);
 }
+
+const scrollPositions = {};
+function saveScrollPosition(category) {
+  const mainContent = document.querySelector(".main-content");
+  scrollPositions[category] = mainContent.scrollTop;
+}
+
+function restoreScrollPosition(category) {
+  const scrollY = scrollPositions[category] || 0;
+  const mainContent = document.querySelector(".main-content");
+  mainContent.scrollTo(0, scrollY);
+}
+

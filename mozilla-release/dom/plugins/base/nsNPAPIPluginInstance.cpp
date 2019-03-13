@@ -18,7 +18,7 @@
 #include "nsPluginInstanceOwner.h"
 
 #include "nsThreadUtils.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIDocShell.h"
 #include "nsIScriptGlobalObject.h"
 #include "nsIScriptContext.h"
@@ -139,11 +139,7 @@ nsresult nsNPAPIPluginInstance::Stop() {
 
   // Make sure the plugin didn't leave popups enabled.
   if (mPopupStates.Length() > 0) {
-    nsCOMPtr<nsPIDOMWindowOuter> window = GetDOMWindow();
-
-    if (window) {
-      window->PopPopupControlState(openAbused);
-    }
+    PopupBlocker::PopPopupControlState(PopupBlocker::openAbused);
   }
 
   if (RUNNING != mRunning) {
@@ -200,7 +196,7 @@ already_AddRefed<nsPIDOMWindowOuter> nsNPAPIPluginInstance::GetDOMWindow() {
 
   RefPtr<nsPluginInstanceOwner> kungFuDeathGrip(mOwner);
 
-  nsCOMPtr<nsIDocument> doc;
+  nsCOMPtr<Document> doc;
   kungFuDeathGrip->GetDocument(getter_AddRefs(doc));
   if (!doc) return nullptr;
 
@@ -774,12 +770,14 @@ nsresult nsNPAPIPluginInstance::PushPopupsEnabledState(bool aEnabled) {
   nsCOMPtr<nsPIDOMWindowOuter> window = GetDOMWindow();
   if (!window) return NS_ERROR_FAILURE;
 
-  PopupControlState oldState =
-      window->PushPopupControlState(aEnabled ? openAllowed : openAbused, true);
+  PopupBlocker::PopupControlState oldState =
+      PopupBlocker::PushPopupControlState(
+          aEnabled ? PopupBlocker::openAllowed : PopupBlocker::openAbused,
+          true);
 
   if (!mPopupStates.AppendElement(oldState)) {
     // Appending to our state stack failed, pop what we just pushed.
-    window->PopPopupControlState(oldState);
+    PopupBlocker::PopPopupControlState(oldState);
     return NS_ERROR_FAILURE;
   }
 
@@ -797,9 +795,9 @@ nsresult nsNPAPIPluginInstance::PopPopupsEnabledState() {
   nsCOMPtr<nsPIDOMWindowOuter> window = GetDOMWindow();
   if (!window) return NS_ERROR_FAILURE;
 
-  PopupControlState& oldState = mPopupStates[last];
+  PopupBlocker::PopupControlState& oldState = mPopupStates[last];
 
-  window->PopPopupControlState(oldState);
+  PopupBlocker::PopPopupControlState(oldState);
 
   mPopupStates.RemoveElementAt(last);
 
@@ -846,7 +844,7 @@ nsresult nsNPAPIPluginInstance::PrivateModeStateChanged(bool enabled) {
 nsresult nsNPAPIPluginInstance::IsPrivateBrowsing(bool* aEnabled) {
   if (!mOwner) return NS_ERROR_FAILURE;
 
-  nsCOMPtr<nsIDocument> doc;
+  nsCOMPtr<Document> doc;
   mOwner->GetDocument(getter_AddRefs(doc));
   NS_ENSURE_TRUE(doc, NS_ERROR_FAILURE);
 

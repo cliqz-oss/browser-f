@@ -4,11 +4,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "mozilla/dom/SVGImageElement.h"
+
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/EventStateManager.h"
 #include "mozilla/EventStates.h"
-
-#include "mozilla/dom/SVGImageElement.h"
 #include "mozilla/gfx/2D.h"
 #include "nsCOMPtr.h"
 #include "nsIURI.h"
@@ -18,7 +18,7 @@
 #include "mozilla/dom/SVGLengthBinding.h"
 #include "nsContentUtils.h"
 
-NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(Image)
+NS_IMPL_NS_NEW_SVG_ELEMENT(Image)
 
 using namespace mozilla::gfx;
 
@@ -30,7 +30,7 @@ JSObject* SVGImageElement::WrapNode(JSContext* aCx,
   return SVGImageElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-nsSVGElement::LengthInfo SVGImageElement::sLengthInfo[4] = {
+SVGElement::LengthInfo SVGImageElement::sLengthInfo[4] = {
     {nsGkAtoms::x, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER,
      SVGContentUtils::X},
     {nsGkAtoms::y, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER,
@@ -41,7 +41,7 @@ nsSVGElement::LengthInfo SVGImageElement::sLengthInfo[4] = {
      SVGContentUtils::Y},
 };
 
-nsSVGElement::StringInfo SVGImageElement::sStringInfo[2] = {
+SVGElement::StringInfo SVGImageElement::sStringInfo[2] = {
     {nsGkAtoms::href, kNameSpaceID_None, true},
     {nsGkAtoms::href, kNameSpaceID_XLink, true}};
 
@@ -180,8 +180,7 @@ void SVGImageElement::MaybeLoadSVGImage() {
   }
 }
 
-nsresult SVGImageElement::BindToTree(nsIDocument* aDocument,
-                                     nsIContent* aParent,
+nsresult SVGImageElement::BindToTree(Document* aDocument, nsIContent* aParent,
                                      nsIContent* aBindingParent) {
   nsresult rv =
       SVGImageElementBase::BindToTree(aDocument, aParent, aBindingParent);
@@ -191,10 +190,6 @@ nsresult SVGImageElement::BindToTree(nsIDocument* aDocument,
 
   if (mStringAttributes[HREF].IsExplicitlySet() ||
       mStringAttributes[XLINK_HREF].IsExplicitlySet()) {
-    // FIXME: Bug 660963 it would be nice if we could just have
-    // ClearBrokenState update our state and do it fast...
-    ClearBrokenState();
-    RemoveStatesSilently(NS_EVENT_STATE_BROKEN);
     nsContentUtils::AddScriptRunner(
         NewRunnableMethod("dom::SVGImageElement::MaybeLoadSVGImage", this,
                           &SVGImageElement::MaybeLoadSVGImage));
@@ -265,7 +260,7 @@ already_AddRefed<Path> SVGImageElement::BuildPath(PathBuilder* aBuilder) {
 }
 
 //----------------------------------------------------------------------
-// nsSVGElement methods
+// SVGElement methods
 
 /* virtual */ bool SVGImageElement::HasValidDimensions() const {
   return mLengthAttributes[ATTR_WIDTH].IsExplicitlySet() &&
@@ -274,7 +269,7 @@ already_AddRefed<Path> SVGImageElement::BuildPath(PathBuilder* aBuilder) {
          mLengthAttributes[ATTR_HEIGHT].GetAnimValInSpecifiedUnits() > 0;
 }
 
-nsSVGElement::LengthAttributesInfo SVGImageElement::GetLengthInfo() {
+SVGElement::LengthAttributesInfo SVGImageElement::GetLengthInfo() {
   return LengthAttributesInfo(mLengthAttributes, sLengthInfo,
                               ArrayLength(sLengthInfo));
 }
@@ -283,7 +278,7 @@ SVGAnimatedPreserveAspectRatio* SVGImageElement::GetPreserveAspectRatio() {
   return &mPreserveAspectRatio;
 }
 
-nsSVGElement::StringAttributesInfo SVGImageElement::GetStringInfo() {
+SVGElement::StringAttributesInfo SVGImageElement::GetStringInfo() {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
                               ArrayLength(sStringInfo));
 }

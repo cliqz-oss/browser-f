@@ -7,10 +7,10 @@
 #ifndef mozilla_dom_SVGAnimatedBoolean_h
 #define mozilla_dom_SVGAnimatedBoolean_h
 
+#include "SVGBoolean.h"
 #include "nsWrapperCache.h"
-#include "nsSVGElement.h"
 #include "mozilla/Attributes.h"
-#include "nsSVGBoolean.h"
+#include "mozilla/dom/SVGElement.h"
 
 namespace mozilla {
 namespace dom {
@@ -19,11 +19,11 @@ class SVGAnimatedBoolean final : public nsWrapperCache {
   NS_INLINE_DECL_CYCLE_COLLECTING_NATIVE_REFCOUNTING(SVGAnimatedBoolean)
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_NATIVE_CLASS(SVGAnimatedBoolean)
 
-  SVGAnimatedBoolean(nsSVGBoolean* aVal, nsSVGElement* aSVGElement)
+  SVGAnimatedBoolean(SVGBoolean* aVal, SVGElement* aSVGElement)
       : mVal(aVal), mSVGElement(aSVGElement) {}
 
   // WebIDL
-  nsSVGElement* GetParentObject() const { return mSVGElement; }
+  SVGElement* GetParentObject() const { return mSVGElement; }
   virtual JSObject* WrapObject(JSContext* aCx,
                                JS::Handle<JSObject*> aGivenProto) override;
   bool BaseVal() const { return mVal->GetBaseValue(); }
@@ -36,8 +36,8 @@ class SVGAnimatedBoolean final : public nsWrapperCache {
  protected:
   ~SVGAnimatedBoolean();
 
-  nsSVGBoolean* mVal;  // kept alive because it belongs to content
-  RefPtr<nsSVGElement> mSVGElement;
+  SVGBoolean* mVal;  // kept alive because it belongs to content
+  RefPtr<SVGElement> mSVGElement;
 };
 
 }  // namespace dom

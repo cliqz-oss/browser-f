@@ -89,6 +89,12 @@ NullHttpChannel::GetIsTrackingResource(bool *aIsTrackingResource) {
 }
 
 NS_IMETHODIMP
+NullHttpChannel::GetFlashPluginState(
+    nsIHttpChannel::FlashPluginState *aResult) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
 NullHttpChannel::GetIsThirdPartyTrackingResource(bool *aIsTrackingResource) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -260,6 +266,12 @@ NullHttpChannel::IsPrivateResponse(bool *_retval) {
 NS_IMETHODIMP
 NullHttpChannel::RedirectTo(nsIURI *aNewURI) {
   return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+NullHttpChannel::SwitchProcessTo(mozilla::dom::Promise *aTabParent,
+                                 uint64_t aIdentifier) {
+  return NS_ERROR_NOT_AVAILABLE;
 }
 
 NS_IMETHODIMP
@@ -786,6 +798,13 @@ NullHttpChannel::SetIsMainDocumentChannel(bool aValue) {
 NS_IMETHODIMP
 NullHttpChannel::LogBlockedCORSRequest(const nsAString &aMessage,
                                        const nsACString &aCategory) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+NullHttpChannel::LogMimeTypeMismatch(const nsACString &aMessageName,
+                                     bool aWarning, const nsAString &aURL,
+                                     const nsAString &aContentType) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 

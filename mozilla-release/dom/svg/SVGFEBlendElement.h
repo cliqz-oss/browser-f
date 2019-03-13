@@ -7,15 +7,15 @@
 #ifndef mozilla_dom_SVGFEBlendElement_h
 #define mozilla_dom_SVGFEBlendElement_h
 
-#include "nsSVGFilters.h"
-#include "nsSVGEnum.h"
+#include "SVGEnum.h"
+#include "SVGFilters.h"
 
 nsresult NS_NewSVGFEBlendElement(
     nsIContent** aResult, already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
 namespace mozilla {
 namespace dom {
 
-typedef nsSVGFE SVGFEBlendElementBase;
+typedef SVGFE SVGFEBlendElementBase;
 
 class SVGFEBlendElement : public SVGFEBlendElementBase {
   friend nsresult(::NS_NewSVGFEBlendElement(
@@ -36,11 +36,10 @@ class SVGFEBlendElement : public SVGFEBlendElementBase {
       nsTArray<RefPtr<SourceSurface>>& aInputImages) override;
   virtual bool AttributeAffectsRendering(int32_t aNameSpaceID,
                                          nsAtom* aAttribute) const override;
-  virtual nsSVGString& GetResultImageName() override {
+  virtual SVGString& GetResultImageName() override {
     return mStringAttributes[RESULT];
   }
-  virtual void GetSourceImageNames(
-      nsTArray<nsSVGStringInfo>& aSources) override;
+  virtual void GetSourceImageNames(nsTArray<SVGStringInfo>& aSources) override;
 
   virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
 
@@ -54,12 +53,12 @@ class SVGFEBlendElement : public SVGFEBlendElementBase {
   virtual StringAttributesInfo GetStringInfo() override;
 
   enum { MODE };
-  nsSVGEnum mEnumAttributes[1];
-  static nsSVGEnumMapping sModeMap[];
+  SVGEnum mEnumAttributes[1];
+  static SVGEnumMapping sModeMap[];
   static EnumInfo sEnumInfo[1];
 
   enum { RESULT, IN1, IN2 };
-  nsSVGString mStringAttributes[3];
+  SVGString mStringAttributes[3];
   static StringInfo sStringInfo[3];
 };
 

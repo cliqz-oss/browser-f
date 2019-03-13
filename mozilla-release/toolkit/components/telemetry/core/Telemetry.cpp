@@ -10,13 +10,13 @@
 #include <prio.h>
 #include <prproces.h>
 #if defined(XP_UNIX) && !defined(XP_DARWIN)
-#include <time.h>
+#  include <time.h>
 #else
-#include <chrono>
+#  include <chrono>
 #endif
 #include "base/pickle.h"
 #if defined(MOZ_TELEMETRY_GECKOVIEW)
-#include "geckoview/TelemetryGeckoViewPersistence.h"
+#  include "geckoview/TelemetryGeckoViewPersistence.h"
 #endif
 #include "ipc/TelemetryIPCAccumulator.h"
 #include "jsapi.h"
@@ -33,6 +33,7 @@
 #include "mozilla/Likely.h"
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/MemoryReporting.h"
+#include "mozilla/MemoryTelemetry.h"
 #include "mozilla/ModuleUtils.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/PoisonIOInterposer.h"
@@ -42,7 +43,7 @@
 #include "mozilla/StaticPtr.h"
 #include "mozilla/Unused.h"
 #if defined(XP_WIN)
-#include "mozilla/WinDllServices.h"
+#  include "mozilla/WinDllServices.h"
 #endif
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsBaseHashtable.h"
@@ -62,7 +63,7 @@
 #include "nsIXPConnect.h"
 #include "nsIXULAppInfo.h"
 #if defined(XP_WIN) && defined(NIGHTLY_BUILD)
-#include "other/UntrustedModules.h"
+#  include "other/UntrustedModules.h"
 #endif
 #include "nsJSUtils.h"
 #include "nsLocalFile.h"
@@ -76,7 +77,7 @@
 #include "nsThreadManager.h"
 #include "nsThreadUtils.h"
 #if defined(XP_WIN)
-#include "nsUnicharUtils.h"
+#  include "nsUnicharUtils.h"
 #endif
 #include "nsVersionComparator.h"
 #include "nsXPCOMCIDInternal.h"
@@ -87,8 +88,8 @@
 #include "other/WebrtcTelemetry.h"
 #include "plstr.h"
 #if defined(MOZ_GECKO_PROFILER)
-#include "shared-libraries.h"
-#include "other/KeyedStackCapturer.h"
+#  include "shared-libraries.h"
+#  include "other/KeyedStackCapturer.h"
 #endif  // MOZ_GECKO_PROFILER
 #include "TelemetryCommon.h"
 #include "TelemetryEvent.h"
@@ -105,6 +106,7 @@ using mozilla::Telemetry::TelemetryIOInterposeObserver;
 using Telemetry::Common::AutoHashtable;
 using Telemetry::Common::GetCurrentProduct;
 using Telemetry::Common::SetCurrentProduct;
+using Telemetry::Common::StringHashSet;
 using Telemetry::Common::SupportedProduct;
 using Telemetry::Common::ToJSString;
 
@@ -591,11 +593,13 @@ TelemetryImpl::GetSnapshotForHistograms(const nsACString& aStoreName,
                                         bool aClearStore, bool aFilterTest,
                                         JSContext* aCx,
                                         JS::MutableHandleValue aResult) {
+  NS_NAMED_LITERAL_CSTRING(defaultStore, "main");
   unsigned int dataset = mCanRecordExtended
                              ? nsITelemetry::DATASET_RELEASE_CHANNEL_OPTIN
                              : nsITelemetry::DATASET_RELEASE_CHANNEL_OPTOUT;
   return TelemetryHistogram::CreateHistogramSnapshots(
-      aCx, aResult, aStoreName, dataset, aClearStore, aFilterTest);
+      aCx, aResult, aStoreName.IsVoid() ? defaultStore : aStoreName, dataset,
+      aClearStore, aFilterTest);
 }
 
 NS_IMETHODIMP
@@ -603,11 +607,13 @@ TelemetryImpl::GetSnapshotForKeyedHistograms(const nsACString& aStoreName,
                                              bool aClearStore, bool aFilterTest,
                                              JSContext* aCx,
                                              JS::MutableHandleValue aResult) {
+  NS_NAMED_LITERAL_CSTRING(defaultStore, "main");
   unsigned int dataset = mCanRecordExtended
                              ? nsITelemetry::DATASET_RELEASE_CHANNEL_OPTIN
                              : nsITelemetry::DATASET_RELEASE_CHANNEL_OPTOUT;
   return TelemetryHistogram::GetKeyedHistogramSnapshots(
-      aCx, aResult, aStoreName, dataset, aClearStore, aFilterTest);
+      aCx, aResult, aStoreName.IsVoid() ? defaultStore : aStoreName, dataset,
+      aClearStore, aFilterTest);
 }
 
 NS_IMETHODIMP
@@ -615,11 +621,13 @@ TelemetryImpl::GetSnapshotForScalars(const nsACString& aStoreName,
                                      bool aClearStore, bool aFilterTest,
                                      JSContext* aCx,
                                      JS::MutableHandleValue aResult) {
+  NS_NAMED_LITERAL_CSTRING(defaultStore, "main");
   unsigned int dataset = mCanRecordExtended
                              ? nsITelemetry::DATASET_RELEASE_CHANNEL_OPTIN
                              : nsITelemetry::DATASET_RELEASE_CHANNEL_OPTOUT;
-  return TelemetryScalar::CreateSnapshots(dataset, aClearStore, aCx, 1, aResult,
-                                          aFilterTest, aStoreName);
+  return TelemetryScalar::CreateSnapshots(
+      dataset, aClearStore, aCx, 1, aResult, aFilterTest,
+      aStoreName.IsVoid() ? defaultStore : aStoreName);
 }
 
 NS_IMETHODIMP
@@ -627,11 +635,13 @@ TelemetryImpl::GetSnapshotForKeyedScalars(const nsACString& aStoreName,
                                           bool aClearStore, bool aFilterTest,
                                           JSContext* aCx,
                                           JS::MutableHandleValue aResult) {
+  NS_NAMED_LITERAL_CSTRING(defaultStore, "main");
   unsigned int dataset = mCanRecordExtended
                              ? nsITelemetry::DATASET_RELEASE_CHANNEL_OPTIN
                              : nsITelemetry::DATASET_RELEASE_CHANNEL_OPTOUT;
   return TelemetryScalar::CreateKeyedSnapshots(
-      dataset, aClearStore, aCx, 1, aResult, aFilterTest, aStoreName);
+      dataset, aClearStore, aCx, 1, aResult, aFilterTest,
+      aStoreName.IsVoid() ? defaultStore : aStoreName);
 }
 
 bool TelemetryImpl::GetSQLStats(JSContext* cx, JS::MutableHandle<JS::Value> ret,
@@ -704,9 +714,9 @@ class GetLoadedModulesResultRunnable final : public Runnable {
   nsMainThreadPtrHandle<Promise> mPromise;
   SharedLibraryInfo mRawModules;
   nsCOMPtr<nsIThread> mWorkerThread;
-#if defined(XP_WIN)
+#  if defined(XP_WIN)
   nsDataHashtable<nsStringHashKey, nsString> mCertSubjects;
-#endif  // defined(XP_WIN)
+#  endif  // defined(XP_WIN)
 
  public:
   GetLoadedModulesResultRunnable(const nsMainThreadPtrHandle<Promise>& aPromise,
@@ -716,9 +726,9 @@ class GetLoadedModulesResultRunnable final : public Runnable {
         mRawModules(rawModules),
         mWorkerThread(do_GetCurrentThread()) {
     MOZ_ASSERT(!NS_IsMainThread());
-#if defined(XP_WIN)
+#  if defined(XP_WIN)
     ObtainCertSubjects();
-#endif  // defined(XP_WIN)
+#  endif  // defined(XP_WIN)
   }
 
   NS_IMETHOD
@@ -821,7 +831,7 @@ class GetLoadedModulesResultRunnable final : public Runnable {
         return NS_OK;
       }
 
-#if defined(XP_WIN)
+#  if defined(XP_WIN)
       // Cert Subject.
       nsString* subject = mCertSubjects.GetValue(info.GetModulePath());
       if (subject) {
@@ -840,7 +850,7 @@ class GetLoadedModulesResultRunnable final : public Runnable {
           return NS_OK;
         }
       }
-#endif  // defined(XP_WIN)
+#  endif  // defined(XP_WIN)
 
       if (!JS_DefineElement(cx, moduleArray, i, moduleObj, JSPROP_ENUMERATE)) {
         mPromise->MaybeReject(NS_ERROR_FAILURE);
@@ -853,7 +863,7 @@ class GetLoadedModulesResultRunnable final : public Runnable {
   }
 
  private:
-#if defined(XP_WIN)
+#  if defined(XP_WIN)
   void ObtainCertSubjects() {
     MOZ_ASSERT(!NS_IsMainThread());
 
@@ -871,7 +881,7 @@ class GetLoadedModulesResultRunnable final : public Runnable {
       }
     }
   }
-#endif  // defined(XP_WIN)
+#  endif  // defined(XP_WIN)
 };
 
 class GetLoadedModulesRunnable final : public Runnable {
@@ -1160,7 +1170,8 @@ already_AddRefed<nsITelemetry> TelemetryImpl::CreateTelemetryInstance() {
       "CreateTelemetryInstance may only be called once, via GetService()");
 
   bool useTelemetry = false;
-  if ((XRE_IsParentProcess() || XRE_IsContentProcess() || XRE_IsGPUProcess()) &&
+  if ((XRE_IsParentProcess() || XRE_IsContentProcess() || XRE_IsGPUProcess() ||
+       XRE_IsSocketProcess()) &&
       // Telemetry is never accumulated when recording or replaying, both
       // because the resulting measurements might be biased and because
       // measurements might occur at non-deterministic points in execution
@@ -1540,12 +1551,12 @@ NS_DEFINE_NAMED_CID(NS_TELEMETRY_CID);
 
 const Module::CIDEntry kTelemetryCIDs[] = {
     {&kNS_TELEMETRY_CID, false, nullptr, nsITelemetryConstructor,
-     Module::ALLOW_IN_GPU_AND_VR_PROCESS},
+     Module::ALLOW_IN_GPU_VR_AND_SOCKET_PROCESS},
     {nullptr}};
 
 const Module::ContractIDEntry kTelemetryContracts[] = {
     {"@mozilla.org/base/telemetry;1", &kNS_TELEMETRY_CID,
-     Module::ALLOW_IN_GPU_AND_VR_PROCESS},
+     Module::ALLOW_IN_GPU_VR_AND_SOCKET_PROCESS},
     {nullptr}};
 
 const Module kTelemetryModule = {Module::kVersion,
@@ -1555,7 +1566,7 @@ const Module kTelemetryModule = {Module::kVersion,
                                  nullptr,
                                  nullptr,
                                  TelemetryImpl::ShutdownTelemetry,
-                                 Module::ALLOW_IN_GPU_AND_VR_PROCESS};
+                                 Module::ALLOW_IN_GPU_VR_AND_SOCKET_PROCESS};
 
 NS_IMETHODIMP
 TelemetryImpl::GetFileIOReports(JSContext* cx, JS::MutableHandleValue ret) {
@@ -1733,6 +1744,77 @@ TelemetryImpl::SetEventRecordingEnabled(const nsACString& aCategory,
 NS_IMETHODIMP
 TelemetryImpl::FlushBatchedChildTelemetry() {
   TelemetryIPCAccumulator::IPCTimerFired(nullptr, nullptr);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+TelemetryImpl::EarlyInit() {
+  Unused << MemoryTelemetry::Get();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+TelemetryImpl::DelayedInit() {
+  MemoryTelemetry::Get().DelayedInit();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+TelemetryImpl::Shutdown() {
+  MemoryTelemetry::Get().Shutdown();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+TelemetryImpl::GatherMemory(JSContext* aCx, Promise** aResult) {
+  ErrorResult rv;
+  RefPtr<Promise> promise = Promise::Create(xpc::CurrentNativeGlobal(aCx), rv);
+  if (rv.Failed()) {
+    return rv.StealNSResult();
+  }
+
+  MemoryTelemetry::Get().GatherReports(
+      [promise]() { promise->MaybeResolve(JS::UndefinedHandleValue); });
+
+  promise.forget(aResult);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+TelemetryImpl::GetAllStores(JSContext* aCx, JS::MutableHandleValue aResult) {
+  StringHashSet stores;
+  nsresult rv;
+
+  rv = TelemetryHistogram::GetAllStores(stores);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+  rv = TelemetryScalar::GetAllStores(stores);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  JS::AutoValueVector allStores(aCx);
+  if (!allStores.reserve(stores.Count())) {
+    return NS_ERROR_FAILURE;
+  }
+
+  for (auto iter = stores.Iter(); !iter.Done(); iter.Next()) {
+    auto& value = iter.Get()->GetKey();
+    JS::RootedValue store(aCx);
+
+    store.setString(ToJSString(aCx, value));
+    if (!allStores.append(store)) {
+      return NS_ERROR_FAILURE;
+    }
+  }
+
+  JS::Rooted<JSObject*> rarray(aCx, JS_NewArrayObject(aCx, allStores));
+  if (rarray == nullptr) {
+    return NS_ERROR_FAILURE;
+  }
+  aResult.setObject(*rarray);
+
   return NS_OK;
 }
 

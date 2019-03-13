@@ -7,8 +7,8 @@
 #ifndef mozilla_dom_SVGFEDisplacementMapElement_h
 #define mozilla_dom_SVGFEDisplacementMapElement_h
 
-#include "nsSVGEnum.h"
-#include "nsSVGFilters.h"
+#include "SVGEnum.h"
+#include "SVGFilters.h"
 
 nsresult NS_NewSVGFEDisplacementMapElement(
     nsIContent** aResult, already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
@@ -16,7 +16,7 @@ nsresult NS_NewSVGFEDisplacementMapElement(
 namespace mozilla {
 namespace dom {
 
-typedef nsSVGFE SVGFEDisplacementMapElementBase;
+typedef SVGFE SVGFEDisplacementMapElementBase;
 
 class SVGFEDisplacementMapElement : public SVGFEDisplacementMapElementBase {
  protected:
@@ -36,11 +36,10 @@ class SVGFEDisplacementMapElement : public SVGFEDisplacementMapElementBase {
       nsTArray<RefPtr<SourceSurface>>& aInputImages) override;
   virtual bool AttributeAffectsRendering(int32_t aNameSpaceID,
                                          nsAtom* aAttribute) const override;
-  virtual nsSVGString& GetResultImageName() override {
+  virtual SVGString& GetResultImageName() override {
     return mStringAttributes[RESULT];
   }
-  virtual void GetSourceImageNames(
-      nsTArray<nsSVGStringInfo>& aSources) override;
+  virtual void GetSourceImageNames(nsTArray<SVGStringInfo>& aSources) override;
 
   virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
 
@@ -75,12 +74,12 @@ class SVGFEDisplacementMapElement : public SVGFEDisplacementMapElementBase {
   static NumberInfo sNumberInfo[1];
 
   enum { CHANNEL_X, CHANNEL_Y };
-  nsSVGEnum mEnumAttributes[2];
-  static nsSVGEnumMapping sChannelMap[];
+  SVGEnum mEnumAttributes[2];
+  static SVGEnumMapping sChannelMap[];
   static EnumInfo sEnumInfo[2];
 
   enum { RESULT, IN1, IN2 };
-  nsSVGString mStringAttributes[3];
+  SVGString mStringAttributes[3];
   static StringInfo sStringInfo[3];
 };
 

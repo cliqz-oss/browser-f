@@ -251,6 +251,7 @@ static const char contentSandboxRules[] = R"SANDBOX_LITERAL(
   (allow file-read-data (literal "/Library/Preferences/.GlobalPreferences.plist"))
 
   (allow file-read*
+      (subpath "/Library/ColorSync/Profiles")
       (subpath "/Library/Spelling")
       (literal "/")
       (literal "/private/tmp")
@@ -258,6 +259,7 @@ static const char contentSandboxRules[] = R"SANDBOX_LITERAL(
       (home-literal "/.CFUserTextEncoding")
       (home-literal "/Library/Preferences/com.apple.DownloadAssessment.plist")
       (home-subpath "/Library/Colors")
+      (home-subpath "/Library/ColorSync/Profiles")
       (home-subpath "/Library/Keyboard Layouts")
       (home-subpath "/Library/Input Methods")
       (home-subpath "/Library/Spelling"))
@@ -808,7 +810,8 @@ static const char flashPluginSandboxRules[] = R"SANDBOX_LITERAL(
   (allow file-read* file-write-create file-write-data
       (literal "/Library/Application Support/Macromedia/mms.cfg")
       (home-library-literal "/Application Support/Macromedia/mms.cfg")
-      (home-library-subpath "/Caches/Adobe/Flash Player")
+      (home-library-subpath "/Caches/Adobe/Flash Player"))
+  (allow file-read* file-write-create file-write-data file-write-unlink
       (home-library-subpath "/Preferences/Macromedia/Flash Player"))
 
   (allow file-read*

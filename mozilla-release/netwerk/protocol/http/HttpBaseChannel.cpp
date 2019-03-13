@@ -42,6 +42,7 @@
 #include "nsPIDOMWindow.h"
 #include "nsIDocShell.h"
 #include "nsINetworkInterceptController.h"
+#include "mozilla/AntiTrackingCommon.h"
 #include "mozilla/dom/Performance.h"
 #include "mozilla/dom/PerformanceStorage.h"
 #include "mozilla/NullPrincipal.h"
@@ -168,6 +169,7 @@ HttpBaseChannel::HttpBaseChannel()
       mCanceled(false),
       mIsFirstPartyTrackingResource(false),
       mIsThirdPartyTrackingResource(false),
+      mFlashPluginState(nsIHttpChannel::FlashPluginUnknown),
       mLoadFlags(LOAD_NORMAL),
       mCaps(0),
       mClassOfService(0),
@@ -319,10 +321,17 @@ void HttpBaseChannel::SetIsTrackingResource(bool aIsThirdParty) {
   }
 }
 
+void HttpBaseChannel::SetFlashPluginState(
+    nsIHttpChannel::FlashPluginState aState) {
+  LOG(("HttpBaseChannel::SetFlashPluginState %p", this));
+  mFlashPluginState = aState;
+}
+
 nsresult HttpBaseChannel::Init(nsIURI* aURI, uint32_t aCaps,
                                nsProxyInfo* aProxyInfo,
                                uint32_t aProxyResolveFlags, nsIURI* aProxyURI,
-                               uint64_t aChannelId) {
+                               uint64_t aChannelId,
+                               nsContentPolicyType aContentPolicyType) {
   LOG1(("HttpBaseChannel::Init [this=%p]\n", this));
 
   MOZ_ASSERT(aURI, "null uri");
@@ -369,7 +378,8 @@ nsresult HttpBaseChannel::Init(nsIURI* aURI, uint32_t aCaps,
   rv = mRequestHead.SetHeader(nsHttp::Host, hostLine);
   if (NS_FAILED(rv)) return rv;
 
-  rv = gHttpHandler->AddStandardRequestHeaders(&mRequestHead, isHTTPS);
+  rv = gHttpHandler->AddStandardRequestHeaders(&mRequestHead, isHTTPS,
+                                               aContentPolicyType);
   if (NS_FAILED(rv)) return rv;
 
   nsAutoCString type;
@@ -1243,7 +1253,7 @@ HttpBaseChannel::DoApplyContentConversions(nsIStreamListener* aNextListener,
       }
 
       LOG(("converter removed '%s' content-encoding\n", val));
-      if (gHttpHandler->IsTelemetryEnabled()) {
+      if (Telemetry::CanRecordPrereleaseData()) {
         int mode = 0;
         if (from.EqualsLiteral("gzip") || from.EqualsLiteral("x-gzip")) {
           mode = 1;
@@ -1482,6 +1492,13 @@ NS_IMETHODIMP
 HttpBaseChannel::GetIsThirdPartyTrackingResource(bool* aIsTrackingResource) {
   MOZ_ASSERT(!(mIsFirstPartyTrackingResource && mIsThirdPartyTrackingResource));
   *aIsTrackingResource = mIsThirdPartyTrackingResource;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HttpBaseChannel::GetFlashPluginState(nsIHttpChannel::FlashPluginState* aState) {
+  uint32_t flashPluginState = mFlashPluginState;
+  *aState = (nsIHttpChannel::FlashPluginState)flashPluginState;
   return NS_OK;
 }
 
@@ -2209,6 +2226,12 @@ HttpBaseChannel::RedirectTo(nsIURI* targetURI) {
 }
 
 NS_IMETHODIMP
+HttpBaseChannel::SwitchProcessTo(mozilla::dom::Promise *aTabParent,
+                                 uint64_t aIdentifier) {
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
 HttpBaseChannel::UpgradeToSecure() {
   // Upgrades are handled internally between http-on-modify-request and
   // http-on-before-connect, which means upgrades are only possible during
@@ -2304,6 +2327,13 @@ HttpBaseChannel::SetTopWindowURIIfUnknown(nsIURI* aTopWindowURI) {
 
 NS_IMETHODIMP
 HttpBaseChannel::GetTopWindowURI(nsIURI** aTopWindowURI) {
+  nsCOMPtr<nsIURI> uriBeingLoaded =
+      AntiTrackingCommon::MaybeGetDocumentURIBeingLoaded(this);
+  return GetTopWindowURI(uriBeingLoaded, aTopWindowURI);
+}
+
+nsresult HttpBaseChannel::GetTopWindowURI(nsIURI* aURIBeingLoaded,
+                                          nsIURI** aTopWindowURI) {
   nsresult rv = NS_OK;
   nsCOMPtr<mozIThirdPartyUtil> util;
   // Only compute the top window URI once. In e10s, this must be computed in the
@@ -2314,7 +2344,8 @@ HttpBaseChannel::GetTopWindowURI(nsIURI** aTopWindowURI) {
       return NS_ERROR_NOT_AVAILABLE;
     }
     nsCOMPtr<mozIDOMWindowProxy> win;
-    rv = util->GetTopWindowForChannel(this, getter_AddRefs(win));
+    rv = util->GetTopWindowForChannel(this, aURIBeingLoaded,
+                                      getter_AddRefs(win));
     if (NS_SUCCEEDED(rv)) {
       rv = util->GetURIFromWindow(win, getter_AddRefs(mTopWindowURI));
 #if DEBUG
@@ -2984,7 +3015,7 @@ void HttpBaseChannel::FlushReportsToConsoleForServiceWorkerScope(
   mReportCollector->FlushReportsToConsoleForServiceWorkerScope(aScope, aAction);
 }
 
-void HttpBaseChannel::FlushConsoleReports(nsIDocument* aDocument,
+void HttpBaseChannel::FlushConsoleReports(dom::Document* aDocument,
                                           ReportAction aAction) {
   mReportCollector->FlushConsoleReports(aDocument, aAction);
 }
@@ -3240,6 +3271,13 @@ void HttpBaseChannel::ReleaseListeners() {
 void HttpBaseChannel::DoNotifyListener() {
   LOG(("HttpBaseChannel::DoNotifyListener this=%p", this));
 
+  // In case nsHttpChannel::OnStartRequest wasn't called (e.g. due to flag
+  // LOAD_ONLY_IF_MODIFIED) we want to set mAfterOnStartRequestBegun to true
+  // before notifying listener.
+  if (!mAfterOnStartRequestBegun) {
+    mAfterOnStartRequestBegun = true;
+  }
+
   if (mListener) {
     MOZ_ASSERT(!mOnStartRequestCalled,
                "We should not call OnStartRequest twice");
@@ -3286,7 +3324,7 @@ void HttpBaseChannel::DoNotifyListener() {
     if (mLoadGroup) {
       FlushConsoleReports(mLoadGroup);
     } else if (mLoadInfo) {
-      nsCOMPtr<nsIDocument> doc;
+      RefPtr<dom::Document> doc;
       mLoadInfo->GetLoadingDocument(getter_AddRefs(doc));
       FlushConsoleReports(doc);
     }
@@ -4165,7 +4203,7 @@ mozilla::dom::PerformanceStorage* HttpBaseChannel::GetPerformanceStorage() {
     return performanceStorage;
   }
 
-  nsCOMPtr<nsIDocument> loadingDocument;
+  RefPtr<dom::Document> loadingDocument;
   mLoadInfo->GetLoadingDocument(getter_AddRefs(loadingDocument));
   if (!loadingDocument) {
     return nullptr;

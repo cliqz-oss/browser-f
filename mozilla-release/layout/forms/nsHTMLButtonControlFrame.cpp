@@ -72,7 +72,7 @@ nsresult nsHTMLButtonControlFrame::HandleEvent(nsPresContext* aPresContext,
 }
 
 bool nsHTMLButtonControlFrame::ShouldClipPaintingToBorderBox() {
-  return IsInput() || StyleDisplay()->mOverflowX != NS_STYLE_OVERFLOW_VISIBLE;
+  return IsInput() || StyleDisplay()->mOverflowX != StyleOverflow::Visible;
 }
 
 void nsHTMLButtonControlFrame::BuildDisplayList(
@@ -96,8 +96,7 @@ void nsHTMLButtonControlFrame::BuildDisplayList(
 
   nsDisplayListCollection set(aBuilder);
 
-  // Do not allow the child subtree to receive events.
-  if (!isForEventDelivery || aBuilder->HitTestIsForVisibility()) {
+  {
     DisplayListClipState::AutoSaveRestore clipState(aBuilder);
 
     if (ShouldClipPaintingToBorderBox()) {
@@ -106,13 +105,11 @@ void nsHTMLButtonControlFrame::BuildDisplayList(
       rect.Deflate(border);
       nscoord radii[8];
       bool hasRadii = GetPaddingBoxBorderRadii(radii);
-      clipState.ClipContainingBlockDescendants(rect,
-                                               hasRadii ? radii : nullptr);
+      clipState.ClipContainingBlockDescendants(rect, hasRadii ? radii : nullptr);
     }
 
     BuildDisplayListForChild(aBuilder, mFrames.FirstChild(), set,
                              DISPLAY_CHILD_FORCE_PSEUDO_STACKING_CONTEXT);
-    // That should put the display items in set.Content()
   }
 
   // Put the foreground outline and focus rects on top of the children

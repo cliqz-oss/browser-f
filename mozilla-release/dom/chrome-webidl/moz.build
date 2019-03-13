@@ -50,6 +50,7 @@ WEBIDL_FILES = [
     'MozStorageStatementRow.webidl',
     'PrecompiledScript.webidl',
     'PromiseDebugging.webidl',
+    'SessionStoreUtils.webidl',
     'StructuredCloneHolder.webidl',
     'TelemetryStopwatch.webidl',
     'WebExtensionContentScript.webidl',
@@ -57,8 +58,8 @@ WEBIDL_FILES = [
     'WindowGlobalActors.webidl',
     'XULFrameElement.webidl',
     'XULMenuElement.webidl',
-    'XULScrollElement.webidl',
-    'XULTextElement.webidl'
+    'XULTextElement.webidl',
+    'XULTreeElement.webidl'
 ]
 
 if CONFIG['MOZ_PLACES']:

@@ -136,35 +136,37 @@ public class GeckoViewActivity extends AppCompatActivity {
             sGeckoRuntime = GeckoRuntime.create(this, runtimeSettingsBuilder.build());
         }
 
-        mGeckoSession = (GeckoSession)getIntent().getParcelableExtra("session");
-        if (mGeckoSession != null) {
-            connectSession(mGeckoSession);
+        if(savedInstanceState == null) {
+            mGeckoSession = (GeckoSession)getIntent().getParcelableExtra("session");
+            if (mGeckoSession != null) {
+                connectSession(mGeckoSession);
 
-            if (!mGeckoSession.isOpen()) {
-                mGeckoSession.open(sGeckoRuntime);
+                if (!mGeckoSession.isOpen()) {
+                    mGeckoSession.open(sGeckoRuntime);
+                }
+
+                mUseMultiprocess = mGeckoSession.getSettings().getUseMultiprocess();
+                mFullAccessibilityTree = mGeckoSession.getSettings().getFullAccessibilityTree();
+
+                mGeckoView.setSession(mGeckoSession);
+            } else {
+                mGeckoSession = createSession();
+                mGeckoView.setSession(mGeckoSession, sGeckoRuntime);
+
+                loadFromIntent(getIntent());
             }
-
-            mUseMultiprocess = mGeckoSession.getSettings().getBoolean(GeckoSessionSettings.USE_MULTIPROCESS);
-            mFullAccessibilityTree = mGeckoSession.getSettings().getBoolean(GeckoSessionSettings.FULL_ACCESSIBILITY_TREE);
-
-            mGeckoView.setSession(mGeckoSession);
-        } else {
-            mGeckoSession = createSession();
-            mGeckoView.setSession(mGeckoSession, sGeckoRuntime);
-            loadFromIntent(getIntent());
         }
 
         mLocationView.setCommitListener(mCommitListener);
     }
 
     private GeckoSession createSession() {
-        GeckoSession session = new GeckoSession();
-        session.getSettings().setBoolean(GeckoSessionSettings.USE_MULTIPROCESS, mUseMultiprocess);
-        session.getSettings().setBoolean(GeckoSessionSettings.USE_PRIVATE_MODE, mUsePrivateBrowsing);
-        session.getSettings().setBoolean(
-            GeckoSessionSettings.USE_TRACKING_PROTECTION, mUseTrackingProtection);
-        session.getSettings().setBoolean(
-                GeckoSessionSettings.FULL_ACCESSIBILITY_TREE, mFullAccessibilityTree);
+        GeckoSession session = new GeckoSession(new GeckoSessionSettings.Builder()
+                .useMultiprocess(mUseMultiprocess)
+                .usePrivateMode(mUsePrivateBrowsing)
+                .useTrackingProtection(mUseTrackingProtection)
+                .fullAccessibilityTree(mFullAccessibilityTree)
+                .build());
 
         connectSession(session);
 
@@ -193,7 +195,9 @@ public class GeckoViewActivity extends AppCompatActivity {
     }
 
     private void recreateSession() {
-        mGeckoSession.close();
+        if(mGeckoSession != null) {
+            mGeckoSession.close();
+        }
 
         mGeckoSession = createSession();
         mGeckoSession.open(sGeckoRuntime);
@@ -201,9 +205,18 @@ public class GeckoViewActivity extends AppCompatActivity {
         mGeckoSession.loadUri(mCurrentUri != null ? mCurrentUri : DEFAULT_URL);
     }
 
+    @Override
+    public void onRestoreInstanceState(Bundle savedInstanceState) {
+        super.onRestoreInstanceState(savedInstanceState);
+        if(savedInstanceState != null) {
+            mGeckoSession = mGeckoView.getSession();
+        } else {
+            recreateSession();
+        }
+    }
+
     private void updateTrackingProtection(GeckoSession session) {
-        session.getSettings().setBoolean(
-            GeckoSessionSettings.USE_TRACKING_PROTECTION, mUseTrackingProtection);
+        session.getSettings().setUseTrackingProtection(mUseTrackingProtection);
     }
 
     @Override
@@ -295,7 +308,7 @@ public class GeckoViewActivity extends AppCompatActivity {
     }
 
 
-        private void loadFromIntent(final Intent intent) {
+    private void loadFromIntent(final Intent intent) {
         final Uri uri = intent.getData();
         mGeckoSession.loadUri(uri != null ? uri.toString() : DEFAULT_URL);
     }

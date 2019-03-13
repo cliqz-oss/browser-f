@@ -97,6 +97,10 @@ inline JSFunction* JSScript::getFunction(size_t index) {
   return fun;
 }
 
+inline JSFunction* JSScript::getFunction(jsbytecode* pc) {
+  return getFunction(GET_UINT32_INDEX(pc));
+}
+
 inline js::RegExpObject* JSScript::getRegExp(size_t index) {
   JSObject* obj = getObject(index);
   MOZ_RELEASE_ASSERT(obj->is<js::RegExpObject>(),
@@ -117,6 +121,10 @@ inline js::GlobalObject& JSScript::global() const {
    * assert that maybeGlobal is non-null here.
    */
   return *realm()->maybeGlobal();
+}
+
+inline bool JSScript::hasGlobal(const js::GlobalObject* global) const {
+  return global == realm()->unsafeUnbarrieredMaybeGlobal();
 }
 
 inline js::LexicalScope* JSScript::maybeNamedLambdaScope() const {
@@ -170,16 +178,6 @@ inline bool JSScript::ensureHasAnalyzedArgsUsage(JSContext* cx) {
 
 inline bool JSScript::isDebuggee() const {
   return realm_->debuggerObservesAllExecution() || hasDebugScript();
-}
-
-inline bool JSScript::trackRecordReplayProgress() const {
-  // Progress is only tracked when recording or replaying, and only for
-  // scripts associated with the main thread's runtime. Whether self hosted
-  // scripts execute may depend on performed Ion optimizations (for example,
-  // self hosted TypedObject logic), so they are ignored.
-  return MOZ_UNLIKELY(mozilla::recordreplay::IsRecordingOrReplaying()) &&
-         !runtimeFromAnyThread()->parentRuntime && !selfHosted() &&
-         mozilla::recordreplay::ShouldUpdateProgressCounter(filename());
 }
 
 inline js::jit::ICScript* JSScript::icScript() const {

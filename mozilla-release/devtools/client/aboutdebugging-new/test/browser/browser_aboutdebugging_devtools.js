@@ -3,6 +3,9 @@
 
 "use strict";
 
+/* import-globals-from helper-collapsibilities.js */
+Services.scriptloader.loadSubScript(CHROME_URL_ROOT + "helper-collapsibilities.js", this);
+
 /**
  * Check that DevTools are not closed when leaving This Firefox runtime page.
  */
@@ -23,7 +26,6 @@ add_task(async function() {
 
   info("DevTools starts workers, wait for requests to settle");
   const store = window.AboutDebugging.store;
-  await waitForDispatch(store, "REQUEST_WORKERS_SUCCESS");
   await waitForRequestsToSettle(store);
 
   info("Click on the Connect item in the sidebar");

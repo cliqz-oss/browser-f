@@ -18,16 +18,13 @@ from taskgraph.util.scriptworker import (generate_beetmover_artifact_map,
                                          get_beetmover_bucket_scope,
                                          get_worker_type_for_scope,
                                          should_use_artifact_map)
-from voluptuous import Any, Optional, Required
+from voluptuous import Optional, Required
+from taskgraph.util.treeherder import replace_group
 from taskgraph.transforms.task import task_description_schema
 
 # Voluptuous uses marker objects as dictionary *keys*, but they are not
 # comparable, so we cast all of the keys back to regular strings
 task_description_schema = {str(k): v for k, v in task_description_schema.schema.iteritems()}
-
-taskref_or_string = Any(
-    basestring,
-    {Required('task-reference'): basestring})
 
 beetmover_checksums_description_schema = schema.extend({
     Required('depname', default='build'): basestring,
@@ -50,7 +47,10 @@ def make_beetmover_checksums_description(config, jobs):
         attributes = dep_job.attributes
 
         treeherder = job.get('treeherder', {})
-        treeherder.setdefault('symbol', 'BMcs(N)')
+        treeherder.setdefault(
+            'symbol',
+            replace_group(dep_job.task['extra']['treeherder']['symbol'], 'BMcs')
+        )
         dep_th_platform = dep_job.task.get('extra', {}).get(
             'treeherder', {}).get('machine', {}).get('platform', '')
         treeherder.setdefault('platform',

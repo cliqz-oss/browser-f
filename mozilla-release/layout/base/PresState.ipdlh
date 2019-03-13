@@ -36,10 +36,11 @@ union PresContentData {
 
 struct PresState {
   PresContentData contentData;
+  // For frames where layout and visual viewport aren't one and the same thing,
+  // scrollState will store the position of the *visual* viewport.
   nsPoint scrollState;
   bool allowScrollOriginDowngrade;
   float resolution;
-  bool scaleToResolution;
   bool disabledSet;
   bool disabled;
   bool droppedDown;

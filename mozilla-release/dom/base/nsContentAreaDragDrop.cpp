@@ -34,7 +34,7 @@
 #include "nsUnicharUtils.h"
 #include "nsIURL.h"
 #include "nsIURIMutator.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsIPrincipal.h"
 #include "nsIDocShellTreeItem.h"
@@ -63,7 +63,7 @@ class MOZ_STACK_CLASS DragDataProducer {
                    nsIContent* aSelectionTargetNode, bool aIsAltKeyPressed);
   nsresult Produce(DataTransfer* aDataTransfer, bool* aCanDrag,
                    Selection** aSelection, nsIContent** aDragNode,
-                   nsACString& aPrincipalURISpec);
+                   nsIPrincipal** aPrincipal);
 
  private:
   void AddString(DataTransfer* aDataTransfer, const nsAString& aFlavor,
@@ -108,7 +108,7 @@ nsresult nsContentAreaDragDrop::GetDragData(
     nsPIDOMWindowOuter* aWindow, nsIContent* aTarget,
     nsIContent* aSelectionTargetNode, bool aIsAltKeyPressed,
     DataTransfer* aDataTransfer, bool* aCanDrag, Selection** aSelection,
-    nsIContent** aDragNode, nsACString& aPrincipalURISpec) {
+    nsIContent** aDragNode, nsIPrincipal** aPrincipal) {
   NS_ENSURE_TRUE(aSelectionTargetNode, NS_ERROR_INVALID_ARG);
 
   *aCanDrag = true;
@@ -116,7 +116,7 @@ nsresult nsContentAreaDragDrop::GetDragData(
   DragDataProducer provider(aWindow, aTarget, aSelectionTargetNode,
                             aIsAltKeyPressed);
   return provider.Produce(aDataTransfer, aCanDrag, aSelection, aDragNode,
-                          aPrincipalURISpec);
+                          aPrincipal);
 }
 
 NS_IMPL_ISUPPORTS(nsContentAreaDragDropDataProvider, nsIFlavorDataProvider)
@@ -218,7 +218,9 @@ nsContentAreaDragDropDataProvider::GetFlavorData(nsITransferable* aTransferable,
     // get the URI from the kFilePromiseURLMime flavor
     NS_ENSURE_ARG(aTransferable);
     nsCOMPtr<nsISupports> tmp;
-    aTransferable->GetTransferData(kFilePromiseURLMime, getter_AddRefs(tmp));
+    rv = aTransferable->GetTransferData(kFilePromiseURLMime,
+                                        getter_AddRefs(tmp));
+    NS_ENSURE_SUCCESS(rv, rv);
     nsCOMPtr<nsISupportsString> supportsString = do_QueryInterface(tmp);
     if (!supportsString) return NS_ERROR_FAILURE;
 
@@ -230,8 +232,9 @@ nsContentAreaDragDropDataProvider::GetFlavorData(nsITransferable* aTransferable,
     rv = NS_NewURI(getter_AddRefs(sourceURI), sourceURLString);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    aTransferable->GetTransferData(kFilePromiseDestFilename,
-                                   getter_AddRefs(tmp));
+    rv = aTransferable->GetTransferData(kFilePromiseDestFilename,
+                                        getter_AddRefs(tmp));
+    NS_ENSURE_SUCCESS(rv, rv);
     supportsString = do_QueryInterface(tmp);
     if (!supportsString) return NS_ERROR_FAILURE;
 
@@ -247,7 +250,9 @@ nsContentAreaDragDropDataProvider::GetFlavorData(nsITransferable* aTransferable,
     // because sandboxing blocks access to MIME-handler info from
     // content processes.
     if (XRE_IsParentProcess()) {
-      aTransferable->GetTransferData(kImageRequestMime, getter_AddRefs(tmp));
+      rv = aTransferable->GetTransferData(kImageRequestMime,
+                                          getter_AddRefs(tmp));
+      NS_ENSURE_SUCCESS(rv, rv);
       supportsString = do_QueryInterface(tmp);
       if (!supportsString) return NS_ERROR_FAILURE;
 
@@ -292,8 +297,9 @@ nsContentAreaDragDropDataProvider::GetFlavorData(nsITransferable* aTransferable,
     // get the target directory from the kFilePromiseDirectoryMime
     // flavor
     nsCOMPtr<nsISupports> dirPrimitive;
-    aTransferable->GetTransferData(kFilePromiseDirectoryMime,
-                                   getter_AddRefs(dirPrimitive));
+    rv = aTransferable->GetTransferData(kFilePromiseDirectoryMime,
+                                        getter_AddRefs(dirPrimitive));
+    NS_ENSURE_SUCCESS(rv, rv);
     nsCOMPtr<nsIFile> destDirectory = do_QueryInterface(dirPrimitive);
     if (!destDirectory) return NS_ERROR_FAILURE;
 
@@ -400,7 +406,7 @@ void DragDataProducer::GetNodeString(nsIContent* inNode,
   outNodeString.Truncate();
 
   // use a range to get the text-equivalent of the node
-  nsCOMPtr<nsIDocument> doc = node->OwnerDoc();
+  nsCOMPtr<Document> doc = node->OwnerDoc();
   RefPtr<nsRange> range = doc->CreateRange(IgnoreErrors());
   if (range) {
     range->SelectNode(*node, IgnoreErrors());
@@ -483,7 +489,7 @@ nsresult DragDataProducer::GetImageData(imgIContainer* aImage,
 nsresult DragDataProducer::Produce(DataTransfer* aDataTransfer, bool* aCanDrag,
                                    Selection** aSelection,
                                    nsIContent** aDragNode,
-                                   nsACString& aPrincipalURISpec) {
+                                   nsIPrincipal** aPrincipal) {
   MOZ_ASSERT(aCanDrag && aSelection && aDataTransfer && aDragNode,
              "null pointer passed to Produce");
   NS_ASSERTION(mWindow, "window not set");
@@ -548,7 +554,7 @@ nsresult DragDataProducer::Produce(DataTransfer* aDataTransfer, bool* aCanDrag,
         if (tp) {
           // We have a TabParent, so it may have data for dnd in case the child
           // process started a dnd session.
-          tp->AddInitialDnDDataTo(aDataTransfer, aPrincipalURISpec);
+          tp->AddInitialDnDDataTo(aDataTransfer, aPrincipal);
         }
       }
     }
@@ -718,7 +724,7 @@ nsresult DragDataProducer::Produce(DataTransfer* aDataTransfer, bool* aCanDrag,
     mInfoString.Truncate();
     mTitleString.Truncate();
 
-    nsCOMPtr<nsIDocument> doc = mWindow->GetDoc();
+    nsCOMPtr<Document> doc = mWindow->GetDoc();
     NS_ENSURE_TRUE(doc, NS_ERROR_FAILURE);
 
     // if we have selected text, use it in preference to the node

@@ -8,7 +8,6 @@
 
 const {Utils: WebConsoleUtils} = require("devtools/client/webconsole/utils");
 const EventEmitter = require("devtools/shared/event-emitter");
-const promise = require("promise");
 const defer = require("devtools/shared/defer");
 const Services = require("Services");
 const { gDevTools } = require("devtools/client/framework/devtools");
@@ -21,7 +20,6 @@ loader.lazyRequireGetter(this, "AppConstants", "resource://gre/modules/AppConsta
 const ZoomKeys = require("devtools/client/shared/zoom-keys");
 
 const PREF_MESSAGE_TIMESTAMP = "devtools.webconsole.timestampMessages";
-const PREF_PERSISTLOG = "devtools.webconsole.persistlog";
 const PREF_SIDEBAR_ENABLED = "devtools.webconsole.sidebarToggle";
 
 /**
@@ -55,19 +53,6 @@ WebConsoleFrame.prototype = {
    */
   get webConsoleClient() {
     return this.proxy ? this.proxy.webConsoleClient : null;
-  },
-
-  /**
-   * Getter for the persistent logging preference.
-   * @type boolean
-   */
-  get persistLog() {
-    // For the browser console, we receive tab navigation
-    // when the original top level window we attached to is closed,
-    // but we don't want to reset console history and just switch to
-    // the next available window.
-    return this.isBrowserConsole ||
-           Services.prefs.getBoolPref(PREF_PERSISTLOG);
   },
 
   /**
@@ -169,7 +154,7 @@ WebConsoleFrame.prototype = {
   },
 
   logWarningAboutReplacedAPI() {
-    this.owner.target.logWarningInPage(l10n.getStr("ConsoleAPIDisabled"),
+    return this.owner.target.logWarningInPage(l10n.getStr("ConsoleAPIDisabled"),
       "ConsoleAPIDisabled");
   },
 
@@ -183,29 +168,19 @@ WebConsoleFrame.prototype = {
    * @param boolean value
    *        The new value you want to set.
    */
-  setSaveRequestAndResponseBodies(value) {
+  async setSaveRequestAndResponseBodies(value) {
     if (!this.webConsoleClient) {
       // Don't continue if the webconsole disconnected.
-      return promise.resolve(null);
+      return null;
     }
 
-    const deferred = defer();
     const newValue = !!value;
     const toSet = {
       "NetworkMonitor.saveRequestAndResponseBodies": newValue,
     };
 
     // Make sure the web console client connection is established first.
-    this.webConsoleClient.setPreferences(toSet, response => {
-      if (!response.error) {
-        this._saveRequestAndResponseBodies = newValue;
-        deferred.resolve(response);
-      } else {
-        deferred.reject(response.error);
-      }
-    });
-
-    return deferred.promise;
+    return this.webConsoleClient.setPreferences(toSet);
   },
 
   /**
@@ -395,14 +370,7 @@ WebConsoleFrame.prototype = {
   },
 
   handleTabWillNavigate: function(packet) {
-    if (this.persistLog) {
-      // Add a _type to hit convertCachedPacket.
-      packet._type = true;
-      this.consoleOutput.dispatchMessageAdd(packet);
-    } else {
-      this.clearOutput(false);
-    }
-
+    this.consoleOutput.dispatchTabWillNavigate(packet);
     if (packet.url) {
       this.onLocationChange(packet.url, packet.title);
     }

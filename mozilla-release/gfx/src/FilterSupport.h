@@ -9,15 +9,30 @@
 
 #include "mozilla/Attributes.h"
 #include "mozilla/RefPtr.h"
-#include "mozilla/gfx/Rect.h"
-#include "mozilla/gfx/Matrix.h"
 #include "mozilla/gfx/2D.h"
+#include "mozilla/gfx/Matrix.h"
+#include "mozilla/gfx/Rect.h"
 #include "nsClassHashtable.h"
-#include "nsTArray.h"
 #include "nsRegion.h"
+#include "nsTArray.h"
 
 namespace mozilla {
 namespace gfx {
+class FilterPrimitiveDescription;
+}  // namespace gfx
+}  // namespace mozilla
+
+DECLARE_USE_COPY_CONSTRUCTORS(mozilla::gfx::FilterPrimitiveDescription)
+
+extern const float gsRGBToLinearRGBMap[256];
+
+namespace mozilla {
+namespace gfx {
+namespace FilterWrappers {
+extern already_AddRefed<FilterNode> Clear(DrawTarget* aDT);
+extern already_AddRefed<FilterNode> ForSurface(
+    DrawTarget* aDT, SourceSurface* aSurface, const IntPoint& aSurfacePosition);
+}  // namespace FilterWrappers
 
 // Morphology Operators
 const unsigned short SVG_OPERATOR_UNKNOWN = 0;
@@ -461,10 +476,10 @@ class FilterPrimitiveDescription final {
 
  private:
   PrimitiveAttributes mAttributes;
-  nsTArray<int32_t> mInputPrimitives;
+  AutoTArray<int32_t, 2> mInputPrimitives;
   IntRect mFilterPrimitiveSubregion;
   IntRect mFilterSpaceBounds;
-  nsTArray<ColorSpace> mInputColorSpaces;
+  AutoTArray<ColorSpace, 2> mInputColorSpaces;
   ColorSpace mOutputColorSpace;
   bool mIsTainted;
 };
@@ -488,6 +503,13 @@ struct FilterDescription final {
 
   nsTArray<FilterPrimitiveDescription> mPrimitives;
 };
+
+already_AddRefed<FilterNode> FilterNodeGraphFromDescription(
+    DrawTarget* aDT, const FilterDescription& aFilter,
+    const Rect& aResultNeededRect, FilterNode* aSourceGraphic,
+    const IntRect& aSourceGraphicRect, FilterNode* aFillPaint,
+    FilterNode* aStrokePaint,
+    nsTArray<RefPtr<SourceSurface>>& aAdditionalImages);
 
 /**
  * The methods of this class are not on FilterDescription because

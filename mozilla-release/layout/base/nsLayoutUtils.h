@@ -58,7 +58,6 @@ class nsStyleCoord;
 class nsStyleCorners;
 class nsPIDOMWindowOuter;
 class imgIRequest;
-class nsIDocument;
 struct nsStyleFont;
 struct nsOverflowAreas;
 
@@ -77,6 +76,7 @@ enum class StyleImageOrientation : uint8_t;
 namespace dom {
 class CanvasRenderingContext2D;
 class DOMRectList;
+class Document;
 class Element;
 class Event;
 class HTMLImageElement;
@@ -528,8 +528,9 @@ class nsLayoutUtils {
    * aAncestorFrame. If non-null, this can bound the search and speed up
    * the function
    */
-  static bool IsProperAncestorFrame(nsIFrame* aAncestorFrame, nsIFrame* aFrame,
-                                    nsIFrame* aCommonAncestor = nullptr);
+  static bool IsProperAncestorFrame(const nsIFrame* aAncestorFrame,
+                                    const nsIFrame* aFrame,
+                                    const nsIFrame* aCommonAncestor = nullptr);
 
   /**
    * Like IsProperAncestorFrame, but looks across document boundaries.
@@ -801,25 +802,25 @@ class nsLayoutUtils {
   static mozilla::LayoutDeviceIntPoint WidgetToWidgetOffset(
       nsIWidget* aFromWidget, nsIWidget* aToWidget);
 
-  enum FrameForPointFlags {
+  enum class FrameForPointOption {
     /**
      * When set, paint suppression is ignored, so we'll return non-root page
      * elements even if paint suppression is stopping them from painting.
      */
-    IGNORE_PAINT_SUPPRESSION = 0x01,
+    IgnorePaintSuppression = 1,
     /**
      * When set, clipping due to the root scroll frame (and any other viewport-
      * related clipping) is ignored.
      */
-    IGNORE_ROOT_SCROLL_FRAME = 0x02,
+    IgnoreRootScrollFrame,
     /**
      * When set, return only content in the same document as aFrame.
      */
-    IGNORE_CROSS_DOC = 0x04,
+    IgnoreCrossDoc,
     /**
      * When set, return only content that is actually visible.
      */
-    ONLY_VISIBLE = 0x08
+    OnlyVisible,
   };
 
   /**
@@ -827,10 +828,10 @@ class nsLayoutUtils {
    * frame under the point aPt that receives a mouse event at that location,
    * or nullptr if there is no such frame.
    * @param aPt the point, relative to the frame origin
-   * @param aFlags some combination of FrameForPointFlags
+   * @param aFlags some combination of FrameForPointOption.
    */
   static nsIFrame* GetFrameForPoint(nsIFrame* aFrame, nsPoint aPt,
-                                    uint32_t aFlags = 0);
+                                    mozilla::EnumSet<FrameForPointOption> = {});
 
   /**
    * Given aFrame, the root frame of a stacking context, find all descendant
@@ -838,11 +839,11 @@ class nsLayoutUtils {
    * or nullptr if there is no such frame.
    * @param aRect the rect, relative to the frame origin
    * @param aOutFrames an array to add all the frames found
-   * @param aFlags some combination of FrameForPointFlags
+   * @param aFlags some combination of FrameForPointOption.
    */
   static nsresult GetFramesForArea(nsIFrame* aFrame, const nsRect& aRect,
                                    nsTArray<nsIFrame*>& aOutFrames,
-                                   uint32_t aFlags = 0);
+                                   mozilla::EnumSet<FrameForPointOption> = {});
 
   /**
    * Transform aRect relative to aFrame up to the coordinate system of
@@ -1076,7 +1077,8 @@ class nsLayoutUtils {
     PAINT_TO_WINDOW = 0x40,
     PAINT_EXISTING_TRANSACTION = 0x80,
     PAINT_NO_COMPOSITE = 0x100,
-    PAINT_COMPRESSED = 0x200
+    PAINT_COMPRESSED = 0x200,
+    PAINT_FOR_WEBRENDER = 0x400,
   };
 
   /**
@@ -2206,7 +2208,7 @@ class nsLayoutUtils {
    *    returns nullptr because <body> isn't editable.
    */
   static mozilla::dom::Element* GetEditableRootContentByContentEditable(
-      nsIDocument* aDocument);
+      mozilla::dom::Document* aDocument);
 
   static void AddExtraBackgroundItems(nsDisplayListBuilder& aBuilder,
                                       nsDisplayList& aList, nsIFrame* aFrame,
@@ -2837,8 +2839,8 @@ class nsLayoutUtils {
   static bool ContainsMetricsWithId(const Layer* aLayer,
                                     const ViewID& aScrollId);
 
-  static bool ShouldUseNoScriptSheet(nsIDocument* aDocument);
-  static bool ShouldUseNoFramesSheet(nsIDocument* aDocument);
+  static bool ShouldUseNoScriptSheet(mozilla::dom::Document*);
+  static bool ShouldUseNoFramesSheet(mozilla::dom::Document*);
 
   /**
    * Get the text content inside the frame. This methods traverse the
@@ -2987,7 +2989,7 @@ class nsLayoutUtils {
    * Returns true if there are any preferences or overrides that indicate a
    * need to create a MobileViewportManager.
    */
-  static bool ShouldHandleMetaViewport(nsIDocument* aDocument);
+  static bool ShouldHandleMetaViewport(mozilla::dom::Document*);
 
   /**
    * Resolve a CSS <length-percentage> value to a definite size.

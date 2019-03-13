@@ -14,6 +14,7 @@
 #include "frontend/BytecodeCompilation.h"
 #include "gc/GCInternals.h"
 #include "jit/IonBuilder.h"
+#include "js/ContextOptions.h"  // JS::ContextOptions
 #include "js/SourceText.h"
 #include "js/UniquePtr.h"
 #include "js/Utility.h"
@@ -1528,6 +1529,7 @@ js::GCParallelTask::~GCParallelTask() {
 }
 
 bool js::GCParallelTask::startWithLockHeld(AutoLockHelperThreadState& lock) {
+  MOZ_ASSERT(CanUseExtraThreads());
   assertNotStarted();
 
   // If we do the shutdown GC before running anything, we may never
@@ -1550,6 +1552,21 @@ bool js::GCParallelTask::startWithLockHeld(AutoLockHelperThreadState& lock) {
 bool js::GCParallelTask::start() {
   AutoLockHelperThreadState helperLock;
   return startWithLockHeld(helperLock);
+}
+
+void js::GCParallelTask::startOrRunIfIdle(AutoLockHelperThreadState& lock) {
+  if (isRunningWithLockHeld(lock)) {
+    return;
+  }
+
+  // Join the previous invocation of the task. This will return immediately
+  // if the thread has never been started.
+  joinWithLockHeld(lock);
+
+  if (!startWithLockHeld(lock)) {
+    AutoUnlockHelperThreadState unlock(lock);
+    runFromMainThread(runtime());
+  }
 }
 
 void js::GCParallelTask::joinWithLockHeld(AutoLockHelperThreadState& lock) {
@@ -1578,6 +1595,16 @@ static inline TimeDuration TimeSince(TimeStamp prev) {
     now = prev;
   }
   return now - prev;
+}
+
+void GCParallelTask::joinAndRunFromMainThread(JSRuntime* rt) {
+  {
+    AutoLockHelperThreadState lock;
+    MOZ_ASSERT(!isRunningWithLockHeld(lock));
+    joinWithLockHeld(lock);
+  }
+
+  runFromMainThread(rt);
 }
 
 void js::GCParallelTask::runFromMainThread(JSRuntime* rt) {

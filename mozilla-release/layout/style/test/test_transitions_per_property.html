@@ -64,6 +64,10 @@ var supported_properties = {
     "border-bottom-right-radius": [ test_radius_transition ],
     "border-top-left-radius": [ test_radius_transition ],
     "border-top-right-radius": [ test_radius_transition ],
+    "border-start-start-radius": [ test_radius_transition ],
+    "border-start-end-radius": [ test_radius_transition ],
+    "border-end-start-radius": [ test_radius_transition ],
+    "border-end-end-radius": [ test_radius_transition ],
     "-moz-box-flex": [ test_float_zeroToOne_transition,
                        test_float_aboveOne_transition,
                        test_float_zeroToOne_clamped ],
@@ -326,6 +330,13 @@ if (IsCSSPropertyPrefEnabled("layout.css.scrollbar-color.enabled")) {
     test_scrollbar_color_transition,
   ];
 }
+
+// For properties which are well-tested by web-platform-tests, we don't need to
+// test animations/transitions again on them.
+var skipped_transitionable_properties = [
+  "grid-template-columns",
+  "grid-template-rows",
+]
 
 // Logical properties.
 for (const logical_side of ["inline-start", "inline-end", "block-start", "block-end"]) {
@@ -1091,6 +1102,7 @@ function sample_array(array, count) {
 for (prop in gCSSProperties) {
   var info = gCSSProperties[prop];
   if (!(prop in supported_properties) &&
+      !skipped_transitionable_properties.includes(prop) &&
       info.type != CSS_TYPE_TRUE_SHORTHAND &&
       !("alias_for" in info) &&
       !prop.match(/^transition-/) &&

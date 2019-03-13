@@ -401,8 +401,6 @@ class EventListenerManager final : public EventListenerManagerBase {
 
   uint32_t GetIdentifierForEvent(nsAtom* aEvent);
 
-  static void Shutdown();
-
   /**
    * Returns true if there may be a paint event listener registered,
    * false if there definitely isn't.
@@ -598,7 +596,7 @@ class EventListenerManager final : public EventListenerManagerBase {
   // at build time.
 
   already_AddRefed<nsIScriptGlobalObject> GetScriptGlobalAndDocument(
-      nsIDocument** aDoc);
+      mozilla::dom::Document** aDoc);
 
   nsAutoTObserverArray<Listener, 2> mListeners;
   dom::EventTarget* MOZ_NON_OWNING_REF mTarget;

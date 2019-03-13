@@ -83,12 +83,18 @@ let satchelFormListener = {
           continue;
         }
 
+        // Don't save fields that were previously type=password such as on sites
+        // that allow the user to toggle password visibility.
+        if (input.hasBeenTypePassword) {
+          continue;
+        }
+
         // Bug 394612: If Login Manager marked this input, don't save it.
         // The login manager will deal with remembering it.
 
-        // Don't save values when autocomplete=off is present.
-        if (input.hasAttribute("autocomplete") &&
-          input.getAttribute("autocomplete").toLowerCase() == "off") {
+        // Don't save values when @autocomplete is "off" or has a sensitive field name.
+        let autocompleteInfo = input.getAutocompleteInfo();
+        if (autocompleteInfo && !autocompleteInfo.canAutomaticallyPersist) {
           continue;
         }
 

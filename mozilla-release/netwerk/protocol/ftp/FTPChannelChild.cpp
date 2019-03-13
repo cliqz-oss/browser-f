@@ -21,7 +21,6 @@
 #include "mozilla/ipc/URIUtils.h"
 #include "SerializedLoadContext.h"
 #include "mozilla/ipc/BackgroundUtils.h"
-#include "nsIPrompt.h"
 #include "nsIURIMutator.h"
 
 using mozilla::dom::ContentChild;
@@ -421,8 +420,9 @@ void FTPChannelChild::DoOnDataAvailable(const nsresult& channelStatus,
   // support only reading part of the data, allowing later calls to read the
   // rest.
   nsCOMPtr<nsIInputStream> stringStream;
-  nsresult rv = NS_NewByteInputStream(getter_AddRefs(stringStream), data.get(),
-                                      count, NS_ASSIGNMENT_DEPEND);
+  nsresult rv =
+      NS_NewByteInputStream(getter_AddRefs(stringStream),
+                            MakeSpan(data).To(count), NS_ASSIGNMENT_DEPEND);
   if (NS_FAILED(rv)) {
     Cancel(rv);
     return;
@@ -467,29 +467,6 @@ mozilla::ipc::IPCResult FTPChannelChild::RecvOnStopRequest(
       new FTPStopRequestEvent(this, aChannelStatus, aErrorMsg, aUseUTF8));
   return IPC_OK();
 }
-
-class nsFtpChildAsyncAlert : public Runnable {
- public:
-  nsFtpChildAsyncAlert(nsIPrompt* aPrompter, nsString aResponseMsg)
-      : Runnable("nsFtpChildAsyncAlert"),
-        mPrompter(aPrompter),
-        mResponseMsg(std::move(aResponseMsg)) {}
-
- protected:
-  virtual ~nsFtpChildAsyncAlert() = default;
-
- public:
-  NS_IMETHOD Run() override {
-    if (mPrompter) {
-      mPrompter->Alert(nullptr, mResponseMsg.get());
-    }
-    return NS_OK;
-  }
-
- private:
-  nsCOMPtr<nsIPrompt> mPrompter;
-  nsString mResponseMsg;
-};
 
 class MaybeDivertOnStopFTPEvent
     : public NeckoTargetChannelEvent<FTPChannelChild> {
@@ -538,23 +515,6 @@ void FTPChannelChild::DoOnStopRequest(const nsresult& aChannelStatus,
     mIsPending = false;
     AutoEventEnqueuer ensureSerialDispatch(mEventQ);
     (void)mListener->OnStopRequest(this, mListenerContext, aChannelStatus);
-
-    if (NS_FAILED(aChannelStatus) && !aErrorMsg.IsEmpty()) {
-      nsCOMPtr<nsIPrompt> prompter;
-      GetCallback(prompter);
-      if (prompter) {
-        nsCOMPtr<nsIRunnable> alertEvent;
-        if (aUseUTF8) {
-          alertEvent = new nsFtpChildAsyncAlert(
-              prompter, NS_ConvertUTF8toUTF16(aErrorMsg));
-        } else {
-          alertEvent = new nsFtpChildAsyncAlert(
-              prompter, NS_ConvertASCIItoUTF16(aErrorMsg));
-        }
-
-        Dispatch(alertEvent.forget());
-      }
-    }
 
     mListener = nullptr;
     mListenerContext = nullptr;

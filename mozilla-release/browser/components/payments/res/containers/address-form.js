@@ -7,6 +7,7 @@ import LabelledCheckbox from "../components/labelled-checkbox.js";
 import PaymentRequestPage from "../components/payment-request-page.js";
 import PaymentStateSubscriberMixin from "../mixins/PaymentStateSubscriberMixin.js";
 import paymentRequest from "../paymentRequest.js";
+import HandleEventMixin from "../mixins/HandleEventMixin.js";
 /* import-globals-from ../unprivileged-fallbacks.js */
 
 /**
@@ -20,7 +21,8 @@ import paymentRequest from "../paymentRequest.js";
  * as it will be much easier to share the logic once we switch to Fluent.
  */
 
-export default class AddressForm extends PaymentStateSubscriberMixin(PaymentRequestPage) {
+export default class AddressForm extends
+    HandleEventMixin(PaymentStateSubscriberMixin(PaymentRequestPage)) {
   constructor() {
     super();
 
@@ -98,6 +100,7 @@ export default class AddressForm extends PaymentStateSubscriberMixin(PaymentRequ
       }, record, {
         DEFAULT_REGION: PaymentDialogUtils.DEFAULT_REGION,
         getFormFormat: PaymentDialogUtils.getFormFormat,
+        findAddressSelectOption: PaymentDialogUtils.findAddressSelectOption,
         countries: PaymentDialogUtils.countries,
       });
 
@@ -216,32 +219,18 @@ export default class AddressForm extends PaymentStateSubscriberMixin(PaymentRequ
     this.updateSaveButtonState();
   }
 
-  handleEvent(event) {
-    switch (event.type) {
-      case "change": {
-        if (event.target.id == "country") {
-          this.updateRequiredState();
-        }
-        this.updateSaveButtonState();
-        break;
-      }
-      case "click": {
-        this.onClick(event);
-        break;
-      }
-      case "input": {
-        this.onInput(event);
-        break;
-      }
-      case "invalid": {
-        if (event.target instanceof HTMLFormElement) {
-          this.onInvalidForm(event);
-          break;
-        }
+  onChange(event) {
+    if (event.target.id == "country") {
+      this.updateRequiredState();
+    }
+    this.updateSaveButtonState();
+  }
 
-        this.onInvalidField(event);
-        break;
-      }
+  onInvalid(event) {
+    if (event.target instanceof HTMLFormElement) {
+      this.onInvalidForm(event);
+    } else {
+      this.onInvalidField(event);
     }
   }
 
@@ -307,12 +296,7 @@ export default class AddressForm extends PaymentStateSubscriberMixin(PaymentRequ
       }
       let span = container.querySelector(".label-text");
       span.setAttribute("fieldRequiredSymbol", this.dataset.fieldRequiredSymbol);
-      let required = field.required && !field.disabled;
-      if (required) {
-        container.setAttribute("required", "true");
-      } else {
-        container.removeAttribute("required");
-      }
+      container.toggleAttribute("required", field.required && !field.disabled);
     }
   }
 

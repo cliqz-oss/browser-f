@@ -4,13 +4,18 @@
 
 // @flow
 
-import { getBreakpointsList } from "../reducers/breakpoints";
-import { getSelectedSource } from "../reducers/sources";
 import { isGeneratedId } from "devtools-source-map";
 import { createSelector } from "reselect";
+import { uniqBy } from "lodash";
+
+import { getBreakpointsList } from "../reducers/breakpoints";
+import { getSelectedSource } from "../reducers/sources";
+
 import memoize from "../utils/memoize";
+import { sortBreakpoints } from "../utils/breakpoint";
 
 import type { Breakpoint, Source } from "../types";
+import type { Selector } from "../reducers/types";
 
 function getLocation(breakpoint, isGeneratedSource) {
   return isGeneratedSource
@@ -19,7 +24,7 @@ function getLocation(breakpoint, isGeneratedSource) {
 }
 
 const formatBreakpoint = memoize(function(breakpoint, selectedSource) {
-  const { condition, loading, disabled, hidden } = breakpoint;
+  const { condition, loading, disabled, hidden, log } = breakpoint;
   const sourceId = selectedSource.id;
   const isGeneratedSource = isGeneratedId(sourceId);
 
@@ -28,11 +33,12 @@ const formatBreakpoint = memoize(function(breakpoint, selectedSource) {
     condition,
     loading,
     disabled,
-    hidden
+    hidden,
+    log
   };
 });
 
-function isVisible(breakpoint, selectedSource) {
+function isVisible(breakpoint: Breakpoint, selectedSource: Source) {
   const sourceId = selectedSource.id;
   const isGeneratedSource = isGeneratedId(sourceId);
 
@@ -42,17 +48,34 @@ function isVisible(breakpoint, selectedSource) {
 
 /*
  * Finds the breakpoints, which appear in the selected source.
-  */
-export const getVisibleBreakpoints = createSelector(
+ */
+export const getVisibleBreakpoints: Selector<?(Breakpoint[])> = createSelector(
   getSelectedSource,
   getBreakpointsList,
-  (selectedSource: Source, breakpoints: Breakpoint[]) => {
-    if (!selectedSource) {
+  (selectedSource: ?Source, breakpoints: Breakpoint[]) => {
+    if (selectedSource == null) {
       return null;
     }
 
+    // FIXME: Even though selectedSource is checked above, it fails type
+    // checking for isVisible
+    const source: Source = selectedSource;
+
     return breakpoints
-      .filter(bp => isVisible(bp, selectedSource))
+      .filter(bp => isVisible(bp, source))
       .map(bp => formatBreakpoint(bp, selectedSource));
   }
 );
+
+/*
+ * Finds the first breakpoint per line, which appear in the selected source.
+ */
+export const getFirstVisibleBreakpoints: Selector<
+  Breakpoint[]
+> = createSelector(getVisibleBreakpoints, breakpoints => {
+  if (!breakpoints) {
+    return [];
+  }
+
+  return (uniqBy(sortBreakpoints(breakpoints), bp => bp.location.line): any);
+});

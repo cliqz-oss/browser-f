@@ -71,22 +71,6 @@ static bool CompileSourceBuffer(JSContext* cx,
   return !!script;
 }
 
-static bool CompileLatin1(JSContext* cx, const ReadOnlyCompileOptions& options,
-                          const char* bytes, size_t length,
-                          JS::MutableHandleScript script) {
-  auto chars = UniqueTwoByteChars(InflateString(cx, bytes, length));
-  if (!chars) {
-    return false;
-  }
-
-  SourceText<char16_t> source;
-  if (!source.init(cx, std::move(chars), length)) {
-    return false;
-  }
-
-  return CompileSourceBuffer(cx, options, source, script);
-}
-
 static bool CompileUtf8(JSContext* cx, const ReadOnlyCompileOptions& options,
                         const char* bytes, size_t length,
                         JS::MutableHandleScript script) {
@@ -126,12 +110,6 @@ bool JS::CompileDontInflate(JSContext* cx,
                             SourceText<Utf8Unit>& srcBuf,
                             JS::MutableHandleScript script) {
   return CompileSourceBuffer(cx, options, srcBuf, script);
-}
-
-bool JS::CompileLatin1(JSContext* cx, const ReadOnlyCompileOptions& options,
-                       const char* bytes, size_t length,
-                       JS::MutableHandleScript script) {
-  return ::CompileLatin1(cx, options, bytes, length, script);
 }
 
 bool JS::CompileUtf8(JSContext* cx, const ReadOnlyCompileOptions& options,
@@ -195,13 +173,13 @@ bool JS::CompileForNonSyntacticScope(JSContext* cx,
   return CompileSourceBuffer(cx, options, srcBuf, script);
 }
 
-bool JS::CompileLatin1ForNonSyntacticScope(
+bool JS::CompileUtf8ForNonSyntacticScope(
     JSContext* cx, const ReadOnlyCompileOptions& optionsArg, const char* bytes,
     size_t length, JS::MutableHandleScript script) {
   CompileOptions options(cx, optionsArg);
   options.setNonSyntacticScope(true);
 
-  return ::CompileLatin1(cx, options, bytes, length, script);
+  return ::CompileUtf8(cx, options, bytes, length, script);
 }
 
 JS_PUBLIC_API bool JS_Utf8BufferIsCompilableUnit(JSContext* cx,
@@ -582,24 +560,6 @@ extern JS_PUBLIC_API bool JS::EvaluateUtf8(
     size_t length, MutableHandle<Value> rval) {
   auto chars = UniqueTwoByteChars(
       UTF8CharsToNewTwoByteCharsZ(cx, UTF8Chars(bytes, length), &length).get());
-  if (!chars) {
-    return false;
-  }
-
-  SourceText<char16_t> srcBuf;
-  if (!srcBuf.init(cx, std::move(chars), length)) {
-    return false;
-  }
-
-  RootedObject globalLexical(cx, &cx->global()->lexicalEnvironment());
-  return ::Evaluate(cx, ScopeKind::Global, globalLexical, options, srcBuf,
-                    rval);
-}
-
-extern JS_PUBLIC_API bool JS::EvaluateLatin1(
-    JSContext* cx, const ReadOnlyCompileOptions& options, const char* bytes,
-    size_t length, MutableHandle<Value> rval) {
-  auto chars = UniqueTwoByteChars(InflateString(cx, bytes, length));
   if (!chars) {
     return false;
   }

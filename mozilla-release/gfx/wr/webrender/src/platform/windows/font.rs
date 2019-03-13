@@ -3,20 +3,24 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use api::{FontInstanceFlags, FontKey, FontRenderMode, FontVariation};
-use api::{ColorU, GlyphDimensions};
+use api::{ColorU, GlyphDimensions, NativeFontHandle};
 use dwrote;
 use gamma_lut::ColorLut;
 use glyph_rasterizer::{FontInstance, FontTransform, GlyphKey};
-use internal_types::{FastHashMap, ResourceCacheError};
+use internal_types::{FastHashMap, FastHashSet, ResourceCacheError};
+use std::borrow::Borrow;
 use std::collections::hash_map::Entry;
-use std::sync::Arc;
+use std::hash::{Hash, Hasher};
+use std::path::Path;
+use std::sync::{Arc, Mutex};
+
 cfg_if! {
     if #[cfg(feature = "pathfinder")] {
         use pathfinder_font_renderer::{PathfinderComPtr, IDWriteFontFace};
         use glyph_rasterizer::NativeFontHandleWrapper;
     } else if #[cfg(not(feature = "pathfinder"))] {
         use api::FontInstancePlatformOptions;
-        use glyph_rasterizer::{GlyphFormat, GlyphRasterResult, RasterizedGlyph};
+        use glyph_rasterizer::{GlyphFormat, GlyphRasterError, GlyphRasterResult, RasterizedGlyph};
         use gamma_lut::GammaLut;
     }
 }
@@ -30,8 +34,50 @@ lazy_static! {
     };
 }
 
+type CachedFontKey = Arc<Path>;
+
+// A cached dwrote font file that is shared among all faces.
+// Each face holds a CachedFontKey to keep track of how many users of the font there are.
+struct CachedFont {
+    key: CachedFontKey,
+    file: dwrote::FontFile,
+}
+
+impl PartialEq for CachedFont {
+    fn eq(&self, other: &CachedFont) -> bool {
+        self.key == other.key
+    }
+}
+impl Eq for CachedFont {}
+
+impl Hash for CachedFont {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.key.hash(state);
+    }
+}
+
+impl Borrow<Path> for CachedFont {
+    fn borrow(&self) -> &Path {
+        &*self.key
+    }
+}
+
+lazy_static! {
+    // This is effectively a weak map of dwrote FontFiles. CachedFonts are entered into the
+    // cache when there are any FontFaces using them. CachedFonts are removed from the cache
+    // when there are no more FontFaces using them at all.
+    static ref FONT_CACHE: Mutex<FastHashSet<CachedFont>> = Mutex::new(FastHashSet::default());
+}
+
+struct FontFace {
+    cached: Option<CachedFontKey>,
+    file: dwrote::FontFile,
+    index: u32,
+    face: dwrote::FontFace,
+}
+
 pub struct FontContext {
-    fonts: FastHashMap<FontKey, dwrote::FontFace>,
+    fonts: FastHashMap<FontKey, FontFace>,
     variations: FastHashMap<(FontKey, dwrote::DWRITE_FONT_SIMULATIONS, Vec<FontVariation>), dwrote::FontFace>,
     #[cfg(not(feature = "pathfinder"))]
     gamma_luts: FastHashMap<(u16, u16), GammaLut>,
@@ -110,73 +156,79 @@ impl FontContext {
         self.fonts.contains_key(font_key)
     }
 
+    fn add_font_descriptor(&mut self, font_key: &FontKey, desc: &dwrote::FontDescriptor) {
+        let system_fc = dwrote::FontCollection::get_system(false);
+        if let Some(font) = system_fc.get_font_from_descriptor(desc) {
+            let face = font.create_font_face();
+            let file = face.get_files().pop().unwrap();
+            let index = face.get_index();
+            self.fonts.insert(*font_key, FontFace { cached: None, file, index, face });
+        }
+    }
+
     pub fn add_raw_font(&mut self, font_key: &FontKey, data: Arc<Vec<u8>>, index: u32) {
         if self.fonts.contains_key(font_key) {
             return;
         }
 
-        if let Some(font_file) = dwrote::FontFile::new_from_data(data) {
-            let face = font_file.create_face(index, dwrote::DWRITE_FONT_SIMULATIONS_NONE);
-            self.fonts.insert(*font_key, face);
-        } else {
-            // XXX add_raw_font needs to have a way to return an error
-            debug!("DWrite WR failed to load font from data, using Arial instead");
-            self.add_native_font(font_key, DEFAULT_FONT_DESCRIPTOR.clone());
-        }
-    }
-
-    pub fn load_system_font(font_handle: &dwrote::FontDescriptor, update: bool) -> Result<dwrote::Font, String> {
-        let system_fc = dwrote::FontCollection::get_system(update);
-        // A version of get_font_from_descriptor() that panics early to help with bug 1455848
-        if let Some(family) = system_fc.get_font_family_by_name(&font_handle.family_name) {
-            let font = family.get_first_matching_font(font_handle.weight, font_handle.stretch, font_handle.style);
-            // Exact matches only here
-            if font.weight() == font_handle.weight &&
-                font.stretch() == font_handle.stretch &&
-                font.style() == font_handle.style
-            {
-                Ok(font)
-            } else {
-                // We can't depend on the family's fonts being in a particular order, so the first match may not
-                // be an exact match, even though it is sufficiently close to be a match. As a slower fallback,
-                // try looking through all of the fonts in the family for an exact match. The caller should have
-                // verified that an exact match exists so that this search shouldn't fail.
-                (0 .. family.get_font_count()).filter_map(|idx| {
-                    let alt = family.get_font(idx);
-                    if alt.weight() == font_handle.weight &&
-                        alt.stretch() == font_handle.stretch &&
-                        alt.style() == font_handle.style
-                    {
-                        Some(alt)
-                    } else {
-                        None
-                    }
-                }).next().ok_or_else(|| {
-                    format!("font mismatch for descriptor {:?} {:?}", font_handle, font.to_descriptor())
-                })
+        if let Some(file) = dwrote::FontFile::new_from_data(data) {
+            if let Ok(face) = file.create_face(index, dwrote::DWRITE_FONT_SIMULATIONS_NONE) {
+                self.fonts.insert(*font_key, FontFace { cached: None, file, index, face });
+                return;
             }
-        } else {
-            Err(format!("missing font family for descriptor {:?}", font_handle))
         }
+        // XXX add_raw_font needs to have a way to return an error
+        debug!("DWrite WR failed to load font from data, using Arial instead");
+        self.add_font_descriptor(font_key, &DEFAULT_FONT_DESCRIPTOR);
     }
 
-    pub fn add_native_font(&mut self, font_key: &FontKey, font_handle: dwrote::FontDescriptor) {
+    pub fn add_native_font(&mut self, font_key: &FontKey, font_handle: NativeFontHandle) {
         if self.fonts.contains_key(font_key) {
             return;
         }
-        // First try to load the font without updating the system font collection.
-        // If the font can't be found, try again after updating the system font collection.
-        // If even that fails, panic...
-        let font = Self::load_system_font(&font_handle, false).unwrap_or_else(|_| {
-            Self::load_system_font(&font_handle, true).unwrap()
-        });
-        let face = font.create_font_face();
-        self.fonts.insert(*font_key, face);
+
+        let index = font_handle.index;
+        let mut cache = FONT_CACHE.lock().unwrap();
+        // Check to see if the font is already in the cache. If so, reuse it.
+        if let Some(font) = cache.get(font_handle.path.as_path()) {
+            if let Ok(face) = font.file.create_face(index, dwrote::DWRITE_FONT_SIMULATIONS_NONE) {
+                self.fonts.insert(
+                    *font_key,
+                    FontFace { cached: Some(font.key.clone()), file: font.file.clone(), index, face },
+                );
+                return;
+            }
+        }
+        if let Some(file) = dwrote::FontFile::new_from_path(&font_handle.path) {
+            // The font is not in the cache yet, so try to create the font and insert it in the cache.
+            if let Ok(face) = file.create_face(index, dwrote::DWRITE_FONT_SIMULATIONS_NONE) {
+                let key: CachedFontKey = font_handle.path.into();
+                self.fonts.insert(
+                    *font_key,
+                    FontFace { cached: Some(key.clone()), file: file.clone(), index, face },
+                );
+                cache.insert(CachedFont { key, file });
+                return;
+            }
+        }
+
+        // XXX add_native_font needs to have a way to return an error
+        debug!("DWrite WR failed to load font from path, using Arial instead");
+        self.add_font_descriptor(font_key, &DEFAULT_FONT_DESCRIPTOR);
     }
 
     pub fn delete_font(&mut self, font_key: &FontKey) {
-        if let Some(_) = self.fonts.remove(font_key) {
+        if let Some(face) = self.fonts.remove(font_key) {
             self.variations.retain(|k, _| k.0 != *font_key);
+            // Check if this was a cached font.
+            if let Some(key) = face.cached {
+                let mut cache = FONT_CACHE.lock().unwrap();
+                // If there are only two references left, that means only this face and
+                // the cache are using the font. So remove it from the cache.
+                if Arc::strong_count(&key) == 2 {
+                    cache.remove(&*key);
+                }
+            }
         }
     }
 
@@ -216,7 +268,7 @@ impl FontContext {
     ) -> &dwrote::FontFace {
         if !font.flags.contains(FontInstanceFlags::SYNTHETIC_BOLD) &&
            font.variations.is_empty() {
-            return self.fonts.get(&font.font_key).unwrap();
+            return &self.fonts.get(&font.font_key).unwrap().face;
         }
         let sims = if font.flags.contains(FontInstanceFlags::SYNTHETIC_BOLD) {
             dwrote::DWRITE_FONT_SIMULATIONS_BOLD
@@ -228,7 +280,7 @@ impl FontContext {
             Entry::Vacant(entry) => {
                 let normal_face = self.fonts.get(&font.font_key).unwrap();
                 if !font.variations.is_empty() {
-                    if let Some(var_face) = normal_face.create_font_face_with_variations(
+                    if let Some(var_face) = normal_face.face.create_font_face_with_variations(
                         sims,
                         &font.variations.iter().map(|var| {
                             dwrote::DWRITE_FONT_AXIS_VALUE {
@@ -241,7 +293,10 @@ impl FontContext {
                         return entry.insert(var_face);
                     }
                 }
-                entry.insert(normal_face.create_font_face_with_simulations(sims))
+                let var_face = normal_face.file
+                    .create_face(normal_face.index, sims)
+                    .unwrap_or_else(|_| normal_face.face.clone());
+                entry.insert(var_face)
             }
         }
     }
@@ -253,7 +308,7 @@ impl FontContext {
         size: f32,
         transform: Option<dwrote::DWRITE_MATRIX>,
         bitmaps: bool,
-    ) -> dwrote::GlyphRunAnalysis {
+    ) -> Result<(dwrote::GlyphRunAnalysis, dwrote::DWRITE_TEXTURE_TYPE, dwrote::RECT), dwrote::HRESULT> {
         let face = self.get_font_face(font);
         let glyph = key.index() as u16;
         let advance = 0.0f32;
@@ -282,7 +337,7 @@ impl FontContext {
             bitmaps,
         );
 
-        dwrote::GlyphRunAnalysis::create(
+        let analysis = dwrote::GlyphRunAnalysis::create(
             &glyph_run,
             1.0,
             transform,
@@ -290,11 +345,32 @@ impl FontContext {
             dwrite_measure_mode,
             0.0,
             0.0,
-        )
+        )?;
+        let texture_type = dwrite_texture_type(font.render_mode);
+        let bounds = analysis.get_alpha_texture_bounds(texture_type)?;
+        // If the bounds are empty, then we might not be able to render the glyph with cleartype.
+        // Try again with aliased rendering to check if that works instead.
+        if font.render_mode != FontRenderMode::Mono &&
+           (bounds.left == bounds.right || bounds.top == bounds.bottom) {
+            let analysis2 = dwrote::GlyphRunAnalysis::create(
+                &glyph_run,
+                1.0,
+                transform,
+                dwrote::DWRITE_RENDERING_MODE_ALIASED,
+                dwrite_measure_mode,
+                0.0,
+                0.0,
+            )?;
+            let bounds2 = analysis2.get_alpha_texture_bounds(dwrote::DWRITE_TEXTURE_ALIASED_1x1)?;
+            if bounds2.left != bounds2.right && bounds2.top != bounds2.bottom {
+                return Ok((analysis2, dwrote::DWRITE_TEXTURE_ALIASED_1x1, bounds2));
+            }
+        }
+        Ok((analysis, texture_type, bounds))
     }
 
     pub fn get_glyph_index(&mut self, font_key: FontKey, ch: char) -> Option<u32> {
-        let face = self.fonts.get(&font_key).unwrap();
+        let face = &self.fonts.get(&font_key).unwrap().face;
         let indices = face.get_glyph_indices(&[ch as u32]);
         indices.first().map(|idx| *idx as u32)
     }
@@ -334,11 +410,7 @@ impl FontContext {
         } else {
             None
         };
-        let analysis = self.create_glyph_analysis(font, key, size, transform, bitmaps);
-
-        let texture_type = dwrite_texture_type(font.render_mode);
-
-        let bounds = analysis.get_alpha_texture_bounds(texture_type);
+        let (_, _, bounds) = self.create_glyph_analysis(font, key, size, transform, bitmaps).ok()?;
 
         let width = (bounds.right - bounds.left) as i32;
         let height = (bounds.bottom - bounds.top) as i32;
@@ -373,11 +445,12 @@ impl FontContext {
     fn convert_to_bgra(
         &self,
         pixels: &[u8],
+        texture_type: dwrote::DWRITE_TEXTURE_TYPE,
         render_mode: FontRenderMode,
         bitmaps: bool,
     ) -> Vec<u8> {
-        match (render_mode, bitmaps) {
-            (FontRenderMode::Mono, _) => {
+        match (texture_type, render_mode, bitmaps) {
+            (dwrote::DWRITE_TEXTURE_ALIASED_1x1, _, _) => {
                 let mut bgra_pixels: Vec<u8> = vec![0; pixels.len() * 4];
                 for i in 0 .. pixels.len() {
                     let alpha = pixels[i];
@@ -388,7 +461,18 @@ impl FontContext {
                 }
                 bgra_pixels
             }
-            (FontRenderMode::Alpha, _) | (_, true) => {
+            (_, FontRenderMode::Subpixel, false) => {
+                let length = pixels.len() / 3;
+                let mut bgra_pixels: Vec<u8> = vec![0; length * 4];
+                for i in 0 .. length {
+                    bgra_pixels[i * 4 + 0] = pixels[i * 3 + 2];
+                    bgra_pixels[i * 4 + 1] = pixels[i * 3 + 1];
+                    bgra_pixels[i * 4 + 2] = pixels[i * 3 + 0];
+                    bgra_pixels[i * 4 + 3] = 0xff;
+                }
+                bgra_pixels
+            }
+            _ => {
                 let length = pixels.len() / 3;
                 let mut bgra_pixels: Vec<u8> = vec![0; length * 4];
                 for i in 0 .. length {
@@ -398,17 +482,6 @@ impl FontContext {
                     bgra_pixels[i * 4 + 1] = alpha;
                     bgra_pixels[i * 4 + 2] = alpha;
                     bgra_pixels[i * 4 + 3] = alpha;
-                }
-                bgra_pixels
-            }
-            (FontRenderMode::Subpixel, false) => {
-                let length = pixels.len() / 3;
-                let mut bgra_pixels: Vec<u8> = vec![0; length * 4];
-                for i in 0 .. length {
-                    bgra_pixels[i * 4 + 0] = pixels[i * 3 + 2];
-                    bgra_pixels[i * 4 + 1] = pixels[i * 3 + 1];
-                    bgra_pixels[i * 4 + 2] = pixels[i * 3 + 0];
-                    bgra_pixels[i * 4 + 3] = 0xff;
                 }
                 bgra_pixels
             }
@@ -468,21 +541,18 @@ impl FontContext {
             None
         };
 
-        let analysis = self.create_glyph_analysis(font, key, size, transform, bitmaps);
-        let texture_type = dwrite_texture_type(font.render_mode);
-
-        let bounds = analysis.get_alpha_texture_bounds(texture_type);
+        let (analysis, texture_type, bounds) = self.create_glyph_analysis(font, key, size, transform, bitmaps)
+                                                   .or(Err(GlyphRasterError::LoadFailed))?;
         let width = (bounds.right - bounds.left) as i32;
         let height = (bounds.bottom - bounds.top) as i32;
-
         // Alpha texture bounds can sometimes return an empty rect
         // Such as for spaces
         if width == 0 || height == 0 {
-            return GlyphRasterResult::LoadFailed;
+            return Err(GlyphRasterError::LoadFailed);
         }
 
-        let pixels = analysis.create_alpha_texture(texture_type, bounds);
-        let mut bgra_pixels = self.convert_to_bgra(&pixels, font.render_mode, bitmaps);
+        let pixels = analysis.create_alpha_texture(texture_type, bounds).or(Err(GlyphRasterError::LoadFailed))?;
+        let mut bgra_pixels = self.convert_to_bgra(&pixels, texture_type, font.render_mode, bitmaps);
 
         // These are the default values we use in Gecko.
         // We use a gamma value of 2.3 for gdi fonts
@@ -509,13 +579,21 @@ impl FontContext {
                 ));
         gamma_lut.preblend(&mut bgra_pixels, font.color);
 
-        GlyphRasterResult::Bitmap(RasterizedGlyph {
+        let format = if bitmaps {
+            GlyphFormat::Bitmap
+        } else if texture_type == dwrote::DWRITE_TEXTURE_ALIASED_1x1 {
+            font.get_alpha_glyph_format()
+        } else {
+            font.get_glyph_format()
+        };
+
+        Ok(RasterizedGlyph {
             left: bounds.left as f32,
             top: -bounds.top as f32,
             width,
             height,
             scale: (if bitmaps { scale / y_scale } else { scale }) as f32,
-            format: if bitmaps { GlyphFormat::Bitmap } else { font.get_glyph_format() },
+            format,
             bytes: bgra_pixels,
         })
     }
@@ -524,12 +602,12 @@ impl FontContext {
 #[cfg(feature = "pathfinder")]
 impl<'a> From<NativeFontHandleWrapper<'a>> for PathfinderComPtr<IDWriteFontFace> {
     fn from(font_handle: NativeFontHandleWrapper<'a>) -> Self {
-        let system_fc = ::dwrote::FontCollection::system();
-        let font = match system_fc.get_font_from_descriptor(&font_handle.0) {
-            Some(font) => font,
-            None => panic!("missing descriptor {:?}", font_handle.0),
-        };
-        let face = font.create_font_face();
-        unsafe { PathfinderComPtr::new(face.as_ptr()) }
+        if let Some(file) = dwrote::FontFile::new_from_path(&font_handle.0.path) {
+            let index = font_handle.0.index;
+            if let Ok(face) = file.create_face(index, dwrote::DWRITE_FONT_SIMULATIONS_NONE) {
+                return unsafe { PathfinderComPtr::new(face.as_ptr()) };
+            }
+        }
+        panic!("missing font {:?}", font_handle.0)
     }
 }

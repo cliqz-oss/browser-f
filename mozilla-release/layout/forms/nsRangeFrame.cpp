@@ -15,7 +15,7 @@
 #include "nsCSSRendering.h"
 #include "nsCheckboxRadioFrame.h"
 #include "nsIContent.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsNameSpaceManager.h"
 #include "nsIPresShell.h"
 #include "nsGkAtoms.h"
@@ -27,7 +27,7 @@
 #include "nsStyleConsts.h"
 
 #ifdef ACCESSIBILITY
-#include "nsAccessibilityService.h"
+#  include "nsAccessibilityService.h"
 #endif
 
 // Our intrinsic size is 12em in the main-axis and 1.3em in the cross-axis.
@@ -98,7 +98,7 @@ void nsRangeFrame::DestroyFrom(nsIFrame* aDestructRoot,
 nsresult nsRangeFrame::MakeAnonymousDiv(Element** aResult,
                                         CSSPseudoElementType aPseudoType,
                                         nsTArray<ContentInfo>& aElements) {
-  nsCOMPtr<nsIDocument> doc = mContent->GetComposedDoc();
+  nsCOMPtr<Document> doc = mContent->GetComposedDoc();
   RefPtr<Element> resultElement = doc->CreateHTMLElement(nsGkAtoms::div);
 
   // Associate the pseudo-element with the anonymous child.

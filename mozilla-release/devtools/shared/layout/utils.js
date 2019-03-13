@@ -636,8 +636,11 @@ exports.isShadowHost = isShadowHost;
  * @return {Boolean}
  */
 function isDirectShadowHostChild(node) {
-  // Pseudo elements are always part of the anonymous tree.
-  if (isBeforePseudoElement(node) || isAfterPseudoElement(node)) {
+  // Pseudo elements and native anonymous elements are always part of the anonymous tree.
+  if (
+    isBeforePseudoElement(node) ||
+    isAfterPseudoElement(node) ||
+    isNativeAnonymous(node)) {
     return false;
   }
 
@@ -903,3 +906,129 @@ function getUntransformedQuad(node, region = "border") {
   return quad;
 }
 exports.getUntransformedQuad = getUntransformedQuad;
+
+/**
+ * If the provided node is a grid of flex item, then return its parent grid or flex
+ * container.
+ *
+ * @param  {DOMNode} node
+ *         The node that is supposedly a grid or flex item.
+ * @param  {String} type
+ *         The type of container/item to look for: "flex" or "grid".
+ * @return {DOMNode|null}
+ *         The parent grid or flex container if found, null otherwise.
+ */
+function findFlexOrGridParentContainerForNode(node, type) {
+  const doc = node.ownerDocument;
+  const win = doc.defaultView;
+  const treeWalker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT);
+  const flexType = type === "flex";
+  const gridType = type === "grid";
+  let currentNode = null;
+
+  treeWalker.currentNode = node;
+
+  try {
+    while ((currentNode = treeWalker.parentNode())) {
+      const displayType = win.getComputedStyle(currentNode).display;
+      if (!displayType) {
+        break;
+      }
+
+      if (flexType && displayType.includes("flex")) {
+        if (isNodeAFlexItemInContainer(node, currentNode)) {
+          return currentNode;
+        }
+      } else if (gridType && displayType.includes("grid")) {
+        return currentNode;
+      } else if (displayType === "contents") {
+        // Continue walking up the tree since the parent node is a content element.
+        continue;
+      }
+
+      break;
+    }
+  } catch (e) {
+    // Getting the parentNode can fail when the supplied node is in shadow DOM.
+  }
+
+  return null;
+}
+exports.findFlexOrGridParentContainerForNode = findFlexOrGridParentContainerForNode;
+
+/**
+ * Returns whether or not the given node is actually considered a flex item by its
+ * container.
+ *
+ * @param  {DOMNode} supposedItem
+ *         The node that might be a flex item of its container.
+ * @param  {DOMNode} container
+ *         The node's container.
+ * @return {Boolean}
+ *         Whether or not the node we are looking at is a flex item of its container.
+ */
+function isNodeAFlexItemInContainer(supposedItem, container) {
+  const doc = container.ownerDocument;
+  const win = doc.defaultView;
+  const containerDisplayType = win.getComputedStyle(container).display;
+
+  if (containerDisplayType.includes("flex")) {
+    const containerFlex = container.getAsFlexContainer();
+
+    for (const line of containerFlex.getLines()) {
+      for (const item of line.getItems()) {
+        if (item.node === supposedItem) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+exports.isNodeAFlexItemInContainer = isNodeAFlexItemInContainer;
+
+/**
+ * Calculate the total of the node and all of its ancestor's scrollTop and
+ * scrollLeft values.
+ *
+ * @param  {DOMNode} node
+ *         The node for which the absolute scroll offsets should be calculated.
+ * @return {Object} object
+ *         An object containing scrollTop and scrollLeft values.
+ * @return {Number} object.scrollLeft
+ *         The total scrollLeft values of the node and all of its ancestors.
+ * @return {Number} object.scrollTop
+ *         The total scrollTop values of the node and all of its ancestors.
+ */
+function getAbsoluteScrollOffsetsForNode(node) {
+  const doc = node.ownerDocument;
+
+  // Our walker will only iterate up to document.body so we start by saving the
+  // scroll values for `document.documentElement`.
+  let scrollTop = doc.documentElement.scrollTop;
+  let scrollLeft = doc.documentElement.scrollLeft;
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT);
+  walker.currentNode = node;
+  let currentNode = walker.currentNode;
+
+  // Iterate from `node` up the tree to `document.body` adding scroll offsets
+  // as we go.
+  while (currentNode) {
+    const nodeScrollTop = currentNode.scrollTop;
+    const nodeScrollLeft = currentNode.scrollLeft;
+
+    if (nodeScrollTop || nodeScrollLeft) {
+      scrollTop += nodeScrollTop;
+      scrollLeft += nodeScrollLeft;
+    }
+
+    currentNode = walker.parentNode();
+  }
+
+  return {
+    scrollLeft,
+    scrollTop,
+  };
+}
+exports.getAbsoluteScrollOffsetsForNode = getAbsoluteScrollOffsetsForNode;

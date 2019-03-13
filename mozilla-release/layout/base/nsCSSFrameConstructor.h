@@ -35,7 +35,7 @@ class nsContainerFrame;
 class nsFirstLineFrame;
 class nsFirstLetterFrame;
 class nsCSSAnonBoxPseudoStaticAtom;
-class nsIDocument;
+
 class nsPageContentFrame;
 struct PendingBinding;
 
@@ -64,7 +64,8 @@ class nsCSSFrameConstructor final : public nsFrameManager {
   // FIXME(emilio): Is this really needed?
   friend class mozilla::RestyleManager;
 
-  nsCSSFrameConstructor(nsIDocument* aDocument, nsIPresShell* aPresShell);
+  nsCSSFrameConstructor(mozilla::dom::Document* aDocument,
+                        nsIPresShell* aPresShell);
   ~nsCSSFrameConstructor() { MOZ_ASSERT(mFCItemsInUse == 0); }
 
   // get the alternate text for a content node
@@ -449,11 +450,19 @@ class nsCSSFrameConstructor final : public nsFrameManager {
                                   CSSPseudoElementType aPseudoElement,
                                   FrameConstructionItemList& aItems);
 
-  // This method can change aFrameList: it can chop off the beginning and put
-  // it in aParentFrame while putting the remainder into a ib-split sibling of
-  // aParentFrame.  aPrevSibling must be the frame after which aFrameList is to
-  // be placed on aParentFrame's principal child list.  It may be null if
-  // aFrameList is being added at the beginning of the child list.
+  // This method is called by ContentAppended() and ContentRangeInserted() when
+  // appending flowed frames to a parent's principal child list. It handles the
+  // case where the parent is the trailing inline of an ib-split or is the last
+  // continuation of a ::-moz-column-content in an nsColumnSetFrame.
+  //
+  // This method can change aFrameList: it can chop off the beginning and put it
+  // in aParentFrame while either putting the remainder into an ib-split sibling
+  // of aParentFrame or creating aParentFrame's column-span siblings for the
+  // remainder.
+  //
+  // aPrevSibling must be the frame after which aFrameList is to be placed on
+  // aParentFrame's principal child list. It may be null if aFrameList is being
+  // added at the beginning of the child list.
   void AppendFramesToParent(nsFrameConstructorState& aState,
                             nsContainerFrame* aParentFrame,
                             nsFrameItems& aFrameList, nsIFrame* aPrevSibling,
@@ -631,7 +640,7 @@ class nsCSSFrameConstructor final : public nsFrameManager {
 #ifdef MOZ_XUL
   /* If FCDATA_IS_POPUP is set, the new frame is a XUL popup frame.  These need
      some really weird special handling.  */
-#define FCDATA_IS_POPUP 0x100
+#  define FCDATA_IS_POPUP 0x100
 #endif /* MOZ_XUL */
   /* If FCDATA_SKIP_ABSPOS_PUSH is set, don't push this frame as an
      absolute containing block, no matter what its style says. */
@@ -740,11 +749,11 @@ class nsCSSFrameConstructor final : public nsFrameManager {
   };
 
 #ifdef DEBUG
-#define FCDATA_FOR_DISPLAY(_display, _fcdata) \
-  { _display, _fcdata }
+#  define FCDATA_FOR_DISPLAY(_display, _fcdata) \
+    { _display, _fcdata }
 #else
-#define FCDATA_FOR_DISPLAY(_display, _fcdata) \
-  { _fcdata }
+#  define FCDATA_FOR_DISPLAY(_display, _fcdata) \
+    { _fcdata }
 #endif
 
   /* Structure that has a FrameConstructionData and style pseudo-type
@@ -1518,11 +1527,11 @@ class nsCSSFrameConstructor final : public nsFrameManager {
                                                        ComputedStyle&);
   static const FrameConstructionData* FindXULDescriptionData(const Element&,
                                                              ComputedStyle&);
-#ifdef XP_MACOSX
+#  ifdef XP_MACOSX
   static const FrameConstructionData* FindXULMenubarData(const Element&,
                                                          ComputedStyle&);
-#endif /* XP_MACOSX */
-#endif /* MOZ_XUL */
+#  endif /* XP_MACOSX */
+#endif   /* MOZ_XUL */
 
   // Function to find FrameConstructionData for an element using one of the XUL
   // display types.  Will return null if the style doesn't have a XUL display
@@ -2136,7 +2145,7 @@ class nsCSSFrameConstructor final : public nsFrameManager {
   void* AllocateFCItem();
   void FreeFCItem(FrameConstructionItem*);
 
-  nsIDocument* mDocument;  // Weak ref
+  mozilla::dom::Document* mDocument;  // Weak ref
 
   // See the comment at the start of ConstructRootFrame for more details
   // about the following frames.

@@ -13,19 +13,19 @@
 #include "mozilla/MathAlgorithms.h"
 
 #if defined(JS_CODEGEN_X86)
-#include "jit/x86/MacroAssembler-x86-inl.h"
+#  include "jit/x86/MacroAssembler-x86-inl.h"
 #elif defined(JS_CODEGEN_X64)
-#include "jit/x64/MacroAssembler-x64-inl.h"
+#  include "jit/x64/MacroAssembler-x64-inl.h"
 #elif defined(JS_CODEGEN_ARM)
-#include "jit/arm/MacroAssembler-arm-inl.h"
+#  include "jit/arm/MacroAssembler-arm-inl.h"
 #elif defined(JS_CODEGEN_ARM64)
-#include "jit/arm64/MacroAssembler-arm64-inl.h"
+#  include "jit/arm64/MacroAssembler-arm64-inl.h"
 #elif defined(JS_CODEGEN_MIPS32)
-#include "jit/mips32/MacroAssembler-mips32-inl.h"
+#  include "jit/mips32/MacroAssembler-mips32-inl.h"
 #elif defined(JS_CODEGEN_MIPS64)
-#include "jit/mips64/MacroAssembler-mips64-inl.h"
+#  include "jit/mips64/MacroAssembler-mips64-inl.h"
 #elif !defined(JS_CODEGEN_NONE)
-#error "Unknown architecture!"
+#  error "Unknown architecture!"
 #endif
 
 #include "wasm/WasmBuiltins.h"
@@ -51,14 +51,18 @@ CodeOffset MacroAssembler::PushWithPatch(ImmPtr imm) {
 
 void MacroAssembler::call(TrampolinePtr code) { call(ImmPtr(code.value)); }
 
-void MacroAssembler::call(const wasm::CallSiteDesc& desc, const Register reg) {
+CodeOffset MacroAssembler::call(const wasm::CallSiteDesc& desc,
+                                const Register reg) {
   CodeOffset l = call(reg);
   append(desc, l);
+  return l;
 }
 
-void MacroAssembler::call(const wasm::CallSiteDesc& desc, uint32_t funcIndex) {
+CodeOffset MacroAssembler::call(const wasm::CallSiteDesc& desc,
+                                uint32_t funcIndex) {
   CodeOffset l = callWithPatch();
   append(desc, l, funcIndex);
+  return l;
 }
 
 void MacroAssembler::call(const wasm::CallSiteDesc& desc, wasm::Trap trap) {
@@ -66,12 +70,13 @@ void MacroAssembler::call(const wasm::CallSiteDesc& desc, wasm::Trap trap) {
   append(desc, l, trap);
 }
 
-void MacroAssembler::call(const wasm::CallSiteDesc& desc,
-                          wasm::SymbolicAddress imm) {
+CodeOffset MacroAssembler::call(const wasm::CallSiteDesc& desc,
+                                wasm::SymbolicAddress imm) {
   MOZ_ASSERT(wasm::NeedsBuiltinThunk(imm),
              "only for functions which may appear in profiler");
-  call(imm);
-  append(desc, CodeOffset(currentOffset()));
+  CodeOffset raOffset = call(imm);
+  append(desc, raOffset);
+  return raOffset;
 }
 
 // ===============================================================
@@ -122,7 +127,7 @@ void MacroAssembler::appendSignatureType(MoveOp::Type type) {
 
 ABIFunctionType MacroAssembler::signature() const {
 #ifdef JS_SIMULATOR
-#ifdef DEBUG
+#  ifdef DEBUG
   switch (signature_) {
     case Args_General0:
     case Args_General1:
@@ -150,7 +155,7 @@ ABIFunctionType MacroAssembler::signature() const {
     default:
       MOZ_CRASH("Unexpected type");
   }
-#endif  // DEBUG
+#  endif  // DEBUG
 
   return ABIFunctionType(signature_);
 #else
@@ -597,9 +602,24 @@ void MacroAssembler::branchTestProxyHandlerFamily(Condition cond,
 void MacroAssembler::branchTestNeedsIncrementalBarrier(Condition cond,
                                                        Label* label) {
   MOZ_ASSERT(cond == Zero || cond == NonZero);
-  CompileZone* zone = GetJitContext()->realm->zone();
+  CompileZone* zone = GetJitContext()->realm()->zone();
   const uint32_t* needsBarrierAddr = zone->addressOfNeedsIncrementalBarrier();
   branchTest32(cond, AbsoluteAddress(needsBarrierAddr), Imm32(0x1), label);
+}
+
+void MacroAssembler::branchTestNeedsIncrementalBarrierAnyZone(
+    Condition cond, Label* label, Register scratch) {
+  MOZ_ASSERT(cond == Zero || cond == NonZero);
+  if (GetJitContext()->maybeRealm()) {
+    branchTestNeedsIncrementalBarrier(cond, label);
+  } else {
+    // We are compiling the interpreter or another runtime-wide trampoline, so
+    // we have to load cx->zone.
+    loadPtr(AbsoluteAddress(GetJitContext()->runtime->addressOfZone()),
+            scratch);
+    Address needsBarrierAddr(scratch, Zone::offsetOfNeedsIncrementalBarrier());
+    branchTest32(cond, needsBarrierAddr, Imm32(0x1), label);
+  }
 }
 
 void MacroAssembler::branchTestMagicValue(Condition cond,

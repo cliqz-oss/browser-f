@@ -13,7 +13,7 @@
 
 #include "nsCOMPtr.h"
 #include "nsINode.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsLayoutUtils.h"
 #include "prmon.h"
 #include "nsStubMutationObserver.h"
@@ -484,13 +484,13 @@ class nsRange final : public nsStubMutationObserver,
     static bool sIsNested;
   };
 
-  nsCOMPtr<nsIDocument> mOwner;
+  RefPtr<mozilla::dom::Document> mOwner;
   nsCOMPtr<nsINode> mRoot;
   // mRegisteredCommonAncestor is only non-null when the range
   // IsInSelection().  It's kept alive via mStartContainer/mEndContainer,
   // because we update it any time those could become disconnected from it.
   nsINode* MOZ_NON_OWNING_REF mRegisteredCommonAncestor;
-  RefPtr<mozilla::dom::Selection> mSelection;
+  mozilla::WeakPtr<mozilla::dom::Selection> mSelection;
 
   // These raw pointers are used to remember a child that is about
   // to be inserted between a CharacterData call and a subsequent

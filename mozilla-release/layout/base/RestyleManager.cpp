@@ -14,11 +14,13 @@
 #include "mozilla/GeckoBindings.h"
 #include "mozilla/LayerAnimationInfo.h"
 #include "mozilla/layers/AnimationInfo.h"
+#include "mozilla/layout/ScrollAnchorContainer.h"
 #include "mozilla/ServoBindings.h"
 #include "mozilla/ServoStyleSetInlines.h"
 #include "mozilla/Unused.h"
 #include "mozilla/ViewportFrame.h"
 #include "mozilla/dom/ChildIterator.h"
+#include "mozilla/dom/DocumentInlines.h"
 #include "mozilla/dom/ElementInlines.h"
 #include "mozilla/dom/HTMLBodyElement.h"
 
@@ -29,7 +31,6 @@
 #include "nsContentUtils.h"
 #include "nsCSSFrameConstructor.h"
 #include "nsCSSRendering.h"
-#include "nsIDocumentInlines.h"
 #include "nsIFrame.h"
 #include "nsIFrameInlines.h"
 #include "nsImageFrame.h"
@@ -49,7 +50,7 @@
 #include "nsSVGIntegrationUtils.h"
 
 #ifdef ACCESSIBILITY
-#include "nsAccessibilityService.h"
+#  include "nsAccessibilityService.h"
 #endif
 
 using mozilla::layers::AnimationInfo;
@@ -773,6 +774,10 @@ static bool RecomputePosition(nsIFrame* aFrame) {
       }
     }
 
+    if (aFrame->IsInScrollAnchorChain()) {
+      ScrollAnchorContainer* container = ScrollAnchorContainer::FindFor(aFrame);
+      aFrame->PresShell()->PostPendingScrollAnchorAdjustment(container);
+    }
     return true;
   }
 
@@ -878,6 +883,10 @@ static bool RecomputePosition(nsIFrame* aFrame) {
                     reflowInput.ComputedPhysicalMargin().top);
     aFrame->SetPosition(pos);
 
+    if (aFrame->IsInScrollAnchorChain()) {
+      ScrollAnchorContainer* container = ScrollAnchorContainer::FindFor(aFrame);
+      aFrame->PresShell()->PostPendingScrollAnchorAdjustment(container);
+    }
     return true;
   }
 
@@ -898,10 +907,21 @@ static bool HasBoxAncestor(nsIFrame* aFrame) {
 
 /**
  * Return true if aFrame's subtree has placeholders for out-of-flow content
- * whose 'position' style's bit in aPositionMask is set.
+ * whose 'position' style's bit in aPositionMask is set that would be affected
+ * due to the change to `aPossiblyChangingContainingBlock` (and thus would need
+ * to get reframed).
+ *
+ * In particular, this function returns true if there are placeholders whose OOF
+ * frames may need to be reparented (via reframing) as a result of whatever
+ * change actually happened.
+ *
+ * `aIsContainingBlock` represents whether `aPossiblyChangingContainingBlock` is
+ * a containing block with the _new_ style it just got, for any of the sorts of
+ * positioned descendants in aPositionMask.
  */
-static bool FrameHasPositionedPlaceholderDescendants(nsIFrame* aFrame,
-                                                     uint32_t aPositionMask) {
+static bool ContainingBlockChangeAffectsDescendants(
+    nsIFrame* aPossiblyChangingContainingBlock, nsIFrame* aFrame,
+    uint32_t aPositionMask, bool aIsContainingBlock) {
   MOZ_ASSERT(aPositionMask & (1 << NS_STYLE_POSITION_FIXED));
 
   for (nsIFrame::ChildListIterator lists(aFrame); !lists.IsDone();
@@ -914,10 +934,27 @@ static bool FrameHasPositionedPlaceholderDescendants(nsIFrame* aFrame,
         NS_ASSERTION(!nsSVGUtils::IsInSVGTextSubtree(outOfFlow),
                      "SVG text frames can't be out of flow");
         if (aPositionMask & (1 << outOfFlow->StyleDisplay()->mPosition)) {
-          return true;
+          // NOTE(emilio): aPossiblyChangingContainingBlock is guaranteed to be
+          // a first continuation, see the assertion in the caller.
+          nsIFrame* parent = outOfFlow->GetParent()->FirstContinuation();
+          if (aIsContainingBlock) {
+            // If we are becoming a containing block, we only need to reframe if
+            // this oof's current containing block is an ancestor of the new
+            // frame.
+            if (parent != aPossiblyChangingContainingBlock &&
+                nsLayoutUtils::IsProperAncestorFrame(
+                    parent, aPossiblyChangingContainingBlock)) {
+              return true;
+            }
+          } else {
+            // If we are not a containing block anymore, we only need to reframe
+            // if we are the current containing block of the oof frame.
+            if (parent == aPossiblyChangingContainingBlock) {
+              return true;
+            }
+          }
         }
       }
-      uint32_t positionMask = aPositionMask;
       // NOTE:  It's tempting to check f->IsAbsPosContainingBlock() or
       // f->IsFixedPosContainingBlock() here.  However, that would only
       // be testing the *new* style of the frame, which might exclude
@@ -926,7 +963,9 @@ static bool FrameHasPositionedPlaceholderDescendants(nsIFrame* aFrame,
       // could lead to an unsafe call to
       // cont->MarkAsNotAbsoluteContainingBlock() before we've reframed
       // the descendant and taken it off the absolute list.
-      if (FrameHasPositionedPlaceholderDescendants(f, positionMask)) {
+      if (ContainingBlockChangeAffectsDescendants(
+              aPossiblyChangingContainingBlock, f, aPositionMask,
+              aIsContainingBlock)) {
         return true;
       }
     }
@@ -934,7 +973,7 @@ static bool FrameHasPositionedPlaceholderDescendants(nsIFrame* aFrame,
   return false;
 }
 
-static bool NeedToReframeForAddingOrRemovingTransform(nsIFrame* aFrame) {
+static bool NeedToReframeToUpdateContainingBlock(nsIFrame* aFrame) {
   static_assert(
       0 <= NS_STYLE_POSITION_ABSOLUTE && NS_STYLE_POSITION_ABSOLUTE < 32,
       "Style constant out of range");
@@ -942,23 +981,33 @@ static bool NeedToReframeForAddingOrRemovingTransform(nsIFrame* aFrame) {
                 "Style constant out of range");
 
   uint32_t positionMask;
+  bool isContainingBlock;
   // Don't call aFrame->IsPositioned here, since that returns true if
   // the frame already has a transform, and we want to ignore that here
   if (aFrame->IsAbsolutelyPositioned() || aFrame->IsRelativelyPositioned()) {
-    // This frame is a container for abs-pos descendants whether or not it
-    // has a transform.
+    // This frame is a container for abs-pos descendants whether or not its
+    // containing-block-ness could change for some other reasons (since we
+    // reframe for position changes).
     // So abs-pos descendants are no problem; we only need to reframe if
     // we have fixed-pos descendants.
     positionMask = 1 << NS_STYLE_POSITION_FIXED;
+    isContainingBlock = aFrame->IsFixedPosContainingBlock();
   } else {
     // This frame may not be a container for abs-pos descendants already.
     // So reframe if we have abs-pos or fixed-pos descendants.
     positionMask =
         (1 << NS_STYLE_POSITION_FIXED) | (1 << NS_STYLE_POSITION_ABSOLUTE);
+    isContainingBlock = aFrame->IsAbsPosContainingBlock() ||
+                        aFrame->IsFixedPosContainingBlock();
   }
+
+  MOZ_ASSERT(!aFrame->GetPrevContinuation(),
+             "We only process change hints on first continuations");
+
   for (nsIFrame* f = aFrame; f;
        f = nsLayoutUtils::GetNextContinuationOrIBSplitSibling(f)) {
-    if (FrameHasPositionedPlaceholderDescendants(f, positionMask)) {
+    if (ContainingBlockChangeAffectsDescendants(aFrame, f, positionMask,
+                                                isContainingBlock)) {
       return true;
     }
   }
@@ -1111,7 +1160,7 @@ static bool IsPrimaryFrameOfRootOrBodyElement(nsIFrame* aFrame) {
     return false;
   }
 
-  nsIDocument* document = content->OwnerDoc();
+  Document* document = content->OwnerDoc();
   Element* root = document->GetRootElement();
   if (!root) {
     return false;
@@ -1436,7 +1485,7 @@ void RestyleManager::ProcessRestyledFrames(nsStyleChangeList& aChangeList) {
 
     if ((hint & nsChangeHint_UpdateContainingBlock) && frame &&
         !(hint & nsChangeHint_ReconstructFrame)) {
-      if (NeedToReframeForAddingOrRemovingTransform(frame) ||
+      if (NeedToReframeToUpdateContainingBlock(frame) ||
           frame->IsFieldSetFrame() ||
           frame->GetContentInsertionFrame() != frame) {
         // The frame has positioned children that need to be reparented, or
@@ -1490,6 +1539,23 @@ void RestyleManager::ProcessRestyledFrames(nsStyleChangeList& aChangeList) {
     }
 
     if (hint & nsChangeHint_ReconstructFrame) {
+      // Record whether this frame was absolutely positioned before and after
+      // frame construction, to detect changes for scroll anchor adjustment
+      // suppression.
+      bool wasAbsPosStyle = false;
+      ScrollAnchorContainer* previousAnchorContainer = nullptr;
+      AutoWeakFrame previousAnchorContainerFrame;
+      if (frame) {
+        wasAbsPosStyle = frame->StyleDisplay()->IsAbsolutelyPositionedStyle();
+        previousAnchorContainer = ScrollAnchorContainer::FindFor(frame);
+
+        // It's possible for the scroll anchor container to be destroyed by
+        // frame construction, so use a weak frame to detect this.
+        if (previousAnchorContainer) {
+          previousAnchorContainerFrame = previousAnchorContainer->Frame();
+        }
+      }
+
       // If we ever start passing true here, be careful of restyles
       // that involve a reframe and animations.  In particular, if the
       // restyle we're processing here is an animation restyle, but
@@ -1501,6 +1567,34 @@ void RestyleManager::ProcessRestyledFrames(nsStyleChangeList& aChangeList) {
       // the reconstruction happening synchronously.
       frameConstructor->RecreateFramesForContent(
           content, nsCSSFrameConstructor::InsertionKind::Sync);
+      frame = content->GetPrimaryFrame();
+
+      // See the check above for absolutely positioned style.
+      bool isAbsPosStyle = false;
+      ScrollAnchorContainer* newAnchorContainer = nullptr;
+      if (frame) {
+        isAbsPosStyle = frame->StyleDisplay()->IsAbsolutelyPositionedStyle();
+        newAnchorContainer = ScrollAnchorContainer::FindFor(frame);
+      }
+
+      // If this frame construction was due to a change in absolute
+      // positioning, then suppress scroll anchor adjustments in the scroll
+      // anchor container the frame was in, and the one it moved into.
+      //
+      // This isn't entirely accurate to the specification, which requires us
+      // to do this for all frames that change being absolutely positioned. It's
+      // possible for multiple style changes to cause frame reconstruction and
+      // coalesce, which could cause a suppression trigger to be missed. It's
+      // unclear whether this will be an issue as suppression triggers are just
+      // heuristics.
+      if (wasAbsPosStyle != isAbsPosStyle) {
+        if (previousAnchorContainerFrame) {
+          previousAnchorContainer->SuppressAdjustments();
+        }
+        if (newAnchorContainer) {
+          newAnchorContainer->SuppressAdjustments();
+        }
+      }
     } else {
       NS_ASSERTION(frame, "This shouldn't happen");
 
@@ -2868,6 +2962,9 @@ void RestyleManager::ClearSnapshots() {
 }
 
 ServoElementSnapshot& RestyleManager::SnapshotFor(Element& aElement) {
+  // FIXME(emilio, bug 1528644): This can actually happen, and cause observable
+  // behavior differences. Upgrade to a release assert when bug 1528644 is
+  // fixed.
   MOZ_ASSERT(!mInStyleRefresh);
 
   // NOTE(emilio): We can handle snapshots from a one-off restyle of those that
@@ -2893,6 +2990,7 @@ ServoElementSnapshot& RestyleManager::SnapshotFor(Element& aElement) {
 
 void RestyleManager::DoProcessPendingRestyles(ServoTraversalFlags aFlags) {
   nsPresContext* presContext = PresContext();
+  nsIPresShell* shell = presContext->PresShell();
 
   MOZ_ASSERT(presContext->Document(), "No document?  Pshaw!");
   // FIXME(emilio): In the "flush animations" case, ideally, we should only
@@ -2904,9 +3002,9 @@ void RestyleManager::DoProcessPendingRestyles(ServoTraversalFlags aFlags) {
                  !presContext->HasPendingMediaQueryUpdates(),
              "Someone forgot to update media queries?");
   MOZ_ASSERT(!nsContentUtils::IsSafeToRunScript(), "Missing a script blocker!");
-  MOZ_ASSERT(!mInStyleRefresh, "Reentrant call?");
+  MOZ_RELEASE_ASSERT(!mInStyleRefresh, "Reentrant call?");
 
-  if (MOZ_UNLIKELY(!presContext->PresShell()->DidInitialize())) {
+  if (MOZ_UNLIKELY(!shell->DidInitialize())) {
     // PresShell::FlushPendingNotifications doesn't early-return in the case
     // where the PresShell hasn't yet been initialized (and therefore we haven't
     // yet done the initial style traversal of the DOM tree). We should arguably
@@ -2915,13 +3013,16 @@ void RestyleManager::DoProcessPendingRestyles(ServoTraversalFlags aFlags) {
     return;
   }
 
+  // It'd be bad!
+  nsIPresShell::AutoAssertNoFlush noReentrantFlush(*shell);
+
   // Create a AnimationsWithDestroyedFrame during restyling process to
   // stop animations and transitions on elements that have no frame at the end
   // of the restyling process.
   AnimationsWithDestroyedFrame animationsWithDestroyedFrame(this);
 
   ServoStyleSet* styleSet = StyleSet();
-  nsIDocument* doc = presContext->Document();
+  Document* doc = presContext->Document();
 
   // Ensure the refresh driver is active during traversal to avoid mutating
   // mActiveTimer and mMostRecentRefresh time.
@@ -2941,6 +3042,11 @@ void RestyleManager::DoProcessPendingRestyles(ServoTraversalFlags aFlags) {
 
   while (styleSet->StyleDocument(aFlags)) {
     ClearSnapshots();
+
+    // Select scroll anchors for frames that have been scrolled. Do this
+    // before processing restyled frames so that anchor nodes are correctly
+    // marked when directly moving frames with RecomputePosition.
+    presContext->PresShell()->FlushPendingScrollAnchorSelections();
 
     nsStyleChangeList currentChanges;
     bool anyStyleChanged = false;
@@ -3075,6 +3181,9 @@ void RestyleManager::UpdateOnlyAnimationStyles() {
 
 void RestyleManager::ContentStateChanged(nsIContent* aContent,
                                          EventStates aChangedBits) {
+  // FIXME(emilio, bug 1528644): This can actually happen, and cause observable
+  // behavior differences. Upgrade to a release assert when bug 1528644 is
+  // fixed.
   MOZ_ASSERT(!mInStyleRefresh);
 
   if (!aContent->IsElement()) {
@@ -3193,7 +3302,7 @@ void RestyleManager::ClassAttributeWillBeChangedBySMIL(Element* aElement) {
 void RestyleManager::TakeSnapshotForAttributeChange(Element& aElement,
                                                     int32_t aNameSpaceID,
                                                     nsAtom* aAttribute) {
-  MOZ_ASSERT(!mInStyleRefresh);
+  MOZ_RELEASE_ASSERT(!mInStyleRefresh);
 
   if (!aElement.HasServoData()) {
     return;

@@ -151,7 +151,7 @@ LoginManager.prototype = {
           this._pwmgr._initStorage();
           await this._pwmgr.initializationPromise;
           Services.obs.notifyObservers(null,
-                       "passwordmgr-storage-replace-complete");
+                                       "passwordmgr-storage-replace-complete");
         })();
       } else if (topic == "gather-telemetry") {
         // When testing, the "data" parameter is a string containing the
@@ -215,7 +215,7 @@ LoginManager.prototype = {
       usernamePresentHistogram.add(!!login.username);
 
       let hostname = login.hostname;
-      hostnameCount.set(hostname, (hostnameCount.get(hostname) || 0 ) + 1);
+      hostnameCount.set(hostname, (hostnameCount.get(hostname) || 0) + 1);
 
       login.QueryInterface(Ci.nsILoginMetaInfo);
       let timeLastUsedAgeMs = referenceTimeMs - login.timeLastUsed;
@@ -395,8 +395,9 @@ LoginManager.prototype = {
       }
     }
 
-    if (count)
-      count.value = disabledHosts.length; // needed for XPCOM
+    if (count) {
+      count.value = disabledHosts.length;
+    } // needed for XPCOM
 
     log.debug("getAllDisabledHosts: returning", disabledHosts.length, "disabled hosts.");
     return disabledHosts;

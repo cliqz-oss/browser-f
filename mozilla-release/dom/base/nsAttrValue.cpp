@@ -26,7 +26,7 @@
 #include "nsHTMLCSSStyleSheet.h"
 #include "nsStyledElement.h"
 #include "nsIURI.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include <algorithm>
 
 using namespace mozilla;
@@ -398,12 +398,11 @@ void nsAttrValue::SetToSerialized(const nsAttrValue& aOther) {
   }
 }
 
-void nsAttrValue::SetTo(const nsSVGAngle& aValue,
-                        const nsAString* aSerialized) {
+void nsAttrValue::SetTo(const SVGAngle& aValue, const nsAString* aSerialized) {
   SetSVGType(eSVGAngle, &aValue, aSerialized);
 }
 
-void nsAttrValue::SetTo(const nsSVGIntegerPair& aValue,
+void nsAttrValue::SetTo(const SVGIntegerPair& aValue,
                         const nsAString* aSerialized) {
   SetSVGType(eSVGIntegerPair, &aValue, aSerialized);
 }
@@ -433,7 +432,7 @@ void nsAttrValue::SetTo(const SVGNumberList& aValue,
   SetSVGType(eSVGNumberList, &aValue, aSerialized);
 }
 
-void nsAttrValue::SetTo(const nsSVGNumberPair& aValue,
+void nsAttrValue::SetTo(const SVGNumberPair& aValue,
                         const nsAString* aSerialized) {
   SetSVGType(eSVGNumberPair, &aValue, aSerialized);
 }
@@ -483,7 +482,7 @@ void nsAttrValue::SetTo(const SVGTransformList& aValue,
   SetSVGType(eSVGTransformList, &aValue, aSerialized);
 }
 
-void nsAttrValue::SetTo(const nsSVGViewBox& aValue,
+void nsAttrValue::SetTo(const SVGViewBox& aValue,
                         const nsAString* aSerialized) {
   SetSVGType(eSVGViewBox, &aValue, aSerialized);
 }
@@ -1488,7 +1487,7 @@ bool nsAttrValue::ParseIntMarginValue(const nsAString& aString) {
 bool nsAttrValue::ParseStyleAttribute(const nsAString& aString,
                                       nsIPrincipal* aMaybeScriptedPrincipal,
                                       nsStyledElement* aElement) {
-  nsIDocument* ownerDoc = aElement->OwnerDoc();
+  dom::Document* ownerDoc = aElement->OwnerDoc();
   nsHTMLCSSStyleSheet* sheet = ownerDoc->GetInlineStyleSheet();
   nsIURI* baseURI = aElement->GetBaseURIForStyleAttr();
   nsIURI* docURI = ownerDoc->GetDocumentURI();
@@ -1608,7 +1607,7 @@ void nsAttrValue::SetSVGType(ValueType aType, const void* aValue,
   // will do. We'll lose type-safety but the signature of the calling
   // function should ensure we don't get anything unexpected, and once we
   // stick aValue in a union we lose type information anyway.
-  cont->mValue.mSVGAngle = static_cast<const nsSVGAngle*>(aValue);
+  cont->mValue.mSVGAngle = static_cast<const SVGAngle*>(aValue);
   cont->mType = aType;
   SetMiscAtomOrString(aSerialized);
 }

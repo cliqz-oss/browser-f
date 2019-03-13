@@ -201,8 +201,8 @@ bool HTMLLabelElement::PerformAccesskey(bool aKeyCausesActivation,
                            WidgetMouseEvent::eReal);
     event.inputSource = MouseEvent_Binding::MOZ_SOURCE_KEYBOARD;
 
-    nsAutoPopupStatePusher popupStatePusher(aIsTrustedEvent ? openAllowed
-                                                            : openAbused);
+    nsAutoPopupStatePusher popupStatePusher(
+        aIsTrustedEvent ? PopupBlocker::openAllowed : PopupBlocker::openAbused);
 
     EventDispatcher::Dispatch(static_cast<nsIContent*>(this), presContext,
                               &event);
@@ -226,7 +226,7 @@ nsGenericHTMLElement* HTMLLabelElement::GetLabeledElement() const {
 
   if (ShadowRoot* shadowRoot = GetContainingShadow()) {
     element = shadowRoot->GetElementById(elementId);
-  } else if (nsIDocument* doc = GetUncomposedDoc()) {
+  } else if (Document* doc = GetUncomposedDoc()) {
     element = doc->GetElementById(elementId);
   } else {
     element =

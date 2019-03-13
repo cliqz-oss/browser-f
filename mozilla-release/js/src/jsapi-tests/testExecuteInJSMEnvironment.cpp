@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "js/CompilationAndEvaluation.h"
+#include "js/PropertySpec.h"
 #include "jsapi-tests/tests.h"
 #include "vm/EnvironmentObject.h"
 #include "vm/EnvironmentObject-inl.h"
@@ -25,8 +26,8 @@ BEGIN_TEST(testExecuteInJSMEnvironment_Basic) {
   options.setNoScriptRval(true);
 
   JS::RootedScript script(cx);
-  CHECK(JS::CompileLatin1ForNonSyntacticScope(cx, options, src, sizeof(src) - 1,
-                                              &script));
+  CHECK(JS::CompileUtf8ForNonSyntacticScope(cx, options, src, sizeof(src) - 1,
+                                            &script));
 
   JS::RootedObject varEnv(cx, js::NewJSMEnvironment(cx));
   JS::RootedObject lexEnv(cx, JS_ExtensibleLexicalEnvironment(varEnv));
@@ -79,8 +80,8 @@ BEGIN_TEST(testExecuteInJSMEnvironment_Callback) {
   options.setNoScriptRval(true);
 
   JS::RootedScript script(cx);
-  CHECK(JS::CompileLatin1ForNonSyntacticScope(cx, options, src, sizeof(src) - 1,
-                                              &script));
+  CHECK(JS::CompileUtf8ForNonSyntacticScope(cx, options, src, sizeof(src) - 1,
+                                            &script));
 
   JS::RootedObject nsvo(cx, js::NewJSMEnvironment(cx));
   CHECK(nsvo);

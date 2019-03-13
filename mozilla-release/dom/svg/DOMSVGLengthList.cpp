@@ -4,8 +4,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "nsSVGElement.h"
 #include "DOMSVGLengthList.h"
+
+#include "SVGElement.h"
 #include "DOMSVGLength.h"
 #include "nsError.h"
 #include "SVGAnimatedLengthList.h"
@@ -18,7 +19,7 @@
 // local helper functions
 namespace {
 
-using mozilla::DOMSVGLength;
+using mozilla::dom::DOMSVGLength;
 
 void UpdateListIndicesFromIndex(FallibleTArray<DOMSVGLength*>& aItemsArray,
                                 uint32_t aStartingIndex) {
@@ -34,6 +35,7 @@ void UpdateListIndicesFromIndex(FallibleTArray<DOMSVGLength*>& aItemsArray,
 }  // namespace
 
 namespace mozilla {
+namespace dom {
 
 // We could use NS_IMPL_CYCLE_COLLECTION(, except that in Unlink() we need to
 // clear our DOMSVGAnimatedLengthList's weak ref to us to be safe. (The other
@@ -389,4 +391,5 @@ void DOMSVGLengthList::MaybeRemoveItemFromAnimValListAt(uint32_t aIndex) {
   UpdateListIndicesFromIndex(animVal->mItems, aIndex);
 }
 
+}  // namespace dom
 }  // namespace mozilla

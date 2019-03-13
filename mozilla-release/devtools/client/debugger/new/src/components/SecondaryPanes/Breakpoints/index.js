@@ -6,7 +6,7 @@
 
 import React, { Component } from "react";
 import classnames from "classnames";
-import { connect } from "react-redux";
+import { connect } from "../../../utils/connect";
 
 import ExceptionOption from "./ExceptionOption";
 
@@ -15,7 +15,12 @@ import BreakpointHeading from "./BreakpointHeading";
 
 import actions from "../../../actions";
 import { getDisplayPath } from "../../../utils/source";
-import { makeLocationId, sortBreakpoints } from "../../../utils/breakpoint";
+import { getSelectedLocation } from "../../../utils/source-maps";
+
+import {
+  makeLocationId,
+  sortSelectedBreakpoints
+} from "../../../utils/breakpoint";
 
 import { getSelectedSource, getBreakpointSources } from "../../../selectors";
 
@@ -71,7 +76,7 @@ class Breakpoints extends Component<Props> {
   }
 
   renderBreakpoints() {
-    const { breakpointSources } = this.props;
+    const { breakpointSources, selectedSource } = this.props;
     const sources = [
       ...breakpointSources.map(({ source, breakpoints }) => source)
     ];
@@ -79,7 +84,10 @@ class Breakpoints extends Component<Props> {
     return [
       ...breakpointSources.map(({ source, breakpoints, i }) => {
         const path = getDisplayPath(source, sources);
-        const sortedBreakpoints = sortBreakpoints(breakpoints);
+        const sortedBreakpoints = sortSelectedBreakpoints(
+          breakpoints,
+          selectedSource
+        );
 
         return [
           <BreakpointHeading
@@ -92,7 +100,10 @@ class Breakpoints extends Component<Props> {
             <Breakpoint
               breakpoint={breakpoint}
               source={source}
-              key={makeLocationId(breakpoint.selectedLocation)}
+              selectedSource={selectedSource}
+              key={makeLocationId(
+                getSelectedLocation(breakpoint, selectedSource)
+              )}
             />
           ))
         ];

@@ -95,7 +95,7 @@ JSObject* WrapperFactory::WaiveXray(JSContext* cx, JSObject* objArg) {
   if (!waiver) {
     waiver = CreateXrayWaiver(cx, obj);
   }
-  MOZ_ASSERT(JS::ObjectIsNotGray(waiver));
+  JS::AssertObjectIsNotGray(waiver);
   return waiver;
 }
 
@@ -177,23 +177,6 @@ void WrapperFactory::PrepareForWrapping(JSContext* cx, HandleObject scope,
   // trying to wrap it for a different compartment.
   if (JS_IsDeadWrapper(obj)) {
     retObj.set(JS_NewDeadWrapper(cx, obj));
-    return;
-  }
-
-  // If we've somehow gotten to this point after either the source or target
-  // compartment has been nuked, return a DeadObjectProxy to prevent further
-  // access.
-  // However, we always need to provide live wrappers for ScriptSourceObjects,
-  // since they're used for cross-compartment cloned scripts, and need to
-  // remain accessible even after the original compartment has been nuked.
-  JS::Compartment* origin = js::GetObjectCompartment(obj);
-  JS::Compartment* target = js::GetObjectCompartment(scope);
-  if (!JS_IsScriptSourceObject(obj) &&
-      (CompartmentPrivate::Get(origin)->wasNuked ||
-       CompartmentPrivate::Get(target)->wasNuked)) {
-    NS_WARNING("Trying to create a wrapper into or out of a nuked compartment");
-
-    retObj.set(JS_NewDeadWrapper(cx));
     return;
   }
 
@@ -321,7 +304,7 @@ void WrapperFactory::PrepareForWrapping(JSContext* cx, HandleObject scope,
 
   obj.set(&v.toObject());
   MOZ_ASSERT(IS_WN_REFLECTOR(obj), "bad object");
-  MOZ_ASSERT(JS::ObjectIsNotGray(obj), "Should never return gray reflectors");
+  JS::AssertObjectIsNotGray(obj);  // We should never return gray reflectors.
 
   // Because the underlying native didn't have a PreCreate hook, we had
   // to a new (or possibly pre-existing) XPCWN in our compartment.
@@ -346,38 +329,39 @@ void WrapperFactory::PrepareForWrapping(JSContext* cx, HandleObject scope,
 #ifdef DEBUG
 static void DEBUG_CheckUnwrapSafety(HandleObject obj,
                                     const js::Wrapper* handler,
-                                    JS::Compartment* origin,
+                                    JS::Realm* origin,
                                     JS::Compartment* target) {
-  if (!JS_IsScriptSourceObject(obj) &&
-      (CompartmentPrivate::Get(origin)->wasNuked ||
-       CompartmentPrivate::Get(target)->wasNuked)) {
-    // If either compartment has already been nuked, we should have returned
-    // a dead wrapper from our prewrap callback, and this function should
-    // not be called.
+  if (!js::AllowNewWrapper(target, obj)) {
+    // The JS engine should have returned a dead wrapper in this case and we
+    // shouldn't even get here.
     MOZ_ASSERT_UNREACHABLE("CheckUnwrapSafety called for a dead wrapper");
   } else if (AccessCheck::isChrome(target) ||
              xpc::IsUniversalXPConnectEnabled(target)) {
     // If the caller is chrome (or effectively so), unwrap should always be
     // allowed.
     MOZ_ASSERT(!handler->hasSecurityPolicy());
-  } else if (CompartmentPrivate::Get(origin)->forcePermissiveCOWs) {
+  } else if (RealmPrivate::Get(origin)->forcePermissiveCOWs) {
     // Similarly, if this is a privileged scope that has opted to make itself
     // accessible to the world (allowed only during automation), unwrap should
     // be allowed.
     MOZ_ASSERT(!handler->hasSecurityPolicy());
   } else {
     // Otherwise, it should depend on whether the target subsumes the origin.
-    MOZ_ASSERT(handler->hasSecurityPolicy() ==
-               !(OriginAttributes::IsRestrictOpenerAccessForFPI()
-                     ? AccessCheck::subsumesConsideringDomain(target, origin)
-                     : AccessCheck::subsumesConsideringDomainIgnoringFPD(
-                           target, origin)));
+    JS::Compartment* originComp = JS::GetCompartmentForRealm(origin);
+    bool subsumes =
+        (OriginAttributes::IsRestrictOpenerAccessForFPI()
+             ? AccessCheck::subsumesConsideringDomain(target, originComp)
+             : AccessCheck::subsumesConsideringDomainIgnoringFPD(target,
+                                                                 originComp));
+    MOZ_ASSERT(handler->hasSecurityPolicy() == !subsumes);
   }
 }
 #else
-#define DEBUG_CheckUnwrapSafety(obj, handler, origin, target) \
-  {}
+#  define DEBUG_CheckUnwrapSafety(obj, handler, origin, target) \
+    {}
 #endif
+
+const CrossOriginObjectWrapper CrossOriginObjectWrapper::singleton;
 
 static const Wrapper* SelectWrapper(bool securityWrapper, XrayType xrayType,
                                     bool waiveXrays, JSObject* obj) {
@@ -413,8 +397,7 @@ static const Wrapper* SelectWrapper(bool securityWrapper, XrayType xrayType,
   // This is a security wrapper. Use the security versions and filter.
   if (xrayType == XrayForDOMObject &&
       IdentifyCrossOriginObject(obj) != CrossOriginOpaque) {
-    return &FilteringWrapper<CrossOriginXrayWrapper,
-                             CrossOriginAccessiblePropertiesOnly>::singleton;
+    return &CrossOriginObjectWrapper::singleton;
   }
 
   // There's never any reason to expose other objects to non-subsuming actors.
@@ -462,6 +445,9 @@ JSObject* WrapperFactory::Rewrap(JSContext* cx, HandleObject existing,
   CompartmentPrivate* targetCompartmentPrivate =
       CompartmentPrivate::Get(target);
 
+  JS::Realm* originRealm = js::GetNonCCWObjectRealm(obj);
+  RealmPrivate* originRealmPrivate = RealmPrivate::Get(originRealm);
+
   //
   // First, handle the special cases.
   //
@@ -474,7 +460,7 @@ JSObject* WrapperFactory::Rewrap(JSContext* cx, HandleObject existing,
   }
 
   // Let the SpecialPowers scope make its stuff easily accessible to content.
-  else if (originCompartmentPrivate->forcePermissiveCOWs) {
+  else if (originRealmPrivate->forcePermissiveCOWs) {
     CrashIfNotInAutomation();
     wrapper = &CrossCompartmentWrapper::singleton;
   }
@@ -537,7 +523,7 @@ JSObject* WrapperFactory::Rewrap(JSContext* cx, HandleObject existing,
     wrapper = SelectWrapper(securityWrapper, xrayType, waiveXrays, obj);
   }
 
-  if (!targetSubsumesOrigin && !originCompartmentPrivate->forcePermissiveCOWs) {
+  if (!targetSubsumesOrigin && !originRealmPrivate->forcePermissiveCOWs) {
     // Do a belt-and-suspenders check against exposing eval()/Function() to
     // non-subsuming content.  But don't worry about doing it in the
     // SpecialPowers case.
@@ -552,7 +538,7 @@ JSObject* WrapperFactory::Rewrap(JSContext* cx, HandleObject existing,
     }
   }
 
-  DEBUG_CheckUnwrapSafety(obj, wrapper, origin, target);
+  DEBUG_CheckUnwrapSafety(obj, wrapper, originRealm, target);
 
   if (existing) {
     return Wrapper::Renew(existing, obj, wrapper);
@@ -621,6 +607,22 @@ static bool FixWaiverAfterTransplant(JSContext* cx, HandleObject oldWaiver,
   MOZ_ASSERT(Wrapper::wrapperHandler(oldWaiver) == &XrayWaiver);
   MOZ_ASSERT(!js::IsCrossCompartmentWrapper(newobj));
 
+  // If the new compartment has a CCW for oldWaiver, nuke this CCW. This
+  // prevents confusing RemapAllWrappersForObject: it would call RemapWrapper
+  // with two same-compartment objects (the CCW and the new waiver).
+  //
+  // This can happen when loading a chrome page in a content frame and there
+  // exists a CCW from the chrome compartment to oldWaiver wrapping the window
+  // we just transplanted:
+  //
+  // Compartment 1  |  Compartment 2
+  // ----------------------------------------
+  // CCW1 -----------> oldWaiver --> CCW2 --+
+  // newWaiver                              |
+  // WindowProxy <--------------------------+
+  js::NukeCrossCompartmentWrapperIfExists(cx, js::GetObjectCompartment(newobj),
+                                          oldWaiver);
+
   // Create a waiver in the new compartment. We know there's not one already
   // because we _just_ transplanted, which means that |newobj| was either
   // created from scratch, or was previously cross-compartment wrapper (which
@@ -651,6 +653,11 @@ JSObject* TransplantObject(JSContext* cx, JS::HandleObject origobj,
   RootedObject oldWaiver(cx, WrapperFactory::GetXrayWaiver(origobj));
   RootedObject newIdentity(cx, JS_TransplantObject(cx, origobj, target));
   if (!newIdentity || !oldWaiver) {
+    return newIdentity;
+  }
+
+  // If we transplanted within a compartment, oldWaiver is still valid.
+  if (newIdentity == origobj) {
     return newIdentity;
   }
 

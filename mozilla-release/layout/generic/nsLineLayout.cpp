@@ -31,15 +31,15 @@
 #include <algorithm>
 
 #ifdef DEBUG
-#undef NOISY_INLINEDIR_ALIGN
-#undef NOISY_BLOCKDIR_ALIGN
-#undef NOISY_REFLOW
-#undef REALLY_NOISY_REFLOW
-#undef NOISY_PUSHING
-#undef REALLY_NOISY_PUSHING
-#undef NOISY_CAN_PLACE_FRAME
-#undef NOISY_TRIM
-#undef REALLY_NOISY_TRIM
+#  undef NOISY_INLINEDIR_ALIGN
+#  undef NOISY_BLOCKDIR_ALIGN
+#  undef NOISY_REFLOW
+#  undef REALLY_NOISY_REFLOW
+#  undef NOISY_PUSHING
+#  undef REALLY_NOISY_PUSHING
+#  undef NOISY_CAN_PLACE_FRAME
+#  undef NOISY_TRIM
+#  undef REALLY_NOISY_TRIM
 #endif
 
 using namespace mozilla;
@@ -2182,9 +2182,9 @@ void nsLineLayout::VerticalAlignFrames(PerSpanData* psd) {
       //           to jam together when 'font-size-adjust' is enabled
       //           and layout is using dynamic font heights (bug 20394)
       //        -- Note #1: With this code enabled and with the fact that we are
-      //        not
-      //           using Em[Ascent|Descent] as nsDimensions for text metrics in
-      //           GFX mean that the discussion in bug 13072 cannot hold.
+      //           not using Em[Ascent|Descent] as nsDimensions for text
+      //           metrics in GFX mean that the discussion in bug 13072 cannot
+      //           hold.
       //        -- Note #2: We still don't want empty-text frames to interfere.
       //           For example in quirks mode, avoiding empty text frames
       //           prevents "tall" lines around elements like <hr> since the

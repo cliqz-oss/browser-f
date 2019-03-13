@@ -7,11 +7,11 @@
 #ifndef mozilla_dom_SVGFETurbulenceElement_h
 #define mozilla_dom_SVGFETurbulenceElement_h
 
-#include "nsSVGEnum.h"
-#include "nsSVGFilters.h"
+#include "SVGEnum.h"
+#include "SVGFilters.h"
 #include "nsSVGNumber2.h"
-#include "nsSVGInteger.h"
-#include "nsSVGString.h"
+#include "SVGInteger.h"
+#include "SVGString.h"
 
 nsresult NS_NewSVGFETurbulenceElement(
     nsIContent** aResult, already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
@@ -19,7 +19,7 @@ nsresult NS_NewSVGFETurbulenceElement(
 namespace mozilla {
 namespace dom {
 
-typedef nsSVGFE SVGFETurbulenceElementBase;
+typedef SVGFE SVGFETurbulenceElementBase;
 
 class SVGFETurbulenceElement : public SVGFETurbulenceElementBase {
   friend nsresult(::NS_NewSVGFETurbulenceElement(
@@ -42,7 +42,7 @@ class SVGFETurbulenceElement : public SVGFETurbulenceElementBase {
       nsTArray<RefPtr<SourceSurface>>& aInputImages) override;
   virtual bool AttributeAffectsRendering(int32_t aNameSpaceID,
                                          nsAtom* aAttribute) const override;
-  virtual nsSVGString& GetResultImageName() override {
+  virtual SVGString& GetResultImageName() override {
     return mStringAttributes[RESULT];
   }
 
@@ -68,21 +68,21 @@ class SVGFETurbulenceElement : public SVGFETurbulenceElementBase {
   static NumberInfo sNumberInfo[1];
 
   enum { BASE_FREQ };
-  nsSVGNumberPair mNumberPairAttributes[1];
+  SVGNumberPair mNumberPairAttributes[1];
   static NumberPairInfo sNumberPairInfo[1];
 
   enum { OCTAVES };
-  nsSVGInteger mIntegerAttributes[1];
+  SVGInteger mIntegerAttributes[1];
   static IntegerInfo sIntegerInfo[1];
 
   enum { TYPE, STITCHTILES };
-  nsSVGEnum mEnumAttributes[2];
-  static nsSVGEnumMapping sTypeMap[];
-  static nsSVGEnumMapping sStitchTilesMap[];
+  SVGEnum mEnumAttributes[2];
+  static SVGEnumMapping sTypeMap[];
+  static SVGEnumMapping sStitchTilesMap[];
   static EnumInfo sEnumInfo[2];
 
   enum { RESULT };
-  nsSVGString mStringAttributes[1];
+  SVGString mStringAttributes[1];
   static StringInfo sStringInfo[1];
 };
 

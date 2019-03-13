@@ -8,32 +8,32 @@
 //! See the comment at the top of the `renderer` module for a description of
 //! how these two pieces interact.
 
-use api::{ApiMsg, BuiltDisplayList, ClearCache, DebugCommand};
+use api::{ApiMsg, BuiltDisplayList, ClearCache, DebugCommand, DebugFlags};
 #[cfg(feature = "debugger")]
 use api::{BuiltDisplayListIter, SpecificDisplayItem};
 use api::{DevicePixelScale, DeviceIntPoint, DeviceIntRect, DeviceIntSize};
 use api::{DocumentId, DocumentLayer, ExternalScrollId, FrameMsg, HitTestFlags, HitTestResult};
 use api::{IdNamespace, LayoutPoint, PipelineId, RenderNotifier, SceneMsg, ScrollClamping};
-use api::{MemoryReport, VoidPtrToSizeFn};
+use api::{MemoryReport};
 use api::{ScrollLocation, ScrollNodeState, TransactionMsg, ResourceUpdate, BlobImageKey};
 use api::{NotificationRequest, Checkpoint};
-use api::channel::{MsgReceiver, Payload};
+use api::channel::{MsgReceiver, MsgSender, Payload};
 #[cfg(feature = "capture")]
 use api::CaptureBits;
 #[cfg(feature = "replay")]
 use api::CapturedDocument;
-use clip::ClipDataStore;
 use clip_scroll_tree::{SpatialNodeIndex, ClipScrollTree};
 #[cfg(feature = "debugger")]
 use debug_server;
 use frame_builder::{FrameBuilder, FrameBuilderConfig};
 use gpu_cache::GpuCache;
 use hit_test::{HitTest, HitTester};
+use intern_types;
 use internal_types::{DebugOutput, FastHashMap, FastHashSet, RenderedDocument, ResultMsg};
-use prim_store::{PrimitiveDataStore, PrimitiveScratchBuffer, PrimitiveInstance};
+use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
+use picture::RetainedTiles;
+use prim_store::{PrimitiveScratchBuffer, PrimitiveInstance};
 use prim_store::{PrimitiveInstanceKind, PrimTemplateCommonData};
-use prim_store::gradient::{LinearGradientDataStore, RadialGradientDataStore};
-use prim_store::text_run::TextRunDataStore;
 use profiler::{BackendProfileCounters, IpcProfileCounters, ResourceProfileCounters};
 use record::ApiRecordingReceiver;
 use renderer::{AsyncPropertySampler, PipelineInfo};
@@ -58,7 +58,7 @@ use std::u32;
 #[cfg(feature = "replay")]
 use tiling::Frame;
 use time::precise_time_ns;
-use util::drain_filter;
+use util::{Recycler, drain_filter};
 
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
@@ -83,7 +83,7 @@ impl DocumentView {
     }
 }
 
-#[derive(Copy, Clone, Hash, PartialEq, PartialOrd, Debug, Eq, Ord)]
+#[derive(Copy, Clone, Hash, MallocSizeOf, PartialEq, PartialOrd, Debug, Eq, Ord)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct FrameId(usize);
@@ -137,18 +137,21 @@ impl ::std::ops::Sub<usize> for FrameId {
 /// decisions. As such, we use the `FrameId` for equality and comparison, since
 /// we should never have two `FrameStamps` with the same id but different
 /// timestamps.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, MallocSizeOf)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct FrameStamp {
     id: FrameId,
     time: SystemTime,
+    document_id: DocumentId,
 }
 
 impl Eq for FrameStamp {}
 
 impl PartialEq for FrameStamp {
     fn eq(&self, other: &Self) -> bool {
+        // We should not be checking equality unless the documents are the same
+        debug_assert!(self.document_id == other.document_id);
         self.id == other.id
     }
 }
@@ -170,11 +173,24 @@ impl FrameStamp {
         self.time
     }
 
+    /// Gets the DocumentId in this stamp.
+    pub fn document_id(&self) -> DocumentId {
+        self.document_id
+    }
+
+    pub fn is_valid(&self) -> bool {
+        // If any fields are their default values, the whole struct should equal INVALID
+        debug_assert!((self.time != UNIX_EPOCH && self.id != FrameId(0) && self.document_id != DocumentId::INVALID) ||
+                      *self == Self::INVALID);
+        self.document_id != DocumentId::INVALID
+    }
+
     /// Returns a FrameStamp corresponding to the first frame.
-    pub fn first() -> Self {
+    pub fn first(document_id: DocumentId) -> Self {
         FrameStamp {
             id: FrameId::first(),
             time: SystemTime::now(),
+            document_id: document_id,
         }
     }
 
@@ -188,54 +204,94 @@ impl FrameStamp {
     pub const INVALID: FrameStamp = FrameStamp {
         id: FrameId(0),
         time: UNIX_EPOCH,
+        document_id: DocumentId::INVALID,
     };
 }
 
-// A collection of resources that are shared by clips, primitives
-// between display lists.
-#[cfg_attr(feature = "capture", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
-#[derive(Default)]
-pub struct FrameResources {
-    /// The store of currently active / available clip nodes. This is kept
-    /// in sync with the clip interner in the scene builder for each document.
-    pub clip_data_store: ClipDataStore,
+macro_rules! declare_data_stores {
+    ( $( $name: ident, )+ ) => {
+        /// A collection of resources that are shared by clips, primitives
+        /// between display lists.
+        #[cfg_attr(feature = "capture", derive(Serialize))]
+        #[cfg_attr(feature = "replay", derive(Deserialize))]
+        #[derive(Default)]
+        pub struct DataStores {
+            $(
+                pub $name: intern_types::$name::Store,
+            )+
+        }
 
-    /// Currently active / available primitives. Kept in sync with the
-    /// primitive interner in the scene builder, per document.
-    pub prim_data_store: PrimitiveDataStore,
-    pub linear_grad_data_store: LinearGradientDataStore,
-    pub radial_grad_data_store: RadialGradientDataStore,
-    pub text_run_data_store: TextRunDataStore,
+        impl DataStores {
+            /// Reports CPU heap usage.
+            fn report_memory(&self, ops: &mut MallocSizeOfOps, r: &mut MemoryReport) {
+                $(
+                    r.interning.data_stores.$name += self.$name.size_of(ops);
+                )+
+            }
+
+            fn apply_updates(
+                &mut self,
+                updates: InternerUpdates,
+                profile_counters: &mut BackendProfileCounters,
+            ) {
+                $(
+                    self.$name.apply_updates(
+                        updates.$name,
+                        &mut profile_counters.intern.$name,
+                    );
+                )+
+            }
+        }
+    }
 }
 
-impl FrameResources {
+enumerate_interners!(declare_data_stores);
+
+impl DataStores {
     pub fn as_common_data(
         &self,
         prim_inst: &PrimitiveInstance
     ) -> &PrimTemplateCommonData {
         match prim_inst.kind {
-            PrimitiveInstanceKind::Picture { data_handle, .. } |
-            PrimitiveInstanceKind::LineDecoration { data_handle, .. } |
-            PrimitiveInstanceKind::NormalBorder { data_handle, .. } |
-            PrimitiveInstanceKind::ImageBorder { data_handle, .. } |
             PrimitiveInstanceKind::Rectangle { data_handle, .. } |
-            PrimitiveInstanceKind::YuvImage { data_handle, .. } |
-            PrimitiveInstanceKind::Image { data_handle, .. } |
             PrimitiveInstanceKind::Clear { data_handle, .. } => {
-                let prim_data = &self.prim_data_store[data_handle];
+                let prim_data = &self.prim[data_handle];
+                &prim_data.common
+            }
+            PrimitiveInstanceKind::Image { data_handle, .. } => {
+                let prim_data = &self.image[data_handle];
+                &prim_data.common
+            }
+            PrimitiveInstanceKind::ImageBorder { data_handle, .. } => {
+                let prim_data = &self.image_border[data_handle];
+                &prim_data.common
+            }
+            PrimitiveInstanceKind::LineDecoration { data_handle, .. } => {
+                let prim_data = &self.line_decoration[data_handle];
                 &prim_data.common
             }
             PrimitiveInstanceKind::LinearGradient { data_handle, .. } => {
-                let prim_data = &self.linear_grad_data_store[data_handle];
+                let prim_data = &self.linear_grad[data_handle];
                 &prim_data.common
             }
-            PrimitiveInstanceKind::RadialGradient { data_handle, .. } =>{
-                let prim_data = &self.radial_grad_data_store[data_handle];
+            PrimitiveInstanceKind::NormalBorder { data_handle, .. } => {
+                let prim_data = &self.normal_border[data_handle];
+                &prim_data.common
+            }
+            PrimitiveInstanceKind::Picture { data_handle, .. } => {
+                let prim_data = &self.picture[data_handle];
+                &prim_data.common
+            }
+            PrimitiveInstanceKind::RadialGradient { data_handle, .. } => {
+                let prim_data = &self.radial_grad[data_handle];
                 &prim_data.common
             }
             PrimitiveInstanceKind::TextRun { data_handle, .. }  => {
-                let prim_data = &self.text_run_data_store[data_handle];
+                let prim_data = &self.text_run[data_handle];
+                &prim_data.common
+            }
+            PrimitiveInstanceKind::YuvImage { data_handle, .. } => {
+                let prim_data = &self.yuv_image[data_handle];
                 &prim_data.common
             }
         }
@@ -284,7 +340,7 @@ struct Document {
     // renderer.
     has_built_scene: bool,
 
-    resources: FrameResources,
+    data_stores: DataStores,
 
     /// Contains various vecs of data that is used only during frame building,
     /// where we want to recycle the memory each new display list, to avoid constantly
@@ -294,6 +350,7 @@ struct Document {
 
 impl Document {
     pub fn new(
+        id: DocumentId,
         window_size: DeviceIntSize,
         layer: DocumentLayer,
         default_device_pixel_ratio: f32,
@@ -311,7 +368,7 @@ impl Document {
                 device_pixel_ratio: default_device_pixel_ratio,
             },
             clip_scroll_tree: ClipScrollTree::new(),
-            stamp: FrameStamp::first(),
+            stamp: FrameStamp::first(id),
             frame_builder: None,
             output_pipelines: FastHashSet::default(),
             hit_tester: None,
@@ -320,7 +377,7 @@ impl Document {
             hit_tester_is_valid: false,
             rendered_frame_is_valid: false,
             has_built_scene: false,
-            resources: FrameResources::default(),
+            data_stores: DataStores::default(),
             scratch: PrimitiveScratchBuffer::new(),
         }
     }
@@ -437,6 +494,7 @@ impl Document {
         resource_cache: &mut ResourceCache,
         gpu_cache: &mut GpuCache,
         resource_profile: &mut ResourceProfileCounters,
+        debug_flags: DebugFlags,
     ) -> RenderedDocument {
         let accumulated_scale_factor = self.view.accumulated_scale_factor();
         let pan = self.view.pan.to_f32() / accumulated_scale_factor;
@@ -461,12 +519,13 @@ impl Document {
                 &mut resource_profile.texture_cache,
                 &mut resource_profile.gpu_cache,
                 &self.dynamic_properties,
-                &mut self.resources,
+                &mut self.data_stores,
                 &mut self.scratch,
+                debug_flags,
             );
             self.hit_tester = Some(frame_builder.create_hit_tester(
                 &self.clip_scroll_tree,
-                &self.resources.clip_data_store,
+                &self.data_stores.clip,
             ));
             frame
         };
@@ -496,8 +555,9 @@ impl Document {
 
             self.hit_tester = Some(frame_builder.create_hit_tester(
                 &self.clip_scroll_tree,
-                &self.resources.clip_data_store,
+                &self.data_stores.clip,
             ));
+            self.hit_tester_is_valid = true;
         }
     }
 
@@ -540,6 +600,7 @@ impl Document {
     pub fn new_async_scene_ready(
         &mut self,
         mut built_scene: BuiltScene,
+        recycler: &mut Recycler,
     ) {
         self.scene = built_scene.scene;
         self.frame_is_valid = false;
@@ -548,10 +609,11 @@ impl Document {
         // Give the old frame builder a chance to destroy any resources.
         // Right now, all this does is build a hash map of any cached
         // surface tiles, that can be provided to the next frame builder.
-        let mut retained_tiles = FastHashMap::default();
+        let mut retained_tiles = RetainedTiles::new();
         if let Some(frame_builder) = self.frame_builder.take() {
             frame_builder.destroy(
                 &mut retained_tiles,
+                &self.clip_scroll_tree,
             );
         }
 
@@ -561,7 +623,7 @@ impl Document {
 
         self.frame_builder = Some(built_scene.frame_builder);
 
-        self.scratch.recycle();
+        self.scratch.recycle(recycler);
 
         let old_scrolling_states = self.clip_scroll_tree.drain();
         self.clip_scroll_tree = built_scene.clip_scroll_tree;
@@ -620,8 +682,11 @@ pub struct RenderBackend {
     notifier: Box<RenderNotifier>,
     recorder: Option<Box<ApiRecordingReceiver>>,
     sampler: Option<Box<AsyncPropertySampler + Send>>,
-    size_of_op: Option<VoidPtrToSizeFn>,
+    size_of_ops: Option<MallocSizeOfOps>,
+    debug_flags: DebugFlags,
     namespace_alloc_by_client: bool,
+
+    recycler: Recycler,
 }
 
 impl RenderBackend {
@@ -638,7 +703,8 @@ impl RenderBackend {
         frame_config: FrameBuilderConfig,
         recorder: Option<Box<ApiRecordingReceiver>>,
         sampler: Option<Box<AsyncPropertySampler + Send>>,
-        size_of_op: Option<VoidPtrToSizeFn>,
+        size_of_ops: Option<MallocSizeOfOps>,
+        debug_flags: DebugFlags,
         namespace_alloc_by_client: bool,
     ) -> RenderBackend {
         RenderBackend {
@@ -657,8 +723,10 @@ impl RenderBackend {
             notifier,
             recorder,
             sampler,
-            size_of_op,
+            size_of_ops,
+            debug_flags,
             namespace_alloc_by_client,
+            recycler: Recycler::new(),
         }
     }
 
@@ -792,6 +860,7 @@ impl RenderBackend {
                             if let Some(mut built_scene) = txn.built_scene.take() {
                                 doc.new_async_scene_ready(
                                     built_scene,
+                                    &mut self.recycler,
                                 );
                             }
 
@@ -817,14 +886,14 @@ impl RenderBackend {
                         self.resource_cache.add_rasterized_blob_images(
                             replace(&mut txn.rasterized_blobs, Vec::new())
                         );
-                        if let Some((rasterizer, epoch)) = txn.blob_rasterizer.take() {
-                            self.resource_cache.set_blob_rasterizer(rasterizer, epoch);
+                        if let Some((rasterizer, info)) = txn.blob_rasterizer.take() {
+                            self.resource_cache.set_blob_rasterizer(rasterizer, info);
                         }
 
                         self.update_document(
                             txn.document_id,
                             replace(&mut txn.resource_updates, Vec::new()),
-                            txn.doc_resource_updates.take(),
+                            txn.interner_updates.take(),
                             replace(&mut txn.frame_ops, Vec::new()),
                             replace(&mut txn.notifications, Vec::new()),
                             txn.render_frame,
@@ -938,6 +1007,7 @@ impl RenderBackend {
             }
             ApiMsg::AddDocument(document_id, initial_size, layer) => {
                 let document = Document::new(
+                    document_id,
                     initial_size,
                     layer,
                     self.default_device_pixel_ratio,
@@ -967,6 +1037,8 @@ impl RenderBackend {
                 // recently used resources.
                 self.resource_cache.clear(ClearCache::all());
 
+                self.gpu_cache.clear();
+
                 let pending_update = self.resource_cache.pending_updates();
                 let msg = ResultMsg::UpdateResources {
                     updates: pending_update,
@@ -976,7 +1048,7 @@ impl RenderBackend {
                 self.notifier.wake_up();
             }
             ApiMsg::ReportMemory(tx) => {
-                tx.send(self.report_memory()).unwrap();
+                self.report_memory(tx);
             }
             ApiMsg::DebugCommand(option) => {
                 let msg = match option {
@@ -992,10 +1064,6 @@ impl RenderBackend {
 
                         // We don't want to forward this message to the renderer.
                         return true;
-                    }
-                    DebugCommand::EnableGpuCacheDebug(enable) => {
-                        self.gpu_cache.set_debug(enable);
-                        ResultMsg::DebugCommand(option)
                     }
                     DebugCommand::FetchDocuments => {
                         let json = self.get_docs_for_debugger();
@@ -1069,6 +1137,23 @@ impl RenderBackend {
                     }
                     DebugCommand::SetFlags(flags) => {
                         self.resource_cache.set_debug_flags(flags);
+                        self.gpu_cache.set_debug_flags(flags);
+
+                        // If we're toggling on the GPU cache debug display, we
+                        // need to blow away the cache. This is because we only
+                        // send allocation/free notifications to the renderer
+                        // thread when the debug display is enabled, and thus
+                        // enabling it when the cache is partially populated will
+                        // give the renderer an incomplete view of the world.
+                        // And since we might as well drop all the debugging state
+                        // from the renderer when we disable the debug display,
+                        // we just clear the cache on toggle.
+                        let changed = self.debug_flags ^ flags;
+                        if changed.contains(DebugFlags::GPU_CACHE_DBG) {
+                            self.gpu_cache.clear();
+                        }
+                        self.debug_flags = flags;
+
                         ResultMsg::DebugCommand(option)
                     }
                     _ => ResultMsg::DebugCommand(option),
@@ -1077,6 +1162,7 @@ impl RenderBackend {
                 self.notifier.wake_up();
             }
             ApiMsg::ShutDown => {
+                info!("Recycling stats: {:?}", self.recycler);
                 return false;
             }
             ApiMsg::UpdateDocument(document_id, transaction_msg) => {
@@ -1120,6 +1206,13 @@ impl RenderBackend {
             &mut txn.resource_updates,
             &mut profile_counters.resources,
         );
+
+        // If we've been above the threshold for reclaiming GPU cache memory for
+        // long enough, drop it and rebuild it. This needs to be done before any
+        // updates for this frame are made.
+        if self.gpu_cache.should_reclaim_memory() {
+            self.gpu_cache.clear();
+        }
 
         for scene_msg in transaction_msg.scene_ops.drain(..) {
             let _timer = profile_counters.total_time.timer();
@@ -1184,7 +1277,7 @@ impl RenderBackend {
         &mut self,
         document_id: DocumentId,
         resource_updates: Vec<ResourceUpdate>,
-        doc_resource_updates: Option<DocumentResourceUpdates>,
+        interner_updates: Option<InternerUpdates>,
         mut frame_ops: Vec<FrameMsg>,
         mut notifications: Vec<NotificationRequest>,
         mut render_frame: bool,
@@ -1211,27 +1304,8 @@ impl RenderBackend {
 
         // If there are any additions or removals of clip modes
         // during the scene build, apply them to the data store now.
-        if let Some(updates) = doc_resource_updates {
-            doc.resources.clip_data_store.apply_updates(
-                updates.clip_updates,
-                &mut profile_counters.intern.clips,
-            );
-            doc.resources.prim_data_store.apply_updates(
-                updates.prim_updates,
-                &mut profile_counters.intern.prims,
-            );
-            doc.resources.linear_grad_data_store.apply_updates(
-                updates.linear_grad_updates,
-                &mut profile_counters.intern.linear_gradients,
-            );
-            doc.resources.radial_grad_data_store.apply_updates(
-                updates.radial_grad_updates,
-                &mut profile_counters.intern.radial_gradients,
-            );
-            doc.resources.text_run_data_store.apply_updates(
-                updates.text_run_updates,
-                &mut profile_counters.intern.text_runs,
-            );
+        if let Some(updates) = interner_updates {
+            doc.data_stores.apply_updates(updates, profile_counters);
         }
 
         // TODO: this scroll variable doesn't necessarily mean we scrolled. It is only used
@@ -1292,6 +1366,7 @@ impl RenderBackend {
                     &mut self.resource_cache,
                     &mut self.gpu_cache,
                     &mut profile_counters.resources,
+                    self.debug_flags,
                 );
 
                 debug!("generated frame for document {:?} with {} passes",
@@ -1426,6 +1501,8 @@ impl RenderBackend {
 
     #[cfg(feature = "debugger")]
     fn get_clip_scroll_tree_for_debugger(&self) -> String {
+        use print_tree::PrintableTree;
+
         let mut debug_root = debug_server::ClipScrollTreeList::new();
 
         for (_, doc) in &self.documents {
@@ -1440,21 +1517,26 @@ impl RenderBackend {
         serde_json::to_string(&debug_root).unwrap()
     }
 
-    fn report_memory(&self) -> MemoryReport {
+    fn report_memory(&mut self, tx: MsgSender<MemoryReport>) {
         let mut report = MemoryReport::default();
-        let op = self.size_of_op.unwrap();
-        report.gpu_cache_metadata = self.gpu_cache.malloc_size_of(op);
+        let ops = self.size_of_ops.as_mut().unwrap();
+        let op = ops.size_of_op;
+        report.gpu_cache_metadata = self.gpu_cache.size_of(ops);
         for (_id, doc) in &self.documents {
             if let Some(ref fb) = doc.frame_builder {
-                report.clip_stores += fb.clip_store.malloc_size_of(op);
+                report.clip_stores += fb.clip_store.size_of(ops);
             }
-            report.hit_testers +=
-                doc.hit_tester.as_ref().map_or(0, |ht| ht.malloc_size_of(op));
+            report.hit_testers += doc.hit_tester.size_of(ops);
+
+            doc.data_stores.report_memory(ops, &mut report)
         }
 
         report += self.resource_cache.report_memory(op);
 
-        report
+        // Send a message to report memory on the scene-builder thread, which
+        // will add its report to this one and send the result back to the original
+        // thread waiting on the request.
+        self.scene_tx.send(SceneBuilderRequest::ReportMemory(report, tx)).unwrap();
     }
 }
 
@@ -1497,8 +1579,8 @@ impl ToDebugString for SpecificDisplayItem {
             SpecificDisplayItem::PopAllShadows => String::from("pop_all_shadows"),
             SpecificDisplayItem::PopReferenceFrame => String::from("pop_reference_frame"),
             SpecificDisplayItem::PopStackingContext => String::from("pop_stacking_context"),
-            SpecificDisplayItem::PushReferenceFrame(..) => String::from("push_reference_frame"),
             SpecificDisplayItem::PushShadow(..) => String::from("push_shadow"),
+            SpecificDisplayItem::PushReferenceFrame(..) => String::from("push_reference_frame"),
             SpecificDisplayItem::PushStackingContext(..) => String::from("push_stacking_context"),
             SpecificDisplayItem::RadialGradient(..) => String::from("radial_gradient"),
             SpecificDisplayItem::Rectangle(..) => String::from("rectangle"),
@@ -1544,16 +1626,19 @@ impl RenderBackend {
                     &mut self.resource_cache,
                     &mut self.gpu_cache,
                     &mut profile_counters.resources,
+                    self.debug_flags,
                 );
                 //TODO: write down doc's pipeline info?
                 // it has `pipeline_epoch_map`,
                 // which may capture necessary details for some cases.
                 let file_name = format!("frame-{}-{}", (id.0).0, id.1);
                 config.serialize(&rendered_document.frame, file_name);
+                let file_name = format!("clip-scroll-{}-{}", (id.0).0, id.1);
+                config.serialize_tree(&doc.clip_scroll_tree, file_name);
             }
 
-            let frame_resources_name = format!("frame-resources-{}-{}", (id.0).0, id.1);
-            config.serialize(&doc.resources, frame_resources_name);
+            let data_stores_name = format!("data-stores-{}-{}", (id.0).0, id.1);
+            config.serialize(&doc.data_stores, data_stores_name);
         }
 
         debug!("\tscene builder");
@@ -1637,20 +1722,20 @@ impl RenderBackend {
             let scene = CaptureConfig::deserialize::<Scene, _>(root, &scene_name)
                 .expect(&format!("Unable to open {}.ron", scene_name));
 
-            let doc_resources_name = format!("doc-resources-{}-{}", (id.0).0, id.1);
-            let doc_resources = CaptureConfig::deserialize::<DocumentResources, _>(root, &doc_resources_name)
-                .expect(&format!("Unable to open {}.ron", doc_resources_name));
+            let interners_name = format!("interners-{}-{}", (id.0).0, id.1);
+            let interners = CaptureConfig::deserialize::<Interners, _>(root, &interners_name)
+                .expect(&format!("Unable to open {}.ron", interners_name));
 
-            let frame_resources_name = format!("frame-resources-{}-{}", (id.0).0, id.1);
-            let frame_resources = CaptureConfig::deserialize::<FrameResources, _>(root, &frame_resources_name)
-                .expect(&format!("Unable to open {}.ron", frame_resources_name));
+            let data_stores_name = format!("data-stores-{}-{}", (id.0).0, id.1);
+            let data_stores = CaptureConfig::deserialize::<DataStores, _>(root, &data_stores_name)
+                .expect(&format!("Unable to open {}.ron", data_stores_name));
 
             let mut doc = Document {
                 scene: scene.clone(),
                 removed_pipelines: Vec::new(),
                 view: view.clone(),
                 clip_scroll_tree: ClipScrollTree::new(),
-                stamp: FrameStamp::first(),
+                stamp: FrameStamp::first(id),
                 frame_builder: Some(FrameBuilder::empty()),
                 output_pipelines: FastHashSet::default(),
                 dynamic_properties: SceneProperties::new(),
@@ -1659,7 +1744,7 @@ impl RenderBackend {
                 hit_tester_is_valid: false,
                 rendered_frame_is_valid: false,
                 has_built_scene: false,
-                resources: frame_resources,
+                data_stores,
                 scratch: PrimitiveScratchBuffer::new(),
             };
 
@@ -1698,7 +1783,7 @@ impl RenderBackend {
                 output_pipelines: doc.output_pipelines.clone(),
                 font_instances: self.resource_cache.get_font_instances(),
                 build_frame,
-                doc_resources,
+                interners,
             });
 
             self.documents.insert(id, doc);
@@ -1711,4 +1796,3 @@ impl RenderBackend {
         }
     }
 }
-

@@ -28,7 +28,6 @@
 #include "nsCycleCollectionParticipant.h"
 #include "nsThreadUtils.h"
 
-class nsIDocument;
 class nsIURI;
 class nsIChannel;
 class nsIDocShell;
@@ -44,6 +43,7 @@ class Loader;
 }  // namespace css
 
 namespace dom {
+class Document;
 class ScriptLoader;
 }  // namespace dom
 }  // namespace mozilla
@@ -52,21 +52,21 @@ class ScriptLoader;
 
 extern mozilla::LazyLogModule gContentSinkLogModuleInfo;
 
-#define SINK_TRACE_CALLS 0x1
-#define SINK_TRACE_REFLOW 0x2
-#define SINK_ALWAYS_REFLOW 0x4
+#  define SINK_TRACE_CALLS 0x1
+#  define SINK_TRACE_REFLOW 0x2
+#  define SINK_ALWAYS_REFLOW 0x4
 
-#define SINK_LOG_TEST(_lm, _bit) (int((_lm)->Level()) & (_bit))
+#  define SINK_LOG_TEST(_lm, _bit) (int((_lm)->Level()) & (_bit))
 
-#define SINK_TRACE(_lm, _bit, _args) \
-  do {                               \
-    if (SINK_LOG_TEST(_lm, _bit)) {  \
-      printf_stderr _args;           \
-    }                                \
-  } while (0)
+#  define SINK_TRACE(_lm, _bit, _args) \
+    do {                               \
+      if (SINK_LOG_TEST(_lm, _bit)) {  \
+        printf_stderr _args;           \
+      }                                \
+    } while (0)
 
 #else
-#define SINK_TRACE(_lm, _bit, _args)
+#  define SINK_TRACE(_lm, _bit, _args)
 #endif
 
 #undef SINK_NO_INCREMENTAL
@@ -78,6 +78,10 @@ class nsContentSink : public nsICSSLoaderObserver,
                       public nsStubDocumentObserver,
                       public nsITimerCallback,
                       public nsINamed {
+ protected:
+  typedef mozilla::dom::Document Document;
+
+ private:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsContentSink, nsICSSLoaderObserver)
   // nsITimerCallback
@@ -141,7 +145,7 @@ class nsContentSink : public nsICSSLoaderObserver,
     CACHE_SELECTION_RESELECT_WITHOUT_MANIFEST = 3
   };
 
-  nsresult Init(nsIDocument* aDoc, nsIURI* aURI, nsISupports* aContainer,
+  nsresult Init(Document* aDoc, nsIURI* aURI, nsISupports* aContainer,
                 nsIChannel* aChannel);
 
   nsresult ProcessHTTPHeaders(nsIChannel* aChannel);
@@ -240,7 +244,9 @@ class nsContentSink : public nsICSSLoaderObserver,
  public:
   void StartLayout(bool aIgnorePendingSheets);
 
-  static void NotifyDocElementCreated(nsIDocument* aDoc);
+  static void NotifyDocElementCreated(Document* aDoc);
+
+  Document* GetDocument() { return mDocument; }
 
  protected:
   void FavorPerformanceHint(bool perfOverStarvation, uint32_t starvationDelay);
@@ -264,7 +270,7 @@ class nsContentSink : public nsICSSLoaderObserver,
   void StopDeflecting() { mDeflectedCount = sPerfDeflectCount; }
 
  protected:
-  nsCOMPtr<nsIDocument> mDocument;
+  RefPtr<Document> mDocument;
   RefPtr<nsParserBase> mParser;
   nsCOMPtr<nsIURI> mDocumentURI;
   nsCOMPtr<nsIDocShell> mDocShell;

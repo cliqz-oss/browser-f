@@ -7,6 +7,7 @@
 #include "Timeout.h"
 
 #include "mozilla/dom/TimeoutManager.h"
+#include "nsGlobalWindowInner.h"
 
 namespace mozilla {
 namespace dom {
@@ -14,7 +15,7 @@ namespace dom {
 Timeout::Timeout()
     : mTimeoutId(0),
       mFiringId(TimeoutManager::InvalidFiringId),
-      mPopupState(openAllowed),
+      mPopupState(PopupBlocker::openAllowed),
       mReason(Reason::eTimeoutOrInterval),
       mNestingLevel(0),
       mCleared(false),
@@ -42,6 +43,7 @@ NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(Timeout, Release)
 void Timeout::SetWhenOrTimeRemaining(const TimeStamp& aBaseTime,
                                      const TimeDuration& aDelay) {
   MOZ_DIAGNOSTIC_ASSERT(mWindow);
+  mSubmitTime = aBaseTime;
 
   // If we are frozen simply set mTimeRemaining to be the "time remaining" in
   // the timeout (i.e., the interval itself).  This will be used to create a
@@ -66,6 +68,8 @@ const TimeStamp& Timeout::When() const {
   // When() to calculate the delay to populate mTimeRemaining.
   return mWhen;
 }
+
+const TimeStamp& Timeout::SubmitTime() const { return mSubmitTime; }
 
 const TimeDuration& Timeout::TimeRemaining() const {
   MOZ_DIAGNOSTIC_ASSERT(mWhen.IsNull());

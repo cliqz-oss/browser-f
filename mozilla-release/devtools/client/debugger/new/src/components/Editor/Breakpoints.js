@@ -3,14 +3,12 @@
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 // @flow
-import { connect } from "react-redux";
 import React, { Component } from "react";
-
 import Breakpoint from "./Breakpoint";
 
-import { getSelectedSource, getVisibleBreakpoints } from "../../selectors";
+import { getSelectedSource, getFirstVisibleBreakpoints } from "../../selectors";
 import { makeLocationId } from "../../utils/breakpoint";
-import { isLoaded } from "../../utils/source";
+import { connect } from "../../utils/connect";
 
 import type { Breakpoint as BreakpointType, Source } from "../../types";
 
@@ -21,18 +19,10 @@ type Props = {
 };
 
 class Breakpoints extends Component<Props> {
-  shouldComponentUpdate(nextProps: Props) {
-    if (nextProps.selectedSource && !isLoaded(nextProps.selectedSource)) {
-      return false;
-    }
-
-    return true;
-  }
-
   render() {
     const { breakpoints, selectedSource, editor } = this.props;
 
-    if (!selectedSource || !breakpoints || selectedSource.isBlackBoxed) {
+    if (!breakpoints || selectedSource.isBlackBoxed) {
       return null;
     }
 
@@ -54,6 +44,8 @@ class Breakpoints extends Component<Props> {
 }
 
 export default connect(state => ({
-  breakpoints: getVisibleBreakpoints(state),
+  // Retrieves only the first breakpoint per line so that the
+  // breakpoint marker represents only the first breakpoint
+  breakpoints: getFirstVisibleBreakpoints(state),
   selectedSource: getSelectedSource(state)
 }))(Breakpoints);

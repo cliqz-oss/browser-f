@@ -42,7 +42,7 @@ class StyleSheet;
 }  // namespace mozilla
 class gfxFontFeatureValueSet;
 class nsIContent;
-class nsIDocument;
+
 class nsPresContext;
 struct nsTimingFunction;
 struct RawServoRuleNode;
@@ -208,7 +208,6 @@ class ServoStyleSet {
 
   // manage the set of style sheets in the style set
   nsresult AppendStyleSheet(SheetType aType, StyleSheet* aSheet);
-  nsresult PrependStyleSheet(SheetType aType, StyleSheet* aSheet);
   nsresult RemoveStyleSheet(SheetType aType, StyleSheet* aSheet);
   nsresult ReplaceSheets(SheetType aType,
                          const nsTArray<RefPtr<StyleSheet>>& aNewSheets);
@@ -228,7 +227,7 @@ class ServoStyleSet {
   }
 
   nsresult RemoveDocStyleSheet(StyleSheet* aSheet);
-  nsresult AddDocStyleSheet(StyleSheet* aSheet, nsIDocument* aDocument);
+  nsresult AddDocStyleSheet(StyleSheet* aSheet, dom::Document* aDocument);
 
   // check whether there is ::before/::after style for an element
   already_AddRefed<ComputedStyle> ProbePseudoElementStyle(
@@ -513,7 +512,7 @@ class ServoStyleSet {
   //
   // TODO(emilio): This should become a DocumentOrShadowRoot, and be owned by it
   // directly instead of the shell, eventually.
-  nsIDocument* mDocument;
+  dom::Document* mDocument;
 
   const nsPresContext* GetPresContext() const {
     return const_cast<ServoStyleSet*>(this)->GetPresContext();

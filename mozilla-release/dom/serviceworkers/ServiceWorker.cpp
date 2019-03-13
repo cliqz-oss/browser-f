@@ -6,7 +6,7 @@
 
 #include "ServiceWorker.h"
 
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsPIDOMWindow.h"
 #include "RemoteServiceWorkerImpl.h"
 #include "ServiceWorkerCloneData.h"
@@ -25,7 +25,7 @@
 #include "mozilla/StaticPrefs.h"
 
 #ifdef XP_WIN
-#undef PostMessage
+#  undef PostMessage
 #endif
 
 using mozilla::ErrorResult;

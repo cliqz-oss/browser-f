@@ -109,8 +109,6 @@ async function checkCert() {
   await document.l10n.translateElements(updateCertStatus());
   window.sizeToContent();
 
-  updateCertStatus();
-
   let uri = getURI();
 
   if (uri) {

@@ -16,12 +16,12 @@
 #include "jit/MoveResolver.h"
 
 #ifdef _M_ARM64
-#ifdef move32
-#undef move32
-#endif
-#ifdef move64
-#undef move64
-#endif
+#  ifdef move32
+#    undef move32
+#  endif
+#  ifdef move64
+#    undef move64
+#  endif
 #endif
 
 namespace js {
@@ -219,7 +219,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
 
   void pop(const ValueOperand& v) { pop(v.valueReg()); }
   void pop(const FloatRegister& f) {
-    vixl::MacroAssembler::Pop(ARMRegister(f.code(), 64));
+    vixl::MacroAssembler::Pop(ARMFPRegister(f, 64));
   }
 
   void implicitPop(uint32_t args) {
@@ -394,18 +394,18 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
     Orr(ARMRegister(dest, 64), ARMRegister(src, 64),
         Operand(ImmShiftedTag(type).value));
   }
-  void splitTag(Register src, Register dest) {
-    ubfx(ARMRegister(dest, 64), ARMRegister(src, 64), JSVAL_TAG_SHIFT,
+  void splitSignExtTag(Register src, Register dest) {
+    sbfx(ARMRegister(dest, 64), ARMRegister(src, 64), JSVAL_TAG_SHIFT,
          (64 - JSVAL_TAG_SHIFT));
   }
   MOZ_MUST_USE Register extractTag(const Address& address, Register scratch) {
     loadPtr(address, scratch);
-    splitTag(scratch, scratch);
+    splitSignExtTag(scratch, scratch);
     return scratch;
   }
   MOZ_MUST_USE Register extractTag(const ValueOperand& value,
                                    Register scratch) {
-    splitTag(value.valueReg(), scratch);
+    splitSignExtTag(value.valueReg(), scratch);
     return scratch;
   }
   MOZ_MUST_USE Register extractObject(const Address& address,
@@ -722,6 +722,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
   void mov(ImmPtr imm, Register dest) { movePtr(imm, dest); }
   void mov(wasm::SymbolicAddress imm, Register dest) { movePtr(imm, dest); }
   void mov(Register src, Register dest) { movePtr(src, dest); }
+  void mov(CodeLabel* label, Register dest);
 
   void move32(Imm32 imm, Register dest) {
     Mov(ARMRegister(dest, 32), (int64_t)imm.value);
@@ -958,31 +959,49 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
     Cmp(ARMRegister(a, 32), Operand(ARMRegister(b, 32)));
   }
   void cmp32(const Address& lhs, Imm32 rhs) {
-    cmp32(Operand(lhs.base, lhs.offset), rhs);
+    vixl::UseScratchRegisterScope temps(this);
+    const ARMRegister scratch32 = temps.AcquireW();
+    MOZ_ASSERT(scratch32.asUnsized() != lhs.base);
+    Ldr(scratch32, toMemOperand(lhs));
+    Cmp(scratch32, Operand(rhs.value));
   }
   void cmp32(const Address& lhs, Register rhs) {
-    cmp32(Operand(lhs.base, lhs.offset), rhs);
+    vixl::UseScratchRegisterScope temps(this);
+    const ARMRegister scratch32 = temps.AcquireW();
+    MOZ_ASSERT(scratch32.asUnsized() != lhs.base);
+    MOZ_ASSERT(scratch32.asUnsized() != rhs);
+    Ldr(scratch32, toMemOperand(lhs));
+    Cmp(scratch32, Operand(ARMRegister(rhs, 32)));
   }
   void cmp32(Register lhs, const Address& rhs) {
-    cmp32(lhs, Operand(rhs.base, rhs.offset));
+    vixl::UseScratchRegisterScope temps(this);
+    const ARMRegister scratch32 = temps.AcquireW();
+    MOZ_ASSERT(scratch32.asUnsized() != rhs.base);
+    MOZ_ASSERT(scratch32.asUnsized() != lhs);
+    Ldr(scratch32, toMemOperand(rhs));
+    Cmp(scratch32, Operand(ARMRegister(lhs, 32)));
   }
-  void cmp32(const Operand& lhs, Imm32 rhs) {
+  void cmp32(const vixl::Operand& lhs, Imm32 rhs) {
     vixl::UseScratchRegisterScope temps(this);
     const ARMRegister scratch32 = temps.AcquireW();
     Mov(scratch32, lhs);
     Cmp(scratch32, Operand(rhs.value));
   }
-  void cmp32(const Operand& lhs, Register rhs) {
+  void cmp32(const vixl::Operand& lhs, Register rhs) {
     vixl::UseScratchRegisterScope temps(this);
     const ARMRegister scratch32 = temps.AcquireW();
     Mov(scratch32, lhs);
     Cmp(scratch32, Operand(ARMRegister(rhs, 32)));
   }
-  void cmp32(Register lhs, const Operand& rhs) {
+  void cmp32(Register lhs, const vixl::Operand& rhs) {
     vixl::UseScratchRegisterScope temps(this);
     const ARMRegister scratch32 = temps.AcquireW();
     Mov(scratch32, rhs);
     Cmp(scratch32, Operand(ARMRegister(lhs, 32)));
+  }
+
+  void cmn32(Register lhs, Imm32 rhs) {
+    Cmn(ARMRegister(lhs, 32), Operand(rhs.value));
   }
 
   void cmpPtr(Register lhs, Imm32 rhs) {
@@ -1115,16 +1134,16 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
     MOZ_CRASH("moveFloatAsDouble");
   }
 
-  void splitTag(const ValueOperand& operand, Register dest) {
-    splitTag(operand.valueReg(), dest);
+  void splitSignExtTag(const ValueOperand& operand, Register dest) {
+    splitSignExtTag(operand.valueReg(), dest);
   }
-  void splitTag(const Address& operand, Register dest) {
+  void splitSignExtTag(const Address& operand, Register dest) {
     loadPtr(operand, dest);
-    splitTag(dest, dest);
+    splitSignExtTag(dest, dest);
   }
-  void splitTag(const BaseIndex& operand, Register dest) {
+  void splitSignExtTag(const BaseIndex& operand, Register dest) {
     loadPtr(operand, dest);
-    splitTag(dest, dest);
+    splitSignExtTag(dest, dest);
   }
 
   // Extracts the tag of a value and places it in tag
@@ -1225,22 +1244,22 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
   }
 
   CodeOffsetJump jumpWithPatch(RepatchLabel* label) {
+    // jumpWithPatch() is only used by IonCacheIRCompiler::emitReturnFromIC().
+    // The RepatchLabel is unbound and unused.
+    MOZ_ASSERT(!label->used());
+    MOZ_ASSERT(!label->bound());
+
+    vixl::UseScratchRegisterScope temps(this);
+    const ARMRegister scratch64 = temps.AcquireX();
+
     ARMBuffer::PoolEntry pe;
     BufferOffset load_bo;
 
-    // Does not overwrite condition codes from the caller.
-    {
-      vixl::UseScratchRegisterScope temps(this);
-      const ARMRegister scratch64 = temps.AcquireX();
-      load_bo = immPool64(scratch64, (uint64_t)label, &pe);
-    }
-
-    MOZ_ASSERT(!label->bound());
-
-    nop();
+    // FIXME: This load is currently unused.
+    load_bo = immPool64(scratch64, (uint64_t)label, &pe);
     BufferOffset branch_bo = b(-1, LabelDoc());
-    label->use(branch_bo.getOffset());
 
+    label->use(branch_bo.getOffset());
     return CodeOffsetJump(load_bo.getOffset(), pe.index());
   }
 
@@ -1397,65 +1416,101 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
     Fmov(ARMFPRegister(dest, 32), f);
   }
 
+  void cmpTag(Register tag, ImmTag ref) {
+    // As opposed to other architecture, splitTag is replaced by splitSignExtTag
+    // which extract the tag with a sign extension. The reason being that cmp32
+    // with a tag value would be too large to fit as a 12 bits immediate value,
+    // and would require the VIXL macro assembler to add an extra instruction
+    // and require extra scratch register to load the Tag value.
+    //
+    // Instead, we compare with the negative value of the sign extended tag with
+    // the CMN instruction. The sign extended tag is expected to be a negative
+    // value. Therefore the negative of the sign extended tag is expected to be
+    // near 0 and fit on 12 bits.
+    //
+    // Ignoring the sign extension, the logic is the following:
+    //
+    //   CMP32(Reg, Tag) = Reg - Tag
+    //                   = Reg + (-Tag)
+    //                   = CMN32(Reg, -Tag)
+    //
+    // Note: testGCThing, testPrimitive and testNumber which are checking for
+    // inequalities should use unsigned comparisons (as done by default) in
+    // order to keep the same relation order after the sign extension, i.e.
+    // using Above or Below which are based on the carry flag.
+    uint32_t hiShift = JSVAL_TAG_SHIFT - 32;
+    int32_t seTag = int32_t(ref.value);
+    seTag = (seTag << hiShift) >> hiShift;
+    MOZ_ASSERT(seTag < 0);
+    int32_t negTag = -seTag;
+    // Check thest negTag is encoded on a 12 bits immediate value.
+    MOZ_ASSERT((negTag & ~0xFFF) == 0);
+    cmn32(tag, Imm32(negTag));
+  }
+
   // Register-based tests.
   Condition testUndefined(Condition cond, Register tag) {
     MOZ_ASSERT(cond == Equal || cond == NotEqual);
-    cmp32(tag, ImmTag(JSVAL_TAG_UNDEFINED));
+    cmpTag(tag, ImmTag(JSVAL_TAG_UNDEFINED));
     return cond;
   }
   Condition testInt32(Condition cond, Register tag) {
     MOZ_ASSERT(cond == Equal || cond == NotEqual);
-    cmp32(tag, ImmTag(JSVAL_TAG_INT32));
+    cmpTag(tag, ImmTag(JSVAL_TAG_INT32));
     return cond;
   }
   Condition testBoolean(Condition cond, Register tag) {
     MOZ_ASSERT(cond == Equal || cond == NotEqual);
-    cmp32(tag, ImmTag(JSVAL_TAG_BOOLEAN));
+    cmpTag(tag, ImmTag(JSVAL_TAG_BOOLEAN));
     return cond;
   }
   Condition testNull(Condition cond, Register tag) {
     MOZ_ASSERT(cond == Equal || cond == NotEqual);
-    cmp32(tag, ImmTag(JSVAL_TAG_NULL));
+    cmpTag(tag, ImmTag(JSVAL_TAG_NULL));
     return cond;
   }
   Condition testString(Condition cond, Register tag) {
     MOZ_ASSERT(cond == Equal || cond == NotEqual);
-    cmp32(tag, ImmTag(JSVAL_TAG_STRING));
+    cmpTag(tag, ImmTag(JSVAL_TAG_STRING));
     return cond;
   }
   Condition testSymbol(Condition cond, Register tag) {
     MOZ_ASSERT(cond == Equal || cond == NotEqual);
-    cmp32(tag, ImmTag(JSVAL_TAG_SYMBOL));
+    cmpTag(tag, ImmTag(JSVAL_TAG_SYMBOL));
     return cond;
   }
   Condition testObject(Condition cond, Register tag) {
     MOZ_ASSERT(cond == Equal || cond == NotEqual);
-    cmp32(tag, ImmTag(JSVAL_TAG_OBJECT));
+    cmpTag(tag, ImmTag(JSVAL_TAG_OBJECT));
     return cond;
   }
   Condition testDouble(Condition cond, Register tag) {
     MOZ_ASSERT(cond == Equal || cond == NotEqual);
-    cmp32(tag, Imm32(JSVAL_TAG_MAX_DOUBLE));
+    cmpTag(tag, ImmTag(JSVAL_TAG_MAX_DOUBLE));
+    // Requires unsigned comparison due to cmpTag internals.
     return (cond == Equal) ? BelowOrEqual : Above;
   }
   Condition testNumber(Condition cond, Register tag) {
     MOZ_ASSERT(cond == Equal || cond == NotEqual);
-    cmp32(tag, Imm32(JSVAL_UPPER_INCL_TAG_OF_NUMBER_SET));
+    cmpTag(tag, ImmTag(JSVAL_UPPER_INCL_TAG_OF_NUMBER_SET));
+    // Requires unsigned comparison due to cmpTag internals.
     return (cond == Equal) ? BelowOrEqual : Above;
   }
   Condition testGCThing(Condition cond, Register tag) {
     MOZ_ASSERT(cond == Equal || cond == NotEqual);
-    cmp32(tag, Imm32(JSVAL_LOWER_INCL_TAG_OF_GCTHING_SET));
+    cmpTag(tag, ImmTag(JSVAL_LOWER_INCL_TAG_OF_GCTHING_SET));
+    // Requires unsigned comparison due to cmpTag internals.
     return (cond == Equal) ? AboveOrEqual : Below;
   }
   Condition testMagic(Condition cond, Register tag) {
     MOZ_ASSERT(cond == Equal || cond == NotEqual);
-    cmp32(tag, ImmTag(JSVAL_TAG_MAGIC));
+    cmpTag(tag, ImmTag(JSVAL_TAG_MAGIC));
     return cond;
   }
   Condition testPrimitive(Condition cond, Register tag) {
     MOZ_ASSERT(cond == Equal || cond == NotEqual);
-    cmp32(tag, Imm32(JSVAL_UPPER_EXCL_TAG_OF_PRIMITIVE_SET));
+    cmpTag(tag, ImmTag(JSVAL_UPPER_EXCL_TAG_OF_PRIMITIVE_SET));
+    // Requires unsigned comparison due to cmpTag internals.
     return (cond == Equal) ? Below : AboveOrEqual;
   }
   Condition testError(Condition cond, Register tag) {
@@ -1466,107 +1521,80 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
   Condition testInt32(Condition cond, const ValueOperand& value) {
     // The incoming ValueOperand may use scratch registers.
     vixl::UseScratchRegisterScope temps(this);
-
-    if (value.valueReg() == ScratchReg2) {
-      MOZ_ASSERT(temps.IsAvailable(ScratchReg64));
-      MOZ_ASSERT(!temps.IsAvailable(ScratchReg2_64));
-      temps.Exclude(ScratchReg64);
-
-      if (cond != Equal && cond != NotEqual) {
-        MOZ_CRASH("NYI: non-equality comparisons");
-      }
-
-      // In the event that the tag is not encodable in a single cmp / teq
-      // instruction, perform the xor that teq would use, this will leave the
-      // tag bits being zero, or non-zero, which can be tested with either and
-      // or shift.
-      unsigned int n, imm_r, imm_s;
-      uint64_t immediate = uint64_t(ImmTag(JSVAL_TAG_INT32).value)
-                           << JSVAL_TAG_SHIFT;
-      if (IsImmLogical(immediate, 64, &n, &imm_s, &imm_r)) {
-        Eor(ScratchReg64, ScratchReg2_64, Operand(immediate));
-      } else {
-        Mov(ScratchReg64, immediate);
-        Eor(ScratchReg64, ScratchReg2_64, ScratchReg64);
-      }
-      Tst(ScratchReg64, Operand((unsigned long long)(-1ll) << JSVAL_TAG_SHIFT));
-      return cond;
-    }
-
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(scratch != value.valueReg());
 
-    splitTag(value, scratch);
+    splitSignExtTag(value, scratch);
     return testInt32(cond, scratch);
   }
   Condition testBoolean(Condition cond, const ValueOperand& value) {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(value.valueReg() != scratch);
-    splitTag(value, scratch);
+    splitSignExtTag(value, scratch);
     return testBoolean(cond, scratch);
   }
   Condition testDouble(Condition cond, const ValueOperand& value) {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(value.valueReg() != scratch);
-    splitTag(value, scratch);
+    splitSignExtTag(value, scratch);
     return testDouble(cond, scratch);
   }
   Condition testNull(Condition cond, const ValueOperand& value) {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(value.valueReg() != scratch);
-    splitTag(value, scratch);
+    splitSignExtTag(value, scratch);
     return testNull(cond, scratch);
   }
   Condition testUndefined(Condition cond, const ValueOperand& value) {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(value.valueReg() != scratch);
-    splitTag(value, scratch);
+    splitSignExtTag(value, scratch);
     return testUndefined(cond, scratch);
   }
   Condition testString(Condition cond, const ValueOperand& value) {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(value.valueReg() != scratch);
-    splitTag(value, scratch);
+    splitSignExtTag(value, scratch);
     return testString(cond, scratch);
   }
   Condition testSymbol(Condition cond, const ValueOperand& value) {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(value.valueReg() != scratch);
-    splitTag(value, scratch);
+    splitSignExtTag(value, scratch);
     return testSymbol(cond, scratch);
   }
   Condition testObject(Condition cond, const ValueOperand& value) {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(value.valueReg() != scratch);
-    splitTag(value, scratch);
+    splitSignExtTag(value, scratch);
     return testObject(cond, scratch);
   }
   Condition testNumber(Condition cond, const ValueOperand& value) {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(value.valueReg() != scratch);
-    splitTag(value, scratch);
+    splitSignExtTag(value, scratch);
     return testNumber(cond, scratch);
   }
   Condition testPrimitive(Condition cond, const ValueOperand& value) {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(value.valueReg() != scratch);
-    splitTag(value, scratch);
+    splitSignExtTag(value, scratch);
     return testPrimitive(cond, scratch);
   }
   Condition testMagic(Condition cond, const ValueOperand& value) {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(value.valueReg() != scratch);
-    splitTag(value, scratch);
+    splitSignExtTag(value, scratch);
     return testMagic(cond, scratch);
   }
   Condition testError(Condition cond, const ValueOperand& value) {
@@ -1578,77 +1606,77 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(address.base != scratch);
-    splitTag(address, scratch);
+    splitSignExtTag(address, scratch);
     return testGCThing(cond, scratch);
   }
   Condition testMagic(Condition cond, const Address& address) {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(address.base != scratch);
-    splitTag(address, scratch);
+    splitSignExtTag(address, scratch);
     return testMagic(cond, scratch);
   }
   Condition testInt32(Condition cond, const Address& address) {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(address.base != scratch);
-    splitTag(address, scratch);
+    splitSignExtTag(address, scratch);
     return testInt32(cond, scratch);
   }
   Condition testDouble(Condition cond, const Address& address) {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(address.base != scratch);
-    splitTag(address, scratch);
+    splitSignExtTag(address, scratch);
     return testDouble(cond, scratch);
   }
   Condition testBoolean(Condition cond, const Address& address) {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(address.base != scratch);
-    splitTag(address, scratch);
+    splitSignExtTag(address, scratch);
     return testBoolean(cond, scratch);
   }
   Condition testNull(Condition cond, const Address& address) {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(address.base != scratch);
-    splitTag(address, scratch);
+    splitSignExtTag(address, scratch);
     return testNull(cond, scratch);
   }
   Condition testUndefined(Condition cond, const Address& address) {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(address.base != scratch);
-    splitTag(address, scratch);
+    splitSignExtTag(address, scratch);
     return testUndefined(cond, scratch);
   }
   Condition testString(Condition cond, const Address& address) {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(address.base != scratch);
-    splitTag(address, scratch);
+    splitSignExtTag(address, scratch);
     return testString(cond, scratch);
   }
   Condition testSymbol(Condition cond, const Address& address) {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(address.base != scratch);
-    splitTag(address, scratch);
+    splitSignExtTag(address, scratch);
     return testSymbol(cond, scratch);
   }
   Condition testObject(Condition cond, const Address& address) {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(address.base != scratch);
-    splitTag(address, scratch);
+    splitSignExtTag(address, scratch);
     return testObject(cond, scratch);
   }
   Condition testNumber(Condition cond, const Address& address) {
     vixl::UseScratchRegisterScope temps(this);
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(address.base != scratch);
-    splitTag(address, scratch);
+    splitSignExtTag(address, scratch);
     return testNumber(cond, scratch);
   }
 
@@ -1658,7 +1686,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(src.base != scratch);
     MOZ_ASSERT(src.index != scratch);
-    splitTag(src, scratch);
+    splitSignExtTag(src, scratch);
     return testUndefined(cond, scratch);
   }
   Condition testNull(Condition cond, const BaseIndex& src) {
@@ -1666,7 +1694,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(src.base != scratch);
     MOZ_ASSERT(src.index != scratch);
-    splitTag(src, scratch);
+    splitSignExtTag(src, scratch);
     return testNull(cond, scratch);
   }
   Condition testBoolean(Condition cond, const BaseIndex& src) {
@@ -1674,7 +1702,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(src.base != scratch);
     MOZ_ASSERT(src.index != scratch);
-    splitTag(src, scratch);
+    splitSignExtTag(src, scratch);
     return testBoolean(cond, scratch);
   }
   Condition testString(Condition cond, const BaseIndex& src) {
@@ -1682,7 +1710,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(src.base != scratch);
     MOZ_ASSERT(src.index != scratch);
-    splitTag(src, scratch);
+    splitSignExtTag(src, scratch);
     return testString(cond, scratch);
   }
   Condition testSymbol(Condition cond, const BaseIndex& src) {
@@ -1690,7 +1718,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(src.base != scratch);
     MOZ_ASSERT(src.index != scratch);
-    splitTag(src, scratch);
+    splitSignExtTag(src, scratch);
     return testSymbol(cond, scratch);
   }
   Condition testInt32(Condition cond, const BaseIndex& src) {
@@ -1698,7 +1726,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(src.base != scratch);
     MOZ_ASSERT(src.index != scratch);
-    splitTag(src, scratch);
+    splitSignExtTag(src, scratch);
     return testInt32(cond, scratch);
   }
   Condition testObject(Condition cond, const BaseIndex& src) {
@@ -1706,7 +1734,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(src.base != scratch);
     MOZ_ASSERT(src.index != scratch);
-    splitTag(src, scratch);
+    splitSignExtTag(src, scratch);
     return testObject(cond, scratch);
   }
   Condition testDouble(Condition cond, const BaseIndex& src) {
@@ -1714,7 +1742,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(src.base != scratch);
     MOZ_ASSERT(src.index != scratch);
-    splitTag(src, scratch);
+    splitSignExtTag(src, scratch);
     return testDouble(cond, scratch);
   }
   Condition testMagic(Condition cond, const BaseIndex& src) {
@@ -1722,7 +1750,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(src.base != scratch);
     MOZ_ASSERT(src.index != scratch);
-    splitTag(src, scratch);
+    splitSignExtTag(src, scratch);
     return testMagic(cond, scratch);
   }
   Condition testGCThing(Condition cond, const BaseIndex& src) {
@@ -1730,7 +1758,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
     const Register scratch = temps.AcquireX().asUnsized();
     MOZ_ASSERT(src.base != scratch);
     MOZ_ASSERT(src.index != scratch);
-    splitTag(src, scratch);
+    splitSignExtTag(src, scratch);
     return testGCThing(cond, scratch);
   }
 
@@ -2002,18 +2030,8 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
     }
   }
 
-  // FIXME: Should be in Assembler?
-  // FIXME: Should be const?
-  uint32_t currentOffset() const { return nextOffset().getOffset(); }
-
  protected:
-  bool buildOOLFakeExitFrame(void* fakeReturnAddr) {
-    uint32_t descriptor = MakeFrameDescriptor(framePushed(), FrameType::IonJS,
-                                              ExitFrameLayout::Size());
-    Push(Imm32(descriptor));
-    Push(ImmPtr(fakeReturnAddr));
-    return true;
-  }
+  bool buildOOLFakeExitFrame(void* fakeReturnAddr);
 };
 
 // See documentation for ScratchTagScope and ScratchTagScopeRelease in
@@ -2063,7 +2081,7 @@ class ScratchTagScopeRelease {
 
 inline void MacroAssemblerCompat::splitTagForTest(const ValueOperand& value,
                                                   ScratchTagScope& tag) {
-  splitTag(value, tag);
+  splitSignExtTag(value, tag);
 }
 
 typedef MacroAssemblerCompat MacroAssemblerSpecific;

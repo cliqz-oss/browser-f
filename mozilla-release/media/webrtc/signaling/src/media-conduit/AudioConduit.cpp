@@ -6,9 +6,9 @@
 #include "nspr.h"
 
 #ifdef HAVE_NETINET_IN_H
-#include <netinet/in.h>
+#  include <netinet/in.h>
 #elif defined XP_WIN
-#include <winsock2.h>
+#  include <winsock2.h>
 #endif
 
 #include "AudioConduit.h"
@@ -34,14 +34,14 @@
 #include "webrtc/system_wrappers/include/clock.h"
 
 #ifdef MOZ_WIDGET_ANDROID
-#include "AndroidBridge.h"
+#  include "AndroidBridge.h"
 #endif
 
 namespace mozilla {
 
 static const char* acLogTag = "WebrtcAudioSessionConduit";
 #ifdef LOGTAG
-#undef LOGTAG
+#  undef LOGTAG
 #endif
 #define LOGTAG acLogTag
 
@@ -174,21 +174,18 @@ bool WebrtcAudioConduit::GetRecvPacketTypeStats(
   return mRecvChannelProxy->GetRTCPPacketTypeCounters(*aPacketCounts);
 }
 
-bool WebrtcAudioConduit::GetAVStats(int32_t* jitterBufferDelayMs,
-                                    int32_t* playoutBufferDelayMs,
-                                    int32_t* avSyncOffsetMs) {
-  // Called from GetAudioFrame and from STS thread
-  mRecvChannelProxy->GetDelayEstimates(jitterBufferDelayMs,
-                                       playoutBufferDelayMs, avSyncOffsetMs);
-  return true;
-}
-
 bool WebrtcAudioConduit::GetRTPStats(unsigned int* jitterMs,
                                      unsigned int* cumulativeLost) {
   ASSERT_ON_THREAD(mStsThread);
   *jitterMs = 0;
   *cumulativeLost = 0;
-  return !mSendChannelProxy->GetRTPStatistics(*jitterMs, *cumulativeLost);
+  if (!mRecvStream) {
+    return false;
+  }
+  auto stats = mRecvStream->GetStats();
+  *jitterMs = stats.jitter_ms;
+  *cumulativeLost = stats.packets_lost;
+  return true;
 }
 
 bool WebrtcAudioConduit::GetRTCPReceiverReport(uint32_t* jitterMs,
@@ -421,8 +418,12 @@ MediaConduitErrorCode WebrtcAudioConduit::ConfigureRecvMediaCodecs(
 
     webrtc::SdpAudioFormat::Parameters parameters;
     if (codec->mName == "opus") {
-      parameters = {{"stereo", "1"}};
-
+      if (codec->mChannels == 2) {
+        parameters = {{"stereo", "1"}};
+      }
+      if (codec->mFECEnabled) {
+        parameters["useinbandfec"] = "1";
+      }
       if (codec->mMaxPlaybackRate) {
         std::ostringstream o;
         o << codec->mMaxPlaybackRate;
@@ -622,32 +623,6 @@ MediaConduitErrorCode WebrtcAudioConduit::GetAudioFrame(int16_t speechData[],
   lengthSamples = mAudioFrame.samples_per_channel_ * mAudioFrame.num_channels_;
   MOZ_RELEASE_ASSERT(lengthSamples <= lengthSamplesAllowed);
   PodCopy(speechData, mAudioFrame.data(), lengthSamples);
-
-  // Not #ifdef DEBUG or on a log module so we can use it for about:webrtc/etc
-  mSamples += lengthSamples;
-  if (mSamples >= mLastSyncLog + samplingFreqHz) {
-    int jitter_buffer_delay_ms;
-    int playout_buffer_delay_ms;
-    int avsync_offset_ms;
-    if (GetAVStats(&jitter_buffer_delay_ms, &playout_buffer_delay_ms,
-                   &avsync_offset_ms)) {
-      if (avsync_offset_ms < 0) {
-        Telemetry::Accumulate(Telemetry::WEBRTC_AVSYNC_WHEN_VIDEO_LAGS_AUDIO_MS,
-                              -avsync_offset_ms);
-      } else {
-        Telemetry::Accumulate(Telemetry::WEBRTC_AVSYNC_WHEN_AUDIO_LAGS_VIDEO_MS,
-                              avsync_offset_ms);
-      }
-      CSFLogDebug(LOGTAG,
-                  "A/V sync: sync delta: %dms, audio jitter delay %dms, "
-                  "playout delay %dms",
-                  avsync_offset_ms, jitter_buffer_delay_ms,
-                  playout_buffer_delay_ms);
-    } else {
-      CSFLogError(LOGTAG, "A/V sync: GetAVStats failed");
-    }
-    mLastSyncLog = mSamples;
-  }
 
   CSFLogDebug(LOGTAG, "%s GetAudioFrame:Got samples: length %d ", __FUNCTION__,
               lengthSamples);
@@ -888,14 +863,18 @@ bool WebrtcAudioConduit::CodecConfigToWebRTCCodec(
   config.encoder_factory = webrtc::CreateBuiltinAudioEncoderFactory();
 
   webrtc::SdpAudioFormat::Parameters parameters;
-  if (codecInfo->mFECEnabled) {
-    parameters["useinbandfec"] = "1";
-  }
-
-  if (codecInfo->mName == "opus" && codecInfo->mMaxPlaybackRate) {
-    std::ostringstream o;
-    o << codecInfo->mMaxPlaybackRate;
-    parameters["maxplaybackrate"] = o.str();
+  if (codecInfo->mName == "opus") {
+    if (codecInfo->mChannels == 2) {
+      parameters["stereo"] = "1";
+    }
+    if (codecInfo->mFECEnabled) {
+      parameters["useinbandfec"] = "1";
+    }
+    if (codecInfo->mMaxPlaybackRate) {
+      std::ostringstream o;
+      o << codecInfo->mMaxPlaybackRate;
+      parameters["maxplaybackrate"] = o.str();
+    }
   }
 
   webrtc::SdpAudioFormat format(codecInfo->mName, codecInfo->mFreq,

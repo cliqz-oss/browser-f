@@ -5,20 +5,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #if !defined(AutoplayPolicy_h_)
-#define AutoplayPolicy_h_
+#  define AutoplayPolicy_h_
 
-#include "mozilla/NotNull.h"
-
-class nsIDocument;
+#  include "mozilla/NotNull.h"
 
 namespace mozilla {
-
-class AutoplayPermissionManager;
-
 namespace dom {
 
 class HTMLMediaElement;
 class AudioContext;
+class Document;
 
 /**
  * AutoplayPolicy is used to manage autoplay logic for all kinds of media,
@@ -34,6 +30,9 @@ class AudioContext;
  */
 class AutoplayPolicy {
  public:
+  // Returns a DocumentAutoplayPolicy for given document.
+  static DocumentAutoplayPolicy IsAllowedToPlay(const Document& aDocument);
+
   // Returns whether a given media element is allowed to play.
   static bool IsAllowedToPlay(const HTMLMediaElement& aElement);
 
@@ -48,10 +47,13 @@ class AutoplayPolicy {
   static bool WouldBeAllowedToPlayIfAutoplayDisabled(
       const HTMLMediaElement& aElement);
 
-  // Returns the AutoplayPermissionManager that a given document must request on
-  // for autoplay permission.
-  static already_AddRefed<AutoplayPermissionManager> RequestFor(
-      const nsIDocument& aDocument);
+  // Returns true if a given AudioContext would be allowed to play
+  // if block autoplay was enabled. If this returns false, it means we would
+  // either block or ask for permission.
+  // Note: this is for telemetry purposes, and doesn't check the prefs
+  // which enable/disable block autoplay. Do not use for blocking logic!
+  static bool WouldBeAllowedToPlayIfAutoplayDisabled(
+      const AudioContext& aContext);
 };
 
 }  // namespace dom

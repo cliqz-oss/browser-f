@@ -115,6 +115,10 @@ class QuotaManager final : public BackgroundThreadObject {
   // Returns true if we've begun the shutdown process.
   static bool IsShuttingDown();
 
+  static bool IsOSMetadata(const nsAString& aFileName);
+
+  static bool IsDotFile(const nsAString& aFileName);
+
   bool IsOriginInitialized(const nsACString& aOrigin) const {
     AssertIsOnIOThread();
 
@@ -185,7 +189,7 @@ class QuotaManager final : public BackgroundThreadObject {
   nsresult GetDirectoryMetadata2WithRestore(
       nsIFile* aDirectory, bool aPersistent, int64_t* aTimestamp,
       bool* aPersisted, nsACString& aSuffix, nsACString& aGroup,
-      nsACString& aOrigin);
+      nsACString& aOrigin, const bool aTelemetry = false);
 
   nsresult GetDirectoryMetadata2(nsIFile* aDirectory, int64_t* aTimestamp,
                                  bool* aPersisted);

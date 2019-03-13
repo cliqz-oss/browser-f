@@ -20,18 +20,18 @@
 #include "mozilla/layers/TextureClientSharedSurface.h"
 
 #ifdef XP_WIN
-#include "SharedSurfaceANGLE.h"         // for SurfaceFactory_ANGLEShareHandle
-#include "SharedSurfaceD3D11Interop.h"  // for SurfaceFactory_D3D11Interop
-#include "mozilla/gfx/DeviceManagerDx.h"
+#  include "SharedSurfaceANGLE.h"         // for SurfaceFactory_ANGLEShareHandle
+#  include "SharedSurfaceD3D11Interop.h"  // for SurfaceFactory_D3D11Interop
+#  include "mozilla/gfx/DeviceManagerDx.h"
 #endif
 
 #ifdef XP_MACOSX
-#include "SharedSurfaceIO.h"
+#  include "SharedSurfaceIO.h"
 #endif
 
 #ifdef MOZ_X11
-#include "GLXLibrary.h"
-#include "SharedSurfaceGLX.h"
+#  include "GLXLibrary.h"
+#  include "SharedSurfaceGLX.h"
 #endif
 
 namespace mozilla {
@@ -102,6 +102,11 @@ UniquePtr<GLScreenBuffer> GLScreenBuffer::Create(GLContext* gl,
 #endif
   } else if (useD3D) {
 #ifdef XP_WIN
+    // Ensure devices initialization. SharedSurfaceANGLE and
+    // SharedSurfaceD3D11Interop use them. The devices are lazily initialized
+    // with WebRender to reduce memory usage.
+    gfxPlatform::GetPlatform()->EnsureDevicesInitialized();
+
     // Enable surface sharing only if ANGLE and compositing devices
     // are both WARP or both not WARP
     gfx::DeviceManagerDx* dm = gfx::DeviceManagerDx::Get();

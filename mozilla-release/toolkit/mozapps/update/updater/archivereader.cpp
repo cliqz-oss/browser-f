@@ -9,13 +9,13 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #ifdef XP_WIN
-#include <windows.h>
+#  include <windows.h>
 #endif
 #include "archivereader.h"
-#include "errors.h"
+#include "updatererrors.h"
 #ifdef XP_WIN
-#include "nsAlgorithm.h"  // Needed by nsVersionComparator.cpp
-#include "updatehelper.h"
+#  include "nsAlgorithm.h"  // Needed by nsVersionComparator.cpp
+#  include "updatehelper.h"
 #endif
 #define XZ_USE_CRC64
 #include "xz.h"
@@ -23,15 +23,15 @@
 // These are generated at compile time based on the DER file for the channel
 // being used
 #ifdef MOZ_VERIFY_MAR_SIGNATURE
-#ifdef TEST_UPDATER
-#include "../xpcshellCert.h"
-#elif DEP_UPDATER
-#include "../dep1Cert.h"
-#include "../dep2Cert.h"
-#else
-#include "primaryCert.h"
-#include "secondaryCert.h"
-#endif
+#  ifdef TEST_UPDATER
+#    include "../xpcshellCert.h"
+#  elif DEP_UPDATER
+#    include "../dep1Cert.h"
+#    include "../dep2Cert.h"
+#  else
+#    include "primaryCert.h"
+#    include "secondaryCert.h"
+#  endif
 #endif
 
 #define UPDATER_NO_STRING_GLUE_STL
@@ -39,9 +39,9 @@
 #undef UPDATER_NO_STRING_GLUE_STL
 
 #if defined(XP_UNIX)
-#include <sys/types.h>
+#  include <sys/types.h>
 #elif defined(XP_WIN)
-#include <io.h>
+#  include <io.h>
 #endif
 
 /**
@@ -84,19 +84,19 @@ int ArchiveReader::VerifySignature() {
 #ifndef MOZ_VERIFY_MAR_SIGNATURE
   return OK;
 #else
-#ifdef TEST_UPDATER
+#  ifdef TEST_UPDATER
   int rv = VerifyLoadedCert(mArchive, xpcshellCertData);
-#elif DEP_UPDATER
+#  elif DEP_UPDATER
   int rv = VerifyLoadedCert(mArchive, dep1CertData);
   if (rv != OK) {
     rv = VerifyLoadedCert(mArchive, dep2CertData);
   }
-#else
+#  else
   int rv = VerifyLoadedCert(mArchive, primaryCertData);
   if (rv != OK) {
     rv = VerifyLoadedCert(mArchive, secondaryCertData);
   }
-#endif
+#  endif
   return rv;
 #endif
 }
@@ -177,7 +177,9 @@ int ArchiveReader::VerifyProductInformation(const char *MARChannelID,
 }
 
 int ArchiveReader::Open(const NS_tchar *path) {
-  if (mArchive) Close();
+  if (mArchive) {
+    Close();
+  }
 
   if (!mInBuf) {
     mInBuf = (uint8_t *)malloc(mInBufSize);
@@ -185,7 +187,9 @@ int ArchiveReader::Open(const NS_tchar *path) {
       // Try again with a smaller buffer.
       mInBufSize = 1024;
       mInBuf = (uint8_t *)malloc(mInBufSize);
-      if (!mInBuf) return ARCHIVE_READER_MEM_ERROR;
+      if (!mInBuf) {
+        return ARCHIVE_READER_MEM_ERROR;
+      }
     }
   }
 
@@ -195,7 +199,9 @@ int ArchiveReader::Open(const NS_tchar *path) {
       // Try again with a smaller buffer.
       mOutBufSize = 1024;
       mOutBuf = (uint8_t *)malloc(mOutBufSize);
-      if (!mOutBuf) return ARCHIVE_READER_MEM_ERROR;
+      if (!mOutBuf) {
+        return ARCHIVE_READER_MEM_ERROR;
+      }
     }
   }
 
@@ -204,7 +210,9 @@ int ArchiveReader::Open(const NS_tchar *path) {
 #else
   mArchive = mar_open(path);
 #endif
-  if (!mArchive) return READ_ERROR;
+  if (!mArchive) {
+    return READ_ERROR;
+  }
 
   xz_crc32_init();
   xz_crc64_init();
@@ -231,17 +239,23 @@ void ArchiveReader::Close() {
 
 int ArchiveReader::ExtractFile(const char *name, const NS_tchar *dest) {
   const MarItem *item = mar_find_item(mArchive, name);
-  if (!item) return READ_ERROR;
+  if (!item) {
+    return READ_ERROR;
+  }
 
 #ifdef XP_WIN
   FILE *fp = _wfopen(dest, L"wb+");
 #else
   int fd = creat(dest, item->flags);
-  if (fd == -1) return WRITE_ERROR;
+  if (fd == -1) {
+    return WRITE_ERROR;
+  }
 
   FILE *fp = fdopen(fd, "wb");
 #endif
-  if (!fp) return WRITE_ERROR;
+  if (!fp) {
+    return WRITE_ERROR;
+  }
 
   int rv = ExtractItemToStream(item, fp);
 
@@ -251,7 +265,9 @@ int ArchiveReader::ExtractFile(const char *name, const NS_tchar *dest) {
 
 int ArchiveReader::ExtractFileToStream(const char *name, FILE *fp) {
   const MarItem *item = mar_find_item(mArchive, name);
-  if (!item) return READ_ERROR;
+  if (!item) {
+    return READ_ERROR;
+  }
 
   return ExtractItemToStream(item, fp);
 }

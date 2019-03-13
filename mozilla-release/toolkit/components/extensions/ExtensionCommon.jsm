@@ -445,7 +445,19 @@ class BaseContext {
     return this.cloneScopePromise || this.cloneScope.Promise;
   }
 
+  get privateBrowsingAllowed() {
+    return this.extension.privateBrowsingAllowed;
+  }
+
+  canAccessWindow(window) {
+    return this.extension.canAccessWindow(window);
+  }
+
   setContentWindow(contentWindow) {
+    if (!this.canAccessWindow(contentWindow)) {
+      throw new Error("BaseContext attempted to load when extension is not allowed due to incognito settings.");
+    }
+
     this.innerWindowID = getInnerWindowID(contentWindow);
     this.messageManager = contentWindow.docShell.messageManager;
 
@@ -1309,7 +1321,7 @@ class SchemaAPIManager extends EventEmitter {
 
   initModuleData(moduleData) {
     if (!this._modulesJSONLoaded) {
-      let data = moduleData.deserialize({});
+      let data = moduleData.deserialize({}, true);
 
       this.modules = data.modules;
       this.modulePaths = data.modulePaths;
@@ -1497,7 +1509,7 @@ class SchemaAPIManager extends EventEmitter {
 
     this.initGlobal();
 
-    Services.scriptloader.loadSubScript(module.url, this.global, "UTF-8");
+    Services.scriptloader.loadSubScript(module.url, this.global);
 
     module.loaded = true;
 
@@ -1649,7 +1661,7 @@ class SchemaAPIManager extends EventEmitter {
     // in the sandbox's context instead of here.
     let scope = Cu.createObjectIn(this.global);
 
-    Services.scriptloader.loadSubScript(scriptUrl, scope, "UTF-8");
+    Services.scriptloader.loadSubScript(scriptUrl, scope);
 
     // Save the scope to avoid it being garbage collected.
     this._scriptScopes.push(scope);

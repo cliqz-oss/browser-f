@@ -602,12 +602,11 @@ void nsListControlFrame::ReflowAsDropdown(nsPresContext* aPresContext,
 ScrollStyles nsListControlFrame::GetScrollStyles() const {
   // We can't express this in the style system yet; when we can, this can go
   // away and GetScrollStyles can be devirtualized
-  int32_t style =
-      IsInDropDownMode() ? NS_STYLE_OVERFLOW_AUTO : NS_STYLE_OVERFLOW_SCROLL;
+  auto style = IsInDropDownMode() ? StyleOverflow::Auto : StyleOverflow::Scroll;
   if (GetWritingMode().IsVertical()) {
-    return ScrollStyles(style, NS_STYLE_OVERFLOW_HIDDEN);
+    return ScrollStyles(style, StyleOverflow::Hidden);
   } else {
-    return ScrollStyles(NS_STYLE_OVERFLOW_HIDDEN, style);
+    return ScrollStyles(StyleOverflow::Hidden, style);
   }
 }
 
@@ -1297,7 +1296,7 @@ void nsListControlFrame::FireOnInputAndOnChange() {
                                        CanBubble::eYes, Cancelable::eNo);
 }
 
-NS_IMETHODIMP
+NS_IMETHODIMP_(void)
 nsListControlFrame::OnSetSelectedIndex(int32_t aOldIndex, int32_t aNewIndex) {
   if (mComboboxFrame) {
     // UpdateRecentIndex with NS_SKIP_NOTIFY_INDEX, so that we won't fire an
@@ -1308,7 +1307,7 @@ nsListControlFrame::OnSetSelectedIndex(int32_t aOldIndex, int32_t aNewIndex) {
   AutoWeakFrame weakFrame(this);
   ScrollToIndex(aNewIndex);
   if (!weakFrame.IsAlive()) {
-    return NS_OK;
+    return;
   }
   mStartSelectionIndex = aNewIndex;
   mEndSelectionIndex = aNewIndex;
@@ -1317,8 +1316,6 @@ nsListControlFrame::OnSetSelectedIndex(int32_t aOldIndex, int32_t aNewIndex) {
 #ifdef ACCESSIBILITY
   FireMenuItemActiveEvent();
 #endif
-
-  return NS_OK;
 }
 
 //----------------------------------------------------------------------

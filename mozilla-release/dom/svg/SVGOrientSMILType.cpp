@@ -5,10 +5,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "SVGOrientSMILType.h"
-#include "nsSMILValue.h"
-#include "nsSVGAngle.h"
-#include "nsDebug.h"
+
+#include "mozilla/SMILValue.h"
 #include "mozilla/dom/SVGMarkerElement.h"
+#include "nsDebug.h"
+#include "SVGAngle.h"
 #include <math.h>
 
 namespace mozilla {
@@ -18,7 +19,7 @@ using namespace dom::SVGMarkerElement_Binding;
 
 /*static*/ SVGOrientSMILType SVGOrientSMILType::sSingleton;
 
-void SVGOrientSMILType::Init(nsSMILValue& aValue) const {
+void SVGOrientSMILType::Init(SMILValue& aValue) const {
   MOZ_ASSERT(aValue.IsNull(), "Unexpected value type");
 
   aValue.mU.mOrient.mAngle = 0.0f;
@@ -27,14 +28,14 @@ void SVGOrientSMILType::Init(nsSMILValue& aValue) const {
   aValue.mType = this;
 }
 
-void SVGOrientSMILType::Destroy(nsSMILValue& aValue) const {
+void SVGOrientSMILType::Destroy(SMILValue& aValue) const {
   MOZ_ASSERT(aValue.mType == this, "Unexpected SMIL value.");
   aValue.mU.mPtr = nullptr;
-  aValue.mType = nsSMILNullType::Singleton();
+  aValue.mType = SMILNullType::Singleton();
 }
 
-nsresult SVGOrientSMILType::Assign(nsSMILValue& aDest,
-                                   const nsSMILValue& aSrc) const {
+nsresult SVGOrientSMILType::Assign(SMILValue& aDest,
+                                   const SMILValue& aSrc) const {
   MOZ_ASSERT(aDest.mType == aSrc.mType, "Incompatible SMIL types.");
   MOZ_ASSERT(aDest.mType == this, "Unexpected SMIL value.");
 
@@ -44,8 +45,8 @@ nsresult SVGOrientSMILType::Assign(nsSMILValue& aDest,
   return NS_OK;
 }
 
-bool SVGOrientSMILType::IsEqual(const nsSMILValue& aLeft,
-                                const nsSMILValue& aRight) const {
+bool SVGOrientSMILType::IsEqual(const SMILValue& aLeft,
+                                const SMILValue& aRight) const {
   MOZ_ASSERT(aLeft.mType == aRight.mType, "Incompatible SMIL types");
   MOZ_ASSERT(aLeft.mType == this, "Unexpected type for SMIL value");
 
@@ -54,8 +55,7 @@ bool SVGOrientSMILType::IsEqual(const nsSMILValue& aLeft,
          aLeft.mU.mOrient.mOrientType == aRight.mU.mOrient.mOrientType;
 }
 
-nsresult SVGOrientSMILType::Add(nsSMILValue& aDest,
-                                const nsSMILValue& aValueToAdd,
+nsresult SVGOrientSMILType::Add(SMILValue& aDest, const SMILValue& aValueToAdd,
                                 uint32_t aCount) const {
   MOZ_ASSERT(aValueToAdd.mType == aDest.mType, "Trying to add invalid types");
   MOZ_ASSERT(aValueToAdd.mType == this, "Unexpected source type");
@@ -69,23 +69,23 @@ nsresult SVGOrientSMILType::Add(nsSMILValue& aDest,
   // We may be dealing with two different angle units, so we normalize to
   // degrees for the add:
   float currentAngle = aDest.mU.mOrient.mAngle *
-                       nsSVGAngle::GetDegreesPerUnit(aDest.mU.mOrient.mUnit);
-  float angleToAdd =
-      aValueToAdd.mU.mOrient.mAngle *
-      nsSVGAngle::GetDegreesPerUnit(aValueToAdd.mU.mOrient.mUnit) * aCount;
+                       SVGAngle::GetDegreesPerUnit(aDest.mU.mOrient.mUnit);
+  float angleToAdd = aValueToAdd.mU.mOrient.mAngle *
+                     SVGAngle::GetDegreesPerUnit(aValueToAdd.mU.mOrient.mUnit) *
+                     aCount;
 
   // And then we give the resulting animated value the same units as the value
   // that we're animating to/by (i.e. the same as aValueToAdd):
   aDest.mU.mOrient.mAngle =
       (currentAngle + angleToAdd) /
-      nsSVGAngle::GetDegreesPerUnit(aValueToAdd.mU.mOrient.mUnit);
+      SVGAngle::GetDegreesPerUnit(aValueToAdd.mU.mOrient.mUnit);
   aDest.mU.mOrient.mUnit = aValueToAdd.mU.mOrient.mUnit;
 
   return NS_OK;
 }
 
-nsresult SVGOrientSMILType::ComputeDistance(const nsSMILValue& aFrom,
-                                            const nsSMILValue& aTo,
+nsresult SVGOrientSMILType::ComputeDistance(const SMILValue& aFrom,
+                                            const SMILValue& aTo,
                                             double& aDistance) const {
   MOZ_ASSERT(aFrom.mType == aTo.mType, "Trying to compare different types");
   MOZ_ASSERT(aFrom.mType == this, "Unexpected source type");
@@ -98,19 +98,19 @@ nsresult SVGOrientSMILType::ComputeDistance(const nsSMILValue& aFrom,
 
   // Normalize both to degrees in case they're different angle units:
   double from = aFrom.mU.mOrient.mAngle *
-                nsSVGAngle::GetDegreesPerUnit(aFrom.mU.mOrient.mUnit);
-  double to = aTo.mU.mOrient.mAngle *
-              nsSVGAngle::GetDegreesPerUnit(aTo.mU.mOrient.mUnit);
+                SVGAngle::GetDegreesPerUnit(aFrom.mU.mOrient.mUnit);
+  double to =
+      aTo.mU.mOrient.mAngle * SVGAngle::GetDegreesPerUnit(aTo.mU.mOrient.mUnit);
 
   aDistance = fabs(to - from);
 
   return NS_OK;
 }
 
-nsresult SVGOrientSMILType::Interpolate(const nsSMILValue& aStartVal,
-                                        const nsSMILValue& aEndVal,
+nsresult SVGOrientSMILType::Interpolate(const SMILValue& aStartVal,
+                                        const SMILValue& aEndVal,
                                         double aUnitDistance,
-                                        nsSMILValue& aResult) const {
+                                        SMILValue& aResult) const {
   MOZ_ASSERT(aStartVal.mType == aEndVal.mType,
              "Trying to interpolate different types");
   MOZ_ASSERT(aStartVal.mType == this, "Unexpected types for interpolation.");
@@ -123,14 +123,14 @@ nsresult SVGOrientSMILType::Interpolate(const nsSMILValue& aStartVal,
   }
 
   float start = aStartVal.mU.mOrient.mAngle *
-                nsSVGAngle::GetDegreesPerUnit(aStartVal.mU.mOrient.mUnit);
+                SVGAngle::GetDegreesPerUnit(aStartVal.mU.mOrient.mUnit);
   float end = aEndVal.mU.mOrient.mAngle *
-              nsSVGAngle::GetDegreesPerUnit(aEndVal.mU.mOrient.mUnit);
+              SVGAngle::GetDegreesPerUnit(aEndVal.mU.mOrient.mUnit);
   float result = (start + (end - start) * aUnitDistance);
 
   // Again, we use the unit of the to/by value for the result:
   aResult.mU.mOrient.mAngle =
-      result / nsSVGAngle::GetDegreesPerUnit(aEndVal.mU.mOrient.mUnit);
+      result / SVGAngle::GetDegreesPerUnit(aEndVal.mU.mOrient.mUnit);
   aResult.mU.mOrient.mUnit = aEndVal.mU.mOrient.mUnit;
 
   return NS_OK;

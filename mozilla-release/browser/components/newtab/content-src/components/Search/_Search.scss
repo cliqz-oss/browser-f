@@ -1,11 +1,11 @@
-.search-wrapper {
-  $search-height: 48px;
-  $search-icon-size: 24px;
-  $search-icon-padding: 12px;
-  $search-icon-width: 2 * $search-icon-padding + $search-icon-size -2;
-  $search-button-width: 48px;
-  $glyph-forward: url('chrome://browser/skin/forward.svg');
+$search-height: 48px;
+$search-icon-size: 24px;
+$search-icon-padding: 12px;
+$search-icon-width: 2 * $search-icon-padding + $search-icon-size -2;
+$search-button-width: 48px;
+$glyph-forward: url('chrome://browser/skin/forward.svg');
 
+.search-wrapper {
   padding: 34px 0 64px;
 
   @media (max-height: 700px) {
@@ -137,6 +137,82 @@
   }
 }
 
+.search-handoff-button {
+  background: var(--newtab-textbox-background-color) var(--newtab-search-icon) $search-icon-padding center no-repeat;
+  background-size: $search-icon-size;
+  border: solid 1px var(--newtab-search-border-color);
+  border-radius: 3px;
+  box-shadow: $shadow-secondary, 0 0 0 1px $black-15;
+  cursor: text;
+  font-size: 15px;
+  padding: 0;
+  padding-inline-end: 48px;
+  padding-inline-start: 46px;
+  opacity: 1;
+  transition: opacity 500ms;
+  width: 100%;
+
+  &:dir(rtl) {
+    background-position-x: right $search-icon-padding;
+  }
+
+  &:hover {
+    box-shadow: $shadow-secondary, 0 0 0 1px $black-25;
+  }
+
+  .fake-focus & {
+    border: $input-border-active;
+    box-shadow: var(--newtab-textbox-focus-boxshadow);
+
+    .fake-caret {
+      display: block;
+    }
+  }
+
+  .search-hidden & {
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  .fake-editable:focus {
+    outline: none;
+    caret-color: transparent;
+  }
+
+  .fake-editable {
+    color: transparent;
+    height: 100%;
+    opacity: 0;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+  }
+
+  .fake-textbox {
+    opacity: 0.54;
+    text-align: start;
+  }
+
+  .fake-caret {
+    animation: caret-animation 1.3s steps(5, start) infinite;
+    background: var(--newtab-text-primary-color);
+    display: none;
+    inset-inline-start: 47px;
+    height: 17px;
+    position: absolute;
+    top: 16px;
+    width: 1px;
+
+    @keyframes caret-animation {
+      to {
+        visibility: hidden;
+      }
+    }
+  }
+}
+
 @media (min-height: 701px) {
   .fixed-search {
     main {
@@ -170,6 +246,19 @@
         &:dir(rtl) {
           background-position-x: right $search-icon-padding;
         }
+      }
+    }
+
+    .search-handoff-button {
+      background-position-x: $search-icon-padding;
+      background-size: $search-icon-size;
+
+      &:dir(rtl) {
+        background-position-x: right $search-icon-padding;
+      }
+
+      .fake-caret {
+        top: 10px;
       }
     }
   }

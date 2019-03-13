@@ -50,17 +50,6 @@ class PermissionDelegateTest : BaseSessionTest() {
         mainSession.loadTestPath(HELLO_HTML_PATH)
         mainSession.waitForPageStop()
 
-
-        mainSession.delegateDuringNextWait(object : Callbacks.PermissionDelegate {
-            @AssertCalled(count = 1)
-            override fun onAndroidPermissionsRequest(session: GeckoSession, permissions: Array<out String>, callback: GeckoSession.PermissionDelegate.Callback) {
-                assertThat("Permissions list should be correct",
-                           listOf(*permissions), hasItems(Manifest.permission.CAMERA,
-                                                          Manifest.permission.RECORD_AUDIO))
-                callback.grant()
-            }
-        })
-
         val devices = mainSession.waitForJS(
                 "window.navigator.mediaDevices.enumerateDevices()")
 
@@ -72,11 +61,15 @@ class PermissionDelegateTest : BaseSessionTest() {
 
         mainSession.delegateDuringNextWait(object : Callbacks.PermissionDelegate {
             @AssertCalled(count = 1)
-            override fun onMediaPermissionRequest(session: GeckoSession, uri: String, video: Array<out GeckoSession.PermissionDelegate.MediaSource>, audio: Array<out GeckoSession.PermissionDelegate.MediaSource>, callback: GeckoSession.PermissionDelegate.MediaCallback) {
+            override fun onMediaPermissionRequest(
+                    session: GeckoSession, uri: String,
+                    video: Array<out GeckoSession.PermissionDelegate.MediaSource>?,
+                    audio: Array<out GeckoSession.PermissionDelegate.MediaSource>?,
+                    callback: GeckoSession.PermissionDelegate.MediaCallback) {
                 assertThat("URI should match", uri, endsWith(HELLO_HTML_PATH))
                 assertThat("Video source should be valid", video, not(emptyArray()))
                 assertThat("Audio source should be valid", audio, not(emptyArray()))
-                callback.grant(video[0], audio[0])
+                callback.grant(video!![0], audio!![0])
             }
         })
 
@@ -100,7 +93,11 @@ class PermissionDelegateTest : BaseSessionTest() {
         // Now test rejecting the request.
         mainSession.delegateDuringNextWait(object : Callbacks.PermissionDelegate {
             @AssertCalled(count = 1)
-            override fun onMediaPermissionRequest(session: GeckoSession, uri: String, video: Array<out GeckoSession.PermissionDelegate.MediaSource>, audio: Array<out GeckoSession.PermissionDelegate.MediaSource>, callback: GeckoSession.PermissionDelegate.MediaCallback) {
+            override fun onMediaPermissionRequest(
+                    session: GeckoSession, uri: String,
+                    video: Array<out GeckoSession.PermissionDelegate.MediaSource>?,
+                    audio: Array<out GeckoSession.PermissionDelegate.MediaSource>?,
+                    callback: GeckoSession.PermissionDelegate.MediaCallback) {
                 callback.reject()
             }
         })
@@ -127,7 +124,9 @@ class PermissionDelegateTest : BaseSessionTest() {
         mainSession.delegateDuringNextWait(object : Callbacks.PermissionDelegate {
             // Ensure the content permission is asked first, before the Android permission.
             @AssertCalled(count = 1, order = [1])
-            override fun onContentPermissionRequest(session: GeckoSession, uri: String, type: Int, callback: GeckoSession.PermissionDelegate.Callback) {
+            override fun onContentPermissionRequest(
+                    session: GeckoSession, uri: String?, type: Int,
+                    callback: GeckoSession.PermissionDelegate.Callback) {
                 assertThat("URI should match", uri, endsWith(HELLO_HTML_PATH))
                 assertThat("Type should match", type,
                            equalTo(GeckoSession.PermissionDelegate.PERMISSION_GEOLOCATION))
@@ -135,9 +134,11 @@ class PermissionDelegateTest : BaseSessionTest() {
             }
 
             @AssertCalled(count = 1, order = [2])
-            override fun onAndroidPermissionsRequest(session: GeckoSession, permissions: Array<out String>, callback: GeckoSession.PermissionDelegate.Callback) {
+            override fun onAndroidPermissionsRequest(
+                    session: GeckoSession, permissions: Array<out String>?,
+                    callback: GeckoSession.PermissionDelegate.Callback) {
                 assertThat("Permissions list should be correct",
-                           listOf(*permissions), hasItems(Manifest.permission.ACCESS_FINE_LOCATION))
+                           listOf(*permissions!!), hasItems(Manifest.permission.ACCESS_FINE_LOCATION))
                 callback.grant()
             }
         })
@@ -158,12 +159,16 @@ class PermissionDelegateTest : BaseSessionTest() {
 
         mainSession.delegateDuringNextWait(object : Callbacks.PermissionDelegate {
             @AssertCalled(count = 1)
-            override fun onContentPermissionRequest(session: GeckoSession, uri: String, type: Int, callback: GeckoSession.PermissionDelegate.Callback) {
+            override fun onContentPermissionRequest(
+                    session: GeckoSession, uri: String?, type: Int,
+                    callback: GeckoSession.PermissionDelegate.Callback) {
                 callback.reject()
             }
 
             @AssertCalled(count = 0)
-            override fun onAndroidPermissionsRequest(session: GeckoSession, permissions: Array<out String>, callback: GeckoSession.PermissionDelegate.Callback) {
+            override fun onAndroidPermissionsRequest(
+                    session: GeckoSession, permissions: Array<out String>?,
+                    callback: GeckoSession.PermissionDelegate.Callback) {
             }
         })
 
@@ -181,7 +186,9 @@ class PermissionDelegateTest : BaseSessionTest() {
 
         mainSession.delegateDuringNextWait(object : Callbacks.PermissionDelegate {
             @AssertCalled(count = 1)
-            override fun onContentPermissionRequest(session: GeckoSession, uri: String, type: Int, callback: GeckoSession.PermissionDelegate.Callback) {
+            override fun onContentPermissionRequest(
+                    session: GeckoSession, uri: String?, type: Int,
+                    callback: GeckoSession.PermissionDelegate.Callback) {
                 assertThat("URI should match", uri, endsWith(HELLO_HTML_PATH))
                 assertThat("Type should match", type,
                            equalTo(GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION))
@@ -202,7 +209,9 @@ class PermissionDelegateTest : BaseSessionTest() {
 
         mainSession.delegateDuringNextWait(object : Callbacks.PermissionDelegate {
             @AssertCalled(count = 1)
-            override fun onContentPermissionRequest(session: GeckoSession, uri: String, type: Int, callback: GeckoSession.PermissionDelegate.Callback) {
+            override fun onContentPermissionRequest(
+                    session: GeckoSession, uri: String?, type: Int,
+                    callback: GeckoSession.PermissionDelegate.Callback) {
                 callback.reject()
             }
         })

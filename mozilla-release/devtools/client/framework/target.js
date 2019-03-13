@@ -86,12 +86,12 @@ const TargetFactory = exports.TargetFactory = {
     // Connect the local client to the local server
     await client.connect();
 
-    // Fetch the FrameTargetActor form
-    const response = await client.getTab({ tab });
+    // Fetch the FrameTargetActor's Front
+    const front = await client.mainRoot.getTab({ tab });
 
     return new Target({
       client,
-      form: response.tab,
+      activeTab: front,
       // A local Target will never perform chrome debugging.
       chrome: false,
       tab,
@@ -103,7 +103,7 @@ const TargetFactory = exports.TargetFactory = {
    * @param {Object} options
    *        The options object has the following properties:
    *        {
-   *          form: the remote protocol form of a tab,
+   *          activeTab: front for this tab target,
    *          client: a DebuggerClient instance
    *                  (caller owns this and is responsible for closing),
    *          chrome: true if the remote target is the whole process
@@ -188,11 +188,8 @@ const TargetFactory = exports.TargetFactory = {
  *
  * For now, only workers are having a distinct Target class called WorkerTarget.
  *
- * @param {Object} form
- *                  The TargetActor's form to be connected to. Null if front is passed.
  * @param {Front} activeTab
- *                  If we already have a front for this target, pass it here. Null if
- *                  form is passed.
+ *                  If we already have a front for this target, pass it here.
  * @param {DebuggerClient} client
  *                  The DebuggerClient instance to be used to debug this target.
  * @param {Boolean} chrome
@@ -202,59 +199,61 @@ const TargetFactory = exports.TargetFactory = {
  *                  If the target is a local Firefox tab, a reference to the firefox
  *                  frontend tab object.
  */
-function Target({ form, client, chrome, activeTab = null, tab = null }) {
-  EventEmitter.decorate(this);
-  this.destroy = this.destroy.bind(this);
-  this._onTabNavigated = this._onTabNavigated.bind(this);
-  this.activeConsole = null;
-  this.activeTab = activeTab;
+class Target extends EventEmitter {
+  constructor({ client, chrome, activeTab, tab = null }) {
+    if (!activeTab) {
+      throw new Error("Cannot instanciate target without a non-null activeTab");
+    }
 
-  this._form = form;
-  this._url = this.form.url;
-  this._title = this.form.title;
+    super();
 
-  this._client = client;
-  this._chrome = chrome;
+    this.destroy = this.destroy.bind(this);
+    this._onTabNavigated = this._onTabNavigated.bind(this);
+    this.activeConsole = null;
+    this.activeTab = activeTab;
 
-  // When debugging local tabs, we also have a reference to the Firefox tab
-  // This is used to:
-  // * distinguish local tabs from remote (see target.isLocalTab)
-  // * being able to hookup into Firefox UI (see Hosts)
-  if (tab) {
-    this._tab = tab;
-    this._setupListeners();
+    this._url = this.form.url;
+    this._title = this.form.title;
+
+    this._client = client;
+    this._chrome = chrome;
+
+    // When debugging local tabs, we also have a reference to the Firefox tab
+    // This is used to:
+    // * distinguish local tabs from remote (see target.isLocalTab)
+    // * being able to hookup into Firefox UI (see Hosts)
+    if (tab) {
+      this._tab = tab;
+      this._setupListeners();
+    }
+
+    // isBrowsingContext is true for all target connected to an actor that inherits from
+    // BrowsingContextTargetActor. It happens to be the case for almost all targets but:
+    // * legacy add-ons (old bootstrapped add-ons)
+    // * content process (browser content toolbox)
+    // * xpcshell debugging (it uses ParentProcessTargetActor, which inherits from
+    //                       BrowsingContextActor, but doesn't have any valid browsing
+    //                       context to attach to.)
+    // Starting with FF64, BrowsingContextTargetActor exposes a traits to help identify
+    // the target actors inheriting from it. It also help identify the xpcshell debugging
+    // target actor that doesn't have any valid browsing context.
+    // (Once FF63 is no longer supported, we can remove the `else` branch and only look
+    // for the traits)
+    if (this.form.traits && ("isBrowsingContext" in this.form.traits)) {
+      this._isBrowsingContext = this.form.traits.isBrowsingContext;
+    } else {
+      this._isBrowsingContext = !this.isLegacyAddon && !this.isContentProcess && !this.isWorkerTarget;
+    }
+
+    // Cache of already created targed-scoped fronts
+    // [typeName:string => Front instance]
+    this.fronts = new Map();
+    // Temporary fix for bug #1493131 - inspector has a different life cycle
+    // than most other fronts because it is closely related to the toolbox.
+    // TODO: remove once inspector is separated from the toolbox
+    this._inspector = null;
   }
 
-  // isBrowsingContext is true for all target connected to an actor that inherits from
-  // BrowsingContextTargetActor. It happens to be the case for almost all targets but:
-  // * legacy add-ons (old bootstrapped add-ons)
-  // * content process (browser content toolbox)
-  // * xpcshell debugging (it uses ParentProcessTargetActor, which inherits from
-  //                       BrowsingContextActor, but doesn't have any valid browsing
-  //                       context to attach to.)
-  // Starting with FF64, BrowsingContextTargetActor exposes a traits to help identify
-  // the target actors inheriting from it. It also help identify the xpcshell debugging
-  // target actor that doesn't have any valid browsing context.
-  // (Once FF63 is no longer supported, we can remove the `else` branch and only look
-  // for the traits)
-  if (this.form.traits && ("isBrowsingContext" in this.form.traits)) {
-    this._isBrowsingContext = this.form.traits.isBrowsingContext;
-  } else {
-    this._isBrowsingContext = !this.isLegacyAddon && !this.isContentProcess && !this.isWorkerTarget;
-  }
-
-  // Cache of already created targed-scoped fronts
-  // [typeName:string => Front instance]
-  this.fronts = new Map();
-  // Temporary fix for bug #1493131 - inspector has a different life cycle
-  // than most other fronts because it is closely related to the toolbox.
-  // TODO: remove once inspector is separated from the toolbox
-  this._inspector = null;
-}
-
-exports.Target = Target;
-
-Target.prototype = {
   /**
    * Returns a promise for the protocol description from the root actor. Used
    * internally with `target.actorHasMethod`. Takes advantage of caching if
@@ -291,7 +290,7 @@ Target.prototype = {
    *  "events": {}
    * }
    */
-  getActorDescription: async function(actorName) {
+  async getActorDescription(actorName) {
     if (this._protocolDescription &&
         this._protocolDescription.types[actorName]) {
       return this._protocolDescription.types[actorName];
@@ -299,7 +298,7 @@ Target.prototype = {
     const description = await this.client.mainRoot.protocolDescription();
     this._protocolDescription = description;
     return description.types[actorName];
-  },
+  }
 
   /**
    * Returns a boolean indicating whether or not the specific actor
@@ -308,12 +307,12 @@ Target.prototype = {
    * @param {String} actorName
    * @return {Boolean}
    */
-  hasActor: function(actorName) {
+  hasActor(actorName) {
     if (this.form) {
       return !!this.form[actorName + "Actor"];
     }
     return false;
-  },
+  }
 
   /**
    * Queries the protocol description to see if an actor has
@@ -326,14 +325,14 @@ Target.prototype = {
    * @param {String} methodName
    * @return {Promise}
    */
-  actorHasMethod: function(actorName, methodName) {
+  actorHasMethod(actorName, methodName) {
     return this.getActorDescription(actorName).then(desc => {
       if (desc && desc.methods) {
         return !!desc.methods.find(method => method.name === methodName);
       }
       return false;
     });
-  },
+  }
 
   /**
    * Returns a trait from the root actor.
@@ -341,7 +340,7 @@ Target.prototype = {
    * @param {String} traitName
    * @return {Mixed}
    */
-  getTrait: function(traitName) {
+  getTrait(traitName) {
     // If the targeted actor exposes traits and has a defined value for this
     // traits, override the root actor traits
     if (this.form.traits && traitName in this.form.traits) {
@@ -349,22 +348,20 @@ Target.prototype = {
     }
 
     return this.client.traits[traitName];
-  },
+  }
 
   get tab() {
     return this._tab;
-  },
+  }
 
   get form() {
-    // Target constructor either receive a form or a Front.
-    // If a front is passed, fetch the form from it.
-    return this._form || this.activeTab.targetForm;
-  },
+    return this.activeTab.targetForm;
+  }
 
   // Get a promise of the RootActor's form
   get root() {
     return this.client.mainRoot.rootForm;
-  },
+  }
 
   // Temporary fix for bug #1493131 - inspector has a different life cycle
   // than most other fronts because it is closely related to the toolbox.
@@ -377,7 +374,7 @@ Target.prototype = {
     this._inspector = await getFront(this.client, "inspector", this.form);
     this.emit("inspector", this._inspector);
     return this._inspector;
-  },
+  }
 
   // Run callback on every front of this type that currently exists, and on every
   // instantiation of front type in the future.
@@ -387,25 +384,38 @@ Target.prototype = {
       return callback(front);
     }
     return this.on(typeName, callback);
-  },
+  }
 
   // Get a Front for a target-scoped actor.
   // i.e. an actor served by RootActor.listTabs or RootActorActor.getTab requests
-  getFront(typeName) {
+  async getFront(typeName) {
     let front = this.fronts.get(typeName);
     // the front might have been destroyed and no longer have an actor ID
-    if (front && front.actorID) {
+    if (front && front.actorID || front && typeof front.then === "function") {
       return front;
     }
     front = getFront(this.client, typeName, this.form);
+    this.fronts.set(typeName, front);
+    // replace the placeholder with the instance of the front once it has loaded
+    front = await front;
     this.emit(typeName, front);
     this.fronts.set(typeName, front);
     return front;
-  },
+  }
+
+  getCachedFront(typeName) {
+    // do not wait for async fronts;
+    const front = this.fronts.get(typeName);
+    // ensure that the front is a front, and not async front
+    if (front && front.actorID) {
+      return front;
+    }
+    return null;
+  }
 
   get client() {
     return this._client;
-  },
+  }
 
   // Tells us if we are debugging content document
   // or if we are debugging chrome stuff.
@@ -413,45 +423,45 @@ Target.prototype = {
   // a chrome or a content document.
   get chrome() {
     return this._chrome;
-  },
+  }
 
   // Tells us if the related actor implements BrowsingContextTargetActor
   // interface and requires to call `attach` request before being used and
   // `detach` during cleanup.
   get isBrowsingContext() {
     return this._isBrowsingContext;
-  },
+  }
 
   get name() {
     if (this.isAddon) {
       return this.form.name;
     }
     return this._title;
-  },
+  }
 
   get url() {
     return this._url;
-  },
+  }
 
   get isAddon() {
     return this.isLegacyAddon || this.isWebExtension;
-  },
+  }
 
   get isWorkerTarget() {
     return this.activeTab && this.activeTab.typeName === "workerTarget";
-  },
+  }
 
   get isLegacyAddon() {
     return !!(this.form && this.form.actor &&
       this.form.actor.match(/conn\d+\.addon(Target)?\d+/));
-  },
+  }
 
   get isWebExtension() {
     return !!(this.form && this.form.actor && (
       this.form.actor.match(/conn\d+\.webExtension(Target)?\d+/) ||
       this.form.actor.match(/child\d+\/webExtension(Target)?\d+/)
     ));
-  },
+  }
 
   get isContentProcess() {
     // browser content toolbox's form will be of the form:
@@ -460,25 +470,25 @@ Target.prototype = {
     //   server1.conn0.contentProcessTarget7
     return !!(this.form && this.form.actor &&
       this.form.actor.match(/conn\d+\.(content-process\d+\/)?contentProcessTarget\d+/));
-  },
+  }
 
   get isLocalTab() {
     return !!this._tab;
-  },
+  }
 
   get isMultiProcess() {
     return !this.window;
-  },
+  }
 
   get canRewind() {
     return this.activeTab && this.activeTab.traits.canRewind;
-  },
+  }
 
   isReplayEnabled() {
     return Services.prefs.getBoolPref("devtools.recordreplay.mvp.enabled")
       && this.canRewind
       && this.isLocalTab;
-  },
+  }
 
   getExtensionPathName(url) {
     // Return the url if the target is not a webextension.
@@ -497,7 +507,7 @@ Target.prototype = {
       // Return the url if unable to resolve the pathname.
       return url;
     }
-  },
+  }
 
   /**
    * For local tabs, returns the tab's contentPrincipal, which can be used as a
@@ -510,7 +520,7 @@ Target.prototype = {
       return null;
     }
     return this.tab.linkedBrowser.contentPrincipal;
-  },
+  }
 
   /**
    * Attach the target and its console actor.
@@ -520,9 +530,6 @@ Target.prototype = {
    * See DebuggerClient.attachTarget and DebuggerClient.attachConsole for more info.
    * It also starts listenings to events the target actor will start emitting
    * after being attached, like `tabDetached` and `frameUpdate`
-   *
-   * For webextension, it also preliminary converts addonTargetActor to a
-   * WebExtensionTargetActor.
    */
   attach() {
     if (this._attach) {
@@ -561,18 +568,6 @@ Target.prototype = {
     };
 
     this._attach = (async () => {
-      if (this.form.isWebExtension &&
-          this.client.mainRoot.traits.webExtensionAddonConnect) {
-        // The addonTargetActor form is related to a WebExtensionActor instance,
-        // which isn't a target actor on its own, it is an actor living in the parent
-        // process with access to the addon metadata, it can control the addon (e.g.
-        // reloading it) and listen to the AddonManager events related to the lifecycle of
-        // the addon (e.g. when the addon is disabled or uninstalled).
-        // To retrieve the target actor instance, we call its "connect" method, (which
-        // fetches the target actor form from a WebExtensionTargetActor instance).
-        this.activeTab = await this.activeTab.connect();
-      }
-
       // AddonTargetActor and ContentProcessTargetActor don't inherit from
       // BrowsingContextTargetActor (i.e. this.isBrowsingContext=false) and don't need
       // to be attached via DebuggerClient.attachTarget.
@@ -603,32 +598,32 @@ Target.prototype = {
     })();
 
     return this._attach;
-  },
+  }
 
   /**
    * Listen to the different events.
    */
-  _setupListeners: function() {
+  _setupListeners() {
     this.tab.addEventListener("TabClose", this);
     this.tab.ownerDocument.defaultView.addEventListener("unload", this);
     this.tab.addEventListener("TabRemotenessChange", this);
-  },
+  }
 
   /**
    * Teardown event listeners.
    */
-  _teardownListeners: function() {
+  _teardownListeners() {
     if (this._tab.ownerDocument.defaultView) {
       this._tab.ownerDocument.defaultView.removeEventListener("unload", this);
     }
     this._tab.removeEventListener("TabClose", this);
     this._tab.removeEventListener("TabRemotenessChange", this);
-  },
+  }
 
   /**
    * Event listener for tabNavigated packet sent by activeTab's front.
    */
-  _onTabNavigated: function(packet) {
+  _onTabNavigated(packet) {
     const event = Object.create(null);
     event.url = packet.url;
     event.title = packet.title;
@@ -647,20 +642,16 @@ Target.prototype = {
     // Send any stored event payload (DOMWindow or nsIRequest) for backwards
     // compatibility with non-remotable tools.
     if (packet.state == "start") {
-      event._navPayload = this._navRequest;
       this.emit("will-navigate", event);
-      this._navRequest = null;
     } else {
-      event._navPayload = this._navWindow;
       this.emit("navigate", event);
-      this._navWindow = null;
     }
-  },
+  }
 
   /**
    * Setup listeners for remote debugging, updating existing ones as necessary.
    */
-  _setupRemoteListeners: function() {
+  _setupRemoteListeners() {
     this.client.addListener("closed", this.destroy);
 
     // For now, only browsing-context inherited actors are using a front,
@@ -689,12 +680,12 @@ Target.prototype = {
       this.client.addListener("newSource", this._onSourceUpdated);
       this.client.addListener("updatedSource", this._onSourceUpdated);
     }
-  },
+  }
 
   /**
    * Teardown listeners for remote debugging.
    */
-  _teardownRemoteListeners: function() {
+  _teardownRemoteListeners() {
     // Remove listeners set in _setupRemoteListeners
     this.client.removeListener("closed", this.destroy);
     if (this.activeTab) {
@@ -717,12 +708,12 @@ Target.prototype = {
     if (this.activeConsole && this._onInspectObject) {
       this.activeConsole.off("inspectObject", this._onInspectObject);
     }
-  },
+  }
 
   /**
    * Handle tabs events.
    */
-  handleEvent: function(event) {
+  handleEvent(event) {
     switch (event.type) {
       case "TabClose":
       case "unload":
@@ -732,14 +723,14 @@ Target.prototype = {
         this.onRemotenessChange();
         break;
     }
-  },
+  }
 
   /**
    * Automatically respawn the toolbox when the tab changes between being
    * loaded within the parent process and loaded from a content process.
    * Process change can go in both ways.
    */
-  onRemotenessChange: function() {
+  onRemotenessChange() {
     // Responsive design do a crazy dance around tabs and triggers
     // remotenesschange events. But we should ignore them as at the end
     // the content doesn't change its remoteness.
@@ -760,12 +751,12 @@ Target.prototype = {
       gDevTools.showToolbox(newTarget);
     };
     gDevTools.on("toolbox-destroyed", onToolboxDestroyed);
-  },
+  }
 
   /**
    * Target is not alive anymore.
    */
-  destroy: function() {
+  destroy() {
     // If several things call destroy then we give them all the same
     // destruction promise so we're sure to destroy only once
     if (this._destroyer) {
@@ -807,12 +798,12 @@ Target.prototype = {
     })();
 
     return this._destroyer;
-  },
+  }
 
   /**
    * Clean up references to what this target points to.
    */
-  _cleanup: function() {
+  _cleanup() {
     if (this._tab) {
       targets.delete(this._tab);
     } else {
@@ -823,16 +814,15 @@ Target.prototype = {
     this.activeConsole = null;
     this._client = null;
     this._tab = null;
-    this._form = null;
     this._attach = null;
     this._title = null;
     this._url = null;
-  },
+  }
 
-  toString: function() {
+  toString() {
     const id = this._tab ? this._tab : (this.form && this.form.actor);
     return `Target:${id}`;
-  },
+  }
 
   /**
    * Log an error of some kind to the tab's console.
@@ -841,13 +831,15 @@ Target.prototype = {
    *                 The text to log.
    * @param {String} category
    *                 The category of the message.  @see nsIScriptError.
+   * @returns {Promise}
    */
-  logErrorInPage: function(text, category) {
+  logErrorInPage(text, category) {
     if (this.activeTab && this.activeTab.traits.logInPage) {
       const errorFlag = 0;
-      this.activeTab.logInPage({ text, category, flags: errorFlag });
+      return this.activeTab.logInPage({ text, category, flags: errorFlag });
     }
-  },
+    return Promise.resolve();
+  }
 
   /**
    * Log a warning of some kind to the tab's console.
@@ -856,11 +848,14 @@ Target.prototype = {
    *                 The text to log.
    * @param {String} category
    *                 The category of the message.  @see nsIScriptError.
+   * @returns {Promise}
    */
-  logWarningInPage: function(text, category) {
+  logWarningInPage(text, category) {
     if (this.activeTab && this.activeTab.traits.logInPage) {
       const warningFlag = 1;
-      this.activeTab.logInPage({ text, category, flags: warningFlag });
+      return this.activeTab.logInPage({ text, category, flags: warningFlag });
     }
-  },
-};
+    return Promise.resolve();
+  }
+}
+exports.Target = Target;

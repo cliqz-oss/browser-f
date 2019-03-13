@@ -32,7 +32,7 @@ let whitelist = [
    errorMessage: /Expected media feature name but found \u2018-moz.*/i,
    isFromDevTools: false},
 
-  {sourceName: /\b(contenteditable|EditorOverride|svg|forms|html|mathml|ua)\.css$/i,
+  {sourceName: /\b(contenteditable|EditorOverride|svg|forms|html|mathml|ua|pluginproblem)\.css$/i,
    errorMessage: /Unknown pseudo-class.*-moz-/i,
    isFromDevTools: false},
   {sourceName: /\b(html|mathml|ua)\.css$/i,
@@ -92,6 +92,14 @@ if (!Services.prefs.getBoolPref("layout.css.scrollbar-width.enabled")) {
     sourceName: /(?:res|gre-resources)\/forms\.css$/i,
     errorMessage: /Unknown property .*\bscrollbar-width\b/i,
     isFromDevTools: false,
+  });
+}
+
+if (!Services.prefs.getBoolPref("layout.css.scroll-anchoring.enabled")) {
+  whitelist.push({
+    sourceName: /webconsole\.css$/i,
+    errorMessage: /Unknown property .*\boverflow-anchor\b/i,
+    isFromDevTools: true,
   });
 }
 

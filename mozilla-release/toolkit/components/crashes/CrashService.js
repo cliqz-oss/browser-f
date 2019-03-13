@@ -179,9 +179,18 @@ CrashService.prototype = Object.freeze({
     case Ci.nsICrashService.PROCESS_TYPE_GPU:
       processType = Services.crashmanager.PROCESS_TYPE_GPU;
       break;
+    case Ci.nsICrashService.PROCESS_TYPE_VR:
+      processType = Services.crashmanager.PROCESS_TYPE_VR;
+      break;
     case Ci.nsICrashService.PROCESS_TYPE_RDD:
       processType = Services.crashmanager.PROCESS_TYPE_RDD;
       break;
+    case Ci.nsICrashService.PROCESS_TYPE_SOCKET:
+      processType = Services.crashmanager.PROCESS_TYPE_SOCKET;
+      break;
+    case Ci.nsICrashService.PROCESS_TYPE_IPDLUNITTEST:
+      // We'll never send crash reports for this type of process.
+      return;
     default:
       throw new Error("Unrecognized PROCESS_TYPE: " + processType);
     }

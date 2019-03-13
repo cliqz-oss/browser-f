@@ -108,7 +108,7 @@ JSObject* GCRuntime::tryNewNurseryObject(JSContext* cx, size_t thingSize,
   }
 
   if (allowGC && !cx->suppressGC) {
-    cx->runtime()->gc.minorGC(JS::gcreason::OUT_OF_NURSERY);
+    cx->runtime()->gc.minorGC(JS::GCReason::OUT_OF_NURSERY);
 
     // Exceeding gcMaxBytes while tenuring can disable the Nursery.
     if (cx->nursery().isEnabled()) {
@@ -164,7 +164,7 @@ JSString* GCRuntime::tryNewNurseryString(JSContext* cx, size_t thingSize,
   }
 
   if (allowGC && !cx->suppressGC) {
-    cx->runtime()->gc.minorGC(JS::gcreason::OUT_OF_NURSERY);
+    cx->runtime()->gc.minorGC(JS::GCReason::OUT_OF_NURSERY);
 
     // Exceeding gcMaxBytes while tenuring can disable the Nursery, and
     // other heuristics can disable nursery strings for this zone.
@@ -276,7 +276,7 @@ template <typename T, AllowGC allowGC>
         // all-compartments, non-incremental, shrinking GC and wait for
         // sweeping to finish.
         JS::PrepareForFullGC(cx);
-        cx->runtime()->gc.gc(GC_SHRINK, JS::gcreason::LAST_DITCH);
+        cx->runtime()->gc.gc(GC_SHRINK, JS::GCReason::LAST_DITCH);
         cx->runtime()->gc.waitBackgroundSweepOrAllocEnd();
 
         t = tryNewTenuredThing<T, NoGC>(cx, kind, thingSize);
@@ -349,9 +349,9 @@ bool GCRuntime::gcIfNeededAtAllocation(JSContext* cx) {
   // an incremental GC, we're growing faster than we're GCing, so stop
   // the world and do a full, non-incremental GC right now, if possible.
   if (isIncrementalGCInProgress() &&
-      cx->zone()->usage.gcBytes() > cx->zone()->threshold.gcTriggerBytes()) {
+      cx->zone()->zoneSize.gcBytes() > cx->zone()->threshold.gcTriggerBytes()) {
     PrepareZoneForGC(cx->zone());
-    gc(GC_NORMAL, JS::gcreason::INCREMENTAL_TOO_SLOW);
+    gc(GC_NORMAL, JS::GCReason::INCREMENTAL_TOO_SLOW);
   }
 
   return true;
@@ -567,11 +567,11 @@ Arena* GCRuntime::allocateArena(Chunk* chunk, Zone* zone, AllocKind thingKind,
 
   // Fail the allocation if we are over our heap size limits.
   if ((checkThresholds != ShouldCheckThresholds::DontCheckThresholds) &&
-      (usage.gcBytes() >= tunables.gcMaxBytes()))
+      (heapSize.gcBytes() >= tunables.gcMaxBytes()))
     return nullptr;
 
   Arena* arena = chunk->allocateArena(rt, zone, thingKind, lock);
-  zone->usage.addGCArena();
+  zone->zoneSize.addGCArena();
 
   // Trigger an incremental slice if needed.
   if (checkThresholds != ShouldCheckThresholds::DontCheckThresholds) {
@@ -734,8 +734,8 @@ void Chunk::init(JSRuntime* rt) {
    * Poison the chunk. Note that decommitAllArenas() below will mark the
    * arenas as inaccessible (for memory sanitizers).
    */
-  JS_POISON(this, JS_FRESH_TENURED_PATTERN, ChunkSize,
-            MemCheckKind::MakeUndefined);
+  Poison(this, JS_FRESH_TENURED_PATTERN, ChunkSize,
+         MemCheckKind::MakeUndefined);
 
   /*
    * We clear the bitmap to guard against JS::GCThingIsMarkedGray being called

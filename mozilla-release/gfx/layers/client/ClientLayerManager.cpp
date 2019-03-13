@@ -31,12 +31,12 @@
 #include "TiledLayerBuffer.h"
 #include "FrameLayerBuilder.h"  // for FrameLayerbuilder
 #ifdef MOZ_WIDGET_ANDROID
-#include "AndroidBridge.h"
-#include "LayerMetricsWrapper.h"
+#  include "AndroidBridge.h"
+#  include "LayerMetricsWrapper.h"
 #endif
 #ifdef XP_WIN
-#include "mozilla/gfx/DeviceManagerDx.h"
-#include "gfxDWriteFonts.h"
+#  include "mozilla/gfx/DeviceManagerDx.h"
+#  include "gfxDWriteFonts.h"
 #endif
 
 namespace mozilla {
@@ -277,7 +277,7 @@ bool ClientLayerManager::EndTransactionInternal(
   }
 
   PaintTelemetry::AutoRecord record(PaintTelemetry::Metric::Rasterization);
-  AUTO_PROFILER_TRACING("Paint", "Rasterize");
+  AUTO_PROFILER_TRACING("Paint", "Rasterize", GRAPHICS);
 
   Maybe<TimeStamp> startTime;
   if (gfxPrefs::LayersDrawFPS()) {
@@ -651,7 +651,7 @@ void ClientLayerManager::StopFrameTimeRecording(
 }
 
 void ClientLayerManager::ForwardTransaction(bool aScheduleComposite) {
-  AUTO_PROFILER_TRACING("Paint", "ForwardTransaction");
+  AUTO_PROFILER_TRACING("Paint", "ForwardTransaction", GRAPHICS);
   TimeStamp start = TimeStamp::Now();
 
   // Skip the synchronization for buffer since we also skip the painting during
@@ -694,10 +694,14 @@ void ClientLayerManager::ForwardTransaction(bool aScheduleComposite) {
   bool ok = mForwarder->EndTransaction(
       mRegionToClear, mLatestTransactionId, aScheduleComposite,
       mPaintSequenceNumber, mIsRepeatTransaction,
-      mTransactionIdAllocator->GetVsyncId(), refreshStart, mTransactionStart,
-      mURL, &sent);
+      mTransactionIdAllocator->GetVsyncId(),
+      mTransactionIdAllocator->GetVsyncStart(), refreshStart, mTransactionStart,
+      mContainsSVG, mURL, &sent, mPayload);
+
   if (ok) {
     if (sent) {
+      // Our payload has now been dispatched.
+      mPayload.Clear();
       mNeedsComposite = false;
     }
   } else if (HasShadowManager()) {

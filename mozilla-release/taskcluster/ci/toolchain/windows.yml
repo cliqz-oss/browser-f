@@ -42,7 +42,12 @@ win32-clang-tidy:
         using: toolchain-script
         script: build-clang-tidy32-windows.sh
         resources:
-            - 'build/clang-plugin/**'
+            - 'build/clang-plugin/**/*.cpp'
+            - 'build/clang-plugin/**/*.h'
+            - 'build/clang-plugin/*.inc'
+            - 'build/clang-plugin/*.py'
+            - 'build/clang-plugin/moz.build'
+            - 'build/clang-plugin/Makefile.in'
             - 'build/build-clang/build-clang.py'
             - 'build/build-clang/clang-tidy-win32.json'
             - 'taskcluster/scripts/misc/build-clang-windows-helper32.sh'
@@ -70,7 +75,12 @@ win64-clang-tidy:
         using: toolchain-script
         script: build-clang-tidy64-windows.sh
         resources:
-            - 'build/clang-plugin/**'
+            - 'build/clang-plugin/**/*.cpp'
+            - 'build/clang-plugin/**/*.h'
+            - 'build/clang-plugin/*.inc'
+            - 'build/clang-plugin/*.py'
+            - 'build/clang-plugin/moz.build'
+            - 'build/clang-plugin/Makefile.in'
             - 'build/build-clang/build-clang.py'
             - 'build/build-clang/clang-tidy-win32.json'
             - 'taskcluster/scripts/misc/build-clang-windows-helper64.sh'
@@ -100,7 +110,7 @@ win64-rust-1.28:
         ]
         toolchain-artifact: public/build/rustc.tar.bz2
 
-win64-rust-1.30:
+win64-rust-1.31:
     description: "rust repack"
     treeherder:
         kind: build
@@ -117,7 +127,7 @@ win64-rust-1.30:
         using: toolchain-script
         script: repack_rust.py
         arguments: [
-            '--channel', '1.30.0',
+            '--channel', '1.31.0',
             '--host', 'x86_64-pc-windows-msvc',
             '--target', 'x86_64-pc-windows-msvc',
             '--target', 'i686-pc-windows-msvc',
@@ -149,12 +159,12 @@ win64-rust-nightly:
         ]
         toolchain-artifact: public/build/rustc.tar.bz2
 
-win64-aarch64-rust-nightly:
-    description: "rust nightly repack with aarch64 support"
+win64-aarch64-rust:
+    description: "rust repack with aarch64 support"
     treeherder:
         kind: build
         platform: toolchains/opt
-        symbol: TW64(rust-aarch64-nightly)
+        symbol: TW64(rust-aarch64)
         tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
@@ -166,7 +176,7 @@ win64-aarch64-rust-nightly:
         using: toolchain-script
         script: repack_rust.py
         arguments: [
-            '--channel', 'nightly-2018-11-08',
+            '--channel', '1.32.0',
             '--host', 'x86_64-pc-windows-msvc',
             '--target', 'x86_64-pc-windows-msvc',
             '--target', 'aarch64-pc-windows-msvc',
@@ -191,7 +201,7 @@ win64-node:
         arguments: ['win64']
         toolchain-artifact: public/build/node.tar.bz2
 
-mingw32-rust-1.30:
+mingw32-rust-1.31:
     description: "rust repack"
     treeherder:
         kind: build
@@ -208,7 +218,7 @@ mingw32-rust-1.30:
         using: toolchain-script
         script: repack_rust.py
         arguments: [
-            '--channel', '1.30.0',
+            '--channel', '1.31.0',
             '--host', 'x86_64-unknown-linux-gnu',
             '--target', 'i686-unknown-linux-gnu',
             '--target', 'i686-pc-windows-gnu',
@@ -326,3 +336,26 @@ win32-gn:
     run-on-projects:
         - trunk
         - try
+
+win32-minidump-stackwalk:
+    description: "minidump_stackwalk toolchain build"
+    treeherder:
+        kind: build
+        platform: toolchains/opt
+        symbol: TW32(stackwalk)
+        tier: 1
+    worker-type: aws-provisioner-v1/gecko-{level}-b-linux
+    worker:
+        docker-image: {in-tree: mingw32-build}
+        max-run-time: 1800
+    run:
+        using: toolchain-script
+        script: build-minidump-stackwalk.sh
+        sparse-profile: null
+        arguments: ['mingw32']
+        resources:
+            - 'taskcluster/scripts/misc/tooltool-download.sh'
+        toolchain-artifact: public/build/minidump_stackwalk.tar.xz
+    toolchains:
+        - linux64-clang-trunk-mingw-x86
+        - mingw32-rust-1.31

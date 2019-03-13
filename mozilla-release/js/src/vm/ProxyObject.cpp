@@ -53,13 +53,16 @@ static gc::AllocKind GetProxyGCObjectKind(const Class* clasp,
 
   const Class* clasp = options.clasp();
 
+#ifdef DEBUG
   MOZ_ASSERT(isValidProxyClass(clasp));
   MOZ_ASSERT(clasp->shouldDelayMetadataBuilder());
   MOZ_ASSERT_IF(proto.isObject(),
                 cx->compartment() == proto.toObject()->compartment());
   MOZ_ASSERT(clasp->hasFinalize());
-  MOZ_ASSERT_IF(priv.isGCThing(),
-                !JS::GCThingIsMarkedGray(JS::GCCellPtr(priv)));
+  if (priv.isGCThing()) {
+    JS::AssertCellIsNotGray(priv.toGCThing());
+  }
+#endif
 
   /*
    * Eagerly mark properties unknown for proxies, so we don't try to track
@@ -104,6 +107,7 @@ static gc::AllocKind GetProxyGCObjectKind(const Class* clasp,
 
   proxy->data.handler = handler;
   if (IsCrossCompartmentWrapper(proxy)) {
+    MOZ_ASSERT(cx->realm() == cx->compartment()->realmForNewCCW());
     proxy->setCrossCompartmentPrivate(priv);
   } else {
     proxy->setSameCompartmentPrivate(priv);

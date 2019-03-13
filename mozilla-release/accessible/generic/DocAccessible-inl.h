@@ -13,10 +13,10 @@
 #include "NotificationController.h"
 #include "States.h"
 #include "nsIScrollableFrame.h"
-#include "nsIDocumentInlines.h"
+#include "mozilla/dom/DocumentInlines.h"
 
 #ifdef A11Y_LOG
-#include "Logging.h"
+#  include "Logging.h"
 #endif
 
 namespace mozilla {

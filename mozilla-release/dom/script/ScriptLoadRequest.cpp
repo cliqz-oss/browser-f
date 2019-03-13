@@ -4,11 +4,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "ModuleLoadRequest.h"
+#include "ScriptLoadRequest.h"
 
 #include "mozilla/HoldDropJSObjects.h"
 #include "mozilla/Unused.h"
 
+#include "nsContentUtils.h"
 #include "nsICacheInfoChannel.h"
 #include "ScriptLoadRequest.h"
 #include "ScriptSettings.h"
@@ -30,6 +31,7 @@ ScriptFetchOptions::ScriptFetchOptions(
     nsIScriptElement* aElement, nsIPrincipal* aTriggeringPrincipal)
     : mCORSMode(aCORSMode),
       mReferrerPolicy(aReferrerPolicy),
+      mIsPreload(false),
       mElement(aElement),
       mTriggeringPrincipal(aTriggeringPrincipal) {
   MOZ_ASSERT(mTriggeringPrincipal);
@@ -50,14 +52,13 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(ScriptLoadRequest)
 NS_IMPL_CYCLE_COLLECTION_CLASS(ScriptLoadRequest)
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(ScriptLoadRequest)
-  NS_IMPL_CYCLE_COLLECTION_UNLINK(mFetchOptions)
-  NS_IMPL_CYCLE_COLLECTION_UNLINK(mCacheInfo)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mFetchOptions, mCacheInfo)
+  tmp->mScript = nullptr;
   tmp->DropBytecodeCacheReferences();
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(ScriptLoadRequest)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mFetchOptions)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mCacheInfo)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mFetchOptions, mCacheInfo)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(ScriptLoadRequest)
@@ -90,7 +91,8 @@ ScriptLoadRequest::ScriptLoadRequest(ScriptKind aKind, nsIURI* aURI,
       mURI(aURI),
       mLineNo(1),
       mIntegrity(aIntegrity),
-      mReferrer(aReferrer) {
+      mReferrer(aReferrer),
+      mUnreportedPreloadError(NS_OK) {
   MOZ_ASSERT(mFetchOptions);
 }
 
@@ -105,6 +107,8 @@ ScriptLoadRequest::~ScriptLoadRequest() {
   if (mScript) {
     DropBytecodeCacheReferences();
   }
+
+  DropJSObjects(this);
 }
 
 void ScriptLoadRequest::SetReady() {
@@ -193,7 +197,18 @@ bool ScriptLoadRequest::ShouldAcceptBinASTEncoding() const {
   MOZ_ASSERT(NS_SUCCEEDED(rv));
   Unused << rv;
 
-  return isHTTPS;
+  if (!isHTTPS) {
+    return false;
+  }
+
+  if (StaticPrefs::dom_script_loader_binast_encoding_domain_restrict()) {
+    if (!nsContentUtils::IsURIInPrefList(
+            mURI, "dom.script_loader.binast_encoding.domain.restrict.list")) {
+      return false;
+    }
+  }
+
+  return true;
 #else
   MOZ_CRASH("BinAST not supported");
 #endif
@@ -205,6 +220,12 @@ void ScriptLoadRequest::ClearScriptSource() {
   } else if (IsBinASTSource()) {
     ScriptBinASTData().clearAndFree();
   }
+}
+
+void ScriptLoadRequest::SetScript(JSScript* aScript) {
+  MOZ_ASSERT(!mScript);
+  mScript = aScript;
+  HoldJSObjects(this);
 }
 
 //////////////////////////////////////////////////////////////

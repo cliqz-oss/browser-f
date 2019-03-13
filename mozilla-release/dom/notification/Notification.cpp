@@ -39,7 +39,7 @@
 #include "nsGlobalWindow.h"
 #include "nsIAlertsService.h"
 #include "nsIContentPermissionPrompt.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsILoadContext.h"
 #include "nsINotificationStorage.h"
 #include "nsIPermissionManager.h"
@@ -1290,17 +1290,25 @@ ServiceWorkerNotificationObserver::Observe(nsISupports* aSubject,
     return rv;
   }
 
-  nsCOMPtr<nsIServiceWorkerManager> swm =
-      mozilla::services::GetServiceWorkerManager();
-  if (NS_WARN_IF(!swm)) {
-    return NS_ERROR_FAILURE;
-  }
-
   if (!strcmp("alertclickcallback", aTopic)) {
-    rv = swm->SendNotificationClickEvent(
-        originSuffix, NS_ConvertUTF16toUTF8(mScope), mID, mTitle, mDir, mLang,
-        mBody, mTag, mIcon, mData, mBehavior);
-    Unused << NS_WARN_IF(NS_FAILED(rv));
+    if (XRE_IsParentProcess() || !ServiceWorkerParentInterceptEnabled()) {
+      nsCOMPtr<nsIServiceWorkerManager> swm =
+          mozilla::services::GetServiceWorkerManager();
+      if (NS_WARN_IF(!swm)) {
+        return NS_ERROR_FAILURE;
+      }
+
+      rv = swm->SendNotificationClickEvent(
+          originSuffix, NS_ConvertUTF16toUTF8(mScope), mID, mTitle, mDir, mLang,
+          mBody, mTag, mIcon, mData, mBehavior);
+      Unused << NS_WARN_IF(NS_FAILED(rv));
+    } else {
+      auto* cc = ContentChild::GetSingleton();
+      NotificationEventData data(originSuffix, NS_ConvertUTF16toUTF8(mScope),
+                                 mID, mTitle, mDir, mLang, mBody, mTag, mIcon,
+                                 mData, mBehavior);
+      Unused << cc->SendNotificationEvent(NS_LITERAL_STRING("click"), data);
+    }
     return NS_OK;
   }
 
@@ -1318,10 +1326,24 @@ ServiceWorkerNotificationObserver::Observe(nsISupports* aSubject,
       notificationStorage->Delete(origin, mID);
     }
 
-    rv = swm->SendNotificationCloseEvent(
-        originSuffix, NS_ConvertUTF16toUTF8(mScope), mID, mTitle, mDir, mLang,
-        mBody, mTag, mIcon, mData, mBehavior);
-    Unused << NS_WARN_IF(NS_FAILED(rv));
+    if (XRE_IsParentProcess() || !ServiceWorkerParentInterceptEnabled()) {
+      nsCOMPtr<nsIServiceWorkerManager> swm =
+          mozilla::services::GetServiceWorkerManager();
+      if (NS_WARN_IF(!swm)) {
+        return NS_ERROR_FAILURE;
+      }
+
+      rv = swm->SendNotificationCloseEvent(
+          originSuffix, NS_ConvertUTF16toUTF8(mScope), mID, mTitle, mDir, mLang,
+          mBody, mTag, mIcon, mData, mBehavior);
+      Unused << NS_WARN_IF(NS_FAILED(rv));
+    } else {
+      auto* cc = ContentChild::GetSingleton();
+      NotificationEventData data(originSuffix, NS_ConvertUTF16toUTF8(mScope),
+                                 mID, mTitle, mDir, mLang, mBody, mTag, mIcon,
+                                 mData, mBehavior);
+      Unused << cc->SendNotificationEvent(NS_LITERAL_STRING("close"), data);
+    }
     return NS_OK;
   }
 
@@ -1331,7 +1353,7 @@ ServiceWorkerNotificationObserver::Observe(nsISupports* aSubject,
 bool Notification::IsInPrivateBrowsing() {
   AssertIsOnMainThread();
 
-  nsIDocument* doc = nullptr;
+  Document* doc = nullptr;
 
   if (mWorkerPrivate) {
     doc = mWorkerPrivate->GetDocument();
@@ -1659,7 +1681,7 @@ nsresult Notification::ResolveIconAndSoundURL(nsString& iconUrl,
   if (mWorkerPrivate) {
     baseUri = mWorkerPrivate->GetBaseURI();
   } else {
-    nsIDocument* doc = GetOwner() ? GetOwner()->GetExtantDoc() : nullptr;
+    Document* doc = GetOwner() ? GetOwner()->GetExtantDoc() : nullptr;
     if (doc) {
       baseUri = doc->GetBaseURI();
       encoding = doc->GetDocumentCharacterSet();
@@ -1700,7 +1722,7 @@ already_AddRefed<Promise> Notification::Get(
   AssertIsOnMainThread();
   MOZ_ASSERT(aWindow);
 
-  nsCOMPtr<nsIDocument> doc = aWindow->GetExtantDoc();
+  nsCOMPtr<Document> doc = aWindow->GetExtantDoc();
   if (!doc) {
     aRv.Throw(NS_ERROR_UNEXPECTED);
     return nullptr;

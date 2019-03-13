@@ -641,8 +641,12 @@ class Marionette(object):
             return self.instance.profile.profile
 
     def start_binary(self, timeout):
-        if not self.is_port_available(self.port, host=self.host):
-            raise IOError("Port {0}:{1} is unavailable.".format(self.host, self.port))
+        try:
+            self.check_port_available(self.port, host=self.host)
+        except socket.error:
+            _, value, tb = sys.exc_info()
+            msg = "Port {}:{} is unavailable ({})".format(self.host, self.port, value)
+            reraise(IOError, msg, tb)
 
         try:
             self.instance.start()
@@ -677,15 +681,16 @@ class Marionette(object):
         self.cleanup()
 
     @staticmethod
-    def is_port_available(port, host=''):
+    def check_port_available(port, host=''):
+        """Check if "host:port" is available.
+
+        Raise socket.error if port is not available.
+        """
         port = int(port)
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             s.bind((host, port))
-            return True
-        except socket.error:
-            return False
         finally:
             s.close()
 
@@ -698,7 +703,7 @@ class Marionette(object):
             attempt will be aborted.
         """
         if timeout is None:
-            timeout = self.DEFAULT_STARTUP_TIMEOUT
+            timeout = self.startup_timeout
 
         runner = None
         if self.instance is not None:
@@ -1428,6 +1433,20 @@ class Marionette(object):
         return self._send_message("WebDriver:GetPageSource",
                                   key="value")
 
+    def open(self, type=None, focus=False):
+        """Open a new window, or tab based on the specified context type.
+
+        If no context type is given the application will choose the best
+        option based on tab and window support.
+
+        :param type: Type of window to be opened. Can be one of "tab" or "window"
+        :param focus: If true, the opened window will be focused
+
+        :returns: Dict with new window handle, and type of opened window
+        """
+        body = {"type": type, "focus": focus}
+        return self._send_message("WebDriver:NewWindow", body)
+
     def close(self):
         """Close the current window, ending the session if it's the last
         window currently open.
@@ -1675,14 +1694,16 @@ class Marionette(object):
 
         :param script: A string containing the JavaScript to execute.
         :param script_args: An interable of arguments to pass to the script.
+        :param new_sandbox: If False, preserve global variables from
+            the last execute_*script call. This is True by default, in which
+            case no globals are preserved.
         :param sandbox: A tag referring to the sandbox you wish to use;
             if you specify a new tag, a new sandbox will be created.
             If you use the special tag `system`, the sandbox will
             be created using the system principal which has elevated
             privileges.
-        :param new_sandbox: If False, preserve global variables from
-            the last execute_*script call. This is True by default, in which
-            case no globals are preserved.
+        :param script_timeout: Timeout in milliseconds, overriding
+            the session's default script timeout.
 
         Simple usage example:
 
@@ -1727,18 +1748,28 @@ class Marionette(object):
             assert result == "foo"
 
         """
-        args = self._to_json(script_args)
-        stack = traceback.extract_stack()
-        frame = stack[-2:-1][0]  # grab the second-to-last frame
-        filename = frame[0] if sys.platform == "win32" else os.path.relpath(frame[0])
-        body = {"script": script.strip(),
-                "args": args,
-                "newSandbox": new_sandbox,
-                "sandbox": sandbox,
-                "scriptTimeout": script_timeout,
-                "line": int(frame[1]),
-                "filename": filename}
-        rv = self._send_message("WebDriver:ExecuteScript", body, key="value")
+        original_timeout = None
+        if script_timeout is not None:
+            original_timeout = self.timeout.script
+            self.timeout.script = script_timeout / 1000.0
+
+        try:
+            args = self._to_json(script_args)
+            stack = traceback.extract_stack()
+            frame = stack[-2:-1][0]  # grab the second-to-last frame
+            filename = frame[0] if sys.platform == "win32" else os.path.relpath(frame[0])
+            body = {"script": script.strip(),
+                    "args": args,
+                    "newSandbox": new_sandbox,
+                    "sandbox": sandbox,
+                    "line": int(frame[1]),
+                    "filename": filename}
+            rv = self._send_message("WebDriver:ExecuteScript", body, key="value")
+
+        finally:
+            if script_timeout is not None:
+                self.timeout.script = original_timeout
+
         return self._from_json(rv)
 
     def execute_async_script(self, script, script_args=(), new_sandbox=True,
@@ -1752,13 +1783,15 @@ class Marionette(object):
 
         :param script: A string containing the JavaScript to execute.
         :param script_args: An interable of arguments to pass to the script.
+        :param new_sandbox: If False, preserve global variables from
+            the last execute_*script call. This is True by default,
+            in which case no globals are preserved.
         :param sandbox: A tag referring to the sandbox you wish to use; if
             you specify a new tag, a new sandbox will be created.  If you
             use the special tag `system`, the sandbox will be created
             using the system principal which has elevated privileges.
-        :param new_sandbox: If False, preserve global variables from
-            the last execute_*script call. This is True by default,
-            in which case no globals are preserved.
+        :param script_timeout: Timeout in milliseconds, overriding
+            the session's default script timeout.
 
         Usage example:
 
@@ -1774,19 +1807,29 @@ class Marionette(object):
             ''')
             assert result == 1
         """
-        args = self._to_json(script_args)
-        stack = traceback.extract_stack()
-        frame = stack[-2:-1][0]  # grab the second-to-last frame
-        filename = frame[0] if sys.platform == "win32" else os.path.relpath(frame[0])
-        body = {"script": script.strip(),
-                "args": args,
-                "newSandbox": new_sandbox,
-                "sandbox": sandbox,
-                "scriptTimeout": script_timeout,
-                "line": int(frame[1]),
-                "filename": filename}
+        original_timeout = None
+        if script_timeout is not None:
+            original_timeout = self.timeout.script
+            self.timeout.script = script_timeout / 1000.0
 
-        rv = self._send_message("WebDriver:ExecuteAsyncScript", body, key="value")
+        try:
+            args = self._to_json(script_args)
+            stack = traceback.extract_stack()
+            frame = stack[-2:-1][0]  # grab the second-to-last frame
+            filename = frame[0] if sys.platform == "win32" else os.path.relpath(frame[0])
+            body = {"script": script.strip(),
+                    "args": args,
+                    "newSandbox": new_sandbox,
+                    "sandbox": sandbox,
+                    "scriptTimeout": script_timeout,
+                    "line": int(frame[1]),
+                    "filename": filename}
+            rv = self._send_message("WebDriver:ExecuteAsyncScript", body, key="value")
+
+        finally:
+            if script_timeout is not None:
+                self.timeout.script = original_timeout
+
         return self._from_json(rv)
 
     def find_element(self, method, target, id=None):

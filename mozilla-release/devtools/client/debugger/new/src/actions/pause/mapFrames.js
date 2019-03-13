@@ -5,6 +5,7 @@
 // @flow
 
 import {
+  getCurrentThread,
   getFrames,
   getSymbols,
   getSource,
@@ -17,21 +18,22 @@ import { findClosestFunction } from "../../utils/ast";
 import type { Frame } from "../../types";
 import type { State } from "../../reducers/types";
 import type { ThunkArgs } from "../types";
-import { features } from "../../utils/prefs";
 
 import { isGeneratedId } from "devtools-source-map";
 
+function isFrameBlackboxed(state, frame) {
+  const source = getSource(state, frame.location.sourceId);
+  return source && source.isBlackBoxed;
+}
+
 function getSelectedFrameId(state, frames) {
-  if (!features.originalBlackbox) {
-    const selectedFrame = getSelectedFrame(state);
-    return selectedFrame && selectedFrame.id;
+  let selectedFrame = getSelectedFrame(state);
+  if (selectedFrame && !isFrameBlackboxed(state, selectedFrame)) {
+    return selectedFrame.id;
   }
 
-  const selectedFrame =  frames.find(frame =>
-    !getSource(state, frame.location.sourceId).isBlackBoxed
-  )
-
-  return selectedFrame && selectedFrame.id
+  selectedFrame = frames.find(frame => !isFrameBlackboxed(state, frame));
+  return selectedFrame && selectedFrame.id;
 }
 
 export function updateFrameLocation(frame: Frame, sourceMaps: any) {
@@ -169,9 +171,11 @@ export function mapFrames() {
     mappedFrames = await expandFrames(mappedFrames, sourceMaps, getState);
     mappedFrames = mapDisplayNames(mappedFrames, getState);
 
-    const selectedFrameId = getSelectedFrameId(getState(), mappedFrames)
+    const thread = getCurrentThread(getState());
+    const selectedFrameId = getSelectedFrameId(getState(), mappedFrames);
     dispatch({
       type: "MAP_FRAMES",
+      thread,
       frames: mappedFrames,
       selectedFrameId
     });

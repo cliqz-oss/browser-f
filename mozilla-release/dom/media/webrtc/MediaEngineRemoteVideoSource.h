@@ -63,7 +63,7 @@ enum DistanceCalculation { kFitness, kFeasibility };
  */
 class MediaEngineRemoteVideoSource : public MediaEngineSource,
                                      public camera::FrameRelay {
-  ~MediaEngineRemoteVideoSource() = default;
+  ~MediaEngineRemoteVideoSource();
 
   struct CapabilityCandidate {
     explicit CapabilityCandidate(webrtc::CaptureCapability&& aCapability,
@@ -110,14 +110,14 @@ class MediaEngineRemoteVideoSource : public MediaEngineSource,
 
  public:
   MediaEngineRemoteVideoSource(int aIndex, camera::CaptureEngine aCapEngine,
-                               dom::MediaSourceEnum aMediaSource, bool aScary);
+                               bool aScary);
 
   // ExternalRenderer
   int DeliverFrame(uint8_t* buffer,
                    const camera::VideoFrameProperties& properties) override;
 
   // MediaEngineSource
-  dom::MediaSourceEnum GetMediaSource() const override { return mMediaSource; }
+  dom::MediaSourceEnum GetMediaSource() const override;
   nsresult Allocate(const dom::MediaTrackConstraints& aConstraints,
                     const MediaEnginePrefs& aPrefs, const nsString& aDeviceId,
                     const ipc::PrincipalInfo& aPrincipalInfo,
@@ -155,6 +155,10 @@ class MediaEngineRemoteVideoSource : public MediaEngineSource,
 
   bool GetScary() const override { return mScary; }
 
+  RefPtr<GenericNonExclusivePromise> GetFirstFramePromise() const override {
+    return mFirstFramePromise;
+  }
+
  private:
   // Initialize the needed Video engine interfaces.
   void Init();
@@ -174,9 +178,7 @@ class MediaEngineRemoteVideoSource : public MediaEngineSource,
   webrtc::CaptureCapability GetCapability(size_t aIndex) const;
 
   int mCaptureIndex;
-  const dom::MediaSourceEnum
-      mMediaSource;  // source of media (camera | application | screen)
-  const camera::CaptureEngine mCapEngine;
+  const camera::CaptureEngine mCapEngine;  // source of media (cam, screen etc)
   const bool mScary;
 
   // mMutex protects certain members on 3 threads:
@@ -231,6 +233,8 @@ class MediaEngineRemoteVideoSource : public MediaEngineSource,
   // since we scale frames to avoid fingerprinting.
   // Members are main thread only.
   const RefPtr<media::Refcountable<dom::MediaTrackSettings>> mSettings;
+  MozPromiseHolder<GenericNonExclusivePromise> mFirstFramePromiseHolder;
+  RefPtr<GenericNonExclusivePromise> mFirstFramePromise;
 
   // The capability currently chosen by constraints of the user of this source.
   // Set under mMutex on the owning thread. Accessed under one of the two.

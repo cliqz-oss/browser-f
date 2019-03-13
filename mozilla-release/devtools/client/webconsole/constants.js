@@ -43,6 +43,7 @@ const actionTypes = {
   REVERSE_SEARCH_NEXT: "REVERSE_SEARCH_NEXT",
   REVERSE_SEARCH_BACK: "REVERSE_SEARCH_BACK",
   PAUSED_EXCECUTION_POINT: "PAUSED_EXCECUTION_POINT",
+  WILL_NAVIGATE: "WILL_NAVIGATE",
 };
 
 const prefs = {
@@ -72,7 +73,6 @@ const prefs = {
       // We use the same pref to enable the sidebar on webconsole and browser console.
       SIDEBAR_TOGGLE: "devtools.webconsole.sidebarToggle",
       JSTERM_CODE_MIRROR: "devtools.webconsole.jsterm.codeMirror",
-      JSTERM_REVERSE_SEARCH: "devtools.webconsole.jsterm.reverse-search",
     },
   },
 };

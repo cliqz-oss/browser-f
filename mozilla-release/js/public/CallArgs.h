@@ -73,7 +73,7 @@
 #include "js/Value.h"
 
 /* Typedef for native functions called by the JS VM. */
-typedef bool (*JSNative)(JSContext* cx, unsigned argc, JS::Value* vp);
+using JSNative = bool (*)(JSContext* cx, unsigned argc, JS::Value* vp);
 
 namespace JS {
 
@@ -246,6 +246,13 @@ class MOZ_STACK_CLASS CallArgsBase {
     return MutableHandleValue::fromMarkedLocation(&argv_[-2]);
   }
 
+  /*
+   * Returns true if there are at least |required| arguments passed in. If
+   * false, it reports an error message on the context.
+   */
+  JS_PUBLIC_API inline bool requireAtLeast(JSContext* cx, const char* fnname,
+                                           unsigned required) const;
+
  public:
   // These methods are publicly exposed, but they are *not* to be used when
   // implementing a JSNative method and encapsulating access to |vp| within
@@ -300,10 +307,10 @@ class MOZ_STACK_CLASS CallArgs
     args.constructing_ = constructing;
     args.ignoresReturnValue_ = ignoresReturnValue;
 #ifdef DEBUG
-    MOZ_ASSERT(ValueIsNotGray(args.thisv()));
-    MOZ_ASSERT(ValueIsNotGray(args.calleev()));
+    AssertValueIsNotGray(args.thisv());
+    AssertValueIsNotGray(args.calleev());
     for (unsigned i = 0; i < argc; ++i) {
-      MOZ_ASSERT(ValueIsNotGray(argv[i]));
+      AssertValueIsNotGray(argv[i]);
     }
 #endif
     return args;
@@ -311,12 +318,28 @@ class MOZ_STACK_CLASS CallArgs
 
  public:
   /*
-   * Returns true if there are at least |required| arguments passed in. If
-   * false, it reports an error message on the context.
+   * Helper for requireAtLeast to report the actual exception.  Public
+   * so we can call it from CallArgsBase and not need multiple
+   * per-template instantiations of it.
    */
-  JS_PUBLIC_API bool requireAtLeast(JSContext* cx, const char* fnname,
-                                    unsigned required) const;
+  static JS_PUBLIC_API void reportMoreArgsNeeded(JSContext* cx,
+                                                 const char* fnname,
+                                                 unsigned required,
+                                                 unsigned actual);
 };
+
+namespace detail {
+template <class WantUsedRval>
+JS_PUBLIC_API inline bool CallArgsBase<WantUsedRval>::requireAtLeast(
+    JSContext* cx, const char* fnname, unsigned required) const {
+  if (MOZ_LIKELY(required <= length())) {
+    return true;
+  }
+
+  CallArgs::reportMoreArgsNeeded(cx, fnname, required, length());
+  return false;
+}
+}  // namespace detail
 
 MOZ_ALWAYS_INLINE CallArgs CallArgsFromVp(unsigned argc, Value* vp) {
   return CallArgs::create(argc, vp + 2, vp[1].isMagic(JS_IS_CONSTRUCTING));

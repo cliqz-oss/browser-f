@@ -6,6 +6,8 @@
 
 "use strict";
 
+const { generateUUID } = require("devtools/shared/generate-uuid");
+
 loader.lazyRequireGetter(this, "escapeCSSComment", "devtools/shared/css/parsing-utils", true);
 
 /**
@@ -35,6 +37,7 @@ loader.lazyRequireGetter(this, "escapeCSSComment", "devtools/shared/css/parsing-
  */
 function TextProperty(rule, name, value, priority, enabled = true,
                       invisible = false) {
+  this.id = name + "_" + generateUUID().toString();
   this.rule = rule;
   this.name = name;
   this.value = value;
@@ -48,6 +51,28 @@ function TextProperty(rule, name, value, priority, enabled = true,
 }
 
 TextProperty.prototype = {
+  get computedProperties() {
+    return this.computed
+      .filter(computed => computed.name !== this.name)
+      .map(computed => {
+        return {
+          isOverridden: computed.overridden,
+          name: computed.name,
+          priority: computed.priority,
+          value: computed.value,
+        };
+      });
+  },
+
+  /**
+   * See whether this property's name is known.
+   *
+   * @return {Boolean} true if the property name is known, false otherwise.
+   */
+  get isKnownProperty() {
+    return this.cssProperties.isKnown(this.name);
+  },
+
   /**
    * Update the editor associated with this text property,
    * if any.
@@ -137,15 +162,14 @@ TextProperty.prototype = {
     }
   },
 
-  setName: function(name) {
-    const store = this.rule.elementStyle.store;
-
-    if (name !== this.name) {
+  setName: async function(name) {
+    if (name !== this.name && this.editor) {
+      const store = this.rule.elementStyle.store;
       store.userProperties.setProperty(this.rule.domRule, name,
                                        this.editor.committed.value);
     }
 
-    this.rule.setPropertyName(this, name);
+    await this.rule.setPropertyName(this, name);
     this.updateEditor();
   },
 
@@ -172,15 +196,6 @@ TextProperty.prototype = {
     }
 
     return declaration;
-  },
-
-  /**
-   * See whether this property's name is known.
-   *
-   * @return {Boolean} true if the property name is known, false otherwise.
-   */
-  isKnownProperty: function() {
-    return this.cssProperties.isKnown(this.name);
   },
 
   /**

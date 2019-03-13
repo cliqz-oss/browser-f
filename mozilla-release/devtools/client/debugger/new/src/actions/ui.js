@@ -17,6 +17,7 @@ import type { ThunkArgs, panelPositionType } from "./types";
 import { getEditor, getLocationsInViewport } from "../utils/editor";
 import { searchContents } from "./file-search";
 
+import type { SourceLocation } from "../types";
 import type {
   ActiveSearchType,
   OrientationType,
@@ -126,7 +127,7 @@ export function togglePaneCollapse(
 export function highlightLineRange(location: {
   start: number,
   end: number,
-  sourceId: number
+  sourceId: string
 }) {
   return {
     type: "HIGHLIGHT_LINES",
@@ -137,7 +138,7 @@ export function highlightLineRange(location: {
 export function flashLineRange(location: {
   start: number,
   end: number,
-  sourceId: number
+  sourceId: string
 }) {
   return ({ dispatch }: ThunkArgs) => {
     dispatch(highlightLineRange(location));
@@ -155,14 +156,18 @@ export function clearHighlightLineRange() {
   };
 }
 
-export function openConditionalPanel(line: ?number) {
-  if (!line) {
+export function openConditionalPanel(
+  location: ?SourceLocation,
+  log: boolean = false
+) {
+  if (!location) {
     return;
   }
 
   return {
     type: "OPEN_CONDITIONAL_PANEL",
-    line
+    location,
+    log
   };
 }
 

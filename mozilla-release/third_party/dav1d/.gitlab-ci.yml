@@ -1,6 +1,17 @@
 stages:
+    - style
     - build
     - test
+
+style-check:
+    image: registry.videolan.org:5000/dav1d-debian-unstable:20181114201132
+    stage: style
+    tags:
+        - debian
+        - amd64
+    script:
+        - git grep -n -e $'\t' --or -e $'\r' -- . ':(exclude)*/compat/*' && exit 1
+        - /bin/true
 
 build-debian:
     image: registry.videolan.org:5000/dav1d-debian-unstable:20181114201132
@@ -21,6 +32,19 @@ build-debian-static:
         - amd64
     script:
         - meson build --buildtype release --default-library static --werror
+        - ninja -C build
+        - cd build && meson test -v
+
+build-debian32:
+    image: registry.videolan.org:5000/dav1d-debian-unstable:20181218135732
+    stage: build
+    tags:
+        - debian
+        - amd64
+    script:
+        - meson build --buildtype release
+                      --werror
+                      --cross-file /opt/crossfiles/linux32.meson
         - ninja -C build
         - cd build && meson test -v
 
@@ -123,6 +147,7 @@ test-debian:
         - meson build --buildtype release -Dtestdata_tests=true
         - ninja -C build
         - cd build && time meson test -v
+    dependencies: []
 
 test-debian-asan:
     image: registry.videolan.org:5000/dav1d-debian-unstable:20181114201132
@@ -144,6 +169,7 @@ test-debian-asan:
         - meson build --buildtype debugoptimized -Dtestdata_tests=true -Db_sanitize=address -Dbuild_asm=false
         - ninja -C build
         - cd build && time meson test -v --setup=sanitizer
+    dependencies: []
 
 test-debian-msan:
     image: registry.videolan.org:5000/dav1d-debian-unstable:20181114201132
@@ -165,6 +191,7 @@ test-debian-msan:
         - env CC=clang meson build --buildtype debugoptimized -Dtestdata_tests=true -Db_sanitize=memory -Db_lundef=false -Dbuild_asm=false
         - ninja -C build
         - cd build && time meson test -v --setup=sanitizer
+    dependencies: []
 
 test-debian-ubsan:
     image: registry.videolan.org:5000/dav1d-debian-unstable:20181114201132
@@ -186,3 +213,4 @@ test-debian-ubsan:
         - env CC=clang meson build --buildtype debugoptimized -Dtestdata_tests=true -Db_sanitize=undefined -Db_lundef=false -Dbuild_asm=false
         - ninja -C build
         - cd build && time meson test -v --setup=sanitizer
+    dependencies: []

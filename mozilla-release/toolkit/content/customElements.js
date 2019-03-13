@@ -141,7 +141,8 @@ const MozElementMixin = Base => class MozElement extends Base {
             `;
         }, "")}
       ]>` : ""}
-      <box xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
+      <box xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+           xmlns:html="http://www.w3.org/1999/xhtml">
         ${str}
       </box>
     `, "application/xml");
@@ -200,7 +201,8 @@ const MozElementMixin = Base => class MozElement extends Base {
 
   /**
    * Indicate that a class defining a XUL element implements one or more
-   * XPCOM interfaces by adding a getCustomInterface implementation to it.
+   * XPCOM interfaces by adding a getCustomInterface implementation to it,
+   * as well as an implementation of QueryInterface.
    *
    * The supplied class should implement the properties and methods of
    * all of the interfaces that are specified.
@@ -211,15 +213,14 @@ const MozElementMixin = Base => class MozElement extends Base {
    *        Array of interface names.
    */
   static implementCustomInterface(cls, ifaces) {
-    const numbers = new Set(ifaces.map(i => i.number));
-    if (cls.prototype.customInterfaceNumbers) {
-      // Base class already implemented some interfaces. Inherit:
-      cls.prototype.customInterfaceNumbers.forEach(number => numbers.add(number));
+    if (cls.prototype.customInterfaces) {
+      ifaces.push(...cls.prototype.customInterfaces);
     }
+    cls.prototype.customInterfaces = ifaces;
 
-    cls.prototype.customInterfaceNumbers = numbers;
-    cls.prototype.getCustomInterfaceCallback = function getCustomInterfaceCallback(iface) {
-      if (numbers.has(iface.number)) {
+    cls.prototype.QueryInterface = ChromeUtils.generateQI(ifaces);
+    cls.prototype.getCustomInterfaceCallback = function getCustomInterfaceCallback(ifaceToCheck) {
+      if (cls.prototype.customInterfaces.some(iface => iface.equals(ifaceToCheck))) {
         return getInterfaceProxy(this);
       }
       return null;
@@ -289,6 +290,10 @@ window.MozElementMixin = MozElementMixin;
 window.MozXULElement = MozXULElement;
 window.MozElements = MozElements;
 
+customElements.setElementCreationCallback("browser", () => {
+  Services.scriptloader.loadSubScript("chrome://global/content/elements/browser-custom-element.js", window);
+});
+
 // For now, don't load any elements in the extension dummy document.
 // We will want to load <browser> when that's migrated (bug 1441935).
 const isDummyDocument = document.documentURI == "chrome://extensions/content/dummy.xul";
@@ -306,6 +311,7 @@ if (!isDummyDocument) {
 
   for (let [tag, script] of [
     ["findbar", "chrome://global/content/elements/findbar.js"],
+    ["richlistbox", "chrome://global/content/elements/richlistbox.js"],
     ["stringbundle", "chrome://global/content/elements/stringbundle.js"],
     ["printpreview-toolbar", "chrome://global/content/printPreviewToolbar.js"],
     ["editor", "chrome://global/content/elements/editor.js"],

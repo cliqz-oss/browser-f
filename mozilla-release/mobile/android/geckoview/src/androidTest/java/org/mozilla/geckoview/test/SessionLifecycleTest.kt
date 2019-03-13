@@ -77,28 +77,6 @@ class SessionLifecycleTest : BaseSessionTest() {
         sessionRule.session.open()
     }
 
-    @Test(expected = IllegalStateException::class)
-    fun setChromeURI_throwOnOpenSession() {
-        sessionRule.session.settings.setString(GeckoSessionSettings.CHROME_URI, "chrome://invalid/path/to.xul")
-    }
-
-    @Test(expected = IllegalStateException::class)
-    fun setScreenID_throwOnOpenSession() {
-        sessionRule.session.settings.setInt(GeckoSessionSettings.SCREEN_ID, 42)
-    }
-
-    @Test(expected = IllegalStateException::class)
-    fun setUsePrivateMode_throwOnOpenSession() {
-        sessionRule.session.settings.setBoolean(GeckoSessionSettings.USE_PRIVATE_MODE, true)
-    }
-
-    @Test(expected = IllegalStateException::class)
-    fun setUseMultiprocess_throwOnOpenSession() {
-        sessionRule.session.settings.setBoolean(
-                GeckoSessionSettings.USE_MULTIPROCESS,
-                !sessionRule.session.settings.getBoolean(GeckoSessionSettings.USE_MULTIPROCESS))
-    }
-
     @Test fun readFromParcel() {
         val session = sessionRule.createOpenSession()
 
@@ -242,7 +220,7 @@ class SessionLifecycleTest : BaseSessionTest() {
         // Enable navigation notifications on the new, closed session.
         var onLocationCount = 0
         sessionRule.session.navigationDelegate = object : Callbacks.NavigationDelegate {
-            override fun onLocationChange(session: GeckoSession, url: String) {
+            override fun onLocationChange(session: GeckoSession, url: String?) {
                 onLocationCount++
             }
         }
@@ -393,15 +371,15 @@ class SessionLifecycleTest : BaseSessionTest() {
     @Test fun restoreInstanceState_sameClosedSession() {
         val view = testRestoreInstanceState(mainSession, mainSession)
         assertThat("View session is unchanged", view.session, equalTo(mainSession))
-        assertThat("View session is closed", view.session.isOpen, equalTo(false))
+        assertThat("View session is closed", view.session!!.isOpen, equalTo(false))
     }
 
     @Test fun restoreInstanceState_sameOpenSession() {
         // We should keep the session open when restoring the same open session.
         val view = testRestoreInstanceState(mainSession, mainSession)
         assertThat("View session is unchanged", view.session, equalTo(mainSession))
-        assertThat("View session is open", view.session.isOpen, equalTo(true))
-        view.session.reload()
+        assertThat("View session is open", view.session!!.isOpen, equalTo(true))
+        view.session!!.reload()
         sessionRule.waitForPageStop()
     }
 

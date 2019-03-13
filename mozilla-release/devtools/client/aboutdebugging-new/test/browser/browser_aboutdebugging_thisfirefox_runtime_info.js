@@ -3,13 +3,6 @@
 
 "use strict";
 
-/* import-globals-from mocks/head-client-wrapper-mock.js */
-Services.scriptloader.loadSubScript(
-  CHROME_URL_ROOT + "mocks/head-client-wrapper-mock.js", this);
-/* import-globals-from mocks/head-runtime-client-factory-mock.js */
-Services.scriptloader.loadSubScript(
-  CHROME_URL_ROOT + "mocks/head-runtime-client-factory-mock.js", this);
-
 /**
  * Check that the runtime info is correctly displayed for ThisFirefox.
  * Also acts as basic sanity check for the default mock of the this-firefox client.

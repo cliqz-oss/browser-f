@@ -231,15 +231,13 @@ class MediaSessionConduit {
                                     double* framerateStdDev,
                                     double* bitrateMean, double* bitrateStdDev,
                                     uint32_t* droppedFrames,
-                                    uint32_t* framesEncoded) = 0;
+                                    uint32_t* framesEncoded,
+                                    Maybe<uint64_t>* qpSum) = 0;
   virtual bool GetVideoDecoderStats(double* framerateMean,
                                     double* framerateStdDev,
                                     double* bitrateMean, double* bitrateStdDev,
                                     uint32_t* discardedPackets,
                                     uint32_t* framesDecoded) = 0;
-  virtual bool GetAVStats(int32_t* jitterBufferDelayMs,
-                          int32_t* playoutBufferDelayMs,
-                          int32_t* avSyncOffsetMs) = 0;
   virtual bool GetRTPStats(unsigned int* jitterMs,
                            unsigned int* cumulativeLost) = 0;
   virtual bool GetRTCPReceiverReport(uint32_t* jitterMs,

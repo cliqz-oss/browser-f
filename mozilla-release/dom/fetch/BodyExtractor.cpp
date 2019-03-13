@@ -32,8 +32,8 @@ static nsresult GetBufferDataAsStream(
   const char* data = reinterpret_cast<const char*>(aData);
 
   nsCOMPtr<nsIInputStream> stream;
-  nsresult rv = NS_NewByteInputStream(getter_AddRefs(stream), data, aDataLength,
-                                      NS_ASSIGNMENT_COPY);
+  nsresult rv = NS_NewByteInputStream(
+      getter_AddRefs(stream), MakeSpan(data, aDataLength), NS_ASSIGNMENT_COPY);
   NS_ENSURE_SUCCESS(rv, rv);
 
   stream.forget(aResult);
@@ -62,7 +62,7 @@ nsresult BodyExtractor<const ArrayBufferView>::GetAsStream(
 }
 
 template <>
-nsresult BodyExtractor<nsIDocument>::GetAsStream(
+nsresult BodyExtractor<Document>::GetAsStream(
     nsIInputStream** aResult, uint64_t* aContentLength,
     nsACString& aContentTypeWithCharset, nsACString& aCharset) const {
   NS_ENSURE_STATE(mBody);

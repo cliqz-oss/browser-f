@@ -11,17 +11,19 @@
 #define MOZILLA_SVGMOTIONSMILPATHUTILS_H_
 
 #include "mozilla/Attributes.h"
-#include "gfxPlatform.h"
-#include "mozilla/gfx/2D.h"
 #include "mozilla/RefPtr.h"
+#include "mozilla/SMILParserUtils.h"
+#include "mozilla/gfx/2D.h"
+#include "gfxPlatform.h"
 #include "nsDebug.h"
-#include "nsSMILParserUtils.h"
 #include "nsStringFwd.h"
 #include "nsTArray.h"
 
-class nsSVGElement;
-
 namespace mozilla {
+
+namespace dom {
+class SVGElement;
+}
 
 class SVGMotionSMILPathUtils {
   typedef mozilla::gfx::DrawTarget DrawTarget;
@@ -33,7 +35,7 @@ class SVGMotionSMILPathUtils {
   // coordinates in the <animateMotion> from/by/to/values attributes.
   class PathGenerator {
    public:
-    explicit PathGenerator(const nsSVGElement* aSVGElement)
+    explicit PathGenerator(const dom::SVGElement* aSVGElement)
         : mSVGElement(aSVGElement), mHaveReceivedCommands(false) {
       RefPtr<DrawTarget> drawTarget =
           gfxPlatform::GetPlatform()->ScreenReferenceDrawTarget();
@@ -67,7 +69,7 @@ class SVGMotionSMILPathUtils {
     bool ParseCoordinatePair(const nsAString& aStr, float& aXVal, float& aYVal);
 
     // Member data
-    const nsSVGElement* mSVGElement;  // context for converting to user units
+    const dom::SVGElement* mSVGElement;  // context for converting to user units
     RefPtr<PathBuilder> mPathBuilder;
     bool mHaveReceivedCommands;
   };
@@ -75,7 +77,7 @@ class SVGMotionSMILPathUtils {
   // Class to assist in passing each subcomponent of a |values| attribute to
   // a PathGenerator, for generating a corresponding Path.
   class MOZ_STACK_CLASS MotionValueParser
-      : public nsSMILParserUtils::GenericValueParser {
+      : public SMILParserUtils::GenericValueParser {
    public:
     MotionValueParser(PathGenerator* aPathGenerator,
                       FallibleTArray<double>* aPointDistances)
@@ -86,7 +88,7 @@ class SVGMotionSMILPathUtils {
                  "expecting point distances array to start empty");
     }
 
-    // nsSMILParserUtils::GenericValueParser interface
+    // SMILParserUtils::GenericValueParser interface
     virtual bool Parse(const nsAString& aValueStr) override;
 
    protected:

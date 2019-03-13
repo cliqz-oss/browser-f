@@ -12,7 +12,7 @@
 #include "gfxUtils.h"
 #include "nsThreadUtils.h"
 #ifdef MOZ_GECKO_PROFILER
-#include "ProfilerMarkerPayload.h"
+#  include "ProfilerMarkerPayload.h"
 #endif
 
 using namespace mozilla;
@@ -59,7 +59,8 @@ void ProfilerScreenshots::SubmitScreenshot(
 
   if (!succeeded) {
     PROFILER_ADD_MARKER(
-        "NoCompositorScreenshot because aPopulateSurface callback failed");
+        "NoCompositorScreenshot because aPopulateSurface callback failed",
+        GRAPHICS);
     ReturnSurface(backingSurface);
     return;
   }
@@ -69,7 +70,8 @@ void ProfilerScreenshots::SubmitScreenshot(
     if (NS_WARN_IF(NS_FAILED(rv))) {
       PROFILER_ADD_MARKER(
           "NoCompositorScreenshot because ProfilerScreenshots thread creation "
-          "failed");
+          "failed",
+          DOM);
       ReturnSurface(backingSurface);
       return;
     }
@@ -98,13 +100,13 @@ void ProfilerScreenshots::SubmitScreenshot(
           // Encode surf to a JPEG data URL.
           nsCString dataURL;
           nsresult rv = gfxUtils::EncodeSourceSurface(
-              surf, NS_LITERAL_CSTRING("image/jpeg"),
-              NS_LITERAL_STRING("quality=85"), gfxUtils::eDataURIEncode,
-              nullptr, &dataURL);
+              surf, ImageType::JPEG, NS_LITERAL_STRING("quality=85"),
+              gfxUtils::eDataURIEncode, nullptr, &dataURL);
           if (NS_SUCCEEDED(rv)) {
             // Add a marker with the data URL.
             profiler_add_marker_for_thread(
-                sourceThread, "CompositorScreenshot",
+                sourceThread, js::ProfilingStackFrame::Category::GRAPHICS,
+                "CompositorScreenshot",
                 MakeUnique<ScreenshotPayload>(timeStamp, std::move(dataURL),
                                               originalSize, windowIdentifier));
           }

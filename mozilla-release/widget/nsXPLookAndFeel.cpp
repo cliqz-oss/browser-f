@@ -23,7 +23,7 @@
 #include "qcms.h"
 
 #ifdef DEBUG
-#include "nsSize.h"
+#  include "nsSize.h"
 #endif
 
 using namespace mozilla;
@@ -71,11 +71,14 @@ nsLookAndFeelIntPref nsXPLookAndFeel::sIntPrefs[] = {
     {"ui.contextMenuOffsetHorizontal", eIntID_ContextMenuOffsetHorizontal,
      false, 0},
     {"ui.GtkCSDAvailable", eIntID_GTKCSDAvailable, false, 0},
+    {"ui.GtkCSDHideTitlebarByDefault", eIntID_GTKCSDHideTitlebarByDefault,
+     false, 0},
     {"ui.GtkCSDTransparentBackground", eIntID_GTKCSDTransparentBackground,
      false, 0},
     {"ui.GtkCSDMinimizeButton", eIntID_GTKCSDMinimizeButton, false, 0},
     {"ui.GtkCSDMaximizeButton", eIntID_GTKCSDMaximizeButton, false, 0},
     {"ui.GtkCSDCloseButton", eIntID_GTKCSDCloseButton, false, 0},
+    {"ui.GtkCSDReversedPlacement", eIntID_GTKCSDReversedPlacement, false, 0},
     {"ui.systemUsesDarkTheme", eIntID_SystemUsesDarkTheme, false, 0},
     {"ui.prefersReducedMotion", eIntID_PrefersReducedMotion, false, 0},
     {"ui.primaryPointerCapabilities", eIntID_PrimaryPointerCapabilities, false,

@@ -5,12 +5,12 @@
 // @flow
 
 import React, { Component } from "react";
-import { connect } from "react-redux";
+import { connect } from "../../utils/connect";
 import classnames from "classnames";
 import { showMenu } from "devtools-contextmenu";
 
 import SourceIcon from "../shared/SourceIcon";
-import Svg from "../shared/Svg";
+import AccessibleImage from "../shared/AccessibleImage";
 
 import {
   getGeneratedSourceByURL,
@@ -39,30 +39,39 @@ type Props = {
   expanded: boolean,
   hasMatchingGeneratedSource: boolean,
   hasSiblingOfSameName: boolean,
-  setExpanded: (TreeNode, boolean, boolean) => void,
   focusItem: TreeNode => void,
   selectItem: TreeNode => void,
-  clearProjectDirectoryRoot: () => void,
-  setProjectDirectoryRoot: string => void
+  setExpanded: (TreeNode, boolean, boolean) => void,
+  clearProjectDirectoryRoot: typeof actions.clearProjectDirectoryRoot,
+  setProjectDirectoryRoot: typeof actions.setProjectDirectoryRoot
 };
 
 type State = {};
+
+type MenuOption = {
+  id: string,
+  label: string,
+  disabled: boolean,
+  click: () => any
+};
+
+type ContextMenu = Array<MenuOption>;
 
 class SourceTreeItem extends Component<Props, State> {
   getIcon(item: TreeNode, depth: number) {
     const { debuggeeUrl, projectRoot, source } = this.props;
 
     if (item.path === "webpack://") {
-      return <Svg name="webpack" />;
+      return <AccessibleImage className="webpack" />;
     } else if (item.path === "ng://") {
-      return <Svg name="angular" />;
+      return <AccessibleImage className="angular" />;
     } else if (item.path.startsWith("moz-extension://") && depth === 0) {
-      return <img className="extension" />;
+      return <AccessibleImage className="extension" />;
     }
 
     if (depth === 0 && projectRoot === "") {
       return (
-        <img
+        <AccessibleImage
           className={classnames("domain", {
             debuggee: debuggeeUrl && debuggeeUrl.includes(item.name)
           })}
@@ -71,7 +80,7 @@ class SourceTreeItem extends Component<Props, State> {
     }
 
     if (isDirectory(item)) {
-      return <img className="folder" />;
+      return <AccessibleImage className="folder" />;
     }
 
     if (source) {
@@ -82,13 +91,11 @@ class SourceTreeItem extends Component<Props, State> {
   }
 
   onClick = (e: MouseEvent) => {
-    const { expanded, item, focusItem, setExpanded, selectItem } = this.props;
+    const { item, focusItem, selectItem } = this.props;
 
     focusItem(item);
 
-    if (isDirectory(item)) {
-      setExpanded(item, !!expanded, e.altKey);
-    } else {
+    if (!isDirectory(item)) {
       selectItem(item);
     }
   };
@@ -122,35 +129,57 @@ class SourceTreeItem extends Component<Props, State> {
       }
     }
 
-    if (isDirectory(item) && features.root) {
-      const { path } = item;
-      const { projectRoot } = this.props;
+    if (isDirectory(item)) {
+      this.addCollapseExpandAllOptions(menuOptions, item);
 
-      if (projectRoot.endsWith(path)) {
-        menuOptions.push({
-          id: "node-remove-directory-root",
-          label: removeDirectoryRootLabel,
-          disabled: false,
-          click: () => this.props.clearProjectDirectoryRoot()
-        });
-      } else {
-        menuOptions.push({
-          id: "node-set-directory-root",
-          label: setDirectoryRootLabel,
-          accesskey: setDirectoryRootKey,
-          disabled: false,
-          click: () => this.props.setProjectDirectoryRoot(path)
-        });
+      if (features.root) {
+        const { path } = item;
+        const { projectRoot } = this.props;
+
+        if (projectRoot.endsWith(path)) {
+          menuOptions.push({
+            id: "node-remove-directory-root",
+            label: removeDirectoryRootLabel,
+            disabled: false,
+            click: () => this.props.clearProjectDirectoryRoot()
+          });
+        } else {
+          menuOptions.push({
+            id: "node-set-directory-root",
+            label: setDirectoryRootLabel,
+            accesskey: setDirectoryRootKey,
+            disabled: false,
+            click: () => this.props.setProjectDirectoryRoot(path)
+          });
+        }
       }
     }
 
     showMenu(event, menuOptions);
   };
 
+  addCollapseExpandAllOptions = (menuOptions: ContextMenu, item: TreeNode) => {
+    const { setExpanded } = this.props;
+
+    menuOptions.push({
+      id: "node-menu-collapse-all",
+      label: L10N.getStr("collapseAll.label"),
+      disabled: false,
+      click: () => setExpanded(item, false, true)
+    });
+
+    menuOptions.push({
+      id: "node-menu-expand-all",
+      label: L10N.getStr("expandAll.label"),
+      disabled: false,
+      click: () => setExpanded(item, true, true)
+    });
+  };
+
   renderItemArrow() {
     const { item, expanded } = this.props;
     return isDirectory(item) ? (
-      <img className={classnames("arrow", { expanded })} />
+      <AccessibleImage className={classnames("arrow", { expanded })} />
     ) : (
       <i className="no-arrow" />
     );
@@ -183,7 +212,11 @@ class SourceTreeItem extends Component<Props, State> {
       <span className="suffix">{L10N.getStr("sourceFooter.mappedSuffix")}</span>
     ) : null;
 
-    const querystring = getSourceQueryString(source);
+    let querystring;
+    if (hasSiblingOfSameName) {
+      querystring = getSourceQueryString(source);
+    }
+
     const query =
       hasSiblingOfSameName && querystring ? (
         <span className="query">{querystring}</span>

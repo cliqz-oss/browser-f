@@ -8,12 +8,14 @@
 #include "VRGPUParent.h"
 #include "VRManager.h"
 #include "gfxConfig.h"
+#include "nsDebugImpl.h"
 
 #include "mozilla/gfx/gfxVars.h"
+#include "mozilla/ipc/CrashReporterClient.h"
 #include "mozilla/ipc/ProcessChild.h"
 
 #if defined(XP_WIN)
-#include "mozilla/gfx/DeviceManagerDx.h"
+#  include "mozilla/gfx/DeviceManagerDx.h"
 #endif
 
 namespace mozilla {
@@ -79,19 +81,44 @@ IPCResult VRParent::RecvUpdateVar(const GfxVarUpdate& aUpdate) {
   return IPC_OK();
 }
 
+mozilla::ipc::IPCResult VRParent::RecvOpenVRControllerActionPathToVR(
+    const nsCString& aPath) {
+  mOpenVRControllerAction = aPath;
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult VRParent::RecvOpenVRControllerManifestPathToVR(
+    const OpenVRControllerType& aType, const nsCString& aPath) {
+  mOpenVRControllerManifest.Put(static_cast<uint32_t>(aType), aPath);
+  return IPC_OK();
+}
+
 void VRParent::ActorDestroy(ActorDestroyReason aWhy) {
   if (AbnormalShutdown == aWhy) {
     NS_WARNING("Shutting down VR process early due to a crash!");
     ProcessChild::QuickExit();
   }
+  if (!mVRGPUParent->IsClosed()) {
+    mVRGPUParent->Close();
+  }
+  mVRGPUParent = nullptr;
 
-  mVRGPUParent->Close();
+#ifndef NS_FREE_PERMANENT_DATA
+  // No point in going through XPCOM shutdown because we don't keep persistent
+  // state.
+  ProcessChild::QuickExit();
+#endif
+
 #if defined(XP_WIN)
   DeviceManagerDx::Shutdown();
 #endif
   gfxVars::Shutdown();
   gfxConfig::Shutdown();
   gfxPrefs::DestroySingleton();
+  CrashReporterClient::DestroySingleton();
+  // Only calling XRE_ShutdownChildProcess() at the child process
+  // instead of the main process. Otherwise, it will close all child processes
+  // that are spawned from the main process.
   XRE_ShutdownChildProcess();
 }
 
@@ -108,6 +135,8 @@ bool VRParent::Init(base::ProcessId aParentPid, const char* aParentBuildID,
     return false;
   }
 
+  nsDebugImpl::SetMultiprocessMode("VR");
+
   // This must be checked before any IPDL message, which may hit sentinel
   // errors due to parent and content processes having different
   // versions.
@@ -117,6 +146,9 @@ bool VRParent::Init(base::ProcessId aParentPid, const char* aParentBuildID,
     // This can occur when an update occurred in the background.
     ProcessChild::QuickExit();
   }
+
+  // Init crash reporter support.
+  CrashReporterClient::InitSingleton(this);
 
   // Ensure gfxPrefs are initialized.
   gfxPrefs::GetSingleton();
@@ -130,6 +162,20 @@ bool VRParent::Init(base::ProcessId aParentPid, const char* aParentBuildID,
   }
 
   return true;
+}
+
+bool VRParent::GetOpenVRControllerActionPath(nsCString* aPath) {
+  if (!mOpenVRControllerAction.IsEmpty()) {
+    *aPath = mOpenVRControllerAction;
+    return true;
+  }
+
+  return false;
+}
+
+bool VRParent::GetOpenVRControllerManifestPath(OpenVRControllerType aType,
+                                               nsCString* aPath) {
+  return mOpenVRControllerManifest.Get(static_cast<uint32_t>(aType), aPath);
 }
 
 }  // namespace gfx

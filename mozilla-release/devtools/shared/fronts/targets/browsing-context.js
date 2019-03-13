@@ -4,15 +4,13 @@
 "use strict";
 
 const {browsingContextTargetSpec} = require("devtools/shared/specs/targets/browsing-context");
-const protocol = require("devtools/shared/protocol");
-const {custom} = protocol;
+const { FrontClassWithSpec, registerFront } = require("devtools/shared/protocol");
 
 loader.lazyRequireGetter(this, "ThreadClient", "devtools/shared/client/thread-client");
 
-const BrowsingContextTargetFront =
-protocol.FrontClassWithSpec(browsingContextTargetSpec, {
-  initialize: function(client, form) {
-    protocol.Front.prototype.initialize.call(this, client, form);
+class BrowsingContextTargetFront extends FrontClassWithSpec(browsingContextTargetSpec) {
+  constructor(client, form) {
+    super(client, form);
 
     this.thread = null;
 
@@ -22,22 +20,44 @@ protocol.FrontClassWithSpec(browsingContextTargetSpec, {
       javascriptEnabled: null,
     };
 
+    // RootFront.listTabs is going to update this state via `setIsSelected`  method
+    this._selected = false;
+
     // TODO: remove once ThreadClient becomes a front
     this.client = client;
+  }
 
-    // Save the full form for Target class usage
+  form(json) {
+    this.actorID = json.actor;
+
+    // Save the full form for Target class usage.
     // Do not use `form` name to avoid colliding with protocol.js's `form` method
-    this.targetForm = form;
-  },
+    this.targetForm = json;
+
+    this.outerWindowID = json.outerWindowID;
+    this.favicon = json.favicon;
+    this.title = json.title;
+    this.url = json.url;
+  }
+
+  // Reports if the related tab is selected. Only applies to BrowsingContextTarget
+  // issued from RootFront.listTabs.
+  get selected() {
+    return this._selected;
+  }
+
+  // This is called by RootFront.listTabs, to update the currently selected tab.
+  setIsSelected(selected) {
+    this._selected = selected;
+  }
 
   /**
    * Attach to a thread actor.
    *
    * @param object options
    *        Configuration options.
-   *        - useSourceMaps: whether to use source maps or not.
    */
-  attachThread: function(options = {}) {
+  attachThread(options = {}) {
     if (this.thread) {
       return Promise.resolve([{}, this.thread]);
     }
@@ -52,36 +72,32 @@ protocol.FrontClassWithSpec(browsingContextTargetSpec, {
       this.client.registerClient(this.thread);
       return [response, this.thread];
     });
-  },
+  }
 
-  attach: custom(async function() {
-    const response = await this._attach();
+  async attach() {
+    const response = await super.attach();
 
     this._threadActor = response.threadActor;
     this.configureOptions.javascriptEnabled = response.javascriptEnabled;
     this.traits = response.traits || {};
 
     return response;
-  }, {
-    impl: "_attach",
-  }),
+  }
 
-  reconfigure: custom(async function({ options }) {
-    const response = await this._reconfigure({ options });
+  async reconfigure({ options }) {
+    const response = await super.reconfigure({ options });
 
     if (typeof options.javascriptEnabled != "undefined") {
       this.configureOptions.javascriptEnabled = options.javascriptEnabled;
     }
 
     return response;
-  }, {
-    impl: "_reconfigure",
-  }),
+  }
 
-  detach: custom(async function() {
+  async detach() {
     let response;
     try {
-      response = await this._detach();
+      response = await super.detach();
     } catch (e) {
       console.warn(
         `Error while detaching the browsing context target front: ${e.message}`);
@@ -98,9 +114,8 @@ protocol.FrontClassWithSpec(browsingContextTargetSpec, {
     this.destroy();
 
     return response;
-  }, {
-    impl: "_detach",
-  }),
-});
+  }
+}
 
 exports.BrowsingContextTargetFront = BrowsingContextTargetFront;
+registerFront(BrowsingContextTargetFront);

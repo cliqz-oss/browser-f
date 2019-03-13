@@ -7,9 +7,9 @@
 #include "mozilla/dom/SVGAnimationElement.h"
 #include "mozilla/dom/SVGSVGElement.h"
 #include "mozilla/dom/ElementInlines.h"
-#include "nsSMILTimeContainer.h"
-#include "nsSMILAnimationController.h"
-#include "nsSMILAnimationFunction.h"
+#include "mozilla/SMILAnimationController.h"
+#include "mozilla/SMILAnimationFunction.h"
+#include "mozilla/SMILTimeContainer.h"
 #include "nsContentUtils.h"
 #include "nsIContentInlines.h"
 #include "nsIURI.h"
@@ -83,24 +83,22 @@ bool SVGAnimationElement::GetTargetAttributeName(int32_t* aNamespaceID,
       aLocalName));
 }
 
-nsSMILTimedElement& SVGAnimationElement::TimedElement() {
-  return mTimedElement;
-}
+SMILTimedElement& SVGAnimationElement::TimedElement() { return mTimedElement; }
 
-nsSVGElement* SVGAnimationElement::GetTargetElement() {
+SVGElement* SVGAnimationElement::GetTargetElement() {
   FlushAnimations();
 
   // We'll just call the other GetTargetElement method, and QI to the right type
   nsIContent* target = GetTargetElementContent();
 
-  return (target && target->IsSVGElement()) ? static_cast<nsSVGElement*>(target)
+  return (target && target->IsSVGElement()) ? static_cast<SVGElement*>(target)
                                             : nullptr;
 }
 
 float SVGAnimationElement::GetStartTime(ErrorResult& rv) {
   FlushAnimations();
 
-  nsSMILTimeValue startTime = mTimedElement.GetStartTime();
+  SMILTimeValue startTime = mTimedElement.GetStartTime();
   if (!startTime.IsDefinite()) {
     rv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return 0.f;
@@ -109,12 +107,12 @@ float SVGAnimationElement::GetStartTime(ErrorResult& rv) {
   return float(double(startTime.GetMillis()) / PR_MSEC_PER_SEC);
 }
 
-float SVGAnimationElement::GetCurrentTime() {
+float SVGAnimationElement::GetCurrentTimeAsFloat() {
   // Not necessary to call FlushAnimations() for this
 
-  nsSMILTimeContainer* root = GetTimeContainer();
+  SMILTimeContainer* root = GetTimeContainer();
   if (root) {
-    return float(double(root->GetCurrentTime()) / PR_MSEC_PER_SEC);
+    return float(double(root->GetCurrentTimeAsSMILTime()) / PR_MSEC_PER_SEC);
   }
 
   return 0.0f;
@@ -123,7 +121,7 @@ float SVGAnimationElement::GetCurrentTime() {
 float SVGAnimationElement::GetSimpleDuration(ErrorResult& rv) {
   // Not necessary to call FlushAnimations() for this
 
-  nsSMILTimeValue simpleDur = mTimedElement.GetSimpleDuration();
+  SMILTimeValue simpleDur = mTimedElement.GetSimpleDuration();
   if (!simpleDur.IsDefinite()) {
     rv.Throw(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
     return 0.f;
@@ -135,7 +133,7 @@ float SVGAnimationElement::GetSimpleDuration(ErrorResult& rv) {
 //----------------------------------------------------------------------
 // nsIContent methods
 
-nsresult SVGAnimationElement::BindToTree(nsIDocument* aDocument,
+nsresult SVGAnimationElement::BindToTree(Document* aDocument,
                                          nsIContent* aParent,
                                          nsIContent* aBindingParent) {
   MOZ_ASSERT(!mHrefTarget.get(),
@@ -145,8 +143,8 @@ nsresult SVGAnimationElement::BindToTree(nsIDocument* aDocument,
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Add myself to the animation controller's master set of animation elements.
-  if (nsIDocument* doc = GetComposedDoc()) {
-    nsSMILAnimationController* controller = doc->GetAnimationController();
+  if (Document* doc = GetComposedDoc()) {
+    SMILAnimationController* controller = doc->GetAnimationController();
     if (controller) {
       controller->RegisterAnimationElement(this);
     }
@@ -170,7 +168,7 @@ nsresult SVGAnimationElement::BindToTree(nsIDocument* aDocument,
 }
 
 void SVGAnimationElement::UnbindFromTree(bool aDeep, bool aNullParent) {
-  nsSMILAnimationController* controller = OwnerDoc()->GetAnimationController();
+  SMILAnimationController* controller = OwnerDoc()->GetAnimationController();
   if (controller) {
     controller->UnregisterAnimationElement(this);
   }
@@ -299,9 +297,9 @@ void SVGAnimationElement::ActivateByHyperlink() {
   // The behavior for when the target is an animation element is defined in
   // SMIL Animation:
   //   http://www.w3.org/TR/smil-animation/#HyperlinkSemantics
-  nsSMILTimeValue seekTime = mTimedElement.GetHyperlinkTime();
+  SMILTimeValue seekTime = mTimedElement.GetHyperlinkTime();
   if (seekTime.IsDefinite()) {
-    nsSMILTimeContainer* timeContainer = GetTimeContainer();
+    SMILTimeContainer* timeContainer = GetTimeContainer();
     if (timeContainer) {
       timeContainer->SetCurrentTime(seekTime.GetMillis());
       AnimationNeedsResample();
@@ -319,7 +317,7 @@ void SVGAnimationElement::ActivateByHyperlink() {
 //----------------------------------------------------------------------
 // Implementation helpers
 
-nsSMILTimeContainer* SVGAnimationElement::GetTimeContainer() {
+SMILTimeContainer* SVGAnimationElement::GetTimeContainer() {
   SVGSVGElement* element = SVGContentUtils::GetOuterSVGElement(this);
 
   if (element) {

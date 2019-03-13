@@ -77,11 +77,11 @@
 #include "WebGLVertexAttribData.h"
 
 #ifdef MOZ_WIDGET_COCOA
-#include "nsCocoaFeatures.h"
+#  include "nsCocoaFeatures.h"
 #endif
 
 #ifdef XP_WIN
-#include "WGLLibrary.h"
+#  include "WGLLibrary.h"
 #endif
 
 // Generated
@@ -1138,6 +1138,11 @@ already_AddRefed<layers::Layer> WebGLContext::GetCanvasLayer(
   CanvasRenderer* canvasRenderer = canvasLayer->CreateOrGetCanvasRenderer();
   if (!InitializeCanvasRenderer(builder, canvasRenderer)) return nullptr;
 
+  if (!gl) {
+    NS_WARNING("GLContext is null!");
+    return nullptr;
+  }
+
   uint32_t flags = gl->Caps().alpha ? 0 : Layer::CONTENT_OPAQUE;
   canvasLayer->SetContentFlags(flags);
 
@@ -1191,10 +1196,10 @@ bool WebGLContext::InitializeCanvasRenderer(nsDisplayListBuilder* aBuilder,
     data.mDidTransCallbackData = this;
   }
 
-  data.mGLContext = gl;
   data.mSize = DrawingBufferSize();
   data.mHasAlpha = mOptions.alpha;
   data.mIsGLAlphaPremult = IsPremultAlpha() || !data.mHasAlpha;
+  data.mGLContext = gl;
 
   aRenderer->Initialize(data);
   aRenderer->SetDirty();
@@ -1212,7 +1217,7 @@ layers::LayersBackend WebGLContext::GetCompositorBackendType() const {
   return LayersBackend::LAYERS_NONE;
 }
 
-nsIDocument* WebGLContext::GetOwnerDoc() const {
+Document* WebGLContext::GetOwnerDoc() const {
   MOZ_ASSERT(mCanvasElement);
   if (!mCanvasElement) {
     return nullptr;
@@ -1720,8 +1725,9 @@ gfx::IntSize WebGLContext::DrawingBufferSize() {
   return mDefaultFB->mSize;
 }
 
-bool WebGLContext::ValidateAndInitFB(const WebGLFramebuffer* const fb) {
-  if (fb) return fb->ValidateAndInitAttachments();
+bool WebGLContext::ValidateAndInitFB(const WebGLFramebuffer* const fb,
+                                     const GLenum incompleteFbError) {
+  if (fb) return fb->ValidateAndInitAttachments(incompleteFbError);
 
   if (!EnsureDefaultFB()) return false;
 
@@ -1758,11 +1764,11 @@ bool WebGLContext::BindCurFBForDraw() {
 
 bool WebGLContext::BindCurFBForColorRead(
     const webgl::FormatUsageInfo** const out_format, uint32_t* const out_width,
-    uint32_t* const out_height) {
+    uint32_t* const out_height, const GLenum incompleteFbError) {
   const auto& fb = mBoundReadFramebuffer;
 
   if (fb) {
-    if (!ValidateAndInitFB(fb)) return false;
+    if (!ValidateAndInitFB(fb, incompleteFbError)) return false;
     if (!fb->ValidateForColorRead(out_format, out_width, out_height))
       return false;
 
@@ -2316,7 +2322,7 @@ webgl::AvailabilityRunnable* WebGLContext::EnsureAvailabilityRunnable() {
     RefPtr<webgl::AvailabilityRunnable> runnable =
         new webgl::AvailabilityRunnable(this);
 
-    nsIDocument* document = GetOwnerDoc();
+    Document* document = GetOwnerDoc();
     if (document) {
       document->Dispatch(TaskCategory::Other, runnable.forget());
     } else {

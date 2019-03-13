@@ -1,7 +1,9 @@
 // |jit-test| skip-if: !('oomTest' in this)
 
+ignoreUnhandledRejections();
+
 (function () {
-    g = newGlobal();
+    g = newGlobal({newCompartment: true});
     g.parent = this;
     g.eval("(function() { var dbg = Debugger(parent); dbg.onEnterFrame = function() {} } )")
     ``;

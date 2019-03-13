@@ -13,6 +13,7 @@ import os
 import sys
 import traceback
 import re
+from distutils.util import strtobool
 
 from mach.decorators import (
     CommandArgument,
@@ -148,9 +149,6 @@ class MachCommands(MachCommandBase):
     @CommandArgument('--comm-head-rev',
                      required=False,
                      help='Commit revision to use from head comm-* repository')
-    @CommandArgument('--message',
-                     required=True,
-                     help='Commit message to be parsed. Example: "try: -b do -p all -u all"')
     @CommandArgument('--project',
                      required=True,
                      help='Project to use for creating task graph. Example: --project=try')
@@ -171,6 +169,12 @@ class MachCommands(MachCommandBase):
                      help='SCM level of this repository')
     @CommandArgument('--target-tasks-method',
                      help='method for selecting the target tasks to generate')
+    @CommandArgument('--optimize-target-tasks',
+                     type=strtobool,
+                     nargs='?', const='true',
+                     help='If specified, this indicates whether the target '
+                          'tasks are eligible for optimization. Otherwise, '
+                          'the default for the project is used.')
     @CommandArgument('--try-task-config-file',
                      help='path to try task configuration file')
     def taskgraph_decision(self, **options):

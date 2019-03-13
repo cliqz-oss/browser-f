@@ -4,14 +4,14 @@
 "use strict";
 
 const {addonsSpec} = require("devtools/shared/specs/addon/addons");
-const protocol = require("devtools/shared/protocol");
+const { FrontClassWithSpec, registerFront } = require("devtools/shared/protocol");
 
-const AddonsFront = protocol.FrontClassWithSpec(addonsSpec, {
-  initialize: function(client, {addonsActor}) {
-    protocol.Front.prototype.initialize.call(this, client);
-    this.actorID = addonsActor;
+class AddonsFront extends FrontClassWithSpec(addonsSpec) {
+  constructor(client, {addonsActor}) {
+    super(client, { actor: addonsActor });
     this.manage(this);
-  },
-});
+  }
+}
 
 exports.AddonsFront = AddonsFront;
+registerFront(AddonsFront);

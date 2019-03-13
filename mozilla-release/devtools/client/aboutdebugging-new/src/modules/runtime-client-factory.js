@@ -16,6 +16,8 @@ const { RUNTIMES } = require("../constants");
 async function createLocalClient() {
   DebuggerServer.init();
   DebuggerServer.registerAllActors();
+  DebuggerServer.allowChromeProcess = true;
+
   const client = new DebuggerClient(DebuggerServer.connectPipe());
   await client.connect();
   return new ClientWrapper(client);
@@ -28,8 +30,8 @@ async function createNetworkClient(host, port) {
   return new ClientWrapper(client);
 }
 
-async function createUSBClient(socketPath) {
-  const port = await prepareTCPConnection(socketPath);
+async function createUSBClient(deviceId, socketPath) {
+  const port = await prepareTCPConnection(deviceId, socketPath);
   return createNetworkClient("localhost", port);
 }
 
@@ -45,13 +47,11 @@ async function createClientForRuntime(runtime) {
     const { host, port } = extra.connectionParameters;
     return createNetworkClient(host, port);
   } else if (type === RUNTIMES.USB) {
-    const { socketPath } = extra.connectionParameters;
-    return createUSBClient(socketPath);
+    const { deviceId, socketPath } = extra.connectionParameters;
+    return createUSBClient(deviceId, socketPath);
   }
 
   return null;
 }
 
 exports.createClientForRuntime = createClientForRuntime;
-
-require("./test-helper").enableMocks(module, "modules/runtime-client-factory");

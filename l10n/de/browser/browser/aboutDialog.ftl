@@ -32,9 +32,26 @@ bottomLinks-rights = Endanwenderrechte
 bottomLinks-privacy = Datenschutzbestimmungen
 aboutDialog-architecture-sixtyFourBit = 64-Bit
 aboutDialog-architecture-thirtyTwoBit = 32-Bit
+<<<<<<< HEAD
 
 version-based-on = nutzt Firefox
 cliqz-headline = We Redesign the Internet
 cliqz-description-1 = Cliqz respektiert deine Privatsphäre. Der Schutz deiner Daten ist uns wichtig. Als Unternehmen mit Sitz in Deutschland sind wir den besonders strengen deutschen Datenschutzgesetzen und unseren eigenen hohen Ansprüchen verpflichtet. Unser oberstes Prinzip: Cliqz speichert keinerlei Daten auf unseren Servern, anhand derer du oder dein Gerät oder dein Verhalten im Web identifizierbar wären. Erfahre mehr über <label data-l10n-name="cliqz-desc1-privacy">Datenschutz und Privatsphäre</label>, überprüfe unsere <label data-l10n-name="cliqz-desc1-policy">Datenschutzerklärung</label> oder <label data-l10n-name="cliqz-desc1-contact">sprich direkt mit uns</label>.
 
 cliqz-description-2 = Der Cliqz Browser baut auf dem <label data-l10n-name="cliqz-desc2-mozilla"/>Mozilla open source project</label> auf. Informationen zur „Mozilla Public License 2.0“ und anderen quelloffenen und kostenlosen Bestandteilen findest du <label data-l10n-name="cliqz-desc2-here">hier</label>.
+||||||| merged common ancestors
+=======
+
+# Example of resulting string: 66.0.1 (64-bit)
+# Variables:
+#   $version (String): version of Firefox, e.g. 66.0.1
+#   $bits (Number): bits of the architecture (32 or 64)
+aboutDialog-version = { $version } ({ $bits }-Bit)
+
+# Example of resulting string: 66.0a1 (2019-01-16) (64-bit)
+# Variables:
+#   $version (String): version of Firefox for Nightly builds, e.g. 66.0a1
+#   $isodate (String): date in ISO format, e.g. 2019-01-16
+#   $bits (Number): bits of the architecture (32 or 64)
+aboutDialog-version-nightly = { $version } ({ $isodate }) ({ $bits }-Bit)
+>>>>>>> origin/upstream-releases

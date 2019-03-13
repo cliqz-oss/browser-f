@@ -25,7 +25,7 @@
 #include "nsIDNSService.h"
 #include "nsICancelable.h"
 #include "nsGkAtoms.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsThreadUtils.h"
 #include "nsITimer.h"
 #include "nsIObserverService.h"
@@ -94,7 +94,7 @@ nsresult nsHTMLDNSPrefetch::Shutdown() {
   return NS_OK;
 }
 
-bool nsHTMLDNSPrefetch::IsAllowed(nsIDocument *aDocument) {
+bool nsHTMLDNSPrefetch::IsAllowed(Document *aDocument) {
   // There is no need to do prefetch on non UI scenarios such as XMLHttpRequest.
   return aDocument->IsDNSPrefetchAllowed() && aDocument->GetWindow();
 }
@@ -506,7 +506,13 @@ nsHTMLDNSPrefetch::nsDeferrals::OnStatusChange(nsIWebProgress *aWebProgress,
 NS_IMETHODIMP
 nsHTMLDNSPrefetch::nsDeferrals::OnSecurityChange(nsIWebProgress *aWebProgress,
                                                  nsIRequest *aRequest,
-                                                 uint32_t state) {
+                                                 uint32_t aState) {
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsHTMLDNSPrefetch::nsDeferrals::OnContentBlockingEvent(
+    nsIWebProgress *aWebProgress, nsIRequest *aRequest, uint32_t aEvent) {
   return NS_OK;
 }
 

@@ -84,12 +84,12 @@ bool StyleSheet::HasRules() const {
   return Servo_StyleSheet_HasRules(Inner().mContents);
 }
 
-nsIDocument* StyleSheet::GetAssociatedDocument() const {
+Document* StyleSheet::GetAssociatedDocument() const {
   return mDocumentOrShadowRoot ? mDocumentOrShadowRoot->AsNode().OwnerDoc()
                                : nullptr;
 }
 
-nsIDocument* StyleSheet::GetComposedDoc() const {
+Document* StyleSheet::GetComposedDoc() const {
   return mDocumentOrShadowRoot
              ? mDocumentOrShadowRoot->AsNode().GetComposedDoc()
              : nullptr;
@@ -199,19 +199,20 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_CYCLE_COLLECTION_TRACE_WRAPPERCACHE(StyleSheet)
 
 mozilla::dom::CSSStyleSheetParsingMode StyleSheet::ParsingModeDOM() {
-#define CHECK(X, Y)                                 \
+#define CHECK_MODE(X, Y)                            \
   static_assert(                                    \
       static_cast<int>(X) == static_cast<int>(Y),   \
       "mozilla::dom::CSSStyleSheetParsingMode and " \
       "mozilla::css::SheetParsingMode should have identical values");
 
-  CHECK(mozilla::dom::CSSStyleSheetParsingMode::Agent,
-        css::eAgentSheetFeatures);
-  CHECK(mozilla::dom::CSSStyleSheetParsingMode::User, css::eUserSheetFeatures);
-  CHECK(mozilla::dom::CSSStyleSheetParsingMode::Author,
-        css::eAuthorSheetFeatures);
+  CHECK_MODE(mozilla::dom::CSSStyleSheetParsingMode::Agent,
+             css::eAgentSheetFeatures);
+  CHECK_MODE(mozilla::dom::CSSStyleSheetParsingMode::User,
+             css::eUserSheetFeatures);
+  CHECK_MODE(mozilla::dom::CSSStyleSheetParsingMode::Author,
+             css::eAuthorSheetFeatures);
 
-#undef CHECK
+#undef CHECK_MODE
 
   return static_cast<mozilla::dom::CSSStyleSheetParsingMode>(mParsingMode);
 }
@@ -541,7 +542,7 @@ void StyleSheet::RuleAdded(css::Rule& aRule) {
   mState |= State::ModifiedRules;
   NOTIFY(RuleAdded, (*this, aRule));
 
-  if (nsIDocument* doc = GetComposedDoc()) {
+  if (Document* doc = GetComposedDoc()) {
     doc->StyleRuleAdded(this, &aRule);
   }
 }
@@ -550,7 +551,7 @@ void StyleSheet::RuleRemoved(css::Rule& aRule) {
   mState |= State::ModifiedRules;
   NOTIFY(RuleRemoved, (*this, aRule));
 
-  if (nsIDocument* doc = GetComposedDoc()) {
+  if (Document* doc = GetComposedDoc()) {
     doc->StyleRuleRemoved(this, &aRule);
   }
 }
@@ -559,7 +560,7 @@ void StyleSheet::RuleChanged(css::Rule* aRule) {
   mState |= State::ModifiedRules;
   NOTIFY(RuleChanged, (*this, aRule));
 
-  if (nsIDocument* doc = GetComposedDoc()) {
+  if (Document* doc = GetComposedDoc()) {
     doc->StyleRuleChanged(this, aRule);
   }
 }
@@ -585,7 +586,7 @@ nsresult StyleSheet::InsertRuleIntoGroup(const nsAString& aRule,
 
 uint64_t StyleSheet::FindOwningWindowInnerID() const {
   uint64_t windowID = 0;
-  if (nsIDocument* doc = GetAssociatedDocument()) {
+  if (Document* doc = GetAssociatedDocument()) {
     windowID = doc->InnerWindowID();
   }
 
@@ -867,7 +868,7 @@ static bool AllowParallelParse(css::Loader* aLoader, nsIURI* aSheetURI) {
 
   // If the browser is recording CSS errors, we need to use the sequential path
   // because the parallel path doesn't support that.
-  nsIDocument* doc = aLoader->GetDocument();
+  Document* doc = aLoader->GetDocument();
   if (doc && css::ErrorReporter::ShouldReportErrors(*doc)) {
     return false;
   }
@@ -968,7 +969,7 @@ nsresult StyleSheet::ReparseSheet(const nsAString& aInput) {
   // Hold strong ref to the CSSLoader in case the document update
   // kills the document
   RefPtr<css::Loader> loader;
-  if (nsIDocument* doc = GetAssociatedDocument()) {
+  if (Document* doc = GetAssociatedDocument()) {
     loader = doc->CSSLoader();
     NS_ASSERTION(loader, "Document with no CSS loader!");
   } else {

@@ -4,12 +4,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/dom/Element.h"
 #include "mozilla/dom/SVGStyleElement.h"
-#include "nsContentUtils.h"
-#include "mozilla/dom/SVGStyleElementBinding.h"
 
-NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(Style)
+#include "mozilla/dom/Element.h"
+#include "mozilla/dom/SVGStyleElementBinding.h"
+#include "nsCOMPtr.h"
+#include "nsContentUtils.h"
+
+NS_IMPL_NS_NEW_SVG_ELEMENT(Style)
 
 namespace mozilla {
 namespace dom {
@@ -58,8 +60,7 @@ NS_IMPL_ELEMENT_CLONE_WITH_INIT(SVGStyleElement)
 //----------------------------------------------------------------------
 // nsIContent methods
 
-nsresult SVGStyleElement::BindToTree(nsIDocument* aDocument,
-                                     nsIContent* aParent,
+nsresult SVGStyleElement::BindToTree(Document* aDocument, nsIContent* aParent,
                                      nsIContent* aBindingParent) {
   nsresult rv =
       SVGStyleElementBase::BindToTree(aDocument, aParent, aBindingParent);
@@ -74,7 +75,7 @@ nsresult SVGStyleElement::BindToTree(nsIDocument* aDocument,
 }
 
 void SVGStyleElement::UnbindFromTree(bool aDeep, bool aNullParent) {
-  nsCOMPtr<nsIDocument> oldDoc = GetUncomposedDoc();
+  nsCOMPtr<Document> oldDoc = GetUncomposedDoc();
   ShadowRoot* oldShadow = GetContainingShadow();
   SVGStyleElementBase::UnbindFromTree(aDeep, aNullParent);
   Unused << UpdateStyleSheetInternal(oldDoc, oldShadow);

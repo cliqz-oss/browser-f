@@ -57,8 +57,8 @@
 
 // Helper macro for the common case of a single class
 #define FRAME_STATE_GROUP(name_, class_) \
-  FRAME_STATE_GROUP_NAME(name_)          \
-  FRAME_STATE_GROUP_CLASS(name_, class_)
+FRAME_STATE_GROUP_NAME(name_)            \
+FRAME_STATE_GROUP_CLASS(name_, class_)
 
 // == Frame state bits that apply to all frames ===============================
 
@@ -248,8 +248,9 @@ FRAME_STATE_BIT(Generic, 43, NS_FRAME_SVG_LAYOUT)
 // ancestor.
 FRAME_STATE_BIT(Generic, 44, NS_FRAME_HAS_MULTI_COLUMN_ANCESTOR)
 
-// Bits 45 is currently unused, but be kind and check with bug 1465474
-// first please :-)
+// If this bit is set, then reflow may be dispatched from the current
+// frame instead of the root frame.
+FRAME_STATE_BIT(Generic, 45, NS_FRAME_DYNAMIC_REFLOW_ROOT)
 
 // This bit indicates that we're tracking visibility for this frame, and that
 // the frame has a VisibilityStateProperty property.
@@ -309,7 +310,9 @@ FRAME_STATE_BIT(Generic, 59, NS_FRAME_IS_IN_SINGLE_CHAR_MI)
 // NOTE: Bits 20-31 and 60-63 of the frame state are reserved for specific
 // frame classes.
 
-// NOTE: Currently unused and available bit(s): 45.
+// NOTE: No more unused bits. If needed, investigate removing obsolete bits by
+// adjusting logic, or moving infrequently-used bits elsewhere. If more space
+// for frame state is still needed, look for bit field gaps in nsIFrame.
 
 // == Frame state bits that apply to box frames ===============================
 
@@ -539,7 +542,7 @@ FRAME_STATE_BIT(Block, 23, NS_BLOCK_FLOAT_MGR)
 
 // For setting the relevant bits on a block formatting context:
 #define NS_BLOCK_FORMATTING_CONTEXT_STATE_BITS \
-  (NS_BLOCK_FLOAT_MGR | NS_BLOCK_MARGIN_ROOT)
+(NS_BLOCK_FLOAT_MGR | NS_BLOCK_MARGIN_ROOT)
 
 FRAME_STATE_BIT(Block, 24, NS_BLOCK_HAS_LINE_CURSOR)
 

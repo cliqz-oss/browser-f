@@ -27,7 +27,7 @@
 #include "mozilla/dom/HTMLInputElement.h"
 
 #ifdef MOZ_XUL
-#include "nsXULElement.h"
+#  include "nsXULElement.h"
 #endif
 
 using namespace mozilla;
@@ -106,8 +106,8 @@ nsresult nsWindowRoot::PostHandleEvent(EventChainPostVisitor& aVisitor) {
   return NS_OK;
 }
 
-nsPIDOMWindowOuter* nsWindowRoot::GetOwnerGlobalForBindings() {
-  return GetWindow();
+nsPIDOMWindowOuter* nsWindowRoot::GetOwnerGlobalForBindingsInternal() {
+  return mWindow;
 }
 
 nsIGlobalObject* nsWindowRoot::GetOwnerGlobal() const {

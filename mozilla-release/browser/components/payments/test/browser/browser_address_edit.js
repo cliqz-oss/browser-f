@@ -58,7 +58,7 @@ add_task(async function test_add_link() {
     for (let options of testOptions) {
       let shippingAddressChangePromise = ContentTask.spawn(browser, {
         eventName: "shippingaddresschange",
-      }, PTU.ContentTasks.awaitPaymentRequestEventPromise);
+      }, PTU.ContentTasks.awaitPaymentEventPromise);
 
       await manuallyAddShippingAddress(frame, newAddress, options);
       await shippingAddressChangePromise;
@@ -108,7 +108,7 @@ add_task(async function test_edit_link() {
 
     let shippingAddressChangePromise = ContentTask.spawn(browser, {
       eventName: "shippingaddresschange",
-    }, PTU.ContentTasks.awaitPaymentRequestEventPromise);
+    }, PTU.ContentTasks.awaitPaymentEventPromise);
 
     const EXPECTED_ADDRESS = {
       "given-name": "Jaws",
@@ -556,10 +556,10 @@ add_task(async function test_private_persist_addresses() {
     info("awaiting the shippingaddresschange event");
     await ContentTask.spawn(browser, {
       eventName: "shippingaddresschange",
-    }, PTU.ContentTasks.awaitPaymentRequestEventPromise);
+    }, PTU.ContentTasks.awaitPaymentEventPromise);
 
     await spawnPaymentDialogTask(frame, async (args) => {
-      let {address, tempAddressGuid} = args;
+      let {address, tempAddressGuid, prefilledGuids: guids} = args;
       let {
         PaymentTestUtils: PTU,
       } = ChromeUtils.import("resource://testing-common/PaymentTestUtils.jsm", {});
@@ -580,7 +580,11 @@ add_task(async function test_private_persist_addresses() {
       ok(tempAddress.name, "Address has a name");
       ok(tempAddress.name.includes(address["given-name"]) &&
          tempAddress.name.includes(address["family-name"]), "Address.name was computed");
-    }, {address: addressToAdd, tempAddressGuid});
+
+      let paymentMethodPicker = content.document.querySelector("payment-method-picker");
+      content.fillField(Cu.waiveXrays(paymentMethodPicker).dropdown.popupBox,
+                        guids.card1GUID);
+    }, {address: addressToAdd, tempAddressGuid, prefilledGuids});
 
     await spawnPaymentDialogTask(frame, PTU.DialogContentTasks.setSecurityCode, {
       securityCode: "123",

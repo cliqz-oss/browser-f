@@ -36,10 +36,8 @@
 #include "mozilla/webrender/RenderThread.h"
 #include "mozilla/widget/CompositorWidget.h"
 
-using mozilla::Telemetry::LABELS_CONTENT_FRAME_TIME_REASON;
-
 #ifdef MOZ_GECKO_PROFILER
-#include "ProfilerMarkerPayload.h"
+#  include "ProfilerMarkerPayload.h"
 #endif
 
 bool is_in_main_thread() { return NS_IsMainThread(); }
@@ -54,13 +52,17 @@ bool is_in_render_thread() {
 
 void gecko_profiler_start_marker(const char* name) {
 #ifdef MOZ_GECKO_PROFILER
-  profiler_tracing("WebRender", name, TRACING_INTERVAL_START);
+  profiler_tracing("WebRender", name,
+                   js::ProfilingStackFrame::Category::GRAPHICS,
+                   TRACING_INTERVAL_START);
 #endif
 }
 
 void gecko_profiler_end_marker(const char* name) {
 #ifdef MOZ_GECKO_PROFILER
-  profiler_tracing("WebRender", name, TRACING_INTERVAL_END);
+  profiler_tracing("WebRender", name,
+                   js::ProfilingStackFrame::Category::GRAPHICS,
+                   TRACING_INTERVAL_END);
 #endif
 }
 
@@ -203,7 +205,9 @@ class SceneBuiltNotification : public wr::NotificationHandler {
             };
 
             profiler_add_marker_for_thread(
-                profiler_current_thread_id(), "CONTENT_FULL_PAINT_TIME",
+                profiler_current_thread_id(),
+                js::ProfilingStackFrame::Category::GRAPHICS,
+                "CONTENT_FULL_PAINT_TIME",
                 MakeUnique<ContentFullPaintPayload>(startTime, endTime));
           }
 #endif
@@ -858,8 +862,9 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvSetDisplayList(
     nsTArray<RefCountedShmem>&& aSmallShmems,
     nsTArray<ipc::Shmem>&& aLargeShmems, const wr::IdNamespace& aIdNamespace,
     const bool& aContainsSVGGroup, const VsyncId& aVsyncId,
-    const TimeStamp& aRefreshStartTime, const TimeStamp& aTxnStartTime,
-    const nsCString& aTxnURL, const TimeStamp& aFwdTime) {
+    const TimeStamp& aVsyncStartTime, const TimeStamp& aRefreshStartTime,
+    const TimeStamp& aTxnStartTime, const nsCString& aTxnURL,
+    const TimeStamp& aFwdTime) {
   if (mDestroyed) {
     for (const auto& op : aToDestroy) {
       DestroyActor(op);
@@ -871,7 +876,7 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvSetDisplayList(
     CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::URL, aTxnURL);
   }
 
-  AUTO_PROFILER_TRACING("Paint", "SetDisplayList");
+  AUTO_PROFILER_TRACING("Paint", "SetDisplayList", GRAPHICS);
   UpdateFwdTransactionId(aFwdTransactionId);
 
   // This ensures that destroy operations are always processed. It is not safe
@@ -940,8 +945,10 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvSetDisplayList(
                      mChildLayersObserverEpoch, true));
     }
 
-    txn.Notify(wr::Checkpoint::SceneBuilt, MakeUnique<SceneBuiltNotification>(
-                                               this, wrEpoch, aTxnStartTime));
+    if (!IsRootWebRenderBridgeParent()) {
+      txn.Notify(wr::Checkpoint::SceneBuilt, MakeUnique<SceneBuiltNotification>(
+                                                 this, wrEpoch, aTxnStartTime));
+    }
 
     mApi->SendTransaction(txn);
 
@@ -953,8 +960,8 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvSetDisplayList(
   }
 
   HoldPendingTransactionId(wrEpoch, aTransactionId, aContainsSVGGroup, aVsyncId,
-                           aRefreshStartTime, aTxnStartTime, aTxnURL, aFwdTime,
-                           mIsFirstPaint);
+                           aVsyncStartTime, aRefreshStartTime, aTxnStartTime,
+                           aTxnURL, aFwdTime, mIsFirstPaint);
   mIsFirstPaint = false;
 
   if (!validTransaction) {
@@ -981,9 +988,9 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvEmptyTransaction(
     nsTArray<OpUpdateResource>&& aResourceUpdates,
     nsTArray<RefCountedShmem>&& aSmallShmems,
     nsTArray<ipc::Shmem>&& aLargeShmems, const wr::IdNamespace& aIdNamespace,
-    const VsyncId& aVsyncId, const TimeStamp& aRefreshStartTime,
-    const TimeStamp& aTxnStartTime, const nsCString& aTxnURL,
-    const TimeStamp& aFwdTime) {
+    const VsyncId& aVsyncId, const TimeStamp& aVsyncStartTime,
+    const TimeStamp& aRefreshStartTime, const TimeStamp& aTxnStartTime,
+    const nsCString& aTxnURL, const TimeStamp& aFwdTime) {
   if (mDestroyed) {
     for (const auto& op : aToDestroy) {
       DestroyActor(op);
@@ -995,7 +1002,7 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvEmptyTransaction(
     CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::URL, aTxnURL);
   }
 
-  AUTO_PROFILER_TRACING("Paint", "EmptyTransaction");
+  AUTO_PROFILER_TRACING("Paint", "EmptyTransaction", GRAPHICS);
   UpdateFwdTransactionId(aFwdTransactionId);
 
   // This ensures that destroy operations are always processed. It is not safe
@@ -1072,7 +1079,8 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvEmptyTransaction(
   // Only register a value for CONTENT_FRAME_TIME telemetry if we actually drew
   // something. It is for consistency with disabling WebRender.
   HoldPendingTransactionId(mWrEpoch, aTransactionId, false, aVsyncId,
-                           aRefreshStartTime, aTxnStartTime, aTxnURL, aFwdTime,
+                           aVsyncStartTime, aRefreshStartTime, aTxnStartTime,
+                           aTxnURL, aFwdTime,
                            /* aIsFirstPaint */ false,
                            /* aUseForTelemetry */ scheduleComposite);
 
@@ -1367,7 +1375,7 @@ void WebRenderBridgeParent::RemovePipelineIdForCompositable(
   }
   RefPtr<WebRenderImageHost>& wrHost = it->second;
 
-  wrHost->ClearWrBridge();
+  wrHost->ClearWrBridge(this);
   mAsyncImageManager->RemoveAsyncImagePipeline(aPipelineId, aTxn);
   aTxn.RemovePipeline(aPipelineId);
   mAsyncCompositables.erase(wr::AsUint64(aPipelineId));
@@ -1530,6 +1538,15 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvSyncWithCompositor() {
 
 mozilla::ipc::IPCResult WebRenderBridgeParent::RecvSetConfirmedTargetAPZC(
     const uint64_t& aBlockId, nsTArray<ScrollableLayerGuid>&& aTargets) {
+  for (size_t i = 0; i < aTargets.Length(); i++) {
+    if (aTargets[i].mLayersId != GetLayersId()) {
+      // Guard against bad data from hijacked child processes
+      NS_ERROR(
+          "Unexpected layers id in RecvSetConfirmedTargetAPZC; dropping "
+          "message...");
+      return IPC_FAIL(this, "Bad layers id");
+    }
+  }
   if (mDestroyed) {
     return IPC_OK();
   }
@@ -1656,7 +1673,7 @@ bool WebRenderBridgeParent::SampleAnimations(
 void WebRenderBridgeParent::CompositeIfNeeded() {
   if (mSkippedComposite) {
     mSkippedComposite = false;
-    CompositeToTarget(VsyncId(), nullptr, nullptr);
+    CompositeToTarget(mSkippedCompositeId, nullptr, nullptr);
   }
 }
 
@@ -1671,7 +1688,7 @@ void WebRenderBridgeParent::CompositeToTarget(VsyncId aId,
   MOZ_ASSERT(aTarget == nullptr);
   MOZ_ASSERT(aRect == nullptr);
 
-  AUTO_PROFILER_TRACING("Paint", "CompositeToTarget");
+  AUTO_PROFILER_TRACING("Paint", "CompositeToTarget", GRAPHICS);
   if (mPaused || !mReceivedDisplayList) {
     mPreviousFrameTimeStamp = TimeStamp();
     return;
@@ -1681,6 +1698,7 @@ void WebRenderBridgeParent::CompositeToTarget(VsyncId aId,
       wr::RenderThread::Get()->TooManyPendingFrames(mApi->GetId())) {
     // Render thread is busy, try next time.
     mSkippedComposite = true;
+    mSkippedCompositeId = aId;
     mPreviousFrameTimeStamp = TimeStamp();
 
     // Record that we skipped presenting a frame for
@@ -1763,18 +1781,21 @@ void WebRenderBridgeParent::MaybeGenerateFrame(VsyncId aId,
   fastTxn.GenerateFrame();
 
   mApi->SendTransaction(fastTxn);
+  mMostRecentComposite = TimeStamp::Now();
 }
 
 void WebRenderBridgeParent::HoldPendingTransactionId(
     const wr::Epoch& aWrEpoch, TransactionId aTransactionId,
     bool aContainsSVGGroup, const VsyncId& aVsyncId,
-    const TimeStamp& aRefreshStartTime, const TimeStamp& aTxnStartTime,
-    const nsCString& aTxnURL, const TimeStamp& aFwdTime,
-    const bool aIsFirstPaint, const bool aUseForTelemetry) {
+    const TimeStamp& aVsyncStartTime, const TimeStamp& aRefreshStartTime,
+    const TimeStamp& aTxnStartTime, const nsCString& aTxnURL,
+    const TimeStamp& aFwdTime, const bool aIsFirstPaint,
+    const bool aUseForTelemetry) {
   MOZ_ASSERT(aTransactionId > LastPendingTransactionId());
   mPendingTransactionIds.push_back(PendingTransactionId(
-      aWrEpoch, aTransactionId, aContainsSVGGroup, aVsyncId, aRefreshStartTime,
-      aTxnStartTime, aTxnURL, aFwdTime, aIsFirstPaint, aUseForTelemetry));
+      aWrEpoch, aTransactionId, aContainsSVGGroup, aVsyncId, aVsyncStartTime,
+      aRefreshStartTime, aTxnStartTime, aTxnURL, aFwdTime, aIsFirstPaint,
+      aUseForTelemetry));
 }
 
 TransactionId WebRenderBridgeParent::LastPendingTransactionId() {
@@ -1795,6 +1816,54 @@ void WebRenderBridgeParent::NotifySceneBuiltForEpoch(
   }
 }
 
+void WebRenderBridgeParent::NotifyDidSceneBuild(
+    RefPtr<wr::WebRenderPipelineInfo> aInfo) {
+  MOZ_ASSERT(IsRootWebRenderBridgeParent());
+  if (!mCompositorScheduler) {
+    return;
+  }
+
+  mAsyncImageManager->SetWillGenerateFrame();
+
+  // If the scheduler has a composite more recent than our last composite (which
+  // we missed), and we're within the threshold ms of the last vsync, then
+  // kick of a late composite.
+  TimeStamp lastVsync = mCompositorScheduler->GetLastVsyncTime();
+  VsyncId lastVsyncId = mCompositorScheduler->GetLastVsyncId();
+  if (lastVsyncId == VsyncId() || !mMostRecentComposite ||
+      mMostRecentComposite >= lastVsync ||
+      ((TimeStamp::Now() - lastVsync).ToMilliseconds() >
+       gfxPrefs::WebRenderLateSceneBuildThreshold())) {
+    mCompositorScheduler->ScheduleComposition();
+    return;
+  }
+
+  // Look through all the pipelines contained within the built scene
+  // and check which vsync they initiated from.
+  auto info = aInfo->Raw();
+  for (uintptr_t i = 0; i < info.epochs.length; i++) {
+    auto epoch = info.epochs.data[i];
+
+    WebRenderBridgeParent* wrBridge = this;
+    if (!(epoch.pipeline_id == PipelineId())) {
+      wrBridge = mAsyncImageManager->GetWrBridge(epoch.pipeline_id);
+    }
+
+    if (wrBridge) {
+      VsyncId startId = wrBridge->GetVsyncIdForEpoch(epoch.epoch);
+      // If any of the pipelines started building on the current vsync (i.e
+      // we did all of display list building and scene building within the
+      // threshold), then don't do an early composite.
+      if (startId == lastVsyncId) {
+        mCompositorScheduler->ScheduleComposition();
+        return;
+      }
+    }
+  }
+
+  CompositeToTarget(mCompositorScheduler->GetLastVsyncId(), nullptr, nullptr);
+}
+
 TransactionId WebRenderBridgeParent::FlushTransactionIdsForEpoch(
     const wr::Epoch& aEpoch, const VsyncId& aCompositeStartId,
     const TimeStamp& aCompositeStartTime, const TimeStamp& aRenderStartTime,
@@ -1810,112 +1879,28 @@ TransactionId WebRenderBridgeParent::FlushTransactionIdsForEpoch(
 
     if (!IsRootWebRenderBridgeParent() && !mVsyncRate.IsZero() &&
         transactionId.mUseForTelemetry) {
-      double latencyMs =
-          (aEndTime - transactionId.mTxnStartTime).ToMilliseconds();
-      double latencyNorm = latencyMs / mVsyncRate.ToMilliseconds();
-      int32_t fracLatencyNorm = lround(latencyNorm * 100.0);
+      auto fullPaintTime =
+          transactionId.mSceneBuiltTime
+              ? transactionId.mSceneBuiltTime - transactionId.mTxnStartTime
+              : TimeDuration::FromMilliseconds(0);
 
-#ifdef MOZ_GECKO_PROFILER
-      if (profiler_is_active()) {
-        class ContentFramePayload : public ProfilerMarkerPayload {
-         public:
-          ContentFramePayload(const mozilla::TimeStamp& aStartTime,
-                              const mozilla::TimeStamp& aEndTime)
-              : ProfilerMarkerPayload(aStartTime, aEndTime) {}
-          virtual void StreamPayload(SpliceableJSONWriter& aWriter,
-                                     const TimeStamp& aProcessStartTime,
-                                     UniqueStacks& aUniqueStacks) override {
-            StreamCommonProps("CONTENT_FRAME_TIME", aWriter, aProcessStartTime,
-                              aUniqueStacks);
-          }
-        };
-        profiler_add_marker_for_thread(
-            profiler_current_thread_id(), "CONTENT_FRAME_TIME",
-            MakeUnique<ContentFramePayload>(transactionId.mTxnStartTime,
-                                            aEndTime));
-      }
-#endif
-
-      // Record CONTENT_FRAME_TIME_REASON.
-      //
-      // This uses the refresh start time (CONTENT_FRAME_TIME uses the start of
-      // display list building), since that includes layout/style time, and 200
-      // should correlate more closely with missing a vsync.
-      //
-      // Also of note is that when the root WebRenderBridgeParent decides to
-      // skip a composite (due to the Renderer being busy), that won't notify
-      // child WebRenderBridgeParents. That failure will show up as the
-      // composite starting late (since it did), but it's really a fault of a
-      // slow composite on the previous frame, not a slow
-      // CONTENT_FULL_PAINT_TIME. It would be nice to have a separate bucket for
-      // this category (scene was ready on the next vsync, but we chose not to
-      // composite), but I can't find a way to locate the right child
-      // WebRenderBridgeParents from the root. WebRender notifies us of the
-      // child pipelines contained within a render, after it finishes, but I
-      // can't see how to query what child pipeline would have been rendered,
-      // when we choose to not do it.
-      latencyMs = (aEndTime - transactionId.mRefreshStartTime).ToMilliseconds();
-      latencyNorm = latencyMs / mVsyncRate.ToMilliseconds();
-      fracLatencyNorm = lround(latencyNorm * 100.0);
-      if (fracLatencyNorm < 200) {
-        // Success
-        Telemetry::AccumulateCategorical(
-            LABELS_CONTENT_FRAME_TIME_REASON::OnTime);
-      } else {
-        if (transactionId.mVsyncId == VsyncId() ||
-            aCompositeStartId == VsyncId() ||
-            transactionId.mVsyncId >= aCompositeStartId) {
-          // Vsync ids are nonsensical, possibly something got trigged from
-          // outside vsync?
-          Telemetry::AccumulateCategorical(
-              LABELS_CONTENT_FRAME_TIME_REASON::NoVsync);
-        } else if (aCompositeStartId - transactionId.mVsyncId > 1) {
-          // Composite started late (and maybe took too long as well)
-          Telemetry::AccumulateCategorical(
-              LABELS_CONTENT_FRAME_TIME_REASON::MissedComposite);
-        } else {
-          // Composite start on time, but must have taken too long.
-          Telemetry::AccumulateCategorical(
-              LABELS_CONTENT_FRAME_TIME_REASON::SlowComposite);
-        }
-      }
-
-      if (fracLatencyNorm > 200) {
+      int32_t contentFrameTime = RecordContentFrameTime(
+          transactionId.mVsyncId, transactionId.mVsyncStartTime,
+          transactionId.mTxnStartTime, aCompositeStartId, aEndTime,
+          fullPaintTime, mVsyncRate, transactionId.mContainsSVGGroup, true,
+          aStats);
+      if (contentFrameTime > 200) {
         aOutputStats->AppendElement(FrameStats(
             transactionId.mId, aCompositeStartTime, aRenderStartTime, aEndTime,
-            fracLatencyNorm,
+            contentFrameTime,
             aStats ? (double(aStats->resource_upload_time) / 1000000.0) : 0.0,
             aStats ? (double(aStats->gpu_cache_upload_time) / 1000000.0) : 0.0,
             transactionId.mTxnStartTime, transactionId.mRefreshStartTime,
             transactionId.mFwdTime, transactionId.mSceneBuiltTime,
             transactionId.mSkippedComposites, transactionId.mTxnURL));
-      }
 
-      Telemetry::Accumulate(Telemetry::CONTENT_FRAME_TIME, fracLatencyNorm);
-      if (fracLatencyNorm > 200) {
         wr::RenderThread::Get()->NotifySlowFrame(mApi->GetId());
       }
-      if (transactionId.mContainsSVGGroup) {
-        Telemetry::Accumulate(Telemetry::CONTENT_FRAME_TIME_WITH_SVG,
-                              fracLatencyNorm);
-      }
-
-      if (aStats) {
-        latencyMs -= (double(aStats->resource_upload_time) / 1000000.0);
-        latencyNorm = latencyMs / mVsyncRate.ToMilliseconds();
-        fracLatencyNorm = lround(latencyNorm * 100.0);
-      }
-      Telemetry::Accumulate(
-          Telemetry::CONTENT_FRAME_TIME_WITHOUT_RESOURCE_UPLOAD,
-          fracLatencyNorm);
-
-      if (aStats) {
-        latencyMs -= (double(aStats->gpu_cache_upload_time) / 1000000.0);
-        latencyNorm = latencyMs / mVsyncRate.ToMilliseconds();
-        fracLatencyNorm = lround(latencyNorm * 100.0);
-      }
-      Telemetry::Accumulate(Telemetry::CONTENT_FRAME_TIME_WITHOUT_UPLOAD,
-                            fracLatencyNorm);
     }
 
 #if defined(ENABLE_FRAME_LATENCY_LOG)
@@ -2024,7 +2009,7 @@ void WebRenderBridgeParent::ClearResources() {
   for (const auto& entry : mAsyncCompositables) {
     wr::PipelineId pipelineId = wr::AsPipelineId(entry.first);
     RefPtr<WebRenderImageHost> host = entry.second;
-    host->ClearWrBridge();
+    host->ClearWrBridge(this);
     mAsyncImageManager->RemoveAsyncImagePipeline(pipelineId, txn);
     txn.RemovePipeline(pipelineId);
   }

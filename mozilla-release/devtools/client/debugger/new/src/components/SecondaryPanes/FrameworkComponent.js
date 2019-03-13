@@ -2,9 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-// @flow
 import React, { PureComponent } from "react";
-import { connect } from "react-redux";
+import { connect } from "../../utils/connect";
 import actions from "../../actions";
 
 import { createObjectClient } from "../../client/firefox";
@@ -27,7 +26,8 @@ const {
 type Props = {
   selectedFrame: Frame,
   popupObjectProperties: Object,
-  setPopupObjectProperties: (Object, Object) => void
+  setPopupObjectProperties: typeof actions.setPopupObjectProperties,
+  openElementInInspector: typeof actions.setPopupObjectProperties
 };
 
 class FrameworkComponent extends PureComponent<Props> {
@@ -44,7 +44,11 @@ class FrameworkComponent extends PureComponent<Props> {
   }
 
   renderReactComponent() {
-    const { selectedFrame, popupObjectProperties } = this.props;
+    const {
+      selectedFrame,
+      popupObjectProperties,
+      openElementInInspector
+    } = this.props;
     const expression = "this;";
     const value = selectedFrame.this;
     const root = {
@@ -75,6 +79,8 @@ class FrameworkComponent extends PureComponent<Props> {
           focusable={false}
           dimTopLevelWindow={true}
           createObjectClient={grip => createObjectClient(grip)}
+          onDOMNodeClick={grip => openElementInInspector(grip)}
+          onInspectIconClick={grip => openElementInInspector(grip)}
         />
       </div>
     );
@@ -98,6 +104,7 @@ const mapStateToProps = state => ({
 export default connect(
   mapStateToProps,
   {
-    setPopupObjectProperties: actions.setPopupObjectProperties
+    setPopupObjectProperties: actions.setPopupObjectProperties,
+    openElementInInspector: actions.openElementInInspectorCommand
   }
 )(FrameworkComponent);

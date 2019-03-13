@@ -41,8 +41,10 @@ UNIFIED_SOURCES += [
     'ForOfLoopControl.cpp',
     'IfEmitter.cpp',
     'JumpList.cpp',
+    'LabelEmitter.cpp',
     'NameFunctions.cpp',
     'NameOpEmitter.cpp',
+    'ObjectEmitter.cpp',
     'ParseContext.cpp',
     'ParseNode.cpp',
     'PropOpEmitter.cpp',
@@ -61,10 +63,9 @@ SOURCES += [
 ]
 
 if CONFIG['JS_BUILD_BINAST']:
-    # Using SOURCES, as UNIFIED_SOURCES causes mysterious bugs on 32-bit platforms.
-    # These parts of BinAST are designed only to test evolutions of the
-    # specification.
-    SOURCES += ['BinTokenReaderTester.cpp']
+    # Using SOURCES, as UNIFIED_SOURCES causes mysterious bugs on 32-bit
+    # platforms.
+
     # These parts of BinAST should eventually move to release.
     SOURCES += [
         'BinASTParser.cpp',

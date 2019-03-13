@@ -297,44 +297,6 @@ enum class StyleContent : uint8_t {
   AltContent
 };
 
-// See nsStyleUI
-#define NS_STYLE_CURSOR_AUTO 1
-#define NS_STYLE_CURSOR_CROSSHAIR 2
-#define NS_STYLE_CURSOR_DEFAULT 3  // ie: an arrow
-#define NS_STYLE_CURSOR_POINTER 4  // for links
-#define NS_STYLE_CURSOR_MOVE 5
-#define NS_STYLE_CURSOR_E_RESIZE 6
-#define NS_STYLE_CURSOR_NE_RESIZE 7
-#define NS_STYLE_CURSOR_NW_RESIZE 8
-#define NS_STYLE_CURSOR_N_RESIZE 9
-#define NS_STYLE_CURSOR_SE_RESIZE 10
-#define NS_STYLE_CURSOR_SW_RESIZE 11
-#define NS_STYLE_CURSOR_S_RESIZE 12
-#define NS_STYLE_CURSOR_W_RESIZE 13
-#define NS_STYLE_CURSOR_TEXT 14  // ie: i-beam
-#define NS_STYLE_CURSOR_WAIT 15
-#define NS_STYLE_CURSOR_HELP 16
-#define NS_STYLE_CURSOR_COPY 17  // CSS3
-#define NS_STYLE_CURSOR_ALIAS 18
-#define NS_STYLE_CURSOR_CONTEXT_MENU 19
-#define NS_STYLE_CURSOR_CELL 20
-#define NS_STYLE_CURSOR_GRAB 21
-#define NS_STYLE_CURSOR_GRABBING 22
-#define NS_STYLE_CURSOR_SPINNING 23
-#define NS_STYLE_CURSOR_ZOOM_IN 24
-#define NS_STYLE_CURSOR_ZOOM_OUT 25
-#define NS_STYLE_CURSOR_NOT_ALLOWED 26
-#define NS_STYLE_CURSOR_COL_RESIZE 27
-#define NS_STYLE_CURSOR_ROW_RESIZE 28
-#define NS_STYLE_CURSOR_NO_DROP 29
-#define NS_STYLE_CURSOR_VERTICAL_TEXT 30
-#define NS_STYLE_CURSOR_ALL_SCROLL 31
-#define NS_STYLE_CURSOR_NESW_RESIZE 32
-#define NS_STYLE_CURSOR_NWSE_RESIZE 33
-#define NS_STYLE_CURSOR_NS_RESIZE 34
-#define NS_STYLE_CURSOR_EW_RESIZE 35
-#define NS_STYLE_CURSOR_NONE 36
-
 // See nsStyleVisibility
 #define NS_STYLE_DIRECTION_LTR 0
 #define NS_STYLE_DIRECTION_RTL 1
@@ -517,16 +479,25 @@ enum class StyleGridTrackBreadth : uint8_t {
 #define NS_MATHML_DISPLAYSTYLE_BLOCK 1
 
 // See nsStylePosition::mWidth, mMinWidth, mMaxWidth
-#define NS_STYLE_WIDTH_MAX_CONTENT 0
-#define NS_STYLE_WIDTH_MIN_CONTENT 1
-#define NS_STYLE_WIDTH_FIT_CONTENT 2
-#define NS_STYLE_WIDTH_AVAILABLE 3
+#define NS_STYLE_WIDTH_MAX_CONTENT \
+  ((uint8_t)mozilla::StyleExtremumLength::MaxContent)
+#define NS_STYLE_WIDTH_MIN_CONTENT \
+  ((uint8_t)mozilla::StyleExtremumLength::MinContent)
+#define NS_STYLE_WIDTH_FIT_CONTENT \
+  ((uint8_t)mozilla::StyleExtremumLength::MozFitContent)
+#define NS_STYLE_WIDTH_AVAILABLE \
+  ((uint8_t)mozilla::StyleExtremumLength::MozAvailable)
 // The 'content' keyword is only valid for 'flex-basis' (not for 'width').  But
 // aside from that, the 'flex-basis' property accepts exactly the same values
 // as 'width'. So I'm listing this one 'flex-basis'-specific enumerated value
 // alongside the 'width' ones, to be sure we don't accidentally overload this
 // numeric value with two different meanings if new 'width' keywords are added.
 #define NS_STYLE_FLEX_BASIS_CONTENT 4
+static_assert(NS_STYLE_FLEX_BASIS_CONTENT != NS_STYLE_WIDTH_MAX_CONTENT &&
+                  NS_STYLE_FLEX_BASIS_CONTENT != NS_STYLE_WIDTH_MIN_CONTENT &&
+                  NS_STYLE_FLEX_BASIS_CONTENT != NS_STYLE_WIDTH_FIT_CONTENT &&
+                  NS_STYLE_FLEX_BASIS_CONTENT != NS_STYLE_WIDTH_AVAILABLE,
+              "Should use different enum value for flex basis content");
 
 // See nsStyleDisplay.mPosition
 #define NS_STYLE_POSITION_STATIC 0
@@ -556,15 +527,6 @@ enum class StyleGridTrackBreadth : uint8_t {
 #define NS_STYLE_FRAME_AUTO 6
 #define NS_STYLE_FRAME_SCROLL 7
 #define NS_STYLE_FRAME_NOSCROLL 8
-
-// See nsStyleDisplay.mOverflow{X,Y}
-#define NS_STYLE_OVERFLOW_VISIBLE 0
-#define NS_STYLE_OVERFLOW_HIDDEN 1
-#define NS_STYLE_OVERFLOW_SCROLL 2
-#define NS_STYLE_OVERFLOW_AUTO 3
-#define NS_STYLE_OVERFLOW_CLIP 4
-#define NS_STYLE_OVERFLOW_SCROLLBARS_HORIZONTAL 5
-#define NS_STYLE_OVERFLOW_SCROLLBARS_VERTICAL 6
 
 // See nsStyleList
 #define NS_STYLE_LIST_STYLE_CUSTOM -1  // for @counter-style
@@ -934,8 +896,10 @@ enum class StyleTextRendering : uint8_t {
 };
 
 // color-adjust
-#define NS_STYLE_COLOR_ADJUST_ECONOMY 0
-#define NS_STYLE_COLOR_ADJUST_EXACT 1
+enum class StyleColorAdjust : uint8_t {
+  Economy = 0,
+  Exact = 1,
+};
 
 // color-interpolation and color-interpolation-filters
 #define NS_STYLE_COLOR_INTERPOLATION_AUTO 0

@@ -69,5 +69,10 @@ policy-SearchBar = Standardposition der Suchleiste setzen. Der Benutzer darf sie
 policy-SearchEngines = Suchmaschineneinstellungen anpassen. Diese Richtlinie ist nur für Versionen des Extended Support Release (ESR) verfügbar.
 # For more information, see https://developer.mozilla.org/en-US/docs/Mozilla/Projects/NSS/PKCS11/Module_Installation
 policy-SecurityDevices = PKCS#11-Module installieren
+
+policy-SSLVersionMax = Höchste zu verwendende SSL-Version festlegen
+
+policy-SSLVersionMin = Niedrigste zu verwendende SSL-Version festlegen
+
 # “format” refers to the format used for the value of this policy.
 policy-WebsiteFilter = Bestimmte Website-Aufrufe blockieren. Weitere Details in der Dokumentation.

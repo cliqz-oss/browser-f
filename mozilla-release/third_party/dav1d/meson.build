@@ -23,7 +23,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 project('dav1d', ['c'],
-    version: '0.0.1',
+    version: '0.1.1',
     default_options: ['c_std=c99',
                       'warning_level=2',
                       'buildtype=release',
@@ -55,7 +55,7 @@ dav1d_inc_dirs = include_directories(['.', 'include', 'include/dav1d'])
 
 # Bitdepth option
 dav1d_bitdepths = get_option('bitdepths')
-foreach bitdepth : ['8', '10']
+foreach bitdepth : ['8', '16']
     cdata.set10('CONFIG_@0@BPC'.format(bitdepth), dav1d_bitdepths.contains(bitdepth))
 endforeach
 
@@ -147,6 +147,9 @@ if (host_machine.cpu_family() == 'aarch64' or
     if cc.has_function('getauxval', prefix : '#include <sys/auxv.h>', args : test_args)
         cdata.set('HAVE_GETAUXVAL', 1)
     endif
+    if cc.has_function('elf_aux_info', prefix : '#include <sys/auxv.h>', args : test_args)
+        cdata.set('HAVE_ELF_AUX_INFO', 1)
+    endif
 endif
 
 # Compiler flag tests
@@ -167,6 +170,12 @@ optional_arguments = [
   '-Wno-unused-parameter',
   '-Werror=missing-prototypes',
 ]
+if cc.get_id() == 'msvc'
+    optional_arguments += [
+      '-wd4028', # parameter different from declaration
+      '-wd4996'  # use of POSIX functions
+    ]
+endif
 
 if (get_option('buildtype') != 'debug' and get_option('buildtype') != 'plain')
     optional_arguments += '-fomit-frame-pointer'
@@ -191,30 +200,35 @@ stackalign_flag = []
 stackrealign_flag = []
 
 if host_machine.cpu_family().startswith('x86')
-    if cc.has_argument('-mpreferred-stack-boundary=5')
-        stackalign_flag = ['-mpreferred-stack-boundary=5']
-        stackrealign_flag = ['-mincoming-stack-boundary=4']
-        cdata_asm.set('STACK_ALIGNMENT', 32)
-        cdata.set('STACK_ALIGNMENT', 32)
-    elif cc.has_argument('-mpreferred-stack-boundary=4')
-        stackalign_flag = ['-mpreferred-stack-boundary=4']
-        stackrealign_flag = ['-mincoming-stack-boundary=4']
-        cdata_asm.set('STACK_ALIGNMENT', 16)
-        cdata.set('STACK_ALIGNMENT', 16)
-    elif cc.has_argument('-mstack-alignment=32')
-        stackalign_flag = ['-mstack-alignment=32']
-        stackrealign_flag = ['-mstackrealign']
-        cdata_asm.set('STACK_ALIGNMENT', 32)
-        cdata.set('STACK_ALIGNMENT', 32)
-    else
-        if host_machine.cpu_family() == 'x86_64'
-            cdata_asm.set('STACK_ALIGNMENT', 16)
-            cdata.set('STACK_ALIGNMENT', 16)
+    if host_machine.cpu_family() == 'x86_64'
+        if cc.has_argument('-mpreferred-stack-boundary=5')
+            stackalign_flag = ['-mpreferred-stack-boundary=5']
+            stackrealign_flag = ['-mincoming-stack-boundary=4']
+            stack_alignment = 32
+        elif cc.has_argument('-mstack-alignment=32')
+            stackalign_flag = ['-mstack-alignment=32']
+            stackrealign_flag = ['-mstackrealign']
+            stack_alignment = 32
         else
-            cdata_asm.set('STACK_ALIGNMENT', 4)
-            cdata.set('STACK_ALIGNMENT', 4)
+            stack_alignment = 16
+        endif
+    else
+        if host_machine.system() == 'linux' or host_machine.system() == 'darwin'
+            stack_alignment = 16
+        elif cc.has_argument('-mpreferred-stack-boundary=4')
+            stackalign_flag = ['-mpreferred-stack-boundary=4']
+            stackrealign_flag = ['-mincoming-stack-boundary=2']
+            stack_alignment = 16
+        elif cc.has_argument('-mstack-alignment=16')
+            stackalign_flag = ['-mstack-alignment=16']
+            stackrealign_flag = ['-mstackrealign']
+            stack_alignment = 16
+        else
+            stack_alignment = 4
         endif
     endif
+    cdata_asm.set('STACK_ALIGNMENT', stack_alignment)
+    cdata.set('STACK_ALIGNMENT', stack_alignment)
 endif
 
 cdata.set10('ARCH_AARCH64', host_machine.cpu_family() == 'aarch64')
@@ -230,6 +244,23 @@ if (is_asm_enabled and
 '''
     have_as_func = cc.compiles(as_func_code)
     cdata.set10('HAVE_AS_FUNC', have_as_func)
+
+    # fedora package build infrastructure uses a gcc specs file to enable
+    # '-fPIE' by default. The chosen way only adds '-fPIE' to the C compiler
+    # with integrated preprocessor. It is not added to the standalone
+    # preprocessor or the preprocessing stage of '.S' files. So we have to
+    # compile code to check if we have to define PIC for the arm asm to
+    # avoid absolute relocations when building for example checkasm.
+    check_pic_code = '''
+#if defined(PIC)
+#error "PIC already defined"
+#elif !(defined(__PIC__) || defined(__pic__))
+#error "no pic"
+#endif
+'''
+    if cc.compiles(check_pic_code)
+        cdata.set('PIC', '3')
+    endif
 endif
 
 if host_machine.cpu_family().startswith('x86')
@@ -239,13 +270,12 @@ if host_machine.cpu_family().startswith('x86')
         cdata.set10('ARCH_X86_64', true)
         cdata_asm.set10('ARCH_X86_32', false)
         cdata.set10('ARCH_X86_32', false)
-
-        cdata_asm.set10('PIC', true)
     else
         cdata_asm.set10('ARCH_X86_64', false)
         cdata.set10('ARCH_X86_64', false)
         cdata_asm.set10('ARCH_X86_32', true)
         cdata.set10('ARCH_X86_32', true)
+        cdata_asm.set10('PIC', true)
     endif
 else
     cdata.set10('ARCH_X86', false)

@@ -108,6 +108,19 @@ class FaviconLoad {
     this.channel.loadGroup = iconInfo.node.ownerGlobal.document.documentLoadGroup;
     this.channel.notificationCallbacks = this;
 
+    if (this.channel instanceof Ci.nsIHttpChannel) {
+      try {
+        let acceptHeader = Services.prefs.getCharPref("image.http.accept");
+        this.channel.setRequestHeader("Accept", acceptHeader, false);
+      } catch (e) {
+        // Failing to get the pref or set the header is ignorable.
+      }
+    }
+
+    if (this.channel instanceof Ci.nsIHttpChannelInternal) {
+      this.channel.blockAuthPrompt = true;
+    }
+
     if (Services.prefs.getBoolPref("network.http.tailing.enabled", true) &&
         this.channel instanceof Ci.nsIClassOfService) {
       this.channel.addClassFlags(Ci.nsIClassOfService.Tail | Ci.nsIClassOfService.Throttleable);
@@ -495,6 +508,14 @@ class FaviconLoader {
   }
 
   loadIcons() {
+    // If the page is unloaded immediately after the DeferredTask's timer fires
+    // we can still attempt to load icons, which will fail since the content
+    // window is no longer available. Checking if iconInfos has been cleared
+    // allows us to bail out early in this case.
+    if (this.iconInfos.length == 0) {
+      return;
+    }
+
     let preferredWidth = PREFERRED_WIDTH * Math.ceil(this.mm.content.devicePixelRatio);
     let { richIcon, tabIcon } = selectIcons(this.iconInfos, preferredWidth);
     this.iconInfos = [];

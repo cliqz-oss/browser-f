@@ -64,6 +64,7 @@ def update_channel(config, jobs):
         update_channel = job['run'].pop('update-channel', None)
         if update_channel:
             job['run'].setdefault('extra-config', {})['update_channel'] = update_channel
+            job['attributes']['update-channel'] = update_channel
         yield job
 
 
@@ -79,6 +80,19 @@ def mozconfig(config, jobs):
         mozconfig_variant = job['run'].pop('mozconfig-variant', None)
         if mozconfig_variant:
             job['run'].setdefault('extra-config', {})['mozconfig_variant'] = mozconfig_variant
+        yield job
+
+
+@transforms.add
+def use_profile_data(config, jobs):
+    for job in jobs:
+        if not job.pop('use-pgo', False):
+            yield job
+            continue
+
+        dependencies = 'generate-profile-{}'.format(job['name'])
+        job.setdefault('dependencies', {})['generate-profile'] = dependencies
+        job.setdefault('fetches', {})['generate-profile'] = ['profdata.tar.xz']
         yield job
 
 

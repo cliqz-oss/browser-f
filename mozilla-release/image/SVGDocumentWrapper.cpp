@@ -21,18 +21,15 @@
 #include "nsIXMLContentSink.h"
 #include "nsNetCID.h"
 #include "nsComponentManagerUtils.h"
-#include "nsSMILAnimationController.h"
+#include "mozilla/SMILAnimationController.h"
 #include "nsServiceManagerUtils.h"
 #include "mozilla/dom/SVGSVGElement.h"
 #include "SVGObserverUtils.h"
 #include "mozilla/dom/SVGAnimatedLength.h"
 #include "nsMimeTypes.h"
 #include "DOMSVGLength.h"
-#include "nsDocument.h"
+#include "mozilla/dom/Document.h"
 #include "mozilla/dom/ImageTracker.h"
-
-// undef the GetCurrentTime macro defined in WinBase.h from the MS Platform SDK
-#undef GetCurrentTime
 
 namespace mozilla {
 
@@ -105,7 +102,7 @@ bool SVGDocumentWrapper::IsAnimated() {
     return false;
   }
 
-  nsIDocument* doc = mViewer->GetDocument();
+  Document* doc = mViewer->GetDocument();
   if (!doc) {
     return false;
   }
@@ -130,11 +127,11 @@ void SVGDocumentWrapper::StartAnimation() {
     return;
   }
 
-  nsIDocument* doc = mViewer->GetDocument();
+  Document* doc = mViewer->GetDocument();
   if (doc) {
-    nsSMILAnimationController* controller = doc->GetAnimationController();
+    SMILAnimationController* controller = doc->GetAnimationController();
     if (controller) {
-      controller->Resume(nsSMILTimeContainer::PAUSE_IMAGE);
+      controller->Resume(SMILTimeContainer::PAUSE_IMAGE);
     }
     doc->ImageTracker()->SetAnimatingState(true);
   }
@@ -147,11 +144,11 @@ void SVGDocumentWrapper::StopAnimation() {
     return;
   }
 
-  nsIDocument* doc = mViewer->GetDocument();
+  Document* doc = mViewer->GetDocument();
   if (doc) {
-    nsSMILAnimationController* controller = doc->GetAnimationController();
+    SMILAnimationController* controller = doc->GetAnimationController();
     if (controller) {
-      controller->Pause(nsSMILTimeContainer::PAUSE_IMAGE);
+      controller->Pause(SMILTimeContainer::PAUSE_IMAGE);
     }
     doc->ImageTracker()->SetAnimatingState(false);
   }
@@ -166,14 +163,14 @@ void SVGDocumentWrapper::ResetAnimation() {
   svgElem->SetCurrentTime(0.0f);
 }
 
-float SVGDocumentWrapper::GetCurrentTime() {
+float SVGDocumentWrapper::GetCurrentTimeAsFloat() {
   SVGSVGElement* svgElem = GetRootSVGElem();
-  return svgElem ? svgElem->GetCurrentTime() : 0.0f;
+  return svgElem ? svgElem->GetCurrentTimeAsFloat() : 0.0f;
 }
 
 void SVGDocumentWrapper::SetCurrentTime(float aTime) {
   SVGSVGElement* svgElem = GetRootSVGElem();
-  if (svgElem && svgElem->GetCurrentTime() != aTime) {
+  if (svgElem && svgElem->GetCurrentTimeAsFloat() != aTime) {
     svgElem->SetCurrentTime(aTime);
   }
 }
@@ -377,7 +374,7 @@ SVGDocument* SVGDocumentWrapper::GetDocument() {
   if (!mViewer) {
     return nullptr;
   }
-  nsIDocument* doc = mViewer->GetDocument();
+  Document* doc = mViewer->GetDocument();
   if (!doc) {
     return nullptr;
   }
@@ -389,7 +386,7 @@ SVGSVGElement* SVGDocumentWrapper::GetRootSVGElem() {
     return nullptr;  // Can happen during destruction
   }
 
-  nsIDocument* doc = mViewer->GetDocument();
+  Document* doc = mViewer->GetDocument();
   if (!doc) {
     return nullptr;  // Can happen during destruction
   }

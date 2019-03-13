@@ -409,8 +409,6 @@ class JS::Realm : public JS::shadow::Realm {
   js::ArraySpeciesLookup arraySpeciesLookup;
   js::PromiseLookup promiseLookup;
 
-  js::PerformanceGroupHolder performanceMonitoring;
-
   js::UniquePtr<js::ScriptCountsMap> scriptCountsMap;
   js::UniquePtr<js::ScriptNameMap> scriptNameMap;
   js::UniquePtr<js::DebugScriptMap> debugScriptMap;
@@ -440,6 +438,11 @@ class JS::Realm : public JS::shadow::Realm {
 #ifdef DEBUG
   bool firedOnNewGlobalObject = false;
 #endif
+
+  // True if all incoming wrappers have been nuked. This happens when
+  // NukeCrossCompartmentWrappers is called with the NukeAllReferences option.
+  // This prevents us from creating new wrappers for the compartment.
+  bool nukedIncomingWrappers = false;
 
  private:
   void updateDebuggerObservesFlag(unsigned flag);
@@ -635,21 +638,7 @@ class JS::Realm : public JS::shadow::Realm {
    * principals during its lifetime (e.g. in case of lazy parsing).
    */
   JSPrincipals* principals() { return principals_; }
-  void setPrincipals(JSPrincipals* principals) {
-    if (principals_ == principals) {
-      return;
-    }
-
-    // If we change principals, we need to unlink immediately this
-    // realm from its PerformanceGroup. For one thing, the performance data
-    // we collect should not be improperly associated with a group to which
-    // we do not belong anymore. For another thing, we use `principals()` as
-    // part of the key to map realms to a `PerformanceGroup`, so if we do
-    // not unlink now, this will be too late once we have updated
-    // `principals_`.
-    performanceMonitoring.unlink();
-    principals_ = principals;
-  }
+  void setPrincipals(JSPrincipals* principals) { principals_ = principals; }
 
   bool isSystem() const { return isSystem_; }
 

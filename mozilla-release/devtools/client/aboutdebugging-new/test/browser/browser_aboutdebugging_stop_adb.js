@@ -3,8 +3,10 @@
 
 "use strict";
 
+/* import-globals-from helper-adb.js */
+Services.scriptloader.loadSubScript(CHROME_URL_ROOT + "helper-adb.js", this);
+
 const { adbAddon } = require("devtools/shared/adb/adb-addon");
-const { adbProcess } = require("devtools/shared/adb/adb-process");
 const { check } = require("devtools/shared/adb/adb-running-checker");
 
 /**
@@ -15,14 +17,7 @@ const { check } = require("devtools/shared/adb/adb-running-checker");
 add_task(async function() {
   await pushPref("devtools.remote.adb.extensionURL",
                  CHROME_URL_ROOT + "resources/test-adb-extension/adb-extension-#OS#.xpi");
-
-  info("Check if ADB is already running before the test starts");
-  const isAdbAlreadyRunning = await check();
-  if (isAdbAlreadyRunning) {
-    ok(false, "The ADB process is already running on this machine, it should be " +
-      "stopped before running this test");
-    return;
-  }
+  await checkAdbNotRunning();
 
   const { tab } = await openAboutDebugging();
 
@@ -59,21 +54,3 @@ add_task(async function() {
   await removeTab(thirdTab);
   await waitForAdbStop();
 });
-
-async function waitForAdbStart() {
-  info("Wait for ADB to start");
-  return asyncWaitUntil(async () => {
-    const isProcessReady = adbProcess.ready;
-    const isRunning = await check();
-    return isProcessReady && isRunning;
-  });
-}
-
-async function waitForAdbStop() {
-  info("Wait for ADB to stop");
-  return asyncWaitUntil(async () => {
-    const isProcessReady = adbProcess.ready;
-    const isRunning = await check();
-    return !isProcessReady && !isRunning;
-  });
-}

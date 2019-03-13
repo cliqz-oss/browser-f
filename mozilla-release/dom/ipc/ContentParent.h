@@ -558,18 +558,19 @@ class ContentParent final : public PContentParent,
 
   // PURLClassifierParent.
   virtual PURLClassifierParent* AllocPURLClassifierParent(
-      const Principal& aPrincipal, const bool& aUseTrackingProtection,
-      bool* aSuccess) override;
+      const Principal& aPrincipal, bool* aSuccess) override;
   virtual mozilla::ipc::IPCResult RecvPURLClassifierConstructor(
       PURLClassifierParent* aActor, const Principal& aPrincipal,
-      const bool& aUseTrackingProtection, bool* aSuccess) override;
+      bool* aSuccess) override;
 
   // PURLClassifierLocalParent.
   virtual PURLClassifierLocalParent* AllocPURLClassifierLocalParent(
-      const URIParams& aURI, const nsCString& aTables) override;
+      const URIParams& aURI,
+      const nsTArray<IPCURLClassifierFeature>& aFeatures) override;
+
   virtual mozilla::ipc::IPCResult RecvPURLClassifierLocalConstructor(
       PURLClassifierLocalParent* aActor, const URIParams& aURI,
-      const nsCString& aTables) override;
+      nsTArray<IPCURLClassifierFeature>&& aFeatures) override;
 
   virtual PLoginReputationParent* AllocPLoginReputationParent(
       const URIParams& aURI) override;
@@ -593,10 +594,6 @@ class ContentParent final : public PContentParent,
 
   virtual bool DeallocPURLClassifierParent(
       PURLClassifierParent* aActor) override;
-
-  virtual mozilla::ipc::IPCResult RecvClassifyLocal(
-      const URIParams& aURI, const nsCString& aTables, nsresult* aRv,
-      nsTArray<nsCString>* aResults) override;
 
   // Use the PHangMonitor channel to ask the child to repaint a tab.
   void PaintTabWhileInterruptingJS(TabParent* aTabParent, bool aForceRepaint,
@@ -637,6 +634,19 @@ class ContentParent final : public PContentParent,
   virtual mozilla::ipc::IPCResult RecvSetOpenerBrowsingContext(
       const BrowsingContextId& aContextId,
       const BrowsingContextId& aOpenerContextId) override;
+
+  virtual mozilla::ipc::IPCResult RecvWindowClose(
+      const BrowsingContextId& aContextId, const bool& aTrustedCaller) override;
+  virtual mozilla::ipc::IPCResult RecvWindowFocus(
+      const BrowsingContextId& aContextId) override;
+  virtual mozilla::ipc::IPCResult RecvWindowBlur(
+      const BrowsingContextId& aContextId) override;
+  virtual mozilla::ipc::IPCResult RecvWindowPostMessage(
+      const BrowsingContextId& aContextId, const ClonedMessageData& aMessage,
+      const PostMessageData& aData) override;
+
+  virtual mozilla::ipc::IPCResult RecvSetUserGestureActivation(
+      const BrowsingContextId& aContextId, const bool& aNewValue) override;
 
  protected:
   void OnChannelConnected(int32_t pid) override;
@@ -997,6 +1007,9 @@ class ContentParent final : public PContentParent,
 
   virtual mozilla::ipc::IPCResult RecvOpenNotificationSettings(
       const IPC::Principal& aPrincipal) override;
+
+  virtual mozilla::ipc::IPCResult RecvNotificationEvent(
+      const nsString& aType, const NotificationEventData& aData) override;
 
   virtual mozilla::ipc::IPCResult RecvLoadURIExternal(
       const URIParams& uri, PBrowserParent* windowContext) override;

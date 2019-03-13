@@ -3,8 +3,10 @@
 
 "use strict";
 
+/* import-globals-from helper-adb.js */
+Services.scriptloader.loadSubScript(CHROME_URL_ROOT + "helper-adb.js", this);
+
 const { adbAddon } = require("devtools/shared/adb/adb-addon");
-const { adbProcess } = require("devtools/shared/adb/adb-process");
 
 /**
  * This test asserts that the sidebar shows a message describing the status of the USB
@@ -13,6 +15,7 @@ const { adbProcess } = require("devtools/shared/adb/adb-process");
 add_task(async function() {
   await pushPref("devtools.remote.adb.extensionURL",
                  CHROME_URL_ROOT + "resources/test-adb-extension/adb-extension-#OS#.xpi");
+  await checkAdbNotRunning();
 
   const { document, tab } = await openAboutDebugging();
 
@@ -25,17 +28,16 @@ add_task(async function() {
   // Use "internal" as the install source to avoid triggering telemetry.
   adbAddon.install("internal");
   await waitUntil(() => usbStatusElement.textContent.includes("USB devices enabled"));
-
   // Right now we are resuming as soon as "USB devices enabled" is displayed, but ADB
   // might still be starting up. If we move to uninstall directly, the ADB startup will
   // fail and we will have an unhandled promise rejection.
   // See Bug 1498469.
-  info("Wait until ADB has started.");
-  await waitUntil(() => adbProcess.ready);
+  await waitForAdbStart();
 
   info("Uninstall the adb extension and wait for the message to udpate");
   adbAddon.uninstall();
   await waitUntil(() => usbStatusElement.textContent.includes("USB devices disabled"));
+  await waitForAdbStop();
 
   await removeTab(tab);
 });

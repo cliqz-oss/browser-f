@@ -30,7 +30,7 @@
 #include "nsContentUtils.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/HTMLSelectElement.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIScrollableFrame.h"
 #include "mozilla/ServoStyleSet.h"
 #include "nsNodeInfoManager.h"
@@ -52,9 +52,9 @@
 #include "nsILayoutHistoryState.h"
 
 #ifdef XP_WIN
-#define COMBOBOX_ROLLUP_CONSUME_EVENT 0
+#  define COMBOBOX_ROLLUP_CONSUME_EVENT 0
 #else
-#define COMBOBOX_ROLLUP_CONSUME_EVENT 1
+#  define COMBOBOX_ROLLUP_CONSUME_EVENT 1
 #endif
 
 using namespace mozilla;
@@ -130,7 +130,7 @@ NS_IMPL_FRAMEARENA_HELPERS(nsComboboxControlFrame)
 //-----------------------------------------------------------
 #ifdef DO_REFLOW_COUNTER
 
-#define MAX_REFLOW_CNT 1024
+#  define MAX_REFLOW_CNT 1024
 static int32_t gTotalReqs = 0;
 ;
 static int32_t gTotalReflows = 0;
@@ -139,50 +139,51 @@ static int32_t gReflowControlCntRQ[MAX_REFLOW_CNT];
 static int32_t gReflowControlCnt[MAX_REFLOW_CNT];
 static int32_t gReflowInx = -1;
 
-#define REFLOW_COUNTER() \
-  if (mReflowId > -1) gReflowControlCnt[mReflowId]++;
+#  define REFLOW_COUNTER() \
+    if (mReflowId > -1) gReflowControlCnt[mReflowId]++;
 
-#define REFLOW_COUNTER_REQUEST() \
-  if (mReflowId > -1) gReflowControlCntRQ[mReflowId]++;
+#  define REFLOW_COUNTER_REQUEST() \
+    if (mReflowId > -1) gReflowControlCntRQ[mReflowId]++;
 
-#define REFLOW_COUNTER_DUMP(__desc)                                            \
-  if (mReflowId > -1) {                                                        \
-    gTotalReqs += gReflowControlCntRQ[mReflowId];                              \
-    gTotalReflows += gReflowControlCnt[mReflowId];                             \
-    printf("** Id:%5d %s RF: %d RQ: %d   %d/%d  %5.2f\n", mReflowId, (__desc), \
-           gReflowControlCnt[mReflowId], gReflowControlCntRQ[mReflowId],       \
-           gTotalReflows, gTotalReqs,                                          \
-           float(gTotalReflows) / float(gTotalReqs) * 100.0f);                 \
-  }
+#  define REFLOW_COUNTER_DUMP(__desc)                                   \
+    if (mReflowId > -1) {                                               \
+      gTotalReqs += gReflowControlCntRQ[mReflowId];                     \
+      gTotalReflows += gReflowControlCnt[mReflowId];                    \
+      printf("** Id:%5d %s RF: %d RQ: %d   %d/%d  %5.2f\n", mReflowId,  \
+             (__desc), gReflowControlCnt[mReflowId],                    \
+             gReflowControlCntRQ[mReflowId], gTotalReflows, gTotalReqs, \
+             float(gTotalReflows) / float(gTotalReqs) * 100.0f);        \
+    }
 
-#define REFLOW_COUNTER_INIT()           \
-  if (gReflowInx < MAX_REFLOW_CNT) {    \
-    gReflowInx++;                       \
-    mReflowId = gReflowInx;             \
-    gReflowControlCnt[mReflowId] = 0;   \
-    gReflowControlCntRQ[mReflowId] = 0; \
-  } else {                              \
-    mReflowId = -1;                     \
-  }
+#  define REFLOW_COUNTER_INIT()           \
+    if (gReflowInx < MAX_REFLOW_CNT) {    \
+      gReflowInx++;                       \
+      mReflowId = gReflowInx;             \
+      gReflowControlCnt[mReflowId] = 0;   \
+      gReflowControlCntRQ[mReflowId] = 0; \
+    } else {                              \
+      mReflowId = -1;                     \
+    }
 
 // reflow messages
-#define REFLOW_DEBUG_MSG(_msg1) printf((_msg1))
-#define REFLOW_DEBUG_MSG2(_msg1, _msg2) printf((_msg1), (_msg2))
-#define REFLOW_DEBUG_MSG3(_msg1, _msg2, _msg3) printf((_msg1), (_msg2), (_msg3))
-#define REFLOW_DEBUG_MSG4(_msg1, _msg2, _msg3, _msg4) \
-  printf((_msg1), (_msg2), (_msg3), (_msg4))
+#  define REFLOW_DEBUG_MSG(_msg1) printf((_msg1))
+#  define REFLOW_DEBUG_MSG2(_msg1, _msg2) printf((_msg1), (_msg2))
+#  define REFLOW_DEBUG_MSG3(_msg1, _msg2, _msg3) \
+    printf((_msg1), (_msg2), (_msg3))
+#  define REFLOW_DEBUG_MSG4(_msg1, _msg2, _msg3, _msg4) \
+    printf((_msg1), (_msg2), (_msg3), (_msg4))
 
 #else  //-------------
 
-#define REFLOW_COUNTER_REQUEST()
-#define REFLOW_COUNTER()
-#define REFLOW_COUNTER_DUMP(__desc)
-#define REFLOW_COUNTER_INIT()
+#  define REFLOW_COUNTER_REQUEST()
+#  define REFLOW_COUNTER()
+#  define REFLOW_COUNTER_DUMP(__desc)
+#  define REFLOW_COUNTER_INIT()
 
-#define REFLOW_DEBUG_MSG(_msg)
-#define REFLOW_DEBUG_MSG2(_msg1, _msg2)
-#define REFLOW_DEBUG_MSG3(_msg1, _msg2, _msg3)
-#define REFLOW_DEBUG_MSG4(_msg1, _msg2, _msg3, _msg4)
+#  define REFLOW_DEBUG_MSG(_msg)
+#  define REFLOW_DEBUG_MSG2(_msg1, _msg2)
+#  define REFLOW_DEBUG_MSG3(_msg1, _msg2, _msg3)
+#  define REFLOW_DEBUG_MSG4(_msg1, _msg2, _msg3, _msg4)
 
 #endif
 
@@ -190,25 +191,26 @@ static int32_t gReflowInx = -1;
 // This is for being VERY noisy
 //------------------------------------------
 #ifdef DO_VERY_NOISY
-#define REFLOW_NOISY_MSG(_msg1) printf((_msg1))
-#define REFLOW_NOISY_MSG2(_msg1, _msg2) printf((_msg1), (_msg2))
-#define REFLOW_NOISY_MSG3(_msg1, _msg2, _msg3) printf((_msg1), (_msg2), (_msg3))
-#define REFLOW_NOISY_MSG4(_msg1, _msg2, _msg3, _msg4) \
-  printf((_msg1), (_msg2), (_msg3), (_msg4))
+#  define REFLOW_NOISY_MSG(_msg1) printf((_msg1))
+#  define REFLOW_NOISY_MSG2(_msg1, _msg2) printf((_msg1), (_msg2))
+#  define REFLOW_NOISY_MSG3(_msg1, _msg2, _msg3) \
+    printf((_msg1), (_msg2), (_msg3))
+#  define REFLOW_NOISY_MSG4(_msg1, _msg2, _msg3, _msg4) \
+    printf((_msg1), (_msg2), (_msg3), (_msg4))
 #else
-#define REFLOW_NOISY_MSG(_msg)
-#define REFLOW_NOISY_MSG2(_msg1, _msg2)
-#define REFLOW_NOISY_MSG3(_msg1, _msg2, _msg3)
-#define REFLOW_NOISY_MSG4(_msg1, _msg2, _msg3, _msg4)
+#  define REFLOW_NOISY_MSG(_msg)
+#  define REFLOW_NOISY_MSG2(_msg1, _msg2)
+#  define REFLOW_NOISY_MSG3(_msg1, _msg2, _msg3)
+#  define REFLOW_NOISY_MSG4(_msg1, _msg2, _msg3, _msg4)
 #endif
 
 //------------------------------------------
 // Displays value in pixels or twips
 //------------------------------------------
 #ifdef DO_PIXELS
-#define PX(__v) __v / 15
+#  define PX(__v) __v / 15
 #else
-#define PX(__v) __v
+#  define PX(__v) __v
 #endif
 
 //------------------------------------------------------
@@ -793,8 +795,8 @@ void nsComboboxControlFrame::Reflow(nsPresContext* aPresContext,
     return;
   }
 
-  // Make sure the displayed text is the same as the selected option, bug
-  // 297389.
+  // Make sure the displayed text is the same as the selected option,
+  // bug 297389.
   if (!mDroppedDown) {
     mDisplayedIndex = mListControlFrame->GetSelectedIndex();
   }
@@ -1045,7 +1047,7 @@ nsComboboxControlFrame::RemoveOption(int32_t aIndex) {
   return lcf->RemoveOption(aIndex);
 }
 
-NS_IMETHODIMP
+NS_IMETHODIMP_(void)
 nsComboboxControlFrame::OnSetSelectedIndex(int32_t aOldIndex,
                                            int32_t aNewIndex) {
   nsAutoScriptBlocker scriptBlocker;
@@ -1462,7 +1464,7 @@ void nsComboboxControlFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
   }
 
   // draw a focus indicator only when focus rings should be drawn
-  nsIDocument* doc = mContent->GetComposedDoc();
+  Document* doc = mContent->GetComposedDoc();
   if (doc) {
     nsPIDOMWindowOuter* window = doc->GetWindow();
     if (window && window->ShouldShowFocusRing()) {
@@ -1575,7 +1577,7 @@ nsComboboxControlFrame::RestoreState(PresState* aState) {
 // position for the same Element
 NS_IMETHODIMP
 nsComboboxControlFrame::GenerateStateKey(nsIContent* aContent,
-                                         nsIDocument* aDocument,
+                                         Document* aDocument,
                                          nsACString& aKey) {
   nsresult rv = nsContentUtils::GenerateStateKey(aContent, aDocument, aKey);
   if (NS_FAILED(rv) || aKey.IsEmpty()) {

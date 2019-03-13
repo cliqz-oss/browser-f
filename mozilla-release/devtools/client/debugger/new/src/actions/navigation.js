@@ -20,7 +20,7 @@ import {
 } from "../workers/parser";
 
 import { clearWasmStates } from "../utils/wasm";
-
+import { getMainThread } from "../selectors";
 import type { Action, ThunkArgs } from "./types";
 
 /**
@@ -45,19 +45,28 @@ export function willNavigate(event: Object) {
   };
 }
 
-export function navigate(url: string): Action {
-  sourceQueue.clear();
+export function navigate(url: string) {
+  return async function({ dispatch, getState }: ThunkArgs) {
+    sourceQueue.clear();
+    const thread = getMainThread(getState());
 
-  return {
-    type: "NAVIGATE",
-    url
+    dispatch({
+      type: "NAVIGATE",
+      mainThread: { ...thread, url }
+    });
   };
 }
 
-export function connect(url: string, canRewind: boolean) {
+export function connect(url: string, actor: string, canRewind: boolean) {
   return async function({ dispatch }: ThunkArgs) {
     await dispatch(updateWorkers());
-    dispatch(({ type: "CONNECT", url, canRewind }: Action));
+    dispatch(
+      ({
+        type: "CONNECT",
+        mainThread: { url, actor, type: -1 },
+        canRewind
+      }: Action)
+    );
   };
 }
 
@@ -66,11 +75,15 @@ export function connect(url: string, canRewind: boolean) {
  * @static
  */
 export function navigated() {
-  return async function({ dispatch, getState, client }: ThunkArgs) {
+  return async function({ dispatch, getState, client, onReload }: ThunkArgs) {
+    // this time out is used to wait for sources. If we have 0 sources, it is likely
+    // that the sources are being loaded from the bfcache, and we should make an explicit
+    // request to the server to load them.
     await waitForMs(100);
     if (Object.keys(getSources(getState())).length == 0) {
       const sources = await client.fetchSources();
       dispatch(newSources(sources));
     }
+    onReload();
   };
 }

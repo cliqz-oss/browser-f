@@ -14,7 +14,7 @@
 #include "moz_external_vr.h"
 
 #if defined(XP_WIN)
-#include <d3d11_1.h>
+#  include <d3d11_1.h>
 #endif
 class nsITimer;
 
@@ -23,6 +23,60 @@ namespace gfx {
 class VRThread;
 
 static const int kNumOpenVRHaptics = 1;
+
+enum OpenVRHand : int8_t {
+  Left = 0,
+  Right = 1,
+  Total = 2,
+
+  None = -1
+};
+
+struct ControllerAction {
+  nsCString name;
+  nsCString type;
+  vr::VRActionHandle_t handle = vr::k_ulInvalidActionHandle;
+
+  ControllerAction() = default;
+
+  ControllerAction(const char* aName, const char* aType)
+      : name(aName), type(aType) {}
+};
+
+struct ControllerInfo {
+  vr::VRInputValueHandle_t mSource = vr::k_ulInvalidInputValueHandle;
+
+  ControllerAction mActionPose;
+  ControllerAction mActionHaptic;
+
+  ControllerAction mActionTrackpad_Analog;
+  ControllerAction mActionTrackpad_Pressed;
+  ControllerAction mActionTrackpad_Touched;
+
+  ControllerAction mActionTrigger_Value;
+
+  ControllerAction mActionGrip_Pressed;
+  ControllerAction mActionGrip_Touched;
+  ControllerAction mActionMenu_Pressed;
+  ControllerAction mActionMenu_Touched;
+  ControllerAction mActionSystem_Pressed;
+  ControllerAction mActionSystem_Touched;
+
+  // --- Knuckles
+  ControllerAction mActionA_Pressed;
+  ControllerAction mActionA_Touched;
+  ControllerAction mActionB_Pressed;
+  ControllerAction mActionB_Touched;
+
+  ControllerAction mActionThumbstick_Analog;
+  ControllerAction mActionThumbstick_Pressed;
+  ControllerAction mActionThumbstick_Touched;
+
+  ControllerAction mActionFingerIndex_Value;
+  ControllerAction mActionFingerMiddle_Value;
+  ControllerAction mActionFingerRing_Value;
+  ControllerAction mActionFingerPinky_Value;
+};
 
 class OpenVRSession : public VRSession {
  public:
@@ -54,7 +108,11 @@ class OpenVRSession : public VRSession {
   ::vr::IVRSystem* mVRSystem = nullptr;
   ::vr::IVRChaperone* mVRChaperone = nullptr;
   ::vr::IVRCompositor* mVRCompositor = nullptr;
-  ::vr::TrackedDeviceIndex_t mControllerDeviceIndex[kVRControllerMaxCount];
+  ::vr::TrackedDeviceIndex_t
+      mControllerDeviceIndexObsolete[kVRControllerMaxCount];
+  ::vr::VRActionSetHandle_t mActionsetFirefox = vr::k_ulInvalidActionSetHandle;
+  OpenVRHand mControllerDeviceIndex[kVRControllerMaxCount];
+  ControllerInfo mControllerHand[OpenVRHand::Total];
   float mHapticPulseRemaining[kVRControllerMaxCount][kNumOpenVRHaptics];
   float mHapticPulseIntensity[kVRControllerMaxCount][kNumOpenVRHaptics];
   bool mIsWindowsMR;
@@ -65,9 +123,13 @@ class OpenVRSession : public VRSession {
   void UpdateEyeParameters(mozilla::gfx::VRSystemState& aState);
   void UpdateHeadsetPose(mozilla::gfx::VRSystemState& aState);
   void EnumerateControllers(VRSystemState& aState);
+  void EnumerateControllersObsolete(VRSystemState& aState);
   void UpdateControllerPoses(VRSystemState& aState);
+  void UpdateControllerPosesObsolete(VRSystemState& aState);
   void UpdateControllerButtons(VRSystemState& aState);
+  void UpdateControllerButtonsObsolete(VRSystemState& aState);
   void UpdateTelemetry(VRSystemState& aSystemState);
+  void SetupContollerActions();
 
   bool SubmitFrame(const VRLayerTextureHandle& aTextureHandle,
                    ::vr::ETextureType aTextureType,
@@ -80,6 +142,7 @@ class OpenVRSession : public VRSession {
                              ::vr::TrackedDeviceIndex_t aDeviceIndex,
                              nsCString& aId);
   void UpdateHaptics();
+  void UpdateHapticsObsolete();
   void StartHapticThread();
   void StopHapticThread();
   void StartHapticTimer();

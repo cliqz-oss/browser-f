@@ -1,3 +1,5 @@
+# -*- Mode: python; c-basic-offset: 4; indent-tabs-mode: nil; tab-width: 40 -*-
+# vim: set filetype=python:
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -24,6 +26,7 @@ if AWSY_PATH not in sys.path:
 
 from awsy import ITERATIONS, PER_TAB_PAUSE, SETTLE_WAIT_TIME, MAX_TABS
 from awsy import process_perf_data
+
 
 class AwsyTestCase(MarionetteTestCase):
     """
@@ -73,8 +76,10 @@ class AwsyTestCase(MarionetteTestCase):
         self._maxTabs = self.testvars.get("maxTabs", MAX_TABS)
         self._dmd = self.testvars.get("dmd", False)
 
-        self.logger.info("areweslimyet run by %d pages, %d iterations, %d perTabPause, %d settleWaitTime"
-                         % (self._pages_to_load, self._iterations, self._perTabPause, self._settleWaitTime))
+        self.logger.info("areweslimyet run by %d pages, %d iterations,"
+                         " %d perTabPause, %d settleWaitTime"
+                         % (self._pages_to_load, self._iterations,
+                            self._perTabPause, self._settleWaitTime))
         self.reset_state()
 
     def tearDown(self):
@@ -91,7 +96,7 @@ class AwsyTestCase(MarionetteTestCase):
             with open(perf_file, 'w') as fp:
                 json.dump(perf_blob, fp, indent=2)
             self.logger.info("Perfherder data written to %s" % perf_file)
-        except:
+        except Exception:
             raise
         finally:
             # Make sure we cleanup and upload any existing files even if there
@@ -153,7 +158,9 @@ class AwsyTestCase(MarionetteTestCase):
             Cu.import("resource://gre/modules/Services.jsm");
             Services.obs.notifyObservers(null, "child-mmu-request", null);
 
-            let memMgrSvc = Cc["@mozilla.org/memory-reporter-manager;1"].getService(Ci.nsIMemoryReporterManager);
+            let memMgrSvc =
+            Cc["@mozilla.org/memory-reporter-manager;1"].getService(
+            Ci.nsIMemoryReporterManager);
             memMgrSvc.minimizeMemoryUsage(() => {resolve("gc done!");});
             """
         result = None
@@ -164,7 +171,7 @@ class AwsyTestCase(MarionetteTestCase):
             self.logger.error("GC JavaScript error: %s" % e)
         except ScriptTimeoutException:
             self.logger.error("GC timed out")
-        except:
+        except Exception:
             self.logger.error("Unexpected error: %s" % sys.exc_info()[0])
         else:
             self.logger.info(result)
@@ -194,7 +201,9 @@ class AwsyTestCase(MarionetteTestCase):
 
         checkpoint_script = r"""
             let [resolve] = arguments;
-            let dumper = Cc["@mozilla.org/memory-info-dumper;1"].getService(Ci.nsIMemoryInfoDumper);
+            let dumper =
+            Cc["@mozilla.org/memory-info-dumper;1"].getService(
+            Ci.nsIMemoryInfoDumper);
             dumper.dumpMemoryReportsToNamedFile(
                 "%s",
                 () => resolve("memory report done!"),
@@ -207,12 +216,12 @@ class AwsyTestCase(MarionetteTestCase):
             finished = self.marionette.execute_async_script(
                 checkpoint_script, script_timeout=60000)
             if finished:
-              checkpoint = checkpoint_path
+                checkpoint = checkpoint_path
         except JavascriptException, e:
             self.logger.error("Checkpoint JavaScript error: %s" % e)
         except ScriptTimeoutException:
             self.logger.error("Memory report timed out")
-        except:
+        except Exception:
             self.logger.error("Unexpected error: %s" % sys.exc_info()[0])
         else:
             self.logger.info("checkpoint created, stored in %s" % checkpoint_path)
@@ -247,7 +256,9 @@ class AwsyTestCase(MarionetteTestCase):
         # and for the memory report:
         #   unified-memory-report-<checkpoint>-<iteration>.json.gz
         dmd_script = r"""
-            let dumper = Cc["@mozilla.org/memory-info-dumper;1"].getService(Ci.nsIMemoryInfoDumper);
+            let dumper =
+            Cc["@mozilla.org/memory-info-dumper;1"].getService(
+            Ci.nsIMemoryInfoDumper);
             dumper.dumpMemoryInfoToTempDir(
                 "%s",
                 /* anonymize = */ false,
@@ -278,7 +289,7 @@ class AwsyTestCase(MarionetteTestCase):
             self.logger.error("DMD JavaScript error: %s" % e)
         except ScriptTimeoutException:
             self.logger.error("DMD timed out")
-        except:
+        except Exception:
             self.logger.error("Unexpected error: %s" % sys.exc_info()[0])
         else:
             self.logger.info("DMD started, prefixed with %s" % ident)
@@ -292,16 +303,17 @@ class AwsyTestCase(MarionetteTestCase):
         page_to_load = self.urls()[self._pages_loaded % len(self.urls())]
         tabs_loaded = len(self._tabs)
         is_new_tab = False
+        open_tab_script = r"""
+            gBrowser.loadOneTab("about:blank", {
+                inBackground: false,
+                triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+            });
+        """
 
         if tabs_loaded < self._maxTabs and tabs_loaded <= self._pages_loaded:
             full_tab_list = self.marionette.window_handles
 
-            # Trigger opening a new tab by finding the new tab button and
-            # clicking it
-            newtab_button = (self.marionette.find_element('id', 'tabbrowser-tabs')
-                                            .find_element('anon attribute',
-                                                          {'anonid': 'tabs-newtab-button'}))
-            newtab_button.click()
+            self.marionette.execute_script(open_tab_script, script_timeout=60000)
 
             self.wait_for_condition(lambda mn: len(
                 mn.window_handles) == tabs_loaded + 1)

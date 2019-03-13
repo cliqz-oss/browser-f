@@ -27,7 +27,7 @@ class HTMLSlotElement final : public nsGenericHTMLElement {
   virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
 
   // nsIContent
-  virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
+  virtual nsresult BindToTree(Document* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent) override;
   virtual void UnbindFromTree(bool aDeep, bool aNullParent) override;
 
@@ -49,6 +49,9 @@ class HTMLSlotElement final : public nsGenericHTMLElement {
 
   void AssignedNodes(const AssignedNodesOptions& aOptions,
                      nsTArray<RefPtr<nsINode>>& aNodes);
+
+  void AssignedElements(const AssignedNodesOptions& aOptions,
+                        nsTArray<RefPtr<Element>>& aNodes);
 
   // Helper methods
   const nsTArray<RefPtr<nsINode>>& AssignedNodes() const;

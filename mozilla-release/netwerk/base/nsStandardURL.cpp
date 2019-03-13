@@ -286,6 +286,7 @@ void nsStandardURL::ShutdownGlobalObjects() {
     // This instanciates a dummy class, and will trigger the class
     // destructor when libxul is unloaded. This is equivalent to atexit(),
     // but gracefully handles dlclose().
+    StaticMutexAutoLock lock(gAllURLsMutex);
     static DumpLeakedURLs d;
   }
 #endif
@@ -1187,7 +1188,6 @@ NS_INTERFACE_MAP_BEGIN(nsStandardURL)
   NS_INTERFACE_MAP_ENTRY(nsIStandardURL)
   NS_INTERFACE_MAP_ENTRY(nsISerializable)
   NS_INTERFACE_MAP_ENTRY(nsIClassInfo)
-  NS_INTERFACE_MAP_ENTRY(nsIIPCSerializableURI)
   NS_INTERFACE_MAP_ENTRY(nsISensitiveInfoHiddenURI)
   // see nsStandardURL::Equals
   if (aIID.Equals(kThisImplCID))
@@ -2205,6 +2205,10 @@ nsresult nsStandardURL::EqualsInternal(
 NS_IMETHODIMP
 nsStandardURL::SchemeIs(const char *scheme, bool *result) {
   MOZ_ASSERT(result, "null pointer");
+  if (!scheme) {
+    *result = false;
+    return NS_OK;
+  }
 
   *result = SegmentIs(mScheme, scheme);
   return NS_OK;
@@ -3304,10 +3308,6 @@ nsStandardURL::Write(nsIObjectOutputStream *stream) {
 
   return NS_OK;
 }
-
-//---------------------------------------------------------------------------
-// nsStandardURL::nsIIPCSerializableURI
-//---------------------------------------------------------------------------
 
 inline ipc::StandardURLSegment ToIPCSegment(
     const nsStandardURL::URLSegment &aSegment) {

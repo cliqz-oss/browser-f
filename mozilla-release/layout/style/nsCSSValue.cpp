@@ -20,7 +20,7 @@
 #include "gfxFontConstants.h"
 #include "imgIRequest.h"
 #include "imgRequestProxy.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIURIMutator.h"
 #include "nsCSSProps.h"
 #include "nsNetUtil.h"
@@ -31,6 +31,7 @@
 
 using namespace mozilla;
 using namespace mozilla::css;
+using namespace mozilla::dom;
 
 nsCSSValue::nsCSSValue(int32_t aValue, nsCSSUnit aUnit) : mUnit(aUnit) {
   MOZ_ASSERT(aUnit == eCSSUnit_Integer || aUnit == eCSSUnit_Enumerated,
@@ -418,41 +419,6 @@ already_AddRefed<nsStringBuffer> nsCSSValue::BufferFromString(
   // Null-terminate.
   data[length] = 0;
   return buffer.forget();
-}
-
-/* static */ void nsCSSValue::AppendAlignJustifyValueToString(
-    int32_t aValue, nsAString& aResult) {
-  auto legacy = aValue & NS_STYLE_ALIGN_LEGACY;
-  if (legacy) {
-    aValue &= ~legacy;
-    aResult.AppendLiteral("legacy");
-    if (!aValue) {
-      return;
-    }
-    aResult.AppendLiteral(" ");
-  }
-  // Don't serialize the 'unsafe' keyword; it's the default.
-  auto overflowPos = aValue & (NS_STYLE_ALIGN_SAFE | NS_STYLE_ALIGN_UNSAFE);
-  if (MOZ_UNLIKELY(overflowPos == NS_STYLE_ALIGN_SAFE)) {
-    aResult.AppendLiteral("safe ");
-  }
-  aValue &= ~overflowPos;
-  MOZ_ASSERT(!(aValue & NS_STYLE_ALIGN_FLAG_BITS),
-             "unknown bits in align/justify value");
-  MOZ_ASSERT(
-      (aValue != NS_STYLE_ALIGN_AUTO && aValue != NS_STYLE_ALIGN_NORMAL &&
-       aValue != NS_STYLE_ALIGN_BASELINE &&
-       aValue != NS_STYLE_ALIGN_LAST_BASELINE) ||
-          (!legacy && !overflowPos),
-      "auto/normal/baseline/'last baseline' never have any flags");
-  MOZ_ASSERT(legacy == 0 || overflowPos == 0,
-             "'legacy' together with <overflow-position>");
-  if (aValue == NS_STYLE_ALIGN_LAST_BASELINE) {
-    aResult.AppendLiteral("last ");
-    aValue = NS_STYLE_ALIGN_BASELINE;
-  }
-  const auto& kwtable(nsCSSProps::kAlignAllKeywords);
-  AppendASCIItoUTF16(nsCSSProps::ValueToKeyword(aValue, kwtable), aResult);
 }
 
 size_t nsCSSValue::SizeOfExcludingThis(
@@ -874,7 +840,7 @@ size_t css::URLValue::SizeOfIncludingThis(
   return n;
 }
 
-imgRequestProxy* css::URLValue::LoadImage(nsIDocument* aDocument) {
+imgRequestProxy* css::URLValue::LoadImage(Document* aDocument) {
   MOZ_ASSERT(NS_IsMainThread());
 
   static uint64_t sNextLoadID = 1;
@@ -886,7 +852,7 @@ imgRequestProxy* css::URLValue::LoadImage(nsIDocument* aDocument) {
   // NB: If aDocument is not the original document, we may not be able to load
   // images from aDocument.  Instead we do the image load from the original doc
   // and clone it to aDocument.
-  nsIDocument* loadingDoc = aDocument->GetOriginalDocument();
+  Document* loadingDoc = aDocument->GetOriginalDocument();
   if (!loadingDoc) {
     loadingDoc = aDocument;
   }

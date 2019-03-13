@@ -1,7 +1,9 @@
 // A Debugger can {return:} from the first onEnterFrame for an async function.
 // (The exact behavior is undocumented; we're testing that it doesn't crash.)
 
-let g = newGlobal();
+ignoreUnhandledRejections();
+
+let g = newGlobal({newCompartment: true});
 g.hit2 = false;
 g.eval(`async function f(x) { await x; return "ponies"; }`);
 

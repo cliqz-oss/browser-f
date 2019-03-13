@@ -6,10 +6,13 @@ use api::{BorderRadius, DeviceIntPoint, DeviceIntRect, DeviceIntSize, DevicePixe
 use api::{LayoutPixel, DeviceRect, WorldPixel, RasterRect};
 use euclid::{Point2D, Rect, Size2D, TypedPoint2D, TypedRect, TypedSize2D, Vector2D};
 use euclid::{TypedTransform2D, TypedTransform3D, TypedVector2D, TypedScale};
+use malloc_size_of::{MallocShallowSizeOf, MallocSizeOf, MallocSizeOfOps};
 use num_traits::Zero;
 use plane_split::{Clipper, Polygon};
 use std::{i32, f32, fmt, ptr};
 use std::borrow::Cow;
+use std::os::raw::c_void;
+use std::sync::Arc;
 
 
 // Matches the definition of SK_ScalarNearlyZero in Skia.
@@ -92,7 +95,7 @@ impl<T> VecHelper<T> for Vec<T> {
 // TODO(gw): We should try and incorporate F <-> T units here,
 //           but it's a bit tricky to do that now with the
 //           way the current clip-scroll tree works.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, MallocSizeOf)]
 pub struct ScaleOffset {
     pub scale: Vector2D<f32>,
     pub offset: Vector2D<f32>,
@@ -556,7 +559,7 @@ impl<U> MaxRect for TypedRect<f32, U> {
 
 /// An enum that tries to avoid expensive transformation matrix calculations
 /// when possible when dealing with non-perspective axis-aligned transformations.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, MallocSizeOf)]
 pub enum FastTransform<Src, Dst> {
     /// A simple offset, which can be used without doing any matrix math.
     Offset(TypedVector2D<f32, Src>),
@@ -568,6 +571,14 @@ pub enum FastTransform<Src, Dst> {
         is_2d: bool,
     },
 }
+
+impl<Src, Dst> Clone for FastTransform<Src, Dst> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<Src, Dst> Copy for FastTransform<Src, Dst> { }
 
 impl<Src, Dst> FastTransform<Src, Dst> {
     pub fn identity() -> Self {
@@ -613,6 +624,7 @@ impl<Src, Dst> FastTransform<Src, Dst> {
     }
 
     /// Return true if this is an identity transform
+    #[allow(unused)]
     pub fn is_identity(&self)-> bool {
         match *self {
             FastTransform::Offset(offset) => {
@@ -648,6 +660,14 @@ impl<Src, Dst> FastTransform<Src, Dst> {
                 FastTransform::Offset(*offset + *other_offset),
             FastTransform::Transform { transform, .. } =>
                 FastTransform::with_transform(transform.pre_translate(other_offset.to_3d()))
+        }
+    }
+
+    #[inline(always)]
+    pub fn project_to_2d(&self) -> Self {
+        match *self {
+            FastTransform::Offset(..) => self.clone(),
+            FastTransform::Transform { ref transform, .. } => FastTransform::with_transform(transform.project_to_2d()),
         }
     }
 
@@ -857,14 +877,252 @@ where
     }
 }
 
-/// Clear a vector for re-use, while retaining the backing memory buffer. May shrink the buffer
-/// if it's currently much larger than was actually used.
-pub fn recycle_vec<T>(vec: &mut Vec<T>) {
-    if vec.capacity() > 2 * vec.len() {
-        // Reduce capacity of the buffer if it is a lot larger than it needs to be. This prevents
-        // a frame with exceptionally large allocations to cause subsequent frames to retain
-        // more memory than they need.
-        vec.shrink_to_fit();
+
+#[derive(Debug)]
+pub struct Recycler {
+    pub num_allocations: usize,
+}
+
+impl Recycler {
+    /// Maximum extra capacity that a recycled vector is allowed to have. If the actual capacity
+    /// is larger, we re-allocate the vector storage with lower capacity.
+    const MAX_EXTRA_CAPACITY_PERCENT: usize = 200;
+    /// Minimum extra capacity to keep when re-allocating the vector storage.
+    const MIN_EXTRA_CAPACITY_PERCENT: usize = 20;
+    /// Minimum sensible vector length to consider for re-allocation.
+    const MIN_VECTOR_LENGTH: usize = 16;
+
+    pub fn new() -> Self {
+        Recycler {
+            num_allocations: 0,
+        }
     }
-    vec.clear();
+
+    /// Clear a vector for re-use, while retaining the backing memory buffer. May shrink the buffer
+    /// if it's currently much larger than was actually used.
+    pub fn recycle_vec<T>(&mut self, vec: &mut Vec<T>) {
+        let extra_capacity = (vec.capacity() - vec.len()) * 100 / vec.len().max(Self::MIN_VECTOR_LENGTH);
+
+        if extra_capacity > Self::MAX_EXTRA_CAPACITY_PERCENT {
+            // Reduce capacity of the buffer if it is a lot larger than it needs to be. This prevents
+            // a frame with exceptionally large allocations to cause subsequent frames to retain
+            // more memory than they need.
+            //TODO: use `shrink_to` when it's stable
+            *vec = Vec::with_capacity(vec.len() + vec.len() * Self::MIN_EXTRA_CAPACITY_PERCENT / 100);
+            self.num_allocations += 1;
+        } else {
+            vec.clear();
+        }
+    }
+}
+
+/// A specialized array container for comparing equality between the current
+/// contents and the new contents, incrementally. As each item is added, the
+/// container maintains track of whether this is the same as last time items
+/// were added, or if the contents have diverged. After each reset, the memory
+/// of the vec is retained, which means that memory allocation is rare.
+#[derive(Debug)]
+pub struct ComparableVec<T> {
+    /// The items to be stored and compared
+    items: Vec<T>,
+    /// The current index to add the next item to
+    current_index: usize,
+    /// The previous length of the array
+    prev_len: usize,
+    /// Whether the contents of the vec is the same as last time.
+    is_same: bool,
+}
+
+impl<T> ComparableVec<T> where T: PartialEq + Clone + fmt::Debug {
+    /// Construct a new comparable vec
+    pub fn new() -> Self {
+        ComparableVec {
+            items: Vec::new(),
+            current_index: 0,
+            prev_len: 0,
+            is_same: false,
+        }
+    }
+
+    /// Retrieve a reference to the current items array
+    pub fn items(&self) -> &[T] {
+        &self.items[.. self.current_index]
+    }
+
+    /// Clear the contents of the vec, ready for adding new items.
+    pub fn reset(&mut self) {
+        self.items.truncate(self.current_index);
+        self.prev_len = self.current_index;
+        self.current_index = 0;
+        self.is_same = true;
+    }
+
+    /// Return the current length of the container
+    pub fn len(&self) -> usize {
+        self.current_index
+    }
+
+    /// Return true if the container has no items
+    pub fn is_empty(&self) -> bool {
+        self.current_index == 0
+    }
+
+    /// Push a number of items into the container
+    pub fn extend_from_slice(&mut self, items: &[T]) {
+        for item in items {
+            self.push(item.clone());
+        }
+    }
+
+    /// Push a single item into the container.
+    pub fn push(&mut self, item: T) {
+        // If this item extends the real length of the vec, it's clearly not
+        // the same as last time.
+        if self.current_index < self.items.len() {
+            // If the vec is currently considered equal, we need to compare
+            // the item being pushed.
+            if self.is_same {
+                let existing_item = &mut self.items[self.current_index];
+                if *existing_item != item {
+                    // Overwrite the current item with the new one and
+                    // mark the vec as different.
+                    *existing_item = item;
+                    self.is_same = false;
+                }
+            } else {
+                // The vec is already not equal, so just push the item.
+                self.items[self.current_index] = item;
+            }
+        } else {
+            // In this case, mark the vec as different and store the new item.
+            self.is_same = false;
+            self.items.push(item);
+        }
+
+        // Increment where the next item will be pushed.
+        self.current_index += 1;
+    }
+
+    /// Return true if the contents of the vec are the same as the previous time.
+    pub fn is_valid(&self) -> bool {
+        self.is_same && self.prev_len == self.current_index
+    }
+}
+
+/// Arc wrapper to support measurement via MallocSizeOf.
+///
+/// Memory reporting for Arcs is tricky because of the risk of double-counting.
+/// One way to measure them is to keep a table of pointers that have already been
+/// traversed. The other way is to use knowledge of the program structure to
+/// identify which Arc instances should be measured and which should be skipped to
+/// avoid double-counting.
+///
+/// This struct implements the second approach. It identifies the "main" pointer
+/// to the Arc-ed resource, and measures the buffer as if it were an owned pointer.
+/// The programmer should ensure that there is at most one PrimaryArc for a given
+/// underlying ArcInner.
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct PrimaryArc<T>(pub Arc<T>);
+
+impl<T> ::std::ops::Deref for PrimaryArc<T> {
+    type Target = Arc<T>;
+
+    #[inline]
+    fn deref(&self) -> &Arc<T> {
+        &self.0
+    }
+}
+
+impl<T> MallocShallowSizeOf for PrimaryArc<T> {
+    fn shallow_size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        unsafe {
+            // This is a bit sketchy, but std::sync::Arc doesn't expose the
+            // base pointer.
+            let raw_arc_ptr: *const Arc<T> = &self.0;
+            let raw_ptr_ptr: *const *const c_void = raw_arc_ptr as _;
+            let raw_ptr = *raw_ptr_ptr;
+            (ops.size_of_op)(raw_ptr)
+        }
+    }
+}
+
+impl<T: MallocSizeOf> MallocSizeOf for PrimaryArc<T> {
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        self.shallow_size_of(ops) + (**self).size_of(ops)
+    }
+}
+
+/// Computes the scale factors of this matrix; that is,
+/// the amounts each basis vector is scaled by.
+///
+/// This code comes from gecko gfx/2d/Matrix.h with the following
+/// modifications:
+///
+/// * Removed `xMajor` parameter.
+pub fn scale_factors<Src, Dst>(
+    mat: &TypedTransform3D<f32, Src, Dst>
+) -> (f32, f32) {
+    // Determinant is just of the 2D component.
+    let det = mat.m11 * mat.m22 - mat.m12 * mat.m21;
+    if det == 0.0 {
+        return (0.0, 0.0);
+    }
+
+    // ignore mirroring
+    let det = det.abs();
+
+    let major = (mat.m11 * mat.m11 + mat.m12 * mat.m12).sqrt();
+    let minor = if major != 0.0 { det / major } else { 0.0 };
+
+    (major, minor)
+}
+
+/// Clamp scaling factor to a power of two.
+///
+/// This code comes from gecko gfx/thebes/gfxUtils.cpp with the following
+/// modification:
+///
+/// * logs are taken in base 2 instead of base e.
+pub fn clamp_to_scale_factor(val: f32, round_down: bool) -> f32 {
+    // Arbitary scale factor limitation. We can increase this
+    // for better scaling performance at the cost of worse
+    // quality.
+    const SCALE_RESOLUTION: f32 = 2.0;
+
+    // Negative scaling is just a flip and irrelevant to
+    // our resolution calculation.
+    let val = val.abs();
+
+    let (val, inverse) = if val < 1.0 {
+        (1.0 / val, true)
+    } else {
+        (val, false)
+    };
+
+    let power = val.log2() / SCALE_RESOLUTION.log2();
+
+    // If power is within 1e-5 of an integer, round to nearest to
+    // prevent floating point errors, otherwise round up to the
+    // next integer value.
+    let power = if (power - power.round()).abs() < 1e-5 {
+        power.round()
+    } else if inverse != round_down {
+        // Use floor when we are either inverted or rounding down, but
+        // not both.
+        power.floor()
+    } else {
+        // Otherwise, ceil when we are not inverted and not rounding
+        // down, or we are inverted and rounding down.
+        power.ceil()
+    };
+
+    let scale = SCALE_RESOLUTION.powf(power);
+
+    if inverse {
+        1.0 / scale
+    } else {
+        scale
+    }
 }

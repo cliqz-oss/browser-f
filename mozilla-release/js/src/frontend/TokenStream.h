@@ -151,7 +151,8 @@
  * are just functionality, no actual member data.
  *
  * == TokenStreamSpecific<Unit, AnyCharsAccess> →
- *    TokenStreamChars<Unit, AnyCharsAccess>, TokenStreamShared ==
+ *    TokenStreamChars<Unit, AnyCharsAccess>, TokenStreamShared,
+ *    ErrorReporter ==
  *
  * TokenStreamSpecific is operations that are parametrized on character type
  * but implement the *general* idea of tokenizing, without being intrinsically
@@ -222,6 +223,8 @@ namespace js {
 class AutoKeepAtoms;
 
 namespace frontend {
+
+class FunctionBox;
 
 struct TokenPos {
   uint32_t begin;  // Offset of the token's first code unit.
@@ -452,18 +455,6 @@ extern const char* ReservedWordToCharZ(PropertyName* str);
 
 extern const char* ReservedWordToCharZ(TokenKind tt);
 
-// Ideally, tokenizing would be entirely independent of context.  But the
-// strict mode flag, which is in SharedContext, affects tokenizing, and
-// TokenStream needs to see it.
-//
-// This class is a tiny back-channel from TokenStream to the strict mode flag
-// that avoids exposing the rest of SharedContext to TokenStream.
-//
-class StrictModeGetter {
- public:
-  virtual bool strictMode() = 0;
-};
-
 struct TokenStreamFlags {
   bool isEOF : 1;           // Hit end of file.
   bool isDirtyLine : 1;     // Non-whitespace since start of line.
@@ -494,8 +485,6 @@ class TokenStreamShared {
 
  public:
   static constexpr unsigned maxLookahead = 2;
-
-  static constexpr uint32_t NoOffset = UINT32_MAX;
 
   using Modifier = Token::Modifier;
   static constexpr Modifier None = Token::None;
@@ -729,7 +718,12 @@ class TokenStreamAnyChars : public TokenStreamShared {
   char16_t* sourceMapURL() { return sourceMapURL_.get(); }
 
   // This class maps a sourceUnits offset (which is 0-indexed) to a line
-  // number (which is 1-indexed) and a column index (which is 0-indexed).
+  // number (which is 1-indexed) and an offset (which is 0-indexed) in
+  // code *units* (not code points, not bytes) into the line.
+  //
+  // If you need a column number (i.e. an offset in code *points*),
+  // GeneralTokenStreamChars<Unit> contains functions that consult this and
+  // use Unit-specific source text to determine the correct column.
   class SourceCoords {
     // For a given buffer holding source code, |lineStartOffsets_| has one
     // element per line of source code, plus one sentinel element.  Each
@@ -746,87 +740,158 @@ class TokenStreamAnyChars : public TokenStreamShared {
     //
     //   [0, 7, 14, 15, MAX_PTR]
     //
-    // To convert a "line number" to a "line index" (i.e. an index into
-    // |lineStartOffsets_|), subtract |initialLineNum_|.  E.g. line 3's
-    // line index is (3 - initialLineNum_), which is 2.  Therefore
-    // lineStartOffsets_[2] holds the buffer offset for the start of line 3,
-    // which is 14.  (Note that |initialLineNum_| is often 1, but not
-    // always.)
+    // To convert a "line number" to an "index" into |lineStartOffsets_|,
+    // subtract |initialLineNum_|.  E.g. line 3's index is
+    // (3 - initialLineNum_), which is 2.  Therefore lineStartOffsets_[2]
+    // holds the buffer offset for the start of line 3, which is 14.  (Note
+    // that |initialLineNum_| is often 1, but not always.
     //
     // The first element is always initialLineOffset, passed to the
     // constructor, and the last element is always the MAX_PTR sentinel.
     //
-    // offset-to-line/column lookups are O(log n) in the worst case (binary
-    // search), but in practice they're heavily clustered and we do better
-    // than that by using the previous lookup's result (lastLineIndex_) as
-    // a starting point.
+    // Offset-to-{line,offset-into-line} lookups are O(log n) in the worst
+    // case (binary search), but in practice they're heavily clustered and
+    // we do better than that by using the previous lookup's result
+    // (lastIndex_) as a starting point.
     //
     // Checking if an offset lies within a particular line number
     // (isOnThisLine()) is O(1).
     //
     Vector<uint32_t, 128> lineStartOffsets_;
+
+    /** The line number on which the source text begins. */
     uint32_t initialLineNum_;
-    uint32_t initialColumn_;
 
-    // This is mutable because it's modified on every search, but that fact
-    // isn't visible outside this class.
-    mutable uint32_t lastLineIndex_;
+    /**
+     * The index corresponding to the last offset lookup -- used so that if
+     * offset lookups proceed in increasing order, and and the offset appears
+     * in the next couple lines from the last offset, we can avoid a full
+     * binary-search.
+     *
+     * This is mutable because it's modified on every search, but that fact
+     * isn't visible outside this class.
+     */
+    mutable uint32_t lastIndex_;
 
-    uint32_t lineIndexOf(uint32_t offset) const;
+    uint32_t indexFromOffset(uint32_t offset) const;
 
     static const uint32_t MAX_PTR = UINT32_MAX;
 
-    uint32_t lineIndexToNum(uint32_t lineIndex) const {
-      return lineIndex + initialLineNum_;
+    uint32_t lineNumberFromIndex(uint32_t index) const {
+      return index + initialLineNum_;
     }
-    uint32_t lineNumToIndex(uint32_t lineNum) const {
+
+    uint32_t indexFromLineNumber(uint32_t lineNum) const {
       return lineNum - initialLineNum_;
-    }
-    uint32_t lineIndexAndOffsetToColumn(uint32_t lineIndex,
-                                        uint32_t offset) const {
-      uint32_t lineStartOffset = lineStartOffsets_[lineIndex];
-      MOZ_RELEASE_ASSERT(offset >= lineStartOffset);
-      uint32_t column = offset - lineStartOffset;
-      if (lineIndex == 0) {
-        return column + initialColumn_;
-      }
-      return column;
     }
 
    public:
-    SourceCoords(JSContext* cx, uint32_t ln, uint32_t col,
-                 uint32_t initialLineOffset);
+    SourceCoords(JSContext* cx, uint32_t initialLineNumber,
+                 uint32_t initialOffset);
 
     MOZ_MUST_USE bool add(uint32_t lineNum, uint32_t lineStartOffset);
     MOZ_MUST_USE bool fill(const SourceCoords& other);
 
     bool isOnThisLine(uint32_t offset, uint32_t lineNum,
                       bool* onThisLine) const {
-      uint32_t lineIndex = lineNumToIndex(lineNum);
-      if (lineIndex + 1 >= lineStartOffsets_.length()) {  // +1 due to sentinel
+      uint32_t index = indexFromLineNumber(lineNum);
+      if (index + 1 >= lineStartOffsets_.length()) {  // +1 due to sentinel
         return false;
       }
-      *onThisLine = lineStartOffsets_[lineIndex] <= offset &&
-                    offset < lineStartOffsets_[lineIndex + 1];
+      *onThisLine = lineStartOffsets_[index] <= offset &&
+                    offset < lineStartOffsets_[index + 1];
       return true;
     }
 
-    uint32_t lineNum(uint32_t offset) const;
-    uint32_t columnIndex(uint32_t offset) const;
-    void lineNumAndColumnIndex(uint32_t offset, uint32_t* lineNum,
-                               uint32_t* column) const;
+    /**
+     * A token, computed for an offset in source text, that can be used to
+     * access line number and line-offset information for that offset.
+     *
+     * LineToken *alone* exposes whether the corresponding offset is in the
+     * the first line of source (which may not be 1, depending on
+     * |initialLineNumber|), and whether it's in the same line as
+     * another LineToken.
+     */
+    class LineToken {
+      uint32_t index;
+#ifdef DEBUG
+      uint32_t offset_;  // stored for consistency-of-use assertions
+#endif
+
+      friend class SourceCoords;
+
+     public:
+      explicit LineToken(uint32_t index, uint32_t offset)
+          : index(index)
+#ifdef DEBUG
+            ,
+            offset_(offset)
+#endif
+      {
+      }
+
+      bool isFirstLine() const { return index == 0; }
+
+      bool isSameLine(LineToken other) const { return index == other.index; }
+
+      void assertConsistentOffset(uint32_t offset) const {
+        MOZ_ASSERT(offset_ == offset);
+      }
+    };
+
+    /**
+     * Compute a token usable to access information about the line at the
+     * given offset.
+     *
+     * The only information directly accessible in a token is whether it
+     * corresponds to the first line of source text (which may not be line
+     * 1, depending on the |initialLineNumber| value used to construct
+     * this).  Use |lineNumber(LineToken)| to compute the actual line
+     * number (incorporating the contribution of |initialLineNumber|).
+     */
+    LineToken lineToken(uint32_t offset) const;
+
+    /** Compute the line number for the given token. */
+    uint32_t lineNumber(LineToken lineToken) const {
+      return lineNumberFromIndex(lineToken.index);
+    }
+
+    /** Return the offset of the start of the line for |lineToken|. */
+    uint32_t lineStart(LineToken lineToken) const {
+      return lineStartOffsets_[lineToken.index];
+    }
   };
 
   SourceCoords srcCoords;
 
   JSContext* context() const { return cx; }
 
+  using LineToken = SourceCoords::LineToken;
+
+  LineToken lineToken(uint32_t offset) const {
+    return srcCoords.lineToken(offset);
+  }
+
+  uint32_t lineNumber(LineToken lineToken) const {
+    return srcCoords.lineNumber(lineToken);
+  }
+
+  uint32_t lineStart(LineToken lineToken) const {
+    return srcCoords.lineStart(lineToken);
+  }
+
   /**
-   * Fill in |err|, excepting line-of-context-related fields.  If the token
-   * stream has location information, use that and return true.  If it does
-   * not, use the caller's location information and return false.
+   * Fill in |err|.
+   *
+   * If the token stream doesn't have location info for this error, use the
+   * caller's location (including line/column number) and return false.  (No
+   * line of context is set.)
+   *
+   * Otherwise fill in everything in |err| except 1) line/column numbers and
+   * 2) line-of-context-related fields and return true.  The caller *must*
+   * fill in the line/column number; filling the line of context is optional.
    */
-  bool fillExcludingContext(ErrorMetadata* err, uint32_t offset);
+  bool fillExceptingContext(ErrorMetadata* err, uint32_t offset);
 
   MOZ_ALWAYS_INLINE void updateFlagsForEOL() { flags.isDirtyLine = false; }
 
@@ -865,22 +930,16 @@ class TokenStreamAnyChars : public TokenStreamShared {
   }
 
  public:
-  MOZ_MUST_USE bool compileWarning(ErrorMetadata&& metadata,
-                                   UniquePtr<JSErrorNotes> notes,
-                                   unsigned flags, unsigned errorNumber,
-                                   va_list args);
-
   // Compute error metadata for an error at no offset.
   void computeErrorMetadataNoOffset(ErrorMetadata* err);
 
   // ErrorReporter API Helpers
 
-  void lineAndColumnAt(size_t offset, uint32_t* line, uint32_t* column) const;
-
-  // This is just straight up duplicated from TokenStreamSpecific's inheritance
-  // of ErrorReporter's reportErrorNoOffset. varargs delenda est.
+  // Provide minimal set of error reporting API given we cannot use
+  // ErrorReportMixin here. "report" prefix is added to avoid conflict with
+  // ErrorReportMixin methods in TokenStream class.
   void reportErrorNoOffset(unsigned errorNumber, ...);
-  void reportErrorNoOffsetVA(unsigned errorNumber, va_list args);
+  void reportErrorNoOffsetVA(unsigned errorNumber, va_list* args);
 
   const JS::ReadOnlyCompileOptions& options() const { return options_; }
 
@@ -1794,10 +1853,18 @@ class TokenStart {
   uint32_t offset() const { return startOffset_; }
 };
 
+// Column numbers *ought* be in terms of counts of code points, but in the past
+// we counted code units.  Set this to 0 to keep returning counts of code units
+// (even for UTF-8, which is clearly wrong, but we don't ship UTF-8 yet so this
+// is fine until we can fix users that depend on code-unit counting).
+#define JS_COLUMN_DIMENSION_IS_CODE_POINTS 0
+
 template <typename Unit, class AnyCharsAccess>
 class GeneralTokenStreamChars : public SpecializedTokenStreamCharsBase<Unit> {
   using CharsBase = TokenStreamCharsBase<Unit>;
   using SpecializedCharsBase = SpecializedTokenStreamCharsBase<Unit>;
+
+  using LineToken = TokenStreamAnyChars::LineToken;
 
  private:
   Token* newTokenInternal(TokenKind kind, TokenStart start, TokenKind* out);
@@ -1856,6 +1923,24 @@ class GeneralTokenStreamChars : public SpecializedTokenStreamCharsBase<Unit> {
         "static_cast below presumes an inheritance relationship");
 
     return static_cast<TokenStreamSpecific*>(this);
+  }
+
+  uint32_t computeColumn(LineToken lineToken, uint32_t offset) const;
+  void computeLineAndColumn(uint32_t offset, uint32_t* line,
+                            uint32_t* column) const;
+
+  /**
+   * Fill in |err| completely, except for line-of-context information.
+   *
+   * Return true if the caller can compute a line of context from the token
+   * stream.  Otherwise return false.
+   */
+  MOZ_MUST_USE bool fillExceptingContext(ErrorMetadata* err, uint32_t offset) {
+    if (anyCharsAccess().fillExceptingContext(err, offset)) {
+      computeLineAndColumn(offset, &err->lineNumber, &err->columnNumber);
+      return true;
+    }
+    return false;
   }
 
   void newSimpleToken(TokenKind kind, TokenStart start,
@@ -2023,6 +2108,8 @@ class GeneralTokenStreamChars : public SpecializedTokenStreamCharsBase<Unit> {
 
     return drainCharBufferIntoAtom(anyChars.cx);
   }
+
+  inline void setFunctionStart(FunctionBox* funbox) const;
 };
 
 template <typename Unit, class AnyCharsAccess>
@@ -2095,6 +2182,8 @@ class TokenStreamChars<mozilla::Utf8Unit, AnyCharsAccess>
 
  protected:
   using GeneralCharsBase::anyCharsAccess;
+  using GeneralCharsBase::computeLineAndColumn;
+  using GeneralCharsBase::fillExceptingContext;
   using GeneralCharsBase::internalComputeLineOfContext;
   using TokenStreamCharsShared::isAsciiCodePoint;
   // Deliberately don't |using| |sourceUnits| because of bug 1472569.  :-(
@@ -2293,6 +2382,7 @@ class MOZ_STACK_CLASS TokenStreamSpecific
   // cost of this ever-changing laundry list of |using|s.  So it goes.
  public:
   using GeneralCharsBase::anyCharsAccess;
+  using GeneralCharsBase::computeLineAndColumn;
 
  private:
   using typename CharsBase::SourceUnits;
@@ -2306,6 +2396,8 @@ class MOZ_STACK_CLASS TokenStreamSpecific
   using CharsBase::fillCharBufferFromSourceNormalizingAsciiLineBreaks;
   using CharsBase::matchCodeUnit;
   using CharsBase::matchLineTerminator;
+  using GeneralCharsBase::computeColumn;
+  using GeneralCharsBase::fillExceptingContext;
   using GeneralCharsBase::getCodeUnit;
   using GeneralCharsBase::getFullAsciiCodePoint;
   using GeneralCharsBase::internalComputeLineOfContext;
@@ -2358,76 +2450,60 @@ class MOZ_STACK_CLASS TokenStreamSpecific
     return false;
   }
 
-  // ErrorReporter API.
-
-  const JS::ReadOnlyCompileOptions& options() const final {
-    return anyCharsAccess().options();
-  }
+ public:
+  // Implement ErrorReporter.
 
   void lineAndColumnAt(size_t offset, uint32_t* line,
                        uint32_t* column) const final {
-    anyCharsAccess().lineAndColumnAt(offset, line, column);
+    computeLineAndColumn(offset, line, column);
   }
 
-  void currentLineAndColumn(uint32_t* line, uint32_t* column) const final;
+  void currentLineAndColumn(uint32_t* line, uint32_t* column) const final {
+    computeLineAndColumn(anyCharsAccess().currentToken().pos.begin, line,
+                         column);
+  }
 
   bool isOnThisLine(size_t offset, uint32_t lineNum,
                     bool* onThisLine) const final {
     return anyCharsAccess().srcCoords.isOnThisLine(offset, lineNum, onThisLine);
   }
+
   uint32_t lineAt(size_t offset) const final {
-    return anyCharsAccess().srcCoords.lineNum(offset);
+    const auto& anyChars = anyCharsAccess();
+    auto lineToken = anyChars.lineToken(offset);
+    return anyChars.lineNumber(lineToken);
   }
+
   uint32_t columnAt(size_t offset) const final {
-    return anyCharsAccess().srcCoords.columnIndex(offset);
+    return computeColumn(anyCharsAccess().lineToken(offset), offset);
   }
 
   bool hasTokenizationStarted() const final;
-
-  void reportErrorNoOffsetVA(unsigned errorNumber, va_list args) final {
-    anyCharsAccess().reportErrorNoOffsetVA(errorNumber, args);
-  }
 
   const char* getFilename() const final {
     return anyCharsAccess().getFilename();
   }
 
-  // TokenStream-specific error reporters.
-  void reportError(unsigned errorNumber, ...);
+ private:
+  // Implement ErrorReportMixin.
 
-  // Report the given error at the current offset.
-  void error(unsigned errorNumber, ...);
+  JSContext* getContext() const override { return anyCharsAccess().cx; }
 
-  // Report the given error at the given offset.
-  void errorAt(uint32_t offset, unsigned errorNumber, ...);
-  void errorAtVA(uint32_t offset, unsigned errorNumber, va_list* args);
-
-  // Warn at the current offset.
-  MOZ_MUST_USE bool warning(unsigned errorNumber, ...);
+  MOZ_MUST_USE bool strictMode() const override {
+    return anyCharsAccess().strictMode();
+  }
 
  public:
-  // Compute error metadata for an error at the given offset.
-  MOZ_MUST_USE bool computeErrorMetadata(ErrorMetadata* err, uint32_t offset);
+  // Implement ErrorReportMixin.
 
-  // General-purpose error reporters.  You should avoid calling these
-  // directly, and instead use the more succinct alternatives (error(),
-  // warning(), &c.) in TokenStream, Parser, and BytecodeEmitter.
-  //
-  // These functions take a |va_list*| parameter, not a |va_list| parameter,
-  // to hack around bug 1363116.  (Longer-term, the right fix is of course to
-  // not use ellipsis functions or |va_list| at all in error reporting.)
-  bool reportStrictModeErrorNumberVA(UniquePtr<JSErrorNotes> notes,
-                                     uint32_t offset, bool strictMode,
-                                     unsigned errorNumber, va_list* args);
-  bool reportExtraWarningErrorNumberVA(UniquePtr<JSErrorNotes> notes,
-                                       uint32_t offset, unsigned errorNumber,
-                                       va_list* args);
+  const JS::ReadOnlyCompileOptions& options() const final {
+    return anyCharsAccess().options();
+  }
+
+  MOZ_MUST_USE bool computeErrorMetadata(
+      ErrorMetadata* err, const ErrorOffset& errorOffset) override;
 
  private:
-  // This is private because it should only be called by the tokenizer while
-  // tokenizing not by, for example, BytecodeEmitter.
-  bool reportStrictModeError(unsigned errorNumber, ...);
-
   void reportInvalidEscapeError(uint32_t offset, InvalidEscapeType type) {
     switch (type) {
       case InvalidEscapeType::None:
@@ -2583,7 +2659,7 @@ class MOZ_STACK_CLASS TokenStreamSpecific
       bool onThisLine;
       if (!anyChars.srcCoords.isOnThisLine(curr.pos.end, anyChars.lineno,
                                            &onThisLine)) {
-        reportError(JSMSG_OUT_OF_MEMORY);
+        error(JSMSG_OUT_OF_MEMORY);
         return false;
       }
 
@@ -2606,13 +2682,18 @@ class MOZ_STACK_CLASS TokenStreamSpecific
     if (!getToken(&tmp, modifier)) {
       return false;
     }
+
     const Token& next = anyChars.currentToken();
     anyChars.ungetToken();
 
-    const auto& srcCoords = anyChars.srcCoords;
-    *ttp = srcCoords.lineNum(curr.pos.end) == srcCoords.lineNum(next.pos.begin)
-               ? next.type
-               : TokenKind::Eol;
+    // Careful, |next| points to an initialized-but-not-allocated Token!
+    // This is safe because we don't modify token data below.
+
+    auto currentEndToken = anyChars.lineToken(curr.pos.end);
+    auto nextBeginToken = anyChars.lineToken(next.pos.begin);
+
+    *ttp =
+        currentEndToken.isSameLine(nextBeginToken) ? next.type : TokenKind::Eol;
     return true;
   }
 

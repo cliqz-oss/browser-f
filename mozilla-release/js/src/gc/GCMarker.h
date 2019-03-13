@@ -49,16 +49,16 @@ using WeakKeyTable =
                    js::SystemAllocPolicy>;
 
 /*
- * When the native stack is low, the GC does not call js::TraceChildren to mark
+ * When the mark stack is full, the GC does not call js::TraceChildren to mark
  * the reachable "children" of the thing. Rather the thing is put aside and
- * js::TraceChildren is called later with more space on the C stack.
+ * js::TraceChildren is called later when the mark stack is empty.
  *
  * To implement such delayed marking of the children with minimal overhead for
- * the normal case of sufficient native stack, the code adds a field per arena.
- * The field markingDelay->link links all arenas with delayed things into a
- * stack list with the pointer to stack top in GCMarker::unmarkedArenaStackTop.
- * GCMarker::delayMarkingChildren adds arenas to the stack as necessary while
- * markDelayedChildren pops the arenas from the stack until it empties.
+ * the normal case of sufficient stack, we link arenas into a list using
+ * Arena::setNextDelayedMarkingArena(). The head of the list is stored in
+ * GCMarker::delayedMarkingList. GCMarker::delayMarkingChildren() adds arenas
+ * to the list as necessary while markAllDelayedChildren() pops the arenas from
+ * the stack until it is empty.
  */
 class MarkStack {
  public:
@@ -271,6 +271,21 @@ class GCMarker : public JSTracer {
   void setMarkColor(gc::MarkColor newColor);
   gc::MarkColor markColor() const { return color; }
 
+  // Return whether a cell is marked relative to the current marking color. If
+  // the cell is black then this returns true, but if it's gray it will return
+  // false if the mark color is black.
+  template <typename T>
+  bool isMarked(T* thingp) {
+    return color == gc::MarkColor::Black ? gc::IsMarkedBlack(runtime(), thingp)
+                                         : gc::IsMarked(runtime(), thingp);
+  }
+  template <typename T>
+  bool isMarkedUnbarriered(T* thingp) {
+    return color == gc::MarkColor::Black
+               ? gc::IsMarkedBlackUnbarriered(runtime(), thingp)
+               : gc::IsMarkedUnbarriered(runtime(), thingp);
+  }
+
   void enterWeakMarkingMode();
   void leaveWeakMarkingMode();
   void abortLinearWeakMarking() {
@@ -278,15 +293,11 @@ class GCMarker : public JSTracer {
     linearWeakMarkingDisabled_ = true;
   }
 
-  void delayMarkingArena(gc::Arena* arena);
-  void delayMarkingChildren(const void* thing);
-  void markDelayedChildren(gc::Arena* arena);
-  MOZ_MUST_USE bool markDelayedChildren(SliceBudget& budget);
-  bool hasDelayedChildren() const { return !!unmarkedArenaStackTop; }
+  void delayMarkingChildren(gc::Cell* cell);
 
-  bool isDrained() { return isMarkStackEmpty() && !unmarkedArenaStackTop; }
+  bool isDrained() { return isMarkStackEmpty() && !delayedMarkingList; }
 
-  MOZ_MUST_USE bool markUntilBudgetExhaused(SliceBudget& budget);
+  MOZ_MUST_USE bool markUntilBudgetExhausted(SliceBudget& budget);
 
   void setGCMode(JSGCMode mode) { stack.setGCMode(mode); }
 
@@ -297,6 +308,9 @@ class GCMarker : public JSTracer {
 #endif
 
   void markEphemeronValues(gc::Cell* markedCell, gc::WeakEntryVector& entry);
+
+  size_t getMarkCount() const { return markCount; }
+  void clearMarkCount() { markCount = 0; }
 
   static GCMarker* fromTracer(JSTracer* trc) {
     MOZ_ASSERT(trc->isMarkingTracer());
@@ -349,6 +363,10 @@ class GCMarker : public JSTracer {
 
   bool isMarkStackEmpty() { return stack.isEmpty(); }
 
+  bool hasBlackEntries() const { return stack.position() > grayPosition; }
+
+  bool hasGrayEntries() const { return grayPosition > 0 && !stack.isEmpty(); }
+
   MOZ_MUST_USE bool restoreValueArray(
       const gc::MarkStack::SavedValueArray& array, HeapSlot** vpp,
       HeapSlot** endp);
@@ -361,20 +379,39 @@ class GCMarker : public JSTracer {
 
   inline void processMarkStackTop(SliceBudget& budget);
 
+  void markDelayedChildren(gc::Arena* arena, gc::MarkColor color);
+  MOZ_MUST_USE bool markAllDelayedChildren(SliceBudget& budget);
+  bool processDelayedMarkingList(gc::MarkColor color, SliceBudget& budget);
+  bool hasDelayedChildren() const { return !!delayedMarkingList; }
+  void rebuildDelayedMarkingList();
+  void appendToDelayedMarkingList(gc::Arena** listTail, gc::Arena* arena);
+
+  template <typename F>
+  void forEachDelayedMarkingArena(F&& f);
+
   /* The mark stack. Pointers in this stack are "gray" in the GC sense. */
   gc::MarkStack stack;
+
+  /* Stack entries at positions below this are considered gray. */
+  MainThreadData<size_t> grayPosition;
 
   /* The color is only applied to objects and functions. */
   MainThreadData<gc::MarkColor> color;
 
   /* Pointer to the top of the stack of arenas we are delaying marking on. */
-  MainThreadData<js::gc::Arena*> unmarkedArenaStackTop;
+  MainThreadData<js::gc::Arena*> delayedMarkingList;
+
+  /* Whether more work has been added to the delayed marking list. */
+  MainThreadData<bool> delayedMarkingWorkAdded;
 
   /*
    * If the weakKeys table OOMs, disable the linear algorithm and fall back
    * to iterating until the next GC.
    */
   MainThreadData<bool> linearWeakMarkingDisabled_;
+
+  /* The count of marked objects during GC. */
+  size_t markCount;
 
 #ifdef DEBUG
   /* Count of arenas that are currently in the stack. */

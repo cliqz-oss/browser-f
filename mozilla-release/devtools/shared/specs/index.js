@@ -28,11 +28,6 @@ const Types = exports.__TypesForTests = [
     front: "devtools/shared/fronts/addon/addons",
   },
   {
-    types: ["addonConsole"],
-    spec: "devtools/shared/specs/addon/console",
-    front: null,
-  },
-  {
     types: ["webExtension"],
     spec: "devtools/shared/specs/addon/webextension",
     front: null,
@@ -247,7 +242,7 @@ const Types = exports.__TypesForTests = [
   {
     types: ["browsingContextTarget"],
     spec: "devtools/shared/specs/targets/browsing-context",
-    front: null,
+    front: "devtools/shared/fronts/targets/browsing-context",
   },
   {
     types: ["chromeWindowTarget"],
@@ -295,9 +290,19 @@ const Types = exports.__TypesForTests = [
     front: "devtools/shared/fronts/webgl",
   },
   {
-    types: ["pushSubscription", "serviceWorkerRegistration", "serviceWorker"],
+    types: ["pushSubscription"],
+    spec: "devtools/shared/specs/worker/push-subscription",
+    front: "devtools/shared/fronts/worker/push-subscription",
+  },
+  {
+    types: ["serviceWorker"],
     spec: "devtools/shared/specs/worker/service-worker",
-    front: null,
+    front: "devtools/shared/fronts/worker/service-worker",
+  },
+  {
+    types: ["serviceWorkerRegistration"],
+    spec: "devtools/shared/specs/worker/service-worker-registration",
+    front: "devtools/shared/fronts/worker/service-worker-registration",
   },
 ];
 

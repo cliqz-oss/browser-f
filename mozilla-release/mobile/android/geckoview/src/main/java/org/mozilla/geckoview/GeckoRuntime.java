@@ -16,6 +16,7 @@ import android.os.Parcel;
 import android.os.Parcelable;
 import android.content.Context;
 import android.os.Process;
+import android.support.annotation.AnyThread;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.annotation.UiThread;
@@ -123,7 +124,9 @@ public final class GeckoRuntime implements Parcelable {
      *
      * @param context The new context to attach to.
      */
+    @UiThread
     public void attachTo(final @NonNull Context context) {
+        ThreadUtils.assertOnUiThread();
         if (DEBUG) {
             Log.d(LOGTAG, "attachTo " + context.getApplicationContext());
         }
@@ -252,6 +255,7 @@ public final class GeckoRuntime implements Parcelable {
      */
     @UiThread
     public static @NonNull GeckoRuntime create(final @NonNull Context context) {
+        ThreadUtils.assertOnUiThread();
         return create(context, new GeckoRuntimeSettings());
     }
 
@@ -288,6 +292,7 @@ public final class GeckoRuntime implements Parcelable {
     /**
      * Shutdown the runtime. This will invalidate all attached sessions.
      */
+    @AnyThread
     public void shutdown() {
         if (DEBUG) {
             Log.d(LOGTAG, "shutdown");
@@ -302,6 +307,7 @@ public final class GeckoRuntime implements Parcelable {
          * This is called when the runtime shuts down. Any GeckoSession instances that were
          * opened with this instance are now considered closed.
          **/
+        @UiThread
         void onShutdown();
     }
 
@@ -310,7 +316,9 @@ public final class GeckoRuntime implements Parcelable {
      *
      * @param delegate an implementation of {@link GeckoRuntime.Delegate}.
      */
-    public void setDelegate(final Delegate delegate) {
+    @UiThread
+    public void setDelegate(final @Nullable Delegate delegate) {
+        ThreadUtils.assertOnUiThread();
         mDelegate = delegate;
     }
 
@@ -319,11 +327,13 @@ public final class GeckoRuntime implements Parcelable {
      *
      * @return an instance of {@link GeckoRuntime.Delegate} or null if no delegate has been set.
      */
+    @UiThread
     public @Nullable Delegate getDelegate() {
         return mDelegate;
     }
 
-    public GeckoRuntimeSettings getSettings() {
+    @AnyThread
+    public @NonNull GeckoRuntimeSettings getSettings() {
         return mSettings;
     }
 
@@ -342,7 +352,7 @@ public final class GeckoRuntime implements Parcelable {
      * @return The telemetry object.
      */
     @UiThread
-    public RuntimeTelemetry getTelemetry() {
+    public @NonNull RuntimeTelemetry getTelemetry() {
         ThreadUtils.assertOnUiThread();
 
         if (mTelemetry == null) {
@@ -358,14 +368,18 @@ public final class GeckoRuntime implements Parcelable {
      *
      * @return Profile directory
      */
-    @NonNull public File getProfileDir() {
+    @UiThread
+    public @Nullable File getProfileDir() {
+        ThreadUtils.assertOnUiThread();
         return GeckoThread.getActiveProfile().getDir();
     }
 
     /**
      * Notify Gecko that the screen orientation has changed.
      */
+    @UiThread
     public void orientationChanged() {
+        ThreadUtils.assertOnUiThread();
         GeckoScreenOrientation.getInstance().update();
     }
 
@@ -374,28 +388,34 @@ public final class GeckoRuntime implements Parcelable {
      * @param newOrientation The new screen orientation, as retrieved e.g. from the current
      *                       {@link android.content.res.Configuration}.
      */
+    @UiThread
     public void orientationChanged(int newOrientation) {
+        ThreadUtils.assertOnUiThread();
         GeckoScreenOrientation.getInstance().update(newOrientation);
     }
 
     @Override // Parcelable
+    @AnyThread
     public int describeContents() {
         return 0;
     }
 
     @Override // Parcelable
+    @AnyThread
     public void writeToParcel(Parcel out, int flags) {
         out.writeParcelable(mSettings, flags);
     }
 
     // AIDL code may call readFromParcel even though it's not part of Parcelable.
-    public void readFromParcel(final Parcel source) {
+    @AnyThread
+    public void readFromParcel(final @NonNull Parcel source) {
         mSettings = source.readParcelable(getClass().getClassLoader());
     }
 
     public static final Parcelable.Creator<GeckoRuntime> CREATOR
         = new Parcelable.Creator<GeckoRuntime>() {
         @Override
+        @AnyThread
         public GeckoRuntime createFromParcel(final Parcel in) {
             final GeckoRuntime runtime = new GeckoRuntime();
             runtime.readFromParcel(in);
@@ -403,6 +423,7 @@ public final class GeckoRuntime implements Parcelable {
         }
 
         @Override
+        @AnyThread
         public GeckoRuntime[] newArray(final int size) {
             return new GeckoRuntime[size];
         }

@@ -33,7 +33,7 @@ stage-package: multilocale.txt locale-manifest.in $(MOZ_PKG_MANIFEST) $(MOZ_PKG_
 		$(if $(MOZ_PACKAGER_MINIFY_JS),--minify-js \
 		  $(addprefix --js-binary ,$(JS_BINARY)) \
 		) \
-		$(if $(JARLOG_DIR),$(addprefix --jarlog ,$(wildcard $(JARLOG_FILE_AB_CD)))) \
+		$(addprefix --jarlog ,$(wildcard $(JARLOG_FILE_AB_CD))) \
 		$(if $(OPTIMIZEJARS),--optimizejars) \
 		$(addprefix --compress ,$(JAR_COMPRESSION)) \
 		$(MOZ_PKG_MANIFEST) '$(DIST)' '$(DIST)'/$(MOZ_PKG_DIR)$(if $(MOZ_PKG_MANIFEST),,$(_BINPATH)) \
@@ -132,10 +132,35 @@ endif
 	ln -s $(installdir)/$(MOZ_APP_NAME) $(DESTDIR)$(bindir)
 
 upload:
+<<<<<<< HEAD
 	$(PYTHON) -u $(MOZILLA_DIR)/build/upload.py --base-path $(DIST) \
 		--package '$(PACKAGE)' \
 		--properties-file $(DIST)/mach_build_properties.json \
 		$(UPLOAD_FILES)
+||||||| merged common ancestors
+	$(PYTHON) -u $(MOZILLA_DIR)/build/upload.py --base-path $(DIST) $(UPLOAD_FILES)
+	mkdir -p `dirname $(CHECKSUM_FILE)`
+	@$(PYTHON) $(MOZILLA_DIR)/build/checksums.py \
+		-o $(CHECKSUM_FILE) \
+		$(CHECKSUM_ALGORITHM_PARAM) \
+		$(UPLOAD_PATH)
+	@echo 'CHECKSUM FILE START'
+	@cat $(CHECKSUM_FILE)
+	@echo 'CHECKSUM FILE END'
+	$(SIGN_CHECKSUM_CMD)
+	$(PYTHON) -u $(MOZILLA_DIR)/build/upload.py --base-path $(DIST) $(CHECKSUM_FILES)
+=======
+	$(PYTHON) -u $(MOZILLA_DIR)/build/upload.py --base-path $(DIST) $(UPLOAD_FILES)
+	mkdir -p `dirname $(CHECKSUM_FILE)`
+	@$(PYTHON) $(MOZILLA_DIR)/build/checksums.py \
+		-o $(CHECKSUM_FILE) \
+		$(CHECKSUM_ALGORITHM_PARAM) \
+		$(UPLOAD_PATH)
+	@echo 'CHECKSUM FILE START'
+	@cat $(CHECKSUM_FILE)
+	@echo 'CHECKSUM FILE END'
+	$(PYTHON) -u $(MOZILLA_DIR)/build/upload.py --base-path $(DIST) $(CHECKSUM_FILES)
+>>>>>>> origin/upstream-releases
 
 # source-package creates a source tarball from the files in MOZ_PKG_SRCDIR,
 # which is either set to a clean checkout or defaults to $topsrcdir

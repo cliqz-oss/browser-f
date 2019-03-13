@@ -12,7 +12,7 @@
 #include "base/thread.h"  // for Thread
 #include "gfxPlatform.h"  // for gfxPlatform
 #ifdef MOZ_WIDGET_GTK
-#include "gfxPlatformGtk.h"  // for gfxPlatform
+#  include "gfxPlatformGtk.h"  // for gfxPlatform
 #endif
 #include "gfxPrefs.h"             // for gfxPrefs
 #include "mozilla/AutoRestore.h"  // for AutoRestore
@@ -31,7 +31,7 @@
 #include "mozilla/Telemetry.h"
 #include "mozilla/VsyncDispatcher.h"
 #if defined(XP_WIN) || defined(MOZ_WIDGET_GTK)
-#include "VsyncSource.h"
+#  include "VsyncSource.h"
 #endif
 #include "mozilla/widget/CompositorWidget.h"
 #include "VRManager.h"
@@ -66,6 +66,7 @@ CompositorVsyncScheduler::CompositorVsyncScheduler(
     widget::CompositorWidget* aWidget)
     : mVsyncSchedulerOwner(aVsyncSchedulerOwner),
       mLastCompose(TimeStamp::Now()),
+      mLastVsync(TimeStamp::Now()),
       mIsObservingVsync(false),
       mVsyncNotificationsSkipped(0),
       mWidget(aWidget),
@@ -200,6 +201,9 @@ void CompositorVsyncScheduler::Composite(VsyncId aId,
     mCurrentCompositeTask = nullptr;
   }
 
+  mLastVsync = aVsyncTimestamp;
+  mLastVsyncId = aId;
+
   if (!mAsapScheduling) {
     // Some early exit conditions if we're not in ASAP mode
     if (aVsyncTimestamp < mLastCompose) {
@@ -314,6 +318,16 @@ void CompositorVsyncScheduler::ScheduleTask(
 const TimeStamp& CompositorVsyncScheduler::GetLastComposeTime() const {
   MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
   return mLastCompose;
+}
+
+const TimeStamp& CompositorVsyncScheduler::GetLastVsyncTime() const {
+  MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
+  return mLastVsync;
+}
+
+const VsyncId& CompositorVsyncScheduler::GetLastVsyncId() const {
+  MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
+  return mLastVsyncId;
 }
 
 void CompositorVsyncScheduler::UpdateLastComposeTime() {

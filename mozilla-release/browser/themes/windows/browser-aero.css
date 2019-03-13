@@ -70,9 +70,14 @@
           :root[sizemode=normal][tabsintitlebar] {
             border-top: 1px solid -moz-win-accentcolor;
           }
-          :root[tabsintitlebar]:not(:-moz-window-inactive):not(:-moz-lwtheme) {
+          :root[tabsintitlebar]:not(:-moz-window-inactive):not(:-moz-lwtheme),
+          :root[tabsintitlebar]:not(:-moz-window-inactive)[lwt-default-theme-in-dark-mode] {
             background-color: -moz-win-accentcolor;
             color: -moz-win-accentcolortext;
+          }
+          :root[tabsintitlebar][lwt-default-theme-in-dark-mode] #titlebar {
+            --lwt-toolbarbutton-icon-fill: currentColor;
+            --toolbarbutton-icon-fill-opacity: .7;
           }
         }
 
@@ -88,15 +93,18 @@
       }
 
       @media (-moz-windows-default-theme: 0) {
-        :root {
-          background-color: transparent;
+        :root[tabsintitlebar] {
           -moz-appearance: -moz-win-glass;
+        }
+
+        :root[tabsintitlebar]:not(:-moz-lwtheme) {
+          background-color: transparent;
         }
 
         /* On win10, if we don't set this on the entire browser container including
          * the sidebar, if the sidebar is open the accent color bleeds through in
          * the titlebar */
-        #browser {
+        :root[tabsintitlebar] #browser {
           -moz-appearance: -moz-win-exclude-glass;
         }
       }

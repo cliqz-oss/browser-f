@@ -30,7 +30,7 @@
 
 #include "nsPIDOMWindow.h"
 #include "nsGlobalWindow.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIContent.h"
 #include "nsIIDNService.h"
 #include "nsIScriptGlobalObject.h"
@@ -49,17 +49,17 @@
 #include <prinrval.h>
 
 #ifdef MOZ_WIDGET_COCOA
-#include <Carbon/Carbon.h>
-#include <ApplicationServices/ApplicationServices.h>
-#include <OpenGL/OpenGL.h>
-#include "nsCocoaFeatures.h"
-#include "PluginUtilsOSX.h"
+#  include <Carbon/Carbon.h>
+#  include <ApplicationServices/ApplicationServices.h>
+#  include <OpenGL/OpenGL.h>
+#  include "nsCocoaFeatures.h"
+#  include "PluginUtilsOSX.h"
 #endif
 
 // needed for nppdf plugin
 #if (MOZ_WIDGET_GTK)
-#include <gdk/gdk.h>
-#include <gdk/gdkx.h>
+#  include <gdk/gdk.h>
+#  include <gdk/gdkx.h>
 #endif
 
 #include "nsJSUtils.h"
@@ -81,15 +81,15 @@ using mozilla::plugins::PluginModuleChromeParent;
 using mozilla::plugins::PluginModuleContentParent;
 
 #ifdef MOZ_X11
-#include "mozilla/X11Util.h"
+#  include "mozilla/X11Util.h"
 #endif
 
 #ifdef XP_WIN
-#include <windows.h>
-#include "mozilla/WindowsVersion.h"
-#ifdef ACCESSIBILITY
-#include "mozilla/a11y/Compatibility.h"
-#endif
+#  include <windows.h>
+#  include "mozilla/WindowsVersion.h"
+#  ifdef ACCESSIBILITY
+#    include "mozilla/a11y/Compatibility.h"
+#  endif
 #endif
 
 #include "nsIAudioChannelAgent.h"
@@ -97,6 +97,7 @@ using mozilla::plugins::PluginModuleContentParent;
 
 using namespace mozilla;
 using namespace mozilla::plugins::parent;
+using mozilla::dom::Document;
 
 // We should make this const...
 static NPNetscapeFuncs sBrowserFuncs = {
@@ -388,7 +389,7 @@ namespace {
 
 static char *gNPPException;
 
-static nsIDocument *GetDocumentFromNPP(NPP npp) {
+static Document *GetDocumentFromNPP(NPP npp) {
   NS_ENSURE_TRUE(npp, nullptr);
 
   nsNPAPIPluginInstance *inst = (nsNPAPIPluginInstance *)npp->ndata;
@@ -399,7 +400,7 @@ static nsIDocument *GetDocumentFromNPP(NPP npp) {
   RefPtr<nsPluginInstanceOwner> owner = inst->GetOwner();
   NS_ENSURE_TRUE(owner, nullptr);
 
-  nsCOMPtr<nsIDocument> doc;
+  nsCOMPtr<Document> doc;
   owner->GetDocument(getter_AddRefs(doc));
 
   return doc;
@@ -640,7 +641,7 @@ NPObject *_getwindowobject(NPP npp) {
 
   // The window want to return here is the outer window, *not* the inner (since
   // we don't know what the plugin will do with it).
-  nsIDocument *doc = GetDocumentFromNPP(npp);
+  Document *doc = GetDocumentFromNPP(npp);
   NS_ENSURE_TRUE(doc, nullptr);
   nsCOMPtr<nsPIDOMWindowOuter> outer = doc->GetWindow();
   NS_ENSURE_TRUE(outer, nullptr);
@@ -668,7 +669,7 @@ NPObject *_getpluginelement(NPP npp) {
 
   if (!element) return nullptr;
 
-  nsIDocument *doc = GetDocumentFromNPP(npp);
+  Document *doc = GetDocumentFromNPP(npp);
   if (NS_WARN_IF(!doc)) {
     return nullptr;
   }
@@ -911,7 +912,7 @@ bool _evaluate(NPP npp, NPObject *npobj, NPString *script, NPVariant *result) {
 
   NPPAutoPusher nppPusher(npp);
 
-  nsIDocument *doc = GetDocumentFromNPP(npp);
+  Document *doc = GetDocumentFromNPP(npp);
   NS_ENSURE_TRUE(doc, false);
 
   nsGlobalWindowInner *win = nsGlobalWindowInner::Cast(doc->GetInnerWindow());
@@ -998,8 +999,8 @@ bool _evaluate(NPP npp, NPObject *npobj, NPString *script, NPVariant *result) {
   {
     nsJSUtils::ExecutionContext exec(cx, obj);
     exec.SetScopeChain(scopeChain);
-    exec.CompileAndExec(options, utf16script);
-    rv = exec.ExtractReturnValue(&rval);
+    exec.Compile(options, utf16script);
+    rv = exec.ExecScript(&rval);
   }
 
   if (!JS_WrapValue(cx, &rval)) {
@@ -1242,7 +1243,7 @@ NPError _getvalue(NPP npp, NPNVariable variable, void *result) {
   switch (static_cast<int>(variable)) {
 #if defined(XP_UNIX) && !defined(XP_MACOSX)
     case NPNVxDisplay: {
-#if defined(MOZ_X11)
+#  if defined(MOZ_X11)
       if (npp) {
         nsNPAPIPluginInstance *inst = (nsNPAPIPluginInstance *)npp->ndata;
         bool windowless = false;
@@ -1268,7 +1269,7 @@ NPError _getvalue(NPP npp, NPNVariable variable, void *result) {
           return NPERR_NO_ERROR;
         }
       }
-#endif
+#  endif
       return NPERR_GENERIC_ERROR;
     }
 
@@ -1427,13 +1428,13 @@ NPError _getvalue(NPP npp, NPNVariable variable, void *result) {
       return NPERR_GENERIC_ERROR;
     }
 
-#ifndef NP_NO_QUICKDRAW
+#  ifndef NP_NO_QUICKDRAW
     case NPNVsupportsQuickDrawBool: {
       *(NPBool *)result = false;
 
       return NPERR_NO_ERROR;
     }
-#endif
+#  endif
 
     case NPNVsupportsCoreGraphicsBool: {
       *(NPBool *)result = true;
@@ -1459,13 +1460,13 @@ NPError _getvalue(NPP npp, NPNVariable variable, void *result) {
       return NPERR_NO_ERROR;
     }
 
-#ifndef NP_NO_CARBON
+#  ifndef NP_NO_CARBON
     case NPNVsupportsCarbonBool: {
       *(NPBool *)result = false;
 
       return NPERR_NO_ERROR;
     }
-#endif
+#  endif
     case NPNVsupportsCocoaBool: {
       *(NPBool *)result = true;
 

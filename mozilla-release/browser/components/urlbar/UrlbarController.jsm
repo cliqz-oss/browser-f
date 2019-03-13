@@ -4,68 +4,21 @@
 
 "use strict";
 
-var EXPORTED_SYMBOLS = ["QueryContext", "UrlbarController"];
+var EXPORTED_SYMBOLS = [
+  "UrlbarController",
+];
 
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 XPCOMUtils.defineLazyModuleGetters(this, {
   AppConstants: "resource://gre/modules/AppConstants.jsm",
   // BrowserUsageTelemetry: "resource:///modules/BrowserUsageTelemetry.jsm",
-  UrlbarPrefs: "resource:///modules/UrlbarPrefs.jsm",
+  PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
   UrlbarProvidersManager: "resource:///modules/UrlbarProvidersManager.jsm",
+  UrlbarUtils: "resource:///modules/UrlbarUtils.jsm",
 });
 
-/**
- * QueryContext defines a user's autocomplete input from within the Address Bar.
- * It supplements it with details of how the search results should be obtained
- * and what they consist of.
- */
-class QueryContext {
-  /**
-   * Constructs the QueryContext instance.
-   *
-   * @param {object} options
-   *   The initial options for QueryContext.
-   * @param {string} options.searchString
-   *   The string the user entered in autocomplete. Could be the empty string
-   *   in the case of the user opening the popup via the mouse.
-   * @param {number} options.lastKey
-   *   The last key the user entered (as a key code). Could be null if the search
-   *   was started via the mouse.
-   * @param {boolean} options.isPrivate
-   *   Set to true if this query was started from a private browsing window.
-   * @param {number} options.maxResults
-   *   The maximum number of results that will be displayed for this query.
-   * @param {boolean} [options.autoFill]
-   *   Whether or not to include autofill results. Optional, as this is normally
-   *   set by the AddressBarController.
-   */
-  constructor(options = {}) {
-    this._checkRequiredOptions(options, [
-      "searchString",
-      "lastKey",
-      "maxResults",
-      "isPrivate",
-    ]);
-
-    this.autoFill = !!options.autoFill;
-  }
-
-  /**
-   * Checks the required options, saving them as it goes.
-   *
-   * @param {object} options The options object to check.
-   * @param {array} optionNames The names of the options to check for.
-   * @throws {Error} Throws if there is a missing option.
-   */
-  _checkRequiredOptions(options, optionNames) {
-    for (let optionName of optionNames) {
-      if (!(optionName in options)) {
-        throw new Error(`Missing or empty ${optionName} provided to QueryContext`);
-      }
-      this[optionName] = options[optionName];
-    }
-  }
-}
+const TELEMETRY_1ST_RESULT = "PLACES_AUTOCOMPLETE_1ST_RESULT_TIME_MS";
+const TELEMETRY_6_FIRST_RESULTS = "PLACES_AUTOCOMPLETE_6_FIRST_RESULTS_TIME_MS";
 
 /**
  * The address bar controller handles queries from the address bar, obtains
@@ -78,6 +31,7 @@ class QueryContext {
  * - onQueryResults(queryContext)
  * - onQueryCancelled(queryContext)
  * - onQueryFinished(queryContext)
+ * - onQueryResultRemoved(index)
  */
 class UrlbarController {
   /**
@@ -130,36 +84,60 @@ class UrlbarController {
   /**
    * Takes a query context and starts the query based on the user input.
    *
-   * @param {QueryContext} queryContext The query details.
+   * @param {UrlbarQueryContext} queryContext The query details.
    */
   async startQuery(queryContext) {
-    queryContext.autoFill = UrlbarPrefs.get("autoFill");
+    // Cancel any running query.
+    if (this._lastQueryContext) {
+      this.cancelQuery(this._lastQueryContext);
+    }
+    this._lastQueryContext = queryContext;
+
+    queryContext.lastResultCount = 0;
+    TelemetryStopwatch.start(TELEMETRY_1ST_RESULT, queryContext);
+    TelemetryStopwatch.start(TELEMETRY_6_FIRST_RESULTS, queryContext);
 
     this._notify("onQueryStarted", queryContext);
-
     await this.manager.startQuery(queryContext, this);
-
     this._notify("onQueryFinished", queryContext);
   }
 
   /**
    * Cancels an in-progress query. Note, queries may continue running if they
    * can't be canceled.
-   *
-   * @param {QueryContext} queryContext The query details.
    */
-  cancelQuery(queryContext) {
-    this.manager.cancelQuery(queryContext);
+  cancelQuery() {
+    if (!this._lastQueryContext) {
+      return;
+    }
 
-    this._notify("onQueryCancelled", queryContext);
+    TelemetryStopwatch.cancel(TELEMETRY_1ST_RESULT, this._lastQueryContext);
+    TelemetryStopwatch.cancel(TELEMETRY_6_FIRST_RESULTS, this._lastQueryContext);
+
+    this.manager.cancelQuery(this._lastQueryContext);
+    this._notify("onQueryCancelled", this._lastQueryContext);
+    delete this._lastQueryContext;
   }
 
   /**
    * Receives results from a query.
    *
-   * @param {QueryContext} queryContext The query details.
+   * @param {UrlbarQueryContext} queryContext The query details.
    */
   receiveResults(queryContext) {
+    if (queryContext.lastResultCount < 1 && queryContext.results.length >= 1) {
+      TelemetryStopwatch.finish(TELEMETRY_1ST_RESULT, queryContext);
+    }
+    if (queryContext.lastResultCount < 6 && queryContext.results.length >= 6) {
+      TelemetryStopwatch.finish(TELEMETRY_6_FIRST_RESULTS, queryContext);
+    }
+
+    if (queryContext.lastResultCount == 0 && queryContext.autofillValue) {
+      this.input.autofill(queryContext.autofillValue);
+    }
+
+    queryContext.lastResultCount = queryContext.results.length;
+
     this._notify("onQueryResults", queryContext);
   }
 
@@ -201,8 +179,9 @@ class UrlbarController {
    *   The DOM KeyboardEvent.
    */
   handleKeyNavigation(event) {
+    const isMac = AppConstants.platform == "macosx";
     // Handle readline/emacs-style navigation bindings on Mac.
-    if (AppConstants.platform == "macosx" &&
+    if (isMac &&
         this.view.isOpen &&
         event.ctrlKey &&
         (event.key == "n" || event.key == "p")) {
@@ -212,34 +191,84 @@ class UrlbarController {
     }
 
     switch (event.keyCode) {
+      case KeyEvent.DOM_VK_ESCAPE:
+        this.input.handleRevert();
+        event.preventDefault();
+        break;
       case KeyEvent.DOM_VK_RETURN:
-        if (AppConstants.platform == "macosx" &&
+        if (isMac &&
             event.metaKey) {
           // Prevent beep on Mac.
           event.preventDefault();
         }
-        // TODO: We may have an autoFill entry, so we should use that instead.
         // TODO: We should have an input bufferrer so that we can use search results
         // if appropriate.
         this.input.handleCommand(event);
-        return;
-      case KeyEvent.DOM_VK_TAB:
-        this.view.selectNextItem({ reverse: event.shiftKey });
-        event.preventDefault();
         break;
-      case KeyEvent.DOM_VK_DOWN:
-        if (!event.ctrlKey && !event.altKey) {
-          this.view.selectNextItem();
+      case KeyEvent.DOM_VK_TAB:
+        if (this.view.isOpen) {
+          this.view.selectNextItem({ reverse: event.shiftKey });
           event.preventDefault();
         }
         break;
+      case KeyEvent.DOM_VK_DOWN:
       case KeyEvent.DOM_VK_UP:
         if (!event.ctrlKey && !event.altKey) {
-          this.view.selectNextItem({ reverse: true });
+          if (this.view.isOpen) {
+            this.view.selectNextItem({
+              reverse: event.keyCode == KeyEvent.DOM_VK_UP });
+          } else {
+            this.input.startQuery();
+          }
+          event.preventDefault();
+        }
+        break;
+      case KeyEvent.DOM_VK_DELETE:
+        if (isMac && !event.shiftKey) {
+          break;
+        }
+        if (this._handleDeleteEntry()) {
+          event.preventDefault();
+        }
+        break;
+      case KeyEvent.DOM_VK_BACK_SPACE:
+        if (isMac && event.shiftKey &&
+            this._handleDeleteEntry()) {
           event.preventDefault();
         }
         break;
     }
+  }
+
+  /**
+   * Internal function handling deletion of entries. We only support removing
+   * of history entries - other result sources will be ignored.
+   *
+   * @returns {boolean} Returns true if the deletion was acted upon.
+   */
+  _handleDeleteEntry() {
+    if (!this._lastQueryContext) {
+      Cu.reportError("Cannot delete - the latest query is not present");
+      return false;
+    }
+
+    const selectedResult = this.input.view.selectedResult;
+    if (!selectedResult ||
+        selectedResult.source != UrlbarUtils.MATCH_SOURCE.HISTORY) {
+      return false;
+    }
+
+    let index = this._lastQueryContext.results.indexOf(selectedResult);
+    if (!index) {
+      Cu.reportError("Failed to find the selected result in the results");
+      return false;
+    }
+
+    this._lastQueryContext.results.splice(index, 1);
+    this._notify("onQueryResultRemoved", index);
+
+    PlacesUtils.history.remove(selectedResult.payload.url).catch(Cu.reportError);
+    return true;
   }
 
   /**

@@ -6,8 +6,8 @@
 
 #ifdef XP_WIN
 // Include Windows headers required for enabling high precision timers.
-#include "windows.h"
-#include "mmsystem.h"
+#  include "windows.h"
+#  include "mmsystem.h"
 #endif
 
 #include "MediaQueue.h"
@@ -30,8 +30,6 @@ extern LazyLogModule gMediaDecoderLog;
   MOZ_LOG(gMediaDecoderLog, LogLevel::Verbose, (FMT(x, ##__VA_ARGS__)))
 
 using namespace mozilla::layers;
-
-namespace media {
 
 // Minimum update frequency is 1/120th of a second, i.e. half the
 // duration of a 60-fps frame.
@@ -82,7 +80,7 @@ void VideoSink::SetPlaybackParams(const PlaybackParams& aParams) {
   mAudioSink->SetPlaybackParams(aParams);
 }
 
-RefPtr<GenericPromise> VideoSink::OnEnded(TrackType aType) {
+RefPtr<VideoSink::EndedPromise> VideoSink::OnEnded(TrackType aType) {
   AssertOwnerThread();
   MOZ_ASSERT(mAudioSink->IsStarted(), "Must be called after playback starts.");
 
@@ -201,7 +199,7 @@ nsresult VideoSink::Start(const TimeUnit& aStartTime, const MediaInfo& aInfo) {
     // to complete before resolving our own end promise. Otherwise, MDSM might
     // stop playback before DecodedStream plays to the end and cause
     // test_streams_element_capture.html to time out.
-    RefPtr<GenericPromise> p = mAudioSink->OnEnded(TrackInfo::kVideoTrack);
+    RefPtr<EndedPromise> p = mAudioSink->OnEnded(TrackInfo::kVideoTrack);
     if (p) {
       RefPtr<VideoSink> self = this;
       p->Then(mOwnerThread, __func__,
@@ -540,5 +538,4 @@ nsCString VideoSink::GetDebugInfo() {
   return std::move(str);
 }
 
-}  // namespace media
 }  // namespace mozilla

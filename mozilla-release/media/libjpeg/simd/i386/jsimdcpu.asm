@@ -75,6 +75,12 @@ EXTN(jpeg_simd_cpu_support):
     or          edi, byte JSIMD_SSE2
 .no_sse2:
 
+    ; Check for level 7 support
+    xor         eax, eax
+    cpuid
+    cmp         eax, 7
+    jl          short .no_avx2
+
     ; Check for AVX2 instruction support
     mov         eax, 7
     xor         ecx, ecx
@@ -87,8 +93,10 @@ EXTN(jpeg_simd_cpu_support):
     mov         eax, 1
     xor         ecx, ecx
     cpuid
-    test        ecx, 1<<27
+    test        ecx, 1<<26
     jz          short .no_avx2          ; O/S does not support XSAVE
+    test        ecx, 1<<27
+    jz          short .no_avx2          ; O/S does not support OSXSAVE
     test        ecx, 1<<28
     jz          short .no_avx2          ; CPU does not support AVX2
 

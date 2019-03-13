@@ -16,7 +16,7 @@
 #include "nsViewManager.h"
 #include "nsViewportInfo.h"
 #include "UnitTransforms.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 
 #define MVM_LOG(...)
 // #define MVM_LOG(...) printf_stderr("MVM: " __VA_ARGS__)
@@ -33,7 +33,7 @@ using namespace mozilla;
 using namespace mozilla::layers;
 
 MobileViewportManager::MobileViewportManager(nsIPresShell* aPresShell,
-                                             nsIDocument* aDocument)
+                                             Document* aDocument)
     : mDocument(aDocument),
       mPresShell(aPresShell),
       mIsFirstPaint(false),
@@ -114,9 +114,9 @@ float MobileViewportManager::ComputeIntrinsicResolution() const {
 mozilla::CSSToScreenScale MobileViewportManager::ComputeIntrinsicScale(
     const nsViewportInfo& aViewportInfo,
     const mozilla::ScreenIntSize& aDisplaySize,
-    const mozilla::CSSSize& aViewportSize) const {
+    const mozilla::CSSSize& aViewportOrContentSize) const {
   CSSToScreenScale intrinsicScale =
-      MaxScaleRatio(ScreenSize(aDisplaySize), aViewportSize);
+      MaxScaleRatio(ScreenSize(aDisplaySize), aViewportOrContentSize);
   MVM_LOG("%p: Intrinsic computed zoom is %f\n", this, intrinsicScale.scale);
   return ClampZoom(intrinsicScale, aViewportInfo);
 }
@@ -172,7 +172,7 @@ MobileViewportManager::Observe(nsISupports* aSubject, const char* aTopic,
     return NS_OK;
   }
 
-  if (SameCOMIdentity(aSubject, mDocument) &&
+  if (SameCOMIdentity(aSubject, ToSupports(mDocument)) &&
       BEFORE_FIRST_PAINT.EqualsASCII(aTopic)) {
     MVM_LOG("%p: got a before-first-paint event\n", this);
     if (!mPainted) {
@@ -346,7 +346,8 @@ void MobileViewportManager::UpdateResolution(
   if (newZoom) {
     LayoutDeviceToLayerScale resolution = ZoomToResolution(*newZoom, cssToDev);
     MVM_LOG("%p: setting resolution %f\n", this, resolution.scale);
-    mPresShell->SetResolutionAndScaleTo(resolution.scale, nsGkAtoms::other);
+    mPresShell->SetResolutionAndScaleTo(
+        resolution.scale, nsIPresShell::ChangeOrigin::eMainThread);
 
     MVM_LOG("%p: New zoom is %f\n", this, newZoom->scale);
   }
@@ -400,8 +401,7 @@ void MobileViewportManager::UpdateDisplayPortMargins() {
 
   if (nsIFrame* root = mPresShell->GetRootScrollFrame()) {
     bool hasDisplayPort = nsLayoutUtils::HasDisplayPort(root->GetContent());
-    bool hasResolution =
-        mPresShell->ScaleToResolution() && mPresShell->GetResolution() != 1.0f;
+    bool hasResolution = mPresShell->GetResolution() != 1.0f;
     if (!hasDisplayPort && !hasResolution) {
       // We only want to update the displayport if there is one already, or
       // add one if there's a resolution on the document (see bug 1225508
@@ -427,10 +427,6 @@ void MobileViewportManager::RefreshVisualViewportSize() {
   // visual viewport size.
 
   if (!mPresShell) {
-    return;
-  }
-
-  if (!gfxPrefs::APZAllowZooming()) {
     return;
   }
 
@@ -513,6 +509,10 @@ void MobileViewportManager::RefreshViewportSize(bool aForceAdjustResolution) {
   if (gfxPrefs::APZAllowZooming()) {
     UpdateResolution(viewportInfo, displaySize, viewport,
                      displayWidthChangeRatio, UpdateType::ViewportSize);
+  } else {
+    // Even without zoom, we need to update that the visual viewport size
+    // has changed.
+    RefreshVisualViewportSize();
   }
   if (gfxPlatform::AsyncPanZoomEnabled()) {
     UpdateDisplayPortMargins();

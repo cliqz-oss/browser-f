@@ -48,19 +48,16 @@ class GeckoSessionTestRuleTest : BaseSessionTest(noErrorCollector = true) {
     @Setting(key = Setting.Key.USE_TRACKING_PROTECTION, value = "true")
     @Test fun settingsApplied() {
         assertThat("USE_PRIVATE_MODE should be set",
-                   sessionRule.session.settings.getBoolean(
-                           GeckoSessionSettings.USE_PRIVATE_MODE),
+                   sessionRule.session.settings.usePrivateMode,
                    equalTo(true))
         assertThat("DISPLAY_MODE should be set",
-                   sessionRule.session.settings.getInt(GeckoSessionSettings.DISPLAY_MODE),
+                   sessionRule.session.settings.displayMode,
                    equalTo(GeckoSessionSettings.DISPLAY_MODE_MINIMAL_UI))
         assertThat("USE_TRACKING_PROTECTION should be set",
-                   sessionRule.session.settings.getBoolean(
-                           GeckoSessionSettings.USE_TRACKING_PROTECTION),
+                   sessionRule.session.settings.useTrackingProtection,
                    equalTo(true))
         assertThat("ALLOW_JAVASCRIPT should be set",
-                sessionRule.session.settings.getBoolean(
-                        GeckoSessionSettings.ALLOW_JAVASCRIPT),
+                sessionRule.session.settings.allowJavascript,
                 equalTo(false))
     }
 
@@ -874,7 +871,7 @@ class GeckoSessionTestRuleTest : BaseSessionTest(noErrorCollector = true) {
     @NullDelegate(GeckoSession.NavigationDelegate::class)
     fun delegateDuringNextWait_throwOnNullDelegate() {
         sessionRule.session.delegateDuringNextWait(object : Callbacks.NavigationDelegate {
-            override fun onLocationChange(session: GeckoSession, url: String) {
+            override fun onLocationChange(session: GeckoSession, url: String?) {
             }
         })
     }
@@ -896,8 +893,9 @@ class GeckoSessionTestRuleTest : BaseSessionTest(noErrorCollector = true) {
     }
 
     @Test fun createOpenSession_withSettings() {
-        val settings = GeckoSessionSettings(sessionRule.session.settings)
-        settings.setBoolean(GeckoSessionSettings.USE_PRIVATE_MODE, true)
+        val settings = GeckoSessionSettings.Builder(sessionRule.session.settings)
+                .usePrivateMode(true)
+                .build()
 
         val newSession = sessionRule.createOpenSession(settings)
         assertThat("New session has same settings", newSession.settings, equalTo(settings))
@@ -932,8 +930,7 @@ class GeckoSessionTestRuleTest : BaseSessionTest(noErrorCollector = true) {
     }
 
     @Test fun createClosedSession_withSettings() {
-        val settings = GeckoSessionSettings(sessionRule.session.settings)
-        settings.setBoolean(GeckoSessionSettings.USE_PRIVATE_MODE, true)
+        val settings = GeckoSessionSettings.Builder(sessionRule.session.settings).usePrivateMode(true).build()
 
         val newSession = sessionRule.createClosedSession(settings)
         assertThat("New session has same settings", newSession.settings, equalTo(settings))
@@ -1337,7 +1334,8 @@ class GeckoSessionTestRuleTest : BaseSessionTest(noErrorCollector = true) {
     @Test(expected = UiThreadUtils.TimeoutException::class)
     fun evaluateJS_canTimeout() {
         sessionRule.session.delegateUntilTestEnd(object : Callbacks.PromptDelegate {
-            override fun onAlert(session: GeckoSession, title: String, msg: String, callback: GeckoSession.PromptDelegate.AlertCallback) {
+            override fun onAlert(session: GeckoSession, title: String?, msg: String?,
+                                 callback: GeckoSession.PromptDelegate.AlertCallback) {
                 // Do nothing for the alert, so it hangs forever.
             }
         })
@@ -1494,7 +1492,8 @@ class GeckoSessionTestRuleTest : BaseSessionTest(noErrorCollector = true) {
 
         sessionRule.session.forCallbacksDuringWait(object : Callbacks.PromptDelegate {
             @AssertCalled(count = 1)
-            override fun onAlert(session: GeckoSession, title: String, msg: String, callback: GeckoSession.PromptDelegate.AlertCallback) {
+            override fun onAlert(session: GeckoSession, title: String?, msg: String?,
+                                 callback: GeckoSession.PromptDelegate.AlertCallback) {
             }
         })
     }
@@ -1510,7 +1509,8 @@ class GeckoSessionTestRuleTest : BaseSessionTest(noErrorCollector = true) {
     @Test fun waitForJS_delegateDuringWait() {
         var count = 0
         sessionRule.session.delegateDuringNextWait(object : Callbacks.PromptDelegate {
-            override fun onAlert(session: GeckoSession, title: String, msg: String, callback: GeckoSession.PromptDelegate.AlertCallback) {
+            override fun onAlert(session: GeckoSession, title: String?, msg: String?,
+                                 callback: GeckoSession.PromptDelegate.AlertCallback) {
                 count++
                 callback.dismiss()
             }

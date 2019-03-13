@@ -40,6 +40,9 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "בסדר, הבנתי",
   "prefs_home_header": "תוכן מסך הבית של Firefox",
   "prefs_home_description": "בחירת תוכן שיוצג במסך הבית של Firefox.",
+  "prefs_content_discovery_header": "מסך הבית של Firefox",
+  "prefs_content_discovery_description": "גילוי תוכן במסך הבית של Firefox מאפשר לך לגלות מאמרים רלוונטים ובאיכות גבוהה מכל רחבי הרשת.",
+  "prefs_content_discovery_button": "השבתת גילוי תוכן",
   "prefs_section_rows_option": "שורה אחת;{num} שורות",
   "prefs_search_header": "חיפוש ברשת",
   "prefs_topsites_description": "האתרים בהם ביקרת הכי הרבה",
@@ -75,7 +78,7 @@ window.gActivityStreamStrings = {
   "pocket_read_more": "נושאים פופולריים:",
   "pocket_read_even_more": "צפייה בחדשות נוספות",
   "pocket_more_reccommendations": "המלצות נוספות",
-  "pocket_how_it_works": "How it works",
+  "pocket_how_it_works": "איך זה עובד",
   "pocket_cta_button": "קבלת Pocket",
   "pocket_cta_text": "Save the stories you love in Pocket, and fuel your mind with fascinating reads.",
   "highlights_empty_state": "ניתן להתחיל בגלישה ואנו נציג בפניך מספר כתבות, סרטונים ועמודים שונים מעולים בהם ביקרת לאחרונה או שהוספת לסימניות.",
@@ -105,8 +108,7 @@ window.gActivityStreamStrings = {
   "firstrun_extra_legal_links": "בחירתך להמשיך בתהליך מהווה את הסכמתך ל{terms} ול{privacy}.",
   "firstrun_terms_of_service": "תנאי השירות",
   "firstrun_privacy_notice": "הצהרת הפרטיות",
-  "firstrun_continue_to_login": "להמשיך",
-  "firstrun_skip_login": "לדלג על שלב זה",
-  "context_menu_title": "Open menu",
-  "pocket_learn_more": "מידע נוסף"
+  "firstrun_continue_to_login": "המשך",
+  "firstrun_skip_login": "דילוג על שלב זה",
+  "context_menu_title": "פתיחת תפריט"
 };

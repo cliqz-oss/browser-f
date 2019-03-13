@@ -7,7 +7,7 @@
 #ifndef mozilla_dom_SVGFETileElement_h
 #define mozilla_dom_SVGFETileElement_h
 
-#include "nsSVGFilters.h"
+#include "SVGFilters.h"
 
 nsresult NS_NewSVGFETileElement(
     nsIContent** aResult, already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
@@ -15,7 +15,7 @@ nsresult NS_NewSVGFETileElement(
 namespace mozilla {
 namespace dom {
 
-typedef nsSVGFE SVGFETileElementBase;
+typedef SVGFE SVGFETileElementBase;
 
 class SVGFETileElement : public SVGFETileElementBase {
   friend nsresult(::NS_NewSVGFETileElement(
@@ -38,11 +38,10 @@ class SVGFETileElement : public SVGFETileElementBase {
       nsTArray<RefPtr<SourceSurface>>& aInputImages) override;
   virtual bool AttributeAffectsRendering(int32_t aNameSpaceID,
                                          nsAtom* aAttribute) const override;
-  virtual nsSVGString& GetResultImageName() override {
+  virtual SVGString& GetResultImageName() override {
     return mStringAttributes[RESULT];
   }
-  virtual void GetSourceImageNames(
-      nsTArray<nsSVGStringInfo>& aSources) override;
+  virtual void GetSourceImageNames(nsTArray<SVGStringInfo>& aSources) override;
 
   virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
 
@@ -53,7 +52,7 @@ class SVGFETileElement : public SVGFETileElementBase {
   virtual StringAttributesInfo GetStringInfo() override;
 
   enum { RESULT, IN1 };
-  nsSVGString mStringAttributes[2];
+  SVGString mStringAttributes[2];
   static StringInfo sStringInfo[2];
 };
 

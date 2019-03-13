@@ -14,13 +14,13 @@
 #include "nsString.h"
 #include "nsReadableUtils.h"
 #include "nsIContent.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsError.h"
-#include "nsIContentIterator.h"
 #include "nsINodeList.h"
 #include "nsGkAtoms.h"
 #include "nsContentUtils.h"
 #include "nsTextFrame.h"
+#include "mozilla/ContentIterator.h"
 #include "mozilla/dom/CharacterData.h"
 #include "mozilla/dom/DocumentFragment.h"
 #include "mozilla/dom/DocumentType.h"
@@ -31,6 +31,7 @@
 #include "mozilla/dom/Selection.h"
 #include "mozilla/dom/Text.h"
 #include "mozilla/Telemetry.h"
+#include "mozilla/UniquePtr.h"
 #include "mozilla/Likely.h"
 #include "nsCSSFrameConstructor.h"
 #include "nsStyleStruct.h"
@@ -66,7 +67,7 @@ static void InvalidateAllFrames(nsINode* aNode) {
       break;
     }
     case nsINode::DOCUMENT_NODE: {
-      nsIDocument* doc = static_cast<nsIDocument*>(aNode);
+      Document* doc = static_cast<Document*>(aNode);
       nsIPresShell* shell = doc ? doc->GetShell() : nullptr;
       frame = shell ? shell->GetRootFrame() : nullptr;
       break;
@@ -344,11 +345,8 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsRange)
 
   tmp->Reset();
 
-  // This needs to be unlinked after Reset() is called, as it controls
-  // the result of IsInSelection() which is used by tmp->Reset().
   MOZ_DIAGNOSTIC_ASSERT(!tmp->isInList(),
                         "Shouldn't be registered now that we're unlinking");
-  NS_IMPL_CYCLE_COLLECTION_UNLINK(mSelection);
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsRange)
@@ -356,7 +354,6 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsRange)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mStart)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mEnd)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mRoot)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mSelection)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(nsRange)
@@ -896,7 +893,7 @@ void nsRange::NotifySelectionListenersAfterRangeSet() {
     mCalledByJS = false;
     // Be aware, this range may be modified or stop being a range for selection
     // after this call.  Additionally, the selection instance may have gone.
-    RefPtr<Selection> selection = mSelection;
+    RefPtr<Selection> selection = mSelection.get();
     selection->NotifySelectionListeners(calledByJSRestorer.SavedValue());
   }
 }
@@ -1495,7 +1492,7 @@ void nsRange::SelectNodeContents(nsINode& aNode, ErrorResult& aRv) {
 // so that our methods/algorithms aren't cluttered with special
 // case code that tries to include these points while iterating.
 //
-// The RangeSubtreeIterator class mimics the nsIContentIterator
+// The RangeSubtreeIterator class mimics the ContentSubtreeIterator
 // methods we need, so should the Content Iterator support the
 // start/end points in the future, we can switchover relatively
 // easy.
@@ -1504,7 +1501,7 @@ class MOZ_STACK_CLASS RangeSubtreeIterator {
  private:
   enum RangeSubtreeIterState { eDone = 0, eUseStart, eUseIterator, eUseEnd };
 
-  nsCOMPtr<nsIContentIterator> mIter;
+  UniquePtr<ContentSubtreeIterator> mSubtreeIter;
   RangeSubtreeIterState mIterState;
 
   nsCOMPtr<nsINode> mStart;
@@ -1566,17 +1563,17 @@ nsresult RangeSubtreeIterator::Init(nsRange* aRange) {
     // Now create a Content Subtree Iterator to be used
     // for the subtrees between the end points!
 
-    mIter = NS_NewContentSubtreeIterator();
+    mSubtreeIter = MakeUnique<ContentSubtreeIterator>();
 
-    nsresult res = mIter->Init(aRange);
+    nsresult res = mSubtreeIter->Init(aRange);
     if (NS_FAILED(res)) return res;
 
-    if (mIter->IsDone()) {
+    if (mSubtreeIter->IsDone()) {
       // The subtree iterator thinks there's nothing
       // to iterate over, so just free it up so we
       // don't accidentally call into it.
 
-      mIter = nullptr;
+      mSubtreeIter = nullptr;
     }
   }
 
@@ -1595,8 +1592,8 @@ already_AddRefed<nsINode> RangeSubtreeIterator::GetCurrentNode() {
     node = mStart;
   } else if (mIterState == eUseEnd && mEnd) {
     node = mEnd;
-  } else if (mIterState == eUseIterator && mIter) {
-    node = mIter->GetCurrentNode();
+  } else if (mIterState == eUseIterator && mSubtreeIter) {
+    node = mSubtreeIter->GetCurrentNode();
   }
 
   return node.forget();
@@ -1605,8 +1602,8 @@ already_AddRefed<nsINode> RangeSubtreeIterator::GetCurrentNode() {
 void RangeSubtreeIterator::First() {
   if (mStart)
     mIterState = eUseStart;
-  else if (mIter) {
-    mIter->First();
+  else if (mSubtreeIter) {
+    mSubtreeIter->First();
 
     mIterState = eUseIterator;
   } else if (mEnd)
@@ -1618,8 +1615,8 @@ void RangeSubtreeIterator::First() {
 void RangeSubtreeIterator::Last() {
   if (mEnd)
     mIterState = eUseEnd;
-  else if (mIter) {
-    mIter->Last();
+  else if (mSubtreeIter) {
+    mSubtreeIter->Last();
 
     mIterState = eUseIterator;
   } else if (mStart)
@@ -1630,8 +1627,8 @@ void RangeSubtreeIterator::Last() {
 
 void RangeSubtreeIterator::Next() {
   if (mIterState == eUseStart) {
-    if (mIter) {
-      mIter->First();
+    if (mSubtreeIter) {
+      mSubtreeIter->First();
 
       mIterState = eUseIterator;
     } else if (mEnd)
@@ -1639,9 +1636,9 @@ void RangeSubtreeIterator::Next() {
     else
       mIterState = eDone;
   } else if (mIterState == eUseIterator) {
-    mIter->Next();
+    mSubtreeIter->Next();
 
-    if (mIter->IsDone()) {
+    if (mSubtreeIter->IsDone()) {
       if (mEnd)
         mIterState = eUseEnd;
       else
@@ -1653,8 +1650,8 @@ void RangeSubtreeIterator::Next() {
 
 void RangeSubtreeIterator::Prev() {
   if (mIterState == eUseEnd) {
-    if (mIter) {
-      mIter->Last();
+    if (mSubtreeIter) {
+      mSubtreeIter->Last();
 
       mIterState = eUseIterator;
     } else if (mStart)
@@ -1662,9 +1659,9 @@ void RangeSubtreeIterator::Prev() {
     else
       mIterState = eDone;
   } else if (mIterState == eUseIterator) {
-    mIter->Prev();
+    mSubtreeIter->Prev();
 
-    if (mIter->IsDone()) {
+    if (mSubtreeIter->IsDone()) {
       if (mStart)
         mIterState = eUseStart;
       else
@@ -1799,7 +1796,7 @@ nsresult nsRange::CutContents(DocumentFragment** aFragment) {
     return NS_ERROR_DOM_SECURITY_ERR;
   }
 
-  nsCOMPtr<nsIDocument> doc = mStart.Container()->OwnerDoc();
+  nsCOMPtr<Document> doc = mStart.Container()->OwnerDoc();
 
   ErrorResult res;
   nsCOMPtr<nsINode> commonAncestor = GetCommonAncestorContainer(res);
@@ -1827,7 +1824,7 @@ nsresult nsRange::CutContents(DocumentFragment** aFragment) {
     // For extractContents(), abort early if there's a doctype (bug 719533).
     // This can happen only if the common ancestor is a document, in which case
     // we just need to find its doctype child and check if that's in the range.
-    nsCOMPtr<nsIDocument> commonAncestorDocument =
+    nsCOMPtr<Document> commonAncestorDocument =
         do_QueryInterface(commonAncestor);
     if (commonAncestorDocument) {
       RefPtr<DocumentType> doctype = commonAncestorDocument->GetDoctype();
@@ -2212,7 +2209,7 @@ already_AddRefed<DocumentFragment> nsRange::CloneContents(ErrorResult& aRv) {
   nsCOMPtr<nsINode> commonAncestor = GetCommonAncestorContainer(aRv);
   MOZ_ASSERT(!aRv.Failed(), "GetCommonAncestorContainer() shouldn't fail!");
 
-  nsCOMPtr<nsIDocument> doc = mStart.Container()->OwnerDoc();
+  nsCOMPtr<Document> doc = mStart.Container()->OwnerDoc();
   NS_ASSERTION(doc, "CloneContents needs a document to continue.");
   if (!doc) {
     aRv.Throw(NS_ERROR_FAILURE);
@@ -2620,8 +2617,8 @@ void nsRange::ToString(nsAString& aReturn, ErrorResult& aErr) {
      tradeoffs.
   */
 
-  nsCOMPtr<nsIContentIterator> iter = NS_NewContentIterator();
-  nsresult rv = iter->Init(this);
+  PostContentIterator postOrderIter;
+  nsresult rv = postOrderIter.Init(this);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     aErr.Throw(rv);
     return;
@@ -2631,8 +2628,8 @@ void nsRange::ToString(nsAString& aReturn, ErrorResult& aErr) {
 
   // loop through the content iterator, which returns nodes in the range in
   // close tag order, and grab the text from any text node
-  while (!iter->IsDone()) {
-    nsINode* n = iter->GetCurrentNode();
+  for (; !postOrderIter.IsDone(); postOrderIter.Next()) {
+    nsINode* n = postOrderIter.GetCurrentNode();
 
 #ifdef DEBUG_range
     // If debug, dump it:
@@ -2655,8 +2652,6 @@ void nsRange::ToString(nsAString& aReturn, ErrorResult& aErr) {
         aReturn += tempString;
       }
     }
-
-    iter->Next();
   }
 
 #ifdef DEBUG_range
@@ -2731,19 +2726,24 @@ static void ExtractRectFromOffset(nsIFrame* aFrame, const int32_t aOffset,
 
 static nsTextFrame* GetTextFrameForContent(nsIContent* aContent,
                                            bool aFlushLayout) {
-  nsIDocument* doc = aContent->OwnerDoc();
+  Document* doc = aContent->OwnerDoc();
   nsIPresShell* presShell = doc->GetShell();
   if (!presShell) {
     return nullptr;
   }
 
-  const bool frameWillBeUnsuppressed =
-      presShell->FrameConstructor()->EnsureFrameForTextNodeIsCreatedAfterFlush(
-          static_cast<CharacterData*>(aContent));
+  // Try to un-suppress whitespace if needed, but only if we'll be able to flush
+  // to immediately see the results of the un-suppression. If we can't flush
+  // here, then calling EnsureFrameForTextNodeIsCreatedAfterFlush would be
+  // pointless anyway.
   if (aFlushLayout) {
-    doc->FlushPendingNotifications(FlushType::Layout);
-  } else if (frameWillBeUnsuppressed) {
-    doc->FlushPendingNotifications(FlushType::Frames);
+    const bool frameWillBeUnsuppressed =
+        presShell->FrameConstructor()
+            ->EnsureFrameForTextNodeIsCreatedAfterFlush(
+                static_cast<CharacterData*>(aContent));
+    if (frameWillBeUnsuppressed) {
+      doc->FlushPendingNotifications(FlushType::Layout);
+    }
   }
 
   nsIFrame* frame = aContent->GetPrimaryFrame();
@@ -2951,7 +2951,7 @@ nsresult nsRange::GetUsedFontFaces(nsLayoutUtils::UsedFontFaceList& aResult,
   nsCOMPtr<nsINode> endContainer = mEnd.Container();
 
   // Flush out layout so our frames are up to date.
-  nsIDocument* doc = mStart.Container()->OwnerDoc();
+  Document* doc = mStart.Container()->OwnerDoc();
   NS_ENSURE_TRUE(doc, NS_ERROR_UNEXPECTED);
   doc->FlushPendingNotifications(FlushType::Frames);
 
@@ -3063,8 +3063,8 @@ void nsRange::ExcludeNonSelectableNodes(nsTArray<RefPtr<nsRange>>* aOutRanges) {
   nsRange* range = this;
   RefPtr<nsRange> newRange;
   while (range) {
-    nsCOMPtr<nsIContentIterator> iter = NS_NewPreContentIterator();
-    nsresult rv = iter->Init(range);
+    PreContentIterator preOrderIter;
+    nsresult rv = preOrderIter.Init(range);
     if (NS_FAILED(rv)) {
       return;
     }
@@ -3078,8 +3078,8 @@ void nsRange::ExcludeNonSelectableNodes(nsTArray<RefPtr<nsRange>>* aOutRanges) {
     nsIContent* firstNonSelectableContent = nullptr;
     while (true) {
       ErrorResult err;
-      nsINode* node = iter->GetCurrentNode();
-      iter->Next();
+      nsINode* node = preOrderIter.GetCurrentNode();
+      preOrderIter.Next();
       bool selectable = true;
       nsIContent* content =
           node && node->IsContent() ? node->AsContent() : nullptr;
@@ -3105,7 +3105,7 @@ void nsRange::ExcludeNonSelectableNodes(nsTArray<RefPtr<nsRange>>* aOutRanges) {
         if (!firstNonSelectableContent) {
           firstNonSelectableContent = content;
         }
-        if (iter->IsDone() && seenSelectable) {
+        if (preOrderIter.IsDone() && seenSelectable) {
           // The tail end of the initial range is non-selectable - truncate the
           // current range before the first non-selectable node.
           range->SetEndBefore(*firstNonSelectableContent, err);
@@ -3161,7 +3161,7 @@ void nsRange::ExcludeNonSelectableNodes(nsTArray<RefPtr<nsRange>>* aOutRanges) {
           aOutRanges->AppendElement(range);
         }
       }
-      if (iter->IsDone()) {
+      if (preOrderIter.IsDone()) {
         return;
       }
     }

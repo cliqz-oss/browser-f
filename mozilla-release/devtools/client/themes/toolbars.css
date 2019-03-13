@@ -5,26 +5,15 @@
 
 /* CSS Variables specific to the devtools toolbar that aren't defined by the themes */
 :root {
-  --magnifying-glass-image: url(chrome://devtools/skin/images/search.svg);
-  --filter-image: url(chrome://devtools/skin/images/filter.svg);
-  --tool-options-image: url(chrome://devtools/skin/images/tool-options.svg);
   --separator-block-margin: 4px;
   --separator-inline-margin: 1px;
 }
 
 .theme-light {
-  --searchbox-background-color: var(--theme-highlight-yellow);
-  --searchbox-border-color: #ffbf00;
-  --searcbox-no-match-background-color: #ffe5e5;
-  --searcbox-no-match-border-color: #e52e2e;
   --separator-border-color: rgba(0,0,0,.1);
 }
 
 .theme-dark {
-  --searchbox-background-color: #4d4222;
-  --searchbox-border-color: #d99f2b;
-  --searcbox-no-match-background-color: #402325;
-  --searcbox-no-match-border-color: #cc3d3d;
   --separator-border-color: rgba(100%,100%,100%,.2);
 }
 
@@ -184,16 +173,10 @@
 /*
  * Apply the default fill color to toolbar icons
  */
-.devtools-toolbarbutton > image,
-.devtools-button::before,
-.scrollbutton-up > .toolbarbutton-icon,
-.scrollbutton-down > .toolbarbutton-icon,
-#black-boxed-message-button .button-icon,
 #canvas-debugging-empty-notice-button .button-icon,
-#toggle-breakpoints[checked] > image,
 .event-tooltip-debugger-icon {
   -moz-context-properties: fill;
-  fill: var(--theme-toolbar-color);
+  fill: var(--theme-icon-color);
 }
 
 .hidden-labels-box:not(.visible) > label,
@@ -220,8 +203,12 @@ splitter.devtools-horizontal-splitter,
   overflow: hidden;
   padding-inline-start: 2px !important;
   padding-inline-end: 10px !important;
-  fill: var(--theme-toolbar-photon-icon-color);
+  fill: var(--theme-icon-color);
   -moz-context-properties: fill;
+}
+
+html[dir="rtl"] .devtools-dropdown-button {
+  background-position: left center !important;
 }
 
 .devtools-dropdown-button:not(:hover) {

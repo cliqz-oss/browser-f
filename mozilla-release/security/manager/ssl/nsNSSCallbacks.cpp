@@ -282,9 +282,10 @@ OCSPRequest::Run() {
   }
 
   nsCOMPtr<nsIInputStream> uploadStream;
-  rv = NS_NewByteInputStream(getter_AddRefs(uploadStream),
-                             reinterpret_cast<const char*>(mPOSTData.begin()),
-                             mPOSTData.length());
+  rv = NS_NewByteInputStream(
+      getter_AddRefs(uploadStream),
+      MakeSpan(reinterpret_cast<const char*>(mPOSTData.begin()),
+               mPOSTData.length()));
   if (NS_FAILED(rv)) {
     return NotifyDone(rv, lock);
   }
@@ -1271,8 +1272,7 @@ void HandshakeCallback(PRFileDesc* fd, void* client_data) {
   if (renegotiationUnsafe) {
     state = nsIWebProgressListener::STATE_IS_BROKEN;
   } else {
-    state = nsIWebProgressListener::STATE_IS_SECURE |
-            nsIWebProgressListener::STATE_SECURE_HIGH;
+    state = nsIWebProgressListener::STATE_IS_SECURE;
     SSLVersionRange defVersion;
     rv = SSL_VersionRangeGetDefault(ssl_variant_stream, &defVersion);
     if (rv == SECSuccess && versions.max >= defVersion.max) {

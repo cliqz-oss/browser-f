@@ -8,7 +8,9 @@
 
 #include "ds/OrderedHashTable.h"
 #include "gc/FreeOp.h"
+#include "js/PropertySpec.h"
 #include "js/Utility.h"
+#include "vm/EqualityOperations.h"  // js::SameValue
 #include "vm/GlobalObject.h"
 #include "vm/Interpreter.h"
 #include "vm/Iteration.h"
@@ -141,7 +143,6 @@ static const ClassOps MapIteratorObjectClassOps = {nullptr, /* addProperty */
                                                    MapIteratorObject::finalize};
 
 static const ClassExtension MapIteratorObjectClassExtension = {
-    nullptr, /* weakmapKeyDelegateOp */
     MapIteratorObject::objectMoved};
 
 const Class MapIteratorObject::class_ = {
@@ -650,7 +651,7 @@ bool MapObject::construct(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   RootedObject proto(cx);
-  if (!GetPrototypeFromBuiltinConstructor(cx, args, &proto)) {
+  if (!GetPrototypeFromBuiltinConstructor(cx, args, JSProto_Map, &proto)) {
     return false;
   }
 
@@ -912,7 +913,6 @@ static const ClassOps SetIteratorObjectClassOps = {nullptr, /* addProperty */
                                                    SetIteratorObject::finalize};
 
 static const ClassExtension SetIteratorObjectClassExtension = {
-    nullptr, /* weakmapKeyDelegateOp */
     SetIteratorObject::objectMoved};
 
 const Class SetIteratorObject::class_ = {
@@ -1270,7 +1270,7 @@ bool SetObject::construct(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   RootedObject proto(cx);
-  if (!GetPrototypeFromBuiltinConstructor(cx, args, &proto)) {
+  if (!GetPrototypeFromBuiltinConstructor(cx, args, JSProto_Set, &proto)) {
     return false;
   }
 

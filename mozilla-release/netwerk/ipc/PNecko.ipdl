@@ -28,6 +28,7 @@ include protocol PStunAddrsRequest;
 include protocol PFileChannel;
 include protocol PTrackingDummyChannel;
 include protocol PWebrtcProxyChannel;
+include protocol PSocketProcessBridge;
 
 include IPCStream;
 include URIParams;
@@ -143,6 +144,9 @@ parent:
   async GetExtensionStream(URIParams uri) returns (nsIInputStream stream);
   async GetExtensionFD(URIParams uri) returns (FileDescriptor fd);
 
+  async InitSocketProcessBridge()
+    returns (Endpoint<PSocketProcessBridgeChild> endpoint);
+
 child:
   /*
    * Bring up the http auth prompt for a nested remote mozbrowser.
@@ -164,17 +168,6 @@ child:
   prio(high) async NetworkChangeNotification(nsCString type);
 
   async PTransportProvider();
-
-  // This message is sent to PNecko and triggers the creation of a new
-  // HttpChannelChild that will be connected to the parent channel represented
-  // by registrarId.
-  async CrossProcessRedirect(uint32_t aRegistrarId,
-                             nsIURI aURI,
-                             uint32_t aNewLoadFlags,
-                             OptionalLoadInfoArgs aLoadInfo,
-                             uint64_t aChannelId,
-                             nsIURI aOriginalURI,
-                             uint64_t aIdentifier);
 
 both:
   // Actually we need PTCPSocket() for parent. But ipdl disallows us having different

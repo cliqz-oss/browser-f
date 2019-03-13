@@ -53,8 +53,8 @@ ${helpers.single_keyword(
 
 ${helpers.predefined_type(
     "text-indent",
-    "LengthOrPercentage",
-    "computed::LengthOrPercentage::Length(computed::Length::new(0.))",
+    "LengthPercentage",
+    "computed::LengthPercentage::zero()",
     animation_value_type="ComputedValue",
     spec="https://drafts.csswg.org/css-text/#propdef-text-indent",
     allow_quirks=True,
@@ -295,7 +295,7 @@ ${helpers.predefined_type(
     "-webkit-text-stroke-width",
     "BorderSideWidth",
     "crate::values::computed::NonNegativeLength::new(0.)",
-    initial_specified_value="specified::BorderSideWidth::Length(specified::Length::zero())",
+    initial_specified_value="specified::BorderSideWidth::zero()",
     computed_type="crate::values::computed::NonNegativeLength",
     products="gecko",
     gecko_pref="layout.css.prefixes.webkit",

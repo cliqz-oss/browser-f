@@ -12,11 +12,10 @@
 #include "jsfriendapi.h"
 #include "js/CharacterEncoding.h"
 #include "xpcprivate.h"
-#include "CPOWTimer.h"
 #include "WrapperFactory.h"
 
 #include "nsIDocShellTreeItem.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 
 using namespace js;
 using namespace JS;
@@ -148,10 +147,7 @@ const CPOWProxyHandler CPOWProxyHandler::singleton;
   if (!owner->allowMessage(cx)) {                                       \
     return failRetVal;                                                  \
   }                                                                     \
-  {                                                                     \
-    CPOWTimer timer(cx);                                                \
-    return owner->call args;                                            \
-  }
+  { return owner->call args; }
 
 bool CPOWProxyHandler::getOwnPropertyDescriptor(
     JSContext* cx, HandleObject proxy, HandleId id,
@@ -383,24 +379,15 @@ bool WrapperOwner::DOMQI(JSContext* cx, JS::HandleObject proxy,
                          JS::CallArgs& args) {
   // Someone's calling us, handle nsISupports specially to avoid unnecessary
   // CPOW traffic.
-  HandleValue id = args[0];
-  if (id.isObject()) {
-    RootedObject idobj(cx, &id.toObject());
-    nsCOMPtr<nsIJSID> jsid;
+  if (Maybe<nsID> id = xpc::JSValue2ID(cx, args[0])) {
+    if (id->Equals(NS_GET_IID(nsISupports))) {
+      args.rval().set(args.thisv());
+      return true;
+    }
 
-    nsresult rv = UnwrapArg<nsIJSID>(cx, idobj, getter_AddRefs(jsid));
-    if (NS_SUCCEEDED(rv)) {
-      MOZ_ASSERT(jsid, "bad wrapJS");
-      const nsID* idptr = jsid->GetID();
-      if (idptr->Equals(NS_GET_IID(nsISupports))) {
-        args.rval().set(args.thisv());
-        return true;
-      }
-
-      // Webidl-implemented DOM objects never have nsIClassInfo.
-      if (idptr->Equals(NS_GET_IID(nsIClassInfo))) {
-        return Throw(cx, NS_ERROR_NO_INTERFACE);
-      }
+    // Webidl-implemented DOM objects never have nsIClassInfo.
+    if (id->Equals(NS_GET_IID(nsIClassInfo))) {
+      return Throw(cx, NS_ERROR_NO_INTERFACE);
     }
   }
 
@@ -1053,7 +1040,7 @@ static nsCString GetRemoteObjectTag(JS::Handle<JSObject*> obj) {
       return NS_LITERAL_CSTRING("ContentDocShellTreeItem");
     }
 
-    nsCOMPtr<nsIDocument> doc(do_QueryInterface(supports));
+    nsCOMPtr<dom::Document> doc(do_QueryInterface(supports));
     if (doc) {
       return NS_LITERAL_CSTRING("ContentDocument");
     }

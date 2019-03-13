@@ -4,11 +4,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifndef mozilla_dom_TimeEvent_h_
-#define mozilla_dom_TimeEvent_h_
+#ifndef mozilla_dom_TimeEvent_h
+#define mozilla_dom_TimeEvent_h
 
+#include "nsDocShell.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/TimeEventBinding.h"
+#include "mozilla/dom/Nullable.h"
+#include "mozilla/dom/WindowProxyHolder.h"
 
 class nsGlobalWindowInner;
 
@@ -34,7 +37,12 @@ class TimeEvent final : public Event {
 
   int32_t Detail() const { return mDetail; }
 
-  nsPIDOMWindowOuter* GetView() const { return mView; }
+  Nullable<WindowProxyHolder> GetView() const {
+    if (!mView) {
+      return nullptr;
+    }
+    return WindowProxyHolder(mView->GetBrowsingContext());
+  }
 
   TimeEvent* AsTimeEvent() final { return this; }
 
@@ -52,4 +60,4 @@ already_AddRefed<mozilla::dom::TimeEvent> NS_NewDOMTimeEvent(
     mozilla::dom::EventTarget* aOwner, nsPresContext* aPresContext,
     mozilla::InternalSMILTimeEvent* aEvent);
 
-#endif  // mozilla_dom_TimeEvent_h_
+#endif  // mozilla_dom_TimeEvent_h

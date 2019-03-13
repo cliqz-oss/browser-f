@@ -10,9 +10,6 @@ const RUNTIME_APP_NAME = "TestApp";
 const OTHER_RUNTIME_ID = "other-runtime-id";
 const OTHER_RUNTIME_APP_NAME = "OtherApp";
 
-/* import-globals-from head-mocks.js */
-Services.scriptloader.loadSubScript(CHROME_URL_ROOT + "head-mocks.js", this);
-
 // Test that USB runtimes are ot disconnected on refresh.
 add_task(async function() {
   const mocks = new Mocks();

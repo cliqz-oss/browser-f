@@ -36,22 +36,20 @@ const MAXIMUM_ALLOWED_EXTENSION_TIME_MS = 3000;
 // Any remaining remote tabs are added in queue if no other results are found.
 const RECENT_REMOTE_TAB_THRESHOLD_MS = 259200000; // 72 hours.
 
-// A regex that matches "single word" hostnames for whitelisting purposes.
-// The hostname will already have been checked for general validity, so we
-// don't need to be exhaustive here, so allow dashes anywhere.
-const REGEXP_SINGLEWORD_HOST = new RegExp("^[a-z0-9-]+$", "i");
-
 // Regex used to match userContextId.
 const REGEXP_USER_CONTEXT_ID = /(?:^| )user-context-id:(\d+)/;
+
+// Regex used to match maxResults.
+const REGEXP_MAX_RESULTS = /(?:^| )max-results:(\d+)/;
+
+// Regex used to match insertMethod.
+const REGEXP_INSERT_METHOD = /(?:^| )insert-method:(\d+)/;
 
 // Regex used to match one or more whitespace.
 const REGEXP_SPACES = /\s+/;
 
 // Regex used to strip prefixes from URLs.  See stripPrefix().
-const REGEXP_STRIP_PREFIX = /^[a-zA-Z]+:(?:\/\/)?/;
-
-// Cannot contains spaces or path delims.
-const REGEXP_ORIGIN = /^[^\s\/\?\#]+$/;
+const REGEXP_STRIP_PREFIX = /^[a-z]+:(?:\/){0,2}/i;
 
 // The result is notified on a delay, to avoid rebuilding the panel at every match.
 const NOTIFYRESULT_DELAY_MS = 16;
@@ -338,15 +336,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
 XPCOMUtils.defineLazyPreferenceGetter(this, "syncUsernamePref",
                                       "services.sync.username");
 
-// The special characters below can be typed into the urlbar to either restrict
-// the search to visited history, bookmarked, tagged pages; or force a match on
-// just the title text or url.
-XPCOMUtils.defineLazyGetter(this, "TOKEN_TO_BEHAVIOR_MAP", () => new Map(
-  Object.entries(UrlbarTokenizer.RESTRICT).map(
-    ([type, char]) => [char, type.toLowerCase()]
-  )
-));
-
 function setTimeout(callback, ms) {
   let timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
   timer.initWithCallback(callback, ms, timer.TYPE_ONE_SHOT);
@@ -403,21 +392,20 @@ XPCOMUtils.defineLazyGetter(this, "ProfileAgeCreatedPromise", async () => {
   return times.created;
 });
 
-// Helper functions
+// Maps restriction character types to textual behaviors.
+XPCOMUtils.defineLazyGetter(this, "typeToBehaviorMap", () => {
+  return new Map([
+    [UrlbarTokenizer.TYPE.RESTRICT_HISTORY, "history"],
+    [UrlbarTokenizer.TYPE.RESTRICT_BOOKMARK, "bookmark"],
+    [UrlbarTokenizer.TYPE.RESTRICT_TAG, "tag"],
+    [UrlbarTokenizer.TYPE.RESTRICT_OPENPAGE, "openpage"],
+    [UrlbarTokenizer.TYPE.RESTRICT_SEARCH, "search"],
+    [UrlbarTokenizer.TYPE.RESTRICT_TITLE, "title"],
+    [UrlbarTokenizer.TYPE.RESTRICT_URL, "url"],
+  ]);
+});
 
-/**
- * Generates the tokens used in searching from a given string.
- *
- * @param searchString
- *        The string to generate tokens from.
- * @return an array of tokens.
- * @note Calling split on an empty string will return an array containing one
- *       empty string.  We don't want that, as it'll break our logic, so return
- *       an empty array then.
- */
-function getUnfilteredSearchTokens(searchString) {
-  return searchString.length ? searchString.split(REGEXP_SPACES) : [];
-}
+// Helper functions
 
 /**
  * Strips the prefix from a URL and returns the prefix and the remainder of the
@@ -521,14 +509,6 @@ function looksLikeUrl(str, ignoreAlphanumericHosts = false) {
 }
 
 /**
- * Returns whether the passed in string looks like an origin.
- */
-function looksLikeOrigin(str) {
-  // Single word not including path delimiters.
-  return REGEXP_ORIGIN.test(str);
-}
-
-/**
  * Returns the portion of a string starting at the index where another string
  * begins.
  *
@@ -594,8 +574,10 @@ function Search(searchString, searchParam, autocompleteListener,
   // We want to store the original string for case sensitive searches.
   this._originalSearchString = searchString;
   this._trimmedOriginalSearchString = searchString.trim();
-  let [prefix, suffix] = stripPrefix(this._trimmedOriginalSearchString);
-  this._searchString = Services.textToSubURI.unEscapeURIForUI("UTF-8", suffix);
+  let unescapedSearchString =
+    Services.textToSubURI.unEscapeURIForUI("UTF-8", this._trimmedOriginalSearchString);
+  let [prefix, suffix] = stripPrefix(unescapedSearchString);
+  this._searchString = suffix;
   this._strippedPrefix = prefix.toLowerCase();
 
   this._matchBehavior = Ci.mozIPlacesAutoComplete.MATCH_BOUNDARY;
@@ -608,26 +590,38 @@ function Search(searchString, searchParam, autocompleteListener,
   this._disablePrivateActions = params.has("disable-private-actions");
   this._inPrivateWindow = params.has("private-window");
   this._prohibitAutoFill = params.has("prohibit-autofill");
+  this._disableTelemetry = params.has("disable-telemetry");
 
+  // Extract the max-results param.
+  let maxResults = searchParam.match(REGEXP_MAX_RESULTS);
+  this._maxResults = maxResults ? parseInt(maxResults[1])
+                                : UrlbarPrefs.get("maxRichResults");
+
+  // Extract the user-context-id param.
   let userContextId = searchParam.match(REGEXP_USER_CONTEXT_ID);
   this._userContextId = userContextId ?
                           parseInt(userContextId[1], 10) :
                           Ci.nsIScriptSecurityManager.DEFAULT_USER_CONTEXT_ID;
 
-  let unfilteredTokens = getUnfilteredSearchTokens(this._searchString);
+  // Use the original string here, not the stripped one, so the tokenizer can
+  // properly recognize token types.
+  let {tokens} = UrlbarTokenizer.tokenize({searchString: unescapedSearchString});
 
-  // We handle any leading restriction character specially, in particular for
-  // a search restriction we also handle the case where there's no space before
-  // the query, like "?porcupine".
-  if (unfilteredTokens.length > 1 &&
-      this._trimmedOriginalSearchString.startsWith(unfilteredTokens[0]) &&
-      Object.values(UrlbarTokenizer.RESTRICT).includes(unfilteredTokens[0])) {
-    this._leadingRestrictionToken = unfilteredTokens[0];
-  } else if (this._trimmedOriginalSearchString.startsWith(UrlbarTokenizer.RESTRICT.SEARCH)) {
-    this._leadingRestrictionToken = UrlbarTokenizer.RESTRICT.SEARCH;
+  // This allows to handle a leading restriction character specially.
+  this._leadingRestrictionToken = null;
+  if (tokens.length > 0) {
+    if (UrlbarTokenizer.isRestrictionToken(tokens[0]) &&
+        (tokens.length > 1 || tokens[0].type == UrlbarTokenizer.TYPE.RESTRICT_SEARCH)) {
+      this._leadingRestrictionToken = tokens[0].value;
+    }
+    // Check if the first token has a strippable prefix and remove it, but don't
+    // create an empty token.
+    if (prefix && tokens[0].value.length > prefix.length) {
+      tokens[0].value = tokens[0].value.substring(prefix.length);
+    }
   }
 
-  this._searchTokens = this.filterTokens(unfilteredTokens);
+  this._searchTokens = this.filterTokens(tokens);
 
   // The heuristic token is the first filtered search token, but only when it's
   // actually the first thing in the search string.  If a prefix or restriction
@@ -636,11 +630,9 @@ function Search(searchString, searchParam, autocompleteListener,
   // keyword, a search engine alias, an extension keyword, or simply a URL or
   // part of the search string the user has typed.  We won't know until we
   // create the heuristic result.
-  this._heuristicToken =
-    this._searchTokens[0] &&
-      this._trimmedOriginalSearchString.startsWith(this._searchTokens[0]) ?
-    this._searchTokens[0] :
-    null;
+  let firstToken = this._searchTokens.length > 0 && this._searchTokens[0].value;
+  this._heuristicToken = firstToken &&
+    this._trimmedOriginalSearchString.startsWith(firstToken) ? firstToken : null;
 
   this._keywordSubstitute = null;
 
@@ -754,21 +746,28 @@ Search.prototype = {
 
   /**
    * Given an array of tokens, this function determines which query should be
-   * ran.  It also removes any special search tokens.  The given array of tokens
-   * is modified in place and returned.
+   * ran.  It also removes any special search tokens.
    *
    * @param tokens
-   *        An array of search tokens.  This array is modified in place.
-   * @return The given array of tokens, modified to remove special search tokens.
+   *        An array of search tokens.
+   * @return A new, filtered array of tokens.
    */
   filterTokens(tokens) {
     let foundToken = false;
     // Set the proper behavior while filtering tokens.
-    for (let i = tokens.length - 1; i >= 0; i--) {
-      let behavior = TOKEN_TO_BEHAVIOR_MAP.get(tokens[i]);
+    let filtered = [];
+    for (let token of tokens) {
+      if (!UrlbarTokenizer.isRestrictionToken(token)) {
+        filtered.push(token);
+        continue;
+      }
+      let behavior = typeToBehaviorMap.get(token.type);
+      if (!behavior) {
+        throw new Error(`Unknown token type ${token.type}`);
+      }
       // Don't remove the token if it didn't match, or if it's an action but
       // actions are not enabled.
-      if (behavior && (behavior != "openpage" || this._enableActions)) {
+      if (behavior != "openpage" || this._enableActions) {
         // Don't use the suggest preferences if it is a token search and
         // set the restrict bit to 1 (to intersect the search results).
         if (!foundToken) {
@@ -778,18 +777,15 @@ Search.prototype = {
           this.setBehavior("restrict");
         }
         this.setBehavior(behavior);
-        tokens.splice(i, 1);
       }
     }
-
     // Set the right JavaScript behavior based on our preference.  Note that the
     // preference is whether or not we should filter JavaScript, and the
     // behavior is if we should search it or not.
     if (!UrlbarPrefs.get("filter.javascript")) {
       this.setBehavior("javascript");
     }
-
-    return tokens;
+    return filtered;
   },
 
   /**
@@ -843,8 +839,10 @@ Search.prototype = {
       }
     };
 
-    TelemetryStopwatch.start(TELEMETRY_1ST_RESULT, this);
-    TelemetryStopwatch.start(TELEMETRY_6_FIRST_RESULTS, this);
+    if (!this._disableTelemetry) {
+      TelemetryStopwatch.start(TELEMETRY_1ST_RESULT, this);
+      TelemetryStopwatch.start(TELEMETRY_6_FIRST_RESULTS, this);
+    }
 
     // Since we call the synchronous parseSubmissionURL function later, we must
     // wait for the initialization of PlacesSearchAutocompleteProvider first.
@@ -951,7 +949,7 @@ Search.prototype = {
         !this._inPrivateWindow) {
       let query =
         this._searchEngineAliasMatch ? this._searchEngineAliasMatch.query :
-        substringAt(this._originalSearchString, this._searchTokens[0]);
+        substringAt(this._originalSearchString, this._searchTokens[0].value);
       if (query) {
         // Limit the string sent for search suggestions to a maximum length.
         query = query.substr(0, UrlbarPrefs.get("maxCharsForSearchSuggestions"));
@@ -972,22 +970,26 @@ Search.prototype = {
             "";
           searchSuggestionsCompletePromise =
             this._matchSearchSuggestions(engine, query, alias);
-          // If the user has used a search engine token alias, then the only
-          // results we want to show are suggestions from that engine, so we're
-          // done.  We're also done if we're restricting results to suggestions.
-          if ((this._searchEngineAliasMatch &&
-               this._searchEngineAliasMatch.isTokenAlias) ||
-              this.hasBehavior("restrict")) {
-            // Wait for the suggestions to be added.
-            await searchSuggestionsCompletePromise;
-            this._cleanUpNonCurrentMatches(null);
-            this._autocompleteSearch.finishSearch(true);
-            return;
-          }
         }
       }
     }
-    // In any case, clear previous suggestions.
+
+    // If the user used a search engine token alias, then the only results we
+    // want to show are suggestions from that engine, so we're done.  We're also
+    // done if we're restricting results to suggestions.
+    if ((this._searchEngineAliasMatch &&
+         this._searchEngineAliasMatch.isTokenAlias) ||
+        (this._enableActions &&
+         this.hasBehavior("search") &&
+         this.hasBehavior("restrict"))) {
+      // Wait for the suggestions to be added.
+      await searchSuggestionsCompletePromise;
+      this._cleanUpNonCurrentMatches(null);
+      this._autocompleteSearch.finishSearch(true);
+      return;
+    }
+
+    // Clear previous search suggestions.
     searchSuggestionsCompletePromise.then(() => {
       this._cleanUpNonCurrentMatches(UrlbarUtils.MATCH_GROUP.SUGGESTION);
     });
@@ -1024,13 +1026,13 @@ Search.prototype = {
 
     // If we have some unused adaptive matches, add them now.
     while (this._extraAdaptiveRows.length &&
-           this._currentMatchCount < UrlbarPrefs.get("maxRichResults")) {
+           this._currentMatchCount < this._maxResults) {
       this._addFilteredQueryMatch(this._extraAdaptiveRows.shift());
     }
 
     // If we have some unused remote tab matches, add them now.
     while (this._extraRemoteTabRows.length &&
-          this._currentMatchCount < UrlbarPrefs.get("maxRichResults")) {
+          this._currentMatchCount < this._maxResults) {
       this._addMatch(this._extraRemoteTabRows.shift());
     }
 
@@ -1044,7 +1046,7 @@ Search.prototype = {
     // get more matches.
     let count = this._counts[UrlbarUtils.MATCH_GROUP.GENERAL] +
                 this._counts[UrlbarUtils.MATCH_GROUP.HEURISTIC];
-    if (count < UrlbarPrefs.get("maxRichResults")) {
+    if (count < this._maxResults) {
       this._matchBehavior = Ci.mozIPlacesAutoComplete.MATCH_ANYWHERE;
       for (let [query, params] of [ this._adaptiveQuery,
                                     this._searchQuery ]) {
@@ -1204,6 +1206,7 @@ Search.prototype = {
           // that to the moz-action URL.
           let aliasPreservingUserCase = token + alias.substr(token.length);
           let value = aliasPreservingUserCase + " ";
+          this._result.setDefaultIndex(0);
           this._addMatch({
             value,
             finalCompleteValue: PlacesUtils.mozActionURI("searchengine", {
@@ -1217,7 +1220,6 @@ Search.prototype = {
             style: "autofill action searchengine",
             icon: engine.iconURI ? engine.iconURI.spec : null,
           });
-          this._result.setDefaultIndex(0);
 
           // Set _searchEngineAliasMatch with an empty query so that we don't
           // attempt to add any more matches.  When a token alias is autofilled,
@@ -1353,7 +1355,7 @@ Search.prototype = {
         searchString,
         this._inPrivateWindow,
         UrlbarPrefs.get("maxHistoricalSearchSuggestions"),
-        UrlbarPrefs.get("maxRichResults") - UrlbarPrefs.get("maxHistoricalSearchSuggestions"),
+        this._maxResults - UrlbarPrefs.get("maxHistoricalSearchSuggestions"),
         this._userContextId
       );
     return this._suggestionsFetch.fetchCompletePromise.then(() => {
@@ -1401,8 +1403,8 @@ Search.prototype = {
 
     // The first token may be a whitelisted host.
     if (this._searchTokens.length == 1 &&
-        REGEXP_SINGLEWORD_HOST.test(this._searchTokens[0]) &&
-        Services.uriFixup.isDomainWhitelisted(this._searchTokens[0], -1)) {
+        this._searchTokens[0].type == UrlbarTokenizer.TYPE.POSSIBLE_ORIGIN &&
+        Services.uriFixup.isDomainWhitelisted(this._searchTokens[0].value, -1)) {
       return true;
     }
 
@@ -1413,9 +1415,14 @@ Search.prototype = {
       return true;
     }
 
-    // Disallow fetching search suggestions for strings looking like URLs, to
-    // avoid disclosing information about networks or passwords.
-    return this._searchTokens.some(looksLikeUrl);
+    // Disallow fetching search suggestions for strings looking like URLs, or
+    // non-alphanumeric origins, to avoid disclosing information about networks
+    // or passwords.
+    return this._searchTokens.some(t => {
+      return t.type == UrlbarTokenizer.TYPE.POSSIBLE_URL ||
+             (t.type == UrlbarTokenizer.TYPE.POSSIBLE_ORIGIN &&
+              !/^[a-z0-9-]+$/i.test(t.value));
+    });
   },
 
   async _matchKnownUrl(conn) {
@@ -1425,7 +1432,7 @@ Search.prototype = {
     // Otherwise treat it as a possible URL.  When the string has only one slash
     // at the end, we still treat it as an URL.
     let query, params;
-    if (looksLikeOrigin(this._searchString)) {
+    if (UrlbarTokenizer.looksLikeOrigin(this._searchString)) {
       [query, params] = this._originQuery;
     } else {
       [query, params] = this._urlQuery;
@@ -1523,7 +1530,7 @@ Search.prototype = {
       searchStr = searchStr.slice(0, -1);
     }
     // If the search string looks more like a url than a domain, bail out.
-    if (!looksLikeOrigin(searchStr)) {
+    if (!UrlbarTokenizer.looksLikeOrigin(searchStr)) {
       return false;
     }
 
@@ -1744,6 +1751,11 @@ Search.prototype = {
   // TODO (bug 1054814): Use visited URLs to inform which scheme to use, if the
   // scheme isn't specificed.
   _matchUnknownUrl() {
+    if (!this._searchString && this._strippedPrefix) {
+      // The user just typed a stripped protocol, don't build a non-sense url
+      // like http://http/ for it.
+      return false;
+    }
     let flags = Ci.nsIURIFixup.FIXUP_FLAG_FIX_SCHEME_TYPOS |
                 Ci.nsIURIFixup.FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP;
     let fixupInfo = null;
@@ -1844,7 +1856,7 @@ Search.prototype = {
     // fetched enough results, we can stop the underlying Sqlite query.
     let count = this._counts[UrlbarUtils.MATCH_GROUP.GENERAL] +
                 this._counts[UrlbarUtils.MATCH_GROUP.HEURISTIC];
-    if (!this.pending || count >= UrlbarPrefs.get("maxRichResults")) {
+    if (!this.pending || count >= this._maxResults) {
       cancel();
     }
   },
@@ -1863,7 +1875,7 @@ Search.prototype = {
     // when searching for "Firefox".
     let terms = parseResult.terms.toLowerCase();
     if (this._searchTokens.length > 0 &&
-        this._searchTokens.every(token => !terms.includes(token))) {
+        this._searchTokens.every(token => !terms.includes(token.value))) {
       return;
     }
 
@@ -1921,10 +1933,12 @@ Search.prototype = {
     this._currentMatchCount++;
     this._counts[match.type]++;
 
-    if (this._currentMatchCount == 1)
-      TelemetryStopwatch.finish(TELEMETRY_1ST_RESULT, this);
-    if (this._currentMatchCount == 6)
-      TelemetryStopwatch.finish(TELEMETRY_6_FIRST_RESULTS, this);
+    if (!this._disableTelemetry) {
+      if (this._currentMatchCount == 1)
+        TelemetryStopwatch.finish(TELEMETRY_1ST_RESULT, this);
+      if (this._currentMatchCount == 6)
+        TelemetryStopwatch.finish(TELEMETRY_6_FIRST_RESULTS, this);
+    }
     this.notifyResult(true, match.type == UrlbarUtils.MATCH_GROUP.HEURISTIC);
   },
 
@@ -2157,7 +2171,7 @@ Search.prototype = {
     // Note: ideally adaptive results should have their own provider and the
     // results muxer should decide what to show.  But that's too complex to
     // support in the current code, so that's left for a future refactoring.
-    if (this._adaptiveCount < Math.ceil(UrlbarPrefs.get("maxRichResults") / 4)) {
+    if (this._adaptiveCount < Math.ceil(this._maxResults / 4)) {
       this._addFilteredQueryMatch(row);
     } else {
       this._extraAdaptiveRows.push(row);
@@ -2269,9 +2283,9 @@ Search.prototype = {
    * to the keyword search rather than searching for the literal keyword.
    */
   get _keywordSubstitutedSearchString() {
-    let tokens = this._searchTokens;
+    let tokens = this._searchTokens.map(t => t.value);
     if (this._keywordSubstitute) {
-      tokens = [this._keywordSubstitute, ...this._searchTokens.slice(1)];
+      tokens = [this._keywordSubstitute, ...tokens.slice(1)];
     }
     return tokens.join(" ");
   },
@@ -2299,7 +2313,7 @@ Search.prototype = {
         userContextId: this._userContextId,
         // Limit the query to the the maximum number of desired results.
         // This way we can avoid doing more work than needed.
-        maxResults: UrlbarPrefs.get("maxRichResults"),
+        maxResults: this._maxResults,
       },
     ];
   },
@@ -2321,7 +2335,7 @@ Search.prototype = {
         // original search string.
         searchString: this._keywordSubstitutedSearchString,
         userContextId: this._userContextId,
-        maxResults: UrlbarPrefs.get("maxRichResults"),
+        maxResults: this._maxResults,
       },
     ];
   },
@@ -2342,7 +2356,7 @@ Search.prototype = {
         matchBehavior: this._matchBehavior,
         searchBehavior: this._behavior,
         userContextId: this._userContextId,
-        maxResults: UrlbarPrefs.get("maxRichResults"),
+        maxResults: this._maxResults,
       },
     ];
   },
@@ -2617,8 +2631,13 @@ UnifiedComplete.prototype = {
     // previous one. This may leave stale matches from the previous search that
     // would not be returned by the current one, thus once the current search is
     // complete, we remove those stale matches with _cleanUpNonCurrentMatches().
+
+    // Extract the insert-method param if it exists.
+    let insertMethod = searchParam.match(REGEXP_INSERT_METHOD);
+    insertMethod = insertMethod ? parseInt(insertMethod[1])
+                                : UrlbarPrefs.get("insertMethod");
+
     let previousResult = null;
-    let insertMethod = UrlbarPrefs.get("insertMethod");
     if (this._currentSearch && insertMethod != UrlbarUtils.INSERTMETHOD.APPEND) {
       let result = this._currentSearch._result;
       // Only reuse the previous result when one of the search strings is an
@@ -2667,8 +2686,10 @@ UnifiedComplete.prototype = {
    *        results or not.
    */
   finishSearch(notify = false) {
-    TelemetryStopwatch.cancel(TELEMETRY_1ST_RESULT, this);
-    TelemetryStopwatch.cancel(TELEMETRY_6_FIRST_RESULTS, this);
+    if (!this._disableTelemetry) {
+      TelemetryStopwatch.cancel(TELEMETRY_1ST_RESULT, this);
+      TelemetryStopwatch.cancel(TELEMETRY_6_FIRST_RESULTS, this);
+    }
     // Clear state now to avoid race conditions, see below.
     let search = this._currentSearch;
     if (!search)

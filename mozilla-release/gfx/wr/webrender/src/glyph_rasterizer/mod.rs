@@ -28,7 +28,7 @@ pub use self::pathfinder::{ThreadSafePathfinderFontContext, NativeFontHandleWrap
 #[cfg(not(feature = "pathfinder"))]
 mod no_pathfinder;
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct FontTransform {
@@ -160,9 +160,11 @@ impl<'a> From<&'a LayoutToWorldTransform> for FontTransform {
     }
 }
 
-pub const FONT_SIZE_LIMIT: f64 = 1024.0;
+// Some platforms (i.e. Windows) may have trouble rasterizing glyphs above this size.
+// Ensure glyph sizes are reasonably limited to avoid that scenario.
+pub const FONT_SIZE_LIMIT: f64 = 512.0;
 
-#[derive(Clone, Hash, PartialEq, Eq, Debug, Ord, PartialOrd)]
+#[derive(Clone, Hash, PartialEq, Eq, Debug, Ord, PartialOrd, MallocSizeOf)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct FontInstance {
@@ -350,11 +352,10 @@ impl SubpixelOffset {
         let apos = ((pos - pos.floor()) * 8.0) as i32;
 
         match apos {
-            0 | 7 => SubpixelOffset::Zero,
             1...2 => SubpixelOffset::Quarter,
             3...4 => SubpixelOffset::Half,
             5...6 => SubpixelOffset::ThreeQuarters,
-            _ => unreachable!("bug: unexpected quantized result"),
+            _ => SubpixelOffset::Zero,
         }
     }
 }
@@ -680,10 +681,12 @@ pub(in glyph_rasterizer) struct GlyphRasterJob {
 }
 
 #[allow(dead_code)]
-pub enum GlyphRasterResult {
+pub enum GlyphRasterError {
     LoadFailed,
-    Bitmap(RasterizedGlyph),
 }
+
+#[allow(dead_code)]
+pub type GlyphRasterResult = Result<RasterizedGlyph, GlyphRasterError>;
 
 #[derive(Debug, Copy, Clone, Eq, Hash, PartialEq)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
@@ -709,8 +712,6 @@ mod test_glyph_rasterizer {
         use texture_cache::TextureCache;
         use glyph_cache::GlyphCache;
         use gpu_cache::GpuCache;
-        use tiling::SpecialRenderPasses;
-        use api::DeviceIntSize;
         use render_task::{RenderTaskCache, RenderTaskTree};
         use profiler::TextureCacheProfileCounters;
         use api::{FontKey, FontTemplate, FontRenderMode,
@@ -730,12 +731,10 @@ mod test_glyph_rasterizer {
         let workers = Arc::new(worker.unwrap());
         let mut glyph_rasterizer = GlyphRasterizer::new(workers).unwrap();
         let mut glyph_cache = GlyphCache::new();
-        let mut gpu_cache = GpuCache::new();
+        let mut gpu_cache = GpuCache::new_for_testing();
         let mut texture_cache = TextureCache::new_for_testing(2048, 1024);
         let mut render_task_cache = RenderTaskCache::new();
         let mut render_task_tree = RenderTaskTree::new(FrameId::INVALID);
-        let mut special_render_passes = SpecialRenderPasses::new(&DeviceIntSize::new(1366, 768));
-
         let mut font_file =
             File::open("../wrench/reftests/text/VeraBd.ttf").expect("Couldn't open font file");
         let mut font_data = vec![];
@@ -777,7 +776,6 @@ mod test_glyph_rasterizer {
                 &mut gpu_cache,
                 &mut render_task_cache,
                 &mut render_task_tree,
-                &mut special_render_passes,
             );
         }
 

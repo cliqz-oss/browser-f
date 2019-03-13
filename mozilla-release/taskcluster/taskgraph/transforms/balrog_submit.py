@@ -16,18 +16,14 @@ from taskgraph.util.schema import (
 from taskgraph.util.scriptworker import (
     get_balrog_server_scope, get_worker_type_for_scope
 )
+from taskgraph.util.treeherder import replace_group
 from taskgraph.transforms.task import task_description_schema
-from voluptuous import Any, Required, Optional
+from voluptuous import Optional
 
 
 # Voluptuous uses marker objects as dictionary *keys*, but they are not
 # comparable, so we cast all of the keys back to regular strings
 task_description_schema = {str(k): v for k, v in task_description_schema.schema.iteritems()}
-
-# shortcut for a string where task references are allowed
-taskref_or_string = Any(
-    basestring,
-    {Required('task-reference'): basestring})
 
 balrog_description_schema = schema.extend({
     # unique label to describe this balrog task, defaults to balrog-{dep.label}
@@ -94,10 +90,10 @@ def make_task_description(config, jobs):
 
         attributes = copy_attributes_from_dependent_job(dep_job)
 
-        treeherder_job_symbol = dep_job.attributes.get('locale', 'N')
+        treeherder_job_symbol = dep_job.task['extra']['treeherder']['symbol']
+        treeherder['symbol'] = replace_group(treeherder_job_symbol, 'c-Up')
 
         if dep_job.attributes.get('locale'):
-            treeherder['symbol'] = 'c-Up({})'.format(treeherder_job_symbol)
             attributes['locale'] = dep_job.attributes.get('locale')
 
         label = job['label']

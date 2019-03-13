@@ -329,23 +329,16 @@ DebuggerClient.prototype = {
         client.detach(detachClients);
         return;
       }
+      if (client.destroy) {
+        client.destroy();
+        detachClients();
+        return;
+      }
       detachClients();
     };
     detachClients();
 
     return deferred.promise;
-  },
-
-  /*
-   * This function exists only to preserve DebuggerClient's interface;
-   * new code should say 'client.mainRoot.listTabs()'.
-   */
-  listTabs: function(options) {
-    return this.mainRoot.listTabs(options);
-  },
-
-  getTab: function(filter) {
-    return this.mainRoot.getTab(filter);
   },
 
   /**
@@ -423,7 +416,6 @@ DebuggerClient.prototype = {
    *        The actor ID for the thread to attach.
    * @param object options
    *        Configuration options.
-   *        - useSourceMaps: whether to use source maps or not.
    */
   attachThread: function(threadActor, options = {}) {
     if (this._clients.has(threadActor)) {
@@ -896,6 +888,9 @@ DebuggerClient.prototype = {
    *        the stream.
    */
   onClosed: function() {
+    if (this._closed) {
+      return;
+    }
     this._closed = true;
     this.emit("closed");
 

@@ -53,6 +53,29 @@ class WorkerDetail extends PureComponent {
     );
   }
 
+  renderPushService() {
+    const { pushServiceEndpoint } = this.props.target.details;
+
+    return Localized(
+      {
+        id: "about-debugging-worker-push-service",
+        attrs: { label: true },
+      },
+      FieldPair(
+        {
+          slug: "push-service",
+          label: "Push Service",
+          value: dom.span(
+            {
+              className: "js-worker-push-service-value",
+            },
+            pushServiceEndpoint,
+          ),
+        }
+      ),
+    );
+  }
+
   renderScope() {
     const { scope } = this.props.target.details;
 
@@ -83,7 +106,10 @@ class WorkerDetail extends PureComponent {
             $status: status,
           },
           dom.span(
-            { className: `badge ${status === "running" ? "badge--success" : ""}`},
+            {
+              className: `badge js-worker-status ` +
+                `${status === "running" ? "badge--success" : ""}`,
+            },
             status
           )
         ),
@@ -92,12 +118,13 @@ class WorkerDetail extends PureComponent {
   }
 
   render() {
-    const { fetch, scope, status } = this.props.target.details;
+    const { fetch, pushServiceEndpoint, scope, status } = this.props.target.details;
 
     return dom.dl(
       {
         className: "worker-detail",
       },
+      pushServiceEndpoint ? this.renderPushService() : null,
       fetch ? this.renderFetch() : null,
       scope ? this.renderScope() : null,
       status ? this.renderStatus() : null,

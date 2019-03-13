@@ -280,7 +280,7 @@ PVRLayerChild* VRManagerChild::CreateVRLayer(uint32_t aDisplayID,
 }
 
 // XXX TODO - VRManagerChild::FrameRequest is the same as
-// nsIDocument::FrameRequest, should we consolodate these?
+// Document::FrameRequest, should we consolodate these?
 struct VRManagerChild::FrameRequest {
   FrameRequest(mozilla::dom::FrameRequestCallback& aCallback, int32_t aHandle)
       : mCallback(&aCallback), mHandle(aHandle) {}
@@ -374,7 +374,7 @@ mozilla::ipc::IPCResult VRManagerChild::RecvReplyCreateVRServiceTestController(
 }
 
 void VRManagerChild::RunFrameRequestCallbacks() {
-  AUTO_PROFILER_TRACING("VR", "RunFrameRequestCallbacks");
+  AUTO_PROFILER_TRACING("VR", "RunFrameRequestCallbacks", GRAPHICS);
 
   TimeStamp nowTime = TimeStamp::Now();
   mozilla::TimeDuration duration = nowTime - mStartTimeStamp;

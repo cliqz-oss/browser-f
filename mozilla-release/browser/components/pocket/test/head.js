@@ -31,11 +31,6 @@ function promisePocketDisabled() {
   Services.prefs.setBoolPref("extensions.pocket.enabled", false);
   return BrowserTestUtils.waitForCondition(() => {
     return !PageActions.actionForID("pocket");
-  }).then(() => {
-    // wait for a full unload of pocket
-    return BrowserTestUtils.waitForCondition(() => {
-      return !window.hasOwnProperty("pktUI") || !window.pktUI;
-    });
   });
 }
 
@@ -48,15 +43,9 @@ function promisePocketReset() {
   return promisePocketDisabled();
 }
 
-function checkWindowProperties(expectPresent, l) {
-  for (let name of l) {
-    is(window.hasOwnProperty(name) && !!window[name], expectPresent, "property " + name + (expectPresent ? " is" : " is not") + " present");
-  }
-}
-
-function checkElements(expectPresent, l) {
+function checkElements(expectPresent, l, win = window) {
   for (let id of l) {
-    let el = document.getElementById(id) || gNavToolbox.palette.querySelector("#" + id);
-    is(!!el, expectPresent, "element " + id + (expectPresent ? " is" : " is not") + " present");
+    let el = win.document.getElementById(id) || win.gNavToolbox.palette.querySelector("#" + id);
+    is(!!el && !el.hidden, expectPresent, "element " + id + (expectPresent ? " is" : " is not") + " present");
   }
 }

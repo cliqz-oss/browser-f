@@ -3,122 +3,179 @@
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 // @flow
+
 import React, { Component } from "react";
-import { connect } from "react-redux";
+import classnames from "classnames";
+
+import { connect } from "../../utils/connect";
 import actions from "../../actions";
-import { getEventListeners, getBreakpoint } from "../../selectors";
-import { CloseButton } from "../shared/Button";
+import { getActiveEventListeners } from "../../selectors";
+
+import AccessibleImage from "../shared/AccessibleImage";
+
+import type { EventListenerBreakpoints } from "../../types";
+
 import "./EventListeners.css";
 
-import type { Breakpoint, Location, SourceId } from "../../types";
-
-type Listener = {
-  selector: string,
-  type: string,
-  sourceId: SourceId,
-  line: number,
-  breakpoint: ?Breakpoint
+const CATEGORIES = {
+  Mouse: ["click", "mouseover", "dblclick"],
+  Keyboard: ["keyup", "keydown"]
 };
 
 type Props = {
-  listeners: Array<Listener>,
-  selectLocation: ({ sourceId: SourceId, line: number }) => void,
-  addBreakpoint: ({ sourceId: SourceId, line: number }) => void,
-  enableBreakpoint: Location => void,
-  disableBreakpoint: Location => void,
-  removeBreakpoint: Location => void
+  addEventListeners: typeof actions.addEventListeners,
+  removeEventListeners: typeof actions.removeEventListeners,
+  activeEventListeners: EventListenerBreakpoints
 };
 
-class EventListeners extends Component<Props> {
-  renderListener: Function;
+type State = {
+  expandedCategories: string[]
+};
 
-  constructor(...args) {
-    super(...args);
+function getKey(category: string, eventType: string) {
+  return `${category}:${eventType}`;
+}
+
+class EventListeners extends Component<Props, State> {
+  constructor(props) {
+    super(props);
+
+    this.state = {
+      expandedCategories: []
+    };
   }
 
-  renderListener = ({ type, selector, line, sourceId, breakpoint }) => {
-    const checked = breakpoint && !breakpoint.disabled;
-    const location = { sourceId, line };
+  onCategoryToggle(category, event) {
+    event.preventDefault();
+
+    const { expandedCategories } = this.state;
+
+    if (expandedCategories.includes(category)) {
+      this.setState({
+        expandedCategories: expandedCategories.filter(
+          eventCategory => eventCategory !== category
+        )
+      });
+    } else {
+      this.setState({
+        expandedCategories: [...expandedCategories, category]
+      });
+    }
+  }
+
+  onCategoryClick(category, isChecked) {
+    const { addEventListeners, removeEventListeners } = this.props;
+    const events = CATEGORIES[category].map(eventType =>
+      getKey(category, eventType)
+    );
+
+    if (isChecked) {
+      addEventListeners(events);
+    } else {
+      removeEventListeners(events);
+    }
+  }
+
+  onEventTypeClick(eventType, isChecked) {
+    const { addEventListeners, removeEventListeners } = this.props;
+    if (isChecked) {
+      addEventListeners([eventType]);
+    } else {
+      removeEventListeners([eventType]);
+    }
+  }
+
+  renderCategoryHeading(category) {
+    const { expandedCategories } = this.state;
+    const { activeEventListeners } = this.props;
+
+    const eventTypes = CATEGORIES[category];
+
+    const expanded = expandedCategories.includes(category);
+    const checked = eventTypes.every(eventType =>
+      activeEventListeners.includes(getKey(category, eventType))
+    );
+    const indeterminate =
+      !checked &&
+      eventTypes.some(eventType =>
+        activeEventListeners.includes(getKey(category, eventType))
+      );
 
     return (
-      <div
-        className="listener"
-        onClick={() => this.props.selectLocation({ sourceId, line })}
-        key={`${type}.${selector}.${sourceId}.${line}`}
-      >
+      <label>
+        <AccessibleImage
+          className={classnames("arrow", { expanded })}
+          onClick={e => this.onCategoryToggle(category, e)}
+        />
         <input
           type="checkbox"
-          className="listener-checkbox"
+          value={category}
+          onChange={e => this.onCategoryClick(category, e.target.checked)}
           checked={checked}
-          onChange={() => this.handleCheckbox(breakpoint, location)}
+          ref={el => el && (el.indeterminate = indeterminate)}
         />
-        <span className="type">{type}</span>
-        <span className="selector">{selector}</span>
-        {breakpoint ? (
-          <CloseButton
-            handleClick={ev => this.removeBreakpoint(ev, breakpoint)}
-          />
-        ) : (
-          ""
-        )}
-      </div>
+        <span className="event-listener-category">{category}</span>
+      </label>
     );
-  };
-
-  handleCheckbox(breakpoint, location) {
-    if (!breakpoint) {
-      return this.props.addBreakpoint(location);
-    }
-
-    if (breakpoint.loading) {
-      return;
-    }
-
-    if (breakpoint.disabled) {
-      this.props.enableBreakpoint(breakpoint.location);
-    } else {
-      this.props.disableBreakpoint(breakpoint.location);
-    }
   }
 
-  removeBreakpoint(event, breakpoint) {
-    event.stopPropagation();
-    if (breakpoint) {
-      this.props.removeBreakpoint(breakpoint.location);
+  renderCategoryListing(category) {
+    const { activeEventListeners } = this.props;
+    const { expandedCategories } = this.state;
+
+    const expanded = expandedCategories.includes(category);
+    if (!expanded) {
+      return null;
     }
+
+    return (
+      <ul>
+        {CATEGORIES[category].map(eventType => {
+          const key = getKey(category, eventType);
+          return (
+            <li className="event-listener-event" key={key}>
+              <label>
+                <input
+                  type="checkbox"
+                  value={key}
+                  onChange={e => this.onEventTypeClick(key, e.target.checked)}
+                  checked={activeEventListeners.includes(key)}
+                />
+                {eventType}
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+    );
   }
 
   render() {
-    const { listeners } = this.props;
     return (
-      <div className="pane event-listeners">
-        {listeners.map(this.renderListener)}
+      <div className="event-listeners-content">
+        <ul className="event-listeners-list">
+          {Object.keys(CATEGORIES).map(category => {
+            return (
+              <li className="event-listener-group" key={category}>
+                {this.renderCategoryHeading(category)}
+                {this.renderCategoryListing(category)}
+              </li>
+            );
+          })}
+        </ul>
       </div>
     );
   }
 }
 
-const mapStateToProps = state => {
-  const listeners = getEventListeners(state).map(listener => {
-    return {
-      ...listener,
-      breakpoint: getBreakpoint(state, {
-        sourceId: listener.sourceId,
-        line: listener.line
-      })
-    };
-  });
-
-  return { listeners };
-};
+const mapStateToProps = state => ({
+  activeEventListeners: getActiveEventListeners(state)
+});
 
 export default connect(
   mapStateToProps,
   {
-    selectLocation: actions.selectLocation,
-    addBreakpoint: actions.addBreakpoint,
-    enableBreakpoint: actions.enableBreakpoint,
-    disableBreakpoint: actions.disableBreakpoint,
-    removeBreakpoint: actions.removeBreakpoint
+    addEventListeners: actions.addEventListeners,
+    removeEventListeners: actions.removeEventListeners
   }
 )(EventListeners);

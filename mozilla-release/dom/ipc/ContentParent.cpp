@@ -10,11 +10,12 @@
 #include "base/shared_memory.h"
 
 #include "ContentParent.h"
+#include "ProcessUtils.h"
 #include "TabParent.h"
 
 #if defined(ANDROID) || defined(LINUX)
-#include <sys/time.h>
-#include <sys/resource.h>
+#  include <sys/time.h>
+#  include <sys/resource.h>
 #endif
 
 #include "chrome/common/process_watcher.h"
@@ -26,8 +27,8 @@
 #include "IHistory.h"
 #include "imgIContainer.h"
 #if defined(XP_WIN) && defined(ACCESSIBILITY)
-#include "mozilla/a11y/AccessibleWrap.h"
-#include "mozilla/a11y/Compatibility.h"
+#  include "mozilla/a11y/AccessibleWrap.h"
+#  include "mozilla/a11y/Compatibility.h"
 #endif
 #include "mozilla/AntiTrackingCommon.h"
 #include "mozilla/BasePrincipal.h"
@@ -98,7 +99,6 @@
 #include "mozilla/ProcessHangMonitorIPC.h"
 #include "mozilla/RDDProcessManager.h"
 #include "mozilla/recordreplay/ParentIPC.h"
-#include "mozilla/Scheduler.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/ScriptPreloader.h"
 #include "mozilla/Services.h"
@@ -132,7 +132,7 @@
 #include "nsIContentProcess.h"
 #include "nsICycleCollectorListener.h"
 #include "nsIDocShellTreeOwner.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsGeolocation.h"
 #include "nsIDragService.h"
 #include "mozilla/dom/WakeLock.h"
@@ -153,6 +153,7 @@
 #include "nsIRemoteWindowContext.h"
 #include "nsIScriptError.h"
 #include "nsIScriptSecurityManager.h"
+#include "nsIServiceWorkerManager.h"
 #include "nsISiteSecurityService.h"
 #include "nsISound.h"
 #include "mozilla/mozSpellChecker.h"
@@ -213,33 +214,33 @@
 #include "mozilla/Sprintf.h"
 
 #ifdef MOZ_WEBRTC
-#include "signaling/src/peerconnection/WebrtcGlobalParent.h"
+#  include "signaling/src/peerconnection/WebrtcGlobalParent.h"
 #endif
 
 #if defined(XP_MACOSX)
-#include "nsMacUtilsImpl.h"
+#  include "nsMacUtilsImpl.h"
 #endif
 
 #if defined(ANDROID) || defined(LINUX)
-#include "nsSystemInfo.h"
+#  include "nsSystemInfo.h"
 #endif
 
 #if defined(XP_LINUX)
-#include "mozilla/Hal.h"
+#  include "mozilla/Hal.h"
 #endif
 
 #ifdef ANDROID
-#include "gfxAndroidPlatform.h"
+#  include "gfxAndroidPlatform.h"
 #endif
 
 #include "nsPermissionManager.h"
 
 #ifdef MOZ_WIDGET_ANDROID
-#include "AndroidBridge.h"
+#  include "AndroidBridge.h"
 #endif
 
 #ifdef MOZ_WIDGET_GTK
-#include <gdk/gdk.h>
+#  include <gdk/gdk.h>
 #endif
 
 #include "mozilla/RemoteSpellCheckEngineParent.h"
@@ -247,38 +248,38 @@
 #include "Crypto.h"
 
 #ifdef MOZ_WEBSPEECH
-#include "mozilla/dom/SpeechSynthesisParent.h"
+#  include "mozilla/dom/SpeechSynthesisParent.h"
 #endif
 
 #if defined(MOZ_CONTENT_SANDBOX)
-#include "mozilla/SandboxSettings.h"
-#if defined(XP_LINUX)
-#include "mozilla/SandboxInfo.h"
-#include "mozilla/SandboxBroker.h"
-#include "mozilla/SandboxBrokerPolicyFactory.h"
-#endif
+#  include "mozilla/SandboxSettings.h"
+#  if defined(XP_LINUX)
+#    include "mozilla/SandboxInfo.h"
+#    include "mozilla/SandboxBroker.h"
+#    include "mozilla/SandboxBrokerPolicyFactory.h"
+#  endif
 #endif
 
 #ifdef MOZ_TOOLKIT_SEARCH
-#include "nsIBrowserSearchService.h"
+#  include "nsIBrowserSearchService.h"
 #endif
 
 #ifdef XP_WIN
-#include "mozilla/audio/AudioNotificationSender.h"
-#include "mozilla/widget/AudioSession.h"
+#  include "mozilla/audio/AudioNotificationSender.h"
+#  include "mozilla/widget/AudioSession.h"
 #endif
 
 #ifdef ACCESSIBILITY
-#include "nsAccessibilityService.h"
+#  include "nsAccessibilityService.h"
 #endif
 
 #ifdef MOZ_GECKO_PROFILER
-#include "nsIProfiler.h"
-#include "ProfilerParent.h"
+#  include "nsIProfiler.h"
+#  include "ProfilerParent.h"
 #endif
 
 #ifdef MOZ_CODE_COVERAGE
-#include "mozilla/CodeCoverageHandler.h"
+#  include "mozilla/CodeCoverageHandler.h"
 #endif
 
 // For VP9Benchmark::sBenchmarkFpsPref
@@ -1345,16 +1346,16 @@ void ContentParent::Init() {
   // If accessibility is running in chrome process then start it in content
   // process.
   if (nsIPresShell::IsAccessibilityActive()) {
-#if defined(XP_WIN)
+#  if defined(XP_WIN)
     // Don't init content a11y if we detect an incompat version of JAWS in use.
     if (!mozilla::a11y::Compatibility::IsOldJAWS()) {
       Unused << SendActivateA11y(
           ::GetCurrentThreadId(),
           a11y::AccessibleWrap::GetContentProcessIdFor(ChildID()));
     }
-#else
+#  else
     Unused << SendActivateA11y(0, 0);
-#endif
+#  endif
   }
 #endif
 
@@ -2065,7 +2066,7 @@ static void CacheSandboxParams(std::vector<std::string>& aCachedParams) {
   }
 
   // DEBUG_WRITE_DIR
-#ifdef DEBUG
+#  ifdef DEBUG
   // When a content process dies intentionally (|NoteIntentionalCrash|), for
   // tests it wants to log that it did this. Allow writing to this location
   // that the testrunner wants.
@@ -2078,7 +2079,7 @@ static void CacheSandboxParams(std::vector<std::string>& aCachedParams) {
     aCachedParams.push_back("-sbDebugWriteDir");
     aCachedParams.push_back(bloatDirectoryPath.get());
   }
-#endif  // DEBUG
+#  endif  // DEBUG
 }
 
 // Append sandboxing command line parameters.
@@ -2135,31 +2136,12 @@ void ContentParent::LaunchSubprocessInternal(
   // Prefs information is passed via anonymous shared memory to avoid bloating
   // the command line.
 
-  size_t prefMapSize;
-  auto prefMapHandle =
-      Preferences::EnsureSnapshot(&prefMapSize).ClonePlatformHandle();
-
-  // Serialize the early prefs.
-  nsAutoCStringN<1024> prefs;
-  Preferences::SerializePreferences(prefs);
-
-  // Set up the shared memory.
-  base::SharedMemory shm;
-  if (!shm.Create(prefs.Length())) {
-    NS_ERROR("failed to create shared memory in the parent");
+  SharedPreferenceSerializer prefSerializer;
+  if (!prefSerializer.SerializeToSharedMemory()) {
     MarkAsDead();
     earlyReject();
     return;
   }
-  if (!shm.Map(prefs.Length())) {
-    NS_ERROR("failed to map shared memory in the parent");
-    MarkAsDead();
-    earlyReject();
-    return;
-  }
-
-  // Copy the serialized prefs into the shared memory.
-  memcpy(static_cast<char*>(shm.memory()), prefs.get(), prefs.Length());
 
   // Register ContentParent as an observer for changes to any pref
   // whose prefix matches the empty string, i.e. all of them.  The
@@ -2176,13 +2158,14 @@ void ContentParent::LaunchSubprocessInternal(
 #if defined(XP_WIN)
   // Record the handle as to-be-shared, and pass it via a command flag. This
   // works because Windows handles are system-wide.
-  HANDLE prefsHandle = shm.handle();
+  HANDLE prefsHandle = prefSerializer.GetSharedMemoryHandle();
   mSubprocess->AddHandleToShare(prefsHandle);
-  mSubprocess->AddHandleToShare(prefMapHandle.get());
+  mSubprocess->AddHandleToShare(prefSerializer.GetPrefMapHandle().get());
   extraArgs.push_back("-prefsHandle");
   extraArgs.push_back(formatPtrArg(prefsHandle).get());
   extraArgs.push_back("-prefMapHandle");
-  extraArgs.push_back(formatPtrArg(prefMapHandle.get()).get());
+  extraArgs.push_back(
+      formatPtrArg(prefSerializer.GetPrefMapHandle().get()).get());
 #else
   // In contrast, Unix fds are per-process. So remap the fd to a fixed one that
   // will be used in the child.
@@ -2191,22 +2174,17 @@ void ContentParent::LaunchSubprocessInternal(
   // Note: on Android, AddFdToRemap() sets up the fd to be passed via a Parcel,
   // and the fixed fd isn't used. However, we still need to mark it for
   // remapping so it doesn't get closed in the child.
-  mSubprocess->AddFdToRemap(shm.handle().fd, kPrefsFileDescriptor);
-  mSubprocess->AddFdToRemap(prefMapHandle.get(), kPrefMapFileDescriptor);
+  mSubprocess->AddFdToRemap(prefSerializer.GetSharedMemoryHandle().fd,
+                            kPrefsFileDescriptor);
+  mSubprocess->AddFdToRemap(prefSerializer.GetPrefMapHandle().get(),
+                            kPrefMapFileDescriptor);
 #endif
 
   // Pass the lengths via command line flags.
   extraArgs.push_back("-prefsLen");
-  extraArgs.push_back(formatPtrArg(prefs.Length()).get());
-
+  extraArgs.push_back(formatPtrArg(prefSerializer.GetPrefLength()).get());
   extraArgs.push_back("-prefMapSize");
-  extraArgs.push_back(formatPtrArg(prefMapSize).get());
-
-  // Scheduler prefs need to be handled differently because the scheduler needs
-  // to start up in the content process before the normal preferences service.
-  nsPrintfCString schedulerPrefs = Scheduler::GetPrefs();
-  extraArgs.push_back("-schedulerPrefs");
-  extraArgs.push_back(schedulerPrefs.get());
+  extraArgs.push_back(formatPtrArg(prefSerializer.GetPrefMapSize()).get());
 
   if (gSafeMode) {
     extraArgs.push_back("-safeMode");
@@ -2260,9 +2238,8 @@ void ContentParent::LaunchSubprocessInternal(
                   // Transfer ownership of RAII file descriptor/handle
                   // holders so that they won't be closed before the
                   // child can inherit them.
-                  shm = std::move(shm),
-                  prefMapHandle =
-                      std::move(prefMapHandle)](base::ProcessHandle handle) {
+                  prefSerializer =
+                      std::move(prefSerializer)](base::ProcessHandle handle) {
     AUTO_PROFILER_LABEL("ContentParent::LaunchSubprocess::resolve", OTHER);
     const auto launchResumeTS = TimeStamp::Now();
 
@@ -2521,7 +2498,7 @@ void ContentParent::InitInternal(ProcessPriority aInitialPriority) {
 
   // Content processes have no permission to access profile directory, so we
   // send the file URL instead.
-  StyleSheet* ucs = nsLayoutStylesheetCache::Singleton()->UserContentSheet();
+  StyleSheet* ucs = nsLayoutStylesheetCache::Singleton()->GetUserContentSheet();
   if (ucs) {
     SerializeURI(ucs->GetSheetURI(), xpcomInit.userContentSheetURL());
   } else {
@@ -2686,7 +2663,7 @@ void ContentParent::InitInternal(ProcessPriority aInitialPriority) {
   // of value to take effect.
   shouldSandbox = IsContentSandboxEnabled();
 
-#ifdef XP_LINUX
+#  ifdef XP_LINUX
   if (shouldSandbox) {
     MOZ_ASSERT(!mSandboxBroker);
     bool isFileProcess = mRemoteType.EqualsLiteral(FILE_REMOTE_TYPE);
@@ -2703,7 +2680,7 @@ void ContentParent::InitInternal(ProcessPriority aInitialPriority) {
       MOZ_ASSERT(static_cast<const FileDescriptor&>(brokerFd).IsValid());
     }
   }
-#endif
+#  endif
   if (shouldSandbox && !SendSetProcessSandbox(brokerFd)) {
     KillHard("SandboxInitFailed");
   }
@@ -3161,7 +3138,7 @@ ContentParent::Observe(nsISupports* aSubject, const char* aTopic,
     if (*aData == '1') {
       // Make sure accessibility is running in content process when
       // accessibility gets initiated in chrome process.
-#if defined(XP_WIN)
+#  if defined(XP_WIN)
       // Don't init content a11y if we detect an incompat version of JAWS in
       // use.
       if (!mozilla::a11y::Compatibility::IsOldJAWS()) {
@@ -3169,9 +3146,9 @@ ContentParent::Observe(nsISupports* aSubject, const char* aTopic,
             ::GetCurrentThreadId(),
             a11y::AccessibleWrap::GetContentProcessIdFor(ChildID()));
       }
-#else
+#  else
       Unused << SendActivateA11y(0, 0);
-#endif
+#  endif
     } else {
       // If possible, shut down accessibility in content process when
       // accessibility gets shutdown in chrome process.
@@ -3853,6 +3830,33 @@ mozilla::ipc::IPCResult ContentParent::RecvOpenNotificationSettings(
   if (HasNotificationPermission(aPrincipal)) {
     Unused << Notification::OpenSettings(aPrincipal);
   }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult ContentParent::RecvNotificationEvent(
+    const nsString& aType, const NotificationEventData& aData) {
+  nsCOMPtr<nsIServiceWorkerManager> swm =
+      mozilla::services::GetServiceWorkerManager();
+  if (NS_WARN_IF(!swm)) {
+    // Probably shouldn't happen, but no need to crash the child process.
+    return IPC_OK();
+  }
+
+  if (aType.EqualsLiteral("click")) {
+    nsresult rv = swm->SendNotificationClickEvent(
+        aData.originSuffix(), aData.scope(), aData.ID(), aData.title(),
+        aData.dir(), aData.lang(), aData.body(), aData.tag(), aData.icon(),
+        aData.data(), aData.behavior());
+    Unused << NS_WARN_IF(NS_FAILED(rv));
+  } else {
+    MOZ_ASSERT(aType.EqualsLiteral("close"));
+    nsresult rv = swm->SendNotificationCloseEvent(
+        aData.originSuffix(), aData.scope(), aData.ID(), aData.title(),
+        aData.dir(), aData.lang(), aData.body(), aData.tag(), aData.icon(),
+        aData.data(), aData.behavior());
+    Unused << NS_WARN_IF(NS_FAILED(rv));
+  }
+
   return IPC_OK();
 }
 
@@ -5108,19 +5112,6 @@ mozilla::ipc::IPCResult ContentParent::RecvA11yHandlerControl(
 #endif
 }
 
-}  // namespace dom
-}  // namespace mozilla
-
-NS_IMPL_ISUPPORTS(ParentIdleListener, nsIObserver)
-
-NS_IMETHODIMP
-ParentIdleListener::Observe(nsISupports*, const char* aTopic,
-                            const char16_t* aData) {
-  mozilla::Unused << mParent->SendNotifyIdleObserver(
-      mObserver, nsDependentCString(aTopic), nsDependentString(aData));
-  return NS_OK;
-}
-
 bool ContentParent::HandleWindowsMessages(const Message& aMsg) const {
   MOZ_ASSERT(aMsg.is_sync());
 
@@ -5343,8 +5334,7 @@ mozilla::ipc::IPCResult ContentParent::RecvRecordDiscardedData(
 // PURLClassifierParent
 
 PURLClassifierParent* ContentParent::AllocPURLClassifierParent(
-    const Principal& aPrincipal, const bool& aUseTrackingProtection,
-    bool* aSuccess) {
+    const Principal& aPrincipal, bool* aSuccess) {
   MOZ_ASSERT(NS_IsMainThread());
 
   *aSuccess = true;
@@ -5353,8 +5343,7 @@ PURLClassifierParent* ContentParent::AllocPURLClassifierParent(
 }
 
 mozilla::ipc::IPCResult ContentParent::RecvPURLClassifierConstructor(
-    PURLClassifierParent* aActor, const Principal& aPrincipal,
-    const bool& aUseTrackingProtection, bool* aSuccess) {
+    PURLClassifierParent* aActor, const Principal& aPrincipal, bool* aSuccess) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aActor);
   *aSuccess = false;
@@ -5365,7 +5354,7 @@ mozilla::ipc::IPCResult ContentParent::RecvPURLClassifierConstructor(
     actor->ClassificationFailed();
     return IPC_OK();
   }
-  return actor->StartClassify(principal, aUseTrackingProtection, aSuccess);
+  return actor->StartClassify(principal, aSuccess);
 }
 
 bool ContentParent::DeallocPURLClassifierParent(PURLClassifierParent* aActor) {
@@ -5381,7 +5370,7 @@ bool ContentParent::DeallocPURLClassifierParent(PURLClassifierParent* aActor) {
 // PURLClassifierLocalParent
 
 PURLClassifierLocalParent* ContentParent::AllocPURLClassifierLocalParent(
-    const URIParams& aURI, const nsCString& aTables) {
+    const URIParams& aURI, const nsTArray<IPCURLClassifierFeature>& aFeatures) {
   MOZ_ASSERT(NS_IsMainThread());
 
   RefPtr<URLClassifierLocalParent> actor = new URLClassifierLocalParent();
@@ -5390,9 +5379,11 @@ PURLClassifierLocalParent* ContentParent::AllocPURLClassifierLocalParent(
 
 mozilla::ipc::IPCResult ContentParent::RecvPURLClassifierLocalConstructor(
     PURLClassifierLocalParent* aActor, const URIParams& aURI,
-    const nsCString& aTables) {
+    nsTArray<IPCURLClassifierFeature>&& aFeatures) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aActor);
+
+  nsTArray<IPCURLClassifierFeature> features = std::move(aFeatures);
 
   nsCOMPtr<nsIURI> uri = DeserializeURI(aURI);
   if (!uri) {
@@ -5401,7 +5392,7 @@ mozilla::ipc::IPCResult ContentParent::RecvPURLClassifierLocalConstructor(
   }
 
   auto* actor = static_cast<URLClassifierLocalParent*>(aActor);
-  return actor->StartClassify(uri, aTables);
+  return actor->StartClassify(uri, features);
 }
 
 bool ContentParent::DeallocPURLClassifierLocalParent(
@@ -5444,23 +5435,6 @@ bool ContentParent::DeallocPLoginReputationParent(
   RefPtr<LoginReputationParent> actor =
       dont_AddRef(static_cast<LoginReputationParent*>(aActor));
   return true;
-}
-
-mozilla::ipc::IPCResult ContentParent::RecvClassifyLocal(
-    const URIParams& aURI, const nsCString& aTables, nsresult* aRv,
-    nsTArray<nsCString>* aResults) {
-  MOZ_ASSERT(aResults);
-  nsCOMPtr<nsIURI> uri = DeserializeURI(aURI);
-  if (!uri) {
-    return IPC_FAIL_NO_REASON(this);
-  }
-  nsCOMPtr<nsIURIClassifier> uriClassifier =
-      do_GetService(NS_URICLASSIFIERSERVICE_CONTRACTID);
-  if (!uriClassifier) {
-    return IPC_FAIL_NO_REASON(this);
-  }
-  *aRv = uriClassifier->ClassifyLocalWithTables(uri, aTables, *aResults);
-  return IPC_OK();
 }
 
 mozilla::ipc::IPCResult ContentParent::RecvFileCreationRequest(
@@ -5737,6 +5711,22 @@ mozilla::ipc::IPCResult ContentParent::RecvSetOpenerBrowsingContext(
   return IPC_OK();
 }
 
+mozilla::ipc::IPCResult ContentParent::RecvSetUserGestureActivation(
+    const BrowsingContextId& aContextId, const bool& aNewValue) {
+  RefPtr<ChromeBrowsingContext> context =
+      ChromeBrowsingContext::Get(aContextId);
+
+  if (!context) {
+    MOZ_LOG(BrowsingContext::GetLog(), LogLevel::Debug,
+            ("ParentIPC: Trying to activate wrong context 0x%08" PRIx64,
+             (uint64_t)aContextId));
+    return IPC_OK();
+  }
+
+  context->NotifySetUserGestureActivationFromIPC(aNewValue);
+  return IPC_OK();
+}
+
 void ContentParent::RegisterRemoteWorkerActor() { ++mRemoteWorkerActors; }
 
 void ContentParent::UnregisterRemoveWorkerActor() {
@@ -5755,4 +5745,101 @@ void ContentParent::UnregisterRemoveWorkerActor() {
         "dom::ContentParent::ShutDownProcess", this,
         &ContentParent::ShutDownProcess, SEND_SHUTDOWN_MESSAGE));
   }
+}
+
+mozilla::ipc::IPCResult ContentParent::RecvWindowClose(
+    const BrowsingContextId& aContextId, const bool& aTrustedCaller) {
+  RefPtr<ChromeBrowsingContext> bc = ChromeBrowsingContext::Get(aContextId);
+  if (!bc) {
+    MOZ_LOG(BrowsingContext::GetLog(), LogLevel::Debug,
+            ("ParentIPC: Trying to send a message to dead or detached context "
+             "0x%08" PRIx64,
+             (uint64_t)aContextId));
+    return IPC_OK();
+  }
+
+  // FIXME Need to check that the sending process has access to the unit of
+  // related
+  //       browsing contexts of bc.
+
+  ContentProcessManager* cpm = ContentProcessManager::GetSingleton();
+  ContentParent* cp =
+      cpm->GetContentProcessById(ContentParentId(bc->OwnerProcessId()));
+  Unused << cp->SendWindowClose(aContextId, aTrustedCaller);
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult ContentParent::RecvWindowFocus(
+    const BrowsingContextId& aContextId) {
+  RefPtr<ChromeBrowsingContext> bc = ChromeBrowsingContext::Get(aContextId);
+  if (!bc) {
+    MOZ_LOG(BrowsingContext::GetLog(), LogLevel::Debug,
+            ("ParentIPC: Trying to send a message to dead or detached context "
+             "0x%08" PRIx64,
+             (uint64_t)aContextId));
+    return IPC_OK();
+  }
+
+  ContentProcessManager* cpm = ContentProcessManager::GetSingleton();
+  ContentParent* cp =
+      cpm->GetContentProcessById(ContentParentId(bc->OwnerProcessId()));
+  Unused << cp->SendWindowFocus(aContextId);
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult ContentParent::RecvWindowBlur(
+    const BrowsingContextId& aContextId) {
+  RefPtr<ChromeBrowsingContext> bc = ChromeBrowsingContext::Get(aContextId);
+  if (!bc) {
+    MOZ_LOG(BrowsingContext::GetLog(), LogLevel::Debug,
+            ("ParentIPC: Trying to send a message to dead or detached context "
+             "0x%08" PRIx64,
+             (uint64_t)aContextId));
+    return IPC_OK();
+  }
+
+  ContentProcessManager* cpm = ContentProcessManager::GetSingleton();
+  ContentParent* cp =
+      cpm->GetContentProcessById(ContentParentId(bc->OwnerProcessId()));
+  Unused << cp->SendWindowBlur(aContextId);
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult ContentParent::RecvWindowPostMessage(
+    const BrowsingContextId& aContextId, const ClonedMessageData& aMessage,
+    const PostMessageData& aData) {
+  RefPtr<ChromeBrowsingContext> bc = ChromeBrowsingContext::Get(aContextId);
+  if (!bc) {
+    MOZ_LOG(BrowsingContext::GetLog(), LogLevel::Debug,
+            ("ParentIPC: Trying to send a message to dead or detached context "
+             "0x%08" PRIx64,
+             (uint64_t)aContextId));
+    return IPC_OK();
+  }
+
+  ContentProcessManager* cpm = ContentProcessManager::GetSingleton();
+  ContentParent* cp =
+      cpm->GetContentProcessById(ContentParentId(bc->OwnerProcessId()));
+  StructuredCloneData messageFromChild;
+  UnpackClonedMessageDataForParent(aMessage, messageFromChild);
+  ClonedMessageData message;
+  if (!BuildClonedMessageDataForParent(cp, messageFromChild, message)) {
+    // FIXME Logging?
+    return IPC_OK();
+  }
+  Unused << cp->SendWindowPostMessage(aContextId, message, aData);
+  return IPC_OK();
+}
+
+}  // namespace dom
+}  // namespace mozilla
+
+NS_IMPL_ISUPPORTS(ParentIdleListener, nsIObserver)
+
+NS_IMETHODIMP
+ParentIdleListener::Observe(nsISupports*, const char* aTopic,
+                            const char16_t* aData) {
+  mozilla::Unused << mParent->SendNotifyIdleObserver(
+      mObserver, nsDependentCString(aTopic), nsDependentString(aData));
+  return NS_OK;
 }

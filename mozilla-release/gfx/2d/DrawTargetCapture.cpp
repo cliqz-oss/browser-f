@@ -10,6 +10,7 @@
 #include "gfxPlatform.h"
 #include "SourceSurfaceCapture.h"
 #include "FilterNodeCapture.h"
+#include "PathCapture.h"
 
 namespace mozilla {
 namespace gfx {
@@ -112,7 +113,9 @@ already_AddRefed<SourceSurface> DrawTargetCaptureImpl::OptimizeSourceSurface(
     RefPtr<SourceSurface> surface = aSurface;
     return surface.forget();
   }
-  return mRefDT->OptimizeSourceSurface(aSurface);
+  RefPtr<SourceSurfaceCapture> surface = new SourceSurfaceCapture(
+      const_cast<DrawTargetCaptureImpl*>(this), aSurface);
+  return surface.forget();
 }
 
 void DrawTargetCaptureImpl::DetachAllSnapshots() { MarkChanged(); }
@@ -186,6 +189,12 @@ void DrawTargetCaptureImpl::CopyRect(const IntRect& aSourceRect,
 void DrawTargetCaptureImpl::FillRect(const Rect& aRect, const Pattern& aPattern,
                                      const DrawOptions& aOptions) {
   AppendCommand(FillRectCommand)(aRect, aPattern, aOptions);
+}
+
+void DrawTargetCaptureImpl::FillRoundedRect(const RoundedRect& aRect,
+                                            const Pattern& aPattern,
+                                            const DrawOptions& aOptions) {
+  AppendCommand(FillRoundedRectCommand)(aRect, aPattern, aOptions);
 }
 
 void DrawTargetCaptureImpl::StrokeRect(const Rect& aRect,
@@ -330,6 +339,15 @@ RefPtr<DrawTarget> DrawTargetCaptureImpl::CreateSimilarRasterTarget(
     const IntSize& aSize, SurfaceFormat aFormat) const {
   MOZ_ASSERT(!mRefDT->IsCaptureDT());
   return mRefDT->CreateSimilarDrawTarget(aSize, aFormat);
+}
+
+already_AddRefed<PathBuilder> DrawTargetCaptureImpl::CreatePathBuilder(
+    FillRule aFillRule) const {
+  if (mRefDT->GetBackendType() == BackendType::DIRECT2D1_1) {
+    return MakeRefPtr<PathBuilderCapture>(aFillRule, mRefDT).forget();
+  }
+
+  return mRefDT->CreatePathBuilder(aFillRule);
 }
 
 already_AddRefed<FilterNode> DrawTargetCaptureImpl::CreateFilter(

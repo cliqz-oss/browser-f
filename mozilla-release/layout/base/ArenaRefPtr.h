@@ -12,8 +12,9 @@
 #include "mozilla/RefPtr.h"
 
 #ifndef mozilla_ArenaRefPtr_h
-#define mozilla_ArenaRefPtr_h
+#  define mozilla_ArenaRefPtr_h
 
+template <size_t ArenaSize>
 class nsPresArena;
 
 namespace mozilla {
@@ -46,6 +47,7 @@ namespace mozilla {
  */
 template <typename T>
 class ArenaRefPtr {
+  template <size_t ArenaSize>
   friend class ::nsPresArena;
 
  public:

@@ -95,6 +95,151 @@ const ActionSchemas = {
       },
     },
   },
+
+  "show-heartbeat": {
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "title": "Show a Heartbeat survey.",
+    "description": "This action shows a single survey.",
+
+    "type": "object",
+    "required": [
+      "surveyId",
+      "message",
+      "thanksMessage",
+      "postAnswerUrl",
+      "learnMoreMessage",
+      "learnMoreUrl",
+    ],
+    "properties": {
+      "repeatOption": {
+        "type": "string",
+        "enum": ["once", "xdays", "nag"],
+        "description": "Determines how often a prompt is shown executes.",
+        "default": "once",
+      },
+      "repeatEvery": {
+        "description": "For repeatOption=xdays, how often (in days) the prompt is displayed.",
+        "default": null,
+        "type": ["number", "null"],
+      },
+      "includeTelemetryUUID": {
+        "type": "boolean",
+        "description": "Include unique user ID in post-answer-url and Telemetry",
+        "default": false,
+      },
+      "surveyId": {
+        "type": "string",
+        "description": "Slug uniquely identifying this survey in telemetry",
+      },
+      "message": {
+        "description": "Message to show to the user",
+        "type": "string",
+      },
+      "engagementButtonLabel": {
+        "description": "Text for the engagement button. If specified, this button will be shown instead of rating stars.",
+        "default": null,
+        "type": ["string", "null"],
+      },
+      "thanksMessage": {
+        "description": "Thanks message to show to the user after they've rated Firefox",
+        "type": "string",
+      },
+      "postAnswerUrl": {
+        "description": "URL to redirect the user to after rating Firefox or clicking the engagement button",
+        "default": null,
+        "type": ["string", "null"],
+      },
+      "learnMoreMessage": {
+        "description": "Message to show to the user to learn more",
+        "default": null,
+        "type": ["string", "null"],
+      },
+      "learnMoreUrl": {
+        "description": "URL to show to the user when they click Learn More",
+        "default": null,
+        "type": ["string", "null"],
+      },
+    },
+  },
+
+  "preference-experiment": {
+    $schema: "http://json-schema.org/draft-04/schema#",
+    title: "Run a feature experiment activated by a preference.",
+    type: "object",
+    required: [
+      "slug",
+      "preferenceName",
+      "preferenceType",
+      "branches",
+    ],
+    properties: {
+      slug: {
+        description: "Unique identifier for this experiment",
+        type: "string",
+        pattern: "^[A-Za-z0-9\\-_]+$",
+      },
+      experimentDocumentUrl: {
+        description: "URL of a document describing the experiment",
+        type: "string",
+        format: "uri",
+        default: "",
+      },
+      preferenceName: {
+        description: "Full dotted-path of the preference that controls this experiment",
+        type: "string",
+      },
+      preferenceType: {
+        description: "Data type of the preference that controls this experiment",
+        type: "string",
+        enum: ["string", "integer", "boolean"],
+      },
+      preferenceBranchType: {
+        description: "Controls whether the default or user value of the preference is modified",
+        type: "string",
+        enum: ["user", "default"],
+        default: "default",
+      },
+      isHighPopulation: {
+        description: "Marks the preference experiment as a high population experiment, that should be excluded from certain types of telemetry",
+        type: "boolean",
+        default: "false",
+      },
+      isEnrollmentPaused: {
+        description: "If true, new users will not be enrolled in the study.",
+        type: "boolean",
+        default: false,
+      },
+      branches: {
+        description: "List of experimental branches",
+        type: "array",
+        minItems: 1,
+        items: {
+          type: "object",
+          required: [
+            "slug",
+            "value",
+            "ratio",
+          ],
+          properties: {
+            slug: {
+              description: "Unique identifier for this branch of the experiment",
+              type: "string",
+              pattern: "^[A-Za-z0-9\\-_]+$",
+            },
+            value: {
+              description: "Value to set the preference to for this branch",
+              type: ["string", "number", "boolean"],
+            },
+            ratio: {
+              description: "Ratio of users who should be grouped into this branch",
+              type: "integer",
+              minimum: 1,
+            },
+          },
+        },
+      },
+    },
+  },
 };
 
 // Legacy name used on Normandy server

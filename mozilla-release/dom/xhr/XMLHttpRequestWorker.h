@@ -176,11 +176,11 @@ class XMLHttpRequestWorker final : public XMLHttpRequest {
   virtual void GetResponseText(DOMString& aResponseText,
                                ErrorResult& aRv) override;
 
-  virtual nsIDocument* GetResponseXML(ErrorResult& aRv) override {
+  virtual Document* GetResponseXML(ErrorResult& aRv) override {
     MOZ_CRASH("This method should not be called.");
   }
 
-  virtual void GetInterface(JSContext* aCx, nsIJSID* aIID,
+  virtual void GetInterface(JSContext* aCx, JS::Handle<JS::Value> aIID,
                             JS::MutableHandle<JS::Value> aRetval,
                             ErrorResult& aRv) override {
     aRv.Throw(NS_ERROR_FAILURE);

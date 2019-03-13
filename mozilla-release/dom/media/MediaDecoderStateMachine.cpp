@@ -753,13 +753,15 @@ class MediaDecoderStateMachine::DecodingState
 class MediaDecoderStateMachine::LoopingDecodingState
     : public MediaDecoderStateMachine::DecodingState {
  public:
-  explicit LoopingDecodingState(Master* aPtr) : DecodingState(aPtr) {
+  explicit LoopingDecodingState(Master* aPtr)
+      : DecodingState(aPtr), mIsReachingAudioEOS(!mMaster->IsAudioDecoding()) {
     MOZ_ASSERT(mMaster->mLooping);
   }
 
   void Enter() {
-    if (!mMaster->IsAudioDecoding()) {
+    if (mIsReachingAudioEOS) {
       SLOG("audio has ended, request the data again.");
+      UpdatePlaybackPositionToZeroIfNeeded();
       RequestAudioDataFromStartPosition();
     }
     DecodingState::Enter();
@@ -794,6 +796,7 @@ class MediaDecoderStateMachine::LoopingDecodingState
   }
 
   void HandleEndOfAudio() override {
+    mIsReachingAudioEOS = true;
     // The data time in the audio queue is assumed to be increased linearly,
     // so we need to add the last ending time as the offset to correct the
     // audio data time in the next round when seamless looping is enabled.
@@ -828,6 +831,7 @@ class MediaDecoderStateMachine::LoopingDecodingState
                      ->RequestAudioData()
                      ->Then(OwnerThread(), __func__,
                             [this](RefPtr<AudioData> aAudio) {
+                              mIsReachingAudioEOS = false;
                               mAudioDataRequest.Complete();
                               SLOG(
                                   "got audio decoded sample "
@@ -847,6 +851,23 @@ class MediaDecoderStateMachine::LoopingDecodingState
                  HandleError(aReject.mError);
                })
         ->Track(mAudioSeekRequest);
+  }
+
+  void UpdatePlaybackPositionToZeroIfNeeded() {
+    MOZ_ASSERT(mIsReachingAudioEOS);
+    MOZ_ASSERT(mAudioLoopingOffset == media::TimeUnit::Zero());
+    // If we have already reached EOS before starting media sink, the sink
+    // has not started yet and the current position is larger than last decoded
+    // end time, that means we directly seeked to EOS and playback would start
+    // from the start position soon. Therefore, we should reset the position to
+    // 0s so that when media sink starts we can make it start from 0s, not from
+    // EOS position which would result in wrong estimation of decoded audio
+    // duration because decoded data's time which can't be adjusted as offset is
+    // zero would be always less than media sink time.
+    if (!mMaster->mMediaSink->IsStarted() &&
+        mMaster->mCurrentPosition.Ref() > mMaster->mDecodedAudioEndTime) {
+      mMaster->UpdatePlaybackPositionInternal(TimeUnit::Zero());
+    }
   }
 
   void HandleError(const MediaResult& aError);
@@ -909,6 +930,7 @@ class MediaDecoderStateMachine::LoopingDecodingState
            ShouldDiscardLoopedAudioData();
   }
 
+  bool mIsReachingAudioEOS;
   media::TimeUnit mAudioLoopingOffset = media::TimeUnit::Zero();
   MozPromiseRequestHolder<MediaFormatReader::SeekPromise> mAudioSeekRequest;
   MozPromiseRequestHolder<AudioDataPromise> mAudioDataRequest;
@@ -2696,7 +2718,7 @@ void MediaDecoderStateMachine::AudioAudibleChanged(bool aAudible) {
   mIsAudioDataAudible = aAudible;
 }
 
-media::MediaSink* MediaDecoderStateMachine::CreateAudioSink() {
+MediaSink* MediaDecoderStateMachine::CreateAudioSink() {
   RefPtr<MediaDecoderStateMachine> self = this;
   auto audioSinkCreator = [self]() {
     MOZ_ASSERT(self->OnTaskQueue());
@@ -2712,16 +2734,16 @@ media::MediaSink* MediaDecoderStateMachine::CreateAudioSink() {
   return new AudioSinkWrapper(mTaskQueue, mAudioQueue, audioSinkCreator);
 }
 
-already_AddRefed<media::MediaSink> MediaDecoderStateMachine::CreateMediaSink(
+already_AddRefed<MediaSink> MediaDecoderStateMachine::CreateMediaSink(
     bool aAudioCaptured, OutputStreamManager* aManager) {
   MOZ_ASSERT_IF(aAudioCaptured, aManager);
-  RefPtr<media::MediaSink> audioSink =
+  RefPtr<MediaSink> audioSink =
       aAudioCaptured
           ? new DecodedStream(mTaskQueue, mAbstractMainThread, mAudioQueue,
                               mVideoQueue, aManager, mSameOriginMedia.Ref())
           : CreateAudioSink();
 
-  RefPtr<media::MediaSink> mediaSink =
+  RefPtr<MediaSink> mediaSink =
       new VideoSink(mTaskQueue, audioSink, mVideoQueue, mVideoFrameContainer,
                     *mFrameStats, sVideoQueueSendToCompositorSize);
   return mediaSink.forget();
@@ -3063,8 +3085,8 @@ void MediaDecoderStateMachine::StopMediaSink() {
     mAudibleListener.DisconnectIfExists();
 
     mMediaSink->Stop();
-    mMediaSinkAudioPromise.DisconnectIfExists();
-    mMediaSinkVideoPromise.DisconnectIfExists();
+    mMediaSinkAudioEndedPromise.DisconnectIfExists();
+    mMediaSinkVideoEndedPromise.DisconnectIfExists();
   }
 }
 
@@ -3209,14 +3231,14 @@ nsresult MediaDecoderStateMachine::StartMediaSink() {
         ->Then(OwnerThread(), __func__, this,
                &MediaDecoderStateMachine::OnMediaSinkAudioComplete,
                &MediaDecoderStateMachine::OnMediaSinkAudioError)
-        ->Track(mMediaSinkAudioPromise);
+        ->Track(mMediaSinkAudioEndedPromise);
   }
   if (videoPromise) {
     videoPromise
         ->Then(OwnerThread(), __func__, this,
                &MediaDecoderStateMachine::OnMediaSinkVideoComplete,
                &MediaDecoderStateMachine::OnMediaSinkVideoError)
-        ->Track(mMediaSinkVideoPromise);
+        ->Track(mMediaSinkVideoEndedPromise);
   }
   // Remember the initial offset when playback starts. This will be used
   // to calculate the rate at which bytes are consumed as playback moves on.
@@ -3590,7 +3612,7 @@ void MediaDecoderStateMachine::OnMediaSinkVideoComplete() {
   MOZ_ASSERT(HasVideo());
   LOG("[%s]", __func__);
 
-  mMediaSinkVideoPromise.Complete();
+  mMediaSinkVideoEndedPromise.Complete();
   mVideoCompleted = true;
   ScheduleStateMachine();
 }
@@ -3600,7 +3622,7 @@ void MediaDecoderStateMachine::OnMediaSinkVideoError() {
   MOZ_ASSERT(HasVideo());
   LOGE("[%s]", __func__);
 
-  mMediaSinkVideoPromise.Complete();
+  mMediaSinkVideoEndedPromise.Complete();
   mVideoCompleted = true;
   if (HasAudio()) {
     return;
@@ -3613,7 +3635,7 @@ void MediaDecoderStateMachine::OnMediaSinkAudioComplete() {
   MOZ_ASSERT(HasAudio());
   LOG("[%s]", __func__);
 
-  mMediaSinkAudioPromise.Complete();
+  mMediaSinkAudioEndedPromise.Complete();
   mAudioCompleted = true;
   // To notify PlaybackEnded as soon as possible.
   ScheduleStateMachine();
@@ -3628,7 +3650,7 @@ void MediaDecoderStateMachine::OnMediaSinkAudioError(nsresult aResult) {
   MOZ_ASSERT(HasAudio());
   LOGE("[%s]", __func__);
 
-  mMediaSinkAudioPromise.Complete();
+  mMediaSinkAudioEndedPromise.Complete();
   mAudioCompleted = true;
 
   // Result should never be NS_OK in this *error* handler. Report to Dec-Doc.

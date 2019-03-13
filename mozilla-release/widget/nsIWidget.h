@@ -128,29 +128,29 @@ typedef void* nsNativeWidget;
 // XP code should use nsIWidget::GetNativeIMEContext() instead of using this.
 #define NS_RAW_NATIVE_IME_CONTEXT 14
 #ifdef XP_MACOSX
-#define NS_NATIVE_PLUGIN_PORT_QD 100
-#define NS_NATIVE_PLUGIN_PORT_CG 101
+#  define NS_NATIVE_PLUGIN_PORT_QD 100
+#  define NS_NATIVE_PLUGIN_PORT_CG 101
 #endif
 #ifdef XP_WIN
-#define NS_NATIVE_TSF_THREAD_MGR 100
-#define NS_NATIVE_TSF_CATEGORY_MGR 101
-#define NS_NATIVE_TSF_DISPLAY_ATTR_MGR 102
-#define NS_NATIVE_ICOREWINDOW 103  // winrt specific
-#define NS_NATIVE_CHILD_WINDOW 104
-#define NS_NATIVE_CHILD_OF_SHAREABLE_WINDOW 105
+#  define NS_NATIVE_TSF_THREAD_MGR 100
+#  define NS_NATIVE_TSF_CATEGORY_MGR 101
+#  define NS_NATIVE_TSF_DISPLAY_ATTR_MGR 102
+#  define NS_NATIVE_ICOREWINDOW 103  // winrt specific
+#  define NS_NATIVE_CHILD_WINDOW 104
+#  define NS_NATIVE_CHILD_OF_SHAREABLE_WINDOW 105
 #endif
 #if defined(MOZ_WIDGET_GTK)
 // set/get nsPluginNativeWindowGtk, e10s specific
-#define NS_NATIVE_PLUGIN_OBJECT_PTR 104
-#ifdef MOZ_X11
-#define NS_NATIVE_COMPOSITOR_DISPLAY 105
-#endif  // MOZ_X11
-#define NS_NATIVE_EGL_WINDOW 106
+#  define NS_NATIVE_PLUGIN_OBJECT_PTR 104
+#  ifdef MOZ_X11
+#    define NS_NATIVE_COMPOSITOR_DISPLAY 105
+#  endif  // MOZ_X11
+#  define NS_NATIVE_EGL_WINDOW 106
 #endif
 #ifdef MOZ_WIDGET_ANDROID
-#define NS_JAVA_SURFACE 100
-#define NS_PRESENTATION_WINDOW 101
-#define NS_PRESENTATION_SURFACE 102
+#  define NS_JAVA_SURFACE 100
+#  define NS_PRESENTATION_WINDOW 101
+#  define NS_PRESENTATION_SURFACE 102
 #endif
 
 // Must be kept in sync with xpcom/rust/xpcom/src/interfaces/nonidl.rs
@@ -934,13 +934,6 @@ class nsIWidget : public nsISupports {
   virtual void SetBackgroundColor(const nscolor& aColor) {}
 
   /**
-   * Set the cursor for this widget
-   *
-   * @param aCursor the new cursor for this widget
-   */
-  virtual void SetCursor(nsCursor aCursor) = 0;
-
-  /**
    * If a cursor type is currently cached locally for this widget, clear the
    * cached cursor to force an update on the next SetCursor call.
    */
@@ -948,16 +941,15 @@ class nsIWidget : public nsISupports {
   virtual void ClearCachedCursor() = 0;
 
   /**
-   * Sets an image as the cursor for this widget.
+   * Sets the cursor cursor for this widget.
    *
-   * @param aCursor the cursor to set
-   * @param aX the X coordinate of the hotspot (from left).
-   * @param aY the Y coordinate of the hotspot (from top).
-   * @retval NS_ERROR_NOT_IMPLEMENTED if setting images as cursors is not
-   *         supported
+   * @param aDefaultCursor the default cursor to be set
+   * @param aCursorImage a custom cursor, maybe null.
+   * @param aX the X coordinate of the hotspot for aCursorImage (from left).
+   * @param aY the Y coordinate of the hotspot for aCursorImage (from top).
    */
-  virtual nsresult SetCursor(imgIContainer* aCursor, uint32_t aHotspotX,
-                             uint32_t aHotspotY) = 0;
+  virtual void SetCursor(nsCursor aDefaultCursor, imgIContainer* aCursorImage,
+                         uint32_t aHotspotX, uint32_t aHotspotY) = 0;
 
   /**
    * Get the window type of this widget.
@@ -1460,12 +1452,6 @@ class nsIWidget : public nsISupports {
   virtual MOZ_MUST_USE nsresult BeginResizeDrag(mozilla::WidgetGUIEvent* aEvent,
                                                 int32_t aHorizontal,
                                                 int32_t aVertical) = 0;
-
-  /**
-   * Begin a window moving drag, based on the event passed in.
-   */
-  virtual MOZ_MUST_USE nsresult
-  BeginMoveDrag(mozilla::WidgetMouseEvent* aEvent) = 0;
 
   enum Modifiers {
     CAPS_LOCK = 0x00000001,  // when CapsLock is active

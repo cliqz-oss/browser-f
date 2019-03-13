@@ -4,9 +4,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/ArrayUtils.h"
-
 #include "mozilla/dom/SVGTextPositioningElement.h"
+
+#include "mozilla/ArrayUtils.h"
 #include "SVGAnimatedLengthList.h"
 #include "DOMSVGAnimatedLengthList.h"
 #include "DOMSVGAnimatedNumberList.h"
@@ -15,22 +15,22 @@
 namespace mozilla {
 namespace dom {
 
-nsSVGElement::LengthListInfo SVGTextPositioningElement::sLengthListInfo[4] = {
+SVGElement::LengthListInfo SVGTextPositioningElement::sLengthListInfo[4] = {
     {nsGkAtoms::x, SVGContentUtils::X, false},
     {nsGkAtoms::y, SVGContentUtils::Y, false},
     {nsGkAtoms::dx, SVGContentUtils::X, true},
     {nsGkAtoms::dy, SVGContentUtils::Y, true}};
 
-nsSVGElement::LengthListAttributesInfo
+SVGElement::LengthListAttributesInfo
 SVGTextPositioningElement::GetLengthListInfo() {
   return LengthListAttributesInfo(mLengthListAttributes, sLengthListInfo,
                                   ArrayLength(sLengthListInfo));
 }
 
-nsSVGElement::NumberListInfo SVGTextPositioningElement::sNumberListInfo[1] = {
+SVGElement::NumberListInfo SVGTextPositioningElement::sNumberListInfo[1] = {
     {nsGkAtoms::rotate}};
 
-nsSVGElement::NumberListAttributesInfo
+SVGElement::NumberListAttributesInfo
 SVGTextPositioningElement::GetNumberListInfo() {
   return NumberListAttributesInfo(mNumberListAttributes, sNumberListInfo,
                                   ArrayLength(sNumberListInfo));

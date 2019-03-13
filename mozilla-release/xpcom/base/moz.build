@@ -14,7 +14,6 @@ XPIDL_SOURCES += [
     'nsIException.idl',
     'nsIGZFileWriter.idl',
     'nsIInterfaceRequestor.idl',
-    'nsILoadURIDelegate.idl',
     'nsIMemory.idl',
     'nsIMemoryInfoDumper.idl',
     'nsIMemoryReporter.idl',
@@ -119,6 +118,7 @@ EXPORTS.mozilla += [
     'MemoryInfo.h',
     'MemoryMapping.h',
     'MemoryReportingProcess.h',
+    'MemoryTelemetry.h',
     'nsMemoryInfoDumper.h',
     'NSPRLogModulesParser.h',
     'OwningNonNull.h',
@@ -150,6 +150,7 @@ UNIFIED_SOURCES += [
     'LogCommandLineHandler.cpp',
     'Logging.cpp',
     'LogModulePrefWatcher.cpp',
+    'MemoryTelemetry.cpp',
     'nsClassInfoImpl.cpp',
     'nsCOMPtr.cpp',
     'nsConsoleMessage.cpp',
@@ -218,6 +219,7 @@ LOCAL_INCLUDES += [
     '../build',
     '/dom/base',
     '/mfbt',
+    '/netwerk/base',
     '/xpcom/ds',
 ]
 

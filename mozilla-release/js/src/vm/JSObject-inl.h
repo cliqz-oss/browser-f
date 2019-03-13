@@ -133,6 +133,7 @@ js::NativeObject::updateDictionaryListPointerAfterMinorGC(NativeObject* old) {
 /* static */ inline bool JSObject::setSingleton(JSContext* cx,
                                                 js::HandleObject obj) {
   MOZ_ASSERT(!IsInsideNursery(obj));
+  MOZ_ASSERT(!obj->isSingleton());
 
   js::ObjectGroup* group = js::ObjectGroup::lazySingletonGroup(
       cx, obj->group_, obj->getClass(), obj->taggedProto());
@@ -605,8 +606,6 @@ extern NativeObject* InitClass(JSContext* cx, HandleObject obj,
 
 MOZ_ALWAYS_INLINE const char* GetObjectClassName(JSContext* cx,
                                                  HandleObject obj) {
-  cx->check(obj);
-
   if (obj->is<ProxyObject>()) {
     return Proxy::className(cx, obj);
   }

@@ -339,8 +339,6 @@ class JSObject : public js::gc::Cell {
 
   js::TaggedProto taggedProto() const { return group_->proto(); }
 
-  bool hasTenuredProto() const;
-
   bool uninlinedIsProxy() const;
 
   JSObject* staticPrototype() const {
@@ -392,14 +390,7 @@ class JSObject : public js::gc::Cell {
 
   /* Set a new prototype for an object with a singleton type. */
   static bool splicePrototype(JSContext* cx, js::HandleObject obj,
-                              const js::Class* clasp,
                               js::Handle<js::TaggedProto> proto);
-
-  /*
-   * For bootstrapping, whether to splice a prototype for Function.prototype
-   * or the global object.
-   */
-  bool shouldSplicePrototype();
 
   /*
    * Environment chains.
@@ -435,15 +426,12 @@ class JSObject : public js::gc::Cell {
     MOZ_ASSERT(!js::UninlinedIsCrossCompartmentWrapper(this));
     return group_->realm();
   }
+  bool hasSameRealmAs(JSContext* cx) const;
 
   // Returns the object's realm even if the object is a CCW (be careful, in
   // this case the realm is not very meaningful because wrappers are shared by
   // all realms in the compartment).
   JS::Realm* maybeCCWRealm() const { return group_->realm(); }
-
-  // Deprecated: call nonCCWRealm(), maybeCCWRealm(), or NativeObject::realm()
-  // instead!
-  JS::Realm* deprecatedRealm() const { return group_->realm(); }
 
   /*
    * ES5 meta-object properties and operations.
@@ -490,8 +478,6 @@ class JSObject : public js::gc::Cell {
   void fixDictionaryShapeAfterSwap();
 
  public:
-  inline void initArrayClass();
-
   /*
    * In addition to the generic object interface provided by JSObject,
    * specific types of objects may provide additional operations. To access,
@@ -797,14 +783,35 @@ bool NewObjectWithTaggedProtoIsCachable(JSContext* cx,
 // ES6 9.1.15 GetPrototypeFromConstructor.
 extern bool GetPrototypeFromConstructor(JSContext* cx,
                                         js::HandleObject newTarget,
+                                        JSProtoKey intrinsicDefaultProto,
                                         js::MutableHandleObject proto);
 
+// https://tc39.github.io/ecma262/#sec-getprototypefromconstructor
+//
+// Determine which [[Prototype]] to use when creating a new object using a
+// builtin constructor.
+//
+// This sets `proto` to `nullptr` to mean "the builtin prototype object for
+// this type in the current realm", the common case.
+//
+// We could set it to `cx->global()->getOrCreatePrototype(protoKey)`, but
+// nullptr gets a fast path in e.g. js::NewObjectWithClassProtoCommon.
+//
+// intrinsicDefaultProto can be JSProto_Null if there's no appropriate
+// JSProtoKey enum; but we then select the wrong prototype object in a
+// multi-realm corner case (see bug 1515167).
 MOZ_ALWAYS_INLINE bool GetPrototypeFromBuiltinConstructor(
-    JSContext* cx, const CallArgs& args, js::MutableHandleObject proto) {
-  // When proto is set to nullptr, the caller is expected to select the
-  // correct default built-in prototype for this constructor.
+    JSContext* cx, const CallArgs& args, JSProtoKey intrinsicDefaultProto,
+    js::MutableHandleObject proto) {
+  // We can skip the "prototype" lookup in the two common cases:
+  // 1.  Builtin constructor called without `new`, as in `obj = Object();`.
+  // 2.  Builtin constructor called with `new`, as in `obj = new Object();`.
+  //
+  // Cases that can't take the fast path include `new MySubclassOfObject()`,
+  // `new otherGlobal.Object()`, and `Reflect.construct(Object, [], Date)`.
   if (!args.isConstructing() ||
       &args.newTarget().toObject() == &args.callee()) {
+    MOZ_ASSERT(args.callee().hasSameRealmAs(cx));
     proto.set(nullptr);
     return true;
   }
@@ -812,7 +819,8 @@ MOZ_ALWAYS_INLINE bool GetPrototypeFromBuiltinConstructor(
   // We're calling this constructor from a derived class, retrieve the
   // actual prototype from newTarget.
   RootedObject newTarget(cx, &args.newTarget().toObject());
-  return GetPrototypeFromConstructor(cx, newTarget, proto);
+  return GetPrototypeFromConstructor(cx, newTarget, intrinsicDefaultProto,
+                                     proto);
 }
 
 // Specialized call for constructing |this| with a known function callee,

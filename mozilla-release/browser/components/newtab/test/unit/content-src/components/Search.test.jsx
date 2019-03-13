@@ -73,4 +73,67 @@ describe("<Search>", () => {
     assert.isUserEventAction(action);
     assert.propertyVal(action.data, "event", "SEARCH");
   });
+
+  describe("Search Hand-off", () => {
+    it("should render a Search element when hand-off is enabled", () => {
+      const wrapper = shallowWithIntl(<Search {...DEFAULT_PROPS} handoffEnabled={true} />);
+      assert.ok(wrapper.exists());
+      assert.equal(wrapper.find(".search-handoff-button").length, 1);
+    });
+    it("should hand-off search when button is clicked", () => {
+      const dispatch = sinon.spy();
+      const wrapper = shallowWithIntl(<Search {...DEFAULT_PROPS} handoffEnabled={true} dispatch={dispatch} />);
+      wrapper.find(".search-handoff-button").simulate("click", {preventDefault: () => {}});
+      assert.calledThrice(dispatch);
+      assert.calledWith(dispatch, {
+        data: {text: undefined},
+        meta: {from: "ActivityStream:Content", skipLocal: true, to: "ActivityStream:Main"},
+        type: "HANDOFF_SEARCH_TO_AWESOMEBAR",
+      });
+      assert.calledWith(dispatch, {type: "FAKE_FOCUS_SEARCH"});
+      const [action] = dispatch.thirdCall.args;
+      assert.isUserEventAction(action);
+      assert.propertyVal(action.data, "event", "SEARCH_HANDOFF");
+    });
+    it("should hand-off search on paste", () => {
+      const dispatch = sinon.spy();
+      const wrapper = mountWithIntl(<Search {...DEFAULT_PROPS} handoffEnabled={true} dispatch={dispatch} />);
+      wrapper.instance()._searchHandoffButton = {contains: () => true};
+      wrapper.instance().onSearchHandoffPaste({
+        clipboardData: {
+          getData: () => "some copied text",
+        },
+        preventDefault: () => {},
+      });
+      assert.equal(dispatch.callCount, 4);
+      assert.calledWith(dispatch, {
+        data: {text: "some copied text"},
+        meta: {from: "ActivityStream:Content", skipLocal: true, to: "ActivityStream:Main"},
+        type: "HANDOFF_SEARCH_TO_AWESOMEBAR",
+      });
+      assert.calledWith(dispatch, {type: "HIDE_SEARCH"});
+      const [action] = dispatch.thirdCall.args;
+      assert.isUserEventAction(action);
+      assert.propertyVal(action.data, "event", "SEARCH_HANDOFF");
+    });
+    it("should properly handle drop events", () => {
+      const dispatch = sinon.spy();
+      const wrapper = mountWithIntl(<Search {...DEFAULT_PROPS} handoffEnabled={true} dispatch={dispatch} />);
+      const preventDefault = sinon.spy();
+      wrapper.find(".fake-editable").simulate("drop", {
+        dataTransfer: {getData: () => "dropped text"},
+        preventDefault,
+      });
+      assert.equal(dispatch.callCount, 4);
+      assert.calledWith(dispatch, {
+        data: {text: "dropped text"},
+        meta: {from: "ActivityStream:Content", skipLocal: true, to: "ActivityStream:Main"},
+        type: "HANDOFF_SEARCH_TO_AWESOMEBAR",
+      });
+      assert.calledWith(dispatch, {type: "HIDE_SEARCH"});
+      const [action] = dispatch.thirdCall.args;
+      assert.isUserEventAction(action);
+      assert.propertyVal(action.data, "event", "SEARCH_HANDOFF");
+    });
+  });
 });

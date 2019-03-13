@@ -12,14 +12,14 @@
 #include "mozilla/dom/EventTarget.h"
 #include "mozilla/dom/EventTargetBinding.h"
 #include "nsPresContext.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 
 #define ONCHANGE_STRING NS_LITERAL_STRING("change")
 
 namespace mozilla {
 namespace dom {
 
-MediaQueryList::MediaQueryList(nsIDocument* aDocument,
+MediaQueryList::MediaQueryList(Document* aDocument,
                                const nsAString& aMediaQueryList,
                                CallerType aCallerType)
     : DOMEventTargetHelper(aDocument->GetInnerWindow()),
@@ -143,7 +143,9 @@ void MediaQueryList::RecomputeMatches() {
   mMatchesValid = true;
 }
 
-nsISupports* MediaQueryList::GetParentObject() const { return mDocument; }
+nsISupports* MediaQueryList::GetParentObject() const {
+  return ToSupports(mDocument);
+}
 
 JSObject* MediaQueryList::WrapObject(JSContext* aCx,
                                      JS::Handle<JSObject*> aGivenProto) {

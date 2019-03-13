@@ -24,6 +24,7 @@
 #include "mozilla/PluginLibrary.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/WeakPtr.h"
+#include "mozilla/dom/PopupBlocker.h"
 
 class nsPluginStreamListenerPeer;   // browser-initiated stream class
 class nsNPAPIPluginStreamListener;  // plugin-initiated stream class
@@ -42,12 +43,12 @@ const NPDrawingModel kDefaultDrawingModel = NPDrawingModelSyncWin;
 #elif defined(MOZ_X11)
 const NPDrawingModel kDefaultDrawingModel = NPDrawingModelSyncX;
 #elif defined(XP_MACOSX)
-#ifndef NP_NO_QUICKDRAW
+#  ifndef NP_NO_QUICKDRAW
 const NPDrawingModel kDefaultDrawingModel =
     NPDrawingModelQuickDraw;  // Not supported
-#else
+#  else
 const NPDrawingModel kDefaultDrawingModel = NPDrawingModelCoreGraphics;
-#endif
+#  endif
 #else
 const NPDrawingModel kDefaultDrawingModel = static_cast<NPDrawingModel>(0);
 #endif
@@ -269,7 +270,7 @@ class nsNPAPIPluginInstance final
 
   nsTArray<nsPluginStreamListenerPeer*> mFileCachedStreamListeners;
 
-  nsTArray<PopupControlState> mPopupStates;
+  nsTArray<mozilla::dom::PopupBlocker::PopupControlState> mPopupStates;
 
   char* mMIMEType;
 

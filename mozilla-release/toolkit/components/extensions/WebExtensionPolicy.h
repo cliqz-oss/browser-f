@@ -9,6 +9,7 @@
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/Nullable.h"
 #include "mozilla/dom/WebExtensionPolicyBinding.h"
+#include "mozilla/dom/WindowProxyHolder.h"
 #include "mozilla/extensions/MatchPattern.h"
 
 #include "jspubtd.h"
@@ -21,6 +22,10 @@
 #include "nsWrapperCache.h"
 
 namespace mozilla {
+namespace dom {
+class Promise;
+}  // namespace dom
+
 namespace extensions {
 
 using dom::WebExtensionInit;
@@ -121,6 +126,18 @@ class WebExtensionPolicy final : public nsISupports,
   bool Active() const { return mActive; }
   void SetActive(bool aActive, ErrorResult& aRv);
 
+  bool PrivateBrowsingAllowed() const { return mPrivateBrowsingAllowed; }
+  void SetPrivateBrowsingAllowed(bool aPrivateBrowsingAllowed) {
+    mPrivateBrowsingAllowed = aPrivateBrowsingAllowed;
+  };
+
+  bool CanAccessContext(nsILoadContext* aContext) const;
+
+  bool CanAccessWindow(const dom::WindowProxyHolder& aWindow) const;
+
+  void GetReadyPromise(JSContext* aCx, JS::MutableHandleObject aResult) const;
+  dom::Promise* ReadyPromise() const { return mReadyPromise; }
+
   static void GetActiveExtensions(
       dom::GlobalObject& aGlobal,
       nsTArray<RefPtr<WebExtensionPolicy>>& aResults);
@@ -173,9 +190,13 @@ class WebExtensionPolicy final : public nsISupports,
   RefPtr<MatchPatternSet> mHostPermissions;
   MatchGlobSet mWebAccessiblePaths;
 
+  bool mPrivateBrowsingAllowed = false;
+
   dom::Nullable<nsTArray<nsString>> mBackgroundScripts;
 
   nsTArray<RefPtr<WebExtensionContentScript>> mContentScripts;
+
+  RefPtr<dom::Promise> mReadyPromise;
 };
 
 }  // namespace extensions

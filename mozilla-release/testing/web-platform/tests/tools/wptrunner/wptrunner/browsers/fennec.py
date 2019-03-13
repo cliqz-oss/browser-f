@@ -1,15 +1,12 @@
 import os
-import signal
-import sys
 import tempfile
-import traceback
 
 import moznetwork
 from mozprocess import ProcessHandler
 from mozprofile import FirefoxProfile
 from mozrunner import FennecEmulatorRunner
 
-from serve.serve import make_hosts_file
+from tools.serve.serve import make_hosts_file
 
 from .base import (get_free_port,
                    cmd_arg,
@@ -32,7 +29,9 @@ __wptrunner__ = {"product": "fennec",
                  "env_extras": "env_extras",
                  "env_options": "env_options",
                  "run_info_extras": "run_info_extras",
-                 "update_properties": "update_properties"}
+                 "update_properties": "update_properties",
+                 "timeout_multiplier": "get_timeout_multiplier"}
+
 
 
 def check_args(**kwargs):
@@ -152,7 +151,7 @@ class FennecBrowser(FirefoxBrowser):
                                           "apz.allow_zooming": False,
                                           "android.widget_paints_background": False,
                                           # Ensure that scrollbars are always painted
-                                          "ui.scrollbarFadeBeginDelay": 100000})
+                                          "layout.testing.overlay-scrollbars.always-visible": True})
 
         if self.install_fonts:
             self.logger.debug("Copying Ahem font to profile")

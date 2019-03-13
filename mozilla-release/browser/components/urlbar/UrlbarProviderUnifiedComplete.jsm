@@ -16,7 +16,8 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 XPCOMUtils.defineLazyModuleGetters(this, {
   Log: "resource://gre/modules/Log.jsm",
   PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
-  UrlbarMatch: "resource:///modules/UrlbarMatch.jsm",
+  UrlbarProvider: "resource:///modules/UrlbarUtils.jsm",
+  UrlbarResult: "resource:///modules/UrlbarResult.jsm",
   UrlbarUtils: "resource:///modules/UrlbarUtils.jsm",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
 });
@@ -34,8 +35,9 @@ const TITLE_TAGS_SEPARATOR = " \u2013 ";
 /**
  * Class used to create the provider.
  */
-class ProviderUnifiedComplete {
+class ProviderUnifiedComplete extends UrlbarProvider {
   constructor() {
+    super();
     // Maps the running queries by queryContext.
     this.queries = new Map();
   }
@@ -62,7 +64,12 @@ class ProviderUnifiedComplete {
    */
   get sources() {
     return [
+      UrlbarUtils.MATCH_SOURCE.BOOKMARKS,
+      UrlbarUtils.MATCH_SOURCE.HISTORY,
+      UrlbarUtils.MATCH_SOURCE.SEARCH,
       UrlbarUtils.MATCH_SOURCE.TABS,
+      UrlbarUtils.MATCH_SOURCE.OTHER_LOCAL,
+      UrlbarUtils.MATCH_SOURCE.OTHER_NETWORK,
     ];
   }
 
@@ -83,8 +90,17 @@ class ProviderUnifiedComplete {
     //  * "disable-private-actions": set for private windows, if not in permanent
     //    private browsing mode. ()
     //  * "private-window": the search is taking place in a private window.
+    //  * "prohibit-autofill": disable autofill, i.e., the first (heuristic)
+    //    result should never be an autofill result.
     //  * "user-context-id:#": the userContextId to use.
     let params = ["enable-actions"];
+    params.push(`max-results:${queryContext.maxResults}`);
+    // This is necessary because we insert matches one by one, thus we don't
+    // want UnifiedComplete to reuse results.
+    params.push(`insert-method:${UrlbarUtils.INSERTMETHOD.APPEND}`);
+    // The Quantum Bar has its own telemetry measurement, thus disable old
+    // telemetry logged by UnifiedComplete.
+    params.push("disable-telemetry");
     if (queryContext.isPrivate) {
       params.push("private-window");
       if (!PrivateBrowsingUtils.permanentPrivateBrowsing) {
@@ -94,6 +110,9 @@ class ProviderUnifiedComplete {
     if (queryContext.userContextId) {
       params.push(`user-context-id:${queryContext.userContextId}}`);
     }
+    if (!queryContext.enableAutofill) {
+      params.push("prohibit-autofill");
+    }
 
     let urls = new Set();
     await new Promise(resolve => {
@@ -101,7 +120,7 @@ class ProviderUnifiedComplete {
         onSearchResult(_, result) {
           let {done, matches} = convertResultToMatches(queryContext, result, urls);
           for (let match of matches) {
-            addCallback(this, match);
+            addCallback(UrlbarProviderUnifiedComplete, match);
           }
           if (done) {
             resolve();
@@ -140,7 +159,7 @@ var UrlbarProviderUnifiedComplete = new ProviderUnifiedComplete();
  * In any case at least we're sure there's just one heuristic result and it
  * comes first.
  *
- * @param {object} context the QueryContext
+ * @param {UrlbarQueryContext} context the query context.
  * @param {object} result an nsIAutocompleteResult
  * @param {set} urls a Set containing all the found urls, used to discard
  *        already added matches.
@@ -165,9 +184,9 @@ function convertResultToMatches(context, result, urls) {
       continue;
     }
     urls.add(url);
-    // Not used yet: result.getValueAt(i), result.getLabelAt(i)
+    // Not used yet: result.getLabelAt(i)
     let style = result.getStyleAt(i);
-    let match = makeUrlbarMatch({
+    let match = makeUrlbarResult(context.tokens, {
       url,
       icon: result.getImageAt(i),
       style,
@@ -179,10 +198,10 @@ function convertResultToMatches(context, result, urls) {
       continue;
     }
     matches.push(match);
-    // Manage autofill and preselected properties for the first match.
-    if (i == 0 && result.defaultIndex == 0) {
-      if (style.includes("autofill")) {
-        context.autofill = true;
+    // Manage autofillValue and preselected properties for the first match.
+    if (i == 0) {
+      if (style.includes("autofill") && result.defaultIndex == 0) {
+        context.autofillValue = result.getValueAt(i);
       }
       if (style.includes("heuristic")) {
         context.preselected = true;
@@ -193,109 +212,127 @@ function convertResultToMatches(context, result, urls) {
 }
 
 /**
- * Creates a new UrlbarMatch from the provided data.
+ * Creates a new UrlbarResult from the provided data.
+ * @param {array} tokens the search tokens.
  * @param {object} info includes properties from the legacy match.
- * @returns {object} an UrlbarMatch
+ * @returns {object} an UrlbarResult
  */
-function makeUrlbarMatch(info) {
+function makeUrlbarResult(tokens, info) {
   let action = PlacesUtils.parseActionUrl(info.url);
   if (action) {
     switch (action.type) {
       case "searchengine":
-        return new UrlbarMatch(
-          UrlbarUtils.MATCH_TYPE.SEARCH,
+        return new UrlbarResult(
+          UrlbarUtils.RESULT_TYPE.SEARCH,
           UrlbarUtils.MATCH_SOURCE.SEARCH,
-          {
-            engine: action.params.engineName,
-            suggestion: action.params.searchSuggestion,
-            keyword: action.params.alias,
-            query: action.params.searchQuery,
-            icon: info.icon,
-          }
+          ...UrlbarResult.payloadAndSimpleHighlights(tokens, {
+            engine: [action.params.engineName, true],
+            suggestion: [action.params.searchSuggestion, true],
+            keyword: [action.params.alias, true],
+            query: [action.params.searchQuery, true],
+            icon: [info.icon, false],
+          })
         );
       case "keyword":
-        return new UrlbarMatch(
-          UrlbarUtils.MATCH_TYPE.KEYWORD,
+        return new UrlbarResult(
+          UrlbarUtils.RESULT_TYPE.KEYWORD,
           UrlbarUtils.MATCH_SOURCE.BOOKMARKS,
-          {
-            url: action.params.url,
-            keyword: info.firstToken,
-            postData: action.params.postData,
-            icon: info.icon,
-          }
+          ...UrlbarResult.payloadAndSimpleHighlights(tokens, {
+            url: [action.params.url, true],
+            keyword: [info.firstToken, true],
+            postData: [action.params.postData, false],
+            icon: [info.icon, false],
+          })
         );
       case "extension":
-        return new UrlbarMatch(
-          UrlbarUtils.MATCH_TYPE.OMNIBOX,
+        return new UrlbarResult(
+          UrlbarUtils.RESULT_TYPE.OMNIBOX,
           UrlbarUtils.MATCH_SOURCE.OTHER_NETWORK,
-          {
-            title: info.comment,
-            content: action.params.content,
-            keyword: action.params.keyword,
-            icon: info.icon,
-          }
+          ...UrlbarResult.payloadAndSimpleHighlights(tokens, {
+            title: [info.comment, true],
+            content: [action.params.content, true],
+            keyword: [action.params.keyword, true],
+            icon: [info.icon, false],
+          })
         );
       case "remotetab":
-        return new UrlbarMatch(
-          UrlbarUtils.MATCH_TYPE.REMOTE_TAB,
+        return new UrlbarResult(
+          UrlbarUtils.RESULT_TYPE.REMOTE_TAB,
           UrlbarUtils.MATCH_SOURCE.TABS,
-          {
-            url: action.params.url,
-            title: info.comment,
-            device: action.params.deviceName,
-            icon: info.icon,
-          }
+          ...UrlbarResult.payloadAndSimpleHighlights(tokens, {
+            url: [action.params.url, true],
+            title: [info.comment, true],
+            device: [action.params.deviceName, true],
+            icon: [info.icon, false],
+          })
+        );
+      case "switchtab":
+        return new UrlbarResult(
+          UrlbarUtils.RESULT_TYPE.TAB_SWITCH,
+          UrlbarUtils.MATCH_SOURCE.TABS,
+          ...UrlbarResult.payloadAndSimpleHighlights(tokens, {
+            url: [action.params.url, true],
+            title: [info.comment, true],
+            device: [action.params.deviceName, true],
+            icon: [info.icon, false],
+          })
         );
       case "visiturl":
-        return new UrlbarMatch(
-          UrlbarUtils.MATCH_TYPE.URL,
+        return new UrlbarResult(
+          UrlbarUtils.RESULT_TYPE.URL,
           UrlbarUtils.MATCH_SOURCE.OTHER_LOCAL,
-          {
-            title: info.comment,
-            url: action.params.url,
-            icon: info.icon,
-          }
+          ...UrlbarResult.payloadAndSimpleHighlights(tokens, {
+            title: [info.comment, true],
+            url: [action.params.url, true],
+            icon: [info.icon, false],
+          })
         );
       default:
-        Cu.reportError("Unexpected action type");
+        Cu.reportError(`Unexpected action type: ${action.type}`);
         return null;
     }
   }
 
   if (info.style.includes("priority-search")) {
-    return new UrlbarMatch(
-      UrlbarUtils.MATCH_TYPE.SEARCH,
+    return new UrlbarResult(
+      UrlbarUtils.RESULT_TYPE.SEARCH,
       UrlbarUtils.MATCH_SOURCE.SEARCH,
-      {
-        engine: info.comment,
-        icon: info.icon,
-      }
+      ...UrlbarResult.payloadAndSimpleHighlights(tokens, {
+        engine: [info.comment, true],
+        icon: [info.icon, false],
+      })
     );
   }
 
   // This is a normal url/title tuple.
-  let source, tags, comment;
+  let source;
+  let tags = [];
+  let comment = info.comment;
   let hasTags = info.style.includes("tag");
   if (info.style.includes("bookmark") || hasTags) {
     source = UrlbarUtils.MATCH_SOURCE.BOOKMARKS;
-    if (info.style.includes("tag")) {
+    if (hasTags) {
       // Split title and tags.
       [comment, tags] = info.comment.split(TITLE_TAGS_SEPARATOR);
-      tags = tags.split(",").map(t => t.trim());
+      // Tags are separated by a comma and in a random order.
+      // We should also just include tags that match the searchString.
+      tags = tags.split(",").map(t => t.trim()).filter(tag => {
+        return tokens.some(token => tag.includes(token.value));
+      }).sort();
     }
   } else if (info.style.includes("preloaded-top-sites")) {
     source = UrlbarUtils.MATCH_SOURCE.OTHER_LOCAL;
   } else {
     source = UrlbarUtils.MATCH_SOURCE.HISTORY;
   }
-  return new UrlbarMatch(
-    UrlbarUtils.MATCH_TYPE.URL,
+  return new UrlbarResult(
+    UrlbarUtils.RESULT_TYPE.URL,
     source,
-    {
-      url: info.url,
-      icon: info.icon,
-      title: comment,
-      tags,
-    }
+    ...UrlbarResult.payloadAndSimpleHighlights(tokens, {
+      url: [info.url, true],
+      icon: [info.icon, false],
+      title: [comment, true],
+      tags: [tags, true],
+    })
   );
 }

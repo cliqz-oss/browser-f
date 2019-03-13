@@ -56,18 +56,19 @@ mozilla::LazyLogModule gStorageLog("mozStorage");
 // Checks that the protected code is running on the main-thread only if the
 // connection was also opened on it.
 #ifdef DEBUG
-#define CHECK_MAINTHREAD_ABUSE()                                              \
-  do {                                                                        \
-    nsCOMPtr<nsIThread> mainThread = do_GetMainThread();                      \
-    NS_WARNING_ASSERTION(threadOpenedOn == mainThread || !NS_IsMainThread(),  \
-                         "Using Storage synchronous API on main-thread, but " \
-                         "the connection was "                                \
-                         "opened on another thread.");                        \
-  } while (0)
+#  define CHECK_MAINTHREAD_ABUSE()                             \
+    do {                                                       \
+      nsCOMPtr<nsIThread> mainThread = do_GetMainThread();     \
+      NS_WARNING_ASSERTION(                                    \
+          threadOpenedOn == mainThread || !NS_IsMainThread(),  \
+          "Using Storage synchronous API on main-thread, but " \
+          "the connection was "                                \
+          "opened on another thread.");                        \
+    } while (0)
 #else
-#define CHECK_MAINTHREAD_ABUSE() \
-  do { /* Nothing */             \
-  } while (0)
+#  define CHECK_MAINTHREAD_ABUSE() \
+    do { /* Nothing */             \
+    } while (0)
 #endif
 
 namespace mozilla {
@@ -602,6 +603,13 @@ nsresult Connection::initialize() {
     return convertResultCode(srv);
   }
 
+#ifdef MOZ_SQLITE_FTS3_TOKENIZER
+  srv =
+      ::sqlite3_db_config(mDBConn, SQLITE_DBCONFIG_ENABLE_FTS3_TOKENIZER, 1, 0);
+  MOZ_ASSERT(srv == SQLITE_OK,
+             "SQLITE_DBCONFIG_ENABLE_FTS3_TOKENIZER should be enabled");
+#endif
+
   // Do not set mDatabaseFile or mFileURL here since this is a "memory"
   // database.
 
@@ -636,6 +644,13 @@ nsresult Connection::initialize(nsIFile *aDatabaseFile) {
     return convertResultCode(srv);
   }
 
+#ifdef MOZ_SQLITE_FTS3_TOKENIZER
+  srv =
+      ::sqlite3_db_config(mDBConn, SQLITE_DBCONFIG_ENABLE_FTS3_TOKENIZER, 1, 0);
+  MOZ_ASSERT(srv == SQLITE_OK,
+             "SQLITE_DBCONFIG_ENABLE_FTS3_TOKENIZER should be enabled");
+#endif
+
   // Do not set mFileURL here since this is database does not have an associated
   // URL.
   mDatabaseFile = aDatabaseFile;
@@ -664,6 +679,13 @@ nsresult Connection::initialize(nsIFileURL *aFileURL) {
     mDBConn = nullptr;
     return convertResultCode(srv);
   }
+
+#ifdef MOZ_SQLITE_FTS3_TOKENIZER
+  srv =
+      ::sqlite3_db_config(mDBConn, SQLITE_DBCONFIG_ENABLE_FTS3_TOKENIZER, 1, 0);
+  MOZ_ASSERT(srv == SQLITE_OK,
+             "SQLITE_DBCONFIG_ENABLE_FTS3_TOKENIZER should be enabled");
+#endif
 
   // Set both mDatabaseFile and mFileURL here.
   mFileURL = aFileURL;

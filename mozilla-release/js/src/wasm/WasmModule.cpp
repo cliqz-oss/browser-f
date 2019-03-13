@@ -23,10 +23,13 @@
 
 #include "builtin/TypedObject.h"
 #include "jit/JitOptions.h"
+#include "js/BuildId.h"  // JS::BuildIdCharVector
 #include "threading/LockGuard.h"
 #include "util/NSPR.h"
+#include "wasm/WasmBaselineCompile.h"
 #include "wasm/WasmCompile.h"
 #include "wasm/WasmInstance.h"
+#include "wasm/WasmIonCompile.h"
 #include "wasm/WasmJS.h"
 #include "wasm/WasmSerialize.h"
 
@@ -129,12 +132,10 @@ bool Module::finishTier2(const LinkData& linkData2,
       }
     }
 
-    HasGcTypes gcTypesConfigured = code().metadata().temporaryGcTypesConfigured;
     const CodeTier& tier2 = code().codeTier(Tier::Optimized);
 
     Maybe<size_t> stub2Index;
-    if (!stubs2->createTier2(gcTypesConfigured, funcExportIndices, tier2,
-                             &stub2Index)) {
+    if (!stubs2->createTier2(funcExportIndices, tier2, &stub2Index)) {
       return false;
     }
 
@@ -385,6 +386,12 @@ static UniqueMapping MapFile(PRFileDesc* file, PRFileInfo* info) {
 RefPtr<JS::WasmModule> wasm::DeserializeModule(PRFileDesc* bytecodeFile,
                                                UniqueChars filename,
                                                unsigned line) {
+  // We have to compile new code here so if we're fundamentally unable to
+  // compile, we have to fail.
+  if (!BaselineCanCompile() && !IonCanCompile()) {
+    return nullptr;
+  }
+
   PRFileInfo bytecodeInfo;
   UniqueMapping bytecodeMapping = MapFile(bytecodeFile, &bytecodeInfo);
   if (!bytecodeMapping) {
@@ -408,17 +415,18 @@ RefPtr<JS::WasmModule> wasm::DeserializeModule(PRFileDesc* bytecodeFile,
     return nullptr;
   }
 
-  // The true answer to whether shared memory is enabled is provided by
-  // cx->realm()->creationOptions().getSharedMemoryAndAtomicsEnabled()
-  // where cx is the context that originated the call that caused this
-  // deserialization attempt to happen.  We don't have that context here, so
-  // we assume that shared memory is enabled; we will catch a wrong assumption
-  // later, during instantiation.
+  // The true answer to whether various flags are enabled is provided by
+  // the JSContext that originated the call that caused this deserialization
+  // attempt to happen. We don't have that context here, so we assume that
+  // shared memory is enabled; we will catch a wrong assumption later, during
+  // instantiation.
   //
   // (We would prefer to store this value with the Assumptions when
   // serializing, and for the caller of the deserialization machinery to
   // provide the value from the originating context.)
 
+  args->ionEnabled = true;
+  args->baselineEnabled = true;
   args->sharedMemoryEnabled = true;
 
   UniqueChars error;
@@ -1150,9 +1158,12 @@ static bool MakeStructField(JSContext* cx, const ValType& v, bool isMutable,
                                                    Scalar::Float64);
       break;
     case ValType::Ref:
-    case ValType::AnyRef:
       t = GlobalObject::getOrCreateReferenceTypeDescr(
           cx, cx->global(), ReferenceType::TYPE_OBJECT);
+      break;
+    case ValType::AnyRef:
+      t = GlobalObject::getOrCreateReferenceTypeDescr(
+          cx, cx->global(), ReferenceType::TYPE_WASM_ANYREF);
       break;
     default:
       MOZ_CRASH("Bad field type");
@@ -1187,9 +1198,9 @@ bool Module::makeStructTypeDescrs(
   MOZ_CRASH("Should not have seen any struct types");
 #else
 
-#ifndef ENABLE_BINARYDATA
-#error "GC types require TypedObject"
-#endif
+#  ifndef ENABLE_BINARYDATA
+#    error "GC types require TypedObject"
+#  endif
 
   // Not just any prototype object will do, we must have the actual
   // StructTypePrototype.

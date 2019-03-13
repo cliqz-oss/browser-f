@@ -134,7 +134,7 @@ struct alignas(gc::CellAlignBytes) Cell {
   }
 
 #ifdef DEBUG
-  static inline bool thingIsNotGray(Cell* cell);
+  static inline void assertThingIsNotGray(Cell* cell);
   inline bool isAligned() const;
   void dump(GenericPrinter& out) const;
   void dump() const;
@@ -351,13 +351,9 @@ bool TenuredCell::isInsideZone(JS::Zone* zone) const {
   MOZ_ASSERT(!CurrentThreadIsIonCompiling());
   MOZ_ASSERT(thing);
   MOZ_ASSERT(CurrentThreadCanAccessZone(thing->zoneFromAnyThread()));
-
-  // It would be good if barriers were never triggered during collection, but
-  // at the moment this can happen e.g. when rekeying tables containing
-  // read-barriered GC things after a moving GC.
-  //
-  // TODO: Fix this and assert we're not collecting if we're on the active
-  // thread.
+  // Barriers should not be triggered on main thread while collecting.
+  MOZ_ASSERT_IF(CurrentThreadCanAccessRuntime(thing->runtimeFromAnyThread()),
+                !JS::RuntimeHeapIsCollecting());
 
   JS::shadow::Zone* shadowZone = thing->shadowZoneFromAnyThread();
   if (shadowZone->needsIncrementalBarrier()) {
@@ -430,8 +426,8 @@ static MOZ_ALWAYS_INLINE void AssertValidToSkipBarrier(TenuredCell* thing) {
 
 #ifdef DEBUG
 
-/* static */ bool Cell::thingIsNotGray(Cell* cell) {
-  return JS::CellIsNotGray(cell);
+/* static */ void Cell::assertThingIsNotGray(Cell* cell) {
+  JS::AssertCellIsNotGray(cell);
 }
 
 bool Cell::isAligned() const {

@@ -87,13 +87,17 @@ class TemporaryFileInputStream final : public nsFileInputStream {
 
 TemporaryFileBlobImpl::TemporaryFileBlobImpl(nsIFile* aFile,
                                              const nsAString& aContentType)
-    : FileBlobImpl(aFile, EmptyString(), aContentType)
+    : FileBlobImpl(aFile, EmptyString(), aContentType,
+                   NS_LITERAL_STRING("TemporaryBlobImpl"))
 #ifdef DEBUG
       ,
       mInputStreamCreated(false)
 #endif
 {
   MOZ_ASSERT(XRE_IsParentProcess());
+
+  // This must be considered a blob.
+  mIsFile = false;
 }
 
 TemporaryFileBlobImpl::~TemporaryFileBlobImpl() {

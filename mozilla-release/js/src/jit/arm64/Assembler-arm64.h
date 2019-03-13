@@ -37,15 +37,23 @@ static constexpr ARMRegister ScratchReg64 = {ScratchReg, 64};
 static constexpr Register ScratchReg2{Registers::ip1};
 static constexpr ARMRegister ScratchReg2_64 = {ScratchReg2, 64};
 
-static constexpr FloatRegister ScratchDoubleReg = {FloatRegisters::d31,
-                                                   FloatRegisters::Double};
 static constexpr FloatRegister ReturnDoubleReg = {FloatRegisters::d0,
                                                   FloatRegisters::Double};
+static constexpr FloatRegister ScratchDoubleReg = {FloatRegisters::d31,
+                                                   FloatRegisters::Double};
+struct ScratchDoubleScope : public AutoFloatRegisterScope {
+  explicit ScratchDoubleScope(MacroAssembler& masm)
+      : AutoFloatRegisterScope(masm, ScratchDoubleReg) {}
+};
 
 static constexpr FloatRegister ReturnFloat32Reg = {FloatRegisters::s0,
                                                    FloatRegisters::Single};
 static constexpr FloatRegister ScratchFloat32Reg = {FloatRegisters::s31,
                                                     FloatRegisters::Single};
+struct ScratchFloat32Scope : public AutoFloatRegisterScope {
+  explicit ScratchFloat32Scope(MacroAssembler& masm)
+      : AutoFloatRegisterScope(masm, ScratchFloat32Reg) {}
+};
 
 static constexpr Register InvalidReg{Registers::invalid_reg};
 static constexpr FloatRegister InvalidFloatReg = {FloatRegisters::invalid_fpreg,
@@ -209,9 +217,12 @@ class Assembler : public vixl::Assembler {
   BufferOffset fImmPool64(ARMFPRegister dest, double value);
   BufferOffset fImmPool32(ARMFPRegister dest, float value);
 
+  uint32_t currentOffset() const { return nextOffset().getOffset(); }
+
   void bind(Label* label) { bind(label, nextOffset()); }
   void bind(Label* label, BufferOffset boff);
   void bind(RepatchLabel* label);
+  void bind(CodeLabel* label) { label->target()->bind(currentOffset()); }
 
   bool oom() const {
     return AssemblerShared::oom() || armbuffer_.oom() ||
@@ -242,11 +253,20 @@ class Assembler : public vixl::Assembler {
     }
   }
 
+  static void UpdateLoad64Value(Instruction* inst0, uint64_t value);
+
   static void Bind(uint8_t* rawCode, const CodeLabel& label) {
+    auto mode = label.linkMode();
     size_t patchAtOffset = label.patchAt().offset();
     size_t targetOffset = label.target().offset();
-    *reinterpret_cast<const void**>(rawCode + patchAtOffset) =
-        rawCode + targetOffset;
+
+    if (mode == CodeLabel::MoveImmediate) {
+      Instruction* inst = (Instruction*)(rawCode + patchAtOffset);
+      Assembler::UpdateLoad64Value(inst, (uint64_t)(rawCode + targetOffset));
+    } else {
+      *reinterpret_cast<const void**>(rawCode + patchAtOffset) =
+          rawCode + targetOffset;
+    }
   }
 
   void retarget(Label* cur, Label* next);
@@ -299,11 +319,7 @@ class Assembler : public vixl::Assembler {
   static uint32_t NopSize() { return 4; }
 
   static void PatchWrite_NearCall(CodeLocationLabel start,
-                                  CodeLocationLabel toCall) {
-    Instruction* dest = (Instruction*)start.raw();
-    // printf("patching %p with call to %p\n", start.raw(), toCall.raw());
-    bl(dest, ((Instruction*)toCall.raw() - dest) >> 2);
-  }
+                                  CodeLocationLabel toCall);
   static void PatchDataWithValueCheck(CodeLocationLabel label,
                                       PatchedImmPtr newValue,
                                       PatchedImmPtr expected);

@@ -7,9 +7,9 @@
 #ifndef mozilla_dom_SVGMaskElement_h
 #define mozilla_dom_SVGMaskElement_h
 
-#include "nsSVGEnum.h"
+#include "SVGEnum.h"
 #include "nsSVGLength2.h"
-#include "nsSVGElement.h"
+#include "mozilla/dom/SVGElement.h"
 
 class nsSVGMaskFrame;
 
@@ -21,7 +21,7 @@ namespace dom {
 
 //--------------------- Masks ------------------------
 
-typedef nsSVGElement SVGMaskElementBase;
+typedef SVGElement SVGMaskElementBase;
 
 class SVGMaskElement final : public SVGMaskElementBase {
   friend class ::nsSVGMaskFrame;
@@ -59,7 +59,7 @@ class SVGMaskElement final : public SVGMaskElementBase {
   static LengthInfo sLengthInfo[4];
 
   enum { MASKUNITS, MASKCONTENTUNITS };
-  nsSVGEnum mEnumAttributes[2];
+  SVGEnum mEnumAttributes[2];
   static EnumInfo sEnumInfo[2];
 };
 

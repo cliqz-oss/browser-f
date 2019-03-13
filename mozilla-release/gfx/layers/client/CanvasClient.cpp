@@ -14,6 +14,7 @@
 #include "gfxPlatform.h"  // for gfxPlatform
 #include "GLReadTexImageHelper.h"
 #include "mozilla/gfx/BaseSize.h"  // for BaseSize
+#include "mozilla/gfx/gfxVars.h"
 #include "mozilla/layers/BufferTexture.h"
 #include "mozilla/layers/AsyncCanvasRenderer.h"
 #include "mozilla/layers/CompositableForwarder.h"
@@ -236,6 +237,9 @@ class TexClientFactory {
     if (!areRGBAFormatsBroken) {
       gfx::SurfaceFormat format = mHasAlpha ? gfx::SurfaceFormat::R8G8B8A8
                                             : gfx::SurfaceFormat::R8G8B8X8;
+      if (gfxVars::UseWebRender() && format == gfx::SurfaceFormat::R8G8B8X8) {
+        MOZ_CRASH("R8G8B8X8 is not supported on WebRender");
+      }
       ret = Create(format);
     }
 
@@ -290,8 +294,10 @@ static already_AddRefed<TextureClient> TexClientFromReadback(
       MOZ_CRASH("GFX: Bad `read{Format,Type}`.");
     }
 
-    MOZ_ASSERT(texClient);
-    if (!texClient) return nullptr;
+    if (!texClient) {
+      gfxWarning() << "Couldn't create texClient for readback.";
+      return nullptr;
+    }
 
     // With a texClient, we can lock for writing.
     TextureClientAutoLock autoLock(texClient, OpenMode::OPEN_WRITE);
@@ -457,10 +463,9 @@ void CanvasClientSharedSurface::UpdateRenderer(gfx::IntSize aSize,
     asyncRenderer->CopyFromTextureClient(mReadbackClient);
   }
 
-  MOZ_ASSERT(newFront);
   if (!newFront) {
     // May happen in a release build in case of memory pressure.
-    gfxCriticalError()
+    gfxWarning()
         << "Failed to allocate a TextureClient for SharedSurface Canvas. Size: "
         << aSize;
     return;

@@ -4,12 +4,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/DebugOnly.h"
-
 #include "SVGPathSegListSMILType.h"
-#include "nsSMILValue.h"
-#include "SVGPathSegUtils.h"
+
+#include "mozilla/DebugOnly.h"
+#include "mozilla/SMILValue.h"
 #include "SVGPathData.h"
+#include "SVGPathSegUtils.h"
+
+using namespace mozilla::dom::SVGPathSeg_Binding;
 
 // Indices of boolean flags within 'arc' segment chunks in path-data arrays
 // (where '0' would correspond to the index of the encoded segment type):
@@ -21,21 +23,21 @@ namespace mozilla {
 //----------------------------------------------------------------------
 // nsISMILType implementation
 
-void SVGPathSegListSMILType::Init(nsSMILValue& aValue) const {
+void SVGPathSegListSMILType::Init(SMILValue& aValue) const {
   MOZ_ASSERT(aValue.IsNull(), "Unexpected value type");
   aValue.mU.mPtr = new SVGPathDataAndInfo();
   aValue.mType = this;
 }
 
-void SVGPathSegListSMILType::Destroy(nsSMILValue& aValue) const {
+void SVGPathSegListSMILType::Destroy(SMILValue& aValue) const {
   MOZ_ASSERT(aValue.mType == this, "Unexpected SMIL value type");
   delete static_cast<SVGPathDataAndInfo*>(aValue.mU.mPtr);
   aValue.mU.mPtr = nullptr;
-  aValue.mType = nsSMILNullType::Singleton();
+  aValue.mType = SMILNullType::Singleton();
 }
 
-nsresult SVGPathSegListSMILType::Assign(nsSMILValue& aDest,
-                                        const nsSMILValue& aSrc) const {
+nsresult SVGPathSegListSMILType::Assign(SMILValue& aDest,
+                                        const SMILValue& aSrc) const {
   MOZ_ASSERT(aDest.mType == aSrc.mType, "Incompatible SMIL types");
   MOZ_ASSERT(aDest.mType == this, "Unexpected SMIL value");
 
@@ -46,8 +48,8 @@ nsresult SVGPathSegListSMILType::Assign(nsSMILValue& aDest,
   return dest->CopyFrom(*src);
 }
 
-bool SVGPathSegListSMILType::IsEqual(const nsSMILValue& aLeft,
-                                     const nsSMILValue& aRight) const {
+bool SVGPathSegListSMILType::IsEqual(const SMILValue& aLeft,
+                                     const SMILValue& aRight) const {
   MOZ_ASSERT(aLeft.mType == aRight.mType, "Incompatible SMIL types");
   MOZ_ASSERT(aLeft.mType == this, "Unexpected type for SMIL value");
 
@@ -368,8 +370,8 @@ static void ConvertAllPathSegmentData(
              "Failed to convert all path segment data! (Corrupt?)");
 }
 
-nsresult SVGPathSegListSMILType::Add(nsSMILValue& aDest,
-                                     const nsSMILValue& aValueToAdd,
+nsresult SVGPathSegListSMILType::Add(SMILValue& aDest,
+                                     const SMILValue& aValueToAdd,
                                      uint32_t aCount) const {
   MOZ_ASSERT(aDest.mType == this, "Unexpected SMIL type");
   MOZ_ASSERT(aValueToAdd.mType == this, "Incompatible SMIL type");
@@ -404,8 +406,8 @@ nsresult SVGPathSegListSMILType::Add(nsSMILValue& aDest,
   return AddWeightedPathSegLists(1.0, dest, aCount, valueToAdd, dest);
 }
 
-nsresult SVGPathSegListSMILType::ComputeDistance(const nsSMILValue& aFrom,
-                                                 const nsSMILValue& aTo,
+nsresult SVGPathSegListSMILType::ComputeDistance(const SMILValue& aFrom,
+                                                 const SMILValue& aTo,
                                                  double& aDistance) const {
   MOZ_ASSERT(aFrom.mType == this, "Unexpected SMIL type");
   MOZ_ASSERT(aTo.mType == this, "Incompatible SMIL type");
@@ -416,10 +418,10 @@ nsresult SVGPathSegListSMILType::ComputeDistance(const nsSMILValue& aFrom,
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-nsresult SVGPathSegListSMILType::Interpolate(const nsSMILValue& aStartVal,
-                                             const nsSMILValue& aEndVal,
+nsresult SVGPathSegListSMILType::Interpolate(const SMILValue& aStartVal,
+                                             const SMILValue& aEndVal,
                                              double aUnitDistance,
-                                             nsSMILValue& aResult) const {
+                                             SMILValue& aResult) const {
   MOZ_ASSERT(aStartVal.mType == aEndVal.mType,
              "Trying to interpolate different types");
   MOZ_ASSERT(aStartVal.mType == this, "Unexpected types for interpolation");

@@ -82,7 +82,6 @@ ModuleGenerator::ModuleGenerator(const CompileArgs& args,
       debugTrapCodeOffset_(),
       lastPatchedCallSite_(0),
       startOfUnpatchedCallsites_(0),
-      deferredValidationState_(mutexid::WasmDeferredValidation),
       parallel_(false),
       outstanding_(0),
       currentTask_(nullptr),
@@ -386,10 +385,6 @@ bool ModuleGenerator::init(Metadata* maybeAsmJSMetadata) {
         std::move(funcType), funcIndex.index(), funcIndex.isExplicit());
   }
 
-  // Ensure that mutable shared state for deferred validation is correctly
-  // set up.
-  deferredValidationState_.lock()->init();
-
   // Determine whether parallel or sequential compilation is to be used and
   // initialize the CompileTasks that will be used in either mode.
 
@@ -408,7 +403,7 @@ bool ModuleGenerator::init(Metadata* maybeAsmJSMetadata) {
     return false;
   }
   for (size_t i = 0; i < numTasks; i++) {
-    tasks_.infallibleEmplaceBack(*env_, taskState_, deferredValidationState_,
+    tasks_.infallibleEmplaceBack(*env_, taskState_,
                                  COMPILATION_LIFO_DEFAULT_CHUNK_SIZE);
   }
 
@@ -619,7 +614,7 @@ static bool AppendForEach(Vec* dstVec, const Vec& srcVec, Op op) {
   return true;
 }
 
-bool ModuleGenerator::linkCompiledCode(const CompiledCode& code) {
+bool ModuleGenerator::linkCompiledCode(CompiledCode& code) {
   // All code offsets in 'code' must be incremented by their position in the
   // overall module when the code was appended.
 
@@ -685,6 +680,17 @@ bool ModuleGenerator::linkCompiledCode(const CompiledCode& code) {
     }
   }
 
+  for (size_t i = 0; i < code.stackMaps.length(); i++) {
+    StackMaps::Maplet maplet = code.stackMaps.move(i);
+    maplet.offsetBy(offsetInModule);
+    if (!metadataTier_->stackMaps.add(maplet)) {
+      // This function is now the only owner of maplet.map, so we'd better
+      // free it right now.
+      maplet.map->destroy();
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -697,7 +703,7 @@ static bool ExecuteCompileTask(CompileTask* task, UniqueChars* error) {
 #ifdef ENABLE_WASM_CRANELIFT
       if (task->env.optimizedBackend() == OptimizedBackend::Cranelift) {
         if (!CraneliftCompileFunctions(task->env, task->lifo, task->inputs,
-                                       &task->output, task->dvs, error)) {
+                                       &task->output, error)) {
           return false;
         }
         break;
@@ -705,13 +711,13 @@ static bool ExecuteCompileTask(CompileTask* task, UniqueChars* error) {
 #endif
       MOZ_ASSERT(task->env.optimizedBackend() == OptimizedBackend::Ion);
       if (!IonCompileFunctions(task->env, task->lifo, task->inputs,
-                               &task->output, task->dvs, error)) {
+                               &task->output, error)) {
         return false;
       }
       break;
     case Tier::Baseline:
       if (!BaselineCompileFunctions(task->env, task->lifo, task->inputs,
-                                    &task->output, task->dvs, error)) {
+                                    &task->output, error)) {
         return false;
       }
       break;
@@ -910,8 +916,22 @@ bool ModuleGenerator::finishCodegen() {
 }
 
 bool ModuleGenerator::finishMetadataTier() {
-  // Assert all sorted metadata is sorted.
+  // The stack maps aren't yet sorted.  Do so now, since we'll need to
+  // binary-search them at GC time.
+  metadataTier_->stackMaps.sort();
+
 #ifdef DEBUG
+  // Check that the stack map contains no duplicates, since that could lead to
+  // ambiguities about stack slot pointerness.
+  uint8_t* previousNextInsnAddr = nullptr;
+  for (size_t i = 0; i < metadataTier_->stackMaps.length(); i++) {
+    const StackMaps::Maplet& maplet = metadataTier_->stackMaps.get(i);
+    MOZ_ASSERT_IF(i > 0, uintptr_t(maplet.nextInsnAddr) >
+                             uintptr_t(previousNextInsnAddr));
+    previousNextInsnAddr = maplet.nextInsnAddr;
+  }
+
+  // Assert all sorted metadata is sorted.
   uint32_t last = 0;
   for (const CodeRange& codeRange : metadataTier_->codeRanges) {
     MOZ_ASSERT(codeRange.begin() >= last);
@@ -985,14 +1005,6 @@ UniqueCodeTier ModuleGenerator::finishCodeTier() {
     return nullptr;
   }
 
-  // All functions and stubs have been compiled.  Perform module-end
-  // validation.
-
-  if (!deferredValidationState_.lock()->performDeferredValidation(*env_,
-                                                                  error_)) {
-    return nullptr;
-  }
-
   // Finish linking and metadata.
 
   if (!finishCodegen()) {
@@ -1009,6 +1021,17 @@ UniqueCodeTier ModuleGenerator::finishCodeTier() {
     return nullptr;
   }
 
+  metadataTier_->stackMaps.offsetBy(uintptr_t(segment->base()));
+
+#ifdef DEBUG
+  // Check that each stack map is associated with a plausible instruction.
+  for (size_t i = 0; i < metadataTier_->stackMaps.length(); i++) {
+    MOZ_ASSERT(IsValidStackMapKey(env_->debugEnabled(),
+                                  metadataTier_->stackMaps.get(i).nextInsnAddr),
+               "wasm stack map does not reference a valid insn");
+  }
+#endif
+
   return js::MakeUnique<CodeTier>(std::move(metadataTier_), std::move(segment));
 }
 
@@ -1020,7 +1043,6 @@ SharedMetadata ModuleGenerator::finishMetadata(const Bytes& bytecode) {
   // Copy over data from the ModuleEnvironment.
 
   metadata_->memoryUsage = env_->memoryUsage;
-  metadata_->temporaryGcTypesConfigured = env_->gcTypesConfigured;
   metadata_->minMemoryLength = env_->minMemoryLength;
   metadata_->maxMemoryLength = env_->maxMemoryLength;
   metadata_->startFuncIndex = env_->startFuncIndex;

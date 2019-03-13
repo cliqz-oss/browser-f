@@ -2,39 +2,44 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{AlphaType, BorderDetails, BorderDisplayItem, BuiltDisplayListIter, ClipAndScrollInfo};
+use api::{AlphaType, BorderDetails, BorderDisplayItem, BuiltDisplayListIter};
 use api::{ClipId, ColorF, ComplexClipRegion, DeviceIntPoint, DeviceIntRect, DeviceIntSize};
 use api::{DisplayItemRef, ExtendMode, ExternalScrollId, AuHelpers};
 use api::{FilterOp, FontInstanceKey, GlyphInstance, GlyphOptions, RasterSpace, GradientStop};
 use api::{IframeDisplayItem, ImageKey, ImageRendering, ItemRange, LayoutPoint, ColorDepth};
 use api::{LayoutPrimitiveInfo, LayoutRect, LayoutSize, LayoutTransform, LayoutVector2D};
 use api::{LineOrientation, LineStyle, NinePatchBorderSource, PipelineId};
-use api::{PropertyBinding, ReferenceFrame, ScrollFrameDisplayItem, ScrollSensitivity};
-use api::{Shadow, SpecificDisplayItem, StackingContext, StickyFrameDisplayItem, TexelRect};
+use api::{PropertyBinding, ReferenceFrame, ReferenceFrameKind, ScrollFrameDisplayItem, ScrollSensitivity};
+use api::{Shadow, SpaceAndClipInfo, SpatialId, SpecificDisplayItem, StackingContext, StickyFrameDisplayItem, TexelRect};
 use api::{ClipMode, TransformStyle, YuvColorSpace, YuvData};
 use app_units::Au;
-use clip::{ClipChainId, ClipRegion, ClipItemKey, ClipStore, ClipItemSceneData};
+use clip::{ClipChainId, ClipRegion, ClipItemKey, ClipStore};
 use clip_scroll_tree::{ROOT_SPATIAL_NODE_INDEX, ClipScrollTree, SpatialNodeIndex};
 use frame_builder::{ChasePrimitive, FrameBuilder, FrameBuilderConfig};
 use glyph_rasterizer::FontInstance;
 use hit_test::{HitTestingItem, HitTestingRun};
 use image::simplify_repeated_primitive;
-use intern::{Handle, Internable};
+use intern::{Handle, Internable, InternDebug};
 use internal_types::{FastHashMap, FastHashSet};
-use picture::{Picture3DContext, PictureCompositeMode, PicturePrimitive, PrimitiveList};
-use prim_store::{PrimitiveInstance, PrimitiveKeyKind};
-use prim_store::{PrimitiveKey, PrimitiveSceneData, PrimitiveInstanceKind, NinePatchDescriptor};
-use prim_store::{PrimitiveDataHandle, PrimitiveStore, PrimitiveStoreStats, LineDecorationCacheKey};
-use prim_store::{ScrollNodeAndClipChain, PictureIndex, register_prim_chase_id, get_line_decoration_sizes};
+use picture::{Picture3DContext, PictureCompositeMode, PicturePrimitive, PictureOptions, PrimitiveList, TileCache};
+use prim_store::{PrimitiveInstance, PrimitiveKeyKind, PrimitiveSceneData};
+use prim_store::{PrimitiveInstanceKind, NinePatchDescriptor, PrimitiveStore};
+use prim_store::{PrimitiveStoreStats, ScrollNodeAndClipChain, PictureIndex};
+use prim_store::{register_prim_chase_id, get_line_decoration_sizes};
+use prim_store::borders::{ImageBorder, NormalBorderPrim};
 use prim_store::gradient::{GradientStopKey, LinearGradient, RadialGradient, RadialGradientParams};
+use prim_store::image::{Image, YuvImage};
+use prim_store::line_dec::{LineDecoration, LineDecorationCacheKey};
+use prim_store::picture::{Picture, PictureCompositeKey, PictureKey};
 use prim_store::text_run::TextRun;
 use render_backend::{DocumentView};
 use resource_cache::{FontInstanceMap, ImageRequest};
-use scene::{Scene, ScenePipeline, StackingContextHelpers};
-use scene_builder::{DocumentResources, InternerMut};
+use scene::{Scene, StackingContextHelpers};
+use scene_builder::{InternerMut, Interners};
 use spatial_node::{StickyFrameInfo, ScrollFrameKind, SpatialNodeType};
 use std::{f32, mem, usize};
 use std::collections::vec_deque::VecDeque;
+use std::sync::Arc;
 use tiling::{CompositeOps};
 use util::{MaxRect, VecHelper};
 
@@ -45,7 +50,7 @@ struct ClipNode {
 }
 
 impl ClipNode {
-    fn new(id: ClipChainId, count: usize) -> ClipNode {
+    fn new(id: ClipChainId, count: usize) -> Self {
         ClipNode {
             id,
             count,
@@ -53,16 +58,16 @@ impl ClipNode {
     }
 }
 
-/// A data structure that keeps track of mapping between API ClipIds and the indices used
-/// internally in the ClipScrollTree to avoid having to do HashMap lookups. ClipIdToIndexMapper is
-/// responsible for mapping both ClipId to ClipChainIndex and ClipId to SpatialNodeIndex.
+/// A data structure that keeps track of mapping between API Ids for clips/spatials and the indices
+/// used internally in the ClipScrollTree to avoid having to do HashMap lookups. NodeIdToIndexMapper
+/// is responsible for mapping both ClipId to ClipChainIndex and SpatialId to SpatialNodeIndex.
 #[derive(Default)]
-pub struct ClipIdToIndexMapper {
+pub struct NodeIdToIndexMapper {
     clip_node_map: FastHashMap<ClipId, ClipNode>,
-    spatial_node_map: FastHashMap<ClipId, SpatialNodeIndex>,
+    spatial_node_map: FastHashMap<SpatialId, SpatialNodeIndex>,
 }
 
-impl ClipIdToIndexMapper {
+impl NodeIdToIndexMapper {
     pub fn add_clip_chain(
         &mut self,
         id: ClipId,
@@ -73,16 +78,7 @@ impl ClipIdToIndexMapper {
         debug_assert!(_old_value.is_none());
     }
 
-    pub fn map_to_parent_clip_chain(
-        &mut self,
-        id: ClipId,
-        parent_id: &ClipId,
-    ) {
-        let parent_node = self.clip_node_map[parent_id];
-        self.add_clip_chain(id, parent_node.id, parent_node.count);
-    }
-
-    pub fn map_spatial_node(&mut self, id: ClipId, index: SpatialNodeIndex) {
+    pub fn map_spatial_node(&mut self, id: SpatialId, index: SpatialNodeIndex) {
         let _old_value = self.spatial_node_map.insert(id, index);
         debug_assert!(_old_value.is_none());
     }
@@ -91,18 +87,12 @@ impl ClipIdToIndexMapper {
         self.clip_node_map[id]
     }
 
-    pub fn get_clip_chain_id(&self, id: &ClipId) -> ClipChainId {
-        self.clip_node_map[id].id
+    pub fn get_clip_chain_id(&self, id: ClipId) -> ClipChainId {
+        self.clip_node_map[&id].id
     }
 
-    pub fn get_spatial_node_index(&self, id: ClipId) -> SpatialNodeIndex {
-        match id {
-            ClipId::Clip(..) |
-            ClipId::Spatial(..) => {
-                self.spatial_node_map[&id]
-            }
-            ClipId::ClipChain(_) => panic!("Tried to use ClipChain as scroll node."),
-        }
+    pub fn get_spatial_node_index(&self, id: SpatialId) -> SpatialNodeIndex {
+        self.spatial_node_map[&id]
     }
 }
 
@@ -123,9 +113,9 @@ pub struct DisplayListFlattener<'a> {
     /// output textures.
     output_pipelines: &'a FastHashSet<PipelineId>,
 
-    /// The data structure that converting between ClipId and the various index
-    /// types that the ClipScrollTree uses.
-    id_to_index_mapper: ClipIdToIndexMapper,
+    /// The data structure that converting between ClipId/SpatialId and the various
+    /// index types that the ClipScrollTree uses.
+    id_to_index_mapper: NodeIdToIndexMapper,
 
     /// A stack of stacking context properties.
     sc_stack: Vec<FlattenedStackingContext>,
@@ -149,24 +139,12 @@ pub struct DisplayListFlattener<'a> {
     /// order to determine the default font.
     pub config: FrameBuilderConfig,
 
-    /// Reference to the document resources, which contains
-    /// shared (interned) data between display lists.
-    resources: &'a mut DocumentResources,
+    /// Reference to the set of data that is interned across display lists.
+    interners: &'a mut Interners,
 
     /// The root picture index for this flattener. This is the picture
     /// to start the culling phase from.
     pub root_pic_index: PictureIndex,
-
-    /// TODO(gw): This is a complete hack that relies on knowledge of
-    ///           what the Gecko display list looks like. It's used
-    ///           for now to work out which scroll root to use to
-    ///           create the picture cache for the content. It's only
-    ///           ever used if picture caching is enabled in the
-    ///           RendererOptions struct. We will need to work out
-    ///           a better API to avoid this, before we enable it
-    ///           for all users. Another alternative is that this
-    ///           will disappear itself when document splitting is used.
-    picture_cache_scroll_root: Option<SpatialNodeIndex>,
 }
 
 impl<'a> DisplayListFlattener<'a> {
@@ -178,7 +156,7 @@ impl<'a> DisplayListFlattener<'a> {
         output_pipelines: &FastHashSet<PipelineId>,
         frame_builder_config: &FrameBuilderConfig,
         new_scene: &mut Scene,
-        resources: &mut DocumentResources,
+        interners: &mut Interners,
         prim_store_stats: &PrimitiveStoreStats,
     ) -> FrameBuilder {
         // We checked that the root pipeline is available on the render backend.
@@ -195,16 +173,15 @@ impl<'a> DisplayListFlattener<'a> {
             font_instances,
             config: *frame_builder_config,
             output_pipelines,
-            id_to_index_mapper: ClipIdToIndexMapper::default(),
+            id_to_index_mapper: NodeIdToIndexMapper::default(),
             hit_testing_runs: Vec::new(),
             pending_shadow_items: VecDeque::new(),
             sc_stack: Vec::new(),
             pipeline_clip_chain_stack: vec![ClipChainId::NONE],
             prim_store: PrimitiveStore::new(&prim_store_stats),
             clip_store: ClipStore::new(),
-            resources,
+            interners,
             root_pic_index: PictureIndex(0),
-            picture_cache_scroll_root: None,
         };
 
         flattener.push_root(
@@ -213,18 +190,37 @@ impl<'a> DisplayListFlattener<'a> {
             &root_pipeline.content_size,
         );
 
-        flattener.flatten_root(
-            root_pipeline,
-            &root_pipeline.viewport_size,
+        // In order to ensure we have a single root stacking context for the
+        // entire display list, we push one here. Gecko _almost_ wraps its
+        // entire display list within a single stacking context, but sometimes
+        // appends a few extra items in AddWindowOverlayWebRenderCommands. We
+        // could fix it there, but it's easier and more robust for WebRender
+        // to just ensure there's a context on the stack whenever we append
+        // primitives (since otherwise we'd panic).
+        //
+        // Note that we don't do this for iframes, even if they're pipeline
+        // roots, because they should be entirely contained within a stacking
+        // context, and we probably wouldn't crash if they weren't.
+        flattener.push_stacking_context(
+            root_pipeline.pipeline_id,
+            CompositeOps::default(),
+            TransformStyle::Flat,
+            /* is_backface_visible = */ true,
+            /* create_tile_cache = */ false,
+            ROOT_SPATIAL_NODE_INDEX,
+            ClipChainId::NONE,
+            RasterSpace::Screen,
         );
+
+        flattener.flatten_items(
+            &mut root_pipeline.display_list.iter(),
+            root_pipeline.pipeline_id,
+            LayoutVector2D::zero(),
+        );
+
+        flattener.pop_stacking_context();
 
         debug_assert!(flattener.sc_stack.is_empty());
-
-        // If picture caching is enabled, splice up the root
-        // stacking context to enable correct surface caching.
-        flattener.setup_picture_caching(
-            root_pipeline_id,
-        );
 
         new_scene.root_pipeline_id = Some(root_pipeline_id);
         new_scene.pipeline_epochs = scene.pipeline_epochs.clone();
@@ -245,7 +241,7 @@ impl<'a> DisplayListFlattener<'a> {
     /// content frame is that should get surface caching.
     fn setup_picture_caching(
         &mut self,
-        root_pipeline_id: PipelineId,
+        primitives: &mut Vec<PrimitiveInstance>,
     ) {
         if !self.config.enable_picture_caching {
             return;
@@ -276,98 +272,144 @@ impl<'a> DisplayListFlattener<'a> {
         // most of the content is embedded in its own picture.
         //
 
-        // See if we found a scroll root for the cached surface root.
-        if let Some(picture_cache_scroll_root) = self.picture_cache_scroll_root {
-            // Get the list of existing primitives in the main stacking context.
-            let mut old_prim_list = mem::replace(
-                &mut self.prim_store.pictures[self.root_pic_index.0].prim_list,
-                PrimitiveList::empty(),
+        // Find the first primitive which has the desired scroll root.
+        let mut first_index = None;
+        let mut main_scroll_root = None;
+
+        for (i, instance) in primitives.iter().enumerate() {
+            let scroll_root = self.find_scroll_root(
+                instance.spatial_node_index,
             );
 
-            // Find the first primitive which has the desired scroll root.
-            let first_index = old_prim_list.prim_instances.iter().position(|instance| {
-                let scroll_root = self.find_scroll_root(
-                    instance.spatial_node_index,
-                );
-
-                scroll_root == picture_cache_scroll_root
-            }).unwrap_or(old_prim_list.prim_instances.len());
-
-            // Split off the preceding primtives.
-            let mut remaining_prims = old_prim_list.prim_instances.split_off(first_index);
-
-            // Find the first primitive in reverse order that is not the root scroll node.
-            let last_index = remaining_prims.iter().rposition(|instance| {
-                let scroll_root = self.find_scroll_root(
-                    instance.spatial_node_index,
-                );
-
-                scroll_root != ROOT_SPATIAL_NODE_INDEX
-            }).unwrap_or(remaining_prims.len() - 1);
-
-            let preceding_prims = old_prim_list.prim_instances;
-            let trailing_prims = remaining_prims.split_off(last_index + 1);
-
-            let prim_list = PrimitiveList::new(
-                remaining_prims,
-                &self.resources,
-            );
-
-            // Now, create a picture with tile caching enabled that will hold all
-            // of the primitives selected as belonging to the main scroll root.
-            let prim_key = PrimitiveKey::new(
-                true,
-                LayoutSize::zero(),
-                LayoutRect::max_rect(),
-                PrimitiveKeyKind::Unused,
-            );
-
-            let primitive_data_handle = self.resources
-                .prim_interner
-                .intern(&prim_key, || {
-                    PrimitiveSceneData {
-                        prim_relative_clip_rect: LayoutRect::max_rect(),
-                        prim_size: LayoutSize::zero(),
-                        is_backface_visible: true,
+            if scroll_root != ROOT_SPATIAL_NODE_INDEX {
+                // If we find multiple scroll roots in this page, then skip
+                // picture caching for now. In future, we can handle picture
+                // caching on these sites by creating a tile cache per
+                // scroll root, or (more likely) selecting the common parent
+                // scroll root between the detected scroll roots.
+                match main_scroll_root {
+                    Some(main_scroll_root) => {
+                        if main_scroll_root != scroll_root {
+                            return;
+                        }
+                    }
+                    None => {
+                        main_scroll_root = Some(scroll_root);
                     }
                 }
-            );
 
-            let pic_index = self.prim_store.pictures.alloc().init(PicturePrimitive::new_image(
-                Some(PictureCompositeMode::TileCache { clear_color: ColorF::new(1.0, 1.0, 1.0, 1.0) }),
-                Picture3DContext::Out,
-                root_pipeline_id,
-                None,
-                true,
-                RasterSpace::Screen,
-                prim_list,
-                picture_cache_scroll_root,
-                LayoutRect::max_rect(),
-                &self.clip_store,
-            ));
-
-            let instance = PrimitiveInstance::new(
-                LayoutPoint::zero(),
-                PrimitiveInstanceKind::Picture {
-                    data_handle: primitive_data_handle,
-                    pic_index: PictureIndex(pic_index)
-                },
-                ClipChainId::NONE,
-                picture_cache_scroll_root,
-            );
-
-            // This contains the tile caching picture, with preceding and
-            // trailing primitives outside the main scroll root.
-            let mut new_prim_list = preceding_prims;
-            new_prim_list.push(instance);
-            new_prim_list.extend(trailing_prims);
-
-            // Finally, store the sliced primitive list in the root picture.
-            self.prim_store.pictures[self.root_pic_index.0].prim_list = PrimitiveList::new(
-                new_prim_list,
-                &self.resources,
-            );
+                if first_index.is_none() {
+                    first_index = Some(i);
+                }
+            }
         }
+
+        let main_scroll_root = match main_scroll_root {
+            Some(main_scroll_root) => main_scroll_root,
+            None => ROOT_SPATIAL_NODE_INDEX,
+        };
+
+        // Get the list of existing primitives in the main stacking context.
+        let mut old_prim_list = mem::replace(
+            primitives,
+            Vec::new(),
+        );
+
+        // In the simple case, there are no preceding or trailing primitives,
+        // because everything is anchored to the root scroll node. Handle
+        // this case specially to avoid underflow error in the Some(..)
+        // path below.
+
+        let preceding_prims;
+        let mut remaining_prims;
+        let trailing_prims;
+
+        match first_index {
+            Some(first_index) => {
+                // Split off the preceding primtives.
+                remaining_prims = old_prim_list.split_off(first_index);
+
+                // Find the first primitive in reverse order that is not the root scroll node.
+                let last_index = remaining_prims.iter().rposition(|instance| {
+                    let scroll_root = self.find_scroll_root(
+                        instance.spatial_node_index,
+                    );
+
+                    scroll_root != ROOT_SPATIAL_NODE_INDEX
+                }).unwrap_or(remaining_prims.len() - 1);
+
+                preceding_prims = old_prim_list;
+                trailing_prims = remaining_prims.split_off(last_index + 1);
+            }
+            None => {
+                preceding_prims = Vec::new();
+                remaining_prims = old_prim_list;
+                trailing_prims = Vec::new();
+            }
+        }
+
+        let prim_list = PrimitiveList::new(
+            remaining_prims,
+            &self.interners,
+        );
+
+        // Now, create a picture with tile caching enabled that will hold all
+        // of the primitives selected as belonging to the main scroll root.
+        let pic_key = PictureKey::new(
+            true,
+            LayoutSize::zero(),
+            Picture {
+                composite_mode_key: PictureCompositeKey::Identity,
+            },
+        );
+
+        let pic_data_handle = self.interners
+            .picture
+            .intern(&pic_key, || {
+                PrimitiveSceneData {
+                    prim_size: LayoutSize::zero(),
+                    is_backface_visible: true,
+                }
+            }
+        );
+
+        let tile_cache = TileCache::new(
+            main_scroll_root,
+            &prim_list.prim_instances,
+            *self.pipeline_clip_chain_stack.last().unwrap(),
+            &self.prim_store.pictures,
+        );
+
+        let pic_index = self.prim_store.pictures.alloc().init(PicturePrimitive::new_image(
+            Some(PictureCompositeMode::TileCache { clear_color: ColorF::new(1.0, 1.0, 1.0, 1.0) }),
+            Picture3DContext::Out,
+            self.scene.root_pipeline_id.unwrap(),
+            None,
+            true,
+            RasterSpace::Screen,
+            prim_list,
+            main_scroll_root,
+            LayoutRect::max_rect(),
+            Some(tile_cache),
+            PictureOptions::default(),
+        ));
+
+        let instance = PrimitiveInstance::new(
+            LayoutPoint::zero(),
+            LayoutRect::max_rect(),
+            PrimitiveInstanceKind::Picture {
+                data_handle: pic_data_handle,
+                pic_index: PictureIndex(pic_index)
+            },
+            ClipChainId::NONE,
+            main_scroll_root,
+        );
+
+        // This contains the tile caching picture, with preceding and
+        // trailing primitives outside the main scroll root.
+        primitives.extend(preceding_prims);
+        primitives.push(instance);
+        primitives.extend(trailing_prims);
     }
 
     /// Find the spatial node that is the scroll root for a given
@@ -380,7 +422,7 @@ impl<'a> DisplayListFlattener<'a> {
         let mut node_index = spatial_node_index;
 
         while node_index != ROOT_SPATIAL_NODE_INDEX {
-            let node = &self.clip_scroll_tree.spatial_nodes[node_index.0];
+            let node = &self.clip_scroll_tree.spatial_nodes[node_index.0 as usize];
             match node.node_type {
                 SpatialNodeType::ReferenceFrame(..) |
                 SpatialNodeType::StickyFrame(..) => {
@@ -422,52 +464,6 @@ impl<'a> DisplayListFlattener<'a> {
             .get(items)
     }
 
-    fn flatten_root(
-        &mut self,
-        pipeline: &'a ScenePipeline,
-        frame_size: &LayoutSize,
-    ) {
-        let pipeline_id = pipeline.pipeline_id;
-        let reference_frame_info = self.simple_scroll_and_clip_chain(
-            &ClipId::root_reference_frame(pipeline_id),
-        );
-
-        let root_scroll_node = ClipId::root_scroll_node(pipeline_id);
-
-        self.push_stacking_context(
-            pipeline_id,
-            CompositeOps::default(),
-            TransformStyle::Flat,
-            true,
-            true,
-            root_scroll_node,
-            None,
-            RasterSpace::Screen,
-        );
-
-        // For the root pipeline, there's no need to add a full screen rectangle
-        // here, as it's handled by the framebuffer clear.
-        // TODO(gw): In future, we can probably remove this code completely and handle
-        //           it as part of the tile cache background color clearing.
-        if self.scene.root_pipeline_id != Some(pipeline_id) {
-            if let Some(pipeline) = self.scene.pipelines.get(&pipeline_id) {
-                if let Some(bg_color) = pipeline.background_color {
-                    let root_bounds = LayoutRect::new(LayoutPoint::zero(), *frame_size);
-                    let info = LayoutPrimitiveInfo::new(root_bounds);
-                    self.add_solid_rectangle(
-                        reference_frame_info,
-                        &info,
-                        bg_color,
-                    );
-                }
-            }
-        }
-
-        self.flatten_items(&mut pipeline.display_list.iter(), pipeline_id, LayoutVector2D::zero());
-
-        self.pop_stacking_context();
-    }
-
     fn flatten_items(
         &mut self,
         traversal: &mut BuiltDisplayListIter<'a>,
@@ -481,12 +477,10 @@ impl<'a> DisplayListFlattener<'a> {
                     None => break,
                 };
 
-                if SpecificDisplayItem::PopReferenceFrame == *item.item() {
-                    return;
-                }
-
-                if SpecificDisplayItem::PopStackingContext == *item.item() {
-                    return;
+                match item.item() {
+                    SpecificDisplayItem::PopReferenceFrame |
+                    SpecificDisplayItem::PopStackingContext => return,
+                    _ => (),
                 }
 
                 self.flatten_item(
@@ -508,8 +502,7 @@ impl<'a> DisplayListFlattener<'a> {
         &mut self,
         item: &DisplayItemRef,
         info: &StickyFrameDisplayItem,
-        clip_and_scroll: &ScrollNodeAndClipChain,
-        parent_id: &ClipId,
+        parent_node_index: SpatialNodeIndex,
         reference_frame_relative_offset: &LayoutVector2D,
     ) {
         let frame_rect = item.rect().translate(reference_frame_relative_offset);
@@ -522,20 +515,19 @@ impl<'a> DisplayListFlattener<'a> {
         );
 
         let index = self.clip_scroll_tree.add_sticky_frame(
-            clip_and_scroll.spatial_node_index, /* parent id */
+            parent_node_index,
             sticky_frame_info,
             info.id.pipeline_id(),
         );
         self.id_to_index_mapper.map_spatial_node(info.id, index);
-        self.id_to_index_mapper.map_to_parent_clip_chain(info.id, parent_id);
     }
 
     fn flatten_scroll_frame(
         &mut self,
         item: &DisplayItemRef,
         info: &ScrollFrameDisplayItem,
+        parent_node_index: SpatialNodeIndex,
         pipeline_id: PipelineId,
-        clip_and_scroll_ids: &ClipAndScrollInfo,
         reference_frame_relative_offset: &LayoutVector2D,
     ) {
         let complex_clips = self.get_complex_clips(pipeline_id, item.complex_clip().0);
@@ -549,63 +541,55 @@ impl<'a> DisplayListFlattener<'a> {
         // This is useful when calculating scroll extents for the
         // SpatialNode::scroll(..) API as well as for properly setting sticky
         // positioning offsets.
-        let frame_rect = item.clip_rect().translate(reference_frame_relative_offset);
-        let content_rect = item.rect().translate(reference_frame_relative_offset);
+        let frame_rect = clip_region.main;
+        let content_size = item.rect().size;
 
-        debug_assert!(info.clip_id != info.scroll_frame_id);
+        self.add_clip_node(info.clip_id, item.space_and_clip_info(), clip_region);
 
-        self.add_clip_node(info.clip_id, clip_and_scroll_ids, clip_region);
-
-        let node_index = self.add_scroll_frame(
+        self.add_scroll_frame(
             info.scroll_frame_id,
-            info.clip_id,
+            parent_node_index,
             info.external_id,
             pipeline_id,
             &frame_rect,
-            &content_rect.size,
+            &content_size,
             info.scroll_sensitivity,
             ScrollFrameKind::Explicit,
         );
-
-        // TODO(gw): See description of picture_cache_scroll_root field for information
-        //           about this temporary hack. What it's trying to identify is the first
-        //           scroll root within the first iframe that we encounter in the display
-        //           list.
-        if self.picture_cache_scroll_root.is_none() && pipeline_id != self.scene.root_pipeline_id.unwrap() {
-            self.picture_cache_scroll_root = Some(node_index);
-        }
     }
 
     fn flatten_reference_frame(
         &mut self,
         traversal: &mut BuiltDisplayListIter<'a>,
         pipeline_id: PipelineId,
-        item: &DisplayItemRef,
+        parent_spatial_node: SpatialNodeIndex,
+        origin: LayoutPoint,
         reference_frame: &ReferenceFrame,
-        clip_and_scroll_ids: &ClipAndScrollInfo,
         reference_frame_relative_offset: LayoutVector2D,
     ) {
         self.push_reference_frame(
             reference_frame.id,
-            Some(clip_and_scroll_ids.scroll_node_id),
-            clip_and_scroll_ids.clip_node_id,
+            Some(parent_spatial_node),
             pipeline_id,
+            reference_frame.transform_style,
             reference_frame.transform,
-            reference_frame.perspective,
-            reference_frame_relative_offset + item.rect().origin.to_vector(),
+            reference_frame.kind,
+            reference_frame_relative_offset + origin.to_vector(),
         );
 
         self.flatten_items(traversal, pipeline_id, LayoutVector2D::zero());
     }
 
+
     fn flatten_stacking_context(
         &mut self,
         traversal: &mut BuiltDisplayListIter<'a>,
         pipeline_id: PipelineId,
-        item: &DisplayItemRef,
         stacking_context: &StackingContext,
-        scroll_node_id: ClipId,
-        reference_frame_relative_offset: LayoutVector2D,
+        spatial_node_index: SpatialNodeIndex,
+        origin: LayoutPoint,
+        filters: ItemRange<FilterOp>,
+        reference_frame_relative_offset: &LayoutVector2D,
         is_backface_visible: bool,
     ) {
         // Avoid doing unnecessary work for empty stacking contexts.
@@ -618,9 +602,14 @@ impl<'a> DisplayListFlattener<'a> {
             // TODO(optimization?): self.traversal.display_list()
             let display_list = self.scene.get_display_list_for_pipeline(pipeline_id);
             CompositeOps::new(
-                stacking_context.filter_ops_for_compositing(display_list, item.filters()),
+                stacking_context.filter_ops_for_compositing(display_list, filters),
                 stacking_context.mix_blend_mode_for_compositing(),
             )
+        };
+
+        let clip_chain_id = match stacking_context.clip_id {
+            Some(clip_id) => self.id_to_index_mapper.get_clip_chain_id(clip_id),
+            None => ClipChainId::NONE,
         };
 
         self.push_stacking_context(
@@ -628,16 +617,16 @@ impl<'a> DisplayListFlattener<'a> {
             composition_operations,
             stacking_context.transform_style,
             is_backface_visible,
-            false,
-            scroll_node_id,
-            stacking_context.clip_node_id,
+            stacking_context.cache_tiles,
+            spatial_node_index,
+            clip_chain_id,
             stacking_context.raster_space,
         );
 
         self.flatten_items(
             traversal,
             pipeline_id,
-            reference_frame_relative_offset + item.rect().origin.to_vector(),
+            *reference_frame_relative_offset + origin.to_vector(),
         );
 
         self.pop_stacking_context();
@@ -647,7 +636,7 @@ impl<'a> DisplayListFlattener<'a> {
         &mut self,
         item: &DisplayItemRef,
         info: &IframeDisplayItem,
-        clip_and_scroll_ids: &ClipAndScrollInfo,
+        spatial_node_index: SpatialNodeIndex,
         reference_frame_relative_offset: &LayoutVector2D,
     ) {
         let iframe_pipeline_id = info.pipeline_id;
@@ -660,31 +649,31 @@ impl<'a> DisplayListFlattener<'a> {
         };
 
         let clip_chain_index = self.add_clip_node(
-            info.clip_id,
-            clip_and_scroll_ids,
+            ClipId::root(iframe_pipeline_id),
+            item.space_and_clip_info(),
             ClipRegion::create_for_clip_node_with_local_clip(
                 item.clip_rect(),
-                reference_frame_relative_offset
+                reference_frame_relative_offset,
             ),
         );
         self.pipeline_clip_chain_stack.push(clip_chain_index);
 
         let bounds = item.rect();
         let origin = *reference_frame_relative_offset + bounds.origin.to_vector();
-        self.push_reference_frame(
-            ClipId::root_reference_frame(iframe_pipeline_id),
-            Some(info.clip_id),
-            None,
+        let spatial_node_index = self.push_reference_frame(
+            SpatialId::root_reference_frame(iframe_pipeline_id),
+            Some(spatial_node_index),
             iframe_pipeline_id,
-            None,
-            None,
+            TransformStyle::Flat,
+            PropertyBinding::Value(LayoutTransform::identity()),
+            ReferenceFrameKind::Transform,
             origin,
         );
 
         let iframe_rect = LayoutRect::new(LayoutPoint::zero(), bounds.size);
         self.add_scroll_frame(
-            ClipId::root_scroll_node(iframe_pipeline_id),
-            ClipId::root_reference_frame(iframe_pipeline_id),
+            SpatialId::root_scroll_node(iframe_pipeline_id),
+            spatial_node_index,
             Some(ExternalScrollId(0, iframe_pipeline_id)),
             iframe_pipeline_id,
             &iframe_rect,
@@ -693,9 +682,10 @@ impl<'a> DisplayListFlattener<'a> {
             ScrollFrameKind::PipelineRoot,
         );
 
-        self.flatten_root(
-            pipeline,
-            &iframe_rect.size,
+        self.flatten_items(
+            &mut pipeline.display_list.iter(),
+            pipeline.pipeline_id,
+            LayoutVector2D::zero(),
         );
 
         self.pipeline_clip_chain_stack.pop();
@@ -707,10 +697,17 @@ impl<'a> DisplayListFlattener<'a> {
         pipeline_id: PipelineId,
         reference_frame_relative_offset: LayoutVector2D,
     ) -> Option<BuiltDisplayListIter<'a>> {
-        let clip_and_scroll_ids = item.clip_and_scroll();
-        let clip_and_scroll = self.map_clip_and_scroll(&clip_and_scroll_ids);
-
+        let space_and_clip = item.space_and_clip_info();
+        let clip_and_scroll = ScrollNodeAndClipChain::new(
+            self.id_to_index_mapper.get_spatial_node_index(space_and_clip.spatial_id),
+            if space_and_clip.clip_id.is_valid() {
+                self.id_to_index_mapper.get_clip_chain_id(space_and_clip.clip_id)
+            } else {
+                ClipChainId::INVALID
+            },
+        );
         let prim_info = item.get_layout_primitive_info(&reference_frame_relative_offset);
+
         match *item.item() {
             SpecificDisplayItem::Image(ref info) => {
                 self.add_image(
@@ -723,6 +720,7 @@ impl<'a> DisplayListFlattener<'a> {
                     info.image_rendering,
                     info.alpha_type,
                     info.color,
+                    reference_frame_relative_offset,
                 );
             }
             SpecificDisplayItem::YuvImage(ref info) => {
@@ -733,6 +731,7 @@ impl<'a> DisplayListFlattener<'a> {
                     info.color_depth,
                     info.color_space,
                     info.image_rendering,
+                    reference_frame_relative_offset,
                 );
             }
             SpecificDisplayItem::Text(ref text_info) => {
@@ -752,12 +751,14 @@ impl<'a> DisplayListFlattener<'a> {
                     clip_and_scroll,
                     &prim_info,
                     info.color,
+                    reference_frame_relative_offset,
                 );
             }
             SpecificDisplayItem::ClearRectangle => {
                 self.add_clear_rectangle(
                     clip_and_scroll,
                     &prim_info,
+                    reference_frame_relative_offset,
                 );
             }
             SpecificDisplayItem::Line(ref info) => {
@@ -768,6 +769,7 @@ impl<'a> DisplayListFlattener<'a> {
                     info.orientation,
                     info.color,
                     info.style,
+                    reference_frame_relative_offset,
                 );
             }
             SpecificDisplayItem::Gradient(ref info) => {
@@ -787,6 +789,7 @@ impl<'a> DisplayListFlattener<'a> {
                         &prim_info,
                         Vec::new(),
                         prim_key_kind,
+                        reference_frame_relative_offset,
                     );
                 }
             }
@@ -809,6 +812,7 @@ impl<'a> DisplayListFlattener<'a> {
                     &prim_info,
                     Vec::new(),
                     prim_key_kind,
+                    reference_frame_relative_offset,
                 );
             }
             SpecificDisplayItem::BoxShadow(ref box_shadow_info) => {
@@ -826,6 +830,7 @@ impl<'a> DisplayListFlattener<'a> {
                     box_shadow_info.spread_radius,
                     box_shadow_info.border_radius,
                     box_shadow_info.clip_mode,
+                    reference_frame_relative_offset,
                 );
             }
             SpecificDisplayItem::Border(ref info) => {
@@ -835,6 +840,7 @@ impl<'a> DisplayListFlattener<'a> {
                     info,
                     item.gradient_stops(),
                     pipeline_id,
+                    reference_frame_relative_offset,
                 );
             }
             SpecificDisplayItem::PushStackingContext(ref info) => {
@@ -842,10 +848,11 @@ impl<'a> DisplayListFlattener<'a> {
                 self.flatten_stacking_context(
                     &mut subtraversal,
                     pipeline_id,
-                    &item,
                     &info.stacking_context,
-                    clip_and_scroll_ids.scroll_node_id,
-                    reference_frame_relative_offset,
+                    clip_and_scroll.spatial_node_index,
+                    item.rect().origin,
+                    item.filters(),
+                    &reference_frame_relative_offset,
                     prim_info.is_backface_visible,
                 );
                 return Some(subtraversal);
@@ -855,20 +862,19 @@ impl<'a> DisplayListFlattener<'a> {
                 self.flatten_reference_frame(
                     &mut subtraversal,
                     pipeline_id,
-                    &item,
+                    clip_and_scroll.spatial_node_index,
+                    item.rect().origin,
                     &info.reference_frame,
-                    &clip_and_scroll_ids,
                     reference_frame_relative_offset,
                 );
                 return Some(subtraversal);
-
             }
             SpecificDisplayItem::Iframe(ref info) => {
                 self.flatten_iframe(
                     &item,
                     info,
-                    &clip_and_scroll_ids,
-                    &reference_frame_relative_offset
+                    clip_and_scroll.spatial_node_index,
+                    &reference_frame_relative_offset,
                 );
             }
             SpecificDisplayItem::Clip(ref info) => {
@@ -879,7 +885,7 @@ impl<'a> DisplayListFlattener<'a> {
                     info.image_mask,
                     &reference_frame_relative_offset,
                 );
-                self.add_clip_node(info.id, &clip_and_scroll_ids, clip_region);
+                self.add_clip_node(info.id, space_and_clip, clip_region);
             }
             SpecificDisplayItem::ClipChain(ref info) => {
                 // For a user defined clip-chain the parent (if specified) must
@@ -888,7 +894,7 @@ impl<'a> DisplayListFlattener<'a> {
                 // is used to provide a root clip chain for iframes.
                 let mut parent_clip_chain_id = match info.parent {
                     Some(id) => {
-                        self.id_to_index_mapper.get_clip_chain_id(&ClipId::ClipChain(id))
+                        self.id_to_index_mapper.get_clip_chain_id(ClipId::ClipChain(id))
                     }
                     None => {
                         self.pipeline_clip_chain_stack.last().cloned().unwrap()
@@ -904,11 +910,11 @@ impl<'a> DisplayListFlattener<'a> {
                 let mut clip_chain_id = parent_clip_chain_id;
 
                 // For each specified clip id
-                for item in self.get_clip_chain_items(pipeline_id, item.clip_chain_items()) {
+                for clip_item in self.get_clip_chain_items(pipeline_id, item.clip_chain_items()) {
                     // Map the ClipId to an existing clip chain node.
                     let item_clip_node = self
                         .id_to_index_mapper
-                        .get_clip_node(&item);
+                        .get_clip_node(&clip_item);
 
                     let mut clip_node_clip_chain_id = item_clip_node.id;
 
@@ -954,32 +960,32 @@ impl<'a> DisplayListFlattener<'a> {
                 self.flatten_scroll_frame(
                     &item,
                     info,
+                    clip_and_scroll.spatial_node_index,
                     pipeline_id,
-                    &clip_and_scroll_ids,
-                    &reference_frame_relative_offset
+                    &reference_frame_relative_offset,
                 );
             }
             SpecificDisplayItem::StickyFrame(ref info) => {
                 self.flatten_sticky_frame(
                     &item,
                     info,
-                    &clip_and_scroll,
-                    &clip_and_scroll_ids.scroll_node_id,
-                    &reference_frame_relative_offset
+                    clip_and_scroll.spatial_node_index,
+                    &reference_frame_relative_offset,
                 );
             }
 
             // Do nothing; these are dummy items for the display list parser
             SpecificDisplayItem::SetGradientStops => {}
 
-            SpecificDisplayItem::PopStackingContext | SpecificDisplayItem::PopReferenceFrame => {
+            SpecificDisplayItem::PopReferenceFrame |
+            SpecificDisplayItem::PopStackingContext => {
                 unreachable!("Should have returned in parent method.")
             }
             SpecificDisplayItem::PushShadow(shadow) => {
                 self.push_shadow(shadow, clip_and_scroll);
             }
             SpecificDisplayItem::PopAllShadows => {
-                self.pop_all_shadows();
+                self.pop_all_shadows(reference_frame_relative_offset);
             }
             SpecificDisplayItem::PushCacheMarker(_marker) => {
             }
@@ -1007,26 +1013,16 @@ impl<'a> DisplayListFlattener<'a> {
             for (local_pos, item) in clip_items {
                 // Intern this clip item, and store the handle
                 // in the clip chain node.
-                let handle = self.resources
-                    .clip_interner
-                    .intern(&item, || {
-                        ClipItemSceneData {
-                            // The only type of clip items that exist in the per-primitive
-                            // clip items are box shadows, and they don't contribute a
-                            // local clip rect, so just provide max_rect here. In the future,
-                            // we intend to make box shadows a primitive effect, in which
-                            // case the entire clip_items API on primitives can be removed.
-                            clip_rect: LayoutRect::max_rect(),
-                        }
-                    });
+                let handle = self.interners
+                    .clip
+                    .intern(&item, || ());
 
-                clip_chain_id = self.clip_store
-                                    .add_clip_chain_node(
-                                        handle,
-                                        local_pos,
-                                        spatial_node_index,
-                                        clip_chain_id,
-                                    );
+                clip_chain_id = self.clip_store.add_clip_chain_node(
+                    handle,
+                    local_pos,
+                    spatial_node_index,
+                    clip_chain_id,
+                );
             }
 
             clip_chain_id
@@ -1044,36 +1040,35 @@ impl<'a> DisplayListFlattener<'a> {
         clip_chain_id: ClipChainId,
         spatial_node_index: SpatialNodeIndex,
         prim: P,
+        reference_frame_relative_offset: LayoutVector2D,
     ) -> PrimitiveInstance
     where
         P: Internable<InternData=PrimitiveSceneData>,
-        P::Source: AsInstanceKind<Handle<P::Marker>>,
-        DocumentResources: InternerMut<P>,
+        P::Source: AsInstanceKind<Handle<P::Marker>> + InternDebug,
+        Interners: InternerMut<P>,
     {
-        let offset = info.rect.origin.to_vector();
-        let prim_relative_clip_rect = info.clip_rect
-            .translate(&-offset)
-            .into();
-
         // Build a primitive key.
-        let prim_key = prim.build_key(info, prim_relative_clip_rect);
+        let prim_key = prim.build_key(info);
 
-        let interner = self.resources.interner_mut();
+        let interner = self.interners.interner_mut();
         let prim_data_handle =
             interner
             .intern(&prim_key, || {
                 PrimitiveSceneData {
-                    prim_relative_clip_rect,
                     prim_size: info.rect.size,
                     is_backface_visible: info.is_backface_visible,
                 }
             });
 
-        let instance_kind = prim_key.as_instance_kind(prim_data_handle,
-                                                      &mut self.prim_store);
+        let instance_kind = prim_key.as_instance_kind(
+            prim_data_handle,
+            &mut self.prim_store,
+            reference_frame_relative_offset,
+        );
 
         PrimitiveInstance::new(
             info.rect.origin,
+            info.clip_rect,
             instance_kind,
             clip_chain_id,
             spatial_node_index,
@@ -1124,11 +1119,12 @@ impl<'a> DisplayListFlattener<'a> {
         info: &LayoutPrimitiveInfo,
         clip_items: Vec<(LayoutPoint, ClipItemKey)>,
         prim: P,
+        reference_frame_relative_offset: LayoutVector2D,
     )
     where
         P: Internable<InternData = PrimitiveSceneData> + IsVisible,
-        P::Source: AsInstanceKind<Handle<P::Marker>>,
-        DocumentResources: InternerMut<P>,
+        P::Source: AsInstanceKind<Handle<P::Marker>> + InternDebug,
+        Interners: InternerMut<P>,
     {
         if prim.is_visible() {
             let clip_chain_id = self.build_clip_chain(
@@ -1140,7 +1136,8 @@ impl<'a> DisplayListFlattener<'a> {
                 info,
                 clip_chain_id,
                 clip_and_scroll,
-                prim
+                prim,
+                reference_frame_relative_offset,
             );
         }
     }
@@ -1151,17 +1148,24 @@ impl<'a> DisplayListFlattener<'a> {
         info: &LayoutPrimitiveInfo,
         clip_items: Vec<(LayoutPoint, ClipItemKey)>,
         prim: P,
+        reference_frame_relative_offset: LayoutVector2D,
     )
     where
         P: Internable<InternData = PrimitiveSceneData> + IsVisible,
-        P::Source: AsInstanceKind<Handle<P::Marker>>,
-        DocumentResources: InternerMut<P>,
+        P::Source: AsInstanceKind<Handle<P::Marker>> + InternDebug,
+        Interners: InternerMut<P>,
         ShadowItem: From<PendingPrimitive<P>>
     {
         // If a shadow context is not active, then add the primitive
         // directly to the parent picture.
         if self.pending_shadow_items.is_empty() {
-            self.add_nonshadowable_primitive(clip_and_scroll, info, clip_items, prim);
+            self.add_nonshadowable_primitive(
+                clip_and_scroll,
+                info,
+                clip_items,
+                prim,
+                reference_frame_relative_offset,
+            );
         } else {
             debug_assert!(clip_items.is_empty(), "No per-prim clips expected for shadowed primitives");
 
@@ -1181,17 +1185,19 @@ impl<'a> DisplayListFlattener<'a> {
         clip_chain_id: ClipChainId,
         clip_and_scroll: ScrollNodeAndClipChain,
         prim: P,
+        reference_frame_relative_offset: LayoutVector2D,
     )
     where
         P: Internable<InternData = PrimitiveSceneData>,
-        P::Source: AsInstanceKind<Handle<P::Marker>>,
-        DocumentResources: InternerMut<P>,
+        P::Source: AsInstanceKind<Handle<P::Marker>> + InternDebug,
+        Interners: InternerMut<P>,
     {
         let prim_instance = self.create_primitive(
             info,
             clip_chain_id,
             clip_and_scroll.spatial_node_index,
             prim,
+            reference_frame_relative_offset,
         );
         self.register_chase_primitive_by_rect(
             &info.rect,
@@ -1207,19 +1213,15 @@ impl<'a> DisplayListFlattener<'a> {
         composite_ops: CompositeOps,
         transform_style: TransformStyle,
         is_backface_visible: bool,
-        is_pipeline_root: bool,
-        spatial_node: ClipId,
-        clipping_node: Option<ClipId>,
+        create_tile_cache: bool,
+        spatial_node_index: SpatialNodeIndex,
+        clip_chain_id: ClipChainId,
         requested_raster_space: RasterSpace,
     ) {
-        let spatial_node_index = self.id_to_index_mapper.get_spatial_node_index(spatial_node);
-        let clip_chain_id = match clipping_node {
-            Some(ref clipping_node) => self.id_to_index_mapper.get_clip_chain_id(clipping_node),
-            None => ClipChainId::NONE,
-        };
-
         // Check if this stacking context is the root of a pipeline, and the caller
         // has requested it as an output frame.
+        let is_pipeline_root =
+            self.sc_stack.last().map_or(true, |sc| sc.pipeline_id != pipeline_id);
         let frame_output_pipeline_id = if is_pipeline_root && self.output_pipelines.contains(&pipeline_id) {
             Some(pipeline_id)
         } else {
@@ -1235,8 +1237,7 @@ impl<'a> DisplayListFlattener<'a> {
                 // so that the relative order between them and our current SC is preserved.
                 let extra_instance = sc.cut_flat_item_sequence(
                     &mut self.prim_store,
-                    &self.resources,
-                    &self.clip_store,
+                    &mut self.interners,
                 );
                 (sc.is_3d(), extra_instance)
             },
@@ -1281,32 +1282,14 @@ impl<'a> DisplayListFlattener<'a> {
         // has a clip node. In the future, we may decide during
         // prepare step to skip the intermediate surface if the
         // clip node doesn't affect the stacking context rect.
-        let should_isolate = clipping_node.is_some();
-
-        let prim_key = PrimitiveKey::new(
-            is_backface_visible,
-            LayoutSize::zero(),
-            LayoutRect::max_rect(),
-            PrimitiveKeyKind::Unused,
-        );
-
-        let primitive_data_handle = self.resources
-            .prim_interner
-            .intern(&prim_key, || {
-                PrimitiveSceneData {
-                    prim_relative_clip_rect: LayoutRect::max_rect(),
-                    prim_size: LayoutSize::zero(),
-                    is_backface_visible,
-                }
-            }
-        );
+        let should_isolate = clip_chain_id != ClipChainId::NONE;
 
         // Push the SC onto the stack, so we know how to handle things in
         // pop_stacking_context.
         self.sc_stack.push(FlattenedStackingContext {
             primitives: Vec::new(),
             pipeline_id,
-            primitive_data_handle,
+            is_backface_visible,
             requested_raster_space,
             spatial_node_index,
             clip_chain_id,
@@ -1315,11 +1298,12 @@ impl<'a> DisplayListFlattener<'a> {
             should_isolate,
             transform_style,
             context_3d,
+            create_tile_cache,
         });
     }
 
     pub fn pop_stacking_context(&mut self) {
-        let stacking_context = self.sc_stack.pop().unwrap();
+        let mut stacking_context = self.sc_stack.pop().unwrap();
 
         // If we encounter a stacking context that is effectively a no-op, then instead
         // of creating a picture, just append the primitive list to the parent stacking
@@ -1335,9 +1319,22 @@ impl<'a> DisplayListFlattener<'a> {
                 parent_sc,
                 self.clip_scroll_tree,
             ) {
-                parent_sc.primitives.extend(stacking_context.primitives);
+                // If the parent context primitives list is empty, it's faster
+                // to assign the storage of the popped context instead of paying
+                // the copying cost for extend.
+                if parent_sc.primitives.is_empty() {
+                    parent_sc.primitives = stacking_context.primitives;
+                } else {
+                    parent_sc.primitives.extend(stacking_context.primitives);
+                }
                 return;
             }
+        }
+
+        if stacking_context.create_tile_cache {
+            self.setup_picture_caching(
+                &mut stacking_context.primitives,
+            );
         }
 
         // An arbitrary large clip rect. For now, we don't
@@ -1387,11 +1384,12 @@ impl<'a> DisplayListFlattener<'a> {
                 stacking_context.requested_raster_space,
                 PrimitiveList::new(
                     stacking_context.primitives,
-                    &self.resources,
+                    &self.interners,
                 ),
                 stacking_context.spatial_node_index,
                 max_clip,
-                &self.clip_store,
+                None,
+                PictureOptions::default(),
             ))
         );
 
@@ -1399,26 +1397,26 @@ impl<'a> DisplayListFlattener<'a> {
         // mix-blend-mode and/or 3d rendering context containers.
 
         let mut current_pic_index = leaf_pic_index;
-        let data_handle = stacking_context.primitive_data_handle;
-        let mut cur_instance = PrimitiveInstance::new(
-            LayoutPoint::zero(),
-            PrimitiveInstanceKind::Picture {
-                data_handle,
-                pic_index: leaf_pic_index
-            },
-            stacking_context.clip_chain_id,
+        let mut cur_instance = create_prim_instance(
+            leaf_pic_index,
+            leaf_composite_mode.into(),
+            stacking_context.is_backface_visible,
+            ClipChainId::NONE,
             stacking_context.spatial_node_index,
+            &mut self.interners,
         );
 
         if cur_instance.is_chased() {
             println!("\tis a leaf primitive for a stacking context");
         }
 
+        let mut clip_chain = Some(stacking_context.clip_chain_id);
+
         // If establishing a 3d context, the `cur_instance` represents
         // a picture with all the *trailing* immediate children elements.
         // We append this to the preserve-3D picture set and make a container picture of them.
         if let Picture3DContext::In { root_data: Some(mut prims), ancestor_index } = stacking_context.context_3d {
-            prims.push(cur_instance.clone());
+            prims.push(cur_instance);
 
             // This is the acttual picture representing our 3D hierarchy root.
             current_pic_index = PictureIndex(self.prim_store.pictures
@@ -1435,28 +1433,44 @@ impl<'a> DisplayListFlattener<'a> {
                     stacking_context.requested_raster_space,
                     PrimitiveList::new(
                         prims,
-                        &self.resources,
+                        &self.interners,
                     ),
                     stacking_context.spatial_node_index,
                     max_clip,
-                    &self.clip_store,
+                    None,
+                    PictureOptions::default(),
                 ))
             );
 
-            cur_instance.kind = PrimitiveInstanceKind::Picture {
-                data_handle,
-                pic_index: current_pic_index
-            };
+            // If this is going to be the last picture for the stacking context,
+            // then put the clip onto the leaf picture, since this one uses
+            // PictureCompositeKey::Identity and won't have a surface to be
+            // clipped.
+            if stacking_context.composite_ops.filters.is_empty() &&
+               stacking_context.composite_ops.mix_blend_mode.is_none() {
+                cur_instance.clip_chain_id = clip_chain.take().unwrap();
+            }
+
+
+            cur_instance = create_prim_instance(
+                current_pic_index,
+                PictureCompositeKey::Identity,
+                stacking_context.is_backface_visible,
+                ClipChainId::NONE,
+                stacking_context.spatial_node_index,
+                &mut self.interners,
+            );
         }
 
         // For each filter, create a new image with that composite mode.
         for filter in &stacking_context.composite_ops.filters {
             let filter = filter.sanitize();
+            let composite_mode = Some(PictureCompositeMode::Filter(filter));
 
             let filter_pic_index = PictureIndex(self.prim_store.pictures
                 .alloc()
                 .init(PicturePrimitive::new_image(
-                    Some(PictureCompositeMode::Filter(filter)),
+                    composite_mode,
                     Picture3DContext::Out,
                     stacking_context.pipeline_id,
                     None,
@@ -1464,19 +1478,24 @@ impl<'a> DisplayListFlattener<'a> {
                     stacking_context.requested_raster_space,
                     PrimitiveList::new(
                         vec![cur_instance.clone()],
-                        &self.resources,
+                        &self.interners,
                     ),
                     stacking_context.spatial_node_index,
                     max_clip,
-                    &self.clip_store,
+                    None,
+                    PictureOptions::default(),
                 ))
             );
 
             current_pic_index = filter_pic_index;
-            cur_instance.kind = PrimitiveInstanceKind::Picture {
-                data_handle,
-                pic_index: current_pic_index
-            };
+            cur_instance = create_prim_instance(
+                current_pic_index,
+                composite_mode.into(),
+                stacking_context.is_backface_visible,
+                ClipChainId::NONE,
+                stacking_context.spatial_node_index,
+                &mut self.interners,
+            );
 
             if cur_instance.is_chased() {
                 println!("\tis a composite picture for a stacking context with {:?}", filter);
@@ -1489,10 +1508,12 @@ impl<'a> DisplayListFlattener<'a> {
 
         // Same for mix-blend-mode.
         if let Some(mix_blend_mode) = stacking_context.composite_ops.mix_blend_mode {
+            let composite_mode = Some(PictureCompositeMode::MixBlend(mix_blend_mode));
+
             let blend_pic_index = PictureIndex(self.prim_store.pictures
                 .alloc()
                 .init(PicturePrimitive::new_image(
-                    Some(PictureCompositeMode::MixBlend(mix_blend_mode)),
+                    composite_mode,
                     Picture3DContext::Out,
                     stacking_context.pipeline_id,
                     None,
@@ -1500,24 +1521,33 @@ impl<'a> DisplayListFlattener<'a> {
                     stacking_context.requested_raster_space,
                     PrimitiveList::new(
                         vec![cur_instance.clone()],
-                        &self.resources,
+                        &self.interners,
                     ),
                     stacking_context.spatial_node_index,
                     max_clip,
-                    &self.clip_store,
+                    None,
+                    PictureOptions::default(),
                 ))
             );
 
             current_pic_index = blend_pic_index;
-            cur_instance.kind = PrimitiveInstanceKind::Picture {
-                data_handle,
-                pic_index: blend_pic_index
-            };
+            cur_instance = create_prim_instance(
+                blend_pic_index,
+                composite_mode.into(),
+                stacking_context.is_backface_visible,
+                ClipChainId::NONE,
+                stacking_context.spatial_node_index,
+                &mut self.interners,
+            );
 
             if cur_instance.is_chased() {
                 println!("\tis a mix-blend picture for a stacking context with {:?}", mix_blend_mode);
             }
         }
+
+        // Set the stacking context clip on the outermost picture in the chain,
+        // unless we already set it on the leaf picture.
+        cur_instance.clip_chain_id = clip_chain.unwrap_or(ClipChainId::NONE);
 
         let has_mix_blend_on_secondary_framebuffer =
             stacking_context.composite_ops.mix_blend_mode.is_some() &&
@@ -1564,29 +1594,24 @@ impl<'a> DisplayListFlattener<'a> {
 
     pub fn push_reference_frame(
         &mut self,
-        reference_frame_id: ClipId,
-        parent_scroll_id: Option<ClipId>,
-        parent_clip_id: Option<ClipId>,
+        reference_frame_id: SpatialId,
+        parent_index: Option<SpatialNodeIndex>,
         pipeline_id: PipelineId,
-        source_transform: Option<PropertyBinding<LayoutTransform>>,
-        source_perspective: Option<LayoutTransform>,
+        transform_style: TransformStyle,
+        source_transform: PropertyBinding<LayoutTransform>,
+        kind: ReferenceFrameKind,
         origin_in_parent_reference_frame: LayoutVector2D,
     ) -> SpatialNodeIndex {
-        let parent_index = parent_scroll_id.map(|id| self.id_to_index_mapper.get_spatial_node_index(id));
         let index = self.clip_scroll_tree.add_reference_frame(
             parent_index,
+            transform_style,
             source_transform,
-            source_perspective,
+            kind,
             origin_in_parent_reference_frame,
             pipeline_id,
         );
         self.id_to_index_mapper.map_spatial_node(reference_frame_id, index);
 
-        match parent_clip_id.or(parent_scroll_id) {
-            Some(ref parent_id) =>
-                self.id_to_index_mapper.map_to_parent_clip_chain(reference_frame_id, parent_id),
-            _ => self.id_to_index_mapper.add_clip_chain(reference_frame_id, ClipChainId::NONE, 0),
-        }
         index
     }
 
@@ -1601,19 +1626,21 @@ impl<'a> DisplayListFlattener<'a> {
             register_prim_chase_id(id);
         }
 
-        self.push_reference_frame(
-            ClipId::root_reference_frame(pipeline_id),
-            None,
+        self.id_to_index_mapper.add_clip_chain(ClipId::root(pipeline_id), ClipChainId::NONE, 0);
+
+        let spatial_node_index = self.push_reference_frame(
+            SpatialId::root_reference_frame(pipeline_id),
             None,
             pipeline_id,
-            None,
-            None,
+            TransformStyle::Flat,
+            PropertyBinding::Value(LayoutTransform::identity()),
+            ReferenceFrameKind::Transform,
             LayoutVector2D::zero(),
         );
 
         self.add_scroll_frame(
-            ClipId::root_scroll_node(pipeline_id),
-            ClipId::root_reference_frame(pipeline_id),
+            SpatialId::root_scroll_node(pipeline_id),
+            spatial_node_index,
             Some(ExternalScrollId(0, pipeline_id)),
             pipeline_id,
             &LayoutRect::new(LayoutPoint::zero(), *viewport_size),
@@ -1626,7 +1653,7 @@ impl<'a> DisplayListFlattener<'a> {
     pub fn add_clip_node<I>(
         &mut self,
         new_node_id: ClipId,
-        parent: &ClipAndScrollInfo,
+        space_and_clip: &SpaceAndClipInfo,
         clip_region: ClipRegion<I>,
     ) -> ClipChainId
     where
@@ -1636,15 +1663,9 @@ impl<'a> DisplayListFlattener<'a> {
         // and the positioning node associated with those clip sources.
 
         // Map from parent ClipId to existing clip-chain.
-        let mut parent_clip_chain_index = self
-            .id_to_index_mapper
-            .get_clip_chain_id(&parent.clip_node_id());
+        let mut parent_clip_chain_index = self.id_to_index_mapper.get_clip_chain_id(space_and_clip.clip_id);
         // Map the ClipId for the positioning node to a spatial node index.
-        let spatial_node = self.id_to_index_mapper.get_spatial_node_index(parent.scroll_node_id);
-
-        // Add a mapping for this ClipId in case it's referenced as a positioning node.
-        self.id_to_index_mapper
-            .map_spatial_node(new_node_id, spatial_node);
+        let spatial_node = self.id_to_index_mapper.get_spatial_node_index(space_and_clip.spatial_id);
 
         let mut clip_count = 0;
 
@@ -1655,13 +1676,9 @@ impl<'a> DisplayListFlattener<'a> {
 
         // Build the clip sources from the supplied region.
         let handle = self
-            .resources
-            .clip_interner
-            .intern(&ClipItemKey::rectangle(clip_region.main.size, ClipMode::Clip), || {
-                ClipItemSceneData {
-                    clip_rect: clip_region.main,
-                }
-            });
+            .interners
+            .clip
+            .intern(&ClipItemKey::rectangle(clip_region.main.size, ClipMode::Clip), || ());
 
         parent_clip_chain_index = self
             .clip_store
@@ -1675,13 +1692,9 @@ impl<'a> DisplayListFlattener<'a> {
 
         if let Some(ref image_mask) = clip_region.image_mask {
             let handle = self
-                .resources
-                .clip_interner
-                .intern(&ClipItemKey::image_mask(image_mask), || {
-                    ClipItemSceneData {
-                        clip_rect: image_mask.get_local_clip_rect().unwrap_or(LayoutRect::max_rect()),
-                    }
-                });
+                .interners
+                .clip
+                .intern(&ClipItemKey::image_mask(image_mask), || ());
 
             parent_clip_chain_index = self
                 .clip_store
@@ -1696,13 +1709,9 @@ impl<'a> DisplayListFlattener<'a> {
 
         for region in clip_region.complex_clips {
             let handle = self
-                .resources
-                .clip_interner
-                .intern(&ClipItemKey::rounded_rect(region.rect.size, region.radii, region.mode), || {
-                    ClipItemSceneData {
-                        clip_rect: region.get_local_clip_rect().unwrap_or(LayoutRect::max_rect()),
-                    }
-                });
+                .interners
+                .clip
+                .intern(&ClipItemKey::rounded_rect(region.rect.size, region.radii, region.mode), || ());
 
             parent_clip_chain_index = self
                 .clip_store
@@ -1727,8 +1736,8 @@ impl<'a> DisplayListFlattener<'a> {
 
     pub fn add_scroll_frame(
         &mut self,
-        new_node_id: ClipId,
-        parent_id: ClipId,
+        new_node_id: SpatialId,
+        parent_node_index: SpatialNodeIndex,
         external_id: Option<ExternalScrollId>,
         pipeline_id: PipelineId,
         frame_rect: &LayoutRect,
@@ -1736,7 +1745,6 @@ impl<'a> DisplayListFlattener<'a> {
         scroll_sensitivity: ScrollSensitivity,
         frame_kind: ScrollFrameKind,
     ) -> SpatialNodeIndex {
-        let parent_node_index = self.id_to_index_mapper.get_spatial_node_index(parent_id);
         let node_index = self.clip_scroll_tree.add_scroll_frame(
             parent_node_index,
             external_id,
@@ -1747,7 +1755,6 @@ impl<'a> DisplayListFlattener<'a> {
             frame_kind,
         );
         self.id_to_index_mapper.map_spatial_node(new_node_id, node_index);
-        self.id_to_index_mapper.map_to_parent_clip_chain(new_node_id, &parent_id);
         node_index
     }
 
@@ -1764,7 +1771,10 @@ impl<'a> DisplayListFlattener<'a> {
         }));
     }
 
-    pub fn pop_all_shadows(&mut self) {
+    pub fn pop_all_shadows(
+        &mut self,
+        reference_frame_relative_offset: LayoutVector2D,
+    ) {
         assert!(!self.pending_shadow_items.is_empty(), "popped shadows, but none were present");
 
         let pipeline_id = self.sc_stack.last().unwrap().pipeline_id;
@@ -1812,12 +1822,45 @@ impl<'a> DisplayListFlattener<'a> {
 
                     for item in &items {
                         match item {
-                            // TODO(djg): ugh. de-duplicate this code.
+                            ShadowItem::Image(ref pending_image) => {
+                                self.add_shadow_prim(
+                                    &pending_shadow,
+                                    pending_image,
+                                    &mut prims,
+                                    reference_frame_relative_offset,
+                                )
+                            }
+                            ShadowItem::LineDecoration(ref pending_line_dec) => {
+                                self.add_shadow_prim(
+                                    &pending_shadow,
+                                    pending_line_dec,
+                                    &mut prims,
+                                    reference_frame_relative_offset,
+                                )
+                            }
+                            ShadowItem::NormalBorder(ref pending_border) => {
+                                self.add_shadow_prim(
+                                    &pending_shadow,
+                                    pending_border,
+                                    &mut prims,
+                                    reference_frame_relative_offset,
+                                )
+                            }
                             ShadowItem::Primitive(ref pending_primitive) => {
-                                self.add_shadow_prim(&pending_shadow, pending_primitive, &mut prims)
+                                self.add_shadow_prim(
+                                    &pending_shadow,
+                                    pending_primitive,
+                                    &mut prims,
+                                    reference_frame_relative_offset,
+                                )
                             }
                             ShadowItem::TextRun(ref pending_text_run) => {
-                                self.add_shadow_prim(&pending_shadow, pending_text_run, &mut prims)
+                                self.add_shadow_prim(
+                                    &pending_shadow,
+                                    pending_text_run,
+                                    &mut prims,
+                                    reference_frame_relative_offset,
+                                )
                             }
                             _ => {}
                         }
@@ -1831,12 +1874,20 @@ impl<'a> DisplayListFlattener<'a> {
                         // detect this and mark the picture to be drawn directly into the
                         // parent picture, which avoids an intermediate surface and blur.
                         let blur_filter = FilterOp::Blur(std_deviation).sanitize();
+                        let composite_mode = PictureCompositeMode::Filter(blur_filter);
+                        let composite_mode_key = Some(composite_mode).into();
+
+                        // Pass through configuration information about whether WR should
+                        // do the bounding rect inflation for text shadows.
+                        let options = PictureOptions {
+                            inflate_if_required: pending_shadow.shadow.should_inflate,
+                        };
 
                         // Create the primitive to draw the shadow picture into the scene.
                         let shadow_pic_index = PictureIndex(self.prim_store.pictures
                             .alloc()
                             .init(PicturePrimitive::new_image(
-                                Some(PictureCompositeMode::Filter(blur_filter)),
+                                Some(composite_mode),
                                 Picture3DContext::Out,
                                 pipeline_id,
                                 None,
@@ -1844,26 +1895,25 @@ impl<'a> DisplayListFlattener<'a> {
                                 raster_space,
                                 PrimitiveList::new(
                                     prims,
-                                    &self.resources,
+                                    &self.interners,
                                 ),
                                 pending_shadow.clip_and_scroll.spatial_node_index,
                                 max_clip,
-                                &self.clip_store,
+                                None,
+                                options,
                             ))
                         );
 
-                        let shadow_prim_key = PrimitiveKey::new(
+                        let shadow_pic_key = PictureKey::new(
                             true,
                             LayoutSize::zero(),
-                            LayoutRect::max_rect(),
-                            PrimitiveKeyKind::Unused,
+                            Picture { composite_mode_key },
                         );
 
-                        let shadow_prim_data_handle = self.resources
-                            .prim_interner
-                            .intern(&shadow_prim_key, || {
+                        let shadow_prim_data_handle = self.interners
+                            .picture
+                            .intern(&shadow_pic_key, || {
                                 PrimitiveSceneData {
-                                    prim_relative_clip_rect: LayoutRect::max_rect(),
                                     prim_size: LayoutSize::zero(),
                                     is_backface_visible: true,
                                 }
@@ -1872,6 +1922,7 @@ impl<'a> DisplayListFlattener<'a> {
 
                         let shadow_prim_instance = PrimitiveInstance::new(
                             LayoutPoint::zero(),
+                            LayoutRect::max_rect(),
                             PrimitiveInstanceKind::Picture {
                                 data_handle: shadow_prim_data_handle,
                                 pic_index: shadow_pic_index
@@ -1885,11 +1936,35 @@ impl<'a> DisplayListFlattener<'a> {
                         self.add_primitive_to_draw_list(shadow_prim_instance);
                     }
                 }
+                ShadowItem::Image(pending_image) => {
+                    self.add_shadow_prim_to_draw_list(
+                        pending_image,
+                        reference_frame_relative_offset,
+                    )
+                },
+                ShadowItem::LineDecoration(pending_line_dec) => {
+                    self.add_shadow_prim_to_draw_list(
+                        pending_line_dec,
+                        reference_frame_relative_offset,
+                    )
+                },
+                ShadowItem::NormalBorder(pending_border) => {
+                    self.add_shadow_prim_to_draw_list(
+                        pending_border,
+                        reference_frame_relative_offset,
+                    )
+                },
                 ShadowItem::Primitive(pending_primitive) => {
-                    self.add_shadow_prim_to_draw_list(pending_primitive)
+                    self.add_shadow_prim_to_draw_list(
+                        pending_primitive,
+                        reference_frame_relative_offset,
+                    )
                 },
                 ShadowItem::TextRun(pending_text_run) => {
-                    self.add_shadow_prim_to_draw_list(pending_text_run)
+                    self.add_shadow_prim_to_draw_list(
+                        pending_text_run,
+                        reference_frame_relative_offset,
+                    )
                 },
             }
         }
@@ -1903,11 +1978,12 @@ impl<'a> DisplayListFlattener<'a> {
         pending_shadow: &PendingShadow,
         pending_primitive: &PendingPrimitive<P>,
         prims: &mut Vec<PrimitiveInstance>,
+        reference_frame_relative_offset: LayoutVector2D,
     )
     where
         P: Internable<InternData=PrimitiveSceneData> + CreateShadow,
-        P::Source: AsInstanceKind<Handle<P::Marker>>,
-        DocumentResources: InternerMut<P>,
+        P::Source: AsInstanceKind<Handle<P::Marker>> + InternDebug,
+        Interners: InternerMut<P>,
     {
         // Offset the local rect and clip rect by the shadow offset.
         let mut info = pending_primitive.info.clone();
@@ -1922,17 +1998,21 @@ impl<'a> DisplayListFlattener<'a> {
             pending_primitive.prim.create_shadow(
                 &pending_shadow.shadow,
             ),
+            reference_frame_relative_offset,
         );
 
         // Add the new primitive to the shadow picture.
         prims.push(shadow_prim_instance);
     }
 
-    fn add_shadow_prim_to_draw_list<P>(&mut self, pending_primitive: PendingPrimitive<P>)
-    where
+    fn add_shadow_prim_to_draw_list<P>(
+        &mut self,
+        pending_primitive: PendingPrimitive<P>,
+        reference_frame_relative_offset: LayoutVector2D,
+    ) where
         P: Internable<InternData = PrimitiveSceneData> + IsVisible,
-        P::Source: AsInstanceKind<Handle<P::Marker>>,
-        DocumentResources: InternerMut<P>,
+        P::Source: AsInstanceKind<Handle<P::Marker>> + InternDebug,
+        Interners: InternerMut<P>,
     {
         // For a normal primitive, if it has alpha > 0, then we add this
         // as a normal primitive to the parent picture.
@@ -1942,6 +2022,7 @@ impl<'a> DisplayListFlattener<'a> {
                 pending_primitive.clip_and_scroll.clip_chain_id,
                 pending_primitive.clip_and_scroll,
                 pending_primitive.prim,
+                reference_frame_relative_offset,
             );
         }
     }
@@ -1971,6 +2052,7 @@ impl<'a> DisplayListFlattener<'a> {
         clip_and_scroll: ScrollNodeAndClipChain,
         info: &LayoutPrimitiveInfo,
         color: ColorF,
+        reference_frame_relative_offset: LayoutVector2D,
     ) {
         if color.a == 0.0 {
             // Don't add transparent rectangles to the draw list, but do consider them for hit
@@ -1986,6 +2068,7 @@ impl<'a> DisplayListFlattener<'a> {
             PrimitiveKeyKind::Rectangle {
                 color: color.into(),
             },
+            reference_frame_relative_offset,
         );
     }
 
@@ -1993,12 +2076,14 @@ impl<'a> DisplayListFlattener<'a> {
         &mut self,
         clip_and_scroll: ScrollNodeAndClipChain,
         info: &LayoutPrimitiveInfo,
+        reference_frame_relative_offset: LayoutVector2D,
     ) {
         self.add_primitive(
             clip_and_scroll,
             info,
             Vec::new(),
             PrimitiveKeyKind::Clear,
+            reference_frame_relative_offset,
         );
     }
 
@@ -2010,6 +2095,7 @@ impl<'a> DisplayListFlattener<'a> {
         orientation: LineOrientation,
         color: ColorF,
         style: LineStyle,
+        reference_frame_relative_offset: LayoutVector2D,
     ) {
         // For line decorations, we can construct the render task cache key
         // here during scene building, since it doesn't depend on device
@@ -2067,10 +2153,11 @@ impl<'a> DisplayListFlattener<'a> {
             clip_and_scroll,
             &info,
             Vec::new(),
-            PrimitiveKeyKind::LineDecoration {
+            LineDecoration {
                 cache_key,
                 color: color.into(),
             },
+            reference_frame_relative_offset,
         );
     }
 
@@ -2081,6 +2168,7 @@ impl<'a> DisplayListFlattener<'a> {
         border_item: &BorderDisplayItem,
         gradient_stops: ItemRange<GradientStop>,
         pipeline_id: PipelineId,
+        reference_frame_relative_offset: LayoutVector2D,
     ) {
         match border_item.details {
             BorderDetails::NinePatch(ref border) => {
@@ -2097,7 +2185,7 @@ impl<'a> DisplayListFlattener<'a> {
 
                 match border.source {
                     NinePatchBorderSource::Image(image_key) => {
-                        let prim = PrimitiveKeyKind::ImageBorder {
+                        let prim = ImageBorder {
                             request: ImageRequest {
                                 key: image_key,
                                 rendering: ImageRendering::Auto,
@@ -2106,11 +2194,12 @@ impl<'a> DisplayListFlattener<'a> {
                             nine_patch,
                         };
 
-                        self.add_primitive(
+                        self.add_nonshadowable_primitive(
                             clip_and_scroll,
                             info,
                             Vec::new(),
                             prim,
+                            reference_frame_relative_offset,
                         );
                     }
                     NinePatchBorderSource::Gradient(gradient) => {
@@ -2134,6 +2223,7 @@ impl<'a> DisplayListFlattener<'a> {
                             info,
                             Vec::new(),
                             prim,
+                            reference_frame_relative_offset,
                         );
                     }
                     NinePatchBorderSource::RadialGradient(gradient) => {
@@ -2156,6 +2246,7 @@ impl<'a> DisplayListFlattener<'a> {
                             info,
                             Vec::new(),
                             prim,
+                            reference_frame_relative_offset,
                         );
                     }
                 };
@@ -2166,6 +2257,7 @@ impl<'a> DisplayListFlattener<'a> {
                     border,
                     border_item.widths,
                     clip_and_scroll,
+                    reference_frame_relative_offset,
                 );
             }
         }
@@ -2340,12 +2432,20 @@ impl<'a> DisplayListFlattener<'a> {
             //           the primitive key, when the common case is that the
             //           hash will match and we won't end up creating a new
             //           primitive template.
-            let glyphs = display_list.get(glyph_range).collect();
+            let prim_offset = prim_info.rect.origin.to_vector() - offset;
+            let glyphs = display_list
+                .get(glyph_range)
+                .map(|glyph| {
+                    GlyphInstance {
+                        index: glyph.index,
+                        point: glyph.point - prim_offset,
+                    }
+                })
+                .collect();
 
             TextRun {
-                glyphs,
+                glyphs: Arc::new(glyphs),
                 font,
-                offset: offset.to_au(),
                 shadow: false,
             }
         };
@@ -2355,6 +2455,7 @@ impl<'a> DisplayListFlattener<'a> {
             prim_info,
             Vec::new(),
             text_run,
+            offset,
         );
     }
 
@@ -2369,6 +2470,7 @@ impl<'a> DisplayListFlattener<'a> {
         image_rendering: ImageRendering,
         alpha_type: AlphaType,
         color: ColorF,
+        reference_frame_relative_offset: LayoutVector2D,
     ) {
         let mut prim_rect = info.rect;
         simplify_repeated_primitive(&stretch_size, &mut tile_spacing, &mut prim_rect);
@@ -2394,7 +2496,7 @@ impl<'a> DisplayListFlattener<'a> {
             clip_and_scroll,
             &info,
             Vec::new(),
-            PrimitiveKeyKind::Image {
+            Image {
                 key: image_key,
                 tile_spacing: tile_spacing.into(),
                 stretch_size: stretch_size.into(),
@@ -2403,6 +2505,7 @@ impl<'a> DisplayListFlattener<'a> {
                 image_rendering,
                 alpha_type,
             },
+            reference_frame_relative_offset,
         );
     }
 
@@ -2414,6 +2517,7 @@ impl<'a> DisplayListFlattener<'a> {
         color_depth: ColorDepth,
         color_space: YuvColorSpace,
         image_rendering: ImageRendering,
+        reference_frame_relative_offset: LayoutVector2D,
     ) {
         let format = yuv_data.get_format();
         let yuv_key = match yuv_data {
@@ -2422,29 +2526,19 @@ impl<'a> DisplayListFlattener<'a> {
             YuvData::InterleavedYCbCr(plane_0) => [plane_0, ImageKey::DUMMY, ImageKey::DUMMY],
         };
 
-        self.add_primitive(
+        self.add_nonshadowable_primitive(
             clip_and_scroll,
             info,
             Vec::new(),
-            PrimitiveKeyKind::YuvImage {
+            YuvImage {
                 color_depth,
                 yuv_key,
                 format,
                 color_space,
                 image_rendering,
             },
+            reference_frame_relative_offset,
         );
-    }
-
-    pub fn map_clip_and_scroll(&mut self, info: &ClipAndScrollInfo) -> ScrollNodeAndClipChain {
-        ScrollNodeAndClipChain::new(
-            self.id_to_index_mapper.get_spatial_node_index(info.scroll_node_id),
-            self.id_to_index_mapper.get_clip_chain_id(&info.clip_node_id())
-        )
-    }
-
-    pub fn simple_scroll_and_clip_chain(&mut self, id: &ClipId) -> ScrollNodeAndClipChain {
-        self.map_clip_and_scroll(&ClipAndScrollInfo::simple(*id))
     }
 
     pub fn add_primitive_instance_to_3d_root(&mut self, instance: PrimitiveInstance) {
@@ -2467,6 +2561,7 @@ pub trait AsInstanceKind<H> {
         &self,
         data_handle: H,
         prim_store: &mut PrimitiveStore,
+        reference_frame_relative_offset: LayoutVector2D,
     ) -> PrimitiveInstanceKind;
 }
 
@@ -2485,9 +2580,8 @@ struct FlattenedStackingContext {
     /// The list of primitive instances added to this stacking context.
     primitives: Vec<PrimitiveInstance>,
 
-    /// The interned key for all the primitive instances associated with this
-    /// SC (but not its children);
-    primitive_data_handle: PrimitiveDataHandle,
+    /// Whether this stacking context is visible when backfacing
+    is_backface_visible: bool,
 
     /// Whether or not the caller wants this drawn in
     /// screen space (quality) or local space (performance)
@@ -2519,6 +2613,9 @@ struct FlattenedStackingContext {
 
     /// Defines the relationship to a preserve-3D hiearachy.
     context_3d: Picture3DContext<PrimitiveInstance>,
+
+    /// If true, create a tile cache for this stacking context.
+    create_tile_cache: bool,
 }
 
 impl FlattenedStackingContext {
@@ -2544,7 +2641,7 @@ impl FlattenedStackingContext {
         }
 
         // If backface visibility is different
-        if self.primitive_data_handle.uid() != parent.primitive_data_handle.uid() {
+        if self.is_backface_visible != parent.is_backface_visible {
             return false;
         }
 
@@ -2553,7 +2650,7 @@ impl FlattenedStackingContext {
             return false;
         }
 
-        // If different clipp chains
+        // If different clip chains
         if self.clip_chain_id != parent.clip_chain_id {
             return false;
         }
@@ -2568,6 +2665,11 @@ impl FlattenedStackingContext {
             return false;
         }
 
+        // If this stacking context gets picture caching, we need it.
+        if self.create_tile_cache {
+            return false;
+        }
+
         // It is redundant!
         true
     }
@@ -2577,8 +2679,7 @@ impl FlattenedStackingContext {
     pub fn cut_flat_item_sequence(
         &mut self,
         prim_store: &mut PrimitiveStore,
-        resources: &DocumentResources,
-        clip_store: &ClipStore,
+        interners: &mut Interners,
     ) -> Option<PrimitiveInstance> {
         if !self.is_3d() || self.primitives.is_empty() {
             return None
@@ -2602,23 +2703,25 @@ impl FlattenedStackingContext {
                 self.requested_raster_space,
                 PrimitiveList::new(
                     mem::replace(&mut self.primitives, Vec::new()),
-                    resources,
+                    interners,
                 ),
                 self.spatial_node_index,
                 LayoutRect::max_rect(),
-                clip_store,
+                None,
+                PictureOptions::default(),
             ))
         );
 
-        Some(PrimitiveInstance::new(
-            LayoutPoint::zero(),
-            PrimitiveInstanceKind::Picture {
-                data_handle: self.primitive_data_handle,
-                pic_index
-            },
+        let prim_instance = create_prim_instance(
+            pic_index,
+            PictureCompositeKey::Identity,
+            self.is_backface_visible,
             self.clip_chain_id,
             self.spatial_node_index,
-        ))
+            interners,
+        );
+
+        Some(prim_instance)
     }
 }
 
@@ -2640,8 +2743,29 @@ pub struct PendingShadow {
 
 pub enum ShadowItem {
     Shadow(PendingShadow),
+    Image(PendingPrimitive<Image>),
+    LineDecoration(PendingPrimitive<LineDecoration>),
+    NormalBorder(PendingPrimitive<NormalBorderPrim>),
     Primitive(PendingPrimitive<PrimitiveKeyKind>),
     TextRun(PendingPrimitive<TextRun>),
+}
+
+impl From<PendingPrimitive<Image>> for ShadowItem {
+    fn from(image: PendingPrimitive<Image>) -> Self {
+        ShadowItem::Image(image)
+    }
+}
+
+impl From<PendingPrimitive<LineDecoration>> for ShadowItem {
+    fn from(line_dec: PendingPrimitive<LineDecoration>) -> Self {
+        ShadowItem::LineDecoration(line_dec)
+    }
+}
+
+impl From<PendingPrimitive<NormalBorderPrim>> for ShadowItem {
+    fn from(border: PendingPrimitive<NormalBorderPrim>) -> Self {
+        ShadowItem::NormalBorder(border)
+    }
 }
 
 impl From<PendingPrimitive<PrimitiveKeyKind>> for ShadowItem {
@@ -2654,4 +2778,40 @@ impl From<PendingPrimitive<TextRun>> for ShadowItem {
     fn from(text_run: PendingPrimitive<TextRun>) -> Self {
         ShadowItem::TextRun(text_run)
     }
+}
+
+fn create_prim_instance(
+    pic_index: PictureIndex,
+    composite_mode_key: PictureCompositeKey,
+    is_backface_visible: bool,
+    clip_chain_id: ClipChainId,
+    spatial_node_index: SpatialNodeIndex,
+    interners: &mut Interners,
+) -> PrimitiveInstance {
+    let pic_key = PictureKey::new(
+        is_backface_visible,
+        LayoutSize::zero(),
+        Picture { composite_mode_key },
+    );
+
+    let data_handle = interners
+        .picture
+        .intern(&pic_key, || {
+            PrimitiveSceneData {
+                prim_size: LayoutSize::zero(),
+                is_backface_visible,
+            }
+        }
+    );
+
+    PrimitiveInstance::new(
+        LayoutPoint::zero(),
+        LayoutRect::max_rect(),
+        PrimitiveInstanceKind::Picture {
+            data_handle,
+            pic_index,
+        },
+        clip_chain_id,
+        spatial_node_index,
+    )
 }

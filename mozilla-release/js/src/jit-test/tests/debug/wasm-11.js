@@ -1,9 +1,9 @@
-// |jit-test| test-also-no-wasm-baseline; skip-if: !wasmDebuggingIsSupported()
+// |jit-test| test-also-wasm-compiler-ion; skip-if: !wasmDebuggingIsSupported()
 
 // Test single-stepping where the TLS register can be evicted by a non-trivial
 // function body.
 
-var g = newGlobal();
+var g = newGlobal({newCompartment: true});
 g.parent = this;
 g.eval(`
     var dbg = new Debugger(parent);

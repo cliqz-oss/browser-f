@@ -17,16 +17,17 @@
 //! Between the two phases, preamble signatures and call/return arguments don't match. This
 //! intermediate state doesn't type check.
 
-use abi::{legalize_abi_value, ValueConversion};
-use cursor::{Cursor, FuncCursor};
-use flowgraph::ControlFlowGraph;
-use ir::instructions::CallInfo;
-use ir::{
+use crate::abi::{legalize_abi_value, ValueConversion};
+use crate::cursor::{Cursor, FuncCursor};
+use crate::flowgraph::ControlFlowGraph;
+use crate::ir::instructions::CallInfo;
+use crate::ir::{
     AbiParam, ArgumentLoc, ArgumentPurpose, DataFlowGraph, Ebb, Function, Inst, InstBuilder,
     SigRef, Signature, Type, Value, ValueLoc,
 };
-use isa::TargetIsa;
-use legalizer::split::{isplit, vsplit};
+use crate::isa::TargetIsa;
+use crate::legalizer::split::{isplit, vsplit};
+use log::debug;
 use std::vec::Vec;
 
 /// Legalize all the function signatures in `func`.
@@ -575,7 +576,8 @@ pub fn handle_return_abi(inst: Inst, func: &mut Function, cfg: &ControlFlowGraph
             rt.purpose == ArgumentPurpose::Link
                 || rt.purpose == ArgumentPurpose::StructReturn
                 || rt.purpose == ArgumentPurpose::VMContext
-        }).count();
+        })
+        .count();
     let abi_args = func.signature.returns.len() - special_args;
 
     let pos = &mut FuncCursor::new(func).at_inst(inst);
@@ -694,7 +696,8 @@ fn spill_call_arguments(pos: &mut FuncCursor) -> bool {
                     }
                     _ => None,
                 }
-            }).collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>()
     };
 
     if arglist.is_empty() {

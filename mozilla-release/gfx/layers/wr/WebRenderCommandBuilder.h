@@ -42,6 +42,7 @@ class WebRenderCommandBuilder {
         mBuilderDumpIndex(0),
         mDumpIndent(0),
         mDoGrouping(false),
+        mForEventsAndPluginsOnly(false),
         mContainsSVGGroup(false) {}
 
   void Destroy();
@@ -56,10 +57,10 @@ class WebRenderCommandBuilder {
                               nsDisplayListBuilder* aDisplayListBuilder,
                               WebRenderScrollData& aScrollData,
                               wr::LayoutSize& aContentSize,
-                              const nsTArray<wr::WrFilterOp>& aFilters);
+                              nsTArray<wr::FilterOp>&& aFilters);
 
   void PushOverrideForASR(const ActiveScrolledRoot* aASR,
-                          const wr::WrClipId& aClipId);
+                          const wr::WrSpatialId& aSpatialId);
   void PopOverrideForASR(const ActiveScrolledRoot* aASR);
 
   Maybe<wr::ImageKey> CreateImageKey(
@@ -77,10 +78,10 @@ class WebRenderCommandBuilder {
                  mozilla::wr::DisplayListBuilder& aBuilder,
                  mozilla::wr::IpcResourceUpdateQueue& aResources,
                  const StackingContextHelper& aSc,
-                 const LayoutDeviceRect& aRect);
+                 const LayoutDeviceRect& aRect, const LayoutDeviceRect& aClip);
 
   Maybe<wr::WrImageMask> BuildWrMaskImage(
-      nsDisplayItem* aItem, wr::DisplayListBuilder& aBuilder,
+      nsDisplayMasksAndClipPaths* aMaskItem, wr::DisplayListBuilder& aBuilder,
       wr::IpcResourceUpdateQueue& aResources, const StackingContextHelper& aSc,
       nsDisplayListBuilder* aDisplayListBuilder,
       const LayoutDeviceRect& aBounds);
@@ -146,7 +147,7 @@ class WebRenderCommandBuilder {
       if (data) {
         data->RemoveFromTable();
       }
-      data = new T(mManager, aItem);
+      data = new T(GetRenderRootStateManager(), aItem);
       mWebRenderUserDatas.PutEntry(data);
       if (aOutIsRecycled) {
         *aOutIsRecycled = false;
@@ -170,6 +171,8 @@ class WebRenderCommandBuilder {
   WebRenderLayerManager* mManager;
 
  private:
+  RenderRootStateManager* GetRenderRootStateManager();
+
   ClipManager mClipManager;
 
   // We use this as a temporary data structure while building the mScrollData
@@ -198,6 +201,10 @@ class WebRenderCommandBuilder {
   // Whether consecutive inactive display items should be grouped into one
   // blob image.
   bool mDoGrouping;
+
+  // True if we're currently within an opacity:0 container, and only
+  // plugin and hit test items should be considered.
+  bool mForEventsAndPluginsOnly;
 
   // True if the most recently build display list contained an svg that
   // we did grouping for.

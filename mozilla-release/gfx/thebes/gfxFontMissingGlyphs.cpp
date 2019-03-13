@@ -223,7 +223,7 @@ static void PurgeWRGlyphAtlas() {
         uint32_t handle = (uint32_t)(uintptr_t)gWRGlyphAtlas[i]->GetUserData(
             reinterpret_cast<UserDataKey*>(manager));
         if (handle) {
-          manager->AddImageKeyForDiscard(
+          manager->GetRenderRootStateManager()->AddImageKeyForDiscard(
               wr::ImageKey{manager->WrBridge()->GetNamespace(), handle});
         }
       }
@@ -337,8 +337,8 @@ static void DrawHexChar(uint32_t aDigit, Float aLeft, Float aTop,
       dest.height = fabs(dest.height);
     }
     // Finally, push the colored image with point filtering.
-    tdt->PushImage(key, wr::ToLayoutRect(bounds), wr::ToLayoutRect(dest),
-                   wr::ImageRendering::Pixelated, wr::ToColorF(aColor));
+    tdt->PushImage(key, bounds, dest, wr::ImageRendering::Pixelated,
+                   wr::ToColorF(aColor));
   } else {
     // For the normal case, just draw the given digit from the atlas. Point
     // filtering is used to ensure the mini-font rectangles stay sharp with any

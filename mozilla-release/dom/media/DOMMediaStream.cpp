@@ -13,6 +13,7 @@
 #include "MediaStreamGraphImpl.h"
 #include "MediaStreamListener.h"
 #include "VideoStreamTrack.h"
+#include "mozilla/BasePrincipal.h"
 #include "mozilla/dom/AudioNode.h"
 #include "mozilla/dom/AudioTrack.h"
 #include "mozilla/dom/AudioTrackList.h"
@@ -33,7 +34,7 @@
 #include "nsServiceManagerUtils.h"
 
 #ifdef LOG
-#undef LOG
+#  undef LOG
 #endif
 
 using namespace mozilla;
@@ -338,28 +339,37 @@ already_AddRefed<Promise> DOMMediaStream::CountUnderlyingStreams(
   class Counter : public ControlMessage {
    public:
     Counter(MediaStreamGraphImpl* aGraph, const RefPtr<Promise>& aPromise)
-        : ControlMessage(nullptr),
-          mGraph(aGraph),
-          mPromise(MakeAndAddRef<nsMainThreadPtrHolder<Promise>>(
-              "DOMMediaStream::Counter::mPromise", aPromise)) {
+        : ControlMessage(nullptr), mGraph(aGraph), mPromise(aPromise) {
       MOZ_ASSERT(NS_IsMainThread());
     }
 
     void Run() override {
-      nsMainThreadPtrHandle<Promise>& promise = mPromise;
       uint32_t streams =
           mGraph->mStreams.Length() + mGraph->mSuspendedStreams.Length();
-      mGraph->DispatchToMainThreadAfterStreamStateUpdate(
-          NewRunnableFrom([promise, streams]() mutable {
-            promise->MaybeResolve(streams);
-            return NS_OK;
+      mGraph->DispatchToMainThreadStableState(NS_NewRunnableFunction(
+          "DOMMediaStream::CountUnderlyingStreams (stable state)",
+          [promise = std::move(mPromise), streams]() mutable {
+            NS_DispatchToMainThread(NS_NewRunnableFunction(
+                "DOMMediaStream::CountUnderlyingStreams",
+                [promise = std::move(promise), streams]() {
+                  promise->MaybeResolve(streams);
+                }));
           }));
+    }
+
+    // mPromise can only be AddRefed/Released on main thread.
+    // In case of shutdown, Run() does not run, so we dispatch mPromise to be
+    // released on main thread here.
+    void RunDuringShutdown() override {
+      NS_ReleaseOnMainThreadSystemGroup(
+          "DOMMediaStream::CountUnderlyingStreams::Counter::RunDuringShutdown",
+          mPromise.forget());
     }
 
    private:
     // mGraph owns this Counter instance and decides its lifetime.
     MediaStreamGraphImpl* mGraph;
-    nsMainThreadPtrHandle<Promise> mPromise;
+    RefPtr<Promise> mPromise;
   };
   graphImpl->AppendMessage(MakeUnique<Counter>(graphImpl, p));
 
@@ -434,7 +444,7 @@ void DOMMediaStream::AddTrack(MediaStreamTrack& aTrack) {
     aTrack.GetId(trackId);
     const char16_t* params[] = {trackId.get()};
     nsCOMPtr<nsPIDOMWindowInner> pWindow = GetParentObject();
-    nsIDocument* document = pWindow ? pWindow->GetExtantDoc() : nullptr;
+    Document* document = pWindow ? pWindow->GetExtantDoc() : nullptr;
     nsContentUtils::ReportToConsole(nsIScriptError::errorFlag,
                                     NS_LITERAL_CSTRING("Media"), document,
                                     nsContentUtils::eDOM_PROPERTIES,
@@ -723,7 +733,7 @@ void DOMMediaStream::NotifyPrincipalChanged() {
                          this, mPrincipal->GetIsNullPrincipal(),
                          mPrincipal->GetIsCodebasePrincipal(),
                          mPrincipal->GetIsExpandedPrincipal(),
-                         mPrincipal->GetIsSystemPrincipal()));
+                         mPrincipal->IsSystemPrincipal()));
   }
 
   for (uint32_t i = 0; i < mPrincipalChangeObservers.Length(); ++i) {

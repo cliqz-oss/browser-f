@@ -154,6 +154,30 @@ UniquePtr<LayerUserData> LayerManager::RemoveUserData(void* aKey) {
   return d;
 }
 
+void LayerManager::PayloadPresented() {
+  if (mPayload.Length()) {
+    TimeStamp presented = TimeStamp::Now();
+    for (CompositionPayload& payload : mPayload) {
+#if MOZ_GECKO_PROFILER
+      if (profiler_is_active()) {
+        nsPrintfCString marker(
+            "Payload Presented, type: %d latency: %dms\n",
+            int32_t(payload.mType),
+            int32_t((presented - payload.mTimeStamp).ToMilliseconds()));
+        profiler_add_marker(marker.get(),
+                            js::ProfilingStackFrame::Category::GRAPHICS);
+      }
+#endif
+
+      if (payload.mType == CompositionPayloadType::eKeyPress) {
+        Telemetry::AccumulateTimeDelta(
+            mozilla::Telemetry::KEYPRESS_PRESENT_LATENCY, payload.mTimeStamp,
+            presented);
+      }
+    }
+  }
+}
+
 //--------------------------------------------------
 // Layer
 
@@ -765,7 +789,6 @@ ContainerLayer::ContainerLayer(LayerManager* aManager, void* aImplData)
       mInheritedXScale(1.0f),
       mInheritedYScale(1.0f),
       mPresShellResolution(1.0f),
-      mScaleToResolution(false),
       mUseIntermediateSurface(false),
       mSupportsComponentAlphaChildren(false),
       mMayHaveReadbackChild(false),
@@ -945,8 +968,7 @@ bool ContainerLayer::RepositionChild(Layer* aChild, Layer* aAfter) {
 
 void ContainerLayer::FillSpecificAttributes(SpecificLayerAttributes& aAttrs) {
   aAttrs = ContainerLayerAttributes(mPreXScale, mPreYScale, mInheritedXScale,
-                                    mInheritedYScale, mPresShellResolution,
-                                    mScaleToResolution);
+                                    mInheritedYScale, mPresShellResolution);
 }
 
 bool ContainerLayer::Creates3DContextWithExtendingChildren() {
@@ -1956,11 +1978,8 @@ void ContainerLayer::PrintInfo(std::stringstream& aStream,
     aStream
         << nsPrintfCString(" [preScale=%g, %g]", mPreXScale, mPreYScale).get();
   }
-  if (mScaleToResolution) {
-    aStream << nsPrintfCString(" [presShellResolution=%g]",
-                               mPresShellResolution)
-                   .get();
-  }
+  aStream << nsPrintfCString(" [presShellResolution=%g]", mPresShellResolution)
+                 .get();
 }
 
 void ContainerLayer::DumpPacket(layerscope::LayersPacket* aPacket,

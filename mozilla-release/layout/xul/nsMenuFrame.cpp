@@ -17,7 +17,7 @@
 #include "nsNameSpaceManager.h"
 #include "nsMenuPopupFrame.h"
 #include "nsMenuBarFrame.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIComponentManager.h"
 #include "nsBoxLayoutState.h"
 #include "nsIScrollableFrame.h"
@@ -51,7 +51,7 @@ using namespace mozilla;
 #define NS_MENU_POPUP_LIST_INDEX 0
 
 #if defined(XP_WIN)
-#define NSCONTEXTMENUISMOUSEUP 1
+#  define NSCONTEXTMENUISMOUSEUP 1
 #endif
 
 NS_DECLARE_FRAME_PROPERTY_FRAMELIST(PopupListProperty)
@@ -624,7 +624,7 @@ nsIContent* nsMenuFrame::GetAnchor() {
   nsAutoString id;
   mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::anchor, id);
   if (!id.IsEmpty()) {
-    nsIDocument* doc = mContent->OwnerDoc();
+    Document* doc = mContent->OwnerDoc();
 
     anchor =
         doc->GetAnonymousElementByAttribute(mContent, nsGkAtoms::anonid, id);
@@ -662,8 +662,11 @@ bool nsMenuFrame::IsSizedToPopup(nsIContent* aContent, bool aRequireAlways) {
   nsAutoString sizedToPopup;
   aContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::sizetopopup,
                                  sizedToPopup);
+  bool sizedToPopupSetToPref =
+      sizedToPopup.EqualsLiteral("pref") ||
+      (sizedToPopup.IsEmpty() && aContent->IsXULElement(nsGkAtoms::menulist));
   return sizedToPopup.EqualsLiteral("always") ||
-         (!aRequireAlways && sizedToPopup.EqualsLiteral("pref"));
+         (!aRequireAlways && sizedToPopupSetToPref);
 }
 
 nsSize nsMenuFrame::GetXULMinSize(nsBoxLayoutState& aBoxLayoutState) {
@@ -915,7 +918,7 @@ void nsMenuFrame::BuildAcceleratorText(bool aNotify) {
   if (keyValue.IsEmpty()) return;
 
   // Turn the document into a DOM document so we can use getElementById
-  nsIDocument* document = mContent->GetUncomposedDoc();
+  Document* document = mContent->GetUncomposedDoc();
   if (!document) return;
 
   // XXXsmaug If mContent is in shadow dom, should we use
@@ -1208,8 +1211,7 @@ bool nsMenuFrame::SizeToPopup(nsBoxLayoutState& aState, nsSize& aSize) {
 
       // if there is a scroll frame, add the desired width of the scrollbar as
       // well
-      nsIScrollableFrame* scrollFrame =
-          do_QueryFrame(popupFrame->PrincipalChildList().FirstChild());
+      nsIScrollableFrame* scrollFrame = popupFrame->GetScrollFrame(popupFrame);
       nscoord scrollbarWidth = 0;
       if (scrollFrame) {
         scrollbarWidth =

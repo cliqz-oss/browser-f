@@ -1,5 +1,6 @@
-/* Any copyright is dedicated to the Public Domain.
- * http://creativecommons.org/publicdomain/zero/1.0/ */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 /**
  * Helper methods to drive with the debugger during mochitests. This file can be safely
@@ -8,8 +9,9 @@
 
 // Import helpers for the new debugger
 Services.scriptloader.loadSubScript(
-"chrome://mochitests/content/browser/devtools/client/debugger/new/test/mochitest/helpers/context.js",
-this);
+  "chrome://mochitests/content/browser/devtools/client/debugger/new/test/mochitest/helpers/context.js",
+  this
+);
 
 var { Toolbox } = require("devtools/client/framework/toolbox");
 var { Task } = require("devtools/shared/task");
@@ -202,7 +204,7 @@ function waitForSource(dbg, url) {
       const sources = dbg.selectors.getSources(state);
       return Object.values(sources).find(s => (s.url || "").includes(url));
     },
-    `source exists`
+    "source exists"
   );
 }
 
@@ -340,14 +342,14 @@ function assertDebugLine(dbg, line) {
 
   const markedSpans = lineInfo.handle.markedSpans;
   if (markedSpans && markedSpans.length > 0) {
-    const classMatch = markedSpans.filter(
-      span => span.marker.className && span.marker.className.includes("debug-expression")
-    ).length > 0;
+    const classMatch =
+      markedSpans.filter(
+        span =>
+          span.marker.className &&
+          span.marker.className.includes("debug-expression")
+      ).length > 0;
 
-    ok(
-      classMatch,
-      "expression is highlighted as paused"
-    );
+    ok(classMatch, "expression is highlighted as paused");
   }
 }
 
@@ -384,10 +386,7 @@ function assertHighlightLocation(dbg, source, line) {
 
   const cm = getCM(dbg);
   const lineInfo = cm.lineInfo(line - 1);
-  ok(
-    lineInfo.wrapClass.includes("highlight-line"),
-    "Line is highlighted"
-  );
+  ok(lineInfo.wrapClass.includes("highlight-line"), "Line is highlighted");
 }
 
 /**
@@ -405,11 +404,39 @@ function isPaused(dbg) {
   return !!isPaused(getState());
 }
 
+// Make sure the debugger is paused at a certain source ID and line.
+function assertPausedAtSourceAndLine(dbg, expectedSourceId, expectedLine) {
+  assertPaused(dbg);
+
+  const {
+    selectors: { getWorkers, getFrames },
+    getState
+  } = dbg;
+
+  const frames = getFrames(getState());
+  ok(frames.length >= 1, "Got at least one frame");
+  const { sourceId, line } = frames[0].location;
+  ok(sourceId == expectedSourceId, "Frame has correct source");
+  ok(line == expectedLine, "Frame has correct line");
+}
+
+// Get any workers associated with the debugger.
+async function getWorkers(dbg) {
+  await dbg.actions.updateWorkers();
+
+  const {
+    selectors: { getWorkers },
+    getState
+  } = dbg;
+
+  return getWorkers(getState());
+}
+
 async function waitForLoadedScopes(dbg) {
   const scopes = await waitForElement(dbg, "scopes");
   // Since scopes auto-expand, we can assume they are loaded when there is a tree node
   // with the aria-level attribute equal to "2".
-  await waitUntil(() => scopes.querySelector(`.tree-node[aria-level="2"]`));
+  await waitUntil(() => scopes.querySelector('.tree-node[aria-level="2"]'));
 }
 
 /**
@@ -474,7 +501,7 @@ function isSelectedFrameSelected(dbg, state) {
  * Clear all the debugger related preferences.
  */
 function clearDebuggerPreferences() {
-  asyncStorage.clear()
+  asyncStorage.clear();
   Services.prefs.clearUserPref("devtools.recordreplay.enabled");
   Services.prefs.clearUserPref("devtools.debugger.pause-on-exceptions");
   Services.prefs.clearUserPref("devtools.debugger.pause-on-caught-exceptions");
@@ -500,7 +527,7 @@ async function initDebugger(url, ...sources) {
   clearDebuggerPreferences();
   const toolbox = await openNewTabAndToolbox(EXAMPLE_URL + url, "jsdebugger");
   const dbg = createDebuggerContext(toolbox);
-  await waitForSources(dbg, ...sources)
+  await waitForSources(dbg, ...sources);
   return dbg;
 }
 
@@ -592,13 +619,19 @@ function waitForLoadedSources(dbg) {
  */
 async function selectSource(dbg, url, line) {
   const source = findSource(dbg, url);
-  await dbg.actions.selectLocation({ sourceId: source.id, line }, {keepContext: false});
+  await dbg.actions.selectLocation(
+    { sourceId: source.id, line },
+    { keepContext: false }
+  );
   return waitForSelectedSource(dbg, url);
 }
 
-
 async function closeTab(dbg, url) {
   await dbg.actions.closeTab(findSource(dbg, url));
+}
+
+function countTabs(dbg) {
+  return findElement(dbg, "sourceTabs").children.length;
 }
 
 /**
@@ -724,6 +757,24 @@ function disableBreakpoint(dbg, source, line, column) {
   return waitForDispatch(dbg, "DISABLE_BREAKPOINT");
 }
 
+function findBreakpoint(dbg, url, line) {
+  const {
+    selectors: { getBreakpoint },
+    getState
+  } = dbg;
+  const source = findSource(dbg, url);
+  let column;
+  if (
+    Services.prefs.getBoolPref("devtools.debugger.features.column-breakpoints")
+  ) {
+    column = dbg.selectors.getFirstPausePointLocation(dbg.store.getState(), {
+      sourceId: source.id,
+      line
+    }).column;
+  }
+  return getBreakpoint(getState(), { sourceId: source.id, line, column });
+}
+
 async function loadAndAddBreakpoint(dbg, filename, line, column) {
   const {
     selectors: { getBreakpoint, getBreakpointCount, getBreakpointsMap },
@@ -747,7 +798,9 @@ async function loadAndAddBreakpoint(dbg, filename, line, column) {
     const loc = breakpoints[id].location;
     ok(
       false,
-      `Breakpoint has correct line ${line}, column ${column}, but was line ${loc.line} column ${loc.column}`
+      `Breakpoint has correct line ${line}, column ${column}, but was line ${
+        loc.line
+      } column ${loc.column}`
     );
   }
 
@@ -770,7 +823,7 @@ async function invokeWithBreakpoint(
 
   const invokeResult = invokeInTab(fnName);
 
-  let invokeFailed = await Promise.race([
+  const invokeFailed = await Promise.race([
     waitForPaused(dbg),
     invokeResult.then(() => new Promise(() => {}), () => true)
   ]);
@@ -796,7 +849,7 @@ async function invokeWithBreakpoint(
 async function expandAllScopes(dbg) {
   const scopes = await waitForElement(dbg, "scopes");
   const scopeElements = scopes.querySelectorAll(
-    `.tree-node[aria-level="1"][data-expandable="true"]:not([aria-expanded="true"])`
+    '.tree-node[aria-level="1"][data-expandable="true"]:not([aria-expanded="true"])'
   );
   const indices = Array.from(scopeElements, el => {
     return Array.prototype.indexOf.call(el.parentNode.childNodes, el);
@@ -918,6 +971,7 @@ const startKey = isMac
   : { code: "VK_HOME" };
 
 const keyMappings = {
+  close: { code: "w", modifiers: cmdOrCtrl },
   debugger: { code: "s", modifiers: shiftOrAlt },
   inspector: { code: "c", modifiers: shiftOrAlt },
   quickOpen: { code: "p", modifiers: cmdOrCtrl },
@@ -1027,9 +1081,10 @@ const selectors = {
     `.expressions-list .expression-container:nth-child(${i}) .close`,
   expressionInput: ".expressions-list  input.input-expression",
   expressionNodes: ".expressions-list .tree-node",
+  expressionPlus: ".watch-expressions-pane button.plus",
   scopesHeader: ".scopes-pane ._header",
   breakpointItem: i => `.breakpoints-list div:nth-of-type(${i})`,
-  breakpointItems: `.breakpoints-list .breakpoint`,
+  breakpointItems: ".breakpoints-list .breakpoint",
   breakpointContextMenu: {
     disableSelf: "#node-menu-disable-self",
     disableAll: "#node-menu-disable-all",
@@ -1044,12 +1099,15 @@ const selectors = {
   scopeNode: i => `.scopes-list .tree-node:nth-child(${i}) .object-label`,
   scopeValue: i =>
     `.scopes-list .tree-node:nth-child(${i}) .object-delimiter + *`,
-  frame: i => `.frames ul li:nth-child(${i})`,
-  frames: ".frames ul li",
+  frame: i => `.frames [role="list"] [role="listitem"]:nth-child(${i})`,
+  frames: `.frames [role="list"] [role="listitem"]`,
   gutter: i => `.CodeMirror-code *:nth-child(${i}) .CodeMirror-linenumber`,
+  // These work for bobth the breakpoint listing and gutter marker
   gutterContextMenu: {
-    addConditionalBreakpoint: "#node-menu-add-conditional-breakpoint",
-    editBreakpoint: "#node-menu-edit-conditional-breakpoint"
+    addConditionalBreakpoint:
+      "#node-menu-add-condition, #node-menu-add-conditional-breakpoint",
+    editConditionalBreakpoint:
+      "#node-menu-edit-condition, #node-menu-edit-conditional-breakpoint"
   },
   menuitem: i => `menupopup menuitem:nth-child(${i})`,
   pauseOnExceptions: ".pause-exceptions",
@@ -1084,7 +1142,10 @@ const selectors = {
     `.outline-list__element:nth-child(${i}) .function-signature`,
   outlineItems: ".outline-list__element",
   conditionalPanelInput: ".conditional-breakpoint-panel input",
-  searchField: ".search-field"
+  searchField: ".search-field",
+  blackbox: ".action.black-box",
+  projectSearchCollapsed: ".project-text-search .arrow:not(.expanded)",
+  projectSerchExpandedResults: ".project-text-search .result"
 };
 
 function getSelector(elementName, ...args) {
@@ -1111,6 +1172,10 @@ function findElementWithSelector(dbg, selector) {
 
 function findAllElements(dbg, elementName, ...args) {
   const selector = getSelector(elementName, ...args);
+  return findAllElementsWithSelector(dbg, selector);
+}
+
+function findAllElementsWithSelector(dbg, selector) {
   return dbg.win.document.querySelectorAll(selector);
 }
 
@@ -1154,6 +1219,7 @@ function dblClickElement(dbg, elementName, ...args) {
 function rightClickElement(dbg, elementName, ...args) {
   const selector = getSelector(elementName, ...args);
   const doc = dbg.win.document;
+
   return EventUtils.synthesizeMouseAtCenter(
     doc.querySelector(selector),
     { type: "contextmenu" },
@@ -1376,4 +1442,104 @@ async function assertNodeIsFocused(dbg, index) {
   await waitForNodeToGainFocus(dbg, index);
   const node = findElement(dbg, "sourceNode", index);
   ok(node.classList.contains("focused"), `node ${index} is focused`);
+}
+
+async function addExpression(dbg, input) {
+  info("Adding an expression");
+
+  const plusIcon = findElementWithSelector(dbg, selectors.expressionPlus);
+  if (plusIcon) {
+    plusIcon.click();
+  }
+  findElementWithSelector(dbg, selectors.expressionInput).focus();
+  type(dbg, input);
+  pressKey(dbg, "Enter");
+
+  await waitForDispatch(dbg, "EVALUATE_EXPRESSION");
+}
+
+async function editExpression(dbg, input) {
+  info("Updating the expression");
+  dblClickElement(dbg, "expressionNode", 1);
+  // Position cursor reliably at the end of the text.
+  pressKey(dbg, "End");
+  type(dbg, input);
+  const evaluated = waitForDispatch(dbg, "EVALUATE_EXPRESSIONS");
+  pressKey(dbg, "Enter");
+  await evaluated;
+}
+
+async function waitUntilPredicate(predicate) {
+  let result;
+  await waitUntil(() => {
+    result = predicate();
+    return result;
+  });
+
+  return result;
+}
+
+// Return a promise with a reference to jsterm, opening the split
+// console if necessary.  This cleans up the split console pref so
+// it won't pollute other tests.
+async function getDebuggerSplitConsole(dbg) {
+  const { toolbox, win } = dbg;
+
+  if (!win) {
+    win = toolbox.win;
+  }
+
+  if (!toolbox.splitConsole) {
+    pressKey(dbg, "Escape");
+  }
+
+  await toolbox.openSplitConsole();
+  return toolbox.getPanel("webconsole");
+}
+
+async function openConsoleContextMenu(hud, element) {
+  const onConsoleMenuOpened = hud.ui.consoleOutput.once("menu-open");
+  synthesizeContextMenuEvent(element);
+  await onConsoleMenuOpened;
+  const doc = hud.ui.consoleOutput.owner.chromeWindow.document;
+  return doc.getElementById("webconsole-menu");
+}
+
+function hideConsoleContextMenu(hud) {
+  const doc = hud.ui.consoleOutput.owner.chromeWindow.document;
+  const popup = doc.getElementById("webconsole-menu");
+  if (!popup) {
+    return Promise.resolve();
+  }
+
+  const onPopupHidden = once(popup, "popuphidden");
+  popup.hidePopup();
+  return onPopupHidden;
+}
+
+// Return a promise that resolves with the result of a thread evaluating a
+// string in the topmost frame.
+async function evaluateInTopFrame(threadClient, text) {
+  const { frames } = await threadClient.getFrames(0, 1);
+  ok(frames.length == 1, "Got one frame");
+  const response = await threadClient.eval(frames[0].actor, text);
+  ok(response.type == "resumed", "Got resume response from eval");
+  let rval;
+  await threadClient.addOneTimeListener("paused", function(event, packet) {
+    ok(
+      packet.type == "paused" &&
+        packet.why.type == "clientEvaluated" &&
+        "return" in packet.why.frameFinished,
+      "Eval returned a value"
+    );
+    rval = packet.why.frameFinished.return;
+  });
+  return rval.type == "undefined" ? undefined : rval;
+}
+
+// Return a promise that resolves when a thread evaluates a string in the
+// topmost frame, ensuring the result matches the expected value.
+async function checkEvaluateInTopFrame(threadClient, text, expected) {
+  const rval = await evaluateInTopFrame(threadClient, text);
+  ok(rval == expected, `Eval returned ${expected}`);
 }

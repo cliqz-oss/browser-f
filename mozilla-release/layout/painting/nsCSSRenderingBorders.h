@@ -66,7 +66,6 @@ typedef enum {
   BorderColorStyleDark
 } BorderColorStyle;
 
-class nsIDocument;
 class nsPresContext;
 
 class nsCSSBorderRenderer final {
@@ -86,7 +85,8 @@ class nsCSSBorderRenderer final {
   friend class nsDisplayButtonForeground;
 
  public:
-  nsCSSBorderRenderer(nsPresContext* aPresContext, const nsIDocument* aDocument,
+  nsCSSBorderRenderer(nsPresContext* aPresContext,
+                      const mozilla::dom::Document* aDocument,
                       DrawTarget* aDrawTarget, const Rect& aDirtyRect,
                       Rect& aOuterRect,
                       const mozilla::StyleBorderStyle* aBorderStyles,
@@ -122,7 +122,7 @@ class nsCSSBorderRenderer final {
 
   // Target document to report warning
   nsPresContext* mPresContext;
-  const nsIDocument* mDocument;
+  const mozilla::dom::Document* mDocument;
 
   // destination DrawTarget and dirty rect
   DrawTarget* mDrawTarget;
@@ -275,7 +275,7 @@ class nsCSSBorderImageRenderer final {
       mozilla::wr::DisplayListBuilder& aBuilder,
       mozilla::wr::IpcResourceUpdateQueue& aResources,
       const mozilla::layers::StackingContextHelper& aSc,
-      mozilla::layers::WebRenderLayerManager* aManager,
+      mozilla::layers::RenderRootStateManager* aManager,
       nsDisplayListBuilder* aDisplayListBuilder);
 
   nsCSSBorderImageRenderer(const nsCSSBorderImageRenderer& aRhs);
@@ -304,7 +304,7 @@ class nsCSSBorderImageRenderer final {
 
 namespace mozilla {
 #ifdef DEBUG_NEW_BORDERS
-#include <stdarg.h>
+#  include <stdarg.h>
 
 static inline void PrintAsString(const mozilla::gfx::Point& p) {
   fprintf(stderr, "[%f,%f]", p.x, p.y);

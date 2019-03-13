@@ -3,12 +3,12 @@
 
 "use strict";
 
+/* import-globals-from helper-collapsibilities.js */
+Services.scriptloader.loadSubScript(CHROME_URL_ROOT + "helper-collapsibilities.js", this);
+
 const RUNTIME_ID = "test-runtime-id";
 const RUNTIME_DEVICE_NAME = "test device name";
 const RUNTIME_APP_NAME = "TestApp";
-
-/* import-globals-from head-mocks.js */
-Services.scriptloader.loadSubScript(CHROME_URL_ROOT + "head-mocks.js", this);
 
 // Test that the expected supported categories are displayed for USB runtimes.
 add_task(async function() {
@@ -27,6 +27,9 @@ add_task(async function() {
 
   const SUPPORTED_TARGET_PANES = [
     "Extensions",
+    "Other Workers",
+    "Shared Workers",
+    "Service Workers",
     "Tabs",
   ];
 

@@ -59,7 +59,7 @@ pub enum RasterizationSpace {
     Screen = 1,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, MallocSizeOf)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 #[repr(C)]
@@ -96,7 +96,7 @@ pub struct ScalingInstance {
     pub src_task_address: RenderTaskAddress,
 }
 
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Hash, MallocSizeOf, PartialEq, Eq)]
 #[repr(C)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
@@ -137,11 +137,11 @@ pub struct ClipMaskInstance {
     pub render_task_address: RenderTaskAddress,
     pub clip_transform_id: TransformPaletteId,
     pub prim_transform_id: TransformPaletteId,
-    pub segment: i32,
     pub clip_data_address: GpuCacheAddress,
     pub resource_address: GpuCacheAddress,
     pub local_pos: LayoutPoint,
     pub tile_rect: LayoutRect,
+    pub sub_rect: DeviceRect,
 }
 
 /// A border corner dot or dash drawn into the clipping mask.
@@ -317,6 +317,7 @@ bitflags! {
     /// code should process this instance.
     #[cfg_attr(feature = "capture", derive(Serialize))]
     #[cfg_attr(feature = "replay", derive(Deserialize))]
+    #[derive(MallocSizeOf)]
     pub struct BrushFlags: u8 {
         /// Apply perspective interpolation to UVs
         const PERSPECTIVE_INTERPOLATION = 0x1;
@@ -474,7 +475,7 @@ impl TransformPalette {
         clip_scroll_tree: &ClipScrollTree,
     ) -> usize {
         if to_index == ROOT_SPATIAL_NODE_INDEX {
-            from_index.0
+            from_index.0 as usize
         } else if from_index == to_index {
             0
         } else {
@@ -511,7 +512,7 @@ impl TransformPalette {
         &self,
         index: SpatialNodeIndex,
     ) -> LayoutToWorldTransform {
-        self.transforms[index.0]
+        self.transforms[index.0 as usize]
             .transform
             .with_destination::<WorldPixel>()
     }
@@ -520,7 +521,7 @@ impl TransformPalette {
         &self,
         index: SpatialNodeIndex,
     ) -> WorldToLayoutTransform {
-        self.transforms[index.0]
+        self.transforms[index.0 as usize]
             .inv_transform
             .with_source::<WorldPixel>()
     }

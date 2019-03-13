@@ -33,7 +33,39 @@ var gUpdateHistory = {
 
         var element = document.createXULElement("richlistitem");
         element.className = "update";
+
+        const topLine = document.createXULElement("hbox");
+        const nameLabel = document.createXULElement("label");
+        nameLabel.className = "update-name";
+        document.l10n.setAttributes(nameLabel, "update-full-build-name", {
+          name: update.name,
+          buildID: update.buildID,
+        });
+        topLine.appendChild(nameLabel);
+
+        if (update.detailsURL) {
+          const detailsLink = document.createXULElement("label");
+          detailsLink.className = "text-link";
+          detailsLink.href = update.detailsURL;
+          document.l10n.setAttributes(detailsLink, "update-details");
+          topLine.appendChild(detailsLink);
+        }
+
+        const installedOnLabel = document.createXULElement("label");
+        installedOnLabel.className = "update-installedOn-label";
+        document.l10n.setAttributes(installedOnLabel, "update-installed-on", {
+          date: this._formatDate(update.installDate),
+        });
+
+        const statusLabel = document.createXULElement("label");
+        statusLabel.className = "update-status-label";
+        document.l10n.setAttributes(statusLabel, "update-status", {
+          status: update.statusText,
+        });
+
+        element.append(topLine, installedOnLabel, statusLabel);
         this._view.appendChild(element);
+<<<<<<< HEAD
         element.setAttribute("data-l10n-attrs", "name");
         document.l10n.setAttributes(element, "update-full-name", { name: update.name, displayVersion: update.displayVersion, buildID: update.buildID});
         element.installDate = this._formatDate(update.installDate);
@@ -42,6 +74,17 @@ var gUpdateHistory = {
         else
           element.hideDetailsURL = true;
         element.status = update.statusText;
+||||||| merged common ancestors
+        element.setAttribute("data-l10n-attrs", "name");
+        document.l10n.setAttributes(element, "update-full-name", { name: update.name, buildID: update.buildID});
+        element.installDate = this._formatDate(update.installDate);
+        if (update.detailsURL)
+          element.detailsURL = update.detailsURL;
+        else
+          element.hideDetailsURL = true;
+        element.status = update.statusText;
+=======
+>>>>>>> origin/upstream-releases
       }
     }
     var cancelbutton = document.documentElement.getButton("cancel");
@@ -61,4 +104,3 @@ var gUpdateHistory = {
     return date.toLocaleString(undefined, dtOptions);
   },
 };
-

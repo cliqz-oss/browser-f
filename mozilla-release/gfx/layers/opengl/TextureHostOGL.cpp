@@ -24,11 +24,11 @@
 #include "GeckoProfiler.h"
 
 #ifdef XP_MACOSX
-#include "mozilla/layers/MacIOSurfaceTextureHostOGL.h"
+#  include "mozilla/layers/MacIOSurfaceTextureHostOGL.h"
 #endif
 
 #ifdef MOZ_WIDGET_ANDROID
-#include "mozilla/webrender/RenderAndroidSurfaceTextureHostOGL.h"
+#  include "mozilla/webrender/RenderAndroidSurfaceTextureHostOGL.h"
 #endif
 
 using namespace mozilla::gl;
@@ -101,6 +101,30 @@ static gl::TextureImage::Flags FlagsToGLFlags(TextureFlags aFlags) {
     result |= TextureImage::DisallowBigImage;
 
   return static_cast<gl::TextureImage::Flags>(result);
+}
+
+TextureImageTextureSourceOGL::TextureImageTextureSourceOGL(
+    CompositorOGL* aCompositor, TextureFlags aFlags)
+    : mGL(aCompositor->gl()),
+      mCompositor(aCompositor),
+      mFlags(aFlags),
+      mIterating(false) {
+  if (mCompositor) {
+    mCompositor->RegisterTextureSource(this);
+  }
+}
+
+TextureImageTextureSourceOGL::~TextureImageTextureSourceOGL() {
+  DeallocateDeviceData();
+}
+
+void TextureImageTextureSourceOGL::DeallocateDeviceData() {
+  mTexImage = nullptr;
+  mGL = nullptr;
+  if (mCompositor) {
+    mCompositor->UnregisterTextureSource(this);
+  }
+  SetUpdateSerial(0);
 }
 
 bool TextureImageTextureSourceOGL::Update(gfx::DataSourceSurface* aSurface,
@@ -180,6 +204,18 @@ void TextureImageTextureSourceOGL::SetTextureSourceProvider(
     DeallocateDeviceData();
   }
   mGL = newGL;
+
+  CompositorOGL* compositor =
+      aProvider ? aProvider->AsCompositorOGL() : nullptr;
+  if (mCompositor != compositor) {
+    if (mCompositor) {
+      mCompositor->UnregisterTextureSource(this);
+    }
+    if (compositor) {
+      compositor->RegisterTextureSource(this);
+    }
+    mCompositor = compositor;
+  }
 }
 
 gfx::IntSize TextureImageTextureSourceOGL::GetSize() const {

@@ -9,6 +9,8 @@
 
 #include "mozilla/Attributes.h"
 #include "mozilla/ErrorResult.h"
+#include "mozilla/dom/Nullable.h"
+#include "mozilla/dom/WindowProxyHolder.h"
 #include "js/TypeDecls.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsWrapperCache.h"
@@ -21,6 +23,8 @@ class nsFrameLoader;
 namespace mozilla {
 namespace dom {
 
+class BrowsingContext;
+
 class XULFrameElement final : public nsXULElement, public nsIFrameLoaderOwner {
  public:
   explicit XULFrameElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
@@ -30,10 +34,10 @@ class XULFrameElement final : public nsXULElement, public nsIFrameLoaderOwner {
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(XULFrameElement, nsXULElement)
 
   // XULFrameElement.webidl
-  nsIDocShell* GetDocShell();
+  nsDocShell* GetDocShell();
   already_AddRefed<nsIWebNavigation> GetWebNavigation();
-  already_AddRefed<nsPIDOMWindowOuter> GetContentWindow();
-  nsIDocument* GetContentDocument();
+  Nullable<WindowProxyHolder> GetContentWindow();
+  Document* GetContentDocument();
 
   // nsIFrameLoaderOwner / MozFrameLoaderOwner
   NS_IMETHOD_(already_AddRefed<nsFrameLoader>) GetFrameLoader() override {
@@ -45,8 +49,9 @@ class XULFrameElement final : public nsXULElement, public nsIFrameLoaderOwner {
     mFrameLoader = aFrameLoader;
   }
 
-  void PresetOpenerWindow(mozIDOMWindowProxy* aWindow, ErrorResult& aRv) {
-    mOpener = do_QueryInterface(aWindow);
+  void PresetOpenerWindow(const Nullable<WindowProxyHolder>& aWindow,
+                          ErrorResult& aRv) {
+    mOpener = aWindow.IsNull() ? nullptr : aWindow.Value().get();
   }
 
   void SwapFrameLoaders(mozilla::dom::HTMLIFrameElement& aOtherLoaderOwner,
@@ -57,7 +62,7 @@ class XULFrameElement final : public nsXULElement, public nsIFrameLoaderOwner {
                         mozilla::ErrorResult& rv);
 
   // nsIContent
-  virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
+  virtual nsresult BindToTree(Document* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent) override;
   virtual void UnbindFromTree(bool aDeep, bool aNullParent) override;
   virtual void DestroyContent() override;
@@ -72,7 +77,7 @@ class XULFrameElement final : public nsXULElement, public nsIFrameLoaderOwner {
   virtual ~XULFrameElement() {}
 
   RefPtr<nsFrameLoader> mFrameLoader;
-  nsCOMPtr<nsPIDOMWindowOuter> mOpener;
+  RefPtr<BrowsingContext> mOpener;
 
   JSObject* WrapNode(JSContext* aCx,
                      JS::Handle<JSObject*> aGivenProto) override;

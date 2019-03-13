@@ -425,7 +425,9 @@
   margin-inline-end: 8px;
   width: 16px;
   height: 16px;
-  vertical-align: top;
+  /* Better optical alignment than with 'vertical-align: middle'.
+     Works well with font sizes between 12px and 16px. */
+  vertical-align: -3px;
   -moz-context-properties: fill;
   fill: currentColor;
   background-image: var(--menuitem-icon-image);
@@ -652,4 +654,63 @@
 .onboarding-close-button::before {
   background-image: url("chrome://devtools/skin/images/close.svg");
   margin: -6px 0 0 -6px;
+}
+
+/* Tooltip: Invoke getter confirm Tooltip */
+
+.invoke-confirm {
+  color: var(--theme-popup-color);
+  border: 1px solid rgba(0,0,0, 0.1);
+  max-width: 212px;
+}
+
+.invoke-confirm .confirm-label {
+  margin: 0;
+  padding: 4px;
+  background-color: var(--theme-toolbar-background-alt);
+}
+
+.invoke-confirm .emphasized {
+  font-family: var(--monospace-font-family);
+  font-weight: bold;
+  overflow-wrap: break-word;
+}
+
+.invoke-confirm .confirm-button {
+  background-color: var(--theme-selection-background);
+  color: white;
+  border: none;
+  padding: 6px;
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+
+/* The button already has a "selected" style, we can remove the focus rings. */
+.confirm-button:-moz-focusring,
+.confirm-button::-moz-focus-inner {
+  outline: none;
+  border: none;
+}
+
+.invoke-confirm .learn-more-link {
+  color: var(--theme-highlight-blue);
+  padding-inline-end: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: end;
+  min-height: 20px;
+  cursor: pointer;
+}
+
+.invoke-confirm .learn-more-link::after {
+  content: "";
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+  -moz-context-properties: fill;
+  background-image: url(chrome://devtools/skin/images/help.svg);
+  background-size: contain;
+  background-repeat: no-repeat;
+  margin-inline-start: 4px;
 }

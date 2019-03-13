@@ -9,10 +9,12 @@
 
 #include "mozilla/dom/FromParser.h"
 #include "mozilla/dom/IDTracker.h"
-#include "nsStubMutationObserver.h"
 #include "mozilla/dom/SVGGraphicsElement.h"
+#include "mozilla/RefPtr.h"
+#include "nsCOMPtr.h"
+#include "nsStubMutationObserver.h"
 #include "nsSVGLength2.h"
-#include "nsSVGString.h"
+#include "SVGString.h"
 #include "nsTArray.h"
 
 class nsIContent;
@@ -47,7 +49,7 @@ class SVGUseElement final : public SVGUseElementBase,
  public:
   NS_IMPL_FROMNODE_WITH_TAG(SVGUseElement, kNameSpaceID_SVG, use)
 
-  nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
+  nsresult BindToTree(Document* aDocument, nsIContent* aParent,
                       nsIContent* aBindingParent) override;
   void UnbindFromTree(bool aDeep = true, bool aNullParent = true) override;
 
@@ -62,7 +64,7 @@ class SVGUseElement final : public SVGUseElementBase,
   NS_DECL_NSIMUTATIONOBSERVER_CONTENTREMOVED
   NS_DECL_NSIMUTATIONOBSERVER_NODEWILLBEDESTROYED
 
-  // nsSVGElement specializations:
+  // SVGElement specializations:
   virtual gfxMatrix PrependLocalTransformsTo(
       const gfxMatrix& aMatrix,
       SVGTransformTypes aWhich = eAllTransforms) const override;
@@ -140,7 +142,7 @@ class SVGUseElement final : public SVGUseElementBase,
   static LengthInfo sLengthInfo[4];
 
   enum { HREF, XLINK_HREF };
-  nsSVGString mStringAttributes[2];
+  SVGString mStringAttributes[2];
   static StringInfo sStringInfo[2];
 
   nsCOMPtr<nsIContent> mOriginal;  // if we've been cloned, our "real" copy

@@ -5,6 +5,7 @@
 DIRS += [
     'connect',
     'debugtarget',
+    'shared',
     'sidebar',
 ]
 

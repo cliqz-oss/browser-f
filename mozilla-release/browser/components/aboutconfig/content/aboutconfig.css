@@ -2,13 +2,42 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#search {
+html {
+  height: 100%;
+}
+
+body.config-background {
+  min-height: 100%;
+  background-image: url("chrome://browser/content/aboutconfig/background.svg");
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: 450px;
+}
+
+body.config-warning {
+  background-image: url("chrome://browser/content/aboutconfig/background.svg#warning");
+}
+
+.title {
+  background-image: url("chrome://global/skin/icons/warning.svg");
+  -moz-context-properties: fill;
+  fill: #fcd100;
+}
+
+#search-container {
   position: sticky;
   top: 0;
-  margin: 10px;
   box-sizing: border-box;
-  width: calc(100% - 20px);
+  width: 100%;
+  background-color: var(--in-content-page-background);
+  padding: 10px;
+  padding-bottom: 0;
   min-width: 644px;
+}
+
+#search {
+  box-sizing: border-box;
+  width: 100%;
   background-image: url("chrome://global/skin/icons/search-textbox.svg");
   background-repeat: no-repeat;
   background-position: 9px center;
@@ -48,20 +77,31 @@
   background-size: 16px 16px;
 }
 
-#prefs > tr > td {
+#prefs > tr > td,
+#prefs > tr > th {
   padding: 4px;
   width: 50%;
+  font-weight: inherit;
 }
 
-#prefs > tr > td.cell-name {
+#prefs > tr > th {
+  text-align: unset;
   padding-inline-start: 30px;
 }
 
+#prefs > tr.deleted > th {
+  font-weight: bold;
+  opacity: 0.4;
+}
+
 .cell-value {
+  white-space: pre-wrap;
   word-break: break-all;
 }
 
-td.cell-value > form > input[type="text"] {
+td.cell-value > form > input[type="text"],
+td.cell-value > form > input[type="number"] {
+  -moz-appearance: textfield;
   width: 100%;
   box-sizing: border-box;
 }

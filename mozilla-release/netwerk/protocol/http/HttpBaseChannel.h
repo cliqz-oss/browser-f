@@ -128,7 +128,8 @@ class HttpBaseChannel : public nsHashPropertyBag,
   virtual MOZ_MUST_USE nsresult Init(nsIURI *aURI, uint32_t aCaps,
                                      nsProxyInfo *aProxyInfo,
                                      uint32_t aProxyResolveFlags,
-                                     nsIURI *aProxyURI, uint64_t aChannelId);
+                                     nsIURI *aProxyURI, uint64_t aChannelId,
+                                     nsContentPolicyType aContentPolicyType);
 
   // nsIRequest
   NS_IMETHOD GetName(nsACString &aName) override;
@@ -218,6 +219,8 @@ class HttpBaseChannel : public nsHashPropertyBag,
   NS_IMETHOD GetResponseStatusText(nsACString &aValue) override;
   NS_IMETHOD GetRequestSucceeded(bool *aValue) override;
   NS_IMETHOD RedirectTo(nsIURI *newURI) override;
+  NS_IMETHOD SwitchProcessTo(mozilla::dom::Promise *aTabParent,
+                             uint64_t aIdentifier) override;
   NS_IMETHOD UpgradeToSecure() override;
   NS_IMETHOD GetRequestContextID(uint64_t *aRCID) override;
   NS_IMETHOD GetTransferSize(uint64_t *aTransferSize) override;
@@ -238,6 +241,8 @@ class HttpBaseChannel : public nsHashPropertyBag,
       bool *aIsTrackingResource) override;
   NS_IMETHOD OverrideTrackingFlagsForDocumentCookieAccessor(
       nsIHttpChannel *aDocumentChannel) override;
+  NS_IMETHOD GetFlashPluginState(
+      nsIHttpChannel::FlashPluginState *aState) override;
 
   // nsIHttpChannelInternal
   NS_IMETHOD GetDocumentURI(nsIURI **aDocumentURI) override;
@@ -341,7 +346,7 @@ class HttpBaseChannel : public nsHashPropertyBag,
       ReportAction aAction = ReportAction::Forget) override;
 
   void FlushConsoleReports(
-      nsIDocument *aDocument,
+      dom::Document *aDocument,
       ReportAction aAction = ReportAction::Forget) override;
 
   void FlushConsoleReports(
@@ -413,6 +418,8 @@ class HttpBaseChannel : public nsHashPropertyBag,
 
   void SetIsTrackingResource(bool aIsThirdParty);
 
+  void SetFlashPluginState(nsIHttpChannel::FlashPluginState aState);
+
   const uint64_t &ChannelId() const { return mChannelId; }
 
   void InternalSetUploadStream(nsIInputStream *uploadStream) {
@@ -446,6 +453,8 @@ class HttpBaseChannel : public nsHashPropertyBag,
   }
 
  protected:
+  nsresult GetTopWindowURI(nsIURI *aURIBeingLoaded, nsIURI **aTopWindowURI);
+
   // Handle notifying listener, removing from loadgroup if request failed.
   void DoNotifyListener();
   virtual void DoNotifyListenerCleanup() = 0;
@@ -647,6 +656,7 @@ class HttpBaseChannel : public nsHashPropertyBag,
   Atomic<bool, ReleaseAcquire> mCanceled;
   Atomic<bool, ReleaseAcquire> mIsFirstPartyTrackingResource;
   Atomic<bool, ReleaseAcquire> mIsThirdPartyTrackingResource;
+  Atomic<uint32_t, ReleaseAcquire> mFlashPluginState;
 
   uint32_t mLoadFlags;
   uint32_t mCaps;
@@ -787,7 +797,8 @@ NS_DEFINE_STATIC_IID_ACCESSOR(HttpBaseChannel, HTTP_BASE_CHANNEL_IID)
 template <class T>
 class HttpAsyncAborter {
  public:
-  explicit HttpAsyncAborter(T *derived) : mThis(derived), mCallOnResume(0) {}
+  explicit HttpAsyncAborter(T *derived)
+      : mThis(derived), mCallOnResume(nullptr) {}
 
   // Aborts channel: calls OnStart/Stop with provided status, removes channel
   // from loadGroup.
@@ -807,7 +818,7 @@ class HttpAsyncAborter {
 
  protected:
   // Function to be called at resume time
-  void (T::*mCallOnResume)(void);
+  std::function<nsresult(T *)> mCallOnResume;
 };
 
 template <class T>
@@ -832,7 +843,10 @@ inline void HttpAsyncAborter<T>::HandleAsyncAbort() {
     MOZ_LOG(
         gHttpLog, LogLevel::Debug,
         ("Waiting until resume to do async notification [this=%p]\n", mThis));
-    mCallOnResume = &T::HandleAsyncAbort;
+    mCallOnResume = [](T *self) {
+      self->HandleAsyncAbort();
+      return NS_OK;
+    };
     return;
   }
 

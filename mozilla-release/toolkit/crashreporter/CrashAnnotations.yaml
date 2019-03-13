@@ -268,6 +268,14 @@ EventLoopNestingLevel:
   type: integer
   ping: true
 
+ExecutableName:
+  description: >
+    The name of the last executable that was launched via the nsIProcess class.
+    Multiple executables can be launched at the same time from one or more
+    threads so this annotation might not always contain the correct value. To
+    be removed once bug 1386760 is fixed.
+  type: string
+
 ExpectedStreamLen:
   description: >
     Expected length of an IPC proxy stream.
@@ -471,6 +479,13 @@ JSOutOfMemory:
     to satisfy the allocation.
   type: string
 
+LauncherProcessState:
+  description: >
+    Launcher process enabled state. The integer value of this annotation must
+    match with one of the values in the
+    mozilla::LauncherRegistryInfo::EnableState enum
+  type: integer
+
 LowCommitSpaceEvents:
   description: >
     Number of times the available memory tracker has detected a that
@@ -507,11 +522,6 @@ nsAsyncShutdownComponent:
   description: >
     Holds the contents of the nsAsyncShutdown.js script
   type: string
-
-NumberOfProcessors:
-  description: >
-    Number of logical processors in the system.
-  type: integer
 
 OOMAllocationSize:
   description: >
@@ -554,8 +564,8 @@ PluginVersion:
 
 ProcessType:
   description: >
-    Type of the process that crashed, can hold the values "content", "plugin",
-    "gpu" or "rdd" currently.
+    Type of the process that crashed, the possible values are defined in
+    GeckoProcessTypes.h.
   type: string
 
 ProductName:
@@ -640,12 +650,6 @@ SecondsSinceLastCrash:
 ServerURL:
   description: >
     URL used to post the crash report.
-  type: string
-
-SheetLoadFailure:
-  description: >
-    Set when failing to load a built-in style sheet. This can contain a
-    potentially very large amount of diagnostic information.
   type: string
 
 ShutdownProgress:
@@ -804,6 +808,11 @@ Vendor:
 Version:
   description: >
     Product version.
+  type: string
+
+VRProcessStatus:
+  description: >
+    Status of the VR process, can be set to "Running" or "Destroyed"
   type: string
 
 Winsock_LSP:

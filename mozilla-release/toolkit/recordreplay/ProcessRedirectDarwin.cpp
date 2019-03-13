@@ -159,6 +159,36 @@ void ReplayInvokeCallback(size_t aCallbackId) {
 // Middleman Call Helpers
 ///////////////////////////////////////////////////////////////////////////////
 
+// List of the Objective C classes which messages might be sent to directly.
+static const char* gStaticClassNames[] = {
+    // Standard classes.
+    "NSAutoreleasePool",
+    "NSBezierPath",
+    "NSButtonCell",
+    "NSColor",
+    "NSComboBoxCell",
+    "NSDictionary",
+    "NSGraphicsContext",
+    "NSFont",
+    "NSFontManager",
+    "NSLevelIndicatorCell",
+    "NSNumber",
+    "NSPopUpButtonCell",
+    "NSProgressBarCell",
+    "NSString",
+    "NSWindow",
+
+    // Gecko defined classes.
+    "CellDrawView",
+    "CheckboxCell",
+    "RadioButtonCell",
+    "SearchFieldCellWithFocusRing",
+    "ToolbarSearchFieldCellWithFocusRing",
+};
+
+// Objective C classes for each of the above class names.
+static Class* gStaticClasses;
+
 // Inputs that originate from static data in the replaying process itself
 // rather than from previous middleman calls.
 enum class ObjCInputKind {
@@ -173,6 +203,20 @@ struct CFConstantString {
   char* mData;
   size_t mLength;
 };
+
+static Class gCFConstantStringClass;
+
+static void InitializeStaticClasses() {
+  gStaticClasses = new Class[ArrayLength(gStaticClassNames)];
+
+  for (size_t i = 0; i < ArrayLength(gStaticClassNames); i++) {
+    gStaticClasses[i] = objc_lookUpClass(gStaticClassNames[i]);
+    MOZ_RELEASE_ASSERT(gStaticClasses[i]);
+  }
+
+  gCFConstantStringClass = objc_lookUpClass("__NSCFConstantString");
+  MOZ_RELEASE_ASSERT(gCFConstantStringClass);
+}
 
 // Capture an Objective C or CoreFoundation input to a call, which may come
 // either from another middleman call, or from static data in the replaying
@@ -190,37 +234,10 @@ static void MM_ObjCInput(MiddlemanCallContext& aCx, id* aThingPtr) {
   if (aCx.mPhase == MiddlemanCallPhase::ReplayInput) {
     // Try to determine where this object came from.
 
-    // List of the Objective C classes which messages might be sent to directly.
-    static const char* gStaticClasses[] = {
-        // Standard classes.
-        "NSAutoreleasePool",
-        "NSBezierPath",
-        "NSButtonCell",
-        "NSColor",
-        "NSComboBoxCell",
-        "NSDictionary",
-        "NSGraphicsContext",
-        "NSFont",
-        "NSFontManager",
-        "NSLevelIndicatorCell",
-        "NSNumber",
-        "NSPopUpButtonCell",
-        "NSProgressBarCell",
-        "NSString",
-        "NSWindow",
-
-        // Gecko defined classes.
-        "CellDrawView",
-        "CheckboxCell",
-        "RadioButtonCell",
-        "SearchFieldCellWithFocusRing",
-        "ToolbarSearchFieldCellWithFocusRing",
-    };
-
     // Watch for messages sent to particular classes.
-    for (const char* className : gStaticClasses) {
-      Class cls = objc_lookUpClass(className);
-      if (cls == (Class)*aThingPtr) {
+    for (size_t i = 0; i < ArrayLength(gStaticClassNames); i++) {
+      if (gStaticClasses[i] == (Class)*aThingPtr) {
+        const char* className = gStaticClassNames[i];
         aCx.WriteInputScalar((size_t)ObjCInputKind::StaticClass);
         size_t len = strlen(className) + 1;
         aCx.WriteInputScalar(len);
@@ -237,7 +254,7 @@ static void MM_ObjCInput(MiddlemanCallContext& aCx, id* aThingPtr) {
     // paint, instead of crashing.
     if (MemoryRangeIsTracked(*aThingPtr, sizeof(CFConstantString))) {
       CFConstantString* str = (CFConstantString*)*aThingPtr;
-      if (str->mClass == objc_lookUpClass("__NSCFConstantString") &&
+      if (str->mClass == gCFConstantStringClass &&
           str->mLength <= 4096 &&  // Sanity check.
           MemoryRangeIsTracked(str->mData, str->mLength)) {
         InfallibleVector<UniChar> buffer;
@@ -2506,52 +2523,50 @@ static SystemRedirection gSystemRedirections[] = {
 // cannot use dlsym() to lookup symbols that are not externally visible.
 
 // Functions which are not overloaded.
-#define FOR_EACH_DIAGNOSTIC_REDIRECTION(MACRO)                   \
-  MACRO(PL_HashTableAdd, Preamble_PLHashTable)                   \
-  MACRO(PL_HashTableRemove, Preamble_PLHashTable)                \
-  MACRO(PL_HashTableLookup, Preamble_PLHashTable)                \
-  MACRO(PL_HashTableLookupConst, Preamble_PLHashTable)           \
-  MACRO(PL_HashTableEnumerateEntries, Preamble_PLHashTable)      \
-  MACRO(PL_HashTableRawAdd, Preamble_PLHashTable)                \
-  MACRO(PL_HashTableRawRemove, Preamble_PLHashTable)             \
-  MACRO(PL_HashTableRawLookup, Preamble_PLHashTable)             \
+#define FOR_EACH_DIAGNOSTIC_REDIRECTION(MACRO)              \
+  MACRO(PL_HashTableAdd, Preamble_PLHashTable)              \
+  MACRO(PL_HashTableRemove, Preamble_PLHashTable)           \
+  MACRO(PL_HashTableLookup, Preamble_PLHashTable)           \
+  MACRO(PL_HashTableLookupConst, Preamble_PLHashTable)      \
+  MACRO(PL_HashTableEnumerateEntries, Preamble_PLHashTable) \
+  MACRO(PL_HashTableRawAdd, Preamble_PLHashTable)           \
+  MACRO(PL_HashTableRawRemove, Preamble_PLHashTable)        \
+  MACRO(PL_HashTableRawLookup, Preamble_PLHashTable)        \
   MACRO(PL_HashTableRawLookupConst, Preamble_PLHashTable)
 
 // Member functions which need a type specification to resolve overloading.
-#define FOR_EACH_DIAGNOSTIC_MEMBER_PTR_WITH_TYPE_REDIRECTION(MACRO) \
+#define FOR_EACH_DIAGNOSTIC_MEMBER_PTR_WITH_TYPE_REDIRECTION(MACRO)         \
   MACRO(PLDHashEntryHdr* (PLDHashTable::*)(const void*, const fallible_t&), \
         &PLDHashTable::Add, Preamble_PLDHashTable)
 
 // Member functions which are not overloaded.
-#define FOR_EACH_DIAGNOSTIC_MEMBER_PTR_REDIRECTION(MACRO)        \
-  MACRO(&PLDHashTable::Clear, Preamble_PLDHashTable)             \
-  MACRO(&PLDHashTable::Remove, Preamble_PLDHashTable)            \
+#define FOR_EACH_DIAGNOSTIC_MEMBER_PTR_REDIRECTION(MACRO) \
+  MACRO(&PLDHashTable::Clear, Preamble_PLDHashTable)      \
+  MACRO(&PLDHashTable::Remove, Preamble_PLDHashTable)     \
   MACRO(&PLDHashTable::RemoveEntry, Preamble_PLDHashTable)
 
-static PreambleResult
-Preamble_PLHashTable(CallArguments* aArguments)
-{
+static PreambleResult Preamble_PLHashTable(CallArguments* aArguments) {
   CheckPLHashTable(aArguments->Arg<0, PLHashTable*>());
   return PreambleResult::IgnoreRedirect;
 }
 
-static PreambleResult
-Preamble_PLDHashTable(CallArguments* aArguments)
-{
+static PreambleResult Preamble_PLDHashTable(CallArguments* aArguments) {
   CheckPLDHashTable(aArguments->Arg<0, PLDHashTable*>());
   return PreambleResult::IgnoreRedirect;
 }
 
 #define MAKE_DIAGNOSTIC_ENTRY_WITH_TYPE(aType, aAddress, aPreamble) \
-  { #aAddress, nullptr, nullptr, nullptr, aPreamble },
+  {#aAddress, nullptr, nullptr, nullptr, aPreamble},
 
 #define MAKE_DIAGNOSTIC_ENTRY(aAddress, aPreamble) \
-  { #aAddress, nullptr, nullptr, nullptr, aPreamble },
+  {#aAddress, nullptr, nullptr, nullptr, aPreamble},
 
 static Redirection gDiagnosticRedirections[] = {
+    // clang-format off
   FOR_EACH_DIAGNOSTIC_REDIRECTION(MAKE_DIAGNOSTIC_ENTRY)
   FOR_EACH_DIAGNOSTIC_MEMBER_PTR_WITH_TYPE_REDIRECTION(MAKE_DIAGNOSTIC_ENTRY_WITH_TYPE)
   FOR_EACH_DIAGNOSTIC_MEMBER_PTR_REDIRECTION(MAKE_DIAGNOSTIC_ENTRY)
+    // clang-format on
 };
 
 #undef MAKE_DIAGNOSTIC_ENTRY_WITH_TYPE
@@ -2562,7 +2577,8 @@ static Redirection gDiagnosticRedirections[] = {
 ///////////////////////////////////////////////////////////////////////////////
 
 size_t NumRedirections() {
-  return ArrayLength(gSystemRedirections) + ArrayLength(gDiagnosticRedirections);
+  return ArrayLength(gSystemRedirections) +
+         ArrayLength(gDiagnosticRedirections);
 }
 
 static Redirection* gRedirections;
@@ -2593,7 +2609,7 @@ static uint8_t* FunctionStartAddress(Redirection& aRedirection) {
 template <typename FnPtr>
 static uint8_t* ConvertMemberPtrToAddress(FnPtr aPtr) {
   // Dig around in clang's internal representation of member function pointers.
-  uint8_t** contents = (uint8_t**) &aPtr;
+  uint8_t** contents = (uint8_t**)&aPtr;
   return contents[0];
 }
 
@@ -2629,18 +2645,21 @@ void EarlyInitializeRedirections() {
 
   size_t diagnosticIndex = 0;
 
-#define LOAD_DIAGNOSTIC_ENTRY(aAddress, aPreamble) \
-  gDiagnosticRedirections[diagnosticIndex++].mBaseFunction = BitwiseCast<uint8_t*>(aAddress);
+#define LOAD_DIAGNOSTIC_ENTRY(aAddress, aPreamble)           \
+  gDiagnosticRedirections[diagnosticIndex++].mBaseFunction = \
+      BitwiseCast<uint8_t*>(aAddress);
   FOR_EACH_DIAGNOSTIC_REDIRECTION(LOAD_DIAGNOSTIC_ENTRY)
 #undef LOAD_DIAGNOSTIC_ENTRY
 
-#define LOAD_DIAGNOSTIC_ENTRY(aType, aAddress, aPreamble) \
-  gDiagnosticRedirections[diagnosticIndex++].mBaseFunction = ConvertMemberPtrToAddress<aType>(aAddress);
+#define LOAD_DIAGNOSTIC_ENTRY(aType, aAddress, aPreamble)    \
+  gDiagnosticRedirections[diagnosticIndex++].mBaseFunction = \
+      ConvertMemberPtrToAddress<aType>(aAddress);
   FOR_EACH_DIAGNOSTIC_MEMBER_PTR_WITH_TYPE_REDIRECTION(LOAD_DIAGNOSTIC_ENTRY)
 #undef LOAD_DIAGNOSTIC_ENTRY
 
-#define LOAD_DIAGNOSTIC_ENTRY(aAddress, aPreamble) \
-  gDiagnosticRedirections[diagnosticIndex++].mBaseFunction = ConvertMemberPtrToAddress(aAddress);
+#define LOAD_DIAGNOSTIC_ENTRY(aAddress, aPreamble)           \
+  gDiagnosticRedirections[diagnosticIndex++].mBaseFunction = \
+      ConvertMemberPtrToAddress(aAddress);
   FOR_EACH_DIAGNOSTIC_MEMBER_PTR_REDIRECTION(LOAD_DIAGNOSTIC_ENTRY)
 #undef LOAD_DIAGNOSTIC_ENTRY
 
@@ -2651,6 +2670,8 @@ void EarlyInitializeRedirections() {
   // Bind the gOriginal functions to their redirections' base addresses until we
   // finish installing redirections.
   LateInitializeRedirections();
+
+  InitializeStaticClasses();
 }
 
 void LateInitializeRedirections() {

@@ -106,13 +106,13 @@ VERSION_NUMBER		= 50
 CONFIG_TOOLS	= $(MOZ_BUILD_ROOT)/config
 AUTOCONF_TOOLS	= $(MOZILLA_DIR)/build/autoconf
 
-ifdef _MSC_VER
+ifeq (msvc,$(CC_TYPE))
 # clang-cl is smart enough to generate dependencies directly.
-ifeq (,$(CLANG_CL)$(MOZ_USING_SCCACHE))
+ifeq (,$(MOZ_USING_SCCACHE))
 CC_WRAPPER ?= $(call py_action,cl)
 CXX_WRAPPER ?= $(call py_action,cl)
-endif # CLANG_CL/MOZ_USING_SCCACHE
-endif # _MSC_VER
+endif # MOZ_USING_SCCACHE
+endif # CC_TYPE
 
 CC := $(CC_WRAPPER) $(CC)
 CXX := $(CXX_WRAPPER) $(CXX)
@@ -300,15 +300,24 @@ WIN32_EXE_LDFLAGS	+= $(WIN32_CONSOLE_EXE_LDFLAGS)
 endif
 endif # WINNT
 
-ifdef _MSC_VER
+ifneq (,$(filter msvc clang-cl,$(CC_TYPE)))
 ifeq ($(CPU_ARCH),x86_64)
-ifdef MOZ_ASAN
-# ASan could have 3x stack memory usage of normal builds.
-WIN32_EXE_LDFLAGS	+= -STACK:6291456
+# Normal operation on 64-bit Windows needs 2 MB of stack. (Bug 582910)
+# ASAN requires 6 MB of stack.
+# Setting the stack to 8 MB to match the capability of other systems
+# to deal with frame construction for unreasonably deep DOM trees
+# with worst-case styling. This uses address space unnecessarily for
+# non-main threads, but that should be tolerable on 64-bit systems.
+# (Bug 256180)
+WIN32_EXE_LDFLAGS      += -STACK:8388608
 else
-# set stack to 2MB on x64 build.  See bug 582910
-WIN32_EXE_LDFLAGS	+= -STACK:2097152
-endif
+# Since this setting affects the default stack size for non-main
+# threads, too, to avoid burning the address space, increase only
+# 512 KB over the default. Just enough to be able to deal with
+# reasonable styling applied to DOM trees whose depth is near what
+# Blink's HTML parser can output, esp.
+# layout/base/crashtests/507119.html (Bug 256180)
+WIN32_EXE_LDFLAGS      += -STACK:1572864
 endif
 endif
 
@@ -365,10 +374,6 @@ include $(MOZILLA_DIR)/config/AB_rCD.mk
 
 # Many locales directories want this definition.
 ACDEFINES += -DAB_CD=$(AB_CD)
-
-ifndef L10NBASEDIR
-  L10NBASEDIR = $(error L10NBASEDIR not defined by configure)
-endif
 
 EXPAND_LOCALE_SRCDIR = $(if $(filter en-US,$(AB_CD)),$(LOCALE_TOPDIR)/$(1)/en-US,$(or $(realpath $(L10NBASEDIR)),$(abspath $(L10NBASEDIR)))/$(AB_CD)/$(subst /locales,,$(1)))
 

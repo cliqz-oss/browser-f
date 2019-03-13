@@ -35,7 +35,7 @@
 #include "nsIScriptSecurityManager.h"
 #include "nsIEffectiveTLDService.h"
 #include "nsPIDOMWindow.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "mozilla/net/NeckoMessageUtils.h"
 #include "mozilla/Preferences.h"
 #include "nsReadLine.h"
@@ -732,6 +732,60 @@ static bool IsPersistentExpire(uint32_t aExpire) {
          aExpire != nsIPermissionManager::EXPIRE_POLICY;
 }
 
+static void UpdateAutoplayTelemetry(const nsCString& aType,
+                                    uint32_t aOldPermission,
+                                    uint32_t aNewPermission,
+                                    uint32_t aExpireType) {
+  if (!aType.EqualsLiteral("autoplay-media")) {
+    return;
+  }
+
+  if (aExpireType != nsIPermissionManager::EXPIRE_NEVER) {
+    return;
+  }
+
+  // Add permission
+  if (aOldPermission == nsIPermissionManager::UNKNOWN_ACTION) {
+    if (aNewPermission == nsIPermissionManager::ALLOW_ACTION) {
+      AccumulateCategorical(
+          mozilla::Telemetry::LABELS_AUTOPLAY_SITES_SETTING_CHANGE::AddAllow);
+    } else if (aNewPermission == nsIPermissionManager::DENY_ACTION) {
+      AccumulateCategorical(
+          mozilla::Telemetry::LABELS_AUTOPLAY_SITES_SETTING_CHANGE::AddBlock);
+    }
+    return;
+  }
+
+  // Remove permission
+  if (aNewPermission == nsIPermissionManager::UNKNOWN_ACTION) {
+    if (aOldPermission == nsIPermissionManager::ALLOW_ACTION) {
+      AccumulateCategorical(
+          mozilla::Telemetry::LABELS_AUTOPLAY_SITES_SETTING_CHANGE::
+              RemoveAllow);
+    } else if (aOldPermission == nsIPermissionManager::DENY_ACTION) {
+      AccumulateCategorical(
+          mozilla::Telemetry::LABELS_AUTOPLAY_SITES_SETTING_CHANGE::
+              RemoveBlock);
+    }
+    return;
+  }
+
+  // Change permission
+  if (aNewPermission == nsIPermissionManager::ALLOW_ACTION &&
+      aOldPermission == nsIPermissionManager::DENY_ACTION) {
+    AccumulateCategorical(
+        mozilla::Telemetry::LABELS_AUTOPLAY_SITES_SETTING_CHANGE::AddAllow);
+    AccumulateCategorical(
+        mozilla::Telemetry::LABELS_AUTOPLAY_SITES_SETTING_CHANGE::RemoveBlock);
+  } else if (aNewPermission == nsIPermissionManager::DENY_ACTION &&
+             aOldPermission == nsIPermissionManager::ALLOW_ACTION) {
+    AccumulateCategorical(
+        mozilla::Telemetry::LABELS_AUTOPLAY_SITES_SETTING_CHANGE::AddBlock);
+    AccumulateCategorical(
+        mozilla::Telemetry::LABELS_AUTOPLAY_SITES_SETTING_CHANGE::RemoveAllow);
+  }
+}
+
 }  // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -758,6 +812,12 @@ nsPermissionManager::PermissionKey::CreateFromURI(nsIURI* aURI,
   }
 
   return new PermissionKey(origin);
+}
+
+nsPermissionManager::PermissionKey*
+nsPermissionManager::PermissionKey::CreateFromOriginNoSuffix(
+    const nsACString& aOriginNoSuffix) {
+  return new PermissionKey(aOriginNoSuffix);
 }
 
 /**
@@ -1811,6 +1871,8 @@ nsresult nsPermissionManager::AddInternal(
     }
 
     case eOperationAdding: {
+      UpdateAutoplayTelemetry(aType, nsIPermissionManager::UNKNOWN_ACTION,
+                              aPermission, aExpireType);
       if (aDBOperation == eWriteToDB) {
         // we'll be writing to the database - generate a known unique id
         id = ++mLargestID;
@@ -1854,6 +1916,9 @@ nsresult nsPermissionManager::AddInternal(
         break;
       }
 
+      UpdateAutoplayTelemetry(aType, oldPermissionEntry.mPermission,
+                              nsIPermissionManager::UNKNOWN_ACTION,
+                              aExpireType);
       entry->GetPermissions().RemoveElementAt(index);
 
       // Record a count of the number of preload permissions present in the
@@ -1892,6 +1957,9 @@ nsresult nsPermissionManager::AddInternal(
         NS_WARNING("Attempting to modify EXPIRE_POLICY permission");
         break;
       }
+
+      UpdateAutoplayTelemetry(aType, entry->GetPermissions()[index].mPermission,
+                              aPermission, aExpireType);
 
       // If the new expireType is EXPIRE_SESSION, then we have to keep a
       // copy of the previous permission/expireType values. This cached value
@@ -2196,6 +2264,14 @@ nsPermissionManager::TestPermission(nsIURI* aURI, const char* aType,
 }
 
 NS_IMETHODIMP
+nsPermissionManager::TestPermissionOriginNoSuffix(
+    const nsACString& aOriginNoSuffix, const char* aType,
+    uint32_t* aPermission) {
+  return CommonTestPermissionInternal(nullptr, nullptr, aOriginNoSuffix, aType,
+                                      aPermission, false, true);
+}
+
+NS_IMETHODIMP
 nsPermissionManager::TestPermissionFromWindow(mozIDOMWindow* aWindow,
                                               const char* aType,
                                               uint32_t* aPermission) {
@@ -2203,7 +2279,7 @@ nsPermissionManager::TestPermissionFromWindow(mozIDOMWindow* aWindow,
   nsCOMPtr<nsPIDOMWindowInner> window = nsPIDOMWindowInner::From(aWindow);
 
   // Get the document for security check
-  nsCOMPtr<nsIDocument> document = window->GetExtantDoc();
+  RefPtr<Document> document = window->GetExtantDoc();
   NS_ENSURE_TRUE(document, NS_NOINTERFACE);
 
   nsCOMPtr<nsIPrincipal> principal = document->NodePrincipal();
@@ -2284,11 +2360,13 @@ nsPermissionManager::GetPermissionObject(nsIPrincipal* aPrincipal,
 }
 
 nsresult nsPermissionManager::CommonTestPermissionInternal(
-    nsIPrincipal* aPrincipal, nsIURI* aURI, const char* aType,
-    uint32_t* aPermission, bool aExactHostMatch, bool aIncludingSession) {
-  MOZ_ASSERT(aPrincipal || aURI);
-  MOZ_ASSERT_IF(aPrincipal, !aURI);
-  NS_ENSURE_ARG_POINTER(aPrincipal || aURI);
+    nsIPrincipal* aPrincipal, nsIURI* aURI, const nsACString& aOriginNoSuffix,
+    const char* aType, uint32_t* aPermission, bool aExactHostMatch,
+    bool aIncludingSession) {
+  MOZ_ASSERT(aPrincipal || aURI || !aOriginNoSuffix.IsEmpty());
+  MOZ_ASSERT_IF(aPrincipal, !aURI && aOriginNoSuffix.IsEmpty());
+  MOZ_ASSERT_IF(aURI, !aPrincipal && aOriginNoSuffix.IsEmpty());
+  NS_ENSURE_ARG_POINTER(aPrincipal || aURI || !aOriginNoSuffix.IsEmpty());
   NS_ENSURE_ARG_POINTER(aType);
 
   if (aPrincipal && nsContentUtils::IsSystemPrincipal(aPrincipal)) {
@@ -2336,9 +2414,14 @@ nsresult nsPermissionManager::CommonTestPermissionInternal(
   {
     nsCOMPtr<nsIPrincipal> prin = aPrincipal;
     if (!prin) {
-      prin = mozilla::BasePrincipal::CreateCodebasePrincipal(
-          aURI, OriginAttributes());
+      if (aURI) {
+        prin = mozilla::BasePrincipal::CreateCodebasePrincipal(
+            aURI, OriginAttributes());
+      } else if (!aOriginNoSuffix.IsEmpty()) {
+        prin = mozilla::BasePrincipal::CreateCodebasePrincipal(aOriginNoSuffix);
+      }
     }
+    MOZ_ASSERT(prin);
     MOZ_ASSERT(PermissionAvailable(prin, aType));
   }
 #endif
@@ -2350,7 +2433,8 @@ nsresult nsPermissionManager::CommonTestPermissionInternal(
 
   PermissionHashKey* entry =
       aPrincipal ? GetPermissionHashKey(aPrincipal, typeIndex, aExactHostMatch)
-                 : GetPermissionHashKey(aURI, typeIndex, aExactHostMatch);
+                 : GetPermissionHashKey(aURI, aOriginNoSuffix, typeIndex,
+                                        aExactHostMatch);
   if (!entry || (!aIncludingSession &&
                  entry->GetPermission(typeIndex).mNonSessionExpireType ==
                      nsIPermissionManager::EXPIRE_SESSION)) {
@@ -2423,19 +2507,32 @@ nsPermissionManager::GetPermissionHashKey(nsIPrincipal* aPrincipal,
 // accepts host on the format "<foo>". This will perform an exact match lookup
 // as the string doesn't contain any dots.
 nsPermissionManager::PermissionHashKey*
-nsPermissionManager::GetPermissionHashKey(nsIURI* aURI, uint32_t aType,
+nsPermissionManager::GetPermissionHashKey(nsIURI* aURI,
+                                          const nsACString& aOriginNoSuffix,
+                                          uint32_t aType,
                                           bool aExactHostMatch) {
+  MOZ_ASSERT(aURI || !aOriginNoSuffix.IsEmpty());
+  MOZ_ASSERT_IF(aURI, aOriginNoSuffix.IsEmpty());
+
 #ifdef DEBUG
   {
     nsCOMPtr<nsIPrincipal> principal;
-    nsresult rv = GetPrincipal(aURI, getter_AddRefs(principal));
+    nsresult rv = NS_OK;
+    if (aURI) {
+      rv = GetPrincipal(aURI, getter_AddRefs(principal));
+    } else {
+      principal =
+          mozilla::BasePrincipal::CreateCodebasePrincipal(aOriginNoSuffix);
+    }
     MOZ_ASSERT_IF(NS_SUCCEEDED(rv),
                   PermissionAvailable(principal, mTypeArray[aType].get()));
   }
 #endif
 
   nsresult rv;
-  RefPtr<PermissionKey> key = PermissionKey::CreateFromURI(aURI, rv);
+  RefPtr<PermissionKey> key =
+      aURI ? PermissionKey::CreateFromURI(aURI, rv)
+           : PermissionKey::CreateFromOriginNoSuffix(aOriginNoSuffix);
   if (!key) {
     return nullptr;
   }
@@ -2455,9 +2552,14 @@ nsPermissionManager::GetPermissionHashKey(nsIURI* aURI, uint32_t aType,
       // If we need to remove a permission we mint a principal.  This is a bit
       // inefficient, but hopefully this code path isn't super common.
       nsCOMPtr<nsIPrincipal> principal;
-      nsresult rv = GetPrincipal(aURI, getter_AddRefs(principal));
-      if (NS_WARN_IF(NS_FAILED(rv))) {
-        return nullptr;
+      if (aURI) {
+        nsresult rv = GetPrincipal(aURI, getter_AddRefs(principal));
+        if (NS_WARN_IF(NS_FAILED(rv))) {
+          return nullptr;
+        }
+      } else {
+        principal =
+            mozilla::BasePrincipal::CreateCodebasePrincipal(aOriginNoSuffix);
       }
       RemoveFromPrincipal(principal, mTypeArray[aType].get());
     } else if (permEntry.mPermission == nsIPermissionManager::UNKNOWN_ACTION) {
@@ -2472,9 +2574,18 @@ nsPermissionManager::GetPermissionHashKey(nsIURI* aURI, uint32_t aType,
   // If aExactHostMatch wasn't true, we can check if the base domain has a
   // permission entry.
   if (!aExactHostMatch) {
-    nsCOMPtr<nsIURI> uri = GetNextSubDomainURI(aURI);
+    nsCOMPtr<nsIURI> uri;
+    if (aURI) {
+      uri = GetNextSubDomainURI(aURI);
+    } else {
+      nsresult rv = NS_NewURI(getter_AddRefs(uri), aOriginNoSuffix);
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return nullptr;
+      }
+      uri = GetNextSubDomainURI(uri);
+    }
     if (uri) {
-      return GetPermissionHashKey(uri, aType, aExactHostMatch);
+      return GetPermissionHashKey(uri, EmptyCString(), aType, aExactHostMatch);
     }
   }
 

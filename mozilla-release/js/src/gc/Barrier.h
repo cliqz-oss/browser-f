@@ -50,9 +50,11 @@
  * 1. ... JS work, which leads to a request to do GC ...
  * 2. [first GC slice, which performs all root marking and (maybe) more marking]
  * 3. ... more JS work is allowed to run ...
- * 4. [GC mark slice, which runs entirely in GCRuntime::markUntilBudgetExhaused]
+ * 4. [GC mark slice, which runs entirely in
+ *    GCRuntime::markUntilBudgetExhausted]
  * 5. ... more JS work ...
- * 6. [GC mark slice, which runs entirely in GCRuntime::markUntilBudgetExhaused]
+ * 6. [GC mark slice, which runs entirely in
+ *    GCRuntime::markUntilBudgetExhausted]
  * 7. ... more JS work ...
  * 8. [GC marking finishes; sweeping done non-incrementally; GC is done]
  * 9. ... JS continues uninterrupted now that GC is finishes ...
@@ -266,7 +268,7 @@ struct InternalBarrierMethods<T*> {
   static void readBarrier(T* v) { T::readBarrier(v); }
 
 #ifdef DEBUG
-  static bool thingIsNotGray(T* v) { return T::thingIsNotGray(v); }
+  static void assertThingIsNotGray(T* v) { return T::assertThingIsNotGray(v); }
 #endif
 };
 
@@ -322,7 +324,9 @@ struct InternalBarrierMethods<Value> {
   }
 
 #ifdef DEBUG
-  static bool thingIsNotGray(const Value& v) { return JS::ValueIsNotGray(v); }
+  static void assertThingIsNotGray(const Value& v) {
+    JS::AssertValueIsNotGray(v);
+  }
 #endif
 };
 
@@ -334,14 +338,17 @@ struct InternalBarrierMethods<jsid> {
   }
   static void postBarrier(jsid* idp, jsid prev, jsid next) {}
 #ifdef DEBUG
-  static bool thingIsNotGray(jsid id) { return JS::IdIsNotGray(id); }
+  static void assertThingIsNotGray(jsid id) { JS::AssertIdIsNotGray(id); }
 #endif
 };
 
 template <typename T>
-static inline void CheckTargetIsNotGray(const T& v) {
-  MOZ_ASSERT(InternalBarrierMethods<T>::thingIsNotGray(v) ||
-             CurrentThreadIsTouchingGrayThings());
+static inline void AssertTargetIsNotGray(const T& v) {
+#ifdef DEBUG
+  if (!CurrentThreadIsTouchingGrayThings()) {
+    InternalBarrierMethods<T>::assertThingIsNotGray(v);
+  }
+#endif
 }
 
 // Base class of all barrier types.
@@ -437,7 +444,7 @@ class PreBarriered : public WriteBarrieredBase<T> {
 
  private:
   void set(const T& v) {
-    CheckTargetIsNotGray(v);
+    AssertTargetIsNotGray(v);
     this->pre();
     this->value = v;
   }
@@ -483,7 +490,7 @@ class GCPtr : public WriteBarrieredBase<T> {
 #endif
 
   void init(const T& v) {
-    CheckTargetIsNotGray(v);
+    AssertTargetIsNotGray(v);
     this->value = v;
     this->post(JS::SafelyInitialized<T>(), v);
   }
@@ -492,7 +499,7 @@ class GCPtr : public WriteBarrieredBase<T> {
 
  private:
   void set(const T& v) {
-    CheckTargetIsNotGray(v);
+    AssertTargetIsNotGray(v);
     this->pre();
     T tmp = this->value;
     this->value = v;
@@ -557,7 +564,7 @@ class HeapPtr : public WriteBarrieredBase<T> {
   }
 
   void init(const T& v) {
-    CheckTargetIsNotGray(v);
+    AssertTargetIsNotGray(v);
     this->value = v;
     this->post(JS::SafelyInitialized<T>(), this->value);
   }
@@ -571,13 +578,13 @@ class HeapPtr : public WriteBarrieredBase<T> {
 
  protected:
   void set(const T& v) {
-    CheckTargetIsNotGray(v);
+    AssertTargetIsNotGray(v);
     this->pre();
     postBarrieredSet(v);
   }
 
   void postBarrieredSet(const T& v) {
-    CheckTargetIsNotGray(v);
+    AssertTargetIsNotGray(v);
     T tmp = this->value;
     this->value = v;
     this->post(tmp, this->value);
@@ -634,7 +641,7 @@ class ReadBarriered : public ReadBarrieredBase<T>,
   ~ReadBarriered() { this->post(this->value, JS::SafelyInitialized<T>()); }
 
   ReadBarriered& operator=(const ReadBarriered& v) {
-    CheckTargetIsNotGray(v.value);
+    AssertTargetIsNotGray(v.value);
     T prior = this->value;
     this->value = v.value;
     this->post(prior, v.value);
@@ -660,7 +667,7 @@ class ReadBarriered : public ReadBarrieredBase<T>,
   T const* unsafeGet() const { return &this->value; }
 
   void set(const T& v) {
-    CheckTargetIsNotGray(v);
+    AssertTargetIsNotGray(v);
     T tmp = this->value;
     this->value = v;
     this->post(tmp, v);
@@ -801,7 +808,7 @@ class ImmutableTenuredPtr {
 
   void init(T ptr) {
     MOZ_ASSERT(ptr->isTenured());
-    CheckTargetIsNotGray(ptr);
+    AssertTargetIsNotGray(ptr);
     value = ptr;
   }
 

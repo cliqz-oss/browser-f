@@ -10,7 +10,7 @@
 
 #include <stdlib.h>
 #if defined(MOZ_WIDGET_GTK)
-#include <glib.h>
+#  include <glib.h>
 #endif
 
 #include "prenv.h"
@@ -23,9 +23,9 @@
 #include "nsIToolkitProfile.h"
 
 #ifdef XP_WIN
-#include <process.h>
-#include <shobjidl.h>
-#include "mozilla/ipc/WindowsMessageLoop.h"
+#  include <process.h>
+#  include <shobjidl.h>
+#  include "mozilla/ipc/WindowsMessageLoop.h"
 #endif
 
 #include "nsAppDirectoryServiceDefs.h"
@@ -38,12 +38,15 @@
 #include "nsJSUtils.h"
 #include "nsWidgetsCID.h"
 #include "nsXREDirProvider.h"
+#ifdef MOZ_ASAN_REPORTER
+#  include "CmdLineAndEnvUtils.h"
+#endif
 #include "ThreadAnnotation.h"
 
 #include "mozilla/Omnijar.h"
 #if defined(XP_MACOSX)
-#include "nsVersionComparator.h"
-#include "chrome/common/mach_ipc_mac.h"
+#  include "nsVersionComparator.h"
+#  include "chrome/common/mach_ipc_mac.h"
 #endif
 #include "nsX11ErrorHandler.h"
 #include "nsGDKErrorHandler.h"
@@ -53,8 +56,9 @@
 #include "base/process_util.h"
 #include "chrome/common/child_process.h"
 #if defined(MOZ_WIDGET_ANDROID)
-#include "chrome/common/ipc_channel.h"
-#include "mozilla/jni/Utils.h"
+#  include "chrome/common/ipc_channel.h"
+#  include "mozilla/jni/Utils.h"
+#  include "ProcessUtils.h"
 #endif  //  defined(MOZ_WIDGET_ANDROID)
 
 #include "mozilla/AbstractThread.h"
@@ -76,47 +80,47 @@
 
 #include "mozilla/ipc/TestShellParent.h"
 #include "mozilla/ipc/XPCShellEnvironment.h"
-#include "mozilla/Scheduler.h"
 #include "mozilla/WindowsDllBlocklist.h"
 
 #include "GMPProcessChild.h"
 #include "mozilla/gfx/GPUProcessImpl.h"
+#include "mozilla/net/SocketProcessImpl.h"
 
 #include "GeckoProfiler.h"
 
 #if defined(MOZ_SANDBOX) && defined(XP_WIN)
-#include "mozilla/sandboxTarget.h"
-#include "mozilla/sandboxing/loggingCallbacks.h"
+#  include "mozilla/sandboxTarget.h"
+#  include "mozilla/sandboxing/loggingCallbacks.h"
 #endif
 
 #if defined(MOZ_CONTENT_SANDBOX)
-#include "mozilla/SandboxSettings.h"
-#include "mozilla/Preferences.h"
+#  include "mozilla/SandboxSettings.h"
+#  include "mozilla/Preferences.h"
 #endif
 
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
-#include "mozilla/Sandbox.h"
+#  include "mozilla/Sandbox.h"
 #endif
 
 #if defined(XP_LINUX)
-#include <sys/prctl.h>
-#ifndef PR_SET_PTRACER
-#define PR_SET_PTRACER 0x59616d61
-#endif
-#ifndef PR_SET_PTRACER_ANY
-#define PR_SET_PTRACER_ANY ((unsigned long)-1)
-#endif
+#  include <sys/prctl.h>
+#  ifndef PR_SET_PTRACER
+#    define PR_SET_PTRACER 0x59616d61
+#  endif
+#  ifndef PR_SET_PTRACER_ANY
+#    define PR_SET_PTRACER_ANY ((unsigned long)-1)
+#  endif
 #endif
 
 #ifdef MOZ_IPDL_TESTS
-#include "mozilla/_ipdltest/IPDLUnitTests.h"
-#include "mozilla/_ipdltest/IPDLUnitTestProcessChild.h"
+#  include "mozilla/_ipdltest/IPDLUnitTests.h"
+#  include "mozilla/_ipdltest/IPDLUnitTestProcessChild.h"
 
 using mozilla::_ipdltest::IPDLUnitTestProcessChild;
 #endif  // ifdef MOZ_IPDL_TESTS
 
 #ifdef MOZ_JPROF
-#include "jprof.h"
+#  include "jprof.h"
 #endif
 
 #include "VRProcessChild.h"
@@ -225,8 +229,8 @@ GeckoProcessType sChildProcessType = GeckoProcessType_Default;
 #if defined(MOZ_WIDGET_ANDROID)
 void XRE_SetAndroidChildFds(JNIEnv* env, const XRE_AndroidChildFds& fds) {
   mozilla::jni::SetGeckoThreadEnv(env);
-  mozilla::dom::SetPrefsFd(fds.mPrefsFd);
-  mozilla::dom::SetPrefMapFd(fds.mPrefMapFd);
+  mozilla::ipc::SetPrefsFd(fds.mPrefsFd);
+  mozilla::ipc::SetPrefMapFd(fds.mPrefMapFd);
   IPC::Channel::SetClientChannelFd(fds.mIpcFd);
   CrashReporter::SetNotificationPipeForChild(fds.mCrashFd);
   CrashReporter::SetCrashAnnotationPipeForChild(fds.mCrashAnnotationFd);
@@ -382,12 +386,12 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
       freopen("CONIN$", "r", stdin);
   }
 
-#if defined(MOZ_SANDBOX)
+#  if defined(MOZ_SANDBOX)
   if (aChildData->sandboxTargetServices) {
     SandboxTarget::Instance()->SetTargetServices(
         aChildData->sandboxTargetServices);
   }
-#endif
+#  endif
 #endif
 
   // NB: This must be called before profiler_init
@@ -407,11 +411,11 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
 #ifdef XP_MACOSX
   if (aArgc < 1) return NS_ERROR_FAILURE;
 
-#if defined(MOZ_CONTENT_SANDBOX)
+#  if defined(MOZ_CONTENT_SANDBOX)
   // Save the original number of arguments to pass to the sandbox
   // setup routine which also uses the crash server argument.
   int allArgc = aArgc;
-#endif /* MOZ_CONTENT_SANDBOX */
+#  endif /* MOZ_CONTENT_SANDBOX */
 
   const char* const mach_port_name = aArgv[--aArgc];
 
@@ -489,13 +493,13 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
     return NS_ERROR_FAILURE;
   }
 
-#if defined(MOZ_CONTENT_SANDBOX)
+#  if defined(MOZ_CONTENT_SANDBOX)
   std::string sandboxError;
   if (!EarlyStartMacSandboxIfEnabled(allArgc, aArgv, sandboxError)) {
     printf_stderr("Sandbox error: %s\n", sandboxError.c_str());
     MOZ_CRASH("Sandbox initialization failed");
   }
-#endif /* MOZ_CONTENT_SANDBOX */
+#  endif /* MOZ_CONTENT_SANDBOX */
 
   pt.reset();
 #endif /* XP_MACOSX */
@@ -559,11 +563,11 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
 #ifdef OS_POSIX
   if (PR_GetEnv("MOZ_DEBUG_CHILD_PROCESS") ||
       PR_GetEnv("MOZ_DEBUG_CHILD_PAUSE")) {
-#if defined(XP_LINUX) && defined(DEBUG)
+#  if defined(XP_LINUX) && defined(DEBUG)
     if (prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY, 0, 0, 0) != 0) {
       printf_stderr("Could not allow ptrace from any process.\n");
     }
-#endif
+#  endif
     printf_stderr(
         "\n\nCHILDCHILDCHILDCHILD (process type %s)\n  debug me @ %d\n\n",
         XRE_ChildProcessTypeToString(XRE_GetProcessType()),
@@ -593,22 +597,6 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
   char* end = 0;
   base::ProcessId parentPID = strtol(parentPIDString, &end, 10);
   MOZ_ASSERT(!*end, "invalid parent PID");
-
-  nsCOMPtr<nsIFile> crashReportTmpDir;
-  if (XRE_GetProcessType() == GeckoProcessType_GPU ||
-      XRE_GetProcessType() == GeckoProcessType_RDD) {
-    aArgc--;
-    if (strlen(aArgv[aArgc])) {  // if it's empty, ignore it
-      nsresult rv =
-          XRE_GetFileFromPath(aArgv[aArgc], getter_AddRefs(crashReportTmpDir));
-      if (NS_FAILED(rv)) {
-        // If we don't have a valid tmp dir we can probably still run ok, but
-        // crash report .extra files might not get picked up by the parent
-        // process. Debug-assert because this shouldn't happen in practice.
-        MOZ_ASSERT(false, "GPU process started without valid tmp dir!");
-      }
-    }
-  }
 
   // While replaying, use the parent PID that existed while recording.
   parentPID = recordreplay::RecordReplayValue(parentPID);
@@ -650,6 +638,7 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
     case GeckoProcessType_GPU:
     case GeckoProcessType_VR:
     case GeckoProcessType_RDD:
+    case GeckoProcessType_Socket:
       // Content processes need the XPCOM/chromium frankenventloop
       uiLoopType = MessageLoop::TYPE_MOZILLA_CHILD;
       break;
@@ -717,6 +706,10 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
 
         case GeckoProcessType_RDD:
           process = new RDDProcessImpl(parentPID);
+          break;
+
+        case GeckoProcessType_Socket:
+          process = new net::SocketProcessImpl(parentPID);
           break;
 
         default:
@@ -921,8 +914,6 @@ void XRE_ShutdownChildProcess() {
   mozilla::DebugOnly<MessageLoop*> ioLoop = XRE_GetIOMessageLoop();
   MOZ_ASSERT(!!ioLoop, "Bad shutdown order");
 
-  Scheduler::Shutdown();
-
   // Quit() sets off the following chain of events
   //  (1) UI loop starts quitting
   //  (2) UI loop returns from Run() in XRE_InitChildProcess()
@@ -1003,10 +994,10 @@ bool XRE_ShutdownTestShell() {
 
 #ifdef MOZ_X11
 void XRE_InstallX11ErrorHandler() {
-#ifdef MOZ_WIDGET_GTK
+#  ifdef MOZ_WIDGET_GTK
   InstallGdkErrorHandler();
-#else
+#  else
   InstallX11ErrorHandler();
-#endif
+#  endif
 }
 #endif

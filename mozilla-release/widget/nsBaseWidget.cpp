@@ -26,7 +26,7 @@
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsISimpleEnumerator.h"
 #include "nsIContent.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIPresShell.h"
 #include "nsIServiceManager.h"
 #include "mozilla/Preferences.h"
@@ -77,7 +77,7 @@
 #include "InputData.h"
 #include "FrameLayerBuilder.h"
 #ifdef ACCESSIBILITY
-#include "nsAccessibilityService.h"
+#  include "nsAccessibilityService.h"
 #endif
 #include "gfxConfig.h"
 #include "mozilla/layers/CompositorSession.h"
@@ -87,7 +87,7 @@
 #include "nsViewManager.h"
 
 #ifdef DEBUG
-#include "nsIObserver.h"
+#  include "nsIObserver.h"
 
 static void debug_RegisterPrefCallbacks();
 
@@ -98,7 +98,7 @@ static int32_t gNumWidgets;
 #endif
 
 #ifdef XP_MACOSX
-#include "nsCocoaFeatures.h"
+#  include "nsCocoaFeatures.h"
 #endif
 
 #if defined(XP_WIN) || defined(MOZ_WIDGET_GTK)
@@ -545,14 +545,14 @@ void nsBaseWidget::AddChild(nsIWidget* aChild) {
 //-------------------------------------------------------------------------
 void nsBaseWidget::RemoveChild(nsIWidget* aChild) {
 #ifdef DEBUG
-#ifdef XP_MACOSX
+#  ifdef XP_MACOSX
   // nsCocoaWindow doesn't implement GetParent, so in that case parent will be
   // null and we'll just have to do without this assertion.
   nsIWidget* parent = aChild->GetParent();
   NS_ASSERTION(!parent || parent == this, "Not one of our kids!");
-#else
+#  else
   MOZ_RELEASE_ASSERT(aChild->GetParent() == this, "Not one of our kids!");
-#endif
+#  endif
 #endif
 
   if (mLastChild == aChild) {
@@ -640,11 +640,10 @@ void nsBaseWidget::SetSizeMode(nsSizeMode aMode) {
 //
 //-------------------------------------------------------------------------
 
-void nsBaseWidget::SetCursor(nsCursor aCursor) { mCursor = aCursor; }
-
-nsresult nsBaseWidget::SetCursor(imgIContainer* aCursor, uint32_t aHotspotX,
-                                 uint32_t aHotspotY) {
-  return NS_ERROR_NOT_IMPLEMENTED;
+void nsBaseWidget::SetCursor(nsCursor aCursor,
+                             imgIContainer*, uint32_t, uint32_t) {
+  // We don't support the cursor image.
+  mCursor = aCursor;
 }
 
 //-------------------------------------------------------------------------
@@ -1146,7 +1145,7 @@ bool nsBaseWidget::ShowContextMenuAfterMouseUp() {
   return gContextMenuAfterMouseUp;
 }
 
-nsIDocument* nsBaseWidget::GetDocument() const {
+Document* nsBaseWidget::GetDocument() const {
   if (mWidgetListener) {
     if (nsIPresShell* presShell = mWidgetListener->GetPresShell()) {
       return presShell->GetDocument();
@@ -1687,7 +1686,7 @@ void nsBaseWidget::NotifyThemeChanged() {
 
 void nsBaseWidget::NotifyUIStateChanged(UIStateChangeType aShowAccelerators,
                                         UIStateChangeType aShowFocusRings) {
-  if (nsIDocument* doc = GetDocument()) {
+  if (Document* doc = GetDocument()) {
     nsPIDOMWindowOuter* win = doc->GetWindow();
     if (win) {
       win->SetKeyboardIndicators(aShowAccelerators, aShowFocusRings);
@@ -2081,11 +2080,11 @@ void nsBaseWidget::UnregisterPluginWindowForRemoteUpdates() {
 
 nsresult nsBaseWidget::AsyncEnableDragDrop(bool aEnable) {
   RefPtr<nsBaseWidget> kungFuDeathGrip = this;
-  return NS_IdleDispatchToCurrentThread(
+  return NS_DispatchToCurrentThreadQueue(
       NS_NewRunnableFunction(
           "AsyncEnableDragDropFn",
           [this, aEnable, kungFuDeathGrip]() { EnableDragDrop(aEnable); }),
-      kAsyncDragDropTimeout);
+      kAsyncDragDropTimeout, EventQueuePriority::Idle);
 }
 
 // static
@@ -3049,10 +3048,10 @@ void IMENotification::TextChangeDataBase::Test() {
 
   nsAutoString eventName(NS_LITERAL_STRING("UNKNOWN"));
 
-#define _ASSIGN_eventName(_value, _name) \
-  case _value:                           \
-    eventName.AssignLiteral(_name);      \
-    break
+#  define _ASSIGN_eventName(_value, _name) \
+    case _value:                           \
+      eventName.AssignLiteral(_name);      \
+      break
 
   switch (aGuiEvent->mMessage) {
     _ASSIGN_eventName(eBlur, "eBlur");
@@ -3091,7 +3090,7 @@ void IMENotification::TextChangeDataBase::Test() {
     _ASSIGN_eventName(eXULBroadcast, "eXULBroadcast");
     _ASSIGN_eventName(eXULCommandUpdate, "eXULCommandUpdate");
 
-#undef _ASSIGN_eventName
+#  undef _ASSIGN_eventName
 
     default: {
       eventName.AssignLiteral("UNKNOWN: ");

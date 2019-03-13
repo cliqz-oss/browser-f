@@ -883,7 +883,7 @@ PlacesTreeView.prototype = {
 
     // If we are currently editing, don't invalidate the container until we
     // finish.
-    if (this._tree.element.getAttribute("editing")) {
+    if (this._tree.getAttribute("editing")) {
       if (!this._editingObservers) {
         this._editingObservers = new Map();
       }
@@ -896,7 +896,7 @@ PlacesTreeView.prototype = {
           this._editingObservers.delete(aContainer);
         });
 
-        mutationObserver.observe(this._tree.element, {
+        mutationObserver.observe(this._tree, {
           attributes: true,
           attributeFilter: ["editing"],
         });
@@ -1348,7 +1348,7 @@ PlacesTreeView.prototype = {
     // since this information is specific to the tree view.
     let ip = this._getInsertionPoint(aRow, aOrientation);
     if (ip) {
-      PlacesControllerDragHelper.onDrop(ip, aDataTransfer, this._tree.element)
+      PlacesControllerDragHelper.onDrop(ip, aDataTransfer, this._tree)
                                 .catch(Cu.reportError)
                                 .then(() => {
                                   // We should only clear the drop target once
@@ -1463,6 +1463,7 @@ PlacesTreeView.prototype = {
         // detach from result when we are detaching from the tree.
         // This breaks the reference cycle between us and the result.
         if (!aTree) {
+          // Balances the addObserver call from the load method in tree.xml
           this._result.removeObserver(this);
           this._rootNode.containerOpen = false;
         }

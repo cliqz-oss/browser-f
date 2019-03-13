@@ -613,7 +613,7 @@ struct nsGridContainerFrame::GridItemInfo {
                   aContainerWM.IsOrthogonalTo(mFrame->GetWritingMode()) &&
               minSize.GetUnit() == eStyleUnit_Enumerated);
     return isAuto &&
-           mFrame->StyleDisplay()->mOverflowX == NS_STYLE_OVERFLOW_VISIBLE;
+           mFrame->StyleDisplay()->mOverflowX == StyleOverflow::Visible;
   }
 
 #ifdef DEBUG
@@ -3597,7 +3597,7 @@ static nscoord MinSize(const GridItemInfo& aGridItem,
                   : style.GetUnit();
   if (unit == eStyleUnit_Enumerated ||
       (unit == eStyleUnit_Auto &&
-       child->StyleDisplay()->mOverflowX == NS_STYLE_OVERFLOW_VISIBLE)) {
+       child->StyleDisplay()->mOverflowX == StyleOverflow::Visible)) {
     // Now calculate the "content size" part and return whichever is smaller.
     MOZ_ASSERT(unit != eStyleUnit_Enumerated || sz == NS_UNCONSTRAINEDSIZE);
     sz = std::min(
@@ -6300,12 +6300,12 @@ void nsGridContainerFrame::InsertFrames(ChildListID aListID,
 void nsGridContainerFrame::RemoveFrame(ChildListID aListID,
                                        nsIFrame* aOldFrame) {
 #ifdef DEBUG
-  ChildListIDs supportedLists =
-      kAbsoluteList | kFixedList | kPrincipalList | kNoReflowPrincipalList;
+  ChildListIDs supportedLists = {kAbsoluteList, kFixedList, kPrincipalList,
+                                 kNoReflowPrincipalList};
   // We don't handle the kBackdropList frames in any way, but it only contains
   // a placeholder for ::backdrop which is OK to not reflow (for now anyway).
-  supportedLists |= kBackdropList;
-  MOZ_ASSERT(supportedLists.Contains(aListID), "unexpected child list");
+  supportedLists += kBackdropList;
+  MOZ_ASSERT(supportedLists.contains(aListID), "unexpected child list");
 
   // Note that kPrincipalList doesn't mean aOldFrame must be on that list.
   // It can also be on kOverflowList, in which case it might be a pushed
@@ -6504,12 +6504,12 @@ nsresult nsGridContainerFrame::GetFrameName(nsAString& aResult) const {
 void nsGridContainerFrame::NoteNewChildren(ChildListID aListID,
                                            const nsFrameList& aFrameList) {
 #ifdef DEBUG
-  ChildListIDs supportedLists =
-      kAbsoluteList | kFixedList | kPrincipalList | kNoReflowPrincipalList;
+  ChildListIDs supportedLists = {kAbsoluteList, kFixedList, kPrincipalList,
+                                 kNoReflowPrincipalList};
   // We don't handle the kBackdropList frames in any way, but it only contains
   // a placeholder for ::backdrop which is OK to not reflow (for now anyway).
-  supportedLists |= kBackdropList;
-  MOZ_ASSERT(supportedLists.Contains(aListID), "unexpected child list");
+  supportedLists += kBackdropList;
+  MOZ_ASSERT(supportedLists.contains(aListID), "unexpected child list");
 #endif
 
   nsIPresShell* shell = PresShell();
@@ -6619,29 +6619,29 @@ nsGridContainerFrame::FindLastItemInGridOrder(
 #ifdef DEBUG
 void nsGridContainerFrame::SetInitialChildList(ChildListID aListID,
                                                nsFrameList& aChildList) {
-#ifdef DEBUG
-  ChildListIDs supportedLists = kAbsoluteList | kFixedList | kPrincipalList;
+#  ifdef DEBUG
+  ChildListIDs supportedLists = {kAbsoluteList, kFixedList, kPrincipalList};
   // We don't handle the kBackdropList frames in any way, but it only contains
   // a placeholder for ::backdrop which is OK to not reflow (for now anyway).
-  supportedLists |= kBackdropList;
-  MOZ_ASSERT(supportedLists.Contains(aListID), "unexpected child list");
-#endif
+  supportedLists += kBackdropList;
+  MOZ_ASSERT(supportedLists.contains(aListID), "unexpected child list");
+#  endif
 
   return nsContainerFrame::SetInitialChildList(aListID, aChildList);
 }
 
 void nsGridContainerFrame::SanityCheckGridItemsBeforeReflow() const {
-  ChildListIDs absLists = kAbsoluteList | kFixedList | kOverflowContainersList |
-                          kExcessOverflowContainersList;
-  ChildListIDs itemLists = kPrincipalList | kOverflowList;
+  ChildListIDs absLists = {kAbsoluteList, kFixedList, kOverflowContainersList,
+                           kExcessOverflowContainersList};
+  ChildListIDs itemLists = {kPrincipalList, kOverflowList};
   for (const nsIFrame* f = this; f; f = f->GetNextInFlow()) {
     MOZ_ASSERT(!f->HasAnyStateBits(NS_STATE_GRID_DID_PUSH_ITEMS),
                "At start of reflow, we should've pulled items back from all "
                "NIFs and cleared NS_STATE_GRID_DID_PUSH_ITEMS in the process");
     for (nsIFrame::ChildListIterator childLists(f); !childLists.IsDone();
          childLists.Next()) {
-      if (!itemLists.Contains(childLists.CurrentID())) {
-        MOZ_ASSERT(absLists.Contains(childLists.CurrentID()) ||
+      if (!itemLists.contains(childLists.CurrentID())) {
+        MOZ_ASSERT(absLists.contains(childLists.CurrentID()) ||
                        childLists.CurrentID() == kBackdropList,
                    "unexpected non-empty child list");
         continue;

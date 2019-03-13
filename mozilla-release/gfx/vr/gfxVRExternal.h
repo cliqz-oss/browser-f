@@ -31,7 +31,7 @@ class VRDisplayExternal : public VRDisplayHost {
   void ZeroSensor() override;
 
  protected:
-  VRHMDSensorState GetSensorState() override;
+  VRHMDSensorState& GetSensorState() override;
   void StartPresentation() override;
   void StopPresentation() override;
   void StartVRNavigation() override;
@@ -133,6 +133,10 @@ class VRSystemManagerExternal : public VRSystemManager {
   bool mDoShutdown;
 
   volatile VRExternalShmem* mExternalShmem;
+
+#if defined(XP_WIN)
+  HANDLE mMutex;
+#endif
 #if !defined(MOZ_WIDGET_ANDROID)
   bool mSameProcess;
 #endif

@@ -5,10 +5,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsError.h"
-#include "MediaDecoderStateMachine.h"
 #include "MediaResource.h"
 #ifdef MOZ_AV1
-#include "AOMDecoder.h"
+#  include "AOMDecoder.h"
 #endif
 #include "OpusDecoder.h"
 #include "VPXDecoder.h"
@@ -362,7 +361,9 @@ nsresult WebMDemuxer::ReadMetadata() {
         mInfo.mVideo.mDuration = TimeUnit::FromNanoseconds(duration);
       }
       mInfo.mVideo.mCrypto = GetTrackCrypto(TrackInfo::kVideoTrack, track);
-      if (mInfo.mVideo.mCrypto.mValid) {
+      if (mInfo.mVideo.mCrypto.IsEncrypted()) {
+        MOZ_ASSERT(mInfo.mVideo.mCrypto.mCryptoScheme == CryptoScheme::Cenc,
+                   "WebM should only use cenc scheme");
         mCrypto.AddInitData(NS_LITERAL_STRING("webm"),
                             mInfo.mVideo.mCrypto.mKeyId);
       }
@@ -427,7 +428,9 @@ nsresult WebMDemuxer::ReadMetadata() {
         mInfo.mAudio.mDuration = TimeUnit::FromNanoseconds(duration);
       }
       mInfo.mAudio.mCrypto = GetTrackCrypto(TrackInfo::kAudioTrack, track);
-      if (mInfo.mAudio.mCrypto.mValid) {
+      if (mInfo.mAudio.mCrypto.IsEncrypted()) {
+        MOZ_ASSERT(mInfo.mAudio.mCrypto.mCryptoScheme == CryptoScheme::Cenc,
+                   "WebM should only use cenc scheme");
         mCrypto.AddInitData(NS_LITERAL_STRING("webm"),
                             mInfo.mAudio.mCrypto.mKeyId);
       }
@@ -509,8 +512,8 @@ CryptoTrack WebMDemuxer::GetTrackCrypto(TrackInfo::TrackType aType,
   }
 
   if (!initData.IsEmpty()) {
-    crypto.mValid = true;
-    // crypto.mMode is not used for WebMs
+    // Webm only uses a cenc style scheme.
+    crypto.mCryptoScheme = CryptoScheme::Cenc;
     crypto.mIVSize = WEBM_IV_SIZE;
     crypto.mKeyId = std::move(initData);
   }
@@ -706,7 +709,7 @@ nsresult WebMDemuxer::GetNextPacket(TrackInfo::TrackType aType,
       unsigned char const* iv;
       size_t ivLength;
       nestegg_packet_iv(holder->Packet(), &iv, &ivLength);
-      writer->mCrypto.mValid = true;
+      writer->mCrypto.mCryptoScheme = CryptoScheme::Cenc;
       writer->mCrypto.mIVSize = ivLength;
       if (ivLength == 0) {
         // Frame is not encrypted. This shouldn't happen as it means the
@@ -761,7 +764,7 @@ nsresult WebMDemuxer::GetNextPacket(TrackInfo::TrackType aType,
             encrypted = !encrypted;
             lastOffset = partition;
 
-            assert(lastOffset <= length);
+            MOZ_ASSERT(lastOffset <= length);
           }
 
           // Add the data between the last offset and the end of the data.
@@ -788,7 +791,7 @@ nsresult WebMDemuxer::GetNextPacket(TrackInfo::TrackType aType,
 
           // Assert that the lengths of the encrypted and plain samples add to
           // the length of the data.
-          assert(
+          MOZ_ASSERT(
               ((size_t)(std::accumulate(writer->mCrypto.mPlainSizes.begin(),
                                         writer->mCrypto.mPlainSizes.end(), 0) +
                         std::accumulate(writer->mCrypto.mEncryptedSizes.begin(),
@@ -1166,9 +1169,8 @@ void WebMTrackDemuxer::Reset() {
 
 void WebMTrackDemuxer::UpdateSamples(nsTArray<RefPtr<MediaRawData>>& aSamples) {
   for (const auto& sample : aSamples) {
-    if (sample->mCrypto.mValid) {
+    if (sample->mCrypto.IsEncrypted()) {
       UniquePtr<MediaRawDataWriter> writer(sample->CreateWriter());
-      writer->mCrypto.mMode = mInfo->mCrypto.mMode;
       writer->mCrypto.mIVSize = mInfo->mCrypto.mIVSize;
       writer->mCrypto.mKeyId.AppendElements(mInfo->mCrypto.mKeyId);
     }

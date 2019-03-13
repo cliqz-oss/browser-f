@@ -459,23 +459,6 @@ class LNewCallObject : public LInstructionHelper<1, 0, 1> {
   MNewCallObject* mir() const { return mir_->toNewCallObject(); }
 };
 
-// Performs a callVM to allocate a new CallObject with singleton type.
-class LNewSingletonCallObject : public LInstructionHelper<1, 0, 1> {
- public:
-  LIR_HEADER(NewSingletonCallObject)
-
-  explicit LNewSingletonCallObject(const LDefinition& temp)
-      : LInstructionHelper(classOpcode) {
-    setTemp(0, temp);
-  }
-
-  const LDefinition* temp() { return getTemp(0); }
-
-  MNewSingletonCallObject* mir() const {
-    return mir_->toNewSingletonCallObject();
-  }
-};
-
 class LNewDerivedTypedObject : public LCallInstructionHelper<1, 3, 0> {
  public:
   LIR_HEADER(NewDerivedTypedObject);
@@ -712,12 +695,16 @@ class LDefVar : public LCallInstructionHelper<0, 1, 0> {
   MDefVar* mir() const { return mir_->toDefVar(); }
 };
 
-class LDefLexical : public LCallInstructionHelper<0, 0, 0> {
+class LDefLexical : public LCallInstructionHelper<0, 1, 0> {
  public:
   LIR_HEADER(DefLexical)
 
-  LDefLexical() : LCallInstructionHelper(classOpcode) {}
+  explicit LDefLexical(const LAllocation& envChain)
+      : LCallInstructionHelper(classOpcode) {
+    setOperand(0, envChain);
+  }
 
+  const LAllocation* environmentChain() { return getOperand(0); }
   MDefLexical* mir() const { return mir_->toDefLexical(); }
 };
 
@@ -3542,17 +3529,14 @@ class LModuleMetadata : public LCallInstructionHelper<1, 0, 0> {
   LModuleMetadata() : LCallInstructionHelper(classOpcode) {}
 };
 
-class LDynamicImport : public LCallInstructionHelper<1, 2 * BOX_PIECES, 0> {
+class LDynamicImport : public LCallInstructionHelper<1, BOX_PIECES, 0> {
  public:
   LIR_HEADER(DynamicImport)
 
-  static const size_t ReferencingPrivateIndex = 0;
-  static const size_t SpecifierIndex = BOX_PIECES;
+  static const size_t SpecifierIndex = 0;
 
-  explicit LDynamicImport(const LBoxAllocation& referencingPrivate,
-                          const LBoxAllocation& specifier)
+  explicit LDynamicImport(const LBoxAllocation& specifier)
       : LCallInstructionHelper(classOpcode) {
-    setBoxOperand(ReferencingPrivateIndex, referencingPrivate);
     setBoxOperand(SpecifierIndex, specifier);
   }
 
@@ -5630,15 +5614,6 @@ class LSetFrameArgumentV : public LInstructionHelper<0, BOX_PIECES, 0> {
   MSetFrameArgument* mir() const { return mir_->toSetFrameArgument(); }
 };
 
-class LRunOncePrologue : public LCallInstructionHelper<0, 0, 0> {
- public:
-  LIR_HEADER(RunOncePrologue)
-
-  MRunOncePrologue* mir() const { return mir_->toRunOncePrologue(); }
-
-  LRunOncePrologue() : LCallInstructionHelper(classOpcode) {}
-};
-
 // Create the rest parameter.
 class LRest : public LCallInstructionHelper<1, 1, 3> {
  public:
@@ -7019,9 +6994,9 @@ class LArrowNewTarget : public LInstructionHelper<BOX_PIECES, 1, 0> {
 
 // Math.random().
 #ifdef JS_PUNBOX64
-#define LRANDOM_NUM_TEMPS 3
+#  define LRANDOM_NUM_TEMPS 3
 #else
-#define LRANDOM_NUM_TEMPS 5
+#  define LRANDOM_NUM_TEMPS 5
 #endif
 
 class LRandom : public LInstructionHelper<1, 0, LRANDOM_NUM_TEMPS> {

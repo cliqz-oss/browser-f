@@ -28,7 +28,7 @@
 #include "TextDrawTarget.h"
 
 #ifdef XP_WIN
-#include "gfxWindowsPlatform.h"
+#  include "gfxWindowsPlatform.h"
 #endif
 
 using namespace mozilla;
@@ -40,7 +40,7 @@ static const char16_t kEllipsisChar[] = {0x2026, 0x0};
 static const char16_t kASCIIPeriodsChar[] = {'.', '.', '.', 0x0};
 
 #ifdef DEBUG_roc
-#define DEBUG_TEXT_RUN_STORAGE_METRICS
+#  define DEBUG_TEXT_RUN_STORAGE_METRICS
 #endif
 
 #ifdef DEBUG_TEXT_RUN_STORAGE_METRICS
@@ -1536,6 +1536,7 @@ void gfxTextRun::SetSpaceGlyph(gfxFont* aFont, DrawTarget* aDrawTarget,
     AddGlyphRun(aFont, gfxTextRange::MatchType::kFontGroup, aCharIndex, false,
                 aOrientation);
     CopyGlyphDataFrom(sw, aCharIndex);
+    GetCharacterGlyphs()[aCharIndex].SetIsSpace();
   }
 }
 

@@ -40,6 +40,10 @@ namespace wasm {
 
 bool HasCompilerSupport(JSContext* cx);
 
+// Return whether WebAssembly has support for an optimized compiler backend.
+
+bool HasOptimizedCompilerTier(JSContext* cx);
+
 // Return whether WebAssembly is supported on this platform. This determines
 // whether the WebAssembly object is exposed to JS and takes into account
 // configuration options that disable various modes.
@@ -52,6 +56,11 @@ bool HasSupport(JSContext* cx);
 bool HasStreamingSupport(JSContext* cx);
 
 bool HasCachingSupport(JSContext* cx);
+
+// Returns true if WebAssembly as configured by compile-time flags and run-time
+// options can support reference types and stack walking.
+
+bool HasReftypesSupport(JSContext* cx);
 
 // Compiles the given binary wasm module given the ArrayBufferObject
 // and links the module's imports with the given import object.
@@ -129,6 +138,10 @@ class WasmModuleObject : public NativeObject {
 // module exports a global twice, the two exported WasmGlobalObjects are the
 // same.
 
+// TODO/AnyRef-boxing: With boxed immediates and strings, JSObject* is no longer
+// the most appropriate representation for Cell::anyref.
+STATIC_ASSERT_ANYREF_IS_JSOBJECT;
+
 class WasmGlobalObject : public NativeObject {
   static const unsigned TYPE_SLOT = 0;
   static const unsigned MUTABLE_SLOT = 1;
@@ -151,7 +164,8 @@ class WasmGlobalObject : public NativeObject {
     int64_t i64;
     float f32;
     double f64;
-    JSObject* ptr;
+    JSObject* ref;  // Note, this breaks an abstraction boundary
+    wasm::AnyRef anyref;
     Cell() : i64(0) {}
     ~Cell() {}
   };

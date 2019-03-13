@@ -6,7 +6,7 @@
 
 import React, { Component } from "react";
 import { showMenu } from "devtools-contextmenu";
-import { connect } from "react-redux";
+import { connect } from "../../utils/connect";
 import { score as fuzzaldrinScore } from "fuzzaldrin-plus";
 
 import { copyToTheClipboard } from "../../utils/clipboard";
@@ -38,9 +38,9 @@ type Props = {
   alphabetizeOutline: boolean,
   onAlphabetizeClick: Function,
   selectedLocation: any,
-  selectLocation: ({ sourceId: string, line: number }) => void,
   getFunctionText: Function,
-  flashLineRange: Function
+  selectLocation: typeof actions.selectLocation,
+  flashLineRange: typeof actions.flashLineRange
 };
 
 type State = {
@@ -76,9 +76,12 @@ export class Outline extends Component<Props, State> {
     if (!selectedSource) {
       return;
     }
-    const selectedSourceId = selectedSource.id;
-    const startLine = location.start.line;
-    selectLocation({ sourceId: selectedSourceId, line: startLine });
+
+    selectLocation({
+      sourceId: selectedSource.id,
+      line: location.start.line,
+      column: location.start.column
+    });
   }
 
   onContextMenu(event: SyntheticEvent<HTMLElement>, func: SymbolDeclaration) {
@@ -258,12 +261,19 @@ export class Outline extends Component<Props, State> {
 
 const mapStateToProps = state => {
   const selectedSource = getSelectedSource(state);
-  const symbols = getSymbols(state, selectedSource);
+  const symbols = selectedSource ? getSymbols(state, selectedSource) : null;
+
   return {
     symbols,
     selectedSource,
     selectedLocation: getSelectedLocation(state),
-    getFunctionText: line => findFunctionText(line, selectedSource, symbols)
+    getFunctionText: line => {
+      if (selectedSource) {
+        return findFunctionText(line, selectedSource, symbols);
+      }
+
+      return null;
+    }
   };
 };
 
@@ -271,7 +281,6 @@ export default connect(
   mapStateToProps,
   {
     selectLocation: actions.selectLocation,
-    getFunctionText: actions.getFunctionText,
     flashLineRange: actions.flashLineRange
   }
 )(Outline);

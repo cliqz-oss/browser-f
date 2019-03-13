@@ -1,4 +1,11 @@
-// |jit-test| skip-if: !wasmGcEnabled()
+// |jit-test| skip-if: !wasmReftypesEnabled()
+
+// Do not run the test if we're jit-compiling JS, since it's the wasm frames
+// we're interested in and eager JS compilation can upset the test.
+
+opts = getJitCompilerOptions();
+if (opts['ion.enable'] || opts['baseline.enable'])
+  quit();
 
 const { startProfiling, endProfiling, assertEqPreciseStacks, isSingleStepProfilingEnabled } = WasmHelpers;
 
