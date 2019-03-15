@@ -33,12 +33,7 @@
 <!ENTITY trackingProtection.startTour1                   "See how it works">
 
 <!ENTITY contentBlocking.title                           "Content Blocking">
-<<<<<<< HEAD
 <!ENTITY contentBlocking.description                     "Some websites use trackers that can monitor your activity across the Internet. In private windows, &brandShortName; Content Blocking automatically blocks many trackers that can collect information about your browsing behavior.">
-||||||| merged common ancestors
-<!ENTITY contentBlocking.description                     "Some websites use trackers that can monitor your activity across the Internet. In private windows, Firefox Content Blocking automatically blocks many trackers that can collect information about your browsing behavior.">
-=======
-<!ENTITY contentBlocking.description                     "Some websites use trackers that can monitor your activity across the Internet. In private windows, Firefox Content Blocking automatically blocks many trackers that can collect information about your browsing behavior.">
 
 <!-- Strings for new Private Browsing with Search -->
 <!-- LOCALIZATION NOTE (aboutPrivateBrowsing.search.placeholder): This is the placeholder
@@ -49,4 +44,3 @@
 <!-- LOCALIZATION NOTE (aboutPrivateBrowsing.info.myths): This is a link to a SUMO article
                        about private browsing myths.   -->
 <!ENTITY aboutPrivateBrowsing.info.myths                 "Common myths about private browsing">
->>>>>>> origin/upstream-releases

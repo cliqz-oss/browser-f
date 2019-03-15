@@ -773,17 +773,11 @@ sitedata-delete-on-close =
     .label = Delete cookies and site data when { -brand-short-name } is closed
     .accesskey = c
 
-<<<<<<< HEAD
 sitedata-keep-until-expire =
     .label = They expire
 sitedata-keep-until-closed =
     .label = { -brand-short-name } is closed
 
-||||||| merged common ancestors
-=======
-sitedata-delete-on-close-private-browsing = In permanent private browsing mode, cookies and site data will always be cleared when { -brand-short-name } is closed.
-
->>>>>>> origin/upstream-releases
 sitedata-allow-cookies-option =
     .label = Accept cookies and site data
     .accesskey = A

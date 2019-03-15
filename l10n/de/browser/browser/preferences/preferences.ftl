@@ -615,7 +615,10 @@ sitedata-learn-more = Weitere Informationen
 sitedata-delete-on-close =
     .label = Cookies und Website-Daten beim Beenden von { -brand-short-name } löschen
     .accesskey = B
-sitedata-delete-on-close-private-browsing = Wenn der Private Modus immer verwendet wird, löscht { -brand-short-name } Cookies und Website-Daten beim Beenden.
+sitedata-keep-until-expire =
+    .label = sie nicht mehr gültig sind
+sitedata-keep-until-closed =
+    .label = { -brand-short-name } geschlossen wird
 sitedata-allow-cookies-option =
     .label = Annehmen von Cookies und Website-Daten
     .accesskey = A
@@ -701,49 +704,8 @@ content-blocking-cookies-label =
     .accesskey = C
 
 ## Privacy Section - Tracking
-<<<<<<< HEAD
 tracking-header-donottrack = Do Not Track
-tracking-header = Schutz vor Aktivitätenverfolgung
-tracking-desc = Der Schutz vor Aktivitätenverfolgung blockiert nur Systeme, welche Ihr Surfverhalten über mehrere Websites verteilt aufzeichnen. <a data-l10n-name="learn-more">Weitere Informationen zum Schutz Ihrer Privatsphäre und vor Aktivitätenverfolgung</a>
-tracking-mode-label = Schutz vor Aktivitätenverfolgung verwenden, um bekannte Aktivitäten verfolgende Systeme zu blockieren
-tracking-mode-always =
-    .label = Immer
-    .accesskey = m
-tracking-mode-private =
-    .label = Nur in Vergessen Fenstern
-    .accesskey = P
-tracking-mode-never =
-    .label = Nie
-    .accesskey = N
-tracking-exceptions =
-    .label = Ausnahmen…
-    .accesskey = u
-tracking-change-block-list =
-    .label = Blockierliste ändern…
-    .accesskey = B
-||||||| merged common ancestors
 
-tracking-header = Schutz vor Aktivitätenverfolgung
-tracking-desc = Der Schutz vor Aktivitätenverfolgung blockiert nur Systeme, welche Ihr Surfverhalten über mehrere Websites verteilt aufzeichnen. <a data-l10n-name="learn-more">Weitere Informationen zum Schutz Ihrer Privatsphäre und vor Aktivitätenverfolgung</a>
-tracking-mode-label = Schutz vor Aktivitätenverfolgung verwenden, um bekannte Aktivitäten verfolgende Systeme zu blockieren
-tracking-mode-always =
-    .label = Immer
-    .accesskey = m
-tracking-mode-private =
-    .label = Nur in privaten Fenstern
-    .accesskey = P
-tracking-mode-never =
-    .label = Nie
-    .accesskey = N
-tracking-exceptions =
-    .label = Ausnahmen…
-    .accesskey = u
-tracking-change-block-list =
-    .label = Blockierliste ändern…
-    .accesskey = B
-=======
-
->>>>>>> origin/upstream-releases
 tracking-manage-exceptions =
     .label = Ausnahmen verwalten…
     .accesskey = v

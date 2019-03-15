@@ -4,49 +4,20 @@
 <!ENTITY % brandDTD SYSTEM "chrome://branding/locale/brand.dtd">
 %brandDTD;
 
-<<<<<<< HEAD
 <!ENTITY aboutPrivateBrowsing.notPrivate       "Du befindest sich derzeit nicht in einem Vergessen Fenster.">
 <!ENTITY privatebrowsingpage.openPrivateWindow.label "Neues Vergessen Fenster öffnen">
-||||||| merged common ancestors
-<!ENTITY aboutPrivateBrowsing.notPrivate       "Sie befinden sich derzeit nicht in einem privaten Fenster.">
-<!ENTITY privatebrowsingpage.openPrivateWindow.label "Neues privates Fenster öffnen">
-=======
-<!ENTITY aboutPrivateBrowsing.notPrivate                 "Sie befinden sich derzeit nicht in einem privaten Fenster.">
-<!ENTITY privatebrowsingpage.openPrivateWindow.label     "Neues privates Fenster öffnen">
->>>>>>> origin/upstream-releases
 <!ENTITY privatebrowsingpage.openPrivateWindow.accesskey "F">
 
-<<<<<<< HEAD
 <!ENTITY privateBrowsing.title                 "Privates Surfen">
 <!ENTITY privateBrowsing.title.tracking                  "Privates Surfen mit Schutz vor Aktivitätenverfolgung">
 <!ENTITY aboutPrivateBrowsing.info.notsaved.before       "Wenn Sie in einem privaten Fenster surfen, so wird &brandShortName; ">
-||||||| merged common ancestors
-<!ENTITY privateBrowsing.title                 "Privates Surfen">
-<!ENTITY privateBrowsing.title.tracking                  "Privates Surfen mit Schutz vor Aktivitätenverfolgung">
-<!ENTITY aboutPrivateBrowsing.info.notsaved.before       "Wenn Sie in einem privaten Fenster surfen, so wird Firefox ">
-=======
-<!ENTITY privateBrowsing.title                           "Privates Surfen">
-<!ENTITY aboutPrivateBrowsing.info.notsaved.before       "Wenn Sie in einem privaten Fenster surfen, so wird Firefox ">
->>>>>>> origin/upstream-releases
 <!ENTITY aboutPrivateBrowsing.info.notsaved.emphasize    "Folgendes nicht speichern">
 <!ENTITY aboutPrivateBrowsing.info.notsaved.after        ":">
 <!ENTITY aboutPrivateBrowsing.info.visited               "Besuchte Seiten">
-<<<<<<< HEAD
 <!ENTITY aboutPrivateBrowsing.info.searches    "Suchanfragen">
 <!ENTITY aboutPrivateBrowsing.info.cookies     "Cookies">
 <!ENTITY aboutPrivateBrowsing.info.temporaryFiles "Temporäre Dateien">
 <!ENTITY aboutPrivateBrowsing.info.saved.before          "&brandShortName; wird ">
-||||||| merged common ancestors
-<!ENTITY aboutPrivateBrowsing.info.searches    "Suchanfragen">
-<!ENTITY aboutPrivateBrowsing.info.cookies     "Cookies">
-<!ENTITY aboutPrivateBrowsing.info.temporaryFiles "Temporäre Dateien">
-<!ENTITY aboutPrivateBrowsing.info.saved.before          "Firefox wird ">
-=======
-<!ENTITY aboutPrivateBrowsing.info.searches              "Suchanfragen">
-<!ENTITY aboutPrivateBrowsing.info.cookies               "Cookies">
-<!ENTITY aboutPrivateBrowsing.info.temporaryFiles        "Temporäre Dateien">
-<!ENTITY aboutPrivateBrowsing.info.saved.before          "Firefox wird ">
->>>>>>> origin/upstream-releases
 <!ENTITY aboutPrivateBrowsing.info.saved.emphasize       "Folgendes speichern">
 <!ENTITY aboutPrivateBrowsing.info.saved.after2          ":">
 <!ENTITY aboutPrivateBrowsing.info.downloads             "Downloads">
@@ -59,18 +30,9 @@
 <!ENTITY aboutPrivateBrowsing.learnMore3.title           "privatem Surfen">
 <!ENTITY aboutPrivateBrowsing.learnMore3.after           ".">
 
-<<<<<<< HEAD
 <!ENTITY trackingProtection.title              "Schutz vor Aktivitätenverfolgung">
 <!ENTITY trackingProtection.description2                 "Einige Websites verwenden Seiteninhalte, um Ihre Aktivitäten durch das ganze Internet zu verfolgen. Beim Schutz vor Aktivitätenverfolgung blockiert &brandShortName; viele dieser verfolgenden Seiteninhalte, welche Informationen über Ihre Internetaktivitäten aufzeichnen könnten.">
 <!ENTITY trackingProtection.startTour1         "Wie es funktioniert">
-||||||| merged common ancestors
-<!ENTITY trackingProtection.title              "Schutz vor Aktivitätenverfolgung">
-<!ENTITY trackingProtection.description2                 "Einige Websites verwenden Seiteninhalte, um Ihre Aktivitäten durch das ganze Internet zu verfolgen. Beim Schutz vor Aktivitätenverfolgung blockiert Firefox viele dieser verfolgenden Seiteninhalte, welche Informationen über Ihre Internetaktivitäten aufzeichnen könnten.">
-
-<!ENTITY trackingProtection.startTour1         "Wie es funktioniert">
-=======
-<!ENTITY trackingProtection.startTour1                   "Wie es funktioniert">
->>>>>>> origin/upstream-releases
 
 <!ENTITY contentBlocking.title                           "Blockieren von Seitenelementen">
 <!ENTITY contentBlocking.description                     "Einige Websites verwenden Elemente zur Aktivitätenverfolgung, um Ihr Surfverhalten quer über das Internet zu verfolgen. In privaten Fenstern ist Firefoxs Blockieren von Seitenelementen automatisch aktiv und verhindert das Laden vieler Elemente zur Aktivitätenverfolgung, welche sonst Informationen über Ihr Surfverhalten sammeln können.">

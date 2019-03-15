@@ -74,26 +74,7 @@ async function init(aEvent) {
     document.getElementById("experimental").hidden = false;
     document.getElementById("communityDesc").hidden = true;
   }
-<<<<<<< HEAD
 #endif
-||||||| merged common ancestors
-
-  // Append "(32-bit)" or "(64-bit)" build architecture to the version number:
-  let archResource = Services.appinfo.is64Bit
-                     ? "aboutDialog-architecture-sixtyFourBit"
-                     : "aboutDialog-architecture-thirtyTwoBit";
-  let [arch] = await document.l10n.formatValues([{id: archResource}]);
-  versionField.textContent += ` (${arch})`;
-=======
-
-  // Use Fluent arguments for append version and the architecture of the build
-  let versionField = document.getElementById("version");
-
-  document.l10n.setAttributes(versionField, versionId, versionAttributes);
-
-  await document.l10n.translateElements([versionField]);
-  window.sizeToContent();
->>>>>>> origin/upstream-releases
 
   // Show a release notes link if we have a URL.
   let relNotesLink = document.getElementById("releasenotes");
