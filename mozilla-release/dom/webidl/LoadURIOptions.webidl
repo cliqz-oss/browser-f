@@ -63,5 +63,5 @@ dictionary LoadURIOptions {
    * TODO: Remove this argument. Should not be necessary after
    * "mozprivatebrowsing" attribute for xul:browser is introduced.
    */
-  bool ensurePrivate = false;
+  boolean ensurePrivate = false;
 };
