@@ -65,30 +65,7 @@ RemoteWebNavigation.prototype = {
   gotoIndex(aIndex) {
     this._sendMessage("WebNavigation:GotoIndex", {index: aIndex});
   },
-<<<<<<< HEAD
-  loadURI(aURI, aLoadFlags, aReferrer, aPostData, aHeaders,
-          aTriggeringPrincipal) {
-    this.loadURIWithOptions(aURI, aLoadFlags, aReferrer,
-                            Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,
-                            aPostData, aHeaders, null,
-                            aTriggeringPrincipal, false);
-  },
-  loadURIWithOptions(aURI, aLoadFlags, aReferrer, aReferrerPolicy,
-                     aPostData, aHeaders, aBaseURI, aTriggeringPrincipal,
-                     aEnsurePrivate) {
-||||||| merged common ancestors
-  loadURI(aURI, aLoadFlags, aReferrer, aPostData, aHeaders,
-          aTriggeringPrincipal) {
-    this.loadURIWithOptions(aURI, aLoadFlags, aReferrer,
-                            Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,
-                            aPostData, aHeaders, null,
-                            aTriggeringPrincipal);
-  },
-  loadURIWithOptions(aURI, aLoadFlags, aReferrer, aReferrerPolicy,
-                     aPostData, aHeaders, aBaseURI, aTriggeringPrincipal) {
-=======
   loadURI(aURI, aLoadURIOptions) {
->>>>>>> origin/upstream-releases
     // We know the url is going to be loaded, let's start requesting network
     // connection before the content process asks.
     // Note that we might have already setup the speculative connection in some
@@ -125,7 +102,7 @@ RemoteWebNavigation.prototype = {
       triggeringPrincipal: Utils.serializePrincipal(
                            aLoadURIOptions.triggeringPrincipal || Services.scriptSecurityManager.createNullPrincipal({})),
       requestTime: Services.telemetry.msSystemNow(),
-      ensurePrivate: !!aEnsurePrivate
+      ensurePrivate: !!aLoadURIOptions.ensurePrivate
     });
   },
   setOriginAttributesBeforeLoading(aOriginAttributes) {

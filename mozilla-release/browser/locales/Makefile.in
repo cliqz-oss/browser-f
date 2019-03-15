@@ -63,15 +63,7 @@ endif
 ifneq (,$(wildcard ../extensions/formautofill/locales))
 	@$(MAKE) -C ../extensions/formautofill/locales AB_CD=$* XPI_NAME=locale-$*
 endif
-<<<<<<< HEAD
-#	@$(MAKE) -C ../extensions/pocket/locale AB_CD=$* XPI_NAME=locale-$*
 #	@$(MAKE) -C ../extensions/webcompat-reporter/locales AB_CD=$* XPI_NAME=locale-$*
-||||||| merged common ancestors
-	@$(MAKE) -C ../components/pocket/locale AB_CD=$* XPI_NAME=locale-$*
-	@$(MAKE) -C ../extensions/webcompat-reporter/locales AB_CD=$* XPI_NAME=locale-$*
-=======
-	@$(MAKE) -C ../extensions/webcompat-reporter/locales AB_CD=$* XPI_NAME=locale-$*
->>>>>>> origin/upstream-releases
 	@$(MAKE) -C ../../devtools/client/locales AB_CD=$* XPI_NAME=locale-$* XPI_ROOT_APPID='$(XPI_ROOT_APPID)'
 	@$(MAKE) -C ../../devtools/startup/locales AB_CD=$* XPI_NAME=locale-$* XPI_ROOT_APPID='$(XPI_ROOT_APPID)'
 	@$(MAKE) libs AB_CD=$* XPI_NAME=locale-$* PREF_DIR=$(PREF_DIR)
@@ -88,12 +80,6 @@ chrome-%:
 ifneq (,$(wildcard ../extensions/formautofill/locales))
 	@$(MAKE) -C ../extensions/formautofill/locales chrome AB_CD=$*
 endif
-<<<<<<< HEAD
-#>@$(MAKE) -C ../components/pocket/locale chrome AB_CD=$*
-||||||| merged common ancestors
-	@$(MAKE) -C ../components/pocket/locale chrome AB_CD=$*
-=======
->>>>>>> origin/upstream-releases
 	@$(MAKE) -C ../../devtools/client/locales chrome AB_CD=$*
 	@$(MAKE) -C ../../devtools/startup/locales chrome AB_CD=$*
 	@$(MAKE) chrome AB_CD=$*

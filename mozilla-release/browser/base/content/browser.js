@@ -89,7 +89,6 @@ if (AppConstants.MOZ_CRASHREPORTER) {
     "resource:///modules/ContentCrashHandlers.jsm");
 }
 
-<<<<<<< HEAD
 XPCOMUtils.defineLazyScriptGetter(this, ["isBlankPageURL"],
                                   "chrome://browser/content/utilityOverlay.js");
 #if 0
@@ -98,8 +97,6 @@ XPCOMUtils.defineLazyScriptGetter(this, "gDataNotificationInfoBar",
 #endif
 XPCOMUtils.defineLazyScriptGetter(this, "BookmarkingUI",
                                   "chrome://browser/content/browser-places.js");
-XPCOMUtils.defineLazyScriptGetter(this, "gIdentityHandler",
-                                  "chrome://browser/content/browser-siteIdentity.js");
 XPCOMUtils.defineLazyScriptGetter(this, "BrowserPageActions",
                                   "chrome://browser/content/browser-pageActions.js");
 XPCOMUtils.defineLazyScriptGetter(this, "SidebarUI",
@@ -108,14 +105,13 @@ XPCOMUtils.defineLazyScriptGetter(this, "gPluginHandler",
                                   "chrome://browser/content/browser-plugins.js");
 XPCOMUtils.defineLazyScriptGetter(this, "TabsInTitlebar",
                                   "chrome://browser/content/browser-tabsintitlebar.js");
-||||||| merged common ancestors
-=======
+
+// CLIQZ-MERGE: we need to understand why FF guys added the following check + ReaderMode
 if (!Services.prefs.getBoolPref("browser.urlbar.quantumbar", false)) {
   ChromeUtils.defineModuleGetter(this, "ReaderMode",
     "resource://gre/modules/ReaderMode.jsm");
 }
 
->>>>>>> origin/upstream-releases
 XPCOMUtils.defineLazyScriptGetter(this, "PlacesTreeView",
                                   "chrome://browser/content/places/treeView.js");
 XPCOMUtils.defineLazyScriptGetter(this, ["PlacesInsertionPoint", "PlacesController",
@@ -1174,6 +1170,7 @@ function _loadURI(browser, uri, params = {}) {
     referrerURI,
     referrerPolicy,
     postData,
+    ensurePrivate: !!params.ensurePrivate,
   };
   try {
     if (!mustChangeProcess) {
@@ -1183,26 +1180,13 @@ function _loadURI(browser, uri, params = {}) {
           privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(browser) ? 1 : 0,
         });
       }
-<<<<<<< HEAD
       if (CliqzResources.isCliqzPage(uri)) {
         CliqzResources.addonIsReadyAsync().then(() => {
-          browser.webNavigation.loadURIWithOptions(uri, flags,
-            referrerURI, referrerPolicy, postData, null, null,
-            triggeringPrincipal, !!params.ensurePrivate);
+          browser.webNavigation.loadURI(uri, loadURIOptions);
         });
       } else {
-        browser.webNavigation.loadURIWithOptions(uri, flags,
-          referrerURI, referrerPolicy, postData, null, null,
-          triggeringPrincipal, !!params.ensurePrivate);
+        browser.webNavigation.loadURI(uri, loadURIOptions);
       }
-||||||| merged common ancestors
-
-      browser.webNavigation.loadURIWithOptions(uri, flags,
-                                               referrerURI, referrerPolicy,
-                                               postData, null, null, triggeringPrincipal);
-=======
-      browser.webNavigation.loadURI(uri, loadURIOptions);
->>>>>>> origin/upstream-releases
     } else {
       // Check if the current browser is allowed to unload.
       let {permitUnload, timedOut} = browser.permitUnload();
@@ -1249,18 +1233,7 @@ function _loadURI(browser, uri, params = {}) {
           privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(browser) ? 1 : 0,
         });
       }
-<<<<<<< HEAD
-
-      browser.webNavigation.loadURIWithOptions(uri, flags, referrerURI, referrerPolicy,
-                                               postData, null, null,
-                                               triggeringPrincipal, !!params.ensurePrivate);
-||||||| merged common ancestors
-
-      browser.webNavigation.loadURIWithOptions(uri, flags, referrerURI, referrerPolicy,
-                                               postData, null, null, triggeringPrincipal);
-=======
       browser.webNavigation.loadURI(uri, loadURIOptions);
->>>>>>> origin/upstream-releases
     } else {
       throw e;
     }
@@ -1462,14 +1435,6 @@ var gBrowserInit = {
     gPageStyleMenu.init();
     LanguageDetectionListener.init();
     BrowserOnClick.init();
-<<<<<<< HEAD
-#if 0
-    ContentBlocking.init();
-#endif
-||||||| merged common ancestors
-    ContentBlocking.init();
-=======
->>>>>>> origin/upstream-releases
     CaptivePortalWatcher.init();
     ZoomUI.init(window);
 
@@ -1620,8 +1585,9 @@ var gBrowserInit = {
     BookmarkingUI.init();
     BrowserSearch.delayedStartupInit();
     AutoShowBookmarksToolbar.init();
+#if 0
     ContentBlocking.init();
-
+#endif
     let safeMode = document.getElementById("helpSafeMode");
     if (Services.appinfo.inSafeMode) {
       safeMode.label = safeMode.getAttribute("stoplabel");
@@ -2061,16 +2027,6 @@ var gBrowserInit = {
 
     BrowserOnClick.uninit();
 
-<<<<<<< HEAD
-#if 0
-    ContentBlocking.uninit();
-#endif
-
-||||||| merged common ancestors
-    ContentBlocking.uninit();
-
-=======
->>>>>>> origin/upstream-releases
     CaptivePortalWatcher.uninit();
 
     SidebarUI.uninit();
@@ -2096,7 +2052,9 @@ var gBrowserInit = {
       Services.prefs.removeObserver(ctrlTab.prefName, ctrlTab);
       ctrlTab.uninit();
       gBrowserThumbnails.uninit();
+#if 0
       ContentBlocking.uninit();
+#endif
       FullZoom.destroy();
 
       Services.obs.removeObserver(gIdentityHandler, "perm-changed");
@@ -5116,6 +5074,8 @@ var XULBrowserWindow = {
   _event: null,
   _lastLocationForEvent: null,
 
+#if 0
+  // CLIQZ-MERGE: check errors in console
   // This is called in multiple ways:
   //  1. Due to the nsIWebProgressListener.onContentBlockingEvent notification.
   //  2. Called by tabbrowser.xml when updating the current browser.
@@ -5142,6 +5102,7 @@ var XULBrowserWindow = {
     ContentBlocking.onContentBlockingEvent(this._event, aWebProgress, aIsSimulated);
     gBrowser.selectedBrowser.updateSecurityUIForContentBlockingEvent(aEvent);
   },
+#endif
 
   // This is called in multiple ways:
   //  1. Due to the nsIWebProgressListener.onSecurityChange notification.
@@ -5171,14 +5132,6 @@ var XULBrowserWindow = {
       uri = Services.uriFixup.createExposableURI(uri);
     } catch (e) {}
     gIdentityHandler.updateIdentity(this._state, uri);
-<<<<<<< HEAD
-#if 0
-    ContentBlocking.onSecurityChange(this._state, aWebProgress, aIsSimulated);
-#endif
-||||||| merged common ancestors
-    ContentBlocking.onSecurityChange(this._state, aWebProgress, aIsSimulated);
-=======
->>>>>>> origin/upstream-releases
   },
 
   // simulate all change notifications after switching tabs
@@ -6563,24 +6516,11 @@ var ToolbarContextMenu = {
     let removeExtension = popup.querySelector(".customize-context-removeExtension");
     let manageExtension = popup.querySelector(".customize-context-manageExtension");
     let separator = removeExtension.nextElementSibling;
-<<<<<<< HEAD
     let node = this._getUnwrappedTriggerNode(popup);
     let isWebExt = node && node.hasAttribute("data-extensionid");
     // CLIQZ-SPECIAL: hide manage and remove extensions for cliqz toolbar icons
     let isCliqzButton = node && node.hasAttribute("data-extensionid") && (node.getAttribute("data-extensionid") == "cliqz@cliqz.com");
     removeExtension.hidden = manageExtension.hidden = separator.hidden = !isWebExt || isCliqzButton;
-||||||| merged common ancestors
-    let node = this._getUnwrappedTriggerNode(popup);
-    let isWebExt = node && node.hasAttribute("data-extensionid");
-    removeExtension.hidden = manageExtension.hidden = separator.hidden = !isWebExt;
-=======
-    let id = this._getExtensionId(popup);
-    let addon = id && await AddonManager.getAddonByID(id);
-    removeExtension.hidden = manageExtension.hidden = separator.hidden = !addon;
-    if (addon) {
-      removeExtension.disabled = !(addon.permissions & AddonManager.PERM_CAN_UNINSTALL);
-    }
->>>>>>> origin/upstream-releases
   },
 
   async removeExtensionForContextAction(popup) {

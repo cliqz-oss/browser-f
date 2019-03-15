@@ -59,16 +59,6 @@ const whitelist = {
     "resource://gre/modules/Readerable.jsm",
     "resource://gre/modules/WebProgressChild.jsm",
 
-<<<<<<< HEAD
-    // Pocket
-    // "chrome://pocket/content/AboutPocket.jsm",
-
-||||||| merged common ancestors
-    // Pocket
-    "chrome://pocket/content/AboutPocket.jsm",
-
-=======
->>>>>>> origin/upstream-releases
     // Telemetry
     "resource://gre/modules/TelemetryController.jsm", // bug 1470339
     "resource://gre/modules/TelemetryUtils.jsm", // bug 1470339

@@ -217,7 +217,6 @@
         <label id="siteDataLearnMoreLink"
           class="learnMore text-link" data-l10n-id="sitedata-learn-more"/>
       </description>
-<<<<<<< HEAD
       <description class="description-with-side-element warning-description"
                    flex="1" hidden="true" id="blockCookiesWarning"
                    data-l10n-id="sitedata-warning-your-settings-prevent-changes"/>
@@ -270,30 +269,6 @@
           </hbox>
         </hbox>
       </radiogroup>
-||||||| merged common ancestors
-      <hbox id="keepRow"
-            align="center">
-        <checkbox id="deleteOnClose"
-                  data-l10n-id="sitedata-delete-on-close"
-                  preference="network.cookie.lifetimePolicy"
-                  onsyncfrompreference="return gPrivacyPane.readDeleteOnClose();"
-                  onsynctopreference="return gPrivacyPane.writeDeleteOnClose();"
-                  flex="1" />
-      </hbox>
-=======
-      <hbox flex="1" id="deleteOnCloseNote" class="info-panel">
-        <description flex="1" data-l10n-id="sitedata-delete-on-close-private-browsing" />
-      </hbox>
-      <hbox id="keepRow"
-            align="center">
-        <checkbox id="deleteOnClose"
-                  data-l10n-id="sitedata-delete-on-close"
-                  preference="network.cookie.lifetimePolicy"
-                  onsyncfrompreference="return gPrivacyPane.readDeleteOnClose();"
-                  onsynctopreference="return gPrivacyPane.writeDeleteOnClose();"
-                  flex="1" />
-      </hbox>
->>>>>>> origin/upstream-releases
     </vbox>
     <vbox align="end">
       <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->

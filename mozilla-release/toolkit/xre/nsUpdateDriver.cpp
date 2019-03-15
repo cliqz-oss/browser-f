@@ -59,16 +59,8 @@ static LazyLogModule sUpdateLog("updatedriver");
 #define LOG(args) MOZ_LOG(sUpdateLog, mozilla::LogLevel::Debug, args)
 
 #ifdef XP_WIN
-<<<<<<< HEAD
-#define UPDATER_BIN "updater.exe"
-#define MAINTENANCE_SVC_NAME L"CliqzMaintenance"
-||||||| merged common ancestors
-#define UPDATER_BIN "updater.exe"
-#define MAINTENANCE_SVC_NAME L"MozillaMaintenance"
-=======
 #  define UPDATER_BIN "updater.exe"
-#  define MAINTENANCE_SVC_NAME L"MozillaMaintenance"
->>>>>>> origin/upstream-releases
+#  define MAINTENANCE_SVC_NAME L"CliqzMaintenance"
 #elif XP_MACOSX
 #  define UPDATER_BIN "org.mozilla.updater"
 #else

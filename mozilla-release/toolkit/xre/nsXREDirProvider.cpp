@@ -291,31 +291,13 @@ static nsresult GetSystemParentDirectory(nsIFile** aFile) {
   }
 #  else
   NS_NAMED_LITERAL_CSTRING(dirname,
-<<<<<<< HEAD
-#ifdef HAVE_USR_LIB64_DIR
-                           "/usr/lib64/cliqz"
-#elif defined(__OpenBSD__) || defined(__FreeBSD__)
-                           "/usr/local/lib/cliqz"
-#else
-                           "/usr/lib/cliqz"
-#endif
-||||||| merged common ancestors
-#ifdef HAVE_USR_LIB64_DIR
-                           "/usr/lib64/mozilla"
-#elif defined(__OpenBSD__) || defined(__FreeBSD__)
-                           "/usr/local/lib/mozilla"
-#else
-                           "/usr/lib/mozilla"
-#endif
-=======
 #    ifdef HAVE_USR_LIB64_DIR
-                           "/usr/lib64/mozilla"
+                           "/usr/lib64/cliqz"
 #    elif defined(__OpenBSD__) || defined(__FreeBSD__)
-                           "/usr/local/lib/mozilla"
+                           "/usr/local/lib/cliqz"
 #    else
-                           "/usr/lib/mozilla"
+                           "/usr/lib/cliqz"
 #    endif
->>>>>>> origin/upstream-releases
   );
   rv = NS_NewNativeLocalFile(dirname, false, getter_AddRefs(localDir));
 #  endif
@@ -403,25 +385,11 @@ nsXREDirProvider::GetFile(const char* aProperty, bool* aPersistent,
     nsCOMPtr<nsIFile> localDir;
     rv = GetUserDataDirectoryHome(getter_AddRefs(localDir), false);
     if (NS_SUCCEEDED(rv)) {
-<<<<<<< HEAD
-#if defined(XP_MACOSX)
-      rv = localDir->AppendNative(NS_LITERAL_CSTRING("Cliqz"));
-#else
-      rv = localDir->AppendNative(NS_LITERAL_CSTRING(".cliqz"));
-#endif
-||||||| merged common ancestors
-#if defined(XP_MACOSX)
-      rv = localDir->AppendNative(NS_LITERAL_CSTRING("Mozilla"));
-#else
-      rv = localDir->AppendNative(NS_LITERAL_CSTRING(".mozilla"));
-#endif
-=======
 #  if defined(XP_MACOSX)
-      rv = localDir->AppendNative(NS_LITERAL_CSTRING("Mozilla"));
+      rv = localDir->AppendNative(NS_LITERAL_CSTRING("Cliqz"));
 #  else
-      rv = localDir->AppendNative(NS_LITERAL_CSTRING(".mozilla"));
+      rv = localDir->AppendNative(NS_LITERAL_CSTRING(".cliqz"));
 #  endif
->>>>>>> origin/upstream-releases
     }
     if (NS_SUCCEEDED(rv)) {
       localDir.swap(file);
@@ -468,28 +436,12 @@ nsXREDirProvider::GetFile(const char* aProperty, bool* aPersistent,
 #endif
 #if defined(XP_UNIX) && !defined(XP_MACOSX)
   else if (!strcmp(aProperty, XRE_SYS_SHARE_EXTENSION_PARENT_DIR)) {
-<<<<<<< HEAD
-#ifdef ENABLE_SYSTEM_EXTENSION_DIRS
-#if defined(__OpenBSD__) || defined(__FreeBSD__)
-    static const char* const sysLExtDir = "/usr/local/share/cliqz/extensions";
-#else
-    static const char* const sysLExtDir = "/usr/share/cliqz/extensions";
-#endif
-||||||| merged common ancestors
-#ifdef ENABLE_SYSTEM_EXTENSION_DIRS
-#if defined(__OpenBSD__) || defined(__FreeBSD__)
-    static const char* const sysLExtDir = "/usr/local/share/mozilla/extensions";
-#else
-    static const char* const sysLExtDir = "/usr/share/mozilla/extensions";
-#endif
-=======
 #  ifdef ENABLE_SYSTEM_EXTENSION_DIRS
 #    if defined(__OpenBSD__) || defined(__FreeBSD__)
-    static const char* const sysLExtDir = "/usr/local/share/mozilla/extensions";
+    static const char* const sysLExtDir = "/usr/local/share/cliqz/extensions";
 #    else
-    static const char* const sysLExtDir = "/usr/share/mozilla/extensions";
+    static const char* const sysLExtDir = "/usr/share/cliqz/extensions";
 #    endif
->>>>>>> origin/upstream-releases
     return NS_NewNativeLocalFile(nsDependentCString(sysLExtDir), false, aFile);
 #  else
     return NS_ERROR_FAILURE;

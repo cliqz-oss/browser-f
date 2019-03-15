@@ -20,7 +20,7 @@ dictionary LoadURIOptions {
    * Flags modifying load behaviour.  This parameter is a bitwise
    * combination of the load flags defined in nsIWebNavigation.idl.
    */
-   long loadFlags = 0;
+  long loadFlags = 0;
 
   /**
    * The referring URI.  If this argument is null, then the referring
@@ -49,7 +49,7 @@ dictionary LoadURIOptions {
    * header stream is formatted as:
    *     ( HEADER "\r\n" )*
    */
-   InputStream? headers = null;
+  InputStream? headers = null;
 
   /**
    * Set to indicate a base URI to be associated with the load. Note
@@ -57,4 +57,11 @@ dictionary LoadURIOptions {
    * and cannot be used to resolve aURI.
    */
   URI? baseURI = null;
+
+  /**
+   * Set whether to switch into private mode before loading.
+   * TODO: Remove this argument. Should not be necessary after
+   * "mozprivatebrowsing" attribute for xul:browser is introduced.
+   */
+  bool ensurePrivate = false;
 };

@@ -31,17 +31,10 @@ Var CheckboxSetAsDefault
 Var CheckboxShortcuts
 Var CheckboxSendPing
 Var CheckboxInstallMaintSvc
-<<<<<<< HEAD
 Var DroplistArch
 Var LabelBlurb1
 Var LabelBlurb2
 Var LabelBlurb3
-||||||| merged common ancestors
-Var DroplistArch
-Var LabelBlurb
-=======
-Var LabelBlurb
->>>>>>> origin/upstream-releases
 Var BgBitmapImage
 Var HwndBgBitmapControl
 Var CurrentBlurbIdx
@@ -110,15 +103,19 @@ Var OpenedDownloadPage
 Var DownloadServerIP
 Var PostSigningData
 Var PreviousInstallDir
+Var PreviousInstallArch
 Var ProfileCleanupPromptType
 Var ProfileCleanupHeaderString
 Var ProfileCleanupButtonString
 Var AppLaunchWaitTickCount
 
-!define ARCH_X86 1
-!define ARCH_AMD64 2
-!define ARCH_AARCH64 3
-Var ArchToInstall
+; Cliqz. Still use only two platform, x86 and x64. ARM not supported yet.
+; A lot of related code removed from script for now. After starting support
+; for ARM - uncomment this and put other related code back.
+; !define ARCH_X86 1
+; !define ARCH_AMD64 2
+; !define ARCH_AARCH64 3
+; Var ArchToInstall
 
 ; Uncomment the following to prevent pinging the metrics server when testing
 ; the stub installer
@@ -266,49 +263,21 @@ Var ArchToInstall
 ; The OFFICIAL define is a workaround to support different urls for Release and
 ; Beta since they share the same branding when building with other branches that
 ; set the update channel to beta.
-<<<<<<< HEAD
 ; Cliqz: do not support beta version distributon with mini_installer
-; !ifdef OFFICIAL
-; !ifdef BETA_UPDATE_CHANNEL
-; !undef URLStubDownload32
-; !undef URLStubDownload64
-; !define URLStubDownload32 "https://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-beta-latest"
-; !define URLStubDownload64 "https://download.mozilla.org/?os=win64&lang=${AB_CD}&product=firefox-beta-latest"
-; !undef URLManualDownload
-; !define URLManualDownload "https://www.mozilla.org/${AB_CD}/firefox/installer-help/?channel=beta&installer_lang=${AB_CD}"
-; !undef Channel
-; !define Channel "beta"
-; !endif
-; !endif
-||||||| merged common ancestors
-!ifdef OFFICIAL
-!ifdef BETA_UPDATE_CHANNEL
-!undef URLStubDownload32
-!undef URLStubDownload64
-!define URLStubDownload32 "https://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-beta-latest"
-!define URLStubDownload64 "https://download.mozilla.org/?os=win64&lang=${AB_CD}&product=firefox-beta-latest"
-!undef URLManualDownload
-!define URLManualDownload "https://www.mozilla.org/${AB_CD}/firefox/installer-help/?channel=beta&installer_lang=${AB_CD}"
-!undef Channel
-!define Channel "beta"
-!endif
-!endif
-=======
-!ifdef OFFICIAL
-!ifdef BETA_UPDATE_CHANNEL
-!undef URLStubDownloadX86
-!undef URLStubDownloadAMD64
-!undef URLStubDownloadAArch64
-!define URLStubDownloadX86 "https://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-beta-latest"
-!define URLStubDownloadAMD64 "https://download.mozilla.org/?os=win64&lang=${AB_CD}&product=firefox-beta-latest"
-!define URLStubDownloadAArch64 "https://download.mozilla.org/?os=win64-aarch64&lang=${AB_CD}&product=firefox-beta-latest"
-!undef URLManualDownload
-!define URLManualDownload "https://www.mozilla.org/${AB_CD}/firefox/installer-help/?channel=beta&installer_lang=${AB_CD}"
-!undef Channel
-!define Channel "beta"
-!endif
-!endif
->>>>>>> origin/upstream-releases
+;!ifdef OFFICIAL
+;!ifdef BETA_UPDATE_CHANNEL
+;!undef URLStubDownloadX86
+;!undef URLStubDownloadAMD64
+;!undef URLStubDownloadAArch64
+;!define URLStubDownloadX86 "https://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-beta-latest"
+;!define URLStubDownloadAMD64 "https://download.mozilla.org/?os=win64&lang=${AB_CD}&product=firefox-beta-latest"
+;!define URLStubDownloadAArch64 "https://download.mozilla.org/?os=win64-aarch64&lang=${AB_CD}&product=firefox-beta-latest"
+;!undef URLManualDownload
+;!define URLManualDownload "https://www.mozilla.org/${AB_CD}/firefox/installer-help/?channel=beta&installer_lang=${AB_CD}"
+;!undef Channel
+;!define Channel "beta"
+;!endif
+;!endif
 
 !undef INSTALL_BLURB_TEXT_COLOR
 !define INSTALL_BLURB_TEXT_COLOR 0xFFFFFF
@@ -384,11 +353,12 @@ Function .onInit
     Quit
   ${EndIf}
 
-  Call GetArchToInstall
-  ${If} $ArchToInstall == ${ARCH_AARCH64}
-  ${OrIf} $ArchToInstall == ${ARCH_AMD64}
+  Call ShouldInstall64Bit
+  ${If} $0 == 1
+    StrCpy $DroplistArch "$(VERSION_64BIT)"
     StrCpy $INSTDIR "${DefaultInstDir64bit}"
   ${Else}
+    StrCpy $DroplistArch "$(VERSION_32BIT)"
     StrCpy $INSTDIR "${DefaultInstDir32bit}"
   ${EndIf}
 
@@ -402,29 +372,16 @@ Function .onInit
   ${GetSingleInstallPath} "Software\Cliqz\${BrandFullNameInternal}" $R9
 
   ${If} "$R9" == "false"
-<<<<<<< HEAD
   ${AndIf} ${RunningX64}
     SetRegView 64
     ${GetSingleInstallPath} "Software\Cliqz\${BrandFullNameInternal}" $R9
-||||||| merged common ancestors
-  ${AndIf} ${RunningX64}
-    SetRegView 64
-    ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $R9
-=======
-    ${If} ${IsNativeAMD64}
-    ${OrIf} ${IsNativeARM64}
-      SetRegView 64
-      ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $R9
-    ${EndIf}
->>>>>>> origin/upstream-releases
   ${EndIf}
 
   ${If} "$R9" == "false"
     SetShellVarContext current ; Set SHCTX to HKCU
     ${GetSingleInstallPath} "Software\Cliqz\${BrandFullNameInternal}" $R9
 
-    ${If} ${IsNativeAMD64}
-    ${OrIf} ${IsNativeARM64}
+    ${If} ${RunningX64}
       ; In HKCU there is no WOW64 redirection, which means we may have gotten
       ; the path to a 32-bit install even though we're 64-bit.
       ; In that case, just use the default path instead of offering an upgrade.
@@ -443,23 +400,25 @@ Function .onInit
   ${EndIf}
 
   StrCpy $PreviousInstallDir ""
+  StrCpy $PreviousInstallArch ""
   ${If} "$R9" != "false"
     ; Don't override the default install path with an existing installation
     ; of a different architecture.
-    StrCpy $0 $R9
-    Call GetExistingInstallArch
+    System::Call "*(i)p.r0"
+    StrCpy $1 "$R9\${FileMainEXE}"
+    System::Call "Kernel32::GetBinaryTypeW(w r1, p r0)i"
+    System::Call "*$0(i.r2)"
+    System::Free $0
 
-    ${If} $0 == ${ARCH_X86}
-    ${AndIf} $ArchToInstall == ${ARCH_X86}
+    ${If} $2 == "6" ; 6 == SCS_64BIT_BINARY
+    ${AndIf} ${RunningX64}
       StrCpy $PreviousInstallDir "$R9"
+      StrCpy $PreviousInstallArch "64"
       StrCpy $INSTDIR "$PreviousInstallDir"
-    ${ElseIf} $0 == ${ARCH_AMD64}
-    ${AndIf} $ArchToInstall == ${ARCH_AMD64}
+    ${ElseIf} $2 == "0" ; 0 == SCS_32BIT_BINARY
+    ${AndIfNot} ${RunningX64}
       StrCpy $PreviousInstallDir "$R9"
-      StrCpy $INSTDIR "$PreviousInstallDir"
-    ${ElseIf} $0 == ${ARCH_AARCH64}
-    ${AndIf} $ArchToInstall == ${ARCH_AARCH64}
-      StrCpy $PreviousInstallDir "$R9"
+      StrCpy $PreviousInstallArch "32"
       StrCpy $INSTDIR "$PreviousInstallDir"
     ${EndIf}
   ${EndIf}
@@ -1031,16 +990,12 @@ FunctionEnd
 
 Function StartDownload
   ${NSD_KillTimer} StartDownload
-  ${If} $ArchToInstall == ${ARCH_AMD64}
-    InetBgDL::Get "${URLStubDownloadAMD64}${URLStubDownloadAppend}" \
-                  "$PLUGINSDIR\download.exe" \
-                  /CONNECTTIMEOUT 120 /RECEIVETIMEOUT 120 /END
-  ${ElseIf} $ArchToInstall == ${ARCH_AARCH64}
-    InetBgDL::Get "${URLStubDownloadAArch64}${URLStubDownloadAppend}" \
+  ${If} $DroplistArch == "$(VERSION_64BIT)"
+    InetBgDL::Get "${URLStubDownload64}${URLStubDownloadAppend}" \
                   "$PLUGINSDIR\download.exe" \
                   /CONNECTTIMEOUT 120 /RECEIVETIMEOUT 120 /END
   ${Else}
-    InetBgDL::Get "${URLStubDownloadX86}${URLStubDownloadAppend}" \
+    InetBgDL::Get "${URLStubDownload32}${URLStubDownloadAppend}" \
                   "$PLUGINSDIR\download.exe" \
                   /CONNECTTIMEOUT 120 /RECEIVETIMEOUT 120 /END
   ${EndIf}
@@ -1465,15 +1420,13 @@ Function SendPing
     ; completion of all phases.
     ${GetSecondsElapsed} "$EndInstallPhaseTickCount" "$EndFinishPhaseTickCount" $4
 
-    ${If} $ArchToInstall == ${ARCH_AMD64}
-    ${OrIf} $ArchToInstall == ${ARCH_AARCH64}
+    ${If} $DroplistArch == "$(VERSION_64BIT)"
       StrCpy $R0 "1"
     ${Else}
       StrCpy $R0 "0"
     ${EndIf}
 
-    ${If} ${IsNativeAMD64}
-    ${OrIf} ${IsNativeARM64}
+    ${If} ${RunningX64}
       StrCpy $R1 "1"
     ${Else}
       StrCpy $R1 "0"
@@ -1939,8 +1892,7 @@ Function ShouldPromptForProfileCleanup
   StrCpy $ProfileCleanupPromptType 0
 
   ; Only consider installations of the same architecture we're installing.
-  ${If} $ArchToInstall == ${ARCH_AMD64}
-  ${OrIf} $ArchToInstall == ${ARCH_AARCH64}
+  ${If} $DroplistArch == "$(VERSION_64BIT)"
     SetRegView 64
   ${Else}
     SetRegView 32
@@ -2170,6 +2122,40 @@ Function GetArchToInstall
   ${EndIf}
 
   StrCpy $ArchToInstall ${ARCH_AMD64}
+FunctionEnd
+
+; Returns 1 in $0 if we should install the 64-bit build, or 0 if not.
+; The requirements for selecting the 64-bit build to install are:
+; 1) Running a 64-bit OS (we've already checked the OS version).
+; 2) An amount of RAM strictly greater than RAM_NEEDED_FOR_64BIT
+; 3) No third-party products installed that cause issues with the 64-bit build.
+;    Currently this includes Lenovo OneKey Theater and Lenovo Energy Management.
+Function ShouldInstall64Bit
+  StrCpy $0 0
+
+  ${IfNot} ${RunningX64}
+    Return
+  ${EndIf}
+
+  System::Call "*(i 64, i, l 0, l, l, l, l, l, l)p.r1"
+  System::Call "Kernel32::GlobalMemoryStatusEx(p r1)"
+  System::Call "*$1(i, i, l.r2, l, l, l, l, l, l)"
+  System::Free $1
+  ${If} $2 L<= ${RAM_NEEDED_FOR_64BIT}
+    Return
+  ${EndIf}
+
+  ; Lenovo OneKey Theater can theoretically be in a directory other than this
+  ; one, because some installer versions let you change it, but it's unlikely.
+  ${If} ${FileExists} "$PROGRAMFILES32\Lenovo\Onekey Theater\windowsapihookdll64.dll"
+    Return
+  ${EndIf}
+
+  ${If} ${FileExists} "$PROGRAMFILES32\Lenovo\Energy Management\Energy Management.exe"
+    Return
+  ${EndIf}
+
+  StrCpy $0 1
 FunctionEnd
 
 Section

@@ -1311,21 +1311,7 @@ pref("browser.library.activity-stream.enabled", false);
 pref("browser.newtabpage.activity-stream.fxaccounts.endpoint", "https://accounts.firefox.com/");
 
 // The pref that controls if the search shortcuts experiment is on
-<<<<<<< HEAD
-#ifdef EARLY_BETA_OR_EARLIER
 pref("browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts", false);
-#else
-pref("browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts", false);
-#endif
-||||||| merged common ancestors
-#ifdef EARLY_BETA_OR_EARLIER
-pref("browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts", true);
-#else
-pref("browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts", false);
-#endif
-=======
-pref("browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts", true);
->>>>>>> origin/upstream-releases
 
 // ASRouter provider configuration
 pref("browser.newtabpage.activity-stream.asrouter.providers.cfr", "{\"id\":\"cfr\",\"enabled\":true,\"type\":\"local\",\"localProvider\":\"CFRMessageProvider\",\"frequency\":{\"custom\":[{\"period\":\"daily\",\"cap\":1}]}}");
@@ -1404,22 +1390,12 @@ pref("dom.debug.propagate_gesture_events_through_content", false);
 
 // All the Geolocation preferences are here.
 //
-<<<<<<< HEAD
-// pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_API_KEY%");
-// MLS URL:
-pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
-||||||| merged common ancestors
-pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_API_KEY%");
-// MLS URL:
-// pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
-=======
-#ifndef EARLY_BETA_OR_EARLIER
-pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_API_KEY%");
-#else
+//#ifndef EARLY_BETA_OR_EARLIER
+//pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_API_KEY%");
+//#else
 // Use MLS on Nightly and early Beta.
 pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
-#endif
->>>>>>> origin/upstream-releases
+//#endif
 
 #ifdef XP_MACOSX
 pref("geo.provider.use_corelocation", false);

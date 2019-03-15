@@ -209,26 +209,15 @@ ContentRestoreInternal.prototype = {
         if (loadArguments.userContextId) {
           webNavigation.setOriginAttributesBeforeLoading({ userContextId: loadArguments.userContextId });
         }
-<<<<<<< HEAD
-
-        webNavigation.loadURIWithOptions(loadArguments.uri, loadArguments.flags,
-                                         referrer, referrerPolicy, postData,
-                                         null, null, triggeringPrincipal, false);
-||||||| merged common ancestors
-
-        webNavigation.loadURIWithOptions(loadArguments.uri, loadArguments.flags,
-                                         referrer, referrerPolicy, postData,
-                                         null, null, triggeringPrincipal);
-=======
         let loadURIOptions = {
           triggeringPrincipal,
           loadFlags: loadArguments.flags,
           referrerURI: referrer,
           referrerPolicy,
           postData,
+          ensurePrivate: false,
         };
         webNavigation.loadURI(loadArguments.uri, loadURIOptions);
->>>>>>> origin/upstream-releases
       } else if (tabData.userTypedValue && tabData.userTypedClear) {
         // If the user typed a URL into the URL bar and hit enter right before
         // we crashed, we want to start loading that page again. A non-zero

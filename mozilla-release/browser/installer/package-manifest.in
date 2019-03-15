@@ -181,15 +181,7 @@
 @BINPATH@/components/nsDNSServiceDiscovery.manifest
 @BINPATH@/components/nsDNSServiceDiscovery.js
 #endif
-<<<<<<< HEAD
 @RESPATH@/browser/components/AutoForgetTabsService.js
-@RESPATH@/browser/components/BrowserFeeds.manifest
-@RESPATH@/browser/components/WebContentConverter.js
-||||||| merged common ancestors
-@RESPATH@/browser/components/BrowserFeeds.manifest
-@RESPATH@/browser/components/WebContentConverter.js
-=======
->>>>>>> origin/upstream-releases
 @RESPATH@/browser/components/BrowserComponents.manifest
 @RESPATH@/browser/components/nsBrowserContentHandler.js
 @RESPATH@/browser/components/nsBrowserGlue.js

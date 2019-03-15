@@ -596,14 +596,8 @@
 
   ; Running Cliqz 32 bit
   ${If} ${RunningX64}
-<<<<<<< HEAD
-    ; Running Cliqz 32 bit on a Windows 64 bit system
-||||||| merged common ancestors
-    ; Running Firefox 32 bit on a Windows 64 bit system
-=======
   ${OrIf} ${IsNativeARM64}
-    ; Running Firefox 32 bit on a Windows 64 bit system
->>>>>>> origin/upstream-releases
+    ; Running Cliqz 32 bit on a Windows 64 bit system
     ClearErrors
     ReadRegDWORD $2 HKLM "Software\${AppName}\32to64DidMigrate" "$1"
     ; If there were errors the value doesn't exist yet.

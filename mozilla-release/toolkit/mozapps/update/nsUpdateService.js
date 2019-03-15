@@ -1474,36 +1474,7 @@ function Update(update) {
     this.displayVersion = this.appVersion;
   }
 
-<<<<<<< HEAD
 #if 0
-  // Don't allow the background download interval to be greater than 10 minutes.
-  this.backgroundInterval = Math.min(this.backgroundInterval, 600);
-
-  // The Update Name is either the string provided by the <update> element, or
-  // the string: "<App Name> <Update App Version>"
-  var name = "";
-  if (update.hasAttribute("name")) {
-    name = update.getAttribute("name");
-  } else {
-    var brandBundle = Services.strings.createBundle(URI_BRAND_PROPERTIES);
-    var appName = brandBundle.GetStringFromName("brandShortName");
-    name = gUpdateBundle.formatStringFromName("updateName",
-                                              [appName, this.displayVersion], 2);
-||||||| merged common ancestors
-  // Don't allow the background download interval to be greater than 10 minutes.
-  this.backgroundInterval = Math.min(this.backgroundInterval, 600);
-
-  // The Update Name is either the string provided by the <update> element, or
-  // the string: "<App Name> <Update App Version>"
-  var name = "";
-  if (update.hasAttribute("name")) {
-    name = update.getAttribute("name");
-  } else {
-    var brandBundle = Services.strings.createBundle(URI_BRAND_PROPERTIES);
-    var appName = brandBundle.GetStringFromName("brandShortName");
-    name = gUpdateBundle.formatStringFromName("updateName",
-                                              [appName, this.displayVersion], 2);
-=======
   if (!this.name) {
     // When the update doesn't provide a name fallback to using
     // "<App Name> <Update App Version>"
@@ -1511,18 +1482,12 @@ function Update(update) {
     let appName = brandBundle.GetStringFromName("brandShortName");
     this.name = gUpdateBundle.formatStringFromName("updateName",
                                                    [appName, this.displayVersion], 2);
->>>>>>> origin/upstream-releases
   }
-<<<<<<< HEAD
   this.name = name;
 #endif
   // In Cliqz we always use just the current product name.
   var brandBundle = Services.strings.createBundle(URI_BRAND_PROPERTIES);
   this.name = brandBundle.GetStringFromName("brandShortName");
-||||||| merged common ancestors
-  this.name = name;
-=======
->>>>>>> origin/upstream-releases
 }
 Update.prototype = {
   // nsIUpdate attribute names used to prevent nsIWritablePropertyBag from over

@@ -3804,64 +3804,11 @@ nsDocShell::GotoIndex(int32_t aIndex) {
   return rootSH->LegacySHistory()->GotoIndex(aIndex);
 }
 
-<<<<<<< HEAD
-NS_IMETHODIMP
-nsDocShell::LoadURI(const nsAString& aURI, uint32_t aLoadFlags,
-                    nsIURI* aReferringURI, nsIInputStream* aPostStream,
-                    nsIInputStream* aHeaderStream,
-                    nsIPrincipal* aTriggeringPrincipal) {
-#ifndef ANDROID
-  MOZ_ASSERT(aTriggeringPrincipal, "LoadURI: Need a valid triggeringPrincipal");
-#endif
-  if (mUseStrictSecurityChecks && !aTriggeringPrincipal) {
-    return NS_ERROR_FAILURE;
-  }
-  return LoadURIWithOptions(aURI, aLoadFlags, aReferringURI, RP_Unset,
-                            aPostStream, aHeaderStream, nullptr,
-                            aTriggeringPrincipal, false);
-}
-||||||| merged common ancestors
-NS_IMETHODIMP
-nsDocShell::LoadURI(const nsAString& aURI, uint32_t aLoadFlags,
-                    nsIURI* aReferringURI, nsIInputStream* aPostStream,
-                    nsIInputStream* aHeaderStream,
-                    nsIPrincipal* aTriggeringPrincipal) {
-#ifndef ANDROID
-  MOZ_ASSERT(aTriggeringPrincipal, "LoadURI: Need a valid triggeringPrincipal");
-#endif
-  if (mUseStrictSecurityChecks && !aTriggeringPrincipal) {
-    return NS_ERROR_FAILURE;
-  }
-  return LoadURIWithOptions(aURI, aLoadFlags, aReferringURI, RP_Unset,
-                            aPostStream, aHeaderStream, nullptr,
-                            aTriggeringPrincipal);
-}
-=======
 nsresult nsDocShell::LoadURI(const nsAString& aURI,
                              const LoadURIOptions& aLoadURIOptions) {
   uint32_t loadFlags = aLoadURIOptions.mLoadFlags;
->>>>>>> origin/upstream-releases
 
-<<<<<<< HEAD
-NS_IMETHODIMP
-nsDocShell::LoadURIWithOptions(const nsAString& aURI, uint32_t aLoadFlags,
-                               nsIURI* aReferringURI, uint32_t aReferrerPolicy,
-                               nsIInputStream* aPostStream,
-                               nsIInputStream* aHeaderStream, nsIURI* aBaseURI,
-                               nsIPrincipal* aTriggeringPrincipal,
-                               bool aEnsurePrivate) {
-  NS_ASSERTION((aLoadFlags & INTERNAL_LOAD_FLAGS_LOADURI_SETUP_FLAGS) == 0,
-||||||| merged common ancestors
-NS_IMETHODIMP
-nsDocShell::LoadURIWithOptions(const nsAString& aURI, uint32_t aLoadFlags,
-                               nsIURI* aReferringURI, uint32_t aReferrerPolicy,
-                               nsIInputStream* aPostStream,
-                               nsIInputStream* aHeaderStream, nsIURI* aBaseURI,
-                               nsIPrincipal* aTriggeringPrincipal) {
-  NS_ASSERTION((aLoadFlags & INTERNAL_LOAD_FLAGS_LOADURI_SETUP_FLAGS) == 0,
-=======
   NS_ASSERTION((loadFlags & INTERNAL_LOAD_FLAGS_LOADURI_SETUP_FLAGS) == 0,
->>>>>>> origin/upstream-releases
                "Unexpected flags");
 
   if (!IsNavigationAllowed()) {
@@ -3991,7 +3938,7 @@ nsDocShell::LoadURIWithOptions(const nsAString& aURI, uint32_t aLoadFlags,
     MaybeNotifyKeywordSearchLoading(searchProvider, keyword);
   }
 
-  if (aEnsurePrivate) {
+  if (aLoadURIOptions.mEnsurePrivate) {
     rv = SetPrivateBrowsing(true);
     if (NS_FAILED(rv)) {
       return rv;

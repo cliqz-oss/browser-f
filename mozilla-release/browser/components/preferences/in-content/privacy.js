@@ -632,39 +632,7 @@ var gPrivacyPane = {
   networkCookieBehaviorReadPrefs() {
     let behavior = Preferences.get("network.cookie.cookieBehavior").value;
     let blockCookiesMenu = document.getElementById("blockCookiesMenu");
-<<<<<<< HEAD
     let blockCookiesCtrl = document.getElementById("blockCookies");
-||||||| merged common ancestors
-    let deleteOnCloseCheckbox = document.getElementById("deleteOnClose");
-
-    let blockCookies = (behavior != Ci.nsICookieService.BEHAVIOR_ACCEPT);
-    let cookieBehaviorLocked = Services.prefs.prefIsLocked("network.cookie.cookieBehavior");
-    let blockCookiesControlsDisabled = !blockCookies || cookieBehaviorLocked;
-    blockCookiesMenu.disabled = blockCookiesControlsDisabled;
-
-    let completelyBlockCookies = (behavior == Ci.nsICookieService.BEHAVIOR_REJECT);
-    let privateBrowsing = Preferences.get("browser.privatebrowsing.autostart").value;
-    let cookieExpirationLocked = Services.prefs.prefIsLocked("network.cookie.lifetimePolicy");
-    deleteOnCloseCheckbox.disabled = privateBrowsing || completelyBlockCookies ||
-                                     cookieExpirationLocked;
-
-=======
-    let deleteOnCloseCheckbox = document.getElementById("deleteOnClose");
-    let deleteOnCloseNote = document.getElementById("deleteOnCloseNote");
-
-    let blockCookies = (behavior != Ci.nsICookieService.BEHAVIOR_ACCEPT);
-    let cookieBehaviorLocked = Services.prefs.prefIsLocked("network.cookie.cookieBehavior");
-    let blockCookiesControlsDisabled = !blockCookies || cookieBehaviorLocked;
-    blockCookiesMenu.disabled = blockCookiesControlsDisabled;
-
-    let completelyBlockCookies = (behavior == Ci.nsICookieService.BEHAVIOR_REJECT);
-    let privateBrowsing = Preferences.get("browser.privatebrowsing.autostart").value;
-    let cookieExpirationLocked = Services.prefs.prefIsLocked("network.cookie.lifetimePolicy");
-    deleteOnCloseCheckbox.disabled = privateBrowsing || completelyBlockCookies ||
-                                     cookieExpirationLocked;
-    deleteOnCloseNote.hidden = !privateBrowsing;
-
->>>>>>> origin/upstream-releases
     switch (behavior) {
       case Ci.nsICookieService.BEHAVIOR_ACCEPT:
         blockCookiesCtrl.value = "allow";

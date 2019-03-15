@@ -1095,27 +1095,7 @@ BrowserGlue.prototype = {
 
     Normandy.init();
 
-<<<<<<< HEAD
-    // Initialize the default l10n resource sources for L10nRegistry.
-    let locales = Services.locale.packagedLocales;
-    const greSource = new FileSource("toolkit", locales, "resource://gre/localization/{locale}/");
-    L10nRegistry.registerSource(greSource);
-
-    const appSource = new FileSource("app", locales, "resource://app/localization/{locale}/");
-    L10nRegistry.registerSource(appSource);
-
 #if 0
-||||||| merged common ancestors
-    // Initialize the default l10n resource sources for L10nRegistry.
-    let locales = Services.locale.packagedLocales;
-    const greSource = new FileSource("toolkit", locales, "resource://gre/localization/{locale}/");
-    L10nRegistry.registerSource(greSource);
-
-    const appSource = new FileSource("app", locales, "resource://app/localization/{locale}/");
-    L10nRegistry.registerSource(appSource);
-
-=======
->>>>>>> origin/upstream-releases
     SaveToPocket.init();
 #endif
     Services.obs.notifyObservers(null, "browser-ui-startup-complete");
@@ -1490,26 +1470,6 @@ BrowserGlue.prototype = {
     AboutPrivateBrowsingHandler.uninit();
     AutoCompletePopup.uninit();
     DateTimePickerParent.uninit();
-<<<<<<< HEAD
-#if 0
-    SaveToPocket.uninit();
-#endif
-
-    // Browser errors are only collected on Nightly, but telemetry for
-    // them is collected on all channels.
-    if (AppConstants.MOZ_DATA_REPORTING) {
-      this.browserErrorReporter.uninit();
-    }
-||||||| merged common ancestors
-    SaveToPocket.uninit();
-
-    // Browser errors are only collected on Nightly, but telemetry for
-    // them is collected on all channels.
-    if (AppConstants.MOZ_DATA_REPORTING) {
-      this.browserErrorReporter.uninit();
-    }
-=======
->>>>>>> origin/upstream-releases
 
     Normandy.uninit();
   },

@@ -65,26 +65,6 @@ var gUpdateHistory = {
 
         element.append(topLine, installedOnLabel, statusLabel);
         this._view.appendChild(element);
-<<<<<<< HEAD
-        element.setAttribute("data-l10n-attrs", "name");
-        document.l10n.setAttributes(element, "update-full-name", { name: update.name, displayVersion: update.displayVersion, buildID: update.buildID});
-        element.installDate = this._formatDate(update.installDate);
-        if (update.detailsURL)
-          element.detailsURL = update.detailsURL;
-        else
-          element.hideDetailsURL = true;
-        element.status = update.statusText;
-||||||| merged common ancestors
-        element.setAttribute("data-l10n-attrs", "name");
-        document.l10n.setAttributes(element, "update-full-name", { name: update.name, buildID: update.buildID});
-        element.installDate = this._formatDate(update.installDate);
-        if (update.detailsURL)
-          element.detailsURL = update.detailsURL;
-        else
-          element.hideDetailsURL = true;
-        element.status = update.statusText;
-=======
->>>>>>> origin/upstream-releases
       }
     }
     var cancelbutton = document.documentElement.getButton("cancel");

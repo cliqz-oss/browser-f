@@ -548,44 +548,14 @@ nsWebBrowser::GoForward() {
   return mDocShellAsNav->GoForward();
 }
 
-<<<<<<< HEAD
-NS_IMETHODIMP
-nsWebBrowser::LoadURIWithOptions(const nsAString& aURI, uint32_t aLoadFlags,
-                                 nsIURI* aReferringURI,
-                                 uint32_t aReferrerPolicy,
-                                 nsIInputStream* aPostDataStream,
-                                 nsIInputStream* aExtraHeaderStream,
-                                 nsIURI* aBaseURI,
-                                 nsIPrincipal* aTriggeringPrincipal,
-                                 bool aEnsurePrivate) {
-||||||| merged common ancestors
-NS_IMETHODIMP
-nsWebBrowser::LoadURIWithOptions(const nsAString& aURI, uint32_t aLoadFlags,
-                                 nsIURI* aReferringURI,
-                                 uint32_t aReferrerPolicy,
-                                 nsIInputStream* aPostDataStream,
-                                 nsIInputStream* aExtraHeaderStream,
-                                 nsIURI* aBaseURI,
-                                 nsIPrincipal* aTriggeringPrincipal) {
-=======
 nsresult nsWebBrowser::LoadURI(const nsAString& aURI,
                                const dom::LoadURIOptions& aLoadURIOptions) {
->>>>>>> origin/upstream-releases
 #ifndef ANDROID
   MOZ_ASSERT(aLoadURIOptions.mTriggeringPrincipal,
              "nsWebBrowser::LoadURI - Need a valid triggeringPrincipal");
 #endif
   NS_ENSURE_STATE(mDocShell);
 
-<<<<<<< HEAD
-  return mDocShellAsNav->LoadURIWithOptions(
-      aURI, aLoadFlags, aReferringURI, aReferrerPolicy, aPostDataStream,
-      aExtraHeaderStream, aBaseURI, aTriggeringPrincipal, aEnsurePrivate);
-||||||| merged common ancestors
-  return mDocShellAsNav->LoadURIWithOptions(
-      aURI, aLoadFlags, aReferringURI, aReferrerPolicy, aPostDataStream,
-      aExtraHeaderStream, aBaseURI, aTriggeringPrincipal);
-=======
   return mDocShellAsNav->LoadURI(aURI, aLoadURIOptions);
 }
 
@@ -599,7 +569,6 @@ nsWebBrowser::LoadURIFromScript(const nsAString& aURI,
     return NS_ERROR_INVALID_ARG;
   }
   return LoadURI(aURI, loadURIOptions);
->>>>>>> origin/upstream-releases
 }
 
 NS_IMETHODIMP

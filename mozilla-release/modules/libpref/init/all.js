@@ -1428,17 +1428,7 @@ pref("privacy.permissionPrompts.showCloseButton", false);
 // Enforce tracking protection in all modes
 pref("privacy.trackingprotection.enabled",  false);
 // Enforce tracking protection in Private Browsing mode
-<<<<<<< HEAD
 pref("privacy.trackingprotection.pbmode.enabled",  false);
-// Annotate channels based on the tracking protection list in all modes
-pref("privacy.trackingprotection.annotate_channels",  true);
-||||||| merged common ancestors
-pref("privacy.trackingprotection.pbmode.enabled",  true);
-// Annotate channels based on the tracking protection list in all modes
-pref("privacy.trackingprotection.annotate_channels",  true);
-=======
-pref("privacy.trackingprotection.pbmode.enabled",  true);
->>>>>>> origin/upstream-releases
 // First Party Isolation (double keying), disabled by default
 pref("privacy.firstparty.isolate",                        false);
 // If false, two windows in the same domain with different first party domains

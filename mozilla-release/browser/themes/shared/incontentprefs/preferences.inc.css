@@ -205,7 +205,6 @@ button > hbox > label {
   font-weight: 600;
 }
 
-<<<<<<< HEAD
 #startupPageBox {
   padding-top: 32px;
 }
@@ -216,10 +215,7 @@ button > hbox > label {
   margin-bottom: 4px;
 }
 
-||||||| merged common ancestors
-=======
 .info-panel,
->>>>>>> origin/upstream-releases
 .extension-controlled {
   margin-top: 18px !important;
   margin-bottom: 18px !important;

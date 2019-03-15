@@ -660,12 +660,8 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(TabChild)
   NS_INTERFACE_MAP_ENTRY(nsIObserver)
   NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
   NS_INTERFACE_MAP_ENTRY(nsITooltipListener)
-<<<<<<< HEAD
   NS_INTERFACE_MAP_ENTRY(nsIPrivacyTransitionObserver)
-||||||| merged common ancestors
-=======
   NS_INTERFACE_MAP_ENTRY(nsIWebProgressListener)
->>>>>>> origin/upstream-releases
 NS_INTERFACE_MAP_END_INHERITING(TabChildBase)
 
 NS_IMPL_ADDREF_INHERITED(TabChild, TabChildBase);

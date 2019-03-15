@@ -193,14 +193,8 @@ class nsRFPService final : public nsIObserver {
                                             uint32_t aHeight);
 
   // This method generates the spoofed value of User Agent.
-<<<<<<< HEAD
-  static nsresult GetSpoofedUserAgent(nsACString& userAgent, bool isForHTTPHeader);
-||||||| merged common ancestors
-  static nsresult GetSpoofedUserAgent(nsACString& userAgent);
-=======
   static nsresult GetSpoofedUserAgent(nsACString& userAgent,
                                       bool isForHTTPHeader);
->>>>>>> origin/upstream-releases
 
   /**
    * This method for getting spoofed modifier states for the given keyboard
